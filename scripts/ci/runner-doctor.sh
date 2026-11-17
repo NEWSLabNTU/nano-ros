@@ -67,7 +67,14 @@
 # below, and a provisioning arm in runner-provision.sh. Three edits, all in this
 # directory, none in a workflow file — which is the point of labelling by
 # CAPABILITY rather than by hostname.
-NROS_RUNNER_LABELS="nros-sdk-zephyr nros-qemu nros-ros2 nros-big nros-queue"
+NROS_RUNNER_LABELS="nros-sdk-zephyr nros-qemu nros-ros2 nros-big nros-queue nros-heavy"
+
+# The one FAMILY of labels that names a machine rather than a capability:
+# `nros-host-<id>`, a routing label (issue 2663, by the user's ruling). It is a
+# family rather than a row above because the ids are the fleet's, not the
+# repo's. A runner gets it from `NROS_RUNNER_HOST=<id>`
+# (scripts/lib/runner-host-label.sh); see `_nros_runner_check_host` below.
+NROS_RUNNER_HOST_LABEL_PREFIX="nros-host-"
 
 # Labels GitHub applies itself, or that an operator may add for their own
 # routing. They assert nothing about this repo, so there is nothing to verify —
@@ -818,6 +825,84 @@ _nros_runner_unknown_label() {
     esac
 }
 
+# --- nros-host-<id> ------------------------------------------------------------
+#
+# "This runner runs on host <id>." The only label that names a machine
+# (issue 2663). No job is pinned to it: the heavy jobs ask for the ROLE
+# `nros-heavy`, so a host that fails or a new host is a label change, not a
+# workflow edit. The host label is for a like-for-like dispatch and for
+# reading which machine ran a job. What can be checked is the PAIRING, since
+# the id is the operator's word and not a fact a probe can read off the box (a
+# container's hostname is its container id):
+#
+#   - `NROS_RUNNER_HOST` is set, and the label is `nros-host-$NROS_RUNNER_HOST`.
+#     A label typed by hand that disagrees with the setting would send a
+#     like-for-like dispatch to the wrong machine, silently.
+#   - The set carries no second host label. One runner on two hosts is a typo,
+#     and it would answer for both.
+_nros_runner_check_host() {
+    local label="$1" want n=0 l
+    if [ -z "${NROS_RUNNER_HOST:-}" ]; then
+        _nros_runner_missing "$label without NROS_RUNNER_HOST — nothing says which host this is"
+        _nros_runner_fix "Set NROS_RUNNER_HOST=<id> and let runner-container.sh or runner-register.sh"
+        _nros_runner_fix "add the label, rather than typing it."
+        return 1
+    fi
+    want="${NROS_RUNNER_HOST_LABEL_PREFIX}${NROS_RUNNER_HOST}"
+    if [ "$label" != "$want" ]; then
+        _nros_runner_missing "$label, but NROS_RUNNER_HOST=${NROS_RUNNER_HOST} says this host is $want"
+        _nros_runner_fix "A pinned job would land on the wrong machine. Drop the hand-typed label."
+        return 1
+    fi
+    for l in ${_NROS_RUNNER_DOCTOR_LABELS:-}; do
+        case "$l" in "$NROS_RUNNER_HOST_LABEL_PREFIX"*) n=$((n + 1)) ;; esac
+    done
+    if [ "$n" -gt 1 ]; then
+        _nros_runner_missing "$n host labels on one runner — it would take every one of those hosts' pinned jobs"
+        return 1
+    fi
+    _nros_runner_ok "$label matches NROS_RUNNER_HOST, and is this runner's only host label"
+    return 0
+}
+
+# --- nros-heavy -----------------------------------------------------------------
+#
+# "This host shares no cores with local gates or fixture builds, so the heavy
+# scheduled jobs may run here" (issue 2663). A ROLE the operator grants, like
+# `nros-queue`, and for the same reason not provable by a probe: whether the
+# box also runs someone's local gates is a fact about how it is USED. Host 241
+# runs the agents' gates beside its runners, and the pairwise nightly's build
+# took 400 min there where it had taken 188, until the job hit its limit.
+#
+# What can be checked is the rest of the set, since the jobs that ask for
+# `nros-heavy` also ask for the rest of it:
+#
+#   - it carries `nros-qemu`, `nros-sdk-zephyr` and `nros-big`. A heavy runner
+#     without them would win a tier 2 job and fail to build it;
+#   - it does NOT carry `nros-queue`. The queue runner must stay free for L3,
+#     and a heavy job holds a runner for hours.
+_nros_runner_check_heavy() {
+    local have=" ${_NROS_RUNNER_DOCTOR_LABELS:-} " fail=0 need
+    for need in nros-qemu nros-sdk-zephyr nros-big; do
+        case "$have" in
+            *" $need "*) _nros_runner_ok "carries $need (the heavy jobs request it)" ;;
+            *)
+                _nros_runner_missing "nros-heavy without $need — this runner could win a heavy job and not run it"
+                _nros_runner_fix "Register a heavy runner as: nros-qemu,nros-sdk-zephyr,nros-big,nros-heavy"
+                fail=1
+                ;;
+        esac
+    done
+    case "$have" in
+        *" nros-queue "*)
+            _nros_runner_missing "nros-heavy together with nros-queue — a heavy job would hold the queue's runner for hours"
+            fail=1
+            ;;
+        *) _nros_runner_ok "no nros-queue — a heavy job cannot hold the merge queue's runner" ;;
+    esac
+    return "$fail"
+}
+
 # `nros_runner_check_label <label>` — verify one label. 0 = holds.
 nros_runner_check_label() {
     case "$1" in
@@ -826,6 +911,8 @@ nros_runner_check_label() {
         nros-ros2)       _nros_runner_check_ros2 ;;
         nros-big)        _nros_runner_check_big ;;
         nros-queue)      _nros_runner_check_queue ;;
+        nros-heavy)      _nros_runner_check_heavy ;;
+        "$NROS_RUNNER_HOST_LABEL_PREFIX"?*) _nros_runner_check_host "$1" ;;
         *)               _nros_runner_unknown_label "$1" ;;
     esac
 }

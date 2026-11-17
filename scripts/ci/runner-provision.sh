@@ -150,6 +150,14 @@ _plan_for_label() {
             # runner). What it needs is provisioned by `nros-sdk-zephyr` and
             # `nros-big`, which runner-doctor requires beside it.
             ;;
+        nros-heavy)
+            # Nothing to install: a ROLE (issue 2663). What the heavy jobs
+            # need is provisioned by the labels runner-doctor requires beside it.
+            ;;
+        nros-host-*)
+            # Nothing to install: a ROUTING label naming this machine
+            # (issue 2663). runner-doctor checks it against NROS_RUNNER_HOST.
+            ;;
         *)
             : # unknown labels are runner-doctor's problem, not this script's
             ;;

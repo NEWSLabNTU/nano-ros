@@ -509,6 +509,13 @@ runner-doctor-sdk-resolution:
 runner-sweep-eviction-order:
     @bash tests/runner-sweep-eviction-order-tests.sh
 
+# Issue 2663 — a runner's host label (`nros-host-<id>`) comes from one setting,
+# `NROS_RUNNER_HOST`, and runner-doctor refuses a label that disagrees with it,
+# is missing its setting, or sits beside a second host label. Pure shell, ~0.1 s.
+[private]
+runner-host-label:
+    @bash tests/runner-host-label-tests.sh
+
 # issue 2210 — the runner's `src` checkout is a cache nobody edits, so a tracked
 # file a build rewrote there must not stop `runner-bootstrap.sh` refreshing it:
 # a lock rewritten inside the `play_launch` submodule left runner 118 offline.
