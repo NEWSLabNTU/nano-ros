@@ -410,6 +410,14 @@ pub struct BoardEntry {
     /// [`BoardDescriptor::apply_conventions`].
     #[serde(default)]
     pub crate_name: String,
+    /// The board crate's marker type, as `nros::main!` names it
+    /// (`"::my_board::MyBoard"`), RFC-0135 D2. `nros build` hands it to the
+    /// generated entry as `NROS_BOARD_TYPE`, which the macro reads before its
+    /// compiled-in table, so a board package outside nano-ros states it here,
+    /// once. The descriptor is the board's one face (RFC-0064 R5 D4): a
+    /// `[package.metadata.nros.board]` copy in the crate is refused.
+    #[serde(default, rename = "type")]
+    pub board_type: Option<String>,
     /// Attribute(s) + `fn` signature line(s) preceding the fn body.
     ///
     /// DEFAULTS to the `#[unsafe(no_mangle)] extern "C" fn main() -> !` shape
@@ -633,8 +641,15 @@ pub struct BoardDescriptor {
     /// (posix / zephyr) that pull static or `nros-platform-cffi` deps.
     #[serde(default)]
     pub board_crate: Option<String>,
-    /// Board-crate path relative to the workspace root; defaults to
-    /// `packages/boards/<board_crate>` when omitted.
+    /// Board-crate path, relative to the board DEFINITION's own directory, and
+    /// that directory when omitted (RFC-0135 D2): the same meaning whichever
+    /// root found the definition, because ours and a user's board differ only
+    /// in that (RFC-0064 D1). The catalog resolves it when it reads the
+    /// definition, to a nano-ros-root-relative path for an in-tree board and
+    /// an absolute one for a board package found elsewhere, so every consumer
+    /// joins it to the nano-ros root as before. Every in-tree definition that
+    /// names a `board_crate` sits in that crate's directory, so the default
+    /// resolves each exactly as the old `packages/boards/<board_crate>` did.
     #[serde(default)]
     pub crate_path: Option<String>,
     /// Extra features to enable on the board crate dependency.
@@ -1290,16 +1305,53 @@ impl BoardDescriptor {
 }
 
 /// Escape a path for embedding inside a double-quoted TOML string.
-/// Resolve `${board_dir}` in a definition's `cargo_config` to the directory the
-/// definition was read from (RFC-0135 D2).
-fn resolve_board_dir(mut b: BoardDescriptor, dir: &Path) -> BoardDescriptor {
+/// Resolve the paths a definition states relative to its own directory
+/// (RFC-0135 D2): `${board_dir}` in `cargo_config`, and `crate_path`.
+/// `rel_base` is the nano-ros root for an in-tree definition (its crate path
+/// stays root-relative, as committed artifacts need), `None` for one found
+/// through another root (absolute).
+fn resolve_board_dir(
+    mut b: BoardDescriptor,
+    dir: &Path,
+    rel_base: Option<&Path>,
+) -> BoardDescriptor {
     if let Some(text) = b.cargo_config.as_mut()
         && text.contains("${board_dir}")
     {
         let abs = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
         *text = text.replace("${board_dir}", &path_for_template(&abs));
     }
+    if b.board_crate.is_some() {
+        let joined = normalize_lexically(&dir.join(b.crate_path.as_deref().unwrap_or(".")));
+        let shown = match rel_base {
+            Some(ws) => match joined.strip_prefix(normalize_lexically(ws)) {
+                Ok(rel) => rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/"),
+                Err(_) => joined.display().to_string(),
+            },
+            None => joined.display().to_string(),
+        };
+        b.crate_path = Some(shown);
+    }
     b
+}
+
+/// `a/./b/../c` -> `a/c`, without touching the filesystem.
+fn normalize_lexically(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 fn path_for_template(path: &Path) -> String {
@@ -1846,7 +1898,7 @@ impl BoardCatalog {
             self.descriptors
                 .extend(file.with_inferred_targets().into_iter().map(|mut b| {
                     b.source = Some(abs.clone());
-                    resolve_board_dir(b, &dir)
+                    resolve_board_dir(b, dir, None)
                 }));
         }
         Ok(())
@@ -2014,7 +2066,7 @@ impl BoardCatalog {
             };
             descriptors.extend(file.with_inferred_targets().into_iter().map(|mut b| {
                 b.source = Some(rel.clone());
-                resolve_board_dir(b, &dir)
+                resolve_board_dir(b, &dir, rel_base)
             }));
         }
         Ok(())
@@ -2616,9 +2668,29 @@ mod tests {
     #[test]
     fn every_image_board_reaches_an_index_key_and_every_key_is_reached() {
         let root = repo_root_for_tests();
-        let cat = BoardCatalog::load(&root).expect("load catalog");
+        // RFC-0135 D2 -- a tracked board package outside `packages/boards/`
+        // (the out-of-tree fixture) is reached as the build reaches it, as an
+        // extra root; its images are provisioned from the board's own
+        // definition, never an index row, so they are not asked to join one.
+        let outside: Vec<PathBuf> =
+            std::fs::read_to_string(root.join(".config/fixture-board-roots.txt"))
+                .expect("the tracked fixture board roots")
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                .map(|l| root.join(l))
+                .collect();
+        let cat = BoardCatalog::load_with_extra(&root, &outside).expect("load catalog");
         let index = real_index();
         let is_key = |k: &str| index.board.contains_key(k);
+        let board_package_elsewhere = |word: &str| {
+            cat.descriptors().iter().any(|d| {
+                d.answers_to(word)
+                    && d.source
+                        .as_deref()
+                        .is_some_and(|s| Path::new(s).is_absolute())
+            })
+        };
 
         let listed = crate::source_stamp::nros_git_command("git")
             .arg("-C")
@@ -2643,6 +2715,9 @@ mod tests {
                     continue;
                 };
                 seen += 1;
+                if board_package_elsewhere(board) {
+                    continue;
+                }
                 if let Err(why) = cat.setup_board(board, &is_key) {
                     bad.push(format!("{rel} [image.{id}] board = \"{board}\": {why}"));
                 }
@@ -4240,5 +4315,79 @@ X = "${workspace}/y"
             "{text}"
         );
         assert!(text.contains("${workspace}/y"), "{text}");
+    }
+
+    /// RFC-0135 D2 -- `crate_path` is relative to the definition's own
+    /// directory and defaults to it. Every in-tree definition naming a
+    /// `board_crate` resolves to exactly the old default,
+    /// `packages/boards/<board_crate>`, so the rule moved nothing in tree.
+    #[test]
+    fn in_tree_board_crates_resolve_where_they_always_did() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let root = std::fs::canonicalize(root).unwrap();
+        let cat = BoardCatalog::load_with_extra(&root, &[]).unwrap();
+        let mut checked = 0;
+        for d in cat.descriptors() {
+            let Some(krate) = d.board_crate.as_deref() else {
+                continue;
+            };
+            assert_eq!(
+                d.crate_path_rel().as_deref(),
+                Some(format!("packages/boards/{krate}").as_str()),
+                "{:?}",
+                d.names
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 8,
+            "only {checked} in-tree definitions name a board crate"
+        );
+    }
+
+    /// An outside board package's crate is its own directory (absolute), or
+    /// the path it states relative to that directory.
+    #[test]
+    fn an_outside_board_crate_resolves_against_its_package() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("nros-board-outside");
+        std::fs::create_dir_all(&dir).unwrap();
+        let toml = r#"[[board]]
+names = ["outside"]
+platform = "freertos"
+toolchain = "stable"
+entry_kind = "board-run"
+supported_netstacks = []
+board_crate = "outside-board"
+
+[[board]]
+names = ["outside-sub"]
+platform = "freertos"
+toolchain = "stable"
+entry_kind = "board-run"
+supported_netstacks = []
+board_crate = "outside-board-sub"
+crate_path = "rust/sub"
+"#;
+        std::fs::write(dir.join("nros-board.toml"), toml).unwrap();
+        std::fs::write(
+            dir.join("package.xml"),
+            r#"<package format="3"><name>nros_board_outside</name><export><nano_ros_provides kind="board" name="outside"/><nano_ros_provides kind="board" name="outside-sub"/></export></package>"#,
+        )
+        .unwrap();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let cat = BoardCatalog::load_with_extra(&root, &[t.path().to_path_buf()]).unwrap();
+        let path = |k: &str| {
+            cat.descriptors()
+                .iter()
+                .find(|d| d.answers_to(k))
+                .and_then(|d| d.crate_path_rel())
+                .unwrap()
+        };
+        assert_eq!(path("outside"), dir.display().to_string());
+        assert_eq!(
+            path("outside-sub"),
+            dir.join("rust/sub").display().to_string()
+        );
     }
 }

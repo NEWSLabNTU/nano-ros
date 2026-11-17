@@ -657,12 +657,17 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // package's build script hands over as `NROS_BOARD_TYPE`
         // (`nros_build::emit_board_framework`). That is the Form-1 route
         // for an out-of-tree board, which used to need `board = X`.
-        let resolved = board_path_for(&deploy).or_else(|| {
-            entry_env("NROS_BOARD_TYPE")
-                .and_then(|v| v.into_string().ok())
-                .filter(|v| !v.trim().is_empty())
-                .and_then(|v| syn::parse_str::<SynPath>(v.trim()).ok())
-        });
+        //
+        // RFC-0135 D2 -- the board's type comes FIRST: `nros build` reads
+        // the definition's `[board.entry] type` and puts it in the entry's
+        // cargo settings, which is the only way a board package
+        // outside nano-ros can be named. The compiled-in table stays as the
+        // fallback until every in-tree board crate states its type.
+        let resolved = entry_env("NROS_BOARD_TYPE")
+            .and_then(|v| v.into_string().ok())
+            .filter(|v| !v.trim().is_empty())
+            .and_then(|v| syn::parse_str::<SynPath>(v.trim()).ok())
+            .or_else(|| board_path_for(&deploy));
         let resolved = resolved.ok_or_else(|| {
             // phase-500 W1 — a retired key gets its replacement, not a list.
             if let Some(hint) = nros_entry_lower::retired_board_key_hint(&deploy) {
@@ -1695,6 +1700,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             const _: ::core::option::Option<&str> = ::core::option_env!("DOTCONFIG");
         });
     }
+    // RFC-0135 D2 -- the board type above is read at EXPANSION, which cargo's
+    // dep-info cannot see; naming it here records it as an `env-dep`, so a
+    // changed type (or a switched board) re-expands the entry.
+    tracked_consts.push(quote! {
+        const _: ::core::option::Option<&str> = ::core::option_env!("NROS_BOARD_TYPE");
+    });
 
     // phase-432 W2.4 — one `LoweredNode` per register call, whatever arm
     // produced the idents. The self-bringup arm has no launch facts, so its

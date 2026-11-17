@@ -16,6 +16,8 @@ platform = "freertos"
 toolchain = "stable"
 entry_kind = "board-run"
 supported_netstacks = ["lwip"]
+# The board crate is this package's own directory (`crate_path` defaults to it).
+board_crate = "nros-board-fixture-r5f-freertos"
 # The cargo half: the triple, the link script, and the board's own FreeRTOS
 # port and config dir. `${board_dir}` is this package's directory (RFC-0135 D2).
 cargo_config = '''
@@ -34,6 +36,16 @@ CC_armv7r_none_eabihf = "arm-none-eabi-gcc"
 FREERTOS_PORT = { value = "GCC_ARM_CRX_NOGIC", force = true }
 FREERTOS_CONFIG_DIR = { value = "${board_dir}/config", force = true }
 '''
+
+# Hardware only: no `[board.run]`, so nano-ros runs nothing itself, and the
+# image's output is the SDK's debug UART (ZynqMP UART0) on a serial adapter.
+[board.console]
+kind = "serial"
+
+# How `nros::main!` names this board's type; `nros build` hands it to the
+# generated entry (RFC-0135 D2).
+[board.entry]
+type = "::nros_board_fixture_r5f_freertos::FixtureR5f"
 
 [board.capabilities]
 heap = true

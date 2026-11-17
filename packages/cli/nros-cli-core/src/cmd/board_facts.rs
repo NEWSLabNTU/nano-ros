@@ -287,6 +287,15 @@ fn resolve_one(
     }
     out.insert("NROS_BOARD".into(), board_name.clone());
 
+    // RFC-0135 D2 -- the board's type, which `nros::main!` reads before its
+    // compiled-in table: a board package outside nano-ros states it once, in
+    // its definition's `[board.entry] type`, and no table can hold it. The entry's cargo settings carry it, so no build script is
+    // needed, and the macro names it through `option_env!` so a change
+    // re-expands the entry.
+    if let Some(ty) = board_crate_type(descriptor, nano_ros_root) {
+        out.insert("NROS_BOARD_TYPE".into(), ty);
+    }
+
     // phase-484 W2b (RFC-0103 D1) — the board's OWN `[env]` facts from its
     // `cargo_config` (RTOS port, config dirs): the generated cargo config
     // carries them on the `nros build` road, and this carries the SAME rows on
@@ -431,6 +440,12 @@ fn board_sources(
 /// dropped when the environment already states it. That is what lets a board
 /// name its default cross compiler (`CC_<triple>`) while a lane that resolved
 /// a different one (`nros_riscv64_export_cc`) keeps its own on either road.
+/// The board's `[board.entry] type`, if it states one (RFC-0135 D2).
+fn board_crate_type(descriptor: &BoardDescriptor, _nano_ros_root: &Path) -> Option<String> {
+    let ty = descriptor.entry.as_ref()?.board_type.as_deref()?.trim();
+    (!ty.is_empty()).then(|| ty.to_string())
+}
+
 fn descriptor_env_rows(
     descriptor: &BoardDescriptor,
     nano_ros_root: &Path,
