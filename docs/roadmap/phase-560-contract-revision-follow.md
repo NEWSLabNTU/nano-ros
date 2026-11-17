@@ -3,7 +3,7 @@
 **Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch v0.32.0,
 #3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE (every level
 charged since #3758); W9 (the CAN frame driver, RFC-0132) OPEN, RFC accepted
-2026-11-17, W9.a and W9.c DONE. nano-ros's
+2026-11-17, W9.a, W9.b and W9.c DONE. nano-ros's
 share of two play_launch phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -171,14 +171,20 @@ and each states its acceptance before it lands.
   refuses a 9-byte classic frame and a 13-byte FD frame; the mock crate fails
   to build for `thumbv7m-none-eabi`. The RFC records the measured `sizeof` of
   the mock state beside `NROS_PLATFORM_CAN_OPAQUE_U64S`.
-- **W9.b -- The `zephyr` backend.** `nros-platform-zephyr/src/can.c` over the
+- **W9.b -- The `zephyr` backend.** DONE (2026-11-18): both `native_sim`
+  shapes and the `mr_canhubk3` compile pass `scripts/test/can-frame-zephyr.sh
+  --s32k344`. `nros-platform-zephyr/src/can.c` over the
   `nros,can` chosen, else `zephyr,canbus`; `NROS_PLATFORM_CAN_SEND_WAIT_TX`
-  through the TX callback.
-  *Accepted when:* a `native_sim` image with a `zephyr,native-linux-can` node on
-  `vcan0` sends a classic and an FD frame that `candump vcan0` on the host
-  reads byte for byte; opening with `want_fd` on a classic-MTU interface fails
-  at `open`; the backend's `_Static_assert` is in the gate's `GUARD_SITES`;
-  the S32K344 build (issue 2573's board) compiles the backend.
+  through Zephyr's blocking send. `can_start.c` sets `CAN_MODE_FD` at
+  bring-up when the node states a data-phase bitrate, and starts the
+  `nros,can` controller too (RFC-0132 revision of 2026-11-17, user-approved).
+  *Accepted when:* a `native_sim` image whose overlay names `nros,can` with a
+  data-phase bitrate sends a classic and an FD frame that `candump vcan0` on
+  the host reads byte for byte; an image whose controller states no data
+  bitrate opens with `want_fd`, reports `fd_active` false, sends its classic
+  frame and gets `NROS_PLATFORM_CAN_ENOFD` for the FD one (nothing FD on the
+  bus); the backend's guard is in the gate's `GUARD_SITES`; the S32K344 build
+  (issue 2573's board) compiles the backend.
 - **W9.c -- The `socketcan` backend.** DONE (2026-11-17): both probes' frames
   read back by `candump` on vcan0; the classic-interface (MTU 16) check is
   GATED (no classic interface on the build host), reported NOT VERIFIED by

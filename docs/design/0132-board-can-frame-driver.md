@@ -11,7 +11,8 @@ superseded-by: null
 
 # RFC-0132 -- A board-owned CAN frame driver
 
-**Status:** Accepted (2026-11-17, after the review revision of 2026-11-17).
+**Status:** Accepted (2026-11-17, after the review revision of 2026-11-17;
+the FD and bring-up revision for W9.b approved by the user the same day).
 The mock rule is strict: QEMU and Renode count as hardware; an emulator mock
 rule is added only if CI coverage needs it.
 Opened for issue [2633](../issues/2633-board-owned-can-frame-driver.md)
@@ -76,6 +77,13 @@ The split RFC-0109 makes for networks holds here, unchanged:
   package, from the `[canN]` table in its D4 file. Bring-up stays where
   RFC-0109 D10 put it (`nros-platform-zephyr/src/can_start.c` starts the
   chosen controller; a `"board"`-stack board package starts its own).
+  On Zephyr, bring-up also decides FD: a controller takes
+  `can_set_mode(CAN_MODE_FD)` only while stopped, so `can_start.c` sets it
+  before `can_start()` when the node states a data-phase bitrate
+  (`bitrate-data`, or the deprecated `bus-speed-data`), the image has
+  `CONFIG_CAN_FD_MODE`, and the controller reports `CAN_MODE_FD` among its
+  capabilities. It starts the `nros,can` chosen controller as well as
+  `zephyr,canbus` (once, when both name one node).
 - **The frame driver** (this RFC) opens a device that layer 1 brought up and
   sends frames on it. It sets no bitrate, starts no controller, and states no
   layer-1 fact anywhere.
@@ -144,8 +152,10 @@ void    nros_platform_can_close(nros_platform_can_t *can);
   that is not a valid FD size is refused, never padded: padding is payload
   layout, which is the application's.
 - **Errors are values.** `0` sent, and negative codes (`NROS_PLATFORM_CAN_E*`)
-  for: invalid frame (id out of range, bad length, FD flags on a classic open),
-  not open, FD not active, queue full or timeout, bus-off, and not supported
+  for: invalid frame (id out of range, bad length, an unknown flag, BRS
+  without FD), not open, FD not active (`NROS_PLATFORM_CAN_ENOFD`: an FD
+  frame on a handle whose `fd_active` is false), queue full or timeout,
+  bus-off, and not supported
   (`recv`, or `NROS_PLATFORM_CAN_SEND_WAIT_TX`, on a backend without it).
   `timeout_us = 0` never blocks.
 - **What "sent" means.** `0` means the controller accepted the frame within
@@ -154,11 +164,20 @@ void    nros_platform_can_close(nros_platform_can_t *can);
   completion returns "not supported" for that flag; it never downgrades the
   request to acceptance silently.
 - **`fd_active`** is true only when the device was opened with `want_fd` and
-  the device carries FD (Linux MTU `CANFD_MTU`; Zephyr `CAN_MODE_FD` in the
-  controller's capabilities; on a `"board"` stack, a `[canN]` table that states
-  a `dbitrate`). Opening with `want_fd` on a classic-only device fails, so an
-  image never finds out at its first FD send. Whether to want FD is the
+  FD is active on the device (Linux MTU `CANFD_MTU`; Zephyr: the controller
+  runs in `CAN_MODE_FD`, which bring-up set from devicetree, read back with
+  `can_get_mode()`; on a `"board"` stack, a `[canN]` table that states a
+  `dbitrate`). A backend that can tell at open that the device does not carry
+  FD refuses `want_fd` there with `NROS_PLATFORM_CAN_ENOFD` (SocketCAN reads
+  the MTU); the Zephyr backend opens and reports it through `fd_active`. Either
+  way an FD send on a handle whose FD is not active returns
+  `NROS_PLATFORM_CAN_ENOFD` and reaches no driver. Whether to want FD is the
   application's (D1): it is an `open` argument, not a configuration fact.
+  One case no backend can see: Zephyr's `zephyr,native-linux-can` driver in
+  FD mode over a host interface with the classic MTU accepts an FD frame and
+  drops it in the host write (Zephyr 3.7 and 4.4 log the error and return
+  0). That is a `native_sim` test-bench limit, not an image's: give the host
+  interface the FD MTU, as `scripts/test/vcan-setup.sh` does.
 - **No allocation and no thread.** The handle is caller storage. `recv` polls
   or blocks the caller (open question 2).
 
@@ -200,6 +219,7 @@ that class:
   | --- | --- | --- | --- | --- |
   | `mock` | `HandleState` (`magic: u32`, `fd_active: u8`) | 8 | 4 | W9.a |
   | `socketcan` | `struct socketcan_can` (`magic`, `fd`, `fd_active`) | 12 | 4 | W9.c |
+  | `zephyr` | `struct zephyr_can` (`magic`, `fd_active`, two filter ids, `dev`) | 24 (16 on 32-bit) | 8 (4) | W9.b |
 
 ### D3 -- Backends
 
@@ -215,7 +235,8 @@ that class:
   controller, so issue 2573's "raw FlexCAN helper on Zephyr" is this backend
   on those boards, not a separate driver. `native_sim` is a Zephyr board and
   uses this backend over a `zephyr,native-linux-can` node pointed at the host
-  interface (RFC-0080's setup), not SocketCAN directly.
+  interface (RFC-0080's setup), not SocketCAN directly. The backend sets no
+  mode: FD is the controller's as bring-up left it (D1).
 - **`socketcan`** is `PF_CAN` / `SOCK_RAW` / `CAN_RAW`, with
   `CAN_RAW_FD_FRAMES` when FD is wanted and the MTU allows it. It is
   Linux-only, so it lives in the board layer, the only layer allowed to be
@@ -394,6 +415,14 @@ because its image is the binary that gets flashed.
 
 ## Changelog
 
+- 2026-11-17 -- revised for W9.b, approved by the user the same day. The
+  first text decided FD at `open` on every backend and named no owner for a
+  Zephyr controller's FD mode; on Zephyr neither holds. Now: `can_start.c` sets
+  `CAN_MODE_FD` at bring-up from the node's data-phase bitrate and starts the
+  `nros,can` chosen too (D1); the Zephyr backend's `open(want_fd)` succeeds and
+  `fd_active` reports the controller's mode; an FD frame on a handle whose FD
+  is not active returns `NROS_PLATFORM_CAN_ENOFD` on every backend (it was
+  `NROS_PLATFORM_CAN_EINVAL`). W9.b's acceptance changed with it.
 - 2026-11-17 -- W9.c landed: the `socketcan` backend. Until W9.d/e carry the
   image's device, its `open(NULL)` returns `NROS_PLATFORM_CAN_ENODEV`; a named
   device opens. `want_fd` reads the interface MTU at open, and

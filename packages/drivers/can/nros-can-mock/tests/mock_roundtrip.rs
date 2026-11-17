@@ -122,7 +122,7 @@ fn invalid_frames_are_refused() {
     assert!(!classic.fd_active());
     assert_eq!(
         classic.send_fd(&frame(0x1, 0, &[0; 8]).unwrap(), 0),
-        err(NROS_PLATFORM_CAN_EINVAL)
+        err(NROS_PLATFORM_CAN_ENOFD)
     );
     drop(classic);
     assert!(

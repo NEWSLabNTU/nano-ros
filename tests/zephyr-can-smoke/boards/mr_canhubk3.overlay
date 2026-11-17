@@ -1,0 +1,14 @@
+/*
+ * RFC-0132 W9.b -- the S32K344 (issue 2573's board): the frame driver on
+ * FlexCAN 0, with a data-phase bitrate so can_start.c's FD path compiles.
+ * A compile check; no board runs it here.
+ */
+/ {
+	chosen {
+		nros,can = &flexcan0;
+	};
+};
+
+&flexcan0 {
+	bitrate-data = <2000000>;
+};

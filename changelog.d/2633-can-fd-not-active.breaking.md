@@ -1,0 +1,1 @@
+`<nros/platform_can.h>`: an FD frame sent on a handle whose `fd_active` is false now returns `NROS_PLATFORM_CAN_ENOFD` (it returned `NROS_PLATFORM_CAN_EINVAL`). On Zephyr, `open` with `want_fd` succeeds and `fd_active` reports whether the controller runs in CAN FD mode.
