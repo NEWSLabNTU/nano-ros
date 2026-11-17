@@ -5,7 +5,7 @@ status: open
 type: enhancement
 severity: low
 area: [boards, platform]
-related: [rfc-0064, rfc-0072, rfc-0076]
+related: [rfc-0064, rfc-0072, rfc-0076, phase-524]
 found: 2026-11-14
 ---
 
@@ -60,8 +60,8 @@ are recorded in RFC-0064's "Open questions".
    `[board.fvp-aemv8r-smp]` installs only `arm-fvp`, the simulator, which no
    single OS owns. So the row's `platform` means "what to install", not
    "which OS". The rename (or a split into two fields) is a schema touch to
-   `nros-sdk-index.toml` and its readers. It has no work item yet, and needs
-   one in an open phase.
+   `nros-sdk-index.toml` and its readers. The work is
+   [phase-524](../roadmap/phase-524-emulator-twins.md) W6.
 4. **No `integrations/generic-cmake/` shell until an RTOS is waiting for
    one.** There are five shells today (FreeRTOS, NuttX, PlatformIO, PX4,
    S32DS), and none is generic. Closed.
