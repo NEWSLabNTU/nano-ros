@@ -102,3 +102,12 @@ dist-runtime-deps
 # for the PR job; it runs in every `just ci gate` (`check::build`) before a
 # push, and in the scheduled `check-build`.
 workspace-probes
+
+# out-of-tree-board-images (phase-575 W2, phase-577 W8) cross-builds the
+# out-of-tree board package's C, C++ and Rust images (zenoh-pico, lwIP,
+# FreeRTOS and a Rust entry, ~2 min warm) through the in-tree CLI, which a
+# pristine worktree does not have. It runs in every `just ci gate`
+# (`check::build`) before a push, and in the scheduled `check-build`. Its
+# fast twin, `r5f-hard-float-abi`, checks the same ABI on three small objects
+# on every pull request.
+out-of-tree-board-images
