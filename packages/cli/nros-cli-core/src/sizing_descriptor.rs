@@ -101,7 +101,7 @@ use rosidl_codegen::bounds::BoundState;
 
 use crate::entity_inventory::{
     ComponentEntities, Declaration, EntityInventory, EntityKind, InfraServices, ParamCapacity,
-    ParamDeclarations, ParamServiceShape,
+    ParamDeclarations, ParamProse, ParamServiceShape,
 };
 
 /// Which of issue 1319's registration paths an entry's Rust or C code takes.
@@ -1640,7 +1640,58 @@ fn set_entity_count(img: &mut nros_sizing_descriptor::Image, field: &str, n: usi
 fn param_facts(inputs: &DescriptorInputs<'_>) -> Params {
     let mut p = declaration_facts(inputs);
     compose_store(&mut p, inputs.params, inputs.infra);
+    if let Some(inv) = inputs.inventory {
+        compose_description_len(&mut p, inv.param_prose());
+    }
     p
+}
+
+/// Issue 2650 -- the smallest `NROS_MAX_PARAM_DESCRIPTION_LEN` a watched image
+/// is given, when its code sets no description at all. Never 0 (the ruling):
+/// a description that reaches the store by a route the probe could not watch
+/// still keeps its first bytes, and the store logs the truncation.
+pub const PARAM_DESCRIPTION_LEN_FLOOR: usize = 16;
+
+/// Issue 2650 -- the most a description can usefully hold: an
+/// `rcl_interfaces/msg/ParameterDescriptor` string is 256 bytes on the wire,
+/// and nros-node refuses a larger knob at compile time.
+pub const PARAM_DESCRIPTION_LEN_CAP: usize = 256;
+
+/// Issue 2650 -- `[params] max_param_description_len`, from what the probe
+/// watched (see [`ParamProse`]).
+///
+/// Stated only when every launched node's code ran under a probe that watched
+/// its descriptions: then it is the longest one, floored at
+/// [`PARAM_DESCRIPTION_LEN_FLOOR`] and capped at [`PARAM_DESCRIPTION_LEN_CAP`].
+/// A watch that was consulted and could not answer for every node refuses with
+/// the reason; an image the probe was never asked about leaves the field
+/// absent. Either way the consumer keeps its default (256), because a
+/// description the watch missed must never be sized short.
+fn compose_description_len(p: &mut Params, prose: &ParamProse) {
+    match prose {
+        ParamProse::Watched {
+            description_max_len,
+        } => {
+            let len = (*description_max_len)
+                .clamp(PARAM_DESCRIPTION_LEN_FLOOR, PARAM_DESCRIPTION_LEN_CAP);
+            p.set_max_param_description_len(Some(len));
+        }
+        ParamProse::Unknown(reason) => {
+            p.refuse(
+                "max_param_description_len",
+                format!(
+                    "the longest parameter description is not known, so the store keeps its \
+                     default room: {reason}"
+                ),
+            );
+        }
+        // ABSENT, not refused: an image the probe was never asked about has
+        // not been looked at and failed, and a refusal there would put a
+        // reason in every descriptor in the tree (see
+        // `an_absent_contract_leaves_the_section_empty_and_the_file_unchanged`).
+        // The consumer keeps its default either way.
+        ParamProse::NotConsulted => {}
+    }
 }
 
 /// Issue 1706 -- `[params] store`: does this image BUILD a parameter store?
@@ -4963,6 +5014,7 @@ mod tests {
         };
         let row = crate::orchestration::metadata_refresh::ProbeRow {
             executable: Some("talker".into()),
+            description_max_len: None,
             entities: crate::entity_inventory::ComponentEntities {
                 pkg: "talker_pkg".into(),
                 component: "talker".into(),
@@ -5000,6 +5052,7 @@ mod tests {
             &plain,
             &[crate::orchestration::metadata_refresh::ProbeRow {
                 executable: Some("talker".into()),
+                description_max_len: None,
                 entities: crate::entity_inventory::ComponentEntities {
                     pkg: "talker_pkg".into(),
                     component: "talker".into(),
@@ -6618,6 +6671,63 @@ pub fn sched_task_rows(
         });
     }
     Ok(out)
+}
+
+// Issue 2650.
+#[cfg(test)]
+mod description_len_tests {
+    use super::*;
+
+    fn derived(prose: ParamProse) -> Params {
+        let mut p = Params::default();
+        compose_description_len(&mut p, &prose);
+        p
+    }
+
+    /// A complete watch states the longest description, floored above zero and
+    /// capped at what a describe reply can carry.
+    #[test]
+    fn a_complete_watch_states_the_longest_description_within_bounds() {
+        let at = |n| {
+            derived(ParamProse::Watched {
+                description_max_len: n,
+            })
+            .max_param_description_len()
+            .stated()
+            .copied()
+        };
+        assert_eq!(at(40), Some(40));
+        assert_eq!(
+            at(0),
+            Some(PARAM_DESCRIPTION_LEN_FLOOR),
+            "watched and saw none: the floor, never 0 and never the 256 default"
+        );
+        assert_eq!(
+            at(PARAM_DESCRIPTION_LEN_CAP + 100),
+            Some(PARAM_DESCRIPTION_LEN_CAP)
+        );
+    }
+
+    /// An incomplete watch refuses and an absent one says nothing, so the
+    /// consumer keeps its default rather than sizing below a description
+    /// nobody saw.
+    #[test]
+    fn an_incomplete_or_absent_watch_refuses() {
+        let unknown = derived(ParamProse::Unknown("node `/x` has no sidecar".into()));
+        let why = unknown
+            .max_param_description_len()
+            .refusal()
+            .expect("refused")
+            .to_string();
+        assert!(why.contains("/x"), "carries the reason: {why}");
+
+        // Never asked is ABSENT: no refusal in a descriptor whose image nobody
+        // probed.
+        assert_eq!(
+            derived(ParamProse::NotConsulted).max_param_description_len(),
+            nros_sizing_descriptor::Fact::Absent
+        );
+    }
 }
 
 #[cfg(test)]

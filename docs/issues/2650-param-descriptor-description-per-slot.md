@@ -54,9 +54,31 @@ users see no change, and never default it to 0. The work is in three parts:
    states the longest of each as top-level `parameter_description_max_len` and
    `parameter_constraints_max_len`. The keys are ABSENT when nothing watched,
    and `0` when the probe watched and saw no such text.
-3. **Derivation (next).** Derive the knob from the sidecars. There are three
-   cases, each with a test:
-   - No census, or a node the census cannot see (issue 2681), means the length
-     is unknown. Keep 256 and say why.
-   - A complete census that saw no prose derives the small floor.
-   - A complete census that saw prose derives its longest text.
+3. **Derivation.** `[params] max_param_description_len` in the sizing
+   descriptor. `nros-params` reads it below every stated rung (env, Kconfig,
+   board). The model road reads each launched node's sidecar key
+   (`ProbeRow::description_max_len`, folded into
+   `EntityInventory::param_prose`), with one test per case:
+   - Every launched node has one fresh sidecar that watched: the longest
+     description, floored at 16 and capped at 256.
+   - A node with no sidecar, or one written before the watch existed: refused,
+     naming the node. The store keeps 256.
+   - Nothing consulted the probe (a contract-only image, the cargo-leaf and
+     standalone roads): absent, so the store keeps 256 and no descriptor gains
+     a refusal.
+
+   A node the census cannot see as a NODE (issue 2681) does not hide prose: the
+   watch is process-wide, so its descriptions are counted under the component
+   whose code ran.
+
+## Still open
+
+- The cargo-leaf and standalone roads read their own probe JSON
+  (`leaf_entity_env::declaration_from_probe`) and do not carry the key yet, so
+  they keep 256.
+- A shared runtime (several images, one runtime) states the length only when
+  every image was watched. An unprobed image beside probed ones refuses, and
+  all-unprobed stays absent.
+- `NROS_MAX_PARAM_CONSTRAINTS_LEN` is captured (`parameter_constraints_max_len`)
+  and not derived. Its default is already 0, and its truncation report names
+  the wrong knob (issue 2686).

@@ -945,6 +945,95 @@ pub struct EntityInventory {
     /// Issue 2076 -- bridges whose rows could not be expanded (they forward
     /// every declared topic and no runtime config was read). Refuses.
     unresolved_bridges: Vec<String>,
+    /// Issue 2650 -- what the probe saw of the code's parameter descriptions.
+    param_prose: ParamProse,
+}
+
+/// Issue 2650 -- what an inventory knows about the parameter descriptions its
+/// code sets, the one input `NROS_MAX_PARAM_DESCRIPTION_LEN` is derived from.
+///
+/// A contract's `params:` rows state a type and no prose, so only the metadata
+/// probe can answer, and only when it watched EVERY launched node: a node the
+/// watch missed may set the longest description, and sizing below it truncates
+/// what `ros2 param describe` shows. So "watched and saw none" and "did not
+/// watch" are different facts, and the derivation refuses on the second.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ParamProse {
+    /// Nothing consulted the probe for this inventory (a contract-only
+    /// inventory). The identity of [`Self::fold`].
+    #[default]
+    NotConsulted,
+    /// The probe was consulted and could not answer for the whole image.
+    Unknown(String),
+    /// Every launched node's code ran under a probe that watched prose; this is
+    /// the longest `description` it set, in bytes, before truncation (0 when
+    /// none).
+    Watched { description_max_len: usize },
+}
+
+impl ParamProse {
+    /// Two inventories composed into one image: an unknown side makes the
+    /// whole unknown, two watched sides take the longer, and a side that never
+    /// consulted the probe adds nothing.
+    pub fn fold(&self, other: &ParamProse) -> ParamProse {
+        match (self, other) {
+            (ParamProse::Unknown(r), _) | (_, ParamProse::Unknown(r)) => {
+                ParamProse::Unknown(r.clone())
+            }
+            (
+                ParamProse::Watched {
+                    description_max_len: a,
+                },
+                ParamProse::Watched {
+                    description_max_len: b,
+                },
+            ) => ParamProse::Watched {
+                description_max_len: (*a).max(*b),
+            },
+            (ParamProse::NotConsulted, x) | (x, ParamProse::NotConsulted) => x.clone(),
+        }
+    }
+}
+
+/// Issue 2650 -- what a shared runtime knows about its images' parameter
+/// descriptions: watched only when EVERY image's own inventory was watched,
+/// then the longest over them; not consulted when none was; otherwise unknown,
+/// naming the first image nothing watched.
+fn shared_runtime_prose(
+    images: &[(String, Option<EntityInventory>, ParamDeclarations)],
+) -> ParamProse {
+    // No image consulted the probe: the runtime was never asked either, and
+    // stays ABSENT rather than refused (a refusal would land in every shared
+    // runtime's descriptor that nobody probed).
+    let consulted = images.iter().any(|(_, w, _)| {
+        w.as_ref()
+            .is_some_and(|i| !matches!(i.param_prose(), ParamProse::NotConsulted))
+    });
+    if !consulted {
+        return ParamProse::NotConsulted;
+    }
+    let mut prose = ParamProse::Watched {
+        description_max_len: 0,
+    };
+    for (src, wiring, _) in images {
+        let seen = match wiring.as_ref().map(EntityInventory::param_prose) {
+            Some(ParamProse::Watched {
+                description_max_len,
+            }) => ParamProse::Watched {
+                description_max_len: *description_max_len,
+            },
+            Some(ParamProse::Unknown(r)) => ParamProse::Unknown(format!("image `{src}`: {r}")),
+            Some(ParamProse::NotConsulted) => ParamProse::Unknown(format!(
+                "image `{src}` was composed without its probe sidecars, so nothing watched its \
+                 parameter descriptions"
+            )),
+            None => ParamProse::Unknown(format!(
+                "image `{src}` describes no wiring, so nothing watched its parameter descriptions"
+            )),
+        };
+        prose = prose.fold(&seen);
+    }
+    prose
 }
 
 /// phase-517 W5 -- who stated an inventory's rows (RFC-0100 amendment of
@@ -3390,6 +3479,7 @@ impl EntityInventory {
             bridges: Vec::new(),
             bridge_backends: std::collections::BTreeSet::new(),
             unresolved_bridges: Vec::new(),
+            param_prose: ParamProse::NotConsulted,
         }
     }
 
@@ -3461,6 +3551,11 @@ impl EntityInventory {
 
     pub fn param_declarations(&self) -> &ParamDeclarations {
         &self.params
+    }
+
+    /// Issue 2650 -- see [`ParamProse`].
+    pub fn param_prose(&self) -> &ParamProse {
+        &self.param_prose
     }
 
     /// Issue 1198 -- state the authored sched task count for an inventory whose
@@ -4114,6 +4209,15 @@ impl EntityInventory {
         probe: &[crate::orchestration::metadata_refresh::ProbeRow],
     ) -> Self {
         let mut inv = Self::new("source-metadata");
+        // Issue 2650 -- watched only when EVERY launched node has one sidecar
+        // that watched prose; the first node that breaks it names the reason.
+        let mut prose = if model.structure.nodes.is_empty() {
+            ParamProse::Unknown("the launch tree starts no node".into())
+        } else {
+            ParamProse::Watched {
+                description_max_len: 0,
+            }
+        };
         for (fqn, node) in &model.structure.nodes {
             let component = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
             let found: Vec<&crate::orchestration::metadata_refresh::ProbeRow> = probe
@@ -4124,6 +4228,26 @@ impl EntityInventory {
                         && node.exec == r.executable
                 })
                 .collect();
+            let seen = match found.as_slice() {
+                [one] => match one.description_max_len {
+                    Some(n) => ParamProse::Watched {
+                        description_max_len: n,
+                    },
+                    None => ParamProse::Unknown(format!(
+                        "the probe sidecar for node `{fqn}` does not say how long its \
+                         parameter descriptions are (written before the probe watched them; \
+                         re-run `nros configure`)"
+                    )),
+                },
+                [] => ParamProse::Unknown(format!(
+                    "node `{fqn}` has no fresh probe sidecar, so nothing watched its \
+                     parameter descriptions"
+                )),
+                _ => {
+                    ParamProse::Unknown(format!("node `{fqn}` matches more than one probe sidecar"))
+                }
+            };
+            prose = prose.fold(&seen);
             let (class, declaration) = match found.as_slice() {
                 [one] => (one.entities.class.clone(), one.entities.declaration.clone()),
                 _ => (String::new(), Declaration::Absent),
@@ -4135,6 +4259,7 @@ impl EntityInventory {
                 declaration,
             });
         }
+        inv.param_prose = prose;
         inv
     }
 
@@ -4166,6 +4291,7 @@ impl EntityInventory {
         }
         let mut inv = Self::new(source);
         inv.apply_frame(&ImageFrame::from_model(model));
+        inv.param_prose = recorded.param_prose.clone();
         for c in recorded.components {
             inv.insert(c);
         }
@@ -4237,6 +4363,11 @@ impl EntityInventory {
                 None => unwired.push(src.clone()),
             }
         }
+        // Issue 2650 -- across IMAGES, an image whose code no probe watched is
+        // not the fold's identity: its descriptions are unseen, and a sibling's
+        // watch must not size them. (Within ONE image, a contract side that
+        // never consulted the probe is the identity, which `fold` keeps.)
+        inv.param_prose = shared_runtime_prose(images);
         let frame_of = |i: usize| frames.get(i).and_then(Option::as_ref);
         let unframed = images
             .iter()
@@ -4547,6 +4678,8 @@ impl EntityInventory {
         // phase-517 W5 -- a contract on either side makes the composition a
         // contract's; otherwise a probe-stated side carries through.
         out.stated_by = self.stated_by.max(model.stated_by);
+        // Issue 2650 -- the probe side's watch, folded with the other side's.
+        out.param_prose = self.param_prose.fold(&model.param_prose);
         // Issue 2076 -- a bridge either side declared, once by name.
         out.bridges = union_bridges(&self.bridges, &model.bridges);
         out.bridge_backends = self
@@ -12717,6 +12850,7 @@ contracts:
     fn probe(pkg: &str, exec: &str, rows: Vec<EntityDecl>) -> ProbeRow {
         ProbeRow {
             executable: Some(exec.into()),
+            description_max_len: None,
             entities: ComponentEntities {
                 pkg: pkg.into(),
                 component: exec.into(),
@@ -12758,6 +12892,107 @@ contracts:
         )
         .expect("a contract");
         EntityInventory::recorded_for_launch(model, sidecars).merged_per_kind_max(&contract)
+    }
+
+    /// Issue 2650 -- the stock sidecars, each stating the longest parameter
+    /// description its probe watched (`None` = a sidecar that did not watch).
+    fn sidecars_with_prose(talker: Option<usize>, listener: Option<usize>) -> Vec<ProbeRow> {
+        let mut rows = stock_sidecars();
+        rows[0].description_max_len = talker;
+        rows[1].description_max_len = listener;
+        rows
+    }
+
+    // Issue 2650.
+    /// Every launched node watched: the image's answer is the longest
+    /// description any of them set, and a node that set none contributes 0.
+    #[test]
+    fn a_complete_watch_states_the_longest_description() {
+        let m = partial_model("");
+        assert_eq!(
+            compose(&m, &sidecars_with_prose(Some(0), Some(40))).param_prose(),
+            &ParamProse::Watched {
+                description_max_len: 40
+            }
+        );
+        assert_eq!(
+            compose(&m, &sidecars_with_prose(Some(0), Some(0))).param_prose(),
+            &ParamProse::Watched {
+                description_max_len: 0
+            },
+            "watched and saw none is a stated zero, not an unknown"
+        );
+    }
+
+    // Issue 2650.
+    /// One launched node the watch did not cover makes the whole image
+    /// unknown, whatever the others saw: the missed node may set the longest.
+    #[test]
+    fn a_node_the_watch_missed_makes_the_description_unknown() {
+        let m = partial_model("");
+        let talker_only = vec![sidecars_with_prose(Some(12), Some(12)).remove(0)];
+        let ParamProse::Unknown(why) = compose(&m, &talker_only).param_prose().clone() else {
+            panic!("a node with no sidecar must not yield a watched answer");
+        };
+        assert!(why.contains("/listener"), "names the node: {why}");
+
+        let ParamProse::Unknown(why) = compose(&m, &sidecars_with_prose(Some(12), None))
+            .param_prose()
+            .clone()
+        else {
+            panic!("a sidecar that did not watch must not yield a watched answer");
+        };
+        assert!(why.contains("/listener"), "names the node: {why}");
+    }
+
+    // Issue 2650.
+    /// Across a shared runtime's IMAGES an unprobed image is not the identity:
+    /// a probed sibling's answer must not size its descriptions. All unprobed
+    /// is never-asked; all watched folds to the longest.
+    #[test]
+    fn a_shared_runtime_answers_only_when_every_image_was_watched() {
+        let with = |prose: ParamProse| {
+            let mut inv = EntityInventory::new("img");
+            inv.param_prose = prose;
+            Some(inv)
+        };
+        let image = |src: &str, w| (src.to_string(), w, ParamDeclarations::Absent);
+        let watched = |n| ParamProse::Watched {
+            description_max_len: n,
+        };
+
+        assert_eq!(
+            shared_runtime_prose(&[image("a", with(watched(10))), image("b", with(watched(30)))]),
+            watched(30)
+        );
+        let ParamProse::Unknown(why) = shared_runtime_prose(&[
+            image("a", with(watched(10))),
+            image("b", with(ParamProse::NotConsulted)),
+        ]) else {
+            panic!("an unprobed image beside a probed one must be unknown");
+        };
+        assert!(why.contains("`b`"), "names the image: {why}");
+        assert!(matches!(
+            shared_runtime_prose(&[image("a", with(watched(10))), image("b", None)]),
+            ParamProse::Unknown(_)
+        ));
+        assert_eq!(
+            shared_runtime_prose(&[image("a", with(ParamProse::NotConsulted)), image("b", None)]),
+            ParamProse::NotConsulted,
+            "nobody probed: never asked, so the descriptor stays absent"
+        );
+    }
+
+    // Issue 2650.
+    /// A contract alone never consulted the probe, and says so.
+    #[test]
+    fn a_contract_alone_does_not_answer_for_descriptions() {
+        let alone = EntityInventory::from_model(
+            "contract",
+            &nros_orchestration_ir::overlay::LoadedModel::bare(partial_model("")),
+        )
+        .expect("a contract");
+        assert_eq!(alone.param_prose(), &ParamProse::NotConsulted);
     }
 
     #[test]

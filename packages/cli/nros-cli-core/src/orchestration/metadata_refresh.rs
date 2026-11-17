@@ -990,6 +990,11 @@ pub struct ProbeRow {
     /// it by, which is the key `sidecar_slots::slots_of_component` counts on.
     pub executable: Option<String>,
     pub entities: crate::entity_inventory::ComponentEntities,
+    /// Issue 2650 -- the sidecar's `parameter_description_max_len`: the
+    /// longest parameter description its code set while the probe watched.
+    /// `None` when the key is absent, which means the probe did NOT watch
+    /// (a sidecar from before schema v6), never "no description".
+    pub description_max_len: Option<usize>,
 }
 
 /// The workspace's FRESH probe sidecars, one row each, under the freshness rule
@@ -1040,11 +1045,17 @@ pub fn fresh_probe_rows(
             .wrap_err_with(|| format!("read {}", sidecar.display()))?;
         match crate::leaf_entity_env::declaration_from_probe(&raw) {
             Ok((pkg, component, declaration)) => {
-                let executable = serde_json::from_str::<serde_json::Value>(&raw)
-                    .ok()
+                let doc = serde_json::from_str::<serde_json::Value>(&raw).ok();
+                let executable = doc
+                    .as_ref()
                     .and_then(|v| v.get("executable")?.as_str().map(str::to_string));
+                let description_max_len = doc
+                    .as_ref()
+                    .and_then(|v| v.get("parameter_description_max_len")?.as_u64())
+                    .and_then(|n| usize::try_from(n).ok());
                 rows.push(ProbeRow {
                     executable,
+                    description_max_len,
                     entities: ComponentEntities {
                         pkg,
                         class: component.clone(),
