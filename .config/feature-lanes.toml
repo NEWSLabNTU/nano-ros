@@ -51,6 +51,10 @@ class = "config"
 config = "CustomTransport"
 reason = "zenoh-pico over a caller-supplied link instead of its own sockets — same messages, different transport"
 
+[feature.census-param-store-test]
+class = "harness"
+reason = "gives nros-rmw-metadata's tests a parameter store for the imperative-declaration census test, without unifying `nros/param-store` into every workspace build (issue 2670)"
+
 [feature.trigger-test]
 class = "harness"
 reason = "pulls nros-node + the zenoh backend into nros-tests for the trigger/wake tests; the trigger API itself is always built"
@@ -197,6 +201,13 @@ runner = "required-features-tests"
 crate = "nros-tests"
 features = ["rclrs-port-test"]
 targets = ["rclrs_talker_port", "context_create_executor"]
+
+# Issue 2670 — the imperative Rust parameter routes reach the census.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-metadata"
+features = ["census-param-store-test"]
+targets = ["imperative_param_census"]
 
 # Issue 0779 — the FILE-CFG half: crate-level `#![cfg(feature = "lending")]`,
 # which cargo BUILDS with the feature off, so nextest ran zero tests and called

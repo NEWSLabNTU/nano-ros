@@ -271,6 +271,56 @@ pub fn record_parameter(name: &str, value: &crate::ParameterValue) -> bool {
         let Some(node_id) = st.current_node.clone() else {
             return false;
         };
+        push_parameter(st, node_id, name, value.param_type(), default)
+    })
+}
+
+// Issue 2670.
+/// Record a parameter that Rust code declared through one of
+/// `nros-node`'s own routes, on the node the declaration NAMED.
+///
+/// Those routes name their node by id, not through the current-node cursor,
+/// so the row is attributed by name and namespace, and the cursor is left as
+/// it was. A node that no hook opened (one built with
+/// `Executor::node_builder(..).build()`) is opened here, so the parameter is
+/// still counted; it records domain 0, because the node table holds none.
+/// With no `value` (the typed builder, observed before any `.default(..)`),
+/// the default is the type's zero, which the census does not compare.
+#[must_use]
+pub fn record_parameter_declared_on(
+    node_name: &str,
+    node_namespace: &str,
+    name: &str,
+    value: Option<&crate::ParameterValue>,
+    parameter_type: crate::ParameterType,
+) -> bool {
+    let default = match value {
+        Some(v) => ParameterDefault::from_value(v),
+        None => ParameterDefault::for_type(parameter_type),
+    };
+    let Ok(default) = default else {
+        return false;
+    };
+    let previous = state().with(|st| st.current_node.clone());
+    if !begin_node(node_name, node_namespace, 0) {
+        return false;
+    }
+    state().with(|st| {
+        let node_id = String::from(node_name);
+        let recorded = push_parameter(st, node_id, name, parameter_type, default);
+        st.current_node = previous;
+        recorded
+    })
+}
+
+fn push_parameter(
+    st: &mut State,
+    node_id: String,
+    name: &str,
+    parameter_type: crate::ParameterType,
+    default: ParameterDefault,
+) -> bool {
+    {
         st.seq += 1;
         let id = alloc::format!("{}#{}", name, st.seq);
         let spec = EntityMetadataSpec {
@@ -285,10 +335,10 @@ pub fn record_parameter(name: &str, value: &crate::ParameterValue) -> bool {
         let Ok(mut entity) = entity_metadata(spec) else {
             return false;
         };
-        entity.parameter_type = Some(value.param_type());
+        entity.parameter_type = Some(parameter_type);
         entity.parameter_default = Some(default);
         st.recorder.push_entity(entity).is_ok()
-    })
+    }
 }
 
 // Issue 2589.
@@ -343,6 +393,8 @@ pub fn record_parameter_read(name: &str) -> bool {
 pub fn listen_for_registrations() {
     #[cfg(feature = "lifecycle-services")]
     listen_for_lifecycle_registrations();
+    #[cfg(feature = "param-store")]
+    listen_for_parameter_declarations();
     nros_node::executor::registration_observer::set_observer(|reg| {
         // A dropped `false` here is a fact silently lost, which is the shape
         // every other recorder entry point is `#[must_use]` against. It is NOT
@@ -383,6 +435,35 @@ pub fn listen_for_registrations() {
 /// RFC-0128 D2 (phase-554 W2.b) -- start hearing which nodes' own code
 /// registers a lifecycle state machine. Armed beside
 /// [`listen_for_registrations`]'s subscription sink, from the same place.
+// Issue 2670.
+/// Hear a parameter that Rust code declared through
+/// `nros-node`'s own routes, which cannot call `census_hooks::on_param_declare`.
+///
+/// Same refusal rule as `on_param_declare`: a declaration the recorder could
+/// not take is a census that under-counts, so in a census run it is fatal.
+/// Outside one (every host image links `metadata-mode`) a miss changes nothing
+/// the build reads, so it is dropped.
+#[cfg(feature = "param-store")]
+fn listen_for_parameter_declarations() {
+    nros_node::executor::registration_observer::set_parameter_declare_observer(|reg| {
+        if !record_parameter_declared_on(
+            reg.node_name,
+            reg.node_namespace,
+            reg.name,
+            reg.value,
+            reg.parameter_type,
+        ) && crate::census_hooks::recording_run()
+        {
+            panic!(
+                "nros metadata-mode: recorder rejected parameter `{}` of node `{}` \
+                 (namespace `{}`) -- a census built from this sidecar would say the \
+                 node declares fewer than it does",
+                reg.name, reg.node_name, reg.node_namespace
+            );
+        }
+    });
+}
+
 #[cfg(feature = "lifecycle-services")]
 fn listen_for_lifecycle_registrations() {
     nros_node::executor::registration_observer::set_lifecycle_observer(|reg| {

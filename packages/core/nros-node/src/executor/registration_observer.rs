@@ -181,6 +181,77 @@ pub(crate) fn observe_lifecycle(reg: ObservedLifecycle<'_>) {
     }
 }
 
+// Issue 2670.
+/// A parameter that Rust code declared through one of the executor's own
+/// declaration routes.
+///
+/// The census learns which parameters a node declares from
+/// `nros::census_hooks::on_param_declare`, which the C, C++ and declarative
+/// Rust routes call. The four imperative Rust routes live in this crate --
+/// `Node::declare_parameter::<T>`, `Node::declare_parameter_with_descriptor`,
+/// and the deprecated `Executor::declare_parameter` /
+/// `Executor::declare_parameter_with_descriptor` -- and this crate sits below
+/// `nros`, so they cannot call that hook. Before this observer they reported
+/// nothing, so a contract that omitted one of their parameters sized the store
+/// short and the census raised no `param-missing-in-contract`.
+///
+/// Only those four routes report here. The `_on` forms they forward to are
+/// also what the C and C++ shims and the declarative route call, and those
+/// already record through `on_param_declare`; observing there would record
+/// each of their parameters twice.
+///
+/// The node is named as the executor's node table holds it, because a
+/// declaration names its node by id, not by the census's current-node cursor.
+#[cfg(feature = "param-store")]
+#[derive(Debug, Clone, Copy)]
+pub struct ObservedParameterDeclare<'a> {
+    /// The declaring node's final name.
+    pub node_name: &'a str,
+    /// The declaring node's namespace, as the node table holds it.
+    pub node_namespace: &'a str,
+    /// The parameter name.
+    pub name: &'a str,
+    /// The value the code passed. `None` for the typed builder, which is
+    /// observed when it is created, before any `.default(..)` is attached.
+    pub value: Option<&'a nros_params::ParameterValue>,
+    /// The declared type. For a `value`, its own type.
+    pub parameter_type: nros_params::ParameterType,
+}
+
+/// A sink a metadata probe installs to hear every imperative Rust parameter
+/// declaration.
+#[cfg(feature = "param-store")]
+pub type ParameterDeclareObserver = fn(ObservedParameterDeclare<'_>);
+
+#[cfg(feature = "param-store")]
+static PARAMETER_DECLARE_OBSERVER: Mutex<Option<ParameterDeclareObserver>> = Mutex::new(None);
+
+/// Install the parameter-declaration sink. Same contract as [`set_observer`]:
+/// only `nros::metadata_mode` calls it, and the last caller wins.
+#[cfg(feature = "param-store")]
+pub fn set_parameter_declare_observer(observer: ParameterDeclareObserver) {
+    PARAMETER_DECLARE_OBSERVER.with(|slot| *slot = Some(observer));
+}
+
+/// Remove the parameter-declaration sink.
+#[cfg(feature = "param-store")]
+pub fn clear_parameter_declare_observer() {
+    PARAMETER_DECLARE_OBSERVER.with(|slot| *slot = None);
+}
+
+/// Report one imperative declaration. A no-op when nothing is listening.
+///
+/// Called BEFORE the store answers, like `on_param_declare`: a declaration
+/// the store refuses for being full is exactly the one the census must see.
+#[cfg(feature = "param-store")]
+pub(crate) fn observe_parameter_declare(reg: ObservedParameterDeclare<'_>) {
+    // Released before the sink runs, as in `observe`.
+    let sink = PARAMETER_DECLARE_OBSERVER.with(|slot| *slot);
+    if let Some(sink) = sink {
+        sink(reg);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

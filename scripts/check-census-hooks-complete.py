@@ -39,7 +39,15 @@ WHAT THIS REFUSES
    (every `rclc_add_parameter` / `rclc_parameter_declare_*` funnels through it,
    phase-491) -> `on_param_declare`;
    Rust -- `ExecutorSink::create_node` -> `on_node_create`,
-   `ExecutorSink::create_entity` -> `on_timer_create` and `on_param_declare`.
+   `ExecutorSink::create_entity` -> `on_timer_create` and `on_param_declare`;
+   and the imperative Rust declaration routes in `nros-node`, which sit below
+   `nros` and so report through `observe_code_parameter_declare` (the observer
+   `nros::metadata_mode` installs) -- `Executor::declare_parameter`,
+   `Executor::declare_parameter_with_descriptor`, `Executor::parameter_on`
+   (the typed builder's start) and `Node::declare_parameter_with_descriptor`
+   (issue 2670). Those are matched by EXACT name: the `_on` forms they forward
+   to are shared with the C/C++ shims, which record through their own hook,
+   and must not record twice.
 2. An RMW seam in `nros-rmw-metadata` that does not record, or records without
    the QoS it was handed (a `_qos` parameter is the 2026-09 defect verbatim).
 3. A hook whose `metadata-mode` body no longer reaches the recorder.
@@ -91,6 +99,8 @@ C_EXEC = "packages/api/nros-c/src/executor.rs"
 C_GUARD = "packages/api/nros-c/src/guard_condition.rs"
 C_PARAMS = "packages/api/nros-c/src/parameter.rs"
 RUST_SINK = "packages/api/nros/src/node_runtime.rs"
+NODE_SPIN = "packages/core/nros-node/src/executor/spin.rs"
+NODE_NODE = "packages/core/nros-node/src/executor/node.rs"
 
 SUBJECTS = (
     HOOKS,
@@ -105,6 +115,8 @@ SUBJECTS = (
     C_GUARD,
     C_PARAMS,
     RUST_SINK,
+    NODE_SPIN,
+    NODE_NODE,
 )
 
 # Executor-side entry points and the hook each must call. A PREFIX matches
@@ -128,6 +140,12 @@ ENTRY_HOOKS: tuple[tuple[str, str, str], ...] = (
     (RUST_SINK, "create_node", "census_hooks::on_node_create("),
     (RUST_SINK, "create_entity", "census_hooks::on_timer_create("),
     (RUST_SINK, "create_entity", "census_hooks::on_param_declare("),
+    # Rust imperative declarations (`nros-node`) -- issue 2670. A trailing `$`
+    # matches the name EXACTLY.
+    (NODE_SPIN, "declare_parameter$", "observe_code_parameter_declare("),
+    (NODE_SPIN, "declare_parameter_with_descriptor$", "observe_code_parameter_declare("),
+    (NODE_SPIN, "parameter_on$", "observe_code_parameter_declare("),
+    (NODE_NODE, "declare_parameter_with_descriptor$", "observe_code_parameter_declare("),
 )
 
 # The RMW seams: each must record, and must pass the profile it received.
@@ -318,7 +336,10 @@ def check(files: dict[str, str]) -> tuple[list[str], dict[str, int]]:
 
     # 1. Executor-side entry points call their hook.
     for rel, prefix, hook in ENTRY_HOOKS:
-        names = [n for n in bodies[rel] if n.startswith(prefix)]
+        if prefix.endswith("$"):
+            names = [n for n in bodies[rel] if n == prefix[:-1]]
+        else:
+            names = [n for n in bodies[rel] if n.startswith(prefix)]
         if not names:
             errs.append(
                 f"{rel}: no `fn {prefix}*` found -- the entry point moved and this gate "
@@ -527,6 +548,14 @@ def self_test(files: dict[str, str]) -> None:
     m[RUST_SINK] = m[RUST_SINK][:call] + m[RUST_SINK][call_end:]
     red("Rust create_node unhooked", m, "`create_node`")
 
+    # 10. The typed builder's start stops reporting -- issue 2670.
+    m = dict(files)
+    body_start = m[NODE_SPIN].find("fn parameter_on<")
+    call = m[NODE_SPIN].find("self.observe_code_parameter_declare(", body_start)
+    call_end = m[NODE_SPIN].find(";", call) + 1
+    m[NODE_SPIN] = m[NODE_SPIN][:call] + m[NODE_SPIN][call_end:]
+    red("Rust typed parameter builder unobserved", m, "`parameter_on`")
+
 
 def main() -> int:
     try:
@@ -552,7 +581,7 @@ def main() -> int:
     print(
         "check-census-hooks-complete: OK "
         f"({stats['entry_points']} entry points hooked, {stats['rmw_seams']} RMW seams record "
-        f"QoS, {stats['hooks']} hooks reach the recorder, layer rule clean; 10 mutations red)"
+        f"QoS, {stats['hooks']} hooks reach the recorder, layer rule clean; 12 mutations red)"
     )
     return 0
 
