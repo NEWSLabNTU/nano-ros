@@ -1,0 +1,1 @@
+A Rust Zephyr image uses much less main-thread stack for a graph query that lists names and types (about 20 KB down to 3.5 KB) and for a parameter declaration (about 25 KB down to 8 KB). The graph query also no longer stops at 64 names, and it returns names in sorted order, as rmw_zenoh_cpp and rmw_cyclonedds_cpp do. ([#4088](https://github.com/NEWSLabNTU/nano-ros/pull/4088))

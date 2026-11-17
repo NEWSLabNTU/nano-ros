@@ -13,3 +13,6 @@
 4074 build-internal: the CLI's own release build is incremental; nothing a user runs changes
 4079 test-only: nros-node tests stop reading each other's trace, profile and rosout state
 4085 fixes a link break #2634 introduced after nros-0.6.0-nros11; no release carried it
+4093 build-internal: a no-op cargo build of the CLI compiles nothing; nothing a user runs changes
+4097 test-harness: the test harness refuses a missing pinned QEMU instead of using $PATH's
+4115 no user surface yet: the table of -D names nros build owns, and a parser nothing calls (the flags came in #4124/#4126)
