@@ -239,6 +239,15 @@ my-board-package/
     While in-tree board crates do not yet state `type`, the macro keeps it
     as a fallback after `NROS_BOARD_TYPE`. Once every in-tree crate states
     its type, both tables can be retired (phase-577).
+- **The board contract is what the family calls, and an optional hook has a
+  default in the family.** A family's entry calls some board hooks that most
+  boards have no reason to implement: the trace hooks
+  `nros_trace_scheduler_started` and `nros_trace_trigger_and_dump`, which
+  only two in-tree boards define. An outside board must not have to discover
+  these from a link error. So the family supplies a weak, empty definition
+  of each optional hook, which a board overrides by defining it. A hook with
+  no sensible default is part of the board contract, and the family's
+  documentation lists it. Found by phase-577 W8's first Rust image.
 - **An outside board owns its whole RTOS configuration.** An outside FreeRTOS
   board ships its complete `FreeRTOSConfig.h`, `lwipopts.h` and `arch/cc.h`
   (RFC-0064's third level). In-tree boards include the family's shared
@@ -530,6 +539,8 @@ time.
 - 2026-11-18: drafted from the user's approved brief.
 - 2026-11-18: D2 gains the board's own CMake module, found by phase-577
   W8's owner building the first board package.
+- 2026-11-18: D2 adds the board contract: optional hooks get weak defaults in
+  the family.
 - 2026-11-18: D2 settles the Rust road for a board crate:
   - `crate_path` is relative to the definition, for every root;
   - registry names plus patch rows;
