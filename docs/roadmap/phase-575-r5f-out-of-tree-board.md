@@ -192,8 +192,41 @@ Settled with the downstream project (user answers, 2026-11-17):
   RPMessage binding stays in the board package, which lives in the
   downstream repository.
 
-Acceptance: a talker and listener on two images exchange messages over the
-link on an emulated or simulated pair, with p50/p99 hop latency recorded.
+**No router between two R5F images (decided 2026-11-18,
+[RFC-0134](../design/0134-p2p-link-peering.md)).** nano-ros compiles
+zenoh-pico's unicast peer mode out, and zenoh-pico 1.10.1's peer mode is
+socket-based (its accept path is TCP/TLS only and its peer read loop waits on
+sockets), so two images cannot peer over RPMsg as shipped. The user approved:
+
+- unicast peer mode as an opt-in, per image, only for images that carry the
+  RPMsg (or IVC) link; the default build stays peer-free, with a gate that a
+  non-RPMsg image compiles `Z_FEATURE_UNICAST_PEER 0`;
+- a patch to our zenoh-pico fork for peering on a single-peer symmetric link,
+  committed on the fork's patch-line branch (rebased, linear, not squashed);
+  the user pushes the fork, then the superproject pin moves;
+- the cost measured before the link is built.
+
+Steps, in order:
+
+0. **Design and cost.** RFC-0134 with its RFC-0109 and RFC-0110 amendments,
+   plus the measurement: unicast peer over TCP on FreeRTOS MPS2-AN385 under
+   QEMU against the same image built peer-free, giving static RAM, heap at
+   open, live executor tasks against `Z_RUNTIME_MAX_TASKS`, executor stack
+   peak, and threads added (expected none). The numbers go to the user
+   before step 1.
+1. **The fork patch, then the link.** The RFC-0134 D2 patch, then
+   `zpico-link-rpmsg` on the `zpico-link-ivc` pattern, with the vendor
+   binding in the board package.
+2. **Acceptance on dual-core QEMU.** Two nano-ros peers, one listening and
+   one connecting, exchange messages over RPMsg with no router, on an
+   emulated dual-core target (Zephyr's OpenAMP samples on a dual-core QEMU
+   machine), with p50/p99 hop latency recorded. The same over IVC if that
+   comes cheap, since it is the same seam.
+
+The Linux end (the `rpmsg_char` bridge, or the router's serial locator on an
+RPMsg tty) is generic follow-up for the vision island, not this item's
+acceptance. A native zenoh-rs RPMsg link, which removes the bridge, is
+phase-576.
 
 ### W5 — budget enforcement and deadline monitors on FreeRTOS
 
