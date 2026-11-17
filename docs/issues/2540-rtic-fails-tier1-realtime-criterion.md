@@ -21,10 +21,13 @@ mapping and the bounds are measured on the framework's CI cell". RFC-0112 said
 2026-11-14, RTIC fails both halves:
 
 - **No generated priority mapping.** The RTIC branch of `nros::main!` emits
-  fixed priorities: the run task at priority 1
-  (`packages/core/nros-macros/src/main_macro.rs:2871`), user custom tasks at
-  priority 1 (`:2733`), and the tick and RX hardware tasks at priority 2
-  (`:2676`, `:2688`). Every callback runs inline in the one `__nros_run` task
+  fixed priorities, all in `packages/core/nros-macros/src/main_macro.rs`: the
+  run task `__nros_run` at priority 1, user custom tasks
+  (`#[task(priority = 1)]` on each `<f>` trampoline) at priority 1, and the
+  tick and RX hardware tasks `__nros_tick` and `__nros_rx` at priority 2.
+  Rechecked on main on 2026-11-17, when they sat at lines 2930, 2792, 2735 and
+  2747; search for the task names, since the line numbers move with every edit
+  to the macro. Every callback runs inline in the one `__nros_run` task
   (RFC-0112 D2, "Defer" row). Nothing maps a sched task's timing contract onto
   an RTIC priority.
 - **No bound measured on the CI cell.** The RTIC cells
@@ -33,8 +36,9 @@ mapping and the bounds are measured on the framework's CI cell". RFC-0112 said
   (`received > 0`, `published > 0`). RFC-0113's coverage row for RTIC cites an
   idle measurement (0 SysTick one-shots in 20 s), but no test asserts it, and
   it also names `test_qemu_rtic_mixed_priority_pubsub_e2e`, which was retired
-  (issue 2417; the comment at `emulator.rs:680-686` says its two-priority
-  split was gone since phase-244 D1).
+  (issue 2417; the comment above `test_qemu_rtic_pubsub_e2e` in `emulator.rs`
+  says its two-priority split was gone since phase-244 D1). Still true on main
+  on 2026-11-17: the three cells assert delivery only.
 
 PX4, the other Tier 1 framework, does meet criterion 5: its entry codegen
 emits one work item per sched task and RFC-0113 records arrival→dispatch
@@ -59,3 +63,7 @@ page claimed RTIC Tier 1 (the user book does not teach RTIC:
 [phase-562](../roadmap/phase-562-image-framework-field.md) W10: the RTIC
 branch generates its task priorities from the sched-task contract, and an RTIC
 CI cell asserts a measured bound. RFC-0112 D3 then re-promotes RTIC to Tier 1.
+
+**State of W10 (2026-11-17):** OPEN, with no owner and no claim. Nothing on
+main or in an open pull request has started it. Phase-562 W1 to W4 and W8 are
+done, and none of them touches the RTIC priorities or the RTIC cells.
