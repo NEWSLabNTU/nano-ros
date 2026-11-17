@@ -1,6 +1,6 @@
 # Phase 568 — build arguments
 
-**Status (2026-11-17). Design approved; nothing is built.** Implements the
+**Status (2026-11-17). Design approved; W1 done, W2 next.** Implements the
 amendment "build arguments" (D7–D9) of
 [RFC-0117](../design/0117-cli-command-tiers.md). The user approved it as
 revised after review on 2026-11-17. The review kept D7–D9 and moved build
@@ -31,7 +31,12 @@ stated profile.
 
 ### W1 — one argument model and its allowlist
 
-- **Status:** OPEN (the amendment was approved 2026-11-17; this is the first item)
+- **Status:** DONE (2026-11-17, #4115, 7ee3f7fdd6). `builder::owned_defines`
+  holds the 35 owned names, plus documented `USER_SET` (`NROS_OVERRIDE_<ID>`)
+  and `COMPILER_DEFINES` rows. `every_emitted_define_is_owned` harvests the
+  `nros` binary's whole source closure (420 files) and fails closed on a name
+  it cannot read. `builder::build_args` is the unwired parser.
+  `ARMFVP_EXTRA_FLAGS` is registered by the FVP PR that replaces #4108.
 
 One type for a validated native argument (`CmakeArg::Define { name, value }`,
 `CmakeArg::Undefine`, `CargoArg::Features`, …), built from every source by one
@@ -63,7 +68,7 @@ parser. It carries:
 
 ### W2 — the sources: `system.toml`, the command line, `@file`
 
-- **Status:** BLOCKED (on W1: the sources feed W1's argument model)
+- **Status:** OPEN (W1 landed: the sources feed its parser)
 
 - `[image.<id>.build] cmake_args`, read from the image's own section only.
   There is no `cargo_args` key: committed features belong in the manifest.
