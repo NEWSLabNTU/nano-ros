@@ -1,0 +1,5 @@
+{
+  "key": "rust:AppMarkerIdOutOfRange",
+  "verdict": "extension",
+  "why": "issue 2641 -- the refusal `emit_app_marker` returns for id 0 or an id from 16 up, never a clamp. rclrs has no trace marker."
+}

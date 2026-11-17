@@ -1,0 +1,5 @@
+{
+  "key": "rust:APP_MARKER_LAST",
+  "verdict": "extension",
+  "why": "issue 2641 -- the last application trace marker id (15); ids from 16 up are the executor callback events. rclrs has no trace marker."
+}
