@@ -125,6 +125,9 @@ fi
 # right on one machine is wrong on the next (scripts/lib/runner-name.sh).
 . "$repo_root/scripts/lib/runner-name.sh"
 runner_name="$(nros_require_runner_name runner-register "$runner_name")"
+# `NROS_RUNNER_HOST=<id>` adds the host's routing label (issue 2663).
+. "$repo_root/scripts/lib/runner-host-label.sh"
+labels="$(nros_runner_with_host_label "$labels")" || exit 2
 
 # GitHub applies these itself, but `config.sh --labels` replaces the set rather
 # than adding to it, so they are spelled here. This is the one place the full

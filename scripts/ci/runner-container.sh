@@ -101,10 +101,14 @@ done
 . "$REPO_ROOT/scripts/lib/runner-name.sh"
 . "$REPO_ROOT/scripts/lib/runner-tmpfs.sh"
 . "$REPO_ROOT/scripts/lib/runner-work-volume.sh"
+. "$REPO_ROOT/scripts/lib/runner-host-label.sh"
 NAME="$(nros_require_runner_name runner-container)"
 
 [ -n "$LABELS" ] || { echo "runner-container: need <labels>, e.g. nros-qemu,nros-sdk-zephyr,nros-big" >&2; exit 2; }
 LABELS="${LABELS// /,}"
+# `NROS_RUNNER_HOST=<id>` adds the host's routing label (issue 2663), and is
+# passed into the container so the entrypoint's doctor can check the pairing.
+LABELS="$(nros_runner_with_host_label "$LABELS")" || exit 2
 if [ "$DO_BUILD" -eq 0 ] && [ "$DO_RUN" -eq 0 ] && [ "$DO_SWEEP" -eq 0 ]; then DO_BUILD=1; DO_RUN=1; fi
 
 # The runner's volumes, ONE list for the job container and the sweep container:
@@ -273,6 +277,7 @@ if [ "$DO_RUN" -eq 1 ]; then
         "${CONFINE_ARGS[@]}" \
         "${VOLUME_ARGS[@]}" \
         -e NROS_RUNNER_LABELS="$LABELS" \
+        -e NROS_RUNNER_HOST="${NROS_RUNNER_HOST:-}" \
         -e NROS_RUNNER_MIN_FREE_GIB="${NROS_RUNNER_MIN_FREE_GIB:-}" \
         -e GH_REPO="${GH_REPO:-NEWSLabNTU/nano-ros}" \
         --env-file "$TOKEN_FILE" \

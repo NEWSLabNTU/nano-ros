@@ -66,6 +66,44 @@ step W14 found 13-22x slower on this host.
 
 These can combine; for instance option 1 with option 3 as a margin.
 
+## Ruling (2026-11-17)
+
+The user chose option 1, a runner label per host. Prepared in the repo as two
+labels, because one label per host alone would make a single host the only
+place tier 2 can run:
+
+- **`nros-host-<id>`, one per runner.** It says which machine a runner is on.
+  The operator sets `NROS_RUNNER_HOST=<id>` (`118`, `241`), and
+  `runner-container.sh` and `runner-register.sh` derive the label through
+  `scripts/lib/runner-host-label.sh`. `runner-doctor.sh` refuses a host label
+  with no setting, one that names another host, or a second host label on
+  one runner. No job is pinned to it. It is what phase-489 W14's
+  like-for-like dispatch needs.
+- **`nros-heavy`, a role.** It means "this host shares no cores with local
+  gates, so the heavy scheduled jobs may run here". `run-matrix.yml`'s
+  `tier 2 (1-wise matrix)` and `tier 2 nightly (pairwise cover)` are to
+  request it (see "Order" below).
+  The operator grants it to `newslab-118-server` today, and to any later
+  host that qualifies, with no workflow edit. The doctor refuses it without
+  `nros-qemu`, `nros-sdk-zephyr` and `nros-big` (the jobs request those
+  too), and beside `nros-queue`.
+
+Tier 1 and merge-runtime do not request `nros-heavy`, so host 241 keeps them,
+the queue's L3 and the lighter lanes. The cost is option 1's: the two heavy
+jobs wait for the one heavy runner when it is busy or down. Gate:
+`just check runner-host-label`.
+
+**Order.** Two changes, in this order, because the doctor that a runner's
+entrypoint runs comes from main:
+
+1. The labels: the helper, the doctor's two checks, and these docs. After it
+   merges, the operator re-registers the three runners (118 with
+   `nros-heavy`, every runner with `NROS_RUNNER_HOST`).
+2. The pin: the two jobs request `nros-heavy`. It must not reach main before
+   a live runner carries the label, or GitHub finds no runner for them and
+   fails them after 24 hours. Its pull request stays a draft until the
+   operator has re-registered.
+
 ## Done when
 
 The user has chosen, the choice is applied, and the next pairwise nightly

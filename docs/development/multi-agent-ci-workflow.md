@@ -78,10 +78,21 @@ label:
 | `nros-ros2` | a real ROS 2 install for interop lanes |
 | `nros-big` | ≥16 cores, for fixture fan-out |
 | `nros-queue` | the merge queue's own runner: a role, not a capability. It must carry `nros-sdk-zephyr` + `nros-big` and must NOT carry `nros-qemu` |
+| `nros-heavy` | a role: this host shares no cores with local gates, so the heavy scheduled jobs (tier 2, the pairwise nightly) may run here. It must carry `nros-qemu` + `nros-sdk-zephyr` + `nros-big` and must NOT carry `nros-queue` |
+| `nros-host-<id>` | which machine this runner is on. Derived from `NROS_RUNNER_HOST=<id>`, never typed. No job is pinned to it |
 
 Then `runs-on: [self-hosted, nros-sdk-zephyr]` rather than naming a machine.
 Adding a second runner is registration plus labels; nothing in the workflows
 changes.
+
+The host label is the one exception to labelling by capability, and it is
+deliberately not what jobs route on (issue 2663). Host 241 runs the agents'
+local gates beside its runners, which no capability can express, so the heavy
+jobs ask for the ROLE `nros-heavy` and the operator grants it to the hosts
+that qualify. Pinning them to a host label instead would make that host a
+single point of failure, and the next qualifying host a workflow edit. The
+host label exists so a like-for-like comparison can name a host, and so a
+job's runner reads back as a machine.
 
 ### The merge queue has its own runners
 
