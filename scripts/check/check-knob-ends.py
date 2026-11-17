@@ -209,9 +209,11 @@ def readers_in(path: str, text: str, read_callees: set[str]) -> set[str]:
             out |= set(re.findall(r"^\s*&?\"(" + NAME + r")\"", args))
             out |= set(re.findall(r",\s*&?\"(" + NAME + r")\"", args))
         # A name held in a `&str` const and read through it
-        # (`const MULTICAST_TRANSPORT_ENV: &str = "ZPICO_..."; env::var(MULTICAST_TRANSPORT_ENV)`).
+        # (`const MULTICAST_TRANSPORT_ENV: &str = "ZPICO_..."; env::var(MULTICAST_TRANSPORT_ENV)`),
+        # also an associated const read through its type (`env::var(Self::ENV)`,
+        # `ProbeFailurePolicy::ENV` in metadata_refresh.rs).
         for const, n in re.findall(r"const\s+([A-Z_][A-Z0-9_]*)\s*:\s*&(?:'static\s+)?str\s*=\s*\"(" + NAME + r")\"", t):
-            if re.search(r"\b(?:var|var_os)\s*\(\s*(?:[a-z_:]*::)?" + const + r"\b", t):
+            if re.search(r"\b(?:var|var_os)\s*\(\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*" + const + r"\b", t):
                 out.add(n)
         # A (env, CONFIG_*) pair table is a READ table: `kconfig_fallback`
         # looks the env name up in it (nros-zpico-build's KCONFIG_KNOBS).
@@ -392,9 +394,16 @@ def self_test() -> None:
     # the two indirect read shapes: a legacy alias as a later argument, and a
     # name held in a `&str` const
     src = ('let n = env_usize_compat(\n    "NROS_NEW",\n    "ZPICO_OLD",\n    1,\n);\n'
-           'pub const E: &str = "ZPICO_VIA_CONST";\nfn f() { std::env::var(E); }\n')
+           'pub const E: &str = "ZPICO_VIA_CONST";\nfn f() { std::env::var(E); }\n'
+           'impl P {\n    pub const ENV: &\'static str = "NROS_VIA_ASSOC";\n'
+           '    fn g() { std::env::var(Self::ENV).ok(); }\n}\n')
     got = readers_in("packages/z/build.rs", src, {"env_usize_compat"})
-    assert got == {"NROS_NEW", "ZPICO_OLD", "ZPICO_VIA_CONST"}, f"selftest: indirect reads {sorted(got)}"
+    assert got == {"NROS_NEW", "ZPICO_OLD", "ZPICO_VIA_CONST", "NROS_VIA_ASSOC"}, \
+        f"selftest: indirect reads {sorted(got)}"
+    # a const nobody reads through is still no reader
+    assert readers_in("packages/z/build.rs",
+                      'pub const E: &str = "NROS_UNREAD";\nfn f() { other(E); }\n',
+                      set()) == set(), "selftest: an unread const credited a reader"
     # a Kconfig symbol produces its env knob
     assert producers_in("zephyr/Kconfig", "config NROS_FOO\n    int \"x\"\n") == {"NROS_FOO"}
 
