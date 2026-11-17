@@ -182,7 +182,7 @@ and each states its acceptance before it lands.
 - **W9.c -- The `socketcan` backend.** DONE (2026-11-17): both probes' frames
   read back by `candump` on vcan0; the classic-interface (MTU 16) check is
   GATED (no classic interface on the build host), reported NOT VERIFIED by
-  `scripts/test/can-frame-socketcan.sh` until one is given.
+  `just linux test-can-frames` until one is given.
   `packages/boards/nros-board-linux/c/can_socketcan.c` with a new `build.rs`,
   compiled by the same path into `nros-board-freertos-posix` and
   `nros-board-threadx-linux`; `PF_CAN`, `CAN_RAW` and `linux/can.h` added to

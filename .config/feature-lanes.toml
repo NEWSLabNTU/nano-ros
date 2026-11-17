@@ -79,6 +79,10 @@ reason = "pulls nros-rmw into nros-tests for `custom_transport_loopback`"
 class = "harness"
 reason = "the rclrs talker port is a `Workload::Port` question, not a build configuration; this pulls its dependencies"
 
+[feature.can-probe]
+class = "harness"
+reason = "builds a board's CAN frame probe (RFC-0132), which needs a live SocketCAN interface; the backend itself is always compiled"
+
 [feature.platform-posix]
 class = "harness"
 reason = "selects the posix platform port so the backend crate's integration tests can link at all"
@@ -472,3 +476,19 @@ crate = "nros-rmw-cyclonedds"
 no_default = true
 features = ["bridge-stub", "std"]
 targets = ["bare_metal_link"]
+
+# RFC-0132 / phase-560 W9.c — the CAN frame probes need a live SocketCAN
+# interface, so they run from `just linux test-can-frames`, never test-unit.
+[[lane]]
+runner = "test-can-frames"
+generated = false
+crate = "nros-board-linux"
+features = ["can-probe"]
+targets = ["can_socketcan_probe"]
+
+[[lane]]
+runner = "test-can-frames"
+generated = false
+crate = "nros-board-freertos-posix"
+features = ["can-probe"]
+targets = ["can_socketcan_probe"]

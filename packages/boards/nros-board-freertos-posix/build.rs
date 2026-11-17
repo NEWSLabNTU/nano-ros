@@ -149,15 +149,16 @@ fn main() {
     nros_cc_flags::header_deps::track_header_deps(&mut glue);
     glue.compile("freertos_posix_glue");
 
-    // ---- RFC-0132 D3: the CAN frame driver's `socketcan` backend ---------
-    // The same `nros-board-linux/c/can_socketcan.c` the linux board compiles:
-    // this image is a Linux process, so its CAN device is a SocketCAN one.
-    // Pulled on demand; an image that sends no frames links none of it.
-    nros_board_common::can_socketcan::compile_socketcan_backend();
-
     nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
         env::var("OUT_DIR").expect("OUT_DIR"),
     ));
+
+    // ---- RFC-0132 D3: the CAN frame driver's `socketcan` backend ---------
+    // The same `nros-board-linux/c/can_socketcan.c` the linux board compiles:
+    // this image is a Linux process, so its CAN device is a SocketCAN one.
+    // Pulled on demand; an image that sends no frames links none of it. After
+    // the emit above: the helper declares its own compile's headers.
+    nros_board_common::can_socketcan::compile_socketcan_backend();
 
     // Dependency order for a single-pass linker: each archive before the ones
     // it calls into (glue -> platform -> kernel), then the host thread library
