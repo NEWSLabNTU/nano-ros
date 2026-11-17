@@ -15,7 +15,7 @@ superseded-by: null
 
 > **Amended by [RFC-0120](0120-nros-configure-one-resolver.md) (2026-11-03).** `configure` joins the Build group and absorbs `sync`, which stays as its alias.
 >
-> **Draft amendment 2026-11-17:** build arguments (D7–D9), for review; see the section of that name. Build profiles are deferred to a later amendment.
+> **Amendment 2026-11-17:** build arguments (D7–D9), approved, not yet built (phase-568); see the section of that name. Build profiles are deferred to a later amendment.
 
 **Status:** Draft (2026-11-01). Written from the maintainer discussion of
 2026-10-31 and 2026-11-01 on how the `nros` command tree should look to a
@@ -286,10 +286,10 @@ the issue's marker. Answer 1 resolved the second way: the source metadata is
 refreshed by configure's first phase, which `nros build` runs, and that
 needs no native image, so `nros new` names `nros build`.
 
-## Amendment 2026-11-17 (DRAFT, for review) — build arguments
+## Amendment 2026-11-17 (approved, not yet built) — build arguments
 
-User-approved design, 2026-11-17, written up for review before anything is
-built. Implemented by
+Approved by the user on 2026-11-17, as revised after review (profiles
+deferred). Not yet built. Implemented by
 [phase-568](../roadmap/phase-568-build-args-and-profiles.md). D4's
 `--cmake-args` row and the `--` passthrough change as described under
 "Migration".
@@ -541,3 +541,5 @@ here so the later amendment starts from them:
   features' sources named; `pkg/feat` required in a multi-package workspace;
   knob-registry names refused from every source; system.toml takes
   `cmake_args` only; a dependency's arguments are ignored and listed.
+- 2026-11-17 — the revised amendment (D7–D9) approved by the user. The RFC
+  stays Draft until phase-568 lands it.
