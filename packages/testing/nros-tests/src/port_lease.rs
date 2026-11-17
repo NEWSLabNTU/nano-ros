@@ -613,10 +613,11 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_named_port_held_past_the_budget_fails_naming_the_holder() {
-        let port = Transport::Tcp.suggest().expect("suggest");
-        let lock = lease_dir().join(format!("tcp-{port}.lock"));
-        let _ = std::fs::create_dir_all(lease_dir());
-        let holder = claim(&lock).expect("claim").expect("first claim wins");
+        // Leased, not suggested, as in the hand-over test above: a suggested
+        // port can already be leased by a test running beside this one, so a
+        // bare claim on it can lose (issues 2430, 2668).
+        let holder = lease_port(Transport::Tcp).expect("lease");
+        let (port, lock) = (holder.port, holder.lock.clone());
         std::fs::write(&lock, "1").expect("name a foreign holder");
         let err = wait_for_port(Transport::Tcp, port, std::time::Duration::from_millis(300))
             .expect_err("held past its budget");
