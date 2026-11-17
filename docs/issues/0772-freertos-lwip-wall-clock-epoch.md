@@ -107,3 +107,20 @@ plus newlib `_gettimeofday`, re-syncs every `ASI_SNTP_RESYNC_INTERVAL_S`, and
 is started from the controller constructor (`ASI_FREERTOS_WALL_CLOCK`) because
 the FreeRTOS entry never calls a network hook. It is used on the an536 (QEMU)
 and S32Z270 FreeRTOS lanes. Re-acquisition (issue 0758) applies here as well.
+
+## Consumer requirement (ASI, stated 2026-11-17)
+
+ASI has stated what it needs from this issue:
+
+- **What:** a wall-clock epoch on FreeRTOS, taken from SNTP. This is the
+  FreeRTOS equivalent of Zephyr's `CONFIG_NROS_SNTP_EPOCH`, so that
+  `nros_platform_epoch_us()` returns absolute time on a FreeRTOS image.
+- **Why:** so ASI can delete its own `platform/freertos/wall_clock.cpp` (the
+  290 lines described above) and take the epoch from nano-ros, as it already
+  does on Zephyr.
+- **ASI's acceptance:** after an SNTP step, `vehicle_cmd_gate` rejects no
+  command as stale. That covers the first acquisition and every later
+  re-sync, so the re-acquisition question above is part of the requirement,
+  not an extra.
+- **Priority:** not on ASI's critical path yet. ASI keeps its own
+  implementation until this lands.
