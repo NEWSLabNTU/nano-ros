@@ -65,13 +65,81 @@ borrowed-e2e:
     # change never touched. Gated by `check-skippable-tests-tolerant`.
     just _nextest-tolerant -p nros-tests --no-fail-fast --test borrowed_e2e
 
+# The host C LINK smoke (issue 2685, phase-567 W7): build `libnros_c.a` in the
+# shape it SHIPS, link one C program against it and run it. The first half of
+# `check c`, factored out so the merge-gating lanes can afford it: ~27 s cold,
+# ~0.3 s warm, where `check c` as a whole is build tier.
+#
+# Why it exists: #4151 (48699e26c3) left five undefined `nros_platform_can_*`
+# references in the shipped archive, and the PR's `CI` and the merge queue's
+# both passed, because no job on either event LINKED a host C program. Only
+# `check::build` did, daily, so every agent's `just ci gate` sat red for ~3 h
+# on a cause outside its diff. A syntax check or a `cargo build` cannot see
+# this class: an archive with an undefined symbol builds fine, and the error
+# exists only at the final link.
+#
+# `check c` depends on this, so the build and the link have ONE spelling and
+# share one target dir. Tier `exempt` rather than `build` for that reason: a
+# build-tier row would run it AGAIN beside `check c` under the gate harness,
+# two recipes placing into one dir at once. gate.yml's `check-c-link-smoke`
+# job runs it by name on every event, unconditionally (never path-filtered,
+# never excused as docs-only), and `ci-ok` fails on a skip of it.
+[private]
+[metadata("tier", "exempt", "a host C link: gate.yml's `check-c-link-smoke` job runs it by name on push, pull_request, merge_group and workflow_dispatch with no path filter; locally `check c` (build tier) depends on it, which `just ci gate` reaches (issue 2685)")]
+c-link-smoke:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    # issue 1354 — `check c`'s own Cargo target dir (see the long note there):
+    # this IS `check c`'s first half, so it shares the dir and `check c` reuses
+    # the archive and placed headers rather than building them twice.
+    gen="$(nros_scoped_target_dir check-c)"
+    export CARGO_TARGET_DIR="$gen"
+    placed="$gen/placed"
+    cgen="$(nros_locate_artifact c-include --placed-dir "$placed")"
+    echo "C link smoke: libnros_c.a (shipped features) + one linked, RUN program"
+    # issue 0400 follow-up — this build GENERATES the headers every C check
+    # compiles against, so its failure must not be swallowed. It used to run
+    # `--quiet 2>/dev/null || true`, which turned "the generator never ran" into
+    # "your C headers are broken": every `*_OPAQUE_U64S` came back undeclared
+    # from a `cc` line that says nothing about cargo. Diagnosing that cost four
+    # wrong hypotheses; the build's own error names the cause in one line.
+    nros_cargo_placed "$placed" nros-c -- build -p nros-c --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    echo "  - RFC-0033 borrow views: stream alignment + checked count (issues 1148/1149)"
+    # The link IS the smoke: an undefined symbol anywhere in the archive's
+    # reachable closure fails here (#4151: `undefined reference to
+    # nros_platform_can_open`). The program also pins two defects a syntax
+    # check cannot see: `rclc_cdr_borrow_le_slice_*` returned 0 on every 8-byte
+    # sequence while handing back padding as data, and a wire count of
+    # 0x40000000 wrapped `(size_t)cnt * sizeof` to 0 on every 32-bit target. It
+    # links the `libnros_c.a` the build above just produced (so `rclc_cdr_align`
+    # is the Rust reader's own alignment, not a C copy of it) and exercises the
+    # 32-bit wrap through `rclc_cdr_seq_byte_len`'s explicit limit, because this
+    # host's `size_t` cannot. `test -f` first — a missing TU must not read as a
+    # pass (issue 0196's class).
+    test -f packages/api/nros-c/tests/run/cdr_borrow_le_slice.c || { \
+        echo "ERROR: cdr_borrow_le_slice.c is MISSING -- this check passes on absence." >&2; exit 1; }
+    mkdir -p tmp
+    # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
+    # above, so `target/debug/` IS its derived output dir.
+    nros_c_lib="$gen/debug/libnros_c.a"
+    cc -std=c11 -Wall -Wextra \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/run/cdr_borrow_le_slice.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/cdr_borrow_le_slice
+    ./tmp/cdr_borrow_le_slice
+
 # Check C code: formatting + nros-c umbrella header syntax. COMPILES nros-c
 # (→ nros-macros → nros-build → nros-cli-core → the ros-launch-manifest submodule;
 # issue 0083) to emit the OPAQUE_U64S macro header, so it needs sources/CLI
 # submodule → build tier (check-build), NOT the source-free push lane.
+# The build and the first link are `c-link-smoke` (issue 2685), which runs first.
 [private]
 [metadata("tier", "build")]
-c: c-fmt
+c: c-fmt c-link-smoke
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -114,16 +182,9 @@ c: c-fmt
     echo "  - syntax (nros-c umbrella header)"
     # The per-variant `<rclc/detail/nros_config_generated.h>` (defining the
     # OPAQUE_U64S macros referenced by `<rclc/detail/nros_generated.h>`) is
-    # emitted by `nros-c`'s build.rs into its `$OUT_DIR` and placed into $placed.
-    # Build first so the syntax check has those macros; otherwise
-    # the source-tree stub fires its `#error`.
-    # issue 0400 follow-up — this build GENERATES the headers the checks below
-    # compile against, so its failure must not be swallowed. It used to run
-    # `--quiet 2>/dev/null || true`, which turned "the generator never ran" into
-    # "your C headers are broken": every `*_OPAQUE_U64S` came back undeclared
-    # from a `cc` line that says nothing about cargo. Diagnosing that cost four
-    # wrong hypotheses; the build's own error names the cause in one line.
-    nros_cargo_placed "$placed" nros-c -- build -p nros-c --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    # emitted by `nros-c`'s build.rs into its `$OUT_DIR` and placed into $placed
+    # by `c-link-smoke`'s build, which ran first (this recipe's dependency);
+    # without it the source-tree stub fires its `#error`.
     # Variant dir FIRST so its `nros_config_generated.h` (with the
     # real OPAQUE_U64S macros) wins over the source-tree stub.
     cc -fsyntax-only \
@@ -131,30 +192,10 @@ c: c-fmt
         -Ipackages/api/nros-c/include \
         -include packages/api/nros-c/include/rclc/rclc.h \
         -x c /dev/null
-    echo "  - RFC-0033 borrow views: stream alignment + checked count (issues 1148/1149)"
-    # The one COMPILE+LINK+RUN TU in this lane. The defects it pins are
-    # invisible to a syntax check: `rclc_cdr_borrow_le_slice_*` returned 0 on
-    # every 8-byte sequence while handing back padding as data, and a wire
-    # count of 0x40000000 wrapped `(size_t)cnt * sizeof` to 0 on every 32-bit
-    # target. The binary links the `libnros_c.a` the build above just produced
-    # (so `rclc_cdr_align` is the Rust reader's own alignment, not a C copy of
-    # it) and exercises the 32-bit wrap through `rclc_cdr_seq_byte_len`'s
-    # explicit limit, because this host's `size_t` cannot. `test -f` first —
-    # a missing TU must not read as a pass (issue 0196's class).
-    test -f packages/api/nros-c/tests/run/cdr_borrow_le_slice.c || { \
-        echo "ERROR: cdr_borrow_le_slice.c is MISSING -- this check passes on absence." >&2; exit 1; }
     mkdir -p tmp
-    # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
-    # at the top of this recipe, so `target/debug/` IS its derived output dir.
+    # profile-literal-ok: unprofiled: the archive is from `c-link-smoke`'s plain
+    # `cargo build` into this same dir, so `target/debug/` IS its output dir.
     nros_c_lib="$gen/debug/libnros_c.a"
-    cc -std=c11 -Wall -Wextra \
-        -I"$cgen" \
-        -Ipackages/api/nros-c/include \
-        -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-c/tests/run/cdr_borrow_le_slice.c \
-        "$nros_c_lib" -lpthread -ldl -lm \
-        -o tmp/cdr_borrow_le_slice
-    ./tmp/cdr_borrow_le_slice
     echo "  - issue 2641: rclc_trace_marker reaches the installed sink; an executor id is refused"
     # Run twice. WITH `trace-callbacks` (its own archive shape, in its own
     # target dir): the capturing sink gets exactly the in-range events. Against

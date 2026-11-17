@@ -3023,6 +3023,92 @@ jobs:
   # aggregator that merely depends on its jobs passes when they were all
   # skipped. It has to INSPECT `needs.*.result`, which is what the step below
   # does, and treat `skipped` as a deliberate decision rather than a pass.
+  # issue 2685 / phase-567 W7 — the host C LINK smoke, UNCONDITIONAL.
+  #
+  # #4151 (48699e26c3) shipped five undefined `nros_platform_can_*` references
+  # in `libnros_c.a` / `libnros_cpp.a`, and both its pull request's `CI` and
+  # the merge queue's passed: no job on either event linked a host C program
+  # against the shipped archive. Only `check::build` did, daily, and every
+  # agent's `just ci gate` was red for ~3 h on a cause outside its diff.
+  #
+  # No `needs: changes` and no `if:`, on purpose: a docs-only pull request runs
+  # it too, so `CI` always hears a verdict from it, and `ci-ok` fails on any
+  # skip of it whatever the event (a required check that never reports blocks
+  # forever — two PRs deadlocked that way on 2026-08-28). Measured (issue
+  # 2685): ~27 s cold, ~0.3 s warm locally; it reuses the `check-fast-compile`
+  # setup (the CLI binary cache, the `sccache-Linux-check-` restore), whose
+  # crates are the nros-c closure, so no new cache key.
+  check-c-link-smoke:
+    name: check / host C link smoke (every event)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Read-only restore, every event (push included: a push on main reads
+      # main's cache). The writer is `warm-cache`; this job saves nothing.
+      - name: Cache sccache directory
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
+      - name: Configure sccache
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the link smoke compiles UNCACHED."
+            exit 0
+          fi
+          sccache --version
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=2G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=2G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the link smoke compiles UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      # `nros locate artifact` names the generated header dir the link reads.
+      - name: Build the in-tree nros CLI
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
+
+      - name: just check c-link-smoke
+        run: |
+          source ./activate.sh
+          just check c-link-smoke
+
+      - name: sccache stats
+        if: ${{ always() }}
+        run: |
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+
   ci-ok:
     name: CI
     # `always()` so a failed or skipped dependency still runs this — without it
@@ -3033,6 +3119,7 @@ jobs:
       - changes
       - check-fast
       - check-fast-compile
+      - check-c-link-smoke
       - check-compile-smoke
       - check-cli-tests
       - check-workspace-all
@@ -3113,6 +3200,12 @@ jobs:
           sibling check-fast           "${{ needs.check-fast.result }}"           "push pull_request merge_group workflow_dispatch"
           sibling check-fast-compile   "${{ needs.check-fast-compile.result }}"   "push pull_request merge_group workflow_dispatch"
           sibling check-compile-smoke  "${{ needs.check-compile-smoke.result }}"  "pull_request"
+
+          # issue 2685 — the link smoke has no `if:` and no `needs:`, so GitHub
+          # has nothing to skip it on: its result is success, failure or
+          # cancelled, and only success passes. The docs-only/queue-verified
+          # excuses in `sibling` can never reach it.
+          sibling check-c-link-smoke   "${{ needs.check-c-link-smoke.result }}"   "push pull_request merge_group workflow_dispatch"
           sibling check-cli-tests      "${{ needs.check-cli-tests.result }}"      "pull_request merge_group workflow_dispatch"
           sibling check-workspace-all  "${{ needs.check-workspace-all.result }}"  "pull_request merge_group workflow_dispatch"
           sibling check-test-unit      "${{ needs.check-test-unit.result }}"      "merge_group workflow_dispatch"
