@@ -19,6 +19,12 @@ host-only-reason = "the CAN frame driver's mock, legal only on host-process boar
 nros-platform-api = { version = "0.6.0", path = "../../../platform/nros-platform-api" }
 nros-platform-cffi = { version = "0.6.0", path = "../../../platform/nros-platform-cffi" }
 
+# The `Can` wrapper is behind nros-platform-cffi's `can` capability; only the
+# round-trip test drives it, so it is a dev-dependency feature (a dev-dep's
+# features stay out of non-test builds, so no staticlib unifies them in).
+[dev-dependencies]
+nros-platform-cffi = { version = "0.6.0", path = "../../../platform/nros-platform-cffi", features = ["can"] }
+
 [build-dependencies]
 # The frame check is the header's `static inline`, compiled into a one-line
 # shim so the mock refuses exactly the frames every C backend refuses.

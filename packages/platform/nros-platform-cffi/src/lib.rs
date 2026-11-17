@@ -62,6 +62,11 @@ pub mod generated;
 pub use generated::*;
 
 // RFC-0132 -- the CAN frame driver's Rust face over the generated declarations.
+// Behind the `can` capability: the wrapper references the five
+// `nros_platform_can_*` symbols, which only a CAN backend defines, so an image
+// without one (every POSIX staticlib: libnros_c.a, libnros_cpp.a) must not
+// carry it (issue 2633).
+#[cfg(feature = "can")]
 pub mod can;
 
 // issue 0710 — the `LogSink` that speaks this ABI belongs with the ABI, so
