@@ -711,6 +711,17 @@ the island's SocketCAN test driver set the private
 `nano_ros_add_plain_executable(<name> <sources>...)` is the public verb: the
 builtin on every platform, marked `NROS_PLAIN_EXECUTABLE`.
 
+### I31 -- a board network file on a Zephyr image
+
+**Status: DESIGN (2026-11-17), awaiting a ruling.** [Issue 2679](../issues/2679-zephyr-board-network-file-net-config.md),
+GitHub #4011. A board network file is refused on Zephyr, so the island states
+its address in its own Kconfig symbols and waits for DHCP by hand. Proposed: a
+Zephyr board declares its interface in `[board.net]`, and `nros build` renders
+the one resolved interface into `NET_CONFIG_*` / `NET_DHCPV4` as a Kconfig
+fragment appended last, refusing a second interface, a stated MAC and an
+`os_config` fragment that sets the same symbols. Open questions Q1-Q3 are in
+the issue.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -871,6 +882,7 @@ this phase will fix it.
 
 - [issue 2670](../issues/2670-imperative-param-declare-invisible-to-census.md): a Rust parameter declared through `Executor::node_mut(..).declare_parameter` reaches no census hook, so a contract that omits it sizes the store short with no `param-missing-in-contract` error.
 - [issue 2678](../issues/archived/2678-plain-executable-opt-out-on-a-board.md) (GitHub #4016, resolved): a board build had no public way to declare an executable that is not an image; `nano_ros_add_plain_executable` is it (I30).
+- [issue 2679](../issues/2679-zephyr-board-network-file-net-config.md) (GitHub #4011): a board network file is refused on Zephyr; a design renders it into `NET_CONFIG_*` (I31, design).
 - [issue 2665](../issues/2665-target-session-chain-start-deadline-under-load.md): `target_session::tests::teardown_waits_for_a_chain_that_is_stopping` failed under host load at its 5 s chain-start deadline and passes alone.
 - [issue 2660](../issues/archived/2660-pyo3-rebuilds-on-path-change.md) (GitHub #4084, resolved): the launch resolver rebuilt pyo3-ffi whenever PATH changed (I25).
 
