@@ -1,0 +1,1 @@
+The `Can` wrapper in `nros-platform-cffi` is now behind a `can` cargo feature, off by default. It referenced the `nros_platform_can_*` symbols that only a CAN backend defines, so `libnros_c.a` and `libnros_cpp.a` failed to link on POSIX hosts. A crate whose image links a CAN backend enables `nros-platform-cffi/can` to use the wrapper.

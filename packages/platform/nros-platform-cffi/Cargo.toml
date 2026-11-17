@@ -24,6 +24,12 @@ links = "nros_platform_cffi"
 [features]
 default = []
 threading = []
+# RFC-0132 -- the `can` module (the `Can` wrapper over `<nros/platform_can.h>`).
+# Off by default: the wrapper calls `nros_platform_can_*`, which only a CAN
+# backend defines (a board's driver, `nros-can-mock`). Enable it only in a crate
+# whose image links one, never from a crate a POSIX staticlib (nros-c, nros-cpp)
+# reaches, or the staticlib carries undefined references (issue 2633).
+can = []
 # Phase 121.4.a — compile `tests/c_stubs/platform_stubs.c` into a
 # static lib that provides every `nros_platform_*` symbol with
 # per-category counters. Only the in-crate integration test
