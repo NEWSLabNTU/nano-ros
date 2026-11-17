@@ -969,6 +969,10 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   check::build gates that run up to 22 processes (the token pool's over-weight
   report). Parked: fix one only when it measures as a problem, the way
   `cli-tests` was fixed (`cpu:4`, 2026-11-16).
+- [issue 2676](../issues/2676-gated-worktree-test-binary-debuginfo.md) — one
+  cold `just ci gate` grows a worktree to 185 GB, and its test binaries with
+  full debuginfo are about 50 GB of that. Every host hit its disk floor on
+  2026-11-17.
 - [issue 2669](../issues/2669-hook-repo-side-effects-gate-unbounded-runtime.md) —
   `check-hook-repo-side-effects` took 98 s to over 1,900 s on the fast line
   on one day, and its per-script probes have no time limit. It cancelled the
