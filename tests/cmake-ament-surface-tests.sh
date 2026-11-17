@@ -53,6 +53,8 @@
 #      ament verbs ask for is a no-op, not a deferred call to a missing one;
 #  12. the C/C++ FreeRTOS carrier's app stack is 64 KiB unless the configure
 #      sets `NROS_FREERTOS_APP_STACK_KB` (issue 2070).
+#  14. `nano_ros_add_plain_executable` is the builtin `add_executable` on a
+#      board too: a helper that is not an image (issue 2678).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
@@ -518,5 +520,54 @@ expect "13. a static app keeps the user's plain signature and configures" "Gener
 expect "13. ...links the runtime" "static LINK=[user_lib_plain;rt]" "$out"
 expect "13. ...and carries it to the final link as LINK_ONLY" 'IFACE=[user_lib_plain;$<LINK_ONLY:rt>]' "$out"
 expect "13. an executable takes the link item and no interface half" "exe LINK=[rt] IFACE=[_ii-NOTFOUND]" "$out"
+
+if [ "$have_cli" -eq 1 ]; then
+# 14. issue 2678 -- on a board every `add_executable` is an image, and
+#     `nano_ros_add_plain_executable` is the builtin: a helper with its own
+#     main, not routed to the image verb. The verb is a stand-in that records
+#     each image it is asked for; the next plain `add_executable` after the
+#     helper is an image again (the switch is function-scoped).
+mk_plain() {
+    local d="$WORK/plain-$1"; mkdir -p "$d"; : > "$d/a.cpp"; : > "$d/h.cpp"
+    cat > "$d/CMakeLists.txt" <<CML
+cmake_minimum_required(VERSION 3.22)
+project(plainexe CXX)
+set(NROS_PLATFORM $1)
+add_library(nros_runtime_stand_in INTERFACE)
+add_library(NanoRos::NanoRosCpp ALIAS nros_runtime_stand_in)
+include("$ROOT/cmake/NanoRosAmentSurface.cmake")
+include("$ROOT/cmake/NanoRosVerbs.cmake")
+# Stand-in for the image verb: record the image, build nothing.
+function(nano_ros_add_executable name)
+    set_property(GLOBAL APPEND PROPERTY IMAGES \${name})
+endfunction()
+add_executable(img a.cpp)
+nano_ros_add_plain_executable(helper h.cpp)
+add_executable(img2 a.cpp)
+get_property(_i GLOBAL PROPERTY IMAGES)
+get_target_property(_ht helper TYPE)
+get_target_property(_hp helper NROS_PLAIN_EXECUTABLE)
+message(STATUS "images=[\${_i}] helper TYPE=[\${_ht}] plain=[\${_hp}]")
+CML
+    AMENT_PREFIX_PATH= cmake -S "$d" -B "$d/b" 2>&1
+}
+out="$(mk_plain freertos)" || true
+expect "14. on a board the helper is the builtin, both add_executables images" \
+    "images=[img;img2] helper TYPE=[EXECUTABLE] plain=[TRUE]" "$out"
+out="$(mk_plain posix)" || true
+expect "14. on posix it is the same builtin" \
+    "helper TYPE=[EXECUTABLE] plain=[TRUE]" "$out"
+d="$WORK/plain-refused"; mkdir -p "$d"
+cat > "$d/CMakeLists.txt" <<CML
+cmake_minimum_required(VERSION 3.22)
+project(plainref NONE)
+include("$ROOT/cmake/NanoRosVerbs.cmake")
+nano_ros_add_plain_executable(nothing)
+CML
+out="$(cmake -S "$d" -B "$d/b" 2>&1)" || true
+expect "14. a plain executable with no sources is refused by name" \
+    "nano_ros_add_plain_executable(nothing) names no sources" "$out"
+
+fi  # have_cli (case 14)
 
 [ "$fail" -eq 0 ] && echo "cmake-ament-surface: OK" || { echo "cmake-ament-surface: FAILED"; exit 1; }

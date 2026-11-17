@@ -158,7 +158,10 @@ endif()
 # image `nano_ros_entry` builds, a generated carrier, a board's own image. An
 # in-tree example that calls `nano_ros_add_executable` directly reaches the
 # builtin that way, not a second image. posix is not wrapped: there the
-# program keeps its own `main`.
+# program keeps its own `main`. A consumer's executable that is not an image
+# (a test helper with its own `main`) is declared with the public
+# `nano_ros_add_plain_executable` (NanoRosVerbs.cmake, issue 2678), never by
+# setting the private switch.
 get_property(_nros_add_executable_wrapped GLOBAL PROPERTY NROS_AMENT_ADD_EXECUTABLE_WRAPPED)
 if(NOT _nros_add_executable_wrapped AND NROS_PLATFORM AND NOT NROS_PLATFORM STREQUAL "posix")
     set_property(GLOBAL PROPERTY NROS_AMENT_ADD_EXECUTABLE_WRAPPED TRUE)
