@@ -827,6 +827,7 @@ this phase will fix it.
 
 ## Issues homed here (2026-11-17)
 
+- [issue 2665](../issues/2665-target-session-chain-start-deadline-under-load.md): `target_session::tests::teardown_waits_for_a_chain_that_is_stopping` failed under host load at its 5 s chain-start deadline and passes alone.
 - [issue 2660](../issues/archived/2660-pyo3-rebuilds-on-path-change.md) (GitHub #4084, resolved): the launch resolver rebuilt pyo3-ffi whenever PATH changed (I25).
 
 ## Issues homed here (2026-11-16)
