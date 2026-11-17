@@ -9,7 +9,7 @@ related: [phase-568, phase-313, phase-348, phase-367, issue-0662, issue-2280, is
 found: 2026-11-17
 ---
 
-**Home:** [phase-568](../roadmap/phase-568-build-args-and-profiles.md) W3, the
+**GitHub:** #4149. **Home:** [phase-568](../roadmap/phase-568-build-args-and-profiles.md) W3, the
 source probe's reach (W3a, #4131, gave the probe its workspace-wide cmake
 args). **Owner:** nros 118's probe line, implemented under claim 2680.
 
