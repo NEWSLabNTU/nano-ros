@@ -1928,6 +1928,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     derived_cargo_features(descriptor, &image.features),
                     true,
                 )?);
+                crate::builder::build_args::warn_passthrough_once(
+                    crate::builder::build_args::PassRoad::Cargo,
+                    &args.native_args,
+                );
                 a.extend(args.native_args.iter().cloned());
                 // A caller-named target dir wins over the settings file's, as it
                 // does for cargo itself (CLI/env above config).
@@ -2359,9 +2363,44 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     image.profile.as_deref(),
                 )?);
                 // RFC-0117 D7: the image's committed arguments, then the caller's.
-                a.extend(image.build.cmake_argv(&image_id)?);
-                a.extend(args.cmake_args.iter().cloned());
-                a.extend(args.native_args.iter().cloned());
+                // RFC-0117 D8 — the caller's arguments: the image's committed
+                // ones, `--cmake-args=`, then `--`. A `-D` among them last time
+                // and not now is undefined, or the cache keeps it in force.
+                let committed = image.build.cmake_argv(&image_id)?;
+                let mut user = committed.clone();
+                user.extend(args.cmake_args.iter().cloned());
+                crate::builder::build_args::warn_passthrough_once(
+                    crate::builder::build_args::PassRoad::Cmake,
+                    &args.native_args,
+                );
+                user.extend(args.native_args.iter().cloned());
+                let undefine = crate::builder::build_args::image_cmake_drift(
+                    &manifest_dir.join("cmake"),
+                    &user,
+                    args.dry_run,
+                )
+                .wrap_err("record the image's CMake arguments")?;
+                if args.dry_run {
+                    let committed_src = format!("[image.{image_id}.build] cmake_args");
+                    for line in crate::builder::build_args::arg_sources(
+                        "CMake",
+                        &qual,
+                        &[
+                            ("dropped since the last configure", &undefine),
+                            (committed_src.as_str(), &committed),
+                            ("--cmake-args=", &args.cmake_args),
+                            ("after `--`", &args.native_args),
+                        ],
+                    ) {
+                        eprintln!("{line}");
+                    }
+                    eprintln!(
+                        "  Note: {}.",
+                        crate::orchestration::metadata_probe_cmake::PROBE_ARGS_RULE
+                    );
+                }
+                a.extend(undefine);
+                a.extend(user);
                 // phase-439 W7 / phase-530 W3 -- the record's digest, so the
                 // configure's entity producer may read the union instead of
                 // recomposing it (`nros_resolved_entity_take`); the west arm's
@@ -2683,6 +2722,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         .map_err(|e| eyre::eyre!("{e}"))?;
                 // `--cmake-args` belong to CMake whatever their spelling, so
                 // they skip the west/cmake split and go to the second zone.
+                crate::builder::build_args::warn_passthrough_once(
+                    crate::builder::build_args::PassRoad::West,
+                    &cmake_extra,
+                );
                 cmake_extra.extend(image.build.cmake_argv(&image_id)?);
                 cmake_extra.extend(args.cmake_args.iter().cloned());
 
@@ -3332,6 +3375,10 @@ fn plan_leaf_image(
         derived_cargo_features(descriptor, &img.decl.features),
         false,
     )?);
+    crate::builder::build_args::warn_passthrough_once(
+        crate::builder::build_args::PassRoad::Cargo,
+        &args.native_args,
+    );
     a.extend(args.native_args.iter().cloned());
     let output = crate::cmd::build_next::BuildOutput::Cargo {
         target_dir: crate::builder::shared_target::caller_target_dir(
@@ -3539,6 +3586,10 @@ fn plan_single_package_cmake(
         .cmake_argv(&image_id)?,
     );
     a.extend(args.cmake_args.iter().cloned());
+    crate::builder::build_args::warn_passthrough_once(
+        crate::builder::build_args::PassRoad::Cmake,
+        &args.native_args,
+    );
     a.extend(args.native_args.iter().cloned());
     Ok(Some(vec![ResolvedBuild {
         qualified: qual,
@@ -4932,6 +4983,10 @@ fn plan_packages(
             // phase-478 I24 -- this `nros` is the codegen tool.
             a.extend(crate::builder::codegen_tool_arg());
             a.extend(args.cmake_args.iter().cloned());
+            crate::builder::build_args::warn_passthrough_once(
+                crate::builder::build_args::PassRoad::Cmake,
+                &args.native_args,
+            );
             a.extend(args.native_args.iter().cloned());
             (
                 Driver::CMake,
@@ -4945,6 +5000,10 @@ fn plan_packages(
             if args.offline {
                 a.push("--frozen".to_string());
             }
+            crate::builder::build_args::warn_passthrough_once(
+                crate::builder::build_args::PassRoad::Cargo,
+                &args.native_args,
+            );
             a.extend(args.native_args.iter().cloned());
             // A package with no lock of its own gets one resolved first, as a
             // generated entry does: the PATH shim's project-wide `--locked`

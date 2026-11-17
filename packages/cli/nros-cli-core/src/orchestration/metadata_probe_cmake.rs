@@ -732,7 +732,10 @@ fn set_aside_cross_cache(build_dir: &Path) -> Result<()> {
 fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path, rmw: &str) -> Result<()> {
     set_aside_cross_cache(build_dir)?;
     let probe_args = read_args(&probe_dir.join(PROBE_ARGS_WANTED));
-    let dropped = dropped_defines(&read_args(&build_dir.join(PROBE_ARGS_USED)), &probe_args);
+    let dropped = crate::builder::build_args::dropped_defines(
+        &read_args(&build_dir.join(PROBE_ARGS_USED)),
+        &probe_args,
+    );
     let mut cmd = Command::new("cmake");
     cmd.arg("-S")
         .arg(probe_dir)
@@ -1071,19 +1074,6 @@ fn read_args(path: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The `-D` names in `used` that `wanted` no longer defines.
-fn dropped_defines(used: &[String], wanted: &[String]) -> Vec<String> {
-    let name = |a: &String| {
-        a.strip_prefix("-D")
-            .map(|d| d.split(['=', ':']).next().unwrap_or(d).to_string())
-    };
-    let keep: Vec<String> = wanted.iter().filter_map(name).collect();
-    used.iter()
-        .filter_map(name)
-        .filter(|n| !keep.contains(n))
-        .collect()
-}
-
 /// Whether the probe build was configured with the arguments now wanted. A
 /// change re-probes every C/C++ component, as a missing build does.
 pub fn probe_args_current(probe_dir: &Path) -> bool {
@@ -1124,10 +1114,13 @@ mod probe_args_tests {
     fn a_dropped_define_is_undefined() {
         let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(
-            dropped_defines(&v(&["-DA=1", "-DB:BOOL=ON", "-Wno-dev"]), &v(&["-DA=2"])),
+            crate::builder::build_args::dropped_defines(
+                &v(&["-DA=1", "-DB:BOOL=ON", "-Wno-dev"]),
+                &v(&["-DA=2"])
+            ),
             vec!["B"]
         );
-        assert!(dropped_defines(&v(&[]), &v(&["-DA=1"])).is_empty());
+        assert!(crate::builder::build_args::dropped_defines(&v(&[]), &v(&["-DA=1"])).is_empty());
     }
 }
 

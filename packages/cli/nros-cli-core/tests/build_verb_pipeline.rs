@@ -2129,3 +2129,64 @@ fn a_multi_image_zephyr_leaf_names_the_image_to_the_hook() {
         "the hook must be told which image: {line}"
     );
 }
+
+/// RFC-0117 D7/D8 — each road hands the caller's arguments to its own tool,
+/// in source order: the cmake road's configure carries `--cmake-args=` then
+/// `--`; the west road keeps west's own options before its `--` and sends
+/// `--cmake-args=` and a CMake `-D` after it; the cargo road's command carries
+/// `--cargo-args=` then `--`.
+#[test]
+fn each_road_hands_the_callers_arguments_to_its_own_tool_in_order() {
+    // The cmake road.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    write(
+        &tmp.path().join("src/talker_pkg/CMakeLists.txt"),
+        "# c pkg\n",
+    );
+    let mut a = args(tmp.path(), &["linux"]);
+    a.cmake_args = vec!["-DFROM_FLAG=1".into()];
+    a.native_args = vec!["-DFROM_DASHDASH=2".into()];
+    let plans = plan_builds(&a).expect("resolves");
+    assert_eq!(plans[0].driver, Driver::CMake);
+    let cfg = plans[0].configure.as_ref().expect("configure").display();
+    let (f, d) = (cfg.find("-DFROM_FLAG=1"), cfg.find("-DFROM_DASHDASH=2"));
+    assert!(
+        matches!((f, d), (Some(f), Some(d)) if f < d),
+        "`--cmake-args=` then `--`: {cfg}"
+    );
+
+    // The west road.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let mut a = args(tmp.path(), &["zephyr"]);
+    a.cmake_args = vec!["-DFROM_FLAG=1".into()];
+    a.native_args = vec!["-t".into(), "run".into(), "-DFROM_DASHDASH=2".into()];
+    let plans = plan_builds(&a).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    let (west_zone, cmake_zone) = line.split_once(" -- ").expect("a cmake zone");
+    assert!(
+        west_zone.contains("-t run"),
+        "west's own option stays west's: {line}"
+    );
+    assert!(
+        cmake_zone.contains("-DFROM_FLAG=1") && cmake_zone.contains("-DFROM_DASHDASH=2"),
+        "both CMake arguments reach CMake: {line}"
+    );
+    assert!(!west_zone.contains("-DFROM_"), "{line}");
+
+    // The cargo road.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let mut a = args(tmp.path(), &["linux"]);
+    a.cargo_args = vec!["--timings".into()];
+    a.native_args = vec!["--locked".into()];
+    let plans = plan_builds(&a).expect("resolves");
+    assert_eq!(plans[0].driver, Driver::Cargo);
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    let (t, l) = (line.find("--timings"), line.rfind("--locked"));
+    assert!(
+        matches!((t, l), (Some(t), Some(l)) if t < l),
+        "`--cargo-args=` then `--`: {line}"
+    );
+}
