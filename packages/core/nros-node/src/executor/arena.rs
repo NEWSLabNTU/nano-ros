@@ -3853,11 +3853,28 @@ where
             // reply, before anything else can take on it (as
             // `Promise::take_with_info` does); only the with-info shape reads it,
             // and that one copy of a plain struct is inside the span.
-            let handle = &entry.hdr.handle;
+            //
+            // Phase-573 W2b (RFC-0108 D9) — the callback may send the next
+            // request through its `ServiceClientCallback`, which writes this
+            // entry's send header. So the info closure holds the entry's
+            // POINTER, not a reference into `hdr` (a reference captured in a
+            // closure argument is protected for the whole `on_reply` call),
+            // and reads the handle only when the with-info shape asks.
+            let info = || {
+                // SAFETY: `ptr` is this entry (the fn's contract). The shared
+                // borrow covers the handle's bytes alone (never `callback`,
+                // which `on_reply` is running) and ends with this one read.
+                let handle = unsafe {
+                    &*core::ptr::addr_of!(
+                        (*(ptr as *const ServiceClientCallbackEntry<Svc, F, REPLY_BUF>))
+                            .hdr
+                            .handle
+                    )
+                };
+                nros_rmw::ClientTrait::response_info(handle)
+            };
             trace_cb_start(desc_idx);
-            entry
-                .callback
-                .on_reply(&reply, || nros_rmw::ClientTrait::response_info(handle));
+            entry.callback.on_reply(&reply, info);
             trace_cb_end(desc_idx);
             Ok(true)
         }
@@ -3961,37 +3978,30 @@ where
     FbF: FnMut(&nros_core::GoalUuid, &A::Feedback),
     ResF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode, &A::Result),
 {
-    let entry = unsafe {
-        &mut *(ptr as *mut ActionClientCallbackEntry<
-            A,
-            GRespF,
-            FbF,
-            ResF,
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-        >)
+    type Entry<A, G, Fb, R, const GB: usize, const RB: usize, const FB: usize> =
+        ActionClientCallbackEntry<A, G, Fb, R, GB, RB, FB>;
+    // Phase-573 W2b (RFC-0108 D9) — a callback may send through its
+    // `ActionClientCallback` (`send_goal`, `get_result`), which writes this
+    // entry's `core`. So each step takes a fresh reference from `ptr`, and no
+    // borrow of `core` taken before a callback is used after it.
+    //
+    // SAFETY (each use): `ptr` points to a valid entry (this fn's contract).
+    let entry = || unsafe {
+        &mut *(ptr as *mut Entry<A, GRespF, FbF, ResF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>)
     };
-    let ActionClientCallbackEntry {
-        core,
-        feedback_buffer,
-        on_goal_response,
-        on_feedback,
-        on_result,
-        _phantom,
-    } = entry;
 
     let mut did_work = false;
 
     // 1. Goal-acceptance reply (single-outstanding → gated single buffer).
     // Issue 2009 — the goal is the one the reply's request was ABOUT, not the
     // most recently sent one.
-    if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for() {
-        let accepted = crate::action_frame::goal_accepted(&core.result_buffer[..total_len]);
+    if let Ok(Some((total_len, goal_id))) = entry().core.try_recv_send_goal_reply_for() {
+        let e = entry();
+        let accepted = crate::action_frame::goal_accepted(&e.core.result_buffer[..total_len]);
         // Phase 8 — hooked inside the `Ok(Some(..))` arm; an empty poll is
         // the common case and runs no user code.
         trace_cb_start(desc_idx);
-        on_goal_response(&goal_id, accepted);
+        (e.on_goal_response)(&goal_id, accepted);
         trace_cb_end(desc_idx);
         did_work = true;
     }
@@ -4001,6 +4011,14 @@ where
     //    message: outer CDR header (4) + GoalUuid (16) + inner-CDR payload; see the
     //    raw dispatcher for the layout rationale (233.6).
     {
+        // The callbacks below may write `core`; nothing in this block uses
+        // `core` after one runs (the ring loop pops only from the ring).
+        let ActionClientCallbackEntry {
+            core,
+            feedback_buffer,
+            on_feedback,
+            ..
+        } = entry();
         match feedback_buffer {
             BufferStrategy::Triple(tb) => {
                 let slot = tb.write_slot();
@@ -4036,8 +4054,9 @@ where
 
     // 3. Result reply — status at byte 4, payload at [8 ..] (header + status +
     //    align pad); see the raw dispatcher (Phase 96.1).
-    if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for() {
-        let reply = &core.result_buffer[..total_len];
+    if let Ok(Some((total_len, goal_id))) = entry().core.try_recv_get_result_reply_for() {
+        let e = entry();
+        let reply = &e.core.result_buffer[..total_len];
         // Issue 2014 — status and payload offset from `action_frame`.
         if let (Some(status), Some(fields)) = (
             crate::action_frame::result_status(reply),
@@ -4051,7 +4070,7 @@ where
                 // deserialize leaves `on_result` un-run and must emit
                 // nothing. Distinct callback, its own pair.
                 trace_cb_start(desc_idx);
-                on_result(&goal_id, status, &res);
+                (e.on_result)(&goal_id, status, &res);
                 trace_cb_end(desc_idx);
             }
         }

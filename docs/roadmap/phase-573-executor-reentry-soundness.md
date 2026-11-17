@@ -90,6 +90,16 @@ already does.
 Acceptance: a Miri case per kind in `executor::tests::reentry`, run by
 `just check miri-executor-reentry`.
 
+One pull request per row, each with its failing Miri case committed first.
+
+| Entry kind | Status | Notes |
+|---|---|---|
+| Raw action server | Open | Its own pull request. |
+| Service and action client callbacks | Fixed | Wider than re-entry. `ServiceClientCallback` and `ActionClientCallback` held a pointer made as `&mut (*entry).field as *mut _`, a child of a temporary reference, which the dispatcher's own write to the entry disabled. So the second request through the safe handle was UB even from outside any callback. The fix takes a raw place (`addr_of_mut!`); the guard flag's pointer follows suit. The typed action-client dispatch also re-derives the entry per step, and the service-client info closure holds the entry pointer instead of `&hdr.handle`. Cases: a reply that sends the next request, a goal response that asks for its result, and each handle surviving its reply dispatch. Cost: none (host release, 13,752 B for the ten client dispatch monomorphs, before and after). |
+| Service server | Open | `handle`, `req_buffer` and `reply_buffer` are `&mut` arguments of `handle_request(.., cb)`. |
+| Subscription drain | Open | `entry` is used again on the next loop iteration. |
+| Guard | Open (negative control) | Atomic flag; the entry is not used after the callback. |
+
 ### W3 — One derive helper, and the class sweep
 
 - **Status:** OPEN
