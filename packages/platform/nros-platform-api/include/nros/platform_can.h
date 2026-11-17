@@ -118,7 +118,7 @@ typedef struct {
 
 /** Handle storage in `uint64_t` words. ABI: changing it is a header edit, a
  *  `scripts/gen-abi-bindings.sh` run and a commit of both. Measured state per
- *  backend (bytes, x86_64): mock 8. */
+ *  backend (bytes, x86_64): mock 8, socketcan 12. */
 #define NROS_PLATFORM_CAN_OPAQUE_U64S 16u
 
 /** A CAN handle: caller storage, the backend's state lives inside it. */

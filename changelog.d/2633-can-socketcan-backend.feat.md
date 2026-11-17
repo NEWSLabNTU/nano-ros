@@ -1,0 +1,1 @@
+The CAN frame driver's SocketCAN backend: an image on the `linux`, `freertos-posix` or `threadx-linux` board sends and receives classic and CAN FD frames on a host SocketCAN interface through `<nros/platform_can.h>` (open a device by name; `want_fd` is refused at open on an interface without the CAN FD MTU). `freertos-posix` and `threadx-linux` now list `can` among their links.

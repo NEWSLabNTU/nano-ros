@@ -101,6 +101,9 @@ pub mod nuttx_toolchain;
 pub use nros_platform_config::platform_config;
 #[cfg(feature = "build-helpers")]
 pub mod board_net;
+/// The one SocketCAN CAN-frame backend source, for every Linux-process board.
+#[cfg(feature = "build-helpers")]
+pub mod can_socketcan;
 /// One `nros_platform_*` provider per linked graph.
 #[cfg(feature = "build-helpers")]
 pub mod platform_port;

@@ -154,6 +154,12 @@ fn main() {
     // `packages/api/nros-c/include`. The two TUs this script WRITES into
     // OUT_DIR (the hooks copy, the app-config definition) are outputs and are
     // not declared — see `emit_header_deps`.
+    // ---- RFC-0132 D3: the CAN frame driver's `socketcan` backend ----
+    // The same `nros-board-linux/c/can_socketcan.c` the linux board compiles:
+    // this image is a Linux process, so its CAN device is a SocketCAN one.
+    // Pulled on demand; an image that sends no frames links none of it.
+    nros_board_common::can_socketcan::compile_socketcan_backend();
+
     nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
         env::var("OUT_DIR").expect("OUT_DIR"),
     ));

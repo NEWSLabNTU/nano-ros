@@ -1160,6 +1160,8 @@ dependencies = [
  "libc",
  "log",
  "nros",
+ "nros-board-common",
+ "nros-cc-flags",
  "nros-log",
  "nros-platform",
  "nros-platform-cffi",
