@@ -62,6 +62,7 @@
 - packages/cli/nros-cli-core/src/codegen/entry/emit_rust.rs
 - packages/cli/nros-cli-core/src/codegen/entry/golden.rs
 - packages/cli/nros-cli-core/src/codegen/entry/parity.rs
+- packages/cli/nros-cli-core/src/process_env.rs
 - packages/cli/nros-cli-core/src/test_support.rs
 - packages/cli/nros-cli-core/testdata
 - packages/cli/nros-cli-core/tests

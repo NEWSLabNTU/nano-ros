@@ -5,6 +5,7 @@
 //! that library is renamed or split.
 
 pub mod abi_guard;
+pub mod process_env;
 
 /// phase-527 W3 (RFC-0119 D5) — the runner and command contract, re-exported
 /// so the verbs that resolve a RunPlan or dispatch an extension command

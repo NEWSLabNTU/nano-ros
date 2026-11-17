@@ -48,6 +48,18 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    // Issue 2671 — every cargo `nros` runs, directly or through CMake, Corrosion
+    // or west, fetches git dependencies with the git CLI rather than libgit2,
+    // whose TLS failed where the CLI passed. Set in this process so each child
+    // inherits it, with or without `activate.sh`; a caller's own value wins.
+    if let Some((k, v)) =
+        nros_cli_core::process_env::cargo_git_fetch_default(|k| std::env::var_os(k))
+    {
+        // SAFETY: the first statement of `main`, before the runtime, any
+        // thread or any child process exists, so no other thread can be
+        // reading the environment while it is written.
+        unsafe { std::env::set_var(k, v) };
+    }
     // phase-552 W2 (RFC-0129 D2) — a refusal built from its diagnostic code is
     // already three finished lines (`error[NROS-…]`, `help`, `explain`), so it
     // prints as it is, without eyre's `Error: ` in front. Anything else, and a
