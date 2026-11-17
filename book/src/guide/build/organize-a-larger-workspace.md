@@ -269,6 +269,12 @@ Reach for these in order, smallest first:
 - **An edit to the image row changes nothing.** A hand-written
   `src/<image>_entry/` with a `Cargo.toml` or `CMakeLists.txt` takes
   precedence. Move its settings to the `[image.*]` row and delete it.
+- **Configure stops: `project(<a>)` … does not match the package name
+  `<b>`.** A C or C++ node package's `project()` must be its `package.xml`
+  `<name>`, as in ament. The build names the package's entry symbols from
+  `project()` and the generated entry names them from `package.xml`, so two
+  names would link to nothing. Rename one to match; after renaming a package,
+  change both.
 
 ## See also
 
