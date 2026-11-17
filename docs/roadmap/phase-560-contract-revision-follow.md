@@ -3,7 +3,7 @@
 **Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch v0.32.0,
 #3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE (every level
 charged since #3758); W9 (the CAN frame driver, RFC-0132) OPEN, RFC accepted
-2026-11-17, W9.a DONE. nano-ros's
+2026-11-17, W9.a and W9.c DONE. nano-ros's
 share of two play_launch phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -179,7 +179,10 @@ and each states its acceptance before it lands.
   reads byte for byte; opening with `want_fd` on a classic-MTU interface fails
   at `open`; the backend's `_Static_assert` is in the gate's `GUARD_SITES`;
   the S32K344 build (issue 2573's board) compiles the backend.
-- **W9.c -- The `socketcan` backend.**
+- **W9.c -- The `socketcan` backend.** DONE (2026-11-17): both probes' frames
+  read back by `candump` on vcan0; the classic-interface (MTU 16) check is
+  GATED (no classic interface on the build host), reported NOT VERIFIED by
+  `scripts/test/can-frame-socketcan.sh` until one is given.
   `packages/boards/nros-board-linux/c/can_socketcan.c` with a new `build.rs`,
   compiled by the same path into `nros-board-freertos-posix` and
   `nros-board-threadx-linux`; `PF_CAN`, `CAN_RAW` and `linux/can.h` added to

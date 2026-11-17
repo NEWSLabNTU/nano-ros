@@ -78,7 +78,18 @@ FORBIDDEN = {
     "SCHED_DEADLINE": "sched_setattr/SCHED_DEADLINE are Linux-only",
     "SCHED_BATCH": "SCHED_BATCH is Linux-only",
     "SCHED_IDLE": "SCHED_IDLE is Linux-only",
+    # RFC-0132 D3 -- SocketCAN. The CAN frame driver's `socketcan` backend
+    # lives in `nros-board-linux/c/can_socketcan.c`, the board layer.
+    "PF_CAN": "SocketCAN is Linux-only -- the CAN backend lives in nros-board-linux",
+    "CAN_RAW": "SocketCAN is Linux-only -- the CAN backend lives in nros-board-linux",
+    "linux/can.h": "SocketCAN is Linux-only -- the CAN backend lives in nros-board-linux",
 }
+
+# RFC-0132 (Alternatives): SocketCAN in this crate is REFUSED, not merely
+# guarded. A `#ifdef __linux__` would satisfy the rule above, but the crate's
+# name is the claim this gate protects, and the board layer is where a
+# Linux-only backend belongs. No guard excuses these.
+NO_GUARD_EXCUSES = {"PF_CAN", "CAN_RAW", "linux/can.h"}
 
 # A line is excused when a guard opens within this many lines above it.
 GUARD = re.compile(r"__linux__|_GNU_SOURCE|__ANDROID__")
@@ -138,20 +149,20 @@ def offending(lines):
         for sym, why in FORBIDDEN.items():
             if not re.search(rf"\b{re.escape(sym)}\b", line):
                 continue
-            if guarded():
+            if sym not in NO_GUARD_EXCUSES and guarded():
                 continue
             hits.append((n, sym, why))
     return hits
 
 
-def check():
+def check(crate=CRATE):
     problems = []
-    if not os.path.isdir(CRATE):
-        raise SystemExit(f"check-posix-platform-purity: no {CRATE}")
-    for name in sorted(os.listdir(CRATE)):
+    if not os.path.isdir(crate):
+        raise SystemExit(f"check-posix-platform-purity: no {crate}")
+    for name in sorted(os.listdir(crate)):
         if not name.endswith((".c", ".h")):
             continue
-        path = os.path.join(CRATE, name)
+        path = os.path.join(crate, name)
         with open(path, encoding="utf8", errors="replace") as fh:
             lines = strip_comments(fh.read())
         for lineno, sym, why in offending(lines):
@@ -181,12 +192,32 @@ def self_test():
         ("#ifdef __linux__\nint a;\n#else\nint f(void){return eventfd(0,0);}\n#endif", 1),
         ("#ifndef __linux__\nint a;\n#else\nint f(void){return eventfd(0,0);}\n#endif", 0),
         ("#if defined(__linux__) || defined(__ANDROID__)\nint f(void){return gettid();}\n#endif", 0),
+        # RFC-0132 W9.c -- SocketCAN, refused even behind a guard.
+        ("#include <linux/can.h>\nint f(void){return socket(PF_CAN, SOCK_RAW, CAN_RAW);}", 3),
+        ("#ifdef __linux__\nint f(void){return socket(PF_CAN, SOCK_RAW, CAN_RAW);}\n#endif", 2),
+        ("/* the board's PF_CAN backend, not here */\nint f(void){return 0;}", 0),
     ]
     fails = []
     for i, (src, want) in enumerate(cases):
         got = len(offending(strip_comments(src)))
         if got != want:
             fails.append(f"case {i}: expected {want} hit(s), got {got}")
+    # RFC-0132 W9.c -- through the DIRECTORY scan, not only `offending`: a
+    # `PF_CAN` line planted in a copy of `nros-platform-posix/src` is refused,
+    # and the unplanted copy passes.
+    import shutil
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = os.path.join(tmp, "src")
+        shutil.copytree(CRATE, copy)
+        if check(copy):
+            fails.append("the unplanted copy of nros-platform-posix/src is refused")
+        with open(os.path.join(copy, "zz_planted_can.c"), "w", encoding="utf8") as fh:
+            fh.write("#include <sys/socket.h>\nint f(void){return socket(PF_CAN, 3, 1);}\n")
+        planted = check(copy)
+        if [p[2] for p in planted] != ["PF_CAN"]:
+            fails.append(f"a planted PF_CAN line gave {planted!r}, expected one PF_CAN hit")
     if fails:
         for f in fails:
             print(f"check-posix-platform-purity self-test: FAIL {f}", file=sys.stderr)

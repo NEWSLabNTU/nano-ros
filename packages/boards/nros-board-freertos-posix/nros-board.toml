@@ -58,7 +58,9 @@ FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-freerto
 [board.net]
 stack = "host"
 # RFC-0109 D3 — the link kinds this board carries.
-links = ["tcp", "udp"]
+# RFC-0132 D6 (phase-560 W9.c) -- `can`: the image is a Linux process, and
+# the CAN frame driver's `socketcan` backend (nros-board-linux/c/) is compiled in.
+links = ["tcp", "udp", "can"]
 
 # phase-548 W1 — the Rust entry's `main`: the C runtime's, as on threadx-linux.
 [board.entry]

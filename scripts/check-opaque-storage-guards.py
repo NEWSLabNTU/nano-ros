@@ -46,6 +46,15 @@ GUARD_SITES = [
     "packages/api/nros-cpp/src/lib.rs",
     # RFC-0132 D2a -- one per in-tree CAN backend.
     "packages/drivers/can/nros-can-mock/src/imp.rs",
+    "packages/boards/nros-board-linux/c/can_socketcan.c",
+]
+
+# RFC-0132 D2a -- every in-tree CAN backend must guard the CAN handle ITSELF:
+# the union over GUARD_SITES would let one backend's assert cover another's
+# missing one, and each backend has its own state to fit.
+CAN_BACKEND_SITES = [
+    "packages/drivers/can/nros-can-mock/src/imp.rs",
+    "packages/boards/nros-board-linux/c/can_socketcan.c",
 ]
 
 # The CAN mock's guard, which the self-test removes to prove the gate notices.
@@ -95,6 +104,11 @@ GUARD_MACRO = re.compile(
     r'guard_opaque!\s*\(.*?"([A-Z_][A-Z0-9_]*_OPAQUE_U64S)"', re.S
 )
 ASSERT_BLOCK = re.compile(r"assert!\s*\((.*?)\);", re.S)
+# A C backend's guard: a `_Static_assert` naming the macro, or the header's
+# one-line `NROS_PLATFORM_CAN_STORAGE_FITS(type);`, which expands to exactly
+# that (RFC-0132 D2a). Line-anchored, so a mention in a comment is not a guard.
+C_STATIC_ASSERT = re.compile(r"_Static_assert\s*\((.*?)\);", re.S)
+CAN_STORAGE_FITS = re.compile(r"^\s*NROS_PLATFORM_CAN_STORAGE_FITS\s*\(", re.M)
 
 
 def guarded_macros(text=None):
@@ -109,9 +123,16 @@ def guarded_macros(text=None):
     """
     blob = text if text is not None else "\n".join(read(r) for r in GUARD_SITES)
     names = set(GUARD_MACRO.findall(blob))
-    for body in ASSERT_BLOCK.findall(blob):
+    for body in ASSERT_BLOCK.findall(blob) + C_STATIC_ASSERT.findall(blob):
         names.update(re.findall(r"[A-Z_][A-Z0-9_]*_OPAQUE_U64S", body))
+    if CAN_STORAGE_FITS.search(blob):
+        names.add(CAN_MACRO)
     return names
+
+
+def unguarded_can_backends():
+    """In-tree CAN backends whose own source does not guard the CAN handle."""
+    return [site for site in CAN_BACKEND_SITES if CAN_MACRO not in guarded_macros(read(site))]
 
 
 def unguarded(emitted, guarded):
@@ -157,6 +178,19 @@ def self_test():
     if CAN_MACRO in guarded_macros(ASSERT_BLOCK.sub("", mock)):
         sys.stderr.write(f"self-test: {CAN_MACRO} still guarded with the mock's assert removed\n")
         sys.exit(2)
+    # The C spellings (W9.c): the header's macro and a hand `_Static_assert`
+    # guard; a comment mentioning the macro does not.
+    if CAN_MACRO not in guarded_macros("NROS_PLATFORM_CAN_STORAGE_FITS(struct s);\n"):
+        sys.stderr.write("self-test: NROS_PLATFORM_CAN_STORAGE_FITS is not read as a guard\n")
+        sys.exit(2)
+    if CAN_MACRO not in guarded_macros(
+        '_Static_assert(sizeof(struct s) <= 8, "NROS_PLATFORM_CAN_OPAQUE_U64S too small");\n'
+    ):
+        sys.stderr.write("self-test: a C _Static_assert is not read as a guard\n")
+        sys.exit(2)
+    if CAN_MACRO in guarded_macros("/* see NROS_PLATFORM_CAN_STORAGE_FITS(type) */\n"):
+        sys.stderr.write("self-test: a comment naming the guard macro WAS read as a guard\n")
+        sys.exit(2)
 
 
 def main():
@@ -170,6 +204,16 @@ def main():
         )
         return 1
     missing = unguarded(emitted, guarded_macros())
+    bare_backends = unguarded_can_backends()
+    if bare_backends:
+        sys.stderr.write(
+            f"[FAIL] these CAN backends do not guard their own state against {CAN_MACRO}\n"
+            "       (RFC-0132 D2a): add `NROS_PLATFORM_CAN_STORAGE_FITS(<state type>);`\n"
+            "       (C) or a `const _: () = assert!(...)` naming the macro (Rust):\n"
+        )
+        for site in bare_backends:
+            sys.stderr.write(f"         {site}\n")
+        return 1
     if missing:
         sys.stderr.write(
             "[FAIL] these opaque-storage macros have no compile-time size guard,\n"

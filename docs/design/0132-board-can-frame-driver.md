@@ -199,6 +199,7 @@ that class:
   | Backend | State | `sizeof` | `_Alignof` | Recorded by |
   | --- | --- | --- | --- | --- |
   | `mock` | `HandleState` (`magic: u32`, `fd_active: u8`) | 8 | 4 | W9.a |
+  | `socketcan` | `struct socketcan_can` (`magic`, `fd`, `fd_active`) | 12 | 4 | W9.c |
 
 ### D3 -- Backends
 
@@ -393,6 +394,14 @@ because its image is the binary that gets flashed.
 
 ## Changelog
 
+- 2026-11-17 -- W9.c landed: the `socketcan` backend. Until W9.d/e carry the
+  image's device, its `open(NULL)` returns `NROS_PLATFORM_CAN_ENODEV`; a named
+  device opens. `want_fd` reads the interface MTU at open, and
+  `NROS_PLATFORM_CAN_SEND_WAIT_TX` returns "not supported" (open question 1).
+  `check-opaque-storage-guards` now holds EACH in-tree backend to its own
+  guard (`NROS_PLATFORM_CAN_STORAGE_FITS` or `_Static_assert` in C), not only
+  the union of them. The purity gate refuses `PF_CAN`, `CAN_RAW` and
+  `linux/can.h` in `nros-platform-posix` even behind an `#ifdef __linux__`.
 - 2026-11-17 -- W9.a landed: the header, the bindings, the mock. Two codes
   beyond D2's list, both for `open`: `NROS_PLATFORM_CAN_ENODEV` (the device
   does not exist or is not ready) and `NROS_PLATFORM_CAN_EIO` (any other

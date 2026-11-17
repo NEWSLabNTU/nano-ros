@@ -43,6 +43,10 @@ nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 cc = "1"
 
 [features]
+# RFC-0132 W9.c -- builds the CAN frame probe (`tests/can_socketcan_probe.rs`),
+# which needs a SocketCAN interface and this board's kernel build;
+# `scripts/test/can-frame-socketcan.sh` turns it on. Nothing else reads it.
+can-probe = []
 default = []
 # The board descriptor's `board_features`: the image's Rust allocator funnels
 # into `nros_platform_alloc` (heap_3, host malloc), as on threadx-linux.
@@ -51,3 +55,11 @@ rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
 ros-humble = ["nros-board-freertos/ros-humble", "nros-rmw-cyclonedds-sys?/ros-humble"]
 ros-iron = ["nros-board-freertos/ros-iron", "nros-rmw-cyclonedds-sys?/ros-iron"]
 ros-jazzy = ["nros-board-freertos/ros-jazzy", "nros-rmw-cyclonedds-sys?/ros-jazzy"]
+
+# RFC-0132 W9.c -- the CAN frame probe needs a live SocketCAN interface, the
+# board's kernel build and its own `main`, so the workspace test run never
+# builds it.
+[[test]]
+name = "can_socketcan_probe"
+harness = false
+required-features = ["can-probe"]
