@@ -1474,16 +1474,21 @@ pub const BOOT_REPORT_ARENA_EXHAUSTED: &str = "ARENA EXHAUSTED:";
 pub const IDLE_WAKE_ARMED_MARKER: &str = "idle-wake: armed";
 
 /// phase-521 W7 — the idle-wake witness's result line, printed at the end of
-/// its window: `idle-wake: switch_ins=N fires=F window_ms=W max_late_us=L
-/// max_early_us=E`. Parsed by [`parse_idle_wake`].
+/// its window: `idle-wake: switch_ins=N wakes=K fires=F window_ms=W
+/// max_late_us=L max_early_us=E`. Parsed by [`parse_idle_wake`].
 pub const IDLE_WAKE_RESULT_PREFIX: &str = "idle-wake: switch_ins=";
 
 /// The idle-wake witness's result, parsed from [`IDLE_WAKE_RESULT_PREFIX`]'s
 /// line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IdleWake {
-    /// Times the executor's thread was switched in over the window.
+    /// Times the executor's thread was switched in over the window: its
+    /// wakes, plus every resumption after a preemption or a reschedule pass
+    /// in which nothing else ran. Reported, not bounded (issue 2666).
     pub switch_ins: u32,
+    /// Times the executor's thread was switched in after it had BLOCKED:
+    /// the wakes RFC-0113 D2.3 bounds.
+    pub wakes: u32,
     /// Timer expiries inside the window.
     pub fires: u32,
     /// The window's length, first expiry to last.
@@ -1547,6 +1552,7 @@ pub fn parse_idle_wake(out: &str) -> Option<IdleWake> {
     };
     Some(IdleWake {
         switch_ins: u32::try_from(field("switch_ins")?).ok()?,
+        wakes: u32::try_from(field("wakes")?).ok()?,
         fires: u32::try_from(field("fires")?).ok()?,
         window_ms: u32::try_from(field("window_ms")?).ok()?,
         max_late_us: field("max_late_us")?,
@@ -1867,12 +1873,13 @@ mod tests {
     #[test]
     fn parse_idle_wake_reads_the_witness_line() {
         let out = "*** Booting Zephyr ***\r\nidle-wake: armed\r\n\
-                   idle-wake: switch_ins=6 fires=5 window_ms=5001 max_late_us=812 \
+                   idle-wake: switch_ins=15 wakes=5 fires=5 window_ms=5001 max_late_us=812 \
                    max_early_us=0\r\n";
         assert_eq!(
             parse_idle_wake(out),
             Some(IdleWake {
-                switch_ins: 6,
+                switch_ins: 15,
+                wakes: 5,
                 fires: 5,
                 window_ms: 5001,
                 max_late_us: 812,
@@ -1880,6 +1887,14 @@ mod tests {
             })
         );
         assert_eq!(parse_idle_wake("idle-wake: armed\n"), None);
+        // A witness built before it counted wakes is refused, not read as
+        // zero wakes.
+        assert_eq!(
+            parse_idle_wake(
+                "idle-wake: switch_ins=6 fires=5 window_ms=5001 max_late_us=0 max_early_us=0\n"
+            ),
+            None
+        );
     }
 
     #[test]
