@@ -112,10 +112,11 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
   - `rpi-pico-w`;
   - `qemu-cortex-a53`;
   - `freertos-posix`.
-- `nros board check <package>` builds each example, and runs it where the
-  board definition names a host or an emulator.
+- `nros check <board-package>` (the existing verb, which dispatches by
+  package kind) also builds each example, and runs it where the board
+  definition names a host or an emulator.
 - **Acceptance:** a gate holds that every in-tree board key has an example.
-  `nros board check` passes on every in-tree board package.
+  `nros check` passes on every in-tree board package.
 
 ### W8 — First consumer: the out-of-tree TI R5F board package
 
@@ -136,7 +137,8 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
   | W8 asserts | Until then | Tightens when |
   | --- | --- | --- |
   | the version range refuses an out-of-range nano-ros, and a missing tag warns | the tag parses and is ignored | W3 (parse and listing) and W6 (refusal at build) |
-  | the example builds, and runs where `[board.run]` names an emulator, through `nros board check` | `nros build` and `nros run --dry-run` directly | W7 |
+  | `nros setup <key>` provisions it from its `[board.provisioning] tools` | provisioning by hand | W10 |
+| the example builds, and runs where `[board.run]` names an emulator, through `nros check <board-package>` | `nros build` and `nros run --dry-run` directly | W7 |
   | `[board.flash] method = "openocd"`, checked with `nros flash --dry-run` | only `[board.run]` and `[board.console]` are stated | W5 |
   | found through the ament index from an installed prefix | found through `$NROS_EXTRA_BOARD_PATH` | W2 |
 
@@ -167,6 +169,65 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 - **Acceptance:** a gate refuses the retired terms in CLI help, diagnostics and
   the book, with an allowlist for historical documents.
 
+### W10 — `nros setup` through the board catalog
+
+- **Owner:** unassigned.
+- **Status:** OPEN
+- `nros setup <key>` resolves the key through the board catalog (every root),
+  taking packages from the in-tree index row where one exists, and otherwise
+  from the board definition's `[board.provisioning] tools` (RFC-0135 D2). An
+  unknown key is refused with near matches and the roots searched, never with
+  "add an index row".
+- **Acceptance:** an out-of-tree board package with no index row is
+  provisioned by `nros setup <key>`. This is W8's first dependency.
+
+### W11 — Installing a board package compiles nothing
+
+- **Owner:** unassigned.
+- **Status:** OPEN
+- For a package that announces `kind="board"`, the `nros_cargo` build type's
+  colcon install step copies the package, writes the `nano_ros_boards`
+  marker, and does not build the board crate (RFC-0135 D5).
+- **Acceptance:** `colcon build` on a workspace holding a board package with
+  a crate installs it with no compile, and W2's listing finds it.
+
+### W12 — What a library needs from a board
+
+- **Owner:** unassigned.
+- **Status:** OPEN
+- RFC-0135 D9:
+  - a library package declares its needs (hosted C++, heap, threads,
+    atomics, minimum RAM) in D8's capability vocabulary;
+  - W6's check refuses an image whose libraries a board cannot satisfy,
+    before any build.
+- **Acceptance:** an image using Eigen, switched to a board without hosted
+  C++ (ThreadX RISC-V), is refused before configure, naming the library and
+  the missing capability.
+
+### W13 — The book's board pages
+
+- **Owner:** nros 139.
+- **Status:** OPEN
+- Write RFC-0135's User flow as the book's getting-started page for board
+  packages, and rewrite "Add a board" around RFC-0135 D2. Fence the commands
+  with probes once W2, W6 and W10 have landed.
+- **Acceptance:** the flow runs, probe-fenced, from `nros board list` to
+  `nros flash --monitor`, with a board switch and an added library.
+
+### W14 — A project and a board package each start in the right shape
+
+- **Owner:** unassigned.
+- **Status:** OPEN
+- Three changes:
+  - `nros new <name> --board <key>` writes the image's `board =`, and the
+    scaffold writes nothing platform-specific;
+  - `nros board new` emits RFC-0135 D2's shape;
+  - `nros board show <key>` becomes the one-board page that RFC-0135 D5
+    describes.
+- **Acceptance:** a project made with `--board A` builds for board B after
+  one line changes, where B's platform differs. A scaffolded board package
+  passes `nros check`.
+
 ## Acceptance for the phase
 
 - **Switching takes one line.** A user switches a working project to another
@@ -179,9 +240,9 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 
 ## Review
 
-- The user flow, from creating a project through building, flashing,
-  switching board and adding a library, is reviewed by the book owner before
-  RFC-0135 leaves Draft.
+- The user flow was reviewed by the book owner on 2026-11-18, against main's
+  CLI. That review found `nros setup`'s index-only lookup (now W10), and its
+  notes are folded into RFC-0135.
 
 ## Related
 
