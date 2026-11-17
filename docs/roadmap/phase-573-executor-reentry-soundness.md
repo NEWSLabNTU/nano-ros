@@ -1,6 +1,6 @@
 # Phase 573 — a callback that calls back into its executor is sound
 
-**Status (2026-11-17). OPEN: W1–W4 are open.** Fixes
+**Status (2026-11-17). OPEN: W1 and W2 are done; W2b, W3 and W4 are open.** Fixes
 [issue 2675](../issues/2675-callback-reentry-aliases-executor.md) by amending
 [RFC-0108](../design/0108-executor-preemption-levels.md) ("Re-entry from a
 callback"). Ahead of [phase-572](phase-572-rust-component-graph-query.md),
@@ -35,7 +35,7 @@ parameter calls and graph queries out of C and C++ callbacks.
 
 ### W1 — The design, as an RFC-0108 amendment
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-17, #4150: RFC-0108 D9)
 
 Who holds what across a callback, written down:
 - the dispatch loop holds no reference into the executor across a callback,
@@ -47,7 +47,7 @@ Who holds what across a callback, written down:
 
 ### W2 — The dispatch core is sound
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-17, the W2 PR: core, entries, timers; gate `miri-executor-reentry`)
 
 `pass` re-derives after every callback and every tick. The owned entry is
 `unsafe fn spin_once_raw(this: *mut Self, ..)`, which `spin_once(&mut self)`
@@ -60,6 +60,35 @@ query, a service-client check). It reaches the executor through a raw pointer,
 as the FFI does. Run under Miri with Tree Borrows, it passes on the new core
 and FAILS on the old one, which is the negative control. The dispatch core is
 testable with no FFI and no RMW backend.
+
+As built: the harness is `executor::tests::reentry`. Its cases are a timer
+cancelling itself, a timer resetting itself, a timer reading its executor,
+and a timer releasing another entry. The first commit shows it failing under
+Miri on the old core, at the protected `&mut self` of `spin_once`. Three more
+findings followed, each from Miri: the stored `&mut` arena (now `ArenaRef`),
+the timer's own entry reference held across its callback (re-derived), and
+`pass`'s windowed-only re-derive. The last one's negative control fails at
+`s.finish_dispatch(i)`, right after the release case's callback. The Miri gate
+runs in 11 s cold. A parameter call, a graph query and a service-client check
+read or write executor fields that rule 1 covers; their per-kind cases move to
+W2b with the other entry kinds.
+
+### W2b — No entry holds its own reference across its callback
+
+- **Status:** OPEN
+
+RFC-0108 D9 rule 4 for every entry kind other than timers. Each
+`*_try_process` in `arena.rs` holds `&mut Entry` across the user callback, and
+under Tree Borrows that breaks when the callback writes the same entry's bytes.
+Audit every FFI entry that can write a running entry: an action server's
+`send_result` or feedback from inside its own goal callback, a guard condition
+triggered from its own callback, a service reply, and the subscription ring
+loop that holds `ring` across callbacks. Fix each site by re-deriving after
+the callback, or by deferring the write the way a windowed timer cancel
+already does.
+
+Acceptance: a Miri case per kind in `executor::tests::reentry`, run by
+`just check miri-executor-reentry`.
 
 ### W3 — One derive helper, and the class sweep
 

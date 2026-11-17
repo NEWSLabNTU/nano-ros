@@ -3242,6 +3242,13 @@ where
             trace_cb_start(desc_idx);
         }
         (entry.callback)(&info);
+        // RFC-0108 D9 (issue 2675) -- the callback may have called back into
+        // the executor (a C callback cancelling or resetting this very timer
+        // writes this entry), so the reference from before it is stale:
+        // derive it again from `ptr`.
+        // SAFETY: as at the top; the entry is not released during dispatch
+        // (a release is deferred until the dispatch ends, issue 1705).
+        let entry = unsafe { &mut *(ptr as *mut TimerEntry<F>) };
         if traced {
             trace_cb_end(desc_idx);
         }

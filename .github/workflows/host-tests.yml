@@ -12,6 +12,8 @@
 #                   phase-559 W7 took gate.yml's `schedule` away.
 #   - rt-sched    : `rt_sched_levels_e2e` (phase-162) in a container granted
 #                   `SYS_NICE`, the only lane that claims `rt-sched`.
+#   - miri        : `just check miri-executor-reentry` (phase-573 W2) — callback
+#                   re-entry under Miri with Tree Borrows.
 #   - census      : the periodic lane census (phase-475 W5), was lane-census.yml.
 #   - checkout-track / installed-track / image-track : the book's setup flow
 #                   executed (issue 1107, phase-551), was probe.yml.
@@ -361,6 +363,44 @@ jobs:
           source ./activate.sh
           cargo nextest run -p nros-tests --test rt_sched_levels_e2e \
             --no-fail-fast --success-output immediate
+
+  # phase-573 W2 (RFC-0108 D9, issue 2675) — a callback that calls back into
+  # the executor dispatching it, under Miri with Tree Borrows: the only check
+  # that can tell an aliased `&mut` from a sound one. The gate is `tier exempt`
+  # because the merge-gating images carry no `miri` component; this job adds
+  # it to the pinned nightly first. Measured locally: 11 s cold.
+  miri:
+    name: executor re-entry under Miri
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    concurrency:
+      group: host-tests-miri-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Add miri to the pinned nightly
+        run: |
+          chan="$(awk '/^channel/ {gsub(/"/,"",$3); print $3; exit}' tools/rust-toolchain.toml)"
+          rustup toolchain install "$chan" --profile minimal --component miri,rust-src
+          cargo "+$chan" miri setup
+
+      - name: just check miri-executor-reentry
+        run: |
+          source ./activate.sh
+          just check miri-executor-reentry
 
   # ===== the build tier (was gate.yml's `check-build`, cron 02:00; phase-559 W7) =====
   #

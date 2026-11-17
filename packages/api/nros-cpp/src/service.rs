@@ -1219,7 +1219,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     crate::census_finish_application_if_armed();
     use nros_rmw::ClientTrait as _;
 
-    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
 
@@ -1266,9 +1266,14 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
             // SAFETY: a plain platform sleep; it touches no nano-ros state.
             unsafe { nros_platform_sleep_ms(SPIN_MS as usize) };
         } else {
-            let _ = ctx
-                .executor
-                .spin_once(core::time::Duration::from_millis(SPIN_MS));
+            // SAFETY: `ctx` holds the lock; no reference to the executor is
+            // live across the pass (RFC-0108 D9, issue 2675).
+            let _ = unsafe {
+                crate::CppExecutor::spin_once_raw(
+                    ctx.exec_ptr(),
+                    core::time::Duration::from_millis(SPIN_MS),
+                )
+            };
         }
     }
 }

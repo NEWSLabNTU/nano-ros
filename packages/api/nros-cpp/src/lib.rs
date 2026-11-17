@@ -868,6 +868,41 @@ impl Drop for DispatchGuard<'_> {
     }
 }
 
+/// [`DispatchGuard`] over a RAW flag, for a blocking helper that spins
+/// (RFC-0108 D9, issue 2675): the flag lives in the context, and a callback
+/// the spin runs may derive the context again through its handle, so no
+/// reference into it may be held across the spin.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) struct RawDispatchGuard {
+    flag: *mut bool,
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl RawDispatchGuard {
+    /// `None` when a spin is already in progress — the caller must NOT spin.
+    ///
+    /// # Safety
+    /// `flag` points at a live context's `in_dispatch`, read and written only
+    /// under the executor lock the caller holds for the guard's life.
+    pub(crate) unsafe fn enter(flag: *mut bool) -> Option<Self> {
+        // SAFETY: the caller's contract.
+        if unsafe { flag.read() } {
+            return None;
+        }
+        // SAFETY: as above.
+        unsafe { flag.write(true) };
+        Some(Self { flag })
+    }
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl Drop for RawDispatchGuard {
+    fn drop(&mut self) {
+        // SAFETY: `enter`'s contract; the lock is still held.
+        unsafe { self.flag.write(false) };
+    }
+}
+
 /// Issue 0436 — marks a buffer as an nros-cpp executor context. Value is
 /// arbitrary but must not be a plausible pointer or small integer.
 ///
@@ -1004,7 +1039,8 @@ pub(crate) unsafe fn cpp_ctx_checked<'a>(handle: *mut c_void) -> Option<CtxRef<'
     // SAFETY: the tag proved the handle is a context this crate stamped, and
     // the lock (when installed) makes this the only live reference to it.
     Some(CtxRef {
-        ctx: unsafe { &mut *ctx },
+        ctx,
+        _life: core::marker::PhantomData,
         _guard: guard,
     })
 }
@@ -1026,7 +1062,8 @@ pub(crate) unsafe fn cpp_ctx_locked<'a>(handle: *mut c_void) -> CtxRef<'a> {
     };
     let guard = unsafe { nros_node::executor::exec_lock::ExecGuard::acquire(exec) };
     CtxRef {
-        ctx: unsafe { &mut *ctx },
+        ctx,
+        _life: core::marker::PhantomData,
         _guard: guard,
     }
 }
@@ -1074,22 +1111,52 @@ impl<T: ?Sized> core::ops::DerefMut for Locked<'_, T> {
 /// when it drops, after the reference's last use.
 #[cfg(feature = "rmw-cffi")]
 pub(crate) struct CtxRef<'a> {
-    ctx: &'a mut CppContext,
+    // RFC-0108 D9 (issue 2675) -- a RAW pointer, not `&'a mut CppContext`:
+    // a reference held for the life of an entry would be live across any
+    // callback a spin inside that entry runs, and a callback that calls back
+    // in through the handle would alias it. Each deref derives a fresh
+    // reference instead.
+    ctx: *mut CppContext,
     _guard: nros_node::executor::exec_lock::ExecGuard,
+    _life: core::marker::PhantomData<&'a mut CppContext>,
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl CtxRef<'_> {
+    /// The context's `in_dispatch` flag as a raw pointer, for a blocking
+    /// helper that spins: the pass must hold no reference into the context
+    /// across the callbacks it runs (`Executor::spin_once_raw`). The lock
+    /// stays held while `self` lives.
+    pub(crate) fn in_dispatch_ptr(&self) -> *mut bool {
+        // SAFETY: `ctx` is the live context this guard locked; a place
+        // projection, no reference.
+        unsafe { core::ptr::addr_of_mut!((*self.ctx).c.in_dispatch) }
+    }
+
+    /// The context's executor as a raw pointer (see `in_dispatch_ptr`).
+    pub(crate) fn exec_ptr(&self) -> *mut CppExecutor {
+        // SAFETY: `ctx` is the live context this guard locked; a raw read of
+        // the executor field (a pointer written once at open), no reference.
+        unsafe {
+            core::ptr::read(core::ptr::addr_of!((*self.ctx).executor) as *const *mut CppExecutor)
+        }
+    }
 }
 
 #[cfg(feature = "rmw-cffi")]
 impl core::ops::Deref for CtxRef<'_> {
     type Target = CppContext;
     fn deref(&self) -> &CppContext {
-        self.ctx
+        // SAFETY: the lock this guard holds; a fresh reference per deref.
+        unsafe { &*self.ctx }
     }
 }
 
 #[cfg(feature = "rmw-cffi")]
 impl core::ops::DerefMut for CtxRef<'_> {
     fn deref_mut(&mut self) -> &mut CppContext {
-        self.ctx
+        // SAFETY: as `deref`.
+        unsafe { &mut *self.ctx }
     }
 }
 
@@ -4124,19 +4191,41 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_spin_some(handle: *mut c_void, max_ms: u32) -> nros_cpp_ret_t {
     crate::census_finish_application_if_armed();
-    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    if handle.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    };
+    }
+    let ctx = handle as *mut CppContext;
+    // RFC-0108 D9 (issue 2675) -- as `nros_cpp_spin_once`: a callback this
+    // drain runs may call back into the executor through the handle, so no
+    // reference to the context or the executor is held across it.
+    // SAFETY: the caller's contract; the tag is read raw.
+    if unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).tag)) } != CPP_CONTEXT_TAG {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    // SAFETY: the tag proved the context; a raw read of a field written once
+    // at open.
+    let exec =
+        unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).executor) as *const *mut CppExecutor) };
+    // SAFETY: `exec` is the context's live executor; the lock is taken
+    // before anything below reads the context.
+    let _lock = unsafe { nros_node::executor::exec_lock::ExecGuard::acquire(exec) };
     // Issue 0290 — the same re-entry refusal `nros_cpp_spin_once` makes.
-    let CppContext {
-        executor,
-        c: nros_c::rclc_executor_t { in_dispatch, .. },
-        ..
-    } = &mut *ctx;
-    let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
+    // SAFETY: a place projection through the proven context; no reference.
+    let in_dispatch = unsafe { core::ptr::addr_of_mut!((*ctx).c.in_dispatch) };
+    // SAFETY: the tag proved the context; the lock serialises the flag.
+    if unsafe { in_dispatch.read() } {
         return NROS_CPP_RET_REENTRANT;
+    }
+    // SAFETY: as the read.
+    unsafe { in_dispatch.write(true) };
+    // SAFETY: the calling thread holds the lock (`_lock`); no reference to
+    // the executor or the context is live across the drain.
+    let ret = unsafe {
+        CppExecutor::spin_some_raw(exec, core::time::Duration::from_millis(max_ms as u64))
     };
-    match executor.spin_some(core::time::Duration::from_millis(max_ms as u64)) {
+    // SAFETY: as the read above.
+    unsafe { in_dispatch.write(false) };
+    match ret {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_UNSUPPORTED,
     }
