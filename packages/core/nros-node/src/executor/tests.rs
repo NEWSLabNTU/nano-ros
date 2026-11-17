@@ -19736,3 +19736,131 @@ mod rosout_writers {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Issue 2675 (phase-573 W2) -- a callback that calls back into its executor.
+//
+// A C or C++ callback may call back into the executor dispatching it (a timer
+// cancel, a release, a parameter call, a graph query): rclc and rclcpp allow
+// it, and the recursive executor lock exists for it. The FFI reaches the
+// executor from the C handle, a RAW pointer, so each re-entry derives a fresh
+// `&mut Executor` from it. These tests do the same from a Rust timer closure:
+// the pointer lives in a static, as the handle lives in the C caller.
+//
+// They are meant for Miri with Tree Borrows
+// (`MIRIFLAGS=-Zmiri-tree-borrows cargo +nightly miri test -p nros-node
+// reentry`), which is what can tell an aliased `&mut` from a sound one. Under a
+// normal `cargo test` they only check that the re-entry works.
+//
+// `spin_through_a_reference` drives the pass the way the C spin entries do
+// today: `(&mut *p).spin_once(..)`, a `&mut` derived from the handle and held
+// for the whole pass.
+// ---------------------------------------------------------------------------
+
+mod reentry {
+    use super::*;
+    use portable_atomic::{AtomicPtr, AtomicU32, Ordering};
+
+    private_test_clock!(reentry_write_clock);
+    private_test_clock!(reentry_read_clock);
+
+    /// The executor a re-entering callback reaches, as a C handle would.
+    static WRITE_EXEC: AtomicPtr<Executor<'static>> = AtomicPtr::new(core::ptr::null_mut());
+    static WRITE_TIMER: std::sync::Mutex<Option<HandleId>> = std::sync::Mutex::new(None);
+    static WRITE_CALLS: AtomicU32 = AtomicU32::new(0);
+
+    static READ_EXEC: AtomicPtr<Executor<'static>> = AtomicPtr::new(core::ptr::null_mut());
+    static READ_TIMER: std::sync::Mutex<Option<HandleId>> = std::sync::Mutex::new(None);
+    static READ_SEEN: AtomicU32 = AtomicU32::new(0);
+
+    /// One pass, driven the way `rclc_executor_spin_some` drives it today.
+    ///
+    /// # Safety
+    /// `p` points at a live executor nothing else references.
+    unsafe fn spin_through_a_reference(p: *mut Executor<'static>) {
+        // SAFETY: the caller's contract.
+        let exec = unsafe { &mut *p };
+        let _ = exec.spin_once(core::time::Duration::ZERO);
+    }
+
+    /// A timer callback that WRITES to its executor: it cancels its own timer,
+    /// as a C callback calling `rcl_timer_cancel` does.
+    #[test]
+    fn a_timer_callback_that_cancels_its_own_timer_reenters_soundly() {
+        reentry_write_clock::claim_at_us(0);
+        let mut boxed = Box::new(executor_with_clock_fn(
+            MockSession::new(),
+            reentry_write_clock::now_us,
+        ));
+        let id = boxed
+            .register_timer(TimerDuration::from_millis(10), || {
+                WRITE_CALLS.fetch_add(1, Ordering::SeqCst);
+                let p = WRITE_EXEC.load(Ordering::SeqCst);
+                let id = WRITE_TIMER.lock().unwrap().expect("timer id");
+                // SAFETY: the executor outlives the pass; this is the
+                // re-entry under test.
+                let exec = unsafe { &mut *p };
+                exec.cancel_timer(id)
+                    .expect("cancel from inside the callback");
+            })
+            .unwrap();
+        *WRITE_TIMER.lock().unwrap() = Some(id);
+        // From here on the executor is reached only through `p`.
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+        WRITE_EXEC.store(p, Ordering::SeqCst);
+
+        reentry_write_clock::set_us(10_000);
+        // SAFETY: `p` is the only path to the executor.
+        unsafe { spin_through_a_reference(p) };
+        assert_eq!(WRITE_CALLS.load(Ordering::SeqCst), 1, "the timer ran once");
+
+        reentry_write_clock::set_us(30_000);
+        // SAFETY: as above.
+        unsafe { spin_through_a_reference(p) };
+        assert_eq!(
+            WRITE_CALLS.load(Ordering::SeqCst),
+            1,
+            "the timer cancelled itself, so it does not run again"
+        );
+
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+
+    /// A timer callback that only READS its executor, as a C callback calling
+    /// a graph query or `rcl_timer_is_ready` does.
+    #[test]
+    fn a_timer_callback_that_reads_its_executor_reenters_soundly() {
+        reentry_read_clock::claim_at_us(0);
+        let mut boxed = Box::new(executor_with_clock_fn(
+            MockSession::new(),
+            reentry_read_clock::now_us,
+        ));
+        let id = boxed
+            .register_timer(TimerDuration::from_millis(10), || {
+                let p = READ_EXEC.load(Ordering::SeqCst);
+                let id = READ_TIMER.lock().unwrap().expect("timer id");
+                // SAFETY: as in the write test.
+                let exec = unsafe { &*p };
+                if exec.timer_is_ready(id).is_some() {
+                    READ_SEEN.fetch_add(1, Ordering::SeqCst);
+                }
+            })
+            .unwrap();
+        *READ_TIMER.lock().unwrap() = Some(id);
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+        READ_EXEC.store(p, Ordering::SeqCst);
+
+        reentry_read_clock::set_us(10_000);
+        // SAFETY: `p` is the only path to the executor.
+        unsafe { spin_through_a_reference(p) };
+        assert_eq!(
+            READ_SEEN.load(Ordering::SeqCst),
+            1,
+            "the callback read its timer"
+        );
+
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+}
