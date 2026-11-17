@@ -100,7 +100,11 @@ wording that shows the user's arguments rewritten.
 
 ### W3 — built-in routing, and `--` narrowed to west
 
-- **Status:** OPEN (W2 landed)
+- **Status:** DONE (2026-11-17, W3a #4131 and W3b)
+
+The `--` refusal moved to W6, ruled that day: the fixture harness passes about
+470 rows' `-D`s and cargo's `--profile`/`--target-dir` after `--`, so refusing
+them now would break the lane.
 
 CMake arguments reach every CMake configure (cmake image, west's cmake step,
 cmake package), and cargo arguments reach every cargo command. An argument
@@ -113,7 +117,9 @@ removed CMake variables are `-U`'d and the configure re-runs, and the build
 says so.
 
 **Acceptance:**
-- a test for each road receiving its argv;
+- a test for each road receiving its argv. **Done** in W3b:
+  `each_road_hands_the_callers_arguments_to_its_own_tool_in_order`
+  (cmake, west, cargo), in `build_verb_pipeline.rs`;
 - the source-metadata probe reads `[image_defaults.build] cmake_args` and
   nothing else (RFC-0117 D8's exception). A package whose
   `find_package(<Pkg> … NO_DEFAULT_PATH)` path is given there both probes
@@ -123,10 +129,21 @@ says so.
   copy. **Done** in W3a, measured end to end on a copy of `image_config_ws`;
   the probe's dropped `-D`s are `-U`'d, so the cache cannot keep them;
 - a dependency's `system.toml` arguments are listed by `--dry-run` as
-  ignored (moved from W2);
-- cache drift: `-DFOO`, then a build without it, leaves no `FOO` in the cache;
+  ignored (moved from W2). **Open**: a dependency package has no
+  `[image.<id>.build]` of its own today, so there is nothing yet to ignore;
+- cache drift: `-DFOO`, then a build without it, leaves no `FOO` in the cache.
+  **Done** in W3b for the cmake image road: the caller's arguments are
+  recorded beside the image's `CMakeCache.txt` (`nros-cmake-args.used`) and a
+  dropped `-D` is `-U`'d; a name nano-ros owns is left to nano-ros. Measured
+  on a copy of `image_config_ws`: `-DMY_X=1 -- -DMY_Z=3`, then a bare build,
+  leaves no `MY_*` in the cache;
 - `--dry-run` prints the final argv per tool, and the source of each
-  argument.
+  argument. **Done** in W3b on the cmake road: the configure line, then the
+  caller's arguments by source in the order they reach CMake, and the probe
+  rule;
+- `--` carrying anything but west's own options warns, ONCE per run, naming
+  the flag that carries each kind (`--cmake-args=`, `--cargo-args=`,
+  `--profile=`, `CARGO_TARGET_DIR`). **Done** in W3b; the refusal is W6's.
 
 ### W4 — profiles
 
@@ -145,6 +162,17 @@ says so.
 ### W6 — migration and docs
 
 - **Status:** BLOCKED (on W1–W3: it moves callers onto the new flags)
+
+- **First: the fixture harness.** `scripts/check/report-fixture-image-defs.py`
+  (report only, no build) classifies each image fixture row's `-D`s after `--`
+  against its image. Measured 2026-11-17 over 270 image cmake rows: 0
+  contradict; 395 repeat the image (`NROS_RMW` 270, `NROS_BOARD` 84,
+  `NROS_PLATFORM` 41); 43 give `NROS_PLATFORM` at family level (`threadx` for
+  `threadx-linux`), which nano-ros does not pass itself, so those are built on
+  each side before they drop; 15 add something (`NROS_ENTRY_LOCATOR` x11,
+  `CMAKE_BUILD_TYPE` x3, one find-package switch) and need a home first. The
+  cargo rows move to `--profile=` and `CARGO_TARGET_DIR`. Only then does the
+  W3b warning become the refusal.
 
 - The book's `nros build` page and RFC-0117 D4's table name the new flags.
 - Every in-tree caller of `--cmake-args <space form>` and of `--`-carried CMake
