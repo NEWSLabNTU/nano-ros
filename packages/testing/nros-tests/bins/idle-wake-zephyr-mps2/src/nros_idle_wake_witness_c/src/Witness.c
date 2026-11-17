@@ -5,14 +5,17 @@
 /// and one 1 s timer. RFC-0113 D2 says an
 /// idle executor wakes only for its deadlines and for arrivals, so over a
 /// window of WINDOW_FIRES timer periods the thread that runs the executor
-/// should be switched in about once per expiry. The count comes from
-/// Zephyr's user tracing hook (`CONFIG_TRACING_USER`): every switch-in of that
-/// thread is one wake. A 10 ms slice (the wait this phase deleted) would show
-/// ~100 a second.
+/// should WAKE about once per expiry. A wake is a switch-in whose preceding
+/// switch-out left the thread blocked; witness_board_zephyr.c counts both.
+/// A switch-in alone is not a wake: the thread is also switched back in after
+/// a preemption, or after a reschedule pass in which nothing else ran (issue
+/// 2666 measured 15 switch-ins and exactly 5 wakes over 5 periods). A 10 ms
+/// slice (the wait this phase deleted) blocks once per slice, so it would
+/// show ~100 wakes a second.
 ///
 /// The window opens at the first expiry, once the session is up, and closes
 /// WINDOW_FIRES expiries later; the result is one line the test parses:
-///   idle-wake: switch_ins=N fires=F window_ms=W max_late_us=L max_early_us=E
+///   idle-wake: switch_ins=N wakes=K fires=F window_ms=W max_late_us=L max_early_us=E
 ///
 /// The same subscription measures arrival→dispatch (phase-521 W7 a): with a
 /// host talker publishing on `/chatter`, the image stamps the last LAN9118
@@ -91,9 +94,9 @@ static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
     }
     if (self->fires == WINDOW_FIRES) {
         uint32_t switch_ins = witness_board_close_window();
-        printf("idle-wake: switch_ins=%u fires=%d window_ms=%d max_late_us=%lld "
+        printf("idle-wake: switch_ins=%u wakes=%u fires=%d window_ms=%d max_late_us=%lld "
                "max_early_us=%lld\n",
-               (unsigned)switch_ins, WINDOW_FIRES, (int)((t - self->first_us) / 1000),
+               (unsigned)switch_ins, (unsigned)witness_board_wakes(), WINDOW_FIRES, (int)((t - self->first_us) / 1000),
                (long long)self->max_late_us, (long long)self->max_early_us);
     }
     self->fires++;

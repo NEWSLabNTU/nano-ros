@@ -68,7 +68,52 @@ Candidates, none measured yet:
    Zephyr's own `zvfs_poll` re-polling after a `k_poll` return that found no
    ready descriptor. Each pass is a switch-in.
 
-## Plan
+## Measured (2026-11-17, host 139, at `1037efabd0` plus instrumentation)
+
+Instrumentation, never committed for merge, lives on the local branch
+`wip-2666-instrument`:
+
+- The witness's `switched_out` hook records the thread state of the executor
+  thread as it leaves. PENDING/SUSPENDED/SLEEPING means it blocked; QUEUED
+  means it was still runnable.
+- For a runnable switch-out, the hook names the next thread switched in, if
+  any.
+- `nros_platform_wake_park_handles_us` counts which source ended each park.
+
+Two runs gave `switch_ins=14` and `switch_ins=15`, each over `fires=5`.
+
+| Switch-ins in the window | Count | Cause |
+|---|---|---|
+| after a BLOCKED switch-out (`state=0x02`, pending in `zsock_poll`) | **5** | one per deadline, at t ≈ 999/1999/2999/3999/4999 ms |
+| after a RUNNABLE switch-out, with another thread run in between | ≤ 2 | Zephyr's net RX traffic-class thread (`rx_classes`, cooperative, prio −1) handling the Agent's frames; 4 LAN9118 IRQs in the window |
+| after a RUNNABLE switch-out, with no other thread switched in | the rest (7–8) | a reschedule pass where the hooks fire and the same thread continues |
+
+Park outcomes over the same window: 8 parks, 5 ended by the timeout (the
+deadlines) and 3 by the socket. No socket-ended park produced a blocked
+switch-in, so in each of those 3 the frame was already readable when the
+park began, and the thread never slept. The eventfd, its stale-loop path and
+EINTR fired 0 times. The semaphore park was never called.
+
+All non-blocked switch-ins fall in the same millisecond as a deadline
+dispatch: the executor is running when they happen.
+
+**So RFC-0113 D2.3 holds on this image.** The executor wakes from a blocked
+wait exactly once per deadline, and never for the Agent's session traffic.
+Candidates 1 and 3 above are ruled out. Candidate 2 is real but small (≤ 2). The
+red is the witness: it counts every switch-in, so it counts each preemption,
+and each reschedule pass where no other thread ran, as a wake. The zenoh twin
+passes because fewer of those land in its window, not because it wakes less.
+
+## Fix
+
+Fix the witness, not the bound. Count WAKES, meaning switch-ins whose
+preceding switch-out left the thread blocked. That is D2's quantity. Assert
+`wakes <= fires + 2` and `wakes >= fires`, which is TIGHTER than the old
+`2 * fires + 2`. Print the total switch-ins and the preemptions beside it for
+the record. A sliced wait (a 10 ms slice) still reads ~100 wakes a second,
+because each slice blocks, so the cell keeps the defect it exists to catch.
+
+## Plan (as filed, before the measurement)
 
 Measure before choosing. Instrument the witness, without changing the
 executor, to record per switch-in during the window:
