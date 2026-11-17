@@ -33,6 +33,9 @@ EMITTERS = [
     "packages/api/nros-c/templates/nros_config_generated.h.template",
     "packages/api/nros-c/templates/nros_config_generated_exact.h.template",
     "packages/tooling/nros-build-helpers/src/cpp.rs",
+    # RFC-0132 D2a -- the CAN handle's size is a literal in a COMMITTED header,
+    # not a probe, but a backend's state can still outgrow it.
+    "packages/platform/nros-platform-api/include/nros/platform_can.h",
 ]
 
 # Files that may carry a guard. A guard NAMES its macro in the assertion
@@ -41,7 +44,13 @@ GUARD_SITES = [
     "packages/api/nros-c/src/opaque_sizes.rs",
     "packages/api/nros-c/src/executor.rs",
     "packages/api/nros-cpp/src/lib.rs",
+    # RFC-0132 D2a -- one per in-tree CAN backend.
+    "packages/drivers/can/nros-can-mock/src/imp.rs",
 ]
+
+# The CAN mock's guard, which the self-test removes to prove the gate notices.
+CAN_MOCK_GUARD_SITE = "packages/drivers/can/nros-can-mock/src/imp.rs"
+CAN_MACRO = "NROS_PLATFORM_CAN_OPAQUE_U64S"
 
 DEFINE = re.compile(r"^\s*#define\s+([A-Z_][A-Z0-9_]*_OPAQUE_U64S)\b", re.M)
 
@@ -134,6 +143,19 @@ def self_test():
         sys.exit(2)
     if not unguarded(cpp, set()):
         sys.stderr.write("self-test: an alias with NO C-side guard was not reported\n")
+        sys.exit(2)
+    # RFC-0132 W9.a -- on the REAL files: the CAN header emits the macro, the
+    # mock's `assert!` guards it, and the same source with its assert blocks
+    # removed leaves the macro unguarded.
+    if CAN_MACRO not in emitted_macros():
+        sys.stderr.write(f"self-test: {CAN_MACRO} is not emitted by the CAN header\n")
+        sys.exit(2)
+    mock = read(CAN_MOCK_GUARD_SITE)
+    if CAN_MACRO not in guarded_macros(mock):
+        sys.stderr.write(f"self-test: {CAN_MOCK_GUARD_SITE} does not guard {CAN_MACRO}\n")
+        sys.exit(2)
+    if CAN_MACRO in guarded_macros(ASSERT_BLOCK.sub("", mock)):
+        sys.stderr.write(f"self-test: {CAN_MACRO} still guarded with the mock's assert removed\n")
         sys.exit(2)
 
 

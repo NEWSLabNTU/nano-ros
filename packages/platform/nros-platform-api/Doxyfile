@@ -9,6 +9,7 @@ PROJECT_BRIEF          = "Canonical C ABI for porting the nros platform abstract
 INPUT                  = include/nros/platform.h \
                          include/nros/platform_net.h \
                          include/nros/platform_timer.h \
+                         include/nros/platform_can.h \
                          include/nros/platform_zephyr.h \
                          docs/mainpage.md
 

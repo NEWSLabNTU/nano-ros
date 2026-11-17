@@ -1199,6 +1199,49 @@ pub trait PlatformSerial {
     fn write(h: Self::Handle, buf: *const u8, len: usize) -> usize;
 }
 
+// ============================================================================
+// CAN frame driver (RFC-0132; the C header is the contract)
+// ============================================================================
+
+/// The implementer surface of `<nros/platform_can.h>`, the CAN frame driver.
+///
+/// A Rust backend implements this and turns it into the five C symbols with
+/// `nros_platform_cffi::nros_platform_export_can!`; a C backend defines the
+/// symbols directly. The header is the contract: return codes are its
+/// `NROS_PLATFORM_CAN_*` values, and each method mirrors one call there.
+///
+/// # Pointers
+///
+/// This crate has no dependencies, so it cannot name the header's types.
+/// `can` points at the caller's `nros_platform_can_t` (the backend's state
+/// lives inside it and must fit the header's size) and `frame` at an
+/// `nros_platform_can_frame_t`; the export macro passes the typed pointers
+/// through unchanged. Any of them may be NULL, and a backend checks.
+///
+/// # Frame validity
+///
+/// A backend refuses the frames `nros_platform_can_frame_check` (the header's
+/// `static inline`) refuses, with `NROS_PLATFORM_CAN_EINVAL`. A C backend calls
+/// it; a Rust backend calls it through a compiled shim, so the rule has one
+/// definition.
+pub trait PlatformCan {
+    /// `nros_platform_can_open`: open `device` (NULL: the image's device);
+    /// `want_fd` non-zero fails on a device without CAN FD.
+    fn open(can: *mut c_void, device: *const core::ffi::c_char, want_fd: u8) -> i8;
+
+    /// `nros_platform_can_send`: send one frame within `timeout_us`.
+    fn send(can: *mut c_void, frame: *const c_void, timeout_us: u32) -> i8;
+
+    /// `nros_platform_can_fd_active`: non-zero when the handle carries CAN FD.
+    fn fd_active(can: *const c_void) -> u8;
+
+    /// `nros_platform_can_recv`: receive one frame within `timeout_us`.
+    fn recv(can: *mut c_void, frame: *mut c_void, timeout_us: u32) -> i8;
+
+    /// `nros_platform_can_close`: idempotent.
+    fn close(can: *mut c_void);
+}
+
 /// Smallest number of bytes ever left unused on the CALLING task's stack, or
 /// `0` if this port does not instrument it.
 ///

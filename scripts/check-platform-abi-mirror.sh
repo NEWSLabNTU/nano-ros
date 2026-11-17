@@ -43,6 +43,7 @@ HEADERS_REQUIRE_MACRO=(
     "platform.h"
     "platform_net.h"
     "platform_timer.h"
+    "platform_can.h"
 )
 HEADERS_EXTERN_ONLY=()
 
@@ -110,6 +111,31 @@ check_header() {
     fi
     total=$(( total + ${#SYMBOLS[@]} ))
 }
+
+# RFC-0132 W9.a -- the negative control, on every run: "N symbols match" is
+# also what a check that can never fail would print. A header symbol that is
+# neither in generated.rs nor emitted by a macro must be refused, and a symbol
+# that is in both must pass, through the same `check_header` the real rows use.
+mirror_self_test() {
+    local d saved_dir="$INCLUDE_DIR" caught_bad caught_good
+    d="$(mktemp -d)"
+    printf '%s\n' '#include <stdint.h>' \
+        'int8_t nros_platform_selftest_unlisted(void);' > "$d/unlisted.h"
+    printf '%s\n' '#include <stdint.h>' \
+        'void nros_platform_can_close(void *can);' > "$d/listed.h"
+    INCLUDE_DIR="$d"
+    fail=0; check_header "unlisted.h" "1" >/dev/null 2>&1; caught_bad="$fail"
+    fail=0; check_header "listed.h" "1" >/dev/null 2>&1; caught_good="$fail"
+    INCLUDE_DIR="$saved_dir"; fail=0; total=0
+    rm -rf "$d"
+    if [[ "$caught_bad" != 1 || "$caught_good" != 0 ]]; then
+        echo "check-platform-abi-mirror: SELFTEST FAIL -- an unlisted symbol" >&2
+        echo "  refused=$caught_bad (want 1), a listed one refused=$caught_good (want 0)" >&2
+        exit 2
+    fi
+    echo "mirror self-test: an unlisted header symbol is refused, a listed one passes"
+}
+mirror_self_test
 
 for h in "${HEADERS_REQUIRE_MACRO[@]}"; do
     check_header "$h" "1"

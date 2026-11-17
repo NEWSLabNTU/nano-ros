@@ -1271,6 +1271,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-can-mock"
+version = "0.6.0"
+dependencies = [
+ "cc",
+ "nros-cc-flags",
+ "nros-platform-api",
+ "nros-platform-cffi",
+]
+
+[[package]]
 name = "nros-cargo-profile"
 version = "0.6.0"
 

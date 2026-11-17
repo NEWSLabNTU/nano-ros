@@ -61,6 +61,9 @@ pub extern "C" fn _nros_force_link_cffi() {}
 pub mod generated;
 pub use generated::*;
 
+// RFC-0132 -- the CAN frame driver's Rust face over the generated declarations.
+pub mod can;
+
 // issue 0710 — the `LogSink` that speaks this ABI belongs with the ABI, so
 // "does this binary need `nros_platform_log_write`?" is a DEPENDENCY question
 // rather than a Cargo feature. See the module docs.
@@ -1500,6 +1503,50 @@ macro_rules! nros_platform_export_net {
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_network_poll() {
             <$ty as ::nros_platform_api::PlatformNetworkPoll>::network_poll()
+        }
+    };
+}
+
+/// Emit the five `nros_platform_can_*` symbols declared in
+/// `<nros/platform_can.h>` by delegating to the
+/// `PlatformCan` implementation on `$ty`. The typed header pointers are
+/// passed to the trait as `c_void` pointers, unchanged.
+#[macro_export]
+macro_rules! nros_platform_export_can {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_can_open(
+            can: *mut $crate::nros_platform_can_t,
+            device: *const ::core::ffi::c_char,
+            want_fd: u8,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformCan>::open(can.cast(), device, want_fd)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_can_send(
+            can: *mut $crate::nros_platform_can_t,
+            frame: *const $crate::nros_platform_can_frame_t,
+            timeout_us: u32,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformCan>::send(can.cast(), frame.cast(), timeout_us)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_can_fd_active(
+            can: *const $crate::nros_platform_can_t,
+        ) -> u8 {
+            <$ty as ::nros_platform_api::PlatformCan>::fd_active(can.cast())
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_can_recv(
+            can: *mut $crate::nros_platform_can_t,
+            frame: *mut $crate::nros_platform_can_frame_t,
+            timeout_us: u32,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformCan>::recv(can.cast(), frame.cast(), timeout_us)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_can_close(can: *mut $crate::nros_platform_can_t) {
+            <$ty as ::nros_platform_api::PlatformCan>::close(can.cast())
         }
     };
 }

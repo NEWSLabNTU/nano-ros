@@ -43,6 +43,7 @@ nros-bridge                         36   1     0       8      0
 nros-build                           1   0     0       0      0
 nros-build-helpers                   2   0     0       2      0
 nros-c                             548  94     7     513      0
+nros-can-mock                        7   0     0       1      0
 nros-cli                             1   0     0       0      0
 nros-cli-core                       36   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
@@ -57,7 +58,7 @@ nros-orchestration-ir                4   0     0       0      0
 nros-params                          3   1     0       0      0
 nros-platform                       16   5     1       5      0
 nros-platform-api                   22   5     1      10      0
-nros-platform-cffi                 100   0     4     123      0
+nros-platform-cffi                 105   0     4     128      0
 nros-platform-critical-section       2   2     1       1      0
 nros-platform-mps2-an385            23   6     3       8      0
 nros-platform-stm32f4               15   6     3       2      0
