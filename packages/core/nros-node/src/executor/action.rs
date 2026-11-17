@@ -1998,7 +1998,11 @@ impl<'s> Executor<'s> {
                     _phantom: core::marker::PhantomData,
                 },
             );
-            &mut (*entry_ptr).core as *mut ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+            // Phase-573 W2b — a raw place, not `&mut .. as *mut`: a pointer
+            // made from a temporary reference is a child of it, and the
+            // dispatcher's own write to the entry disables it, so the next
+            // send through the handle would be UB.
+            core::ptr::addr_of_mut!((*entry_ptr).core)
         };
 
         let meta = CallbackMeta {

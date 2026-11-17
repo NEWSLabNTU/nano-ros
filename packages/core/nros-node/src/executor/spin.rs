@@ -11779,7 +11779,11 @@ impl<'s> Executor<'s> {
                     _phantom: core::marker::PhantomData,
                 },
             );
-            &mut (*entry_ptr).hdr as *mut ServiceClientSendHeader<REPLY_BUF>
+            // Phase-573 W2b — a raw place, not `&mut .. as *mut`: a pointer
+            // made from a temporary reference is a child of it, and the
+            // dispatcher's own write to the entry disables it, so the next
+            // `call` through the handle would be UB.
+            core::ptr::addr_of_mut!((*entry_ptr).hdr)
         };
 
         let meta = CallbackMeta {
@@ -11864,7 +11868,10 @@ impl<'s> Executor<'s> {
             );
 
             // Create a handle pointing to the flag in the arena
-            let flag_ptr = &(*entry_ptr).flag as *const portable_atomic::AtomicBool;
+            // Phase-573 W2b — a raw place, like the client handles' pointers.
+            // (A shared reference to an atomic would tolerate the entry's
+            // writes; the one spelling keeps the class uniform.)
+            let flag_ptr = core::ptr::addr_of!((*entry_ptr).flag);
             #[allow(unused_mut)]
             let mut guard_handle = GuardCondition::new(flag_ptr);
             // Phase 124.B.5 — wire the wake callback so trigger()
