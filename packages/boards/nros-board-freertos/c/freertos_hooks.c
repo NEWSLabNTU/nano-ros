@@ -197,3 +197,12 @@ void SysTick_Handler(void) {
         xPortSysTickHandler();
     }
 }
+
+/* ---- Optional board hooks: weak, empty defaults (RFC-0135 D2) ----
+ * The family's Rust entry (`src/entry.rs`) calls these trace hooks. A board
+ * with a trace backend (mps2-an385-freertos's Tonbandgeraet dump) defines
+ * them and wins over these; any other board, in tree or out, links these
+ * instead of learning the hook from an undefined-symbol error. A hook with
+ * no sensible default is board contract and gets no weak body here. */
+__attribute__((weak)) void nros_trace_scheduler_started(void) {}
+__attribute__((weak)) void nros_trace_trigger_and_dump(void) {}
