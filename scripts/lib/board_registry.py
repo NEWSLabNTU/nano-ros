@@ -112,7 +112,12 @@ def round_trip_errors(doc: dict) -> list[str]:
 
 
 def row_name(row: dict) -> str:
-    return f"{row.get('crate', '<no crate key>')}@{row.get('matrix_platform') or '-'}"
+    """The row's key: (crate, matrix_platform), or (crate, first board key) for
+    a row with no matrix platform that names its board keys, so two such rows
+    of one package (`nros-board-s32z270-freertos` and its RTD variant) stay
+    two keys."""
+    tail = row.get("matrix_platform") or (row.get("board_keys") or ["-"])[0]
+    return f"{row.get('crate', '<no crate key>')}@{tail}"
 
 
 def board_name(row: dict) -> str:

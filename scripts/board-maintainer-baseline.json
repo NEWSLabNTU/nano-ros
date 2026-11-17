@@ -6,7 +6,7 @@
   "nros-board-mps2-an385@QemuBaremetal": "verified",
   "nros-board-nuttx-qemu@NuttxArm": "verified",
   "nros-board-nuttx-qemu@NuttxRiscv": "verified",
-  "nros-board-s32z270-freertos@-": "builds",
+  "nros-board-s32z270-freertos@s32z270-freertos": "builds",
   "nros-board-threadx-linux@ThreadxLinux": "verified",
   "nros-board-threadx-qemu-riscv64@ThreadxRiscv64": "verified",
   "nros-board-zephyr@Fvp": "boots",

@@ -45,7 +45,9 @@
 #              NuttX QEMU pair) or a row whose descriptor lives in another
 #              directory (`linux`). `nros doctor --report` maps an image's
 #              board through it; the gate requires every key to name a
-#              descriptor and no key to answer for two rows.
+#              descriptor and no key to answer for two rows. A row with no
+#              `matrix_platform` is keyed `<crate>@<first board key>`, so
+#              one package can carry two such rows (the S32Z270 RTD variant).
 #   roads      the build roads a board's packages reach it by, each with the
 #              lane that keeps it: `[{ name = "<road>", lane = "<workflow>:<job>" }]`.
 #              Optional: a row without it has ONE road, kept by its cadence's
@@ -196,6 +198,9 @@ maintainers = []
 # see the bundle's nros-board.toml.
 [[board]]
 crate = "nros-board-s32z270-freertos"
+# The package's first descriptor; `s32z270-freertos-rtd`, its second, is the
+# row below.
+board_keys = ["s32z270-freertos", "s32z270"]
 # NO matrix_platform, deliberately. It read `FreertosMps2` "until a hardware
 # witness exists" — reusing the family lane's PlatformId — and that is the
 # declaration check-board-tiers exists to reject: FreertosMps2 HAS Runtime
@@ -219,6 +224,22 @@ hardware = "s32z270"
 breadth = "inherits FreertosMps2"
 maintainers = []
 notes = "S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). No matrix_platform: no witness exists for this board, and borrowing FreertosMps2's would claim its Runtime cells. Link-completeness is proven by the workspace cmake lane with the CRx_No_GIC default port."
+
+# issue 2632 -- the RTD variant of the same package: NXP's GCC/ARM_CR52_GIC
+# FreeRTOS port from a provisioned NXP kernel and RTD (license-gated, see the
+# package's `config-rtd/` and `nros-board.toml`). No CI lane builds it and no
+# hardware run is recorded, so it claims what its sibling claims: `runs =
+# "none"`, no matrix_platform. `board_keys` splits the package's two
+# descriptors between the two rows.
+[[board]]
+crate = "nros-board-s32z270-freertos"
+board_keys = ["s32z270-freertos-rtd"]
+real_hardware = true
+runs = "none"
+hardware = "s32z270"
+breadth = "inherits FreertosMps2"
+maintainers = ["jerry73204"]
+notes = "S32Z270 RTU Cortex-R52 on NXP's ARM_CR52_GIC FreeRTOS port, built against a provisioned NXP kernel (NXP_FREERTOS_S32ZE_DIR) and RTD (S32_RTD_PATH). No CI lane and no hardware run: the NXP pieces are license-gated. The NETC network glue is not part of it yet."
 
 # phase-337 W3.d — ONE crate, TWO witnesses. This row and the `NuttxRiscv` row
 # below are the reason W1.c re-keyed the registry by (crate, matrix_platform):
@@ -385,6 +406,20 @@ maintainers = []
 #   Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate,
 #   matrix_platform) keying is for.
 notes = "Runtime is run by a maintainer, hence `cadence = \"manual\"`. The model is not licence-gated: `nros setup --tool arm-fvp` fetches it from a pinned Arm download. CI does not run it because of cost and x86_64-only hosting. It is the target of the Autoware safety-island reference consumer."
+
+# issue 2631 -- the NXP S32Z270 RTU0 Cortex-R52 on Zephyr, a descriptor
+# directory in this crate (boards/s32z270-rtu0-zephyr/). No emulator models the
+# SoC, no CI lane builds it and no hardware run is recorded here, so the row
+# claims no run and no matrix_platform.
+[[board]]
+crate = "nros-board-zephyr"
+board_keys = ["s32z270-rtu0-zephyr"]
+real_hardware = true
+runs = "none"
+hardware = "s32z270"
+breadth = "inherits ZephyrQemuCortexM"
+maintainers = ["jerry73204"]
+notes = "S32Z270 RTU0 Cortex-R52 (board revision D) on Zephyr, with Zephyr's NXP NETC ethernet driver. No emulator models the SoC, no CI lane builds it and no hardware run is recorded."
 
 # phase-522 W1 (RFC-0114 migration table) — the S32K344 safety island. A board
 # nano-ros has measured booting on silicon, declared nowhere until now: the
