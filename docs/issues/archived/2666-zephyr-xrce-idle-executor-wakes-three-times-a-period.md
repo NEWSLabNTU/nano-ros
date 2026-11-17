@@ -1,15 +1,16 @@
 ---
 id: 2666
 title: "Zephyr mps2/an385 XRCE idle executor is switched in about 3 times a timer period, against a bound of 2"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, xrce, executor, testing]
 related: [phase-521, 2252, 2608]
 found: 2026-11-17
+resolved_in: "fix-2666-zephyr-xrce-idle-wakes: the witness counts wakes, not switch-ins"
 ---
 
-**Home: [phase-521](../roadmap/archived/phase-521-rt-unified-wait.md)** (RFC-0113 D2).
+**Home: [phase-521](../../roadmap/archived/phase-521-rt-unified-wait.md)** (RFC-0113 D2).
 
 ## What
 
@@ -113,6 +114,28 @@ preceding switch-out left the thread blocked. That is D2's quantity. Assert
 the record. A sliced wait (a 10 ms slice) still reads ~100 wakes a second,
 because each slice blocks, so the cell keeps the defect it exists to catch.
 
+## Verified (2026-11-17, host 139)
+
+On issue 2608's witness split (`40fb495e38`), which moves the measurement
+behind `witness_board.h`. The wake classification lives in
+`witness_board_zephyr.c` (`witness_board_wakes()`), and the host probe's
+`witness_board_host.c` answers 0. The build ran under the metadata probe's
+refuse rule, so the host twin compiles.
+`NROS_ZEPHYR_FIXTURE_FILTER='^build-cortex-m-c-idle-wake-(xrce|zenoh)$' just zephyr build-fixtures`,
+then `cargo nextest run -p nros-tests --test zephyr_cortex_m_qemu -- idle_`:
+
+| cell | wakes | switch-ins | fires | result |
+|---|---|---|---|---|
+| XRCE | 5 | 15 | 5 | pass |
+| zenoh | 5 | 10 | 5 | pass |
+
+Negative control: the park was capped at 10 ms in
+`nros_platform_wake_park_handles_us`, which is the sliced wait this cell exists
+to catch. The XRCE cell then read `wakes=458` (920 switch-ins) and failed with
+"woke 458 times over 5 timer periods". The cap was reverted and the leaf
+rebuilt. The same three results held at `1037efabd0`, before the split
+(5 / 14, 5 / 10, 457).
+
 ## Plan (as filed, before the measurement)
 
 Measure before choosing. Instrument the witness, without changing the
@@ -134,5 +157,5 @@ Then:
   RFC must state XRCE's session protocol as a measured, named exception.
 - If they are park loops (3): fix the park.
 
-The leaf needs branch `fix-2608-zephyr-witness-host-probe` (issue 2608's
-witness split) to build. This work is based on it until it merges.
+The leaf needs issue 2608's witness split (PR #4123) to build on main, so
+this work is based on it.
