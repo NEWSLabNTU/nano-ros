@@ -222,23 +222,30 @@ my-board-package/
     sources in use, which is the mechanism leaves already use. A path
     dependency from an outside crate into the nano-ros tree cannot be spelled
     portably. The board crate itself is the entry's path dependency.
-  - **`nros::main!` learns the board type from the crate's own metadata.**
-    The board crate states `[package.metadata.nros.board] type =
-    "::my_board::MyBoard"`, as it can today. The CLI reads it and writes
-    `NROS_BOARD_TYPE` into the generated entry's `nros-cargo.toml` `[env]`.
-    That is the cargo road's carrier, and the CLI owns the file. This
-    replaces the route that needed an entry `build.rs` calling
-    `emit_board_framework()`, which a generated entry does not have. The
-    type is stated once, by the crate, and is not repeated in the board
-    definition.
+  - **`nros::main!` learns the board type from the board definition.** The
+    definition states `[board.entry] type = "::my_board::MyBoard"`. The CLI
+    carries it into the board facts, and from there it reaches the generated
+    entry's `nros-cargo.toml` `[env]` as `NROS_BOARD_TYPE`. That `[env]` is
+    the cargo road's carrier, and the CLI owns the file. The macro reads the
+    variable first and tracks it with `option_env!`, so a change re-expands.
+    It is not read from the crate's `[package.metadata.nros.board]`: that
+    table is the retired Cargo face of the board definition (RFC-0064 R5 D4),
+    refused in every tracked manifest by `check-board-descriptor-single-source`,
+    because the definition is the board's one face. (This text first chose
+    the crate metadata. The gate caught it while phase-577 W8 was being built,
+    and W8 implements the definition field.) A generated entry has no
+    `build.rs`, so the older route through `emit_board_framework()` cannot
+    fire there either.
   - **Acceptance includes a rebuild check:** changing the board's `type` (or
     switching board) rebuilds the entry, rather than linking a stale
     expansion.
   - **The compiled-in key tables become a fallback, then go.** The macro's
     `BOARD_PATHS` is the Rust twin of the entry pipeline's board-key table.
-    While in-tree board crates do not yet state `type`, the macro keeps it
-    as a fallback after `NROS_BOARD_TYPE`. Once every in-tree crate states
-    its type, both tables can be retired (phase-577).
+    While in-tree board definitions do not yet state `type`, the macro keeps it
+    as a fallback after `NROS_BOARD_TYPE`. Once every in-tree definition
+    states its type, both tables can be retired (phase-577), along with the
+    leftovers that still describe the crate-metadata route: the macro's
+    fallback error text and `nros_build::emit_board_framework()`.
 - **The board contract is what the family calls, and an optional hook has a
   default in the family.** A family's entry calls some board hooks that most
   boards have no reason to implement: the trace hooks
@@ -544,8 +551,9 @@ time.
 - 2026-11-18: D2 settles the Rust road for a board crate:
   - `crate_path` is relative to the definition, for every root;
   - registry names plus patch rows;
-  - `NROS_BOARD_TYPE` comes from the crate's metadata, carried in the entry's
-    `nros-cargo.toml` `[env]`.
+  - `NROS_BOARD_TYPE` is carried in the entry's `nros-cargo.toml` `[env]`,
+    first from the crate's metadata, then corrected the same day to
+    `[board.entry] type`, since the crate metadata is a retired second face.
 
   Asked by W8's owner.
 - 2026-11-18: D2 gains key-to-family resolution through the catalog,
