@@ -88,6 +88,12 @@ PRUNE_DIRS = {".git", "target", "deps", "incremental", ".fingerprint"}
 CORROSION_FOLDER = re.compile(r"^.+_[0-9a-f]{5}$")
 
 
+def image_crates_root() -> Path:
+    # Issue 2676 — the metadata probe's shared image roots, one per CONTENT
+    # (`NROS_SHARED_IMAGE_CRATE_ROOT`, `cmake/NanoRosImageCrate.cmake`).
+    return build_dir(ROOT, "image-crates")
+
+
 def shared_root() -> Path:
     # issue 1921 — the corrosion-cargo kind under THE build root, where every
     # producer writes (one dir per platform). This was a `<repo>/build`
@@ -106,6 +112,9 @@ class Scan:
     named: dict[Path, set[str]] = field(default_factory=dict)
     # store -> linking build dirs whose build.ninja could not be read
     undetermined: dict[Path, list[Path]] = field(default_factory=dict)
+    # issue 2676: shared image roots (`<kind>/<name>` under the image-crates
+    # root) that some generated build file names
+    crates_named: set[str] = field(default_factory=set)
 
     def live(self) -> set[Path]:
         return self.baked | set(self.linked)
@@ -139,10 +148,14 @@ def generated_build_text(build: Path) -> str | None:
     return "\n".join(parts) if parts else None
 
 
-def scan(store_root: Path, walk_roots: list[Path]) -> Scan:
+def scan(store_root: Path, walk_roots: list[Path], crates_root: Path | None = None) -> Scan:
     """Every reference to a store under `store_root`, by either mechanism, and
     the Corrosion folders each linking build dir names."""
     s = Scan()
+    crate_res = []
+    if crates_root is not None:
+        for spelling in {str(crates_root), os.path.realpath(crates_root)}:
+            crate_res.append(re.compile(re.escape(spelling + "/") + r"([^/\s\"'$:]+/[^/\s\"'$:]+)"))
     root_s = str(store_root)
     root_real = os.path.realpath(store_root)
     baked_re = re.compile(re.escape(root_s) + r"/([^/\s\"']+)/([0-9a-f]{12})")
@@ -174,6 +187,14 @@ def scan(store_root: Path, walk_roots: list[Path]) -> Scan:
                                 folders.update(m.group(1) for m in re.finditer(pat, ninja))
                 # a real `cargo` dir is cargo output: nothing to find inside
                 dirnames.remove("cargo")
+            # 3. issue 2676: a shared image root is named by the generated build
+            #    file of every build dir that imports it, whatever its `cargo`.
+            if crate_res:
+                for name in ("build.ninja", "build.make"):
+                    if name in filenames:
+                        text = _read(here / name) or ""
+                        for rx in crate_res:
+                            s.crates_named.update(m.group(1) for m in rx.finditer(text))
             # 2. the NuttX consumer: the path is baked into build.ninja. Read
             #    only the generated build files, never the whole tree.
             for name in ("build.ninja", "CMakeCache.txt"):
@@ -233,8 +254,28 @@ def orphan_folders(s: Scan, store: Path) -> list[Path] | None:
     ]
 
 
-def sweep(store_root: Path, walk_roots: list[Path], prune: bool, rel_to: Path, out=print) -> dict:
-    s = scan(store_root, walk_roots)
+def orphan_image_crates(s: Scan, crates_root: Path | None) -> list[Path] | None:
+    """Issue 2676 — shared image roots no generated build file names, or None
+    when that cannot be decided: a build dir linking to a store has no readable
+    generated build file, so a root it imports could be missed."""
+    if crates_root is None or not crates_root.is_dir():
+        return []
+    if s.undetermined:
+        return None
+    out = []
+    for kind in sorted(crates_root.iterdir()):
+        if not kind.is_dir():
+            continue
+        for entry in sorted(kind.iterdir()):
+            stem = entry.name.split(".lock")[0].split(".stage-")[0]
+            if f"{kind.name}/{stem}" not in s.crates_named:
+                out.append(entry)
+    return out
+
+
+def sweep(store_root: Path, walk_roots: list[Path], prune: bool, rel_to: Path, out=print,
+          crates_root: Path | None = None) -> dict:
+    s = scan(store_root, walk_roots, crates_root)
     live = s.live()
     unreachable = []
     folders = []
@@ -277,11 +318,26 @@ def sweep(store_root: Path, walk_roots: list[Path], prune: bool, rel_to: Path, o
             out(f"            built for: {origin(f)}")
             if prune:
                 shutil.rmtree(f, ignore_errors=True)
+    crates = orphan_image_crates(s, crates_root)
+    if crates:
+        total = sum(du(c) for c in crates)
+        out(f"gc-shared-cargo: {len(crates)} orphan shared image root(s) {verb}, "
+            f"{total / 1e9:.1f} GB (issue 2676: no generated build file names them)")
+        for c in crates:
+            out(f"  {rel(c)}")
+            if prune:
+                if c.is_dir() and not c.is_symlink():
+                    shutil.rmtree(c, ignore_errors=True)
+                else:
+                    c.unlink(missing_ok=True)
+    elif crates is None:
+        out("gc-shared-cargo: NOTE shared image roots not checked: a linking build dir "
+            "has no readable generated build file")
     for entry in undetermined:
         out(f"gc-shared-cargo: NOTE {rel(entry)}: folders not checked, a build dir linking "
             f"to it has no readable build.ninja: "
             + ", ".join(rel(b) for b in s.undetermined[entry][:3]))
-    if not unreachable and not folders:
+    if not unreachable and not folders and not crates:
         out(f"gc-shared-cargo: OK, every store under {rel(store_root)} is referenced by a "
             f"leaf and every Corrosion folder in it by a live build.ninja "
             f"({len(live)} live store(s)).")
@@ -289,6 +345,7 @@ def sweep(store_root: Path, walk_roots: list[Path], prune: bool, rel_to: Path, o
         "stores": [x[0] for x in unreachable],
         "folders": [x[0] for x in folders],
         "undetermined": undetermined,
+        "crates": crates or [],
     }
 
 
@@ -309,6 +366,48 @@ def _mkbuild(where: Path, store: Path, folders: list[str] | None) -> Path:
         lines = [f"  COMMAND = cargo rustc --target-dir {where}/cargo/{f} --release\n" for f in folders]
         (where / "build.ninja").write_text("rule CARGO\n" + "".join(lines))
     return where
+
+
+def _self_test_image_crates() -> list[str]:
+    """Issue 2676 — a shared image root a generated build file names stays, an
+    unnamed one (with its lock) goes, and nothing goes when a linking build dir
+    cannot be read."""
+    failures = []
+    with tempfile.TemporaryDirectory(prefix="gc-image-crates-selftest-", dir=ROOT / "tmp") as td:
+        t = Path(td)
+        store = t / "store" / "metadata-probe" / ("a" * 12)
+        store.mkdir(parents=True)
+        crates = t / "crates"
+        kind = crates / "metadata-probe"
+        live = kind / "nros-c-image-1111111111111111"
+        dead = kind / "nros-cpp-image-2222222222222222"
+        for c in (live, dead):
+            (c / "src").mkdir(parents=True)
+            (c / "Cargo.toml").write_text("[package]\n")
+            c.with_name(c.name + ".lock").write_text("")
+        leaves = t / "leaves"
+        b = _mkbuild(leaves / "ws" / "build", store, None)
+        sub = b / "nano_ros" / "CMakeFiles" / "_cargo-build_nros_c.dir"
+        sub.mkdir(parents=True)
+        (b / "CMakeCache.txt").write_text("CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n")
+        (sub / "build.make").write_text(
+            f"\tcargo rustc --manifest-path {live}/Cargo.toml --target-dir {b}/cargo/x_11111\n")
+        lines: list[str] = []
+        r = sweep(t / "store", [leaves], prune=False, rel_to=t, out=lines.append, crates_root=crates)
+        want = [dead, dead.with_name(dead.name + ".lock")]
+        if sorted(r["crates"]) != sorted(want):
+            failures.append(f"image crates: reported {r['crates']}, want {want}")
+        sweep(t / "store", [leaves], prune=True, rel_to=t, out=lines.append, crates_root=crates)
+        for p, want_exists in ((live, True), (dead, False)):
+            if p.exists() != want_exists:
+                failures.append(f"image crates prune: {p.name} exists={p.exists()}")
+        # undecidable: a second linking build dir with no generated build file
+        (dead / "src").mkdir(parents=True)
+        _mkbuild(leaves / "ws2" / "build", store, None)
+        r = sweep(t / "store", [leaves], prune=False, rel_to=t, out=lines.append, crates_root=crates)
+        if r["crates"]:
+            failures.append(f"image crates: reported {r['crates']} while a linking build dir is unreadable")
+    return failures
 
 
 def self_test() -> int:
@@ -372,6 +471,7 @@ def self_test() -> int:
         r = sweep(root, [leaves], prune=False, rel_to=t, out=lines.append)
         if r["folders"] or r["stores"]:
             failures.append(f"second pass not clean: {r}")
+    failures.extend(_self_test_image_crates())
     if failures:
         print("gc-shared-cargo self-test: FAIL")
         for f in failures:
@@ -396,7 +496,8 @@ def main() -> int:
     if not root.is_dir():
         print("gc-shared-cargo: no shared store — nothing to do.")
         return 0
-    sweep(root, [ROOT / b for b in WALK_BASES], args.prune, ROOT)
+    sweep(root, [ROOT / b for b in WALK_BASES], args.prune, ROOT,
+          crates_root=image_crates_root())
     return 0
 
 

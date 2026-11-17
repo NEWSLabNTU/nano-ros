@@ -57,6 +57,16 @@
 #         -P cmake/NanoRosImageCrate.cmake
 #
 # prints `<manifest> <feature,feature,…>` on stdout, and always generates.
+#
+# NROS_SHARED_IMAGE_CRATE_ROOT (issue 2676, opt-in; the metadata probe is its
+# only caller): a standalone image root is generated under this directory, at
+# a path named by a hash of its whole content (manifest, lib, features), instead
+# of under the caller's OUT_DIR. Corrosion names its cargo folder from the
+# manifest path, so every build dir whose root is the same content shares ONE
+# folder in the keyed store and compiles the runtime once. A cold gate's
+# `workspace-probes` built the same runtime 30 times, one ~380 MB folder per
+# workspace. The content is the identity, so equal paths are equal roots by
+# construction, and the files are written once, under a lock, by rename.
 
 include_guard(GLOBAL)
 if(CMAKE_SCRIPT_MODE_FILE STREQUAL CMAKE_CURRENT_LIST_FILE)
@@ -150,6 +160,27 @@ static _KEEP_BACKEND: fn() = || {
     let _ = ::${_reg_ident}::${NROS_RMW_REGISTER_FN}();
 };
 " PARENT_SCOPE)
+endfunction()
+
+# Seed `<dir>/Cargo.lock` from the registry pins (RFC-0104 D3), when absent.
+function(_nros_image_seed_lock dir repo)
+    if(EXISTS "${dir}/Cargo.lock")
+        return()
+    endif()
+    _nros_rmw_cli(_tool)
+    set(_seed_rc 1)
+    if(_tool)
+        # A configure-time emitter: a rebuilt `nros` must re-run it (issue 1018).
+        nros_codegen_tool_reconfigure("${_tool}")
+        execute_process(
+            COMMAND "${_tool}" dev lock seed "${dir}" --nano-ros-path "${repo}"
+            RESULT_VARIABLE _seed_rc OUTPUT_QUIET ERROR_VARIABLE _seed_err)
+    endif()
+    if(NOT _seed_rc EQUAL 0)
+        message(STATUS
+            "nano-ros: could not seed ${dir}/Cargo.lock from the pins "
+            "(${_seed_err}); cargo resolves the image crate unseeded.")
+    endif()
 endfunction()
 
 function(nros_image_crate prefix)
@@ -263,7 +294,9 @@ ${_profiles}")
             file(WRITE "${_IC_WORKSPACE_DIR}/Cargo.toml" "${_root_toml}")
         endif()
     endif()
-    file(MAKE_DIRECTORY "${_IC_OUT_DIR}/src")
+    if(NOT NROS_SHARED_IMAGE_CRATE_ROOT OR _IC_WORKSPACE_DIR OR NROS_SHARED_CARGO_BUILD_DIR)
+        file(MAKE_DIRECTORY "${_IC_OUT_DIR}/src")
+    endif()
     # phase-559 W10 — the ROOT's identity is its build dir. Cargo spells a
     # workspace member's path RELATIVE to its root, so two build dirs that each
     # generate `nros-{c,cpp}-image 0.0.0` give the root the SAME unit hash. In
@@ -335,6 +368,47 @@ pub extern \"C\" fn nros_image_keep_${_api_lib}_surface() -> *const core::ffi::c
     core::ptr::addr_of!(_KEEP_API).cast()
 }
 ${_root_marker}${_ib_ANCHOR}${_bm_ANCHOR}")
+    # Issue 2676 — a shared root lives at a path named by its content. Not with
+    # WORKSPACE_DIR (a member's path is relative to its root) nor with the
+    # shared build-dir (whose roots need an identity per build dir).
+    if(NROS_SHARED_IMAGE_CRATE_ROOT AND NOT _IC_WORKSPACE_DIR AND NOT NROS_SHARED_CARGO_BUILD_DIR)
+        string(SHA256 _content_id "${_manifest}\n${_lib}\n${_api_feats}")
+        string(SUBSTRING "${_content_id}" 0 16 _content_id)
+        set(_IC_OUT_DIR "${NROS_SHARED_IMAGE_CRATE_ROOT}/${_api_pkg}-image-${_content_id}")
+        set(_lock_root "${_IC_OUT_DIR}")
+        file(MAKE_DIRECTORY "${NROS_SHARED_IMAGE_CRATE_ROOT}")
+        # Another probe may be generating the same root right now. No lock:
+        # every configure builds the root COMPLETE in a staging dir of its own
+        # (manifest, lib and seeded Cargo.lock) and renames it into place. A
+        # directory rename onto a NON-EMPTY directory fails (`rename(2)`,
+        # ENOTEMPTY), and a finished root is never empty, so the rename either
+        # succeeds or finds the root already there. (Not `NO_REPLACE`: its
+        # `renameat2` returned "Operation not permitted" on this ext4 host.)
+        # The content is the path, so a root another configure put there
+        # first is this one, and the stage is dropped. No reader sees a
+        # partial root, no finished root is ever rewritten, and because every
+        # configure after the first takes the "already there" branch, that
+        # branch runs on every warm configure and in the race gate, not only
+        # in a race nobody can time.
+        if(TRUE)
+            string(RANDOM LENGTH 12 _stage_id)
+            set(_stage "${_IC_OUT_DIR}.stage-${_stage_id}")
+            file(REMOVE_RECURSE "${_stage}")
+            file(MAKE_DIRECTORY "${_stage}/src")
+            file(WRITE "${_stage}/src/lib.rs" "${_lib}")
+            file(WRITE "${_stage}/Cargo.toml" "${_manifest}")
+            _nros_image_seed_lock("${_stage}" "${_repo}")
+            file(RENAME "${_stage}" "${_IC_OUT_DIR}" RESULT _rename_rc)
+            if(NOT _rename_rc EQUAL 0)
+                file(REMOVE_RECURSE "${_stage}")
+                if(NOT EXISTS "${_IC_OUT_DIR}/Cargo.toml")
+                    message(FATAL_ERROR
+                        "nano-ros: could not put the shared image root in place at "
+                        "${_IC_OUT_DIR}: ${_rename_rc}")
+                endif()
+            endif()
+        endif()
+    endif()
     # Write only on change: an unchanged manifest must not re-trigger cargo.
     foreach(_pair "Cargo.toml|_manifest" "src/lib.rs|_lib")
         string(REPLACE "|" ";" _pv "${_pair}")
@@ -356,22 +430,7 @@ ${_root_marker}${_ib_ANCHOR}${_bm_ANCHOR}")
     # crates) have no entry until cargo adds them, which `--locked` forbids. So
     # the import runs without LOCKED, as `nros_ws_runtime` always has: cargo
     # keeps every seeded version and only adds the local entries.
-    if(NOT EXISTS "${_lock_root}/Cargo.lock")
-        _nros_rmw_cli(_tool)
-        set(_seed_rc 1)
-        if(_tool)
-            # A configure-time emitter: a rebuilt `nros` must re-run it (issue 1018).
-            nros_codegen_tool_reconfigure("${_tool}")
-            execute_process(
-                COMMAND "${_tool}" dev lock seed "${_lock_root}" --nano-ros-path "${_repo}"
-                RESULT_VARIABLE _seed_rc OUTPUT_QUIET ERROR_VARIABLE _seed_err)
-        endif()
-        if(NOT _seed_rc EQUAL 0)
-            message(STATUS
-                "nano-ros: could not seed ${_lock_root}/Cargo.lock from the pins "
-                "(${_seed_err}); cargo resolves the image crate unseeded.")
-        endif()
-    endif()
+    _nros_image_seed_lock("${_lock_root}" "${_repo}")
 
     # History: RFC-0071 D9.
     message(STATUS
