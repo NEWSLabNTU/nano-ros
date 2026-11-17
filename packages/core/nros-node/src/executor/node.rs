@@ -1631,6 +1631,14 @@ impl<'e, 's> Node<'e, 's> {
         value: nros_params::ParameterValue,
         descriptor: nros_params::ParameterDescriptor,
     ) -> bool {
+        // Issue 2670 -- this route is Rust code's own; the `_on` form below is
+        // shared with the C++ shim, which records through its own hook.
+        self.executor.observe_code_parameter_declare(
+            self.node_id,
+            name,
+            Some(&value),
+            value.param_type(),
+        );
         self.executor
             .declare_parameter_with_descriptor_on(self.node_id, name, value, descriptor)
     }

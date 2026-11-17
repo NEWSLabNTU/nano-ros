@@ -36,5 +36,18 @@ nros-serdes = { path = "../../core/nros-serdes", default-features = false }
 nros-node = { path = "../../core/nros-node", default-features = false }
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }
 
+# Issue 2670 -- the imperative-parameter census test needs a parameter store.
+# Behind a test-only feature, not on the dev-dependency: `test-targets` runs
+# `cargo clippy --workspace --no-default-features`, which unifies every
+# dev-dependency's features into `nros`, and nros-c's executor-size probe does
+# not see a feature that only a sibling's dev-dependency turns on. The lane is
+# `.config/feature-lanes.toml`'s `census-param-store-test` row.
+[features]
+census-param-store-test = ["nros/param-store"]
+
+[[test]]
+name = "imperative_param_census"
+required-features = ["census-param-store-test"]
+
 [lints]
 workspace = true
