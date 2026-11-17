@@ -1,0 +1,5 @@
+{
+  "key": "rust:is_app_marker",
+  "verdict": "extension",
+  "why": "issue 2641 -- whether an id lies in the application trace marker range 1..=15, the check `emit_app_marker` applies. rclrs has no trace marker."
+}
