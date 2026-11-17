@@ -1823,3 +1823,11 @@ path = "guide/realtime/trace-callbacks.md"
 action = "new phase-478"
 batch = "phase-478-i23"
 note = "Trace callbacks (issue 2641, GitHub #4009): the callback trace sink, the application trace marker and its reserved ids 1-15, and which platforms install a default sink"
+
+[[page]]
+book = "user"
+path = "reference/build-arguments.md"
+action = "new phase-568"
+batch = "phase-568-w2"
+note = "Build arguments (phase-568 W2a/W2b/W3a): where a CMake or cargo argument can be stated, how a value is read, the order, and what is refused and where it goes instead"
+sidebar_group = "config"

@@ -112,6 +112,7 @@
   - [Configuration surface](./reference/configuration-surface.md)
   - [system.toml keys](./reference/system-toml.md)
   - [Environment variables](./reference/environment-variables.md)
+  - [Build arguments](./reference/build-arguments.md)
 - [APIs]()
   - [Rust API](./reference/rust-api.md)
   - [C API](./reference/c-api.md)
