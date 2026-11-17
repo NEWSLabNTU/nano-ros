@@ -347,6 +347,25 @@ Tracked by phase-508:
 7. Take each measurement in the table above; this RFC goes to Stable when
    all of them are taken.
 
+## Amendment (RFC-0134, 2026-11-18) — unicast peer mode on a point-to-point link
+
+[RFC-0134](0134-p2p-link-peering.md) turns `Z_FEATURE_UNICAST_PEER` on for
+images that carry a point-to-point link, and only for them. Results row
+"App-thread spawn latency" assumed peer mode compiled out. With it compiled
+in, the driving rule holds unchanged, because peer mode adds no thread:
+
+- every task it adds is a future on the same executor (the accept future, the
+  connect-retry future, and the existing read and lease futures in their
+  peer-mode arm), driven in THREAD or CALLER mode exactly as D1 chose;
+- both new spawns happen at session open, from the opening thread, so nothing
+  spawns from an app thread in steady state;
+- on a point-to-point link the accept future is not spawned at all, because
+  RFC-0134 D2 runs the acceptor handshake once at open.
+
+RFC-0134's step 0 measures the added futures against `Z_RUNTIME_MAX_TASKS`
+(floor 5, default 8) and the executor stack peak, on FreeRTOS, before any link
+is built.
+
 ## Changelog
 
 - 2026-10-24: first draft, from issue 0910's second-pass survey.
@@ -372,3 +391,5 @@ Tracked by phase-508:
   re-woke on a Zephyr Cortex-M image.
 - 2026-10-26: D4 corrected — ThreadX's sockets come from the platform net ABI
   (`nros-platform-threadx/src/net.c`), not the dead `c/platform/threadx/network.c`.
+- 2026-11-18: amended by RFC-0134 (unicast peer mode on a point-to-point
+  link adds futures, no threads).

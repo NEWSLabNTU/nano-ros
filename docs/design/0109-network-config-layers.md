@@ -310,6 +310,11 @@ interfaces, and wiring uses those names.
      the file makes the session a peer whatever the API said — which on the
      shipped shim is refused, because peer mode needs zenoh-pico's multicast
      transport (issue 0682).
+     **Amended by [RFC-0134](0134-p2p-link-peering.md) (2026-11-18):** the
+     refusal stays for every link except a point-to-point one (RPMsg, IVC).
+     An image whose link set declares such a link in a router-less role
+     builds unicast peer mode and may name `listen` or `connect` on that
+     locator; exactly one end listens.
   2. **`ZENOH_SESSION_CONFIG_URI` replaces the baked table, whole** (D6a). It
      is not merged key by key: rmw_zenoh reads it as a complete session
      config, and so do we.
