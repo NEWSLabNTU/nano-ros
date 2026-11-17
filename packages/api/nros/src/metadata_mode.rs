@@ -395,6 +395,7 @@ pub fn listen_for_registrations() {
     listen_for_lifecycle_registrations();
     #[cfg(feature = "param-store")]
     listen_for_parameter_declarations();
+    listen_for_descriptor_text();
     nros_node::executor::registration_observer::set_observer(|reg| {
         // A dropped `false` here is a fact silently lost, which is the shape
         // every other recorder entry point is `#[must_use]` against. It is NOT
@@ -461,6 +462,21 @@ fn listen_for_parameter_declarations() {
                 reg.name, reg.node_name, reg.node_namespace
             );
         }
+    });
+}
+
+// Issue 2650.
+/// Hear the length of every parameter description and constraints text the
+/// code sets, and mark the recorder as watching, so its sidecar states the
+/// longest of each (`0` when there is none) instead of saying nothing.
+fn listen_for_descriptor_text() {
+    state().with(|st| st.recorder.arm_descriptor_text());
+    nros_params::descriptor_text_observer::set_descriptor_text_observer(|text, len| {
+        let constraints = matches!(
+            text,
+            nros_params::descriptor_text_observer::DescriptorText::Constraints
+        );
+        state().with(|st| st.recorder.observe_descriptor_text(constraints, len));
     });
 }
 
@@ -535,6 +551,65 @@ mod tests {
     // across a whole test body, which is exactly the case a spin lock is wrong
     // for. Production never contends — see the module doc.
     static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn sidecar() -> String {
+        to_json(&crate::node_metadata::SourceMetadataExport::new(
+            "pkg", "comp",
+        ))
+        .unwrap()
+    }
+
+    // Issue 2650.
+    /// The three states of descriptor prose a sidecar can state, which the
+    /// knob derivation tells apart: nobody watched (no key, so the knob is
+    /// unknown), watched and saw none (`0`), and watched and saw text (the
+    /// longest length, before truncation). Description and constraints are
+    /// kept apart, because each has its own knob.
+    #[test]
+    fn descriptor_text_is_stated_only_when_watched() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        // `begin_node` arms the watch, so take a recorder that never did.
+        reset();
+        assert!(begin_node("n", "/", 0));
+        state().with(|st| st.recorder = MetadataRecorder::new());
+        let json = sidecar();
+        assert!(
+            !json.contains("parameter_description_max_len")
+                && !json.contains("parameter_constraints_max_len"),
+            "an unwatched recorder says nothing about prose: {json}"
+        );
+
+        reset();
+        listen_for_registrations();
+        let json = sidecar();
+        assert!(
+            json.contains("\"parameter_description_max_len\":0,")
+                && json.contains("\"parameter_constraints_max_len\":0,"),
+            "watched, none set: {json}"
+        );
+
+        let mut d = crate::ParameterDescriptor::new("p", crate::ParameterType::Integer).unwrap();
+        d.set_description("eleven char");
+        let long = "d".repeat(nros_params::MAX_PARAM_DESCRIPTION_LEN + 3);
+        d.set_description(&long);
+        d.set_description("short");
+        d.set_additional_constraints("0 < x");
+        let json = sidecar();
+        let want = alloc::format!(
+            "\"parameter_description_max_len\":{},",
+            nros_params::MAX_PARAM_DESCRIPTION_LEN + 3
+        );
+        assert!(
+            json.contains(&want),
+            "the longest description, before truncation: {json}"
+        );
+        assert!(
+            json.contains("\"parameter_constraints_max_len\":5,"),
+            "constraints counted on their own: {json}"
+        );
+        reset();
+    }
 
     /// Issue 1419 -- a sched-task Rust entry runs a component's `register()` once
     /// per sched task executor, so the SAME node is opened once per sched task. Re-opening

@@ -60,9 +60,21 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   funnel, never declared. Absent means no registration was observed, and
 ///   the node is plain, which is the run-time rule too.
 ///
+/// Version 6 is additive again:
+///
+/// * top-level `"parameter_description_max_len": N` and
+///   `"parameter_constraints_max_len": N` -- the longest parameter
+///   `description` and `additional_constraints` the code set while the probe
+///   watched, in bytes, before any truncation; `0` for one it never set. They
+///   size `NROS_MAX_PARAM_DESCRIPTION_LEN` and
+///   `NROS_MAX_PARAM_CONSTRAINTS_LEN` respectively. **An absent key means
+///   nobody watched**, never `0`: a producer that cannot observe prose leaves
+///   both out, and a consumer must refuse to derive either knob from that
+///   sidecar rather than read it as "no text".
+///
 /// Serialised in exactly one place (this module), as the census layer rule
 /// requires: the adapters that feed the recorder contain no JSON.
-pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 5;
+pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 6;
 
 /// The BUFFERED registration row a subscription claimed, as the
 /// registration funnel observed it.
@@ -777,6 +789,13 @@ pub struct MetadataRecorder<
     nodes: Rows<NodeMetadata, MAX_NODES>,
     entities: Rows<EntityMetadata, MAX_ENTITIES>,
     callback_effects: Rows<CallbackEffectMetadata, MAX_CALLBACKS>,
+    /// The longest parameter `description` the code set while the probe
+    /// watched, in bytes. `None` when nothing watched (no observer was armed),
+    /// which is not the same fact as `Some(0)`: a probe that watched and saw
+    /// no text. Serialised only when `Some` (schema v6).
+    description_max_len: Option<usize>,
+    /// The same for `additional_constraints`, which has its own knob.
+    constraints_max_len: Option<usize>,
 }
 
 impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usize> Default
@@ -796,7 +815,43 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             nodes: Rows::new(),
             entities: Rows::new(),
             callback_effects: Rows::new(),
+            description_max_len: None,
+            constraints_max_len: None,
         }
+    }
+
+    /// Start watching descriptor prose: from now on the sidecar states the
+    /// longest description and constraints text seen, `0` for one never set.
+    /// Idempotent; keeps what was seen.
+    pub fn arm_descriptor_text(&mut self) {
+        self.description_max_len.get_or_insert(0);
+        self.constraints_max_len.get_or_insert(0);
+    }
+
+    /// The code set a `description` (`constraints == false`) or an
+    /// `additional_constraints` text of `len` bytes. Ignored unless
+    /// [`arm_descriptor_text`](Self::arm_descriptor_text) ran: an unarmed
+    /// recorder states nothing about prose.
+    pub fn observe_descriptor_text(&mut self, constraints: bool, len: usize) {
+        let slot = if constraints {
+            &mut self.constraints_max_len
+        } else {
+            &mut self.description_max_len
+        };
+        if let Some(max) = slot.as_mut() {
+            *max = (*max).max(len);
+        }
+    }
+
+    /// The longest `description` seen, or `None` when nothing watched.
+    pub fn description_max_len(&self) -> Option<usize> {
+        self.description_max_len
+    }
+
+    /// The longest `additional_constraints` seen, or `None` when nothing
+    /// watched.
+    pub fn constraints_max_len(&self) -> Option<usize> {
+        self.constraints_max_len
     }
 
     /// Recorded nodes in declaration order.
@@ -913,6 +968,12 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         out.write_char(',')?;
         self.write_parameters_json(out)?;
         out.write_char(',')?;
+        if let Some(len) = self.description_max_len {
+            write!(out, "\"parameter_description_max_len\":{len},")?;
+        }
+        if let Some(len) = self.constraints_max_len {
+            write!(out, "\"parameter_constraints_max_len\":{len},")?;
+        }
         self.write_trace_json(export, out)?;
         write!(out, "}}")
     }

@@ -34,3 +34,29 @@ descriptor.
   needs the same arena machinery as [issue 2649](2649-param-string-array-shared-arena.md).
 - Drop the descriptor's copy of the name, since the entry's `Parameter` already
   holds it, and build the name only when the describe reply is written.
+
+## Ruling and progress
+
+Ruled 2026-11-17: size the description space from what the code declares, so
+users see no change, and never default it to 0. The work is in three parts:
+
+1. **Name copy (PR #4167).** The descriptor no longer holds the parameter's
+   name: 64 B less per slot.
+2. **Census capture (this change).** The contract's `params:` rows state a type
+   and no description, so only running the code can say how long the prose is.
+   A descriptor's `description` (`NROS_MAX_PARAM_DESCRIPTION_LEN`) and its
+   `additional_constraints` (`NROS_MAX_PARAM_CONSTRAINTS_LEN`, default 0) are
+   set only through `ParameterDescriptor::set_description` and
+   `set_additional_constraints`. Every route reaches those two: the typed
+   builder, a descriptor the code builds, and the C and C++
+   `add_parameter_description` calls. Under `metadata-mode` each reports the
+   requested length to the probe, before truncation. The sidecar (schema v6)
+   states the longest of each as top-level `parameter_description_max_len` and
+   `parameter_constraints_max_len`. The keys are ABSENT when nothing watched,
+   and `0` when the probe watched and saw no such text.
+3. **Derivation (next).** Derive the knob from the sidecars. There are three
+   cases, each with a test:
+   - No census, or a node the census cannot see (issue 2681), means the length
+     is unknown. Keep 256 and say why.
+   - A complete census that saw no prose derives the small floor.
+   - A complete census that saw prose derives its longest text.

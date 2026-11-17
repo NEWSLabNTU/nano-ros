@@ -243,7 +243,10 @@ pub fn clear_parameter_declare_observer() {
 ///
 /// Called BEFORE the store answers, like `on_param_declare`: a declaration
 /// the store refuses for being full is exactly the one the census must see.
-#[cfg(feature = "param-store")]
+///
+/// Gated like [`observe`]: its only caller is the executor, which exists only
+/// with an RMW seam.
+#[cfg(all(feature = "param-store", any(has_rmw, test)))]
 pub(crate) fn observe_parameter_declare(reg: ObservedParameterDeclare<'_>) {
     // Released before the sink runs, as in `observe`.
     let sink = PARAMETER_DECLARE_OBSERVER.with(|slot| *slot);

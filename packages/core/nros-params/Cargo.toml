@@ -27,6 +27,10 @@ default = []
 # phase-359 W10 — no `std` feature. A core crate is `core` or `core+alloc`
 # (ARCHITECTURE §2); `alloc` is the one heap axis.
 alloc = []
+# Issue 2650 -- report each description and constraints text's length to a
+# metadata probe (`descriptor_text_observer`). Only `nros-node`'s
+# `registration-observer`, which only `nros`'s `metadata-mode` turns on.
+descriptor-text-observer = []
 
 [dependencies]
 heapless = { workspace = true }
