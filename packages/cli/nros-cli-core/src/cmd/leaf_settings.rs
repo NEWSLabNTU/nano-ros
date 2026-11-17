@@ -1043,7 +1043,9 @@ pub fn image_ros_edition(img: &LeafImage) -> Result<rosidl_codegen::RosEdition> 
 /// in phase-521 W6 rather than kept. Read from the board
 /// registry's generated status file (RFC-0114 D10, phase-522 W4), so issue
 /// 1305's walk derives its "unsupported board" exemption from the registry
-/// rather than naming a path.
+/// rather than naming a path. A crate carrying several rows counts only when
+/// every row is "Not supported": one unsupported board key (the S32Z270 RTD
+/// variant, Zephyr's S32Z270 board) leaves its package's other boards in scope.
 #[cfg(test)]
 fn unsupported_board_crates(root: &Path) -> Vec<String> {
     let path = root.join("packages/boards/board-support-status.json");
@@ -1051,13 +1053,21 @@ fn unsupported_board_crates(root: &Path) -> Vec<String> {
         &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
     )
     .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    doc["rows"]
-        .as_array()
-        .into_iter()
-        .flatten()
+    let rows: Vec<&serde_json::Value> = doc["rows"].as_array().into_iter().flatten().collect();
+    let supported: std::collections::BTreeSet<&str> = rows
+        .iter()
+        .filter(|r| r["status"].as_str() != Some("Not supported"))
+        .filter_map(|r| r["crate"].as_str())
+        .collect();
+    let mut out: Vec<String> = rows
+        .iter()
         .filter(|r| r["status"].as_str() == Some("Not supported"))
-        .filter_map(|r| r["crate"].as_str().map(str::to_string))
-        .collect()
+        .filter_map(|r| r["crate"].as_str())
+        .filter(|c| !supported.contains(c))
+        .map(str::to_string)
+        .collect();
+    out.dedup();
+    out
 }
 
 /// The `nros-board-*` crates a manifest names, in any dependency table

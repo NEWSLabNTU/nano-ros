@@ -124,9 +124,13 @@ def _load(path: Path) -> dict:
 def parked_boards(repo: Path) -> "set[str]":
     """Every board NAME whose crate the registry derives as "Not supported"
     (RFC-0114 D10: nothing builds or boots it), read from the registry's
-    generated status file."""
+    generated status file. A crate carrying several rows is parked only when
+    every row is: one Not supported board key (the S32Z270 RTD variant) does
+    not park its package's other boards."""
     status = json.loads((repo / "packages/boards/board-support-status.json").read_text())
-    unsupported = {r["crate"] for r in status["rows"] if r["status"] == "Not supported"}
+    rows = status["rows"]
+    unsupported = ({r["crate"] for r in rows if r["status"] == "Not supported"}
+                   - {r["crate"] for r in rows if r["status"] != "Not supported"})
     names: "set[str]" = set()
     for desc in tracked(repo, "packages/boards/**/nros-board.toml"):
         d = repo / desc
