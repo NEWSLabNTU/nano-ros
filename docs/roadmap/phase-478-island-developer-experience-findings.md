@@ -713,14 +713,16 @@ builtin on every platform, marked `NROS_PLAIN_EXECUTABLE`.
 
 ### I31 -- a board network file on a Zephyr image
 
-**Status: DESIGN (2026-11-17), awaiting a ruling.** [Issue 2679](../issues/2679-zephyr-board-network-file-net-config.md),
+**Status: DESIGN (2026-11-17), Q1-Q3 ruled, awaiting the user's approval.** [Issue 2679](../issues/2679-zephyr-board-network-file-net-config.md),
 GitHub #4011. A board network file is refused on Zephyr, so the island states
 its address in its own Kconfig symbols and waits for DHCP by hand. Proposed: a
 Zephyr board declares its interface in `[board.net]`, and `nros build` renders
 the one resolved interface into `NET_CONFIG_*` / `NET_DHCPV4` as a Kconfig
 fragment appended last, refusing a second interface, a stated MAC and an
-`os_config` fragment that sets the same symbols. Open questions Q1-Q3 are in
-the issue.
+`os_config` fragment that sets the same symbols (naming both sources). It
+also scopes RFC-0103 D10d's locator refusal to an RMW whose descriptor states
+a host peer, so a Cyclone DDS image is not refused. Every Zephyr symbol and
+the DHCP wait are cited against v3.7.2 and v4.4.0 in the issue.
 
 ## Test / check
 
