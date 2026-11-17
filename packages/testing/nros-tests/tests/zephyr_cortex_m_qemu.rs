@@ -563,19 +563,32 @@ fn run_idle_wake_cell(rmw: Rmw) {
             "the witness printed no result line (`{IDLE_WAKE_RESULT_PREFIX}`).\nOutput:\n{output}"
         )
     });
+    // RFC-0113 D2.3 bounds WAKES: switch-ins after the thread blocked. A
+    // switch-in alone also counts a preemption, or a reschedule pass where
+    // nothing else ran, while the executor is dispatching. Issue 2666 measured
+    // 15 switch-ins and exactly 5 wakes over 5 periods on the XRCE image, so
+    // the switch-in total is printed and not bounded. The `+ 2` is the slack
+    // the old bound carried. It lets one or two frames of the session's own
+    // traffic land while the thread is parked, which wakes it on XRCE, whose
+    // readiness is the socket. None did in the measured runs. The defect this
+    // cell exists for, a sliced wait, reads ~500 here.
+    eprintln!(
+        "idle-wake ({rmw:?}): {} wakes, {} switch-ins, {} expiries",
+        r.wakes, r.switch_ins, r.fires
+    );
     assert!(
-        r.switch_ins <= 2 * r.fires + 2,
+        r.wakes <= r.fires + 2,
         "the executor's thread woke {} times over {} timer periods ({} ms): it is waking on \
          something other than its deadlines (RFC-0113 D2). Output:\n{output}",
-        r.switch_ins,
+        r.wakes,
         r.fires,
         r.window_ms
     );
     assert!(
-        r.switch_ins >= r.fires,
+        r.wakes >= r.fires,
         "the executor's thread woke {} times for {} expiries: the counter is not counting the \
          thread that dispatches. Output:\n{output}",
-        r.switch_ins,
+        r.wakes,
         r.fires
     );
     assert!(

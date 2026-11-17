@@ -5,14 +5,21 @@
 /// and one 1 s timer. RFC-0113 D2 says an
 /// idle executor wakes only for its deadlines and for arrivals, so over a
 /// window of WINDOW_FIRES timer periods the thread that runs the executor
-/// should be switched in about once per expiry. The count comes from
-/// Zephyr's user tracing hook (`CONFIG_TRACING_USER`): every switch-in of that
-/// thread is one wake. A 10 ms slice (the wait this phase deleted) would show
-/// ~100 a second.
+/// should WAKE about once per expiry. The count comes from Zephyr's user
+/// tracing hooks (`CONFIG_TRACING_USER`). A wake is a switch-in whose
+/// preceding switch-out left the thread BLOCKED (pending, suspended or
+/// sleeping). A 10 ms slice (the wait this phase deleted) blocks once per
+/// slice, so it would show ~100 a second.
+///
+/// A switch-in is NOT a wake by itself. The thread is also switched in after it
+/// was preempted while still runnable, and after a reschedule pass in
+/// which no other thread ran. Issue 2666 measured both on the XRCE image:
+/// 15 switch-ins over 5 periods, of which exactly 5 were wakes. So both
+/// counts are printed, and the test bounds the wakes.
 ///
 /// The window opens at the first expiry, once the session is up, and closes
 /// WINDOW_FIRES expiries later; the result is one line the test parses:
-///   idle-wake: switch_ins=N fires=F window_ms=W max_late_us=L max_early_us=E
+///   idle-wake: switch_ins=N wakes=K fires=F window_ms=W max_late_us=L max_early_us=E
 ///
 /// The same subscription measures arrival→dispatch (phase-521 W7 a): with a
 /// host talker publishing on `/chatter`, the image stamps the last LAN9118
@@ -28,6 +35,7 @@
 
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
+#include <zephyr/kernel_structs.h>
 #include <cmsis_core.h>
 
 #include <rclc/rclc.h>
@@ -57,11 +65,30 @@ typedef struct {
  * interrupts locked on a single-core Cortex-M3. */
 static struct k_thread* volatile exec_thread;
 static volatile uint32_t switch_ins;
+static volatile uint32_t wakes;
 static volatile bool window_open;
+/* Whether the executor thread's last switch-out left it blocked. */
+static volatile bool exec_blocked;
+
+#ifdef _THREAD_SLEEPING
+#define WITNESS_BLOCKED_STATES (_THREAD_PENDING | _THREAD_SUSPENDED | _THREAD_SLEEPING)
+#else
+#define WITNESS_BLOCKED_STATES (_THREAD_PENDING | _THREAD_SUSPENDED)
+#endif
+
+void sys_trace_thread_switched_out_user(void) {
+    if (window_open && k_current_get() == exec_thread) {
+        exec_blocked = (k_current_get()->base.thread_state & WITNESS_BLOCKED_STATES) != 0;
+    }
+}
 
 void sys_trace_thread_switched_in_user(void) {
     if (window_open && k_current_get() == exec_thread) {
         switch_ins++;
+        if (exec_blocked) {
+            wakes++;
+            exec_blocked = false;
+        }
     }
 }
 
@@ -115,6 +142,8 @@ static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
         exec_thread = k_current_get();
         self->first_us = t;
         switch_ins = 0;
+        wakes = 0;
+        exec_blocked = false;
         window_open = true;
     } else if (self->fires <= WINDOW_FIRES) {
         int64_t due = self->first_us + (int64_t)self->fires * PERIOD_MS * 1000;
@@ -127,9 +156,9 @@ static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
     }
     if (self->fires == WINDOW_FIRES) {
         window_open = false;
-        printf("idle-wake: switch_ins=%u fires=%d window_ms=%d max_late_us=%lld "
+        printf("idle-wake: switch_ins=%u wakes=%u fires=%d window_ms=%d max_late_us=%lld "
                "max_early_us=%lld\n",
-               (unsigned)switch_ins, WINDOW_FIRES, (int)((t - self->first_us) / 1000),
+               (unsigned)switch_ins, (unsigned)wakes, WINDOW_FIRES, (int)((t - self->first_us) / 1000),
                (long long)self->max_late_us, (long long)self->max_early_us);
     }
     self->fires++;
