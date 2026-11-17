@@ -1,12 +1,11 @@
 # Phase 568 — build arguments
 
-**Status (2026-11-17). DRAFT, revised after review: nothing is built.**
-Implements the draft amendment "build arguments" (D7–D9) of
-[RFC-0117](../design/0117-cli-command-tiers.md). The design was approved by
-the user on 2026-11-17 for writing up. The review kept D7–D9 and moved build
-profiles (D10–D11, here W4–W5) to a later amendment with its own phase. Work
-items are listed so the review can price them, and none starts until the
-amendment is accepted.
+**Status (2026-11-17). Design approved; nothing is built.** Implements the
+amendment "build arguments" (D7–D9) of
+[RFC-0117](../design/0117-cli-command-tiers.md). The user approved it as
+revised after review on 2026-11-17. The review kept D7–D9 and moved build
+profiles (D10–D11, here W4–W5) to a later amendment with its own phase. W1
+is next. The RFC stays Draft until this work lands.
 
 ## Motivation
 
@@ -32,7 +31,7 @@ stated profile.
 
 ### W1 — one argument model and its allowlist
 
-- **Status:** BLOCKED (awaits review of the RFC-0117 draft amendment)
+- **Status:** OPEN (the amendment was approved 2026-11-17; this is the first item)
 
 One type for a validated native argument (`CmakeArg::Define { name, value }`,
 `CmakeArg::Undefine`, `CargoArg::Features`, …), built from every source by one
@@ -64,7 +63,7 @@ parser. It carries:
 
 ### W2 — the sources: `system.toml`, the command line, `@file`
 
-- **Status:** BLOCKED (awaits review of the RFC-0117 draft amendment)
+- **Status:** BLOCKED (on W1: the sources feed W1's argument model)
 
 - `[image.<id>.build] cmake_args`, read from the image's own section only.
   There is no `cargo_args` key: committed features belong in the manifest.
@@ -84,7 +83,7 @@ wording that shows the user's arguments rewritten.
 
 ### W3 — built-in routing, and `--` narrowed to west
 
-- **Status:** BLOCKED (awaits review of the RFC-0117 draft amendment)
+- **Status:** BLOCKED (on W1 and W2)
 
 CMake arguments reach every CMake configure (cmake image, west's cmake step,
 cmake package), and cargo arguments reach every cargo command. An argument
@@ -118,7 +117,7 @@ says so.
 
 ### W6 — migration and docs
 
-- **Status:** BLOCKED (awaits review of the RFC-0117 draft amendment)
+- **Status:** BLOCKED (on W1–W3: it moves callers onto the new flags)
 
 - The book's `nros build` page and RFC-0117 D4's table name the new flags.
 - Every in-tree caller of `--cmake-args <space form>` and of `--`-carried CMake
