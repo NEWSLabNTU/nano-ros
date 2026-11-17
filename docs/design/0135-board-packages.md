@@ -191,6 +191,28 @@ my-board-package/
   - a configure run by hand for an outside board, without the variable, is
     refused with a message that names `NROS_BOARD_MODULE` and the key,
     rather than failing on a missing file.
+- **Every road resolves an outside board key the same way.** Found building
+  phase-577 W8 (2026-11-18), each fixed as a class:
+  - **Board key to family.** The entry pipeline's compiled-in board-key
+    table refused any outside key. One function now answers "which platform
+    family is this key": the table first, then the board catalog, where an
+    outside board's family is its definition's `platform`. A key that
+    neither knows keeps the table's error.
+  - **The package's own directory in `cargo_config`.** `${board_dir}`
+    resolves to the board package's directory, beside `${workspace}` (the
+    nano-ros tree). The catalog resolves it when it reads the definition, so
+    every consumer sees the resolved path. An outside board names its own
+    `FREERTOS_CONFIG_DIR` and linker directory this way.
+  - **nano-ros's shared files from a package's CMake module.** The module's
+    own `CMAKE_CURRENT_LIST_DIR` is inside the package, so the cache variable
+    `NROS_SOURCE_DIR` names the nano-ros tree for the family files it reuses.
+- **An outside board owns its whole RTOS configuration.** An outside FreeRTOS
+  board ships its complete `FreeRTOSConfig.h`, `lwipopts.h` and `arch/cc.h`
+  (RFC-0064's third level). In-tree boards include the family's shared
+  configuration by a relative path, and the cargo road's C builds see only
+  `FREERTOS_CONFIG_DIR`, so an outside package has no include path to reach
+  the family's files. A family-configuration include seam would remove the
+  copies; that is an issue homed in phase-577, not a precondition.
 - **Scaffolding.** `nros board new` already scaffolds a board package. It
   emits D2's shape: `package.xml` with a version range and the runner
   `exec_depend`, a board definition with run, flash and console tables, the
@@ -475,6 +497,9 @@ time.
 - 2026-11-18: drafted from the user's approved brief.
 - 2026-11-18: D2 gains the board's own CMake module, found by phase-577
   W8's owner building the first board package.
+- 2026-11-18: D2 gains key-to-family resolution through the catalog,
+  `${board_dir}`, `NROS_SOURCE_DIR`, and the rule that an outside board owns
+  its RTOS configuration, all found building W8's first C image.
 - 2026-11-18: book-side review folded in. The changes:
   - `nros setup` resolves through the board catalog, using
     `[board.provisioning] tools`;
