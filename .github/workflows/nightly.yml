@@ -1234,6 +1234,18 @@ jobs:
           nros setup --tool arm-none-eabi-gcc
           nros setup --source freertos-kernel --source lwip --source zenoh-pico
 
+      # The nucleo C row's C runtime is a Rust staticlib built with the pinned
+      # runtime nightly, which needs `thumbv7em-none-eabi` added to THAT
+      # toolchain. The image carries the target for its default toolchain
+      # only, so the row stopped at "missing Rust target
+      # `thumbv7em-none-eabi` on `nightly-2026-04-11`" before any walk.
+      # `nros setup board` is the remedy that refusal names: the board's
+      # patches, its rust targets and the runtime nightly with them.
+      - name: Provision the nucleo board (rust targets, runtime nightly)
+        run: |
+          source ./activate.sh
+          nros setup board nucleo-f767zi-zephyr --zephyr-workspace "$HOME/.nros/workspaces/zephyr/3.7"
+
       - name: Re-walk every observed and drift stack-floor row
         env:
           NROS_ZEPHYR_VERSION: "3.7"
