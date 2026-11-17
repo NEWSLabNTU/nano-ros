@@ -515,9 +515,9 @@ is the OS) and the wiring to the RMW's own file. What survives, and where:
 | D10b static or leased; unique MACs, derived per image; collision refusal | **kept**, applied to those files at `nros configure` |
 | D10c interface kinds | **become** the board descriptor's `links` (RFC-0109 D3) |
 | D10a `[network.<name>]`, `attach` | **retired:** `attach` → `[image.<id>.run] nic`; subnet / gateway / `dhcp` → the board file |
-| D10d derived router; `[image]` / `[system] locator` | **retired:** the router is wiring, in the RMW's own file (or a file-less domain's `locator`) |
+| D10d derived router; `[image]` / `[system] locator` | **retired:** the router is wiring, in the RMW's own file (or a file-less domain's `locator`). The refusal of an image off `qemu` that states no `locator` applies only when its RMW descriptor states a host peer, `[rmw.host] peer` other than `"none"` (amended 2026-11-17, issue 2679): a Cyclone DDS or uORB image dials no router |
 | D10g single-interface spellings | **refusal kept**; the remedy now names the board file |
-| `[image.<id>.net.<if>]`, `[board.net]` addresses | **retired:** the board file (`os_config`) on a `"board"`-stack board; the RTOS's own config on an `"os"`-stack board |
+| `[image.<id>.net.<if>]`, `[board.net]` addresses | **retired:** the board file (`os_config`) on a `"board"`-stack board; the RTOS's own config on an `"os"`-stack board, or, on a Zephyr board that declares its interface, the board file rendered into `NET_CONFIG_*` (issue 2679) |
 
 The full text is in git history at the commit before RFC-0109's.
 
@@ -629,6 +629,12 @@ Still open:
 
 ## Changelog
 
+- 2026-11-17 -- D10d amended (issue 2679): the no-`locator` refusal off
+  `qemu` is read from the image's RMW descriptor, and applies only when it
+  states a host peer (`[rmw.host] peer` other than `"none"`), so an
+  out-of-tree RMW takes the rule its descriptor states. A Zephyr board that
+  declares its interface takes a board network file, rendered into its
+  Kconfig.
 - 2026-11-03 — D6's `nano-ros` row now holds outside a checkout too:
   `nros locate nano-ros` answers through the same `nano_ros_root` ladder as
   `nros dev sdk root` (explicit, the enclosing checkout, this toolchain's own

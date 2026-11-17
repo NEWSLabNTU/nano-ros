@@ -2664,6 +2664,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &image,
                 )
                 .map_err(|e| eyre::eyre!("{e}"))?;
+                // Issue 2679 D4 -- the image's OWN fragments, before the
+                // board's are put ahead of them: a fragment that sets a symbol
+                // the board network file renders is refused.
+                let image_fragments = overlays.extra_conf_file.clone();
                 // Issue 1288 — the board package's own Zephyr files (base
                 // `prj.conf`, `boards/<flat>.{conf,overlay}`) reach a
                 // GENERATED application here, by the rule
@@ -2700,6 +2704,27 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                             overlays.extra_dtc_overlay_file.insert(0, o);
                         }
                     }
+                }
+                // Issue 2679 -- the image's board network file, rendered into
+                // Zephyr's `NET_CONFIG_*` and appended LAST, after the board's
+                // and the image's fragments. A standalone leaf gets it from
+                // the module hook (`NROS_LEAF_CONF`), as it gets its board's
+                // files.
+                if leaf_app.is_none()
+                    && let Some(n) = &image_net
+                {
+                    let conf = zephyr_net_fragment(
+                        descriptor,
+                        &board,
+                        nano_ros_root.as_deref(),
+                        &image_id,
+                        n,
+                        &image_fragments,
+                        &image.os_config_files(),
+                        &root.join("build"),
+                    )
+                    .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+                    overlays.append_net_fragment(conf);
                 }
                 // issue 0892 — Zephyr is not like the other drivers, and the
                 // handoff has to say so.
@@ -6819,6 +6844,35 @@ pub(crate) fn leaf_image_net(
         .map_err(|e| eyre::eyre!("on board `{board}`: {e}"))
 }
 
+/// Issue 2679 -- a Zephyr image's network fragment: its resolved network
+/// rendered into Zephyr's `NET_CONFIG_*` against its board's `[board.net]`
+/// (one interface, no stated MAC), checked against the image's own
+/// `fragments` (none may set a rendered symbol), and written to
+/// `<build_dir>/nros/net/<image>.conf`. Answers the path written.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn zephyr_net_fragment(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&std::path::Path>,
+    image: &str,
+    net: &crate::orchestration::image_net::ImageNet,
+    fragments: &[std::path::PathBuf],
+    net_files: &[String],
+    build_dir: &std::path::Path,
+) -> Result<std::path::PathBuf> {
+    use crate::orchestration::image_net as n;
+    let board_net = descriptor_board_net(descriptor, board, nano_ros_root)?;
+    let body = n::zephyr_conf(net, &board_net, image)
+        .map_err(|e| eyre::eyre!("on board `{board}`: {e}"))?;
+    let net_files: Vec<String> = net_files
+        .iter()
+        .filter(|f| f.ends_with(".toml"))
+        .cloned()
+        .collect();
+    n::check_zephyr_fragments(&body, fragments, &net_files).map_err(|e| eyre::eyre!("{e}"))?;
+    n::write_zephyr_conf(build_dir, image, &body).map_err(|e| eyre::eyre!("{e}"))
+}
+
 /// A workspace image's resolved network, from its bringup's `system.toml`,
 /// with every image of that bringup resolved alongside it so a collision on a
 /// shared network is refused naming both.
@@ -6837,15 +6891,21 @@ pub(crate) fn workspace_image_net(
     // RFC-0109 D4 (phase-514 W2) — the board network files the images name.
     sys.fold_os_config(bringup_dir)
         .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?;
-    let mut all = crate::orchestration::image_net::resolve_system(&sys, |id| {
-        let img = match &sys.image_defaults {
-            Some(base) => sys.image[id].with_base(base),
-            None => sys.image[id].clone(),
-        };
-        let board = img.board.clone().unwrap_or_default();
-        let d = crate::orchestration::image::resolve_image_board(catalog, id, &img)?;
-        descriptor_board_net(d, &board, nano_ros_root).map_err(|e| format!("{e}"))
-    })
+    let mut all = crate::orchestration::image_net::resolve_system(
+        &sys,
+        |id| {
+            let img = match &sys.image_defaults {
+                Some(base) => sys.image[id].with_base(base),
+                None => sys.image[id].clone(),
+            };
+            let board = img.board.clone().unwrap_or_default();
+            let d = crate::orchestration::image::resolve_image_board(catalog, id, &img)?;
+            descriptor_board_net(d, &board, nano_ros_root).map_err(|e| format!("{e}"))
+        },
+        // Issue 2679 -- the RMW's `[rmw.host] peer`, over the bringup's
+        // workspace index.
+        |rmw| crate::orchestration::image_net::host_peer_in(bringup_dir, rmw),
+    )
     .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?;
     Ok(all.remove(image_id))
 }

@@ -79,3 +79,8 @@ threads = true
 stack = "os"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
+# Issue 2679 -- the one interface Zephyr's NET_CONFIG configures (the first
+# auto-started). Declaring it lets an image name a board network file in
+# `os_config`; `nros build` renders it into NET_CONFIG_* / NET_DHCPV4, appended
+# last to EXTRA_CONF_FILE. No default `network`: the image's file names it.
+interfaces = { eth0 = { kind = "ethernet", dhcp = true } }

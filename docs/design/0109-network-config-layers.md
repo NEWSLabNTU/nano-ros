@@ -104,7 +104,7 @@ and only that layer's owner may state it. Node code states none of them.
 | platform family | layer-1 owner | where it is written | descriptor `[board.net] stack` |
 | --- | --- | --- | --- |
 | Linux, Zephyr `native_sim`, `freertos-posix`, `threadx-linux` | the host OS | outside nano-ros | `"host"` (RFC-0103 D10e, unchanged) |
-| Zephyr (real boards) | Zephyr | the user's `prj*.conf` + devicetree overlay | `"os"` |
+| Zephyr (real boards) | Zephyr | the user's `prj*.conf` + devicetree overlay, or a D4 file rendered into `NET_CONFIG_*` once the board declares its interface (issue 2679) | `"os"` |
 | NuttX | NuttX | a `defconfig` fragment | `"os"` |
 | FreeRTOS (lwIP, FreeRTOS-Plus-TCP) | **the board package** | the board package's own config file (D4), or the user's own bring-up inside the board package (D5) | `"board"` |
 | ThreadX (NetX Duo) | **the board package** | as above | `"board"` |
@@ -374,7 +374,9 @@ interfaces, and wiring uses those names.
 4. A zenoh json5 key zenoh-pico cannot take is refused (zenoh-pico targets).
 5. Wiring that names a link kind the board's `links` lacks is refused.
 6. A layer-1 statement in the wrong place is refused — e.g. a D4 file on a
-   Zephyr board, `os_config` naming a `prj.conf` on a bare-metal board.
+   Zephyr board that declares no interface, `os_config` naming a `prj.conf`
+   on a bare-metal board. On a Zephyr board that declares one, a fragment
+   that sets a symbol the D4 file renders is refused (issue 2679).
 7. `nros config explain` reports, per session, which file and line its
    endpoint came from.
 

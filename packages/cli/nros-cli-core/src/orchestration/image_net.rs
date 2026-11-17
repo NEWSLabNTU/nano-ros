@@ -18,7 +18,14 @@
 //! * a lease (`address = "dhcp"`) needs a network that leases AND a board that
 //!   runs a DHCP client on that interface;
 //! * an image on a network other than `qemu` needs a locator — its own or the
-//!   project's (D10d).
+//!   project's (D10d) -- when its RMW dials a host peer: the RMW descriptor's
+//!   `[rmw.host] peer` is not `"none"` (issue 2679). A Cyclone DDS or uORB
+//!   image has no router to name.
+//!
+//! On a Zephyr image the resolved interface is also rendered into Zephyr's
+//! own `NET_CONFIG_*` / `NET_DHCPV4` as a Kconfig fragment,
+//! `<build>/nros/net/<image>.conf` ([`zephyr_conf`], issue 2679), which the
+//! west road appends last to `EXTRA_CONF_FILE`.
 //!
 //! The answer is written to `<build>/nros/net/<image>.toml` for a person to
 //! read, and handed to the build as ONE text, `NROS_IMAGE_NET`
@@ -40,6 +47,7 @@ use nros_board_common::{
     image_net::{self as text, Address},
     platform_config::BoardNet,
 };
+use nros_extension::plan::HostPeer;
 use nros_orchestration_ir::system_net::{
     self, ImageNetIf, NetworkDef, QEMU_FIRST_GUEST, QEMU_NETWORK, StatedAddress,
 };
@@ -213,6 +221,31 @@ pub struct ImageDecl<'a> {
     pub run: &'a system_net::ImageRun,
     /// The image's locator as resolved (image > system).
     pub locator: Option<&'a str>,
+    /// What the image's RMW needs on the host side, from its descriptor's
+    /// `[rmw.host] peer` (issue 2679, amending D10d). `None` when it could
+    /// not be read: the locator rule then applies, as before.
+    pub host_peer: Option<HostPeer>,
+}
+
+/// Issue 2679 -- the `[rmw.host] peer` the descriptor of `rmw` states, over
+/// the RMW index of the directory `dir` sits in (its workspace's, so an
+/// out-of-tree RMW answers as an in-tree one does). `None` when the RMW does
+/// not resolve or its descriptor states no peer.
+#[must_use]
+pub fn host_peer_in(dir: &Path, rmw: &str) -> Option<HostPeer> {
+    let index = crate::orchestration::rmw_index::for_dir(dir).ok()?;
+    host_peer_of(&index, rmw)
+}
+
+/// [`host_peer_in`] over an index already built.
+#[must_use]
+pub fn host_peer_of(
+    index: &crate::orchestration::rmw_index::RmwIndex,
+    rmw: &str,
+) -> Option<HostPeer> {
+    crate::cmd::run_exec::declared_host_peer_in(index, rmw)
+        .ok()
+        .map(|(p, _)| p)
 }
 
 /// D10b — a MAC the image does not state: `prefix` + three bytes of an FNV-1a
@@ -307,11 +340,15 @@ pub fn resolve(d: &ImageDecl<'_>, board: &BoardNet) -> Result<Option<ImageNet>, 
             mac_derived,
         });
     }
-    // D10d — off QEMU's network the gateway is rarely the router, so the
-    // image must name one somewhere.
+    // D10d -- off QEMU's network the gateway is rarely the router, so an
+    // image whose RMW dials a host peer (a zenoh router, an XRCE agent) must
+    // name one somewhere. Issue 2679: read from the RMW's descriptor, never
+    // from its name, so a Cyclone DDS image (`peer = "none"`) is not refused
+    // and an out-of-tree RMW takes the rule its descriptor states.
     if let Some(first) = interfaces.first()
         && first.network != QEMU_NETWORK
         && d.locator.is_none()
+        && d.host_peer != Some(HostPeer::None)
     {
         // RFC-0109 D6.
         return Err(format!(
@@ -364,9 +401,13 @@ pub fn check_collisions(images: &[(&str, &ImageNet)]) -> Result<(), String> {
 /// board's `[board.net]`; it is asked only for an image that names an
 /// `os_config` file, each of which is checked against the board's network
 /// owner (RFC-0109 D9 check 6). The map holds the images that do.
+///
+/// `host_peer_of(rmw)` answers the `[rmw.host] peer` of an RMW's descriptor
+/// ([`host_peer_in`]); it is asked only for an image that states no locator.
 pub fn resolve_system(
     sys: &super::cargo_metadata_schema::SystemToml,
     mut board_net_of: impl FnMut(&str) -> Result<BoardNet, String>,
+    mut host_peer_of: impl FnMut(&str) -> Option<HostPeer>,
 ) -> Result<BTreeMap<String, ImageNet>, String> {
     let mut out = BTreeMap::new();
     // One network has one subnet across the project, whichever image's file
@@ -398,6 +439,11 @@ pub fn resolve_system(
             &format!("image `{id}`"),
         )?;
         let locator = img.locator.clone().or_else(|| sys.system.locator.clone());
+        let host_peer = if locator.is_none() {
+            host_peer_of(&sys.resolved_rmw(Some(&id), None))
+        } else {
+            None
+        };
         if let Some(n) = resolve(
             &ImageDecl {
                 system: Some(&sys.system.name),
@@ -406,6 +452,7 @@ pub fn resolve_system(
                 ifs: &img.net,
                 run: &img.run,
                 locator: locator.as_deref(),
+                host_peer,
             },
             &board,
         )? {
@@ -425,6 +472,16 @@ pub fn resolve_leaf(
 ) -> Result<Option<ImageNet>, String> {
     let n = &decl.network;
     let image = decl.image.as_deref().unwrap_or("default");
+    // Issue 2679 -- the leaf's RMW (`[image]` > `[image_defaults]` >
+    // `[system]`, then the toolchain default `SystemToml::resolved_rmw`
+    // falls back to), over the index of the leaf's own directory.
+    let host_peer = if n.locator.is_none() && !n.net.is_empty() {
+        decl.origin_path()
+            .parent()
+            .and_then(|dir| host_peer_in(dir, decl.rmw.as_deref().unwrap_or("zenoh")))
+    } else {
+        None
+    };
     resolve(
         &ImageDecl {
             system: n.system.as_deref(),
@@ -433,6 +490,7 @@ pub fn resolve_leaf(
             ifs: &n.net,
             run: &n.run,
             locator: n.locator.as_deref(),
+            host_peer,
         },
         board,
     )
@@ -448,6 +506,169 @@ pub fn board_net(path: &Path, board: &str) -> Result<BoardNet, String> {
         .board_net(Some(board))
         .map_err(|e| format!("{}: {e}", path.display()))?
         .unwrap_or_default())
+}
+
+/// Issue 2679 -- where a Zephyr image's rendered network fragment is written:
+/// `<build>/nros/net/<image>.conf`, beside [`file_path`]'s `.toml`.
+#[must_use]
+pub fn zephyr_conf_path(build_dir: &Path, image: &str) -> PathBuf {
+    file_path(build_dir, image).with_extension("conf")
+}
+
+/// Issue 2679 D3 -- the refusal of a second interface: Zephyr's `NET_CONFIG`
+/// configures one.
+fn second_interface(name: &str) -> String {
+    format!(
+        "Zephyr's NET_CONFIG configures one interface (the first auto-started); `{name}` \
+         is a second -- configure it in the application, or remove it from the file"
+    )
+}
+
+/// Issue 2679 D2 -- render a Zephyr image's resolved network as Zephyr's own
+/// Kconfig (`NET_CONFIG_*`, `NET_DHCPV4`), the fragment the west road appends
+/// LAST to `EXTRA_CONF_FILE`.
+///
+/// `NET_CONFIG_AUTO_INIT` is rendered because `NET_CONFIG_NEED_IPV4` exists
+/// only under it (and its default is `n` on a USB network device).
+/// `NET_DHCPV4=n` on a static address is required: with DHCPv4 on, Zephyr
+/// adds the static address as overridable and a lease replaces it.
+///
+/// Refused (D3, D5): a board that declares a second interface, an image that
+/// addresses one, and a stated `mac` (a Zephyr Ethernet driver takes its MAC
+/// from devicetree or generates one).
+pub fn zephyr_conf(net: &ImageNet, board: &BoardNet, image: &str) -> Result<String, String> {
+    // D3 -- the board first: it is what declares the second interface.
+    if let Some(second) = board.interfaces.keys().nth(1) {
+        return Err(format!(
+            "[board.net] interfaces: {}",
+            second_interface(second)
+        ));
+    }
+    if let Some(second) = net.interfaces.get(1) {
+        return Err(format!(
+            "image `{image}`: {}",
+            second_interface(&second.name)
+        ));
+    }
+    let Some(i) = net.interfaces.first() else {
+        return Err(format!("image `{image}` resolved no interface"));
+    };
+    // D5.
+    if !i.mac_derived {
+        return Err(format!(
+            "image `{image}`, interface `{}`: states `mac`, which a Zephyr image does not \
+             take -- its Ethernet driver takes the MAC from devicetree \
+             (`local-mac-address`) or generates one; drop `mac` from the board network file",
+            i.name
+        ));
+    }
+    let dotted = |o: [u8; 4]| format!("{}.{}.{}.{}", o[0], o[1], o[2], o[3]);
+    // RFC-0103 D10f's comment shape; issue 2679 D2's table, row by row. The
+    // header names no issue: a user reads this file.
+    let mut out = format!(
+        "# Generated by nros -- the network of image `{image}`, interface `{}`,\n\
+         # from its board network file. Do not edit: state the address in that\n\
+         # file. Appended last to EXTRA_CONF_FILE.\n\
+         CONFIG_NET_CONFIG_SETTINGS=y\n\
+         CONFIG_NET_CONFIG_AUTO_INIT=y\n\
+         CONFIG_NET_CONFIG_NEED_IPV4=y\n",
+        i.name
+    );
+    match i.address {
+        Address::Static(ip) => {
+            out.push_str("CONFIG_NET_DHCPV4=n\n");
+            out.push_str(&format!(
+                "CONFIG_NET_CONFIG_MY_IPV4_ADDR=\"{}\"\n",
+                dotted(ip)
+            ));
+            out.push_str(&format!(
+                "CONFIG_NET_CONFIG_MY_IPV4_NETMASK=\"{}\"\n",
+                dotted(nros_board_common::netmask_from_prefix(i.prefix))
+            ));
+        }
+        Address::Dhcp => {
+            out.push_str("CONFIG_NET_DHCPV4=y\n");
+            out.push_str("CONFIG_NET_CONFIG_MY_IPV4_ADDR=\"\"\n");
+        }
+    }
+    if let Some(g) = i.gateway {
+        out.push_str(&format!("CONFIG_NET_CONFIG_MY_IPV4_GW=\"{}\"\n", dotted(g)));
+    }
+    Ok(out)
+}
+
+/// The `CONFIG_<SYM>` rows a Kconfig fragment sets, in order: `SYM=value`,
+/// and `# CONFIG_SYM is not set` as `n`.
+fn kconfig_rows(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|l| {
+            let l = l.trim();
+            if let Some(rest) = l.strip_prefix("# ")
+                && let Some(sym) = rest.strip_suffix(" is not set")
+                && sym.starts_with("CONFIG_")
+            {
+                return Some((sym.to_string(), "n".to_string()));
+            }
+            if l.starts_with('#') {
+                return None;
+            }
+            let (k, v) = l.split_once('=')?;
+            let k = k.trim();
+            k.starts_with("CONFIG_")
+                .then(|| (k.to_string(), v.trim().to_string()))
+        })
+        .collect()
+}
+
+/// Issue 2679 D4 -- refuse an `os_config` fragment that also sets a symbol
+/// the board network file renders, naming the fragment, the symbol, its value
+/// there and the board network file whose rendered value it contradicts. A
+/// warning with one value winning would be issue 0876's class (a stated value
+/// silently losing).
+///
+/// `fragments` are the image's own `os_config` fragments as resolved;
+/// `net_files` the board network files it names.
+pub fn check_zephyr_fragments(
+    rendered: &str,
+    fragments: &[PathBuf],
+    net_files: &[String],
+) -> Result<(), String> {
+    let ours: BTreeMap<String, String> = kconfig_rows(rendered).into_iter().collect();
+    for f in fragments {
+        let text = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
+        if let Some((sym, theirs)) = kconfig_rows(&text)
+            .into_iter()
+            .find(|(sym, _)| ours.contains_key(sym))
+        {
+            return Err(format!(
+                "os_config fragment `{}` sets {sym}={theirs}, and the board network file {} \
+                 renders {sym}={} -- the address is the board network file's: remove \
+                 {sym} from the fragment",
+                f.display(),
+                net_files
+                    .iter()
+                    .map(|n| format!("`{n}`"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ours[&sym]
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Write a Zephyr image's rendered fragment to [`zephyr_conf_path`], only
+/// when it changed (so a configure is not re-run for nothing).
+pub fn write_zephyr_conf(build_dir: &Path, image: &str, body: &str) -> Result<PathBuf, String> {
+    let path = zephyr_conf_path(build_dir, image);
+    if std::fs::read_to_string(&path).ok().as_deref() == Some(body) {
+        return Ok(path);
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    std::fs::write(&path, body).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(path)
 }
 
 #[cfg(test)]
@@ -503,6 +724,7 @@ mod tests {
                 ifs: &ifs,
                 run: &r,
                 locator,
+                host_peer: None,
             },
             board,
         )
@@ -708,5 +930,247 @@ mod tests {
                 .unwrap_err()
                 .contains("drop `[image.<id>.net.eth0]`")
         );
+    }
+
+    // ---- issue 2679: a board network file on a Zephyr image -------------
+
+    /// The FVP's `[board.net]` as issue 2679 D1 writes it.
+    fn zephyr_board() -> BoardNet {
+        BoardNet {
+            stack: Some("os".into()),
+            interfaces: [(
+                "eth0".to_string(),
+                InterfaceDecl::Full(InterfaceTable {
+                    kind: "ethernet".into(),
+                    mac_prefix: None,
+                    dhcp: true,
+                }),
+            )]
+            .into(),
+            ..BoardNet::default()
+        }
+    }
+
+    const TAP: &str = "[network.tap]\nsubnet = \"192.168.10.0/24\"\ngateway = \"192.168.10.1\"\n\
+                       [image.a.net.eth0]\nnetwork = \"tap\"\naddress = \"192.168.10.2\"\n";
+    const FVP: &str = "[network.fvp]\nsubnet = \"172.20.51.0/24\"\ndhcp = true\n\
+                       [image.a.net.eth0]\nnetwork = \"fvp\"\naddress = \"dhcp\"\n";
+
+    fn zephyr_net(src: &str) -> ImageNet {
+        run(src, "a", &zephyr_board(), Some("tcp/192.168.10.1:7447"))
+            .unwrap()
+            .unwrap()
+    }
+
+    /// D2 -- a static address: the three `NET_CONFIG` switches, DHCPv4 off
+    /// (else a lease replaces the address), the address, the subnet's
+    /// netmask and the network's gateway.
+    #[test]
+    fn a_static_address_renders_net_config_with_dhcpv4_off() {
+        let c = zephyr_conf(&zephyr_net(TAP), &zephyr_board(), "a").unwrap();
+        let rows: Vec<&str> = c.lines().filter(|l| !l.starts_with('#')).collect();
+        assert_eq!(
+            rows,
+            [
+                "CONFIG_NET_CONFIG_SETTINGS=y",
+                "CONFIG_NET_CONFIG_AUTO_INIT=y",
+                "CONFIG_NET_CONFIG_NEED_IPV4=y",
+                "CONFIG_NET_DHCPV4=n",
+                "CONFIG_NET_CONFIG_MY_IPV4_ADDR=\"192.168.10.2\"",
+                "CONFIG_NET_CONFIG_MY_IPV4_NETMASK=\"255.255.255.0\"",
+                "CONFIG_NET_CONFIG_MY_IPV4_GW=\"192.168.10.1\"",
+            ],
+            "{c}"
+        );
+        // `host = n` is a static address too.
+        let host = TAP.replace("address = \"192.168.10.2\"", "host = 7");
+        let c = zephyr_conf(&zephyr_net(&host), &zephyr_board(), "a").unwrap();
+        assert!(
+            c.contains("CONFIG_NET_CONFIG_MY_IPV4_ADDR=\"192.168.10.7\"\n"),
+            "{c}"
+        );
+        assert!(c.contains("CONFIG_NET_DHCPV4=n\n"), "{c}");
+    }
+
+    /// D2 -- a lease: DHCPv4 on, an empty static address (Zephyr then adds
+    /// none and waits for the lease), no netmask; no gateway on a network
+    /// that states none.
+    #[test]
+    fn a_lease_renders_dhcpv4_on_and_an_empty_address() {
+        let c = zephyr_conf(&zephyr_net(FVP), &zephyr_board(), "a").unwrap();
+        let rows: Vec<&str> = c.lines().filter(|l| !l.starts_with('#')).collect();
+        assert_eq!(
+            rows,
+            [
+                "CONFIG_NET_CONFIG_SETTINGS=y",
+                "CONFIG_NET_CONFIG_AUTO_INIT=y",
+                "CONFIG_NET_CONFIG_NEED_IPV4=y",
+                "CONFIG_NET_DHCPV4=y",
+                "CONFIG_NET_CONFIG_MY_IPV4_ADDR=\"\"",
+            ],
+            "{c}"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_zephyr_conf(dir.path(), "a", &c).unwrap();
+        assert_eq!(p, dir.path().join("nros/net/a.conf"));
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), c);
+    }
+
+    /// D3 -- Zephyr's NET_CONFIG configures one interface: a board that
+    /// declares a second is refused, and so is an image that addresses one.
+    #[test]
+    fn a_second_interface_is_refused_on_zephyr() {
+        let mut two = zephyr_board();
+        two.interfaces
+            .insert("eth1".into(), InterfaceDecl::Kind("ethernet".into()));
+        let net = zephyr_net(TAP);
+        let e = zephyr_conf(&net, &two, "a").unwrap_err();
+        assert!(
+            e.contains("[board.net] interfaces")
+                && e.contains("configures one interface (the first auto-started)")
+                && e.contains("`eth1` is a second"),
+            "{e}"
+        );
+        // An image file that addresses a second interface (resolved against
+        // a board that has one), refused naming it.
+        let src = format!("{TAP}[image.a.net.eth1]\nnetwork = \"tap\"\nhost = 9\n");
+        let both = run(&src, "a", &two, Some("tcp/x:1")).unwrap().unwrap();
+        let e = zephyr_conf(&both, &zephyr_board(), "a").unwrap_err();
+        assert!(
+            e.contains("image `a`") && e.contains("`eth1` is a second"),
+            "{e}"
+        );
+    }
+
+    /// D5 -- a stated `mac` is refused: a Zephyr Ethernet driver takes its MAC
+    /// from devicetree or generates one. A derived one is simply not rendered.
+    #[test]
+    fn a_stated_mac_is_refused_on_zephyr() {
+        let src = TAP.replace(
+            "address = \"192.168.10.2\"\n",
+            "address = \"192.168.10.2\"\nmac = \"02:00:00:12:34:56\"\n",
+        );
+        let e = zephyr_conf(&zephyr_net(&src), &zephyr_board(), "a").unwrap_err();
+        assert!(
+            e.contains("states `mac`") && e.contains("local-mac-address"),
+            "{e}"
+        );
+        let c = zephyr_conf(&zephyr_net(TAP), &zephyr_board(), "a").unwrap();
+        assert!(!c.contains("MAC") && !c.contains("mac"), "{c}");
+    }
+
+    /// D4 -- an `os_config` fragment that sets a rendered symbol is refused,
+    /// naming the fragment, the symbol, both values and the board network
+    /// file; one that sets only other symbols (the DHCP client's own delay)
+    /// passes.
+    #[test]
+    fn a_fragment_that_sets_a_rendered_symbol_is_refused_naming_both_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let rendered = zephyr_conf(&zephyr_net(TAP), &zephyr_board(), "a").unwrap();
+        let ok = dir.path().join("prj-fvp.conf");
+        std::fs::write(
+            &ok,
+            "# boot faster\nCONFIG_NET_DHCPV4_INITIAL_DELAY_MAX=2\nCONFIG_NET_TCP=y\n",
+        )
+        .unwrap();
+        let net_files = vec!["zephyr/net-fvp-tap.toml".to_string()];
+        check_zephyr_fragments(&rendered, std::slice::from_ref(&ok), &net_files).unwrap();
+
+        let bad = dir.path().join("prj-fvp-tap.conf");
+        std::fs::write(&bad, "CONFIG_NET_L2_ETHERNET=y\nCONFIG_NET_DHCPV4=y\n").unwrap();
+        let e =
+            check_zephyr_fragments(&rendered, &[ok.clone(), bad.clone()], &net_files).unwrap_err();
+        assert!(
+            e.contains(&format!("`{}`", bad.display()))
+                && e.contains("sets CONFIG_NET_DHCPV4=y")
+                && e.contains("renders CONFIG_NET_DHCPV4=n")
+                && e.contains("`zephyr/net-fvp-tap.toml`"),
+            "{e}"
+        );
+        // Kconfig's own spelling of `n` is a statement too.
+        std::fs::write(&bad, "# CONFIG_NET_CONFIG_AUTO_INIT is not set\n").unwrap();
+        let e = check_zephyr_fragments(&rendered, &[bad], &net_files).unwrap_err();
+        assert!(
+            e.contains("sets CONFIG_NET_CONFIG_AUTO_INIT=n")
+                && e.contains("renders CONFIG_NET_CONFIG_AUTO_INIT=y"),
+            "{e}"
+        );
+    }
+
+    /// D7 (amends RFC-0103 D10d) -- off `qemu`, no locator is refused only
+    /// when the RMW dials a host peer. Cyclone DDS (`peer = "none"`) is
+    /// accepted; zenoh still refused; an unreadable descriptor keeps the rule.
+    #[test]
+    fn the_locator_rule_follows_the_rmw_descriptors_host_peer() {
+        let in_tree = cargo_nano_ros::rmw_resolver::test_support::in_tree_index();
+        let cyclone = host_peer_of(&in_tree, "cyclonedds");
+        let zenoh = host_peer_of(&in_tree, "zenoh");
+        assert_eq!(cyclone, Some(HostPeer::None));
+        assert_eq!(zenoh, Some(HostPeer::ZenohRouter));
+        let decl = |peer: Option<HostPeer>| {
+            let (nets, ifs, r) = parse(TAP, "a");
+            resolve(
+                &ImageDecl {
+                    system: Some("sys"),
+                    image: "a",
+                    networks: &nets,
+                    ifs: &ifs,
+                    run: &r,
+                    locator: None,
+                    host_peer: peer,
+                },
+                &zephyr_board(),
+            )
+        };
+        assert!(decl(cyclone).unwrap().is_some(), "Cyclone DDS: accepted");
+        for peer in [zenoh, Some(HostPeer::XrceAgent), None] {
+            let e = decl(peer).unwrap_err();
+            assert!(e.contains("states no `locator`"), "{peer:?}: {e}");
+        }
+    }
+
+    /// D7 -- the rule is read from the descriptor, never from an RMW name: an
+    /// out-of-tree RMW (`acme`, unknown to the tree) takes the rule its own
+    /// `[rmw.host] peer` states, either way.
+    #[test]
+    fn an_out_of_tree_rmw_takes_the_locator_rule_its_descriptor_states() {
+        use cargo_nano_ros::rmw_resolver::{RmwIndex, test_support};
+        for (peer, want) in [
+            ("none", Some(HostPeer::None)),
+            ("zenoh-router", Some(HostPeer::ZenohRouter)),
+        ] {
+            let ws = tempfile::tempdir().unwrap();
+            let acme = ws.path().join("src/acme_rmw");
+            test_support::write_acme_provider(&acme);
+            let desc = acme.join("nros-rmw.toml");
+            let mut text = std::fs::read_to_string(&desc).unwrap();
+            text.push_str(&format!("\n[rmw.host]\npeer = \"{peer}\"\n"));
+            std::fs::write(&desc, text).unwrap();
+            let roots = vec![
+                test_support::checkout().join("packages/rmw"),
+                ws.path().to_path_buf(),
+            ];
+            let scan = cargo_nano_ros::provider_scan::scan_roots(&roots).unwrap();
+            let index = RmwIndex::new(scan, roots);
+            let got = host_peer_of(&index, "acme");
+            assert_eq!(got, want, "peer = {peer}");
+            let (nets, ifs, r) = parse(TAP, "a");
+            let out = resolve(
+                &ImageDecl {
+                    system: Some("sys"),
+                    image: "a",
+                    networks: &nets,
+                    ifs: &ifs,
+                    run: &r,
+                    locator: None,
+                    host_peer: got,
+                },
+                &zephyr_board(),
+            );
+            match peer {
+                "none" => assert!(out.unwrap().is_some()),
+                _ => assert!(out.unwrap_err().contains("states no `locator`")),
+            }
+        }
     }
 }

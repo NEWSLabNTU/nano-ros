@@ -75,6 +75,18 @@ pub struct ZephyrOverlays {
     pub sysbuild: bool,
 }
 
+impl ZephyrOverlays {
+    /// Issue 2679 -- append the image's rendered network fragment
+    /// (`build/nros/net/<image>.conf`) LAST to `EXTRA_CONF_FILE`, after the
+    /// board's and the image's own fragments, so its `NET_CONFIG_*` is the
+    /// value Kconfig ends on. The image's fragments cannot contradict it (they
+    /// are refused when they set one of its symbols); the board's base
+    /// fragments may state a default, which it replaces.
+    pub fn append_net_fragment(&mut self, path: PathBuf) {
+        self.extra_conf_file.push(path);
+    }
+}
+
 /// Devicetree overlay extensions, so a `conf` list can carry both kinds and
 /// each reaches the right Zephyr variable.
 const DTS_EXTENSIONS: &[&str] = &["overlay", "dts", "dtsi"];
@@ -694,6 +706,43 @@ mod tests {
         .expect_err("a fragment that exists nowhere is an error");
         assert!(err.contains(&app.display().to_string()), "{err}");
         assert!(err.contains(&bringup.display().to_string()), "{err}");
+    }
+
+    /// Issue 2679 -- the image's rendered network fragment is LAST in
+    /// `EXTRA_CONF_FILE`: after the board package's base fragment (put ahead
+    /// of the image's by `nros build`) and the image's own, so its
+    /// `NET_CONFIG_*` is what Kconfig ends on. The board network file itself
+    /// (`.toml`) never reaches Zephyr.
+    #[test]
+    fn the_network_fragment_is_last_in_extra_conf_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let b = tmp.path();
+        touch(&b.join("boards/fvp_aemv8r_smp/prj-fvp-tap.conf"));
+        let mut o = resolve(
+            b,
+            "fvp_aemv8r_smp",
+            &image(&["net-fvp-tap.toml", "prj-fvp-tap.conf"]),
+        )
+        .expect("resolves");
+        assert_eq!(
+            o.extra_conf_file,
+            vec![b.join("boards/fvp_aemv8r_smp/prj-fvp-tap.conf")],
+            "the board network file is not a Kconfig fragment"
+        );
+        // What `nros build` does next: the board package's files ahead.
+        let board_conf = b.join("board/prj.conf");
+        o.extra_conf_file.insert(0, board_conf.clone());
+        let net = b.join("build/nros/net/fvp-tap.conf");
+        o.append_net_fragment(net.clone());
+        let args = west_args(&o);
+        let extra = args
+            .iter()
+            .find_map(|a| a.strip_prefix("-DEXTRA_CONF_FILE="))
+            .expect("EXTRA_CONF_FILE");
+        let parts: Vec<&str> = extra.split(';').collect();
+        assert_eq!(parts.len(), 3, "{extra}");
+        assert_eq!(parts[0], board_conf.display().to_string());
+        assert_eq!(parts[2], net.display().to_string(), "{extra}");
     }
 
     #[test]

@@ -162,6 +162,15 @@ pub fn declared_host_peer(ws: &Path, rmw: Option<&str>) -> DeclaredPeer {
     };
     let index = crate::orchestration::rmw_index::for_workspace(ws)
         .map_err(|e| format!("resolving RMW `{rmw}`: {e:#}"))?;
+    declared_host_peer_in(&index, rmw)
+}
+
+/// [`DeclaredPeer`] for `rmw`, over `index` (issue 2679: the network
+/// resolver asks it too, over the index of the image's own workspace).
+pub fn declared_host_peer_in(
+    index: &crate::orchestration::rmw_index::RmwIndex,
+    rmw: &str,
+) -> DeclaredPeer {
     let resolved = index
         .resolve(rmw)
         .map_err(|e| format!("resolving RMW `{rmw}`: {e}"))?;
