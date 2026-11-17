@@ -188,7 +188,7 @@ class Registry:
         if plat and any(c["status"].startswith(("Runtime", "BuildOnly"))
                         for c in self.cells_for(plat)):
             return True
-        return board_registry.board_name(row) in self.fixture_boards
+        return (shared_board_key(row) or board_registry.board_name(row)) in self.fixture_boards
 
     # No clock for the COMMITTED views: a tracked file must not change on a day
     # nobody edited anything, or the gate turns red for every pull request on
@@ -221,7 +221,16 @@ def page_name(row: dict) -> str:
     plat = row.get("matrix_platform")
     if plat and row["crate"] in _SHARED:
         return re.sub(r"(?<!^)(?=[A-Z])", "-", plat).lower()
-    return board_registry.board_name(row)
+    return shared_board_key(row) or board_registry.board_name(row)
+
+
+def shared_board_key(row: dict) -> str | None:
+    """The first board key of a row with no matrix platform in a package that
+    carries several rows (the S32Z270 RTD variant, Zephyr's S32Z270 board):
+    the name that tells the row from its siblings."""
+    if row.get("matrix_platform") or row["crate"] not in _SHARED:
+        return None
+    return (row.get("board_keys") or [None])[0]
 
 
 # phase-524 W4a — what an emulator KIND needs of the probe host, beyond the
@@ -559,7 +568,7 @@ def render_levels(reg: Registry) -> str:
 
 
 def board_title(row: dict, code: bool = False) -> str:
-    plat = row.get("matrix_platform")
+    plat = row.get("matrix_platform") or shared_board_key(row)
     name = f"`{row['crate']}`" if code else row["crate"]
     return name + (f" ({plat})" if plat else "")
 
@@ -600,8 +609,7 @@ def render_supported_region(reg: Registry) -> str:
            "| Board package | Status | Runs on | Evidence |",
            "|---|---|---|---|"]
     for row in board_rows(reg):
-        out.append(f"| `{row['crate']}`"
-                   + (f" ({row['matrix_platform']})" if row.get("matrix_platform") else "")
+        out.append(f"| {board_title(row, code=True)}"
                    + f" | {reg.status(row)} | {where_text(row)} | "
                    f"[evidence](board-support-levels.md#{board_anchor(row)}) |")
     out.append(REGION_END)
@@ -851,7 +859,8 @@ def platform_rows(reg: Registry) -> dict[str, list[dict]]:
 
 def render_platform_header(reg: Registry, rows: list[dict]) -> str:
     parts = [f"[`{r['crate']}`]({board_link(r, '../../')})"
-             + (f" ({r['matrix_platform']})" if r.get("matrix_platform") and r["crate"] in _SHARED else "")
+             + (f" ({r.get('matrix_platform') or shared_board_key(r)})"
+                if (r.get("matrix_platform") or shared_board_key(r)) and r["crate"] in _SHARED else "")
              + f": {reg.status(r)}" for r in rows]
     text = ("> **Status:** " + "; ".join(parts) + ". From the board support registry; "
             "[Board Support Levels](../../reference/board-support-levels.md) explains the words.")
@@ -884,7 +893,7 @@ def render_hardware_table(reg: Registry) -> str:
         if row.get("book_flash"):
             chapter, _, anchor = row["book_flash"].partition("#")
             where.append(f"[flash steps](../../{chapter}#{anchor})")
-        out.append(f"| `{hw}` | [`{row['crate']}`]({board_link(row, '../../')}) | "
+        out.append(f"| `{hw}` | [`{row['crate']}`" + (f" ({shared_board_key(row)})" if shared_board_key(row) else "") + f"]({board_link(row, '../../')}) | "
                    f"{reg.status(row)} | {('`' + row['emulator'] + '`') if row.get('emulator') else '—'} | "
                    f"{', '.join(where) or 'reference page only'} |")
     out.append(HARDWARE_END)

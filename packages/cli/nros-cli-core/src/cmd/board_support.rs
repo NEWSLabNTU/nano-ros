@@ -489,6 +489,12 @@ mod tests {
                     b["crate"].as_str().unwrap(),
                     b.get("matrix_platform")
                         .and_then(|p| p.as_str())
+                        .or_else(|| {
+                            b.get("board_keys")
+                                .and_then(|k| k.as_array())
+                                .and_then(|k| k.first())
+                                .and_then(|k| k.as_str())
+                        })
                         .unwrap_or("-")
                 )
             })
