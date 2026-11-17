@@ -1668,7 +1668,7 @@ pub fn newest_source_mtime(package_root: &Path) -> Option<SystemTime> {
 /// definition and not "a document with a field I skipped" -- issue 0427's rule
 /// for the resolver pin, applied to the recorder: the producer changed, so the
 /// output would too, for byte-identical inputs.
-pub const RECORDER_SCHEMA_VERSION: u32 = 5;
+pub const RECORDER_SCHEMA_VERSION: u32 = 6;
 
 /// One input a derived artifact recorded, as it was recorded.
 ///
