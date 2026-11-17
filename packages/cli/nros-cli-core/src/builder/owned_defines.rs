@@ -50,6 +50,10 @@ const fn exact(name: &'static str, why: &'static str) -> OwnedDefine {
 pub const OWNED: &[OwnedDefine] = &[
     exact("APPLICATION_CONFIG_DIR", "the west road's app config dir"),
     exact(
+        "ARMFVP_EXTRA_FLAGS",
+        "the FVP model parameters for an fvp: board's run",
+    ),
+    exact(
         "CMAKE_BUILD_TYPE",
         "the image's profile (`[image.<id>] profile`, `--profile=`)",
     ),
