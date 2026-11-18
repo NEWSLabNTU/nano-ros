@@ -1072,6 +1072,10 @@ pub mod kind {
     /// Lived at the repo root as `target-zenoh-fixture-posix/` until issue 0535
     /// moved it under the one build root (R1).
     pub const ZENOH_FIXTURE_POSIX: &str = "zenoh-fixture-posix";
+
+    /// A failing test's `nros run` logs (`crate::run::keep_failed_run_logs`),
+    /// kept past its temporary run directory so CI uploads them.
+    pub const FAILED_RUN_LOGS: &str = "failed-run-logs";
 }
 
 /// RFC-0070 R1 — the ONE build-cache root, Rust side.

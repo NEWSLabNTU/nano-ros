@@ -183,6 +183,9 @@ export NROS_KIND_ZEPHYR_FIXTURE_BUILD="zephyr-fixture-build"
 export NROS_KIND_ZEPHYR_WORKSPACE_BUILDS="zephyr-workspace-builds"
 export NROS_KIND_ZEPHYR_FIXTURE_MAKE_DRIVER="zephyr-fixture-make-driver"
 export NROS_KIND_ZENOH_FIXTURE_POSIX="zenoh-fixture-posix"
+# A failing test's `nros run` logs, kept past its temporary run directory so the
+# CI report collection uploads them; Rust twin `nros_tests::kind::FAILED_RUN_LOGS`.
+export NROS_KIND_FAILED_RUN_LOGS="failed-run-logs"
 # Issue 0787 — host build dirs for the two C backends that had no lane.
 export NROS_KIND_XRCE_CHECK="xrce-check"
 export NROS_KIND_UORB_CHECK="uorb-check"
