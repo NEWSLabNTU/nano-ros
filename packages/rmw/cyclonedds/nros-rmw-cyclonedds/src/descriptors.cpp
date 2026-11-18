@@ -226,7 +226,8 @@ const dds_topic_descriptor_t *find_descriptor(const char *type_name) {
                 "nros-rmw-cyclonedds: descriptor registry OVERFLOWED: %zu type "
                 "registration(s) dropped at cap %zu (first dropped: '%s'); lookup "
                 "of '%s' may fail because of this. Rebuild with "
-                "-DNROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES=<n> raised.\n",
+                "`max_descriptor_types = <n>` raised under the image's "
+                "[image.<id>.knobs.cyclonedds] in system.toml.\n",
                 g_dropped, kMaxRegisteredTypes,
                 g_first_dropped != nullptr ? g_first_dropped : "?", type_name);
     }
