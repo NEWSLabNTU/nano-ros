@@ -3,7 +3,7 @@
 **Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch v0.32.0,
 #3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE (every level
 charged since #3758); W9 (the CAN frame driver, RFC-0132) OPEN, RFC accepted
-2026-11-17, W9.a, W9.b and W9.c DONE. nano-ros's
+2026-11-17, W9.a, W9.b, W9.c and W9.d DONE. nano-ros's
 share of two play_launch phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -199,7 +199,19 @@ and each states its acceptance before it lands.
   `freertos-posix` image each send a classic and an FD frame on `vcan0` that
   `candump` reads; `fd_active` is false and `want_fd` refused on a classic
   `vcan` (MTU 16).
-- **W9.d -- The device table and its carrier.** `[image.<id>.can]` (`device`,
+- **W9.d -- The device table and its carrier.** DONE (2026-11-18): the
+  refusals are `resolve_can`'s unit tests in
+  `nros-cli-core/src/orchestration/image_net.rs` (the two mock cases over the
+  tracked `nucleo-f767zi-zephyr` and `mps2-an385-baremetal` descriptors), the
+  workspace road through `resolve_system`, and the codec round trip in
+  `nros-board-common/src/image_net.rs`. Found on the way, and refused at
+  configure in the same pull request: a zenoh `can/` or `isotp/` locator on
+  `freertos-posix` and `threadx-linux` configured and then failed at the
+  final link (`undefined reference to _z_open_can`; zenoh-pico's CAN arms are
+  `ZENOH_LINUX` and `ZENOH_ZEPHYR` only). The zenoh port rows now state
+  `links` (`[port.posix]`, `[port.zephyr]`), and
+  `nros-cli-core/src/orchestration/link_arms.rs` refuses an endpoint on a link
+  the image's platform row lists no arm for. `[image.<id>.can]` (`device`,
   `driver = "mock"`) in the `system.toml` schema; `[canN]` rows (`bitrate`,
   `dbitrate`, `frames`) in the D4 file parser (`system_net.rs`); the `can`
   row kind in `nros-board-common/src/image_net.rs`; the RFC-0132 D5 and D6

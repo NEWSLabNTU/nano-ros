@@ -477,7 +477,7 @@ pub(crate) fn transport_implications(
 
 /// Whether the bringup at `dir` can carry an RMW file: its conventional `rmw/`
 /// directory exists, or its `system.toml` names one (`rmw_config`).
-fn may_name_rmw_file(dir: &Path) -> bool {
+pub(crate) fn may_name_rmw_file(dir: &Path) -> bool {
     dir.join("rmw").is_dir()
         || std::fs::read_to_string(dir.join("system.toml")).is_ok_and(|t| t.contains("rmw_config"))
 }

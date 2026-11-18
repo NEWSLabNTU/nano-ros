@@ -1142,6 +1142,18 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         let image_net =
             workspace_image_net(&catalog, &bringup_dir, &image_id, nano_ros_root.as_deref())
                 .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+        // phase-560 W9.d -- an endpoint on a link the RMW's port has no arm
+        // for on this platform is refused here, not at the final link.
+        check_image_link_arms(
+            &image_id,
+            &board,
+            &platform,
+            image.rmw.as_deref().unwrap_or("zenoh"),
+            image.locator.as_deref(),
+            &bringup_dir,
+            nano_ros_root.as_deref(),
+        )
+        .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
         // A refusal here is RFC-0065 D3's third outcome, not an internal error:
         // the board and the language mix together name a combination nano-ros
         // has no road for, and the message says which. Bailing beats answering
@@ -3234,6 +3246,8 @@ fn plan_leaf_image(
     // image named; `leaf_settings` resolves the same answer into the build.
     let image_net = leaf_image_net(descriptor, &img.board, Some(&nros_root), &img.decl)
         .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+    check_leaf_link_arms(descriptor, &img.board, &img.decl, &nros_root)
+        .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
     crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
     // Issue 2180 — a query refuses nothing over the toolchain.
     let mut missing = if planning != Planning::Query {
@@ -3555,6 +3569,8 @@ fn plan_single_package_cmake(
         eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&board));
     };
     let image_net = leaf_image_net(descriptor, &board, Some(&nros_root), &decl)
+        .map_err(|e| eyre::eyre!("`{board}` cannot be built: {e}"))?;
+    check_leaf_link_arms(descriptor, &board, &decl, &nros_root)
         .map_err(|e| eyre::eyre!("`{board}` cannot be built: {e}"))?;
     let platform = descriptor.platform.kebab().to_string();
     if plan::driver_for_board(&platform, descriptor.entry_kind, true) != Ok(Driver::CMake) {
@@ -6905,6 +6921,76 @@ pub(crate) fn leaf_image_net(
     // the network's owner.
     crate::orchestration::image_net::resolve_leaf(decl, &facts)
         .map_err(|e| eyre::eyre!("on board `{board}`: {e}"))
+}
+
+/// phase-560 W9.d -- a workspace image's locator and RMW-file endpoints
+/// against its RMW's port row for `platform`
+/// (`crate::orchestration::link_arms`).
+fn check_image_link_arms(
+    image_id: &str,
+    board: &str,
+    platform: &str,
+    rmw: &str,
+    locator: Option<&str>,
+    bringup_dir: &std::path::Path,
+    nano_ros_root: Option<&std::path::Path>,
+) -> Result<()> {
+    use crate::orchestration::link_arms;
+    let mut endpoints: Vec<String> = locator.map(str::to_string).into_iter().collect();
+    let text = crate::orchestration::rmw_config::session_text(bringup_dir, image_id)
+        .map_err(|e| eyre::eyre!("{e}"))?;
+    endpoints
+        .extend(link_arms::session_endpoints(text.as_deref()).map_err(|e| eyre::eyre!("{e}"))?);
+    link_arms::check_image(
+        &link_arms::ImageLink {
+            image: image_id,
+            board,
+            platform,
+            rmw,
+            endpoints: &endpoints,
+        },
+        bringup_dir,
+        nano_ros_root,
+    )
+    .map_err(|e| eyre::eyre!("{e}"))
+}
+
+/// [`check_image_link_arms`] for a single-package leaf: its locator, else
+/// its RMW file's endpoints.
+fn check_leaf_link_arms(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+    decl: &nros_orchestration_ir::leaf_system::LeafSystem,
+    nros_root: &std::path::Path,
+) -> Result<()> {
+    let Some(dir) = decl.origin_path().parent() else {
+        return Ok(());
+    };
+    let image = decl.image.as_deref().unwrap_or("default");
+    let platform = descriptor.platform.kebab().to_string();
+    let rmw = decl.rmw.as_deref().unwrap_or("zenoh");
+    match decl.network.locator.as_deref() {
+        Some(l) => {
+            let endpoints = vec![l.to_string()];
+            crate::orchestration::link_arms::check_image(
+                &crate::orchestration::link_arms::ImageLink {
+                    image,
+                    board,
+                    platform: &platform,
+                    rmw,
+                    endpoints: &endpoints,
+                },
+                dir,
+                Some(nros_root),
+            )
+            .map_err(|e| eyre::eyre!("{e}"))
+        }
+        // The RMW file, only where one can apply (as `leaf_settings` reads it).
+        None if crate::cmd::leaf_settings::may_name_rmw_file(dir) => {
+            check_image_link_arms(image, board, &platform, rmw, None, dir, Some(nros_root))
+        }
+        None => Ok(()),
+    }
 }
 
 /// Issue 2679 -- a Zephyr image's network fragment: its resolved network

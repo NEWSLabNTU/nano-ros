@@ -46,7 +46,9 @@ _z_link_t
 _z_liveliness_query
 _z_locators_by_scout
 _z_open
+_z_open_can
 _z_open_custom
+_z_open_isotp
 _z_pending_query_process_timeout
 _z_prune_declaration
 _z_query

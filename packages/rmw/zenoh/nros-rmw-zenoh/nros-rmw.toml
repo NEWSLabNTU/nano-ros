@@ -267,6 +267,11 @@ rerun_if_env_changed = []
 # from packages/platform/nros-platform-posix/nros-platform.toml
 [port.posix]
 defines = ["ZENOH_GENERIC"]
+# phase-560 W9.d -- zenoh-pico's CAN and ISO-TP links have an arm here
+# (`src/link/transport/{can,isotp}/*_socketcan.c`, under `ZENOH_LINUX`: Linux
+# targets). A port that lists no link has none, and `nros configure` refuses
+# an image dialling `can/` or `isotp/` on it, naming the platform.
+links = ["can", "isotp"]
 # phase-500 W1 — this file names POSIX facts only. `ZENOH_LINUX` (zenoh-pico's
 # `unix.h` platform arm) is a LINUX fact, so it is derived from the target
 # triple, never asserted for every POSIX system. The zpico shim derives it the
@@ -433,6 +438,8 @@ when = { target_not = "embedded" }
 # and died on the `version.h` only Zephyr's own build generates.
 compiled_by = "platform"
 defines = ["ZENOH_GENERIC", "ZENOH_ZEPHYR"]
+# phase-560 W9.d -- `src/link/transport/{can,isotp}/*_zephyr.c` (`ZENOH_ZEPHYR`).
+links = ["can", "isotp"]
 include = ["system/common", "system/zephyr"]
 
 # from config/bare-metal/nros-platform.toml
