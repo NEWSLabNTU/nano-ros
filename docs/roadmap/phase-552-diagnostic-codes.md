@@ -1,7 +1,6 @@
 # Phase 552 — Diagnostic codes, defined once in code
 
-**Status (2026-11-14). IN PROGRESS: W1, W2 and W4 done; W3's book view and
-gate done, its CMake, C header and colcon views open; W5 started (six codes on
+**Status (2026-11-18). IN PROGRESS: W1, W2, W3 and W4 done; W5 started (six codes on
 the first-build paths); W6 open.** Work for
 [RFC-0129](../design/0129-diagnostic-codes.md).
 
@@ -173,8 +172,8 @@ It has a self-test with one planted defect per check.
   test.
 - The book pages build under `just book`.
 
-- **Status:** OPEN (the book view and the gate are done, 2026-11-14,
-  #3824; the CMake, C header and colcon views are open)
+- **Status:** DONE (2026-11-18). The book view and the gate landed
+  2026-11-14 (#3824); the CMake, C header and colcon views on 2026-11-18.
 
 Notes:
 
@@ -192,8 +191,22 @@ Notes:
 - SUMMARY lists the code pages flat, as the fork pages are. Hundreds of codes
   will want a Reference group (`book_pages.GROUPS`). A new page's SUMMARY
   title is authored by hand after `book-move.py --summary`.
-- Open: `cmake/NanoRosDiagnostics.generated.cmake` with `nros_refuse`, the
-  `cmake -P` test, `nros/diagnostics.h`, and the colcon `diagnostics.py`.
+- Done 2026-11-18: `cmake/NanoRosDiagnostics.generated.cmake`, included by
+  `NanoRosDiagnostics.cmake`. `nros_refuse(<Name> <detail>... [HELP <text>])`
+  stops the configure with the same three lines every surface prints
+  (`error[NROS-NNNN]:`, `help:`, `explain:`); a retired name names its
+  successor, and a name no code was declared with is a configure error.
+  `packages/api/nros-c/include/nros/diagnostics.h` defines
+  `NROS_DIAG_<NAME>` (the code as a string) for each live code. The colcon
+  plugin's `colcon_nano_ros/diagnostics.py` has `CODES` and `refuse()`.
+- `check-diagnostics` holds all five views fresh, and runs the refusers:
+  `nros_refuse` under `cmake -P` (the rendered refusal, a site's `HELP`, an
+  unknown name stopping the configure), and the colcon `refuse()` (the same
+  text, an unknown name raising). With no `cmake` on PATH the refuser half is
+  NOT VERIFIED in the skip ledger. Its self-test now also plants a stale CMake
+  view and a missing C header.
+- No site raises a code through these views yet: the six codes are all
+  `Cli`. Moving a CMake, colcon or C runtime refusal onto a code is W5's.
 
 ### W4 — `nros explain <CODE>` (RFC-0129 D5)
 

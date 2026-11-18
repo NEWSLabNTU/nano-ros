@@ -1,5 +1,6 @@
 //! `nros-diagnostics-gen` — write (or, with `--check`, verify) every view of
-//! the diagnostic list: `codes.lock` and the book reference pages.
+//! the diagnostic list: `codes.lock`, the book reference page, the CMake
+//! module (`nros_refuse`), the C header and the colcon plugin's module.
 //!
 //!   cargo run -p nros-diagnostic-codes --features std --bin nros-diagnostics-gen [-- --check]
 //!

@@ -5,9 +5,12 @@ RFC-0129 D6. The crate `packages/tooling/nros-diagnostic-codes` is the one
 list of diagnostic codes (`NROS-NNNN`); every other view is generated from it.
 This gate asks four things:
 
-1. every generated view is fresh: `codes.lock` and the book reference under
-   `book/src/reference/diagnostic-codes.md` (`nros-diagnostics-gen --check`, which
-   also refuses a book page no live code generates);
+1. every generated view is fresh: `codes.lock`, the book reference under
+   `book/src/reference/diagnostic-codes.md`, the CMake module
+   `cmake/NanoRosDiagnostics.generated.cmake`, the C header
+   `nros/diagnostics.h` and the colcon plugin's `diagnostics.py`
+   (`nros-diagnostics-gen --check`, which also refuses a book page no live
+   code generates);
 2. `codes.lock` keeps every code and name it had at the baseline: a row may
    be added or retired, never removed, renamed or renumbered (D3). The
    baseline is `check-submodule-pins`' (`$NROS_SUBMODULE_PIN_BASELINE`, else
@@ -19,7 +22,10 @@ This gate asks four things:
    at compile time; the generator reads it again).
 
 Checks 1, 3 and 4 are the generator's `--check`; check 2 is here, because it
-reads git. With no baseline to compare against, check 2 is NOT VERIFIED
+reads git. And the generated refusers behave: `nros_refuse(<Name> ...)` under
+`cmake -P` renders the code's refusal, takes `HELP`, and stops the configure
+on a name no code was declared with; the colcon module's `refuse()` renders the
+same text and refuses an unknown name. With no baseline to compare against, check 2 is NOT VERIFIED
 (recorded in the skip ledger; a failure in CI, where the baseline is always
 provided), never a quiet pass. A baseline with no lock (the change that adds
 the crate) has nothing to keep.
@@ -51,6 +57,9 @@ CRATE = "packages/tooling/nros-diagnostic-codes"
 LOCK = f"{CRATE}/codes.lock"
 EXPLAIN = f"{CRATE}/explain"
 BOOK = "book/src/reference/diagnostic-codes.md"
+CMAKE_VIEW = "cmake/NanoRosDiagnostics.generated.cmake"
+C_VIEW = "packages/api/nros-c/include/nros/diagnostics.h"
+COLCON_VIEW = "packages/cli/colcon-cargo-ros2/colcon_nano_ros/diagnostics.py"
 # Where the book had one page per code; any file left there is an orphan.
 OLD_BOOK_DIR = "book/src/reference/diagnostics"
 
@@ -183,7 +192,7 @@ def self_test() -> None:
     # root: the real tree's views, copied out, then broken one way at a time.
     with tempfile.TemporaryDirectory(prefix="check-diagnostics-") as tmp:
         base = pathlib.Path(tmp) / "clean"
-        for rel in (LOCK, EXPLAIN, BOOK):
+        for rel in (LOCK, EXPLAIN, BOOK, CMAKE_VIEW, C_VIEW, COLCON_VIEW):
             src, dst = ROOT / rel, base / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
             (shutil.copytree if src.is_dir() else shutil.copy2)(src, dst)
@@ -199,6 +208,8 @@ def self_test() -> None:
 
         planted("stale-view", lambda r: (r / BOOK).write_text("edited by hand\n"))
         planted("missing-view", lambda r: (r / LOCK).unlink())
+        planted("stale-cmake-view", lambda r: (r / CMAKE_VIEW).write_text("# edited\n"))
+        planted("missing-c-view", lambda r: (r / C_VIEW).unlink())
         def orphan(r: pathlib.Path) -> None:
             (r / OLD_BOOK_DIR).mkdir(parents=True, exist_ok=True)
             (r / OLD_BOOK_DIR / "NROS-9999.md").write_text("# stray\n")
@@ -206,6 +217,47 @@ def self_test() -> None:
         planted("orphan-explanation", lambda r: (r / EXPLAIN / "NROS-9999.md").write_text("stray\n"))
     # Check 4 cannot be planted without compiling a crate: a live row with
     # `surfaces: []` is refused by `diagnostics!` itself (its `$(..),+`).
+
+
+def refuser_problems() -> list[str] | None:
+    """The generated refusers, run. None when there is no `cmake` to run."""
+    import shutil as _sh
+    import importlib.util
+    problems: list[str] = []
+    spec = importlib.util.spec_from_file_location("nros_diag_view", ROOT / COLCON_VIEW)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    want = ("error[NROS-0004]: image `demo` names no board\n"
+            "  help: add `board = \"<board>\"` to the `[image.<id>]` table in system.toml\n"
+            "  explain: nros explain NROS-0004")
+    if mod.refuse("ImageNoBoard", "image `demo` names no board") != want:
+        problems.append(f"colcon refuse(): got {mod.refuse('ImageNoBoard', 'image `demo` names no board')!r}")
+    try:
+        mod.refuse("NoSuchName", "x")
+        problems.append("colcon refuse(): an unknown name rendered")
+    except KeyError:
+        pass
+    cmake = _sh.which("cmake")
+    if cmake is None:
+        return None
+    with tempfile.TemporaryDirectory(prefix="check-diagnostics-cmake-") as tmp:
+        def run(body: str) -> tuple[int, str]:
+            script = pathlib.Path(tmp) / "t.cmake"
+            script.write_text(f'include("{ROOT / CMAKE_VIEW}")\n{body}\n')
+            r = subprocess.run([cmake, "-P", str(script)], capture_output=True, text=True)
+            return r.returncode, r.stdout + r.stderr
+        rc, out = run('nros_refuse(ImageNoBoard "image `demo` " "names no board")')
+        for line in want.splitlines():
+            if rc == 0 or line not in out:
+                problems.append(f"nros_refuse(ImageNoBoard ...): `{line}` not printed, or no stop: {out}")
+                break
+        rc, out = run('nros_refuse(ImageNoBoard "x" HELP "name the board")')
+        if rc == 0 or "  help: name the board" not in out:
+            problems.append(f"nros_refuse(... HELP ...): the site's help was not used: {out}")
+        rc, out = run('nros_refuse(NoSuchName "x")')
+        if rc == 0 or "no diagnostic code is declared as `NoSuchName`" not in out:
+            problems.append(f"nros_refuse(NoSuchName ...): not a configure error: {out}")
+    return problems
 
 
 def main() -> int:
@@ -217,6 +269,8 @@ def main() -> int:
     rc, out = gen_check(ROOT)
     if rc != 0:
         problems.append(out)
+    refusers = refuser_problems()
+    problems += refusers or []
     head = (ROOT / LOCK).read_text()
     commit = resolve_baseline()
     if commit is None:
@@ -245,6 +299,9 @@ def main() -> int:
         for p in problems:
             print(f"  {p}", file=sys.stderr)
         return 1
+    if refusers is None:
+        return check_skip.unverified(NAME, "no `cmake` on PATH, so nros_refuse was not run; "
+                                     "the views are fresh and the lock is kept")
     rows = len(parse_lock(head))
     kept = ("the baseline has no lock yet" if base is None
             else f"keeps the baseline's {len(parse_lock(base))}")
