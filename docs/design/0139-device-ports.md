@@ -101,6 +101,21 @@ transports), and RFC-0089 declines `Waitable`, the one extension point rclcpp
 has for custom event sources, because dynamic wait-set membership needs an
 allocator. The precedent for a companion package is `nros-diagnostic-updater`.
 
+**Who provides what.** Board specifics stay with the board package, on the
+user's side (RFC-0135); nano-ros ships only what is the same for every device.
+
+| Layer | nano-ros provides | A board package provides |
+| --- | --- | --- |
+| 0. Device ports | the ABI header `<nros/device_port.h>`, its Rust and C++ views, the layout checks, the mock ports (D11), and the adapters whose APIs are an OS's own (Zephyr video and RTIO, Linux V4L2; D9) | the port **implementation** for its hardware: the ops table, the interrupt handler that signals completion, and the vendor SDK, named by the package's own variable |
+| 1. Executor hook | all of it | nothing |
+| 2. Companion package | all of it, including the per-class job types | nothing; a board may ship a typed handle for its device (`acme::npu0`) as a convenience |
+| 3. ROS user API | unchanged | nothing |
+| 4. Contracts | the schema and the checker | the device's measured job times, stated in its board definition, as other board facts are |
+
+So a board package that adds an NPU ships one C file (or C++, or Rust) and
+a few lines of board definition. It never patches nano-ros, and nano-ros
+never carries a vendor's SDK.
+
 Consequence for portability: a node keeps its ROS logic in one component and
 its device stages in another. The ROS component still compiles against stock
 rclcpp; the device component is a nano-ros extension and says so.
@@ -255,6 +270,34 @@ device.
 
 On Zephyr, a port may be a thin layer over RTIO: RTIO is a submission queue
 and a completion queue, the same shape as D3.
+
+### D11 — Testing without the hardware: mock ports
+
+nano-ros ships one mock worker and one mock source, as RFC-0132 ships the
+CAN `mock` backend, so a node's stages and a contract's timing are tested
+with no device at all:
+
+- **Mock worker:** completes each job after a configured time, from a timer
+  interrupt on an RTOS image and from a thread on a host, with an output the
+  test supplies (or a copy of the input). It can inject a fault, a timeout and
+  a configured spread in job time, so the drop, timeout and queue paths are
+  exercised.
+- **Mock source:** delivers queued buffers at a configured rate, each stamped
+  with its capture time, or a buffer per call when the test drives it.
+- **Where they run:** host-process boards and the emulator images that the
+  test lanes already boot (MPS2 under QEMU, Zephyr `native_sim`). The same
+  node binary runs against the mock or the real port; which one is the board
+  definition's choice, not the node's.
+- **What they do not prove:** the vendor adapter itself. That is tested
+  against the vendor's own emulator where one exists (the Ethos-U55 on the
+  Corstone-300 FVP, phase-579 W7), and otherwise on hardware and marked
+  manual in the support registry (RFC-0114). As in RFC-0132, an emulator
+  counts as hardware: a mock never stands in for a device an emulator models.
+
+A board package's adapter is tested the way nano-ros tests its own: the
+companion package's conformance tests (submit never blocks, `take` before
+completion returns pending, completion from the interrupt wakes the
+executor) run against any port, real or mock.
 
 ### D10 — Contracts and analysis (layer 4)
 
@@ -420,3 +463,4 @@ vtable is the same ABI.
 ## Changelog
 
 - 2026-11-18: drafted.
+- 2026-11-18: who provides what per layer (D1), and mock ports (D11).
