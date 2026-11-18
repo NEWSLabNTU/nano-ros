@@ -321,6 +321,9 @@ function(nano_ros_entry)
     # BRINGUP on purpose: defaulting unconditionally would turn an entry with
     # nothing at all — a typo, a half-written CMakeLists — from the error below
     # into a silently accepted launch-addressed entry.
+    # Issue 2557: an entry of another bringup than this configure's SYSTEM must
+    # not build against that SYSTEM's capability axes.
+    nros_entry_axes_agree("nano_ros_entry(${_NRA_NAME})" BRINGUP "${_NRA_BRINGUP}")
     if(_NRA_BRINGUP AND NOT _NRA_LAUNCH)
         set(_NRA_LAUNCH "default")
     endif()

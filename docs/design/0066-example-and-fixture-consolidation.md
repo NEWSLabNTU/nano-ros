@@ -425,13 +425,15 @@ example" no longer finds it under their language.
   depend on it**; R2 is correct under the limit as it stands. Still open,
   filed as [issue 2556](../issues/2556-multi-system-workspace-selection-facades.md)
   (phase-555 W3).
-- **Does the C/C++ `FORCE` last-write-wins need its own fix?** Observed during
-  W2: with three bringups, `managed_bringup`'s empty capability set silently
-  erased `param_services` + `lifecycle` for the whole cpp workspace. Worked
-  around by declaring the union in every bringup. That is a defect in an area
-  issue 0353 marked resolved (it fixed the single-bringup path only). Still
-  open (both capability generators write `NROS_FEATURES` with `FORCE`), filed
-  as [issue 2557](../issues/2557-cmake-features-force-last-bringup-wins.md).
+- ~~**Does the C/C++ `FORCE` last-write-wins need its own fix?**~~ **Answered
+  (2026-11-18, [issue 2557](../issues/archived/2557-cmake-features-force-last-bringup-wins.md)).**
+  Observed during W2: with three bringups, `managed_bringup`'s empty
+  capability set silently erased `param_services` + `lifecycle` for the whole
+  cpp workspace. The generated road no longer shares a configure between
+  bringups (`nros build` roots are per bringup), so the `FORCE` writes never
+  meet. A hand-written root that builds another bringup's entry is refused
+  when the configure lacks that bringup's axes (`nros_entry_axes_agree`, the
+  same rule as the west road's).
 - ~~**Is `mixed` still worth keeping** once the feature demos leave?~~
   **Answered (phase-331, archived): yes.** Its value is the language seam (a
   C++ entry carrying C components); phase-331 kept it at zenoh only, and it is

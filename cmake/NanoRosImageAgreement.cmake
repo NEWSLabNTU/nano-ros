@@ -157,6 +157,8 @@ endfunction()
 # correctness, and an explicit choice to carry one is not a disagreement.
 #
 # A MACRO so the default lands in the module's scope, where the readers are.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryAgreement.cmake")  # nros_axes_missing
+
 macro(nros_resolve_image_features)
     _nros_image_facts_file(_nrif_file)
     if(NOT _nrif_file STREQUAL "")
@@ -175,12 +177,8 @@ macro(nros_resolve_image_features)
                 "nano-ros: capability axes of image ${NROS_IMAGE_QUALIFIED}: "
                 "${_nrif_shown} (from its system.toml)")
         else()
-            set(_nrif_missing "")
-            foreach(_nrif_axis IN LISTS NROS_IMAGE_FEATURES)
-                if(NOT _nrif_axis IN_LIST NROS_FEATURES)
-                    list(APPEND _nrif_missing "${_nrif_axis}")
-                endif()
-            endforeach()
+            nros_axes_missing(_nrif_missing
+                DECLARED ${NROS_IMAGE_FEATURES} HAVE ${NROS_FEATURES})
             if(_nrif_missing)
                 string(REPLACE ";" ", " _nrif_missing "${_nrif_missing}")
                 # issue 1261.

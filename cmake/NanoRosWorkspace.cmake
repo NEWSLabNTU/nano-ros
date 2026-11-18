@@ -437,6 +437,10 @@ function(nano_ros_workspace)
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
             "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml")
         set(NROS_FEATURES "${NROS_FEATURES}" PARENT_SCOPE)
+        # Issue 2557: which bringup this configure's libraries are built for,
+        # so `nano_ros_entry(BRINGUP <other>)` can compare (nros_entry_axes_agree).
+        set_property(GLOBAL PROPERTY NROS_WORKSPACE_SYSTEM "${_NRW_SYSTEM}")
+        set_property(GLOBAL PROPERTY NROS_WORKSPACE_ROOT_DIR "${_NRW_WORKSPACE_ROOT}")
     else()
         # Issue 1261 — no SYSTEM, so no capability axes reach the library
         # build. That is correct for a workspace with no bringup ("workspaces

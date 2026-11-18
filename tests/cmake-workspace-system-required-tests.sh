@@ -229,9 +229,85 @@ if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle\]' "$TEST
     tail -15 "$TEST_TMPDIR/h.log" >&2
 fi
 
+# ---- I-L: an entry of ANOTHER bringup in one configure (issue 2557) ------
+#
+# One configure builds nros-c / nros-cpp once, with the axes of the bringup
+# `nano_ros_workspace(SYSTEM …)` names. A hand-written root may still call
+# `nano_ros_entry(BRINGUP <other>)`; `nros_entry_axes_agree` compares the two
+# through the shared rule (`nros_axes_missing`: missing refused, superset ok).
+#
+#   I. the entry's bringup IS the configure's SYSTEM -> no CLI call, accepted.
+#   J. another bringup declaring an axis the configure lacks -> refused,
+#      naming BOTH bringups and the axis.
+#   K. another bringup whose axes the configure covers -> accepted.
+#   L. a REAL configure: `nano_ros_workspace(SYSTEM demo_bringup)` records the
+#      property J reads, so a root calling the check for `extra_bringup` after
+#      it is refused (the wiring, not just the function).
+M="$TEST_TMPDIR/m"
+write_ws "$M" 1
+for _b in extra_bringup lean_bringup; do
+    mkdir -p "$M/src/$_b"
+    sed "s/demo_bringup/$_b/" "$M/src/demo_bringup/package.xml" > "$M/src/$_b/package.xml"
+done
+printf '%s\n' '[system]' 'name = "extra"' 'rmw = "zenoh"' 'domain_id = 0' \
+    'features = ["param_services", "lifecycle"]' > "$M/src/extra_bringup/system.toml"
+printf '%s\n' '[system]' 'name = "lean"' 'rmw = "zenoh"' 'domain_id = 0' \
+    'features = []' > "$M/src/lean_bringup/system.toml"
+printf '%s\n' \
+    'cmake_minimum_required(VERSION 3.22)' \
+    'include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")' \
+    'include("${NROS_REPO_DIR}/cmake/NanoRosEntryAgreement.cmake")' \
+    'set_property(GLOBAL PROPERTY NROS_WORKSPACE_SYSTEM demo_bringup)' \
+    'set_property(GLOBAL PROPERTY NROS_WORKSPACE_ROOT_DIR "${WS}")' \
+    'set(NROS_FEATURES param_services)' \
+    'nros_entry_axes_agree("nano_ros_entry(e)" BRINGUP "${WS}/src/${BRINGUP}")' \
+    'message(STATUS "AGREED")' > "$TEST_TMPDIR/axes.cmake"
+# axes <bringup> <log> -> sets RC
+axes() {
+    RC=0
+    (cd "$TEST_TMPDIR" && cmake -DNROS_REPO_DIR="$PROJECT_ROOT" -DWS="$M" -DBRINGUP="$1" \
+        -D_NANO_ROS_CODEGEN_TOOL="$NROS_BIN" -P "$TEST_TMPDIR/axes.cmake") >"$2" 2>&1 || RC=$?
+}
+axes demo_bringup "$TEST_TMPDIR/i.log"
+if [ "$RC" -ne 0 ] || ! nros_grep_q 'AGREED' "$TEST_TMPDIR/i.log"; then
+    fail "I: an entry of the configure's own bringup was not accepted (rc=$RC)"
+    tail -15 "$TEST_TMPDIR/i.log" >&2
+fi
+axes extra_bringup "$TEST_TMPDIR/j.log"
+if [ "$RC" -eq 0 ]; then
+    fail "J: an entry of a bringup needing \`lifecycle\` was accepted under param_services only"
+fi
+if ! nros_grep_q 'BRINGUP `extra_bringup`' "$TEST_TMPDIR/j.log" \
+    || ! nros_grep_q 'SYSTEM demo_bringup' "$TEST_TMPDIR/j.log" \
+    || ! nros_grep_q 'also needs: lifecycle' "$TEST_TMPDIR/j.log"; then
+    fail "J: the refusal does not name both bringups and the missing axis:"
+    tail -15 "$TEST_TMPDIR/j.log" >&2
+fi
+axes lean_bringup "$TEST_TMPDIR/k.log"
+if [ "$RC" -ne 0 ] || ! nros_grep_q 'AGREED' "$TEST_TMPDIR/k.log"; then
+    fail "K: an entry whose bringup's axes the configure covers was refused (rc=$RC)"
+    tail -15 "$TEST_TMPDIR/k.log" >&2
+fi
+mkdir -p "$M/root"
+printf '%s\n' 'cmake_minimum_required(VERSION 3.22)' \
+    'project(t2557 LANGUAGES C CXX)' \
+    'find_package(nano_ros REQUIRED COMPONENTS workspace)' \
+    'nano_ros_workspace(' '    WORKSPACE_ROOT ".."' '    BACKEND zenoh' \
+    '    PLATFORM "posix"' '    SYSTEM demo_bringup' '    NO_PLAN' '    SUBDIRS' ')' \
+    'include("${NROS_REPO_DIR}/cmake/NanoRosEntryAgreement.cmake")' \
+    'nros_entry_axes_agree("nano_ros_entry(e)" BRINGUP "${CMAKE_SOURCE_DIR}/../src/extra_bringup")' \
+    > "$M/root/CMakeLists.txt"
+# NO_PLAN: the metadata step needs a launch plan this synthetic bringup does
+# not have (B's caveat), and the question here is only the recorded SYSTEM.
+configure "$M" "$TEST_TMPDIR/l.log"
+if [ "$RC" -eq 0 ] || ! nros_grep_q 'also needs: lifecycle' "$TEST_TMPDIR/l.log"; then
+    fail "L: a real configure of SYSTEM demo_bringup did not refuse extra_bringup's entry (rc=$RC)"
+    tail -15 "$TEST_TMPDIR/l.log" >&2
+fi
+
 if [ "$FAILURES" -ne 0 ]; then
     log_error "cmake-workspace-system-required: $FAILURES failure(s)"
     exit 1
 fi
-log_success "cmake-workspace-system-required: A refused, B and C not; west road D-H (issues 1261, 2180)"
+log_success "cmake-workspace-system-required: A refused, B and C not; west road D-H; another bringup's entry I-L (issues 1261, 2180, 2557)"
 exit 0
