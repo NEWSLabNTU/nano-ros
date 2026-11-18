@@ -29,6 +29,10 @@ const INPUT_NAMES: &[&str] = &[
     "system.contract.yaml",
     "CMakeLists.txt",
     "Cargo.toml",
+    // Issue 2498 — a board or platform descriptor in the project's own
+    // packages decides what configure resolves, as one outside it does.
+    "nros-board.toml",
+    "nros-platform.toml",
 ];
 /// Interface definition extensions.
 const INTERFACE_EXTS: &[&str] = &["msg", "srv", "action"];
@@ -130,7 +134,11 @@ impl OutputFlags {
 /// * 5 -- issue 2485: `external` also holds the SDK index and the platform
 ///   `nros-platform.toml` files. A format-4 stamp recorded neither, so it
 ///   could not vouch for them.
-pub(crate) const STAMP_FORMAT: u32 = 5;
+/// * 6 -- issue 2498: `external` also holds what each platform and board
+///   descriptor SEARCH found, and the digest walk covers `nros-board.toml`
+///   and `nros-platform.toml`. A format-5 stamp recorded neither, so it
+///   could not vouch that no descriptor had been added since.
+pub(crate) const STAMP_FORMAT: u32 = 6;
 
 /// What a configure recorded about itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -370,8 +378,116 @@ pub(crate) fn load_platforms_tree(
         for file in tree.source_files() {
             let _ = read_external(file);
         }
+        // Issue 2498 — and what each root's search FOUND, missing roots
+        // included: a descriptor added there later shadows or adds a platform
+        // without changing a single file read above.
+        for root in roots {
+            record_search(root, Search::Platforms);
+        }
     }
     Ok(tree)
+}
+
+/// Issue 2498 — a directory search whose RESULT a configure's answer
+/// depends on.
+///
+/// [`read_external`] records the files a configure read, so it sees an edit
+/// and a deletion. It cannot see a file ADDED where a search would now find
+/// it: a new `<root>/<name>/nros-platform.toml` in an earlier root shadows
+/// the platform configure resolved against, and a new `nros-board.toml`
+/// can claim a board name an image uses. So the search's listing is a stamp
+/// input too, kept in [`Stamp::external`] under a key naming the root and
+/// the search ([`Search::key`]), and compared by [`external_moved`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Search {
+    /// `<root>/*/nros-platform.toml` — `PlatformsTree::load`'s search.
+    Platforms,
+    /// `<root>/**/nros-board.toml` — `BoardCatalog`'s recursive search.
+    Boards,
+}
+
+/// The digest prefix that marks an [`Stamp::external`] entry as a search
+/// listing rather than a file's bytes.
+const LISTING_PREFIX: &str = "listing:";
+
+impl Search {
+    const ALL: [Search; 2] = [Search::Platforms, Search::Boards];
+
+    /// The two path components the key appends to the root.
+    fn pattern(self) -> (&'static str, &'static str) {
+        match self {
+            Search::Platforms => ("*", "nros-platform.toml"),
+            Search::Boards => ("**", "nros-board.toml"),
+        }
+    }
+
+    fn key(self, root: &Path) -> PathBuf {
+        let (glob, file) = self.pattern();
+        let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        root.join(glob).join(file)
+    }
+
+    /// The search a stamp key names, and its root; `None` for a file key.
+    fn parse(key: &Path) -> Option<(Search, PathBuf)> {
+        let file = key.file_name()?.to_str()?;
+        let glob_dir = key.parent()?;
+        let glob = glob_dir.file_name()?.to_str()?;
+        Search::ALL
+            .into_iter()
+            .find(|s| s.pattern() == (glob, file))
+            .map(|s| (s, glob_dir.parent().unwrap_or(Path::new("/")).to_path_buf()))
+    }
+
+    /// What the search finds under `root` now: the matching directories,
+    /// relative to the root, sorted. `None` when the root cannot be listed.
+    fn listing(self, root: &Path) -> Option<Vec<PathBuf>> {
+        let dirs = match self {
+            Search::Platforms => {
+                nros_board_common::platform_config::platform_descriptor_dirs(root).ok()?
+            }
+            Search::Boards => {
+                let mut dirs = Vec::new();
+                crate::orchestration::board_descriptor::BoardCatalog::collect_board_dirs(
+                    root, 0, &mut dirs,
+                )
+                .ok()?;
+                dirs
+            }
+        };
+        let mut rel: Vec<PathBuf> = dirs
+            .iter()
+            .map(|d| d.strip_prefix(root).unwrap_or(d).to_path_buf())
+            .collect();
+        rel.sort();
+        Some(rel)
+    }
+
+    fn digest(self, root: &Path) -> String {
+        match self.listing(root) {
+            None => format!("{LISTING_PREFIX}absent"),
+            Some(dirs) => {
+                let joined = dirs
+                    .iter()
+                    .map(|d| d.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!("{LISTING_PREFIX}{}", bytes_digest(joined.as_bytes()))
+            }
+        }
+    }
+}
+
+/// Record what a search of `root` found as a stamp input, if a configure is
+/// recording on this thread. The ONE spelling for a configure-path directory
+/// search, as [`read_external`] is for a file read.
+pub(crate) fn record_search(root: &Path, search: Search) {
+    let Some(rec) = RECORDER.with_borrow(Clone::clone) else {
+        return;
+    };
+    let entry = (search.key(root), search.digest(root));
+    if let Ok(mut seen) = rec.lock() {
+        seen.insert(entry.0, entry.1);
+    }
 }
 
 /// Start recording a configure's external reads afresh, on this thread.
@@ -398,13 +514,36 @@ fn external_reads(project: &Path) -> std::collections::BTreeMap<PathBuf, String>
 /// The first recorded external input whose bytes are not what the configure
 /// read: changed, or gone.
 fn external_moved(recorded: &std::collections::BTreeMap<PathBuf, String>) -> Option<String> {
+    let is_listing = |d: &String| d.starts_with(LISTING_PREFIX);
+    // Files first: an edited or deleted file names itself, which says more
+    // than the listing it also changes.
     recorded
         .iter()
-        .find_map(|(path, digest)| match std::fs::read(path) {
-            Ok(bytes) if bytes_digest(&bytes) == *digest => None,
-            Ok(_) => Some(format!("`{}` changed", path.display())),
-            Err(_) => Some(format!("`{}` is gone", path.display())),
+        .filter(|(_, d)| !is_listing(d))
+        .find_map(|(path, digest)| external_file_moved(path, digest))
+        .or_else(|| {
+            recorded
+                .iter()
+                .filter(|(_, d)| is_listing(d))
+                .find_map(|(key, digest)| {
+                    let (search, root) = Search::parse(key)?;
+                    let (_, file) = search.pattern();
+                    (search.digest(&root) != *digest).then(|| {
+                        format!(
+                            "the `{file}` files found under `{}` changed (one added or removed)",
+                            root.display()
+                        )
+                    })
+                })
         })
+}
+
+fn external_file_moved(path: &Path, digest: &str) -> Option<String> {
+    match std::fs::read(path) {
+        Ok(bytes) if bytes_digest(&bytes) == digest => None,
+        Ok(_) => Some(format!("`{}` changed", path.display())),
+        Err(_) => Some(format!("`{}` is gone", path.display())),
+    }
 }
 
 fn is_input(rel: &Path) -> bool {
@@ -1658,6 +1797,115 @@ mod tests {
         let _ = crate::orchestration::board_descriptor::PlatformFamilies::new(vec![root])
             .resolve("acme");
         assert_external_input(&p, &descriptor, "\n# edited\n");
+    }
+
+    /// Issue 2498 — the shared tail: a stamp recorded after the searches is
+    /// current, and goes stale once `add` puts a descriptor where a search
+    /// now finds it.
+    fn assert_search_input(p: &Path, add: impl FnOnce()) {
+        let mut stamp = stamp_for(p);
+        stamp.external = external_reads(p);
+        assert!(
+            stamp
+                .external
+                .values()
+                .any(|d| d.starts_with(LISTING_PREFIX)),
+            "no search recorded: {:?}",
+            stamp.external
+        );
+        record(p, "img", &stamp).unwrap();
+        assert_eq!(
+            is_current_with(p, "img", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+        add();
+        let got = is_current_with(p, "img", &real_env(), None).unwrap();
+        assert!(
+            matches!(&got, Currency::Stale(why) if why.contains("added or removed")),
+            "{got:?}"
+        );
+    }
+
+    /// Issue 2498 — a platform descriptor ADDED to an earlier search root
+    /// shadows the one configure resolved against, so it stales the stamp
+    /// although no file configure read has changed. The earlier root does not
+    /// exist at configure time, which is the common case for a porter's
+    /// `$NROS_PLATFORMS_DIR`.
+    #[test]
+    fn a_platform_descriptor_added_to_a_searched_root_stales_the_stamp() {
+        let p = tmp("search-platform");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let early = tmp("search-platform-early").join("not-yet");
+        let late = tmp("search-platform-late");
+        std::fs::create_dir_all(late.join("acme")).unwrap();
+        std::fs::write(late.join("acme/nros-platform.toml"), "names = [\"acme\"]\n").unwrap();
+        begin_external_reads();
+        load_platforms_tree(&[early.clone(), late]).expect("the late root loads");
+        assert_search_input(&p, || {
+            std::fs::create_dir_all(early.join("acme")).unwrap();
+            std::fs::write(
+                early.join("acme/nros-platform.toml"),
+                "names = [\"acme\"]\n",
+            )
+            .unwrap();
+        });
+    }
+
+    /// Issue 2498 — a board descriptor ADDED under a searched board root,
+    /// at any depth the catalog walks, stales the stamp.
+    #[test]
+    fn a_board_descriptor_added_to_a_searched_root_stales_the_stamp() {
+        let p = tmp("search-board");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let ws = tmp("search-board-ws");
+        std::fs::create_dir_all(ws.join("packages/boards")).unwrap();
+        let extra = tmp("search-board-extra");
+        begin_external_reads();
+        crate::orchestration::board_descriptor::BoardCatalog::load_with_extra(
+            &ws,
+            std::slice::from_ref(&extra),
+        )
+        .expect("an empty catalog loads");
+        assert_search_input(&p, || {
+            let board = extra.join("vendor/acme-board");
+            std::fs::create_dir_all(&board).unwrap();
+            std::fs::write(board.join("nros-board.toml"), "").unwrap();
+        });
+    }
+
+    /// Issue 2498 — inside the project the digest walk is what sees a file,
+    /// and it walked only `INPUT_NAMES`: a board or platform descriptor in
+    /// the user's own workspace package was neither a digest input nor (being
+    /// inside the project) an external one. Adding one stales the stamp now.
+    #[test]
+    fn a_descriptor_inside_the_project_is_a_digest_input() {
+        for file in ["nros-board.toml", "nros-platform.toml"] {
+            let p = tmp(&format!("in-project-{file}"));
+            std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+            std::fs::create_dir_all(p.join("src/my_board")).unwrap();
+            let stamp = stamp_for(&p);
+            record(&p, "img", &stamp).unwrap();
+            assert_eq!(
+                is_current_with(&p, "img", &real_env(), None).unwrap(),
+                Currency::Current
+            );
+            std::fs::write(p.join("src/my_board").join(file), "").unwrap();
+            let got = is_current_with(&p, "img", &real_env(), None).unwrap();
+            assert!(matches!(got, Currency::Stale(_)), "{file}: {got:?}");
+        }
+    }
+
+    /// Issue 2498 — a search key round-trips through [`Search::parse`], and a
+    /// file key is not mistaken for one.
+    #[test]
+    fn a_search_key_names_its_search_and_root() {
+        let root = tmp("search-key");
+        for s in Search::ALL {
+            let key = s.key(&root);
+            let canon = std::fs::canonicalize(&root).unwrap();
+            assert_eq!(Search::parse(&key), Some((s, canon)));
+        }
+        assert_eq!(Search::parse(&root.join("acme/nros-platform.toml")), None);
     }
 
     /// Issue 2478 — a configure's worker thread records into the configure's
