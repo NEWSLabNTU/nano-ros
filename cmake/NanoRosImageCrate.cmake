@@ -18,8 +18,10 @@
 # The image crate's LIB is named like the API crate it stands in for
 # (`[lib] name = "nros_c"` / `"nros_cpp"`), and the API crate is a renamed
 # dependency (`api = { package = "nros-c", … }`). Corrosion names its targets
-# after the lib, so `nros_c-static`, `cargo-build_nros_c` and every consumer of
-# those names are unchanged: only the manifest and the package move.
+# after the lib, so `nros_cpp-static`, `cargo-build_nros_cpp` and every consumer of
+# those names are unchanged: only the manifest and the package move. (On the
+# CMake road the C flavour is not imported since phase-578 W8: nros-c's target
+# is an interface over the C++ image's archive.)
 #
 #   nros_image_crate(<prefix>
 #       FLAVOR       c | cpp

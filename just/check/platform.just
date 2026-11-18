@@ -94,6 +94,20 @@ r5f-hard-float-abi:
 out-of-tree-board-images:
     @bash scripts/check/check-out-of-tree-board-images.sh
 
+# phase-578 W8 — a C image's sizes header and its Rust archive come from ONE
+# cargo run. Builds the host C talker with Ninja and reads the build: no
+# `_cargo-build_nros_c` in its graph, every C TU compiled the header the
+# nros-cpp run placed (ninja's deps log), and the one runtime archive on the
+# entry's link (`ninja -t query`) defines that header's variant symbol. Its
+# selftest refuses a header from another run and an archive missing the
+# variant. ~30 s warm.
+[metadata("tier", "build")]
+[group('needs:cli')]
+[group('needs:cmake')]
+[group('needs:cc')]
+c-image-one-cargo-run:
+    @bash scripts/check/check-c-image-one-cargo-run.sh
+
 # phase-575 W3 — a FreeRTOS image built and linked by TI Arm Clang: the
 # out-of-tree fixture board as `fixture-r5f-tiarmclang`, every C TU by
 # tiarmclang, the Rust staticlib by rustc, linked by tiarmlnk. Asserts the C

@@ -112,6 +112,10 @@ workspace-probes
 # on every pull request.
 out-of-tree-board-images
 
+# c-image-one-cargo-run (phase-578 W8) builds a host C image, so it needs the
+# CLI and a cmake build, which the merge-gating lanes do not provide; the
+# `build` lane runs it, and so does tier 2's runner lane before its cells.
+c-image-one-cargo-run
 # tiarmclang-image (phase-575 W3) needs TI Arm Clang, which is licence-gated
 # and never fetched, so no hosted lane can claim it. Run it by name where an
 # install is named (`just check tiarmclang-image`). No runner carries TI Arm

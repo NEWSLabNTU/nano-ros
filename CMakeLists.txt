@@ -208,7 +208,8 @@ if(NOT NROS_BOARD AND NOT DEFINED NROS_LEAF_SYSTEM
 endif()
 if(NOT NROS_PLATFORM MATCHES "^nuttx")
     # Phase 241.D3-rev — single-runtime model: the umbrella FFI staticlib
-    # (`libnros_c.a` for C, `libnros_cpp.a` for C++) bundles the selected RMW backend
+    # (`libnros_cpp.a`, for C and C++ alike since phase-578 W8: nros-c is an
+    # interface over it) bundles the selected RMW backend
     # as an rlib dep, so each binary links exactly ONE Rust staticlib (one `std`).
     # No provider archive, no `external-registry` feature — the cffi `REGISTRY` + C
     # entry points are defined once in the single archive.
@@ -271,6 +272,8 @@ if(NOT TARGET NanoRos)
     # NuttX cross builds where the FFI crate's cargo build supplies
     # nros-c via its own dependency closure.
     if(TARGET nros_c-static)
+        # phase-578 W8 — `nros_c-static` is an INTERFACE over `nros_cpp-static`
+        # (packages/api/nros-c/CMakeLists.txt), so this links libnros_cpp.a.
         # Phase 241.D3-rev — the C umbrella is the ONLY Rust staticlib on a C link
         # line ⇒ `std` once ⇒ no `--allow-multiple-definition`. Linked NORMALLY (not
         # whole-archive): whole-archiving a Rust staticlib force-includes its
