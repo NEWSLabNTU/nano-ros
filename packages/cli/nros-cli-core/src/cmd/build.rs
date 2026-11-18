@@ -5569,7 +5569,11 @@ fn generate_entry(
         return Ok(GeneratedEntry { dir: None });
     }
 
-    let mut plan = match crate::codegen::entry::plan_from_model(&model_path, image.board.clone()) {
+    let mut plan = match crate::codegen::entry::plan_from_model(
+        &model_path,
+        image.board.clone(),
+        Some(image_id),
+    ) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("nros build: warning: cannot plan `{image_id}`: {e}");
@@ -6594,7 +6598,8 @@ fn registered_population(
     let packages: std::collections::BTreeSet<String> = match scope {
         RegisteredScope::RootPackages(names) => names,
         RegisteredScope::LaunchClosure => {
-            let plan = crate::codegen::entry::plan_from_model(model_path, board)
+            // The launch closure only: which packages, never a switch.
+            let plan = crate::codegen::entry::plan_from_model(model_path, board, None)
                 .map_err(|e| format!("cannot plan the launch: {e}"))?;
             let packages: std::collections::BTreeSet<String> = launch_closure(root, &plan)?
                 .into_iter()
@@ -7291,12 +7296,15 @@ fn resolve_image(
             .map_err(|e| format!("parsing {}: {e}", model_path.display()))?;
         // phase-486 W3 -- the switches THIS image builds with: the overlay's
         // system list plus its own `[image.<id>] features` (W2).
-        let model =
-            nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, &model_path)?;
-        store_infra = Some(crate::entity_inventory::InfraServices::from_model(
-            &model,
+        // Issue 2700 -- loaded FOR this image, so the composed inventory's
+        // service families (and every other switch reader downstream) are this
+        // image's, not the system list's.
+        let model = nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(
+            model,
+            &model_path,
             Some(image_id),
-        ));
+        )?;
+        store_infra = Some(crate::entity_inventory::InfraServices::from_model(&model));
         // phase-454 W3 -- a QoS value this build cannot read refuses the SEED
         // too. `from_model` parses `reliability:` / `durability:` / `history:`
         // and an unreadable spelling parses to `None`, which is the spelling
@@ -7450,21 +7458,12 @@ fn resolve_image(
     {
         match nros_orchestration_ir::leaf_system::read_image(bringup_dir, image_id) {
             Ok(Some(sys)) => {
-                // phase-556 W13 -- the image's own `features` join the
-                // leaf's DECLARED list, and the node-interface switch applies
-                // over the union (so `node_interfaces = "none"` removes a stock
-                // axis whichever table declared it).
-                let declared: Vec<&String> = sys
-                    .declared_features
-                    .iter()
-                    .chain(image.features.iter())
-                    .collect();
-                let features = nros_orchestration_ir::node_interfaces::effective_features(
-                    &declared,
-                    sys.node_interfaces,
-                );
+                // phase-556 W13 / issue 2700 -- `read_image` already composed
+                // the image's own `features` with the system list, through the
+                // switch that applies to the image.
                 store_infra = Some(crate::entity_inventory::InfraServices::from_features(
-                    &features, 0,
+                    &sys.features,
+                    0,
                 ));
                 nodes_unknown = true;
             }
@@ -7710,7 +7709,8 @@ fn image_launch_node_dirs(
         ModelDoor::Refused(r) => r.to_string(),
         ModelDoor::Unresolved(e) => format!("cannot resolve the SystemModel: {e}"),
     })?;
-    let plan = crate::codegen::entry::plan_from_model(&model, image.board.clone())
+    // The launch closure only: which packages, never a switch.
+    let plan = crate::codegen::entry::plan_from_model(&model, image.board.clone(), None)
         .map_err(|e| format!("cannot plan the launch: {e}"))?;
     Ok(launch_closure(root, &plan)?
         .into_iter()
@@ -8118,7 +8118,12 @@ fn coordinate_member_model(
         .map_err(|e| format!("parsing {}: {e}", path.display()))?;
     crate::cmd::entity_inventory::check_model(&model)
         .map_err(|e| format!("model {}: {e:#}", path.display()))?;
-    let model = nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, &path)?;
+    // Issue 2700 -- read for NO image, deliberately: a shared configure's own
+    // producers (`ws entity-inventory`, the runtime descriptor) and its
+    // `NROS_FEATURES` name no single image, and this precomposition is what
+    // the configure TAKES in place of its own, so it must read what they read.
+    let model =
+        nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, &path, None)?;
     Ok((path, model))
 }
 
@@ -13447,7 +13452,7 @@ mod model_door_tests {
     fn a_refused_leaf_model_is_a_refusal_not_an_absence() {
         let (_ws, bringup, _rel) = bringup_with_marker();
         assert!(crate::leaf_entity_env::leaf_model_path(&bringup).is_err());
-        assert!(crate::leaf_entity_env::leaf_model(&bringup).is_none());
+        assert!(crate::leaf_entity_env::leaf_model(&bringup, None).is_none());
     }
 }
 

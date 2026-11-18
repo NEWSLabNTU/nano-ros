@@ -52,7 +52,14 @@ use crate::orchestration::{cargo_metadata_schema::SystemToml, source_metadata::S
 /// is recoverable from the path when the file is absent. A path of any other
 /// shape (a temp file a caller resolved itself) exists by construction, so the
 /// fallback never sees it.
-pub fn load_model(path: &Path) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
+///
+/// `image` is the `[image.<id>]` the caller reads the model FOR
+/// ([`nros_orchestration_ir::overlay::LoadedModel::image`]); `None` when it
+/// reads no image's switches.
+pub fn load_model(
+    path: &Path,
+    image: Option<&str>,
+) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
     let resolved: std::borrow::Cow<'_, Path> = if path.is_file() {
         std::borrow::Cow::Borrowed(path)
     } else {
@@ -75,8 +82,12 @@ pub fn load_model(path: &Path) -> Result<nros_orchestration_ir::overlay::LoadedM
     let model = SystemModel::from_yaml_str(&yaml)
         .map_err(|e| eyre::eyre!("load SystemModel {}: {e}", resolved.display()))?;
     // phase-486 W3 — the nano-ros facts travel beside the model, not in it.
-    nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, resolved.as_ref())
-        .map_err(|e| eyre::eyre!("{e}"))
+    nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(
+        model,
+        resolved.as_ref(),
+        image,
+    )
+    .map_err(|e| eyre::eyre!("{e}"))
 }
 
 /// Bare node name from a model FQN (`/ns/node` → `node`).
@@ -684,7 +695,7 @@ fn count_cyclonedds_registered_types(model: &nros_orchestration_ir::overlay::Loa
     // predicate the queryable counts use (the retired ~~`entity_facts`~~ did
     // too), not from a second
     // reading of `execution.features`.
-    let infra = crate::entity_inventory::InfraServices::from_model(model, None);
+    let infra = crate::entity_inventory::InfraServices::from_model(model);
     ty::count_dds_types(model, |_| true)
         + ty::infra_types(infra.param_services, infra.lifecycle, infra.rosout)
 }

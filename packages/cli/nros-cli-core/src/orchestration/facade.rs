@@ -595,7 +595,7 @@ impl AdapterSite<'_> {
             direct_backend,
             &backend_features,
             entry_name,
-            sys,
+            &image_sys,
             edition,
         );
         let mut backends = image_backends(image_id, sys);
@@ -849,6 +849,10 @@ pub fn entry_selection_in(
     let declared_rmw = image_rmw(claimed.as_deref(), sys).unwrap_or_else(|| sys.system.rmw.clone());
     let edition = sys.image_ros_edition(claimed.as_deref())?;
     let backends = image_backends(claimed.as_deref(), sys);
+    // Issue 2700 -- the capability axes the CLAIMED image builds with: its own
+    // `features` and `node_interfaces` over the system's, which the sizing
+    // descriptor reads off the same image.
+    let image_sys = sys.with_image_features(claimed.as_deref());
     let Derived {
         nros_features,
         mut board_features,
@@ -856,7 +860,7 @@ pub fn entry_selection_in(
     } = derive(
         rmws,
         entry_name,
-        sys,
+        &image_sys,
         edition,
         &declared_rmw,
         &backends,
@@ -878,7 +882,7 @@ pub fn entry_selection_in(
         rmws,
         entry_name,
         &linked,
-        sys,
+        &image_sys,
         edition,
         board_dir,
         &board_features,
@@ -986,6 +990,8 @@ pub fn write_leaf_selection_in(
         .collect();
     backends.sort();
     backends.dedup();
+    // Issue 2700 -- the image's own capability axes, as on every road.
+    let image_sys = sys.with_image_features(Some(spec.image_id));
     let Derived {
         nros_features,
         mut board_features,
@@ -993,7 +999,7 @@ pub fn write_leaf_selection_in(
     } = derive(
         rmws,
         &crate_name,
-        sys,
+        &image_sys,
         sys.image_ros_edition(Some(spec.image_id))?,
         &declared_rmw,
         &backends,
@@ -1885,6 +1891,157 @@ fn write_if_changed(dst: &Path, body: &str) -> Result<bool> {
         .wrap_err_with(|| format!("facade: write {}", dst.display()))
 }
 
+/// Issue 2700 -- one bringup whose three images state the per-image switches,
+/// and what each road must build and size for each. Shared by the per-road
+/// tests (this module's, `cmd::leaf_settings`'s, `cmd::sizing_descriptor`'s),
+/// so every road is held to ONE expectation.
+#[cfg(test)]
+pub(crate) mod image_features_fixture {
+    use std::path::Path;
+
+    /// `[system]` declares the stock interfaces; `small` opts out per image,
+    /// `managed` opts in to `lifecycle` per image, `linux` states nothing.
+    pub const SYSTEM: &str = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+         features = [\"param_services\", \"rosout\"]\n\n\
+         [image.linux]\nboard = \"linux\"\n\n\
+         [image.small]\nboard = \"linux\"\nnode_interfaces = \"none\"\n\n\
+         [image.managed]\nboard = \"linux\"\nfeatures = [\"lifecycle\"]\n";
+
+    /// A model with wiring, so the inventory composes over it.
+    pub const MODEL: &str = "meta:\n  version: 1\nstructure:\n  nodes:\n    \
+         /a: { scope: s.launch.xml, pkg: p, exec: a, node_name: a }\n  \
+         topics:\n    /chatter:\n      type: std_msgs/msg/String\n      pub: [/a/chatter]\n";
+
+    pub struct Case {
+        pub image: &'static str,
+        /// The `nros` cargo features the image builds with, per axis.
+        pub param: bool,
+        pub rosout: bool,
+        pub lifecycle: bool,
+        /// `[image] infra_families`.
+        pub families: &'static str,
+    }
+
+    pub const CASES: &[Case] = &[
+        Case {
+            image: "linux",
+            param: true,
+            rosout: true,
+            lifecycle: false,
+            families: "param+rosout",
+        },
+        Case {
+            image: "small",
+            param: false,
+            rosout: false,
+            lifecycle: false,
+            families: "none",
+        },
+        Case {
+            image: "managed",
+            param: true,
+            rosout: true,
+            lifecycle: true,
+            families: "param+lifecycle+rosout",
+        },
+    ];
+
+    impl Case {
+        /// The `nros` cargo features of the build.
+        pub fn assert_build(&self, nros_features: &[String]) {
+            let has = |f: &str| nros_features.iter().any(|x| x == f);
+            assert_eq!(
+                has("param-services"),
+                self.param,
+                "{}: {nros_features:?}",
+                self.image
+            );
+            assert_eq!(
+                has("rosout"),
+                self.rosout,
+                "{}: {nros_features:?}",
+                self.image
+            );
+            assert_eq!(
+                has("lifecycle-services"),
+                self.lifecycle,
+                "{}: {nros_features:?}",
+                self.image
+            );
+        }
+
+        /// The capability axes of the build, by declared name.
+        pub fn assert_axes(&self, axes: &[String]) {
+            let has = |f: &str| axes.iter().any(|x| x == f);
+            assert_eq!(
+                has("param_services"),
+                self.param,
+                "{}: {axes:?}",
+                self.image
+            );
+            assert_eq!(has("rosout"), self.rosout, "{}: {axes:?}", self.image);
+            assert_eq!(has("lifecycle"), self.lifecycle, "{}: {axes:?}", self.image);
+        }
+
+        pub fn assert_families(&self, families: &str) {
+            assert_eq!(families, self.families, "{}", self.image);
+        }
+    }
+
+    /// The overlay `nros sync` writes beside the model for [`SYSTEM`].
+    pub fn overlay() -> nros_orchestration_ir::overlay::Overlay {
+        nros_orchestration_ir::overlay::Overlay::from_system_toml_str(
+            SYSTEM,
+            Path::new("system.toml"),
+        )
+        .expect("overlay")
+    }
+
+    /// [`MODEL`] with its overlay, read for `image`.
+    pub fn model_for(image: Option<&str>) -> nros_orchestration_ir::overlay::LoadedModel {
+        nros_orchestration_ir::overlay::LoadedModel {
+            model: ros_launch_manifest_model::SystemModel::from_yaml_str(MODEL).expect("model"),
+            overlay: overlay(),
+            image: None,
+        }
+        .for_image(image)
+    }
+
+    /// `[image] infra_families` of the descriptor the model road writes for
+    /// `model` (the cargo road's `write_image_descriptor` call), read back.
+    pub fn descriptor_families(model: &nros_orchestration_ir::overlay::LoadedModel) -> String {
+        let inv = crate::entity_inventory::EntityInventory::from_model("model", model)
+            .expect("the model describes wiring");
+        let dir = tempfile::tempdir().unwrap();
+        let written =
+            crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
+                build_dir: dir.path(),
+                entry: "img",
+                wiring: crate::sizing_descriptor::Wiring::Composed(&inv),
+                target_triple: None,
+                host_build: true,
+                heap_budget_bytes: None,
+                rmw: None,
+                bound_inventories: &[],
+                horizon: crate::sizing_descriptor::ModelHorizon::new("a test"),
+            })
+            .expect("write")
+            .expect("a wired image earns a file");
+        families_at(&written.path)
+    }
+
+    /// `[image] infra_families` of the descriptor at `path`.
+    pub fn families_at(path: &Path) -> String {
+        nros_sizing_descriptor::read(path)
+            .expect("read back")
+            .image
+            .infra_families()
+            .stated()
+            .map(|f| f.tag().to_string())
+            .expect("families stated")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2083,6 +2240,33 @@ mod tests {
             "{:?}",
             sel.nros_features
         );
+    }
+
+    /// Issue 2700 -- the GENERATED workspace entry road. Each image's own
+    /// `features` and `node_interfaces` reach BOTH halves: the selection the
+    /// entry builds with (`entry_selection_in`) and the sizing descriptor's
+    /// `infra_families`, composed from the model `nros build` loads for that
+    /// image. The build used to derive from `[system]` alone and the
+    /// inventory read the model with no image, so `small`'s opt-out and
+    /// `managed`'s opt-in reached neither.
+    #[test]
+    fn a_generated_entry_builds_and_sizes_each_images_own_features() {
+        use super::image_features_fixture as fx;
+        let sys: SystemToml = toml::from_str(fx::SYSTEM).unwrap();
+        let root = cargo_nano_ros::rmw_resolver::test_support::checkout();
+        let board = root.join("packages/boards/nros-board-linux");
+        for case in fx::CASES {
+            let sel = entry_selection_in(
+                &in_tree(),
+                &format!("{}_entry", case.image),
+                &sys,
+                &root,
+                Some(&board),
+            )
+            .expect("selection");
+            case.assert_build(&sel.nros_features);
+            case.assert_families(&fx::descriptor_families(&fx::model_for(Some(case.image))));
+        }
     }
 
     /// RFC-0071 D15 for an OWNED entry: the adapter links an out-of-tree

@@ -670,7 +670,7 @@ execution:
         Some("stm32f4".to_string()),
         Some("zephyr".to_string()),
     ] {
-        let plan = plan_from_model(&model_path, board.clone()).expect("plan");
+        let plan = plan_from_model(&model_path, board.clone(), None).expect("plan");
         assert_eq!(plan.nodes.len(), 2, "board {board:?}: the whole system");
         assert!(plan.param_services, "the overlay's switch");
         assert_eq!(plan.safety, Some(true));
@@ -682,7 +682,7 @@ execution:
         model("  deploy:\n    /demo/talker:\n      domain: 3\n"),
     )
     .unwrap();
-    let plan = plan_from_model(&model_path, None).expect("placed plan");
+    let plan = plan_from_model(&model_path, None, None).expect("placed plan");
     assert_eq!(
         plan.nodes.len(),
         1,
@@ -702,7 +702,7 @@ execution:
 
     // Negative control: the switches come from the overlay and nowhere else.
     fs::remove_file(tmp.join("nros.toml")).unwrap();
-    let bare = plan_from_model(&model_path, None).expect("plan without overlay");
+    let bare = plan_from_model(&model_path, None, None).expect("plan without overlay");
     assert!(!bare.param_services && bare.safety.is_none());
 }
 
@@ -740,7 +740,7 @@ execution:
     )
     .unwrap();
 
-    let mut plan = plan_from_model(&model_path, None).expect("native plan");
+    let mut plan = plan_from_model(&model_path, None, None).expect("native plan");
     assert_eq!(
         plan.session.domain,
         Some(7),
@@ -798,17 +798,18 @@ execution:
     )
     .unwrap();
 
-    let plan = plan_from_model(&model_path, Some("zephyr".to_string())).expect("family slice");
+    let plan =
+        plan_from_model(&model_path, Some("zephyr".to_string()), None).expect("family slice");
     assert_eq!(plan.nodes.len(), 1);
     assert_eq!(plan.nodes[0].exec, "controller");
     // Exact concrete key still works too.
-    let exact =
-        plan_from_model(&model_path, Some("fvp-aemv8r-smp".to_string())).expect("exact slice");
+    let exact = plan_from_model(&model_path, Some("fvp-aemv8r-smp".to_string()), None)
+        .expect("exact slice");
     assert_eq!(exact.nodes.len(), 1);
     // An unrelated family the deploy map never mentions is UNPARTITIONED
     // (phase-315 / issue 0288 board-mention lift): the whole system, not an
     // empty-slice error.
-    let unmentioned = plan_from_model(&model_path, Some("freertos".to_string()))
+    let unmentioned = plan_from_model(&model_path, Some("freertos".to_string()), None)
         .expect("unmentioned family = unpartitioned");
     assert_eq!(unmentioned.nodes.len(), 1);
 }

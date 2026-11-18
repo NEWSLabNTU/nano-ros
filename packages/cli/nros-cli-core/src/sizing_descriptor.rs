@@ -2094,7 +2094,7 @@ pub fn write_for_leaf(
             // Issue 2364 -- the frame facts only the model and manifest state,
             // as the leaf's `[env]` road applies them; the contract join below
             // keeps the probe's frame, so they ride through it.
-            crate::leaf_entity_env::with_leaf_frame(leaf, &mut inv);
+            crate::leaf_entity_env::with_leaf_frame(leaf, Some(img.image_id.as_str()), &mut inv);
             (Some(inv), None)
         }
         Ok(_) => (None, None),
@@ -2112,7 +2112,7 @@ pub fn write_for_leaf(
     // the join below reads, resolved ONCE and kept whether or not the probe
     // found any endpoints. A leaf may declare parameters and create nothing
     // else; the endpoint table being empty says nothing about the store.
-    let model = crate::leaf_entity_env::leaf_model(leaf);
+    let model = crate::leaf_entity_env::leaf_model(leaf, Some(img.image_id.as_str()));
     let params = model.as_ref().map(|m| ParamDeclarations::from_model(m));
     // Issue 1706 -- what the leaf declares about the parameter store, for
     // `[params] store`: the model's launch seeds, and the `param_services` axis
@@ -2238,7 +2238,7 @@ fn leaf_store_infra(
     manifest_param_services: bool,
 ) -> Option<InfraServices> {
     model.map(|m| {
-        let mut i = InfraServices::from_model(m, None);
+        let mut i = InfraServices::from_model(m);
         i.param_services &= manifest_param_services;
         i
     })
@@ -5018,6 +5018,7 @@ mod tests {
                 }],
                 ..Default::default()
             },
+            image: None,
         };
         let row = crate::orchestration::metadata_refresh::ProbeRow {
             executable: Some("talker".into()),
@@ -5782,7 +5783,7 @@ execution:
             dir.path(),
             "img",
             &params,
-            InfraServices::from_model(&model.clone(), None),
+            InfraServices::from_model(&model.clone()),
         ))
         .unwrap()
         .expect("the axis implies a store");
@@ -5817,7 +5818,7 @@ execution:
                 dir.path(),
                 "img",
                 &params,
-                InfraServices::from_model(m, None),
+                InfraServices::from_model(m),
             ))
             .unwrap()
         };
@@ -5851,6 +5852,7 @@ execution:
                 images: [("a".to_string(), vec!["param_services".to_string()])].into(),
                 ..Default::default()
             },
+            image: None,
         };
         let params = ParamDeclarations::from_model(&model);
         let write = |image: &str| {
@@ -5858,7 +5860,7 @@ execution:
                 &dir.path().join(image),
                 image,
                 &params,
-                InfraServices::from_model(&model, Some(image)),
+                InfraServices::from_model(&model.clone().for_image(Some(image))),
             ))
             .unwrap()
         };
@@ -6109,8 +6111,8 @@ contracts:
                 dir.path(),
                 "runtime",
                 &ParamDeclarations::Absent,
-                InfraServices::from_model(&store_model("", ""), None)
-                    .union(InfraServices::from_model(&seeded.clone(), None)),
+                InfraServices::from_model(&store_model("", ""))
+                    .union(InfraServices::from_model(&seeded.clone())),
             ),
             &RuntimeComposition {
                 entries: &entries,

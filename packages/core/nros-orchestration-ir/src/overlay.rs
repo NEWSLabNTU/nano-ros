@@ -103,18 +103,13 @@ impl Overlay {
     /// image adds, first spelling kept, through the node-interface switch that
     /// applies to it.
     pub fn features_for_image(&self, id: &str) -> Vec<String> {
-        let mut declared = self.features.clone();
-        for f in self.images.get(id).into_iter().flatten() {
-            if !declared.contains(f) {
-                declared.push(f.clone());
-            }
-        }
-        let switch = self
-            .image_node_interfaces
-            .get(id)
-            .copied()
-            .or(self.node_interfaces);
-        crate::node_interfaces::effective_features(&declared, switch)
+        let image: &[String] = self.images.get(id).map_or(&[], Vec::as_slice);
+        let switch = crate::node_interfaces::resolve(
+            self.image_node_interfaces.get(id).copied(),
+            None,
+            self.node_interfaces,
+        );
+        crate::node_interfaces::image_features(&self.features, image, switch)
     }
 
     /// The switches the bringup builds with when no image is named: the
@@ -578,6 +573,14 @@ pub fn write_beside(model_path: &Path, system_toml: &Path) -> Result<Option<Path
 pub struct LoadedModel {
     pub model: ros_launch_manifest_model::SystemModel,
     pub overlay: Overlay,
+    /// The `[image.<id>]` this model was loaded FOR, which every switch reader
+    /// ([`Self::features`]) answers for. One model file serves every image of
+    /// a bringup that resolves the same launch, so the image is a fact of the
+    /// LOAD, stated by whoever opened the model. `None`: the reader names no
+    /// image, and the system list answers.
+    // Issue 2700: a producer that sized or built one image from the system list
+    // ignored that image's own `features` and `node_interfaces`.
+    pub image: Option<String>,
 }
 
 impl std::ops::Deref for LoadedModel {
@@ -593,6 +596,7 @@ impl LoadedModel {
         Self {
             model,
             overlay: Overlay::default(),
+            image: None,
         }
     }
 
@@ -611,31 +615,49 @@ impl LoadedModel {
             features: legacy_projected_features(yaml),
             ..Overlay::default()
         };
-        Ok(Self { model, overlay })
+        Ok(Self {
+            model,
+            overlay,
+            image: None,
+        })
     }
 
-    /// Read the model at `path` and the overlay beside it.
-    pub fn load(path: &Path) -> Result<Self, String> {
+    /// Read the model at `path` and the overlay beside it, for `image`.
+    pub fn load(path: &Path, image: Option<&str>) -> Result<Self, String> {
         let yaml = std::fs::read_to_string(path)
             .map_err(|e| format!("read SystemModel {}: {e}", path.display()))?;
         let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&yaml)
             .map_err(|e| format!("load SystemModel {}: {e}", path.display()))?;
-        Self::with_overlay_beside(model, path)
+        Self::with_overlay_beside(model, path, image)
     }
 
-    /// Pair an already-parsed `model` with the overlay beside `model_path`.
+    /// Pair an already-parsed `model` with the overlay beside `model_path`,
+    /// for `image` (see [`Self::image`]).
     pub fn with_overlay_beside(
         model: ros_launch_manifest_model::SystemModel,
         model_path: &Path,
+        image: Option<&str>,
     ) -> Result<Self, String> {
         let overlay = load_beside(model_path)?;
-        Ok(Self { model, overlay })
+        Ok(Self {
+            model,
+            overlay,
+            image: image.map(str::to_string),
+        })
     }
 
-    /// The image's capability switches: the overlay's system list plus what
-    /// `image` adds. `None` = the system list alone.
-    pub fn features(&self, image: Option<&str>) -> Vec<String> {
-        match image {
+    /// This model, read for `image` instead (see [`Self::image`]).
+    #[must_use]
+    pub fn for_image(mut self, image: Option<&str>) -> Self {
+        self.image = image.map(str::to_string);
+        self
+    }
+
+    /// The capability switches of the image this model was loaded for: the
+    /// overlay's system list plus what that image adds, through the switch
+    /// that applies to it. No image = the system list alone.
+    pub fn features(&self) -> Vec<String> {
+        match self.image.as_deref() {
             Some(id) => self.overlay.features_for_image(id),
             None => self.overlay.system_features(),
         }
@@ -924,11 +946,11 @@ mod tests {
             overlay: ov,
             ..LoadedModel::default()
         };
-        assert_eq!(lm.features(Some("mcu")), vec!["lifecycle"]);
         assert_eq!(
-            lm.features(None),
-            vec!["param_services", "rosout", "lifecycle"]
+            lm.clone().for_image(Some("mcu")).features(),
+            vec!["lifecycle"]
         );
+        assert_eq!(lm.features(), vec!["param_services", "rosout", "lifecycle"]);
     }
 
     /// (d) image > image_defaults > system.
@@ -1375,7 +1397,7 @@ mod tests {
             "meta:\n  version: 2\nstructure: {}\nexecution:\n  features:\n  - param_services\n",
         )
         .unwrap();
-        assert_eq!(l.features(None), vec!["param_services"]);
+        assert_eq!(l.features(), vec!["param_services"]);
         assert!(legacy_projected_features("meta:\n  version: 2\nstructure: {}\n").is_empty());
         assert!(legacy_projected_features("not: [a model").is_empty());
     }

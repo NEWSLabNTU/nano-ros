@@ -514,7 +514,7 @@ fn an_unwired_image_states_the_retired_carriers_facts_as_the_wired_road_does() {
     };
     let wired = image(&dir.join("wired"), Wiring::Composed(&inv), &tables).expect("written");
     let params = nros_cli_core::entity_inventory::ParamDeclarations::Absent;
-    let infra = nros_cli_core::entity_inventory::InfraServices::from_model(&loaded, None);
+    let infra = nros_cli_core::entity_inventory::InfraServices::from_model(&loaded);
     let unwired = |build_dir: &Path, tables: &[PathBuf]| {
         image(
             build_dir,
