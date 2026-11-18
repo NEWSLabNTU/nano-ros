@@ -13,7 +13,73 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <sys/time.h>
+/* `struct timeval` (lwipopts.h sets LWIP_TIMEVAL_PRIVATE 0). sys/select.h,
+ * not sys/time.h: newlib and TI Arm Clang's C library both define it there,
+ * and TI's has no sys/time.h (phase-575 W3). */
+#include <sys/select.h>
+
+/* The socket errno values lwIP's socket layer and zenoh-pico's lwIP link set
+ * and test. newlib's errno.h defines every one of them, so on GCC nothing here
+ * applies. TI Arm Clang's C library has no socket errnos at all (phase-575 W3),
+ * so the image's lwIP states its own. Each is 1000 + its Linux value: never one
+ * of a C library's own small numbers, so no socket error can read as, say,
+ * TI's EMSGSIZE (97, which is Linux's EAFNOSUPPORT). Only lwIP and zenoh-pico
+ * set or read these, and both see this header, so the numbers agree. */
+#ifndef EADDRINUSE
+#define EADDRINUSE 1098
+#endif
+#ifndef EADDRNOTAVAIL
+#define EADDRNOTAVAIL 1099
+#endif
+#ifndef EAFNOSUPPORT
+#define EAFNOSUPPORT 1097
+#endif
+#ifndef EALREADY
+#define EALREADY 1114
+#endif
+#ifndef ECOMM
+#define ECOMM 1070
+#endif
+#ifndef ECONNABORTED
+#define ECONNABORTED 1103
+#endif
+#ifndef ECONNREFUSED
+#define ECONNREFUSED 1111
+#endif
+#ifndef ECONNRESET
+#define ECONNRESET 1104
+#endif
+#ifndef EHOSTUNREACH
+#define EHOSTUNREACH 1113
+#endif
+#ifndef EISCONN
+#define EISCONN 1106
+#endif
+#ifndef ENETUNREACH
+#define ENETUNREACH 1101
+#endif
+#ifndef ENOBUFS
+#define ENOBUFS 1105
+#endif
+#ifndef ENOMSG
+#define ENOMSG 1042
+#endif
+#ifndef ENOPROTOOPT
+#define ENOPROTOOPT 1092
+#endif
+#ifndef ENOTCONN
+#define ENOTCONN 1107
+#endif
+#ifndef ENOTSOCK
+#define ENOTSOCK 1088
+#endif
+#ifndef EOPNOTSUPP
+#define EOPNOTSUPP 1095
+#endif
+/* POSIX lets it equal EAGAIN, which every C library here defines. */
+#ifndef EWOULDBLOCK
+#define EWOULDBLOCK EAGAIN
+#endif
 
 /* Diagnostics — use semihosting for QEMU */
 extern void semihosting_write0(const char *s);

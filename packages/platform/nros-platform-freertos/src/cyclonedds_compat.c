@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/types.h> /* clockid_t: newlib has it via time.h, TI Arm Clang's libc only here */
 #include <time.h>
 
 extern char __tls_base[];
