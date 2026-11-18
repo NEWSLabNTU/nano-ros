@@ -177,6 +177,30 @@ def _selftest_drifted_submodule() -> None:
                      "or removed the gitlink directory")
 
 
+def _clone_scratch_root() -> "str | None":
+    """Where the rehearsal's clones go: tmpfs (`/dev/shm`) when this host has
+    a writable one, else `/tmp`. Not `TMPDIR`.
+
+    Each clone fetches and checks out the whole HEAD tree (about 15,000 files,
+    120 MB), three times a run. On a checkout on a slow disk that was nearly
+    all of the run: about 111 s a shape on a USB disk under IO pressure. The
+    hook gate's `tmpdir` shape points TMPDIR inside the checkout on purpose.
+    The selftest's own repositories stay on TMPDIR, so that shape still probes
+    them there; these clones need no particular disk to prove what they
+    prove."""
+    for root in ("/dev/shm", "/tmp"):
+        if not (Path(root).is_dir() and os.access(root, os.W_OK)):
+            continue
+        # A run holds about 400 MB there at its peak (measured on host 243:
+        # 1.16 GB for the hook gate's three shapes at once). A tmpfs too small
+        # for that would fail the clone, so it is used only with room to spare.
+        st = os.statvfs(root)
+        if root == "/dev/shm" and st.f_bavail * st.f_frsize < 1 << 30:
+            continue
+        return root
+    return None  # neither: tempfile's own default
+
+
 def non_tip_rehearsal() -> list[str]:
     """The release rehearsal's checkout shape (see the module doc). Returns problems."""
     env = nros_clear_inherited_git_env(dict(os.environ))
@@ -187,7 +211,7 @@ def non_tip_rehearsal() -> list[str]:
     head = _git("rev-parse", "HEAD", cwd=REPO, env=env)
     common = _git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=REPO, env=env)
     bad = []
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(prefix="nros-book-probe-", dir=_clone_scratch_root()) as d:
         d = Path(d)
         repo = d / "repo"
         # This checkout's HEAD by SHA, depth 1 — in a linked worktree that SHA
