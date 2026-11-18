@@ -1,0 +1,45 @@
+{
+  "_doc": [
+    "Issue 2704 -- the interface types the RUNTIME creates entities with on its own, per node interface axis. The ONE source for both build roads:",
+    "  cmake (cmake/NanoRosRuntimeInterfaceTypes.cmake, string(JSON)) generates each enabled axis's `packages` WHOLE through the backend's per-message hook, so its descriptor table records every type of those packages;",
+    "  cargo (nros_orchestration_ir::runtime_interface_types, include_str!) registers at create time only the types the executor creates, `registers`, and sizes the Cyclone tables from that count (type_descriptor_sizing::infra_types); the CLI's configure-time refusal (backend_link::runtime_interface_types_refusal) reads `packages`.",
+    "`packages` lists every package in dependency order with its dependencies; an axis's `packages` names which of them the axis needs.",
+    "`registers` is in ROS form (pkg/msg/Name, pkg/srv/Name); a srv registers _Request + _Response. check-runtime-interface-types-roads holds it to the types nros-node's creation sites name."
+  ],
+  "packages": [
+    { "name": "builtin_interfaces", "deps": [] },
+    { "name": "rcl_interfaces", "deps": ["builtin_interfaces"] },
+    { "name": "lifecycle_msgs", "deps": [] }
+  ],
+  "axes": [
+    {
+      "axis": "param_services",
+      "packages": ["builtin_interfaces", "rcl_interfaces"],
+      "registers": [
+        "rcl_interfaces/srv/GetParameters",
+        "rcl_interfaces/srv/SetParameters",
+        "rcl_interfaces/srv/SetParametersAtomically",
+        "rcl_interfaces/srv/ListParameters",
+        "rcl_interfaces/srv/DescribeParameters",
+        "rcl_interfaces/srv/GetParameterTypes",
+        "rcl_interfaces/msg/ParameterEvent"
+      ]
+    },
+    {
+      "axis": "rosout",
+      "packages": ["builtin_interfaces", "rcl_interfaces"],
+      "registers": ["rcl_interfaces/msg/Log"]
+    },
+    {
+      "axis": "lifecycle",
+      "packages": ["lifecycle_msgs"],
+      "registers": [
+        "lifecycle_msgs/srv/ChangeState",
+        "lifecycle_msgs/srv/GetState",
+        "lifecycle_msgs/srv/GetAvailableStates",
+        "lifecycle_msgs/srv/GetAvailableTransitions",
+        "lifecycle_msgs/msg/TransitionEvent"
+      ]
+    }
+  ]
+}
