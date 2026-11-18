@@ -290,7 +290,7 @@ impl Clock {
     ///
     /// ROS time can be overridden for simulation. When no override is
     /// active, it returns system time — the identical expression
-    /// [`Clock::system`] evaluates, so the two cannot drift (issue 1334).
+    /// [`Clock::system`] evaluates, so the two cannot drift.
     pub const fn ros_time() -> Self {
         Self {
             clock_type: ClockType::RosTime,
@@ -380,7 +380,7 @@ impl Clock {
     /// - **No port**: the internal counter, which the caller advances with
     ///   `update_steady_time()`.
     ///
-    /// phase-359 W10 — there is no `std::time` arm. The platform API IS the
+    /// There is no `std::time` arm. The platform API IS the
     /// clock: a build with a port reads it, a build without one has no clock to
     /// read and says so with the counter it was given. `SystemTime` used to sit
     /// here as a third answer for hosted builds, which made "what time is it"
@@ -390,8 +390,8 @@ impl Clock {
     /// construction — both arms call `Self::wall_now`. That is rclcpp's
     /// contract (`ClockType::ROS_TIME` with `use_sim_time` false reads the
     /// system clock), what five doc sites across three languages already
-    /// promised, and what the C surface already did; issue 1334 is the four
-    /// phases in which the Rust arm said something else.
+    /// promised, and what the C surface already did; the Rust arm once said
+    /// something else.
     pub fn now(&self) -> Time {
         match self.clock_type {
             ClockType::SystemTime => Self::wall_now(),
@@ -453,7 +453,7 @@ impl Clock {
     ///
     /// For environments with NO platform port, call this periodically from
     /// your main loop or RTIC task to advance the clocks. With a port linked
-    /// this counter is not what any clock reads — the port is (issue 1334) —
+    /// this counter is not what any clock reads — the port is —
     /// and advancing it has no observable effect.
     ///
     /// # Arguments

@@ -51,7 +51,7 @@
 //! the other direction, over that ABI. The hosted and RTOS ports (POSIX,
 //! Zephyr, FreeRTOS, NuttX, ThreadX) are C (`nros-platform-<rtos>/src/
 //! platform.c`). Their Rust ZSTs, ~~`PosixPlatform`~~ among them, are gone,
-//! and with them the Phase 84.F4 plan that would have moved each one from
+//! and with them the plan that would have moved each one from
 //! inherent methods onto these traits.
 
 // phase-359 W10 — the ONE Rust-side spawn helper for the task ABI this crate
@@ -157,7 +157,7 @@ pub trait PlatformAlloc {
 // Fatal error
 // ============================================================================
 
-/// The image's one ending — phase-366 / RFC-0077.
+/// The image's one ending.
 ///
 /// Mirrors `nros_platform_panic` in `<nros/platform.h>`. Rust's
 /// `#[panic_handler]`, a C precondition failure and a C++ terminate all arrive
@@ -212,7 +212,7 @@ pub trait PlatformSleep {
 /// readability — the background read task already owns that — it just
 /// needs to relinquish the CPU so the real waiter can run.
 ///
-/// Prior to Phase 77.22 each backend hand-rolled its own 1-ms busy
+/// Before this primitive existed, each backend hand-rolled its own 1-ms busy
 /// sleep (`libc::usleep(1000)`, `vTaskDelay(1)`, `tx_thread_sleep(1)`,
 /// `k_usleep(1000)`, `select(.., 1 ms)`) — all with slightly different
 /// units and no common home.
@@ -267,7 +267,7 @@ pub enum SchedError {
 /// [`Priority`-like](crate) values and `PlatformScheduler` translates
 /// them into platform-native numerics — direction-flipped priority
 /// (Zephyr / ThreadX low-numeric = high-priority vs POSIX / FreeRTOS
-/// high-numeric = high-priority) handled internally. Phase 110.D.
+/// high-numeric = high-priority) handled internally.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchedPolicy {
     /// POSIX `SCHED_FIFO`. `os_pri` is the platform-native numeric
@@ -317,8 +317,8 @@ pub enum TimerError {
     KernelError,
 }
 
-/// Periodic timer for ISR-driven sporadic-server budget refill
-/// (Phase 110.E.b). The trait factors out the per-platform timer
+/// Periodic timer for ISR-driven sporadic-server budget refill.
+/// The trait factors out the per-platform timer
 /// surface so the executor (`nros-node`) can register an atomic
 /// refill callback without becoming generic over the platform —
 /// see `docs/design/0017-platform-timer.md`.
@@ -438,8 +438,8 @@ pub trait PlatformRandom {
 /// Used for logging timestamps and `z_time_now_as_str()`.
 /// On bare-metal without an RTC, return 0.
 ///
-/// ONE method for one fact, matching `nros_platform_time_now_ns` in the C ABI
-/// (issue 0532 item 5). It replaced `time_now_ms` + `time_since_epoch_secs` +
+/// ONE method for one fact, matching `nros_platform_time_now_ns` in the C ABI.
+/// It replaced `time_now_ms` + `time_since_epoch_secs` +
 /// `time_since_epoch_nanos`.
 ///
 /// The old doc justified the split by zenoh-pico's FFI shape: "zpico-platform-
@@ -761,8 +761,7 @@ pub trait PlatformNetworkPoll {
     fn network_poll() {}
 }
 
-/// Global mutual exclusion against preemption + ISR delivery
-/// (Phase 121.9).
+/// Global mutual exclusion against preemption + ISR delivery.
 ///
 /// Backs the Rust `critical_section::Impl` registration used by
 /// DDS, nros-rmw-{xrce,zenoh}, and any other no_std consumer of
@@ -794,7 +793,7 @@ pub trait PlatformCriticalSection {
 /// Socket and endpoint parameters are opaque `*mut c_void` pointers to
 /// platform-specific types (`_z_sys_net_socket_t`, `_z_sys_net_endpoint_t`).
 /// The shim provides correctly-sized `#[repr(C)]` wrappers whose sizes are
-/// auto-detected from C headers at build time (see Phase 80 design).
+/// auto-detected from C headers at build time.
 ///
 /// Read functions return `usize::MAX` on error. Send returns `usize::MAX` on error.
 ///
@@ -930,7 +929,7 @@ pub trait PlatformSocketHelpers {
 ///
 /// Platforms with a C runtime (RTOS, POSIX) do NOT need to implement this.
 ///
-/// # Dispatch model (Phase 84.F4.6)
+/// # Dispatch model
 ///
 /// This trait is **documentary only** — it is NOT dispatched through by
 /// `zpico-platform-shim` or `xrce-platform-shim`. The C libraries resolve
@@ -971,7 +970,7 @@ pub trait PlatformLibc {
 
 /// Per-platform leveled log delivery.
 ///
-/// Matches the post-Phase-129 platform-ABI pattern: the portable
+/// Matches the platform-ABI pattern: the portable
 /// facade (`nros-log`) formats messages into a fixed buffer; each
 /// `nros-platform-<rtos>` carries the actual delivery (stderr,
 /// `printk`, `esp_log_write`, `syslog`, board-registered UART writer,
@@ -987,8 +986,7 @@ pub trait PlatformLibc {
 /// platforms that fill an internal buffer (RTT, syslog) silently
 /// drop on overflow.
 ///
-/// Thread / ISR safety is per-platform — see the table in
-/// `docs/roadmap/phase-88-nros-log.md`. The ABI itself is synchronous
+/// Thread / ISR safety is per-platform. The ABI itself is synchronous
 /// and the caller-side facade carries a recursion guard so a sink
 /// that triggers `log()` from inside `write` is short-circuited.
 pub trait PlatformLog {
@@ -1067,7 +1065,7 @@ pub trait PlatformUdpMulticast {
 /// `tegra_ivc_*` API (`fsp` feature) or a Unix-socket pair
 /// (`unix-mock` feature, host dev + CI).
 ///
-/// **Zero-copy contract** (Phase 11.3.A). NVIDIA's FSP IVC API is
+/// **Zero-copy contract**. NVIDIA's FSP IVC API is
 /// fundamentally a "borrow ring slot, fill, commit / release"
 /// pattern. Both backends mirror that here so consumers don't branch
 /// on backend:
@@ -1259,7 +1257,7 @@ pub trait PlatformCan {
 /// stacks are worth watching, and broke the executor's stack-headroom rule
 /// on the Zephyr build.
 ///
-/// The heap has had `heap_used_bytes` since RFC-0034 D7; this is the stack's
+/// The heap has long had `heap_used_bytes`; this is the stack's
 /// counterpart. HEADROOM, not usage, and for the CALLING task only -- both
 /// kernels answer for self with no handle, and answering for an arbitrary
 /// task needs a native handle this ABI does not carry.
@@ -1276,7 +1274,7 @@ pub fn stack_unused_bytes() -> usize {
 
 /// Give up the processor to another ready task, through the port's
 /// `nros_platform_yield_now`. For a thread that must wait for another to
-/// finish a short critical step (phase-436's wake fan-out waits out a backend
+/// finish a short critical step (the executor's wake fan-out waits out a backend
 /// callback this way) without spinning a single core it shares with that
 /// thread.
 pub fn yield_now() {
@@ -1288,7 +1286,7 @@ pub fn yield_now() {
 }
 
 /// [`stack_unused_bytes`], capped at `limit`: `min(unused, limit)`, reading at
-/// most `limit` bytes of the calling task's stack (phase-436 E5).
+/// most `limit` bytes of the calling task's stack.
 ///
 /// What the `stack-headroom-runtime` rule needs: whether at least `limit`
 /// bytes are unused. Below `limit` the answer is the exact headroom, so a

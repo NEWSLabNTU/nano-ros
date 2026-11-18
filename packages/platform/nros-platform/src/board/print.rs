@@ -1,4 +1,4 @@
-//! [`BoardPrint`] — Phase 212.N.1.
+//! [`BoardPrint`].
 //!
 //! Per-board stdout contract. Mirrors the legacy
 //! `nros-board-common::board_init::BoardPrint`.

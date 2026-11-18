@@ -12,7 +12,7 @@ pub const NROS_BOOT_CONFIG_MAGIC: u32 = 0x4E52_4243;
 
 /// Layout version — lets the resolver reject a mismatched baked struct.
 ///
-/// **2** since issue 1050 defect (3) appended `rmw` (bit 4). The bump is what
+/// **2** since `rmw` (bit 4) was appended. The bump is what
 /// the field is for: a reader compiled against v1 rejects a v2 struct rather
 /// than reading 32 bytes of `rmw` as whatever followed `namespace` in its own
 /// layout.
@@ -27,12 +27,12 @@ pub const BOOT_SET_LOCATOR: u16 = 1 << 1;
 pub const BOOT_SET_DOMAIN: u16 = 1 << 2;
 /// Bit 3 — `namespace` field is set.
 pub const BOOT_SET_NAMESPACE: u16 = 1 << 3;
-/// Bit 4 — `rmw` field is set (issue 1050 defect (3); layout version 2).
+/// Bit 4 — `rmw` field is set (layout version 2).
 pub const BOOT_SET_RMW: u16 = 1 << 4;
 
-/// Build-time-baked boot config, emitted (in W4b) into the `.nros_boot_config`
+/// Build-time-baked boot config, emitted into the `.nros_boot_config`
 /// linker section by the entry macro / cmake. Fixed-size + pointer-free so a
-/// future post-link tool can patch it in place (RFC-0045). The resolver reads
+/// future post-link tool can patch it in place. The resolver reads
 /// it on embedded via `BootConfig::from_baked` (in `nros-node`).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -55,7 +55,7 @@ pub struct BakedBootConfig {
     /// NUL-padded UTF-8 node namespace; the trailing NUL bytes are not part of the
     /// value.
     pub namespace: [u8; 64],
-    /// Issue 1050 defect (3) — NUL-padded UTF-8 RMW backend selector (the name
+    /// NUL-padded UTF-8 RMW backend selector (the name
     /// the registry is looked up by, e.g. `"uorb"`). Appended in layout
     /// version 2.
     ///
@@ -98,8 +98,7 @@ impl BakedBootConfig {
         Self::new_with_rmw(node_name, locator, domain_id, namespace, None)
     }
 
-    /// [`new`](Self::new) plus the layout-version-2 `rmw` selector — issue 1050
-    /// defect (3).
+    /// [`new`](Self::new) plus the layout-version-2 `rmw` selector.
     ///
     /// Kept as a separate constructor rather than a fifth parameter on `new`
     /// because `new` is called from entry macros in board crates and from

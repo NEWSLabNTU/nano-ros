@@ -17,8 +17,8 @@ pub trait Deserialize: Sized {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError>;
 }
 
-/// Trait for borrowed (zero-copy) deserialization from CDR format (RFC-0033
-/// `borrowed` storage mode, issue 0007).
+/// Trait for borrowed (zero-copy) deserialization from CDR format (`borrowed`
+/// storage mode).
 ///
 /// Unlike [`Deserialize`], which copies variable-length fields into owned
 /// (`heapless`/heap) storage, an implementor borrows `&'a [u8]` / `&'a str`

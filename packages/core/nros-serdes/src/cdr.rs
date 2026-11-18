@@ -12,9 +12,9 @@ use crate::{
 /// header is present, `origin = 4` so that fields align correctly
 /// within the payload portion of the buffer.
 /// CDR encoding version. XCDR1 is the historical default (PLAIN_CDR, no
-/// DHEADER, 8-byte primitives align to 8). XCDR2 (phase-303 W2 / RFC-0055 /
-/// #0267) is DELIMITED_CDR for APPENDABLE types: every struct is wrapped in a
-/// 4-byte DHEADER and 8-byte primitives align to 4.
+/// DHEADER, 8-byte primitives align to 8). XCDR2 is DELIMITED_CDR for
+/// APPENDABLE types: every struct is wrapped in a 4-byte DHEADER and 8-byte
+/// primitives align to 4.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EncodingVersion {
     /// PLAIN_CDR (encapsulation `0x0001`). The default; byte-identical to every
@@ -33,7 +33,7 @@ pub struct DHeaderMark(Option<usize>);
 
 impl DHeaderMark {
     /// The reserved DHEADER byte offset (XCDR2), or `None` under XCDR1. Lets the
-    /// C FFI carry the mark across the `extern "C"` boundary (phase-303 W4).
+    /// C FFI carry the mark across the `extern "C"` boundary.
     #[inline]
     pub fn raw(self) -> Option<usize> {
         self.0
@@ -118,7 +118,7 @@ impl<'a> CdrWriter<'a> {
     /// Like [`new_at`](Self::new_at) but XCDR2 (DELIMITED_CDR2) — 8-byte
     /// primitives align to 4 and [`begin_dheader`](Self::begin_dheader) emits a
     /// DHEADER. Used by the C FFI (`nros-c`) tx path, which manages the
-    /// encapsulation header + cursor itself (phase-303 W4 / #0267).
+    /// encapsulation header + cursor itself.
     pub fn new_at_xcdr2(buf: &'a mut [u8], pos: usize) -> Result<Self, SerError> {
         if pos > buf.len() {
             return Err(SerError::BufferTooSmall);
@@ -153,7 +153,7 @@ impl<'a> CdrWriter<'a> {
     }
 
     /// Create an XCDR2 (DELIMITED_CDR2) writer with the `0x0009` encapsulation
-    /// header (phase-303 W2 / #0267). Each struct — top-level and nested — must
+    /// header. Each struct — top-level and nested — must
     /// be wrapped in [`begin_dheader`](Self::begin_dheader) /
     /// [`end_dheader`](Self::end_dheader); 8-byte primitives align to 4.
     pub fn new_with_header_xcdr2(buf: &'a mut [u8]) -> Result<Self, SerError> {
@@ -170,7 +170,7 @@ impl<'a> CdrWriter<'a> {
         })
     }
 
-    /// Phase 380 W3 — a writer that counts bytes and stores none.
+    /// A writer that counts bytes and stores none.
     ///
     /// `serialized_size` needs the EXACT size of one message, which a type-level
     /// bound cannot give for an unbounded type and which a second walk of the
@@ -465,7 +465,7 @@ impl<'a> CdrReader<'a> {
 
     /// Like [`new_at`](Self::new_at) but XCDR2 (DELIMITED_CDR2) — the align cap +
     /// [`begin_dheader`](Self::begin_dheader) read the DHEADER. For the C FFI rx
-    /// path, which strips the encapsulation header itself (phase-303 W4).
+    /// path, which strips the encapsulation header itself.
     pub fn new_at_xcdr2(buf: &'a [u8], pos: usize) -> Result<Self, DeserError> {
         if pos > buf.len() {
             return Err(DeserError::UnexpectedEof);
@@ -518,7 +518,7 @@ impl<'a> CdrReader<'a> {
     /// them only gets identical alignment when the slice STARTS at the origin.
     /// That is a real precondition with no visible symptom when broken — the
     /// padding silently shifts — and `origin` is private, so this is how a
-    /// caller checks it. See `parameter_services::rewind` (phase-382 W1').
+    /// caller checks it. See `parameter_services::rewind`.
     #[inline]
     pub fn is_at_origin(&self) -> bool {
         self.pos == self.origin
@@ -761,7 +761,7 @@ impl<'a> CdrReader<'a> {
 
     /// Read a multi-byte numeric sequence (`float32[]`, `uint16[]`, …) as a
     /// borrowed [`LeSliceView`] — the alignment-agnostic borrowed reader for
-    /// RFC-0033 `borrowed` mode (Phase 229.6, issue 0007).
+    /// `borrowed` mode.
     ///
     /// Unlike a `&'a [T]` cast, this never requires the source buffer to be
     /// `T`-aligned: the view borrows the raw little-endian bytes zero-copy and
@@ -775,8 +775,8 @@ impl<'a> CdrReader<'a> {
     /// never emitted and desynced any 1-byte field (or the end of the buffer)
     /// that followed an empty `float64[]`. `len` is wire data, so the byte
     /// length is a checked product — on a 32-bit target `u32::MAX * 8` wraps
-    /// to a length the bounds check accepts (issues 1148/1149, whose C
-    /// counterpart `rclc_cdr_borrow_le_slice_*` had both defects).
+    /// to a length the bounds check accepts (the C counterpart
+    /// `rclc_cdr_borrow_le_slice_*` had both defects).
     pub fn read_le_slice<T: LeDecode>(&mut self) -> Result<LeSliceView<'a, T>, DeserError> {
         let len = self.read_u32()? as usize;
         let byte_len = len.checked_mul(T::SIZE).ok_or(DeserError::InvalidData)?;
@@ -815,7 +815,7 @@ macro_rules! impl_le_decode {
 impl_le_decode!(u16, i16, u32, i32, u64, i64, f32, f64);
 
 /// A borrowed, alignment-agnostic view over a CDR little-endian numeric
-/// sequence (RFC-0033 `borrowed` mode). Borrows the raw payload bytes
+/// sequence (`borrowed` mode). Borrows the raw payload bytes
 /// zero-copy; decodes elements lazily on access, so the source buffer need not
 /// be `T`-aligned. Valid only for the borrow lifetime `'a` (the subscription
 /// callback scope).

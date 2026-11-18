@@ -1,4 +1,4 @@
-//! Phase 248 (C2) — generic per-type descriptor registration seam.
+//! Generic per-type descriptor registration seam.
 //!
 //! Some RMW backends (Cyclone DDS) need to build a per-message-type
 //! descriptor at runtime *before* the topic/endpoint is created, so the

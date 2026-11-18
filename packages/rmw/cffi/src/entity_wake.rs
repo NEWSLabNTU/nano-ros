@@ -1,4 +1,4 @@
-//! Issue 1940 — per-entity wake registration across the C vtable.
+//! Per-entity wake registration across the C vtable.
 //!
 //! Two halves, one on each side of the `*_set_on_new_*_callback` slots
 //! (upstream's names and signature):

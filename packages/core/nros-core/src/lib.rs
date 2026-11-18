@@ -36,7 +36,7 @@ extern crate alloc;
 
 pub mod action;
 pub mod clock;
-/// RFC-0090 / phase-429 — the codegen version, the one token that says whether
+/// The codegen version, the one token that says whether
 /// generated code and this runtime can work together.
 ///
 /// # What breaks without it
@@ -44,8 +44,8 @@ pub mod clock;
 /// nano-ros shipped prebuilt `nros` binaries early and stopped, because a
 /// released binary emitted code that had drifted from the runtime. The failure
 /// is not loud: drifted generated code *compiles*, and the image is simply
-/// wrong in whatever way the generator was wrong. Issue 1018 records the
-/// canonical instance — the C emitter transposed sequence-of-strings dimensions
+/// wrong in whatever way the generator was wrong. The canonical instance:
+/// the C emitter transposed sequence-of-strings dimensions
 /// in all three emission sites (`char data[256][64]` for `[64][256]`) — caught
 /// by a developer's build refusal, which is a thing no user has.
 ///
@@ -68,8 +68,8 @@ pub mod clock;
 /// compiled-in corpus. It answers *"would this binary emit different bytes?"* —
 /// a FRESHNESS question, whose remedy is to regenerate, silently. The constants
 /// here answer *"can this code work with this runtime?"* — a COMPATIBILITY
-/// question, whose remedy is a refusal. Conflating them is why issue 1018's
-/// stale-CLI refusal both over-fires on `cmd/doctor.rs` and cannot ship.
+/// question, whose remedy is a refusal. Conflating them gives a stale-CLI
+/// refusal that both over-fires on `cmd/doctor.rs` and cannot ship.
 ///
 /// The module's own file carries no `//!` docs deliberately; see the comment at
 /// its head.
@@ -133,11 +133,11 @@ pub use nros_serdes::{
 // Re-export heapless for generated message types
 pub use heapless;
 
-/// Heap-backed containers for generated `mode = "heap"` message fields
-/// (RFC-0033). Gated on `alloc`, which `std` implies — so a hosted consumer
+/// Heap-backed containers for generated `mode = "heap"` message fields.
+/// Gated on `alloc`, which `std` implies — so a hosted consumer
 /// gets these by asking for `std` and never has to name `alloc`. `nros-serdes`
 /// gates its matching `Serialize`/`Deserialize` impls on the SAME feature and
-/// receives it through the same forward, which is what issue 0598 was about.
+/// receives it through the same forward, so the two cannot disagree.
 /// Generated code refers to `nros_core::heap::{Vec, String}` so the same path
 /// works in both crate and inline (`build.rs`) codegen modes.
 #[cfg(feature = "alloc")]

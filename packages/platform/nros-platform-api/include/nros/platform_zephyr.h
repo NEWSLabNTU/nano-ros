@@ -11,8 +11,8 @@ extern "C" {
  * @file platform_zephyr.h
  * @brief Zephyr-specific platform primitives (RMW-independent).
  *
- * These belong to the platform layer, not any RMW. Phase 200.1 relocated the
- * network-wait helper here from the zenoh-pico support crate (`zpico-zephyr`,
+ * These belong to the platform layer, not any RMW. The network-wait helper
+ * was relocated here from the zenoh-pico support crate (`zpico-zephyr`,
  * where it was historically mis-filed as ~~`zpico_zephyr_wait_network`~~ only
  * because zenoh was the first Zephyr backend) — so every RMW build (zenoh /
  * XRCE / CycloneDDS) gets one canonical copy.
@@ -27,8 +27,7 @@ extern "C" {
  * (native_sim offloaded sockets) returns immediately — host kernel networking.
  *
  * Defined in every Zephyr image. Without `CONFIG_NET_SOCKETS` (a serial-only
- * image, no IP stack) it returns 0 at once: there is no interface to wait for
- * (issue 2078).
+ * image, no IP stack) it returns 0 at once: there is no interface to wait for.
  *
  * @param timeout_ms Max wait in ms (negative = wait forever).
  * @return 0 when the interface is ready, -1 on timeout.

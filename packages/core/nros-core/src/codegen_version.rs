@@ -44,19 +44,18 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// available. Raise the floor only when a real migration needs one, and lower
 /// it never.
 ///
-/// Held at 1 while [`NROS_CODEGEN_VERSION`] moved to 2 (phase-417, rebased onto
-/// phase-429's gate). That surface move is ADDITIVE plus one relocation, so a
-/// tree generated against version 1 still runs: the C additions are new entry
-/// points, the two C++ changes add `size()`/`empty()` and `std::string` interop
-/// to `FixedString`/`HeapString`, and the four `rcl_ret_t` declarations that
-/// left `action.h` / `client.h` / `parameter.h` / `service.h` were CONSOLIDATED
-/// into `nros_generated.h`, which all four still reach through `rclc/types.h`
-/// — the headers say so in a comment, and keeping that include is what makes
-/// `#include <rclc/action.h>` continue to compile. Nothing a version-1 tree
-/// names was withdrawn, so this is the window the doc above describes rather
-/// than a migration.
+/// Held at 1 while [`NROS_CODEGEN_VERSION`] moved to 2. That surface move is
+/// ADDITIVE plus one relocation, so a tree generated against version 1 still
+/// runs: the C additions are new entry points, the two C++ changes add
+/// `size()`/`empty()` and `std::string` interop to `FixedString`/`HeapString`,
+/// and the four `rcl_ret_t` declarations that left `action.h` / `client.h` /
+/// `parameter.h` / `service.h` were CONSOLIDATED into `nros_generated.h`, which
+/// all four still reach through `rclc/types.h` — the headers say so in a
+/// comment, and keeping that include is what makes `#include <rclc/action.h>`
+/// continue to compile. Nothing a version-1 tree names was withdrawn, so this
+/// is the window the doc above describes rather than a migration.
 ///
-/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 3 (issues 1148/1149). That
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 3. That
 /// move is one ADDED runtime entry point, `rclc_cdr_align`, which the
 /// header-only `rclc_cdr_borrow_le_slice_*` now call so an 8-byte borrowed
 /// sequence starts on its stream boundary. A version-2 tree names nothing that
@@ -64,7 +63,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// fix up for free, because the view helpers are `static inline` in the header
 /// rather than symbols the generated code defines.
 ///
-/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 4 (phase-427 W7). That move
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 4. That move
 /// is a SPELLING change and nothing else: `nros::bind_subscription_sized` — the
 /// one demanded C++ signature that names the node type — now writes its
 /// parameter `::rclcpp::Node&` where it wrote `Node&`, because the class moved
@@ -80,7 +79,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// spellings are one type, and a gate that tried to would be one that misses a
 /// real rename.
 ///
-/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 5 (phase-417 W5.b/c/d). That
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 5. That
 /// move is ADDITIVE and, in most of its entries, is not a change to the runtime
 /// at all: the rclc preset constructors landed as `static inline` forwarders in
 /// `<nros/{publisher,subscription,service,client,action}.h>`, and naming a type
@@ -99,7 +98,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// that way. A gate that tried to decide which additions are "really" runtime
 /// changes is one that misses a real withdrawal.
 ///
-/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 6 (phase-417 W4.b). That
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 6. That
 /// move is a WITHDRAWAL, and it is the first one — `nros_core::action` stopped
 /// re-exporting `ActionServer` and `ActionClient`, two "type-level marker"
 /// structs. A version-5 tree still runs, because no generated tree has ever
@@ -110,7 +109,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// fail-closed on the extracted surface and cannot know which names nothing
 /// reached, which is the property that makes it worth keeping.
 ///
-/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 7 (issue 1437, phase-444).
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 7.
 /// ADDITIVE on the surface generated code names, plus one APPEND to a struct
 /// nothing generated declares. The additions are six new C entry points
 /// (`nros_{publisher,subscription}_get_actual_qos` and the four service /
@@ -128,7 +127,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// struct itself. That is the gate being fail-closed on text, which is the
 /// property the version-4 paragraph above argues for keeping.
 ///
-/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 8 (phase-467 Q3). ADDITIVE,
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 8. ADDITIVE,
 /// and the first move that adds a TRAIT generated code implements — which is
 /// the trigger the doc above names first. `nros_core::SecNanosecMsg` is the
 /// Rust stand-in for the C++ `template <typename TimeMsgT> Time::to_msg`: Rust
@@ -146,19 +145,19 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// regenerated, which is a compile error at the call site on the day someone
 /// writes the call, not a silent mismatch. So the floor stays where it is.
 ///
-/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 9 (issue 1293, phase-480
-/// W4). ADDITIVE: `nros_serdes::schema::EMPTY_STRUCT_MEMBER`, the name of
-/// rosidl's `uint8 structure_needs_at_least_one_member`, which a version-9
-/// tree names as the schema of every empty message and whose byte it writes.
-/// A version-8 tree still compiles and runs against this runtime: it names
-/// nothing that was withdrawn. What it keeps is the defect 1293 fixes for a
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 9. ADDITIVE:
+/// `nros_serdes::schema::EMPTY_STRUCT_MEMBER`, the name of rosidl's
+/// `uint8 structure_needs_at_least_one_member`, which a version-9 tree names as
+/// the schema of every empty message and whose byte it writes. A version-8 tree
+/// still compiles and runs against this runtime: it names nothing that was
+/// withdrawn. What it keeps is the empty-message defect version 9 fixes for a
 /// regenerated tree, and only for ITS OWN empty messages: they still go out
 /// with no byte (which every stock RMW refuses) and still have no Cyclone
 /// descriptor (`BuildError::EmptySchema`, which says to regenerate). That is
 /// the behaviour the tree already had, not a new mismatch the runtime
 /// introduces, so the floor stays where it is.
 ///
-/// RAISED to 10 when [`NROS_CODEGEN_VERSION`] moved to 10 (phase-483 W1), and
+/// RAISED to 10 when [`NROS_CODEGEN_VERSION`] moved to 10, and
 /// this is the first move that needs it. The C++ user API left `nros::` for
 /// `rclcpp::`, and `nros::` was deleted rather than kept as an alias, so every
 /// name a version-9 C++ tree spells — `nros::FixedString<N>`,
@@ -170,7 +169,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// unresolved-name errors. Rust and C trees are unaffected by the move, but the
 /// version is one number for all three, so they regenerate too.
 ///
-/// Still 10 while [`NROS_CODEGEN_VERSION`] moved to 11 (phase-487 W1). The
+/// Still 10 while [`NROS_CODEGEN_VERSION`] moved to 11. The
 /// surface the gate saw move is `subscription.h`'s `static inline`
 /// `rclc_subscription_init_best_effort`, whose body forwards to
 /// `rclc_subscription_init_with_qos` and lost the two `NULL`s that function no
@@ -180,7 +179,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// layout shrank but which generated code never dereferences. A version-10
 /// tree therefore still compiles and runs.
 ///
-/// RAISED to 12 when [`NROS_CODEGEN_VERSION`] moved to 12 (phase-487 W2). A
+/// RAISED to 12 when [`NROS_CODEGEN_VERSION`] moved to 12. A
 /// generated C service header's `<Srv>_service_init` called
 /// `rclc_service_init_with_qos` with the trampoline and handler in two
 /// positions that function no longer has, because the executor arena owns a
@@ -190,17 +189,16 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// therefore does not compile against this runtime, so it is refused by
 /// version rather than by a wall of argument-count errors.
 ///
-/// RAISED to 13 with [`NROS_CODEGEN_VERSION`] (phase-492 W3, RFC-0089
-/// amended 2026-10-12). The C API dropped `nros_`: every function, type and
-/// constant generated C names took its upstream spelling or `rclc_`
-/// (`docs/reference/c-api-rename-map.tsv`), with no forwarders. A version-12 C
-/// tree calls names this runtime no longer defines, so it is refused by
-/// version rather than by a wall of undeclared identifiers. Rust and C++ trees
-/// are unaffected, but the version is one number for all three.
+/// RAISED to 13 with [`NROS_CODEGEN_VERSION`]. The C API dropped `nros_`: every
+/// function, type and constant generated C names took its upstream spelling or
+/// `rclc_` (`docs/reference/c-api-rename-map.tsv`), with no forwarders. A
+/// version-12 C tree calls names this runtime no longer defines, so it is
+/// refused by version rather than by a wall of undeclared identifiers. Rust and
+/// C++ trees are unaffected, but the version is one number for all three.
 ///
-/// RAISED to 14 with [`NROS_CODEGEN_VERSION`] (phase-492 W7/W8, RFC-0089
-/// "Messages take rosidl's C names AND its member shape" and
-/// "`ROSIDL_GET_*_TYPE_SUPPORT` adopted as a pass-through"). Generated C
+/// RAISED to 14 with [`NROS_CODEGEN_VERSION`]: messages take rosidl's C names
+/// AND its member shape, and `ROSIDL_GET_*_TYPE_SUPPORT` is adopted as a
+/// pass-through. Generated C
 /// messages take rosidl's names (`std_msgs__msg__String` in
 /// `<std_msgs/msg/string.h>`) and member shape (`rosidl_runtime_c__String`,
 /// `__Sequence`, wired by a generated `__Storage` + `__init_in`); the type
@@ -214,14 +212,14 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// no longer has, so it is refused by version. Rust and C++ trees are
 /// unaffected, but the version is one number for all three.
 ///
-/// Still 14 while [`NROS_CODEGEN_VERSION`] moved to 15 (issue 1179, phase-498
-/// W3). Generated `RosMessage` impls now state `MAX_SERIALIZED_BOUND`, the
-/// type's size bound, so a typed subscription is sized from its type on every
-/// backend. The trait const is DEFAULTED (`None`), so a version-14 tree still
-/// compiles against this runtime and only keeps the image-wide receive size it
-/// had. Nothing it names is gone, so it is accepted.
+/// Still 14 while [`NROS_CODEGEN_VERSION`] moved to 15. Generated `RosMessage`
+/// impls now state `MAX_SERIALIZED_BOUND`, the type's size bound, so a typed
+/// subscription is sized from its type on every backend. The trait const is
+/// DEFAULTED (`None`), so a version-14 tree still compiles against this runtime
+/// and only keeps the image-wide receive size it had. Nothing it names is gone,
+/// so it is accepted.
 ///
-/// Was 14 while [`NROS_CODEGEN_VERSION`] moved to 16 (issue 1913). Generated
+/// Was 14 while [`NROS_CODEGEN_VERSION`] moved to 16. Generated
 /// actions now carry the hash each of their five endpoints is keyed on: Rust
 /// impls state `RosAction::{CANCEL_GOAL_SERVICE,STATUS_MESSAGE}_HASH`, the C
 /// descriptor `rclc_action_type_t` gained a trailing `endpoint_hashes`, and C++
@@ -233,33 +231,33 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// it always had, and is accepted; a NEW tree names a member an older runtime
 /// lacks, which is what the bump refuses.
 ///
-/// 17 with [`NROS_CODEGEN_VERSION`] (phase-501 W1): the C API's headers moved
+/// 17 with [`NROS_CODEGEN_VERSION`]: the C API's headers moved
 /// from `nros/` into `rclc/` (`<rclc/types.h>`, `<rclc/detail/cdr.h>`,
 /// `<rclc/detail/view.h>`, ...), with no forwarding headers left behind. A
 /// version-16 C tree includes `<nros/types.h>`, which this runtime no longer
 /// ships, so it cannot compile and is refused by version instead. Rust and C++
 /// trees are unaffected, but the version is one number for all three.
 ///
-/// 18 with [`NROS_CODEGEN_VERSION`] (phase-504 W1): the same move for C++. The
+/// 18 with [`NROS_CODEGEN_VERSION`]: the same move for C++. The
 /// nros-cpp headers left `nros/` for `rclcpp/`, `rclcpp/detail/`,
 /// `rclcpp_action/` and `rclcpp_lifecycle/`, again with no forwarding headers.
 /// A version-17 C++ tree includes `<nros/heap_string.hpp>`, which this runtime
 /// no longer ships, so it is refused by version rather than failing to compile.
 ///
-/// 19 (phase-488), MIN unchanged: a generated C++ message has rosidl's
+/// 19, MIN unchanged: a generated C++ message has rosidl's
 /// `operator==`, through the new `<rclcpp/detail/message_equality.hpp>`, and
 /// `rclcpp::FixedSequence` gained `resize`. A version-18 tree still compiles
 /// against this runtime, since nothing it names moved; a version-19 tree
 /// includes a header an 18 runtime does not ship, which is what the bump says.
 ///
-/// 20 (phase-515 R8), MIN unchanged: `GoalId`, `GoalStatus` and
+/// 20, MIN unchanged: `GoalId`, `GoalStatus` and
 /// `CancelReturnCode` took rclrs's names (`GoalUuid`, `GoalStatusCode`,
 /// `CancelResponseCode`), so the `Serialize`/`Deserialize` impls generated code
 /// relies on are declared on the new names. The old names stay as
 /// `#[deprecated]` type aliases of the same types, so a version-19 tree still
 /// compiles and runs; a version-20 tree names types a 19 runtime does not have.
 ///
-/// 21 (phase-515 C4a), MIN unchanged: a generated C action header emits rclc's
+/// 21, MIN unchanged: a generated C action header emits rclc's
 /// three user envelopes (`<Action>_SendGoal_Request`, `_GetResult_Response`,
 /// `_FeedbackMessage`) and includes the new `<rclc/detail/uuid.h>` for the
 /// goal id they carry, and every generated C struct is wrapped in a

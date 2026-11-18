@@ -22,7 +22,7 @@ use crate::Time;
 /// a [`MessageInfo`] and a gid written by the `get_gid_for_publisher` vtable
 /// slot are the same TYPE, comparable without a conversion.
 ///
-/// It was 16 until the phase-467 RMW gap-closure design study's Q1(a). The 16
+/// It used to be 16. The 16
 /// is *zenoh's* wire width, not a property of the identifier — see
 /// [`MessageInfo::publisher_gid`] for what that leaves a reader owing.
 pub const PUBLISHER_GID_SIZE: usize = 24;
@@ -131,7 +131,7 @@ impl MessageInfo {
     ///
     /// The width is upstream's ([`PUBLISHER_GID_SIZE`]), so this value and the
     /// `rmw_gid_t` the `get_gid_for_publisher` vtable slot fills are one type
-    /// — and, since issue 1495, one VALUE on the backends that produce either:
+    /// — and one VALUE on the backends that produce either:
     ///
     /// * **zenoh fills 16 and zero-pads 8.** The 16 are XXH3-128 of the
     ///   sending entity's liveliness keyexpr — `rmw_zenoh_cpp`'s own

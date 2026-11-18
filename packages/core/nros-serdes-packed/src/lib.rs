@@ -1,5 +1,4 @@
-//! `packed` — the reference schema-driven serialization provider (RFC-0088 D7,
-//! phase-421 W5).
+//! `packed` — the reference schema-driven serialization provider.
 //!
 //! # Why this format, and what it is not
 //!
@@ -8,7 +7,7 @@
 //! "schema"` strategy needed a subject, and the two formats already in the tree
 //! cannot be one:
 //!
-//! * **uORB** is the PX4 struct verbatim (RFC-0011). A "serializer" for it
+//! * **uORB** is the PX4 struct verbatim. A "serializer" for it
 //!   copies bytes and walks no schema at all, so it would prove nothing about
 //!   the walk.
 //! * **CDR** is the `impl = "codegen"` case — the strategy schema-driven
@@ -65,7 +64,7 @@ use nros_serdes::{
     },
 };
 
-/// Cross-image identity (RFC-0088 D2). Must equal the `name` in `package.xml`.
+/// Cross-image identity. Must equal the `name` in `package.xml`.
 pub const FORMAT_NAME: &str = "packed";
 
 /// Image-local discriminant. Must equal `format_id` in `nros-serdes.toml`.

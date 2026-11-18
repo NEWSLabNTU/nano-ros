@@ -1,8 +1,8 @@
-//! Request/reply correlation for a service client — issue 2009.
+//! Request/reply correlation for a service client.
 //!
 //! [`ClientTrait::send_request_raw`] hands back the id the backend assigned to
 //! a request and [`ClientTrait::take_response_raw`] hands back the id of the
-//! request a reply answers (issue 0778). This module is the ONE place that
+//! request a reply answers. This module is the ONE place that
 //! decides what a client does with the pair, so every surface that takes a
 //! reply — the Rust `Promise`, the executor's callback clients, the action
 //! client's three sub-clients, the C and C++ blocking paths — applies the same
@@ -188,7 +188,7 @@ impl<K: Copy, const N: usize> RequestCorrelator<K, N> {
     /// request was ABOUT but not the id the backend gave it: an action
     /// client's future is keyed by its goal, so when the last owner of a
     /// goal's request lets go before the reply, this frees the slot the
-    /// request held (issue 2027). Its reply, if it still comes, is dropped.
+    /// request held. Its reply, if it still comes, is dropped.
     /// `true` if one was pending.
     pub fn remove_key(&mut self, key: &K) -> bool
     where

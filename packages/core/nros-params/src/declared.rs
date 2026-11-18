@@ -1,8 +1,8 @@
-//! phase-446 W6 -- the parameters a node's contract DECLARES, checked when the
+//! The parameters a node's contract DECLARES, checked when the
 //! code declares one.
 //!
 //! The launch contract states each node's parameters by name and type, and the
-//! build sizes the parameter store from that statement (phase-446 W4). A store
+//! build sizes the parameter store from that statement. A store
 //! sized from a declaration is only right while the code declares what the
 //! contract says, so a declaration the contract does not make -- an unknown
 //! name, or a known name with another type -- refuses the boot instead of

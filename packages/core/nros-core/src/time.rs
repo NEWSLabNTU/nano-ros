@@ -43,7 +43,7 @@ fn split_secs_f64(secs: f64) -> (i32, u32) {
 /// Why the trait lives here and the impl does not: `nros-core` can never name a
 /// message type. Every generated message crate depends on `nros-core`, so a
 /// dependency the other way is a cycle, and message types are generated per USER
-/// package (RFC-0023 / RFC-0067) — there is no one crate for the client library
+/// package — there is no one crate for the client library
 /// to name. The trait is the seam that lets the conversion cross that edge
 /// without an edge.
 ///
@@ -142,8 +142,9 @@ impl Time {
     /// Ours ALREADY IS `{ sec: i32, nanosec: u32 }`, so this is two field copies
     /// and cannot fail. Wrapping it in a `Result` so a ported `t.to_ros_msg()?`
     /// keeps compiling would hide a difference instead of making the compiler
-    /// point at it — the inverse of RFC-0089's rule. A ported `?` fails to
-    /// compile, locally, with one character to fix.
+    /// point at it — the inverse of the rule that a port fails to compile
+    /// rather than compiles and differs. A ported `?` fails to compile,
+    /// locally, with one character to fix.
     pub fn to_ros_msg<M: SecNanosecMsg>(&self) -> M {
         M::from_sec_nanosec(self.sec, self.nanosec)
     }

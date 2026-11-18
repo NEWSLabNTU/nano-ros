@@ -1,8 +1,8 @@
 //! Call-site formatting buffer for the `nros_*!` macros.
 //!
 //! Wraps a `heapless::String<N>` where `N` is the `NROS_LOG_BUFFER_SIZE`
-//! knob (issue 1037; builtin 256, resolved by `build.rs` on the RFC-0049
-//! ladder — it replaced the `buffer-size-<N>` features). Overflow truncates
+//! knob (builtin 256, resolved by `build.rs` on the env > board > builtin ladder
+//! — it replaced the `buffer-size-<N>` features). Overflow truncates
 //! and appends `…` rather than dropping the record.
 
 use core::fmt::{self, Write};

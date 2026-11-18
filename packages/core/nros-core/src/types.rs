@@ -71,8 +71,8 @@ pub trait RosMessage: Sized + nros_serdes::Serialize + nros_serdes::Deserialize 
     const MAX_SERIALIZED_BOUND: Option<usize> = None;
 }
 
-/// Marker trait for a borrowed (zero-copy) ROS message family (RFC-0033
-/// `borrowed` storage mode, issue 0007).
+/// Marker trait for a borrowed (zero-copy) ROS message family (`borrowed`
+/// storage mode).
 ///
 /// A `borrowed`-mode message is a *family* of types parameterized by the
 /// receive-buffer lifetime — e.g. `struct Image<'a> { data: &'a [u8], … }`.

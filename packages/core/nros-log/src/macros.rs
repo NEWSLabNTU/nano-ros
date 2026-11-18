@@ -1,4 +1,4 @@
-//! Phase 88.2 — the emission macros.
+//! The emission macros.
 //!
 //! Each macro formats its arguments into a stack-resident
 //! [`crate::FormatBuffer`] (capacity picked at compile time by the
@@ -9,7 +9,7 @@
 //! [`severity_enabled_at_compile_time`](super::severity_enabled_at_compile_time)
 //! expand to `()` — the format call is dead-code-eliminated.
 //!
-//! ## Naming (RFC-0089, settled 2026-09-04)
+//! ## Naming
 //!
 //! The three ROS 2 client libraries disagree with each other about how to
 //! spell a log line:
@@ -29,7 +29,7 @@
 //! the CRATE ROOT, not in the module whose file declares it.) The pre-rename
 //! ~~`nros_debug!`~~ .. ~~`nros_fatal!`~~ forwarders, and the
 //! `deprecate-legacy-names` feature that armed their `#[deprecated]`, were
-//! removed in phase-417 W-B5 once every in-tree call site had moved. There is
+//! removed once every in-tree call site had moved. There is
 //! no log_trace!: see below.
 //!
 //! **A name takes rclrs's spelling exactly when rclrs HAS that name.** Two
@@ -43,8 +43,8 @@
 //!   severity, which predates the modifier form below. rclrs has no such
 //!   names.
 //!
-//! **The first argument is rclrs's [`ToLogParams`](crate::ToLogParams)**
-//! (phase-515 R3), so rclrs's modifiers chain off the logger:
+//! **The first argument is rclrs's [`ToLogParams`](crate::ToLogParams)**,
+//! so rclrs's modifiers chain off the logger:
 //! `log_info!(logger.once(), …)`, `.skip_first()`, `.only_if(b)`, and — with
 //! the platform clock — `.throttle(d)`. A plain `&Logger` is still the common
 //! case. See [`crate::log_params`] for the bounds.

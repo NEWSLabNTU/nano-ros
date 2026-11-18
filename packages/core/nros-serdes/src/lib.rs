@@ -66,8 +66,8 @@ pub const CDR_LE_HEADER: [u8; CDR_HEADER_LEN] = [0x00, 0x01, 0x00, 0x00];
 pub const CDR_BE_HEADER: [u8; CDR_HEADER_LEN] = [0x00, 0x00, 0x00, 0x00];
 
 /// XCDR2 DELIMITED-CDR little-endian encapsulation header (`D_CDR2_LE`, repr id
-/// `0x0009`). The representation for APPENDABLE types under XCDR2 (phase-303 W2 /
-/// RFC-0055 / #0267): every appendable struct — top-level and each nested one —
+/// `0x0009`). The representation for APPENDABLE types under XCDR2: every
+/// appendable struct — top-level and each nested one —
 /// is preceded by a 4-byte DHEADER carrying its member-block size.
 pub const CDR2_DELIMITED_LE_HEADER: [u8; CDR_HEADER_LEN] = [0x00, 0x09, 0x00, 0x00];
 

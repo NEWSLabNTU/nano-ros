@@ -1,4 +1,4 @@
-//! Serialization format identity (RFC-0088, phase-421 W1).
+//! Serialization format identity.
 //!
 //! ROS 2 names its serialization format with a string because
 //! `rosidl_typesupport_c` resolves the format's implementation through
@@ -27,7 +27,7 @@
 /// Image-local discriminant for a serialization format.
 ///
 /// In-tree formats hold low reserved values for readability. A third-party
-/// format declared by a provider package (RFC-0087 family `serdes`) is assigned
+/// format declared by a provider package (family `serdes`) is assigned
 /// a value by the build from the set of formats that image declares.
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]

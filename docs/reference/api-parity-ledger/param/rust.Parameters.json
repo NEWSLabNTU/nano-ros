@@ -3,7 +3,7 @@
   "disposition": "adopt-bounded",
   "envelope": {
     "file": "packages/core/nros-params/src/typed.rs",
-    "text": "rclrs's `Parameters` (phase-515 R8): read AND write, by name. It was"
+    "text": "rclrs's `Parameters`: read AND write, by name. It was"
   },
   "provides": [
     "nros::UndeclaredParameters",

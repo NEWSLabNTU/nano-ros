@@ -2,14 +2,13 @@
  * @file platform_foreign_wake.h
  * @brief Forward a wake requested by a thread the RTOS port does not own.
  *
- * Issue 2217 (RFC-0113 D4). On a HOST-SIMULATOR port (threadx-linux,
- * freertos-posix) an RTOS thread is a host pthread the port manages, and a
- * host library linked into the image runs threads of its own: Cyclone's
- * receive thread is one. Such a FOREIGN thread may not enter a kernel service
- * (issues 1237, 1750): on FreeRTOS's POSIX port `vPortYield` asserts, and on
- * ThreadX's Linux port the kernel lock leaks until the kernel stops. So it
- * cannot signal an executor's wake object, which is the only way an arrival
- * on that thread can end a park.
+ * On a HOST-SIMULATOR port (threadx-linux, freertos-posix) an RTOS thread is a
+ * host pthread the port manages, and a host library linked into the image runs
+ * threads of its own: Cyclone's receive thread is one. Such a FOREIGN thread
+ * may not enter a kernel service: on FreeRTOS's POSIX port `vPortYield`
+ * asserts, and on ThreadX's Linux port the kernel lock leaks until the kernel
+ * stops. So it cannot signal an executor's wake object, which is the only way
+ * an arrival on that thread can end a park.
  *
  * This is the bridge. A kernel thread binds a callback to a slot; a foreign
  * thread POSTS the slot, which marks it pending and writes a host eventfd
@@ -26,7 +25,7 @@
  * Latency: a posted slot is forwarded when the forwarder runs, which is at
  * once while every higher-priority thread is blocked, and after them
  * otherwise. The same bound as a host socket's receive notification on
- * threadx-linux (phase-521 W6f), which shares its forwarder.
+ * threadx-linux, which shares its forwarder.
  */
 #ifndef NROS_PLATFORM_FOREIGN_WAKE_H
 #define NROS_PLATFORM_FOREIGN_WAKE_H

@@ -1,4 +1,4 @@
-//! Phase 130 — ergonomic Rust wrapper around
+//! Ergonomic Rust wrapper around
 //! [`PlatformThreading`]'s wake primitive.
 //!
 //! Wraps a fixed-size, aligned scratch buffer so the executor can

@@ -1,5 +1,5 @@
 //! rclrs's log modifiers — `log_info!(logger.once(), …)`,
-//! `.skip_first()`, `.throttle(d)`, `.only_if(b)` (phase-515 R3).
+//! `.skip_first()`, `.throttle(d)`, `.only_if(b)`.
 //!
 //! rclrs's five level macros take anything implementing [`ToLogParams`] as
 //! their first argument, so a modifier chains off the logger:
@@ -19,10 +19,10 @@
 //!   clock is the only clock the logging path can read. rclrs's `SystemTime`
 //!   and `Clock(…)` have nothing to name here.
 //! * [`ToLogParams::throttle`] and [`ToLogParams::throttle_clock`] exist only
-//!   when the image has that clock (`cfg(nros_log_clock)`, issue 1037). Without
+//!   when the image has that clock (`cfg(nros_log_clock)`). Without
 //!   one the window would be measured against a constant and the call site
-//!   would read like a working throttle while emitting once and then never
-//!   (issue 1152), so a clockless build refuses `.throttle(d)` at compile time
+//!   would read like a working throttle while emitting once and then never,
+//!   so a clockless build refuses `.throttle(d)` at compile time
 //!   — the same refusal the `nros_*_throttle!` family makes, and the
 //!   `nros_*_throttle_at!` family stays the clockless form.
 //!

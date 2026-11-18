@@ -119,7 +119,7 @@ pub struct NestedType {
     pub fields: &'static [Field],
 }
 
-/// The member rosidl gives a struct that declares none (issue 1293).
+/// The member rosidl gives a struct that declares none.
 ///
 /// `rosidl_adapter` emits `uint8 structure_needs_at_least_one_member;` for an
 /// empty `.msg` / `.srv` half, so every stock typesupport has one member to

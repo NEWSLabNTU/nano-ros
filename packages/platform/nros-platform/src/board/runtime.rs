@@ -1,4 +1,4 @@
-//! [`RuntimeCtx`] — Phase 212.N.1.
+//! [`RuntimeCtx`].
 //!
 //! Per-invocation runtime context handed to `BoardEntry::run`'s
 //! `setup` callback. Carries the overlay knobs the codegen
@@ -8,7 +8,8 @@
 //!   `<param name="…" value="…"/>`, projected here by `nros sync` at BUILD
 //!   time. NOT from `--ros-args -p k:=v`: a generated entry reads no argv,
 //!   and the hosted `nros::init_with_args` parse refuses `-p` rather than
-//!   pretending to honour it (runtime parameters are RFC-0015 §9's channel).
+//!   pretending to honour it (a parameter changes at run time through the
+//!   ROS 2 parameter services).
 //! - **remaps** — `(from, to)` topic/service renames, from launch
 //!   `<remap from= to=/>` by the same build-time projection.
 //! - **env** — environment-style key/value pairs (POSIX `getenv`
@@ -16,7 +17,7 @@
 //!   than a `libc::getenv` call.
 //! - **runtime** — `&mut dyn NodeDispatchRuntime` sink the
 //!   codegen-emitted `run_plan(runtime)` body forwards each Node
-//!   pkg's `register(runtime)` call into (Phase 212.N.7 step-3.2).
+//!   pkg's `register(runtime)` call into.
 //!   Populated by each `BoardEntry::run` impl after opening its
 //!   executor; defaults to a no-op sink when constructed via
 //!   [`RuntimeCtx::with_runtime`].
@@ -34,8 +35,8 @@
 use super::dispatch::DispatchStrategy;
 
 /// Layer-clean substitute for `nros::node_metadata::CallbackId` +
-/// `nros::node::CallbackCtx` at the [`NodeDispatchRuntime`] boundary
-/// (Phase 216.A.2). `nros-platform` sits below `nros` in the dep
+/// `nros::node::CallbackCtx` at the [`NodeDispatchRuntime`] boundary.
+/// `nros-platform` sits below `nros` in the dep
 /// graph, so the trait surface cannot reference those types
 /// directly. The `nros`-side runtime impl wraps a real
 /// `(CallbackId, &mut CallbackCtx)` pair into this opaque shape
@@ -65,7 +66,7 @@ pub struct SignaledCallback<'a> {
 // `nros::__macro::install_node_typed` like the C/C++ typed entries.
 
 /// Node runtime sink the codegen-emitted `run_plan(runtime)`
-/// body talks to (Phase 212.N.7 step-3.1).
+/// body talks to.
 ///
 /// Object-safe + `no_std`. The concrete impl
 /// (`ExecutorNodeRuntime` in `nros`) owns the live executor;
@@ -73,15 +74,15 @@ pub struct SignaledCallback<'a> {
 /// [`RuntimeCtx::runtime`] slot before invoking the user `setup`
 /// closure.
 ///
-/// Phase 214.K.1 — renamed from `NodeRuntime` to disambiguate from
+/// Renamed from `NodeRuntime` to disambiguate from
 /// the user-facing `nros::NodeRuntime` metadata-sink trait in
 /// `packages/api/nros/src/node.rs:112`. The two traits live at
 /// different layers (board-side dispatch sink vs user-side metadata
 /// declaration sink) and the previous shared name forced explicit
 /// `nros_platform::` / `nros::` qualification at every use site +
 /// produced confusing `impl NodeRuntime for X` ambiguity. The
-/// phase-214.K.1 `NodeRuntime` deprecation alias was removed in phase-313
-/// W1 (issue #0243); use `NodeDispatchRuntime` directly.
+/// `NodeRuntime` deprecation alias has been removed; use
+/// `NodeDispatchRuntime` directly.
 pub trait NodeDispatchRuntime {
     /// Drive the underlying executor for at most `timeout_ms`
     /// milliseconds. `Ok(())` on a clean spin (including timeout);
@@ -271,8 +272,8 @@ pub struct RuntimeCtx<'a> {
     pub params: &'a [(&'a str, &'a str)],
 
     /// Topic / service / action remaps: `(from, to)`, set per component by
-    /// `nros::main!` from the model's launch `<remap>` rules (phase-306 W3,
-    /// issue 0255). `nros::node!`'s `register` forwards them into
+    /// `nros::main!` from the model's launch `<remap>` rules.
+    /// `nros::node!`'s `register` forwards them into
     /// `install_node_typed_with_launch`, where entity creation expands
     /// `~`/relative names and substitutes matching rules (exact-FQN match,
     /// first rule wins).
@@ -288,15 +289,15 @@ pub struct RuntimeCtx<'a> {
     /// embedded boards.
     pub env: &'a [(&'a str, &'a str)],
 
-    /// Phase 268 W1 — launch-injected node identity `(name, namespace)` for
+    /// Launch-injected node identity `(name, namespace)` for
     /// the NEXT `register()` call, set by `nros::main!` per component before
     /// each `<pkg>::register(runtime)?` call. `None` → the node's own
     /// `create_node(NodeOptions::new("…"))` default stands (backward-compatible).
     /// Reset to `None` after every register in the self-bringup arm so a prior
-    /// component's identity never leaks into the next (RFC-0046).
+    /// component's identity never leaks into the next.
     pub node_identity: Option<(&'static str, &'static str)>,
 
-    /// Issue #52 — per-node QoS overrides for the NEXT `register()` call, baked
+    /// Per-node QoS overrides for the NEXT `register()` call, baked
     /// by `nros::main!` from the model's
     /// `qos_overrides.<topic>.<role>.<policy>` params. Same reset discipline as
     /// `params`/`remaps`: `&[]` when the node has none, so a prior component's
@@ -314,7 +315,7 @@ pub struct RuntimeCtx<'a> {
     /// the user `setup` closure. The codegen-emitted
     /// `run_plan(runtime)` body calls `<pkg>::register(runtime)` once per Node
     /// pkg, which installs through `runtime.executor_handle()` +
-    /// `nros::__macro::install_node_typed` (Phase 258, Track 2).
+    /// `nros::__macro::install_node_typed`.
     ///
     /// Defaults to a [`NullNodeRuntime`] when the context is
     /// built via [`RuntimeCtx::with_runtime`]. That sink errors
@@ -356,7 +357,7 @@ impl<'a> RuntimeCtx<'a> {
     }
 
     /// Build a [`RuntimeCtx`] with explicit overlay slices + runtime
-    /// sink (Phase 212.N.7 step-3.2).
+    /// sink.
     pub fn new(
         runtime: &'a mut dyn NodeDispatchRuntime,
         params: &'a [(&'a str, &'a str)],
@@ -373,7 +374,7 @@ impl<'a> RuntimeCtx<'a> {
         }
     }
 
-    /// RFC-0128 D2 — make one managed node a lifecycle node (forwards to
+    /// Make one managed node a lifecycle node (forwards to
     /// [`NodeDispatchRuntime::apply_lifecycle_node`]). `nros::main!` emits this
     /// after the `register` call of each node the model marks managed. No-op
     /// unless `nros` is built with `lifecycle-services`.
@@ -387,24 +388,24 @@ impl<'a> RuntimeCtx<'a> {
             .apply_lifecycle_node(namespace, name, autostart)
     }
 
-    /// RFC-0128 D2 — the self-bringup form (forwards to
+    /// The self-bringup form (forwards to
     /// [`NodeDispatchRuntime::apply_lifecycle_self_bringup`]).
     pub fn apply_lifecycle_self_bringup(&mut self, autostart: u8) -> Result<(), &'static str> {
         self.runtime.apply_lifecycle_self_bringup(autostart)
     }
 
-    /// Phase 264 W4b -- register the ROS 2 parameter services and create the
+    /// Register the ROS 2 parameter services and create the
     /// volatile param store (forwards to
     /// [`NodeDispatchRuntime::apply_param_services`]). `nros::main!` emits this
     /// BEFORE the per-node `register` calls when `system.toml` declares
     /// `[param_services]`, so the store exists when each node is built and that
-    /// node's launch `<param>` initials ([`RuntimeCtx::params`]) are seeded on it
-    /// (issue 1272). No-op unless `nros` is built with `param-services`.
+    /// node's launch `<param>` initials ([`RuntimeCtx::params`]) are seeded on it.
+    /// No-op unless `nros` is built with `param-services`.
     pub fn apply_param_services(&mut self) -> Result<(), &'static str> {
         self.runtime.apply_param_services()
     }
 
-    /// phase-461 W6 -- build the parameter store without its services
+    /// Build the parameter store without its services
     /// (forwards to [`NodeDispatchRuntime::apply_param_store`]). Emitted where
     /// [`Self::apply_param_services`] would be, for a system declaring
     /// `params` alone. No-op unless `nros` is built with `param-store`.
@@ -435,7 +436,7 @@ impl<'a> RuntimeCtx<'a> {
         self.env.iter().find(|(k, _)| *k == name).map(|(_, v)| *v)
     }
 
-    /// phase-446 W6 -- the contract's declared parameters (forwards to
+    /// The contract's declared parameters (forwards to
     /// [`NodeDispatchRuntime::apply_declared_params`]). `nros::main!` emits
     /// this before the per-node `register` calls.
     pub fn apply_declared_params(
@@ -448,8 +449,7 @@ impl<'a> RuntimeCtx<'a> {
 }
 
 /// Error returned by the codegen-emitted `run_plan(runtime)` body
-/// (Phase 212.N.4) and by Node pkg `register(runtime)` wrappers
-/// (Phase 212.N.7 step-2).
+/// and by Node pkg `register(runtime)` wrappers.
 ///
 /// `no_std`-safe — variants are string-typed so embedded Entry pkgs
 /// don't need to pull `thiserror`/`anyhow` to print. The

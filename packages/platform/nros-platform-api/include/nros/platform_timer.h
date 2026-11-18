@@ -15,7 +15,7 @@ extern "C" {
  * @brief Canonical C ABI for the nros platform timer surface.
  *
  * Companion to `<nros/platform.h>`; sits beside the core 39-symbol
- * ABI as the Phase 110.E platform-timer interface. Carved into a
+ * ABI as the platform-timer interface. Carved into a
  * separate header because bare-metal / single-shot consumers can
  * omit timer support without losing the canonical platform symbols.
  *
