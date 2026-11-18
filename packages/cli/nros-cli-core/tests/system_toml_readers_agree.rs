@@ -346,5 +346,8 @@ fn both_readers_build_every_image_with_the_same_node_interfaces() {
     let get = |id: &str| rows.iter().find(|r| r.0 == id).unwrap().1.clone();
     assert_eq!(get("<system>"), vec!["lifecycle", "param_services"]);
     assert_eq!(get("a"), vec!["lifecycle"]);
-    assert_eq!(get("b"), vec!["lifecycle", "param_services", "rosout"]);
+    assert_eq!(
+        get("b"),
+        vec!["lifecycle", "param_services", "rosout", "sim_time"]
+    );
 }

@@ -42,7 +42,7 @@ use nros_tests::{
     },
     ros2::{DEFAULT_ROS_DISTRO, is_ros2_package_available},
     ros2_compat::{
-        CliAnswer, Compared, GraphSide, Implementation, NODE_PLACEHOLDER, Pair, changed_lines,
+        CliAnswer, Compared, GraphSide, Implementation, NODE_PLACEHOLDER, Pair,
         is_parameter_service_line, only_lines_containing, parameter_service_lines,
         without_lines_containing,
     },
@@ -159,21 +159,16 @@ fn params_discovered(pair: &Pair) {
 }
 
 /// Matches stock: `ros2 param list`, `list --param-type`, `get`, `describe`,
-/// `dump` and an accepted `set`, on declared parameters.
-///
-/// `use_sim_time` is set aside here: stock declares it and nano-ros does not,
-/// which `use_sim_time_compared_with_stock` holds (issue 2483).
+/// `dump` and an accepted `set`, on declared parameters. `use_sim_time` is
+/// in both lists, as stock declares it on every node.
 #[test]
 fn declared_parameters_answer_ros2_param_as_stock_does() {
     let pair = param_pair();
     params_discovered(&pair);
-    let no_sim_time = || without_lines_containing(&["use_sim_time"]);
 
     pair.ask("param list {node}")
-        .filtered(no_sim_time())
         .assert_same("the declared parameter names");
     pair.ask("param list --param-type {node}")
-        .filtered(no_sim_time())
         .assert_same("the declared parameter names and types");
     pair.ask("param get {node} rate")
         .assert_same("the value of an integer parameter");
@@ -182,7 +177,6 @@ fn declared_parameters_answer_ros2_param_as_stock_does() {
     pair.ask("param describe {node} rate stepped")
         .assert_same("the descriptors of two declared parameters");
     pair.ask("param dump {node}")
-        .filtered(no_sim_time())
         .assert_same("the dump of the declared parameters");
     pair.ask("param set {node} rate 11")
         .assert_same("an accepted set of a declared parameter");
@@ -282,23 +276,32 @@ fn second_node_as_parameter_events_publisher_compared_with_stock() {
     );
 }
 
-/// Expected-failure, issue 2483: every stock node declares `use_sim_time`
-/// (bool, false); a nano-ros node with parameter services does not.
+/// Matches stock: every node declares `use_sim_time` (bool, false), and
+/// setting it true is accepted and subscribes the node's executor to `/clock`.
+// Issue 2483, phase-556 W11: was the expected-failure
+// ~~`use_sim_time_compared_with_stock`~~.
 #[test]
-fn use_sim_time_compared_with_stock() {
+fn use_sim_time_answers_ros2_param_as_stock_does() {
     let pair = param_pair();
     params_discovered(&pair);
 
-    let c = pair.ask("param list {node}");
-    hold_gap(&c, "`use_sim_time` in the parameter list", |c| {
-        c.diff()
-            .is_some_and(|d| changed_lines(&d) == vec!["+   use_sim_time".to_string()])
-    });
-
-    let c = pair.ask("param get {node} use_sim_time");
-    hold_gap(&c, "the value of `use_sim_time`", |c| {
-        c.stock_text.trim() == "Boolean value is: False" && !c.nano_text.contains("Boolean value")
-    });
+    pair.ask("param list {node}")
+        .assert_same("the parameter list, `use_sim_time` included");
+    pair.ask("param get {node} use_sim_time")
+        .assert_same("the value of `use_sim_time`");
+    pair.ask("param set {node} use_sim_time true")
+        .assert_same("an accepted set of `use_sim_time`");
+    pair.ask_until("param get {node} use_sim_time", SETTLE, |a| {
+        has_line(a, "True")
+    })
+    .assert_same("the value of `use_sim_time` read back after the set");
+    // The switch is real: each side now subscribes to `/clock`, one
+    // subscription per side (one executor on the nano-ros side, however many
+    // nodes it composes).
+    pair.ask_until("topic info /clock", SETTLE, |a| {
+        has_line(a, "Subscription count: 1")
+    })
+    .assert_same("the `/clock` subscription a true `use_sim_time` creates");
 }
 
 /// Matches stock: `GetParameters` naming an undeclared parameter is answered

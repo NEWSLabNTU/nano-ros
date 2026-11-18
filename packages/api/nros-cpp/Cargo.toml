@@ -137,6 +137,8 @@ param-services = ["param-store", "nros/param-services", "nros-c/param-services"]
 lifecycle-services = ["rmw-cffi", "nros-c/lifecycle-services"]
 # issue 1589 — `/rosout` from C++ (`<rclcpp/rosout.hpp>`); forwards the C bridge.
 rosout = ["rmw-cffi", "nros-c/rosout"]
+# phase-556 W11 — `use_sim_time` and the `/clock` time source; forwards the C crate.
+sim-time = ["nros-c/sim-time"]
 
 # phase-361 W8.c / issue 0594 — `global-allocator` is GONE from this crate. It
 # was a dead declaration: zero `cfg` sites, forwarding nowhere, while the

@@ -10,8 +10,9 @@
 //! half arrives as two FACTS:
 //!
 //! * the descriptor's `[image] infra_families` — which families are compiled
-//!   in: `none`, or a `+`-joined subset of `param`, `lifecycle` and (since
-//!   phase-556 W13) `rosout`, in that order (`all` names all three). It arrived
+//!   in: `none`, or a `+`-joined subset of `param`, `lifecycle`, (since
+//!   phase-556 W13) `rosout` and (since phase-556 W11) `clock`, in that order
+//!   (`all` names every one). It arrived
 //!   as ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ until phase-486; the build scripts
 //!   pass its tag here.
 //! * the descriptor's `[image] model_nodes` — how many nodes; the parameter
@@ -50,6 +51,15 @@ pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 /// the node count. Mirrors `nros_node::rosout::ROSOUT_PUBLISHERS`, held the
 /// same way.
 pub const ROSOUT_PUBLISHERS: usize = 1;
+
+/// phase-556 W11 -- the `/clock` subscriptions the `clock` family (the
+/// `sim_time` capability) claims, once per EXECUTOR: the subscription the
+/// `use_sim_time` reconciliation creates when the parameter goes true. It is
+/// RESERVED whenever the family is on, because `ros2 param set` can flip the
+/// parameter at any time. A callback slot, an arena entry, a session
+/// subscriber and a liveliness token. Mirrors
+/// `nros_node::time_source::CLOCK_SUBSCRIPTIONS`, held the same way.
+pub const CLOCK_SUBSCRIPTIONS: usize = 1;
 
 /// Issue 1429 — the ONE predicate for "did this carrier state anything".
 ///
@@ -92,6 +102,8 @@ pub struct Families {
     pub lifecycle: bool,
     /// The `/rosout` publisher (phase-556 W13).
     pub rosout: bool,
+    /// The `/clock` subscription `use_sim_time` creates (phase-556 W11).
+    pub clock: bool,
 }
 
 impl Families {
@@ -100,6 +112,15 @@ impl Families {
         param: true,
         lifecycle: true,
         rosout: true,
+        clock: true,
+    };
+
+    /// No family.
+    pub const NONE: Families = Families {
+        param: false,
+        lifecycle: false,
+        rosout: false,
+        clock: false,
     };
 }
 
@@ -108,7 +129,7 @@ impl Families {
 ///
 /// # Panics
 /// On a spelling that is not `none`, `all` or a `+`-joined subset of
-/// `param`, `lifecycle`, `rosout`. The producer writes exactly those
+/// `param`, `lifecycle`, `rosout`, `clock`. The producer writes exactly those
 /// (`InfraFamilies::tag`), so anything else is a broken carrier, and sizing
 /// from a guess about it is how a pool comes out short.
 pub fn declared_families(infra: Option<&str>) -> Option<Families> {
@@ -116,30 +137,21 @@ pub fn declared_families(infra: Option<&str>) -> Option<Families> {
     let bad = || -> ! {
         panic!(
             "infra_families = {tag:?} is not one of `none`, `all` or a `+`-joined \
-             subset of param, lifecycle, rosout."
+             subset of param, lifecycle, rosout, clock."
         )
     };
     match tag {
-        "none" => {
-            return Some(Families {
-                param: false,
-                lifecycle: false,
-                rosout: false,
-            });
-        }
+        "none" => return Some(Families::NONE),
         "all" => return Some(Families::ALL),
         _ => {}
     }
-    let mut f = Families {
-        param: false,
-        lifecycle: false,
-        rosout: false,
-    };
+    let mut f = Families::NONE;
     for word in tag.split('+') {
         let slot = match word {
             "param" => &mut f.param,
             "lifecycle" => &mut f.lifecycle,
             "rosout" => &mut f.rosout,
+            "clock" => &mut f.clock,
             _ => bad(),
         };
         if *slot {
@@ -280,13 +292,34 @@ mod tests {
     #[test]
     fn rosout_is_a_family_and_claims_no_server() {
         let f = declared_families(Some("param+lifecycle+rosout")).unwrap();
-        assert_eq!(f, Families::ALL);
+        assert_eq!(
+            f,
+            Families {
+                clock: false,
+                ..Families::ALL
+            }
+        );
         let r = declared_families(Some("rosout")).unwrap();
         assert!(r.rosout && !r.param && !r.lifecycle);
         assert_eq!(declared_families(Some("all")), Some(Families::ALL));
         assert_eq!(infra_service_servers(Some("rosout"), None), 0);
         assert_eq!(infra_service_servers(Some("param+rosout"), Some("2")), 12);
         assert!(!per_node_term_is_unknown(Some("rosout"), None));
+    }
+
+    /// phase-556 W11 -- `clock` joins the families: it parses alone and in
+    /// the four-word subset, `all` includes it, and it claims no service
+    /// server and no per-node term (one subscription per executor).
+    #[test]
+    fn clock_is_a_family_and_claims_no_server() {
+        let f = declared_families(Some("param+lifecycle+rosout+clock")).unwrap();
+        assert_eq!(f, Families::ALL);
+        let c = declared_families(Some("clock")).unwrap();
+        assert!(c.clock && !c.param && !c.lifecycle && !c.rosout);
+        assert!(!declared_families(Some("param+rosout")).unwrap().clock);
+        assert_eq!(infra_service_servers(Some("clock"), None), 0);
+        assert_eq!(infra_service_servers(Some("param+clock"), Some("2")), 12);
+        assert!(!per_node_term_is_unknown(Some("clock"), None));
     }
 
     #[test]

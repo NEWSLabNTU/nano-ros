@@ -194,6 +194,9 @@ pub const CAPABILITY_KCONFIG: &[(&str, &str)] = &[
     // phase-556 W13 -- `/rosout` is a stock node interface; the symbol lets a
     // hand-written Zephyr application's module derive `NROS_FEATURES` from it.
     ("rosout", "CONFIG_NROS_CAPABILITY_ROSOUT"),
+    // phase-556 W11 -- `use_sim_time` (the `/clock` time source), a stock
+    // node interface too.
+    ("sim_time", "CONFIG_NROS_CAPABILITY_SIM_TIME"),
     (PARAM_STORE_AXIS, "CONFIG_NROS_PARAM_STORE"),
 ];
 
@@ -1914,11 +1917,14 @@ mod tests {
         );
         let stock = write("node_interfaces = \"stock\"\n");
         assert!(
-            stock.contains("set(NROS_FEATURES \"param_services;rosout\")"),
+            stock.contains("set(NROS_FEATURES \"param_services;rosout;sim_time\")"),
             "{stock}"
         );
         assert!(stock.contains("set(CONFIG_NROS_CAPABILITY_PARAM_SERVICES y "));
         assert!(stock.contains("set(CONFIG_NROS_CAPABILITY_ROSOUT y "));
+        // phase-556 W11 -- `use_sim_time` is in the stock set.
+        assert!(stock.contains("set(CONFIG_NROS_CAPABILITY_SIM_TIME y "));
+        assert!(off.contains("set(CONFIG_NROS_CAPABILITY_SIM_TIME n "));
         let none = write(
             "features = [\"param_services\", \"lifecycle\"]\n\
              [image.zephyr]\nboard = \"x\"\nnode_interfaces = \"none\"\n",

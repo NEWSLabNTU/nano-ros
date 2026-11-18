@@ -886,7 +886,7 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-ros2-cli-parity-params-rust-zenoh"),
     co("ros2_cli_parity_interop", "second_node_as_parameter_events_publisher_compared_with_stock",
        "native-ros2-cli-parity-params-rust-zenoh"),
-    co("ros2_cli_parity_interop", "use_sim_time_compared_with_stock",
+    co("ros2_cli_parity_interop", "use_sim_time_answers_ros2_param_as_stock_does",
        "native-ros2-cli-parity-params-rust-zenoh"),
     co("ros2_cli_parity_interop",
        "get_parameters_reply_for_an_undeclared_name_answers_as_stock_does",

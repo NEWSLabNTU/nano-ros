@@ -349,6 +349,7 @@ fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
             inv.infra().param_services,
             inv.infra().lifecycle,
             inv.infra().rosout,
+            inv.infra().sim_time,
         )),
         language: Some(EntryLanguage::CFamily),
         backend_schema: None,

@@ -1752,6 +1752,17 @@ const PARAM_EVENT_PUBLISHERS: usize = 1;
 /// the liveliness pool and nothing else.
 const ROSOUT_PUBLISHERS: usize = 1;
 
+/// MIRROR of `nros_node::time_source::CLOCK_SUBSCRIPTIONS`, held the same
+/// way (phase-556 W11): the `/clock` subscription the `use_sim_time`
+/// reconciliation creates, once per EXECUTOR. RESERVED whenever the effective
+/// features carry `sim_time`, because the parameter can be set true at any
+/// time. Unlike every other runtime family it is an EXECUTOR subscription, so
+/// it is a term in [`DerivedEntityKnobs::max_subscribers`], the liveliness
+/// pool AND the callback-slot demand ([`DerivedEntityKnobs::max_cbs`]); the
+/// arena half is `nros-node`'s build script's, from the descriptor's
+/// `infra_families`.
+const CLOCK_SUBSCRIPTIONS: usize = 1;
+
 /// MIRROR of `nros_node::executor::action::ACTION_CLIENT_SERVICE_CLIENTS`,
 /// held there by `check-infra-queryable-counts`: the three service clients an
 /// action client opens, each of which declares a liveliness token.
@@ -1811,6 +1822,10 @@ pub struct InfraServices {
     /// interface, so `node_interfaces = "stock"` turns it on with the
     /// parameter family.
     pub rosout: bool,
+    /// phase-556 W11 -- the effective features carry `sim_time`: the
+    /// `/clock` subscription ([`CLOCK_SUBSCRIPTIONS`]) is reserved once per
+    /// executor. A stock node interface, like [`Self::rosout`].
+    pub sim_time: bool,
 }
 
 /// Issue 1706 -- does any node of `model` have a launch-seeded parameter?
@@ -1888,10 +1903,11 @@ impl InfraServices {
             launch_seeds_params: false,
             param_store: has("params"),
             rosout: has("rosout"),
+            sim_time: has("sim_time"),
         }
     }
 
-    /// The `[image] infra_families` statement of these three switches -- the
+    /// The `[image] infra_families` statement of these four switches -- the
     /// spelling the descriptor carries and both zenoh and XRCE build scripts
     /// parse (it was the ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier's until
     /// phase-486). One place spells the strings: the vocabulary.
@@ -1900,6 +1916,7 @@ impl InfraServices {
             self.param_services,
             self.lifecycle,
             self.rosout,
+            self.sim_time,
         )
     }
 
@@ -1971,6 +1988,19 @@ impl InfraServices {
         lifecycle + params + rosout
     }
 
+    /// SUBSCRIPTIONS the families claim -- phase-556 W11: the `/clock`
+    /// subscription, [`CLOCK_SUBSCRIPTIONS`] once per executor, whenever
+    /// `sim_time` is on. Reserved, not conditional on `use_sim_time` starting
+    /// true: a `ros2 param set` creates it at runtime, and a pool without its
+    /// slot refuses the switch.
+    pub fn subscribers(self) -> usize {
+        if self.sim_time {
+            CLOCK_SUBSCRIPTIONS
+        } else {
+            0
+        }
+    }
+
     /// Either source declaring a family declares it: this is a fact about the
     /// bringup, not a count two sources could each get partly right.
     pub fn union(self, other: Self) -> Self {
@@ -1981,6 +2011,7 @@ impl InfraServices {
             launch_seeds_params: self.launch_seeds_params || other.launch_seeds_params,
             param_store: self.param_store || other.param_store,
             rosout: self.rosout || other.rosout,
+            sim_time: self.sim_time || other.sim_time,
         }
     }
 }
@@ -5037,8 +5068,14 @@ impl EntityInventory {
         // So: demand here, floors at the pools. `check-c-array-pool-floors`
         // holds both ends together.
         let n = |tag: &str| per_kind.get(tag).copied().unwrap_or(0);
+        // phase-556 W11 -- the runtime's `/clock` subscription, reserved once
+        // per executor whenever `sim_time` is on. An EXECUTOR subscription, so
+        // unlike the other runtime families it claims a callback slot too.
+        let infra_subscribers = self.infra.subscribers();
+        max_cbs += infra_subscribers * EntityKind::Subscription.callback_slots();
         let max_subscribers = n(EntityKind::Subscription.tag())
-            + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SUBSCRIPTIONS;
+            + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SUBSCRIPTIONS
+            + infra_subscribers;
         // Issue 1270 -- plus the servers the runtime creates for the families
         // the bringup declares: six per node for `param_services`, five once
         // for `lifecycle`. Not a guess: the bringup states the feature, and
@@ -5152,12 +5189,16 @@ impl EntityInventory {
         // subtraction, so a term added to one side cannot silently land in
         // the other.
         let entity_liveliness_tokens = (max_publishers - infra_publishers)
-            + max_subscribers
+            + (max_subscribers - infra_subscribers)
             + local_query_servers
             + local_query_clients;
         debug_assert_eq!(
             max_liveliness,
-            entity_liveliness_tokens + node_tokens + infra_queryables + infra_publishers,
+            entity_liveliness_tokens
+                + node_tokens
+                + infra_queryables
+                + infra_publishers
+                + infra_subscribers,
             "the application half plus the node tokens and the runtime's entities \
              must be the whole pool"
         );
@@ -5174,6 +5215,7 @@ impl EntityInventory {
                         "action-client feedback subscriptions",
                         n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SUBSCRIPTIONS,
                     ),
+                    ("runtime subscriptions", infra_subscribers),
                 ],
             },
             Composition {
@@ -8862,16 +8904,17 @@ contracts:
             InfraServices::from_model(&bare, None).families(),
             nros_sizing_descriptor::InfraFamilies::None
         );
-        // (b) `stock`: the parameter family and `/rosout`.
+        // (b) `stock`: the parameter family, `/rosout` and (phase-556 W11)
+        // the `/clock` subscription.
         let mut stock = infra_model("");
         stock.overlay.node_interfaces =
             Some(nros_orchestration_ir::node_interfaces::NodeInterfaces::Stock);
         let infra = InfraServices::from_model(&stock, None);
         assert_eq!(
             infra.families(),
-            nros_sizing_descriptor::InfraFamilies::ParamRosout
+            nros_sizing_descriptor::InfraFamilies::ParamRosoutClock
         );
-        assert_eq!(infra.families().tag(), "param+rosout");
+        assert_eq!(infra.families().tag(), "param+rosout+clock");
         // The model's two nodes: `/parameter_events` once per executor,
         // `/rosout` once per node, and a third component adds one writer.
         assert_eq!(
@@ -8895,6 +8938,45 @@ contracts:
         assert_eq!(
             InfraServices::from_model(&off, None).families(),
             nros_sizing_descriptor::InfraFamilies::Param
+        );
+    }
+
+    /// phase-556 W11 -- `sim_time` reserves the `/clock` subscription ONCE PER
+    /// EXECUTOR (the fixture model has two nodes, still one): a subscriber
+    /// slot, a callback slot and a liveliness token, no publisher, no
+    /// queryable. Reserved whether or not `use_sim_time` starts true.
+    #[test]
+    fn sim_time_reserves_one_clock_subscription_per_executor() {
+        let knobs = |m: &nros_orchestration_ir::overlay::LoadedModel| {
+            EntityInventory::from_model("t", m)
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
+        };
+        let none = knobs(&infra_model(""));
+        let clock = knobs(&infra_model("sim_time"));
+        assert_eq!(
+            clock.max_subscribers - none.max_subscribers,
+            CLOCK_SUBSCRIPTIONS
+        );
+        assert_eq!(clock.max_cbs - none.max_cbs, CLOCK_SUBSCRIPTIONS);
+        assert_eq!(
+            clock.max_liveliness - none.max_liveliness,
+            CLOCK_SUBSCRIPTIONS
+        );
+        assert_eq!(
+            clock.entity_liveliness_tokens, none.entity_liveliness_tokens,
+            "a runtime entity, not one of the application's"
+        );
+        assert_eq!(clock.max_publishers, none.max_publishers);
+        assert_eq!(clock.max_queryables, none.max_queryables);
+        assert_eq!(
+            InfraServices::from_model(&infra_model("sim_time"), None)
+                .families()
+                .tag(),
+            "clock"
         );
     }
 

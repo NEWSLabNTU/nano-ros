@@ -75,6 +75,12 @@ pub const LEAF_CAPABILITY_AXES: &[LeafAxis] = &[
         nros_feature: "rosout",
         compiled_flag: "ROSOUT_ENABLED",
     },
+    // phase-556 W11 -- the `/clock` time source `use_sim_time` switches on.
+    LeafAxis {
+        declared: "sim_time",
+        nros_feature: "sim-time",
+        compiled_flag: "SIM_TIME_ENABLED",
+    },
 ];
 
 /// Look up an axis by its declared name.

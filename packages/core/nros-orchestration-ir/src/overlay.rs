@@ -894,7 +894,7 @@ mod tests {
             let ov = o(text);
             assert_eq!(
                 ov.features_for_image("a"),
-                vec!["param_services", "rosout"],
+                vec!["param_services", "rosout", "sim_time"],
                 "{text}"
             );
             // And it survives the file `nros sync` writes beside the model.
@@ -902,7 +902,7 @@ mod tests {
             assert_eq!(back, ov, "{text}");
             assert_eq!(
                 back.features_for_image("a"),
-                vec!["param_services", "rosout"]
+                vec!["param_services", "rosout", "sim_time"]
             );
         }
     }
@@ -938,14 +938,17 @@ mod tests {
                     [image_defaults]\nnode_interfaces = \"none\"\n\
                     [image.a]\nboard = \"x\"\n\
                     [image.b]\nboard = \"x\"\nnode_interfaces = \"stock\"\n");
-        assert_eq!(ov.system_features(), vec!["param_services", "rosout"]);
+        assert_eq!(
+            ov.system_features(),
+            vec!["param_services", "rosout", "sim_time"]
+        );
         assert!(
             ov.features_for_image("a").is_empty(),
             "defaults over system"
         );
         assert_eq!(
             ov.features_for_image("b"),
-            vec!["param_services", "rosout"],
+            vec!["param_services", "rosout", "sim_time"],
             "image over defaults"
         );
     }
