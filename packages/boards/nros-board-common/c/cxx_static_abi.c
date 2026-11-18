@@ -32,7 +32,11 @@
  * defines all four.
  */
 
-void *__dso_handle = 0;
+/* Weak: a C library that defines `__dso_handle` itself wins without a
+ * duplicate-symbol error. TI Arm Clang's does (its `exit.c`), and tiarmlnk
+ * refused the image with two strong definitions (phase-575 W3). Any value
+ * serves: nothing dereferences it. */
+__attribute__((weak)) void *__dso_handle = 0;
 
 int __cxa_atexit(void (*destructor)(void *), void *arg, void *dso) {
     (void) destructor;
