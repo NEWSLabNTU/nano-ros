@@ -27,7 +27,7 @@ cd "$(dirname "$0")/../.."
 # never updated (AGENTS.md: the update discards work in it), and an interrupted
 # checkout is reported with its remedy (issue 2306).
 claim_submodules() {
-    local rows p row state broken=0 _cli=""
+    local rows p row state broken=0 drifted=0 _cli=""
     local -a paths=() want=() depth=()
     rows="$(python3 scripts/lib/lane_provision.py submodules --tiers "${LANE_TIERS[@]}")"
     [ -z "$rows" ] || mapfile -t paths <<<"$rows"
@@ -58,7 +58,18 @@ claim_submodules() {
                 echo "            NOT repaired - that would discard what it holds. When it holds nothing:"
                 echo "                $(nros_submodule_state_remedy "$state" "$p")"
                 ;;
-            behind:* | ahead:* | unknown-pin)
+            behind:*)
+                # issue 2701: KEPT, and a failure. A rebase across a pin move
+                # leaves the checkout behind; every gate then reads the old tree.
+                drifted=$((drifted + 1))
+                echo "  [BEHIND]  $p is checked out BEHIND its pin ($state)."
+                echo "            NOT updated - that would discard work in it (AGENTS.md)."
+                echo "            When you are sure it holds nothing you need:"
+                echo "                git submodule update $p"
+                ;;
+            ahead:* | unknown-pin)
+                # AHEAD is a vendored-fork fix mid-flight (push the fork, then
+                # bump the pin), so it is reported and passes.
                 echo "  [KEPT]    $p is checked out at a commit other than its pin ($state)."
                 echo "            NOT updated - that would discard work in it (AGENTS.md)."
                 echo "            When you are sure it holds nothing you need:"
@@ -74,6 +85,11 @@ claim_submodules() {
     fi
     if [ "$broken" -gt 0 ]; then
         echo "claim-provision: $broken submodule(s) are BROKEN (listed above); repair them, then re-run." >&2
+        return 1
+    fi
+    if [ "$drifted" -gt 0 ]; then
+        echo "claim-provision: $drifted submodule(s) are BEHIND their pin (listed above, issue 2701);" >&2
+        echo "  update each with the command shown once it holds nothing you need, then re-run." >&2
         return 1
     fi
 }

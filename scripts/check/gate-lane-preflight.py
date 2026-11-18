@@ -64,6 +64,29 @@ def probe_submodules(tiers: list[str]) -> str | None:
     return "; ".join(lines) if lines else None
 
 
+def probe_submodule_drift() -> tuple[str, str] | None:
+    """A checked-out submodule BEHIND or DIVERGED from its recorded pin (issue
+    2701), as (what, remedy). A rebase across a pin move leaves an
+    already-checked-out submodule where it was, and `setup-worktree` keeps it
+    there on purpose (the update would discard work in it), so the gates then
+    trip on the old tree with messages that never name the submodule. Refused
+    here, never updated: the remedy is printed per path. AHEAD (a fork fix
+    mid-flight) and NOT VERIFIED (a shallow store) pass, as in the script."""
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "check-submodule-drift.sh")], cwd=ROOT,
+                       capture_output=True, text=True,
+                       env=dict(os.environ, NROS_SKIP_SUBMODULE_DRIFT_CHECK="0"))
+    return None if r.returncode == 0 else parse_drift(r.stderr)
+
+
+def parse_drift(stderr: str) -> tuple[str, str]:
+    """`check-submodule-drift.sh`'s failure text -> (each `[x]` row, each remedy)."""
+    lines = [l.strip() for l in stderr.splitlines()]
+    rows = [l[4:] for l in lines if l.startswith("[x] ")]
+    fixes = [l[len("remedy: "):].split("   (")[0] for l in lines if l.startswith("remedy: ")]
+    what = "; ".join(rows) or next((l for l in lines if l), "check-submodule-drift.sh failed")
+    return what, " && ".join(dict.fromkeys(fixes)) or "bash scripts/check-submodule-drift.sh (read it)"
+
+
 def probe_arm_gcc_any() -> str | None:
     # ANY arm-none-eabi-g++, pinned or not, in the order
     # check-px4-uorb-nuttx-compile resolves it (issue 2419).
@@ -211,6 +234,16 @@ def self_test() -> None:
     assert lane_claims(cfg, "x") == ["cmake"]
     assert on_path("nros-no-such-tool-543") is not None
     assert env_dir("NROS_NO_SUCH_VAR_543") == "$NROS_NO_SUCH_VAR_543 is unset"
+    # issue 2701: a behind row names its path and its own remedy, without the
+    # script's parenthetical; a diverged row's remedy is a rebase, not an update.
+    what, fix = parse_drift(
+        "  [x] a/b is 1 commit(s) BEHIND the recorded pointer\n"
+        "      at 111, HEAD records 222\n"
+        "      remedy: git submodule update a/b   (fast-forward, no local work at risk)\n"
+        "  [x] c is INCOMPLETE\n      remedy: git -C c checkout -- .\n")
+    assert what == "a/b is 1 commit(s) BEHIND the recorded pointer; c is INCOMPLETE", what
+    assert fix == "git submodule update a/b && git -C c checkout -- .", fix
+    assert parse_drift("boom\n") == ("boom", "bash scripts/check-submodule-drift.sh (read it)")
 
 
 def main(argv: list[str]) -> int:
@@ -244,6 +277,11 @@ def main(argv: list[str]) -> int:
                if (why := (probe_submodules(tiers) if c == "submodules" else PROBES[c]())) is not None]
     if (why := probe_nextest()) is not None:
         missing.insert(0, ("nextest", why))
+    if "submodules" in claims and (drift := probe_submodule_drift()) is not None:
+        # Not a capability: `setup-worktree` cannot provide it (it keeps a
+        # drifted checkout), so its fix is the per-path remedy, never that.
+        missing.append(("submodule-drift", drift[0]))
+        REMEDY["submodule-drift"] = drift[1]
     if missing:
         print(f"gate-lane-preflight: lane `{lane}` claims what this host does not have:",
               file=sys.stderr)

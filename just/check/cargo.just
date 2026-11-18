@@ -802,7 +802,7 @@ submodule-commits-reachable:
 # observe it. It runs as the first item of `check-tier-preconditions`, ahead of
 # the CLI stamp, because `git submodule update` rewrites source mtimes and would
 # re-stale anything cleared before it. Exposed standalone for diagnosis.
-[metadata("tier", "exempt", "in no lane and no caller found — issue 1071's class")]
+[metadata("tier", "exempt", "a working-copy precondition, not a gate: the lane preflight runs it for every lane that claims `submodules`, and `check-tier-preconditions` runs it first (issue 2701)")]
 submodule-drift:
     @bash scripts/check-submodule-drift.sh
 

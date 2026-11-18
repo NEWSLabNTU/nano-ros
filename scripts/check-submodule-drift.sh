@@ -42,10 +42,13 @@
 # px4, play_launch's layer-3 runtime submodules and the nuttx tree are all
 # deliberately absent until a recipe inits them.
 #
-# Not in `check-fast`, on purpose. Drift is a WORKING-COPY state: the index and
-# the commit always agree in anything you can push, so this can never fail in
-# CI. It is a tier PRECONDITION, which is why it hangs off
-# check-tier-preconditions.sh instead.
+# Not a gate in `check-fast`, on purpose. Drift is a WORKING-COPY state: the
+# index and the commit always agree in anything you can push, so this can never
+# fail in CI. It is a tier PRECONDITION: check-tier-preconditions.sh runs it,
+# and so does the lane preflight (`scripts/check/gate-lane-preflight.py`) for
+# every lane that claims `submodules` (issue 2701), so `just ci gate`,
+# `just check fast` and the pre-push hook refuse a drifted checkout by name
+# before any gate reads the old tree.
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
