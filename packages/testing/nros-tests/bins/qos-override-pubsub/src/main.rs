@@ -17,6 +17,10 @@
 //!       (the default is `Reliable`); the entity is created + delivers.
 //!     * unset / empty — no override (the baseline contrast: the entity keeps
 //!       the default `Reliable` profile).
+//!     * `graph-profile` — every policy off its default (`GRAPH_PROFILE`), for
+//!       the ROS 2 compatibility test that reads the profile back through
+//!       `ros2 topic info -v` and compares it with a stock node declaring the
+//!       same one (`tests/ros2_cli_parity_interop.rs`, phase-556 W6).
 //! * `NROS_LOCATOR` — zenoh locator. Default `tcp/127.0.0.1:7447`.
 //!
 //! The proof rests on the `qos effective:` log line — with the override it
@@ -37,8 +41,8 @@ use core::time::Duration;
 
 use log::{error, info};
 use nros::{
-    Executor, ExecutorConfig, QoSOverride, QoSOverrideRole, QoSOverrideValue, QoSProfile,
-    QoSReliabilityPolicy,
+    Executor, ExecutorConfig, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
+    QoSOverride, QoSOverrideRole, QoSOverrideValue, QoSProfile, QoSReliabilityPolicy,
 };
 
 const TOPIC: &str = "/chatter";
@@ -61,6 +65,55 @@ const OVR_BEST_EFFORT: &[QoSOverride] = &[
     },
 ];
 
+/// phase-556 W6 — a profile with every policy off its default, applied to
+/// `/chatter` on both roles. `fixtures/ros2-qos-peer/qos_peer.py` declares the
+/// same values on a stock rclpy node; keep the two in step.
+///
+/// The depths fit what the zenoh backend holds by default, so the profile a
+/// peer reads is the one asked for rather than a granted-down one: a
+/// transient-local publisher retains 1 sample, a subscription's ring is 4.
+const fn graph_profile(role: QoSOverrideRole, depth: u32) -> [QoSOverride; 8] {
+    const fn at(role: QoSOverrideRole, value: QoSOverrideValue) -> QoSOverride {
+        QoSOverride {
+            topic: TOPIC,
+            role,
+            value,
+        }
+    }
+    [
+        at(
+            role,
+            QoSOverrideValue::Reliability(QoSReliabilityPolicy::BestEffort),
+        ),
+        at(
+            role,
+            QoSOverrideValue::Durability(QoSDurabilityPolicy::TransientLocal),
+        ),
+        at(role, QoSOverrideValue::History(QoSHistoryPolicy::KeepLast)),
+        at(role, QoSOverrideValue::Depth(depth)),
+        at(role, QoSOverrideValue::Deadline(1500)),
+        at(role, QoSOverrideValue::Lifespan(2000)),
+        at(
+            role,
+            QoSOverrideValue::Liveliness(QoSLivelinessPolicy::ManualByTopic),
+        ),
+        at(role, QoSOverrideValue::LivelinessLease(3000)),
+    ]
+}
+
+const GRAPH_PROFILE: &[QoSOverride] = &{
+    let publisher = graph_profile(QoSOverrideRole::Publisher, 1);
+    let subscription = graph_profile(QoSOverrideRole::Subscription, 3);
+    let mut all = [publisher[0]; 16];
+    let mut i = 0;
+    while i < 8 {
+        all[i] = publisher[i];
+        all[i + 8] = subscription[i];
+        i += 1;
+    }
+    all
+};
+
 /// CDR-LE encapsulation header (`{0x00, 0x01}`) + options + a 4-byte i32 body.
 /// Content is irrelevant to the delivery assertion; only that bytes flow.
 fn int32_cdr(value: i32) -> [u8; 8] {
@@ -74,6 +127,7 @@ fn int32_cdr(value: i32) -> [u8; 8] {
 fn select_overrides() -> &'static [QoSOverride] {
     match std::env::var("NROS_QOS_OVERRIDE").as_deref() {
         Ok("reliability=best_effort") => OVR_BEST_EFFORT,
+        Ok("graph-profile") => GRAPH_PROFILE,
         _ => &[],
     }
 }
