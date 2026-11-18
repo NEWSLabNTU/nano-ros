@@ -107,6 +107,52 @@ bool g_overflow_warned = false;
 
 } // namespace
 
+namespace {
+
+bool is_registered(const char *type_name) {
+    for (std::size_t i = 0; i < g_count; ++i) {
+        if (strcmp(g_entries[i].type_name, type_name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The keys `nros_rmw_cyclonedds_register_descriptor` stores for one
+// descriptor: the caller's name, plus the descriptor's own `m_typename` when
+// it differs (phase 212.K.7.7). Returns how many of them are not held yet.
+std::size_t new_keys(const char *type_name, const dds_topic_descriptor_t *descriptor) {
+    std::size_t n = is_registered(type_name) ? 0 : 1;
+    if (descriptor->m_typename != nullptr && strcmp(descriptor->m_typename, type_name) != 0 &&
+        !is_registered(descriptor->m_typename)) {
+        ++n;
+    }
+    return n;
+}
+
+} // namespace
+
+int try_register_descriptor(const char *type_name, const dds_topic_descriptor_t *descriptor) {
+    if (type_name == nullptr || descriptor == nullptr) {
+        return kTryRegisterInvalid;
+    }
+    // Issue 2704 -- all or nothing: a descriptor is findable under either key
+    // the C++ paths look it up by, so holding one key and not the other would
+    // be a registration that succeeds and a lookup that still misses.
+    if (new_keys(type_name, descriptor) > kMaxRegisteredTypes - g_count) {
+        return kTryRegisterFull;
+    }
+    register_descriptor(type_name, descriptor);
+    if (descriptor->m_typename != nullptr && strcmp(descriptor->m_typename, type_name) != 0) {
+        register_descriptor(descriptor->m_typename, descriptor);
+    }
+    return kTryRegisterOk;
+}
+
+std::size_t max_registered_descriptors() {
+    return kMaxRegisteredTypes;
+}
+
 void register_descriptor(const char *type_name,
                          const dds_topic_descriptor_t *descriptor) {
     if (type_name == nullptr || descriptor == nullptr) {
@@ -117,10 +163,8 @@ void register_descriptor(const char *type_name,
     // descriptor under the same name is silently ignored — this
     // mirrors how Cyclone itself dedupes topic-create with the same
     // name + descriptor.
-    for (std::size_t i = 0; i < g_count; ++i) {
-        if (strcmp(g_entries[i].type_name, type_name) == 0) {
-            return;
-        }
+    if (is_registered(type_name)) {
+        return;
     }
     if (g_count >= kMaxRegisteredTypes) {
         // Static cap exceeded. The link-time registration can't signal
@@ -296,6 +340,20 @@ extern "C" void nros_rmw_cyclonedds_register_descriptor(
         nros_rmw_cyclonedds::register_descriptor(descriptor->m_typename,
                                                  descriptor);
     }
+}
+
+// Issue 2704 -- the RUNTIME registration (the cargo road's Rust registrar,
+// `TypeRegistry::get_or_build_raw`) goes through this one, not the void entry
+// above. A registration at run time CAN fail, and the caller fails the entity
+// create with it, naming the type (`rmw_type_registry::register_type`); the
+// void entry stays for the static-init `_register.c` constructors, which
+// cannot. Returns 0 when the descriptor is held under every key (including
+// when it already was), -1 for a NULL argument, -2 when the table cannot hold
+// it -- and then holds none of its keys.
+extern "C" int nros_rmw_cyclonedds_try_register_descriptor(
+    const char *type_name,
+    const dds_topic_descriptor_t *descriptor) {
+    return nros_rmw_cyclonedds::try_register_descriptor(type_name, descriptor);
 }
 
 extern "C" const dds_topic_descriptor_t *

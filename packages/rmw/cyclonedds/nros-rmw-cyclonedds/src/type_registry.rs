@@ -32,7 +32,10 @@ use heapless::FnvIndexMap;
 use nros_serdes::schema::{Field, Message};
 
 use crate::{
-    bridge::nros_rmw_cyclonedds_register_descriptor,
+    bridge::{
+        TRY_REGISTER_OK, nros_cyclonedds_free_built_descriptor,
+        nros_rmw_cyclonedds_try_register_descriptor,
+    },
     dynamic_type::{BuildError, DescriptorBuilder, DescriptorPtr},
     sync::{RegistryMutex, RegistryMutexExt},
 };
@@ -115,39 +118,58 @@ impl TypeRegistry {
     ///
     /// If a descriptor for `M::TYPE_NAME` is already cached, returns
     /// it. Otherwise calls [`DescriptorBuilder::build::<M>`], inserts
-    /// the result, and also calls
-    /// [`nros_rmw_cyclonedds_register_descriptor`] so the existing
-    /// C++ `descriptors.cpp` table is in sync (legacy
-    /// `publisher.cpp`/`subscriber.cpp` paths resolve via that
-    /// table).
+    /// the result, and also registers it with the C++ `descriptors.cpp`
+    /// table (`nros_rmw_cyclonedds_try_register_descriptor`), refusing
+    /// with [`BuildError::DescriptorTableFull`] when that table is full.
     pub fn get_or_build<M: Message>(&mut self) -> Result<DescriptorPtr, BuildError> {
         if let Some(ptr) = self.get(M::TYPE_NAME) {
             return Ok(ptr);
         }
         let ptr = DescriptorBuilder::build::<M>()?;
-        // Insert before calling the C++ side so a subsequent retry
-        // (e.g. from a contending caller waiting on the mutex) finds
-        // the new entry even if `register_descriptor` is a no-op.
+        self.insert_and_mirror(M::TYPE_NAME, ptr)
+    }
+
+    /// Cache `ptr` under `type_name` and mirror it into the C++
+    /// `descriptors.cpp` table (the legacy `publisher.cpp` /
+    /// `subscriber.cpp` paths resolve through that table), both or neither.
+    ///
+    /// Issue 2704 -- the mirror used to be the void
+    /// `nros_rmw_cyclonedds_register_descriptor`, which over the C++ table's
+    /// cap DROPS the registration and says so only at the first failed
+    /// lookup: the entity create then failed `Unsupported` with the cause in
+    /// a separate line, or nowhere if the console was not up. A run-time
+    /// registration can fail, so it now REFUSES: the C++ side holds none of
+    /// the type's keys, this cache forgets it (a later call tries again
+    /// rather than finding a type the backend cannot look up), and the error
+    /// reaches the caller, which fails the entity create and names the type
+    /// (`nros_node::rmw_type_registry::register_type`). The refused
+    /// descriptor is freed: a caller may retry (the parameter-services
+    /// reconcile does, every spin), and each retry builds it again.
+    fn insert_and_mirror(
+        &mut self,
+        type_name: &'static str,
+        ptr: DescriptorPtr,
+    ) -> Result<DescriptorPtr, BuildError> {
         self.table
-            .insert(M::TYPE_NAME, DescriptorSlot(ptr))
+            .insert(type_name, DescriptorSlot(ptr))
             .map_err(|_| BuildError::RegistryFull)?;
-        // Mirror into the C++ registry. `register_descriptor` accepts
-        // a NUL-terminated C string; the codegen template will emit
-        // `c"…"` constants and `M::TYPE_NAME` will eventually be a
-        // `&'static CStr`. Until that lands, we pass the same buffer
-        // the builder validated. Bridge stub no-ops under test.
-        //
-        // SAFETY: the bridge does not capture the pointer beyond the
-        // call; we hold the registry mutex throughout.
-        unsafe {
-            nros_rmw_cyclonedds_register_descriptor(
-                // The codegen contract for K.7.6 is that TYPE_NAME is
-                // NUL-terminated. For the test fixtures here it
-                // already is (see dynamic_type.rs tests). Pass the
-                // start of the byte slice — the bridge reads to NUL.
-                M::TYPE_NAME.as_ptr() as *const core::ffi::c_char,
+        // SAFETY: the bridge does not capture the pointers beyond the call
+        // (the C++ table stores `type_name`, which is `'static`); we hold the
+        // registry mutex throughout. `type_name` is NUL-terminated per the
+        // codegen contract (K.7.6).
+        let rc = unsafe {
+            nros_rmw_cyclonedds_try_register_descriptor(
+                type_name.as_ptr() as *const core::ffi::c_char,
                 ptr,
-            );
+            )
+        };
+        if rc != TRY_REGISTER_OK {
+            self.table.remove(type_name);
+            // SAFETY: `ptr` came from the builder this call and nothing else
+            // has seen it (no topic was created with it, the C++ table
+            // refused it, and the cache entry is gone).
+            unsafe { nros_cyclonedds_free_built_descriptor(ptr) };
+            return Err(BuildError::DescriptorTableFull);
         }
         Ok(ptr)
     }
@@ -169,19 +191,7 @@ impl TypeRegistry {
             return Ok(ptr);
         }
         let ptr = DescriptorBuilder::build_raw(type_name, fields)?;
-        self.table
-            .insert(type_name, DescriptorSlot(ptr))
-            .map_err(|_| BuildError::RegistryFull)?;
-        // SAFETY: the bridge does not capture the pointer beyond the
-        // call; we hold the registry mutex throughout. `type_name` is
-        // NUL-terminated per the codegen contract.
-        unsafe {
-            nros_rmw_cyclonedds_register_descriptor(
-                type_name.as_ptr() as *const core::ffi::c_char,
-                ptr,
-            );
-        }
-        Ok(ptr)
+        self.insert_and_mirror(type_name, ptr)
     }
 
     /// Diagnostic — number of cached types. Useful for tests.
@@ -342,6 +352,48 @@ mod tests {
         // get_or_build → RegistryFull.
         let err = r.get_or_build::<A>().expect_err("must overflow");
         assert_eq!(err, BuildError::RegistryFull);
+    }
+
+    struct Full;
+    impl Message for Full {
+        const TYPE_NAME: &'static str = "table_full_msgs/msg/Full\0";
+        const FIELDS: &'static [Field] = &[Field {
+            name: "x\0",
+            ty: FieldType::Int32,
+            offset: 0,
+        }];
+    }
+
+    /// Issue 2704 -- a type the C++ descriptor table has no room for is
+    /// REFUSED at registration, and the cache does not keep it (a cached
+    /// type the backend cannot look up would succeed here and fail the
+    /// topic create later, the drop this replaces).
+    #[test]
+    fn descriptor_table_full_refuses_and_caches_nothing() {
+        let mut r = TypeRegistry::new();
+        let freed = crate::bridge::test_stub::FREE_COUNTER.load(Ordering::SeqCst);
+        assert_eq!(
+            r.get_or_build::<Full>(),
+            Err(BuildError::DescriptorTableFull)
+        );
+        assert!(
+            crate::bridge::test_stub::FREE_COUNTER.load(Ordering::SeqCst) > freed,
+            "the refused descriptor is freed, not leaked on every retry"
+        );
+        assert!(
+            r.get(Full::TYPE_NAME).is_none(),
+            "the refused type is not cached"
+        );
+        assert!(r.is_empty());
+        // The raw seam path refuses the same way, and stays retryable.
+        assert_eq!(
+            r.get_or_build_raw(Full::TYPE_NAME, Full::FIELDS),
+            Err(BuildError::DescriptorTableFull)
+        );
+        assert!(r.is_empty());
+        // A type that fits is unaffected.
+        r.get_or_build::<A>().expect("a type that fits registers");
+        assert_eq!(r.len(), 1);
     }
 
     // 32 distinct &'static strs — one per slot at default MAX_TYPES.

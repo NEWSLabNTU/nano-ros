@@ -111,6 +111,40 @@ int main() {
               "a dropped registration is genuinely absent");
     }
 
+    // Issue 2704 -- the RUN-TIME registration refuses what the table cannot
+    // hold instead of dropping it. Fill the table to the cap first (the loop
+    // above stops at kAttempted, which may be under a derived cap), then a
+    // new name must come back kTryRegisterFull and leave the table, and the
+    // drop count, as they were.
+    {
+        static char extra[4096][32];
+        const size_t cap = max_registered_descriptors();
+        size_t i = 0;
+        while (registered_descriptor_count() < cap && i < 4096) {
+            snprintf(extra[i], sizeof(extra[i]), "pkg::msg::dds_::X%zu_", i);
+            check(try_register_descriptor(extra[i], &g_desc) == kTryRegisterOk,
+                  "a run-time registration under the cap is held");
+            ++i;
+        }
+        if (registered_descriptor_count() == cap) {
+            const size_t dropped_before = dropped_descriptor_count();
+            check(try_register_descriptor("pkg::msg::dds_::Late_", &g_desc) == kTryRegisterFull,
+                  "a run-time registration over the cap is REFUSED");
+            check(registered_descriptor_count() == cap, "the refused registration took no slot");
+            check(dropped_descriptor_count() == dropped_before,
+                  "a refusal is reported to the caller, not counted as a silent drop");
+            check(find_descriptor("pkg::msg::dds_::Late_") == nullptr,
+                  "the refused type is absent");
+            // A name already held still succeeds at the cap: idempotent.
+            check(try_register_descriptor(g_names[0], &g_desc) == kTryRegisterOk,
+                  "re-registering a held name at the cap succeeds");
+        } else {
+            check(false, "could not fill the table to its cap for the refusal case");
+        }
+        check(try_register_descriptor(nullptr, &g_desc) == kTryRegisterInvalid,
+              "a NULL name is refused as invalid");
+    }
+
     if (failures != 0) {
         fprintf(stderr, "descriptor_table_capacity: %d failure(s)\n", failures);
         return 1;
