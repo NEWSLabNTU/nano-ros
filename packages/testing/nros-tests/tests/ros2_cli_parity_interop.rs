@@ -287,91 +287,73 @@ fn use_sim_time_compared_with_stock() {
     });
 }
 
-/// Expected-failure, issue 2484: `GetParameters` for an undeclared name. Stock
-/// replies with no entry and `ros2 param get` exits 1; nano-ros replies with
-/// a filler entry of type 0 and the CLI exits 0.
+/// Matches stock: `GetParameters` naming an undeclared parameter is answered
+/// with no value at all, and `ros2 param get` of that name exits 1.
+///
+/// Issue 2484 (resolved): nano-ros answered with a filler value of type 0, so
+/// the CLI read the name as present and exited 0.
 #[test]
-fn get_parameters_reply_for_an_undeclared_name_compared_with_stock() {
+fn get_parameters_reply_for_an_undeclared_name_answers_as_stock_does() {
     let pair = param_pair();
     params_discovered(&pair);
 
-    let c = pair.ask_until(
+    pair.ask_until(
         "service call {node}/get_parameters rcl_interfaces/srv/GetParameters '{names: [nope]}'",
         SETTLE,
         |a| has_line(a, "GetParameters_Response("),
-    );
-    hold_gap(&c, "the GetParameters reply for an undeclared name", |c| {
-        c.stock_text.contains("GetParameters_Response(values=[])")
-            && c.nano_text
-                .contains("GetParameters_Response(values=[rcl_interfaces.msg.ParameterValue(type=0")
-    });
+    )
+    .filtered(|l| l.contains("GetParameters_Response("))
+    .assert_same("the GetParameters reply for an undeclared name");
 
-    let c = pair.ask("param get {node} nope");
-    hold_gap(
-        &c,
-        "the exit status of `ros2 param get` for an undeclared name",
-        |c| c.stock.exit_code == Some(1) && c.nano.exit_code == Some(0),
-    );
+    pair.ask("param get {node} nope")
+        .assert_same("`ros2 param get` of an undeclared name, its output and exit status");
 }
 
-/// Expected-failure, issue 2484: `DescribeParameters` for an undeclared name.
-/// Stock replies with no descriptor and `ros2 param describe` prints nothing;
-/// nano-ros replies with a filler descriptor the CLI prints as `Type: not
-/// set`.
+/// Matches stock: `DescribeParameters` naming an undeclared parameter is
+/// answered with no descriptor, and `ros2 param describe` prints nothing.
+///
+/// Issue 2484 (resolved): nano-ros answered with a filler descriptor the CLI
+/// printed as `Type: not set`.
 #[test]
-fn describe_parameters_reply_for_an_undeclared_name_compared_with_stock() {
+fn describe_parameters_reply_for_an_undeclared_name_answers_as_stock_does() {
     let pair = param_pair();
     params_discovered(&pair);
 
-    let c = pair.ask_until(
+    pair.ask_until(
         "service call {node}/describe_parameters rcl_interfaces/srv/DescribeParameters \
          '{names: [nope]}'",
         SETTLE,
         |a| has_line(a, "DescribeParameters_Response("),
-    );
-    hold_gap(
-        &c,
-        "the DescribeParameters reply for an undeclared name",
-        |c| {
-            c.stock_text
-                .contains("DescribeParameters_Response(descriptors=[])")
-                && c.nano_text.contains(
-                    "DescribeParameters_Response(descriptors=[rcl_interfaces.msg.\
-                 ParameterDescriptor(name='nope', type=0",
-                )
-        },
-    );
+    )
+    .filtered(|l| l.contains("DescribeParameters_Response("))
+    .assert_same("the DescribeParameters reply for an undeclared name");
 
-    let c = pair.ask_until("param describe {node} nope", SETTLE, |_| true);
-    hold_gap(&c, "`ros2 param describe` of an undeclared name", |c| {
-        c.stock_text.is_empty() && c.nano_text.contains("Parameter name: nope")
-    });
+    pair.ask_until("param describe {node} nope", SETTLE, |_| true)
+        .assert_same("`ros2 param describe` of an undeclared name");
 }
 
-/// Expected-failure, issue 2484: deleting a statically typed parameter is
-/// refused by both, with different reasons.
+/// Matches stock: deleting a statically typed parameter is refused, with the
+/// stock peer's (rclpy's) reason.
+///
+/// Issue 2484 (resolved): nano-ros refused it as `Type mismatch`.
 #[test]
-fn delete_refusal_reason_compared_with_stock() {
+fn delete_of_a_statically_typed_parameter_is_refused_as_stock_does() {
     let pair = param_pair();
     params_discovered(&pair);
-    let c = pair.ask("param delete {node} rate");
-    hold_gap(&c, "the reason a parameter delete is refused", |c| {
-        c.nano_text.trim() == "Deleting parameter failed: Type mismatch"
-            && c.stock_text.starts_with("Deleting parameter failed: ")
-    });
+    pair.ask("param delete {node} rate")
+        .assert_same("the refusal of a delete of a statically typed parameter");
 }
 
-/// Expected-failure, issue 2484: a set off the declared step is refused by
-/// both; nano-ros reports it as out of range, stock as not a valid step.
+/// Matches stock: a set off the declared step is refused, with the stock
+/// peer's (rclpy's) reason naming the step.
+///
+/// Issue 2484 (resolved): nano-ros refused it as `Value out of range`.
 #[test]
-fn off_step_refusal_reason_compared_with_stock() {
+fn off_step_set_is_refused_as_stock_does() {
     let pair = param_pair();
     params_discovered(&pair);
-    let c = pair.ask("param set {node} stepped 7");
-    hold_gap(&c, "the reason an off-step parameter set is refused", |c| {
-        c.nano_text.trim() == "Setting parameter failed: Value out of range"
-            && c.stock_text.contains("is not a valid step")
-    });
+    pair.ask("param set {node} stepped 7")
+        .assert_same("the refusal of a set off the declared step");
 }
 
 // ── the service, action and pubsub pairs ────────────────────────────────────
