@@ -410,6 +410,45 @@ pub fn launch_resolver_bin_for_exe(exe: &Path, near: Option<&Path>) -> Option<Pa
     launch_resolver_from(&ladder_for_exe(exe, near))
 }
 
+// Issue 2711; the refusal it joins is issue 0409's pin check.
+/// Why [`launch_resolver_bin_for_exe`] answered `found` when a lower rung
+/// than this checkout's own build did: `Some(text)` naming the empty
+/// checkout rung, the rung that answered, and the one command that fills it.
+/// `None` when `found` IS this checkout's build, or there is no checkout. A
+/// refusal of `found` for a different play_launch pin appends it, so a fresh
+/// worktree that built only its CLI is told its own resolver is missing, not
+/// that some other binary is out of date.
+pub fn launch_resolver_fallthrough_note(
+    exe: &Path,
+    near: Option<&Path>,
+    found: &Path,
+) -> Option<String> {
+    fallthrough_note(&launch_resolver_rungs(&ladder_for_exe(exe, near)), found)
+}
+
+fn fallthrough_note(rungs: &[(&'static str, Option<PathBuf>)], found: &Path) -> Option<String> {
+    let own = rungs
+        .iter()
+        .find(|(name, _)| *name == "this checkout's build")
+        .and_then(|(_, p)| p.clone())?;
+    if own == found || own.is_file() {
+        return None;
+    }
+    let answered = rungs
+        .iter()
+        .find(|(_, p)| p.as_deref() == Some(found))
+        .map_or("a lower rung", |(name, _)| *name);
+    Some(format!(
+        "This checkout has no `{LAUNCH_RESOLVER}` of its own ({} does not exist), \
+         so the lookup fell through to {} ({answered}), which another install or \
+         checkout built. In this checkout, run:\n\n    ./scripts/bootstrap.sh      \
+         (contributors: just setup-launch-resolve; `just setup-cli` builds the CLI only, \
+         `just setup-worktree` builds both)",
+        own.display(),
+        found.display(),
+    ))
+}
+
 /// [`launch_resolver_missing_help`] over the ladder
 /// [`launch_resolver_bin_for_exe`] asked, so the refusal names the rungs that
 /// lookup actually tried.
@@ -850,6 +889,42 @@ fn is_fresh(path: &Path, inputs: &[PathBuf]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2711 -- a ladder that fell past an empty checkout rung says so,
+    /// names the rung that answered, and names the command; one that found
+    /// this checkout's own build says nothing.
+    #[test]
+    fn a_fallthrough_past_the_checkout_rung_is_named() {
+        let own = launch_resolver_in_checkout(Path::new("/no/such/checkout"));
+        let store = PathBuf::from("/store/bin").join(LAUNCH_RESOLVER);
+        let rungs = vec![
+            ("$NROS_LAUNCH_RESOLVE", None),
+            ("this checkout's build", Some(own.clone())),
+            (
+                "beside this nros (installed)",
+                Some(PathBuf::from("/x").join(LAUNCH_RESOLVER)),
+            ),
+            ("the store", Some(store.clone())),
+        ];
+        let note = fallthrough_note(&rungs, &store).expect("fell through");
+        assert!(note.contains(&own.display().to_string()), "{note}");
+        assert!(note.contains("(the store)"), "{note}");
+        assert!(note.contains("setup-launch-resolve"), "{note}");
+        assert_eq!(
+            fallthrough_note(&rungs, &own),
+            None,
+            "found the checkout's own"
+        );
+        let no_checkout = vec![
+            ("this checkout's build", None),
+            ("the store", Some(store.clone())),
+        ];
+        assert_eq!(
+            fallthrough_note(&no_checkout, &store),
+            None,
+            "no checkout, no note"
+        );
+    }
 
     // Env is process-global, so these run under one lock and restore what they
     // set — a leaked NROS_MODEL_DIR would silently reorder every later test.
