@@ -28,19 +28,19 @@ pub struct TopicInfo<'a> {
     /// Node namespace for liveliness token generation (default: "/").
     /// In ROS 2, "/" is the root namespace and the standard default.
     pub namespace: &'a str,
-    /// Phase 231 (RFC-0038) — receive-buffer size hint, bytes. The executor sets
+    /// Receive-buffer size hint, bytes. The executor sets
     /// this from the subscription's `RX_BUF`; a backend may use it to route the
     /// subscription to a size-class receive buffer (zenoh-pico: small vs large).
     /// `0` = unset (backend picks its default). Ignored by backends that don't
     /// size-class their receive storage.
     pub rx_buffer_hint: usize,
-    /// phase-519 W3 (RFC-0074) — the rate this subscription DECLARED it can
+    /// The rate this subscription DECLARED it can
     /// take (`arrival_curve.rate_hz`), in millihertz. `0` = undeclared. Carried to
     /// the backend in `rmw_subscription_options_t::arrival_rate_mhz`; the XRCE
     /// backend turns it into the agent's `max_bytes_per_second`, zenoh ignores
     /// it (its enforcement point 1 is the router rule). Ignored by publishers.
     pub arrival_rate_mhz: u32,
-    /// phase-279 (#145) — publisher-side "express" hint: this topic's samples
+    /// Publisher-side "express" hint: this topic's samples
     /// bypass transport tx batching (zenoh: the wire EXPRESS flag; a batching
     /// zenoh-pico session sends them immediately instead of queueing them for
     /// the next flush). For control-tier / latency-sensitive topics. Ignored by
@@ -70,7 +70,7 @@ impl<'a> TopicInfo<'a> {
         self
     }
 
-    /// Phase 231 (RFC-0038) — set the receive-buffer size hint (bytes) used by
+    /// Set the receive-buffer size hint (bytes) used by
     /// size-classing backends (zenoh-pico) to route the subscription's receive
     /// buffer to the small or large class.
     pub const fn with_rx_buffer_hint(mut self, hint: usize) -> Self {
@@ -78,14 +78,14 @@ impl<'a> TopicInfo<'a> {
         self
     }
 
-    /// phase-519 W3 (RFC-0074) — set the declared arrival rate, millihertz
+    /// Set the declared arrival rate, millihertz
     /// (`rate_hz x 1000`). `0` leaves it undeclared.
     pub const fn with_arrival_rate_mhz(mut self, rate_mhz: u32) -> Self {
         self.arrival_rate_mhz = rate_mhz;
         self
     }
 
-    /// phase-279 (#145) — mark this publisher's samples express: they bypass
+    /// Mark this publisher's samples express: they bypass
     /// transport tx batching (sent immediately even when `ZPICO_TX_BATCH` is
     /// on). For control-tier / latency-sensitive topics.
     pub const fn with_tx_express(mut self, express: bool) -> Self {
@@ -125,7 +125,7 @@ pub struct ServiceInfo<'a> {
     pub namespace: &'a str,
 }
 
-/// Issue 1913 — the REP-2011 hash each of an action's five endpoints is keyed
+/// The REP-2011 hash each of an action's five endpoints is keyed
 /// on. An Iron+ `rmw_zenoh_cpp` peer keys every endpoint on its OWN type: the
 /// `<Action>_SendGoal` / `<Action>_GetResult` services, the standard
 /// `action_msgs/srv/CancelGoal`, `<Action>_FeedbackMessage`, and the standard
@@ -463,7 +463,7 @@ impl core::fmt::Display for TransportError {
 impl TransportError {
     /// The QoS policy this error names, or `None`.
     ///
-    /// phase-417 G7 — the one accessor the three surfaces share. `Some` only
+    /// The one accessor the three surfaces share. `Some` only
     /// for [`Self::IncompatibleQos`] carrying exactly one
     /// [`QoSPolicyMask`] bit; `None` for every other error, and for a
     /// refusal that crossed a boundary with no room for the mask.
@@ -624,20 +624,19 @@ impl QoSLivelinessPolicy {
     /// assertion — [`ManualByNode`](Self::ManualByNode) and
     /// [`ManualByTopic`](Self::ManualByTopic).
     ///
-    /// The ONE spelling of that test (the phase-467 RMW gap-closure design
-    /// study's Row 7). It decides what [`Publisher::assert_liveliness`] owes:
-    /// under a manual kind the caller asked for something a backend either
-    /// performs or cannot, so a backend that cannot must answer
-    /// `Unsupported`; under `Automatic` / `None` there is nothing to assert
-    /// and `Ok(())` is the whole truth. `Unknown` is an absence, never a
-    /// request, so it is not manual.
+    /// The ONE spelling of that test. It decides what
+    /// [`Publisher::assert_liveliness`] owes: under a manual kind the caller
+    /// asked for something a backend either performs or cannot, so a backend
+    /// that cannot must answer `Unsupported`; under `Automatic` / `None` there
+    /// is nothing to assert and `Ok(())` is the whole truth. `Unknown` is an
+    /// absence, never a request, so it is not manual.
     #[must_use]
     pub const fn is_manual(self) -> bool {
         matches!(self, Self::ManualByNode | Self::ManualByTopic)
     }
 }
 
-/// Phase 211.H — which side of a topic a [`QoSOverride`] targets.
+/// Which side of a topic a [`QoSOverride`] targets.
 /// Mirrors the `<role>` segment of a ROS 2
 /// `qos_overrides.<topic>.<role>.<policy>` launch parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -648,7 +647,7 @@ pub enum QoSOverrideRole {
     Subscription,
 }
 
-/// Phase 211.H — a single policy value a [`QoSOverride`] sets. A typed enum
+/// A single policy value a [`QoSOverride`] sets. A typed enum
 /// (not a string) so the codegen that bakes these from the plan catches an
 /// unknown policy / mistyped value at generation time rather than silently
 /// no-op-ing at runtime.
@@ -674,7 +673,7 @@ pub enum QoSOverrideValue {
     LivelinessLease(u32),
 }
 
-/// Issue 0303 — the wire form a baked QoS override travels in:
+/// The wire form a baked QoS override travels in:
 /// `(topic, role, policy, value)`, all primitives.
 ///
 /// One numbering for every language: `rclc_qos_override_t` (C),
@@ -707,20 +706,20 @@ pub mod qos_override_policy {
     pub const HISTORY: u8 = 2;
     /// value = the KeepLast depth.
     pub const DEPTH: u8 = 3;
-    /// value = milliseconds (issue 0303).
+    /// value = milliseconds.
     pub const DEADLINE: u8 = 4;
-    /// value = milliseconds (issue 0303).
+    /// value = milliseconds.
     pub const LIFESPAN: u8 = 5;
-    /// value = [`super::QoSLivelinessPolicy`] discriminant (issue 0303).
+    /// value = [`super::QoSLivelinessPolicy`] discriminant.
     pub const LIVELINESS: u8 = 6;
-    /// value = milliseconds (issue 0303).
+    /// value = milliseconds.
     pub const LIVELINESS_LEASE: u8 = 7;
 }
 
 /// Decode one [`QoSOverrideCode`] into a typed [`QoSOverride`].
 ///
-/// `None` for an unrecognised role or policy code. THE one decoder: before
-/// issue 0303 this match existed four times (nros-node, nros-c, nros-cpp, and
+/// `None` for an unrecognised role or policy code. THE one decoder: this
+/// match once existed four times (nros-node, nros-c, nros-cpp, and
 /// the executor's node record), each with a silent catch-all, so adding a
 /// policy meant finding all four — and the two FFI copies had already been
 /// forgotten once.
@@ -797,7 +796,7 @@ pub fn decode_qos_override_value(policy: u8, value: u32) -> Option<QoSOverrideVa
     Some(out)
 }
 
-/// Phase 211.H — one per-topic QoS override, lowered from a ROS 2
+/// One per-topic QoS override, lowered from a ROS 2
 /// `qos_overrides.<topic>.<role>.<policy>` launch parameter by the planner and
 /// baked into a `&'static [QoSOverride]` table by the entry codegen. The node
 /// folds the matching entries into the entity's [`QoSProfile`] at
@@ -816,7 +815,7 @@ pub struct QoSOverride {
     pub value: QoSOverrideValue,
 }
 
-/// Phase-301 (issue 0241) — explicit "infinite" spelling for the u32
+/// Explicit "infinite" spelling for the u32
 /// millisecond QoS duration fields (`deadline_ms`, `lifespan_ms`,
 /// `liveliness_lease_ms`). Semantically identical to `0` (unset /
 /// no-check) at every check site; exists so a caller can distinguish
@@ -824,7 +823,7 @@ pub struct QoSOverride {
 /// `NROS_RMW_DURATION_INFINITE_MS`.
 pub const DURATION_INFINITE_MS: u32 = u32::MAX;
 
-/// Issue 1973 — the "best available" spelling for `deadline_ms` and
+/// The "best available" spelling for `deadline_ms` and
 /// `liveliness_lease_ms`: resolve at creation against the discovered graph.
 ///
 /// Upstream spells it `RMW_QOS_DEADLINE_BEST_AVAILABLE` /
@@ -837,7 +836,7 @@ pub const DURATION_INFINITE_MS: u32 = u32::MAX;
 /// as upstream defines no best-available lifespan.
 pub const DURATION_BEST_AVAILABLE_MS: u32 = DURATION_INFINITE_MS - 1;
 
-/// Phase-301 (issue 0241) — lower a [`core::time::Duration`] into a u32
+/// Lower a [`core::time::Duration`] into a u32
 /// millisecond QoS field. Boundary contract:
 ///
 /// - zero stays `0` (unset / no-check);
@@ -846,7 +845,7 @@ pub const DURATION_BEST_AVAILABLE_MS: u32 = DURATION_INFINITE_MS - 1;
 /// - values at or past [`DURATION_INFINITE_MS`] ms are a create-time
 ///   error, never a clamp (infinite is requested via the sentinel or
 ///   `0`, not by a huge finite duration). The bound starts one below, at
-///   [`DURATION_BEST_AVAILABLE_MS`] (issue 1973), so no finite duration can
+///   [`DURATION_BEST_AVAILABLE_MS`], so no finite duration can
 ///   collide with that sentinel either.
 pub fn duration_to_qos_ms(d: core::time::Duration) -> Result<u32, TransportError> {
     if d.is_zero() {
@@ -895,7 +894,7 @@ pub struct QoSProfile {
     pub liveliness_lease_ms: u32,
     /// If `true`, topic-name encoding skips the `/rt/` ROS prefix.
     pub avoid_ros_namespace_conventions: bool,
-    /// Phase 282 (#145) — publisher-side "express" hint: this publisher's
+    /// Publisher-side "express" hint: this publisher's
     /// samples bypass transport tx batching (zenoh: the wire EXPRESS flag; a
     /// batching zenoh-pico session sends them immediately instead of queueing
     /// them for the next flush). A transport hint, not a DDS policy — no RxO
@@ -912,7 +911,7 @@ impl Default for QoSProfile {
 
 /// The depth sentinel — "the caller did not state a queue depth".
 ///
-/// issue 0829. Upstream spells it `RMW_QOS_POLICY_DEPTH_SYSTEM_DEFAULT = 0`
+/// Upstream spells it `RMW_QOS_POLICY_DEPTH_SYSTEM_DEFAULT = 0`
 /// (`rmw/include/rmw/types.h`); depth is `size_t` there and `uint16_t` in our
 /// C ABI, but 0 is 0 in both. The value was already free on every backend:
 /// Cyclone REJECTS `KEEP_LAST` with depth 0 outright
@@ -926,7 +925,7 @@ pub const DEPTH_SYSTEM_DEFAULT: u32 = 0;
 
 /// What ONE backend resolves the `SYSTEM_DEFAULT` sentinel to.
 ///
-/// issue 0829. `rmw_qos_profile_system_default` is an absence, and the RMW
+/// `rmw_qos_profile_system_default` is an absence, and the RMW
 /// fills it — which means the answer is per backend and there is no constant
 /// this crate could bake. Each backend declares its own `QoSSystemDefaults`
 /// and applies it with [`QoSProfile::resolve_system_default`] at its create
@@ -960,7 +959,7 @@ pub struct QoSSystemDefaults {
 }
 
 impl QoSProfile {
-    /// Phase 211.H — fold the plan's `qos_overrides` matching `topic` + `role`
+    /// Fold the plan's `qos_overrides` matching `topic` + `role`
     /// into this profile, returning the overridden profile. Setup-time only
     /// (called from `create_publisher`/`create_subscription`): a single linear
     /// scan over the baked `&'static` table, no alloc, RT-safe. Later entries
@@ -982,7 +981,7 @@ impl QoSProfile {
         self
     }
 
-    /// Issue 0303 — apply ONE decoded override value. The single place a
+    /// Apply ONE decoded override value. The single place a
     /// policy maps to the field it sets; `apply_overrides` and the FFI folds
     /// both go through it, so a new policy cannot reach some paths only.
     pub fn apply_override_value(&mut self, value: QoSOverrideValue) {
@@ -998,7 +997,7 @@ impl QoSProfile {
         }
     }
 
-    /// Issue 0303 — fold baked [`QoSOverrideCode`]s for one `(topic, role)`.
+    /// Fold baked [`QoSOverrideCode`]s for one `(topic, role)`.
     /// Unrecognised codes are skipped; the producers reject them at BAKE time
     /// (`nros_orchestration_ir::qos_override`), so a code reaching here that
     /// this build does not know is an older image running newer data, not a
@@ -1484,7 +1483,7 @@ impl QoSProfile {
     /// The depth is the point — 1000 against the generic services profile's
     /// 10 — and it is what a tool setting many parameters at once depends on.
     ///
-    /// **RENAMED in phase-417 G6, and the old spelling is GONE.** It was
+    /// **RENAMED, and the old spelling is GONE.** It was
     /// ~~`parameters_default`~~, an ours-only word for a name rclrs has; the
     /// ledger carried the pair as `rust:QoSProfile::parameters_default`
     /// (`rename` — ours is the one that should change) and
@@ -1493,7 +1492,7 @@ impl QoSProfile {
     /// preset (`QOS_PROFILE_PARAMETERS` and `QosPresets::PARAMETERS` are the
     /// other two) and would have left the `rename` row open for good. No
     /// deprecated forwarder: a stale call should fail on the IDENTIFIER rather
-    /// than on a deprecation, which is stage 6 step B's rule and what the
+    /// than on a deprecation, which is the rename rule and what the
     /// sibling `parameter_events_default` — already at rclrs's spelling —
     /// makes the pair consistent with.
     pub const fn parameter_services_default() -> Self {
@@ -1521,8 +1520,7 @@ impl QoSProfile {
     }
 
     /// rclrs's `QoSProfile::best_available()` — `rmw_qos_profile_best_available`
-    /// ([`QOS_PROFILE_BEST_AVAILABLE`](Self::QOS_PROFILE_BEST_AVAILABLE)),
-    /// issue 1973.
+    /// ([`QOS_PROFILE_BEST_AVAILABLE`](Self::QOS_PROFILE_BEST_AVAILABLE)).
     ///
     /// Reliability, durability, liveliness, deadline and liveliness lease are
     /// chosen when the entity is created, from the endpoints the backend has
@@ -1597,7 +1595,7 @@ impl QoSProfile {
         self
     }
 
-    /// rclrs's `QoSProfile::deadline_duration(deadline)` (phase-515 R8).
+    /// rclrs's `QoSProfile::deadline_duration(deadline)`.
     ///
     /// ADOPT-BOUNDED: stored as whole MILLISECONDS in [`Self::deadline_ms`]
     /// (the repr(C) QoS record the C and C++ surfaces share), saturating at
@@ -1608,22 +1606,22 @@ impl QoSProfile {
         self
     }
 
-    /// rclrs's `QoSProfile::lifespan_duration(lifespan)` (phase-515 R8),
+    /// rclrs's `QoSProfile::lifespan_duration(lifespan)`,
     /// stored in [`Self::lifespan_ms`] as `deadline_duration` stores its value.
     pub const fn lifespan_duration(mut self, lifespan: core::time::Duration) -> Self {
         self.lifespan_ms = qos_duration_ms(lifespan);
         self
     }
 
-    /// rclrs's `QoSProfile::liveliness_lease_duration(lease_duration)`
-    /// (phase-515 R8), stored in [`Self::liveliness_lease_ms`] as
-    /// `deadline_duration` stores its value.
+    /// rclrs's `QoSProfile::liveliness_lease_duration(lease_duration)`,
+    /// stored in [`Self::liveliness_lease_ms`] as `deadline_duration` stores
+    /// its value.
     pub const fn liveliness_lease_duration(mut self, lease_duration: core::time::Duration) -> Self {
         self.liveliness_lease_ms = qos_duration_ms(lease_duration);
         self
     }
 
-    /// Phase 282 (#145) — mark this publisher's samples "express": they
+    /// Mark this publisher's samples "express": they
     /// bypass transport tx batching (sent immediately even when the batching
     /// knob is on). A transport hint for control-sched-task / latency-sensitive
     /// topics; ignored on subscriptions and by backends without batching.
@@ -1661,8 +1659,8 @@ pub struct TransportConfig<'a> {
     pub properties: &'a [(&'a str, &'a str)],
     /// Node name for ROS 2 graph discovery liveliness token.
     ///
-    /// Empty string (`""`) means no node-liveliness token is declared (preserves
-    /// the pre-#104 behaviour). Non-empty causes the session to declare a
+    /// Empty string (`""`) means no node-liveliness token is declared.
+    /// Non-empty causes the session to declare a
     /// `@ros2_lv/<domain>/<zid>/0/0/NN/%/<ns>/<node>` token on open.
     pub node_name: &'a str,
     /// Node namespace for the liveliness token (e.g., `""` or `"/ns1"`).
@@ -1826,7 +1824,7 @@ pub fn validate_locator(locator: &str) -> Result<(), &'static str> {
     }
 }
 
-/// phase-521 W3 (RFC-0113 D4) — how a session reports that data arrived.
+/// How a session reports that data arrived.
 ///
 /// The executor's park ends for exactly two reasons: the sched task's next deadline,
 /// or readiness. This is the readiness half, in one of two forms, and the
@@ -2481,7 +2479,7 @@ pub trait Session {
     }
 }
 
-/// Which entity kind a `*_by_node` graph query keeps — phase-381 W3.
+/// Which entity kind a `*_by_node` graph query keeps.
 ///
 /// Named for upstream rmw's four `*_by_node` slots. `Subscriber` carries rmw's
 /// word, not rclcpp's `subscription`; the user-facing spelling is chosen per
@@ -2494,7 +2492,7 @@ pub enum GraphEntityKind {
     Client,
 }
 
-/// One discovered endpoint on a topic — phase-381 W3, the Rust view of
+/// One discovered endpoint on a topic — the Rust view of
 /// `rmw_topic_endpoint_info_t`.
 ///
 /// Every string BORROWS from the backend's own state for the duration of the
@@ -2560,13 +2558,13 @@ impl QoSPolicyMask {
     pub const AVOID_ROS_NAMESPACE_CONVENTIONS: Self = Self(1 << 11);
 
     /// Honours nothing. The default answer for an implementation that has not
-    /// said otherwise — phase-428 W9, see [`Session::supported_qos_policies`].
+    /// said otherwise — see [`Session::supported_qos_policies`].
     pub const NONE: Self = Self(0);
 
     /// The four policies every `QoSProfile` states a value for.
     ///
     /// NOT "policies every nano-ros backend implements", which is what this
-    /// said until phase-428 W9 measured it: the zenoh shim honoured exactly
+    /// once said, until it was measured: the zenoh shim honoured exactly
     /// none of the four, serialising all four into a discovery keyexpr and
     /// enforcing a build-time ring depth. The name describes the SHAPE of a
     /// profile — a caller who states nothing else still states these — and a
@@ -2575,7 +2573,7 @@ impl QoSPolicyMask {
         Self(Self::RELIABILITY.0 | Self::DURABILITY_VOLATILE.0 | Self::HISTORY.0 | Self::DEPTH.0);
 
     /// Every policy bit paired with the name it PRINTS — the vocabulary the
-    /// three languages name a refused policy in (phase-417 G7, ledger row
+    /// three languages name a refused policy in (ledger row
     /// `cpp:qos_policy_kind_to_cstr`).
     ///
     /// The name of a bit is the CONSTANT'S OWN IDENTIFIER, never an
@@ -2720,7 +2718,7 @@ impl QoSProfile {
     /// Zero-valued time fields and `QoSLivelinessPolicy::None` count as "not
     /// requesting" the corresponding policy — the cheap default.
     ///
-    /// issue 0829 — the four `CORE` bits (reliability, durability, history,
+    /// The four `CORE` bits (reliability, durability, history,
     /// depth) used to be added UNCONDITIONALLY, on the reasoning that every
     /// nano-ros backend honours them. That is true and still not the right
     /// test: this function answers *what did the caller ASK FOR*, and a
@@ -2736,7 +2734,7 @@ impl QoSProfile {
     ///
     /// It used to say it flipped no verdict "because every
     /// `supported_qos_policies` impl in the tree returns at least `CORE`".
-    /// That stopped being true in phase-428 W9: the trait default is
+    /// That stopped being true: the trait default is
     /// [`QoSPolicyMask::NONE`] now, so an implementation that claims nothing
     /// is refused on the first CORE bit a caller states — which is the whole
     /// point, and which makes THIS function's sentinel handling the thing
@@ -2817,8 +2815,8 @@ impl QoSProfile {
     /// Used at entity-create time to enforce the **no silent
     /// degradation** contract.
     ///
-    /// **The error NAMES the policy** (phase-417 G7). This computed the
-    /// offending bit and discarded it until then, returning a bare
+    /// **The error NAMES the policy**. This once computed the
+    /// offending bit and discarded it, returning a bare
     /// `IncompatibleQos` — so every one of the six `create_*` paths in
     /// `nros-node` refused with the one fact the caller needed missing, while
     /// `rmw_vtable.h` told the reader the opposite. Which bit is reported when
@@ -2852,7 +2850,7 @@ impl QoSProfile {
 
     /// Replace every `SYSTEM_DEFAULT` field with the backend's own answer.
     ///
-    /// issue 0829 — a backend calls this at its create entry, **before**
+    /// A backend calls this at its create entry, **before**
     /// anything is derived from the profile (see [`QoSSystemDefaults`] for why
     /// the ordering matters on the zenoh path). Fields the caller DID state
     /// are left exactly as they are: this resolves an absence, it never
@@ -2882,7 +2880,7 @@ impl QoSProfile {
     /// Depth is deliberately NOT part of this test: a `KEEP_ALL` profile
     /// legitimately carries depth 0 forever (any profile a caller builds with
     /// [`QoSProfile::keep_all`] and never gave a depth to — no NAMED preset is
-    /// `KEEP_ALL` since phase-428 W10), and a backend that resolves the
+    /// `KEEP_ALL`), and a backend that resolves the
     /// sentinel depth to 0 — XRCE does, on purpose — leaves a resolved profile
     /// reading 0 here. This asks about the
     /// three POLICY fields, where the sentinel is a distinct variant and so
@@ -2907,8 +2905,8 @@ impl QoSProfile {
             || self.liveliness_lease_ms == DURATION_BEST_AVAILABLE_MS
     }
 
-    /// Replace every best-available field with a concrete value — issue 1973,
-    /// the ONE resolution rule every backend reaches.
+    /// Replace every best-available field with a concrete value — the ONE
+    /// resolution rule every backend reaches.
     ///
     /// The rule is upstream's, transcribed from `rmw_dds_common`'s
     /// `qos_profile_get_best_available_for_{subscription,publisher}` and
@@ -3088,7 +3086,7 @@ pub enum BestAvailableRole {
 }
 
 /// The discovered peers of one topic, folded down to what
-/// [`QoSProfile::resolve_best_available`] reads — issue 1973.
+/// [`QoSProfile::resolve_best_available`] reads.
 ///
 /// A fold rather than a list so a graph walk can feed it one endpoint at a
 /// time, with no allocator and no bound on how many endpoints there are.
@@ -3164,7 +3162,7 @@ impl BestAvailablePeers {
 }
 
 /// Resolve `qos`'s best-available fields against what `session` has
-/// discovered on `topic_name` — issue 1973. The graph half of
+/// discovered on `topic_name`. The graph half of
 /// [`QoSProfile::resolve_best_available`], shared by every create path.
 ///
 /// Queries [`Session::get_endpoint_info_by_topic`] for the OTHER side of the
@@ -3997,7 +3995,7 @@ pub trait SlotBorrowing: Subscription {
     fn try_borrow(&mut self) -> Result<Option<Self::View<'_>>, Self::Error>;
 }
 
-/// Issues 1612 / 1632 — the size a refused take needed, as a drop log prints
+/// The size a refused take needed, as a drop log prints
 /// it: the number, or `?` when unknown. No allocator.
 ///
 /// [`RefusedLen::for_error`] is the one rule for WHICH refusal may carry a
@@ -4375,7 +4373,7 @@ fn decode_reply<S: RosService>(bytes: &[u8]) -> Result<S::Reply, TransportError>
 /// 3. `take_response_raw(buf)` — non-blocking; returns
 ///    `Ok(Some(len))` when the reply is back.
 ///
-/// Phase-301 (issue 0240): the deprecated blocking `call_raw` path is
+/// The deprecated blocking `call_raw` path is
 /// DELETED — `send_request_raw` + `take_response_raw` is the one
 /// request/reply path, and both are required for service-capable
 /// backends.
@@ -4689,7 +4687,7 @@ pub trait Transport {
 /// from the middleware-agnostic [`RmwConfig`] to backend-specific
 /// initialization.
 ///
-/// Phase 84.E2: `open` consumes `self`. Backends carry their own
+/// `open` consumes `self`. Backends carry their own
 /// configuration (agent addresses, serial ports, TLS CA slots)
 /// inside the factory value and hand that over to the session at
 /// `open` time. In-tree, every backend sits behind the C vtable, so the one
@@ -5766,7 +5764,7 @@ mod granted_qos_tests {
 
 #[cfg(test)]
 mod best_available_tests {
-    //! issue 1973 — the ONE best-available rule, asserted against upstream's
+    //! The ONE best-available rule, asserted against upstream's
     //! `rmw_dds_common` behaviour case by case.
     use super::*;
 

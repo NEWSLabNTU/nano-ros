@@ -54,7 +54,7 @@ impl LifecycleState {
 
     /// Every reachable state, in `lifecycle_msgs` id order.
     ///
-    /// phase-417 W4.f. `nros_node::lifecycle_services` held this list
+    /// `nros_node::lifecycle_services` once held this list
     /// privately, so the wire could enumerate the states and no in-process
     /// caller in any of the three languages could. It is a CONSTANT, not
     /// state — the point of moving it here is that there is one of it.
@@ -98,7 +98,7 @@ impl LifecycleState {
 /// Each transition has a specific source state. Shutdown has three variants
 /// because it can originate from Unconfigured, Inactive, or Active.
 ///
-/// # The discriminants ARE `lifecycle_msgs/msg/Transition` (issue 1099)
+/// # The discriminants ARE `lifecycle_msgs/msg/Transition`
 ///
 /// These numbers are not ours to choose. They cross the C ABI as
 /// `RCLC_LIFECYCLE_TRANSITION_*`, they are what
@@ -107,7 +107,7 @@ impl LifecycleState {
 /// one of those surfaces with a literal must get the transition ROS 2 would
 /// give them.
 ///
-/// They did not, until issue 1099: `Activate`/`Deactivate`/`Cleanup` were
+/// They once did not: `Activate`/`Deactivate`/`Cleanup` were
 /// `2`/`3`/`4` where upstream is `3`/`4`/`2`, so a ported
 /// `trigger_transition(2)` on an Inactive node ACTIVATED it and returned OK
 /// where ROS 2 cleans it up. Four of eight ids disagreed, and only the wire
@@ -121,7 +121,7 @@ impl LifecycleState {
 /// and `8` is now rejected rather than silently meaning error recovery.
 ///
 /// Do not renumber these. `nros_c::lifecycle` re-asserts every one against its
-/// `RCLC_LIFECYCLE_TRANSITION_*` literal (issue 0792), and `nros-node`'s
+/// `RCLC_LIFECYCLE_TRANSITION_*` literal, and `nros-node`'s
 /// `transition_wire` / `from_msg_transition_id` are now identity functions that
 /// a test pins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -181,7 +181,7 @@ impl LifecycleTransition {
     /// `0` (`TRANSITION_CREATE`) and `8` (`TRANSITION_DESTROY`) are upstream
     /// ids we deliberately do not implement — construction and deallocation are
     /// not transitions in a fixed arena — so both are `None` rather than
-    /// aliases for something else (issue 1099).
+    /// aliases for something else.
     pub const fn from_u8(value: u8) -> Option<Self> {
         match value {
             1 => Some(Self::Configure),
@@ -212,7 +212,7 @@ impl LifecycleTransition {
 
     /// Every transition in the REP-2002 graph, in `lifecycle_msgs` id order.
     ///
-    /// phase-417 W4.f. The three shutdown variants are listed separately
+    /// The three shutdown variants are listed separately
     /// because their [`source_state`](Self::source_state) differs, which is
     /// also rclcpp's graph shape. `nros_node::lifecycle_services` served this
     /// table over `~/get_transition_graph` while holding it privately, so a

@@ -113,7 +113,7 @@ pub use nros_platform_api::*;
 #[used]
 pub static __FORCE_LINK_CFFI: extern "C" fn() = nros_platform_cffi::_nros_force_link_cffi;
 
-/// Issue 1732 — a termination signal ENDS a hosted image's spin, so the boot
+/// A termination signal ENDS a hosted image's spin, so the boot
 /// funnel can close the RMW session before the process exits.
 ///
 /// The one spelling for every hosted funnel: the Rust board
@@ -173,7 +173,7 @@ pub mod termination {
     }
 }
 
-/// The kernel's deadline reservation on the calling thread (issue 2018).
+/// The kernel's deadline reservation on the calling thread.
 ///
 /// The reservation is C, in the POSIX port
 /// (`nros_posix_apply_current_deadline` in `nros-platform-posix`), for the
@@ -182,8 +182,7 @@ pub mod termination {
 /// host sched tasks of ThreadX and FreeRTOS, target a Linux triple without the POSIX
 /// port. Their port defines no `nros_posix_*` symbol, so a reference made the
 /// linker take the POSIX `platform.o` from whichever archive carried one, and
-/// every other symbol in it then collided with the image's own port
-/// (issue 2032; issue 1776 had the same shape).
+/// every other symbol in it then collided with the image's own port.
 pub mod sched {
     use core::ffi::c_char;
 

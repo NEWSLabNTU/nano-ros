@@ -1,4 +1,4 @@
-//! phase-391 W3 — the Zephyr rlsf arena behind `nros_platform_alloc`.
+//! The Zephyr rlsf arena behind `nros_platform_alloc`.
 //!
 //! On Zephyr the allocation funnel is C
 //! (`nros-platform-zephyr/src/platform.c`): `z_malloc` and the compiler's
@@ -82,12 +82,12 @@ pub extern "C" fn nros_zephyr_heap_capacity() -> usize {
     HEAP.capacity()
 }
 
-/// phase-412 -- bytes this arena currently has handed out.
+/// Bytes this arena currently has handed out.
 ///
 /// `FreeListHeap` has tracked this all along; nothing exported it, so the
 /// platform's `nros_platform_heap_used_bytes()` answered from Zephyr's
 /// `_system_heap` instead -- the heap the application STOPPED allocating from
-/// when the funnel moved here (phase-391 W3). The figure that would size
+/// when the funnel moved here. The figure that would size
 /// `NROS_ZEPHYR_HEAP_SIZE` was measuring a different arena.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_zephyr_heap_used() -> usize {
@@ -104,7 +104,7 @@ pub extern "C" fn nros_zephyr_heap_peak() -> usize {
     HEAP.peak()
 }
 
-/// Issue 1370 — the SHAPE of the free memory, for the exhaustion report:
+/// The SHAPE of the free memory, for the exhaustion report:
 /// writes the largest contiguous free block and the total free payload of the
 /// main arena, both by walking rlsf's block list, and returns 1 when a refused
 /// request of `size` bytes is EXTERNAL FRAGMENTATION (the bytes are free, no

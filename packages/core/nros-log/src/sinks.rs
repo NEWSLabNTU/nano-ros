@@ -1,6 +1,6 @@
 //! Sinks the FACADE itself can offer.
 //!
-//! issue 0710 — `PlatformSink` used to live here, and with it a hand-declared
+//! `PlatformSink` used to live here, and with it a hand-declared
 //! `unsafe extern "C" { nros_platform_log_write }`. Both moved to
 //! `nros_platform_cffi::log`, for a reason worth stating where the old code
 //! was:
@@ -15,8 +15,8 @@
 //! binary; a feature is a property of the build.
 //!
 //! It also means the extern is declared exactly once, in
-//! `nros-platform-cffi`'s bindgen output from `<nros/platform.h>` — the SSoT
-//! RFC-0054 names — rather than a second time by hand over here.
+//! `nros-platform-cffi`'s bindgen output from `<nros/platform.h>` — the
+//! single source of truth — rather than a second time by hand over here.
 //!
 //! Callers want:
 //!

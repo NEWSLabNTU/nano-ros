@@ -1,20 +1,17 @@
-//! Phase 216.A.1 — `DispatchStrategy` enum.
+//! `DispatchStrategy` enum.
 //!
 //! Declares how a Node pkg expects its callbacks to fire. The board
-//! crate's `NodeDispatchRuntime::dispatch_strategy()` (Phase 216.A.2,
-//! lives at `super::runtime`) tells the codegen + check layers which
-//! strategies it can serve; `Node::DISPATCH` (Phase 216.A.3, lives at
-//! `nros::Node`) tells which strategy a Node requires.
+//! crate's `NodeDispatchRuntime::dispatch_strategy()` (lives at
+//! `super::runtime`) tells the codegen + check layers which strategies
+//! it can serve; `Node::DISPATCH` (lives at `nros::Node`) tells which
+//! strategy a Node requires.
 //!
-//! `nros check` (Phase 216.D.1) cross-validates Node `DISPATCH` against
-//! the Entry pkg's board framework on a `(framework, strategy)` matrix
-//! — see the doc body in `docs/roadmap/phase-216-baremetal-framework-
-//! integration.md`.
+//! `nros check` cross-validates Node `DISPATCH` against the Entry pkg's
+//! board framework on a `(framework, strategy)` matrix.
 //!
-//! `#[repr(u8)]` for FFI stability: the `nros::node!()` macro (Phase
-//! 216.A.5) emits a per-Node `__nros_node_<pkg>_dispatch_strategy()
-//! -> u8` ABI symbol so `nros check` can read the strategy without
-//! linking the Node crate.
+//! `#[repr(u8)]` for FFI stability: the `nros::node!()` macro emits a
+//! per-Node `__nros_node_<pkg>_dispatch_strategy() -> u8` ABI symbol so
+//! `nros check` can read the strategy without linking the Node crate.
 
 /// How a Node expects its callbacks to fire.
 #[repr(u8)]

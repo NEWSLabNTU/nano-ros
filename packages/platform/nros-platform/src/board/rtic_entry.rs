@@ -1,4 +1,4 @@
-//! [`RticBoardEntry`] — Phase 216.B.1.
+//! [`RticBoardEntry`].
 //!
 //! Sibling to [`super::BoardEntry`] for **framework-owned-spin**
 //! boards. Where `BoardEntry::run` owns the boot lifecycle and
@@ -52,7 +52,7 @@ use super::{Board, DeployOverlay, runtime::NodeDispatchRuntime};
 ///
 /// Distinct from [`super::BoardEntry`] (board-owns-spin). Its Embassy
 /// sibling, ~~`EmbassyBoardEntry`~~, was retired with the `nros::main!`
-/// Embassy branch (issue 2134).
+/// Embassy branch.
 pub trait RticBoardEntry: Board {
     /// Chip Peripheral Access Crate handle (e.g.
     /// `stm32f4xx_hal::pac::Peripherals`). Whatever the RTIC

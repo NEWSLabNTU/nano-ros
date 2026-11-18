@@ -1,9 +1,9 @@
-//! `ParameterServer`'s operations, behind a sealed trait (phase-515 R10 stage 2).
+//! `ParameterServer`'s operations, behind a sealed trait.
 //!
-//! The node is the user-facing parameter receiver, as in rclrs (maintainer
-//! decision 2026-10-27): a Rust user declares, reads and writes parameters
-//! through the `Node` that `create_node` / `node_mut(id)` returns. The store
-//! itself is the executor's one table. The code that implements those verbs
+//! The node is the user-facing parameter receiver, as in rclrs: a Rust
+//! user declares, reads and writes parameters through the `Node` that
+//! `create_node` / `node_mut(id)` returns. The store itself is the
+//! executor's one table. The code that implements those verbs
 //! (`nros-node`, the C and C++ shims), and a caller holding a standalone store,
 //! reach it through [`ParameterServerOps`]. `nros` never re-exports the trait,
 //! so a `nros` user does not see these methods.

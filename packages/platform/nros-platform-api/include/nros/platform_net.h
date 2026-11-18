@@ -62,7 +62,7 @@ void nros_platform_tcp_free_endpoint(void *ep);
 int8_t nros_platform_tcp_open(void *sock, const void *endpoint, uint32_t timeout_ms);
 
 /** `nros_platform_tcp_open` whose connect gives up after
- *  `connect_timeout_ms` (issue 2438). `timeout_ms` keeps its meaning in
+ *  `connect_timeout_ms`. `timeout_ms` keeps its meaning in
  *  `nros_platform_tcp_open`. A negative `connect_timeout_ms` states no bound:
  *  the call then behaves exactly as `nros_platform_tcp_open`, connect limit
  *  included. zenoh-pico passes what is left of a client's connect budget
@@ -93,13 +93,13 @@ size_t nros_platform_tcp_read_exact(const void *sock, uint8_t *buf, size_t len);
  *  `timeout_ms` it was opened with) for the stack to take them. Returns the
  *  bytes taken, which may be fewer than `len` and is `0` when the stack took
  *  none in that time, or `NROS_PLATFORM_NET_SOCKET_ERROR` when the connection
- *  is broken. It never waits for a peer that has stopped reading (issue 2389):
+ *  is broken. It never waits for a peer that has stopped reading:
  *  a caller that needs every byte loops, and decides how long a stall it
  *  tolerates (zenoh-pico: `Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE`). A socket opened
  *  with `timeout_ms == 0` states no bound. */
 size_t nros_platform_tcp_send(const void *sock, const uint8_t *buf, size_t len);
 
-/** phase-521 W6 (RFC-0113 D4) — install (`notify != NULL`) or remove the
+/** Install (`notify != NULL`) or remove the
  *  receive notification on a connected TCP socket: the stack calls
  *  `notify(ctx)` each time data is queued on it, from the stack's own context
  *  (NetX's IP thread), so `notify` must only signal. Data already queued at
@@ -136,7 +136,7 @@ size_t nros_platform_udp_send(const void *sock,
 /** Set the recv timeout in milliseconds; `0` means block indefinitely. */
 void nros_platform_udp_set_recv_timeout(const void *sock, uint32_t timeout_ms);
 
-/** phase-521 W4 (RFC-0113 D4) — the OS handle that becomes readable when a
+/** The OS handle that becomes readable when a
  *  datagram arrives on `sock`: its file descriptor on POSIX and NuttX. An RMW
  *  session reports it as `NROS_RMW_READINESS_WAITABLE`, and the executor parks
  *  on it (`nros_platform_wake_park_handles_us`) instead of blocking in
@@ -144,7 +144,7 @@ void nros_platform_udp_set_recv_timeout(const void *sock, uint32_t timeout_ms);
  *  bare-metal stack); those report readiness as a Notify instead. */
 int32_t nros_platform_udp_readiness_handle(const void *sock);
 
-/** phase-521 W4 (RFC-0113 D4) — install (`notify != NULL`) or remove the
+/** Install (`notify != NULL`) or remove the
  *  receive notification on `sock`: the stack calls `notify(ctx)` each time a
  *  datagram is queued on it, from the stack's own context (lwIP's tcpip
  *  thread, NetX's IP thread), so `notify` must only signal. Data already

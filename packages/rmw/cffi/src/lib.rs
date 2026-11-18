@@ -234,9 +234,9 @@ pub type NrosRmwQos = rmw_qos_profile_t;
 pub type NrosRmwGid = rmw_gid_t;
 /// Compat alias for the generated `rmw_session_t`.
 pub type NrosRmwSession = rmw_session_t;
-/// issue 0808 — session creation options; NULL means every default.
+/// Session creation options; NULL means every default.
 pub type NrosRmwSessionOptions = rmw_session_options_t;
-/// Phase 376 W5/B1 — a graph node. The first argument of the four `create_*`
+/// A graph node. The first argument of the four `create_*`
 /// slots, in place of the fabricated per-call session view they used to take.
 pub type NrosRmwNode = rmw_node_t;
 /// Compat alias for the generated `rmw_publisher_t`.
@@ -246,7 +246,7 @@ pub type NrosRmwSubscription = rmw_subscription_t;
 
 /// A vtable with every slot NULL — the base for struct-update syntax.
 ///
-/// Phase 376 W4 — a vtable literal must name EVERY field, and this crate's
+/// A vtable literal must name EVERY field, and this crate's
 /// tests build 26 of them. Adding a slot therefore meant adding one `None,`
 /// line to each, twenty-six times: tedious, and a place to miss one. The
 /// compiler catches a miss, but only after the diff has grown by the slot count
@@ -256,7 +256,7 @@ pub type NrosRmwSubscription = rmw_subscription_t;
 ///
 /// Deliberately a `const` and not a `Default` impl: `Default` would make an
 /// all-NULL vtable constructible by accident, and an all-NULL vtable is exactly
-/// what `nros_rmw_cffi_register_named` must REFUSE (issue 0349). A const used
+/// what `nros_rmw_cffi_register_named` must REFUSE. A const used
 /// explicitly as a literal's base cannot be reached that way.
 pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: None,
@@ -453,7 +453,7 @@ pub const NROS_RMW_QOS_PROFILE_PARAMETERS: NrosRmwQos = NrosRmwQos {
 
 /// Standard `rmw_qos_profile_system_default`-equivalent — **all sentinel**.
 ///
-/// issue 0829. This aliased `_DEFAULT` until 2026-09-03, which said the
+/// This once aliased `_DEFAULT`, which said the
 /// constant carried no meaning of its own: `SYSTEM_DEFAULT` became a
 /// byte-for-byte synonym for a concrete reliable / volatile / keep-last(10)
 /// profile. Upstream's `rmw_qos_profile_system_default` names no concrete
@@ -756,14 +756,14 @@ fn pub_event_slot(kind: nros_rmw::EventKind) -> Option<usize> {
     PUB_EVENT_KINDS.iter().position(|k| *k == kind)
 }
 
-/// Issue 1978 — THE one answer to "can this backend carry event `kind`?",
+/// THE one answer to "can this backend carry event `kind`?",
 /// for every caller behind the C ABI: the per-entity
 /// `supports_event` of [`CffiPublisher`] and [`CffiSubscription`] both ask
 /// it, so the per-entity answer can never claim a kind the backend-level
 /// `event_type_is_supported` slot denies.
 ///
 /// A kind is supported when the backend has an event PATH for its side
-/// (`*_event_init` callback or `*_take_event` poll, issue 1164) AND, where
+/// (`*_event_init` callback or `*_take_event` poll) AND, where
 /// the backend fills `event_type_is_supported`, that slot says yes. A NULL
 /// `event_type_is_supported` falls back to the path alone — slot
 /// granularity, which was the whole answer before the slot existed and is
@@ -822,12 +822,12 @@ fn empty_event_payload() -> NrosRmwEventPayload {
 /// (`build.rs`). Default 8.
 pub const MAX_BACKENDS: usize = parse_max_backends(env!("NROS_RMW_MAX_BACKENDS"));
 
-/// Issue 1419 — how many of [`MAX_BACKENDS`] the image DECLARED: its own
+/// How many of [`MAX_BACKENDS`] the image DECLARED: its own
 /// backends, before the recorder's slot (`recorder-slot`) is added beside
 /// them. Equal to `MAX_BACKENDS` in an image that links no recorder.
 pub const DECLARED_BACKENDS: usize = parse_max_backends(env!("NROS_RMW_DECLARED_BACKENDS"));
 
-/// Issue 1419 — whether this registry reserves a slot for the recording
+/// Whether this registry reserves a slot for the recording
 /// backend, i.e. whether `nros-rmw-metadata` is linked.
 pub const RECORDER_SLOT: bool = cfg!(feature = "recorder-slot");
 
@@ -1316,7 +1316,7 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
 /// Names must be UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).
 /// Reserved names today: `"zenoh"`, `"dds"`, `"xrce"`,
 /// `"cyclonedds"`, future `"uorb"`. (`"default"` was the implicit name of
-/// the unnamed single-argument form, deleted by phase-482 W6.)
+/// the unnamed single-argument form, since deleted.)
 ///
 /// Returns:
 /// * `NROS_RMW_RET_OK` on success.
@@ -1497,7 +1497,7 @@ fn registered_name_of(vtable: &'static NrosRmwVtable) -> *const core::ffi::c_cha
     core::ptr::null()
 }
 
-/// Phase 104.A — registry-presence probe. Returns `true` iff at
+/// Registry-presence probe. Returns `true` iff at
 /// least one backend is registered. Used by `Executor::open` to
 /// detect "user forgot to register a backend before opening the
 /// session" and fail with a meaningful error.
@@ -1524,7 +1524,7 @@ fn default_vtable() -> Option<&'static NrosRmwVtable> {
     Some(unsafe { &*slot.vtable })
 }
 
-/// Phase 128.A.3 — outcome of `resolve_backend`.
+/// Outcome of `resolve_backend`.
 pub enum BackendResolution {
     /// Exactly one matching backend; use its vtable.
     Single(&'static NrosRmwVtable),
@@ -1539,7 +1539,7 @@ pub enum BackendResolution {
     Unknown,
 }
 
-/// Phase 128.A.3 — selection policy for the single-backend
+/// Selection policy for the single-backend
 /// `Executor::open` / `nros::init` path.
 ///
 /// Algorithm:
@@ -1582,7 +1582,7 @@ pub fn resolve_backend(selector: Option<&[u8]>) -> BackendResolution {
     }
 }
 
-/// Phase 128.A.3 — map a [`BackendResolution`] to its canonical
+/// Map a [`BackendResolution`] to its canonical
 /// [`NrosRmwRet`]. [`BackendResolution::Single`] is *not* an error and
 /// returns [`NROS_RMW_RET_OK`]; callers needing the vtable should
 /// pattern-match on the resolution itself.
@@ -1622,7 +1622,7 @@ const _: () = {
     );
 };
 
-/// Phase 115.A.2 — C entry point for installing a custom transport.
+/// C entry point for installing a custom transport.
 ///
 /// Mirrors the Rust-side `nros_rmw::set_custom_transport(Some(...))`
 /// (or `None` when `ops == NULL`) but returns the canonical
@@ -2230,7 +2230,7 @@ impl CffiSession {
         self.domain_id
     }
 
-    /// RFC-0088 D4 / phase-421 W2 — the serialization format THIS session's
+    /// The serialization format THIS session's
     /// backend speaks, as a NUL-terminated C string with `'static` lifetime,
     /// or NULL when the backend does not declare one.
     ///
@@ -2244,9 +2244,9 @@ impl CffiSession {
     ///
     /// A NULL slot answers NULL rather than `"cdr"`: a backend that declines
     /// to say what it speaks has not said `"cdr"`, and guessing on its behalf
-    /// is the mistake `get_implementation_identifier`'s doc made for two
-    /// phases (corrected phase-393 W2). Every in-tree backend fills the slot,
-    /// so NULL means a foreign or pre-phase-421 vtable.
+    /// is the mistake `get_implementation_identifier`'s doc once made, since
+    /// corrected. Every in-tree backend fills the slot, so NULL means a foreign
+    /// vtable or one older than the slot.
     pub fn serialization_format_cstr(&self) -> *const core::ffi::c_char {
         match self.vtable.get_serialization_format {
             // SAFETY: the slot is a non-NULL fn pointer a registered backend
@@ -2394,7 +2394,7 @@ impl CffiSession {
         cstr_buf_to_str(&self.node_name_buf)
     }
 
-    /// Node namespace passed at session-open time — issue 1444.
+    /// Node namespace passed at session-open time.
     ///
     /// The sibling of [`node_name`](Self::node_name), and its absence was part
     /// of why the buffer stayed empty unnoticed: `node_name_buf` had a reader
@@ -2432,7 +2432,7 @@ impl CffiSession {
         )
     }
 
-    /// phase-206 W3 — open a session carrying backend-specific configuration
+    /// Open a session carrying backend-specific configuration
     /// properties (`RmwConfig::properties` across the C seam).
     ///
     /// This is the rung that was missing. `RmwConfig` has carried
@@ -2531,8 +2531,8 @@ impl CffiSession {
         )
     }
 
-    /// Phase 104.C.1 — open a new session against a named backend.
-    /// Resolves `rmw_name` against the registry (Phase 104.B.2),
+    /// Open a new session against a named backend.
+    /// Resolves `rmw_name` against the registry,
     /// returns `Err(TransportError::InvalidArgument)` if no backend
     /// is registered under that name.
     pub fn open_named(
@@ -4077,8 +4077,8 @@ impl CffiPublisher {
         self.qos
     }
 
-    /// `true` iff the backend exposes the publish loan primitive
-    /// (Phase 99). Mirrors upstream `rmw_publisher_t::can_loan_messages`.
+    /// `true` iff the backend exposes the publish loan primitive.
+    /// Mirrors upstream `rmw_publisher_t::can_loan_messages`.
     pub fn can_loan_messages(&self) -> bool {
         self.can_loan_messages
     }
@@ -4106,7 +4106,7 @@ impl CffiPublisher {
     }
 }
 
-/// Phase 124.A — writable slot returned by
+/// Writable slot returned by
 /// [`CffiPublisher::try_lend_slot`]. Holds the backend's raw buffer
 /// and opaque token until `commit_slot` consumes it or `Drop` fires
 /// ~~`pub_discard`~~.
@@ -4990,14 +4990,13 @@ impl CffiSubscription {
         self.qos
     }
 
-    /// `true` iff the backend exposes the receive loan primitive
-    /// (Phase 99).
+    /// `true` iff the backend exposes the receive loan primitive.
     pub fn can_loan_messages(&self) -> bool {
         self.can_loan_messages
     }
 }
 
-/// Phase 124.A — read-only view returned by
+/// Read-only view returned by
 /// [`CffiSubscription::try_borrow`]. Holds the backend's raw buffer +
 /// opaque token until `Drop` fires `sub_release`.
 #[cfg(feature = "lending")]
@@ -5992,7 +5991,7 @@ impl nros_rmw::Rmw for CffiRmw {
     }
 }
 
-/// phase-521 W6 (RFC-0113 D5) — a runtime session must state how it becomes
+/// A runtime session must state how it becomes
 /// ready: `Notify` (the backend calls the executor's wake callback on an
 /// arrival) or `Waitable` (a handle the port parks on). A session that states
 /// neither could only be drained by blocking inside its own receive, which
@@ -6023,9 +6022,9 @@ pub fn refuse_without_readiness(session: CffiSession) -> Result<CffiSession, Tra
 }
 
 impl CffiRmw {
-    /// Phase 104.C.1 — open a session against a named backend.
+    /// Open a session against a named backend.
     /// `rmw_name` selects an entry from the registry populated by
-    /// `nros_rmw_cffi_register_named` (Phase 104.B.2).
+    /// `nros_rmw_cffi_register_named`.
     pub fn open_with_rmw(
         rmw_name: &str,
         config: &nros_rmw::RmwConfig,

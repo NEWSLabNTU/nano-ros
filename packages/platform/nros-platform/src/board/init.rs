@@ -1,4 +1,4 @@
-//! [`BoardInit`] — Phase 212.N.1.
+//! [`BoardInit`].
 //!
 //! Per-board hardware-init contract. Mirrors the legacy
 //! `nros-board-common::board_init::BoardInit`, but lives in

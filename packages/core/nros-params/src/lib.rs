@@ -8,21 +8,21 @@
 //! # Example
 //!
 //! ```
-//! // phase-515 R10: the store's operations are behind `ParameterServerOps`;
+//! // The store's operations are behind `ParameterServerOps`;
 //! // a `nros` user reaches parameters through its `Node` instead.
 //! use nros_params::{
 //!     NodeKey, ParameterDescriptor, ParameterServer, ParameterServerOps as _, ParameterStorage,
 //!     ParameterType, ParameterValue,
 //! };
 //!
-//! // phase-382 W2' — storage is CALLER-OWNED: place it (a `static`, a struct
+//! // Storage is CALLER-OWNED: place it (a `static`, a struct
 //! // field, a local), then lend it. `ParameterStorage` defaults to
 //! // `MAX_PARAMETERS` slots; any length works, and the server's capacity is
 //! // whatever it is handed.
 //! let mut storage = ParameterStorage::<8>::new();
 //! let mut server = ParameterServer::new_in(storage.as_table());
 //!
-//! // phase-426 W1 — every per-parameter call names the NODE it is about, so
+//! // Every per-parameter call names the NODE it is about, so
 //! // two nodes composed onto one executor never share a name.
 //! let node = NodeKey::PRIMARY;
 //!
@@ -101,7 +101,7 @@ pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, Parameters,
     RangeConvertible, ReadOnlyParameter,
 };
-/// Deprecated (phase-515): the store answers `Result<(), ParameterError>`.
+/// Deprecated: the store answers `Result<(), ParameterError>`.
 #[allow(deprecated)]
 pub use types::SetParameterResult;
 pub use types::{

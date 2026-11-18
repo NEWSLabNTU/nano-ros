@@ -1,4 +1,4 @@
-//! Phase 115.L.0 — Generic Rust-trait → C-vtable adapter.
+//! Generic Rust-trait → C-vtable adapter.
 //!
 //! `RustBackendAdapter<R>` converts any `R: nros_rmw::Rmw` whose
 //! associated types implement the matching `Session` / `Publisher` /
@@ -15,7 +15,7 @@
 //!
 //! # Storage discipline
 //!
-//! - Session: boxed (fallibly, via `box_handle` — issue 1551) and stashed in
+//! - Session: boxed (fallibly, via `box_handle`) and stashed in
 //!   `NrosRmwSession::backend_data`. `close` reclaims via
 //!   `Box::from_raw` (drops the box, runs `Drop`, frees the alloc).
 //! - Publisher / Subscription / Service / Client: same
@@ -130,7 +130,7 @@ mod static_subscriber_storage {
     static SLOTS: [Slot; SLOT_COUNT] = [const { Slot::new() }; SLOT_COUNT];
 
     /// Park `value` in a free slot. `None` means the pool is EXHAUSTED — and
-    /// since issue 1322, nothing else.
+    /// nothing else.
     ///
     /// It used to mean two unrelated things, and the caller mapped both to
     /// `NROS_RMW_RET_BAD_ALLOC`: every slot claimed (raise
@@ -731,7 +731,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
     ///
     /// Most backends should use [`register_named`](Self::register_named)
     /// instead so they show up in the registry under their canonical
-    /// name (`"zenoh"`, `"dds"`, `"xrce"`, …). Phase 128.B.5 routes
+    /// name (`"zenoh"`, `"dds"`, `"xrce"`, …). This routes
     /// the implicit-name path through `_register_named` too, so the
     /// legacy unnamed C shim no longer participates in registration.
     pub fn register() -> NrosRmwRet {
@@ -740,7 +740,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         unsafe { crate::nros_rmw_cffi_register_named(c"default".as_ptr(), &Self::VTABLE) }
     }
 
-    /// Phase 104.B.2 — install the per-`R` vtable under a stable
+    /// Install the per-`R` vtable under a stable
     /// name. Multiple backends can coexist via this entry point.
     ///
     /// # Safety
@@ -2013,7 +2013,7 @@ unsafe extern "C" fn readiness_source_trampoline<R: RustBackend>(
     NROS_RMW_RET_OK
 }
 
-/// Issue 1940 — the bytes the adapter allocates for a subscription, service
+/// The bytes the adapter allocates for a subscription, service
 /// or client handle of type `T`: the handle plus its wake registration
 /// (`crate::entity_wake::Hosted`). For a test that refuses that allocation,
 /// such as `tests/adapter_oom.rs`, which must not re-derive the wrapper's

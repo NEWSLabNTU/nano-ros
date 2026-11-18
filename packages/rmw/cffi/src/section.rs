@@ -1,4 +1,4 @@
-//! RMW backend self-registration (Phase 249 P4b.1 — `.init_array` ctor).
+//! RMW backend self-registration (`.init_array` ctor).
 //!
 //! Every `nros-rmw-<name>` crate (or C/C++ static lib) self-registers
 //! its vtable with the cffi registry. The trigger differs by tier:
@@ -13,25 +13,24 @@
 //! - **Embedded (`target_os = "none"`):** the ctor expands to nothing.
 //!   Bare-metal firmware has no loader that walks `.init_array` in the
 //!   shape the registry needs, so the board / typed carrier calls
-//!   `nros_rmw_<x>::register()` EXPLICITLY (phase-249 P1). The RTOS
+//!   `nros_rmw_<x>::register()` EXPLICITLY. The RTOS
 //!   targets (NuttX / Zephyr / ESP-IDF / VxWorks) keep that explicit
 //!   call too; the ctor there is harmless (register is idempotent).
 //!
-//! The native app keeps its `#[used] __FORCE_LINK_*` anchor (phase-244
-//! D7 Shape B): the anchor defeats dead-code elimination so the backend
-//! closure AND its ctor survive into the final binary — it is NOT a
-//! registration call.
+//! The native app keeps its `#[used] __FORCE_LINK_*` anchor: the anchor
+//! defeats dead-code elimination so the backend closure AND its ctor
+//! survive into the final binary — it is NOT a registration call.
 //!
-//! This replaces the phase-128 `linkme` distributed-slice walker
-//! (~~`RMW_INIT_ENTRIES`~~ + ~~`nros_rmw_cffi_walk_init_section`~~), removed in
-//! phase-249 P4b.1 (RFC-0042 §D3.3).
+//! This replaces the earlier `linkme` distributed-slice walker
+//! (~~`RMW_INIT_ENTRIES`~~ + ~~`nros_rmw_cffi_walk_init_section`~~), since
+//! removed.
 //!
 //! # C / C++ backends
 //!
 //! Static-lib backends emit their entry via the
 //! [`NROS_RMW_REGISTER_BACKEND`] macro in `<nros/rmw_vtable.h>`; the
 //! cmake `nano_ros_link_rmw` strong stub handles the C/C++-via-cmake
-//! path (phase-249 P2b/P4a).
+//! path.
 //!
 //! [`NROS_RMW_REGISTER_BACKEND`]: ../../include/nros/rmw_vtable.h
 

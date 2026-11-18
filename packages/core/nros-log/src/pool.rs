@@ -1,4 +1,4 @@
-//! phase-417 W4.d — bounded storage so `get_or_create_logger` can hand out a
+//! Bounded storage so `get_or_create_logger` can hand out a
 //! logger for a name nobody registered at compile time.
 //!
 //! ## The gap this closes
@@ -16,13 +16,14 @@
 //!
 //! over a lookup-only implementation would silently have moved the threshold
 //! of the catch-all logger every other unregistered name also resolves to —
-//! compile, and differ. RFC-0089 forbids exactly that, so the creation has to
-//! be real, and by RFC-0019 it has to be real HERE rather than in `nros-c`.
+//! compile, and differ. That is not allowed, so the creation has to be real,
+//! and because the Rust API is the source of truth for C and C++, it has to
+//! be real HERE rather than in `nros-c`.
 //!
 //! ## Bounded, because `no_std`
 //!
 //! Two static arenas, both sized by the `NROS_LOG_DYNAMIC_LOGGERS` knob
-//! (phase-479 W5, RFC-0102 D5 — see `build.rs` for its ladder):
+//! (see `build.rs` for its ladder):
 //! one for the [`crate::Logger`] values, one for their names (a `&'static str`
 //! is what `Logger` holds, and a `const char *` from C is not one). Exhaustion
 //! is REPORTED, never silently aliased onto the default logger — see
@@ -37,7 +38,7 @@ use crate::Logger;
 /// How many loggers [`crate::get_or_create_logger`] may create.
 ///
 /// The `NROS_LOG_DYNAMIC_LOGGERS` knob, resolved once by `build.rs` on the
-/// RFC-0049 ladder: the environment (which is where an image's
+/// knob ladder: the environment (which is where an image's
 /// `[image.<id>] env` lands) > Kconfig `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` /
 /// the board's `[knobs.log] dynamic_loggers` > 16. Linux host boards
 /// state 32; MCU boards keep 16. `0` declines the arena entirely (creation

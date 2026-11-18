@@ -1,4 +1,4 @@
-//! Fallible heap allocation for entity-creation paths (issue 1551, defect 2).
+//! Fallible heap allocation for entity-creation paths.
 //!
 //! # Why this exists
 //!
@@ -8,7 +8,7 @@
 //! `"memory allocation of N bytes failed"` to **fd 2** before aborting.
 //!
 //! On a Zephyr `native_sim` image fd 2 is the POSIX fdtable's `stdinout`
-//! entry, whose write re-enters `zvfs_write` forever (issue 0589). So the
+//! entry, whose write re-enters `zvfs_write` forever. So the
 //! message never appears: the thread overflows its stack inside a recursive
 //! `k_mutex` and the process dies with SIGSEGV (exit 139). Measured on the
 //! derived-sched-tasks-cpp image, ~104,735 frames deep, from a `Box::new` in the
@@ -73,15 +73,15 @@ pub fn try_box<T>(value: T) -> Result<Box<T>, T> {
 /// allocator is exhausted.
 ///
 /// The fallible form of `Box::<T>::new_uninit()`, for a value too large to
-/// build on the stack and move in (issue 0756 -- the parameter store is
+/// build on the stack and move in (the parameter store is
 /// 285,696 bytes at the default sizing, and [`try_box`] takes its value BY
 /// VALUE, which materialises all of it in the caller's frame first). The
 /// caller initialises through the pointer and then `assume_init`s, exactly as
 /// with `new_uninit`.
 ///
-/// Issue 1706 -- that store is the one allocation every parameter
+/// That store is the one allocation every parameter
 /// declaration reaches, on every RTOS, and `new_uninit` sent its failure to
-/// the OOM handler: a halt (Zephyr's `HEAP EXHAUSTED` then issue 0589's
+/// the OOM handler: a halt (Zephyr's `HEAP EXHAUSTED` then the `zvfs_write`
 /// recursion) or a `MALLOC FAILED` hang (FreeRTOS heap_4), never a refusal the
 /// declaration could return.
 pub fn try_box_uninit<T>() -> Option<Box<core::mem::MaybeUninit<T>>> {

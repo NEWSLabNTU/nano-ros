@@ -1,6 +1,6 @@
 //! Per-request metadata handed to a service callback — rclrs's `ServiceInfo`.
 //!
-//! Issue 1942. rclrs 0.7 can pass a service callback a `ServiceInfo` beside the
+//! rclrs 0.7 can pass a service callback a `ServiceInfo` beside the
 //! request: who sent it (the client's GID and its sequence number, together
 //! the upstream `rmw_request_id_t`) and when (source and received timestamps).
 //! This is the counterpart, registered through `Node::create_service_with_info`
@@ -8,7 +8,7 @@
 //!
 //! **Not to be confused with `nros_rmw::ServiceInfo`**, the RMW seam's service
 //! DESCRIPTOR (name, type, hash, domain). That type is not re-exported by the
-//! `nros` facade (RFC-0071 D12, phase-506 W1), which is what lets this one take
+//! `nros` facade, which is what lets this one take
 //! rclrs's name there.
 //!
 //! # What a backend reports
@@ -28,11 +28,11 @@
 //! | a C-ABI backend without `take_request_with_info` | `None` | `None` | `None` |
 //!
 //! `received_timestamp` is upstream's: the server's wall clock (ns since the
-//! Unix epoch) when the request arrived (issue 2135); `None` on a platform
+//! Unix epoch) when the request arrived; `None` on a platform
 //! with no wall clock.
 //!
-//! A C-ABI backend reports through the vtable's `take_request_with_info` slot
-//! (issue 2081), whose `rmw_service_info_t` spells "not reported" as zero; the
+//! A C-ABI backend reports through the vtable's `take_request_with_info` slot,
+//! whose `rmw_service_info_t` spells "not reported" as zero; the
 //! runtime turns each zero into `None`.
 
 use crate::Time;

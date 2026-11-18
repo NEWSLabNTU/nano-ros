@@ -39,7 +39,7 @@ use nros_serdes::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Seria
 ///
 /// This trait defines the associated types and metadata for a ROS 2 action.
 /// Actions consist of three user-facing message types plus five action-protocol
-/// envelope types used on the wire (Phase 212.K.7.1.d/b):
+/// envelope types used on the wire:
 ///
 /// User-facing:
 /// - `Goal`: Sent by client to initiate the action
@@ -127,7 +127,7 @@ pub trait RosAction: Sized {
     }
 }
 
-/// Goal status states -- rclrs's `GoalStatusCode` (phase-515 R8).
+/// Goal status states -- rclrs's `GoalStatusCode`.
 ///
 /// These states match `action_msgs/msg/GoalStatus` from ROS 2. It was
 /// `GoalStatus`, which is a deprecated alias for one release; rclrs gives that
@@ -213,7 +213,7 @@ impl Deserialize for GoalStatusCode {
     }
 }
 
-/// Unique identifier for a goal -- rclrs's `GoalUuid` (phase-515 R8).
+/// Unique identifier for a goal -- rclrs's `GoalUuid`.
 ///
 /// This is a 128-bit UUID matching `unique_identifier_msgs/msg/UUID`. It was
 /// `GoalId`, which is a deprecated alias for one release.
@@ -440,7 +440,7 @@ impl Deserialize for GoalStatusStamped {
 /// being cancelled". These codes are the wire contract, so the discriminants
 /// are fixed by `action_msgs`.
 ///
-/// Issue 0796 — this type used to be called `CancelResponse`, which is the
+/// This type used to be called `CancelResponse`, which is the
 /// name C ([`rclc_cancel_response_t`]) and C++ ([`nros::CancelResponse`]) both
 /// use for the PER-GOAL accept/reject decision. Two concepts under one name is
 /// how [`CancelResponse`] ended up being the type a per-goal cancel callback
@@ -567,7 +567,7 @@ impl GoalResponse {
 // claim was false (issue 1022's class). PR #806's precedent: in-tree-only
 // reach, measured, so a hard delete rather than a deprecated forwarder.
 
-/// The pre-phase-515 name of [`GoalUuid`].
+/// The former name of [`GoalUuid`].
 // phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
@@ -575,7 +575,7 @@ impl GoalResponse {
 )]
 pub type GoalId = GoalUuid;
 
-/// The pre-phase-515 name of [`GoalStatusCode`].
+/// The former name of [`GoalStatusCode`].
 // phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
@@ -583,7 +583,7 @@ pub type GoalId = GoalUuid;
 )]
 pub type GoalStatus = GoalStatusCode;
 
-/// The pre-phase-515 name of [`CancelResponseCode`].
+/// The former name of [`CancelResponseCode`].
 // phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
