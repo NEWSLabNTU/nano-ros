@@ -163,6 +163,100 @@ is blocked in (a lock, a pipe, a child's `do_wait`) while the lane is idle.
 A per-step wait table for this host (host 175), from
 `NROS_GATE_WAITS=1 just ci gate` (#4230), will follow from #4223's gate.
 
+### What the lane waits on, and what the cache wrapper costs (2026-11-18, host 139)
+
+**How to sample a gate.** `NROS_GATE_WAITS=1 just ci gate` (also
+`just check build`) samples every thread of THIS run's processes each 5 s.
+A process belongs to the run that started it, through `NROS_GATE_RUN`, so
+another worktree's gates never count. Each thread is classified by `wchan` as:
+- `run`: on a CPU;
+- `pipe`: waiting for a jobserver token or a child's output;
+- `child`: waiting for a child to exit;
+- `lock`: waiting on a file lock;
+- `disk`: page or write-back I/O.
+
+Step 8's report then prints a per-gate table of thread-seconds and keeps the
+raw samples in `build/gates/waits/<run>/`. The table counts classes only; it
+does not yet name which process holds a lock or a token.
+
+**The mechanism measured on hosts 139 and 133.** cargo takes a jobserver token
+for each compile and runs it through the `sccache` client. The client keeps
+that token while it waits on the host's ONE shared `sccache` server. On host
+139 the server was running 0-4 compiles at a time and was disk-bound:
+- its cache sits at its 30 GiB limit;
+- an average cache write took 1.36 s, against 0.65 s for an average compile
+  and 0.52 s for a cache hit;
+- the Rust hit rate was 53 %.
+
+So tokens were held by processes doing no CPU work, which is the "pool empty
+while the lane is idle" shape in every table above. The client already starts
+the server with the jobserver variables stripped, so the server does not hold
+tokens itself.
+
+**A/B on host 139**, same tree (main with the `workspace-probes` weight and the
+sampler), `NROS_GATE_WAITS=1 just check build`. "Cold" means one unique edit
+to `nros-node` per run, so every dependent misses in cargo and in the cache.
+
+| run | wrapper | total | `workspace-probes` | `cli-tests` | `workspace-all` | pool empty | verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 warm | on | 2539 s | 49 s | 1207 s | 1577 s | 35 % | green |
+| 2 warm | off | 1321 s | 36 s | 909 s | 1237 s | 21 % | green |
+| 3 cold | on | 2234 s | 786 s | 1021 s | 2043 s | 32 % | green |
+| 4 cold | off | 2533 s | 1476 s | 1548 s | 2197 s | 16 % | green |
+| 5 cold | read-only cache server | 2901 s | 1788 s | 1972 s | **timeout** | 49 % | red |
+| 6 cold | on (repeat of 3) | 3196 s | 1933 s | 1986 s | **timeout** | 27 % | red |
+
+- Cold, the wrapper HELPS: 13 % less total time, and half the probes' time,
+  because unchanged C/C++ and dependency compiles hit the cache.
+- Warm, run 1 went first and still had compiles to do (`node-std-tests` 414 s
+  against 46 s in run 2), so the 2x is order, not wrapper cost.
+- With the wrapper, the pool is empty about twice as often. Freeing those
+  tokens did not make the build faster.
+- A read-only server, which keeps the hits and skips the slow writes, was not
+  measurably better than run 6.
+- Runs 3 and 6 are the same configuration three hours apart: +43 %, and red.
+  In run 6, `cli-tests` spent 39,165 thread-seconds waiting on disk, against
+  3-5 thousand in the other runs. Host load, the disk especially, decides more
+  than any wrapper setting.
+
+Decision: the wrapper stays in gate lanes, and no harness-owned server.
+
+**Host 133, same fixes in** (#4220's weights, #4230's sampler), W9.d re-gated
+on main: GREEN, `check::build` 1 h 28 min against 2 h 10 min before, with no
+timeout. The pool was still empty 72 % of the time at lane runnable p50 3.
+Thread-seconds:
+
+| gate | run | pipe | child | lock | disk |
+| --- | --- | --- | --- | --- | --- |
+| `workspace-probes` | 1250 | 20620 | 53560 | 4360 | 120 |
+| harness (`-`) | 5185 | 5185 | 49950 | 0 | 0 |
+| `cli-tests` | 1215 | 8440 | 6100 | 4210 | 25 |
+| `workspace-all` | 495 | 7405 | 14745 | 265 | 50 |
+
+`workspace-probes` waited on a lock with 1-5 threads at a time, never a pile-up:
+serial waits on one lock. A sampler that records each lock-waiter's command
+runs beside host 133's next gate, to name it.
+
+**Gates run more processes than their weight, and their peak is not their
+weight.** Per-gate peak runnable across 9 runs on host 139 (32 CPUs, a
+32-token pool):
+- `workspace-features` 2-54;
+- `scaffold-builds` 12-31;
+- `cli-tests` 2-32, although its tests are capped at 4 threads;
+- `template-copy-out` 13-27;
+- `workspace-all` 5-24;
+- `node-std-tests` 3-16.
+
+On a 48-core host with no `sccache` at all, the same gates peak at 39-42.
+
+A peak counts the tokens a gate's cargo held at its busiest moment. It is
+bounded by the pool, scales with the host, and varies up to 25x between runs
+on one host, so it measures the host as much as the gate. Issue 2625 makes the
+weight a declaration instead: every gate that runs a parallel build declares
+`cpu:<n>`, set at its measured knee, as `cli-tests`' 4 was. A peak ABOVE the
+pool (`workspace-features`' 54 against 32) is a different thing: children
+outside the jobserver, a bug of its own.
+
 ## Not the fix
 
 Raising the timeout. That moves the line and keeps the dependence on load
@@ -177,10 +271,13 @@ For the dev-host reds, once a red run is sampled: split the suite or make it fas
    each, which a shared, once-per-process scan would answer.
 2. **Split** `cli-tests` into gates of their own, so no single gate holds
    most of the work under one timeout.
-3. **Weights.** `cli-tests` ran 17 runnable against a weight of 4, and
-   `workspace-probes` 14 against 1. A weight that understates a gate lets the
-   pool start more work than the host can run, which slows every gate at
-   once.
+3. **Weights.** Every gate that runs a parallel build declares `cpu:<n>`,
+   from its measured knee (issue 2625), so the pool stops admitting more
+   builders than the host can run. A peak above the pool, which means children
+   outside the jobserver, is reported and fixed per gate.
+4. **Not the wrapper.** The A/B above rules it out. The host-side cache state
+   (full at its limit, slow writes, a busy disk) is host configuration and
+   goes to the host's owner.
 
 ## Done when
 
@@ -188,11 +285,16 @@ For the dev-host reds, once a red run is sampled: split the suite or make it fas
   the 240 min job limit.
 - A RED step 8 is captured with the per-thread sampler, so the dev-host reds
   have a measured cause, and its fix holds under the load that caused them.
-- A check compares each gate's measured peak against its declared weight, so
-  the next gate that under-declares is caught (the class `workspace-probes`
-  was one of).
+- Every gate that runs a parallel build declares its weight, checked
+  statically, so the next gate that under-declares is caught (the class
+  `workspace-probes` was one of). A measured peak is not the check, because it
+  depends on the host (above).
 
 ## Logs
 
 On the reporting host: `/home/aeon/repos/nano-ros/.claude/worktrees/p555-rmw/tmp/`,
 `gate-b3-full2.log` (green) and `gate-b4-run1.log` (red).
+
+The A/B runs (host 139): the same directory, `ab-ab1-on-warm.log` through
+`ab-ab6-on-cold-rep.log`, with the raw samples of each under that worktree's
+`build/gates/waits/`.
