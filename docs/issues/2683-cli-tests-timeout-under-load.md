@@ -271,6 +271,7 @@ only the sccache cache differs. Load is the 1-min average sampled every 10 s.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A | 0.8.2 | warm from earlier gates | 64 min 45 s | 48 min 34 s | 13.4 / 34.3 / 152.5 (*) | not recorded (**) | green |
 | B1 | 0.17.0 | first run on 0.17.0 | 54 min 10 s | 43 min 21 s | 11.6 / 32.9 / 171.9 | 35.0 % (all 34.5 %) | green |
+| B2 | 0.17.0 | warm, the run after B1 (rerun, see below) | 59 min 16 s | 43 min 47 s | 12.1 / 39.4 / 205.5 | 63.1 % (all 63.6 %) | green |
 
 (*) The load sampler started 35 min into run A, so its first 35 min are not in
 the figures; sysstat does not collect on this host.
@@ -281,14 +282,24 @@ runs poll `--show-stats` every 60 s instead.
 B1 had 43413 compile requests: 9270 hits, 17580 misses and 15693
 non-cacheable calls, with one cache error and a 10 GiB cache. C/C++ hit 3.2 %.
 
-What this pair does and does not show:
-- B1 on 0.17.0 was not slower than A on 0.8.2 at about the same median load.
-  On host 139 the same configuration ran +43 % three hours apart (above), so
-  one pair is inside that spread.
-- B1 measures the one-time switch, whatever the cache could reuse. A warm
-  0.17.0 run (B2) is the steady-state comparison against A. The first B2 went
-  red on an unrelated hang in `node-std-tests`, so it is being rerun and its row
-  will be added here.
+B2 had 43393 compile requests: 17070 hits, 9766 misses and 15687
+non-cacheable calls, with one cache error. C/C++ hit 100 %. Its counters come
+from the 60 s `--show-stats` poll, so the server's idle exit could not erase
+them.
+
+The first B2 attempt went red on an unrelated hang in `node-std-tests` (a test
+helper spinning on an unbounded wait, fixed by #4291), so the row above is its
+rerun on the same head.
+
+What the three runs do and do not show:
+- Step 8 on 0.17.0 was about 5 min shorter than A's in both runs, B2's at the
+  highest median load of the three. That is inside the +43 % spread host 139
+  measured for one configuration three hours apart (above), so it shows 0.17.0
+  is not slower; it does not show it is faster.
+- Warm, 0.17.0 hit 63.1 % of Rust compiles and every C/C++ compile; its first
+  run hit 35.0 % and 3.2 %. A's rate is not recorded, so the hit rates compare
+  0.17.0 cold with 0.17.0 warm, not 0.17.0 with 0.8.2.
+- B1 is the one-time cost of switching, B2 the steady state against A.
 
 ### Load from other sessions, and the weights (2026-11-19)
 
