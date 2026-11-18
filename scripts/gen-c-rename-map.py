@@ -30,7 +30,11 @@ and what is OUT of scope, by class:
            one-owner-per-fact names, not API.
 
 Writes `docs/reference/c-api-rename-map.tsv` (old, new, class, why). It is
-REVIEWED and committed; `scripts/check-c-api-nros-names.py` reads it.
+REVIEWED and committed; `scripts/check-c-api-nros-names.py` reads it. A run
+keeps every committed row and only appends rows for names the map does not
+classify yet, because a committed row is either a reviewer's decision or the
+record of a name the API has already renamed. `--check` fails when a declared
+name is unclassified.
 
 Run: python3 scripts/gen-c-rename-map.py [--check]
 """
@@ -280,16 +284,83 @@ def render(rows):
     return "\n".join(lines) + "\n"
 
 
+def reviewed_rows(text):
+    """The committed map's rows, by old name: `{old: (old, new, class, why)}`."""
+    rows = {}
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        cols = line.split("\t", 3)
+        if len(cols) == 4:
+            rows[cols[0]] = tuple(cols)
+    return rows
+
+
+def merge(reviewed, generated):
+    """The map to write: every REVIEWED row as committed, plus a generated row
+    for each name the map does not classify yet. Sorted by old name, as
+    committed.
+
+    The map is reviewed, then committed, and it outlives the names it maps.
+    phase-492 W3/W5 renamed the C API, so most of its rows name a spelling
+    the headers no longer declare: they are the record of what each old
+    name became, which a port from the old API reads. Several classes are
+    also reviewers' corrections of what `build_map` guesses. Writing
+    `build_map()` over the file deleted 717 such rows and undid 22 reviewed
+    classes, on every host. So a reviewed row is never rewritten here."""
+    out = dict(reviewed)
+    added = [r for r in generated if r[0] not in reviewed]
+    for r in added:
+        out[r[0]] = r
+    return [out[k] for k in sorted(out)], added
+
+
+def self_test():
+    """Negative control on the normal path, over made-up rows: a reviewed
+    class beats the guess, a history row (no longer declared) stays, and only
+    an unclassified name is added -- and so would fail --check."""
+    reviewed = {
+        "NROS_X": ("NROS_X", "NROS_X", "hook", "reviewed"),
+        "NROS_OLD": ("NROS_OLD", "RCLC_OLD", "ours", "renamed by phase-492"),
+    }
+    generated = [("NROS_X", "RCLC_X", "ours", "guess"), ("NROS_NEW", "RCLC_NEW", "ours", "guess")]
+    rows, added = merge(reviewed, generated)
+    by = {r[0]: r for r in rows}
+    ok = (
+        [r[0] for r in added] == ["NROS_NEW"]
+        and by["NROS_X"][2] == "hook"
+        and "NROS_OLD" in by
+        and [r[0] for r in rows] == sorted(by)
+        and merge(reviewed, generated[:1])[1] == []
+    )
+    if not ok:
+        print(f"gen-c-rename-map: SELF-TEST FAILED: rows={rows} added={added}", file=sys.stderr)
+    return ok
+
+
 def main():
-    text = render(build_map())
+    if not self_test():
+        return 1
+    generated = build_map()
+    reviewed = reviewed_rows(OUT.read_text()) if OUT.exists() else {}
+    rows, added = merge(reviewed, generated)
     if "--check" in sys.argv:
-        if not OUT.exists() or OUT.read_text() != text:
-            print(f"gen-c-rename-map: {OUT.relative_to(ROOT)} is stale; regenerate it", file=sys.stderr)
+        # What can go stale is a NEW name: one the headers declare and the
+        # map does not classify. A reviewed row that differs from the guess
+        # is the review, not staleness.
+        if added:
+            print(f"gen-c-rename-map: {len(added)} declared name(s) the map does not classify:",
+                  file=sys.stderr)
+            for r in added:
+                print(f"    {r[0]}  (would be: {r[2]} -> {r[1]})", file=sys.stderr)
+            print("  Add them: python3 scripts/gen-c-rename-map.py, review the new rows, commit.",
+                  file=sys.stderr)
             return 1
-        print("gen-c-rename-map: OK")
+        print(f"gen-c-rename-map: OK -- every declared name is classified "
+              f"({len(reviewed)} reviewed row(s))")
         return 0
-    OUT.write_text(text)
-    print(f"wrote {OUT.relative_to(ROOT)}")
+    OUT.write_text(render(rows))
+    print(f"wrote {OUT.relative_to(ROOT)}: {len(added)} new row(s) to review")
     return 0
 
 
