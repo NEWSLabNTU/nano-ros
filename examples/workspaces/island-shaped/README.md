@@ -11,7 +11,7 @@ island-shaped/
 └── src/
     ├── c_controller_pkg/        # C component; its param files live in config/
     ├── rust_monitor_pkg/        # Rust component, in the same image
-    └── island_bringup/          # system.toml, launch/, zephyr/prj-posix.conf
+    └── island_bringup/          # system.toml, launch/
 ```
 
 | layout | where | what broke on it |
