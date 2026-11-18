@@ -71,7 +71,8 @@ fallback to builtins.
 |-----|------|-----|
 | `target_match` | string | Substring or `<prefix>*` glob the target triple must match. |
 | `target_exclude` | string | Veto when the triple contains this substring (`cortex-m3` excludes `thumbv7em`, so a Cortex-M4 does not pick it). |
-| `cflags` | list[str] | Compiler flags. |
+| `cflags` | list[str] | Compiler flags. Beyond zenoh-pico's own build, `nros build` writes them as the image's `CFLAGS_<triple>` / `CXXFLAGS_<triple>` (`force`d) in the cargo config every road hands cargo, so every cc-rs build of the image's triple, in any crate, compiles for this CPU (issue 2692). A `CFLAGS_<triple>`, `TARGET_CFLAGS` or `CFLAGS` the caller already exports (the first set, in cc-rs's order) is appended after the profile, and the build says it merged it. |
+| `cpu_flags_from_kernel_export` | bool | The CPU flags come from the kernel export instead (NuttX's `ARCHCPUFLAGS` as `TARGET_CFLAGS`), so no `CFLAGS_<triple>` is written for this profile. |
 | `needs_picolibc` | bool | Add the picolibc sysroot's `include/`. |
 | `needs_errno_override` | bool | Generate and prepend the errno-override shadow header (RISC-V picolibc TLS-errno workaround). |
 | `needs_riscv_compiler` | bool | Probe for a RISC-V cross `cc`. |

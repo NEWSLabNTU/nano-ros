@@ -1505,6 +1505,15 @@ pub fn write_shared(
         env,
         path_env,
         patches: crate::cmd::build::registry_patches(leaf, nano_ros_root, leaf),
+        // Issue 2692 — the image's arch C flags, for every cc-rs build of its
+        // triple.
+        forced_env: cargo_config::arch_cflags_env(
+            nano_ros_root,
+            &img.platform,
+            img.target.as_deref(),
+            who,
+        )
+        .map_err(|e| eyre!("`{}`: {e}", img.image_id))?,
         build_hint: Some(hint),
     };
     cargo_config::write(&spec, &img.config_path)

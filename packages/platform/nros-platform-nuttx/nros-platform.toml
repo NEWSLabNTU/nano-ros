@@ -39,3 +39,6 @@ clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform
 [arch.cortex-a7]
 target_match = "armv7a"
 cflags = ["-march=armv7-a"]
+# Issue 2692: cargo's C builds take this kernel's CPU flags from its export
+# (`ARCHCPUFLAGS` as `TARGET_CFLAGS`), never from an image `CFLAGS_<triple>`.
+cpu_flags_from_kernel_export = true

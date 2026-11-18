@@ -301,4 +301,5 @@ Acceptance: the page states the split, and every step it shows is probed.
 
 ## Follow-ups
 
+- [Issue 2709](../issues/2709-duplicate-arch-cflags-carriers.md): two older carriers still restate the arch profile's C flags beside issue 2692's one carrier; they retire once a lane measures every cmake/RISC-V road.
 - [Issue 2715](../issues/2715-p2p-peer-tests-collide-in-one-process.md): the IVC and RPMsg point-to-point peer tests (W4) pass only when each runs in its own process.

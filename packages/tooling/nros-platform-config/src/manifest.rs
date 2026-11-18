@@ -335,6 +335,13 @@ pub struct ArchEntry {
     /// probe (cargo doesn't auto-set CC for bare-metal RISC-V).
     #[serde(default)]
     pub needs_riscv_compiler: bool,
+    /// Issue 2692 — this profile's CPU flags reach cargo's C builds from the
+    /// kernel EXPORT (NuttX's `ARCHCPUFLAGS` as `[env] TARGET_CFLAGS`,
+    /// phase-550 W3b), so the image carrier writes no `CFLAGS_<triple>` for
+    /// it: cc-rs reads `CFLAGS_<triple>` before `TARGET_CFLAGS`, and a row
+    /// here would silently replace the export's flags.
+    #[serde(default)]
+    pub cpu_flags_from_kernel_export: bool,
 }
 
 /// Env-var-backed define: value comes from `env`, falls back to
