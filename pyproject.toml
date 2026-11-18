@@ -9,7 +9,12 @@ filename = "CHANGELOG.md"
 start_string = "<!-- towncrier release notes start -->\n"
 underlines = ["", "", ""]
 title_format = "## {version} — {project_date}"
-issue_format = "[#{issue}](https://github.com/NEWSLabNTU/nano-ros/issues/{issue})"
+# A fragment's number is the docs/issues id, not a GitHub issue number, so a
+# link to `issues/{issue}` leads to an unrelated GitHub item, and a bare `#N`
+# is an id the reader cannot look up. Render no reference at all: towncrier
+# skips the reference when this formats to an empty string
+# (`check-changelog-issue-links` renders a numbered fragment to hold it).
+issue_format = ""
 
 # One fragment per change, named `<issue-or-pr>.<type>.md`. The types mirror how
 # this repo already talks about work, not towncrier's defaults: the tree files

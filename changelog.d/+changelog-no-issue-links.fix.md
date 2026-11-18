@@ -1,0 +1,1 @@
+The changelog no longer links a numbered entry to the GitHub issue of that number, which was an unrelated item: the number is a project-internal id. `CHANGELOG.md`'s 150 such links are removed, and new notes render no reference.
