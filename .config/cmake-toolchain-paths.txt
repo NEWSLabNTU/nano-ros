@@ -21,3 +21,4 @@ cmake/toolchain/riscv32imac-nuttx-elf.cmake
 cmake/toolchain/riscv64-lld-wrapper.sh
 cmake/toolchain/riscv64-threadx.cmake
 cmake/toolchain/arm-freertos-armcr5f.cmake
+cmake/toolchain/arm-freertos-tiarmclang-cr5f.cmake

@@ -18,3 +18,11 @@ locator = "tcp/192.0.3.1:7447"
 
 [board_config."fixture-r5f-freertos"]
 netstack = "lwip"
+
+# The same image, built and linked with TI Arm Clang (phase-575 W3).
+[image.fixture-r5f-tiarmclang]
+board = "fixture-r5f-tiarmclang"
+locator = "tcp/192.0.3.1:7447"
+
+[board_config."fixture-r5f-tiarmclang"]
+netstack = "lwip"

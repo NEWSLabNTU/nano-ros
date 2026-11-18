@@ -73,6 +73,15 @@ def probe_arm_gcc_any() -> str | None:
     return on_path("arm-none-eabi-g++")
 
 
+def probe_tiarmclang() -> str | None:
+    # [gated.ti-arm-clang]: the install TI_ARM_CLANG_ROOT names (phase-575 W3).
+    root = os.environ.get("TI_ARM_CLANG_ROOT")
+    if not root:
+        return "TI_ARM_CLANG_ROOT is unset"
+    tool = os.path.join(root, "bin", "tiarmclang")
+    return None if os.access(tool, os.X_OK) else f"{tool} is not executable"
+
+
 def probe_cli() -> str | None:
     # This checkout's CLI, never PATH or the store (issue 1850).
     r = subprocess.run(["bash", "-c", "source scripts/build/cargo.sh && NROS_CLI= nros_cli_bin --checkout-only"],
@@ -171,6 +180,7 @@ PROBES = {
     "west": probe_west,
     "build-tree": probe_build_tree,
     "arm-gcc": probe_arm_gcc,
+    "tiarmclang": probe_tiarmclang,
 }
 
 

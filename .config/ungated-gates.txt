@@ -111,3 +111,10 @@ workspace-probes
 # fast twin, `r5f-hard-float-abi`, checks the same ABI on three small objects
 # on every pull request.
 out-of-tree-board-images
+
+# tiarmclang-image (phase-575 W3) needs TI Arm Clang, which is licence-gated
+# and never fetched, so no hosted lane can claim it. Run it by name where an
+# install is named (`just check tiarmclang-image`); the self-hosted runner
+# image claims it once it carries TI Arm Clang (a private image, by the
+# user's licence ruling of 2026-11-18).
+tiarmclang-image

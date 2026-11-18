@@ -116,8 +116,52 @@ alone, and its concerto build has no GCC R5F rule (nros 118's reading of
 TI's documentation). TI's AM64x MCU+ SDK offers GCC for R5, but no J784S4
 MCU+ SDK was found.
 
-Acceptance: a minimal FreeRTOS image linked by a non-GCC toolchain in CI,
-with nano-ros's objects built by its own toolchain.
+Acceptance (scope settled 2026-11-18, nros 241 manager, on nros 118's
+measurements below): a minimal FreeRTOS image linked by a non-GCC toolchain
+in CI. nano-ros's C (zenoh-pico, lwIP, the platform and board glue) is built
+by the IMAGE's C compiler, and only the Rust staticlib by nano-ros's own
+toolchain (rustc). In that image a board's strong definition of a weak board
+hook overrides the weak default nano-ros's objects carry, and with no strong
+definition the weak default links. One check covers every weak board hook:
+`nros_board_wall_clock_ns` (W6's clock seam), `nros_board_register_netif` and
+`nros_board_network_wait` (asked by nros 139 for W6, 2026-11-18).
+
+Why the image's compiler builds nano-ros's C. Measured with TI Arm Clang
+5.1.1.LTS, relinking the GCC-built `fixture-r5f-freertos` C image with
+tiarmlnk:
+- nano-ros's GCC objects, compiled against newlib's headers, named newlib's
+  ABI: `__errno`, `_impure_ptr`, `_ctype_`, `__assert_func`. TI's C library
+  has another (`errno`, `_ftable`, `_assert`), and an image links one libc.
+- GCC against TI's headers is no way out: they assume clang (`stdlib.h` pulls
+  `alloca.h`, which is `#error` for any other compiler), and TI's libc has no
+  `<sys/time.h>` or `<unistd.h>`.
+- Shimming newlib's symbols cannot reconcile stdio: `_impure_ptr` is newlib's
+  FILE layout.
+
+Weak hooks under tiarmlnk, measured: the same as GNU ld in all four cases.
+A weak default plus a strong definition in an archive links the default (no
+linker pulls a member to replace a weak definition). With no weak default the
+archived strong definition is pulled. With neither the link fails naming the
+hook. A strong definition in an object replaces the default. So a board's
+strong hook goes in an object on the link line, or the build omits the weak
+default (W6's `source = "board"`).
+
+Delivered: `cmake/toolchain/arm-freertos-tiarmclang-cr5f.cmake`, the fixture
+package's second board `fixture-r5f-tiarmclang` (a TI linker command file
+beside the GNU script), and `just check tiarmclang-image`. nano-ros's C no
+longer assumes newlib: `__dso_handle` is weak, the FreeRTOS family's lwIP
+`cc.h` takes `struct timeval` from `<sys/select.h>` and fills in the socket
+errnos a libc lacks, newlib's time shims sit under `__NEWLIB__`, and
+zenoh-pico's FreeRTOS wall clock is `nros_platform_time_now_ns`
+(`Z_FEATURE_NROS_PLATFORM_TIME`, a fork patch). Found on the way:
+issue 2692 (some cc-rs builds take their CPU from cc-rs's compiler defaults, not
+the arch profile) and issue 2693 (the stack-floor check is off on this road).
+
+Provisioning (settled 2026-11-18): TI Arm Clang is a `[gated.ti-arm-clang]`
+row, never fetched by `nros setup`, because its licence (TI's "TI Text File"
+terms, plus a click-through in the installer) limits use to TI devices and is
+the user's to accept. The user accepted it for nano-ros's private self-hosted
+runner image only; no public image or mirror may carry it.
 
 ### W4 — `zpico-link-rpmsg`, zenoh-pico over RPMsg
 

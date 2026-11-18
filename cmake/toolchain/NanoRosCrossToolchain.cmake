@@ -451,3 +451,48 @@ function(nros_cross_toolchain_report)
         endif()
     endif()
 endfunction()
+
+# ---------------------------------------------------------------------------
+# A LICENCE-GATED COMPILER (phase-575 W3): a `[gated.<name>]` row nano-ros never
+# fetches, TI Arm Clang the first. There is no ladder to resolve: the user's
+# own install, named by ROOT_VAR, is the only rung, and a toolchain file that
+# finds none refuses. What issue 1117 asks of every cross build still holds:
+# the configure says which compiler it used, where from, and what the index
+# states. Same line shape as nros_cross_toolchain_report's.
+#
+#   nros_gated_toolchain_report(TOOL <gated name> ROOT_VAR <VAR>
+#                               COMPILER <path to the C compiler>)
+function(nros_gated_toolchain_report)
+    cmake_parse_arguments(_A "" "TOOL;ROOT_VAR;COMPILER" "" ${ARGN})
+    get_property(_in_try_compile GLOBAL PROPERTY IN_TRY_COMPILE)
+    if(_in_try_compile)
+        return()
+    endif()
+    string(MAKE_C_IDENTIFIER "${_A_TOOL}" _memo)
+    get_property(_seen GLOBAL PROPERTY "_NROS_CT_REPORTED_${_memo}")
+    if(_seen)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY "_NROS_CT_REPORTED_${_memo}" TRUE)
+
+    set(_ver "unknown")
+    execute_process(COMMAND "${_A_COMPILER}" --version
+                    OUTPUT_VARIABLE _ver_out RESULT_VARIABLE _rc ERROR_QUIET)
+    if(_rc EQUAL 0 AND _ver_out MATCHES "^([^\n]*)")
+        set(_ver "${CMAKE_MATCH_1}")
+    endif()
+
+    set(_stated "no [gated.${_A_TOOL}] in nros-sdk-index.toml")
+    set(_index "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../nros-sdk-index.toml")
+    if(EXISTS "${_index}")
+        file(READ "${_index}" _txt)
+        string(REPLACE "." "\\." _tool_re "${_A_TOOL}")
+        string(REGEX MATCH "\n\\[gated\\.${_tool_re}\\]\n(([^\n\\[][^\n]*)?\n)*" _sec "\n${_txt}")
+        if(_sec MATCHES "\nversion[ \t]*=[ \t]*\"([^\"]*)\"")
+            set(_stated "index states ${CMAKE_MATCH_1}, licence-gated, never fetched")
+        endif()
+    endif()
+    message(STATUS
+        "nano-ros: ${_A_TOOL} \"${_ver}\" via ${_A_ROOT_VAR}=${${_A_ROOT_VAR}} — "
+        "${_A_COMPILER} (${_stated})")
+endfunction()
