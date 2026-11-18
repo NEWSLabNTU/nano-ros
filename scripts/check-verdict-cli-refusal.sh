@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# A recorded VERDICT is never the nros CLI refusing to run — issue 1926.
+# A recorded VERDICT is never the nros CLI refusing to run — issue 1926 — nor
+# cargo failing to fetch a dependency — issue 2591.
 #
 # A verdict row (`cargo-check-verdict`, `cmake-configure-verdict`,
 # `cxx-syntax-verdict`, `cxx-compile-verdict`) records a tool's exit status and
@@ -104,8 +105,8 @@ fi
 
 # check 3 — the real bodies.
 defs="$tmp/defs.sh"
-{ lift _cc_verdict_cli_refusal; lift _cc_write_verdict_stamp; lift cc_row_reusable; } > "$defs"
-for f in _cc_verdict_cli_refusal _cc_write_verdict_stamp cc_row_reusable; do
+{ lift _cc_verdict_cli_refusal; lift _cc_verdict_fetch_failure; lift _cc_write_verdict_stamp; lift cc_row_reusable; } > "$defs"
+for f in _cc_verdict_cli_refusal _cc_verdict_fetch_failure _cc_write_verdict_stamp cc_row_reusable; do
     awk -v f="$f() {" 'index($0, f) == 1 { found = 1 } END { exit !found }' "$defs" || { echo "check-verdict-cli-refusal: could not lift $f from $builder" >&2; exit 2; }
 done
 behaviour="$(
@@ -132,6 +133,16 @@ behaviour="$(
     if [ "$rc" -eq 0 ] || [ -e "$tmp/foreign/.verdict" ]; then
         out+="a foreign-CLI refusal in a prelude was RECORDED as a verdict (rc=$rc); "
     fi
+    # Issue 2591 — cargo failing to fetch a dependency, as it printed it on
+    # 2026-11-15, is an answer about the network and must not be recorded.
+    mkdir -p "$tmp/offline"
+    printf 'error: failed to get `ros-launch-manifest-model` as a dependency of package `nros-macros v0.6.0`\n\nCaused by:\n  failed to load source for dependency `ros-launch-manifest-model`\n\nCaused by:\n  network failure seems to have happened\n' \
+        > "$tmp/offline/verdict.stderr"
+    : > "$tmp/offline/verdict.stdout"
+    rc=0; _cc_write_verdict_stamp "$tmp/offline" 101 2>/dev/null || rc=$?
+    if [ "$rc" -eq 0 ] || [ -e "$tmp/offline/.verdict" ]; then
+        out+="a dependency fetch failure was RECORDED as a verdict (rc=$rc); "
+    fi
     # A genuine diagnostic is a verdict and must be recorded.
     mkdir -p "$tmp/genuine"
     printf 'CMake Error at CMakeLists.txt:3 (message):\n  NROS_BOARD is required for platform threadx\n' \
@@ -152,6 +163,10 @@ behaviour="$(
         printf 'exit=1\n' > "$tmp/$d/.verdict"
         printf 'sig\n' > "$tmp/$d/.inputsig"
     done
+    mkdir -p "$tmp/fetched"
+    printf 'exit=101\n' > "$tmp/fetched/.verdict"
+    printf 'sig\n' > "$tmp/fetched/.inputsig"
+    cp "$tmp/offline/verdict.stderr" "$tmp/fetched/verdict.stderr"
     cp "$tmp/refused/verdict.stderr" "$tmp/poisoned/verdict.stderr"
     cp "$tmp/genuine/verdict.stderr" "$tmp/clean/verdict.stderr"
     # Both `output` shapes a row holding a verdict declares: `.verdict` (every
@@ -160,6 +175,9 @@ behaviour="$(
         rec="row$(printf '\x1f')cmake-configure-verdict$(printf '\x1f')d$(printf '\x1f')$(printf '\x1f')$(printf '\x1f')$(printf '\x1f')$(printf '\x1f')$o"
         if cc_row_reusable "$rec" "$tmp/poisoned" >/dev/null 2>&1; then
             out+="a verdict that records a CLI refusal was REUSED (output='$o'); "
+        fi
+        if cc_row_reusable "$rec" "$tmp/fetched" >/dev/null 2>&1; then
+            out+="a verdict that records a dependency fetch failure was REUSED (output='$o'); "
         fi
         if ! cc_row_reusable "$rec" "$tmp/clean" >/dev/null 2>&1; then
             out+="control: a clean verdict with a matching signature was NOT reused (output='$o'), so the reuse check above proves nothing; "
@@ -173,7 +191,7 @@ if [ -n "$behaviour" ]; then
 fi
 
 if [ "$fail" -ne 0 ]; then
-    echo "check-verdict-cli-refusal: FAILED (issue 1926)" >&2
+    echo "check-verdict-cli-refusal: FAILED (issues 1926, 2591)" >&2
     exit 1
 fi
-echo "check-verdict-cli-refusal: OK — ${#NROS_CLI_REFUSAL_MARKERS[@]} refusal marker(s) in $producer; one .verdict writer; it refuses a CLI refusal, records a diagnostic, and a poisoned verdict is not reused"
+echo "check-verdict-cli-refusal: OK — ${#NROS_CLI_REFUSAL_MARKERS[@]} refusal marker(s) in $producer; one .verdict writer; it refuses a CLI refusal and a fetch failure, records a diagnostic, and neither poisoned verdict is reused"
