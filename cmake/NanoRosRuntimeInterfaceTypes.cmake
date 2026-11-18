@@ -41,6 +41,72 @@
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
 
+# Issue 2704 -- the axis -> package table is not spelled here. It is the ONE
+# runtime-interface table, `packages/core/nros-orchestration-ir/data/
+# runtime-interface-types.json`, which the CLI (its configure-time refusal) and
+# the cargo road (its descriptor-table count) read too, so a runtime-owned
+# axis or package cannot land on one road only. This road reads its
+# `packages` columns: it generates each package WHOLE, so the descriptor
+# table records every type of it (the cargo road counts only `registers`,
+# the types the executor creates).
+
+# _nros_runtime_interface_packages(<features> <out>)
+#
+# <out>: `<pkg>[:<dep>...]` entries, in the table's dependency order (a
+# package's IDL includes its dependencies', so theirs are generated first),
+# for every package an axis named in <features> needs; empty when none.
+function(_nros_runtime_interface_packages features out)
+    # Resolved from this file, not a variable set at include time: the file is
+    # include_guard(GLOBAL)ed, so a variable would exist only in the first
+    # including directory's scope.
+    set(_table "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../packages/core/nros-orchestration-ir/data/runtime-interface-types.json")
+    if(NOT EXISTS "${_table}")
+        message(FATAL_ERROR
+            "nano-ros: the runtime interface table is missing at ${_table}; "
+            "the nano-ros checkout is incomplete.")
+    endif()
+    file(READ "${_table}" _json)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_table}")
+    set(_wanted "")
+    string(JSON _n_axes LENGTH "${_json}" axes)
+    math(EXPR _last "${_n_axes} - 1")
+    foreach(_i RANGE ${_last})
+        string(JSON _axis GET "${_json}" axes ${_i} axis)
+        if(NOT _axis IN_LIST features)
+            continue()
+        endif()
+        string(JSON _n LENGTH "${_json}" axes ${_i} packages)
+        if(_n EQUAL 0)
+            continue()
+        endif()
+        math(EXPR _plast "${_n} - 1")
+        foreach(_j RANGE ${_plast})
+            string(JSON _p GET "${_json}" axes ${_i} packages ${_j})
+            list(APPEND _wanted "${_p}")
+        endforeach()
+    endforeach()
+    set(_pkgs "")
+    string(JSON _n_pkgs LENGTH "${_json}" packages)
+    math(EXPR _last "${_n_pkgs} - 1")
+    foreach(_i RANGE ${_last})
+        string(JSON _name GET "${_json}" packages ${_i} name)
+        if(NOT _name IN_LIST _wanted)
+            continue()
+        endif()
+        set(_entry "${_name}")
+        string(JSON _n LENGTH "${_json}" packages ${_i} deps)
+        if(_n GREATER 0)
+            math(EXPR _dlast "${_n} - 1")
+            foreach(_j RANGE ${_dlast})
+                string(JSON _d GET "${_json}" packages ${_i} deps ${_j})
+                string(APPEND _entry ":${_d}")
+            endforeach()
+        endif()
+        list(APPEND _pkgs "${_entry}")
+    endforeach()
+    set(${out} "${_pkgs}" PARENT_SCOPE)
+endfunction()
+
 # nros_runtime_interface_types(<features> [RMW <name>] [HOOK <command>]
 #                               [TARGETS <umbrella>...])
 #
@@ -85,21 +151,10 @@ function(nros_runtime_interface_types features)
         return()
     endif()
 
-    # (package, its dependencies) in dependency order: a package's IDL
-    # includes its dependencies', so theirs must be generated first.
-    # Issue 2704 -- `rosout` publishes `rcl_interfaces/msg/Log`, so it needs
-    # the same two packages as the parameter services.
-    set(_pkgs "")
-    if("param_services" IN_LIST features OR "rosout" IN_LIST features)
-        list(APPEND _pkgs "builtin_interfaces" "rcl_interfaces:builtin_interfaces")
-    endif()
-    if("lifecycle" IN_LIST features)
-        list(APPEND _pkgs "lifecycle_msgs")
-    endif()
+    _nros_runtime_interface_packages("${features}" _pkgs)
     if(_pkgs STREQUAL "")
         return()
     endif()
-    list(REMOVE_DUPLICATES _pkgs)
 
     if(NOT COMMAND _nros_find_msg_package_root)
         include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/find/_NrosFindRosMsgPackage.cmake")

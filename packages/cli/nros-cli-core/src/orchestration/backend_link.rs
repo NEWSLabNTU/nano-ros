@@ -401,15 +401,11 @@ pub fn undeclared_capability_refusal(
     Some(lines.join("\n"))
 }
 
-/// The interface packages the RUNTIME creates entities with for each node
-/// interface axis, in dependency order: what `nros_runtime_interface_types()`
-/// (`cmake/NanoRosRuntimeInterfaceTypes.cmake`) generates for the same axes.
-/// `check-runtime-interface-types-roads` keeps the two lists equal.
-pub const RUNTIME_INTERFACE_PACKAGES: &[(&str, &[&str])] = &[
-    ("param_services", &["builtin_interfaces", "rcl_interfaces"]),
-    ("rosout", &["builtin_interfaces", "rcl_interfaces"]),
-    ("lifecycle", &["lifecycle_msgs"]),
-];
+// Issue 2704 -- the axis -> package table is not spelled here: it is the
+// one `nros_orchestration_ir::runtime_interface_types` table
+// (`data/runtime-interface-types.json`), which
+// `nros_runtime_interface_types()` (`cmake/NanoRosRuntimeInterfaceTypes.cmake`)
+// reads too, so the refusal and the cmake roads cannot disagree.
 
 /// The `[rmw.capabilities]` key of a backend that creates an entity only for
 /// a type whose descriptor is generated into the image.
@@ -445,11 +441,17 @@ pub fn runtime_interface_types_refusal(
     {
         return None;
     }
-    let lines: Vec<String> = RUNTIME_INTERFACE_PACKAGES
+    let lines: Vec<String> = nros_orchestration_ir::runtime_interface_types::table()
+        .axes
         .iter()
+        .map(|a| (a.axis.as_str(), &a.packages))
         .filter(|(axis, _)| sys.capability_enabled(axis))
         .filter_map(|(axis, pkgs)| {
-            let missing: Vec<&str> = pkgs.iter().copied().filter(|p| !find_pkg(p)).collect();
+            let missing: Vec<&str> = pkgs
+                .iter()
+                .map(String::as_str)
+                .filter(|p| !find_pkg(p))
+                .collect();
             if missing.is_empty() {
                 return None;
             }
@@ -458,7 +460,7 @@ pub fn runtime_interface_types_refusal(
                 .map(|p| format!("`{p}`"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let stock = nros_orchestration_ir::node_interfaces::STOCK.contains(axis);
+            let stock = nros_orchestration_ir::node_interfaces::STOCK.contains(&axis);
             let (how, way_out) = if stock {
                 (
                     "is enabled (by the image's stock node interfaces, or declared in its \

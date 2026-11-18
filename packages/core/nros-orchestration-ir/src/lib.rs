@@ -39,6 +39,8 @@ use thiserror::Error;
 /// cannot preempt the client.
 pub mod blocking_calls;
 pub mod type_descriptor_sizing;
+// Issue 2704 -- the runtime's own interface types, one table for both roads.
+pub mod runtime_interface_types;
 // issue 1676 — the contract-monitor rows, shared by the CLI's C/C++ emitters
 // and the `nros::main!` proc-macro (which cannot dep `nros-cli-core`).
 pub mod contract_monitors;

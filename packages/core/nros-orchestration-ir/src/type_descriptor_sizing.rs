@@ -75,62 +75,53 @@ const TYPES_PER_ACTION: usize = 8;
 /// action (`CancelGoal_{Request,Response}`, `GoalStatusArray`).
 const ACTION_MSGS_SHARED: usize = 3;
 
-/// Distinct DDS type names the SIX parameter services register.
-///
-/// They are the executor's own, not the model's: `param_services` puts a set of
-/// six on every node, and each service registers `_Request` + `_Response`, so
-/// twelve names — `rcl_interfaces::srv::dds_::{Get,Set,SetAtomically,List,
-/// Describe,GetTypes}Parameters_{Request,Response}_`. Shared across every node
-/// of the image (one descriptor per TYPE, not per node), so the count does not
-/// scale with node count.
-///
-/// Counted here because the model names only what an entry WIRES, and these are
-/// wired by the runtime. Before 1268 they registered nothing at all — the six
-/// `create_service` calls went straight to the backend, which refused each — so
-/// they cost no registry slots and the omission could not be observed.
-///
-/// Plus ONE message: `rcl_interfaces::msg::dds_::ParameterEvent_`,
-/// the executor's `/parameter_events` publisher, which registers
-/// its type like any other publisher. 2023 added the registration and not the
-/// count, so a table sized to the model's types plus twelve was one short.
-pub const PARAM_SERVICE_TYPES: usize = 6 * TYPES_PER_SRV + TYPES_PER_MSG;
-
-/// Distinct DDS type names the lifecycle family registers.
-///
-/// Five services over FOUR service types (`get_available_transitions` and
-/// `get_transition_graph` share `GetAvailableTransitions`), so `4 *
-/// TYPES_PER_SRV` = 8, plus the `~/transition_event` publisher's
-/// `TransitionEvent`: 9. Once per executor, like the servers.
-///
-/// Uncounted before 1293 because they registered nothing: three of the request
-/// types are EMPTY and had no descriptor, so `create_lc_srv` never asked. Now
-/// that an empty message carries rosidl's `structure_needs_at_least_one_member`
-/// in both its schema and its serializer, they register like any other type.
-pub const LIFECYCLE_TYPES: usize = 4 * TYPES_PER_SRV + TYPES_PER_MSG;
-
-// Issue 2704 (phase-556 W13 made `/rosout` executor-owned): the writer
-// registers its type like any publisher, but the count did not have it, so a
-// table sized to the model plus the parameter family was one short.
-/// Distinct DDS type names the `/rosout` family registers: the per-node
-/// writer's `rcl_interfaces::msg::dds_::Log_`, once per executor. Counted
-/// only when the family is on.
-pub const ROSOUT_TYPES: usize = TYPES_PER_MSG;
-
 /// Distinct DDS type names the executor's OWN entities add, given what the
 /// bringup declares. The flags are the caller's answer to
 /// `InfraServices::from_model`, so each feature predicate has one spelling.
+///
+/// Issue 2704 -- read from the ONE runtime-interface table
+/// ([`crate::runtime_interface_types`], `data/runtime-interface-types.json`)
+/// the cmake roads generate from too, so an axis or type added there is
+/// counted here with no second edit. Distinct names across the enabled axes
+/// (one descriptor per TYPE, shared by every node of the image, so the count
+/// does not scale with node count):
+///
+/// * `param_services` -- 13: six services (`_Request` + `_Response` each, 12)
+///   plus the `/parameter_events` publisher's `ParameterEvent` (issues 1268,
+///   2023: before them these registered nothing, or were not counted).
+/// * `lifecycle` -- 9: five services over FOUR service types
+///   (`get_available_transitions` and `get_transition_graph` share
+///   `GetAvailableTransitions`), plus `~/transition_event`'s
+///   `TransitionEvent` (issue 1293).
+/// * `rosout` -- 1: the per-node writer's `Log` (phase-556 W13 made `/rosout`
+///   executor-owned; issue 2704 counted it).
 pub fn infra_types(param_services: bool, lifecycle: bool, rosout: bool) -> usize {
-    let mut n = 0;
-    if param_services {
-        n += PARAM_SERVICE_TYPES;
+    let enabled = [
+        ("param_services", param_services),
+        ("lifecycle", lifecycle),
+        ("rosout", rosout),
+    ];
+    let mut names = BTreeSet::new();
+    for (axis, on) in enabled {
+        if !on {
+            continue;
+        }
+        let a = crate::runtime_interface_types::axis(axis)
+            .unwrap_or_else(|| panic!("runtime-interface-types.json has no `{axis}` axis"));
+        for ty in &a.registers {
+            names.insert(ty.as_str());
+        }
     }
-    if lifecycle {
-        n += LIFECYCLE_TYPES;
-    }
-    if rosout {
-        n += ROSOUT_TYPES;
-    }
-    n
+    names
+        .iter()
+        .map(|ty| {
+            if ty.contains("/srv/") {
+                TYPES_PER_SRV
+            } else {
+                TYPES_PER_MSG
+            }
+        })
+        .sum()
 }
 
 /// Node FQN owning an endpoint ref (`"/ns/node/endpoint"` → `"/ns/node"`).

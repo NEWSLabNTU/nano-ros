@@ -187,7 +187,20 @@ predicate, refuses an image at `nros build` when an enabled axis needs a
 runtime package that is not on the interface index. The cmake helper's
 FATAL_ERROR is the configure-time refusal for a direct cmake user. Gate
 `check-runtime-interface-types-roads` holds every per-message generator's road
-to a call of the helper, and holds the CLI's axis table equal to the helper's.
+to a call of the helper.
+
+One table for both roads: the axis -> packages -> registered types live in
+`packages/core/nros-orchestration-ir/data/runtime-interface-types.json` only.
+The cmake helper reads its `packages` (`string(JSON)`) and generates each
+package whole, so the descriptor table records every type of it. The cargo
+road reads its `registers` (`runtime_interface_types`, `include_str!`), the
+types the executor creates, and sizes the Cyclone tables from that count
+(`type_descriptor_sizing::infra_types`); the CLI refusal reads `packages`. The
+gate refuses a package list spelled in the helper or in `backend_link.rs`, and
+holds `registers` equal to the types at nros-node's own creation sites
+(`create_param_srv`, `create_param_event_pub`, `create_rosout_pub`,
+`create_lc_srv`, `create_lc_pub`), so a fourth runtime-owned type cannot land
+on one road only.
 
 Measured on the downstream FVP image (Zephyr C++, Cyclone, user-mode network):
 
@@ -207,3 +220,18 @@ The cap now also refuses, at configure, a registration recorded after the
 table was sized once it no longer fits, and names the type (case F in
 `tests/cmake-cyclonedds-descriptor-cap-tests.sh`). Before, that case only
 showed up at boot as the overflow line.
+
+The cargo road registers at run time, with no configure step. There, a
+registration that does not fit the C++ descriptor table is now REFUSED, not
+dropped: `TypeRegistry` mirrors through
+`nros_rmw_cyclonedds_try_register_descriptor`, which holds the type under both
+of its keys (the schema name and the descriptor's `m_typename`) or neither,
+and returns `-2` when the table is full. The registry then forgets the type,
+frees the descriptor it built (a refused registration may be retried every
+spin), and returns `BuildError::DescriptorTableFull`; the seam fails the
+entity create, and `rmw_type_registry::register_type` names the type. The
+void entry stays for the static-init constructors, which cannot fail. Tests:
+`descriptor_table_capacity` (C++: over the cap, refused, no slot taken, not
+counted as a drop), `type_registry::tests::
+descriptor_table_full_refuses_and_caches_nothing` and `descriptor_seam` (Rust,
+bridge stub).
