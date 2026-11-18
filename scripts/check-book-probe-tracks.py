@@ -77,6 +77,7 @@ def selftest() -> None:
         if r.returncode == 0 or "probe-expect" not in r.stderr:
             sys.exit("check-book-probe-tracks: SELFTEST FAILED — a run step with no "
                      f"expected-output block extracted (rc={r.returncode}): {r.stderr}")
+    _selftest_drifted_submodule()
     # phase-537 W2: a language-tabbed chapter extracts one language per track.
     r = subprocess.run([sys.executable, str(EXTRACTOR), "--self-test"], capture_output=True, text=True)
     if r.returncode != 0:
@@ -99,6 +100,83 @@ def _clone_at(url: str, sha: str, dest: Path, env: dict, depth: str = "") -> sub
     return subprocess.run(["sh", "-c", cmd], env=env, capture_output=True, text=True)
 
 
+def edited_paths(src: Path, env: dict) -> list[str]:
+    """The FILES edited in `src` against its HEAD, plus untracked probe sources.
+
+    `--ignore-submodules=all`: a submodule checked out away from its recorded
+    pin (common after a rebase across a pin move) shows in a plain
+    `git diff --name-only HEAD` as its gitlink path, a DIRECTORY. The overlay
+    copies files; a gitlink is not one, and the depth-1 clone holds it as an
+    empty directory, so overlaying it crashed with IsADirectoryError.
+    """
+    changed = _git("diff", "--name-only", "--ignore-submodules=all", "HEAD",
+                   cwd=src, env=env).splitlines()
+    changed += _git("ls-files", "--others", "--exclude-standard", "--",
+                    "scripts/probe", "scripts/lib", cwd=src, env=env).splitlines()
+    return changed
+
+
+def overlay(src: Path, dst_root: Path, paths: list[str]) -> None:
+    """Copy each edited file onto the clone, and delete each deleted one.
+
+    A path that is a directory on either side is never a file edit (a gitlink
+    `edited_paths` should already have dropped), so it is skipped, never
+    unlinked."""
+    for rel in paths:
+        s, d = src / rel, dst_root / rel
+        if s.is_dir() or d.is_dir():
+            continue
+        if s.is_file():
+            d.parent.mkdir(parents=True, exist_ok=True)
+            d.write_bytes(s.read_bytes())
+            d.chmod(s.stat().st_mode)
+        elif d.exists() or d.is_symlink():
+            d.unlink()
+
+
+def _selftest_drifted_submodule() -> None:
+    """A submodule checked out off its pin is not an overlay path (the crash
+    that `IsADirectoryError ... zpico-sys/zenoh-pico` reported)."""
+    env = nros_clear_inherited_git_env(dict(os.environ))
+    env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+               GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_NOSYSTEM="1",
+               GIT_CONFIG_GLOBAL=os.devnull)
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        sub, sup, clone = d / "sub", d / "sup", d / "clone"
+        for r in (sub, sup):
+            r.mkdir()
+            _git("init", "-q", "-b", "main", cwd=r, env=env)
+        (sub / "a").write_text("1")
+        _git("add", "a", cwd=sub, env=env)
+        _git("commit", "-q", "-m", "s1", cwd=sub, env=env)
+        (sup / "f.txt").write_text("old")
+        _git("add", "f.txt", cwd=sup, env=env)
+        _git("-c", "protocol.file.allow=always", "submodule", "add", "-q", str(sub), "dep",
+             cwd=sup, env=env)
+        _git("commit", "-q", "-m", "pin", cwd=sup, env=env)
+        # drift: the submodule's checkout moves off the recorded pin
+        (sup / "dep" / "a").write_text("2")
+        _git("commit", "-q", "-am", "s2", cwd=sup / "dep", env=env)
+        (sup / "f.txt").write_text("new")
+        plain = _git("diff", "--name-only", "HEAD", cwd=sup, env=env).splitlines()
+        if "dep" not in plain:
+            sys.exit("check-book-probe-tracks: SELFTEST FAILED — negative control: the drifted "
+                     f"submodule does not show in a plain diff ({plain}), so this case proves nothing")
+        got = edited_paths(sup, env)
+        if got != ["f.txt"]:
+            sys.exit(f"check-book-probe-tracks: SELFTEST FAILED — edited_paths over a drifted "
+                     f"submodule: want ['f.txt'], got {got}")
+        (clone / "dep").mkdir(parents=True)  # a depth-1 clone's empty gitlink dir
+        try:
+            overlay(sup, clone, plain)       # even the unfiltered list must not crash
+        except OSError as e:
+            sys.exit(f"check-book-probe-tracks: SELFTEST FAILED — overlay on a gitlink: {e!r}")
+        if (clone / "f.txt").read_text() != "new" or not (clone / "dep").is_dir():
+            sys.exit("check-book-probe-tracks: SELFTEST FAILED — overlay did not copy the file "
+                     "or removed the gitlink directory")
+
+
 def non_tip_rehearsal() -> list[str]:
     """The release rehearsal's checkout shape (see the module doc). Returns problems."""
     env = nros_clear_inherited_git_env(dict(os.environ))
@@ -118,17 +196,7 @@ def non_tip_rehearsal() -> list[str]:
         if r.returncode != 0:
             return [f"probe_clone_at_commit could not fetch HEAD {head[:10]} by SHA: {r.stderr.strip()}"]
         # Overlay what is being edited, so the check probes this tree.
-        changed = _git("diff", "--name-only", "HEAD", cwd=REPO, env=env).splitlines()
-        changed += _git("ls-files", "--others", "--exclude-standard", "--",
-                        "scripts/probe", "scripts/lib", cwd=REPO, env=env).splitlines()
-        for rel in changed:
-            src, dst = REPO / rel, repo / rel
-            if src.is_file():
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                dst.write_bytes(src.read_bytes())
-                dst.chmod(src.stat().st_mode)
-            elif dst.exists():
-                dst.unlink()
+        overlay(REPO, repo, edited_paths(REPO, env))
         _git("add", "-A", ".", cwd=repo, env=env)
         _git("commit", "-q", "--no-verify", "--allow-empty", "-m", "C1: the commit under test", cwd=repo, env=env)
         c1 = _git("rev-parse", "HEAD", cwd=repo, env=env)
