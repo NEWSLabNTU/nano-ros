@@ -67,6 +67,7 @@ call made from inside a callback), are on the
 | A goal arriving with every goal handle in use | queued | rejected |
 | An accepted goal | waits for the client to ask for its result | executes at once, so a result may be sent before the client asks for it |
 | Taking an entity off a running executor | `rclc_executor_remove_*` | the same calls; each frees its slot and arena bytes, and `fini` without one leaves the entity dispatched into |
+| Reading a message's metadata (timestamps, sequence numbers, publisher GID) | no subscription callback receives it | `rclc_executor_add_subscription_with_message_info`: the callback gets a `const rmw_message_info_t *`, NULL when the backend reports none. The older `rclc_executor_add_subscription_with_info` and `..._raw_with_info` are deprecated: despite the name, their callback gets the wire attachment and no metadata |
 
 ## Linking from CMake
 

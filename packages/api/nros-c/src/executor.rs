@@ -2600,6 +2600,9 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
 /// # Safety
 /// All non-NULL pointers must be valid; the C strings must be NUL-terminated
 /// UTF-8 valid for the duration of the call.
+#[deprecated(
+    note = "delivers the wire attachment and NO message metadata; use rclc_executor_add_subscription_with_message_info"
+)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
     executor: *mut rclc_executor_t,
@@ -2724,6 +2727,9 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
 /// # Safety
 /// * `executor` and `subscription` must be valid, initialised objects.
 /// * `context` is passed through untouched and may be NULL.
+#[deprecated(
+    note = "delivers the wire attachment and NO message metadata; use rclc_executor_add_subscription_with_message_info"
+)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_add_subscription_with_info(
     executor: *mut rclc_executor_t,
@@ -2753,6 +2759,92 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_info(
                     // Issue 2304 -- say which subscription and why.
                     crate::support::report_node_refusal(
                         "rclc_executor_add_subscription_with_info",
+                        format_args!("subscription {} ({})", topic, type_name),
+                        e,
+                    )
+                })
+        },
+    )
+}
+
+/// Register a raw subscription whose callback also receives each message's
+/// metadata, into a `rcl_subscription_t` the caller keeps, so it can be
+/// REMOVED.
+///
+/// The callback gets an [`rmw_message_info_t`](crate::subscription::rmw_message_info_t):
+/// when the publisher sent the message and when it was received, both
+/// sequence numbers, and the publisher's GID, as the backend reported them.
+/// `info` is NULL from a backend that reports no metadata.
+///
+/// ```c
+/// rclc_subscription_init_default(&sub, &node, &type, "/topic");
+/// rclc_executor_add_subscription_with_message_info(&exec, &sub, on_sample, ctx,
+///                                                  ON_NEW_DATA);
+/// ...
+/// rclc_executor_remove_subscription(&exec, &sub);
+/// ```
+///
+/// It replaces `rclc_executor_add_subscription_with_info` and
+/// `rclc_executor_add_subscription_raw_with_info`, whose callbacks receive the
+/// wire attachment and no metadata. The executor path is the one C++'s
+/// `(msg, const rclcpp::MessageInfo&)` callback takes. The metadata comes
+/// with a copying take, so this subscription cannot dispatch in place and
+/// claims a receive buffer sized from the subscription's type.
+///
+/// # Returns
+/// As [`rclc_executor_add_subscription_raw`]; `RCL_RET_INVALID_ARGUMENT` for a
+/// NULL `callback`.
+///
+/// # Safety
+/// * `executor` and `subscription` must be valid, initialised objects.
+/// * `context` is passed through untouched and may be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_subscription_with_message_info(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+    callback: crate::subscription::rclc_subscription_message_info_callback_t,
+    context: *mut core::ffi::c_void,
+    invocation: rclc_executor_handle_invocation_t,
+) -> rcl_ret_t {
+    validate_not_null!(executor, subscription);
+    let rx_bytes = subscription_rx_bound(subscription);
+    let Some(cb) = callback else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    // The context word crosses into a `'static` closure as an address.
+    let ctx = context as usize;
+    register_subscription_entry(
+        executor,
+        subscription,
+        invocation,
+        |rust_exec, node_id, topic, type_name, type_hash, qos| {
+            rust_exec
+                .add_arena_subscription_msg_info_closure(
+                    node_id,
+                    topic,
+                    type_name,
+                    type_hash,
+                    qos,
+                    rx_bytes,
+                    move |data: &[u8], info: Option<&nros_core::MessageInfo>| {
+                        let c_info =
+                            info.map(crate::subscription::rmw_message_info_t::from_message_info);
+                        let info_ptr = c_info.as_ref().map_or(core::ptr::null(), |i| i as *const _);
+                        // SAFETY: the caller's callback, with bytes and
+                        // metadata valid for the call and its own context.
+                        unsafe {
+                            cb(
+                                data.as_ptr(),
+                                data.len(),
+                                info_ptr,
+                                ctx as *mut core::ffi::c_void,
+                            )
+                        };
+                    },
+                )
+                .map_err(|e| {
+                    crate::support::report_node_refusal(
+                        "rclc_executor_add_subscription_with_message_info",
                         format_args!("subscription {} ({})", topic, type_name),
                         e,
                     )

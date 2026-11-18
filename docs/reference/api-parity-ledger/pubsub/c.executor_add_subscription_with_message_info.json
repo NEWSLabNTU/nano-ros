@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_subscription_with_message_info",
+  "verdict": "extension",
+  "why": "issue 2712 -- a raw subscription whose callback receives each message's `rmw_message_info_t` (timestamps, both sequence numbers, the publisher GID), registered into a `rcl_subscription_t` the caller keeps, in the shape of `c:executor_add_subscription_raw` (executor, subscription, callback, context, invocation). `info` is NULL from a backend that reports no metadata. Same executor path as C++'s `(msg, const rclcpp::MessageInfo&)` callback. Replaces `c:executor_add_subscription_with_info` and `c:executor_add_subscription_raw_with_info`, which hand over the wire attachment and no metadata. No rclc counterpart: rclc has no subscription callback that receives message info."
+}

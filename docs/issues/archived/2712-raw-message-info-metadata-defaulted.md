@@ -1,11 +1,13 @@
 ---
 id: 2712
 title: "The generic `.message_info()` subscription reads every metadata field as zero, and no C call can deliver a message's metadata"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [api, executor, rmw, c-api]
 found: 2026-11-18
+resolved: 2026-11-19
+resolved_in: "feat(nros-c, issue 2712): a C subscription callback reads each message's metadata"
 related: [2349, 2036]
 ---
 
@@ -81,7 +83,25 @@ Tests:
 - `take_with_info.rs::the_combined_take_carries_the_backends_metadata`: the
   same over the C vtable the runtime uses.
 
-**C: open, ruled (ii)** (manager, 2026-11-18). A new callback type and
-registration carrying `const rmw_message_info_t *`. The two attachment-only
-`*_with_info` calls are marked deprecated, naming it; they are not removed.
+**C: fixed** (ruled (ii), manager, 2026-11-18).
+
+- `rclc_executor_add_subscription_with_message_info` registers a
+  subscription whose callback, `rclc_subscription_message_info_callback_t`,
+  gets a `const rmw_message_info_t *`.
+  - `info` is NULL from a backend that reports no metadata, never a zeroed
+    struct.
+  - The executor path is the one C++'s `(msg, MessageInfo)` callback takes.
+- `rmw_message_info_t` and `rmw_gid_t` are declared by
+  `<rclc/detail/message_info.h>` under the guards `<nros/rmw_entity.h>` now
+  carries.
+- `rclc_executor_add_subscription_with_info` and
+  `rclc_executor_add_subscription_raw_with_info` are deprecated. The warning
+  says they deliver no metadata and names the new call. They are not removed.
+- Test: `tests/run/subscription_message_info.c` in `just check c`.
+  Mutation, a zeroed struct handed to the callback: five FAILs.
+
+## Resolution (2026-11-19)
+
+Resolved. The Rust generic `.message_info()` subscription reads the metadata
+the backend reported, and C has a call that delivers it.
 
