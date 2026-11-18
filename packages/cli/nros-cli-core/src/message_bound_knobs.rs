@@ -815,7 +815,7 @@ pub fn write_west_seed(
     node_dirs: &[std::path::PathBuf],
     interface_search: Option<&std::ffi::OsStr>,
     seed_basis: SeedBasis,
-) -> Result<std::path::PathBuf, String> {
+) -> Result<std::path::PathBuf, crate::resolve::NotDerived> {
     write_west_seed_over(
         resolved_dir,
         probe_codegen_dir,
@@ -840,7 +840,7 @@ pub fn write_west_seed_over(
     entity: Option<&str>,
     interface_search: Option<&std::ffi::OsStr>,
     seed_basis: SeedBasis,
-) -> Result<std::path::PathBuf, String> {
+) -> Result<std::path::PathBuf, crate::resolve::NotDerived> {
     let interface_search = interface_search.map(|p| p.to_string_lossy().into_owned());
     let target = resolved_dir.join(RESOLVED_MESSAGE_BOUNDS_NAME);
     let record = resolved_dir.join(RESOLVED_MESSAGE_BOUNDS_INPUTS_NAME);
@@ -849,10 +849,14 @@ pub fn write_west_seed_over(
             Some(e) => e.to_string(),
             None => {
                 let entity_path = resolved_dir.join(crate::resolve::RESOLVED_CMAKE_NAME);
+                // Issue 2520 -- downstream of the resolve's own verdict, which
+                // reported a failure once already: here it is no declaration.
                 std::fs::read_to_string(&entity_path).map_err(|_| {
-                    "the resolve derived no entity inventory, so the configure's first pass \
-                     reads a placeholder and composes over a different join"
-                        .to_string()
+                    crate::resolve::NotDerived::NothingDeclared(
+                        "the resolve derived no entity inventory, so the configure's first pass \
+                         reads a placeholder and composes over a different join"
+                            .to_string(),
+                    )
                 })?
             }
         };
@@ -872,11 +876,11 @@ pub fn write_west_seed_over(
         closure.sort();
         closure.dedup();
         if closure.is_empty() {
-            return Err(
+            return Err(crate::resolve::NotDerived::NothingDeclared(
                 "no node package resolves an interface package, so the configure \
                         composes nothing and keeps its placeholder"
                     .to_string(),
-            );
+            ));
         }
         let mut tables = Vec::with_capacity(closure.len());
         let mut digests: Vec<(String, String)> = Vec::with_capacity(closure.len());
@@ -885,11 +889,14 @@ pub fn write_west_seed_over(
                 .join(pkg)
                 .join(rosidl_codegen::INVENTORY_JSON_NAME);
             let doc = std::fs::read_to_string(&json).map_err(|_| {
-                format!(
-                    "the metadata probe generated no bound table for `{pkg}` ({}) -- run \
-                     `nros configure`",
-                    json.display()
-                )
+                crate::resolve::NotDerived::MissingBoundTable {
+                    package: pkg.clone(),
+                    reason: format!(
+                        "the metadata probe generated no bound table for `{pkg}` ({}) -- run \
+                         `nros configure`",
+                        json.display()
+                    ),
+                }
             })?;
             let rows = rosidl_codegen::bounds::bounds_from_json(&doc)
                 .map_err(|e| format!("{}: {e}", json.display()))?;
@@ -948,7 +955,7 @@ pub fn write_leaf_west_seed(
     leaf: &std::path::Path,
     image: &str,
     ros_edition: Option<&str>,
-) -> Result<std::path::PathBuf, String> {
+) -> Result<std::path::PathBuf, crate::resolve::NotDerived> {
     let out = leaf_west_seed(resolved_dir, leaf, image, ros_edition);
     if out.is_err() {
         // A seed from an earlier configure must not outlive the inputs it was
@@ -984,23 +991,23 @@ fn leaf_west_seed(
     leaf: &std::path::Path,
     image: &str,
     ros_edition: Option<&str>,
-) -> Result<std::path::PathBuf, String> {
+) -> Result<std::path::PathBuf, crate::resolve::NotDerived> {
     let decl = crate::cmd::sizing_descriptor::leaf_declaration(leaf, Some(image))
         .map_err(|e| format!("{e:#}"))?;
     let Some(inv) = decl.inventory else {
-        return Err(
+        return Err(crate::resolve::NotDerived::NothingDeclared(
             "the leaf states no entities, so its configure reads a placeholder entity \
              inventory"
                 .to_string(),
-        );
+        ));
     };
     let entity = inv.to_cmake();
     let xml = leaf.join("package.xml");
     if !declares_a_dependency(&xml) {
-        return Err(format!(
+        return Err(crate::resolve::NotDerived::NothingDeclared(format!(
             "{} declares no interface dependency",
             xml.display()
-        ));
+        )));
     }
     let codegen = resolved_dir.join(LEAF_CODEGEN_DIR);
     let edition = seed_edition(ros_edition);
@@ -1313,7 +1320,12 @@ mod tests {
         let stale = resolved.path().join(RESOLVED_MESSAGE_BOUNDS_NAME);
         std::fs::write(&stale, "set(X 1)\n").unwrap();
         let err = write_leaf_west_seed(resolved.path(), leaf.path(), "z", None).unwrap_err();
-        assert!(!err.is_empty());
+        // Issue 2520 -- a leaf that states no entities declares nothing to
+        // derive from: the designed default, never a refusal.
+        assert!(
+            matches!(err, crate::resolve::NotDerived::NothingDeclared(ref r) if !r.is_empty()),
+            "{err:?}"
+        );
         assert!(
             !stale.exists(),
             "a seed an earlier configure left is removed"

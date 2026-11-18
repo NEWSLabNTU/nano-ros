@@ -904,6 +904,221 @@ fn sanitize_key(s: &str) -> String {
         .collect()
 }
 
+/// Issue 2520 — why an image's resolve kept configured defaults (or left
+/// its message bounds unseeded), as the resolve itself decided it.
+///
+/// Two kinds, and only one is a defect. An image that DECLARES nothing to
+/// derive from (no contract wiring, no parameters, an owned entry with no
+/// model, no interface dependency) keeps its configured defaults by design:
+/// measured on 2026-11-18, about 170 in-tree images do, most of the examples
+/// among them. An image that declares something the resolve then cannot
+/// derive (a launch or model that does not resolve, a contract that does not
+/// compose, a bound table the probe never generated) ships default sizes in
+/// place of the ones it declared, which a fixture build must not call green.
+/// Carried as a value from where the resolve decides it, never recovered by
+/// matching a message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotDerived {
+    /// Nothing is declared to derive from: the designed default.
+    NothingDeclared(String),
+    /// Something is declared and could not be derived: a defect.
+    Failed(String),
+    /// A [`NotDerived::Failed`] the seed can name precisely: the metadata
+    /// probe generated no bound table for `package`, which the image's
+    /// interface closure names. Refused like any failure, except for the
+    /// pairs in [`KNOWN_BOUND_TABLE_GAPS`].
+    MissingBoundTable { package: String, reason: String },
+}
+
+/// Issue 2520 -- the `(image, package)` pairs measured on 2026-11-18 whose
+/// seed found no bound table for `package`. All 14 are Zephyr west images of
+/// the cpp workspace, seen only in the nightly's per-platform jobs
+/// (FreeRTOS, NuttX, ThreadX, baremetal), where the workspace's metadata
+/// probe never ran and the configure still resolves every image of the
+/// workspace (issue 2721). They WARN under `refuse` until that is fixed; any
+/// other image or package with the same reason still refuses, so the
+/// exemption cannot widen by itself. Delete the rows when issue 2721 lands.
+/// Same shape as the api-parity `gap` rows, which tolerate only a tracked
+/// issue.
+pub(crate) const KNOWN_BOUND_TABLE_GAPS: &[(&str, &str)] = &[
+    ("demo_bringup:zephyr", "builtin_interfaces"),
+    ("demo_bringup:zephyr_cyclonedds", "builtin_interfaces"),
+    ("service_bringup:zephyr_service_server", "action_msgs"),
+    ("service_bringup:zephyr_service_server_xrce", "action_msgs"),
+    (
+        "service_bringup:zephyr_service_server_cyclonedds",
+        "action_msgs",
+    ),
+    ("service_bringup:zephyr_service_client", "action_msgs"),
+    ("service_bringup:zephyr_service_client_xrce", "action_msgs"),
+    (
+        "service_bringup:zephyr_service_client_cyclonedds",
+        "action_msgs",
+    ),
+    ("action_bringup:zephyr_action_server", "action_msgs"),
+    ("action_bringup:zephyr_action_server_xrce", "action_msgs"),
+    (
+        "action_bringup:zephyr_action_server_cyclonedds",
+        "action_msgs",
+    ),
+    ("action_bringup:zephyr_action_client", "action_msgs"),
+    ("action_bringup:zephyr_action_client_xrce", "action_msgs"),
+    (
+        "action_bringup:zephyr_action_client_cyclonedds",
+        "action_msgs",
+    ),
+];
+
+impl NotDerived {
+    pub fn failed(why: impl std::fmt::Display) -> Self {
+        Self::Failed(why.to_string())
+    }
+
+    pub fn reason(&self) -> &str {
+        match self {
+            Self::NothingDeclared(r) | Self::Failed(r) => r,
+            Self::MissingBoundTable { reason, .. } => reason,
+        }
+    }
+}
+
+impl std::fmt::Display for NotDerived {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.reason())
+    }
+}
+
+impl From<String> for NotDerived {
+    /// A bare reason is a failure: only the decision sites that KNOW nothing
+    /// was declared construct [`NotDerived::NothingDeclared`].
+    fn from(why: String) -> Self {
+        Self::Failed(why)
+    }
+}
+
+/// Issue 2520 — report one [`NotDerived`] under `NROS_PROBE_FAILURE`, the
+/// policy issue 2608 introduced for the probe. `what` names the fact
+/// ("entity counts not derived; configured defaults kept", "message bounds
+/// not seeded"); `image` the image, for the line a refusal names.
+///
+/// * nothing declared: a note, at any policy;
+/// * failed, `warn`: a warning naming the reason;
+/// * failed, `refuse`: an error naming the reason and what to fix. A
+///   `no_inventory` statement does not excuse it: it states that nothing is
+///   declared, and here something is.
+pub(crate) fn report_not_derived(what: &str, image: &str, nd: &NotDerived) -> eyre::Result<()> {
+    use crate::orchestration::metadata_refresh::ProbeFailurePolicy;
+    report_not_derived_under(ProbeFailurePolicy::from_env()?, what, image, nd)
+}
+
+/// [`report_not_derived`] with the policy stated (tests: the environment is
+/// process-global and racy under a parallel runner).
+pub(crate) fn report_not_derived_under(
+    policy: crate::orchestration::metadata_refresh::ProbeFailurePolicy,
+    what: &str,
+    image: &str,
+    nd: &NotDerived,
+) -> eyre::Result<()> {
+    use crate::orchestration::metadata_refresh::ProbeFailurePolicy;
+    match nd {
+        NotDerived::NothingDeclared(why) => {
+            eprintln!("nros build:   `{image}`: {what} (nothing declared to derive from: {why})");
+            Ok(())
+        }
+        NotDerived::MissingBoundTable { package, reason }
+            if KNOWN_BOUND_TABLE_GAPS.contains(&(image, package.as_str())) =>
+        {
+            // Issue 2721 -- a known, tracked gap: warned at every policy.
+            eprintln!(
+                "nros build: warning: `{image}`: {what}: {reason}. This is a known, tracked gap \
+                 (the configure resolves this image where the metadata probe did not run); it \
+                 refuses again once fixed."
+            );
+            Ok(())
+        }
+        NotDerived::Failed(why) | NotDerived::MissingBoundTable { reason: why, .. } => match policy
+        {
+            ProbeFailurePolicy::Warn => {
+                eprintln!(
+                    "nros build: warning: `{image}`: {what}, because what it declares could not \
+                     be derived: {why}. NROS_PROBE_FAILURE=refuse makes this an error."
+                );
+                Ok(())
+            }
+            ProbeFailurePolicy::Refuse => eyre::bail!(
+                "`{image}`: {what}, because what it declares could not be derived: {why}\n\
+                 The image would be built on configured default sizes instead of the ones it \
+                 declares ({}=refuse). Fix the declaration named above; a `no_inventory` \
+                 statement cannot excuse this, because it states that nothing is declared.",
+                ProbeFailurePolicy::ENV
+            ),
+        },
+    }
+}
+
+/// Issue 2520 -- the known-gap exemption is keyed on the exact pair.
+#[cfg(test)]
+mod not_derived_tests {
+    use super::*;
+    use crate::orchestration::metadata_refresh::ProbeFailurePolicy::{Refuse, Warn};
+
+    fn missing(pkg: &str) -> NotDerived {
+        NotDerived::MissingBoundTable {
+            package: pkg.into(),
+            reason: format!("the metadata probe generated no bound table for `{pkg}`"),
+        }
+    }
+
+    #[test]
+    fn nothing_declared_is_never_refused() {
+        let nd = NotDerived::NothingDeclared("no contract".into());
+        assert!(report_not_derived_under(Refuse, "w", "b:i", &nd).is_ok());
+    }
+
+    #[test]
+    fn a_failure_refuses_only_under_refuse() {
+        let nd = NotDerived::Failed("the model does not resolve".into());
+        assert!(report_not_derived_under(Warn, "w", "b:i", &nd).is_ok());
+        let err = report_not_derived_under(Refuse, "w", "b:i", &nd)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("the model does not resolve"), "{err}");
+    }
+
+    #[test]
+    fn a_known_bound_table_gap_warns_under_refuse() {
+        let nd = missing("action_msgs");
+        assert!(
+            report_not_derived_under(Refuse, "w", "action_bringup:zephyr_action_server", &nd)
+                .is_ok()
+        );
+    }
+
+    /// The exemption does not widen: the same package on another image, or
+    /// another package on a listed image, still refuses.
+    #[test]
+    fn an_unlisted_bound_table_gap_refuses() {
+        assert!(
+            report_not_derived_under(
+                Refuse,
+                "w",
+                "action_bringup:linux_action_server",
+                &missing("action_msgs")
+            )
+            .is_err()
+        );
+        assert!(
+            report_not_derived_under(
+                Refuse,
+                "w",
+                "action_bringup:zephyr_action_server",
+                &missing("std_msgs")
+            )
+            .is_err()
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
