@@ -36,7 +36,9 @@ namespace {
 // build script turns it into a `-D` on this TU. It is the SAME count that
 // sizes the Rust registry's `NROS_CYCLONEDDS_MAX_TYPES`, and it is the same
 // count because it is the same set: `TypeRegistry::get_or_build` calls
-// `nros_rmw_cyclonedds_register_descriptor` for every type it inserts.
+// `nros_rmw_cyclonedds_try_register_descriptor` for every type it inserts,
+// and each registration takes ONE row (`descriptor_key`), so the count of
+// types is the count of rows with no factor in between.
 //
 // On the CMAKE roads (this TU compiled into `nros_rmw_cyclonedds`, or the
 // Zephyr module's `nros`) the writer is different and so is the count, issue
@@ -71,7 +73,23 @@ namespace {
 #error "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES must be >= 1: g_entries is a fixed C array, and a zero-length one drops every descriptor registration silently"
 #endif
 
-constexpr std::size_t kMaxRegisteredTypes = NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES;
+// Rows = the image's types + the backend's own (`kBackendOwnDescriptorTypes`,
+// the graph type `graph.cpp` registers on every road). One row per TYPE: a
+// registration is held under exactly one key (`descriptor_key`), so no road
+// sizes this table with a keys-per-type factor, and none can drift from one.
+//
+// Issue 2704 follow-up -- a cargo-road registration used to take TWO rows
+// (the schema `TYPE_NAME`, `pkg/msg/Name`, and the descriptor's mangled
+// `m_typename`) while `derive_max_descriptor_types` sized the table at one
+// row per type, so an image past half the table met `DescriptorTableFull`.
+// No lookup needs the second key: every production path (`publisher.cpp`,
+// `subscriber.cpp` through `action_topic_type`, `service.cpp` through
+// `descriptors_for_service`, `graph.cpp`) asks by the DDS form, and
+// `find_descriptor` normalises a ROS-form ask itself.
+constexpr std::size_t kBackendOwnTypes =
+    sizeof(kBackendOwnDescriptorTypes) / sizeof(kBackendOwnDescriptorTypes[0]);
+constexpr std::size_t kMaxRegisteredTypes =
+    NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES + kBackendOwnTypes;
 
 struct Entry {
     const char *type_name;
@@ -92,8 +110,11 @@ struct Entry {
 // and same reason as `nros-node/build.rs` pricing a ring's length array at a
 // hard `RING_LEN_BYTES = 8`: the grammar is a product of knobs and integers and
 // has no target to ask.
+//
+// The pool line counts the image's rows only: the grammar has no term for the
+// `kBackendOwnTypes` constant (one row today).
 // nros-pool: DESCRIPTOR_TABLE = NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES * 16
-Entry g_entries[NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES] = {};
+Entry g_entries[kMaxRegisteredTypes] = {};
 std::size_t g_count = 0;
 
 // Issue 0280 residual: overflow used to be COMPLETELY silent — the
@@ -118,34 +139,27 @@ bool is_registered(const char *type_name) {
     return false;
 }
 
-// The keys `nros_rmw_cyclonedds_register_descriptor` stores for one
-// descriptor: the caller's name, plus the descriptor's own `m_typename` when
-// it differs (phase 212.K.7.7). Returns how many of them are not held yet.
-std::size_t new_keys(const char *type_name, const dds_topic_descriptor_t *descriptor) {
-    std::size_t n = is_registered(type_name) ? 0 : 1;
-    if (descriptor->m_typename != nullptr && strcmp(descriptor->m_typename, type_name) != 0 &&
-        !is_registered(descriptor->m_typename)) {
-        ++n;
-    }
-    return n;
-}
-
 } // namespace
+
+const char *descriptor_key(const char *type_name, const dds_topic_descriptor_t *descriptor) {
+    if (descriptor != nullptr && descriptor->m_typename != nullptr) {
+        return descriptor->m_typename;
+    }
+    return type_name;
+}
 
 int try_register_descriptor(const char *type_name, const dds_topic_descriptor_t *descriptor) {
     if (type_name == nullptr || descriptor == nullptr) {
         return kTryRegisterInvalid;
     }
-    // Issue 2704 -- all or nothing: a descriptor is findable under either key
-    // the C++ paths look it up by, so holding one key and not the other would
-    // be a registration that succeeds and a lookup that still misses.
-    if (new_keys(type_name, descriptor) > kMaxRegisteredTypes - g_count) {
+    const char *key = descriptor_key(type_name, descriptor);
+    if (is_registered(key)) {
+        return kTryRegisterOk;
+    }
+    if (g_count >= kMaxRegisteredTypes) {
         return kTryRegisterFull;
     }
-    register_descriptor(type_name, descriptor);
-    if (descriptor->m_typename != nullptr && strcmp(descriptor->m_typename, type_name) != 0) {
-        register_descriptor(descriptor->m_typename, descriptor);
-    }
+    g_entries[g_count++] = Entry{key, descriptor};
     return kTryRegisterOk;
 }
 
@@ -158,7 +172,9 @@ void register_descriptor(const char *type_name,
     if (type_name == nullptr || descriptor == nullptr) {
         return;
     }
-    // Idempotent: if `type_name` is already registered, leave the
+    // One key per registration (issue 2704 follow-up): see `descriptor_key`.
+    type_name = descriptor_key(type_name, descriptor);
+    // Idempotent: if the key is already registered, leave the
     // existing entry alone. Re-registration with a different
     // descriptor under the same name is silently ignored — this
     // mirrors how Cyclone itself dedupes topic-create with the same
@@ -186,6 +202,18 @@ const dds_topic_descriptor_t *find_descriptor(const char *type_name) {
     for (std::size_t i = 0; i < g_count; ++i) {
         if (strcmp(g_entries[i].type_name, type_name) == 0) {
             return g_entries[i].descriptor;
+        }
+    }
+    // A ROS-form ask (`pkg/msg/Name`) is held under its DDS form: a
+    // registration keeps one key, the descriptor's `m_typename`.
+    if (strchr(type_name, '/') != nullptr) {
+        char dds[256];
+        if (ros_form_to_dds(type_name, dds, sizeof(dds))) {
+            for (std::size_t i = 0; i < g_count; ++i) {
+                if (strcmp(g_entries[i].type_name, dds) == 0) {
+                    return g_entries[i].descriptor;
+                }
+            }
         }
     }
     // Miss. If registrations were dropped at the cap, say so LOUDLY once
@@ -321,25 +349,20 @@ bool action_topic_type(const char *topic_name, const char *type_name,
 // the namespace so the auto-generated `_register.c` constructor
 // (compiled as C) can find it via plain symbol lookup.
 //
-// Phase 212.K.7.7 — also alias the descriptor under its own
-// `m_typename` (the mangled `pkg::msg::dds_::Name_` form) when the
-// caller-supplied `type_name` differs. The Rust runtime registry
-// (`nros_rmw_cyclonedds::register::<M>()`) passes the unmangled
-// `nros_serdes::Message::TYPE_NAME` (`pkg/msg/Name`), but
-// `publisher_create` / `subscription_create` look up by the mangled
-// `RosMessage::TYPE_NAME` baked at codegen time. Registering both
-// keys keeps both call sites working without forcing every consumer
-// to memorise which form lands in which table.
+// Phase 212.K.7.7 aliased the descriptor under both the caller's name and
+// its own `m_typename`: the Rust runtime registry passes the unmangled
+// `nros_serdes::Message::TYPE_NAME` (`pkg/msg/Name`), while
+// `publisher_create` / `subscription_create` look up by the mangled form.
+// Issue 2704 follow-up: it is held under the mangled `m_typename` ONLY
+// (`descriptor_key`), and `find_descriptor` normalises a ROS-form ask, so
+// both call sites still resolve and each type costs one table row.
 extern "C" void nros_rmw_cyclonedds_register_descriptor(
     const char *type_name,
     const dds_topic_descriptor_t *descriptor) {
-    nros_rmw_cyclonedds::register_descriptor(type_name, descriptor);
-    if (descriptor != nullptr && descriptor->m_typename != nullptr &&
-        (type_name == nullptr ||
-         strcmp(descriptor->m_typename, type_name) != 0)) {
-        nros_rmw_cyclonedds::register_descriptor(descriptor->m_typename,
-                                                 descriptor);
+    if (type_name == nullptr && descriptor != nullptr) {
+        type_name = descriptor->m_typename;
     }
+    nros_rmw_cyclonedds::register_descriptor(type_name, descriptor);
 }
 
 // Issue 2704 -- the RUNTIME registration (the cargo road's Rust registrar,
@@ -347,9 +370,9 @@ extern "C" void nros_rmw_cyclonedds_register_descriptor(
 // above. A registration at run time CAN fail, and the caller fails the entity
 // create with it, naming the type (`rmw_type_registry::register_type`); the
 // void entry stays for the static-init `_register.c` constructors, which
-// cannot. Returns 0 when the descriptor is held under every key (including
-// when it already was), -1 for a NULL argument, -2 when the table cannot hold
-// it -- and then holds none of its keys.
+// cannot. Returns 0 when the descriptor is held under its one key
+// (`descriptor_key`, including when it already was), -1 for a NULL argument,
+// -2 when the table cannot hold it -- and then adds nothing.
 extern "C" int nros_rmw_cyclonedds_try_register_descriptor(
     const char *type_name,
     const dds_topic_descriptor_t *descriptor) {

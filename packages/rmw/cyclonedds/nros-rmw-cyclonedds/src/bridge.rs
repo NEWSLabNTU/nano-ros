@@ -199,10 +199,10 @@ unsafe extern "C" {
 
     // Issue 2704.
     /// The run-time registration, which can fail. Registers
-    /// `descriptor` under `type_name` (and its own `m_typename`) all or
-    /// nothing, and returns [`TRY_REGISTER_OK`], [`TRY_REGISTER_INVALID`] or
-    /// [`TRY_REGISTER_FULL`] (the `descriptors.cpp` table has no room; no key
-    /// was added). [`nros_rmw_cyclonedds_register_descriptor`] stays for the
+    /// `descriptor` under its one key (its own `m_typename`, the DDS form;
+    /// `type_name` when it has none), and returns [`TRY_REGISTER_OK`],
+    /// [`TRY_REGISTER_INVALID`] or [`TRY_REGISTER_FULL`] (the
+    /// `descriptors.cpp` table has no room; nothing was added). [`nros_rmw_cyclonedds_register_descriptor`] stays for the
     /// static-init constructors, which cannot fail.
     pub fn nros_rmw_cyclonedds_try_register_descriptor(
         type_name: *const c_char,
@@ -210,7 +210,7 @@ unsafe extern "C" {
     ) -> c_int;
 }
 
-/// [`nros_rmw_cyclonedds_try_register_descriptor`]: held under every key.
+/// [`nros_rmw_cyclonedds_try_register_descriptor`]: held (one key, one row).
 pub const TRY_REGISTER_OK: c_int = 0;
 /// [`nros_rmw_cyclonedds_try_register_descriptor`]: a NULL argument.
 pub const TRY_REGISTER_INVALID: c_int = -1;

@@ -33,7 +33,8 @@ namespace {
 // `avoid_ros_namespace_conventions`, so it is NOT `rt/`-prefixed. Use the bare
 // name (do NOT route through topic_prefix).
 constexpr const char* kGraphTopic = "ros_discovery_info";
-constexpr const char* kGraphType = "rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_";
+// The backend-owned type the descriptor table reserves its row for.
+constexpr const char* kGraphType = kBackendOwnDescriptorTypes[0];
 
 // The published sequences point STRAIGHT into GraphState's `uint8_t[24]` GID
 // storage, typed as the generated `Gid_`. That is only sound while the two have

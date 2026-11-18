@@ -224,8 +224,8 @@ showed up at boot as the overflow line.
 The cargo road registers at run time, with no configure step. There, a
 registration that does not fit the C++ descriptor table is now REFUSED, not
 dropped: `TypeRegistry` mirrors through
-`nros_rmw_cyclonedds_try_register_descriptor`, which holds the type under both
-of its keys (the schema name and the descriptor's `m_typename`) or neither,
+`nros_rmw_cyclonedds_try_register_descriptor`, which holds the type under its
+one key (the descriptor's `m_typename`, the DDS form; see below) or not at all,
 and returns `-2` when the table is full. The registry then forgets the type,
 frees the descriptor it built (a refused registration may be retried every
 spin), and returns `BuildError::DescriptorTableFull`; the seam fails the
@@ -235,3 +235,29 @@ void entry stays for the static-init constructors, which cannot fail. Tests:
 counted as a drop), `type_registry::tests::
 descriptor_table_full_refuses_and_caches_nothing` and `descriptor_seam` (Rust,
 bridge stub).
+
+### Follow-up: one table row per type
+
+Found reviewing the above: a cargo-road registration took TWO rows of the C++
+table, one for the schema `TYPE_NAME` (`pkg/msg/Name`) and one for the built
+descriptor's `m_typename` (`pkg::msg::dds_::Name_`), while
+`derive_max_descriptor_types(counted)` sizes the table at `counted` rows. So
+an image of more than half the table's types met the new refusal on a table
+its own count had sized (at the 256 fallback: 129 types; above it: every
+image the derivation sized). No in-tree image is that large (the largest
+cargo-road Cyclone fixture is about 38 types).
+
+Fixed by holding a registration under ONE key, `descriptor_key()`: the
+descriptor's `m_typename`, or the caller's name when it has none. Every
+production lookup already asks by the DDS form (`publisher.cpp`,
+`subscriber.cpp` via `action_topic_type`, `service.cpp` via
+`descriptors_for_service`, `graph.cpp`), and `find_descriptor` now normalises
+a ROS-form ask with `ros_form_to_dds`, so both forms still resolve. The table
+is a count of types on every road, with no keys-per-type factor anywhere to
+drift. The backend's own graph type
+(`rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_`, registered on every
+road but in no model count) gets its own row on top
+(`kBackendOwnDescriptorTypes`, which `graph.cpp` looks its type up by).
+Test: `descriptor_table_cargo_road` (C++: half the image rows plus one, in
+the cargo-road shape, all held, one row each, both forms resolve; refused
+against the two-key table).

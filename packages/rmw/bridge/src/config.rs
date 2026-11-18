@@ -121,8 +121,8 @@ struct BridgeCfg {
     /// phase-267 W-B1 — ROS-form type name (`std_msgs/msg/Int32`) used to stage
     /// the Cyclone descriptor. `type` above is the DDS-mangled wire form
     /// (`std_msgs::msg::dds_::Int32_`) that pub/sub creation expects; the C
-    /// descriptor builder mangles this ROS form into the same wire name and
-    /// dual-keys the registry, so `find_descriptor(mangled)` matches. Empty
+    /// descriptor builder mangles this ROS form into the same wire name, which
+    /// is the registry's key, so `find_descriptor(mangled)` matches. Empty
     /// when the dest backend needs no staged descriptor (e.g. zenoh-only).
     #[serde(default)]
     ros_type: String,
