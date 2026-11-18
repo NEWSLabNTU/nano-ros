@@ -58,8 +58,8 @@ if [ "${NROS_SKIP_SUBMODULE_DRIFT_CHECK:-0}" != "0" ]; then
     exit 0
 fi
 
-# shellcheck source=scripts/lib/git-history.sh
-. "$repo_root/scripts/lib/git-history.sh"
+# shellcheck source=scripts/lib/pin-drift.sh
+. "$repo_root/scripts/lib/pin-drift.sh"
 
 fail=0
 ahead=0
@@ -89,47 +89,58 @@ while IFS= read -r line; do
         continue   # not tracked at HEAD (added/removed in the worktree)
     fi
 
-    # The recorded commit can be absent locally when the pointer moved in a
-    # pull that did not fetch the submodule. That is still 'behind' — and
-    # `git submodule update` fetches, so the remedy is the same one.
-    if ! git -C "$path" cat-file -e "${recorded}^{commit}" 2>/dev/null; then
-        echo "  [x] $path is at ${current:0:9}; HEAD records ${recorded:0:9}, which is not fetched" >&2
-        echo "      remedy: git submodule update $path" >&2
-        fail=$((fail + 1))
-        continue
-    fi
-
-    if [ "$(nros_git_ancestry "$current" "$recorded" -C "$path")" = yes ]; then
-        behind="$(git -C "$path" rev-list --count "${current}..${recorded}")"
-        echo "  [x] $path is $behind commit(s) BEHIND the recorded pointer" >&2
-        echo "      at ${current:0:9}, HEAD records ${recorded:0:9}" >&2
-        git -C "$path" log --oneline "${current}..${recorded}" | sed 's/^/        /' >&2
-        echo "      remedy: git submodule update $path   (fast-forward, no local work at risk)" >&2
-        fail=$((fail + 1))
-    elif [ "$(nros_git_ancestry "$recorded" "$current" -C "$path")" = yes ]; then
-        # Local work ahead of the pointer — the vendored-fork workflow's normal
-        # middle state. Say it, do not fail it.
-        ahead=$((ahead + 1))
-        echo "check-submodule-drift: note — $path is AHEAD of the recorded pointer" >&2
-        echo "  ($(git -C "$path" rev-list --count "${recorded}..${current}") local commit(s)). Expected mid-fork-fix; push the fork" >&2
-        echo "  branch, then bump the superproject pointer to the pushed commit." >&2
-    elif nros_git_history_truncated -C "$path"; then
-        # NOT a verdict. The graft, not the pins, is a sufficient explanation
-        # for "no ancestry either way" — and telling someone to rebase work
-        # that is already on the line is worse than saying nothing.
-        unverified=$((unverified + 1))
-        echo "check-submodule-drift: NOT VERIFIED — $path" >&2
-        echo "  at ${current:0:9}, HEAD records ${recorded:0:9}; this clone is SHALLOW," >&2
-        echo "  so neither direction of ancestry could be measured. Deepen it to get a" >&2
-        echo "  verdict: git -C $path fetch --unshallow" >&2
-    else
-        echo "  [x] $path has DIVERGED from the recorded pointer" >&2
-        echo "      at ${current:0:9}, HEAD records ${recorded:0:9} — no ancestry either way" >&2
-        echo "      remedy: rebase the local commits onto ${recorded:0:9} inside $path." >&2
-        echo "              do NOT 'git submodule update' — it checks out the recorded" >&2
-        echo "              commit detached and leaves your commits unreferenced." >&2
-        fail=$((fail + 1))
-    fi
+    # The ONE classifier (scripts/lib/pin-drift.sh, issue 2701); the policy
+    # below is this caller's: behind/diverged/unfetched FAIL, ahead is a note,
+    # shallow is NOT VERIFIED.
+    state="$(nros_pin_drift "$path" "$recorded")"
+    case "$state" in
+        ok) ;;
+        "not-verified unfetched")
+            # The pointer moved in a pull that did not fetch the submodule.
+            # Still 'behind' — and `git submodule update` fetches, so the
+            # remedy is the same one.
+            echo "  [x] $path is at ${current:0:9}; HEAD records ${recorded:0:9}, which is not fetched" >&2
+            echo "      remedy: git submodule update $path" >&2
+            fail=$((fail + 1))
+            ;;
+        behind\ *)
+            echo "  [x] $path is ${state#behind } commit(s) BEHIND the recorded pointer" >&2
+            echo "      at ${current:0:9}, HEAD records ${recorded:0:9}" >&2
+            git -C "$path" log --oneline "${current}..${recorded}" | sed 's/^/        /' >&2
+            echo "      remedy: git submodule update $path   (fast-forward, no local work at risk)" >&2
+            fail=$((fail + 1))
+            ;;
+        ahead\ *)
+            # Local work ahead of the pointer — the vendored-fork workflow's
+            # normal middle state. Say it, do not fail it.
+            ahead=$((ahead + 1))
+            echo "check-submodule-drift: note — $path is AHEAD of the recorded pointer" >&2
+            echo "  (${state#ahead } local commit(s)). Expected mid-fork-fix; push the fork" >&2
+            echo "  branch, then bump the superproject pointer to the pushed commit." >&2
+            ;;
+        "not-verified shallow")
+            # NOT a verdict. The graft, not the pins, is a sufficient
+            # explanation for "no ancestry either way" — and telling someone to
+            # rebase work that is already on the line is worse than saying nothing.
+            unverified=$((unverified + 1))
+            echo "check-submodule-drift: NOT VERIFIED — $path" >&2
+            echo "  at ${current:0:9}, HEAD records ${recorded:0:9}; this clone is SHALLOW," >&2
+            echo "  so neither direction of ancestry could be measured. Deepen it to get a" >&2
+            echo "  verdict: git -C $path fetch --unshallow" >&2
+            ;;
+        diverged)
+            echo "  [x] $path has DIVERGED from the recorded pointer" >&2
+            echo "      at ${current:0:9}, HEAD records ${recorded:0:9} — no ancestry either way" >&2
+            echo "      remedy: rebase the local commits onto ${recorded:0:9} inside $path." >&2
+            echo "              do NOT 'git submodule update' — it checks out the recorded" >&2
+            echo "              commit detached and leaves your commits unreferenced." >&2
+            fail=$((fail + 1))
+            ;;
+        *)
+            echo "  [x] $path: the pin classifier answered '$state'" >&2
+            fail=$((fail + 1))
+            ;;
+    esac
 done < <(git submodule status 2>/dev/null | grep -E '^[+U]')
 
 # Issue 2306 — a checkout whose HEAD is right and whose WORKING TREE is not:

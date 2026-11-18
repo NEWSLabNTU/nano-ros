@@ -806,6 +806,16 @@ submodule-commits-reachable:
 submodule-drift:
     @bash scripts/check-submodule-drift.sh
 
+# issue 2701 -- the ONE pin classifier (`scripts/lib/pin-drift.sh`):
+# check-submodule-drift.sh asks it about each submodule's gitlink, and issue
+# 2697's west-project loop asks it about each pinned revision, each with its own
+# policy. Its self-test builds scratch repositories for every outcome (ok,
+# behind, ahead, diverged, unfetched, a working-tree edit, a shallow clone).
+# Buildless, ~0.5 s.
+[private]
+pin-drift:
+    @bash scripts/lib/pin-drift.sh
+
 # issue 0560 — a lock whose dependency versions are decided by a SUBMODULE's
 # manifest goes stale when the pointer moves, and the two halves are updated by
 # different commits. `nros-launch-resolve` sat unbuildable on main that way:
