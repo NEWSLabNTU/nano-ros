@@ -1,13 +1,22 @@
 ---
 id: 2522
 title: "The CAN links have never run on CAN hardware, and no open phase plans it"
-status: open
+status: resolved
+resolution: duplicate
+duplicate_of: 2488
+resolved_in: "2026-11-18 (merged into issue 2488)"
 type: test-gap
 severity: medium
 area: [rmw-zenoh, testing, boards]
 related: [phase-377, phase-394, phase-555]
 found: 2026-11-14
 ---
+
+## Resolution: duplicate of issue 2488
+
+The same gap was already open as issue 2488, filed a day earlier from the
+same phase-555 review. The facts this file added are merged into issue 2488
+under "Merged from issue 2522"; track the work there.
 
 **Home: the zenoh-pico CAN links (RFC-0080 multicast, RFC-0083 ISO-TP unicast)**
 

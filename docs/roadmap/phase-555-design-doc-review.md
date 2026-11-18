@@ -173,6 +173,9 @@ brief of RFC-0126 did.
   in [data/phase-555-w3-rulings.md](data/phase-555-w3-rulings.md). Each
   area's W2 reviewer applies its own items. The five untracked items are
   issue 2522, issue 2523, issue 2524, issue 2525 and issue 2526.
+  The first four duplicated issue 2488, issue 2489, issue 2490 and
+  issue 2491, and were merged into them
+  (2026-11-18).
   The runtime-api slice was applied 2026-11-14 (the ruling and what
   changed are recorded under "Ruling" in
   [data/phase-555-w2-runtime-api-brief.md](data/phase-555-w2-runtime-api-brief.md)):
