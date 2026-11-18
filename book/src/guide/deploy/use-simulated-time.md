@@ -28,14 +28,23 @@ and there is no alias.
 
 ## Steps
 
-1. Enable the feature in a Rust node package. The `/clock` subscription costs
-   an entity slot and a receive buffer, so it is opt-in:
+1. Declare the `sim_time` capability in the image's `system.toml`. It is one
+   of the stock node interfaces, so `node_interfaces = "stock"` brings it with
+   the parameter services and `/rosout`:
 
    ```toml
-   nros = { version = "*", default-features = false, features = [
-       "alloc", "rmw-cffi", "macros", "sim-time",
-   ] }
+   [system]
+   features = ["param_services", "sim_time"]
+   # or: node_interfaces = "stock"
    ```
+
+   The capability selects the `sim-time` feature of `nros` (and of `nros-c` /
+   `nros-cpp`) for you, in Rust, C and C++ images alike. The `/clock`
+   subscription costs a callback slot, an executor arena entry with its
+   receive buffer, a subscriber and a liveliness token, once per executor.
+   The pools reserve it whenever the capability is built in, because
+   `use_sim_time` can be set true at any time. An image that cannot spare it
+   leaves the capability out, or states `node_interfaces = "none"`.
 
 2. Turn it on with the parameter, as in ROS 2: from a launch file, a
    parameters file, or at run time. The runtime acts on `use_sim_time`
