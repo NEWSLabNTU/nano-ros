@@ -1,6 +1,6 @@
 # Phase 567 — a release ships only what the slow lanes have seen
 
-**Status (2026-11-18). OPEN: W1–W4, W3b, W3c, W5 (W5a–W5c) and W6 are done; W7 is open.** Approved by the user on
+**Status (2026-11-18). OPEN: every work item (W1–W4, W3b, W3c, W5 (W5a–W5c), W6 and W7) is done; the phase archives once the in-flight W1 amendment lands.** Approved by the user on
 2026-11-16 ("Take your advice on regression prevention. Have a phase doc to
 track the change"), after a review of the CI workflows on main against that
 day's regressions. Implements no RFC; it closes gaps between the lanes that
@@ -320,19 +320,31 @@ commits back. FreertosMps2 had been red on every nightly since at least
 
 ### W7 - a host C link on every pull request and batch
 
-- **Status:** OPEN (in progress 2026-11-18), issue
-  [2685](../issues/2685-pr-lanes-run-no-link.md) (GitHub #4170). Implemented:
-  `just check c-link-smoke` (the shipped-feature `libnros_c.a` plus
-  `cdr_borrow_le_slice.c`, linked and run), which `check c` depends on, and
-  gate.yml's `check-c-link-smoke` job in `ci-ok`'s needs on push,
+- **Status:** DONE (#4192, 2026-11-18), issue
+  [2685](../issues/archived/2685-pr-lanes-run-no-link.md) (GitHub #4170).
+  `just check c-link-smoke` builds the shipped-feature `libnros_c.a`, then
+  links and runs `cdr_borrow_le_slice.c` against it. `check c` depends on it.
+  gate.yml's `check-c-link-smoke` job is in `ci-ok`'s needs on push,
   pull_request, merge_group and workflow_dispatch, with no `if:` and no
-  docs-only excuse. Measured locally: red on 48699e26c3 (the five
-  `nros_platform_can_*` undefined references, 23.4 s); green on main, 22.8 s
-  cold and 0.47 s warm; `check c` 68 s. Left: the hosted-runner cost and the
-  two acceptance runs (a #4158-reverted PR fails `CI` at the smoke; a
-  docs-only PR still gets a verdict). Note: a docs-only PUSH to main runs no
-  gate.yml at all, since `on: push` carries a workflow-level `paths:` filter;
-  pull_request and merge_group carry none.
+  docs-only excuse.
+  Measured locally: red on 48699e26c3 (the five `nros_platform_can_*`
+  undefined references, 23.4 s); green on main in 22.8 s cold and 0.47 s warm;
+  `check c` 68 s.
+  Hosted cost: 140–339 s per run over 15 runs, median about 4.6 min, on every
+  event. The manager accepted this on 2026-11-18.
+  Acceptance:
+  (1) A PR that re-creates #4151's defect on main fails `CI` at the smoke.
+  #4216 dropped `#[cfg(feature = "can")]` from `pub mod can;`; run 44255445194
+  failed at `just check c-link-smoke` with the six undefined references (open,
+  recv, send twice, fd_active, close), and #4216 was closed unmerged. A plain
+  revert of #4158 no longer fits main, because later crates enable
+  `nros-platform-cffi/can`, so removing the feature breaks resolution before
+  any link.
+  (2) A docs-only PR still gets a verdict: #4210 (one issue file) got `CI`
+  pass, with the smoke at 3m5s.
+  Left as is: a docs-only PUSH to main runs no gate.yml at all, since
+  `on: push` carries a workflow-level `paths:` filter. pull_request and
+  merge_group carry none.
 
 #4151 linked nowhere on a merge-gating event, so its undefined
 `nros_platform_can_*` references reached main and broke every local
