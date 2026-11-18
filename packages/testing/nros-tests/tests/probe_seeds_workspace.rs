@@ -24,6 +24,8 @@ const WS: &str = "packages/testing/nros-tests/fixtures/probe_seeds_ws";
 const DECLARED: usize = 41;
 /// A parameter store at its build default holds this many.
 const DEFAULT_STORE: usize = 32;
+// The premise of the test: more parameters than a default store holds.
+const _: () = assert!(DECLARED > DEFAULT_STORE);
 
 fn sidecar(pkg: &str, component: &str) -> serde_json::Value {
     // The built image is the evidence the probe ran on this tree; the sidecar
@@ -77,10 +79,6 @@ fn assert_probed_with_launch_values(pkg: &str, component: &str, language: &str) 
          configure)"
     );
     let params = doc["parameters"].as_array().expect("parameters").len();
-    assert!(
-        DECLARED > DEFAULT_STORE,
-        "the premise: more than a default store"
-    );
     assert_eq!(
         params, DECLARED,
         "the {language} component declares {DECLARED} parameters; the probe's store must hold \
