@@ -238,7 +238,7 @@ internal id was already fixed on main by issue 2270. Filed:
 `nros-c` with),
 [2304](../issues/archived/2304-c-param-server-cyclone-exits-after-store.md) (a C
 parameter server exits 1 on Cyclone), and
-[2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md) (the
+[2305](../issues/archived/2305-user-tier-messages-cite-internal-issue-ids.md) (the
 policy for internal ids in user-tier messages).
 
 ### W6 — Section 4, User guide: RMW and communication (M)

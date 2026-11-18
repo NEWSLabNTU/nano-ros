@@ -63,7 +63,7 @@ internal id, or with nothing.
   surface never names a phase, issue or RFC id.
 - phase-517 W5 exempted a build that stops. On 2026-11-11, about 100 CMake
   `FATAL_ERROR` texts and about 25 build-script panic texts cited an issue id
-  ([issue 2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md)).
+  ([issue 2305](../issues/archived/2305-user-tier-messages-cite-internal-issue-ids.md)).
   Ruling Q4 closes that exemption.
 
 The id was there for a reason: it is the route to the explanation. A code
