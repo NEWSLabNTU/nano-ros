@@ -82,6 +82,19 @@ parser. It carries:
   moves to W3, with the rest of `--dry-run`'s output. The arguments are
   already ignored by construction, since only the image's own block is read.
 
+### W2c — the knob refusal, row by row
+
+- **Owner:** nros 243 (assigned by the nros 241 manager, 2026-11-18).
+- **Status:** OPEN (in progress: the first two rows are on). Each knob is
+  turned on in `build_args::KNOB_REFUSAL_ON` once `knob_roads::tests`
+  measures it carried on every road. Issue 2496 carried
+  `FREERTOS_APP_STACK_KB` and `CYCLONEDDS_MAX_DESCRIPTOR_TYPES` on the cmake
+  road, and they are the first two. `every_knob_refused_is_carried_on_every_road`
+  refuses a row that is on but not carried everywhere.
+- **Next:** 99 of the 111 table rows already read `yes yes yes`. Whether to
+  turn them all on together is for the manager to rule. The 12 `? ? ?` rows
+  are readers not found by name, and stay off until they are.
+
 - `[image.<id>.build] cmake_args`, read from the image's own section only.
   There is no `cargo_args` key: committed features belong in the manifest.
 - `--cmake-args=` / `--cargo-args=` / `--profile=`, with `=` required,
