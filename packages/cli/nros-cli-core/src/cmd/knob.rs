@@ -198,7 +198,9 @@ pub fn find(name: &str) -> Result<&'static KnobRow> {
         .map(|r| r.image_key)
         .filter(|k| {
             let (g, _) = k.rsplit_once('.').unwrap_or(("", k));
-            name.starts_with(g) || k.contains(name) || name.contains(k.rsplit('.').next().unwrap_or(k))
+            name.starts_with(g)
+                || k.contains(name)
+                || name.contains(k.rsplit('.').next().unwrap_or(k))
         })
         .collect();
     near.sort_unstable();
@@ -259,17 +261,20 @@ fn note(r: &KnobRow) -> Option<String> {
         KnobClass::Public => None,
         KnobClass::Carrier => Some(match r.carries {
             Some(c) => match KNOBS.iter().find(|k| k.id == c) {
-                Some(k) => format!("not set directly: it carries `{}`; set that instead", k.image_key),
+                Some(k) => format!(
+                    "not set directly: it carries `{}`; set that instead",
+                    k.image_key
+                ),
                 None if c.contains('.') && !c.contains(' ') => {
-                    format!("not set directly: it carries the board's `[knobs] {c}`; set that instead")
+                    format!(
+                        "not set directly: it carries the board's `[knobs] {c}`; set that instead"
+                    )
                 }
                 None => format!("not set directly: it carries {c}"),
             },
             None => "not set directly".to_string(),
         }),
-        KnobClass::Internal => {
-            Some("not set in a project: a test or tooling hook".to_string())
-        }
+        KnobClass::Internal => Some("not set in a project: a test or tooling hook".to_string()),
         KnobClass::Retired => Some(format!(
             "retired: {}",
             r.retired.unwrap_or("it no longer exists")
@@ -318,7 +323,10 @@ fn summary(r: &KnobRow) -> String {
     if let Some(p) = r.prompt {
         return user_words(p);
     }
-    match r.help.and_then(|h| h.lines().map(str::trim).find(|l| !l.is_empty())) {
+    match r
+        .help
+        .and_then(|h| h.lines().map(str::trim).find(|l| !l.is_empty()))
+    {
         Some(l) => user_words(l),
         None => "(no description yet)".to_string(),
     }
@@ -428,9 +436,15 @@ pub fn render_list(items: &[KnobItem], resolved: bool) -> String {
     let w = items.iter().map(|i| i.name.len()).max().unwrap_or(4).max(4);
     let mut out = String::new();
     if resolved {
-        out.push_str(&format!("{:<w$}  {:<8}  {:<12}  {:<9}  {}\n", "KNOB", "SCOPE", "VALUE", "SET BY", "WHAT IT IS"));
+        out.push_str(&format!(
+            "{:<w$}  {:<8}  {:<12}  {:<9}  {}\n",
+            "KNOB", "SCOPE", "VALUE", "SET BY", "WHAT IT IS"
+        ));
     } else {
-        out.push_str(&format!("{:<w$}  {:<8}  {:<20}  {}\n", "KNOB", "SCOPE", "DEFAULT", "WHAT IT IS"));
+        out.push_str(&format!(
+            "{:<w$}  {:<8}  {:<20}  {}\n",
+            "KNOB", "SCOPE", "DEFAULT", "WHAT IT IS"
+        ));
     }
     for i in items {
         if resolved {
@@ -438,7 +452,10 @@ pub fn render_list(items: &[KnobItem], resolved: bool) -> String {
                 Some(r) => (r.value.clone(), r.set_by),
                 None => (default_cell(&i.default), "-"),
             };
-            out.push_str(&format!("{:<w$}  {:<8}  {:<12}  {:<9}  {}\n", i.name, i.scope, v, by, i.summary));
+            out.push_str(&format!(
+                "{:<w$}  {:<8}  {:<12}  {:<9}  {}\n",
+                i.name, i.scope, v, by, i.summary
+            ));
         } else {
             out.push_str(&format!(
                 "{:<w$}  {:<8}  {:<20}  {}\n",
@@ -466,7 +483,9 @@ pub fn render_show(i: &KnobItem) -> String {
         out.push_str(&format!("  set it in:  system.toml, {s}\n"));
     }
     if let Some(k) = i.board_key {
-        out.push_str(&format!("  or for a board:  nros-board.toml, [knobs] {k}\n"));
+        out.push_str(&format!(
+            "  or for a board:  nros-board.toml, [knobs] {k}\n"
+        ));
     }
     out.push_str(&format!("  scope:      {}\n", i.scope));
     out.push_str(&format!("  values:     {}\n", i.values));
@@ -522,8 +541,14 @@ mod tests {
     fn show_names_the_surface_and_no_carrier() {
         let i = item(find("net.max_sockets").unwrap(), None);
         let text = render_show(&i);
-        assert!(text.contains("system.toml, [image.<id>.knobs.net] max_sockets"), "{text}");
-        assert!(text.contains("nros-board.toml, [knobs] net.max_sockets"), "{text}");
+        assert!(
+            text.contains("system.toml, [image.<id>.knobs.net] max_sockets"),
+            "{text}"
+        );
+        assert!(
+            text.contains("nros-board.toml, [knobs] net.max_sockets"),
+            "{text}"
+        );
         for bad in ["NROS_", "CONFIG_", "-D", "ZPICO_"] {
             assert!(!text.contains(bad), "`{bad}` in:\n{text}");
         }
@@ -545,7 +570,11 @@ mod tests {
     fn conditional_default_is_shown_whole() {
         let i = item(find("zephyr.heap_size").unwrap(), None);
         let text = render_show(&i);
-        for v in ["1048576 if the image uses Cyclone DDS", "131072 if the image has Rust code", "65536 otherwise"] {
+        for v in [
+            "1048576 if the image uses Cyclone DDS",
+            "131072 if the image has Rust code",
+            "65536 otherwise",
+        ] {
             assert!(text.contains(v), "`{v}` missing:\n{text}");
         }
         assert_eq!(default_cell(&i.default), "65536 (varies)");
@@ -554,7 +583,10 @@ mod tests {
     #[test]
     fn unknown_name_is_refused_with_near_matches() {
         let e = find("net.max_socket").unwrap_err().to_string();
-        assert!(e.contains("no knob named `net.max_socket`") && e.contains("net.max_sockets"), "{e}");
+        assert!(
+            e.contains("no knob named `net.max_socket`") && e.contains("net.max_sockets"),
+            "{e}"
+        );
     }
 
     #[test]
@@ -576,6 +608,10 @@ mod tests {
         let i = item(find("freertos.heap_kb").unwrap(), None);
         assert_eq!(i.class, "carrier");
         assert!(i.surface.is_none());
-        assert!(render_show(&i).contains("[knobs] memory.heap_bytes"), "{}", render_show(&i));
+        assert!(
+            render_show(&i).contains("[knobs] memory.heap_bytes"),
+            "{}",
+            render_show(&i)
+        );
     }
 }

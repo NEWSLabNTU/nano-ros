@@ -50,6 +50,7 @@
 - packages/cli/nros-cli-core/src/cmd/flash.rs
 - packages/cli/nros-cli-core/src/cmd/graph.rs
 - packages/cli/nros-cli-core/src/cmd/interface.rs
+- packages/cli/nros-cli-core/src/cmd/knob.rs
 - packages/cli/nros-cli-core/src/cmd/monitor.rs
 - packages/cli/nros-cli-core/src/cmd/prepare.rs
 - packages/cli/nros-cli-core/src/cmd/probe_boot_rows.rs
