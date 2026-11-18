@@ -204,10 +204,22 @@ impl GraphSide {
 
     /// Start a built nano-ros image on this side's router.
     pub fn spawn_nano_image(&mut self, binary: &std::path::Path, name: &str) {
+        self.spawn_nano_image_with_env(binary, name, &[]);
+    }
+
+    /// [`Self::spawn_nano_image`] with extra environment for the image, such
+    /// as the role a multi-role probe plays.
+    pub fn spawn_nano_image_with_env(
+        &mut self,
+        binary: &std::path::Path,
+        name: &str,
+        env: &[(&str, &str)],
+    ) {
         let mut cmd = Command::new(binary);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", self.locator())
             .env("NROS_SESSION_MODE", "client");
+        cmd.envs(env.iter().copied());
         let proc = ManagedProcess::spawn_image(cmd, name)
             .unwrap_or_else(|e| panic!("could not start the nano-ros image {name}: {e}"));
         self.procs.push(proc);

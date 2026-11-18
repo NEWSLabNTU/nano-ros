@@ -334,6 +334,15 @@ where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp), phase-556-w1 bran
 evidence = "3 of 3 consecutive runs passed against demo_nodes_cpp talker"
 
 [[verdict]]
+cell = "native-ros2-cli-parity-qos-rust-zenoh"
+date = "2026-11-18"
+verdict = "pass"
+tests = ["non_default_qos_of_a_publisher_reads_as_stock_does", "non_default_qos_of_a_subscription_reads_as_stock_does"]
+run = "just linux test-ros2-cli-parity"
+where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp), w456-graph-parity branch on top of main"
+evidence = "3 of 3 consecutive runs passed against an rclpy node with the same non-default profile (fixtures/ros2-qos-peer); before the zenoh token stated deadline, lifespan and liveliness, both cases read Infinite and AUTOMATIC where stock read 1.5 s, 2 s and MANUAL_BY_TOPIC with a 3 s lease"
+
+[[verdict]]
 cell = "native-ros2-cli-parity-service-rust-zenoh"
 date = "2026-11-13"
 verdict = "pass"
