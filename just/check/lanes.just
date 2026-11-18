@@ -687,6 +687,22 @@ c: c-fmt c-link-smoke
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/service_request_id
     ./tmp/service_request_id
+    echo "  - issue 2712: rclc_executor_add_subscription_with_message_info hands the"
+    echo "    callback the message's metadata from the backend's take_with_info slot"
+    test -f packages/api/nros-c/tests/run/subscription_message_info.c || { \
+        echo "ERROR: subscription_message_info.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/subscription_message_info.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/subscription_message_info
+    ./tmp/subscription_message_info
     echo "  - rclc_node_get_rmw_implementation_identifier reads the backend's"
     echo "    get_implementation_identifier slot, per session, NULL slot = registered name"
     test -f packages/api/nros-c/tests/run/rmw_implementation_identifier.c || { \

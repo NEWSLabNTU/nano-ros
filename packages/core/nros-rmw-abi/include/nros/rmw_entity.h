@@ -103,8 +103,11 @@ typedef enum rmw_feature_t {
     RMW_FEATURE_MESSAGE_INFO_RECEPTION_SEQUENCE_NUMBER   = 1,
 } rmw_feature_t;
 
+#ifndef NROS_RMW_TIME_POINT_VALUE_T_DEFINED
+#define NROS_RMW_TIME_POINT_VALUE_T_DEFINED
 /** Nanoseconds since a clock's epoch — upstream's `rmw_time_point_value_t`. */
 typedef int64_t rmw_time_point_value_t;
+#endif
 
 /** Sentinel for a sequence number the backend does not populate. Upstream's
  *  `RMW_MESSAGE_INFO_SEQUENCE_NUMBER_UNSUPPORTED`. */
@@ -260,6 +263,10 @@ typedef struct rmw_service_type_support_t {
     const char *type_hash;
 } rmw_service_type_support_t;
 
+/* `<rclc/detail/message_info.h>` declares the same struct under the same
+ * guard, so a translation unit that reaches both sees one definition. */
+#ifndef NROS_RMW_GID_T_DEFINED
+#define NROS_RMW_GID_T_DEFINED
 typedef struct rmw_gid_t {
     /** Which backend produced this gid; gids from different backends are not
      *  comparable. Borrowed, static for the life of the image. */
@@ -267,8 +274,12 @@ typedef struct rmw_gid_t {
     /** The identifier bytes, zero-padded to the full width. */
     uint8_t data[RMW_GID_STORAGE_SIZE];
 } rmw_gid_t;
+#endif
 
 
+/* Shared with `<rclc/detail/message_info.h>` under one guard, as `rmw_gid_t`. */
+#ifndef NROS_RMW_MESSAGE_INFO_T_DEFINED
+#define NROS_RMW_MESSAGE_INFO_T_DEFINED
 /** Per-sample metadata — upstream `rmw_message_info_t`, field for field.
  *
  *  Two channels carry this metadata to Rust callers today. A
@@ -305,6 +316,7 @@ typedef struct rmw_message_info_t {
      *  `Z_FEATURE_LOCAL_SUBSCRIBER`, DDS intra-process). */
     bool from_intra_process;
 } rmw_message_info_t;
+#endif
 
 /** Width of `rmw_request_id_t::writer_guid`, in bytes — upstream's `int8_t[16]`.
  *

@@ -44,7 +44,7 @@ nros-board-zephyr                   28   0     1      11      0
 nros-bridge                         36   1     0       8      0
 nros-build                           1   0     0       0      0
 nros-build-helpers                   2   0     0       2      0
-nros-c                             553  94     7     513      0
+nros-c                             554  94     7     515      0
 nros-can-mock                        7   0     0       1      0
 nros-cli                             1   0     0       0      0
 nros-cli-core                       34   0     0       0      0

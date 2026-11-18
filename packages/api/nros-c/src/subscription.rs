@@ -43,10 +43,11 @@ pub type rclc_subscription_validated_callback_t = Option<
     ),
 >;
 
-/// Subscription callback that also receives the sample's wire **attachment**
-/// (the C analog of the Rust
-/// `node.subscription(t).generic(..).message_info()` builder path). Used by
-/// `rclc_executor_add_subscription_raw_with_info`.
+/// Subscription callback that also receives the sample's wire **attachment**,
+/// used by the deprecated `rclc_executor_add_subscription_raw_with_info` and
+/// `rclc_executor_add_subscription_with_info`. It carries NO message
+/// metadata: no timestamp, sequence number or publisher GID. For those use
+/// [`rclc_subscription_message_info_callback_t`].
 ///
 /// # Parameters
 /// * `data` / `len` — received CDR bytes.
@@ -60,6 +61,80 @@ pub type rclc_subscription_info_callback_t = Option<
         len: usize,
         attachment: *const u8,
         attachment_len: usize,
+        context: *mut c_void,
+    ),
+>;
+
+/// Upstream `rmw_gid_t`: which publisher sent a message.
+///
+/// Declared in C by `<rclc/detail/message_info.h>` under the guard
+/// `<nros/rmw_entity.h>` shares (cbindgen does not emit it); this is the same
+/// layout.
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct rmw_gid_t {
+    /// Which backend produced this gid. NULL when not reported.
+    pub implementation_identifier: *const core::ffi::c_char,
+    /// The identifier bytes, zero-padded. All zero = not reported.
+    pub data: [u8; nros_core::PUBLISHER_GID_SIZE],
+}
+
+/// Upstream `rmw_message_info_t`: the metadata of one received message.
+///
+/// Declared in C by `<rclc/detail/message_info.h>`, as [`rmw_gid_t`]. Built
+/// from the executor's `MessageInfo` for a
+/// [`rclc_subscription_message_info_callback_t`]; a field the backend does
+/// not report reads zero.
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct rmw_message_info_t {
+    /// Publisher's clock at publication, ns.
+    pub source_timestamp: i64,
+    /// Subscriber's clock at reception, ns.
+    pub received_timestamp: i64,
+    /// The publisher's sequence number for this message.
+    pub publication_sequence_number: u64,
+    /// This subscription's reception count.
+    pub reception_sequence_number: u64,
+    /// Which publisher sent it.
+    pub publisher_gid: rmw_gid_t,
+    /// True when the message never left the image.
+    pub from_intra_process: bool,
+}
+
+impl rmw_message_info_t {
+    /// The C form of one message's metadata.
+    pub fn from_message_info(info: &nros_core::MessageInfo) -> Self {
+        Self {
+            source_timestamp: info.source_timestamp().to_nanos(),
+            received_timestamp: info.received_timestamp().to_nanos(),
+            publication_sequence_number: info.publication_sequence_number() as u64,
+            reception_sequence_number: info.reception_sequence_number() as u64,
+            publisher_gid: rmw_gid_t {
+                implementation_identifier: core::ptr::null(),
+                data: *info.publisher_gid(),
+            },
+            from_intra_process: false,
+        }
+    }
+}
+
+/// A raw subscription callback that also receives the message's metadata,
+/// registered with `rclc_executor_add_subscription_with_message_info`.
+///
+/// # Parameters
+/// * `data` / `len` — received CDR bytes.
+/// * `info` — the message's [`rmw_message_info_t`]: timestamps, sequence
+///   numbers and publisher GID. NULL when the backend reports no metadata.
+///   Valid only during the call.
+/// * `context` — the pointer given at registration.
+pub type rclc_subscription_message_info_callback_t = Option<
+    unsafe extern "C" fn(
+        data: *const u8,
+        len: usize,
+        info: *const rmw_message_info_t,
         context: *mut c_void,
     ),
 >;

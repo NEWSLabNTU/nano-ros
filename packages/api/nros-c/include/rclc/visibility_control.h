@@ -42,6 +42,15 @@ extern "C" {
 #define NROS_WARN_UNUSED
 #endif
 
+// A deprecated entry point: still compiles, and the warning names its
+// replacement. `NROS_NO_DEPRECATION_WARNINGS` silences it for a caller that
+// exercises the old entry point on purpose (its own tests).
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(NROS_NO_DEPRECATION_WARNINGS)
+#define NROS_DEPRECATED(msg) __attribute__((deprecated(msg)))
+#else
+#define NROS_DEPRECATED(msg)
+#endif
+
 #ifdef __cplusplus
 }
 #endif

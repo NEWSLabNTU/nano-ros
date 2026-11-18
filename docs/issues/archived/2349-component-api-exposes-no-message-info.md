@@ -1,15 +1,17 @@
 ---
 id: 2349
 title: "The component API exposes no MessageInfo, so a component cannot read what a hand-written node can"
-status: open
+status: resolved
 type: limitation
 area: api, node
 related: [issue-0441]
 found: 2026-11-07
+resolved: 2026-11-18
+resolved_in: "feat(nros-c, issue 2712): a C subscription callback reads each message's metadata"
 ---
 
 **Home: none yet.** Found while planning phase-531 W6, the packages/testing
-batch ([phase-531](../roadmap/phase-531-workspace-first-project-layout.md)).
+batch ([phase-531](../../roadmap/phase-531-workspace-first-project-layout.md)).
 
 ## Symptom
 
@@ -82,11 +84,22 @@ zenohd: every message carries metadata, the sequence rises, one non-zero
 GID); `component_registration.rs` (the declaration is recorded and priced as
 buffered); `declared_shape` and `CallbackCtx` unit tests.
 
-**C and C++: open.**
+**C: done** with issue 2712's C fix.
+`rclc_executor_add_subscription_with_message_info` gives the callback a
+`const rmw_message_info_t *`, on the same executor path, and NULL when the
+backend reports none. The two older `*_with_info` calls handed over only the
+wire attachment; they are deprecated.
 
-- C++ hosted already takes `(msg, const rclcpp::MessageInfo&)` (issue 2036).
-  A freestanding build refuses the shape at compile time.
-- C's `rclc_executor_add_subscription_raw_with_info` hands the callback the
-  wire ATTACHMENT, not a `MessageInfo`. Its metadata is the defaulted kind
-  found above, so it cannot answer this issue as it stands.
+**C++: done on hosted builds.** The stock `(msg, const rclcpp::MessageInfo&)`
+callback has worked since issue 2036, on the same path.
+
+## Resolution (2026-11-18)
+
+Resolved: a component, a C program and a hosted C++ program can each read a
+received message's metadata, all through one executor path. Freestanding C++
+still refuses the callback. That gap is split out as
+[issue 2717](../2717-freestanding-cpp-message-info-callback.md) rather than
+widening this one: its blocker is that the metadata path keeps the callable
+on the heap. Nothing there needs the hosted library, and the fix is an
+arena-capture twin of the plain capturing path.
 

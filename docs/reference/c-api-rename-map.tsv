@@ -118,6 +118,7 @@ NROS_DECLARED_PUB_RELIABILITY	NROS_DECLARED_PUB_RELIABILITY	build	build or confi
 NROS_DECLARED_QOS_COMPILE_TIME	NROS_DECLARED_QOS_COMPILE_TIME	build	build or configuration fact
 NROS_DECLARED_QOS_ROWS_Q	NROS_DECLARED_QOS_ROWS_Q	build	build or configuration fact
 NROS_DECLARED_RELIABILITY	NROS_DECLARED_RELIABILITY	build	build or configuration fact
+NROS_DEPRECATED	NROS_DEPRECATED	build	build or configuration fact
 NROS_DOMAIN_ID_EXPLICIT_ZERO	NROS_DOMAIN_ID_EXPLICIT_ZERO	build	build or configuration fact
 NROS_DOMAIN_ID_INHERIT	NROS_DOMAIN_ID_INHERIT	build	build or configuration fact
 NROS_ENTRY_CONFIG_H	NROS_ENTRY_CONFIG_H	hook	defined by the application or entry, called by startup code
@@ -225,6 +226,7 @@ NROS_NODE_STATE_UNINITIALIZED	RCLC_NODE_STATE_UNINITIALIZED	ours	API constant wi
 NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES	NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES	build	build or configuration fact
 NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS	NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS	build	build or configuration fact
 NROS_NO_DEPRECATED_TIER_NAMES	NROS_NO_DEPRECATED_TIER_NAMES	build	build or configuration fact
+NROS_NO_DEPRECATION_WARNINGS	NROS_NO_DEPRECATION_WARNINGS	build	build or configuration fact
 NROS_NUTTX_EXTERNAL_APP	NROS_NUTTX_EXTERNAL_APP	hook	defined by the application or entry, called by startup code
 NROS_NUTTX_LEVEL_STACK_DEFAULT	NROS_NUTTX_LEVEL_STACK_DEFAULT	hook	defined by the application or entry, called by startup code
 NROS_NUTTX_LEVEL_WORKER_FRAME	NROS_NUTTX_LEVEL_WORKER_FRAME	hook	defined by the application or entry, called by startup code
@@ -257,6 +259,7 @@ NROS_QOS_RELIABILITY_UNKNOWN	RCLC_QOS_RELIABILITY_UNKNOWN	ours	API constant with
 NROS_QOS_SENSOR_DATA	RCLC_QOS_SENSOR_DATA	ours	API constant with no upstream spelling
 NROS_QOS_SERVICES	RCLC_QOS_SERVICES	ours	API constant with no upstream spelling
 NROS_RCLC_DETAIL_UUID_H	NROS_RCLC_DETAIL_UUID_H	build	build or configuration fact
+NROS_RCLC_MESSAGE_INFO_H	NROS_RCLC_MESSAGE_INFO_H	build	build or configuration fact
 NROS_RCLC_REQUEST_ID_H	NROS_RCLC_REQUEST_ID_H	build	build or configuration fact
 NROS_RCL_COMPAT_H	NROS_RCL_COMPAT_H	build	build or configuration fact
 NROS_RET_ALREADY_EXISTS	RCLC_RET_ALREADY_EXISTS	ret	no rcl code of this name
@@ -278,7 +281,10 @@ NROS_RET_TIMEOUT	RCL_RET_TIMEOUT	ret	rcl names this code; value stays ours
 NROS_RET_TRY_AGAIN	RCLC_RET_TRY_AGAIN	ret	no rcl code of this name
 NROS_RET_UNSUPPORTED	RCL_RET_UNSUPPORTED	ret	rcl names this code; value stays ours
 NROS_RMW_CYCLONEDDS	NROS_RMW_CYCLONEDDS	seam	declared by a port seam or the C++ FFI
+NROS_RMW_GID_T_DEFINED	NROS_RMW_GID_T_DEFINED	build	build or configuration fact
+NROS_RMW_MESSAGE_INFO_T_DEFINED	NROS_RMW_MESSAGE_INFO_T_DEFINED	build	build or configuration fact
 NROS_RMW_REQUEST_ID_T_DEFINED	NROS_RMW_REQUEST_ID_T_DEFINED	build	build or configuration fact
+NROS_RMW_TIME_POINT_VALUE_T_DEFINED	NROS_RMW_TIME_POINT_VALUE_T_DEFINED	build	build or configuration fact
 NROS_ROSIDL_RUNTIME_C__ACTION_TYPE_SUPPORT_STRUCT_H_	NROS_ROSIDL_RUNTIME_C__ACTION_TYPE_SUPPORT_STRUCT_H_	build	build or configuration fact
 NROS_ROSIDL_RUNTIME_C__MSG_TYPE_SUPPORT_STRUCT_H_	NROS_ROSIDL_RUNTIME_C__MSG_TYPE_SUPPORT_STRUCT_H_	build	build or configuration fact
 NROS_ROSIDL_RUNTIME_C__SRV_TYPE_SUPPORT_STRUCT_H_	NROS_ROSIDL_RUNTIME_C__SRV_TYPE_SUPPORT_STRUCT_H_	build	build or configuration fact

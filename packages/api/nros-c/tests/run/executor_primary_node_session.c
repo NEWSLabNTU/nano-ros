@@ -29,6 +29,9 @@
  * every slot-0 node as `NodeId::PRIMARY` would fail it with a lookup error.
  */
 
+/* Exercises the deprecated attachment-only `*_with_info` calls on purpose:
+ * they still ship, so they are still tested (issue 2712). */
+#define NROS_NO_DEPRECATION_WARNINGS
 #include "stub_rmw_backend.h"
 
 #include <rclc/rclc.h>
