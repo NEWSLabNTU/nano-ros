@@ -257,6 +257,24 @@ if(TARGET cargo-build_nros_cpp)
     if(TARGET nros_cpp-static)
         add_dependencies(nros_cpp-static nros_cpp_config_header)
     endif()
+    # phase-578 W8 — this cargo run is the image's ONLY one, so it is also the
+    # C API's: `nros_c-static` (packages/api/nros-c) is an INTERFACE over this
+    # archive, and the C sizes header it compiles against is the one mirrored
+    # just above, from this same run. Ahead of nros-c's in-tree `#error` stub.
+    # `nros_c_config_header` keeps its name for the consumers that order on it.
+    if(TARGET nros_c-static)
+        target_include_directories(nros_c-static BEFORE INTERFACE
+            $<BUILD_INTERFACE:${_nros_cpp_intree_include_dir}>)
+        add_custom_target(nros_c_config_header)
+        add_dependencies(nros_c_config_header nros_cpp_config_header)
+        set_property(GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE "${_nros_cpp_gen_c_header}")
+    endif()
+endif()
+# Issue 0945 item 1 — the witness that cargo built into the shared directory,
+# armed on the crate that builds (nros-c keyed the directory, see there).
+get_property(_nros_cpp_shared_dir GLOBAL PROPERTY NROS_SHARED_CARGO_DIR_FOR_RUNTIME)
+if(COMMAND nros_assert_shared_cargo_dir_used)
+    nros_assert_shared_cargo_dir_used("${_nros_cpp_shared_dir}" nros_cpp-static)
 endif()
 
 # Phase 241.D3-rev — the C++ umbrella (bundles nros-c + the backend) is the ONLY

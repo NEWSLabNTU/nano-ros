@@ -230,17 +230,19 @@ nros_apply_panic_policy(platform "integrations/s32ds")
 # does. Linking BOTH puts two different nros-c builds in one image — every
 # `nros_*`, the QoS constants and `REGISTRY`, the backend registry, twice, each
 # copy with its own statics. NuttX measured 392 such duplicates. So the image
-# takes exactly one: `libnros_cpp.a` for a C++-API image, `libnros_c.a`
-# otherwise. Never both, and never a glob that could catch both.
+# takes exactly one, and since phase-578 W8 it is `libnros_cpp.a` for either
+# API: the build runs one cargo run and produces no `libnros_c.a` at all.
 # ---------------------------------------------------------------------------
 set(NROS_S32DS_API "C" CACHE STRING
-    "nano-ros API the S32DS image calls: C (libnros_c.a) or CPP (libnros_cpp.a)")
+    "nano-ros API the S32DS image calls: C or CPP (both link libnros_cpp.a)")
 set_property(CACHE NROS_S32DS_API PROPERTY STRINGS C CPP)
 string(TOUPPER "${NROS_S32DS_API}" _nros_api)
 if(_nros_api STREQUAL "CPP")
     set(_nros_runtime_target nros_cpp-static)
 elseif(_nros_api STREQUAL "C")
-    set(_nros_runtime_target nros_c-static)
+    # phase-578 W8 — one archive carries both APIs: nros-cpp bundles nros-c,
+    # and `nros_c-static` is an interface over it, with no file of its own.
+    set(_nros_runtime_target nros_cpp-static)
 else()
     message(FATAL_ERROR
         "nros-s32ds: NROS_S32DS_API='${NROS_S32DS_API}' — expected C or CPP.")

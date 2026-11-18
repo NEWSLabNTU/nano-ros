@@ -117,9 +117,9 @@ None of these is a nano-ros change; the shell fails loudly with this list if
   with "no rule to make target" on Linux unless the project is regenerated
   locally. A future `makefile.init` may patch this; for now, regenerate.
 - **One runtime archive, never two.** `nros-libs.mk` names exactly one Rust
-  staticlib: `libnros_cpp.a` when `NROS_S32DS_API=CPP` (it bundles nros-c, so
-  it serves the C API too), `libnros_c.a` otherwise. Do not append the other
-  one, or a per-package Rust message-FFI staticlib, through
+  staticlib, `libnros_cpp.a`, for either `NROS_S32DS_API` (it bundles nros-c,
+  so it serves the C API too). Do not append another runtime archive, or a
+  per-package Rust message-FFI staticlib, through
   `nros-extra-libs.mk`: each carries a second copy of the runtime (the backend
   `REGISTRY` among it), and the link has no duplicate-symbol relaxation, so ld
   refuses it (issue 1664). Measured on a synthesized CDT-shaped project with

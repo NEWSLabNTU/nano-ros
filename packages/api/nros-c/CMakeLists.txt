@@ -1,7 +1,7 @@
 # packages/api/nros-c/CMakeLists.txt
 #
-# Builds the nros-c static library via Corrosion (Cargo integration).
-# Installs library (RMW + platform suffixed), headers, and CMake config package.
+# The C API's CMake surface. Its archive is nros-cpp's (one cargo run per
+# image, phase-578 W8): see `nros_c-static` below.
 #
 # This file is included from the top-level CMakeLists.txt via add_subdirectory().
 # Two variables control the build:
@@ -163,181 +163,41 @@ if(COMMAND nros_share_corrosion_cargo_dir)
     endif()
 endif()
 
-# RFC-0071 D9 (phase-506 W4a) — a backend bundled as an rlib reaches this
-# staticlib through a generated IMAGE crate that depends on `nros-c` without a
-# backend feature and on the backend crate its descriptor names. Its lib keeps
-# the name `nros_c`, so every target below keeps its name. A
-# backend that is not bundled, or none, imports `nros-c` exactly as before.
-include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosImageCrate.cmake")
-# phase-553 W4 (RFC-0130 D2) — on bare metal the board's Rust startup rides in
-# this staticlib, because CMake owns the final link.
-set(_nros_c_board_args "")
-set(_nros_c_bm_LINK_PACKAGES "")
-if(NROS_PLATFORM STREQUAL "baremetal" OR NROS_PLATFORM STREQUAL "bare-metal")
-    include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosBareMetalPlatform.cmake")
-    nros_baremetal_board_crate(_nros_c_bm "${NROS_BOARD}"
-        "${CMAKE_CURRENT_LIST_DIR}/../../..")
-    set(_nros_c_board_args BAREMETAL_BOARD "${NROS_BOARD}")
-endif()
-nros_image_crate(_nros_c_img
-    FLAVOR       c
-    RMW          "${NROS_RMW}"
-    OUT_DIR      "${CMAKE_CURRENT_BINARY_DIR}/nros-c-image"
-    ${_nros_c_board_args}
-    API_FEATURES ${_features})
-set(_nros_c_cargo_manifest "${_nros_c_img_MANIFEST}")
-corrosion_import_crate(
-    MANIFEST_PATH "${_nros_c_cargo_manifest}"
-    CRATES        ${_nros_c_img_CRATE}
-    CRATE_TYPES   staticlib
-    NO_DEFAULT_FEATURES
-    FEATURES      ${_nros_c_img_FEATURES}
-    PROFILE       ${NROS_CARGO_PROFILE}
-    ${_nros_c_img_LOCKED}
+# ONE cargo run per image (phase-578 W8). The C API's archive is the C++ one.
+#
+# `libnros_cpp.a` bundles nros-c (nros-cpp depends on it as an rlib), so it
+# defines the whole C ABI, and every image on this road links it: the root adds
+# both crates, so `nros_runtime_umbrella_expr` always picks the C++ umbrella. This
+# file used to import nros-c as a crate of its own too. Its archive was linked by
+# almost nothing, but its cargo run (about 20 s of a first build) was the sole
+# producer of the C sizes header. So a C image compiled against one cargo run's
+# header and linked another run's archive: the two-producer shape behind issues
+# 0805, 0978 and 1824, held off only by the variant stamp turning a mismatch into
+# a link error.
+#
+# Now `nros_c-static` is an INTERFACE over `nros_cpp-static`. The C header comes
+# from the nros-cpp run that builds the linked archive: nros-cpp places and
+# mirrors nros-c's header as well as its own, and puts that mirror on this
+# target's include path (packages/api/nros-cpp/CMakeLists.txt). No
+# `cargo-build_nros_c` exists, so every `if(TARGET cargo-build_nros_c)` ordering
+# site stands aside, and `nros_c_config_header` orders on the nros-cpp mirror.
+#
+# What stays here is what was never per-crate. The shared cargo dir is keyed on
+# nros-c's feature set (nros-cpp's names the same nros-c unit, issue 1100), set
+# up before nros-cpp's import so its cargo run rides the link. The witness that
+# cargo really wrote into it is armed on the crate that now builds, from
+# nros-cpp; the dir is passed through a global because that file is a sibling
+# scope.
+# NuttX never reaches this file (the root skips both crates there), and on bare
+# metal the board's startup crate and linker scripts ride nros-cpp's run
+# (`LINK_SCRIPTS` there).
+set_property(GLOBAL PROPERTY NROS_SHARED_CARGO_DIR_FOR_RUNTIME "${NROS_SHARED_CARGO_DIR}")
+add_library(nros_c-static INTERFACE)
+target_link_libraries(nros_c-static INTERFACE nros_cpp-static)
+target_include_directories(nros_c-static INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../platform/nros-platform-api/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
-include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
-# issue 1824 — cargo runs under the placer, which copies the build script's
-# headers from `$OUT_DIR` into a dir this configure owns. The mirror below
-# reads that copy, never the `$CARGO_TARGET_DIR` side channel.
-set(_nros_c_placed_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-placed")
-if(_nros_c_bm_LINK_PACKAGES)
-    nros_config_header_place(nros_c "${_nros_c_placed_dir}" nros-c
-        LINK_SCRIPTS ${_nros_c_bm_LINK_PACKAGES})
-    # The startup, board and PAC linker scripts, for whichever umbrella the
-    # image links (phase-553 W4): the board overlay names the script with `-T`,
-    # this directory is where the linker finds it and what it INCLUDEs.
-    target_link_options(nros_c-static INTERFACE "-L${_nros_c_placed_dir}/link")
-else()
-    nros_config_header_place(nros_c "${_nros_c_placed_dir}" nros-c)
-endif()
-# Issue 0945 item 1 — witness that cargo actually built into the shared
-# directory. The redirect above works by symlinking over a path Corrosion
-# derives privately and offers no knob for, so a Corrosion upgrade that moves
-# that path stops the sharing SILENTLY: the build still succeeds, just slower.
-# No-op unless the redirect is live (`NROS_SHARED_CARGO_DIR` is empty when
-# sharing was not requested, and on the degrade path where `cargo` is already a
-# real directory).
-#
-# Armed on `nros-c` alone and that is deliberate: `${CMAKE_BINARY_DIR}/cargo` is
-# ONE link per build dir, and `nros-cpp` — the only other Corrosion crate that
-# rides it — is imported from a sibling directory scope that cannot see this
-# variable. One witness answers the question for both, and a second would only
-# double the stat(2) calls.
-if(COMMAND nros_assert_shared_cargo_dir_used)
-    nros_assert_shared_cargo_dir_used("${NROS_SHARED_CARGO_DIR}" nros_c-static)
-endif()
-
-# The preset's definition, so the crate resolves `--profile nros-…` without a
-# `[profile.*]` block of its own. No-op for a user-owned profile.
-nros_cargo_profile_env(nros_c-static)
-# phase-559 W10 — the probe shares one cargo build-dir per key (opt-in).
-nros_image_share_build_dir(nros_c-static ROOT_ID "${_nros_c_img_ROOT_ID}")
-# issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
-nros_riscv64_rustflags_env(nros_c-static)
-# phase-372 W1 — the cortex-r52 FPU cflags, same class one arch over.
-nros_arm_r_fpu_cflags_env(nros_c-static)
-# issue 2400 W2 -- keep bitcode + .su for the stack-floor CHECK (after the
-# helpers above: it merges into their RUSTFLAGS / CFLAGS).
-nros_stack_floor_cargo_env(nros_c-static)
-
-# phase-392 W5.g follow-up — the entity figures the RMW sizes its queryable
-# table and payload classes from.
-#
-# HERE, and not only on the workspace umbrella, because `zpico-sys` is compiled
-# once per CARGO ROOT and this staticlib imports from the REPO ROOT while the
-# umbrella imports from its own synthesised one. Measured on
-# `examples/workspaces/mixed`: 6 `zpico-sys` units, of which only the umbrella's
-# could ever see the env. A pure-C/C++ workspace never even reaches the umbrella
-# call site (`nros_synth_runtime_umbrella` returns early for it), so no unit was
-# reachable at all — which is why W5.g found the delivery missing in every
-# workspace it checked.
-#
-# DEFERRED: the accumulator is filled by `nano_ros_add_entry()`, which runs long
-# after this file. Applying it inline reads an empty set, which is the W5.g
-# defect itself.
-# Relative to THIS file, not ${NROS_REPO_DIR} — see the note above.
-include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosEntityFacts.cmake")
-nros_entity_facts_env_deferred(nros_c-static)
-
-# issue 1541 — the BOARD facts (`nros dev image board-facts`: NROS_PLATFORM_NAME,
-# NROS_BOARD_TOML, site config), which `nros-node` / `nros-params` resolve the
-# RFC-0049 platform and board knob rungs from. Without them this crate's build
-# scripts saw no platform and took every knob's builtin. DEFERRED for the same
-# reason as the entity facts above: the deploy is parsed after this file runs.
-include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosBoardFacts.cmake")
-nros_board_facts_env_deferred(nros_c-static)
-
-
-# ---- In-tree variant header (Phase 137) ----
-# `nros-c`'s build.rs writes the per-build `nros_config_generated.h` to
-# `${CORROSION_BUILD_DIR}/nros_config_generated.h` (== this file's
-# `CMAKE_CURRENT_BINARY_DIR`). Consumers `#include <rclc/detail/nros_config_generated.h>`
-# — i.e. through a `rclc/detail/` subdir (phase-501 W2). For in-tree consumers
-# (Phase 137 `add_subdirectory(...)`) we mirror the header into a sibling
-# `include/rclc/detail/` dir and add it to `nros_c-static`'s INTERFACE so any
-# target linking against `nros_c-static` (or the `NanoRos::NanoRos`
-# umbrella declared at the root) gets the per-build sizes without an
-# install step.
-set(_nros_c_intree_include_dir "${CMAKE_CURRENT_BINARY_DIR}/include")
-include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosArtifactLayout.cmake")
-nros_generated_header_subdir(_nros_c_hdr_sub c)
-file(MAKE_DIRECTORY "${_nros_c_intree_include_dir}/${_nros_c_hdr_sub}")
-# Issue 0088 — mirror as a first-class OUTPUT + custom target, NOT a POST_BUILD
-# side effect. A `POST_BUILD` on `cargo-build_nros_c` with only `BYPRODUCTS`
-# gives consumers no real Ninja edge to the mirrored file: `add_dependencies(
-# <consumer> cargo-build_nros_c)` orders against the cargo *primary output*, so a
-# consumer TU can compile before the POST_BUILD copy runs and pick up the in-tree
-# stub header (intermittent by build order). An `OUTPUT` command + a custom target
-# (`nros_c_config_header`) that consumers `add_dependencies` on is the proper
-# producer→consumer edge.
-set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/${_nros_c_hdr_sub}/nros_config_generated.h")
-# Issue 0268 — `DEPENDS <target-name>` alone is ORDER-ONLY in the generated Ninja
-# graph (`|| cargo-build_nros_c`): it guarantees the cargo build runs FIRST, but a
-# rebuilt crate never makes this copy out of date, so an incremental build that
-# grew the Rust `Executor` left a MUSEUM mirror on the include path (the C
-# `_opaque` buffer sized from it, the Rust object 336 bytes past its end).
-# 0268 answered with the staticlib FILE as an input; issue 1783 measured that
-# proxy failing — a codegen-version bump rewrites the header and leaves the
-# archive byte-identical, so Corrosion's copy keeps its mtime and the mirror
-# never runs. The mirror now re-runs every build, write-if-changed + restat:
-# `nros_config_header_mirror` (cmake/NanoRosConfigHeaderMirror.cmake) is the one
-# spelling for both crates.
-#
-# issue 1824 — the source is the PLACED copy (`-` as the gen-subdir), written
-# from the `$OUT_DIR` of the cargo run this build made. It replaced choosing
-# between the leaf's Corrosion copy and the shared target-dir copy, each of
-# which could be another run's (0805, 0978, 0987, 1904).
-include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
-nros_config_header_placed(_nros_c_placed_hdr "${_nros_c_placed_dir}" c nros_config_generated.h)
-nros_config_header_mirror(nros_c_config_header cargo-build_nros_c
-    "${_nros_c_placed_hdr}" "-" "nros_config_generated.h"
-    "${_nros_c_gen_config_header}")
-# Issue 0090 — export the absolute mirror-header path so NanoRosNodeRegister can set
-# a FILE-level OBJECT_DEPENDS on it. The threadx carrier's link-time
-# `add_dependencies(<carrier> nros_c_config_header)` does not stop a TU from
-# compiling before the per-build header is mirrored (it then reads the in-tree stub
-# → `*_OPAQUE_U64S undeclared`); a per-source OBJECT_DEPENDS is the hard edge.
-set_property(GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE "${_nros_c_gen_config_header}")
-if(TARGET nros_c-static)
-    target_include_directories(nros_c-static INTERFACE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../platform/nros-platform-api/include"
-        "${_nros_c_intree_include_dir}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    )
-    # Issue 0123 — the mirror dir above is on nros_c-static's INTERFACE ahead of the
-    # in-tree `#error` stub, but the `nros_c_config_header` mirror target is only built
-    # if some target depends on it. The message-lib / entry / carrier paths wire that
-    # dep explicitly (issues 0114/0090); a plain rclcpp/ament consumer that pulls
-    # nros-c only transitively (e.g. the workspace-shadowing `consumer` via the
-    # std_msgs binding) never does, so the mirror never runs during `all` → its dir
-    # stays empty → the consumer reads the stub. Make nros_c-static ITSELF depend on
-    # the mirror so ANY consumer that links it (directly or transitively) builds the
-    # per-build header before compiling. (Verified: manually building the mirror then
-    # the shadowing consumer compiles clean.)
-    if(TARGET nros_c_config_header)
-        add_dependencies(nros_c-static nros_c_config_header)
-    endif()
-endif()
 
 # Phase 140 — all install(...) rules deleted. nros-c is consumed
 # in-tree via `add_subdirectory(<repo-root>)`; the root CMake's

@@ -34,8 +34,8 @@
 -include ../nros-libs.mk
 
 # No duplicate-symbol relaxation, by design (issue 1664). `nros-libs.mk` puts
-# exactly ONE Rust runtime archive on the line — `libnros_cpp.a` for a C++-API
-# image (it bundles nros-c), `libnros_c.a` otherwise — so a duplicate symbol
+# exactly ONE Rust runtime archive on the line — `libnros_cpp.a`, for either
+# API (it bundles nros-c) — so a duplicate symbol
 # here is a real defect: two copies of the runtime, each with its own statics
 # (the backend `REGISTRY` among them), and ld must refuse it. Do not append a
 # second runtime archive or a per-package Rust FFI staticlib to USER_OBJS.
