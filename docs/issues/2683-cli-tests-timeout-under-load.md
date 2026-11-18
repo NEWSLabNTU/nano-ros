@@ -1,9 +1,9 @@
 ---
 id: 2683
-title: "`check::cli-tests` passes with 80 s to spare on a quiet host and times out at 2400 s on a loaded one; `workspace-probes` does too"
+title: "`check::build` gates time out at 2400 s together: `cli-tests`, `workspace-probes`, `workspace-all` and others, on dev hosts and on the daily CI shard"
 status: open
 type: bug
-severity: low
+severity: high
 area: [testing, gates, ci]
 related: [issue-2380]
 found: 2026-11-17
@@ -62,11 +62,72 @@ per test. Load was about 10 when the solo run started and about 115
 when it ended, from another session's encoder run, so 859 s is not an idle-host
 number.
 
-So this is now about HEADROOM, not an outage: 859 s is 36 % of the timeout.
-The split below is still worth doing, but it no longer blocks a gate. What is
+That read it as HEADROOM, not an outage (859 s is 36 % of the timeout), and
+lowered the severity. The next day's sightings below reversed that: the
+class reached the daily CI shard, which blocks a release. What is
 not yet measured is `cli-tests` inside a full gate on the new base, next to
 the gates that run beside it in step 8; the "Done when" line below still
 needs that number.
+
+## Widened (2026-11-18): the step-8 class, not one suite
+
+Four hosts saw the same shape: several `check::build` gates killed at 2400 s
+in one run, each passing alone with time to spare.
+
+| where | timed out | load | token pool |
+| --- | --- | --- | --- |
+| host 139, slice B gates (3 runs) | `cli-tests`, `workspace-probes` | host runnable p50 5-6 of 32 CPUs | free p50 13, empty 43 % |
+| host 133, NXP #4171 (pre-#4165) | `required-features-tests`, `workspace-probes`, `workspace-all` | p50 5 | empty **95 %**, make lost 12 of 32 tokens |
+| host 133, W2b (with #4165) | `workspace-probes` | p50 4 | empty 91 %, lost 13 of 32 |
+| host 175, #4127 | `ament-census-sizing`, `cpp`, `census-hooks-complete`, `c`, `cli-tests` | p50 10, ~33 load | empty 35 % |
+| **daily CI**, host-tests 44228702426 shard [2/3] | `workspace-all`, `template-copy-out#scaffold:runner-package` | GitHub-hosted `ubuntu-22.04`, 4 vCPU, p50 3 | 4-token pool, empty 91 %, lost 3 of 4 |
+
+Alone, the same gates take: `workspace-probes` 375 s (139) and 540 s (133);
+`cli-tests` 859 s (139).
+
+### Measured on host 139 with a per-thread sampler
+
+A scratch sampler read every lane thread's `wchan` each 5 s (Yama
+`ptrace_scope=1` hides `/proc/<pid>/syscall` and fd links, so `wchan` is the
+only view), classified as running, waiting on a pipe (a jobserver token, or a
+parent reading a child's output), waiting on a child, or waiting on a file
+lock, per gate. Two GREEN step-8 runs:
+
+| run | step 8 | `workspace-probes` | its running / lock-wait (thread-s) | free tokens |
+| --- | --- | --- | --- | --- |
+| slice B, warm | 34 min | 493 s | 395 / 1630 | p50 24, empty 35 % |
+| slice C, cold (nros-node changed) | 44 min | 926 s | 450 / 3130 | p50 22, empty 40 % |
+
+- The dominant non-CPU wait is cargo's file LOCK. #4165 makes equal probe
+  configurations share one cargo unit, so concurrent configures queue on its
+  build-dir lock. That waiting replaces duplicate compiles; it is not a fault.
+- Cold doubles it and still passes, so "cold plus lock" does NOT explain the
+  reds. Neither run showed token starvation.
+- The cold run also shows disk waits (`balance_dirty_pages` 984,
+  `folio_wait_bit_common` 2371 thread-samples). The reds on host 139 coincided
+  with heavy disk users (a post-verdict cache trim stuck in state D, an encoder
+  run, the hook-repo self-test's cache sweep that issue 2682 fixed). That is a
+  candidate, not a finding: no RED run has been sampled.
+- The existing lane sampler (`scripts/build/run-load-sampler.py`) attributes a
+  process by `NROS_GATE_LANE`, which is `dev` in every worktree, so another
+  worktree's pre-push gates count as this lane's (host 133 saw `fast::check::*`
+  inside step 8).
+
+### First cause found: the daily shard (fixed here)
+
+Shard [2/3] went green on 11-17 (91 min) and red on 11-18 (128 min). The
+difference is `workspace-probes`, new in that shard (issue 2608). It runs 6
+configures side by side (`NROS_WORKSPACE_PROBE_JOBS`, default 6) but declared
+the default weight of 1, and peaked at 11 runnable on 4 CPUs. Its neighbours
+tripled: `source-gates` 427 -> 1708 s, `scaffold-builds#c_project_server`
+434 -> 1248 s, `workspace-all` 1324 s -> timeout.
+
+Fix: the recipe declares `cpu:6`, the number it runs, and the script reads it
+back with `check-gate-lists.py --weight workspace-probes`, so it is written
+once. `cli-tests` reads its `cpu:4` the same way instead of restating it.
+nextest clamps a weight above `--test-threads` (`linux-check`'s `cpu:8` runs on
+the same 4-slot runner), so on that runner `workspace-probes` runs alone; on a
+32-CPU host it takes 6 slots. Cost: the shard serializes it.
 
 ## Not the fix
 
@@ -75,7 +136,7 @@ Raising the timeout. That moves the line and keeps the dependence on load
 
 ## Fix direction
 
-Not urgent since #4165 (see above). When it is picked up: split the suite or make it faster, measured on a loaded host:
+For the dev-host reds, once a red run is sampled: split the suite or make it faster, measured on a loaded host:
 
 1. **Where the time goes.** Per-test wall time from both logs, and whether
    the scan tests (`rmw_resolver`, `serdes_resolver`) walk the whole checkout
@@ -89,8 +150,13 @@ Not urgent since #4165 (see above). When it is picked up: split the suite or mak
 
 ## Done when
 
-`check::build` passes on a host at B4's load, measured, with `cli-tests` and
-`workspace-probes` each under half the timeout.
+- The daily build-tier shards are green, with their wall time stated against
+  the 240 min job limit.
+- A RED step 8 is captured with the per-thread sampler, so the dev-host reds
+  have a measured cause, and its fix holds under the load that caused them.
+- A check compares each gate's measured peak against its declared weight, so
+  the next gate that under-declares is caught (the class `workspace-probes`
+  was one of).
 
 ## Logs
 

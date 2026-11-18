@@ -892,9 +892,18 @@ toolchain-paths-persist:
 # fixture component that declared nothing stopped two linux rows. This is the
 # same configure over all of them, so the next one is red before it merges.
 # The build tier, not the fast line: it compiles every probe (1,687 s one after
-# another on a warm host; six at a time by default).
+# another on a warm host).
+#
+# Issue 2683 -- `cpu:6` IS the number of roots it configures side by side: the
+# script reads it back (`check-gate-lists.py --weight workspace-probes`), so it
+# is written once, here. It declared weight 1 while running 6, and on the
+# 4-slot hosted runner of the daily shard that ran 6 configures on top of three
+# other gates: its neighbours tripled (source-gates 427 -> 1708 s) and two hit
+# the 2400 s timeout (host-tests 44228702426). nextest clamps a weight above
+# `--test-threads`, so on a 4-slot runner this gate now runs alone.
 [group('needs:cli')]
 [group('needs:cmake')]
+[group('cpu:6')]
 [metadata("tier", "build")]
 workspace-probes:
     @bash scripts/check-workspace-probes.sh

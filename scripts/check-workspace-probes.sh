@@ -103,8 +103,16 @@ logs="${NROS_GATE_SCRATCH:-$repo_root/tmp}/workspace-probes"
 mkdir -p "$logs"
 rm -f "$logs"/*.verdict
 # Roots configure independently, so they run side by side: 53 roots took
-# 1,687 s one after another on a warm host. NROS_WORKSPACE_PROBE_JOBS caps it.
-jobs="${NROS_WORKSPACE_PROBE_JOBS:-6}"
+# 1,687 s one after another on a warm host. How many is the recipe's declared
+# weight, `[group('cpu:<n>')]` (issue 2683): the harness reserves exactly that
+# many slots, so the number is read from there, never restated.
+# NROS_WORKSPACE_PROBE_JOBS overrides it for a run by hand.
+if [ -n "${NROS_WORKSPACE_PROBE_JOBS:-}" ]; then
+    jobs="$NROS_WORKSPACE_PROBE_JOBS"
+elif ! jobs="$(python3 scripts/check/check-gate-lists.py --weight workspace-probes)"; then
+    echo "check-workspace-probes: cannot read the recipe's declared weight" >&2
+    exit 1
+fi
 start=$SECONDS
 
 probe_root() {
