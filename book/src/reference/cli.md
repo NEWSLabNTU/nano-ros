@@ -73,6 +73,7 @@ Inspect:
   doctor       Health-check the workspace (SDK paths, toolchains, env)
   board        Inspect supported boards
   rmw          List the RMW backends, or show one: its host side and its boards
+  knob         List the knobs a project can state, or show one: where to state it, the values it takes and its default
   config       Inspect or validate the current project's resolved configuration
   plan         Resolve launch files, manifests, and metadata into nros-plan.json
   check        Check a runner, command or board package, a plan, a system.toml or a workspace
@@ -1305,6 +1306,55 @@ Options:
       --workspace <DIR>  Workspace whose own RMW providers are searched too
   -h, --help             Print help
   -V, --version          Print version
+```
+
+### `nros knob`
+
+```text
+List the knobs a project can state, or show one: where to state it, the values it takes and its default
+
+Usage: nros knob <COMMAND>
+
+Commands:
+  list  List every knob a project can state: its name, scope, default and what it is for
+  show  Show one knob: where to state it, the values it takes, its default and its help
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros knob list`
+
+```text
+List every knob a project can state: its name, scope, default and what it is for
+
+Usage: nros knob list [OPTIONS]
+
+Options:
+      --json                 Print one JSON object instead of a table
+      --platform <PLATFORM>  Resolve each knob's value for this platform, and say which rung of the platform/board ladder set it (`builtin`, `platform`, `board`, `env`)
+      --board-toml <FILE>    With `--platform`: the board's `nros-board.toml`, for its rung
+      --workspace <DIR>      With `--platform`: the workspace whose platform packages are searched
+  -h, --help                 Print help
+  -V, --version              Print version
+```
+
+#### `nros knob show`
+
+```text
+Show one knob: where to state it, the values it takes, its default and its help
+
+Usage: nros knob show [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  The knob, as `nros knob list` names it (e.g. `net.max_sockets`)
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### `nros config`

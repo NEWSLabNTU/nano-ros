@@ -142,7 +142,9 @@ Subjects, all checked on every run:
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5);
 * the output of `nros rmw list`, both forms, and `nros rmw show <rmw>` for
   every RMW the JSON list names (phase-569 W1: each discovery verb's output
-  is user surface, RFC-0133 D5).
+  is user surface, RFC-0133 D5);
+* the output of `nros knob list`, both forms, and `nros knob show <knob>` for
+  every knob the JSON list names (phase-569 W2).
 
 The rendered subjects need the in-tree CLI; with none built they are reported
 NOT VERIFIED through the skip ledger (issue 1043's middle outcome), never a
@@ -2380,6 +2382,17 @@ def rendered_hits(cli: str) -> list[str]:
         check(f"nros rmw show {r}", run(cli, ["rmw", "show", r]))
         check(f"nros rmw show {r} --json", run(cli, ["rmw", "show", r, "--json"]))
 
+    check("nros knob list", run(cli, ["knob", "list"]))
+    knob_json = run(cli, ["knob", "list", "--json"])
+    check("nros knob list --json", knob_json)
+    try:
+        knobs = [i["name"] for i in json.loads(knob_json)["items"]]
+    except (ValueError, KeyError, TypeError):
+        bad.append(f"`nros knob list --json` is not the list schema: {knob_json[:90]!r}")
+        knobs = []
+    for k in knobs:
+        check(f"nros knob show {k}", run(cli, ["knob", "show", k]))
+
     # `doctor --report` prints a row per image, so it is asked about a bringup
     # with one image per board the tracked examples deploy to — derived from
     # the tree, so a new board is covered the day an example names it.
@@ -2991,7 +3004,7 @@ def main() -> int:
         from source_locate import nros_cli_bin
 
         cli = nros_cli_bin(checkout_only=True)
-    rendered = "rendered help, board list/show, rmw list/show and doctor --report"
+    rendered = "rendered help, board list/show, rmw list/show, knob list/show and doctor --report"
     if cli:
         bad += rendered_hits(cli)
     if bad:

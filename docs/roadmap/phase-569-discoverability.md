@@ -65,7 +65,32 @@ by the descriptor's own platform list, not by a list in `new.rs`.
 
 ### W2 — the knob catalog
 
-- **Status:** OPEN
+- **Status:** IN PROGRESS (W2a and W2b on one branch; W2c open)
+- **W2a, the catalog fields:** done. Each row authors `scope` and `class`
+  (public, carrier, internal, retired; a carrier names what it `carries`).
+  The generator derives `default` (the Kconfig `default` lines with their
+  conditions, else the ladder builtin, else unstated), `values` and
+  `surface`, and refuses a row that authors any of the three, or whose last
+  Kconfig default is conditional. Two shrink-only lists name what the rows
+  cannot yet say: 13 public rows with no default outside the code that
+  reads them (`NO_DEFAULT`) and 32 with no help (`NO_HELP`).
+- **W2b, the verbs:** `nros knob list [--json] [--platform P
+  [--board-toml F]]` and `nros knob show <knob> [--json]`
+  (`nros.knob.list.v1`, `nros.knob.show.v1`). A ladder default is resolved
+  through the same function `config explain` prints (`resolve_ladder`).
+  The registry's help was written for menuconfig, so 54 public help texts
+  name `NROS_*`, `CONFIG_*` or `ZPICO_*` spellings; `show` replaces every
+  knob's spelling with its name. A conditional default is shown with each
+  case, in words (`CONDITIONS`; a test refuses a condition with none).
+- **W2c, open:** the configuration reference generated from the rows, with
+  the gate that compares it to `nros knob list`; `gen-config-surface.py`
+  reading `class` from the rows (its prompt test now calls every knob
+  symbol "derived", because phase-484 W5b made them prompt-less);
+  `config explain` as an alias; the `surface` field handed to the
+  build-arguments refusal (nros 118).
+- **Findings:** `memory.heap_bytes` and `memory.app_stack_bytes` are ladder
+  knobs with no registry row; the FreeRTOS and ThreadX `*_KB` rows carry
+  them.
 
 Each `[[knob]]` row in `knobs.toml` gains `scope`, `default`, `values`,
 `surface` (the one user spelling, `[image.<id>.knobs.<group>]` or the rung

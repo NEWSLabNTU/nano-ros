@@ -90,6 +90,63 @@ pub struct ExplainArgs {
 /// including live env overrides, so the printout matches what the next
 /// build will bake.
 fn explain(args: ExplainArgs) -> Result<()> {
+    let ladder = resolve_ladder(&args)?;
+    println!(
+        "platform: {}   (platforms root: {})",
+        args.platform,
+        ladder.root.display()
+    );
+    if let Some(p) = &args.board_toml {
+        println!("board:    {}", p.display());
+    }
+    if !ladder.capabilities.is_empty() {
+        println!("capabilities: {}", ladder.capabilities.join(", "));
+    }
+    println!();
+    println!("{:<24} {:<10} set by", "knob", "value");
+    println!("{:<24} {:<10} ------", "----", "-----");
+    for v in &ladder.values {
+        if v.key.contains(".tx.") {
+            println!("{:<24} {:<10} {}", v.key, v.value, v.source);
+        } else {
+            println!(
+                "{:<34} {:<10} {}  [{}]",
+                v.key,
+                v.value,
+                v.source,
+                v.env.unwrap_or("no env knob on this platform")
+            );
+        }
+    }
+    for w in &ladder.warnings {
+        println!("warning: {w}");
+    }
+    Ok(())
+}
+
+/// One resolved knob of the platform/board ladder: its `[knobs]` key, its
+/// final value as shown, the rung that set it, and the env spelling that rung
+/// reads on this platform, if any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LadderValue {
+    pub key: String,
+    pub value: String,
+    pub source: &'static str,
+    pub env: Option<&'static str>,
+}
+
+/// The ladder resolved for one platform (and optionally one board).
+#[derive(Debug, Clone)]
+pub struct Ladder {
+    pub root: PathBuf,
+    pub capabilities: Vec<String>,
+    pub values: Vec<LadderValue>,
+    pub warnings: Vec<String>,
+}
+
+/// Resolve every ladder knob for `args.platform` (phase-569 W2: shared by
+/// `config explain` and `nros knob list --platform`).
+pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
     use nros_board_common::platform_config::{
         BoardKnobsFile, KnobSource, PlatformsTree, registry_env,
     };
@@ -99,8 +156,8 @@ fn explain(args: ExplainArgs) -> Result<()> {
     // $NROS_PLATFORMS_DIR (if set), then the workspace's platform packages,
     // then packages/platform, then config/. Issue 2293: the workspace rung is
     // the one board facts hands a build, from the same function.
-    let search: Vec<PathBuf> = match args.platforms_dir {
-        Some(d) => vec![d],
+    let search: Vec<PathBuf> = match &args.platforms_dir {
+        Some(d) => vec![d.clone()],
         None => {
             let repo = find_repo_root()?;
             let ws = match &args.workspace {
@@ -136,24 +193,11 @@ fn explain(args: ExplainArgs) -> Result<()> {
 
     let env_get = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
 
-    println!(
-        "platform: {}   (platforms root: {})",
-        args.platform,
-        root.display()
-    );
-    if let Some(p) = &args.board_toml {
-        println!("board:    {}", p.display());
-    }
     let caps = tree
         .capabilities(&args.platform)
         .map_err(|e| eyre!("{e}"))?;
-    if !caps.is_empty() {
-        let caps_str: Vec<String> = caps.iter().map(|(k, v)| format!("{k}={v}")).collect();
-        println!("capabilities: {}", caps_str.join(", "));
-    }
-    println!();
-    println!("{:<24} {:<10} set by", "knob", "value");
-    println!("{:<24} {:<10} ------", "----", "-----");
+    let capabilities: Vec<String> = caps.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    let mut values: Vec<LadderValue> = Vec::new();
 
     // Each backend's `[knobs.<rmw>.tx]` tenant, for every backend the
     // descriptors announce (issue 1300, RFC-0071 D8). This printed
@@ -190,13 +234,13 @@ fn explain(args: ExplainArgs) -> Result<()> {
             tree.capability_check(&args.platform, &mut tx)
                 .map_err(|e| eyre!("{e}"))?,
         );
-        let row = |knob: &str, value: String, source: KnobSource| {
-            println!(
-                "{:<24} {:<10} {}",
-                format!("{rmw}.tx.{knob}"),
+        let mut row = |knob: &str, value: String, source: KnobSource| {
+            values.push(LadderValue {
+                key: format!("{rmw}.tx.{knob}"),
                 value,
-                source.as_str()
-            );
+                source: source.as_str(),
+                env: None,
+            });
         };
         row("batch", tx.batch.value.to_string(), tx.batch.source);
         row(
@@ -274,13 +318,12 @@ fn explain(args: ExplainArgs) -> Result<()> {
         } else {
             r.value.to_string()
         };
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("executor.{name}"),
-            shown,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("executor.{name}"),
+            value: shown.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
     // phase-400 W6 — the component-runtime tenant. Defaults mirror
@@ -303,13 +346,12 @@ fn explain(args: ExplainArgs) -> Result<()> {
         )
         .map_err(|e| eyre!("{e}"))?
     {
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("runtime.{name}"),
-            r.value,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("runtime.{name}"),
+            value: r.value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
     // phase-479 W5 (RFC-0102 D5) + issue 1037 — the logging tenant. The
@@ -337,13 +379,12 @@ fn explain(args: ExplainArgs) -> Result<()> {
         } else {
             r.value.to_string()
         };
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("log.{name}"),
-            value,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("log.{name}"),
+            value: value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
     // phase-400 W6 — the smoltcp net tenant. Defaults mirror
@@ -366,13 +407,12 @@ fn explain(args: ExplainArgs) -> Result<()> {
         )
         .map_err(|e| eyre!("{e}"))?
     {
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("net.{name}"),
-            r.value,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("net.{name}"),
+            value: r.value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
     // phase-400 W6 — the RMW static-pool tenant. Defaults mirror
@@ -395,13 +435,12 @@ fn explain(args: ExplainArgs) -> Result<()> {
         )
         .map_err(|e| eyre!("{e}"))?
     {
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("rmw.{name}"),
-            r.value,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("rmw.{name}"),
+            value: r.value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
     // phase-400 W6 — the parameter-storage tenant. Defaults mirror
@@ -432,13 +471,12 @@ fn explain(args: ExplainArgs) -> Result<()> {
         )
         .map_err(|e| eyre!("{e}"))?
     {
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("params.{name}"),
-            r.value,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("params.{name}"),
+            value: r.value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
     // Issue 2013 — the zenoh wire tenant. Its batch and fragmentation
@@ -473,13 +511,12 @@ fn explain(args: ExplainArgs) -> Result<()> {
         )
         .map_err(|e| eyre!("{e}"))?
     {
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("zenoh.wire.{name}"),
-            r.value,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("zenoh.wire.{name}"),
+            value: r.value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
     // Issue 2013 — the zenoh limits tenant. Defaults mirror
@@ -510,13 +547,12 @@ fn explain(args: ExplainArgs) -> Result<()> {
         )
         .map_err(|e| eyre!("{e}"))?
     {
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("zenoh.limits.{name}"),
-            r.value,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("zenoh.limits.{name}"),
+            value: r.value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
     // Issue 2013 — the XRCE tenant. Defaults mirror the `knob` rows in
@@ -531,13 +567,12 @@ fn explain(args: ExplainArgs) -> Result<()> {
         )
         .map_err(|e| eyre!("{e}"))?
     {
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("xrce.{name}"),
-            r.value,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("xrce.{name}"),
+            value: r.value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
     // phase-400 W6 — the platform memory tenant. Defaults mirror the board
@@ -555,19 +590,20 @@ fn explain(args: ExplainArgs) -> Result<()> {
         )
         .map_err(|e| eyre!("{e}"))?
     {
-        println!(
-            "{:<34} {:<10} {}  [{}]",
-            format!("memory.{name}"),
-            r.value,
-            r.source.as_str(),
-            r.env_key.unwrap_or("no env knob on this platform")
-        );
+        values.push(LadderValue {
+            key: format!("memory.{name}"),
+            value: r.value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
     }
 
-    for w in warnings {
-        println!("warning: {w}");
-    }
-    Ok(())
+    Ok(Ladder {
+        root,
+        capabilities,
+        values,
+        warnings,
+    })
 }
 
 /// phase-400 W1 — the repo root itself, for building a platform SEARCH PATH.

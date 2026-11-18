@@ -41,6 +41,7 @@ pub mod image_entity_facts;
 pub mod image_facts;
 pub mod init;
 pub mod interface;
+pub mod knob;
 pub mod leaf_kconfig;
 pub mod leaf_settings;
 pub mod leaf_system;
@@ -374,6 +375,11 @@ pub enum Cmd {
     /// List the RMW backends, or show one: its host side and its boards
     #[command(subcommand)]
     Rmw(rmw::Args),
+
+    /// List the knobs a project can state, or show one: where to state it,
+    /// the values it takes and its default
+    #[command(subcommand)]
+    Knob(knob::Args),
 
     /// Workspace-level message-package utilities: env, list, status, clean, doctor.
     // Phase 210.B.3 + 210.D.1. `sync` was promoted to the top-level `nros
