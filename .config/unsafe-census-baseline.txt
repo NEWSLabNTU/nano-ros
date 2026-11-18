@@ -67,7 +67,7 @@ nros-platform-stm32f4               15   6     3       2      0
 nros-port-metric-bench               3   0     0       3      0
 nros-rmw                            21   7    11      13      0
 nros-rmw-cffi                      414  44     8     227      0
-nros-rmw-cyclonedds                  8   0     7       1      0
+nros-rmw-cyclonedds                  9   0     7       1      0
 nros-rmw-cyclonedds-sys              2   0     0       1      0
 nros-rmw-metadata                    1   0     0       0      0
 nros-rmw-xrce-cffi                   4   2     0       7      0

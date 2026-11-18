@@ -79,7 +79,7 @@ const ACTION_MSGS_SHARED: usize = 3;
 /// bringup declares. The flags are the caller's answer to
 /// `InfraServices::from_model`, so each feature predicate has one spelling.
 ///
-/// Issue 2704 -- read from the ONE runtime-interface table
+/// Read from the ONE runtime-interface table
 /// ([`crate::runtime_interface_types`], `data/runtime-interface-types.json`)
 /// the cmake roads generate from too, so an axis or type added there is
 /// counted here with no second edit. Distinct names across the enabled axes
@@ -87,14 +87,14 @@ const ACTION_MSGS_SHARED: usize = 3;
 /// does not scale with node count):
 ///
 /// * `param_services` -- 13: six services (`_Request` + `_Response` each, 12)
-///   plus the `/parameter_events` publisher's `ParameterEvent` (issues 1268,
-///   2023: before them these registered nothing, or were not counted).
+///   plus the `/parameter_events` publisher's `ParameterEvent`.
 /// * `lifecycle` -- 9: five services over FOUR service types
 ///   (`get_available_transitions` and `get_transition_graph` share
 ///   `GetAvailableTransitions`), plus `~/transition_event`'s
-///   `TransitionEvent` (issue 1293).
-/// * `rosout` -- 1: the per-node writer's `Log` (phase-556 W13 made `/rosout`
-///   executor-owned; issue 2704 counted it).
+///   `TransitionEvent`.
+/// * `rosout` -- 1: the per-node writer's `Log`.
+// Issues 1268 + 2023 (parameter services and events), 1293 (lifecycle),
+// phase-556 W13 + 2704 (`/rosout`), 2704 (the one table).
 pub fn infra_types(param_services: bool, lifecycle: bool, rosout: bool) -> usize {
     let enabled = [
         ("param_services", param_services),
