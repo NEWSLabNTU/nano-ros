@@ -298,3 +298,7 @@ this phase draws (what a board package in the user's repository owns, and
 what nano-ros provides), and links the out-of-tree walk-through.
 
 Acceptance: the page states the split, and every step it shows is probed.
+
+## Follow-ups
+
+- [Issue 2715](../issues/2715-p2p-peer-tests-collide-in-one-process.md): the IVC and RPMsg point-to-point peer tests (W4) pass only when each runs in its own process.

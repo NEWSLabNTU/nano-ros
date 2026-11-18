@@ -272,6 +272,72 @@ function(_nros_entry_require_fresh_census)
     endif()
 endfunction()
 
+# _nros_entry_bake_domain() -- the entry's domain, resolved and baked as
+# NROS_ENTRY_DOMAIN_ID. A MACRO, run in `nano_ros_entry`'s scope, so it reads
+# the caller's parsed `_NRA_*` arguments and sets `_nra_domain` there. One
+# spelling for every platform that bakes one: the embedded boards and, since
+# issue 2714, the host (`posix`).
+macro(_nros_entry_bake_domain)
+    # phase-287 W6 — bake the domain the same way; portable sources read
+    # NROS_ENTRY_DOMAIN_ID.
+    #
+    # Issue 1946 — two producers, and they may not disagree. `DOMAIN_ID` is
+    # the image's own `domain_id` (`[image.<id>]`, its defaults, then
+    # `[system]`), which `nros build` writes into the generated call; a
+    # `-DNROS_DOMAIN_ID` is the configure-wide spelling a hand-written
+    # entry or a test pass. Before this only the second reached the
+    # session, so a domain the image STATED was dropped without a word —
+    # and on a DDS image the domain is the bus. Either alone is used; both
+    # must name the same domain, because ranking them only decides which
+    # one is silently lost.
+    if(DEFINED _NRA_DOMAIN_ID AND NOT _NRA_DOMAIN_ID STREQUAL "")
+        set(_nra_domain "${_NRA_DOMAIN_ID}")
+        if(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
+           AND NOT NROS_DOMAIN_ID STREQUAL _NRA_DOMAIN_ID)
+            # issue 1946.
+            message(FATAL_ERROR
+                "nano_ros_add_executable(${_NRA_NAME}): the image states domain "
+                "${_NRA_DOMAIN_ID} (system.toml) but -DNROS_DOMAIN_ID=${NROS_DOMAIN_ID} "
+                "names another. Change one so they agree, or drop the -D "
+                "(`cmake -U NROS_DOMAIN_ID <build-dir>` clears a cached one).")
+        endif()
+    endif()
+    # GitHub #3856 (issue 2564). A hand-written entry that names its
+    # BRINGUP and IMAGE has stated which image it is, so that image's domain
+    # is the one `nros build` would write as DOMAIN_ID. Asked of the same
+    # reader, and held to the same agreement rule as DOMAIN_ID.
+    if("${_nra_domain}" STREQUAL "" AND _NRA_BRINGUP AND NOT "${_NRA_IMAGE}" STREQUAL "")
+        get_filename_component(_nra_bringup_abs "${_NRA_BRINGUP}" ABSOLUTE
+            BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        nros_image_domain_id(_nra_domain DIR "${_nra_bringup_abs}" IMAGE "${_NRA_IMAGE}"
+            CONTEXT "nano_ros_add_executable(${_NRA_NAME}): the domain of image `${_NRA_IMAGE}`")
+        if(NOT "${_nra_domain}" STREQUAL ""
+           AND DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
+           AND NOT NROS_DOMAIN_ID STREQUAL _nra_domain)
+            message(FATAL_ERROR
+                "nano_ros_add_executable(${_NRA_NAME}): image `${_NRA_IMAGE}` states domain "
+                "${_nra_domain} (${_nra_bringup_abs}/system.toml) but "
+                "-DNROS_DOMAIN_ID=${NROS_DOMAIN_ID} names another. Change one so they "
+                "agree, or drop the -D (`cmake -U NROS_DOMAIN_ID <build-dir>` clears a "
+                "cached one).")
+        endif()
+    endif()
+    if(NOT "${_nra_domain}" STREQUAL "")
+        # Settled above.
+    elseif(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL "")
+        set(_nra_domain "${NROS_DOMAIN_ID}")
+    else()
+        # An `add_subdirectory(<nano-ros>)` leaf: its system.toml was read
+        # in nano-ros's scope, which publishes the domain (already agreed
+        # with any -D) as a GLOBAL property — issue 1946.
+        get_property(_nra_domain GLOBAL PROPERTY NROS_TOP_LEAF_DOMAIN_ID)
+    endif()
+    if(NOT "${_nra_domain}" STREQUAL "")
+        target_compile_definitions(${_NRA_NAME} PRIVATE
+            "NROS_ENTRY_DOMAIN_ID=${_nra_domain}")
+    endif()
+endmacro()
+
 function(nano_ros_entry)
     # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
     # R1 / W4.2 — MODEL <system_model.yaml>: the canonical resolved-model
@@ -1096,63 +1162,27 @@ function(nano_ros_entry)
             nros_locator_c_define(_nra_net_def NROS_IMAGE_NET "${_nra_image_net}")
             target_compile_definitions(${_NRA_NAME} PRIVATE "${_nra_net_def}")
         endif()
-        # phase-287 W6 — bake the domain the same way; portable sources read
-        # NROS_ENTRY_DOMAIN_ID.
-        #
-        # Issue 1946 — two producers, and they may not disagree. `DOMAIN_ID` is
-        # the image's own `domain_id` (`[image.<id>]`, its defaults, then
-        # `[system]`), which `nros build` writes into the generated call; a
-        # `-DNROS_DOMAIN_ID` is the configure-wide spelling a hand-written
-        # entry or a test pass. Before this only the second reached the
-        # session, so a domain the image STATED was dropped without a word —
-        # and on a DDS image the domain is the bus. Either alone is used; both
-        # must name the same domain, because ranking them only decides which
-        # one is silently lost.
-        if(DEFINED _NRA_DOMAIN_ID AND NOT _NRA_DOMAIN_ID STREQUAL "")
-            set(_nra_domain "${_NRA_DOMAIN_ID}")
-            if(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
-               AND NOT NROS_DOMAIN_ID STREQUAL _NRA_DOMAIN_ID)
-                # issue 1946.
-                message(FATAL_ERROR
-                    "nano_ros_add_executable(${_NRA_NAME}): the image states domain "
-                    "${_NRA_DOMAIN_ID} (system.toml) but -DNROS_DOMAIN_ID=${NROS_DOMAIN_ID} "
-                    "names another. Change one so they agree, or drop the -D "
-                    "(`cmake -U NROS_DOMAIN_ID <build-dir>` clears a cached one).")
-            endif()
+        _nros_entry_bake_domain()
+    endif()
+
+    # Issue 2714 -- the HOST bakes what the image STATES, too. It used to bake
+    # nothing (the block above excludes posix), so a `linux` image dropped its
+    # system.toml `domain_id` / `locator` and joined domain 0. Only stated
+    # values, never the lane defaults the block above resolves a locator from:
+    # an unstated one leaves the baked rung empty, so `$NROS_LOCATOR` and then
+    # the linked backend's own default speak. Either way the environment
+    # outranks the bake, in the one resolver the runners reach.
+    if(TARGET ${_NRA_NAME} AND NROS_PLATFORM STREQUAL "posix")
+        if(NOT "${_NRA_LOCATOR}" STREQUAL "")
+            nros_locator_c_define(_nra_loc_def NROS_ENTRY_LOCATOR "${_NRA_LOCATOR}")
+            target_compile_definitions(${_NRA_NAME} PRIVATE "${_nra_loc_def}")
         endif()
-        # GitHub #3856 (issue 2564). A hand-written entry that names its
-        # BRINGUP and IMAGE has stated which image it is, so that image's domain
-        # is the one `nros build` would write as DOMAIN_ID. Asked of the same
-        # reader, and held to the same agreement rule as DOMAIN_ID.
-        if("${_nra_domain}" STREQUAL "" AND _NRA_BRINGUP AND NOT "${_NRA_IMAGE}" STREQUAL "")
-            get_filename_component(_nra_bringup_abs "${_NRA_BRINGUP}" ABSOLUTE
-                BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-            nros_image_domain_id(_nra_domain DIR "${_nra_bringup_abs}" IMAGE "${_NRA_IMAGE}"
-                CONTEXT "nano_ros_add_executable(${_NRA_NAME}): the domain of image `${_NRA_IMAGE}`")
-            if(NOT "${_nra_domain}" STREQUAL ""
-               AND DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
-               AND NOT NROS_DOMAIN_ID STREQUAL _nra_domain)
-                message(FATAL_ERROR
-                    "nano_ros_add_executable(${_NRA_NAME}): image `${_NRA_IMAGE}` states domain "
-                    "${_nra_domain} (${_nra_bringup_abs}/system.toml) but "
-                    "-DNROS_DOMAIN_ID=${NROS_DOMAIN_ID} names another. Change one so they "
-                    "agree, or drop the -D (`cmake -U NROS_DOMAIN_ID <build-dir>` clears a "
-                    "cached one).")
-            endif()
-        endif()
+        _nros_entry_bake_domain()
+        # A STATED domain, so `<rclc/detail/entry_config.h>` passes a stated
+        # 0 as the C ABI's explicit zero and a differing `$ROS_DOMAIN_ID` is
+        # reported as overriding it.
         if(NOT "${_nra_domain}" STREQUAL "")
-            # Settled above.
-        elseif(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL "")
-            set(_nra_domain "${NROS_DOMAIN_ID}")
-        else()
-            # An `add_subdirectory(<nano-ros>)` leaf: its system.toml was read
-            # in nano-ros's scope, which publishes the domain (already agreed
-            # with any -D) as a GLOBAL property — issue 1946.
-            get_property(_nra_domain GLOBAL PROPERTY NROS_TOP_LEAF_DOMAIN_ID)
-        endif()
-        if(NOT "${_nra_domain}" STREQUAL "")
-            target_compile_definitions(${_NRA_NAME} PRIVATE
-                "NROS_ENTRY_DOMAIN_ID=${_nra_domain}")
+            target_compile_definitions(${_NRA_NAME} PRIVATE NROS_ENTRY_DOMAIN_STATED)
         endif()
     endif()
 

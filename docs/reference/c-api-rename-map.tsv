@@ -122,6 +122,8 @@ NROS_DOMAIN_ID_EXPLICIT_ZERO	NROS_DOMAIN_ID_EXPLICIT_ZERO	build	build or configu
 NROS_DOMAIN_ID_INHERIT	NROS_DOMAIN_ID_INHERIT	build	build or configuration fact
 NROS_ENTRY_CONFIG_H	NROS_ENTRY_CONFIG_H	hook	defined by the application or entry, called by startup code
 NROS_ENTRY_DOMAIN_ID	NROS_ENTRY_DOMAIN_ID	hook	defined by the application or entry, called by startup code
+NROS_ENTRY_DOMAIN_ID_C_ABI	NROS_ENTRY_DOMAIN_ID_C_ABI	hook	defined by the application or entry, called by startup code
+NROS_ENTRY_DOMAIN_STATED	NROS_ENTRY_DOMAIN_STATED	hook	defined by the application or entry, called by startup code
 NROS_ENTRY_LOCATOR	NROS_ENTRY_LOCATOR	hook	defined by the application or entry, called by startup code
 NROS_ENTRY_LOCATOR_STRINGIZE	NROS_ENTRY_LOCATOR_STRINGIZE	hook	defined by the application or entry, called by startup code
 NROS_ENTRY_LOCATOR_STRINGIZE_	NROS_ENTRY_LOCATOR_STRINGIZE_	hook	defined by the application or entry, called by startup code

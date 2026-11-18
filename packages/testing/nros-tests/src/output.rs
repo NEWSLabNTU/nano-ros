@@ -2291,3 +2291,17 @@ mod guest_failure_tests {
 pub const ISR_WAKE_SAMPLE: &str = "ISR_WAKE ";
 /// See [`ISR_WAKE_SAMPLE`].
 pub const ISR_WAKE_DONE: &str = "ISR_WAKE_DONE ";
+
+/// Issue 2714 — the hosted resolver's boot line (`nros::env::report`):
+/// `boot config: domain <n> (<source>), locator <l> (<source>), rmw …`.
+pub const BOOT_CONFIG_LINE: &str = "boot config: domain ";
+
+/// Issue 2714 — the warning a host image prints when `$ROS_DOMAIN_ID`
+/// overrides the `domain_id` its system.toml states
+/// (`nros::env::warn_env_overrides_statement`):
+/// `ROS_DOMAIN_ID=<env> overrides system.toml's domain_id=<stated>`.
+pub const ENV_OVERRIDES_DOMAIN: &str = "overrides system.toml's domain_id=";
+
+/// Issue 2714 — the locator twin of [`ENV_OVERRIDES_DOMAIN`]:
+/// `NROS_LOCATOR=<env> overrides system.toml's locator=<stated>`.
+pub const ENV_OVERRIDES_LOCATOR: &str = "overrides system.toml's locator=";

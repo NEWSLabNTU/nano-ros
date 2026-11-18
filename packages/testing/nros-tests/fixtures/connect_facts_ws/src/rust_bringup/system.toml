@@ -1,0 +1,26 @@
+# Issue 2714 -- what a Rust `linux` image does with a domain and locator its
+# system.toml states, under each environment. `[system] domain_id` is a
+# required key, so a domain is always stated: `rust_unstated` states nothing of its
+# own and inherits `[system]`'s 0 (the C ABI's explicit zero) and no locator;
+# `rust_stated` states its own domain and a locator. The locator names a closed
+# port (TCP 9, discard), so a run prints its boot lines and then fails to
+# connect, with no router to start or race. Read by
+# `tests/host_connect_facts.rs`, which takes the values from this file.
+
+[system]
+name = "connect_facts_rust"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[image.rust_stated]
+board = "linux"
+domain_id = 42
+locator = "tcp/127.0.0.1:9"
+
+[image.rust_unstated]
+board = "linux"

@@ -1,0 +1,5 @@
+{
+  "key": "rust:StatementOverrides",
+  "verdict": "extension",
+  "why": "where the environment overrides a value the image's `system.toml` stated, per field as `(env, stated)` (`packages/api/nros/src/env.rs`): the return of `rust:env_overrides_statement`. rclcpp reads `ROS_DOMAIN_ID` and has no statement for it to override, so there is nothing to mirror (issue 2714)."
+}

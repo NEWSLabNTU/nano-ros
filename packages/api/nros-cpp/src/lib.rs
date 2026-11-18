@@ -2878,6 +2878,8 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
     let mut storage: alloc::vec::Vec<u64> = alloc::vec![0u64; stride / core::mem::size_of::<u64>()];
     unsafe {
         nros_board_native_run_components_named_in(
+            core::ptr::null(),
+            0, // nothing stated: the resolver's env and default rungs speak
             session_name,
             node_namespace,
             setup,
@@ -2885,6 +2887,58 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
             stride,
         )
     }
+}
+
+/// Issue 2714 — the locator a host runner hands `nros_cpp_init` as the BAKED
+/// rung: the image's stated `locator` (`NROS_ENTRY_LOCATOR`, which
+/// `<rclc/detail/entry_config.h>` defaults to `""`), with `""` meaning "not
+/// stated", exactly as `<rclc/detail/baked_rmw.h>` reads the same macro.
+/// NULL leaves the rung empty, so `$NROS_LOCATOR` and then the backend's own
+/// default speak, and the boot report attributes the value truthfully.
+///
+/// # Safety
+/// `p` is NULL or a NUL-terminated string.
+unsafe fn stated_locator(p: *const c_char) -> *const c_char {
+    if p.is_null() || unsafe { *p } == 0 {
+        core::ptr::null()
+    } else {
+        p
+    }
+}
+
+/// Issue 2714 — a host runner's `(locator, domain_id)` ARE the image's
+/// statement (`NROS_ENTRY_LOCATOR`, `NROS_ENTRY_DOMAIN_ID_C_ABI`), decoded as
+/// `nros_cpp_init` will decode them, so the environment overriding either is
+/// reported by the same rule the `linux` board uses
+/// (`nros::env::warn_env_overrides_statement`).
+///
+/// # Safety
+/// `locator` is NULL or a NUL-terminated string.
+#[cfg(feature = "env")]
+unsafe fn warn_env_overrides_stated(locator: *const c_char, domain_id: u8) {
+    let locator = unsafe { stated_locator(locator) };
+    let locator = if locator.is_null() {
+        None
+    } else {
+        unsafe { core::ffi::CStr::from_ptr(locator) }.to_str().ok()
+    };
+    ::nros::env::warn_env_overrides_statement(&::nros::BootConfig {
+        locator,
+        domain_id: nros_node::baked_domain_from_c_abi(domain_id),
+        ..Default::default()
+    });
+}
+
+/// [`warn_env_overrides_stated`] for a C++ host entry that opens its session
+/// through `rclcpp::init_in` rather than a runner (`main.hpp`'s native
+/// `run_components`): the same statement, the same rule, the same warning.
+///
+/// # Safety
+/// `locator` is NULL or a NUL-terminated string.
+#[cfg(feature = "env")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_warn_env_overrides_stated(locator: *const c_char, domain_id: u8) {
+    unsafe { warn_env_overrides_stated(locator, domain_id) }
 }
 
 /// [`nros_board_native_run_components_named_ns`] over
@@ -2906,6 +2960,8 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_board_native_run_components_named_in(
+    locator: *const c_char,
+    domain_id: u8,
     session_name: *const c_char,
     node_namespace: *const c_char,
     setup: Option<unsafe extern "C" fn(executor: *mut c_void) -> i32>,
@@ -2958,10 +3014,12 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
     nros_platform::termination::install_guard();
 
     let sptr = executor_storage;
+    // Issue 2714 -- the environment wins over the stated values, and says so.
+    unsafe { warn_env_overrides_stated(locator, domain_id) };
     let rc = unsafe {
         nros_cpp_init(
-            core::ptr::null(),
-            0,
+            stated_locator(locator),
+            domain_id,
             name_resolved.as_ptr(),
             ns_resolved,
             sptr,
@@ -9013,6 +9071,8 @@ pub unsafe extern "C" fn nros_board_native_run_sched_tasks_ns(
         alloc::vec![0u64; n_sched_tasks * (stride / core::mem::size_of::<u64>())];
     unsafe {
         nros_board_native_run_sched_tasks_in(
+            core::ptr::null(),
+            0, // nothing stated: the resolver's env and default rungs speak
             session_name,
             node_namespace,
             sched_tasks,
@@ -9050,6 +9110,8 @@ pub unsafe extern "C" fn nros_board_native_run_sched_tasks_ns(
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_board_native_run_sched_tasks_in(
+    locator: *const c_char,
+    domain_id: u8,
     session_name: *const c_char,
     node_namespace: *const c_char,
     sched_tasks: *const NativeSchedTaskSpecC,
@@ -9113,10 +9175,12 @@ pub unsafe extern "C" fn nros_board_native_run_sched_tasks_in(
 
     // Block 0 of the caller's storage is the boot sched task's executor.
     let sptr = storage as *mut c_void;
+    // Issue 2714 -- the environment wins over the stated values, and says so.
+    unsafe { warn_env_overrides_stated(locator, domain_id) };
     let rc = unsafe {
         nros_cpp_init(
-            core::ptr::null(),
-            0,
+            stated_locator(locator),
+            domain_id,
             name_resolved.as_ptr(),
             ns_resolved,
             sptr,
@@ -9674,6 +9738,8 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
 #[cfg(all(feature = "rmw-cffi", feature = "env", unix))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_board_native_run_levels_in(
+    locator: *const c_char,
+    domain_id: u8,
     session_name: *const c_char,
     node_namespace: *const c_char,
     sched_tasks: *const NativeSchedTaskSpecC,
@@ -9706,6 +9772,8 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     if census_out_path().is_some() {
         return unsafe {
             nros_board_native_run_sched_tasks_in(
+                locator,
+                domain_id,
                 session_name,
                 node_namespace,
                 sched_tasks,
@@ -9751,11 +9819,13 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
 
     // The core's one executor.
     let sptr = executor_storage;
+    // Issue 2714 -- the environment wins over the stated values, and says so.
+    unsafe { warn_env_overrides_stated(locator, domain_id) };
     let rc = unsafe {
         match backings.as_ref() {
             Some(b) => nros_cpp_init_levels(
-                core::ptr::null(),
-                0,
+                stated_locator(locator),
+                domain_id,
                 name_resolved.as_ptr(),
                 ns_resolved,
                 sptr,
@@ -9763,8 +9833,8 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
                 b.bytes,
             ),
             None => nros_cpp_init(
-                core::ptr::null(),
-                0,
+                stated_locator(locator),
+                domain_id,
                 name_resolved.as_ptr(),
                 ns_resolved,
                 sptr,
@@ -10370,7 +10440,13 @@ mod census_funnel_tests {
     /// the node, then declare its entities and parameters.
     unsafe extern "C" fn fixture_setup(exec: *mut c_void) -> i32 {
         let opts = nros_cpp_node_options_t::default();
-        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
+        // The executor keeps this node by pointer past `setup`, so it lives in
+        // a static, as a generated entry's does: a local here is dead stack
+        // the runner's own frame reuses, and the executor's later writes
+        // through it corrupted that frame (a census run that took the spin
+        // arm instead of returning).
+        static mut NODE: MaybeUninit<nros_cpp_node_t> = MaybeUninit::uninit();
+        let node = unsafe { &mut *core::ptr::addr_of_mut!(NODE) };
         let rc = unsafe {
             nros_cpp_node_create_ex(exec, c"census_fixture".as_ptr(), &opts, node.as_mut_ptr())
         };
@@ -10379,7 +10455,9 @@ mod census_funnel_tests {
         }
         let node = node.as_mut_ptr().cast_const();
 
-        let mut sub = MaybeUninit::<nros::internals::RmwSubscriber>::uninit();
+        // Kept past `setup`, like the node: the executor holds it by pointer.
+        static mut SUB: MaybeUninit<nros::internals::RmwSubscriber> = MaybeUninit::uninit();
+        let sub = unsafe { &mut *core::ptr::addr_of_mut!(SUB) };
         let rc = unsafe {
             nros_cpp_subscription_create(
                 node,
@@ -10394,7 +10472,9 @@ mod census_funnel_tests {
             return rc as i32;
         }
 
-        let mut publisher = MaybeUninit::<nros::internals::RmwPublisher>::uninit();
+        // Kept past `setup` for the same reason as the node above.
+        static mut PUBLISHER: MaybeUninit<nros::internals::RmwPublisher> = MaybeUninit::uninit();
+        let publisher = unsafe { &mut *core::ptr::addr_of_mut!(PUBLISHER) };
         let rc = unsafe {
             nros_cpp_publisher_create(
                 node,
@@ -10553,7 +10633,13 @@ mod census_funnel_tests {
     /// image's `MAX_CBS` is derived from the contract.
     unsafe extern "C" fn over_sized_setup(exec: *mut c_void) -> i32 {
         let opts = nros_cpp_node_options_t::default();
-        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
+        // The executor keeps this node by pointer past `setup`, so it lives in
+        // a static, as a generated entry's does: a local here is dead stack
+        // the runner's own frame reuses, and the executor's later writes
+        // through it corrupted that frame (a census run that took the spin
+        // arm instead of returning).
+        static mut NODE: MaybeUninit<nros_cpp_node_t> = MaybeUninit::uninit();
+        let node = unsafe { &mut *core::ptr::addr_of_mut!(NODE) };
         let rc = unsafe {
             nros_cpp_node_create_ex(exec, c"census_oversized".as_ptr(), &opts, node.as_mut_ptr())
         };
@@ -10723,7 +10809,13 @@ mod census_funnel_tests {
             return rc as i32;
         }
         let opts = nros_cpp_node_options_t::default();
-        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
+        // The executor keeps this node by pointer past `setup`, so it lives in
+        // a static, as a generated entry's does: a local here is dead stack
+        // the runner's own frame reuses, and the executor's later writes
+        // through it corrupted that frame (a census run that took the spin
+        // arm instead of returning).
+        static mut NODE: MaybeUninit<nros_cpp_node_t> = MaybeUninit::uninit();
+        let node = unsafe { &mut *core::ptr::addr_of_mut!(NODE) };
         let rc = unsafe {
             nros_cpp_node_create_ex(
                 exec,
@@ -10735,7 +10827,9 @@ mod census_funnel_tests {
         if rc != NROS_CPP_RET_OK {
             return rc as i32;
         }
-        let mut publisher = MaybeUninit::<nros::internals::RmwPublisher>::uninit();
+        // Kept past `setup` for the same reason as the node above.
+        static mut PUBLISHER: MaybeUninit<nros::internals::RmwPublisher> = MaybeUninit::uninit();
+        let publisher = unsafe { &mut *core::ptr::addr_of_mut!(PUBLISHER) };
         let rc = unsafe {
             nros_cpp_publisher_create(
                 node.as_mut_ptr().cast_const(),
@@ -11214,6 +11308,8 @@ mod executor_storage_check_tests {
             let rc = unsafe {
                 nros_board_native_run_sched_tasks_in(
                     core::ptr::null(),
+                    0,
+                    core::ptr::null(),
                     core::ptr::null(),
                     sched_tasks.as_ptr(),
                     sched_tasks.len(),
@@ -11234,6 +11330,8 @@ mod executor_storage_check_tests {
             let mut b = alloc::vec![0u64; need / 8];
             let rc = unsafe {
                 nros_board_native_run_components_named_in(
+                    core::ptr::null(),
+                    0,
                     core::ptr::null(),
                     core::ptr::null(),
                     Some(mark_setup),

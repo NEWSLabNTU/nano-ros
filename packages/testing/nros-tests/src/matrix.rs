@@ -1279,6 +1279,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     ("generated_message_code_compiles", NonCell::CompileCheck),
     (
+        "host_connect_facts",
+        NonCell::Probe(
+            "a linux image's stated domain and locator sit below the environment, which warns when it overrides them (issue 2714)",
+        ),
+    ),
+    (
         "hosted_pool_exhaustion_console",
         NonCell::Probe(
             "a killed hosted image keeps its pool-exhaustion diagnostics on the console (issue 2492)",

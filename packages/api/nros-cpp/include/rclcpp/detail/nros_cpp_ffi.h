@@ -2104,6 +2104,16 @@ int32_t nros_board_native_run_components_named_ns(const char *session_name,
                                                   int32_t (*setup)(void *executor));
 
 /**
+ * [`warn_env_overrides_stated`] for a C++ host entry that opens its session
+ * through `rclcpp::init_in` rather than a runner (`main.hpp`'s native
+ * `run_components`): the same statement, the same rule, the same warning.
+ *
+ * # Safety
+ * `locator` is NULL or a NUL-terminated string.
+ */
+void nros_cpp_warn_env_overrides_stated(const char *locator, uint8_t domain_id);
+
+/**
  * [`nros_board_native_run_components_named_ns`] over
  * CALLER-SUPPLIED executor storage: the host twin of
  * `nros_board_rtos_run_components_in`, and the runner a
@@ -2121,7 +2131,9 @@ int32_t nros_board_native_run_components_named_ns(const char *session_name,
  * must be valid for writes of `storage_bytes` bytes for the duration of the
  * call and used by nothing else meanwhile.
  */
-int32_t nros_board_native_run_components_named_in(const char *session_name,
+int32_t nros_board_native_run_components_named_in(const char *locator,
+                                                  uint8_t domain_id,
+                                                  const char *session_name,
                                                   const char *node_namespace,
                                                   int32_t (*setup)(void *executor),
                                                   void *executor_storage,

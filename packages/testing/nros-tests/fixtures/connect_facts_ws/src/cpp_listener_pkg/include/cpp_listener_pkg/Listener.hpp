@@ -1,0 +1,24 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+#include <rclcpp/rclcpp.hpp>
+
+#include "std_msgs.hpp"
+
+namespace cpp_listener_pkg {
+
+/// Listener — a stateful component (RFC-0043). `configure` binds the member
+/// `on_msg` (by identity, no name) as a TYPED member subscription on
+/// `/chatter`. Mirrors the pure-C++ workspace's typed component.
+class Listener {
+    int recv_ = 0;
+
+    void on_msg(const ::std_msgs::msg::Int32& msg); // typed member callback
+
+  public:
+    ::rclcpp::Result configure(::rclcpp::Node& node);
+};
+
+} // namespace cpp_listener_pkg

@@ -13,11 +13,13 @@
   Three shapes, ONE derivation — `nros_entry_lower::BoardFamily::boot_shape`
   (phase-432 W2.2) — shared with the C++ pack rather than re-decided here.
 
-  The host/embedded split in the CALL is the same one the C++ wrapper draws,
-  and for the same reason: only the HOST board resolves its locator and domain
-  at run time (from the environment), so it is the one runner that takes
-  neither. An embedded image bakes both at compile time through
-  `<rclc/detail/entry_config.h>`, the single ladder both entry languages include.
+  Every runner, the host's included, takes the image's stated locator and
+  domain first (`NROS_ENTRY_LOCATOR`, `NROS_ENTRY_DOMAIN_ID`, baked through
+  `<rclc/detail/entry_config.h>`, the single ladder both entry languages
+  include). Issue 2714: the host runner used to take neither, so a `linux`
+  image dropped what its `system.toml` stated and joined domain 0. On the
+  host they are the BAKED rung, below `$NROS_LOCATOR` / `$ROS_DOMAIN_ID`, in
+  the one resolver every board reaches.
 
   The runner NAMES are carried rather than assembled from the board key: the C
   ABI does not name them uniformly (`native` has the `_named` suffix that its
@@ -143,26 +145,20 @@ static uint64_t __nros_executor_storage[(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 
 {% include "session_properties_table.jinja" -%}
 {%- set call -%}
 {%- if boot.sched_tasks -%}
-{%- if boot_shape == "host" -%}
-{{ boot.runners.run_sched_tasks }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u{% if boot.sched_task_storage %}, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]){% endif %})
+{{ boot.runners.run_sched_tasks }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID_C_ABI, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u{% if boot.sched_task_storage %}, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]){% endif %}{% if boot.task_memory %}, __nros_sched_task_memory{% endif %})
 {%- else -%}
-{{ boot.runners.run_sched_tasks }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u{% if boot.sched_task_storage %}, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]){% endif %}{% if boot.task_memory %}, __nros_sched_task_memory{% endif %})
-{%- endif -%}
-{%- elif boot_shape == "host" -%}
-{{ boot.runners.run_components }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup{% if boot.component_storage %}, __nros_executor_storage, sizeof(__nros_executor_storage){% endif %})
-{%- else -%}
-{{ boot.runners.run_components }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup{% if boot.component_storage %}, __nros_executor_storage, sizeof(__nros_executor_storage){% endif %})
+{{ boot.runners.run_components }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID_C_ABI, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup{% if boot.component_storage %}, __nros_executor_storage, sizeof(__nros_executor_storage){% endif %})
 {%- endif -%}
 {%- endset -%}
 {%- set levels = boot.sched_tasks and boot.sched_task_storage and boot.runners.run_levels -%}
 {%- if levels -%}
 {%- set call -%}
-{{ boot.runners.run_levels }}({% if boot_shape != "host" %}NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, {% endif %}nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]), NROS_ENTRY_LEVEL_BACKINGS, {% if boot.task_memory %}__nros_sched_task_memory{% else %}NULL{% endif %}, __nros_scheduler_0, sizeof(__nros_scheduler_0))
+{{ boot.runners.run_levels }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID_C_ABI, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]), NROS_ENTRY_LEVEL_BACKINGS, {% if boot.task_memory %}__nros_sched_task_memory{% else %}NULL{% endif %}, __nros_scheduler_0, sizeof(__nros_scheduler_0))
 {%- endset -%}
 {%- endif -%}
 {%- set backed = not levels and boot.sched_tasks and boot.sched_task_storage and boot.task_memory and boot.runners.run_sched_tasks_backed -%}
 {%- set backed_call -%}
-{{ boot.runners.run_sched_tasks_backed }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]), __nros_sched_task_backings, __nros_sched_task_memory)
+{{ boot.runners.run_sched_tasks_backed }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID_C_ABI, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]), __nros_sched_task_backings, __nros_sched_task_memory)
 {%- endset -%}
 {%- if boot_shape == "kernel" -%}
 int main(void) {
