@@ -5042,6 +5042,24 @@ impl<'s> Executor<'s> {
         self.next_timer_deadline_in_us(self.band_slots(self.worker.level, self.worker.band))
     }
 
+    // phase-562 W10.
+    /// The earliest timer deadline of `level`'s band, in
+    /// microseconds after that level's most recent pass. `None` when the band
+    /// arms no timer.
+    ///
+    /// A band's timers are credited their elapsed time only by that band's own
+    /// pass, so the number is exact only when read at the end of the pass:
+    /// that is where a level runner reads it, to arm a board timer whose
+    /// interrupt wakes the level. An RTIC level cannot park on a timed wait of
+    /// its own (its software task runs to completion, and a high-priority task
+    /// that blocked would starve every level below it), and the boot worker's
+    /// park is bounded by its own band only ([`Self::next_timer_deadline_us`]),
+    /// so without that timer a higher band's due timer would wait out the boot
+    /// level's whole idle park.
+    pub fn next_timer_deadline_of_level_us(&self, level: u8) -> Option<u64> {
+        self.next_timer_deadline_in_us(self.band_slots(level, super::scheduler::Band::ALL))
+    }
+
     /// phase-509 P9b item 3 -- [`Self::next_timer_deadline_us`] over the
     /// timers in `mask`'s slots.
     pub(crate) fn next_timer_deadline_in_us(&self, mask: u64) -> Option<u64> {

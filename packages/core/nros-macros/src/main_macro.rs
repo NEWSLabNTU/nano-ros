@@ -2164,11 +2164,16 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // no `run_sched_tasks` EARLY with a real diagnostic. Previously the deploy fell
     // back to the posix sched task rules and died later with a misleading
     // `MissingRtosSpec("posix")` or a raw missing-method compile error.
+    // phase-562 W10 -- an RTIC image is refused here BY ITS FRAMEWORK, not only
+    // by a board word that happens to spell `rtic` or `baremetal`. Its arm can
+    // run derived levels (`rtic_level_plan`, `rtic_multi_level_tokens`), and
+    // the refusal lifts in the change that adds the QEMU cells proving it.
     if multi_sched_task.is_some()
         && let Some(d) = deploy_for_framework.as_deref()
-        && ["rtic", "baremetal", "bare-metal", "orin"]
-            .iter()
-            .any(|f| d.contains(f))
+        && (matches!(framework, Framework::Rtic)
+            || ["rtic", "baremetal", "bare-metal", "orin"]
+                .iter()
+                .any(|f| d.contains(f)))
     {
         // Issue 0265.
         return Err(syn::Error::new(
@@ -2732,6 +2737,40 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 Some(sel) => reroot_through(&rtic_spec.dispatch_consumer_path, sel),
                 None => rtic_spec.dispatch_consumer_path,
             };
+            // phase-562 W10 -- a multi-level image's levels, one RTIC software
+            // task each; the hardware tasks (tick, RX, level wake) sit one
+            // priority above the most urgent level. A single-level image keeps
+            // the run task at 1 and the hardware tasks at 2, as before.
+            let rtic_plan = match multi_sched_task {
+                Some(table) => Some(rtic_level_plan(
+                    table,
+                    &node_namespaces,
+                    rtic_dispatchers.len(),
+                    rtic_spec.level_wake_irq.is_some(),
+                    rtic_spec.nvic_prio_bits,
+                    deploy,
+                )?),
+                None => None,
+            };
+            let rtic_hw_priority_n: u8 = rtic_plan.as_ref().map_or(2, |p| p.top + 1);
+            // RTIC's `priority = N` takes an UNSUFFIXED literal.
+            let rtic_hw_priority = proc_macro2::Literal::u8_unsuffixed(rtic_hw_priority_n);
+            let rtic_dispatcher_names: Vec<String> =
+                rtic_dispatchers.iter().map(|d| d.to_string()).collect();
+            let (rtic_level_items_ts, rtic_level_tasks_ts, rtic_run_body_ts) = match &rtic_plan {
+                Some(plan) => rtic_multi_level_tokens(
+                    plan,
+                    rtic_spec.level_wake_irq.as_ref(),
+                    rtic_hw_priority_n,
+                    &sched_task_register_calls,
+                    &rtic_consumer,
+                ),
+                None => (
+                    quote! {},
+                    quote! {},
+                    rtic_single_level_run_body(&rtic_register_ts, &rtic_consumer),
+                ),
+            };
             // Phase 289 (#178) — optional periodic-tick hardware task. The
             // `binds` route wires the handler through RTIC's real vector
             // table (the same mechanism the dispatchers use) — a board-crate
@@ -2743,7 +2782,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     /// waking the `wfi` inside that task's connect/poll
                     /// busy-waits. The board acknowledges the IRQ in
                     /// `on_tick` (an unacknowledged flag is an IRQ storm).
-                    #[task(binds = #tick_irq, priority = 2)]
+                    #[task(binds = #tick_irq, priority = #rtic_hw_priority)]
                     fn __nros_tick(_cx: __nros_tick::Context) {
                         <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::on_tick();
                     }
@@ -2755,7 +2794,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // task; its interrupt is what ends that task's park.
             let rtic_rx_ts: proc_macro2::TokenStream = match rtic_spec.rx_irq {
                 Some(rx_irq) => quote! {
-                    #[task(binds = #rx_irq, priority = 2)]
+                    #[task(binds = #rx_irq, priority = #rtic_hw_priority)]
                     fn __nros_rx(_cx: __nros_rx::Context) {
                         <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::on_rx_irq();
                     }
@@ -2810,6 +2849,20 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
             quote! {
                 use #board_path as __NrosBoard;
+
+                // phase-562 W10 -- the dispatcher list above restates the
+                // board's; this keeps the copy honest.
+                const _: () = ::core::assert!(
+                    ::nros::__macro_support::nros_platform::rtic_dispatchers_agree(
+                        &[#( #rtic_dispatcher_names ),*],
+                        <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::DISPATCHERS,
+                    ),
+                    "nros::main!: the RTIC dispatcher list nros-macros carries for this board \
+                     disagrees with the board's `RticBoardEntry::DISPATCHERS`; update the \
+                     macro's `rtic_board_spec_for`",
+                );
+
+                #rtic_level_items_ts
 
                 #[::rtic::app(
                     device = #rtic_device,
@@ -2958,68 +3011,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::open_executor(
                                 cx.local.boot.0.take().expect("RTIC boot carrier already taken"),
                             );
-                        // Phase 289 (#178) — wrap the executor in the SAME
-                        // `ExecutorNodeRuntime` every owned-spin board uses and
-                        // run each Node pkg's full `register()` (entities +
-                        // tick registry + component table) against it.
-                        let mut __nros_crt =
-                            ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
-                        {
-                            let mut __nros_rt =
-                                ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(&mut __nros_crt);
-                            #rtic_register_ts
-                        }
-                        // The board-side runtime owns the SPSC
-                        // producer half. Today's collapse keeps it in
-                        // `Local` for symmetry with the planned split
-                        // — once `ExecutorNodeRuntime`-wrapped routing
-                        // lands the runtime's `signal_callback` will
-                        // be the producer-side bridge between executor
-                        // callbacks and the SPSC consumer drained
-                        // below.
-                        let _runtime = &mut cx.local.runtime.0;
-                        let mut consumer =
-                            #rtic_consumer()
-                                .expect("RTIC dispatch consumer take");
-                        loop {
-                            // Phase 289 — trait spin (`spin_once(ms)` +
-                            // `run_ticks`), matching the owned-spin boards, so
-                            // registered timers fire and service/action poll
-                            // components tick.
-                            //
-                            // phase-521 W6 (RFC-0113 D2) — with the executor's
-                            // budget: the park ends at the next deadline or on
-                            // the RX task's interrupt. The dispatch queue below
-                            // is filled only on this task (or in `#[init]`,
-                            // before the loop), so it never waits out a park.
-                            let __nros_budget =
-                                ::nros::__macro_support::nros_platform::NodeDispatchRuntime::entry_spin_budget_ms(
-                                    &__nros_crt,
-                                );
-                            let _ = ::nros::__macro_support::nros_platform::NodeDispatchRuntime::spin_once(
-                                &mut __nros_crt,
-                                __nros_budget,
-                            );
-                            // Phase 216 final dispatch wiring — drain
-                            // every envelope the board's SPSC has
-                            // queued this cycle and forward each one
-                            // through `Executor::dispatch_callback`.
-                            // Drain the board's signaled-callback queue
-                            // into the component table. Callbacks normally
-                            // run inline in the spin above; the queue's
-                            // only producer is the board's
-                            // `signal_callback` (issue 2161).
-                            while let Some(envelope) = consumer.dequeue() {
-                                let cb = envelope.into_inner();
-                                // SAFETY: the board's `signal_callback` enqueues a
-                                // `*mut CallbackCtx<'static>` (see the rtic board
-                                // crates); single-core, drained on this task only.
-                                let ctx = unsafe {
-                                    &mut *(cb.ctx_ptr as *mut ::nros::CallbackCtx<'static>)
-                                };
-                                __nros_crt.dispatch_callback(cb.cb_id, ctx);
-                            }
-                        }
+                        #rtic_run_body_ts
                     }
 
                     // Phase 289 (#178) — periodic tick hardware task
@@ -3028,6 +3020,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
                     // phase-521 W6 — the link's RX interrupt task.
                     #rtic_rx_ts
+
+                    // phase-562 W10 — one software task per non-boot level, and
+                    // the level wake (empty for a single-level image).
+                    #rtic_level_tasks_ts
 
                     // Phase 216.B.4 — user-supplied `#[task]` trampolines.
                     // Each calls a sibling `<name>_impl` fn the user
@@ -5060,39 +5056,50 @@ fn contract_monitor_tokens(
     (quote! { #( #items )* #( #mode_consts )* }, call)
 }
 
+/// A sched task's `active_groups` filter, as the `&[(node, namespace, group)]`
+/// literal every runner hands `Executor::set_active_groups`. ONE spelling, for
+/// the `SchedTaskSpec` table and for the RTIC level runner (phase-562 W10).
+fn sched_task_group_list_tokens(
+    t: &nros_orchestration_ir::ResolvedSchedTask,
+    node_namespaces: &BTreeMap<String, String>,
+) -> proc_macro2::TokenStream {
+    // issue 1172 — the group id alone was AMBIGUOUS, and this was the third
+    // producer to drop the node: `map(|(_, g)| g)` threw the node name away
+    // and then deduped, so two nodes declaring `ctrl` on different sched tasks
+    // collapsed to one entry and the filter admitted both. The key is
+    // `(node name, namespace, group)` now, which cannot collapse.
+    //
+    // The namespace comes from the same FQN split that builds each node's
+    // `NodeIdentity`, so the filter names a node exactly as the node is
+    // created — a filter keyed on a namespace the node does not have would
+    // match nothing and the sched task would register nothing.
+    let mut groups: Vec<(&str, &str, &str)> = t
+        .members
+        .iter()
+        .map(|(node, g)| {
+            let ns = node_namespaces
+                .get(node.as_str())
+                .map(String::as_str)
+                .unwrap_or("/");
+            (node.as_str(), ns, g.as_str())
+        })
+        .collect();
+    groups.sort();
+    groups.dedup();
+    let groups = groups
+        .into_iter()
+        .map(|(n, ns, g)| quote! { (#n, #ns, #g) })
+        .collect::<Vec<_>>();
+    quote! { &[ #(#groups),* ] }
+}
+
 fn sched_task_specs_tokens(
     table: &ResolvedSchedTaskTable,
     node_namespaces: &BTreeMap<String, String>,
 ) -> proc_macro2::TokenStream {
     let entries = table.sched_tasks.iter().map(|t| {
         let name = &t.name;
-        // issue 1172 — the group id alone was AMBIGUOUS, and this was the third
-        // producer to drop the node: `map(|(_, g)| g)` threw the node name away
-        // and then deduped, so two nodes declaring `ctrl` on different sched tasks
-        // collapsed to one entry and the filter admitted both. The key is
-        // `(node name, namespace, group)` now, which cannot collapse.
-        //
-        // The namespace comes from the same FQN split that builds each node's
-        // `NodeIdentity`, so the filter names a node exactly as the node is
-        // created — a filter keyed on a namespace the node does not have would
-        // match nothing and the sched task would register nothing.
-        let mut groups: Vec<(&str, &str, &str)> = t
-            .members
-            .iter()
-            .map(|(node, g)| {
-                let ns = node_namespaces
-                    .get(node.as_str())
-                    .map(String::as_str)
-                    .unwrap_or("/");
-                (node.as_str(), ns, g.as_str())
-            })
-            .collect();
-        groups.sort();
-        groups.dedup();
-        let groups = groups
-            .into_iter()
-            .map(|(n, ns, g)| quote! { (#n, #ns, #g) })
-            .collect::<Vec<_>>();
+        let groups_ts = sched_task_group_list_tokens(t, node_namespaces);
         let priority = t.priority;
         let stack_bytes = t.stack_bytes.unwrap_or(0) as usize;
         let spin_period_us = t.spin_period_us.unwrap_or(1000);
@@ -5123,7 +5130,7 @@ fn sched_task_specs_tokens(
         quote! {
             ::nros::__macro_support::nros_platform::SchedTaskSpec {
                 name: #name,
-                groups: &[ #(#groups),* ],
+                groups: #groups_ts,
                 priority: #priority,
                 stack_bytes: #stack_bytes,
                 spin_period_us: #spin_period_us,
@@ -5373,6 +5380,355 @@ fn hosted_std_scaffold_ts(links_std: bool) -> proc_macro2::TokenStream {
     }
 }
 
+/// phase-562 W10 -- the single-level RTIC run task's body after the executor
+/// opens: register every node, then `spin_once` and drain the signaled-callback
+/// queue forever. Unchanged from before W10; a multi-level image takes
+/// [`rtic_multi_level_tokens`] instead.
+fn rtic_single_level_run_body(
+    rtic_register_ts: &proc_macro2::TokenStream,
+    rtic_consumer: &SynPath,
+) -> proc_macro2::TokenStream {
+    quote! {
+                        // Phase 289 (#178) — wrap the executor in the SAME
+                        // `ExecutorNodeRuntime` every owned-spin board uses and
+                        // run each Node pkg's full `register()` (entities +
+                        // tick registry + component table) against it.
+                        let mut __nros_crt =
+                            ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
+                        {
+                            let mut __nros_rt =
+                                ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(&mut __nros_crt);
+                            #rtic_register_ts
+                        }
+                        // The board-side runtime owns the SPSC
+                        // producer half. Today's collapse keeps it in
+                        // `Local` for symmetry with the planned split
+                        // — once `ExecutorNodeRuntime`-wrapped routing
+                        // lands the runtime's `signal_callback` will
+                        // be the producer-side bridge between executor
+                        // callbacks and the SPSC consumer drained
+                        // below.
+                        let _runtime = &mut cx.local.runtime.0;
+                        let mut consumer =
+                            #rtic_consumer()
+                                .expect("RTIC dispatch consumer take");
+                        loop {
+                            // Phase 289 — trait spin (`spin_once(ms)` +
+                            // `run_ticks`), matching the owned-spin boards, so
+                            // registered timers fire and service/action poll
+                            // components tick.
+                            //
+                            // phase-521 W6 (RFC-0113 D2) — with the executor's
+                            // budget: the park ends at the next deadline or on
+                            // the RX task's interrupt. The dispatch queue below
+                            // is filled only on this task (or in `#[init]`,
+                            // before the loop), so it never waits out a park.
+                            let __nros_budget =
+                                ::nros::__macro_support::nros_platform::NodeDispatchRuntime::entry_spin_budget_ms(
+                                    &__nros_crt,
+                                );
+                            let _ = ::nros::__macro_support::nros_platform::NodeDispatchRuntime::spin_once(
+                                &mut __nros_crt,
+                                __nros_budget,
+                            );
+                            // Phase 216 final dispatch wiring — drain
+                            // every envelope the board's SPSC has
+                            // queued this cycle and forward each one
+                            // through `Executor::dispatch_callback`.
+                            // Drain the board's signaled-callback queue
+                            // into the component table. Callbacks normally
+                            // run inline in the spin above; the queue's
+                            // only producer is the board's
+                            // `signal_callback` (issue 2161).
+                            while let Some(envelope) = consumer.dequeue() {
+                                let cb = envelope.into_inner();
+                                // SAFETY: the board's `signal_callback` enqueues a
+                                // `*mut CallbackCtx<'static>` (see the rtic board
+                                // crates); single-core, drained on this task only.
+                                let ctx = unsafe {
+                                    &mut *(cb.ctx_ptr as *mut ::nros::CallbackCtx<'static>)
+                                };
+                                __nros_crt.dispatch_callback(cb.cb_id, ctx);
+                            }
+                        }
+    }
+}
+
+/// phase-562 W10 -- one derived level of an RTIC image.
+struct RticLevel {
+    /// The level's index, 0 the most urgent (`LevelCore`'s numbering).
+    index: u8,
+    /// Its RTIC software-task priority: 1 for the boot (least urgent) level.
+    priority: u8,
+    /// Its `active_groups` filter.
+    groups: proc_macro2::TokenStream,
+}
+
+/// phase-562 W10 -- a multi-level RTIC image's levels.
+struct RticLevelPlan {
+    /// Most urgent first.
+    levels: Vec<RticLevel>,
+    /// The boot level's index: the least urgent, which keeps the transport
+    /// and the executor's chores.
+    boot: u8,
+    /// The most urgent level's RTIC priority (the executor lock's ceiling).
+    top: u8,
+}
+
+/// phase-562 W10 -- the derived sched tasks as RTIC levels, refused where the
+/// board cannot run them.
+///
+/// Each level is one RTIC software task, and RTIC needs one dispatcher
+/// interrupt per software-task priority, so the dispatcher count bounds the
+/// level count; the hardware tasks sit one priority above the top level, so
+/// the NVIC's priority count bounds it too. A board with no level wake
+/// (`RticBoardEntry::arm_level_wake`) cannot wake a higher level for its
+/// timers and runs single-level only.
+fn rtic_level_plan(
+    table: &ResolvedSchedTaskTable,
+    node_namespaces: &BTreeMap<String, String>,
+    dispatchers: usize,
+    has_level_wake: bool,
+    nvic_prio_bits: u8,
+    board: &str,
+) -> syn::Result<RticLevelPlan> {
+    let err = |m: String| syn::Error::new(Span::call_site(), format!("nros::main!: {m}"));
+    let mut tasks: Vec<&nros_orchestration_ir::ResolvedSchedTask> =
+        table.sched_tasks.iter().collect();
+    tasks.sort_by_key(|t| core::cmp::Reverse(t.priority));
+    if tasks.windows(2).any(|w| w[0].priority == w[1].priority) {
+        return Err(err(format!(
+            "board `{board}` boots RTIC, which runs one software-task priority per level, and \
+             two of this image's sched tasks derive the same priority; give them distinct \
+             priorities or one sched task"
+        )));
+    }
+    let k = tasks.len();
+    if !has_level_wake {
+        return Err(err(format!(
+            "board `{board}` boots RTIC and has no level wake (`RticBoardEntry::arm_level_wake`), \
+             so it runs one level only; this image derives {k}"
+        )));
+    }
+    if k > dispatchers {
+        return Err(err(format!(
+            "board `{board}` boots RTIC with {dispatchers} dispatcher interrupt(s), one per \
+             level, and this image derives {k} levels; collapse its sched tasks to at most \
+             {dispatchers}, or give the board more dispatchers"
+        )));
+    }
+    let priorities = 1usize << nvic_prio_bits;
+    if k + 1 > priorities {
+        return Err(err(format!(
+            "board `{board}` boots RTIC with {priorities} NVIC priorities, and {k} levels plus \
+             the hardware tasks above them need {}",
+            k + 1
+        )));
+    }
+    let levels: Vec<RticLevel> = tasks
+        .iter()
+        .enumerate()
+        .map(|(i, t)| RticLevel {
+            index: i as u8,
+            priority: (k - i) as u8,
+            groups: sched_task_group_list_tokens(t, node_namespaces),
+        })
+        .collect();
+    Ok(RticLevelPlan {
+        levels,
+        boot: (k - 1) as u8,
+        top: k as u8,
+    })
+}
+
+/// phase-562 W10 -- a multi-level RTIC image: the items beside the app (the
+/// runner static and each level's waiter), the tasks inside it (one software
+/// task per non-boot level and the level-wake hardware task), and the boot
+/// task's body.
+///
+/// A non-boot level RUNS TO COMPLETION: one band pass per wake, never a
+/// blocking wait, since a high-priority task that blocked would starve every
+/// level below it. Its waiter's `wake` spawns its task (an arrival in its
+/// band), and the board one-shot armed at the earliest non-boot deadline
+/// spawns it for its timers (`RunToCompletionLevels`).
+fn rtic_multi_level_tokens(
+    plan: &RticLevelPlan,
+    level_wake_irq: Option<&Ident>,
+    hw_priority: u8,
+    register_calls: &[proc_macro2::TokenStream],
+    rtic_consumer: &SynPath,
+) -> (
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+) {
+    let entry = quote! { <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry> };
+    let k = plan.levels.len() as u8;
+    let boot = plan.boot;
+    let top = plan.top;
+    let others: Vec<&RticLevel> = plan.levels.iter().filter(|l| l.index != boot).collect();
+    let task_ident =
+        |l: &RticLevel| Ident::new(&format!("__nros_level_{}", l.index), Span::call_site());
+    let wake_fn =
+        |l: &RticLevel| Ident::new(&format!("__nros_level_wake_{}", l.index), Span::call_site());
+    let waiter = |l: &RticLevel| {
+        Ident::new(
+            &format!("__NROS_LEVEL_WAITER_{}", l.index),
+            Span::call_site(),
+        )
+    };
+
+    let waiter_items = others.iter().map(|l| {
+        let (t, w, s) = (task_ident(l), wake_fn(l), waiter(l));
+        quote! {
+            unsafe extern "C" fn #w(_ctx: *mut ::core::ffi::c_void) {
+                // Already pending is fine: one pass serves every wake.
+                let _ = __nros_app::#t::spawn();
+            }
+            static #s: ::nros::levels::BandWaiter = unsafe {
+                ::nros::levels::BandWaiter::new(#w, __nros_level_wait, ::core::ptr::null_mut())
+            };
+        }
+    });
+    let items = quote! {
+        static __NROS_LEVELS: ::nros::levels::RunToCompletionLevels =
+            ::nros::levels::RunToCompletionLevels::new();
+        // A level never waits: its pass returns, and a wake spawns it again.
+        unsafe extern "C" fn __nros_level_wait(_ctx: *mut ::core::ffi::c_void, _us: u64) -> i32 {
+            0
+        }
+        #( #waiter_items )*
+    };
+
+    let level_tasks = others.iter().map(|l| {
+        let t = task_ident(l);
+        let idx = l.index;
+        let prio = proc_macro2::Literal::u8_unsuffixed(l.priority);
+        quote! {
+            #[task(priority = #prio)]
+            async fn #t(_cx: #t::Context) {
+                // SAFETY: this task is the only caller for its level.
+                unsafe { super::__NROS_LEVELS.pass(#idx, #entry::arm_level_wake) };
+            }
+        }
+    });
+    let due_spawns = others.iter().map(|l| {
+        let t = task_ident(l);
+        let idx = l.index;
+        quote! {
+            if super::__NROS_LEVELS.is_due(#idx, __nros_now) {
+                let _ = #t::spawn();
+                __nros_any = true;
+            }
+        }
+    });
+    let hw_priority = proc_macro2::Literal::u8_unsuffixed(hw_priority);
+    let wake_task = match level_wake_irq {
+        Some(irq) => quote! {
+            /// The level wake: the board one-shot armed at the earliest
+            /// non-boot deadline. It spawns the due levels; their passes
+            /// re-arm it (re-arming here, before they ran, would fire again at
+            /// once).
+            #[task(binds = #irq, priority = #hw_priority)]
+            fn __nros_level_wake(_cx: __nros_level_wake::Context) {
+                #entry::on_level_wake_irq();
+                let __nros_now = ::nros::time::now_us();
+                let mut __nros_any = false;
+                #( #due_spawns )*
+                if !__nros_any {
+                    super::__NROS_LEVELS.rearm(#entry::arm_level_wake);
+                }
+            }
+        },
+        None => quote! {},
+    };
+    let tasks = quote! { #( #level_tasks )* #wake_task };
+
+    let boot_groups = plan
+        .levels
+        .iter()
+        .find(|l| l.index == boot)
+        .map(|l| l.groups.clone())
+        .unwrap_or_else(|| quote! { &[] });
+    let open_levels = others.iter().map(|l| {
+        let (idx, groups, s) = (l.index, &l.groups, waiter(l));
+        quote! {
+            let __nros_worker = unsafe { __nros_core.open_level_with(#idx, ::core::option::Option::Some(&super::#s)) }
+                .expect("nros::main!: an RTIC level did not open");
+            unsafe {
+                __nros_core.with_runtime(|__nros_crt| {
+                    let _ = __nros_crt.executor_mut().set_active_groups(#groups);
+                    let mut runtime = ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(__nros_crt);
+                    __nros_setup(&mut runtime)
+                })
+            }
+            .expect("nros::main!: Node register failed on an RTIC level");
+            super::__NROS_LEVELS.set_worker(#idx, __nros_worker);
+        }
+    });
+    let first_spawns = others.iter().map(|l| {
+        let t = task_ident(l);
+        quote! { let _ = #t::spawn(); }
+    });
+    let body = quote! {
+        let mut __nros_crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
+        let _ = __nros_crt.executor_mut().set_active_groups(#boot_groups);
+        if !#entry::level_lock_init(#top) {
+            panic!("nros::main!: the RTIC board refused the executor lock for a multi-level image");
+        }
+        let __nros_setup = |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
+            -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError>
+        {
+            #( #register_calls )*
+            ::core::result::Result::Ok(())
+        };
+        // SAFETY: the board's ceiling lock is recursive and identifies its
+        // holder by priority level (`RticBoardEntry::level_lock`).
+        let __nros_core = match unsafe {
+            ::nros::levels::LevelCore::new(
+                __nros_crt,
+                #k,
+                #boot,
+                ::core::ptr::null_mut(),
+                #entry::level_lock,
+                #entry::level_unlock,
+                #entry::level_thread_id,
+            )
+        } {
+            ::core::result::Result::Ok(c) => c,
+            ::core::result::Result::Err(e) => {
+                panic!("nros::main!: the RTIC level core refused: {:?}", e)
+            }
+        };
+        unsafe {
+            __nros_core.with_runtime(|__nros_crt| {
+                let mut runtime = ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(__nros_crt);
+                __nros_setup(&mut runtime)
+            })
+        }
+        .expect("nros::main!: Node register failed on the RTIC boot level");
+        #( #open_levels )*
+        // SAFETY: no level task has run yet; they are spawned below.
+        let _ = unsafe { super::__NROS_LEVELS.install(__nros_core, #boot) };
+        #( #first_spawns )*
+        let mut consumer = #rtic_consumer().expect("RTIC dispatch consumer take");
+        loop {
+            // SAFETY: the boot level's own task.
+            let __nros_budget = unsafe { __nros_core.entry_spin_budget() };
+            let _ = unsafe { __nros_core.spin_boot_once(__nros_budget) };
+            while let Some(envelope) = consumer.dequeue() {
+                let cb = envelope.into_inner();
+                // SAFETY: as on the single-level body: the board's
+                // `signal_callback` enqueues a `*mut CallbackCtx<'static>`,
+                // drained on this task only.
+                let ctx = unsafe { &mut *(cb.ctx_ptr as *mut ::nros::CallbackCtx<'static>) };
+                unsafe { __nros_core.with_runtime(|rt| rt.dispatch_callback(cb.cb_id, ctx)) };
+            }
+        }
+    };
+    (items, tasks, body)
+}
+
 struct RticBoardSpec {
     device_path: SynPath,
     dispatchers: Vec<Ident>,
@@ -5390,6 +5746,11 @@ struct RticBoardSpec {
     /// 2)]` hardware task calling `RticBoardEntry::on_rx_irq()`, so an
     /// arrival ends the run task's park. `None` = no RX task emitted.
     rx_irq: Option<Ident>,
+    /// phase-562 W10 -- the board's level-wake one-shot interrupt
+    /// (`RticBoardEntry::arm_level_wake`). `None` runs single-level only.
+    level_wake_irq: Option<Ident>,
+    /// phase-562 W10 -- `NVIC_PRIO_BITS`: RTIC priorities run 1..=2^bits.
+    nvic_prio_bits: u8,
 }
 
 /// The RTIC facts of an RTIC board TYPE (the canonical path
@@ -5397,24 +5758,32 @@ struct RticBoardSpec {
 /// reaches the type with `framework = "rtic"` (or the transitional RTIC board
 /// word) gets one spec.
 fn rtic_board_spec_for(board_type: &str) -> Option<RticBoardSpec> {
-    let (device, dispatchers, consumer, tick_irq, rx_irq) = match board_type {
-        "::nros_board_mps2_an385::RticMps2An385" => (
-            "mps2_an385_pac",
-            &["UARTRX0", "UARTTX0"][..],
-            // phase-337 W6.a — folded into `nros-board-mps2-an385`'s `rtic`
-            // feature, which re-exports the queue accessors at the crate root.
-            "::nros_board_mps2_an385::take_dispatch_consumer",
-            // phase-521 W6 (RFC-0113 D2) — no periodic tick: it woke an idle
-            // image every millisecond. The run task parks in the port's wake
-            // object (a SysTick one-shot at the deadline) and the LAN9118 RX
-            // interrupt below ends the park on an arrival. (The tick was the
-            // dual timer, issue 1804: TIMER0 is the monotonic clock and
-            // TIMER1 the sporadic-server timer.)
-            None,
-            Some("ETHERNET"),
-        ),
-        _ => return None,
-    };
+    // phase-562 W10 -- `dispatchers` restates `RticBoardEntry::DISPATCHERS`
+    // (an expansion cannot read a const of the crate it targets); the emitted
+    // app asserts at compile time that the two agree, so they cannot drift.
+    let (device, dispatchers, consumer, tick_irq, rx_irq, level_wake_irq, nvic_prio_bits) =
+        match board_type {
+            "::nros_board_mps2_an385::RticMps2An385" => (
+                "mps2_an385_pac",
+                &["UARTRX0", "UARTTX0", "I2S", "TSC"][..],
+                // phase-337 W6.a — folded into `nros-board-mps2-an385`'s `rtic`
+                // feature, which re-exports the queue accessors at the crate root.
+                "::nros_board_mps2_an385::take_dispatch_consumer",
+                // phase-521 W6 (RFC-0113 D2) — no periodic tick: it woke an idle
+                // image every millisecond. The run task parks in the port's wake
+                // object (a SysTick one-shot at the deadline) and the LAN9118 RX
+                // interrupt below ends the park on an arrival. (The tick was the
+                // dual timer, issue 1804: TIMER0 is the monotonic clock and
+                // TIMER1 the sporadic-server timer.)
+                None,
+                Some("ETHERNET"),
+                // phase-562 W10 -- the CMSDK dual timer's one-shot (the board's
+                // `arm_level_wake`); NVIC 10.
+                Some("DUALTIMER"),
+                3u8,
+            ),
+            _ => return None,
+        };
     Some(RticBoardSpec {
         device_path: syn::parse_str::<SynPath>(device).ok()?,
         dispatchers: dispatchers
@@ -5424,6 +5793,8 @@ fn rtic_board_spec_for(board_type: &str) -> Option<RticBoardSpec> {
         dispatch_consumer_path: syn::parse_str::<SynPath>(consumer).ok()?,
         tick_irq: tick_irq.map(|name: &str| Ident::new(name, Span::call_site())),
         rx_irq: rx_irq.map(|name: &str| Ident::new(name, Span::call_site())),
+        level_wake_irq: level_wake_irq.map(|name: &str| Ident::new(name, Span::call_site())),
+        nvic_prio_bits,
     })
 }
 
@@ -6653,6 +7024,54 @@ mod contract_monitor_tests {
                 .map(|(n, g)| (n.to_string(), g.to_string()))
                 .collect(),
         }
+    }
+
+    // phase-562 W10.
+    /// RTIC runs each derived level as one software task: most urgent first, the
+    /// least urgent boots at RTIC priority 1, and the hardware tasks sit above
+    /// the top. A table the board cannot run is refused, naming the board.
+    #[test]
+    fn rtic_levels_are_priorities_one_per_level_and_refused_past_the_board() {
+        let with_prio = |name: &str, prio: i64| ResolvedSchedTask {
+            priority: prio,
+            ..sched_task(name, &[(name, "g")])
+        };
+        let ns = BTreeMap::new();
+        let table = ResolvedSchedTaskTable {
+            sched_tasks: vec![
+                with_prio("low", 2),
+                with_prio("high", 9),
+                with_prio("mid", 5),
+            ],
+        };
+        let plan = rtic_level_plan(&table, &ns, 4, true, 3, "mps2-an385-rtic").expect("fits");
+        let order: Vec<(u8, u8)> = plan.levels.iter().map(|l| (l.index, l.priority)).collect();
+        assert_eq!(
+            order,
+            vec![(0, 3), (1, 2), (2, 1)],
+            "most urgent first; boot at 1"
+        );
+        assert_eq!((plan.boot, plan.top), (2, 3));
+        assert!(plan.levels[0].groups.to_string().contains("\"high\""));
+
+        let refused = |r: syn::Result<RticLevelPlan>| match r {
+            Ok(_) => panic!("must refuse"),
+            Err(e) => e.to_string(),
+        };
+        let e = refused(rtic_level_plan(&table, &ns, 2, true, 3, "mps2-an385-rtic"));
+        assert!(
+            e.contains("2 dispatcher") && e.contains("mps2-an385-rtic"),
+            "{e}"
+        );
+        let e = refused(rtic_level_plan(&table, &ns, 4, false, 3, "mps2-an385-rtic"));
+        assert!(e.contains("level wake"), "{e}");
+        let e = refused(rtic_level_plan(&table, &ns, 4, true, 1, "mps2-an385-rtic"));
+        assert!(e.contains("NVIC priorities"), "{e}");
+        let tied = ResolvedSchedTaskTable {
+            sched_tasks: vec![with_prio("a", 4), with_prio("b", 4)],
+        };
+        let e = refused(rtic_level_plan(&tied, &ns, 4, true, 3, "mps2-an385-rtic"));
+        assert!(e.contains("same priority"), "{e}");
     }
 
     /// Issue 1943 -- a sched task registers a node only when it admits one of the

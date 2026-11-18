@@ -1,0 +1,5 @@
+{
+  "key": "rust:RunToCompletionLevels::pass",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- one band pass of a level, then its next deadline is recorded and the board one-shot re-armed. rclrs has no levels."
+}

@@ -270,7 +270,47 @@ state `framework = "zephyr"` in its metadata: that is the board deciding.
   bound (idle wake count, or arrival-to-dispatch latency) and fails when the
   bound is exceeded. When both land, RFC-0112 D3 re-promotes RTIC to Tier 1
   and issue 2540 is resolved.
+- **Design (approved 2026-11-17/18):**
+  - The RTIC arm runs the image's derived sched tasks as levels, one RTIC
+    software task each, most urgent first. The least urgent level boots at
+    RTIC priority 1 and keeps the transport and the executor's chores. The
+    hardware tasks (RX, level wake) sit one priority above the top level.
+  - The level count is bounded by the board's dispatcher count and its NVIC
+    priorities (`rtic_level_plan`). Tied priorities, too many levels, and a
+    board with no level wake are refused, naming the board.
+  - The executor lock is a BASEPRI ceiling at the top level
+    (`RticBoardEntry::level_lock*`). It is recursive by depth, and its holder
+    is identified by IPSR. The executor releases it around each callback and
+    around its park, so a callback runs preemptible at its own level.
+- **Deviation from "each level runs a `spin_band_once` loop" (approved):**
+  - A non-boot level RUNS TO COMPLETION: one band pass per wake. A
+    threaded RTOS's level parks on its waiter, but an RTIC task that blocked
+    at a high priority would starve every level below it, the transport
+    included.
+  - Its waiter's `wake` spawns its task, and `wait` returns at once.
+  - Its timers get their own wake: one board one-shot armed at the earliest
+    non-boot deadline (`RticBoardEntry::arm_level_wake`; on mps2 the CMSDK
+    dual timer, named only in the board crate). Without it, a higher band's
+    due timer would wait out the boot level's park, which is bounded by the
+    boot band's timers only. Spawning the levels from the boot loop instead
+    would let a long boot-level callback delay them, a priority inversion.
+  - Each band's deadline is read at the end of that level's own pass
+    (`Executor::next_timer_deadline_of_level_us`), the one moment it is exact.
+- **Stated bound:** a non-boot band's timer runs within [deadline,
+  deadline + the level-wake ISR + dispatcher entry + the longest
+  executor-internal BASEPRI section]. The boot level's state, idle in WFI or
+  busy in a long callback, does not enter it.
 - **Status:** OPEN
+- **Progress:** split in two:
+  - The mechanism (board hooks, mps2 lock and level wake,
+    `nros::levels::RunToCompletionLevels`, `nros::level_wake`, the macro's
+    plan and emission, and a compile-time check that the macro's dispatcher
+    list equals the board's) lands first, with the multi-level RTIC refusal
+    still in place. Single-level images are unchanged.
+  - The second change lifts the refusal. With it come a two-level mps2 RTIC
+    image, an order cell (the high level preempts inside the low level's
+    callback) and a timer cell (both bounds, the boot level idle and busy),
+    both mutations, and RFC-0112 D3's re-promotion.
 
 ## Related
 

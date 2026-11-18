@@ -177,6 +177,104 @@ pub trait RticBoardEntry: Board {
     ///
     /// Default: no-op.
     fn on_interrupts_live() {}
+
+    // ---------------------------------------------------------------------
+    // phase-562 W10 -- a multi-level image: one RTIC software task per
+    // derived sched-task level, over one executor.
+    //
+    // A board that does not override these runs single-level only: the
+    // default `level_lock_init` answers `false`, and the macro's level runner
+    // refuses a multi-level image on it rather than run it unlocked.
+    // ---------------------------------------------------------------------
+
+    /// Prepare the executor lock: a priority CEILING at RTIC priority
+    /// `ceiling` (the image's most urgent level). Holding the lock masks every
+    /// level task, so no level preempts the executor's bookkeeping; the
+    /// executor releases it around each user callback and around its park, so
+    /// a callback still runs preemptible at its own level's priority.
+    ///
+    /// `false` when the board cannot provide one, and the image is refused.
+    fn level_lock_init(_ceiling: u8) -> bool {
+        false
+    }
+
+    /// Take the lock prepared by [`Self::level_lock_init`]. RECURSIVE: a
+    /// holder may take it again, and only the outermost release restores the
+    /// priority it raised from. `ctx` is unused (the lock is the board's one
+    /// static); `0` on success.
+    ///
+    /// # Safety
+    /// Called only by the executor's lock, after [`Self::level_lock_init`]
+    /// returned `true`.
+    unsafe extern "C" fn level_lock(_ctx: *mut core::ffi::c_void) -> i8 {
+        -1
+    }
+
+    /// Release one hold of [`Self::level_lock`]; `0` on success.
+    ///
+    /// # Safety
+    /// As [`Self::level_lock`], by the holder.
+    unsafe extern "C" fn level_unlock(_ctx: *mut core::ffi::c_void) -> i8 {
+        -1
+    }
+
+    /// The identity of the running context, as the executor's lock tells its
+    /// holders apart: one value per RTIC priority level (on Cortex-M, the
+    /// active exception number). Never 0 for a task.
+    ///
+    /// # Safety
+    /// Callable from any task.
+    unsafe extern "C" fn level_thread_id() -> usize {
+        0
+    }
+
+    /// Arm the board's level-wake one-shot to fire `after_us` microseconds
+    /// from now, replacing any armed shot; `None` disarms it. Its interrupt is
+    /// the macro's level-wake hardware task, which calls
+    /// [`Self::on_level_wake_irq`] and then wakes the levels that are due.
+    ///
+    /// The ONLY wake a non-boot level's timers get: an RTIC level task runs to
+    /// completion (it cannot park on a timed wait of its own without starving
+    /// every level below it), and the boot level's park is bounded by its own
+    /// timers. Which counter backs it is the board's choice and never named
+    /// outside the board crate.
+    ///
+    /// Default: no-op (a board with no level wake runs single-level only).
+    fn arm_level_wake(_after_us: Option<u64>) {}
+
+    /// Acknowledge the level-wake one-shot's interrupt. Called from the
+    /// level-wake hardware task before it wakes the due levels.
+    ///
+    /// Default: no-op.
+    fn on_level_wake_irq() {}
+}
+
+// phase-562 W10.
+/// Do two dispatcher lists name the same interrupts, in the
+/// same order? `const`, for the assertion the `nros::main!` RTIC app emits: the
+/// macro restates the board's [`RticBoardEntry::DISPATCHERS`] (an expansion
+/// cannot read a const of the crate it targets), and this keeps the copy from
+/// drifting.
+pub const fn rtic_dispatchers_agree(a: &[&str], b: &[&str]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        let (x, y) = (a[i].as_bytes(), b[i].as_bytes());
+        if x.len() != y.len() {
+            return false;
+        }
+        let mut j = 0;
+        while j < x.len() {
+            if x[j] != y[j] {
+                return false;
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    true
 }
 
 #[cfg(test)]

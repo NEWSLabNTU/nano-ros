@@ -1,0 +1,5 @@
+{
+  "key": "rust:RunToCompletionLevels",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- the RTIC level runner: each non-boot level is a run-to-completion task woken by an arrival or by a board one-shot at its next timer. rclrs has no levels and no RTIC."
+}

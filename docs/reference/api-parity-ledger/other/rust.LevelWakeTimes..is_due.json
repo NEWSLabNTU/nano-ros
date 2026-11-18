@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelWakeTimes::is_due",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- whether a level's deadline has passed. rclrs has no levels."
+}
