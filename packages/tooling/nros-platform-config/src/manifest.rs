@@ -198,7 +198,9 @@ pub struct PortRow {
     /// arm: `can`, `isotp`) this port compiles an arm for. A link the row
     /// does not list has no `_z_open_<link>` on this platform, so an image
     /// dialling it is refused at configure, not at the final link. Read by
-    /// the CLI only; the C build follows the platform macros.
+    /// the CLI only; the C build follows the platform macros, and
+    /// `just check zenoh-port-links` derives the list from zenoh-pico's
+    /// sources and fails when a row disagrees.
     #[serde(default)]
     pub links: Vec<String>,
 }

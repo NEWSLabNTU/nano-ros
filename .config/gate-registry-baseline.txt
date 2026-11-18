@@ -348,6 +348,7 @@ xrce-vendored-versions
 zenoh-config-template
 zenoh-lane-ownership
 zenoh-platform-macros
+zenoh-port-links
 zenoh-source-manifest
 zenohd-flag-invocations
 zenohd-resolution-parity
