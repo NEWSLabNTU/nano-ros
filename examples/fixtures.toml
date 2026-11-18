@@ -2461,8 +2461,13 @@ target_dir = "target-fixtures"
 
 # Phase 211.H — qos_overrides runtime-delivery fixture (raw pub/sub bin that
 # installs a per-topic QoS override on its NodeHandle and proves it is honoured
-# on a live entity). Consumed by tests/qos_overrides_runtime_delivery.rs.
+# on a live entity). Consumed by tests/qos_overrides_runtime_delivery.rs, and
+# (`NROS_QOS_OVERRIDE=graph-profile`, every policy off its default) by
+# tests/ros2_cli_parity_interop.rs, which compares the profile `ros2 topic
+# info -v` reads with a stock node's (phase-556 W6). The id lets that suite's
+# build name the row.
 [[fixture]]
+id = "qos-override-pubsub"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/qos-override-pubsub"

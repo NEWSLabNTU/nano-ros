@@ -25,11 +25,15 @@
 //! | service | rust workspace `linux_service_server` (`/add_server`) | `demo_nodes_cpp add_two_ints_server` |
 //! | action | rust workspace `linux_action_server` (`/fibonacci_server`) | `examples_rclcpp_minimal_action_server` |
 //! | pubsub | `examples/linux/rust/talker` (`/talker`) | `demo_nodes_cpp talker` |
+//! | pubsub | rust workspace `linux_listener` (`/listener`) | `demo_nodes_cpp listener` |
+//! | service | rust workspace `linux_service_client` (`/add_client`) | `demo_nodes_cpp add_two_ints_client` |
+//! | action | rust workspace `linux_action_client` (`/fibonacci_client`) | `examples_rclcpp_minimal_action_client` |
+//! | qos | `bins/qos-override-pubsub`, `graph-profile` (`/qos_override`) | `fixtures/ros2-qos-peer/qos_peer.py` (rclpy, the same profile) |
 //!
 //! Live peer: the host's ROS 2 (Humble) with `rmw_zenoh_cpp`. Run with
 //! `just linux test-ros2-cli-parity`; cells `native-ros2-cli-parity-*` in
-//! `interop::CELLS`. Nothing compiles at run time: build the four fixture rows
-//! first (`just linux build-fixtures`).
+//! `interop::CELLS`. Nothing compiles at run time: build the fixture rows
+//! the table names first (`just linux build-fixtures`).
 
 use nros_tests::{
     fixtures::{
@@ -44,6 +48,16 @@ use nros_tests::{
     },
 };
 use std::time::Duration;
+
+// phase-556 W4 to W6 — the pairs for `node info`, `topic list -t` and the
+// QoS `topic info -v` reports.
+use nros_tests::{
+    fixtures::{
+        build_native_action_client, build_native_listener, build_native_service_client,
+        build_qos_override_pubsub,
+    },
+    ros2_compat::PARAMETER_SERVICES,
+};
 
 const SETTLE: Duration = Duration::from_secs(20);
 
@@ -488,6 +502,309 @@ fn default_qos_of_a_published_topic_reads_as_stock_does() {
     .assert_same("the QoS of a default-QoS publisher of /chatter");
 }
 
+// ── node info, topic list and QoS (phase-556 W4 to W6) ──────────────────────
+
+/// A line of the interfaces every stock node has by default and a nano-ros
+/// node does not yet: `/rosout`, `/parameter_events` (publisher and, for
+/// rclcpp, subscriber) and the six parameter services. Set aside where a test
+/// measures something else; `default_node_interfaces_compared_with_stock`
+/// holds the difference itself (phase-556 W13).
+fn is_default_node_interface_line(line: &str) -> bool {
+    line.contains("/rosout: ")
+        || line.contains("/parameter_events: ")
+        || is_parameter_service_line(line)
+}
+
+/// A nano-ros image and a stock node, each alone on its own router.
+fn role_pair(
+    nano_bin: &std::path::Path,
+    nano_node: &str,
+    nano_env: &[(&str, &str)],
+    stock_cmd: &str,
+    stock_node: &str,
+) -> Pair {
+    let mut nano = GraphSide::new(Implementation::NanoRos, nano_node);
+    nano.spawn_nano_image_with_env(nano_bin, nano_node, nano_env);
+    nano.await_node();
+    let mut stock = GraphSide::new(Implementation::Stock, stock_node);
+    stock.spawn_stock(stock_cmd, stock_node);
+    stock.await_node();
+    Pair::new(nano, stock)
+}
+
+fn talker_pair() -> Pair {
+    let nano_bin = build_native_talker().require("native-rust-talker");
+    require_zenohd();
+    require_ros2();
+    require_stock_package("demo_nodes_cpp");
+    role_pair(
+        nano_bin,
+        "/talker",
+        &[],
+        "ros2 run demo_nodes_cpp talker",
+        "/talker",
+    )
+}
+
+fn listener_pair() -> Pair {
+    let nano_bin = build_native_listener().require("rust workspace linux_listener");
+    require_zenohd();
+    require_ros2();
+    require_stock_package("demo_nodes_cpp");
+    role_pair(
+        nano_bin,
+        "/listener",
+        &[],
+        "ros2 run demo_nodes_cpp listener",
+        "/listener",
+    )
+}
+
+/// `ros2 node info {node}`, asked until the side lists `own` (an interface
+/// line of the node's own), with its blank lines dropped (see
+/// [`node_info_lines`]).
+fn node_info(pair: &Pair, own: &str) -> Compared {
+    pair.ask_until("node info {node}", SETTLE, |a| has_line(a, own))
+        .filtered(node_info_lines)
+}
+
+/// `ros2 node info` prints a blank line under a section with no entries, so
+/// setting a section's entries aside would leave a difference of one blank
+/// line; the section headers alone carry the layout.
+fn node_info_lines(line: &str) -> bool {
+    !line.trim().is_empty()
+}
+
+/// [`node_info`] with the default node interfaces set aside.
+fn node_info_without_defaults(pair: &Pair, own: &str) -> Compared {
+    node_info(pair, own).filtered(|l| !is_default_node_interface_line(l))
+}
+
+/// Matches stock: `ros2 node info` of a node publishing `/chatter`.
+#[test]
+fn node_info_of_a_publisher_answers_as_stock_does() {
+    let pair = talker_pair();
+    node_info_without_defaults(&pair, "/chatter: ")
+        .assert_same("the interfaces of a node publishing /chatter");
+}
+
+/// Matches stock: `ros2 node info` of a node subscribing to `/chatter`.
+#[test]
+fn node_info_of_a_subscriber_answers_as_stock_does() {
+    let pair = listener_pair();
+    node_info_without_defaults(&pair, "/chatter: ")
+        .assert_same("the interfaces of a node subscribing to /chatter");
+}
+
+/// Matches stock: `ros2 node info` of a node serving `/add_two_ints`.
+#[test]
+fn node_info_of_a_service_server_answers_as_stock_does() {
+    let nano_bin = build_native_service_server().require("rust workspace linux_service_server");
+    require_zenohd();
+    require_ros2();
+    require_stock_package("demo_nodes_cpp");
+    let pair = role_pair(
+        nano_bin,
+        "/add_server",
+        &[],
+        "ros2 run demo_nodes_cpp add_two_ints_server",
+        "/add_two_ints_server",
+    );
+    node_info_without_defaults(&pair, "/add_two_ints: ")
+        .assert_same("the interfaces of a node serving /add_two_ints");
+}
+
+/// Matches stock: `ros2 node info` of a node with a client of
+/// `/add_two_ints`. Neither side has a server, so both clients keep waiting
+/// for one and stay in the graph.
+#[test]
+fn node_info_of_a_service_client_answers_as_stock_does() {
+    let nano_bin = build_native_service_client().require("rust workspace linux_service_client");
+    require_zenohd();
+    require_ros2();
+    require_stock_package("demo_nodes_cpp");
+    let pair = role_pair(
+        nano_bin,
+        "/add_client",
+        &[],
+        "ros2 run demo_nodes_cpp add_two_ints_client",
+        "/add_two_ints_client",
+    );
+    node_info_without_defaults(&pair, "/add_two_ints: ")
+        .assert_same("the interfaces of a node calling /add_two_ints");
+}
+
+/// Matches stock: `ros2 node info` of a node serving the `/fibonacci` action.
+#[test]
+fn node_info_of_an_action_server_answers_as_stock_does() {
+    let pair = action_pair();
+    node_info_without_defaults(&pair, "/fibonacci: ")
+        .assert_same("the interfaces of a node serving the /fibonacci action");
+}
+
+/// Matches stock: `ros2 node info` of a node with a client of the
+/// `/fibonacci` action. Neither side has a server, so both clients keep
+/// waiting for one and stay in the graph.
+#[test]
+fn node_info_of_an_action_client_answers_as_stock_does() {
+    let nano_bin = build_native_action_client().require("rust workspace linux_action_client");
+    require_zenohd();
+    require_ros2();
+    require_stock_package("examples_rclcpp_minimal_action_client");
+    let pair = role_pair(
+        nano_bin,
+        "/fibonacci_client",
+        &[],
+        "ros2 run examples_rclcpp_minimal_action_client action_client_member_functions",
+        "/minimal_action_client",
+    );
+    node_info_without_defaults(&pair, "/fibonacci: ")
+        .assert_same("the interfaces of a node calling the /fibonacci action");
+}
+
+/// Expected-failure: a stock node publishes `/rosout` and `/parameter_events`,
+/// subscribes to `/parameter_events` (rclcpp) and serves the six parameter
+/// services; a nano-ros node by default has none of them.
+// Default node interfaces: phase-556 W13 (the user ruled them on by default;
+// the flip is W13 step 3). RFC-0036 "Graph interfaces a node has by default".
+#[test]
+fn default_node_interfaces_compared_with_stock() {
+    let pair = listener_pair();
+    // The stock side is read once it lists every default interface, so a
+    // half-discovered node is not compared.
+    let stock_ready = |a: &CliAnswer| {
+        has_line(a, "/chatter: ")
+            && has_line(a, "/rosout: ")
+            && a.output.matches("/parameter_events: ").count() == 2
+            && PARAMETER_SERVICES
+                .iter()
+                .all(|(s, _)| has_line(a, &format!("/{s}: ")))
+    };
+    let c = pair
+        .ask_each(
+            "node info {node}",
+            SETTLE,
+            |a| has_line(a, "/chatter: "),
+            stock_ready,
+        )
+        .filtered(node_info_lines);
+    hold_gap(&c, "the interfaces a node has by default", |c| {
+        let Some(d) = c.diff() else { return false };
+        let mut expected = vec![
+            "+     /parameter_events: rcl_interfaces/msg/ParameterEvent".to_string(),
+            "+     /parameter_events: rcl_interfaces/msg/ParameterEvent".to_string(),
+            "+     /rosout: rcl_interfaces/msg/Log".to_string(),
+        ];
+        expected.extend(
+            PARAMETER_SERVICES
+                .iter()
+                .map(|(s, t)| format!("+     {NODE_PLACEHOLDER}/{s}: {t}")),
+        );
+        let mut changed = changed_lines(&d);
+        changed.sort();
+        expected.sort();
+        changed == expected
+    });
+}
+
+/// Matches stock: `ros2 topic list -t` on a graph holding a node publishing
+/// `/chatter`, and on one holding a node subscribing to it.
+///
+/// `/rosout` and `/parameter_events` are listed on both sides, but not because
+/// both nodes publish them: the `ros2` CLI's own node does, on either side. A
+/// node's own share of them is what `ros2 node info` shows, held by
+/// `default_node_interfaces_compared_with_stock`.
+#[test]
+fn topic_list_with_types_answers_as_stock_does() {
+    for (pair, role) in [
+        (talker_pair(), "publishing"),
+        (listener_pair(), "subscribing to"),
+    ] {
+        pair.ask_until("topic list -t", SETTLE, |a| has_line(a, "/chatter ["))
+            .assert_same(&format!(
+                "the topics of a graph with a node {role} /chatter"
+            ));
+    }
+}
+
+/// `History (Depth): KEEP_LAST (10)` -> `History (Depth): KEEP_LAST`.
+fn without_history_depth(line: &str) -> String {
+    match line.split_once("History (Depth): ") {
+        Some((head, policy)) => format!(
+            "{head}History (Depth): {}",
+            policy.split(" (").next().unwrap_or(policy)
+        ),
+        None => line.to_string(),
+    }
+}
+
+/// Matches stock, but for the depth: the QoS `ros2 topic info -v` reports for
+/// a default-QoS subscription.
+///
+/// By design, not a gap: a zenoh subscription keeps the depth its receive
+/// ring holds (4 by default, a build knob) and says so, where stock keeps
+/// the 10 the default profile asks for. RFC-0036 "Reduced / omitted surface".
+#[test]
+fn default_qos_of_a_subscription_reads_as_stock_does() {
+    let pair = listener_pair();
+    pair.ask_until("topic info -v /chatter", SETTLE, |a| {
+        has_line(a, "Endpoint type: SUBSCRIPTION")
+    })
+    .filtered(without_lines_containing(&["GID:"]))
+    .mapped(without_history_depth)
+    .assert_same("the QoS of a default-QoS subscription to /chatter");
+}
+
+/// A `/chatter` endpoint whose QoS has every policy off its default (best
+/// effort, transient local, keep last 1 or 3, a 1.5 s deadline, a 2 s lifespan,
+/// manual-by-topic liveliness with a 3 s lease), on a nano-ros node and on a
+/// stock rclpy node.
+fn non_default_qos_pair(nano_role: &str, stock_role: &str) -> Pair {
+    let nano_bin = build_qos_override_pubsub().require("qos-override-pubsub");
+    require_zenohd();
+    require_ros2();
+    let peer = nros_tests::project_root()
+        .join("packages/testing/nros-tests/fixtures/ros2-qos-peer/qos_peer.py");
+    role_pair(
+        nano_bin,
+        "/qos_override",
+        &[
+            ("NROS_QOS_ROLE", nano_role),
+            ("NROS_QOS_OVERRIDE", "graph-profile"),
+        ],
+        &format!("python3 -u {} {stock_role}", peer.display()),
+        "/qos_override",
+    )
+}
+
+/// Matches stock: every QoS policy `ros2 topic info -v` reports for a
+/// publisher with non-default QoS.
+///
+/// Until phase-556 W6 the zenoh graph token left the deadline, the lifespan
+/// and the liveliness unstated, so a peer read them as infinite and AUTOMATIC
+/// (`nros-rmw-zenoh`, `QosKeyExpr::to_qos_string`).
+#[test]
+fn non_default_qos_of_a_publisher_reads_as_stock_does() {
+    let pair = non_default_qos_pair("talker", "publisher");
+    pair.ask_until("topic info -v /chatter", SETTLE, |a| {
+        has_line(a, "Endpoint type: PUBLISHER")
+    })
+    .filtered(without_lines_containing(&["GID:"]))
+    .assert_same("the QoS of a publisher of /chatter with non-default QoS");
+}
+
+/// Matches stock: every QoS policy `ros2 topic info -v` reports for a
+/// subscription with non-default QoS. See the publisher's test.
+#[test]
+fn non_default_qos_of_a_subscription_reads_as_stock_does() {
+    let pair = non_default_qos_pair("listener", "subscription");
+    pair.ask_until("topic info -v /chatter", SETTLE, |a| {
+        has_line(a, "Endpoint type: SUBSCRIPTION")
+    })
+    .filtered(without_lines_containing(&["GID:"]))
+    .assert_same("the QoS of a subscription to /chatter with non-default QoS");
+}
+
 /// Binds this binary's cases to its `interop::CELLS` rows.
 #[test]
 fn cases_bound_to_interop_cells() {
@@ -500,6 +817,7 @@ fn cases_bound_to_interop_cells() {
             (Linux, Rust, Zenoh, Service),
             (Linux, Rust, Zenoh, Action),
             (Linux, Rust, Zenoh, Pubsub),
+            (Linux, Rust, Zenoh, Qos),
         ],
     );
 }

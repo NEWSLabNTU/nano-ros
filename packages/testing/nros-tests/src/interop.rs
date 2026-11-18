@@ -596,6 +596,11 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-ros2-cli-parity-pubsub-rust-zenoh",
        c(Linux, Rust, Zenoh, Pubsub, Interop, Runtime),
        LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_cli_parity_interop"),
+    // phase-556 W6 — the QoS `ros2 topic info -v` reports for an endpoint with
+    // every policy off its default (`qos-override-pubsub`, `graph-profile`).
+    ic("native-ros2-cli-parity-qos-rust-zenoh",
+       c(Linux, Rust, Zenoh, Qos, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_cli_parity_interop"),
     // tests/c_param_server_interop.rs — phase-491 W6 (RFC-0105 §Interop
     // proof): a C node built only on rclc's parameter-server API, driven by
     // stock `ros2 param` — the callback's veto, the remotely enforced range,
@@ -901,6 +906,29 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-ros2-cli-parity-action-rust-zenoh"),
     co("ros2_cli_parity_interop", "default_qos_of_a_published_topic_reads_as_stock_does",
        "native-ros2-cli-parity-pubsub-rust-zenoh"),
+    // phase-556 W4 to W6.
+    co("ros2_cli_parity_interop", "node_info_of_a_publisher_answers_as_stock_does",
+       "native-ros2-cli-parity-pubsub-rust-zenoh"),
+    co("ros2_cli_parity_interop", "node_info_of_a_subscriber_answers_as_stock_does",
+       "native-ros2-cli-parity-pubsub-rust-zenoh"),
+    co("ros2_cli_parity_interop", "node_info_of_a_service_server_answers_as_stock_does",
+       "native-ros2-cli-parity-service-rust-zenoh"),
+    co("ros2_cli_parity_interop", "node_info_of_a_service_client_answers_as_stock_does",
+       "native-ros2-cli-parity-service-rust-zenoh"),
+    co("ros2_cli_parity_interop", "node_info_of_an_action_server_answers_as_stock_does",
+       "native-ros2-cli-parity-action-rust-zenoh"),
+    co("ros2_cli_parity_interop", "node_info_of_an_action_client_answers_as_stock_does",
+       "native-ros2-cli-parity-action-rust-zenoh"),
+    co("ros2_cli_parity_interop", "default_node_interfaces_compared_with_stock",
+       "native-ros2-cli-parity-pubsub-rust-zenoh"),
+    co("ros2_cli_parity_interop", "topic_list_with_types_answers_as_stock_does",
+       "native-ros2-cli-parity-pubsub-rust-zenoh"),
+    co("ros2_cli_parity_interop", "default_qos_of_a_subscription_reads_as_stock_does",
+       "native-ros2-cli-parity-pubsub-rust-zenoh"),
+    co("ros2_cli_parity_interop", "non_default_qos_of_a_publisher_reads_as_stock_does",
+       "native-ros2-cli-parity-qos-rust-zenoh"),
+    co("ros2_cli_parity_interop", "non_default_qos_of_a_subscription_reads_as_stock_does",
+       "native-ros2-cli-parity-qos-rust-zenoh"),
 
     // ── rosout_interop — issue 1589 gave it two more cells ──────────────
     // One case per language; each resolves its own probe (the Rust cargo
