@@ -67,7 +67,7 @@
 # below, and a provisioning arm in runner-provision.sh. Three edits, all in this
 # directory, none in a workflow file — which is the point of labelling by
 # CAPABILITY rather than by hostname.
-NROS_RUNNER_LABELS="nros-sdk-zephyr nros-qemu nros-ros2 nros-big nros-queue"
+NROS_RUNNER_LABELS="nros-sdk-zephyr nros-qemu nros-ros2 nros-big nros-queue nros-ti"
 
 # Labels GitHub applies itself, or that an operator may add for their own
 # routing. They assert nothing about this repo, so there is nothing to verify —
@@ -696,6 +696,27 @@ _nros_runner_check_ros2() {
 #
 # `check-queue-runner-label` holds the workflow half: only queue-event jobs ask
 # for `nros-queue`, and every scheduled self-hosted job asks for `nros-qemu`.
+# nros-ti (phase-575 W3) — TI Arm Clang is installed in this runner's tool
+# store, where `scripts/ci/provision-ti-arm-clang.sh` puts it. It is
+# licence-gated ([gated.ti-arm-clang]): the label claims that this HOST's
+# operator accepted TI's licence (NROS_RUNNER_ACCEPT_TI_LICENSE=1 at
+# provisioning), which the user allowed for hosts 118 and 241 only.
+_nros_runner_check_ti() {
+    local root
+    if ! root="$("$(_nros_runner_repo_root)/scripts/ci/provision-ti-arm-clang.sh" --root)"; then
+        _nros_runner_missing "cannot read the TI Arm Clang version from nros-sdk-index.toml"
+        return 1
+    fi
+    if [ -x "$root/bin/tiarmclang" ]; then
+        _nros_runner_ok "TI Arm Clang at $root ($("$root/bin/tiarmclang" --version 2>/dev/null | head -1))"
+    else
+        _nros_runner_missing "no TI Arm Clang at $root"
+        _nros_runner_fix "On a host whose operator accepts TI's licence (nano-ros: 118, 241):"
+        _nros_runner_fix "  NROS_RUNNER_ACCEPT_TI_LICENSE=1 scripts/ci/runner-provision.sh nros-ti"
+        return 1
+    fi
+}
+
 _nros_runner_check_queue() {
     local have=" ${_NROS_RUNNER_DOCTOR_LABELS:-} " fail=0 need
     for need in nros-sdk-zephyr nros-big; do
@@ -826,6 +847,7 @@ nros_runner_check_label() {
         nros-ros2)       _nros_runner_check_ros2 ;;
         nros-big)        _nros_runner_check_big ;;
         nros-queue)      _nros_runner_check_queue ;;
+        nros-ti)         _nros_runner_check_ti ;;
         *)               _nros_runner_unknown_label "$1" ;;
     esac
 }

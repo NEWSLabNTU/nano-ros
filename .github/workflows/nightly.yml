@@ -1640,3 +1640,68 @@ jobs:
           name: nuttx-make-road-${{ matrix.config }}-log
           path: build/nuttx-make-road/${{ matrix.config }}/make.log
           if-no-files-found: ignore
+
+  # phase-575 W3 — the FreeRTOS image TI Arm Clang builds and links
+  # (`just check tiarmclang-image`). TI Arm Clang is licence-gated
+  # ([gated.ti-arm-clang]) and installed only in the tool store of a
+  # self-hosted runner whose operator accepted TI's licence (`nros-ti`; the
+  # user allowed hosts 118 and 241, 2026-11-18), so this job has no hosted
+  # arm. `nros-qemu` because every scheduled self-hosted job requests it
+  # (check-queue-runner-label). Off until a runner carries `nros-ti`
+  # (NROS_TI_RUNNER_READY), so it never queues for a label nobody has.
+  # Nothing here caches or uploads the store (check-gated-store-not-uploaded).
+  tiarmclang-image:
+    name: check / tiarmclang-image (daily + manual)
+    if: ${{ vars.NROS_TI_RUNNER_READY == 'true' }}
+    runs-on: [self-hosted, linux, nros-qemu, nros-ti]
+    # Measured on newslab-118: ~10 min warm for both images; three times that.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    concurrency:
+      group: nightly-tiarmclang-image-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start from a clean tree
+        run: scripts/ci/self-hosted-clean-tree.sh
+
+      - name: Build nros CLI from packages/cli/
+        uses: ./.github/actions/setup-nros-cli
+
+      - name: just setup freertos
+        run: |
+          source ./activate.sh
+          just setup freertos
+
+      # After `just setup`, which supplies what nros-qemu asserts (phase-413 W2).
+      - name: Verify this runner's labels are true
+        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-ti
+
+      - name: just check tiarmclang-image
+        run: |
+          source ./activate.sh
+          TI_ARM_CLANG_ROOT="$(scripts/ci/provision-ti-arm-clang.sh --root)" \
+            just check tiarmclang-image
+
+  # The interlocked job's SKIP shows in the run that skipped it
+  # (check-interlock-visibility), as merge-runtime.yml's coverage jobs.
+  coverage-tiarmclang-image:
+    permissions:
+      contents: read
+      actions: read
+    name: "tiarmclang-image — ${{ (needs.tiarmclang-image.result == 'skipped' && 'DID NOT START') || needs.tiarmclang-image.result }}"
+    needs: [tiarmclang-image]
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report whether the interlocked lane ran
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/ci/report-interlock-coverage.sh "check / tiarmclang-image (daily + manual)" "${{ needs.tiarmclang-image.result }}" "${{ vars.NROS_TI_RUNNER_READY }}" ""

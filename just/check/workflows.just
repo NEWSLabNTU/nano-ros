@@ -922,6 +922,16 @@ workflow-job-timeouts:
 queue-runner-label:
     @python3 scripts/check-queue-runner-label.py
 
+# phase-575 W3 — a licence-gated SDK ([gated.*], TI Arm Clang the first) lives
+# in a self-hosted runner's tool store under gated/, installed by an operator
+# who accepted its licence for that host. This repository's caches and
+# artifacts are public, so no cache or upload step may name a path that holds
+# it: the store, NROS_HOME, a whole home or workspace, or anything `gated`.
+# Also runs `sdk-store-cache.sh paths` for every kind, whose output no workflow
+# text shows.
+gated-store-not-uploaded:
+    @python3 scripts/check/check-gated-store-not-uploaded.py
+
 # Issue 1453 — a gate the maintainers DECIDED must gate the merge queue
 # (`template-copy-out`, 2026-10-17) still runs on `merge_group`, still feeds the
 # required `CI` through a `sibling` line, and is not on `pull_request`.

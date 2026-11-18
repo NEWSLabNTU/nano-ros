@@ -145,6 +145,12 @@ _plan_for_label() {
             # Nothing to install: the label is a hardware fact. runner-doctor
             # verifies it; there is no verb that can make a 4-core box big.
             ;;
+        nros-ti)
+            # TI Arm Clang, licence-gated ([gated.ti-arm-clang]); the script
+            # refuses unless this host's operator set
+            # NROS_RUNNER_ACCEPT_TI_LICENSE=1 (phase-575 W3).
+            _plan "scripts/ci/provision-ti-arm-clang.sh"
+            ;;
         nros-queue)
             # Nothing to install: the label is a ROLE (the merge queue's own
             # runner). What it needs is provisioned by `nros-sdk-zephyr` and

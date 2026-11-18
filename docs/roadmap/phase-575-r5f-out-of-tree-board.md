@@ -163,6 +163,17 @@ terms, plus a click-through in the installer) limits use to TI devices and is
 the user's to accept. The user accepted it for nano-ros's private self-hosted
 runner image only; no public image or mirror may carry it.
 
+CI (ruled 2026-11-18): a runner's image holds no toolchains (they live in its
+persistent tool store), so TI Arm Clang goes in the store, at
+`<store>/gated/ti-arm-clang/<version>`, on hosts 118 and 241, whose operators
+opt in with `NROS_RUNNER_ACCEPT_TI_LICENSE=1`. The runner label `nros-ti`
+(`scripts/ci/runner-provision.sh nros-ti` runs
+`scripts/ci/provision-ti-arm-clang.sh`: TI's installer, SHA-256 checked,
+unattended) routes the nightly `tiarmclang-image` job to those hosts only; the
+job stays off until `NROS_TI_RUNNER_READY` is set. Because this repository's
+caches and artifacts are public, `check-gated-store-not-uploaded` (fast line)
+refuses any workflow cache or upload path that could carry the gated store.
+
 ### W4 — `zpico-link-rpmsg`, zenoh-pico over RPMsg
 
 - **Status:** OPEN

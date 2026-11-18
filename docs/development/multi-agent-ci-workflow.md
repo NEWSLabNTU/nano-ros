@@ -77,6 +77,7 @@ label:
 | `nros-qemu` | QEMU + the RTOS toolchains |
 | `nros-ros2` | a real ROS 2 install for interop lanes |
 | `nros-big` | ≥16 cores, for fixture fan-out |
+| `nros-ti` | TI Arm Clang in the runner's tool store (licence-gated; only hosts whose operator accepted TI's licence: 118 and 241) |
 | `nros-queue` | the merge queue's own runner: a role, not a capability. It must carry `nros-sdk-zephyr` + `nros-big` and must NOT carry `nros-qemu` |
 
 Then `runs-on: [self-hosted, nros-sdk-zephyr]` rather than naming a machine.
