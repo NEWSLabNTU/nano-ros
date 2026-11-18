@@ -162,15 +162,27 @@ nros_e2e_stage "A.1 start"
 # whose startup cost is the thing under suspicion. It also leaves that daemon
 # behind on this run's domain. Same reasoning as issue 1009 direction 2, which
 # put `--no-daemon` on `dds_bus_snapshot`'s three sub-commands.
-"${NROS_DEADLINE[@]}" "$NROS_E2E_DEADLINE_S" env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
+# Issue 2600 -- the outer cap covers the echo's start AND the deadline; the
+# deadline itself starts once the echo is up (`nros_ros2_wait_up`).
+"${NROS_DEADLINE[@]}" $(( NROS_E2E_START_CAP_S + NROS_E2E_DEADLINE_S )) \
+    env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
     ros2 topic echo --no-daemon --csv /chatter std_msgs/msg/String \
     > "$ECHO_OUT" 2>"$ECHO_ERR" &
 ECHO_PID=$!
+echo_up=0
+nros_ros2_wait_up "$ECHO_PID" "$NROS_E2E_START_CAP_S" || echo_up=$?
+case "$echo_up" in
+    0) nros_e2e_stage "A.1 echo is up (it holds a DDS socket); the ${NROS_E2E_DEADLINE_S}s deadline starts now" ;;
+    1) nros_e2e_stage "A.1 echo exited before it came up" ;;
+    *) nros_e2e_stage "A.1 echo did not come up within ${NROS_E2E_START_CAP_S}s" ;;
+esac
 
 # The publisher lives ~7 s (2 s discovery sleep + 50 × 100 ms). RESTART it
 # until the payload is seen or the deadline passes: a subscriber that came up
 # late gets another window instead of nothing at all.
 a1_deadline=$(( SECONDS + NROS_E2E_DEADLINE_S ))
+# An echo that never came up gets no publish loop: its verdict is the start.
+[ "$echo_up" -eq 0 ] || a1_deadline=$SECONDS
 captured=0
 attempts=0
 pub_failures=0
@@ -221,8 +233,18 @@ nros_e2e_stage "A.1 echo reaped"
 
 if [ "$captured" -eq 1 ]; then
     echo "  PASS: ros2 echo captured 'hello-from-nros' (publisher attempt $attempts)"
+elif [ "$echo_up" -ne 0 ]; then
+    # Issue 2600 -- a CLI that never started is a host problem, and says so
+    # rather than reading as a delivery failure.
+    if [ "$echo_up" -eq 1 ]; then
+        echo "  FAIL: ros2 topic echo exited before it came up (no DDS socket); nothing was published to it"
+    else
+        echo "  FAIL: ros2 topic echo did not come up within ${NROS_E2E_START_CAP_S}s (no DDS socket); a host too loaded to start a ros2 CLI, not a delivery result"
+    fi
+    dump_evidence "$ECHO_ERR"
+    failed=$((failed + 1))
 else
-    echo "  FAIL: ros2 echo did not capture expected payload in ${NROS_E2E_DEADLINE_S}s"
+    echo "  FAIL: ros2 echo did not capture expected payload in ${NROS_E2E_DEADLINE_S}s after it came up"
     echo "    publisher attempts: $attempts ($pub_failures exited non-zero), last rc=$PUB_RC"
     echo "    captured ($(wc -l < "$ECHO_OUT") line(s)):"
     sed 's/^/      /' "$ECHO_OUT" || true
@@ -256,12 +278,21 @@ env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
     ros2 topic pub -r 5 /chatter std_msgs/msg/String \
     '{data: hello-from-ros2!}' >/dev/null 2>"$ROS_PUB_ERR" &
 ROS_PUB_PID=$!
+# Issue 2600 -- the subscriber attempts start once the CLI publisher is up.
+pub_up=0
+nros_ros2_wait_up "$ROS_PUB_PID" "$NROS_E2E_START_CAP_S" || pub_up=$?
+case "$pub_up" in
+    0) nros_e2e_stage "A.2 ros2 topic pub is up (it holds a DDS socket); the ${NROS_E2E_DEADLINE_S}s deadline starts now" ;;
+    1) nros_e2e_stage "A.2 ros2 topic pub exited before it came up" ;;
+    *) nros_e2e_stage "A.2 ros2 topic pub did not come up within ${NROS_E2E_START_CAP_S}s" ;;
+esac
 
 # The subscriber's 10 s budget is compiled into `ros2_sub.cpp`, so the script
 # cannot widen it — but it can run the binary again. One attempt that expires
 # while the Python publisher is still starting IS the A.2 failure the issue
 # reports, and a second attempt costs nothing when the first succeeds.
 a2_deadline=$(( SECONDS + NROS_E2E_DEADLINE_S ))
+[ "$pub_up" -eq 0 ] || a2_deadline=$SECONDS
 sub_ok=0
 sub_wrong=0
 sub_attempts=0
@@ -299,8 +330,17 @@ elif [ "$sub_wrong" -eq 1 ]; then
     sed 's/^/    /' "$SUB_OUT" || true
     dump_evidence "$SUB_ERR" "$ROS_PUB_ERR"
     failed=$((failed + 1))
+elif [ "$pub_up" -ne 0 ]; then
+    # Issue 2600 -- the CLI publisher never started: the host, not delivery.
+    if [ "$pub_up" -eq 1 ]; then
+        echo "  FAIL: ros2 topic pub exited before it came up (no DDS socket); no subscriber attempt was made"
+    else
+        echo "  FAIL: ros2 topic pub did not come up within ${NROS_E2E_START_CAP_S}s (no DDS socket); a host too loaded to start a ros2 CLI, not a delivery result"
+    fi
+    dump_evidence "$ROS_PUB_ERR"
+    failed=$((failed + 1))
 else
-    echo "  FAIL: nros sub took no sample in ${NROS_E2E_DEADLINE_S}s ($sub_attempts attempt(s), last rc=$SUB_RC)"
+    echo "  FAIL: nros sub took no sample in ${NROS_E2E_DEADLINE_S}s after ros2 topic pub came up ($sub_attempts attempt(s), last rc=$SUB_RC)"
     sed 's/^/    /' "$SUB_OUT" || true
     dump_evidence "$SUB_ERR" "$ROS_PUB_ERR"
     failed=$((failed + 1))

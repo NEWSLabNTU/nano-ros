@@ -1,7 +1,8 @@
 ---
 id: 2600
 title: "`nros_rmw_cyclonedds_ros2_pubsub_e2e` A.1 captures nothing in its 60 s deadline at load ~50, and `ros2 daemon stop` alone takes 73 s"
-status: open
+status: resolved
+resolved_in: "the change that archives this file"
 type: bug
 area: [testing, rmw-cyclonedds]
 severity: low
@@ -76,3 +77,48 @@ touched no Cyclone code (gate.yml and docs only).
 
 Run one gate per host. A red at high load gets the whole gate re-run solo
 before anyone reads it as a backend regression.
+
+## Resolution (2026-11-18)
+
+**A `ros2` CLI's start is no longer inside a behaviour deadline.** Each
+sub-case that drives a Python `ros2` command waits for it to be UP before its
+deadline starts, under a separate cap (`NROS_E2E_START_CAP_S`, 300 s) that
+has its own verdict. "Up" is a process in the CLI's tree holding a UDP
+socket: Cyclone opens its sockets when rclpy creates the node, and an
+importing or initialising Python holds none. The tree is read from `/proc`,
+with no procps. The helpers are in `ros2_e2e_common.sh`:
+`nros_pid_tree`, `nros_tree_has_udp_socket`, `nros_ros2_wait_up`.
+
+Applied to every such site in the two Cyclone `ros2` e2e scripts:
+
+- A.1: `ros2 topic echo`, the case this issue saw fail;
+- A.2: `ros2 topic pub` (this issue's slow subscriber windows);
+- B.1 in `ros2_srv_e2e.sh`: `ros2 service call`, which ran under a 15 s
+  deadline that also covered its start. A slow start there read as "nros
+  server still had no request", a server failure.
+
+A CLI that never comes up now fails with "did not come up within N s (no DDS
+socket); a host too loaded to start a ros2 CLI, not a delivery result",
+first in its verdict chain.
+
+**Proof, deterministic** (newslab-118). A `sitecustomize.py` on
+`PYTHONPATH` delays only those three CLI commands at Python start-up, which
+is this issue's slow CLI start without host load. Each run used a 20 s delay
+and `NROS_E2E_DEADLINE_S=10`:
+
+| tree | pub/sub (A.1, A.2) | srv (B.1) |
+| --- | --- | --- |
+| before | both FAIL ("did not capture expected payload in 10s", "took no sample in 10s") | FAIL ("nros server still had no request") |
+| after | both PASS | PASS |
+| after, `NROS_E2E_START_CAP_S=5` | both FAIL "did not come up within 5s" | FAIL "did not come up within 5s"; B.2 unaffected |
+
+Unloaded, the scripts pass as before (pub/sub 3.2 s).
+
+**Not changed:** `ros2 daemon stop` before the deadlines (this issue's item
+3). It costs wall time under load but no verdict, since it runs before any
+deadline starts.
+
+Sweep: `git grep -nE 'ros2 (topic (echo|pub)|service call)' -- '*.sh'`.
+The other hits are a probe (`scripts/probe/verify-zenoh-interop.sh`, a
+60 s deadline around its echo, outside the merge-gating lanes), a twin smoke
+script and repro scripts. They are not changed here.

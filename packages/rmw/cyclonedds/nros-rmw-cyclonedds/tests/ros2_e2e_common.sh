@@ -83,6 +83,80 @@ nros_domain_busy() {
 # ctest's output pipe.
 nros_e2e_stage() { echo "  [t+${SECONDS}s] $*"; }
 
+# Issue 2600 -- a `ros2` CLI's START is not the behaviour under test.
+#
+# A Python `ros2` command spends its first seconds importing rclpy and creating
+# a node, and on a loaded host that took about 70 s (measured: `ros2 daemon
+# stop` alone, at load ~50). A deadline that starts when the CLI is LAUNCHED
+# spends that start on the verdict, and a slow host then reads as "did not
+# capture expected payload", which says the backend failed. So a sub-case
+# waits for its CLI to be UP, under this separate cap with its own verdict,
+# and starts its behaviour deadline from there. A CLI that never comes up
+# still fails, and says that instead.
+NROS_E2E_START_CAP_S="${NROS_E2E_START_CAP_S:-300}"
+
+# Every pid in the process tree rooted at $1, that pid included. Reads /proc,
+# so it needs no procps (the ROS base image does not promise `pgrep`).
+nros_pid_tree() {
+    local root="$1" stat pid ppid rest
+    local -A kids=()
+    for stat in /proc/[0-9]*/stat; do
+        # `comm` (field 2) may hold spaces; ppid is the 2nd field after its `)`.
+        read -r rest < "$stat" 2>/dev/null || continue
+        pid="${stat#/proc/}"; pid="${pid%/stat}"
+        rest="${rest##*) }"
+        ppid="${rest#* }"; ppid="${ppid%% *}"
+        kids[$ppid]+=" $pid"
+    done
+    local queue=("$root") out=() p
+    while [ "${#queue[@]}" -gt 0 ]; do
+        p="${queue[0]}"; queue=("${queue[@]:1}")
+        out+=("$p")
+        # shellcheck disable=SC2206
+        [ -n "${kids[$p]:-}" ] && queue+=(${kids[$p]})
+    done
+    printf '%s\n' "${out[@]}"
+}
+
+# Whether a process in the tree rooted at $1 holds a UDP socket: the CLI's DDS
+# participant exists (Cyclone opens its discovery and data sockets when rclpy
+# creates the node), so what follows is the behaviour, not the start.
+nros_tree_has_udp_socket() {
+    local inodes p fd link
+    inodes="$(awk 'FNR > 1 { print $10 }' /proc/net/udp /proc/net/udp6 2>/dev/null)"
+    [ -n "$inodes" ] || return 1
+    for p in $(nros_pid_tree "$1"); do
+        for fd in /proc/"$p"/fd/*; do
+            link="$(readlink "$fd" 2>/dev/null)" || continue
+            case "$link" in
+                socket:\[*\])
+                    link="${link#socket:[}"; link="${link%]}"
+                    # A whole-line match in bash: no grep to fail and read
+                    # as "no socket" (issue 0726's conflation).
+                    case $'\n'"$inodes"$'\n' in
+                        *$'\n'"$link"$'\n'*) return 0 ;;
+                    esac
+                    ;;
+            esac
+        done
+    done
+    return 1
+}
+
+# Wait for the `ros2` CLI rooted at pid $1 to come up (see above), at most $2
+# seconds. Returns 0 once it is up, 1 if it exited first, 2 if the cap
+# passed. A CLI that does its work and exits before a look (`ros2 service
+# call` on a fast host) returns 1, so the caller reads its exit status.
+nros_ros2_wait_up() {
+    local pid="$1" cap="$2" until=$(( SECONDS + $2 ))
+    while [ "$SECONDS" -lt "$until" ]; do
+        kill -0 "$pid" 2>/dev/null || return 1
+        nros_tree_has_udp_socket "$pid" && return 0
+        sleep 0.2
+    done
+    return 2
+}
+
 # issue 1762 -- CLAIM the domain, not just probe it.
 #
 # The busy probe reads who has BOUND a port, and two concurrent callers have

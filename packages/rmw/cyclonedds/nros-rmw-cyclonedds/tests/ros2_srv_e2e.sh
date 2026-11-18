@@ -86,13 +86,32 @@ SRV_PID=$!
 sleep 2
 
 # `ros2 service call` exits 0 once it gets a reply or its internal
-# timeout fires. Cap with `timeout` to bound runaway.
-"${NROS_DEADLINE[@]}" 15 env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
+# timeout fires. Issue 2600 -- its 15 s are counted from when the CLI is up
+# (it holds a DDS socket), not from its launch: the outer cap adds the start
+# cap, and a call still running 15 s after it came up is stopped here.
+NROS_E2E_CALL_S=15
+"${NROS_DEADLINE[@]}" $(( NROS_E2E_START_CAP_S + NROS_E2E_CALL_S )) \
+    env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
     ros2 service call /add_two_ints \
         example_interfaces/srv/AddTwoInts \
         '{a: 7, b: 35}' \
-    > "$CALL_OUT" 2>&1
-CALL_RC=$?
+    > "$CALL_OUT" 2>&1 &
+CALL_PID=$!
+call_up=0
+nros_ros2_wait_up "$CALL_PID" "$NROS_E2E_START_CAP_S" || call_up=$?
+case "$call_up" in
+    0) nros_e2e_stage "B.1 ros2 service call is up; its ${NROS_E2E_CALL_S}s start now" ;;
+    1) nros_e2e_stage "B.1 ros2 service call returned before a look found it up" ;;
+    *) nros_e2e_stage "B.1 ros2 service call did not come up within ${NROS_E2E_START_CAP_S}s" ;;
+esac
+call_deadline=$(( SECONDS + NROS_E2E_CALL_S ))
+[ "$call_up" -eq 0 ] || call_deadline=$SECONDS
+while kill -0 "$CALL_PID" 2>/dev/null && [ "$SECONDS" -lt "$call_deadline" ]; do
+    sleep 0.2
+done
+kill "$CALL_PID" 2>/dev/null || true
+CALL_RC=0
+wait "$CALL_PID" || CALL_RC=$?
 
 # The server's own budget is 600 s (`ros2_srv_server.cpp`). Waiting that out
 # is right only while a client might still call. Once `ros2 service call` has
@@ -115,7 +134,13 @@ wait "$SRV_PID"
 SRV_RC=$?
 nros_e2e_stage "B.1 server reaped (rc=$SRV_RC)"
 
-if [ "$SRV_RC" -ne 0 ]; then
+if [ "$call_up" -eq 2 ]; then
+    # Issue 2600 -- the CLI never started, so the server never had a client:
+    # the host, not the server, and the verdict says so first.
+    echo "  FAIL: ros2 service call did not come up within ${NROS_E2E_START_CAP_S}s (no DDS socket); a host too loaded to start a ros2 CLI, not a service result"
+    sed 's/^/    /' "$CALL_OUT"
+    failed=$((failed + 1))
+elif [ "$SRV_RC" -ne 0 ]; then
     if [ "$srv_abandoned" -eq 1 ]; then
         echo "  FAIL: nros server still had no request ${NROS_E2E_SERVER_GRACE_S}s after the client returned; stopped it"
     else
