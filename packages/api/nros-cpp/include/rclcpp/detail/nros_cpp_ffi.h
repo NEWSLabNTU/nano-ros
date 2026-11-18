@@ -4553,6 +4553,41 @@ nros_cpp_ret_t nros_cpp_subscription_register_message_info(const struct nros_cpp
                                                            const struct nros_cpp_subscription_options_t *options);
 
 /**
+ * Register a **callback-style** subscription whose callback receives each
+ * sample's metadata, with the callable's CAPTURE held by the arena: the
+ * freestanding form of [`nros_cpp_subscription_register_message_info`], and
+ * the metadata twin of [`nros_cpp_subscription_register_capturing`].
+ *
+ * The first `capture_len` bytes at `capture` are COPIED into the arena entry
+ * and `invoke(data, len, info, ctx)` runs with `ctx` pointing at that copy,
+ * so the caller keeps nothing and no heap is involved. `capture_drop` (when
+ * non-NULL) runs on the arena's copy when the subscription is released. The
+ * copy MOVES whatever the capture owns, exactly as on the plain capturing
+ * path. `info` carries `has_info == false` from a backend that reports no
+ * metadata. `capture_len == 0` (or a NULL `capture`) dispatches with a NULL
+ * `ctx`.
+ *
+ * # Safety
+ * All non-NULL pointers must be valid; `invoke` must be a valid trampoline
+ * whose context is the captured bytes; `capture` must point to `capture_len`
+ * readable bytes for the duration of THIS CALL only.
+ */
+nros_cpp_ret_t nros_cpp_subscription_register_capturing_message_info(const struct nros_cpp_node_t *node,
+                                                                     const char *topic,
+                                                                     const char *type_name,
+                                                                     const char *type_hash,
+                                                                     struct nros_cpp_qos_t qos,
+                                                                     void (*invoke)(const uint8_t*,
+                                                                                    size_t,
+                                                                                    const struct nros_cpp_message_info_t*,
+                                                                                    void*),
+                                                                     const uint8_t *capture,
+                                                                     size_t capture_len,
+                                                                     void (*capture_drop)(void*),
+                                                                     size_t *out_handle_id,
+                                                                     const struct nros_cpp_subscription_options_t *options);
+
+/**
  * Try to receive raw CDR data from a subscription (non-blocking).
  *
  * Writes the received CDR bytes directly into the caller's output buffer

@@ -2653,7 +2653,9 @@ impl<'e, 's> Node<'e, 's> {
                 type_hash,
                 qos,
                 rx_hint.unwrap_or(0),
-                callback,
+                core::ptr::null_mut(),
+                None,
+                move |_| callback,
             )
     }
 

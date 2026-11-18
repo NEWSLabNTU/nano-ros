@@ -1,14 +1,15 @@
 /*
- * NEGATIVE probe — issue 2036, a MessageInfo callback WITHOUT the hosted surface.
+ * POSITIVE probe — issue 2717 (was issue 2036's negative probe). A MessageInfo
+ * callback WITHOUT the hosted surface.
  *
  * Compiled with no `-DNROS_CPP_STD`, i.e. the freestanding API. The metadata
- * path keeps its callable on the heap, so a
- * `(const M&, const rclcpp::MessageInfo&)` callback must be REFUSED at
- * `create_subscription` with the text naming `MessageInfo` — not accepted, and
- * not a conversion error inside `InplaceFn`.
+ * path copies its callable into the executor arena, as the one-argument
+ * callback's does, so a `(const M&, const rclcpp::MessageInfo&)` callback is
+ * TAKEN with no allocator. Until issue 2717 it was refused, because that path
+ * kept its callable on the heap.
  *
- * `just check cpp` requires this TU to FAIL with "REFUSED by nano-ros" and
- * "rclcpp::MessageInfo".
+ * `just check cpp` requires this TU to COMPILE; its run twin is
+ * `subscription_message_info_freestanding_runtime.cpp`.
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -39,11 +40,11 @@ struct Msg {
 
 int subscription_message_info_freestanding_probe(rclcpp::Node& node);
 int subscription_message_info_freestanding_probe(rclcpp::Node& node) {
-    auto sub = node.create_subscription<Msg>(
-        "chatter", 10, [](const Msg& msg, const rclcpp::MessageInfo& info) {
-            (void)msg.data;
-            (void)info.get_rmw_message_info().source_timestamp;
-        });
+    auto sub = node.create_subscription<Msg>("chatter", 10,
+                                             [](const Msg& msg, const rclcpp::MessageInfo& info) {
+                                                 (void)msg.data;
+                                                 (void)info.get_rmw_message_info().source_timestamp;
+                                             });
     (void)sub;
     return 0;
 }

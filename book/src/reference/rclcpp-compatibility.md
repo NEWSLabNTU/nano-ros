@@ -197,12 +197,15 @@ the comments of `rclcpp/detail/std_detect.hpp`.
 
 ## Hosted-only shapes
 
-### Subscriptions with `MessageInfo` (hosted)
+### Subscriptions with `MessageInfo`
 
-On a hosted build (`NROS_CPP_STD`) a dispatch subscription's callback may take
-upstream's `const rclcpp::MessageInfo&` as a second argument, after the message
-in any of its four forms (`const M&`, `std::shared_ptr<const M>`,
-`std::shared_ptr<M>`, `std::unique_ptr<M>`):
+A dispatch subscription's callback may take upstream's
+`const rclcpp::MessageInfo&` as a second argument, after the message. With
+the message as `const M&` this works on every build, freestanding included:
+the callable is copied into the executor arena, as a one-argument callback's
+is. The three pointer forms
+(`std::shared_ptr<const M>`, `std::shared_ptr<M>`, `std::unique_ptr<M>`) need
+a hosted build (`NROS_CPP_STD`), as their one-argument twins do:
 
 ```cpp
 auto sub = node->create_subscription<std_msgs::msg::Int32>(
@@ -219,8 +222,7 @@ auto sub = node->create_subscription<std_msgs::msg::Int32>(
 `publication_sequence_number`, `reception_sequence_number` and the 24-byte
 `publisher_gid`, as the backend reported them. A backend that reports none
 (XRCE, uORB) leaves every field zero. `from_intra_process` is always `false`.
-A freestanding build refuses the shape at compile time: the metadata path keeps
-the callable on the heap. `SubscriptionOptions::message_info = true` with a
+`SubscriptionOptions::message_info = true` with a
 callback that takes no `MessageInfo` aborts the create, because it would
 otherwise configure nothing.
 

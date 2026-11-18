@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::add_arena_subscription_msg_info_closure_with_capture",
+  "verdict": "extension",
+  "why": "issue 2717 -- `rust:Executor::add_arena_subscription_msg_info_closure` with the caller's callback CAPTURE copied into the arena entry, the metadata twin of the plain C path's capture. The closure is built from the arena copy's address and owns its release. Backs C++'s freestanding `(const M&, const rclcpp::MessageInfo&)` callback, which has no heap to own its callable. No upstream counterpart: upstream callbacks are owned by `std::function`."
+}

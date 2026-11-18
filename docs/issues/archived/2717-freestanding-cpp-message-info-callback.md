@@ -1,11 +1,13 @@
 ---
 id: 2717
 title: "A freestanding C++ build refuses a subscription callback taking `const rclcpp::MessageInfo&`, though nothing in it needs the hosted library"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: [api, cpp]
 found: 2026-11-18
+resolved: 2026-11-19
+resolved_in: "feat(nros-cpp, issue 2717): a freestanding C++ build takes a (const M&, MessageInfo) subscription callback"
 related: [2349, 2712, 2036]
 ---
 
@@ -74,3 +76,30 @@ hosted C++ already share):
   staged metadata reaching the callback. It must fail when the callback is
   handed a default `MessageInfo`, as `subscription_message_info.c` does for
   C.
+
+## Resolution (2026-11-19)
+
+Fixed as planned: the arena capture, mirroring the one-argument callback's.
+
+- `register_subscription_buffered_raw_msg_info_on` takes an optional capture.
+  It is copied to the entry's trailing region after the receive buffer, on
+  the next `u64` boundary, and released with the entry. The public face is
+  `Executor::add_arena_subscription_msg_info_closure_with_capture`.
+- `nros_cpp_subscription_register_capturing_message_info` is the FFI twin of
+  `nros_cpp_subscription_register_capturing`; its sink runs the C++
+  destructor on the arena copy once.
+- The two-argument `create_subscription_dispatch` registers an `InplaceFn`
+  through it on EVERY build. The hosted heap path and
+  `NROS_RCLCPP_REFUSE_MESSAGE_INFO_CALLBACK` are gone. Pointer-shaped
+  message-info callbacks stay hosted, refused by the existing shape refusal.
+
+Tests, in `just check cpp`:
+- `subscription_message_info_freestanding_probe.cpp` must COMPILE; the lane
+  used to require it to fail.
+- `subscription_message_info_freestanding_runtime.cpp`, freestanding, run with
+  and without metadata on the stub backend: staged timestamps, sequence
+  numbers and GID reach the callback, and a stateful capture survives the
+  arena copy.
+- Mutation, a default `MessageInfo` handed to the callback: the hosted run and
+  the freestanding run each fail 4 checks.
+

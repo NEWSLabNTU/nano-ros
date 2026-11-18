@@ -449,15 +449,6 @@ template <typename T> struct refuse {
     "A freestanding build has no allocator on the delivery path: write `const M& msg` and "        \
     "`msg.` for `msg->`, and copy the message out if you need it after the call."
 
-// A `(message, const rclcpp::MessageInfo&)` subscription callback
-// on a freestanding build. The metadata path owns its callable on the heap
-// (the registration frees it on release), which a build with no allocator
-// cannot do.
-#define NROS_RCLCPP_REFUSE_MESSAGE_INFO_CALLBACK                                                   \
-    "a subscription callback taking const rclcpp::MessageInfo& is REFUSED by nano-ros on a "       \
-    "freestanding build: the metadata path keeps the callable on the heap. Build "                 \
-    "hosted (-DNROS_CPP_STD), or take void(const M&) and drop the MessageInfo argument."
-
 // Upstream rclcpp_action's goal-handle shapes. `ClientGoalHandle`
 // / `ServerGoalHandle` are owned through `std::shared_ptr`, and the callbacks
 // that take them (`create_server`'s three, `SendGoalOptions`' three,

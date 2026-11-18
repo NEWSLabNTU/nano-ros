@@ -2276,30 +2276,37 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi"; \
         "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi" no-info; \
     done
-    # ...and WITHOUT the hosted surface the MessageInfo shapes are refused,
-    # naming MessageInfo (the metadata path keeps the callable on the heap).
+    # issue 2717 -- ...and WITHOUT the hosted surface the `const M&` +
+    # MessageInfo shape is TAKEN: the callable lives in the arena, as the
+    # one-argument callback's does. A compile of the old refusal probe (it must
+    # now build) and a RUN, with and without the stub's metadata channel.
     _smi=packages/api/nros-cpp/tests/compile/subscription_message_info_freestanding_probe.cpp
     test -f "$_smi" || { echo "ERROR: $_smi is MISSING -- this check would pass on absence." >&2; exit 1; }
-    echo "  - MessageInfo subscription callbacks are REFUSED without NROS_CPP_STD (issue 2036)"
-    # shellcheck source=scripts/lib/grep-q.sh
-    source scripts/lib/grep-q.sh
-    mkdir -p tmp
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    echo "  - a (const M&, MessageInfo) subscription callback compiles WITHOUT NROS_CPP_STD (issue 2717)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" -I"$cgen" \
         -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
-        "$_smi" 2>tmp/refuse-subscription-message-info-freestanding.log; then
-        echo "ERROR: $_smi COMPILED -- a MessageInfo callback was accepted with no allocator." >&2
-        exit 1
-    fi
-    for _needle in "REFUSED by nano-ros" "rclcpp::MessageInfo"; do
-        nros_grep_q "$_needle" tmp/refuse-subscription-message-info-freestanding.log && _rc=0 || _rc=$?
-        if [ "$_rc" -ne 0 ]; then
-            echo "ERROR: $_smi failed WITHOUT '$_needle' -- it broke for another reason." >&2
-            echo "       See tmp/refuse-subscription-message-info-freestanding.log" >&2
-            exit 1
-        fi
-    done
+        "$_smi"
+    test -f packages/api/nros-cpp/tests/compile/subscription_message_info_freestanding_runtime.cpp || { \
+        echo "ERROR: subscription_message_info_freestanding_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - ...and its callback gets the sample's metadata, freestanding (runtime, issue 2717)"
+    c++ -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/subscription_message_info_freestanding_runtime \
+        packages/api/nros-cpp/tests/compile/subscription_message_info_freestanding_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/subscription_message_info_freestanding_runtime
+    "$gen/nros-cpp-tests"/subscription_message_info_freestanding_runtime no-info
     # issue 2015 -- upstream rclcpp_action spellings as HOSTED drop-ins:
     # create_server / create_client over the node interfaces, std::bind-ed
     # goal-handle callbacks, ServerGoalHandle's get_goal / publish_feedback /

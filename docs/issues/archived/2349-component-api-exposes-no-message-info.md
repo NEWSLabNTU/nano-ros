@@ -98,7 +98,7 @@ callback has worked since issue 2036, on the same path.
 Resolved: a component, a C program and a hosted C++ program can each read a
 received message's metadata, all through one executor path. Freestanding C++
 still refuses the callback. That gap is split out as
-[issue 2717](../2717-freestanding-cpp-message-info-callback.md) rather than
+[issue 2717](2717-freestanding-cpp-message-info-callback.md) rather than
 widening this one: its blocker is that the metadata path keeps the callable
 on the heap. Nothing there needs the hosted library, and the fix is an
 arena-capture twin of the plain capturing path.
