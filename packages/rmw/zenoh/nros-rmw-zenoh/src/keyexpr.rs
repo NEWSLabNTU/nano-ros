@@ -258,9 +258,50 @@ impl QosKeyExpr for QoSProfile {
         if self.depth != UPSTREAM_DEFAULT_DEPTH {
             let _ = core::fmt::write(&mut s, format_args!("{}", self.depth));
         }
-        // Deadline, lifespan and liveliness are never stated, so they read as
-        // upstream's defaults — which is also what upstream writes for them.
-        let _ = s.push_str(":,:,:,,");
+        // phase-556 W6 — deadline, lifespan and liveliness are stated too, in
+        // upstream's grammar and canonical form. They used to be left empty
+        // for every profile, so `ros2 topic info -v` read upstream's defaults
+        // (infinite windows, AUTOMATIC) for an entity that had been granted,
+        // and honours, a deadline, a lifespan or a manual liveliness.
+        //
+        // A window is `sec,nsec`, each part elided only when it equals that
+        // part of upstream's default, RMW_DURATION_INFINITE
+        // `{9223372036, 854775807}`. Our "no window" values (0 and
+        // DURATION_INFINITE_MS) mean that default, so both parts are elided; a
+        // finite millisecond window can match neither part (its seconds stay
+        // below 2^32 / 1000 and its nanoseconds are a multiple of 10^6), so
+        // both parts are written. A stock CLI's own `/rosout` writer states
+        // its 10 s lifespan the same way (measured: `Lifespan: 10000000000
+        // nanoseconds`).
+        fn window<const N: usize>(s: &mut heapless::String<N>, ms: u32) {
+            if ms != 0 && ms != DURATION_INFINITE_MS {
+                let _ =
+                    core::fmt::write(s, format_args!("{},{}", ms / 1000, (ms % 1000) * 1_000_000));
+            } else {
+                let _ = s.push(',');
+            }
+        }
+        let _ = s.push(':');
+        window(&mut s, self.deadline_ms);
+        let _ = s.push(':');
+        window(&mut s, self.lifespan_ms);
+        let _ = s.push(':');
+        // Our SYSTEM_DEFAULT (`None`) is elided like AUTOMATIC, upstream's
+        // default: no backend here keeps a liveliness of its own for it, and a
+        // peer reads an unstated kind as AUTOMATIC, which is what upstream
+        // resolves its own SYSTEM_DEFAULT to before it writes a token.
+        let liveliness = match self.liveliness_kind {
+            QoSLivelinessPolicy::None | QoSLivelinessPolicy::Automatic => None,
+            QoSLivelinessPolicy::ManualByNode => Some(2),
+            QoSLivelinessPolicy::ManualByTopic => Some(3),
+            // See the reliability arm: neither sentinel reaches a grant.
+            QoSLivelinessPolicy::Unknown | QoSLivelinessPolicy::BestAvailable => Some(0),
+        };
+        if let Some(kind) = liveliness {
+            let _ = core::fmt::write(&mut s, format_args!("{kind}"));
+        }
+        let _ = s.push(',');
+        window(&mut s, self.liveliness_lease_ms);
 
         s
     }
@@ -564,6 +605,72 @@ mod tests {
         assert_eq!(q.liveliness_kind, QoSLivelinessPolicy::ManualByTopic);
         // 1 s + 500 ns ceils to the next millisecond.
         assert_eq!(q.liveliness_lease_ms, 1001);
+    }
+
+    /// phase-556 W6 — a granted deadline, lifespan, liveliness kind and lease
+    /// are stated in upstream's grammar, so `ros2 topic info -v` reads them
+    /// rather than upstream's defaults. The expected chunk is what a stock
+    /// `rmw_zenoh_cpp` node with the same profile reads back as `Deadline:
+    /// 1500000000 nanoseconds`, `Lifespan: 2000000000 nanoseconds`,
+    /// `Liveliness: MANUAL_BY_TOPIC`, `Liveliness lease duration: 3000000000
+    /// nanoseconds`.
+    #[test]
+    fn qos_string_states_deadline_lifespan_and_liveliness() {
+        let mut qos = QoSProfile::new()
+            .best_effort()
+            .transient_local()
+            .keep_last(3);
+        qos.deadline_ms = 1500;
+        qos.lifespan_ms = 2000;
+        qos.liveliness_kind = QoSLivelinessPolicy::ManualByTopic;
+        qos.liveliness_lease_ms = 3000;
+        let s: heapless::String<72> = qos.to_qos_string();
+        assert_eq!(s.as_str(), "2:1:,3:1,500000000:2,0:3,3,0");
+
+        let back = qos_from_keyexpr(&s);
+        assert_eq!(back.deadline_ms, 1500);
+        assert_eq!(back.lifespan_ms, 2000);
+        assert_eq!(back.liveliness_kind, QoSLivelinessPolicy::ManualByTopic);
+        assert_eq!(back.liveliness_lease_ms, 3000);
+    }
+
+    /// phase-556 W6 — "no window" (0 or infinite) and an unstated or AUTOMATIC
+    /// liveliness are upstream's defaults, so they stay elided: a default
+    /// profile's chunk, and therefore its gid, does not move.
+    #[test]
+    fn qos_string_elides_default_windows_and_liveliness() {
+        for (deadline, kind) in [
+            (0, QoSLivelinessPolicy::None),
+            (DURATION_INFINITE_MS, QoSLivelinessPolicy::Automatic),
+        ] {
+            let mut qos = QoSProfile::QOS_PROFILE_DEFAULT;
+            qos.deadline_ms = deadline;
+            qos.lifespan_ms = deadline;
+            qos.liveliness_lease_ms = deadline;
+            qos.liveliness_kind = kind;
+            let s: heapless::String<72> = qos.to_qos_string();
+            assert_eq!(s.as_str(), "::,10:,:,:,,", "{deadline} {kind:?}");
+        }
+    }
+
+    /// phase-556 W6 — the widest chunk the encoder can write fits the shim's
+    /// buffer, so a token is never truncated.
+    #[test]
+    fn qos_string_widest_profile_fits_the_shim_buffer() {
+        let mut qos = QoSProfile::new()
+            .best_effort()
+            .transient_local()
+            .keep_all()
+            .depth(u32::MAX);
+        qos.deadline_ms = DURATION_BEST_AVAILABLE_MS - 1;
+        qos.lifespan_ms = DURATION_BEST_AVAILABLE_MS - 1;
+        qos.liveliness_kind = QoSLivelinessPolicy::ManualByTopic;
+        qos.liveliness_lease_ms = DURATION_BEST_AVAILABLE_MS - 1;
+        let s: heapless::String<72> = qos.to_qos_string();
+        assert_eq!(
+            s.as_str(),
+            "2:1:2,4294967295:4294967,293000000:4294967,293000000:3,4294967,293000000"
+        );
     }
 
     /// issue 1973 — something that is not the grammar reads as "I cannot say",

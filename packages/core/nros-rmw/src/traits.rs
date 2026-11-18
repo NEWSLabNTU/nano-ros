@@ -1403,10 +1403,10 @@ qos_profiles! {
 //       `DDS_LIVELINESS_AUTOMATIC` — so both spellings put AUTOMATIC on the
 //       wire.
 //     - zenoh: invisible. `QosKeyExpr::to_qos_string` (`keyexpr.rs`)
-//       emits `"{rel}:{dur}:{hist},{depth}:,:,:,,"` (defaults elided, issue
-//       1495) — the liveliness and lease
-//       positions are EMPTY for every profile, so the value never reaches a
-//       peer's graph parse.
+//       elides fields equal to upstream's defaults (issue 1495), and both
+//       SYSTEM_DEFAULT and AUTOMATIC leave the liveliness kind position
+//       EMPTY (only a manual kind is stated, since phase-556 W6), so the two
+//       spellings read the same in a peer's graph parse.
 //     - xrce: invisible. `uxrQoS_t` has no liveliness field at all.
 //   The one live consequence was `required_policies()`, which set
 //   `LIVELINESS_AUTOMATIC` for presets upstream leaves unset — an over-demand,
