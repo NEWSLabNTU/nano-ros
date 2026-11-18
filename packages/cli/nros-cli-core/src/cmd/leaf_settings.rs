@@ -1345,7 +1345,7 @@ pub fn write_shared(
     write_selection(leaf, nano_ros_root, Some(img.image_id.as_str()))?;
 
     // Layer 2 — derived pools + facts.
-    let mut env = crate::leaf_entity_env::leaf_env(leaf, who).env;
+    let mut env = crate::leaf_entity_env::leaf_env(leaf, Some(img.image_id.as_str()), who).env;
     let mut path_env: BTreeMap<String, PathBuf> = BTreeMap::new();
 
     // Layer 3 — the board facts, by the one resolver the other lanes use.
@@ -2906,6 +2906,42 @@ mod board_crate_tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    /// Issue 2700 -- the single-package LEAF road. Each image's own
+    /// `features` and `node_interfaces` reach the selection it builds with
+    /// (`write_leaf_selection_in`, which derived from `[system]` alone), the
+    /// leaf reader's effective list, and the `infra_families` the leaf's
+    /// descriptor states (`leaf_infra` over the model read for that image).
+    #[test]
+    fn a_leaf_builds_and_sizes_each_images_own_features() {
+        use crate::orchestration::facade::image_features_fixture as fx;
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path().join("probe");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"probe\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nprobe_nros_selection = { path = \"build/nros/selection\" }\n",
+        )
+        .unwrap();
+        std::fs::write(leaf.join("system.toml"), fx::SYSTEM).unwrap();
+        for case in fx::CASES {
+            let sel = write_selection(&leaf, &repo(), Some(case.image))
+                .unwrap()
+                .unwrap();
+            case.assert_build(&sel.nros_features);
+            let decl = nros_orchestration_ir::leaf_system::read_image(&leaf, case.image)
+                .unwrap()
+                .expect("declared");
+            case.assert_axes(&decl.features);
+            let infra = crate::leaf_entity_env::leaf_infra(
+                Some(&fx::model_for(Some(case.image))),
+                (false, false),
+            )
+            .expect("a model states the families");
+            case.assert_families(infra.families().tag());
+        }
     }
 
     /// Issue 1340 — the host board's census + profile producers are ON for a

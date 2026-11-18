@@ -1035,7 +1035,7 @@ pub fn leaf_infra(
     manifest: (bool, bool),
 ) -> Option<crate::entity_inventory::InfraServices> {
     model.map(|m| {
-        let mut infra = crate::entity_inventory::InfraServices::from_model(m, None);
+        let mut infra = crate::entity_inventory::InfraServices::from_model(m);
         infra.param_services |= manifest.0;
         infra.lifecycle |= manifest.1;
         infra
@@ -1052,7 +1052,12 @@ pub fn leaf_infra(
 /// but they must agree about WHICH file and about what an unreadable one means,
 /// and a second copy of this resolution is how the facts and the rows would
 /// come to describe different resolutions of one bringup.
-pub fn leaf_model(leaf: &Path) -> Option<nros_orchestration_ir::overlay::LoadedModel> {
+// Issue 2700 -- read FOR `image`, so every switch reader of it answers for the
+// image being built rather than for the system list.
+pub fn leaf_model(
+    leaf: &Path,
+    image: Option<&str>,
+) -> Option<nros_orchestration_ir::overlay::LoadedModel> {
     let path = match leaf_model_path(leaf) {
         Ok(Some(p)) => p,
         Ok(None) => return None,
@@ -1067,7 +1072,7 @@ pub fn leaf_model(leaf: &Path) -> Option<nros_orchestration_ir::overlay::LoadedM
             return None;
         }
     };
-    match crate::orchestration::model_ingest::load_model(&path) {
+    match crate::orchestration::model_ingest::load_model(&path, image) {
         Ok(m) => Some(m),
         Err(e) => {
             eprintln!(
@@ -1130,7 +1135,7 @@ pub struct LeafEnv {
 ///
 /// The facts are returned in `env` even then: they come from the model and the
 /// manifest, and stand without an inventory.
-pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
+pub fn leaf_env(leaf: &Path, image: Option<&str>, who: &str) -> LeafEnv {
     use crate::entity_inventory::Derivation;
 
     let (mut inv, unprobeable) = match inventory_for_leaf(leaf) {
@@ -1165,7 +1170,7 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
             env: BTreeMap::new(),
         };
     }
-    with_leaf_frame(leaf, &mut inv);
+    with_leaf_frame(leaf, image, &mut inv);
     match inv.derive() {
         Derivation::Derived(knobs) => {
             // Issue 1125 — the payload classes need a SECOND inventory (the
@@ -1267,8 +1272,8 @@ pub fn with_fact_infra(
 /// answers. A model with no contract says nothing about monitors or sched
 /// tasks (the predicate `from_model` applies on the model road too), and a leaf
 /// with no model keeps the inventory it always had.
-pub fn with_leaf_frame(leaf: &Path, inv: &mut EntityInventory) {
-    let model = leaf_model(leaf);
+pub fn with_leaf_frame(leaf: &Path, image: Option<&str>, inv: &mut EntityInventory) {
+    let model = leaf_model(leaf, image);
     with_model_frame(inv, model.as_ref(), manifest_infra(leaf));
 }
 

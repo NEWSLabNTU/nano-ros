@@ -92,6 +92,7 @@ fn args() -> SizingDescriptorArgs {
         bound_inventory: Vec::new(),
         build_dir: None,
         entry: None,
+        image: None,
         metadata: None,
         workspace: None,
         rmw: None,

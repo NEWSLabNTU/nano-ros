@@ -1634,17 +1634,19 @@ impl SystemToml {
             None,
             self.system.node_interfaces,
         );
-        let extra: Vec<String> = img
-            .map(|img| img.features)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|f| !self.system.features.contains(f))
-            .collect();
-        if extra.is_empty() && switch == self.system.node_interfaces {
+        // Issue 2700 -- composed by the ONE function every road shares; the
+        // result is already through the switch, and applying the same switch
+        // again (`effective_features`) changes nothing.
+        let features = nros_orchestration_ir::node_interfaces::image_features(
+            &self.system.features,
+            &img.map(|img| img.features).unwrap_or_default(),
+            switch,
+        );
+        if features == self.system.features && switch == self.system.node_interfaces {
             return std::borrow::Cow::Borrowed(self);
         }
         let mut owned = self.clone();
-        owned.system.features.extend(extra);
+        owned.system.features = features;
         owned.system.node_interfaces = switch;
         std::borrow::Cow::Owned(owned)
     }

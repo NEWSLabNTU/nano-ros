@@ -1343,6 +1343,9 @@ Options:
           [default: human]
           [possible values: human, cmake]
 
+      --image <ID>
+          `--format cmake`: the `[image.<id>]` being built (`-DNROS_IMAGE`). Its own `features` and `node_interfaces` join the system's, as on every other road. Absent, the `[system]` list answers
+
       --workspace <WORKSPACE>
           Workspace root for resolution (default: cwd)
 

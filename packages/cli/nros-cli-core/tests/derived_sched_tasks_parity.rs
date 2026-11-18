@@ -70,7 +70,7 @@ fn c_entry(fixture: &Fixture) -> Table {
     let meta = fixture.configure(&["main"]);
     let model = resolve_model_path(&fixture.bringup(), true);
     let mut plan =
-        plan_from_model(&model, Some(TARGET_RTOS.to_string())).expect("plan from the model");
+        plan_from_model(&model, Some(TARGET_RTOS.to_string()), None).expect("plan from the model");
     let index = metadata::ComponentIndex::load(&meta).expect("the cmake metadata loads");
     metadata::enrich_plan(&mut plan, &index).expect("enrich from the cmake metadata");
     resolve_plan_sched(&mut plan, TARGET_RTOS).expect("resolve (and derive)");

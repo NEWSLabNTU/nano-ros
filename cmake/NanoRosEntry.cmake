@@ -1488,6 +1488,12 @@ function(_nros_entry_invoke_codegen)
     if(_NRX_BOARD)
         list(APPEND _cli_args --board "${_NRX_BOARD}")
     endif()
+    # Issue 2700 -- the image this configure builds: its own `features` and
+    # `node_interfaces` decide which runtime services the entry registers, the
+    # list its sizing descriptor states too.
+    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+        list(APPEND _cli_args --image "${NROS_IMAGE}")
+    endif()
     # Issue 1508 - a DERIVED sched task table is allocated out of the priority pool
     # the IMAGE's Kconfig resolves (RFC-0079 section 4.1), not the Kconfig
     # defaults. On a Zephyr build `find_package(Zephyr)` has already run

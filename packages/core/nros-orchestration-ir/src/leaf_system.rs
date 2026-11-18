@@ -345,13 +345,13 @@ pub struct LeafSystem {
     /// much as the `entities` declaration beside it, which is why it is read
     /// only where that declaration exists.
     ///
-    /// This is the EFFECTIVE list: [`Self::declared_features`]
-    /// through [`crate::node_interfaces::effective_features`] with
-    /// [`Self::node_interfaces`]. Every leaf consumer reads this one.
+    /// This is the EFFECTIVE list of the image read: [`Self::declared_features`]
+    /// plus the image's own `features` (over `[image_defaults]`), through
+    /// [`Self::node_interfaces`] -- [`crate::node_interfaces::image_features`].
+    /// Every leaf consumer reads this one.
     pub features: Vec<String>,
-    /// `[system] features` exactly as written, before the
-    /// node-interface switch. For a consumer that adds a list of its own (an
-    /// image's `features`) and must apply the switch over the union.
+    /// `[system] features` exactly as written, before the image's own list
+    /// and the node-interface switch.
     pub declared_features: Vec<String>,
     /// `node_interfaces`: `[image.<id>]` over
     /// `[image_defaults]` over `[system]`. `None` = stated nowhere.
@@ -1149,7 +1149,16 @@ fn image_system(
         )
     };
     let declared_features = features_key(system, path)?;
-    let features = crate::node_interfaces::effective_features(&declared_features, node_interfaces);
+    // Issue 2700 -- what THIS image adds (`[image_defaults]` then
+    // `[image.<id>]`), composed with the system list by the one function every
+    // road shares, so the leaf's build and its pools read the same list.
+    let mut image_features = string_list(defaults, path, "image_defaults", "features")?;
+    image_features.extend(string_list(image, path, &at, "features")?);
+    let features = crate::node_interfaces::image_features(
+        &declared_features,
+        &image_features,
+        node_interfaces,
+    );
 
     Ok(LeafSystem {
         origin,
@@ -1692,6 +1701,31 @@ locator = "tcp/10.0.2.2:9800"
              [image.i]\nboard = \"linux\"\nnode_interfaces = \"none\"\n",
         );
         assert!(l.features.is_empty(), "image over defaults");
+    }
+
+    /// Issue 2700 -- an image's own `features` (over `[image_defaults]`) join
+    /// the system list in [`LeafSystem::features`], and the image's switch
+    /// applies to the union; another image of the same file is untouched.
+    #[test]
+    fn the_image_features_reach_the_leaf_features() {
+        let d = leaf(&[
+            ("Cargo.toml", CARGO),
+            (
+                "system.toml",
+                "[system]\nname = \"t\"\nfeatures = [\"param_services\", \"rosout\"]\n\
+                 [image_defaults]\nfeatures = [\"lifecycle\"]\n\
+                 [image.i]\nboard = \"linux\"\nfeatures = [\"safety\"]\n\
+                 [image.off]\nboard = \"linux\"\nnode_interfaces = \"none\"\n",
+            ),
+        ]);
+        let l = read_image(d.path(), "i").unwrap().expect("declared");
+        assert_eq!(
+            l.features,
+            vec!["param_services", "rosout", "lifecycle", "safety"]
+        );
+        assert_eq!(l.declared_features, vec!["param_services", "rosout"]);
+        let l = read_image(d.path(), "off").unwrap().expect("declared");
+        assert_eq!(l.features, vec!["lifecycle"]);
     }
 
     #[test]

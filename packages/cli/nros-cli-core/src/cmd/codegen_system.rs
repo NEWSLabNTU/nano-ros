@@ -543,7 +543,9 @@ pub fn run(args: Args) -> Result<()> {
         // `--model` road as well (discovery verified on its ladder above).
         crate::model_gate::verify(model_path, bringup.manifest_path.parent())
             .map_err(|e| eyre::eyre!("codegen-system: {e}"))?;
-        let model = crate::orchestration::model_ingest::load_model(model_path)?;
+        // Issue 2700 -- read for the image this bake is, so the service
+        // families its type tables count are that image's.
+        let model = crate::orchestration::model_ingest::load_model(model_path, target.as_deref())?;
         // phase-462 W5 -- the model refusals the `nros codegen entry` road and
         // `nros::main!` make before anything is baked, made here too: this is
         // the Zephyr road (`nros_system_generate.cmake`), and it baked the
@@ -1127,9 +1129,13 @@ fn emit_bake_tree(
     fs::create_dir_all(bake_dir)
         .wrap_err_with(|| format!("create bake dir {}", bake_dir.display()))?;
 
+    // Issue 2700 -- the capability axes of the image this bake is: its own
+    // `features` and `node_interfaces` over the system's, the list its model
+    // (and so its sizing) is read for.
+    let image_sys = bringup.system.with_image_features(target);
     write_if_changed(
         &bake_dir.join("system_config.h"),
-        &render_system_config_h(&bringup.system, target, cli_rmw, rmws)?,
+        &render_system_config_h(&image_sys, target, cli_rmw, rmws)?,
     )?;
     // Phase 261 W5 — the CMake twin of `system_config.h`: declares this system's
     // capability axes as `NROS_FEATURES`, which `nros_lower_system_features`
@@ -1138,7 +1144,7 @@ fn emit_bake_tree(
     // build (the option `nros-cpp` reads), not just the `#define` in source.
     write_if_changed(
         &bake_dir.join("system_config.cmake"),
-        &render_system_config_cmake(&bringup.system),
+        &render_system_config_cmake(&image_sys),
     )?;
     // Phase 258 (Track 2, follow-up): the `system_main.c` C-baker emit (extern
     // `nros_component_<name>_register()` decls + a ~~`nros_system_main()`~~ that

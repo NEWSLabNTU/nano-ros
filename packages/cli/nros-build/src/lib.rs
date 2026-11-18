@@ -220,7 +220,8 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
             model_path.display(),
         );
     }
-    let model = nros_cli_core::orchestration::model_ingest::load_model(&model_path)
+    // The plan record is topology; it reads no capability switch.
+    let model = nros_cli_core::orchestration::model_ingest::load_model(&model_path, None)
         .wrap_err("nros-build: load SystemModel")?;
     let record = nros_cli_core::orchestration::model_ingest::plan_record_from_model(&model);
     let record_tmp = opts.out_dir.join("nros-model-record.json");

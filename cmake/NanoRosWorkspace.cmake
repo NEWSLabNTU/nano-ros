@@ -411,11 +411,17 @@ function(nano_ros_workspace)
             nros_resolve_cli(NROS_BIN CONTEXT "nano_ros_workspace")
         endif()
         set(_caps_cmake "${CMAKE_BINARY_DIR}/nros_capabilities.cmake")
+        # Issue 2700 -- the image this configure builds, when it names one.
+        set(_caps_image "")
+        if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+            set(_caps_image --image "${NROS_IMAGE}")
+        endif()
         execute_process(
             COMMAND "${NROS_BIN}" config show
                     --workspace "${_NRW_WORKSPACE_ROOT}"
                     --system "${_NRW_SYSTEM}"
                     --format cmake
+                    ${_caps_image}
             OUTPUT_FILE "${_caps_cmake}"
             RESULT_VARIABLE _caps_rc
             ERROR_VARIABLE  _caps_err)

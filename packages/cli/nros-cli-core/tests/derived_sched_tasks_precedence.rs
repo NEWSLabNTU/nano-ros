@@ -94,7 +94,7 @@ fn entry_plan(fixture: &Fixture, with_system: bool) -> Plan {
     let meta = fixture.configure(&["main"]);
     let model = resolve_model_path(&fixture.bringup(), with_system);
     let mut plan =
-        plan_from_model(&model, Some(TARGET_RTOS.to_string())).expect("plan from the model");
+        plan_from_model(&model, Some(TARGET_RTOS.to_string()), None).expect("plan from the model");
     let index = metadata::ComponentIndex::load(&meta).expect("the cmake metadata loads");
     metadata::enrich_plan(&mut plan, &index).expect("enrich from the cmake metadata");
     resolve_plan_sched(&mut plan, TARGET_RTOS).expect("resolve (and derive what is unauthored)");
@@ -626,8 +626,8 @@ fn a_schema_4_model_and_its_schema_5_twin_emit_the_same_entry() {
     let artifacts = |text: &str, name: &str| {
         let path = new_path.with_file_name(name);
         std::fs::write(&path, text).expect("write the twin");
-        let mut plan =
-            plan_from_model(&path, Some(TARGET_RTOS.to_string())).expect("plan from the model");
+        let mut plan = plan_from_model(&path, Some(TARGET_RTOS.to_string()), None)
+            .expect("plan from the model");
         let index = metadata::ComponentIndex::load(&meta).expect("the cmake metadata loads");
         metadata::enrich_plan(&mut plan, &index).expect("enrich from the cmake metadata");
         resolve_plan_sched(&mut plan, TARGET_RTOS).expect("resolve the authored table");

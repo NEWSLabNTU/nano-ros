@@ -640,6 +640,13 @@ function(nros_derive_entity_inventory_knobs)
     # below is derived with it, and an arrival curve the board cannot satisfy fails
     # here, naming the subscriber (RFC-0074).
     _nros_board_rx_cost_args(_rx_args)
+    # Issue 2700 -- the image this configure builds: every model is read for
+    # it, so its own `features` and `node_interfaces` reach the pools, as they
+    # reach the resolve phase's composition below.
+    set(_image_arg "")
+    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+        set(_image_arg --image "${NROS_IMAGE}")
+    endif()
     # phase-439 W7 (issue 1228) -- read the resolve phase's answer when it was
     # composed over this configure's inputs; see `nros_resolved_entity_take`.
     # The inbox join and the republish below run either way: they read the
@@ -653,6 +660,7 @@ function(nros_derive_entity_inventory_knobs)
                     ${_model_arg}
                     ${_ws_arg}
                     ${_rx_args}
+                    ${_image_arg}
                     --output-cmake "${_output}"
                     --output-json "${CMAKE_BINARY_DIR}/nros/entity_inventory.json"
             OUTPUT_VARIABLE _out

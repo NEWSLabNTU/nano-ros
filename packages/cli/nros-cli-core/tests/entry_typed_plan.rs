@@ -81,7 +81,7 @@ fn typed_plan_from_template_emits_constructed_components() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let model = template_model(tmp.path());
 
-    let plan = entry::plan_from_model(&model, Some("linux".into())).expect("plan from model");
+    let plan = entry::plan_from_model(&model, Some("linux".into()), None).expect("plan from model");
 
     // Two nodes, in LAUNCH order — the template's `system.launch.xml` lists
     // talker then listener. This asserted the reverse until issue 0382:

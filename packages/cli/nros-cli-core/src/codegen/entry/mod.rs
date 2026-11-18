@@ -453,10 +453,18 @@ fn non_qos_params(params: &[(String, String)]) -> Vec<(String, String)> {
 ///
 /// `board` picks the sched task sub-table (`nros_entry_lower::sched_task_rtos_key_for`);
 /// which nodes this image runs is PLACEMENT (phase-486 W3), never the board.
-pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan> {
+///
+/// `image` is the `[image.<id>]` the plan is for: its own `features` and
+/// `node_interfaces` decide what the entry registers (`param_services`,
+/// `safety`), the same list the image's sizing reads.
+pub fn plan_from_model(
+    model_path: &Path,
+    board: Option<String>,
+    image: Option<&str>,
+) -> Result<Plan> {
     use crate::orchestration::model_ingest;
 
-    let model = model_ingest::load_model(model_path)?;
+    let model = model_ingest::load_model(model_path, image)?;
     // phase-454 W7 (RFC-0100 D8) -- before anything is baked, the contract and
     // the `qos_overrides.*` parameters must state the same QoS.
     //
@@ -660,7 +668,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             name: m.name,
         })
         .collect();
-    let features = model.features(None);
+    let features = model.features();
     let param_services = features.iter().any(|f| f == "param_services");
     let safety = features.iter().any(|f| f == "safety").then_some(true);
 
@@ -781,7 +789,9 @@ fn derive_entry_sched_tasks(
     if plan.bringup != "system-model" {
         return Ok(None);
     }
-    let model = crate::orchestration::model_ingest::load_model(&plan.launch_file)?;
+    // Topology and scheduling only; the plan already carries the image's
+    // switches (`plan_from_model`).
+    let model = crate::orchestration::model_ingest::load_model(&plan.launch_file, None)?;
     // issue 1426 — the guard was `!model.execution.tasks.is_empty()`, i.e. a
     // question about the TABLE. The rule is about a FACT, and it is stated once:
     // `placement_is_unauthored` (rules 1-4). Authored placements still win and
@@ -1070,7 +1080,9 @@ fn derive_sched_task_spin_periods(plan: &Plan, table: &mut ResolvedSchedTaskTabl
     if plan.bringup != "system-model" {
         return Ok(());
     }
-    let model = crate::orchestration::model_ingest::load_model(&plan.launch_file)?;
+    // Topology and scheduling only; the plan already carries the image's
+    // switches (`plan_from_model`).
+    let model = crate::orchestration::model_ingest::load_model(&plan.launch_file, None)?;
     let input = nros_orchestration_ir::mapper_input::mapper_input_from_model(&model);
     let periods = nros_orchestration_ir::rtos_realizer::node_periods_us(&input);
     let notes = nros_orchestration_ir::spin_period::apply_derived_spin_periods(table, &periods)
@@ -1098,7 +1110,9 @@ fn check_blocking_calls(
     if plan.bringup != "system-model" {
         return Ok(());
     }
-    let model = crate::orchestration::model_ingest::load_model(&plan.launch_file)?;
+    // Topology and scheduling only; the plan already carries the image's
+    // switches (`plan_from_model`).
+    let model = crate::orchestration::model_ingest::load_model(&plan.launch_file, None)?;
     let members = plan
         .nodes
         .iter()
@@ -1231,7 +1245,7 @@ mod tests {
             "[meta]\nversion = 1\n\n[component.\"urgent\"]\nstack_bytes = 6144\n",
         )
         .unwrap();
-        let plan = plan_from_model(&model, Some("zephyr".into())).expect("plan from model");
+        let plan = plan_from_model(&model, Some("zephyr".into()), None).expect("plan from model");
         let stack = |name: &str| {
             plan.nodes
                 .iter()
@@ -1281,7 +1295,7 @@ contracts: {}
         )
         .unwrap();
 
-        let plan = plan_from_model(&model, Some("linux".into())).expect("plan from model");
+        let plan = plan_from_model(&model, Some("linux".into()), None).expect("plan from model");
         let node = &plan.nodes[0];
         let params: BTreeMap<_, _> = node.params.iter().cloned().collect();
 
