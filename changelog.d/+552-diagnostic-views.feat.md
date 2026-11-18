@@ -1,0 +1,1 @@
+The diagnostic codes reach C, CMake and the colcon plugin: `<nros/diagnostics.h>` defines `NROS_DIAG_<NAME>` for each code, and a refusal raised from CMake or the colcon plugin prints the same `error[NROS-NNNN]`, `help:` and `explain:` lines as `nros` does. All three are generated from the one code list, as the book's diagnostic-codes page is.

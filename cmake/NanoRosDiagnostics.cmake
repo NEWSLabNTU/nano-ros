@@ -15,6 +15,10 @@
 
 include_guard(GLOBAL)
 
+# `nros_refuse(<Name> <detail>... [HELP <text>])`: a refusal with its diagnostic
+# code, generated from the code list (packages/tooling/nros-diagnostic-codes).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.generated.cmake")
+
 function(nros_message_detail)
     string(CONCAT _text ${ARGN})
     if("$ENV{NROS_VERBOSE}" STREQUAL "1")

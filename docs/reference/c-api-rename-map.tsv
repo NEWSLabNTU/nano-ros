@@ -118,6 +118,13 @@ NROS_DECLARED_PUB_RELIABILITY	NROS_DECLARED_PUB_RELIABILITY	build	build or confi
 NROS_DECLARED_QOS_COMPILE_TIME	NROS_DECLARED_QOS_COMPILE_TIME	build	build or configuration fact
 NROS_DECLARED_QOS_ROWS_Q	NROS_DECLARED_QOS_ROWS_Q	build	build or configuration fact
 NROS_DECLARED_RELIABILITY	NROS_DECLARED_RELIABILITY	build	build or configuration fact
+NROS_DIAGNOSTICS_H	NROS_DIAGNOSTICS_H	build	build or configuration fact
+NROS_DIAG_AMENT_PREFIX_UNSET	NROS_DIAG_AMENT_PREFIX_UNSET	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_BOARD_UNKNOWN	NROS_DIAG_BOARD_UNKNOWN	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_IMAGE_NO_BOARD	NROS_DIAG_IMAGE_NO_BOARD	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_NO_IMAGE_DECLARED	NROS_DIAG_NO_IMAGE_DECLARED	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_PLATFORM_NO_FAMILY	NROS_DIAG_PLATFORM_NO_FAMILY	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_UNKNOWN_DIAG_CODE	NROS_DIAG_UNKNOWN_DIAG_CODE	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DOMAIN_ID_EXPLICIT_ZERO	NROS_DOMAIN_ID_EXPLICIT_ZERO	build	build or configuration fact
 NROS_DOMAIN_ID_INHERIT	NROS_DOMAIN_ID_INHERIT	build	build or configuration fact
 NROS_ENTRY_CONFIG_H	NROS_ENTRY_CONFIG_H	hook	defined by the application or entry, called by startup code

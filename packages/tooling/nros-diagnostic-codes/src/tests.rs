@@ -301,3 +301,50 @@ fn explain_text_leaves_out_the_design_background() {
 fn surfaces_spell_as_the_macro_does() {
     assert_eq!(Surface::BuildScript.name(), "BuildScript");
 }
+
+#[test]
+fn a_name_becomes_its_macro_suffix() {
+    assert_eq!(views::upper_snake("AmentPrefixUnset"), "AMENT_PREFIX_UNSET");
+    assert_eq!(views::upper_snake("ImageNoBoard"), "IMAGE_NO_BOARD");
+}
+
+#[test]
+fn every_live_code_reaches_the_cmake_c_and_colcon_views() {
+    let (cmake, c, py) = (
+        views::cmake_module(),
+        views::c_header(),
+        views::colcon_module(),
+    );
+    for e in ALL.iter().filter(|e| e.is_live()) {
+        assert!(
+            cmake.contains(&format!("set(_NROS_DIAG_CODE_{} \"{}\")", e.name, e.code)),
+            "{}",
+            e.name
+        );
+        assert!(
+            c.contains(&format!(
+                "#define NROS_DIAG_{} \"{}\"",
+                views::upper_snake(e.name),
+                e.code
+            )),
+            "{}",
+            e.name
+        );
+        assert!(
+            py.contains(&format!("\"{}\": (\"{}\", ", e.name, e.code)),
+            "{}",
+            e.name
+        );
+    }
+    for (view, text) in [("cmake", &cmake), ("c", &c), ("colcon", &py)] {
+        assert!(ids(text).is_empty(), "{view} view cites {:?}", ids(text));
+    }
+}
+
+#[test]
+fn a_remedy_survives_cmake_quoting() {
+    // `"<board>"` and backticks are in real remedies; a bare `"` would end the
+    // argument and a bare `$` would expand.
+    let cmake = views::cmake_module();
+    assert!(cmake.contains(r#"set(_NROS_DIAG_REMEDY_ImageNoBoard "add `board = \"<board>\"` to"#));
+}
