@@ -29,7 +29,7 @@ extern "C" {
 // Rust component install seam (rclcpp::node!); the Rust node
 // self-creates its node on the shared executor handle (phase-257).
 extern "C" {
-    int32_t __nros_component_rust_pkg_install(const void* node, void* executor, void* self, const char* const* params, size_t n_params);
+    int32_t __nros_component_rust_pkg_install(const void* node, void* executor, void* self, const char* const* params, size_t n_params, const char* name, const char* ns, const char* const* remaps, size_t n_remaps);
 }
 
 // Static per-node storage (outlives the spin loop; no heap).
@@ -74,7 +74,7 @@ static int32_t __nros_entry_setup() {
     {
         void* __rexec = ::nros_cpp_executor_inner(::rclcpp::global_handle());
         if (__rexec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
-        int32_t crc = __nros_component_rust_pkg_install(nullptr, __rexec, nullptr, nullptr, 0);
+        int32_t crc = __nros_component_rust_pkg_install(nullptr, __rexec, nullptr, nullptr, 0, nullptr, nullptr, nullptr, 0);
         if (crc != 0) return crc;
     }
     {
@@ -92,7 +92,7 @@ static int32_t __nros_entry_setup() {
             "speed", "2.5",
             "frame_id", "base_link",
         };
-        int32_t crc = __nros_component_rust_pkg_install(nullptr, __rexec, nullptr, __nros_params_5, 2);
+        int32_t crc = __nros_component_rust_pkg_install(nullptr, __rexec, nullptr, __nros_params_5, 2, nullptr, nullptr, nullptr, 0);
         if (crc != 0) return crc;
     }
     {
