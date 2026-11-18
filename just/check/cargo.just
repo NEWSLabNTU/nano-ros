@@ -180,6 +180,14 @@ node-package-invariance:
 system-toml-in-bringup:
     @python3 scripts/check-system-toml-in-bringup.py
 
+# issue 2587 (RFC-0024 §5) — a `system.toml` is read through ONE reader,
+# `nros_system_include`, which expands its `include = [..]` fragments. Refuses
+# a non-test Rust `fs::read_to_string` of the file around it, and (until the
+# Python check scripts read it expanded) a tracked `system.toml` using
+# `include`. Buildless; selftest on the normal path.
+system-toml-one-reader:
+    @python3 scripts/check/check-system-toml-one-reader.py
+
 # phase-531 W2 (RFC-0121 D1/D7) — a node package's `Cargo.toml` names no
 # `<pkg>_nros_selection` crate and no `nros-board-*` crate; the generated entry
 # names the board. Same shrink-only ratchet

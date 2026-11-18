@@ -129,7 +129,7 @@ pub fn scaffold_node(cfg: &NodeScaffold) -> Result<NodeScaffoldOut> {
 /// names this package; a launch file this cannot place a line in (no
 /// `</launch>`) is left alone too, since a wrong edit is worse than none.
 fn add_launch_node(bringup: &Path, pkg: &str, node_name: &str) -> Result<Option<PathBuf>> {
-    let file = fs::read_to_string(bringup.join("system.toml"))
+    let file = nros_system_include::read_to_string(bringup.join("system.toml"))
         .ok()
         .and_then(|t| t.parse::<DocumentMut>().ok())
         .and_then(|d| {
@@ -171,7 +171,7 @@ fn add_component(system_toml: &Path, pkg: &str, type_name: &str, node_name: &str
             system_toml.display()
         );
     }
-    let text = fs::read_to_string(system_toml)?;
+    let text = nros_system_include::read_own_text(system_toml)?;
     let mut doc: DocumentMut = text
         .parse()
         .wrap_err_with(|| format!("parse {}", system_toml.display()))?;

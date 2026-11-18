@@ -1682,6 +1682,10 @@ pub mod locate {
     /// and the `[tools]` rung `nros sdk-path` asks.
     #[must_use]
     pub fn project_entry(project_dir: &Path, table: &str, name: &str) -> Option<PathBuf> {
+        // Issue 2587 -- the file's OWN text, deliberately: `[sources]` and
+        // `[tools]` are this machine's paths, which an included fragment may
+        // not set (`nros_system_include` refuses it), so the expansion could
+        // add nothing here, and this crate stays free of a TOML parser.
         let text = std::fs::read_to_string(project_dir.join("system.toml")).ok()?;
         let header = format!("[{table}]");
         let mut inside = false;

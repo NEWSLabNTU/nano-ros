@@ -229,7 +229,7 @@ pub fn parse_pkg_ament_metadata(pkg_dir: &Path) -> Result<PackageMetadataAment> 
 // `docs/design/0024-multi-node-workspace-layout.md` §11.1 in the nano-ros
 // tree for the policy + rationale.
 fn render_bringup(system_toml: &Path) -> Result<String> {
-    let raw = std::fs::read_to_string(system_toml)
+    let raw = nros_system_include::read_to_string(system_toml)
         .wrap_err_with(|| format!("read {}", system_toml.display()))?;
     let system: SystemToml =
         toml::from_str(&raw).wrap_err_with(|| format!("parse {}", system_toml.display()))?;

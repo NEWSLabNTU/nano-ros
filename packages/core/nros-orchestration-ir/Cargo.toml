@@ -35,6 +35,7 @@ toml = "0.8"
 # resolver. Host-only and dependency-free, and already in every lock this crate
 # is in, so the edge adds one line per lock and no package.
 nros-build-paths = { path = "../../tooling/nros-build-paths" }
+nros-system-include = { path = "../../tooling/nros-system-include" }
 # phase-486 W8a — the overlay migration guard asks "did an older writer put
 # capability switches in this model?" of the model's RAW YAML, because rlm
 # deletes the typed `execution.features` field. rlm reads models with this

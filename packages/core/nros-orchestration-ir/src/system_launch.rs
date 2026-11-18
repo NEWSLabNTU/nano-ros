@@ -85,7 +85,7 @@ impl SystemLaunch {
     /// that exists and does not parse is an error naming it, never an empty
     /// slice: that is the fail-open this module replaced.
     pub fn read(path: &Path) -> Result<Self, String> {
-        let raw = match std::fs::read_to_string(path) {
+        let raw = match nros_system_include::read_to_string(path) {
             Ok(raw) => raw,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
             Err(e) => return Err(format!("reading `{}`: {e}", path.display())),

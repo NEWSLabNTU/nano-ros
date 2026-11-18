@@ -33,4 +33,5 @@ packages/tooling/nros-cc-flags
 packages/tooling/nros-platform-config
 packages/tooling/nros-sizes-build
 packages/tooling/nros-sizing-descriptor
+packages/tooling/nros-system-include
 packages/tooling/nros-zephyr-build

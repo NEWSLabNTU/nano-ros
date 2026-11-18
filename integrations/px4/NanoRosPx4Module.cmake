@@ -451,6 +451,8 @@ function(_nros_px4_generate_entry _out)
     # linking several backends (the bridge) opens this one at boot and names
     # the rest per node (`NodeBuilder::rmw`); without it the runtime refuses to
     # guess between them.
+    include("${NROS_REPO_DIR}/cmake/NanoRosSystemInclude.cmake")  # issue 2587
+    nros_system_toml_refuse_include("${_ge_bringup}/system.toml" nros_px4_module)
     file(STRINGS "${_ge_bringup}/system.toml" _ge_rmw_line
         REGEX "^[ \t]*rmw[ \t]*=[ \t]*\"[A-Za-z0-9_]+\"")
     set(_ge_rmw "")

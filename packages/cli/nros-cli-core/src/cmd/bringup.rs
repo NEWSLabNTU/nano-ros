@@ -144,7 +144,7 @@ fn check_exec_depend_drift(bringup_dir: &Path, pkg_name: &str) -> Result<()> {
 
     use crate::orchestration::cargo_metadata_schema::SystemToml;
 
-    let system_toml_raw = fs::read_to_string(bringup_dir.join("system.toml"))?;
+    let system_toml_raw = nros_system_include::read_to_string(bringup_dir.join("system.toml"))?;
     let system: SystemToml = toml::from_str(&system_toml_raw)?;
     let want: BTreeSet<String> = system.components.iter().map(|c| c.pkg.clone()).collect();
 

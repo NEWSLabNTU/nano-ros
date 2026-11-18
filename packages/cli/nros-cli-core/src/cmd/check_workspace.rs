@@ -212,7 +212,7 @@ pub fn lint_class_pkg_prefix(bringup_dir: &Path, bringup_pkg_name: &str) -> Resu
     if !system_toml.is_file() {
         return Ok(());
     }
-    let raw = fs::read_to_string(&system_toml)
+    let raw = nros_system_include::read_to_string(&system_toml)
         .wrap_err_with(|| format!("read {}", system_toml.display()))?;
     let parsed: SystemToml =
         toml::from_str(&raw).wrap_err_with(|| format!("parse {}", system_toml.display()))?;

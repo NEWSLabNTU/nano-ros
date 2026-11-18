@@ -308,13 +308,13 @@ impl NrosConfig {
                     let pkg_dir = pkg_manifest.parent().unwrap_or_else(|| Path::new(""));
                     let system_toml_path = pkg_dir.join("system.toml");
                     if system_toml_path.exists() {
-                        let raw = std::fs::read_to_string(&system_toml_path).map_err(|source| {
-                            NrosConfigError::BringupSystemTomlIo {
+                        let raw = nros_system_include::read_to_string(&system_toml_path).map_err(
+                            |source| NrosConfigError::BringupSystemTomlIo {
                                 package: package.name.clone(),
                                 path: system_toml_path.clone(),
                                 source,
-                            }
-                        })?;
+                            },
+                        )?;
                         let system: SystemToml = toml::from_str(&raw).map_err(|source| {
                             NrosConfigError::BringupSystemTomlParse {
                                 package: package.name.clone(),
@@ -545,7 +545,7 @@ fn discover_path_a_bringups(
         if !system_toml_path.exists() || !package_xml_path.exists() {
             continue;
         }
-        let raw = std::fs::read_to_string(&system_toml_path).map_err(|source| {
+        let raw = nros_system_include::read_to_string(&system_toml_path).map_err(|source| {
             NrosConfigError::BringupSystemTomlIo {
                 package: name.to_string(),
                 path: system_toml_path.clone(),

@@ -1375,7 +1375,7 @@ type DeclaredLists = Vec<(String, Vec<crate::entity_inventory::EntityDecl>)>;
 fn declared_entities(bringup_dir: &std::path::Path) -> Result<(PathBuf, DeclaredLists)> {
     use crate::orchestration::cargo_metadata_schema::{ComponentEntitiesSpec, SystemToml};
     let file = bringup_dir.join("system.toml");
-    let text = std::fs::read_to_string(&file)
+    let text = nros_system_include::read_to_string(&file)
         .map_err(|e| eyre::eyre!("reading {}: {e}", file.display()))?;
     let sys: SystemToml =
         toml::from_str(&text).map_err(|e| eyre::eyre!("parsing {}: {e}", file.display()))?;
@@ -1409,7 +1409,7 @@ fn declared_entities(bringup_dir: &std::path::Path) -> Result<(PathBuf, Declared
 fn refuse_undeclared_components(bringup_dir: &std::path::Path, key: &str) -> Result<()> {
     use crate::orchestration::cargo_metadata_schema::{SystemEntities, SystemToml};
     let file = bringup_dir.join("system.toml");
-    let text = std::fs::read_to_string(&file)
+    let text = nros_system_include::read_to_string(&file)
         .map_err(|e| eyre::eyre!("reading {}: {e}", file.display()))?;
     let sys: SystemToml =
         toml::from_str(&text).map_err(|e| eyre::eyre!("parsing {}: {e}", file.display()))?;
@@ -1493,7 +1493,7 @@ fn check_nuttx_project(
         if !system_toml.is_file() {
             continue;
         }
-        let text = std::fs::read_to_string(&system_toml)
+        let text = nros_system_include::read_to_string(&system_toml)
             .map_err(|e| format!("reading {}: {e}", system_toml.display()))?;
         let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
             toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", system_toml.display()))?;

@@ -21,4 +21,5 @@ packages/tooling/nros-diagnostic-codes
 packages/tooling/nros-platform-config
 packages/tooling/nros-qemu-ladder
 packages/tooling/nros-sizing-descriptor
+packages/tooling/nros-system-include
 packages/tooling/nros-zephyr-build

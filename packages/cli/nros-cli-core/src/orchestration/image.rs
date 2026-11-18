@@ -1394,7 +1394,7 @@ pub fn launch_node_pkgs(image: &ImageBlock, bringup_dir: &std::path::Path) -> Ve
 /// The `pkg` of every `[[component]]` row in the bringup's `system.toml`,
 /// sorted and deduplicated: the packages the generated launch names.
 fn component_row_pkgs(bringup_dir: &std::path::Path) -> Vec<String> {
-    let Ok(text) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
+    let Ok(text) = nros_system_include::read_to_string(bringup_dir.join("system.toml")) else {
         return Vec::new();
     };
     let Ok(t) = text.parse::<toml::Table>() else {

@@ -626,7 +626,7 @@ fn declared(root: &Path) -> Result<(Vec<Candidate>, Vec<PathBuf>)> {
             .or_else(|| root.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| "leaf".to_string());
         let path = root.join(leaf_system::SYSTEM_TOML);
-        let doc = std::fs::read_to_string(&path)
+        let doc = nros_system_include::read_to_string(&path)
             .wrap_err_with(|| format!("reading {}", path.display()))?
             .parse::<toml::Table>()
             .wrap_err_with(|| format!("parsing {}", path.display()))?;

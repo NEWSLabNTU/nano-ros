@@ -234,7 +234,7 @@ pub fn session_properties(path: &Path) -> Result<Vec<(String, String)>, String> 
 /// The `system.toml` does not parse, or the file is refused ([`resolve`]).
 pub fn session_text(dir: &Path, image_id: &str) -> Result<Option<String>, String> {
     let path = dir.join("system.toml");
-    let Ok(raw) = std::fs::read_to_string(&path) else {
+    let Ok(raw) = nros_system_include::read_to_string(&path) else {
         return Ok(None);
     };
     let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
@@ -292,7 +292,8 @@ pub fn default_session_file(
     image: Option<&str>,
 ) -> Result<Option<RmwFile>, String> {
     let path = dir.join("system.toml");
-    let raw = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let raw = nros_system_include::read_to_string(&path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
         toml::from_str(&raw).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut chosen: Option<(String, Option<RmwFile>)> = None;
@@ -369,7 +370,8 @@ pub fn domain_session_header(
     symbol: &str,
 ) -> Result<(PathBuf, String), String> {
     let path = dir.join("system.toml");
-    let raw = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let raw = nros_system_include::read_to_string(&path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
         toml::from_str(&raw).map_err(|e| format!("{}: {e}", path.display()))?;
     sys.check_rmw_files(dir)?;

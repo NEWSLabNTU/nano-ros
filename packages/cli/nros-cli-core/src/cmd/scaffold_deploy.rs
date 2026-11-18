@@ -70,7 +70,7 @@ pub fn scaffold_deploy(s: &DeployScaffold) -> Result<()> {
     let system_toml = locate_bringup_system_toml(s)?;
 
     // 1. Surgically edit the bringup system.toml (idempotent unless --force).
-    let raw = std::fs::read_to_string(&system_toml)
+    let raw = nros_system_include::read_own_text(&system_toml)
         .wrap_err_with(|| format!("read {}", system_toml.display()))?;
     let mut doc: DocumentMut = raw
         .parse()

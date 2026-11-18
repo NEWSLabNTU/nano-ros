@@ -564,7 +564,7 @@ pub fn plan_with(dir: &Path, west_board_of: &WestBoardOf<'_>) -> Result<Plan> {
     let xml = std::fs::read_to_string(dir.join("package.xml"))
         .wrap_err_with(|| format!("reading {}/package.xml", dir.display()))?;
     let outer = package_name(&xml).ok_or_else(|| eyre!("package.xml names no <name>"))?;
-    let system_text = std::fs::read_to_string(&system_path)?;
+    let system_text = nros_system_include::read_to_string(&system_path)?;
     let system: toml::Value = system_text
         .parse()
         .wrap_err_with(|| format!("parsing {}", system_path.display()))?;
@@ -1203,7 +1203,8 @@ pub fn run(args: Args) -> Result<()> {
         let rel = rel.to_string_lossy().replace('\\', "/");
         let text = std::fs::read_to_string(manifest)
             .wrap_err_with(|| format!("reading {}", manifest.display()))?;
-        let system: toml::Value = std::fs::read_to_string(dir.join("system.toml"))?.parse()?;
+        let system: toml::Value =
+            nros_system_include::read_to_string(dir.join("system.toml"))?.parse()?;
         let (new_text, notes) = rewrite_fixture_rows(&text, &rel, &plan.bringup, &system);
         report.extend(notes);
         if new_text != text {

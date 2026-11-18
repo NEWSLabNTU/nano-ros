@@ -6727,7 +6727,7 @@ fn workspace_boards(
         let Some(sys_path) = f.parent().map(|d| d.join("system.toml")) else {
             continue;
         };
-        let Ok(sys) = std::fs::read_to_string(&sys_path) else {
+        let Ok(sys) = nros_system_include::read_to_string(&sys_path) else {
             continue;
         };
         for t in deploy_targets(&sys, catalog.as_ref()) {

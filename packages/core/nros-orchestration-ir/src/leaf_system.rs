@@ -868,7 +868,8 @@ fn system_entities_key(system: Option<&toml::Table>, file: &Path) -> Result<bool
 }
 
 fn parse_file(path: &Path) -> Result<toml::Table, String> {
-    let raw = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let raw = nros_system_include::read_to_string(path)
+        .map_err(|e| format!("read {}: {e}", path.display()))?;
     raw.parse::<toml::Table>()
         .map_err(|e| format!("{}: {e}", path.display()))
 }

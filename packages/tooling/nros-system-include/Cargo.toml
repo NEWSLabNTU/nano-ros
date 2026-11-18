@@ -1,0 +1,22 @@
+[package]
+name        = "nros-system-include"
+version.workspace = true
+edition     = "2024"
+publish     = false
+description = "The one reader of a bringup's system.toml: expands its `include = [..]` fragments (RFC-0024 §5, issue 2587)."
+license     = "MIT OR Apache-2.0"
+
+# Host-only, like nros-build-paths: it reads files on the build host, from
+# build scripts, proc macros and the CLI (issue 0287 for why it is declared).
+[package.metadata.nros]
+host-only = true
+host-only-reason = "reads system.toml on the build host"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3.10"

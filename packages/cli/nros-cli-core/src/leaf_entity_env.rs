@@ -1312,9 +1312,9 @@ pub fn env_rows(body: &str) -> BTreeMap<String, String> {
 /// uses, so `[image_defaults]` and the `[system] rmw` fallback (itself
 /// defaulting to zenoh) answer here exactly as they do for the build.
 fn leaf_reports_zenoh_knob(leaf: &Path) -> bool {
-    let Ok(raw) =
-        std::fs::read_to_string(leaf.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML))
-    else {
+    let Ok(raw) = nros_system_include::read_to_string(
+        leaf.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML),
+    ) else {
         return true;
     };
     match toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw) {
