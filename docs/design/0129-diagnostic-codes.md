@@ -233,6 +233,113 @@ The verb's help says "a diagnostic code (`NROS-NNNN`) or a plan path".
     therefore compatible, and neither subsumes the other.
 - `check-user-surface-ids` keeps its rule.
 
+## Amendment, draft for ruling (phase-578 W4): a refusal points at its source, and `nros fix` applies the mechanical ones
+
+Not ruled. Drafted 2026-11-18 by nros 118 for phase-578 W4; the questions at
+the end are what a ruling settles. D1 to D6 are unchanged.
+
+### What happens today
+
+Configuration is read with serde into plain structures (`leaf_system::read`,
+the board catalog, `nros-platform.toml`), and a refusal is raised after that
+read. By then the source position is gone, so a refusal names a file and a
+key at best and never a line: a retired knob spelling under
+`[image.<id>] env` is refused by `refuse_retired_env_keys`, which sees only
+the map. Measured shapes of a mechanical remedy that exist today:
+
+- a retired spelling, renamed (`ZPICO_MAX_QUERYABLES` to
+  `NROS_ZENOH_MAX_QUERYABLES`, the knob registry's retired rows);
+- a key in the wrong table (an `[image] env` knob row that belongs in
+  `[image.<id>.knobs.<group>]`, phase-484 W8);
+- a value spelled one way the parser no longer takes (`native`/`posix` for
+  the host board, phase-500 W5).
+
+### D7 — a refusal carries the place it is about
+
+A refusal about configuration a person wrote carries a `Location`: the file,
+the 1-based line and column, the span's length and the line's text. The crate
+stays `no_std`; `Location` holds borrowed strings.
+
+```rust
+Diag::RetiredKnobSpelling
+    .refuse(&format_args!("`ZPICO_MAX_QUERYABLES` is retired"))
+    .at(&loc)                       // new
+    .help(&"set NROS_ZENOH_MAX_QUERYABLES instead")
+```
+
+Rendered, in rustc's shape (the code line from D2 stays first):
+
+```text
+error[NROS-0xxx]: `ZPICO_MAX_QUERYABLES` is retired
+  --> src/app_bringup/system.toml:9:7
+   |
+ 9 | env = { ZPICO_MAX_QUERYABLES = "4" }   # a retired spelling
+   |         ^^^^^^^^^^^^^^^^^^^^
+  help: set NROS_ZENOH_MAX_QUERYABLES instead
+  fix: nros fix   (renames the key; prints the diff first)
+  explain: nros explain NROS-0xxx
+```
+
+Where the location comes from: NOT from threading `Spanned<T>` through every
+configuration structure. The CLI keeps each configuration file's text beside
+the parsed value (`SourceFile { path, text }`), and a refusal site that knows
+its key path (`image.linux.env.ZPICO_MAX_QUERYABLES`) asks
+`SourceFile::locate(key_path)`, which re-reads the text with `toml_edit`
+(already a dependency) and returns the key's or the value's span. Cost is
+paid only on the refusal path; the serde structures do not change, so no
+reader of them changes.
+
+Only the CLI surface carries a location in this amendment. A build script or
+CMake refusal about a file it read can adopt the same shape later; the
+runtime surface has no file.
+
+### D8 — `nros fix`
+
+A refusal whose remedy is mechanical carries a `Fix`: the file, the key path,
+and one edit of three kinds, the shapes measured above:
+
+- `RenameKey { to }`;
+- `MoveKey { to_table }`;
+- `ReplaceValue { from, to }`.
+
+`nros fix [<path>]` loads the workspace the way `nros build` does, collects
+every refusal that carries a fix, applies the edits with `toml_edit` (so
+comments and layout are kept), prints a unified diff, and writes only with
+`--apply` (or after a yes on a terminal). It never builds. A refusal whose
+remedy needs judgement carries no `Fix` and stays a `help:` line. A refusal
+that has a fix says so on its own line (`fix: nros fix`), so the reader of a
+failed build learns that the verb exists from the place they need it.
+
+Two fixes that touch one key, or a fix whose result is itself refused, stop
+`nros fix` before it writes anything, naming both; it does not apply a
+partial set.
+
+### D9 — gates
+
+- `check-diagnostics` gains: an entry that declares a fix kind has an
+  explanation that names `nros fix`.
+- A fixture per fix kind: a `system.toml` carrying the refused shape;
+  `nros build` refuses at the right line and column; `nros fix --apply`
+  rewrites it; the rewritten file builds. That is phase-578 W4's acceptance
+  ("a retired knob spelling in `system.toml` is reported at its line, and
+  `nros fix` rewrites it") as a test.
+
+### Questions for the ruling
+
+1. **Scope of D7.** Locations for every configuration file the CLI reads
+   (`system.toml`, `nros-board.toml`, `nros-platform.toml`, `package.xml`,
+   launch files), or `system.toml` and `nros-board.toml` first? Draft:
+   those two first; the rest as their refusals are touched.
+2. **`nros fix` writes without `--apply` on a terminal after a prompt, or
+   only ever with `--apply`?** Draft: diff by default, write only with
+   `--apply`, so a script and a person get the same behaviour.
+3. **Does `nros build` offer the fix inline** (apply and continue), or only
+   name the verb? Draft: only name it. A build that edits the user's files
+   is a surprise.
+4. **Board package `fix:` lines** (RFC-0135 D8): the same `Fix` payload, so
+   `nros fix` applies them too? Draft: yes, once RFC-0135 lands; this
+   amendment defines the payload they would use.
+
 ## Left to implementation
 
 - The exact macro syntax.

@@ -99,7 +99,7 @@ schemas equal to their sources.
 
 ### W4 — errors that point at the line, and `nros fix`
 
-- **Status:** OPEN
+- **Status:** OPEN — design drafted for ruling: [RFC-0129](../design/0129-diagnostic-codes.md) "Amendment, draft for ruling (phase-578 W4)" (D7 locations, D8 `nros fix`, four questions)
 - **Owner:** nros 118, after its current batch
 - **Needs:** a design (an RFC-0129 amendment): the span format, and which
   refusals carry a machine-applicable fix.
@@ -153,7 +153,7 @@ them), and works without a server.
 
 ### W8 — a shorter first build
 
-- **Status:** OPEN
+- **Status:** OPEN — design drafted for ruling: [RFC-0137](../design/0137-prebuilt-board-libraries.md) (input-digest keys, exact-match use, reproducibility; measured first builds; four questions)
 - **Owner:** nros 118, after its current batch
 - **Needs:** an RFC: what is prebuilt (zenoh-pico, lwIP, the RTOS kernel, the
   nano-ros C and Rust libraries), per which key (board, RMW, knobs that change
