@@ -199,7 +199,18 @@ fn ninja_deps(dir: &Path, out: &mut BTreeSet<PathBuf>) {
 
 /// The commit of the git checkout at `dir` and whether it is dirty, or `None`
 /// for a tree that is not a git checkout.
+///
+/// Issue 2695: `dir` must BE a checkout (its own `.git`, a directory or a
+/// submodule's file), not merely sit inside one. A store source is an extracted
+/// tree with no `.git`, and `git -C <dir> rev-parse HEAD` walks UP: from a store
+/// under any repository (a home directory kept in git, a store placed in a
+/// checkout) it answered the enclosing repo's HEAD, so every source read as
+/// drifted to that commit and every build was refused. `exists()`, never
+/// `is_dir()`: a submodule's `.git` is a file (issue 1336).
 pub fn git_commit(dir: &Path) -> Option<(String, bool)> {
+    if !dir.join(".git").exists() {
+        return None;
+    }
     let head = crate::source_stamp::nros_git_command("git")
         .arg("-C")
         .arg(dir)
@@ -442,6 +453,38 @@ pub fn record(rec: &BuildRecord, nano_ros_root: Option<&Path>) -> eyre::Result<R
 
 #[cfg(test)]
 mod tests {
+
+    /// Issue 2695 — a source tree with no `.git` of its own has no commit,
+    /// even inside a repository; a real checkout still reports its HEAD.
+    #[test]
+    fn a_tree_inside_a_repo_is_not_that_repos_checkout() {
+        let t = tempfile::tempdir().unwrap();
+        let repo = t.path();
+        let sh = |cmd: &str, dir: &Path| {
+            let ok = crate::source_stamp::nros_git_command("sh")
+                .args(["-c", cmd])
+                .current_dir(dir)
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "{cmd}");
+        };
+        sh(
+            "git init -q . && echo a > f && git add f && \
+             git -c user.name=t -c user.email=t@t commit -qm one",
+            repo,
+        );
+        let store_src = repo.join("store/sources/zenoh-pico/1.10.1+abc");
+        std::fs::create_dir_all(&store_src).unwrap();
+        std::fs::write(store_src.join("CMakeLists.txt"), "").unwrap();
+        assert_eq!(
+            git_commit(&store_src),
+            None,
+            "an extracted tree has no commit"
+        );
+        assert!(git_commit(repo).is_some(), "the repository itself does");
+    }
+
     use super::*;
 
     #[test]
