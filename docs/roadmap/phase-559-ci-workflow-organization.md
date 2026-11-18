@@ -995,6 +995,9 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   check::build gates that run up to 22 processes (the token pool's over-weight
   report). Parked: fix one only when it measures as a problem, the way
   `cli-tests` was fixed (`cpu:4`, 2026-11-16).
+- [issue 2718](../issues/2718-linker-threads-outside-the-jobserver.md) — the host
+  linker runs a thread per CPU outside the gate's token pool (`rust-lld` 101 of
+  one gate's 109 runnable threads).
 - [issue 2676](../issues/2676-gated-worktree-test-binary-debuginfo.md) — one
   cold `just ci gate` grows a worktree to 185 GB, and its test binaries with
   full debuginfo are about 50 GB of that. Every host hit its disk floor on
