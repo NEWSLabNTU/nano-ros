@@ -1,4 +1,4 @@
-//! Phase 88.10 — `log` crate interop.
+//! `log` crate interop.
 //!
 //! Two bridges, both gated behind the `log-compat` Cargo feature:
 //!
@@ -60,7 +60,7 @@ pub fn log_level_to_severity(level: log::Level) -> Severity {
 /// `Info` unless the application moves it), under the image's compile-time
 /// ceiling.
 ///
-/// The ONE answer every `log::Log` in the tree gives (issue 1949): the
+/// The ONE answer every `log::Log` in the tree gives: the
 /// bridge below, and each board's console sink. `log::set_max_level` is a
 /// process-wide CEILING, not a threshold, and every sink raises it to
 /// `Trace` so that a later [`Logger::set_default_level`] can reach records
@@ -131,12 +131,12 @@ impl LogSink for LogCrateSink {
 /// `log::Record::target` (the canonical `log` crate per-call-site
 /// name); falls back to [`DEFAULT_LOGGER`](crate::DEFAULT_LOGGER) when not registered.
 ///
-/// The fallback lends its THRESHOLD, never its NAME (issue 1613): a
+/// The fallback lends its THRESHOLD, never its NAME: a
 /// record whose target nobody interned is still filed under that target
 /// (`rustapp`, `my_crate::driver`), because the target is the only thing
 /// that says where the record came from. Before, every such record read
 /// `nros:`, which on a Zephyr Rust image was every `log::info!` the app
-/// made once issue 1324 moved those images onto this bridge.
+/// made once those images moved onto this bridge.
 pub struct LogCrateBridge;
 
 /// The name a bridged record is filed under: the interned logger's own

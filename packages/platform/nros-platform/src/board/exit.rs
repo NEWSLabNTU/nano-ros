@@ -1,4 +1,4 @@
-//! [`BoardExit`] — Phase 212.N.1.
+//! [`BoardExit`].
 //!
 //! Per-board termination contract. Mirrors the legacy
 //! `nros-board-common::board_init::BoardExit`.

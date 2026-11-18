@@ -15,10 +15,10 @@ pub use crate::config::*;
 
 /// Which node a parameter belongs to.
 ///
-/// phase-426 W1 — upstream's parameters belong to a NODE, not to a process:
+/// Upstream's parameters belong to a NODE, not to a process:
 /// `ros2 param list` enumerates per node and `/<node>/get_parameters` is a
-/// per-node service. An image composes several nodes onto one executor
-/// (RFC-0047), so a store with no node key makes `/talker`'s `rate` and
+/// per-node service. An image composes several nodes onto one executor,
+/// so a store with no node key makes `/talker`'s `rate` and
 /// `/listener`'s `rate` the same parameter.
 ///
 /// The key is the executor's node INDEX, not a name: `nros_node::NodeId` is
@@ -55,7 +55,7 @@ impl NodeKey {
 
 /// A per-node bool, bounded by the key's own range.
 ///
-/// phase-426 W1 — `allow_undeclared` is a NODE option upstream
+/// `allow_undeclared` is a NODE option upstream
 /// (`rclcpp::NodeOptions::allow_undeclared_parameters`, rclrs's
 /// `allow_undeclared`), so one node switching it on must not decide what a
 /// remote set may do to its sibling. [`NodeKey`] is a `u8`, so 256 bits covers
@@ -168,7 +168,7 @@ pub enum ParameterValue {
 }
 
 impl ParameterValue {
-    /// Issue 2070 — copy `src` into `self` in place.
+    /// Copy `src` into `self` in place.
     ///
     /// `*self = src.clone()` builds the clone on the stack first, and a
     /// `ParameterValue` is as large as its largest variant (~8 KiB at the
@@ -327,7 +327,7 @@ impl ParameterValue {
 
     /// Create a bool-array value from a slice.
     ///
-    /// phase-426 W4 — `None` when the slice is longer than [`MAX_ARRAY_LEN`],
+    /// `None` when the slice is longer than [`MAX_ARRAY_LEN`],
     /// the same fallible shape [`from_string`](Self::from_string) has for the
     /// same reason: the value lives in a `heapless::Vec` inside the server's
     /// fixed slot and there is no allocator to grow it.
@@ -359,7 +359,7 @@ impl ParameterValue {
         Some(Self::ByteArray(Vec::from_slice(values).ok()?))
     }
 
-    /// Issue 2104 -- set `self` to a string, IN PLACE: the `from_*`
+    /// Set `self` to a string, IN PLACE: the `from_*`
     /// constructors' in-place twins, for a caller filling a slot it already
     /// holds. `from_string(v)` returns an `Option<Self>`, and binding it puts
     /// one or two ~8 KiB values on the caller's stack; this writes into
@@ -442,14 +442,14 @@ impl FloatingPointRange {
     ///
     /// Upstream refuses to DECLARE with an ill-formed range
     /// (`DeclarationError::InvalidRange`); a negative step here would also go
-    /// on the wire as a huge `u64` in `DescribeParameters` (issue 1150).
+    /// on the wire as a huge `u64` in `DescribeParameters`.
     pub fn is_valid(&self) -> bool {
         self.min <= self.max && self.step >= 0.0 && !self.step.is_nan()
     }
 
     /// Check if a value is within this range.
     ///
-    /// Issue 1150: `step` is ENFORCED, mirroring rclrs `range.rs`. A value is
+    /// `step` is ENFORCED, mirroring rclrs `range.rs`. A value is
     /// in range iff `min <= v <= max` and, when `step != 0`, `v` lies on the
     /// lattice `min + k*step` within floating tolerance. Either endpoint is
     /// always accepted, exactly as upstream (the upper bound need not be on
@@ -517,7 +517,7 @@ impl IntegerRange {
 
     /// Check if a value is within this range.
     ///
-    /// Issue 1150: `step` is ENFORCED, mirroring rclrs `range.rs`: in range
+    /// `step` is ENFORCED, mirroring rclrs `range.rs`: in range
     /// iff `min <= v <= max` and, when `step != 0`, `(v - min)` is a multiple
     /// of `step`. The upper bound is always accepted even when off-lattice,
     /// exactly as upstream. Arithmetic is checked so an extreme `min` cannot
@@ -566,7 +566,7 @@ impl ParameterRange {
     /// THE range predicate. Every set — `ParameterServer::set`, the six
     /// service handlers, the typed API — and every declare-time default check
     /// reaches this one function, so an integer and a floating-point value
-    /// cannot be judged by two different rules (issue 1150 class).
+    /// cannot be judged by two different rules.
     ///
     /// A value whose type does not match the arm (a string against an
     /// integer range, a `NotSet`) is not the range's business and passes; the
@@ -590,7 +590,7 @@ pub struct ParameterDescriptor {
     pub param_type: ParameterType,
     /// Human-readable description.
     ///
-    /// phase-446 F2 -- its own capacity, `NROS_MAX_PARAM_DESCRIPTION_LEN`. It
+    /// Its own capacity, `NROS_MAX_PARAM_DESCRIPTION_LEN`. It
     /// used to share `MAX_STRING_VALUE_LEN`, which the contract derives to 0
     /// for an image with no string parameter, so such an image could carry no
     /// description at all. Write it with [`Self::set_description`], which
@@ -599,7 +599,7 @@ pub struct ParameterDescriptor {
     /// Free-text extra constraints — `rcl_interfaces/msg/ParameterDescriptor`'s
     /// `additional_constraints`, which `ros2 param describe` prints.
     ///
-    /// phase-417 W4.a — its own capacity, `NROS_MAX_PARAM_CONSTRAINTS_LEN`,
+    /// Its own capacity, `NROS_MAX_PARAM_CONSTRAINTS_LEN`,
     /// **default 0**. Sharing the description's knob was the first shape and
     /// the derived service buffer measured it wrong: the describe reply's
     /// bound is a worst case over CAPACITY, not over use, so every image would
@@ -626,7 +626,7 @@ pub struct ParameterDescriptor {
     description_truncated: bool,
 }
 
-/// phase-446 F2 -- store as much of `text` as `dst` holds, cut at a UTF-8
+/// Store as much of `text` as `dst` holds, cut at a UTF-8
 /// character boundary. Returns whether anything was cut.
 ///
 /// `heapless::String::push_str` is all-or-nothing, so the old
@@ -670,7 +670,7 @@ impl ParameterDescriptor {
         self
     }
 
-    /// phase-446 F2 -- set the description, truncating at a character
+    /// Set the description, truncating at a character
     /// boundary when it is longer than `NROS_MAX_PARAM_DESCRIPTION_LEN`.
     /// Returns whether it was truncated; the descriptor also remembers it, so
     /// the executor can report it once the parameter is declared.
@@ -689,7 +689,7 @@ impl ParameterDescriptor {
         self.description_truncated
     }
 
-    /// phase-417 W4.a — rclc's `additional_constraints`, the fourth argument of
+    /// rclc's `additional_constraints`, the fourth argument of
     /// `rclc_add_parameter_description`. Truncated and recorded like the
     /// description; returns whether anything was cut.
     pub fn set_additional_constraints(&mut self, text: &str) -> bool {
@@ -801,7 +801,7 @@ impl Parameter {
 
 /// Result of setting a parameter
 ///
-/// DEPRECATED (phase-515): the store answers `Result<(), ParameterError>`,
+/// DEPRECATED: the store answers `Result<(), ParameterError>`,
 /// rclrs's one spelling -- `Success` is `Ok(())` and each other verdict is the
 /// [`ParameterError`](crate::ParameterError) variant of the same name. Kept one
 /// release so out-of-tree code naming it keeps compiling.
@@ -853,7 +853,7 @@ impl SetParameterResult {
     }
 }
 
-/// A value does not fit the compile-time parameter capacity (issue 0323).
+/// A value does not fit the compile-time parameter capacity.
 ///
 /// Returned by [`ParameterVariant::try_to_parameter_value`]. A named type
 /// rather than `()` so the failure reads at the call site and clippy's

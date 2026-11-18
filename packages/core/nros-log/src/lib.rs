@@ -1,7 +1,4 @@
-//! Phase 88 — portable leveled-logging facade for nano-ros.
-//!
-//! See [`docs/roadmap/archived/phase-88-nros-log.md`](../../../docs/roadmap/archived/phase-88-nros-log.md)
-//! for the design and acceptance criteria.
+//! Portable leveled-logging facade for nano-ros.
 //!
 //! ## Layering
 //!
@@ -142,8 +139,8 @@ impl Severity {
     /// `rcutils_logging_set_logger_level` takes. Those are all rcutils's
     /// `DEBUG=10 / INFO=20 / WARN=30 / ERROR=40 / FATAL=50`.
     ///
-    /// THE ONE SPELLING of that mapping (issue 1025's class: one number, two
-    /// derivations, agreeing until the day they do not). `nros-c`'s
+    /// THE ONE SPELLING of that mapping (one number with two derivations
+    /// agrees until the day it does not). `nros-c`'s
     /// `rcl_log_severity_t::from_facade` is built on this, and a test there
     /// pins the result against the values `<rclc/log.h>` declares — which is
     /// the strongest join available, since this crate cannot see that header.
@@ -183,7 +180,7 @@ pub const fn severity_from_u8(value: u8) -> Option<Severity> {
 /// Compile-time ceiling check used by the `nros_*!` macros.
 ///
 /// Returns `true` iff `severity` is at or above the image's
-/// `NROS_LOG_MAX_LEVEL` (issue 1037; builtin `trace`, so everything). A
+/// `NROS_LOG_MAX_LEVEL` (builtin `trace`, so everything). A
 /// `const fn` over a build-script constant, so a macro call below the ceiling
 /// folds to `if false { .. }` and its formatting is dead code — the elimination
 /// the old `max-level-*` features gave, without a feature.
@@ -224,8 +221,7 @@ pub struct Record<'a> {
 /// Backend a log record is delivered to.
 ///
 /// Implementations must be `Sync` so the dispatcher can hold them
-/// in `&'static [&dyn LogSink]`. ISR-safety is per-impl — see the
-/// table in `docs/roadmap/archived/phase-88-nros-log.md`.
+/// in `&'static [&dyn LogSink]`. ISR-safety is per-impl.
 pub trait LogSink: Sync {
     /// Render `record`. Called only when the record's severity passes
     /// both the compile-time ceiling AND the [`Logger`]'s runtime
@@ -308,7 +304,7 @@ impl Logger {
     /// [`Logger::default_level`], which is [`Severity::Info`] until something
     /// moves it.
     ///
-    /// phase-467: this stored `Severity::Info` outright until the process
+    /// This once stored `Severity::Info` outright until the process
     /// default existed, and "the author wrote `new`" then looked exactly like
     /// "the author wrote `with_level(.., Info)`". They are different
     /// statements — one is a choice and the other is the absence of one — and
@@ -342,7 +338,7 @@ impl Logger {
     }
 
     /// The threshold this logger actually filters on — its own level if it has
-    /// one, otherwise its nearest ancestor's (RFC-0102 D2), otherwise
+    /// one, otherwise its nearest ancestor's, otherwise
     /// [`Logger::default_level`].
     ///
     /// This is `rcutils_logging_get_logger_effective_level`'s answer, not
@@ -357,7 +353,7 @@ impl Logger {
     }
 
     /// The nearest ancestor this logger resolves an unset level through, if
-    /// any (RFC-0102 D2). `None` for a root, and for every logger not yet
+    /// any. `None` for a root, and for every logger not yet
     /// published to the intern table.
     #[must_use]
     pub fn parent(&self) -> Option<&'static Logger> {
@@ -371,7 +367,7 @@ impl Logger {
         }
     }
 
-    /// Whether a node's accessor resolved this logger (RFC-0102 D4).
+    /// Whether a node's accessor resolved this logger.
     #[must_use]
     pub fn is_node_logger(&self) -> bool {
         self.node.load(Ordering::Relaxed)
@@ -413,7 +409,7 @@ impl Logger {
     ///
     /// `rcutils_logging_set_logger_level(name, RCUTILS_LOG_SEVERITY_UNSET)`'s
     /// effect, and what `rclc_logger_set_level(logger, RCLC_LOG_SEVERITY_UNSET)`
-    /// reaches. phase-467.
+    /// reaches.
     ///
     /// rclrs spells this `logger.set_level(LogSeverity::Unset)`. Here it is a verb,
     /// because [`Severity`] has no `Unset`: its values are the sink ABI.
@@ -456,11 +452,11 @@ impl Logger {
     /// logger AT RUNTIME.
     ///
     /// THE HOT PATH of every log macro, on every target, so the shape here is
-    /// measured rather than chosen (phase-467; the figures below are for the
-    /// two-level own-or-default form that preceded RFC-0102's ancestor walk). Resolving the unset level
-    /// SELECTS the byte to compare against and compares once, instead of
-    /// comparing twice and short-circuiting: measured at an inlined call site
-    /// with `rustc -O`, the select form is 13 instructions on
+    /// measured rather than chosen (the figures below are for the two-level
+    /// own-or-default form that preceded the ancestor walk). Resolving the
+    /// unset level SELECTS the byte to compare against and compares once,
+    /// instead of comparing twice and short-circuiting: measured at an inlined
+    /// call site with `rustc -O`, the select form is 13 instructions on
     /// `thumbv7m-none-eabi` and **branch-free** (LLVM predicates the whole
     /// fallback into one `ittt eq` block) against 16 with a branch for the
     /// short-circuit form, and 10 against 12 on `x86_64`. The cost over the
@@ -474,14 +470,14 @@ impl Logger {
     /// only ever suppress a record, never emit one at the most verbose level —
     /// which is the failure `0` had.
     ///
-    /// RFC-0102 D2 changed the unset arm: it now walks the parent chain before
-    /// the process default. A logger WITH its own level still costs one load
-    /// and one compare; an unset root pays one extra pointer load; each
+    /// The ancestor walk changed the unset arm: it now walks the parent chain
+    /// before the process default. A logger WITH its own level still costs one
+    /// load and one compare; an unset root pays one extra pointer load; each
     /// ancestor without a level of its own costs one more. No string work, on
     /// any arm.
     #[must_use]
     ///
-    /// The image's compile-time CEILING (`NROS_LOG_MAX_LEVEL`, issue 1037) is
+    /// The image's compile-time CEILING (`NROS_LOG_MAX_LEVEL`) is
     /// applied here too, first: a runtime level below it is unreachable. That
     /// is what brings the C and C++ surfaces under the same bound — their
     /// macros format on the C side and reach the facade through this check
@@ -495,7 +491,7 @@ impl Logger {
     /// Whether a record at `severity` would be emitted, given both this
     /// logger's runtime threshold AND a per-call-site throttle window.
     ///
-    /// phase-417 W4.d. The order is load-bearing and is the same order
+    /// The order is load-bearing and is the same order
     /// `rclcpp` uses: the SEVERITY test runs first, so a record the level
     /// already filters does not consume the throttle window. Reversing them
     /// makes a raised-then-lowered log level lose its first record for a whole
@@ -710,17 +706,16 @@ pub fn get_logger(name: &str) -> &'static Logger {
 
 /// Look up a logger by name, CREATING one if the name is new.
 ///
-/// phase-417 W4.d. This is the shape `rclcpp::get_logger` / `rcutils`' logger
+/// This is the shape `rclcpp::get_logger` / `rcutils`' logger
 /// lookup have, and the one a wrapper needs: [`get_logger`] answers
 /// [`DEFAULT_LOGGER`] for an unregistered name, so a C or C++ caller doing
 /// `set_level(get_logger("nav"), Debug)` over the lookup-only form would have
 /// moved the threshold of the catch-all logger that EVERY other unregistered
-/// name also resolves to. Same call, same types, different effect — precisely
-/// the compile-and-differ RFC-0089 forbids.
+/// name also resolves to. Same call, same types, different effect.
 ///
 /// Storage is the bounded static arena in [`pool`], sized by the
-/// `NROS_LOG_DYNAMIC_LOGGERS` knob (RFC-0102 D5: env > board > 16). Returns `None` — never a logger under the
-/// wrong name — when:
+/// `NROS_LOG_DYNAMIC_LOGGERS` knob (env > board > 16). Returns `None` — never a
+/// logger under the wrong name — when:
 ///
 /// * `name` is empty or longer than [`MAX_LOGGER_NAME_LEN`],
 /// * the name arena or the logger arena is full,
@@ -746,12 +741,12 @@ pub fn get_or_create_logger(name: &str) -> Option<&'static Logger> {
     publish(placed)
 }
 
-/// Why [`Logger::create_child`] made no child — RFC-0102 D1.
+/// Why [`Logger::create_child`] made no child.
 ///
 /// rclrs's `create_child` is fallible too (`Result<Logger, RclrsError>`), so a
 /// Rust caller chooses its own fallback (`parent.create_child("x").unwrap_or(parent)`).
 /// The C and C++ surfaces, whose upstream shapes cannot report failure, fall
-/// back to the parent automatically (RFC-0102 D3).
+/// back to the parent automatically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChildError {
     /// The child's full name is longer than [`MAX_LOGGER_NAME_LEN`] bytes.
@@ -787,14 +782,14 @@ impl core::fmt::Display for ChildError {
 
 impl Logger {
     /// A logger that is a descendant of this one — rclrs's `create_child`,
-    /// rclcpp's `get_child` (RFC-0102 D1).
+    /// rclcpp's `get_child`.
     ///
     /// Named `"{self}.{child_name}"`, except that the catch-all
     /// ([`DEFAULT_LOGGER`]) has top-level children: its child is named
     /// `child_name`, as rclrs does for its empty-named default logger.
     ///
     /// A child with no level of its own filters at its nearest ancestor's
-    /// (rcutils's rule, RFC-0102 D2), so `parent.set_level(Debug)` reaches it.
+    /// (rcutils's rule), so `parent.set_level(Debug)` reaches it.
     /// Idempotent: the same name returns the same logger, so a call inside a
     /// log statement costs one intern-table lookup.
     ///
@@ -858,7 +853,7 @@ pub(crate) fn find_published(name: &str) -> Option<&'static Logger> {
 /// [`resolve_logger`] for a NODE's own logger, marking it as one — the one
 /// spelling the node-shaped accessors use (`Node::logger`,
 /// `rclc_node_get_logger`, the C++ node's), so the `/rosout` sink can publish
-/// what upstream publishes (RFC-0102 D4). The catch-all is never marked: a node
+/// what upstream publishes. The catch-all is never marked: a node
 /// whose name fell back to it would otherwise publish every unnamed logger.
 #[must_use]
 pub fn resolve_node_logger(name: &str) -> &'static Logger {
@@ -872,7 +867,7 @@ pub fn resolve_node_logger(name: &str) -> &'static Logger {
 /// Resolve `name` to a logger — the TOTAL form of [`get_or_create_logger`],
 /// and the one spelling every node-shaped accessor uses.
 ///
-/// phase-427 W5. Four accessors answer "which logger is this node's?" —
+/// Four accessors answer "which logger is this node's?" —
 /// `nros_node::executor::Node::logger`, `rclc_node_get_logger`,
 /// `nros_cpp_node_get_logger` and `rclc_log_get_logger`. All four had the same
 /// job and, before this, three of them called [`get_logger`], which is a
@@ -1112,7 +1107,7 @@ fn deliver_to_added(record: &Record<'_>) -> usize {
 /// `false` means every `Record::timestamp_ns` is `0` and anything DERIVED from
 /// the timestamp — the throttle windows above all of them — has no time base:
 /// a throttled site then emits its FIRST record and nothing after it (a clock
-/// that never moves is a window that never elapses — issue 1152). Exposed so a
+/// that never moves is a window that never elapses). Exposed so a
 /// wrapper can say so out loud instead of degrading quietly: without this, a
 /// throttled C call site looks identical whether it is rate-limiting or
 /// permanently shut.
@@ -1121,11 +1116,11 @@ pub const fn timestamp_available() -> bool {
     cfg!(nros_log_clock)
 }
 
-/// Current monotonic time for `Record::timestamp_ns` (issue #503).
+/// Current monotonic time for `Record::timestamp_ns`.
 ///
 /// With the platform clock (`cfg(nros_log_clock)`: the lane's platform
 /// declares `[capabilities] clock = true`, or the `platform-clock` feature
-/// pulled a port in — issue 1037, see `build.rs`) this reads
+/// pulled a port in — see `build.rs`) this reads
 /// `nros_platform_clock_ns` — the universal per-platform export the
 /// executor's timer accounting already links. Without it it returns `0`
 /// ("unavailable") and imposes no link-time requirement.
@@ -1191,7 +1186,7 @@ fn has_destination() -> bool {
 
 /// Whether any sink is installed ([`init`] or [`add_sink`]).
 ///
-/// Issue 2492 — for a boot hook that installs a DEFAULT only when nobody chose
+/// For a boot hook that installs a DEFAULT only when nobody chose
 /// one: a record raised with no sink is held in the early ring and reaches no
 /// console until something installs a sink, so a hosted image that never
 /// called a board funnel lost every framework diagnostic.

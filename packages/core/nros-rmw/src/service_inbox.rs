@@ -1,14 +1,14 @@
-//! phase-461 W2 -- the caller-owned service inbox, stated once and
+//! The caller-owned service inbox, stated once and
 //! RMW-agnostically.
 //!
 //! A service server is a queryable, and every queryable needs somewhere for a
 //! request to land between the transport's read task (the producer) and the
-//! executor's spin (the consumer). Until phase-461 the backend owned that ring
+//! executor's spin (the consumer). The backend used to own that ring
 //! and every family paid the same geometry: on the safety island 26 queryables
 //! x 4 slots x 1,024 B = 115,128 B, 24 of them parameter services whose worst
-//! well-formed request is 669 B and whose clients are sequential (issue 1352).
+//! well-formed request is 669 B and whose clients are sequential.
 //!
-//! W1 made the zenoh ring a HEADER over storage its owner supplies. This
+//! The zenoh ring is now a HEADER over storage its owner supplies. This
 //! module is the other half of that seam: the description a caller hands the
 //! backend, in the one crate both the runtime (`nros-node`) and every backend
 //! already depend on. Two types:
@@ -22,7 +22,7 @@
 //! **Which backends accept one.** [`Session::SUPPORTS_CALLER_INBOX`] is a
 //! const, so the caller picks at compile time and a family that cannot bring
 //! its own ring says so in a `const` rather than falling back silently
-//! (RFC-0052: no dropped knob). Every backend in tree answers `false` today
+//! (no dropped knob). Every backend in tree answers `false` today
 //! and the reason is per backend, stated at each one: Cyclone holds requests
 //! in reader history, XRCE in a C `req_ring`, and `nros-rmw-cffi` FORWARDS
 //! over a C vtable that has no slot to carry a ring through. zenoh's own ring
@@ -81,8 +81,8 @@ impl Default for InboxEntry {
 /// Declared as a `static` by the family that knows its own bound -- for the
 /// ROS parameter services that is `nros-node`, the only crate that can see
 /// both the contract's declared parameters and the store's capacities
-/// (phase-446 F3's `param_service_bound`). It is `static` and not heap for
-/// the reason phase-391 keeps every payload buffer static: the Zephyr heap
+/// (`param_service_bound`). It is `static` and not heap for the reason
+/// every payload buffer is static: the Zephyr heap
 /// gate prices `arena + 24576` and a new term in it is a new way for an image
 /// to stop linking.
 ///

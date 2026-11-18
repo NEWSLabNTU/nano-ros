@@ -1,15 +1,15 @@
-//! Phase 380 W1 — a message's serialized size, computed instead of guessed.
+//! A message's serialized size, computed instead of guessed.
 //!
 //! `NROS_SUBSCRIPTION_BUFFER_SIZE` defaults to 1024 bytes and is a GUESS.
 //! Nothing checks it against the messages an image actually subscribes to, so a
 //! sample that does not fit is dropped AFTER the transport ACKed it, and
 //! `report_dropped_take` can only say "raise the knob" because the runtime does
 //! not know what value would have worked. On a target that knob is static RAM
-//! nobody can spare. Issue 0776 is the gap; this module is the calculator.
+//! nobody can spare. This module is the calculator.
 //!
 //! # Why this is not a vtable slot
 //!
-//! Settled in phase-376 W4: nothing about a size bound varies by backend, and
+//! Nothing about a size bound varies by backend, and
 //! upstream proves it by not varying at all — both `librmw_cyclonedds_cpp.so`
 //! and `librmw_fastrtps_cpp.so` answer `rmw_get_serialized_message_size` with
 //! `RMW_RET_UNSUPPORTED`, and nothing in a Humble install calls it. Upstream can
@@ -54,7 +54,7 @@ pub struct SizeBound {
     /// No variable-length member anywhere, so the WIRE length is fixed: `bytes`
     /// is EXACT rather than an upper bound.
     ///
-    /// **Nothing dispatches on this, by decision** (issues 1369 and 1422). It is
+    /// **Nothing dispatches on this, by decision**. It is
     /// the walk's exactness property, asserted as such by
     /// `plain_struct_bound_is_exact` here and by
     /// `bound_holds_against_the_writer_for_every_generated_type` over the whole
@@ -62,19 +62,18 @@ pub struct SizeBound {
     /// [`crate::schema::Message::IS_PLAIN`] / [`is_loan_eligible`] so there is
     /// ONE definition of "fixed layout" for whoever finally needs one.
     ///
-    /// The earlier text here said phase-380 W5 "wires this to
+    /// The earlier text here said this "wires to
     /// `borrow_loaned_message` / `subscription_supports_in_place`". It does not:
-    /// W5 shipped the definition and left the wiring to whoever owns those slots
-    /// (`docs/roadmap/archived/phase-380-serialized-size-bound.md:228-232`), and
-    /// **issue 0814 step 5 is where the wiring now waits** — deliberately, since
-    /// 0814 measures the loan surface as a cost on three of four backends and
+    /// the definition shipped and the wiring was left to whoever owns those
+    /// slots, and **the wiring waits** — deliberately, since the loan surface
+    /// measures as a cost on three of four backends and
     /// the natural consumer of this predicate is Cyclone-with-iceoryx, which no
     /// target we ship can reach. Do not gate the in-place path on it: that path
     /// hands the callback raw CDR to deserialize, which needs no fixed layout, so
     /// the flag would only take it away from every type with a `String`.
     ///
     /// It is NOT "POD-blit eligible", and a second flag under that name in the
-    /// codegen IR was deleted by issue 1422 for disagreeing with this one on
+    /// codegen IR was deleted for disagreeing with this one on
     /// `bool`, on nested all-`float64` structs and on mixed alignment. Nor does
     /// it make the bound version-INDEPENDENT: XCDR2's DHEADER is fixed-width, so
     /// a plain type stays plain while its bound still differs per encoding
@@ -301,7 +300,7 @@ impl core::fmt::Display for UnboundedField {
 ///
 /// [`first_unbounded`] answers "which member costs the bound" one member at a
 /// time, and that is the wrong shape for the caller that actually asks.
-/// phase-403 W0 made an unbounded type a BUILD ERROR, and a stock ROS type is
+/// An unbounded type is a BUILD ERROR, and a stock ROS type is
 /// routinely unbounded in several places at once — `nav_msgs/Odometry` has
 /// `header.frame_id` and `child_frame_id`, and `sensor_msgs/PointCloud2` has
 /// four. Naming only the first turns "bound your types" into cap, rebuild,
@@ -310,7 +309,7 @@ impl core::fmt::Display for UnboundedField {
 ///
 /// THE walk. [`first_unbounded`] is expressed on top of this rather than beside
 /// it: two walks of one schema is the shape the sizes-header mirror defect keeps
-/// taking (issues 0088 -> 0268), and "the first thing this reports" is exactly
+/// taking, and "the first thing this reports" is exactly
 /// what "the first unbounded member" means, so there is nothing left for a
 /// second implementation to say.
 ///
@@ -409,14 +408,14 @@ pub fn visit_unbounded(
 /// the same schema by the same rules, so a type that has a bound has no
 /// offender to name and vice versa. That agreement is asserted by test, not
 /// assumed: two walks of one schema is the shape the sizes-header mirror defect
-/// keeps taking (issues 0088 -> 0268), so the second one exists only because it
+/// keeps taking, so the second one exists only because it
 /// answers a question the first cannot (WHICH member) and must be checked
 /// against it.
 ///
 /// The walk is [`visit_unbounded`]; this is its "stop at the first one" caller.
 /// Reach for [`visit_unbounded`] when the diagnostic should name every member a
 /// user has to fix, which is what codegen wants now that an unbounded type is a
-/// build error (phase-403 W0).
+/// build error.
 ///
 /// Not `const`: it recurses through `&'static NestedType`, and the array
 /// bookkeeping is not worth expressing in a const walk when every caller is a
@@ -435,7 +434,7 @@ pub fn first_unbounded(fields: &'static [Field]) -> Option<UnboundedField> {
 ///
 /// `None` when the type is unbounded — the honest answer, and the one that keeps
 /// a caller from sizing a buffer off a floor. Reach for `serialized_size(&self)`
-/// (phase-380 W3) when an unbounded type still needs a number for THIS message.
+/// when an unbounded type still needs a number for THIS message.
 pub const fn max_serialized_size(
     fields: &'static [Field],
     version: EncodingVersion,
@@ -451,7 +450,7 @@ pub const fn max_serialized_size(
     }
 }
 
-/// Phase 380 W3 — the EXACT serialized size of THIS message.
+/// The EXACT serialized size of THIS message.
 ///
 /// Two questions get asked about size and they are not the same one:
 ///
@@ -483,7 +482,7 @@ pub fn serialized_size<T: crate::traits::Serialize>(
     Ok(ENCAPSULATION_HEADER_BYTES + w.position())
 }
 
-/// Phase 380 W4 — does a receive buffer of `rx_buf` bytes fit every message of
+/// Does a receive buffer of `rx_buf` bytes fit every message of
 /// this type?
 ///
 /// `true` when the type is bounded and the bound fits. **`false` when the type
@@ -521,7 +520,7 @@ pub const fn buffer_fits<M: crate::schema::Message>(
     }
 }
 
-/// Phase 392 W3a — the type's own receive-buffer bound, or `None` when it has
+/// The type's own receive-buffer bound, or `None` when it has
 /// none.
 ///
 /// The VALUE behind [`bound_fits`]'s predicate. A subscription that knows its
@@ -535,8 +534,8 @@ pub const fn buffer_fits<M: crate::schema::Message>(
 /// does: the peer picks the encoding at runtime, so sizing from XCDR1 alone is
 /// a trap.
 ///
-/// `None` means "no bound EXISTS", never "unknown" — phase 380 is explicit that
-/// a buffer must not be sized from a fallback. A caller routing by size class
+/// `None` means "no bound EXISTS", never "unknown" — a buffer must not be
+/// sized from a fallback. A caller routing by size class
 /// must treat `None` as "keep the default", not as "assume small".
 pub const fn max_serialized_bound<M: crate::schema::Message>() -> Option<usize> {
     match (M::MAX_SERIALIZED_SIZE_XCDR1, M::MAX_SERIALIZED_SIZE_XCDR2) {
@@ -547,7 +546,7 @@ pub const fn max_serialized_bound<M: crate::schema::Message>() -> Option<usize> 
     }
 }
 
-/// Phase 380 W4 — the BUILD-ASSERTION predicate: `false` only when the type is
+/// The BUILD-ASSERTION predicate: `false` only when the type is
 /// provably too large for `rx_buf`.
 ///
 /// Distinct from [`buffer_fits`], and the difference is the whole reason both
@@ -580,7 +579,7 @@ pub const fn bound_fits<M: crate::schema::Message>(rx_buf: usize) -> bool {
     rx_buf >= largest
 }
 
-/// Phase 380 W5 — is this type loan-eligible?
+/// Is this type loan-eligible?
 ///
 /// A loan hands out a pointer into the transport's own memory, which is sound
 /// only when the layout is fixed: no length prefix to chase, no variable
@@ -591,15 +590,15 @@ pub const fn bound_fits<M: crate::schema::Message>(rx_buf: usize) -> bool {
 /// of.
 ///
 /// **It has no non-test caller, and that is the decision rather than an
-/// oversight** (issue 1422; the same finding as issue 1369). Its natural
-/// consumer is a TYPED loan, and issue 0814 recommends not building one now:
+/// oversight**. Its natural consumer is a TYPED loan, and the recommendation
+/// is not to build one now:
 /// the byte-span loan surface it would sit beside is measured as strictly worse
 /// than `publish_raw` on three of four backends, and the one place `IS_PLAIN`
 /// matches a real gate is Cyclone's own `fixed_size` check, which loans only
 /// under iceoryx. **0814 step 5 is the consumer**, if and when it exists. The
 /// function is kept — not inlined into that future caller — because its whole
 /// job is to be the one place the predicate is spelled; two spellings is the
-/// defect issue 1422 deleted from the codegen IR.
+/// defect already deleted from the codegen IR.
 pub const fn is_loan_eligible<M: crate::schema::Message>() -> bool {
     M::IS_PLAIN
 }

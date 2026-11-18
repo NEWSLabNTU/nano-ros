@@ -1,4 +1,4 @@
-//! [`BoardEntry`] — Phase 212.N.1.
+//! [`BoardEntry`].
 //!
 //! The single boot-driver trait every Entry pkg `main.rs` invokes:
 //!
@@ -16,9 +16,9 @@
 //! 2. device bring-up — link layer to L2, then the carrier / DHCP gate if the
 //!    board has an IP stack. This is the `run` BODY's job, usually delegated to
 //!    a family helper (`nros_board_freertos::run_entry`, …). There is no mixin
-//!    trait for it: phase-206 W4 / issue 1067 removed ~~`TransportBringup`~~ and
-//!    ~~`NetworkWait`~~, which had zero and zero production callers respectively,
-//!    and whose "skipped if not implemented" order was not expressible in Rust.
+//!    trait for it: ~~`TransportBringup`~~ and ~~`NetworkWait`~~ were removed;
+//!    they had zero and zero production callers respectively, and their
+//!    "skipped if not implemented" order was not expressible in Rust.
 //! 4. Open executor, build `RuntimeCtx`, invoke `setup(runtime)`.
 //! 5. Spin executor to completion (or termination signal).
 //! 6. [`super::BoardExit::exit_success`] / `exit_failure`.
@@ -51,7 +51,7 @@ pub struct DeployOverlay {
     /// `locator = "tcp/10.0.2.2:7451"` — the zenoh/RMW endpoint the firmware
     /// dials. `None` → keep the board default.
     pub locator: Option<&'static str>,
-    /// The image's resolved network (RFC-0103 D10f, phase-497 W2): the
+    /// The image's resolved network: the
     /// `NROS_IMAGE_NET` text `nros sync` rendered from `[image.<id>.net.<if>]`,
     /// `[network.<name>]` and the board's `[board.net]`, baked verbatim.
     /// `None` → the image states no interface; keep the board default. Decoded
@@ -65,12 +65,12 @@ pub struct DeployOverlay {
     pub net: Option<&'static str>,
     /// `domain_id = 0` — ROS 2 domain. `None` → keep the board default.
     pub domain_id: Option<u32>,
-    /// `[image.<id>] transport = "serial"` — the LINK kind the image rides
-    /// (RFC-0086 D2). `None` → the board's default link. Read by
-    /// [`BoardEntry::setup_transport`] (phase-244.D1), which may install a
+    /// `[image.<id>] transport = "serial"` — the LINK kind the image rides.
+    /// `None` → the board's default link. Read by
+    /// [`BoardEntry::setup_transport`], which may install a
     /// board custom transport for it BEFORE the linked RMW registers.
     ///
-    /// Typed, not a string (issue 1601): phase-445 W6 moved the leaf key from
+    /// Typed, not a string: the leaf key once moved from
     /// the RMW name (`"xrce"`) to the link kind (`"serial"`), and the one
     /// board reading it kept comparing against `"xrce"` — a comparison that
     /// could no longer be true and compiled anyway. A [`LinkKind`] cannot be
@@ -82,7 +82,7 @@ pub struct DeployOverlay {
     ///
     /// The BACKEND choice, which [`transport`](Self::transport) is not: an
     /// XRCE image over a UART states both, and a board that registers a
-    /// backend keys on this field (issue 1601).
+    /// backend keys on this field.
     pub rmw: Option<&'static str>,
     /// The ROS graph node name for the primary session, baked from the launch
     /// file's single `<node name=…>` / `system.toml` `[[component]].name` (issue
@@ -93,7 +93,7 @@ pub struct DeployOverlay {
     /// boot `ExecutorConfig` by the board, so unlike `locator` this IS honored on
     /// hosted boards (locator stays env-driven; node name is a launch identity).
     pub node_name: Option<&'static str>,
-    /// Issue #101 / RFC-0045 — the patchable baked boot-config static
+    /// The patchable baked boot-config static
     /// (`.nros_boot_config`), emitted by `nros::main!` for embedded targets and
     /// read by the board to resolve node_name/locator/domain. `None` on hosted /
     /// when the macro emits no static.
@@ -102,19 +102,19 @@ pub struct DeployOverlay {
 
 impl DeployOverlay {
     /// Does the image declare RMW `rmw` riding link `link`? Both halves are
-    /// required: the backend is `rmw`, the link is its locator's (RFC-0109
-    /// D6), and neither stands in for the other (issue 1601).
+    /// required: the backend is `rmw`, the link is its locator's, and neither
+    /// stands in for the other.
     pub fn selects(&self, rmw: &str, link: LinkKind) -> bool {
         self.rmw == Some(rmw) && self.transport == Some(link)
     }
 }
 
-/// The link kind an image rides — its locator's scheme (RFC-0109 D6).
+/// The link kind an image rides — its locator's scheme.
 ///
 /// The same words as `nros_orchestration_ir::leaf_system::TRANSPORT_KINDS`,
 /// which `nros::main!` maps onto these variants: a word the macro maps to a
 /// variant missing here fails the image's compile. It names a LINK, never an
-/// RMW — `"xrce"` is not one (issue 1601).
+/// RMW — `"xrce"` is not one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkKind {
     /// A byte-stream link (UART, USB-CDC, …).

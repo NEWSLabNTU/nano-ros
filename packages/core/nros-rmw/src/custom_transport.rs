@@ -1,4 +1,4 @@
-//! Phase 115.A — runtime-pluggable custom transport vtable.
+//! Runtime-pluggable custom transport vtable.
 //!
 //! Defines the platform-side hook that lets users plug a custom
 //! transport (USB-CDC, BLE, RS-485, semihosting bridge, ring-buffer
@@ -28,9 +28,6 @@
 //!    be an extra layer that has to be type-erased into fn pointers
 //!    anyway.
 //!
-//! See `docs/roadmap/phase-115-runtime-transport-vtable.md` § A.1
-//! for the full discussion.
-//!
 //! ## Threading contract (v1)
 //!
 //! - `read` and `write` may NOT be called concurrently from
@@ -49,7 +46,7 @@ use core::ffi::c_void;
 
 use crate::sync::Mutex;
 
-/// Phase 115.A.2 — current ABI version of [`NrosTransportOps`].
+/// Current ABI version of [`NrosTransportOps`].
 ///
 /// Embedded as the first field of the struct (see § *Versioning*
 /// below). Consumers fill in this exact value before passing the
@@ -68,7 +65,7 @@ use crate::sync::Mutex;
 ///   the inaugural version.
 pub const NROS_TRANSPORT_OPS_ABI_VERSION_V1: u32 = 1;
 
-/// Phase 115.A — runtime-pluggable custom transport. Caller fills in
+/// Runtime-pluggable custom transport. Caller fills in
 /// the four fn pointers, hands the struct to [`set_custom_transport`],
 /// and the active backend treats it as the read / write surface for
 /// every wire frame.
@@ -97,14 +94,14 @@ pub const NROS_TRANSPORT_OPS_ABI_VERSION_V1: u32 = 1;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct NrosTransportOps {
-    /// Phase 115.A.2 — ABI version. Consumers MUST fill in
+    /// ABI version. Consumers MUST fill in
     /// [`NROS_TRANSPORT_OPS_ABI_VERSION_V1`]; mismatched values are
     /// rejected at registration time with
     /// `TransportError::IncompatibleAbi` (`NROS_RMW_RET_INCOMPATIBLE_ABI`
     /// at the C boundary). Reserved for future minor-version
     /// detection — see the const's doc-comment.
     pub abi_version: u32,
-    /// Phase 115.A.2 — reserved padding to keep the struct
+    /// Reserved padding to keep the struct
     /// alignment-stable across appends. Must be zero.
     pub _reserved: u32,
     /// Opaque caller context, threaded back into every callback as
@@ -154,15 +151,15 @@ unsafe impl Sync for NrosTransportOps {}
 /// (documented as "register early, register once").
 static SLOT: Mutex<Option<NrosTransportOps>> = Mutex::new(None);
 
-/// Phase 115.A — register a custom transport vtable. Must be called
+/// Register a custom transport vtable. Must be called
 /// **before** the first `Rmw::open` (or
 /// `rclc_support_init` from the C surface). v1 leaves enforcement of
 /// "before init" to backend code, and NO backend enforces it: a call
 /// after `Rmw::open` is implementation-defined, which is also what the
 /// C entry point `rclc_set_custom_transport` documents. This line
 /// used to say backends "reject re-registration with
-/// ALREADY_INIT" — `rmw_ret.h` defines no such code
-/// (issue 1126), so the sentence promised both a behaviour and a
+/// ALREADY_INIT" — `rmw_ret.h` defines no such code,
+/// so the sentence promised both a behaviour and a
 /// constant that do not exist.
 ///
 /// Pass `None` to clear a previously-registered vtable (e.g. for
@@ -189,7 +186,7 @@ pub unsafe fn set_custom_transport(
     Ok(())
 }
 
-/// Phase 115.A — peek at the currently-registered transport without
+/// Peek at the currently-registered transport without
 /// consuming it. Used by backends that need to re-attach on session
 /// reconnect, or by tests that want to verify a registration landed.
 /// Returns `None` if nothing was registered.
@@ -197,7 +194,7 @@ pub fn peek_custom_transport() -> Option<NrosTransportOps> {
     SLOT.with(|slot| *slot)
 }
 
-/// Phase 115.A — drain the registered transport. Returns the
+/// Drain the registered transport. Returns the
 /// previously-registered vtable (`None` if nothing was registered)
 /// and clears the slot. Backends call this from `Rmw::open` when
 /// `platform-custom` is the active platform; the vtable then lives

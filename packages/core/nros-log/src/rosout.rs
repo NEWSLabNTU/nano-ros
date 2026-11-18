@@ -23,13 +23,13 @@
 //! A [`crate::LogSink`] that calls into the RMW stack is re-entrant by
 //! construction: the transport logs, and a transport that logs while a log is
 //! being delivered re-enters `dispatch_to_sinks`. On Zephyr native_sim that is
-//! not a hang but a silent death — issue 0589's `zvfs_write` recursion
+//! not a hang but a silent death — a `zvfs_write` recursion
 //! exhausts the stack with no message.
 //!
 //! [`dispatch_to_sinks`](crate) already holds its dispatch guard across every
 //! `sink.log()` call, so the immediate recursion cannot happen: a record raised
 //! inside a sink is held and delivered after it, a bounded number of passes per
-//! dispatch (issue 2000). This module refuses the SECOND shape as well, which
+//! dispatch. This module refuses the SECOND shape as well, which
 //! that guard cannot see: the
 //! pump runs OUTSIDE dispatch, so a record raised by the publish path would be
 //! enqueued normally, published on the next pump, log again, and amplify
@@ -47,7 +47,7 @@
 //! [`ring_bytes`] of `.bss` plus 26 bytes of counters, and **nothing at all**
 //! in an image that does not enable the `rosout` feature — the module is
 //! `cfg`'d out whole. The cost moves with TWO knobs (`NROS_LOG_ROSOUT_RECORDS`,
-//! `NROS_LOG_BUFFER_SIZE` — feature families until issue 1037), so here it is
+//! `NROS_LOG_BUFFER_SIZE` — once feature families), so here it is
 //! MEASURED rather than described — one build per row, 2026-09-29:
 //!
 //! | `NROS_LOG_ROSOUT_RECORDS` | `NROS_LOG_BUFFER_SIZE` | per slot | ring |
@@ -82,8 +82,8 @@ use crate::{LogSink, Record, Severity, buffer::format_buffer_capacity};
 /// an operator reads the absence as "nothing happened".
 #[must_use]
 ///
-/// The `NROS_LOG_ROSOUT_RECORDS` knob (issue 1037; builtin 16, resolved by
-/// `build.rs` on the RFC-0049 ladder — it replaced the `rosout-records-<N>`
+/// The `NROS_LOG_ROSOUT_RECORDS` knob (builtin 16, resolved by `build.rs` on
+/// the env > board > builtin ladder — it replaced the `rosout-records-<N>`
 /// features).
 pub const fn rosout_depth() -> usize {
     crate::config::ROSOUT_RECORDS
@@ -174,7 +174,7 @@ impl LogSink for RosoutSink {
     }
 }
 
-/// Which loggers' records reach `/rosout` — RFC-0102 D4. Upstream differs by
+/// Which loggers' records reach `/rosout`. Upstream differs by
 /// ROS release here and nowhere else in logging, so `nros-node` sets it from
 /// its `ros-*` edition when it enables the queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,7 +198,7 @@ pub enum RosoutScope {
 
 static SCOPE: AtomicU8 = AtomicU8::new(RosoutScope::Everything as u8);
 
-/// Set which loggers' records the queue admits (RFC-0102 D4).
+/// Set which loggers' records the queue admits.
 pub fn set_scope(scope: RosoutScope) {
     SCOPE.store(scope as u8, Ordering::Relaxed);
 }

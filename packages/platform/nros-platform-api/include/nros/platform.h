@@ -9,7 +9,7 @@
  * @file platform.h
  * @brief Canonical C ABI for the nros platform abstraction.
  *
- * RFC-0042 D1 / phase-241 wave B — this is THE single canonical platform header,
+ * This is THE single canonical platform header,
  * owned by `nros-platform-api` (the lowest crate, no deps). `nros-c` and
  * `nros-platform-cffi` re-export it, so neither package's consumers need the
  * other's include dir (it breaks the historical nros-c↔cffi header tangle, and
@@ -45,17 +45,17 @@
  * built on `core::hint::spin_loop()` are.
  */
 
-/* ---- Platform capability defaults (RFC-0042 D2 / phase-241 B + C) ----
+/* ---- Platform capability defaults ----
  *
  * Platform-*constant* capabilities. The single source of truth for a board's
  * *variable* capabilities is its `nros-board.toml` `[board.capabilities]`, lowered
- * to `-DNROS_PLATFORM_HAS_MALLOC` (etc.) by the build (phase-241 C.2). These
+ * to `-DNROS_PLATFORM_HAS_MALLOC` (etc.) by the build. These
  * blocks supply only the per-platform constants, and never override a `-D` the
  * board already set (every `#define` is `#ifndef`-guarded).
  *
  *  - `NROS_PLATFORM_HAS_MALLOC` gates the canonical `malloc`/`free` shim below.
  *    Absent → a TU using the nros-cpp heap containers fails to *compile* (not
- *    link) — the issue-0038 guard.
+ *    link).
  *  - `NROS_PLATFORM_HAS_ATOMICS` is true on every supported target today.
  *
  * RTOS-config-derived capabilities are intentionally NOT defaulted here:
@@ -77,15 +77,14 @@
  * malloc/free unconditionally here.
  *
  * Bare-metal / ThreadX-RV64 / ESP / custom do NOT default a heap: they opt in
- * via the board.toml-derived `-DNROS_PLATFORM_HAS_MALLOC` (phase-241 C.2), so a
- * genuinely heap-less board still fails to compile a heap container (the #38
- * compile-gate). */
+ * via the board.toml-derived `-DNROS_PLATFORM_HAS_MALLOC`, so a
+ * genuinely heap-less board still fails to compile a heap container. */
 /* Every hosted/RTOS platform has a heap (POSIX, Zephyr, FreeRTOS, ThreadX-linux,
  * NuttX, and the default/unspecified case). This mirrors the retired nros-c
  * dispatch, where any non-bare-metal platform fell through to `posix.h`'s
  * unconditional malloc. Only bare-metal (incl. ThreadX-RV64 / ESP, which map to
  * `NROS_PLATFORM_BAREMETAL`) withholds the heap and opts in via the
- * board.toml-derived `-DNROS_PLATFORM_HAS_MALLOC` (phase-241 C.2 / the #38 gate). */
+ * board.toml-derived `-DNROS_PLATFORM_HAS_MALLOC`. */
 #if !defined(NROS_PLATFORM_BAREMETAL)
 #  ifndef NROS_PLATFORM_HAS_MALLOC
 #    define NROS_PLATFORM_HAS_MALLOC
@@ -98,13 +97,13 @@ extern "C" {
 
 /* ---- Return codes ----
  *
- * phase-364 W1 (RFC-0076 D3). This vocabulary was declared and used by NO
+ * This vocabulary was once declared and used by NO
  * port: 26 entry points returned a bare `int8_t` 0/-1, so "this platform
  * never does this" and "this failed just now" were the same value.
  *
  * That distinction is not academic. A caller may cache `UNSUPPORTED` forever
- * and MUST retry `NOMEM`: issue 0246 is a transient `pthread_create` failure
- * on NuttX under load, and phase-359 W10's worker pool — unable to ask — caches
+ * and MUST retry `NOMEM`: `pthread_create` fails transiently on NuttX under
+ * load, and a worker pool that cannot tell the two apart caches
  * every refusal, disabling a priority level for the process on what may have
  * been a momentary shortage.
  *
@@ -133,8 +132,7 @@ typedef int8_t nros_platform_ret_t;
 #define NROS_PLATFORM_RET_UNSUPPORTED     -5
 /** A resource was exhausted NOW — kernel heap, task slot, handle table. The
  *  operation is supported and may succeed later. NOT cacheable: a caller that
- *  treats this as permanent turns a momentary shortage into a dead feature
- *  (issue 0246). */
+ *  treats this as permanent turns a momentary shortage into a dead feature. */
 #define NROS_PLATFORM_RET_NOMEM           -6
 /** The caller passed something impossible — a NULL where storage is required,
  *  a zero-sized stack, an out-of-range priority. Retrying unchanged cannot
@@ -157,7 +155,7 @@ typedef int8_t nros_platform_ret_t;
  *  subsystem. SHOULD be callable from an ISR; a port whose clock is not
  *  ISR-safe must say so in its port documentation.
  *
- *  RFC-0073: this replaced the former `clock_ms` / `clock_us` pair. Ports
+ *  This replaced the former `clock_ms` / `clock_us` pair. Ports
  *  that can convert without a runtime division should — where the counter
  *  frequency divides 1e9 (25/50/100/125/200/250 MHz) a compile-time
  *  ns-per-cycle multiply is ~2.5x cheaper than the divide it replaces. */
@@ -177,20 +175,20 @@ uint64_t nros_platform_clock_ns(void);
  *  honestly offer. */
 uint64_t nros_platform_clock_resolution_ns(void);
 
-/* RFC-0073 / phase-352 W6 — `nros_platform_clock_ms` and
+/* `nros_platform_clock_ms` and
  * ~~`nros_platform_clock_us`~~ are RETIRED. They were kept for one release as
  * `static inline` wrappers behind NROS_PLATFORM_LEGACY_CLOCK_UNITS; both
  * the wrappers and the escape hatch are now gone. Callers divide
  * `nros_platform_clock_ns()` themselves — and a caller that hand-declares
  * either retired name is caught by
- * `scripts/check-retired-platform-clock-symbols.py` (issue #555). */
+ * `scripts/check-retired-platform-clock-symbols.py`. */
 
 /* ---- Clock (wall-clock epoch) ---- */
 
 /** Microseconds since the UNIX EPOCH (1970-01-01T00:00:00Z), or `0` when
  *  this platform has no wall-clock source.
  *
- *  READ THIS BEFORE REACHING FOR `nros_platform_clock_ns` (issue 0758).
+ *  READ THIS BEFORE REACHING FOR `nros_platform_clock_ns`.
  *  The two clocks in this header differ by one word in their names and by
  *  the only property that matters for interop:
  *
@@ -237,14 +235,14 @@ void *nros_platform_realloc(void *ptr, size_t size);
 /** Free a previously allocated block. `NULL` is a no-op. */
 void nros_platform_dealloc(void *ptr);
 
-/* Canonical `malloc`/`free` C-ABI surface (issue-0038). nros-cpp's heap
+/* Canonical `malloc`/`free` C-ABI surface. nros-cpp's heap
  * containers (`heap_string.hpp`, `heap_sequence.hpp`) allocate through
  * `nros_platform_malloc` / `nros_platform_free` so C and C++ share one
  * allocator. Defined ONCE here (replacing the former 5 per-header copies) as a
- * thin forward to the platform `alloc`/`dealloc` funnel (RFC-0034 D6), GATED on
+ * thin forward to the platform `alloc`/`dealloc` funnel, GATED on
  * the heap capability: a board without `NROS_PLATFORM_HAS_MALLOC` does not get
  * the canonical malloc/free, so using a heap container on a heap-less board is a
- * compile error (the 241.A gate), not a latent link failure. */
+ * compile error, not a latent link failure. */
 #ifdef NROS_PLATFORM_HAS_MALLOC
 static inline void *nros_platform_malloc(size_t size) {
     return nros_platform_alloc(size);
@@ -256,7 +254,7 @@ static inline void nros_platform_free(void *ptr) {
 #endif /* NROS_PLATFORM_HAS_MALLOC */
 
 /** Bytes currently allocated from the platform heap, or `0` if the port
- *  does not instrument it. Phase 230 / RFC-0034 D7: the true unified figure
+ *  does not instrument it. The true unified figure
  *  where the platform owns one kernel heap shared by the C side and the
  *  Rust `#[global_allocator]`. */
 size_t nros_platform_heap_used_bytes(void);
@@ -268,7 +266,7 @@ size_t nros_platform_heap_used_bytes(void);
  *  it is the number a safety argument needs: how close the worst observed
  *  excursion came to the end of the stack.
  *
- *  The heap has had `nros_platform_heap_used_bytes` since RFC-0034 D7; the
+ *  The heap has long had `nros_platform_heap_used_bytes`; the
  *  stack had nothing, and stack overflow is the classic way one component
  *  corrupts another's state. ISO 26262 treats spatial freedom from
  *  interference as a first-class requirement and AUTOSAR pairs memory
@@ -292,7 +290,7 @@ size_t nros_platform_heap_used_bytes(void);
 size_t nros_platform_task_stack_unused_bytes(void);
 
 /** The same query, capped: `min(unused, limit)`, reading at most `limit`
- *  bytes of the stack (phase-436 E5).
+ *  bytes of the stack.
  *
  *  The executor's `stack-headroom-runtime` rule asks one question, "are at
  *  least `limit` bytes unused?", and on a painted stack that is true exactly
@@ -312,7 +310,7 @@ size_t nros_platform_task_stack_unused_bytes_upto(size_t limit);
 size_t nros_platform_heap_total_bytes(void);
 
 /* ---- Atomics ---- */
-/* RFC-0042 D1 / phase-243 — single portable atomic-bool pair (was per-RTOS
+/* Single portable atomic-bool pair (was per-RTOS
  * `static inline` in the retired nros-c sub-headers: posix `__atomic`, zephyr
  * `atomic_set`, freertos critical-section, bare-metal barrier). The `__atomic_*`
  * builtins lower to a plain load/store + acquire/release fence for a
@@ -369,9 +367,9 @@ void     nros_platform_random_fill(void *buf, size_t len);
 /** Wall-clock nanoseconds since the Unix epoch, or `0` if the platform has
  *  no real-time clock.
  *
- *  ONE symbol for one fact, mirroring what RFC-0073 / phase-352 did for the
+ *  ONE symbol for one fact, mirroring `nros_platform_clock_ns` for the
  *  monotonic clock. It replaced `time_now_ms` + `time_since_epoch_secs` +
- *  `time_since_epoch_nanos` (issue 0532 item 5).
+ *  `time_since_epoch_nanos`.
  *
  *  Why the split had to go, beyond tidiness: the ABI spent ONE INSTANT over
  *  two symbols, and each call sampled the clock separately (the POSIX port
@@ -390,10 +388,10 @@ void     nros_platform_random_fill(void *buf, size_t len);
  *  remainder by 1000000000. */
 uint64_t nros_platform_time_now_ns(void);
 
-/* Issue 0532 item 5 — ~~`nros_platform_time_now_ms`~~,
+/* ~~`nros_platform_time_now_ms`~~,
  * ~~`nros_platform_time_since_epoch_secs`~~ and
  * ~~`nros_platform_time_since_epoch_nanos`~~ are RETIRED, the same way
- * phase-352 W6 retired `clock_ms` / `clock_us` rather than keeping
+ * `clock_ms` / `clock_us` were retired rather than keeping
  * wrappers. A caller that hand-declares any of the three is caught by
  * `scripts/check-retired-platform-clock-symbols.py`. */
 
@@ -401,12 +399,12 @@ uint64_t nros_platform_time_now_ns(void);
 
 /* ---- Task attributes ----
  *
- * phase-364 W3 (RFC-0076 D2). `attr` used to be an undefined `void *`: IGNORED
+ * `attr` used to be an undefined `void *`: IGNORED
  * by the posix and zephyr ports, a PRIVATE struct in the freertos and esp-idf
  * ports, and MANDATORY on threadx (a `NULL` was a hard failure). Three struct
  * types, no shared definition, and therefore no portable way to ask for a stack
- * size — which is why phase-359 W7 wrote a bespoke C shim to spawn a NuttX sched task
- * with a 64 KiB stack, and why W10's generic spawn passes `NULL` and would fail
+ * size — which is why a bespoke C shim once spawned a NuttX sched task
+ * with a 64 KiB stack, and why a generic spawn that passed `NULL` would fail
  * on ThreadX.
  *
  * One type now, defined here, and `attr == NULL` means "every default" on
@@ -417,7 +415,7 @@ typedef struct {
     const char *name;
     /** Minimum stack size in BYTES. `0` = the port's default.
      *
-     *  A FLOOR, not an exact size (issue 0612). Every port has a minimum of its
+     *  A FLOOR, not an exact size. Every port has a minimum of its
      *  own — `PTHREAD_STACK_MIN`, `configMINIMAL_STACK_SIZE`, `TX_MINIMUM_STACK`
      *  — and those differ by an order of magnitude, and on POSIX differ by
      *  ARCHITECTURE (16384 on glibc/x86_64, 131072 on glibc/aarch64). So no
@@ -442,7 +440,7 @@ typedef struct {
      *  = more urgent, `NROS_PLATFORM_PRIORITY_INHERIT` = keep the creating
      *  task's.
      *
-     *  phase-364 W5. This was "platform-native", and the natives disagree: `0`
+     *  This was once "platform-native", and the natives disagree: `0`
      *  is the HIGHEST priority on ThreadX and the LOWEST on FreeRTOS, while
      *  Zephyr runs lower-is-more-urgent with negatives reserved for cooperative
      *  threads. A sched task priority is authored ONCE, in `system.toml`, and
@@ -464,7 +462,7 @@ typedef struct {
 /** The task is never joined; its resources are reclaimed when it exits. */
 #define NROS_PLATFORM_TASK_DETACHED 0x01u
 
-/* ---- Normalised priority band (phase-364 W5) ----
+/* ---- Normalised priority band ----
  *
  * `0` = least urgent … `NROS_PLATFORM_PRIORITY_MAX` = most urgent. A port maps
  * the band onto its native range; the map is documented at each port's
@@ -531,11 +529,11 @@ void nros_platform_task_free(void **task);
  *  probes below. Both are pure functions (no global state) and may be
  *  called before `nros_platform_task_init`.
  *
- *  phase-359 W10 — added because `task_init`'s "size determined by the
+ *  Added because `task_init`'s "size determined by the
  *  implementor" had no way to ASK. A C caller can write
  *  `pthread_t t;` and pass `&t`; a Rust caller cannot, and hard-coding
- *  a size is precisely issue 0570 (Rust's 20-byte `pthread_attr_t` met
- *  NuttX's 56-byte one and smashed the caller's frame). The wake
+ *  a size is precisely how Rust's 20-byte `pthread_attr_t` once met
+ *  NuttX's 56-byte one and smashed the caller's frame. The wake
  *  primitive already solved this the right way; tasks now match it. */
 size_t nros_platform_task_storage_size(void);
 size_t nros_platform_task_storage_align(void);
@@ -550,7 +548,7 @@ size_t nros_platform_condvar_storage_align(void);
 
 /* ---- Opaque-storage sizes, at COMPILE time ----
  *
- * phase-364 W2 (RFC-0076 D1). The probes above answer a caller that allocates
+ * The probes above answer a caller that allocates
  * at runtime. They cannot answer one that embeds these objects BY VALUE —
  * zenoh-pico's `_z_mutex_t` is a type, and a function call cannot size an
  * array — so the same facts are also available as macros.
@@ -565,8 +563,9 @@ size_t nros_platform_condvar_storage_align(void);
  * They replace a hand-computed table in `zpico-sys` that recorded other
  * platforms' sizes as `≈` values with a "2× safety margin", checked by nobody,
  * about structs that are Kconfig-dependent on at least two of those platforms —
- * issue 0570's shape. The numbers below are deliberately generous for the same
- * reason the old ones were; the difference is that they are now checked.
+ * the same shape as the `pthread_attr_t` mismatch above. The numbers below are
+ * deliberately generous for the same reason the old ones were; the difference
+ * is that they are now checked.
  *
  * A port may raise a bound by defining it before including this header. */
 #ifndef NROS_PLATFORM_TASK_STORAGE_SIZE
@@ -577,7 +576,7 @@ size_t nros_platform_condvar_storage_align(void);
  * The estimate it replaces is worth keeping visible. `zpico-sys` recorded
  * "ThreadX TX_THREAD ≈ 232" and sized its task storage at 256 — correct for a
  * 32-bit port and 128 bytes short on a 64-bit one. That table was hand-written
- * prose about another platform's struct, which is why phase-364 W2 replaced it
+ * prose about another platform's struct, which is why it was replaced
  * with probes and `_Static_assert`s; this bound was raised BECAUSE one of those
  * asserts failed on the first real ThreadX build, rather than because someone
  * re-read the comment. */
@@ -608,12 +607,12 @@ size_t nros_platform_condvar_storage_align(void);
 
 /* ---- Threading: non-recursive mutex ----
  *
- * Both mutex kinds INHERIT PRIORITY on every port (issue 1907): Zephyr's
+ * Both mutex kinds INHERIT PRIORITY on every port: Zephyr's
  * `k_mutex`, FreeRTOS's mutex semaphores and ThreadX's `TX_INHERIT` do it
  * natively, and the POSIX port sets `PTHREAD_PRIO_INHERIT` (on NuttX that
  * needs CONFIG_PRIORITY_INHERITANCE, which it refuses to build without). A
  * new port must do the same: a mutex wait is exempt from the "no unbounded
- * wait" rule (issue 1196) only because inheritance bounds it. */
+ * wait" rule only because inheritance bounds it. */
 
 int8_t nros_platform_mutex_init(void *m);
 int8_t nros_platform_mutex_drop(void *m);
@@ -647,7 +646,7 @@ int8_t nros_platform_condvar_drop(void *cv);
 int8_t nros_platform_condvar_signal(void *cv);
 int8_t nros_platform_condvar_signal_all(void *cv);
 
-/** Phase 124.B.7.a — ISR-safe signal.
+/** ISR-safe signal.
  *
  *  Callable from interrupt context. `nros_platform_condvar_signal`
  *  is NOT ISR-safe on every platform (POSIX `pthread_cond_signal`
@@ -686,7 +685,7 @@ int8_t nros_platform_condvar_signal_from_isr(void *cv);
  *  so the wait never times out before its deadline.
  *
  *  This is the ONLY condvar wait in the ABI. The unbounded
- *  `nros_platform_condvar_wait` was removed (issue 1196, phase-436 D2): it sat
+ *  `nros_platform_condvar_wait` was removed: it sat
  *  here with a neutral name, every port implemented it with its forever
  *  spelling, and "no unbounded wait" is only a property of the system if it
  *  is a property of the API. A caller whose own contract is unbounded — the
@@ -695,12 +694,12 @@ int8_t nros_platform_condvar_signal_from_isr(void *cv);
  *  because of spurious wakeups. `scripts/check-no-unbounded-condvar-wait.sh`
  *  keeps the symbol from coming back.
  *
- *  The unit is spelt out because this said "`clock_ms` units" after RFC-0073 /
- *  phase-352 W6 retired `nros_platform_clock_ms`; it never changed — every
+ *  The unit is spelt out because this said "`clock_ms` units" after
+ *  `nros_platform_clock_ms` was retired; it never changed — every
  *  port names the parameter `abstime_ms`. */
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime);
 
-/* ---- Threading: wake primitive (Phase 130) ----
+/* ---- Threading: wake primitive ----
  *
  * Binary-semaphore-shaped primitive used by the executor's wake_flag /
  * spin_once cv-wait pair. Separate from `nros_platform_condvar_*` so
@@ -727,7 +726,7 @@ int8_t  nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms);
 int8_t  nros_platform_wake_signal(void *w);
 int8_t  nros_platform_wake_signal_from_isr(void *w);
 
-/** phase-436 W7 — OPTIONAL microsecond park, the `ParkUntilFn` a port may
+/** OPTIONAL microsecond park, the `ParkUntilFn` a port may
  *  install through `nros_cpp_executor_set_park_primitive`.
  *
  *  `nros_platform_wake_wait_ms` above is the required primitive and floors
@@ -743,7 +742,7 @@ int8_t  nros_platform_wake_signal_from_isr(void *w);
  *  `NROS_PLATFORM_PARK_YIELDED` (2) when it did not wait but handed the wait
  *  to its framework's scheduler, and negative when it cannot park.
  *
- *  phase-521 W8 (c) (RFC-0113 D9) — YIELDED is the answer of a park slot
+ *  YIELDED is the answer of a park slot
  *  installed for a tier a FRAMEWORK schedules (a PX4 work item): it arms the
  *  framework's wake at `deadline_us` (`ScheduleDelayed`, or `ScheduleClear`
  *  with no deadline) and returns at once, and the executor's `spin_once`
@@ -759,10 +758,10 @@ int8_t   nros_platform_wake_park_until_us(void *w, uint64_t deadline_us);
 
 /** The finest park `nros_platform_wake_park_until_us` can express, in
  *  microseconds. An RTOS tick is a coarser limit than the ABI signature and a
- *  timespec primitive a finer one, so only the port can answer (issue 1242). */
+ *  timespec primitive a finer one, so only the port can answer. */
 uint64_t nros_platform_wake_park_granularity_us(void);
 
-/** phase-521 W3 (RFC-0113 D3) — park on the wake object AND on OS handles.
+/** Park on the wake object AND on OS handles.
  *
  *  The same park as `nros_platform_wake_park_until_us`, ended also when any
  *  of the `n` handles in `handles` becomes readable. A handle is what an RMW
@@ -785,7 +784,7 @@ size_t  nros_platform_wake_storage_size(void);
 size_t  nros_platform_wake_storage_align(void);
 
 /* ---- Critical section ---- */
-/* Phase 121.9 — global mutual exclusion against preemption + ISR
+/* Global mutual exclusion against preemption + ISR
  * delivery. Backs the Rust `critical_section::Impl` registration used
  * by DDS, nros-rmw-{xrce,zenoh}, and any consumer of
  * `critical_section::with()`. Reentrant by contract: every acquire
@@ -800,9 +799,9 @@ size_t  nros_platform_wake_storage_align(void);
 uint32_t nros_platform_critical_section_acquire(void);
 void     nros_platform_critical_section_release(uint32_t token);
 
-/* ---- Logging (Phase 88) ---- */
-/* Per-platform leveled log delivery, matching the post-Phase-129
- * pattern: portable facade (`nros-log`) formats into a buffer and
+/* ---- Logging ---- */
+/* Per-platform leveled log delivery, following the usual
+ * split: portable facade (`nros-log`) formats into a buffer and
  * hands the rendered text to whichever `nros-platform-<rtos>` is
  * linked in. POSIX writes to stderr; Zephyr routes through
  * `LOG_MODULE_DECLARE(nros)` (or `printk` fallback); ESP-IDF goes
@@ -827,8 +826,7 @@ void     nros_platform_critical_section_release(uint32_t token);
  * `nros_platform_log_flush`: best-effort drain of any internal
  * buffer (RTT, syslog buffered chan, etc.). Default impl = no-op.
  *
- * Thread / ISR safety is documented per platform — see the table
- * in `docs/roadmap/phase-88-nros-log.md`. The ABI itself is
+ * Thread / ISR safety is documented per platform. The ABI itself is
  * synchronous + reentrant-safe at the caller layer (a recursion
  * guard in `nros-log` prevents fan-out re-entry). */
 void nros_platform_log_write(
@@ -860,7 +858,7 @@ void nros_platform_register_log_writer(
     nros_platform_log_flush_fn_t  flusher);
 
 /*
- * Runtime locator override (nano-ros #166 / phase-286 W1).
+ * Runtime locator override.
  *
  * Returns a middleware locator to use INSTEAD of the build-time-baked default
  * (`CONFIG_NROS_ZENOH_LOCATOR` / `option_env!("NROS_LOCATOR")`), or NULL to keep
@@ -875,7 +873,7 @@ void nros_platform_register_log_writer(
  */
 const char* nros_runtime_locator_override(void);
 
-/* ---- Fatal error (phase-366 / RFC-0077) ----
+/* ---- Fatal error ----
  *
  * The image's one ending. Rust's `#[panic_handler]`, a C precondition failure
  * and a C++ terminate all arrive here, so an operator debugging a board has one
@@ -909,7 +907,7 @@ const char* nros_runtime_locator_override(void);
  * `esp_system_abort`, the FreeRTOS hook, `abort()`). A C/C++ image overrides the
  * port's definition by defining this symbol strongly; a Rust image declares its
  * own `#[panic_handler]` in the entry package. Either way the choice belongs to
- * whoever builds the image — RFC-0077.
+ * whoever builds the image.
  */
 #if defined(__cplusplus)
 #  define NROS_PLATFORM_NORETURN [[noreturn]]

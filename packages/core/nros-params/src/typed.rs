@@ -162,7 +162,7 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
 
     /// Set the free-text `additional_constraints` — rclrs's
     /// `ParameterBuilder::constraints`, and rclc's fourth argument to
-    /// `rclc_add_parameter_description` (phase-417 W4.a).
+    /// `rclc_add_parameter_description`.
     ///
     /// Text longer than `NROS_MAX_PARAM_CONSTRAINTS_LEN` — whose default is
     /// **0**, so an image pays for this field only when it asks for it — is
@@ -472,7 +472,7 @@ impl<'a, 's, T: ParameterVariant> ReadOnlyParameter<'a, 's, T> {
 /// This struct is returned by `Node::use_undeclared_parameters()` and allows
 /// for dynamic retrieval of parameter values by name without explicit declaration.
 ///
-/// rclrs's `Parameters` (phase-515 R8): read AND write, by name. It was
+/// rclrs's `Parameters`: read AND write, by name. It was
 /// `UndeclaredParameters`, which survives one release as a deprecated alias.
 pub struct Parameters<'a, 's> {
     server: &'a mut ParameterServer<'s>,
@@ -481,7 +481,7 @@ pub struct Parameters<'a, 's> {
     node: NodeKey,
 }
 
-/// The pre-phase-515 name of [`Parameters`].
+/// The former name of [`Parameters`].
 // phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
@@ -494,7 +494,7 @@ impl<'a, 's> Parameters<'a, 's> {
         Self { server, node }
     }
 
-    /// rclrs's `Parameters::get::<T>(name)` (phase-515 R8): the value of
+    /// rclrs's `Parameters::get::<T>(name)`: the value of
     /// `name` as `T`, or `None` when it is unset or holds another type.
     pub fn get<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
         self.server
@@ -502,7 +502,7 @@ impl<'a, 's> Parameters<'a, 's> {
             .and_then(|value| T::from_parameter_value(value))
     }
 
-    /// rclrs's `Parameters::set(name, value)` (phase-515 R8), declaring
+    /// rclrs's `Parameters::set(name, value)`, declaring
     /// `name` if absent. ADOPT-BOUNDED: it takes `&mut self` where rclrs's
     /// takes `&self` (this store has no interior mutability; the handle
     /// borrows the server mutably), and a value past this node's compile-time

@@ -1,5 +1,5 @@
 //! Records that could not be delivered when they were raised: before any sink
-//! was installed, or while another thread was inside a sink (issue 2000).
+//! was installed, or while another thread was inside a sink.
 //!
 //! ## The problem this exists for
 //!
@@ -8,13 +8,13 @@
 //! dispatched and DROPPED — silently, and invisibly to its author, who cannot
 //! know what the board did before reaching their code.
 //!
-//! Issue 0708 answered by requiring every board boot funnel to call
+//! The first answer required every board boot funnel to call
 //! `init_default()`, gated on funnels spelled `pub fn run*`. That is a SEARCH
 //! for boot paths and it kept losing: NuttX's funnel is `pub extern "C" fn
 //! nsh_main`, and three board crates did not link `nros-log` in the
 //! configuration holding the funnel at all.
 //!
-//! Issue 0710 answered by having dispatch install the platform sink itself.
+//! The second answer had dispatch install the platform sink itself.
 //! That removed the search — but it put `nros_platform_log_write` on a path
 //! EVERY binary executes, which turned a pluggable delivery into a LINK-TIME
 //! requirement. Seven test targets in `nros-rmw-cffi` and most of `nros-tests`
@@ -24,7 +24,7 @@
 //! forwarded gate back ON for every member of a workspace build. A feature is a
 //! property of the BUILD; what the question needs is a property of the BINARY.
 //!
-//! ## A funnel is not always a board method — issues 1048 and 1123
+//! ## A funnel is not always a board method
 //!
 //! The search above kept losing for one more reason, and it is worth naming
 //! because it defeats the obvious grep: **not every boot funnel lives in a
@@ -35,8 +35,8 @@
 //!   `nros::zephyr_component_main!`) emits `rust_main` directly, because Zephyr
 //!   owns the C `main` and a Rust staticlib cannot take it over. That is why
 //!   `nros-board-zephyr` has only `run_sched_tasks` to install from, and why a
-//!   single-sched-task pure-Rust Zephyr image published no sink list for two phases
-//!   (issue 1123) while its `log::info!`s worked fine.
+//!   single-sched-task pure-Rust Zephyr image once published no sink list
+//!   while its `log::info!`s worked fine.
 //! * a `[[bridge]]` system replaces the register/spin body with
 //!   `nros_bridge::run_from_config_str`, so it reaches no board either.
 //!
@@ -68,23 +68,23 @@
 //! ## Cost, and how to decline it
 //!
 //! EARLY_DEPTH * (format buffer + name + header) of static RAM, all of it in
-//! `.bss`. The depth is the `NROS_LOG_EARLY_RECORDS` knob (issue 1037; builtin
-//! 4, resolved by `build.rs` on the RFC-0049 ladder — it replaced the
+//! `.bss`. The depth is the `NROS_LOG_EARLY_RECORDS` knob (builtin 4,
+//! resolved by `build.rs` on the env > board > builtin ladder — it replaced the
 //! `early-records-<N>` features), because a 64 KB MCU and a Linux host do not
 //! want the same number. `0` declines the buffer entirely and restores the
-//! pre-0708 behaviour of dropping, with the count below still kept so the loss
+//! old behaviour of dropping, with the count below still kept so the loss
 //! is at least reportable.
 //!
 //! Overflow is counted, never silently absorbed: [`overflowed`] returns how
 //! many records did not fit, and the next delivery reports the count through
 //! the sinks (`nros_log` logger, at `warn`).
 //!
-//! ## The same queue holds records that met a BUSY dispatcher — issue 2000
+//! ## The same queue holds records that met a BUSY dispatcher
 //!
 //! Dispatch runs one record at a time: a flag is held across every
 //! `sink.log()`, so a sink that logs cannot recurse into itself, and two
-//! threads never write to a sink at once. Until issue 2000 a record that found
-//! the flag held was DROPPED, which was right for the recursion it was written
+//! threads never write to a sink at once. A record that found the flag held
+//! used to be DROPPED, which was right for the recursion it was written
 //! for and wrong for everything else: a record from ANOTHER thread vanished
 //! whenever any thread was mid-delivery. `nros-log` cannot tell the two apart
 //! without a thread identity, which no `no_std` target here gives it for free.

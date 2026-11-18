@@ -1,13 +1,13 @@
-//! phase-359 W10 — one place that spawns a platform task from Rust.
+//! One place that spawns a platform task from Rust.
 //!
 //! Moved here from `nros-node::executor::platform_task`: Rust callers in two
 //! crates need it (`nros-node`'s `open_threaded` and signalfd forwarder,
 //! `nros-cpp`'s native sched task runtime), and a helper for an ABI belongs beside
 //! the ABI rather than inside one of its consumers. (`nros-node`'s
-//! per-OS-priority worker pool used it too, until phase-509 P11 retired it.)
+//! per-OS-priority worker pool used it too, until that pool was retired.)
 //!
 //! The storage size is ASKED FOR (`nros_platform_task_storage_{size,align}`),
-//! never assumed. A hard-coded size is issue 0570 exactly: a Rust-side
+//! never assumed. A hard-coded size has bitten before: a Rust-side
 //! `pthread_attr_t` mirror was 36 bytes shorter than NuttX's, and
 //! `pthread_attr_init` wrote the difference into the caller's frame. The probes
 //! exist so no caller has to guess.
@@ -91,7 +91,7 @@ impl PlatformTask {
 
     /// Spawn `entry(arg)` stating a PRIORITY as well.
     ///
-    /// phase-359 W10 — `spawn` inherits the creating task's priority, which is
+    /// `spawn` inherits the creating task's priority, which is
     /// right for the executor's own workers and wrong for a SCHED TASK: a sched task's
     /// priority is the thing its author declared. `priority <= 0` means
     /// "unstated" and inherits, matching how the board descriptors spell an

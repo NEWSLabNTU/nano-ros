@@ -1,4 +1,4 @@
-//! phase-421 W5 — the schema-driven serialization strategy (RFC-0088 D7).
+//! The schema-driven serialization strategy.
 //!
 //! A provider that declares `impl = "schema"` in its `nros-serdes.toml` writes
 //! ONE implementation and gets every message, with no codegen plugin and no
@@ -6,9 +6,9 @@
 //! the walk over [`crate::schema::Field`] lives here, once, and a provider
 //! supplies only the primitive encode/decode operations of its own wire.
 //!
-//! # The signature RFC-0088 D7 sketched cannot be implemented
+//! # The signature first sketched cannot be implemented
 //!
-//! D7 wrote:
+//! The design sketch wrote:
 //!
 //! ```text
 //! fn serialize(msg: *const u8, schema: &'static [Field], out: &mut [u8]) -> …
@@ -423,13 +423,13 @@ fn decode_one<S: SchemaSource + ?Sized>(
     Ok(())
 }
 
-/// A serialization format implemented once, by walking the schema (RFC-0088 D7).
+/// A serialization format implemented once, by walking the schema.
 ///
-/// # How this differs from the D7 sketch, and why
+/// # How this differs from the design sketch, and why
 ///
-/// D7 wrote `serialize(msg: *const u8, schema, out)`. The host struct pointer
-/// is not usable — see the module docs for the three measured reasons — so the
-/// message side of both methods is the CDR byte stream instead: a
+/// The sketch wrote `serialize(msg: *const u8, schema, out)`. The host struct
+/// pointer is not usable — see the module docs for the three measured reasons —
+/// so the message side of both methods is the CDR byte stream instead: a
 /// [`CdrReader`] positioned at the members on the way out, a [`CdrWriter`] on
 /// the way back. Everything else survives: one implementation, every message,
 /// no generated code, the schema as the only description.
@@ -440,7 +440,7 @@ fn decode_one<S: SchemaSource + ?Sized>(
 /// top-level struct would be the one node a self-describing format could not
 /// name. Use [`SchemaSerializer::serialize_message`] to supply both from a type.
 pub trait SchemaSerializer {
-    /// Cross-image identity (RFC-0088 D2). The string, never the number, is
+    /// Cross-image identity. The string, never the number, is
     /// what crosses an image boundary.
     const FORMAT_NAME: &'static str;
 

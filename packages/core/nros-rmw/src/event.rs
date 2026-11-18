@@ -1,20 +1,20 @@
-//! Status-event surface (Phase 108).
+//! Status-event surface.
 //!
 //! Tier-1 events that backends optionally surface — liveliness
 //! changes, deadline misses, message loss. Dispatched via
 //! callback-on-entity (registration on `Subscription` / `Publisher`),
 //! not via upstream's waitset-take pattern.
 //!
-//! Events fire from inside [`Session::drive_io`](crate::Session::drive_io)
-//! on the executor thread, the same as message callbacks. (Phase 105 counted
-//! both against a per-spin cap, ~~`max_callbacks_per_spin`~~; the executor has
-//! no such cap now.)
+//! Events fire from inside [`Session::drive_io`](crate::Session::drive_io) on
+//! the executor thread, the same as message callbacks. (Both were once
+//! counted against a per-spin cap, ~~`max_callbacks_per_spin`~~; the executor
+//! has no such cap now.)
 //!
 //! See `book/src/guide/rmw/qos-status-events.md` for the user-facing
 //! patterns and `book-internals/src/rmw/rmw-vs-upstream.md` Section 8 for
 //! the design rationale.
 //!
-//! ### Matched and incompatible-type (issue 1972)
+//! ### Matched and incompatible-type
 //!
 //! Iron/Jazzy's `*_MATCHED` and `*_INCOMPATIBLE_TYPE` kinds are appended
 //! after the Tier-1 set ([`EventKind::PublicationMatched`] onward), with
@@ -97,7 +97,7 @@ pub struct CountStatus {
     pub total_count_change: u32,
 }
 
-/// Matched payload — upstream `rmw_matched_status_t` (Iron+), issue 1972.
+/// Matched payload — upstream `rmw_matched_status_t` (Iron+).
 ///
 /// Same four fields in upstream's order. The counts are `u32` where upstream
 /// has `size_t`, like every other count on this surface.
@@ -116,7 +116,7 @@ pub struct MatchedStatus {
 }
 
 /// Incompatible-type payload — upstream `rmw_incompatible_type_status_t`
-/// (Iron+), issue 1972. `u32` where upstream has `int32_t`: both only grow.
+/// (Iron+). `u32` where upstream has `int32_t`: both only grow.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(C)]
 pub struct IncompatibleTypeStatus {
@@ -127,7 +127,7 @@ pub struct IncompatibleTypeStatus {
 }
 
 /// Turns successive SNAPSHOTS of a matched count into [`MatchedStatus`]
-/// reports — issue 1972. `no_std`, no allocation, eight bytes.
+/// reports. `no_std`, no allocation, eight bytes.
 ///
 /// A backend that can count its matched peers but has no change counter of
 /// its own (zenoh's graph cache; a DDS backend whose change counters are

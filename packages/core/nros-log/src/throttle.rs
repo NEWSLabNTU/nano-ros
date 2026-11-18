@@ -1,4 +1,4 @@
-//! phase-417 W4.d — rate-limited logging, on the `Logger` everything else uses.
+//! Rate-limited logging, on the `Logger` everything else uses.
 //!
 //! ## Why this lives here and not in `nros-core`
 //!
@@ -7,7 +7,7 @@
 //! DIFFERENT `Logger` type: one that forwards to the `log` crate and therefore
 //! never reaches `nros_platform_log_write`. So the capability existed on the
 //! logger nothing dispatches through, and was missing from the logger
-//! everything dispatches through. RFC-0019 makes the Rust API the source of
+//! everything dispatches through. The Rust API is the source of
 //! truth for C and C++, and the type the FFI hands out is
 //! [`crate::Logger`] — so the throttle has to be here for the wrappers to be
 //! thin.
@@ -17,8 +17,8 @@
 //! Two storages need this rule: a `'static` [`ThrottleState`] (what the Rust
 //! macros declare at the call site) and a caller-owned `uint64_t` (what the C
 //! macros declare, because a C call site cannot name a Rust type without a
-//! hand-mirrored struct — the drift class issue 0160 catalogues). Both call
-//! [`throttle_decide`]. RFC-0089: a second *spelling* is free, a second *code
+//! hand-mirrored struct, which drifts). Both call
+//! [`throttle_decide`]. A second *spelling* is free, a second *code
 //! path that can produce a different answer* is not.
 //!
 //! ## Contract
@@ -32,9 +32,9 @@
 //! - The severity threshold is checked BEFORE the window, so a record filtered
 //!   by [`crate::Logger::level`] does not consume the window.
 //! - A clock that does not move is a window that never elapses: a site whose
-//!   clock is stuck (at ANY value, `0` included) emits once and then never
-//!   (issue 1152). A clock that wraps still measures real elapsed time across
-//!   the wrap. Both are tested below.
+//!   clock is stuck (at ANY value, `0` included) emits once and then never. A
+//!   clock that wraps still measures real elapsed time across the wrap. Both
+//!   are tested below.
 
 use core::cell::UnsafeCell;
 
@@ -62,11 +62,11 @@ const ELAPSED_MASK: u64 = u64::MAX >> 1;
 /// in its place; `None` means suppressed and the word is left alone. Returning
 /// the encoded word rather than a bare `bool` is what keeps the encoding in
 /// ONE place: a caller cannot admit with this rule and then arm with a
-/// different spelling of "last emitted" (issue 1152 was exactly that — the
+/// different spelling of "last emitted" (that bug has happened: the
 /// arming step stored `1` for a clock reading `0`, and the rule then measured
 /// `u64::MAX` of elapsed time against it).
 ///
-/// ## Two clock pathologies, one rule (issue 1152)
+/// ## Two clock pathologies, one rule
 ///
 /// * A WRAPPING clock (a platform counter rolling over, or a `u64` derived from
 ///   a 32-bit counter) must still measure real elapsed time across the wrap,

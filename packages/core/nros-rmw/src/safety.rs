@@ -81,7 +81,7 @@ impl IntegrityStatus {
     /// CHECKED and matched. A sample with no CRC (`crc_valid == None`) is not
     /// valid: it was never checked, so calling it valid would vouch for
     /// something nobody verified. That `None` is also what a backend with no
-    /// CRC carrier returns for every sample (issue 2487), so treating it as
+    /// CRC carrier returns for every sample, so treating it as
     /// valid made E2E integrity fail open there. A subscriber that wants to
     /// accept samples from publishers built without safety reads
     /// `crc_valid` itself and decides.

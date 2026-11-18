@@ -1,4 +1,4 @@
-//! Issue 2410 - a backend status on a path whose trait answer has no error
+//! A backend status on a path whose trait answer has no error
 //! channel.
 //!
 //! `Subscription::has_data`, `ServiceTrait::has_request`,
@@ -6,7 +6,7 @@
 //! answer `bool` / `Option`, so a failing vtable slot has to become SOME
 //! answer: "no data", "no deadline", "no event", "not supported". That answer
 //! is the same one a healthy, quiet backend gives, and from outside the
-//! process the two are indistinguishable. Issue 2403 is what that cost: on
+//! process the two are indistinguishable. That has cost before: on
 //! NuttX every `orb_check` failed with EBADF, `has_data` read "no data", and
 //! the subscription silently never delivered.
 //!

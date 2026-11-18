@@ -1,5 +1,4 @@
-//! Per-sched-task scheduling descriptors — Phase 228.E (RFC-0015 execution
-//! model, RFC-0016 priority mapping).
+//! Per-sched-task scheduling descriptors.
 //!
 //! A [`SchedTaskSpec`] names one RTOS task that an `Executor` will run on a
 //! shared RMW session. The orchestration `main()` (codegen-emitted)
@@ -10,7 +9,7 @@
 //! callbacks take), and spins. The LEAST urgent sched task runs on the boot
 //! task itself ([`boot_sched_task_index`]); the rest are spawned.
 //!
-//! Issue 0636 — that last sentence used to read "the highest-priority sched task
+//! That last sentence used to read "the highest-priority sched task
 //! runs on the boot task", and it was both wrong and harmful. Boards took
 //! `sched_tasks[0]`, and `resolve_sched_tasks` orders by RAW number descending WITHOUT
 //! inverting per kernel, so `sched_tasks[0]` is the most urgent sched task on
@@ -29,9 +28,9 @@
 //! So the owner is chosen, not inherited from an ordering: it is the sched task that
 //! outranks nothing.
 //!
-//! phase-459 W4 - [`SchedTaskSpec::priority`] is a RAW kernel priority, not a
+//! [`SchedTaskSpec::priority`] is a RAW kernel priority, not a
 //! normalized one. This module doc used to say priorities are declared on a
-//! normalized 0-31 scale (RFC-0016): 0 = idle, 12 = normal, 31 = critical,
+//! normalized 0-31 scale: 0 = idle, 12 = normal, 31 = critical,
 //! lowered per RTOS by the mappers below. That has not been true of the
 //! codegen path for a long time - `[tasks.<name>.<rtos>] priority` is written
 //! in the target kernel's own numbering, `resolve_sched_tasks` copies it through
@@ -39,7 +38,7 @@
 //! `xTaskCreate`. The note above about `sched_tasks[0]` depending on the kernel's
 //! direction is that same fact, seen from the other side.
 //!
-//! Where the number COMES FROM is RFC-0079: it is allocated out of the board's
+//! Where the number COMES FROM: it is allocated out of the board's
 //! priority address plan (`[board.priority_plan]` /
 //! `[priority_plan]` in the descriptors, resolved per image for Zephyr), whose
 //! `pool.app` band a derived sched task is placed in by
@@ -64,7 +63,7 @@ pub struct SchedTaskSpec<'a> {
     /// group)`. Passed verbatim to `Executor::set_active_groups`; an empty
     /// slice = wildcard.
     ///
-    /// issue 1172 — the group id ALONE was ambiguous: two nodes may declare
+    /// The group id ALONE was ambiguous: two nodes may declare
     /// the same one on different sched tasks, and the filter admitted both. The C
     /// side carries the same information as a FLAT array of 3N strings so
     /// `nros_native_sched_task_spec_t` stays byte-identical; Rust uses a tuple so
@@ -97,7 +96,7 @@ pub struct SchedTaskSpec<'a> {
     pub core: Option<u32>,
     /// ThreadX preemption threshold (ThreadX targets only; bake-validated).
     pub preempt_threshold: Option<i64>,
-    /// Round-robin time slice in µs (#0266): `Some` requests time-slicing among
+    /// Round-robin time slice in µs: `Some` requests time-slicing among
     /// same-priority sched tasks. ThreadX-only today (bake-validated); `None` = FIFO.
     pub time_slice_us: Option<u64>,
     /// Scheduling class: `"best_effort"` | `"real_time"` |
@@ -120,7 +119,7 @@ pub struct SchedTaskSpec<'a> {
 ///
 /// `SchedTaskSpec::priority` is RAW — the number the system author wrote in
 /// `[tasks.<name>.<rtos>].priority`, already in the target kernel's scale — so
-/// only the board knows which end is urgent. Issue 0636.
+/// only the board knows which end is urgent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PriorityDirection {
     /// NuttX (1..=255), FreeRTOS (0..=7), POSIX SCHED_FIFO: bigger wins.
@@ -131,7 +130,7 @@ pub enum PriorityDirection {
 
 /// Index of the sched task the BOOT task should run: the least urgent one.
 ///
-/// Issue 0636 — the boot task owns the session and spins forever, so it must
+/// The boot task owns the session and spins forever, so it must
 /// not outrank the sched tasks it spawned. See the module docs for what happened when
 /// it did.
 ///
@@ -192,7 +191,7 @@ impl<'a> SchedTaskSpec<'a> {
 }
 
 /// FreeRTOS native priority (0..=`configMAX_PRIORITIES-1`, here 0–7)
-/// for a normalized 0–31 priority. RFC-0016 §Design: linear
+/// for a normalized 0–31 priority. Linear
 /// interpolation `(n*7 + 15) / 31` (round-to-nearest), so 0→0 (idle)
 /// and 31→7 (highest). Higher number = higher priority on FreeRTOS.
 pub const fn freertos_priority_for(normalized: u8) -> u8 {
@@ -201,7 +200,7 @@ pub const fn freertos_priority_for(normalized: u8) -> u8 {
 }
 
 /// ThreadX native priority (0..=31, **lower = higher priority**) for a
-/// normalized 0–31 priority. RFC-0016: inverted scale `31 - n`, so the
+/// normalized 0–31 priority. Inverted scale `31 - n`, so the
 /// normalized idle (0) maps to ThreadX 31 (lowest) and normalized
 /// critical (31) maps to ThreadX 0 (highest).
 pub const fn threadx_priority_for(normalized: u8) -> u8 {
@@ -213,7 +212,7 @@ pub const fn threadx_priority_for(normalized: u8) -> u8 {
 /// uses the default scheduler (strict ordering needs `SCHED_FIFO` +
 /// privileges), so this is an advisory niceness, linear over the scale
 /// and clamped, with idle (0) pinned to the maximum `19`. Anchors track
-/// the RFC-0016 table (12→0 normal, 31→-20 critical).
+/// the normalized scale (12→0 normal, 31→-20 critical).
 pub const fn posix_nice_for(normalized: u8) -> i32 {
     let n = clamp31(normalized) as i32;
     if n == 0 {
