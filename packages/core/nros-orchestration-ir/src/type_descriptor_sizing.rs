@@ -108,16 +108,27 @@ pub const PARAM_SERVICE_TYPES: usize = 6 * TYPES_PER_SRV + TYPES_PER_MSG;
 /// in both its schema and its serializer, they register like any other type.
 pub const LIFECYCLE_TYPES: usize = 4 * TYPES_PER_SRV + TYPES_PER_MSG;
 
+// Issue 2704 (phase-556 W13 made `/rosout` executor-owned): the writer
+// registers its type like any publisher, but the count did not have it, so a
+// table sized to the model plus the parameter family was one short.
+/// Distinct DDS type names the `/rosout` family registers: the per-node
+/// writer's `rcl_interfaces::msg::dds_::Log_`, once per executor. Counted
+/// only when the family is on.
+pub const ROSOUT_TYPES: usize = TYPES_PER_MSG;
+
 /// Distinct DDS type names the executor's OWN entities add, given what the
-/// bringup declares. Both flags are the caller's answer to
+/// bringup declares. The flags are the caller's answer to
 /// `InfraServices::from_model`, so each feature predicate has one spelling.
-pub fn infra_types(param_services: bool, lifecycle: bool) -> usize {
+pub fn infra_types(param_services: bool, lifecycle: bool, rosout: bool) -> usize {
     let mut n = 0;
     if param_services {
         n += PARAM_SERVICE_TYPES;
     }
     if lifecycle {
         n += LIFECYCLE_TYPES;
+    }
+    if rosout {
+        n += ROSOUT_TYPES;
     }
     n
 }
@@ -422,12 +433,12 @@ mod tests {
     #[test]
     fn infra_types_counts_the_parameter_services_only_when_declared() {
         assert_eq!(
-            infra_types(false, false),
+            infra_types(false, false, false),
             0,
             "an image without them pays nothing"
         );
         assert_eq!(
-            infra_types(true, false),
+            infra_types(true, false, false),
             13,
             "six services x (_Request + _Response), plus /parameter_events' ParameterEvent"
         );
@@ -438,7 +449,15 @@ mod tests {
     /// `TransitionEvent`.
     #[test]
     fn infra_types_counts_the_lifecycle_family_only_when_declared() {
-        assert_eq!(infra_types(false, true), 9);
-        assert_eq!(infra_types(true, true), 22);
+        assert_eq!(infra_types(false, true, false), 9);
+        assert_eq!(infra_types(true, true, false), 22);
+    }
+
+    /// Issue 2704 -- `/rosout`'s writer registers `Log` once per executor, and
+    /// the count includes it only when the family is on.
+    #[test]
+    fn infra_types_counts_rosout_only_when_enabled() {
+        assert_eq!(infra_types(false, false, true), 1);
+        assert_eq!(infra_types(true, true, true), 23);
     }
 }
