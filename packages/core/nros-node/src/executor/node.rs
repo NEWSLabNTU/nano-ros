@@ -2620,6 +2620,43 @@ impl<'e, 's> Node<'e, 's> {
             )
     }
 
+    // Issue 2349.
+    /// Generic (type-erased) subscription whose callback also receives the
+    /// sample's metadata (`FnMut(&[u8], Option<&MessageInfo>)`, `None` from a
+    /// backend that reports none), with an explicit QoS and the type's bound
+    /// as `rx_hint`. The declarative runtime's lowering for a component
+    /// subscription that asked for `CallbackCtx::message_info`; the same
+    /// executor path as C++'s `(msg, MessageInfo)` callback. It
+    /// cannot dispatch in place, so it claims a receive region where a plain
+    /// subscription would not. The node's baked QoS overrides for the topic
+    /// are folded first, as the plain declared path does.
+    pub fn create_generic_subscription_with_info_and_rx_hint<F>(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QoSProfile,
+        rx_hint: Option<usize>,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut(&[u8], Option<&nros_core::MessageInfo>) + 'static,
+    {
+        let qos = self
+            .executor
+            .fold_node_qos_overrides(self.node_id, topic, qos)?;
+        self.executor
+            .register_subscription_buffered_raw_msg_info_on(
+                Some(self.node_id),
+                topic,
+                type_name,
+                type_hash,
+                qos,
+                rx_hint.unwrap_or(0),
+                callback,
+            )
+    }
+
     /// Generic (type-erased) subscription that surfaces E2E
     /// [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC + sequence gap/dup) to
     /// the callback (`FnMut(&[u8], &IntegrityStatus)`). The declarative-`Node`

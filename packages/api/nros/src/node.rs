@@ -1054,6 +1054,45 @@ pub trait DeclarativeNode {
         Ok(NodeSubscription::new(id))
     }
 
+    /// Declare a subscription whose callback can read the message's metadata
+    /// through [`CallbackCtx::message_info`](CallbackCtx::message_info): its
+    /// timestamps, publisher GID and sequence number. Otherwise identical to
+    /// [`create_subscription_for_callback_name`](Self::create_subscription_for_callback_name).
+    ///
+    /// Opt-in because it has a cost: the metadata is staged beside the
+    /// payload, so this subscription cannot dispatch in place and claims a
+    /// receive region (the build sizes it so). A plain declaration pays
+    /// nothing.
+    #[track_caller]
+    fn create_subscription_for_callback_name_with_message_info<'callback, M: MessageForRmw>(
+        &mut self,
+        callback_name: &'callback str,
+        topic: &str,
+    ) -> NodeResult<NodeSubscription<'callback, M>> {
+        let callback_id = CallbackId::new(callback_name);
+        let id = EntityId::new(callback_id.as_str());
+        register_declared_type::<M>()?;
+        let mut metadata = entity_metadata(EntityMetadataSpec {
+            id,
+            node_id: self.__node_id()?,
+            kind: EntityKind::Subscription,
+            source_name: topic,
+            // issue 0413 — `MessageForRmw` can pull `schema::Message` into scope,
+            // which also has a `TYPE_NAME`; disambiguate to the ROS-facing one.
+            type_name: <M as RosMessage>::TYPE_NAME,
+            type_hash: <M as RosMessage>::TYPE_HASH,
+            qos: QoSProfile::default(),
+        })?;
+        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
+        metadata.message_info = true;
+        // Issue 2208 -- the backend's `rx_buffer_hint`, from the type.
+        metadata.rx_bound = <M as RosMessage>::MAX_SERIALIZED_BOUND;
+        self.__declare_entity(metadata)?;
+        Ok(NodeSubscription::new(id))
+    }
+
     /// Declare a subscription with explicit QoS, using `callback_id` as the stable entity ID.
     #[track_caller]
     #[doc(hidden)]
@@ -2106,6 +2145,13 @@ pub struct CallbackCtx<'a> {
     /// runtime dispatched (`None` for every other callback). Read with
     /// [`timer_info`](Self::timer_info).
     timer_info: Option<crate::TimerCallInfo>,
+    /// The metadata of the message being dispatched, for a subscription
+    /// declared with
+    /// [`create_subscription_for_callback_name_with_message_info`](DeclarativeNode::create_subscription_for_callback_name_with_message_info)
+    /// (`None` for every other callback). Read with
+    /// [`message_info`](Self::message_info). A reference, so a context that
+    /// carries none costs one pointer.
+    message_info: Option<&'a crate::MessageInfo>,
 }
 
 impl<'a> CallbackCtx<'a> {
@@ -2128,6 +2174,7 @@ impl<'a> CallbackCtx<'a> {
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
             timer_info: None,
+            message_info: None,
         }
     }
 
@@ -2157,6 +2204,7 @@ impl<'a> CallbackCtx<'a> {
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
             timer_info: None,
+            message_info: None,
         }
     }
 
@@ -2189,6 +2237,7 @@ impl<'a> CallbackCtx<'a> {
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
             timer_info: None,
+            message_info: None,
         }
     }
 
@@ -2216,6 +2265,7 @@ impl<'a> CallbackCtx<'a> {
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
             timer_info: None,
+            message_info: None,
         }
     }
 
@@ -2242,6 +2292,7 @@ impl<'a> CallbackCtx<'a> {
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
             timer_info: None,
+            message_info: None,
         }
     }
 
@@ -2343,6 +2394,30 @@ impl<'a> CallbackCtx<'a> {
     /// `rclcpp::TimerInfo` receive — one producer, the executor's dispatcher.
     pub fn timer_info(&self) -> Option<&crate::TimerCallInfo> {
         self.timer_info.as_ref()
+    }
+
+    /// The metadata of the message being dispatched: its source and
+    /// received timestamps, its publisher GID and its sequence number (the
+    /// stock ROS `MessageInfo`). `Some` only in the callback of a subscription
+    /// declared with
+    /// [`create_subscription_for_callback_name_with_message_info`](DeclarativeNode::create_subscription_for_callback_name_with_message_info);
+    /// `None` for every other callback, and from a backend that reports no
+    /// metadata. A field the backend does not fill reads its default, as
+    /// `MessageInfo` documents.
+    ///
+    /// Asking costs the subscription its in-place dispatch: the metadata has
+    /// to be staged beside the payload, so the subscription claims a receive
+    /// region where a plain one would not. That is why it is opt-in.
+    pub fn message_info(&self) -> Option<&crate::MessageInfo> {
+        self.message_info
+    }
+
+    /// Attach the dispatched message's metadata. The runtime's
+    /// subscription dispatch calls this after construction, as it does
+    /// `set_timer_info`.
+    #[doc(hidden)]
+    pub fn set_message_info(&mut self, info: &'a crate::MessageInfo) {
+        self.message_info = Some(info);
     }
 
     /// Attach a timer activation's call info. The runtime's
@@ -3353,6 +3428,29 @@ mod tests {
         assert_eq!(got.gap, 2);
         assert!(!got.duplicate);
         assert_eq!(got.crc_valid, Some(true));
+    }
+
+    // Issue 2349.
+    #[test]
+    fn callback_ctx_message_info_surface() {
+        struct NoopResolver;
+        impl PublisherResolver for NoopResolver {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> NodeResult<()> {
+                Ok(())
+            }
+        }
+        let resolver = NoopResolver;
+
+        // A plain dispatch carries none.
+        let ctx = CallbackCtx::new(&[], &resolver);
+        assert!(ctx.message_info().is_none());
+
+        // The metadata dispatch attaches it, unchanged.
+        let info =
+            crate::MessageInfo::with_timestamps(crate::Time::new(5, 0), crate::Time::new(6, 0));
+        let mut ctx = CallbackCtx::new(&[], &resolver);
+        ctx.set_message_info(&info);
+        assert_eq!(ctx.message_info(), Some(&info));
     }
 
     // W.5.3 — an action goal / cancel body sets its accept/reject decision

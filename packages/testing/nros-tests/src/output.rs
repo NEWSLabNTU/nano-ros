@@ -154,6 +154,11 @@ pub fn custom_link_count(output: &str, callback: &str) -> Option<u64> {
 /// now the one producer, and this is the one spelling of what it produces.
 pub const MESSAGE_INFO_LOG_PREFIX: &str = "seq=";
 
+/// Issue 2349 -- what `message-info-component` prints, at error level, for a
+/// message whose callback found `CallbackCtx::message_info()` empty. The
+/// test counts it as a failure. The bin's `main.rs` prints these exact words.
+pub const MESSAGE_INFO_ABSENT: &str = "MessageInfo ABSENT";
+
 /// issue 2088 — the per-request `ServiceInfo` line emitted by the
 /// `service-info-server` bin
 /// (`REQUEST_ID guid=<32 hex> seq=<client sequence number> a=<a> b=<b>`).

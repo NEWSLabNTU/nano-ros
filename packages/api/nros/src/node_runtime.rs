@@ -1958,15 +1958,34 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                 // third lowering cannot fall through to the basic path while
                 // the probe keeps stating the basic path's answer.
                 let shape = metadata.declared_subscription_shape();
-                #[cfg(not(feature = "safety-e2e"))]
-                let _ = shape;
+                use nros_node::executor::declared_shape::DeclaredSubscriptionShape;
+                // Issue 2349 -- a subscription that asked for the message's
+                // metadata registers on the info path, and its callback reads
+                // it as `CallbackCtx::message_info()`. Not in place: the
+                // classifier says so, and the probe states the same.
+                if shape == DeclaredSubscriptionShape::BufferedRawInfo {
+                    let cell_i = self.cell.clone();
+                    let cb_i = cb_id_owned.clone();
+                    executor
+                        .node_mut(node)
+                        .create_generic_subscription_with_info_and_rx_hint(
+                            entity_name,
+                            metadata.type_name,
+                            metadata.type_hash,
+                            metadata.qos,
+                            metadata.rx_bound,
+                            move |payload: &[u8], info: Option<&nros_core::MessageInfo>| {
+                                dispatch_into_cell_with_info(cell_i.view(), &cb_i, payload, info);
+                            },
+                        )
+                        .map_err(decl_err_from_node)?;
+                    return Ok(());
+                }
                 // Phase 250 (Wave 2b) — a `.safety()` subscription registers via
                 // the integrity-aware generic path so `CallbackCtx::integrity()`
                 // surfaces CRC + sequence gap/dup. Gated: when `safety-e2e` is off
                 // `declared_subscription_shape` masks the flag, never answers
                 // `BufferedRawSafety`, and the basic path below runs.
-                #[cfg(feature = "safety-e2e")]
-                use nros_node::executor::declared_shape::DeclaredSubscriptionShape;
                 #[cfg(feature = "safety-e2e")]
                 if shape == DeclaredSubscriptionShape::BufferedRawSafety {
                     let cell_s = self.cell.clone();
@@ -2394,6 +2413,29 @@ fn dispatch_into_cell(cell: &dyn CellView, cb_id: &str, payload: &[u8]) {
     // tick hook on the same cell, etc.) the view drops this dispatch. In
     // practice the borrow succeeds because subscription / timer
     // callbacks run sequentially under the single-threaded executor.
+    cell.try_with_slot_mut(&mut |slot| slot.dispatch(cb_id, &mut ctx));
+}
+
+// Issue 2349.
+/// Dispatch a subscription message into the component's `on_callback` with
+/// the message's metadata attached, read as `CallbackCtx::message_info()`.
+/// The metadata twin of [`dispatch_into_cell`].
+fn dispatch_into_cell_with_info(
+    cell: &dyn CellView,
+    cb_id: &str,
+    payload: &[u8],
+    info: Option<&nros_core::MessageInfo>,
+) {
+    cell.note_dispatch(!payload.is_empty());
+    let resolver = CellResolver { cell };
+    let mut ctx = CallbackCtx::new(payload, &resolver);
+    // `None` from a backend that reports no metadata: the callback then reads
+    // `message_info()` as `None`, which is what that backend can say.
+    if let Some(info) = info {
+        ctx.set_message_info(info);
+    }
+    #[cfg(feature = "param-store")]
+    ctx.set_param_server(cell.view_param_server(), cell.view_param_node());
     cell.try_with_slot_mut(&mut |slot| slot.dispatch(cb_id, &mut ctx));
 }
 

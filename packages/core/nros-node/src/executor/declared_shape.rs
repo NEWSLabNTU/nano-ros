@@ -73,19 +73,32 @@ pub enum DeclaredSubscriptionShape {
     /// `Node::create_generic_subscription_with_integrity_and_rx_hint` →
     /// `Executor::register_subscription_buffered_raw_safety_on`.
     BufferedRawSafety,
+    /// A declaration that asked for the message's metadata:
+    /// `Node::create_generic_subscription_with_info_and_rx_hint` →
+    /// `Executor::register_subscription_buffered_raw_msg_info_on`, the path
+    /// C++'s `(msg, MessageInfo)` callback takes too.
+    BufferedRawInfo,
 }
 
 impl DeclaredSubscriptionShape {
     /// Classify a declaration.
+    ///
+    /// `message_info` is the declaration's request for the message's
+    /// metadata (`CallbackCtx::message_info`). A declaration states at most
+    /// one of the two: each has its own declaration call, and neither call
+    /// sets the other's flag. If both were set, `safety` wins, because a
+    /// validated sample must not reach a callback unvalidated.
     ///
     /// `safety` is the declaration's `.safety()` flag **as the runtime will
     /// see it**: a build whose `safety-e2e` capability is off ignores the flag
     /// and registers the basic path, so its caller masks the flag to `false`
     /// before asking. That mask has exactly one home on the caller's side, for
     /// the same reason this classifier has one here.
-    pub const fn of_declaration(safety: bool) -> Self {
+    pub const fn of_declaration(safety: bool, message_info: bool) -> Self {
         if safety {
             Self::BufferedRawSafety
+        } else if message_info {
+            Self::BufferedRawInfo
         } else {
             Self::BufferedRaw
         }
@@ -113,10 +126,14 @@ impl DeclaredSubscriptionShape {
     ///   validating form: an integrity-checked sample must be verified before
     ///   the callback sees it, and the borrowed slot offers nowhere to put the
     ///   verdict. Not a limit anyone plans to lift by flipping this.
+    /// * **`BufferedRawInfo` — `false`.** Its metadata comes with a COPYING
+    ///   take (`take_serialized_with_info`); `process_raw_in_place` hands over
+    ///   borrowed payload bytes and nothing else. This is the price of asking
+    ///   for the metadata, and why asking is opt-in.
     pub const fn in_place_capable(self) -> bool {
         match self {
             Self::BufferedRaw => true,
-            Self::BufferedRawSafety => false,
+            Self::BufferedRawSafety | Self::BufferedRawInfo => false,
         }
     }
 
@@ -134,7 +151,7 @@ impl DeclaredSubscriptionShape {
     /// and died at boot short of `RX_BUF`.
     pub const fn claims_closure_buffer(self) -> bool {
         match self {
-            Self::BufferedRaw | Self::BufferedRawSafety => true,
+            Self::BufferedRaw | Self::BufferedRawSafety | Self::BufferedRawInfo => true,
         }
     }
 }
@@ -144,15 +161,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_declaration_classifies_by_its_safety_flag() {
-        assert_eq!(
-            DeclaredSubscriptionShape::of_declaration(false),
-            DeclaredSubscriptionShape::BufferedRaw
-        );
-        assert_eq!(
-            DeclaredSubscriptionShape::of_declaration(true),
-            DeclaredSubscriptionShape::BufferedRawSafety
-        );
+    fn a_declaration_classifies_by_its_flags() {
+        use DeclaredSubscriptionShape as S;
+        assert_eq!(S::of_declaration(false, false), S::BufferedRaw);
+        assert_eq!(S::of_declaration(true, false), S::BufferedRawSafety);
+        assert_eq!(S::of_declaration(false, true), S::BufferedRawInfo);
+        // A validated sample never reaches a callback unvalidated.
+        assert_eq!(S::of_declaration(true, true), S::BufferedRawSafety);
     }
 
     /// Not a restatement of `in_place_capable`'s body: this is the claim the
@@ -168,5 +183,6 @@ mod tests {
     fn only_the_non_safety_declarative_shape_dispatches_in_place() {
         assert!(DeclaredSubscriptionShape::BufferedRaw.in_place_capable());
         assert!(!DeclaredSubscriptionShape::BufferedRawSafety.in_place_capable());
+        assert!(!DeclaredSubscriptionShape::BufferedRawInfo.in_place_capable());
     }
 }

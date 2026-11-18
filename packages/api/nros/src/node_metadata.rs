@@ -530,6 +530,12 @@ pub struct EntityMetadata {
     /// `safety-e2e`, so when the capability is off the flag is simply ignored
     /// (the subscription registers as a basic one). `false` for every other entity.
     pub safety: bool,
+    /// A subscription that asked for the message's metadata
+    /// (`create_subscription_for_callback_name_with_message_info`): the
+    /// runtime registers it on the info path and surfaces
+    /// [`MessageInfo`](crate::MessageInfo) through
+    /// `CallbackCtx::message_info()`. `false` for every other entity.
+    pub message_info: bool,
     /// Can THIS subscription's registration dispatch out of the
     /// backend's own receive slot?
     ///
@@ -590,7 +596,10 @@ impl EntityMetadata {
         let safety = self.safety;
         #[cfg(not(feature = "safety-e2e"))]
         let safety = false;
-        nros_node::executor::declared_shape::DeclaredSubscriptionShape::of_declaration(safety)
+        nros_node::executor::declared_shape::DeclaredSubscriptionShape::of_declaration(
+            safety,
+            self.message_info,
+        )
     }
 }
 
@@ -1544,6 +1553,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         parameter_read_only: false,
         parameter_read: false,
         safety: false,
+        message_info: false,
         // phase-457 W3 -- "nobody observed this". Set later, and only for a
         // subscription, by `metadata_mode::record_subscription_registration`.
         in_place_capable: None,

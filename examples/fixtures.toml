@@ -3053,6 +3053,19 @@ image = "linux_zero_copy"
 node_features = ["unstable-zenoh-api"]
 target_dir = "target-zero-copy"
 
+# Issue 2349 -- the same workspace's third image: the observation made through
+# the component API (`src/message-info-component`, a Component whose
+# subscription asks for the metadata). Consumed by tests/component_message_info.rs.
+[[workspace_fixture]]
+id = "linux-rust-zenoh-message-info-component"
+platform = "linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/message-info-observer"
+rmw = "zenoh"
+bringup = "src/message_info_observer_bringup"
+image = "linux_component"
+target_dir = "target-component"
+
 # Per-RMW talker/listener/service/action. The six `examples/linux/rust/*`
 # leaves select their RMW by IMAGE (`image = "linux_<rmw>"`, issue 1305 —
 # RFC-0031: the RMW is declared in `system.toml` and lowered into the leaf's

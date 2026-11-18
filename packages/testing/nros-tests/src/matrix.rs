@@ -1194,6 +1194,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("cmake_node_register_misuse", NonCell::CompileCheck),
     ("cmake_platform_matrix", NonCell::CompileCheck),
     ("component_dispatch", NonCell::FeatureLane),
+    (
+        "component_message_info",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Pubsub/Example — answered by linux_example_pubsub_e2e; a component reads MessageInfo (issue 2349)",
+        ),
+    ),
     ("component_param", NonCell::FeatureLane),
     ("component_runtime", NonCell::FeatureLane),
     (

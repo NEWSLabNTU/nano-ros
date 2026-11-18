@@ -177,6 +177,64 @@ fn safety_opt_in_records_metadata_flag() {
     assert!(ents[1].safety, "safety sub must be flagged");
 }
 
+// Issue 2349 -- a declaration that asks for the message's metadata is recorded
+// as such, and the probe states that its registration cannot dispatch in
+// place: the metadata comes with a copying take, so the build must budget its
+// receive region. A plain subscription beside it keeps the in-place answer.
+struct InfoComponent;
+impl Component for InfoComponent {
+    const NAME: &'static str = "info_component";
+    fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
+        let mut node =
+            context.create_node_with_id(NodeId::new("node"), NodeOptions::new("listener"))?;
+        let _plain = node.create_subscription_for_callback_name::<BoundedMsg>("on_plain", "/a")?;
+        let _info = node.create_subscription_for_callback_name_with_message_info::<BoundedMsg>(
+            "on_info", "/b",
+        )?;
+        Ok(())
+    }
+}
+
+#[test]
+fn a_message_info_declaration_is_priced_as_a_buffered_subscription() {
+    use nros_node::executor::declared_shape::DeclaredSubscriptionShape;
+
+    let mut recorder = MetadataRecorder::<2, 8, 4>::new();
+    record::<InfoComponent>(&mut recorder).unwrap();
+    let ents = recorder.entities();
+    assert_eq!(ents.len(), 2);
+
+    assert!(
+        !ents[0].message_info,
+        "a plain subscription asks for nothing"
+    );
+    assert_eq!(
+        ents[0].declared_subscription_shape(),
+        DeclaredSubscriptionShape::BufferedRaw
+    );
+
+    assert!(
+        ents[1].message_info,
+        "the declaration's request is recorded"
+    );
+    assert!(!ents[1].safety);
+    assert_eq!(
+        ents[1].declared_subscription_shape(),
+        DeclaredSubscriptionShape::BufferedRawInfo
+    );
+    assert_eq!(
+        ents[1].in_place_capable,
+        Some(false),
+        "the probe must not claim in-place for a metadata subscription, or \
+         the build prices it at no receive region and it fails at boot"
+    );
+    assert_eq!(
+        ents[1].rx_bound,
+        Some(16),
+        "the type's bound is recorded too"
+    );
+}
+
 // Issue 2208 — a declared subscription records its message type's bound, so
 // the runtime's type-erased registration can still give the backend the
 // `rx_buffer_hint` the typed executor path gives it. Without it a declarative

@@ -94,6 +94,7 @@ static NATIVE_LISTENER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// issue 0441 — the receive-side MessageInfo observer, plain and zero-copy.
 static MESSAGE_INFO_OBSERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static MESSAGE_INFO_OBSERVER_ZERO_COPY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static MESSAGE_INFO_COMPONENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native-rs-talker binary with link-tls
 static NATIVE_TALKER_TLS_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -7321,6 +7322,22 @@ pub fn build_message_info_observer_zero_copy() -> TestResult<&'static Path> {
                 MESSAGE_INFO_OBSERVER_DIR,
                 Rmw::Zenoh,
                 crate::fixtures::migrated_leaf::LeafVariant::Image("linux_zero_copy"),
+            )
+            .unwrap_or_else(|| Err(not_migrated(MESSAGE_INFO_OBSERVER_DIR)))
+        })
+        .map(|p| p.as_path())
+}
+
+/// Issue 2349 -- the same observation through the component API: the
+/// workspace's `linux_component` image, whose entry is a `Component` reading
+/// `CallbackCtx::message_info()`.
+pub fn build_message_info_component() -> TestResult<&'static Path> {
+    MESSAGE_INFO_COMPONENT_BINARY
+        .get_or_try_init(|| {
+            migrated_leaf_binary(
+                MESSAGE_INFO_OBSERVER_DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Image("linux_component"),
             )
             .unwrap_or_else(|| Err(not_migrated(MESSAGE_INFO_OBSERVER_DIR)))
         })

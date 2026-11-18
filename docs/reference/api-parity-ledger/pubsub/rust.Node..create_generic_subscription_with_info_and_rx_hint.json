@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_generic_subscription_with_info_and_rx_hint",
+  "verdict": "extension",
+  "why": "issue 2349 -- a type-erased subscription whose callback receives each sample's `MessageInfo` (`FnMut(&[u8], Option<&MessageInfo>)`), with an explicit QoS and the type's bound, as `rust:Node::create_generic_subscription_with_qos_and_rx_hint`. The declarative runtime's lowering for a component subscription declared with `create_subscription_for_callback_name_with_message_info`, read as `CallbackCtx::message_info()`; the same executor path as C++'s `(msg, const rclcpp::MessageInfo&)` callback (`rust:Executor::add_arena_subscription_msg_info_closure`). Copying, so never in place."
+}
