@@ -1,15 +1,16 @@
 ---
 id: 2685
 title: "The PR and merge-group lanes run no host C link: #4151 broke `check::build` on main for about 3 h"
-status: open
+status: resolved
 type: enhancement
 severity: medium
 area: [ci, gates, build]
 related: [phase-567, issue-2633]
 found: 2026-11-17
+resolved_in: "ci(phase-567 W7, issue 2685): an unconditional host C link smoke in CI (#4192)"
 ---
 
-**Home: [phase-567](../roadmap/phase-567-regression-prevention.md)** (proposed
+**Home: [phase-567](../../roadmap/phase-567-regression-prevention.md)** (proposed
 W7, a cheap merge-queue addition like W5). GitHub
 [#4170](https://github.com/NEWSLabNTU/nano-ros/issues/4170). Unclaimed: the
 nros 241 manager assigns the owner.
