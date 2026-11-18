@@ -3,10 +3,10 @@
     {
       "image": "talker/c/zenoh@mps2-an385-freertos",
       "issue": "2653",
-      "method": "static walk of a fresh `nros new --template talker --lang c --rmw zenoh` project on the cmake road, with compile_commands.json (73 of 242 indirect C sites typed), 2026-11-16; drift-only, enforced nowhere, so the tutorial keeps its 65,536 B app stack; static re-walked 2026-11-18 by the merge queue's drift check after the executor's re-entry fix (issue 2675): no Rust frame grew by more than 72 B, and the walk took a different path through untyped indirect C calls (130,424 to 134,144 B); static re-walked 2026-11-18 for phase-554 W3 slice B by the merge queue's drift check, taken from the queue because this row has no host repro (issue 2688): the same new reporter and executor-publisher frames the bare-metal row measured (134,144 to 135,848 B)",
+      "method": "static walk of a fresh `nros new --template talker --lang c --rmw zenoh` project on the cmake road, with compile_commands.json (73 of 242 indirect C sites typed), 2026-11-16; drift-only, enforced nowhere, so the tutorial keeps its 65,536 B app stack; static re-walked 2026-11-18 by the merge queue's drift check after the executor's re-entry fix (issue 2675): no Rust frame grew by more than 72 B, and the walk took a different path through untyped indirect C calls (130,424 to 134,144 B); static re-walked 2026-11-18 for phase-554 W3 slice B by the merge queue's drift check, taken from the queue because this row has no host repro (issue 2688): the same new reporter and executor-publisher frames the bare-metal row measured (134,144 to 135,848 B); static re-walked 2026-11-18 when a C image began running cargo once (phase-578 W8): the image links only libnros_cpp.a, and the walk used to read the bitcode of BOTH cargo runs, nros-c's unlinked one included (issue 2710). Re-walking main's own build with only the linked run's bitcode gives 113,264 B, the same as the one-run tree on the host and in the merge queue (135,848 to 113,264 B)",
       "rmw": "zenoh",
       "role": "OPEN",
-      "static": 135848,
+      "static": 113264,
       "target": "thumbv7m-none-eabi"
     }
   ],
