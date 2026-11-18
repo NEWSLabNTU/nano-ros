@@ -51,6 +51,16 @@ measured where it landed. "Documentation only" is `scripts/ci/gate-tier.py`'s
 The refusal names the lane, the run it read and why that run did not count.
 (`scripts/release/release-lanes-green.py`, `just check release-lanes-green`.)
 
+Amended 2026-11-18 (manager, implementing the user's rule "any red nightly
+blocks a release"): `host-tests` and `live-peer` are lanes too, read by their
+whole run's conclusion. Before this, a red `host-tests` (44228702426, two
+2400 s timeouts) blocked the nros12 candidate only because a person read
+it, while the tool would have passed the commit. Every scheduled workflow is
+now either a lane or in `NOT_LANES` with a reason (`runner-watchdog`
+infrastructure, `automation` plumbing, `weekly` advisory), and the self-test
+refuses a scheduled workflow that is neither, so a new nightly cannot land
+outside the rule.
+
 Acceptance: a dry run on a commit with no green nightly is refused with that
 message; a dry run on a commit one docs-only commit past a green nightly
 passes; a self-test covers both, and a red tier 2 is refused even when the
