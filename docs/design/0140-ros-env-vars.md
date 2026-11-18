@@ -15,7 +15,7 @@ superseded-by: null
 
 **Status:** Draft (2026-11-19). Nothing is built. It generalises one user
 ruling, made for `ROS_DOMAIN_ID` and implemented for the domain and the
-locator by issue 2714 (PR #4285, open when this was written). Every other
+locator by issue 2714 (PR #4285). Every other
 row below is a proposal awaiting the user's review; the open questions are
 listed at the end. Tracked by
 [phase-581](../roadmap/phase-581-ros-env-vars.md).

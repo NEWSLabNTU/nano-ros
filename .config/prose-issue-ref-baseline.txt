@@ -59,13 +59,6 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
-#   2714  IN FLIGHT - filed on PR #4285 (a `linux` image drops its stated
-#         `domain_id` and `locator`). RFC-0140 and phase-581 cite it as the
-#         worked example they generalise. REMOVE THESE ROWS when #4285 merges.
-#
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
-docs/design/0140-ros-env-vars.md:2714
-docs/design/README.md:2714
-docs/roadmap/phase-581-ros-env-vars.md:2714
