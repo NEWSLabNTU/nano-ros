@@ -256,3 +256,4 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 
 | issue | why it belongs here |
 | --- | --- |
+| issue 2687 | An out-of-tree FreeRTOS board package must copy the family's FreeRTOSConfig.h, lwipopts.h and arch/cc.h; found by W8's fixture board. |
