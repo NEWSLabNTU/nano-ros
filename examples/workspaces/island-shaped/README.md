@@ -1,6 +1,6 @@
 # Island-shaped workspace
 
-One project shaped like the safety island, a downstream nano-ros consumer.
+One project shaped like `simple-autoware-safety-island`, a downstream nano-ros consumer.
 It exists so a layout the island hit breaks the nano-ros merge
 queue instead of the island's next build. It is not a tutorial.
 

@@ -2051,8 +2051,12 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
       derived bound is 880. Any value other than -1 is yours and WINS; the
       crate default when nothing is stated and nothing is derivable is 1024.
 
-      COUPLED TO THE ARENA: the arena is max_cbs * (3 * this + 512) + 2048, so
-      raising this raises the arena. An image that also PINS
+      COUPLED TO THE ARENA: each subscription's receive region holds
+      (depth + 1) x (this + 8) bytes at a KEEP_LAST depth above 1, the ROS
+      default being 10 (3 x this at depth 1), and an image that declares no
+      entities budgets every callback slot at action-client size, which also
+      grows by 3 x this. So raising this raises the arena; NROS_EXECUTOR_ARENA_SIZE
+      gives the whole arithmetic. An image that also PINS
       NROS_EXECUTOR_ARENA_SIZE must move the two together; leaving both to
       derive is the shape that cannot disagree.
 
@@ -2651,7 +2655,7 @@ config NROS_ZENOH_GRAPH_DISCOVERY
 
       Why the default follows the link: a host running Autoware carries about
       136 nodes, and joining it replays all of their tokens toward the image
-      at once. Measured on the safety island: over a 921,600-baud UART the
+      at once. Measured on one embedded image: over a 921,600-baud UART the
       burst overran the receive ring and stopped the read task; over TCP
       (QEMU, LAN9118) it exhausted a 1 MiB heap 2.3 s after joining. On a
       serial or CAN link the cache costs the link and buys nothing an image

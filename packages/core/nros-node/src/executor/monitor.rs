@@ -727,7 +727,7 @@ impl Default for ViolationSlot {
 /// for a board whose console reaches nobody.
 ///
 /// The executor's ring is carved out of executor storage (no symbol, and a
-/// drain empties it), so on the Autoware Safety Island it could only be found
+/// drain empties it), so on one reference image it could only be found
 /// by scanning RAM for rule-id string pointers, and it held the FIRST eight
 /// verdicts since boot. This record is the black box beside it: a `#[repr(C)]`
 /// static, every word a `u32`, never drained, keeping the LATEST
@@ -1024,7 +1024,7 @@ impl MonitorArming {
 /// the executor then drops the oldest pending verdict so a report that can
 /// never be sent cannot stall the queue (it stays in the ring and the record).
 ///
-/// On the safety island the report at detection cost 15-20 ms of spin per
+/// On one reference image the report at detection cost 15-20 ms of spin per
 /// verdict over a 921,600-baud serial link, inside the tick being judged, and
 /// that cost tripped `release-jitter-runtime` and `timer-overrun-runtime`:
 /// one verdict bred more.

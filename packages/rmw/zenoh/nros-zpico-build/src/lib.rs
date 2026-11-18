@@ -278,7 +278,7 @@ pub fn point_to_point_peer_derived(link: &LinkFeatures) -> bool {
 /// The DERIVED rung of `ZPICO_GRAPH_DISCOVERY`: off when every link this build
 /// compiles is serial or CAN, on otherwise.
 ///
-/// Why the link decides (the safety-island demo's D9, measured there): the
+/// Why the link decides (measured on one reference image): the
 /// graph cache is a liveliness subscriber with history on `@ros2_lv/<d>/**`,
 /// so joining a host that runs Autoware replays ~136 nodes' tokens toward the
 /// image at once. Over a 921,600-baud UART that burst overran the receive ring

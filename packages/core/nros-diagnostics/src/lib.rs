@@ -244,7 +244,7 @@ impl DiagnosticReporter {
 /// detection). The value form puts a whole `DiagnosticArray` on that stack --
 /// 5,176 B on a 64-bit host: a four-slot vector of 1,224 B statuses, each with
 /// eight key/value slots, plus the status built before it -- to send one
-/// status with one key/value. On the safety island that frame ran a 16 KiB
+/// status with one key/value. On one reference image that frame ran a 16 KiB
 /// main stack into the idle thread's on the first stored violation. This
 /// writes the same bytes from the borrowed strings; the largest locals are the
 /// 64 B message and an empty `Header` (frame id capacity 256).

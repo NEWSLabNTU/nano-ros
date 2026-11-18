@@ -117,7 +117,7 @@ pub const VERSION: u32 = 11;
 /// `failed_alloc_size` / `failed_alloc_shortfall` pair -- first writer wins,
 /// and the first failure stops the boot -- but the two are sized by different
 /// knobs, and a pair that cannot say which arena it describes names the wrong
-/// one. Measured on the Autoware Safety Island under QEMU: zenoh-pico's
+/// one. Measured on one reference image under QEMU: zenoh-pico's
 /// `_z_slist_new` asked the platform heap for 236 bytes, the console printed
 /// `HEAP EXHAUSTED`, and the decoded record told the reader to raise
 /// `NROS_EXECUTOR_ARENA_SIZE` for an arena that was 28% used.

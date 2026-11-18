@@ -6,7 +6,7 @@
 //! plan at all: `rank_to_priority` mapped dense rank 0 onto the most urgent
 //! number the kernel has (Zephyr 0), which sits ABOVE the transport threads
 //! that feed the application - the inversion this rule exists to prevent,
-//! measured on the Autoware Safety Island.
+//! measured on one reference image.
 //!
 //! A plan states four things, and this module is the only place they are
 //! spelled in Rust:
