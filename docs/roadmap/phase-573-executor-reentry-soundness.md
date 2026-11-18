@@ -113,6 +113,13 @@ returns `RCLC_RET_REENTRANT` / `Reentrant` from a callback.
 Acceptance: the sweep is a gate, so a new entry that derives the executor
 another way fails it.
 
+One known site of W2b's client pattern on a different object belongs here:
+`Executor::session_ptr` (`spin.rs`) returns `&mut *self.session as *mut _`, a
+pointer derived from a temporary reborrow. A caller that keeps it while the
+executor writes the session through its own field holds a disabled tag, the
+same defect the client handles had. The sweep covers it: the fix is a raw
+place, and a Miri case keeps the pointer across a `spin_once`.
+
 ### W4 — The multi-level and RTIC case
 
 - **Status:** OPEN
