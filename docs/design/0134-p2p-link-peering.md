@@ -147,6 +147,55 @@ peer-free:
 After D2 lands, the same table is taken again over IVC or RPMsg on dual-core
 QEMU.
 
+### Results (2026-11-18, step 0)
+
+Image: `examples/mps2-an385-freertos/rust/talker`, built with `nros build
+mps2-an385-freertos` from main at 5370be0bb9, run under QEMU with the router on
+the host. Three builds, each booted for 30 to 40 s:
+
+- **A, peer-free:** today's image, `Z_FEATURE_UNICAST_PEER 0`, client mode.
+- **B, compiled in:** `Z_FEATURE_UNICAST_PEER 1`, still client mode.
+- **C, peer mode:** as B, plus `mode: 'peer'`, a listen locator
+  (`tcp/0.0.0.0:7447`) and a connect locator to the host, in the bringup's
+  `rmw/zenoh.json5`. Two measurement-only patches are needed for C:
+  - the shim's peer-mode guard (issue 0682) is bypassed, because it refuses
+    any peer session unless the multicast transport is compiled in;
+  - the image's `locator` moves into the file, because both homes are
+    refused together.
+
+  C was measured twice: with its outbound link only, and with a second host
+  router dialing its listen port, so it also held an inbound peer link.
+  The router logged `whatami: peer` for that link, which stayed up for 24 s.
+
+| | A | B | C, outbound only | C, plus one inbound peer |
+| --- | --- | --- | --- | --- |
+| `.text` | 505,252 | 510,440 (+5,188) | 510,592 (+5,340) | same as C |
+| `.data` + `.bss` (static RAM) | 915,948 | 915,948 (+0) | 915,956 (+8) | same as C |
+| heap peak, of 720,896 | 159,544 | 159,544 (+0) | 159,768 (+224) | 161,240 (+1,696) |
+| zenoh executor stack peak, of 5,120 | 880 | 912 (+32) | 968 (+88) | 1,312 (+432) |
+| app task stack peak | 26,688 | 26,688 | 26,696 (+8) | 26,696 (+8) |
+| messages published | yes | yes | yes | yes |
+
+What this answers:
+
+- **Compiling peer mode in is free in RAM.** It costs 5 KiB of code, no static
+  RAM and no heap. The 32-byte stack change is within run-to-run noise.
+- **A peer session costs about 0.2 KiB of heap, and each further peer about
+  1.5 KiB.** That is the per-peer transport state and its buffers. The
+  executor stack peak rises 432 bytes with an inbound peer, still under a
+  third of its 5 KiB.
+- **No thread is added.** `_zp_unicast_accept_task_fn` is a future, started
+  from `_zp_unicast_start_accept_task` (`src/transport/manager.c`) on
+  zenoh-pico's own executor, so it runs on the existing executor task. D3
+  holds.
+
+Not yet measured: executor futures counted at runtime against
+`Z_RUNTIME_MAX_TASKS` (64). From the code, peer mode adds the accept future
+and, while a connect locator is unreachable, the `_z_add_peers` retry. That is
+at most four futures with one peer, against a cap of 64. A runtime count, and
+the FreeRTOS task list confirming no new task, need a debug print that this
+step did not add.
+
 ## Upstream contribution
 
 D2 is a general zenoh-pico capability (peering over any single-peer link, for
@@ -188,3 +237,4 @@ Tracked by phase-575 W4:
 ## Changelog
 
 - 2026-11-18: drafted.
+- 2026-11-18: step 0 measured on FreeRTOS MPS2 QEMU (Results).
