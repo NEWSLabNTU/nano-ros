@@ -1,0 +1,11 @@
+# FreeRTOS + MPS2-AN385 QEMU interrupt-wake network config (Slirp NAT).
+# Read at compile time via `include_str!("../config.toml")` ->
+# `Config::from_toml`. The port is `nros_tests::alloc::FREERTOS_ISR_WAKE_PORT`.
+[node]
+domain_id = 0
+locator = "tcp/10.0.2.2:8100"
+
+[eth0]
+network = "qemu"
+host = 96
+mac = "02:00:00:00:00:96"

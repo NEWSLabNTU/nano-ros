@@ -636,11 +636,18 @@ pub trait PlatformThreading {
     fn wake_signal(_w: *mut c_void) -> i8 {
         -1
     }
-    /// ISR-safe signal. Returns `-1` when the backend has no ISR
-    /// path; callers may fall back to `wake_signal` (with the
-    /// obvious latency cost). Default forwards to `wake_signal`.
-    fn wake_signal_from_isr(w: *mut c_void) -> i8 {
-        Self::wake_signal(w)
+    /// The signal an interrupt handler may call (on POSIX, a signal
+    /// handler): only interrupt-safe (async-signal-safe) calls, bounded and
+    /// non-blocking. Returns `-1` when the backend has no such path. A
+    /// caller in an interrupt must NOT then fall back to
+    /// [`wake_signal`](Self::wake_signal): on FreeRTOS that is
+    /// `xSemaphoreGive`, which corrupts the scheduler from an ISR. The wake
+    /// is then seen at the waiter's own deadline. Issue 2696.
+    ///
+    /// Default `-1`: a port states its interrupt path, it never inherits the
+    /// thread one.
+    fn wake_signal_from_isr(_w: *mut c_void) -> i8 {
+        -1
     }
     /// phase-436 W7 — OPTIONAL microsecond park.
     ///

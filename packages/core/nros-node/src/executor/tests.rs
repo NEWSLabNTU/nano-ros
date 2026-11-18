@@ -18611,7 +18611,7 @@ mod p9b_windows {
         }));
         let ctx = sem as *const Sem as *mut core::ffi::c_void;
         // SAFETY: the semaphore is leaked; both entries are thread-safe.
-        let w = unsafe { crate::executor::BandWaiter::new(sem_give, sem_take, ctx) };
+        let w = unsafe { crate::executor::BandWaiter::new(sem_give, sem_give, sem_take, ctx) };
         (std::boxed::Box::leak(std::boxed::Box::new(w)), ctx)
     }
 

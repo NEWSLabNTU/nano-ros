@@ -1297,6 +1297,10 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("integration_px4", NonCell::CompileCheck),
     ("interface_subset_linkage", NonCell::CompileCheck),
     (
+        "isr_wake_rtos",
+        NonCell::Probe("an interrupt handler wakes a parked FreeRTOS executor (issue 2696)"),
+    ),
+    (
         "killed_run_verb",
         NonCell::Probe(
             "the `nros run` process contract: a SIGKILLed verb leaves no host image or QEMU guest (issue 2307)",

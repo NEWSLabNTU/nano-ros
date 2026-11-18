@@ -5627,11 +5627,14 @@ fn rtic_multi_level_tokens(
         let (t, w, s) = (task_ident(l), wake_fn(l), waiter(l));
         quote! {
             unsafe extern "C" fn #w(_ctx: *mut ::core::ffi::c_void) {
-                // Already pending is fine: one pass serves every wake.
+                // Already pending is fine: one pass serves every wake. A
+                // software task's `spawn` only pends its dispatcher, which is
+                // interrupt-safe, so this one function is both the thread
+                // wake and the interrupt wake (issue 2696).
                 let _ = __nros_app::#t::spawn();
             }
             static #s: ::nros::levels::BandWaiter = unsafe {
-                ::nros::levels::BandWaiter::new(#w, __nros_level_wait, ::core::ptr::null_mut())
+                ::nros::levels::BandWaiter::new(#w, #w, __nros_level_wait, ::core::ptr::null_mut())
             };
         }
     });
