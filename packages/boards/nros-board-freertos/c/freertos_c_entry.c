@@ -24,8 +24,14 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+/* `__NEWLIB__` comes from the stdio.h above. The time and sleep shims below
+ * complete NEWLIB (libnosys leaves them failing or undefined); an image linked
+ * against another C library, TI Arm Clang's for one, has neither these headers
+ * nor the gap, so it gets none of this (phase-575 W3). */
+#if defined(__NEWLIB__)
 #include <sys/time.h>
 #include <unistd.h>
+#endif
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -157,6 +163,7 @@ int _write(int fd, const char* buf, int count) {
  * scheduler started: a valid steady clock, and what a monitor's age
  * arithmetic needs. Weak, so a board with an RTC (or an SDK newlib that
  * already provides these) wins without a duplicate-symbol error. */
+#if defined(__NEWLIB__)
 __attribute__((weak)) int _gettimeofday(struct timeval* tv, void* tz) {
     (void)tz;
     if (tv != NULL) {
@@ -184,6 +191,7 @@ __attribute__((weak)) unsigned int sleep(unsigned int seconds) {
     vTaskDelay(pdMS_TO_TICKS((uint64_t)seconds * 1000u));
     return 0;
 }
+#endif /* __NEWLIB__ */
 
 /* ---- nros-log writer ----
  * Phase 88.16.H — printf-backed writer registered with the platform fn-ptr
