@@ -1,12 +1,13 @@
 # Phase 578 — what peer toolchains give a user that nano-ros does not yet
 
-**Status (2026-11-18). OPEN: W1–W11 are open and unassigned; nothing is built
-yet.** Filed from a survey the user asked for on 2026-11-18: how Rust/cargo,
+**Status (2026-11-18). OPEN: the user approved the phase on 2026-11-18; W1–W11
+are assigned and nothing is built yet.** Filed from a survey the user asked for on 2026-11-18: how Rust/cargo,
 Arduino, PlatformIO, ESP-IDF, Zephyr, Embassy/probe-rs and vendor tools (TI
 SysConfig, STM32CubeMX, nRF Connect for VS Code, Segger SystemView, Percepio
 Tracealyzer) deliver their user experience, and where nano-ros falls short.
-The managers assign each item. Items that need a design say so; the others
-are one PR each.
+Owners as the manager assigned them on 2026-11-18; each starts after its
+owner's current batch. Items that need a design say so; the others are one
+PR each.
 
 ## Why
 
@@ -56,7 +57,7 @@ at once (RFC-0135, draft).
 ### W1 — a size report after every build
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 133, after its current batch
 
 `nros build` ends with the image's flash and RAM use, from the ELF's section
 sizes, and the largest pools from the sizing descriptor (RFC-0100). Against
@@ -69,7 +70,7 @@ budget the percentages; a test holds the numbers equal to the ELF's.
 ### W2 — crash addresses as source lines in `nros monitor`
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 241, after its current batch
 - **Needs:** a short design note: which fault formats (Cortex-M HardFault
   frame, Cortex-R abort, Rust panic location, a POSIX backtrace) and where the
   ELF comes from when the monitor did not build the image.
@@ -84,7 +85,7 @@ function and line.
 ### W3 — JSON Schemas for `system.toml` and `nros-board.toml`
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 139 AUO book, after phase-569 W2, which it builds on
 
 Generate a JSON Schema for each file from the sources the CLI already reads:
 the knob catalog (phase-569 W2) for `[image.<id>.knobs]`, the board
@@ -99,7 +100,7 @@ schemas equal to their sources.
 ### W4 — errors that point at the line, and `nros fix`
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 118, after its current batch
 - **Needs:** a design (an RFC-0129 amendment): the span format, and which
   refusals carry a machine-applicable fix.
 
@@ -114,7 +115,7 @@ and `nros fix` rewrites it.
 ### W5 — examples per board, from the CLI
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 241, after its current batch
 - **After:** phase-577 W7
 
 `nros new --example <name> --board <key>` copies a board package's example
@@ -127,7 +128,7 @@ copies and builds.
 ### W6 — `nros test`
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 175, after its current batch
 - **Needs:** a design note: how a test states what it expects (the probes'
   `probe-expect` output lines, or an exit code from the image), and where
   hardware runs fit (`nros bench`).
@@ -141,7 +142,7 @@ board and on the host, and a failing one is reported with its output.
 ### W7 — a board catalog page a user can filter
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 139 AUO book, after phase-569 W2
 
 Generate a page from the board registry, with filters for architecture, RTOS,
 RMW, emulator and support status, linking each board to its book chapter and
@@ -153,7 +154,7 @@ them), and works without a server.
 ### W8 — a shorter first build
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 118, after its current batch
 - **Needs:** an RFC: what is prebuilt (zenoh-pico, lwIP, the RTOS kernel, the
   nano-ros C and Rust libraries), per which key (board, RMW, knobs that change
   the object code), and how a prebuilt piece is checked against the source it
@@ -169,7 +170,7 @@ completes in a stated time, measured by the probe.
 ### W9 — an editor integration
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 243, after its current batch
 
 First: `compile_commands.json` for every image kind (check which of the
 POSIX and bare-metal C and C++ images lack one), and a `rust-project.json`
@@ -183,7 +184,7 @@ editor with symbols resolved.
 ### W10 — compact logging for small boards
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 142, after its current batch
 - **Needs:** a design note against `nros-log` (RFC-0102): which log calls are
   interned, where the string table lives, and how `nros monitor` finds it.
 
@@ -196,7 +197,7 @@ path is smaller and prints the same lines in `nros monitor`.
 ### W11 — a timeline of tasks and deadlines
 
 - **Status:** OPEN
-- **Owner:** unassigned
+- **Owner:** nros 133, after its current batch
 - **After:** phase-575 W5
 - **Needs:** an RFC: the event set and the output format (SystemView,
   Perfetto, or CTF).
