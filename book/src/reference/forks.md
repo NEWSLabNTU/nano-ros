@@ -30,11 +30,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | | |
 | --- | --- |
 | Upstream base | `1.10.1` (merge base [e1ab223a28aa](https://github.com/eclipse-zenoh/zenoh-pico/commit/e1ab223a28aaebb5dec1e70d98eab152332f777a)) |
-| Commits on top | 93 |
+| Commits on top | 94 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 120, +10826/−275 |
+| Files changed | 127, +11096/−275 |
 
-**Pinned commit:** `92efaba64766e5e1be129990c460971ff59a3a88`
+**Pinned commit:** `e27088048b1159ae7bae91760166fd1b7918b12e`
 
 ### Commits on top of upstream
 
@@ -133,12 +133,13 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [328f56dea3](https://github.com/jerry73204/zenoh-pico/commit/328f56dea3c563f0fe0af77993abbec1d1b1bae3) | fix(nano-ros): a client session on IVC dereferenced NULL for its peer socket |
 | [2996fdefaa](https://github.com/jerry73204/zenoh-pico/commit/2996fdefaaaa182df03e678750935de7739b67fe) | feat(nano-ros): peer mode on a link that joins two endpoints |
 | [92efaba647](https://github.com/jerry73204/zenoh-pico/commit/92efaba64766e5e1be129990c460971ff59a3a88) | fix(nano-ros): a session on IVC can neither wait in its handshake nor read |
+| [e27088048b](https://github.com/jerry73204/zenoh-pico/commit/e27088048b1159ae7bae91760166fd1b7918b12e) | feat(nano-ros): an RPMsg link, sharing one framing with IVC |
 
 Reproduce:
 
 ```bash
 base=1.10.1
-head=jerry73204:zenoh-pico:92efaba64766e5e1be129990c460971ff59a3a88
+head=jerry73204:zenoh-pico:e27088048b1159ae7bae91760166fd1b7918b12e
 gh api "repos/eclipse-zenoh/zenoh-pico/compare/$base...$head" --jq '.ahead_by'
 ```
 
