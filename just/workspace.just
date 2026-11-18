@@ -655,10 +655,13 @@ cargo-tools:
     # tool here with no pin at all while `.config/nextest.toml` is
     # version-sensitive enough that a stale filter kills every nextest run
     # (issue 0743).
-    # One plan for the pair (phase-447 E1). The three below stay separate on
-    # purpose: each is individually NON-fatal, and one plan would make the
-    # whole set's exit status the only verdict.
-    nros setup --tool cargo-nextest --tool cargo-llvm-cov
+    # Fatal only for what the index marks `need = "required"` (issue 2716):
+    # cargo-nextest runs every gate scope; cargo-llvm-cov is opt-in (no gate
+    # runs it), so it is non-fatal like the tools below. Each stays separate
+    # on purpose: one plan would make the whole set's exit status the only
+    # verdict (phase-447 E1).
+    nros setup --tool cargo-nextest
+    nros setup --tool cargo-llvm-cov     || echo "WARNING: cargo-llvm-cov provisioning failed (non-fatal)"
     # phase-422 W5 — FORWARDER, not a second producer. `espflash` is
     # `[tool.espflash]` in the index, pinned to `v4.5.0` with a source recipe
     # that installs into the versioned store prefix; `cargo install` put a
