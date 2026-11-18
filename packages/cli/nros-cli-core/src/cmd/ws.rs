@@ -4319,7 +4319,13 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         // DOES have components to probe. Returning here skipped the metadata
         // refresh entirely for exactly the workspaces the C/C++ producer
         // exists to serve.
-        let probes = refresh_source_metadata(&ws_root, nano_ros_for_probes, no_metadata, verbose)?;
+        let probes = refresh_source_metadata(
+            &ws_root,
+            nano_ros_for_probes,
+            no_metadata,
+            verbose,
+            args.model_dir.as_deref(),
+        )?;
         finish_probes(&probes)?;
         println!("sync: done.");
         return Ok(());
@@ -4461,7 +4467,13 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 
     // Issue 2608 — a failed probe fails the command, but only after the leaf
     // settings below are written: they carry everything else this run made.
-    let probes = refresh_source_metadata(&ws_root, nano_ros_path.clone(), no_metadata, verbose)?;
+    let probes = refresh_source_metadata(
+        &ws_root,
+        nano_ros_path.clone(),
+        no_metadata,
+        verbose,
+        args.model_dir.as_deref(),
+    )?;
 
     // phase-445 W4b (RFC-0098 D1/D2) — a single-package leaf is a workspace of
     // one, and sync is what a user who drives cargo runs before `cargo build
@@ -4567,6 +4579,7 @@ fn refresh_source_metadata(
     nano_ros_path: Option<PathBuf>,
     no_metadata: bool,
     verbose: bool,
+    model_dir: Option<&Path>,
 ) -> Result<crate::orchestration::metadata_refresh::RefreshReport> {
     // A service family a node package compiles and its bringup does not
     // declare has no slot in the image; said here, whatever else is skipped.
@@ -4589,6 +4602,7 @@ fn refresh_source_metadata(
         ws_root,
         nano_ros_path.as_deref(),
         verbose,
+        model_dir,
     )?;
     // phase-463 W4 (issue 1419) -- and the ENTITY CENSUS, in the same block,
     // BEFORE the early return: a workspace whose components all have current
@@ -4617,6 +4631,7 @@ fn refresh_source_metadata(
         && report.unsupported.is_empty()
         && report.failed.is_empty()
         && report.degraded.is_empty()
+        && report.notes.is_empty()
     {
         return Ok(report);
     }
@@ -4636,6 +4651,11 @@ fn refresh_source_metadata(
     // producer".
     for what in &report.degraded {
         println!("sync: source metadata — kept the SystemModel bound for {what}");
+    }
+    // Issue 2640 -- a probe that ran on its defaults although launch instances
+    // name the component.
+    for note in &report.notes {
+        println!("sync: {note}");
     }
     // Issue 2608 — a failed probe is a FAILURE, never "no producer": each is
     // named on its own line, and the command exits non-zero.

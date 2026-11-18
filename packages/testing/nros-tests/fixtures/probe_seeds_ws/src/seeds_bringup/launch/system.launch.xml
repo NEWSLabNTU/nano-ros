@@ -1,0 +1,8 @@
+<launch>
+  <node pkg="seeds_c_pkg" exec="seeds_c" name="seeds_c">
+    <param name="ctrl_period_ms" value="20"/>
+  </node>
+  <node pkg="seeds_cpp_pkg" exec="seeds_cpp" name="seeds_cpp">
+    <param name="ctrl_period_ms" value="25"/>
+  </node>
+</launch>

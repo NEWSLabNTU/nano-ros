@@ -1,0 +1,23 @@
+# Issue 2640 -- the metadata probe seeds each component with the launch values
+# below before it constructs it, as the image's entry does. Both components
+# read `ctrl_period_ms` with no default in code.
+
+[system]
+name = "probe_seeds"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+features = ["param_services"]
+
+[[component]]
+pkg = "seeds_c_pkg"
+class = "seeds_c_pkg::Controller"
+name = "seeds_c"
+
+[[component]]
+pkg = "seeds_cpp_pkg"
+class = "seeds_cpp_pkg::Controller"
+name = "seeds_cpp"
+
+[image.linux]
+board = "linux"

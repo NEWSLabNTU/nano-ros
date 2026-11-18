@@ -32,6 +32,7 @@ use sha2::Digest as _;
 
 use super::{
     metadata_build::{MetadataBuildOptions, build_metadata, host_triple, probe_blocker},
+    probe_seeds::{ProbeSeedRecord, SeedModels, Seeding},
     source_metadata::{ComponentLanguage, SourceMetadata, SourceMetadataProvenance},
     workspace::{ComponentDeclaration, Workspace},
 };
@@ -67,6 +68,10 @@ pub struct RefreshReport {
     /// write them and will not delete them. Every reader that globs the
     /// directory still sees them, so they are REPORTED.
     pub undeclared_kept: Vec<PathBuf>,
+    /// Issue 2640 -- components whose launch instances disagree on their
+    /// parameters and whose probe ran, and succeeded, on the declaration
+    /// defaults (phase-566 D2): one line each, said and not fatal.
+    pub notes: Vec<String>,
 }
 
 /// Issue 2608 — what a failed probe does to the command's exit status.
@@ -196,10 +201,15 @@ impl RefreshReport {
 /// `nano_ros` is the nano-ros checkout the harness path-depends on for `nros`;
 /// without it no harness can be compiled and the whole step is skipped (a
 /// user's workspace built against an installed SDK has no such path).
+///
+/// `model_dir` is the models directory the sync wrote into when it was told one
+/// (`--model-dir`); `None` is `NROS_MODEL_DIR`, else `<ws>/build/nros/models`.
+/// The C/C++ probes are seeded from the models there (issue 2640).
 pub fn refresh_stale_sidecars(
     ws_root: &Path,
     nano_ros: Option<&Path>,
     verbose: bool,
+    model_dir: Option<&Path>,
 ) -> Result<RefreshReport> {
     let mut report = RefreshReport::default();
     let workspace = Workspace::discover(ws_root)?;
@@ -232,6 +242,14 @@ pub fn refresh_stale_sidecars(
     )?;
     // Issue 0286 — resolved once, not per component.
     let host = host_triple();
+    // Issue 2640 (phase-566 D1) -- the launch values of every component, read
+    // once from the models the sync just resolved.
+    let seed_models = SeedModels::load(ws_root, model_dir);
+    // What each C/C++ probe of this pass is seeded with, by
+    // `(package, component)`: its key, its sidecar's `probe` object and, when
+    // its instances disagree, its note or refusal all come from it.
+    let mut cpp_seeding: std::collections::BTreeMap<(String, String), Seeding> =
+        std::collections::BTreeMap::new();
     // phase-313 — C/C++ components to probe in ONE workspace-scoped project.
     // Issue 2238 -- every C/C++ component the probe project ADDS (fresh or
     // not), beside the stale ones it re-probes.
@@ -268,7 +286,10 @@ pub fn refresh_stale_sidecars(
             // batch below, so the workspace builds the runtime (and the ~1.2 GB
             // of nested sizes-probe cargo builds) once rather than once per
             // component.
-            match cpp_probe_options(decl, nano_ros, &probe_root) {
+            let seeding = seeding_of(&seed_models, decl);
+            let node = (decl.config.package.clone(), decl.config.component.clone());
+            cpp_seeding.insert(node, seeding.clone());
+            match cpp_probe_options(decl, nano_ros, &probe_root, &seeding) {
                 // issue 0641 — a C/C++ probe that FAILED at this exact source is
                 // not re-attempted until something changes. The Rust branch
                 // below has had this since #0288; the batch path never did, so
@@ -278,7 +299,9 @@ pub fn refresh_stale_sidecars(
                 // configure: 17 components, 1.2 s of cmake per sync, no
                 // possible progress. `nros sync` is run 22 times by
                 // `regenerate-bindings.sh` at the head of every fixture build.
-                Ok(Some(opts)) if is_known_unprobeable_now(&opts.output_path, decl, nano_ros) => {
+                Ok(Some(opts))
+                    if is_known_unprobeable_now(&opts.output_path, decl, nano_ros, &seeding) =>
+                {
                     // issue 1469 — carry the RECORDED CAUSE up, not just the
                     // fact of the skip. "probe failed at this source last sync;
                     // unchanged" named the node and nothing else, and because
@@ -312,7 +335,7 @@ pub fn refresh_stale_sidecars(
                 // probe project (issue 2238): its configure writes the
                 // aggregate every member's row must stay in.
                 Ok(None) => {
-                    if let Ok(opts) = cpp_probe_member(decl, nano_ros, &probe_root) {
+                    if let Ok(opts) = cpp_probe_member(decl, nano_ros, &probe_root, &seeding) {
                         cpp_members.push(opts);
                     }
                     report.fresh.push(decl.source_metadata_path())
@@ -473,37 +496,58 @@ pub fn refresh_stale_sidecars(
                     else {
                         continue;
                     };
+                    let node = format!("{}::{}", o.package, o.component);
+                    let seeding = cpp_seeding
+                        .get(&(o.package.clone(), o.component.clone()))
+                        .cloned()
+                        .unwrap_or(Seeding::None);
+                    // Issue 2640 -- the key the probe ran under, seeds included.
+                    let key = component_probe_key(
+                        &opts.package_dir,
+                        Some(&opts.nano_ros_workspace),
+                        &seeding,
+                    );
                     match &o.result {
                         Ok(()) => {
                             // Stamp only on success; a failed probe leaves the
                             // previous sidecar (or none) untouched.
-                            let key =
-                                probe_inputs_key(&opts.package_dir, Some(&opts.nano_ros_workspace));
                             // Issue 2689 -- NOT `let _ =`. The stamp's parse
                             // is the schema gate on what the probe wrote; a
                             // swallowed failure left the sidecar unstamped, so
                             // it read as stale on every configure and nothing
                             // said why. Fail like the Rust road above does.
-                            stamp_provenance(&opts.output_path, key.as_deref().unwrap_or(UNKEYED))
-                                .wrap_err_with(|| {
-                                    format!(
-                                        "stamp the C/C++ probe sidecar for `{}::{}`",
-                                        o.package, o.component
-                                    )
-                                })?;
+                            stamp_probe(
+                                &opts.output_path,
+                                key.as_deref().unwrap_or(UNKEYED),
+                                seeding.record(),
+                            )
+                            .wrap_err_with(|| {
+                                format!(
+                                    "stamp the C/C++ probe sidecar for `{}::{}`",
+                                    o.package, o.component
+                                )
+                            })?;
+                            if let Some(note) = seeding.unseeded_note(&node) {
+                                report.notes.push(note);
+                            }
                             report.rebuilt.push(opts.output_path.clone());
                         }
                         Err(why) => {
-                            let text = format!("{why:#}");
+                            let raw = format!("{why:#}");
+                            // Issue 2640 (phase-566 D2) -- an unseeded probe of
+                            // instances that disagree fails naming both causes.
+                            let text = seeding
+                                .refusal(&node, &first_error_line(&raw))
+                                .map_or(raw.clone(), |r| format!("{r}\n{raw}"));
                             mark_unprobeable_now(
                                 &opts.output_path,
-                                &opts.package_dir,
+                                key.as_deref(),
                                 nano_ros,
                                 compile_root().as_deref(),
                                 &text,
                             );
                             report.failed.push(ProbeFailure::new(
-                                format!("{}::{}", o.package, o.component),
+                                node.clone(),
                                 &text,
                                 Some(unprobeable_marker(&opts.output_path)),
                             ));
@@ -564,13 +608,15 @@ fn cpp_probe_options(
     decl: &ComponentDeclaration,
     nano_ros: Option<&Path>,
     probe_root: &Path,
+    seeding: &Seeding,
 ) -> Result<Option<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions>, String> {
     // The declaration's refusals first, as before the split (issue 2238).
-    let opts = cpp_probe_member(decl, nano_ros, probe_root)?;
+    let opts = cpp_probe_member(decl, nano_ros, probe_root, seeding)?;
     // Issue 1578 — the same key as the Rust branch; `nano_ros` is known
     // present here (`cpp_probe_member` refused otherwise), so a `None` means
     // only that the closure list is missing, which is never fresh.
-    if probe_inputs_key(&decl.package_root, nano_ros)
+    // Issue 2640 -- and the launch values it is seeded with.
+    if component_probe_key(&decl.package_root, nano_ros, seeding)
         .is_some_and(|k| sidecar_is_fresh(&opts.output_path, &k))
         && probe_build_present(probe_root)
     {
@@ -600,6 +646,7 @@ fn cpp_probe_member(
     decl: &ComponentDeclaration,
     nano_ros: Option<&Path>,
     probe_root: &Path,
+    seeding: &Seeding,
 ) -> Result<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions, String> {
     // Issue 2280 -- a package whose CMakeLists.txt calls
     // `find_package(Zephyr)` is a west application, and the probe adds it to a
@@ -679,6 +726,7 @@ fn cpp_probe_member(
             output_path: sidecar,
             probe_dir: probe_root.to_path_buf(),
             deps,
+            seeds: seeding.params().to_vec(),
         },
     )
 }
@@ -1046,6 +1094,8 @@ pub fn fresh_probe_rows(
     let mut notes = Vec::new();
     let mut read: Vec<PathBuf> = Vec::new();
     let mut rows: Vec<ProbeRow> = Vec::new();
+    // Issue 2640 -- the key the refresh probed under includes the launch values.
+    let seed_models = SeedModels::load(ws_root, None);
     for decl in workspace.component_declarations()? {
         let sidecar = decl.source_metadata_path();
         if !sidecar.is_file() {
@@ -1053,8 +1103,12 @@ pub fn fresh_probe_rows(
         }
         // Issue 2361 -- an input whatever its state, before any `continue`.
         read.push(sidecar.clone());
-        let fresh = probe_inputs_key(&decl.package_root, nano_ros)
-            .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
+        let fresh = component_probe_key(
+            &decl.package_root,
+            nano_ros,
+            &seeding_of(&seed_models, &decl),
+        )
+        .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
         if !fresh {
             notes.push(format!(
                 "{}: stale against its sources (re-run `nros configure`), so neither its counts nor \
@@ -1185,6 +1239,16 @@ fn sidecar_is_fresh(sidecar: &Path, digest: &str) -> bool {
 /// (W3's C/C++ probe gets it for free), and so the round-trip through
 /// [`SourceMetadata`] doubles as schema validation of what the harness emitted.
 pub(crate) fn stamp_provenance(sidecar: &Path, digest: &str) -> Result<()> {
+    stamp_probe(sidecar, digest, None)
+}
+
+/// [`stamp_provenance`], and the sidecar's `probe` object: the launch values a
+/// C/C++ probe ran with, or why it ran unseeded (issue 2640, phase-566 D4).
+pub(crate) fn stamp_probe(
+    sidecar: &Path,
+    digest: &str,
+    probe: Option<ProbeSeedRecord>,
+) -> Result<()> {
     let raw =
         std::fs::read_to_string(sidecar).wrap_err_with(|| format!("read {}", sidecar.display()))?;
     // Issue 2689 -- the serde error goes IN the message, not only in the
@@ -1203,6 +1267,7 @@ pub(crate) fn stamp_provenance(sidecar: &Path, digest: &str) -> Result<()> {
         inputs_digest: digest.to_string(),
         generator: format!("nros {}", env!("CARGO_PKG_VERSION")),
     });
+    parsed.probe = probe;
     let out = serde_json::to_string_pretty(&parsed)?;
     // Issue 0498 — atomic. Several fixture rows of ONE leaf (its zenoh / xrce /
     // cyclonedds coordinates) sync concurrently and contend for this path, which
@@ -1236,8 +1301,9 @@ fn is_known_unprobeable_now(
     sidecar: &Path,
     decl: &ComponentDeclaration,
     nano_ros: Option<&Path>,
+    seeding: &Seeding,
 ) -> bool {
-    probe_inputs_key(&decl.package_root, nano_ros)
+    component_probe_key(&decl.package_root, nano_ros, seeding)
         .is_some_and(|k| is_known_unprobeable(sidecar, &k, nano_ros))
 }
 
@@ -1249,13 +1315,13 @@ fn is_known_unprobeable_now(
 /// the pinned configure asked for.
 fn mark_unprobeable_now(
     sidecar: &Path,
-    package_dir: &Path,
+    key: Option<&str>,
     nano_ros: Option<&Path>,
     compile_root: Option<&Path>,
     why: &str,
 ) {
-    if let Some(key) = probe_inputs_key(package_dir, nano_ros) {
-        mark_unprobeable_with_reason(sidecar, &key, compile_root.or(nano_ros), Some(why));
+    if let Some(key) = key {
+        mark_unprobeable_with_reason(sidecar, key, compile_root.or(nano_ros), Some(why));
     }
 }
 
@@ -1521,6 +1587,42 @@ pub fn probe_inputs_key(package_root: &Path, nano_ros: Option<&Path>) -> Option<
     ))
 }
 
+/// Issue 2640 (phase-566 D4) -- one component's WHOLE probe key: the
+/// package's [`probe_inputs_key`] and, when launch instances name the
+/// component, the `sha256` digest of the values it is probed with. A component
+/// no launch names keeps the key it had before seeds existed. Every freshness
+/// decision on a component (the refresh's, its failure marker's, and every
+/// reader that trusts a sidecar) asks this, so an edited parameter file
+/// re-probes and a sidecar probed under other values is never read as current.
+pub fn component_probe_key(
+    package_root: &Path,
+    nano_ros: Option<&Path>,
+    seeding: &Seeding,
+) -> Option<String> {
+    let base = probe_inputs_key(package_root, nano_ros)?;
+    Some(match seeding.digest() {
+        Some(d) => format!("{base}:{d}"),
+        None => base,
+    })
+}
+
+/// Issue 2640 -- what `decl`'s probe is seeded with (phase-566 D2). A Rust
+/// component is probed by the cargo harness, which takes no seeds yet
+/// (phase-566 W4), so it is never seeded and its key is unchanged.
+pub fn seeding_of(models: &SeedModels, decl: &ComponentDeclaration) -> Seeding {
+    if decl.config.language == ComponentLanguage::Rust {
+        return Seeding::None;
+    }
+    models.seeding(
+        &decl.config.package,
+        &decl
+            .config
+            .linkage
+            .resolved_executable(&decl.config.component),
+        decl.class.as_deref(),
+    )
+}
+
 /// The generated list of crates a probe compiles, relative to a nano-ros root.
 /// Written by `scripts/gen-probe-source-dirs.py`, gated by
 /// `check-probe-source-dirs`.
@@ -1657,6 +1759,8 @@ pub(crate) fn stale_sidecar_components(root: &Path, nano_ros: Option<&Path>) -> 
         return Vec::new();
     };
     let mut out = Vec::new();
+    // Issue 2640 -- the refresh's key includes the launch values.
+    let seed_models = SeedModels::load(root, None);
     for decl in &declarations {
         let sidecar = decl.source_metadata_path();
         let Ok(raw) = std::fs::read_to_string(&sidecar) else {
@@ -1667,12 +1771,16 @@ pub(crate) fn stale_sidecar_components(root: &Path, nano_ros: Option<&Path>) -> 
             .and_then(|m| m.provenance)
             .is_some_and(|p| p.inputs_digest == UNKEYED);
         let fresh = unkeyed
-            || probe_inputs_key(&decl.package_root, nano_ros)
-                .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
+            || component_probe_key(
+                &decl.package_root,
+                nano_ros,
+                &seeding_of(&seed_models, decl),
+            )
+            .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
         if !fresh {
             out.push(format!(
                 "metadata sidecar `{}` is stale (its probe inputs moved: component sources, the \
-                 CLI, or the crates the probe compiles)",
+                 CLI, the crates the probe compiles, or the launch values it is probed with)",
                 sidecar.display()
             ));
         } else if decl.config.language != ComponentLanguage::Rust
@@ -2127,6 +2235,7 @@ mod tests {
                 &probeable_decl(&dir, language),
                 Some(&nano_ros),
                 &probe_root,
+                &Seeding::None,
             )
             .unwrap_or_else(|why| panic!("{language:?} must be probeable: {why}"))
             .unwrap_or_else(|| panic!("{language:?}: no sidecar exists, so a probe is needed"));
@@ -2137,6 +2246,7 @@ mod tests {
             &probeable_decl(&dir, ComponentLanguage::Rust),
             Some(&nano_ros),
             &probe_root,
+            &Seeding::None,
         )
         .expect_err("a Rust component has no cmake probe — it has the cargo harness");
         assert!(
@@ -2163,7 +2273,8 @@ mod tests {
         assert!(sidecar_is_fresh(&sidecar, &key));
 
         let probe_root = dir.join("probe");
-        let opts = cpp_probe_options(&decl, Some(&root), &probe_root).expect("probeable");
+        let opts =
+            cpp_probe_options(&decl, Some(&root), &probe_root, &Seeding::None).expect("probeable");
         assert!(
             opts.is_some(),
             "no probe build here, so its bound tables are missing: the component must be probed"
@@ -2175,7 +2286,8 @@ mod tests {
                 .join("CMakeCache.txt");
         std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
         std::fs::write(&cache, "# configured\n").unwrap();
-        let opts = cpp_probe_options(&decl, Some(&root), &probe_root).expect("probeable");
+        let opts =
+            cpp_probe_options(&decl, Some(&root), &probe_root, &Seeding::None).expect("probeable");
         assert!(
             opts.is_none(),
             "fresh sidecar and a probe build: nothing to do"
@@ -2206,6 +2318,7 @@ mod tests {
                 &probeable_decl(&dir, language),
                 Some(&nano_ros),
                 &probe_root,
+                &Seeding::None,
             )
             .expect_err("a west application cannot be configured for the host");
             assert!(
@@ -2223,6 +2336,7 @@ mod tests {
                 &probeable_decl(&dir, ComponentLanguage::Cpp),
                 Some(&nano_ros),
                 &probe_root,
+                &Seeding::None,
             )
             .unwrap_or_else(|why| panic!("an ament package still probes: {why}"))
             .expect("no sidecar exists, so a probe is needed");
@@ -2595,6 +2709,31 @@ mod tests {
             "a change to a crate the probe compiles must re-probe -- this is the \
              `in_place` flip #1578 measured being reused"
         );
+    }
+
+    // Issue 2640 -- the launch values a component is probed with are part of
+    // its key, so editing a parameter file re-probes; a component no launch
+    // names keeps the key it had before seeds existed.
+    #[test]
+    fn the_launch_values_a_component_is_probed_with_are_in_its_key() {
+        let root = fake_nano_ros("probe-key-seeds");
+        let pkg = tmp("probe-key-seeds-pkg");
+        std::fs::write(pkg.join("src/lib.rs"), "// the component\n").unwrap();
+        let base = probe_inputs_key(&pkg, Some(&root)).expect("keyed");
+        assert_eq!(
+            component_probe_key(&pkg, Some(&root), &Seeding::None),
+            Some(base.clone())
+        );
+        let seeded = |v: &str| Seeding::Seeded {
+            instances: vec!["/c".into()],
+            params: vec![("ctrl_period_ms".into(), v.into())],
+            sources: Vec::new(),
+            digest: format!("sha256:{v}"),
+        };
+        let a = component_probe_key(&pkg, Some(&root), &seeded("20")).expect("keyed");
+        let b = component_probe_key(&pkg, Some(&root), &seeded("25")).expect("keyed");
+        assert!(a.starts_with(&base) && a != base, "{a}");
+        assert_ne!(a, b, "another launch value must re-probe");
     }
 
     /// The other direction: a crate the probe does NOT compile must not re-probe
