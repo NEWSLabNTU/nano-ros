@@ -124,10 +124,13 @@ fn exchange_without_a_router(link: &Link) {
     if std::env::var(ROLE_ENV).as_deref() == Ok("listener") {
         listening_peer(link, &PathBuf::from(std::env::var(DIR_ENV).unwrap()));
     }
-    assert!(
-        nros_rmw_zenoh::zpico::ZPICO_POINT_TO_POINT_PEER_SUPPORTED,
-        "a build with a point-to-point link must compile point-to-point peer mode (RFC-0134 D1)"
-    );
+    // A const: the build itself refuses an image that lacks peer mode.
+    const {
+        assert!(
+            nros_rmw_zenoh::zpico::ZPICO_POINT_TO_POINT_PEER_SUPPORTED,
+            "a build with a point-to-point link must compile point-to-point peer mode (RFC-0134 D1)"
+        )
+    };
 
     let dir = std::env::temp_dir().join(format!(
         "nros-p2p-peer-{}-{}",
