@@ -1,4 +1,4 @@
-//! Issue 2704 -- the interface types the runtime creates entities with on its
+//! The interface types the runtime creates entities with on its
 //! own (the parameter services, `/rosout`, the lifecycle services and their
 //! event publishers), per node interface axis.
 //!
@@ -19,6 +19,7 @@
 //! `check-runtime-interface-types-roads` holds [`Axis::registers`] to the
 //! types nros-node's creation sites name.
 
+// Issue 2704 -- one table, so a runtime-owned type cannot land on one road only.
 use std::sync::OnceLock;
 
 use serde::Deserialize;

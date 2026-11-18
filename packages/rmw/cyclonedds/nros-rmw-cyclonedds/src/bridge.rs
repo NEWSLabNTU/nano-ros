@@ -191,12 +191,14 @@ unsafe extern "C" {
         descriptor: *const core::ffi::c_void,
     );
 
-    /// Issue 2704 -- free a descriptor [`nros_cyclonedds_build_descriptor_from_schema`]
+    // Issue 2704.
+    /// Free a descriptor [`nros_cyclonedds_build_descriptor_from_schema`]
     /// built that nothing took (the table refused it). Only for a pointer no
     /// topic was created with.
     pub fn nros_cyclonedds_free_built_descriptor(descriptor: *const core::ffi::c_void);
 
-    /// Issue 2704 -- the run-time registration, which can fail. Registers
+    // Issue 2704.
+    /// The run-time registration, which can fail. Registers
     /// `descriptor` under `type_name` (and its own `m_typename`) all or
     /// nothing, and returns [`TRY_REGISTER_OK`], [`TRY_REGISTER_INVALID`] or
     /// [`TRY_REGISTER_FULL`] (the `descriptors.cpp` table has no room; no key
@@ -317,7 +319,8 @@ pub mod test_stub {
         // Rust registry already cached the pointer.
     }
 
-    /// Issue 2704 -- counts frees, so a test can see a refused descriptor
+    // Issue 2704.
+    /// Counts frees, so a test can see a refused descriptor
     /// released rather than leaked.
     pub static FREE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -326,7 +329,8 @@ pub mod test_stub {
         FREE_COUNTER.fetch_add(1, Ordering::SeqCst);
     }
 
-    /// Issue 2704 -- a type whose name starts with this prefix does not fit
+    // Issue 2704.
+    /// A type whose name starts with this prefix does not fit
     /// the stub's C++ table, so a test can drive the overflow path without a
     /// process-global switch that would race the other tests.
     pub const TABLE_FULL_PREFIX: &str = "table_full_msgs/";
