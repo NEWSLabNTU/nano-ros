@@ -377,9 +377,11 @@ pub fn open_with(
 ///   input set of the resolve that succeeded; a sidecar added since is an
 ///   input the resolver has not seen (issue 1121 made visible, not fixed).
 ///
-/// `None` means the provenance is intact. A model that cannot be parsed
-/// returns `None`, so `run_sync` falls back to its mtime gate rather than
-/// force-churning, and a consumer fails on its own parse with its own message.
+/// `None` means the provenance is intact. A model that cannot be read or
+/// parsed is STALE (issue 2699): another checkout's resolver may have written
+/// a schema this reader does not know, and only a re-resolve with our own
+/// pinned resolver can make it ours, so `run_sync` re-resolves it and a
+/// consumer door refuses it, naming the parse error.
 ///
 /// Input checks need `bringup_dir` (recorded paths resolve against the
 /// package root, matching how the resolver strips the launch file's
@@ -437,8 +439,22 @@ pub fn provenance_stale_with(
     bringup_dir: Option<&Path>,
     pin_policy: PinPolicy,
 ) -> Option<String> {
-    let raw = std::fs::read_to_string(model_path).ok()?;
-    let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw).ok()?;
+    // Issue 2699 -- fail CLOSED. Both callers ask only about a model that
+    // EXISTS, so a model this binary cannot read or parse is not "nothing to
+    // say": it is a model this checkout did not write. A newer branch's model
+    // (`unsupported SystemModel schema version 6 (this reader supports <= 5)`)
+    // left in a persistent tree read as fresh, `nros sync` skipped the
+    // re-resolve, and the build died on the very parse this check had
+    // swallowed. Stale, so sync regenerates it from this checkout's pinned
+    // resolver and a consumer door refuses it naming why.
+    let raw = match std::fs::read_to_string(model_path) {
+        Ok(raw) => raw,
+        Err(e) => return Some(format!("model unreadable ({e})")),
+    };
+    let model = match ros_launch_manifest_model::SystemModel::from_yaml_str(&raw) {
+        Ok(model) => model,
+        Err(e) => return Some(format!("model not readable by this checkout ({e})")),
+    };
     if let Some(bringup_dir) = bringup_dir {
         for input in &model.meta.inputs {
             let recorded = Path::new(&input.path);
@@ -720,6 +736,40 @@ mod tests {
     // Issue 0320 -- content-addressed staleness. These moved with the function
     // from `cmd/ws.rs`; the bringup has no `launch/`, so only the recorded set
     // is checked.
+
+    /// Issue 2699 -- a model this binary cannot parse (another checkout's
+    /// newer schema, or a damaged file) is stale, never "nothing to say".
+    #[test]
+    fn a_model_this_checkout_cannot_parse_is_stale() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        std::fs::write(bringup.join("system.toml"), b"[system]\n").unwrap();
+        let model = write_model(bringup, vec![]);
+        let raw = std::fs::read_to_string(&model).unwrap();
+        let newer = ros_launch_manifest_model::SCHEMA_VERSION + 1;
+        let foreign = raw.replacen(
+            &format!("version: {}", ros_launch_manifest_model::SCHEMA_VERSION),
+            &format!("version: {newer}"),
+            1,
+        );
+        assert_ne!(
+            foreign, raw,
+            "the schema version line moved; re-point the test"
+        );
+        std::fs::write(&model, foreign).unwrap();
+        let why = provenance_stale(&model, Some(bringup)).expect("a foreign schema is stale");
+        assert!(
+            why.contains("not readable by this checkout") && why.contains("schema"),
+            "the reason names the schema: {why}"
+        );
+        assert!(verify(&model, Some(bringup)).is_err());
+
+        std::fs::write(&model, b"meta: [unterminated\n").unwrap();
+        assert!(
+            provenance_stale(&model, Some(bringup)).is_some(),
+            "a damaged model is stale"
+        );
+    }
 
     #[test]
     fn intact_provenance_is_not_stale() {
