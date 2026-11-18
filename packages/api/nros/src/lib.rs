@@ -171,6 +171,9 @@ pub mod metadata_mode;
 /// hosted edges that read `$NROS_PROFILE_OUT` (`nros-cpp`, `nros-board-linux`).
 #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
 pub use nros_node::executor::profile;
+// phase-562 W10.
+/// The run-to-completion level runner's deadlines.
+pub mod level_wake;
 /// The Rust sched task runners' level core: one
 /// executor per core, a worker per level.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]

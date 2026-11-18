@@ -1,0 +1,5 @@
+{
+  "key": "rust:BandWaiter",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- re-exported from nros-node: a level's wake object, which the RTIC level runner builds as a `static` per level (wake = spawn the level's task). rclrs has no levels."
+}

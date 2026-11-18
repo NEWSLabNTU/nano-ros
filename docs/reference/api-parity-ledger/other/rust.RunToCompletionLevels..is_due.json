@@ -1,0 +1,5 @@
+{
+  "key": "rust:RunToCompletionLevels::is_due",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- whether a level's next timer is due, for the level-wake interrupt. rclrs has no levels."
+}

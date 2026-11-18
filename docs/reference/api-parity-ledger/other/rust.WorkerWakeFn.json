@@ -1,0 +1,5 @@
+{
+  "key": "rust:WorkerWakeFn",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- re-exported from nros-node: how a level's waiter is woken. rclrs has no levels."
+}

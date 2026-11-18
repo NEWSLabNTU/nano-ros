@@ -1,0 +1,5 @@
+{
+  "key": "rust:BandWaiter::new",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- builds a level's wake object from a wake and a wait function. rclrs has no levels."
+}
