@@ -8,7 +8,7 @@ links = "nros_msgs_nros_std_msgs"
 # varies by host (ROS install vs vendored interfaces) and must never reach the
 # `version` field above, or it lands in consumers' lockfiles.
 [package.metadata.nros]
-ament_version = "4.9.1"
+ament_version = "4.9.2"
 
 [features]
 default = []

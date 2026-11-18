@@ -55,5 +55,5 @@ module and `///` of a `pub` item in a private module are counted, though
 3. At zero, drop the ratchet file: the subject becomes baseline zero like
    the others (issue 2443's path).
 
-[Issue 2554](2554-generated-humble-drifts-from-emitter.md) is the same
+[Issue 2554](archived/2554-generated-humble-drifts-from-emitter.md) is the same
 problem in the tracked generated `humble` crates and is swept with it.

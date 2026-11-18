@@ -934,3 +934,12 @@ launch-model-boundary:
 [group("check")]
 node-interface-readers:
     @python3 scripts/check-node-interface-readers.py
+
+# Issue 2554 — the tracked, pre-generated message crates
+# (`packages/interfaces/generated/<distro>`) were emitted by today's codegen:
+# each one's NROS_EMITTED_CODEGEN_VERSION equals NROS_CODEGEN_VERSION. Enough,
+# because `codegen-version-surface` refuses a template change that does not bump
+# the version. Buildless, ~0.1 s.
+[private]
+tracked-generated-codegen-version:
+    @python3 scripts/check/check-tracked-generated-codegen-version.py
