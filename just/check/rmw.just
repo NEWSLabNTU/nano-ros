@@ -565,6 +565,17 @@ zpico-config-keys:
 zenoh-source-manifest:
     @python3 scripts/check-zenoh-source-manifest.py
 
+# Phase-560 W9.d -- `[port.<platform>] links` in the zenoh descriptor is an
+# authored list of the default-off links (`can`, `isotp`) whose platform arm
+# the port compiles, and `nros configure` refuses an image dialling a link its
+# row does not list. The arms are zenoh-pico's (`_z_open_<link>` under a
+# `ZENOH_LINUX` / `ZENOH_ZEPHYR` guard), so this DERIVES the armed links per
+# port from the sources and fails when a row disagrees in either direction.
+# Buildless; NOT VERIFIED when zenoh-pico is not checked out. Self-tests.
+[private]
+zenoh-port-links:
+    @python3 scripts/check/check-zenoh-port-links.py
+
 # Issue 1069 — the same mirror class as `xrce-source-manifest`, one fact over.
 # `MICROCDR_VERSION_STR` compiled as "2.4.1" under CMake and "2.0.2" under
 # cargo, for a tree that is 2.0.2; the client said 2.4.1 in BOTH lanes against a

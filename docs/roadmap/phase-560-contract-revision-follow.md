@@ -211,7 +211,9 @@ and each states its acceptance before it lands.
   `ZENOH_LINUX` and `ZENOH_ZEPHYR` only). The zenoh port rows now state
   `links` (`[port.posix]`, `[port.zephyr]`), and
   `nros-cli-core/src/orchestration/link_arms.rs` refuses an endpoint on a link
-  the image's platform row lists no arm for. The FD-at-open split is decided
+  the image's platform row lists no arm for; `just check zenoh-port-links`
+  derives each row's list from zenoh-pico's `_z_open_<link>` guards and fails
+  on drift in either direction. The FD-at-open split is decided
   (user ruling, 2026-11-18) and tabled in RFC-0132 D2: Zephyr opens with
   `want_fd` and reports `fd_active`, socketcan and the mock refuse it at open,
   and an FD send on a handle without FD is `ENOFD` everywhere. W9.c's GATED
