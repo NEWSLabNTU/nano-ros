@@ -460,6 +460,19 @@ pub fn resolve_in(
         {
             return Err(format!("`{image_id}`: {refusal}"));
         }
+        // Issue 2704 -- the sibling: an enabled node interface whose runtime
+        // types this backend cannot be given is refused, never booted without
+        // its services.
+        let search = std::env::var_os("NROS_INTERFACE_SEARCH_PATH");
+        if let Some(refusal) = crate::orchestration::backend_link::runtime_interface_types_refusal(
+            &resolved,
+            sys,
+            &|p| {
+                crate::orchestration::backend_link::interface_package_on_index(search.as_deref(), p)
+            },
+        ) {
+            return Err(format!("image `{image_id}`: {refusal}"));
+        }
         // RFC-0071 D15 — the crate is `[rmw.provides.cargo] crate`, at the
         // directory the scan resolved (amended ruling 3), so a backend outside
         // the SDK root is found the same way as one inside it. No `crate` is a

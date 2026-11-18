@@ -628,6 +628,29 @@ if(CONFIG_NROS_CPP_API)
     set(_nros_c_param_suffix "${_nros_cpp_param_suffix}")
 endif()
 
+# Issue 2704 -- the types the runtime creates entities for on its own (the
+# parameter services, `/rosout`, `/parameter_events`, the lifecycle services),
+# through the ONE helper the top-level cmake road uses (issue 2304). A backend
+# that resolves types through a descriptor table (Cyclone) can create an entity
+# only for a type some linked archive registered, and an application's
+# `find_package(<pkg>)` calls generate only ITS packages. Without this a Zephyr
+# image on Cyclone with `param_services` booted without its parameter services
+# (`Transport(Unsupported)` from `service_create`), on every API: C, C++ and a
+# generated Rust application all link the C++ Cyclone backend here.
+#
+# Deferred to the end of the application's directory, so the application's
+# own packages generate first and one it shares with the runtime
+# (`builtin_interfaces`) keeps the single typesupport library its first caller
+# made. A backend with no per-message hook (zenoh, xrce) pays nothing.
+include("${NROS_REPO_DIR}/cmake/NanoRosRuntimeInterfaceTypes.cmake")
+if(_nros_kconfig_rmw AND NROS_FEATURES)
+    cmake_language(EVAL CODE "
+        cmake_language(DEFER DIRECTORY [==[${CMAKE_SOURCE_DIR}]==] CALL
+            nros_runtime_interface_types [==[${NROS_FEATURES}]==]
+            RMW [==[${_nros_kconfig_rmw}]==]
+            HOOK _nros_zephyr_runtime_typesupport_hook)")
+endif()
+
 # Issue 1681 -- the OTHER two capability axes, by the same rule.
 #
 # The generated entry calls what each declared axis registers --

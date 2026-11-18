@@ -927,6 +927,14 @@ cmake-entry-agreement:
 launch-model-boundary:
     @python3 scripts/check-launch-model-boundary.py
 
+# Issue 2704 -- every road that generates per-message type support also
+# generates the runtime's own interface types (`nros_runtime_interface_types`,
+# the one helper), and the CLI's refusal table names the same packages per axis.
+# Buildless; self-test first.
+[group("check")]
+runtime-interface-types-roads:
+    @python3 scripts/check-runtime-interface-types-roads.py
+
 # phase-556 W13 -- every reader of a bringup's or leaf's capability `features`
 # goes through `node_interfaces::effective_features`, the one decision of which
 # node interfaces (parameter services, `/rosout`) an image gets, so the
