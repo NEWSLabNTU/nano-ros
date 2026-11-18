@@ -74,6 +74,10 @@ pub struct CmakeProbeOptions {
     /// Issue 2680 -- the workspace packages this component's package needs
     /// configured before it ([`super::probe_deps`]), in dependency order.
     pub deps: Vec<super::probe_deps::ProbeDep>,
+    /// Issue 2640 -- the launch values the probe seeds the node with before
+    /// it constructs it, as baked text (`probe_seeds`, phase-566 D3). Empty
+    /// when no launch instance names the component, or its instances disagree.
+    pub seeds: Vec<(String, String)>,
 }
 
 /// The workspace's single probe project (phase-313).
@@ -337,7 +341,9 @@ fn probe_plan(o: &CmakeProbeOptions, language: nros_lang::Language) -> Plan {
             lang: Some(language),
             shape: Some(o.shape.clone()),
             qos_overrides: Vec::new(),
-            params: Vec::new(),
+            // Issue 2640 -- the launch values, seeded through the same
+            // `declare_calls` an image's entry seeds them with.
+            params: o.seeds.clone(),
             remaps: Vec::new(),
             callback_groups: Vec::new(),
             sched_context: None,
@@ -1256,6 +1262,7 @@ mod w4_configure_attribution_tests {
             output_path: PathBuf::from("/out.json"),
             probe_dir: PathBuf::from("/probe"),
             deps: Vec::new(),
+            seeds: Vec::new(),
         }
     }
 
@@ -1389,6 +1396,7 @@ mod tests {
             output_path: PathBuf::from("/ws/src/talker_pkg/metadata/talker.json"),
             probe_dir: PathBuf::from("/scratch/probe"),
             deps: Vec::new(),
+            seeds: Vec::new(),
         }
     }
 
@@ -1494,6 +1502,29 @@ mod tests {
         assert!(
             !src.contains("::run_components("),
             "a probe never spins:\n{src}"
+        );
+    }
+
+    // Issue 2640 -- the launch values are seeded through the same
+    // `nros_cpp_declare_node_param` calls an entry makes, BEFORE the node is
+    // constructed, so a declaration without a default reads them.
+    #[test]
+    fn the_probe_seeds_its_launch_values_before_it_constructs_the_node() {
+        let unseeded = render_probe_main(&opts()).expect("emit");
+        assert!(
+            !unseeded.contains("nros_cpp_declare_node_param"),
+            "{unseeded}"
+        );
+        let mut o = opts();
+        o.seeds = vec![("ctrl_period_ms".into(), "20".into())];
+        let src = render_probe_main(&o).expect("emit");
+        let seed = src
+            .find("nros_cpp_declare_node_param(::rclcpp::global_handle(), \"talker\", \"ctrl_period_ms\", \"20\")")
+            .unwrap_or_else(|| panic!("no seed call:\n{src}"));
+        let construct = src.find(".configure(").expect("construction");
+        assert!(
+            seed < construct,
+            "the seed must precede construction:\n{src}"
         );
     }
 
@@ -1606,6 +1637,7 @@ mod workspace_dep_render_tests {
             output_path: PathBuf::from(format!("/ws/src/{pkg}/metadata/x.json")),
             probe_dir: PathBuf::from("/probe"),
             deps,
+            seeds: Vec::new(),
         }
     }
 
@@ -1729,6 +1761,7 @@ mod incremental_membership_tests {
             output_path: PathBuf::from(format!("/ws/src/{pkg}/metadata/x.json")),
             probe_dir: PathBuf::from("/probe"),
             deps: Vec::new(),
+            seeds: Vec::new(),
         }
     }
 

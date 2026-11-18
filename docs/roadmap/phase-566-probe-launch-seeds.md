@@ -1,8 +1,7 @@
 # Phase 566 -- the metadata probe runs a node with its launch values
 
-**Status (2026-11-17). DRAFT: design for review, revised after review
-(D1 source, D2 fallback, one digest, Rust scope); no item has started.**
-Closes the second half of [issue 2640](../issues/2640-metadata-probe-no-launch-values.md).
+**Status (2026-11-18). W1-W3 landed for C and C++; W4 (the Rust harness)
+is open.** Closed the second half of [issue 2640](../issues/archived/2640-metadata-probe-no-launch-values.md).
 The first half, a probe parameter store that cannot fill, is a separate fix
 and is not designed here.
 
@@ -199,15 +198,40 @@ What the bump does to the model road's contract join (issue 1594,
 
 ## Work items
 
-- [ ] W1: `metadata_refresh` reads the models the sync just resolved
+- [x] W1: `metadata_refresh` reads the models the sync just resolved
       (through `model_gate::verify`), maps each probed component to its
       instances, and projects each through `resolved_params` +
       `launch_param_text` (D1). The models are consulted inputs.
-- [ ] W2: D2: seed, or probe unseeded and keep (note + `probe.unseeded`), or
+- [x] W2: D2: seed, or probe unseeded and keep (note + `probe.unseeded`), or
       refuse when the unseeded probe fails.
-- [ ] W3: `probe_plan` carries the seeds (D3); `probe_inputs_key` gains the
+- [x] W3: `probe_plan` carries the seeds (D3); `probe_inputs_key` gains the
       seed-set digest (`sha256`); the sidecar writes `probe`; schema 6 (D4).
 - [ ] W4: the Rust harness takes the same seeds, and D2 applies to Rust.
+
+### As landed (W1-W3, 2026-11-18)
+
+- The projection is one function, `launch_param_text::baked_params`, called
+  by the C/C++ entry, `nros::main!`, `plan_record_from_model` and the probe
+  (`orchestration/probe_seeds.rs`). The seeds leave out `qos_overrides.*`
+  keys: they are the node's QoS table, not declared parameters, and the census
+  records the QoS the code asks for. The D2 comparison and the digest are over
+  the same filtered maps, so a QoS-only edit does not re-probe.
+- The models are found by listing the models directory (the sync's
+  `--model-dir`, else `NROS_MODEL_DIR`, else `<ws>/build/nros/models`), not
+  from a list the sync hands over, so every reader that recomputes the key
+  reads the same set. A reader that cannot see a `--model-dir` the sync was
+  given reads the sidecar as stale and skips it with its note.
+- D4's key field is appended only when launch instances name the component
+  (`metadata_refresh::component_probe_key`). A component nothing launches, and
+  every Rust component, keeps the key it had, so only seeded components
+  re-probe once after the upgrade.
+- The sidecar's `probe` object is stamped CLI-side beside `provenance`, so the
+  recorder's `SOURCE_METADATA_SCHEMA_VERSION` (already 6) did not
+  move; the CLI mirror (`SourceMetadata::probe`) reads it.
+- Measured on `fixtures/probe_seeds_ws` (row `workspace-probe-seeds`, test
+  `tests/probe_seeds_workspace.rs`): unseeded, the C component's probe failed
+  and the C++ one recorded no timer; seeded, both record their launch periods
+  (20 and 25 ms) and all 41 parameters.
 
 ## Test
 

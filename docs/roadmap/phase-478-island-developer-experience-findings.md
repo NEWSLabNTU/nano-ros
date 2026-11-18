@@ -925,7 +925,7 @@ Filed from the Autoware Safety Island's phase-15 P3 on nano-ros 5b9e8844a4.
 - [issue 2650](../issues/2650-param-descriptor-description-per-slot.md): every slot carries a 256 B description, about 15 KB at 32 slots (follow-up to I28).
 - [issue 2639](../issues/archived/2639-list-parameters-silently-caps-at-64.md) (resolved): `ros2 param list` and `ros2 param dump` showed 64 of the controller's 149 parameters and said nothing (I22).
 - [issue 2638](../issues/archived/2638-launch-list-param-flattened-to-string.md) (resolved): a list parameter from a `<param from>` file reached the node as one comma-joined string (I20).
-- [issue 2640](../issues/2640-metadata-probe-no-launch-values.md): the C/C++ metadata probe constructs a node with no launch values and a default-size store, so a node declaring parameters without defaults cannot be probed.
+- [issue 2640](../issues/archived/2640-metadata-probe-no-launch-values.md) (resolved): the C/C++ metadata probe constructed a node with no launch values and a default-size store, so a node declaring parameters without defaults could not be probed; the probe now seeds the launch values ([phase-566](phase-566-probe-launch-seeds.md)).
 - [issue 2645](../issues/2645-toolchain-pin-cannot-name-a-commit.md) (GitHub #4006): `nros-toolchain.toml` cannot pin a commit, so a consumer on main vendors nano-ros and sets `NROS_SKIP_STALE_CHECK` (I26).
 - [issue 2646](../issues/archived/2646-sdk-eigen-for-arm-none-eabi.md) (GitHub #4013, wontfix): no SDK Eigen for cross builds; Eigen 3.4's psincos fails on newlib's `int32_t = long`; users bring their own (I27).
 

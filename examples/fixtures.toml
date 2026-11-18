@@ -710,6 +710,24 @@ image = "warn"
 codegen_out = "build-workspace-codegen/probe_bringup"
 build_subdir = "build/posix-zenoh-linux-cfga50aa93c83-probe_bringup/cmake"
 
+# Issue 2640 (phase-566) — the C/C++ metadata probe constructs each component
+# with its LAUNCH values. `seeds_c_pkg` (C) and `seeds_cpp_pkg` (C++) each read
+# `ctrl_period_ms` with no default in code and declare 40 more parameters, more
+# than a default store holds; the launch file sets the period. The image is
+# built so the probe runs as part of the user's chain; the test reads the
+# sidecars it left. Consumed by tests/probe_seeds_workspace.rs.
+[[workspace_fixture]]
+id = "workspace-probe-seeds"
+platform = "linux"
+lang = "mixed"
+builder = "cmake"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/probe_seeds_ws"
+bringup = "src/seeds_bringup"
+image = "linux"
+codegen_out = "build-workspace-codegen/seeds_bringup"
+build_subdir = "build/posix-zenoh-linux-seeds_bringup/cmake"
+
 # RFC-0071 D16 step 2 (phase-545 W3, issue 2295) — an RMW backend nano-ros does
 # not know about. The image declares `rmw = "acme"`, provided by the fixture's
 # own `src/acme_rmw` (nothing under `packages/` outside the fixture names it),

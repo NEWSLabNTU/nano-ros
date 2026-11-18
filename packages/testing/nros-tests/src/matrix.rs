@@ -1387,6 +1387,8 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         "pool_exhaustion_threadx_linux",
         NonCell::Probe("session-pool exhaustion on ThreadX-Linux"),
     ),
+    // Issue 2640 -- the metadata probe's sidecars of a built workspace.
+    ("probe_seeds_workspace", NonCell::CompileCheck),
     ("px4_bridge_compile", NonCell::CompileCheck),
     ("qemu_patched_binary", NonCell::Static),
     (
