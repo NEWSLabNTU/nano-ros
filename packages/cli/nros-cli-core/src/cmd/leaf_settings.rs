@@ -1395,13 +1395,18 @@ pub fn write_shared(
     // from its own `main.rs` reads (`nros_board_mps2_an385::Config::from_image`).
     // Resolved against the board descriptor the fact layer above just named.
     // It replaced ~~`NROS_ENTRY_IP`~~ / `_GATEWAY` / `_NETMASK`.
-    if !img.decl.network.net.is_empty() {
-        let board_net = match path_env.get("NROS_BOARD_TOML") {
-            Some(p) => crate::orchestration::image_net::board_net(p, &img.board)
+    // RFC-0132 D4 (phase-560 W9.d) -- and its CAN frame device, the same text's
+    // `can` row.
+    if crate::orchestration::image_net::leaf_states_network(&img.decl) {
+        let board = match path_env.get("NROS_BOARD_TOML") {
+            Some(p) => crate::orchestration::image_net::board_facts(Path::new(p), &img.board)
                 .map_err(|e| eyre!("{e}"))?,
-            None => Default::default(),
+            None => crate::orchestration::image_net::BoardFacts {
+                name: img.board.clone(),
+                ..Default::default()
+            },
         };
-        if let Some(n) = crate::orchestration::image_net::resolve_leaf(&img.decl, &board_net)
+        if let Some(n) = crate::orchestration::image_net::resolve_leaf(&img.decl, &board)
             .map_err(|e| eyre!("{}: {e}", leaf.display()))?
         {
             crate::orchestration::image_net::write(&leaf.join("build"), &img.image_id, &n)

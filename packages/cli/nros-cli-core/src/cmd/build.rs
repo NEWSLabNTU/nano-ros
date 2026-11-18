@@ -2717,6 +2717,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // files.
                 if leaf_app.is_none()
                     && let Some(n) = &image_net
+                    && !n.interfaces.is_empty()
                 {
                     let conf = zephyr_net_fragment(
                         descriptor,
@@ -6870,6 +6871,25 @@ pub(crate) fn descriptor_board_net(
     }
 }
 
+/// RFC-0132 D4-D6 (phase-560 W9.d) -- a board's [`BoardFacts`], from the
+/// descriptor the catalog recorded for it: its `[board.net]`
+/// ([`descriptor_board_net`]) and whether it runs as a host process.
+pub(crate) fn descriptor_board_facts(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&std::path::Path>,
+) -> Result<crate::orchestration::image_net::BoardFacts> {
+    use crate::orchestration::image_net::BoardFacts;
+    Ok(BoardFacts {
+        net: descriptor_board_net(descriptor, board, nano_ros_root)?,
+        name: board.to_string(),
+        host_process: BoardFacts::host_process_of(
+            descriptor.run.as_ref().is_some_and(|r| r.host),
+            descriptor.flash.is_some(),
+        ),
+    })
+}
+
 /// A single-package leaf's resolved network (`None`: it states none).
 pub(crate) fn leaf_image_net(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
@@ -6877,17 +6897,13 @@ pub(crate) fn leaf_image_net(
     nano_ros_root: Option<&std::path::Path>,
     decl: &nros_orchestration_ir::leaf_system::LeafSystem,
 ) -> Result<Option<crate::orchestration::image_net::ImageNet>> {
-    if decl.os_config.is_empty() {
+    if !crate::orchestration::image_net::leaf_states_network(decl) {
         return Ok(None);
     }
-    let net = descriptor_board_net(descriptor, board, nano_ros_root)?;
-    // RFC-0109 D9 check 6 — each layer-1 file goes to the network's owner.
-    net.check_os_config(&decl.os_config)
-        .map_err(|e| eyre::eyre!("on board `{board}`: {e}"))?;
-    if decl.network.net.is_empty() {
-        return Ok(None);
-    }
-    crate::orchestration::image_net::resolve_leaf(decl, &net)
+    let facts = descriptor_board_facts(descriptor, board, nano_ros_root)?;
+    // RFC-0132 D4-D6, then RFC-0109 D9 check 6 -- each layer-1 file goes to
+    // the network's owner.
+    crate::orchestration::image_net::resolve_leaf(decl, &facts)
         .map_err(|e| eyre::eyre!("on board `{board}`: {e}"))
 }
 
@@ -6947,7 +6963,7 @@ pub(crate) fn workspace_image_net(
             };
             let board = img.board.clone().unwrap_or_default();
             let d = crate::orchestration::image::resolve_image_board(catalog, id, &img)?;
-            descriptor_board_net(d, &board, nano_ros_root).map_err(|e| format!("{e}"))
+            descriptor_board_facts(d, &board, nano_ros_root).map_err(|e| format!("{e}"))
         },
         // Issue 2679 -- the RMW's `[rmw.host] peer`, over the bringup's
         // workspace index.

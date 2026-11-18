@@ -236,6 +236,20 @@ pub struct ImageBlock {
     /// read by the QEMU launchers and the test harness, never by the build.
     #[serde(default, skip_serializing_if = "is_default_run")]
     pub run: nros_orchestration_ir::system_net::ImageRun,
+    /// `[image.<id>.can]` -- the image's CAN frame device on a host-stack
+    /// board, or the mock (RFC-0132 D4/D5). Checked by
+    /// [`super::cargo_metadata_schema::SystemToml::validate_image_networks`];
+    /// the board's half is [`crate::orchestration::image_net::resolve_can`].
+    #[serde(
+        default,
+        skip_serializing_if = "nros_orchestration_ir::system_net::ImageCan::is_empty"
+    )]
+    pub can: nros_orchestration_ir::system_net::ImageCan,
+    /// The `[canN]` of the image's board network files -- RESOLVED, never
+    /// authored here, by
+    /// [`super::cargo_metadata_schema::SystemToml::fold_os_config`].
+    #[serde(skip)]
+    pub can_tables: BTreeMap<String, nros_orchestration_ir::system_net::CanTable>,
     /// `[image.<id>.flash]` — this image's override of the board's
     /// `[board.flash]` (RFC-0118 D4/D5, phase-529 W1). Checked by
     /// [`super::cargo_metadata_schema::SystemToml::validate_image_networks`].
@@ -605,6 +619,8 @@ impl ImageBlock {
             net: self.net.clone(),
             networks: self.networks.clone(),
             run: self.run.over(&base.run),
+            can: self.can.over(&base.can),
+            can_tables: self.can_tables.clone(),
             // KEY BY KEY (phase-528 W1): `[image.<id>]` and `[image_defaults]`
             // are both D5's image rung, so the RunPlan resolver sees one
             // table and ladders it over the board's the same way.
