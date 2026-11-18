@@ -82,6 +82,11 @@ fn require_stock_package(pkg: &str) {
 /// * the recorded difference is there: passes;
 /// * they differ some other way: FAILS, because the test no longer measures
 ///   what it records.
+// The strict expected-failure form every measured gap in this file is held
+// in (phase-556 "How a gap is tested"). With W10, W11 and W12 flipped, no gap
+// is held through it at this moment; the next measured gap uses it, so it
+// stays rather than being re-written then.
+#[allow(dead_code)]
 fn hold_gap(c: &Compared, what: &str, gap_present: impl Fn(&Compared) -> bool) {
     let Some(diff) = c.diff() else {
         panic!(
