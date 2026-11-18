@@ -8705,7 +8705,9 @@ contracts:
         let both = knobs("param_services, lifecycle");
         assert_eq!(
             both.max_liveliness - none.max_liveliness,
-            both.infra_queryables + LIFECYCLE_SERVICE_PUBLISHERS + PARAM_EVENT_PUBLISHERS,
+            both.infra_queryables
+                + LIFECYCLE_SERVICE_PUBLISHERS
+                + PARAM_EVENT_PUBLISHERS * both.param_service_nodes,
             "one token per runtime server, one for the `~/transition_event`
              publisher (issue 1587) and one per node for `/parameter_events`
              (issues 2023, 2493); lifecycle lives on the components' nodes, so
