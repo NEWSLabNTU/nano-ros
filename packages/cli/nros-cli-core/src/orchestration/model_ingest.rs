@@ -685,7 +685,8 @@ fn count_cyclonedds_registered_types(model: &nros_orchestration_ir::overlay::Loa
     // too), not from a second
     // reading of `execution.features`.
     let infra = crate::entity_inventory::InfraServices::from_model(model, None);
-    ty::count_dds_types(model, |_| true) + ty::infra_types(infra.param_services, infra.lifecycle)
+    ty::count_dds_types(model, |_| true)
+        + ty::infra_types(infra.param_services, infra.lifecycle, infra.rosout)
 }
 
 /// phase-454 W6.c — resolve `NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES` for a bake.
