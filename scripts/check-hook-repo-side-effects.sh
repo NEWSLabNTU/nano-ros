@@ -865,6 +865,14 @@ probe_args() {
         # 120 s budget in both shapes under `check fast`. The selftest is
         # its only `git init`, which is the site this probe is for.
         scripts/check-workspace-probes.sh) echo "--selftest" ;;
+        # Its normal path also extracts all 78 installed-track chapters, which
+        # build no repository and were most of each shape's time: measured on
+        # host 243, 34 s a shape at main (28.6 s before #4228); slow-disk
+        # hosts hit the 120 s budget in all three. `--self-test` keeps every
+        # repository it builds (the selftest's, and the non-tip rehearsal's
+        # clones and commits, the sites this probe is for) and skips the
+        # extractions.
+        scripts/check-book-probe-tracks.py) echo "--self-test" ;;
         *) echo "" ;;
     esac
 }
