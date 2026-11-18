@@ -129,6 +129,40 @@ nextest clamps a weight above `--test-threads` (`linux-check`'s `cpu:8` runs on
 the same 4-slot runner), so on that runner `workspace-probes` runs alone; on a
 32-CPU host it takes 6 slots. Cost: the shard serializes it.
 
+### A full gate with four first-wave timeouts (2026-11-18, phase-560 W9.d)
+
+PR #4195 (its head after the rebase onto `09a5595bb4`), `just ci gate`, run gate3,
+step 8 `check::build` red after 1 h 24 min 34 s: 79 tests run, 75 passed,
+**4 timed out**, all in nextest's first wave and all killed at the cap
+together:
+
+| test | wall | where it was when killed |
+| --- | --- | --- |
+| `build::check::cpp` | 2400.03 s | after `failed_create_aborts: OK` |
+| `build::check::cli-tests` | 2400.46 s | unit suites passed (230 in 191.65 s, then 28, 11, ...); killed in a later phase while cargo rewrote a lockfile |
+| `build::check::ament-census-sizing` | 2400.46 s | `configure + build .../ament-census-port` |
+| `build::check::census-hooks-complete` | 2400.46 s | after `OK (30 entry points hooked ...)`, running its 12 mutation tests |
+
+Load over step 8, from the gate's token-pool report (168 samples):
+
+- host runnable: p50 9, p90 48, max 85;
+- this lane's runnable: p50 1, p90 19, max 68, against a pool of 20;
+- free tokens: p50 18, p10 0, min 0; empty in 29 % of the samples.
+
+The lane was mostly IDLE (runnable p50 1, 18 of 20 tokens free at p50), so the
+four were not starved of CPU for 40 minutes; they were waiting on something.
+The other 75 tests, `linux-check` ones over 1320 s among them, finished.
+Steps 1-7 (fast, pristine-checkout included) were green.
+
+A re-gate of the same head with `scripts/build/sample-build-wchan.sh` beside
+it was queued and then cancelled before it reached the host lock, so no
+`wchan` sample exists for this run; the head is being gated on another host.
+What a sample should answer next time: which leaf process each of the four
+is blocked in (a lock, a pipe, a child's `do_wait`) while the lane is idle.
+
+A per-step wait table for this host (host 175), from
+`NROS_GATE_WAITS=1 just ci gate` (#4230), will follow from #4223's gate.
+
 ## Not the fix
 
 Raising the timeout. That moves the line and keeps the dependence on load
