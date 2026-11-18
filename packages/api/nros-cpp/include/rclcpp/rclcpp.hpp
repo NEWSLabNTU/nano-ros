@@ -1371,27 +1371,29 @@ create_subscription_dispatch(::rclcpp::Node& node, const char* topic, const ::rc
 
 /// The two-argument path: the callback also takes
 /// `const rclcpp::MessageInfo&`, so the runtime takes each sample with its
-/// metadata. Hosted only (the callable lives on the heap).
+/// metadata. The arena owns the callable, as on the one-argument path, so
+/// this allocates nothing and a freestanding build takes it.
+/// The pointer-shaped messages stay hosted, as their one-argument twins do.
 template <typename M, typename Cb>
 inline typename Subscription<M>::SharedPtr
 create_subscription_dispatch(::rclcpp::Node& node, const char* topic, const ::rclcpp::QoS& qos,
                              Cb cb, ::rclcpp::tr::true_type /* takes MessageInfo */) {
-#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
     constexpr int shape = ::rclcpp::detail::subscription_info_callback_shape<M, Cb>::value;
-    auto fn = ::rclcpp::detail::subscription_info_adapter<M, Cb, shape>::wrap(
-        ::rclcpp::tr::forward_rvalue(cb));
+    static_assert(shape != ::rclcpp::detail::SUB_SHAPE_NONE || ::rclcpp::detail::refuse<Cb>::value,
+                  NROS_RCLCPP_REFUSE_SUBSCRIPTION_CALLBACK_SHAPE);
+    using Capture = ::rclcpp::InplaceFn<void(const M&, const ::rclcpp::MessageInfo&)>;
+    Capture captured(::rclcpp::detail::subscription_info_adapter<M, Cb, shape>::wrap(
+        ::rclcpp::tr::forward_rvalue(cb)));
     ::size_t handle_id = 0;
-    const ::rclcpp::Result r = ::rclcpp::detail::register_subscription_message_info<M>(
-        node, topic, qos, static_cast<decltype(fn)&&>(fn), &handle_id);
+    const ::rclcpp::Result r = ::rclcpp::detail::register_subscription_capturing_message_info<M>(
+        node, topic, qos, captured, &handle_id);
+    // The arena's copy owns the callable now and destroys it on
+    // release; ours must not destroy it too.
+    if (r.ok()) {
+        captured.relinquish();
+    }
     ::rclcpp::detail::require_created(r, "create_subscription", topic);
     return typename Subscription<M>::SharedPtr(node.executor_handle(), handle_id);
-#else
-    static_assert(::rclcpp::detail::refuse<Cb>::value, NROS_RCLCPP_REFUSE_MESSAGE_INFO_CALLBACK);
-    (void)topic;
-    (void)qos;
-    (void)cb;
-    return typename Subscription<M>::SharedPtr(node.executor_handle(), 0);
-#endif // NROS_CPP_HAS_SHARED_PTR
 }
 
 } // namespace detail

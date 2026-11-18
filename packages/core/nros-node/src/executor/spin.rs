@@ -10895,7 +10895,48 @@ impl<'s> Executor<'s> {
             type_hash,
             qos,
             rx_buffer_hint,
-            callback,
+            core::ptr::null_mut(),
+            None,
+            move |_| callback,
+        )
+    }
+
+    // Issue 2717.
+    /// The same registration with the caller's CAPTURE held by the arena:
+    /// the metadata twin of
+    /// [`add_arena_subscription_c_callback_with_capture`](Self::add_arena_subscription_c_callback_with_capture).
+    /// `capture`'s bytes are copied into the entry's region; `make` builds the
+    /// callback from the context pointer it is to dispatch with (the arena
+    /// copy, or `context` when there is none) and owns whatever releases the
+    /// capture, so dropping the entry runs it once. Backs C++'s freestanding
+    /// `(const M&, const rclcpp::MessageInfo&)` callback, which has no heap to
+    /// own its callable.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_arena_subscription_msg_info_closure_with_capture<F>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QoSProfile,
+        rx_buffer_hint: usize,
+        context: *mut core::ffi::c_void,
+        capture: Option<&[u8]>,
+        make: impl FnOnce(*mut core::ffi::c_void) -> F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&[u8], Option<&nros_core::MessageInfo>) + 'static,
+    {
+        self.register_subscription_buffered_raw_msg_info_on(
+            node_id,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            rx_buffer_hint,
+            context,
+            capture,
+            make,
         )
     }
 
@@ -10906,6 +10947,16 @@ impl<'s> Executor<'s> {
     /// for `CallbackCtx::message_info` (issue 2349,
     /// `DeclaredSubscriptionShape::BufferedRawInfo`). One path, so the
     /// metadata a component reads is the metadata a C++ callback reads.
+    ///
+    /// `capture` (issue 2717) is the caller's callback CAPTURE, held by the
+    /// arena as the plain C path holds it
+    /// ([`add_arena_subscription_c_callback_with_capture`](Self::add_arena_subscription_c_callback_with_capture)):
+    /// its bytes are copied to the entry's trailing region after the receive
+    /// buffer, so releasing the entry gives them back and the caller keeps
+    /// nothing. `make` builds the callback from the context pointer it is to
+    /// dispatch with: the arena copy, or `context` when there is no capture.
+    /// This is what lets a freestanding C++ build, with no allocator, register
+    /// a metadata callback.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn register_subscription_buffered_raw_msg_info_on<F>(
         &mut self,
@@ -10915,7 +10966,9 @@ impl<'s> Executor<'s> {
         type_hash: &str,
         qos: QoSProfile,
         rx_buffer_hint: usize,
-        callback: F,
+        context: *mut core::ffi::c_void,
+        capture: Option<&[u8]>,
+        make: impl FnOnce(*mut core::ffi::c_void) -> F,
     ) -> Result<HandleId, NodeError>
     where
         F: FnMut(&[u8], Option<&nros_core::MessageInfo>) + 'static,
@@ -10946,7 +10999,14 @@ impl<'s> Executor<'s> {
                 .in_place_capable(),
         })?;
 
-        let (offset, trailing_offset) = self.arena_alloc_with_trailing::<Entry<F>>(rx_bytes)?;
+        // The receive buffer first, then the capture on the next `u64`
+        // boundary after it, as the plain C path lays out its ring.
+        let capture_len = Self::capture_trailing_len(capture);
+        let buf_len = rx_bytes.next_multiple_of(core::mem::align_of::<u64>());
+        let (offset, trailing_offset) =
+            self.arena_alloc_with_trailing::<Entry<F>>(buf_len + capture_len)?;
+        let context = self.place_capture(trailing_offset + buf_len, capture, context);
+        let callback = make(context);
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
             let buffer = super::arena::TrailingBuf::init(arena_ptr.add(trailing_offset), rx_bytes);

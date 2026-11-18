@@ -867,10 +867,17 @@ inline ::rclcpp::MessageInfo message_info_from_ffi(const nros_cpp_message_info_t
     return ::rclcpp::MessageInfo(r, c.has_info);
 }
 
-#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
 /// A two-argument callback of shape `Shape`, as a callable taking
-/// `(const M&, const MessageInfo&)`: the pointer shapes get one heap copy of
-/// the message per call, as their one-argument twins do.
+/// `(const M&, const MessageInfo&)`. The `const M&` shape is the callable
+/// itself, on every build. The pointer shapes (hosted only) get one heap copy
+/// of the message per call, as their one-argument twins do.
+template <typename M, typename F, int Shape> struct subscription_info_adapter;
+template <typename M, typename F> struct subscription_info_adapter<M, F, SUB_SHAPE_REF> {
+    template <typename G> static typename ::rclcpp::tr::decay<G>::type wrap(G&& f) {
+        return static_cast<G&&>(f);
+    }
+};
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
 template <typename M, typename F, int Shape> struct subscription_info_adapter {
     struct Copying {
         typename ::rclcpp::tr::decay<F>::type fn;
@@ -880,38 +887,38 @@ template <typename M, typename F, int Shape> struct subscription_info_adapter {
     };
     template <typename G> static Copying wrap(G&& f) { return Copying{static_cast<G&&>(f)}; }
 };
-template <typename M, typename F> struct subscription_info_adapter<M, F, SUB_SHAPE_REF> {
-    template <typename G> static typename ::rclcpp::tr::decay<G>::type wrap(G&& f) {
-        return static_cast<G&&>(f);
-    }
-};
+#endif // NROS_CPP_HAS_SHARED_PTR
 
-/// Register a `(const M&, const MessageInfo&)` callable. HOSTED:
-/// the callable lives on the heap and the registration owns it (freed once,
-/// when the subscription is released, by the runtime calling `drop`). The
-/// runtime takes each sample WITH its metadata
-/// (`nros_cpp_subscription_register_message_info`).
+/// Register a `(const M&, const MessageInfo&)` callable with its capture in
+/// the ARENA: the metadata twin of
+/// `register_subscription_capturing`, and the same on every build, so a
+/// freestanding build (no allocator) takes the callback too. `Fn` is an
+/// `rclcpp::InplaceFn`; the runtime copies its bytes into the entry and
+/// `clear()`s the arena's copy on release. Each sample is taken WITH its
+/// metadata (`nros_cpp_subscription_register_capturing_message_info`).
 template <typename M, typename Fn>
-inline Result register_subscription_message_info(::rclcpp::Node& node, const char* topic,
-                                                 const QoS& qos, Fn fn, size_t* out_handle_id) {
+inline Result register_subscription_capturing_message_info(::rclcpp::Node& node, const char* topic,
+                                                           const QoS& qos, const Fn& fn,
+                                                           size_t* out_handle_id) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
-    Fn* heap = new Fn(static_cast<Fn&&>(fn));
     void (*invoke)(const uint8_t*, size_t, const nros_cpp_message_info_t*, void*) =
         [](const uint8_t* data, size_t len, const nros_cpp_message_info_t* info, void* ctx) {
+            // `ctx` is the ARENA's copy of `fn`, not ours.
+            const Fn* self = static_cast<const Fn*>(ctx);
             M msg;
             if (M::ffi_deserialize(data, len, &msg) != 0 || info == nullptr) return;
-            (*static_cast<Fn*>(ctx))(static_cast<const M&>(msg), message_info_from_ffi(*info));
+            (*self)(static_cast<const M&>(msg), message_info_from_ffi(*info));
         };
-    void (*drop)(void*) = [](void* ctx) { delete static_cast<Fn*>(ctx); };
+    void (*destroy)(void*) = [](void* ctx) { static_cast<Fn*>(ctx)->clear(); };
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_subscription_options_t opts = {};
     opts.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
     opts.stamp_offset = ::rclcpp::stamp_offset<M>::value;
-    return Result(nros_cpp_subscription_register_message_info(
-        h, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, invoke, heap, drop, out_handle_id, &opts));
+    return Result(nros_cpp_subscription_register_capturing_message_info(
+        h, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, invoke,
+        reinterpret_cast<const uint8_t*>(&fn), sizeof(Fn), destroy, out_handle_id, &opts));
 }
-#endif // NROS_CPP_HAS_SHARED_PTR
 
 /// Register a capturing callback, with the capture in the ARENA.
 ///
