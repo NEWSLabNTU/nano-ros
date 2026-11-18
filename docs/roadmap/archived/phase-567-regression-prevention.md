@@ -1,6 +1,6 @@
 # Phase 567 — a release ships only what the slow lanes have seen
 
-**Status (2026-11-18). OPEN: every work item (W1–W4, W3b, W3c, W5 (W5a–W5c), W6 and W7) is done; the phase archives once the in-flight W1 amendment lands.** Approved by the user on
+**Status (2026-11-18). COMPLETE, archived: every work item (W1–W4, W3b, W3c, W5 (W5a–W5c), W6 and W7) is done, the last W1 amendment landing as #4219.** Approved by the user on
 2026-11-16 ("Take your advice on regression prevention. Have a phase doc to
 track the change"), after a review of the CI workflows on main against that
 day's regressions. Implements no RFC; it closes gaps between the lanes that
@@ -331,7 +331,7 @@ commits back. FreertosMps2 had been red on every nightly since at least
 ### W7 - a host C link on every pull request and batch
 
 - **Status:** DONE (#4192, 2026-11-18), issue
-  [2685](../issues/archived/2685-pr-lanes-run-no-link.md) (GitHub #4170).
+  [2685](../../issues/archived/2685-pr-lanes-run-no-link.md) (GitHub #4170).
   `just check c-link-smoke` builds the shipped-feature `libnros_c.a`, then
   links and runs `cdr_borrow_le_slice.c` against it. `check c` depends on it.
   gate.yml's `check-c-link-smoke` job is in `ci-ok`'s needs on push,
@@ -371,4 +371,11 @@ in the merge queue; a docs-only pull request still gets a verdict.
 - Per-merge runtime boots for linux, zephyr and threadx-linux: the 2026-11-12
   ruling stands.
 - Replacing `config/stack-floors.toml`'s per-combination rows with per-layer
-  declarations: raised with the user on 2026-11-16, not yet decided.
+  declarations: raised with the user on 2026-11-16, not yet decided. That open
+  question now lives in [issue 2400](../../issues/2400-stack-floor-from-measured-frames.md),
+  with issues 2653 and 2658 as its measured inputs.
+
+Carried notes at archiving (2026-11-18): W7's "a docs-only PUSH to main runs no
+gate.yml" is not an open gap. Every push to main arrives through the merge
+queue, whose `CI` (no path filter on `merge_group`) has already judged that
+exact tree, so it is recorded and needs no issue.

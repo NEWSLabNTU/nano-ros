@@ -11,7 +11,7 @@ resolved_in: "the change that filed it"
 related: [phase-567]
 ---
 
-**Home: [phase-567](../../roadmap/phase-567-regression-prevention.md) W4.** Found
+**Home: [phase-567](../../roadmap/archived/phase-567-regression-prevention.md) W4.** Found
 while building the island-shaped workspace (`examples/workspaces/island-shaped`),
 whose image holds a C component and a Rust component and no C++ source.
 
