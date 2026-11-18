@@ -325,6 +325,8 @@ state `framework = "zephyr"` in its metadata: that is the board deciding.
     them read its own older value as a wrap, and the clock jumped forward
     2^32 ticks (~171.8 s) for good. A preempting level hit it within seconds.
     The read is now one critical section.
+    [Issue 2703](../issues/archived/2703-mps2-clock-not-reentrant.md) records
+    who else could hit it.
   - **The executor refuses a NULL lock context.** The board's lock keeps its
     state in its own statics, so the macro hands it the runner's address.
   - **QEMU's idle clock carries host jitter.** At `-icount shift=5`, a busy
