@@ -6,6 +6,7 @@
   <maintainer email="you@example.com">Your Name</maintainer>
   <license>Apache-2.0</license>
   <exec_depend>message-info-observer</exec_depend>
+  <exec_depend>message-info-component</exec_depend>
   <export>
     <build_type>nros_cmake</build_type>
   </export>

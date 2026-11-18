@@ -52,3 +52,41 @@ generated dispatch the same way the message is. Two things to decide first:
   subscription callback that asks for one.
 
 Not attempted here.
+
+## Progress (2026-11-18)
+
+Ruled (manager, 2026-11-18): opt-in per subscription, so a plain
+subscription keeps its zero cost; C and C++ opt in the way stock ROS does, in
+a separate PR.
+
+**Rust: done.** `DeclarativeNode::create_subscription_for_callback_name_with_message_info`
+declares the subscription, and `CallbackCtx::message_info()` returns the
+message's `MessageInfo` in `on_callback` (`None` for every other callback and
+from a backend that reports none).
+
+- A third declared shape, `DeclaredSubscriptionShape::BufferedRawInfo`. The
+  runtime lowers it to `Executor::register_subscription_buffered_raw_msg_info_on`,
+  the body C++'s `(msg, const rclcpp::MessageInfo&)` callback already used
+  (`add_arena_subscription_msg_info_closure` now delegates to it). So all three
+  languages read the metadata through one executor path.
+- Its `in_place_capable()` is `false` (a copying take), and the metadata probe
+  states the same, so the build budgets its receive region.
+- The node's QoS overrides are folded first, as on the plain declared path.
+- Not the ATTACHMENT path (`register_subscription_buffered_raw_info_on`):
+  its `RawMessageInfo` metadata is defaulted. The first build used it, and
+  the end-to-end test read `seq=0 gid=000…` for every message and failed.
+
+Tests: `tests/component_message_info.rs` (a `Component` in
+`bins/message-info-observer`, image `linux_component`, against a talker over
+zenohd: every message carries metadata, the sequence rises, one non-zero
+GID); `component_registration.rs` (the declaration is recorded and priced as
+buffered); `declared_shape` and `CallbackCtx` unit tests.
+
+**C and C++: open.**
+
+- C++ hosted already takes `(msg, const rclcpp::MessageInfo&)` (issue 2036).
+  A freestanding build refuses the shape at compile time.
+- C's `rclc_executor_add_subscription_raw_with_info` hands the callback the
+  wire ATTACHMENT, not a `MessageInfo`. Its metadata is the defaulted kind
+  found above, so it cannot answer this issue as it stands.
+

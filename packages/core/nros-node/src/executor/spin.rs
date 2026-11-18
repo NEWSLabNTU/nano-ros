@@ -9204,17 +9204,7 @@ impl<'s> Executor<'s> {
         // their caller passed. Whether that is a defect or a deliberate limit
         // of the generic bridge path is a question with a measurable answer and
         // no answer here, so the asymmetry stays where it was, stated.
-        let overrides = self
-            .nodes
-            .get(node_id.index())
-            .ok_or(NodeError::InvalidSchedContextBinding)?
-            .qos_overrides;
-        let qos = super::node_record::apply_qos_override_codes(
-            qos,
-            topic_name,
-            nros_rmw::QoSOverrideRole::Subscription,
-            overrides,
-        );
+        let qos = self.fold_node_qos_overrides(node_id, topic_name, qos)?;
 
         let SubscriptionOpen {
             slot,
@@ -9389,6 +9379,29 @@ impl<'s> Executor<'s> {
         };
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(self.handle_for(slot))
+    }
+
+    /// Fold node `node_id`'s baked QoS overrides for subscription `topic` into
+    /// `qos`: the step the declared subscription paths take before opening
+    /// (issue #52). Shared so the metadata-carrying declared path (issue
+    /// 2349) keeps a component's overrides exactly as the plain one does.
+    pub(crate) fn fold_node_qos_overrides(
+        &self,
+        node_id: super::node_record::NodeId,
+        topic: &str,
+        qos: QoSProfile,
+    ) -> Result<QoSProfile, NodeError> {
+        let overrides = self
+            .nodes
+            .get(node_id.index())
+            .ok_or(NodeError::InvalidSchedContextBinding)?
+            .qos_overrides;
+        Ok(super::node_record::apply_qos_override_codes(
+            qos,
+            topic,
+            nros_rmw::QoSOverrideRole::Subscription,
+            overrides,
+        ))
     }
 
     /// Register a raw (type-erased) buffered subscription whose callback
@@ -10866,6 +10879,38 @@ impl<'s> Executor<'s> {
     where
         F: FnMut(&[u8], Option<&nros_core::MessageInfo>) + 'static,
     {
+        self.register_subscription_buffered_raw_msg_info_on(
+            node_id,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            rx_buffer_hint,
+            callback,
+        )
+    }
+
+    /// The one body behind
+    /// [`add_arena_subscription_msg_info_closure`](Self::add_arena_subscription_msg_info_closure)
+    /// (C++'s `(const M&, const rclcpp::MessageInfo&)` callback) and the
+    /// declarative runtime's lowering for a component subscription that asked
+    /// for `CallbackCtx::message_info` (issue 2349,
+    /// `DeclaredSubscriptionShape::BufferedRawInfo`). One path, so the
+    /// metadata a component reads is the metadata a C++ callback reads.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn register_subscription_buffered_raw_msg_info_on<F>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QoSProfile,
+        rx_buffer_hint: usize,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&[u8], Option<&nros_core::MessageInfo>) + 'static,
+    {
         type Entry<F> = SubBufferedRawMsgInfoEntry<F>;
 
         let SubscriptionOpen {
@@ -10885,8 +10930,11 @@ impl<'s> Executor<'s> {
             } else {
                 crate::config::DEFAULT_RX_BUF_SIZE
             },
-            // The metadata comes with a COPYING take (`take_serialized_with_info`).
-            in_place_capable: false,
+            // The metadata comes with a COPYING take (`take_serialized_with_info`),
+            // so this shape cannot dispatch in place. Spelled as the SHAPE, which
+            // the metadata probe states without registering (issue 2349).
+            in_place_capable: super::declared_shape::DeclaredSubscriptionShape::BufferedRawInfo
+                .in_place_capable(),
         })?;
 
         let (offset, trailing_offset) = self.arena_alloc_with_trailing::<Entry<F>>(rx_bytes)?;

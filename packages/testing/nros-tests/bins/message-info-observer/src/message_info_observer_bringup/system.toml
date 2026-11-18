@@ -4,6 +4,11 @@
 # Both images build that one `main` (RFC-0071 D19); they differ only in the
 # entry's `unstable-zenoh-api` feature, which is what makes the pair a
 # zero-copy trampoline check (issue 0441).
+#
+# A third image, `linux_component`, is the same observation through the
+# component API: `src/message-info-component` is a Component whose subscription
+# asks for the metadata and reads it from `CallbackCtx::message_info()`
+# (issue 2349).
 
 [system]
 name = "message_info_observer"
@@ -24,3 +29,7 @@ entry = "message-info-observer"
 [image.linux_zero_copy]
 entry = "message-info-observer"
 node_features = ["unstable-zenoh-api"]
+
+# The component API's receive path (issue 2349).
+[image.linux_component]
+entry = "message-info-component"
