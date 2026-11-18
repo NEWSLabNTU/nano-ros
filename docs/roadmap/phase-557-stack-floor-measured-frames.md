@@ -28,7 +28,7 @@ Related: [issue 2402](../issues/archived/2402-rmw-vtable-slot-binding-stack-walk
 slot), [issue 2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md)
 (the deferred bitcode store),
 [issue 2460](../issues/2460-stack-floor-mps2-zephyr-walk-refused.md),
-[issue 2496](../issues/2496-freertos-cmake-app-stack-no-system-toml.md),
+[issue 2496](../issues/archived/2496-freertos-cmake-app-stack-no-system-toml.md),
 [issue 2506](../issues/2506-stack-floor-walk-machine-outliner.md), and the
 resolved [2461](../issues/archived/2461-stack-floor-freertos-stated-key.md),
 [2466](../issues/archived/2466-stack-floor-ci-image-missing-c-frames.md)
@@ -91,7 +91,7 @@ it used and how to pin it:
   line to pin it.
 - **cmake road** — has no `system.toml` spelling for this knob yet, so it
   says so and names the configure flag
-  ([issue 2496](../issues/2496-freertos-cmake-app-stack-no-system-toml.md)).
+  ([issue 2496](../issues/archived/2496-freertos-cmake-app-stack-no-system-toml.md)).
 
 If a raise still persists after the rebuild, that is a bug in the raise,
 and the build fails.

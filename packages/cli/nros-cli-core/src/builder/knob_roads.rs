@@ -26,8 +26,9 @@
 //! - **west:** a row whose Kconfig symbol the module defines is rendered as a
 //!   Kconfig default (`leaf_kconfig::defaults_text`), which reaches both its
 //!   cmake readers (through `CONFIG_*`) and its Rust readers (the module's knob
-//!   forward). A row with no symbol is passed to cargo only, so it is carried
-//!   only when it has no cmake reader.
+//!   forward). A row with no symbol is passed to cargo and recorded as
+//!   `NROS_IMAGE_ENV_ROW_<name>`, which `nros_image_env_value` reads, so it is
+//!   carried when it has no cmake reader or its readers ask that function.
 //!
 //! A cell reads `yes`, `no`, or `?`: no reader was found BY NAME, so nothing
 //! is proven for that row. A `?` is not "no reader": some code reads knobs
@@ -168,6 +169,11 @@ mod tests {
         for d in ["cmake", "zephyr"] {
             walk(&root.join(d), &[".cmake", "CMakeLists.txt"], &mut cm);
         }
+        // Issue 2496 — a configure-time reader also lives beside its package
+        // (`packages/rmw/cyclonedds/.../cmake/NrosRmwCycloneddsDescriptorCap.cmake`
+        // reads NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES). Scanning only `cmake/`
+        // and `zephyr/` counted such a row as carried by having no cmake reader.
+        walk(&root.join("packages"), &[".cmake"], &mut cm);
         let read = |files: Vec<PathBuf>, comment: &str| {
             files
                 .into_iter()
@@ -229,7 +235,10 @@ mod tests {
             let reader = rust || cmake;
             let cargo = cell(rust, rust);
             let cmake_road = cell(reader, (!cmake || via_image_env) && reader);
-            let west = cell(reader, kconfig || !cmake);
+            // Issue 2496 — `nros_image_env_value` also reads the west road's
+            // recorded row (`NROS_IMAGE_ENV_ROW_<name>`), so a cmake reader
+            // that asks it is reached on west too.
+            let west = cell(reader, kconfig || !cmake || via_image_env);
             out.insert(row.id.to_string(), [cargo, cmake_road, west]);
         }
         out
@@ -292,15 +301,17 @@ mod tests {
         }
     }
 
-    /// Issue 2496's row: a cmake reader the image cannot reach.
+    /// Issue 2496's rows: a configure-time cmake reader the image reaches, the
+    /// app stack in `cmake/` and the Cyclone descriptor cap beside its package.
     #[test]
-    fn the_freertos_app_stack_is_a_cmake_road_gap() {
+    fn the_cmake_road_carries_its_configure_time_readers() {
         let m = measure(&corpus(&repo_root()));
-        assert_eq!(
-            m["FREERTOS_APP_STACK_KB"][1], "no",
-            "{:?}",
-            m["FREERTOS_APP_STACK_KB"]
-        );
+        for id in ["FREERTOS_APP_STACK_KB", "CYCLONEDDS_MAX_DESCRIPTOR_TYPES"] {
+            assert_eq!(m[id][1], "yes", "{id}: {:?}", m[id]);
+        }
+        // The Cyclone cap also runs on the Zephyr road, where it reaches the
+        // image's row through `nros_image_env_value`'s west branch.
+        assert_eq!(m["CYCLONEDDS_MAX_DESCRIPTOR_TYPES"][2], "yes");
     }
 
     /// The rule's two halves on fixed text, so a change in a file's wording

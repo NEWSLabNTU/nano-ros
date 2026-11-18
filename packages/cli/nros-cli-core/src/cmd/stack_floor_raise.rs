@@ -268,31 +268,30 @@ pub fn raised_message(qualified: &str, driver: Driver, r: &Raise) -> String {
         r.floor,
         r.stack
     );
+    // A registry knob is written under `[image.<id>.knobs.<group>]`, which
+    // every road carries to its reader (the cmake road's configure-time
+    // readers ask `nros_image_env_value`; `knob_roads::tests` pins it).
+    if let Some(k) = nros_zephyr_build::KNOBS.iter().find(|k| k.env == r.name) {
+        let (group, name) = k.image_group_name();
+        return format!(
+            "{head} To make it the image's own, write in system.toml:\n    \
+             [image.{image}.knobs.{group}]\n    {name} = {}",
+            r.value
+        );
+    }
     match driver {
-        // A registry knob is written under `[image.<id>.knobs.<group>]`: an
-        // `env` row naming it is refused (phase-484 W8). An application's own
-        // variable is still an `env` row.
-        Driver::Cargo => match nros_zephyr_build::KNOBS.iter().find(|k| k.env == r.name) {
-            Some(k) => {
-                let (group, name) = k.image_group_name();
-                format!(
-                    "{head} To make it the image's own, write in system.toml:\n    \
-                     [image.{image}.knobs.{group}]\n    {name} = {}",
-                    r.value
-                )
-            }
-            None => format!(
-                "{head} To make it the image's own, write in system.toml:\n    [image.{image}]\n    \
-                 env = {{ {} = \"{}\" }}",
-                r.name, r.value
-            ),
-        },
-        // Issue 2496: the cmake road's carrier reads this knob as a cmake
-        // variable, which `[image.<id>.knobs]` does not reach (measured), so
-        // there is no system.toml line to give. No issue id in the text (ruling A).
+        // An application's own variable is an `env` row, which reaches the
+        // cargo road's build scripts.
+        Driver::Cargo => format!(
+            "{head} To make it the image's own, write in system.toml:\n    [image.{image}]\n    \
+             env = {{ {} = \"{}\" }}",
+            r.name, r.value
+        ),
+        // Off the cargo road an application variable has no system.toml line
+        // that reaches its reader. No issue id in the text (ruling A).
         _ => format!(
-            "{head} This image's stack cannot be set from system.toml on this road yet; to set \
-             it yourself, pass it at configure: -D{}={}",
+            "{head} This value cannot be set from system.toml on this road; to set it \
+             yourself, pass it at configure: -D{}={}",
             r.name, r.value
         ),
     }
@@ -323,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn a_raised_build_names_the_value_and_a_pin_only_where_one_exists() {
+    fn a_raised_build_names_the_value_and_its_system_toml_pin_on_every_road() {
         let r = Raise {
             role: "OPEN".into(),
             stack: 8192,
@@ -340,10 +339,11 @@ mod tests {
             cargo.contains("[image.mps2-an385-freertos.knobs.freertos]\n    app_stack_kb = 15"),
             "{cargo}"
         );
+        // The cmake road carries the knob too now, so it gets the same line.
         let cmake = raised_message("b:mps2-an385-freertos", Driver::CMake, &r);
         assert!(
-            cmake.contains("cannot be set from system.toml")
-                && cmake.contains("-DNROS_FREERTOS_APP_STACK_KB=15"),
+            cmake.contains("[image.mps2-an385-freertos.knobs.freertos]\n    app_stack_kb = 15")
+                && !cmake.contains("-DNROS_FREERTOS_APP_STACK_KB"),
             "{cmake}"
         );
         // A user reads this: no issue, phase or RFC id in it, on either road.

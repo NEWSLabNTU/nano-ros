@@ -37,6 +37,7 @@
 
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageEnv.cmake")  # issue 2496
 
 function(nros_board_net_c board out_var)
     cmake_parse_arguments(_NBN "OPTIONAL" "ROOT;GATEWAY_VAR;LOCATOR_VAR" "" ${ARGN})
@@ -196,13 +197,23 @@ endfunction()
 # ported node declaring parameters overflowed it into the kernel's globals).
 function(_nros_freertos_entry_app_stack out_var)
     set(_kb 64)
+    # Issue 2496 -- a `-D` wins; otherwise the environment, then the image's
+    # `[image.<id>.knobs.freertos] app_stack_kb` (`nros_image_env_value`), the
+    # same order the cargo road's `[env]` row gets. Before this the image's
+    # value reached only the cargo commands, so the C carrier kept 64 KiB.
     if(DEFINED NROS_FREERTOS_APP_STACK_KB AND NOT "${NROS_FREERTOS_APP_STACK_KB}" STREQUAL "")
-        if(NOT NROS_FREERTOS_APP_STACK_KB MATCHES "^[0-9]+$" OR NROS_FREERTOS_APP_STACK_KB EQUAL 0)
+        set(_stated "${NROS_FREERTOS_APP_STACK_KB}")
+    else()
+        nros_image_env_value(_stated NROS_FREERTOS_APP_STACK_KB)
+    endif()
+    if(NOT "${_stated}" STREQUAL "")
+        if(NOT _stated MATCHES "^[0-9]+$" OR _stated EQUAL 0)
             message(FATAL_ERROR
-                "nano-ros: NROS_FREERTOS_APP_STACK_KB='${NROS_FREERTOS_APP_STACK_KB}' "
-                "is not a positive whole number of KiB.")
+                "nano-ros: the FreeRTOS app stack '${_stated}' (NROS_FREERTOS_APP_STACK_KB, "
+                "or `app_stack_kb` under the image's [image.<id>.knobs.freertos]) is not a "
+                "positive whole number of KiB.")
         endif()
-        set(_kb "${NROS_FREERTOS_APP_STACK_KB}")
+        set(_kb "${_stated}")
     endif()
     # Issue 2400 W2b — an image with `[image.<id>] stack_floor = "raise"` is
     # rebuilt by `nros build` once with its measured floor, handed over in the
