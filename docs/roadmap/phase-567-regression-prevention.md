@@ -1,6 +1,6 @@
 # Phase 567 — a release ships only what the slow lanes have seen
 
-**Status (2026-11-18). OPEN: W1–W4, W3b, W5 (W5a–W5c) and W6 are done; W3c and W7 are open.** Approved by the user on
+**Status (2026-11-18). OPEN: W1–W4, W3b, W3c, W5 (W5a–W5c) and W6 are done; W7 is open.** Approved by the user on
 2026-11-16 ("Take your advice on regression prevention. Have a phase doc to
 track the change"), after a review of the CI workflows on main against that
 day's regressions. Implements no RFC; it closes gaps between the lanes that
@@ -160,8 +160,12 @@ run; `just check release-rehearsal` refuses each mutation above.
 
 ### W3c — the probe tests the commit under test, by SHA
 
-- **Status:** OPEN — done when a `rehearse=true` dry run's `pinned-newer`
-  replay passes on main.
+- **Status:** DONE (#4180, 2026-11-18). The second `rehearse=true` dry run
+  (run 44170501730, main at `2ee0286144`, `0.6.0-nros12`, `publish=false`)
+  passed every job, and its `pinned-newer` replay probed `commit=2ee02861441d`
+  and printed `PROBE PASS: installed 0.6.0-nros12 -> project pinned to
+  0.6.0-nros10 -> fetched -> nros new + setup + build under the pin, with no
+  checkout on the host`.
 
 The first rehearsal's `starter` job built and verified its image, then died in
 the `pinned-newer` replay: `fatal: invalid object name 'main'` / `probe: main
