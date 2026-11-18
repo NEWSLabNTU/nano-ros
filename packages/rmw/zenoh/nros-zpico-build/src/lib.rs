@@ -262,7 +262,7 @@ impl ShimConfig {
 /// Whether a build compiles zenoh-pico's unicast peer mode.
 ///
 /// On only when the build compiles a link that joins two endpoints and is
-/// stated by the image: IVC today, RPMsg when its link lands. The point is a
+/// stated by the image: IVC or RPMsg. The point is a
 /// peer session on that link with no router; zenoh-pico runs it as one remote
 /// end, with no accept loop and no socket set.
 ///
@@ -272,7 +272,7 @@ impl ShimConfig {
 /// every image. Measured cost of compiling it in: 5,188
 /// bytes of code, no static RAM, no heap.
 pub fn point_to_point_peer_derived(link: &LinkFeatures) -> bool {
-    link.ivc
+    link.ivc || link.rpmsg
 }
 
 /// The DERIVED rung of `ZPICO_GRAPH_DISCOVERY`: off when every link this build
@@ -298,6 +298,7 @@ pub fn graph_discovery_derived(link: &LinkFeatures) -> bool {
         || link.raweth
         || link.tls
         || link.ivc
+        || link.rpmsg
         || link.custom;
     !constrained || other
 }
@@ -537,6 +538,7 @@ pub fn config_header(
     writeln!(header, "#define Z_FEATURE_LINK_WS 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_SERIAL_USB 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_IVC {}", link.ivc_flag()).unwrap();
+    writeln!(header, "#define Z_FEATURE_LINK_RPMSG {}", link.rpmsg_flag()).unwrap();
     writeln!(
         header,
         "#define Z_FEATURE_LINK_CUSTOM {}",
@@ -1422,6 +1424,7 @@ int32_t zpico_init(void);\n";
             raweth: false,
             tls: false,
             ivc: false,
+            rpmsg: false,
             custom: false,
             can,
             isotp,
@@ -1506,7 +1509,7 @@ int32_t zpico_init(void);\n";
     /// from one function. Serial alone, on by default, does not turn it on.
     #[test]
     fn unicast_peer_follows_the_point_to_point_link_only() {
-        let link = |ivc: bool| LinkFeatures {
+        let link = |ivc: bool, rpmsg: bool| LinkFeatures {
             tcp: true,
             udp_unicast: true,
             udp_multicast: true,
@@ -1514,6 +1517,7 @@ int32_t zpico_init(void);\n";
             raweth: false,
             tls: false,
             ivc,
+            rpmsg,
             can: false,
             isotp: false,
             custom: false,
@@ -1524,12 +1528,18 @@ int32_t zpico_init(void);\n";
             batch_multicast_size: 1024,
             rx_task_budget: None,
         };
-        for ivc in [false, true] {
-            let l = link(ivc);
-            assert_eq!(point_to_point_peer_derived(&l), ivc);
+        for (ivc, rpmsg) in [(false, false), (true, false), (false, true), (true, true)] {
+            let l = link(ivc, rpmsg);
+            let on = ivc || rpmsg;
+            assert_eq!(point_to_point_peer_derived(&l), on);
             let header = config_header(&l, &buf, false, false, false);
-            let want = format!("#define Z_FEATURE_UNICAST_PEER {}", u8::from(ivc));
-            assert!(header.contains(&want), "ivc={ivc}: no `{want}`");
+            let want = format!("#define Z_FEATURE_UNICAST_PEER {}", u8::from(on));
+            assert!(
+                header.contains(&want),
+                "ivc={ivc} rpmsg={rpmsg}: no `{want}`"
+            );
+            let want = format!("#define Z_FEATURE_LINK_RPMSG {}", u8::from(rpmsg));
+            assert!(header.contains(&want), "rpmsg={rpmsg}: no `{want}`");
         }
     }
 
@@ -1543,6 +1553,7 @@ int32_t zpico_init(void);\n";
             raweth: false,
             tls: true,
             ivc: false,
+            rpmsg: false,
             can: false,
             isotp: false,
             custom: true,
@@ -1596,6 +1607,7 @@ int32_t zpico_init(void);\n";
             raweth: false,
             tls: false,
             ivc: false,
+            rpmsg: false,
             can: false,
             isotp: false,
             custom: false,
@@ -1625,6 +1637,7 @@ int32_t zpico_init(void);\n";
             raweth: false,
             tls: false,
             ivc: false,
+            rpmsg: false,
             can: false,
             isotp: false,
             custom: false,

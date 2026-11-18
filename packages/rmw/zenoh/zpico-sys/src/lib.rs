@@ -33,6 +33,8 @@ extern crate std;
 // keep-alived below.
 #[cfg(feature = "link-ivc")]
 extern crate zpico_link_ivc;
+#[cfg(feature = "link-rpmsg")]
+extern crate zpico_link_rpmsg;
 
 // Phase 115.B — force-link the Rust-side `nros_zpico_custom_take`
 // symbol that the C custom-link factory calls. Same pattern as

@@ -30,6 +30,9 @@ pub struct LinkFeatures {
     pub tls: bool,
     // Phase 100.4 — NVIDIA Tegra IVC link transport.
     pub ivc: bool,
+    // RPMsg between cores of one SoC (phase-575). Like IVC, a link that joins
+    // exactly two endpoints.
+    pub rpmsg: bool,
     // Phase 115.B — runtime-pluggable user transport.
     pub custom: bool,
     // RFC-0080 — CAN / CAN FD link transport.
@@ -138,6 +141,7 @@ impl LinkFeatures {
             raweth: env::var("CARGO_FEATURE_LINK_RAWETH").is_ok(),
             tls: env::var("CARGO_FEATURE_LINK_TLS").is_ok(),
             ivc: env::var("CARGO_FEATURE_LINK_IVC").is_ok(),
+            rpmsg: env::var("CARGO_FEATURE_LINK_RPMSG").is_ok(),
             // Issue 2452 — the feature or the knob, as `can` / `isotp` below.
             // The Rust half the C link calls (`nros_zpico_custom_take`) is
             // always linked by `nros-rmw-zenoh`, so the knob alone links.
@@ -168,6 +172,7 @@ impl LinkFeatures {
         self.raweth = policy.raweth.resolve(self.raweth);
         self.tls = policy.tls.resolve(self.tls);
         self.ivc = policy.ivc.resolve(self.ivc);
+        self.rpmsg = policy.rpmsg.resolve(self.rpmsg);
         self.custom = policy.custom.resolve(self.custom);
         self.can = policy.can.resolve(self.can);
         self.isotp = policy.isotp.resolve(self.isotp);
@@ -194,6 +199,9 @@ impl LinkFeatures {
     }
     pub fn ivc_flag(&self) -> u8 {
         self.ivc as u8
+    }
+    pub fn rpmsg_flag(&self) -> u8 {
+        self.rpmsg as u8
     }
     pub fn custom_flag(&self) -> u8 {
         self.custom as u8
@@ -237,6 +245,7 @@ pub struct LinkPolicy {
     pub raweth: PolicyChoice,
     pub tls: PolicyChoice,
     pub ivc: PolicyChoice,
+    pub rpmsg: PolicyChoice,
     pub custom: PolicyChoice,
     // RFC-0080 — CAN / CAN FD.
     pub can: PolicyChoice,
@@ -258,6 +267,7 @@ impl LinkPolicy {
             raweth: PolicyChoice::Follow,
             tls: PolicyChoice::Follow,
             ivc: PolicyChoice::Follow,
+            rpmsg: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
             isotp: PolicyChoice::Follow,
@@ -275,7 +285,8 @@ impl LinkPolicy {
     }
 
     /// IVC-only — no Ethernet, no serial, no TLS; the link layer is an
-    /// inter-processor mailbox and only IVC + custom transports are valid.
+    /// inter-processor mailbox and only the mailbox links (IVC, RPMsg) and
+    /// custom transports are valid.
     ///
     /// Was ~~`orin_spe()`~~, named for the one board that used it.
     /// The board is gone; the POLICY is not board-specific (any AMP mailbox
@@ -296,6 +307,7 @@ impl LinkPolicy {
             raweth: PolicyChoice::Force(false),
             tls: PolicyChoice::Force(false),
             ivc: PolicyChoice::Follow,
+            rpmsg: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
             isotp: PolicyChoice::Follow,
@@ -329,6 +341,7 @@ impl LinkPolicy {
             raweth: PolicyChoice::Force(false),
             tls: PolicyChoice::Force(false),
             ivc: PolicyChoice::Follow,
+            rpmsg: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
             isotp: PolicyChoice::Follow,
@@ -350,6 +363,7 @@ impl LinkPolicy {
             raweth: PolicyChoice::Force(false),
             tls: PolicyChoice::Force(false),
             ivc: PolicyChoice::Follow,
+            rpmsg: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
             isotp: PolicyChoice::Follow,
@@ -372,6 +386,7 @@ impl LinkPolicy {
             raweth: PolicyChoice::Force(false),
             tls: PolicyChoice::Force(false),
             ivc: PolicyChoice::Follow,
+            rpmsg: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
             isotp: PolicyChoice::Follow,

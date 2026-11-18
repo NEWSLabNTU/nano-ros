@@ -185,6 +185,7 @@ members = [
     # `z_*` / `_z_*` symbol now comes from `zpico-sys`'s default-on
     # `platform-aliases` C TU.
     "packages/rmw/zenoh/zpico-link-ivc",
+    "packages/rmw/zenoh/zpico-link-rpmsg",
     "packages/rmw/zenoh/zpico-platform-custom",
     # Phase 129.D.2 — `xrce-platform-shim` deleted. `uxr_millis` /
     # `uxr_nanos` symbols now come from
@@ -528,6 +529,7 @@ nros-platform-cffi = { version = "0.6.0", path = "packages/platform/nros-platfor
 # or via the parent build
 # system (Zephyr west, NuttX make).
 zpico-link-ivc = { version = "0.6.0", path = "packages/rmw/zenoh/zpico-link-ivc", default-features = false }
+zpico-link-rpmsg = { version = "0.6.0", path = "packages/rmw/zenoh/zpico-link-rpmsg", default-features = false }
 zpico-platform-custom = { version = "0.6.0", path = "packages/rmw/zenoh/zpico-platform-custom", default-features = false }
 zpico-sys = { version = "0.6.0", path = "packages/rmw/zenoh/zpico-sys", default-features = false }
 zpico-alloc = { version = "0.6.0", path = "packages/rmw/zenoh/zpico-alloc" }

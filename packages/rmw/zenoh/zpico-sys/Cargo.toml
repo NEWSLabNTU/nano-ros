@@ -88,6 +88,9 @@ platform-aliases = []
 # Phase 100.4 — NVIDIA Tegra IVC link transport (Orin SPE). Adds
 # the carved-out `zpico-link-ivc` forwarders crate.
 link-ivc = ["dep:zpico-link-ivc"]
+# RPMsg between cores of one SoC: the link glue and receive ring in
+# `zpico-link-rpmsg`; the board registers the vendor binding.
+link-rpmsg = ["dep:zpico-link-rpmsg"]
 # Phase 115.B — runtime-pluggable user transport via the
 # `custom://` locator scheme. Compiles in `src/link/{config,unicast}/custom.c`
 # from the zenoh-pico fork + force-links `zpico-platform-custom`'s
@@ -119,6 +122,7 @@ host-only-reason = "bindgen + C build of zenoh-pico; needs a host toolchain"
 # IVC link-layer forwarders moved into the carved-out
 # `zpico-link-ivc` crate, pulled by the `link-ivc` feature.
 zpico-link-ivc = { workspace = true, optional = true }
+zpico-link-rpmsg = { workspace = true, optional = true }
 # Phase 115.B — Rust-side `nros_zpico_custom_take` extern that the
 # C custom-link factory calls. Optional; only pulled in when
 # `link-custom` is enabled.

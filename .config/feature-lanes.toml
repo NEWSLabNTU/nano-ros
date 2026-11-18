@@ -56,6 +56,11 @@ class = "config"
 config = "PeerMode"
 reason = "zenoh-pico over IVC, a link with two endpoints, on which a peer session needs no router — same messages, no router"
 
+[feature.link-rpmsg]
+class = "config"
+config = "PeerMode"
+reason = "zenoh-pico over RPMsg, a link with two endpoints, on which a peer session needs no router — same messages, no router"
+
 [feature.census-param-store-test]
 class = "harness"
 reason = "gives nros-rmw-metadata's tests a parameter store for the imperative-declaration census test, without unifying `nros/param-store` into every workspace build (issue 2670)"
@@ -302,11 +307,11 @@ crate = "nros-rmw-zenoh"
 features = ["platform-posix", "link-custom"]
 targets = ["custom_transport"]
 
-# RFC-0134 D2 -- two peers on a point-to-point link (IVC, host mock), no router.
+# RFC-0134 D2 -- two peers on a point-to-point link (IVC and RPMsg, host mocks), no router.
 [[lane]]
 runner = "required-features-tests"
 crate = "nros-rmw-zenoh"
-features = ["platform-posix", "link-ivc"]
+features = ["platform-posix", "link-ivc", "link-rpmsg"]
 targets = ["point_to_point_peer"]
 env = { NROS_ZENOH_MAX_SESSIONS = "2" }
 

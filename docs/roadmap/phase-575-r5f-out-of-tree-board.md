@@ -235,7 +235,14 @@ Steps, in order:
      heap, with no per-image knob. The user chose to push
      once a runtime test existed: `nros-rmw-zenoh`'s `point_to_point_peer`
      runs two processes over the IVC host mock, with no router.
-   - **Link:** OPEN.
+   - **Link: done on the host (2026-11-18).** `zpico-link-rpmsg` owns the
+     endpoint table, a receive ring per endpoint and the board contract
+     (`include/nros/rpmsg_link.h`: the board registers `open`/`close`/`send`
+     and calls `nros_rpmsg_deliver` from its receive callback or task). The
+     fork's RPMsg link shares one framing with IVC (`framed.c`), 496-byte
+     frames. `tests/point_to_point_peer.rs` runs two peers over each link's
+     host mock with no router, with a 1000-byte message that spans several
+     frames. The TI RPMessage binding is the board package's, downstream.
 2. **Acceptance on dual-core QEMU.** Two nano-ros peers, one listening and
    one connecting, exchange messages over RPMsg with no router, on an
    emulated dual-core target (Zephyr's OpenAMP samples on a dual-core QEMU

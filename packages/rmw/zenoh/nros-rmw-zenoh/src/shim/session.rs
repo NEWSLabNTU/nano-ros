@@ -2018,9 +2018,9 @@ fn caller_rx_wakes_park() -> bool {
 }
 
 /// The endpoint schemes of links that join exactly two endpoints, on which a
-/// peer session has one remote end (RFC-0134 D2). RPMsg joins when its link
-/// lands; serial is deliberately absent, see `point_to_point_peer_derived`.
-const POINT_TO_POINT_SCHEMES: &[&str] = &["ivc/"];
+/// peer session has one remote end (RFC-0134 D2). Serial is deliberately
+/// absent, see `point_to_point_peer_derived`.
+const POINT_TO_POINT_SCHEMES: &[&str] = &["ivc/", "rpmsg/"];
 
 /// Whether a session's `listen`/`connect` endpoints are all on a
 /// point-to-point link, with at least one stated. A TCP endpoint beside an IVC
@@ -2059,6 +2059,7 @@ mod point_to_point_tests {
             ("listen", "ivc/2")
         ]));
         assert!(endpoints_are_point_to_point(&[("connect", "ivc/3")]));
+        assert!(endpoints_are_point_to_point(&[("listen", "rpmsg/nros")]));
         assert!(!endpoints_are_point_to_point(&[("mode", "peer")]));
         assert!(!endpoints_are_point_to_point(&[(
             "listen",
