@@ -2629,4 +2629,222 @@ mod tests {
             "the mark is on the coded node's row, got {json}"
         );
     }
+
+    /// Issue 2689 -- the GOLDEN probe sidecar the CLI parses.
+    ///
+    /// The producer (this crate) and the reader (`nros-cli-core`'s
+    /// `SourceMetadata`, `deny_unknown_fields`) share no cargo workspace, so a
+    /// schema bump here was invisible to every test there: issue 2650's v6
+    /// keys made every sidecar fail the CLI's parse, and so read as stale on
+    /// every configure. The file is the bridge. This test writes it with the
+    /// REAL serializer over a recorder holding every row kind and every
+    /// optional key the writer can emit, and fails when the output differs;
+    /// the CLI's `golden_probe_sidecar_round_trips_through_source_metadata`
+    /// parses it strictly. A new key or a changed type on this side fails one
+    /// of the two. `NROS_BLESS_PROBE_SIDECAR=1` rewrites the file; commit the
+    /// result with the CLI's mirror updated in the same change.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn the_golden_probe_sidecar_is_what_the_recorder_writes() {
+        extern crate std;
+
+        let mut recorder = MetadataRecorder::<2, 12, 2>::new();
+        recorder
+            .push_node(NodeId::new("node_planner"), "planner", "/demo", 0)
+            .unwrap();
+        recorder
+            .push_node(NodeId::new("node_plain"), "plain", "/", 0)
+            .unwrap();
+        // v5: a node whose own code registered a lifecycle state machine.
+        assert!(recorder.observe_lifecycle_registration("planner", "/demo"));
+
+        let spec = |id: &'static str, kind, source_name, type_name| EntityMetadataSpec {
+            id: EntityId::new(id),
+            node_id: NodeId::new("node_planner"),
+            kind,
+            source_name,
+            type_name,
+            type_hash: "hash",
+            qos: crate::qos::DEFAULT,
+        };
+        let at = |line| SourceLocationMetadata {
+            artifact: copy_str("src/planner.cpp").unwrap(),
+            line: Some(line),
+            column: Some(5),
+        };
+
+        recorder
+            .push_entity(
+                entity_metadata(spec(
+                    "pub_path",
+                    EntityKind::Publisher,
+                    "path",
+                    "nav_msgs::msg::dds_::Path_",
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+
+        // v3/v4: a subscription the executor observed registering, with its
+        // `in_place` and `buffered` facts, in a named callback group.
+        let mut sub = entity_metadata(spec(
+            "sub_odom",
+            EntityKind::Subscription,
+            "/odom",
+            "nav_msgs::msg::dds_::Odometry_",
+        ))
+        .unwrap();
+        sub.callback_id = Some(copy_str("cb_odom").unwrap());
+        sub.callback_source = at(30);
+        sub.callback_group = Some(copy_str("sensors").unwrap());
+        recorder.push_entity(sub).unwrap();
+        assert!(recorder.observe_subscription_registration(
+            "/odom",
+            "nav_msgs::msg::dds_::Odometry_",
+            true,
+            BufferedRow::TypedBound,
+        ));
+
+        let mut timer = entity_metadata(spec("timer_plan", EntityKind::Timer, "", "")).unwrap();
+        timer.callback_id = Some(copy_str("cb_plan").unwrap());
+        timer.callback_source = at(40);
+        timer.period_ms = Some(33);
+        timer.period_us = Some(33_333);
+        recorder.push_entity(timer).unwrap();
+
+        // v2: a guard condition is a `timers[]` row of its own kind.
+        let mut guard = entity_metadata(spec("guard_wake", EntityKind::Timer, "", "")).unwrap();
+        guard.callback_id = Some(copy_str("cb_wake").unwrap());
+        guard.callback_source = at(45);
+        guard.timer_kind = TimerKind::GuardCondition;
+        recorder.push_entity(guard).unwrap();
+
+        let mut srv = entity_metadata(spec(
+            "srv_reset",
+            EntityKind::ServiceServer,
+            "~/reset",
+            "std_srvs::srv::dds_::Trigger_",
+        ))
+        .unwrap();
+        srv.callback_id = Some(copy_str("cb_reset").unwrap());
+        srv.callback_source = at(50);
+        recorder.push_entity(srv).unwrap();
+
+        let mut action = entity_metadata(spec(
+            "act_route",
+            EntityKind::ActionServer,
+            "route",
+            "example_interfaces::action::dds_::Fibonacci_",
+        ))
+        .unwrap();
+        action.callback_id = Some(copy_str("cb_route_goal").unwrap());
+        action.callback_source = at(60);
+        action.action_cancel_callback_id = Some(copy_str("cb_route_cancel").unwrap());
+        action.action_cancel_source = at(61);
+        action.action_accepted_callback_id = Some(copy_str("cb_route_accepted").unwrap());
+        action.action_accepted_source = at(62);
+        recorder.push_entity(action).unwrap();
+
+        recorder
+            .push_entity(
+                entity_metadata(spec(
+                    "client_fib",
+                    EntityKind::ActionClient,
+                    "/fibonacci",
+                    "example_interfaces::action::dds_::Fibonacci_",
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+        recorder
+            .push_entity(
+                entity_metadata(spec(
+                    "client_add",
+                    EntityKind::ServiceClient,
+                    "/add_two_ints",
+                    "example_interfaces::srv::dds_::AddTwoInts_",
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+
+        let mut declared =
+            entity_metadata(spec("param_rate", EntityKind::Parameter, "rate_hz", "")).unwrap();
+        declared.parameter_type = Some(ParameterType::Double);
+        declared.parameter_default = Some(ParameterDefault::Double(copy_str("30.0").unwrap()));
+        declared.parameter_read_only = true;
+        declared.source = at(20);
+        recorder.push_entity(declared).unwrap();
+
+        // Issue 2589: a parameter the code READ by name, not declared.
+        let mut read =
+            entity_metadata(spec("param_period", EntityKind::Parameter, "period_ms", "")).unwrap();
+        read.parameter_read = true;
+        read.source = at(21);
+        recorder.push_entity(read).unwrap();
+
+        recorder
+            .push_callback_effect(
+                CallbackId::new("cb_plan"),
+                CallbackEffectKind::Publishes,
+                EntityId::new("pub_path"),
+            )
+            .unwrap();
+
+        // v6 (issue 2650): the probe watched descriptor prose.
+        recorder.arm_descriptor_text();
+        recorder.observe_descriptor_text(false, 42);
+        recorder.observe_descriptor_text(true, 7);
+
+        let json = recorder
+            .to_source_metadata_json(
+                &SourceMetadataExport::new("demo_planner", "planner")
+                    .language("cpp")
+                    .executable("planner_node")
+                    .exported_symbol("nros_component_planner")
+                    .source_artifacts(&["src/planner.cpp"]),
+            )
+            .unwrap();
+        let json = std::format!("{json}\n");
+
+        let golden = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../cli/nros-cli-core/tests/fixtures/orchestration/probe_sidecar_golden.json");
+        if std::env::var_os("NROS_BLESS_PROBE_SIDECAR").is_some() {
+            std::fs::write(&golden, &json).unwrap();
+        }
+        let committed = std::fs::read_to_string(&golden).unwrap_or_else(|e| {
+            panic!(
+                "{}: {e} -- the golden sidecar moved; update this path",
+                golden.display()
+            )
+        });
+        assert_eq!(
+            committed,
+            json,
+            "the recorder's output moved off the golden sidecar {}. Re-run with \
+             NROS_BLESS_PROBE_SIDECAR=1, and teach the CLI's SourceMetadata \
+             (packages/cli/nros-cli-core/src/orchestration/source_metadata.rs) \
+             any new key in the same change (issue 2689)",
+            golden.display()
+        );
+        // Every optional key the writer has is in the file: a golden that
+        // omitted one could not catch the reader rejecting it.
+        for key in [
+            "\"lifecycle\":true",
+            "\"in_place\":true",
+            "\"buffered\":\"typed_bound\"",
+            "\"kind\":\"guard_condition\"",
+            "\"read\":true",
+            "\"action_clients\":[{",
+            "\"service_clients\":[{",
+            "\"entity_slot\":",
+            "\"parameter_description_max_len\":42,",
+            "\"parameter_constraints_max_len\":7,",
+        ] {
+            assert!(
+                json.contains(key),
+                "the golden must carry {key}, got {json}"
+            );
+        }
+    }
 }
