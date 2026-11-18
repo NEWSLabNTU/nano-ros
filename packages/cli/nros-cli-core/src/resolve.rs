@@ -923,51 +923,7 @@ pub enum NotDerived {
     NothingDeclared(String),
     /// Something is declared and could not be derived: a defect.
     Failed(String),
-    /// A [`NotDerived::Failed`] the seed can name precisely: the metadata
-    /// probe generated no bound table for `package`, which the image's
-    /// interface closure names. Refused like any failure, except for the
-    /// pairs in [`KNOWN_BOUND_TABLE_GAPS`].
-    MissingBoundTable { package: String, reason: String },
 }
-
-/// Issue 2520 -- the `(image, package)` pairs measured on 2026-11-18 whose
-/// seed found no bound table for `package`. All 14 are Zephyr west images of
-/// the cpp workspace, seen only in the nightly's per-platform jobs
-/// (FreeRTOS, NuttX, ThreadX, baremetal), where the workspace's metadata
-/// probe never ran and the configure still resolves every image of the
-/// workspace (issue 2721). They WARN under `refuse` until that is fixed; any
-/// other image or package with the same reason still refuses, so the
-/// exemption cannot widen by itself. Delete the rows when issue 2721 lands.
-/// Same shape as the api-parity `gap` rows, which tolerate only a tracked
-/// issue.
-pub(crate) const KNOWN_BOUND_TABLE_GAPS: &[(&str, &str)] = &[
-    ("demo_bringup:zephyr", "builtin_interfaces"),
-    ("demo_bringup:zephyr_cyclonedds", "builtin_interfaces"),
-    ("service_bringup:zephyr_service_server", "action_msgs"),
-    ("service_bringup:zephyr_service_server_xrce", "action_msgs"),
-    (
-        "service_bringup:zephyr_service_server_cyclonedds",
-        "action_msgs",
-    ),
-    ("service_bringup:zephyr_service_client", "action_msgs"),
-    ("service_bringup:zephyr_service_client_xrce", "action_msgs"),
-    (
-        "service_bringup:zephyr_service_client_cyclonedds",
-        "action_msgs",
-    ),
-    ("action_bringup:zephyr_action_server", "action_msgs"),
-    ("action_bringup:zephyr_action_server_xrce", "action_msgs"),
-    (
-        "action_bringup:zephyr_action_server_cyclonedds",
-        "action_msgs",
-    ),
-    ("action_bringup:zephyr_action_client", "action_msgs"),
-    ("action_bringup:zephyr_action_client_xrce", "action_msgs"),
-    (
-        "action_bringup:zephyr_action_client_cyclonedds",
-        "action_msgs",
-    ),
-];
 
 impl NotDerived {
     pub fn failed(why: impl std::fmt::Display) -> Self {
@@ -977,7 +933,6 @@ impl NotDerived {
     pub fn reason(&self) -> &str {
         match self {
             Self::NothingDeclared(r) | Self::Failed(r) => r,
-            Self::MissingBoundTable { reason, .. } => reason,
         }
     }
 }
@@ -1025,19 +980,7 @@ pub(crate) fn report_not_derived_under(
             eprintln!("nros build:   `{image}`: {what} (nothing declared to derive from: {why})");
             Ok(())
         }
-        NotDerived::MissingBoundTable { package, reason }
-            if KNOWN_BOUND_TABLE_GAPS.contains(&(image, package.as_str())) =>
-        {
-            // Issue 2721 -- a known, tracked gap: warned at every policy.
-            eprintln!(
-                "nros build: warning: `{image}`: {what}: {reason}. This is a known, tracked gap \
-                 (the configure resolves this image where the metadata probe did not run); it \
-                 refuses again once fixed."
-            );
-            Ok(())
-        }
-        NotDerived::Failed(why) | NotDerived::MissingBoundTable { reason: why, .. } => match policy
-        {
+        NotDerived::Failed(why) => match policy {
             ProbeFailurePolicy::Warn => {
                 eprintln!(
                     "nros build: warning: `{image}`: {what}, because what it declares could not \
@@ -1056,18 +999,11 @@ pub(crate) fn report_not_derived_under(
     }
 }
 
-/// Issue 2520 -- the known-gap exemption is keyed on the exact pair.
+/// Issue 2520 -- the verdict follows the reason.
 #[cfg(test)]
 mod not_derived_tests {
     use super::*;
     use crate::orchestration::metadata_refresh::ProbeFailurePolicy::{Refuse, Warn};
-
-    fn missing(pkg: &str) -> NotDerived {
-        NotDerived::MissingBoundTable {
-            package: pkg.into(),
-            reason: format!("the metadata probe generated no bound table for `{pkg}`"),
-        }
-    }
 
     #[test]
     fn nothing_declared_is_never_refused() {
@@ -1083,39 +1019,6 @@ mod not_derived_tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("the model does not resolve"), "{err}");
-    }
-
-    #[test]
-    fn a_known_bound_table_gap_warns_under_refuse() {
-        let nd = missing("action_msgs");
-        assert!(
-            report_not_derived_under(Refuse, "w", "action_bringup:zephyr_action_server", &nd)
-                .is_ok()
-        );
-    }
-
-    /// The exemption does not widen: the same package on another image, or
-    /// another package on a listed image, still refuses.
-    #[test]
-    fn an_unlisted_bound_table_gap_refuses() {
-        assert!(
-            report_not_derived_under(
-                Refuse,
-                "w",
-                "action_bringup:linux_action_server",
-                &missing("action_msgs")
-            )
-            .is_err()
-        );
-        assert!(
-            report_not_derived_under(
-                Refuse,
-                "w",
-                "action_bringup:zephyr_action_server",
-                &missing("std_msgs")
-            )
-            .is_err()
-        );
     }
 }
 

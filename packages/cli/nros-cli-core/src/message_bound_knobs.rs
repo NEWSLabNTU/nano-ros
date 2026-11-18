@@ -768,6 +768,30 @@ fn write_output(
 /// `_nros_generate_declared_interfaces` (cmake/NanoRosVerbs.cmake) runs
 /// `nros_find_interfaces()` only for such a package, so a node that declares
 /// none contributes nothing to the closure — on either side.
+/// Issue 2721 -- the interface packages a seed over `node_dirs` reads a bound
+/// table for: the transitive interface closure of every node package that
+/// declares a dependency, sorted. The one spelling, shared by the seed and by
+/// the metadata probe's freshness check, which must not call the probe's
+/// output current while a table this closure names is missing.
+pub fn interface_closure(
+    node_dirs: &[std::path::PathBuf],
+    interface_search: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let mut closure: Vec<String> = Vec::new();
+    for dir in node_dirs {
+        let xml = dir.join("package.xml");
+        if !declares_a_dependency(&xml) {
+            continue;
+        }
+        let names = cargo_nano_ros::resolve_interface_package_names_in(&xml, interface_search)
+            .map_err(|e| format!("resolving {}: {e}", xml.display()))?;
+        closure.extend(names);
+    }
+    closure.sort();
+    closure.dedup();
+    Ok(closure)
+}
+
 fn declares_a_dependency(package_xml: &std::path::Path) -> bool {
     std::fs::read_to_string(package_xml).is_ok_and(|body| {
         [
@@ -860,21 +884,7 @@ pub fn write_west_seed_over(
                 })?
             }
         };
-        let mut closure: Vec<String> = Vec::new();
-        for dir in node_dirs {
-            let xml = dir.join("package.xml");
-            if !declares_a_dependency(&xml) {
-                continue;
-            }
-            let names = cargo_nano_ros::resolve_interface_package_names_in(
-                &xml,
-                interface_search.as_deref(),
-            )
-            .map_err(|e| format!("resolving {}: {e}", xml.display()))?;
-            closure.extend(names);
-        }
-        closure.sort();
-        closure.dedup();
+        let closure = interface_closure(node_dirs, interface_search.as_deref())?;
         if closure.is_empty() {
             return Err(crate::resolve::NotDerived::NothingDeclared(
                 "no node package resolves an interface package, so the configure \
@@ -889,14 +899,11 @@ pub fn write_west_seed_over(
                 .join(pkg)
                 .join(rosidl_codegen::INVENTORY_JSON_NAME);
             let doc = std::fs::read_to_string(&json).map_err(|_| {
-                crate::resolve::NotDerived::MissingBoundTable {
-                    package: pkg.clone(),
-                    reason: format!(
-                        "the metadata probe generated no bound table for `{pkg}` ({}) -- run \
-                         `nros configure`",
-                        json.display()
-                    ),
-                }
+                format!(
+                    "the metadata probe generated no bound table for `{pkg}` ({}) -- run \
+                     `nros configure`",
+                    json.display()
+                )
             })?;
             let rows = rosidl_codegen::bounds::bounds_from_json(&doc)
                 .map_err(|e| format!("{}: {e}", json.display()))?;
