@@ -824,6 +824,16 @@ submodule-drift:
 pin-drift:
     @bash scripts/lib/pin-drift.sh
 
+# Issue 2697 -- a provisioned Zephyr workspace whose projects (and the modules
+# `zephyr` imports) sit off THIS checkout's west pins: a build there uses a
+# kernel the pin does not name, and only the boot banner says so. The same
+# classifier as `pin-drift`, its own policy (behind/diverged/unfetched fail,
+# ahead warns), never moving the shared workspace. Self-tests first on scratch
+# repositories, every run.
+[metadata("tier", "exempt", "reads the HOST's provisioned Zephyr workspaces; runs as the Zephyr fixture lane's precondition (`_require-owned-provisioned-roots`) and as the gate-lane preflight probe for lanes claiming `zephyr`/`west`")]
+zephyr-pin-drift:
+    @python3 scripts/check-zephyr-pin-drift.py
+
 # issue 0560 — a lock whose dependency versions are decided by a SUBMODULE's
 # manifest goes stale when the pointer moves, and the two halves are updated by
 # different commits. `nros-launch-resolve` sat unbuildable on main that way:

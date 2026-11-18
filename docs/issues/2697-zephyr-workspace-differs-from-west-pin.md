@@ -96,3 +96,46 @@ lane's patches. Only the first is a fault.
 On a host whose workspace HEAD differs from its `west.yml` pin, `nros doctor`
 and the Zephyr fixture lane each fail, naming the project, both revisions and
 the command that fixes it. On a host that matches, both are green.
+
+## Fix (2026-11-18, draft)
+
+`scripts/check-zephyr-pin-drift.py` asks the missing question. For each Zephyr
+line with a provisioned workspace (`scripts/lib/zephyr-workspace.sh --version
+<line> resolve`; an unprovisioned line is not drift), it reads the manifest
+the workspace's `.west/config` names, from THIS checkout, and classifies every
+project's HEAD against its pinned revision:
+
+- the manifest's own projects (`zephyr`, `zephyr-lang-rust`, ...);
+- the projects `zephyr` IMPORTS through its `name-allowlist` (cmsis, picolibc,
+  ...), whose pins are in Zephyr's own `west.yml` at the PINNED zephyr commit.
+  A kernel move moves those too, so checking only the top level would miss
+  half of what a pin change changes.
+
+The classifier is issue 2701's one `nros_pin_drift`
+(`scripts/lib/pin-drift.sh`, the same one `check-submodule-drift.sh` asks);
+the policy is this caller's. Behind, diverged or unfetched FAIL, naming the
+project, both revisions and the remedy
+(`scripts/zephyr/sync-workspace-manifest.sh <ws> <checkout>`, which re-syncs
+the workspace's manifest and runs `west update`). Ahead WARNS. A shallow
+history is NOT VERIFIED. HEAD only, so the patch scripts' work-tree edits are
+not drift, and it never moves the workspace: that stays an explicit step,
+because the workspace is shared.
+
+Where it runs:
+
+- `_require-owned-provisioned-roots`, which every Zephyr fixture lane runs
+  first;
+- `just doctor`, beside the ownership check;
+- the gate-lane preflight, for lanes claiming `zephyr` or `west`;
+- `just check zephyr-pin-drift`.
+
+Its self-test runs first on every run, on scratch repositories: a project
+behind its tag fails, an unfetched pin fails, a project ahead warns and does
+not fail, a work-tree edit at the pin is not drift, an import outside the
+allowlist is not checked, and every failure names its remedy. Mutation-checked:
+a classifier that always answers `ok`, or ignoring imports, each fails it.
+
+Measured on host 139: both lines' workspaces at their pins (3.7 at v3.7.2, 4.4
+at v4.4.0), 18 pinned projects checked. On host 175, whose 3.7 workspace was
+at v3.7.0, it should name `zephyr` behind `v3.7.2` with the re-sync remedy;
+that host's run, and its XRCE C++ cells on v3.7.2, are still to come.
