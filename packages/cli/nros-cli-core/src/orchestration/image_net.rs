@@ -33,6 +33,12 @@
 //! `nros::main!` overlay, a board that boots a C app from its own `main.rs`,
 //! and `nros board net --image-net` on the cmake road.
 //!
+//! RFC-0132 D4-D6 (phase-560 W9.d) -- the image's CAN frame device rides the
+//! same text as one `can` row ([`resolve_can`]): `[image.<id>.can] device` on
+//! a host-stack board, the D4 file's `[canN]` on a `"board"`-stack board, and
+//! the mock on a host-process board. Each fact stated in the wrong home is
+//! refused, naming the right one.
+//!
 //! Across images, [`check_collisions`] refuses two equal static addresses or
 //! two equal MACs on one SHARED network, naming both images. QEMU's SLIRP
 //! network is not shared: every `-nic user` makes a private copy per VM, so two
@@ -45,7 +51,7 @@ use std::{
 
 use nros_board_common::{
     image_net::{self as text, Address},
-    platform_config::BoardNet,
+    platform_config::{BoardNet, StackOwner},
 };
 use nros_extension::plan::HostPeer;
 use nros_orchestration_ir::system_net::{
@@ -116,12 +122,73 @@ impl NetAttach {
 pub struct ImageNet {
     /// The interfaces, in name order; the first is the primary.
     pub interfaces: Vec<Interface>,
+    /// The image's CAN frame device (RFC-0132 D4), if it states one.
+    pub can: Option<CanDevice>,
+}
+
+/// The image's resolved CAN frame device, owned (RFC-0132 D4).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CanDevice {
+    /// The device `open(NULL)` opens: a host interface or a `[canN]` name.
+    pub device: Option<String>,
+    /// `driver = "mock"` (RFC-0132 D5).
+    pub mock: bool,
+    /// The `[canN]` nominal bitrate.
+    pub bitrate: Option<u32>,
+    /// The `[canN]` data-phase bitrate.
+    pub dbitrate: Option<u32>,
+}
+
+impl CanDevice {
+    fn row(&self) -> text::CanRow<'_> {
+        text::CanRow {
+            device: self.device.as_deref(),
+            driver: if self.mock {
+                text::CanDriver::Mock
+            } else {
+                text::CanDriver::Derived
+            },
+            bitrate: self.bitrate,
+            dbitrate: self.dbitrate,
+        }
+    }
+}
+
+/// The board facts the CAN rules read (RFC-0132 D4-D6): its `[board.net]`,
+/// its name for the messages, and whether its image is a host process
+/// (`[board.run] host = true` and no `[board.flash]`, RFC-0132 D5).
+#[derive(Clone, Debug, Default)]
+pub struct BoardFacts {
+    /// `[board.net]`.
+    pub net: BoardNet,
+    /// The board as the image names it.
+    pub name: String,
+    /// `[board.run] host = true` and no `[board.flash]`.
+    pub host_process: bool,
+}
+
+impl BoardFacts {
+    /// RFC-0132 D5 -- from a descriptor's `[board.run] host` and whether it
+    /// states `[board.flash]`.
+    #[must_use]
+    pub fn host_process_of(run_host: bool, flash_stated: bool) -> bool {
+        run_host && !flash_stated
+    }
 }
 
 impl ImageNet {
-    /// The `NROS_IMAGE_NET` text.
+    /// The `NROS_IMAGE_NET` text: the interfaces, then the CAN row.
     #[must_use]
     pub fn text(&self) -> String {
+        let ifs = self.interfaces_text();
+        match &self.can {
+            None => ifs,
+            Some(c) if ifs.is_empty() => text::encode_can(&c.row()),
+            Some(c) => format!("{ifs}|{}", text::encode_can(&c.row())),
+        }
+    }
+
+    fn interfaces_text(&self) -> String {
         let ifs: Vec<text::NetIf<'_>> = self
             .interfaces
             .iter()
@@ -176,6 +243,22 @@ impl ImageNet {
                 NetAttach::Bridge(d) => out.push_str(&format!("attach = {{ bridge = {d:?} }}\n")),
                 NetAttach::Tap(d) => out.push_str(&format!("attach = {{ tap = {d:?} }}\n")),
                 NetAttach::None => out.push_str("# attach: none — a physical-only network\n"),
+            }
+        }
+        if let Some(c) = &self.can {
+            // RFC-0132 D4.
+            out.push_str("\n[can]\n");
+            if let Some(d) = &c.device {
+                out.push_str(&format!("device = {d:?}\n"));
+            }
+            if c.mock {
+                out.push_str("driver = \"mock\"\n");
+            }
+            if let Some(b) = c.bitrate {
+                out.push_str(&format!("bitrate = {b}\n"));
+            }
+            if let Some(b) = c.dbitrate {
+                out.push_str(&format!("dbitrate = {b}\n"));
             }
         }
         out
@@ -358,7 +441,116 @@ pub fn resolve(d: &ImageDecl<'_>, board: &BoardNet) -> Result<Option<ImageNet>, 
             d.image, first.network, d.image
         ));
     }
-    Ok(Some(ImageNet { interfaces }))
+    Ok(Some(ImageNet {
+        interfaces,
+        can: None,
+    }))
+}
+
+/// RFC-0132 D4-D6 (phase-560 W9.d) -- the image's CAN frame device, against
+/// its board. `can` is `[image.<id>.can]` (over `[image_defaults.can]`),
+/// `tables` the `[canN]` of its board network files. `Ok(None)` when the
+/// image states none.
+///
+/// Refused, each naming the fact's one home (D4's table):
+/// * `driver = "mock"` on a board that is not a host process (D5);
+/// * `device` on an `"os"` board (its devicetree overlay names it) or a
+///   `"board"` board (its D4 file's `[canN]` does);
+/// * a `[canN]` on a host board (`[image.<id>.can] device` names it) or an
+///   `"os"` board (devicetree);
+/// * several `[canN]` with no `frames = true`, or two marked;
+/// * a device on a board whose `[board.net] links` lacks `can` (D6).
+pub fn resolve_can(
+    image: &str,
+    can: &system_net::ImageCan,
+    tables: &BTreeMap<String, system_net::CanTable>,
+    board: &BoardFacts,
+) -> Result<Option<CanDevice>, String> {
+    if can.is_empty() && tables.is_empty() {
+        return Ok(None);
+    }
+    let at = format!("image `{image}` on board `{}`", board.name);
+    // D5 -- the mock never reaches hardware.
+    if can.is_mock() && !board.host_process {
+        return Err(format!(
+            "{at}: `[image.{image}.can] driver = \"mock\"` is for a board that runs as a \
+             host process, and `{}` does not: a host-process board states \
+             `[board.run] host = true` and no `[board.flash]`. On this \
+             board the backend is derived; drop `driver`",
+            board.name
+        ));
+    }
+    let owner = board.net.stack_owner()?;
+    let overlay = "its devicetree overlay in `os_config` (`chosen { nros,can = &can1; };`, \
+                   default `zephyr,canbus`), and the rates are the node's `bus-speed` / \
+                   `bus-speed-data`";
+    if let Some(d) = &can.device {
+        match owner {
+            Some(StackOwner::Os) => {
+                return Err(format!(
+                    "{at}: `[image.{image}.can] device = {d:?}` -- this board's RTOS owns \
+                     its devices (`[board.net] stack = \"os\"`), so the CAN device is named \
+                     in {overlay}"
+                ));
+            }
+            Some(StackOwner::Board) => {
+                return Err(format!(
+                    "{at}: `[image.{image}.can] device = {d:?}` -- this board's package owns \
+                     its devices (`[board.net] stack = \"board\"`), so the CAN device is \
+                     the `[canN]` table (`bitrate`, `dbitrate`) of the board network file \
+                     the image's `os_config` names"
+                ));
+            }
+            Some(StackOwner::Host) | None => {}
+        }
+    }
+    if let Some(name) = tables.keys().next() {
+        match owner {
+            Some(StackOwner::Host) => {
+                return Err(format!(
+                    "{at}: a board network file states `[{name}]`, but the host operating \
+                     system owns this board's devices (`[board.net] stack = \"host\"`): \
+                     bring the interface up there (`ip link`) and name it in \
+                     `[image.{image}.can] device = \"<interface>\"` in system.toml"
+                ));
+            }
+            Some(StackOwner::Os) => {
+                return Err(format!(
+                    "{at}: a board network file states `[{name}]`, but this board's RTOS \
+                     owns its devices (`[board.net] stack = \"os\"`): the CAN device is \
+                     named in {overlay}"
+                ));
+            }
+            Some(StackOwner::Board) | None => {}
+        }
+    }
+    let frames = system_net::frames_table(tables, &at)?;
+    let device = can
+        .device
+        .clone()
+        .or_else(|| frames.map(|(n, _)| n.to_string()));
+    // D6 -- a device on a board whose links lack `can`.
+    if device.is_some() && !board.net.links()?.iter().any(|l| l == "can") {
+        return Err(format!(
+            "{at}: the image names CAN device `{}`, but board `{}` carries no `can` link \
+             (`[board.net] links = [{}]`) -- nothing on it opens a CAN frame device",
+            device.as_deref().unwrap_or_default(),
+            board.name,
+            board
+                .net
+                .links
+                .iter()
+                .map(|l| format!("{l:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    Ok(Some(CanDevice {
+        device,
+        mock: can.is_mock(),
+        bitrate: frames.and_then(|(_, t)| t.bitrate),
+        dbitrate: frames.and_then(|(_, t)| t.dbitrate),
+    }))
 }
 
 /// Refuse two equal static addresses, or two equal MACs, on one SHARED
@@ -397,16 +589,18 @@ pub fn check_collisions(images: &[(&str, &ImageNet)]) -> Result<(), String> {
 }
 
 /// Resolve every image of a workspace bringup's `system.toml`, then refuse a
-/// collision across them. `board_net_of(image id)` answers the image's
-/// board's `[board.net]`; it is asked only for an image that names an
+/// collision across them. `board_of(image id)` answers the image's board's
+/// facts ([`BoardFacts`]); it is asked only for an image that names an
 /// `os_config` file, each of which is checked against the board's network
-/// owner (RFC-0109 D9 check 6). The map holds the images that do.
+/// owner (RFC-0109 D9 check 6), or that states `[image.<id>.can]`
+/// (RFC-0132 D4). The map holds the images that resolve a network or a CAN
+/// device.
 ///
 /// `host_peer_of(rmw)` answers the `[rmw.host] peer` of an RMW's descriptor
 /// ([`host_peer_in`]); it is asked only for an image that states no locator.
 pub fn resolve_system(
     sys: &super::cargo_metadata_schema::SystemToml,
-    mut board_net_of: impl FnMut(&str) -> Result<BoardNet, String>,
+    mut board_of: impl FnMut(&str) -> Result<BoardFacts, String>,
     mut host_peer_of: impl FnMut(&str) -> Option<HostPeer>,
 ) -> Result<BTreeMap<String, ImageNet>, String> {
     let mut out = BTreeMap::new();
@@ -415,22 +609,37 @@ pub fn resolve_system(
     let mut networks = BTreeMap::new();
     for (id, img) in sys.resolved_images() {
         let files = img.os_config_files();
-        if files.is_empty() {
+        let states_can = !img.can.is_empty() || !img.can_tables.is_empty();
+        if files.is_empty() && !states_can {
             continue;
         }
         // An image with no interface is resolved here only for this check, so
         // a board this checkout cannot resolve is that image's own build's
         // error to report, not every sibling's.
-        let board = match board_net_of(&id) {
+        let board = match board_of(&id) {
             Ok(b) => b,
-            Err(_) if img.net.is_empty() => continue,
+            Err(_) if img.net.is_empty() && !states_can => continue,
             Err(e) => return Err(e),
         };
+        // RFC-0132 D4-D6 -- before the file check below, so a `[canN]` on a
+        // host board is refused naming the CAN device's home, not only the
+        // file's.
+        let can = resolve_can(&id, &img.can, &img.can_tables, &board)?;
         // RFC-0109 D9 check 6 — each layer-1 file goes to the network's owner.
         board
+            .net
             .check_os_config(&files)
             .map_err(|e| format!("image `{id}`: {e}"))?;
         if img.net.is_empty() {
+            if can.is_some() {
+                out.insert(
+                    id,
+                    ImageNet {
+                        interfaces: Vec::new(),
+                        can,
+                    },
+                );
+            }
             continue;
         }
         system_net::merge_networks(
@@ -444,7 +653,7 @@ pub fn resolve_system(
         } else {
             None
         };
-        if let Some(n) = resolve(
+        if let Some(mut n) = resolve(
             &ImageDecl {
                 system: Some(&sys.system.name),
                 image: &id,
@@ -454,8 +663,9 @@ pub fn resolve_system(
                 locator: locator.as_deref(),
                 host_peer,
             },
-            &board,
+            &board.net,
         )? {
+            n.can = can;
             out.insert(id, n);
         }
     }
@@ -465,24 +675,35 @@ pub fn resolve_system(
 }
 
 /// Resolve a single-package leaf's image (`nros_orchestration_ir::leaf_system`),
-/// whose locator the leaf reader already resolved (image > system).
+/// whose locator the leaf reader already resolved (image > system): its CAN
+/// device (RFC-0132 D4-D6), then its layer-1 files against the board's
+/// network owner (RFC-0109 D9 check 6), then its interfaces. `Ok(None)` when
+/// it states neither an interface nor a CAN device.
 pub fn resolve_leaf(
     decl: &nros_orchestration_ir::leaf_system::LeafSystem,
-    board: &BoardNet,
+    board: &BoardFacts,
 ) -> Result<Option<ImageNet>, String> {
     let n = &decl.network;
     let image = decl.image.as_deref().unwrap_or("default");
+    let can = resolve_can(image, &n.can, &n.can_tables, board)?;
+    board.net.check_os_config(&decl.os_config)?;
+    if n.net.is_empty() {
+        return Ok(can.map(|c| ImageNet {
+            interfaces: Vec::new(),
+            can: Some(c),
+        }));
+    }
     // Issue 2679 -- the leaf's RMW (`[image]` > `[image_defaults]` >
     // `[system]`, then the toolchain default `SystemToml::resolved_rmw`
     // falls back to), over the index of the leaf's own directory.
-    let host_peer = if n.locator.is_none() && !n.net.is_empty() {
+    let host_peer = if n.locator.is_none() {
         decl.origin_path()
             .parent()
             .and_then(|dir| host_peer_in(dir, decl.rmw.as_deref().unwrap_or("zenoh")))
     } else {
         None
     };
-    resolve(
+    Ok(resolve(
         &ImageDecl {
             system: n.system.as_deref(),
             image,
@@ -492,8 +713,60 @@ pub fn resolve_leaf(
             locator: n.locator.as_deref(),
             host_peer,
         },
-        board,
-    )
+        &board.net,
+    )?
+    .map(|mut i| {
+        i.can = can;
+        i
+    }))
+}
+
+/// Whether a leaf image states anything [`resolve_leaf`] resolves: a layer-1
+/// file, or a CAN device.
+#[must_use]
+pub fn leaf_states_network(decl: &nros_orchestration_ir::leaf_system::LeafSystem) -> bool {
+    !decl.os_config.is_empty()
+        || !decl.network.can.is_empty()
+        || !decl.network.can_tables.is_empty()
+}
+
+/// [`BoardFacts`] of `board` from the descriptor at `path`: its
+/// `[board.net]` ([`board_net`]) and, from the same `[[board]]` entry,
+/// whether it runs as a host process (RFC-0132 D5).
+pub fn board_facts(path: &Path, board: &str) -> Result<BoardFacts, String> {
+    let net = board_net(path, board)?;
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let doc: toml::Table = raw
+        .parse()
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let entries: Vec<&toml::Table> = doc
+        .get("board")
+        .and_then(toml::Value::as_array)
+        .map(|a| a.iter().filter_map(toml::Value::as_table).collect())
+        .unwrap_or_default();
+    let named = entries.iter().find(|e| {
+        e.get("names")
+            .and_then(toml::Value::as_array)
+            .is_some_and(|n| {
+                n.iter()
+                    .filter_map(toml::Value::as_str)
+                    .any(|n| n.eq_ignore_ascii_case(board))
+            })
+    });
+    let entry = named.or_else(|| (entries.len() == 1).then(|| &entries[0]));
+    let host_process = entry.is_some_and(|e| {
+        let host = e
+            .get("run")
+            .and_then(|r| r.get("host"))
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(false);
+        BoardFacts::host_process_of(host, e.contains_key("flash"))
+    });
+    Ok(BoardFacts {
+        net,
+        name: board.to_string(),
+        host_process,
+    })
 }
 
 /// `[board.net]` of `board` from the descriptor at `path` (the board
@@ -1172,5 +1445,235 @@ mod tests {
                 _ => assert!(out.unwrap_err().contains("states no `locator`")),
             }
         }
+    }
+
+    /// The tracked descriptor of `board`, from the checkout.
+    fn tracked_board(pkg: &str, board: &str) -> BoardFacts {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../boards")
+            .join(pkg)
+            .join("nros-board.toml");
+        board_facts(&path, board).unwrap_or_else(|e| panic!("{board}: {e}"))
+    }
+
+    fn facts(stack: &str, links: &[&str], host_process: bool) -> BoardFacts {
+        BoardFacts {
+            net: BoardNet {
+                stack: Some(stack.into()),
+                links: links.iter().map(|l| (*l).to_string()).collect(),
+                ..BoardNet::default()
+            },
+            name: format!("{stack}-board"),
+            host_process,
+        }
+    }
+
+    fn image_can(src: &str) -> system_net::ImageCan {
+        let t: toml::Table = src.parse().unwrap();
+        system_net::parse_can(Some(&t), "image.a").unwrap()
+    }
+
+    fn can_tables(src: &str) -> BTreeMap<String, system_net::CanTable> {
+        let t: toml::Table = src.parse().unwrap();
+        t.into_iter()
+            .map(|(k, v)| (k, v.try_into().unwrap()))
+            .collect()
+    }
+
+    /// RFC-0132 D4 (phase-560 W9.d) -- the device reaches the text from its
+    /// one home on each stack: `[image.<id>.can] device` on a host board, the
+    /// D4 file's `[canN]` (the marked one) on a `"board"` board, nothing at
+    /// all for the mock.
+    #[test]
+    fn the_can_device_resolves_from_its_one_home_per_stack() {
+        let none = BTreeMap::new();
+        let host = tracked_board("linux", "linux");
+        assert!(host.host_process);
+        let c = resolve_can(
+            "a",
+            &image_can("can = { device = \"vcan7\" }"),
+            &none,
+            &host,
+        )
+        .unwrap()
+        .unwrap();
+        let n = ImageNet {
+            interfaces: Vec::new(),
+            can: Some(c),
+        };
+        assert_eq!(n.text(), "vcan7,can,-,-,-");
+        let t = n.text();
+        let row = text::can(&t).unwrap().unwrap();
+        assert_eq!(row.device, Some("vcan7"));
+        assert!(n.to_toml("a").contains("[can]\ndevice = \"vcan7\""));
+
+        let board = facts("board", &["tcp", "can"], false);
+        let tables = can_tables(
+            "[can0]\nbitrate = 500000\n\n[can1]\nbitrate = 1000000\ndbitrate = 5000000\nframes = true\n",
+        );
+        let c = resolve_can("a", &system_net::ImageCan::default(), &tables, &board)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            text::encode_can(&c.row()),
+            "can1,can,-,1000000,5000000",
+            "the marked controller"
+        );
+
+        for (pkg, name) in [
+            ("linux", "linux"),
+            ("nros-board-freertos-posix", "freertos-posix"),
+            ("nros-board-threadx-linux", "threadx-linux"),
+            ("zephyr", "zephyr"),
+        ] {
+            let b = tracked_board(pkg, name);
+            let c = resolve_can("a", &image_can("can = { driver = \"mock\" }"), &none, &b)
+                .unwrap_or_else(|e| panic!("{name}: {e}"))
+                .unwrap();
+            assert_eq!(text::encode_can(&c.row()), "-,can,mock,-,-", "{name}");
+        }
+        assert_eq!(
+            resolve_can("a", &system_net::ImageCan::default(), &none, &host).unwrap(),
+            None
+        );
+    }
+
+    /// RFC-0132 D5/D6 (phase-560 W9.d) -- each fact stated in the wrong
+    /// home is refused, naming the right one.
+    #[test]
+    fn a_can_fact_in_the_wrong_home_is_refused_naming_the_right_one() {
+        let none = BTreeMap::new();
+        let one = can_tables("[can0]\nbitrate = 500000\n");
+        let dev = image_can("can = { device = \"can0\" }");
+        let mock = image_can("can = { driver = \"mock\" }");
+
+        // `device` on an "os" board: the overlay names it.
+        let e = resolve_can("a", &dev, &none, &facts("os", &["can"], false)).unwrap_err();
+        assert!(
+            e.contains("nros,can") && e.contains("devicetree overlay"),
+            "{e}"
+        );
+        // `device` on a "board" board: the D4 file's `[canN]` names it.
+        let e = resolve_can("a", &dev, &none, &facts("board", &["can"], false)).unwrap_err();
+        assert!(
+            e.contains("`[canN]` table") && e.contains("os_config"),
+            "{e}"
+        );
+        // A `[canN]` on a host board: `[image.<id>.can] device` names it.
+        let e = resolve_can(
+            "a",
+            &system_net::ImageCan::default(),
+            &one,
+            &tracked_board("linux", "linux"),
+        )
+        .unwrap_err();
+        assert!(
+            e.contains("`[can0]`") && e.contains("[image.a.can] device"),
+            "{e}"
+        );
+        // A `[canN]` on an "os" board: devicetree.
+        let e = resolve_can(
+            "a",
+            &system_net::ImageCan::default(),
+            &one,
+            &facts("os", &["can"], false),
+        )
+        .unwrap_err();
+        assert!(e.contains("devicetree overlay"), "{e}");
+        // The mock on a board with `[board.flash]`, and on an emulator board.
+        for (pkg, name, field) in [
+            (
+                "nros-board-nucleo-f767zi-zephyr",
+                "nucleo-f767zi-zephyr",
+                "[board.flash]",
+            ),
+            (
+                "nros-board-mps2-an385",
+                "mps2-an385-baremetal",
+                "[board.run] host",
+            ),
+        ] {
+            let b = tracked_board(pkg, name);
+            assert!(!b.host_process, "{name}");
+            let e = resolve_can("a", &mock, &none, &b).unwrap_err();
+            assert!(
+                e.contains(&format!("board `{name}`"))
+                    && e.contains("host process")
+                    && e.contains(field),
+                "{e}"
+            );
+        }
+        // Two unmarked `[canN]`, and two marked.
+        let board = facts("board", &["can"], false);
+        let two = can_tables("[can0]\nbitrate = 500000\n\n[can1]\nbitrate = 500000\n");
+        let e = resolve_can("a", &system_net::ImageCan::default(), &two, &board).unwrap_err();
+        assert!(
+            e.contains("none is marked") && e.contains("frames = true"),
+            "{e}"
+        );
+        let marked = can_tables(
+            "[can0]\nbitrate = 500000\nframes = true\n\n[can1]\nbitrate = 500000\nframes = true\n",
+        );
+        let e = resolve_can("a", &system_net::ImageCan::default(), &marked, &board).unwrap_err();
+        assert!(e.contains("more than one"), "{e}");
+        // A device on a board whose `links` lack `can`.
+        let e = resolve_can(
+            "a",
+            &image_can("can = { device = \"vcan0\" }"),
+            &none,
+            &facts("host", &["tcp", "udp"], true),
+        )
+        .unwrap_err();
+        assert!(
+            e.contains("host-board") && e.contains("carries no `can` link"),
+            "{e}"
+        );
+        let e = resolve_can(
+            "a",
+            &system_net::ImageCan::default(),
+            &one,
+            &facts("board", &["tcp"], false),
+        )
+        .unwrap_err();
+        assert!(e.contains("carries no `can` link"), "{e}");
+    }
+
+    /// RFC-0132 D4 (phase-560 W9.d) -- the workspace road: `[image.<id>.can]`
+    /// and the D4 file's `[canN]` resolve through `resolve_system`, and a
+    /// `[canN]` on a host board is refused naming the CAN home before the
+    /// generic "a host board takes no network file" refusal.
+    #[test]
+    fn the_workspace_road_resolves_and_refuses_the_can_device() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("can-net.toml"),
+            "[can0]\nbitrate = 500000\n",
+        )
+        .unwrap();
+        let system = |extra: &str| {
+            let src = format!(
+                "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n[image.host]\nboard = \"linux\"\n\n\
+                 [image.host.can]\ndevice = \"vcan7\"\n\n{extra}"
+            );
+            let mut sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+                toml::from_str(&src).unwrap();
+            sys.fold_os_config(dir.path()).unwrap();
+            sys.validate_image_networks().unwrap();
+            sys
+        };
+        let board = |id: &str| -> Result<BoardFacts, String> {
+            Ok(match id {
+                "host" | "bad" => tracked_board("linux", "linux"),
+                _ => facts("board", &["can"], false),
+            })
+        };
+        let sys = system("[image.mcu]\nboard = \"x\"\nos_config = [\"can-net.toml\"]\n");
+        let all = resolve_system(&sys, board, |_| None).unwrap();
+        assert_eq!(all["host"].text(), "vcan7,can,-,-,-");
+        assert_eq!(all["mcu"].text(), "can0,can,-,500000,-");
+
+        let sys = system("[image.bad]\nboard = \"linux\"\nos_config = [\"can-net.toml\"]\n");
+        let e = resolve_system(&sys, board, |_| None).unwrap_err();
+        assert!(e.contains("[image.bad.can] device"), "{e}");
     }
 }

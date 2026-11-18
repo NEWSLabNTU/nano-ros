@@ -142,6 +142,33 @@ image is configured, so `west build -t run` and `nros run` boot the same
 model. The cost is that changing one, such as the TAP name, re-configures the
 image.
 
+## `[image.<id>.can]` and `[canN]`
+
+The CAN frame driver (`<nros/platform_can.h>`) opens one default device,
+named in exactly one place, chosen by the board's `[board.net] stack`:
+
+| Board stack | The device is named in | Its rates live in |
+| --- | --- | --- |
+| `"host"` (`linux`, `freertos-posix`, `threadx-linux`) | `[image.<id>.can] device = "vcan0"` (or `[image_defaults.can]`) | the host OS (`ip link`) |
+| `"os"` (Zephyr, `native_sim` too) | the devicetree overlay in `os_config`: `chosen { nros,can = &can1; };`, default `zephyr,canbus` | devicetree (`bus-speed`, `bus-speed-data`) |
+| `"board"` (FreeRTOS, ThreadX, bare metal) | the board network file's `[canN]` table | the same table: `bitrate`, `dbitrate` |
+
+| Key | Table | Meaning |
+| --- | --- | --- |
+| `device` | `[image.<id>.can]` | The host interface the driver opens. Host boards only |
+| `driver` | `[image.<id>.can]` | `"mock"`, the one backend an image chooses. Only on a board that runs as a host process: `[board.run] host = true` and no `[board.flash]` (`linux`, `freertos-posix`, `threadx-linux`, `zephyr` on `native_sim`) |
+| `bitrate` | `[canN]` | The nominal bitrate, bit/s. Required |
+| `dbitrate` | `[canN]` | The CAN FD data-phase bitrate, bit/s |
+| `frames` | `[canN]` | With several `[canN]` tables, marks the one the driver opens |
+
+Every other backend is derived from the board, never stated. Refused, each
+naming the right home: `device` on an `"os"` or `"board"` board, a `[canN]` on
+a host or `"os"` board, `driver = "mock"` on a board that is not a host
+process, several `[canN]` with none marked (or more than one marked), any
+other `driver`, and a device on a board whose `[board.net] links` lack `can`.
+The resolved device rides `NROS_IMAGE_NET` as a `can` row and is written to
+`build/nros/net/<image>.toml` under `[can]`.
+
 ## The middleware's own file
 
 | Backend | Default file, beside `system.toml` | Same document ROS 2 reads as |

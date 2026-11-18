@@ -154,6 +154,12 @@ pub struct Network {
     pub networks: BTreeMap<String, crate::system_net::NetworkDef>,
     /// `[image.<id>.run]` — how the image is run.
     pub run: crate::system_net::ImageRun,
+    // RFC-0132 D4/D5.
+    /// `[image.<id>.can]` over `[image_defaults.can]`: the
+    /// CAN frame device on a host-stack board, or the mock.
+    pub can: crate::system_net::ImageCan,
+    /// `[canN]` of the image's board network files.
+    pub can_tables: BTreeMap<String, crate::system_net::CanTable>,
     /// `[image.<id>.flash]` — this image's override of the board's
     /// `[board.flash]`. Parsed and checked;
     /// read by the flash verb.
@@ -1014,6 +1020,12 @@ fn image_system(
         .map_err(|e| format!("{}: {e}", path.display()))?;
     let run =
         crate::system_net::parse_run(image, id).map_err(|e| format!("{}: {e}", path.display()))?;
+    // RFC-0132 D4 -- `[image.<id>.can]` over `[image_defaults.can]`, key by key.
+    let can = crate::system_net::parse_can(image, &at)
+        .and_then(|c| {
+            crate::system_net::parse_can(defaults, "image_defaults").map(|base| c.over(&base))
+        })
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     // `[image.<id>.flash|console]` over `[image_defaults]`'s, KEY BY KEY
     // (phase-528 W1): both are the D5 image rung, and the RunPlan resolver
     // ladders the result over the board's tables the same way.
@@ -1049,6 +1061,8 @@ fn image_system(
         net: files.interfaces,
         networks: files.networks,
         run,
+        can,
+        can_tables: files.can,
         flash,
         console,
         system: str_key(system, "name"),

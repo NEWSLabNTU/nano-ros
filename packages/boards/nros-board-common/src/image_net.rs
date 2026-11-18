@@ -34,6 +34,21 @@
 //! ignores `<attach>`; a QEMU launcher renders it with [`qemu_nic`]. A board that cannot
 //! take a leased address never sees `dhcp`: the resolver refuses it for a
 //! board whose interface does not declare a DHCP client.
+//!
+//! The image's CAN frame device rides the same
+//! text as ONE more row, of kind `can`, five fields:
+//!
+//! ```text
+//! <device>,can,<driver>,<bitrate>,<dbitrate>
+//! vcan0,can,-,-,-              # a host board: the interface `ip link` brought up
+//! can1,can,-,500000,2000000    # a "board"-stack board: its D4 file's `[can1]`
+//! -,can,mock,-,-               # `[image.<id>.can] driver = "mock"`, no device
+//! ```
+//!
+//! `<device>` is `-` when the image names none; `<driver>` is `mock` or `-`
+//! (the backend the board derives); a rate is `-` when unstated.
+//! [`interfaces`] and [`primary`] skip the row, so an Ethernet reader never
+//! sees it; [`can`] reads it.
 
 /// The variable the text travels in, on every road.
 pub const ENV: &str = "NROS_IMAGE_NET";
@@ -190,9 +205,98 @@ fn decode_one(s: &str) -> Result<NetIf<'_>, DecodeError> {
     })
 }
 
-/// Every interface in `text`, in order.
+// RFC-0132 D4.
+/// The kind field of the CAN frame device's row.
+pub const CAN_KIND: &str = "can";
+
+/// Whether `row` is the CAN frame device's row: its second field is
+/// [`CAN_KIND`].
+fn is_can_row(row: &str) -> bool {
+    row.split(',').nth(1) == Some(CAN_KIND)
+}
+
+/// Every interface in `text`, in order. The CAN row is not one ([`can`]).
 pub fn interfaces(text: &str) -> impl Iterator<Item = Result<NetIf<'_>, DecodeError>> {
-    text.split('|').filter(|s| !s.is_empty()).map(decode_one)
+    text.split('|')
+        .filter(|s| !s.is_empty() && !is_can_row(s))
+        .map(decode_one)
+}
+
+// RFC-0132 D3/D5.
+/// The backend of the image's CAN frame device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CanDriver {
+    /// The backend the board derives from its platform and stack.
+    Derived,
+    /// `[image.<id>.can] driver = "mock"`, on a host-process board only.
+    Mock,
+}
+
+// RFC-0132 D4.
+/// The image's CAN frame device: the default `open(NULL)` opens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CanRow<'a> {
+    /// The device: a host interface (`vcan0`) or a board's `[canN]` table
+    /// name. `None` when the image names none (the mock).
+    pub device: Option<&'a str>,
+    /// The backend.
+    pub driver: CanDriver,
+    /// The nominal bitrate, from a `[canN]` table.
+    pub bitrate: Option<u32>,
+    /// The data-phase (FD) bitrate, from a `[canN]` table.
+    pub dbitrate: Option<u32>,
+}
+
+fn parse_rate(s: &str) -> Result<Option<u32>, DecodeError> {
+    match s {
+        "-" => Ok(None),
+        r => r
+            .parse::<u32>()
+            .ok()
+            .filter(|v| *v > 0)
+            .map(Some)
+            .ok_or(DecodeError("a CAN rate is not a positive integer or -")),
+    }
+}
+
+fn decode_can(s: &str) -> Result<CanRow<'_>, DecodeError> {
+    let mut f = s.split(',');
+    let mut next = |what: &'static str| f.next().ok_or(DecodeError(what));
+    let device = match next("a CAN row has no device field")? {
+        "" => return Err(DecodeError("a CAN row has an empty device")),
+        "-" => None,
+        d => Some(d),
+    };
+    let _kind = next("a CAN row has no kind")?;
+    let driver = match next("a CAN row has no driver field")? {
+        "-" => CanDriver::Derived,
+        "mock" => CanDriver::Mock,
+        _ => return Err(DecodeError("a CAN driver is not mock or -")),
+    };
+    let bitrate = parse_rate(next("a CAN row has no bitrate field")?)?;
+    let dbitrate = parse_rate(next("a CAN row has no dbitrate field")?)?;
+    if f.next().is_some() {
+        return Err(DecodeError("a CAN row has more than five fields"));
+    }
+    Ok(CanRow {
+        device,
+        driver,
+        bitrate,
+        dbitrate,
+    })
+}
+
+/// The image's CAN frame device, if the text carries one. Two CAN rows are
+/// an error: an image has one default device.
+pub fn can(text: &str) -> Result<Option<CanRow<'_>>, DecodeError> {
+    let mut rows = text.split('|').filter(|s| is_can_row(s));
+    let Some(first) = rows.next() else {
+        return Ok(None);
+    };
+    if rows.next().is_some() {
+        return Err(DecodeError("the text carries two CAN rows"));
+    }
+    decode_can(first).map(Some)
 }
 
 /// The image's primary interface — the first, which is the only one a
@@ -258,6 +362,23 @@ pub fn encode(ifs: &[NetIf<'_>]) -> String {
         })
         .collect::<Vec<_>>()
         .join("|")
+}
+
+/// Encode the CAN row -- the CLI's half of [`can`].
+#[cfg(feature = "build-helpers")]
+#[must_use]
+pub fn encode_can(row: &CanRow<'_>) -> String {
+    let rate = |r: Option<u32>| r.map_or_else(|| "-".to_string(), |v| v.to_string());
+    format!(
+        "{},{CAN_KIND},{},{},{}",
+        row.device.unwrap_or("-"),
+        match row.driver {
+            CanDriver::Derived => "-",
+            CanDriver::Mock => "mock",
+        },
+        rate(row.bitrate),
+        rate(row.dbitrate)
+    )
 }
 
 /// QEMU's `-nic` value for a guest with no image network: its own user-mode
@@ -418,6 +539,63 @@ mod tests {
                 .contains("physical-only network")
         );
         assert_eq!(slirp_nic("lan9118"), "user,model=lan9118");
+    }
+
+    /// phase-560 W9.d -- the CAN row round-trips beside an interface, and
+    /// the Ethernet readers never see it.
+    #[cfg(feature = "build-helpers")]
+    #[test]
+    fn a_can_row_round_trips_and_hides_from_the_interface_readers() {
+        let host = CanRow {
+            device: Some("vcan7"),
+            driver: CanDriver::Derived,
+            bitrate: None,
+            dbitrate: None,
+        };
+        assert_eq!(encode_can(&host), "vcan7,can,-,-,-");
+        assert_eq!(can(&encode_can(&host)).unwrap(), Some(host));
+
+        let board = CanRow {
+            device: Some("can1"),
+            bitrate: Some(500_000),
+            dbitrate: Some(2_000_000),
+            ..host
+        };
+        let text = format!("{}|{}", encode(&[ETH0]), encode_can(&board));
+        assert_eq!(can(&text).unwrap(), Some(board));
+        assert_eq!(primary(&text).unwrap(), Some(ETH0));
+        assert_eq!(interfaces(&text).count(), 1);
+
+        let mock = CanRow {
+            device: None,
+            driver: CanDriver::Mock,
+            bitrate: None,
+            dbitrate: None,
+        };
+        assert_eq!(encode_can(&mock), "-,can,mock,-,-");
+        let only = encode_can(&mock);
+        assert_eq!(can(&only).unwrap(), Some(mock));
+        assert_eq!(
+            primary(&only).unwrap(),
+            None,
+            "a CAN-only text has no interface"
+        );
+    }
+
+    #[test]
+    fn a_malformed_can_row_is_an_error() {
+        assert_eq!(can("").unwrap(), None);
+        for bad in [
+            "vcan0,can,-,-",
+            "vcan0,can,-,-,-,x",
+            "vcan0,can,socketcan,-,-",
+            "vcan0,can,-,0,-",
+            "vcan0,can,-,fast,-",
+            ",can,-,-,-",
+            "vcan0,can,-,-,-|vcan1,can,-,-,-",
+        ] {
+            assert!(can(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

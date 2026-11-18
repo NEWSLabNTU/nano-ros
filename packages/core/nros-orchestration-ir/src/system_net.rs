@@ -444,6 +444,172 @@ pub struct BoardNetFile {
     /// `[network.<name>]` — the networks those interfaces sit on, other than
     /// the built-in [`QEMU_NETWORK`].
     pub networks: BTreeMap<String, NetworkDef>,
+    /// `[canN]` — the CAN controllers a `"board"`-stack package starts
+    /// (`bitrate`, `dbitrate`).
+    pub can: BTreeMap<String, CanTable>,
+}
+
+// RFC-0109 D4/D10, RFC-0132 D4.
+/// `[canN]` in a board network file: a CAN controller's
+/// layer-1 facts, which a `"board"`-stack package starts it from. Its name
+/// is the device the CAN frame driver opens.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CanTable {
+    /// The nominal (arbitration-phase) bitrate, bit/s. Required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bitrate: Option<u32>,
+    /// The data-phase bitrate of a CAN FD controller, bit/s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dbitrate: Option<u32>,
+    /// This controller is the image's frame device, when the file states
+    /// several `[canN]` tables.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub frames: bool,
+}
+
+/// Whether a board network file's table `name` is a CAN controller's:
+/// `can` followed by its index (`can0`, `can1`).
+#[must_use]
+pub fn is_can_table(name: &str) -> bool {
+    name.strip_prefix("can")
+        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+impl CanTable {
+    /// Check the stated rates. `at` names the table.
+    pub fn validate(&self, at: &str) -> Result<(), String> {
+        match self.bitrate {
+            None => {
+                return Err(format!(
+                    "{at}: `bitrate` is required (the nominal rate, bit/s, e.g. 500000)"
+                ));
+            }
+            Some(0) => return Err(format!("{at}: bitrate = 0 is not a rate")),
+            Some(_) => {}
+        }
+        if self.dbitrate == Some(0) {
+            return Err(format!("{at}: dbitrate = 0 is not a rate"));
+        }
+        Ok(())
+    }
+}
+
+// RFC-0132 D4/D6.
+/// The image's frame device among its `[canN]` tables: the
+/// only one, or the one marked `frames = true`. Several with no mark, or
+/// more than one marked, are refused. `at` names the image.
+pub fn frames_table<'a>(
+    tables: &'a BTreeMap<String, CanTable>,
+    at: &str,
+) -> Result<Option<(&'a str, &'a CanTable)>, String> {
+    if tables.len() <= 1 {
+        return Ok(tables.iter().next().map(|(k, v)| (k.as_str(), v)));
+    }
+    let names = || tables.keys().cloned().collect::<Vec<_>>().join("`, `");
+    let marked: Vec<_> = tables.iter().filter(|(_, t)| t.frames).collect();
+    match marked.as_slice() {
+        [(k, v)] => Ok(Some((k.as_str(), v))),
+        [] => Err(format!(
+            // RFC-0132 D6
+            "{at}: its board network files state several CAN controllers (`{}`) and none \
+             is marked as the frame device -- add `frames = true` to the one the CAN \
+             frame driver opens",
+            names()
+        )),
+        _ => Err(format!(
+            // RFC-0132 D6
+            "{at}: more than one CAN controller is marked `frames = true` (`{}`) -- an \
+             image has one frame device; mark one",
+            marked
+                .iter()
+                .map(|(k, _)| k.as_str())
+                .collect::<Vec<_>>()
+                .join("`, `")
+        )),
+    }
+}
+
+// RFC-0132 D4/D5.
+/// `[image.<id>.can]`: the image's CAN frame device on a
+/// host-stack board, and the one authored backend, the mock. It never holds
+/// a bitrate, a dbitrate or an FD capability.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageCan {
+    /// The host interface the frame driver opens (`vcan0`, `can0`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// `"mock"`, the one backend an image chooses; every other backend is
+    /// derived from the board.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub driver: Option<String>,
+}
+
+// RFC-0132 D5.
+/// The one authored CAN backend.
+pub const CAN_MOCK_DRIVER: &str = "mock";
+
+impl ImageCan {
+    /// Whether the table states nothing.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.device.is_none() && self.driver.is_none()
+    }
+
+    /// Whether it selects the mock.
+    #[must_use]
+    pub fn is_mock(&self) -> bool {
+        self.driver.as_deref() == Some(CAN_MOCK_DRIVER)
+    }
+
+    /// Check the stated facts. `at` names the table.
+    pub fn validate(&self, at: &str) -> Result<(), String> {
+        if let Some(d) = &self.driver
+            && d != CAN_MOCK_DRIVER
+        {
+            return Err(format!(
+                // RFC-0132 D4
+                "{at}: driver = {d:?} -- the backend is derived from the board (`zephyr` \
+                 on a Zephyr board, `socketcan` on a host-stack board, `board` on a \
+                 \"board\"-stack board); the one driver an image chooses is \"mock\""
+            ));
+        }
+        if let Some(d) = &self.device
+            && (d.is_empty()
+                || d == "-"
+                || d.contains(char::is_whitespace)
+                || d.contains([',', '|']))
+        {
+            return Err(format!(
+                "{at}: device = {d:?} is not a device name (`vcan0`, `can0`)"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Key by key over `base` (`[image_defaults.can]`).
+    #[must_use]
+    pub fn over(&self, base: &ImageCan) -> ImageCan {
+        ImageCan {
+            device: self.device.clone().or_else(|| base.device.clone()),
+            driver: self.driver.clone().or_else(|| base.driver.clone()),
+        }
+    }
+}
+
+/// `[image.<id>.can]` from an image's raw table (the leaf road), checked.
+/// `at` names the table holding it (`image.<id>`, `image_defaults`).
+pub fn parse_can(image: Option<&toml::Table>, at: &str) -> Result<ImageCan, String> {
+    let Some(v) = image.and_then(|t| t.get("can")) else {
+        return Ok(ImageCan::default());
+    };
+    let can: ImageCan = v
+        .clone()
+        .try_into()
+        .map_err(|e| format!("[{at}.can]: {e}"))?;
+    can.validate(&format!("[{at}.can]"))?;
+    Ok(can)
 }
 
 /// The board config files an image names.
@@ -473,6 +639,20 @@ pub fn read_board_net_file(path: &std::path::Path) -> Result<BoardNetFile, Strin
         Some(v) => parse_network_table(&v, &file)?,
         None => BTreeMap::new(),
     };
+    // RFC-0132 D4 -- `[canN]` is a CAN controller, not an addressed interface.
+    let can_names: Vec<String> = doc.keys().filter(|k| is_can_table(k)).cloned().collect();
+    let mut can = BTreeMap::new();
+    for name in can_names {
+        let at = format!("{file}: [{name}]");
+        let Some(v) = doc.remove(&name) else {
+            continue;
+        };
+        let t: CanTable = v.try_into().map_err(|e| {
+            format!("{at}: {e} (a CAN controller states `bitrate`, `dbitrate` and `frames`)")
+        })?;
+        t.validate(&at)?;
+        can.insert(name, t);
+    }
     // RFC-0109 D4.
     let interfaces = toml::Value::Table(doc).try_into().map_err(|e| {
         format!(
@@ -484,6 +664,7 @@ pub fn read_board_net_file(path: &std::path::Path) -> Result<BoardNetFile, Strin
     Ok(BoardNetFile {
         interfaces,
         networks,
+        can,
     })
 }
 
@@ -514,6 +695,18 @@ pub fn fold_board_net_files(
             }
             owner.insert(name.clone(), path.display().to_string());
             out.interfaces.insert(name, decl);
+        }
+        for (name, t) in read.can {
+            if let Some(prev) = owner.get(&name) {
+                return Err(format!(
+                    // RFC-0132 D4
+                    "`{at}`: CAN controller `{name}` is stated twice -- in {prev} and in {} \
+                     (one board network file owns each controller)",
+                    path.display()
+                ));
+            }
+            owner.insert(name.clone(), path.display().to_string());
+            out.can.insert(name, t);
         }
         merge_networks(
             &mut out.networks,
@@ -1012,5 +1205,103 @@ mod tests {
             e.contains("os_config") && e.contains("which is retired"),
             "{e}"
         );
+    }
+
+    /// RFC-0132 D4 (phase-560 W9.d) -- a `[canN]` table is a CAN controller,
+    /// read beside the interfaces; its rates are checked, and one stated in
+    /// two files has two owners.
+    #[test]
+    fn can_tables_are_controllers_read_beside_the_interfaces() {
+        let dir = scratch("can");
+        std::fs::write(
+            dir.join("a.toml"),
+            "[eth0]\nhost = 10\n\n[can0]\nbitrate = 500000\n\n\
+             [can1]\nbitrate = 500000\ndbitrate = 2000000\nframes = true\n",
+        )
+        .unwrap();
+        let got = fold_board_net_files(&dir, &["a.toml".to_string()], "image.t").unwrap();
+        assert_eq!(got.interfaces.keys().collect::<Vec<_>>(), ["eth0"]);
+        assert_eq!(got.can.keys().collect::<Vec<_>>(), ["can0", "can1"]);
+        assert_eq!(got.can["can1"].dbitrate, Some(2_000_000));
+        let (name, t) = frames_table(&got.can, "image `t`").unwrap().unwrap();
+        assert_eq!((name, t.bitrate), ("can1", Some(500_000)));
+
+        std::fs::write(dir.join("b.toml"), "[can0]\nbitrate = 250000\n").unwrap();
+        let e = fold_board_net_files(
+            &dir,
+            &["a.toml".to_string(), "b.toml".to_string()],
+            "image.t",
+        )
+        .unwrap_err();
+        assert!(e.contains("`can0` is stated twice"), "{e}");
+
+        for (src, want) in [
+            ("[can0]\ndbitrate = 2000000\n", "`bitrate` is required"),
+            ("[can0]\nbitrate = 0\n", "bitrate = 0"),
+            ("[can0]\nbitrate = 500000\nfd = true\n", "unknown field"),
+        ] {
+            std::fs::write(dir.join("c.toml"), src).unwrap();
+            let e = read_board_net_file(&dir.join("c.toml")).expect_err(src);
+            assert!(e.contains(want), "{src}\n-> {e}");
+        }
+        // `canbus` is not `can<N>`: it stays an interface table.
+        assert!(is_can_table("can0") && is_can_table("can12"));
+        assert!(!is_can_table("can") && !is_can_table("canbus") && !is_can_table("eth0"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// RFC-0132 D6 -- several `[canN]` with no `frames = true`, or more than
+    /// one marked, are refused.
+    #[test]
+    fn the_frame_device_is_the_only_or_the_marked_controller() {
+        let t = |frames| CanTable {
+            bitrate: Some(500_000),
+            dbitrate: None,
+            frames,
+        };
+        let none: BTreeMap<String, CanTable> = BTreeMap::new();
+        assert_eq!(frames_table(&none, "x").unwrap(), None);
+        let one: BTreeMap<_, _> = [("can3".to_string(), t(false))].into();
+        assert_eq!(frames_table(&one, "x").unwrap().unwrap().0, "can3");
+        let two: BTreeMap<_, _> = [
+            ("can0".to_string(), t(false)),
+            ("can1".to_string(), t(false)),
+        ]
+        .into();
+        let e = frames_table(&two, "image `a`").unwrap_err();
+        assert!(
+            e.contains("none is marked") && e.contains("frames = true"),
+            "{e}"
+        );
+        let both: BTreeMap<_, _> =
+            [("can0".to_string(), t(true)), ("can1".to_string(), t(true))].into();
+        let e = frames_table(&both, "image `a`").unwrap_err();
+        assert!(e.contains("more than one"), "{e}");
+    }
+
+    /// RFC-0132 D4/D5 -- `[image.<id>.can]` takes `device` and the mock;
+    /// every other driver is derived, and refused here naming why.
+    #[test]
+    fn image_can_takes_a_device_and_the_mock_only() {
+        let d: toml::Table =
+            "[image.a.can]\ndevice = \"vcan7\"\n\n[image.b.can]\ndriver = \"mock\"\n\n\
+             [image.c.can]\ndriver = \"socketcan\"\n\n[image.d.can]\ndevice = \"vcan0,x\"\n\n\
+             [image.e.can]\nbitrate = 500000\n"
+                .parse()
+                .unwrap();
+        let img = |id: &str| d["image"][id].as_table();
+        let a = parse_can(img("a"), "image.a").unwrap();
+        assert_eq!(a.device.as_deref(), Some("vcan7"));
+        assert!(!a.is_mock());
+        assert!(parse_can(img("b"), "image.b").unwrap().is_mock());
+        let e = parse_can(img("c"), "image.c").unwrap_err();
+        assert!(e.contains("derived from the board"), "{e}");
+        let e = parse_can(img("d"), "image.d").unwrap_err();
+        assert!(e.contains("not a device name"), "{e}");
+        let e = parse_can(img("e"), "image.e").unwrap_err();
+        assert!(e.contains("unknown field"), "{e}");
+        assert!(parse_can(None, "image.z").unwrap().is_empty());
+        let over = ImageCan::default().over(&a);
+        assert_eq!(over.device.as_deref(), Some("vcan7"));
     }
 }

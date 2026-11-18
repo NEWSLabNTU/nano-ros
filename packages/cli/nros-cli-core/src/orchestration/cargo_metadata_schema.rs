@@ -1323,6 +1323,7 @@ impl SystemToml {
                 &img.net,
             )?;
             img.run.validate(&id)?;
+            img.can.validate(&format!("[image.{id}.can]"))?;
             if let Some(f) = &img.flash {
                 f.validate(&format!("[image.{id}.flash]"), false)?;
             }
@@ -1361,6 +1362,7 @@ impl SystemToml {
             )?;
             img.net = files.interfaces;
             img.networks = files.networks;
+            img.can_tables = files.can;
         }
         self.check_rmw_files(dir)
     }
