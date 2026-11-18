@@ -3507,6 +3507,17 @@ fn verify_resolver_pin(resolver: &std::path::Path) -> Result<()> {
     if theirs == "unknown" || theirs == OURS {
         return Ok(());
     }
+    // Issue 2711 -- say WHY a foreign resolver answered when it is because
+    // this checkout has none of its own.
+    let fallthrough = std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            crate::orchestration::model_location::launch_resolver_fallthrough_note(
+                &exe, None, resolver,
+            )
+        })
+        .map(|n| format!("\n\n{n}"))
+        .unwrap_or_default();
     bail!(
         // See issue 0409.
         "sync: `{}` was built from play_launch {} but this `nros` was built from {}.\n\
@@ -3514,10 +3525,11 @@ fn verify_resolver_pin(resolver: &std::path::Path) -> Result<()> {
          A resolver from a different layer-2 checkout does not fail — it writes models that are\n\
          MISSING DATA (one predating rlm v0.1.1 drops every `params` / `params_files`\n\
          projection, silently). Rebuild it so both agree:\n\
-         \n    ./scripts/bootstrap.sh      (contributors: just setup-launch-resolve)",
+         \n    ./scripts/bootstrap.sh      (contributors: just setup-launch-resolve){}",
         resolver.display(),
         &theirs[..theirs.len().min(12)],
         &OURS[..OURS.len().min(12)],
+        fallthrough,
     )
 }
 
