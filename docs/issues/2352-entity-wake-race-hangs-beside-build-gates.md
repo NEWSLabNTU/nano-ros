@@ -169,3 +169,25 @@ fix, and a loaded `gate-order build` with matching verdicts.
 
 **Suggested owner: the executor / test owner**, picking it up when the
 watchdog fires.
+
+## Repro attempts (2026-11-18, newslab-118, 48 cores): not reproduced
+
+`an_arrival_racing_a_drain_is_never_left_undispatched::case_2_one_sample_per_dispatch`,
+from one build of `nros-tests --features
+trigger-test,component-runtime-test,phase216-substrate,signal-fd-wake-test`
+on main, run 8 copies at a time, each under a 90 s cap:
+
+| beside | window | runs | hangs / failures |
+| --- | --- | --- | --- |
+| a local `just ci gate`, steps 4 to 6 (fast, pristine-checkout, api-parity) | 13:32-13:35Z | 2,000 | 0 |
+| the same gate's `check::build` stage, the stage this issue was seen beside, start to end | 13:36-13:55Z | 9,680 | 0 |
+
+With the earlier 800 runs, about 12,500 runs have not hung. The stage
+watchdog in the test (it names the stage and aborts before nextest's 60 s
+timeout) is what will say where the next real occurrence stalled; until one
+does, there is no cause to fix. The suspect above (`publish_serialized`
+waiting on the TX mutex with no deadline) is unchanged and unconfirmed.
+
+**Suggested next step:** when the watchdog fires anywhere, read its stage
+and backtraces and reopen work from there. Otherwise leave this open as a
+watch item rather than closing it on a run count.
