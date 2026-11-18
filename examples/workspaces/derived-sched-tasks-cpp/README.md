@@ -1,7 +1,7 @@
 # ws-derived-sched-tasks-cpp - four C++ components, no authored sched tasks
 
 The fixture the sched-task derivation gates run against. It mirrors the shape of
-the Autoware Safety Island: four `SHAPE rclcpp` components, one wall timer
+`simple-autoware-safety-island`, an Autoware reference consumer: four `SHAPE rclcpp` components, one wall timer
 each, two at 30 Hz and two at 10 Hz, registered with `CALLBACK_GROUPS main`
 and NOTHING else. `demo_bringup/system.toml` declares no `[tasks.*]` and no
 `group_tasks`; the rates live in the contract beside the launch file.

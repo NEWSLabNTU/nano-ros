@@ -144,7 +144,7 @@ keep 1,024 B and the builtin table is empty. A bringup that declares `params`
 instead of `param_services` builds the parameter store but registers no
 service, so the builtin family claims no queryable at all.
 
-On one safety-island image on an S32K344, `BUILTIN_INBOX` measured 24
+On one image on an S32K344, `BUILTIN_INBOX` measured 24
 parameter queryables × 1 × (1,016 + 12) = 24,672 B, and `USER_SERVICE_INBOX`
 fell from 3,744 B to 288 B when those 24 queryables left it. Read your own
 figures off the memory report, not off the formula: the compiler sizes the

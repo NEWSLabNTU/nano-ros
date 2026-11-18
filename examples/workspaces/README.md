@@ -81,8 +81,8 @@ for the full flow.
 ## FVP image (realtime-cpp `[image.fvp]`)
 
 `realtime-cpp`'s `demo_bringup` declares `[image.fvp] board =
-"fvp-aemv8r-smp"` (the Autoware Safety Island
-reference-consumer shape). Its west application is GENERATED:
+"fvp-aemv8r-smp"` (the shape of the
+`simple-autoware-safety-island` reference consumer). Its west application is GENERATED:
 `nros build` passes the Zephyr board id from the descriptor and hands the
 application the board package's base config and DTS overlay
 (`packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/`) — what the

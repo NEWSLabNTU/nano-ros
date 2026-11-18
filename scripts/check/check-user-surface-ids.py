@@ -22,8 +22,8 @@ Subjects, all checked on every run:
   both gates). HTML comments do not render and are not read;
 * the changelog fragments (`changelog.d/*.md`, which become the release
   page) and every example README (`examples/**/README*`, what a user copies
-  from), through a per-file counted ratchet in
-  `.config/user-text-ids-ratchet.json` (issue 2719);
+  from): for internal project names (`INTERNAL_NAME`), and for ids through a
+  per-file counted ratchet in `.config/user-text-ids-ratchet.json` (issue 2719);
 * the RENDERED help: `nros --help`, `nros help --all`, and `--help` of every
   verb and nested verb, hidden ones included (clap turns `///` doc comments
   into help text, so this is the only reading that sees what renders);
@@ -196,6 +196,10 @@ ID = re.compile(
     r"|\bRFC-?\d{4}\b"
 )
 TIER = re.compile(r"\b[Tt]ier[- ]?[123]\b")
+# Internal project names a user cannot look up. A published package or
+# board name that contains one (`s32k344-safety-island`) is a name, not
+# prose, so a hyphen or word character before or after it lets it pass.
+INTERNAL_NAME = re.compile(r"(?<![\w-])[Ss]afety[ -][Ii]sland(?![\w-])")
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 # A markdown link's TARGET does not render; its text does.
 LINK_TARGET = re.compile(r"\]\([^)\s]*\)")
@@ -203,6 +207,7 @@ LINK_TARGET = re.compile(r"\]\([^)\s]*\)")
 
 def ids(text: str, tiers: bool = False) -> list[str]:
     found = [m.group(0) for m in ID.finditer(text)]
+    found += [m.group(0) for m in INTERNAL_NAME.finditer(text)]
     if tiers:
         found += [m.group(0) for m in TIER.finditer(text)]
     return found
@@ -2293,6 +2298,18 @@ def book_page_hits(rel: str, text: str) -> list[str]:
     return bad
 
 
+# Changelog fragments and example READMEs are user text (see USER_TEXT_SCOPE
+# below). Their ids are held by a ratchet; an internal project name is
+# refused outright.
+NAME_ONLY_SCOPE = "changelog fragments and example READMEs (internal names)"
+
+
+def name_only_hits() -> list[str]:
+    return [f"{rel}:{number}: {m.group(0)!r} in {line.strip()[:90]!r}"
+            for rel, number, line in user_text_lines()
+            for m in INTERNAL_NAME.finditer(line)]
+
+
 def book_hits() -> list[str]:
     files = book_pages.tracked_user_pages()
     bad = []
@@ -3058,7 +3075,7 @@ def main() -> int:
     bad = (
         source_hits() + library_hits() + book_hits() + build_script_warning_hits()
         + colcon_hits() + shell_hits() + runtime_hits() + compile_time_hits() + assembled_hits()
-        + deferred_hits() + api_doc_hits() + user_text_hits()
+        + deferred_hits() + api_doc_hits() + user_text_hits() + name_only_hits()
     )
     cli = args.cli
     if cli is None:
@@ -3090,7 +3107,7 @@ def main() -> int:
         f"{NAME}: OK (cmd/ strings, CLI library, build-script panics, build-script warnings, colcon "
         f"messages, user-run shell scripts, runtime log and panic text, compile-time text, "
         f"assembled error text, text that reaches a print later, public API docs (ratchet), "
-        f"{BOOK_SCOPE}, {USER_TEXT_SCOPE}, "
+        f"{BOOK_SCOPE}, {USER_TEXT_SCOPE}, {NAME_ONLY_SCOPE}, "
         f"{rendered})"
     )
     return 0

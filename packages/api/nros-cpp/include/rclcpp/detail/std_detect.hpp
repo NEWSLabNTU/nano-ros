@@ -174,7 +174,7 @@
 // CORRECTED AGAIN 2026-09-07, and this time the discriminator is the library's
 // own feature-test macro rather than a guess about which RTOS ships what.
 //
-// The conjunction above is still not enough. Measured under the safety island's
+// The conjunction above is still not enough. Measured under one reference image's
 // OWN recorded compile command (`-nostdinc++`, arm-zephyr-eabi, picolibc), not
 // inferred:
 //

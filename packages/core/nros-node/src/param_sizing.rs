@@ -533,7 +533,7 @@ const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
 /// queryable got the same one -- 4 slots of 1,024 B -- and a request larger
 /// than a slot was not refused and not logged but dropped with a flag, which
 /// is the defect half of the issue. The RAM half is the same fact from the
-/// other side: on the safety island 24 of 26 queryables are parameter
+/// other side: on one reference image 24 of 26 queryables are parameter
 /// services, and 24 x 4 x 1,024 B is most of an image that is over RAM.
 ///
 /// Sized by the same ladder as its sibling, one rung shallower in the message:

@@ -4,7 +4,7 @@
 //! A service server is a queryable, and every queryable needs somewhere for a
 //! request to land between the transport's read task (the producer) and the
 //! executor's spin (the consumer). The backend used to own that ring
-//! and every family paid the same geometry: on the safety island 26 queryables
+//! and every family paid the same geometry: on one reference image 26 queryables
 //! x 4 slots x 1,024 B = 115,128 B, 24 of them parameter services whose worst
 //! well-formed request is 669 B and whose clients are sequential.
 //!

@@ -5,7 +5,8 @@ One C++ component, `violation_pkg::Handler`, whose 10 Hz timer publishes
 bounds that path at `max_latency: 50ms`, which the generated Zephyr entry
 installs as a `max-latency-runtime` monitor row.
 
-The handler is an INIT/RUN state machine in the safety island's shape:
+The handler is an INIT/RUN state machine shaped like the one in
+`simple-autoware-safety-island`:
 
 | tick | what it does | what the monitors do |
 | --- | --- | --- |

@@ -405,7 +405,7 @@ maintainers = []
 #   prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a
 #   Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate,
 #   matrix_platform) keying is for.
-notes = "Runtime is run by a maintainer, hence `cadence = \"manual\"`. The model is not licence-gated: `nros setup --tool arm-fvp` fetches it from a pinned Arm download. CI does not run it because of cost and x86_64-only hosting. It is the target of the Autoware safety-island reference consumer."
+notes = "Runtime is run by a maintainer, hence `cadence = \"manual\"`. The model is not licence-gated: `nros setup --tool arm-fvp` fetches it from a pinned Arm download. CI does not run it because of cost and x86_64-only hosting. It is the target of `simple-autoware-safety-island`, a reference consumer outside this tree."
 
 # issue 2631 -- the NXP S32Z270 RTU0 Cortex-R52 on Zephyr, a descriptor
 # directory in this crate (boards/s32z270-rtu0-zephyr/). No emulator models the

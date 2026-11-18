@@ -296,8 +296,8 @@ size_t nros_platform_task_stack_unused_bytes(void);
  *  least `limit` bytes unused?", and on a painted stack that is true exactly
  *  when the `limit` bytes at the stack's deep end still hold the paint. So a
  *  port that SCANS (Zephyr walks from `stack_info.start`) answers it by
- *  reading those bytes only, never the whole unused region: on the Autoware
- *  safety island's FVP image the full scan was a 32.6 ms stall once a second.
+ *  reading those bytes only, never the whole unused region: on an Autoware
+ *  reference image's FVP build the full scan was a 32.6 ms stall once a second.
  *  Below `limit` the scan stops at the first used byte, so the answer is the
  *  exact headroom and a breach needs no second, full scan.
  *
