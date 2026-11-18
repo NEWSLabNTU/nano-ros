@@ -115,9 +115,11 @@ base="alloc"
 rc=0
 for f in $feats; do
     echo "  - nros-node: $f alone (over $base)"
-    if ! cargo check --quiet -p nros-node --no-default-features \
-            --features "$base,rmw-cffi,$f"; then
-        echo "check-feature-gated-modules: nros-node does not compile with only \`$f\`" >&2
+    # Issue 2722 -- clippy, not check: the same compile, and each of these
+    # sets is built nowhere else, so it is linted here or not at all.
+    if ! cargo clippy --quiet -p nros-node --no-default-features \
+            --features "$base,rmw-cffi,$f" -- -D warnings; then
+        echo "check-feature-gated-modules: nros-node does not compile (or lint) with only \`$f\`" >&2
         echo "  A module gated on one feature is reaching into a module gated on another." >&2
         echo "  The shared item belongs in a module below BOTH gates (issue 1468)." >&2
         rc=1
