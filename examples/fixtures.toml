@@ -3323,6 +3323,23 @@ codegen_out = "build-fixtures/pubsub_bringup"
 target_dir = "target-fixtures/baremetal-listener-rtic"
 target = "thumbv7m-none-eabi"
 
+# phase-562 W10 -- two DERIVED levels on the RTIC entry framework: the Rust
+# workspace's `levels_bringup` (a 100 Hz urgent timer above a 5 Hz node that
+# burns 50 ms a callback). Consumed by `tests/emulator.rs`'s
+# `test_qemu_rtic_levels_preempt_and_wake_on_time`, through its id. Its
+# locator is `alloc::BAREMETAL_RTIC_LEVELS_PORT`.
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-levels-rtic"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/levels_bringup"
+image = "baremetal_levels_rtic"
+codegen_out = "build-fixtures/levels_bringup"
+target_dir = "target-fixtures/baremetal-levels-rtic"
+target = "thumbv7m-none-eabi"
+
 [[workspace_fixture]]
 id = "workspace-rust-baremetal-service-server-rtic"
 platform = "baremetal"

@@ -8387,6 +8387,23 @@ pub fn build_qemu_rtic_listener() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the RTIC levels image.
+static QEMU_RTIC_LEVELS_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// phase-562 W10 -- the Rust workspace's `baremetal_levels_rtic` image (cached):
+/// two derived levels, each an RTIC software task.
+pub fn build_qemu_rtic_levels() -> TestResult<&'static Path> {
+    QEMU_RTIC_LEVELS_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_cross_entry(
+                "workspace-rust-baremetal-levels-rtic",
+                "thumbv7m-none-eabi",
+                "baremetal_levels_rtic_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the qemu-rtic-service-server binary
 static QEMU_RTIC_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 

@@ -965,6 +965,7 @@ fn level_sched_task(
         "freertos" => &mut def.freertos,
         "threadx" => &mut def.threadx,
         "nuttx" => &mut def.nuttx,
+        "rtic" => &mut def.rtic,
         _ => &mut def.posix,
     };
     *slot = Some(spec);
@@ -978,7 +979,7 @@ fn level_sched_task(
 fn rtos_slot_exists(target_rtos: &str) -> bool {
     matches!(
         target_rtos,
-        "zephyr" | "freertos" | "threadx" | "nuttx" | "posix" | "native"
+        "zephyr" | "freertos" | "threadx" | "nuttx" | "posix" | "native" | "rtic"
     )
 }
 

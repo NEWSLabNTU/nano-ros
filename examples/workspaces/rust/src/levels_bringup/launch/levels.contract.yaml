@@ -1,0 +1,15 @@
+# The two rates the image's levels derive from: the 100 Hz `urgent` node is
+# the more urgent level, the 5 Hz `burner` the boot level.
+version: 1
+
+nodes:
+  urgent:
+    paths:
+      on_tick:
+        trigger: { timer: { rate: 100Hz } }
+        output: []
+  burner:
+    paths:
+      on_burn:
+        trigger: { timer: { rate: 5Hz } }
+        output: []

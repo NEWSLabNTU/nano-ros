@@ -8,12 +8,11 @@
 > follows is the integration as built, for whoever maintains it or gives it a
 > registry row.
 >
-> **Support status: a documented recipe, not a support tier.** RFC-0112 D3
-> demoted RTIC from Tier 1 on 2026-11-14 (issue 2540): its priorities are
-> fixed by hand and its CI cells assert delivery only. The `rtic` board value
-> and the entry macro's RTIC branch stay, so this recipe keeps building.
-> Re-promotion waits on a generated priority mapping and a measured bound
-> its CI cell asserts (phase-562 W10).
+> **Support status: RFC-0112 Tier 1.** RTIC was demoted on 2026-11-14 (issue
+> 2540) and re-promoted on 2026-11-18 by phase-562 W10. An image's derived
+> sched tasks run as levels, one RTIC software task each, and the
+> `test_qemu_rtic_levels_preempt_and_wake_on_time` cell measures the timer
+> bound. See [Derived levels](#derived-levels) below.
 
 RTIC ([Real-Time Interrupt-driven Concurrency](https://rtic.rs)) is a
 concurrency framework for ARM Cortex-M that compiles tasks directly to
@@ -535,3 +534,30 @@ at the cost of flexibility: ARM Cortex-M only, no dynamic task creation.
   D5: declarative escapes first, `nros materialize` last.
 - [RFC-0121: workspace-first project layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md):
   every project is a workspace, and the entry is generated.
+
+## Derived levels
+
+An image whose contract derives more than one sched task runs each as a
+level, one RTIC software task per level (phase-562 W10):
+
+- **Priorities.** The levels are ordered most urgent first. The least urgent
+  boots at RTIC priority 1 and keeps the transport and the executor's chores.
+  The hardware tasks (the RX interrupt and the level wake) sit one priority
+  above the top level. The board bounds the level count: one dispatcher
+  interrupt per level, and its NVIC priorities less one. `nros::main!`
+  refuses an image the board cannot run, naming the board.
+- **The executor lock** is a BASEPRI ceiling at the top level, held only for
+  the executor's own bookkeeping. A callback runs preemptible at its level.
+- **Run to completion.** A non-boot level does one band pass per wake and
+  returns. A high-priority task that blocked would starve every level below
+  it, the transport included. An arrival in its band spawns it.
+- **Timers.** The board arms a one-shot at the earliest non-boot deadline
+  (`RticBoardEntry::arm_level_wake`; the CMSDK dual timer on mps2), and its
+  interrupt spawns the due levels. Without it, a non-boot level's timer would
+  wait for the boot level's park, which only the boot level's own timers
+  bound.
+- **The bound.** A non-boot level's timer runs within its deadline plus the
+  level-wake interrupt, the dispatcher's entry and the longest
+  executor-internal BASEPRI section. The cell measures ~200 us at
+  `-icount shift=5` and asserts 500 us.
+

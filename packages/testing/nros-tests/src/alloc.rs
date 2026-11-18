@@ -213,6 +213,11 @@ pub const BAREMETAL_RTIC_RUN_PLAN_PORT: u16 = aux_port(PlatformId::QemuBaremetal
 /// own.
 pub const BAREMETAL_RTIC_PUBSUB_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 4);
 
+/// mps2-an385 RTIC levels image, the Rust workspace's `baremetal_levels_rtic`
+/// (phase-562 W10): two derived levels on RTIC software tasks. Its
+/// `system.toml` states this port as its locator.
+pub const BAREMETAL_RTIC_LEVELS_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 5);
+
 /// Does this cell's image BAKE its isolation values at build time?
 ///
 /// Native cells are ephemeral (runtime ports, `unique_ros_domain_id`); every
@@ -359,6 +364,7 @@ mod tests {
             BAREMETAL_LARGE_MSG_PORT,
             BAREMETAL_RTIC_RUN_PLAN_PORT,
             BAREMETAL_RTIC_PUBSUB_PORT,
+            BAREMETAL_RTIC_LEVELS_PORT,
         ] {
             assert!(
                 !ports.contains_key(&aux),
@@ -428,7 +434,7 @@ mod tests {
         println!(
             "aux: baremetal bsp={BAREMETAL_BSP_PORT} \
              large-msg={BAREMETAL_LARGE_MSG_PORT} rtic-run-plan={BAREMETAL_RTIC_RUN_PLAN_PORT} \
-             rtic-pubsub={BAREMETAL_RTIC_PUBSUB_PORT}"
+             rtic-pubsub={BAREMETAL_RTIC_PUBSUB_PORT} rtic-levels={BAREMETAL_RTIC_LEVELS_PORT}"
         );
     }
 }

@@ -1070,7 +1070,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         }
 
-        let rtos = derive_target_rtos(deploy_for_framework.as_deref());
+        // phase-562 W10 -- an RTIC image's levels are RTIC software tasks, so it
+        // has a sched-task key of its own whatever RTOS family its board has.
+        let rtos = if matches!(framework, Framework::Rtic) {
+            "rtic".to_string()
+        } else {
+            derive_target_rtos(deploy_for_framework.as_deref())
+        };
         let board_key = deploy_for_framework.as_deref().unwrap_or("linux");
 
         // Slice: keep the nodes this Entry's board deploys. No deploy layer =
@@ -1373,6 +1379,20 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         &plan,
                     );
                 }
+            }
+            // phase-562 W10 -- an RTIC image has no RTOS sched-task key, so the
+            // plan above is the no-RTOS one: one level, nothing allocated. Its
+            // levels are RTIC software tasks, so they are allocated out of the
+            // board's own RTIC plan (`rtic_priority_plan`).
+            if matches!(framework, Framework::Rtic)
+                && let Some(spec) = board_type.as_deref().and_then(rtic_board_spec_for)
+            {
+                derived = nros_orchestration_ir::derive::derive_sched_tasks_in_plan(
+                    &model,
+                    &rtos,
+                    &node_groups,
+                    &rtic_priority_plan(&spec),
+                );
             }
             // Fail-loud: surface every recorded weakening at expansion time
             // (build stderr) — the macro has no runtime channel for these.
@@ -2164,16 +2184,15 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // no `run_sched_tasks` EARLY with a real diagnostic. Previously the deploy fell
     // back to the posix sched task rules and died later with a misleading
     // `MissingRtosSpec("posix")` or a raw missing-method compile error.
-    // phase-562 W10 -- an RTIC image is refused here BY ITS FRAMEWORK, not only
-    // by a board word that happens to spell `rtic` or `baremetal`. Its arm can
-    // run derived levels (`rtic_level_plan`, `rtic_multi_level_tokens`), and
-    // the refusal lifts in the change that adds the QEMU cells proving it.
+    // phase-562 W10 -- except an RTIC image, whose arm runs its derived levels
+    // as one RTIC software task each (`rtic_level_plan`, which refuses what
+    // the board cannot run).
     if multi_sched_task.is_some()
+        && !matches!(framework, Framework::Rtic)
         && let Some(d) = deploy_for_framework.as_deref()
-        && (matches!(framework, Framework::Rtic)
-            || ["rtic", "baremetal", "bare-metal", "orin"]
-                .iter()
-                .any(|f| d.contains(f)))
+        && ["rtic", "baremetal", "bare-metal", "orin"]
+            .iter()
+            .any(|f| d.contains(f))
     {
         // Issue 0265.
         return Err(syn::Error::new(
@@ -5454,6 +5473,32 @@ fn rtic_single_level_run_body(
     }
 }
 
+/// phase-562 W10 -- the priorities an RTIC board's derived levels are
+/// allocated from.
+///
+/// Each level is one RTIC software task, at RTIC priority 1 and up (bigger is
+/// more urgent). The level count is capped by the board's dispatchers (one per
+/// software-task priority) and by its NVIC priorities less one, which the
+/// hardware tasks take above the top level. `rtic_level_plan` checks the
+/// derived table against the same two numbers.
+fn rtic_priority_plan(spec: &RticBoardSpec) -> nros_orchestration_ir::priority_plan::PriorityPlan {
+    use nros_orchestration_ir::priority_plan::{Band, Direction, PriorityPlan};
+    let nvic = 1i64 << spec.nvic_prio_bits;
+    let levels = (spec.dispatchers.len() as i64).min(nvic - 1).max(1);
+    let mut reserved = BTreeMap::new();
+    reserved.insert("hardware".to_string(), Band::new(levels + 1, nvic));
+    PriorityPlan {
+        direction: Direction::BiggerIsUrgent,
+        range: Band::new(1, nvic),
+        reserved,
+        app: Band::new(1, levels),
+        source:
+            "the RTIC board's dispatchers and NVIC priorities (nros-macros `rtic_board_spec_for`)"
+                .into(),
+        max_levels: Some(levels as u16),
+    }
+}
+
 /// phase-562 W10 -- one derived level of an RTIC image.
 struct RticLevel {
     /// The level's index, 0 the most urgent (`LevelCore`'s numbering).
@@ -5689,7 +5734,11 @@ fn rtic_multi_level_tokens(
                 __nros_crt,
                 #k,
                 #boot,
-                ::core::ptr::null_mut(),
+                // The board's lock keeps its state in its own statics and
+                // ignores this context, but the executor refuses a NULL one.
+                ::core::ptr::addr_of!(super::__NROS_LEVELS)
+                    .cast::<::core::ffi::c_void>()
+                    .cast_mut(),
                 #entry::level_lock,
                 #entry::level_unlock,
                 #entry::level_thread_id,
