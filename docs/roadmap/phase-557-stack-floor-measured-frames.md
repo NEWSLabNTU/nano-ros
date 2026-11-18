@@ -875,6 +875,9 @@ with the row's `static`.
   - Down by less: a note.
   - The message names the row, the direction, both numbers and the commands
     that re-measure it (edit the row, `--sync-json`, `--validate-table`).
+  - **Superseded by W9d** (issue 2400 Ruling (C), 2026-11-18): only a rise
+    of more than `drift_rise_pct` over the recorded max fails, any fall is a
+    note, and a template's stamp carries the tolerance.
 - **Where it runs.** A nightly step on a Zephyr-provisioned runner: the
   three nucleo images need the Zephyr SDK, and the mps2 image needs only
   the cargo road. Not the merge lane: four image builds cost minutes, and a day
@@ -1107,8 +1110,10 @@ build where that number was read.
 - **W9c — The band.** Checkpoint 1 (below), then N, `min`/`max` in the
   report, the environment key on each row, and `walk_floor` folded into the
   band max. Acceptance: the measured table and the chosen N; every
-  `[[observed]]` row re-walked at that N.
-- **W9d — The drift rule (Ruling (C)).** `static_drift` and its self-tests
+  `[[observed]]` row re-walked at that N; issue 2688's case (main walked in
+  CI and on a host) reads "different toolchain identity" rather than FAIL.
+- **W9d — The drift rule (Ruling (C)).** DONE (2026-11-18).
+  `static_drift` and its self-tests
   (up 3 %: FAIL; up 1 %: note; down 10 %: note); W8's nightly and
   merge-queue steps read the same helper. The stamp moves with it in the same
   pull request: `recorded_floor` in `nros new` (and its tests) stamps the
@@ -1118,9 +1123,10 @@ build where that number was read.
   W9d needs no band and can land before W9c, on today's single `static` and
   `walk_floor`. Added acceptance: a project stamped from a row still builds
   when the walk is the row's max + 2 %, and refuses at + 2.1 %, with the
-  same table read by both sides. Acceptance: issue 2688's case, main
-  walked in CI and on a host, reads "different toolchain identity" rather
-  than FAIL, and a row edited by hand to 3 % below the walk turns the step red.
+  same table read by both sides (`a_stamp_holds_every_walk_the_drift_check_passes`,
+  mutation-checked), and a row edited by hand to 3 % below the walk turns the
+  step red. Issue 2688's host-vs-CI case moves to W9c, which adds the
+  toolchain identity to a row.
 - **W9e — The TI road** (issue 2693, home phase-575 W3). The TI toolchain
   file stops forcing `NROS_STACK_FLOOR OFF`; tiarmclang `.su` frames, object
   edges, builtins rows for its version string. Acceptance: an R5F image built

@@ -28,8 +28,9 @@ Rows:
   declares that bringup and image. Never a hand-written path.
 
 Verdict, per row (`static_drift` in `scripts/nros-stack-floor.py`, the rule
-the twin lane applies too): up by any amount FAILS, down by more than 2 %
-FAILS, a smaller fall is a note. A row whose image cannot be built FAILS:
+the twin lane applies too, issue 2400 Ruling (C)): a walk more than the
+table's `drift_rise_pct` above the row's recorded max FAILS; a smaller rise,
+and any fall, is a note. A row whose image cannot be built FAILS:
 this check exists to notice, so it never skips silently.
 
 Run: `just zephyr stack-floor-drift` (`source ./activate.sh` first; the
@@ -40,6 +41,7 @@ first on every run.
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.util
 import json
 import os
@@ -257,21 +259,22 @@ def self_test() -> int:
               log_tail(lg) == [f"line {i}" for i in range(40, 100)])
         check("a missing log says so rather than raising",
               log_tail(d / "absent.log")[0].startswith("(no log at "))
+        sd = functools.partial(w.static_drift, rise_pct=2)
         row = {"image": "k1", "role": "OPEN", "static": 1000}
-        check("verdict: exact is ok", verdict(row, r1, w.static_drift)[0] == "ok")
+        check("verdict: exact is ok", verdict(row, r1, sd)[0] == "ok")
         check("verdict: a walk above the row fails",
-              verdict(dict(row, static=900), r1, w.static_drift)[0] == "fail")
+              verdict(dict(row, static=900), r1, sd)[0] == "fail")
         check("verdict: an image not taken as measured fails",
-              verdict(dict(row, image="k2"), r2, w.static_drift)[0] == "fail")
+              verdict(dict(row, image="k2"), r2, sd)[0] == "fail")
         check("verdict: a report without the role fails",
-              verdict(row, r3, w.static_drift)[0] == "fail")
+              verdict(row, r3, sd)[0] == "fail")
         drow = {"image": "k2", "role": "OPEN", "static": 1000}
         check("verdict: a drift row takes an unmeasured walk, exact is ok",
-              verdict(drow, r2, w.static_drift, "drift")[0] == "ok")
+              verdict(drow, r2, sd, "drift")[0] == "ok")
         check("verdict: a drift row whose walk rose fails",
-              verdict(dict(drow, static=900), r2, w.static_drift, "drift")[0] == "fail")
-        check("verdict: a drift row whose walk fell past the band fails",
-              verdict(dict(drow, static=1100), r2, w.static_drift, "drift")[0] == "fail")
+              verdict(dict(drow, static=900), r2, sd, "drift")[0] == "fail")
+        check("verdict: a drift row whose walk fell is a note, never a failure",
+              verdict(dict(drow, static=1100), r2, sd, "drift")[0] == "note")
         check("rows: observed then drift, each tagged, --only across both",
               [(t, r["image"]) for t, r in table_rows(
                   {"observed": [{"image": "a"}], "drift": [{"image": "b"}]}, None)]
@@ -301,6 +304,7 @@ def main() -> int:
     w = _walker()
     twin = _twin()
     doc = w.load_table(Path(args.table))
+    drift = functools.partial(w.static_drift, rise_pct=w.drift_rise_pct(doc))
     nros = shutil.which("nros")
     if not nros:
         raise SystemExit("stack-floor-drift: no `nros` on PATH; `source ./activate.sh` first")
@@ -324,7 +328,7 @@ def main() -> int:
                 print(f"  -- last lines of {log} --", flush=True)
                 print("\n".join(f"  | {line}" for line in log_tail(log)), flush=True)
             continue
-        kind, lines = verdict(row, report, w.static_drift, table)
+        kind, lines = verdict(row, report, drift, table)
         if why:
             lines.append(f"  the build refused: {why}")
         failed += kind == "fail"

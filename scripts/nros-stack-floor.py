@@ -2335,25 +2335,37 @@ def find_observed(doc: dict, image: str | None, target: str, role: str) -> dict 
     return hits[0] if hits else None
 
 
-# A recorded `static` that drifts (phase-557 W8). The walk is deterministic
-# (the max over seeded orders, the same bytes at every project path), so a
-# fresh walk of an `[[observed]]` row's image must equal the row's `static`.
-# Up by any amount: a template's stamped stack (derived from `static`) is
-# below its walk, so a fresh project refuses to build. Down by more than
-# DRIFT_DOWN_PCT: the floor wastes RAM and no longer describes the tree.
-DRIFT_DOWN_PCT = 2
+# A recorded `static` that drifts (phase-557 W8, rule amended by issue 2400
+# Ruling (C), 2026-11-18). The walk is a heuristic on a cyclic graph (issue
+# 2550): an unrelated change re-cuts its cycle and moves it by a few KB either
+# way. So only a RISE of more than the table's `drift_rise_pct` over the row's
+# recorded max fails; a smaller rise, and any fall, is a note. A template's
+# stamped stack carries the same tolerance (`nros new`'s `recorded_floor`
+# reads the same key), so a rise this rule lets through still fits every fresh
+# project.
 
 
-def static_drift(row: dict, walk: int) -> tuple[str, list[str]]:
-    """Compare a fresh walk with an `[[observed]]` row's recorded `static`.
-    Returns ("ok" | "note" | "fail", lines). One rule for every lane that
-    re-walks a row (the nightly drift check and the twin lane).
+def drift_rise_pct(doc: dict) -> int:
+    """The table's drift tolerance, the ONE number the drift rule and the CLI
+    stamp both read. Never a literal on either side."""
+    v = doc.get("drift_rise_pct")
+    if isinstance(v, bool) or not isinstance(v, int) or v < 0:
+        raise SystemExit("nros-stack-floor: config/stack-floors.toml has no "
+                         "`drift_rise_pct` (a non-negative integer percent)")
+    return v
 
-    A rise FAILS only above what the stack is sized from, max(static,
-    walk_floor) (ruled 2026-11-15): a rise within `walk_floor` is a note,
-    because codegen itself differs by checkout path (the nucleo action
-    server's `install_in_with_launch_params` frame is 7,728 B in one checkout
-    and 7,736 B in another), so the largest walk anyone saw is the bound."""
+
+def static_drift(row: dict, walk: int, rise_pct: int) -> tuple[str, list[str]]:
+    """Compare a fresh walk with an `[[observed]]` or `[[drift]]` row's
+    recorded `static`. Returns ("ok" | "note" | "fail", lines). One rule for
+    every lane that re-walks a row (the nightly drift check, the merge-queue
+    step and the twin lane).
+
+    The recorded max is max(static, walk_floor): `walk_floor` is the largest
+    walk anyone saw (codegen itself differs by checkout path; the nucleo
+    action server's `install_in_with_launch_params` frame is 7,728 B in one
+    checkout and 7,736 B in another). Only a walk more than `rise_pct` above
+    it fails."""
     key = f"{row['image']} {row['role']}"
     rec = int(row["static"])
     basis = max(rec, int(row.get("walk_floor") or 0))
@@ -2366,20 +2378,19 @@ def static_drift(row: dict, walk: int) -> tuple[str, list[str]]:
            "    python3 scripts/nros-stack-floor.py --validate-table config/stack-floors.toml",
            "    and update every number derived from the row (a template's stamped stack and "
            "its tests)"]
-    if 0 < delta and walk <= basis:
-        return "note", [f"  note: {key}: the walk rose {delta:+d} B ({pct:+.1f} %): recorded "
-                        f"{rec} B, walked {walk} B, within the row's walk_floor {basis} B, "
-                        "which its stack is sized from"]
+    if walk * 100 > basis * (100 + rise_pct):
+        over = 100.0 * (walk - basis) / basis
+        return "fail", [f"  FAIL: {key}: the walk ROSE to {walk} B, {over:+.1f} % over the "
+                        f"recorded max {basis} B (more than drift_rise_pct = {rise_pct} %). "
+                        "A template stamped from the row is below the walk, so a fresh "
+                        "project refuses to build"] + how
     if delta > 0:
-        return "fail", [f"  FAIL: {key}: the walk ROSE {delta:+d} B ({pct:+.1f} %): recorded "
-                        f"{rec} B, walked {walk} B. A stack sized from the row is below the "
-                        "walk"] + how
-    if -pct > DRIFT_DOWN_PCT:
-        return "fail", [f"  FAIL: {key}: the walk FELL {delta:+d} B ({pct:+.1f} %, more than "
-                        f"{DRIFT_DOWN_PCT} %): recorded {rec} B, walked {walk} B. The floor "
-                        "wastes RAM and no longer describes the tree"] + how
-    return "note", [f"  note: {key}: the walk fell {delta:+d} B ({pct:+.1f} %, within "
-                    f"{DRIFT_DOWN_PCT} %): recorded {rec} B, walked {walk} B"]
+        return "note", [f"  note: {key}: the walk rose {delta:+d} B ({pct:+.1f} %): recorded "
+                        f"{rec} B, walked {walk} B, within {rise_pct} % of the recorded max "
+                        f"{basis} B, which a template's stamped stack carries"]
+    return "note", [f"  note: {key}: the walk fell {delta:+d} B ({pct:+.1f} %): recorded "
+                    f"{rec} B, walked {walk} B. A fall never fails (the walk re-cuts its "
+                    "call cycle); re-measure the row to reclaim the RAM if the fall is real"]
 
 
 def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> list[str]:
@@ -2389,6 +2400,10 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
         problems.append("`schema = 2` is missing or not 2")
     if not isinstance(doc.get("margin_pct"), int):
         problems.append("`margin_pct` (an integer percent) is missing")
+    dr = doc.get("drift_rise_pct")
+    if isinstance(dr, bool) or not isinstance(dr, int) or dr < 0:
+        problems.append("`drift_rise_pct` (a non-negative integer percent: the drift "
+                        "check's tolerance, which `nros new`'s stamp carries) is missing")
     for i, row in enumerate(doc.get("policy", [])):
         where = f"[[policy]] #{i + 1}"
         kind = row.get("kind")
@@ -3314,14 +3329,14 @@ def self_test() -> int:
           {"r1", "w1", "r2", "w2"} <= gu.edges.get("slot0", set()))
 
     # issue 2402 — under `bind` a measured peak is an [[observed]] row, never an allowance.
-    vt = {"schema": 2, "margin_pct": 10, "indirect": {"zenoh": {"mode": "bind"}},
+    vt = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "indirect": {"zenoh": {"mode": "bind"}},
           "allowance": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
                          "bytes": 0, "issue": "2402", "reason": "r",
                          "measured": {"peak": 1, "static": 1, "method": "m", "issue": "2402"},
                          "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
     check("bind: an allowance under a bind rmw is refused",
           any("[[observed]]" in p for p in validate_table(vt, set())))
-    vo = {"schema": 2, "margin_pct": 10, "indirect": {"zenoh": {"mode": "bind"}},
+    vo = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "indirect": {"zenoh": {"mode": "bind"}},
           "observed": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
                         "peak": 100, "static": 150, "method": "m", "issue": "2402",
                         "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
@@ -3343,7 +3358,7 @@ def self_test() -> int:
           any("must be an integer above" in p for p in validate_table(vo, set())))
 
     # A [[drift]] row: the walk alone, held by the drift check, enforced nowhere.
-    vd = {"schema": 2, "margin_pct": 10,
+    vd = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2,
           "drift": [{"image": "c@d", "rmw": "zenoh", "target": "t", "role": "OPEN",
                      "static": 130, "method": "m", "issue": "2653"}]}
     check("drift: a complete row validates", validate_table(vd, set()) == [])
@@ -3562,7 +3577,7 @@ def self_test() -> int:
     check("no allowance: static + margin", floor_formula(3592, 0, 0) == 3592)
     check("a negative allowance lowers the floor", floor_formula(24312, -12616, 10) == 12872)
     check("the floor never goes below zero", floor_formula(100, -500, 10) == 0)
-    good = {"schema": 2, "margin_pct": 10,
+    good = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2,
             "policy": [{"kind": "cut", "match": "panicking", "reason": "diverges"},
                        {"kind": "frame", "name": "z_malloc", "bytes": 0, "target": "t",
                         "reason": "tail call"},
@@ -3799,25 +3814,31 @@ def self_test() -> int:
     check("checkout path: a name the parser cannot read falls back, never guesses",
           _canon_v0("_RZ") is None and _canon_v0("_ZN3foo3barE") is None)
 
-    # phase-557 W8: a recorded static that drifts. Up past max(static,
-    # walk_floor) and down by more than 2 % fail; a smaller fall, or a rise
-    # within walk_floor, is a note; equal is OK.
+    # phase-557 W8, rule of issue 2400 Ruling (C): only a rise of more than
+    # drift_rise_pct over the recorded max fails; a smaller rise and any fall
+    # are notes; equal is OK.
     drow = {"image": "t/rust/zenoh@b", "role": "OPEN", "static": 100000}
-    for walk, want in ((100000, "ok"), (100008, "fail"), (97000, "fail"), (99000, "note"),
-                       (98000, "note"), (97999, "fail")):
-        kind, _ = static_drift(drow, walk)
+    for walk, want in ((100000, "ok"), (101000, "note"), (102000, "note"), (102001, "fail"),
+                       (103000, "fail"), (99000, "note"), (90000, "note")):
+        kind, _ = static_drift(drow, walk, 2)
         check(f"static drift: walk {walk} B against 100000 B is {want}", kind == want)
-    _, dl = static_drift(drow, 100008)
+    check("static drift: the tolerance is the argument, never a literal",
+          static_drift(drow, 101000, 0)[0] == "fail"
+          and static_drift(drow, 103000, 5)[0] == "note")
+    _, dl = static_drift(drow, 103000, 2)
     check("static drift: a failure names the row and the re-measure commands",
           "t/rust/zenoh@b OPEN" in dl[0] and any("--sync-json" in x for x in dl)
           and any("--validate-table" in x for x in dl))
-    # A rise within the row's walk_floor is a note; above it, a failure.
-    wrow = dict(drow, walk_floor=100008)
-    check("static drift: a rise within walk_floor is a note naming both numbers",
-          static_drift(wrow, 100008)[0] == "note"
-          and "100008" in static_drift(wrow, 100008)[1][0])
-    check("static drift: a rise above walk_floor fails",
-          static_drift(wrow, 100016)[0] == "fail")
+    # The recorded max is max(static, walk_floor): the tolerance is over it.
+    wrow = dict(drow, walk_floor=101000)
+    check("static drift: a rise within walk_floor + tolerance is a note naming both numbers",
+          static_drift(wrow, 103020, 2)[0] == "note"
+          and "101000" in static_drift(wrow, 103020, 2)[1][0])
+    check("static drift: a rise past walk_floor + tolerance fails",
+          static_drift(wrow, 103021, 2)[0] == "fail")
+    check("static drift: the table must state drift_rise_pct",
+          any("drift_rise_pct" in p_ for p_ in validate_table(
+              {"schema": 2, "margin_pct": 10}, set())))
 
     # The rustup llvm-tools ship no llvm-cxxfilt: c++filt stands in, and with
     # neither the demangler is a ToolMissing, never a bare exit.

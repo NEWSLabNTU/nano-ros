@@ -26,6 +26,12 @@
 
 schema = 2
 margin_pct = 10
+# The drift check's tolerance (issue 2400 Ruling (C)): a re-walk more than
+# this percent above a row's recorded max(static, walk_floor) fails; a smaller
+# rise, and any fall, is a note. `nros new` stamps a template's stack from the
+# recorded max PLUS this percent, then the margin, so every rise the check
+# tolerates still fits a fresh project. Both sides read this one key.
+drift_rise_pct = 2
 # Counted once: Zephyr's timer `elapsed` <-> `sys_clock_elapsed`, and
 # `Arc<ComponentCell>` drop reaching a ctx drop that drops an Arc.
 recursion_allowance = 0

@@ -10,6 +10,7 @@
       "target": "thumbv7m-none-eabi"
     }
   ],
+  "drift_rise_pct": 2,
   "indirect": {
     "default": {
       "mode": "allowance:0"

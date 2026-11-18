@@ -686,8 +686,9 @@ stack-floor-twin *ARGS:
 # [[drift]] row in config/stack-floors.toml: build the row's image as a user would (a fresh
 # `nros new` under build/stack-floor-drift for a template key, `nros build
 # <bringup>:<image>` of the in-tree example for a bringup key) and hold the
-# walk to the row's `static`: up by any amount or down by more than 2 % fails,
-# naming the row and the re-measure commands. Runs nightly
+# walk to the row's `static`: a rise of more than `drift_rise_pct` over the
+# row's recorded max fails, naming the row and the re-measure commands; a
+# smaller rise, and any fall, is a note. Runs nightly
 # (`stack-floor-drift` in nightly.yml). Needs the Zephyr SDK for the nucleo
 # rows; source ./activate.sh first. ARGS: --only <key>, --out <dir>.
 # Re-walk every observed and drift stack-floor row; fails when a recorded static drifted.
