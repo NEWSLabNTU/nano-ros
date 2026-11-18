@@ -1,0 +1,31 @@
+[package]
+name = "zpico-link-rpmsg"
+version.workspace = true
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "zenoh-pico over RPMsg between cores of one SoC: link glue, receive ring and the board backend contract"
+publish = false
+keywords = ["embedded", "rpmsg", "openamp", "amp", "zenoh"]
+categories = ["embedded", "no-std"]
+
+# The vendor RPMsg binding (OpenAMP, TI IPC RPMessage, ...) is NOT here: a
+# board registers it through `nros_rpmsg_register_backend` (include/nros/
+# rpmsg_link.h). This crate owns what every board shares: the endpoint table,
+# the receive ring the backend delivers into, and the calls zenoh-pico's
+# framed link makes.
+#
+#   - `unix-mock`: a backend over Unix datagram sockets, for host tests. Needs
+#                  `std`; each endpoint gets a reader thread that delivers the
+#                  way an RPMsg receive callback does.
+[features]
+default = []
+std = []
+unix-mock = ["std"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[lints]
+workspace = true

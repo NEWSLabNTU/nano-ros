@@ -90,10 +90,12 @@ link-custom = ["zpico-sys/link-custom"]
 # RFC-0083 — CAN unicast over ISO-TP. Off by default: it needs a CAN interface
 # and the `can-isotp` kernel module, neither of which a generic build can assume.
 link-isotp = ["zpico-sys/link-isotp"]
-# RFC-0134 -- the IVC link (two endpoints, one channel). With it the build
-# compiles point-to-point peer mode, so a peer session on `ivc/` needs no
-# router; `tests/point_to_point_peer.rs` runs it on the host mock.
+# RFC-0134 -- the IVC and RPMsg links (two endpoints, one channel). With
+# either the build compiles point-to-point peer mode, so a peer session on
+# `ivc/` or `rpmsg/` needs no router; `tests/point_to_point_peer.rs` runs both
+# on their host mocks.
 link-ivc = ["zpico-sys/link-ivc"]
+link-rpmsg = ["zpico-sys/link-rpmsg"]
 # phase-359 W10 (backend tier) — this used to forward `nros-rmw/std`, which made
 # THIS crate the reason `nros-core/std` was on in every native graph: a leaf
 # that asked for `alloc` still got the std flavour of the core because a
@@ -208,6 +210,7 @@ nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 # RFC-0134 -- the IVC host mock (`register_pair`) for `point_to_point_peer`.
 nvidia-ivc = { path = "../../../drivers/ipc/nvidia-ivc", features = ["unix-mock", "std"] }
+zpico-link-rpmsg = { path = "../zpico-link-rpmsg", features = ["unix-mock"] }
 nros-tests = { path = "../../../testing/nros-tests" }
 nros-ghost-types = { version = "0.6.0", path = "../../../verification/nros-ghost-types" }
 # Force `ConcretePlatform` resolution for tests under `platform-posix`.
