@@ -293,6 +293,15 @@ worktree-prune:
 changelog-audit:
     @python3 scripts/changelog-audit.py --gate
 
+# The release notes cite no issue: a changelog fragment's number is a
+# docs/issues id, and towncrier used to render it as a link to the GitHub
+# issue of that number, an unrelated item. `issue_format` renders nothing;
+# CHANGELOG.md holds no issues link; one numbered fragment rendered with this
+# repo's config holds neither its number nor a link. Buildless, ~0.5 s.
+[private]
+changelog-issue-links:
+    @python3 scripts/check/check-changelog-issue-links.py --gate
+
 # phase-567 W1 — a release cuts only from a commit the nightly, tier 1 and
 # tier 2 passed, or a docs-only descendant of one (gate-tier.py's predicate).
 # `release-nros.yml`'s first job runs it against the lanes' scheduled runs;
