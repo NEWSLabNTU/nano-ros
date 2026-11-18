@@ -45,6 +45,31 @@ function(nros_cyclonedds_record_descriptor_types)
     if(NOT ARGN)
         return()
     endif()
+    # Issue 2704 -- a registration recorded AFTER the table was sized is not in
+    # the count. Over the size, `descriptors.cpp` drops it from a static
+    # constructor and the image only says so at run time ("descriptor registry
+    # OVERFLOWED"). Refuse that here, naming the first type that does not fit.
+    get_property(_applied GLOBAL PROPERTY NROS_CYCLONEDDS_DESCRIPTOR_CAP_ROWS)
+    if(_applied)
+        get_property(_known GLOBAL PROPERTY NROS_CYCLONEDDS_GENERATED_DESCRIPTOR_TYPES)
+        list(REMOVE_DUPLICATES _known)
+        list(LENGTH _known _have)
+        foreach(_name IN LISTS ARGN)
+            if(NOT _name IN_LIST _known)
+                list(APPEND _known "${_name}")
+                math(EXPR _have "${_have} + 1")
+                if(_have GREATER _applied)
+                    message(FATAL_ERROR
+                        "nano-ros: Cyclone descriptor type `${_name}` is generated after "
+                        "the descriptor table was sized to ${_applied} rows, and does not "
+                        "fit: the image would drop its registration and fail to create "
+                        "its entities at run time. Generate it before the end of the "
+                        "top-level directory (the table is sized there), or pin "
+                        "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES to at least ${_have}.")
+                endif()
+            endif()
+        endforeach()
+    endif()
     set_property(GLOBAL APPEND PROPERTY NROS_CYCLONEDDS_GENERATED_DESCRIPTOR_TYPES ${ARGN})
     get_property(_scheduled GLOBAL PROPERTY NROS_CYCLONEDDS_DESCRIPTOR_CAP_SCHEDULED)
     if(_scheduled)
@@ -103,6 +128,14 @@ function(_nros_cyclonedds_apply_descriptor_cap)
         set(_pin "$ENV{NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES}")
     endif()
     nros_cyclonedds_descriptor_cap(_n "${_count}" "${_pin}")
+    # Issue 2704 -- the rows the table has from here on, so a later
+    # registration that does not fit is refused at configure.
+    if(_n STREQUAL "")
+        nros_cyclonedds_descriptor_types_default(_rows)
+    else()
+        set(_rows "${_n}")
+    endif()
+    set_property(GLOBAL PROPERTY NROS_CYCLONEDDS_DESCRIPTOR_CAP_ROWS "${_rows}")
 
     # `nros` is a candidate only on the Zephyr road, detected by the module's
     # own resolver (the test `NanoRosEntry.cmake` uses): elsewhere a target of
