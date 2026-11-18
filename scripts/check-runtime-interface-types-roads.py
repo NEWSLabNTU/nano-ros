@@ -45,6 +45,7 @@ Buildless; self-test first.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -189,13 +190,15 @@ def main() -> int:
         print("check-runtime-interface-types-roads: self-test FAILED")
         return 1
     files: dict[str, str] = {}
-    for p in list(REPO.glob("cmake/**/*.cmake")) + list(REPO.glob("zephyr/**/*.cmake")) + list(
-        REPO.glob("integrations/**/*.cmake")
-    ) + list(REPO.glob("packages/rmw/**/*.cmake")):
-        rel = p.relative_to(REPO).as_posix()
-        if "/target/" in rel or "/build" in rel:
-            continue
-        files[rel] = p.read_text(encoding="utf-8", errors="replace")
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "cmake", "zephyr", "integrations", "packages/rmw"],
+        cwd=REPO,
+        capture_output=True,
+        check=True,
+    ).stdout.decode().split("\0")
+    for rel in tracked:
+        if rel.endswith(".cmake"):
+            files[rel] = (REPO / rel).read_text(encoding="utf-8", errors="replace")
     for root in set(ROADS.values()):
         files[root] = (REPO / root).read_text(encoding="utf-8")
     if not generators(files):
