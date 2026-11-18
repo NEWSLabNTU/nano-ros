@@ -459,6 +459,19 @@ impl QemuProcess {
         Self::start(binary, mps2_an385_networked_boot()?)
     }
 
+    /// [`Self::start_mps2_an385_networked`] at a fixed `-icount`
+    /// ([`MPS2_AN385_CORE_ICOUNT`]), for a cell that asserts a bound on the
+    /// guest's own clock: a busy guest's time is then its instruction count.
+    /// An idle one (`wfi`) still advances at wall-clock speed (`sleep=on`,
+    /// which the network needs), so a bound measured across an idle stretch
+    /// carries the host's scheduling jitter.
+    pub fn start_mps2_an385_networked_measured(binary: &Path) -> TestResult<Self> {
+        Self::start(
+            binary,
+            mps2_an385_networked_boot()?.arg("icount", MPS2_AN385_CORE_ICOUNT),
+        )
+    }
+
     /// [`Self::start_mps2_an385_networked`] on the network the IMAGE states
     /// (RFC-0103 D10a, phase-497 W3): `nic` is the `-nic` value of its
     /// interface, from [`image_nic`] — QEMU's own user-mode network, a host

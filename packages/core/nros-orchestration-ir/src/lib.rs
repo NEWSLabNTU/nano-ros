@@ -860,6 +860,12 @@ pub struct SchedTaskDef {
     pub nuttx: Option<SchedTaskRtosSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub posix: Option<SchedTaskRtosSpec>,
+    // phase-562 W10.
+    /// An RTIC image's level: its RTIC software-task
+    /// priority. Only the derivation fills it (`install_placement`); the launch
+    /// model has no `rtic` sub-table to author one from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rtic: Option<SchedTaskRtosSpec>,
 }
 
 /// `[tasks.<name>.<rtos>]` — concrete per-RTOS task knobs. One shape for all
@@ -1016,6 +1022,7 @@ pub fn install_placement(def: &mut SchedTaskDef, target_rtos: &str, spec: SchedT
         "threadx" => &mut def.threadx,
         "nuttx" => &mut def.nuttx,
         "posix" | "native" => &mut def.posix,
+        "rtic" => &mut def.rtic,
         _ => return,
     };
     if slot.is_none() {
@@ -1158,13 +1165,14 @@ pub enum SchedTaskResolveError {
 }
 
 /// Pick a sched task's per-RTOS spec by target name.
-fn rtos_spec<'a>(def: &'a SchedTaskDef, rtos: &str) -> Option<&'a SchedTaskRtosSpec> {
+pub(crate) fn rtos_spec<'a>(def: &'a SchedTaskDef, rtos: &str) -> Option<&'a SchedTaskRtosSpec> {
     match rtos {
         "freertos" => def.freertos.as_ref(),
         "zephyr" => def.zephyr.as_ref(),
         "threadx" => def.threadx.as_ref(),
         "nuttx" => def.nuttx.as_ref(),
         "posix" | "native" => def.posix.as_ref(),
+        "rtic" => def.rtic.as_ref(),
         _ => None,
     }
 }
@@ -1532,6 +1540,8 @@ pub fn sched_task_from_model(
         threadx: t.threadx.as_ref().map(rtos_spec_from_model),
         nuttx: t.nuttx.as_ref().map(rtos_spec_from_model),
         posix: t.posix.as_ref().map(rtos_spec_from_model),
+        // The model has no `rtic` sub-table; only the derivation fills one.
+        rtic: None,
     }
 }
 

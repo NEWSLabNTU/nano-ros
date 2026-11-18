@@ -36,11 +36,11 @@ use nros_tests::{
     fixtures::{
         QemuProcess, RequireFixture, SocatPtyPair, XrceSerialAgent, ZenohRouter,
         build_qemu_lan9118, build_qemu_rtic_action_client, build_qemu_rtic_action_server,
-        build_qemu_rtic_listener, build_qemu_rtic_service_client, build_qemu_rtic_service_server,
-        build_qemu_rtic_talker, build_qemu_serial_listener, build_qemu_serial_talker,
-        build_qemu_talker_xrce, build_qemu_wcet_bench, is_arm_toolchain_available,
-        is_qemu_available, is_socat_available, or_unmet, parse_test_results,
-        qemu_baremetal_capi_binary, require_xrce_agent, require_zenoh_pico_arm,
+        build_qemu_rtic_levels, build_qemu_rtic_listener, build_qemu_rtic_service_client,
+        build_qemu_rtic_service_server, build_qemu_rtic_talker, build_qemu_serial_listener,
+        build_qemu_serial_talker, build_qemu_talker_xrce, build_qemu_wcet_bench,
+        is_arm_toolchain_available, is_qemu_available, is_socat_available, or_unmet,
+        parse_test_results, qemu_baremetal_capi_binary, require_xrce_agent, require_zenoh_pico_arm,
     },
     matrix::{Lang, PlatformId, Rmw, Workload},
     platform, wait_for_port,
@@ -766,6 +766,227 @@ fn test_qemu_rtic_pubsub_e2e() {
 }
 
 // =============================================================================
+// RTIC derived levels (phase-562 W10)
+// =============================================================================
+
+/// The urgent level's timer period, in microseconds (`urgent_pkg`'s 100 Hz).
+const RTIC_LEVELS_PERIOD_US: i64 = 10_000;
+
+/// How late an urgent activation may run while the guest executes: the
+/// stated bound (level-wake ISR + dispatcher entry + the longest
+/// executor-internal BASEPRI section), measured at ~160-210 us on this image
+/// at `shift=5`, with headroom.
+const RTIC_LEVELS_BOUND_US: i64 = 500;
+
+/// While the boot level idles in `wfi`, QEMU's `-icount` advances the guest's
+/// clock at wall speed (`sleep=on`, which the network needs), so the one-shot
+/// fires late by whatever the host's scheduler adds. That jitter is the
+/// emulator's, not the design's: this share of idle activations must still
+/// meet [`RTIC_LEVELS_BOUND_US`], and every one must meet
+/// [`RTIC_LEVELS_IDLE_CAP_US`], under the 200 ms the boot level's own park
+/// would take without the level wake.
+const RTIC_LEVELS_IDLE_ON_TIME_SHARE: f64 = 0.95;
+const RTIC_LEVELS_IDLE_CAP_US: i64 = 20_000;
+
+/// One `URGENT_FIRE <now_us> <late_us>` line and the burn it ran in, if any.
+#[derive(Debug)]
+struct UrgentFire {
+    at_us: i64,
+    late_us: i64,
+    in_burn: bool,
+}
+
+/// The urgent activations and the burns (`[BURN_START, BURN_END]`) of a run.
+fn rtic_levels_trace(output: &str) -> (Vec<UrgentFire>, Vec<(i64, i64)>) {
+    let num = |s: Option<&str>| s.and_then(|v| v.trim().parse::<i64>().ok());
+    let mut fires = Vec::new();
+    let mut burns = Vec::new();
+    let mut start = None;
+    for line in output.lines() {
+        if let Some(rest) = line.split("URGENT_FIRE ").nth(1) {
+            let mut it = rest.split_whitespace();
+            if let (Some(at_us), Some(late_us)) = (num(it.next()), num(it.next())) {
+                fires.push(UrgentFire {
+                    at_us,
+                    late_us,
+                    in_burn: false,
+                });
+            }
+        } else if let Some(rest) = line.split("BURN_START ").nth(1) {
+            start = num(Some(rest));
+        } else if let Some(rest) = line.split("BURN_END ").nth(1)
+            && let (Some(a), Some(b)) = (start.take(), num(Some(rest)))
+        {
+            burns.push((a, b));
+        }
+    }
+    for f in &mut fires {
+        f.in_burn = burns.iter().any(|&(a, b)| a <= f.at_us && f.at_us <= b);
+    }
+    (fires, burns)
+}
+
+/// phase-562 W10 -- derived sched tasks run as RTIC levels.
+///
+/// `baremetal_levels_rtic` derives two levels from its contract: `urgent`
+/// (100 Hz) on its own RTIC software task above `burner` (5 Hz, 50 ms of CPU a
+/// callback), which boots with the transport. Two claims, one run:
+///
+/// - ORDER: the urgent level preempts the boot level, so urgent activations
+///   land INSIDE burns. On one level they would wait for each burn to end.
+/// - TIMER: every urgent activation runs at or after its deadline and within
+///   the stated bound, whether the boot level is burning or idle. The level
+///   wake (a board one-shot at the earliest non-boot deadline) is what makes
+///   that true while the boot level parks; without it the urgent level waits
+///   for the boot level's own 200 ms timer.
+///
+/// Times are the guest's (`nros::time::now_us`) at a fixed `-icount`; the
+/// deadline is the activation's `now - late`, and every deadline must sit on
+/// the 10 ms grid of the first, so the test checks the timer's own schedule
+/// rather than trusting the executor's lateness alone.
+#[test]
+fn test_qemu_rtic_levels_preempt_and_wake_on_time() {
+    nros_tests::fixtures::lane::require_workspace_in_lane("workspace-rust-baremetal-levels-rtic")
+        .require("RTIC levels image");
+    require_arm_toolchain();
+    require_zenoh_pico_arm();
+    let bin = build_qemu_rtic_levels().require("rtic-levels");
+
+    let _zenohd = or_unmet(ZenohRouter::start_slirp(
+        nros_tests::alloc::BAREMETAL_RTIC_LEVELS_PORT,
+    ));
+    assert!(
+        wait_for_port(
+            nros_tests::alloc::BAREMETAL_RTIC_LEVELS_PORT,
+            Duration::from_secs(5)
+        ),
+        "zenohd not reachable on the levels port"
+    );
+
+    let mut qemu = QemuProcess::start_mps2_an385_networked_measured(bin)
+        .expect("Failed to start the RTIC levels QEMU");
+    // 1000 activations: 10 s of guest time, ~50 burns.
+    let output = qemu.collect_until_count("URGENT_FIRE ", 1000, Duration::from_secs(120));
+    qemu.kill();
+
+    let (fires, burns) = rtic_levels_trace(&output);
+    let tail = || output.lines().rev().take(40).collect::<Vec<_>>().join("\n");
+    assert!(
+        burns.len() >= 20,
+        "too short a run: {} burns\n--- tail ---\n{}",
+        burns.len(),
+        tail()
+    );
+
+    // ORDER: every whole burn holds urgent activations (50 ms of burn, 10 ms
+    // period: ~5).
+    let starved: Vec<&(i64, i64)> = burns
+        .iter()
+        .filter(|&&(a, b)| {
+            fires
+                .iter()
+                .filter(|f| a <= f.at_us && f.at_us <= b)
+                .count()
+                < 3
+        })
+        .collect();
+    assert!(
+        starved.is_empty(),
+        "the urgent level ran fewer than 3 times inside {} of {} burns: it did not \
+         preempt the burning boot level, or nothing woke it for its timer: {:?}",
+        starved.len(),
+        burns.len(),
+        &starved[..starved.len().min(5)]
+    );
+
+    assert!(
+        fires.len() >= 1000,
+        "too short a run: {} urgent activations, {} burns\n--- tail ---\n{}",
+        fires.len(),
+        burns.len(),
+        tail()
+    );
+
+    // TIMER: deadlines on the timer's grid, activations not early, on time.
+    let first_deadline = fires[0].at_us - fires[0].late_us;
+    let mut off_grid = Vec::new();
+    let mut early = Vec::new();
+    let mut busy_late = Vec::new();
+    let (mut idle, mut idle_on_time, mut idle_over_cap) = (0usize, 0usize, Vec::new());
+    for f in &fires {
+        let deadline = f.at_us - f.late_us;
+        // `late` is the executor's, taken a few instructions before the
+        // callback reads the clock, so a deadline rebuilt from the two sits
+        // within a few tens of microseconds of the grid.
+        let phase = (deadline - first_deadline).rem_euclid(RTIC_LEVELS_PERIOD_US);
+        if phase > 50 && phase < RTIC_LEVELS_PERIOD_US - 50 {
+            off_grid.push(f);
+        }
+        if f.late_us < 0 {
+            early.push(f);
+        }
+        if f.in_burn {
+            if f.late_us > RTIC_LEVELS_BOUND_US {
+                busy_late.push(f);
+            }
+        } else {
+            idle += 1;
+            if f.late_us <= RTIC_LEVELS_BOUND_US {
+                idle_on_time += 1;
+            }
+            if f.late_us > RTIC_LEVELS_IDLE_CAP_US {
+                idle_over_cap.push(f);
+            }
+        }
+    }
+    let busy = fires.iter().filter(|f| f.in_burn).count();
+    let worst = |busy: bool| {
+        fires
+            .iter()
+            .filter(|f| f.in_burn == busy)
+            .map(|f| f.late_us)
+            .max()
+            .unwrap_or(0)
+    };
+    eprintln!(
+        "RTIC levels: {} activations ({busy} during burns, worst {} us; {idle} idle, \
+         {idle_on_time} within {RTIC_LEVELS_BOUND_US} us, worst {} us), {} burns",
+        fires.len(),
+        worst(true),
+        worst(false),
+        burns.len()
+    );
+    assert!(
+        off_grid.is_empty(),
+        "deadlines off the 10 ms grid: {:?}",
+        &off_grid[..off_grid.len().min(5)]
+    );
+    assert!(
+        early.is_empty(),
+        "activations before their deadline: {:?}",
+        &early[..early.len().min(5)]
+    );
+    assert!(
+        busy >= 100 && idle >= 100,
+        "need both states: {busy} busy, {idle} idle activations"
+    );
+    assert!(
+        busy_late.is_empty(),
+        "urgent activations past {RTIC_LEVELS_BOUND_US} us while the boot level burned: {:?}",
+        &busy_late[..busy_late.len().min(5)]
+    );
+    assert!(
+        idle_on_time as f64 >= RTIC_LEVELS_IDLE_ON_TIME_SHARE * idle as f64,
+        "only {idle_on_time} of {idle} idle-time activations within {RTIC_LEVELS_BOUND_US} us"
+    );
+    assert!(
+        idle_over_cap.is_empty(),
+        "idle-time activations past {RTIC_LEVELS_IDLE_CAP_US} us: {:?}",
+        &idle_over_cap[..idle_over_cap.len().min(5)]
+    );
+}
+
+// =============================================================================
 // RTIC QEMU Service/Action Networked Tests (MPS2-AN385 + LAN9118 + zenohd)
 // =============================================================================
 
@@ -1005,6 +1226,17 @@ fn cases_bound_to_matrix_cells() {
             ),
             (
                 (P::QemuBaremetal, L::Rust, R::Zenoh, W::Action, K::Example),
+                RTIC,
+            ),
+            // phase-562 W10 -- `test_qemu_rtic_levels_preempt_and_wake_on_time`.
+            (
+                (
+                    P::QemuBaremetal,
+                    L::Rust,
+                    R::Zenoh,
+                    W::RealtimeSchedTasks,
+                    K::Workspace,
+                ),
                 RTIC,
             ),
         ],

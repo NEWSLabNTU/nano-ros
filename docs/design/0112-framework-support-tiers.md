@@ -43,9 +43,11 @@ deleted that surface and admitted `px4` to Tier 1 (as of 2026-11-13).
 >   RFC-0113 D8). A request for a new framework is answered with Shape A or a
 >   Tier 1 admission (RFC-0113 D1), never with a recipe.
 > - **D3 is live.** Its criterion 5 was checked against RTIC by reading the
->   code, and RTIC does not meet it (D3 below, [issue 2540](../issues/2540-rtic-fails-tier1-realtime-criterion.md)).
->   RTIC is demoted from Tier 1 to a documented recipe (ruling 2026-11-14) until
->   phase-562 W10 brings it up to criterion 5. Tier 1 today is `px4`.
+>   code, and RTIC did not meet it ([issue 2540](../issues/archived/2540-rtic-fails-tier1-realtime-criterion.md)).
+>   RTIC was demoted from Tier 1 (ruling 2026-11-14), and
+>   [phase-562](../roadmap/phase-562-image-framework-field.md) W10 brought it up
+>   to criterion 5 (2026-11-18): RTIC is Tier 1 again (D3 below). Tier 1 today
+>   is `rtic` and `px4`.
 > - **D5 is done (2026-11-15, [phase-562](../roadmap/phase-562-image-framework-field.md)
 >   W8).** `FRAMEWORKS` is `owned-spin`, `rtic`, `px4`; `zephyr` is in
 >   `ENTRY_SHAPES`, and `image_framework` refuses it on an image.
@@ -200,28 +202,35 @@ The criteria are re-checked whenever a framework's board or CI cell goes away.
 A branch that fails them is demoted to a Tier 0 recipe, or deleted. It is not
 kept as a seam that nothing exercises. Today:
 
-- **`rtic`** meets criteria 1 to 4. **It does not meet criterion 5**
-  (checked 2026-11-14 by reading the code, [issue 2540](../issues/2540-rtic-fails-tier1-realtime-criterion.md)):
-  - no priority mapping is generated. The RTIC branch of `nros::main!` emits
-    fixed priorities: the run task at 1
-    (`packages/core/nros-macros/src/main_macro.rs:2871`), custom tasks at 1
-    (`:2733`), the tick and RX hardware tasks at 2 (`:2676`, `:2688`), and
-    every callback runs inline in the one run task;
-  - no bound is measured on its CI cell. `test_qemu_rtic_{pubsub,service,action}_e2e`
-    (`packages/testing/nros-tests/tests/emulator.rs`) assert delivery only.
-    RFC-0113's coverage row cites a hand-run idle measurement, and the
-    `mixed_priority` test it names was retired (issue 2417).
-
-  **Demoted from Tier 1 (maintainer ruling 2026-11-14: demote now, bring
-  it up to criterion 5 later).** This decision's own rule applies: a branch
-  that fails the criteria is demoted. RTIC is now a documented recipe, and
-  nano-ros does not claim its real-time promise. What a user still gets is what the
-  CI cells assert: an RTIC image boots and delivers messages. The `rtic`
-  framework value and the `nros::main!` branch stay, because the cells
-  exercise them and the re-promotion builds on them; they carry no Tier 1
-  claim until it lands. Re-promotion is
-  [phase-562](../roadmap/phase-562-image-framework-field.md) W10: a
-  generated priority mapping, and a bound its CI cell asserts.
+- **`rtic`** meets all five. It met criteria 1 to 4 and failed criterion 5
+  when checked on 2026-11-14 ([issue 2540](../issues/archived/2540-rtic-fails-tier1-realtime-criterion.md)):
+  the RTIC branch of `nros::main!` emitted fixed priorities and ran every
+  callback in one task, and no bound was measured on its cell. It was demoted
+  (maintainer ruling 2026-11-14) and re-promoted on 2026-11-18 by
+  [phase-562](../roadmap/phase-562-image-framework-field.md) W10:
+  1. the board is `mps2-an385-baremetal`, booted by RTIC
+     (`nros_board_mps2_an385::RticMps2An385`);
+  2. `test_qemu_rtic_{pubsub,service,action}_e2e`
+     (`packages/testing/nros-tests/tests/emulator.rs`) boot RTIC images and
+     deliver messages;
+  3. RTIC fixes its tasks, priorities and dispatchers at compile time, which a
+     recipe cannot express;
+  4. owner: the nano-ros maintainers;
+  5. **the priority mapping is generated, and its bound is measured on the
+     cell.** The image's derived sched tasks become levels, one RTIC software
+     task each, allocated out of the board's own plan (`rtic_priority_plan`
+     and `rtic_level_plan` in `nros-macros`). A non-boot level runs to
+     completion per wake, and a board one-shot wakes it for its timers.
+     `test_qemu_rtic_levels_preempt_and_wake_on_time` (same file, run by
+     `just qemu test-all`) runs the Rust workspace's `baremetal_levels_rtic`
+     image. It asserts that the urgent level preempts a 50 ms callback on the
+     boot level, and that every urgent activation runs at or after its
+     deadline and within 500 us of it while the boot level burns. While the
+     boot level idles in `wfi`, the same bound holds for 95 % of activations,
+     and every one is under a 20 ms cap: QEMU's `-icount sleep=on` runs an
+     idle guest at wall speed, so host scheduling jitter reaches the guest's
+     clock there. Collapsing the levels to one priority, or not arming the
+     level wake, turns the cell red.
 - **`px4`** meets all five (RFC-0113 D9, phase-521 W8, admitted 2026-11-03),
   as a C++-only framework (`nros::main!` refuses it; the C++ entry codegen
   emits one PX4 work item per sched task):
@@ -348,9 +357,8 @@ is fixed here.
     RFC-0111 (brief P5).
 - Text that no longer reads true, but which only the author can rule on
   (brief P6):
-  - D3 lists five criteria since RFC-0113 D8, but says "`rtic` meets all
-    four". Whether RTIC meets criterion 5 (bounds measured on its cell) is
-    unverified here.
+  - D3 lists five criteria since RFC-0113 D8, and says (since 2026-11-18)
+    that `rtic` meets all five, with the cell that measures criterion 5.
   - D1, D2 and D4 are Tier 0, which is withdrawn. They are kept as the record
     but read as live decisions.
 - Pairs: RFC-0114 asks that this RFC's tier numbers be replaced by the
@@ -364,3 +372,8 @@ is fixed here.
 amendment block under the Tier 0 banner: D1, D2 and D4 marked as the record,
 D3 and D5 live, RTIC checked against criterion 5 (fails; issue 2540), D5
 tracked by phase-562 W8. Status stays Draft: D5 is open work.
+
+**Phase-562 W10 (2026-11-18).** RTIC meets criterion 5: a generated priority
+mapping (derived levels as RTIC software tasks) and a bound its cell asserts
+(`test_qemu_rtic_levels_preempt_and_wake_on_time`). D3 re-promotes it to
+Tier 1, and issue 2540 is resolved.

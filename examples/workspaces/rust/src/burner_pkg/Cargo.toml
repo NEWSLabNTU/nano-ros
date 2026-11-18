@@ -1,0 +1,20 @@
+[package]
+name = "burner_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg -- a 5 Hz timer whose callback burns 50 ms of CPU (the RTIC levels cell's busy boot level)."
+
+# Node pkg shape: lib only. Platform and RMW come from the entry's board.
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "burner_pkg::Burner"
+name = "burner"
+
+[dependencies]
+nros = { version = "*", default-features = false, features = [
+    "alloc",
+    "rmw-cffi", "macros"] }
+log = { version = "0.4", default-features = false }

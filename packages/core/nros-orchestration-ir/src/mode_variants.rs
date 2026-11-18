@@ -513,14 +513,7 @@ pub fn derived_sched_task_deadlines(
         .sched_tasks
         .into_iter()
         .map(|(name, def)| {
-            let spec = match target_rtos {
-                "zephyr" => def.zephyr.as_ref(),
-                "freertos" => def.freertos.as_ref(),
-                "threadx" => def.threadx.as_ref(),
-                "nuttx" => def.nuttx.as_ref(),
-                "posix" | "native" => def.posix.as_ref(),
-                _ => None,
-            };
+            let spec = crate::rtos_spec(&def, target_rtos);
             let priority = spec.map(|p| p.priority);
             (
                 name,

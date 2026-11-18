@@ -1,16 +1,18 @@
 ---
 id: 2540
 title: "RTIC does not meet RFC-0112's fifth Tier 1 criterion: no generated priority mapping, and its CI cell measures no bound"
-status: open
+status: resolved
 type: test-gap
 severity: medium
 area: [executor, boards, testing]
 related: [rfc-0112, rfc-0113, rfc-0111, issue-2417, phase-521, phase-562]
 found: 2026-11-14
+resolved: 2026-11-18
+resolved_in: "feat(rtic, phase-562 W10): derived levels on RTIC, proved on QEMU; RTIC is Tier 1 again"
 ---
 
-**Home: [RFC-0112](../design/0112-framework-support-tiers.md) D3, criterion 5
-(added by [RFC-0113](../design/0113-rt-unified-wait.md) D8)**
+**Home: [RFC-0112](../../design/0112-framework-support-tiers.md) D3, criterion 5
+(added by [RFC-0113](../../design/0113-rt-unified-wait.md) D8)**
 
 ## What is open
 
@@ -60,10 +62,29 @@ page claimed RTIC Tier 1 (the user book does not teach RTIC:
 
 ## What closes it
 
-[phase-562](../roadmap/phase-562-image-framework-field.md) W10: the RTIC
+[phase-562](../../roadmap/phase-562-image-framework-field.md) W10: the RTIC
 branch generates its task priorities from the sched-task contract, and an RTIC
 CI cell asserts a measured bound. RFC-0112 D3 then re-promotes RTIC to Tier 1.
 
 **State of W10 (2026-11-17):** OPEN, with no owner and no claim. Nothing on
 main or in an open pull request has started it. Phase-562 W1 to W4 and W8 are
 done, and none of them touches the RTIC priorities or the RTIC cells.
+
+## Resolution (2026-11-18)
+
+[phase-562](../../roadmap/phase-562-image-framework-field.md) W10 closed both
+halves, and RFC-0112 D3 re-promotes RTIC to Tier 1.
+
+- **Generated priority mapping.** An RTIC image's derived sched tasks become
+  levels, one RTIC software task each, allocated out of the board's RTIC plan
+  (`rtic_priority_plan` and `rtic_level_plan` in `nros-macros`). The hardware
+  tasks sit above the top level.
+- **A bound its cell asserts.**
+  `test_qemu_rtic_levels_preempt_and_wake_on_time`
+  (`packages/testing/nros-tests/tests/emulator.rs`, run by `just qemu
+  test-all`) asserts that the urgent level preempts the boot level, and that
+  every urgent activation runs at or after its deadline and within 500 us
+  while the boot level burns (95 % of activations while it idles, all under
+  20 ms). Collapsing the levels to one priority, or not arming the level
+  wake, turns it red.
+

@@ -68,6 +68,10 @@ pub fn default_max_levels(target_rtos: &str, plan: &PriorityPlan) -> u16 {
         "zephyr" | "posix" | "native" | "nuttx" => 8,
         "threadx" => u16::try_from(plan.app.width()).unwrap_or(u16::MAX).max(1),
         "freertos" => 4,
+        // phase-562 W10 -- one RTIC software-task priority per level, out of
+        // the board's plan (`nros-macros`' `rtic_priority_plan`, which also
+        // states the cap).
+        "rtic" => u16::try_from(plan.app.width()).unwrap_or(u16::MAX).max(1),
         // No RTOS family: one thread, nothing to preempt with.
         _ => 1,
     }

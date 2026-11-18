@@ -260,7 +260,7 @@ state `framework = "zephyr"` in its metadata: that is the board deciding.
 
 ### W10 — RTIC meets Tier 1 criterion 5, and is re-promoted
 
-- **Owner:** unassigned.
+- **Owner:** the nros 241 manager's W10 session.
 - RTIC was demoted from Tier 1 on 2026-11-14 (RFC-0112 D3, issue 2540): the
   RTIC branch of `nros::main!` emits fixed priorities (the run task and custom
   tasks at 1, the tick and RX tasks at 2) with every callback inline in the run
@@ -300,21 +300,49 @@ state `framework = "zephyr"` in its metadata: that is the board deciding.
   deadline + the level-wake ISR + dispatcher entry + the longest
   executor-internal BASEPRI section]. The boot level's state, idle in WFI or
   busy in a long callback, does not enter it.
-- **Status:** OPEN
-- **Progress:** split in two:
+- **Status:** DONE (2026-11-18, #4197 and the levels-cell change after it)
+- **Done in two changes:**
   - The mechanism (board hooks, mps2 lock and level wake,
     `nros::levels::RunToCompletionLevels`, `nros::level_wake`, the macro's
     plan and emission, and a compile-time check that the macro's dispatcher
-    list equals the board's) lands first, with the multi-level RTIC refusal
-    still in place. Single-level images are unchanged.
-  - The second change lifts the refusal. With it come a two-level mps2 RTIC
-    image, an order cell (the high level preempts inside the low level's
-    callback) and a timer cell (both bounds, the boot level idle and busy),
-    both mutations, and RFC-0112 D3's re-promotion.
+    list equals the board's), with the multi-level RTIC refusal still in
+    place (#4197).
+  - The proof and the acceptance together: the refusal lifted; the Rust
+    workspace's `levels_bringup` (`urgent_pkg` at 100 Hz above `burner_pkg`,
+    5 Hz and 50 ms of CPU a callback) and its `baremetal_levels_rtic` image;
+    `test_qemu_rtic_levels_preempt_and_wake_on_time`, run by
+    `just qemu test-all`; and RFC-0112 D3's re-promotion.
+- **What the second change found:**
+  - **The derivation had no RTIC target.** A bare-metal board's sched-task
+    key is `""`: no priority plan, one level, so the contract derived
+    nothing. An RTIC image now derives under its own key, `rtic`, out of the
+    board's RTIC plan (`rtic_priority_plan`: priorities 1 up to the
+    dispatcher count, capped below the NVIC count, with the hardware tasks
+    above). The key has no authorable `[tasks.<name>.rtic]` sub-table:
+    [issue 2698](../issues/2698-rtic-sched-task-not-authorable.md).
+  - **The mps2 clock was not reentrant.** `clock_ns` read the counter, then
+    `LAST_VALUE`, then stored, in three steps. A reader preempted between
+    them read its own older value as a wrap, and the clock jumped forward
+    2^32 ticks (~171.8 s) for good. A preempting level hit it within seconds.
+    The read is now one critical section.
+  - **The executor refuses a NULL lock context.** The board's lock keeps its
+    state in its own statics, so the macro hands it the runner's address.
+  - **QEMU's idle clock carries host jitter.** At `-icount shift=5`, a busy
+    guest's time is its instruction count, and the urgent level ran within
+    ~200 us of every deadline across every burn. While the guest idles in
+    `wfi`, `sleep=on` (which the network needs) advances its clock at wall
+    speed. A few idle activations per run were then 1 to 12 ms late, and the
+    late wake was the hardware interrupt itself, not the software path. The
+    cell asserts the bound for 95 % of idle activations and a 20 ms cap on
+    all of them.
+  - **Mutations** (both turn the cell red on its order assertion):
+    every level on one RTIC priority (the urgent level never runs inside a
+    burn, 668 of 668 burns), and the passes not arming the level wake (the
+    urgent level is never woken again, 672 of 672 burns).
 
 ## Related
 
-- [issue 2540](../issues/2540-rtic-fails-tier1-realtime-criterion.md): RTIC
+- [issue 2540](../issues/archived/2540-rtic-fails-tier1-realtime-criterion.md): RTIC
   does not meet RFC-0112's fifth Tier 1 criterion. The ruling of 2026-11-14
   demoted it and put its re-promotion here, as W10.
 - RFC-0093 §3: its last framework word retires with W5.
