@@ -157,8 +157,12 @@ const MANGLED_NAME_SIZE: usize = 64;
 /// 16-byte ZID formatted as hexadecimal (32 ASCII characters).
 const ZID_HEX_SIZE: usize = 32;
 
-/// QoS encoding string buffer size.
-const QOS_STRING_SIZE: usize = 32;
+/// QoS encoding string buffer size: the longest chunk `to_qos_string` can
+/// write, every field stated at its widest
+/// (`2:1:2,4294967295:4294967,999000000:4294967,999000000:3,4294967,999000000`,
+/// 72 bytes). It was 32 while deadline, lifespan and liveliness were never
+/// stated (phase-556 W6); a shorter buffer would truncate a token silently.
+const QOS_STRING_SIZE: usize = 72;
 
 /// Placeholder timestamp increment per publish (1ms in nanoseconds).
 /// Retained as a documented landing place for legacy callers; the
