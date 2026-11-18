@@ -10831,6 +10831,16 @@ mod multi_bringup_facade_tests {
         )
     }
 
+    /// A bringup whose images turn the stock node interfaces off, so its
+    /// selection differs from one that keeps them (the stock default would
+    /// otherwise give every bringup `param-services`).
+    fn system_off(name: &str, image: &str) -> String {
+        format!(
+            "[system]\nname = \"{name}\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+             node_interfaces = \"none\"\n\n[image.{image}]\nboard = \"linux\"\n"
+        )
+    }
+
     fn facade(ws: &Ws, entry: &str) -> String {
         std::fs::read_to_string(
             ws.root
@@ -10846,7 +10856,7 @@ mod multi_bringup_facade_tests {
         let (w, scan) = ws(
             &[
                 ("a_bringup", &system("a", "\"param_services\"", "alpha")),
-                ("b_bringup", &system("b", "", "beta")),
+                ("b_bringup", &system_off("b", "beta")),
             ],
             &["alpha_entry", "beta_entry"],
         );
@@ -10869,7 +10879,7 @@ mod multi_bringup_facade_tests {
         let (w, scan) = ws(
             &[
                 ("a_bringup", &system("a", "\"param_services\"", "shared")),
-                ("b_bringup", &system("b", "", "shared")),
+                ("b_bringup", &system_off("b", "shared")),
             ],
             &["shared_entry"],
         );
