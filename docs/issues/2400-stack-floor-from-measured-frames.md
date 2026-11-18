@@ -264,6 +264,40 @@ mode = "bind"`, issue 2402).
 
 The detail is in [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W7, W7b, W7c, W7d and W7e.
 
+### Ruling (C), PROPOSED: inputs come from the build, and the walk is a band (2026-11-18)
+
+**Not yet ruled. Awaiting the maintainer.** Proposed with phase-557 W9. It
+amends the first ruling's frame source and supersedes W8's drift rule. Until
+it is ruled, W8's rule stands.
+
+- **Frames are stated by the compiler that built the code.** `llc
+  --stack-sizes` for Rust, `-fstack-usage` for every C/C++ compiler and every
+  C compile in the closure (cc-rs included), and linked-image CFI last. No
+  hand-read frame row: one was right for a Cortex-M7 build and 4 B low for
+  the same source on thumbv7m (issue 2460).
+- **Builtins are a committed table keyed by toolchain identity.** The key is
+  the compiler's exact version, the target, and the flags that change frames.
+  A recipe writes the rows from the toolchain's own archives, and a key the
+  table lacks is a refusal, never a near match.
+- **Edges come from the linked objects on every road.** GCC's `.ci` becomes
+  a cross-check, so a compiler with no call-graph output (TI Arm Clang, issue
+  2693) is walked the same way.
+- **A row records the top of a band.** The walk runs N callee orders, with N
+  measured (phase-557 W9c). `static` is the largest max the row has been seen
+  to walk, together with the toolchain identity of that walk. A walk under
+  another identity is reported beside the row, never compared with it (issue
+  2688).
+- **Drift: only a rise over 2 % fails.** The new max more than 2 % above the
+  recorded max FAILS. A smaller rise, and ANY fall, is a note. This replaces
+  W8's "a fall of more than 2 % fails" and "any rise above max(`static`,
+  `walk_floor`) fails". The reason: under the SCC an unrelated change moves
+  the walk by about ±4 KB (issue 2550). With the fall rule, the
+  `/parameter_events` change had to re-walk the FreeRTOS C talker row, which
+  fell 3,848 B on a re-cut while the Rust publisher frames it added grew.
+  An exact-rise rule fails a row whenever the cut moves up. The stack is
+  sized from the floor (`static` + 10 %), so a rise within 2 % stays inside
+  the margin, and CHECK still refuses any stack below the floor.
+
 ### Re-measured after issue 2401 (2026-11-10)
 
 #3481 lowered every nucleo static walk and moved no peak (table in issue

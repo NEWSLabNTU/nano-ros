@@ -5,7 +5,7 @@ status: open
 type: limitation
 severity: medium
 area: [build, toolchain, stack]
-related: [phase-575, issue-2400]
+related: [phase-575, issue-2400, phase-557]
 found: 2026-11-18
 ---
 

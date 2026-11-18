@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
-**Status (2026-11-16). OPEN: W1, W2, W2b, W3, W4, W5, W6 and W7 are done;
-W7f is dropped at its first checkpoint; W3b, W5b and W8 are open.** This phase tracks the implementation of
+**Status (2026-11-18). OPEN: W1, W2, W2b, W3, W4, W5, W6 and W7 are done;
+W7f is dropped at its first checkpoint; W3b, W5b, W8 and W9 are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -993,6 +993,145 @@ clang 14.0.0): the step took 138 s and walked 103,252 B, the number the two
 local worktrees walked. The run before it, still at debuginfo 0, walked
 100,684 B and failed on the fall rule.
 
+### W9 — One stack tool for four gaps: frames from the compiler, builtins by toolchain, edges from the objects, and a band (issues 2460, 2550, 2688, 2693)
+
+- **Status:** OPEN (designed 2026-11-18; awaiting the maintainer's ruling on
+  the issue 2400 amendment "Ruling (C)", which changes W8's drift rule)
+
+**Why.** Four open issues are one defect: the walk takes a number from
+somewhere other than the build it is measuring, so it is right only for the
+build where that number was read.
+
+- **Hand-read frames are a fact about flags, not targets** (issue 2460).
+  `zpico-sys`'s `platform_aliases.c` is built by cc-rs with no
+  `-fstack-usage`, so its five functions carry `[[policy]] kind = "frame"`
+  rows read off one Cortex-M7 build. On thumbv7m the same source costs 4 B
+  more (the frame pointer is kept), so a row keyed by `target` is silently
+  low under other flags.
+- **Builtins have no frame at all** (issue 2460). `__aeabi_mem*`, `memcpy`,
+  `memset`, `memmove`, `memcmp` and `strlen` come from a `compiler_builtins`
+  or `libgcc`/newlib that carries no `.su` and, for the prebuilt rlib, no
+  bitcode. The walk refuses, correctly, but nothing can make it measure.
+- **One toolchain has no call graph** (issue 2693). TI Arm Clang writes
+  GCC-format `.su` frames and rejects `-fcallgraph-info`, so its images run
+  with the check OFF.
+- **The walk's number is one cut of a band** (issues 2550, 2688). Under the
+  bound graph's large SCC, depth depends on callee order. The C talker's SCC
+  holds about 2,000 functions and 310 KB of frames, so an unrelated change
+  that moves names moves the walk by about ±4 KB. Issue 2688 measured main
+  walking 130,000 B in CI and 134,824 B on a developer host, against a
+  recorded 130,424 B. Both are honest walks; they are different cuts.
+
+**Design.** One rule for each of the walk's inputs.
+
+1. **Frames: the compiler that built the code states them.**
+   - Rust: `llc --stack-sizes` over the linked bitcode, as now.
+   - C and C++, every compiler (GCC, clang, tiarmclang): `-fstack-usage`
+     `.su`, for EVERY C/C++ compile in the link closure. That includes cc-rs
+     builds (`zpico-sys`): the build scripts add the flag when the stack
+     floor is on, through the same helper that W7d's `--compile-commands`
+     path uses, never per crate. Issue 2692 (cc-rs builds skip the arch
+     profile) is the same seam and lands first or together.
+   - `.debug_frame` CFI of the linked image stays as the last source, for a
+     function no object states.
+   - The `[[policy]] kind = "frame"` rows retire. `--validate-table` refuses
+     a new one.
+2. **Builtins: measured once per toolchain identity, from that toolchain's
+   own objects.** A committed table, `config/stack-builtins.toml`, whose key
+   is the toolchain IDENTITY: the compiler's exact version string, the target
+   triple, and the flags that change frames (opt level, frame pointer,
+   thumb/arm, float ABI). It is never keyed by target alone. Its rows come
+   from a recipe (a new recipe, named in W9b) that reads the
+   toolchain's own archive (`libcompiler_builtins-*.rlib` from the pinned
+   sysroot, `libgcc.a`/`libc.a` from the pinned GCC), by CFI where the
+   objects carry it, and by prologue decoding otherwise. A row is never
+   typed by hand: `--validate-table` checks each row's `source` names the
+   archive and its hash.
+   - A key the table does not hold is a REFUSAL naming the key and the
+     recipe that adds it. It never falls back to a near key.
+   - A link whose builtins came from an archive no installed toolchain holds
+     (issue 2460's note) is the same refusal, naming the archive.
+3. **Edges: the linked objects, on every road.** Direct edges come from
+   disassembling the objects the link used (`llvm-objdump -d`, as
+   `load_object` does now). That works on any ELF the pinned LLVM can read,
+   tiarmclang's included, so GCC's `.ci` becomes a cross-check, not an input.
+   Indirect sites keep W7's binding from IR: Rust bitcode, and clang IR of
+   the C. A C TU with no IR (tiarmclang, until it can emit IR, or a host with
+   no clang) binds its sites to every function C can hold, as W7d rules. The
+   image is then UNMEASURED, so it warns and is never refused.
+4. **Missing input is a named refusal, never a 0.** The refusal already
+   names each function with no frame. It now also names, per function, the
+   sources tried (`.su`, llc, CFI, builtins key) so the remedy is readable.
+5. **The walk reports a band, and a row records its top.** The walk runs N
+   callee orders (W7d's 8 today). It reports `min`, `max` and the order that
+   gave each. `static` is the band's max. W8's `walk_floor`, "the largest
+   walk the image was seen to have", folds into the same field: a row records
+   the largest max it has been seen to walk, with each environment that
+   produced it.
+   - **N is measured, not chosen.** Checkpoint 1 below walks each
+     `[[observed]]` row at 8 and at 64 orders, at main and at five unrelated
+     merged PRs. It records how far each tree's max moves between PRs at each
+     N. If 64 orders still leaves a tree-to-tree spread over 2 %, the item
+     stops and reports that, instead of picking an N.
+   - **The environment is part of the walk.** A row records the toolchain
+     identity (point 2's key) it was walked under. A walk under a different
+     identity is reported beside the row and is never compared with it. That
+     is issue 2688's host-vs-CI split: different `clang`, different
+     debuginfo, different bytes.
+6. **The drift rule follows the band** (issue 2400 Ruling (C), which
+   supersedes W8's rule):
+   - the new max more than 2 % above the recorded max: FAIL, naming the row,
+     both numbers and the re-measure commands;
+   - a rise of 2 % or less: a NOTE;
+   - any fall: a NOTE, never a failure, so a change that shrinks frames is
+     never ejected from the queue. The row is lowered only by a re-measure
+     someone commits.
+
+   The 2 % is inside the 10 % margin, so a tolerated rise still sits below
+   the floor that sizes the stack. CHECK still refuses any stack below the
+   floor, whatever drift says.
+
+**Steps, each its own pull request, in this order.**
+
+- **W9a — Frames from the compiler.** `-fstack-usage` on cc-rs builds; the
+  five `kind = "frame"` rows retire. Acceptance: issue 2460's four
+  mps2-an385 Zephyr leaves walk with no `z_*` in the refusal; the nucleo rows
+  walk within their recorded band on thumbv7em, where the hand rows were right.
+- **W9b — The builtins table.** The key, the recipe, the refusal, and rows
+  for each pinned toolchain the `[[observed]]` rows use. Acceptance: issue
+  2460's leaves print an UNMEASURED floor (walk + margin) instead of a
+  refusal; a build with one flag changed (frame pointer) refuses, naming the
+  key.
+- **W9c — The band.** Checkpoint 1 (below), then N, `min`/`max` in the
+  report, the environment key on each row, and `walk_floor` folded into the
+  band max. Acceptance: the measured table and the chosen N; every
+  `[[observed]]` row re-walked at that N.
+- **W9d — The drift rule (Ruling (C)).** `static_drift` and its self-tests
+  (up 3 %: FAIL; up 1 %: note; down 10 %: note); W8's nightly and
+  merge-queue steps read the same helper. Acceptance: issue 2688's case, main
+  walked in CI and on a host, reads "different toolchain identity" rather
+  than FAIL, and a row edited down by hand 3 % turns the step red.
+- **W9e — The TI road** (issue 2693, home phase-575 W3). The TI toolchain
+  file stops forcing `NROS_STACK_FLOOR OFF`; tiarmclang `.su` frames, object
+  edges, builtins rows for its version string. Acceptance: an R5F image built
+  with tiarmclang prints a floor, MEASURED or UNMEASURED by the rules above,
+  instead of no check.
+
+  An UNMEASURED TI image (warn, never refuse) is the intended end state,
+  not a gap. The user ruled on 2026-11-17 that the TI board package is
+  user-side, an out-of-tree board (phase-575). So no nano-ros lane runs a TI
+  image, and nothing here can record the measured peak that would make one
+  MEASURED. The board's owner can add that `[[observed]]` row for their own
+  image.
+
+**Checkpoint 1 (W9c), before any code.** For each `[[observed]]` row: the
+walk at 8 and at 64 orders, at main and at five unrelated merged PRs (none
+touching `packages/`, `cmake/` or the table), on the CI image. The output is
+a table of max per tree per N, and the spread across trees at each N. Stop
+and report if 64 orders leaves a spread over 2 %. That would mean the band
+is not converging, and a gate cannot be built on it until the SCC is cut
+(W7f's reopening conditions).
+
 ## Issues homed here (2026-11-15)
 
 Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when it closed.
@@ -1004,3 +1143,7 @@ Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when
 | [#2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md) | DEFERRED by ruling. Measuring floors every build bypasses sccache for the measured crates; a bitcode store keyed by crate output would remove the cost. |
 | [#2658](../issues/2658-stack-floor-walk-over-estimates-graph-and-param-images.md) | The walk refuses an image that queries the graph or declares a parameter: 122,120 B against a measured 12,844 B (C), 76,816 B against 27,388 B (Rust), on the Renode Nucleo twin. |
 | [#2653](../issues/2653-cmake-c-stack-walk-untyped-sites.md) | The FreeRTOS C tutorial's walk types 73 of 242 indirect C sites (W7d's typing, on the cmake road); the 169 left keep its walk at twice the stack it ships, so its row is a `[[drift]]` row (phase-567 W5a). |
+| [#2460](../issues/2460-stack-floor-mps2-zephyr-walk-refused.md) | The mps2-an385 Zephyr walk is refused: hand-read frames are right for one set of flags, and builtins have no frame. W9a and W9b. |
+| [#2550](../issues/2550-stack-walk-order-dependent-under-cycles.md) | The walk's depth depends on callee order under the large SCC. W9c measures the band and W9d gates on its top. |
+| [#2688](../issues/2688-stack-floor-drift-host-repro.md) | One tree walks differently in CI and on a host. W9c records the environment with each row. |
+| [#2693](../issues/2693-stack-floor-check-off-on-tiarmclang.md) | The check is OFF for TI Arm Clang images. W9e; its home stays phase-575 W3. |
