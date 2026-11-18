@@ -159,6 +159,29 @@ int nros_orb_unregister_callback(int handle) {
 
 } // extern "C"
 
+// The descriptor's `[rmw.facts] services` value: 1 for `true`, 0 for `false`,
+// -1 when the descriptor states nothing (unknown), -2 when it cannot be read.
+// A line scan, not a TOML parser: the smoke only needs the one key, and a
+// descriptor the scan cannot read fails the check rather than passing it.
+static int descriptor_services_fact(const char* path) {
+    FILE* f = std::fopen(path, "r");
+    if (f == nullptr) return -2;
+    char line[512];
+    bool in_facts = false;
+    int fact = -1;
+    while (std::fgets(line, sizeof line, f) != nullptr) {
+        if (line[0] == '[') in_facts = std::strncmp(line, "[rmw.facts]", 11) == 0;
+        if (!in_facts) continue;
+        if (std::strncmp(line, "services", 8) == 0) {
+            fact = std::strstr(line, "false") != nullptr  ? 0
+                   : std::strstr(line, "true") != nullptr ? 1
+                                                          : -2;
+        }
+    }
+    std::fclose(f);
+    return fact;
+}
+
 int main() {
     rmw_ret_t rc = nros_rmw_uorb_register();
     if (rc != NROS_RMW_RET_OK) {
@@ -204,6 +227,29 @@ int main() {
         std::fprintf(stderr, "drive_io returned %d, expected OK\n", rc);
         return 1;
     }
+    // The descriptor's `[rmw.facts] services = false` is MEASURED here, not
+    // authored: configure refuses a node that would serve services (the stock
+    // parameter services, lifecycle) on a backend stating it, so the fact must
+    // be what the slots actually answer. Both slots, then the descriptor.
+    {
+        rmw_service_t srv{};
+        rmw_client_t cli{};
+        const rmw_service_type_support_t sts{"test::Srv", "H"};
+        const rmw_ret_t s = vt->create_service(&node, &sts, "/svc", 0, nullptr, &srv);
+        const rmw_ret_t c = vt->create_client(&node, &sts, "/svc", 0, nullptr, &cli);
+        const bool serves = s != NROS_RMW_RET_UNSUPPORTED || c != NROS_RMW_RET_UNSUPPORTED;
+        const int fact = descriptor_services_fact(NROS_RMW_UORB_DESCRIPTOR);
+        if (serves || fact != 0) {
+            std::fprintf(stderr,
+                         "create_service returned %d and create_client %d (UNSUPPORTED is %d), "
+                         "but %s states [rmw.facts] services as %d (0 = false, 1 = true, "
+                         "-1 = absent, -2 = unreadable): the measured answer and the "
+                         "descriptor disagree\n",
+                         s, c, NROS_RMW_RET_UNSUPPORTED, NROS_RMW_UORB_DESCRIPTOR, fact);
+            return 1;
+        }
+    }
+
     rc = vt->destroy_session(&session);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "close returned %d, expected OK\n", rc);

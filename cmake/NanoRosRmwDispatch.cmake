@@ -81,6 +81,7 @@ set(_NROS_RMW_DISPATCH_DIR "${CMAKE_CURRENT_LIST_DIR}"
 #   NROS_RMW_CMAKE_TARGET           the backend's own cmake target, or ""
 #   NROS_RMW_NEEDS_CXX_LINKER       ON/OFF — force the C++ linker driver
 #   NROS_RMW_CAPABILITIES           ;-list of capabilities this backend declares
+#   NROS_RMW_FACTS                  ;-list of `[rmw.facts]` as name=ON|OFF (absent = unknown)
 #   NROS_RMW_PER_MESSAGE_HOOK       cmake command run per message type, or ""
 #
 # `NROS_RMW_EXTRA_LINK_LIBS` is GONE (issue 1216). It was read by nothing, and
@@ -104,6 +105,7 @@ set(_NROS_RMW_DISPATCH_VARS
     NROS_RMW_CMAKE_TARGET
     NROS_RMW_NEEDS_CXX_LINKER
     NROS_RMW_CAPABILITIES
+    NROS_RMW_FACTS
     NROS_RMW_PER_MESSAGE_HOOK
     NROS_RMW_REGISTER_CRATE
     NROS_RMW_REGISTER_FN

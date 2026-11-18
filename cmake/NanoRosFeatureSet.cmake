@@ -504,6 +504,29 @@ function(nros_panic_policy_feature out_var policy context)
     endif()
 endfunction()
 
+# _nros_refuse_unservable_services(<axis> <rmw>)
+#
+# A capability axis whose runtime half creates services (`param_services`,
+# `lifecycle`) on a backend whose `[rmw.facts]` states `services = false` is
+# REFUSED, never built into an image that boots without them. The cmake twin of
+# `backend_link::unservable_services_refusal`: it reads `NROS_RMW_FACTS`, the
+# CLI's export of the same descriptor (`nros dev rmw dispatch`), never a second
+# parse, and its message body is the Rust one word for word. Both spellings are
+# held together by the capability-refusal parity test (nros-cli-core,
+# `capability_refusal_parity`). An absent fact is unknown and refuses nothing.
+# The message carries no tracker id.
+function(_nros_refuse_unservable_services axis rmw)
+    if("services=OFF" IN_LIST NROS_RMW_FACTS)
+        message(FATAL_ERROR
+            "nros_feature_set: capability `${axis}` is enabled (by the image's stock "
+            "node interfaces, or declared in its features), but the `${rmw}` RMW "
+            "cannot create services, so the node would boot without them and `ros2` "
+            "could not reach them. Set `node_interfaces = \"none\"` (or drop "
+            "`${axis}` from the features if you declared it), or select an RMW that "
+            "serves services.")
+    endif()
+endfunction()
+
 # nros_capability_features(<out> RMW <rmw> CAPABILITIES <caps>)
 #
 # The cargo features an image's declared capability axes turn on in nros-c and
@@ -526,6 +549,7 @@ function(nros_capability_features out_var)
     foreach(_cap IN LISTS _CF_CAPABILITIES)
         if(_cap STREQUAL "")
         elseif(_cap STREQUAL "param_services")
+            _nros_refuse_unservable_services(param_services "${_CF_RMW}")
             list(APPEND _feats param-services)
         elseif(_cap STREQUAL "params")
             # phase-461 W6 — the parameter STORE without the six services
@@ -534,6 +558,7 @@ function(nros_capability_features out_var)
             # that calls it declares `param_services`.
             list(APPEND _feats param-store)
         elseif(_cap STREQUAL "lifecycle")
+            _nros_refuse_unservable_services(lifecycle "${_CF_RMW}")
             list(APPEND _feats lifecycle-services)
         elseif(_cap STREQUAL "rosout")
             # issue 1589 — the `/rosout` bridge; umbrella feature, no backend half.

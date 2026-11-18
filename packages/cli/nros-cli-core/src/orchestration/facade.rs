@@ -1353,6 +1353,12 @@ fn derive(
     }) {
         return Err(eyre::eyre!("image `{entry_name}`: {refusal}"));
     }
+    // A node that would serve services (the stock parameter services,
+    // lifecycle) on a backend that cannot create them is refused, never booted
+    // without them: `backend_link::unservable_services_refusal`.
+    if let Some(refusal) = backend_link::unservable_services_refusal(entry_name, &rmw, sys) {
+        return Err(eyre::eyre!("{refusal}"));
+    }
     for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
         if !sys.capability_enabled(cap.declared) {
             continue;

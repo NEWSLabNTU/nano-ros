@@ -593,6 +593,28 @@ Progress (2026-11-14, step 3 of 5; the default is flipped):
   `app_main!` / `zephyr_component_main!` leaves register neither interface
   although their descriptor now sizes for them.
 
+Progress (2026-11-18, the refusal the default needs):
+
+- A node that would serve services (the stock parameter services, or
+  `lifecycle`) on a backend that cannot create them is REFUSED at configure,
+  never booted with a one-line runtime error and no services.
+  `backend_link::unservable_services_refusal`, beside issue 2487's, on the
+  cargo and west roads; its cmake twin is `nros_capability_features`, the road
+  PX4's uORB modules build on. Per node, naming the node, image, backend, axis
+  and the way out (`node_interfaces = "none"`).
+- The fact is `[rmw.facts] services`, stated only where MEASURED: uORB's
+  `false`, held by `tests/register_smoke.cpp` (`just check rmw-uorb`), which
+  calls the slots and checks the descriptor agrees. Absent is unknown and
+  refuses nothing. Cyclone/Zephyr's `Unsupported` was a bug (issue 2704: the
+  Zephyr road generated no `rcl_interfaces` descriptors), so Cyclone states no
+  fact; arming this W waits on its fix (#4223).
+- cmake reads the facts the CLI exports (`NROS_RMW_FACTS`), never the
+  descriptor. One table holds both spellings of both refusals (this one and
+  2487's) together: `capability_refusal_parity` (nros-cli-core), mutation-
+  checked on each side.
+- Gap, named: a node a component opens on another RMW in its own code is
+  invisible to the model, so it is neither refused nor guessed at (issue 2708).
+
 ### W14 — One `/parameter_events` writer per executor
 
 - **Status:** OPEN

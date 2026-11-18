@@ -198,6 +198,11 @@ if(NROS_RMW_UORB_BUILD_TESTS)
         tests/register_smoke.cpp
     )
     target_link_libraries(nros_rmw_uorb_register_smoke PRIVATE nros_rmw_uorb)
+    # The smoke measures the descriptor's `[rmw.facts] services` against the
+    # service and client slots, so it reads THIS directory's descriptor.
+    target_compile_definitions(nros_rmw_uorb_register_smoke PRIVATE
+        NROS_RMW_UORB_DESCRIPTOR="${CMAKE_CURRENT_SOURCE_DIR}/nros-rmw.toml"
+    )
     target_include_directories(nros_rmw_uorb_register_smoke PRIVATE
         ${NROS_RMW_CFFI_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src
