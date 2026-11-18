@@ -590,17 +590,29 @@ fn build_env_watches(board_toml: Option<&str>) -> Vec<String> {
 pub fn platform_descriptor_files(search: &[PathBuf]) -> Vec<PathBuf> {
     let mut out = Vec::new();
     for root in search {
-        let Ok(entries) = fs::read_dir(root) else {
+        let Ok(dirs) = platform_descriptor_dirs(root) else {
             continue;
         };
-        let mut files: Vec<PathBuf> = entries
-            .filter_map(|e| e.ok().map(|e| e.path().join(PLATFORM_CONFIG_FILENAME)))
-            .filter(|f| f.is_file())
-            .collect();
-        files.sort();
-        out.extend(files);
+        out.extend(dirs.into_iter().map(|d| d.join(PLATFORM_CONFIG_FILENAME)));
     }
     out
+}
+
+/// The directories directly under `root` that hold a `nros-platform.toml`,
+/// sorted: what a search of one root FINDS.
+///
+/// The one listing of a platform search root. [`PlatformsTree::load`] walks
+/// it, the cargo road watches the files in it, and the CLI's configure stamp
+/// records it (issue 2498): a descriptor ADDED under a root changes this
+/// listing without changing any file a previous load read, so a record of
+/// the files alone cannot see it.
+pub fn platform_descriptor_dirs(root: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut dirs: Vec<PathBuf> = fs::read_dir(root)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_dir() && p.join(PLATFORM_CONFIG_FILENAME).is_file())
+        .collect();
+    dirs.sort();
+    Ok(dirs)
 }
 
 /// The three variables [`BuildRungs::from_build_env`] reads, read once.
@@ -2109,21 +2121,13 @@ impl PlatformsTree {
             root: root.to_path_buf(),
             ..Default::default()
         };
-        let entries = fs::read_dir(root).map_err(|e| ConfigError::Io {
+        let dirs = platform_descriptor_dirs(root).map_err(|e| ConfigError::Io {
             path: root.display().to_string(),
             source: e,
         })?;
         let mut arch_origin: BTreeMap<String, String> = BTreeMap::new();
-        let mut dirs: Vec<PathBuf> = entries
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.is_dir())
-            .collect();
-        dirs.sort();
         for dir in dirs {
             let file = dir.join(PLATFORM_CONFIG_FILENAME);
-            if !file.is_file() {
-                continue;
-            }
             let name = dir
                 .file_name()
                 .and_then(|n| n.to_str())

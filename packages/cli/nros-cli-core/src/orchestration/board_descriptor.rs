@@ -1989,7 +1989,7 @@ impl BoardCatalog {
         })
     }
 
-    fn collect_board_dirs(
+    pub(crate) fn collect_board_dirs(
         dir: &Path,
         depth: usize,
         out: &mut Vec<PathBuf>,
@@ -2038,6 +2038,9 @@ impl BoardCatalog {
         descriptors: &mut Vec<BoardDescriptor>,
     ) -> Result<(), BoardLoadError> {
         let mut dirs = Vec::new();
+        // Issue 2498 — what this search finds is a configure input: a
+        // descriptor added here later can claim a board an image uses.
+        crate::configure_stamp::record_search(root, crate::configure_stamp::Search::Boards);
         // The in-tree dir must exist; an extra root was existence-checked by
         // `extra_board_roots`, so a race here is still an error.
         Self::collect_board_dirs(root, 0, &mut dirs)?;
