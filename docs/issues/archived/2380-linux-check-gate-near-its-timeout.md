@@ -1,7 +1,8 @@
 ---
 id: 2380
 title: "The build gate `linux-check` takes 62 to 87 % of the gate harness's 2400 s timeout, so a loaded host turns it red"
-status: open
+status: resolved
+resolved_in: "e1eda595e4 (the per-leaf units); acceptance measured 2026-11-18"
 type: test
 severity: medium
 area: [testing, gates, ci]
@@ -9,7 +10,7 @@ related: [phase-489, phase-543, 2373, 2274]
 found: 2026-11-09
 ---
 
-**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)** (rehomed 2026-11-15, when phase-543 was archived): the fix is making `linux-check` cheaper, or splitting it into units, which is that phase's W5 shape. The harness and its timeout are [RFC-0131](../design/0131-gates-are-nextest-tests.md). A gate whose verdict depends on how loaded the host is: the class that phase's resource groups bound, next to issue [2373](archived/2373-nros-node-yielding-park-test-flakes-under-load.md).
+**Home: [phase-489](../../roadmap/phase-489-ci-build-speedup.md)** (rehomed 2026-11-15, when phase-543 was archived): the fix is making `linux-check` cheaper, or splitting it into units, which is that phase's W5 shape. The harness and its timeout are [RFC-0131](../../design/0131-gates-are-nextest-tests.md). A gate whose verdict depends on how loaded the host is: the class that phase's resource groups bound, next to issue [2373](2373-nros-node-yielding-park-test-flakes-under-load.md).
 
 ## What
 
@@ -110,7 +111,7 @@ reasons:
   those without linting them anywhere else.
 
 The second is a coverage defect, filed as
-[issue 2595](archived/2595-witness-workspaces-lose-example-lint.md), now resolved: the lane lists 20
+[issue 2595](2595-witness-workspaces-lose-example-lint.md), now resolved: the lane lists 20
 units (1 leaf, 19 witnesses). This issue's acceptance is unchanged: a loaded
 full `ci gate` with every unit inside its budget.
 
@@ -123,3 +124,37 @@ full `just ci gate` at load around 90 with every unit inside its budget.
 It probably closes on that log.
 
 **Suggested owner: whoever next runs a loaded local `ci gate`** (phase-489).
+
+## Acceptance (2026-11-18): every unit inside its budget, eight loaded runs
+
+Eight full local `just ci gate` runs on newslab-118 (x86_64, 48 cores) on
+2026-11-18, on branches rebased on main, each with `linux-check` as 20 units.
+Every unit passed. The host-load column is the gate harness's own sampler
+(`token pool: host runnable`, `procs_running` across every tenant on the
+host), which the gate logs print. It is not `loadavg`, but it counts the same
+runnable threads at the moment of each sample.
+
+| run (log) | units | not passed | slowest unit | host runnable p50 / p90 / max |
+| --- | --- | --- | --- | --- |
+| o-gate6 | 20 | 0 | 55 s (`mps2-an385-baremetal-rust-listener`) | 7 / 108 / 122 |
+| rc-gate | 20 | 0 | 65 s (same) | 6 / 84 / 112 |
+| tc-gate | 20 | 0 | 66 s (same) | 6 / 77 / 116 |
+| fl-gate2 | 20 | 0 | 68 s (same) | 5 / 61 / 84 |
+| o-gate5 | 20 | 0 | 87 s (`linux-rust-talker`) | 13 / 54 / 54 |
+| m-gate3 | 20 | 0 | 133 s (`mps2-an385-baremetal-rust-listener`) | 6 / 64 / 64 |
+| w3-gate | 20 | 0 | 137 s (same) | 5 / 49 / 49 |
+| o-gate | 20 | 0 | 60 s (same) | 3 / 48 / 48 |
+
+160 unit runs, none failed or timed out. The slowest took 137 s, 5.7 % of
+the 2400 s budget, where the single pre-split gate used 62 to 87 % of it.
+Four runs reached a host runnable count of 108 to 122 on 48 cores, above
+the load this issue's acceptance names.
+
+The choice named here: **split the gate** (one unit per leaf, `cpu:8` each).
+No budget was raised and no test-group was added. The split also kept the
+lane's coverage after issue 2595 (1 leaf plus 19 witnesses).
+
+The 155 s FAIL of `mps2-an385-baremetal-rust-listener` in a 2026-11-13 log
+was a `zpico-sys` build-script error in another branch's worktree, not a
+budget. It is the only non-pass of a `linux-check` unit in the gate logs
+this tally read.
