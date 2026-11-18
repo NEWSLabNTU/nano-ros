@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: low
 area: [tooling, stack-floor, freertos]
-related: [issue-2550]
+related: [issue-2550, phase-557]
 found: 2026-11-18
 ---
 
