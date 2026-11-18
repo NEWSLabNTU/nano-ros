@@ -4516,15 +4516,39 @@ fn seed_and_prune_leaf_lock(
     if !matches!(seed(&img.leaf, Some(nano_ros))?, Seed::Seeded { .. }) {
         return Ok(());
     }
-    prune_seeded_lock(&img, offline, |c| c.status())
+    prune_seeded_lock(&img, offline, |c| {
+        c.stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::piped())
+            .output()
+    })
 }
 
 /// Prune the lock just seeded at `img`'s leaf, running the command through
 /// `run` (injected, so a test needs no cargo and no network).
+/// How many of cargo's last stderr lines a failed prune's error carries.
+const PRUNE_STDERR_LINES: usize = 20;
+
+/// The last `n` non-blank lines of a child's stderr, as an indented block
+/// after a colon, or empty when it printed nothing.
+fn stderr_tail(stderr: &[u8], n: usize) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let tail = &lines[lines.len().saturating_sub(n)..];
+    let mut out = String::from(": cargo said:");
+    for l in tail {
+        out.push_str("\n    ");
+        out.push_str(l);
+    }
+    out
+}
+
 fn prune_seeded_lock(
     img: &crate::cmd::leaf_settings::LeafImage,
     offline: bool,
-    run: impl FnOnce(&mut std::process::Command) -> std::io::Result<std::process::ExitStatus>,
+    run: impl FnOnce(&mut std::process::Command) -> std::io::Result<std::process::Output>,
 ) -> Result<()> {
     let lock = img.leaf.join("Cargo.lock");
     let prune = crate::cmd::build::leaf_lock_prune(img, offline);
@@ -4533,9 +4557,22 @@ fn prune_seeded_lock(
         lock.display(),
         if offline { " --offline" } else { "" }
     );
+    // Issue 2627 -- cargo's stderr is captured, so a failure carries cargo's
+    // own reason (a registry fetch, a lock held on a shared cargo directory,
+    // a bad seeded lock). A bare exit status cannot say which, and a run
+    // under a full gate keeps only the error chain. On success it is passed
+    // through, so the user sees what cargo printed, as before.
     let failed = match run(&mut prune.command()) {
-        Ok(status) if status.success() => return Ok(()),
-        Ok(status) => format!("failed ({status})"),
+        Ok(out) if out.status.success() => {
+            use std::io::Write as _;
+            let _ = std::io::stderr().write_all(&out.stderr);
+            return Ok(());
+        }
+        Ok(out) => format!(
+            "failed ({}){}",
+            out.status,
+            stderr_tail(&out.stderr, PRUNE_STDERR_LINES)
+        ),
         Err(e) => format!("could not run ({e})"),
     };
     // Ruling R13 -- a seeded lock that was never pruned is not a lock the
@@ -10205,6 +10242,15 @@ mod leaf_lock_prune_tests {
             .expect("the listener is a cargo leaf")
     }
 
+    /// A finished child with `code` and `stderr`, as `Command::output` gives it.
+    fn output(code: i32, stderr: &str) -> std::process::Output {
+        std::process::Output {
+            status: std::process::ExitStatus::from_raw(code << 8),
+            stdout: Vec::new(),
+            stderr: stderr.as_bytes().to_vec(),
+        }
+    }
+
     fn args_of(c: &std::process::Command) -> Vec<String> {
         c.get_args()
             .map(|a| a.to_string_lossy().into_owned())
@@ -10220,7 +10266,7 @@ mod leaf_lock_prune_tests {
             let mut seen = Vec::new();
             prune_seeded_lock(&img, offline, |c| {
                 seen = args_of(c);
-                Ok(std::process::ExitStatus::from_raw(0))
+                Ok(output(0, ""))
             })
             .unwrap();
             assert_eq!(&seen[..2], ["update", "--workspace"], "{seen:?}");
@@ -10239,13 +10285,16 @@ mod leaf_lock_prune_tests {
         let img = seeded_leaf("prune-fails");
         let lock = img.leaf.join("Cargo.lock");
         let err = prune_seeded_lock(&img, true, |_| {
-            Ok(std::process::ExitStatus::from_raw(1 << 8))
+            Ok(output(
+                101,
+                "    Updating crates.io index\nerror: failed to get `heapless` as a dependency\n",
+            ))
         })
         .expect_err("a failed prune is an error");
-        assert!(
-            format!("{err}").contains("cargo update --workspace"),
-            "{err}"
-        );
+        let err = format!("{err}");
+        assert!(err.contains("cargo update --workspace"), "{err}");
+        // Issue 2627 -- the failure says why, in cargo's own words.
+        assert!(err.contains("failed to get `heapless`"), "{err}");
         assert!(
             !lock.exists(),
             "the unpruned lock at {} survived",
