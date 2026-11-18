@@ -269,6 +269,38 @@ fn a_filled_take_with_info_slot_reaches_message_info() {
     assert_eq!(info.reception_sequence_number(), 0);
 }
 
+/// Issue 2712 -- the combined take (metadata AND attachment, one sample)
+/// carries the backend's metadata through the C vtable. The generic
+/// `.message_info()` subscription takes with it; its attachment-only
+/// predecessor reported every metadata field as zero.
+#[test]
+fn the_combined_take_carries_the_backends_metadata() {
+    assert_eq!(
+        unsafe { nros_rmw_cffi_register_named(c"twi_both".as_ptr(), &INFO_VTABLE) },
+        NROS_RMW_RET_OK,
+    );
+    let mut session = CffiRmw::open_with_rmw("twi_both", &config("twi_both_node")).expect("open");
+    let mut sub = session
+        .create_subscription(
+            &TopicInfo::new("/twi", "std_msgs/msg/Int32", "RIHS01_twi"),
+            QoSProfile::default(),
+        )
+        .expect("create subscription");
+
+    let mut buf = [0u8; 64];
+    let mut att = [0u8; 64];
+    let (len, info, att_len) = sub
+        .take_serialized_with_info_and_attachment(&mut buf, &mut att)
+        .expect("take")
+        .expect("the backend delivered a sample");
+    assert_eq!(&buf[..len], &PAYLOAD);
+    let info = info.expect("the backend reported metadata, and the combined take dropped it");
+    assert_eq!(info.publisher_gid(), &WRITER_GID);
+    assert_eq!(info.source_timestamp().to_nanos(), SOURCE_NS);
+    // The C vtable has no attachment slot, so nothing can arrive there.
+    assert_eq!(att_len, 0);
+}
+
 #[test]
 fn a_null_take_with_info_slot_keeps_the_side_table_path() {
     assert_eq!(

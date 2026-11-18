@@ -198,9 +198,10 @@ impl MessageInfo {
 ///
 /// The `'a` lifetime ties the borrowed attachment to the dispatch call;
 /// copy out what you need before the callback returns. Metadata
-/// accessors delegate to the inner [`MessageInfo`]; on backends without
-/// a combined raw+info+attachment take they read their defaults (the
-/// attachment is always populated).
+/// accessors delegate to the inner [`MessageInfo`]: the metadata the
+/// backend reported with the same sample, or the defaults from a backend
+/// that reports none. The attachment is empty from a backend that carries
+/// none.
 #[derive(Debug, Clone, Copy)]
 pub struct RawMessageInfo<'a> {
     info: MessageInfo,

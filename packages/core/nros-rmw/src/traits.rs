@@ -3542,6 +3542,10 @@ pub trait Publisher {
 /// equivalent for backends that map empty into a zero-length read)
 /// when no message is ready. Use [`Session::drive_io`] to wait for
 /// data; never sleep inside `take_serialized`.
+/// What [`Subscription::take_serialized_with_info_and_attachment`] returns
+/// for one sample: `(payload_len, info, attachment_len)`.
+pub type TakenWithInfoAndAttachment = (usize, Option<nros_core::MessageInfo>, usize);
+
 pub trait Subscription {
     /// Error type for receive operations
     type Error;
@@ -3606,6 +3610,34 @@ pub trait Subscription {
             Some(len) => Ok(Some((len, 0))),
             None => Ok(None),
         }
+    }
+
+    /// Receive one sample with BOTH its metadata and its attachment.
+    ///
+    /// On success returns `Ok(Some((payload_len, info, attachment_len)))`:
+    /// the payload in `buf[..payload_len]`, the attachment in
+    /// `att_buf[..attachment_len]` (`0` = none), and `info` as
+    /// [`take_serialized_with_info`](Self::take_serialized_with_info) reports
+    /// it (`None` from a backend that reports no metadata).
+    ///
+    /// One take, so the metadata and the attachment describe the same
+    /// sample. Two separate takes would consume two samples.
+    ///
+    /// The default makes the metadata take and reports no attachment. That
+    /// loses nothing today: no backend delivers an attachment (none overrides
+    /// [`take_serialized_with_attachment`](Self::take_serialized_with_attachment),
+    /// and the C vtable has no attachment slot), while every backend that
+    /// reports metadata implements `take_serialized_with_info`. A backend that
+    /// carries both overrides this. Issue 2712: the attachment-only take this
+    /// replaces on the generic `.message_info()` path left every metadata
+    /// field at zero.
+    fn take_serialized_with_info_and_attachment(
+        &mut self,
+        buf: &mut [u8],
+        _att_buf: &mut [u8],
+    ) -> Result<Option<TakenWithInfoAndAttachment>, Self::Error> {
+        self.take_serialized_with_info(buf)
+            .map(|opt| opt.map(|(len, info)| (len, info, 0)))
     }
 
     /// Phase 124.D.1 — burst-take.
