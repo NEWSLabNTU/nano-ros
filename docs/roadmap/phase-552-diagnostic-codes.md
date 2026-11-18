@@ -250,7 +250,7 @@ regenerated from the built CLI.
 
 - Every per-surface baseline is zero.
 - `check-user-surface-ids` stays green.
-- [Issue 2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md)
+- [Issue 2305](../issues/archived/2305-user-tier-messages-cite-internal-issue-ids.md)
   is archived as resolved, with ruling Q4 cited.
 
 ### W6 — Close

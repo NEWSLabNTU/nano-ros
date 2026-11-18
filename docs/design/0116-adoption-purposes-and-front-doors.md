@@ -171,7 +171,7 @@ Authoritative homes:
   exemption) from [RFC-0123](0123-two-books-by-audience.md) D3.
 - Refusals and build output: user ruling A of 2026-11-12, recorded in
   [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md) W5 and
-  [issue 2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md),
+  [issue 2305](../issues/archived/2305-user-tier-messages-cite-internal-issue-ids.md),
   enforced by the ratchets `check-user-surface-ids` and
   `check-cmake-user-output-refs`; runtime logs and the colcon plugin are
   [issue 2443](../issues/archived/2443-runtime-log-and-colcon-messages-cite-ids.md).
