@@ -1,9 +1,11 @@
 # Phase 556 — ROS 2 interface compatibility audit
 
-**Status (2026-11-13). IN PROGRESS: W0, W1, W3 and W10 are done. A first by-hand
+**Status (2026-11-18). IN PROGRESS: W0, W1, W3, W5, W6 and W10 are done. A first by-hand
 measurement of W2 to W6 found three gaps (W10 to W12), each held by an
 expected-failure test; W10 is fixed and its test is the plain check now. One
-question for the user (W13).**
+question for the user (W13). A second measurement (W4 to W6, 2026-11-18)
+found one more gap, the unstated deadline, lifespan and liveliness of the
+zenoh graph token, fixed in W6; W4 stays open on W13's default interfaces.**
 The user's goal is to "ensure the interface compatibility among nano-ros and
 stock ROS 2". This phase measures it: a nano-ros node and a stock `rclcpp`
 node that declare the same interface are asked the same `ros2` CLI questions,
@@ -108,6 +110,50 @@ Not measured yet: non-default deadline, lifespan and liveliness (W6); C and
 C++ nano-ros nodes (W2); `/parameter_events` message content and
 `ros2 param load` (W2); Jazzy (W8).
 
+### Second measurement of W4 to W6 (2026-11-18, by hand)
+
+Humble with `rmw_zenoh_cpp`, `--no-daemon`, each side alone on its own
+`rmw_zenohd`. nano-ros: the native Rust talker, and the Rust workspace
+listener, service server, service client, action server and action client,
+plus `bins/qos-override-pubsub` with `NROS_QOS_OVERRIDE=graph-profile` (a
+`/chatter` publisher or subscription with every policy off its default:
+best effort, transient local, keep last 1 or 3, deadline 1.5 s, lifespan
+2 s, manual-by-topic liveliness with a 3 s lease). Stock: `demo_nodes_cpp`
+talker, listener, `add_two_ints_server` and `add_two_ints_client`,
+`examples_rclcpp_minimal_action_server` and `_client`
+(`action_client_member_functions`), and an rclpy node with the same QoS
+profile (`fixtures/ros2-qos-peer/qos_peer.py`). Queries: `node list`,
+`node info`, `topic list -t`, `service list -t`, `action list -t`,
+`topic info -v`.
+
+Matches stock: for every one of the six roles, the node's own publishers,
+subscribers, service servers and clients and action servers and clients in
+`ros2 node info`, names, types and section; `ros2 topic list -t` on every
+pair; reliability, durability, history and depth of the non-default
+publisher and subscription; every QoS field of a default-QoS subscription but
+the depth.
+
+Differs:
+
+- `ros2 node info`: a stock node also lists `/rosout` and
+  `/parameter_events` as publishers and the six parameter services; an
+  rclcpp node also subscribes to `/parameter_events` (an rclpy node does
+  not). A nano-ros node lists none of them. This is W13.
+- `ros2 topic info -v` of the non-default endpoints: nano-ros read
+  `Deadline: Infinite`, `Lifespan: Infinite`, `Liveliness: AUTOMATIC`,
+  `Liveliness lease duration: Infinite`, where stock read 1500000000,
+  2000000000 nanoseconds, `MANUAL_BY_TOPIC` and 3000000000 nanoseconds. The
+  zenoh liveliness token never stated those fields. Fixed in W6.
+- The depth of a default-QoS subscription: nano-ros `KEEP_LAST (4)`, stock
+  `KEEP_LAST (10)`. By design: a zenoh subscription keeps and reports the
+  depth its receive ring holds (4 by default, a build knob), RFC-0036
+  "Reduced / omitted surface".
+
+`/rosout` and `/parameter_events` appear in `ros2 topic list -t` on both
+sides, nano-ros included, because the `ros2` CLI's own node publishes them.
+Which node publishes them is `ros2 node info`'s answer (W4), not
+`topic list`'s.
+
 ### W1 — A paired-node comparison harness
 
 - **Status:** DONE (2026-11-13, this PR)
@@ -170,8 +216,19 @@ Acceptance: as W2.
 
 ### W4 — `ros2 node info`
 
-- **Status:** OPEN. Only the parameter-service lines are compared so far
-  (W10's test); the other sections are not.
+- **Status:** OPEN (2026-11-18), on W13 only. Plain, in
+  `ros2_cli_parity_interop`: `node_info_of_a_publisher_answers_as_stock_does`,
+  `node_info_of_a_subscriber_answers_as_stock_does`,
+  `node_info_of_a_service_server_answers_as_stock_does`,
+  `node_info_of_a_service_client_answers_as_stock_does`,
+  `node_info_of_an_action_server_answers_as_stock_does`,
+  `node_info_of_an_action_client_answers_as_stock_does` (each with the
+  default node interfaces set aside), and W10's two-node test.
+  Expected-failure: `default_node_interfaces_compared_with_stock` (`/rosout`,
+  `/parameter_events` and the six parameter services, which a stock node has
+  and a nano-ros node does not by default), held for W13. W13 has no issue
+  of its own; the test's comment names W13 and RFC-0036's section. Flip it
+  when W13 step 3 lands; W14 is not needed for it (one node).
 
 Publishers, subscribers, service servers and clients, action servers and
 clients, as `ros2 node info` lists them for each node.
@@ -180,7 +237,12 @@ Acceptance: as W2.
 
 ### W5 — `ros2 topic list -t`
 
-- **Status:** OPEN. Only an action's hidden topics are compared (W3).
+- **Status:** DONE (2026-11-18). Plain:
+  `topic_list_with_types_answers_as_stock_does` (a graph with a node
+  publishing `/chatter`, and one with a node subscribing to it) and W3's
+  hidden-topic test. `/rosout` and `/parameter_events` are listed on both
+  sides because the `ros2` CLI's own node publishes them, so this listing
+  cannot say which node does; W4's expected-failure test holds that.
 
 Topic names and types, including the topics every stock node adds by itself
 (`/rosout`, `/parameter_events`).
@@ -189,10 +251,30 @@ Acceptance: as W2.
 
 ### W6 — QoS as the graph reports it
 
-- **Status:** OPEN. Plain for a default-QoS publisher:
-  `default_qos_of_a_published_topic_reads_as_stock_does` (every field but the
-  history depth, which the two examples declare differently). Non-default
-  QoS and subscriptions are not covered.
+- **Status:** DONE (2026-11-18). Plain, in `ros2_cli_parity_interop`:
+  `default_qos_of_a_published_topic_reads_as_stock_does` and
+  `default_qos_of_a_subscription_reads_as_stock_does` (every field but the
+  history depth: the publisher examples declare different depths, and a
+  subscription's depth is its receive ring by design),
+  `non_default_qos_of_a_publisher_reads_as_stock_does` and
+  `non_default_qos_of_a_subscription_reads_as_stock_does` (every field).
+  New cell `native-ros2-cli-parity-qos-rust-zenoh`.
+
+Fixed here: the zenoh liveliness token stated reliability, durability,
+history and depth, and left the deadline, the lifespan and the liveliness
+kind and lease empty for every profile, so a stock peer read infinite
+windows and AUTOMATIC for an entity that had been granted, and honours,
+others. `QosKeyExpr::to_qos_string` (`nros-rmw-zenoh`, `keyexpr.rs`) now
+states them in `rmw_zenoh_cpp`'s grammar and canonical form (a window as
+`sec,nsec`, elided when it is "none"; a manual liveliness kind), so the gid a
+peer derives from the token still round-trips; the shim's QoS chunk buffer
+grew from 32 to 72 bytes, the widest chunk the grammar allows. Unit tests:
+`qos_string_states_deadline_lifespan_and_liveliness`,
+`qos_string_elides_default_windows_and_liveliness`,
+`qos_string_widest_profile_fits_the_shim_buffer`. The nano-ros side of the
+non-default pair is `qos-override-pubsub` with `graph-profile`; the stock
+side is an rclpy node with the same profile, since no shipped node declares a
+deadline, a lifespan or a manual liveliness.
 
 `ros2 topic info -v` for a publisher and a subscription with non-default
 QoS: reliability, durability, history, depth, deadline, lifespan, liveliness.

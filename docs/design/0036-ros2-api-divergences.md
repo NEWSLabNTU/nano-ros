@@ -140,6 +140,13 @@ What still diverges, by name:
   callbacks not `std::function`; value types not `shared_ptr`. (RFC-0018.)
 - **QoS subset** — history/reliability/durability/liveliness/deadline/lifespan
   supported; selected at compile time; no dynamic QoS negotiation.
+- **A subscription's depth is what it keeps** (zenoh). The receive ring holds
+  4 samples by default (a build knob), and a subscription asking for more is
+  granted, and reports, the ring's depth: `ros2 topic info -v` reads
+  `KEEP_LAST (4)` for a default-QoS nano-ros subscription where a stock one
+  reads `KEEP_LAST (10)`. Every other policy reads as stock does, deadline,
+  lifespan and liveliness included (phase-556 W6). A transient-local
+  publisher likewise reports the depth it retains.
 - **Static CONNECTION, dynamic GRAPH** (amended 2026-08-30, phase-381). This
   line read "**No dynamic discovery** — peers static via `nros.toml` / Kconfig
   locator", which conflated two things and was half wrong for two years.
