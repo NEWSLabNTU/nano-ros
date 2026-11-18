@@ -767,7 +767,12 @@ pub(crate) fn locate_currency(project: &Path, image: &str) -> Result<Currency> {
 /// The stamp key `image` names: itself when a stamp is recorded under it,
 /// else the one `<bringup>:<image>` stamp whose id is `image`.
 fn stamp_key_for(project: &Path, image: &str) -> Result<String> {
-    if stamp_file(project, image).is_file() || image.contains(':') {
+    if image.contains(':') {
+        return Ok(image.to_string());
+    }
+    let bare = stamp_file(project, image).is_file();
+    let leaf_era = bare && is_leaf_era_key(project, image);
+    if bare && !leaf_era {
         return Ok(image.to_string());
     }
     let root = project.join("build").join("nros").join("configured");
@@ -780,9 +785,47 @@ fn stamp_key_for(project: &Path, image: &str) -> Result<String> {
         .filter(|n| n.ends_with(&suffix) && root.join(n).join("stamp.toml").is_file())
         .collect();
     match hits.as_slice() {
-        [one] => Ok(one.replacen("__", ":", 1)),
+        [one] => {
+            if leaf_era {
+                // Issue 2503 -- a leaf's stamp left behind by a migration.
+                eprintln!(
+                    "note: ignoring {}: a stamp under a bare image id is a leaf's, and {} is \
+                     not a leaf any more",
+                    stamp_file(project, image).display(),
+                    project.display()
+                );
+            }
+            Ok(one.replacen("__", ":", 1))
+        }
+        // No workspace stamp yet: a leaf-era stamp still answers, and it reads
+        // stale (its inputs are the leaf's), so nothing seeds from it.
         _ => Ok(image.to_string()),
     }
+}
+
+/// Issue 2503 — whether `key` can only be a LEAF's stamp key read in a
+/// project that is a workspace now.
+///
+/// A leaf keys its stamps by the bare image id; a workspace by
+/// `<bringup>:<id>` (a coordinate's `@<bringup>:<coord>`, and
+/// [`PROJECT_KEY`] for a project with no image). A leaf migrated to a
+/// workspace keeps the gitignored stamps its last leaf configure wrote, and
+/// nothing on the workspace road rewrites them, so a reader that took a bare
+/// key at its word read a stamp naming the leaf's inputs and resolved dir:
+/// stale for good, and a hooked configure ran unseeded every time. The same
+/// shape as issue 2480's `.leaf-selection` marker, so the same test decides
+/// it: `configure::is_leaf`.
+fn is_leaf_era_key(project: &Path, key: &str) -> bool {
+    !key.contains(':') && key != PROJECT_KEY && !crate::cmd::configure::is_leaf(project)
+}
+
+/// Issue 2503 — whether `path`, under `build/nros/census`, is a leaf's census
+/// in a project that is a workspace now (the census-dir sibling of
+/// [`is_leaf_era_key`]). Only a leaf writes `leaf.census.json`
+/// (`entity_census::leaf_census_path`).
+fn is_leaf_era_census(project: &Path, path: &Path) -> bool {
+    path == crate::cmd::entity_census::leaf_census_path(project)
+        && !crate::cmd::configure::is_leaf(project)
 }
 
 /// Write the stamp atomically.
@@ -815,7 +858,7 @@ fn recorded_censuses(project: &Path) -> Vec<PathBuf> {
                 && name.ends_with(".json")
                 && !name.ends_with(".recorded.json")
                 && (name.ends_with(".census.json") || root.ends_with(CENSUS_DIR));
-            if census {
+            if census && !is_leaf_era_census(project, e.path()) {
                 out.push(e.into_path());
             }
         }
@@ -1494,6 +1537,9 @@ mod tests {
     #[test]
     fn the_raw_recorder_document_is_not_a_census() {
         let p = tmp("recorded-census");
+        // A leaf: `leaf.census.json` is a leaf's census (issue 2503).
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        std::fs::write(p.join("Cargo.toml"), "[package]\nname = \"leaf\"\n").unwrap();
         let dir = p.join("build").join(CENSUS_DIR);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("leaf.census.json"), "{}").unwrap();
@@ -1684,6 +1730,64 @@ mod tests {
         record_leaf_selection(&p, "zephyr_zenoh").unwrap();
         assert_eq!(
             is_current_with(&p, "demo_bringup:zephyr_xrce", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+    }
+
+    /// Issue 2503 — a leaf that became a workspace keeps the stamp its last
+    /// leaf configure wrote under the BARE image id. `nros locate
+    /// configured --image <id>` (what the hooked host asks) must answer from
+    /// the workspace's `<bringup>:<id>` stamp, not from that one. The layout
+    /// is the one measured: the bare stamp describes the old inputs, so
+    /// reading it called a just-configured image stale.
+    #[test]
+    fn a_migrated_leafs_bare_stamp_is_not_the_images_stamp() {
+        let p = tmp("migrated-leaf-stamp");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        std::fs::write(p.join("Cargo.toml"), "[package]\nname = \"leaf\"\n").unwrap();
+        record(&p, "zephyr_cyclonedds", &stamp_for(&p)).unwrap();
+        // The migration: no package manifest beside `system.toml` any more.
+        std::fs::remove_file(p.join("Cargo.toml")).unwrap();
+        std::fs::remove_file(p.join("system.toml")).unwrap();
+        std::fs::create_dir_all(p.join("src/demo_bringup")).unwrap();
+        std::fs::write(p.join("src/demo_bringup/system.toml"), "[system]\n").unwrap();
+        // Before the workspace configure the leaf's stamp is all there is,
+        // and it reads stale: its inputs are the leaf's.
+        assert!(matches!(
+            locate_currency(&p, "zephyr_cyclonedds").unwrap(),
+            Currency::Stale(_)
+        ));
+        record(&p, "demo_bringup:zephyr_cyclonedds", &stamp_for(&p)).unwrap();
+        assert_eq!(
+            stamp_key_for(&p, "zephyr_cyclonedds").unwrap(),
+            "demo_bringup:zephyr_cyclonedds"
+        );
+        // The same currency question every test here asks, of the key the
+        // locate road now resolves (`locate_currency` asks it against the
+        // live host's resolver, which a synthetic stamp does not record).
+        let key = stamp_key_for(&p, "zephyr_cyclonedds").unwrap();
+        assert_eq!(
+            is_current_with(&p, &key, &real_env(), None).unwrap(),
+            Currency::Current
+        );
+    }
+
+    /// Issue 2503 — the leaf's `leaf.census.json` left in a project that is
+    /// a workspace now is not one of the workspace's censuses, so it is no
+    /// digest input and its digest is not recorded.
+    #[test]
+    fn a_migrated_leafs_census_is_not_read() {
+        let p = tmp("migrated-leaf-census");
+        std::fs::create_dir_all(p.join("src/demo_bringup")).unwrap();
+        std::fs::write(p.join("src/demo_bringup/system.toml"), "[system]\n").unwrap();
+        let dir = p.join("build").join(CENSUS_DIR);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("leaf.census.json"), "{}").unwrap();
+        assert_eq!(recorded_censuses(&p), Vec::<PathBuf>::new());
+        record(&p, "demo_bringup:img", &stamp_for(&p)).unwrap();
+        std::fs::write(dir.join("leaf.census.json"), "{\"entities\": [1]}").unwrap();
+        assert_eq!(
+            is_current_with(&p, "demo_bringup:img", &real_env(), None).unwrap(),
             Currency::Current
         );
     }

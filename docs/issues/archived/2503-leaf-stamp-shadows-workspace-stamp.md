@@ -1,7 +1,8 @@
 ---
 id: 2503
 title: "After a leaf becomes a workspace, its leftover leaf-era configure stamp and census leave every hooked configure unseeded"
-status: open
+status: resolved
+resolved_in: "the change that archives this issue"
 type: bug
 severity: medium
 area: [build, cli, cmake, zephyr]
@@ -63,17 +64,42 @@ A fresh clone never has these files, so CI does not see it; any checkout
 that built the leaf before the migration does, and the error points at
 neither file.
 
-## Fix direction
+## Fix
 
-- `stamp_key_for`: prefer the workspace `<bringup>:<id>` stamp when the
-  project is a workspace, or treat a bare stamp whose recorded resolved
-  dir no longer exists as absent (and say so).
-- `recorded_censuses`: ignore a census whose recorded root file no longer
-  exists, or only read the censuses the current project shape produces.
-- Either way, report what was ignored rather than silently using it.
+Both readers now ask the same question issue 2480 asked of the
+`.leaf-selection` marker: is this project still a leaf
+(`configure::is_leaf`)? Only a leaf writes a stamp under a bare image id
+or a `leaf.census.json`.
 
-## Acceptance
+- `configure_stamp::stamp_key_for`: when the project is not a leaf, a
+  `<bringup>:<id>` stamp beats a bare-id stamp, and the bare one is named on
+  stderr as ignored. With no workspace stamp yet, the bare one still answers,
+  and it reads stale (its inputs are the leaf's), so a hooked configure does
+  not seed from it. That is the behaviour a project with no workspace stamp
+  had before. The predicate is `is_leaf_era_key`.
+- `configure_stamp::recorded_censuses`: in a project that is not a leaf,
+  `build/nros/census/leaf.census.json` is not a census of this project, so
+  it is neither a digest input nor a recorded census digest
+  (`is_leaf_era_census`).
 
-A checkout holding a leaf-era bare stamp and leaf census for an image that
-is now a workspace image configures seeded on the first pass; a test builds
-that layout in a temp dir.
+Tests, each red with its guard disabled:
+
+- `a_migrated_leafs_bare_stamp_is_not_the_images_stamp`: the measured
+  layout, a leaf stamp under the bare id and then a workspace stamp.
+  `nros locate configured` answers from the workspace stamp and reports it
+  current.
+- `a_migrated_leafs_census_is_not_read`: the leaf census is no input, and
+  editing it leaves the workspace stamp current.
+
+The existing `the_raw_recorder_document_is_not_a_census` fixture now builds
+a leaf, since `leaf.census.json` is only a census there.
+
+## Not changed
+
+Nothing deletes the leaf-era files. They are gitignored build output that
+no reader now trusts, and deleting a person's build state is not the
+reader's job. `ws`'s census freshness report still lists the leaf census.
+That report is for a person, and a stale census they may believe is
+exactly what it exists to show.
+
+Sweep: `git grep -n 'stamp_key_for\|recorded_censuses\|leaf_census_path\|leaf_selection_file' -- packages/cli/nros-cli-core/src`
