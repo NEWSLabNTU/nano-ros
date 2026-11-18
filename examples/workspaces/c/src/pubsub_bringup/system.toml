@@ -4,10 +4,10 @@
 # `locator` is the cell's `alloc::port_of` on QEMU's SLIRP host; the test
 # `pair_image_rows_dial_their_allocator_port` holds it there.
 
+include = ["../../shared/system-defaults.toml"]  # rmw, domain_id: shared by every bringup here
+
 [system]
 name = "c_pubsub"
-rmw = "zenoh"
-domain_id = 0
 default_launch = "system.launch.xml"
 
 [[component]]
@@ -19,9 +19,6 @@ name = "talker"
 pkg = "listener_pkg"
 class = "listener_pkg::Listener"
 name = "listener"
-
-[image_defaults]
-rmw = "zenoh"
 
 [image.freertos_talker]
 board = "mps2-an385-freertos"

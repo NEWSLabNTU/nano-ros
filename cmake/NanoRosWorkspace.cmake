@@ -324,9 +324,10 @@ function(nano_ros_workspace)
             nano_ros_read_leaf_system(DIR "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}"
                 IMAGE "${_nrw_image}" CLAIM)
         else()
-            nros_system_toml_refuse_include(
-                "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml" nano_ros_workspace)
-            file(STRINGS "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml"
+            nros_system_toml_expanded(
+                "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml" _nrw_system_read
+                nano_ros_workspace)
+            file(STRINGS "${_nrw_system_read}"
                 _nrw_image_rows REGEX "^[ \t]*\\[image\\.[^]]+\\.(knobs|env)[].]")
             if(_nrw_image_rows)
                 message(FATAL_ERROR

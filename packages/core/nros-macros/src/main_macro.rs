@@ -1683,6 +1683,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         None => Vec::new(),
     };
 
+    // Issue 2587 (phase-580 W3) — a tracked `system.toml` is read EXPANDED,
+    // so every fragment it includes is an input too: an edit to one must
+    // re-expand this macro, or the image keeps the old value while reading
+    // as fresh.
+    track_system_toml_fragments(&mut tracked);
+
     // De-duplicate the tracked list — pkg-index walks can revisit
     // a pkg dir's `package.xml` from multiple paths.
     tracked.sort();
@@ -7870,5 +7876,39 @@ mod launch_axis_tests {
     fn a_model_with_no_capabilities_emits_nothing() {
         let out = emitted(&model(None, &[]));
         assert!(out.trim().is_empty(), "emitted:\n{out}");
+    }
+}
+
+/// Issue 2587 (phase-580 W3) — every fragment a tracked `system.toml`
+/// includes is tracked too: the file is read expanded, so an edit to a
+/// fragment must re-expand the macro, or the image keeps the old value while
+/// reading as fresh.
+fn track_system_toml_fragments(tracked: &mut Vec<PathBuf>) {
+    let fragments: Vec<PathBuf> = tracked
+        .iter()
+        .filter(|p| p.file_name().is_some_and(|n| n == "system.toml"))
+        .filter(|p| nros_system_include::has_include(p))
+        .filter_map(|p| nros_system_include::read(p).ok())
+        .flat_map(|e| e.files.into_iter().skip(1))
+        .collect();
+    tracked.extend(fragments);
+}
+
+#[cfg(test)]
+mod system_toml_fragment_tests {
+    use super::*;
+
+    #[test]
+    fn a_tracked_system_toml_tracks_its_fragments() {
+        let td = std::env::temp_dir().join(format!("nros-macros-2587-{}", std::process::id()));
+        let b = td.join("b");
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(td.join("shared.toml"), "[[domain]]\nid = 1\n").unwrap();
+        std::fs::write(b.join("system.toml"), "include = [\"../shared.toml\"]\n").unwrap();
+        let mut tracked = vec![b.join("system.toml"), b.join("package.xml")];
+        track_system_toml_fragments(&mut tracked);
+        let _ = std::fs::remove_dir_all(&td);
+        assert_eq!(tracked.len(), 3, "{tracked:?}");
+        assert!(tracked[2].ends_with("shared.toml"), "{tracked:?}");
     }
 }

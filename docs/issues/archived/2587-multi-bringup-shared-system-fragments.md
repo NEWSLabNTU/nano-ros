@@ -1,7 +1,7 @@
 ---
 id: 2587
 title: "Two bringups in one workspace cannot share a `system.toml` fragment, so shared topology is duplicated"
-status: open
+status: resolved
 type: limitation
 area: [workspace, cli]
 severity: low
@@ -58,6 +58,25 @@ Option (b), ruled by the user (relayed by the nros 241 manager):
 - an include may not set `[system].name`.
 
 The merge rules are in RFC-0024 §5. Implemented by
-[phase-580](../roadmap/phase-580-system-toml-include.md) in three PRs (Rust,
+[phase-580](../../roadmap/archived/phase-580-system-toml-include.md) in three PRs (Rust,
 Python, CMake with the user-facing docs). Each PR works on its own: a road
 that cannot expand includes yet refuses them.
+
+## Resolved (2026-11-18)
+
+Phase-580 W1-W3. A `system.toml` takes `include = ["<path>", …]`, and every
+road reads the expansion:
+- W1: every Rust reader, through `nros-system-include`;
+- W2: every Python reader, through `scripts/lib/system_toml.py`, against the
+  same shared cases as the Rust reader;
+- W3: the CMake configure (`nros_system_toml_expanded`), west and the colcon
+  task, through `nros dev image system-toml`.
+
+Every watcher of a `system.toml` watches its fragments, so a fragment edit
+rebuilds what it reaches.
+
+The "done when": `examples/workspaces/{rust,c}` state `rmw`, `domain_id` and
+`[image_defaults] rmw` once, in `shared/system-defaults.toml`, for their nine
+bringups. A `linux` image from two of them builds on the cargo road and on
+the cmake road. User docs: book `reference/system-toml.md`, "Sharing a
+fragment between bringups".

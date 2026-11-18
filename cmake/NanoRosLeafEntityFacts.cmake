@@ -43,6 +43,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLeafCensus.cmake")
 # for the leaf's entity seed below.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityInventory.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPromise.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSystemInclude.cmake")  # issue 2587
 
 # Issue 2043 — the program a HOST census build of a leaf runs, written as
 # `<build>/nros/census-program.txt` at generate time:
@@ -250,8 +251,7 @@ function(nros_record_leaf_entity_facts _dir)
     # A configure re-runs when the declaration changes. `nano_ros_read_leaf_system`
     # already registers this file, but that is its dependency and not ours: a
     # module that stops being included must take its own edge with it.
-    set_property(DIRECTORY APPEND PROPERTY
-        CMAKE_CONFIGURE_DEPENDS "${_dir}/system.toml")
+    nros_system_toml_watch("${_dir}/system.toml" nros_leaf_entity_facts)
 endfunction()
 
 # nros_record_owned_entity_facts(BRINGUP <dir> IMAGE <id> PACKAGE <dir>

@@ -46,6 +46,7 @@ user setup
 user source-stamp
 user store
 user sync
+user system-toml-expand
 user toolchain
 user update
 user version

@@ -77,6 +77,7 @@ pub mod sizing_descriptor;
 pub mod stack_floor;
 pub mod stack_floor_raise;
 pub mod store;
+pub mod system_toml_expand;
 /// phase-440 W6 — `nros toolchain uninstall` (RFC-0095 D11).
 pub mod toolchain;
 pub mod update;
@@ -267,6 +268,12 @@ pub enum Cmd {
     // phase-330 W7.
     #[command(name = "model-path", hide = true)]
     ModelPath(model_path::Args),
+
+    /// Write a system.toml's `include = [..]` expansion and the files it read.
+    ///
+    /// Reached as `nros dev image system-toml`, the CMake road's reader.
+    #[command(name = "system-toml-expand", hide = true)]
+    SystemTomlExpand(system_toml_expand::Args),
 
     /// Print the constructed install path of a provisioned tool.
     ///

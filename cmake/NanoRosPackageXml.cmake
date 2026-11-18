@@ -23,6 +23,7 @@ include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")  # issue 2087
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSystemInclude.cmake")  # issue 2587
 
 # `deploy` attribute → the `NROS_PLATFORM` module axis. `linux` is the host
 # board (it maps to the `posix` platform axis value); the RTOS names map 1:1.
@@ -339,7 +340,7 @@ function(nros_image_domain_id out_var)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR "nano-ros: ${_D_CONTEXT}: ${_err}")
     endif()
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_D_DIR}/system.toml")
+    nros_system_toml_watch("${_D_DIR}/system.toml" "${_D_CONTEXT}")
     nros_cli_rows(_row "${_out}" REQUIRE "^NROS_LEAF_[A-Z0-9_]+=" CONTEXT "${_D_CONTEXT}")
     foreach(_i IN LISTS _row_INDICES)
         if("${_row_${_i}}" MATCHES "^NROS_LEAF_DOMAIN_ID=(.*)$")
@@ -478,7 +479,7 @@ function(nano_ros_read_leaf_system)
         message(FATAL_ERROR "nano-ros: ${_NRL_DIR}/system.toml: ${_err}")
     endif()
     # A configure re-runs when the file changes, like package.xml does.
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_NRL_DIR}/system.toml")
+    nros_system_toml_watch("${_NRL_DIR}/system.toml" nano_ros_read_leaf_system)
 
     # Issue 2200 -- line by line, never through a cmake list: a `;`-joined row
     # (NROS_LEAF_CONF, NROS_LEAF_SNIPPET) was cut at its first `;`, and a line

@@ -1,7 +1,7 @@
+include = ["../../shared/system-defaults.toml"]  # rmw, domain_id: shared by every bringup here
+
 [system]
 name = "pure_c_demo"
-rmw = "zenoh"
-domain_id = 0
 default_launch = "system.launch.xml"
 
 [[component]]
@@ -78,7 +78,6 @@ args   = { host = "robot2" }
 # Derived from the entry packages that existed at migration time; each
 # entry's `deploy` token picked its board, and its `launch` its topology.
 [image_defaults]
-rmw = "zenoh"
 
 # `args` carries over from the entry each image was derived from. It is how an
 # image selects a MACHINE — `linux_robot1_entry` and `_robot2` differ ONLY in

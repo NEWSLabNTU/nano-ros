@@ -794,6 +794,7 @@ version = "0.6.0"
 dependencies = [
  "eyre",
  "nros-cli-core",
+ "nros-system-include",
  "serde",
  "serde_json",
  "tempfile",

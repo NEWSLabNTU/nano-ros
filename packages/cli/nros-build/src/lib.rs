@@ -199,6 +199,12 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
     let system_toml_dep = bringup_dir.join("system.toml");
     if system_toml_dep.is_file() {
         println!("cargo:rerun-if-changed={}", system_toml_dep.display());
+        // Issue 2587 (phase-580 W3) — and every fragment it includes.
+        if let Ok(e) = nros_system_include::read(&system_toml_dep) {
+            for f in e.files.iter().skip(1) {
+                println!("cargo:rerun-if-changed={}", f.display());
+            }
+        }
     }
     println!("cargo:rerun-if-env-changed=NROS_MODEL_DIR");
     // Same search order as the proc-macro and cmake (W3.b): build output first,

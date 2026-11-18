@@ -157,6 +157,10 @@ pub enum Image {
     ModelDims(ws::ModelDimsArgs),
     #[command(name = "message-bound-knobs", hide = true)]
     MessageBoundKnobs(message_bound_knobs::MessageBoundKnobsArgs),
+    /// Print a bringup's `system.toml` with its `include = [..]` fragments
+    /// expanded, for a configure that reads the file without a TOML parser.
+    #[command(name = "system-toml")]
+    SystemToml(cmd::system_toml_expand::Args),
 }
 
 #[derive(Debug, Subcommand)]
@@ -242,6 +246,7 @@ pub fn lower(args: Args) -> Cmd {
             Image::EntityCensus(a) => ws(ws::Sub::EntityCensus(a)),
             Image::ModelDims(a) => ws(ws::Sub::ModelDims(a)),
             Image::MessageBoundKnobs(a) => ws(ws::Sub::MessageBoundKnobs(a)),
+            Image::SystemToml(a) => Cmd::SystemTomlExpand(a),
         },
         Noun::Rmw(v) => match v {
             Rmw::Dispatch(a) => ws(ws::Sub::RmwDispatch(a)),
@@ -294,6 +299,7 @@ pub const BORN_IN_DEV: &[&str] = &[
     "dev jobserver repair-makes",
     "dev shared-build-dir-check",
     "dev image entity-facts",
+    "dev image system-toml",
 ];
 
 /// Run a `nros dev` command [`lower`] left as it is.

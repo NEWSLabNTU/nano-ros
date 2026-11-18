@@ -4,10 +4,10 @@
 # `locator` is the cell's `alloc::port_of` on QEMU's SLIRP host; the test
 # `pair_image_rows_dial_their_allocator_port` holds it there.
 
+include = ["../../shared/system-defaults.toml"]  # rmw, domain_id: shared by every bringup here
+
 [system]
 name = "c_service"
-rmw = "zenoh"
-domain_id = 0
 default_launch = "system.launch.xml"
 
 [[component]]
@@ -26,9 +26,6 @@ name = "add_client"
 pkg = "service_client_callback_pkg"
 class = "service_client_callback_pkg::AddCallbackClient"
 name = "add_callback_client"
-
-[image_defaults]
-rmw = "zenoh"
 
 [image.freertos_service_server]
 board = "mps2-an385-freertos"

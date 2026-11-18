@@ -452,8 +452,8 @@ function(_nros_px4_generate_entry _out)
     # the rest per node (`NodeBuilder::rmw`); without it the runtime refuses to
     # guess between them.
     include("${NROS_REPO_DIR}/cmake/NanoRosSystemInclude.cmake")  # issue 2587
-    nros_system_toml_refuse_include("${_ge_bringup}/system.toml" nros_px4_module)
-    file(STRINGS "${_ge_bringup}/system.toml" _ge_rmw_line
+    nros_system_toml_expanded("${_ge_bringup}/system.toml" _ge_system_read nros_px4_module)
+    file(STRINGS "${_ge_system_read}" _ge_rmw_line
         REGEX "^[ \t]*rmw[ \t]*=[ \t]*\"[A-Za-z0-9_]+\"")
     set(_ge_rmw "")
     if(_ge_rmw_line)
