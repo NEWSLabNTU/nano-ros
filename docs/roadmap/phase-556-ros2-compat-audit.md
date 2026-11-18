@@ -1,8 +1,8 @@
 # Phase 556 — ROS 2 interface compatibility audit
 
-**Status (2026-11-18). IN PROGRESS: W0, W1, W3, W10 and W12 are done. A first
+**Status (2026-11-18). IN PROGRESS: W0, W1, W3, W10, W11 and W12 are done. A first
 by-hand measurement of W2 to W6 found three gaps (W10 to W12), each held by an
-expected-failure test; W10 and W12 are fixed and their tests are the plain
+expected-failure test; W10, W11 and W12 are fixed and their tests are the plain
 check now. One question for the user (W13).**
 The user's goal is to "ensure the interface compatibility among nano-ros and
 stock ROS 2". This phase measures it: a nano-ros node and a stock `rclcpp`
@@ -259,12 +259,45 @@ and passing.
 
 ### W11 — `use_sim_time` is not declared
 
-- **Status:** OPEN. Expected-failure test:
-  `ros2_cli_parity_interop::use_sim_time_compared_with_stock`.
+- **Status:** DONE (2026-11-18). Plain test:
+  `ros2_cli_parity_interop::use_sim_time_answers_ros2_param_as_stock_does`
+  (was the expected-failure `use_sim_time_compared_with_stock`).
 
-[Issue 2483](../issues/2483-use-sim-time-not-declared.md): every stock node
-declares `use_sim_time`; a nano-ros node with parameter services does not, so
-`ros2 param set <node> use_sim_time true` is refused.
+[Issue 2483](../issues/archived/2483-use-sim-time-not-declared.md): every stock node
+declares `use_sim_time`; a nano-ros node with parameter services did not, so
+`ros2 param set <node> use_sim_time true` was refused.
+
+Ruling (user, relayed by the manager): `use_sim_time` switches ROS time at
+run time, and the capability is on wherever parameter services are on.
+Done as:
+
+- A capability axis `sim_time` (registry row, leaf axis with
+  `nros::SIM_TIME_ENABLED`, both CMake lowerings, the west road's
+  `_nros_cap_suffix`, `CONFIG_NROS_CAPABILITY_SIM_TIME`) lowering to the
+  `sim-time` feature of `nros`, `nros-c` and `nros-cpp`. It joins the stock
+  set (`node_interfaces::STOCK` is `param_services`, `rosout`, `sim_time`),
+  so it follows the W13 default and its opt-outs. With it, the executor's
+  existing seed declares `use_sim_time = false` on every node serving
+  parameters, and the phase-425 W3b reconciliation subscribes `/clock` when
+  it is set true.
+- Sizing: the `/clock` subscription is a runtime family priced ONCE PER
+  EXECUTOR and RESERVED whenever the capability is built in, in the shape
+  `/rosout` took in W13. `CLOCK_SUBSCRIPTIONS` (1) sits beside its one
+  creation site, `create_clock_sub`, and `check-infra-queryable-counts` holds
+  it there and holds its mirrors (entity inventory, `nros_sizing_descriptor::
+  infra`). The entity inventory adds it to the subscriber pool, the callback
+  slots and the liveliness pool (`InfraServices::subscribers`);
+  `infra_families` gains the word `clock` (16 subsets); the zenoh liveliness
+  default adds its token; the XRCE subscriber ring is never sized below a
+  `Clock` sample; and `nros-node`'s arena adds one depth-1 subscription
+  entry when built with `sim-time` and the families carry `clock`.
+- Measured cost (idle reservation): +4,385 B RAM on a declared native
+  Linux talker, +9,826 B on the MPS2-AN385 FreeRTOS workspace image (the
+  issue has the breakdown).
+
+Not done here, noted: a cargo leaf whose manifest names `sim-time` directly
+(without the capability) is not unioned into its families, the same as a
+leaf naming `rosout`; the reservation follows the declared capability.
 
 Acceptance: as W10, comparing `param list` and `param get use_sim_time`.
 
