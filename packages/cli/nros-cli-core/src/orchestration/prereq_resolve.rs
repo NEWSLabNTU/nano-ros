@@ -108,8 +108,14 @@ pub struct Unresolved {
 /// removed the rosdep backend).
 #[must_use]
 pub fn ros_packages() -> BTreeSet<String> {
+    ros_packages_in(std::env::var_os("AMENT_PREFIX_PATH").as_deref())
+}
+
+/// [`ros_packages`] over an explicit `AMENT_PREFIX_PATH` value, so a test can
+/// ask about an unset one without writing the process environment.
+fn ros_packages_in(ament_prefix_path: Option<&std::ffi::OsStr>) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    let Some(paths) = std::env::var_os("AMENT_PREFIX_PATH") else {
+    let Some(paths) = ament_prefix_path else {
         return out;
     };
     for prefix in std::env::split_paths(&paths) {
@@ -994,14 +1000,18 @@ mod tests {
     /// caller did not select is how one tree resolves two ways — the reasoning
     /// that removed the rosdep backend.
     #[test]
+    ///
+    /// Issue 2603 -- this asks with the variable unset through the injected
+    /// value, never by removing it from the process. `cargo test` runs this
+    /// crate's tests as threads of ONE process, so removing it (the test said
+    /// "single-threaded", which it never was) changed `AMENT_PREFIX_PATH` under
+    /// every concurrent test that reads it. With ROS sourced, a configure
+    /// stamp recorded before the removal and checked during it read "inputs
+    /// changed" with nothing edited (measured: 1 of 40 runs).
     fn the_ros_rung_does_not_guess_a_prefix() {
-        let saved = std::env::var_os("AMENT_PREFIX_PATH");
-        // SAFETY: single-threaded test; restored below.
-        unsafe { std::env::remove_var("AMENT_PREFIX_PATH") };
-        let empty = ros_packages().is_empty();
-        if let Some(v) = saved {
-            unsafe { std::env::set_var("AMENT_PREFIX_PATH", v) };
-        }
-        assert!(empty, "no AMENT_PREFIX_PATH ⇒ no ROS packages claimed");
+        assert!(
+            ros_packages_in(None).is_empty(),
+            "no AMENT_PREFIX_PATH ⇒ no ROS packages claimed"
+        );
     }
 }
