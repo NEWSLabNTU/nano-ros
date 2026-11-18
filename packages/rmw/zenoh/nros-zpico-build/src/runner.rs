@@ -35,8 +35,8 @@ type ZenohBufferConfig = crate::ZenohBufferConfig;
 #[cfg(test)]
 use nros_sizing_descriptor::infra::LIFECYCLE_SERVICE_QUERYABLES;
 use nros_sizing_descriptor::infra::{
-    Families, PARAM_SERVICE_QUERYABLES, ROSOUT_PUBLISHERS, declared_families, declared_nodes,
-    per_node_term_is_unknown, stated,
+    CLOCK_SUBSCRIPTIONS, Families, PARAM_SERVICE_QUERYABLES, ROSOUT_PUBLISHERS, declared_families,
+    declared_nodes, per_node_term_is_unknown, stated,
 };
 
 /// Publishers the REP-2002 lifecycle family claims (`~/transition_event`),
@@ -624,6 +624,7 @@ fn liveliness_with_runtime(
         param,
         lifecycle,
         rosout,
+        clock,
     } = declared_families(infra).unwrap_or(Families::ALL);
     // One token per node NAME: the larger of the components and the model's
     // nodes (the parameter family is per node), plus the executor's when the
@@ -643,7 +644,11 @@ fn liveliness_with_runtime(
             ROSOUT_PUBLISHERS * nodes_here
         } else {
             0
-        };
+        }
+        // phase-556 W11 -- the executor's `/clock` subscription's token,
+        // reserved whenever the family is on (`use_sim_time` can go true at
+        // runtime, and the subscription is created then).
+        + if clock { CLOCK_SUBSCRIPTIONS } else { 0 };
     PRIMARY_NODE_LIVELINESS_TOKENS
         + node_names
         + runtime
@@ -1011,8 +1016,8 @@ mod queryable_default_tests {
     }
 
     /// An unknown infrastructure spelling is a BROKEN CHANNEL, not an unknown
-    /// feature — the descriptor's `InfraFamilies` vocabulary holds four
-    /// spellings and refuses any other at parse.
+    /// feature — the descriptor's `InfraFamilies` vocabulary holds the
+    /// family subsets and refuses any other spelling at parse.
     #[test]
     #[should_panic(expected = "infra_families")]
     fn an_unknown_infra_spelling_panics_even_without_an_app_count() {
@@ -1190,6 +1195,12 @@ mod liveliness_default_tests {
         let two_rosout =
             liveliness_default_from(Some(2), Some(2), Some("rosout"), Some("2"), false);
         assert_eq!(two_rosout - two_bare, 2 * ROSOUT_PUBLISHERS);
+        // phase-556 W11 -- `/clock`: one subscription's token per EXECUTOR,
+        // however many nodes, no server, no node name.
+        let clock = liveliness_default_from(Some(2), Some(1), Some("clock"), Some("1"), false);
+        assert_eq!(clock - base, CLOCK_SUBSCRIPTIONS);
+        let two_clock = liveliness_default_from(Some(2), Some(2), Some("clock"), Some("2"), false);
+        assert_eq!(two_clock - two_bare, CLOCK_SUBSCRIPTIONS);
     }
 
     #[test]
@@ -1199,7 +1210,7 @@ mod liveliness_default_tests {
             liveliness_default_from(
                 Some(2),
                 Some(1),
-                Some("param+lifecycle+rosout"),
+                Some("param+lifecycle+rosout+clock"),
                 Some("1"),
                 false
             )
@@ -1233,7 +1244,13 @@ mod liveliness_default_tests {
         // The same terms as a stated image with every family, nothing less.
         assert_eq!(
             got,
-            liveliness_default_from(None, None, Some("param+lifecycle+rosout"), Some("1"), true)
+            liveliness_default_from(
+                None,
+                None,
+                Some("param+lifecycle+rosout+clock"),
+                Some("1"),
+                true
+            )
         );
         // Negative control: the embedded budget is still the flat pool, and it
         // is exactly what was short.

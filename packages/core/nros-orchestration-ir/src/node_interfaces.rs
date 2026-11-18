@@ -1,8 +1,9 @@
 //! Which node interfaces an image gets.
 //!
-//! An upstream rclcpp node serves the six parameter services and publishes
-//! `/rosout` without its author asking. nano-ros builds those as capability
-//! axes (`param_services`, `rosout`) a bringup DECLARES in `features`. This
+//! An upstream rclcpp node serves the six parameter services, publishes
+//! `/rosout` and declares `use_sim_time` without its author asking. nano-ros
+//! builds those as capability axes (`param_services`, `rosout`, `sim_time`) a
+//! bringup DECLARES in `features`. This
 //! module is the ONE place that turns the declared list into the list an image
 //! is built with: every reader of a bringup's or a leaf's `features` (the
 //! overlay beside a model, the leaf reader, the CLI's strict `SystemToml`, and
@@ -19,9 +20,10 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The stock node interfaces, as capability axes: the six parameter services
-/// and the `/rosout` publisher an rclcpp node has by default.
-pub const STOCK: &[&str] = &["param_services", "rosout"];
+/// The stock node interfaces, as capability axes: the six parameter services,
+/// the `/rosout` publisher and the `use_sim_time` parameter (with the `/clock`
+/// subscription it switches on) an rclcpp node has by default.
+pub const STOCK: &[&str] = &["param_services", "rosout", "sim_time"];
 
 /// The `system.toml` key the switch is written under.
 pub const KEY: &str = "node_interfaces";
@@ -144,11 +146,11 @@ mod tests {
         let none: [&str; 0] = [];
         assert_eq!(
             effective_features(&none, Some(NodeInterfaces::Stock)),
-            vec!["param_services", "rosout"]
+            vec!["param_services", "rosout", "sim_time"]
         );
         assert_eq!(
             effective_features(&["rosout", "lifecycle"], Some(NodeInterfaces::Stock)),
-            vec!["rosout", "lifecycle", "param_services"]
+            vec!["rosout", "lifecycle", "param_services", "sim_time"]
         );
     }
 
@@ -156,7 +158,13 @@ mod tests {
     fn none_removes_the_stock_set_and_keeps_the_rest() {
         assert_eq!(
             effective_features(
-                &["param_services", "lifecycle", "rosout", "safety"],
+                &[
+                    "param_services",
+                    "lifecycle",
+                    "rosout",
+                    "sim_time",
+                    "safety"
+                ],
                 Some(NodeInterfaces::None)
             ),
             vec!["lifecycle", "safety"]

@@ -190,6 +190,13 @@ function(nros_lower_system_features features)
             # gives `param_services`: a component TU never includes the entry's
             # system_config.h.
             add_compile_definitions(NROS_SYSTEM_ROSOUT)
+        elseif(_feat STREQUAL "sim_time")
+            # phase-556 W11 — Known axis, no CMake knob. The CARGO feature
+            # (`sim-time`) is chosen per image by `nros_feature_set` on the
+            # cmake road and `_nros_cap_suffix` on the west road: it declares
+            # `use_sim_time` on every node serving parameters and lets a set to
+            # true subscribe `/clock`. Directory-wide define for 0745's reason.
+            add_compile_definitions(NROS_SYSTEM_SIM_TIME)
         elseif(_feat STREQUAL "link-tls")
             # Issue 2423 — a Rust-only axis, refused here BY NAME rather than
             # as unknown: the C/C++ road has no TLS link (no nros-c / nros-cpp
@@ -202,7 +209,7 @@ function(nros_lower_system_features features)
         else()
             message(FATAL_ERROR
                 "nros_lower_system_features: unknown capability '${_feat}' in "
-                "NROS_FEATURES (known axes: safety, param_services, params, lifecycle, rosout)")
+                "NROS_FEATURES (known axes: safety, param_services, params, lifecycle, rosout, sim_time)")
         endif()
     endforeach()
 endfunction()

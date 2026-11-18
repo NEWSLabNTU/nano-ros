@@ -185,7 +185,7 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables(
 
 /// phase-556 W13 -- the node-interface switch reaches the leaf road's
 /// descriptor: the same leaf with `node_interfaces = "stock"` states the
-/// parameter family and `/rosout` in `infra_families`, and `"none"` beside a
+/// parameter family, `/rosout` and `/clock` in `infra_families`, and `"none"` beside a
 /// declared `param_services` states neither.
 #[test]
 fn the_node_interface_switch_reaches_the_leaf_descriptor() {
@@ -229,7 +229,7 @@ fn the_node_interface_switch_reaches_the_leaf_descriptor() {
     assert_eq!(
         families,
         vec![
-            nros_sizing_descriptor::InfraFamilies::ParamRosout,
+            nros_sizing_descriptor::InfraFamilies::ParamRosoutClock,
             nros_sizing_descriptor::InfraFamilies::None,
         ]
     );

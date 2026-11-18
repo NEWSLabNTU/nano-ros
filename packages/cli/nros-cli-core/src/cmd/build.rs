@@ -10422,7 +10422,8 @@ domain_id = 0
     }
 
     /// phase-556 W13 -- `node_interfaces`: (a) absent leaves the declared
-    /// list, (b) `stock` adds the parameter services and `/rosout`, (c) `none`
+    /// list, (b) `stock` adds the parameter services, `/rosout` and
+    /// `use_sim_time`, (c) `none`
     /// removes them, (d) the image's table over `[image_defaults]` over
     /// `[system]`.
     #[test]
@@ -10436,7 +10437,7 @@ domain_id = 0
         assert!(caps("", None).is_empty());
         assert_eq!(
             caps("node_interfaces = \"stock\"\n", None),
-            vec!["param_services", "rosout"]
+            vec!["param_services", "rosout", "sim_time"]
         );
         assert_eq!(
             caps(
@@ -10452,7 +10453,7 @@ domain_id = 0
         assert!(caps(layered, None).is_empty(), "system alone");
         assert_eq!(
             caps(layered, Some("a")),
-            vec!["param_services", "rosout"],
+            vec!["param_services", "rosout", "sim_time"],
             "defaults over system"
         );
         assert!(caps(layered, Some("b")).is_empty(), "image over defaults");

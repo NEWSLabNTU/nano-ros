@@ -1171,6 +1171,27 @@ fn main() {
             _ => None,
         }
     };
+    // phase-556 W11 -- the runtime's `/clock` subscription, reserved once per
+    // executor when this crate is built with `sim-time` and the image's
+    // families carry `clock` (left unstated, assumed present, the large
+    // direction every runtime-family reader takes). `use_sim_time` can go true
+    // at runtime and the reconciliation registers it then, so a declared
+    // arena without it is short by exactly this entry. No `[[endpoint]]` row
+    // itemises it, so it is a term of its own: the entry, plus the depth-1
+    // region (`QoSProfile::clock_default`) at the default receive buffer the
+    // registration passes. Its callback slot is the inventory's (`max_cbs`).
+    let clock_family = sizing.as_ref().is_none_or(|d| {
+        d.image
+            .infra_families()
+            .stated()
+            .is_none_or(|f| f.switches()[3])
+    });
+    let clock_entry = if env::var("CARGO_FEATURE_SIM_TIME").is_ok() && clock_family {
+        nros_sizing_descriptor::infra::CLOCK_SUBSCRIPTIONS
+            * (PUBSUB_ENTRY_STRUCT + buffered_region(1, rx_buf_size, ring_len_bytes))
+    } else {
+        0
+    };
     let model_required = arena_required(
         [
             declared_subs,
@@ -1183,7 +1204,8 @@ fn main() {
         ],
         sub_rows.as_deref(),
         None,
-    );
+    )
+    .map(|n| n + clock_entry);
     // Nobody declared, or declared only partly: the pre-step-3 worst-case
     // arithmetic byte for byte, floored, so no undeclared image moves.
     // Declared: the model, unfloored (issue 1971).

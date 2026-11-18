@@ -499,9 +499,10 @@ vocabulary! {
     /// `[image] infra_families` — which of the runtime's own node-interface
     /// families the image builds: the ROS parameter services (six servers per
     /// node, plus the `/parameter_events` writer), the REP-2002 lifecycle
-    /// services (five per executor, plus `~/transition_event`) and, since
-    /// phase-556 W13, the `/rosout` publisher. A `+`-joined subset of
-    /// `param`, `lifecycle`, `rosout` in that order, or `none`.
+    /// services (five per executor, plus `~/transition_event`), since
+    /// phase-556 W13 the `/rosout` publisher, and since phase-556 W11 the
+    /// `/clock` subscription `use_sim_time` creates. A `+`-joined subset of
+    /// `param`, `lifecycle`, `rosout`, `clock` in that order, or `none`.
     /// [`crate::infra::declared_families`] parses them, so every reader that
     /// prices these entities keeps one parser.
     ///
@@ -513,7 +514,7 @@ vocabulary! {
         Param => "param",
         /// The lifecycle services only.
         Lifecycle => "lifecycle",
-        /// The parameter and lifecycle services.
+        /// The parameter services and the lifecycle services.
         ParamLifecycle => "param+lifecycle",
         /// `/rosout` only.
         Rosout => "rosout",
@@ -521,31 +522,42 @@ vocabulary! {
         ParamRosout => "param+rosout",
         /// The lifecycle services and `/rosout`.
         LifecycleRosout => "lifecycle+rosout",
-        /// All three.
+        /// The parameter services, the lifecycle services and `/rosout`.
         ParamLifecycleRosout => "param+lifecycle+rosout",
+        /// The `/clock` subscription only.
+        Clock => "clock",
+        /// The parameter services and the `/clock` subscription.
+        ParamClock => "param+clock",
+        /// The lifecycle services and the `/clock` subscription.
+        LifecycleClock => "lifecycle+clock",
+        /// The parameter services, the lifecycle services and the `/clock` subscription.
+        ParamLifecycleClock => "param+lifecycle+clock",
+        /// `/rosout` and the `/clock` subscription.
+        RosoutClock => "rosout+clock",
+        /// The parameter services, `/rosout` and the `/clock` subscription.
+        ParamRosoutClock => "param+rosout+clock",
+        /// The lifecycle services, `/rosout` and the `/clock` subscription.
+        LifecycleRosoutClock => "lifecycle+rosout+clock",
+        /// All four.
+        ParamLifecycleRosoutClock => "param+lifecycle+rosout+clock",
     }
 }
 
 impl InfraFamilies {
-    /// From the three switches.
-    pub fn from_switches(param_services: bool, lifecycle: bool, rosout: bool) -> Self {
-        match (param_services, lifecycle, rosout) {
-            (false, false, false) => Self::None,
-            (true, false, false) => Self::Param,
-            (false, true, false) => Self::Lifecycle,
-            (true, true, false) => Self::ParamLifecycle,
-            (false, false, true) => Self::Rosout,
-            (true, false, true) => Self::ParamRosout,
-            (false, true, true) => Self::LifecycleRosout,
-            (true, true, true) => Self::ParamLifecycleRosout,
-        }
+    /// From the four switches.
+    pub fn from_switches(param_services: bool, lifecycle: bool, rosout: bool, clock: bool) -> Self {
+        let want = [param_services, lifecycle, rosout, clock];
+        *Self::ALL
+            .iter()
+            .find(|v| v.switches() == want)
+            .expect("every combination of the four switches is a variant")
     }
 
-    /// The three switches, `(param, lifecycle, rosout)`.
-    pub fn switches(self) -> (bool, bool, bool) {
+    /// The four switches, `[param, lifecycle, rosout, clock]`.
+    pub fn switches(self) -> [bool; 4] {
         let t = self.tag();
         let has = |w: &str| t.split('+').any(|x| x == w);
-        (has("param"), has("lifecycle"), has("rosout"))
+        [has("param"), has("lifecycle"), has("rosout"), has("clock")]
     }
 }
 
@@ -594,14 +606,15 @@ mod tests {
         round_trip!(InfraFamilies);
     }
 
-    /// phase-556 W13 -- the tag is the `+`-join of the switches in
-    /// `param`, `lifecycle`, `rosout` order, and the two directions agree.
+    /// phase-556 W13 / W11 -- the tag is the `+`-join of the switches in
+    /// `param`, `lifecycle`, `rosout`, `clock` order, the two directions
+    /// agree, and every combination is a variant exactly once.
     #[test]
-    fn infra_families_are_the_joined_subset_of_three_switches() {
+    fn infra_families_are_the_joined_subset_of_four_switches() {
         for v in InfraFamilies::ALL {
-            let (p, l, r) = v.switches();
-            assert_eq!(InfraFamilies::from_switches(p, l, r), *v);
-            let words: Vec<&str> = [(p, "param"), (l, "lifecycle"), (r, "rosout")]
+            let [p, l, r, c] = v.switches();
+            assert_eq!(InfraFamilies::from_switches(p, l, r, c), *v);
+            let words: Vec<&str> = [(p, "param"), (l, "lifecycle"), (r, "rosout"), (c, "clock")]
                 .into_iter()
                 .filter_map(|(on, w)| on.then_some(w))
                 .collect();
@@ -612,7 +625,10 @@ mod tests {
             };
             assert_eq!(v.tag(), want);
         }
-        assert_eq!(InfraFamilies::ALL.len(), 8);
+        assert_eq!(InfraFamilies::ALL.len(), 16);
+        let distinct: std::collections::BTreeSet<[bool; 4]> =
+            InfraFamilies::ALL.iter().map(|v| v.switches()).collect();
+        assert_eq!(distinct.len(), 16);
     }
 
     /// The one vocabulary the macro does not build, held to the same rule.

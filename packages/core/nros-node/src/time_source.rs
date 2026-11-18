@@ -22,12 +22,27 @@
 //!
 //! # Cost
 //!
-//! One subscription: an entity slot plus an RX buffer. That is why `sim-time` is
-//! a feature and not a default — an image that will never see a simulator should
-//! not pay for it.
+//! One subscription: an entity slot plus an RX buffer ([`CLOCK_SUBSCRIPTIONS`]).
+//! It is a capability (`sim_time`), one of the stock node interfaces, so an image
+//! built with the stock set reserves it; an image that will never see a
+//! simulator and cannot spare the slot leaves the capability out.
 
 /// The topic ROS 2 publishes simulated time on.
 pub const CLOCK_TOPIC: &str = "/clock";
+
+/// The subscriptions the `sim_time` capability claims, once per executor: the
+/// `/clock` subscription the `use_sim_time` reconciliation creates the first
+/// time the parameter goes true (`create_clock_sub` in `executor/spin.rs`, the
+/// one creation site `check-infra-queryable-counts` holds this to).
+///
+/// The host CLI's entity inventory, the shared sizing library and the zenoh
+/// liveliness default mirror it (none can read this crate). They RESERVE it
+/// whenever the capability is built in, not only when the parameter starts
+/// true, because `ros2 param set <node> use_sim_time true` can arrive at any
+/// time and the subscription is created then: a callback slot, an arena entry
+/// with its receive buffer, a session subscriber and a liveliness token.
+// phase-556 W11
+pub const CLOCK_SUBSCRIPTIONS: usize = 1;
 
 /// The reserved parameter whose value attaches the time source.
 ///
