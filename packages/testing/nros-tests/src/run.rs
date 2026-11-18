@@ -168,6 +168,98 @@ impl HostRun {
     }
 }
 
+/// A failing test's run logs outlive its temporary run directory.
+///
+/// The directory is deleted with the [`HostRun`], so the console log of an
+/// image that failed (`<ws>/build/nros/run/<image>/console.log`, and each
+/// member's `<name>.log`) never left a CI runner: the junit carried only the
+/// verb's one-line summary ("the target exited with code 1 after 0.1 s"), and
+/// the evidence that would explain it was gone with the test. On a drop during
+/// a panic the logs are copied into the build root, where the CI lanes'
+/// report collection (`scripts/ci/fixture-tree.sh reports`) already uploads
+/// every `*.log` a run wrote.
+impl Drop for HostRun {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            let cell = std::thread::current()
+                .name()
+                .unwrap_or("unnamed-test")
+                .to_string();
+            keep_failed_run_logs(
+                self.dir.path(),
+                &crate::build_dir(crate::kind::FAILED_RUN_LOGS, &[]),
+                &cell,
+            );
+        }
+    }
+}
+
+/// The most of one log a failing run keeps: its END, where an exit is.
+pub const FAILED_RUN_LOG_CAP: usize = 256 * 1024;
+
+/// Copy every `*.log` under `run_dir` into `dest`, each capped to its last
+/// [`FAILED_RUN_LOG_CAP`] bytes, named `<cell>--<run dir>--<path>.log` so two
+/// images of one cell (two `zephyr.exe`, say) and two cells never collide.
+/// Best effort: a failing test is already failing, so a log that cannot be
+/// kept is reported on stderr, never turned into a second panic.
+pub fn keep_failed_run_logs(run_dir: &Path, dest: &Path, cell: &str) -> Vec<PathBuf> {
+    let flat = |s: &str| -> String {
+        s.chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect()
+    };
+    let run_name = run_dir
+        .file_name()
+        .map_or_else(|| "run".to_string(), |n| n.to_string_lossy().into_owned());
+    let mut kept = Vec::new();
+    let mut todo = vec![run_dir.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                todo.push(p);
+                continue;
+            }
+            if p.extension().is_none_or(|x| x != "log") {
+                continue;
+            }
+            let rel = p
+                .strip_prefix(run_dir)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .into_owned();
+            let out = dest.join(format!(
+                "{}--{}--{}",
+                flat(cell),
+                flat(&run_name),
+                flat(&rel)
+            ));
+            let result = std::fs::read(&p).and_then(|bytes| {
+                std::fs::create_dir_all(dest)?;
+                let tail = &bytes[bytes.len().saturating_sub(FAILED_RUN_LOG_CAP)..];
+                std::fs::write(&out, tail)
+            });
+            match result {
+                Ok(()) => kept.push(out),
+                Err(e) => eprintln!("keeping run log {}: {e}", p.display()),
+            }
+        }
+    }
+    if !kept.is_empty() {
+        eprintln!("run logs of the failing test kept in {}", dest.display());
+    }
+    kept
+}
+
 /// The plan for a host image: what `nros run --dry-run --json` would print for
 /// it, written by the harness instead of resolved from a workspace.
 fn host_plan(exe: &Path, passthrough: &[String], plan_args: &[(&str, &str)]) -> serde_json::Value {
@@ -485,6 +577,104 @@ pub fn renode_image(elf: &Path, board_package: &str) -> TestResult<HostRun> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A failing run's logs are kept: every `*.log` under the run dir, each
+    /// cut to its LAST `FAILED_RUN_LOG_CAP` bytes, named for the cell and the
+    /// run dir so two images of one cell do not overwrite each other.
+    #[test]
+    fn a_failing_run_keeps_each_log_tail_under_a_cell_name() {
+        let run = tempfile::Builder::new()
+            .prefix("nros-run-")
+            .tempdir()
+            .unwrap();
+        let image = run.path().join("build/nros/run/zephyr.exe");
+        std::fs::create_dir_all(&image).unwrap();
+        let mut big = vec![b'a'; FAILED_RUN_LOG_CAP];
+        big.extend_from_slice(b"the last line\n");
+        std::fs::write(image.join("console.log"), &big).unwrap();
+        std::fs::write(image.join("plan.json"), "{}").unwrap();
+        let dest = tempfile::tempdir().unwrap();
+
+        let kept = keep_failed_run_logs(run.path(), dest.path(), "example_e2e::case_24");
+
+        assert_eq!(
+            kept.len(),
+            1,
+            "only the .log is kept, not plan.json: {kept:?}"
+        );
+        let name = kept[0].file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            name.starts_with("example_e2e__case_24--nros-run-"),
+            "{name}"
+        );
+        assert!(
+            name.ends_with("build_nros_run_zephyr.exe_console.log"),
+            "{name}"
+        );
+        let text = std::fs::read(&kept[0]).unwrap();
+        assert_eq!(text.len(), FAILED_RUN_LOG_CAP, "capped");
+        assert!(
+            text.ends_with(b"the last line\n"),
+            "the END is kept, where an exit is"
+        );
+    }
+
+    /// The drop keeps logs only while unwinding: a passing test leaves no
+    /// trace in the build root.
+    #[test]
+    fn a_run_dropped_while_panicking_keeps_its_logs_and_a_passing_one_does_not() {
+        let dest = crate::build_dir(crate::kind::FAILED_RUN_LOGS, &[]);
+        let make = || {
+            let (dir, command) = (
+                tempfile::Builder::new()
+                    .prefix("nros-run-")
+                    .tempdir()
+                    .unwrap(),
+                Command::new("true"),
+            );
+            std::fs::write(dir.path().join("console.log"), "booted, then exit 1\n").unwrap();
+            HostRun {
+                command,
+                image_line: String::new(),
+                dir,
+            }
+        };
+        let ours = |cell: &str| -> Vec<PathBuf> {
+            std::fs::read_dir(&dest)
+                .map(|it| {
+                    it.flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.file_name().unwrap().to_string_lossy().starts_with(cell))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+
+        let passing = "keep-logs-selftest-passing";
+        std::thread::Builder::new()
+            .name(passing.into())
+            .spawn(move || drop(make()))
+            .unwrap()
+            .join()
+            .unwrap();
+        assert!(ours(passing).is_empty(), "a passing run kept logs");
+
+        let failing = "keep-logs-selftest-failing";
+        let joined = std::thread::Builder::new()
+            .name(failing.into())
+            .spawn(move || {
+                let _run = make();
+                panic!("the cell failed");
+            })
+            .unwrap()
+            .join();
+        assert!(joined.is_err());
+        let kept = ours(failing);
+        for p in &kept {
+            let _ = std::fs::remove_file(p);
+        }
+        assert_eq!(kept.len(), 1, "a failing run kept {kept:?}");
+    }
 
     /// The Nucleo's twin facts come from its descriptor, the file `nros run`
     /// reads (issue 2375).
