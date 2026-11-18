@@ -81,7 +81,7 @@ Each refusal names the argument and says where the setting belongs. From
 | `-DCONFIG_*` | it sets a Zephyr Kconfig symbol around the Kconfig fragments and the knob ladder | the image's `conf = [..]` fragment |
 | `-DCMAKE_BUILD_TYPE` | `nros build` passes it from the image's profile | `--profile=`, or `[image.<id>] profile` |
 | `-DNROS_IMAGE`, `-DCMAKE_TOOLCHAIN_FILE`, and the other names `nros build` passes itself | the build sets them | the `system.toml` key the refusal names |
-| a knob every build road reads from `system.toml`, in any spelling: `-DNROS_FREERTOS_APP_STACK_KB`, `-DNROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES` | the image's knob table is its one committed place | `[image.<id>.knobs.<group>]` |
+| a nano-ros knob, in any spelling (`-DNROS_FREERTOS_APP_STACK_KB`, its `CONFIG_NROS_*` or legacy name) | the image's knob table is its one committed place, and every build road reads it | `[image.<id>.knobs.<group>]`, named in the error |
 | cargo `--release` | the profile is a build setting | `--profile=release`, or `[image.<id>] profile` |
 | cargo `--target` | the target is the board's | change the image's `board` |
 | a feature the build derives, such as `platform-posix` or `rmw-xrce` | the RMW, platform and capability features follow from `system.toml` | the image's `rmw`, `board` or capability in `system.toml` |
@@ -92,10 +92,10 @@ For example:
 Error: --cmake-args: `-DCONFIG_FOO=y` is refused: a `-DCONFIG_*` sets a Kconfig symbol directly on the west road, around the Kconfig fragments and the knob ladder; put Zephyr-native Kconfig in the image's `conf = [..]` fragment
 ```
 
-A `-D` that names any other nano-ros knob, such as
-`-DNROS_THREADX_APP_STACK_KB=64`, is still accepted, and more knobs move to the
-refused row as every road is shown to carry them. Prefer the image's
-`[image.<id>.knobs.<group>]` table, which
+A few knobs are still accepted as a `-D`, because nano-ros cannot yet show
+that every road reads them from `system.toml` (several Zenoh wire and TX sizes,
+three XRCE pool sizes). Prefer the image's `[image.<id>.knobs.<group>]` table
+for those too, which
 [Configure an image](../guide/build/configure-an-image.md) describes: it is
 the one spelling every board reads.
 
