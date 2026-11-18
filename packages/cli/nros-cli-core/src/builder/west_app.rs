@@ -476,6 +476,13 @@ pub fn resolve_in(
         ) {
             return Err(format!("image `{image_id}`: {refusal}"));
         }
+        // A node that would serve services on a backend that cannot create
+        // them is refused here as on the cargo road.
+        if let Some(refusal) = crate::orchestration::backend_link::unservable_services_refusal(
+            image_id, &resolved, sys,
+        ) {
+            return Err(refusal);
+        }
         // RFC-0071 D15 — the crate is `[rmw.provides.cargo] crate`, at the
         // directory the scan resolved (amended ruling 3), so a backend outside
         // the SDK root is found the same way as one inside it. No `crate` is a

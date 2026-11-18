@@ -1092,12 +1092,34 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
             known_rmw_in(&scan).join(", ")
         )
     })?;
+    let rows = dispatch_rows(&r);
+
+    if args.lines {
+        for (k, v) in &rows {
+            println!("{k}\t{v}");
+        }
+    } else {
+        for (k, v) in &rows {
+            println!("{k} = {v}");
+        }
+    }
+    Ok(())
+}
+
+/// The `nros dev rmw dispatch` rows for one resolved backend, in order: what
+/// `nros_rmw_dispatch()` (cmake/NanoRosRmwDispatch.cmake) sets. Factored out
+/// so the capability-refusal parity test hands cmake exactly what a configure
+/// does, never a second reading of the descriptor.
+#[must_use]
+pub fn dispatch_rows(
+    r: &cargo_nano_ros::rmw_resolver::ResolvedRmwIn,
+) -> Vec<(&'static str, String)> {
     let d = &r.descriptor;
 
     // ON/OFF rather than true/false: the value is consumed by `if()` in cmake,
     // where both spellings work but only one reads as a cmake boolean.
     let bool_cmake = |b: bool| if b { "ON" } else { "OFF" };
-    let rows: Vec<(&str, String)> = vec![
+    vec![
         ("NROS_RMW_NAME", r.declared.clone()),
         ("NROS_RMW_PACKAGE", r.package.clone()),
         ("NROS_RMW_PACKAGE_DIR", r.package_dir.display().to_string()),
@@ -1118,6 +1140,17 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
             d.capabilities
                 .iter()
                 .map(|(k, _)| k.as_str())
+                .collect::<Vec<_>>()
+                .join(";"),
+        ),
+        // `[rmw.facts]` as `name=ON|OFF` pairs, absent = unknown: what
+        // `nros_capability_features` refuses a service axis on
+        // (`services=OFF`), the same fact `backend_link` reads on the Rust roads.
+        (
+            "NROS_RMW_FACTS",
+            d.facts
+                .iter()
+                .map(|(k, v)| format!("{k}={}", bool_cmake(*v)))
                 .collect::<Vec<_>>()
                 .join(";"),
         ),
@@ -1151,18 +1184,7 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
                 .collect::<Vec<_>>()
                 .join(";"),
         ),
-    ];
-
-    if args.lines {
-        for (k, v) in &rows {
-            println!("{k}\t{v}");
-        }
-    } else {
-        for (k, v) in &rows {
-            println!("{k} = {v}");
-        }
-    }
-    Ok(())
+    ]
 }
 
 // =============================================================================

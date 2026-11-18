@@ -500,6 +500,70 @@ pub fn interface_package_on_index(search: Option<&std::ffi::OsStr>, name: &str) 
     crate::cmd::ws::interface_index(search).is_some_and(|i| i.find_package(name).is_some())
 }
 
+/// The capability axes whose runtime half creates SERVICES on each node: the
+/// six parameter services, and the five lifecycle services.
+pub const SERVICE_AXES: &[&str] = &["param_services", "lifecycle"];
+
+/// The refusal for an image whose nodes would need services the backend
+/// cannot create, or `None` when the backend can (or does not say).
+///
+/// Phase-556 W13 made the stock node interfaces (the parameter services among
+/// them) the default for every image. A backend whose service slots all
+/// answer "unsupported" (`[rmw.facts] services = false`, a MEASURED fact; an
+/// absent fact is unknown and refuses nothing) used to boot such a node with a
+/// one-line runtime error and no parameter services, so `ros2 param` reached
+/// nothing. Refused here instead, on every road that asks
+/// [`undeclared_capability_refusal`].
+///
+/// Per node: each component the image declares runs on the image's backend
+/// `r`, and each is named. A node a component opens on ANOTHER backend in its
+/// own code (`NodeBuilder::rmw`) is invisible to the model, so it is neither
+/// refused nor passed here — today's behaviour, never a guess. The message
+/// carries no tracker id (user ruling 2026-11-12).
+#[must_use]
+pub fn unservable_services_refusal(
+    image: &str,
+    r: &ResolvedRmwIn,
+    sys: &SystemToml,
+) -> Option<String> {
+    if r.states_fact("services") != Some(false) {
+        return None;
+    }
+    let axes: Vec<&str> = SERVICE_AXES
+        .iter()
+        .copied()
+        .filter(|a| sys.capability_enabled(a))
+        .collect();
+    if axes.is_empty() {
+        return None;
+    }
+    let nodes: Vec<String> = if sys.components.is_empty() {
+        vec![format!("the nodes of image `{image}`")]
+    } else {
+        sys.components
+            .iter()
+            .map(|c| format!("node `{}` of image `{image}`", c.name))
+            .collect()
+    };
+    let lines: Vec<String> = nodes
+        .iter()
+        .flat_map(|node| {
+            axes.iter().map(move |cap| {
+                format!(
+                    "{node}: capability `{cap}` is enabled (by the image's stock node \
+                     interfaces, or declared in its features), but the `{}` RMW cannot \
+                     create services, so the node would boot without them and `ros2` \
+                     could not reach them. Set `node_interfaces = \"none\"` (or drop \
+                     `{cap}` from the features if you declared it), or select an RMW that \
+                     serves services.",
+                    r.declared
+                )
+            })
+        })
+        .collect();
+    Some(lines.join("\n"))
+}
+
 /// `derived` (a backend dependency's edition and capability features, as
 /// [`dependency_features`] computes them) followed by each of the board's
 /// `platform` features the crate at `dir` declares, without repeats.
@@ -779,6 +843,262 @@ mod tests {
         assert_eq!(
             runtime_interface_types_refusal(&z, &sys("zenoh", "\"param_services\""), &none),
             None
+        );
+    }
+
+    /// A node that would serve services on a backend that MEASURED it cannot
+    /// create them is refused: per node, naming the node, the image, the
+    /// backend, the axis and the way out. The stock default reaches it too
+    /// (nothing declared), `node_interfaces = "none"` clears it, and a backend
+    /// that states nothing (unknown) is never refused.
+    #[test]
+    fn a_node_whose_backend_cannot_create_services_is_refused() {
+        let idx = test_support::in_tree_index();
+        let sys = |rmw: &str, extra: &str| -> SystemToml {
+            toml::from_str(&format!(
+                "[system]\nname = \"t\"\nrmw = \"{rmw}\"\ndomain_id = 0\n{extra}\n\
+                 [[component]]\npkg = \"p\"\nclass = \"p::A\"\nname = \"alpha\"\n\
+                 [[component]]\npkg = \"p\"\nclass = \"p::B\"\nname = \"beta\"\n"
+            ))
+            .unwrap()
+        };
+        let uorb = idx.resolve("uorb").unwrap();
+        assert_eq!(
+            uorb.states_fact("services"),
+            Some(false),
+            "the uORB descriptor states the measured fact"
+        );
+
+        // The stock default: nothing declared, both nodes refused.
+        let e = unservable_services_refusal("img", &uorb, &sys("uorb", ""))
+            .expect("stock param_services on uORB must be refused");
+        for want in [
+            "node `alpha` of image `img`",
+            "node `beta` of image `img`",
+            "capability `param_services` is enabled",
+            "`uorb` RMW cannot create services",
+            "node_interfaces = \"none\"",
+        ] {
+            assert!(e.contains(want), "missing {want:?} in: {e}");
+        }
+        for id in ["issue", "RFC-", "phase-", "#"] {
+            assert!(!e.contains(id), "no tracker id in a user message: {e}");
+        }
+        // Lifecycle creates services too.
+        let e = unservable_services_refusal(
+            "img",
+            &uorb,
+            &sys(
+                "uorb",
+                "node_interfaces = \"none\"\nfeatures = [\"lifecycle\"]",
+            ),
+        )
+        .expect("lifecycle on uORB must be refused");
+        assert!(
+            e.contains("capability `lifecycle`") && !e.contains("`param_services`"),
+            "{e}"
+        );
+        // The way out works.
+        assert_eq!(
+            unservable_services_refusal("img", &uorb, &sys("uorb", "node_interfaces = \"none\"")),
+            None
+        );
+        // A backend that does not state the fact is unknown, never refused.
+        for rmw in ["zenoh", "xrce", "cyclonedds"] {
+            let r = idx.resolve(rmw).unwrap();
+            assert_ne!(
+                r.states_fact("services"),
+                Some(false),
+                "{rmw} states no false fact"
+            );
+            assert_eq!(
+                unservable_services_refusal("img", &r, &sys(rmw, "")),
+                None,
+                "{rmw}"
+            );
+        }
+    }
+
+    /// The parity table's rows: `(node_interfaces, declared features)`. Each
+    /// reaches the refusals' axes the way an image does: the stock switch for
+    /// the parameter services, a declaration for the rest, plus axes neither
+    /// road refuses as controls. `link-tls` is left out on purpose: the cmake
+    /// road refuses it on EVERY backend (no C/C++ TLS link exists), the Rust
+    /// road only where no backend carries it, so the two answers differ by
+    /// design, not by drift.
+    const PARITY_ROWS: &[(&str, &[&str])] = &[
+        ("stock", &[]),
+        ("none", &["param_services"]),
+        ("none", &["lifecycle"]),
+        ("none", &["safety"]),
+        ("none", &["params"]),
+        ("none", &["rosout"]),
+        ("none", &[]),
+    ];
+
+    /// The axes one refusal text refuses: every "capability `X`" or
+    /// "capability 'X'" in it (cmake's 2487 message quotes with `'`).
+    fn refused_axes(text: &str) -> std::collections::BTreeSet<String> {
+        let mut out = std::collections::BTreeSet::new();
+        for (i, _) in text.match_indices("capability ") {
+            let rest = &text[i + "capability ".len()..];
+            let Some(q) = rest.chars().next().filter(|c| *c == '`' || *c == '\'') else {
+                continue;
+            };
+            if let Some(end) = rest[1..].find(q) {
+                out.insert(rest[1..=end].to_string());
+            }
+        }
+        out
+    }
+
+    fn squash(s: &str) -> String {
+        s.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    /// One row as the image's `system.toml` would state it.
+    fn row_sys(rmw: &str, node_interfaces: &str, declared: &[&str]) -> SystemToml {
+        let list = declared
+            .iter()
+            .map(|c| format!("\"{c}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        toml::from_str(&format!(
+            "[system]\nname = \"t\"\nrmw = \"{rmw}\"\ndomain_id = 0\n\
+             node_interfaces = \"{node_interfaces}\"\nfeatures = [{list}]\n\
+             [[component]]\npkg = \"p\"\nclass = \"p::A\"\nname = \"alpha\"\n"
+        ))
+        .unwrap()
+    }
+
+    /// The Rust road's answer for one row: the axes refused, and the text.
+    fn rust_answer(
+        idx: &RmwIndex,
+        r: &ResolvedRmwIn,
+        sys: &SystemToml,
+    ) -> (std::collections::BTreeSet<String>, String) {
+        let text = [
+            undeclared_capability_refusal(idx, r, sys),
+            unservable_services_refusal("img", r, sys),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n");
+        (refused_axes(&text), text)
+    }
+
+    /// The cmake road's answer for one row, through
+    /// `scripts/check/capability-refusal-parity.cmake`, with the facts the CLI
+    /// exports (`crate::cmd::ws::dispatch_rows`), never a second parse.
+    fn cmake_answer(
+        r: &ResolvedRmwIn,
+        caps: &[String],
+    ) -> (std::collections::BTreeSet<String>, String) {
+        let rows = crate::cmd::ws::dispatch_rows(r);
+        let row = |k: &str| {
+            rows.iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_else(|| panic!("dispatch rows carry no {k}"))
+        };
+        let script = test_support::checkout().join("scripts/check/capability-refusal-parity.cmake");
+        let out = std::process::Command::new("cmake")
+            .arg(format!("-DRMW={}", r.declared))
+            .arg(format!("-DCAPS={}", caps.join(";")))
+            .arg(format!(
+                "-DRMW_CAPABILITIES={}",
+                row("NROS_RMW_CAPABILITIES")
+            ))
+            .arg(format!("-DRMW_FACTS={}", row("NROS_RMW_FACTS")))
+            .arg("-P")
+            .arg(&script)
+            .output()
+            .expect("running cmake -P (cmake is a build requirement of this repo)");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let accepted = out.status.success() && text.contains("ACCEPTED");
+        let axes = if accepted {
+            Default::default()
+        } else {
+            refused_axes(&text)
+        };
+        assert!(
+            accepted || !axes.is_empty(),
+            "cmake neither accepted nor named an axis for {} {caps:?}:\n{text}",
+            r.declared
+        );
+        (axes, text)
+    }
+
+    /// The two capability refusals are spelled twice, in Rust and in cmake,
+    /// and nothing held the two together: one table, both spellings, one
+    /// answer. Every in-tree backend x one axis per row (cmake stops at its
+    /// first refusal, so one axis per row is what both can answer). For the
+    /// services refusal the cmake text must carry the Rust message body word
+    /// for word, after its prefix. A disagreement names the row and the side.
+    #[test]
+    fn capability_refusal_parity() {
+        let idx = test_support::in_tree_index();
+        let mut bad = Vec::new();
+        let mut refused_rows = 0;
+        for rmw in ["zenoh", "xrce", "cyclonedds", "uorb"] {
+            let r = idx.resolve(rmw).unwrap();
+            for (ni, declared) in PARITY_ROWS {
+                let sys = row_sys(rmw, ni, declared);
+                // What the CLI hands cmake: the image's EFFECTIVE features.
+                let caps = sys.effective_features();
+                let label = format!("({rmw}, node_interfaces = {ni}, features = {declared:?})");
+                let (rust, rust_text) = rust_answer(&idx, &r, &sys);
+                let (cmake, cmake_text) = cmake_answer(&r, &caps);
+                if !rust.is_empty() {
+                    refused_rows += 1;
+                }
+                // cmake stops at its FIRST refusal, Rust names every one: they
+                // agree when both refuse nothing, or cmake's axis is one Rust names.
+                let agree = if rust.is_empty() {
+                    cmake.is_empty()
+                } else {
+                    cmake.len() == 1 && cmake.is_subset(&rust)
+                };
+                if !agree {
+                    bad.push(format!(
+                        "row {label}: the Rust road refuses {rust:?}, the cmake road \
+                         refuses {cmake:?}\n  rust: {rust_text}\n  cmake: {}",
+                        squash(&cmake_text)
+                    ));
+                    continue;
+                }
+                if cmake.contains("param_services") || cmake.contains("lifecycle") {
+                    let axis = cmake.iter().next().unwrap();
+                    let line = rust_text
+                        .lines()
+                        .find(|l| l.contains(&format!("capability `{axis}`")))
+                        .unwrap_or_default();
+                    let body = line.split_once(": ").map_or(line, |(_, b)| b);
+                    if !squash(&cmake_text).contains(&squash(body)) {
+                        bad.push(format!(
+                            "row {label}: both refuse `{axis}`, but the cmake text does not \
+                             carry the Rust body\n  rust body: {body}\n  cmake: {}",
+                            squash(&cmake_text)
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "the two roads disagree:\n{}",
+            bad.join("\n")
+        );
+        // Negative control: the table must actually reach a refusal on both
+        // refusals' axes, or "they agree" is two roads that never refuse.
+        assert!(
+            refused_rows >= 3,
+            "only {refused_rows} refused rows: the table proves nothing"
         );
     }
 

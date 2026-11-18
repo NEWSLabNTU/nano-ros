@@ -70,3 +70,11 @@ rlib_dep = ""
 needs_cxx_linker = true             # C++ port
 
 [rmw.capabilities]
+
+# MEASURED, not authored: every service and client slot answers
+# NROS_RMW_RET_UNSUPPORTED (src/service.cpp). tests/register_smoke.cpp
+# calls them and checks this line agrees, so the fact cannot drift from the
+# code. Configure refuses a node that would serve services here (the stock
+# parameter services, lifecycle) instead of booting it without them.
+[rmw.facts]
+services = false
