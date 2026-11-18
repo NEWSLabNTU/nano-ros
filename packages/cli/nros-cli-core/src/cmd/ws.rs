@@ -3562,37 +3562,28 @@ fn generate_facade_crates(
     sdk_root: Option<&std::path::Path>,
     verbose: bool,
 ) -> Result<()> {
-    // The bringup: the package that declares the system. More than one is a
-    // multi-system workspace, which the facade shape does not yet model — say
-    // so rather than silently picking the first.
-    let bringups: Vec<&WsPkg> = scan
-        .iter()
-        .filter(|p| p.dir.join("system.toml").is_file())
-        .collect();
-    let bringup = match bringups.as_slice() {
-        [] => return Ok(()),
-        [one] => *one,
-        many => {
-            eprintln!(
-                "sync: {} bringups declare a system ({}); selection facades \
-                 are not generated for multi-system workspaces (one system \
-                 declaration per workspace is modelled). Entry manifests keep \
-                 their hand-written features.",
-                many.len(),
-                many.iter()
-                    .map(|p| p.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
-            return Ok(());
-        }
-    };
-
-    let system_toml = bringup.dir.join("system.toml");
-    let raw = std::fs::read_to_string(&system_toml)
-        .wrap_err_with(|| format!("sync: read {}", system_toml.display()))?;
-    let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
-        toml::from_str(&raw).wrap_err_with(|| format!("sync: parse {}", system_toml.display()))?;
+    // The bringups: every package that declares a system. Issue 2556 — a
+    // workspace may hold several (RFC-0121 D2), and each entry takes its
+    // facade from the bringup whose images claim it (`write_facade_in` returns
+    // `None` for a package a bringup does not claim). An entry several
+    // bringups claim gets one facade only if they derive the same features
+    // for it: cargo unifies features per PACKAGE, so one crate cannot carry
+    // two selections, and picking one silently is the defect this replaced.
+    let mut bringups: Vec<(
+        &WsPkg,
+        crate::orchestration::cargo_metadata_schema::SystemToml,
+    )> = Vec::new();
+    for p in scan.iter().filter(|p| p.dir.join("system.toml").is_file()) {
+        let system_toml = p.dir.join("system.toml");
+        let raw = std::fs::read_to_string(&system_toml)
+            .wrap_err_with(|| format!("sync: read {}", system_toml.display()))?;
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
+            .wrap_err_with(|| format!("sync: parse {}", system_toml.display()))?;
+        bringups.push((p, sys));
+    }
+    if bringups.is_empty() {
+        return Ok(());
+    }
 
     // Entry packages come from CARGO's member list, not from `scan`.
     //
@@ -3631,19 +3622,71 @@ fn generate_facade_crates(
         if !cargo_toml.is_file() {
             continue;
         }
-        let Some(f) = crate::orchestration::facade::write_facade_in(
-            &rmws,
-            pkg_name,
-            pkg_dir,
-            &cargo_toml,
-            &bringup.dir,
-            &sys,
-            build_root,
-            sdk_root,
-            None,
-        )
-        .wrap_err_with(|| format!("sync: facade for {pkg_name}"))?
-        else {
+        let write = |bringup: &WsPkg,
+                     sys: &crate::orchestration::cargo_metadata_schema::SystemToml,
+                     root: &std::path::Path| {
+            crate::orchestration::facade::write_facade_in(
+                &rmws,
+                pkg_name,
+                pkg_dir,
+                &cargo_toml,
+                &bringup.dir,
+                sys,
+                root,
+                sdk_root,
+                None,
+            )
+            .wrap_err_with(|| format!("sync: facade for {pkg_name}"))
+        };
+        // With one bringup there is nothing to compare: write it directly.
+        // With several, ask each into a scratch root first (the facade writes
+        // only under the root it is given), keep the ones that claim this
+        // package, and refuse a disagreement before anything real is written.
+        let owner = if bringups.len() == 1 {
+            Some(0)
+        } else {
+            std::fs::create_dir_all(build_root)
+                .wrap_err_with(|| format!("sync: create {}", build_root.display()))?;
+            let scratch = tempfile::Builder::new()
+                .prefix(".facade-claims-")
+                .tempdir_in(build_root)
+                .wrap_err("sync: scratch dir for the facade comparison")?;
+            let mut claims: Vec<(usize, Vec<String>, Vec<String>)> = Vec::new();
+            for (i, (b, sys)) in bringups.iter().enumerate() {
+                let root = scratch.path().join(i.to_string());
+                if let Some(f) = write(b, sys, &root)? {
+                    claims.push((i, f.nros_features, f.board_features));
+                }
+            }
+            if let [(first, nf, bf), rest @ ..] = claims.as_slice() {
+                if let Some((other, onf, obf)) =
+                    rest.iter().find(|(_, onf, obf)| onf != nf || obf != bf)
+                {
+                    eyre::bail!(
+                        "sync: the entry `{pkg_name}` is built by images of two bringups that \
+                         select different features for it, and one crate can carry only one \
+                         selection.\n  `{a}`: nros[{an}] board[{ab}]\n  `{b}`: nros[{bn}] \
+                         board[{bb}]\nGive each bringup its own entry package, or make the two \
+                         bringups declare the same capabilities and RMW for the images that \
+                         build `{pkg_name}`.",
+                        a = bringups[*first].0.name,
+                        an = nf.join(", "),
+                        ab = bf.join(", "),
+                        b = bringups[*other].0.name,
+                        bn = onf.join(", "),
+                        bb = obf.join(", "),
+                    );
+                }
+                Some(*first)
+            } else {
+                None
+            }
+        };
+        let Some(owner) = owner else {
+            continue;
+        };
+        let (bringup, sys) = &bringups[owner];
+        let Some(f) = write(bringup, sys, build_root)? else {
             continue;
         };
         if f.changed || verbose {
@@ -10606,5 +10649,153 @@ mod model_sched_target_tests {
         };
         assert_eq!(by["posix"], ["linux"]);
         assert_eq!(by["zephyr"], ["zephyr"]);
+    }
+}
+
+#[cfg(test)]
+mod multi_bringup_facade_tests {
+    //! Issue 2556 — a workspace with several bringups gets a selection facade
+    //! per entry, from the bringup whose images claim it; an entry two
+    //! bringups claim with different selections is refused.
+    use super::*;
+
+    struct Ws {
+        _t: tempfile::TempDir,
+        root: PathBuf,
+    }
+
+    fn ws(bringups: &[(&str, &str)], entries: &[&str]) -> (Ws, Vec<WsPkg>) {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().to_path_buf();
+        let nros = root.join("nros");
+        std::fs::create_dir_all(&nros).unwrap();
+        std::fs::write(
+            nros.join("Cargo.toml"),
+            "[package]\nname = \"nros\"\n\n[features]\nros-humble = []\nros-jazzy = []\n\
+             param-services = []\nlifecycle = []\n",
+        )
+        .unwrap();
+        let mut scan = Vec::new();
+        for (name, system) in bringups {
+            let d = root.join("src").join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("system.toml"), system).unwrap();
+            scan.push(pkg(name, &d, false));
+        }
+        for name in entries {
+            let d = root.join("src").join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(
+                d.join("Cargo.toml"),
+                format!(
+                    "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n\n\
+                     [dependencies]\nnros = {{ path = \"../../nros\" }}\n"
+                ),
+            )
+            .unwrap();
+            scan.push(pkg(name, &d, true));
+        }
+        (Ws { _t: t, root }, scan)
+    }
+
+    fn pkg(name: &str, dir: &Path, rust: bool) -> WsPkg {
+        WsPkg {
+            name: name.to_string(),
+            dir: dir.to_path_buf(),
+            manifest: dir.join("package.xml"),
+            is_msg_pkg: false,
+            is_rust_pkg: rust,
+            deps: Vec::new(),
+            is_patch_consumer: true,
+        }
+    }
+
+    fn system(name: &str, features: &str, image: &str) -> String {
+        format!(
+            "[system]\nname = \"{name}\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+             features = [{features}]\n\n[image.{image}]\nboard = \"linux\"\n"
+        )
+    }
+
+    fn facade(ws: &Ws, entry: &str) -> String {
+        std::fs::read_to_string(
+            ws.root
+                .join("generated/nros-derived")
+                .join(entry)
+                .join("Cargo.toml"),
+        )
+        .unwrap_or_default()
+    }
+
+    #[test]
+    fn each_entry_takes_the_facade_of_the_bringup_that_claims_it() {
+        let (w, scan) = ws(
+            &[
+                ("a_bringup", &system("a", "\"param_services\"", "alpha")),
+                ("b_bringup", &system("b", "", "beta")),
+            ],
+            &["alpha_entry", "beta_entry"],
+        );
+        generate_facade_crates(&w.root, &scan, &w.root.join("generated"), None, false).unwrap();
+        let alpha = facade(&w, "alpha_entry");
+        let beta = facade(&w, "beta_entry");
+        assert!(
+            alpha.contains("param-services"),
+            "a's entry carries a's capability:\n{alpha}"
+        );
+        assert!(!beta.is_empty(), "b's entry gets a facade too");
+        assert!(
+            !beta.contains("param-services"),
+            "b's entry does not carry a's capability:\n{beta}"
+        );
+    }
+
+    #[test]
+    fn an_entry_two_bringups_select_differently_is_refused_naming_both() {
+        let (w, scan) = ws(
+            &[
+                ("a_bringup", &system("a", "\"param_services\"", "shared")),
+                ("b_bringup", &system("b", "", "shared")),
+            ],
+            &["shared_entry"],
+        );
+        let err = generate_facade_crates(&w.root, &scan, &w.root.join("generated"), None, false)
+            .expect_err("two selections for one crate");
+        let msg = format!("{err:#}");
+        for needle in [
+            "shared_entry",
+            "a_bringup",
+            "b_bringup",
+            "own entry package",
+        ] {
+            assert!(msg.contains(needle), "{needle:?} missing from:\n{msg}");
+        }
+        assert!(
+            facade(&w, "shared_entry").is_empty(),
+            "nothing is written on a refusal"
+        );
+    }
+
+    #[test]
+    fn an_entry_two_bringups_select_alike_gets_one_facade() {
+        let (w, scan) = ws(
+            &[
+                ("a_bringup", &system("a", "\"param_services\"", "shared")),
+                ("b_bringup", &system("b", "\"param_services\"", "shared")),
+            ],
+            &["shared_entry"],
+        );
+        generate_facade_crates(&w.root, &scan, &w.root.join("generated"), None, false).unwrap();
+        assert!(facade(&w, "shared_entry").contains("param-services"));
+        let leftovers: Vec<_> = std::fs::read_dir(w.root.join("generated"))
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".facade-claims-")
+            })
+            .collect();
+        assert!(leftovers.is_empty(), "the scratch root is removed");
     }
 }

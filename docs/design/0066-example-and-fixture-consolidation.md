@@ -422,9 +422,10 @@ example" no longer finds it under their language.
   granularity `NanoRosFeatureSet.cmake` already claims — and would make R1's
   per-language fold viable after all. RFC-0063 / phase-330 is already reworking
   model generation and is the natural place to consider it. **This RFC does not
-  depend on it**; R2 is correct under the limit as it stands. Still open,
-  filed as [issue 2556](../issues/2556-multi-system-workspace-selection-facades.md)
-  (phase-555 W3).
+  depend on it**; R2 is correct under the limit as it stands. Lifted
+  2026-11-18 ([issue 2556](../issues/archived/2556-multi-system-workspace-selection-facades.md)):
+  each entry's facade comes from the bringup whose images claim it, and an
+  entry two bringups select differently is refused.
 - ~~**Does the C/C++ `FORCE` last-write-wins need its own fix?**~~ **Answered
   (2026-11-18, [issue 2557](../issues/archived/2557-cmake-features-force-last-bringup-wins.md)).**
   Observed during W2: with three bringups, `managed_bringup`'s empty
