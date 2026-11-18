@@ -740,6 +740,21 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             )
         }
     };
+    // Phase-568 W2c -- a platform-only knob stated for another platform's
+    // image is refused. Not under `--board` (a build for ANOTHER board, the
+    // host census): the image's own platform is the one it states knobs for.
+    if args.board.is_none()
+        && let Some(d) = catalog
+            .as_ref()
+            .and_then(|cat| crate::cmd::board_facts::resolve_board(cat, &board))
+    {
+        crate::cmd::leaf_settings::refuse_off_platform_knobs(
+            leaf.image.as_deref().unwrap_or("<id>"),
+            leaf.knobs.keys(),
+            d.platform.kebab(),
+        )
+        .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
+    }
     // Issue 2692 -- the image's arch C flags, through the one carrier.
     let arch_rows = match (catalog.as_ref(), root.as_deref()) {
         (Some(cat), Some(r)) if args.board.is_none() => {
