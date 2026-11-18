@@ -1942,6 +1942,7 @@ ros_package = [
     "example_interfaces",
     "geometry_msgs",
     "lifecycle_msgs",
+    "rcl_interfaces",
     "rosgraph_msgs",
     "sensor_msgs",
     "std_msgs",
