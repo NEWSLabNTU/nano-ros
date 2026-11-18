@@ -4819,7 +4819,7 @@ rmw-uorb:
     # the surface the RMW ABI changes touch.
     cmake -S packages/rmw/uorb/nros-rmw-uorb -B "$BD" -DCMAKE_BUILD_TYPE=Release
     cmake --build "$BD" --parallel
-    ctest --test-dir "$BD" --output-on-failure
+    bash scripts/build/ctest-keep-failed-log.sh "$BD"
 
 # Issue 0787 — host lanes for the two C backends that had none.
 #
@@ -4861,7 +4861,7 @@ rmw-xrce:
     cmake -S packages/rmw/xrce/nros-rmw-xrce -B "$BD" -DCMAKE_BUILD_TYPE=Release \
         -DNROS_XRCE_CFFI_OUT_DIR="$OUT"
     cmake --build "$BD" --parallel
-    ctest --test-dir "$BD" --output-on-failure
+    bash scripts/build/ctest-keep-failed-log.sh "$BD"
 
 # Issue 0260 / phase-356 W3 — the sched-dim ACCEPT arms no build otherwise
 # reaches. Syntax-only: it type-checks our `vTaskCoreAffinitySet` /

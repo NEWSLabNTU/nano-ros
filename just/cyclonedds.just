@@ -133,7 +133,7 @@ build-rmw:
 [group("main")]
 test: build-rmw
     @bash scripts/dev/deprecated-scope-alias.sh cyclonedds test "just test cyclonedds"
-    ctest --test-dir packages/rmw/cyclonedds/nros-rmw-cyclonedds/build --output-on-failure
+    bash scripts/build/ctest-keep-failed-log.sh packages/rmw/cyclonedds/nros-rmw-cyclonedds/build
 
 # Composite: build RMW backend (self-provisions Cyclone) + run tests. Wired
 # into top-level `just ci` via the `cyclonedds-ci` wrapper as of Phase 117.16.

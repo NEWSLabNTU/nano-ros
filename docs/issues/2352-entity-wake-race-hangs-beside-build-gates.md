@@ -191,3 +191,35 @@ waiting on the TX mutex with no deadline) is unchanged and unconfirmed.
 **Suggested next step:** when the watchdog fires anywhere, read its stage
 and backtraces and reopen work from there. Otherwise leave this open as a
 watch item rather than closing it on a run count.
+
+## A Cyclone sighting (2026-11-18), a different test, output lost
+
+Another host reported one red of `nros_rmw_cyclonedds_entity_wake` (the
+Cyclone backend's own ctest, `tests/entity_wake.cpp`, plain arm). It came
+in a full backend `ctest -j8` at load 50-68, beside a `just ci gate` in
+another worktree, on a branch that changes descriptors and graph code but
+not the wake path. Three solo reruns passed in 0.36 s. That is not the test
+this issue is about (the Rust `nros-tests` one), and it is not the ros2
+shell-e2e class issue 2600 fixed: `entity_wake.cpp` runs in one process.
+
+What failed is not known. The reruns overwrote ctest's only full log,
+`Testing/Temporary/LastTest.log`, and the console copy had been filtered
+to the summary line, so no exit code or message survived. The test's exit
+codes would have said which property broke:
+
+- 1-6: setup;
+- 7: a wake before any publish;
+- 8/11/14: an arm saw no wake in ~5 s of publishing;
+- 9/10/12/15: a wake reached the wrong target.
+
+Not reproduced on newslab-118: 2,000 runs, 8-way parallel, alternating
+the plain and `late` arms, beside a live `just ci gate` plus 40 niced busy
+loops (1-minute load up to 63), gave 0 failures. A cross-run bus collision
+is ruled out: the test claims a per-process domain under the shared flock
+(issue 1762), and its topics are unique to the binary.
+
+So that the next occurrence brings its own message, every backend ctest
+recipe now runs through `scripts/build/ctest-keep-failed-log.sh`. It
+always passes `--output-on-failure`, and on a red it copies `LastTest.log`
+to `<build>/Testing/failed-runs/LastTest-<UTC>-<pid>.log`, which no rerun
+writes.
