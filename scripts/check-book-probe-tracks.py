@@ -35,6 +35,9 @@ Run:  python3 scripts/check-book-probe-tracks.py
 """
 
 import os
+import signal
+import shutil
+import re
 import shlex
 import subprocess
 import sys
@@ -52,7 +55,7 @@ from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
 
 
 def platforms() -> list[str]:
-    r = subprocess.run([sys.executable, str(TRACK_LIST), "--list"],
+    r = _run([sys.executable, str(TRACK_LIST), "--list"],
                        capture_output=True, text=True)
     rows = r.stdout.split()
     if r.returncode != 0 or "linux" not in rows or len(rows) < 2:
@@ -64,7 +67,7 @@ def platforms() -> list[str]:
 def extract(platform: str, out: Path) -> subprocess.CompletedProcess:
     env = dict(os.environ, PROBE_TRACK="installed", PROBE_PLATFORM=platform,
                PROBE_EXTRACT_ONLY=str(out))
-    return subprocess.run(["bash", str(HARNESS)], env=env, cwd=REPO,
+    return _run(["bash", str(HARNESS)], env=env, cwd=REPO,
                           capture_output=True, text=True)
 
 
@@ -72,20 +75,38 @@ def selftest() -> None:
     with tempfile.TemporaryDirectory() as d:
         ch = Path(d) / "chapter.md"
         ch.write_text("```bash probe=30 probe-run=10\nqemu-system-arm -kernel x\n```\n")
-        r = subprocess.run([sys.executable, str(EXTRACTOR), "--out", str(Path(d) / "o.sh"),
+        r = _run([sys.executable, str(EXTRACTOR), "--out", str(Path(d) / "o.sh"),
                             str(ch)], capture_output=True, text=True)
         if r.returncode == 0 or "probe-expect" not in r.stderr:
             sys.exit("check-book-probe-tracks: SELFTEST FAILED — a run step with no "
                      f"expected-output block extracted (rc={r.returncode}): {r.stderr}")
     _selftest_drifted_submodule()
+    _selftest_sweep()
     # phase-537 W2: a language-tabbed chapter extracts one language per track.
-    r = subprocess.run([sys.executable, str(EXTRACTOR), "--self-test"], capture_output=True, text=True)
+    r = _run([sys.executable, str(EXTRACTOR), "--self-test"], capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"check-book-probe-tracks: SELFTEST FAILED — the extractor's own: {r.stderr}{r.stdout}")
 
 
+def _selftest_sweep() -> None:
+    """A killed run's scratch dir is swept; a live run's, and anything else,
+    is not."""
+    with tempfile.TemporaryDirectory() as root:
+        dead = subprocess.Popen(["true"])
+        dead.wait()
+        mine = Path(root) / f"{SCRATCH_PREFIX}{os.getpid()}-live"
+        gone = Path(root) / f"{SCRATCH_PREFIX}{dead.pid}-killed"
+        other = Path(root) / "something-else-1-x"
+        for d in (mine, gone, other):
+            (d / "sub").mkdir(parents=True)
+        removed = _sweep_dead_scratch(root)
+        if removed != [gone.name] or gone.exists() or not mine.exists() or not other.exists():
+            sys.exit(f"check-book-probe-tracks: SELFTEST FAILED — the scratch sweep removed "
+                     f"{removed}, want only {gone.name} (a live run's and others' kept)")
+
+
 def _git(*args, cwd, env) -> str:
-    r = subprocess.run(["git", *args], cwd=cwd, env=env, capture_output=True, text=True)
+    r = _run(["git", *args], cwd=cwd, env=env, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"check-book-probe-tracks: non-tip rehearsal setup: git {' '.join(args)} "
                  f"(rc={r.returncode}): {r.stderr.strip()}")
@@ -97,7 +118,7 @@ def _clone_at(url: str, sha: str, dest: Path, env: dict, depth: str = "") -> sub
     clear = REPO / "scripts/lib/git-hook-env.sh"
     cmd = (f". {shlex.quote(str(clear))} && . {shlex.quote(str(helper))} && probe_clone_at_commit "
            f"{shlex.quote(url)} {sha} {shlex.quote(str(dest))} {depth}")
-    return subprocess.run(["sh", "-c", cmd], env=env, capture_output=True, text=True)
+    return _run(["sh", "-c", cmd], env=env, capture_output=True, text=True)
 
 
 def edited_paths(src: Path, env: dict) -> list[str]:
@@ -201,6 +222,68 @@ def _clone_scratch_root() -> "str | None":
     return None  # neither: tempfile's own default
 
 
+def _run(cmd, *, capture_output=False, text=False, input=None, timeout=None,
+         check=False, **kw):
+    """`subprocess.run`, but the child gets its own process group and the
+    WHOLE group dies with the call: on an exception (SIGINT, SIGTERM via
+    `main`'s handler, a timeout) and after a normal return. `subprocess.run`
+    kills only its direct child, so a `sh -c` wrapper's git grandchildren
+    would keep writing into a scratch dir on tmpfs after the run was gone."""
+    if capture_output:
+        kw["stdout"] = kw["stderr"] = subprocess.PIPE
+    if input is not None:
+        kw["stdin"] = subprocess.PIPE
+    p = subprocess.Popen(cmd, text=text, start_new_session=True, **kw)
+    try:
+        out, err = p.communicate(input, timeout=timeout)
+    except BaseException:
+        _kill_group(p)
+        raise
+    _kill_group(p)
+    r = subprocess.CompletedProcess(p.args, p.returncode, out, err)
+    if check:
+        r.check_returncode()
+    return r
+
+
+def _kill_group(p) -> None:
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    p.wait()
+
+
+SCRATCH_PREFIX = "nros-book-probe-"
+
+
+def _sweep_dead_scratch(root: "str | None") -> list[str]:
+    """Remove scratch dirs a KILLED run left behind; return what it removed.
+
+    A dir is `nros-book-probe-<pid>-<random>`. SIGTERM and SIGINT end a run
+    through its cleanup (see `main`), but SIGKILL (a probe timeout's second
+    signal) cannot be caught, and on tmpfs a leftover holds RAM every tenant
+    shares until reboot. So each run first removes the dirs whose owner pid
+    is gone and that this user owns, and never a live run's."""
+    if root is None:
+        return []
+    removed = []
+    for p in Path(root).glob(f"{SCRATCH_PREFIX}*"):
+        m = re.match(rf"{SCRATCH_PREFIX}(\d+)-", p.name)
+        if not m or not p.is_dir() or p.stat().st_uid != os.getuid():
+            continue
+        try:
+            os.kill(int(m.group(1)), 0)
+            continue  # its owner is alive
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            continue  # a pid that exists, under another user
+        shutil.rmtree(p, ignore_errors=True)
+        removed.append(p.name)
+    return removed
+
+
 def non_tip_rehearsal() -> list[str]:
     """The release rehearsal's checkout shape (see the module doc). Returns problems."""
     env = nros_clear_inherited_git_env(dict(os.environ))
@@ -211,7 +294,9 @@ def non_tip_rehearsal() -> list[str]:
     head = _git("rev-parse", "HEAD", cwd=REPO, env=env)
     common = _git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=REPO, env=env)
     bad = []
-    with tempfile.TemporaryDirectory(prefix="nros-book-probe-", dir=_clone_scratch_root()) as d:
+    root = _clone_scratch_root()
+    _sweep_dead_scratch(root)
+    with tempfile.TemporaryDirectory(prefix=f"{SCRATCH_PREFIX}{os.getpid()}-", dir=root) as d:
         d = Path(d)
         repo = d / "repo"
         # This checkout's HEAD by SHA, depth 1 — in a linked worktree that SHA
@@ -229,27 +314,27 @@ def non_tip_rehearsal() -> list[str]:
         _git("commit", "-q", "--no-verify", "-m", "C2: main moved on", cwd=repo, env=env)
         _git("branch", "-f", "main", "HEAD", cwd=repo, env=env)
         _git("checkout", "-q", "--detach", c1, cwd=repo, env=env)
-        armed = subprocess.run(["git", "show", "main:.github/workflows/release-nros.yml"],
+        armed = _run(["git", "show", "main:.github/workflows/release-nros.yml"],
                                cwd=repo, env=env, capture_output=True, text=True)
         if armed.returncode == 0:
             return ["NEGATIVE CONTROL FAILED: `main:` still reads the release workflow, "
                     "so the non-tip shape is not built and this check proves nothing"]
         harness = repo / "scripts/probe/run-bootstrap-probe.sh"
         out = d / "pinned-newer.sh"
-        r = subprocess.run(["bash", str(harness)], cwd=repo, capture_output=True, text=True,
+        r = _run(["bash", str(harness)], cwd=repo, capture_output=True, text=True,
                            env=dict(env, PROBE_TRACK="installed", PROBE_PLATFORM="pinned-newer",
                                     PROBE_EXTRACT_ONLY=str(out)))
         if r.returncode != 0:
             bad.append("pinned-newer on a detached non-tip SHA did not extract "
                        f"(rc={r.returncode}): {(r.stderr or r.stdout).strip()}")
-        r = subprocess.run(["bash", str(harness)], cwd=repo, capture_output=True, text=True,
+        r = _run(["bash", str(harness)], cwd=repo, capture_output=True, text=True,
                            env=dict(env, PROBE_BRANCH="main", PROBE_TRACK="installed",
                                     PROBE_PLATFORM="pinned-newer", PROBE_EXTRACT_ONLY=str(out)))
         if r.returncode != 2 or "PROBE_BRANCH is retired" not in r.stderr:
             bad.append(f"PROBE_BRANCH=main was not refused as retired (rc={r.returncode}): "
                        f"{(r.stderr or r.stdout).strip()}")
         book = d / "checkout.sh"
-        r = subprocess.run(["bash", str(harness)], cwd=repo, capture_output=True, text=True,
+        r = _run(["bash", str(harness)], cwd=repo, capture_output=True, text=True,
                            env=dict(env, PROBE_EXTRACT_ONLY=str(book)))
         want = 'probe_clone_at_commit "$PROBE_CLONE_URL" "$PROBE_COMMIT" nano-ros\n'
         if r.returncode != 0:
@@ -263,7 +348,7 @@ def non_tip_rehearsal() -> list[str]:
                                  ("release builder", f"file://{repo / '.git'}", "1")):
             dest = d / f"clone-{name.replace(' ', '-')}"
             r = _clone_at(url, c1, dest, env, depth)
-            got = subprocess.run(["git", "rev-parse", "HEAD"], cwd=dest, env=env,
+            got = _run(["git", "rev-parse", "HEAD"], cwd=dest, env=env,
                                  capture_output=True, text=True).stdout.strip() if dest.exists() else ""
             if r.returncode != 0 or got != c1:
                 bad.append(f"the {name} clone did not land on the commit under test "
@@ -272,6 +357,11 @@ def non_tip_rehearsal() -> list[str]:
 
 
 def main(argv: list[str]) -> int:
+    # SIGTERM (a probe timeout's first signal, a CI cancel) ends the run the
+    # way SIGINT does: as an exception, so every `TemporaryDirectory` removes
+    # its tree and `subprocess.run` kills its running child on the way out.
+    # Python's default for SIGTERM is to die with no cleanup at all.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     selftest()
     rehearsal = non_tip_rehearsal()
     if rehearsal:
