@@ -54,8 +54,9 @@ pub struct ShimConfig {
     /// the links where the domain's liveliness history is a burst the image
     /// cannot take.
     pub graph_discovery: bool,
+    // RFC-0134 D1.
     /// Whether this build compiles zenoh-pico's unicast peer mode, for a peer
-    /// session on a link that joins two endpoints (RFC-0134 D1). Resolved by
+    /// session on a link that joins two endpoints. Resolved by
     /// [`point_to_point_peer_derived`] once the link policy is applied; the
     /// same value writes `Z_FEATURE_UNICAST_PEER`, so the shim and the library
     /// cannot disagree.
@@ -257,17 +258,18 @@ impl ShimConfig {
     }
 }
 
-/// Whether a build compiles zenoh-pico's unicast peer mode (RFC-0134 D1).
+// RFC-0134 D1; the measured cost below is that RFC's step 0.
+/// Whether a build compiles zenoh-pico's unicast peer mode.
 ///
 /// On only when the build compiles a link that joins two endpoints and is
 /// stated by the image: IVC today, RPMsg when its link lands. The point is a
 /// peer session on that link with no router; zenoh-pico runs it as one remote
-/// end (`_is_single_peer`), with no accept loop and no socket set.
+/// end, with no accept loop and no socket set.
 ///
 /// Serial joins two endpoints too, but `LinkFeatures::serial` is on by DEFAULT
 /// for every hosted and bare-metal build, so it is not the image stating a
 /// point-to-point link, and keying on it would compile peer mode into nearly
-/// every image. Measured cost of compiling it in (RFC-0134, step 0): 5,188
+/// every image. Measured cost of compiling it in: 5,188
 /// bytes of code, no static RAM, no heap.
 pub fn point_to_point_peer_derived(link: &LinkFeatures) -> bool {
     link.ivc

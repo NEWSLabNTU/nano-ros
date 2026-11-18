@@ -51,6 +51,11 @@ class = "config"
 config = "CustomTransport"
 reason = "zenoh-pico over a caller-supplied link instead of its own sockets — same messages, different transport"
 
+[feature.link-ivc]
+class = "config"
+config = "PeerMode"
+reason = "zenoh-pico over IVC, a link with two endpoints, on which a peer session needs no router — same messages, no router"
+
 [feature.census-param-store-test]
 class = "harness"
 reason = "gives nros-rmw-metadata's tests a parameter store for the imperative-declaration census test, without unifying `nros/param-store` into every workspace build (issue 2670)"

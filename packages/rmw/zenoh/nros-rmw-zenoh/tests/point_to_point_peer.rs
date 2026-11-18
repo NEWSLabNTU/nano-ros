@@ -21,7 +21,8 @@
 #![cfg(all(feature = "platform-posix", feature = "link-ivc"))]
 
 use nros_rmw::{
-    Publisher, QoSProfile, Session, SessionMode, Subscription, TopicInfo, Transport, TransportConfig,
+    Publisher, QoSProfile, Session, SessionMode, Subscription, TopicInfo, Transport,
+    TransportConfig,
 };
 use nros_rmw_zenoh::ZenohTransport;
 use std::{
@@ -57,10 +58,15 @@ fn socket_end(mine: &Path, theirs: &Path) -> UnixDatagram {
     let sock = UnixDatagram::bind(mine).expect("bind this end's socket");
     let deadline = Instant::now() + Duration::from_secs(10);
     while !theirs.exists() {
-        assert!(Instant::now() < deadline, "the other end never bound {}", theirs.display());
+        assert!(
+            Instant::now() < deadline,
+            "the other end never bound {}",
+            theirs.display()
+        );
         thread::sleep(Duration::from_millis(10));
     }
-    sock.connect(theirs).expect("connect to the other end's socket");
+    sock.connect(theirs)
+        .expect("connect to the other end's socket");
     sock
 }
 
@@ -72,10 +78,7 @@ fn listening_peer(dir: &Path) -> ! {
     // peer may start at any point inside it.
     let mut session = match ZenohTransport::open(&config(&[("listen", "ivc/1")])) {
         Ok(s) => s,
-        Err(e) => {
-            eprintln!("listening peer did not open: {e:?}");
-            std::process::exit(2);
-        }
+        Err(e) => panic!("listening peer did not open: {e:?}"),
     };
     let mut subscriber = session
         .create_subscription(&topic(), QoSProfile::BEST_EFFORT)
@@ -136,7 +139,9 @@ fn two_peers_on_a_point_to_point_link_exchange_data_without_a_router() {
             let _ = child.kill();
             break None;
         }
-        publisher.publish_raw(&msg).expect("publish over the point-to-point link");
+        publisher
+            .publish_raw(&msg)
+            .expect("publish over the point-to-point link");
         thread::sleep(Duration::from_millis(200));
     };
     let _ = std::fs::remove_dir_all(&dir);
