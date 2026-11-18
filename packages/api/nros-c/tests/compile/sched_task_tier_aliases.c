@@ -20,7 +20,7 @@ int32_t new_spelling(const nros_native_sched_task_spec_t* t, size_t n, void* sto
                      const nros_sched_task_memory_t* m) {
     int32_t r = nros_board_native_run_sched_tasks("s", t, n);
     r |= nros_board_native_run_sched_tasks_ns("s", "/ns", t, n);
-    r |= nros_board_native_run_sched_tasks_in("s", "/ns", t, n, storage, stride);
+    r |= nros_board_native_run_sched_tasks_in("l", 0, "s", "/ns", t, n, storage, stride);
     r |= nros_board_freertos_run_sched_tasks_memory_in("l", 0, "s", "/ns", t, n, storage, stride, m);
     r |= nros_board_zephyr_run_sched_tasks_memory_in("l", 0, "s", "/ns", t, n, storage, stride, m);
     r |= nros_board_zephyr_run_sched_tasks_backed_in("l", 0, "s", "/ns", t, n, storage, stride, b,
@@ -38,7 +38,7 @@ int32_t old_spelling(const nros_native_tier_spec_t* t, size_t n, void* storage, 
                      const nros_tier_backing_t* b, const nros_tier_task_memory_t* m) {
     int32_t r = nros_board_native_run_tiers("s", t, n);
     r |= nros_board_native_run_tiers_ns("s", "/ns", t, n);
-    r |= nros_board_native_run_tiers_in("s", "/ns", t, n, storage, stride);
+    r |= nros_board_native_run_tiers_in("l", 0, "s", "/ns", t, n, storage, stride);
     r |= nros_board_freertos_run_tiers_tasks_in("l", 0, "s", "/ns", t, n, storage, stride, m);
     r |= nros_board_zephyr_run_tiers_tasks_in("l", 0, "s", "/ns", t, n, storage, stride, m);
     r |= nros_board_zephyr_run_tiers_backed_in("l", 0, "s", "/ns", t, n, storage, stride, b, m);

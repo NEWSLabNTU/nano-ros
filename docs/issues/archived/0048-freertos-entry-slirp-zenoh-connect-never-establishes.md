@@ -144,3 +144,18 @@ cause 1 fixed too, the firmware now dials `tcp/10.0.2.2:7451` and connects.
 
 #46 (the Executor stack overflow) is fixed: the firmware boots through the full
 board lifecycle.
+
+## Later (2026-11-18): the hosted half reversed by issue 2714
+
+This fix left POSIX / framework boards ignoring the overlay, and the `linux`
+board later cited it for leaving the connect facts (`locator`, `domain_id`)
+out of its baked rung "to keep `$NROS_LOCATOR` / `$ROS_DOMAIN_ID`
+authoritative". That dropped what an image's `system.toml` stated, on that
+board alone. [Issue 2714](../2714-posix-c-image-ignores-system-domain-id.md)
+bakes them on the host too, on the Rust and C/C++ roads. That is safe for
+this issue's goal: the one resolver, `try_resolve_with`, takes each field
+env > baked > default, so the environment still wins (a user ruling), and
+the stated value only replaces the bottom rung (domain 0, the backend's
+default locator). When the environment overrides a stated value, the image
+warns at boot, naming both.
+

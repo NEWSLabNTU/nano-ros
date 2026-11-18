@@ -1,0 +1,40 @@
+[package]
+name = "talker_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — publishes std_msgs/String on /chatter (the ROS 2 tutorial talker)."
+
+# Node pkg shape — lib only, no [[bin]], no main.rs. `nros::node!()`
+# exports the register / init / dispatch trampolines; the sibling
+# Entry pkgs bring up the executor + spin loop via `nros::main!()`.
+[lib]
+path = "src/lib.rs"
+
+# Phase 248 C6a (#60 T5) — Node pkgs are platform/RMW-AGNOSTIC. The old
+# `native/freertos/threadx-linux/nuttx/zephyr/esp32` matrix that selected
+# `nros/platform-*`+`nros/rmw-cffi` is gone: platform + RMW now flow from the
+# BOARD crate the sibling Entry pkg deps (a board built with `rmw-X`
+# self-links+registers the backend AND brings `nros-platform/platform-<rtos>`
+# via feature unification). This lib carries only the functional `nros`
+# features below (alloc + the rmw-cffi vtable + ROS edition); the Entry's `nros`
+# dep adds `std` for the hosted std targets (threadx-linux / nuttx).
+
+[package.metadata.nros.node]
+class = "talker_pkg::Talker"
+name = "talker"
+
+[dependencies]
+# Single platform/RMW-agnostic `nros` dep. `alloc` is the universal baseline
+# (works on the no_std targets; std targets get `std` from the Entry/board via
+# feature unification). `rmw-cffi` is the vtable seam only — the concrete RMW
+# backend is linked by the board crate, never named here.
+nros = { version = "*", default-features = false, features = [
+    "alloc",
+    "rmw-cffi", "macros"] }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
+# Track D (A5) — a node logs via `log_info!`; the posix board registers the default
+# sink at boot (phase-264 W3), so the line reaches the native entry's stdout.
+# phase-338 W7 — user source logs through the `log` facade; the board
+# bridges it. `nros_log` stays the platform/ABI layer beneath.
+log = { version = "0.4", default-features = false }

@@ -143,8 +143,9 @@ fn typed_emit_creates_node_and_configures_component() {
         src.contains("__nros_c_component_talker_pkg_configure(&__nros_node_0, executor, self)")
     );
     // main drives the real-executor lifecycle via the named runner.
-    // Issue 1597 — over the entry's own `.bss` executor storage.
-    assert!(src.contains("nros_board_native_run_components_named_in(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup, __nros_executor_storage, sizeof(__nros_executor_storage))"));
+    // Issue 1597 — over the entry's own `.bss` executor storage. Issue 2714 —
+    // led by the image's stated locator and domain, as every RTOS runner is.
+    assert!(src.contains("nros_board_native_run_components_named_in(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID_C_ABI, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup, __nros_executor_storage, sizeof(__nros_executor_storage))"));
     assert!(src.contains(
         "static uint64_t __nros_executor_storage[(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];"
     ));

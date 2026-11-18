@@ -3389,18 +3389,32 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
     // Compile-time connect defaults, so ONE portable source
     // works native + embedded. `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`
     // are target compile definitions the embedded board gate bakes
-    // (NanoRosEntry.cmake; Kconfig on Zephyr via <rclcpp/detail/main.hpp>); on native
-    // they are undefined. Precedence: env (hosted,
+    // (NanoRosEntry.cmake; Kconfig on Zephyr via <rclcpp/detail/main.hpp>), and
+    // on a `linux` image the stated values; `""` / 0 when nothing
+    // is stated. Precedence: env (hosted,
     // applied in the Rust resolver) > explicit arg > baked macro > default.
 #ifdef NROS_ENTRY_LOCATOR
     if (locator == nullptr) {
         locator = NROS_ENTRY_LOCATOR;
     }
 #endif
-#ifdef NROS_ENTRY_DOMAIN_ID
+    // `""` is "not stated" (`<rclc/detail/entry_config.h>`
+    // defines NROS_ENTRY_LOCATOR as `""` when nothing is baked, so it is
+    // always defined), exactly as `<rclc/detail/baked_rmw.h>` reads it. Passed
+    // on, it would arrive as a baked `Some("")` and the boot report would name
+    // an unstated locator `baked`.
+    if (locator != nullptr && locator[0] == '\0') {
+        locator = nullptr;
+    }
     // Only the UNSET sentinel (0) folds the baked macro in; an explicit
     // argument — including kDomainIdExplicitZero (255) for a literal
-    // domain 0 — passes through untouched.
+    // domain 0 — passes through untouched. The `_C_ABI` spelling carries a
+    // STATED 0 as that explicit zero.
+#if defined(NROS_ENTRY_DOMAIN_ID_C_ABI)
+    if (domain_id == 0) {
+        domain_id = static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI);
+    }
+#elif defined(NROS_ENTRY_DOMAIN_ID)
     if (domain_id == 0) {
         domain_id = static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID);
     }

@@ -412,6 +412,68 @@ pub fn try_resolve_hosted<'a>(
     Ok(cfg)
 }
 
+/// Where the environment overrides a value the image's
+/// `system.toml` STATED, each as `(env, stated)`. Only a value both sides
+/// state and that differs is reported: an unstated one has nothing to
+/// override, and an equal one changes nothing.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct StatementOverrides<'a> {
+    /// `$ROS_DOMAIN_ID` against `domain_id`.
+    pub domain_id: Option<(u32, u32)>,
+    /// `$NROS_LOCATOR` against `locator`.
+    pub locator: Option<(&'a str, &'a str)>,
+}
+
+/// The pure decision behind [`warn_env_overrides_statement`].
+pub fn env_overrides_statement<'a>(
+    stated: &BootConfig<'a>,
+    env: &EnvRung<'a>,
+) -> StatementOverrides<'a> {
+    StatementOverrides {
+        domain_id: match (env.domain_id, stated.domain_id) {
+            (Some(e), Some(s)) if e != s => Some((e, s)),
+            _ => None,
+        },
+        locator: match (env.locator, stated.locator) {
+            (Some(e), Some(s)) if e != s => Some((e, s)),
+            _ => None,
+        },
+    }
+}
+
+/// On a host the environment WINS over what the image's
+/// `system.toml` states (a user ruling, for testing convenience), and says so
+/// at boot, one warning per field, through `nros_log`.
+///
+/// `stated` is the image's statement and nothing else, which is why only the
+/// `linux` board and the host C/C++ runners call this, where the baked rung
+/// IS the statement. An RTOS simulator's baked rung is its board config
+/// whether or not anything was stated, so it would report a default as a
+/// statement. A malformed environment is not reported here: the resolver
+/// refuses it, and says why, right after.
+pub fn warn_env_overrides_statement(stated: &BootConfig<'_>) {
+    let Ok(env) = env_rung() else {
+        return;
+    };
+    let o = env_overrides_statement(stated, &env);
+    if let Some((e, s)) = o.domain_id {
+        nros_log::log_warn!(
+            nros_log::get_logger("nros"),
+            "ROS_DOMAIN_ID={} overrides system.toml's domain_id={}",
+            e,
+            s
+        );
+    }
+    if let Some((e, s)) = o.locator {
+        nros_log::log_warn!(
+            nros_log::get_logger("nros"),
+            "NROS_LOCATOR={} overrides system.toml's locator={}",
+            e,
+            s
+        );
+    }
+}
+
 /// `ExecutorConfig::from_env()`, as an extension trait.
 ///
 /// This was an inherent method on `ExecutorConfig`, which is
@@ -494,6 +556,67 @@ pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(all(test, feature = "env"))]
 mod tests {
     use super::*;
+
+    /// Issue 2714's user ruling, the whole grid: the environment overriding
+    /// a value is reported exactly when BOTH state it and they differ — for
+    /// the domain and the locator alike, each on its own.
+    #[test]
+    fn an_override_is_reported_exactly_when_both_state_it_and_differ() {
+        let env = |d: Option<u32>, l: Option<&'static str>| EnvRung {
+            domain_id: d,
+            locator: l,
+            ..Default::default()
+        };
+        let stated = |d: Option<u32>, l: Option<&'static str>| BootConfig {
+            domain_id: d,
+            locator: l,
+            ..Default::default()
+        };
+        for (e, st, want) in [
+            (None, None, None),
+            (Some(5), None, None),
+            (None, Some(7), None),
+            (Some(7), Some(7), None),
+            (Some(5), Some(7), Some((5, 7))),
+            (Some(5), Some(0), Some((5, 0))),
+        ] {
+            assert_eq!(
+                env_overrides_statement(&stated(st, None), &env(e, None)).domain_id,
+                want,
+                "domain: env {e:?}, stated {st:?}"
+            );
+        }
+        for (e, st, want) in [
+            (None, None, None),
+            (Some("tcp/e:1"), None, None),
+            (None, Some("tcp/s:2"), None),
+            (Some("tcp/s:2"), Some("tcp/s:2"), None),
+            (
+                Some("tcp/e:1"),
+                Some("tcp/s:2"),
+                Some(("tcp/e:1", "tcp/s:2")),
+            ),
+        ] {
+            assert_eq!(
+                env_overrides_statement(&stated(None, st), &env(None, e)).locator,
+                want,
+                "locator: env {e:?}, stated {st:?}"
+            );
+        }
+        // Each field on its own: a differing domain says nothing about an
+        // agreeing locator.
+        let both = env_overrides_statement(
+            &stated(Some(7), Some("tcp/s:2")),
+            &env(Some(5), Some("tcp/s:2")),
+        );
+        assert_eq!(
+            both,
+            StatementOverrides {
+                domain_id: Some((5, 7)),
+                locator: None
+            }
+        );
+    }
 
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         super::test_env_lock()

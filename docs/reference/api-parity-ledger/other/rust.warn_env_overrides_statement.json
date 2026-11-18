@@ -1,0 +1,5 @@
+{
+  "key": "rust:warn_env_overrides_statement",
+  "verdict": "extension",
+  "why": "on a host the environment wins over the domain and locator the image's `system.toml` states; this logs one warning per overridden field through `nros_log`, naming both values. Called by the `linux` board and the host C/C++ runners, where the baked rung is the statement. No upstream equivalent: rclcpp has no deployment statement (issue 2714)."
+}

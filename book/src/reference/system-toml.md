@@ -34,7 +34,7 @@ Precedence, highest first: a command-line or build flag, `[image.<id>]`,
 | `launch` | Launch file, relative to the bringup. Absent: `[system] default_launch` |
 | `args` | Launch arguments bound at resolve time, such as `{ host = "robot1" }` |
 | `rmw` | Backend for this image. Absent: `[system] rmw` |
-| `domain_id`, `locator` | Override `[system]`'s. `locator` is what the image dials |
+| `domain_id`, `locator` | Override `[system]`'s. `locator` is what the image dials. On a `linux` image, `$ROS_DOMAIN_ID` / `$NROS_LOCATOR` override them at run time, and the image warns at boot naming both values when they differ |
 | `os_config` | Layer-1 files, in order: a board network file (`.toml`), Zephyr `prj-*.conf` or `.overlay` fragments. `conf` is read as its alias |
 | `rmw_config` | The middleware's own file for this image, or `{ <domain> = "<file>" }` per `[[domain]]` |
 | `panic` | Panic policy: `platform`, `halt` or `own` |

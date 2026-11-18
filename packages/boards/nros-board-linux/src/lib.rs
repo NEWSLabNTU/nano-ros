@@ -420,6 +420,16 @@ impl BoardEntry for LinuxBoard {
     }
 }
 
+/// The resolved boot config BOTH funnels open with: the baked rung above,
+/// under the environment, after warning where the environment overrides what
+/// `system.toml` stated (issue 2714's user ruling: on a host the environment
+/// wins, and says so). One function, so neither funnel can skip the warning.
+fn resolve_hosted_boot(deploy: &nros_platform::DeployOverlay) -> ::nros::ExecutorConfig<'static> {
+    let baked = hosted_baked_rung(deploy);
+    ::nros::env::warn_env_overrides_statement(&baked);
+    ::nros::env::resolve_hosted(baked)
+}
+
 /// The BAKED rung this board hands `resolve_hosted` — the launch-declared
 /// IDENTITY of the primary session, and nothing else.
 ///
@@ -446,15 +456,25 @@ impl BoardEntry for LinuxBoard {
 ///   `(image)` arm); every other blob leaves the bit clear, so this is `None`
 ///   and the selection is the unique registered backend, as before. Below
 ///   `$NROS_RMW` like the rest (census mode forces the recorder that way).
-/// * `locator` / `domain_id` — deliberately absent. Issue #48: a HOST resolves
-///   its connect facts from the environment, so leaving them `None` is what
-///   keeps `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` authoritative. Identity is not a
-///   connect fact, which is the distinction issue 1434 drew and this keeps.
+/// * `locator` / `domain_id` — from `DeployOverlay`, i.e. what the image's
+///   `system.toml` states (`[image.<id>]`, its defaults, `[system]`), and
+///   `None` when it states nothing. The same source every embedded board
+///   uses (`BaseConfig::apply_overlay`), so one `system.toml` means one
+///   domain on every board. Issue 2714 reversed what was here: these were
+///   left out "to keep `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` authoritative"
+///   (issue #48), which dropped the stated values on this board alone, so a
+///   node joined domain 0 whatever `system.toml` said. Leaving them out was
+///   never what kept the environment authoritative: the resolver is.
+///   `try_resolve_with` takes each field env > baked > default, so a baked
+///   value only replaces the bottom rung (domain 0, the backend's own
+///   locator).
 ///
-/// Both identity fields sit BELOW the environment either way —
-/// `try_resolve_with` reads `env.node_name.or(baked.node_name)` and
-/// `env.namespace.or(baked.namespace)` — so filling them costs
-/// `$NROS_NODE_NAME` / `$NROS_NODE_NAMESPACE` nothing.
+/// Every field here sits BELOW the environment —
+/// `try_resolve_with` reads `env.node_name.or(baked.node_name)`,
+/// `env.namespace.or(baked.namespace)`, `env.domain_id.or(baked.domain_id)`
+/// and the same for the locator — so filling them costs
+/// `$NROS_NODE_NAME` / `$NROS_NODE_NAMESPACE` / `$ROS_DOMAIN_ID` /
+/// `$NROS_LOCATOR` nothing.
 fn hosted_baked_rung(deploy: &nros_platform::DeployOverlay) -> ::nros::BootConfig<'static> {
     let blob = deploy
         .boot_config
@@ -464,7 +484,8 @@ fn hosted_baked_rung(deploy: &nros_platform::DeployOverlay) -> ::nros::BootConfi
         node_name: deploy.node_name,
         namespace: blob.namespace,
         rmw: blob.rmw,
-        ..Default::default()
+        locator: deploy.locator,
+        domain_id: deploy.domain_id,
     }
 }
 
@@ -576,7 +597,7 @@ impl LinuxBoard {
         profile_arm();
         let census = census_requested();
         let census_sizing = census.as_ref().and_then(|_| census_arm());
-        let exec_cfg = ::nros::env::resolve_hosted(hosted_baked_rung(deploy));
+        let exec_cfg = resolve_hosted_boot(deploy);
         // phase-271 — open at the entry's declared sizing when supplied.
         let opened = match (census_sizing, sizing) {
             // Issue 1419 — a census is not sized by the contract it checks.
@@ -833,7 +854,7 @@ impl LinuxBoard {
         profile_arm();
         let census = census_requested();
         let census_sizing = census.as_ref().and_then(|_| census_arm());
-        let exec_cfg = ::nros::env::resolve_hosted(hosted_baked_rung(deploy));
+        let exec_cfg = resolve_hosted_boot(deploy);
         let opened = match census_sizing {
             Some(census_sizing) => ::nros::Executor::open_sized(&exec_cfg, census_sizing),
             None => ::nros::Executor::open(&exec_cfg),
@@ -1721,22 +1742,23 @@ mod tests {
         );
     }
 
-    /// Issue #48 is PRESERVED: the connect facts stay absent, so a HOST keeps
-    /// resolving them from the environment. Identity is not a connect fact,
-    /// which is the whole distinction issues 1434 and 1442 rest on — if this
-    /// ever starts returning a locator, `$NROS_LOCATOR` stops being
-    /// authoritative for every hosted image.
+    /// Issue 2714 — the connect facts are what `system.toml` states, from the
+    /// overlay (the embedded boards' source too), and ABSENT when it states
+    /// none, so the resolver's bottom rung still speaks. The environment
+    /// outranks both, in the one resolver (`nros::env` tests
+    /// `env_overrides_baked_on_hosted` / `baked_used_when_env_unset_on_hosted`).
     #[test]
-    fn the_baked_rung_names_no_connect_facts() {
-        let d = overlay(Some("talker"), Some(&BAKED_BOTH));
-        let rung = hosted_baked_rung(&d);
-        assert_eq!(
-            rung.locator, None,
-            "locator must stay env-driven (issue #48)"
-        );
-        assert_eq!(
-            rung.domain_id, None,
-            "domain must stay env-driven (issue #48)"
-        );
+    fn the_baked_rung_carries_the_stated_connect_facts() {
+        let stated = nros_platform::DeployOverlay {
+            locator: Some("tcp/10.0.0.9:7447"),
+            domain_id: Some(7),
+            ..overlay(Some("talker"), Some(&BAKED_BOTH))
+        };
+        let rung = hosted_baked_rung(&stated);
+        assert_eq!(rung.locator, Some("tcp/10.0.0.9:7447"));
+        assert_eq!(rung.domain_id, Some(7));
+        let unstated = hosted_baked_rung(&overlay(Some("talker"), Some(&BAKED_BOTH)));
+        assert_eq!(unstated.locator, None, "an unstated locator stays absent");
+        assert_eq!(unstated.domain_id, None, "an unstated domain stays absent");
     }
 }

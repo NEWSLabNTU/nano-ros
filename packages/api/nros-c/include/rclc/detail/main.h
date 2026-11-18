@@ -99,12 +99,14 @@ NROS_PUBLIC int32_t nros_board_native_run_components_named_ns(const char* sessio
  * per-build NROS_CPP_EXECUTOR_STORAGE_SIZE. A block the linked library says is
  * too small is refused (`nros_cpp_executor_storage_check`). The `_ns` spelling
  * above stays for an older entry TU and takes one heap block at the library's
- * own size. Defined in nros-cpp. */
-NROS_PUBLIC int32_t nros_board_native_run_components_named_in(const char* session_name,
-                                                              const char* node_namespace,
-                                                              nros_c_entry_setup_fn setup,
-                                                              void* executor_storage,
-                                                              size_t storage_bytes);
+ * own size.
+ * `locator` / `domain_id` are the image's stated connect facts
+ * (`NROS_ENTRY_LOCATOR`, `NROS_ENTRY_DOMAIN_ID`; `""` / 0 = not stated), the
+ * BAKED rung below `$NROS_LOCATOR` / `$ROS_DOMAIN_ID`, the same
+ * leading pair every RTOS runner takes. Defined in nros-cpp. */
+NROS_PUBLIC int32_t nros_board_native_run_components_named_in(
+    const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
+    nros_c_entry_setup_fn setup, void* executor_storage, size_t storage_bytes);
 
 /* Per-sched-task spec for
  * `nros_board_native_run_sched_tasks`.
@@ -213,9 +215,13 @@ NROS_PUBLIC int32_t nros_board_native_run_sched_tasks_ns(
  * every sched task's executor is `.bss` the linker places and `mem-report` names. A
  * stride below this build's executor size is refused before any session opens.
  * The `_ns` spelling above stays for an older entry TU and takes one heap block
- * at the library's own size. Defined in nros-cpp. */
+ * at the library's own size.
+ * `locator` / `domain_id` are the image's stated connect facts
+ * (`NROS_ENTRY_LOCATOR`, `NROS_ENTRY_DOMAIN_ID`; `""` / 0 = not stated), the
+ * BAKED rung below `$NROS_LOCATOR` / `$ROS_DOMAIN_ID`, the same
+ * leading pair every RTOS runner takes. Defined in nros-cpp. */
 NROS_PUBLIC int32_t nros_board_native_run_sched_tasks_in(
-    const char* session_name, const char* node_namespace,
+    const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks, void* executor_storage,
     size_t storage_stride);
 
@@ -511,9 +517,13 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_levels_in(
  * the calling thread and every other level is a worker thread over it. A
  * level whose setup fails fails the boot: logged, every started level
  * stopped, the code returned. `task_memory` must be NULL (the process maps a
- * host thread's stack). Defined in nros-cpp. */
+ * host thread's stack).
+ * `locator` / `domain_id` are the image's stated connect facts
+ * (`NROS_ENTRY_LOCATOR`, `NROS_ENTRY_DOMAIN_ID`; `""` / 0 = not stated), the
+ * BAKED rung below `$NROS_LOCATOR` / `$ROS_DOMAIN_ID`, the same
+ * leading pair every RTOS runner takes. Defined in nros-cpp. */
 NROS_PUBLIC int32_t nros_board_native_run_levels_in(
-    const char* session_name, const char* node_namespace,
+    const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks, void* executor_storage,
     size_t storage_stride, const nros_sched_task_backing_t* backings,
     const nros_sched_task_memory_t* task_memory, void* scheduler_backing, size_t scheduler_bytes);

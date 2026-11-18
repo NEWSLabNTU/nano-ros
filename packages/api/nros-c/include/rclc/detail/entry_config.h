@@ -72,4 +72,19 @@
 #endif
 #endif /* NROS_ENTRY_DOMAIN_ID */
 
+/* ---- NROS_ENTRY_DOMAIN_ID_C_ABI — the domain as a runner's `uint8_t` ----
+ * The C ABI reads 0 as "not stated" and 255 (NROS_DOMAIN_ID_EXPLICIT_ZERO) as
+ * an explicit domain 0. A host image whose system.toml STATES `domain_id = 0`
+ * is baked with NROS_ENTRY_DOMAIN_STATED (cmake), so a differing
+ * `$ROS_DOMAIN_ID` is reported as overriding it rather than read as nothing
+ * stated. Without the flag this is NROS_ENTRY_DOMAIN_ID unchanged, which is
+ * every RTOS image. */
+#ifndef NROS_ENTRY_DOMAIN_ID_C_ABI
+#if defined(NROS_ENTRY_DOMAIN_STATED) && (NROS_ENTRY_DOMAIN_ID) == 0
+#define NROS_ENTRY_DOMAIN_ID_C_ABI 255
+#else
+#define NROS_ENTRY_DOMAIN_ID_C_ABI (NROS_ENTRY_DOMAIN_ID)
+#endif
+#endif /* NROS_ENTRY_DOMAIN_ID_C_ABI */
+
 #endif /* NROS_ENTRY_CONFIG_H */

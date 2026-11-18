@@ -289,9 +289,16 @@ class LinuxBoard {
         // of the process dying with it open. Before init: a signal during
         // `setup` is not lost.
         (void)::nros_cpp_termination_guard_install();
-        // Env overlay (NROS_LOCATOR / ROS_DOMAIN_ID) applies via
-        // init — null locator and 0 domain_id both trigger the env fallback.
-        rclcpp::Result r = rclcpp::init_in(nullptr, 0, sn, node_namespace);
+        // The image's stated locator and domain (`NROS_ENTRY_*`,
+        // baked into this entry's TU by cmake; `""` / 0 = not stated) are the
+        // BAKED rung. `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` still outrank them in
+        // the one resolver init reaches; this used to pass null / 0, which
+        // dropped what system.toml stated on this board alone.
+        ::nros_cpp_warn_env_overrides_stated(NROS_ENTRY_LOCATOR,
+                                             static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI));
+        rclcpp::Result r =
+            rclcpp::init_in((NROS_ENTRY_LOCATOR)[0] != '\0' ? (NROS_ENTRY_LOCATOR) : nullptr,
+                            static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), sn, node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         // "Write what the recorder saw and exit" exactly where the spin is:
@@ -388,9 +395,9 @@ class LinuxBoard {
                                    const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride) {
         return ::nros_board_native_run_sched_tasks_in(
-            session_name, node_namespace,
-            reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks), n_sched_tasks,
-            executor_storage, storage_stride);
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
+            n_sched_tasks, executor_storage, storage_stride);
     }
 
     /// The levels runner a generated hosted entry
@@ -406,10 +413,10 @@ class LinuxBoard {
                               const ::nros_sched_task_memory_t* task_memory,
                               void* scheduler_backing, size_t scheduler_bytes) {
         return ::nros_board_native_run_levels_in(
-            session_name, node_namespace,
-            reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks), n_sched_tasks,
-            executor_storage, storage_stride, backings, task_memory, scheduler_backing,
-            scheduler_bytes);
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
+            n_sched_tasks, executor_storage, storage_stride, backings, task_memory,
+            scheduler_backing, scheduler_bytes);
     }
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
     /// The old name of `run_sched_tasks`, kept one release.
@@ -589,7 +596,7 @@ class ZephyrBoard {
         // NativeSchedTaskSpec and nros_native_sched_task_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is safe.
         return ::nros_board_zephyr_run_sched_tasks_ns(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks);
     }
@@ -606,7 +613,7 @@ class ZephyrBoard {
                                    const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride) {
         return ::nros_board_zephyr_run_sched_tasks_in(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride);
     }
@@ -620,7 +627,7 @@ class ZephyrBoard {
                                    void* executor_storage, size_t storage_stride,
                                    const ::nros_sched_task_memory_t* task_memory) {
         return ::nros_board_zephyr_run_sched_tasks_memory_in(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, task_memory);
     }
@@ -635,7 +642,7 @@ class ZephyrBoard {
                                    const ::nros_sched_task_backing_t* backings,
                                    const ::nros_sched_task_memory_t* task_memory) {
         return ::nros_board_zephyr_run_sched_tasks_backed_in(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, backings, task_memory);
     }
@@ -654,7 +661,7 @@ class ZephyrBoard {
                               const ::nros_sched_task_memory_t* task_memory,
                               void* scheduler_backing, size_t scheduler_bytes) {
         return ::nros_board_zephyr_run_levels_in(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, backings, task_memory,
             scheduler_backing, scheduler_bytes);
@@ -810,7 +817,7 @@ class NuttxBoard {
         // NativeSchedTaskSpec and nros_native_sched_task_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is safe.
         return ::nros_board_nuttx_run_sched_tasks_ns(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks);
     }
@@ -829,7 +836,7 @@ class NuttxBoard {
                                    const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride) {
         return ::nros_board_nuttx_run_sched_tasks_in(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride);
     }
@@ -846,7 +853,7 @@ class NuttxBoard {
                               const ::nros_sched_task_memory_t* task_memory,
                               void* scheduler_backing, size_t scheduler_bytes) {
         return ::nros_board_nuttx_run_levels_in(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, backings, task_memory,
             scheduler_backing, scheduler_bytes);
@@ -1064,7 +1071,7 @@ class FreertosBoard {
         // NativeSchedTaskSpec and nros_native_sched_task_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is safe.
         return ::nros_board_freertos_run_sched_tasks_ns(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks);
     }
@@ -1083,7 +1090,7 @@ class FreertosBoard {
                                    const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride) {
         return ::nros_board_freertos_run_sched_tasks_in(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride);
     }
@@ -1098,7 +1105,7 @@ class FreertosBoard {
                                    void* executor_storage, size_t storage_stride,
                                    const ::nros_sched_task_memory_t* task_memory) {
         return ::nros_board_freertos_run_sched_tasks_memory_in(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, task_memory);
     }
@@ -1115,7 +1122,7 @@ class FreertosBoard {
                               const ::nros_sched_task_memory_t* task_memory,
                               void* scheduler_backing, size_t scheduler_bytes) {
         return ::nros_board_freertos_run_levels_in(
-            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID_C_ABI), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, backings, task_memory,
             scheduler_backing, scheduler_bytes);
