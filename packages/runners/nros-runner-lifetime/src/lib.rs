@@ -1,4 +1,4 @@
-//! What a runner starts dies with the runner (phase-544 W3, issue 2307).
+//! What a runner starts dies with the runner.
 //!
 //! `nros run` starts its runner with `PR_SET_PDEATHSIG`, so a verb killed with
 //! SIGKILL, which no handler sees, still takes the runner down. The image is

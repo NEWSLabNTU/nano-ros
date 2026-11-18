@@ -1,5 +1,4 @@
-//! QEMU MPS3-AN536 (dual Cortex-R52) board crate for nros on FreeRTOS + lwIP
-//! (phase-385).
+//! QEMU MPS3-AN536 (dual Cortex-R52) board crate for nros on FreeRTOS + lwIP.
 //!
 //! The emulated counterpart to `nros-board-s32z270-freertos`. Same CPU, same
 //! kernel port, same toolchain — but this one RUNS: QEMU models a GICv3, the

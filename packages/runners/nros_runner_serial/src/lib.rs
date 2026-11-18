@@ -2,8 +2,8 @@
 //! opening it raw at a baud rate, and the two streams between it and nros.
 //!
 //! The port is the plan's `console.port`, which nros resolved before the
-//! runner starts (RFC-0118 D6: `--port`, `NROS_PORT`, the bench file, exactly
-//! one attached device). This crate resolves nothing on its own.
+//! runner starts (`--port`, `NROS_PORT`, the bench file, exactly one attached
+//! device). This crate resolves nothing on its own.
 //!
 //! What the plan carries for a serial console:
 //!
@@ -15,8 +15,8 @@
 //! | `args.send` | lines to send once the port is open (`nros monitor --send`), one per `\n` | none |
 //! | `console.command` | a template that attaches the console instead (`picocom -b {baud} {port}`) | none |
 //!
-//! What the board prints reaches stdout byte for byte (RFC-0119 D6): nros
-//! grades `--expect` over it. Only the direction TO the board is translated.
+//! What the board prints reaches stdout byte for byte: nros grades
+//! `--expect` over it. Only the direction TO the board is translated.
 
 use std::{
     fs::File,
@@ -263,7 +263,7 @@ pub fn open(port: &Path, baud: u32) -> io::Result<File> {
 ///
 /// Returns `Ok` when `output` closes (nros stopped the console), and an error
 /// naming the port when the port ends or fails: a console that went away is
-/// the runner's failure (RFC-0118 D2 exit 2).
+/// the runner's failure (exit 2).
 ///
 /// # Errors
 ///

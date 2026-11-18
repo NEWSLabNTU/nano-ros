@@ -120,10 +120,10 @@ pub use lan9118_smoltcp;
 #[cfg(feature = "ethernet")]
 pub use nros_smoltcp;
 
-/// Phase 127.D — install `wfi` as the busy-wait idle hook so
-/// `Executor::open`'s connect/handshake polls release the CPU to
-/// QEMU's main loop between iterations. Must be called AFTER an IRQ
-/// source is armed; for RTIC examples that means immediately after
+/// Install `wfi` as the busy-wait idle hook so `Executor::open`'s
+/// connect/handshake polls release the CPU to QEMU's main loop between
+/// iterations. Must be called AFTER an IRQ source is armed; for RTIC
+/// examples that means immediately after
 /// `Mono::start(cx.core.SYST, ..)`. See
 /// `nros_platform_mps2_an385::sleep::enable_wfi_idle` for the safety
 /// contract and rationale.

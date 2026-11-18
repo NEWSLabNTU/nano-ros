@@ -17,7 +17,7 @@ pub fn init_clock() {
     nros_baremetal_common::sleep::set_clock_fn(crate::clock::clock_ms);
 }
 
-/// Phase 127.D — `wfi` shim used by [`enable_wfi_idle`].
+/// `wfi` shim used by [`enable_wfi_idle`].
 ///
 /// Wrapped in `extern "C"` so it matches `IdleFn`.
 ///
@@ -29,22 +29,22 @@ pub unsafe extern "C" fn nros_mps2_an385_wfi_idle() {
     cortex_m::asm::wfi();
 }
 
-/// Phase 127.D — install `cortex_m::asm::wfi()` as the sleep-loop idle
-/// callback so busy-wait `sleep_ms` invocations yield the CPU to
-/// QEMU's main loop (and to other guests sharing the host) between
-/// poll-callback iterations.
+/// Install `cortex_m::asm::wfi()` as the sleep-loop idle callback so
+/// busy-wait `sleep_ms` invocations yield the CPU to QEMU's main loop
+/// (and to other guests sharing the host) between poll-callback
+/// iterations.
 ///
 /// **Must only be called AFTER an IRQ source is armed.** RTIC examples
 /// should call this immediately after `Mono::start(cx.core.SYST, ..)`.
 /// Calling it before any IRQ is armed will deadlock at the first
 /// `sleep_ms`/`Executor::open` because `wfi` has nothing to wake on.
 ///
-/// Pre-fix, the busy-wait sleep loop never released CPU; with two
-/// MPS2 QEMU instances running in parallel under `-icount shift=auto`
-/// the second instance's `Executor::open` consumed 100% of its
-/// virtual-time budget on `SmoltcpBridge::poll_network` and never let
-/// QEMU's slirp main loop deliver SYN-ACK, which surfaced as
-/// `Transport(ConnectionFailed)` (Phase 127.D.1/D.2).
+/// Pre-fix, the busy-wait sleep loop never released CPU; with two MPS2
+/// QEMU instances running in parallel under `-icount shift=auto` the
+/// second instance's `Executor::open` consumed 100% of its virtual-time
+/// budget on `SmoltcpBridge::poll_network` and never let QEMU's slirp
+/// main loop deliver SYN-ACK, which surfaced as
+/// `Transport(ConnectionFailed)`.
 pub fn enable_wfi_idle() {
     set_idle_callback(nros_mps2_an385_wfi_idle);
 }

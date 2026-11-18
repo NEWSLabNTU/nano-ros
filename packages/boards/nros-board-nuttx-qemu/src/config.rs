@@ -1,15 +1,15 @@
 //! Network and node configuration for the NuttX QEMU boards.
 //!
-//! phase-337 W3.a — composed on [`nros_board_common::BaseConfig`] rather than
-//! re-declaring the `{ip, netmask, gateway, locator, domain_id}` core. NuttX
-//! owns no MAC (the virtio-net device takes its address from QEMU), so the
-//! board reads every other field off the shared type and ignores `mac`.
+//! Composed on [`nros_board_common::BaseConfig`] rather than re-declaring the
+//! `{ip, netmask, gateway, locator, domain_id}` core. NuttX owns no MAC (the
+//! virtio-net device takes its address from QEMU), so the board reads every
+//! other field off the shared type and ignores `mac`.
 //!
-//! The address fields are the KERNEL's (RFC-0109 D2): generated from the
-//! `defconfig` NuttX brings `eth0` up from, and never written back into the
-//! interface (issue 2048 retired the `SIOCSIFADDR` push). Setting them on a
-//! `Config` changes nothing on the wire; an image that wants another address
-//! changes the kernel's `CONFIG_NETINIT_*`.
+//! The address fields are the KERNEL's: generated from the `defconfig` NuttX
+//! brings `eth0` up from, and never written back into the interface (there
+//! is no `SIOCSIFADDR` push). Setting them on a `Config` changes nothing on
+//! the wire; an image that wants another address changes the kernel's
+//! `CONFIG_NETINIT_*`.
 
 use nros_board_common::{BaseConfig, base_config::parse_u32};
 
@@ -17,17 +17,17 @@ use nros_board_common::{BaseConfig, base_config::parse_u32};
 ///
 /// # Default configuration
 ///
-/// The kernel `defconfig`'s `CONFIG_NETINIT_*` (RFC-0109 D2 — NuttX owns this
-/// board's network): QEMU's own SLIRP network — IP `10.0.2.15/24`, gateway and
-/// router `10.0.2.2` (`tcp/10.0.2.2:7447`).
+/// The kernel `defconfig`'s `CONFIG_NETINIT_*` (NuttX owns this board's
+/// network): QEMU's own SLIRP network — IP `10.0.2.15/24`, gateway and router
+/// `10.0.2.2` (`tcp/10.0.2.2:7447`).
 ///
-/// Issue 2048 — there are no per-role presets (`listener()` / `server()` /
-/// `client()` used to advance the last octet by 1 / 2 / 3). They existed to
-/// give the retired `SIOCSIFADDR` push distinct addresses; with the kernel
-/// owning `eth0` they would name an address no guest has.
+/// There are no per-role presets (`listener()` / `server()` / `client()`
+/// used to advance the last octet by 1 / 2 / 3). They existed to give the
+/// retired `SIOCSIFADDR` push distinct addresses; with the kernel owning
+/// `eth0` they would name an address no guest has.
 #[derive(Clone, Copy, Debug)]
 pub struct Config {
-    /// The shared network/node core (RFC-0064 / phase-337 W1.b).
+    /// The shared network/node core.
     pub base: BaseConfig,
 }
 
@@ -126,16 +126,16 @@ impl Config {
     /// field — the one merge every embedded board makes
     /// ([`BaseConfig::apply_overlay`]).
     ///
-    /// Issue 1836 — NuttX was the one board that skipped it for the connect
-    /// pair, so an image's own locator never reached its session.
+    /// This includes the connect pair, so an image's own locator reaches
+    /// its session.
     #[must_use]
     pub fn with_deploy(mut self, deploy: &nros_platform::DeployOverlay) -> Self {
         self.base.apply_overlay(deploy);
         self
     }
 
-    /// Parse a direct-mode board file (RFC-0109 D4,
-    /// [`nros_board_common::parse_direct_toml`]).
+    /// Parse a direct-mode board file
+    /// ([`nros_board_common::parse_direct_toml`]).
     ///
     /// Missing fields use board-specific defaults. This is designed to work
     /// with `include_str!("../config.toml")` for compile-time embedding.

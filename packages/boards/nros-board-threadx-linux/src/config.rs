@@ -8,8 +8,8 @@
 //! devices with a bridge (traffic routes through the TAP fd instead of the bridge).
 //! veth pairs are purely kernel-side and work correctly with bridges and AF_PACKET.
 //!
-//! phase-337 W4.c — the `{mac, ip, netmask, gateway, locator, domain_id}` core,
-//! the `nros.toml` scanner and the three `no_std` parsers come from
+//! The `{mac, ip, netmask, gateway, locator, domain_id}` core, the `nros.toml`
+//! scanner and the three `no_std` parsers come from
 //! [`nros_board_common::BaseConfig`]. `interface` stays HERE: it is a fact
 //! about this board (a host NIC name), and pushing it into the shared type
 //! would make every board carry a field it ignores.
@@ -23,7 +23,7 @@ use nros_board_common::{
 /// # Default (Talker)
 ///
 /// - IP: 192.0.3.10/24, Gateway: 192.0.3.1
-/// - Zenoh: `tcp/127.0.0.1:7447` (`BOARD_NET_LOCATOR`: `stack = "host"`, issue 1793)
+/// - Zenoh: `tcp/127.0.0.1:7447` (`BOARD_NET_LOCATOR`: `stack = "host"`)
 /// - Interface: `veth-tx0`
 #[derive(Clone)]
 pub struct Config {
@@ -118,8 +118,8 @@ impl Config {
         self
     }
 
-    /// Parse a direct-mode board file (RFC-0109 D4,
-    /// [`nros_board_common::parse_direct_toml`]).
+    /// Parse a direct-mode board file
+    /// ([`nros_board_common::parse_direct_toml`]).
     ///
     /// Missing fields keep this board's defaults. Designed for
     /// `include_str!("../config.toml")` compile-time embedding.

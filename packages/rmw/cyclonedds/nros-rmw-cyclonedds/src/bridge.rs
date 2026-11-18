@@ -243,9 +243,9 @@ pub mod test_stub {
     pub static BUILD_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     /// Captures the last `(offset, kind)` pair per top-level field passed
-    /// to the bridge builder (Phase 212.K.7.4.e — lets unit tests assert
-    /// that service request/reply types get the CDR-walk-order synthetic
-    /// offsets that match the runtime memcpy paths in
+    /// to the bridge builder (lets unit tests assert that service
+    /// request/reply types get the CDR-walk-order synthetic offsets that
+    /// match the runtime memcpy paths in
     /// `service.cpp::{write_typed, take_typed_wire}`).
     pub const LAST_FIELDS_CAP: usize = 16;
     pub static LAST_FIELD_COUNT: AtomicUsize = AtomicUsize::new(0);

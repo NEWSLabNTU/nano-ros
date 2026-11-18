@@ -1,10 +1,10 @@
-//! issue 2022 — a tickless idle for the transport's own waits.
+//! A tickless idle for the transport's own waits.
 //!
 //! A bare-metal transport is poll-only: zenoh-pico and XRCE read the network
-//! only by polling smoltcp, so RFC-0106 D5 keeps the receive-blocking wait on
-//! bare metal and the executor never parks there. The wait that actually runs
-//! is a loop — `zpico_spin_once`'s read loop, a TCP connect, a `read_exact` —
-//! and until this module every one of them busy-polled until its deadline.
+//! only by polling smoltcp, so the receive-blocking wait stays on bare metal
+//! and the executor never parks there. The wait that actually runs is a loop
+//! — `zpico_spin_once`'s read loop, a TCP connect, a `read_exact` — and until
+//! this module every one of them busy-polled until its deadline.
 //!
 //! The obvious place for an idle, [`do_poll`][crate::do_poll]'s idle hook, is
 //! the wrong one for a tickless sleep: it runs right after the poll and BEFORE
@@ -44,7 +44,7 @@ static WAIT_IDLE: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
 
 /// Install the board's sleep primitive. Only a board whose primitive has a
 /// wake source for incoming frames may install one; without it a sleep to the
-/// deadline is the blind sleep RFC-0106 D5 forbids.
+/// deadline is a blind sleep.
 pub fn set_wait_idle(f: WaitIdleFn) {
     WAIT_IDLE.store(f as *mut (), Ordering::Release);
 }

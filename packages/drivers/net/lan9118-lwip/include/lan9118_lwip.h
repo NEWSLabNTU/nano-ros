@@ -69,7 +69,7 @@ void lan9118_lwip_poll(struct netif *netif);
  */
 int lan9118_lwip_link_is_up(struct netif *netif);
 
-/* ---- RX interrupt support (issue 0917) ----
+/* ---- RX interrupt support ----
  * The board owns the interrupt controller; the driver owns the MAC's own mask.
  * Wire them as: enable once at bring-up, mask in the ISR, drain in a task, and
  * enable again when `lan9118_lwip_rx_pending` reports the FIFO empty. */

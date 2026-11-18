@@ -85,12 +85,12 @@ pub const TOTAL_SOCKETS: usize = MAX_SOCKETS + MAX_UDP_SOCKETS;
 /// # Safety
 ///
 /// Must only be called once. The returned reference has `'static` lifetime
-/// and must not be used concurrently. Phase 214.L.1 hard-enforces the
-/// single-call contract — a second invocation panics rather than handing
-/// out a second `&'static mut` to the same storage and triggering
-/// aliasing UB. The siblings `get_tcp_buffers` / `get_udp_buffers` use a
-/// per-index contract (each `index` may be claimed at most once) so
-/// they remain unguarded at the function level.
+/// and must not be used concurrently. The single-call contract is
+/// hard-enforced — a second invocation panics rather than handing out a
+/// second `&'static mut` to the same storage and triggering aliasing UB.
+/// The siblings `get_tcp_buffers` / `get_udp_buffers` use a per-index
+/// contract (each `index` may be claimed at most once) so they remain
+/// unguarded at the function level.
 #[allow(static_mut_refs)]
 pub unsafe fn get_socket_storage() -> &'static mut [SocketStorage<'static>; TOTAL_SOCKETS] {
     use portable_atomic::{AtomicBool, Ordering};

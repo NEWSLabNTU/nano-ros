@@ -1,10 +1,10 @@
-//! The executor backing's placement arithmetic — issue 1197.
+//! The executor backing's placement arithmetic.
 //!
 //! # Why this is its own crate
 //!
-//! phase-392 W6 moved the executor's per-entry storage into a `.bss` static. On
-//! an RTOS the allocator reservation it used to come out of is itself fixed, so
-//! whatever sizes that reservation has to know how big the backing is.
+//! The executor's per-entry storage lives in a `.bss` static. On an RTOS the
+//! allocator reservation it used to come out of is itself fixed, so whatever
+//! sizes that reservation has to know how big the backing is.
 //!
 //! The size is `arena + tables`. The arena is plain arithmetic
 //! `nros-node/build.rs` already computes. The tables are `repr(Rust)` layout —
@@ -27,8 +27,8 @@
 //! # What it does NOT decide
 //!
 //! The counts. `cbs`/`sc`/`nodes`/`arena` come from `nros-node/build.rs` and,
-//! on a synced leaf, from the derived env `nros sync` writes (issues 0827,
-//! 1061). This crate only places regions.
+//! on a synced leaf, from the derived env `nros sync` writes. This crate only
+//! places regions.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -65,20 +65,19 @@ pub struct RegionUnits {
     pub violation: RegionUnit,
     /// Alive supervision's per-SchedContext record, one per `sc`.
     pub alive_slot: RegionUnit,
-    /// phase-476 W0 — the per-callback-slot lifetime tag (generation + owning
-    /// node), one per `cbs`. Placed after every older region so each keeps
-    /// its offset.
+    /// The per-callback-slot lifetime tag (generation + owning node), one per
+    /// `cbs`. Placed after every older region so each keeps its offset.
     pub slot_tag: RegionUnit,
-    /// phase-382 W3' — one parameter-store slot (`nros_params::ParameterSlot`),
-    /// one per [`Counts::params`]. Placed LAST, for the reason `slot_tag` was:
-    /// an image that carves no store (`params == 0`) keeps every offset and
-    /// the total it had before the region existed.
+    /// One parameter-store slot (`nros_params::ParameterSlot`), one per
+    /// [`Counts::params`]. Placed LAST, for the reason `slot_tag` was: an image
+    /// that carves no store (`params == 0`) keeps every offset and the total it
+    /// had before the region existed.
     pub parameter_slot: RegionUnit,
-    /// Issue 1812 — the parameter SERVICES' home (`nros_node`'s `ParamHome`:
-    /// their state, the shared request/reply buffer pair and the staging slot
-    /// a remote set decodes its value into), one per [`Counts::param_home`].
-    /// Placed after the store's slots for the same reason they are last: an
-    /// image with no store keeps every offset and its total.
+    /// The parameter SERVICES' home (`nros_node`'s `ParamHome`: their state,
+    /// the shared request/reply buffer pair and the staging slot a remote set
+    /// decodes its value into), one per [`Counts::param_home`]. Placed after
+    /// the store's slots for the same reason they are last: an image with no
+    /// store keeps every offset and its total.
     pub param_home: RegionUnit,
 }
 
@@ -91,10 +90,10 @@ pub struct Counts {
     pub cbs: usize,
     pub sc: usize,
     pub nodes: usize,
-    /// Issue 1982 -- extra-session slots (and their ids): sessions a node
-    /// opens on an RMW backend other than the primary's. At most `nodes`;
-    /// `nros-node` sizes it from the image's backend count (0 when it links
-    /// one), this crate only places the region.
+    /// Extra-session slots (and their ids): sessions a node opens on an RMW
+    /// backend other than the primary's. At most `nodes`; `nros-node` sizes
+    /// it from the image's backend count (0 when it links one), this crate
+    /// only places the region.
     pub extra_sessions: usize,
     pub arena: usize,
     pub remaps: usize,
@@ -102,15 +101,15 @@ pub struct Counts {
     /// `nros-node`'s `alloc` feature — it adds the sporadic-atomic table, so it
     /// changes the SIZE and cannot be inferred from the counts.
     pub alloc: bool,
-    /// phase-382 W3' — parameter-store slots carved from the backing. ZERO for
-    /// an image the build does not know to build a store, which is what keeps
-    /// the region off every image that merely links the declare path (issue
-    /// 1702's rejected `.bss` static was unconditional). Policy is
-    /// `nros-params`'; this crate only places the region.
+    /// Parameter-store slots carved from the backing. ZERO for an image the
+    /// build does not know to build a store, which is what keeps the region
+    /// off every image that merely links the declare path (a `.bss` static
+    /// would be unconditional). Policy is `nros-params`'; this crate only
+    /// places the region.
     pub params: usize,
-    /// Issue 1812 — parameter-service homes carved from the backing: one when
-    /// the image carves a store, zero otherwise. `nros-node` decides; this
-    /// crate only places the region.
+    /// Parameter-service homes carved from the backing: one when the image
+    /// carves a store, zero otherwise. `nros-node` decides; this crate only
+    /// places the region.
     pub param_home: usize,
 }
 

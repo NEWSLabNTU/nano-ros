@@ -1,10 +1,10 @@
-//! phase-338 — the `log` facade sink, reachable from BOTH boot paths.
+//! The `log` facade sink, reachable from BOTH boot paths.
 //!
 //! This module exists because the bridge used to live in `entry.rs`, which sits
 //! behind `feature = "board-entry"`. The RTIC boot path (`rtic.rs`) could not
 //! reach it, so an RTIC node body written against `log::info!` would have
-//! COMPILED AND PRINTED NOTHING — the silent failure phase-338 W7.b names.
-//! Ungated and shared, so both `entry.rs` and `rtic.rs` install the same sink.
+//! COMPILED AND PRINTED NOTHING. Ungated and shared, so both `entry.rs` and
+//! `rtic.rs` install the same sink.
 
 /// phase-338 W7 — route the `log` facade to the semihosting console.
 ///

@@ -22,12 +22,12 @@
 //!
 //! # Companion
 //!
-//! Platform sits one sched task below RMW. The Phase 117 RMW vtable
-//! (`<nros/rmw_vtable.h>`) is a runtime-pluggable struct; the
-//! platform layer is link-time-bound free symbols. Different choice
-//! because RMW backends genuinely swap per session (zenoh vs cyclonedds
-//! vs xrce in the same binary at test time) while a platform is fixed
-//! for the life of a binary.
+//! Platform sits one layer below RMW. The RMW vtable
+//! (`<nros/rmw_vtable.h>`) is a runtime-pluggable struct; the platform
+//! layer is link-time-bound free symbols. Different choice because RMW
+//! backends genuinely swap per session (zenoh vs cyclonedds vs xrce in
+//! the same binary at test time) while a platform is fixed for the life
+//! of a binary.
 
 #![no_std]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -671,9 +671,9 @@ macro_rules! nros_platform_export_clock {
         pub extern "C" fn nros_platform_clock_resolution_ns() -> u64 {
             <$ty as ::nros_platform_api::PlatformClock>::clock_resolution_ns()
         }
-        /// issue 0758 — a Rust port that does not override
-        /// `PlatformClock::epoch_us` emits this and answers `0`, which is
-        /// the honest reading for a platform with no wall clock.
+        /// A Rust port that does not override `PlatformClock::epoch_us`
+        /// emits this and answers `0`, which is the honest reading for a
+        /// platform with no wall clock.
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_epoch_us() -> u64 {
             <$ty as ::nros_platform_api::PlatformClock>::epoch_us()
@@ -980,10 +980,10 @@ macro_rules! nros_platform_export_threading {
         pub extern "C" fn nros_platform_wake_storage_align() -> usize {
             <$ty as ::nros_platform_api::PlatformThreading>::wake_storage_align()
         }
-        /// phase-364 W3 — the attribute defaults are pure data, so this is
-        /// emitted concretely rather than dispatched through the trait: every
-        /// port's answer is identical, and a trait method would only invite a
-        /// port to get it wrong.
+        /// The attribute defaults are pure data, so this is emitted
+        /// concretely rather than dispatched through the trait: every port's
+        /// answer is identical, and a trait method would only invite a port
+        /// to get it wrong.
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_task_attr_init(
             attr: *mut $crate::generated::nros_platform_task_attr_t,
@@ -1086,15 +1086,14 @@ macro_rules! nros_platform_export_log {
         pub extern "C" fn nros_platform_log_flush() {
             <$ty as ::nros_platform_api::PlatformLog>::flush()
         }
-        /// Phase 88.16.H — ABI-mirror parity. Direct-impl
-        /// platforms (`mps2-an385`, `stm32f4`, …) route every
-        /// record through `PlatformLog::write`, so the runtime
-        /// swap slot is meaningless to them. The header mirror
-        /// nonetheless declares `nros_platform_register_log_writer`,
-        /// so the macro emits a no-op stub to satisfy the
-        /// ABI-mirror check. Fn-ptr-slot platforms (FreeRTOS /
-        /// ThreadX / NuttX) don't call this macro — their C body
-        /// ships the real strong definition.
+        /// ABI-mirror parity. Direct-impl platforms (`mps2-an385`,
+        /// `stm32f4`, …) route every record through
+        /// `PlatformLog::write`, so the runtime swap slot is
+        /// meaningless to them. The header mirror nonetheless declares
+        /// `nros_platform_register_log_writer`, so the macro emits a
+        /// no-op stub to satisfy the ABI-mirror check. Fn-ptr-slot
+        /// platforms (FreeRTOS / ThreadX / NuttX) don't call this macro
+        /// — their C body ships the real strong definition.
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_register_log_writer(
             _writer: ::core::option::Option<

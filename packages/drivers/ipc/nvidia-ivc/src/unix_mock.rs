@@ -3,8 +3,9 @@
 //! semantics** at the public API boundary.
 //!
 //! NVIDIA's FSP IVC API is fundamentally a "borrow ring slot, fill,
-//! commit" pattern (see Phase 11.3.A). The mock keeps that pattern at
-//! the API surface so consumers don't branch on backend:
+//! commit" pattern (see the crate's zero-copy contract). The mock keeps
+//! that pattern at the API surface so consumers don't branch on
+//! backend:
 //!
 //! - Per-channel state owns one TX slot + one RX slot.
 //! - `tx_get` returns a pointer into the TX slot; `tx_commit(len)`

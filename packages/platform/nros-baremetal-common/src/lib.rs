@@ -9,8 +9,8 @@
 //!   for bare-metal targets without a C runtime
 //!
 //! This crate consolidates them into one place. Platform crates re-
-//! export or delegate to these modules. `heap` (issue 1640) is the arena
-//! refusal report three of them used to skip.
+//! export or delegate to these modules. `heap` is the arena refusal
+//! report three of them used to skip.
 
 #![no_std]
 

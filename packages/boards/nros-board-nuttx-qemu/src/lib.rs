@@ -3,21 +3,21 @@
 //! Board crate for running nros on the QEMU NuttX boards — **arm virt**
 //! (Cortex-A7 + virtio-net) and **rv-virt** (rv32imac + virtio-net).
 //!
-//! ## One crate, two witnesses (phase-337 W3 / RFC-0064)
+//! ## One crate, two witnesses
 //!
-//! These were two crates until phase-337 W3, and phase-322 W1.a measured 1059
-//! byte-identical lines between them: both upper layers — the kernel *and* the
-//! arch port — come from upstream NuttX, and the link list is *discovered* by
-//! scanning `$NUTTX_DIR/staging` for `lib*.a` rather than hardcoded, so an
-//! in-tree NuttX board crate is pure overlay with nothing arch-specific in it.
+//! These were once two crates, with 1059 byte-identical lines between them:
+//! both upper layers — the kernel *and* the arch port — come from upstream
+//! NuttX, and the link list is *discovered* by scanning `$NUTTX_DIR/staging`
+//! for `lib*.a` rather than hardcoded, so an in-tree NuttX board crate is pure
+//! overlay with nothing arch-specific in it.
 //!
 //! What genuinely differs between the two boards is **data**, and it stays
 //! data: `nuttx-config/<arch>/defconfig`, `<arch>-nuttx-toolchain.cmake`, the
 //! `NUTTX_*` env in each `[[board]]` entry of `nros-board.toml`, and the two
 //! FFI subcrates (`nros-nuttx-ffi` / `nros-nuttx-riscv-ffi`) whose
 //! `.cargo/config.toml` carries the target triple. The one *semantic* delta
-//! phase-322 found is the guest IP, which matches each board's
-//! defconfig `NETINIT` address and is therefore also an arch fact, not a fork.
+//! between them is the guest IP, which matches each board's defconfig
+//! `NETINIT` address and is therefore also an arch fact, not a fork.
 //!
 //! ## Architecture
 //!
@@ -74,15 +74,14 @@ pub use config::Config;
 
 /// Per-board marker for trait dispatch.
 ///
-/// Phase 313 W-nuttx (#0243) — the legacy ~~`nros_board_common::board_init`~~
-/// impls (`BoardInit`/`BoardPrint`/`BoardExit` + the free `node::run`) are
-/// RETIRED for this board; the live path is the `nros_platform::board`
-/// trait set in [`mod entry_212n`] (`BoardInit`, `BoardPrint`, `BoardExit`,
-/// `BoardEntry`).
+/// The legacy ~~`nros_board_common::board_init`~~ impls
+/// (`BoardInit`/`BoardPrint`/`BoardExit` + the free `node::run`) are RETIRED
+/// for this board; the live path is the `nros_platform::board` trait set in
+/// [`mod entry_212n`] (`BoardInit`, `BoardPrint`, `BoardExit`, `BoardEntry`).
 pub struct NuttxQemu;
 
-/// The pre-merge name of the arm witness's ZST — phase-337 W3.c keeps both
-/// spellings, so an out-of-tree entry pkg that names one keeps compiling.
+/// The pre-merge name of the arm witness's ZST — both spellings are kept,
+/// so an out-of-tree entry pkg that names one keeps compiling.
 pub type QemuArmVirt = NuttxQemu;
 
 /// The pre-merge name of the riscv witness's ZST. Same type: the board ZST only

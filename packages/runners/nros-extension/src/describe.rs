@@ -1,4 +1,4 @@
-//! The `describe` reply (RFC-0119 D6).
+//! The `describe` reply.
 //!
 //! `<bin> describe` prints one JSON object on stdout:
 //!
@@ -26,7 +26,7 @@ pub struct Describe {
     pub protocol: Vec<u32>,
     /// The verbs it implements.
     pub verbs: Vec<Verb>,
-    /// The plan placeholders it consumes (RFC-0118 D5).
+    /// The plan placeholders it consumes.
     #[serde(default)]
     pub needs: Vec<String>,
 }

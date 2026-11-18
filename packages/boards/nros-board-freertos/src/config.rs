@@ -1,6 +1,6 @@
 //! Configuration for QEMU FreeRTOS nodes
 //!
-//! phase-337 W5 — the `{mac, ip, netmask, gateway, locator, domain_id}` core is
+//! The `{mac, ip, netmask, gateway, locator, domain_id}` core is
 //! [`nros_board_common::BaseConfig`], shared with every other networked board,
 //! and the scheduling defaults are [`nros_board_common::FreertosScheduling`],
 //! shared with the `build.rs` that emits the C-side `NROS_APP_CONFIG` mirror
@@ -16,10 +16,10 @@ use nros_board_common::{
 ///
 /// # Default (Talker)
 ///
-/// - The named board's `[board.net]` over the platform default (phase-484
-///   W4b-2): a QEMU board sits on QEMU's SLIRP network (`10.0.2.15/24`,
-///   gateway and router `10.0.2.2`); with no board named, the platform
-///   default (`192.0.3.10/24`, router `tcp/192.0.3.1:7447`).
+/// - The named board's `[board.net]` over the platform default: a QEMU
+///   board sits on QEMU's SLIRP network (`10.0.2.15/24`, gateway and
+///   router `10.0.2.2`); with no board named, the platform default
+///   (`192.0.3.10/24`, router `tcp/192.0.3.1:7447`).
 #[derive(Clone)]
 pub struct Config {
     /// The shared `{mac, ip, netmask, gateway, zenoh_locator, domain_id}` core.
@@ -33,12 +33,12 @@ pub struct Config {
     // converts on read; `[node.rt.freertos]` is raw.
     /// Application task priority (raw FreeRTOS, default 3).
     pub app_priority: u8,
-    /// Application task stack size in bytes (default 131072 — MEASURED, issue
-    /// 1146; see `nros_board_common::freertos_config::app_stack_bytes`).
+    /// Application task stack size in bytes (default 131072 — MEASURED; see
+    /// `nros_board_common::freertos_config::app_stack_bytes`).
     pub app_stack_bytes: u32,
     /// Zenoh-pico read task priority (raw FreeRTOS, default 4). The read task
     /// is zenoh-pico 1.10's executor thread, which also runs the lease and
-    /// keep-alive (RFC-0110 D2).
+    /// keep-alive.
     pub zenoh_read_priority: u8,
     /// Zenoh-pico read (executor) task stack size in bytes (default 5120).
     pub zenoh_read_stack_bytes: u32,
@@ -88,8 +88,8 @@ impl Config {
     /// Preset for a listener/subscriber node.
     ///
     /// The default's identity with the last IP octet and MAC byte advanced by
-    /// one — derived, so the pair cannot drift apart (phase-484 W4b, as on the
-    /// ThreadX boards).
+    /// one — derived, so the pair cannot drift apart (as on the ThreadX
+    /// boards).
     pub fn listener() -> Self {
         let mut c = Self::default();
         c.base.ip[3] = c.base.ip[3].wrapping_add(1);
@@ -176,16 +176,14 @@ impl Config {
     /// dropped frames, and every publisher stalled on lwIP's
     /// retransmission timeout (observed as 1-3 s island-wide stalls).
     ///
-    /// Issue 0623 — the body moved to `nros_board_common::freertos_config`, so
-    /// the build-script emitter and this runtime path share ONE conversion.
-    /// They did not before, and the C entry's `clamp_prio` disagreed with this
-    /// one on every default.
+    /// The body lives in `nros_board_common::freertos_config`, so the
+    /// build-script emitter and this runtime path share ONE conversion.
     pub fn to_freertos_priority(normalized: u8) -> u32 {
         nros_board_common::freertos_config::to_freertos_priority(normalized)
     }
 
-    /// Parse a direct-mode board file (RFC-0109 D4,
-    /// [`nros_board_common::parse_direct_toml`]).
+    /// Parse a direct-mode board file
+    /// ([`nros_board_common::parse_direct_toml`]).
     ///
     /// Missing fields use board-specific defaults. This is designed to work
     /// with `include_str!("../config.toml")` for compile-time embedding.

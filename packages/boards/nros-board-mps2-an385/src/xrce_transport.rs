@@ -1,4 +1,4 @@
-//! Phase 207.2 — XRCE custom-transport callbacks for the CMSDK UART0.
+//! XRCE custom-transport callbacks for the CMSDK UART0.
 //!
 //! Wraps the same `UART_DEVICE` (`cmsdk_uart::CmsdkUart`) the zenoh-pico
 //! serial path uses, exposing the four `open`/`close`/`write`/`read`
@@ -102,11 +102,10 @@ unsafe extern "C" fn xrce_read(
     }
 }
 
-/// Phase 207.2 — return an `NrosRmwXrceTransportOps` bound to the board's
-/// CMSDK UART0. Pass the result to
-/// [`nros_rmw_xrce_cffi::set_custom_transport_ops`] (with `framing =
-/// true` for the UART's byte-stream → XRCE HDLC framing) BEFORE the
-/// first `Executor::open`.
+/// Return an `NrosRmwXrceTransportOps` bound to the board's CMSDK UART0.
+/// Pass the result to [`nros_rmw_xrce_cffi::set_custom_transport_ops`]
+/// (with `framing = true` for the UART's byte-stream → XRCE HDLC framing)
+/// BEFORE the first `Executor::open`.
 pub fn xrce_transport_ops() -> nros_rmw_xrce_cffi::NrosRmwXrceTransportOps {
     nros_rmw_xrce_cffi::NrosRmwXrceTransportOps {
         user_data: core::ptr::null_mut(),

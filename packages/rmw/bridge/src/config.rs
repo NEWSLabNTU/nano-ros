@@ -1,4 +1,4 @@
-//! TOML-driven entrypoint (Phase 128.G).
+//! TOML-driven entrypoint.
 //!
 //! Lets a binary that links one or more RMW backends boot directly
 //! from a `nros-bridge.toml` file — no backend name appears in source.
@@ -6,8 +6,8 @@
 //! plus the config file.
 //!
 //! Note: this is the **bridge** config, distinct from the orchestration
-//! `nros.toml` (Phase 126 component/system config). The bridge file is
-//! named `nros-bridge.toml` to avoid the collision (Phase 172.L).
+//! `nros.toml` (component/system config). The bridge file is named
+//! `nros-bridge.toml` to avoid the collision.
 //!
 //! # Schema
 //!
@@ -265,7 +265,7 @@ pub fn run_from_config(path: impl AsRef<Path>) -> Result<(), ConfigError> {
     run_from_config_source(&raw, &format!("{}", path.as_ref().display()), &mut || false)
 }
 
-/// phase-267 W1c/C4 — run a bridge from the config CONTENTS (not a file path).
+/// Run a bridge from the config CONTENTS (not a file path).
 ///
 /// The `nros::main!` macro `include_str!`s the `nros-bridge.toml` that
 /// `nros sync` generated (so the config is embedded in the binary — no runtime
@@ -280,12 +280,12 @@ pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
 /// opened.
 ///
 /// The bridge crate has no platform layer, so it cannot ask whether a
-/// termination signal arrived (issue 1732's guard lives in `nros-platform`):
-/// the `nros::main!` entry asks and hands the answer in as `stop`. The bounded
-/// run is read HERE, where `config` already has `std`, so the emitted entry
-/// names no `std` path (issue 1381). Before this the loop had no exit at all,
-/// so a signal killed a bridge with every session open and a bounded observer
-/// could only report it as hung (issue 1310).
+/// termination signal arrived (that guard lives in `nros-platform`): the
+/// `nros::main!` entry asks and hands the answer in as `stop`. The bounded run
+/// is read HERE, where `config` already has `std`, so the emitted entry names
+/// no `std` path. Without `stop` the loop would have no exit at all, so a
+/// signal would kill a bridge with every session open and a bounded observer
+/// could only report it as hung.
 pub fn run_from_config_str_until(
     raw: &str,
     stop: &mut dyn FnMut() -> bool,

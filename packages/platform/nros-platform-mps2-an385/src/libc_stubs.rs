@@ -1,9 +1,9 @@
-//! Phase 207.3.bm-libc — heap libc shims (`malloc` / `free` / `realloc` /
-//! `calloc`) for bare-metal MPS2-AN385 (XRCE's nano-ros wrapper needs them).
+//! Heap libc shims (`malloc` / `free` / `realloc` / `calloc`) for bare-metal
+//! MPS2-AN385 (XRCE's nano-ros wrapper needs them).
 //!
 //! Routes through the same `FreeListHeap` zenoh-pico uses (`crate::memory`,
-//! sized by `NROS_HEAP_SIZE` per Phase 204.5), so XRCE inherits the same
-//! tunable pool — no second heap.
+//! sized by `NROS_HEAP_SIZE`), so XRCE inherits the same tunable pool — no
+//! second heap.
 //!
 //! String helpers (`strrchr`, `strtol`, plus the pre-existing
 //! `strlen` / `memcpy` / `memset` / `strchr` / `strcmp` / …) live in

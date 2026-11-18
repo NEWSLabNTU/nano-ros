@@ -1,11 +1,11 @@
-//! Phase 173.6 — `embedded-nal` adapter over the smoltcp bridge.
+//! `embedded-nal` adapter over the smoltcp bridge.
 //!
-//! This is the "consume the ecosystem, don't reinvent" direction
-//! (Phase 173.5 notes): rather than define a bespoke socket trait,
-//! `nros-smoltcp` exposes its socket layer through the de-facto
-//! [`embedded-nal`] `TcpClientStack` / `UdpClientStack` traits so any
-//! conformant `embedded-nal` consumer (a Rust app, a future
-//! `embedded-nal`-based RMW) can drive it.
+//! This is the "consume the ecosystem, don't reinvent" direction:
+//! rather than define a bespoke socket trait, `nros-smoltcp` exposes
+//! its socket layer through the de-facto [`embedded-nal`]
+//! `TcpClientStack` / `UdpClientStack` traits so any conformant
+//! `embedded-nal` consumer (a Rust app, a future `embedded-nal`-based
+//! RMW) can drive it.
 //!
 //! ## Why an adapter, not a rewrite
 //!

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// diagnostic_updater.hpp — Phase 209.D
+// diagnostic_updater.hpp
 //
 // nano-ros's `diagnostic_updater::Updater` — lets a ROS 2 node that
 // publishes `diagnostic_msgs/DiagnosticArray` through the upstream Updater
@@ -13,16 +13,16 @@
 //   * `add(name, T* obj, void (T::*method)(DiagnosticStatusWrapper&))`.
 //   * `setHardwareID(id)` / `getHardwareID()`.
 //   * `force_update()` — publish immediately.
-//   * A wall timer at `period` publishes, as upstream's does (phase-488): 18 of
-//     Autoware 0.45's 55 `Updater` users never call `update()` themselves, so
-//     without it they compiled and published no `/diagnostics` at all.
+//   * A wall timer at `period` publishes, as upstream's does: 18 of Autoware
+//     0.45's 55 `Updater` users never call `update()` themselves, so without it
+//     they compiled and published no `/diagnostics` at all.
 //   * `update()` — publish if `period_` has elapsed since last publish (no-op
 //     otherwise), for a caller that drives it from its own loop as well.
 //   * `broadcast(level, message)` — publishes a single status with the given
 //     summary, no add(...)s.
 //   * `DiagnosticTask`, `GenericFunctionDiagnosticTask` /
 //     `FunctionDiagnosticTask` and `CompositeDiagnosticTask`, and
-//     `add(DiagnosticTask&)` (issue 2053). The statistics tasks built on them
+//     `add(DiagnosticTask&)`. The statistics tasks built on them
 //     are in `update_functions.hpp`, the topic monitors in `publisher.hpp`.
 
 #ifndef NROS_DIAGNOSTIC_UPDATER_DIAGNOSTIC_UPDATER_HPP
@@ -45,7 +45,7 @@
 
 namespace diagnostic_updater {
 
-/// Upstream's `DiagnosticTask`: a named producer of one status (issue 2053).
+/// Upstream's `DiagnosticTask`: a named producer of one status.
 ///
 /// An `Updater` holds a REFERENCE to a task added with `add(DiagnosticTask&)`,
 /// as upstream's does, so the task must outlive the updater or be removed from
@@ -124,7 +124,7 @@ class Updater {
 
     // Upstream's `template <class NodeT> Updater(NodeT node, ...)` takes a raw
     // node pointer too: `diagnostic_updater::Updater updater_{this};` is the
-    // member every Autoware node declares (phase-488).
+    // member every Autoware node declares.
     template <typename NodeT, typename = typename std::enable_if<
                                   std::is_convertible<NodeT*, rclcpp::Node*>::value>::type>
     explicit Updater(NodeT* node, double period_seconds = 1.0)
@@ -157,7 +157,7 @@ class Updater {
         add(name, [obj, method](DiagnosticStatusWrapper& w) { (obj->*method)(w); });
     }
 
-    /// Upstream's `add(DiagnosticTask&)` (issue 2053): reported under the
+    /// Upstream's `add(DiagnosticTask&)`: reported under the
     /// task's own name. The updater keeps a reference — see `DiagnosticTask`.
     void add(DiagnosticTask& task) {
         DiagnosticTask* t = &task;
@@ -240,7 +240,7 @@ class Updater {
     std::chrono::steady_clock::time_point last_publish_;
     std::string hardware_id_;
     std::vector<Task> tasks_;
-    // phase-456 W5 -- the nested alias, never `std::shared_ptr<...>`. nano-ros
+    // The nested alias, never `std::shared_ptr<...>`. nano-ros
     // spells a publisher handle `rclcpp::Owned<Publisher<M>>`; upstream spells it
     // `std::shared_ptr`. Only the alias compiles against both.
     ::rclcpp::Publisher<::diagnostic_msgs::msg::DiagnosticArray>::SharedPtr publisher_;

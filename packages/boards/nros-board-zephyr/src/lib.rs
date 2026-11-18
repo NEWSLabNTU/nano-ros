@@ -1,11 +1,10 @@
-//! # `nros-board-zephyr` — Zephyr family driver (Phase 212.N.2)
+//! # `nros-board-zephyr` — Zephyr family driver
 //!
-//! Zephyr is the **carve-out** in the Phase 212.N Board trait family:
-//! Kconfig + DTS already own the BSP, and Zephyr's build system emits
-//! the C `main()` entry point. A Rust staticlib (the only shape
-//! `zephyr-lang-rust` supports) cannot take that `main` over from
-//! Zephyr, so the usual `<Board as BoardEntry>::run(setup)` shape
-//! does not apply here.
+//! Zephyr is the **carve-out** in the Board trait family: Kconfig + DTS
+//! already own the BSP, and Zephyr's build system emits the C `main()`
+//! entry point. A Rust staticlib (the only shape `zephyr-lang-rust`
+//! supports) cannot take that `main` over from Zephyr, so the usual
+//! `<Board as BoardEntry>::run(setup)` shape does not apply here.
 //!
 //! This crate therefore implements **only a link-up wait** over
 //! `<zephyr/net/net_if.h>`. The user app's Rust `extern "C" fn main`
@@ -15,7 +14,7 @@
 //!
 //! ```ignore
 //! use nros_board_zephyr::ZephyrBoard;
-//! // `wait_link_up` is an inherent method (phase-206 W4) — no trait import.
+//! // `wait_link_up` is an inherent method — no trait import.
 //!
 //! #[no_mangle]
 //! pub extern "C" fn rust_main() {
@@ -29,8 +28,8 @@
 //!
 //! ## Why a no-op [`BoardInit`] / [`BoardPrint`] / [`BoardExit`]?
 //!
-//! The 212.N.1 trait surface declared a ~~`NetworkWait`~~ trait with a
-//! `super::Board` super-trait, so its impl had to carry the full
+//! The board trait surface once declared a ~~`NetworkWait`~~ trait with
+//! a `super::Board` super-trait, so its impl had to carry the full
 //! `BoardInit + BoardPrint + BoardExit` set. Two options were weighed:
 //!
 //! - **(a)** Provide trivial no-op impls of `BoardInit` / `BoardPrint`
@@ -40,12 +39,11 @@
 //! - **(b)** Loosen that trait in `nros-platform` to drop the
 //!   `: super::Board` super-trait.
 //!
-//! phase-206 W4 (issue 1067) later deleted the trait; the no-op impls
-//! below are what remains of option **(a)**, which was picked as a
-//! local, contained workaround that does not ripple into
-//! `nros-platform` and leaves room for a future Zephyr `BoardEntry`
-//! story (e.g. Phase 212.N.7 once the legacy zephyr-rust main wrapper
-//! is replaced).
+//! That trait is gone now; the no-op impls below are what remains of
+//! option **(a)**, which was picked as a local, contained workaround
+//! that does not ripple into `nros-platform` and leaves room for a
+//! future Zephyr `BoardEntry` story (once the legacy zephyr-rust main
+//! wrapper is replaced).
 //!
 //! ## Build surface
 //!
@@ -148,7 +146,7 @@ impl ZephyrBoard {
     /// `pub` because it is this crate's documented entry point (the crate doc
     /// and the README call it from the app). Turning the trait impl into an
     /// inherent method left it private, so nothing could call it and
-    /// `-D warnings` read the whole link-up path as dead code (issue 1960).
+    /// `-D warnings` read the whole link-up path as dead code.
     pub fn wait_link_up() -> Result<(), NetworkError> {
         // SAFETY: Zephyr's `net_if_get_default` is callable from any
         // thread context post-kernel-init; the returned pointer is

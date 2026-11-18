@@ -1,4 +1,4 @@
-//! phase-521 W5 (RFC-0113 D5) — the executor's wake object on bare metal.
+//! The executor's wake object on bare metal.
 //!
 //! There is no kernel to block on. A wake object is one atomic flag: a signal
 //! sets it (from the main loop or an ISR), and a park waits for it on `wfi`

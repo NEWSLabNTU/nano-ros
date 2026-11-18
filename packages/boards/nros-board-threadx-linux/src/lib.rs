@@ -14,11 +14,9 @@
 //!
 //! # `no_std`
 //!
-//! Phase 152.4.B prep — this crate is `no_std`. ThreadX-Linux runs in
-//! user space against libc but does not pull `std`; the few libc
-//! entry points it needs (`exit`, `fputs`) are declared as bare
-//! externs. Drops the `std` blocker for the future generic
-//! `nros_board_threadx::run<B>` lift (152.2.B.4).
+//! This crate is `no_std`. ThreadX-Linux runs in user space against
+//! libc but does not pull `std`; the few libc entry points it needs
+//! (`exit`, `fputs`) are declared as bare externs.
 
 #![no_std]
 
@@ -194,12 +192,12 @@ impl nros_platform::BoardEntry for ThreadxLinux {
 }
 
 impl ThreadxLinux {
-    /// Phase 313 W0 (#0243) — lightweight NO-SESSION entry for logging /
-    /// init-only fixtures. Boots the ThreadX kernel + platform log writer and
-    /// runs `setup` WITHOUT opening an `Executor` session (unlike
-    /// [`nros_platform::board::BoardEntry::run`], which would fail
-    /// `Transport(ConnectionFailed)` with no router). The new-family replacement
-    /// for the no-session role the retired legacy `run(Config, closure)` served.
+    /// Lightweight NO-SESSION entry for logging / init-only fixtures. Boots the
+    /// ThreadX kernel + platform log writer and runs `setup` WITHOUT opening an
+    /// `Executor` session (unlike [`nros_platform::board::BoardEntry::run`],
+    /// which would fail `Transport(ConnectionFailed)` with no router). The
+    /// new-family replacement for the no-session role the retired legacy
+    /// `run(Config, closure)` served.
     pub fn run_bare<F, E>(setup: F) -> Result<(), E>
     where
         F: FnOnce() -> Result<(), E>,
@@ -210,11 +208,12 @@ impl ThreadxLinux {
         nros_board_threadx::run_bare::<ThreadxLinux, Config, F, E>(Config::default(), setup)
     }
 
-    /// Phase 297 W4 (RFC-0053) — multi-sched-task entry. The `nros::main!()` macro
-    /// emits `<ThreadxLinux>::run_sched_tasks(&overlay, SCHED_TASKS, SCHED_TASK_BACKING, setup)` whenever a
-    /// system declares more than the synthesized single `default` sched task; this
-    /// routes to [`nros_board_threadx::run_sched_tasks_entry`], which runs one
-    /// `Executor` per sched task over one shared session. Mirrors
+    /// Multi-sched-task entry. The `nros::main!()` macro emits
+    /// `<ThreadxLinux>::run_sched_tasks(&overlay, SCHED_TASKS, SCHED_TASK_BACKING, setup)`
+    /// whenever a system declares more than the synthesized single `default`
+    /// sched task; this routes to
+    /// [`nros_board_threadx::run_sched_tasks_entry`], which runs one LEVEL per
+    /// sched task over the core's one executor. Mirrors
     /// `Mps2An385::run_sched_tasks` (the FreeRTOS analogue).
     pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,

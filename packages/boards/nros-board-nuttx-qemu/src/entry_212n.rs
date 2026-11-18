@@ -1,9 +1,8 @@
-//! Phase 212.N.3 — `nros_platform::Board*` trait impls + `BoardEntry::run`.
+//! `nros_platform::Board*` trait impls + `BoardEntry::run`.
 //!
-//! Mirrors the legacy `nros_board_common::Board{Init,Print,Exit}` impls in
-//! [`crate::NuttxQemu`] onto the new platform-level trait family living at
-//! `packages/platform/nros-platform/src/board/`. Codegen-emitted Entry pkg
-//! `main.rs` (Phase 212.N.4) can then call:
+//! Implements the platform-level trait family living at
+//! `packages/platform/nros-platform/src/board/` for [`crate::NuttxQemu`]. A
+//! codegen-emitted Entry pkg `main.rs` can then call:
 //!
 //! ```ignore
 //! use nros_board_nuttx_qemu::NuttxQemu;
@@ -11,7 +10,7 @@
 //!
 //! fn main() -> Result<(), MyError> {
 //!     <NuttxQemu as BoardEntry>::run(|runtime| {
-//!         // codegen-emitted (Phase 212.N.4)
+//!         // codegen-emitted
 //!         run_plan(runtime)
 //!     })
 //! }
@@ -19,19 +18,18 @@
 //!
 //! ## Lifecycle vs. the legacy `run()`
 //!
-//! The legacy [`crate::run`] is config-carrying (`fn(Config, FnOnce(&Config))`)
-//! — the user hand-rolls a `Config`, passes it in, and the closure sees a
-//! `&Config`. The 212.N flow inverts that: codegen owns config plumbing
-//! through `RuntimeCtx`, and `init_hardware` becomes parameterless. On NuttX
-//! that costs nothing: the kernel owns the network (RFC-0109 D2), and the
-//! locator/domain the session needs come from the deploy overlay.
+//! The legacy `run()` was config-carrying (`fn(Config, FnOnce(&Config))`)
+//! — the user hand-rolled a `Config`, passed it in, and the closure saw a
+//! `&Config`. This flow inverts that: codegen owns config plumbing through
+//! `RuntimeCtx`, and `init_hardware` is parameterless. On NuttX that costs
+//! nothing: the kernel owns the network, and the locator/domain the session
+//! needs come from the deploy overlay.
 //!
 //! ## Why this lives in a sibling module
 //!
-//! `crate::lib.rs` keeps the legacy `nros_board_common::Board*` impls
-//! untouched (per Phase 212.N.3 spec: "keep legacy impls untouched"). The new
-//! impls and the `BoardEntry::run` body are isolated here so the two trait
-//! families coexist during the 212.N transition; `lib.rs` re-exports
+//! `crate::lib.rs` held the legacy `nros_board_common::Board*` impls while
+//! the two trait families coexisted, so these impls and the
+//! `BoardEntry::run` body were isolated here; `lib.rs` re-exports
 //! [`NuttxQemu`] for the platform-level path.
 
 use crate::NuttxQemu;

@@ -1,19 +1,19 @@
-//! The Linux host board — Phase 212.N.2 family driver + phase-337 W8.a.
+//! The Linux host board — the hosted family driver.
 //!
-//! **Naming (RFC-0064 R3).** The PLATFORM stays `posix`: `nros-platform-posix`
-//! is a genuine portability seam written to POSIX, and the platform layer names
-//! software-stack facts (RFC-0049's duty rule). The BOARD is `linux`, because
-//! the board layer names what we actually claim to support and a tier-1 promise
-//! means "`just ci` exercises it" — which only Linux does (every CI job is
-//! `ubuntu-*`, and `nros-platform-posix/src/timer.c` calls `timer_create` with
-//! no fallback). `macos` / `freebsd` can later join as their own boards on this
-//! unchanged platform; that is the one-source-many-targets model applied to
-//! hosted OSes, and its prerequisite is a `timer_create` fallback.
+//! **Naming.** The PLATFORM stays `posix`: `nros-platform-posix` is a genuine
+//! portability seam written to POSIX, and the platform layer names
+//! software-stack facts. The BOARD is `linux`, because the board layer names
+//! what we actually claim to support and a tier-1 promise means "`just ci`
+//! exercises it" — which only Linux does (every CI job is `ubuntu-*`, and
+//! `nros-platform-posix/src/timer.c` calls `timer_create` with no fallback).
+//! `macos` / `freebsd` can later join as their own boards on this unchanged
+//! platform; that is the one-source-many-targets model applied to hosted OSes,
+//! and its prerequisite is a `timer_create` fallback.
 //!
-//! phase-337 W8.a merged `nros-board-native` (a 226-line delegating shim) and
-//! `nros-board-posix` (the family driver) into this one crate. `board_path_for`
-//! already mapped BOTH deploy keys to the same ZST, so the shim was named by no
-//! generated entry — ceremony, not a behaviour boundary.
+//! This one crate replaces `nros-board-native` (a 226-line delegating shim) and
+//! `nros-board-posix` (the family driver). `board_path_for` already mapped BOTH
+//! deploy keys to the same ZST, so the shim was named by no generated entry —
+//! ceremony, not a behaviour boundary.
 //!
 //! Implements the `Board` trait family from `nros_platform` (the
 //! traits live in `packages/platform/nros-platform/src/board/` and are
@@ -34,11 +34,8 @@
 //!   `nros_platform::BoardPrint`).
 //! - `exit_success` / `exit_failure` call `std::process::exit`.
 //! - There is no device bring-up step — POSIX sockets are open as
-//!   soon as `init_hardware` returns. This used to be phrased as the
-//!   absence of a ~~`TransportBringup`~~ / ~~`NetworkWait`~~ impl; phase-206
-//!   W4 removed those traits (issue 1067), so the absence is now
-//!   universal and this board's point is simply that it needs no
-//!   bring-up at all.
+//!   soon as `init_hardware` returns, so this board needs no bring-up
+//!   at all.
 //!
 //! ## `BoardEntry::run` body
 //!
@@ -47,8 +44,8 @@
 //! ```text
 //! init_hardware()            // no-op
 //! ↓
-//! build RuntimeCtx           // empty by default; Phase 212.N.4
-//!                            // codegen will populate from env / CLI
+//! build RuntimeCtx           // over the executor opened from
+//!                            // the env (`ROS_DOMAIN_ID`, ...)
 //! ↓
 //! setup(&mut ctx)            // user closure — typically
 //!                            // codegen-emitted `run_plan(runtime)`
@@ -59,14 +56,14 @@
 //! exit_failure()
 //! ```
 //!
-//! Note that the **executor lifecycle is deliberately owned by the
-//! `setup` callback** rather than by `run` itself. Every existing
-//! POSIX Entry pkg `main.rs` (the entry `nros build` generates for `examples/linux/rust/talker`) opens
-//! its own `Executor`, registers timers / nodes, and calls
-//! `spin` from inside what becomes the `setup` closure once
-//! Phase 212.N.4 codegen lands. `run` would have nothing portable to
-//! say about which `Executor` instance to spin or how, so it stays out
-//! of that decision. The seam is documented under "Open seams" below.
+//! Note that the **executor lifecycle is deliberately owned by the `setup`
+//! callback** rather than by `run` itself. Every existing POSIX Entry pkg
+//! `main.rs` (the entry `nros build` generates for
+//! `examples/linux/rust/talker`) opens its own `Executor`, registers timers /
+//! nodes, and calls `spin` from inside the `setup` closure. `run` would have
+//! nothing portable to say about which `Executor` instance to spin or how, so
+//! it stays out of that decision. The seam is documented under "Open seams"
+//! below.
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 
@@ -101,7 +98,7 @@ use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx, Sc
 ///
 /// fn main() {
 ///     let _ = <LinuxBoard as BoardEntry>::run(|runtime| {
-///         // codegen-emitted (Phase 212.N.4)
+///         // codegen-emitted
 ///         run_plan(runtime)
 ///     });
 /// }
@@ -141,27 +138,27 @@ impl BoardExit for LinuxBoard {
     }
 }
 
-/// Phase 249 P3.5 — the board owns the RMW registration on EVERY OS (hosted
-/// included), not just `target_os="none"`. Calling the linked backend's
-/// `register()` explicitly before the executor opens is the one universal
-/// trigger; it replaces the hosted reliance on the linkme `.init_array` walk
-/// (retired in P4) and lets the weak `nros_app_register_backends` default die.
-/// Gated on the board's own `rmw-<x>` feature; the call also force-links the
-/// backend (strictly stronger than the `#[used] __FORCE_LINK_*` static). Inert
-/// when no backend feature is selected.
+/// The board owns the RMW registration on EVERY OS (hosted included), not just
+/// `target_os="none"`. Calling the linked backend's `register()` explicitly
+/// before the executor opens is the one universal trigger; it replaces the
+/// hosted reliance on the linkme `.init_array` walk (since retired) and lets
+/// the weak `nros_app_register_backends` default die. Gated on the board's own
+/// `rmw-<x>` feature; the call also force-links the backend (strictly stronger
+/// than the `#[used] __FORCE_LINK_*` static). Inert when no backend feature is
+/// selected.
 ///
-/// Phase 277 W2.b — public so a plain-API example (no `BoardEntry` /
-/// `nros::main!` framework, just `LinuxBoard` + `Executor::open` directly) can
-/// trigger registration itself before opening the executor. Idempotent — safe
-/// to call more than once; re-registering an already-registered backend is a
-/// no-op. Apps that boot through `nros::main!()` or any `BoardEntry::run*` /
-/// `run_sched_tasks` entry point never need to call this themselves — every boot path
-/// below funnels through `boot_hosted` / `run_sched_tasks`, which call it.
+/// Public so a plain-API example (no `BoardEntry` / `nros::main!` framework,
+/// just `LinuxBoard` + `Executor::open` directly) can trigger registration
+/// itself before opening the executor. Idempotent — safe to call more than
+/// once; re-registering an already-registered backend is a no-op. Apps that
+/// boot through `nros::main!()` or any `BoardEntry::run*` / `run_sched_tasks`
+/// entry point never need to call this themselves — every boot path below
+/// funnels through `boot_hosted` / `run_sched_tasks`, which call it.
 ///
-/// Issue 2492 — it is also where such a `main` gets its log sinks. The
-/// framework's diagnostics (`nros-rmw-zenoh`'s pool-exhaustion record first)
-/// go through `nros_log`, which HOLDS a record until a sink is installed, and
-/// a plain-API image reached no call that installs one: the record that
+/// It is also where such a `main` gets its log sinks. The framework's
+/// diagnostics (`nros-rmw-zenoh`'s pool-exhaustion record first) go through
+/// `nros_log`, which HOLDS a record until a sink is installed, and a
+/// plain-API image reached no call that installs one: the record that
 /// explains a missing graph token sat in the early ring until the process
 /// died. So this installs the platform default (host stderr) when no sink is
 /// installed yet, and replays what was held. A `main` that installed its own
@@ -359,9 +356,8 @@ impl BoardEntry for LinuxBoard {
     /// 2. Open the live [`nros::Executor`] from the env-derived
     ///    [`nros::ExecutorConfig`] (`ROS_DOMAIN_ID`, `NROS_LOCATOR`,
     ///    `NROS_SESSION_MODE`) and wrap it in an
-    ///    [`nros::node_runtime::ExecutorNodeRuntime`] —
-    ///    Phase 212.N.7 step-3.5. The codegen-emitted
-    ///    `run_plan(runtime)` body now talks to a real executor.
+    ///    [`nros::node_runtime::ExecutorNodeRuntime`]. The codegen-emitted
+    ///    `run_plan(runtime)` body talks to a real executor.
     /// 3. Build a [`RuntimeCtx`] backed by that runtime.
     /// 4. Invoke `setup(&mut ctx)`.
     /// 5. Log the result via [`BoardPrint::println`].
@@ -659,16 +655,15 @@ impl LinuxBoard {
         }
     }
 
-    /// Phase 228.E — per-sched-task multi-task entry. Opens the one RMW session,
-    /// then (issue 2016, RFC-0108 "As built in P10") runs each [`SchedTaskSpec`]
-    /// as one LEVEL over the core's ONE executor
+    /// Per-sched-task multi-task entry. Opens the one RMW session, then runs
+    /// each [`SchedTaskSpec`] as one LEVEL over the core's ONE executor
     /// ([`nros::levels::LevelCore`]): the least urgent level runs on the
-    /// calling thread and owns the session (issue 0636), every other level is
-    /// a worker `std::thread` over the same executor, started once the level
-    /// before it has set up (issue #144). Each level sets its
-    /// `active_groups` filter and runs `setup` (register-only — only that
-    /// level's callbacks take, and the level runs them), then spins until a
-    /// termination signal (issue 1732) or a bounded run's deadline.
+    /// calling thread and owns the session, every other level is a worker
+    /// `std::thread` over the same executor, started once the level before
+    /// it has set up. Each level sets its `active_groups` filter and runs
+    /// `setup` (register-only — only that level's callbacks take, and the
+    /// level runs them), then spins until a termination signal or a bounded
+    /// run's deadline.
     ///
     /// `setup` is `Fn` (not `FnOnce`) — it is invoked once per level — and
     /// `Sync`, since the level threads share `&setup`. It must register
@@ -680,8 +675,8 @@ impl LinuxBoard {
     /// process may (`CAP_SYS_NICE`), and says so or why not. Blocks until
     /// SIGTERM / SIGINT (server semantics), then joins the level threads,
     /// takes the runtime back ([`nros::levels::LevelCore::into_runtime`]),
-    /// closes the session and returns `Ok` (issue 1732). A level whose setup
-    /// fails fails the boot.
+    /// closes the session and returns `Ok`. A level whose setup fails fails
+    /// the boot.
     pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,
         sched_tasks: &[SchedTaskSpec<'_>],

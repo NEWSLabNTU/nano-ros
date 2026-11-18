@@ -462,7 +462,7 @@ impl Lan9118 {
     /// Whether a frame has been read out of the FIFO and is waiting in the
     /// driver for smoltcp to take it. `receive` holds one back while the TX
     /// FIFO is full, so an empty FIFO does not by itself mean nothing is
-    /// pending — a board deciding whether to sleep asks both (issue 2022).
+    /// pending — a board deciding whether to sleep asks both.
     pub fn rx_buffered(&self) -> bool {
         self.rx_len > 0
     }

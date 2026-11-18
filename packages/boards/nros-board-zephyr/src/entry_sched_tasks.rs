@@ -1,31 +1,31 @@
-//! issue #128 (half 2) / RFC-0015 Model 1 — per-sched-task multi-task entry for
-//! Zephyr: one `k_thread` per priority sched task over ONE shared zenoh session.
+//! Per-sched-task multi-task entry for Zephyr: one `k_thread` per priority sched
+//! task over ONE shared zenoh session.
 //!
 //! Mirrors `nros_board_freertos::run_sched_tasks_entry` minus the network +
-//! scheduler bring-up (Zephyr owns boot; `rust_main` — the caller — is
-//! already a running post-init thread): the caller thread opens the boot
-//! `Executor`, runs the boot sched task's setup, then CHAIN-spawns the remaining
-//! sched tasks (issue #144) through the module's `nros_zephyr_sched_task_create`
-//! shim (`k_thread_create` on a static pool, RAW Zephyr priority — negatives
-//! = cooperative, exactly the `[tasks.<name>.zephyr].priority` value), and
-//! then runs `sched_tasks[0]` itself. NOTE (issue 0251): `resolve_sched_tasks` sorts
-//! descending by RAW number without inverting per RTOS direction, and Zephyr
-//! is lower-number-wins — so `sched_tasks[0]`, the boot sched task, is the
-//! numerically-largest = LOWEST-priority sched task. Each spawned sched task opens
-//! an `Executor` over the shared session (`SessionHandle`), installs its
-//! `active_groups` filter, runs the SAME register-only setup closure (the
-//! groups gate what actually registers), spawns the NEXT sched task once its own
-//! setup returns, and spins forever at the sched task's declared period. Chaining
-//! spawns behind each setup keeps setup order total so no two entity-declare
-//! bursts race the shared session's interest handshake.
+//! scheduler bring-up (Zephyr owns boot; `rust_main` — the caller — is already
+//! a running post-init thread): the caller thread opens the boot `Executor`,
+//! runs the boot sched task's setup, then CHAIN-spawns the remaining sched
+//! tasks through the module's `nros_zephyr_sched_task_create` shim
+//! (`k_thread_create` on a static pool, RAW Zephyr priority — negatives =
+//! cooperative, exactly the `[tasks.<name>.zephyr].priority` value), and then
+//! runs `sched_tasks[0]` itself. NOTE: `resolve_sched_tasks` sorts descending
+//! by RAW number without inverting per RTOS direction, and Zephyr is
+//! lower-number-wins — so `sched_tasks[0]`, the boot sched task, is the
+//! numerically-largest = LOWEST-priority sched task. Each spawned sched task
+//! opens its level over the core's one executor, installs its `active_groups`
+//! filter, runs the SAME register-only setup closure (the groups gate what
+//! actually registers), spawns the NEXT sched task once its own setup returns,
+//! and loops on its band's passes. Chaining spawns behind each setup keeps
+//! setup order total so no two entity-declare bursts race the shared session's
+//! interest handshake.
 //!
-//! phase-509 P10 (RFC-0108 "As built in P10"): the sched tasks are LEVELS over the
-//! core's ONE executor (`nros::levels::LevelCore`), no longer an executor per
-//! sched task. The boot level owns the executor and the session; each spawned level
-//! is a worker thread that opens its level, runs the setup closure on the
-//! shared runtime under the executor's lock (a bare `k_mutex`, the C runner's),
-//! and loops on its band's passes. A level that does not open, whose setup
-//! fails or that cannot be spawned fails the boot (`nros_zephyr_fail_boot`).
+//! The sched tasks are LEVELS over the core's ONE executor
+//! (`nros::levels::LevelCore`), not an executor per sched task. The boot level
+//! owns the executor and the session; each spawned level is a worker thread
+//! that opens its level, runs the setup closure on the shared runtime under the
+//! executor's lock (a bare `k_mutex`, the C runner's), and loops on its band's
+//! passes. A level that does not open, whose setup fails or that cannot be
+//! spawned fails the boot (`nros_zephyr_fail_boot`).
 //!
 //! The `nros::main!` `Framework::Zephyr` arm emits
 //! `ZephyrBoard::run_sched_tasks(&config, SCHED_TASKS, SCHED_TASK_BACKING, closure)` for multi-sched-task systems
@@ -428,14 +428,13 @@ where
 }
 
 impl ZephyrBoard {
-    /// issue #128 (half 2) — the sched-task entry. The caller (the `nros::main!`
-    /// Zephyr arm's `rust_main` context) has already gated on the network,
-    /// registered the RMW backend, and built `config` from the west-baked
-    /// locator. phase-509 P10 (RFC-0108 "As built in P9b"): each sched task is one
-    /// LEVEL over the core's ONE executor; `sched_tasks[0]` (the numerically-largest
-    /// = LOWEST Zephyr priority, issue 0251) runs on the caller thread and
-    /// owns the session, and every other level is a worker `k_thread` over the
-    /// same executor at its raw Zephyr priority. Never returns on success.
+    /// The sched-task entry. The caller (the `nros::main!` Zephyr arm's
+    /// `rust_main` context) has already gated on the network, registered the
+    /// RMW backend, and built `config` from the west-baked locator. Each sched
+    /// task is one LEVEL over the core's ONE executor; `sched_tasks[0]` (the
+    /// numerically-largest = LOWEST Zephyr priority) runs on the caller thread
+    /// and owns the session, and every other level is a worker `k_thread` over
+    /// the same executor at its raw Zephyr priority. Never returns on success.
     pub fn run_sched_tasks<F>(
         config: &::nros::ExecutorConfig,
         sched_tasks: &'static [SchedTaskSpec<'static>],
@@ -450,17 +449,17 @@ impl ZephyrBoard {
         Self::run_sched_tasks_with_task_memory(config, sched_tasks, sched_task_backing, &[], setup)
     }
 
-    /// issue 1232 — [`run_sched_tasks`](Self::run_sched_tasks) plus each spawned level's
-    /// STACK from the entry: `task_memory[k]` is `sched_tasks[k + 1]`'s (the boot
-    /// level, `sched_tasks[0]`, runs on this thread), a `SchedTaskMemory` static sized
-    /// from that sched task's declared `stack_bytes`, or `SchedTaskMemoryRaw::NONE`
-    /// for a sched task that declared none (it keeps the pool slot,
-    /// CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE). Refused unless empty or exactly one
-    /// row per spawned level.
+    /// [`run_sched_tasks`](Self::run_sched_tasks) plus each spawned level's
+    /// STACK from the entry: `task_memory[k]` is `sched_tasks[k + 1]`'s (the
+    /// boot level, `sched_tasks[0]`, runs on this thread), a `SchedTaskMemory`
+    /// static sized from that sched task's declared `stack_bytes`, or
+    /// `SchedTaskMemoryRaw::NONE` for a sched task that declared none (it keeps
+    /// the pool slot, CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE). Refused unless
+    /// empty or exactly one row per spawned level.
     ///
-    /// `sched_task_backing` is still checked against the table (issue 1571) so an
-    /// entry generated for another table is refused, but one executor serves
-    /// every level now: the slots past the boot level's are unused.
+    /// `sched_task_backing` is still checked against the table so an entry
+    /// generated for another table is refused, but one executor serves every
+    /// level now: the slots past the boot level's are unused.
     pub fn run_sched_tasks_with_task_memory<F>(
         config: &::nros::ExecutorConfig,
         sched_tasks: &'static [SchedTaskSpec<'static>],

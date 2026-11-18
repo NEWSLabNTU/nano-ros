@@ -1,4 +1,4 @@
-//! The console pump and the `link` line (RFC-0119 D6).
+//! The console pump and the `link` line.
 //!
 //! A runner's stdout is the target's console stream, **unmodified**: nros
 //! grades `--expect` over it and captures it to `console.log`, so a runner
@@ -13,8 +13,8 @@
 //! [`pump`] is the runner side of the stdout rule, [`report_link`] the runner
 //! side of the stderr rule, and [`scan_stderr`] the nros side of both.
 //!
-//! A runner that starts a tool as a process chain (`nros-runner-lifetime`,
-//! issue 2307) names the chain's process group on stderr too:
+//! A runner that starts a tool as a process chain (`nros-runner-lifetime`)
+//! names the chain's process group on stderr too:
 //!
 //! ```text
 //! nros-runner: chain <pgid>

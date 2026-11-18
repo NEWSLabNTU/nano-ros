@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// update_functions.hpp — phase-488; the tasks, issue 2053.
+// update_functions.hpp
 //
 // Upstream's `<diagnostic_updater/update_functions.hpp>`: the statistics tasks
 // `FrequencyStatus`, `TimeStampStatus` and `Heartbeat`,
@@ -22,8 +22,8 @@
 // The clock is upstream's default, a system clock, unless the constructor is
 // handed one. Upstream's parameter is a `rclcpp::Clock::SharedPtr`; here it is
 // a `const rclcpp::Clock*`, because `node->get_clock()` returns one (there is no
-// allocator to hand a shared pointer from, RFC-0022), so `node->get_clock()`
-// still passes the node's clock unchanged. The clock must outlive the task.
+// allocator to hand a shared pointer from), so `node->get_clock()` still passes
+// the node's clock unchanged. The clock must outlive the task.
 
 #ifndef NROS_DIAGNOSTIC_UPDATER_UPDATE_FUNCTIONS_HPP
 #define NROS_DIAGNOSTIC_UPDATER_UPDATE_FUNCTIONS_HPP

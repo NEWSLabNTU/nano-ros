@@ -1,4 +1,4 @@
-//! A runner's own command line (RFC-0119 D6).
+//! A runner's own command line.
 //!
 //! ```text
 //! <bin> describe

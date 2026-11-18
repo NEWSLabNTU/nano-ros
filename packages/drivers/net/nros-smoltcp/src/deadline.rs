@@ -1,11 +1,11 @@
 // Copyright (c) 2026, NEWSLab NTU.
 // SPDX-License-Identifier: Apache-2.0
 
-//! phase-436 B2 — smoltcp as a deadline source for the executor's park.
+//! smoltcp as a deadline source for the executor's park.
 //!
-//! The executor's park is a `min` over declared deadlines (phase-436 §2). Many
-//! sources say WHEN; one primitive waits. Until this module every wired port
-//! had a primitive and no source: `set_park_primitive` had three callers and
+//! The executor's park is a `min` over declared deadlines. Many sources say
+//! WHEN; one primitive waits. Until this module every wired port had a
+//! primitive and no source: `set_park_primitive` had three callers and
 //! `register_wake_source` had none outside tests.
 //!
 //! smoltcp already knows the answer and the bridge threw it away.
@@ -34,16 +34,16 @@
 //!
 //! # The time base, and where it truncates
 //!
-//! phase-436 §1 is "one time base, nanoseconds, no truncation". smoltcp's
-//! [`Instant`] is its own base, and the bridge builds it as
+//! The executor's rule is "one time base, nanoseconds, no truncation".
+//! smoltcp's [`Instant`] is its own base, and the bridge builds it as
 //! `Instant::from_millis(now_ns / 1_000_000)` — a FLOOR. A delay measured
 //! against a floored `now` is too LONG by the sub-millisecond remainder the
 //! floor threw away, by up to 999 µs. Overstating a deadline is the harmful
 //! direction: the executor would park past the moment smoltcp asked for.
 //!
 //! So the remainder is subtracted back out, rounded UP (`div_ceil`) and
-//! saturating at zero, which is the same "round against yourself" rule W2
-//! applied to the park itself. The result is never later than the true
+//! saturating at zero, which is the same "round against yourself" rule
+//! the park itself applies. The result is never later than the true
 //! deadline, and at worst one microsecond early.
 //!
 //! [nextfn]: https://docs.rs/nros-node

@@ -1,4 +1,4 @@
-//! `nros-runner-native`: the `native` runner (RFC-0119 D8), `run` only.
+//! `nros-runner-native`: the `native` runner, `run` only.
 //!
 //! Runs a host image as a process: a Linux or POSIX native build,
 //! `threadx-linux`, `freertos-posix`, or Zephyr `native_sim`'s `zephyr.exe`.
@@ -6,10 +6,9 @@
 //! unmodified, and its stderr is sent to the same stdout: a host process's
 //! console is both of its streams, as a terminal shows them, and the runner
 //! protocol grades stdout only. A Rust image's `nros_log` lines
-//! (`[INFO] … Publishing: …`) are on stderr, so without this `nros run
-//! --expect 'Publishing:'` never matched a native talker (phase-527 W6's
-//! installed probe found it). The qemu runner does the same on a semihosting
-//! console, for the same reason.
+//! (`[INFO] … Publishing: …`) are on stderr, so without this
+//! `nros run --expect 'Publishing:'` never matched a native talker. The qemu
+//! runner does the same on a semihosting console, for the same reason.
 //!
 //! A `native_sim` image gets two things a plain host binary does not:
 //!

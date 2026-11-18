@@ -1,8 +1,7 @@
-//! `nros-runner-command`: the `command` runner (RFC-0119 D8), `run` and
-//! `flash`.
+//! `nros-runner-command`: the `command` runner, `run` and `flash`.
 //!
 //! Executes a command template that a board or image table states in place of
-//! a method (RFC-0118 D5):
+//! a method:
 //!
 //! ```toml
 //! [image.lab.flash]
@@ -18,7 +17,7 @@
 //!
 //! Exit: for `run`, the command IS the target, so its failure is the target's
 //! (1). For `flash`, a failing command is a flash that did not happen, which
-//! is the runner's failure (2, RFC-0118 D2).
+//! is the runner's failure (2).
 
 use std::process::{Command, ExitCode};
 

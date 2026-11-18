@@ -5,12 +5,12 @@
 //! launcher of this board provides (`nros_tests::qemu::start_riscv64_virt` is
 //! plain `-netdev user`), what the board's `NROS_APP_CONFIG` emitters bring
 //! NetX up on, and what the entry lane's locator default names
-//! (`cmake/NanoRosEntryLocator.cmake`). Until issue 1557 they were the
-//! threadx-linux TAP-bridge plan (`192.0.3.0/24`), a network nothing here
-//! launches any more.
+//! (`cmake/NanoRosEntryLocator.cmake`). They were once the threadx-linux
+//! TAP-bridge plan (`192.0.3.0/24`), a network nothing here launches any
+//! more.
 //!
-//! phase-337 W4.b — the `{mac, ip, netmask, gateway, locator, domain_id}`
-//! core, the `nros.toml` scanner and the three `no_std` parsers now come from
+//! The `{mac, ip, netmask, gateway, locator, domain_id}` core, the
+//! `nros.toml` scanner and the three `no_std` parsers now come from
 //! [`nros_board_common::BaseConfig`]. This board adds no fields of its own
 //! (bare-metal NetX Duo + virtio-net: there is no host interface to name), so
 //! `Config` is a newtype whose job is to carry the board's DEFAULTS and the
@@ -124,8 +124,8 @@ impl Config {
         self
     }
 
-    /// Parse a direct-mode board file (RFC-0109 D4,
-    /// [`nros_board_common::parse_direct_toml`]).
+    /// Parse a direct-mode board file
+    /// ([`nros_board_common::parse_direct_toml`]).
     ///
     /// Missing fields keep this board's defaults. Designed for
     /// `include_str!("../config.toml")` compile-time embedding.

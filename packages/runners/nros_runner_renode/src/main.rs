@@ -1,4 +1,4 @@
-//! `nros-runner-renode`: the `renode` runner (RFC-0119 D8), `run` only.
+//! `nros-runner-renode`: the `renode` runner, `run` only.
 //!
 //! Boots the plan's `elf` in the Renode machine its target names
 //! (`renode:<machine>`, Renode's `platforms/boards/<machine>.repl`). The
@@ -6,31 +6,30 @@
 //! descriptor's `[board.run.renode]`: `link` is the `sysbus` UART that carries
 //! the image's serial link, and `console` the UART its console prints on.
 //!
-//! Why not Zephyr's own `run_renode` target (phase-524 W4b, measured): Zephyr
-//! 3.7's `nucleo_f767zi` declares none (its `board.cmake` includes openocd and
-//! jlink only, so the build has no `run_renode` edge and the `west` runner
-//! refused the plan), and a board that does declare one boots Zephyr's own
-//! `.resc`, which puts no UART on a host pty for a router to open.
+//! Why not Zephyr's own `run_renode` target (measured): Zephyr 3.7's
+//! `nucleo_f767zi` declares none (its `board.cmake` includes openocd and jlink
+//! only, so the build has no `run_renode` edge and the `west` runner refused
+//! the plan), and a board that does declare one boots Zephyr's own `.resc`,
+//! which puts no UART on a host pty for a router to open.
 //!
-//! What it does, the pattern phase-524 W1 measured
-//! (docs/roadmap/data/phase-524-w1-renode-nucleo.log):
+//! What it does:
 //!
 //! * Renode starts PAUSED on a script this runner writes: the machine, the
 //!   link UART on a host pty Renode creates itself (`CreateUartPtyTerminal`),
 //!   the console UART into a file, the ELF loaded.
 //! * Once the pty exists the runner reports it on stderr as
-//!   `nros-runner: link <pty>` (RFC-0119 D6), so nros starts the router on the
-//!   other end, waits [`SERIAL_SETTLE`], and starts the simulation over
-//!   Renode's monitor port: a pty with nothing on the other end drops what the
-//!   guest writes, which would lose the session handshake.
+//!   `nros-runner: link <pty>`, so nros starts the router on the other end,
+//!   waits [`SERIAL_SETTLE`], and starts the simulation over Renode's monitor
+//!   port: a pty with nothing on the other end drops what the guest writes,
+//!   which would lose the session handshake.
 //! * The console file is copied to stdout unmodified, which is what nros
 //!   grades `--expect` over; Renode's own output is diagnostics, on stderr.
 //!
 //! Renode is the plan's tool: `tools.renode`, which nros resolves through
 //! `nros locate tool renode` (`$NROS_RENODE`, then the store at the pinned
 //! `[tool.renode]`). This runner never searches `PATH`. Renode writes
-//! `~/.config/renode` whatever `--config` says (measured in W1), so its `HOME`
-//! is the runner's scratch directory; the portable build resolves
+//! `~/.config/renode` whatever `--config` says (measured), so its `HOME` is
+//! the runner's scratch directory; the portable build resolves
 //! `@platforms/...` against its own directory, which is its working directory.
 //!
 //! Renode runs in the runner's process group, so the group nros stops on

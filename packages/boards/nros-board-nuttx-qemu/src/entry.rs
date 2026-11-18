@@ -2,8 +2,8 @@
 //!
 //! NuttX boots the kernel, then starts the init task by calling the function
 //! `CONFIG_INIT_ENTRYPOINT` names. This board's defconfigs name
-//! `nros_nuttx_entry`, defined here, so the kernel starts the image directly
-//! (RFC-0126 decision 18, phase-550 W11).
+//! `nros_nuttx_entry`, defined here, so the kernel starts the image
+//! directly.
 //!
 //! Call chain: NuttX init → `nros_nuttx_entry` → `main`
 //!
@@ -12,10 +12,9 @@
 //! Naming the entry in `CONFIG_INIT_ENTRYPOINT` is NuttX's own mechanism, and
 //! it depends on no link order.
 //!
-//! phase-359 W7 — that `main` used to be libstd's `lang_start` shim, which then
-//! called the user's Rust `fn main()`. The family is `no_std` now, so
-//! `nros::main!()` emits this exact C-ABI symbol directly and the chain is one
-//! call shorter.
+//! That `main` used to be libstd's `lang_start` shim, which then called the
+//! user's Rust `fn main()`. The family is `no_std` now, so `nros::main!()`
+//! emits this exact C-ABI symbol directly and the chain is one call shorter.
 
 use core::ffi::c_char;
 

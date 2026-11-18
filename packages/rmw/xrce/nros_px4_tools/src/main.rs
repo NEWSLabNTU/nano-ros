@@ -1,10 +1,10 @@
-//! `nros px4 msgs` — the PX4 message generator (RFC-0119 D8, phase-527 W5).
+//! `nros px4 msgs` — the PX4 message generator.
 //!
 //! A command package: `nros px4 <sub> …` executes this binary with the
 //! arguments after `px4` unchanged. `nros generate-px4-msgs …`, the built-in
 //! this replaces, is a hidden alias that executes it as `msgs …`, so both
 //! spellings print the same bytes. Moved from nros-cli-core's
-//! `cmd/generate_px4.rs` (Phase 233.1, RFC-0039 Track B).
+//! `cmd/generate_px4.rs`.
 //!
 //! Generate CDR-serializable `px4_msgs::msg::*` Rust types directly from a
 //! PX4-Autopilot `.msg` tree (`msg/` + `msg/versioned/`), with no external ament

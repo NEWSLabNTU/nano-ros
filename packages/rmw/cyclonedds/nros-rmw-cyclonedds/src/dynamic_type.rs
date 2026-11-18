@@ -39,9 +39,9 @@ use crate::bridge::{
     nros_cyclonedds_build_descriptor_from_schema,
 };
 
-/// The wire extensibility for generated cyclone descriptors (phase-303 W1c /
-/// #0267). `0` = FINAL, `1` = APPENDABLE (the builder prepends a `DDS_OP_DLC` so
-/// Cyclone wraps each nested struct in a DHEADER under XCDR2).
+/// The wire extensibility for generated cyclone descriptors. `0` = FINAL,
+/// `1` = APPENDABLE (the builder prepends a `DDS_OP_DLC` so Cyclone wraps
+/// each nested struct in a DHEADER under XCDR2).
 ///
 /// **DEFAULT `0` (FINAL) — corrected 2026-07-26 after live verification.** An
 /// earlier version keyed this on the `ros-<edition>` features (appendable on
@@ -52,7 +52,7 @@ use crate::bridge::{
 /// byte-for-byte. Extensibility is a PER-TYPE property (a `@appendable`
 /// annotation on the specific type — e.g. an autoware `Control`), not an edition
 /// blanket; the appendable path (`extensibility = 1`) stays built for that
-/// future per-type opt-in. See #0267 "LIVE verification".
+/// future per-type opt-in.
 pub const TYPE_EXTENSIBILITY: u32 = 0;
 
 /// Maximum number of top-level fields per message. Compile-time
@@ -188,9 +188,9 @@ impl BuildError {
 ///
 /// Constructed via [`DescriptorBuilder::build`] / [`Self::build_raw`];
 /// stored in [`crate::type_registry::TypeRegistry`] as an opaque
-/// `*const c_void`. The underlying Cyclone descriptor is allocated
-/// from `ddsrt_malloc` (Phase 177.22's pre-budgeted heap on embedded
-/// targets) — the registry owns the lifetime; do not free directly.
+/// `*const c_void`. The underlying Cyclone descriptor is allocated from
+/// `ddsrt_malloc` (the pre-budgeted heap on embedded targets) — the
+/// registry owns the lifetime; do not free directly.
 pub struct DescriptorBuilder;
 
 /// Opaque pointer to a Cyclone DDS `dds_topic_descriptor_t`. Returned
@@ -209,7 +209,7 @@ impl DescriptorBuilder {
     /// internally by [`Self::build`]; also useful for tests that don't
     /// want to gin up a full `impl Message`.
     ///
-    /// # Service request/reply prefix injection (Phase 212.K.7 fix)
+    /// # Service request/reply prefix injection
     ///
     /// When `type_name` matches a service request / reply shape — i.e.
     /// the basename ends with `_Request`, `_Response`, or `_Reply` —
@@ -231,10 +231,10 @@ impl DescriptorBuilder {
     /// Without this prefix the synthesised descriptor's `m_size = 16`
     /// (or the size of just the user fields) and Cyclone silently
     /// truncates the wire CDR's user payload during the take/write
-    /// reserialise pass — manifesting as a server-side `wire_len`
-    /// equal to encap+header with no user bytes (Phase 212.K.7 root
-    /// cause: native-Rust-Cyclone service requests timed out because
-    /// the server received only the 16-byte header, never the `a`/`b`
+    /// reserialise pass — manifesting as a server-side `wire_len` equal
+    /// to encap+header with no user bytes (the symptom:
+    /// native-Rust-Cyclone service requests timed out because the
+    /// server received only the 16-byte header, never the `a`/`b`
     /// payload).
     pub fn build_raw(
         type_name: &'static str,

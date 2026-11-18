@@ -4,53 +4,50 @@
 //!
 //! Layer-2 entry-point in the board / BSP abstraction described in
 //! `docs/design/0012-board-bsp-integration-architecture.md`. Unlike the
-//! `nros-board-{freertos, threadx}` siblings, this crate is THIN
-//! by design — NuttX owns the kernel build through its own
-//! `apps/external/nano-ros/` + `Make.defs` + `Kconfig` integration
-//! (see `integrations/nuttx/` and the Phase 152.7 polish). The
-//! Cargo side only needs to ship the boot driver plus the board-init
-//! hooks; there is no `build.rs` bundling the NuttX kernel
-//! sources here.
+//! `nros-board-{freertos, threadx}` siblings, this crate is THIN by
+//! design — NuttX owns the kernel build through its own
+//! `apps/external/nano-ros/` + `Make.defs` + `Kconfig` integration (see
+//! `integrations/nuttx/`). The Cargo side only needs to ship the boot
+//! driver plus the board-init hooks; there is no `build.rs` bundling
+//! the NuttX kernel sources here.
 //!
-//! ## 152.4.A scaffolding
+//! ## Overlays
 //!
-//! The `reference-qemu` feature is GONE (issue 1309 / phase-451 W4): it named
-//! an optional dep on `nros-board-nuttx-qemu`, which depends on this crate, so
-//! it formed a package CYCLE and nothing ever enabled it. Overlays
-//! (`nros-board-px4-fmu-v5-nuttx`, `nros-board-<vendor>-<board>-nuttx`)
-//! depend on this crate name + can extend the `Config` shape +
-//! patch board-specific init via `#[no_mangle]` hooks.
+//! The `reference-qemu` feature is GONE: it named an optional dep on
+//! `nros-board-nuttx-qemu`, which depends on this crate, so it formed a
+//! package CYCLE and nothing ever enabled it. Overlays
+//! (`nros-board-px4-fmu-v5-nuttx`, `nros-board-<vendor>-<board>-nuttx`) depend
+//! on this crate name + can extend the `Config` shape + patch board-specific
+//! init via `#[no_mangle]` hooks.
 //!
-//! 152.4.B (deferred) carves the per-board `Config` / `init_hardware`
-//! variation into a `BoardInit` trait so the per-board crate
-//! shrinks to a `pub struct MyBoard; impl BoardInit for MyBoard
-//! { ... }`. Today the per-board crate hand-rolls `Config`.
+//! A per-board crate implements [`nros_platform::BoardInit`] for its
+//! board type (`nros-board-nuttx-qemu` does, for `NuttxQemu`) and may
+//! still hand-roll its own `Config`.
 //!
 //! ## Public contract
 //!
-//! The 212.N migration has LANDED, so the shapes this section used to
-//! list in parallel are down to one: the config-carrying `run` /
+//! There is one entry shape: the config-carrying `run` /
 //! ~~`run_generic`~~ pair is gone, and so is the `BoardInit` trait
 //! `nros-board-common` once declared — it is
 //! [`nros_platform::BoardInit`] now.
 //!
-//! ### Phase 212.N.2 — `BoardEntry`-shaped `run_entry`
+//! ### `BoardEntry`-shaped `run_entry`
 //!
 //! - `run_entry` (free fn; `#[cfg(target_os = "nuttx")]`, which is why
 //!   this is not a link — a host rustdoc pass does not compile it) —
 //!   mirrors the [`nros_platform::BoardEntry::run`] signature so
 //!   codegen-emitted `main.rs` can call it without owning a `Config`.
-//!   Parameterised on a 212.N.1 [`nros_platform::BoardInit`] impl `B`
-//!   whose `init_hardware()` takes no argument (overlay state, if any,
-//!   lives in `B`'s impl block or in a separate per-board `Config`
-//!   the Entry pkg threads through the `setup` closure).
+//!   Parameterised on a [`nros_platform::BoardInit`] impl `B` whose
+//!   `init_hardware()` takes no argument (overlay state, if any, lives
+//!   in `B`'s impl block or in a separate per-board `Config` the Entry
+//!   pkg threads through the `setup` closure).
 //! - Returns the [`Result`] the closure produces. NuttX is hosted +
 //!   POSIX-shaped: `fn main` ends, libstd's runtime calls `exit(0)`.
-//!   That is the only family in 212.N.2 where `run_entry` does not
-//!   diverge — POSIX hands `exit_success` / `_failure` off to libc,
-//!   FreeRTOS / ThreadX never let `main` return at all, but NuttX's
-//!   shell dispatch reclaims the task on a normal return. Returning
-//!   the `Result` keeps it observable to a hosted test harness.
+//!   That is the only family where `run_entry` does not diverge — POSIX
+//!   hands `exit_success` / `_failure` off to libc, FreeRTOS / ThreadX
+//!   never let `main` return at all, but NuttX's shell dispatch
+//!   reclaims the task on a normal return. Returning the `Result` keeps
+//!   it observable to a hosted test harness.
 //! - No transport-bringup / network-wait step. NuttX brings up
 //!   `eth0` (virtio-net etc.) during kernel boot before `main`
 //!   runs; `init_hardware` re-applies IP overrides (qemu-arm overlay
@@ -86,15 +83,14 @@
 
 extern crate alloc;
 
-/// issue 1571 — the type of one spawned sched task's executor backing slot, so a
-/// board crate that wraps this one's `run_sched_tasks` can name its parameter without
+/// The type of one spawned sched task's executor backing slot, so a board crate
+/// that wraps this one's `run_sched_tasks` can name its parameter without
 /// depending on `nros` itself. Gated like the `nros` dependency it names
 /// (`cfg(not(target_os = "none"))` in this crate's manifest).
 #[cfg(not(target_os = "none"))]
 pub use ::nros::SchedTaskExecutorBackingSlot;
 
-/// phase-359 W7 — the NuttX system facilities this board used to reach through
-/// `std`.
+/// The NuttX system facilities this board used to reach through `std`.
 ///
 /// Every one of them is a call NuttX already exports: the console and `exit`
 /// come from its libc (which is what libstd called underneath), and `sleep`
@@ -394,11 +390,11 @@ macro_rules! println {
 // are the `nros_platform`-shaped `run_entry` / `run_sched_tasks` below (consumed by
 // `nros::main!` via each board's `impl nros_platform::BoardEntry`).
 
-/// Phase 212.N.2 — `BoardEntry`-shaped NuttX entry point.
+/// `BoardEntry`-shaped NuttX entry point.
 ///
 /// Mirrors the [`nros_platform::BoardEntry::run`] signature so the
-/// Phase 212.N.4 codegen-emitted Entry pkg `main.rs` can call into
-/// the NuttX family driver without owning a [`Config`]:
+/// codegen-emitted Entry pkg `main.rs` can call into the NuttX family
+/// driver without owning a [`Config`]:
 ///
 /// ```ignore
 /// use nros_board_nuttx::run_entry;
@@ -406,7 +402,7 @@ macro_rules! println {
 ///
 /// fn main() -> Result<(), MyError> {
 ///     run_entry::<NuttxQemu, _, _>(|runtime| {
-///         // codegen-emitted (Phase 212.N.4)
+///         // codegen-emitted
 ///         run_plan(runtime)
 ///     })
 /// }
@@ -414,8 +410,8 @@ macro_rules! println {
 ///
 /// ## Lifecycle
 ///
-/// 1. [`nros_platform::BoardInit::init_hardware`] (no-arg variant
-///    from the 212.N.1 trait family — distinct from the legacy
+/// 1. [`nros_platform::BoardInit::init_hardware`] (no-arg variant from
+///    the `nros_platform` trait family — distinct from the legacy
 ///    [`nros_board_common::BoardInit::init_hardware`] which takes a
 ///    `&Config`). Per-board overlay state, if any, lives inside `B`'s
 ///    impl block.
@@ -434,8 +430,7 @@ macro_rules! println {
 ///
 /// ## Why this does not diverge
 ///
-/// Sibling family drivers in 212.N.2 each diverge into
-/// `BoardExit::exit_*`:
+/// Sibling family drivers each diverge into `BoardExit::exit_*`:
 ///
 /// - `nros-board-linux` calls `std::process::exit(0|1)` —
 ///   libstd's runtime hands the integer to `_exit(2)`.
@@ -464,25 +459,26 @@ macro_rules! println {
 /// `target_os = "nuttx"` predicate as `run`, so a bare
 /// `cargo check` without a NuttX target skips this body. The `run_entry`
 /// symbol therefore only exists in builds that can actually call it.
-/// Route panics to STDOUT (issue 0572; extended to `run_sched_tasks` by issue 0583).
+/// Route panics to STDOUT, on both entry paths.
 ///
 /// A panic on this guest is INVISIBLE otherwise: Rust prints the message and
 /// location to stderr, and stderr does not reach the NuttX serial console here
 /// — the same finding that hid every `eprintln!` diagnostic on this board. Its
-/// own comment said "a boot sched task that panics after spawning its siblings would
-/// look exactly like one that silently stopped scheduling", and it was then
-/// installed on ONE of the two entry paths: `run_sched_tasks` — the multi-sched-task path,
-/// the only one that HAS siblings to spawn — never called it. Issue 0583 is
-/// exactly the scenario it describes, on exactly the path that lacked it.
+/// own comment said "a boot sched task that panics after spawning its siblings
+/// would look exactly like one that silently stopped scheduling", and it was
+/// then installed on ONE of the two entry paths: `run_sched_tasks` — the
+/// multi-sched-task path, the only one that HAS siblings to spawn — never
+/// called it.
 ///
-/// ## phase-359 W7 — a hook became a handler
+/// ## A hook became a handler
 ///
 /// This was `std::panic::set_hook`, installed at the top of each entry. A
 /// `no_std` image has no panic RUNTIME to hook, so the same job is now a
 /// `#[panic_handler]`: it runs for every panic in the image without an entry
-/// having to remember to install it, which structurally retires the 0583 class
-/// (an entry path that forgot the call). It also cannot be displaced by a later
-/// `set_hook`, so a user crate cannot silently take these diagnostics away.
+/// having to remember to install it, which structurally retires that class of
+/// bug (an entry path that forgot the call). It also cannot be displaced by a
+/// later `set_hook`, so a user crate cannot silently take these diagnostics
+/// away.
 ///
 /// The message text is deliberately byte-identical to the hook's
 /// (`nros: PANIC <info>`) — the e2e harness greps for it.
@@ -503,11 +499,10 @@ macro_rules! println {
 /// runtime; a pure-Rust image links no `nros-c` and takes this handler. See the
 /// `image-runtime` feature in `Cargo.toml` for why the handler and the
 /// allocator share one flag.
-/// The board's fatal behaviour, as a STRONG `nros_platform_panic` (phase-366
-/// W5), overriding the weak default in `nros-platform-posix` (stderr +
-/// `abort()`). `exit(1)` rather than `abort()` is the point: a NuttX shell sees
-/// the status libstd's abort path produced, which is what the e2e harness
-/// expects.
+/// The board's fatal behaviour, as a STRONG `nros_platform_panic`, overriding
+/// the weak default in `nros-platform-posix` (stderr + `abort()`). `exit(1)`
+/// rather than `abort()` is the point: a NuttX shell sees the status libstd's
+/// abort path produced, which is what the e2e harness expects.
 ///
 /// The rendered line stays byte-identical — `nros: PANIC <info>` — because the
 /// harness greps for it.
@@ -892,18 +887,18 @@ fn apply_sched_task_affinity(sched_task: &nros_platform::SchedTaskSpec<'_>) {
 // `println!` and threads — was compiled UNCONDITIONALLY. It has not bitten
 // because this crate is workspace-excluded and only ever built for NuttX. The
 // rustdoc `unused doc comment` error on those extern blocks was the symptom.
-/// phase-281 W3-nuttx (RFC-0015 Model 1) — per-sched-task multi-task NuttX entry.
+/// Per-sched-task multi-task NuttX entry.
 ///
-/// The multi-sched-task sibling of [`run_entry`]: opens the ONE RMW session, then
-/// (issue 2016, RFC-0108 "As built in P10") runs each
-/// [`nros_platform::SchedTaskSpec`] as one LEVEL over the core's ONE executor
-/// ([`nros::levels::LevelCore`]): the boot sched task owns the session and runs on
-/// this task, every other sched task is a detached worker pthread over the same
-/// executor (`sys::spawn_sched_task`), started once the level before it has set
-/// up. NuttX's zenoh-pico build sets `Z_FEATURE_MULTI_THREAD = 1`
-/// (`platforms/nuttx/nros-platform.toml` `[platform.nuttx]`).
+/// The multi-sched-task sibling of [`run_entry`]: opens the ONE RMW session,
+/// then runs each [`nros_platform::SchedTaskSpec`] as one LEVEL over the core's
+/// ONE executor ([`nros::levels::LevelCore`]): the boot sched task owns the
+/// session and runs on this task, every other sched task is a detached worker
+/// pthread over the same executor (`sys::spawn_sched_task`), started once the
+/// level before it has set up. NuttX's zenoh-pico build sets
+/// `Z_FEATURE_MULTI_THREAD = 1` (`platforms/nuttx/nros-platform.toml`
+/// `[platform.nuttx]`).
 ///
-/// ## Ordering (issue #144 — the interest-handshake race)
+/// ## Ordering (the interest-handshake race)
 ///
 /// zenoh-pico entity declares carry an interest handshake; two threads that
 /// declare concurrently race it, and the losing publisher's write filter can

@@ -41,9 +41,9 @@ extern "C" {
  */
 int nsos_netx_init(void);
 
-/** phase-521 W6 — `nsos_rx_notify.c`'s receive-notification bookkeeping,
- *  called by the shim's receive and close calls: a read re-arms the socket's
- *  notification, a close drops it (the fd number is reused). */
+/** `nsos_rx_notify.c`'s receive-notification bookkeeping, called by the
+ *  shim's receive and close calls: a read re-arms the socket's notification,
+ *  a close drops it (the fd number is reused). */
 void nsos_rx_notify_rearm(int sockID);
 void nsos_rx_notify_forget(int sockID);
 

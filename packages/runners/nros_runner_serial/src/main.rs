@@ -1,4 +1,4 @@
-//! `nros-runner-serial`: the `serial` runner (RFC-0119 D8), `console` only.
+//! `nros-runner-serial`: the `serial` runner, `console` only.
 //!
 //! The default console for `nros monitor` and `nros flash --monitor`. It opens
 //! the plan's `console.port` raw at `console.baud`, prints what the board

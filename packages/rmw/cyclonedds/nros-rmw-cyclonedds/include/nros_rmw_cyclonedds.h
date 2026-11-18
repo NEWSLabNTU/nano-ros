@@ -18,10 +18,6 @@
  *     nros_rmw_cyclonedds_register();
  *     rclcpp::init_in(nullptr, 0, "my_node");
  *     // ... create publishers / subscribers ...
- *
- * Phase 117.3 — vtable scaffold; every entry returns
- * `NROS_RMW_RET_UNSUPPORTED` until 117.4 / 117.6 / 117.7 fill in
- * session, pub/sub, and service paths.
  */
 
 #ifdef __cplusplus

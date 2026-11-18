@@ -1,4 +1,4 @@
-//! C FFI surface for the bridge (Phase 128.F.5).
+//! C FFI surface for the bridge.
 //!
 //! Mirrors the public types/headers in `packages/api/nros-c/include/rclc/bridge.h`
 //! and `packages/api/nros-cpp/include/rclcpp/bridge.hpp`. The C symbols
@@ -35,9 +35,9 @@ pub struct NrosSessionSpec {
     pub domain_id: u32,
     pub node_name: *const c_char,
     pub namespace_: *const c_char,
-    /// Issue 2123 — this session's RMW properties (`rclc_session_property_t`,
-    /// one layout with `nros_node::SessionProperty`). NULL with
-    /// `properties_len == 0` = none; read during `rclc_init_multi` only.
+    /// This session's RMW properties (`rclc_session_property_t`, one layout
+    /// with `nros_node::SessionProperty`). NULL with `properties_len == 0` =
+    /// none; read during `rclc_init_multi` only.
     pub properties: *const SessionProperty,
     pub properties_len: usize,
 }

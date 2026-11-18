@@ -8,18 +8,17 @@
 //! final binary.
 //!
 //! While it lived in `nros-log`, "does this binary need the platform log ABI?"
-//! was answerable only by a Cargo feature, and issue 0710 showed that cannot
-//! work: `nros-platform-cffi` and `nros-rmw-bridge` enable
-//! `nros-node/rmw-cffi` unconditionally, so workspace feature unification
-//! turns any forwarded gate back ON for every member of the build. A feature is
-//! a property of the BUILD.
+//! was answerable only by a Cargo feature, and that cannot work:
+//! `nros-platform-cffi` and `nros-rmw-bridge` enable `nros-node/rmw-cffi`
+//! unconditionally, so workspace feature unification turns any forwarded gate
+//! back ON for every member of the build. A feature is a property of the BUILD.
 //!
 //! A DEPENDENCY is a property of the binary. Here, the question answers itself:
 //! a binary that links this crate has the ABI (that is what this crate is), and
 //! one that does not cannot accidentally acquire the requirement. The extern is
 //! also declared exactly once now, in `generated.rs` — bindgen output from
-//! `<nros/platform.h>`, the SSoT per RFC-0054 — rather than a second time by
-//! hand in the facade.
+//! `<nros/platform.h>`, the single source of truth — rather than a second time
+//! by hand in the facade.
 //!
 //! ## Using it
 //!
@@ -37,8 +36,7 @@ use nros_log::{FormatBuffer, LogSink, Record};
 /// Forwards every record to the platform port's `nros_platform_log_write`.
 ///
 /// Zero-sized. Threading + ISR safety inherit from the linked
-/// `nros-platform-<rtos>` impl — see the table in
-/// `docs/roadmap/archived/phase-88-nros-log.md`.
+/// `nros-platform-<rtos>` impl.
 pub struct PlatformSink;
 
 impl LogSink for PlatformSink {
@@ -110,13 +108,13 @@ pub fn init_default() {
 /// Route the `log` FACADE (`log::info!` in an application body) into the same
 /// sink list [`init_default`] installs, so one funnel carries both.
 ///
-/// Issue 1324. A Zephyr Rust image used `zephyr::set_logger()` for this, and
-/// with `CONFIG_LOG` in full mode that logger exists only under
-/// `CONFIG_RUST_ALLOC` — the zephyr-lang-rust allocator that put a SECOND,
-/// unpriced heap under every Zephyr Rust image (host glibc on an XRCE
-/// native_sim image). That allocator is now refused; this is what replaces the
-/// logger it carried. Idempotent; a second `log::Log` already installed is left
-/// in place, which is the `log` crate's own rule.
+/// A Zephyr Rust image used `zephyr::set_logger()` for this, and with
+/// `CONFIG_LOG` in full mode that logger exists only under `CONFIG_RUST_ALLOC`
+/// — the zephyr-lang-rust allocator that put a SECOND, unpriced heap under
+/// every Zephyr Rust image (host glibc on an XRCE native_sim image). That
+/// allocator is now refused; this is what replaces the logger it carried.
+/// Idempotent; a second `log::Log` already installed is left in place, which is
+/// the `log` crate's own rule.
 #[cfg(feature = "log-compat")]
 pub fn install_log_crate_bridge() {
     let _ = nros_log::log_compat::install_log_crate_bridge();

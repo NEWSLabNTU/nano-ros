@@ -1,8 +1,8 @@
 //! # nros-board-freertos-posix
 //!
-//! phase-548 W1 — the Rust board crate for the FreeRTOS POSIX simulator: the
-//! FreeRTOS kernel's `portable/ThirdParty/GCC/Posix` port running as a host
-//! process, on the HOST's network (`[board.net] stack = "host"`).
+//! The Rust board crate for the FreeRTOS POSIX simulator: the FreeRTOS
+//! kernel's `portable/ThirdParty/GCC/Posix` port running as a host process,
+//! on the HOST's network (`[board.net] stack = "host"`).
 //!
 //! The boot path is the FreeRTOS family's (`nros_board_freertos::run_entry`
 //! and friends, built with that crate's `posix-port` feature, so no lwIP is

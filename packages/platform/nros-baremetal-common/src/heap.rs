@@ -1,12 +1,12 @@
-//! Issue 1640 — the bare-metal TLSF arenas REPORT a refusal.
+//! The bare-metal TLSF arenas REPORT a refusal.
 //!
-//! `zpico_alloc::FreeListHeap` is the platform arena on four ports. Issue 1370
-//! made the FRAGMENTED / TOO SMALL verdict the operative guard for external
-//! fragmentation, and issues 1425 / 1036 made an exhausted heap reach the boot
-//! record and the fatal hook — on Zephyr only, whose `nros_platform_alloc` is C.
-//! MPS2-AN385, STM32F4 and ESP32-QEMU called the arena and returned what it
-//! returned: a NULL with no size, no verdict and no record, on exactly the
-//! boards where the console is least likely to be wired.
+//! `zpico_alloc::FreeListHeap` is the platform arena on four ports. The
+//! FRAGMENTED / TOO SMALL verdict is the operative guard for external
+//! fragmentation, and an exhausted heap reaches the boot record and the fatal
+//! hook — on Zephyr, whose `nros_platform_alloc` is C. MPS2-AN385, STM32F4 and
+//! ESP32-QEMU called the arena and returned what it returned: a NULL with no
+//! size, no verdict and no record, on exactly the boards where the console is
+//! least likely to be wired.
 //!
 //! [`alloc_or_report`] / [`realloc_or_report`] are the ONE refusal path those
 //! three share, in the Zephyr report's vocabulary:
@@ -50,7 +50,7 @@ pub struct Refusal {
     pub capacity: usize,
     /// The free memory's shape at the refusal.
     pub shape: FreeShape,
-    /// Which exhaustion it is (issue 1370).
+    /// Which exhaustion it is.
     pub verdict: Exhaustion,
     /// The knob a TOO SMALL refusal names (e.g. `NROS_HEAP_SIZE`).
     pub knob: &'static str,
@@ -147,7 +147,7 @@ fn report<P: PlatformLog + PlatformPanic, const N: usize>(
     }
 }
 
-/// `heap.alloc(size)`, with a refusal reported (issue 1640).
+/// `heap.alloc(size)`, with a refusal reported.
 pub fn alloc_or_report<P: PlatformLog + PlatformPanic, const N: usize>(
     heap: &FreeListHeap<N>,
     size: usize,

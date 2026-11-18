@@ -14,17 +14,15 @@
 ///
 /// # Default Configuration (Talker)
 ///
-/// - **QEMU network** (default): the board's `[board.net]` (phase-484 W4b-2,
-///   RFC-0103 D10) — QEMU's own SLIRP network, `10.0.2.15/24`, gateway and
-///   router `10.0.2.2` (`tcp/10.0.2.2:7447`). A TAP/bridge network is a
-///   project-defined network (phase-497); until then an image states its own
-///   address.
+/// - **QEMU network** (default): the board's `[board.net]` — QEMU's own
+///   SLIRP network, `10.0.2.15/24`, gateway and router `10.0.2.2`
+///   (`tcp/10.0.2.2:7447`). A TAP/bridge network is a project-defined
+///   network, so an image on one states its own address.
 ///
 /// - **Docker** (`tests/qemu-baremetal`): not a board mode. The container's
 ///   network is a project network, `[network.docker]` in the board network
 ///   file the leaves' `[image.docker]` names, with the image's address on it
-///   and `[image.docker.run] nic` the TAP (RFC-0109 D4/D6; this was a `docker`
-///   cargo feature).
+///   and `[image.docker.run] nic` the TAP (this was a `docker` cargo feature).
 ///
 /// - **QEMU user-mode / slirp** ([`Config::qemu_slirp`], NOT the default):
 ///   - IP: 10.0.2.10/24
@@ -160,12 +158,12 @@ impl Config {
     /// The QEMU **user-mode (slirp)** address plan: `10.0.2.10/24`, gateway
     /// `10.0.2.2`, locator `tcp/10.0.2.2:7450`.
     ///
-    /// Since phase-484 W4b-2 this is the SAME network as [`Config::default`]
-    /// (the board's `[board.net]`, QEMU's SLIRP plan, RFC-0103 D10). Before it
-    /// the board had two address plans, the default being a `192.0.3.0/24`
-    /// bridge plan, and which one was right depended on how QEMU was launched,
-    /// a fact the firmware cannot observe. What remains distinct here is the
-    /// RTIC examples' own guest address (`.10`) and router port (`7450`).
+    /// This is the SAME network as [`Config::default`] (the board's
+    /// `[board.net]`, QEMU's SLIRP plan). The board once had two address
+    /// plans, the default being a `192.0.3.0/24` bridge plan, and which one
+    /// was right depended on how QEMU was launched, a fact the firmware cannot
+    /// observe. What remains distinct here is the RTIC examples' own guest
+    /// address (`.10`) and router port (`7450`).
     ///
     /// A separate RTIC board crate was folded into this one; this
     /// preset is that crate's ~~`qemu_config()`~~, which was a second `Default`-
@@ -308,8 +306,8 @@ impl Config {
         self.ip[0] == 169 && self.ip[1] == 254
     }
 
-    /// Parse a direct-mode board file (RFC-0109 D4,
-    /// [`nros_board_common::parse_direct_toml`]).
+    /// Parse a direct-mode board file
+    /// ([`nros_board_common::parse_direct_toml`]).
     ///
     /// Missing fields use board-specific defaults. This is designed to work
     /// with `include_str!("../config.toml")` for compile-time embedding.
@@ -384,20 +382,21 @@ use nros_board_common::base_config::parse_u32;
 
 impl Config {
     /// The board default overlaid with the IMAGE's declared network identity,
-    /// read at COMPILE time (issue 1512).
+    /// read at COMPILE time.
     ///
     /// A Rust image gets `[image.<id>] locator/domain_id` and its resolved
-    /// network from `nros::main!`'s deploy overlay (`entry.rs::config_with_overlay`).
-    /// A cargo-rooted image with a hand-written `main` has no such macro, so
-    /// `nros sync` renders the declared values into the image's
-    /// `build/<image>/nros-cargo.toml` as `NROS_ENTRY_*` `[env]` rows, and its
-    /// resolved network as `NROS_IMAGE_NET` (RFC-0103 D10f); this reads them.
-    /// An absent row keeps the board default — nothing here is derived.
+    /// network from `nros::main!`'s deploy overlay
+    /// (`entry.rs::config_with_overlay`). A cargo-rooted image with a
+    /// hand-written `main` has no such macro, so `nros sync` renders the
+    /// declared values into the image's `build/<image>/nros-cargo.toml` as
+    /// `NROS_ENTRY_*` `[env]` rows, and its resolved network as
+    /// `NROS_IMAGE_NET`; this reads them. An absent row keeps the board default
+    /// — nothing here is derived.
     ///
-    /// A C-rooted image (the CMake road, phase-553 W4) does not rely on this:
-    /// its runtime archive is one per configure, so the board's C start takes
-    /// the image's identity at run time instead ([`Self::from_image_parts`],
-    /// issue 2555) and this is only the rung under it.
+    /// A C-rooted image (the CMake road) does not rely on this: its runtime
+    /// archive is one per configure, so the board's C start takes the image's
+    /// identity at run time instead ([`Self::from_image_parts`]) and this is
+    /// only the rung under it.
     #[must_use]
     pub fn from_image() -> Self {
         let mut cfg = Self::default();
@@ -414,8 +413,8 @@ impl Config {
 
     /// [`Self::from_image`] with the image's identity given at RUN time, from
     /// the `nros_board_image_config_t` the generated entry passes to the
-    /// board's C start (issue 2555). Each `Some` replaces the compile-time
-    /// rung; `None` keeps it.
+    /// board's C start. Each `Some` replaces the compile-time rung; `None`
+    /// keeps it.
     ///
     /// The compile-time rungs live in the image's runtime archive, which one
     /// CMake configure builds once for every image it holds, so they cannot

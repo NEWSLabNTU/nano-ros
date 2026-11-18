@@ -1,12 +1,10 @@
-//! Phase 212.N.2 — `BoardEntry::run` shim for the FreeRTOS family.
+//! `BoardEntry::run` shim for the FreeRTOS family.
 //!
-//! Adds an additive entry point built on the 212.N.1 trait set in
-//! `nros_platform::board` (`BoardInit` parameterless, `BoardPrint`,
-//! `BoardExit`, `RuntimeCtx`). Mirrors the legacy
-//! [`crate::run`] body — kernel-spawn shape: allocate the app task,
-//! hand it the user closure, call `vTaskStartScheduler()`, never
-//! return — but threads the new `RuntimeCtx` through the user setup
-//! callback instead of an opaque `&Config`.
+//! An entry point built on the trait set in `nros_platform::board`
+//! (`BoardInit` parameterless, `BoardPrint`, `BoardExit`, `RuntimeCtx`).
+//! Kernel-spawn shape: allocate the app task, hand it the user closure,
+//! call `vTaskStartScheduler()`, never return — threading `RuntimeCtx`
+//! through the user setup callback instead of an opaque `&Config`.
 //!
 //! ## Why a free fn (not a blanket `impl BoardEntry`)
 //!
@@ -38,9 +36,8 @@
 //! }
 //! ```
 //!
-//! 212.N.3 wires that into `nros-board-mps2-an385-freertos`; this
-//! file just provides the family-side helper. The legacy
-//! [`crate::run`] coexists during the 212.N transition.
+//! `nros-board-mps2-an385-freertos` is wired that way; this file just
+//! provides the family-side helper.
 
 use core::{
     ffi::c_void,
@@ -1174,17 +1171,17 @@ where
     }
 }
 
-/// Phase 228.E.2 — per-sched-task FreeRTOS entry. The `nros::main!()` macro emits
-/// `<Board>::run_sched_tasks(SCHED_TASKS, SCHED_TASK_BACKING, run_plan)`; the board ZST routes here. Mirrors
-/// [`run_entry`] but runs one FreeRTOS task per priority sched task, each a LEVEL
-/// worker over the core's one executor (issue 2016), the non-boot levels
-/// CHAIN-spawned so their setups serialize
-/// (issue #144; RFC-0032 §5; MT=1 is the default on FreeRTOS, §5.0). `sched_tasks` are the
-/// macro-baked `&'static [SchedTaskSpec]`; `setup` is the register-only `run_plan`
-/// (invoked once per sched task, hence `Fn + Copy`).
+/// Per-sched-task FreeRTOS entry. The `nros::main!()` macro emits
+/// `<Board>::run_sched_tasks(SCHED_TASKS, SCHED_TASK_BACKING, run_plan)`; the
+/// board ZST routes here. Mirrors [`run_entry`] but runs one FreeRTOS task per
+/// priority sched task, each a LEVEL worker over the core's one executor, the
+/// non-boot levels CHAIN-spawned so their setups serialize (MT=1 is the default
+/// on FreeRTOS). `sched_tasks` are the macro-baked `&'static [SchedTaskSpec]`;
+/// `setup` is the register-only `run_plan` (invoked once per sched task, hence
+/// `Fn + Copy`).
 ///
 /// `boot_config` — the baked `.nros_boot_config` static, supplied by the
-/// per-board `run_sched_tasks` (issue #98 / RFC-0045). `None` keeps `"nros_app"`.
+/// per-board `run_sched_tasks`. `None` keeps `"nros_app"`.
 pub fn run_sched_tasks_entry<B, F, E>(
     config: Config,
     boot_config: Option<&'static BakedBootConfig>,
@@ -1354,16 +1351,14 @@ fn init_network(config: &Config) -> FrResult<()> {
     Ok(())
 }
 
-/// Phase 212.N.2 — family-driver entry point for FreeRTOS boards.
+/// Family-driver entry point for FreeRTOS boards.
 ///
-/// Mirrors the body of the legacy `run` that phase 212.N.7 retired —
-/// allocates an app task on
-/// the FreeRTOS heap, hands it the user closure, calls
-/// `vTaskStartScheduler()`, never returns — but routes through the
-/// 212.N.1 `nros_platform::board` trait set + [`RuntimeCtx`].
+/// Allocates an app task on the FreeRTOS heap, hands it the user
+/// closure, calls `vTaskStartScheduler()`, never returns — routing
+/// through the `nros_platform::board` trait set + [`RuntimeCtx`].
 ///
-/// Per-board crates (e.g. `nros-board-mps2-an385-freertos`) wire
-/// this into their `impl BoardEntry for Self::run` body in 212.N.3:
+/// Per-board crates (e.g. `nros-board-mps2-an385-freertos`) wire this
+/// into their `impl BoardEntry for Self::run` body:
 ///
 /// ```ignore
 /// impl nros_platform::board::BoardEntry for MyBoard {
@@ -1380,8 +1375,8 @@ fn init_network(config: &Config) -> FrResult<()> {
 ///
 /// # Type parameters
 ///
-/// - `B: BoardInit + BoardPrint + BoardExit` — per-board glue
-///   pulled from `nros_platform::board` (212.N.1 surface).
+/// - `B: BoardInit + BoardPrint + BoardExit` — per-board glue pulled
+///   from `nros_platform::board`.
 /// - `F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>` — user
 ///   closure receiving the runtime context.
 /// - `E: core::fmt::Debug` — closure error type.
@@ -1398,8 +1393,8 @@ fn init_network(config: &Config) -> FrResult<()> {
 /// unreachable in a working build.
 ///
 /// `boot_config` — the baked `.nros_boot_config` static, passed from the
-/// per-board `run_with_deploy` (issue #98 / RFC-0045). `None` keeps the
-/// historical `"nros_app"` node-name default.
+/// per-board `run_with_deploy`. `None` keeps the historical `"nros_app"`
+/// node-name default.
 pub fn run_entry<B, F, E>(
     config: Config,
     boot_config: Option<&'static BakedBootConfig>,
@@ -1498,16 +1493,15 @@ where
     B::exit_failure()
 }
 
-/// Phase 313 W-freertos (#0243) — lightweight NO-SESSION FreeRTOS entry for
-/// logging / init-only fixtures AND no-session apps that manage their own
-/// executor (e.g. the `wake-latency-cortex-m3` bench, which opens its own
-/// `Executor::open`). Boots the scheduler + shared bringup (network, RNG, poll
-/// task, netif wait) then runs `setup(&Config)` WITHOUT the board opening an
-/// `Executor` session (unlike [`run_entry`], which would fail
-/// `Transport(ConnectionFailed)` with no router). The `&Config` mirrors the
-/// legacy `node::run(Config, closure)` this replaces (and the direct-exec
-/// `run_bare`), so config-reading apps keep working; logging fixtures that don't
-/// need it take `|_cfg|`.
+/// Lightweight NO-SESSION FreeRTOS entry for logging / init-only fixtures AND
+/// no-session apps that manage their own executor (e.g. the
+/// `wake-latency-cortex-m3` bench, which opens its own `Executor::open`). Boots
+/// the scheduler + shared bringup (network, RNG, poll task, netif wait) then
+/// runs `setup(&Config)` WITHOUT the board opening an `Executor` session (unlike
+/// [`run_entry`], which would fail `Transport(ConnectionFailed)` with no
+/// router). The `&Config` mirrors the legacy `node::run(Config, closure)` this
+/// replaces (and the direct-exec `run_bare`), so config-reading apps keep
+/// working; logging fixtures that don't need it take `|_cfg|`.
 pub fn run_bare<B, F, E>(config: Config, setup: F) -> core::result::Result<(), E>
 where
     B: BoardInit + BoardPrint + BoardExit,

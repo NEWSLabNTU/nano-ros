@@ -114,9 +114,9 @@ pub unsafe extern "C" fn strchr(s: *const c_char, c: c_int) -> *mut c_char {
     }
 }
 
-/// Phase 207.3.bm-libc — XRCE's nano-ros wrapper (`nros-rmw-xrce/src/session.c`)
-/// calls `strrchr` to split locator strings. Tiny scan from start (the only
-/// way without backwards iteration on a null-terminated string).
+/// XRCE's nano-ros wrapper (`nros-rmw-xrce/src/session.c`) calls `strrchr` to
+/// split locator strings. Tiny scan from start (the only way without backwards
+/// iteration on a null-terminated string).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn strrchr(s: *const c_char, c: c_int) -> *mut c_char {
     unsafe {
@@ -136,10 +136,10 @@ pub unsafe extern "C" fn strrchr(s: *const c_char, c: c_int) -> *mut c_char {
     }
 }
 
-/// Phase 207.3.bm-libc — `strtol` for XRCE's locator-parse path. The
-/// UDP-locator path that uses `strtol(agent_port)` is never hit in
-/// custom-transport bare-metal mode, so a no-op `0` return is correct —
-/// the symbol just has to exist for the link to resolve.
+/// `strtol` for XRCE's locator-parse path. The UDP-locator path that
+/// uses `strtol(agent_port)` is never hit in custom-transport
+/// bare-metal mode, so a no-op `0` return is correct — the symbol just
+/// has to exist for the link to resolve.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn strtol(s: *const c_char, endptr: *mut *mut c_char, _base: c_int) -> i64 {
     if !endptr.is_null() {
@@ -293,12 +293,12 @@ pub unsafe extern "C" fn snprintf(buf: *mut c_char, size: usize, _fmt: *const c_
 /// The varargs sibling of `snprintf`, and the one stub here that is NOT a
 /// no-op — deliberately.
 ///
-/// phase-413 W2. Issue 1033 gave `nros-rmw-xrce` a single diagnostic funnel,
-/// `xrce_log_error`, which calls `vsnprintf` and emits the result through
-/// `nros_platform_log_write`. That C TU is compiled into `nros-rmw-xrce-cffi`
-/// and linked into BARE-METAL images, where this file is the entire libc — and
-/// it had 18 exports, none of them `vsnprintf`. Every `mps2-an385-baremetal` XRCE
-/// fixture failed to link the night 1033 landed:
+/// `nros-rmw-xrce` has a single diagnostic funnel, `xrce_log_error`, which calls
+/// `vsnprintf` and emits the result through `nros_platform_log_write`. That C TU
+/// is compiled into `nros-rmw-xrce-cffi` and linked into BARE-METAL images, where
+/// this file is the entire libc — and it had 18 exports, none of them
+/// `vsnprintf`. Every `mps2-an385-baremetal` XRCE fixture failed to link without
+/// it:
 ///
 /// ```text
 /// rust-lld: error: undefined symbol: vsnprintf
@@ -311,7 +311,7 @@ pub unsafe extern "C" fn snprintf(buf: *mut c_char, size: usize, _fmt: *const c_
 /// link closure.
 ///
 /// It copies `fmt` VERBATIM instead of writing `""` like `snprintf` above,
-/// because muteness is the exact defect issue 1033 exists to remove. An
+/// because muteness is the exact defect that funnel exists to remove. An
 /// unsubstituted format string still names the knob and the failure —
 /// `"no free %s slot for '%s': this image was BUILT with %s=%u…"` — while an
 /// empty buffer plus a 0 length reproduces the silence on the one class of

@@ -515,15 +515,15 @@ pub fn init_hardware(config: &Config) {
     hprintln!("");
 }
 
-/// Phase 313 W-direct-exec (#0243) — no-session boot wrapper for bare-metal
-/// fixtures that manage their OWN executor (e.g. the no-alloc
-/// `Executor::open_in` `large-msg-baremetal` bench, which cannot use the `alloc`
-/// `Executor::open` that the `board-entry` `BoardEntry::run` path performs).
-/// `init_hardware(&config)` → the `FnOnce(&Config)` closure → `exit_*`, with NO
-/// board-level session. Lives here in `node.rs` (always compiled), NOT behind
-/// the `board-entry` feature, so the no-umbrella bench can reach it. The
-/// new-family replacement for the retired legacy `run(Config, closure)` (which
-/// routed through `nros_board_common::run` + the ~~`board_init`~~ traits).
+/// No-session boot wrapper for bare-metal fixtures that manage their OWN
+/// executor (e.g. the no-alloc `Executor::open_in` `large-msg-baremetal` bench,
+/// which cannot use the `alloc` `Executor::open` that the `board-entry`
+/// `BoardEntry::run` path performs). `init_hardware(&config)` → the
+/// `FnOnce(&Config)` closure → `exit_*`, with NO board-level session. Lives here
+/// in `node.rs` (always compiled), NOT behind the `board-entry` feature, so the
+/// no-umbrella bench can reach it. The new-family replacement for the retired
+/// legacy `run(Config, closure)` (which routed through
+/// `nros_board_common::run` + the ~~`board_init`~~ traits).
 pub fn run_bare<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
@@ -548,9 +548,8 @@ where
 
 /// Board ZST for trait dispatch.
 ///
-/// Phase 313 W-direct-exec (#0243) — the legacy `impl nros_board_common::{BoardInit,
-/// BoardPrint, BoardExit}` here + the free `run` that consumed them are RETIRED.
-/// The live entries are `<Mps2An385 as nros_platform::board::BoardEntry>::run`
-/// (full app + session, `entry.rs`, `board-entry` feature) and the no-session
-/// [`run_bare`] above.
+/// The legacy `impl nros_board_common::{BoardInit, BoardPrint, BoardExit}`
+/// here + the free `run` that consumed them are RETIRED. The live entries are
+/// `<Mps2An385 as nros_platform::board::BoardEntry>::run` (full app + session,
+/// `entry.rs`, `board-entry` feature) and the no-session [`run_bare`] above.
 pub struct Mps2An385;

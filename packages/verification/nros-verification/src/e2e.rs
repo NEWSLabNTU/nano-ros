@@ -937,7 +937,7 @@ proof fn no_stuck_service(req_len: usize, buf_capacity: usize, rx_buf_len: usize
 
 /// State after the **post-fix** service callback writes to the buffer.
 ///
-/// Models `queryable_callback` after Phase 40 overflow detection (shim.rs:1672-1692).
+/// Models `queryable_callback` with overflow detection (shim.rs:1672-1692).
 ///
 /// Key difference from `service_callback_spec`: oversized requests set
 /// `overflow = true` instead of silently truncating to `buf_capacity`.

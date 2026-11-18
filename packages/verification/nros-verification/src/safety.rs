@@ -166,7 +166,7 @@ pub open spec fn validate_spec(
 /// ```
 ///
 /// Ghost decomposition of `crc_valid == Some(true)`: `crc_known && crc_ok`.
-/// An absent CRC (`!crc_known`) is NOT valid: no check was made (issue 2487).
+/// An absent CRC (`!crc_known`) is NOT valid: no check was made.
 pub open spec fn integrity_is_valid(s: IntegrityStatusGhost) -> bool {
     s.gap == 0 && !s.duplicate && s.crc_known && s.crc_ok
 }

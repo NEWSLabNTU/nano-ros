@@ -1,4 +1,4 @@
-//! Phase 244 E2 — reusable custom-transport callback factories.
+//! Reusable custom-transport callback factories.
 //!
 //! The custom-transport vtable ([`nros_rmw::NrosTransportOps`]) is a set of four
 //! `extern "C"` callbacks + an opaque `user_data` that must outlive the zenoh

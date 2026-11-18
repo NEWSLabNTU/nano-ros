@@ -1,5 +1,5 @@
-//! Phase 169.5 — Rust shim that exposes the Cyclone DDS C++ backend's
-//! C-linkage register entry to Rust callers.
+//! Rust shim that exposes the Cyclone DDS C++ backend's C-linkage
+//! register entry to Rust callers.
 //!
 //! Mirrors `nros-rmw-xrce-cffi`. Cyclone DDS's
 //! `nros_rmw_cyclonedds_register()` (declared in
