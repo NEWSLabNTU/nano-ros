@@ -1626,7 +1626,7 @@ fn sizing_descriptor() -> Option<SizingDescriptor> {
 
 fn xrce_demand_selftest() {
     use nros_sizing_descriptor::{
-        History, RegistrationPath, Status,
+        History, InfraFamilies, RegistrationPath, Status,
         infra::{LIFECYCLE_SERVICE_QUERYABLES, PARAM_SERVICE_QUERYABLES},
     };
 
@@ -1634,6 +1634,12 @@ fn xrce_demand_selftest() {
     let image = |eps: Vec<Endpoint>| -> SizingDescriptor {
         let mut d = SizingDescriptor::new("selftest", Status::Derived, Basis::Contract);
         d.meta.set_undeclared_endpoints(Some(0));
+        // A real descriptor states its runtime families; these cases are about
+        // the declared endpoints, so they state none (case 13 covers `/clock`).
+        d.image
+            .set_infra_families(Some(InfraFamilies::from_switches(
+                false, false, false, false,
+            )));
         d.endpoints = eps;
         d
     };
@@ -1802,6 +1808,37 @@ fn xrce_demand_selftest() {
     )])));
     assert_eq!(d.for_knob(ENV_SUBSCRIBER_BUFFER), Some(CDR_HEADER_LEN));
     assert_eq!(d.for_knob(ENV_SUBSCRIBER_RING_DEPTH), Some(1));
+
+    // 13. phase-556 W11 -- the runtime's `/clock` subscription (the `clock`
+    //     family) is never left without a ring slot or an entry that holds a
+    //     Clock sample, and an UNSTATED family is assumed present.
+    let tiny = || {
+        image(vec![endpoint(
+            EndpointKind::Subscription,
+            "/tick",
+            be,
+            Some(1),
+            Some(0),
+        )])
+    };
+    let mut d13 = tiny();
+    d13.image
+        .set_infra_families(Some(InfraFamilies::from_switches(
+            false, false, false, true,
+        )));
+    let d = XrceDemand::derive(Some(&d13));
+    assert_eq!(
+        d.for_knob(ENV_SUBSCRIBER_BUFFER),
+        Some(CLOCK_SAMPLE_BOUND + CDR_HEADER_LEN)
+    );
+    assert_eq!(d.for_knob(ENV_SUBSCRIBER_RING_DEPTH), Some(1));
+    let mut d13u = tiny();
+    d13u.image.set_infra_families(None);
+    assert_eq!(
+        XrceDemand::derive(Some(&d13u)).for_knob(ENV_SUBSCRIBER_BUFFER),
+        Some(CLOCK_SAMPLE_BOUND + CDR_HEADER_LEN),
+        "an unstated family is priced as present"
+    );
 
     // 12. Issue 1722 — declared parameters price the family's request, and
     //     the price is derived even when the ENDPOINTS keep the image off every
