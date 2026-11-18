@@ -372,6 +372,13 @@ Progress (2026-11-14, step 2 of 5; no default changed yet):
   switch is per image, not per node); zenoh uses a plain publisher per node
   until W14's shared writer.
 
+Blocker before the default flips (2026-11-18):
+[issue 2704](../issues/2704-zephyr-cyclone-param-services-no-descriptors.md).
+A Zephyr C/C++ image on Cyclone with `param_services` boots without its
+parameter services (`Transport(Unsupported)`): only the top-level cmake road
+generates the runtime's `rcl_interfaces` descriptors. With the stock set on by
+default every such image would hit it, so step 3 waits on 2704.
+
 ### W14 — One `/parameter_events` writer per executor
 
 - **Status:** OPEN

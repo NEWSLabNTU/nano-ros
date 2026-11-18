@@ -1,0 +1,162 @@
+---
+id: 2704
+title: "A Zephyr image on `rmw = \"cyclonedds\"` with `param_services` boots without its parameter services: the Zephyr road generates no `rcl_interfaces` descriptors"
+status: open
+type: bug
+area: [zephyr, rmw, params, cmake]
+severity: high
+found: 2026-11-18
+related: [2304, 1268, 1271, phase-556]
+---
+
+## Measured
+
+A downstream C++ image on Zephyr (FVP Base_RevC AEMv8-R, user-mode network),
+`rmw = "cyclonedds"`, `[system] features = ["param_services"]`, one node
+`/controller`, nano-ros at 9afb5c8a19. It boots, its own subscriptions and
+publishers work, and then prints once:
+
+```
+<err> nros: parameter services could not be created for node /controller at
+service get_parameters: Transport(Unsupported). `ros2 param` cannot reach 1 of
+this image's 1 node(s). Not retrying: this failure cannot change without a
+rebuild.
+<err> nros: NodeError::Transport(Unsupported): transport error: operation not
+supported by this backend
+```
+
+Boot continues. The image runs without any of the six parameter services, and
+`ros2 param` against it times out. The build is green.
+
+The image's link carried fifteen Cyclone typesupport archives
+(`lib<pkg>__cyclonedds_ts.a` for `builtin_interfaces`, `std_msgs`,
+`geometry_msgs`, the application's own packages, ...). None was
+`rcl_interfaces`.
+
+## Where the line comes from
+
+- The line: `Executor::report_parameter_service_reconcile_failure`,
+  `packages/core/nros-node/src/executor/spin.rs` (issues 1271, 1268; added in
+  8604a25ac7, 2026-09-10).
+- The error: `create_param_srv` -> `session.create_service` -> the Cyclone
+  backend's `service_create`
+  (`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp`), which
+  returns `NROS_RMW_RET_UNSUPPORTED` when `descriptors_for_service` finds no
+  registered descriptor for the request/reply types
+  (`rcl_interfaces::srv::dds_::GetParameters_Request_`/`_Response_`).
+  `get_parameters` is simply the first of the six to be created.
+
+## Can Cyclone on Zephyr serve a service at all?
+
+Yes. `service_create` has no platform gate; the image's own services, and the
+Zephyr C/C++ Cyclone service e2e (issue 0157), work. The backend's
+`nros-rmw.toml` declares no "no services" capability, and it should not: the
+capability is there. What is missing is the TYPE: Cyclone creates an entity
+only for a type whose descriptor some linked translation unit registered
+(`[rmw.capabilities] type-descriptors = "needs-type-descriptors"` says exactly
+this).
+
+## Cause
+
+The runtime's own entity types reach a descriptor-registry backend on two
+roads only:
+
+1. The cargo road: `nros-node` registers each type's descriptor from its schema
+   at create time (`rmw_type_registry::register_type`, issue 1268), through the
+   registrar the Rust `nros-rmw-cyclonedds` crate installs. On the Zephyr C/C++
+   road nros-node is built without `needs-type-descriptors` (nothing under
+   `zephyr/` lowers it) and the Rust registrar crate is not linked, so this is
+   a no-op there.
+2. The top-level cmake road: `nros_runtime_interface_types()`
+   (`cmake/NanoRosRuntimeInterfaceTypes.cmake`, issue 2304, b5fb685377,
+   2026-11-10) runs the backend's per-message hook over `builtin_interfaces` +
+   `rcl_interfaces` when `param_services` is declared, and over
+   `lifecycle_msgs` for `lifecycle`. It is called from the top-level
+   `CMakeLists.txt` only. `zephyr/CMakeLists.txt` resolves the same
+   `NROS_FEATURES` (and turns on `param-services` in nros-cpp/nros-c) but never
+   calls it.
+
+So the Zephyr road is the one road with neither, and every Zephyr C/C++ image
+on Cyclone that declares `param_services` (or `lifecycle`) builds without the
+descriptors its runtime needs. Issue 2304 fixed the cmake road and named the
+cargo road as fine; the Zephyr road was not in its scope.
+
+Two adjacent gaps of the same shape:
+
+- `rosout` (phase-556 W13 made it a capability axis, `CONFIG_NROS_CAPABILITY_ROSOUT`)
+  publishes `rcl_interfaces/msg/Log`, but `nros_runtime_interface_types()`
+  generates `rcl_interfaces` only for `param_services`. A cmake-road Cyclone
+  image declaring `rosout` without `param_services` has the same hole.
+- `infra_service_descriptors.rs` (issue 1268) checks the twelve types build a
+  descriptor HOST-side, and row `c-parameters-cyclonedds` (issue 2304) covers
+  the cmake road. No row runs parameter services on a Zephyr Cyclone image, so
+  nothing caught this.
+
+## When it started
+
+Not a regression of a recent pin. Reasoned from history rather than a rebuild:
+
+- The Zephyr road has never called `nros_runtime_interface_types` (`git log -S`
+  on the name: only b5fb685377 and its docs commit, both cmake-road), and has
+  never lowered `needs-type-descriptors`.
+- The line itself exists since 8604a25ac7 (2026-09-10). Before it, the same
+  failure was discarded silently on every spin (issue 1271).
+- Every pin the downstream image used (nros11 release 09219edc75, ea94566e87,
+  5871cd6e45, a49a8dacaf, 9afb5c8a19) contains both 8604a25ac7 and
+  b5fb685377, so each of them builds this image without the descriptors and
+  would print the same line. The downstream image never booted on FVP between
+  a49a8dacaf (configure broke, fixed by #4190) and 9afb5c8a19, which is why it
+  is first seen now.
+
+## Why it matters more now
+
+phase-556 W13 makes `param_services` and `rosout` the default for every image
+(`node_interfaces::DEFAULT_NODE_INTERFACES` flips to `Stock`). Once it does,
+every Zephyr C/C++ image on Cyclone gets this line, and a node that `ros2 param`
+cannot reach, without having asked for anything.
+
+## Direction
+
+Design rule (manager, 2026-11-18): a node with parameter services ON whose
+backend cannot serve them is refused at BUILD/configure time, or does not
+request them; never a runtime line with services silently missing.
+
+Proposed: **provide, and refuse at configure when providing is impossible.**
+Not "do not request": the backend CAN serve them, so dropping the services
+would make Zephyr Cyclone the one combination where W13's stock set quietly
+does not exist.
+
+1. `zephyr/CMakeLists.txt`: after `nros_resolve_image_features()` and the
+   Kconfig-axes fallback, call `nros_runtime_interface_types("${NROS_FEATURES}"
+   TARGETS <the Zephyr app / nros-cpp / nros-c interface targets>)`, with the
+   Zephyr per-message hook (`_nros_zephyr_cyclonedds_typesupport`, the one
+   `nros_generate_interfaces` already uses there). Its existing FATAL_ERROR
+   when `rcl_interfaces` cannot be found is the configure-time refusal. The
+   function may need a road argument (or the hook resolved by the caller) since
+   `NROS_RMW_PER_MESSAGE_HOOK` names the cmake-road hook.
+2. `cmake/NanoRosRuntimeInterfaceTypes.cmake`: generate
+   `builtin_interfaces` + `rcl_interfaces` for `rosout` too, not only
+   `param_services`.
+3. A guard that the capability and its types agree, decided from facts known
+   at configure: for a backend whose descriptor states
+   `[rmw.capabilities] type-descriptors`, a road that lowers
+   `param_services`/`lifecycle`/`rosout` into the runtime and provisions no
+   descriptors for their packages is a configure error naming the axis and the
+   package (the 2304 message, raised on every road). A structural check
+   (`check-runtime-interface-types-roads`, or an extension of an existing
+   road-parity check) that every road which lowers `NROS_FEATURES` into
+   nros-cpp/nros-c also calls `nros_runtime_interface_types` would have caught
+   this one at review.
+4. Test: a Zephyr Cyclone fixture row with `param_services` (native_sim or
+   qemu, cheapest Cyclone Zephyr target) whose verdict includes "no `parameter
+   services could not be created` line" and a `get_parameters` round trip,
+   alongside `c-parameters-cyclonedds`. A cheaper, link-level variant:
+   assert the image's ELF holds the twelve `rcl_interfaces::srv::dds_::*`
+   descriptor registrations when `param_services` is on.
+
+Separately, the runtime line can stay as the backstop, but with a
+configure-time guard in place it should never be reachable on a supported
+combination.
+
+Not investigated: whether a Zephyr RUST image on Cyclone (cargo road inside
+Zephyr) installs the registrar; the downstream image is C++.
