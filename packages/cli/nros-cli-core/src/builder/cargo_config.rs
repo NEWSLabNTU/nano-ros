@@ -97,10 +97,74 @@ pub struct CargoConfigSpec {
     /// --config <this file>` boots a QEMU board. The descriptor no longer
     /// states one in its `cargo_config`.
     pub runner: Option<String>,
+    /// `[env]` rows written `force = true`: the image's arch C flags
+    /// ([`arch_cflags_env`], issue 2692), which already hold whatever user
+    /// value cc-rs would have read, merged, so forcing loses nothing.
+    pub forced_env: BTreeMap<String, String>,
     /// The retypable command for the header, when it is not the default
     /// "build the `Cargo.toml` beside this file" (a single-package example's
     /// manifest is the package's own, not one under `build/`).
     pub build_hint: Option<String>,
+}
+
+/// Issue 2692 — the image's `[arch.*]` profile as `CFLAGS_<triple>` /
+/// `CXXFLAGS_<triple>` rows, the ONE carrier every cc-rs build of the image's
+/// triple reads, whichever crate it is in (`nros_board_common::arch_flags::
+/// arch_cflags_rows` holds the merge rule). `platform` is the descriptor's
+/// platform name (`freertos`, `nuttx`, …), `nano_ros_root` the tree whose
+/// `packages/platform` and `config` hold the descriptors (a checkout or an
+/// installed SDK root).
+///
+/// When a user value is merged, says so on stderr naming both, and only then:
+/// the common case stays quiet.
+pub fn arch_cflags_env(
+    nano_ros_root: &Path,
+    platform: &str,
+    target: Option<&str>,
+    who: &str,
+) -> Result<BTreeMap<String, String>, String> {
+    let Some(target) = target else {
+        return Ok(BTreeMap::new());
+    };
+    let roots: Vec<PathBuf> = ["packages/platform", "config"]
+        .iter()
+        .map(|r| nano_ros_root.join(r))
+        .filter(|d| d.is_dir())
+        .collect();
+    if roots.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let env = |k: &str| std::env::var(k).ok();
+    let rows = nros_board_common::arch_flags::arch_cflags_rows(&roots, platform, target, &env)?;
+    let mut out = BTreeMap::new();
+    for r in rows {
+        if let Some((var, user)) = &r.merged {
+            eprintln!(
+                "{who}: {} is the image's arch profile followed by your {var} \
+                 (`{user}`): `{}`",
+                r.key, r.value
+            );
+        }
+        out.insert(r.key, r.value);
+    }
+    Ok(out)
+}
+
+/// [`arch_cflags_env`] for a board descriptor: its platform and triple.
+pub fn arch_cflags_env_for(
+    nano_ros_root: &Path,
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    who: &str,
+) -> Result<BTreeMap<String, String>, String> {
+    arch_cflags_env(
+        nano_ros_root,
+        descriptor
+            .platform
+            .platform_feature()
+            .trim_start_matches("platform-"),
+        descriptor.target.as_deref(),
+        who,
+    )
 }
 
 /// The directory cargo resolves this file's relative paths against.
@@ -230,6 +294,12 @@ pub fn render(spec: &CargoConfigSpec, config_path: &Path) -> Result<String, Stri
         } else {
             env.insert(k, toml_edit::value(v.as_str()));
         }
+    }
+    for (k, v) in &spec.forced_env {
+        let mut row = InlineTable::new();
+        row.insert("value", v.as_str().into());
+        row.insert("force", true.into());
+        env.insert(k, Item::Value(Value::InlineTable(row)));
     }
     for (k, p) in &spec.path_env {
         let forced = is_forced(env, k);
@@ -479,6 +549,7 @@ build-std = ["core", "alloc"]
             patches: BTreeMap::new(),
             runner: None,
             build_hint: None,
+            forced_env: BTreeMap::new(),
         }
     }
 
@@ -520,6 +591,27 @@ build-std = ["core", "alloc"]
         assert_eq!(
             v["profile"]["nros-minsizerel"]["opt-level"].as_str(),
             Some("s")
+        );
+    }
+
+    /// Issue 2692, the cargo road: the arch C-flag rows are written `force`d,
+    /// so a variable the shell exports cannot silently replace the profile
+    /// (the row already carries the user's value, merged).
+    #[test]
+    fn the_arch_cflags_rows_are_forced() {
+        let mut s = spec();
+        s.forced_env.insert(
+            "CFLAGS_armv7r_none_eabihf".into(),
+            "-mcpu=cortex-r5 -mfpu=vfpv3-d16 -mfloat-abi=hard".into(),
+        );
+        let text = render(&s, &cfg_path()).unwrap();
+        let doc: toml::Table = toml::from_str(&text).unwrap();
+        let row = &doc["env"]["CFLAGS_armv7r_none_eabihf"];
+        assert_eq!(row["force"].as_bool(), Some(true), "{text}");
+        assert_eq!(
+            row["value"].as_str(),
+            Some("-mcpu=cortex-r5 -mfpu=vfpv3-d16 -mfloat-abi=hard"),
+            "{text}"
         );
     }
 

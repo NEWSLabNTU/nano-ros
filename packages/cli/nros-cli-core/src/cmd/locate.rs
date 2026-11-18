@@ -1028,6 +1028,16 @@ fn run_nuttx_cargo_config(args: &Args, sdk_root: &std::path::Path) -> Result<()>
         workspace: base.to_path_buf(),
         target_dir: target_dir.to_path_buf(),
         build_hint: Some("the NuttX make build passes this file to cargo with --config".into()),
+        // Issue 2692 — through the one carrier, which answers nothing here:
+        // NuttX's profile takes its CPU flags from the kernel export
+        // (`cpu_flags_from_kernel_export`), the `TARGET_CFLAGS` this road reads.
+        forced_env: crate::builder::cargo_config::arch_cflags_env(
+            sdk_root,
+            "nuttx",
+            board.target.as_deref(),
+            "nros locate nuttx-cargo-config",
+        )
+        .map_err(|e| eyre::eyre!(e))?,
         ..Default::default()
     };
     let path = crate::builder::cargo_config::write(&spec, out).map_err(|e| eyre::eyre!(e))?;

@@ -1811,6 +1811,14 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         env,
                         path_env,
                         patches: registry_patches(&root, nros_root, &manifest_dir),
+                        // Issue 2692 — the image's arch C flags, for every
+                        // cc-rs build of its triple.
+                        forced_env: crate::builder::cargo_config::arch_cflags_env_for(
+                            nros_root,
+                            descriptor,
+                            "nros build",
+                        )
+                        .map_err(|e| eyre::eyre!("`{image_id}`: {e}"))?,
                         ..Default::default()
                     },
                     &config_path,
@@ -2171,9 +2179,21 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &image,
                     &bringup_dir,
                 )?;
+                // Issue 2692 — and the image's arch C flags, forced, so every
+                // cc-rs build the configure's cargo runs takes the profile.
+                let arch_rows = match nano_ros_root.as_deref() {
+                    Some(r) => crate::builder::cargo_config::arch_cflags_env_for(
+                        r,
+                        descriptor,
+                        "nros build",
+                    )
+                    .map_err(|e| eyre::eyre!("`{image_id}`: {e}"))?,
+                    None => Default::default(),
+                };
                 let image_env = crate::cmd::leaf_system::write_image_env(
                     &manifest_dir.join(crate::builder::cmake_root::IMAGE_ENV_FILE),
                     &image_rows,
+                    &arch_rows,
                 )?
                 .is_some();
                 // RFC-0071 D19 — a configure whose images all build OWNED

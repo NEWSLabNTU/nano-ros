@@ -99,6 +99,16 @@ pub fn cflags_for_target(
     platform: &str,
     target: &str,
 ) -> Result<Option<Vec<String>>, String> {
+    Ok(profile_for_target(roots, platform, target)?.map(|e| e.cflags))
+}
+
+/// The first `[arch.*]` profile of `platform` that admits `target` (the rule
+/// [`cflags_for_target`] documents), whole.
+pub fn profile_for_target(
+    roots: &[PathBuf],
+    platform: &str,
+    target: &str,
+) -> Result<Option<ArchEntry>, String> {
     let tree = PlatformsTree::load_search_path(roots).map_err(|e| e.to_string())?;
     if !tree.all_names().iter().any(|n| n == platform) {
         return Err(format!(
@@ -127,10 +137,85 @@ pub fn cflags_for_target(
             ));
         };
         if arch_matches(entry, target) {
-            return Ok(Some(entry.cflags.clone()));
+            return Ok(Some(entry.clone()));
         }
     }
     Ok(None)
+}
+
+// Issue 2692.
+/// One `[env]` row of the image's C-flags carrier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchCflagsRow {
+    /// `CFLAGS_<triple>` or `CXXFLAGS_<triple>`, the triple with `-`/`.` as `_`.
+    pub key: String,
+    /// The profile's flags, then the user's value when one was merged.
+    pub value: String,
+    /// `(variable, value)`: the user setting cc-rs would otherwise have read,
+    /// now appended after the profile. `None` in the common case.
+    pub merged: Option<(String, String)>,
+}
+
+// Issue 2692.
+/// The image's `[arch.*]` profile as the C flags EVERY cc-rs
+/// build of `target` reads, whichever crate it is in.
+///
+/// cc-rs takes the FIRST of `<KIND>_<triple>`, `<KIND>_<triple with _>`,
+/// `TARGET_<KIND>` and `<KIND>` from the environment, so a carrier row decides
+/// what every build of that triple sees, and two things must not happen
+/// silently: the profile losing to a user variable, or a user variable being
+/// dropped. The rule: the row is the profile's flags FOLLOWED by whichever of
+/// those variables cc-rs would have read (`env` answers for the caller's
+/// environment), so the user's flag is kept and, for gcc's last-one-wins
+/// options, still wins. Callers write the row FORCED and print the merge when
+/// `merged` is set.
+///
+/// No rows when the platform has no profile for `target`, the profile states
+/// no `cflags`, or its CPU flags come from the kernel export
+/// (`cpu_flags_from_kernel_export`).
+pub fn arch_cflags_rows(
+    roots: &[PathBuf],
+    platform: &str,
+    target: &str,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Result<Vec<ArchCflagsRow>, String> {
+    let Some(profile) = profile_for_target(roots, platform, target)? else {
+        return Ok(Vec::new());
+    };
+    if profile.cflags.is_empty() || profile.cpu_flags_from_kernel_export {
+        return Ok(Vec::new());
+    }
+    Ok(["CFLAGS", "CXXFLAGS"]
+        .iter()
+        .map(|kind| merge_cc_flags(kind, target, &profile.cflags, env))
+        .collect())
+}
+
+/// [`arch_cflags_rows`]'s merge, for one `kind`, as a pure function.
+pub fn merge_cc_flags(
+    kind: &str,
+    target: &str,
+    profile: &[String],
+    env: &dyn Fn(&str) -> Option<String>,
+) -> ArchCflagsRow {
+    let key = format!("{kind}_{}", target.replace(['-', '.'], "_"));
+    let chain = [
+        key.clone(),
+        format!("{kind}_{target}"),
+        format!("TARGET_{kind}"),
+        kind.to_string(),
+    ];
+    let merged = chain.iter().find_map(|v| {
+        env(v)
+            .filter(|x| !x.trim().is_empty())
+            .map(|x| (v.clone(), x))
+    });
+    let mut value = profile.join(" ");
+    if let Some((_, user)) = &merged {
+        value.push(' ');
+        value.push_str(user.trim());
+    }
+    ArchCflagsRow { key, value, merged }
 }
 
 /// The arch profile names `platform` declares, in `arch_profiles` order.
@@ -187,6 +272,101 @@ pub fn describe_profiles(roots: &[PathBuf], platform: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn env_of(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
+        move |k| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        }
+    }
+
+    /// Issue 2692's merge rule: the profile first, then the ONE variable cc-rs
+    /// would have read, so neither is dropped and neither wins silently.
+    #[test]
+    fn the_carrier_merges_the_variable_cc_rs_would_have_read() {
+        let p = ["-mcpu=cortex-r5".to_string(), "-mfpu=vfpv3-d16".to_string()];
+        let t = "armv7r-none-eabihf";
+        // Nothing set: the profile alone, and nothing to report.
+        let r = merge_cc_flags("CFLAGS", t, &p, &env_of(&[]));
+        assert_eq!(r.key, "CFLAGS_armv7r_none_eabihf");
+        assert_eq!(r.value, "-mcpu=cortex-r5 -mfpu=vfpv3-d16");
+        assert!(r.merged.is_none());
+        // Each variable cc-rs reads, in its order; the FIRST set one is merged.
+        for (var, chain) in [
+            (
+                "CFLAGS_armv7r_none_eabihf",
+                &[("CFLAGS_armv7r_none_eabihf", "-O1"), ("CFLAGS", "-g")][..],
+            ),
+            (
+                "CFLAGS_armv7r-none-eabihf",
+                &[
+                    ("CFLAGS_armv7r-none-eabihf", "-O1"),
+                    ("TARGET_CFLAGS", "-g"),
+                ][..],
+            ),
+            (
+                "TARGET_CFLAGS",
+                &[("TARGET_CFLAGS", "-O1"), ("CFLAGS", "-g")][..],
+            ),
+            ("CFLAGS", &[("CFLAGS", "-O1")][..]),
+        ] {
+            let pairs: &'static [(&'static str, &'static str)] =
+                Box::leak(chain.to_vec().into_boxed_slice());
+            let r = merge_cc_flags("CFLAGS", t, &p, &env_of(pairs));
+            assert_eq!(r.value, "-mcpu=cortex-r5 -mfpu=vfpv3-d16 -O1", "{var}");
+            assert_eq!(
+                r.merged,
+                Some((var.to_string(), "-O1".to_string())),
+                "{var}"
+            );
+        }
+        // A blank variable is not a setting.
+        let r = merge_cc_flags(
+            "CFLAGS",
+            t,
+            &p,
+            &env_of(&[("CFLAGS_armv7r_none_eabihf", "  ")]),
+        );
+        assert!(r.merged.is_none(), "{r:?}");
+        // CXXFLAGS reads its own chain.
+        let r = merge_cc_flags("CXXFLAGS", t, &p, &env_of(&[("CFLAGS", "-O1")]));
+        assert_eq!(r.key, "CXXFLAGS_armv7r_none_eabihf");
+        assert!(r.merged.is_none(), "{r:?}");
+    }
+
+    /// The shipped descriptors: an R-profile FreeRTOS image gets its profile
+    /// for C and C++; NuttX, whose CPU flags come from the kernel export, and a
+    /// platform with no profile for the triple get no row.
+    #[test]
+    fn the_carrier_rows_follow_the_shipped_profiles() {
+        let Some(roots) = platform_search_path() else {
+            panic!("no platform descriptors found from this checkout");
+        };
+        let none = |_: &str| None;
+        let r5f = arch_cflags_rows(&roots, "freertos", "armv7r-none-eabihf", &none).unwrap();
+        assert_eq!(r5f.len(), 2, "{r5f:?}");
+        assert!(
+            r5f[0].value.contains("-mfpu=vfpv3-d16") && r5f[0].value.contains("-mfloat-abi=hard"),
+            "{r5f:?}"
+        );
+        assert!(
+            arch_cflags_rows(&roots, "nuttx", "armv7a-nuttx-eabihf", &none)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            arch_cflags_rows(&roots, "zephyr", "thumbv7m-none-eabi", &none)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            arch_cflags_rows(&roots, "posix", "x86_64-unknown-linux-gnu", &none)
+                .unwrap()
+                .is_empty()
+        );
+    }
 
     /// The shipped `nros-platform-freertos` profiles must resolve for both arches the
     /// platform declares. phase-338 W4: `[arch.cortex-m7]` was added and then
