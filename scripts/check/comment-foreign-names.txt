@@ -362,7 +362,9 @@ NOT_ALLOWED
 NodeEntitiesInfo_
 NodeGraph::get_client_names_and_types_by_node
 NodeGraph::get_publisher_names_and_types_by_node
+NodeParameters::get_parameters
 NodeParameters::list_parameters
+ParameterNotDeclaredException
 ParticipantEntitiesInfo
 QosPresets::PARAMETERS
 RCLCPP_SMART_PTR_DEFINITIONS
@@ -384,6 +386,8 @@ RMW_ZENOH_DEFAULT_RELIABILITY
 SerializedBagMessage
 TimeSource
 _CREATED_BY_BARE_DDS_APP_
+_apply_floating_point_range
+_apply_integer_range
 action_tutorials
 action_tutorials_py
 best_available_qos

@@ -298,10 +298,28 @@ pub(crate) const CAPACITY_EXCEEDED_REASON: &str = "Value exceeds this node's par
 /// [`CAPACITY_EXCEEDED_REASON`].
 pub(crate) const UNKNOWN_TYPE_REASON: &str = "Unknown parameter type";
 
+/// The most one `SetParametersResult` takes on the wire with a reason of at
+/// most [`LONGEST_SET_REASON`] bytes: the `successful` flag, then the reason
+/// as a CDR string.
+pub(crate) const SET_RESULT_BYTES: usize = 1 + CDR_STR + LONGEST_SET_REASON;
+
+/// What a remote delete of a statically typed parameter reports: rclpy's
+/// wording (`Node._apply_descriptor`), verbatim. rclcpp's is "cannot undeclare
+/// an statically typed parameter"; the compatibility tests compare against
+/// rclpy.
+pub const STATIC_UNDECLARE_REASON: &str = "Static parameter cannot be undeclared";
+
 /// The longest reason a `SetParametersResult` can carry: every
-/// [`set_result_reason`] arm and every `RmwParameterConversionError::reason`.
-/// Listed by variant: `set_result_reason`'s match is exhaustive, so a new
-/// variant stops the build there first -- add it here beside it.
+/// [`set_result_reason`] arm, every `RmwParameterConversionError::reason`, and
+/// the delete refusal. Listed by variant: `set_result_reason`'s match is
+/// exhaustive, so a new variant stops the build there first -- add it here
+/// beside it.
+///
+/// A range refusal's longer reason (it names the parameter, its range and
+/// step) is NOT priced here: `parameter_services` writes it only when the
+/// reply still has room for it and for every result after it at this length
+/// ([`SET_RESULT_BYTES`]), and the store's own reason otherwise. So the bound
+/// a reply buffer is sized from is unchanged by it.
 pub(crate) const LONGEST_SET_REASON: usize = {
     let reasons = [
         set_result_reason(Ok(())),
@@ -316,6 +334,7 @@ pub(crate) const LONGEST_SET_REASON: usize = {
         set_result_reason(Err(ParameterError::StringConversion)),
         CAPACITY_EXCEEDED_REASON,
         UNKNOWN_TYPE_REASON,
+        STATIC_UNDECLARE_REASON,
     ];
     let mut longest = 0;
     let mut i = 0;
@@ -472,7 +491,7 @@ const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
         + s[SHAPE_STRING_ARRAYS] * c.string_array * (CDR_STR + c.string);
     // The header, then the outer sequence's length.
     let head = CDR_HEADER + CDR_SEQ;
-    let set_reply = head + n * (1 + CDR_STR + LONGEST_SET_REASON);
+    let set_reply = head + n * SET_RESULT_BYTES;
     let atomic_reply = CDR_HEADER + 1 + CDR_STR + ATOMIC_FAILURE_REASON.len();
     ParamServiceBound {
         names_request: head + names,

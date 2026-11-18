@@ -1,9 +1,9 @@
 # Phase 556 — ROS 2 interface compatibility audit
 
-**Status (2026-11-13). IN PROGRESS: W0, W1, W3 and W10 are done. A first by-hand
-measurement of W2 to W6 found three gaps (W10 to W12), each held by an
-expected-failure test; W10 is fixed and its test is the plain check now. One
-question for the user (W13).**
+**Status (2026-11-18). IN PROGRESS: W0, W1, W3, W10 and W12 are done. A first
+by-hand measurement of W2 to W6 found three gaps (W10 to W12), each held by an
+expected-failure test; W10 and W12 are fixed and their tests are the plain
+check now. One question for the user (W13).**
 The user's goal is to "ensure the interface compatibility among nano-ros and
 stock ROS 2". This phase measures it: a nano-ros node and a stock `rclcpp`
 node that declare the same interface are asked the same `ros2` CLI questions,
@@ -270,14 +270,16 @@ Acceptance: as W10, comparing `param list` and `param get use_sim_time`.
 
 ### W12 — Replies for undeclared names, and refusal reasons
 
-- **Status:** OPEN. Expected-failure tests in `ros2_cli_parity_interop`:
-  `get_parameters_reply_for_an_undeclared_name_compared_with_stock`,
-  `describe_parameters_reply_for_an_undeclared_name_compared_with_stock`,
-  `delete_refusal_reason_compared_with_stock`,
-  `off_step_refusal_reason_compared_with_stock`. The stock peer is rclpy, so
-  the delete reason compared is rclpy's.
+- **Status:** DONE (2026-11-18). Plain tests in `ros2_cli_parity_interop`:
+  `get_parameters_reply_for_an_undeclared_name_answers_as_stock_does`,
+  `describe_parameters_reply_for_an_undeclared_name_answers_as_stock_does`,
+  `delete_of_a_statically_typed_parameter_is_refused_as_stock_does`,
+  `off_step_set_is_refused_as_stock_does`. The stock peer is rclpy, so the
+  reasons compared are rclpy's; rclcpp words both differently (the issue's
+  Resolution lists both). `GetParameterTypes` had the same filler shape and
+  answers empty too.
 
-[Issue 2484](../issues/2484-param-service-undeclared-replies.md):
+[Issue 2484](../issues/archived/2484-param-service-undeclared-replies.md):
 `GetParameters` and `DescribeParameters` answer an undeclared name with a
 filler entry where stock answers with none, so `ros2 param get` exits 0; and
 the delete and off-step refusals give a different reason from stock.

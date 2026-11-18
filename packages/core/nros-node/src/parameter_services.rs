@@ -459,6 +459,61 @@ fn rewind<'r>(body: &'r [u8], version: EncodingVersion) -> Result<CdrReader<'r>,
     }
 }
 
+/// The whole request body, for a handler that reads it twice ([`rewind`]).
+///
+/// [`rewind`] is only exact while the slice begins at the reader's alignment
+/// origin, i.e. while nothing has been read yet. Breaking that shifts CDR
+/// padding with no other symptom, so it is refused rather than documented.
+#[inline]
+fn request_body<'r>(reader: &mut CdrReader<'r>) -> Result<&'r [u8], DeserError> {
+    if !reader.is_at_origin() {
+        return Err(DeserError::UnexpectedEof);
+    }
+    reader.read_bytes(reader.remaining())
+}
+
+/// Does a name-list request (get, describe, types) name a parameter this
+/// node never declared, on a node that does not allow undeclared parameters?
+///
+/// Issue 2484 -- stock ROS 2 answers such a request with an EMPTY reply, not
+/// with one entry per name: rclcpp's `NodeParameters::get_parameters`,
+/// `describe_parameters` and `get_parameter_types` throw
+/// `ParameterNotDeclaredException`, which its parameter service catches and
+/// replies with nothing, and rclpy's `ParameterService` replies with the
+/// empty list on the same exception. So `ros2 param get` of an undeclared
+/// name prints "Parameter not set" and exits 1 instead of reading a filler
+/// value as present. A node that allows undeclared parameters answers each
+/// unknown name with a NOT_SET entry, as both do.
+///
+/// Every name is read, not only up to the first undeclared one, so a
+/// malformed tail still fails the request as a whole.
+fn names_an_undeclared_parameter(
+    server: &ParameterServer,
+    node: NodeKey,
+    body: &[u8],
+    version: EncodingVersion,
+) -> Result<bool, DeserError> {
+    let mut pass = rewind(body, version)?;
+    let count = read_name_list_len(&mut pass)?;
+    let mut undeclared = false;
+    for _ in 0..count {
+        let name = read_wire_string(&mut pass)?;
+        undeclared |= !server.has(node, name);
+    }
+    Ok(undeclared && !server.allows_undeclared(node))
+}
+
+/// The by-value spelling of [`names_an_undeclared_parameter`], for the test
+/// oracles.
+#[cfg(test)]
+fn request_names_an_undeclared_parameter<'n>(
+    server: &ParameterServer,
+    node: NodeKey,
+    mut names: impl Iterator<Item = &'n str>,
+) -> bool {
+    !server.allows_undeclared(node) && names.any(|name| !server.has(node, name))
+}
+
 /// Whether a stored value fits the wire message that would carry it.
 ///
 /// Mirrors exactly the cases where `to_rcl_value` returns
@@ -695,6 +750,134 @@ fn write_set_result(
     writer.write_string(fit_or_empty(reason))
 }
 
+/// Write the result of one applied parameter, with the reason stock ROS 2
+/// gives where it says more than the store's verdict ([`refusal_reason`]).
+///
+/// The reply buffer is sized for every result carrying at most
+/// [`LONGEST_SET_REASON`] bytes ([`SET_RESULT_BYTES`]). A longer reason (a
+/// range refusal names the parameter, its range and its step) is written only
+/// while the reply still has room for it AND for the `results_after` results
+/// still to come at that size; otherwise this result carries the store's own
+/// reason. So no reply that fits the buffer at the store's reasons is made
+/// too large by the longer ones.
+///
+/// Out of line, so the reason's buffer lives only in this frame and never in
+/// the frame every remote set runs in.
+#[inline(never)]
+fn write_applied_result(
+    writer: &mut CdrWriter<'_>,
+    server: &ParameterServer,
+    node: NodeKey,
+    name: &str,
+    value: &InternalValue,
+    result: Result<(), ParameterError>,
+    results_after: usize,
+) -> Result<(), SerError> {
+    let mut buf = heapless::String::new();
+    let mut reason = refusal_reason(server, node, name, value, result, &mut buf);
+    if reason.len() > LONGEST_SET_REASON {
+        // The flag, then the reason as a CDR string (padding, length, bytes,
+        // NUL), then every later result at its bounded size.
+        let needed = 1 + 3 + 4 + reason.len() + 1 + results_after * SET_RESULT_BYTES;
+        if writer.remaining() < needed {
+            reason = set_result_reason(result);
+        }
+    }
+    write_set_result(writer, result.is_ok(), reason)
+}
+
+/// The reason a remote set of `name` to `value` carries for `result`.
+///
+/// The store's verdict names the rule a value broke; for two of them stock
+/// ROS 2 says more, and a user reading `ros2 param set` or `ros2 param
+/// delete` is told what stock would tell them. The wording is rclpy's
+/// (`Node._apply_descriptor`, `_apply_integer_range`,
+/// `_apply_floating_point_range`), which is what the compatibility tests
+/// compare against:
+///
+/// * a delete (a `NOT_SET` value) of a statically typed parameter:
+///   [`STATIC_UNDECLARE_REASON`];
+/// * a value outside an integer or floating-point range: `Parameter <name>
+///   out of range. Min: <min>, Max: <max>, value: <v>` (rclpy's float form
+///   has no `.` after "range", and neither has this);
+/// * a value inside the range but off its step: `The parameter value for
+///   <name> is not a valid step. Min: .., max: .., value: .., step: ..` (for
+///   a float, "is not close enough to a valid step").
+///
+/// Floats print in their shortest round-trip form, as Python's `str` does
+/// for every value outside the exponent forms (`1e16` here, `1e+16` there).
+///
+/// rclcpp words both differently: "cannot undeclare an statically typed
+/// parameter", and "Parameter {<name>} doesn't comply with integer range." for
+/// an out-of-range and an off-step value alike.
+///
+/// Every other verdict keeps the store's reason ([`set_result_reason`]), and
+/// so does a range reason that would not fit the reply's string. On the wire
+/// a range reason also gives way to the store's when the reply buffer has no
+/// room for it (`write_applied_result`).
+pub(crate) fn refusal_reason<'b>(
+    server: &ParameterServer,
+    node: NodeKey,
+    name: &str,
+    value: &InternalValue,
+    result: Result<(), ParameterError>,
+    buf: &'b mut heapless::String<WIRE_STRING_CAP>,
+) -> &'b str {
+    use core::fmt::Write as _;
+    use nros_params::ParameterRange;
+    match result {
+        Err(ParameterError::TypeMismatch)
+            if matches!(value, InternalValue::NotSet) && server.has(node, name) =>
+        {
+            STATIC_UNDECLARE_REASON
+        }
+        Err(ParameterError::OutOfRange) => {
+            buf.clear();
+            let range = server.get_descriptor(node, name).map(|d| d.range);
+            let written = match (range, value) {
+                (Some(ParameterRange::Integer(r)), InternalValue::Integer(v)) => {
+                    if *v < r.min || *v > r.max {
+                        write!(
+                            buf,
+                            "Parameter {name} out of range. Min: {}, Max: {}, value: {v}",
+                            r.min, r.max
+                        )
+                    } else {
+                        write!(
+                            buf,
+                            "The parameter value for {name} is not a valid step. Min: {}, max: \
+                             {}, value: {v}, step: {}",
+                            r.min, r.max, r.step
+                        )
+                    }
+                }
+                (Some(ParameterRange::FloatingPoint(r)), InternalValue::Double(v)) => {
+                    if !(*v >= r.min && *v <= r.max) {
+                        write!(
+                            buf,
+                            "Parameter {name} out of range Min: {:?}, Max: {:?}, value: {v:?}",
+                            r.min, r.max
+                        )
+                    } else {
+                        write!(
+                            buf,
+                            "The parameter value for {name} is not close enough to a valid \
+                             step. Min: {:?}, max: {:?}, value: {v:?}, step: {:?}",
+                            r.min, r.max, r.step
+                        )
+                    }
+                }
+                _ => Err(core::fmt::Error),
+            };
+            match written {
+                Ok(()) => buf.as_str(),
+                Err(_) => set_result_reason(result),
+            }
+        }
+        _ => set_result_reason(result),
+    }
+}
+
 /// Apply one already-converted parameter, exactly as `handle_set_parameters` does.
 ///
 /// Issue 1151 — the "declare it if missing" branch that used to live here is
@@ -709,22 +892,29 @@ fn apply_one(
     server: &mut ParameterServer,
     node: NodeKey,
     name: &str,
-    value: InternalValue,
+    value: &InternalValue,
 ) -> Result<(), ParameterError> {
-    server.apply(node, name, value)
+    server.apply_ref(node, name, value)
 }
 
 /// `GetParameters` — no scratch at all.
 ///
 /// Read a name (borrowed out of the receive buffer), look the value up in the
 /// store, write its fields. No wire value is ever constructed, in either
-/// direction.
+/// direction. A request naming an undeclared parameter gets the empty reply
+/// ([`names_an_undeclared_parameter`]).
 pub(crate) fn stream_get_parameters(
     server: &ParameterServer,
     node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
+    let version = reader.version();
+    let body = request_body(reader).map_err(deser_failed)?;
+    if names_an_undeclared_parameter(server, node, body, version).map_err(deser_failed)? {
+        return writer.write_sequence_len(0).map_err(ser_failed);
+    }
+    let reader = &mut rewind(body, version).map_err(deser_failed)?;
     let count = read_name_list_len(reader).map_err(deser_failed)?;
     writer.write_sequence_len(count).map_err(ser_failed)?;
 
@@ -763,7 +953,7 @@ pub(crate) fn stream_set_parameters(
     let count = reader.read_sequence_len().map_err(deser_failed)?;
     writer.write_sequence_len(count).map_err(ser_failed)?;
 
-    for _ in 0..count {
+    for at in 0..count {
         let name = reader.read_string().map_err(deser_failed)?;
         // issue 0323 — an over-capacity or unknown-type value is REJECTED, not
         // truncated and then reported as success.
@@ -778,7 +968,9 @@ pub(crate) fn stream_set_parameters(
             Err(e) => write_set_result(writer, false, e.reason()),
             Ok(()) => {
                 let result = server.apply_staged(node, name, staged);
-                write_set_result(writer, result.is_ok(), set_result_reason(result))
+                // A refused set leaves the request's value in `staged`.
+                let results_after = count - at - 1;
+                write_applied_result(writer, server, node, name, staged, result, results_after)
             }
         }
         .map_err(ser_failed)?;
@@ -800,16 +992,9 @@ pub(crate) fn stream_set_parameters_atomically(
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
     let version = reader.version();
-    // `rewind` is only exact while the slice begins at the reader's alignment
-    // origin, i.e. while nothing has been read yet. Breaking that shifts CDR
-    // padding with no other symptom, so enforce it rather than document it: a
-    // future field read added above this line fails loudly here.
-    if !reader.is_at_origin() {
-        return Err(deser_failed(DeserError::UnexpectedEof));
-    }
-    let body = reader
-        .read_bytes(reader.remaining())
-        .map_err(deser_failed)?;
+    // A future field read added above this line fails loudly here
+    // (`request_body` refuses a reader that is past its origin).
+    let body = request_body(reader).map_err(deser_failed)?;
 
     // Pass 1 — validate. Deliberately does NOT stop at the first failure the
     // way the by-value handler's `break` does: reading to the end keeps a
@@ -1013,7 +1198,9 @@ fn write_descriptor(
 }
 
 /// The descriptor for a parameter that has none: name + type, everything else
-/// default. `type_ = 0` (NOT_SET) when the name is unknown entirely.
+/// default. `type_ = 0` (NOT_SET) when the name is unknown entirely, which a
+/// reply carries only for a node that allows undeclared parameters (rclcpp's
+/// default `ParameterDescriptor` with the name set).
 fn write_minimal_descriptor(
     writer: &mut CdrWriter<'_>,
     name: &str,
@@ -1030,13 +1217,20 @@ fn write_minimal_descriptor(
     Ok(())
 }
 
-/// `DescribeParameters` — one descriptor per requested name.
+/// `DescribeParameters` — one descriptor per requested name, or none at all
+/// when one of them was never declared ([`names_an_undeclared_parameter`]).
 pub(crate) fn stream_describe_parameters(
     server: &ParameterServer,
     node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
+    let version = reader.version();
+    let body = request_body(reader).map_err(deser_failed)?;
+    if names_an_undeclared_parameter(server, node, body, version).map_err(deser_failed)? {
+        return writer.write_sequence_len(0).map_err(ser_failed);
+    }
+    let reader = &mut rewind(body, version).map_err(deser_failed)?;
     let count = read_name_list_len(reader).map_err(deser_failed)?;
     writer.write_sequence_len(count).map_err(ser_failed)?;
 
@@ -1054,19 +1248,26 @@ pub(crate) fn stream_describe_parameters(
     Ok(())
 }
 
-/// `GetParameterTypes` — one type code per requested name.
+/// `GetParameterTypes` — one type code per requested name, or none at all
+/// when one of them was never declared ([`names_an_undeclared_parameter`]).
 pub(crate) fn stream_get_parameter_types(
     server: &ParameterServer,
     node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
+    let version = reader.version();
+    let body = request_body(reader).map_err(deser_failed)?;
+    if names_an_undeclared_parameter(server, node, body, version).map_err(deser_failed)? {
+        return writer.write_sequence_len(0).map_err(ser_failed);
+    }
+    let reader = &mut rewind(body, version).map_err(deser_failed)?;
     let count = read_name_list_len(reader).map_err(deser_failed)?;
     writer.write_sequence_len(count).map_err(ser_failed)?;
 
     for _ in 0..count {
         let name = read_wire_string(reader).map_err(deser_failed)?;
-        // NOT_SET for an unknown parameter.
+        // NOT_SET for an unknown parameter of a node that allows them.
         let code = server.get_type(node, name).map(type_to_u8).unwrap_or(0);
         writer.write_u8(code).map_err(ser_failed)?;
     }
@@ -1099,6 +1300,10 @@ pub fn handle_get_parameters(
     request: &GetParametersRequest,
 ) -> Box<GetParametersResponse> {
     let mut response = Box::new(GetParametersResponse::default());
+    if request_names_an_undeclared_parameter(server, node, request.names.iter().map(|n| n.as_str()))
+    {
+        return response;
+    }
 
     for name in request.names.iter() {
         // issue 0323 — a stored value that does not fit the RESPONSE message's
@@ -1147,8 +1352,15 @@ pub fn handle_set_parameters(
                 continue;
             }
         };
-        let result = apply_one(server, node, param.name.as_str(), value);
-        let _ = response.results.push(to_rcl_set_result(result));
+        let name = param.name.as_str();
+        let result = apply_one(server, node, name, &value);
+        let mut buf = heapless::String::new();
+        let mut set_result = to_rcl_set_result(result);
+        set_result.reason.clear();
+        let _ = set_result
+            .reason
+            .push_str(refusal_reason(server, node, name, &value, result, &mut buf));
+        let _ = response.results.push(set_result);
     }
 
     response
@@ -1259,6 +1471,10 @@ pub fn handle_describe_parameters(
     request: &DescribeParametersRequest,
 ) -> Box<DescribeParametersResponse> {
     let mut response = Box::new(DescribeParametersResponse::default());
+    if request_names_an_undeclared_parameter(server, node, request.names.iter().map(|n| n.as_str()))
+    {
+        return response;
+    }
 
     for name in request.names.iter() {
         let descriptor = if let Some(desc) = server.get_descriptor(node, name.as_str()) {
@@ -1293,6 +1509,10 @@ pub fn handle_get_parameter_types(
     request: &GetParameterTypesRequest,
 ) -> Box<GetParameterTypesResponse> {
     let mut response = Box::new(GetParameterTypesResponse::default());
+    if request_names_an_undeclared_parameter(server, node, request.names.iter().map(|n| n.as_str()))
+    {
+        return response;
+    }
 
     for name in request.names.iter() {
         let type_code = server
@@ -2677,6 +2897,24 @@ mod tests {
         "no_such_parameter",
     ];
 
+    /// [`PROBE_NAMES`] without the unknown one: a request naming an unknown
+    /// parameter gets the empty reply (issue 2484), so the oracle comparisons
+    /// run this list too, to compare replies that carry every stored type.
+    const DECLARED_PROBE_NAMES: &[&str] = &[
+        "v_notset",
+        "v_bool",
+        "v_int",
+        "v_double",
+        "v_string_bound",
+        "v_bytes",
+        "v_bools",
+        "v_ints",
+        "v_doubles",
+        "v_strings",
+        "robot.speed",
+        "robot.mode",
+    ];
+
     macro_rules! names_request {
         ($ty:ty, $names:expr) => {{
             #[inline(never)]
@@ -2744,7 +2982,7 @@ mod tests {
     fn get_parameters_streams_like_the_oracle() {
         let server = populated_server();
         // Empty name list, then every stored type plus a name that does not exist.
-        for names in [&[][..], PROBE_NAMES] {
+        for names in [&[][..], DECLARED_PROBE_NAMES, PROBE_NAMES] {
             let request = names_request!(GetParametersRequest, names);
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
                 stream_get_parameters(&server, NODE, reader, writer)
@@ -2767,7 +3005,7 @@ mod tests {
     #[test]
     fn get_parameter_types_streams_like_the_oracle() {
         let server = populated_server();
-        for names in [&[][..], PROBE_NAMES] {
+        for names in [&[][..], DECLARED_PROBE_NAMES, PROBE_NAMES] {
             let request = names_request!(GetParameterTypesRequest, names);
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
                 stream_get_parameter_types(&server, NODE, reader, writer)
@@ -2788,6 +3026,7 @@ mod tests {
         let server = described_server();
         for names in [
             &[][..],
+            &["speed", "count", "mode", "bare"][..],
             &["speed", "count", "mode", "bare", "no_such_parameter"][..],
         ] {
             let request = names_request!(DescribeParametersRequest, names);
@@ -2808,11 +3047,12 @@ mod tests {
     /// Issue 2650 -- the descriptor no longer holds a copy of the name, so the
     /// describe reply takes it from the store entry. Every descriptor in the
     /// reply, on the streamed path that the service answers with, carries the
-    /// name it was asked for: with a descriptor, without one, and unknown.
+    /// name it was asked for: with a descriptor and without one. (An unknown
+    /// name empties the reply, issue 2484.)
     #[test]
     fn describe_reply_names_each_parameter_without_a_descriptor_copy() {
         let server = described_server();
-        let names = ["speed", "count", "mode", "bare", "no_such_parameter"];
+        let names = ["speed", "count", "mode", "bare"];
         let request = names_request!(DescribeParametersRequest, &names[..]);
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
             stream_describe_parameters(&server, NODE, reader, writer)
@@ -3055,6 +3295,249 @@ mod tests {
         assert_eq!(server.get_double(NODE, "max_speed"), Some(1.0));
     }
 
+    /// The first fields of a name-list reply, read without its generated
+    /// type (a `GetParametersResponse` alone is over a megabyte): the entry
+    /// count, and the first entry's type code (and, for a descriptor, its
+    /// name).
+    #[inline(never)]
+    fn name_list_reply_head(
+        reply: &[u8],
+        kind: &str,
+    ) -> (usize, Option<(u8, alloc::string::String)>) {
+        let mut r = CdrReader::new_with_header(reply).expect("reply header");
+        let count = r.read_sequence_len().expect("reply sequence length");
+        if count == 0 {
+            return (0, None);
+        }
+        let first = match kind {
+            // ParameterValue: `type_` leads.
+            "get" | "types" => (r.read_u8().expect("type"), alloc::string::String::new()),
+            // ParameterDescriptor: `name`, then `type_`.
+            _ => {
+                let name = alloc::string::String::from(r.read_string().expect("name"));
+                (r.read_u8().expect("type"), name)
+            }
+        };
+        (count, Some(first))
+    }
+
+    #[inline(never)]
+    fn ask_names(server: &ParameterServer, kind: &str, names: &[&str]) -> AllocVec<u8> {
+        match kind {
+            "get" => {
+                let request = names_request!(GetParametersRequest, names);
+                run_streaming(&encode(&*request), |r, w| {
+                    stream_get_parameters(server, NODE, r, w)
+                })
+            }
+            "describe" => {
+                let request = names_request!(DescribeParametersRequest, names);
+                run_streaming(&encode(&*request), |r, w| {
+                    stream_describe_parameters(server, NODE, r, w)
+                })
+            }
+            _ => {
+                let request = names_request!(GetParameterTypesRequest, names);
+                run_streaming(&encode(&*request), |r, w| {
+                    stream_get_parameter_types(server, NODE, r, w)
+                })
+            }
+        }
+    }
+
+    /// Issue 2484 -- a get, describe or types request naming an undeclared
+    /// parameter is answered with an EMPTY reply, as rclcpp and rclpy answer
+    /// it, wherever the unknown name sits in the request; and a node that
+    /// allows undeclared parameters answers it with a NOT_SET entry, as both
+    /// do. Asserted on the live streaming path.
+    #[test]
+    fn an_undeclared_name_empties_the_get_describe_and_types_replies() {
+        let server = described_server();
+        let permissive = permissive_server();
+        for kind in ["get", "describe", "types"] {
+            for names in [
+                &["nope"][..],
+                &["speed", "nope"][..],
+                &["nope", "speed"][..],
+            ] {
+                let reply = ask_names(&server, kind, names);
+                assert_eq!(
+                    name_list_reply_head(&reply, kind).0,
+                    0,
+                    "{kind} {names:?} must be answered with no entries"
+                );
+            }
+            let reply = ask_names(&server, kind, &["speed", "bare"]);
+            assert_eq!(
+                name_list_reply_head(&reply, kind).0,
+                2,
+                "{kind} of two declared names"
+            );
+
+            let reply = ask_names(&permissive, kind, &["nope"]);
+            let (count, first) = name_list_reply_head(&reply, kind);
+            assert_eq!(count, 1, "{kind} on a node allowing undeclared parameters");
+            let (type_, name) = first.expect("one entry");
+            assert_eq!(type_, 0, "{kind}: NOT_SET");
+            if kind == "describe" {
+                assert_eq!(name, "nope");
+            }
+        }
+    }
+
+    /// Issue 2484 -- a delete (a NOT_SET value) of a statically typed
+    /// parameter is refused with rclpy's reason, and the parameter stays.
+    #[test]
+    fn deleting_a_statically_typed_parameter_is_refused_with_stock_s_reason() {
+        let mut server = described_server();
+        let mut request = Box::new(SetParametersRequest::default());
+        push_param!(request, "speed", wire_value_of(0));
+        let streamed = run_streaming(&encode(&*request), |reader, writer| {
+            stream_set_parameters(&mut server, &mut staged(), NODE, reader, writer)
+        });
+        let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
+        assert!(!reply.results[0].successful);
+        assert_eq!(reply.results[0].reason.as_str(), STATIC_UNDECLARE_REASON);
+        assert_eq!(server.get_double(NODE, "speed"), Some(1.0));
+    }
+
+    /// Issue 2484 -- the four range refusals in rclpy's words: out of range
+    /// and off the step, integer and float.
+    #[test]
+    fn range_refusals_carry_stock_s_reasons() {
+        let mut server = leaked_server();
+        assert!(
+            server.declare_with_descriptor(
+                NODE,
+                "stepped",
+                InternalValue::Integer(10),
+                Some(
+                    InternalDescriptor::new("stepped", InternalType::Integer)
+                        .expect("name fits")
+                        .with_integer_range(0, 100, 5),
+                ),
+            )
+        );
+        assert!(
+            server.declare_with_descriptor(
+                NODE,
+                "speed",
+                InternalValue::Double(1.0),
+                Some(
+                    InternalDescriptor::new("speed", InternalType::Double)
+                        .expect("name fits")
+                        .with_float_range(0.0, 10.0, 0.5),
+                ),
+            )
+        );
+        // (name, wire type, integer, double, reason): the values are built one
+        // at a time, a `ParameterValue` being too large for an array of four.
+        let cases: [(&str, u8, i64, f64, &str); 4] = [
+            (
+                "stepped",
+                2,
+                7,
+                0.0,
+                "The parameter value for stepped is not a valid step. Min: 0, max: 100, value: \
+                 7, step: 5",
+            ),
+            (
+                "stepped",
+                2,
+                105,
+                0.0,
+                "Parameter stepped out of range. Min: 0, Max: 100, value: 105",
+            ),
+            (
+                "speed",
+                3,
+                0,
+                4.2,
+                "The parameter value for speed is not close enough to a valid step. Min: 0.0, \
+                 max: 10.0, value: 4.2, step: 0.5",
+            ),
+            (
+                "speed",
+                3,
+                0,
+                12.5,
+                "Parameter speed out of range Min: 0.0, Max: 10.0, value: 12.5",
+            ),
+        ];
+        for (name, type_, int, double, reason) in cases {
+            let mut request = Box::new(SetParametersRequest::default());
+            let mut value = wire_value_of(type_);
+            value.integer_value = int;
+            value.double_value = double;
+            push_param!(request, name, value);
+            let streamed = run_streaming(&encode(&*request), |reader, writer| {
+                stream_set_parameters(&mut server, &mut staged(), NODE, reader, writer)
+            });
+            let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
+            assert!(!reply.results[0].successful, "{name}");
+            assert_eq!(reply.results[0].reason.as_str(), reason);
+        }
+    }
+
+    /// A range reason is written only while the reply has room for it and
+    /// for the results after it; with no room it gives way to the store's
+    /// reason, so the longer reasons never make a reply outgrow the buffer
+    /// sized for the store's.
+    #[test]
+    fn a_range_reason_gives_way_when_the_reply_has_no_room() {
+        let mut server = leaked_server();
+        assert!(
+            server.declare_with_descriptor(
+                NODE,
+                "stepped",
+                InternalValue::Integer(10),
+                Some(
+                    InternalDescriptor::new("stepped", InternalType::Integer)
+                        .expect("name fits")
+                        .with_integer_range(0, 100, 5),
+                ),
+            )
+        );
+        let value = InternalValue::Integer(7);
+        let result = server.check_apply(NODE, "stepped", &value);
+        assert_eq!(result, Err(ParameterError::OutOfRange));
+        let mut buf = heapless::String::new();
+        let long = refusal_reason(&server, NODE, "stepped", &value, result, &mut buf);
+        assert!(long.len() > LONGEST_SET_REASON, "{long}");
+
+        let fixed = set_result_reason(result);
+        for (room, results_after, expected) in [
+            // Room for this reason and nothing after it.
+            (1 + 3 + 4 + long.len() + 1, 0, long),
+            // One byte short.
+            (1 + 3 + 4 + long.len(), 0, fixed),
+            // Room for this one, but not for one more result after it.
+            (1 + 3 + 4 + long.len() + 1, 1, fixed),
+            (1 + 3 + 4 + long.len() + 1 + SET_RESULT_BYTES, 1, long),
+        ] {
+            let mut bytes = vec![0u8; room];
+            let mut writer = CdrWriter::new(&mut bytes);
+            write_applied_result(
+                &mut writer,
+                &server,
+                NODE,
+                "stepped",
+                &value,
+                result,
+                results_after,
+            )
+            .expect("the result fits");
+            let written = writer.position();
+            let mut reader = CdrReader::new(&bytes[..written]);
+            assert!(!reader.read_bool().expect("flag"));
+            assert_eq!(
+                reader.read_string().expect("reason"),
+                expected,
+                "room {room}, {results_after} result(s) after"
+            );
+        }
+    }
+
     /// Issue 1151 — the opt-in. With `allow_undeclared` on, the same request
     /// declares the name, which is upstream's `allow_undeclared_parameters`.
     #[test]
@@ -3090,7 +3573,12 @@ mod tests {
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(!reply.results[0].successful);
-        assert_eq!(reply.results[0].reason.as_str(), "Value out of range");
+        // Issue 2484 -- rclpy's wording, not the store's "Value out of range".
+        assert_eq!(
+            reply.results[0].reason.as_str(),
+            "The parameter value for speed is not close enough to a valid step. Min: 0.0, \
+             max: 10.0, value: 4.2, step: 0.5"
+        );
         assert_eq!(server.get_double(NODE, "speed"), Some(1.0));
     }
 
@@ -3290,7 +3778,11 @@ mod tests {
             });
             let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
             assert!(!reply.results[0].successful);
-            assert_eq!(reply.results[0].reason.as_str(), "Value out of range");
+            assert_eq!(
+                reply.results[0].reason.as_str(),
+                "The parameter value for speed is not close enough to a valid step. Min: \
+                 0.0, max: 10.0, value: 4.2, step: 0.5"
+            );
 
             // SetParametersAtomically — the same two requests, re-encoded
             // under the atomic request type.
