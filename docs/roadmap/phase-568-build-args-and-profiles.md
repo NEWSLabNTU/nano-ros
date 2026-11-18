@@ -82,18 +82,38 @@ parser. It carries:
   moves to W3, with the rest of `--dry-run`'s output. The arguments are
   already ignored by construction, since only the image's own block is read.
 
-### W2c — the knob refusal, row by row
+### W2c — the knob refusal
 
 - **Owner:** nros 243 (assigned by the nros 241 manager, 2026-11-18).
-- **Status:** OPEN (in progress: the first two rows are on). Each knob is
-  turned on in `build_args::KNOB_REFUSAL_ON` once `knob_roads::tests`
-  measures it carried on every road. Issue 2496 carried
-  `FREERTOS_APP_STACK_KB` and `CYCLONEDDS_MAX_DESCRIPTOR_TYPES` on the cmake
-  road, and they are the first two. `every_knob_refused_is_carried_on_every_road`
-  refuses a row that is on but not carried everywhere.
-- **Next:** 99 of the 111 table rows already read `yes yes yes`. Whether to
-  turn them all on together is for the manager to rule. The 12 `? ? ?` rows
-  are readers not found by name, and stay off until they are.
+- **Status:** OPEN (in progress). Every row the measured table proves carried
+  is on, in one PR (ruled 2026-11-18). The 12 unproven rows below are the
+  rest.
+- **Rule.** `build_args::knob_refusal_on()` is not a list: it is every row of
+  `knob_road_coverage.tsv` (pinned from the code by `knob_roads::tests`) that
+  reads `yes yes yes`. That is 99 of 111 today. A row the table cannot prove
+  carried stays accepted, so the refusal never points at a remedy that does
+  nothing. A row that becomes carried is refused in the same commit that
+  records it.
+- **In-tree effect: none.** The refusal is a pure function of the arguments
+  `nros build` is given (`--cmake-args=`, `@file`,
+  `[image(_defaults).build] cmake_args`). Swept on 2026-11-18: no tracked
+  `system.toml` states `cmake_args`; no script, recipe, workflow or test
+  calls `nros build` with a knob in `--cmake-args=`; and the fixture builds
+  run `cmake` directly, not through `nros build`. Sweep:
+  `git grep -n cmake_args -- '*.toml'` and
+  `git grep -n -- '--cmake-args=-D' -- ':!packages/cli/nros-cli-core/src/builder/build_args.rs'`.
+- **The 12 rows still `? ? ?`.** Each has a real reader. The table cannot see
+  it, because the reader does not spell `"NROS_<ID>"`:
+
+  | Rows | Where the value is read | What the row lacks |
+  | --- | --- | --- |
+  | `ZENOH_BATCH_MULTICAST_SIZE`, `ZENOH_GET_POLL_INTERVAL_MS`, `ZENOH_GET_REPLY_BUF_SIZE`, `ZENOH_RX_TASK_BUDGET_FRAMES`, `ZENOH_RX_TASK_BUDGET_REST_US` | `nros-zpico-build` resolves them by IMAGE KEY through `platform_config::wire_env_key("<key>")`, which looks the env name up in the registry (`registry_env("zenoh.wire", …)`) | the scan must credit a `wire_env_key`/`registry_env` call by image key as a Rust reader |
+  | `ZENOH_TX_BATCH`, `ZENOH_TX_BATCH_FLUSH_MS`, `ZENOH_TX_SPLIT_LOCK` | the same ladder, through `platform_config::tx_env_key("<key>")` | the same credit, for `tx_env_key` |
+  | `XRCE_MAX_SUBSCRIBERS`, `XRCE_TRANSPORT_MTU`, `XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE` | `nros-rmw-xrce-cffi/build.rs` reads the env names from rows of `packages/rmw/xrce/xrce-config.txt` (`define`/`knob` lines) | the scan must read that table, which is `.txt` and outside both corpora |
+  | `ZENOH_SOCKET_TIMEOUT_MS` | only Zephyr's C lane, as `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` → `Z_CONFIG_SOCKET_TIMEOUT` (`zephyr/cmake/nros_rmw_zenoh.cmake`). The cargo and cmake roads have no reader at all | a ruling: is it Zephyr-only (its cargo/cmake cells are then "not applicable", and the table needs that state), or do the other roads read it too? |
+
+  Teaching the scan the first three shapes turns 11 rows to measured. Until
+  then they stay accepted.
 
 - `[image.<id>.build] cmake_args`, read from the image's own section only.
   There is no `cargo_args` key: committed features belong in the manifest.

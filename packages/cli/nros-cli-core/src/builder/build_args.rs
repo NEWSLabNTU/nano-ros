@@ -179,16 +179,27 @@ pub fn split_posix(s: &str) -> Result<Vec<String>, Refusal> {
 /// The knob rows whose `-D` D9 refuses, by id: those `[image.<id>.knobs]`
 /// carries on EVERY road, so the refusal's remedy works wherever the user is.
 ///
-/// Phase-568 W2c turns rows on one at a time, each only once
-/// `knob_roads::tests` measures it carried on EVERY road
-/// (`knob_road_coverage.tsv` reads `yes yes yes`), which
-/// `every_knob_refused_is_carried_on_every_road` checks. The first two are the
-/// rows issue 2496 found uncarried on the cmake road and fixed.
-pub const KNOB_REFUSAL_ON: &[&str] = &["FREERTOS_APP_STACK_KB", "CYCLONEDDS_MAX_DESCRIPTOR_TYPES"];
+/// Phase-568 W2c: the set IS the measurement. A row is refused exactly when
+/// `knob_road_coverage.tsv` (pinned by `knob_roads::tests` from the code) reads
+/// `yes yes yes`, so no hand list can name a row the remedy does not reach,
+/// and a row that becomes carried is refused by the same commit that records
+/// it. A `?` row (no reader found by name) stays accepted.
+pub fn knob_refusal_on() -> Vec<&'static str> {
+    const TABLE: &str = include_str!("knob_road_coverage.tsv");
+    TABLE
+        .lines()
+        .filter(|l| !l.starts_with('#'))
+        .filter_map(|l| {
+            let mut c = l.split('\t');
+            let id = c.next()?;
+            (c.collect::<Vec<_>>() == ["yes", "yes", "yes"]).then_some(id)
+        })
+        .collect()
+}
 
 /// What a `-D` name collides with, if anything.
 fn define_refusal(arg: &str, name: &str) -> Option<Refusal> {
-    define_refusal_with(arg, name, KNOB_REFUSAL_ON)
+    define_refusal_with(arg, name, &knob_refusal_on())
 }
 
 fn define_refusal_with(arg: &str, name: &str, knob_refusal_on: &[&str]) -> Option<Refusal> {
@@ -723,8 +734,15 @@ mod tests {
         let r = cmake("-DNROS_FREERTOS_APP_STACK_KB=64").unwrap_err();
         assert!(r.reason.contains("[image.<id>.knobs.freertos]"), "{r}");
         assert!(cmake("-DNROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES=8").is_err());
-        assert!(!KNOB_REFUSAL_ON.contains(&"THREADX_APP_STACK_KB"));
-        assert!(cmake("-DNROS_THREADX_APP_STACK_KB=64").is_ok());
+        assert!(cmake("-DNROS_THREADX_APP_STACK_KB=64").is_err());
+        // A row the table cannot prove carried (`?`) stays accepted.
+        let on = knob_refusal_on();
+        let open = nros_zephyr_build::KNOBS
+            .iter()
+            .find(|r| !on.contains(&r.id))
+            .expect("a row not measured carried everywhere");
+        assert!(cmake(&format!("-D{}=1", open.env)).is_ok(), "{}", open.id);
+        assert!(on.len() >= 99, "{}", on.len());
     }
 
     #[test]

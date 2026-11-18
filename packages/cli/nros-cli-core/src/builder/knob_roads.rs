@@ -4,7 +4,8 @@
 //! `[image.<id>.knobs.<group>]`, its one committed place. That remedy works
 //! only where the image's value actually reaches the code that reads the
 //! knob, and issue 2496 found a row where it did not. So the refusal is on
-//! only for the rows in `build_args::KNOB_REFUSAL_ON`, and this module MEASURES, from
+//! only for the rows this table reads `yes` on every road
+//! (`build_args::knob_refusal_on`), and this module MEASURES, from
 //! the code, which roads carry which rows. The test pins the table in
 //! `knob_road_coverage.tsv`: a row whose coverage drops is red, and so is one
 //! that improves without the table being updated, so the table stays the
@@ -255,28 +256,6 @@ mod tests {
             s.push_str(&format!("{id}\t{a}\t{b}\t{c}\n"));
         }
         s
-    }
-
-    /// Phase-568 W2c: a `-D` is refused only for a row whose
-    /// `[image.<id>.knobs]` remedy reaches every road's readers, so the
-    /// refusal never points at a remedy that does nothing.
-    #[test]
-    fn every_knob_refused_is_carried_on_every_road() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(SNAPSHOT);
-        let table = std::fs::read_to_string(&path).unwrap();
-        for id in crate::builder::build_args::KNOB_REFUSAL_ON {
-            let row = table
-                .lines()
-                .find(|l| l.split('\t').next() == Some(id))
-                .unwrap_or_else(|| panic!("{id}: refused, but not a row of {SNAPSHOT}"));
-            let cells: Vec<&str> = row.split('\t').skip(1).collect();
-            assert_eq!(
-                cells,
-                ["yes", "yes", "yes"],
-                "{id} is refused but not carried on every road ({row}); take it out of \
-                 KNOB_REFUSAL_ON or carry it first"
-            );
-        }
     }
 
     #[test]
