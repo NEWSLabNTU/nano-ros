@@ -264,11 +264,12 @@ mode = "bind"`, issue 2402).
 
 The detail is in [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W7, W7b, W7c, W7d and W7e.
 
-### Ruling (C), PROPOSED: inputs come from the build, and the walk is a band (2026-11-18)
+### Ruling (C): inputs come from the build, and the walk is a band (2026-11-18)
 
-**Not yet ruled. Awaiting the maintainer.** Proposed with phase-557 W9. It
-amends the first ruling's frame source and supersedes W8's drift rule. Until
-it is ruled, W8's rule stands.
+**RULED 2026-11-18 by the user** (relayed by the coordinating session, then
+the stamp amendment below answered by the user directly). Implemented by
+phase-557 W9. It amends the first ruling's frame source and supersedes W8's
+drift rule. W8's rule stands until W9d lands.
 
 - **Frames are stated by the compiler that built the code.** `llc
   --stack-sizes` for Rust, `-fstack-usage` for every C/C++ compiler and every
@@ -294,9 +295,17 @@ it is ruled, W8's rule stands.
   the walk by about ±4 KB (issue 2550). With the fall rule, the
   `/parameter_events` change had to re-walk the FreeRTOS C talker row, which
   fell 3,848 B on a re-cut while the Rust publisher frames it added grew.
-  An exact-rise rule fails a row whenever the cut moves up. The stack is
-  sized from the floor (`static` + 10 %), so a rise within 2 % stays inside
-  the margin, and CHECK still refuses any stack below the floor.
+  An exact-rise rule fails a row whenever the cut moves up.
+- **A template's stamped stack carries the 2 % tolerance.** `nros new` stamps
+  `ceil8(ceil(max × 102 / 100) × (100 + margin) / 100)`, where `max` is the
+  row's recorded max, instead of the row's floor exactly. Without this, a
+  rise the drift rule only notes would make a fresh template project refuse
+  to build, because every build CHECKs its stack against its own fresh walk.
+  That was the reason W8 failed any rise (issue 2546). The cost is about 2 %
+  more stack per template image; every nucleo template still fits its 384 KB
+  RAM region. Bringup rows are unaffected, since they keep their board's
+  default stack. The 2 % is ONE number, `drift_rise_pct` in
+  `config/stack-floors.toml`, which both the drift rule and the stamp read.
 
 ### Re-measured after issue 2401 (2026-11-10)
 

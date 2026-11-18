@@ -995,8 +995,8 @@ local worktrees walked. The run before it, still at debuginfo 0, walked
 
 ### W9 — One stack tool for four gaps: frames from the compiler, builtins by toolchain, edges from the objects, and a band (issues 2460, 2550, 2688, 2693)
 
-- **Status:** OPEN (designed 2026-11-18; awaiting the maintainer's ruling on
-  the issue 2400 amendment "Ruling (C)", which changes W8's drift rule)
+- **Status:** OPEN (designed 2026-11-18; issue 2400 Ruling (C), which changes
+  W8's drift rule, was ruled by the user on 2026-11-18)
 
 **Why.** Four open issues are one defect: the walk takes a number from
 somewhere other than the build it is measuring, so it is right only for the
@@ -1087,9 +1087,11 @@ build where that number was read.
      never ejected from the queue. The row is lowered only by a re-measure
      someone commits.
 
-   The 2 % is inside the 10 % margin, so a tolerated rise still sits below
-   the floor that sizes the stack. CHECK still refuses any stack below the
-   floor, whatever drift says.
+   CHECK still refuses any stack below the floor, whatever drift says. So a
+   template's stamped stack carries the tolerance: `nros new` stamps
+   `ceil8(ceil(max × 102 / 100) × (100 + margin) / 100)`, not the row's floor
+   exactly. Otherwise a 1–2 % rise that drift only notes would make a fresh
+   template project refuse to build (issue 2546's state).
 
 **Steps, each its own pull request, in this order.**
 
@@ -1108,9 +1110,17 @@ build where that number was read.
   `[[observed]]` row re-walked at that N.
 - **W9d — The drift rule (Ruling (C)).** `static_drift` and its self-tests
   (up 3 %: FAIL; up 1 %: note; down 10 %: note); W8's nightly and
-  merge-queue steps read the same helper. Acceptance: issue 2688's case, main
+  merge-queue steps read the same helper. The stamp moves with it in the same
+  pull request: `recorded_floor` in `nros new` (and its tests) stamps the
+  tolerance. ONE number: the tolerance is a key in `config/stack-floors.toml`
+  (`drift_rise_pct = 2`, beside `margin_pct`), read by both the walker's
+  `static_drift` and the CLI's `recorded_floor`; neither holds a literal.
+  W9d needs no band and can land before W9c, on today's single `static` and
+  `walk_floor`. Added acceptance: a project stamped from a row still builds
+  when the walk is the row's max + 2 %, and refuses at + 2.1 %, with the
+  same table read by both sides. Acceptance: issue 2688's case, main
   walked in CI and on a host, reads "different toolchain identity" rather
-  than FAIL, and a row edited down by hand 3 % turns the step red.
+  than FAIL, and a row edited by hand to 3 % below the walk turns the step red.
 - **W9e — The TI road** (issue 2693, home phase-575 W3). The TI toolchain
   file stops forcing `NROS_STACK_FLOOR OFF`; tiarmclang `.su` frames, object
   edges, builtins rows for its version string. Acceptance: an R5F image built
