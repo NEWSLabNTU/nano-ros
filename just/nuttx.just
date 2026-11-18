@@ -326,7 +326,8 @@ build-fixtures-arm:
 #
 # What makes a SECOND ARM config safe is issue 0750 (B): `build-nuttx.sh` names
 # the export for the DEFCONFIG DIRECTORY, not `CONFIG_ARCH`, so this lands in
-# `nros-nuttx-export-arm-smp/` beside `-arm/` instead of overwriting it. Both
+# `nros-nuttx-export-arm-smp/` beside `-arm/` (both under `<tree>.nros-build/`,
+# issue 2622) instead of overwriting it. Both
 # survive, each with its own `HEAD:sha256(defconfig)` key. Consumers must pass
 # `NUTTX_EXPORT_DIR` to select it — a target triple cannot distinguish two
 # configs of one arch, which is exactly what `nuttx_kernel_path_for()`'s
@@ -373,7 +374,8 @@ build-fixtures-arm-smp:
     # uniprocessor arm lane uses — this is one board with two configurations,
     # not a second board.
     NUTTX_DEFCONFIG="$smp_defconfig" bash scripts/nuttx/build-nuttx.sh
-    echo "→ NuttX arm-smp export: $nuttx_dir/nros-nuttx-export-arm-smp"
+    . scripts/lib/nuttx-state.sh
+    echo "→ NuttX arm-smp export: $(nros_nuttx_export_snapshot "$nuttx_dir" arm-smp)"
 
 # Build the riscv (QEMU rv-virt) NuttX test fixtures, if the lane wants them.
 [group("full-matrix")]

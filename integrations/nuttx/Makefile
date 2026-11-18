@@ -266,7 +266,7 @@ NROS_PROJECT_ARGS = $(if $(NROS_PROJECT_LIST),--project $(NROS_PROJECT_LIST) \
 # `nros_build_paths::nuttx_include_root` consults BEFORE the per-arch
 # snapshot under the kernel tree. Pinned to $(TOPDIR), the headers are
 # $(TOPDIR)/include, the live tree's: a `nros-nuttx-export-<arch>` snapshot
-# left there by `build-nuttx.sh` describes the configuration that script
+# `build-nuttx.sh` left beside the tree (`<tree>.nros-build/`) describes the configuration that script
 # built, not this one, and an exported value names some other tree. Its
 # `libs/` half (`nuttx_export::snapshot_root`) is read only by board crates,
 # which this image does not build, and falls through when `libs/` is absent.

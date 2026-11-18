@@ -1,7 +1,8 @@
 ---
 id: 2622
 title: "nano-ros's NuttX build writes its markers, lock and export snapshots INTO the vendored `third-party/nuttx/nuttx` tree"
-status: open
+status: resolved
+resolved_in: "the change that archives this issue"
 type: tech-debt
 area: [nuttx, build]
 severity: low
@@ -72,3 +73,49 @@ When this lands, delete the `third-party/nuttx/nuttx` row of
 comment cites `nros-nuttx.cmake` and `just/nuttx.just` as the producers;
 the writer is `build-nuttx.sh`. Correct that if the allow-list outlives this
 fix.
+
+## Fix
+
+nano-ros's state for a NuttX tree now lives in `<tree>.nros-build/`, a
+SIBLING of the tree: `build.lock`, `build-head-<config id>` and
+`nros-nuttx-export-<config id>/`. It sits beside the tree and not under a
+checkout's build root, because it describes that tree's in-tree kernel
+build, which every checkout sharing the tree shares. One locator per
+language, and every reader goes through it:
+
+- shell: `scripts/lib/nuttx-state.sh` (`nros_nuttx_state_dir`,
+  `nros_nuttx_export_snapshot`), used by `build-nuttx.sh`,
+  `check-sched-dim-arms-compile.sh` and `just/nuttx.just`;
+- cmake: `nros_nuttx_export_snapshot` in `nros-nuttx.cmake`, used by it and
+  by `nano-ros-nuttx.cmake`;
+- Rust: `nros_build_paths::nuttx_export_snapshot` / `nuttx_state_dir`, used
+  by `nuttx_include_root`, `nros-board-common`'s `nuttx_export`, the CLI's
+  `nuttx_cpu_config_path` and `nros-tests`' `nuttx_kernel_path_for`.
+
+`NUTTX_EXPORT_DIR` still overrides the snapshot on every road, unchanged.
+
+`build-nuttx.sh` removes, under its lock, what an earlier build left IN the
+tree. It removes exact names only, and only paths the tree's git does not
+track (`nros_nuttx_retire_in_tree_state`). `.gitignore` covers
+`/third-party/nuttx/*.nros-build/`.
+
+`worktree-prune`'s `NROS_GENERATED_IN_NESTED` allow-list and its matcher are
+gone: an untracked path in a nested repo is a refusal again, with nothing
+excused by name. Its self-test keeps the cases that still mean something.
+NuttX's own ignored output is clean, and a user's file is refused. A new case
+shows an old in-tree lock is no longer excused.
+
+Gate `check-nuttx-state-outside-tree` (fast line) checks two things. No code
+line outside the three locators spells a snapshot or marker name; on main it
+flags 20 lines. The shell and cmake locators agree, through `cmake -P`.
+`nuttx_state_lives_beside_the_tree` pins the Rust one.
+
+Measured (2026-11-19, newslab-118): a real `build-nuttx.sh` run (arm) in a
+worktree whose NuttX submodule held the three old in-tree paths. It exited
+0. Afterwards `git -C third-party/nuttx/nuttx status --porcelain` printed
+nothing, the superproject's status for `third-party/nuttx` printed nothing,
+and `nuttx.nros-build/` held `build.lock`, `build-head-arm` and
+`nros-nuttx-export-arm/`. A second run took the up-to-date short-circuit
+from the new snapshot.
+
+Sweep: `git grep -nE 'nros-nuttx-export-|[.]nros-nuttx-build' -- ':!docs'`

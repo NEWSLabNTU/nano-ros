@@ -958,6 +958,36 @@ pub fn tband_dir() -> PathBuf {
 /// invalidate every arm artifact compiled against the arm snapshot — the arm
 /// fixtures `just nuttx build-fixtures` had just built read STALE at once,
 /// over a header they never included.
+/// Issue 2622 — the suffix of the directory nano-ros keeps its own state for
+/// a NuttX tree in: [`nuttx_state_dir`]. Spelled once per language, and
+/// `check-nuttx-state-outside-tree` holds the other spellings to this one.
+pub const NUTTX_STATE_SUFFIX: &str = ".nros-build";
+
+/// Issue 2622 — where nano-ros keeps ITS OWN state for the NuttX tree
+/// `nuttx_dir`: `build-nuttx.sh`'s lock, its `HEAD:sha256(defconfig)` markers
+/// and the per-config export snapshots. A SIBLING of the tree,
+/// `<tree>.nros-build/`, never inside it: the tree is a vendored submodule
+/// (or a store copy), and files nano-ros wrote there read as unsaved work in
+/// every checkout that built NuttX. Beside the tree rather than under a
+/// checkout's build root because what it describes is that tree's in-tree
+/// kernel build, which every checkout sharing the tree shares.
+pub fn nuttx_state_dir(nuttx_dir: &std::path::Path) -> PathBuf {
+    let name = nuttx_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "nuttx".to_string());
+    nuttx_dir
+        .parent()
+        .unwrap_or(nuttx_dir)
+        .join(format!("{name}{NUTTX_STATE_SUFFIX}"))
+}
+
+/// Issue 2622 — the export snapshot `build-nuttx.sh` writes for config `id`
+/// (the defconfig's directory name: `arm`, `riscv`, `arm-smp`).
+pub fn nuttx_export_snapshot(nuttx_dir: &std::path::Path, id: &str) -> PathBuf {
+    nuttx_state_dir(nuttx_dir).join(format!("nros-nuttx-export-{id}"))
+}
+
 pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
     let shared = nuttx_dir.join("include");
     // issue 0750 (B) — `$NUTTX_EXPORT_DIR` FIRST, matching
@@ -995,9 +1025,7 @@ pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
         _ => None,
     };
     if let Some(a) = snapshot_arch {
-        let inc = nuttx_dir
-            .join(format!("nros-nuttx-export-{a}"))
-            .join("include");
+        let inc = nuttx_export_snapshot(nuttx_dir, a).join("include");
         println!(
             "cargo:rerun-if-changed={}",
             inc.join("nuttx/config.h").display()
@@ -2538,6 +2566,29 @@ pub mod link_script {
 
     #[cfg(test)]
     mod tests {
+
+        /// Issue 2622 — nano-ros's NuttX state is a SIBLING of the tree, never
+        /// inside it, and the snapshot keeps its config id.
+        #[test]
+        fn nuttx_state_lives_beside_the_tree() {
+            let tree = std::path::Path::new("/w/third-party/nuttx/nuttx");
+            assert_eq!(
+                crate::nuttx_state_dir(tree),
+                std::path::Path::new("/w/third-party/nuttx/nuttx.nros-build")
+            );
+            let snap = crate::nuttx_export_snapshot(tree, "arm-smp");
+            assert_eq!(
+                snap,
+                std::path::Path::new(
+                    "/w/third-party/nuttx/nuttx.nros-build/nros-nuttx-export-arm-smp"
+                )
+            );
+            assert!(!snap.starts_with(tree));
+            // The shell locator's spelling (`scripts/lib/nuttx-state.sh`), held to
+            // this one by `check-nuttx-state-outside-tree` through cmake.
+            assert_eq!(crate::NUTTX_STATE_SUFFIX, ".nros-build");
+        }
+
         use super::write_into;
 
         fn scratch(tag: &str) -> std::path::PathBuf {

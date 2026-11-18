@@ -43,6 +43,8 @@ repo_root="$(pwd)"
 # no cross compiler), which is exactly the case the ledger exists for.
 # shellcheck source=scripts/build/check-skip.sh
 . "$repo_root/scripts/build/check-skip.sh"
+# shellcheck source=scripts/lib/nuttx-state.sh
+. "$repo_root/scripts/lib/nuttx-state.sh"
 # phase-484 W2 — the kernel trees through the one ladder, not an inherited
 # export (W3c stopped exporting them; reading the variable made this gate
 # skip in every shell that never carried a pre-W3c `activate.sh`).
@@ -160,7 +162,7 @@ elif [ -z "${NUTTX_DIR:-}" ] || [ ! -d "${NUTTX_DIR}/include" ]; then
     nros_check_skip "sched-dim-arms(nuttx)" "NUTTX_DIR unset/absent (source ./activate.sh)"
 elif [ -z "$arm_gcc_usable" ]; then
     nros_check_skip "sched-dim-arms(nuttx)" "$arm_gcc_unusable_why"
-elif [ ! -f "$NUTTX_DIR/nros-nuttx-export-arm/include/nuttx/config.h" ]; then
+elif [ ! -f "$(nros_nuttx_export_snapshot "$NUTTX_DIR" arm)/include/nuttx/config.h" ]; then
     # Issue 0525. The tree is SHARED SOURCE, but `nuttx/config.h` is build
     # OPTIONS, and one shared copy cannot hold two arches: it belongs to
     # whichever was configured LAST. This arm compiles -mcpu=cortex-a7, so
@@ -168,13 +170,13 @@ elif [ ! -f "$NUTTX_DIR/nros-nuttx-export-arm/include/nuttx/config.h" ]; then
     # last wrote — silently, and it passes, which is worse than not running.
     # Hence a SKIP rather than a fallback: no arm snapshot, no verdict.
     nros_check_skip "sched-dim-arms(nuttx)" \
-        "no arm NuttX export snapshot (nros-nuttx-export-arm); the shared tree's config.h is another arch's"
+        "no arm NuttX export snapshot ($(nros_nuttx_export_snapshot "$NUTTX_DIR" arm)); the shared tree's config.h is another arch's"
 else
     # Per-arch build options come from this arch's export snapshot; the shared
     # tree supplies only source. Same split as
     # `nros_build_paths::nuttx_include_root` and cmake's
     # `nros_nuttx_include_root`, neither of which shell can call.
-    nuttx_inc="$NUTTX_DIR/nros-nuttx-export-arm/include"
+    nuttx_inc="$(nros_nuttx_export_snapshot "$NUTTX_DIR" arm)/include"
     out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-a7 -mthumb-interwork \
         -DCONFIG_SMP \
         -I "$nuttx_inc" \

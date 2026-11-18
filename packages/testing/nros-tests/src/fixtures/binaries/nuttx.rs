@@ -180,7 +180,7 @@ fn elf_machine(path: &Path) -> Option<u16> {
 pub fn nuttx_kernel_path_for(arch: NuttxArch) -> Result<PathBuf, String> {
     let dir = crate::sdk_tree::sdk_tree("nuttx-kernel")
         .ok_or_else(|| "no NuttX kernel tree provisioned (`just nuttx setup`)".to_string())?;
-    let snapshot = Path::new(&dir).join(format!("nros-nuttx-export-{}", arch.snapshot_id()));
+    let snapshot = nros_build_paths::nuttx_export_snapshot(Path::new(&dir), arch.snapshot_id());
     snapshot_for_arch(&snapshot, arch).map_err(|why| {
         format!(
             "{why} Run: {}{}",
@@ -552,7 +552,7 @@ mod tests {
     /// A snapshot dir for issue 1007's tests: `libs/` plus an optional
     /// `startup/crt0.o` of a chosen machine.
     fn snapshot(name: &str, libs: bool, crt0: Option<u16>) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("nros-nuttx-export-test-{name}"));
+        let root = std::env::temp_dir().join(format!("nros-nuttx-snapshot-test-{name}"));
         let _ = std::fs::remove_dir_all(&root);
         if libs {
             std::fs::create_dir_all(root.join("libs")).expect("libs");
