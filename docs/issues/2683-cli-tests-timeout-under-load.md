@@ -290,6 +290,49 @@ What this pair does and does not show:
   red on an unrelated hang in `node-std-tests`, so it is being rerun and its row
   will be added here.
 
+### Load from other sessions, and the weights (2026-11-19)
+
+- **Host 175, one gate under two loads.** W13's gate (a tree with
+  `workspace-probes`' weight) lost `workspace-all` to the 2400 s kill at host
+  load 39-50 from other sessions. A later run, with the gate lock keeping
+  other gates off the host: `workspace-all` 466 s, `workspace-probes` 471 s,
+  `check::build` 38 min, green. That is at least 5x, with two caveats. The
+  trees differ (the second was rebased onto a newer main, plus test fixes,
+  though not in `workspace-all`'s step). The second run's background load,
+  from other sessions' builds, was not recorded.
+- **Host 139, other gates on the old weights** (WAITS on): `check::build`
+  3639 s and 3739 s green, and 4060 s red on a real failure. No timeouts. The
+  pool was empty 53-63 % of the time at lane runnable p50 3.
+- **Host 139, a red gate on the old weights, and it is the disk.** #4160
+  (531dbbc39a), 2026-11-19 20:17-22:06Z: `check::build` red after
+  1 h 29 min 44 s, against 61 and 63 min for two other gates on the same host
+  and weights earlier that day. `cli-tests` (2400.09 s; every test that printed
+  passed) and `workspace-probes` (2400.47 s) timed out. Thread-seconds:
+
+  | gate | run | pipe | child | lock | disk |
+  | --- | --- | --- | --- | --- | --- |
+  | `cli-tests` | 945 | 5150 | 14235 | 1855 | **49350** |
+  | `workspace-probes` | 1675 | 23480 | 90850 | 5880 | 16835 |
+  | `workspace-features` | 510 | 1390 | 6590 | 60 | 17665 |
+  | `required-features-tests` | 435 | 5675 | 8455 | 160 | 2825 |
+
+  Lane runnable p50 2, p90 6, max 29, against a pool of 32. Free tokens p50 0,
+  with the pool empty in 621 of 1050 samples (59 %). Host runnable p50 8, p90
+  21, max 62; the busiest sample's other tenants were an FVP, a vLLM engine,
+  Python and `sccache`. Over weight: `cli-tests` peaked at 26 against 4,
+  `workspace-features` 22 against 1, `workspace-probes` 14 against 6.
+  `cli-tests` waited on disk 52 times longer than it ran, so a weight alone
+  does not cover it: the linker's threads (issue 2718) and a bound on
+  concurrent disk-heavy gates are the next levers.
+- **Host 133, the lock waits named.** With each lock-waiter's command recorded, every lock wait in `workspace-probes` is cargo's own
+  `locks_lock_inode_wait`, 1-4 at a time: configures queuing on the shared
+  probe build dirs. That is the intended trade, not a fault.
+- **Declared weights (issue 2625, its PR follows this one).** Every
+  build-tier gate declares a weight with a stated basis. At a builder default
+  of 2, a cold `just check build` on host 139 took 3185 s with no timeout:
+  `workspace-all` ran in 235 s instead of being killed. Its first above-pool
+  catch, the host linker's threads outside the jobserver, is issue 2718.
+
 ## Not the fix
 
 Raising the timeout. That moves the line and keeps the dependence on load
