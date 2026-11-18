@@ -14,11 +14,23 @@
 #            as an image's `[image.<id>.knobs]` is; a row with no `toml`
 #            reaches the build in the image's rows (issue 2194).
 #
+# The catalog (phase-569 W2, RFC-0133). Each row AUTHORS two judgements:
+#   scope    image | board | platform: what the value describes.
+#   class    public | carrier | internal | retired. A carrier also names what
+#            it carries (`carries`).
+# and the generator DERIVES three, which a row never states (it refuses one
+# that does): the default (from the Kconfig definition, else the ladder's
+# builtin for `toml`), the values (the Kconfig type, range and names) and the
+# surface (a public row's `[image.<id>.knobs.<group>] <name>`). `prompt` and
+# `help` may stand on any row; `nros knob show` prints them.
+#
 # Edit here, then run `python3 scripts/gen-knob-registry.py`; the generated
 # Rust beside it is checked by `just check knob-registry`.
 
 [[knob]]
 id = "ACTION_INBOX_BYTES"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Action inbox slot size (bytes, -1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -39,6 +51,8 @@ the service family's resolved size. Maps to NROS_ACTION_INBOX_BYTES.
 
 [[knob]]
 id = "ACTION_INBOX_DEPTH"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Action inbox ring depth"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -54,27 +68,44 @@ NROS_ACTION_INBOX_DEPTH.
 
 [[knob]]
 id = "CYCLONEDDS_HEAP_BUDGET_BYTES"
+scope = "image"
+class = "carrier"
+carries = "the sizing descriptor's [target] heap_budget_bytes"
 
 [[knob]]
 id = "CYCLONEDDS_MAX_DESCRIPTOR_TYPES"
+scope = "image"
+class = "public"
 
 [[knob]]
 id = "CYCLONEDDS_MAX_FIELDS"
+scope = "image"
+class = "public"
 
 [[knob]]
 id = "CYCLONEDDS_MAX_KINDS"
+scope = "image"
+class = "public"
 
 [[knob]]
 id = "CYCLONEDDS_MAX_NESTED_DEPTH"
+scope = "image"
+class = "public"
 
 [[knob]]
 id = "CYCLONEDDS_MAX_TYPES"
+scope = "image"
+class = "public"
 
 [[knob]]
 id = "ENTRY_SPIN_MS"
+scope = "image"
+class = "internal"
 
 [[knob]]
 id = "EXECUTOR_ACTION_CLIENTS"
+scope = "image"
+class = "public"
 toml = "executor.action_clients"
 type = "int"
 prompt = "Callback slots to budget at ActionClient size (-1 = derive)"
@@ -108,6 +139,8 @@ read the advisory, then set this. Issue 0900.
 
 [[knob]]
 id = "EXECUTOR_ARENA_SIZE"
+scope = "image"
+class = "public"
 toml = "executor.arena_size"
 type = "int"
 prompt = "Executor arena size in bytes (0 = derive)"
@@ -141,6 +174,8 @@ registration that does not fit, not at link.
 
 [[knob]]
 id = "EXECUTOR_BACKING_U64S"
+scope = "image"
+class = "public"
 toml = "executor.backing_u64s"
 type = "int"
 prompt = "Executor backing reservation in 64-bit words (-1 = derive, 0 = none)"
@@ -199,6 +234,8 @@ linker price them.
 
 [[knob]]
 id = "EXECUTOR_EXTRA_SESSIONS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Extra-session slots per executor (-1 = derive)"
 kconfig_attrs = [
@@ -220,6 +257,8 @@ backend that allows it); a full table is NodeError::NodeTableFull.
 
 [[knob]]
 id = "EXECUTOR_MAX_AGE_MONITORS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Contract-monitor age rows per executor (-1 = derive)"
 kconfig_attrs = [
@@ -236,6 +275,8 @@ terms, and a longer table is refused naming this knob.
 
 [[knob]]
 id = "EXECUTOR_MAX_CBS"
+scope = "image"
+class = "public"
 toml = "executor.max_cbs"
 type = "int"
 prompt = "Maximum executor callback slots (-1 = derive)"
@@ -280,6 +321,8 @@ the plumbing.
 
 [[knob]]
 id = "EXECUTOR_MAX_MONITORS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Contract-monitor rate/latency rows per executor (-1 = derive)"
 kconfig_attrs = [
@@ -303,6 +346,8 @@ NROS_CPP_RET_FULL; a Rust entry fails to compile), never truncated.
 
 [[knob]]
 id = "EXECUTOR_MAX_NODES"
+scope = "image"
+class = "public"
 toml = "executor.max_nodes"
 type = "int"
 prompt = "Maximum nodes per executor (-1 = derive)"
@@ -316,6 +361,8 @@ Phase 104.C.2).
 
 [[knob]]
 id = "EXECUTOR_MAX_SC"
+scope = "image"
+class = "public"
 toml = "executor.max_sc"
 type = "int"
 prompt = "Maximum scheduling-context slots per executor (-1 = derive)"
@@ -340,6 +387,8 @@ create_sched_context, which names this knob.
 
 [[knob]]
 id = "EXECUTOR_MAX_SHUTDOWN_CBS"
+scope = "image"
+class = "public"
 toml = "executor.max_shutdown_cbs"
 type = "int"
 prompt = "Shutdown-hook slots per phase"
@@ -362,6 +411,8 @@ things to park on the way down. Overflow is reported at registration
 
 [[knob]]
 id = "EXECUTOR_MAX_VIOLATIONS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Contract-violation ring depth per executor"
 kconfig_attrs = [
@@ -384,6 +435,8 @@ the record. Raise it only when a burst must be kept whole.
 
 [[knob]]
 id = "EXECUTOR_RUNTIME_REMAPS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Runtime remap-table slots per executor (-1 = derive)"
 kconfig_attrs = [
@@ -406,9 +459,15 @@ NROS_CPP_RET_FULL); state a count here to restore runtime slots.
 
 [[knob]]
 id = "FREERTOS_APP_STACK_KB"
+scope = "board"
+class = "carrier"
+carries = "memory.app_stack_bytes"
 
 [[knob]]
 id = "FREERTOS_HEAP_KB"
+scope = "board"
+class = "carrier"
+carries = "memory.heap_bytes"
 
 # Issue 2507 -- 0 builds a FreeRTOS kernel that does not reprogram the
 # board's task stack guard on a context switch (MPS2-AN385: an MPU region
@@ -420,6 +479,8 @@ id = "FREERTOS_TASK_STACK_GUARD"
 
 [[knob]]
 id = "GRAPH_MAX_ENTITIES"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -452,14 +513,20 @@ answer.
 
 [[knob]]
 id = "KEYEXPR_STRING_SIZE"
+scope = "image"
+class = "public"
 toml = "zenoh.limits.keyexpr_string_size"
 
 [[knob]]
 id = "LET_BUFFER_SIZE"
+scope = "image"
+class = "public"
 toml = "runtime.let_buffer_size"
 
 [[knob]]
 id = "LOG_BUFFER_SIZE"
+scope = "image"
+class = "public"
 toml = "log.buffer_size"
 type = "int"
 prompt = "nros-log per-call formatting buffer (bytes)"
@@ -479,6 +546,8 @@ deprecated buffer-size-<N> cargo features.
 
 [[knob]]
 id = "LOG_DYNAMIC_LOGGERS"
+scope = "image"
+class = "public"
 toml = "log.dynamic_loggers"
 type = "int"
 prompt = "Loggers nros-log may create at run time"
@@ -504,6 +573,8 @@ this Kconfig value outranks it, and the environment outranks both.
 
 [[knob]]
 id = "LOG_EARLY_RECORDS"
+scope = "image"
+class = "public"
 toml = "log.early_records"
 type = "int"
 prompt = "nros-log records held for delivery"
@@ -523,6 +594,8 @@ Replaces the deprecated early-records-<N> cargo features.
 
 [[knob]]
 id = "LOG_MAX_LEVEL"
+scope = "image"
+class = "public"
 toml = "log.max_level"
 type = "int"
 # A project or board may also write the level's name; the index is the value.
@@ -546,6 +619,8 @@ beneath it. Replaces the retired max-level-* cargo features.
 
 [[knob]]
 id = "LOG_ROSOUT_RECORDS"
+scope = "image"
+class = "public"
 toml = "log.rosout_records"
 type = "int"
 prompt = "nros-log /rosout queue depth"
@@ -563,6 +638,8 @@ cargo features.
 
 [[knob]]
 id = "MAX_ARRAY_LEN"
+scope = "image"
+class = "public"
 toml = "params.max_array_len"
 type = "int"
 prompt = "Array parameter capacity in elements (-1 = derive)"
@@ -582,6 +659,8 @@ declaration the crate default of 32 stands.
 
 [[knob]]
 id = "MAX_BYTE_ARRAY_LEN"
+scope = "image"
+class = "public"
 toml = "params.max_byte_array_len"
 type = "int"
 prompt = "Byte-array parameter capacity in bytes (-1 = derive)"
@@ -599,6 +678,8 @@ the crate default of 256 stands.
 
 [[knob]]
 id = "MAX_PARAMETERS"
+scope = "image"
+class = "public"
 toml = "params.max_parameters"
 type = "int"
 prompt = "Maximum declared parameters per image (-1 = derive)"
@@ -621,6 +702,8 @@ crate default of 32. Stating a number here WINS.
 
 [[knob]]
 id = "MAX_PARAM_CONSTRAINTS_LEN"
+scope = "image"
+class = "public"
 toml = "params.max_param_constraints_len"
 type = "int"
 prompt = "Parameter additional_constraints capacity in bytes"
@@ -647,6 +730,8 @@ naming this knob.
 
 [[knob]]
 id = "MAX_PARAM_DESCRIPTION_LEN"
+scope = "image"
+class = "public"
 toml = "params.max_param_description_len"
 type = "int"
 prompt = "Parameter description capacity in bytes"
@@ -668,6 +753,8 @@ character boundary and logged once per parameter, naming this knob.
 
 [[knob]]
 id = "MAX_PARAM_NAME_LEN"
+scope = "image"
+class = "public"
 toml = "params.max_param_name_len"
 type = "int"
 prompt = "Longest parameter name in bytes (-1 = derive)"
@@ -706,6 +793,8 @@ the crate default of 32 stands.
 
 [[knob]]
 id = "MAX_STRING_VALUE_LEN"
+scope = "image"
+class = "public"
 toml = "params.max_string_value_len"
 type = "int"
 prompt = "String parameter capacity in bytes (-1 = derive)"
@@ -729,6 +818,8 @@ declaration the crate default of 256 stands.
 
 [[knob]]
 id = "PARAM_EVENTS_DEPTH"
+scope = "image"
+class = "public"
 toml = "params.param_events_depth"
 type = "int"
 prompt = "/parameter_events publisher history depth"
@@ -747,6 +838,8 @@ matches.
 
 [[knob]]
 id = "PARAM_SERVICE_BUFFER_SIZE"
+scope = "image"
+class = "public"
 toml = "executor.param_service_buffer_size"
 type = "int"
 prompt = "Parameter service request/reply buffer size (bytes) (-1 = derive)"
@@ -769,6 +862,8 @@ once per service.
 
 [[knob]]
 id = "PARAM_SERVICE_INBOX_BYTES"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
 kconfig_attrs = [
@@ -804,6 +899,8 @@ Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
 
 [[knob]]
 id = "PARAM_SERVICE_INBOX_DEPTH"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Parameter/lifecycle service inbox ring depth"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -825,6 +922,8 @@ Must be >= 1. Maps to NROS_PARAM_SERVICE_INBOX_DEPTH.
 
 [[knob]]
 id = "PUBSUB_QOS_DEPTH"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "QoS history depth the arena budgets per subscription"
 kconfig_attrs = [
@@ -857,6 +956,8 @@ spin -- so raise it, or state the depths, rather than trimming it to fit.
 
 [[knob]]
 id = "RMW_LOCAL_QUERYABLE"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Same-session query delivery (-1 = derive, 0 = off, 1 = on)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -893,18 +994,26 @@ names no backend (RFC-0071). Only the zenoh backend consumes it.
 
 [[knob]]
 id = "RMW_MAX_BACKENDS"
+scope = "image"
+class = "public"
 toml = "rmw.max_backends"
 
 [[knob]]
 id = "RMW_MAX_NODES"
+scope = "image"
+class = "public"
 toml = "rmw.max_nodes"
 
 [[knob]]
 id = "RMW_MESSAGE_INFO_SLOTS"
+scope = "image"
+class = "public"
 toml = "rmw.message_info_slots"
 
 [[knob]]
 id = "RMW_SUBSCRIBER_SLOTS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Static subscription-handle slots (no_std targets) (-1 = derive)"
 kconfig_attrs = [
@@ -935,26 +1044,38 @@ carrying either must state this knob.
 
 [[knob]]
 id = "RMW_SUBSCRIBER_SLOT_BYTES"
+scope = "image"
+class = "public"
 toml = "rmw.subscriber_slot_bytes"
 
 [[knob]]
 id = "RUNTIME_COMPONENT_SLOT_BYTES"
+scope = "image"
+class = "public"
 toml = "runtime.component_slot_bytes"
 
 [[knob]]
 id = "RUNTIME_MAX_CELL_ENTITIES"
+scope = "image"
+class = "public"
 toml = "runtime.max_cell_entities"
 
 [[knob]]
 id = "RUNTIME_MAX_CLASS_INSTANCES"
+scope = "image"
+class = "public"
 toml = "runtime.max_class_instances"
 
 [[knob]]
 id = "RUNTIME_MAX_COMPONENTS"
+scope = "image"
+class = "public"
 toml = "runtime.max_components"
 
 [[knob]]
 id = "SERVICE_INBOX_BYTES"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Service inbox slot size (bytes, -1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -986,6 +1107,8 @@ plus a fixed header; the map (just mem-report) prices it exactly.
 
 [[knob]]
 id = "SERVICE_INBOX_DEPTH"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Service inbox ring depth"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1002,35 +1125,49 @@ NROS_SERVICE_INBOX_DEPTH.
 
 [[knob]]
 id = "SERVICE_TIMEOUT_MS"
+scope = "image"
+class = "public"
 toml = "zenoh.limits.service_timeout_ms"
 
 [[knob]]
 id = "SMOLTCP_BUFFER_SIZE"
+scope = "board"
+class = "public"
 legacy = ["ZPICO_SMOLTCP_BUFFER_SIZE"]
 toml = "net.buffer_size"
 
 [[knob]]
 id = "SMOLTCP_CONNECT_TIMEOUT_MS"
+scope = "board"
+class = "public"
 legacy = ["ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS"]
 toml = "net.connect_timeout_ms"
 
 [[knob]]
 id = "SMOLTCP_MAX_SOCKETS"
+scope = "board"
+class = "public"
 legacy = ["ZPICO_SMOLTCP_MAX_SOCKETS"]
 toml = "net.max_sockets"
 
 [[knob]]
 id = "SMOLTCP_MAX_UDP_SOCKETS"
+scope = "board"
+class = "public"
 legacy = ["ZPICO_SMOLTCP_MAX_UDP_SOCKETS"]
 toml = "net.max_udp_sockets"
 
 [[knob]]
 id = "SMOLTCP_SOCKET_TIMEOUT_MS"
+scope = "board"
+class = "public"
 legacy = ["ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS"]
 toml = "net.socket_timeout_ms"
 
 [[knob]]
 id = "SUBSCRIBER_BUFFER_SIZE"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Per-subscriber static buffer size (-1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1063,6 +1200,8 @@ sample can exceed, which is a SILENT drop on the C++ arena path.
 
 [[knob]]
 id = "SUBSCRIPTION_BUFFER_SIZE"
+scope = "image"
+class = "public"
 toml = "executor.subscription_buffer_size"
 type = "int"
 prompt = "Per-subscription receive buffer size in bytes (-1 = derive)"
@@ -1101,9 +1240,14 @@ derive is the shape that cannot disagree.
 
 [[knob]]
 id = "THREADX_APP_STACK_KB"
+scope = "board"
+class = "carrier"
+carries = "memory.app_stack_bytes"
 
 [[knob]]
 id = "XRCE_BUFFER_SIZE"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Per-slot static buffer size"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1127,12 +1271,18 @@ when only one of them needs the room.
 # `[image.<id>.knobs.xrce]` rung states one where a person must.
 [[knob]]
 id = "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE"
+scope = "image"
+class = "public"
 
 [[knob]]
 id = "XRCE_BUILTIN_SERVICE_SERVERS"
+scope = "image"
+class = "public"
 
 [[knob]]
 id = "XRCE_CUSTOM_TRANSPORT_MTU"
+scope = "board"
+class = "public"
 toml = "xrce.custom_transport_mtu"
 type = "int"
 prompt = "XRCE custom-transport MTU"
@@ -1156,6 +1306,8 @@ different frame budgets.
 
 [[knob]]
 id = "XRCE_MAX_SERVICE_CLIENTS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Maximum concurrent service clients"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1175,6 +1327,8 @@ both counts, the crate default of 4 stands. Stating a number wins.
 
 [[knob]]
 id = "XRCE_MAX_SERVICE_SERVERS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Maximum concurrent service servers"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1194,6 +1348,8 @@ derived answer here (issue 1033). Stating a number wins over both.
 
 [[knob]]
 id = "XRCE_MAX_SUBSCRIBERS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Maximum concurrent subscribers"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1221,6 +1377,8 @@ image, allocated from the Zephyr heap in a single request.
 
 [[knob]]
 id = "XRCE_SERVICE_REPLY_BUFFER_SIZE"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Service-client reply slot size"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1241,6 +1399,8 @@ says which. Stating a number wins.
 
 [[knob]]
 id = "XRCE_SERVICE_REQUEST_BUFFER_SIZE"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Service-server request ring entry size"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1270,6 +1430,8 @@ fragments of the transport MTU) fails the build.
 
 [[knob]]
 id = "XRCE_STREAM_HISTORY"
+scope = "image"
+class = "public"
 toml = "xrce.stream_history"
 type = "int"
 prompt = "Reliable stream history depth"
@@ -1297,6 +1459,8 @@ started working. Raise or lower deliberately, not as a side effect.
 
 [[knob]]
 id = "XRCE_SUBSCRIBER_BUFFER_SIZE"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Subscriber ring entry size"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1325,6 +1489,8 @@ one of the two alone can make the pool LARGER.
 
 [[knob]]
 id = "XRCE_SUBSCRIBER_RING_DEPTH"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "Queued samples per subscriber"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1364,6 +1530,8 @@ can drop it to 1 and save 31/32 of every subscriber slot.
 
 [[knob]]
 id = "XRCE_TRANSPORT_MTU"
+scope = "board"
+class = "public"
 type = "int"
 prompt = "XRCE transport MTU"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1398,11 +1566,15 @@ Kconfig symbol to reach it.
 
 [[knob]]
 id = "ZENOH_BATCH_MULTICAST_SIZE"
+scope = "board"
+class = "public"
 legacy = ["ZPICO_BATCH_MULTICAST_SIZE"]
 toml = "zenoh.wire.batch_multicast_size"
 
 [[knob]]
 id = "ZENOH_BATCH_UNICAST_SIZE"
+scope = "board"
+class = "public"
 legacy = ["ZPICO_BATCH_UNICAST_SIZE"]
 kconfig = "NROS_BATCH_UNICAST_SIZE"
 toml = "zenoh.wire.batch_unicast_size"
@@ -1419,14 +1591,20 @@ Maps to ZPICO_BATCH_UNICAST_SIZE.
 
 [[knob]]
 id = "ZENOH_CONNECT_FOREVER"
+scope = "image"
+class = "public"
 toml = "zenoh.limits.connect_forever"
 
 [[knob]]
 id = "ZENOH_CONNECT_TIMEOUT_MS"
+scope = "image"
+class = "public"
 toml = "zenoh.limits.connect_timeout_ms"
 
 [[knob]]
 id = "ZENOH_FRAG_MAX_SIZE"
+scope = "board"
+class = "public"
 legacy = ["ZPICO_FRAG_MAX_SIZE"]
 kconfig = "NROS_FRAG_MAX_SIZE"
 toml = "zenoh.wire.frag_max_size"
@@ -1443,6 +1621,8 @@ Maps to ZPICO_FRAG_MAX_SIZE.
 
 [[knob]]
 id = "ZENOH_GET_POLL_INTERVAL_MS"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_GET_POLL_INTERVAL_MS"]
 kconfig = "NROS_GET_POLL_INTERVAL_MS"
 toml = "zenoh.wire.get_poll_interval_ms"
@@ -1459,6 +1639,8 @@ Maps to ZPICO_GET_POLL_INTERVAL_MS.
 
 [[knob]]
 id = "ZENOH_GET_REPLY_BUF_SIZE"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_GET_REPLY_BUF_SIZE"]
 kconfig = "NROS_GET_REPLY_BUF_SIZE"
 toml = "zenoh.wire.get_reply_buf_size"
@@ -1475,6 +1657,8 @@ Maps to ZPICO_GET_REPLY_BUF_SIZE.
 
 [[knob]]
 id = "ZENOH_GRAPH_CACHE_SIZE"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_GRAPH_CACHE_SIZE"]
 kconfig = "NROS_GRAPH_CACHE_SIZE"
 type = "int"
@@ -1509,6 +1693,8 @@ drop count rather than as a wrong answer.
 
 [[knob]]
 id = "ZENOH_GRAPH_DISCOVERY"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_GRAPH_DISCOVERY"]
 type = "bool"
 prompt = "Keep a graph cache (liveliness subscriber on the whole domain)"
@@ -1554,6 +1740,8 @@ compiles an IP link keeps the old default.
 
 [[knob]]
 id = "ZENOH_LEASE_PRIORITY"
+scope = "image"
+class = "retired"
 legacy = ["ZPICO_LEASE_TASK_PRIORITY"]
 # RFC-0110 D2: zenoh-pico 1.10 runs the lease and keep-alive as futures on the
 # executor thread, so the lease task this knob prioritised does not exist. The
@@ -1562,6 +1750,8 @@ retired = "zenoh-pico 1.10 runs the lease and keep-alive on its executor thread,
 
 [[knob]]
 id = "ZENOH_MAX_LARGE_SUBSCRIBERS"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_MAX_LARGE_SUBSCRIBERS"]
 kconfig = "NROS_MAX_LARGE_SUBSCRIBERS"
 type = "int"
@@ -1596,6 +1786,8 @@ NROS_SUBSCRIBER_BUFFER_SIZE for the rest of that caveat.
 
 [[knob]]
 id = "ZENOH_MAX_LIVELINESS"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_MAX_LIVELINESS"]
 kconfig = "NROS_MAX_LIVELINESS"
 type = "int"
@@ -1626,6 +1818,8 @@ state it.
 
 [[knob]]
 id = "ZENOH_MAX_PENDING_GETS"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_MAX_PENDING_GETS"]
 kconfig = "NROS_MAX_PENDING_GETS"
 type = "int"
@@ -1641,6 +1835,8 @@ Maps to ZPICO_MAX_PENDING_GETS.
 
 [[knob]]
 id = "ZENOH_MAX_PUBLISHERS"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_MAX_PUBLISHERS"]
 kconfig = "NROS_MAX_PUBLISHERS"
 type = "int"
@@ -1670,6 +1866,8 @@ carrying either must state this knob.
 
 [[knob]]
 id = "ZENOH_MAX_QUERYABLES"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_MAX_QUERYABLES"]
 kconfig = "NROS_MAX_QUERYABLES"
 type = "int"
@@ -1709,10 +1907,14 @@ Two nodes already need 12, which is over the historical default of 8.
 
 [[knob]]
 id = "ZENOH_MAX_SESSIONS"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_MAX_SESSIONS"]
 
 [[knob]]
 id = "ZENOH_MAX_SUBSCRIBERS"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_MAX_SUBSCRIBERS"]
 kconfig = "NROS_MAX_SUBSCRIBERS"
 type = "int"
@@ -1742,14 +1944,20 @@ carrying either must state this knob.
 
 [[knob]]
 id = "ZENOH_MAX_TL_PUBLISHERS"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_MAX_TL_PUBLISHERS"]
 
 [[knob]]
 id = "ZENOH_PUBLISHER_TX_BUFFER_SIZE"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_PUBLISHER_TX_BUFFER_SIZE"]
 
 [[knob]]
 id = "ZENOH_READ_PRIORITY"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_READ_TASK_PRIORITY"]
 type = "int"
 prompt = "zenoh-pico read task priority (normalised band, 0-255)"
@@ -1800,6 +2008,8 @@ modes with real cost — see issues 0506 and 0623 before changing it.
 
 [[knob]]
 id = "ZENOH_RX_TASK_BUDGET_FRAMES"
+scope = "image"
+class = "public"
 toml = "zenoh.wire.rx_task_budget_frames"
 type = "int"
 prompt = "zenoh read task frame budget (-1 = derive, else unbounded)"
@@ -1828,6 +2038,8 @@ sched_task's slack. Maps to Z_RX_TASK_BUDGET_FRAMES.
 
 [[knob]]
 id = "ZENOH_RX_TASK_BUDGET_REST_US"
+scope = "image"
+class = "public"
 toml = "zenoh.wire.rx_task_budget_rest_us"
 type = "int"
 prompt = "zenoh read task rest after a full budget (us, -1 = derive)"
@@ -1854,6 +2066,9 @@ Maps to Z_RX_TASK_BUDGET_REST_US.
 
 [[knob]]
 id = "ZENOH_SERVICE_BUFFER_SIZE"
+scope = "image"
+class = "carrier"
+carries = "SERVICE_INBOX_BYTES"
 legacy = ["ZPICO_SERVICE_BUFFER_SIZE"]
 kconfig = "NROS_SERVICE_BUFFER_SIZE"
 type = "int"
@@ -1871,6 +2086,8 @@ Maps to ZPICO_SERVICE_BUFFER_SIZE.
 
 [[knob]]
 id = "ZENOH_SOCKET_TIMEOUT_MS"
+scope = "image"
+class = "public"
 type = "int"
 prompt = "zenoh-pico socket recv timeout (ms)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1891,6 +2108,8 @@ read-task wakeups.
 
 [[knob]]
 id = "ZENOH_SUBSCRIBER_LARGE_SIZE"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_SUBSCRIBER_LARGE_SIZE"]
 kconfig = "NROS_SUBSCRIBER_LARGE_SIZE"
 type = "int"
@@ -1914,6 +2133,8 @@ The crate default then applies and costs nothing.
 
 [[knob]]
 id = "ZENOH_SUBSCRIBER_RING_DEPTH"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_SUBSCRIBER_RING_DEPTH"]
 kconfig = "NROS_SUBSCRIBER_RING_DEPTH"
 toml = "zenoh.limits.subscriber_ring_depth"
@@ -1934,18 +2155,26 @@ Maps to ZPICO_SUBSCRIBER_RING_DEPTH.
 
 [[knob]]
 id = "ZENOH_SUBSCRIBER_SIZE_THRESHOLD"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_SUBSCRIBER_SIZE_THRESHOLD"]
 
 [[knob]]
 id = "ZENOH_TL_RETAIN_BYTES"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_TL_RETAIN_BYTES"]
 
 [[knob]]
 id = "ZENOH_TL_RETAIN_DEPTH"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_TL_RETAIN_DEPTH"]
 
 [[knob]]
 id = "ZENOH_TX_BATCH"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_TX_BATCH"]
 toml = "zenoh.tx.batch"
 type = "bool"
@@ -1976,6 +2205,8 @@ kconfig_platform_default_drift test asserts the mirror.
 
 [[knob]]
 id = "ZENOH_TX_BATCH_FLUSH_MS"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_TX_BATCH_FLUSH_MS"]
 toml = "zenoh.tx.flush_ms"
 type = "int"
@@ -1998,6 +2229,8 @@ Forwards to zpico.c's ZPICO_TX_BATCH_FLUSH_MS.
 
 [[knob]]
 id = "ZENOH_TX_SPLIT_LOCK"
+scope = "image"
+class = "public"
 legacy = ["ZPICO_TX_SPLIT_LOCK"]
 toml = "zenoh.tx.split_lock"
 type = "bool"
@@ -2021,6 +2254,8 @@ mirrors config/zephyr/nros-platform.toml (drift-tested).
 
 [[knob]]
 id = "ZEPHYR_HEAP_SIZE"
+scope = "board"
+class = "public"
 type = "int"
 prompt = "Application heap arena size (bytes)"
 kconfig_attrs = [
