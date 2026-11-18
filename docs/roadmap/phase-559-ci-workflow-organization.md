@@ -1,8 +1,13 @@
 # Phase 559 — CI workflow organization: 21 files to 13, each split named by a constraint
 
-**Status (2026-11-13). OPEN: W1, W2 and W4 are DONE; W3 and W6 have
-landed, each with a named remainder; W5b waits on issue 2475; W7 and W8
-have not started.** User ruling 2026-11-13, verbatim: "Change weekly.yml to run on
+**Status (2026-11-18). OPEN: W1-W4, W6-W9, W11 and W12 are DONE; W10 was
+dropped by the user's ruling (2026-11-15). Open: W5b, parked on the user
+registering runner labels (#4098 is a draft), and W13, parked until
+triggered. W6 keeps one named remainder: the `ci-base` Dockerfile comment
+still names `probe.yml` until the next change that rebuilds that image.**
+The 2026-11-13 opening of this line read "W3 and W6 have landed, each with
+a named remainder; W7 and W8 have not started", which every item's own
+status line below has since overtaken. User ruling 2026-11-13, verbatim: "Change weekly.yml to run on
 Sundays. The overall organization is good to me. Update phase docs and
 implement it." This phase is the record for how `.github/workflows/` is laid
 out. [RFC-0122](../design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
