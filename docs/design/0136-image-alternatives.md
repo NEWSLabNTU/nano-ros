@@ -11,7 +11,7 @@ superseded-by: null
 
 # RFC-0136 -- Image alternatives: images that never run together may share an address
 
-**Status:** Draft (2026-11-18), for review. Requested through the manager on
+**Status:** Draft (2026-11-18); design approved 2026-11-18, not built yet. Requested through the manager on
 2026-11-18 with the ruling that exclusivity is declared, never inferred.
 
 ## Summary
@@ -129,8 +129,12 @@ fvp-tap`) and share 192.168.10.2; start one of them
 Today `nros run` starts one image per invocation, so it has nothing to check.
 The rule binds the multi-image runners as they land (the RunPlan test harness,
 phase-528 W5; any compose / launch of several images). Two separate
-`nros run` invocations cannot be seen from either, and no run-time lock is
-proposed (see Open questions).
+`nros run` invocations cannot be seen from either.
+
+No run-time lock is needed (ruled 2026-11-18): `nros run` starts one image,
+and every runner that starts several refuses two members of one group, so no
+nano-ros invocation can start two alternatives together. Starting them from
+two invocations by hand is the operator's choice, as with any two images.
 
 ### D5 -- Tests
 
@@ -174,12 +178,10 @@ network file, mirroring the motivating case.
 
 ## Open questions
 
-1. Should `nros run` keep a per-workspace marker of a running member, so a
-   second `nros run` of another member warns? Proposed: no, until a user
-   reports running two by mistake.
-2. Should `nros image list` / `show` (RFC-0133) print an image's group?
+1. Should `nros image list` / `show` (RFC-0133) print an image's group?
    Proposed: yes, as a column, when RFC-0133 lands.
 
 ## Changelog
 
 - 2026-11 -- created (issue 2690).
+- 2026-11 -- approved; the run-time lock question answered in D4 (no lock).
