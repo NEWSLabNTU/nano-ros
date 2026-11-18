@@ -65,6 +65,10 @@ pub struct SeedModels {
     instances: Vec<Instance>,
 }
 
+/// One instance of a disagreeing set: its FQN, the model it came from, and
+/// the launch values it resolves to.
+pub type DisagreeingInstance = (String, String, Vec<(String, String)>);
+
 /// What the probe of one component is seeded with (D2).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Seeding {
@@ -80,7 +84,7 @@ pub enum Seeding {
     /// The instances resolve to different values.
     Disagree {
         /// `(fqn, model path, values)` per instance.
-        instances: Vec<(String, String, Vec<(String, String)>)>,
+        instances: Vec<DisagreeingInstance>,
         /// The keys on which they differ.
         keys: Vec<String>,
         sources: Vec<SeedSource>,
@@ -241,7 +245,7 @@ impl SeedModels {
             .collect();
         keys.sort();
         keys.dedup();
-        let mut rows: Vec<(String, String, Vec<(String, String)>)> = mine
+        let mut rows: Vec<DisagreeingInstance> = mine
             .iter()
             .map(|i| {
                 (
