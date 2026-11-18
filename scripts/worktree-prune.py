@@ -47,7 +47,6 @@ Dry run by default.
 
 Every invocation runs the self-test first and refuses to act if it fails.
 """
-import fnmatch
 import json
 import os
 import shutil
@@ -171,38 +170,6 @@ def unpushed(path, urls=()):
     return p.stdout.split() if p.returncode == 0 else left
 
 
-# Untracked paths that nano-ros's OWN build writes into a nested repository
-# whose `.gitignore` does not cover them, per nested-repo path. `git status`
-# already leaves out what the nested repo ignores (NuttX's kernel `.config`,
-# objects and `System.map`), so only these remain. Each is a known generated
-# path, never a pattern for "anything": an untracked file not listed here may
-# be a user's new source and stays a refusal. Producers:
-#   third-party/nuttx/nuttx  packages/api/nros-c/cmake/nros-nuttx.cmake and
-#                            just/nuttx.just (`.nros-nuttx-build-head*`,
-#                            `.nros-nuttx-build.lock`, the
-#                            `nros-nuttx-export-<config id>/` snapshots)
-NROS_GENERATED_IN_NESTED = {
-    "third-party/nuttx/nuttx": (
-        ".nros-nuttx-build-head", ".nros-nuttx-build-head-*", ".nros-nuttx-build.lock",
-        "nros-nuttx-export-*/",
-    ),
-}
-
-
-def _is_nros_generated(rel, entry):
-    """Is the untracked porcelain `entry` (a path in the nested repo at `rel`)
-    one of nano-ros's known build outputs? Top-level names only: the
-    producers write at the nested repo's root."""
-    for pat in NROS_GENERATED_IN_NESTED.get(rel, ()):
-        is_dir = pat.endswith("/")
-        name = entry.rstrip("/")
-        if "/" in name or is_dir != entry.endswith("/"):
-            continue
-        if fnmatch.fnmatchcase(name, pat.rstrip("/")):
-            return True
-    return False
-
-
 PIN_HISTORY_LIMIT = 500
 
 
@@ -232,9 +199,10 @@ def nested_problem(path, urls=(), rel="", pins=lambda: ()):
     st = git(["status", "--porcelain=v1", "--ignore-submodules=none"], path, check=False)
     if st.returncode != 0:
         return "status unreadable"
-    left = [l for l in st.stdout.splitlines()
-            if not (l.startswith("?? ") and _is_nros_generated(rel, l[3:]))]
-    if left:
+    # Issue 2622 -- nano-ros's NuttX build no longer writes into the tree
+    # (its state lives beside it, `scripts/lib/nuttx-state.sh`), so every
+    # untracked path here is a refusal: nothing is excused by name.
+    if st.stdout.strip():
         return "has uncommitted changes"
     # Cheapest proof first: local remote-tracking refs, then main's recorded
     # pins (offline), and only then the remotes themselves.
@@ -612,8 +580,8 @@ def self_test():
             G("fetch", "-q", "origin", "refs/tags/v1", cwd=p / "vendor")
             G("checkout", "-q", "--detach", "FETCH_HEAD", cwd=p / "vendor")
             commit(p / "vendor", "mine"); cases["nesttaglocal"] = "skip:on none of its remotes"
-            # 19 a NuttX-shaped nested repo at the known path, holding its OWN
-            #    ignored kernel outputs and nano-ros's listed build outputs -> remove
+            # 19 a NuttX-shaped nested repo holding only its OWN ignored kernel
+            #    outputs -> remove (nano-ros's state lives beside it, issue 2622)
             G("init", "-q", "--bare", "-b", "main", str(t / "nuttx.git"), cwd=t)
             G("clone", "-q", str(t / "nuttx.git"), str(t / "nuttxw"), cwd=t)
             (t / "nuttxw" / ".gitignore").write_text(".config\n*.o\n")
@@ -628,19 +596,15 @@ def self_test():
                 p = wt(name); G("submodule", "update", "-q", "--init", "third-party/nuttx/nuttx", cwd=p)
                 n = p / "third-party" / "nuttx" / "nuttx"
                 (n / ".config").write_text("CONFIG_X=y\n"); (n / "k.o").write_text("o")
-                (n / ".nros-nuttx-build-head").write_text("h"); (n / ".nros-nuttx-build-head-arm").write_text("h")
-                (n / ".nros-nuttx-build.lock").write_text("")
-                (n / "nros-nuttx-export-arm" / "include").mkdir(parents=True)
-                (n / "nros-nuttx-export-arm" / "include" / "x.h").write_text("x")
                 if extra:
                     (n / extra).write_text("user source")
                 return p
             nuttxlike("nuttxgen"); cases["nuttxgen"] = "remove"
-            # 20 the same, plus one untracked file nano-ros does not generate -> skip
+            # 20 the same, plus one untracked file -> skip
             nuttxlike("nuttxuser", extra="my_driver.c"); cases["nuttxuser"] = "skip:uncommitted changes"
-            # 21 the generated names do not excuse a nested repo at ANOTHER path -> skip
-            p = wt("gennotnuttx"); G("clone", "-q", str(t / "sub.git"), str(p / "vendor"), cwd=t)
-            (p / "vendor" / ".nros-nuttx-build.lock").write_text(""); cases["gennotnuttx"] = "skip:uncommitted changes"
+            # 21 an old build's in-tree state (before issue 2622) is no longer
+            #    excused by name -> skip until the next NuttX build retires it
+            p = nuttxlike("nuttxold", extra=".nros-nuttx-build.lock"); cases["nuttxold"] = "skip:uncommitted changes"  # nuttx-state-literal-ok: an old in-tree lock
             # 22 a submodule whose clone's origin is STALE, is a repo that never
             #    held the pin, and is not the declared URL, at exactly the
             #    gitlink main records -> remove, with no remote asked.

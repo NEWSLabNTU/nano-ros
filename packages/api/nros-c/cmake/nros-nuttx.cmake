@@ -83,6 +83,17 @@ if(NOT COMMAND nros_resolve_carve_out_profile)
     endif()
 endif()
 
+# Issue 2622 — the export snapshot `build-nuttx.sh` writes for config <id>:
+# `<tree>.nros-build/nros-nuttx-export-<id>`, BESIDE the NuttX tree, never in
+# it (the tree is a vendored submodule). The cmake spelling of
+# `nros_build_paths::nuttx_export_snapshot`; `check-nuttx-state-outside-tree`
+# holds the spellings together.
+function(nros_nuttx_export_snapshot out_var nuttx_dir id)
+    get_filename_component(_nnes_parent "${nuttx_dir}" DIRECTORY)
+    get_filename_component(_nnes_name "${nuttx_dir}" NAME)
+    set(${out_var} "${_nnes_parent}/${_nnes_name}.nros-build/nros-nuttx-export-${id}" PARENT_SCOPE)
+endfunction()
+
 # issue 1541 — `nros_resolve_board_facts`, the ONE resolver every other lane
 # delivers board facts through (`nros dev image board-facts`). File scope for the same
 # reason as above; include_guard(GLOBAL) makes it a no-op when already loaded.
@@ -557,7 +568,7 @@ function(nros_nuttx_build_example)
     elseif(NROS_NUTTX_DEFCONFIG)
         get_filename_component(_nnbe_cfg_dir "${NROS_NUTTX_DEFCONFIG}" DIRECTORY)
         get_filename_component(_nnbe_cfg_id "${_nnbe_cfg_dir}" NAME)
-        set(_nnbe_export_dir "${NUTTX_DIR}/nros-nuttx-export-${_nnbe_cfg_id}")
+        nros_nuttx_export_snapshot(_nnbe_export_dir "${NUTTX_DIR}" "${_nnbe_cfg_id}")
     else()
         message(FATAL_ERROR
             "nros_nuttx_build_example(${_NNBE_NAME}): the board overlay names no "

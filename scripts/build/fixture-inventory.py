@@ -376,7 +376,7 @@ def prerequisite_rows():
             "kind": "preflight",
             "role": "kernel-export",
             "dir": "scripts/nuttx/build-nuttx.sh",
-            "build_root": "$NUTTX_DIR/nros-nuttx-export-<arch>",
+            "build_root": "$NUTTX_DIR.nros-build/nros-nuttx-export-<arch>",  # nuttx-state-literal-ok: describes the layout
             "scheduler": "just nuttx build-fixtures -> just nuttx build",
             # phase-339 — the shared mutation is GONE. The kernel still builds
             # in one tree (NuttX holds a single `.config`), but consumers link a

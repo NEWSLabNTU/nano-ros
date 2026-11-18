@@ -42,7 +42,8 @@ fn snapshot_arch(target_arch: &str) -> Option<&'static str> {
 ///
 /// Resolution order:
 /// 1. `$NUTTX_EXPORT_DIR` — explicit override (a caller that already knows).
-/// 2. `$NUTTX_DIR/nros-nuttx-export-<arch>` for this target's arch.
+/// 2. the tree's `nros-nuttx-export-<arch>` snapshot for this target's arch
+///    (`nros_build_paths::nuttx_export_snapshot`, beside the tree).
 ///
 /// Emits the `rerun-if-changed` its own inputs need. Callers add more for the
 /// specific paths they consume.
@@ -62,7 +63,7 @@ pub fn snapshot_root(nuttx_dir: &Path) -> Option<PathBuf> {
     }
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").ok()?;
     let arch = snapshot_arch(&target_arch)?;
-    let p = nuttx_dir.join(format!("nros-nuttx-export-{arch}"));
+    let p = nros_build_paths::nuttx_export_snapshot(nuttx_dir, arch);
     // issue 0477 — watch the candidate WHETHER OR NOT it exists. A
     // `rerun-if-changed` on a path cargo cannot find still registers: the
     // artifact is invalidated when that path later APPEARS. Without this line
@@ -175,7 +176,7 @@ pub fn include_root(nuttx_dir: &Path) -> PathBuf {
 pub fn cpu_flags(nuttx_dir: &Path) -> Option<Vec<String>> {
     let root = snapshot_root(nuttx_dir).or_else(|| {
         let arch = snapshot_arch(&std::env::var("CARGO_CFG_TARGET_ARCH").ok()?)?;
-        Some(nuttx_dir.join(format!("nros-nuttx-export-{arch}")))
+        Some(nros_build_paths::nuttx_export_snapshot(nuttx_dir, arch))
     })?;
     let defs = nros_build_paths::nuttx_export_make_defs(&root);
     println!("cargo:rerun-if-changed={}", defs.display());

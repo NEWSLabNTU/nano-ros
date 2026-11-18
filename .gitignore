@@ -304,6 +304,9 @@ packages/core/*/include/nros/.*.tmp.*
 .agents/
 skills-lock.json
 third-party/ros/
+# Issue 2622 — nano-ros's own state for a NuttX tree (lock, markers, export
+# snapshots), kept BESIDE the vendored tree (`scripts/lib/nuttx-state.sh`).
+/third-party/nuttx/*.nros-build/
 
 # The Zephyr lane's Python interpreter. `scripts/zephyr/setup.sh` deliberately
 # does NOT install Python prerequisites — choosing between a distro package,

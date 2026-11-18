@@ -25,7 +25,7 @@ Homes:
   make road offering Cyclone DDS in Kconfig while it builds no Cyclone image
   (not yet a work item).
 
-Related, not homed here: [issue 2622](../issues/2622-nuttx-build-writes-into-vendored-tree.md),
+Related, not homed here: [issue 2622](../issues/archived/2622-nuttx-build-writes-into-vendored-tree.md),
 nano-ros's build markers, lock and export snapshots, written into the vendored
 NuttX tree. It is open, has no work item, and is routed to this phase's
 owner.

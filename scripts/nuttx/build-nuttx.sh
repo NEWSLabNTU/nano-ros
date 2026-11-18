@@ -130,8 +130,17 @@ cd "$NUTTX_DIR"
 # against the *single shared* in-tree NuttX; without a lock their `make` /
 # `make export` race (duplicate export dir, `.version.tmp` clobber). The lock +
 # the up-to-date short-circuit below make all-but-the-first invocation a no-op.
-exec 9>".nros-nuttx-build.lock"
+#
+# Issue 2622 — the lock, the markers and the snapshots are nano-ros's own state
+# and live BESIDE the tree (`scripts/lib/nuttx-state.sh`), never in it.
+# shellcheck source=scripts/lib/nuttx-state.sh
+. "$PROJECT_ROOT/scripts/lib/nuttx-state.sh"
+NROS_NUTTX_STATE="$(nros_nuttx_state_dir "$NUTTX_DIR")"
+mkdir -p "$NROS_NUTTX_STATE"
+exec 9>"$NROS_NUTTX_STATE/build.lock"
 flock 9
+# Under the lock: what a build before issue 2622 left in the tree.
+nros_nuttx_retire_in_tree_state "$NUTTX_DIR"
 
 # Set apps directory for NuttX build system
 export APPDIR="$NUTTX_APPS_DIR"
@@ -189,10 +198,10 @@ if [ -z "$NUTTX_CONFIG_ID" ] || [ "$NUTTX_CONFIG_ID" = "." ]; then
     echo "build-nuttx.sh: cannot derive a config id from '$DEFCONFIG' — expected .../<id>/defconfig" >&2
     exit 1
 fi
-NUTTX_SNAPSHOT="nros-nuttx-export-${NUTTX_CONFIG_ID}"
+NUTTX_SNAPSHOT="$(nros_nuttx_export_snapshot "$NUTTX_DIR" "$NUTTX_CONFIG_ID")"
 NUTTX_SNAPSHOT_KEY="${NUTTX_SNAPSHOT}/.nros-export-key"
 
-MARKER=".nros-nuttx-build-head-${NUTTX_CONFIG_ID}"
+MARKER="$NROS_NUTTX_STATE/build-head-${NUTTX_CONFIG_ID}"
 CURRENT_HEAD=$(git -C "$NUTTX_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 # 194.5: key the marker on the NuttX HEAD *and* this board's defconfig (content
 # hash) so a board/config switch — not just a submodule-HEAD change — forces a
@@ -408,12 +417,12 @@ if [ -n "$EXPORT_TAR" ]; then
     # freshness is a property of the SNAPSHOT rather than of the shared tree.
     nros_nuttx_write_cargo_cpu_config "$NUTTX_SNAPSHOT" || exit 1
     echo "$CURRENT_KEY" > "$NUTTX_SNAPSHOT_KEY"
-    echo "  Export: $NUTTX_DIR/$NUTTX_SNAPSHOT (arch ${NUTTX_ARCH})"
+    echo "  Export: $NUTTX_SNAPSHOT (arch ${NUTTX_ARCH})"
 else
     echo "  WARNING: make export did not produce a tarball"
 fi
 
 echo ""
 echo "=== Build Complete ==="
-echo "  NuttX export: $NUTTX_DIR/$NUTTX_SNAPSHOT"
+echo "  NuttX export: $NUTTX_SNAPSHOT"
 echo "  An image links against it; \`nros run\` boots the image."

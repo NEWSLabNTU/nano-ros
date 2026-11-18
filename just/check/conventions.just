@@ -475,3 +475,10 @@ cmake-ferried-compile-definitions:
 [private]
 executable-stub-writes:
     @python3 scripts/check/check-executable-stub-writes.py
+
+# Issue 2622 — nano-ros's NuttX build state (lock, markers, export snapshots)
+# lives BESIDE the vendored tree, and every reader reaches it through one
+# locator per language. FAST lane: a git grep and a `cmake -P`.
+[private]
+nuttx-state-outside-tree:
+    @bash scripts/check-nuttx-state-outside-tree.sh

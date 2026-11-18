@@ -10038,7 +10038,7 @@ fn nuttx_trees(nros_root: &Path) -> Option<(PathBuf, Option<PathBuf>)> {
 }
 
 /// phase-550 W3b — the cargo config the kernel step writes beside the export:
-/// `<nuttx>/nros-nuttx-export-<config id>/nros-cargo.toml`, NuttX's CPU flags
+/// `<nuttx>.nros-build/nros-nuttx-export-<config id>/nros-cargo.toml`, NuttX's CPU flags
 /// (`ARCHCPUFLAGS`) as rustflags and cc-rs flags. The config id is the
 /// defconfig's directory name, as `build-nuttx.sh` derives it. Every cargo run
 /// for a NuttX image passes it with `--config`, so no CPU flag is restated.
@@ -10056,7 +10056,7 @@ fn nuttx_cpu_config_path(nros_root: &Path, defconfig: &Path) -> PathBuf {
                 .and_then(Path::file_name)
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            tree.join(format!("nros-nuttx-export-{id}"))
+            nros_build_paths::nuttx_export_snapshot(&tree, &id)
         }
     };
     export.join("nros-cargo.toml")
