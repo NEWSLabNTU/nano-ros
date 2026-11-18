@@ -299,3 +299,26 @@ workaround when this closes:
   or continue unstamped) would let ASI delete that hook.
 * ASI stamps from `std::chrono::system_clock` and measures input ages on the
   same clock; it will move ages to a steady clock on its own side.
+
+## Consumer requirement (ASI, recorded 2026-11-18)
+
+What closes this issue for the ASI consumer, stated as acceptance rather than
+as evidence (the section above is the evidence):
+
+1. **SNTP re-acquire on Zephyr**, with a periodic re-sync interval as a deploy
+   fact, beside the server address and port. The zenoh-HLC source already
+   re-installs; the SNTP path must do the same.
+2. **A stated epoch-failure policy** in place of an application exit: how many
+   attempts, and whether the image then halts or runs with no epoch
+   (`epoch_us() == 0`), chosen by the image, not hard-coded by the board hook.
+3. With both, ASI deletes `clock_resync.cpp`, its board hook's SNTP retry
+   loop and the `std::exit(1)`.
+
+Acceptance, measured on ASI: after an SNTP STEP (the server's time moved
+while the island runs), Autoware's `vehicle_cmd_gate` rejects no island
+command as stale.
+
+Not on ASI's critical path yet. The design is to share one clock seam with
+the board-supplied timestamp clock (phase-575 W6), so SNTP re-acquire, a
+gPTP-disciplined board clock and the default all answer through the same
+symbol.
