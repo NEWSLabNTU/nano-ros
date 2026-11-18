@@ -3411,7 +3411,7 @@ impl<'s> Executor<'s> {
     /// primary node exists: now, if a node is already registered, otherwise
     /// the moment `NodeId::PRIMARY` is (`NodeBuilder::build`). The hook opens
     /// an executor-level entity, so it lands on that node through
-    /// [`Self::entity_identity`] rather than on the executor's own label.
+    /// `entity_identity` rather than on the executor's own label.
     ///
     /// A failure is the REGISTRATION's failure: returned here when the node
     /// exists, or from the `build()` that registers the primary node, which
@@ -3470,7 +3470,7 @@ impl<'s> Executor<'s> {
 
     // RFC-0128 D8.
     /// Open a raw publisher for an executor-level entity, on
-    /// the node [`Self::entity_identity`] gives `None`: the primary node, or
+    /// the node `entity_identity` gives `None`: the primary node, or
     /// the configured name in an image with no node. The `/diagnostics`
     /// reporter's publisher, which used to be a session publisher with no node
     /// at all.
@@ -3610,7 +3610,7 @@ impl<'s> Executor<'s> {
     // RFC-0128 D8 (phase-554 W3 slice B).
     /// [`Self::resolve_entity_name_for`]
     /// against the node the entity is REGISTERED on, as
-    /// [`Self::entity_identity`] gives it: `Some(id)` is that node, `None` the
+    /// `entity_identity` gives it: `Some(id)` is that node, `None` the
     /// primary node (or, in an image with no node, the configured name). The
     /// one rule both remap resolution and announcement follow, so a name is
     /// never resolved against one node and announced under another.
