@@ -10757,10 +10757,13 @@ mod census_funnel_tests {
     /// (`metadata-mode`), so its registry must say so.
     #[test]
     fn the_recorder_has_a_registry_slot_of_its_own() {
-        assert!(
-            nros_rmw_metadata::RECORDER_SLOT,
-            "metadata-mode links nros-rmw-metadata, which must reserve its own slot"
-        );
+        // A constant: checked at compile time, so the build itself refuses it.
+        const {
+            assert!(
+                nros_rmw_metadata::RECORDER_SLOT,
+                "metadata-mode links nros-rmw-metadata, which must reserve its own slot"
+            )
+        };
         assert_eq!(
             nros_rmw_metadata::REGISTRY_SLOTS,
             nros_rmw_metadata::DECLARED_BACKENDS + 1,

@@ -321,7 +321,7 @@ jobs:
     #   check-fast           every event      check fast, submodule-commits-reachable
     #   check-compile-smoke  PR              compile-smoke, rustdoc-links, rustdoc-workspace
     #   check-cli-tests      PR/MG/nightly   launch-resolve-fresh, cli-tests + node-std-tests (PR/MG),
-    #                                        cpp-ffi-tests (MG)
+    #                                        cpp-ffi-tests, built-feature-sets-clippy (MG)
     #   check-workspace-all  PR/MG/nightly   workspace-all
     #   check-test-unit      MG/nightly      test-unit
     #   check-lane-contracts PR/MG/nightly   test-lane-contracts
@@ -1459,6 +1459,17 @@ jobs:
         run: |
           source ./activate.sh
           just check cpp-ffi-tests
+
+      # Issue 2722 -- clippy -D warnings over every feature set a recipe, a
+      # script or a feature lane BUILDS and no clippy site covers. The list is
+      # derived from those build sites, so a set is linted the day a lane
+      # starts building it. Merge group only, beside the other per-batch
+      # compiles: two errors sat on main in a set only a build-tier gate built.
+      - name: just check built-feature-sets-clippy
+        if: ${{ github.event_name == 'merge_group' && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check built-feature-sets-clippy
       - name: sccache stats (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) && always() }}
         run: |
