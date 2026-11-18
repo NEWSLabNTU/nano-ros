@@ -6,7 +6,7 @@ type: bug
 severity: medium
 area: [freertos, threadx, zephyr, rmw]
 found: 2026-11-18
-related: [phase-574]
+related: [phase-574, phase-579]
 ---
 
 ## What
