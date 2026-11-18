@@ -1009,8 +1009,8 @@ pub struct SpinOnceGhost {
 
 /// Ghost model of `SpinOnceResult` with error counters.
 ///
-/// Extends `SpinOnceGhost` with the error counters added in Phase 37.1b.
-/// Used by progress proofs to verify no-silent-data-loss invariant.
+/// Extends `SpinOnceGhost` with its error counters. Used by progress
+/// proofs to verify no-silent-data-loss invariant.
 ///
 /// Source (executor.rs:77-88):
 /// ```ignore
@@ -1097,12 +1097,11 @@ pub struct TimerGhost {
 /// }
 /// ```
 ///
-/// phase-382 W2' — the slots are CALLER-OWNED, so `max` is the borrowed
-/// table's LENGTH, not `MAX_PARAMETERS`. The build-time knob (32 by default)
-/// only picks the size of a `ParameterStorage`, which is the usual — but not
-/// the only — thing a server is handed. `ghost_from_server` reads
-/// `table.capacity()`; a proof that hard-codes 32 is asserting the default
-/// storage, not the type.
+/// The slots are CALLER-OWNED, so `max` is the borrowed table's LENGTH, not
+/// `MAX_PARAMETERS`. The build-time knob (32 by default) only picks the size
+/// of a `ParameterStorage`, which is the usual — but not the only — thing a
+/// server is handed. `ghost_from_server` reads `table.capacity()`; a proof
+/// that hard-codes 32 is asserting the default storage, not the type.
 pub struct ParamServerGhost {
     /// Number of parameters currently stored
     pub count: usize,

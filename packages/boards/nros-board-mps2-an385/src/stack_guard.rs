@@ -1,4 +1,4 @@
-//! The main stack's guard (phase-553 W7, issue 2494).
+//! The main stack's guard.
 //!
 //! `memory.x` gives the main stack a stated size, `_stack_size`, at the top of
 //! RAM, and reserves a 1 KiB guard below it (`_nros_stack_guard`). This module

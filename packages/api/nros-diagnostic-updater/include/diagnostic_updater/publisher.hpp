@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// publisher.hpp — issue 2053.
+// publisher.hpp
 //
 // Upstream's `<diagnostic_updater/publisher.hpp>`: the topic monitors a driver
 // uses to report how often, and how late, it publishes.

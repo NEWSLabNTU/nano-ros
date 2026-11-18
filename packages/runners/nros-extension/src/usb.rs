@@ -1,8 +1,8 @@
-//! USB VID:PID and serial-port lookup (RFC-0118 D6).
+//! USB VID:PID and serial-port lookup.
 //!
 //! A board descriptor names its console's USB identity (`usb = "0483:374b"`);
 //! `nros bench scan` and the port-resolution ladder match attached serial
-//! devices against it. The rule this module keeps is RFC-0118 D6's last one:
+//! devices against it. The rule this module keeps is the ladder's last one:
 //! **never guess between two devices.** [`find_port`] answers found, not found
 //! or ambiguous, and the caller refuses on the last two.
 //!

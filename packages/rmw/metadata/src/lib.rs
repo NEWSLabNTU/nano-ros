@@ -1,9 +1,9 @@
-//! phase-308 — the metadata-mode RMW backend.
+//! The metadata-mode RMW backend.
 //!
 //! An RMW backend that records what a component DECLARES instead of
 //! transporting it. It is how the C/C++ producer works, and it is deliberately
 //! a backend rather than a special mode inside `nros-cpp`: backend selection is
-//! an existing, supported extension point (RFC-0054's vtable, chosen by name
+//! an existing, supported extension point (the RMW vtable, chosen by name
 //! through `$NROS_RMW`), so `nros_cpp_init` needs no metadata-mode branch and
 //! the shipping runtime keeps exactly one code path.
 //!
@@ -19,27 +19,27 @@
 //! cannot see either. `nros-cpp`'s hooks record those two, and the split is
 //! exactly two functions wide.
 //!
-//! Note the symmetry with issue 0257: launch wiring has no timer entity, and
-//! the RMW has no timer call. Same blind spot, two layers.
+//! Note the symmetry: launch wiring has no timer entity, and the RMW has no
+//! timer call. Same blind spot, two layers.
 //!
 //! # Layer discipline
 //!
 //! This crate is an ADAPTER. It contains no JSON, no schema struct and no slot
 //! arithmetic — all three live once, in `nros::node_metadata`, reached through
-//! `nros::metadata_mode`. If any of them appears here, the phase-308 layer
-//! boundary has been crossed and the count this whole mechanism exists to
-//! produce has two definitions again.
+//! `nros::metadata_mode`. If any of them appears here, the layer boundary has
+//! been crossed and the count this whole mechanism exists to produce has two
+//! definitions again.
 //!
-//! # What it records of the QoS (phase-463 W1)
+//! # What it records of the QoS
 //!
 //! The profile handed to each `create_*` -- which, for the C++ path, is the
 //! one `apply_qos_overrides` produced from the code's spelling and the launch
 //! overrides. That is the profile the executor sizes for, so it is the one a
 //! census compares with the contract. This backend used to take `_qos` and
 //! drop it, so a sidecar said `depth: 10` for a subscription the code created
-//! at `QoS(1)`: a default, not an observation (issue 1419). The code's own
-//! spelling is not visible at this seam; the hooks in `nros-cpp` are where it
-//! would be recorded if a census ever needs both.
+//! at `QoS(1)`: a default, not an observation. The code's own spelling is not
+//! visible at this seam; the hooks in `nros-cpp` are where it would be
+//! recorded if a census ever needs both.
 //!
 //! # Reads and receives
 //!
@@ -49,7 +49,7 @@
 //! rather than `unimplemented!()` so a component whose `configure` happens to
 //! publish once during setup does not abort the probe.
 //!
-//! # No `std` (phase-359 W10 stage C)
+//! # No `std`
 //!
 //! A hosted C/C++ image carries this backend (`metadata-mode`), and that
 //! image's root is `#![no_std]` now: a dependency that linked libstd would put
@@ -280,11 +280,11 @@ pub extern "C" fn nros_rmw_metadata_register() -> nros_rmw_cffi::NrosRmwRet {
     }
 }
 
-/// Issue 1419 -- the slots of the registry [`nros_rmw_metadata_register`]
-/// registers into, and how many of them the image DECLARED for its own
-/// backends. Linking this crate reserves one slot beyond the declaration
-/// (`nros-rmw-cffi`'s `recorder-slot`), so the two differ by exactly one; a
-/// caller that cannot depend on `nros-rmw-cffi` reads them here.
+/// The slots of the registry [`nros_rmw_metadata_register`] registers into,
+/// and how many of them the image DECLARED for its own backends. Linking
+/// this crate reserves one slot beyond the declaration (`nros-rmw-cffi`'s
+/// `recorder-slot`), so the two differ by exactly one; a caller that cannot
+/// depend on `nros-rmw-cffi` reads them here.
 pub const REGISTRY_SLOTS: usize = nros_rmw_cffi::MAX_BACKENDS;
 
 /// See [`REGISTRY_SLOTS`].

@@ -44,11 +44,11 @@ use crate::{
 /// cache simultaneously. Compile-time knob:
 /// `NROS_CYCLONEDDS_MAX_TYPES=<N>`. Default `32`.
 ///
-/// Issue 0284: `nros codegen-system` DERIVES this from the SystemModel and
-/// auto-emits it into `<workspace>/.cargo/config.toml [env]` when a bringup's
-/// distinct-type count exceeds the default, so a deployed image is sized
-/// automatically. Setting the env by hand overrides the derivation (and a
-/// hand-set value smaller than the model's count fails the bake loudly).
+/// `nros codegen-system` DERIVES this from the SystemModel and auto-emits it
+/// into `<workspace>/.cargo/config.toml [env]` when a bringup's distinct-type
+/// count exceeds the default, so a deployed image is sized automatically.
+/// Setting the env by hand overrides the derivation (and a hand-set value
+/// smaller than the model's count fails the bake loudly).
 ///
 /// Cost: `16 bytes × MAX_TYPES` plus the [`heapless::FnvIndexMap`]
 /// overhead (rounded up to the next power of two — heapless'
@@ -174,7 +174,7 @@ impl TypeRegistry {
         Ok(ptr)
     }
 
-    /// Phase 248 (C2) — raw-schema variant of [`Self::get_or_build`].
+    /// Raw-schema variant of [`Self::get_or_build`].
     ///
     /// Identical caching/build behaviour, but takes the flattened
     /// `(type_name, fields)` pair directly instead of a `M: Message`
@@ -244,8 +244,8 @@ pub fn register<M: Message>() -> Result<DescriptorPtr, BuildError> {
     GLOBAL.with(|r| r.get_or_build::<M>())
 }
 
-/// Phase 248 (C2) — raw-schema entry point used by the generic
-/// descriptor-registration seam.
+/// Raw-schema entry point used by the generic descriptor-registration
+/// seam.
 ///
 /// Locks the global registry and calls
 /// [`TypeRegistry::get_or_build_raw`]. This is the function the

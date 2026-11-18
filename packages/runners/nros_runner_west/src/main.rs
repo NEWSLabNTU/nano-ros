@@ -1,4 +1,4 @@
-//! `nros-runner-west`: the `west` runner (RFC-0119 D8), `run` and `flash`.
+//! `nros-runner-west`: the `west` runner, `run` and `flash`.
 //!
 //! - `run` boots a Zephyr image on the emulator its plan names, through the
 //!   run target the board's own west build declares: `west build -d

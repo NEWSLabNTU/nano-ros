@@ -1,13 +1,12 @@
 //! `PlatformSerial` impl for MPS2-AN385.
 //!
-//! **Status (Phase 80.14.4b)**: surface-complete, uses a fn-pointer
-//! vtable that the board crate (`nros-board-mps2-an385`) populates at init
-//! time. The platform ZST doesn't own the UART peripheral itself —
-//! the board crate does, because the driver (`cmsdk-uart`) lives
-//! there along with every other board-specific detail (pinmux, clock
-//! tree, etc.). A vtable lets us keep that ownership split while
-//! still offering `<Mps2An385Platform as PlatformSerial>::*` to
-//! cross-crate consumers.
+//! **Status**: surface-complete, uses a fn-pointer vtable that the board
+//! crate (`nros-board-mps2-an385`) populates at init time. The platform
+//! ZST doesn't own the UART peripheral itself — the board crate does,
+//! because the driver (`cmsdk-uart`) lives there along with every other
+//! board-specific detail (pinmux, clock tree, etc.). A vtable lets us keep
+//! that ownership split while still offering
+//! `<Mps2An385Platform as PlatformSerial>::*` to cross-crate consumers.
 //!
 //! The `zpico-serial` stack continues to use its own `SerialPort`
 //! trait + `register_port` path; this trait impl is strictly

@@ -211,14 +211,14 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
 }
 
 impl ThreadxQemuRiscv64 {
-    /// Phase 313 W-threadx (#0243) — lightweight NO-SESSION entry for logging /
-    /// init-only fixtures. Boots the ThreadX kernel + UART log writer and runs
-    /// `setup` WITHOUT opening an `Executor` session (unlike
-    /// [`nros_platform::board::BoardEntry::run`], which would fail
-    /// `Transport(ConnectionFailed)` with no router). The new-family replacement
-    /// for the no-session role the retired legacy `node::run(Config, closure)`
-    /// served. Diverges internally (kernel entry → `exit_success`/`exit_failure`);
-    /// the `Result` return mirrors the family driver signature.
+    /// Lightweight NO-SESSION entry for logging / init-only fixtures. Boots the
+    /// ThreadX kernel + UART log writer and runs `setup` WITHOUT opening an
+    /// `Executor` session (unlike [`nros_platform::board::BoardEntry::run`],
+    /// which would fail `Transport(ConnectionFailed)` with no router). The
+    /// new-family replacement for the no-session role the retired legacy
+    /// `node::run(Config, closure)` served. Diverges internally (kernel entry →
+    /// `exit_success`/`exit_failure`); the `Result` return mirrors the family
+    /// driver signature.
     pub fn run_bare<F, E>(config: Config, setup: F) -> Result<(), E>
     where
         F: FnOnce() -> Result<(), E>,
@@ -228,11 +228,12 @@ impl ThreadxQemuRiscv64 {
         nros_board_threadx::run_bare::<ThreadxQemuRiscv64, Config, F, E>(config, setup)
     }
 
-    /// Phase 297 W4 (RFC-0053) — multi-sched-task entry. The `nros::main!()` macro
-    /// emits `<ThreadxQemuRiscv64>::run_sched_tasks(&overlay, SCHED_TASKS, SCHED_TASK_BACKING, setup)` for a
-    /// system with more than the synthesized single `default` sched task; routes to
-    /// [`nros_board_threadx::run_sched_tasks_entry`] (one `Executor` per sched task over one
-    /// shared session). Mirrors `ThreadxLinux::run_sched_tasks`.
+    /// Multi-sched-task entry. The `nros::main!()` macro emits
+    /// `<ThreadxQemuRiscv64>::run_sched_tasks(&overlay, SCHED_TASKS, SCHED_TASK_BACKING, setup)`
+    /// for a system with more than the synthesized single `default` sched task;
+    /// routes to [`nros_board_threadx::run_sched_tasks_entry`] (one LEVEL per
+    /// sched task over the core's one executor). Mirrors
+    /// `ThreadxLinux::run_sched_tasks`.
     pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,
         sched_tasks: &'static [nros_platform::SchedTaskSpec<'static>],
@@ -256,7 +257,7 @@ impl ThreadxQemuRiscv64 {
     }
 }
 
-/// Phase 245 — bare-metal CycloneDDS app-thread entry.
+/// Bare-metal CycloneDDS app-thread entry.
 ///
 /// The CMake/CycloneDDS firmware boots through a **C** `startup.c::main` that
 /// calls `tx_kernel_enter()` itself and dispatches to the example's Rust
@@ -265,9 +266,8 @@ impl ThreadxQemuRiscv64 {
 /// [`nros_platform::BoardEntry::run`] (that re-enters the kernel); it calls this,
 /// which runs the post-kernel body (open executor + `setup` + spin) on
 /// [`image_config`] — the identity the image's C `startup.c` brought NetX up
-/// from, plus the locator `nros_threadx_rv64_rust_app` baked for THIS image.
-/// Since phase-369 W2 this is the only path the six rust leaves take, for zenoh
-/// as well as Cyclone.
+/// from, plus the locator `nros_threadx_rv64_rust_app` baked for THIS image. This
+/// is the only path the six rust leaves take, for zenoh as well as Cyclone.
 ///
 /// No `nros::main!()` macro emits a baked boot config for this path, so
 /// `boot_config = None` (keeps the `"nros_app"` default).
@@ -510,7 +510,7 @@ extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
 // This was the provider that could not be turned off at all — ungated, so an
 // image linking this board and `nros-c` had two candidates for one lang item.
 
-/// #131 — bare-metal `__assert_func` override.
+/// Bare-metal `__assert_func` override.
 ///
 /// newlib's `assert()` expands to `__assert_func`, whose default implementation
 /// does `fprintf(stderr, …)` + `abort()`. On this bare-metal RISC-V image there

@@ -2,15 +2,15 @@
 //!
 //! A **runner** package drives a launcher, flasher or console for `nros run`,
 //! `nros flash` and `nros monitor`; a **command** package adds a verb to
-//! `nros` (RFC-0119). Both are ordinary executables that nros starts through a
-//! small, versioned, process-based contract. This crate holds the Rust side of
-//! that contract, so nano-ros's own runners, a user's runners and the core CLI
-//! all speak it through the same types:
+//! `nros`. Both are ordinary executables that nros starts through a small,
+//! versioned, process-based contract. This crate holds the Rust side of that
+//! contract, so nano-ros's own runners, a user's runners and the core CLI all
+//! speak it through the same types:
 //!
 //! | Module | Holds |
 //! | --- | --- |
 //! | [`protocol`] | the protocol versions this crate speaks, and the negotiation rule |
-//! | [`plan`] | the RunPlan (RFC-0118 D3), its JSON form and its placeholders |
+//! | [`plan`] | the RunPlan, its JSON form and its placeholders |
 //! | [`describe`] | the `describe` reply and its builder |
 //! | [`invocation`] | parsing a runner's own command line (`describe`, `run --plan …`) |
 //! | [`console`] | the console pump and the `nros-runner: link <endpoint>` line |

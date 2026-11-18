@@ -1,14 +1,12 @@
-//! Phase 212.N.2 — `BoardEntry::run` shim for the ThreadX family.
+//! `BoardEntry::run` shim for the ThreadX family.
 //!
-//! Adds an additive entry point built on the 212.N.1 trait set in
-//! `nros_platform::board` (`BoardInit` parameterless, `BoardPrint`,
-//! `BoardExit`, `RuntimeCtx`). Mirrors the legacy [`crate::run`]
-//! body — kernel-spawn shape: stash the user closure into static
-//! storage, push the network config + app callback through the C
+//! An entry point built on the trait set in `nros_platform::board`
+//! (`BoardInit` parameterless, `BoardPrint`, `BoardExit`,
+//! `RuntimeCtx`). Kernel-spawn shape: stash the user closure into
+//! static storage, push the network config + app callback through the C
 //! glue (`nros_threadx_set_config` + `nros_threadx_set_app_callback`),
-//! call `tx_kernel_enter()`, never return — but threads the new
-//! `RuntimeCtx` through the user setup callback instead of an opaque
-//! `&Config`.
+//! call `tx_kernel_enter()`, never return — threading `RuntimeCtx`
+//! through the user setup callback instead of an opaque `&Config`.
 //!
 //! ## Why a free fn (not a blanket `impl BoardEntry`)
 //!
@@ -40,10 +38,8 @@
 //! }
 //! ```
 //!
-//! 212.N.3 wires that into `nros-board-threadx-linux` +
-//! `nros-board-threadx-qemu-riscv64`; this file just provides the
-//! family-side helper. The legacy [`crate::run`] coexists during the
-//! 212.N transition.
+//! `nros-board-threadx-linux` and `nros-board-threadx-qemu-riscv64`
+//! are wired that way; this file just provides the family-side helper.
 
 use core::{
     ffi::c_void,
@@ -888,13 +884,13 @@ impl SpinDeadline {
     }
 }
 
-/// Phase 297 W4 — multi-sched-task entry for the ThreadX family. The `nros::main!`
-/// macro emits `<Board>::run_sched_tasks(&overlay, SCHED_TASKS, SCHED_TASK_BACKING, setup)` whenever a system
-/// declares more than the synthesized single `default` sched task; the per-board ZST
-/// routes here. Mirrors [`run_entry`] (build the boot context into
-/// `CTX_STORAGE`, push the network config + app callback through the C glue,
-/// `tx_kernel_enter()`) but runs one `Executor` per sched task over one shared
-/// session (see `app_task_entry_sched_tasks`).
+/// Multi-sched-task entry for the ThreadX family. The `nros::main!` macro emits
+/// `<Board>::run_sched_tasks(&overlay, SCHED_TASKS, SCHED_TASK_BACKING, setup)`
+/// whenever a system declares more than the synthesized single `default` sched
+/// task; the per-board ZST routes here. Mirrors [`run_entry`] (build the boot
+/// context into `CTX_STORAGE`, push the network config + app callback through
+/// the C glue, `tx_kernel_enter()`) but runs one LEVEL per sched task over the
+/// core's one executor (see `app_task_entry_sched_tasks`).
 ///
 /// `sched_tasks` is the macro-baked `&'static [SchedTaskSpec]`; `setup` is the
 /// register-only closure (invoked once per sched task — `Fn + Copy`).
@@ -1077,8 +1073,8 @@ where
     run_app_thread::<B, C, F, E>(config, boot_config, closure)
 }
 
-/// Phase 245 — the post-kernel app-thread body, factored out of
-/// `app_task_entry_runtime` so the **bare-metal CycloneDDS path** can reuse it.
+/// The post-kernel app-thread body, factored out of `app_task_entry_runtime` so
+/// the **bare-metal CycloneDDS path** can reuse it.
 ///
 /// The cargo/zenoh path enters via [`run_entry`] (which calls `tx_kernel_enter`
 /// and registers `app_task_entry_runtime` as the app callback). The
@@ -1093,8 +1089,8 @@ where
 /// `register`), then spin for the firmware lifetime. Diverges (`-> !`): the
 /// ThreadX scheduler never lets the app thread exit.
 ///
-/// `boot_config` — the baked `.nros_boot_config` static (issue #98 / RFC-0045).
-/// Pass `None` for the bare-metal CycloneDDS path (no macro, no baked config).
+/// `boot_config` — the baked `.nros_boot_config` static. Pass `None` for the
+/// bare-metal CycloneDDS path (no macro, no baked config).
 pub fn run_app_thread<B, C, F, E>(
     config: C,
     boot_config: Option<&'static BakedBootConfig>,
@@ -1263,18 +1259,16 @@ where
     }
 }
 
-/// Phase 212.N.2 — family-driver entry point for ThreadX boards.
+/// Family-driver entry point for ThreadX boards.
 ///
-/// Mirrors the body of the legacy `run` that phase 212.N.7 retired —
-/// stashes the user closure
-/// into static storage, registers the network config + app callback
-/// through the unified ThreadX C glue, calls `tx_kernel_enter()`,
-/// never returns — but routes through the 212.N.1
+/// Stashes the user closure into static storage, registers the network
+/// config + app callback through the unified ThreadX C glue, calls
+/// `tx_kernel_enter()`, never returns — routing through the
 /// `nros_platform::board` trait set + [`RuntimeCtx`].
 ///
 /// Per-board crates (e.g. `nros-board-threadx-linux`,
 /// `nros-board-threadx-qemu-riscv64`) wire this into their
-/// `impl BoardEntry for Self::run` body in 212.N.3:
+/// `impl BoardEntry for Self::run` body:
 ///
 /// ```ignore
 /// impl nros_platform::board::BoardEntry for MyBoard {
@@ -1292,12 +1286,12 @@ where
 /// # Type parameters
 ///
 /// - `B: BoardInit + BoardPrint + BoardExit` — per-board glue pulled
-///   from `nros_platform::board` (212.N.1 surface).
+///   from `nros_platform::board`.
 /// - `C: ThreadxConfig` — board's config type, exposing
 ///   `mac/ip/netmask/gateway/interface()` accessors. Stays as a
 ///   separate generic (rather than folded onto `B::Config`) so the
-///   per-board overlay can keep its existing concrete `Config`
-///   struct unchanged during the 212.N migration.
+///   per-board overlay can keep its existing concrete `Config` struct
+///   unchanged.
 /// - `F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>` — user closure
 ///   receiving the runtime context.
 /// - `E: core::fmt::Debug` — closure error type.
@@ -1315,8 +1309,8 @@ where
 /// a working build.
 ///
 /// `boot_config` — the baked `.nros_boot_config` static, passed from
-/// the per-board `run_with_deploy` (issue #98 / RFC-0045). `None`
-/// keeps the historical `"nros_app"` node-name default.
+/// the per-board `run_with_deploy`. `None` keeps the historical
+/// `"nros_app"` node-name default.
 pub fn run_entry<B, C, F, E>(
     config: C,
     boot_config: Option<&'static BakedBootConfig>,
@@ -1438,7 +1432,7 @@ where
     B::exit_failure()
 }
 
-/// Phase 313 W0 (#0243) — LIGHTWEIGHT, NO-SESSION variant of [`run_entry`].
+/// LIGHTWEIGHT, NO-SESSION variant of [`run_entry`].
 ///
 /// Boots the ThreadX kernel + NetX config (same pre-kernel path as `run_entry`),
 /// then runs `setup` on the app thread WITHOUT opening an `Executor` session. For

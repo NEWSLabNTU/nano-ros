@@ -1,4 +1,4 @@
-//! Protocol versions (RFC-0119 D6).
+//! Protocol versions.
 //!
 //! `protocol` is versioned from the first release. A runner states the
 //! versions it speaks in its `describe` reply, and nros refuses a runner it

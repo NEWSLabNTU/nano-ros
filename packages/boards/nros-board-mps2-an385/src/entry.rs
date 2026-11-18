@@ -1,5 +1,5 @@
-//! Phase 244.D1 enabler — `nros_platform::BoardEntry` for the pure
-//! bare-metal (no-RTOS) MPS2-AN385 board.
+//! `nros_platform::BoardEntry` for the pure bare-metal (no-RTOS)
+//! MPS2-AN385 board.
 //!
 //! Mirrors the FreeRTOS family driver's `BoardEntry` shim
 //! (`nros-board-freertos/src/entry.rs`) but for direct bare-metal Cortex-M

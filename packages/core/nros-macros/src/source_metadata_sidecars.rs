@@ -1,16 +1,15 @@
-//! phase-307 W4 (second half) — the `nros::main!` bake reads source-metadata
-//! sidecars.
+//! The `nros::main!` bake reads source-metadata sidecars.
 //!
-//! W4 landed the `max(model_wiring, recorded)` rule in the CLI bake only, and
-//! deliberately left the macro on the model bound: a macro expansion had no
-//! guarantee that anything had produced a sidecar. W2 removed that objection —
-//! `nros sync` refreshes sidecars as its last step and stamps each with a
-//! content-addressed provenance digest — so the macro can now read them.
+//! The CLI bake applies the `max(model_wiring, recorded)` rule. The macro
+//! once stayed on the model bound, because a macro expansion had no
+//! guarantee that anything had produced a sidecar; `nros sync` now refreshes
+//! sidecars as its last step and stamps each with a content-addressed
+//! provenance digest, so the macro can read them.
 //!
-//! The objection that DID kill the naive issue-0257 approach still stands and
-//! is respected here: nothing in this module shells out. Spawning a nested
-//! `cargo build` during proc-macro expansion is the trap. Reading a JSON file
-//! that a prior build step already wrote is not.
+//! The objection that DID rule out a naive approach still stands and is
+//! respected here: nothing in this module shells out. Spawning a nested
+//! `cargo build` during proc-macro expansion is the trap. Reading a JSON
+//! file that a prior build step already wrote is not.
 //!
 //! Why the sidecar matters to the MACRO specifically: on boards that honor
 //! per-entry sizing the macro's derived value IS the executor's capacity
@@ -44,9 +43,9 @@ pub type RecordedSlots = BTreeMap<(String, String), usize>;
 #[derive(Debug, Default)]
 pub struct Sidecars {
     pub slots: RecordedSlots,
-    /// issue 2432 — `(package, executable)` → the callback-group ids the
-    /// node's code states, the Rust road's equivalent of the cmake
-    /// `CALLBACK_GROUPS` keyword (`entry_groups::groups_of_component`).
+    /// `(package, executable)` → the callback-group ids the node's code
+    /// states, the Rust road's equivalent of the cmake `CALLBACK_GROUPS`
+    /// keyword (`entry_groups::groups_of_component`).
     pub groups: BTreeMap<(String, String), Vec<String>>,
     pub paths: Vec<PathBuf>,
 }

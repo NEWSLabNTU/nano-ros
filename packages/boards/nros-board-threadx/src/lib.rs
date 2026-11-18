@@ -9,51 +9,38 @@
 //! on this crate + patch vendor HAL deltas via `#[no_mangle]`
 //! hooks. See `book/src/extending/add-a-board.md` for the cookbook.
 //!
-//! ## 152.2.A scaffolding
+//! ## Build glue
 //!
-//! The crate exists today as a façade. Two opt-in features
-//! re-export `Config` + `run` from the existing per-board ThreadX
-//! crates so future overlays have a stable name to depend on while
-//! 152.2.B carves the kernel + NetX-Duo build glue out of the
-//! per-board `build.rs` files into this crate's own `build.rs`.
+//! This crate's own `build.rs` compiles the ThreadX kernel and the
+//! `nros-platform-threadx` C port. NetX-Duo / NSOS, port assembly and
+//! board-specific drivers stay per-overlay. The `reference-linux` /
+//! `reference-qemu-riscv64` re-export features are GONE: the per-board
+//! crates depend on this one, so they formed a package cycle.
 //!
-//! | Feature | Re-exports from | Use case |
-//! |---|---|---|
-//! | `reference-linux` | `nros-board-threadx-linux` | Linux ThreadX-sim port + NSOS (host-kernel BSD sockets shim). Useful for CI + cross-test runners. |
-//! | `reference-qemu-riscv64` | `nros-board-threadx-qemu-riscv64` | Bare-metal RISC-V64 QEMU port; real ThreadX kernel + NetX-Duo TCP/IP over virtio-net. |
-//!
-//! Pick one (not both — the two reference boards have different
-//! `Config` shapes; the scaffolding feature-gate keeps them
-//! mutually exclusive at link time).
-//!
-//! ## Public contract (post-152.2.B)
-//!
-//! Once the build-glue carve-out lands:
+//! ## Public contract
 //!
 //! - `Config` — TOML-loaded network + zenoh config; overlays extend.
-//! - [`run_entry`] — Phase 212.N.2 entry point over the
+//! - [`run_entry`] — entry point over the
 //!   [`nros_platform::Board`] trait set
 //!   (`BoardInit` parameterless + `BoardPrint` + `BoardExit`
 //!   + `RuntimeCtx`). Shape:
 //!     `(Config, FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>) ->
-//!   Result<(), E>`. Per-board `impl BoardEntry` impls (landed in
-//!     212.N.3) delegate here.
+//!   Result<(), E>`. Per-board `impl BoardEntry` impls delegate here.
 //! - `init_hardware()` — board-specific init (default no-op;
 //!   overlay re-exports a vendor version).
 //! - `#[no_mangle]` hooks the overlay implements:
 //!   - `nros_board_init_eth()` — NetX-Duo `NX_IP_DRIVER` binding.
 //!
-//! ## Phase 212.N status
+//! ## Entry points
 //!
-//! The migration is DONE: phase 212.N.7 retired the legacy `run` (the
-//! `nros-board-common` traits plus a `&Config` closure), so
-//! [`run_entry`] — the `nros_platform` board traits plus a
-//! `&mut RuntimeCtx` closure — is the only entry point, and every
-//! per-board `impl BoardEntry` delegates to it.
+//! The legacy `run` (the `nros-board-common` traits plus a `&Config` closure)
+//! is retired, so [`run_entry`] — the `nros_platform` board traits plus a
+//! `&mut RuntimeCtx` closure — is the only entry point, and every per-board
+//! `impl BoardEntry` delegates to it.
 //!
 //! ## SDK env-var contract
 //!
-//! The generic `build.rs` will read (after 152.2.B):
+//! The generic `build.rs` reads:
 //!
 //! | Var | Default | Purpose |
 //! |---|---|---|
@@ -104,8 +91,8 @@ mod entry;
 pub use entry::{run_app_thread, run_bare, run_entry, run_sched_tasks_entry};
 pub use nros_board_common::ThreadxConfig;
 
-/// issue 1571 — the type of one spawned sched task's executor backing slot, so a
-/// board crate that wraps this one's `run_sched_tasks` can name its parameter without
+/// The type of one spawned sched task's executor backing slot, so a board crate
+/// that wraps this one's `run_sched_tasks` can name its parameter without
 /// depending on `nros` itself.
 pub use ::nros::SchedTaskExecutorBackingSlot;
 

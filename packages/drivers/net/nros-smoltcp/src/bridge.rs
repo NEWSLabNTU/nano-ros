@@ -26,7 +26,7 @@ use smoltcp::{
     wire::{IpAddress, IpEndpoint, Ipv4Address},
 };
 
-/// Phase 214.L.1 — single-init contract for [`SmoltcpBridge::init`].
+/// Single-init contract for [`SmoltcpBridge::init`].
 ///
 /// `init` is documented as a one-shot startup hook; nothing in the
 /// bridge clears the socket / staging state once it has been seeded.
@@ -486,10 +486,10 @@ pub fn poll_diagnostics() -> (u32, u32, u32, u32) {
     )
 }
 
-/// Phase 127.D — extended counters: (rx_drained, tcp_recv_out).
-/// rx_drained = bytes transferred socket.recv_slice → RX staging.
-/// tcp_recv_out = bytes returned to caller by `tcp_recv` (= bytes
-/// zenoh-pico actually read off the staging buffer).
+/// Extended counters: (rx_drained, tcp_recv_out). rx_drained = bytes
+/// transferred socket.recv_slice → RX staging. tcp_recv_out = bytes
+/// returned to caller by `tcp_recv` (= bytes zenoh-pico actually read
+/// off the staging buffer).
 pub fn rx_diagnostics() -> (u32, u32) {
     use portable_atomic::Ordering;
     (
@@ -521,9 +521,9 @@ pub fn set_poll_callback(callback: unsafe extern "C" fn()) {
     }
 }
 
-/// Phase 127.D — install an idle callback invoked once at the end of
-/// each [`do_poll`] iteration. Boards with an armed IRQ source may
-/// register `cortex_m::asm::wfi` (or equivalent) here so the tight
+/// Install an idle callback invoked once at the end of each [`do_poll`]
+/// iteration. Boards with an armed IRQ source may register
+/// `cortex_m::asm::wfi` (or equivalent) here so the tight
 /// connect/send/recv loops inside `<PlatformTcp>::open`/`send`/`read`
 /// release the CPU to QEMU's main loop between polls.
 ///
@@ -532,7 +532,7 @@ pub fn set_poll_callback(callback: unsafe extern "C" fn()) {
 ///
 /// This hook runs BEFORE a wait loop looks at what the poll delivered, so it
 /// is safe only for a sleep something bounds (the RTIC 1 ms tick). A sleep to
-/// the loop's deadline belongs in [`crate::wait_idle`] instead (issue 2022).
+/// the loop's deadline belongs in [`crate::wait_idle`] instead.
 pub fn set_idle_callback(callback: unsafe extern "C" fn()) {
     unsafe {
         IDLE_CALLBACK = Some(callback);
@@ -619,9 +619,9 @@ pub struct SmoltcpBridge;
 impl SmoltcpBridge {
     /// Initialize the bridge. Must be called before any socket operations.
     ///
-    /// Phase 214.L.1 — returns [`SmoltcpInitError::InitTwice`] when
-    /// invoked a second time so callers can surface the misuse instead
-    /// of silently resetting connected sockets.
+    /// Returns [`SmoltcpInitError::InitTwice`] when invoked a second
+    /// time so callers can surface the misuse instead of silently
+    /// resetting connected sockets.
     pub fn init() -> Result<(), SmoltcpInitError> {
         INITIALIZED
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -704,7 +704,7 @@ impl SmoltcpBridge {
     /// Must be called periodically. Returns `true` if any network activity
     /// occurred.
     ///
-    /// Sequence (Phase 127.A):
+    /// Sequence:
     ///   1. Drain TX staging → smoltcp socket TX queues.
     ///   2. `iface.poll()` — pulls socket TX out to the device, drains device
     ///      RX into socket RX queues.
@@ -712,12 +712,12 @@ impl SmoltcpBridge {
     ///   4. Second `iface.poll()` — flushes any device-side state changes
     ///      triggered by the RX drain (e.g. window updates / ACKs).
     ///
-    /// Pre-127.A the function did `iface.poll` first and the TX drain second,
-    /// so newly-staged bytes had to wait for the NEXT `poll_network()`
-    /// invocation before they reached the wire. Combined with how
-    /// `<P as PlatformTcp>::send` calls `poll_network` once per loop
-    /// iteration, that gap let staging accumulate even though `socket.can_send()`
-    /// was true on the Established socket.
+    /// The function once did `iface.poll` first and the TX drain second, so
+    /// newly-staged bytes had to wait for the NEXT `poll_network()` invocation
+    /// before they reached the wire. Combined with how `<P as PlatformTcp>::send`
+    /// calls `poll_network` once per loop iteration, that gap let staging
+    /// accumulate even though `socket.can_send()` was true on the Established
+    /// socket.
     pub fn poll<D: Device>(iface: &mut Interface, device: &mut D, sockets: &mut SocketSet) -> bool {
         use portable_atomic::Ordering;
         BRIDGE_POLL_CALLS.fetch_add(1, Ordering::Relaxed);
@@ -1060,7 +1060,7 @@ impl SmoltcpBridge {
         }
     }
 
-    /// Phase 71.21 — bind a UDP socket to a specific local port.
+    /// Bind a UDP socket to a specific local port.
     ///
     /// Stamps the entry's `local_port` so the next `do_poll()` calls
     /// `socket.bind(port)` on the underlying smoltcp UDP socket.

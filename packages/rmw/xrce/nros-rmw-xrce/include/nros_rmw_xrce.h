@@ -22,10 +22,9 @@
  *     rclc_support_init(...);
  *     // ... create publishers / subscribers ...
  *
- * Phase 115.K.2.0–115.K.2.3 fill in session / pub / sub / service
- * paths against `uxr_*`. Phase 115.K.2.4 adds the custom-transport
- * bridge below for boards that want to plug a non-UDP transport
- * (USB-CDC, BLE, RS-485) at runtime.
+ * The backend implements session / pub / sub / service paths against
+ * `uxr_*`, plus the custom-transport bridge below for boards that want
+ * to plug a non-UDP transport (USB-CDC, BLE, RS-485) at runtime.
  */
 
 #ifdef __cplusplus
@@ -45,11 +44,10 @@ extern "C" {
 rmw_ret_t nros_rmw_xrce_register(void);
 
 /**
- * Phase 115.K.2.4 — runtime transport vtable for the XRCE-DDS
- * custom-transport bridge.
+ * Runtime transport vtable for the XRCE-DDS custom-transport bridge.
  *
  * Same shape as `nros_transport_ops_t` in `<rclc/detail/nros_generated.h>`
- * and `nros_rmw::NrosTransportOps` (Phase 115.A). The two surfaces
+ * and `nros_rmw::NrosTransportOps`. The two surfaces
  * are deliberately layout-identical so a single struct can be
  * used at every layer; defining a copy here avoids pulling in
  * `nros-c`'s generated header (which would create a circular
@@ -87,7 +85,7 @@ typedef struct nros_rmw_xrce_transport_ops_t {
 } nros_rmw_xrce_transport_ops_t;
 
 /**
- * Phase 115.K.2.4 — install a custom-transport vtable for the XRCE
+ * Install a custom-transport vtable for the XRCE
  * backend's `custom://` locator path. After this call returns OK,
  * `xrce_session_create` invoked with a locator starting `custom://`
  * routes through `uxr_set_custom_transport_callbacks` +
@@ -110,7 +108,7 @@ rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
     const nros_rmw_xrce_transport_ops_t *ops, int framing);
 
 /**
- * phase-521 W5 (RFC-0113 D4) — the custom transport's receive notification.
+ * The custom transport's receive notification.
  *
  * A transport that can say when bytes have arrived (a UART's RX interrupt, a
  * USB-CDC receive callback) supplies `set_rx_notify`. The backend calls it with
@@ -128,7 +126,7 @@ rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
  *
  * `set_rx_notify` returns 0 on success. NULL clears the registration. A
  * custom transport with no `set_rx_notify` states no readiness form, and the
- * runtime refuses such a session at open (RFC-0113 D5).
+ * runtime refuses such a session at open.
  *
  * @retval NROS_RMW_RET_OK always.
  */
@@ -139,16 +137,15 @@ rmw_ret_t nros_rmw_xrce_set_custom_transport_rx_notify(
     nros_rmw_xrce_transport_set_rx_notify_fn set_rx_notify);
 
 /**
- * Phase 115.K.2.4 — drain whatever
- * `nros_rmw::custom_transport::take_custom_transport()` produces and
- * install it via `nros_rmw_xrce_set_custom_transport_ops`. Convenience
- * for callers that registered via `rclc_set_custom_transport()`
- * (the `nros-c` C surface) and want the active backend to consume
- * the slot at backend-init time.
+ * Drain whatever `nros_rmw::custom_transport::take_custom_transport()`
+ * produces and install it via `nros_rmw_xrce_set_custom_transport_ops`.
+ * Convenience for callers that registered via
+ * `rclc_set_custom_transport()` (the `nros-c` C surface) and want the
+ * active backend to consume the slot at backend-init time.
  *
  * Requires the runtime to expose a C-callable
  * ~~`nros_rmw_take_custom_transport()`~~ symbol; see docs/reference/xrce-known-limitations.md
- * for the gap. v1 of K.2.4 returns `NROS_RMW_RET_UNSUPPORTED` until
+ * for the gap. It returns `NROS_RMW_RET_UNSUPPORTED` until
  * the runtime side lands; callers can route around via
  * `nros_rmw_xrce_set_custom_transport_ops` directly.
  *
@@ -156,7 +153,7 @@ rmw_ret_t nros_rmw_xrce_set_custom_transport_rx_notify(
  *
  * @retval NROS_RMW_RET_OK          on success.
  * @retval NROS_RMW_RET_NO_DATA     no transport currently registered.
- * @retval NROS_RMW_RET_UNSUPPORTED runtime drain symbol not exported (K.2.4 gap).
+ * @retval NROS_RMW_RET_UNSUPPORTED runtime drain symbol not exported.
  */
 rmw_ret_t nros_rmw_xrce_init_custom_transport(int framing);
 

@@ -1,12 +1,12 @@
 //! `PlatformSerial` impl for STM32F4.
 //!
-//! **Status (Phase 80.14.4b)**: surface-complete, uses a fn-pointer
-//! vtable that the board crate (`nros-board-stm32f4`) populates at init
-//! time. Same rationale as `nros-platform-mps2-an385::serial`:
-//! the platform ZST doesn't own the UART peripheral — the board
-//! crate does, because its USART driver lives there with the rest
-//! of the STM32F4-specific bring-up (clock tree, pinmux, etc.).
-//! The vtable shim keeps that ownership split while still offering
+//! **Status**: surface-complete, uses a fn-pointer vtable that the
+//! board crate (`nros-board-stm32f4`) populates at init time. Same
+//! rationale as `nros-platform-mps2-an385::serial`: the platform ZST
+//! doesn't own the UART peripheral — the board crate does, because its
+//! USART driver lives there with the rest of the STM32F4-specific
+//! bring-up (clock tree, pinmux, etc.). The vtable shim keeps that
+//! ownership split while still offering
 //! `<Stm32f4Platform as PlatformSerial>::*` to cross-crate consumers.
 //!
 //! `zpico-serial` continues to use its own `SerialPort` trait +

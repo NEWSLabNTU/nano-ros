@@ -1,11 +1,9 @@
-//! Phase 212.K.7 — Rust shim for the Cyclone DDS RMW backend.
+//! Rust shim for the Cyclone DDS RMW backend.
 //!
 //! Co-located with the C++ implementation under
 //! `packages/rmw/cyclonedds/nros-rmw-cyclonedds/`: the C++ TUs (`src/*.cpp`) are
-//! built by the sibling `CMakeLists.txt`; this crate adds the Rust
-//! side that replaces the per-msg-pkg `cyclonedds` Cargo feature
-//! pattern. See `docs/roadmap/phase-212-…-file-consolidation.md`
-//! §212.K.7 for the design.
+//! built by the sibling `CMakeLists.txt`; this crate adds the Rust side that
+//! replaces the per-msg-pkg `cyclonedds` Cargo feature pattern.
 //!
 //! # Surface
 //!
@@ -37,24 +35,20 @@
 //!   "none"))`. This said "hosted POSIX/macOS", which named a platform
 //!   nano-ros does not support and silently omitted the RTOS targets,
 //!   which take the same arm.
-//! * The C++ bridge allocates descriptors from Cyclone's `ddsrt`
-//!   heap (Phase 177.22's pre-budgeted pool on embedded targets), not
-//!   from libc malloc.
+//! * The C++ bridge allocates descriptors from Cyclone's `ddsrt` heap
+//!   (the pre-budgeted pool on embedded targets), not from libc malloc.
 //!
 //! # Integration status
 //!
-//! K.7.6 ("wire pub/sub paths") is partially landed: the registry
-//! exposes [`type_registry::register`] as the public entry, but the
-//! existing C++ pub/sub paths
+//! Wiring the pub/sub paths is partly done: the registry exposes
+//! [`type_registry::register`] as the public entry, but the existing
+//! C++ pub/sub paths
 //! (`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/publisher.cpp`,
 //! `subscriber.cpp`, `service.cpp`) still resolve descriptors through
-//! the static-init [`descriptors.cpp`](../descriptors.cpp) table.
-//! Wiring the Rust registry into the Rust-side `nros-node`
-//! `create_publisher` / `create_subscription` paths is the K.7.7
-//! / K.7.6 follow-up that lands once `nros-cli`'s codegen
-//! template emits `impl Message for …` on every generated msg
-//! crate (K.7.1). Until then, the registry is exercised by the
-//! unit tests in `tests/`.
+//! the static-init [`descriptors.cpp`](../descriptors.cpp) table. The
+//! Rust-side `nros-node` typed creators reach the registry through the
+//! generic `nros_rmw::register_type_descriptor` seam (see
+//! [`install_descriptor_registrar`]).
 //!
 //! # `#[cfg(test)]` shim
 //!
@@ -92,8 +86,8 @@ fn cyclonedds_type_descriptor_registrar(
         .map_err(|_e| ())
 }
 
-/// Phase 248 (C2) — install this backend's per-type descriptor
-/// registrar into the generic [`nros_rmw`] seam.
+/// Install this backend's per-type descriptor registrar into the
+/// generic [`nros_rmw`] seam.
 ///
 /// Call once during backend initialisation, before any Executor opens.
 /// The Cyclone `-sys` shim drives this from its ~~`RMW_INIT_ENTRIES`~~

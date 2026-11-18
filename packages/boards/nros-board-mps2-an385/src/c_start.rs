@@ -1,4 +1,4 @@
-//! The C-ABI start of a C-rooted image (RFC-0130 D2, phase-553 W2).
+//! The C-ABI start of a C-rooted image.
 //!
 //! In a C-rooted image CMake owns the final link and the generated C/C++
 //! entry owns `main`; cortex-m-rt (from this crate's staticlib) still owns
@@ -57,9 +57,9 @@ pub unsafe fn run_static_constructors() {
 /// clean exit, anything else is an error code.
 pub type CApp = unsafe extern "C" fn() -> i32;
 
-/// The image identity the start takes (`<nros/board.h>`, issue 2555), named
-/// here so the image crate's anchor (`NanoRosBareMetalPlatform.cmake`) can
-/// spell the start's type without depending on the ABI crate itself.
+/// The image identity the start takes (`<nros/board.h>`), named here so the
+/// image crate's anchor (`NanoRosBareMetalPlatform.cmake`) can spell the
+/// start's type without depending on the ABI crate itself.
 pub type ImageConfig = nros_board_cffi::nros_board_image_config_t;
 
 /// A NUL-terminated C string the generated entry passed, as `&'static str`.
@@ -113,8 +113,8 @@ unsafe fn boot_config(
 /// Never returns: the board reports the outcome and halts the image.
 ///
 /// `image` is the image's identity (`<nros/board.h>`'s
-/// `nros_board_image_config_t`, issue 2555), filled per image by the
-/// board's `c_main.c`; null boots the board's compile-time rungs.
+/// `nros_board_image_config_t`), filled per image by the board's
+/// `c_main.c`; null boots the board's compile-time rungs.
 ///
 /// # Safety
 /// Call once, from `main`, with `app` a valid function or null, and `image`

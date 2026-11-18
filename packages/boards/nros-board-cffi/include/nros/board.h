@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-/* RFC-0054: `noreturn` is part of the contract (the Rust bindings are
+/* `noreturn` is part of the contract (the Rust bindings are
  * generated from this header, and divergence must survive as `-> !`).
  * C11 `_Noreturn` / C++11 `[[noreturn]]` / GNU-attribute fallback. */
 #if defined(__cplusplus)
@@ -41,8 +41,7 @@ extern "C" {
  *
  * `cfg` is an opaque pointer to a board-specific configuration object
  * the board implementation understands (peripheral selection, IP /
- * baud-rate settings, RMW binding — Phase 173.5). The generic ABI
- * never inspects it; the board casts it back to its concrete type.
+ * baud-rate settings, RMW binding). The generic ABI never inspects it; the board casts it back to its concrete type.
  * Board crates expose their own C constructor for the config (e.g.
  * `nros_board_<name>_config_from_toml`); building that object is out
  * of scope for this generic header.
@@ -72,15 +71,15 @@ typedef int32_t (*nros_board_app_fn)(void *user);
 
 /**
  * The image's identity on the network, handed to a C-rooted board's start at
- * RUN time (issue 2555). Each image's generated entry fills one from its own
- * `system.toml`, so two images built in one configure (one runtime archive)
- * still boot as two hosts. A board reads what it can use and keeps its own
+ * RUN time. Each image's generated entry fills one from its own `system.toml`,
+ * so two images built in one configure (one runtime archive) still boot as two
+ * hosts. A board reads what it can use and keeps its own
  * default for every field left unset.
  *
  * - `version`: `NROS_BOARD_IMAGE_CONFIG_VERSION`. A board refuses a version it
  *   does not know rather than reading fields past the struct's end.
  * - `net`: the image's resolved network, in the `NROS_IMAGE_NET` text form
- *   (RFC-0103 D10f; `nros_board_common::image_net`). `NULL`: the board's.
+ *   (`nros_board_common::image_net`). `NULL`: the board's.
  * - `locator`: the RMW locator the image dials. `NULL`: the board's.
  * - `domain_id`: the ROS domain id, or `NROS_BOARD_IMAGE_DOMAIN_DEFAULT`.
  *

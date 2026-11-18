@@ -1,5 +1,5 @@
-//! Phase 152.2.B.4 — thin non-generic `run` + `init_hardware`
-//! wrappers over the generic `nros_board_threadx::run<B>` lift.
+//! The board's pre-kernel `init_hardware` and its platform log-writer
+//! registration.
 
 use crate::config::Config;
 

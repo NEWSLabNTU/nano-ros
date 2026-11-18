@@ -1,11 +1,11 @@
-//! Receive interrupt — issue 2022.
+//! Receive interrupt.
 //!
 //! The driver is polled: [`Lan9118`][crate::Lan9118] reads the RX FIFO only
 //! when smoltcp asks. That is all a busy-polling board needs, but a board that
 //! wants to SLEEP between polls needs something to wake it when a frame lands,
 //! and this is that something. The FreeRTOS lwIP driver's
-//! `lan9118_lwip_rx_irq_enable` / `_mask` / `_pending` are the model (issue
-//! 0917); the rules below are the same ones, for the same reasons.
+//! `lan9118_lwip_rx_irq_enable` / `_mask` / `_pending` are the model; the
+//! rules below are the same ones, for the same reasons.
 //!
 //! # RSFL is a LEVEL, so the handler masks it
 //!

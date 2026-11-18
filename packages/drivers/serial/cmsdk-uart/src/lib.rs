@@ -12,7 +12,7 @@
 //! | UART3 | `0x4000_7000` |
 //! | UART4 | `0x4000_9000` |
 //!
-//! # IRQ-driven TX (Phase 132 — partial)
+//! # IRQ-driven TX (partial)
 //!
 //! The crate ships an IRQ servicing entry point — [`handle_tx_irq`]
 //! — that board crates wire into their `#[interrupt] fn UARTTX0()`.
@@ -126,7 +126,7 @@ impl CmsdkUart {
     }
 }
 
-/// Phase 132 — TX-IRQ servicing hook.
+/// TX-IRQ servicing hook.
 ///
 /// Board crates wire `#[interrupt] fn UARTTX0()` (or `UARTTX1` /
 /// `UARTTX2`/…) that calls this with the matching base address.
@@ -140,14 +140,14 @@ pub fn handle_tx_irq(base: usize) {
     }
 }
 
-/// phase-521 W5 — whether UART `base` holds a received byte.
+/// Whether UART `base` holds a received byte.
 #[inline]
 pub fn rx_ready_at(base: usize) -> bool {
     // SAFETY: a CMSDK UART STATE register at a board-supplied base.
     unsafe { ptr::read_volatile((base + STATE) as *const u32) & STATE_RX_FULL != 0 }
 }
 
-/// phase-521 W5 — enable UART `base`'s receive interrupt.
+/// Enable UART `base`'s receive interrupt.
 ///
 /// A board's idle calls this, with interrupts masked, after checking
 /// [`rx_ready_at`] is false and before `wfi`, so the next received byte wakes
@@ -161,9 +161,9 @@ pub fn unmask_rx_irq(base: usize) {
     }
 }
 
-/// phase-521 W5 — disable UART `base`'s receive interrupt and clear a pending
-/// one. The RX handler's whole job: the byte stays in the UART for the read,
-/// and the line stays masked until the next idle re-arms it.
+/// Disable UART `base`'s receive interrupt and clear a pending one. The RX
+/// handler's whole job: the byte stays in the UART for the read, and the line
+/// stays masked until the next idle re-arms it.
 #[inline]
 pub fn mask_rx_irq(base: usize) {
     // SAFETY: as `unmask_rx_irq`; INTSTATUS is write-one-to-clear.

@@ -1,6 +1,6 @@
-//! Global `critical_section::Impl` registration backed by the
-//! canonical `nros_platform_critical_section_acquire` and
-//! `nros_platform_critical_section_release` C symbols (Phase 121.9).
+//! Global `critical_section::Impl` registration backed by the canonical
+//! `nros_platform_critical_section_acquire` and
+//! `nros_platform_critical_section_release` C symbols.
 //!
 //! Any binary that needs the global `critical_section::Impl` (DDS,
 //! `nros-rmw-{xrce,zenoh}`, `embassy-sync`, …) links this crate. The
@@ -10,9 +10,8 @@
 //! `tx_interrupt_control` on ThreadX, `portENTER_CRITICAL` on ESP-IDF.
 //!
 //! Drop-in replacement for the per-arch `critical_section` features on
-//! `nros-platform-{freertos,…}` that landed in Phase 97.1.cs / 100.1.
-//! Single-line consumer integration: depend on this crate and the
-//! `set_impl!` happens at crate-load time.
+//! `nros-platform-{freertos,…}`. Single-line consumer integration:
+//! depend on this crate and the `set_impl!` happens at crate-load time.
 
 #![no_std]
 

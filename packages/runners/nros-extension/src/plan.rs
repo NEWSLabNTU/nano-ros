@@ -1,11 +1,11 @@
-//! The RunPlan (RFC-0118 D3) and its JSON form.
+//! The RunPlan and its JSON form.
 //!
 //! A RunPlan is the resolved, serialisable answer to "how is this image run".
-//! nros resolves it from the customisation ladder (RFC-0118 D5) and hands it
-//! to a runner as `--plan <plan.json>`; the runner resolves nothing on its
-//! own. `nros build` prints a plan's command as its next step, and the test
-//! harness writes one and calls `nros run --plan`, so all three consumers go
-//! through these types.
+//! nros resolves it from the customisation ladder and hands it to a runner as
+//! `--plan <plan.json>`; the runner resolves nothing on its own. `nros build`
+//! prints a plan's command as its next step, and the test harness writes one
+//! and calls `nros run --plan`, so all three consumers go through these
+//! types.
 //!
 //! ```
 //! use nros_extension::plan::RunPlan;
@@ -87,16 +87,16 @@ impl fmt::Display for Verb {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunnerRef {
     /// The package that announces the runner, for example the QEMU runner
-    /// package of RFC-0119 D8.
+    /// package.
     pub package: String,
     /// The announced runner name (`qemu`).
     pub name: String,
 }
 
-/// The launcher or flasher (RFC-0118 D1). Exactly one of the three is set.
+/// The launcher or flasher. Exactly one of the three is set.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Target {
-    /// An emulator in RFC-0114's vocabulary: `qemu:<machine>`, `fvp:<model>`,
+    /// An emulator, named `qemu:<machine>`, `fvp:<model>`,
     /// `renode:<platform>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emulator: Option<String>,
@@ -122,12 +122,12 @@ pub enum ConsoleKind {
     Semihosting,
 }
 
-/// The console (RFC-0118 D1).
+/// The console.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Console {
     /// How it is observed.
     pub kind: ConsoleKind,
-    /// The serial port, once nros has resolved one (RFC-0118 D6).
+    /// The serial port, once nros has resolved one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port: Option<String>,
     /// The serial baud rate.
@@ -152,7 +152,7 @@ pub enum LinkKind {
     Serial,
 }
 
-/// The RMW link, as RFC-0109 resolves it.
+/// The RMW link, as nros resolves it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Link {
     /// The transport kind.
@@ -160,21 +160,21 @@ pub struct Link {
     /// The locator (`tcp/10.0.2.2:7447`) or serial endpoint.
     pub locator: String,
     /// The RMW that speaks over it (`zenoh`, `xrce`), which decides what nros
-    /// starts on the host side of the link: a zenoh router or an XRCE agent
-    /// (RFC-0118 D8). Absent in a plan written before the field existed.
+    /// starts on the host side of the link: a zenoh router or an XRCE agent.
+    /// Absent in a plan written before the field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rmw: Option<String>,
     /// What the RMW needs on the host side of the link, as its descriptor
-    /// declares it (`[rmw.host] peer`, RFC-0071; issue 2381). nros reads this,
-    /// never the RMW's name, to decide what `--router auto` starts. Absent:
-    /// nothing stated it (a plan written before the field existed, or an RMW
-    /// whose descriptor does not say), and `--router auto` refuses rather than
-    /// guess. A runner may ignore it.
+    /// declares it (`[rmw.host] peer`). nros reads this, never the RMW's name,
+    /// to decide what `--router auto` starts. Absent: nothing stated it (a
+    /// plan written before the field existed, or an RMW whose descriptor does
+    /// not say), and `--router auto` refuses rather than guess. A runner may
+    /// ignore it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_peer: Option<HostPeer>,
 }
 
-/// What an RMW needs running on the host side of its link (RFC-0071
+/// What an RMW needs running on the host side of its link (its descriptor's
 /// `[rmw.host] peer`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -225,7 +225,7 @@ impl FromStr for HostPeer {
     }
 }
 
-/// A `wait_for` event (RFC-0118 D7), written `<kind>:<value>`.
+/// A `wait_for` event, written `<kind>:<value>`.
 ///
 /// The same four kinds, spellings and errors as
 /// `nros_orchestration_ir::target_exec::WaitFor`, which parses the board and
@@ -304,9 +304,9 @@ impl From<WaitFor> for String {
     }
 }
 
-/// One `prepare` step (RFC-0118 D7): exactly one of `say`, `wait_for` and
-/// `run`, except that `say` and `wait_for` may share a step (print, then
-/// wait). Serialised as a table with those keys, e.g. `{"say": "…"}`,
+/// One `prepare` step: exactly one of `say`, `wait_for` and `run`, except
+/// that `say` and `wait_for` may share a step (print, then wait). Serialised
+/// as a table with those keys, e.g. `{"say": "…"}`,
 /// `{"say": "…", "wait_for": "usb:0483:df11"}` or `{"run": "./relay.sh 3"}`.
 ///
 /// The shape of `nros_orchestration_ir::target_exec::PrepareStep`, so a step
@@ -556,8 +556,7 @@ impl RunPlan {
         }
     }
 
-    /// Expand a command template (RFC-0118 D5). `{{` and `}}` are literal
-    /// braces.
+    /// Expand a command template. `{{` and `}}` are literal braces.
     ///
     /// # Errors
     ///
@@ -597,8 +596,7 @@ impl RunPlan {
     }
 }
 
-/// A command-template placeholder (RFC-0118 D5). Placeholders come only from
-/// the plan.
+/// A command-template placeholder. Placeholders come only from the plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Placeholder {
     /// `{elf}`

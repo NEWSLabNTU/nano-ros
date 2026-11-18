@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// diagnostic_status_wrapper.hpp — Phase 209.D
+// diagnostic_status_wrapper.hpp
 //
 // Typed-view + builder over `diagnostic_msgs::msg::DiagnosticStatus`. Mirrors
 // the upstream `diagnostic_updater::DiagnosticStatusWrapper` surface ported
@@ -65,7 +65,7 @@ public:
         this->message = "";
     }
 
-    /// Upstream's merge rule (issue 2053): the worse level wins; when BOTH
+    /// Upstream's merge rule: the worse level wins; when BOTH
     /// levels are above OK the messages are joined with "; ", and otherwise
     /// the worse status's message replaces the other. So merging an OK status
     /// changes nothing, which is why a composite of OK tasks carries an empty

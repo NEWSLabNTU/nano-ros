@@ -31,11 +31,10 @@ mod source_metadata_sidecars;
 ///
 /// Reads the board from the leaf's `system.toml` (`[image.<id>] board`), else
 /// `[package.metadata.nros.entry] deploy = "<board>"`. The old explicit
-/// `board = X` argument is RETIRED (phase-484 W8c): it is a compile error
-/// naming `[package.metadata.nros.board] type`, the out-of-tree board's own
-/// statement of its type. Consults
-/// the workspace pkg-index (Phase 212.N.10) to resolve the bringup
-/// pkg's launch file (Phase 212.N.11 parser).
+/// `board = X` argument is RETIRED: it is a compile error naming
+/// `[package.metadata.nros.board] type`, the out-of-tree board's own
+/// statement of its type. Consults the workspace pkg-index to resolve the
+/// bringup pkg's launch file.
 ///
 /// Emits `fn main()` that delegates to
 /// `<Board as ::nros::__macro_support::nros_platform::BoardEntry>::run(...)`,
@@ -190,10 +189,8 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 
 /// Export a Rust type implementing `nros::Node` as the package node.
 ///
-/// Phase 212.N.12 — `nros::node!()` is the canonical name (matches the
-/// rclcpp_components / ROS 2 launch.xml `<node pkg=…>` convention). The
-/// legacy `nros::node!()` macro and `Component*` trait family were
-/// retired in the same phase.
+/// `nros::node!()` is the canonical name (matches the rclcpp_components
+/// / ROS 2 launch.xml `<node pkg=…>` convention).
 ///
 /// # Emitted items
 ///
@@ -202,15 +199,14 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 /// 1. `pub fn register(runtime: &mut RuntimeCtx<'_>) -> Result<(), RuntimeError>`
 ///    — the Entry-pkg-callable wrapper that registers the four typed
 ///    `register` / `init` / `dispatch` / `tick` trampolines with the
-///    runtime by stable pkg name (Phase 212.N.7 step-3.4).
+///    runtime by stable pkg name.
 /// 2. `#[unsafe(no_mangle)] pub extern "C" fn
-///    __nros_node_<pkg>_dispatch_strategy() -> u8` — Phase 216.A.5
+///    __nros_node_<pkg>_dispatch_strategy() -> u8` — the
 ///    ABI export of the Node's [`DispatchStrategy`] discriminant
 ///    (`<Type as Component>::DISPATCH as u8`). Read out-of-tree by
-///    `nros check` (216.D.1) and consumed from a separate compilation
-///    unit by the RTIC (216.B.3) dispatch task.
-///    `<pkg>` is the value of `CARGO_PKG_NAME` after
-///    `sanitize_pkg_name_for_symbol` (hyphens → underscores).
+///    `nros check` and consumed from a separate compilation unit by the
+///    RTIC dispatch task. `<pkg>` is the value of `CARGO_PKG_NAME`
+///    after `sanitize_pkg_name_for_symbol` (hyphens → underscores).
 ///
 /// [`DispatchStrategy`]: ../nros/enum.DispatchStrategy.html
 ///
@@ -225,7 +221,7 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 ///     fn register(ctx: &mut nros::NodeContext<'_>) -> nros::NodeResult<()> {
 ///         use nros::DeclarativeNode;
 ///         // The same `nros::Node` a standalone program gets from
-///         // `executor.create_node(name)` (phase-483).
+///         // `executor.create_node(name)`.
 ///         let mut node = ctx.create_node(nros::NodeOptions::new("talker"))?;
 ///         let _pub = node.create_publisher_for_topic::<std_msgs::msg::String>("chatter")?;
 ///         Ok(())
@@ -385,17 +381,17 @@ fn node_impl(input: TokenStream) -> TokenStream {
             <#node_ty as ::nros::Component>::DISPATCH as u8
         }
 
-        /// Phase 258 (Track 2, 2a) — owned-spin entry registration. The
-        /// codegen-emitted `run_plan(runtime)` body + `nros::main!`
-        /// owned-spin loop call `<pkg>::register(runtime)?` once per Node.
+        /// Owned-spin entry registration. The codegen-emitted
+        /// `run_plan(runtime)` body + `nros::main!` owned-spin loop call
+        /// `<pkg>::register(runtime)?` once per Node.
         ///
-        /// This now installs through the **uniform `install` seam** — the
-        /// same `nros::__macro::install_node_typed` path the C / C++ typed entries
+        /// This now installs through the **uniform `install` seam** — the same
+        /// `nros::__macro::install_node_typed` path the C / C++ typed entries
         /// use — via a raw `*mut Executor` the runtime sink exposes
         /// (`executor_handle()`), replacing the legacy opaque four-fn-ptr
         /// ~~`register_dispatch_slot_dyn`~~ bridge. The installed component
-        /// enrolls in the executor's tick registry, so service-client /
-        /// action poll nodes tick (phase-257 D2 closed for owned-spin too).
+        /// enrolls in the executor's tick registry, so service-client / action
+        /// poll nodes tick.
         ///
         /// References `::nros::__macro::install_node_typed` → `::nros::Executor<'static>`,
         /// gated on `rmw-cffi` inside `nros`; the Node pkg must depend on

@@ -172,9 +172,9 @@ fn config_with_overlay(deploy: &DeployOverlay) -> Config {
     config
 }
 
-/// #178 — hardware-ready deferred-open carrier. Holds the `'static` transport
-/// parameters so [`RticMps2An385::open_executor`] can open the executor from the
-/// RTIC run task (interrupts live) instead of `#[init]` (interrupts masked,
+/// Hardware-ready deferred-open carrier. Holds the `'static` transport
+/// parameters so [`RticMps2An385::open_executor`] can open the executor from
+/// the RTIC run task (interrupts live) instead of `#[init]` (interrupts masked,
 /// which would deadlock the zenoh TCP handshake).
 pub struct RticBoot {
     locator: &'static str,

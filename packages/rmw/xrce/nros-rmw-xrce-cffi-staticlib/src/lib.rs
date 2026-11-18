@@ -1,4 +1,4 @@
-//! Phase 160.L — thin staticlib wrapper around `nros-rmw-xrce-cffi`.
+//! Thin staticlib wrapper around `nros-rmw-xrce-cffi`.
 //!
 //! Same shape as `nros-rmw-zenoh-staticlib`:
 //! flips the crate-type to `staticlib` so Cargo emits a standalone

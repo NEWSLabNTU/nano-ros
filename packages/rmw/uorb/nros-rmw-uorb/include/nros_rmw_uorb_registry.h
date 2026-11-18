@@ -9,7 +9,7 @@
  * @file nros_rmw_uorb_registry.h
  * @brief Topic-metadata registry for the uORB RMW backend.
  *
- * Phase 115.K.4.3 — uORB has no built-in name-keyed metadata
+ * uORB has no built-in name-keyed metadata
  * lookup. The host PX4 module registers each topic it wants to
  * expose via the cffi vtable by mapping a ROS-style
  * `(topic_name, type_name)` pair to the static
@@ -65,8 +65,8 @@ rmw_ret_t nros_rmw_uorb_register_topic(const char *topic_name,
  * pointer or NULL if no match.
  *
  * Lookup keys on `topic_name`; `type_name` is currently ignored
- * (PX4 topics are name-unique already). A future K.4.x revision
- * may tighten this to (name, type) once we encounter a collision.
+ * (PX4 topics are name-unique already). A future revision may
+ * tighten this to (name, type) once we encounter a collision.
  */
 const struct orb_metadata *nros_rmw_uorb_lookup_topic(const char *topic_name);
 

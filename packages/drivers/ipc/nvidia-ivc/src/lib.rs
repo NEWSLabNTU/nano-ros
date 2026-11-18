@@ -19,7 +19,7 @@
 //! the same C ABI (`nvidia_ivc_channel_*`) is exposed by both backends —
 //! callers do not branch on which one is active.
 //!
-//! # Zero-copy contract (Phase 11.3.A)
+//! # Zero-copy contract
 //!
 //! NVIDIA's FSP IVC API is fundamentally **zero-copy**: the channel
 //! library hands the caller a pointer into the shared-memory ring
@@ -46,8 +46,8 @@
 //! Tegra Cortex-R5/R52 IVC driver. Higher layers wire it in:
 //!
 //! - a platform crate implements `PlatformIvc` by delegating here (the
-//!   in-tree one was `nros-platform-orin-spe`, deleted with its board in
-//!   phase-337 W7.b; this driver is deliberately independent of it).
+//!   in-tree one was `nros-platform-orin-spe`, deleted with its board;
+//!   this driver is deliberately independent of it).
 //! - `zpico-platform-shim::ivc_helpers` re-exports the `extern "C"`
 //!   wrappers under the `_z_ivc_*` symbol names zenoh-pico's link-IVC C
 //!   code expects.

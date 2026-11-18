@@ -1,5 +1,5 @@
-//! Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend
-//! (`nros-rmw-xrce`) and exposes its register entry point.
+//! Rust shim that links the C XRCE backend (`nros-rmw-xrce`) and
+//! exposes its register entry point.
 //!
 //! Mirrors the role the cyclonedds backend would play if it had Rust
 //! users — it doesn't, so this is the project's first cffi-shim crate.
@@ -46,21 +46,21 @@ unsafe extern "C" {
     fn nros_rmw_xrce_set_custom_transport_rx_notify(set_rx_notify: Option<SetRxNotifyFn>) -> c_int;
 }
 
-/// phase-521 W5 (RFC-0113 D4) — a custom transport's receive notification:
-/// called with the executor's wake callback (`cb == None` takes it off); the
-/// transport then calls `cb(ctx)` whenever it has received data. Returns 0 on
-/// success. See `nros_rmw_xrce_set_custom_transport_rx_notify`.
+/// A custom transport's receive notification: called with the executor's wake
+/// callback (`cb == None` takes it off); the transport then calls `cb(ctx)`
+/// whenever it has received data. Returns 0 on success. See
+/// `nros_rmw_xrce_set_custom_transport_rx_notify`.
 pub type SetRxNotifyFn = unsafe extern "C" fn(
     user_data: *mut c_void,
     cb: Option<unsafe extern "C" fn(ctx: *mut c_void)>,
     ctx: *mut c_void,
 ) -> i32;
 
-/// phase-521 W5 (RFC-0113 D4) — register the custom transport's receive
-/// notification, so a session on it states `Notify` readiness and the
-/// executor parks until an arrival instead of blocking in `read`. Call it
-/// beside [`set_custom_transport_ops`], before the session opens; `None`
-/// clears it.
+/// Register the custom transport's receive notification, so a session on
+/// it states `Notify` readiness and the executor parks until an arrival
+/// instead of blocking in `read`. Call it beside
+/// [`set_custom_transport_ops`], before the session opens; `None` clears
+/// it.
 ///
 /// # Safety
 ///
@@ -80,9 +80,8 @@ pub unsafe fn set_custom_transport_rx_notify(
     }
 }
 
-/// Phase 207.1 / 115.K.2.4 — runtime transport vtable for the XRCE
-/// custom-transport bridge. Layout-identical to
-/// `nros_rmw_xrce_transport_ops_t` in
+/// Runtime transport vtable for the XRCE custom-transport bridge.
+/// Layout-identical to `nros_rmw_xrce_transport_ops_t` in
 /// `packages/rmw/xrce/nros-rmw-xrce/include/nros_rmw_xrce.h`. Pass to
 /// [`set_custom_transport_ops`] (or, in `extern "C"` consumers, to
 /// `nros_rmw_xrce_set_custom_transport_ops` directly).
@@ -162,7 +161,7 @@ extern "C" fn nros_rmw_cffi_register_named(
     0
 }
 
-/// Phase 207.1 — install a custom transport vtable for the XRCE backend.
+/// Install a custom transport vtable for the XRCE backend.
 ///
 /// Must be called BEFORE [`register()`] / `Executor::open`. The XRCE
 /// backend's `custom://` (or `serial/...`) locator then drives session I/O

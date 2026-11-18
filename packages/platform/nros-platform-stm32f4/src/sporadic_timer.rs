@@ -1,5 +1,4 @@
-//! Phase 110.E.b — periodic-callback hook for STM32F4 sporadic-server
-//! budget refill.
+//! Periodic-callback hook for STM32F4 sporadic-server budget refill.
 //!
 //! STM32F4 has multiple general-purpose timers (TIM2/3/4/5 32-bit on
 //! some variants, 16-bit elsewhere). Picking + initialising a specific

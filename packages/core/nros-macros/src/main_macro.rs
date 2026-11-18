@@ -1,4 +1,4 @@
-//! Phase 212.N.9 — `nros::main!()` proc-macro implementation.
+//! `nros::main!()` proc-macro implementation.
 //!
 //! Replaces the legacy Entry pkg `build.rs + include!()` shape with a
 //! one-line `main.rs`. Four forms (per design-doc §11.6):
@@ -10,8 +10,8 @@
 //! nros::main!(launch = "Y:Z.xml", args = [("k", "v")]);
 //! ```
 //!
-//! The old Form 2, `nros::main!(board = X)`, is RETIRED (phase-484 W8c) and
-//! is a compile error naming `[package.metadata.nros.board] type`.
+//! The old Form 2, `nros::main!(board = X)`, is RETIRED and is a compile
+//! error naming `[package.metadata.nros.board] type`.
 //!
 //! Form 1 reads `[package.metadata.nros.entry] deploy = "<board>"` from
 //! the Entry pkg's own `Cargo.toml` and maps the board key to a board
@@ -4976,7 +4976,7 @@ fn contract_monitor_tokens(
             #[allow(dead_code, non_upper_case_globals)]
             mod #module {
                 #body
-                /// This executor's `/diagnostics` reporter (issue 1676).
+                /// This executor's `/diagnostics` reporter.
                 pub static NROS_CONTRACT_REPORTER: ::nros::contract::ContractReporter =
                     ::nros::contract::ContractReporter::new();
             }
@@ -6343,9 +6343,9 @@ fn remap_bakes_for(inst: &ros_launch_manifest_model::NodeInstance) -> Vec<(Strin
 
 #[cfg(test)]
 mod remap_bake_tests {
-    //! Phase 305 W3 (issue 0255) — a model node carrying remaps produces the
-    //! `(from, to)` bake slice in declaration order; a remap-free node bakes
-    //! an empty slice (the `runtime.remaps = &[]` reset shape).
+    //! A model node carrying remaps produces the `(from, to)` bake slice in
+    //! declaration order; a remap-free node bakes an empty slice (the
+    //! `runtime.remaps = &[]` reset shape).
     use super::remap_bakes_for;
 
     fn node_from_model_yaml(yaml: &str) -> ros_launch_manifest_model::NodeInstance {
@@ -6534,8 +6534,8 @@ mod bridge_rmw_tests {
 
 #[cfg(test)]
 mod entry_sizing_tests {
-    //! phase-271 (issue #110) — `[package.metadata.nros.entry] max_callbacks`
-    //! parsing that drives the macro's `run_with_deploy_sized` emit.
+    //! `[package.metadata.nros.entry] max_callbacks` parsing that drives the
+    //! macro's `run_with_deploy_sized` emit.
     use super::read_entry_executor_sizing;
     use std::io::Write;
 
@@ -6588,9 +6588,9 @@ mod entry_sizing_tests {
 
 #[cfg(test)]
 mod derived_sizing_tests {
-    //! Issue 0257 — the sizing the entry emits is DERIVED from the model's
-    //! entity count when the entry declares none, and an over-capacity model
-    //! fails the bake loudly instead of dying at boot on `code=-6 Full`.
+    //! The sizing the entry emits is DERIVED from the model's entity count
+    //! when the entry declares none, and an over-capacity model fails the
+    //! bake loudly instead of dying at boot on `code=-6 Full`.
     use super::{EntrySizing, executor_capacity_assert, executor_sizing_for};
 
     #[test]
@@ -7379,10 +7379,10 @@ mod contract_monitor_tests {
 
 #[cfg(test)]
 mod leaf_axis_tests {
-    //! Issue 1766 — a Form-1 `nros::main!()` wires the capability axes its
-    //! leaf declares in `[system] features`, and refuses one it cannot honour.
-    //! Each case expands the macro over a throwaway leaf (`Cargo.toml` +
-    //! `system.toml`), so what is asserted is the emitted entry itself.
+    //! A Form-1 `nros::main!()` wires the capability axes its leaf declares in
+    //! `[system] features`, and refuses one it cannot honour. Each case
+    //! expands the macro over a throwaway leaf (`Cargo.toml` + `system.toml`),
+    //! so what is asserted is the emitted entry itself.
     use super::*;
 
     struct Leaf(PathBuf);
@@ -7726,11 +7726,11 @@ mod leaf_axis_tests {
 
 #[cfg(test)]
 mod launch_axis_tests {
-    //! Issue 1766 follow-up — the LAUNCH arm (`nros::main!(launch = …)`) wires
-    //! lifecycle from a node's `lifecycle_autostart`, and until now asserted no
-    //! feature for it: an entry without `nros/lifecycle-services` built, booted
-    //! and registered no lifecycle services. These cases read a SystemModel the
-    //! way the launch arm does and check the tokens it emits.
+    //! The LAUNCH arm (`nros::main!(launch = …)`) wires lifecycle from a node's
+    //! `lifecycle_autostart`, and until now asserted no feature for it: an
+    //! entry without `nros/lifecycle-services` built, booted and registered no
+    //! lifecycle services. These cases read a SystemModel the way the launch
+    //! arm does and check the tokens it emits.
     use super::*;
     use nros_orchestration_ir::overlay::LoadedModel;
     use ros_launch_manifest_model::{Autostart, NodeInstance, SystemModel};

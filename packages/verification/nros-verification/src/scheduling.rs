@@ -259,7 +259,7 @@ pub open spec fn trigger_any(ready: Seq<bool>) -> bool {
     ready.len() == 0 || exists|i: int| 0 <= i < ready.len() && ready[i]
 }
 
-/// Model of `Trigger::Any` with the guard conditions (issue 2162).
+/// Model of `Trigger::Any` with the guard conditions.
 ///
 /// Production semantics:
 /// ```text

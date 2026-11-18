@@ -1,17 +1,17 @@
 //! Board network read-back for the NuttX QEMU boards (arm virt + rv-virt).
 //!
-//! NuttX owns this board's network (RFC-0109 D2, `[board.net] stack = "os"`):
-//! the kernel brings `eth0` (virtio-net) up during boot, before `main`, from
-//! its own `defconfig`'s `CONFIG_NETINIT_*`. nano-ros only READS it.
+//! NuttX owns this board's network (`[board.net] stack = "os"`): the kernel
+//! brings `eth0` (virtio-net) up during boot, before `main`, from its own
+//! `defconfig`'s `CONFIG_NETINIT_*`. nano-ros only READS it.
 //!
-//! Issue 2048 — this module used to WRITE it: `SIOCSIFADDR` /
-//! `SIOCSIFNETMASK` / `SIOCSIFDSTADDR` on `eth0` from `Config::ip()`, plus a
-//! `/dev/urandom` reseed from the same four bytes. Both were dead weight by
-//! the time they were removed (the issue records the measurement):
+//! This module used to WRITE it: `SIOCSIFADDR` / `SIOCSIFNETMASK` /
+//! `SIOCSIFDSTADDR` on `eth0` from `Config::ip()`, plus a `/dev/urandom`
+//! reseed from the same four bytes. Both were dead weight by the time they
+//! were removed:
 //!
-//! * the push wrote the value the kernel had already applied — phase-514 W4
-//!   generates `BOARD_NET_*` from that same `defconfig`, and no image, fixture
-//!   row or entry bake (~~`NROS_IP`~~) states another address;
+//! * the push wrote the value the kernel had already applied — the board's
+//!   `BOARD_NET_*` is generated from that same `defconfig`, and no image,
+//!   fixture row or entry bake (~~`NROS_IP`~~) states another address;
 //! * the reseed fed the IP, which is the SAME `10.0.2.15` in every guest, so
 //!   it gave every guest the same seed; and the zenoh session ZID on NuttX is
 //!   not drawn from `/dev/urandom` at all (`zpico_fill_session_zid`'s generic
@@ -19,10 +19,11 @@
 
 /// Print the address the kernel gave `eth0`, as read back with `SIOCGIFADDR`.
 ///
-/// This is the read half of RFC-0109 D2 and the boot-log evidence a test
-/// asserts on ([`ETH0_REPORT_PREFIX`]): an image whose `defconfig` lost its
-/// `CONFIG_NETINIT_*` prints `0.0.0.0` (or the ioctl's error) here instead of
-/// only dying later in `Executor::open` as an opaque `ConnectionFailed`.
+/// This is the read half of the kernel owning the network, and the boot-log
+/// evidence a test asserts on ([`ETH0_REPORT_PREFIX`]): an image whose
+/// `defconfig` lost its `CONFIG_NETINIT_*` prints `0.0.0.0` (or the ioctl's
+/// error) here instead of only dying later in `Executor::open` as an opaque
+/// `ConnectionFailed`.
 #[cfg(target_os = "nuttx")]
 pub fn report_kernel_eth0() {
     match read_eth0_ipv4() {

@@ -1,7 +1,7 @@
 //! # nros-board-threadx-port-riscv64
 //!
-//! **Layer 2 of RFC-0064: the ThreadX RISC-V64/GNU *arch port*, forked from
-//! upstream — not a board.**
+//! **The ThreadX RISC-V64/GNU *arch port* (layer 2, under the boards),
+//! forked from upstream — not a board.**
 //!
 //! This crate ships no runtime Rust. It owns six vendored-and-modified files
 //! under `port/`, and exposes only the paths a `build.rs` (or a CMake module)
@@ -35,13 +35,13 @@
 //!
 //! # Why this is a unit of its own, and why the two ThreadX boards did NOT merge
 //!
-//! phase-337 W4. `nros-board-threadx-linux` ships **no** `.S` at all, because
-//! upstream's Linux port already types `ULONG` as 4 bytes and needs no fork.
-//! Merging the two boards would therefore mean `cfg`-gating RISC-V assembly
-//! into a crate that also serves Linux — the wrong cut. The asymmetry is not
-//! between the two *boards*; it is that one of them needs a forked *arch
-//! port*. So the arch port becomes its own layer-2 unit, and both boards stay
-//! thin overlays on top of it.
+//! `nros-board-threadx-linux` ships **no** `.S` at all, because upstream's
+//! Linux port already types `ULONG` as 4 bytes and needs no fork. Merging the
+//! two boards would therefore mean `cfg`-gating RISC-V assembly into a crate
+//! that also serves Linux — the wrong cut. The asymmetry is not between the
+//! two *boards*; it is that one of them needs a forked *arch port*. So the
+//! arch port becomes its own layer-2 unit, and both boards stay thin overlays
+//! on top of it.
 //!
 //! # Precedence — the one way this can go silently wrong
 //!

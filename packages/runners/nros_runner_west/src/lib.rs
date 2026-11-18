@@ -85,9 +85,9 @@ pub fn west_program(plan: &RunPlan) -> PathBuf {
 /// The Zephyr tree `west` is pointed at: the plan's `args.zephyr_base`, the
 /// one the image's build was configured against (`nros run` reads it from the
 /// build's CMake cache), so west loads that workspace's `build` and `flash`
-/// commands from any directory (issue 2353). `None`: the plan names none, and
-/// west keeps finding its workspace the way it would for the user (an
-/// exported `ZEPHYR_BASE`, or a working directory inside one).
+/// commands from any directory. `None`: the plan names none, and west keeps
+/// finding its workspace the way it would for the user (an exported
+/// `ZEPHYR_BASE`, or a working directory inside one).
 #[must_use]
 pub fn zephyr_base(plan: &RunPlan) -> Option<PathBuf> {
     plan.args

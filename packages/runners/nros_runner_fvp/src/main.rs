@@ -1,4 +1,4 @@
-//! `nros-runner-fvp`: the `fvp` runner (RFC-0119 D8), `run` only.
+//! `nros-runner-fvp`: the `fvp` runner, `run` only.
 //!
 //! Boots a west-built image on an Arm Fixed Virtual Platform through
 //! Zephyr's own FVP run target (`west build -d <build_dir> -t run_armfvp`),

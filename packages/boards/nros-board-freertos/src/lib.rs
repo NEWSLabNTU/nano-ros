@@ -8,38 +8,29 @@
 //! crate + patch vendor HAL deltas via `#[no_mangle]` hooks; see
 //! `book/src/extending/add-a-board.md` for the cookbook.
 //!
-//! ## Status
+//! ## What it provides
 //!
-//! - 152.1.A — scaffolding crate (façade).
-//! - 152.1.B.1 — ~~`STARTUP_C`~~ const split into three checked-in C
-//!   files.
-//! - 152.1.B.2 — board-Ethernet weak-hook contract
+//! - The board startup C, as checked-in C files under `c/`.
+//! - The board-Ethernet weak-hook contract
 //!   (`nros_board_register_netif` + `nros_board_poll_netif`).
-//! - 152.1.B.3 — `FREERTOS_CFLAGS` env-var arch parameterisation.
-//! - 152.1.B.4 — FreeRTOS kernel + lwIP + nros-platform-freertos
-//!   compile lifted into this crate's `build.rs`. Emits
+//! - `FREERTOS_CFLAGS` env-var arch parameterisation.
+//! - The FreeRTOS kernel + lwIP + nros-platform-freertos compile, in
+//!   this crate's `build.rs`. Emits
 //!   `lib{freertos, lwip, nros_platform_freertos, freertos_glue}.a`.
-//! - 152.1.B.5 — `Config` struct + `Error` enum lifted into this
-//!   crate's `src/`. `node.rs` (~381 LOC of FreeRTOS-task plumbing
-//!   that semihosts via `cortex_m_semihosting` and exits via QEMU
-//!   semihosting) stays per-board until a `BoardPrint` /
-//!   `BoardExit` trait abstraction lands (coupled with 152.4.B's
-//!   `BoardInit` trait).
-//! - 212.N.2 — additive [`run_entry`] over the
-//!   [`nros_platform::Board`] trait set (Phase 212.N.1). Phase 212.N.7
-//!   then RETIRED the legacy `run` (the `nros-board-common` traits plus a
-//!   `&Config` closure), so [`run_entry`] is the only entry point left
-//!   and every per-board `impl BoardEntry` delegates to it.
+//! - The `Config` struct + `Error` enum.
+//! - [`run_entry`] over the [`nros_platform::Board`] trait set: the
+//!   only entry point, and every per-board `impl BoardEntry` delegates
+//!   to it.
 //!
 //! ## Public contract
 //!
 //! - [`Config`] — TOML-loaded network + zenoh config + FreeRTOS
 //!   priority knobs. Overlay extends defaults.
 //! - `Error` (pub(crate)) — internal init errors.
-//! - [`run_entry`] — Phase 212.N.2
+//! - [`run_entry`] —
 //!   `(Config, FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>) -> Result<(), E>`
 //!   entry point over the `nros-platform::board` traits. Per-board
-//!   `impl BoardEntry` impls (landed in 212.N.3) delegate here.
+//!   `impl BoardEntry` impls delegate here.
 //! - `#[no_mangle]` hooks the overlay implements
 //!   (see `c/network_glue.c`):
 //!   - `nros_board_register_netif(mac, ip, netmask, gw) -> int`
@@ -52,7 +43,7 @@
 //! | Var | Default | Purpose |
 //! |---|---|---|
 //! | `FREERTOS_DIR` | none (required) | FreeRTOS kernel source root. |
-//! | `FREERTOS_PORT` | none (the board states it) | Upstream's port enum (phase-349 W3); a listed path still works, deprecated. |
+//! | `FREERTOS_PORT` | none (the board states it) | Upstream's port enum; a listed path still works, deprecated. |
 //! | `LWIP_DIR` | none (required) | lwIP source root. |
 //! | `FREERTOS_CONFIG_DIR` | none (required) | `FreeRTOSConfig.h` + `lwipopts.h` dir. |
 //! | `FREERTOS_CFLAGS` | `-mcpu=cortex-m3 -mthumb` | Extra compiler flags. |
@@ -75,21 +66,20 @@ pub use config::Config;
 pub use entry::{run_bare, run_entry, run_sched_tasks_entry};
 pub use nros_board_common::BaseConfig;
 
-/// issue 1571 — the type of one spawned sched task's executor backing slot, so a
-/// board crate that wraps this one's `run_sched_tasks` can name its parameter without
+/// The type of one spawned sched task's executor backing slot, so a board crate
+/// that wraps this one's `run_sched_tasks` can name its parameter without
 /// depending on `nros` itself.
 pub use ::nros::SchedTaskExecutorBackingSlot;
 
-/// issue 1598 — one spawned sched task's RTOS task memory row (stack + TCB), for the same
+/// One spawned sched task's RTOS task memory row (stack + TCB), for the same
 /// reason: a wrapping board crate names it without depending on `nros`.
 pub use ::nros::SchedTaskMemoryRaw;
 
 /// Internal re-export of the `Error` + `Result` types used by
-/// per-board `node.rs` files during the 152.1.B.5 → final-lift
-/// transition. Overlays import via `nros_board_freertos::__internal::*`.
-/// The path is intentionally private-looking; once `node.rs` lifts
-/// into this crate (coupled with 152.4.B's `BoardInit` trait), the
-/// module goes away.
+/// per-board `node.rs` files until they lift into this crate. Overlays
+/// import via `nros_board_freertos::__internal::*`. The path is
+/// intentionally private-looking; once `node.rs` lifts into this crate,
+/// the module goes away.
 #[doc(hidden)]
 pub mod __internal {
     pub use crate::error::{Error, Result};

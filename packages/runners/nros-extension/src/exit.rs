@@ -1,9 +1,8 @@
 //! Exit codes.
 //!
-//! A runner exits with one of three codes (RFC-0119 D6). nros's own run,
-//! flash and monitor verbs use the same three plus [`PLAN_UNRESOLVED`]
-//! (RFC-0118 D2), which only nros can produce: a runner is handed a plan that
-//! has already resolved.
+//! A runner exits with one of three codes. nros's own run, flash and monitor
+//! verbs use the same three plus [`PLAN_UNRESOLVED`], which only nros can
+//! produce: a runner is handed a plan that has already resolved.
 
 /// Success, or `--expect` matched.
 pub const SUCCESS: u8 = 0;

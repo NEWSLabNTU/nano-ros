@@ -1,4 +1,4 @@
-//! issue 2022 — the tickless idle for the transport's waits.
+//! The tickless idle for the transport's waits.
 //!
 //! A bare-metal image's transport waits are poll loops (`zpico_spin_once`,
 //! TCP connect, `read_exact`), and without this every one of them busy-polled
@@ -10,32 +10,32 @@
 //!
 //! * **The LAN9118 RX interrupt** (`ETHERNET`, NVIC 13 in QEMU's mps2-an385),
 //!   through `lan9118_smoltcp::irq`. Without it a `wfi` armed only on the
-//!   deadline is the blind sleep RFC-0106 D5 forbids, moved down a layer: a
-//!   reply landing mid-sleep would wait for the timer.
+//!   deadline is a blind sleep, moved down a layer: a reply landing mid-sleep
+//!   would wait for the timer.
 //! * **A SysTick one-shot** at the deadline. SysTick is the one counter on
 //!   this board nobody else owns: TIMER0 is the monotonic clock, TIMER1 the
-//!   sporadic-server timer, the dual timer the RTIC tick (issue 1804). It is
-//!   24 bits at 25 MHz, so one shot reaches ~671 ms; a longer deadline wakes
-//!   early, and the loop polls and idles again.
+//!   sporadic-server timer, the dual timer the RTIC tick. It is 24 bits at
+//!   25 MHz, so one shot reaches ~671 ms; a longer deadline wakes early, and
+//!   the loop polls and idles again.
 //!
-//! phase-521 W5 — the serial link gets the same idle. Its wake source is the
-//! CMSDK UART0 RX interrupt (`UARTRX0`, NVIC 0), and the primitive is installed
-//! into `zpico_serial::set_wait_idle`, which the zenoh serial read and
+//! The serial link gets the same idle. Its wake source is the CMSDK UART0 RX
+//! interrupt (`UARTRX0`, NVIC 0), and the primitive is installed into
+//! `zpico_serial::set_wait_idle`, which the zenoh serial read and
 //! `zpico_spin_once`'s idle call between executor rounds. Like the LAN9118
 //! line, the RX handler only masks the source: QEMU's CMSDK model holds one
 //! byte and stops taking more from the host until it is read, so nothing is
 //! lost while the source is masked.
 //!
-//! phase-521 W5 (RFC-0113 D5) — the same sleep is the port's wake-object park
+//! The same sleep is the port's wake-object park
 //! (`nros_platform_mps2_an385::wake`), so the executor itself parks on `wfi`
 //! between spins and an arrival on either link ends that park.
 //!
-//! phase-521 W6 — an RTIC image (`feature = "rtic"`) uses the same idle. RTIC
-//! owns the vector table, so the LAN9118 line is not a cortex-m-rt
-//! `#[interrupt]` there but an RTIC hardware task the `nros::main!` RTIC shell
-//! binds to `ETHERNET`, which calls [`on_eth_rx_irq`]
-//! (`RticBoardEntry::on_rx_irq`). The 1 ms dual-timer tick that bounded RTIC's
-//! `wfi` before is gone: the one-shot below is the only timer wake.
+//! An RTIC image (`feature = "rtic"`) uses the same idle. RTIC owns the vector
+//! table, so the LAN9118 line is not a cortex-m-rt `#[interrupt]` there but an
+//! RTIC hardware task the `nros::main!` RTIC shell binds to `ETHERNET`, which
+//! calls [`on_eth_rx_irq`] (`RticBoardEntry::on_rx_irq`). The 1 ms dual-timer
+//! tick that bounded RTIC's `wfi` before is gone: the one-shot below is the
+//! only timer wake.
 
 use cortex_m::peripheral::NVIC;
 use cortex_m_rt::exception;

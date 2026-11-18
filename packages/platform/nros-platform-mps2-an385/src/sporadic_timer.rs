@@ -1,5 +1,5 @@
-//! Phase 110.E.b — CMSDK Timer1 periodic ISR for sporadic-server
-//! budget refill on MPS2-AN385.
+//! CMSDK Timer1 periodic ISR for sporadic-server budget refill on
+//! MPS2-AN385.
 //!
 //! Provides ONE periodic-callback slot. Backs the
 //! `PlatformTimer::create_periodic` impl on `Mps2An385Platform`. The
@@ -36,7 +36,7 @@ use nros_platform_api::TimerError;
 /// CMSDK Timer1 base address.
 const TIMER1_BASE: usize = 0x4000_1000;
 
-/// The CMSDK timer this module OWNS (issue 1804) — exported so another
+/// The CMSDK timer this module OWNS — exported so another
 /// periodic-interrupt user (the RTIC tick) can assert it is not this one.
 pub const SPORADIC_TIMER_BASE: usize = TIMER1_BASE;
 const TIMER_CTRL: usize = 0x00;

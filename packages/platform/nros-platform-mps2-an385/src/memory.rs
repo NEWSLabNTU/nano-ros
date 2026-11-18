@@ -2,13 +2,13 @@
 //!
 //! Heap size (the `HEAP` static lands in RAM — `.bss`/`.data`):
 //!   - 128 KB default (zenoh-pico / xrce-dds builds; the per-entry executor
-//!     backing is a single ~75 KB alloc — #176)
+//!     backing is a single ~75 KB alloc)
 //!   - 128 KB with `link-tls` (mbedTLS context + certs + crypto)
-//!   - 2 MB with `dds-heap` (Phase 97.3.mps2-an385 — DDS
-//!     DcpsDomainParticipant builtin entities; same budget as the
+//!   - 2 MB with `dds-heap` (DDS DcpsDomainParticipant builtin
+//!     entities; same budget as the
 //!     FreeRTOS / ThreadX-RV64 slices)
 //!
-//! Phase 204.5 — `NROS_HEAP_SIZE` (decimal bytes, set in the example's
+//! `NROS_HEAP_SIZE` (decimal bytes, set in the example's
 //! `.cargo/config.toml` `[env]`) overrides the default. The defaults are
 //! generous; a zenoh-pico `tcp/` client's working set is ~12–16 KB and
 //! XRCE's ~3 KB, so a size-critical node can shrink the static heap a lot
@@ -93,8 +93,8 @@ pub fn dealloc(ptr: *mut core::ffi::c_void) {
     HEAP.free(ptr)
 }
 
-/// Bytes currently allocated from the heap (Phase 230 1b / RFC-0034 —
-/// backs `nros_platform_heap_used_bytes`). Tracked by `FreeListHeap`'s
+/// Bytes currently allocated from the heap (backs
+/// `nros_platform_heap_used_bytes`). Tracked by `FreeListHeap`'s
 /// `stats` feature.
 pub fn used() -> usize {
     HEAP.used()

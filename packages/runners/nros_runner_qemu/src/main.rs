@@ -1,4 +1,4 @@
-//! `nros-runner-qemu`: the `qemu` runner (RFC-0119 D8), `run` only.
+//! `nros-runner-qemu`: the `qemu` runner, `run` only.
 //!
 //! Boots the plan's `elf` under QEMU. The argument line is rendered from the
 //! plan's QEMU `args` by `nros_qemu_ladder::plan_line`, the one renderer
@@ -14,12 +14,12 @@
 //!
 //! A plan whose link is serial gets the first UART on a host pty
 //! (`-serial pty`), and the runner reports that pty on stderr as
-//! `nros-runner: link <pty>` (RFC-0119 D6) once QEMU names it, so nros can
-//! start the router on the other end. QEMU starts paused (`-S`) and resumes
-//! over QMP [`SERIAL_SETTLE`] after the link is reported: a pty with nothing
-//! on the other end drops what the guest writes, so a guest that boots first
-//! sends its session handshake into nothing, and the router then reads the
-//! guest's retry as a protocol error.
+//! `nros-runner: link <pty>` once QEMU names it, so nros can start the
+//! router on the other end. QEMU starts paused (`-S`) and resumes over QMP
+//! [`SERIAL_SETTLE`] after the link is reported: a pty with nothing on the
+//! other end drops what the guest writes, so a guest that boots first sends
+//! its session handshake into nothing, and the router then reads the guest's
+//! retry as a protocol error.
 
 use std::{
     io::{BufRead, BufReader, Read, Write},

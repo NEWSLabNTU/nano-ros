@@ -1,6 +1,6 @@
 //! The skeleton every runner executable shares: answer `describe`, read the
 //! plan, hand it to the runner's own code, and turn a launched process's exit
-//! into the contract's exit code (RFC-0119 D6).
+//! into the contract's exit code.
 //!
 //! ```no_run
 //! use nros_extension::{describe::Describe, exit::RunnerExit, plan::Verb, runner};
@@ -16,10 +16,10 @@
 //! }
 //! ```
 //!
-//! What this module does NOT do is anything nros owns (RFC-0119 D6): it never
-//! greps the console, never times out, never starts a router and never makes a
-//! process group. A launched process inherits the runner's stdin, stdout and
-//! stderr, so the console stream reaches nros unmodified.
+//! What this module does NOT do is anything nros owns: it never greps the
+//! console, never times out, never starts a router and never makes a process
+//! group. A launched process inherits the runner's stdin, stdout and stderr,
+//! so the console stream reaches nros unmodified.
 
 use std::process::{Command, ExitCode};
 
@@ -104,8 +104,7 @@ pub fn exec(cmd: &mut Command) -> RunnerExit {
 
 /// [`exec`] for a tool whose failure means the runner could not do its job
 /// (a flasher, a build-system target that boots nothing when it fails): any
-/// non-zero status is [`RunnerExit::RunnerFailed`] (RFC-0118 D2: "could not
-/// flash").
+/// non-zero status is [`RunnerExit::RunnerFailed`] ("could not flash").
 pub fn exec_tool(cmd: &mut Command) -> RunnerExit {
     match exec(cmd) {
         RunnerExit::TargetFailed => fail(format!("{:?} failed", cmd.get_program())),
@@ -113,9 +112,9 @@ pub fn exec_tool(cmd: &mut Command) -> RunnerExit {
     }
 }
 
-/// Split a command template into words before expansion (RFC-0118 D5), so a
-/// placeholder's value is one argument even when it holds spaces. Words split
-/// on whitespace; single quotes keep everything literal, double quotes keep
+/// Split a command template into words before expansion, so a placeholder's
+/// value is one argument even when it holds spaces. Words split on
+/// whitespace; single quotes keep everything literal, double quotes keep
 /// whitespace and honour `\"` and `\\`. No other shell syntax is read: a
 /// template is a command line, not a script.
 ///
@@ -176,7 +175,7 @@ pub fn split_words(template: &str) -> Result<Vec<String>, String> {
 }
 
 /// Whether a runner's `describe` reply and its package's `nros-runner.toml`
-/// state the same `protocol`, `verbs` and `needs` (RFC-0119 D2 and D6 state
+/// state the same `protocol`, `verbs` and `needs` (the runner contract states
 /// them twice: the descriptor for discovery, the reply for negotiation). For a
 /// runner's own test. The descriptor's keys are read one line each, as the
 /// JSON their TOML array and integer forms already are, so this needs no TOML

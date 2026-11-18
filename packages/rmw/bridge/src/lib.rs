@@ -1,20 +1,19 @@
-//! Cross-RMW bridge primitives for nano-ros (Phase 128.F).
+//! Cross-RMW bridge primitives for nano-ros.
 //!
 //! Lets a binary that intentionally links more than one RMW backend
 //! forward raw serialized payloads between Nodes bound to different
 //! backends. Common single-backend code does not need this crate.
 //!
-//! # Serialization format (RFC-0088 D3, phase-421 W3)
+//! # Serialization format
 //!
-//! `Executor::open_multi` is the one place where RFC-0088's compile-time
-//! answer stops existing — one image, two backends, potentially two formats —
-//! so it is the one place the format becomes a runtime value.
-//! [`PubSubBridge::new`] compares the two sides' formats once, at
-//! construction, and returns [`BridgeError::FormatMismatch`] naming both when
-//! they differ. [`PubSubBridge::with_converter`] is the deliberate
-//! cross-format case; it takes a [`SerializationFormatConverter`] and checks
-//! its declared endpoints, also once. Nothing about a format is evaluated per
-//! sample.
+//! `Executor::open_multi` is the one place where the serialization format stops
+//! being a compile-time answer — one image, two backends, potentially two
+//! formats — so it is the one place the format becomes a runtime value.
+//! [`PubSubBridge::new`] compares the two sides' formats once, at construction,
+//! and returns [`BridgeError::FormatMismatch`] naming both when they differ.
+//! [`PubSubBridge::with_converter`] is the deliberate cross-format case; it
+//! takes a [`SerializationFormatConverter`] and checks its declared endpoints,
+//! also once. Nothing about a format is evaluated per sample.
 //!
 //! # Pattern
 //!
@@ -46,22 +45,21 @@
 //! }
 //! ```
 //!
-//! # Loop protection (phase 128.F.4)
+//! # Loop protection
 //!
-//! Wire-level loop protection would prefer the ROS 2 attachment
-//! mechanism (bridge_origin field), but the per-backend
-//! `publish_raw_with_attachment` ABI is not yet on the public Rust
-//! surface — that lands in phase 129 alongside the platform / link
-//! feature cleanup. Until then, [`PubSubBridge`] uses a
-//! best-effort payload-hash dedup window: each forwarded sample's
-//! FNV-1a-64 hash goes into a small ring; samples whose hash matches
-//! one already in the ring within the last [`DEDUP_WINDOW`] entries
-//! are skipped on the way out. Handles the common bidirectional
-//! echo pattern (forward → backend B → forward back → drop) without
-//! requiring backend changes. Distinct messages that happen to
-//! collide on hash within the window are silently dropped — collision
-//! probability is ~`N/2^64`, negligible in practice for the small
-//! windows in use.
+//! On a backend that carries attachments, each forwarded sample is
+//! stamped with a bridge_origin attachment tag (see
+//! [`encode_bridge_origin`]), and a paired bridge drops the samples
+//! that carry its own origin. On a backend without attachments,
+//! [`PubSubBridge`] falls back to a best-effort payload-hash dedup
+//! window: each forwarded sample's FNV-1a-64 hash goes into a small
+//! ring; samples whose hash matches one already in the ring within the
+//! last [`DEDUP_WINDOW`] entries are skipped on the way out. Handles
+//! the common bidirectional echo pattern (forward → backend B → forward
+//! back → drop) without requiring backend changes. Distinct messages
+//! that happen to collide on hash within the window are silently
+//! dropped — collision probability is ~`N/2^64`, negligible in practice
+//! for the small windows in use.
 //!
 //! Set the origin string to `""` to disable dedup (single-direction
 //! bridges don't need it).
@@ -84,7 +82,7 @@ pub use config::{ConfigError, run_from_config, run_from_config_str, run_from_con
 #[cfg(feature = "cffi")]
 mod cffi;
 
-/// Issue 0436 — force-link anchor for the C/C++ bridge ABI.
+/// Force-link anchor for the C/C++ bridge ABI.
 ///
 /// When this crate is bundled as an rlib DEPENDENCY of a staticlib root (that is
 /// how `libnros_cpp.a` ships it), rustc drops every `#[no_mangle]` export the root
@@ -112,7 +110,7 @@ pub const DEDUP_WINDOW: usize = 16;
 /// another. Each [`pump`](Self::pump) call drains every queued sample
 /// from the subscription and forwards the bytes to the publisher.
 ///
-/// # Serialization format (RFC-0088 D3, phase-421 W3)
+/// # Serialization format
 ///
 /// Backend bytes pass through untouched, so the two sides must agree on what
 /// those bytes mean. That used to be a sentence in this doc comment ("both
@@ -202,7 +200,7 @@ impl LoopGuard {
     }
 }
 
-/// Phase 128.F.4 — wire-level bridge_origin attachment tag.
+/// Wire-level bridge_origin attachment tag.
 ///
 /// Layout written by [`encode_bridge_origin`]:
 ///
@@ -293,7 +291,7 @@ impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF, 0> {
     /// [`format`](RawSubscription::format) and the publisher's
     /// [`format`](EmbeddedRawPublisher::format) differ. The bridge forwards
     /// bytes untouched, so a mismatch would put one format's bytes on a wire
-    /// the other side reads as the other's — RFC-0088 D3 makes that a
+    /// the other side reads as the other's — the bridge makes that a
     /// construction failure rather than a doc comment. Cross-format on purpose
     /// goes through [`with_converter`](Self::with_converter).
     ///
@@ -323,8 +321,7 @@ impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF, 0> {
 impl<const RX_BUF: usize, const TX_BUF: usize, const CONV_BUF: usize>
     PubSubBridge<RX_BUF, TX_BUF, CONV_BUF>
 {
-    /// Build a bridge that translates between two serialization formats
-    /// (RFC-0088 D3).
+    /// Build a bridge that translates between two serialization formats.
     ///
     /// This is the deliberate cross-format case: the caller names a
     /// [`SerializationFormatConverter`], and the bridge checks — once, here —
@@ -504,11 +501,11 @@ pub struct PumpStats {
     /// Samples that matched a recently-forwarded hash and were
     /// dropped to break a bidirectional echo loop.
     pub dropped_echo: usize,
-    /// RFC-0088 D3 — samples a [`SerializationFormatConverter`] refused, and
-    /// which therefore never reached the destination. Always `0` on a bridge
-    /// built with [`PubSubBridge::new`], which has no converter. Not mirrored
-    /// into the C `rclc_pump_stats_t` — that struct's layout is a published
-    /// ABI (`<rclc/bridge.h>`) and appending to it is exactly the drift class
+    /// Samples a [`SerializationFormatConverter`] refused, and which
+    /// therefore never reached the destination. Always `0` on a bridge built
+    /// with [`PubSubBridge::new`], which has no converter. Not mirrored into
+    /// the C `rclc_pump_stats_t` — that struct's layout is a published ABI
+    /// (`<rclc/bridge.h>`) and appending to it is exactly the drift class
     /// `check-ffi-struct-mirrors` exists for.
     pub dropped_convert: usize,
 }

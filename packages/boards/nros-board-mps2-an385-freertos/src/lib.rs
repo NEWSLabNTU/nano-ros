@@ -249,12 +249,12 @@ fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
 }
 
 impl Mps2An385 {
-    /// Phase 313 W-freertos (#0243) — lightweight NO-SESSION entry for logging /
-    /// init-only fixtures AND no-session apps that manage their own executor
-    /// (e.g. the `wake-latency-cortex-m3` bench). Boots the FreeRTOS scheduler +
-    /// UART writer and runs `setup(&Config)` WITHOUT the board opening an
-    /// `Executor` session (unlike [`nros_platform::board::BoardEntry::run`], which
-    /// would fail `Transport(ConnectionFailed)` with no router). The `&Config`
+    /// Lightweight NO-SESSION entry for logging / init-only fixtures AND
+    /// no-session apps that manage their own executor (e.g. the
+    /// `wake-latency-cortex-m3` bench). Boots the FreeRTOS scheduler + UART
+    /// writer and runs `setup(&Config)` WITHOUT the board opening an `Executor`
+    /// session (unlike [`nros_platform::board::BoardEntry::run`], which would
+    /// fail `Transport(ConnectionFailed)` with no router). The `&Config`
     /// mirrors the retired legacy `run(Config, closure)`; logging fixtures that
     /// don't need it take `|_cfg|`.
     pub fn run_bare<F, E>(config: Config, setup: F) -> Result<(), E>
@@ -266,13 +266,15 @@ impl Mps2An385 {
         nros_board_freertos::run_bare::<Mps2An385, F, E>(config, setup)
     }
 
-    /// Phase 228.E.2 — per-sched-task multi-task entry; delegates to
-    /// [`nros_board_freertos::run_sched_tasks_entry`]. The `nros::main!()` macro emits
-    /// `<Mps2An385>::run_sched_tasks(&DEPLOY, SCHED_TASKS, SCHED_TASK_BACKING, run_plan)` for multi-sched-task systems
-    /// (single-sched-task keeps the `BoardEntry::run_with_deploy` path).
+    /// Per-sched-task multi-task entry; delegates to
+    /// [`nros_board_freertos::run_sched_tasks_entry`]. The `nros::main!()`
+    /// macro emits
+    /// `<Mps2An385>::run_sched_tasks(&DEPLOY, SCHED_TASKS, SCHED_TASK_BACKING, run_plan)`
+    /// for multi-sched-task systems (single-sched-task keeps the
+    /// `BoardEntry::run_with_deploy` path).
     ///
-    /// Issue #48 cause 1 — `deploy` overlays the `[deploy.<board>]` block onto
-    /// `Config::default()` (same seam as the single-sched-task path) so the multi-sched-task
+    /// `deploy` overlays the `[deploy.<board>]` block onto `Config::default()`
+    /// (same seam as the single-sched-task path) so the multi-sched-task
     /// firmware dials the deploy-named locator/ip instead of the inert default.
     pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,
@@ -299,12 +301,12 @@ impl Mps2An385 {
         )
     }
 
-    /// Issue 1598 — [`run_sched_tasks`](Self::run_sched_tasks) plus each spawned sched task's
-    /// TASK memory: the entry's `.bss` `SchedTaskMemory` statics (stack + TCB,
-    /// sized from each sched task's `stack_bytes`), in spawn order. Every spawned
-    /// sched task is `xTaskCreateStatic`d over its row, so no sched task stack comes out
-    /// of heap_4 and stacks that do not fit RAM fail at link. `nros::main!`
-    /// emits this call for a FreeRTOS deploy.
+    /// [`run_sched_tasks`](Self::run_sched_tasks) plus each spawned sched
+    /// task's TASK memory: the entry's `.bss` `SchedTaskMemory` statics
+    /// (stack + TCB, sized from each sched task's `stack_bytes`), in spawn order.
+    /// Every spawned sched task is `xTaskCreateStatic`d over its row, so no
+    /// sched task stack comes out of heap_4 and stacks that do not fit RAM fail
+    /// at link. `nros::main!` emits this call for a FreeRTOS deploy.
     pub fn run_sched_tasks_with_task_memory<F, E>(
         deploy: &nros_platform::DeployOverlay,
         sched_tasks: &'static [nros_platform::SchedTaskSpec<'static>],

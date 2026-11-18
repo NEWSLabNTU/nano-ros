@@ -1,14 +1,14 @@
-//! RFC-0052 / phase-296 W3b.1 — the on-target contract-violation reporter.
+//! The on-target contract-violation reporter.
 //!
-//! Thin-wrapper discipline (RFC-0019): this crate BUILDS `DiagnosticArray`
-//! messages — it owns no publisher, no executor, no aggregation. The entry
-//! glue (fixture, codegen entry, `run_sched_tasks` loop) creates one
+//! Thin-wrapper discipline: this crate BUILDS `DiagnosticArray` messages —
+//! it owns no publisher, no executor, no aggregation. The entry glue
+//! (fixture, codegen entry, `run_sched_tasks` loop) creates one
 //! `Publisher<DiagnosticArray>` on `/diagnostics` and publishes whatever
 //! [`DiagnosticReporter::report`] returns. `no_std` + heapless throughout.
 //!
 //! Rule ids are the play_launch runtime-enforcement vocabulary — the SAME
 //! contract violated on either runtime reports in the SAME words
-//! (cross-runtime parity, RFC-0050/0052).
+//! (cross-runtime parity).
 
 #![forbid(unsafe_code)]
 #![no_std]
@@ -21,9 +21,9 @@ pub const RULE_RATE_HIERARCHY: &str = "rate-hierarchy-runtime";
 pub const RULE_MAX_AGE: &str = "max-age-runtime";
 /// Path latency above the declared `max_latency_ms` (path guarantee).
 pub const RULE_MAX_LATENCY: &str = "max-latency-runtime";
-/// phase-462 W2 -- a contracted subscription that took NOTHING for a whole
-/// `max_age_ms` window (sub-endpoint assumption, the on-target form of a
-/// liveliness lease).
+/// A contracted subscription that took NOTHING for a whole `max_age_ms`
+/// window (sub-endpoint assumption, the on-target form of a liveliness
+/// lease).
 ///
 /// Distinct from [`RULE_MAX_AGE`], and it has to be: that rule judges a
 /// message that ARRIVED and was too old, so an input that stops entirely
@@ -31,43 +31,42 @@ pub const RULE_MAX_LATENCY: &str = "max-latency-runtime";
 /// made against. A declared bound on how old data may be is also a bound on
 /// how long there may be none.
 ///
-/// phase-462 W5b -- also the on-target form of a contract `deadline` the
-/// subscription's backend cannot judge (it does not honour `DEADLINE`, or was
-/// never handed the deadline). The window is then the deadline, or the age
-/// bound when that is shorter; declared: the window, in ms.
+/// Also the on-target form of a contract `deadline` the subscription's
+/// backend cannot judge (it does not honour `DEADLINE`, or was never handed
+/// the deadline). The window is then the deadline, or the age bound when that
+/// is shorter; declared: the window, in ms.
 pub const RULE_SILENCE: &str = "silence-runtime";
-/// phase-462 W3b -- a contracted hazard's guard faulted (`contracts.hazards`):
-/// an input the safety mechanism depends on is gone. play_launch's own
-/// spelling, with no `-runtime` suffix, so one log reader serves the RTOS and
-/// the Linux side of a bridge. Measured: ms since the fault began; declared:
-/// the hazard's `ftti_ms` (0 when none).
+/// A contracted hazard's guard faulted (`contracts.hazards`): an input the
+/// safety mechanism depends on is gone. play_launch's own spelling, with no
+/// `-runtime` suffix, so one log reader serves the RTOS and the Linux side of
+/// a bridge. Measured: ms since the fault began; declared: the hazard's
+/// `ftti_ms` (0 when none).
 pub const RULE_HAZARD_DETECTED: &str = "hazard-detected";
-/// phase-462 W3b -- the hazard's `safe_state` publisher published after the
-/// fault. Measured: fault to reaction plus `settle_ms`; declared: `ftti_ms`.
+/// The hazard's `safe_state` publisher published after the fault. Measured:
+/// fault to reaction plus `settle_ms`; declared: `ftti_ms`.
 pub const RULE_HAZARD_REACTION: &str = "hazard-reaction";
-/// phase-462 W3b -- no guard of the hazard is faulted any more. Measured: how
-/// long the hazard lasted, ms.
+/// No guard of the hazard is faulted any more. Measured: how long the
+/// hazard lasted, ms.
 pub const RULE_HAZARD_RECOVERED: &str = "hazard-recovered";
-/// phase-462 W4c -- entering a contract mode took longer than its reaction
-/// path allows. An executor enters a requested mode at its next spin, so the
-/// measured value is the gap since its previous check (ms), an upper bound on
-/// how long the request waited; declared: the reaction path's `max_latency`.
-/// A GUARANTEE: how promptly this image switches is its own behaviour.
+/// Entering a contract mode took longer than its reaction path allows. An
+/// executor enters a requested mode at its next spin, so the measured value
+/// is the gap since its previous check (ms), an upper bound on how long the
+/// request waited; declared: the reaction path's `max_latency`. A GUARANTEE:
+/// how promptly this image switches is its own behaviour.
 pub const RULE_MODE_SWITCH: &str = "mode-switch-runtime";
-/// play_launch phase 96 W4.2 (phase 85 D4) -- the rung this image judges for a
-/// detected hazard did not answer within the ROUTE play_launch's checker
-/// charged it: from the detection tick to the rung's first output, excluding
-/// the detection time, any window and the settle. Measured: ms from the
-/// detection to that output, or to the tick that saw the route pass with none;
-/// declared: the rung's `route_ms`. A GUARANTEE, like `hazard-reaction`.
+/// The rung this image judges for a detected hazard did not answer within the
+/// ROUTE play_launch's checker charged it: from the detection tick to the
+/// rung's first output, excluding the detection time, any window and the
+/// settle. Measured: ms from the detection to that output, or to the tick that
+/// saw the route pass with none; declared: the rung's `route_ms`. A GUARANTEE,
+/// like `hazard-reaction`.
 pub const RULE_HAZARD_ROUTE: &str = "hazard-route-runtime";
-/// phase-560 W8 (play_launch phase 102 M5 E7) -- the fallback level a detected
-/// hazard's ladder is on: reported at detection and on every fall to a lower
-/// level, the answer play_launch's observer gives as `mode-availability`, keyed
-/// here by the hazard. Measured: the level's 0-based index in the ladder;
-/// declared: the ladder's length; the level's NAME is the report's `level`
-/// (and its message). A GUARANTEE: which level this image is on is its own
-/// behaviour.
+/// The fallback level a detected hazard's ladder is on: reported at detection
+/// and on every fall to a lower level, the answer play_launch's observer gives
+/// as `mode-availability`, keyed here by the hazard. Measured: the level's
+/// 0-based index in the ladder; declared: the ladder's length; the level's NAME
+/// is the report's `level` (and its message). A GUARANTEE: which level this
+/// image is on is its own behaviour.
 pub const RULE_HAZARD_LEVEL: &str = "hazard-level-runtime";
 
 /// The human message of one report. `level` is the level a
@@ -92,9 +91,8 @@ fn violation_message(rule: &str, measured: u32, declared: u32, level: &str) -> M
 type MessageText = heapless::String<128>;
 
 /// Which side of the contract the violated field belongs to — drives the
-/// 4-quadrant diagnosis (RFC-0050 §contracts): a violated GUARANTEE with
-/// met assumptions is a node bug; a violated ASSUMPTION is an upstream
-/// problem.
+/// 4-quadrant diagnosis: a violated GUARANTEE with met assumptions is a
+/// node bug; a violated ASSUMPTION is an upstream problem.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContractKind {
     Assumption,
@@ -189,7 +187,7 @@ impl DiagnosticReporter {
     }
 }
 
-/// Issue 1635 — which side of the contract a runtime rule judges.
+/// Which side of the contract a runtime rule judges.
 ///
 /// The rules about what ARRIVES (`max-age-runtime`, `silence-runtime`, and a
 /// hazard's guard faulting or recovering) are ASSUMPTIONS; every other rule --
@@ -207,10 +205,10 @@ pub fn kind_for_rule(rule: &str) -> ContractKind {
 }
 
 impl DiagnosticReporter {
-    /// Issue 1635 — one drained executor violation, as a `DiagnosticArray`
-    /// (or `None` while rate-limited). The ONE mapping from the executor's
-    /// `Violation` fields to a report; `nros-node`'s type is not named here so
-    /// this crate stays below it.
+    /// One drained executor violation, as a `DiagnosticArray` (or `None` while
+    /// rate-limited). The ONE mapping from the executor's `Violation` fields
+    /// to a report; `nros-node`'s type is not named here so this crate stays
+    /// below it.
     ///
     /// `rule` keeps the executor's own spelling — it is already the
     /// play_launch vocabulary — and the message carries both numbers, whose
@@ -238,19 +236,18 @@ impl DiagnosticReporter {
     }
 }
 
-/// phase-474 I7 -- one violation report, streamed as CDR straight into `w`,
-/// byte-identical to serializing what [`DiagnosticReporter::report_violation`]
-/// returns (with no rate limit).
+/// One violation report, streamed as CDR straight into `w`, byte-identical to
+/// serializing what [`DiagnosticReporter::report_violation`] returns (with no
+/// rate limit).
 ///
-/// The reporter runs on the spin thread (at the end of a spin since phase-474
-/// I7, not at detection). The value form puts a
-/// whole `DiagnosticArray` on that stack -- 5,176 B on a 64-bit host: a
-/// four-slot vector of 1,224 B statuses, each with eight key/value slots,
-/// plus the status built before it -- to send one status with one key/value.
-/// On the safety island that frame ran a 16 KiB main stack into the idle
-/// thread's on the first stored violation. This writes the same bytes from the
-/// borrowed strings; the largest locals are the 64 B message and an empty
-/// `Header` (frame id capacity 256).
+/// The reporter runs on the spin thread (at the end of a spin, not at
+/// detection). The value form puts a whole `DiagnosticArray` on that stack --
+/// 5,176 B on a 64-bit host: a four-slot vector of 1,224 B statuses, each with
+/// eight key/value slots, plus the status built before it -- to send one
+/// status with one key/value. On the safety island that frame ran a 16 KiB
+/// main stack into the idle thread's on the first stored violation. This
+/// writes the same bytes from the borrowed strings; the largest locals are the
+/// 64 B message and an empty `Header` (frame id capacity 256).
 ///
 /// Field limits follow the value form exactly: a string longer than its
 /// field's capacity (name 64, message 128, hardware id 96) is sent EMPTY,
@@ -266,12 +263,12 @@ pub fn write_violation_report(
     write_violation_reports(w, &[(rule, fqn, measured, declared, level)])
 }
 
-/// phase-474 I7 -- several violation reports COALESCED into one
-/// `DiagnosticArray`: one status per `(rule, fqn, measured, declared, level)`, in
-/// order, each byte-identical to the status [`write_violation_report`] sends
-/// for it alone. The executor queues verdicts and hands them over off the
-/// judged dispatch; on a slow link one message for several verdicts is what
-/// keeps the report from costing a tick per verdict.
+/// Several violation reports COALESCED into one `DiagnosticArray`: one status
+/// per `(rule, fqn, measured, declared, level)`, in order, each byte-identical
+/// to the status [`write_violation_report`] sends for it alone. The executor
+/// queues verdicts and hands them over off the judged dispatch; on a slow link
+/// one message for several verdicts is what keeps the report from costing a
+/// tick per verdict.
 ///
 /// At most four statuses (the generated type's capacity) are meaningful to an
 /// nros subscriber; a caller passing more is refused with `BufferTooSmall`

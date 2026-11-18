@@ -1,13 +1,12 @@
-//! Cross-format bridging (RFC-0088 D3, phase-421 W3).
+//! Cross-format bridging.
 //!
-//! `Executor::open_multi` is the one place where RFC-0088's compile-time answer
-//! stops existing: one image, two backends, and — once a backend that is not
-//! CDR is linked — two serialization formats. A `PubSubBridge` forwards backend
-//! bytes **untouched**, so it is only correct when both sides agree on what
-//! those bytes mean. Until phase-421 W3 that agreement was a doc comment
-//! ("both sides must use ROS-CDR … Cross-encoding bridges would need an
-//! explicit translator and are out of scope"); this module turns it into a
-//! return value.
+//! `Executor::open_multi` is the one place where the serialization format stops
+//! being a compile-time answer: one image, two backends, and — once a backend
+//! that is not CDR is linked — two serialization formats. A `PubSubBridge`
+//! forwards backend bytes **untouched**, so it is only correct when both sides
+//! agree on what those bytes mean. That agreement was once a doc comment ("both
+//! sides must use ROS-CDR … Cross-encoding bridges would need an explicit
+//! translator and are out of scope"); this module turns it into a return value.
 //!
 //! Two things live here:
 //!
