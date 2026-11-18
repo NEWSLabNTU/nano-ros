@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 from tracked import tracked  # issue 0721: index lookup, not a walk
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -183,7 +184,7 @@ def scan_pins():
     for f in sorted(tracked(ROOT / "examples", name="system.toml")):
         sched_task = plat = None
         above = {}
-        for raw in f.read_text(encoding="utf-8").splitlines():
+        for raw in system_toml.text(f).splitlines():
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue

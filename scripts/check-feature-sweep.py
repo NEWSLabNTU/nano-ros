@@ -58,6 +58,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -506,7 +508,7 @@ def standalone_shape(rel, tracked_locks=None, tracked_configs=None):
             "build", {}
         )
     system = d / "system.toml"
-    image = system.is_file() and "image" in toml.loads(system.read_text(encoding="utf8"))
+    image = system.is_file() and "image" in system_toml.load(system)
     return {
         "package": doc["package"]["name"],
         "locked": f"{rel}/Cargo.lock" in tracked_locks,

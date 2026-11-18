@@ -1,0 +1,4 @@
+[[domain]]
+id = 1
+[knobs.zenoh]
+max_subscribers = 4

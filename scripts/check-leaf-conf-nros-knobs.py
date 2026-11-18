@@ -57,6 +57,8 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from pathlib import Path  # noqa: E402
+import system_toml as system_toml_reader  # noqa: E402  issue 2587, the one system.toml reader
 from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
 
 BASELINE = os.path.join(ROOT, ".config", "leaf-conf-nros-knobs-baseline.txt")
@@ -193,8 +195,8 @@ def image_label(system_toml: str | None, root: str) -> str:
     if not system_toml:
         return "[image.<id>]"
     try:
-        ids = re.findall(r"^\s*\[image\.([A-Za-z0-9_\-]+)\]", open(os.path.join(root, system_toml),
-                                                                    encoding="utf8").read(), re.M)
+        ids = re.findall(r"^\s*\[image\.([A-Za-z0-9_\-]+)\]",
+                         system_toml_reader.text(Path(root) / system_toml), re.M)
     except OSError:
         ids = []
     return f"[image.{ids[0]}]" if len(ids) == 1 else "[image.<id>]"

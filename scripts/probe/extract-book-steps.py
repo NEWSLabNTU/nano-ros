@@ -614,6 +614,7 @@ def self_test() -> None:
         body = ed.split("set +u\n", 1)[1].rsplit("\nset -u", 1)[0]
         r = subprocess.run(["bash", "-c", body], cwd=d, capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
+        # system.toml own text: the selftest reads back the file it wrote.
         got = (Path(d) / "b/system.toml").read_text()
         assert got == '[image.x]\nlocator = "tcp/10.0.2.2:7447"\nrmw = "zenoh"\n', got
         r = subprocess.run(["bash", "-c", body], cwd=d, capture_output=True, text=True)

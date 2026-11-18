@@ -38,6 +38,7 @@ from pathlib import Path
 import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 from tracked import tracked  # issue 0721: index lookup, not a walk
 from leaf_target import leaf_target  # phase-445 W6: board -> triple, one spelling
 from leaf_target import leaf_board, board_crate_root_extra  # issue 1305
@@ -107,7 +108,7 @@ def claiming_image(leaf_dir: Path, pkg: str) -> "tuple[str, str | None] | None":
     the directory name), or `None` when no bringup beside it does."""
     names = {pkg, leaf_dir.name}
     for bringup in sorted(leaf_dir.parent.glob("*/system.toml")):
-        text = bringup.read_text(encoding="utf-8", errors="replace")
+        text = system_toml.text(bringup)
         for block in re.split(r"^\[", text, flags=re.M):
             if not block.startswith("image."):
                 continue
@@ -140,7 +141,7 @@ def selection_supplies(leaf_dir: Path) -> "bool | None":
         return None
     own = leaf_dir / "system.toml"
     if own.is_file():
-        system = own.read_text(encoding="utf-8", errors="replace")
+        system = system_toml.text(own)
         board = leaf_board(leaf_dir)
     else:
         # A workspace ENTRY with no `system.toml` of its own: its image is the

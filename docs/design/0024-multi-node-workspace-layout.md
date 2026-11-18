@@ -150,12 +150,14 @@ defined in the bringup; a fragment is not a system, and the workspace-root
 
 **One reader.** The rules are implemented once, by `nros_system_include`
 (`packages/tooling/nros-system-include`). Every Rust reader of a
-`system.toml` goes through it, and `check-system-toml-one-reader` refuses a
-new direct read. A tool that EDITS the file reads that file's own text
+`system.toml` goes through it, and every Python reader through its twin,
+`scripts/lib/system_toml.py`. The two run the same shared cases, so they
+cannot drift, and `check-system-toml-one-reader` refuses a new direct read in
+either language. A tool that EDITS the file reads that file's own text
 (`read_own_text`), so it writes back only what the file states. A road that
-cannot expand includes yet (the CMake text reads, the colcon task, the
-Python check scripts) refuses a file with an `include` and never reads it
-raw. Phase-580 lists which road is which until all of them expand.
+cannot expand includes yet (the CMake text reads, the colcon task) refuses a
+file with an `include` and never reads it raw. Phase-580 lists which road is
+which until all of them expand.
 
 ---
 

@@ -167,6 +167,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 import book_contributor  # noqa: E402
 import book_pages  # noqa: E402
 import check_skip  # noqa: E402
@@ -2397,7 +2398,7 @@ def report_bringup() -> str:
     ).stdout.split()
     boards = set()
     for rel in files:
-        for m in re.finditer(r'^board\s*=\s*"([^"]+)"', (ROOT / rel).read_text(), re.M):
+        for m in re.finditer(r'^board\s*=\s*"([^"]+)"', system_toml.text(ROOT / rel), re.M):
             boards.add(m.group(1))
     text = '[system]\nname = "surface_probe"\nrmw = "zenoh"\ndomain_id = 0\n'
     for i, b in enumerate(sorted(boards)):

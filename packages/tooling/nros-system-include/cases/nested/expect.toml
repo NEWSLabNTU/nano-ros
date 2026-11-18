@@ -1,0 +1,4 @@
+root = "a/root.toml"
+files = 3
+[table.knobs.log]
+max_level = 2

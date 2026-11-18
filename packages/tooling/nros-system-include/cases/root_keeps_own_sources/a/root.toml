@@ -1,0 +1,3 @@
+include = ["../shared.toml"]
+[sources]
+x = "/opt/x"

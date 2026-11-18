@@ -1,0 +1,6 @@
+root = "a/root.toml"
+files = 2
+[table.sources]
+x = "/opt/x"
+[[table.domain]]
+id = 1

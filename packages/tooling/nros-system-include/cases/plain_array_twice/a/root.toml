@@ -1,0 +1,3 @@
+include = ["../shared.toml"]
+[system]
+features = ["b"]

@@ -93,6 +93,8 @@ except ImportError:  # Python < 3.11
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
+from pathlib import Path  # noqa: E402
 from check_just_sources import just_sources  # noqa: E402
 from image_locator import leaf_image_id, stated_locator  # noqa: E402
 MANIFEST = "examples/fixtures.toml"
@@ -218,8 +220,7 @@ def image_locator(row, root):
         # A leaf's `system.toml` declares its ONE image, which `nros::main!`
         # bakes exactly as it does a bringup's (`leaf_system`'s overlay).
         path = leaf_system_toml(row, root)
-        with open(path, "rb") as f:
-            doc = tomllib.load(f)
+        doc = system_toml.load(Path(path))
         image_id = leaf_image_id(doc)
         if image_id is None:
             n = len(doc.get("image", {}))
@@ -227,8 +228,7 @@ def image_locator(row, root):
         row["image"] = image_id
     else:
         path = os.path.join(root, row["dir"], row.get("bringup", "src/demo_bringup"), "system.toml")
-        with open(path, "rb") as f:
-            doc = tomllib.load(f)
+        doc = system_toml.load(Path(path))
         image_id = row["image"].split(":")[-1]
     # issue 1865 — ONE reading of the overlay, shared with the router recipes.
     locator, err = stated_locator(doc, image_id, os.path.dirname(path))

@@ -1,0 +1,2 @@
+root = "a/root.toml"
+error = "`knobs.zenoh.max_subscribers` is stated in both"

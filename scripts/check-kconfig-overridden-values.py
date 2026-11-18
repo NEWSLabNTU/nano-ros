@@ -48,6 +48,7 @@ from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import system_toml as system_toml_reader  # noqa: E402  issue 2587, the one system.toml reader
 from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
 BASELINE = os.path.join(ROOT, ".config", "kconfig-overrides.json")
 LEAVES = os.path.join(ROOT, "scripts", "build", "zephyr-fixture-leaves.sh")
@@ -225,7 +226,7 @@ def workspace_rows(manifest=None, root=ROOT, index=None):
         system_toml = os.path.join(bringup, "system.toml")
         if not os.path.isfile(system_toml):
             continue
-        image = _image(_load_toml(system_toml), image_id)
+        image = _image(system_toml_reader.load(Path(system_toml)), image_id)
         if image is None:
             continue
         key = index["by_name"].get(image.get("board", ""))

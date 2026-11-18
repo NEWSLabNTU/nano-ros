@@ -28,6 +28,8 @@ except ModuleNotFoundError:  # Python < 3.11
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 
 
 def rows():
@@ -106,7 +108,7 @@ def main() -> int:
         if not r["image"] or not r["defs"] or r["lang"] not in ("c", "cpp") or r["builder"] == "cargo":
             continue
         seen_rows += 1
-        sysd = tomllib.loads((ROOT / r["dir"] / r["bringup"] / "system.toml").read_text())
+        sysd = system_toml.load(ROOT / r["dir"] / r["bringup"] / "system.toml")  # issue 2587
         img = (sysd.get("image") or {}).get(r["image"], {})
         for d in r["defs"].split():
             name, _, value = d.removeprefix("-D").partition("=")

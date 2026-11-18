@@ -1,0 +1,7 @@
+include = ["../shared/topo.toml", "../shared/more.toml"]
+[system]
+name = "a"
+[knobs.zenoh]
+max_publishers = 2
+[[domain]]
+id = 3

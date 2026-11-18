@@ -1,0 +1,13 @@
+root = "a/root.toml"
+files = 3
+[table.system]
+name = "a"
+[table.knobs.zenoh]
+max_subscribers = 4
+max_publishers = 2
+[[table.domain]]
+id = 1
+[[table.domain]]
+id = 2
+[[table.domain]]
+id = 3

@@ -115,6 +115,8 @@ except ModuleNotFoundError:  # Python < 3.11
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
+from pathlib import Path  # noqa: E402
 import file_kinds  # noqa: E402  phase-472 W5 — populations by kind
 import git_grep  # noqa: E402  issue 1816 — a failed search raises
 
@@ -464,11 +466,16 @@ def check_aliases():
 def check_files():
     problems = []
     for rel in file_kinds.files_of_kind("system-toml", repo=ROOT) + tracked("*system.toml.case"):
-        with open(os.path.join(ROOT, rel), "rb") as fh:
-            try:
-                doc = tomllib.load(fh)
-            except tomllib.TOMLDecodeError as e:
-                raise SystemExit(f"check-host-platform-vocabulary: {rel}: {e}")
+        # A system.toml is read expanded (issue 2587); a `.case` fixture is
+        # its own text.
+        try:
+            if rel.endswith(".case"):
+                with open(os.path.join(ROOT, rel), "rb") as fh:
+                    doc = tomllib.load(fh)
+            else:
+                doc = system_toml.load(Path(ROOT) / rel)
+        except (tomllib.TOMLDecodeError, system_toml.SystemTomlError) as e:
+            raise SystemExit(f"check-host-platform-vocabulary: {rel}: {e}")
         problems += [(rel, f"{w} board = {b!r}") for w, b in selector_problems(doc)]
     for rel in tracked("Cargo.toml", "*/Cargo.toml"):
         with open(os.path.join(ROOT, rel), "rb") as fh:

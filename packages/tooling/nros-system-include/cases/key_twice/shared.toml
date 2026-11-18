@@ -1,0 +1,2 @@
+[knobs.zenoh]
+max_subscribers = 4

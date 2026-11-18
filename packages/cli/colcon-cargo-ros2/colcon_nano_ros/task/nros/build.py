@@ -121,6 +121,7 @@ def _declares_image(system_toml, image):
     plugin runs on interpreters older than `tomllib`.
     """
     try:
+        # system.toml own text: refuses a file with `include` below (phase-580 W3).
         text = Path(system_toml).read_text(encoding="utf8")
     except OSError:
         return False

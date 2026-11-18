@@ -55,10 +55,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-try:
-    import tomllib  # Python 3.11+
-except ImportError:  # pragma: no cover
-    import tomli as tomllib
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
+
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PY = ROOT / "scripts/build/fixtures-manifest.py"
@@ -92,8 +91,7 @@ def tree_collisions(root: Path, system_tomls: list[str]) -> list[str]:
         if tail != f"{bringup}/system.toml":
             continue
         ws = root / head
-        with open(root / rel, "rb") as f:
-            doc = tomllib.load(f)
+        doc = system_toml.load(root / rel)
         for image_id, block in (doc.get("image") or {}).items():
             if image_generates(ws, image_id, block or {}):
                 by_ws[ws][image_id].append(bringup)

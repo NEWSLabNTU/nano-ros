@@ -24,6 +24,7 @@ import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 
 
 try:
@@ -143,9 +144,8 @@ def deploy_values():
     for path in tracked("examples", "packages", name="system.toml"):
         if True:
             try:
-                with open(path, "rb") as fh:
-                    doc = tomllib.load(fh)
-            except Exception:
+                doc = system_toml.load(_Path(path))
+            except (OSError, ValueError):  # unreadable or not TOML: not this gate's
                 continue
             # `[image.*]` only: `[deploy.*]` is retired and the CLI's schema
             # refuses it by name (phase-486 W8). Images are the buildable
