@@ -3,7 +3,7 @@ id: 2683
 title: "`check::cli-tests` passes with 80 s to spare on a quiet host and times out at 2400 s on a loaded one; `workspace-probes` does too"
 status: open
 type: bug
-severity: medium
+severity: low
 area: [testing, gates, ci]
 related: [issue-2380]
 found: 2026-11-17
@@ -45,6 +45,29 @@ margin, 80 s of 2400, is 3 %, and a gate whose verdict depends on how busy
 the host is says nothing about the change under test. Issue 2380 is the same
 shape for the `linux-check` gate.
 
+### After the probe runtime sharing landed (2026-11-18)
+
+Two more measurements, by session nros 139:
+
+| run | tree | `cli-tests` |
+| --- | --- | --- |
+| B4 run 3, full gate, red | base `2cfe9f0094` | **timed out at 2400.05 s**; step 8 took 54 min 42 s, so the host was not heavily loaded. The unit tests passed in 3 s; the kill came inside the `--ignored` colcon flag parity phase |
+| alone, `just check cli-tests` | slice B on main `5370be0bb9` (includes #4165) | **passed in 859 s**, compile included |
+
+#4165 makes metadata probes with the same configuration share one compiled
+runtime. It is the main change between the two rows, and the likely cause
+of the drop, since the `configure_*` tests and the colcon flag parity phase
+each run real `nros configure` builds. That cause is inferred, not measured
+per test. Load was about 10 when the solo run started and about 115
+when it ended, from another session's encoder run, so 859 s is not an idle-host
+number.
+
+So this is now about HEADROOM, not an outage: 859 s is 36 % of the timeout.
+The split below is still worth doing, but it no longer blocks a gate. What is
+not yet measured is `cli-tests` inside a full gate on the new base, next to
+the gates that run beside it in step 8; the "Done when" line below still
+needs that number.
+
 ## Not the fix
 
 Raising the timeout. That moves the line and keeps the dependence on load
@@ -52,7 +75,7 @@ Raising the timeout. That moves the line and keeps the dependence on load
 
 ## Fix direction
 
-Split the suite or make it faster, measured on a loaded host:
+Not urgent since #4165 (see above). When it is picked up: split the suite or make it faster, measured on a loaded host:
 
 1. **Where the time goes.** Per-test wall time from both logs, and whether
    the scan tests (`rmw_resolver`, `serdes_resolver`) walk the whole checkout
