@@ -1271,7 +1271,9 @@ test-live-peer-regression runner="all" verbose="":
 # `scripts/test/can-frame-socketcan.sh` runs both against IFACE (an up CAN FD
 # interface, scripts/test/vcan-setup.sh) and reads the frames with candump.
 # CLASSIC names an up classic (MTU 16) interface for the `want_fd` refusal
-# check; without one that check is reported NOT VERIFIED, never passed.
+# check; without one the check runs in a private user + network namespace
+# (`unshare -rn`, its own vcan pair, nothing on the host), and only where the
+# kernel allows none is it reported NOT VERIFIED, never passed.
 # A missing interface or candump is a reported skip (`nros_check_unverified`).
 [group("debug")]
 test-can-frames IFACE="vcan0" CLASSIC="":

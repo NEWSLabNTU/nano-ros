@@ -10,7 +10,10 @@
 #   <fd-iface>       default vcan0; must be up with the CAN FD MTU (72)
 #   <classic-iface>  optional; up with the classic MTU (16). With it, each probe
 #                    also checks that `open(want_fd)` is refused (ENOFD) and a
-#                    classic open has `fd_active` false.
+#                    classic open has `fd_active` false. Without it, the same
+#                    check runs in a private user + network namespace
+#                    (`unshare -rn`) over its own vcan pair, when the kernel
+#                    allows one; nothing is created on the host.
 #
 # Needs: the interfaces (scripts/test/vcan-setup.sh creates vcan0; a classic one
 # is `ip link add dev vcan1 type vcan && ip link set vcan1 mtu 16 up`, root),
@@ -122,8 +125,41 @@ if [ -n "$freertos_dir" ]; then
 else
     nros_check_unverified "$NAME-freertos-posix" "the FreeRTOS kernel is not provisioned -- nros setup --source freertos-kernel" || fail=1
 fi
+# The classic-interface check, when no classic interface was given: in a
+# private user + network namespace (`unshare -rn`, no root), with its own FD
+# and classic vcan, so nothing is created on the host. Only the open-time
+# refusal is checked there; the bus capture above stays the host's.
+netns_classic() { # <label> -- cargo args
+    local label="$1"; shift
+    unshare -rn env CARGO_NET_OFFLINE=true bash -c '
+        ip link add dev vcanfd type vcan && ip link set vcanfd mtu 72 up &&
+        ip link add dev vcancl type vcan && ip link set vcancl mtu 16 up &&
+        exec "$@" -- vcanfd vcancl' _ "$@" >"$OUT/$label-netns.log" 2>&1
+}
 if [ -z "$CLASSIC" ]; then
-    nros_check_unverified "$NAME-classic" "no classic interface given: open(want_fd) on a classic (MTU 16) interface was not checked" || fail=1
+    if unshare -rn true 2>/dev/null; then
+        for label in linux freertos-posix; do
+            if [ "$label" = linux ]; then
+                cmd=("${NROS_DEADLINE[@]}" 120 cargo test -q -p nros-board-linux
+                    --features can-probe --test can_socketcan_probe)
+            elif [ -n "$freertos_dir" ]; then
+                cmd=(env "${freertos_env[@]}" "${NROS_DEADLINE[@]}" 120 cargo test -q
+                    -p nros-board-freertos-posix --features can-probe --test can_socketcan_probe)
+            else
+                continue
+            fi
+            if netns_classic "$label" "${cmd[@]}" \
+                && nros_grep_q "want_fd refused (ENOFD), fd_active false" <"$OUT/$label-netns.log"; then
+                echo "[$NAME] $label: a classic (MTU 16) interface refuses open(want_fd) with ENOFD (private netns)"
+            else
+                echo "[$NAME] FAIL: $label: the classic-interface check in a private netns:" >&2
+                sed 's/^/    /' "$OUT/$label-netns.log" >&2
+                fail=1
+            fi
+        done
+    else
+        nros_check_unverified "$NAME-classic" "no classic interface given and no private network namespace (unshare -rn): open(want_fd) on a classic (MTU 16) interface was not checked" || fail=1
+    fi
 fi
 
 [ "$fail" -eq 0 ] && { echo "[$NAME] PASS"; rm -rf "$OUT"; exit 0; }

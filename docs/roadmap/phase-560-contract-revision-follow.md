@@ -211,7 +211,13 @@ and each states its acceptance before it lands.
   `ZENOH_LINUX` and `ZENOH_ZEPHYR` only). The zenoh port rows now state
   `links` (`[port.posix]`, `[port.zephyr]`), and
   `nros-cli-core/src/orchestration/link_arms.rs` refuses an endpoint on a link
-  the image's platform row lists no arm for. `[image.<id>.can]` (`device`,
+  the image's platform row lists no arm for. The FD-at-open split is decided
+  (user ruling, 2026-11-18) and tabled in RFC-0132 D2: Zephyr opens with
+  `want_fd` and reports `fd_active`, socketcan and the mock refuse it at open,
+  and an FD send on a handle without FD is `ENOFD` everywhere. W9.c's GATED
+  classic-interface cell now runs in a private network namespace
+  (`unshare -rn`) when no classic interface is given.
+  `[image.<id>.can]` (`device`,
   `driver = "mock"`) in the `system.toml` schema; `[canN]` rows (`bitrate`,
   `dbitrate`, `frames`) in the D4 file parser (`system_net.rs`); the `can`
   row kind in `nros-board-common/src/image_net.rs`; the RFC-0132 D5 and D6

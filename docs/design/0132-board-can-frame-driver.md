@@ -173,6 +173,18 @@ void    nros_platform_can_close(nros_platform_can_t *can);
   way an FD send on a handle whose FD is not active returns
   `NROS_PLATFORM_CAN_ENOFD` and reaches no driver. Whether to want FD is the
   application's (D1): it is an `open` argument, not a configuration fact.
+  This split is decided (user ruling, 2026-11-18), not open:
+
+  | Backend | `open(want_fd)` on a device without FD | FD send, FD not active |
+  | --- | --- | --- |
+  | `zephyr` | opens; `fd_active` false | `NROS_PLATFORM_CAN_ENOFD` |
+  | `socketcan` | `NROS_PLATFORM_CAN_ENOFD` (the MTU, read at open) | `NROS_PLATFORM_CAN_ENOFD` |
+  | `mock` | `NROS_PLATFORM_CAN_ENOFD` (`set_fd_capable(false)`) | `NROS_PLATFORM_CAN_ENOFD` |
+
+  Each cell is tested: `scripts/test/can-frame-zephyr.sh` (zephyr),
+  `scripts/test/can-frame-socketcan.sh` (socketcan; the classic-interface
+  cell in a private network namespace when no classic interface is given),
+  and `nros-can-mock`'s `mock_roundtrip.rs` (mock).
   One case no backend can see: Zephyr's `zephyr,native-linux-can` driver in
   FD mode over a host interface with the classic MTU accepts an FD frame and
   drops it in the host write (Zephyr 3.7 and 4.4 log the error and return
@@ -415,6 +427,10 @@ because its image is the binary that gets flashed.
 
 ## Changelog
 
+- 2026-11-18 -- W9.d landed: `[image.<id>.can]` and `[canN]`, the `can` row
+  of `NROS_IMAGE_NET`, and the D5/D6 refusals in `nros configure`. The
+  FD-at-open split (D2's `fd_active` item) is recorded as decided by the
+  user, with its per-backend table.
 - 2026-11-17 -- revised for W9.b, approved by the user the same day. The
   first text decided FD at `open` on every backend and named no owner for a
   Zephyr controller's FD mode; on Zephyr neither holds. Now: `can_start.c` sets
