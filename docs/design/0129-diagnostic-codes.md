@@ -289,6 +289,33 @@ its key path (`image.linux.env.ZPICO_MAX_QUERYABLES`) asks
 paid only on the refusal path; the serde structures do not change, so no
 reader of them changes.
 
+A refusal about a comparison names both sides. The primary location is the
+line the user wrote (the image's); a secondary one, `.note_at(&loc, "the
+board states this")`, is the line that states the fact it was compared with
+(the board definition's `threads = false`), rendered as rustc renders a
+secondary label:
+
+```text
+error[NROS-0yyy]: image `talker` needs threads; board `acme` has none
+  --> src/app_bringup/system.toml:12:9
+   |
+12 | rmw = "zenoh"
+   |       ^^^^^^^
+  note: the board states this
+  --> boards/nros-board-acme/nros-board.toml:7:11
+   |
+ 7 | threads = false
+   |           ^^^^^
+  help: choose rmw xrce, or a board with threads
+```
+
+Several refusals about one thing render as a GROUP: one header (`image
+`talker` cannot build for board `acme``), then each child as a full
+diagnostic with its own code, location(s) and remedy. A group is a refusal
+with children (`Refusal::child`); it carries no code of its own, and
+`nros fix` collects fixes from every child the same way it does from a lone
+refusal (RFC-0135 D8's pre-build check is the first group).
+
 Only the CLI surface carries a location in this amendment. A build script or
 CMake refusal about a file it read can adopt the same shape later; the
 runtime surface has no file.
@@ -296,11 +323,15 @@ runtime surface has no file.
 ### D8 — `nros fix`
 
 A refusal whose remedy is mechanical carries a `Fix`: the file, the key path,
-and one edit of three kinds, the shapes measured above:
+and one edit of four kinds, the shapes measured above plus the one a missing
+key needs:
 
 - `RenameKey { to }`;
 - `MoveKey { to_table }`;
-- `ReplaceValue { from, to }`.
+- `ReplaceValue { from, to }`;
+- `SetKey { table, key, value }`, for a key that is absent (an image that
+  states no transport and gets the default, where the remedy is
+  `transport = "serial"` in `[image.talker.network]`, RFC-0135 D8).
 
 `nros fix [<path>]` loads the workspace the way `nros build` does, collects
 every refusal that carries a fix, applies the edits with `toml_edit` (so
@@ -314,11 +345,30 @@ Two fixes that touch one key, or a fix whose result is itself refused, stop
 `nros fix` before it writes anything, naming both; it does not apply a
 partial set.
 
+`nros fix` edits only files under the workspace's roots. A board definition
+or package reached from an installed prefix (`/opt/ros/...` through the
+ament index) is not the user's to edit: a refusal about such a file carries
+no `Fix`, and its remedy renders as `help:`, never `fix:`. `nros fix` refuses
+a `Fix` naming a file outside the roots rather than writing it.
+
+**Remedy labels.** A remedy line says which kind it is, so a reader knows
+what `nros fix` will do before running it:
+
+- `help:` a remedy that needs judgement (`choose rmw xrce, or a board with
+  threads`); `nros fix` does nothing with it;
+- `fix:` only when the refusal carries a `Fix`; `nros fix` applies it;
+- `run:` a command to run (`nros setup acme`); `nros fix` never executes it,
+  and never starts an installer.
+
+RFC-0135 D8's board-package remedies use the same three labels and the same
+`Fix` payload, so there is one remedy format.
+
 ### D9 — gates
 
 - `check-diagnostics` gains: an entry that declares a fix kind has an
   explanation that names `nros fix`.
-- A fixture per fix kind: a `system.toml` carrying the refused shape;
+- A fixture per fix kind (all four, `SetKey` included): a `system.toml`
+  carrying the refused shape;
   `nros build` refuses at the right line and column; `nros fix --apply`
   rewrites it; the rewritten file builds. That is phase-578 W4's acceptance
   ("a retired knob spelling in `system.toml` is reported at its line, and
@@ -338,7 +388,13 @@ partial set.
    is a surprise.
 4. **Board package `fix:` lines** (RFC-0135 D8): the same `Fix` payload, so
    `nros fix` applies them too? Draft: yes, once RFC-0135 lands; this
-   amendment defines the payload they would use.
+   amendment defines the payload and the `help:` / `fix:` / `run:` labels
+   they use.
+
+Reviewed 2026-11-18 by nros 241 (RFC-0135's author) against RFC-0135 D8:
+direction approved; its five changes are in this draft (the `run:` label,
+`SetKey`, the secondary location, groups, workspace-only edits). Questions
+1 to 4 agreed as drafted. Still for the user's ruling.
 
 ## Left to implementation
 
