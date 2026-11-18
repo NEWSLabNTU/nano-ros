@@ -10,7 +10,7 @@
 //!   fills through [`nros_rpmsg_deliver`] and the link drains;
 //! - the transmit staging frame, sent through the board's `send`.
 //!
-//! The vendor binding (OpenAMP `rpmsg_*`, TI IPC `RPMessage_*`) is the
+//! The vendor binding (OpenAMP `rpmsg_*`, TI IPC RPMessage) is the
 //! board's, registered with [`nros_rpmsg_register_backend`]. The C contract
 //! is `include/nros/rpmsg_link.h`.
 //!
@@ -22,6 +22,11 @@
 // The exports are the C calls zenoh-pico and the board make; their safety
 // contracts are the header's.
 #![allow(clippy::missing_safety_doc)]
+
+#[cfg(all(feature = "unix-mock", not(feature = "std")))]
+compile_error!(
+    "`unix-mock` runs the host mock on threads and sockets: add \"std\" to this crate's features"
+);
 
 #[cfg(feature = "std")]
 extern crate std;

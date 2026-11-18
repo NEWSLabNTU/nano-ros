@@ -1,6 +1,6 @@
 /*
  * zenoh-pico over RPMsg: the contract between nano-ros's link and a board's
- * RPMsg binding (OpenAMP `rpmsg_*`, TI IPC `RPMessage_*`, ...).
+ * RPMsg binding (OpenAMP `rpmsg_*`, TI IPC RPMessage, ...).
  *
  * nano-ros owns the endpoint table, the framing (one frame per RPMsg message,
  * at most NROS_RPMSG_FRAME_SIZE bytes) and the receive ring. The board owns

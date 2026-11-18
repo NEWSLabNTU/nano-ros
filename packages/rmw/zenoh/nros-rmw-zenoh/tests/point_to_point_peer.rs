@@ -22,7 +22,8 @@
 
 #![cfg(all(
     feature = "platform-posix",
-    any(feature = "link-ivc", feature = "link-rpmsg")
+    feature = "link-ivc",
+    feature = "link-rpmsg"
 ))]
 
 use nros_rmw::{
@@ -180,7 +181,6 @@ fn exchange_without_a_router(link: &Link) {
     );
 }
 
-#[cfg(feature = "link-ivc")]
 #[test]
 fn two_peers_on_an_ivc_link_exchange_data_without_a_router() {
     exchange_without_a_router(&Link {
@@ -193,7 +193,6 @@ fn two_peers_on_an_ivc_link_exchange_data_without_a_router() {
     });
 }
 
-#[cfg(feature = "link-rpmsg")]
 #[test]
 fn two_peers_on_an_rpmsg_link_exchange_data_without_a_router() {
     exchange_without_a_router(&Link {

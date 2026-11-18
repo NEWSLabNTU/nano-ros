@@ -159,6 +159,7 @@ cat > "$BUILD_DIR/zenoh-config/zenoh_generic_config.h" << 'EOF'
 #define Z_FEATURE_LINK_SERIAL 0
 #define Z_FEATURE_LINK_SERIAL_USB 0
 #define Z_FEATURE_LINK_IVC 0
+#define Z_FEATURE_LINK_RPMSG 0
 #define Z_FEATURE_LINK_CUSTOM 0
 #define Z_FEATURE_LINK_CAN 0
 #define Z_FEATURE_LINK_ISOTP 0
