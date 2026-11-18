@@ -544,6 +544,39 @@ workspace-system-required:
     nros_gate_require_store_corrosion workspace-system-required "$_cli" || exit 0
     NROS_CLI="$_cli" ./tests/cmake-workspace-system-required-tests.sh
 
+# issue 2587 (phase-580 W3) -- the CMake road reads a system.toml with its
+# `include = [..]` fragments: `nros_system_toml_expanded` hands a line reader
+# the expansion `nros dev image system-toml` writes, with every fragment a
+# configure input. Four cases: the file itself without an include, the
+# expansion with one, a key stated twice refused, and nano_ros_workspace
+# seeing per-image rows that sit in a fragment. Same skip ledger and Corrosion
+# rule as `workspace-system-required` above.
+[group('needs:cc')]
+[group('needs:cli')]
+[group('needs:cmake')]
+system-include:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1 || ! command -v ninja >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip system-include "missing host tool(s): cmake / ninja"
+        exit 0
+    fi
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    if ! _cli="$(nros_cli_bin --checkout-only)"; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip system-include "no in-tree CLI -- run \`just setup-cli\`"
+        exit 0
+    fi
+    # shellcheck source=scripts/build/check-store-corrosion.sh
+    source scripts/build/check-store-corrosion.sh
+    nros_gate_require_store_corrosion_self_test || exit 1  # issue 1739
+    nros_gate_require_store_corrosion system-include "$_cli" || exit 0
+    NROS_CLI="$_cli" ./tests/cmake-system-include-tests.sh
+
 # issue 2374 -- a Zephyr build dir keeps its application config discovery LIVE.
 # Zephyr discovers `boards/<board>.conf` (and overlays) only while CONF_FILE is
 # undefined, then caches the result, so an added fragment was ignored and a

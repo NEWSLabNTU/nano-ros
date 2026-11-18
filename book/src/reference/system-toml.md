@@ -68,6 +68,47 @@ Retired and refused by name: `ip`, `gateway`, `netmask`, `transport`,
 `[system] default_images = ["<id>", …]` is what a bare `nros build` builds.
 Without it, a workspace with more than one image lists them and stops.
 
+## Sharing a fragment between bringups: `include`
+
+A workspace with several bringups can state what they share once, in a
+fragment file, and name it from each bringup:
+
+```toml
+# src/pubsub_bringup/system.toml
+include = ["../../shared/system-defaults.toml"]
+
+[system]
+name = "rust_pubsub"
+default_launch = "system.launch.xml"
+```
+
+```toml
+# shared/system-defaults.toml
+[system]
+rmw = "zenoh"
+domain_id = 0
+
+[image_defaults]
+rmw = "zenoh"
+```
+
+[`examples/workspaces/rust`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/rust/shared/system-defaults.toml)
+shares one fragment between its five bringups this way. The rules:
+
+| Rule | |
+| --- | --- |
+| Paths | `include` is a list of paths, each relative to the file that names it. A fragment may include further fragments. |
+| Tables | merge key by key, at every depth |
+| A key in two files | refused, naming both files. A fragment does not override the bringup, and the bringup does not override the fragment. A bringup that needs another value does not include that fragment. |
+| `[[component]]`, `[[domain]]`, other arrays of tables | concatenated: each include's entries in the listed order, then the file's own |
+| A file reached twice, or through itself | refused |
+| Not in a fragment | `[system] name` (the bringup names its system), `[sources]` and `[tools]` (this machine's paths, read from the bringup's own file) |
+
+Every road reads the expansion: `nros build`, the CMake configure, west
+and colcon. Editing a fragment rebuilds what it reaches, as editing the
+`system.toml` does. `nros new --workspace --from` refuses to move a `system.toml`
+that names fragments, because their paths are relative to it.
+
 ## Board network file
 
 Named by `os_config`, beside `system.toml`. One table per interface, and any

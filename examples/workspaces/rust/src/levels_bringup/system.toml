@@ -4,10 +4,10 @@
 # read the logged times: the urgent timer must run inside a burn (preemption)
 # and on time whether the boot level is idle or burning (the level wake).
 
+include = ["../../shared/system-defaults.toml"]  # rmw, domain_id: shared by every bringup here
+
 [system]
 name = "rust_levels"
-rmw = "zenoh"
-domain_id = 0
 default_launch = "levels.launch.xml"
 
 [[component]]
@@ -19,9 +19,6 @@ name = "urgent"
 pkg = "burner_pkg"
 class = "burner_pkg::Burner"
 name = "burner"
-
-[image_defaults]
-rmw = "zenoh"
 
 [image.baremetal_levels_rtic]
 board = "mps2-an385-baremetal"

@@ -592,7 +592,26 @@ fn input_files(project: &Path) -> Vec<PathBuf> {
             out.push(rel.to_path_buf());
         }
     }
+    // Issue 2587 (phase-580 W3) — a `system.toml` is read EXPANDED, so the
+    // fragments it includes are inputs too, wherever they sit: a fragment is
+    // not named `system.toml`, and the walk above would never find it. Inside
+    // the project it is recorded relative, outside absolute (`project.join`
+    // of an absolute path is that path, so every reader takes either).
+    let fragments: Vec<PathBuf> = out
+        .iter()
+        .filter(|rel| rel.file_name().is_some_and(|n| n == "system.toml"))
+        .map(|rel| project.join(rel))
+        .filter(|abs| nros_system_include::has_include(abs))
+        .filter_map(|abs| nros_system_include::read(&abs).ok())
+        .flat_map(|e| e.files.into_iter().skip(1))
+        .map(|f| match f.strip_prefix(project) {
+            Ok(rel) => rel.to_path_buf(),
+            Err(_) => f,
+        })
+        .collect();
+    out.extend(fragments);
     out.sort();
+    out.dedup();
     out
 }
 
@@ -1499,6 +1518,32 @@ mod tests {
         std::fs::write(dir.join("leaf.census.json"), "{}").unwrap();
         std::fs::write(dir.join("leaf.census.recorded.json"), "{}").unwrap();
         assert_eq!(recorded_censuses(&p), vec![dir.join("leaf.census.json")]);
+    }
+
+    #[test]
+    fn digest_moves_on_an_included_fragment_edit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path();
+        std::fs::create_dir_all(p.join("src/b")).unwrap();
+        std::fs::create_dir_all(p.join("shared")).unwrap();
+        std::fs::write(
+            p.join("shared/defaults.toml"),
+            "[system]\nrmw = \"zenoh\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            p.join("src/b/system.toml"),
+            "include = [\"../../shared/defaults.toml\"]\n[system]\nname = \"b\"\n",
+        )
+        .unwrap();
+        assert!(input_files(p).contains(&PathBuf::from("shared/defaults.toml")));
+        let a = input_digest(p).unwrap();
+        std::fs::write(p.join("shared/defaults.toml"), "[system]\nrmw = \"xrce\"\n").unwrap();
+        assert_ne!(
+            a,
+            input_digest(p).unwrap(),
+            "a fragment edit must move the digest"
+        );
     }
 
     #[test]

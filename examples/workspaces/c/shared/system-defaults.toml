@@ -1,0 +1,10 @@
+# Stated once for every bringup of this workspace, each of which names it in
+# `include = [..]` (RFC-0024 §5, issue 2587). A key here may not be restated by
+# a bringup: a bringup that needs another value does not include this file.
+
+[system]
+rmw = "zenoh"
+domain_id = 0
+
+[image_defaults]
+rmw = "zenoh"

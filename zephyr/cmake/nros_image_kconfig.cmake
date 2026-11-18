@@ -104,6 +104,7 @@
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCli.cmake")
 # Issue 2200 -- reads the CLI's rows without passing them through a list.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCliRows.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSystemInclude.cmake")  # issue 2587
 # phase-484 W5b -- the Kconfig knob ids and symbols (`NROS_KNOB_KCONFIG_*`).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobRegistry.cmake")
 # phase-530 W4 -- `nros_configured_locate`, which publishes where configure put
@@ -390,7 +391,7 @@ function(nros_image_kconfig_hook)
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     # A configure re-runs when the file changes, and when the CLI that rendered
     # it is rebuilt (issue 1018) — the fragment is baked into `.config`.
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_dir}/system.toml")
+    nros_system_toml_watch("${_dir}/system.toml" nros_image_kconfig)
     nros_codegen_tool_reconfigure("${_nros}")
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR "nano-ros: ${_dir}/system.toml [image.${_image}]: ${_err}")

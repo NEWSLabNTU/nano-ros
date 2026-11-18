@@ -79,7 +79,14 @@ def offenders(path: str, text: str) -> list[str]:
                 var = re.sub(r"^[&*\s]+|\.(as_ref|as_path|clone)\(\)$", "", arg)
                 if re.fullmatch(r"[a-z_][a-z0-9_]*", var):
                     bind = re.compile(rf"\blet\s+(mut\s+)?{var}\b[^=]*=")
-                    for j in range(max(0, i - WINDOW), i):
+                    # Stop at the enclosing `fn`: a name bound in another
+                    # function is another variable.
+                    start = max(0, i - WINDOW)
+                    for j in range(i - 1, start - 1, -1):
+                        if re.search(r"\bfn\s+\w+", lines[j]):
+                            start = j
+                            break
+                    for j in range(start, i):
                         if bind.search(lines[j]) and NAMES_FILE.search(
                             " ".join(lines[j : j + 3])
                         ):
@@ -137,6 +144,8 @@ def selftest() -> list[str]:
     direct = 'fn f(d: &Path) { let t = std::fs::read_to_string(d.join("system.toml")); }'
     via = 'fn f(d: &Path) {\n    let p = d.join(SYSTEM_TOML);\n    let t = fs::read_to_string(&p);\n}'
     other = 'fn f(d: &Path) { let t = std::fs::read_to_string(d.join("package.xml")); }'
+    other_fn = ('fn a(d: &Path) {\n    let p = d.join("system.toml");\n}\n'
+                'fn b(p: &Path) {\n    let t = std::fs::read_to_string(p);\n}')
     test_mod = '#[cfg(test)]\nmod tests {\n    fn f() { std::fs::read_to_string("system.toml"); }\n}'
     ours = 'fn f(d: &Path) { nros_system_include::read_to_string(d.join("system.toml")); }'
     for name, src, want in [
@@ -154,6 +163,7 @@ def selftest() -> list[str]:
         ("direct", direct, 1),
         ("through a bound variable", via, 1),
         ("another file", other, 0),
+        ("a binding in another fn", other_fn, 0),
         ("a test module", test_mod, 0),
         ("the one reader", ours, 0),
     ]:

@@ -200,7 +200,7 @@ brief of RFC-0126 did.
   - B8: RFC-0025 is Superseded by RFC-0121 and moved to `archived/`.
     RFC-0024 is cut down to the rationale code cites, under its original
     section numbers, and is Stable. Its one open question is
-    [issue 2587](../issues/2587-multi-bringup-shared-system-fragments.md),
+    [issue 2587](../issues/archived/2587-multi-bringup-shared-system-fragments.md),
     per A1. Five code comments that named 0025 point at RFC-0121 or the
     book's `system.toml` reference.
   - C11: RFC-0004 and RFC-0026 are restated once, as phase-531 W7 step 10.

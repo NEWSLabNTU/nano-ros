@@ -112,8 +112,8 @@ section drew (a hand-written workspace-root `Cargo.toml` /
 **No duplication.** Root pointer + per-system definition is two different concerns. The temptation to mirror per-system fields at root (e.g. `[workspace.metadata.nros.system.demo]`) is rejected — re-creates colcon's monorepo-of-systems pattern + breaks per-system `<exec_depend>` hygiene.
 
 **Shared fragments: `include = [..]`** (ruled 2026-11-18, option (b) of
-[issue 2587](../issues/2587-multi-bringup-shared-system-fragments.md);
-implemented by [phase-580](../roadmap/phase-580-system-toml-include.md)).
+[issue 2587](../issues/archived/2587-multi-bringup-shared-system-fragments.md);
+implemented by [phase-580](../roadmap/archived/phase-580-system-toml-include.md)).
 A bringup's `system.toml` may name fragment files it shares with other
 bringups:
 
@@ -154,10 +154,12 @@ defined in the bringup; a fragment is not a system, and the workspace-root
 `scripts/lib/system_toml.py`. The two run the same shared cases, so they
 cannot drift, and `check-system-toml-one-reader` refuses a new direct read in
 either language. A tool that EDITS the file reads that file's own text
-(`read_own_text`), so it writes back only what the file states. A road that
-cannot expand includes yet (the CMake text reads, the colcon task) refuses a
-file with an `include` and never reads it raw. Phase-580 lists which road is
-which until all of them expand.
+(`read_own_text`), so it writes back only what the file states. A road with
+no TOML parser of its own (a CMake configure's line reads, the colcon task)
+reads the expansion `nros dev image system-toml` prints. Every watcher of a
+`system.toml` (a configure dependency, `cargo:rerun-if-changed`,
+`nros::main!`'s tracked inputs) watches its fragments too, so an edit to a
+fragment rebuilds what it reaches.
 
 ---
 
@@ -224,7 +226,7 @@ All nine are closed:
 
 1. Bringup `Cargo.toml`: none (Path A), §4.
 2. Multi-system shared config: `include = [..]` fragments, §5
-   ([issue 2587](../issues/2587-multi-bringup-shared-system-fragments.md),
+   ([issue 2587](../issues/archived/2587-multi-bringup-shared-system-fragments.md),
    phase-580).
 3. `nros launch` vs `ros2 launch`: the bringup omits `<buildtool_depend>`,
    §11.1; the generated entry binary is the launch product.

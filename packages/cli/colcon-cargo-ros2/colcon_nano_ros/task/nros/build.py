@@ -121,18 +121,22 @@ def _declares_image(system_toml, image):
     plugin runs on interpreters older than `tomllib`.
     """
     try:
-        # system.toml own text: refuses a file with `include` below (phase-580 W3).
+        # system.toml own text: only to see whether it names an include.
         text = Path(system_toml).read_text(encoding="utf8")
     except OSError:
         return False
     # Issue 2587 -- an `[image.<id>]` may sit in an included fragment, which a
-    # line match cannot see; refuse rather than answer from the file alone.
+    # line match over this file alone cannot see. Such a file is read as the
+    # expansion `nros` reports, the one reader every road shares.
     if any(line.split("=", 1)[0].strip() == "include" for line in text.splitlines()):
-        raise RuntimeError(
-            f"{system_toml} names shared fragments with `include = [..]`, which this "
-            "colcon task cannot read yet. Build it with `nros build`, or state the "
-            "fragments' keys in this system.toml itself."
+        r = subprocess.run(
+            ["nros", "dev", "image", "system-toml", str(system_toml)],
+            capture_output=True,
+            text=True,
         )
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.strip() or f"nros could not expand {system_toml}")
+        text = r.stdout
     header = f"[image.{image}]"
     return any(line.strip() == header for line in text.splitlines())
 

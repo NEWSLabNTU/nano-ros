@@ -17,6 +17,7 @@ name = "nros_build"
 path = "src/lib.rs"
 
 [dependencies]
+nros-system-include = { path = "../../tooling/nros-system-include" }
 # nros-cli-core hosts the planner (orchestration::plan_system + the NrosPlan
 # schema). `nros-build` re-uses it via library API rather than shelling out to
 # `nros dev codegen system` so the Entry pkg's `build.rs` does not need the

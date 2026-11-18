@@ -4,10 +4,10 @@
 # `default_launch` is the launch file `nros::main!(launch = "demo_bringup")`
 # (or `nros plan demo_bringup` with no explicit file) picks by default.
 
+include = ["../../shared/system-defaults.toml"]  # rmw, domain_id: shared by every bringup here
+
 [system]
 name = "demo"
-rmw = "zenoh"
-domain_id = 0
 default_launch = "system.launch.xml"
 
 [[component]]
@@ -87,9 +87,6 @@ args   = { host = "robot2" }
 # instead of one host. An image missing either generates a DIFFERENT program
 # than the entry it replaces, and one that still compiles. phase-383 W9.a
 # declared the images without them.
-[image_defaults]
-rmw = "zenoh"
-
 [image.freertos]
 board = "mps2-an385-freertos"
 panic = "own"
