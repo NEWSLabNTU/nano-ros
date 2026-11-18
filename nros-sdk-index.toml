@@ -1435,6 +1435,25 @@ env = "NXP_FREERTOS_S32ZE_DIR"
 version = "2.0.1"
 env = "S32_RTD_PATH"
 
+# TI Arm Clang (`tiarmclang`), the compiler TI's Processor SDK RTOS for J784S4
+# builds the Cortex-R5F with (phase-575 W3). nano-ros builds its own objects
+# with its own toolchain; this is the compiler and linker of the image those
+# objects join.
+#
+# Gated, unlike the Arm FVP above, although TI's download needs no login: the
+# licence is the reason, not the download. TI's "TI Text File" terms (in the
+# release manifest) license use and redistribution "for use only with TI
+# Devices", and the installer carries a click-through. Accepting that is the
+# user's act, so `nros setup` never fetches it. nano-ros's own runner image
+# carries it under a user ruling of 2026-11-18, privately; no public image or
+# mirror may.
+#
+# The variable names the install root, the directory holding `bin/tiarmclang`.
+[gated.ti-arm-clang]
+version = "5.1.1.LTS"
+env = "TI_ARM_CLANG_ROOT"
+installer = "ti_cgt_armllvm_5.1.1.LTS_linux-x64_installer.bin from https://www.ti.com/tool/download/ARM-CGT-CLANG"
+
 # A SYSTEM board (RFC-0093): the FreeRTOS POSIX port, running as a host
 # process. Its overlay sets no `CMAKE_C_COMPILER` and no linker script, and
 # `NROS_FREERTOS_BOARD_HAS_LWIP FALSE` keeps lwIP out — host sockets instead —

@@ -59,18 +59,27 @@ if(NOT TARGET lwip)
     nros_freertos_build_lwip()
 endif()
 
-set(FREERTOS_LINKER_SCRIPT "${_fx_config}/fixture_r5f.ld"
-    CACHE INTERNAL "Cortex-R5F / FreeRTOS linker script for fixture-r5f-freertos")
+# Two linkers, one layout. GCC's ld reads the GNU script (which INCLUDEs the
+# family's section layout from `-L`); TI Arm Clang's tiarmlnk reads a linker
+# command file stating the same memory map and the symbols the startup code
+# uses (board `fixture-r5f-tiarmclang`, phase-575 W3).
+if(CMAKE_C_COMPILER_ID STREQUAL "TIClang")
+    set(FREERTOS_LINKER_SCRIPT "${_fx_config}/fixture_r5f.cmd"
+        CACHE INTERNAL "Cortex-R5F / FreeRTOS linker command file for fixture-r5f-tiarmclang")
+    set(_fx_link_options "-Wl,${FREERTOS_LINKER_SCRIPT}")
+else()
+    set(FREERTOS_LINKER_SCRIPT "${_fx_config}/fixture_r5f.ld"
+        CACHE INTERNAL "Cortex-R5F / FreeRTOS linker script for fixture-r5f-freertos")
+    set(_fx_link_options
+        "-T${FREERTOS_LINKER_SCRIPT}"
+        "-L${_fx_family}/config"
+        "-Wl,--gc-sections"
+        "-nostartfiles"
+        "--specs=nosys.specs")
+endif()
 include("${NROS_SOURCE_DIR}/integrations/freertos/NanoRosFreertos.cmake")
 if(NOT TARGET freertos_platform)
-    nros_freertos_integrate(
-        NETSTACK lwip
-        LINK_OPTIONS
-            "-T${FREERTOS_LINKER_SCRIPT}"
-            "-L${_fx_family}/config"
-            "-Wl,--gc-sections"
-            "-nostartfiles"
-            "--specs=nosys.specs")
+    nros_freertos_integrate(NETSTACK lwip LINK_OPTIONS ${_fx_link_options})
 endif()
 
 set(FREERTOS_STARTUP_SOURCE

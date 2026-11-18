@@ -22,6 +22,12 @@ For every toolchain file under `cmake/toolchain/`:
 
   R1  a file that sets CMAKE_C_COMPILER / CMAKE_CXX_COMPILER includes
       NanoRosCrossToolchain.cmake and calls BOTH resolve() and report()
+      — or, for a licence-gated compiler nano-ros never fetches (a
+      `[gated.<name>]` row: TI Arm Clang, phase-575 W3), calls
+      nros_gated_toolchain_report(TOOL <gated> ROOT_VAR <V> COMPILER <c>),
+      which has no fallback to report and prints the compiler it was handed;
+      R2 holds for both, R3 checks the gated name, and every compiler the
+      file sets must read ${<ROOT_VAR>}
   R2  the compiler is set from a ${variable}, not a literal `<prefix>-gcc`
   R3  the TOOL named is a real `[tool.<name>]` in nros-sdk-index.toml
   R4  resolve() and report() in one file agree — same TOOL, same OVERRIDE_VAR,
@@ -90,6 +96,7 @@ SET_COMPILER = re.compile(
     r"""(?:set|find_program)\s*\(\s*(CMAKE_(?:C|CXX|ASM)_COMPILER)\b(?!_)\s*([^\s\)]*)""")
 INCLUDE_MODULE = re.compile(r"include\s*\([^)]*" + re.escape(MODULE))
 TOOL_SECTION = re.compile(r"^\[tool\.([^\]]+)\]", re.M)
+GATED_SECTION = re.compile(r"^\[gated\.([^\]]+)\]", re.M)
 
 
 def strip_comments(text):
@@ -105,6 +112,7 @@ def strip_comments(text):
 # could have been "fixed" by loosening the rule instead of the parser.
 RESOLVE_KEYS = {"TOOL", "PREFIXES", "OVERRIDE_VAR", "OUT_PREFIX", "OUT_ORIGIN"}
 REPORT_KEYS = {"TOOL", "PREFIX", "ORIGIN", "OVERRIDE_VAR"}
+GATED_KEYS = {"TOOL", "ROOT_VAR", "COMPILER"}
 
 
 def call_args(text, fname, keys):
@@ -139,7 +147,11 @@ def index_tools(read_index):
     return set(TOOL_SECTION.findall(read_index()))
 
 
-def offenders(files, read, tools):
+def index_gated(read_index):
+    return set(GATED_SECTION.findall(read_index()))
+
+
+def offenders(files, read, tools, gated=frozenset()):
     """(path, message) for every rule broken. `files` are repo-relative."""
     bad = []
     for rel in sorted(files):
@@ -152,6 +164,22 @@ def offenders(files, read, tools):
         # R1 — the helper is used at all.
         if not INCLUDE_MODULE.search(text):
             bad.append((rel, f"sets a cross compiler but never includes {MODULE}"))
+            continue
+        # R1 for a licence-gated compiler: one report, no resolve.
+        gated_report = call_args(text, "nros_gated_toolchain_report", GATED_KEYS)
+        if gated_report is not None:
+            gtool = one(gated_report, "TOOL")
+            if gtool not in gated:
+                bad.append((rel, f"nros_gated_toolchain_report(TOOL {gtool}) names no "
+                                 f"[gated.{gtool}] in nros-sdk-index.toml"))
+            root_var = one(gated_report, "ROOT_VAR")
+            for var, value in sets:
+                if "${" not in value:
+                    bad.append((rel, f"{var} is set to the literal `{value}` — a "
+                                     f"gated compiler must come from ${{{root_var}}}"))
+                elif "${%s}" % root_var not in value:
+                    bad.append((rel, f"{var} = `{value}` does not read ${{{root_var}}}, "
+                                     f"the root the provenance line reports"))
             continue
         resolve = call_args(text, "nros_cross_toolchain_resolve", RESOLVE_KEYS)
         report = call_args(text, "nros_cross_toolchain_report", REPORT_KEYS)
@@ -340,7 +368,7 @@ def main():
               f"{TOOLCHAIN_DIR}/ — this gate would examine nothing", file=sys.stderr)
         return 1
 
-    bad = offenders(files, read, tools) + exempt_still_needed(
+    bad = offenders(files, read, tools, index_gated(lambda: index_text)) + exempt_still_needed(
         read, lambda rel: os.path.exists(os.path.join(ROOT, rel)))
     bad += floor_record_offenders(lambda v: probe_floor_record(v, None))
     bad += entry_refusal_offenders(read(ENTRY))
@@ -386,6 +414,16 @@ set(CMAKE_CXX_COMPILER ${_P}-g++)
 """
 
 TOOLS = {"arm-none-eabi-gcc", "riscv-none-elf-gcc"}
+GATED = {"ti-arm-clang"}
+
+GOOD_GATED = """
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCrossToolchain.cmake")
+nros_gated_toolchain_report(
+    TOOL     ti-arm-clang
+    ROOT_VAR TI_ARM_CLANG_ROOT
+    COMPILER "${TI_ARM_CLANG_ROOT}/bin/tiarmclang")
+set(CMAKE_C_COMPILER   "${TI_ARM_CLANG_ROOT}/bin/tiarmclang")
+"""
 
 
 def selftest(verbose=False):
@@ -402,9 +440,21 @@ def selftest(verbose=False):
             print(f"  FAIL {what}", file=sys.stderr)
 
     def run(body):
-        return offenders(["t.cmake"], lambda _rel: body, TOOLS)
+        return offenders(["t.cmake"], lambda _rel: body, TOOLS, GATED)
 
     chk("the compliant shape passes", run(GOOD) == [])
+    chk("the compliant gated shape passes", run(GOOD_GATED) == [])
+    chk("gated: a TOOL with no [gated.*] row is reported",
+        any("names no [gated." in m for _, m in run(
+            GOOD_GATED.replace("TOOL     ti-arm-clang", "TOOL     ti-arm-clang-x"))))
+    chk("gated: a compiler from another root is reported",
+        any("does not read ${TI_ARM_CLANG_ROOT}" in m for _, m in run(
+            GOOD_GATED.replace('set(CMAKE_C_COMPILER   "${TI_ARM_CLANG_ROOT}',
+                               'set(CMAKE_C_COMPILER   "${OTHER_ROOT}'))))
+    chk("gated: a literal compiler is reported",
+        any("literal" in m for _, m in run(
+            GOOD_GATED.replace('set(CMAKE_C_COMPILER   "${TI_ARM_CLANG_ROOT}/bin/tiarmclang")',
+                               'set(CMAKE_C_COMPILER   tiarmclang)'))))
 
     # A file that selects no compiler is not this gate's business.
     chk("a non-toolchain cmake file is ignored",

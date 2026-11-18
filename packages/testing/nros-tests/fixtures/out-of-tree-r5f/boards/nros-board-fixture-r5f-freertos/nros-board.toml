@@ -64,3 +64,60 @@ links = ["tcp", "udp"]
 # Index packages this board needs (RFC-0135 D3, phase-577 W10). The vendor
 # SDK is not one: it is FIXTURE_R5F_SDK_ROOT.
 tools = ["arm-none-eabi-gcc"]
+
+# The same board, built the way TI's Processor SDK builds an R5F: every C
+# translation unit (nano-ros's, zenoh-pico, lwIP, the FreeRTOS kernel, this
+# package's) by TI Arm Clang, the Rust staticlib by rustc, the image linked by
+# TI's tiarmlnk with `config/fixture_r5f.cmd` (phase-575 W3). C and C++ images;
+# a Rust image's link is rustc's, which this board does not configure.
+#
+# TI Arm Clang is licence-gated (`[gated.ti-arm-clang]` in nano-ros's SDK
+# index): it is never fetched, `TI_ARM_CLANG_ROOT` names an install, and its
+# `bin/` must be on PATH for the cargo road's C builds below.
+[[board]]
+names = ["fixture-r5f-tiarmclang"]
+cmake_module = "fixture-r5f-tiarmclang"
+platform = "freertos"
+toolchain = "stable"
+entry_kind = "board-run"
+supported_netstacks = ["lwip"]
+board_crate = "nros-board-fixture-r5f-freertos"
+# cc-rs passes `--target=armv7r-none-eabihf`, which tiarmclang refuses for
+# vendor `ti`; a later --target wins, so the CPU flags and TI's own triple
+# follow. `__STDC_WANT_LIB_EXT1__`: TI's libc offers strnlen only as C11
+# Annex K's strnlen_s.
+cargo_config = '''
+[build]
+target = "armv7r-none-eabihf"
+
+[env]
+CC_armv7r_none_eabihf = "tiarmclang"
+AR_armv7r_none_eabihf = "tiarmar"
+CFLAGS_armv7r_none_eabihf = "--target=arm-ti-none-eabihf -mcpu=cortex-r5 -mfpu=vfpv3-d16 -mfloat-abi=hard -D__STDC_WANT_LIB_EXT1__=1"
+FREERTOS_PORT = { value = "GCC_ARM_CRX_NOGIC", force = true }
+FREERTOS_CONFIG_DIR = { value = "${board_dir}/config", force = true }
+'''
+
+[board.console]
+kind = "serial"
+
+[board.entry]
+type = "::nros_board_fixture_r5f_freertos::FixtureR5f"
+
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
+
+[board.cmake]
+toolchain_file = "cmake/toolchain/arm-freertos-tiarmclang-cr5f.cmake"
+
+[board.net]
+stack = "board"
+links = ["tcp", "udp"]
+
+[board.provisioning]
+# The kernel, lwIP and zenoh-pico sources come from nano-ros's store as for
+# the GCC board; the compiler is `[gated.ti-arm-clang]`, which setup checks
+# and never installs.
+tools = []

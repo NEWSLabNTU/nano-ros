@@ -94,6 +94,19 @@ r5f-hard-float-abi:
 out-of-tree-board-images:
     @bash scripts/check/check-out-of-tree-board-images.sh
 
+# phase-575 W3 — a FreeRTOS image built and linked by TI Arm Clang: the
+# out-of-tree fixture board as `fixture-r5f-tiarmclang`, every C TU by
+# tiarmclang, the Rust staticlib by rustc, linked by tiarmlnk. Asserts the C
+# and C++ images' float ABI and C library, and how tiarmlnk resolves a weak
+# board hook between the two compilers' objects (four cases, as GNU ld).
+[metadata("tier", "build")]
+[group('needs:cli')]
+[group('needs:arm-gcc-any')]
+[group('needs:cmake')]
+[group('needs:tiarmclang')]
+tiarmclang-image:
+    @bash scripts/check/check-tiarmclang-image.sh
+
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single
 # workspace at a single feature set. `examples/workspaces/mixed` is the fixture

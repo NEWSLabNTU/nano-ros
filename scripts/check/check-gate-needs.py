@@ -42,6 +42,10 @@ UNCLAIMED_OK = {
     # run-matrix.yml's tier-2 job, not through a lane's scope.
     "build-tree": "no gate lane runs after a fixture build; run-matrix's tier-2 job runs these gates by name after `just build tier2`",
     "zephyr": "no gate lane has a west workspace; workflow jobs that provision one run these gates by name, and check-default-gates-run-somewhere holds that each is run somewhere",
+    # phase-575 W3 — TI Arm Clang is licence-gated ([gated.ti-arm-clang]): no
+    # hosted image may carry it, and the self-hosted runner image claims it
+    # only once it does (a private image, user ruling 2026-11-18).
+    "tiarmclang": "TI Arm Clang is licence-gated and never fetched, so no lane's image carries it yet; `just check tiarmclang-image` runs by name where TI_ARM_CLANG_ROOT names an install",
 }
 
 SKIP_CALL = re.compile(r"\bnros_check_(skip|unverified)\b")

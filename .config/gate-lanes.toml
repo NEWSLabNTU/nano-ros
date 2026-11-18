@@ -28,6 +28,7 @@ west = "a Python interpreter that imports west (scripts/build/zephyr-python.sh)"
 fsp = "the NVIDIA Orin SPE FSP tree (NV_SPE_FSP_DIR)"
 build-tree = "artifacts a fixture or image build produced"
 arm-gcc = "the pinned arm-none-eabi-gcc dist ([tool.arm-none-eabi-gcc], nros setup --tool arm-none-eabi-gcc)"
+tiarmclang = "a TI Arm Clang install named by TI_ARM_CLANG_ROOT ([gated.ti-arm-clang]: licence-gated, never fetched)"
 
 # Shared resources a gate USES, with how many gates may hold one at once
 # (`[group('uses:<res>')]` on the recipe; phase-543 W4). Each becomes a nextest
@@ -124,6 +125,7 @@ git-history = { provisioner = "git-history", remedy = "git fetch --unshallow" }
 sources = { provisioner = "sources", remedy = "nros setup --source <name> (the index's [source.*] rows)" }
 zephyr-tree = { provisioner = "zephyr-tree", remedy = "the sparse header clone (scripts/ci/provision-gate-lane.sh), or a west workspace" }
 arm-gcc = { provisioner = "arm-gcc", remedy = "nros setup --tool arm-none-eabi-gcc" }
+tiarmclang = { remedy = "install TI Arm Clang from https://www.ti.com/tool/download/ARM-CGT-CLANG (its licence is yours to accept; nano-ros never fetches it), then set TI_ARM_CLANG_ROOT to the directory holding bin/tiarmclang" }
 ros2 = { remedy = "source /opt/ros/<distro>/setup.bash (or ./activate.sh with ROS installed)" }
 colcon = { remedy = "install colcon (python3 -m pip install colcon-common-extensions)" }
 bindgen = { remedy = "just setup linux" }
