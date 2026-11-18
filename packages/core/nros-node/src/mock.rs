@@ -133,6 +133,10 @@ pub struct MockSubscriber {
     pub matched: Cell<Option<usize>>,
     /// Registered status-event callbacks.
     pub events: MockEventRegs,
+    /// The metadata `take_serialized_with_info` reports with each sample.
+    /// `None` (the default) is the trait default, a backend that reports
+    /// none; a test sets it with [`Self::set_info`] (issue 2712).
+    info: Cell<Option<nros_core::MessageInfo>>,
 }
 
 impl MockSubscriber {
@@ -149,7 +153,14 @@ impl MockSubscriber {
             in_place: Cell::new(false),
             matched: Cell::new(None),
             events: MockEventRegs::default(),
+            info: Cell::new(None),
         }
+    }
+
+    /// Report `info` as every taken sample's metadata, as a backend that
+    /// reports metadata does.
+    pub fn set_info(&self, info: nros_core::MessageInfo) {
+        self.info.set(Some(info));
     }
 
     /// The topic this subscription was created on.
@@ -214,6 +225,15 @@ impl Subscription for MockSubscriber {
             Some(Err(err)) => Err(err),
             None => Ok(None),
         }
+    }
+
+    fn take_serialized_with_info(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, Option<nros_core::MessageInfo>)>, TransportError> {
+        let info = self.info.get();
+        self.take_serialized(buf)
+            .map(|opt| opt.map(|len| (len, info)))
     }
 
     fn deserialization_error(&self) -> TransportError {
