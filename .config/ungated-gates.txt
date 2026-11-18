@@ -114,7 +114,8 @@ out-of-tree-board-images
 
 # tiarmclang-image (phase-575 W3) needs TI Arm Clang, which is licence-gated
 # and never fetched, so no hosted lane can claim it. Run it by name where an
-# install is named (`just check tiarmclang-image`); the self-hosted runner
-# image claims it once it carries TI Arm Clang (a private image, by the
-# user's licence ruling of 2026-11-18).
+# install is named (`just check tiarmclang-image`). No runner carries TI Arm
+# Clang: by the user's ruling of 2026-11-18, CI installs it only once a TI
+# board is in nano-ros and in its tests, and the fixture board here stands in
+# for a user's out-of-tree one.
 tiarmclang-image

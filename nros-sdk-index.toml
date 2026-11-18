@@ -1444,9 +1444,9 @@ env = "S32_RTD_PATH"
 # licence is the reason, not the download. TI's "TI Text File" terms (in the
 # release manifest) license use and redistribution "for use only with TI
 # Devices", and the installer carries a click-through. Accepting that is the
-# user's act, so `nros setup` never fetches it. nano-ros's own runner image
-# carries it under a user ruling of 2026-11-18, privately; no public image or
-# mirror may.
+# user's act, so `nros setup` never fetches it, and no public image or mirror
+# may carry it. No CI runner carries it either: by a user ruling of 2026-11-18,
+# CI installs it only once a TI board is in nano-ros and in its tests.
 #
 # The variable names the install root, the directory holding `bin/tiarmclang`.
 [gated.ti-arm-clang]
