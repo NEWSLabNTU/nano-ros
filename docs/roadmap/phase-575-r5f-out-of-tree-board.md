@@ -225,6 +225,14 @@ Steps, in order:
 1. **The fork patch, then the link.** The RFC-0134 D2 patch, then
    `zpico-link-rpmsg` on the `zpico-link-ivc` pattern, with the vendor
    binding in the board package.
+   - **Patch: done (2026-11-18).** Three fork commits on `nano-ros-1.10.1`:
+     the D2 peering patch, and two IVC fixes the first end-to-end run found
+     (a client on IVC dereferenced NULL for its peer socket; a session on
+     IVC could neither wait in its handshake nor read). The nano-ros half is
+     the opt-in and the guard (RFC-0134 D1, amended). The user chose to push
+     once a runtime test existed: `nros-rmw-zenoh`'s `point_to_point_peer`
+     runs two processes over the IVC host mock, with no router.
+   - **Link:** OPEN.
 2. **Acceptance on dual-core QEMU.** Two nano-ros peers, one listening and
    one connecting, exchange messages over RPMsg with no router, on an
    emulated dual-core target (Zephyr's OpenAMP samples on a dual-core QEMU
