@@ -30,11 +30,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | | |
 | --- | --- |
 | Upstream base | `1.10.1` (merge base [e1ab223a28aa](https://github.com/eclipse-zenoh/zenoh-pico/commit/e1ab223a28aaebb5dec1e70d98eab152332f777a)) |
-| Commits on top | 88 |
+| Commits on top | 90 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 118, +10703/−254 |
+| Files changed | 119, +10738/−262 |
 
-**Pinned commit:** `19a47ae7b12362b8828e338aab362cccf99fabe9`
+**Pinned commit:** `c05434a70fdb0ca7bfc8a5499e6e7043cb733d99`
 
 ### Commits on top of upstream
 
@@ -128,12 +128,14 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [fb5f5cdc6c](https://github.com/jerry73204/zenoh-pico/commit/fb5f5cdc6c86f4781838df07f6d12000d52fceab) | fix: the POSIX TCP and UDP links compile only when enabled |
 | [01f5761aff](https://github.com/jerry73204/zenoh-pico/commit/01f5761afffcfe2c4f000e7caf54bd6323413da8) | fix: under split lock, a parked batch ships before the fragments that overflowed it |
 | [19a47ae7b1](https://github.com/jerry73204/zenoh-pico/commit/19a47ae7b12362b8828e338aab362cccf99fabe9) | fix: a send holds a transport use, so split lock frees publishers again |
+| [aa0f454535](https://github.com/jerry73204/zenoh-pico/commit/aa0f4545352c92c17a154e87ed8b54d3a4752d2d) | fix(nano-ros, lwip): the lwIP socket glue and links include no <unistd.h> |
+| [c05434a70f](https://github.com/jerry73204/zenoh-pico/commit/c05434a70fdb0ca7bfc8a5499e6e7043cb733d99) | feat(nano-ros, freertos): Z_FEATURE_NROS_PLATFORM_TIME routes the wall clock to nano-ros |
 
 Reproduce:
 
 ```bash
 base=1.10.1
-head=jerry73204:zenoh-pico:19a47ae7b12362b8828e338aab362cccf99fabe9
+head=jerry73204:zenoh-pico:c05434a70fdb0ca7bfc8a5499e6e7043cb733d99
 gh api "repos/eclipse-zenoh/zenoh-pico/compare/$base...$head" --jq '.ahead_by'
 ```
 

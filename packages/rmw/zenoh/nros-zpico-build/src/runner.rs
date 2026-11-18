@@ -3501,6 +3501,11 @@ fn build_zenoh_pico_unified(
         // `NROS_ZP_ALIAS_SCALAR_ONLY` compile below).
         build.define("Z_FEATURE_NROS_PLATFORM_SLEEP", None);
         build.define("Z_FEATURE_NROS_PLATFORM_RANDOM", None);
+        // phase-575 W3: the WALL clock too (`z_time_*`, zenoh timestamps) ->
+        // `nros_platform_time_now_ns`, so the image's C library needs no
+        // gettimeofday or <sys/time.h> (TI Arm Clang's has neither). The
+        // fork's `nano-ros` patch line guards the vendored body.
+        build.define("Z_FEATURE_NROS_PLATFORM_TIME", None);
     }
     // phase-502 W2 (issue 1196): bound the vendored FreeRTOS `_z_condvar_wait`
     // to one slice, reported as a spurious wake. Every other platform reaches
