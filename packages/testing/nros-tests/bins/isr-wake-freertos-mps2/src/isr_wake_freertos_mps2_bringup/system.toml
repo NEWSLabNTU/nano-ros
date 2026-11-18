@@ -1,0 +1,25 @@
+# What this test image deploys to (RFC-0098 D3/D5). It keeps its own `main`
+# (no `nros::main!`, no session) and declares no component table; the file
+# names its board. Its program is the image's OWNED entry (RFC-0071 D19),
+# which names its board crate itself; the generated adapter carries the image's
+# RMW and link features (issue 2448), and `build/<image>/nros-cargo.toml` the
+# target / link settings.
+# The program opens its own session (`Executor::open`) to a router on
+# `nros_tests::alloc::FREERTOS_ISR_WAKE_PORT`, so its executor parks on the
+# port's real wake object.
+
+[system]
+name = "isr_wake_freertos"
+rmw = "zenoh"
+domain_id = 0
+
+# FreeRTOS on QEMU MPS2-AN385. The board boots its network from
+# its own `config.toml` (`Config::from_toml`), not from here.
+[image.mps2-an385-freertos]
+entry = "isr-wake-freertos-mps2"
+board = "freertos"
+# `nros_tests::alloc::FREERTOS_ISR_WAKE_PORT`, as in `config.toml`.
+locator = "tcp/10.0.2.2:8100"
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"

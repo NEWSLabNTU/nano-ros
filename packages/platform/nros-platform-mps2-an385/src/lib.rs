@@ -480,9 +480,10 @@ impl nros_platform_api::PlatformThreading for Mps2An385Platform {
     fn wake_signal(w: *mut core::ffi::c_void) -> i8 {
         wake::signal(w)
     }
-    fn wake_signal_from_isr(w: *mut core::ffi::c_void) -> i8 {
-        wake::signal(w)
-    }
+    // Issue 2696 -- no `wake_signal_from_isr`: the trait's `-1` default
+    // refuses. The wake here is a flag, likely interrupt-safe as it stands,
+    // but a port claims an interrupt-safe wake only where a test takes the
+    // interrupt (issue 2706).
     fn wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8 {
         wake::park_until_us(w, deadline_us)
     }

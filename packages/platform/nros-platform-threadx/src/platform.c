@@ -1142,9 +1142,15 @@ int8_t nros_platform_wake_signal(void *w) {
     return rc == TX_SUCCESS ? 0 : -1;
 }
 
+/* Issue 2696 — REFUSED until a test reaches it. `tx_semaphore_put` and
+ * `_ceiling_put` are ISR-callable per the ThreadX spec, so the body is likely
+ * `nros_platform_wake_signal`; but a port claims an interrupt-safe wake only
+ * where a test takes the interrupt (issue 2706). Until then an interrupt's
+ * trigger sets the flag and the waiter sees it at its own deadline, and
+ * `trigger_from_isr` says so by returning false. */
 int8_t nros_platform_wake_signal_from_isr(void *w) {
-    /* tx_semaphore_put / _ceiling_put are ISR-safe per ThreadX spec. */
-    return nros_platform_wake_signal(w);
+    (void)w;
+    return -1;
 }
 
 size_t nros_platform_wake_storage_size(void) {

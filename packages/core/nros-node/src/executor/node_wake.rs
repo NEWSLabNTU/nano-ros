@@ -47,7 +47,6 @@ unsafe extern "C" {
     fn nros_platform_wake_drop(w: *mut c_void) -> i8;
     fn nros_platform_wake_wait_ms(w: *mut c_void, timeout_ms: u32) -> i8;
     fn nros_platform_wake_signal(w: *mut c_void) -> i8;
-    #[allow(dead_code)] // Wired by 124.B.7 ISR callers in a follow-up.
     fn nros_platform_wake_signal_from_isr(w: *mut c_void) -> i8;
     fn nros_platform_wake_park_handles_us(
         w: *mut c_void,
@@ -203,6 +202,28 @@ impl NodeWake {
         let _ = unsafe { nros_platform_wake_signal(ptr) };
     }
 
+    /// [`signal`](Self::signal) from an interrupt handler (on POSIX, a
+    /// signal handler): the hook, then the port's
+    /// `nros_platform_wake_signal_from_isr` (`xSemaphoreGiveFromISR` and a
+    /// yield on FreeRTOS). Issue 2696. The hook's own contract already
+    /// covers an ISR forward ([`WakeHookFn`]).
+    ///
+    /// `false` when the port has no interrupt-safe signal (it returns -1, as
+    /// the ports no test reaches do, issue 2706): the waiter then sees the
+    /// flag at its own deadline.
+    pub(crate) fn signal_from_isr(&self) -> bool {
+        let f = self.hook_fn.load(portable_atomic::Ordering::Acquire);
+        if f != 0 {
+            let ctx = self.hook_ctx.load(portable_atomic::Ordering::Acquire);
+            // SAFETY: as `signal`.
+            let hook: WakeHookFn = unsafe { core::mem::transmute::<usize, WakeHookFn>(f) };
+            unsafe { hook(ctx) };
+        }
+        let ptr = self.storage.as_ptr() as *mut c_void;
+        // SAFETY: see wait_ms.
+        unsafe { nros_platform_wake_signal_from_isr(ptr) == 0 }
+    }
+
     /// Issue 2225 -- install (`Some`) or clear (`None`) the hook
     /// [`signal`](Self::signal) calls. `ctx` must outlive the hook: clear it
     /// before `ctx` goes away.
@@ -245,6 +266,10 @@ impl super::scheduler::BandWaiter {
             // SAFETY: `ctx` is the leaked `NodeWake` below.
             unsafe { &*(ctx as *const NodeWake) }.signal();
         }
+        unsafe extern "C" fn wake_from_isr(ctx: *mut c_void) {
+            // SAFETY: as `wake`.
+            let _ = unsafe { &*(ctx as *const NodeWake) }.signal_from_isr();
+        }
         unsafe extern "C" fn wait(ctx: *mut c_void, us: u64) -> i32 {
             // The wake primitive's own resolution is the millisecond; a
             // band's park rounds UP, so it never wakes before its timer.
@@ -262,7 +287,7 @@ impl super::scheduler::BandWaiter {
         // SAFETY: the wake object is leaked, so it outlives every executor;
         // its signal and wait are callable from any thread (the platform's
         // wake contract).
-        let waiter = unsafe { Self::new(wake, wait, ctx) };
+        let waiter = unsafe { Self::new(wake, wake_from_isr, wait, ctx) };
         Some(alloc::boxed::Box::leak(alloc::boxed::Box::new(waiter)))
     }
 }

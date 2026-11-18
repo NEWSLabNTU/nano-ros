@@ -232,6 +232,12 @@ pub struct BandWaiter {
     #[cfg_attr(not(all(feature = "alloc", feature = "rmw-cffi")), allow(dead_code))]
     // the arrival path
     pub(crate) wake: WorkerWakeFn,
+    /// Issue 2696 -- signals it from an interrupt handler (or, on POSIX, a
+    /// signal handler): `xSemaphoreGiveFromISR`, `k_sem_give`, an RTIC
+    /// `spawn`. What [`GuardCondition::trigger_from_isr`](super::GuardCondition::trigger_from_isr)
+    /// reaches, so an interrupt never calls a thread-only `wake`.
+    #[cfg_attr(not(all(feature = "alloc", feature = "rmw-cffi")), allow(dead_code))]
+    pub(crate) wake_from_isr: WorkerWakeFn,
     /// Waits on it, bounded.
     pub(crate) wait: BandWaitFn,
     pub(crate) ctx: *mut c_void,
@@ -250,14 +256,26 @@ unsafe impl Send for BandWaiter {}
 
 impl BandWaiter {
     /// A waiter over the port's wake object at `ctx`.
+    // Issue 2696.
+    /// Every waiter states its interrupt-safe wake: a band an
+    /// interrupt cannot wake would wait out its park instead. Pass `wake`
+    /// again where the port's thread wake is already interrupt-safe.
     ///
     /// # Safety
-    /// `wake` and `wait` are callable from any thread with `ctx`, which
-    /// outlives every executor the waiter is attached to.
-    pub const unsafe fn new(wake: WorkerWakeFn, wait: BandWaitFn, ctx: *mut c_void) -> Self {
+    /// `wake` and `wait` are callable from any thread with `ctx`, and
+    /// `wake_from_isr` from an interrupt handler (on POSIX, a signal
+    /// handler) with it. `ctx` outlives every executor the waiter is attached
+    /// to.
+    pub const unsafe fn new(
+        wake: WorkerWakeFn,
+        wake_from_isr: WorkerWakeFn,
+        wait: BandWaitFn,
+        ctx: *mut c_void,
+    ) -> Self {
         Self {
             slots: AtomicUsize::new(0),
             wake,
+            wake_from_isr,
             wait,
             ctx,
             next: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
@@ -269,6 +287,14 @@ impl BandWaiter {
     pub(crate) fn signal(&self) {
         // SAFETY: `new`'s contract.
         unsafe { (self.wake)(self.ctx) };
+    }
+
+    // Issue 2696.
+    /// Signal the worker from an interrupt handler.
+    #[cfg_attr(not(all(feature = "alloc", feature = "rmw-cffi")), allow(dead_code))]
+    pub(crate) fn signal_from_isr(&self) {
+        // SAFETY: `new`'s contract.
+        unsafe { (self.wake_from_isr)(self.ctx) };
     }
 
     /// Wait at most `us` microseconds, or until signalled.

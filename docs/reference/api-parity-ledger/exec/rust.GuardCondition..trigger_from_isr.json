@@ -1,0 +1,5 @@
+{
+  "key": "rust:GuardCondition::trigger_from_isr",
+  "verdict": "extension",
+  "why": "issue 2696 -- trigger a guard condition from an interrupt handler (on POSIX, a signal handler) through the port's interrupt-safe wake; returns whether it woke the executor. rclrs has no interrupt context. The C and C++ ROS-mirrored guard types stay thread-only (RFC-0139 D1)."
+}
