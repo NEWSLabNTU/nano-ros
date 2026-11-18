@@ -1142,17 +1142,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // `launch_param_text` (over rlm's `to_bake_string`) is the shared rendering (issue-0269-adjacent:
             // `1.0f64.to_string()` is "1", which the runtime's
             // launch-text reader re-types as INTEGER).
-            let resolved: Vec<(String, String)> = inst
-                .resolved_params(fqn)
-                .iter()
-                // Issue 2638 -- a list as `[a, b]`, which the seed reads as an array.
-                .map(|(k, v)| {
-                    (
-                        k.clone(),
-                        nros_orchestration_ir::launch_param_text::launch_param_text(v),
-                    )
-                })
-                .collect();
+            // Issue 2638 -- a list as `[a, b]`, which the seed reads as an array.
+            // Issue 2640 -- the one projection every bake and the probe share.
+            let resolved = nros_orchestration_ir::launch_param_text::baked_params(inst, fqn);
             // Issue #52 — `qos_overrides.*` are NOT declared parameters: they
             // decompose into the node's QoS-override table. Until this, the
             // Rust path baked them as ordinary params and applied no QoS at
