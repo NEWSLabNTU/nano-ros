@@ -1815,6 +1815,19 @@ def selftest_weak_objects():
     assert [s["symbol"] for s in res["storage"]] == [holder], res["storage"]
 
 
+# A storage definition is CODE: a string literal or a trailing `//` comment that
+# names a static (a knob's help text, say) defines nothing. The one pattern
+# whose evidence IS a string, the `format_ident!("…_SLOT_STORE")` the component
+# macro names its store with, is matched on the raw line.
+_STRING_LITERAL = re.compile(r'"(?:[^"\\]|\\.)*"')
+_FORMAT_IDENT_STORE = re.compile(r'format_ident!\(\s*"[^"]*_SLOT_STORE"')
+
+
+def defines_storage(line: str) -> bool:
+    code = _STRING_LITERAL.sub('""', line).split("//", 1)[0]
+    return bool(_FORMAT_IDENT_STORE.search(line) or _STORAGE_DEF.search(code))
+
+
 def check_storage_roles():
     """`STORAGE_ROLES` against the tree, BOTH directions (the parity-map lesson).
 
@@ -1823,6 +1836,12 @@ def check_storage_roles():
     some row cites — so a new storage static in a new place fails here instead
     of being filed under a crate.
     """
+    assert defines_storage("static mut EXECUTOR_BACKING: [u64; N] = [0; N];")
+    assert defines_storage('let s = quote::format_ident!("__NROS_COMPONENT_{}_SLOT_STORE", p);')
+    assert not defines_storage(
+        'help: Some("reserves in .bss -- the named static nros_node::EXECUTOR_BACKING"),'
+    ), "a help string that names a static is not a definition"
+    assert not defines_storage("let n = 1; // the static EXECUTOR_BACKING holds it")
     cited = set()
     for role, _rx, src, literal in STORAGE_ROLES:
         cited.add(src)
@@ -1852,7 +1871,7 @@ def check_storage_roles():
         stripped = body.strip()
         if stripped.startswith(("//", "*", "/*", "#", "\"")) or "assert" in body or "contains(" in body:
             continue
-        if not _STORAGE_DEF.search(body):
+        if not defines_storage(body):
             continue
         defining.add(path)
         assert path in cited, (
