@@ -23,6 +23,9 @@ header = """/**
 /* `rmw_request_id_t`, hand-written under the guard the RMW ABI
  * and rclcpp share; excluded from export below. */
 #include "rclc/detail/request_id.h"
+/* `rmw_message_info_t` and `rmw_gid_t`, hand-written under the guards
+ * the RMW ABI shares; excluded from export below. */
+#include "rclc/detail/message_info.h"
 /* `unique_identifier_msgs__msg__UUID`, the goal id of an rclc
  * goal handle, declared under the guard the generated message shares;
  * excluded from export below. */
@@ -149,6 +152,10 @@ exclude = [
     # a TU that includes two of them sees one definition. The Rust side names
     # it as an alias of `nros_node::RawRequestId`, same layout.
     "rmw_request_id_t",
+    # issue 2712 -- declared by `<rclc/detail/message_info.h>` under the guards
+    # `<nros/rmw_entity.h>` shares.
+    "rmw_message_info_t",
+    "rmw_gid_t",
     # phase-515 C4b — declared by `<rclc/detail/uuid.h>` under the guard the
     # generated `unique_identifier_msgs` header shares.
     "unique_identifier_msgs__msg__UUID",
@@ -167,6 +174,9 @@ exclude = [
 
 [fn]
 rename_args = "None"
+# A `#[deprecated(note = ..)]` entry point keeps compiling, with a warning that
+# names its replacement (issue 2712's `*_with_info` calls).
+deprecated_with_note = "NROS_DEPRECATED({})"
 # Add NROS_PUBLIC visibility attribute to all function declarations
 prefix = "NROS_PUBLIC"
 

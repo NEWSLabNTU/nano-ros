@@ -20,6 +20,9 @@
 /* `rmw_request_id_t`, hand-written under the guard the RMW ABI
  * and rclcpp share; excluded from export below. */
 #include "rclc/detail/request_id.h"
+/* `rmw_message_info_t` and `rmw_gid_t`, hand-written under the guards
+ * the RMW ABI shares; excluded from export below. */
+#include "rclc/detail/message_info.h"
 /* `unique_identifier_msgs__msg__UUID`, the goal id of an rclc
  * goal handle, declared under the guard the generated message shares;
  * excluded from export below. */
@@ -2742,10 +2745,11 @@ typedef void (*rclc_subscription_callback_t)(const void *msgin);
 typedef void (*rclc_subscription_raw_callback_t)(const uint8_t *data, size_t len, void *context);
 
 /**
- * Subscription callback that also receives the sample's wire **attachment**
- * (the C analog of the Rust
- * `node.subscription(t).generic(..).message_info()` builder path). Used by
- * `rclc_executor_add_subscription_raw_with_info`.
+ * Subscription callback that also receives the sample's wire **attachment**,
+ * used by the deprecated `rclc_executor_add_subscription_raw_with_info` and
+ * `rclc_executor_add_subscription_with_info`. It carries NO message
+ * metadata: no timestamp, sequence number or publisher GID. For those use
+ * [`rclc_subscription_message_info_callback_t`].
  *
  * # Parameters
  * * `data` / `len` — received CDR bytes.
@@ -2759,6 +2763,22 @@ typedef void (*rclc_subscription_info_callback_t)(const uint8_t *data,
                                                   const uint8_t *attachment,
                                                   size_t attachment_len,
                                                   void *context);
+
+/**
+ * A raw subscription callback that also receives the message's metadata,
+ * registered with `rclc_executor_add_subscription_with_message_info`.
+ *
+ * # Parameters
+ * * `data` / `len` — received CDR bytes.
+ * * `info` — the message's [`rmw_message_info_t`]: timestamps, sequence
+ *   numbers and publisher GID. NULL when the backend reports no metadata.
+ *   Valid only during the call.
+ * * `context` — the pointer given at registration.
+ */
+typedef void (*rclc_subscription_message_info_callback_t)(const uint8_t *data,
+                                                          size_t len,
+                                                          const rmw_message_info_t *info,
+                                                          void *context);
 
 /**
  * rcl's timer callback — `typedef void (*)(rcl_timer_t *, int64_t)`, the ONE
@@ -6507,6 +6527,7 @@ rcl_ret_t rclc_executor_add_subscription_raw(struct rclc_executor_t *executor,
  * UTF-8 valid for the duration of the call.
  */
 NROS_PUBLIC
+NROS_DEPRECATED("delivers the wire attachment and NO message metadata; use rclc_executor_add_subscription_with_message_info")
 rcl_ret_t rclc_executor_add_subscription_raw_with_info(struct rclc_executor_t *executor,
                                                        const struct rcl_node_t *node,
                                                        const char *topic_name,
@@ -6552,11 +6573,52 @@ rcl_ret_t rclc_executor_add_subscription_raw_with_info(struct rclc_executor_t *e
  * * `context` is passed through untouched and may be NULL.
  */
 NROS_PUBLIC
+NROS_DEPRECATED("delivers the wire attachment and NO message metadata; use rclc_executor_add_subscription_with_message_info")
 rcl_ret_t rclc_executor_add_subscription_with_info(struct rclc_executor_t *executor,
                                                    struct rcl_subscription_t *subscription,
                                                    rclc_subscription_info_callback_t callback,
                                                    void *context,
                                                    enum rclc_executor_handle_invocation_t invocation);
+
+/**
+ * Register a raw subscription whose callback also receives each message's
+ * metadata, into a `rcl_subscription_t` the caller keeps, so it can be
+ * REMOVED.
+ *
+ * The callback gets an [`rmw_message_info_t`](crate::subscription::rmw_message_info_t):
+ * when the publisher sent the message and when it was received, both
+ * sequence numbers, and the publisher's GID, as the backend reported them.
+ * `info` is NULL from a backend that reports no metadata.
+ *
+ * ```c
+ * rclc_subscription_init_default(&sub, &node, &type, "/topic");
+ * rclc_executor_add_subscription_with_message_info(&exec, &sub, on_sample, ctx,
+ *                                                  ON_NEW_DATA);
+ * ...
+ * rclc_executor_remove_subscription(&exec, &sub);
+ * ```
+ *
+ * It replaces `rclc_executor_add_subscription_with_info` and
+ * `rclc_executor_add_subscription_raw_with_info`, whose callbacks receive the
+ * wire attachment and no metadata. The executor path is the one C++'s
+ * `(msg, const rclcpp::MessageInfo&)` callback takes. The metadata comes
+ * with a copying take, so this subscription cannot dispatch in place and
+ * claims a receive buffer sized from the subscription's type.
+ *
+ * # Returns
+ * As [`rclc_executor_add_subscription_raw`]; `RCL_RET_INVALID_ARGUMENT` for a
+ * NULL `callback`.
+ *
+ * # Safety
+ * * `executor` and `subscription` must be valid, initialised objects.
+ * * `context` is passed through untouched and may be NULL.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_subscription_with_message_info(struct rclc_executor_t *executor,
+                                                           struct rcl_subscription_t *subscription,
+                                                           rclc_subscription_message_info_callback_t callback,
+                                                           void *context,
+                                                           enum rclc_executor_handle_invocation_t invocation);
 
 /**
  * Add a timer to the executor.

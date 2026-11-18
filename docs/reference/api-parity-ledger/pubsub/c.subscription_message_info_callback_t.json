@@ -1,0 +1,5 @@
+{
+  "key": "c:subscription_message_info_callback_t",
+  "verdict": "extension",
+  "why": "issue 2712 -- the callback of `c:executor_add_subscription_with_message_info`: `(data, len, const rmw_message_info_t *info, context)`, the CDR-byte form every raw callback here takes plus upstream's `rmw_message_info_t` (declared by `<rclc/detail/message_info.h>` under the guard `<nros/rmw_entity.h>` shares). No rclc counterpart."
+}
