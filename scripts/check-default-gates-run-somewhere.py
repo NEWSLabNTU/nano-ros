@@ -158,6 +158,8 @@ EXEMPT_NO_PLACEMENT: "dict[str, tuple]" = {
                                    "justfile", "just check action-client-arena-budget"),
     "archive-lang-items": ("caller", "needs a built CMake link line; `build-test-fixtures` runs it",
                            "justfile", "bash scripts/check-archive-lang-items.sh"),
+    "zephyr-pin-drift": ("caller", "reads the HOST's provisioned Zephyr workspaces; the Zephyr fixture lane's precondition runs it",
+                         "justfile", "python3 scripts/check-zephyr-pin-drift.py"),
     "nextest-test-filters": ("caller", "needs the test binaries; `test-all` runs it first",
                              "justfile", "just check nextest-test-filters"),
     "nuttx-libc-graph": ("caller", "needs NuttX workspace entries; `just nuttx build-fixtures` runs it",
