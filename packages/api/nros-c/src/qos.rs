@@ -199,8 +199,9 @@ pub struct rclc_qos_t {
 // Wire effect, re-reading W10's own measurements: none. cyclonedds calls
 // `dds_qset_liveliness` only for a non-sentinel kind and its own default IS
 // `DDS_LIVELINESS_AUTOMATIC`; zenoh's `QosKeyExpr::to_qos_string` leaves the
-// liveliness positions empty for every profile; XRCE lowers no liveliness
-// field. A caller that WANTS automatic liveliness still states it.
+// liveliness kind empty for both SYSTEM_DEFAULT and AUTOMATIC (it states only
+// a manual kind, since phase-556 W6); XRCE lowers no liveliness field. A
+// caller that WANTS automatic liveliness still states it.
 
 /// The SSoT's depth, narrowed to the width this C API's `depth` field carries.
 ///
