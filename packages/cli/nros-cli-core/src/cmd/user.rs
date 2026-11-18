@@ -41,7 +41,7 @@ pub const GROUPS: &[(&str, &[&str])] = &[
     (
         "Inspect",
         &[
-            "doctor", "board", "rmw", "config", "plan", "check", "explain",
+            "doctor", "board", "rmw", "knob", "config", "plan", "check", "explain",
         ],
     ),
     ("Toolchain", &["toolchain", "pin", "update", "locate"]),

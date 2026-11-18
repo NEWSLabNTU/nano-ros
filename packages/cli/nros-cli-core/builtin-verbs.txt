@@ -26,6 +26,7 @@ user graph
 user image-facts
 user init
 user interface
+user knob
 user list
 user locate
 user materialize
