@@ -297,6 +297,14 @@ crate = "nros-rmw-zenoh"
 features = ["platform-posix", "link-custom"]
 targets = ["custom_transport"]
 
+# RFC-0134 D2 -- two peers on a point-to-point link (IVC, host mock), no router.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-zenoh"
+features = ["platform-posix", "link-ivc"]
+targets = ["point_to_point_peer"]
+env = { NROS_ZENOH_MAX_SESSIONS = "2" }
+
 # Issue 0779 — the last three. `c-stub-test` needed real repairs, not just a
 # flag: its abi_layout_check.c had not compiled since phase-321 W2.e moved the
 # crate, and c_stub_platform asserted a call count for a trait that had shrunk.
