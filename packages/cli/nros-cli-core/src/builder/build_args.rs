@@ -179,12 +179,12 @@ pub fn split_posix(s: &str) -> Result<Vec<String>, Refusal> {
 /// The knob rows whose `-D` D9 refuses, by id: those `[image.<id>.knobs]`
 /// carries on EVERY road, so the refusal's remedy works wherever the user is.
 ///
-/// EMPTY for now (phase-568 W2a, ruled 2026-11-17). Issue 2496 found a row
-/// the cmake road does not carry from the image, so for it a configure flag
-/// is the only way in, and refusing it would point at a remedy that does
-/// nothing. `knob_roads::tests` measures every row's carriage per road; W2c
-/// closes the gaps and adds a row here once all its roads carry it.
-pub const KNOB_REFUSAL_ON: &[&str] = &[];
+/// Phase-568 W2c turns rows on one at a time, each only once
+/// `knob_roads::tests` measures it carried on EVERY road
+/// (`knob_road_coverage.tsv` reads `yes yes yes`), which
+/// `every_knob_refused_is_carried_on_every_road` checks. The first two are the
+/// rows issue 2496 found uncarried on the cmake road and fixed.
+pub const KNOB_REFUSAL_ON: &[&str] = &["FREERTOS_APP_STACK_KB", "CYCLONEDDS_MAX_DESCRIPTOR_TYPES"];
 
 /// What a `-D` name collides with, if anything.
 fn define_refusal(arg: &str, name: &str) -> Option<Refusal> {
@@ -716,15 +716,15 @@ mod tests {
         }
     }
 
-    /// W2a ships the knob refusal OFF: a knob `-D` passes, because for some
-    /// rows a configure flag is the only way in (issue 2496).
+    /// W2c turns rows on one by one: a row that is on is refused, pointing at
+    /// its `[image.<id>.knobs.<group>]` home; a row that is not passes.
     #[test]
-    fn a_knob_not_turned_on_passes() {
-        assert!(
-            KNOB_REFUSAL_ON.is_empty(),
-            "turning a row on is W2c's, with its roads measured"
-        );
-        assert!(cmake("-DNROS_FREERTOS_APP_STACK_KB=64").is_ok());
+    fn a_knob_is_refused_only_once_turned_on() {
+        let r = cmake("-DNROS_FREERTOS_APP_STACK_KB=64").unwrap_err();
+        assert!(r.reason.contains("[image.<id>.knobs.freertos]"), "{r}");
+        assert!(cmake("-DNROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES=8").is_err());
+        assert!(!KNOB_REFUSAL_ON.contains(&"THREADX_APP_STACK_KB"));
+        assert!(cmake("-DNROS_THREADX_APP_STACK_KB=64").is_ok());
     }
 
     #[test]
