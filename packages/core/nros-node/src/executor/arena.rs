@@ -2114,15 +2114,18 @@ where
     F: FnMut(&[u8], &RawMessageInfo),
 {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoEntry<F>) };
+    // Issue 2712 -- one take for the metadata AND the attachment. The
+    // attachment-only take left `RawMessageInfo`'s metadata at its default,
+    // so every field read zero.
     match entry
         .handle
-        .take_serialized_with_attachment(entry.buffer.as_mut_slice(), &mut entry.att)
+        .take_serialized_with_info_and_attachment(entry.buffer.as_mut_slice(), &mut entry.att)
     {
         // Phase 8 — hooked. One sample per dispatch (flat inline buffer, no
         // ring), so exactly one pair. `Ok(None)` and `Err(_)` never reach a
         // callback and stay bare.
-        Ok(Some((len, att_len))) => {
-            let info = RawMessageInfo::new(&entry.att[..att_len]);
+        Ok(Some((len, meta, att_len))) => {
+            let info = RawMessageInfo::with_info(meta.unwrap_or_default(), &entry.att[..att_len]);
             trace_take(desc_idx, &entry.buffer.as_slice()[..len], None);
             trace_cb_start(desc_idx);
             (entry.callback)(&entry.buffer.as_slice()[..len], &info);
@@ -2148,8 +2151,8 @@ pub(crate) unsafe fn sub_buffered_raw_info_has_data<F>(ptr: *const u8) -> bool {
 /// numbers and publisher gid a backend reports, or `None` from one that
 /// reports none. The raw twin of [`SubInfoEntry`], for a caller that
 /// deserializes itself — the C++ `(const M&, const rclcpp::MessageInfo&)`
-/// subscription callback. [`SubBufferedRawInfoEntry`] carries the ATTACHMENT
-/// bytes instead, and its `RawMessageInfo` metadata is defaulted.
+/// subscription callback. [`SubBufferedRawInfoEntry`] carries the
+/// ATTACHMENT bytes as well, beside the same metadata.
 #[repr(C)]
 pub(crate) struct SubBufferedRawMsgInfoEntry<F> {
     pub(crate) handle: session::RmwSubscriber,

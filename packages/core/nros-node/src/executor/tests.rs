@@ -1396,6 +1396,58 @@ fn test_add_subscription_and_spin_once_with_data() {
     assert_eq!(*received.lock().unwrap(), Some(42));
 }
 
+/// Issue 2712 -- the generic `.message_info()` subscription hands its
+/// callback the metadata the backend reported. It took with the
+/// attachment-only take and built `RawMessageInfo::new`, so every metadata
+/// field read zero whatever the backend said.
+#[test]
+fn a_generic_message_info_subscription_reads_the_backends_metadata() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let nid = executor.node_builder("raw_info").build().unwrap();
+
+    let seen = alloc::sync::Arc::new(std::sync::Mutex::new(None));
+    let seen2 = seen.clone();
+    executor
+        .node_mut(nid)
+        .subscription("/raw_info")
+        .generic("test/msg/TestMsg", "hash")
+        .message_info()
+        .rx_buffer::<256>()
+        .build(move |payload: &[u8], info: &nros_core::RawMessageInfo| {
+            *seen2.lock().unwrap() = Some((
+                payload.len(),
+                info.source_timestamp(),
+                info.received_timestamp(),
+                info.attachment().len(),
+            ));
+        })
+        .unwrap();
+
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let sub_ptr = unsafe { arena_ptr.add(meta.offset) } as *const MockSubscriber;
+    let source = nros_core::Time::new(1_700_000_000, 123);
+    let received = nros_core::Time::new(1_700_000_001, 456);
+    unsafe { &*sub_ptr }.set_info(nros_core::MessageInfo::with_timestamps(source, received));
+    let (data, len) = encode_test_msg(42);
+    unsafe { &*sub_ptr }.load(data, len);
+
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(result.subscriptions_processed, 1);
+    let (n, src, rx, att) = seen.lock().unwrap().expect("the callback ran");
+    assert_eq!(n, len, "the payload is delivered whole");
+    assert_eq!(src, source, "the backend's source timestamp, not a default");
+    assert_eq!(
+        rx, received,
+        "the backend's received timestamp, not a default"
+    );
+    assert_eq!(
+        att, 0,
+        "the mock carries no attachment, as no backend does today"
+    );
+}
+
 // ====================================================================
 // Borrowed (zero-copy) subscription E2E (Phase 229.6, issue 0007)
 //
