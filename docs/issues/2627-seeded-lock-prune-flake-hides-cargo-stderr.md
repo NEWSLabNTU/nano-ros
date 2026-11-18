@@ -45,3 +45,23 @@ seeded lock.
 2. With that in place, check whether parallel `configure_verb` tests contend
    for a shared `CARGO_HOME` or registry lock. That is the likeliest cause
    when the test fails only under load.
+
+## Status (2026-11-18): step 1 done, the cause still unmeasured
+
+`prune_seeded_lock` now captures cargo's stderr. A failed prune's error ends
+with cargo's last 20 non-blank lines ("cargo said: …"), and a successful
+prune passes the captured stderr through, so the user sees what cargo printed
+before. `failed_prune_removes_the_seeded_lock` now asserts that cargo's own
+message reaches the error.
+
+Not done: step 2. The failure has not recurred since 2026-11-16, so whether
+parallel `configure_verb` tests contend for a shared `CARGO_HOME` or registry
+lock is still unknown. The next occurrence names cargo's reason; close this
+issue from that. It is not closed now, because a diagnostic alone fixes no
+cause.
+
+A related finding, measured under issue 2603: `nros-cli-core`'s lib tests
+share one process, and a test that writes a digest-input variable makes other
+tests' stamps read "inputs changed". `configure_verb` is an integration test
+that runs the `nros` binary as a child process, so that cause cannot reach
+it.
