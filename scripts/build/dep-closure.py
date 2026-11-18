@@ -80,6 +80,21 @@ def dep_targets(text: str) -> list[str]:
     return deps
 
 
+def is_build_ninja_edge(line: str) -> bool:
+    """Whether a `build.ninja` line is the edge that regenerates `build.ninja`.
+
+    Issue 2707 -- matched by its OUTPUTS, never by a fixed prefix. CMake 3.x
+    writes `build build.ninja: RERUN_CMAKE | ...`; CMake 4.x lists every
+    `cmake_install.cmake` beside it, so `startswith("build build.ninja:")`
+    found no edge and the closure lost every configure input. The twin is
+    `is_build_ninja_edge` in nros-tests' `fixtures/binaries/mod.rs`.
+    """
+    if not line.startswith("build "):
+        return False
+    outputs, sep, _ = line[len("build "):].partition(":")
+    return bool(sep) and "build.ninja" in outputs.split()
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         sys.stderr.write("usage: dep-closure.py <repo_root> <build_dir>\n")
@@ -168,7 +183,7 @@ def main() -> int:
             return 1
         text = text.replace("$\n", " ")
         for line in text.splitlines():
-            if not line.startswith("build build.ninja:"):
+            if not is_build_ninja_edge(line):
                 continue
             _, _, rhs = line.partition("|")
             for tok in rhs.split():
