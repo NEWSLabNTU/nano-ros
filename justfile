@@ -814,7 +814,9 @@ setup-hooks:
 # NuttX and 14 more - gigabytes - for gates that read two CMakeLists and a header.
 #
 # Only UNINITIALISED submodules are touched. One that IS checked out but sits off
-# its pin is REPORTED, never updated: AGENTS.md makes that a human decision because
+# its pin is REPORTED, never updated, and one BEHIND or DIVERGED fails this recipe
+# (issue 2701; AHEAD, a fork fix mid-flight, passes): AGENTS.md makes the update a
+# human decision because
 # the update discards work in a submodule someone is mid-edit on, and
 # `just post-rebase` follows the same rule. An uninitialised submodule has no work
 # to discard, which is the whole reason this one can be a verb.

@@ -1,12 +1,13 @@
 ---
 id: 2701
 title: "A submodule left off its pin after a rebase crashes check-book-probe-tracks, and the lanes agents run never name the drift"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [testing, build]
 related: [550, 1513, 1758, 2306]
 found: 2026-11-18
+resolved_in: "fix(issue 2701): a submodule off its pin is refused by name before any gate reads it"
 ---
 
 ## What happens
@@ -59,19 +60,26 @@ never the submodule. Sessions 133 and 175 both hit this on 2026-11-18.
   the gitlink directory. Mutation-checked: dropping `--ignore-submodules=all`
   turns the self-test red.
 
-- **Part 2 (open, proposed):** REFUSE, never update. The AGENTS.md rule stands:
-  updating discards work someone may be in the middle of in that submodule.
+- **Part 2 (done in the same PR): REFUSE, never update.** The AGENTS.md rule
+  stands: updating discards work someone may be in the middle of in that
+  submodule.
   1. The lane preflight (`scripts/check/gate-lane-preflight.py`) runs
-     `check-submodule-drift.sh` for every lane that claims `submodules`, and
-     reports a BEHIND or DIVERGED submodule as an unmet claim with the remedy
-     `git submodule update <path>`. That reaches `just ci gate` and
-     `just check fast` before any gate runs, and the message names the
-     submodule and the command.
-  2. `setup-worktree` exits non-zero on a `[KEPT]` row that is behind or
-     diverged. An AHEAD row stays OK: that is the vendored-fork workflow
-     mid-flight.
-  Open question for the reviewer: should the pre-push hook refuse on BEHIND? A
-  push with a stale submodule checkout is legal, because the gitlink, not the
-  checkout, is what gets pushed. The hook runs the fast lane, so (1) would
-  make it refuse. The alternative is to scope the drift claim to the `dev` lane
-  only.
+     `check-submodule-drift.sh` for every lane that claims `submodules`. A
+     BEHIND, DIVERGED or incomplete submodule is reported as `submodule-drift`,
+     with each path and its own remedy (`git submodule update <path>` for
+     behind, a rebase for diverged), never `just setup-worktree`, which keeps
+     the checkout. That reaches `just ci gate`, `just check fast` and the
+     pre-push hook before any gate runs. The pre-push refusal is deliberate
+     (manager ruling, 2026-11-18): a push from a drifted worktree carries a gate
+     verdict about a tree that is not the one being pushed. Lanes that do not
+     claim submodules, such as `pristine`, are unaffected.
+  2. `setup-worktree`'s provisioner (`scripts/lib/claim-provision.sh`) reports a
+     BEHIND row as `[BEHIND]` and exits non-zero. DIVERGED already did, as
+     `[BROKEN]`. AHEAD (a fork fix mid-flight) still passes. A store-first row
+     never reaches that case, but the preflight at the end of `setup-worktree`
+     refuses it.
+  Measured on the real tree: with zenoh-pico at `HEAD~1`, `gate-lane-preflight.py
+  dev` exits 1 naming the path and `git submodule update
+  packages/rmw/zenoh/zpico-sys/zenoh-pico`. With nuttx-apps at `HEAD~1`,
+  `claim-provision.sh dev` prints `[BEHIND]` and exits 1. On a clean tree both
+  pass, and `pristine` passes either way.
