@@ -1,13 +1,22 @@
 ---
 id: 2524
 title: "nros-cpp's action trampolines guess whether a payload carries a CDR header by sniffing its first two bytes"
-status: open
+status: resolved
+resolution: duplicate
+duplicate_of: 2490
+resolved_in: "2026-11-18 (merged into issue 2490)"
 type: tech-debt
 severity: low
 area: [cpp-api, rmw]
 related: [phase-555]
 found: 2026-11-14
 ---
+
+## Resolution: duplicate of issue 2490
+
+The same gap was already open as issue 2490, filed a day earlier from the
+same phase-555 review. The facts this file added are merged into issue 2490
+under "Merged from issue 2524"; track the work there.
 
 **Home: `packages/api/nros-cpp/src/action.rs`, `payload_has_cdr_encap` and
 `frame_for_callback`**

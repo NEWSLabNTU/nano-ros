@@ -1,13 +1,22 @@
 ---
 id: 2523
 title: "The bridge config has no `converter` key, so a cross-format bridge can only be built in source"
-status: open
+status: resolved
+resolution: duplicate
+duplicate_of: 2489
+resolved_in: "2026-11-18 (merged into issue 2489)"
 type: limitation
 severity: low
 area: [rmw, serdes]
 related: [phase-421, phase-555]
 found: 2026-11-14
 ---
+
+## Resolution: duplicate of issue 2489
+
+The same gap was already open as issue 2489, filed a day earlier from the
+same phase-555 review. The facts this file added are merged into issue 2489
+under "Merged from issue 2523"; track the work there.
 
 **Home: `packages/rmw/bridge/src/config.rs` (RFC-0088 D3)**
 

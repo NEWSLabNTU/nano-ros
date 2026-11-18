@@ -902,7 +902,7 @@ this phase will fix it.
 ## Issues homed here (2026-11-18)
 
 - [issue 2690](../issues/2690-image-alternatives.md): images of one host that never run together are refused for sharing a static address; RFC-0136 lets an `[image_alternatives]` group share it (I32).
-- [issue 2689](../issues/2689-source-metadata-rejects-v6-sidecar.md): the CLI's `SourceMetadata` rejected every schema v6 probe sidecar (issue 2650's description and constraints lengths), and the C/C++ refresh dropped the error, so every sidecar read as stale and every Zephyr C++ configure failed at `NanoRosPromise.cmake`. Found on the island's CI against main `a49a8dacaf`.
+- [issue 2689](../issues/archived/2689-source-metadata-rejects-v6-sidecar.md): the CLI's `SourceMetadata` rejected every schema v6 probe sidecar (issue 2650's description and constraints lengths), and the C/C++ refresh dropped the error, so every sidecar read as stale and every Zephyr C++ configure failed at `NanoRosPromise.cmake`. Found on the island's CI against main `a49a8dacaf`; fixed by PR #4190 (resolved).
 - [issue 2686](../issues/2686-constraints-truncation-names-description-knob.md): a truncated `additional_constraints` text is logged as a description that did not fit, telling the user to raise `NROS_MAX_PARAM_DESCRIPTION_LEN` when `NROS_MAX_PARAM_CONSTRAINTS_LEN` sizes it.
 
 ## Issues homed here (2026-11-17)

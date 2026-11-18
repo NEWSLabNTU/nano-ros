@@ -1,13 +1,22 @@
 ---
 id: 2525
 title: "RFC-0035's generated slot table files the loan slots and `ping_session` under \"Status events\""
-status: open
+status: resolved
+resolution: duplicate
+duplicate_of: 2491
+resolved_in: "2026-11-18 (merged into issue 2491)"
 type: tech-debt
 severity: low
 area: [rmw, c-api]
 related: [phase-555]
 found: 2026-11-14
 ---
+
+## Resolution: duplicate of issue 2491
+
+The same gap was already open as issue 2491, filed a day earlier from the
+same phase-555 review. The facts this file added are merged into issue 2491
+under "Merged from issue 2525"; track the work there.
 
 **Home: `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h` and the slot
 table it generates in RFC-0035**

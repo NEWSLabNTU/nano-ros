@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: low
 area: [cpp-api, actions]
-related: [rfc-0069]
+related: [rfc-0069, 2524, phase-555]
 found: 2026-11-13
 ---
 
@@ -35,3 +35,14 @@ sniff unreachable in practice, but did not trace every caller.
 Make the C++ path splice unconditionally, as the executor does, and delete
 the sniff. Add a test with a payload whose leading bytes equal an
 encapsulation header (`00 01 00 00`), which the sniff would misread.
+
+## Merged from issue 2524 (2026-11-18)
+
+Issue 2524 was filed for the same gap a day later, from the same phase-555
+review. It is archived as a duplicate of this one. What it added:
+
+- The function is `payload_has_cdr_encap`, called from `frame_for_callback`.
+  It treats `00 {00|01|06|07|0a|0b}` as a header and forwards such a payload
+  verbatim; otherwise it prepends a little-endian header.
+- If some road does deliver a raw payload, frame it on that road, where the
+  framing is known, rather than guessing in the trampoline.

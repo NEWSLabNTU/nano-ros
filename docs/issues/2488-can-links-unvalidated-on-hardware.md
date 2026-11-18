@@ -5,7 +5,7 @@ status: open
 type: limitation
 severity: medium
 area: [rmw-zenoh, can, testing]
-related: [rfc-0080, rfc-0081, rfc-0083, phase-377, phase-394, 1822]
+related: [rfc-0080, rfc-0081, rfc-0083, phase-377, phase-394, 1822, 2522, phase-555]
 found: 2026-11-13
 ---
 
@@ -60,3 +60,17 @@ it in phase-512 with a board and an acceptance. Out of scope means stamping
 both RFCs, so the claim matches what was measured.
 
 **Suggested owner: a user / maintainer decision.**
+
+## Merged from issue 2522 (2026-11-18)
+
+Issue 2522 was filed for the same gap a day later, from the same phase-555
+review. It is archived as a duplicate of this one. What it added:
+
+- Besides `vcan0` on Linux, the links were also tested on Zephyr's own
+  simulated CAN; neither has bit timing or real bus errors.
+- phase-394 says twice that tier 3 (MR-CANHUBK344 to a Linux host) is "the
+  only thing that closes" its open behaviour questions; phase-377's status
+  line ends "Remaining: W6 (hardware)."
+- Closing it in scope means a work item that runs the board over CAN
+  against a Linux peer for BOTH links (multicast and ISO-TP unicast), with
+  the result recorded in RFC-0080 and RFC-0083.

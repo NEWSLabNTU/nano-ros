@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: low
 area: [bridge, serdes]
-related: [rfc-0088, rfc-0009, phase-421]
+related: [rfc-0088, rfc-0009, phase-421, 2523, phase-555]
 found: 2026-11-13
 ---
 
@@ -32,3 +32,17 @@ per-side format that D2 says travels here, refused when the two sides
 disagree and no converter is named), or amend RFC-0088 D2/D3 to say the format
 agreement is checked at runtime only. Then delete the stale TODO either way.
 The rest of RFC-0088 is ready for Stable (brief B17).
+
+## Merged from issue 2523 (2026-11-18)
+
+Issue 2523 was filed for the same gap a day later, from the same phase-555
+review. It is archived as a duplicate of this one. What it added:
+
+- phase-421 W4 did not add the name-to-converter registry the TODO waits
+  for (the `serdes` provider family), so the TODO names a work item that will
+  not land. Accepting the key without one would resolve it to nothing.
+- The rmw-wire owner amends RFC-0088 D2 under phase-555 W3 and cites this
+  issue there.
+- If the key is added, an unknown converter name is refused, naming the
+  known ones. Either way the TODO in `config.rs` must stop naming
+  phase-421 W4.

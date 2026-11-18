@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: low
 area: [rmw, abi, docs]
-related: [rfc-0035]
+related: [rfc-0035, 2525, phase-555]
 found: 2026-11-13
 ---
 
@@ -31,3 +31,14 @@ Add the missing markers (loans, session liveness) in `rmw_vtable.h`, then
 regenerate the table. This changes comments only, but it touches the C ABI
 header, so run `just check abi-bindings` and confirm the committed bindgen
 output does not move. That is why the review PR did not make the change.
+
+## Merged from issue 2525 (2026-11-18)
+
+Issue 2525 was filed for the same gap a day later, from the same phase-555
+review. It is archived as a duplicate of this one. What it added:
+
+- The missing markers go wherever a group starts, at least before the loan
+  slots (`borrow_loaned_message`, around line 605) and before `ping_session`
+  (around line 846).
+- Closing evidence: the table regenerated, and `scripts/gen-abi-bindings.sh`
+  re-run to show the committed bindings did not move.
