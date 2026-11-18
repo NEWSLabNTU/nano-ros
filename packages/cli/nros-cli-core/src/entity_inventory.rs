@@ -1618,7 +1618,7 @@ impl ImageFrame {
         Self {
             // Issue 1270 -- the families the bringup declares ride along, so
             // the session pools count the servers the runtime creates for them.
-            infra: InfraServices::from_model(model, None),
+            infra: InfraServices::from_model(model),
             // Issue 1198 -- the SCHEDULING declaration. Not an entity fact: the
             // service families are what the runtime creates FOR the image,
             // while this is what the integrator authored about how it runs
@@ -1884,12 +1884,13 @@ impl InfraServices {
     /// registration will create.
     ///
     /// phase-486 W3 -- the switches come from the nano-ros overlay beside the
-    /// model (`image` adds its own, W2), never from `execution.features`.
-    pub fn from_model(
-        model: &nros_orchestration_ir::overlay::LoadedModel,
-        image: Option<&str>,
-    ) -> Self {
-        let mut infra = Self::from_features(&model.features(image), model.structure.nodes.len());
+    /// model, never from `execution.features`; for the image the model was
+    /// loaded for, which adds its own (W2).
+    // Issue 2700: the image is a fact of the load (`LoadedModel::image`), not
+    // an argument here, so no producer can read the system list by passing
+    // nothing.
+    pub fn from_model(model: &nros_orchestration_ir::overlay::LoadedModel) -> Self {
+        let mut infra = Self::from_features(&model.features(), model.structure.nodes.len());
         infra.lifecycle |= model_declares_lifecycle_block(model);
         // Issue 2553 -- one machine per managed node, from the registration's
         // own list; a marked node turns the family on whatever the switches say.
@@ -8979,7 +8980,7 @@ structure:
         // (a) no switch: the featureless image is unchanged.
         let bare = infra_model("");
         assert_eq!(
-            InfraServices::from_model(&bare, None).families(),
+            InfraServices::from_model(&bare).families(),
             nros_sizing_descriptor::InfraFamilies::None
         );
         // (b) `stock`: the parameter family, `/rosout` and (phase-556 W11)
@@ -8987,7 +8988,7 @@ structure:
         let mut stock = infra_model("");
         stock.overlay.node_interfaces =
             Some(nros_orchestration_ir::node_interfaces::NodeInterfaces::Stock);
-        let infra = InfraServices::from_model(&stock, None);
+        let infra = InfraServices::from_model(&stock);
         assert_eq!(
             infra.families(),
             nros_sizing_descriptor::InfraFamilies::ParamRosoutClock
@@ -9010,11 +9011,11 @@ structure:
             nros_orchestration_ir::node_interfaces::NodeInterfaces::None,
         );
         assert_eq!(
-            InfraServices::from_model(&off, Some("mcu")).families(),
+            InfraServices::from_model(&off.clone().for_image(Some("mcu"))).families(),
             nros_sizing_descriptor::InfraFamilies::None
         );
         assert_eq!(
-            InfraServices::from_model(&off, None).families(),
+            InfraServices::from_model(&off).families(),
             nros_sizing_descriptor::InfraFamilies::Param
         );
     }
@@ -9539,9 +9540,7 @@ execution:
                 .for_each(|n| n.lifecycle_autostart = Some(autostart));
             assert!(model_declares_lifecycle_block(&block.clone()));
             assert_eq!(
-                InfraServices::from_model(&block.clone(), None)
-                    .families()
-                    .tag(),
+                InfraServices::from_model(&block.clone()).families().tag(),
                 "lifecycle"
             );
             let k = derive(&block);
@@ -9557,9 +9556,7 @@ execution:
         // Negative control: no block and no feature is still no family.
         assert!(!model_declares_lifecycle_block(&(infra_model("")).clone()));
         assert_eq!(
-            InfraServices::from_model(&infra_model(""), None)
-                .families()
-                .tag(),
+            InfraServices::from_model(&infra_model("")).families().tag(),
             "none"
         );
     }
@@ -13422,6 +13419,7 @@ structure:
                 }],
                 ..Default::default()
             },
+            image: None,
         }
     }
 

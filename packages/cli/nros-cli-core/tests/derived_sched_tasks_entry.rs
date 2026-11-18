@@ -52,7 +52,8 @@ const POOL: (i64, i64) = (5, 14);
 fn entry_plan(fixture: &Fixture, groups: &[&str]) -> Plan {
     let meta = fixture.configure(groups);
     let model = resolve_model_path(&fixture.bringup(), false);
-    let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
+    let mut plan =
+        plan_from_model(&model, Some(BOARD.to_string()), None).expect("plan from the model");
     let index = metadata::ComponentIndex::load(&meta).expect("the cmake metadata loads");
     metadata::enrich_plan(&mut plan, &index).expect("enrich from the cmake metadata");
     resolve_plan_sched(&mut plan, BOARD)
@@ -212,7 +213,8 @@ fn an_authored_placement_wins_only_for_the_node_that_authored_it() {
     );
 
     let model = resolve_model_path(&bringup, true);
-    let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
+    let mut plan =
+        plan_from_model(&model, Some(BOARD.to_string()), None).expect("plan from the model");
     assert!(
         plan.sched_tasks.contains_key("ctrl"),
         "the authored sched task reaches the plan: {:?}",
@@ -293,7 +295,8 @@ fn a_group_sched_tasks_only_image_derives_like_the_macro_does() {
     fs::write(&system, raw).expect("bind each component's group");
 
     let model = resolve_model_path(&bringup, true);
-    let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
+    let mut plan =
+        plan_from_model(&model, Some(BOARD.to_string()), None).expect("plan from the model");
     assert!(
         plan.sched_tasks.is_empty(),
         "nothing is authored, so nothing reaches the plan's sched task table"
@@ -326,7 +329,7 @@ fn one_sched_task_plan(fixture: &Fixture, sched_task_toml: &str) -> eyre::Result
     let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
     fixture.author("app", &all, sched_task_toml);
     let model = resolve_model_path(&fixture.bringup(), true);
-    let mut plan = plan_from_model(&model, Some(BOARD.to_string()))?;
+    let mut plan = plan_from_model(&model, Some(BOARD.to_string()), None)?;
     let index = metadata::ComponentIndex::load(&meta)?;
     metadata::enrich_plan(&mut plan, &index)?;
     resolve_plan_sched(&mut plan, BOARD)?;
@@ -389,7 +392,7 @@ fn a_one_sched_task_entry_seeds_each_nodes_rank() {
     let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
     fixture.author("app", &all, "[tasks.app]\n");
     let model = resolve_model_path(&fixture.bringup(), true);
-    let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan");
+    let mut plan = plan_from_model(&model, Some(BOARD.to_string()), None).expect("plan");
     let index = metadata::ComponentIndex::load(&meta).expect("metadata");
     metadata::enrich_plan(&mut plan, &index).expect("enrich");
     let derivation =
@@ -468,7 +471,7 @@ fn plan_with_a_call(tag: &str, call: Option<&str>) -> eyre::Result<Plan> {
     fs::write(&contract, text).expect("write the contract");
     let meta = fixture.configure(&["main"]);
     let model = resolve_model_path(&fixture.bringup(), false);
-    let mut plan = plan_from_model(&model, Some(BOARD.to_string()))?;
+    let mut plan = plan_from_model(&model, Some(BOARD.to_string()), None)?;
     let index = metadata::ComponentIndex::load(&meta)?;
     metadata::enrich_plan(&mut plan, &index)?;
     resolve_plan_sched(&mut plan, BOARD)?;

@@ -46,6 +46,13 @@ pub struct ShowArgs {
     #[arg(long = "format", value_parser = ["human", "cmake"], default_value = "human")]
     pub format: String,
 
+    /// `--format cmake`: the `[image.<id>]` being built (`-DNROS_IMAGE`). Its
+    /// own `features` and `node_interfaces` join the system's, as on every
+    /// other road. Absent, the `[system]` list answers.
+    // Issue 2700.
+    #[arg(long, value_name = "ID")]
+    pub image: Option<String>,
+
     /// Workspace root for resolution (default: cwd).
     #[arg(long)]
     pub workspace: Option<PathBuf>,
@@ -633,7 +640,10 @@ fn show(args: ShowArgs) -> Result<()> {
     };
     let system = args.system.as_deref().unwrap_or("");
     if args.format == "cmake" {
-        print!("{}", render_features_cmake(&workspace, system)?);
+        print!(
+            "{}",
+            render_features_cmake(&workspace, system, args.image.as_deref())?
+        );
         return Ok(());
     }
     print!("{}", render_resolved(&workspace, system)?);
@@ -685,11 +695,12 @@ fn resolve_bringup<'a>(
 /// `[system].features` list and the deprecated typed blocks. Emitting the
 /// DECLARED names (not the cargo features) keeps the cmake side speaking the
 /// same vocabulary as `nros_feature_set`'s `CAPABILITIES` argument.
-fn render_features_cmake(workspace: &Path, system: &str) -> Result<String> {
+fn render_features_cmake(workspace: &Path, system: &str, image: Option<&str>) -> Result<String> {
     let cfg = NrosConfig::from_workspace(workspace)
         .wrap_err_with(|| format!("load workspace at {}", workspace.display()))?;
     let entry = resolve_bringup(&cfg, system, workspace)?;
-    let sys = &entry.system;
+    // Issue 2700 -- the image's own capability axes, as on every road.
+    let sys = &*entry.system.with_image_features(image);
     let declared: Vec<&str> = cargo_nano_ros::capability_resolver::CAPABILITIES
         .iter()
         .filter(|c| sys.capability_enabled(c.declared))

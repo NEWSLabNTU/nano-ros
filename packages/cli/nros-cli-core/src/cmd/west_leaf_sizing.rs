@@ -103,7 +103,7 @@ pub fn run(args: WestLeafSizingArgs) -> Result<()> {
             unprobeable.join(", ")
         );
     }
-    crate::leaf_entity_env::with_leaf_frame(&leaf, &mut inv);
+    crate::leaf_entity_env::with_leaf_frame(&leaf, Some(img.image_id.as_str()), &mut inv);
     // phase-462 W6c -- the board's per-frame receive cost, so a read-task
     // budget in the fragment derives with the same `c` the descriptor does.
     inv.set_board_rx_cost(img.rx_cost);

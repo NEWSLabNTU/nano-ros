@@ -101,6 +101,31 @@ pub fn effective_features<S: AsRef<str>>(
     out
 }
 
+/// THE composition of ONE IMAGE's capability axes: the system's declared list,
+/// then what the image adds over it (`[image_defaults] features` followed by
+/// `[image.<id>] features`, folded by the caller), through the switch that
+/// applies to that image (already [`resolve`]d, most specific table first).
+///
+/// Every road that builds or sizes an image composes its list here -- the
+/// overlay beside a model (`Overlay::features_for_image`), the leaf reader
+/// (`LeafSystem::features`) and the CLI's strict `SystemToml`
+/// (`SystemToml::with_image_features`) -- so a per-image statement reaches the
+/// build and the pools together, or neither.
+// Issue 2700: the generated workspace entry built and sized from the system
+// list alone, so an image's own `features` and `node_interfaces` were ignored.
+pub fn image_features<S: AsRef<str>, T: AsRef<str>>(
+    system: &[S],
+    image: &[T],
+    switch: Option<NodeInterfaces>,
+) -> Vec<String> {
+    let declared: Vec<&str> = system
+        .iter()
+        .map(AsRef::as_ref)
+        .chain(image.iter().map(AsRef::as_ref))
+        .collect();
+    effective_features(&declared, switch)
+}
+
 /// The switch that applies: the most specific table that states one --
 /// `[image.<id>]`, then `[image_defaults]`, then `[system]`.
 pub fn resolve(
@@ -168,6 +193,32 @@ mod tests {
                 Some(NodeInterfaces::None)
             ),
             vec!["lifecycle", "safety"]
+        );
+    }
+
+    #[test]
+    fn an_image_adds_over_the_system_and_its_switch_applies_to_the_union() {
+        let none: [&str; 0] = [];
+        // An image-level opt-in joins the system list, once.
+        assert_eq!(
+            image_features(&["lifecycle"], &["safety", "lifecycle"], None),
+            vec!["lifecycle", "safety"]
+        );
+        // An image-level opt-out removes a stock axis the SYSTEM declared.
+        assert_eq!(
+            image_features(
+                &["param_services", "rosout", "lifecycle"],
+                &none,
+                Some(NodeInterfaces::None)
+            ),
+            vec!["lifecycle"]
+        );
+        // And a stock axis the image itself declared.
+        assert!(image_features(&none, &["rosout"], Some(NodeInterfaces::None)).is_empty());
+        // No image statement is the system list through the system switch.
+        assert_eq!(
+            image_features(&["lifecycle"], &none, Some(NodeInterfaces::Stock)),
+            effective_features(&["lifecycle"], Some(NodeInterfaces::Stock))
         );
     }
 

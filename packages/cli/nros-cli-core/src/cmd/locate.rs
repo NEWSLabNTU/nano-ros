@@ -1235,7 +1235,7 @@ fn make_road_sizing_descriptor(
             .filter(|v| !v.is_empty())
             .map(str::to_string)
     };
-    let loaded = crate::cmd::sizing_descriptor::load_model(&model)?;
+    let loaded = crate::cmd::sizing_descriptor::load_model(&model, Some(id))?;
     let (probed, _, notes) = crate::orchestration::metadata_refresh::probe_inventory(
         model.display().to_string(),
         project,
@@ -1339,6 +1339,8 @@ fn make_road_sizing_descriptor(
         from_model: vec![model],
         build_dir: Some(build_dir.clone()),
         entry: Some(entry.clone()),
+        // Issue 2700 -- the image this NuttX app is.
+        image: Some(id.to_string()),
         workspace: Some(project.to_path_buf()),
         bound_inventory,
         rmw: field("rmw"),

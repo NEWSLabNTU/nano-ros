@@ -993,9 +993,21 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         })?;
         // phase-486 W3 -- the nano-ros switches and lifecycle default travel
         // beside the model, in the overlay `nros sync` / `ensure_model` wrote.
-        let model =
-            nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, &model_path)
-                .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+        //
+        // Issue 2700 -- read for the image this build is (`NROS_IMAGE`, which
+        // `nros build` states for a workspace entry and a leaf alike), so the
+        // services this expansion registers are the ones the image's cargo
+        // features and its sizing descriptor were derived for.
+        let image = entry_env(nros_orchestration_ir::leaf_system::IMAGE_ENV)
+            .and_then(|v| v.into_string().ok())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+        let model = nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(
+            model,
+            &model_path,
+            image.as_deref(),
+        )
+        .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
 
         // phase-454 W7 (RFC-0100 D8) -- the contract and the `qos_overrides.*`
         // parameters are two statements about ONE fact, so a divergence is a
@@ -1723,6 +1735,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // changed type (or a switched board) re-expands the entry.
     tracked_consts.push(quote! {
         const _: ::core::option::Option<&str> = ::core::option_env!("NROS_BOARD_TYPE");
+    });
+    // Issue 2700 -- the image read at expansion picks the model's switches
+    // (and the bridge file), so a changed image re-expands the entry.
+    tracked_consts.push(quote! {
+        const _: ::core::option::Option<&str> = ::core::option_env!("NROS_IMAGE");
     });
 
     // phase-432 W2.4 — one `LoweredNode` per register call, whatever arm
@@ -3631,7 +3648,7 @@ fn model_capabilities(
     model: &nros_orchestration_ir::overlay::LoadedModel,
 ) -> Result<ModelCapabilities, String> {
     let has_managed_nodes = !model.managed_nodes().is_empty();
-    let features = model.features(None);
+    let features = model.features();
     let mut axes: Vec<&'static nros_orchestration_ir::leaf_capabilities::LeafAxis> = Vec::new();
     for f in &features {
         if let Some(a) = nros_orchestration_ir::leaf_capabilities::axis(f)
@@ -7868,6 +7885,31 @@ mod launch_axis_tests {
                 .expect("capabilities")
                 .param_services
         );
+    }
+
+    /// Issue 2700 -- the launch arm answers for the image the model was read
+    /// for: an image-level opt-out drops the stock services the system
+    /// declared, an image-level opt-in adds an axis, and the system list stays
+    /// what an image-less read sees.
+    #[test]
+    fn the_capabilities_are_the_images_own() {
+        use nros_orchestration_ir::node_interfaces::NodeInterfaces;
+        let mut m = model(None, &["param_services", "rosout"]);
+        m.overlay
+            .image_node_interfaces
+            .insert("small".into(), NodeInterfaces::None);
+        m.overlay
+            .images
+            .insert("safe".into(), vec!["safety".to_string()]);
+        let caps = |id: Option<&str>| model_capabilities(&m.clone().for_image(id)).unwrap();
+        assert!(caps(None).param_services);
+        let small = caps(Some("small"));
+        assert!(!small.param_services, "the opt-out reaches the expansion");
+        assert!(small.axes.iter().all(|a| a.declared != "rosout"));
+        let safe = caps(Some("safe"));
+        assert!(safe.param_services);
+        assert!(safe.axes.iter().any(|a| a.declared == "safety"));
+        assert!(caps(None).axes.iter().all(|a| a.declared != "safety"));
     }
 
     /// Negative control: a model declaring nothing emits none of it, so the

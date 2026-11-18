@@ -340,6 +340,13 @@ function(nros_sizing_descriptor_from_model _out_var)
         set(_sched_task_arg --sched-task-record "${_nsw_SCHED_TASK_RECORD}")
     endif()
 
+    # Issue 2700 -- the image this configure builds, whose own `features` and
+    # `node_interfaces` decide the service families the descriptor states.
+    set(_image_arg "")
+    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+        set(_image_arg --image "${NROS_IMAGE}")
+    endif()
+
     execute_process(
         COMMAND "${_nsw_CLI}" dev image sizing-descriptor
                 --from-model "${_nsw_MODEL}"
@@ -347,7 +354,7 @@ function(nros_sizing_descriptor_from_model _out_var)
                 --entry "${_nsw_ENTRY}"
                 --road "a cmake entry"
                 ${_host_arg} ${_heap_args} ${_rx_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args}
-                ${_sched_task_arg}
+                ${_sched_task_arg} ${_image_arg}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -596,9 +603,17 @@ function(_nros_sizing_descriptor_runtime _out_var)
     _nros_sizing_heap_args(_heap_args)
     _nros_board_rx_cost_args(_rx_args)
 
+    # Issue 2700 -- every model read for the image this configure builds, as
+    # the entity-inventory fragment over the same list reads them.
+    set(_image_arg "")
+    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+        set(_image_arg --image "${NROS_IMAGE}")
+    endif()
+
     set(_args ${_model_args} ${_entry_args} --build-dir "${_build_dir}"
         --entry shared-runtime --road "a multi-entry cmake configure"
-        ${_host_arg} ${_heap_args} ${_rx_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args})
+        ${_host_arg} ${_heap_args} ${_rx_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args}
+        ${_image_arg})
     string(SHA256 _key "${_cli};${_args}")
     get_property(_memo_key GLOBAL PROPERTY NROS_SIZING_RUNTIME_MEMO_KEY)
     if(_memo_key STREQUAL _key)
