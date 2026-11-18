@@ -373,9 +373,15 @@ mod tests {
         static KEY: u8 = 0;
         static ENTERED: StdBool = StdBool::new(false);
         static RELEASE: StdBool = StdBool::new(false);
+        // Issue 2723 -- every wait here is bounded: an unbounded spin on a
+        // flag a failed assertion never sets turns the failure into a busy
+        // thread. `slow` is `extern "C"`, so it cannot panic; past the bound
+        // it returns, and the assertions below report the failure.
+        const BOUND: std::time::Duration = std::time::Duration::from_secs(10);
         unsafe extern "C" fn slow(_ctx: *mut c_void) {
             ENTERED.store(true, Ordering::SeqCst);
-            while !RELEASE.load(Ordering::SeqCst) {
+            let t0 = std::time::Instant::now();
+            while !RELEASE.load(Ordering::SeqCst) && t0.elapsed() < BOUND {
                 std::thread::yield_now();
             }
         }
@@ -386,7 +392,12 @@ mod tests {
         }));
         let m = f.join(ctx(p)).unwrap();
         let firer = std::thread::spawn(move || f.fire(slow));
+        let t0 = std::time::Instant::now();
         while !ENTERED.load(Ordering::SeqCst) {
+            assert!(
+                t0.elapsed() < BOUND,
+                "`fire` never entered the member's wake callback within {BOUND:?}"
+            );
             std::thread::yield_now();
         }
         let left = std::sync::Arc::new(StdBool::new(false));
