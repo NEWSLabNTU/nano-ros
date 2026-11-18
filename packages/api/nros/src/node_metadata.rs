@@ -74,6 +74,10 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///
 /// Serialised in exactly one place (this module), as the census layer rule
 /// requires: the adapters that feed the recorder contain no JSON.
+///
+/// A key or version change re-blesses the golden sidecar the CLI parses
+/// strictly: see `the_golden_probe_sidecar_is_what_the_recorder_writes`.
+// Issue 2689.
 pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 6;
 
 /// The BUFFERED registration row a subscription claimed, as the
@@ -2827,9 +2831,8 @@ mod tests {
              any new key in the same change (issue 2689)",
             golden.display()
         );
-        // Every optional key the writer has is in the file: a golden that
-        // omitted one could not catch the reader rejecting it.
-        for key in [
+        // Some rows only a set field produces: their VALUES, not just keys.
+        for row in [
             "\"lifecycle\":true",
             "\"in_place\":true",
             "\"buffered\":\"typed_bound\"",
@@ -2837,14 +2840,94 @@ mod tests {
             "\"read\":true",
             "\"action_clients\":[{",
             "\"service_clients\":[{",
-            "\"entity_slot\":",
             "\"parameter_description_max_len\":42,",
             "\"parameter_constraints_max_len\":7,",
         ] {
             assert!(
-                json.contains(key),
-                "the golden must carry {key}, got {json}"
+                json.contains(row),
+                "the golden must carry {row}, got {json}"
             );
         }
+
+        // EVERY key the writer can emit is in the golden, derived from the
+        // writer's own source text, never a hand list: a key this test's
+        // recorder never sets would otherwise be absent from the golden, and
+        // the CLI would never see it -- issue 2689's exact shape.
+        let keys = writer_keys(include_str!("node_metadata.rs"));
+        assert!(
+            keys.len() >= 50,
+            "the writer scan found only {} keys ({keys:?}); the writer's \
+             spelling moved, so teach `writer_keys` it",
+            keys.len()
+        );
+        let missing: std::vec::Vec<&str> = keys
+            .iter()
+            .map(std::string::String::as_str)
+            .filter(|k| !json.contains(&std::format!("\"{k}\":")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "writer key(s) {missing:?} are absent from the golden sidecar: set \
+             them on this test's recorder and re-bless, so the CLI's strict \
+             parse sees them (issue 2689)"
+        );
+    }
+
+    /// Every JSON object key the sidecar writer spells, read from its source
+    /// text above `mod tests` (comment lines skipped): an escaped literal
+    /// `\"key\":` inside a `write!` format string, or the first string
+    /// argument of a `write_*(out, "key", ...)` helper call
+    /// (`write_json_field`, `write_json_opt_field`, `write_optional_ms`,
+    /// `write_entity_array`, ...). Issue 2689.
+    #[cfg(feature = "alloc")]
+    fn writer_keys(source: &str) -> std::collections::BTreeSet<std::string::String> {
+        extern crate std;
+        use std::string::String;
+
+        let writer = &source[..source
+            .find("\nmod tests {")
+            .expect("the tests module marker")];
+        let code: String = writer
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .flat_map(|l| [l, "\n"])
+            .collect();
+        let is_key = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_';
+        let mut keys = std::collections::BTreeSet::new();
+
+        // `\"key\":` -- the backslash-escaped quotes of a format string.
+        let mut rest = code.as_str();
+        while let Some(at) = rest.find("\\\"") {
+            rest = &rest[at + 2..];
+            let end = rest.find(|c: char| !is_key(c)).unwrap_or(rest.len());
+            if end > 0 && rest[end..].starts_with("\\\":") {
+                keys.insert(String::from(&rest[..end]));
+            }
+        }
+
+        // `write_<x>(out, "key"` -- whitespace (rustfmt's line breaks) allowed.
+        let mut rest = code.as_str();
+        while let Some(at) = rest.find("write_") {
+            rest = &rest[at + "write_".len()..];
+            let name_end = rest.find(|c: char| !is_key(c)).unwrap_or(rest.len());
+            let args = rest[name_end..].trim_start();
+            let Some(args) = args.strip_prefix('(') else {
+                continue;
+            };
+            let Some(args) = args.trim_start().strip_prefix("out") else {
+                continue;
+            };
+            let Some(args) = args.trim_start().strip_prefix(',') else {
+                continue;
+            };
+            let Some(args) = args.trim_start().strip_prefix('"') else {
+                continue;
+            };
+            let end = args.find(|c: char| !is_key(c)).unwrap_or(args.len());
+            if end > 0 && args[end..].starts_with('"') {
+                keys.insert(String::from(&args[..end]));
+            }
+        }
+        keys
     }
 }
