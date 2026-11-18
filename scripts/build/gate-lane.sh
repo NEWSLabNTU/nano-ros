@@ -23,7 +23,10 @@
 #   * the load report: host runnable p50/p90/max against the pool, and each
 #     gate whose processes peaked above its declared weight, by name
 #     (`scripts/build/run-load-sampler.py`); a child outside the pool is
-#     visible there, not hidden;
+#     visible there, not hidden. Only this run's processes count: each run
+#     exports its own `NROS_GATE_RUN` id, since the lane NAME is shared by
+#     every worktree (issue 2683). `NROS_GATE_WAITS=1` adds what each gate's
+#     threads WAITED on (token, child, file lock, disk), sampled every 5 s;
 #   * no TRACKED file changed while the gates ran (issue 2186), on every lane;
 #   * no UNTRACKED, unignored file appeared. A gate's output belongs under an
 #     ignored root (`build/`, `target/`, `tmp/`); phase-543 W4 found 1.1 G of
@@ -73,6 +76,9 @@ _share=$(( $(nproc 2>/dev/null || echo 4) / jobs ))
 [ "$_share" -lt 1 ] && _share=1
 export NROS_GATE_CPU_SHARE="${NROS_GATE_CPU_SHARE:-$_share}"
 export NROS_GATE_JOBS="$jobs" NROS_GATE_LANE="$lane" GIT_OPTIONAL_LOCKS=0
+# Issue 2683 -- this run's own id, so the load sampler counts this lane's
+# processes and not another worktree's lane of the same name.
+export NROS_GATE_RUN="${lane}-$$-$(date +%s)"
 
 out_dir="$(mktemp -d "${TMPDIR:-/tmp}/nros-gate-lane.XXXXXX")"
 trap 'rm -rf "$out_dir"' EXIT
@@ -98,7 +104,9 @@ _snapshot | sort >"$out_dir/before"
 # shellcheck source=scripts/build/jobserver-pool.sh
 . scripts/build/jobserver-pool.sh
 tokens="${NROS_GATE_TOKENS:-$(nproc 2>/dev/null || echo 4)}"
-python3 scripts/build/run-load-sampler.py sample "$out_dir/load" &
+sample_interval=30
+[ "${NROS_GATE_WAITS:-}" = 1 ] && sample_interval=5
+python3 scripts/build/run-load-sampler.py sample "$out_dir/load" --interval "$sample_interval" &
 sampler=$!
 rc=0
 nros_guard_lane "gates-$lane" nros_pool_own "gate lane \`$lane\`" "$tokens" \
@@ -106,6 +114,12 @@ nros_guard_lane "gates-$lane" nros_pool_own "gate lane \`$lane\`" "$tokens" \
 kill "$sampler" 2>/dev/null
 wait "$sampler" 2>/dev/null
 python3 scripts/build/run-load-sampler.py report "$out_dir/load" "$tokens" || true
+if [ "${NROS_GATE_WAITS:-}" = 1 ]; then
+    # The raw samples outlive the lane's temp dir, for a closer look.
+    keep="build/gates/waits/$NROS_GATE_RUN"
+    mkdir -p "$keep" && cp "$out_dir"/load* "$keep"/ 2>/dev/null \
+        && echo "waits: raw samples kept in $keep"
+fi
 
 _snapshot | sort >"$out_dir/after"
 changed="$(diff "$out_dir/before" "$out_dir/after" | sed -n 's/^[<>] //p' \

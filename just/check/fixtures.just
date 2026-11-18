@@ -343,6 +343,14 @@ make-stall-watchdog:
 jobserver-makes-watched:
     @python3 scripts/check-jobserver-makes-watched.py
 
+# Issue 2683 — the gate lane's load sampler (`scripts/build/run-load-sampler.py`)
+# names gates and, with `NROS_GATE_WAITS=1`, what their threads waited on. Its
+# self-test holds the parts that read as plausible when wrong: attribution by
+# this run's id (another worktree's lane of the same name is not this one),
+# the wait-channel classes, and the per-gate wait table. Pure, ~0.1 s.
+load-sampler:
+    @python3 scripts/build/run-load-sampler.py --self-test >/dev/null
+
 # Issue 2119 (1638's class) — a script that runs the PINNED make as a jobserver
 # puts that make's directory first on PATH before the run, so a child that finds
 # `gmake`/`make` by name (a cmake "Unix Makefiles" configure) joins the fifo
