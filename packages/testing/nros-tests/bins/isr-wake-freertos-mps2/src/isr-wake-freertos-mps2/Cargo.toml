@@ -1,0 +1,31 @@
+[workspace]
+
+[package]
+name = "isr-wake-freertos-mps2"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Issue 2696: a timer interrupt triggers a guard condition on FreeRTOS + MPS2-AN385"
+
+[[bin]]
+name = "isr-wake-freertos-mps2"
+test = false
+bench = false
+
+[dependencies]
+nros-board-mps2-an385-freertos = { path = "../../../../../../boards/nros-board-mps2-an385-freertos", default-features = false }
+isr_wake_freertos_mps2_nros_derived = { path = "../../generated/nros-derived/isr-wake-freertos-mps2" }
+nros = { path = "../../../../../../api/nros", default-features = false, features = ["rmw-cffi"] }
+nros-node = { path = "../../../../../../core/nros-node", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros-rmw-zenoh = { path = "../../../../../../rmw/zenoh/nros-rmw-zenoh" }
+nros-platform = { path = "../../../../../../platform/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
+
+cortex-m-semihosting = "0.5"
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+[profile.release]
+debug = true
+lto = "fat"
+codegen-units = 1
+opt-level = "s"

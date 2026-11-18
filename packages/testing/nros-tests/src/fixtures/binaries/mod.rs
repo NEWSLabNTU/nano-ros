@@ -6774,6 +6774,24 @@ pub fn build_logging_smoke_freertos_mps2() -> TestResult<&'static Path> {
 /// Issue 1906 — the condvar contract image for FreeRTOS + MPS2-AN385.
 static CONDVAR_CONTRACT_FREERTOS_MPS2_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+static ISR_WAKE_FREERTOS_MPS2_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Issue 2696 -- the prebuilt `isr-wake-freertos-mps2` image: a timer
+/// interrupt triggers a guard condition through `trigger_from_isr`.
+pub fn build_isr_wake_freertos_mps2() -> TestResult<&'static Path> {
+    ISR_WAKE_FREERTOS_MPS2_BINARY
+        .get_or_try_init(|| {
+            const DIR: &str = "packages/testing/nros-tests/bins/isr-wake-freertos-mps2";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
+        })
+        .map(|p| p.as_path())
+}
+
 /// Resolve the prebuilt `condvar-contract-freertos-mps2` image. Built in the
 /// `freertos rust` fixture lane at the `freertos-qemu` profile, like the
 /// logging smoke beside it.

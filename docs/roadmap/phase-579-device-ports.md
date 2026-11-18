@@ -21,14 +21,36 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 
 ### W1 — Interrupt-safe executor wake
 
-- **Owner:** unassigned.
-- **Status:** OPEN
+- **Owner:** nros 142.
+- **Status:** DONE (2026-11-18, the issue 2696 fix)
 - Issue 2696's fix: `NodeWake::signal_from_isr`, an interrupt-safe trigger
   path, a real body for the ISR wake callback, and a wake reachable without
   `alloc` + `rmw-cffi` (or the API stating it is observed at the next spin).
-- **Acceptance:** issue 2696's acceptance. A guard condition triggered from a
-  FreeRTOS interrupt handler wakes a blocked spin within one tick on the MPS2
-  QEMU image, and every port's interrupt-safe signal is reached by a test.
+- **Acceptance (amended 2026-11-18):** a guard condition triggered from a
+  FreeRTOS interrupt handler wakes a blocked spin on the MPS2 QEMU image, and
+  every port's interrupt-safe signal either REFUSES (-1) or is reached by a
+  test. A port no test reaches does not claim the signal.
+- **As built:** `GuardCondition::trigger_from_isr() -> bool` (Rust),
+  `WakeCtx`/`NodeWake::signal_from_isr`, and `BandWaiter::new` taking a
+  `wake_from_isr`. FreeRTOS and POSIX are tested (`tests/isr_wake_rtos.rs`,
+  83 to 102 us; `c_port_posix_wake.rs`, a real signal handler). Zephyr,
+  ThreadX, NuttX and mps2 bare metal refuse until
+  [issue 2706](../issues/2706-isr-wake-ports-untested.md) adds their tests.
+  The C/C++ front is W1b.
+
+### W1b — The C and C++ interrupt-safe wake
+
+- **Owner:** unassigned (with W3).
+- **Status:** OPEN
+- W1 gave Rust `GuardCondition::trigger_from_isr`. C and C++ get no method
+  on the ROS-mirrored types: `rcl_guard_condition_t` and
+  `rclcpp::GuardCondition` stay thread-only, as stock ROS has them (RFC-0139
+  D1). Their interrupt wake is W3's device completion handle
+  (`nros_completion_t`, an interrupt-safe "mark slot ready and wake"), on W1's
+  plumbing (`WakeCtx::signal_from_isr`).
+- **Acceptance:** a C image's interrupt handler wakes a parked executor
+  through the completion handle on the FreeRTOS MPS2 QEMU image, as W1's Rust
+  cell does.
 
 ### W2 — The port ABI header
 

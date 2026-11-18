@@ -183,21 +183,93 @@ fn signal_coalesces_when_already_pending() {
     unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
 }
 
+// Issue 2696 -- the wake an interrupt (on POSIX, a signal handler) may post.
+
+/// The wake object the handler below posts.
+static HANDLER_WAKE: std::sync::atomic::AtomicPtr<c_void> =
+    std::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+/// What the handler saw `errno` as when it returned.
+static HANDLER_ERRNO_AFTER: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+extern "C" fn post_from_handler(_sig: i32) {
+    // Only async-signal-safe work in here: an atomic load and the post.
+    let w = HANDLER_WAKE.load(std::sync::atomic::Ordering::SeqCst);
+    unsafe { *libc::__errno_location() = libc::EAGAIN };
+    let _ = unsafe { nros_platform_wake_signal_from_isr(w) };
+    HANDLER_ERRNO_AFTER.store(
+        unsafe { *libc::__errno_location() },
+        std::sync::atomic::Ordering::SeqCst,
+    );
+}
+
+/// A signal handler's `signal_from_isr` wakes a waiter parked on another
+/// thread, and leaves `errno` as it found it (the handler sets a sentinel
+/// before the call and reads it after). The waiter's
+/// 5 s bound is the negative control: a post that did not land would time
+/// out, not return early.
 #[test]
-fn signal_from_isr_aliases_to_signal_on_hosted_posix() {
+fn signal_from_isr_in_a_signal_handler_wakes_a_waiter() {
+    struct Ptr(*mut c_void);
+    unsafe impl Send for Ptr {}
+    let buf = Box::leak(Box::new(WakeBuf::new()));
+    let w = buf.as_mut_ptr();
+    assert_eq!(unsafe { nros_platform_wake_init(w) }, 0);
+    HANDLER_WAKE.store(w, std::sync::atomic::Ordering::SeqCst);
+    unsafe {
+        let mut sa: libc::sigaction = core::mem::zeroed();
+        sa.sa_sigaction = post_from_handler as extern "C" fn(i32) as usize;
+        libc::sigemptyset(&mut sa.sa_mask);
+        assert_eq!(
+            libc::sigaction(libc::SIGUSR2, &sa, core::ptr::null_mut()),
+            0
+        );
+    }
+
+    let p = Ptr(w);
+    let waiter = thread::spawn(move || {
+        let p = p;
+        let t0 = Instant::now();
+        let r = unsafe { nros_platform_wake_wait_ms(p.0, 5000) };
+        (r, t0.elapsed())
+    });
+    thread::sleep(Duration::from_millis(50));
+    assert_eq!(unsafe { libc::raise(libc::SIGUSR2) }, 0);
+    let (r, took) = waiter.join().unwrap();
+    assert_eq!(r, 0, "the handler's post wakes the waiter");
+    assert!(
+        took < Duration::from_secs(2),
+        "woke at once, not at its deadline: {took:?}"
+    );
+    assert_eq!(
+        HANDLER_ERRNO_AFTER.load(std::sync::atomic::Ordering::SeqCst),
+        libc::EAGAIN,
+        "signal_from_isr leaves errno as it found it"
+    );
+}
+
+/// `signal_from_isr` posts without the thread signal's `sem_getvalue`
+/// guard (not async-signal-safe), so several posts can stack. One wait
+/// serves them all and drains the rest: the next wait parks to its deadline.
+#[test]
+fn stacked_isr_posts_are_served_by_one_wait() {
     let mut buf = WakeBuf::new();
-    unsafe { nros_platform_wake_init(buf.as_mut_ptr()) };
-
+    let w = buf.as_mut_ptr();
+    unsafe { nros_platform_wake_init(w) };
+    for _ in 0..5 {
+        assert_eq!(unsafe { nros_platform_wake_signal_from_isr(w) }, 0);
+    }
+    assert_eq!(unsafe { nros_platform_wake_wait_ms(w, 50) }, 0, "signalled");
+    let t0 = Instant::now();
     assert_eq!(
-        unsafe { nros_platform_wake_signal_from_isr(buf.as_mut_ptr()) },
-        0
+        unsafe { nros_platform_wake_wait_ms(w, 50) },
+        1,
+        "the stacked posts were drained, so this one times out"
     );
-    assert_eq!(
-        unsafe { nros_platform_wake_wait_ms(buf.as_mut_ptr(), 50) },
-        0
+    assert!(
+        t0.elapsed() >= Duration::from_millis(40),
+        "it really parked"
     );
-
-    unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
+    unsafe { nros_platform_wake_drop(w) };
 }
 
 // phase-436 C2 — the microsecond park. What it exists for is the one thing the

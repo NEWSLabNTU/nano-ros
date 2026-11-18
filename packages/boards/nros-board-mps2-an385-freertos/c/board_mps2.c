@@ -47,6 +47,45 @@ void Default_Handler(void);
 void HardFault_Handler(void);
 void SysTick_Handler(void); /* defined in freertos_hooks.c */
 
+/* Issue 2696 — the 32 external interrupts of the AN385 (`mps2_an385_pac`'s
+ * order, NVIC 0..31). Each is a weak alias of `Default_Handler`, so an image
+ * overrides one by defining it (`TIMER1_IRQHandler`). An image that
+ * defines none behaves as before: an unexpected interrupt still lands in
+ * `Default_Handler`. A handler that calls a FreeRTOS `...FromISR` API needs a
+ * priority numerically at or above `configMAX_SYSCALL_INTERRUPT_PRIORITY`. */
+void UARTRX0_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTTX0_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTRX1_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTTX1_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTRX2_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTTX2_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO0ALL_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO1ALL_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void TIMER0_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void TIMER1_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void DUALTIMER_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void SPI_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTOVF_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void ETHERNET_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void I2S_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void TSC_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO2_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO3_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTRX3_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTTX3_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTRX4_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void UARTTX4_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void ADCSPI_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void SHIELDSPI_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO0_0_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO0_1_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO0_2_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO0_3_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO0_4_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO0_5_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO0_6_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+void GPIO0_7_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+
 /* FreeRTOS port handlers — installed directly in the vector table.
  * FreeRTOS asserts that these exact function pointers appear in the
  * vector table, so wrapper functions are not allowed. */
@@ -138,6 +177,39 @@ __attribute__((section(".isr_vector"), used)) const vector_fn isr_vector[] = {
     0,               /* Reserved */
     xPortPendSVHandler,
     SysTick_Handler,
+    /* External interrupts (issue 2696). */
+    UARTRX0_IRQHandler, /* IRQ 0 */
+    UARTTX0_IRQHandler, /* IRQ 1 */
+    UARTRX1_IRQHandler, /* IRQ 2 */
+    UARTTX1_IRQHandler, /* IRQ 3 */
+    UARTRX2_IRQHandler, /* IRQ 4 */
+    UARTTX2_IRQHandler, /* IRQ 5 */
+    GPIO0ALL_IRQHandler, /* IRQ 6 */
+    GPIO1ALL_IRQHandler, /* IRQ 7 */
+    TIMER0_IRQHandler, /* IRQ 8 */
+    TIMER1_IRQHandler, /* IRQ 9 */
+    DUALTIMER_IRQHandler, /* IRQ 10 */
+    SPI_IRQHandler, /* IRQ 11 */
+    UARTOVF_IRQHandler, /* IRQ 12 */
+    ETHERNET_IRQHandler, /* IRQ 13 */
+    I2S_IRQHandler, /* IRQ 14 */
+    TSC_IRQHandler, /* IRQ 15 */
+    GPIO2_IRQHandler, /* IRQ 16 */
+    GPIO3_IRQHandler, /* IRQ 17 */
+    UARTRX3_IRQHandler, /* IRQ 18 */
+    UARTTX3_IRQHandler, /* IRQ 19 */
+    UARTRX4_IRQHandler, /* IRQ 20 */
+    UARTTX4_IRQHandler, /* IRQ 21 */
+    ADCSPI_IRQHandler, /* IRQ 22 */
+    SHIELDSPI_IRQHandler, /* IRQ 23 */
+    GPIO0_0_IRQHandler, /* IRQ 24 */
+    GPIO0_1_IRQHandler, /* IRQ 25 */
+    GPIO0_2_IRQHandler, /* IRQ 26 */
+    GPIO0_3_IRQHandler, /* IRQ 27 */
+    GPIO0_4_IRQHandler, /* IRQ 28 */
+    GPIO0_5_IRQHandler, /* IRQ 29 */
+    GPIO0_6_IRQHandler, /* IRQ 30 */
+    GPIO0_7_IRQHandler, /* IRQ 31 */
 };
 
 /* ---- Reset handler ---- */
