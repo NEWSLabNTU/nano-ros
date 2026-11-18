@@ -283,8 +283,13 @@ cpp-freestanding-mechanisms:
 # own C++ library" page): under the real FreeRTOS toolchain file, a directory
 # that calls it compiles Eigen's standard-library set and one that does not is
 # refused by libstdc++; `-nostdinc++` (ThreadX's shim) is refused; POSIX flags
-# are left alone. One configure and two object compiles, ~2 s.
+# are left alone. One configure and two object compiles, ~2 s. It needs the
+# PINNED arm g++ (the toolchain file finds it in the SDK store), which the
+# `fast` CI lane does not claim, so that lane lists it as not run and the
+# `build` lane runs it.
 [private]
+[group('needs:arm-gcc')]
+[group('needs:cmake')]
 hosted-cxx-opt-in:
     @python3 scripts/check/check-hosted-cxx-opt-in.py
 
