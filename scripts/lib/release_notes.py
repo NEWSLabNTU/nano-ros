@@ -103,13 +103,16 @@ def wiring_problems(workflow_text: str) -> list:
     """The refusal is only a refusal if the workflow reaches it on EVERY run.
 
     The `--check` step must be in the build job, unconditional (no `if:`, so a
-    dry run reaches it), and ahead of every step that builds; the publish step
-    must take its body from `--body`.
+    dry run reaches it), and ahead of every step that builds; the publish step,
+    in whichever job holds it (`publish` since phase-551 W8), must take its body
+    from `--body`.
     """
     import yaml
 
     wf = yaml.safe_load(workflow_text) or {}
-    steps = ((wf.get("jobs") or {}).get("build") or {}).get("steps") or []
+    jobs = wf.get("jobs") or {}
+    steps = (jobs.get("build") or {}).get("steps") or []
+    every_step = [s for j in jobs.values() for s in ((j or {}).get("steps") or [])]
     bad = []
     check_at = next((i for i, s in enumerate(steps)
                      if "release_notes.py --check" in str(s.get("run", ""))), None)
@@ -121,7 +124,7 @@ def wiring_problems(workflow_text: str) -> list:
         before = [s.get("name", s.get("uses", "?")) for s in steps[:check_at] if "run" in s]
         if before:
             bad.append(f"the `--check` step runs after {before}; it must come before anything builds")
-    pub = [s for s in steps if "gh release create" in str(s.get("run", ""))]
+    pub = [s for s in every_step if "gh release create" in str(s.get("run", ""))]
     if not pub:
         bad.append("no step runs `gh release create`")
     for s in pub:
@@ -196,6 +199,17 @@ def self_test(quiet: bool = False) -> None:
                   wiring_problems(wf(check, build, {**pub, "run": 'python3 scripts/lib/release_notes.py --body "$V" n.md\ngh release create t'})) != []))
     cases.append(("a body not from the page fails",
                   wiring_problems(wf(check, build, {**pub, "run": "gh release create t --notes x"})) != []))
+    # phase-551 W8: the publish step in its own job, after every build row.
+    import yaml as _yaml
+    split = _yaml.safe_dump({"jobs": {
+        "build": {"steps": [{"uses": "actions/checkout@v4"}, check, build]},
+        "publish": {"steps": [{"uses": "actions/checkout@v4"}, pub]}}})
+    cases.append(("a publish step in its own job passes", wiring_problems(split) == []))
+    bad_split = _yaml.safe_dump({"jobs": {
+        "build": {"steps": [{"uses": "actions/checkout@v4"}, check, build]},
+        "publish": {"steps": [{**pub, "run": "gh release create t --notes x"}]}}})
+    cases.append(("a publish job whose body is not from the page fails",
+                  wiring_problems(bad_split) != []))
     failed = [name for name, ok in cases if not ok]
     if failed:
         sys.exit("release_notes.py: SELFTEST FAILED -- " + "; ".join(failed))
