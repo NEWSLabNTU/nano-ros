@@ -197,3 +197,4 @@ one is out of reach and records why.
 
 | issue | why it belongs here |
 | --- | --- |
+| [2696](../issues/2696-executor-wake-from-interrupt-not-wired.md) | A device job's completion interrupt cannot wake the executor safely, which the accelerator and camera paths need |
