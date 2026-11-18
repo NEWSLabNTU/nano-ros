@@ -171,8 +171,9 @@ Roads that can build a Cyclone image, swept 2026-11-18:
   of them `add_subdirectory(<nano-ros>)`. This road already called the helper.
 - Zephyr module (`zephyr/CMakeLists.txt`): C, C++ and generated Rust
   applications all link the C++ Cyclone backend. This road never called the
-  helper, and now does: deferred to the end of the application directory,
-  through the same helper with `RMW` and `HOOK` arguments, and the
+  helper, and now does: called directly in the module, which Zephyr
+  adds from its own DEFER after the application's directory, through the same
+  helper with `RMW` and `HOOK` arguments, and the
   `_nros_zephyr_runtime_typesupport_hook` adapter over the Zephyr per-message
   body.
 - cargo: `nros-node` registers each type at create time through the
@@ -188,6 +189,21 @@ FATAL_ERROR is the configure-time refusal for a direct cmake user. Gate
 `check-runtime-interface-types-roads` holds every per-message generator's road
 to a call of the helper, and holds the CLI's axis table equal to the helper's.
 
-Open: the measurement on the downstream FVP image (boot with no
-`Unsupported` line, plus evidence that the six services exist).
+Measured on the downstream FVP image (Zephyr C++, Cyclone, user-mode network):
 
+- Run 1, with the call DEFERRED: the 12 `rcl_interfaces` service descriptors
+  were linked, but the image printed `descriptor registry OVERFLOWED: 23 type
+  registration(s) dropped at cap 259 (first dropped:
+  'rcl_interfaces::msg::dds_::FloatingPointRange_')` followed by the same
+  `Transport(Unsupported)`. The Cyclone table cap
+  (`NrosRmwCycloneddsDescriptorCap.cmake`) is a DEFER that ran before the
+  deferred call, so the table was sized without these types.
+- Run 2, with the call made directly: the table was sized to 282 rows (259 +
+  23), boot reached "Actuation Safety Island is Live" with no overflow line
+  and no `parameter services could not be created` line, and the control loop
+  kept running.
+
+The cap now also refuses, at configure, a registration recorded after the
+table was sized once it no longer fits, and names the type (case F in
+`tests/cmake-cyclonedds-descriptor-cap-tests.sh`). Before, that case only
+showed up at boot as the overflow line.

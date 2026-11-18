@@ -22,6 +22,9 @@
 #   D. a pin below the demand is a configure ERROR (negative control: the rule
 #      refuses rather than compiling a table it knows is short).
 #   E. a target of that name that is IMPORTED compiles nothing and is skipped.
+#   F. a registration recorded AFTER the table was sized, past its rows, is a
+#      configure ERROR naming the type (issue 2704: it used to surface only as
+#      "descriptor registry OVERFLOWED" at boot).
 #
 # Usage: ./tests/cmake-cyclonedds-descriptor-cap-tests.sh
 # Exit:  0 all assertions held; 1 otherwise.
@@ -89,7 +92,7 @@ configure_build() {
         && cmake --build "$dir/b" >> "$dir.log" 2>&1
 }
 
-echo "cmake-cyclonedds-descriptor-cap-tests (issue 1663)"
+echo "cmake-cyclonedds-descriptor-cap-tests (issues 1663, 2704)"
 unset NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES
 
 make_project "$WORK/a" 300 300
@@ -131,6 +134,19 @@ if configure_build "$WORK/e"; then
     fi
 else
     fail "E: imported"; tail -15 "$WORK/e.log"
+fi
+
+make_project "$WORK/f" 300 300
+# A late recorder: a top-level DEFER queued after the sizer, as the pre-fix
+# Zephyr runtime-types call was.
+printf '%s\n' 'cmake_language(DEFER CALL nros_cyclonedds_record_descriptor_types "late::msg::dds_::Late_")' \
+    >> "$WORK/f/CMakeLists.txt"
+if configure_build "$WORK/f"; then
+    fail "F: a late registration past the table's rows configured"
+elif nros_grep_q "late::msg::dds_::Late_" "$WORK/f.log" && nros_grep_q "is generated" "$WORK/f.log"; then
+    pass "F: a late registration past the table's rows is refused, naming the type"
+else
+    fail "F: failed for another reason"; tail -15 "$WORK/f.log"
 fi
 
 echo "$CHECKS check(s), $FAILURES failure(s)"

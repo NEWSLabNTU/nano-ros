@@ -638,17 +638,23 @@ endif()
 # (`Transport(Unsupported)` from `service_create`), on every API: C, C++ and a
 # generated Rust application all link the C++ Cyclone backend here.
 #
-# Deferred to the end of the application's directory, so the application's
-# own packages generate first and one it shares with the runtime
-# (`builtin_interfaces`) keeps the single typesupport library its first caller
-# made. A backend with no per-message hook (zenoh, xrce) pays nothing.
+# Called here, NOT deferred. Zephyr adds its base directory (and so this
+# module) from a DEFER of its own at the end of the application's directory,
+# so the application's `find_package(<pkg>)` calls have already run, and a
+# package it shares with the runtime (`builtin_interfaces`) keeps the one
+# typesupport library its first caller made (a later call only attaches). The
+# Cyclone descriptor-table cap (`NrosRmwCycloneddsDescriptorCap.cmake`) is a
+# DEFER the application's first generation scheduled, so it runs AFTER this and
+# counts these types. A second DEFER here ran after the cap instead: measured
+# on a Zephyr C++ image, the cap was sized without them and the registry
+# dropped 23 `rcl_interfaces` registrations ("descriptor registry OVERFLOWED"),
+# with the same `Transport(Unsupported)` at boot. A backend with no
+# per-message hook (zenoh, xrce) pays nothing.
 include("${NROS_REPO_DIR}/cmake/NanoRosRuntimeInterfaceTypes.cmake")
 if(_nros_kconfig_rmw AND NROS_FEATURES)
-    cmake_language(EVAL CODE "
-        cmake_language(DEFER DIRECTORY [==[${CMAKE_SOURCE_DIR}]==] CALL
-            nros_runtime_interface_types [==[${NROS_FEATURES}]==]
-            RMW [==[${_nros_kconfig_rmw}]==]
-            HOOK _nros_zephyr_runtime_typesupport_hook)")
+    nros_runtime_interface_types("${NROS_FEATURES}"
+        RMW "${_nros_kconfig_rmw}"
+        HOOK _nros_zephyr_runtime_typesupport_hook)
 endif()
 
 # Issue 1681 -- the OTHER two capability axes, by the same rule.
