@@ -11,6 +11,26 @@ against the pool's size, and names each gate whose processes peaked above its
 declared weight (`[group('cpu:<n>')]`, default 1), so it can be given a
 resource group or taught the pool.
 
+Which processes are the lane's: those whose `NROS_GATE_RUN` equals the
+sampler's own (gate-lane.sh exports one id per run). `NROS_GATE_LANE` alone
+cannot say it: it is the lane NAME, `dev` in every worktree, so another
+worktree's pre-push gates counted as this lane's (issue 2683). Without a run
+id the old rule stands: anything carrying `NROS_GATE_LANE`.
+
+WAITS (issue 2683, opt-in: `NROS_GATE_WAITS=1` on `just ci gate` or any gate
+lane). Runnable counts say how busy a gate was, not why it was slow. With
+WAITS on, each sample also classifies every one of the lane's THREADS by its
+kernel wait channel (`/proc/<pid>/task/<tid>/wchan`; Yama's ptrace scope hides
+`syscall` and fd links, so wchan is the view a same-user process has):
+`run`, `pipe` (a jobserver token or a parent reading a child's output),
+`child` (waiting for a child), `lock` (a file lock: cargo's build-dir or
+package-cache lock), `disk` (page and write-back waits) or `other`, into
+`<file>.waits`, and the report adds a per-gate table of thread-seconds in
+each. Measured with it, three green step-8 runs of `just ci gate` on a 32-CPU
+host waited on cargo's lock far more than they ran, never starved for tokens,
+and differed mostly in disk waits. A red run with WAITS on is what tells a
+starved pool from a lock queue from a busy disk.
+
 Usage:
   run-load-sampler.py sample <file> [--interval S]   append samples until killed
   run-load-sampler.py report <file> <tokens> [<from> <to>]
@@ -81,23 +101,40 @@ def pool_fifo(pid):
     return None
 
 
-def owner_of(pid, cache):
-    """(in_lane, gate test or None) for a process, from its environment:
-    `NROS_GATE_LANE` is exported by gate-lane.sh to everything the lane runs,
-    `NROS_GATE_TEST` by the gate harness to everything one test runs."""
-    if pid in cache:
-        return cache[pid]
-    lane, name = False, None
-    try:
-        env = Path(f"/proc/{pid}/environ").read_bytes()
-    except OSError:
-        env = b""
+RUN_ID = os.environ.get("NROS_GATE_RUN", "").encode()
+
+
+def owner_from_env(env, run_id):
+    """(in_lane, gate test or None) from a process's environment block.
+
+    With a run id, a process is the lane's only when it carries the SAME
+    `NROS_GATE_RUN`: the lane NAME is shared by every worktree's lane. A gate
+    test name outside this run is another lane's, never this one's gate."""
+    lane, name, run = False, None, None
     for kv in env.split(b"\0"):
         if kv.startswith(b"NROS_GATE_TEST="):
             name = kv[len(b"NROS_GATE_TEST="):].decode(errors="replace")
         elif kv.startswith(b"NROS_GATE_LANE="):
             lane = True
-    cache[pid] = (lane or name is not None, name)
+        elif kv.startswith(b"NROS_GATE_RUN="):
+            run = kv[len(b"NROS_GATE_RUN="):]
+    if run_id:
+        return (run == run_id, name if run == run_id else None)
+    return (lane or name is not None, name)
+
+
+def owner_of(pid, cache):
+    """(in_lane, gate test or None) for a process, from its environment:
+    `NROS_GATE_RUN`/`NROS_GATE_LANE` are exported by gate-lane.sh to
+    everything the lane runs, `NROS_GATE_TEST` by the gate harness to
+    everything one test runs."""
+    if pid in cache:
+        return cache[pid]
+    try:
+        env = Path(f"/proc/{pid}/environ").read_bytes()
+    except OSError:
+        env = b""
+    cache[pid] = owner_from_env(env, RUN_ID)
     return cache[pid]
 
 
@@ -154,17 +191,77 @@ def runnable_by_owner(cache):
     return lane, counts
 
 
+# Kernel wait channels by what a thread is waiting for. A substring rule, so a
+# kernel that renames a helper still lands in the right class; `other` is
+# reported, never dropped.
+DISK_WCHANS = ("folio_wait", "balance_dirty_pages", "wait_on_buffer",
+               "wait_on_page", "io_schedule", "rq_qos_wait", "blk_mq_get_tag",
+               "jbd2", "wb_wait")
+
+
+def wait_kind(state, wchan):
+    """What one thread is doing, from its /proc state letter and wchan."""
+    if state == "R":
+        return "run"
+    w = wchan or ""
+    if "pipe" in w:
+        return "pipe"
+    if w in ("do_wait", "kernel_wait4", "do_waitid"):
+        return "child"
+    if "locks_lock" in w or "flock" in w or "fcntl_setlk" in w:
+        return "lock"
+    if any(d in w for d in DISK_WCHANS) or state == "D":
+        return "disk"
+    return "other"
+
+
+WAIT_KINDS = ("run", "pipe", "child", "lock", "disk", "other")
+
+
+def waits_by_gate(cache):
+    """{gate test: {kind: threads}} for this lane's threads, one sample."""
+    out = {}
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        in_lane, g = owner_of(int(d), cache)
+        if not in_lane:
+            continue
+        try:
+            tids = os.listdir(f"/proc/{d}/task")
+        except OSError:
+            continue
+        per = out.setdefault(g or "-", {})
+        for t in tids:
+            try:
+                st = Path(f"/proc/{d}/task/{t}/stat").read_text()
+                wchan = Path(f"/proc/{d}/task/{t}/wchan").read_text().strip()
+            except OSError:
+                continue
+            k = wait_kind(st[st.rindex(")") + 2:].split(" ", 1)[0], wchan)
+            per[k] = per.get(k, 0) + 1
+    return out
+
+
 def sample(path, interval):
     stop = []
     signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
     cache = {}
+    waits = os.environ.get("NROS_GATE_WAITS") == "1"
+    wout = open(f"{path}.waits", "a") if waits else None
     with open(path, "a") as out:
         while not stop:
             lane, counts = runnable_by_owner(cache)
-            fields = [str(int(time.time())), str(procs_running()), f"#lane={lane}"]
+            now = str(int(time.time()))
+            fields = [now, str(procs_running()), f"#lane={lane}"]
             fields += [f"{g}={n}" for g, n in sorted(counts.items())]
             out.write(" ".join(fields) + "\n")
             out.flush()
+            if wout:
+                for g, per in sorted(waits_by_gate(cache).items()):
+                    wout.write(f"{now} {g} " + " ".join(
+                        f"{k}={per[k]}" for k in WAIT_KINDS if per.get(k)) + "\n")
+                wout.flush()
             if len(cache) > 200000:
                 cache.clear()
             for _ in range(int(interval * 10)):
@@ -233,6 +330,48 @@ def summarize(lines, tokens, weight_of):
     return totals, lanes, over, peak, frees
 
 
+def summarize_waits(lines):
+    """({gate: {kind: thread-samples}}, interval s): the per-gate wait table."""
+    per, stamps = {}, []
+    for line in lines:
+        f = line.split()
+        if len(f) < 3 or not f[0].isdigit():
+            continue
+        if not stamps or stamps[-1] != int(f[0]):
+            stamps.append(int(f[0]))
+        row = per.setdefault(f[1], {})
+        for kv in f[2:]:
+            k, _, n = kv.partition("=")
+            if k in WAIT_KINDS and n.isdigit():
+                row[k] = row.get(k, 0) + int(n)
+    gaps = [b - a for a, b in zip(stamps, stamps[1:]) if b > a]
+    return per, (pct(gaps, 50) if gaps else 0)
+
+
+def report_waits(path, window=None):
+    try:
+        lines = Path(f"{path}.waits").read_text().splitlines()
+    except OSError:
+        return
+    if window:
+        lines = [ln for ln in lines if ln.split(" ", 1)[0].isdigit()
+                 and window[0] <= int(ln.split(" ", 1)[0]) <= window[1]]
+    per, step = summarize_waits(lines)
+    if not per:
+        return
+    step = step or 1
+    # Ordered by what a gate waited on that is not its own children (a wrapper
+    # waiting for its child says nothing): tokens, locks, disk.
+    rows = sorted(per.items(), key=lambda kv: -sum(kv[1].get(k, 0)
+                                                   for k in ("pipe", "lock", "disk")))
+    print(f"waits (NROS_GATE_WAITS): thread-seconds per gate, sampled every ~{step} s "
+          "(run: on a CPU; pipe: a jobserver token or a child's output; child: a "
+          "child to exit; lock: a file lock; disk: page or write-back I/O):")
+    print(f"  {'gate':58s} " + " ".join(f"{k:>7s}" for k in WAIT_KINDS[:5]))
+    for g, row in rows[:15]:
+        print(f"  {g[:58]:58s} " + " ".join(f"{row.get(k, 0) * step:7d}" for k in WAIT_KINDS[:5]))
+
+
 def report(path, tokens, window=None):
     try:
         lines = Path(path).read_text().splitlines()
@@ -273,6 +412,7 @@ def report(path, tokens, window=None):
               "(a gate test; `?<command>`: the lane's, no gate test's; "
               "`!<command>`: not this lane's):")
         print("  " + ", ".join(f"{g} {n}" for g, n in peak[:12]))
+    report_waits(path, window)
     return 0
 
 
@@ -307,6 +447,27 @@ def self_test():
     case("negative control: a gate within its weight is not named",
          all(g != "fast::check::a" for _, g, _, _ in over))
     case("percentiles", pct([1, 2, 3, 4, 100], 50) == 3 and pct([5], 90) == 5)
+    # issue 2683: attribution by run id, not by the shared lane name.
+    mine = b"NROS_GATE_LANE=dev\0NROS_GATE_RUN=r1\0NROS_GATE_TEST=build::check::x"
+    other = b"NROS_GATE_LANE=dev\0NROS_GATE_RUN=r2\0NROS_GATE_TEST=fast::check::y"
+    case("a process of this run is the lane's, with its gate",
+         owner_from_env(mine, b"r1") == (True, "build::check::x"))
+    case("another worktree's lane of the same name is not this lane's",
+         owner_from_env(other, b"r1") == (False, None))
+    case("without a run id the lane name decides, as before",
+         owner_from_env(other, b"") == (True, "fast::check::y"))
+    # issue 2683: what a thread waits on, by wchan.
+    kinds = [wait_kind("R", "0"), wait_kind("S", "anon_pipe_read"), wait_kind("S", "do_wait"),
+             wait_kind("S", "locks_lock_inode_wait"), wait_kind("D", "folio_wait_bit_common"),
+             wait_kind("S", "balance_dirty_pages"), wait_kind("S", "futex_wait_queue"),
+             wait_kind("S", "lock_mm_and_find_vma")]
+    case("wait channels classify", kinds == ["run", "pipe", "child", "lock", "disk",
+                                             "disk", "other", "other"])
+    per, step = summarize_waits(["10 build::check::p run=2 lock=5",
+                                 "15 build::check::p lock=3 disk=1",
+                                 "15 - child=4", "junk"])
+    case("the wait table sums a gate's samples and reads the interval",
+         per["build::check::p"] == {"run": 2, "lock": 8, "disk": 1} and step == 5)
     if bad:
         print("run-load-sampler self-test: FAILED", file=sys.stderr)
         return 1
