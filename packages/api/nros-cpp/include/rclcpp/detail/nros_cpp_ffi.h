@@ -1719,7 +1719,7 @@ extern const uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
 /**
  * The `Executor` inside an nros-cpp executor handle, for a seam
  * that takes a BARE `*mut Executor<'static>`: a Rust component's
- * `__nros_component_<pkg>_install(node, executor, self)`.
+ * `__nros_component_<pkg>_install(node, executor, self, ...)`.
  *
  * `rclcpp::global_handle()` and every sched task's `executor` are `CppContext`s, and
  * the executor is not at the handle's address: it lives in
