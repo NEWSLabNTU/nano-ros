@@ -55,6 +55,7 @@ timeout or transport event.
 | ThreadX | `tx_semaphore_ceiling_put` | forwards to `wake_signal` | safe, per the comment that the put is ISR-safe |
 | POSIX | `sem_post` + pipe write | forwards to `wake_signal` | not applicable (no interrupt handlers) |
 | mps2-an385 bare metal | flag | flag | safe, nothing is blocked |
+| RTIC levels (bare metal) | not reached from an ISR | not reached from an ISR | not exposed: the ISRs only spawn; the waiter's wake runs in task context |
 
 So two of the three RTOS ports are safe by luck rather than by design, and the
 one with the strictest rule is the one that breaks.
