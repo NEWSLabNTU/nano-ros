@@ -3028,10 +3028,13 @@ cpp: cpp-fmt
         echo "  - embedded cyclone coordinate (issue 0730): ${_cyc_features},panic-platform @ aarch64-unknown-none"
         # issue 1354 — its own dir, same reason as the zenoh clippy below: a
         # different feature set writes a different config header.
+        # Issue 2722 -- clippy, not check: same compile, and this set is
+        # read from zephyr/CMakeLists.txt at run time, so the derived lint
+        # lane (built-feature-sets-clippy) cannot spell it.
         CARGO_TARGET_DIR="$gen_cyclone_embedded" \
-            cargo check -p nros-cpp --no-default-features \
+            cargo clippy -p nros-cpp --no-default-features \
             --features "${_cyc_features},panic-platform" \
-            --target aarch64-unknown-none --quiet
+            --target aarch64-unknown-none --quiet -- -D warnings
     else
         echo "  - embedded cyclone coordinate (issue 0730): SKIP — aarch64-unknown-none not installed"
     fi
@@ -5436,3 +5439,17 @@ pristine-checkout:
 [private]
 platform-lane-cells:
     @python3 scripts/check-platform-lane-cells.py
+
+# Issue 2722 -- the lint list is DERIVED from what the lanes build, never
+# written beside them: `cargo clippy -D warnings` over every `-p <crate>
+# --features <set>` a recipe, a script or a feature lane builds and no clippy
+# site already covers, test targets included when the site builds tests. The
+# `nros-cpp` census set sat on `main` with two clippy errors because only
+# `census-hooks-complete` built it, and with `cargo test`. A new set is linted
+# the day a recipe starts building it.
+[metadata("tier", "build")]
+built-feature-sets-clippy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    python3 scripts/check-built-feature-sets-linted.py --run "$(nros_scoped_target_dir built-feature-sets)"

@@ -482,3 +482,11 @@ executable-stub-writes:
 [private]
 nuttx-state-outside-tree:
     @bash scripts/check-nuttx-state-outside-tree.sh
+
+# Issue 2722 -- every feature set a recipe BUILDS is linted somewhere. The
+# static half: every build site's `--features` set (just recipes, `scripts/`,
+# and `.config/feature-lanes.toml`) resolves without running anything, so the
+# derived lint lane below can spell it. A site it cannot resolve fails here,
+# naming the site, rather than going unlinted without anyone knowing.
+built-feature-sets-linted:
+    @python3 scripts/check-built-feature-sets-linted.py --check

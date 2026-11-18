@@ -960,7 +960,7 @@ mod census_lifecycle_tests {
             .find(&key)
             .unwrap_or_else(|| panic!("no node row {id} in {json}"));
         let rest = &json[start + 1..];
-        let end = rest.find("{\"id\":\"").map_or(rest.len(), |e| e);
+        let end = rest.find("{\"id\":\"").unwrap_or(rest.len());
         &json[start..start + 1 + end]
     }
 
