@@ -6,7 +6,7 @@ type: bug
 area: [zephyr, rmw, params, cmake]
 severity: high
 found: 2026-11-18
-related: [2304, 1268, 1271, phase-556]
+related: [2304, 1268, 1271, 2705, phase-556]
 ---
 
 ## Measured
@@ -160,3 +160,34 @@ combination.
 
 Not investigated: whether a Zephyr RUST image on Cyclone (cargo road inside
 Zephyr) installs the registrar; the downstream image is C++.
+
+## Fix (in progress, PR 4223)
+
+Roads that can build a Cyclone image, swept 2026-11-18:
+
+- top-level cmake (`CMakeLists.txt`): native/posix, FreeRTOS (with the
+  `integrations/freertos` and `integrations/s32ds` shells), ThreadX, PX4
+  (`find_package(nano_ros)` bootstraps it), and the NuttX workspace road. All
+  of them `add_subdirectory(<nano-ros>)`. This road already called the helper.
+- Zephyr module (`zephyr/CMakeLists.txt`): C, C++ and generated Rust
+  applications all link the C++ Cyclone backend. This road never called the
+  helper, and now does: deferred to the end of the application directory,
+  through the same helper with `RMW` and `HOOK` arguments, and the
+  `_nros_zephyr_runtime_typesupport_hook` adapter over the Zephyr per-message
+  body.
+- cargo: `nros-node` registers each type at create time through the
+  backend's Rust registrar. This road was covered already, by construction.
+- NuttX guest-make (`integrations/nuttx`) builds no Cyclone image at all, so
+  it has nothing to hold. Its Kconfig offering Cyclone anyway is issue 2705.
+
+The helper also generates `rcl_interfaces` for `rosout`.
+`backend_link::runtime_interface_types_refusal`, beside the issue 2487
+predicate, refuses an image at `nros build` when an enabled axis needs a
+runtime package that is not on the interface index. The cmake helper's
+FATAL_ERROR is the configure-time refusal for a direct cmake user. Gate
+`check-runtime-interface-types-roads` holds every per-message generator's road
+to a call of the helper, and holds the CLI's axis table equal to the helper's.
+
+Open: the measurement on the downstream FVP image (boot with no
+`Unsupported` line, plus evidence that the six services exist).
+

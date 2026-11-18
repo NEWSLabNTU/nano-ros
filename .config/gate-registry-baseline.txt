@@ -281,6 +281,7 @@ rtos-target-os
 runner-doctor-sdk-resolution
 runner-sweep-eviction-order
 runner-sweep-hardlink
+runtime-interface-types-roads
 rust-stdio-on-zephyr
 rust-targets-covered
 sched-dim-arms

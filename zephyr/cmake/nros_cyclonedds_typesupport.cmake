@@ -164,6 +164,23 @@ function(_nros_zephyr_cyclonedds_typesupport target)
   endif()
 endfunction()
 
+# _nros_zephyr_runtime_typesupport_hook(TARGET <pkg> LIB_TARGET <ignored>
+#                                       INTERFACE_FILES <files...>
+#                                       DEPENDENCIES <pkgs...>)
+#
+# Issue 2704 -- the Zephyr road's per-message hook in the argument shape
+# `nros_runtime_interface_types()` calls a hook with, so the runtime's own
+# interface packages (`rcl_interfaces` for the parameter services and
+# `/rosout`, `lifecycle_msgs`) reach Cyclone's descriptor table through the
+# same body as an application's packages. LIB_TARGET is ignored: this road
+# whole-archives each package into `app` itself.
+function(_nros_zephyr_runtime_typesupport_hook)
+  cmake_parse_arguments(_ARG "" "TARGET;LIB_TARGET" "INTERFACE_FILES;DEPENDENCIES" ${ARGN})
+  _nros_zephyr_cyclonedds_typesupport("${_ARG_TARGET}"
+    INTERFACE_FILES ${_ARG_INTERFACE_FILES}
+    DEPENDENCIES ${_ARG_DEPENDENCIES})
+endfunction()
+
 # nros_zephyr_interface_typesupport(PACKAGES <spec>…)
 #
 # phase-531 W6 — the per-message type support a generated RUST west

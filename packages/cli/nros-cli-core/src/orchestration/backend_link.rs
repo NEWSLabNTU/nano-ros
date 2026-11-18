@@ -401,6 +401,103 @@ pub fn undeclared_capability_refusal(
     Some(lines.join("\n"))
 }
 
+/// The interface packages the RUNTIME creates entities with for each node
+/// interface axis, in dependency order: what `nros_runtime_interface_types()`
+/// (`cmake/NanoRosRuntimeInterfaceTypes.cmake`) generates for the same axes.
+/// `check-runtime-interface-types-roads` keeps the two lists equal.
+pub const RUNTIME_INTERFACE_PACKAGES: &[(&str, &[&str])] = &[
+    ("param_services", &["builtin_interfaces", "rcl_interfaces"]),
+    ("rosout", &["builtin_interfaces", "rcl_interfaces"]),
+    ("lifecycle", &["lifecycle_msgs"]),
+];
+
+/// The `[rmw.capabilities]` key of a backend that creates an entity only for
+/// a type whose descriptor is generated into the image.
+const TYPE_DESCRIPTORS: &str = "type-descriptors";
+
+/// The refusal for an image whose backend `r` needs a generated descriptor for
+/// every type, when an enabled node interface axis needs a runtime package
+/// that `find_pkg` cannot resolve; `None` when nothing is missing.
+///
+/// Issue 2704: a Zephyr image on Cyclone with `param_services` booted without
+/// its six parameter services (`Transport(Unsupported)` at the first spin,
+/// logged once, `ros2 param` unable to reach the node). Every road now
+/// generates the runtime's own types (`nros_runtime_interface_types()`); this
+/// is the case where it CANNOT, refused before any build, so an enabled
+/// interface is either served or refused, never missing at run time. The
+/// sibling of [`undeclared_capability_refusal`] (issue 2487): that one asks
+/// whether the backend carries a capability, this one whether the image can
+/// be given the types the capability's entities are made of. Image-level,
+/// not per node: the descriptor table is the image's, linked once, and the
+/// runtime packages are the same for every node that enables the axis.
+/// No tracker id in the text (user ruling 2026-11-12).
+#[must_use]
+pub fn runtime_interface_types_refusal(
+    r: &ResolvedRmwIn,
+    sys: &SystemToml,
+    find_pkg: &dyn Fn(&str) -> bool,
+) -> Option<String> {
+    if !r
+        .descriptor
+        .capabilities
+        .iter()
+        .any(|(k, _)| k == TYPE_DESCRIPTORS)
+    {
+        return None;
+    }
+    let lines: Vec<String> = RUNTIME_INTERFACE_PACKAGES
+        .iter()
+        .filter(|(axis, _)| sys.capability_enabled(axis))
+        .filter_map(|(axis, pkgs)| {
+            let missing: Vec<&str> = pkgs.iter().copied().filter(|p| !find_pkg(p)).collect();
+            if missing.is_empty() {
+                return None;
+            }
+            let named = missing
+                .iter()
+                .map(|p| format!("`{p}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let stock = nros_orchestration_ir::node_interfaces::STOCK.contains(axis);
+            let (how, way_out) = if stock {
+                (
+                    "is enabled (by the image's stock node interfaces, or declared in its \
+                     features)",
+                    format!(
+                        "set `node_interfaces = \"none\"` (or drop `{axis}` from the \
+                         features if you declared it)"
+                    ),
+                )
+            } else {
+                ("is declared", format!("drop `{axis}` from the features"))
+            };
+            Some(format!(
+                "capability `{axis}` {how}, but the `{}` RMW creates an entity only for a \
+                 type whose descriptor is generated into the image, and the interface \
+                 package(s) the runtime makes `{axis}`'s entities from, {named}, are not on \
+                 the interface search path (NROS_INTERFACE_SEARCH_PATH, AMENT_PREFIX_PATH), \
+                 so the image would boot without them. Make {named} discoverable, or \
+                 {way_out}.",
+                r.declared
+            ))
+        })
+        .collect();
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join("\n"))
+    }
+}
+
+/// Whether interface package `name` is on the interface index over `search`
+/// (the run's interface search path, then the ament index, then the bundled
+/// copies -- the layers `nros configure` generates from). The `find_pkg` the
+/// roads hand [`runtime_interface_types_refusal`].
+#[must_use]
+pub fn interface_package_on_index(search: Option<&std::ffi::OsStr>, name: &str) -> bool {
+    crate::cmd::ws::interface_index(search).is_some_and(|i| i.find_package(name).is_some())
+}
+
 /// `derived` (a backend dependency's edition and capability features, as
 /// [`dependency_features`] computes them) followed by each of the board's
 /// `platform` features the crate at `dir` declares, without repeats.
@@ -547,6 +644,62 @@ mod tests {
         let z = idx.resolve("zenoh").unwrap();
         assert_eq!(
             undeclared_capability_refusal(&idx, &z, &sys("zenoh", "\"safety\"")),
+            None
+        );
+    }
+
+    /// Issue 2704 — on a backend that creates entities only for generated
+    /// descriptors, an enabled node interface whose runtime package cannot be
+    /// found is refused, naming the axis, the package and the way out; a
+    /// findable package, or a backend with no descriptor table, is not.
+    #[test]
+    fn runtime_interface_types_unprovidable_is_refused() {
+        let idx = test_support::in_tree_index();
+        let sys = |rmw: &str, features: &str| -> SystemToml {
+            toml::from_str(&format!(
+                "[system]\nname = \"t\"\nrmw = \"{rmw}\"\ndomain_id = 0\n\
+                 features = [{features}]\n"
+            ))
+            .unwrap()
+        };
+        let none = |_: &str| false;
+        let all = |_: &str| true;
+        let c = idx.resolve("cyclonedds").unwrap();
+        let e =
+            runtime_interface_types_refusal(&c, &sys("cyclonedds", "\"param_services\""), &none)
+                .expect("param_services on cyclonedds with no rcl_interfaces must be refused");
+        assert!(e.contains("capability `param_services` is enabled"), "{e}");
+        assert!(e.contains("`rcl_interfaces`"), "{e}");
+        assert!(e.contains("`cyclonedds` RMW"), "{e}");
+        assert!(e.contains("node_interfaces = \"none\""), "{e}");
+        for id in ["issue", "RFC-", "phase-", "#"] {
+            assert!(!e.contains(id), "no tracker id in a user message: {e}");
+        }
+        let l = runtime_interface_types_refusal(&c, &sys("cyclonedds", "\"lifecycle\""), &none)
+            .expect("lifecycle on cyclonedds with no lifecycle_msgs must be refused");
+        assert!(
+            l.contains("`lifecycle_msgs`") && l.contains("drop `lifecycle`"),
+            "{l}"
+        );
+        assert!(
+            !l.contains("node_interfaces"),
+            "lifecycle is no stock interface: {l}"
+        );
+        assert_eq!(
+            runtime_interface_types_refusal(
+                &c,
+                &sys("cyclonedds", "\"param_services\", \"rosout\""),
+                &all
+            ),
+            None
+        );
+        assert_eq!(
+            runtime_interface_types_refusal(&c, &sys("cyclonedds", ""), &none),
+            None
+        );
+        let z = idx.resolve("zenoh").unwrap();
+        assert_eq!(
+            runtime_interface_types_refusal(&z, &sys("zenoh", "\"param_services\""), &none),
             None
         );
     }

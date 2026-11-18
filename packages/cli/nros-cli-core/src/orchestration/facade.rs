@@ -1335,6 +1335,14 @@ fn derive(
     if let Some(refusal) = backend_link::undeclared_capability_refusal(rmws, &rmw, sys) {
         return Err(eyre::eyre!("image `{entry_name}`: {refusal}"));
     }
+    // Issue 2704 -- and an enabled node interface whose runtime types this
+    // backend cannot be given is refused, never booted without its services.
+    let search = std::env::var_os("NROS_INTERFACE_SEARCH_PATH");
+    if let Some(refusal) = backend_link::runtime_interface_types_refusal(&rmw, sys, &|p| {
+        backend_link::interface_package_on_index(search.as_deref(), p)
+    }) {
+        return Err(eyre::eyre!("image `{entry_name}`: {refusal}"));
+    }
     for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
         if !sys.capability_enabled(cap.declared) {
             continue;
