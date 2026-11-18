@@ -101,13 +101,24 @@ build verb, `make`, the way Zephyr owns `west build`:
 3. Enable nano-ros in `make menuconfig`, or with `kconfig-tweak` from the
    `kconfig-frontends` package: `NROS`, the API you use (`NROS_C_API`,
    `NROS_CPP_API`), and the RMW. These options decide what the shell
-   compiles into `libnros_c.a`; they must name the same RMW as your
-   `system.toml`. The board's config starts `nros_nuttx_entry`, the entry a
-   `nros build` image defines. A make-built kernel that boots NSH sets
-   `CONFIG_INIT_ENTRYPOINT="nsh_main"` back
+   compiles into `libnros_c.a`. The board's config starts
+   `nros_nuttx_entry`, the entry a `nros build` image defines. A make-built
+   kernel that boots NSH sets `CONFIG_INIT_ENTRYPOINT="nsh_main"` back
    (`kconfig-tweak --set-str CONFIG_INIT_ENTRYPOINT nsh_main`).
-4. Prepare the workspace, so the generated message bindings exist before
-   anything compiles against them: `nros configure`, in the workspace.
+4. Name your project, if the app has one. In your app's own `Make.defs`,
+   beside its `CONFIGURED_APPS +=` line:
+
+   ```make
+   NROS_PROJECTS += $(APPDIR)/external/<app>
+   NROS_IMAGE := <bringup>:<image>    # only if several images could match
+   ```
+
+   `make` then runs `nros configure` on that project, so the generated
+   message bindings exist before anything compiles against them, and builds
+   the image's own settings into the app. It stops, saying which, when the
+   image's board, RMW or ROS edition disagrees with the kernel's
+   configuration from step 3. One NuttX build takes one project. With no
+   project named, the shell builds from your Kconfig choices alone.
 5. Build the kernel with `make` in `$NUTTX_DIR`. The Rust static libraries
    build as a sub-step of the app build, and the kernel ELF is
    `$NUTTX_DIR/nuttx`.

@@ -681,7 +681,7 @@ against a stand-in CLI.
   configure, 0 re-runs). Making a make app a project needs a project
   identity and a knob channel: [issue 2236](../issues/2236-nuttx-make-app-as-project.md). The
   board facts the make road restates by hand have drifted from the board's
-  `cargo_config`: [issue 2426](../issues/2426-nuttx-make-road-board-facts-drift.md).
+  `cargo_config`: [issue 2426](../issues/archived/2426-nuttx-make-road-board-facts-drift.md).
 
 **Acceptance (measured 2026-11-04, clean build dirs; counts are `-- Configuring
 done` over the configure and the first `ninja`, plus `Re-running CMake`).**
