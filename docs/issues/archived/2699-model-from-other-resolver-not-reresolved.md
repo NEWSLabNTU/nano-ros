@@ -1,11 +1,12 @@
 ---
 id: 2699
 title: "A SystemModel written by a different launch resolver is not re-resolved when this CLI cannot parse it, so a persistent fixture tree fails the build"
-status: open
+status: resolved
 type: bug
 area: [cli, ci, testing]
 severity: medium
 found: 2026-11-18
+resolved_in: "fix(cli): a model this checkout cannot parse is stale, never fresh (issue 2699)"
 related: [2296, 1360]
 ---
 
@@ -96,3 +97,26 @@ After the fix, a `run-matrix` dispatch of a branch older than main's
 play_launch pin gets past `generate-bindings` on the self-hosted runner with
 no hand cleanup of `nros-fixture-tree`, and so does main's next scheduled run
 after a newer-branch dispatch.
+
+## Resolution
+
+`provenance_stale_with` no longer ends at `.ok()?` on the read or the parse.
+Both callers ask only about a model that exists, so a model this binary
+cannot read or parse is STALE, with the reason named
+(`model not readable by this checkout (unsupported SystemModel schema version
+6 ...)`). `run_sync` then re-resolves it with this checkout's pinned resolver,
+the path the pin check (issue 2296) already takes, and a consumer door
+(`model_gate::verify`) refuses it as stale instead of reading it. A model
+nothing can regenerate (a `model =` override, no bringup) still ends in the
+consumer's refusal, now with that reason.
+
+Not done as proposed: a partial read of `meta.resolver` and the schema
+version ahead of the full parse. Any parse failure is stale, so the narrower
+read would only add a second parser of the same file.
+
+Test: `model_gate::tests::a_model_this_checkout_cannot_parse_is_stale` writes
+a model with the schema version one above the reader's, and a damaged one.
+Both are stale, the first with a reason naming the schema; with the old
+`.ok()?` it fails. The run-matrix acceptance (a branch older than main's pin
+passing `generate-bindings` on the self-hosted runner with no cleanup) is
+measured by the next such dispatch.
