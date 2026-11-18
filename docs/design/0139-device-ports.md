@@ -271,34 +271,6 @@ device.
 On Zephyr, a port may be a thin layer over RTIO: RTIO is a submission queue
 and a completion queue, the same shape as D3.
 
-### D11 — Testing without the hardware: mock ports
-
-nano-ros ships one mock worker and one mock source, as RFC-0132 ships the
-CAN `mock` backend, so a node's stages and a contract's timing are tested
-with no device at all:
-
-- **Mock worker:** completes each job after a configured time, from a timer
-  interrupt on an RTOS image and from a thread on a host, with an output the
-  test supplies (or a copy of the input). It can inject a fault, a timeout and
-  a configured spread in job time, so the drop, timeout and queue paths are
-  exercised.
-- **Mock source:** delivers queued buffers at a configured rate, each stamped
-  with its capture time, or a buffer per call when the test drives it.
-- **Where they run:** host-process boards and the emulator images that the
-  test lanes already boot (MPS2 under QEMU, Zephyr `native_sim`). The same
-  node binary runs against the mock or the real port; which one is the board
-  definition's choice, not the node's.
-- **What they do not prove:** the vendor adapter itself. That is tested
-  against the vendor's own emulator where one exists (the Ethos-U55 on the
-  Corstone-300 FVP, phase-579 W7), and otherwise on hardware and marked
-  manual in the support registry (RFC-0114). As in RFC-0132, an emulator
-  counts as hardware: a mock never stands in for a device an emulator models.
-
-A board package's adapter is tested the way nano-ros tests its own: the
-companion package's conformance tests (submit never blocks, `take` before
-completion returns pending, completion from the interrupt wakes the
-executor) run against any port, real or mock.
-
 ### D10 — Contracts and analysis (layer 4)
 
 The image contract gains device and stage declarations beside its rates, data
@@ -329,6 +301,34 @@ Device times are measured, not assumed, as stack floors are, and the trace
 
 The schema and the checker belong to the launch toolchain and are agreed with
 its owner.
+
+### D11 — Testing without the hardware: mock ports
+
+nano-ros ships one mock worker and one mock source, as RFC-0132 ships the
+CAN `mock` backend, so a node's stages and a contract's timing are tested
+with no device at all:
+
+- **Mock worker:** completes each job after a configured time, from a timer
+  interrupt on an RTOS image and from a thread on a host, with an output the
+  test supplies (or a copy of the input). It can inject a fault, a timeout and
+  a configured spread in job time, so the drop, timeout and queue paths are
+  exercised.
+- **Mock source:** delivers queued buffers at a configured rate, each stamped
+  with its capture time, or a buffer per call when the test drives it.
+- **Where they run:** host-process boards and the emulator images that the
+  test lanes already boot (MPS2 under QEMU, Zephyr `native_sim`). The same
+  node binary runs against the mock or the real port; which one is the board
+  definition's choice, not the node's.
+- **What they do not prove:** the vendor adapter itself. That is tested
+  against the vendor's own emulator where one exists (the Ethos-U55 on the
+  Corstone-300 FVP, phase-579 W7), and otherwise on hardware and marked
+  manual in the support registry (RFC-0114). As in RFC-0132, an emulator
+  counts as hardware: a mock never stands in for a device an emulator models.
+
+A board package's adapter is tested the way nano-ros tests its own: the
+companion package's conformance tests (submit never blocks, `take` before
+completion returns pending, completion from the interrupt wakes the
+executor) run against any port, real or mock.
 
 ## Examples
 
