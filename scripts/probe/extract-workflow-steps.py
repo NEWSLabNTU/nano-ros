@@ -68,6 +68,15 @@ def main():
     if args.runner_image_out:
         runs_on = job.get("runs-on")
         m = re.fullmatch(r"ubuntu-(\d+\.\d+)", str(runs_on))
+        # phase-551 W8: a matrix job picks its runner per row
+        # (`${{ matrix.arch == 'arm64' && fromJSON('[…self-hosted…]') ||
+        # 'ubuntu-22.04' }}`). The probe builds the hosted row's asset, so an
+        # expression naming exactly ONE pinned Ubuntu base resolves to it; two
+        # bases, or none, is a choice the probe cannot make and is refused.
+        if not m and isinstance(runs_on, str) and runs_on.strip().startswith("${{"):
+            bases = set(re.findall(r"'ubuntu-(\d+\.\d+)'", runs_on))
+            if len(bases) == 1:
+                m = re.fullmatch(r"(\d+\.\d+)", bases.pop())
         if not m:
             # `ubuntu-latest` or a self-hosted label names no fixed base, and
             # the whole point of reading this is that the release PINS one —

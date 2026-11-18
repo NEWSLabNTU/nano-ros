@@ -416,7 +416,8 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         --step "Build the CLI from source" \
         --step "Record what this release is made of" \
         --step "Stage the prefix" \
-        --expr "inputs.version=${PROBE_RELEASE_VERSION:-0.0.0-probe}"
+        --expr "inputs.version=${PROBE_RELEASE_VERSION:-0.0.0-probe}" \
+        --expr "matrix.arch=x86_64"
     RELEASE_BUILDER_IMAGE="$(cat "$workdir/runner-image")"
     PROBE_IMAGE="${PROBE_IMAGE:-${default_platform_image:-$RELEASE_BUILDER_IMAGE}}"
 fi

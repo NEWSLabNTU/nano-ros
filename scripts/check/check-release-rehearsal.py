@@ -16,8 +16,10 @@ branches on them is refused, naming where. Before phase-567 the whole
 image failure surfaced only after the release had published.
 
 And the dry run must run W4's release leg: some job of release-nros.yml runs
-`just check island-shaped-workspace`, and `build` (which holds `Publish the
-release`) needs that job, so a red island-shaped workspace stops the publish.
+`just check island-shaped-workspace`, and `publish` (which holds `Publish the
+release`, phase-551 W8) reaches that job through its `needs`, transitively
+(`publish` -> `build` -> the island job), so a red island-shaped workspace
+stops the publish.
 A job gated on publish is already refused above, so that job runs on a dry
 run too.
 
@@ -48,7 +50,7 @@ WF = ROOT / ".github" / "workflows"
 # (file, the input that means "publish", the paths allowed to read it)
 RULES = (
     ("release-nros.yml", "inputs.publish",
-     {"jobs.build.steps[Publish the release].if", "jobs.starter-image.with.push",
+     {"jobs.publish.steps[Publish the release].if", "jobs.starter-image.with.push",
       "jobs.lanes.steps[Refuse a rehearsal that would publish].if"}),
     ("starter-image.yml", "inputs.push",
      {"jobs.build.steps[Push].if"}),
@@ -142,13 +144,13 @@ def rehearse_problems(tree, fname="release-nros.yml"):
                         ("not releasable", "the summary says not releasable")):
         if needle not in run:
             out.append(f"{fname}: lanes `verdict` step lacks `{needle}` ({why})")
-    pub = next((st for st in jobs.get("build", {}).get("steps", []) or []
+    pub = next((st for st in jobs.get("publish", {}).get("steps", []) or []
                 if st.get("name") == "Publish the release"), {})
     if LOCK not in (pub.get("if") or ""):
         out.append(f"{fname}: `Publish the release` is reachable without `{LOCK}`")
     if LOCK not in str((jobs.get("starter-image", {}).get("with") or {}).get("push", "")):
         out.append(f"{fname}: the image push is reachable without `{LOCK}`")
-    for job in ("build", "starter-image"):
+    for job in ("publish", "starter-image"):
         needs = jobs.get(job, {}).get("needs", [])
         needs = [needs] if isinstance(needs, str) else list(needs)
         if "lanes" not in needs:
@@ -156,18 +158,33 @@ def rehearse_problems(tree, fname="release-nros.yml"):
     return out
 
 
+def _needs(jobs, name):
+    needs = jobs.get(name, {}).get("needs", [])
+    return [needs] if isinstance(needs, str) else list(needs)
+
+
+def needs_closure(jobs, name):
+    """Every job `name` waits for, directly or through another job's `needs`."""
+    seen, todo = set(), list(_needs(jobs, name))
+    while todo:
+        n = todo.pop()
+        if n not in seen:
+            seen.add(n)
+            todo += _needs(jobs, n)
+    return seen
+
+
 def island_problems(tree, fname="release-nros.yml"):
-    """W4's release leg: a job runs ISLAND, and `build` needs that job."""
+    """W4's release leg: a job runs ISLAND, and `publish` waits for that job."""
     jobs = tree.get("jobs", {})
     runners = [name for name, job in jobs.items()
                if any(ISLAND in (st.get("run") or "") for st in job.get("steps", []) or [])]
     if not runners:
         return [f"{fname}: no job runs `{ISLAND}`; the dry run must rehearse W4's release leg "
                 "(phase-567 W3)"]
-    needs = jobs.get("build", {}).get("needs", [])
-    needs = [needs] if isinstance(needs, str) else list(needs)
+    needs = needs_closure(jobs, "publish")
     if not any(r in needs for r in runners):
-        return [f"{fname}: `jobs.build.needs` names none of {', '.join(runners)}, so "
+        return [f"{fname}: `jobs.publish.needs` reaches none of {', '.join(runners)}, so "
                 f"`Publish the release` does not wait for `{ISLAND}`"]
     return []
 
@@ -215,6 +232,10 @@ def self_test(trees):
     m["jobs"]["build"]["needs"] = [n for n in needs if n != "island-shaped-workspace"]
     if not island_problems(m):
         fails.append("negative control not refused: `build` no longer needs the island-shaped job")
+    m = copy.deepcopy(rel)
+    m["jobs"]["publish"]["needs"] = ["lanes"]
+    if not island_problems(m):
+        fails.append("negative control not refused: `publish` no longer waits for `build`")
 
     if rehearse_problems(rel):
         fails.append("baseline: the real release-nros.yml fails the rehearse rule, so its "
@@ -233,7 +254,7 @@ def self_test(trees):
             st["if"] = "${{ inputs.rehearse }}"
     r_refused(m, "the guard no longer reads publish")
     m = copy.deepcopy(rel)
-    st = next(st for st in m["jobs"]["build"]["steps"] if st.get("name") == "Publish the release")
+    st = next(st for st in m["jobs"]["publish"]["steps"] if st.get("name") == "Publish the release")
     st["if"] = "${{ inputs.publish }}"
     r_refused(m, "`Publish the release` reachable without releasable")
     m = copy.deepcopy(rel)
@@ -275,7 +296,7 @@ def main():
     print("check-release-rehearsal: OK (a dry run differs from a publish only by the tag + release "
           "step and the image push, runs the island-shaped workspace before publishing, and a "
           "rehearsal is refused with publish and locked out of both by `releasable`; "
-          "15 negative controls refused)")
+          "16 negative controls refused)")
     return 0
 
 

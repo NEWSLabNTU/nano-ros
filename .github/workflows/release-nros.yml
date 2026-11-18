@@ -95,9 +95,12 @@
 #                                     verify, so a release without this is
 #                                     un-installable by design
 #
-# Linux x86_64 only for now. macOS is deferred by the tree, and linux-arm64
-# waits on a runner decision — it is one matrix row when that is made, and the
-# index already has the host key for it.
+# Linux x86_64, plus linux-arm64 once its runner is registered (phase-551 W8,
+# user ruling 2026-11-18: a SELF-HOSTED arm64 runner, role label `nros-arm64`).
+# The arm64 row of `build` exists only when the repository variable
+# `NROS_ARM64_RUNNER_READY` is 'true', which the operator sets after
+# registering it; until then no job waits on a runner that does not exist.
+# macOS is deferred by the tree.
 name: release nros
 
 on:
@@ -304,16 +307,29 @@ jobs:
           just check island-shaped-workspace
 
   build:
-    name: build + verify nros-linux-x86_64
+    name: build + verify nros-linux-${{ matrix.arch }}
     needs: [lanes, island-shaped-workspace]
+    # phase-551 W8: one row per asset. `x86_64` always; `arm64` only when its
+    # self-hosted runner is registered (`vars.NROS_ARM64_RUNNER_READY`), so the
+    # row is absent, never queued, before then. The asset name is
+    # `nros-linux-<arch>`, the key `scripts/install.sh` maps `uname -m` to.
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64]
+        include: ${{ fromJSON(vars.NROS_ARM64_RUNNER_READY == 'true' && '[{"arch":"arm64"}]' || '[]') }}
     # 22.04, not `latest`: the binary links the runner's glibc, and a newer one
     # will not run on the LTS the book's install instructions target. The floor
-    # is a property of the release, so it is pinned rather than inherited.
-    runs-on: ubuntu-22.04
-    # Longest green run 8.7 min (n=13); twice that, rounded up.
-    timeout-minutes: 20
+    # is a property of the release, so it is pinned rather than inherited. The
+    # arm64 runner is the same LTS (its registration requirement), and the
+    # installed-track probe reads the one pinned base this names for x86_64.
+    runs-on: ${{ matrix.arch == 'arm64' && fromJSON('["self-hosted","linux","ARM64","nros-arm64"]') || 'ubuntu-22.04' }}
+    # x86_64: longest green run 8.7 min (n=13). arm64 has no run yet, so the
+    # bound is 60 for both rows until its first green run is measured; then
+    # twice the longer of the two.
+    timeout-minutes: 60
     permissions:
-      contents: write
+      contents: read
       # issue 2325 — read the board-verifying lanes' last runs (record-lane-runs.py).
       actions: read
     steps:
@@ -337,6 +353,7 @@ jobs:
       # discards it and `apt-get install` with no packages exits 0, so a failed
       # resolve installs nothing and the step goes green (issue 1466).
       - name: Install zstd
+        if: ${{ matrix.arch == 'x86_64' }}
         run: |
           if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt zstd)"; then
             echo "::error::prereq-packages.py could not resolve zstd from nros-sdk-index.toml"
@@ -352,6 +369,25 @@ jobs:
           # (`scripts/probe/build-release-asset.sh`) mirrors this step.
           # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
           sudo apt-get install -y $pkgs python3-tomli
+
+      # phase-551 W8 — the self-hosted arm64 runner gets no `sudo`: a missing
+      # tool is the runner's provisioning, so this names it rather than
+      # installing it. The list is the hosted step's above, plus what the
+      # hosted image already carries.
+      - name: Check the arm64 runner's prerequisites
+        if: ${{ matrix.arch == 'arm64' }}
+        run: |
+          missing=""
+          for t in git curl zstd tar cc make pkg-config python3 rustup cargo sha256sum; do
+              command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
+          done
+          python3 -c 'import tomllib' 2>/dev/null || python3 -c 'import tomli' 2>/dev/null \
+              || missing="$missing python3-tomli"
+          if [ -n "$missing" ]; then
+              echo "::error::the arm64 runner lacks:$missing (phase-551 W8 runner requirements; it is provisioned without sudo)" >&2
+              exit 1
+          fi
+          test "$(uname -m)" = aarch64 || { echo "::error::an nros-arm64 runner reports $(uname -m)" >&2; exit 1; }
 
       # Issue 2635: the starter images are built from the release's tag AFTER
       # it is published, so a context that cannot be written (a book edit the
@@ -580,13 +616,13 @@ jobs:
               packages/rmw/zenoh/nros_zenoh_tools/Cargo.toml:nros_zenoh_tools \
               packages/rmw/xrce/nros_px4_tools/Cargo.toml:nros_px4_tools \
               "Cargo.toml:nros-cpp:$px4_features"
-          cp "$stage/share/nros/sbom.cdx.json" "$RUNNER_TEMP/nros-linux-x86_64.cdx.json"
+          cp "$stage/share/nros/sbom.cdx.json" "$RUNNER_TEMP/nros-linux-${{ matrix.arch }}.cdx.json"
           # Prefix-rooted, the mirror shape every other dist in the index uses,
           # so `sdk_store::execute`'s default unpack lands it unchanged.
-          tar --zstd -cf "$RUNNER_TEMP/nros-linux-x86_64.tar.zst" -C "$stage" bin share
+          tar --zstd -cf "$RUNNER_TEMP/nros-linux-${{ matrix.arch }}.tar.zst" -C "$stage" bin share
           cd "$RUNNER_TEMP"
-          sha256sum nros-linux-x86_64.tar.zst >nros-linux-x86_64.tar.zst.sha256
-          cat nros-linux-x86_64.tar.zst.sha256
+          sha256sum nros-linux-${{ matrix.arch }}.tar.zst >nros-linux-${{ matrix.arch }}.tar.zst.sha256
+          cat nros-linux-${{ matrix.arch }}.tar.zst.sha256
 
       - name: Prove the asset installs, before publishing it
         run: |
@@ -600,11 +636,11 @@ jobs:
           server=$!
           trap 'kill $server' EXIT
           for _ in $(seq 1 50); do
-              curl -fsS -o /dev/null "http://127.0.0.1:8422/nros-linux-x86_64.tar.zst" && break
+              curl -fsS -o /dev/null "http://127.0.0.1:8422/nros-linux-${{ matrix.arch }}.tar.zst" && break
               sleep 0.2
           done
           NROS_HOME="$RUNNER_TEMP/probe" \
-            NROS_INSTALL_URL="http://127.0.0.1:8422/nros-linux-x86_64.tar.zst" \
+            NROS_INSTALL_URL="http://127.0.0.1:8422/nros-linux-${{ matrix.arch }}.tar.zst" \
             sh scripts/install.sh
           installed="$RUNNER_TEMP/probe/bin/nros"
           test -x "$installed"
@@ -660,11 +696,47 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nros-linux-x86_64
+          name: nros-linux-${{ matrix.arch }}
           path: |
-            ${{ runner.temp }}/nros-linux-x86_64.tar.zst
-            ${{ runner.temp }}/nros-linux-x86_64.tar.zst.sha256
-            ${{ runner.temp }}/nros-linux-x86_64.cdx.json
+            ${{ runner.temp }}/nros-linux-${{ matrix.arch }}.tar.zst
+            ${{ runner.temp }}/nros-linux-${{ matrix.arch }}.tar.zst.sha256
+            ${{ runner.temp }}/nros-linux-${{ matrix.arch }}.cdx.json
+
+  # phase-551 W8: the tag and the GitHub release, once, after EVERY `build` row
+  # verified its asset, so a release carries each asset or none. It ran inside
+  # `build` while there was one asset. It runs on dry runs too and only its one
+  # step is publish-gated (`check release-rehearsal`).
+  publish:
+    name: publish the release
+    needs: [lanes, build]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nros-linux-*
+          path: ${{ runner.temp }}/assets
+          merge-multiple: true
+      - name: List the assets every build row verified
+        run: ls -l "$RUNNER_TEMP/assets"
+      # The release footer's codegen version comes from the SHIPPED binary: the
+      # verified x86_64 asset, unpacked here. `tar` shells out to `zstd`,
+      # resolved from the index as in `build` (issue 1466: resolve first).
+      - name: Unpack the shipped nros
+        run: |
+          if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt zstd)"; then
+            echo "::error::prereq-packages.py could not resolve zstd from nros-sdk-index.toml"
+            exit 1
+          fi
+          sudo apt-get update
+          # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
+          sudo apt-get install -y $pkgs
+          mkdir -p "$RUNNER_TEMP/shipped"
+          tar --zstd -xf "$RUNNER_TEMP/assets/nros-linux-x86_64.tar.zst" -C "$RUNNER_TEMP/shipped" bin/nros
+          "$RUNNER_TEMP/shipped/bin/nros" --codegen-version
 
       - name: Publish the release
         if: ${{ inputs.publish && needs.lanes.outputs.releasable == 'true' }}
@@ -674,27 +746,25 @@ jobs:
         run: |
           set -euo pipefail
           tag="nros-${{ inputs.version }}"
-          nros="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
           # The body is the release's book page (prose, minus its `# ` title:
-          # the release carries `nros <version>` already; refused above if
+          # the release carries `nros <version>` already; refused in `build` if
           # absent), then a footer GENERATED from what this run knows: the
-          # codegen version the verified binary reports and the install line.
+          # codegen version the shipped binary reports and the install line.
           # A fact is never hand-copied into the page.
-          if ! codegen="$("$nros" --codegen-version)"; then
-            echo "::error::the built nros could not report its codegen version" >&2
+          if ! codegen="$("$RUNNER_TEMP/shipped/bin/nros" --codegen-version)"; then
+            echo "::error::the shipped nros could not report its codegen version" >&2
             exit 1
           fi
           python3 scripts/lib/release_notes.py --body "$VERSION" "$RUNNER_TEMP/notes.md" \
               --codegen "$codegen" --repo '${{ github.repository }}'
           # `--target` pins the release to the commit that was verified above,
-          # not to whatever the branch points at when this step runs.
+          # not to whatever the branch points at when this step runs. Every
+          # asset `build` produced, each with its checksum and SBOM.
           gh release create "$tag" \
               --target "$GITHUB_SHA" \
               --title "nros ${{ inputs.version }}" \
               --notes-file "$RUNNER_TEMP/notes.md" \
-              "$RUNNER_TEMP/nros-linux-x86_64.tar.zst" \
-              "$RUNNER_TEMP/nros-linux-x86_64.tar.zst.sha256" \
-              "$RUNNER_TEMP/nros-linux-x86_64.cdx.json"
+              "$RUNNER_TEMP"/assets/nros-linux-*
 
   # RFC-0127 D6, phase-551 W4: the starter image, on every published release
   # (Q5), built from the tag the step above just created. It pushes only the
@@ -710,7 +780,9 @@ jobs:
   starter-image:
     name: starter image (${{ matrix.target }})
     # `lanes` for its `releasable` output: `needs` reaches direct dependencies only.
-    needs: [lanes, build]
+    # `publish` (phase-551 W8): a pushed image never precedes its release, as
+    # when the release step sat inside `build`; on a dry run it only orders.
+    needs: [lanes, build, publish]
     strategy:
       fail-fast: false
       matrix:

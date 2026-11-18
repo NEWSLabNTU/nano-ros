@@ -1,7 +1,7 @@
 # Phase 551 — The starter image
 
-**Status (2026-11-18). IN PROGRESS: W0–W7 are done; W8 is BLOCKED on the
-user's choice of an arm64 runner and on a release to publish it (see W8).** The first release to publish the image is `0.6.0-nros9`
+**Status (2026-11-18). IN PROGRESS: W0–W7 are done; W8 (arm64, on a
+self-hosted runner per the user's 2026-11-18 ruling) is in progress.** The first release to publish the image is `0.6.0-nros9`
 (W4); `0.6.0-nros10` published `starter` and, on dispatch, `starter-zephyr`
 (W3), and a second publish of `0.6.0-nros10` was refused (W4). Work for
 [RFC-0127](../design/0127-starter-image.md): option B (D1's structure, D4,
@@ -253,25 +253,39 @@ on top of it.
 
 ### W8 — arm64
 
-- **Status:** BLOCKED (2026-11-18) on two decisions, both the user's, and on
-  nothing in the tree. Read off the tree that day:
-  1. **Which arm64 runner.** No arm64 runner exists. The repository has only
-     two self-hosted runners, both `X64` (118 and 241), and no workflow
-     names an arm runner. `release-nros.yml`'s header says "linux-arm64 waits
-     on a runner decision". The candidates:
-     - GitHub's hosted `ubuntu-24.04-arm`, which costs nothing because the
-       repository is PUBLIC. The SDK's arm64 dists already use it (phase-187).
-     - A self-hosted arm64 runner, built from the same generated image as
-       the X64 ones (issue 1457).
-     Q6 ruled the ORDER (amd64 first, arm64 next), not the runner.
-  2. **A release that publishes it.** Acceptance is `starter` published for
-     `linux/arm64`, and a publish goes only through `release-nros.yml` (W4),
-     which is the user's call.
-  Once the runner is chosen, the code is one matrix row for the asset
-  (`build-release-asset.sh` on the arm runner), plus `linux/arm64` in the
-  starter image's platforms, plus W5's probe on that runner. A
-  `rehearse=true` dry run then proves it before any publish. The index
-  already has the `linux-arm64` host key.
+- **Status:** OPEN (in progress 2026-11-18). Ruled by the user on 2026-11-18,
+  relayed by the nros 241 manager: releases publish `linux/arm64` starter
+  images, built and tested on a SELF-HOSTED arm64 runner (not GitHub's hosted
+  `ubuntu-24.04-arm`). The user provides and registers that runner; no session
+  sets it up.
+  - **Runner contract.** Labels `self-hosted, Linux, ARM64, nros-arm64`, and no
+    X64 role. Ubuntu 22.04 aarch64 (the asset's glibc floor). Docker Engine
+    with buildx, usable without sudo. Preinstalled: git, curl, zstd, tar, a C
+    toolchain, make, pkg-config, python3 with tomli, rustup. At least 150 GB
+    free, 16 GB RAM and 8 cores. Dedicated to `nros-arm64` jobs.
+  - **Inert until registered.** Every arm64 job exists only when the repository
+    variable `NROS_ARM64_RUNNER_READY` is `'true'`, which the operator sets
+    after registering. Until then nothing queues on a runner that does not
+    exist, and a release runs exactly as it did before.
+  - **Stage 1, the asset.** `release-nros.yml`'s `build` is a matrix over
+    `arch`: `x86_64` always, and `arm64` as a dynamic `include` behind the
+    variable. On arm64, a no-sudo prerequisite check replaces the hosted
+    `apt-get` step. Assets are `nros-linux-<arch>`, the key `install.sh`
+    already maps `uname -m` to. `Publish the release` moved into its own
+    `publish` job that needs every `build` row, so a release carries each
+    asset or none, and the starter images wait for it.
+    `check release-rehearsal` follows the step to `publish` and asks the
+    island rule transitively. The installed-track probe's extractor takes the
+    one pinned Ubuntu base a matrix `runs-on` names.
+  - **Stage 2, the image (after the runner is close to Online).**
+    `starter-image.yml` runs per arch: build, the `image` probe track and W5's
+    probe on that arch's runner. Each arch is pushed BY DIGEST, and a merge
+    job makes `<ver>` a manifest list (amd64, plus arm64 when ready). No new
+    user-visible tag, so RFC-0127's tag set and D7 (`latest` moves only
+    through the probe track) are unchanged.
+  - **Acceptance waits on the first green run on the real runner**: a
+    `rehearse=true` dry run with the variable set, then a release that
+    publishes both.
 
 Gate: Q6, ruled 2026-11-12 (amd64 first, arm64 next), and the runner decision `release-nros.yml` already waits on. One
 matrix row for the asset and one platform for the image.
