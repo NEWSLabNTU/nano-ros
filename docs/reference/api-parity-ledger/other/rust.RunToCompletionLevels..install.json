@@ -1,0 +1,5 @@
+{
+  "key": "rust:RunToCompletionLevels::install",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- hands the runner its level core once, before any level runs. rclrs has no levels."
+}

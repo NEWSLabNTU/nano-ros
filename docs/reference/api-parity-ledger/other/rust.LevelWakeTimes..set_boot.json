@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelWakeTimes::set_boot",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- which level boots; its deadline never arms the wake. rclrs has no levels."
+}

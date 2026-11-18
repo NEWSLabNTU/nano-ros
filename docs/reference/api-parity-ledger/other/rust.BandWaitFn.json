@@ -1,0 +1,5 @@
+{
+  "key": "rust:BandWaitFn",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- re-exported from nros-node for the `nros::main!` RTIC level runner: how a level's waiter waits. rclrs has no levels."
+}

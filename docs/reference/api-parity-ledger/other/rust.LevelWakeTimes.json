@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelWakeTimes",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- the deadlines a run-to-completion level runner wakes its levels for, as 32-bit wrapping microsecond times (Cortex-M3 has no 64-bit atomics). rclrs has no levels."
+}

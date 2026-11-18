@@ -59,7 +59,7 @@ pub use entry::{BoardEntry, DeployOverlay, LinkKind};
 pub use exit::BoardExit;
 pub use init::BoardInit;
 pub use print::BoardPrint;
-pub use rtic_entry::RticBoardEntry;
+pub use rtic_entry::{RticBoardEntry, rtic_dispatchers_agree};
 pub use runtime::{
     NodeDispatchRuntime, NullNodeRuntime, RuntimeCtx, RuntimeError, SignaledCallback,
 };

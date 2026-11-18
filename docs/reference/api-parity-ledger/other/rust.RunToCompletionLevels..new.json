@@ -1,0 +1,5 @@
+{
+  "key": "rust:RunToCompletionLevels::new",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- an empty runner, for a `static`. rclrs has no levels."
+}
