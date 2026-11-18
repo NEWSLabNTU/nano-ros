@@ -785,6 +785,13 @@ const RTIC_LEVELS_BOUND_US: i64 = 500;
 /// meet [`RTIC_LEVELS_BOUND_US`], and every one must meet
 /// [`RTIC_LEVELS_IDLE_CAP_US`], under the 200 ms the boot level's own park
 /// would take without the level wake.
+///
+/// The design's bound (RFC-0112 D3, phase-562 W10) is
+/// [`RTIC_LEVELS_BOUND_US`], and it is measured where the guest's clock is its
+/// own: while the boot level burns. These two idle numbers are an allowance
+/// for QEMU, not part of that bound. Do not tighten them to make the bound
+/// look stricter, and do not loosen [`RTIC_LEVELS_BOUND_US`] to absorb idle
+/// jitter.
 const RTIC_LEVELS_IDLE_ON_TIME_SHARE: f64 = 0.95;
 const RTIC_LEVELS_IDLE_CAP_US: i64 = 20_000;
 
