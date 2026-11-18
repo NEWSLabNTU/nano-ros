@@ -316,6 +316,15 @@ pub fn run(args: Args) -> Result<()> {
         &crate::orchestration::store::root(),
     )?;
 
+    // issue 2716 -- the store against every `[tool.*]` pin. Warns, never
+    // counts: a stale or missing tool is reported with its setup command and
+    // does not fail the doctor. Before `just doctor`, which can bail.
+    report_sdk_drift(
+        args.workspace.as_deref(),
+        args.board.as_deref(),
+        &crate::orchestration::sdk_store::store_root(),
+    );
+
     // The nano-ros workspace health (`just doctor`). When a bringup
     // `system.toml` was checked, missing the nano-ros workspace is non-fatal
     // (we're in a user deploy project, not the nano-ros repo); otherwise it
@@ -379,6 +388,101 @@ pub fn run(args: Args) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// issue 2716 -- compare the SDK store with every `[tool.*]` pin, and say so.
+///
+/// `nros setup --check` already walks `[tool.*]`, but `just doctor` keeps only
+/// its `[BROKEN]` lines, so a tool whose pin moved past what the store holds
+/// was invisible: on one host `sccache` was pinned 0.17.0-nros1 for two months
+/// while every gate ran the 0.8.2-nros1 install beside it.
+///
+/// What is required comes from the index alone (`[tool.*] need`, plus the
+/// `--board`'s packages); this keeps no list of tool names. Nothing here is a
+/// problem count: a stale or missing tool is a WARNING naming the setup verb,
+/// superseded versions and unindexed directories are information, and the
+/// store is only read.
+fn report_sdk_drift(workspace: Option<&Path>, board: Option<&str>, store: &Path) {
+    let Some(index_path) = crate::cmd::setup::locate_index(workspace) else {
+        return;
+    };
+    let index = match SdkIndex::load(&index_path) {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!(
+                "nros doctor: SDK tools -- cannot read {}: {e:#}",
+                index_path.display()
+            );
+            return;
+        }
+    };
+    // An unknown board is reported by the license-gate check above, in the
+    // `nros setup` wording; here it only narrows nothing.
+    let board_tools: Vec<&str> = board
+        .and_then(|b| crate::cmd::setup::resolve_packages(&index, b).ok())
+        .unwrap_or_default();
+    let drift = crate::orchestration::sdk_store::sdk_drift(&index, store, &board_tools);
+    eprintln!(
+        "nros doctor: SDK tools vs {} (store {})",
+        index_path.display(),
+        store.display()
+    );
+    for line in render_sdk_drift(&drift) {
+        eprintln!("{line}");
+    }
+}
+
+/// The lines [`report_sdk_drift`] prints -- split out so a test can hold the
+/// wording, the setup command above all, without a store on the host.
+fn render_sdk_drift(drift: &crate::orchestration::sdk_store::SdkDrift) -> Vec<String> {
+    use crate::orchestration::sdk_store::ToolDrift;
+
+    let mut lines = Vec::new();
+    let mut ok = 0usize;
+    let mut absent_opt_in = 0usize;
+    for row in &drift.rows {
+        match &row.state {
+            ToolDrift::Ok => ok += 1,
+            ToolDrift::AbsentOptIn => absent_opt_in += 1,
+            ToolDrift::Stale { have } => lines.push(format!(
+                "  [WARN] stale    {}: pinned {}, the store holds {} -- fix: nros setup --tool {}",
+                row.name,
+                row.want,
+                have.join(", "),
+                row.name
+            )),
+            ToolDrift::MissingRequired => lines.push(format!(
+                "  [WARN] missing  {} {} (required) -- fix: nros setup --tool {}",
+                row.name, row.want, row.name
+            )),
+        }
+    }
+    lines.push(format!(
+        "  [OK]   {ok} tool(s) at their pin ({absent_opt_in} opt-in tool(s) not installed -- not checked)"
+    ));
+    let superseded: Vec<String> = drift
+        .rows
+        .iter()
+        .filter(|r| !r.superseded.is_empty())
+        .map(|r| format!("{} {}", r.name, r.superseded.join(", ")))
+        .collect();
+    if !superseded.is_empty() {
+        lines.push(
+            "  [--]   superseded versions on disk (information only; nothing resolves them \
+             while the pin is installed, and nothing here removes them):"
+                .to_string(),
+        );
+        for s in superseded {
+            lines.push(format!("           {s}"));
+        }
+    }
+    if !drift.unindexed.is_empty() {
+        lines.push(format!(
+            "  [--]   store dirs no [tool.*] row names (information only): {}",
+            drift.unindexed.join(", ")
+        ));
+    }
+    lines
 }
 
 /// RFC-0119 D4 — every provider override in the current workspace: name,
@@ -1076,6 +1180,66 @@ fn is_executable(path: &Path) -> bool {
 #[cfg(not(unix))]
 fn is_executable(path: &Path) -> bool {
     path.is_file()
+}
+
+#[cfg(test)]
+mod sdk_drift_render_tests {
+    use super::render_sdk_drift;
+    use crate::orchestration::sdk_store::{SdkDrift, ToolDrift, ToolDriftRow};
+
+    fn row(name: &str, want: &str, state: ToolDrift, superseded: &[&str]) -> ToolDriftRow {
+        ToolDriftRow {
+            name: name.into(),
+            want: want.into(),
+            state,
+            superseded: superseded.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// issue 2716 -- each warning names the exact verb that fixes it; an
+    /// absent opt-in tool gets no line of its own.
+    #[test]
+    fn a_warning_names_the_setup_command_and_opt_in_stays_silent() {
+        let drift = SdkDrift {
+            rows: vec![
+                row("okay", "2.0", ToolDrift::Ok, &["1.0"]),
+                row(
+                    "sccache",
+                    "0.17.0-nros1",
+                    ToolDrift::Stale {
+                        have: vec!["0.8.2-nros1".into()],
+                    },
+                    &[],
+                ),
+                row("nextest", "0.9", ToolDrift::MissingRequired, &[]),
+                row("mdbook", "0.4", ToolDrift::AbsentOptIn, &[]),
+            ],
+            unindexed: vec!["zenohd".into()],
+        };
+        let text = render_sdk_drift(&drift).join("\n");
+        assert!(
+            text.contains(
+                "[WARN] stale    sccache: pinned 0.17.0-nros1, the store holds 0.8.2-nros1 \
+                 -- fix: nros setup --tool sccache"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "[WARN] missing  nextest 0.9 (required) -- fix: nros setup --tool nextest"
+            ),
+            "{text}"
+        );
+        assert!(
+            !text.contains("mdbook"),
+            "an absent opt-in tool is named:\n{text}"
+        );
+        assert!(text.contains("1 tool(s) at their pin (1 opt-in"), "{text}");
+        assert!(text.contains("okay 1.0"), "{text}");
+        assert!(text.contains("names (information only): zenohd"), "{text}");
+        // Information only: no line offers to delete anything.
+        assert!(!text.contains("rm "), "{text}");
+    }
 }
 
 #[cfg(test)]

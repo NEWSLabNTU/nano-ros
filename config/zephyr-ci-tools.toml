@@ -25,6 +25,7 @@
 # alone now runs the installer, and the `smoke` probes below make the difference
 # between "the bytes arrived" and "a compiler in here runs" a MEASURED one.
 version = "0.16.9"
+need = "opt-in"
 upstream = "v0.16.9" # sdk-ng release tag (SSOT for the URLs below)
 # phase-517 W10 — the SDK's own `setup.sh` (`post_install` below) refuses to
 # run without `wget` ([prereq.wget] says why). Declared HERE so the plan asks
@@ -120,6 +121,7 @@ dist.macos-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releas
 # Checksums are upstream's own, from the release's `sha256.sum`; the
 # linux-x86_64 one was additionally verified against a local download.
 version = "1.0.1"
+need = "opt-in"
 upstream = "v1.0.1" # sdk-ng release tag (SSOT for the URLs below)
 subdir = "zephyr-sdk-{version}"
 # 1.0.x moved the toolchains under `gnu/` — the 0.16.x entry's probes are at the
