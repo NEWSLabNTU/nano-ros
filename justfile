@@ -2731,9 +2731,13 @@ _codegen lane="all": setup-launch-resolve (generate-bindings lane) (_require-lea
 # lane must stay green on a tree that has not sourced `activate.sh`; a fixture
 # build already may not be (the CLAUDE.md sweep contract), which is what makes
 # this edge the honest home for an ENVIRONMENT question.
+# Issue 2697 -- and asks WHICH REVISION each provisioned workspace holds,
+# against this checkout's west pins: whose it is (above) was never the whole
+# question, and a west build against the wrong kernel succeeds.
 [private]
 _require-owned-provisioned-roots:
     @bash scripts/check-zephyr-workspace-checkout.sh
+    @python3 scripts/check-zephyr-pin-drift.py
 
 [private]
 _require-build-sources:
@@ -5675,6 +5679,19 @@ _doctor-host:
     else
         echo "  [FAIL] the Zephyr workspace names ANOTHER nano-ros checkout (issue 1387):"
         echo "$zws_out" | sed 's/^/         /'
+        host_rc=1
+    fi
+    # Issue 2697 -- and WHICH REVISION each provisioned workspace holds: whose
+    # it is (above) is not the whole question. A workspace left at an old
+    # kernel after a pin move builds fine and boots the wrong Zephyr. Read-only
+    # git, no network.
+    zpd_rc=0
+    zpd_out="$(python3 "{{justfile_directory()}}/scripts/check-zephyr-pin-drift.py" 2>&1)" || zpd_rc=$?
+    if [ "$zpd_rc" -eq 0 ]; then
+        echo "  [OK] $(printf '%s\n' "$zpd_out" | tail -1 | sed 's/^check-zephyr-pin-drift: OK -- //')"
+    else
+        echo "  [FAIL] a provisioned Zephyr workspace is off this checkout's west pins:"
+        echo "$zpd_out" | sed 's/^/         /'
         host_rc=1
     fi
     # NuttX's kconfig tools. A NuttX kernel is configured by NuttX's own

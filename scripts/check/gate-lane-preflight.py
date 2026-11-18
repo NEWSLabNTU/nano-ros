@@ -78,6 +78,21 @@ def probe_submodule_drift() -> tuple[str, str] | None:
     return None if r.returncode == 0 else parse_drift(r.stderr)
 
 
+def probe_zephyr_pin_drift() -> tuple[str, str] | None:
+    """A provisioned Zephyr workspace whose projects sit off THIS checkout's
+    west pins (issue 2697): a build there uses a kernel the pin does not name,
+    and only the boot banner says so. Same shape as `probe_submodule_drift`,
+    over the same classifier (`scripts/lib/pin-drift.sh`); refused, never
+    moved, because the workspace is shared by every session on the host."""
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "check-zephyr-pin-drift.py")],
+                       cwd=ROOT, capture_output=True, text=True)
+    if r.returncode == 0:
+        return None
+    what, fix = parse_drift(r.stderr)
+    return what, (fix if fix != "bash scripts/check-submodule-drift.sh (read it)"
+                  else "python3 scripts/check-zephyr-pin-drift.py (read it)")
+
+
 def parse_drift(stderr: str) -> tuple[str, str]:
     """`check-submodule-drift.sh`'s failure text -> (each `[x]` row, each remedy)."""
     lines = [l.strip() for l in stderr.splitlines()]
@@ -282,6 +297,12 @@ def main(argv: list[str]) -> int:
         # drifted checkout), so its fix is the per-path remedy, never that.
         missing.append(("submodule-drift", drift[0]))
         REMEDY["submodule-drift"] = drift[1]
+    if ({"zephyr", "west"} & set(claims)) and (zdrift := probe_zephyr_pin_drift()) is not None:
+        # Issue 2697 -- like submodule-drift, a state of the HOST's workspace
+        # that no provisioner here may change (it is shared), so the fix is
+        # the printed per-project remedy.
+        missing.append(("zephyr-pin-drift", zdrift[0]))
+        REMEDY["zephyr-pin-drift"] = zdrift[1]
     if missing:
         print(f"gate-lane-preflight: lane `{lane}` claims what this host does not have:",
               file=sys.stderr)
