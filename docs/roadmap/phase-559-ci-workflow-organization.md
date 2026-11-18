@@ -991,10 +991,11 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   W7 moves the job, and the slowdown goes with it.
 - [issue 2499](../issues/archived/2499-verus-lane-toolchain-vstd-mismatch.md) — the
   Verus lane, resolved by #3723: its job is `verify-verus` in `weekly.yml`.
-- [issue 2625](../issues/2625-gates-exceed-their-cpu-weight.md) — weight-1
-  check::build gates that run up to 22 processes (the token pool's over-weight
-  report). Parked: fix one only when it measures as a problem, the way
-  `cli-tests` was fixed (`cpu:4`, 2026-11-16).
+- [issue 2625](../issues/archived/2625-gates-exceed-their-cpu-weight.md) — weight-1
+  check::build gates that run up to 22 processes. Resolved 2026-11-19 once one
+  timed out: every build-tier gate now declares its weight with a stated basis
+  (a measured knee, the builder default 2, or light), gated by
+  `check-gate-lists`. A peak above the whole pool is issue 2718.
 - [issue 2718](../issues/2718-linker-threads-outside-the-jobserver.md) — the host
   linker runs a thread per CPU outside the gate's token pool (`rust-lld` 101 of
   one gate's 109 runnable threads).

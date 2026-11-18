@@ -31,8 +31,18 @@ host waited on cargo's lock far more than they ran, never starved for tokens,
 and differed mostly in disk waits. A red run with WAITS on is what tells a
 starved pool from a lock queue from a busy disk.
 
+ABOVE THE POOL (issue 2625). A gate's peak above its weight is ordinary: its
+cargo holds pool tokens, so the peak measures the host and the moment as much
+as the gate (one gate measured 2 to 54 across nine runs on one host). A peak
+above the whole POOL is different: the pool cannot have granted it, so some
+child ran outside the jobserver. With `--pool <n>`, each sample in which a gate
+runs more threads than that records the gate's top commands into
+`<file>.over`, and the report names them. Reported, not failed: whether it
+happens depends on timing, so a failure on it would be a new flake.
+
 Usage:
-  run-load-sampler.py sample <file> [--interval S]   append samples until killed
+  run-load-sampler.py sample <file> [--interval S] [--pool N]
+                                                     append samples until killed
   run-load-sampler.py report <file> <tokens> [<from> <to>]
                                                      print the summary, over the
                                                      samples in [from, to] epoch
@@ -145,10 +155,11 @@ def comm_of(pid):
         return "?"
 
 
-def runnable_by_owner(cache):
+def runnable_by_owner(cache, comms=None):
     """(lane, counts): runnable THREADS (what `procs_running` counts) that the
     lane owns, and per owner: a gate test, or `?<comm>` for one no gate test
-    owns (`!<comm>` when it is not the lane's at all, e.g. another tenant)."""
+    owns (`!<comm>` when it is not the lane's at all, e.g. another tenant).
+    With `comms`, also each gate's runnable threads by command."""
     counts, lane = {}, 0
     fifo = cache.get("fifo")
     for d in os.listdir("/proc"):
@@ -181,6 +192,10 @@ def runnable_by_owner(cache):
                     fifo = None
         key = g or ("?" if in_lane else "!") + comm_of(d)
         counts[key] = counts.get(key, 0) + n
+        if comms is not None and g:
+            per = comms.setdefault(g, {})
+            c = comm_of(d)
+            per[c] = per.get(c, 0) + n
     free = fifo_tokens(fifo) if fifo else None
     if free is None and fifo:
         # That pool is gone (one lane step's pool ended and the next opened
@@ -243,20 +258,54 @@ def waits_by_gate(cache):
     return out
 
 
-def sample(path, interval):
+def above_pool_line(now, counts, comms, pool):
+    """`.over` lines: each gate test running more threads than the whole pool,
+    with its top commands."""
+    out = []
+    for g, n in sorted(counts.items()):
+        if g[0] in "#?!" or n <= pool:
+            continue
+        top = sorted(comms.get(g, {}).items(), key=lambda x: (-x[1], x[0]))[:6]
+        out.append(f"{now} {g} {n} " + " ".join(f"{c}={k}" for c, k in top))
+    return out
+
+
+def summarize_over(lines):
+    """gate -> (peak threads, {command: largest count seen}) from `.over`."""
+    per = {}
+    for line in lines:
+        f = line.split()
+        if len(f) < 3 or not f[0].isdigit() or not f[2].isdigit():
+            continue
+        peak, cs = per.get(f[1], (0, {}))
+        for kv in f[3:]:
+            c, _, k = kv.rpartition("=")
+            if c and k.isdigit():
+                cs[c] = max(cs.get(c, 0), int(k))
+        per[f[1]] = (max(peak, int(f[2])), cs)
+    return per
+
+
+def sample(path, interval, pool=None):
     stop = []
     signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
     cache = {}
     waits = os.environ.get("NROS_GATE_WAITS") == "1"
     wout = open(f"{path}.waits", "a") if waits else None
+    oout = open(f"{path}.over", "a") if pool else None
     with open(path, "a") as out:
         while not stop:
-            lane, counts = runnable_by_owner(cache)
+            comms = {} if oout else None
+            lane, counts = runnable_by_owner(cache, comms)
             now = str(int(time.time()))
             fields = [now, str(procs_running()), f"#lane={lane}"]
             fields += [f"{g}={n}" for g, n in sorted(counts.items())]
             out.write(" ".join(fields) + "\n")
             out.flush()
+            if oout:
+                for ln in above_pool_line(now, counts, comms, pool):
+                    oout.write(ln + "\n")
+                oout.flush()
             if wout:
                 for g, per in sorted(waits_by_gate(cache).items()):
                     wout.write(f"{now} {g} " + " ".join(
@@ -412,6 +461,21 @@ def report(path, tokens, window=None):
               "(a gate test; `?<command>`: the lane's, no gate test's; "
               "`!<command>`: not this lane's):")
         print("  " + ", ".join(f"{g} {n}" for g, n in peak[:12]))
+    try:
+        olines = Path(f"{path}.over").read_text().splitlines()
+    except OSError:
+        olines = []
+    if window:
+        olines = [ln for ln in olines if ln.split(" ", 1)[0].isdigit()
+                  and window[0] <= int(ln.split(" ", 1)[0]) <= window[1]]
+    above = summarize_over(olines)
+    if above:
+        print(f"token pool: {len(above)} gate test(s) ran more threads than the whole pool of "
+              f"{tokens}, which it cannot have granted: some child ran outside the "
+              "jobserver (top commands at those moments):")
+        for g, (n, cs) in sorted(above.items(), key=lambda x: -x[1][0]):
+            top = sorted(cs.items(), key=lambda x: (-x[1], x[0]))[:6]
+            print(f"  {g}: peak {n}; " + ", ".join(f"{c} {k}" for c, k in top))
     report_waits(path, window)
     return 0
 
@@ -468,6 +532,18 @@ def self_test():
                                  "15 - child=4", "junk"])
     case("the wait table sums a gate's samples and reads the interval",
          per["build::check::p"] == {"run": 2, "lock": 8, "disk": 1} and step == 5)
+    # issue 2625: a gate above the whole pool, named with its commands.
+    over_lines = above_pool_line("7", {"build::check::wf": 40, "build::check::ok": 32,
+                                       "?cc1": 50, "#free": 0},
+                                 {"build::check::wf": {"ld.lld": 30, "rustc": 10},
+                                  "build::check::ok": {"rustc": 32}}, 32)
+    case("a gate above the pool is recorded with its top commands",
+         over_lines == ["7 build::check::wf 40 ld.lld=30 rustc=10"])
+    case("negative control: a gate AT the pool, or no gate's process, is not recorded",
+         not any("build::check::ok" in ln or "cc1" in ln for ln in over_lines))
+    agg = summarize_over(over_lines + ["9 build::check::wf 36 ld.lld=34 ninja=2", "junk"])
+    case("above-pool samples fold to the peak and each command's largest count",
+         agg == {"build::check::wf": (40, {"ld.lld": 34, "rustc": 10, "ninja": 2})})
     if bad:
         print("run-load-sampler self-test: FAILED", file=sys.stderr)
         return 1
@@ -478,10 +554,16 @@ def main(argv):
     if argv == ["--self-test"]:
         return self_test()
     if len(argv) >= 2 and argv[0] == "sample":
-        interval = 30.0
-        if len(argv) == 4 and argv[2] == "--interval":
-            interval = float(argv[3])
-        return sample(argv[1], interval)
+        interval, pool, rest = 30.0, None, argv[2:]
+        while rest:
+            if rest[0] == "--interval" and len(rest) > 1:
+                interval, rest = float(rest[1]), rest[2:]
+            elif rest[0] == "--pool" and len(rest) > 1 and rest[1].isdigit():
+                pool, rest = int(rest[1]), rest[2:]
+            else:
+                print(__doc__.split("Usage:")[1].split("\n\n")[0], file=sys.stderr)
+                return 2
+        return sample(argv[1], interval, pool)
     if len(argv) == 3 and argv[0] == "report" and argv[2].isdigit():
         return report(argv[1], int(argv[2]))
     if len(argv) == 5 and argv[0] == "report" and all(a.isdigit() for a in argv[2:]):
