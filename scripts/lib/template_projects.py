@@ -31,7 +31,7 @@ Usage:
 from __future__ import annotations
 
 import sys
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 try:
     import tomllib
@@ -51,7 +51,11 @@ def project_of(manifest_rel: str) -> str:
 
 def images(text: str) -> list[tuple[str, str]]:
     """`(image-id, board)` for every `[image.*]` a system.toml declares."""
-    doc = tomllib.loads(text)
+    return images_of(tomllib.loads(text))
+
+
+def images_of(doc: dict) -> list[tuple[str, str]]:
+    """`(image-id, board)` for every `[image.*]` of a parsed system.toml."""
     out = []
     for image_id, block in (doc.get("image") or {}).items():
         if isinstance(block, dict):
@@ -66,9 +70,10 @@ def projects(template_dir: str, tracked: list[str]) -> list[tuple[str, str, str]
         if not f.startswith(prefix) or PurePosixPath(f).name != "system.toml":
             continue
         rel = f[len(prefix):]
-        with open(f, "rb") as fh:
-            text = fh.read().decode()
-        for image_id, board in images(text):
+        # Issue 2587 -- expanded, through the one system.toml reader (a sibling).
+        import system_toml
+
+        for image_id, board in images_of(system_toml.load(Path(f))):
             rows.append((project_of(rel), image_id, board))
     return rows
 

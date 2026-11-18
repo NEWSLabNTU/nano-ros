@@ -29,6 +29,7 @@ from pathlib import Path
 import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent.parent / "lib"))
+import system_toml as _system_toml  # noqa: E402  issue 2587, the one system.toml reader
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 SEP = "\x1f"
@@ -1286,6 +1287,13 @@ def _require_dir(entry, path, label):
 
 
 def _load_toml(entry, path):
+    # Issue 2587 -- a `system.toml` is read expanded (its `include = [..]`
+    # fragments merged), through the one Python reader.
+    if Path(path).name == "system.toml":
+        try:
+            return _system_toml.load(Path(path))
+        except _system_toml.SystemTomlError as exc:
+            _fail(entry, str(exc))
     try:
         with open(path, "rb") as f:
             return tomllib.load(f)
@@ -1809,10 +1817,12 @@ def image_features(entry):
     if not image:
         return None
     path = SCRIPT_ROOT / entry["dir"] / entry["bringup"] / "system.toml"
-    try:
-        doc = tomllib.loads(path.read_text())
-    except (OSError, tomllib.TOMLDecodeError):
+    if not path.is_file():
         return None
+    try:
+        doc = _system_toml.load(path)
+    except _system_toml.SystemTomlError as exc:
+        _fail(entry, str(exc))
     return list(((doc.get("image") or {}).get(image) or {}).get("node_features") or [])
 
 

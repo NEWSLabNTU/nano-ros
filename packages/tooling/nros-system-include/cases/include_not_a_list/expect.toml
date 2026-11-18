@@ -1,0 +1,2 @@
+root = "a/root.toml"
+error = "is a list of paths"

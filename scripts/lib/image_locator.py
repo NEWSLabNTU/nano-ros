@@ -24,19 +24,18 @@ states none — a router recipe must never fall back to a literal.
 """
 
 import os
+from pathlib import Path
 import sys
 
-try:
-    import tomllib
-except ImportError:  # Python < 3.11
-    import tomli as tomllib
 
 
 def load(path):
     if os.path.isdir(path):
         path = os.path.join(path, "system.toml")
-    with open(path, "rb") as f:
-        return tomllib.load(f), path
+    # Issue 2587 -- expanded, through the one system.toml reader (a sibling).
+    import system_toml
+
+    return system_toml.load(Path(path)), path
 
 
 def leaf_image_id(doc):

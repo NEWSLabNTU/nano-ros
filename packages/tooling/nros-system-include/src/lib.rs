@@ -305,6 +305,46 @@ mod tests {
         read(&td.path().join(p))
     }
 
+    /// The shared cases in `cases/`, which the Python reader
+    /// (`scripts/lib/system_toml.py`) runs too, so the two cannot drift
+    /// (phase-580 W2). Each case is a tree and an `expect.toml`: `root`, then
+    /// either `error` (a substring of the refusal) or `table` (the expansion)
+    /// and `files` (how many files it read).
+    #[test]
+    fn every_shared_case_expands_as_expected() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("cases");
+        let mut n = 0;
+        for case in std::fs::read_dir(&dir).unwrap().flatten() {
+            let c = case.path();
+            let expect: toml::Table = std::fs::read_to_string(c.join("expect.toml"))
+                .unwrap()
+                .parse()
+                .unwrap();
+            let root = c.join(expect["root"].as_str().unwrap());
+            let name = c.file_name().unwrap().to_string_lossy().to_string();
+            match (read(&root), expect.get("error")) {
+                (Err(e), Some(want)) => {
+                    assert!(e.contains(want.as_str().unwrap()), "{name}: {e}");
+                }
+                (Ok(got), None) => {
+                    assert_eq!(
+                        toml::Value::Table(got.table),
+                        expect["table"],
+                        "{name}: expansion"
+                    );
+                    assert_eq!(
+                        got.files.len() as i64,
+                        expect["files"].as_integer().unwrap(),
+                        "{name}: files read"
+                    );
+                }
+                (got, want) => panic!("{name}: got {got:?}, want error {want:?}"),
+            }
+            n += 1;
+        }
+        assert!(n >= 13, "only {n} cases found under {}", dir.display());
+    }
+
     #[test]
     fn a_file_with_no_include_reads_as_itself() {
         let td = tree(&[("a/system.toml", "[system]\nname = \"a\"\n")]);

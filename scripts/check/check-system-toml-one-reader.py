@@ -89,6 +89,49 @@ def offenders(path: str, text: str) -> list[str]:
     return out
 
 
+PY_HOME = "scripts/lib/system_toml.py"
+PY_READ = re.compile(r"\.read_text\(|(?<![\w.])open\(|tomllib\.loads?\(|tomli\.loads?\(")
+PY_WRITE = re.compile(r"""open\(.*,\s*["'][wa]""")
+# Case-sensitive, unlike NAMES_FILE: `system_toml` is the reader's module name.
+PY_NAMES = re.compile(r"system\.toml")
+OWN_TEXT = "# system.toml own text:"
+
+
+def py_offenders(path: str, text: str) -> list[str]:
+    """A Python read of a system.toml around `scripts/lib/system_toml.py`.
+
+    A read is `.read_text(`, `open(` (not for writing) or `tomllib.load(s)`.
+    It counts when its line names the file, or names a variable bound to it
+    within the 25 lines above. A deliberate read of a file's own text carries
+    `# system.toml own text: <reason>` on its line or the line above."""
+    lines = text.split("\n")
+    out = []
+    for i, l in enumerate(lines):
+        if not PY_READ.search(l) or PY_WRITE.search(l) or l.lstrip().startswith("#"):
+            continue
+        if OWN_TEXT in l or (i and OWN_TEXT in lines[i - 1]):
+            continue
+        hit = bool(PY_NAMES.search(l.split("#", 1)[0]))
+        if not hit:
+            # The window stops at the enclosing `def`: a name bound in another
+            # function is another variable.
+            start = max(0, i - WINDOW)
+            for j in range(i - 1, start - 1, -1):
+                if re.match(r"\s*def ", lines[j]):
+                    start = j
+                    break
+            # Names only, not attributes (`os.path` is not a variable `path`).
+            for var in set(re.findall(r"(?<![\w.])([a-z_][a-z0-9_]*)\b", l.split("#", 1)[0])):
+                bind = re.compile(rf"^\s*{var}\s*=[^=]")
+                if any(bind.search(lines[j]) and PY_NAMES.search(lines[j].split("#", 1)[0])
+                       for j in range(start, i)):
+                    hit = True
+                    break
+        if hit:
+            out.append(f"{path}:{i + 1}: {l.strip()[:120]}")
+    return out
+
+
 def selftest() -> list[str]:
     bad = []
     direct = 'fn f(d: &Path) { let t = std::fs::read_to_string(d.join("system.toml")); }'
@@ -96,6 +139,17 @@ def selftest() -> list[str]:
     other = 'fn f(d: &Path) { let t = std::fs::read_to_string(d.join("package.xml")); }'
     test_mod = '#[cfg(test)]\nmod tests {\n    fn f() { std::fs::read_to_string("system.toml"); }\n}'
     ours = 'fn f(d: &Path) { nros_system_include::read_to_string(d.join("system.toml")); }'
+    for name, src, want in [
+        ("python: a direct read", 'doc = tomllib.loads((d / "system.toml").read_text())', 1),
+        ("python: through a bound variable", 'st = d / "system.toml"\ntext = st.read_text()', 1),
+        ("python: marked own text", 'st = d / "system.toml"\n'
+         '# system.toml own text: it detects an include\ntext = st.read_text()', 0),
+        ("python: a write", 'with open(os.path.join(d, "system.toml"), "w") as fh:', 0),
+        ("python: another file", 'text = (d / "package.xml").read_text()', 0),
+    ]:
+        got = len(py_offenders("x.py", src))
+        if got != want:
+            bad.append(f"selftest: {name}: {got} offender(s), want {want}")
     for name, src, want in [
         ("direct", direct, 1),
         ("through a bound variable", via, 1),
@@ -117,36 +171,36 @@ def tracked(pattern: str) -> list[str]:
 
 def main() -> int:
     problems = selftest()
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import system_toml  # noqa: E402
+
+    problems += [f"python reader: {p}" for p in system_toml.selftest()]
     for f in tracked("packages/**/*.rs"):
         if f.startswith(HOME) or "/tests/" in f or f in ALLOWED:
             continue
         problems += offenders(f, (ROOT / f).read_text(encoding="utf8", errors="replace"))
-    includes = []
-    for f in tracked("**/system.toml") + tracked("system.toml"):
-        text = (ROOT / f).read_text(encoding="utf8", errors="replace")
-        if any(l.split("=", 1)[0].strip() == "include" for l in text.splitlines() if "=" in l):
-            includes.append(f)
+    for f in tracked("*.py"):
+        if f in (PY_HOME, "scripts/check/check-system-toml-one-reader.py") or "third-party/" in f:
+            continue
+        problems += py_offenders(f, (ROOT / f).read_text(encoding="utf8", errors="replace"))
     if problems:
         print("check-system-toml-one-reader: a system.toml is read around its one reader:")
         for p in problems:
             print(f"  {p}")
         print(
-            "  Read what the system means with nros_system_include::read_to_string (or read),\n"
-            "  which expands `include = [..]`; a tool that edits the file reads its own text\n"
-            "  with nros_system_include::read_own_text."
+            "  Read what the system means through the one reader, which expands\n"
+            "  `include = [..]`: in Rust nros_system_include::read_to_string (or read),\n"
+            "  in Python scripts/lib/system_toml.py's load (or text). A tool that edits\n"
+            "  the file reads its own text (nros_system_include::read_own_text); a Python\n"
+            "  read of its own text says why: `# system.toml own text: <reason>`."
         )
-    if includes:
-        print("check-system-toml-one-reader: a tracked system.toml uses `include`, which the")
-        print("  Python check scripts cannot expand yet:")
-        for f in includes:
-            print(f"  {f}")
-        print("  State the fragment's keys in the file until those scripts read it expanded.")
-    if problems or includes:
+    if problems:
         return 1
     print(
         "check-system-toml-one-reader: OK -- every non-test Rust read of a system.toml goes "
-        "through nros_system_include, and no tracked system.toml uses `include`; selftest: "
-        "a direct read and one through a bound variable are refused"
+        "through nros_system_include and every Python read through scripts/lib/system_toml.py; "
+        "selftest: a direct read and one through a bound variable are refused in both, and "
+        "the Python reader agrees with every shared case"
     )
     return 0
 

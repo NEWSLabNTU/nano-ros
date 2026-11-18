@@ -55,6 +55,9 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
+from pathlib import Path  # noqa: E402
 BASELINE = os.path.join(ROOT, ".config", "node-package-invariance-baseline.txt")
 
 # Platform / RMW tokens. Case-insensitive SUBSTRING match on code, so
@@ -131,7 +134,7 @@ def scope(files):
             roots.add("/".join(parts[:3]))
         if parts[1] == "templates" and parts[-1] == "system.toml":
             try:
-                body = open(os.path.join(ROOT, f), errors="replace").read()
+                body = system_toml.text(Path(ROOT) / f)  # issue 2587, expanded
             except OSError:
                 continue
             if re.search(r"(?m)^\[image\.", body):
@@ -245,10 +248,6 @@ def _toml_values(node, keys):
 
 def untracked_refs(files, roots):
     """{declaring file: [problem, ...]} for rule 4."""
-    try:
-        import tomllib
-    except ModuleNotFoundError:  # Python < 3.11
-        import tomli as tomllib
     tracked = set(files)
     tracked_dirs = set()
     for f in files:
@@ -284,8 +283,8 @@ def untracked_refs(files, roots):
                         f"add_subdirectory(`{d}`) has no tracked CMakeLists.txt")
         elif name == "system.toml":
             try:
-                doc = tomllib.load(open(os.path.join(ROOT, f), "rb"))
-            except (OSError, tomllib.TOMLDecodeError):
+                doc = system_toml.load(Path(ROOT) / f)  # issue 2587, expanded
+            except OSError:
                 continue
             under = [t for t in tracked if t.startswith(base + "/")]
             # `os_config` (alias `conf`) fragments, per image: the overlay resolver looks under the

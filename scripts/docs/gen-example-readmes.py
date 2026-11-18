@@ -36,6 +36,8 @@ import subprocess
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 EXAMPLES = REPO / "examples"
 SKIP_TOP = {"workspaces", "templates"}
 
@@ -87,7 +89,7 @@ def host_run_platforms() -> frozenset[str]:
         system = leaf / "system.toml"
         if not system.is_file():
             continue
-        names = set(re.findall(r'^board\s*=\s*"([^"]+)"', system.read_text(), re.M))
+        names = set(re.findall(r'^board\s*=\s*"([^"]+)"', system_toml.text(system), re.M))
         boards.setdefault(leaf.parts[-3], set()).update(names)
     return frozenset(
         plat
@@ -128,7 +130,7 @@ def deploy_target(leaf: pathlib.Path) -> str | None:
     system = leaf / "system.toml"
     if not system.is_file():
         return None
-    m = re.search(r"^\[image\.([^\]]+)\]", system.read_text(), re.M)
+    m = re.search(r"^\[image\.([^\]]+)\]", system_toml.text(system), re.M)
     return m.group(1) if m else None
 
 
@@ -137,7 +139,7 @@ def system_rmw(leaf: pathlib.Path) -> str | None:
     system = leaf / "system.toml"
     if not system.is_file():
         return None
-    m = re.search(r'^rmw\s*=\s*"([^"]+)"', system.read_text(), re.M)
+    m = re.search(r'^rmw\s*=\s*"([^"]+)"', system_toml.text(system), re.M)
     return m.group(1) if m else None
 
 

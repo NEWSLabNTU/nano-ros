@@ -44,6 +44,7 @@ import sys
 from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 from exemptions import Exemptions  # noqa: E402
 from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
 
@@ -155,7 +156,7 @@ def parked_leaf(repo: Path, manifest: str, parked: "set[str]") -> bool:
     while True:
         st = d / "system.toml"
         if st.is_file():
-            boards = set(BOARD.findall(st.read_text()))
+            boards = set(BOARD.findall(system_toml.text(st)))
             return bool(boards) and boards <= parked
         if d == repo or d.parent == d:
             return False

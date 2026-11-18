@@ -1,0 +1,2 @@
+root = "a/root.toml"
+error = "may not set `[system] name`"

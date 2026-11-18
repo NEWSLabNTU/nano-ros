@@ -35,7 +35,15 @@ def leaf_board(leaf_dir) -> "str | None":
     system = Path(leaf_dir) / "system.toml"
     if not system.is_file():
         return None
+    # system.toml own text: only to see whether it names an include (then expanded).
     text = system.read_text(encoding="utf-8", errors="replace")
+    # Issue 2587 -- a file that names fragments is read expanded, so a board
+    # stated in one is found. Imported only then, so the common case keeps
+    # this helper's zero-dependency property.
+    if any(ln.split("=", 1)[0].strip() == "include" for ln in text.splitlines() if "=" in ln):
+        import system_toml  # a sibling in scripts/lib
+
+        text = system_toml.text(system)
     # `[image.<id>]` (or `[image_defaults]`) then the first `board = "..."`
     # under it. Written as a scan rather than a TOML parse so this helper keeps
     # the zero-dependency property the fast lane's other gates have.

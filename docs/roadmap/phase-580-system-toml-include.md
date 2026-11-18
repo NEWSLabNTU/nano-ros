@@ -67,20 +67,48 @@ docs ship with the PR that makes every road honour the key.
 
 ## W2 — Python
 
-- **Status:** OPEN.
-- One Python reader (`scripts/lib/`) with the same rules, which every check
-  script that reads a `system.toml` uses. Its results are compared with the
-  Rust expander on shared cases, so the two cannot drift. The colcon task
-  reads through it.
-- The gate's tracked-`include` half goes.
-- **Acceptance:** a cross-check of the two expanders over the same cases;
-  the gate refuses a direct Python read.
+- **Status:** OPEN (in progress on branch `issue-2587-w2-python`, after W1).
+- `scripts/lib/system_toml.py` is the one Python reader, with the same rules
+  and messages as the Rust one. It offers `load` (the expanded table),
+  `load_with_files`, `text` (the expansion as TOML text, for a reader that
+  scans text) and `has_include`.
+- The two readers cannot drift. Both run the shared cases in
+  `packages/tooling/nros-system-include/cases/` (13: each rule, each
+  refusal). The Rust test `every_shared_case_expands_as_expected` and the
+  Python selftest assert the same `expect.toml`. `text()` reads back as the
+  expansion for every case and for all 179 tracked `system.toml`.
+- Every Python reader of a system's meaning reads through it:
+  - `fixtures-manifest`;
+  - 15 check scripts;
+  - `docs/gen-example-readmes`;
+  - `lib/{image_locator,template_projects,priority_plan,leaf_target}`.
+  - The regex readers take `text()`, so a one-call change makes them see
+    every fragment.
+  - `leaf_target` keeps its zero-dependency common case: it imports the
+    reader only when the file names an include.
+- A deliberate own-text read says why on its line
+  (`# system.toml own text: <reason>`). There are three: the colcon task's
+  include refusal, `leaf_target`'s include probe, and a selftest reading
+  back its own file. Writes are not reads.
+- The colcon task keeps its W1 refusal. An installed colcon plugin cannot
+  import `scripts/lib`, so it moves to W3 with the CMake road, both reading
+  the expansion from `nros`.
+- `check-system-toml-one-reader` gains the Python half:
+  - it refuses a `read_text` / `open` / `tomllib.load(s)` of the file
+    outside the reader, named directly or through a variable bound in the
+    same function;
+  - it runs the Python reader's case selftest;
+  - its tracked-`include` half is gone, since every Python reader now
+    expands.
+  - Mutation-checked: one migrated line put back is red.
+- **Acceptance:** the shared cases agree in both languages; the gate
+  refuses a direct Python read.
 
 ## W3 — CMake, and the user-facing docs
 
 - **Status:** OPEN.
-- The CMake text reads take the expanded system from `nros` (as the
-  configure's other facts do), and the refusals of W1 go.
+- The CMake text reads and the colcon task take the expanded system from
+  `nros` (as the configure's other facts do), and the refusals of W1 go.
 - An example workspace shares a fragment between two bringups, and both
   images build from it (the issue's "done when").
 - The book's `system.toml` reference and a guide section document the key.

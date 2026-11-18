@@ -27,8 +27,10 @@ import re
 import sys
 import sys as _sys
 from pathlib import Path as _Path
+from pathlib import Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 
 
 try:
@@ -161,12 +163,11 @@ def main():
 
     for path in system_tomls():
         rel = os.path.relpath(path, ROOT)
-        with open(path, "rb") as fh:
-            try:
-                doc = tomllib.load(fh)
-            except Exception as e:  # noqa: BLE001 — report, do not raise
-                problems.append(f"{rel}: not valid TOML: {e}")
-                continue
+        try:
+            doc = system_toml.load(Path(path))  # issue 2587, expanded
+        except Exception as e:  # noqa: BLE001 — report, do not raise
+            problems.append(f"{rel}: {e}")
+            continue
 
         # Which boards does this file build for? Any board an image names
         # (`[image.*]` is the buildable unit, RFC-0065 D6; `[deploy.*]` is

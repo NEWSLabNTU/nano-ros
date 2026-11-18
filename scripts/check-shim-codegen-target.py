@@ -63,6 +63,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import system_toml  # noqa: E402  issue 2587, the one system.toml reader
 
 BUILD_FILE_NAMES = ("build.rs", "Makefile", "makefile.defs", "CMakeLists.txt")
 BUILD_FILE_SUFFIXES = (
@@ -247,7 +249,7 @@ def main() -> int:
         for p in tracked_files():
             if p.rsplit("/", 1)[-1] == "system.toml":
                 try:
-                    yield (ROOT / p).read_text(encoding="utf-8")
+                    yield system_toml.text(ROOT / p)
                 except (OSError, UnicodeDecodeError):
                     continue
 
