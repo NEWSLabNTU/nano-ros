@@ -143,7 +143,8 @@ pub fn run(args: Args) -> Result<()> {
             "nros plan: planning from SystemModel {} (pass --model to override)",
             model_path.display()
         );
-        let model = crate::orchestration::model_ingest::load_model(model_path)?;
+        // The plan record is topology; it reads no capability switch.
+        let model = crate::orchestration::model_ingest::load_model(model_path, None)?;
         let record = crate::orchestration::model_ingest::plan_record_from_model(&model);
         let tmp = tempfile::NamedTempFile::new()?;
         std::fs::write(tmp.path(), serde_json::to_string_pretty(&record)?)?;

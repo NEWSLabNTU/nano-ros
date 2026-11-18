@@ -240,6 +240,13 @@ pub struct EntryArgs {
     #[arg(long)]
     pub board: Option<String>,
 
+    /// The `[image.<id>]` this entry is built for (`-DNROS_IMAGE`). Its own
+    /// `features` and `node_interfaces` decide which runtime services the
+    /// entry registers. Absent, the bringup's `[system]` list answers.
+    // Issue 2700.
+    #[arg(long, value_name = "ID")]
+    pub image: Option<String>,
+
     /// Launch-arg overrides — `k=v[,k=v]…`. Forwarded to the parser.
     #[arg(long, value_name = "K=V[,K=V]…")]
     pub args: Option<String>,
@@ -453,7 +460,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     let mut plan = if let Some(model_path) = &args.model {
         // phase-460 W1 (issue 1420) -- verify at this door before the bake.
         crate::model_gate::verify(model_path, None).map_err(|e| eyre!("codegen entry: {e}"))?;
-        entry_codegen::plan_from_model(model_path, board)?
+        entry_codegen::plan_from_model(model_path, board, args.image.as_deref())?
     } else if args.launch.is_some() {
         // phase-296 R-code.1 — the launch-XML entry bake is REMOVED. The
         // canonical input is a play_launch-resolved SystemModel.
@@ -502,7 +509,8 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     let mut switch_model: Option<ros_launch_manifest_model::SystemModel> = None;
     let (monitor_rows, age_rows, hazard_model, mode_rows) = match &args.model {
         Some(model_path) => {
-            let model = crate::orchestration::model_ingest::load_model(model_path)?;
+            let model =
+                crate::orchestration::model_ingest::load_model(model_path, args.image.as_deref())?;
             let modes = nros_orchestration_ir::mode_variants::all_variants(&model)
                 .map_err(|e| eyre!("codegen entry: model `{}`: {e}", model_path.display()))?
                 .into_iter()

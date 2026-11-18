@@ -362,7 +362,8 @@ pub fn lower(
     bringup_dir: &Path,
     routed: &dyn Fn(Option<&str>) -> bool,
 ) -> Result<Option<RouterRule>, String> {
-    let loaded = crate::overlay::LoadedModel::load(model_path)?;
+    // Reads topology (topic rates) only, never a switch: no image to name.
+    let loaded = crate::overlay::LoadedModel::load(model_path, None)?;
     if topic_rates(&loaded.model).is_empty() {
         return Ok(None);
     }

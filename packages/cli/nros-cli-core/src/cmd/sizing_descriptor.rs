@@ -132,6 +132,15 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "NAME")]
     pub entry: Option<String>,
 
+    /// `--from-model`: the `[image.<id>]` this configure builds
+    /// (`-DNROS_IMAGE`). Its own `features` and `node_interfaces` decide the
+    /// runtime service families the descriptor states (`infra_families`),
+    /// the same list its build reads. Absent, the bringup's `[system]` list
+    /// answers.
+    // Issue 2700.
+    #[arg(long, value_name = "ID")]
+    pub image: Option<String>,
+
     /// The `nros-metadata.json` this configure wrote.
     ///
     /// Composed with `--from-model`'s contract exactly as `nros ws
@@ -308,7 +317,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         eyre::bail!("`--from-model` needs `--build-dir` and `--entry`");
     };
 
-    let model = load_model(model_path)?;
+    let model = load_model(model_path, args.image.as_deref())?;
 
     // phase-457 W0 (issue 1407) — read the metadata BEFORE the contract's own
     // predicate is consulted, so a metadata file the caller named and this
@@ -366,7 +375,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         // model with no wiring still says (`Wiring::Unwired`).
         let parent = model_path.parent();
         let params = crate::entity_inventory::ParamDeclarations::from_model(&model);
-        let infra = crate::entity_inventory::InfraServices::from_model(&model, None);
+        let infra = crate::entity_inventory::InfraServices::from_model(&model);
         let written =
             crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
                 build_dir,
@@ -512,6 +521,7 @@ pub(crate) fn board_rx_cost(
 /// Read one SystemModel and apply the two refusals every model producer makes.
 pub(crate) fn load_model(
     model_path: &std::path::Path,
+    image: Option<&str>,
 ) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
     let raw = std::fs::read_to_string(model_path)
         .wrap_err_with(|| format!("reading `{}`", model_path.display()))?;
@@ -527,7 +537,7 @@ pub(crate) fn load_model(
     crate::cmd::entity_inventory::reject_unknown_qos_values(&model)?;
     crate::cmd::entity_inventory::reject_qos_override_divergence(&model)?;
     // phase-486 W3 -- the nano-ros switches beside the model.
-    nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, model_path)
+    nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, model_path, image)
         .map_err(|e| eyre::eyre!(e))
 }
 
@@ -555,7 +565,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
     }
     let mut models = Vec::new();
     for path in &args.from_model {
-        models.push((path.clone(), load_model(path)?));
+        models.push((path.clone(), load_model(path, args.image.as_deref())?));
     }
     let metadata_inventory = match &args.metadata {
         Some(path) => crate::cmd::entity_inventory::inventory_from_metadata_file(path)?,
@@ -600,7 +610,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
             .collect();
         let infra = models
             .iter()
-            .map(|(_, m)| crate::entity_inventory::InfraServices::from_model(m, None))
+            .map(|(_, m)| crate::entity_inventory::InfraServices::from_model(m))
             .fold(crate::entity_inventory::InfraServices::default(), |a, b| {
                 a.union(b)
             });
@@ -1323,6 +1333,7 @@ mod tests {
             composed_entry: Vec::new(),
             build_dir: None,
             entry: None,
+            image: None,
             metadata: None,
             workspace: None,
             rmw: None,
@@ -1390,6 +1401,55 @@ mod tests {
             !nros_sizing_descriptor::descriptor_path(&build_dir, "nobody").exists(),
             "an image with nothing to declare must get no descriptor at all"
         );
+    }
+
+    /// Issue 2700 -- the CMAKE road (C/C++ entry, Zephyr bake), which names
+    /// its image with `-DNROS_IMAGE`. Each image's own `features` and
+    /// `node_interfaces` reach the build (`codegen entry`'s plan, and the
+    /// capability list `config show` / `codegen-system` lower) and this verb's
+    /// descriptor (`--from-model --image`).
+    #[test]
+    fn the_cmake_road_builds_and_sizes_each_images_own_features() {
+        use crate::orchestration::facade::image_features_fixture as fx;
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config");
+        std::fs::create_dir_all(&config).unwrap();
+        let model = config.join("system_model.yaml");
+        std::fs::write(&model, fx::MODEL).unwrap();
+        std::fs::write(
+            config.join(nros_orchestration_ir::overlay::OVERLAY_FILE),
+            fx::overlay().render(),
+        )
+        .unwrap();
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+            toml::from_str(fx::SYSTEM).unwrap();
+        for case in fx::CASES {
+            // The build half.
+            let plan = crate::codegen::entry::plan_from_model(
+                &model,
+                Some("linux".into()),
+                Some(case.image),
+            )
+            .expect("plan");
+            assert_eq!(plan.param_services, case.param, "{}", case.image);
+            case.assert_axes(
+                &sys.with_image_features(Some(case.image))
+                    .effective_features(),
+            );
+            // The sizing half.
+            let build_dir = dir.path().join("build").join(case.image);
+            run(SizingDescriptorArgs {
+                from_model: vec![model.clone()],
+                build_dir: Some(build_dir.clone()),
+                entry: Some("img".into()),
+                image: Some(case.image.into()),
+                ..args()
+            })
+            .expect("descriptor");
+            case.assert_families(&fx::families_at(&nros_sizing_descriptor::descriptor_path(
+                &build_dir, "img",
+            )));
+        }
     }
 
     // ---- RFC-0100 D12 (issue 1649) — the RUNTIME descriptor -------------

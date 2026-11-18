@@ -126,6 +126,14 @@ pub struct EntityInventoryArgs {
     #[arg(long, value_name = "PATH")]
     pub model: Vec<PathBuf>,
 
+    /// The `[image.<id>]` this configure builds (`-DNROS_IMAGE`), which every
+    /// `--model` is read for: its own `features` and `node_interfaces` decide
+    /// the runtime service families counted into the pools. Absent, the
+    /// bringup's `[system]` list answers.
+    // Issue 2700.
+    #[arg(long, value_name = "ID")]
+    pub image: Option<String>,
+
     /// The colcon workspace whose metadata-probe sidecars record what each
     /// launched node's code creates.
     ///
@@ -417,7 +425,10 @@ pub(crate) fn compose_image(
 
 /// One `--model`, verified, parsed and checked at the door -- the three
 /// refusals every model meets before it may say anything.
-fn load_model(model_path: &std::path::Path) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
+fn load_model(
+    model_path: &std::path::Path,
+    image: Option<&str>,
+) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
     // phase-460 W1 (issue 1420) -- verify at this door. cmake hands over a
     // path `model-path` already verified; a hand run meets the same gate.
     // The bringup is recovered from where `nros sync` put the model.
@@ -429,7 +440,7 @@ fn load_model(model_path: &std::path::Path) -> Result<nros_orchestration_ir::ove
         .wrap_err_with(|| format!("parse model `{}`", model_path.display()))?;
     check_model(&model).wrap_err_with(|| format!("model `{}`", model_path.display()))?;
     // phase-486 W3 -- the nano-ros switches beside the model.
-    nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, model_path)
+    nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, model_path, image)
         .map_err(|e| eyre::eyre!(e))
 }
 
@@ -500,7 +511,10 @@ fn run_several_models(args: &EntityInventoryArgs, metadata_inv: &EntityInventory
     }
     let mut models: Vec<(String, nros_orchestration_ir::overlay::LoadedModel)> = Vec::new();
     for p in &args.model {
-        models.push((p.display().to_string(), load_model(p)?));
+        models.push((
+            p.display().to_string(),
+            load_model(p, args.image.as_deref())?,
+        ));
     }
 
     if let Some(out) = &args.output_header {
@@ -606,11 +620,14 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         }
         let mut models: Vec<(String, nros_orchestration_ir::overlay::LoadedModel)> = Vec::new();
         for p in &args.model {
-            models.push((p.display().to_string(), load_model(p)?));
+            models.push((
+                p.display().to_string(),
+                load_model(p, args.image.as_deref())?,
+            ));
         }
         inv = fold_models_for_shared_runtime(&inv, &models, args.workspace.as_deref());
     } else if let Some(model_path) = args.model.first() {
-        let model = load_model(model_path)?;
+        let model = load_model(model_path, args.image.as_deref())?;
         if args.output_params_header.is_some() {
             params_header = Some(crate::declared_params_header::render(
                 Some(&model),
@@ -1511,6 +1528,7 @@ contracts:
             board_rx_frame_cost_us: None,
             board_rx_floor_us: None,
             workspace: None,
+            image: None,
         };
         // The whole CHAIN: the verb wraps the check's message in "model
         // `<path>`", so the outermost `to_string()` alone would pass on any

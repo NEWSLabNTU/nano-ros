@@ -3785,7 +3785,8 @@ fn generate_bridge_configs(
         );
         let mut _guard_record = None;
         let (plan_launch_file, plan_record_file) = if model_path.exists() {
-            let model = crate::orchestration::model_ingest::load_model(&model_path)?;
+            // The bridge plan record is topology; it reads no capability switch.
+            let model = crate::orchestration::model_ingest::load_model(&model_path, None)?;
             let record = crate::orchestration::model_ingest::plan_record_from_model(&model);
             let tmp = tempfile::NamedTempFile::new()?;
             std::fs::write(tmp.path(), serde_json::to_string_pretty(&record)?)?;
