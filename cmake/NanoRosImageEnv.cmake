@@ -54,13 +54,21 @@ endfunction()
 #
 # phase-553 W4 — the value the image's cargo commands will see for <name>,
 # resolved as cargo resolves it: an exported variable wins, then the image's
-# row, else "". For a CMake-side choice that must agree with what a build
+# row (the west road's recorded row, or the cmake road's image-env file), else "". For a CMake-side choice that must agree with what a build
 # script reads (a bare-metal image's board link feature follows `NROS_LINK_IP`,
 # the row its `transport` implies). The file is this module's own output,
 # one `NAME = "value"` row per line.
 function(nros_image_env_value out_var name)
     if(DEFINED ENV{${name}})
         set(${out_var} "$ENV{${name}}" PARENT_SCOPE)
+        return()
+    endif()
+    # Issue 2496 -- the WEST road's carrier for an image row Kconfig has no
+    # symbol for: the module hook (`zephyr/cmake/nros_image_kconfig.cmake`)
+    # records it as `NROS_IMAGE_ENV_ROW_<name>` (CACHE INTERNAL, so every scope
+    # sees it). The same question on either road, one function.
+    if("${name}" IN_LIST NROS_IMAGE_ENV_ROWS)
+        set(${out_var} "${NROS_IMAGE_ENV_ROW_${name}}" PARENT_SCOPE)
         return()
     endif()
     set(_val "")

@@ -493,6 +493,22 @@ probe-workspace-caps:
     nros_gate_require_store_corrosion probe-workspace-caps "$_cli" || exit 0
     NROS_CLI="$_cli" ./tests/cmake-probe-workspace-caps-tests.sh
 
+# issue 2496 -- a configure-time CMake reader of a knob (the FreeRTOS app stack,
+# the Cyclone descriptor cap) sees the image's `[image.<id>.knobs]` row through
+# `nros_image_env_value`, below a `-D` and the environment, on the cmake and the
+# west road alike. Script mode, cmake only, ~1 s.
+[group('needs:cmake')]
+image-knob-readers:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip image-knob-readers "missing host tool: cmake"
+        exit 0
+    fi
+    ./tests/cmake-image-knob-readers-tests.sh
+
 # issue 1261 -- a workspace whose bringup declares a capability must pass it as
 # SYSTEM. Without it `nano_ros_workspace()` resolves no capability axes, so the
 # C/C++ libraries build without them while codegen (which reads the bringup

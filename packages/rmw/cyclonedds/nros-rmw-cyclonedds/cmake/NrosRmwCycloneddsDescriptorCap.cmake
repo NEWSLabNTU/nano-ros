@@ -29,6 +29,13 @@
 
 include_guard(GLOBAL)
 
+# Issue 2496 -- `nros_image_env_value`, the one answer to "what did the image
+# state for this knob" on both the cmake and the west road. The SDK root keeps
+# `packages/` and `cmake/` side by side, as a checkout does.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../../../cmake/NanoRosImageEnv.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../../../../cmake/NanoRosImageEnv.cmake")
+endif()
+
 # The header default (`descriptors.cpp`, `heap_budget.hpp`), mirrored ONCE, as a
 # function rather than a variable: the deferred applier runs in the TOP-LEVEL
 # directory's scope, where a variable set in whichever directory included this
@@ -99,6 +106,11 @@ function(_nros_cyclonedds_apply_descriptor_cap)
     set(_pin "")
     if(DEFINED NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES)
         set(_pin "${NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES}")
+    elseif(COMMAND nros_image_env_value)
+        # Issue 2496's class: the environment, then the image's
+        # `[image.<id>.knobs]` row, which on this road otherwise reached only
+        # the cargo commands and never this configure-time reader.
+        nros_image_env_value(_pin NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES)
     elseif(DEFINED ENV{NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES})
         set(_pin "$ENV{NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES}")
     endif()
