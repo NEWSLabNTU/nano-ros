@@ -50,6 +50,7 @@ Precedence, highest first: a command-line or build flag, `[image.<id>]`,
 | `entry` | The workspace package that is this image's application, when it cannot be derived |
 | `producers` | `false` builds without the host board's census recorder and profiler |
 | `params_files`, `ros_args` | Parameters and ROS arguments baked into the image for `rclcpp::init` |
+| `no_inventory` | `"<reason>"`: why this image declares nothing to derive its pool sizes from (no contract wiring, no parameters), so it keeps the configured defaults by design. Optional: such an image gets a note either way, and this line records the reason in its place. An empty reason is refused, and so is the line on an image whose declarations DO derive its sizes. It never excuses a declaration that fails to derive: under `NROS_PROBE_FAILURE=refuse` (every fixture lane), that stops the build. Never folded from `[image_defaults]` |
 | `stack_floor_image` | The key its measured stack peak (an `[[observed]]` row) is filed under in `config/stack-floors.toml`, `<template>/<lang>/<rmw>@<board>`. `nros new` writes it; unset, the image is keyed `<bringup>@<board>` |
 | `stack_floor` | `"check"` (the default) or `"raise"`. The floor is a heuristic: the deepest call path a walk of the compiled code finds, plus a margin, usually well above the stack the image really uses ([A11](troubleshooting-index.md#a11-the-stack-is-below-the-images-floor)). With `"raise"`, a FreeRTOS image whose floor is above the stack it states is built once more at the floor instead of failing. The raise never lowers a stack, is worked out again on every build and is never stored. The build prints the value it used |
 
@@ -63,6 +64,7 @@ Retired and refused by name: `ip`, `gateway`, `netmask`, `transport`,
 | scalars (`board`, `rmw`, `profile`, …) | replaced |
 | `node_features` | replaced as a whole when the image states it |
 | `args` | merged |
+| `no_inventory` | never folded: each image states its own |
 | `os_config`, `features` | concatenated, defaults first |
 
 `[system] default_images = ["<id>", …]` is what a bare `nros build` builds.

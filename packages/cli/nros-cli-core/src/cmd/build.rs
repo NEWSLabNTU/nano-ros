@@ -1353,7 +1353,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 .collect()
             }),
             stale,
-        );
+            crate::orchestration::metadata_refresh::ProbeFailurePolicy::from_env()?,
+        )?;
         let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
         // The packages a cmake coordinate's generated root `add_subdirectory()`s
         // leave out: framework entries, and entries claimed by another board.
@@ -1362,6 +1363,9 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // phase-530 W3 (RFC-0120 D6 case 3) — a cmake image is configured with
         // every image on its coordinate, so the configure is handed the UNION's
         // resolve, never this image's alone.
+        // Issue 2520 -- a refusal from the union's seed, carried out of the
+        // cache's closure and returned below.
+        let mut coordinate_refusal: Option<eyre::Report> = None;
         let coordinate_dir = (driver == Driver::CMake)
             .then(|| {
                 let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
@@ -1385,7 +1389,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     } else {
                         nros_lang::Language::C
                     };
-                    resolve_coordinate(
+                    let composed = resolve_coordinate(
                         &root,
                         &id,
                         &coordinate_members(&bringup, &coord),
@@ -1401,10 +1405,17 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         nano_ros_root.as_deref(),
                         descriptor.rx,
                         stale,
-                    )
+                    );
+                    composed.unwrap_or_else(|e| {
+                        coordinate_refusal = Some(e);
+                        None
+                    })
                 })
             })
             .flatten();
+        if let Some(e) = coordinate_refusal {
+            return Err(e);
+        }
 
         // ---- stage 4 ----------------------------------------------------
         let mut cmake_configure: Option<Handoff> = None;
@@ -2530,7 +2541,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                             nano_ros_root.as_deref(),
                             resolved.as_ref(),
                             stale,
-                        );
+                        )?;
                     }
                 } else if let Some(d) = &resolved_dir {
                     // A C/C++ west application decides in its own configure
@@ -2620,7 +2631,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         &image_id,
                         descriptor.platform,
                         resolved_dir.as_deref(),
-                    );
+                    )?;
                 }
                 let generated = if image.entry.is_some() || leaf_app.is_some() {
                     GeneratedEntry::default()
@@ -2665,7 +2676,15 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     && image_has_non_rust(&image, &bringup_dir)
                     && let Some(d) = &resolved_dir
                 {
-                    seed_hand_written_west_bounds(&root, d, &bringup_dir, &app, &image, stale);
+                    seed_hand_written_west_bounds(
+                        &root,
+                        d,
+                        &bringup_dir,
+                        &image_id,
+                        &app,
+                        &image,
+                        stale,
+                    )?;
                 }
                 // The board id WEST knows, not the one the image authored —
                 // `<bringup>/boards/<board>/` is the directory Zephyr's own
@@ -5654,7 +5673,11 @@ fn generate_entry(
                 crate::message_bound_knobs::SeedBasis::ClosureAllowed,
             ) {
                 Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
-                Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+                Err(nd) => crate::resolve::report_not_derived(
+                    "message bounds not seeded",
+                    &plan::qualified(bringup, image_id),
+                    &nd,
+                )?,
             }
         }
         return Ok(GeneratedEntry {
@@ -7186,7 +7209,8 @@ fn resolve_image(
     rx_cost: Option<crate::entity_inventory::RxFrameCost>,
     compose_registered: Option<RegisteredScope>,
     stale: StaleModel,
-) -> Option<ResolvedImage> {
+    policy: crate::orchestration::metadata_refresh::ProbeFailurePolicy,
+) -> Result<Option<ResolvedImage>> {
     use crate::{
         entity_inventory::EntityInventory,
         orchestration::model_location,
@@ -7216,7 +7240,21 @@ fn resolve_image(
     // phase-439 W7 -- set exactly when the composition below ran over the
     // registered population, which is what lets the configure read it.
     let mut entity_inputs: Option<crate::resolve::EntityInputs> = None;
-    let inventory: Result<Composed, String> = (|| {
+    // Issue 2520 -- the reason is TYPED where it is decided: nothing declared
+    // (the designed default) or declared and not derivable (a defect).
+    // `?` on a bare reason is a failure; only the arm below that knows
+    // nothing was declared builds `NothingDeclared`.
+    use crate::resolve::NotDerived;
+    if let Some(why) = &image.no_inventory
+        && why.trim().is_empty()
+    {
+        eyre::bail!(
+            "`{image_id}` states `no_inventory` with no reason. Write why the image declares \
+             nothing to derive its sizes from, e.g. `no_inventory = \"a condvar contract \
+             test: it opens no session\"` under `[image.{image_id}]`, or remove the line."
+        );
+    }
+    let inventory: Result<Composed, NotDerived> = (|| {
         let model_rel =
             model_location::launch_to_model_rel(bringup_dir, image.launch.as_deref(), &args_vec)
                 .map_err(|e| format!("cannot resolve the launch for this image: {e}"))?;
@@ -7347,16 +7385,34 @@ fn resolve_image(
                      and this road is discarding them again",
                 params.tag()
             );
-            format!(
+            NotDerived::NothingDeclared(format!(
                 "the launch tree resolved, and it declares neither wiring nor \
                  parameters. Nothing here can derive a count. State what each node \
                  creates -- or what parameters it declares -- in the contract sidecar \
                  beside the launch file ({}/launch/<stem>.contract.yaml); until then this \
                  image keeps its configured pool knobs.",
                 bringup_dir.display()
-            )
+            ))
         })
     })();
+    // Issue 2482's shape -- an OWNED entry with no launch has no model to
+    // resolve, and states its sizes nowhere else: nothing is declared.
+    let inventory = inventory.map_err(|nd| match nd {
+        NotDerived::Failed(why)
+            if crate::cmd::entity_census::owned_entry_without_model(bringup_dir, image) =>
+        {
+            NotDerived::NothingDeclared(why)
+        }
+        other => other,
+    });
+    if inventory.is_ok() && image.no_inventory.is_some() {
+        eyre::bail!(
+            "`{image_id}` states `no_inventory`, but its declarations DO derive an entity \
+             inventory, so the statement is false. Remove `no_inventory` from \
+             `[image.{image_id}]`."
+        );
+    }
+    let not_derived = inventory.as_ref().err().cloned();
 
     // Issue 2482 -- an image that boots an OWNED entry with no launch has no
     // model, so the closure above refused and stated nothing -- yet its
@@ -7413,11 +7469,11 @@ fn resolve_image(
             crate::resolve::write_entity_inputs(&w, &dir, entity_inputs.as_ref(), &inv)?;
             Ok(w)
         }),
-        Err(reason) => write_unresolved(
+        Err(nd) => write_unresolved(
             &dir,
             ident,
             bringup_dir.join("launch").display().to_string(),
-            reason,
+            nd.reason().to_string(),
             locations,
         ),
     };
@@ -7425,7 +7481,7 @@ fn resolve_image(
     match written {
         Err(e) => {
             eprintln!("nros build: warning: stage 3.5 could not write `{image_id}`'s resolve: {e}");
-            None
+            Ok(None)
         }
         Ok(w) => {
             match w.resolved.knobs() {
@@ -7439,19 +7495,45 @@ fn resolve_image(
                 // Says WHY, once, at the same volume as the success line. A
                 // refusal that only lives in a file nobody opens is the silent
                 // shape RFC-0094 exists to remove.
-                None => eprintln!(
-                    "nros build:   resolved → {} (entity counts not derived; configured defaults kept)",
-                    w.toml_path.display()
-                ),
+                None => {
+                    eprintln!(
+                        "nros build:   resolved → {} (entity counts not derived; configured \
+                         defaults kept)",
+                        w.toml_path.display()
+                    );
+                    match (&not_derived, &image.no_inventory) {
+                        // Stated: the reason replaces the note.
+                        (Some(NotDerived::NothingDeclared(_)), Some(why)) => {
+                            eprintln!("nros build:   `{image_id}`: no_inventory: {why}")
+                        }
+                        (Some(NotDerived::NothingDeclared(why)), None) => eprintln!(
+                            "nros build:   `{image_id}`: nothing declared to derive sizes from \
+                             ({why}). To record why, add `no_inventory = \"<reason>\"` under \
+                             `[image.{image_id}]`."
+                        ),
+                        (
+                            Some(
+                                nd @ (NotDerived::Failed(_) | NotDerived::MissingBoundTable { .. }),
+                            ),
+                            _,
+                        ) => crate::resolve::report_not_derived_under(
+                            policy,
+                            "entity counts not derived; configured defaults kept",
+                            image_id,
+                            nd,
+                        )?,
+                        (None, _) => {}
+                    }
+                }
             }
-            Some(ResolvedImage {
+            Ok(Some(ResolvedImage {
                 dir,
                 resolved: w.resolved,
                 model: composed.as_ref().map(|(_, m)| m.clone()),
                 inventory: composed.map(|(i, _)| i),
                 store_infra,
                 nodes_unknown,
-            })
+            }))
         }
     }
 }
@@ -7631,36 +7713,55 @@ fn image_launch_node_dirs(
 /// closure plus the entry package itself, whose `package.xml` names the
 /// interface packages its own `CMakeLists.txt` adds. Never fatal, like the
 /// rest of stage 3.5: what cannot be composed is said once.
+/// Issue 2520 -- `<bringup>:<image>` for an image of the bringup at
+/// `bringup_dir`, the name a seed's verdict is reported (and its known gaps
+/// keyed) under.
+fn qualified_in(bringup_dir: &Path, image_id: &str) -> String {
+    let bringup = bringup_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    plan::qualified(&bringup, image_id)
+}
+
 fn seed_hand_written_west_bounds(
     root: &Path,
     resolved_dir: &Path,
     bringup_dir: &Path,
+    image_id: &str,
     app: &Path,
     image: &crate::orchestration::image::ImageBlock,
     stale: StaleModel,
-) {
-    let seeded = image_launch_node_dirs(root, bringup_dir, image, stale).and_then(|mut dirs| {
-        if !dirs.iter().any(|d| d == app) {
-            dirs.push(app.to_path_buf());
-        }
-        // The probe generates per language, and a table prices a TYPE, so
-        // either language's table is the same bound. A hand-written entry's
-        // language is its own (`nano_ros_add_executable(... TYPED)` is C++
-        // whatever its nodes are written in), so take the language the probe
-        // generated: C++ when it did, else C.
-        let probe_codegen = probe_bound_tables(root, nros_lang::Language::Cpp);
-        crate::message_bound_knobs::write_west_seed(
-            resolved_dir,
-            &probe_codegen,
-            &dirs,
-            crate::cmd::configure::interface_search_path_for(root).as_deref(),
-            crate::message_bound_knobs::SeedBasis::ClosureAllowed,
-        )
-    });
+) -> Result<()> {
+    let seeded = image_launch_node_dirs(root, bringup_dir, image, stale)
+        .map_err(crate::resolve::NotDerived::from)
+        .and_then(|mut dirs| {
+            if !dirs.iter().any(|d| d == app) {
+                dirs.push(app.to_path_buf());
+            }
+            // The probe generates per language, and a table prices a TYPE, so
+            // either language's table is the same bound. A hand-written entry's
+            // language is its own (`nano_ros_add_executable(... TYPED)` is C++
+            // whatever its nodes are written in), so take the language the probe
+            // generated: C++ when it did, else C.
+            let probe_codegen = probe_bound_tables(root, nros_lang::Language::Cpp);
+            crate::message_bound_knobs::write_west_seed(
+                resolved_dir,
+                &probe_codegen,
+                &dirs,
+                crate::cmd::configure::interface_search_path_for(root).as_deref(),
+                crate::message_bound_knobs::SeedBasis::ClosureAllowed,
+            )
+        });
     match seeded {
         Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
-        Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+        Err(nd) => crate::resolve::report_not_derived(
+            "message bounds not seeded",
+            &qualified_in(bringup_dir, image_id),
+            &nd,
+        )?,
     }
+    Ok(())
 }
 
 /// Issue 2436 -- the image statement for a hand-written west entry: the three
@@ -7716,20 +7817,26 @@ fn resolve_rust_west_image(
     nano_ros_root: Option<&Path>,
     resolved: Option<&ResolvedImage>,
     stale: StaleModel,
-) {
+) -> Result<()> {
     // ---- the message-bound seed -------------------------------------------
     let node_dirs = image_launch_node_dirs(root, bringup_dir, image, stale);
-    match node_dirs.and_then(|dirs| {
-        crate::message_bound_knobs::write_west_seed(
-            resolved_dir,
-            &root.join("generated"),
-            &dirs,
-            crate::cmd::configure::interface_search_path_for(root).as_deref(),
-            crate::message_bound_knobs::SeedBasis::SubscribedOnly,
-        )
-    }) {
+    match node_dirs
+        .map_err(crate::resolve::NotDerived::from)
+        .and_then(|dirs| {
+            crate::message_bound_knobs::write_west_seed(
+                resolved_dir,
+                &root.join("generated"),
+                &dirs,
+                crate::cmd::configure::interface_search_path_for(root).as_deref(),
+                crate::message_bound_knobs::SeedBasis::SubscribedOnly,
+            )
+        }) {
         Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
-        Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+        Err(nd) => crate::resolve::report_not_derived(
+            "message bounds not seeded",
+            &qualified_in(bringup_dir, image_id),
+            &nd,
+        )?,
     }
 
     // ---- the sizing-descriptor decision ------------------------------------
@@ -7765,6 +7872,7 @@ fn resolve_rust_west_image(
              ({e}); the module decides for itself"
         );
     }
+    Ok(())
 }
 
 /// Where [`write_image_descriptor`] writes, and the facts of the target it
@@ -8025,7 +8133,7 @@ fn resolve_coordinate(
     nano_ros_root: Option<&Path>,
     rx_cost: Option<crate::entity_inventory::RxFrameCost>,
     stale: StaleModel,
-) -> Option<PathBuf> {
+) -> Result<Option<PathBuf>> {
     let dir = coordinate_resolve_dir(root, shared);
     let coord = shared.id();
     let mut images: Vec<String> = members
@@ -8117,7 +8225,7 @@ fn resolve_coordinate(
     match written {
         Err(e) => {
             eprintln!("nros build: warning: stage 3.5 could not write `{coord}`'s union: {e}");
-            None
+            Ok(None)
         }
         Ok(w) => {
             // The message-bound seed, over the bound tables the metadata probe
@@ -8135,7 +8243,9 @@ fn resolve_coordinate(
                 crate::message_bound_knobs::SeedBasis::ClosureAllowed,
             ) {
                 Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
-                Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+                Err(nd) => {
+                    crate::resolve::report_not_derived("message bounds not seeded", &coord, &nd)?
+                }
             }
             match w.resolved.knobs() {
                 Some(k) => eprintln!(
@@ -8154,7 +8264,7 @@ fn resolve_coordinate(
                     w.toml_path.display()
                 ),
             }
-            Some(dir)
+            Ok(Some(dir))
         }
     }
 }
@@ -8852,20 +8962,20 @@ fn configure_zephyr_leaf(
     image_id: &str,
     platform: crate::orchestration::board_descriptor::PlatformKind,
     resolved_dir: Option<&std::path::Path>,
-) {
+) -> Result<()> {
     let decl = match nros_orchestration_ir::leaf_system::read_image(leaf, image_id) {
         Ok(Some(d)) => d,
-        Ok(None) => return,
+        Ok(None) => return Ok(()),
         Err(e) => {
             eprintln!("nros build:   {}: {e}", leaf.display());
-            return;
+            return Ok(());
         }
     };
     if crate::leaf_census::entity_source(leaf, &decl).is_census() && census_take_is_ours(platform) {
         crate::cmd::entity_census::take_leaf_for_build(leaf, image_id);
     }
     let Some(dir) = resolved_dir else {
-        return;
+        return Ok(());
     };
     match crate::message_bound_knobs::write_leaf_west_seed(
         dir,
@@ -8874,8 +8984,9 @@ fn configure_zephyr_leaf(
         decl.ros_edition.as_deref(),
     ) {
         Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
-        Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+        Err(nd) => crate::resolve::report_not_derived("message bounds not seeded", image_id, &nd)?,
     }
+    Ok(())
 }
 
 /// The leaf directory, when it is a Zephyr application in its own right.
@@ -13535,6 +13646,7 @@ mod coordinate_union_tests {
                 None,
                 StaleModel::Refuse,
             )
+            .expect("the union composes without a refusal")
             .expect("the union is written")
         };
         let member = |id: &str, launch| -> CoordinateMember {
@@ -13821,5 +13933,191 @@ mod workspace_model_staleness_tests {
             workspace_model_missing(td.path(), "demo_bringup:linux", Some(&models)).unwrap(),
             None
         );
+    }
+}
+
+/// Issue 2520 -- what `resolve_image` does with an image whose entity counts
+/// it cannot derive: the REASON decides, not the outcome.
+#[cfg(test)]
+mod not_derived_verdict_tests {
+    use super::*;
+    use crate::orchestration::{image::ImageBlock, metadata_refresh::ProbeFailurePolicy};
+
+    fn resolve(
+        root: &Path,
+        bringup_dir: &Path,
+        image: &ImageBlock,
+        policy: ProbeFailurePolicy,
+    ) -> Result<Option<ResolvedImage>> {
+        resolve_image(
+            root,
+            "demo_bringup",
+            bringup_dir,
+            "img",
+            image,
+            "posix",
+            "linux",
+            None,
+            None,
+            None,
+            StaleModel::Refuse,
+            policy,
+        )
+    }
+
+    fn refusal(r: Result<Option<ResolvedImage>>) -> String {
+        match r {
+            Ok(_) => panic!("expected a refusal, got a resolve"),
+            Err(e) => format!("{e:#}"),
+        }
+    }
+
+    fn built(r: &Result<Option<ResolvedImage>>) -> bool {
+        match r {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(e) => panic!("expected a resolve, got: {e:#}"),
+        }
+    }
+
+    /// An owned entry with no launch and no components: nothing is declared,
+    /// so the defaults are the design and even `refuse` keeps building.
+    fn nothing_declared() -> (tempfile::TempDir, PathBuf, ImageBlock) {
+        let ws = tempfile::tempdir().unwrap();
+        let bringup = ws.path().join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(bringup.join("system.toml"), "[system]\n").unwrap();
+        let image = ImageBlock {
+            entry: Some("demo_entry".into()),
+            ..Default::default()
+        };
+        (ws, bringup, image)
+    }
+
+    /// A launch that names a model nothing produced: declared, and not
+    /// derivable.
+    fn declared_but_failing() -> (tempfile::TempDir, PathBuf, ImageBlock) {
+        let ws = tempfile::tempdir().unwrap();
+        let bringup = ws.path().join("src/demo_bringup");
+        std::fs::create_dir_all(bringup.join("launch")).unwrap();
+        std::fs::write(bringup.join("system.toml"), "[system]\n").unwrap();
+        let image = ImageBlock {
+            launch: Some("missing.launch.xml".into()),
+            ..Default::default()
+        };
+        (ws, bringup, image)
+    }
+
+    /// A model that describes wiring: the image derives.
+    fn deriving() -> (tempfile::TempDir, PathBuf, ImageBlock) {
+        let ws = tempfile::tempdir().unwrap();
+        let root = ws.path();
+        let bringup = root.join("src/demo_bringup");
+        std::fs::create_dir_all(bringup.join("launch")).unwrap();
+        std::fs::write(bringup.join("system.toml"), "").unwrap();
+        let models = root.join("build/nros/models/demo_bringup");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::write(
+            models.join("system_model.yaml"),
+            "meta: { version: 1 }\nstructure:\n  topics:\n    /t:\n      type: std_msgs/msg/Int32\n      sub: [/listener/t]\n",
+        )
+        .unwrap();
+        (ws, bringup, ImageBlock::default())
+    }
+
+    #[test]
+    fn nothing_declared_keeps_building_under_refuse() {
+        let (ws, bringup, image) = nothing_declared();
+        assert!(built(&resolve(
+            ws.path(),
+            &bringup,
+            &image,
+            ProbeFailurePolicy::Refuse
+        )));
+    }
+
+    #[test]
+    fn declared_but_not_derivable_refuses_under_refuse_and_warns_under_warn() {
+        let (ws, bringup, image) = declared_but_failing();
+        let err = refusal(resolve(
+            ws.path(),
+            &bringup,
+            &image,
+            ProbeFailurePolicy::Refuse,
+        ));
+        assert!(
+            err.contains("could not be derived") && err.contains("Fix the declaration"),
+            "{err}"
+        );
+        let (ws, bringup, image) = declared_but_failing();
+        assert!(built(&resolve(
+            ws.path(),
+            &bringup,
+            &image,
+            ProbeFailurePolicy::Warn
+        )));
+    }
+
+    /// A `no_inventory` statement cannot excuse a failure: it says nothing is
+    /// declared, and here something is.
+    #[test]
+    fn a_statement_does_not_excuse_a_failure() {
+        let (ws, bringup, mut image) = declared_but_failing();
+        image.no_inventory = Some("a test image".into());
+        refusal(resolve(
+            ws.path(),
+            &bringup,
+            &image,
+            ProbeFailurePolicy::Refuse,
+        ));
+    }
+
+    /// Condition 1: a bare flag is refused, under either policy.
+    #[test]
+    fn an_empty_reason_is_refused() {
+        let (ws, bringup, mut image) = nothing_declared();
+        image.no_inventory = Some("  ".into());
+        let err = refusal(resolve(
+            ws.path(),
+            &bringup,
+            &image,
+            ProbeFailurePolicy::Warn,
+        ));
+        assert!(
+            err.contains("no reason") && err.contains("no_inventory = "),
+            "{err}"
+        );
+    }
+
+    /// Condition 3: stated on an image that DOES derive, the statement is
+    /// false and refused, so it can never mute a derivation.
+    #[test]
+    fn a_statement_on_a_deriving_image_is_refused() {
+        let (ws, bringup, mut image) = deriving();
+        assert!(
+            matches!(resolve(ws.path(), &bringup, &image, ProbeFailurePolicy::Refuse), Ok(Some(ref r)) if r.inventory.is_some()),
+            "control: the fixture derives"
+        );
+        image.no_inventory = Some("a test image".into());
+        let err = refusal(resolve(
+            ws.path(),
+            &bringup,
+            &image,
+            ProbeFailurePolicy::Warn,
+        ));
+        assert!(err.contains("DO derive"), "{err}");
+    }
+
+    /// A stated reason on a nothing-declared image is accepted.
+    #[test]
+    fn a_stated_reason_on_a_nothing_declared_image_is_accepted() {
+        let (ws, bringup, mut image) = nothing_declared();
+        image.no_inventory = Some("a condvar contract test: it opens no session".into());
+        assert!(built(&resolve(
+            ws.path(),
+            &bringup,
+            &image,
+            ProbeFailurePolicy::Refuse
+        )));
     }
 }

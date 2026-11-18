@@ -1,7 +1,8 @@
 ---
 id: 2520
 title: "A probe failure that leaves an image on default sizes is only a WARNING, so a fixture build stays green while it ships the wrong sizes"
-status: open
+status: resolved
+resolved_in: "the change that archives this issue"
 type: bug
 severity: medium
 area: [sizing, tooling, testing, build]
@@ -66,19 +67,47 @@ next cause of a whole-project probe failure will ship the same way.
 
 ## Ruling on per-component failures
 
-Per-component probe failures also refuse in a fixture build. A component
-on default sizes is the same silent risk at a smaller scale. A component
-that legitimately has no inventory says so in its manifest row, under the
-same no-inventory rule as step 3, so `refuse` is never answered by a
-blanket exemption. Under `warn` nothing changes. Under `refuse` the
-per-component arm refuses too, and its marker still keeps the reason.
+Per-component probe failures also refuse in a fixture build, under the same
+policy (manager, 2026-11-14; landed with issue 2608).
 
-This is the manager's call (2026-11-14). The maintainer has not ruled on
-it. Implementation follows phase-550 W3b.
+## Ruling on step 3: refuse on the REASON (2026-11-19)
+
+This replaces both earlier placements of the no-inventory statement: the
+fixture manifest row (2026-11-14), and then `system.toml` as a required
+statement (2026-11-19, the same day). Both were the manager's calls, not the
+maintainer's.
+
+Measured before ruling, from the real fixture builds of 2026-11-18 (nightly
+44242045728 and run-matrix 44250365361): about 170 resolved images keep
+configured defaults. The ruling first read them as ordinary examples that
+declare no `*.contract.yaml`. That was wrong (corrected 2026-11-19, measured):
+on main every image of the canonical workspaces derives, from the metadata
+probe's sidecars, contract or not; in those CI jobs every sidecar was read as
+stale, which is issue 2720. The ruling's rule does not rest on that reading:
+an image that genuinely declares nothing keeps the designed defaults, and a
+rule such an image trips by design is not the rule wanted. So the verdict
+follows WHY the resolve kept defaults, as a typed value the resolve returns,
+never a match on its message:
+
+- nothing declared (no wiring and no parameters, an owned entry with no
+  model, no interface dependency): a note, at every policy;
+- declared but not derivable (a launch or model that does not resolve, a
+  contract that does not compose, a bound table the probe never generated):
+  a warning under `warn`, and under `refuse` an error that names what to fix.
+
+`[image.<id>] no_inventory = "<reason>"` is optional. It records why an image
+declares nothing, in place of the note. It needs a non-empty reason. It is
+refused on an image that does derive an inventory, and it never excuses a
+failure.
+
+One failure is tolerated by name: the metadata probe generates no bound table
+for `action_msgs` / `builtin_interfaces`. It is keyed on the exact 14
+`(image, package)` pairs measured, tracked as issue 2721, and warns until that
+lands. Any other image or package with the same reason refuses.
 
 ## Partly done (2026-11-16, phase-559 W11)
 
-Steps 1 and 2 landed with [issue 2608](archived/2608-metadata-probe-failure-reads-as-no-producer.md),
+Steps 1 and 2 landed with [issue 2608](2608-metadata-probe-failure-reads-as-no-producer.md),
 widened by the manager: `NROS_PROBE_FAILURE=warn|refuse` (a CLI environment
 setting, not a knob-registry row: the registry holds build knobs with Kconfig
 and TOML spellings, and this is neither), `refuse` in the three fixture
@@ -88,3 +117,32 @@ refuse too, per the ruling above.
 Open: step 3 (the other "configured defaults kept" paths ask the same
 strictness, with a no-inventory statement per manifest row) and step 4's
 gate (a fixture builder run against a probe project that cannot configure).
+
+## Fix (step 3, 2026-11-19)
+
+- `resolve::NotDerived { NothingDeclared, Failed, MissingBoundTable }` is
+  built where the resolve decides it. `resolve_image`'s composition and
+  every message-bound seed producer (`write_west_seed_over`,
+  `write_leaf_west_seed`) return it. A bare reason converts to `Failed`, so
+  only a site that knows nothing was declared can say so.
+- `resolve::report_not_derived` is the one reporter, reached from
+  `resolve_image` and the five seed sites (`generate_entry`,
+  `seed_hand_written_west_bounds`, `resolve_rust_west_image`,
+  `resolve_coordinate`, `configure_zephyr_leaf`). Each of those now returns
+  `Result`, so a refusal stops the plan.
+- `resolve::KNOWN_BOUND_TABLE_GAPS` holds the 14 pairs.
+- `ImageBlock::no_inventory`, documented in the `system.toml` reference.
+
+Tests:
+- `cmd::build::not_derived_verdict_tests`, six cases. Four are red with the
+  fix neutralised; the two positive cases pass both ways by design.
+- `resolve::not_derived_tests`: the known-gap exemption is exactly the pair.
+- `a_leaf_that_states_no_entities_gets_no_seed` now asserts the kind.
+
+Step 4's gate (a fixture builder run against a probe project that cannot
+configure) is `check-workspace-probes`, which landed with issue 2608.
+
+What the measurement exposed is issue 2720: in the nightly's fixture jobs
+every metadata sidecar reads stale, so those images lose the probe's counts.
+
+Sweep: `git grep -n 'message bounds not seeded\|configured defaults kept\|NotDerived' -- packages/cli`

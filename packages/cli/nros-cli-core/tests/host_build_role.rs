@@ -101,6 +101,14 @@ fn fixture(ws: &Path) {
 }
 
 fn args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) -> Args {
+    // These are plan tests over fixtures `nros sync` never ran on, so their
+    // models cannot resolve; derivation is not their subject. State the
+    // policy rather than inherit it: the `just` lanes export `refuse`, a bare
+    // `cargo test` does not, and the verdict must not depend on which ran it.
+    nros_cli_core::orchestration::metadata_refresh::ProbeFailurePolicy::pin(
+        nros_cli_core::orchestration::metadata_refresh::ProbeFailurePolicy::Warn,
+    )
+    .expect("one policy for the whole test binary");
     Args {
         images: images.iter().map(|s| (*s).to_string()).collect(),
         workspace: Some(ws.to_path_buf()),

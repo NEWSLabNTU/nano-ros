@@ -109,8 +109,19 @@ fn args(ws: &Path, images: &[&str]) -> Args {
     selected_args(ws, images, &[], &[])
 }
 
+/// Issue 2520 -- these tests run the planner over fixtures `nros sync` never
+/// ran on, so their models cannot resolve; derivation is not their subject.
+/// State the policy rather than inherit it: the `just` lanes export
+/// `refuse`, a bare `cargo test` does not, and a test's verdict must not
+/// depend on which one started it. Every in-process entry point here calls it.
+fn pin_policy() {
+    use nros_cli_core::orchestration::metadata_refresh::ProbeFailurePolicy;
+    ProbeFailurePolicy::pin(ProbeFailurePolicy::Warn).expect("one policy for the test binary");
+}
+
 /// [`args`], narrowed by the phase-420 W7 selection verbs.
 fn selected_args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) -> Args {
+    pin_policy();
     Args {
         images: images.iter().map(|s| (*s).to_string()).collect(),
         workspace: Some(ws.to_path_buf()),
@@ -1079,6 +1090,7 @@ fn a_materialized_entry_keeps_every_path_dependency_resolvable() {
     write(&generated.join("src/main.rs"), "fn main() {}\n");
     write(&generated.join("target/debug/linux_entry"), "");
 
+    pin_policy();
     nros_cli_core::cmd::materialize::run(nros_cli_core::cmd::materialize::Args {
         image: "linux".to_string(),
         workspace: Some(tmp.path().to_path_buf()),
@@ -1979,6 +1991,7 @@ fn image_facts_writes_nothing() {
     let before = tree_snapshot(ws);
 
     for _ in 0..2 {
+        pin_policy();
         nros_cli_core::cmd::image_facts::run(nros_cli_core::cmd::image_facts::Args {
             image: None,
             workspace: Some(ws.join("src/demo_bringup")),

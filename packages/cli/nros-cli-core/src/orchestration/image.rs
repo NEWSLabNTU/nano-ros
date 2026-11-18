@@ -134,6 +134,14 @@ pub struct ImageBlock {
     /// enters the SystemModel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub framework: Option<String>,
+    /// Issue 2520 — why this image declares nothing to derive its sizes
+    /// from, so it keeps the configured defaults by design. Optional: an image
+    /// that declares nothing gets a note either way, and this line records the
+    /// reason in place of it. A non-empty reason is required, and the line is
+    /// refused on an image that DOES derive an inventory, so it can never mute
+    /// a derivation that failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_inventory: Option<String>,
 
     /// Launch file this image bakes, relative to the bringup pkg. Absent ⇒ the
     /// system's `default_launch`.
@@ -589,6 +597,10 @@ impl ImageBlock {
         ImageBlock {
             board: pick(&self.board, &base.board),
             framework: pick(&self.framework, &base.framework),
+            // Issue 2520 -- never inherited: the reason is about THIS image's
+            // declarations, and a shared one would state it for images that
+            // derive (which is refused).
+            no_inventory: self.no_inventory.clone(),
             launch: pick(&self.launch, &base.launch),
             // Maps MERGE (base first, so the specific block overwrites a key it
             // also sets); scalars replace. A base `args` is a default binding

@@ -81,6 +81,9 @@ pub struct RefreshReport {
 /// reads the warning, and the build does run), while every lane where nobody
 /// reads it -- the fixture builders, the `just` lanes, the release dry run --
 /// declares `refuse` (issue 2520).
+static PINNED_PROBE_FAILURE_POLICY: std::sync::OnceLock<ProbeFailurePolicy> =
+    std::sync::OnceLock::new();
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ProbeFailurePolicy {
     #[default]
@@ -93,8 +96,31 @@ impl ProbeFailurePolicy {
 
     /// Read [`Self::ENV`]: unset or empty is `warn`; any other value than
     /// `warn` or `refuse` is an error, never a silent default.
+    ///
+    /// A policy [`Self::pin`]ned for this process wins over the environment.
     pub fn from_env() -> Result<Self> {
+        if let Some(pinned) = PINNED_PROBE_FAILURE_POLICY.get() {
+            return Ok(*pinned);
+        }
         Self::parse(std::env::var(Self::ENV).ok().as_deref())
+    }
+
+    /// State the policy for the rest of this process, over whatever
+    /// [`Self::ENV`] says. For an in-process caller whose subject is not the
+    /// policy: a test binary must not change its verdict with the
+    /// environment it was started from (the `just` lanes export `refuse`, a
+    /// bare `cargo test` does not), and setting the variable instead would
+    /// race every thread that reads the environment. The first pin wins; a
+    /// later pin of a different policy is an error, never a silent switch.
+    pub fn pin(policy: Self) -> Result<()> {
+        let held = *PINNED_PROBE_FAILURE_POLICY.get_or_init(|| policy);
+        if held != policy {
+            eyre::bail!(
+                "{} is already pinned to {held:?} in this process",
+                Self::ENV
+            );
+        }
+        Ok(())
     }
 
     fn parse(value: Option<&str>) -> Result<Self> {
