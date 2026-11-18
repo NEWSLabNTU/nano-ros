@@ -65,6 +65,8 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
   `<nros/device.hpp>` (D7): worker and source registration, stages, slot
   views, the per-class headers for inference, 2D operation, camera frame and
   sensor batch. The C++ implementor base and the Rust implementor trait.
+- The mock worker and mock source (RFC-0139 D11), and the port conformance
+  tests that any adapter, real or mock, must pass.
 - **Acceptance:** one fake device adapter written in C is driven by a C node,
   a C++ node and a Rust node, and one written in Rust by a C node. That proves
   the ABI is the one seam in both directions.
