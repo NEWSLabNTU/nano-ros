@@ -54,6 +54,17 @@ between the two runs that anything measured.
 - The build itself does not compare. A west build against a v3.7.0 tree with
   a v3.7.2 manifest succeeds.
 
+A second blind spot, met while reproducing against a v3.7.2 copy: pointing
+the lane at a different workspace (`NROS_ZEPHYR_WORKSPACE=<copy>
+NROS_ZEPHYR_FIXTURE_FILTER=… just zephyr build-fixtures`) applied the patch
+scripts to the copy and then rebuilt the EXISTING build dirs, whose
+`CMakeCache.txt` still held `ZEPHYR_BASE=<shared workspace>/zephyr`. The lane
+reported success, and all three images still booted `v3.7.0`. So a build dir
+keeps the kernel it was first configured with, whatever workspace the lane
+resolved; only the image's banner says so. Whatever check fixes the pin drift
+should also compare the build dir's cached `ZEPHYR_BASE` with the workspace
+the lane resolved.
+
 The workspace also carries local edits from the lane's patch scripts
 (`git status` there shows `drivers/net/nsos*.c` and `CMakeLists.txt`
 modified, from `scripts/zephyr/*-patch.sh`). So "the checkout differs from the
