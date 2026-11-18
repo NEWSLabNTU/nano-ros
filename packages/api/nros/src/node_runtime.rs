@@ -1227,9 +1227,9 @@ impl ExecutorNodeRuntime {
         let mut sink = ExecutorSink {
             cell: CellHandle::Pooled(cell.clone()),
             nodes: heapless::Vec::new(),
-            node_identity: None, // direct API — no launch injection
-            remaps: &[],         // direct API — no launch remaps
-            qos_overrides: &[],  // direct API — no plan overrides
+            node_identity: LaunchIdentity::NONE, // direct API — no launch injection
+            remaps: crate::node::LaunchParams::EMPTY, // direct API — no launch remaps
+            qos_overrides: &[],                  // direct API — no plan overrides
             launch_params: crate::node::LaunchParams::EMPTY, // direct API -- no launch params
         };
         let result = {
@@ -1672,6 +1672,36 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
 // live executor.
 // =============================================================================
 
+/// The launch `<node name= namespace=>` identity for one component: each half
+/// `None` when the launch states none, and then the component's `NodeOptions`
+/// value stands for that half (issue 2590).
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct LaunchIdentity {
+    name: Option<&'static str>,
+    namespace: Option<&'static str>,
+}
+
+impl LaunchIdentity {
+    /// No launch identity: the component's `NodeOptions` name and namespace.
+    pub(crate) const NONE: Self = Self {
+        name: None,
+        namespace: None,
+    };
+}
+
+impl From<Option<(&'static str, &'static str)>> for LaunchIdentity {
+    /// `nros::main!`'s form: both halves or neither.
+    fn from(v: Option<(&'static str, &'static str)>) -> Self {
+        match v {
+            Some((name, namespace)) => Self {
+                name: Some(name),
+                namespace: Some(namespace),
+            },
+            None => Self::NONE,
+        }
+    }
+}
+
 /// phase-483 W3 — the live component runtime's registration sink. It no
 /// longer holds the executor: the [`crate::Node`] a component's `register`
 /// holds borrows it, so the sink receives it per call (`FrameSink`).
@@ -1688,12 +1718,18 @@ struct ExecutorSink<'a> {
     /// Phase 268 W1 — launch-injected node identity `(name, namespace)` baked by
     /// `nros::main!` per component. When `Some`, `create_node` uses this identity
     /// instead of the `NodeOptions` default; `None` → default stands (backward-compat).
-    node_identity: Option<(&'static str, &'static str)>,
+    ///
+    /// Issue 2590 -- each half on its own: a C/C++ entry's launch may name a
+    /// node without a namespace (or the reverse), and the half it leaves out is
+    /// the `NodeOptions` one, as the C++ entry's `rclcpp` arm treats it.
+    node_identity: LaunchIdentity,
     /// Phase 305 W3 (issue 0255) — launch `<remap from= to=/>` rules baked by
-    /// `nros::main!` for this component. Applied in `create_entity` via the
-    /// shared `node_metadata::resolve_name` seam (exact-FQN match, first rule
-    /// wins). Empty → names still get ROS 2 expansion, no substitution.
-    remaps: &'a [(&'a str, &'a str)],
+    /// `nros::main!` for this component, or handed in by a C/C++ entry as a
+    /// flat `[from, to, ...]` array (issue 2590). Applied in `create_entity`
+    /// via the shared `node_metadata::resolve_name` seam (exact-FQN match,
+    /// first rule wins). Empty → names still get ROS 2 expansion, no
+    /// substitution.
+    remaps: crate::node::LaunchParams<'a>,
     /// Issue #52 — the component's baked QoS-override codes, installed on each
     /// node this sink creates (`Executor::set_node_qos_overrides`) BEFORE the
     /// component declares entities, so `create_publisher`/`create_subscription`
@@ -1803,10 +1839,8 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
         // Phase 268 W1 — launch wins over the NodeOptions default (RFC-0046).
         // When `nros::main!` injected an identity for this component, use it;
         // otherwise fall back to what the Node declared in its `create_node` call.
-        let (name, ns) = match self.node_identity {
-            Some((n, s)) => (n, s),
-            None => (options.name, options.namespace),
-        };
+        let name = self.node_identity.name.unwrap_or(options.name);
+        let ns = self.node_identity.namespace.unwrap_or(options.namespace);
         let node_id = executor
             .node_builder(name)
             .namespace(ns)
@@ -1902,7 +1936,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     metadata.source_name.as_str(),
                     &node_name,
                     &node_ns,
-                    self.remaps.iter().copied(),
+                    self.remaps.iter(),
                     nros_node::ros_args::argv_fallback(&*executor, &node_name, &node_ns),
                 )
                 .map_err(|_| NodeDeclError::Runtime)?,
@@ -2860,8 +2894,8 @@ fn register_node_borrowed<
 >(
     executor: &mut Executor<'static>,
     params: crate::node::LaunchParams<'p>,
-    node_identity: Option<(&'static str, &'static str)>,
-    remaps: &'p [(&'p str, &'p str)],
+    node_identity: LaunchIdentity,
+    remaps: crate::node::LaunchParams<'p>,
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
     slot_mu: &'static mut MaybeUninit<TypedSlot<C>>,
     cell_mu: &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>>,
@@ -2982,7 +3016,7 @@ fn install_handle_refusal_code(refusal: crate::executor_handle::HandleRefusal) -
 /// executor on `Executor::drop`. Returns `0` on success, `-1` on a null handle or a
 /// registration error, `-4` on an nros-cpp context that was not unwrapped.
 ///
-/// This backs the `__nros_component_<pkg>_install(node, executor, self)` symbol
+/// This backs the `__nros_component_<pkg>_install(node, executor, self, ...)` symbol
 /// `nros::node!()` emits — the uniform cross-language install seam.
 ///
 /// # Safety
@@ -3079,8 +3113,8 @@ where
     match register_node_borrowed::<C, _, _, _, _, _, _>(
         exec,
         crate::node::LaunchParams::Pairs(params),
-        node_identity,
-        remaps,
+        LaunchIdentity::from(node_identity),
+        crate::node::LaunchParams::Pairs(remaps),
         qos_overrides,
         slot_mu,
         cell_mu,
@@ -3134,8 +3168,8 @@ where
             executor,
             store,
             crate::node::LaunchParams::Pairs(params),
-            node_identity,
-            remaps,
+            LaunchIdentity::from(node_identity),
+            crate::node::LaunchParams::Pairs(remaps),
             qos_overrides,
         )
     }
@@ -3148,15 +3182,30 @@ where
 /// same `ctx.param(name)` values one installed by `nros::main!` does.
 ///
 /// The array is read in place and only for the duration of the call; a null
-/// `kv` with `n_pairs == 0` means no params. Returns `-5`, before the class's
-/// storage is taken, when `kv` is null with a non-zero count or any entry is
-/// null or not UTF-8. Every other code is as for
+/// `kv` with `n_pairs == 0` means no params.
+///
+/// It carries the rest of the node's launch facts the `nros::main!` road
+/// carries, so the component lands where the launch says:
+/// - `name` / `namespace`: the launch `<node name= namespace=>`, each NULL
+///   when the launch states none, and then the component's `NodeOptions`
+///   value stands for that half;
+/// - `remaps` / `n_remaps`: the node's launch `<remap from= to=/>` rules as a
+///   flat `[from0, to0, from1, to1, ...]` array (NULL + 0 for none), applied
+///   to every name the component declares.
+///
+/// Returns `-5`, before the class's storage is taken, when an array is null
+/// with a non-zero count, or any string is null (except `name`/`namespace`)
+/// or not UTF-8. Every other code is as for
 /// [`install_node_typed_with_launch_in`].
 ///
 /// # Safety
 /// As [`install_node_typed_with_launch_in`]; and when `n_pairs > 0`, `kv`
 /// must point to `2 * n_pairs` readable pointers, each null or a
-/// NUL-terminated string, all valid for the call.
+/// NUL-terminated string, all valid for the call (`remaps` likewise).
+/// `name` and `namespace` must each be NULL or a NUL-terminated string that
+/// lives as long as the image: the node keeps it (a generated entry passes
+/// string literals).
+#[allow(clippy::too_many_arguments)] // the C-ABI seam's arguments, forwarded one for one
 pub unsafe fn install_node_typed_with_c_params_in<
     C: ExecutableNode + 'static,
     const N: usize,
@@ -3171,6 +3220,10 @@ pub unsafe fn install_node_typed_with_c_params_in<
     store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
     kv: *const *const core::ffi::c_char,
     n_pairs: usize,
+    name: *const core::ffi::c_char,
+    namespace: *const core::ffi::c_char,
+    remaps: *const *const core::ffi::c_char,
+    n_remaps: usize,
 ) -> i32
 where
     C::State: 'static,
@@ -3187,8 +3240,55 @@ where
         );
         return -5;
     };
+    // Issue 2590 -- and before it carried no identity or remaps, the node took
+    // its `NodeOptions` name and every launch remap was dropped.
     // SAFETY: forwarded per this fn's contract.
-    unsafe { install_in_with_launch_params(executor, store, params, None, &[], &[]) }
+    let Some(remaps) = (unsafe { crate::node::LaunchParams::from_c_pairs(remaps, n_remaps) })
+    else {
+        nros_log::log_error!(
+            nros_log::get_logger("nros"),
+            "component install refused its launch remaps: the array is null or \
+             holds a null or non-UTF-8 string ({n_remaps} rule(s))"
+        );
+        return -5;
+    };
+    // SAFETY: each NULL or a NUL-terminated string living as long as the image,
+    // per this fn's contract.
+    let (Some(name), Some(namespace)) = (unsafe { static_c_str(name) }, unsafe {
+        static_c_str(namespace)
+    }) else {
+        nros_log::log_error!(
+            nros_log::get_logger("nros"),
+            "component install refused its launch node name or namespace: not UTF-8"
+        );
+        return -5;
+    };
+    // SAFETY: forwarded per this fn's contract.
+    unsafe {
+        install_in_with_launch_params(
+            executor,
+            store,
+            params,
+            LaunchIdentity { name, namespace },
+            remaps,
+            &[],
+        )
+    }
+}
+
+/// A launch identity half from a C string: `Some(None)` for NULL (the launch
+/// states none), `Some(Some(s))` for a UTF-8 string, `None` when it is not
+/// UTF-8.
+///
+/// # Safety
+/// `p` is NULL or a NUL-terminated string that lives as long as the image.
+unsafe fn static_c_str(p: *const core::ffi::c_char) -> Option<Option<&'static str>> {
+    if p.is_null() {
+        return Some(None);
+    }
+    // SAFETY: per this fn's contract.
+    let bytes = unsafe { core::ffi::CStr::from_ptr(p) }.to_bytes();
+    core::str::from_utf8(bytes).ok().map(Some)
 }
 
 /// The one body behind both `_in` installs.
@@ -3208,8 +3308,8 @@ unsafe fn install_in_with_launch_params<
     executor: *mut core::ffi::c_void,
     store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
     params: crate::node::LaunchParams<'_>,
-    node_identity: Option<(&'static str, &'static str)>,
-    remaps: &[(&str, &str)],
+    node_identity: LaunchIdentity,
+    remaps: crate::node::LaunchParams<'_>,
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
 ) -> i32
 where

@@ -71,6 +71,10 @@ fn c_abi_install_delivers_launch_params_to_ctx_param() {
         core::ptr::null_mut(),
         kv.as_ptr(),
         2,
+        core::ptr::null(),
+        core::ptr::null(),
+        core::ptr::null(),
+        0,
     );
     assert_eq!(rc, 0, "the install must succeed");
 
@@ -93,6 +97,10 @@ fn c_abi_install_delivers_launch_params_to_ctx_param() {
         core::ptr::null_mut(),
         bad.as_ptr(),
         1,
+        core::ptr::null(),
+        core::ptr::null(),
+        core::ptr::null(),
+        0,
     );
     assert_eq!(rc, -5, "a null value must be refused");
     assert_eq!(

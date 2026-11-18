@@ -351,7 +351,11 @@ fn node_impl(input: TokenStream) -> TokenStream {
         // (null + 0 for none), so `ctx.param(name)` sees them on this road
         // too; before, this seam carried none and a C++ entry's Rust node
         // read every default.
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        // issue 2590 -- `name` / `namespace` (each null when the launch states
+        // none) and `remaps` / `n_remaps` (a flat `[from0, to0, ...]` array)
+        // carry the rest of the node's launch facts, so the node is named and
+        // remapped as on the `nros::main!` road.
+        #[allow(clippy::not_unsafe_ptr_arg_deref, clippy::too_many_arguments)]
         #[unsafe(no_mangle)]
         pub extern "C" fn #component_install_fn_name(
             _node: *const ::core::ffi::c_void,
@@ -359,6 +363,10 @@ fn node_impl(input: TokenStream) -> TokenStream {
             _self: *mut ::core::ffi::c_void,
             params: *const *const ::core::ffi::c_char,
             n_params: usize,
+            name: *const ::core::ffi::c_char,
+            namespace: *const ::core::ffi::c_char,
+            remaps: *const *const ::core::ffi::c_char,
+            n_remaps: usize,
         ) -> i32 {
             unsafe {
                 ::nros::__macro::install_node_typed_with_c_params_in(
@@ -366,9 +374,21 @@ fn node_impl(input: TokenStream) -> TokenStream {
                     &#component_store_name,
                     params,
                     n_params,
+                    name,
+                    namespace,
+                    remaps,
+                    n_remaps,
                 )
             }
         }
+
+        // issue 2590 -- the install symbol's type, by ONE name. A consumer
+        // that anchors the symbol (`NanoRosRuntimeCrate.cmake`) names this
+        // alias, so widening the seam cannot leave a second spelling behind;
+        // the const below makes the fn and the alias agree at compile time.
+        #[doc(hidden)]
+        pub type __NrosComponentInstallFn = ::nros::__macro::ComponentInstallFn;
+        const _: ::nros::__macro::ComponentInstallFn = #component_install_fn_name;
 
         #[unsafe(no_mangle)]
         pub static #component_present_name: u8 = 1;

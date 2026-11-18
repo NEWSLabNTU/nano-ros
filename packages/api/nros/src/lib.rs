@@ -400,6 +400,25 @@ pub use node_runtime::{ExecutorError, RegisteredNode};
 /// generated code and takes them off the surface a porting user browses.
 #[doc(hidden)]
 pub mod __macro {
+    // Issue 2590.
+    /// The type of `__nros_component_<pkg>_install`, the C-ABI
+    /// install symbol `nros::node!` emits: `(node, executor, self, params,
+    /// n_params, name, namespace, remaps, n_remaps)`. ONE spelling: the macro
+    /// re-exports it per crate as `__NrosComponentInstallFn`, and a consumer
+    /// that anchors the symbol by type (`NanoRosRuntimeCrate.cmake`) names
+    /// that alias instead of writing the signature again.
+    pub type ComponentInstallFn = unsafe extern "C" fn(
+        *const core::ffi::c_void,
+        *mut core::ffi::c_void,
+        *mut core::ffi::c_void,
+        *const *const core::ffi::c_char,
+        usize,
+        *const core::ffi::c_char,
+        *const core::ffi::c_char,
+        *const *const core::ffi::c_char,
+        usize,
+    ) -> i32;
+
     #[cfg(feature = "rmw-cffi")]
     pub use crate::node::{__record_with_context, record_node_metadata, register_node};
     pub use crate::node::{ActionExecutor, ClientDispatch, PublisherResolver, TimerOp};

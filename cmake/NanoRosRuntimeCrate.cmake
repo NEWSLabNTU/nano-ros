@@ -127,16 +127,18 @@ function(nros_write_runtime_umbrella_crate)
             "${_crate} = { path = \"${_dir}\" }\n")
         # Reference the node's typed install fn by its RUST CRATE PATH (not an `extern \"C\"`
         # import). The `nros::node!()` macro emits it as `#[no_mangle] pub extern \"C\" fn
-        # __nros_component_<sym>_install(node, executor, self, params, n_params)` (phase-257
-        # W0-B — the uniform cross-language component-install seam; issue 2568 added the
-        # launch-param pair array); an extern import would only add an undefined
+        # __nros_component_<sym>_install(...)` (phase-257 W0-B — the uniform
+        # cross-language component-install seam). Its type is named through the alias the
+        # same macro emits beside it, `<sym>::__NrosComponentInstallFn`, never spelled here:
+        # issue 2590 widened the seam and this hand-written copy broke every C++ workspace
+        # with a Rust node. An extern import would only add an undefined
         # ref (the node rlib's object is never pulled), whereas naming the crate item forces
         # its codegen unit — incl. the no_mangle symbol — into this staticlib root. `<sym>` is
         # the dash→underscore crate ident, identical to the macro's symbol sanitisation.
         # (Phase-258 Track 1 — anchors `_install`, not the retired `_register` seam.)
         string(APPEND _anchor_lines
             "#[used]\n"
-            "static _KEEP_NODE_${_sym}: unsafe extern \"C\" fn(*const core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void, *const *const core::ffi::c_char, usize) -> i32 =\n"
+            "static _KEEP_NODE_${_sym}: ${_sym}::__NrosComponentInstallFn =\n"
             "    ${_sym}::__nros_component_${_sym}_install;\n")
     endforeach()
 

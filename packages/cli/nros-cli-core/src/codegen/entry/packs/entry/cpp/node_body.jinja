@@ -67,10 +67,15 @@
             "{{ p[0] | c_str }}", "{{ p[1] | c_str }}",
 {%- endfor %}
         };
-        int32_t crc = __nros_component_{{ n.pkg | pkg_ident }}_install(nullptr, __rexec, nullptr, __nros_params_{{ idx }}, {{ n.params | length }});
-{%- else %}
-        int32_t crc = __nros_component_{{ n.pkg | pkg_ident }}_install(nullptr, __rexec, nullptr, nullptr, 0);
 {%- endif %}
+{%- if n.remaps %}
+        static const char* const __nros_remaps_{{ idx }}[] = {
+{%- for r in n.remaps %}
+            "{{ r[0] | c_str }}", "{{ r[1] | c_str }}",
+{%- endfor %}
+        };
+{%- endif %}
+        int32_t crc = __nros_component_{{ n.pkg | pkg_ident }}_install(nullptr, __rexec, nullptr, {% if n.params %}__nros_params_{{ idx }}, {{ n.params | length }}{% else %}nullptr, 0{% endif %}, {% if n.launch_name %}"{{ n.launch_name | c_str }}"{% else %}nullptr{% endif %}, {% if n.launch_namespace %}"{{ n.launch_namespace | c_str }}"{% else %}nullptr{% endif %}, {% if n.remaps %}__nros_remaps_{{ idx }}, {{ n.remaps | length }}{% else %}nullptr, 0{% endif %});
         if (crc != 0) return crc;
 {%- elif n.kind == "rclcpp" %}
 {%- if n.qos_overrides %}

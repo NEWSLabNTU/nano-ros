@@ -8,10 +8,17 @@
   only `(node, executor, self)`, so a Rust node in a C++ entry read every
   `ctx.param(name)` as unset. The array is read during the call only.
 
+  Issue 2590 -- `name` / `ns` are the launch `<node name= namespace=>`, each
+  `nullptr` when the launch states none (the component's `NodeOptions` value
+  stands for that half), and `remaps` / `n_remaps` the node's launch
+  `<remap from= to=/>` rules as a flat `[from0, to0, ...]` array. Without them
+  the node took its `NodeOptions` name and every remap was dropped. `name` and
+  `ns` must live as long as the image: the entry passes string literals.
+
   What the caller puts in scope: `rust_pkgs`, the Rust components.
 -#}
 extern "C" {
 {%- for c in rust_pkgs %}
-    int32_t __nros_component_{{ c.pkg | pkg_ident }}_install(const void* node, void* executor, void* self, const char* const* params, size_t n_params);
+    int32_t __nros_component_{{ c.pkg | pkg_ident }}_install(const void* node, void* executor, void* self, const char* const* params, size_t n_params, const char* name, const char* ns, const char* const* remaps, size_t n_remaps);
 {%- endfor %}
 }
