@@ -479,10 +479,18 @@ pub fn refresh_stale_sidecars(
                             // previous sidecar (or none) untouched.
                             let key =
                                 probe_inputs_key(&opts.package_dir, Some(&opts.nano_ros_workspace));
-                            let _ = stamp_provenance(
-                                &opts.output_path,
-                                key.as_deref().unwrap_or(UNKEYED),
-                            );
+                            // Issue 2689 -- NOT `let _ =`. The stamp's parse
+                            // is the schema gate on what the probe wrote; a
+                            // swallowed failure left the sidecar unstamped, so
+                            // it read as stale on every configure and nothing
+                            // said why. Fail like the Rust road above does.
+                            stamp_provenance(&opts.output_path, key.as_deref().unwrap_or(UNKEYED))
+                                .wrap_err_with(|| {
+                                    format!(
+                                        "stamp the C/C++ probe sidecar for `{}::{}`",
+                                        o.package, o.component
+                                    )
+                                })?;
                             report.rebuilt.push(opts.output_path.clone());
                         }
                         Err(why) => {
@@ -1059,13 +1067,21 @@ pub fn fresh_probe_rows(
             .wrap_err_with(|| format!("read {}", sidecar.display()))?;
         match crate::leaf_entity_env::declaration_from_probe(&raw) {
             Ok((pkg, component, declaration)) => {
-                let doc = serde_json::from_str::<serde_json::Value>(&raw).ok();
-                let executable = doc
-                    .as_ref()
-                    .and_then(|v| v.get("executable")?.as_str().map(str::to_string));
+                // Issue 2689 -- through the STRICT reader, never a lenient
+                // `serde_json::Value`: one typed mirror of the sidecar, so a
+                // key this CLI does not know fails here the same way it fails
+                // the freshness check, instead of reading as absent. A fresh
+                // sidecar has already parsed (`sidecar_is_fresh`), so this
+                // only fails if it changed underfoot.
+                let doc: SourceMetadata = serde_json::from_str(&raw).map_err(|e| {
+                    eyre::eyre!(
+                        "{} does not parse as SourceMetadata ({e})",
+                        sidecar.display()
+                    )
+                })?;
+                let executable = doc.executable;
                 let description_max_len = doc
-                    .as_ref()
-                    .and_then(|v| v.get("parameter_description_max_len")?.as_u64())
+                    .parameter_description_max_len
                     .and_then(|n| usize::try_from(n).ok());
                 rows.push(ProbeRow {
                     executable,
@@ -1171,9 +1187,15 @@ fn sidecar_is_fresh(sidecar: &Path, digest: &str) -> bool {
 pub(crate) fn stamp_provenance(sidecar: &Path, digest: &str) -> Result<()> {
     let raw =
         std::fs::read_to_string(sidecar).wrap_err_with(|| format!("read {}", sidecar.display()))?;
-    let mut parsed: SourceMetadata = serde_json::from_str(&raw).wrap_err_with(|| {
-        format!(
-            "metadata harness emitted invalid JSON at {}",
+    // Issue 2689 -- the serde error goes IN the message, not only in the
+    // chain: it is what names the field (`unknown field
+    // \`parameter_description_max_len\``), and a caller printing the top
+    // context alone would otherwise say only "invalid".
+    let mut parsed: SourceMetadata = serde_json::from_str(&raw).map_err(|e| {
+        eyre::eyre!(
+            "the probe sidecar at {} does not parse as this CLI's SourceMetadata ({e}); \
+             a probe schema change the CLI's mirror (orchestration/source_metadata.rs) \
+             has not caught up with",
             sidecar.display()
         )
     })?;
@@ -2790,6 +2812,32 @@ mod tests {
 
     /// A sidecar body as the probe leaves it: `stamped` adds the provenance
     /// [`stamp_provenance`] writes on every successful probe.
+    /// Issue 2689 -- a probe sidecar this CLI's `SourceMetadata` cannot read
+    /// fails the stamp LOUDLY, and the message names the key. The C/C++ batch
+    /// used to drop this error (`let _ =`), which left every v6 sidecar
+    /// unstamped and so stale, with nothing said.
+    #[test]
+    fn a_sidecar_the_mirror_cannot_read_fails_the_stamp_naming_the_key() {
+        let dir = tmp("stamp-unknown-key");
+        let sidecar = dir.join("talker.json");
+        let body = sidecar_body("demo_pkg::talker", false).replacen(
+            "\"nodes\"",
+            "\"a_key_from_the_future\": 1, \"nodes\"",
+            1,
+        );
+        std::fs::write(&sidecar, &body).unwrap();
+        let why = format!(
+            "{}",
+            stamp_provenance(&sidecar, "fnv1a64:0").expect_err("an unknown key is refused")
+        );
+        assert!(
+            why.contains("a_key_from_the_future"),
+            "the error must name the key, got: {why}"
+        );
+        // Untouched: no stamp lands on a document the mirror rejected.
+        assert_eq!(std::fs::read_to_string(&sidecar).unwrap(), body);
+    }
+
     fn sidecar_body(component: &str, stamped: bool) -> String {
         let provenance = if stamped {
             r#", "provenance": {"inputs_digest": "fnv1a64:0", "generator": "nros test"}"#

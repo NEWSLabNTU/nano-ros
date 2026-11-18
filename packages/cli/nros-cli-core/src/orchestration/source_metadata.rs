@@ -14,6 +14,21 @@ pub struct SourceMetadata {
     pub nodes: Vec<SourceNode>,
     pub callbacks: Vec<SourceCallback>,
     pub parameters: Vec<SourceParameter>,
+    /// Issue 2650 (schema v6) -- the longest parameter `description` the code
+    /// set while the probe watched, in bytes, before truncation. `None` when
+    /// the key is absent, which means nobody watched (a pre-v6 producer, or
+    /// one that cannot observe prose) and is NOT the same fact as `Some(0)`.
+    ///
+    /// Issue 2689 -- declared here because this struct is
+    /// `deny_unknown_fields`: without it every v6 sidecar failed to parse,
+    /// so every sidecar read as stale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameter_description_max_len: Option<u64>,
+    /// Issue 2650 (schema v6) -- the longest `additional_constraints` text,
+    /// with the same absent-versus-`0` rule as
+    /// [`Self::parameter_description_max_len`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameter_constraints_max_len: Option<u64>,
     pub trace: SourceMetadataTrace,
     /// phase-307 W2 — how this sidecar was produced and from what.
     ///
@@ -407,5 +422,76 @@ mod tests {
         )
         .expect("v2 client row");
         assert_eq!(client.qos.map(|q| q.depth), Some(1));
+    }
+
+    /// Issue 2689 -- the GOLDEN probe sidecar, written by the REAL producer
+    /// (`nros::node_metadata`'s `the_golden_probe_sidecar_is_what_the_recorder_writes`
+    /// compares its serializer's output to this file), parses STRICTLY here
+    /// and survives a round trip with no key lost or changed.
+    ///
+    /// The producer and this reader share no cargo workspace, so the file is
+    /// the bridge. Issue 2650's schema v6 keys were missing here, so every
+    /// sidecar failed this struct's `deny_unknown_fields`, and every sidecar
+    /// read as stale on every configure. A key the producer gains (it must
+    /// re-bless the golden) now fails this test until the mirror learns it.
+    #[test]
+    fn golden_probe_sidecar_round_trips_through_source_metadata() {
+        let raw = include_str!("../../tests/fixtures/orchestration/probe_sidecar_golden.json");
+        let parsed: SourceMetadata = serde_json::from_str(raw)
+            .unwrap_or_else(|e| panic!("the golden probe sidecar must parse strictly: {e}"));
+
+        // Pinned against the producer's own header, not restated.
+        assert_eq!(
+            parsed.version,
+            crate::orchestration::metadata_refresh::RECORDER_SCHEMA_VERSION,
+            "the golden is the current recorder schema"
+        );
+        // v6: present and distinct from absent.
+        assert_eq!(parsed.parameter_description_max_len, Some(42));
+        assert_eq!(parsed.parameter_constraints_max_len, Some(7));
+
+        // Nothing the producer wrote is dropped or reshaped on the way back.
+        // An EMPTY array is the one tolerated difference: the client lists
+        // are `#[serde(default, skip_serializing_if = "Vec::is_empty")]`, so
+        // `[]` and an absent key are the same fact on this side.
+        fn without_empty_arrays(v: serde_json::Value) -> serde_json::Value {
+            use serde_json::Value;
+            match v {
+                Value::Object(map) => Value::Object(
+                    map.into_iter()
+                        .filter(|(_, v)| !matches!(v, Value::Array(a) if a.is_empty()))
+                        .map(|(k, v)| (k, without_empty_arrays(v)))
+                        .collect(),
+                ),
+                Value::Array(a) => Value::Array(a.into_iter().map(without_empty_arrays).collect()),
+                other => other,
+            }
+        }
+        let original: serde_json::Value = serde_json::from_str(raw).unwrap();
+        let again = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(
+            without_empty_arrays(again),
+            without_empty_arrays(original),
+            "SourceMetadata must re-serialize the golden sidecar unchanged"
+        );
+        // And the typed value is a fixed point.
+        let reparsed: SourceMetadata =
+            serde_json::from_str(&serde_json::to_string(&parsed).unwrap()).unwrap();
+        assert_eq!(reparsed, parsed);
+    }
+
+    /// Issue 2650's rule, kept by the mirror: an ABSENT v6 key (nobody
+    /// watched) is `None`, never `Some(0)`, and is not written back.
+    #[test]
+    fn an_absent_descriptor_text_key_stays_absent() {
+        let raw = include_str!("../../tests/fixtures/orchestration/probe_sidecar_golden.json")
+            .replace("\"parameter_description_max_len\":42,", "")
+            .replace("\"parameter_constraints_max_len\":7,", "");
+        let parsed: SourceMetadata = serde_json::from_str(&raw).expect("a pre-v6 sidecar parses");
+        assert_eq!(parsed.parameter_description_max_len, None);
+        assert_eq!(parsed.parameter_constraints_max_len, None);
+        let out = serde_json::to_string(&parsed).unwrap();
+        assert!(!out.contains("parameter_description_max_len"), "got {out}");
+        assert!(!out.contains("parameter_constraints_max_len"), "got {out}");
     }
 }
