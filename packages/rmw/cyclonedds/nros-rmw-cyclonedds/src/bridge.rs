@@ -190,7 +190,30 @@ unsafe extern "C" {
         type_name: *const c_char,
         descriptor: *const core::ffi::c_void,
     );
+
+    /// Issue 2704 -- free a descriptor [`nros_cyclonedds_build_descriptor_from_schema`]
+    /// built that nothing took (the table refused it). Only for a pointer no
+    /// topic was created with.
+    pub fn nros_cyclonedds_free_built_descriptor(descriptor: *const core::ffi::c_void);
+
+    /// Issue 2704 -- the run-time registration, which can fail. Registers
+    /// `descriptor` under `type_name` (and its own `m_typename`) all or
+    /// nothing, and returns [`TRY_REGISTER_OK`], [`TRY_REGISTER_INVALID`] or
+    /// [`TRY_REGISTER_FULL`] (the `descriptors.cpp` table has no room; no key
+    /// was added). [`nros_rmw_cyclonedds_register_descriptor`] stays for the
+    /// static-init constructors, which cannot fail.
+    pub fn nros_rmw_cyclonedds_try_register_descriptor(
+        type_name: *const c_char,
+        descriptor: *const core::ffi::c_void,
+    ) -> c_int;
 }
+
+/// [`nros_rmw_cyclonedds_try_register_descriptor`]: held under every key.
+pub const TRY_REGISTER_OK: c_int = 0;
+/// [`nros_rmw_cyclonedds_try_register_descriptor`]: a NULL argument.
+pub const TRY_REGISTER_INVALID: c_int = -1;
+/// [`nros_rmw_cyclonedds_try_register_descriptor`]: the table is full.
+pub const TRY_REGISTER_FULL: c_int = -2;
 
 // ── Test-only stub ──────────────────────────────────────────────────
 //
@@ -292,5 +315,35 @@ pub mod test_stub {
     ) {
         // No-op: the C++ registry is irrelevant in unit tests; the
         // Rust registry already cached the pointer.
+    }
+
+    /// Issue 2704 -- counts frees, so a test can see a refused descriptor
+    /// released rather than leaked.
+    pub static FREE_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    #[unsafe(no_mangle)]
+    extern "C" fn nros_cyclonedds_free_built_descriptor(_descriptor: *const c_void) {
+        FREE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Issue 2704 -- a type whose name starts with this prefix does not fit
+    /// the stub's C++ table, so a test can drive the overflow path without a
+    /// process-global switch that would race the other tests.
+    pub const TABLE_FULL_PREFIX: &str = "table_full_msgs/";
+
+    #[unsafe(no_mangle)]
+    extern "C" fn nros_rmw_cyclonedds_try_register_descriptor(
+        type_name: *const c_char,
+        descriptor: *const c_void,
+    ) -> c_int {
+        if type_name.is_null() || descriptor.is_null() {
+            return super::TRY_REGISTER_INVALID;
+        }
+        // SAFETY: the caller passes a NUL-terminated name (codegen contract).
+        let name = unsafe { core::ffi::CStr::from_ptr(type_name) };
+        if name.to_bytes().starts_with(TABLE_FULL_PREFIX.as_bytes()) {
+            return super::TRY_REGISTER_FULL;
+        }
+        super::TRY_REGISTER_OK
     }
 }

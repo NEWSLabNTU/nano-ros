@@ -1213,4 +1213,21 @@ const void* nros_cyclonedds_build_descriptor_from_schema(const char* type_name,
     return desc;
 }
 
+// Issue 2704 -- free a descriptor nros_cyclonedds_build_descriptor_from_schema
+// built, when nothing took it: the registry refused it because the
+// `descriptors.cpp` table had no room. Only for a descriptor no topic was ever
+// created with (Cyclone keeps `m_ops` / `m_typename` after
+// `dds_create_topic`); the registry calls it before anything else sees the
+// pointer. A refused registration may be retried (the parameter-services
+// reconcile retries every spin), so without this every retry leaked one.
+void nros_cyclonedds_free_built_descriptor(const void* descriptor) {
+    if (descriptor == nullptr) {
+        return;
+    }
+    const auto* desc = static_cast<const dds_topic_descriptor_t*>(descriptor);
+    ddsrt_free(const_cast<uint32_t*>(desc->m_ops));
+    ddsrt_free(const_cast<char*>(desc->m_typename));
+    ddsrt_free(const_cast<dds_topic_descriptor_t*>(desc));
+}
+
 } // extern "C"

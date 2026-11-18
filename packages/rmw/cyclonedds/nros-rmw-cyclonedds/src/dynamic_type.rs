@@ -156,6 +156,14 @@ pub enum BuildError {
     /// from [`crate::type_registry::TypeRegistry::get_or_build`] —
     /// kept on `BuildError` so the registry can share one error type.
     RegistryFull,
+    /// Issue 2704 -- the C++ descriptor table (`descriptors.cpp`, sized by
+    /// `NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES`) has no room for the type, so
+    /// the backend could not find its descriptor when it creates the topic.
+    /// Refused here, at registration, rather than dropped and reported at
+    /// the first failed lookup. Raise the knob (on the cargo road `nros dev
+    /// codegen system` derives it; a short count is that derivation's bug)
+    /// and rebuild.
+    DescriptorTableFull,
     /// #0319 — the flattened `kinds[]` table breaks the preorder rule
     /// the bridge requires (an aggregate's `inner` must be `idx + 1`).
     /// Producers satisfy this by construction, so this surfaces only

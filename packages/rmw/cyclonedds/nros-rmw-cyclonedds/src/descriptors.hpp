@@ -17,6 +17,28 @@ namespace nros_rmw_cyclonedds {
 void register_descriptor(const char *type_name,
                          const dds_topic_descriptor_t *descriptor);
 
+/** try_register_descriptor() results (issue 2704). */
+constexpr int kTryRegisterOk = 0;
+constexpr int kTryRegisterInvalid = -1;
+constexpr int kTryRegisterFull = -2;
+
+/**
+ * Register @p descriptor under @p type_name and, when it differs, under the
+ * descriptor's own `m_typename`, all or nothing (issue 2704).
+ *
+ * The run-time counterpart of register_descriptor(): where that one can only
+ * count a registration the table has no room for (it runs from static
+ * constructors), this one REFUSES it and says so. Returns kTryRegisterOk when
+ * the descriptor is held under every key, including when it already was;
+ * kTryRegisterInvalid for a NULL argument; kTryRegisterFull when a key does
+ * not fit, in which case no key is added and nothing is counted as dropped.
+ */
+int try_register_descriptor(const char *type_name,
+                            const dds_topic_descriptor_t *descriptor);
+
+/** The table's capacity (`NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES`). */
+std::size_t max_registered_descriptors();
+
 /**
  * Find a previously registered descriptor by @p type_name, or
  * `nullptr` if none.

@@ -47,6 +47,21 @@ extern "C" fn nros_rmw_cyclonedds_register_descriptor(
 ) {
 }
 
+// Issue 2704 -- the registry mirrors through the run-time entry, which can
+// refuse; this stub always has room.
+#[cfg(not(feature = "bridge-stub"))]
+#[unsafe(no_mangle)]
+extern "C" fn nros_rmw_cyclonedds_try_register_descriptor(
+    _type_name: *const c_char,
+    _descriptor: *const c_void,
+) -> c_int {
+    0
+}
+
+#[cfg(not(feature = "bridge-stub"))]
+#[unsafe(no_mangle)]
+extern "C" fn nros_cyclonedds_free_built_descriptor(_descriptor: *const c_void) {}
+
 // ── Fixture: a CancelGoalResponse-shaped schema ─────────────────────────
 //
 // Mirrors the blocker type from the design doc:
