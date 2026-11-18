@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="urgent_pkg" exec="urgent" name="urgent"/>
+  <node pkg="burner_pkg" exec="burner" name="burner"/>
+</launch>

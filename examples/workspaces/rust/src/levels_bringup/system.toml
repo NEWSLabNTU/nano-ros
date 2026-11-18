@@ -1,0 +1,38 @@
+# phase-562 W10 -- an image whose contract derives two levels, booted on RTIC:
+# `urgent` (100 Hz) runs on its own RTIC software task above `burner` (5 Hz,
+# 50 ms of CPU a callback), which boots with the transport. The QEMU cells
+# read the logged times: the urgent timer must run inside a burn (preemption)
+# and on time whether the boot level is idle or burning (the level wake).
+
+[system]
+name = "rust_levels"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "levels.launch.xml"
+
+[[component]]
+pkg = "urgent_pkg"
+class = "urgent_pkg::Urgent"
+name = "urgent"
+
+[[component]]
+pkg = "burner_pkg"
+class = "burner_pkg::Burner"
+name = "burner"
+
+[image_defaults]
+rmw = "zenoh"
+
+[image.baremetal_levels_rtic]
+board = "mps2-an385-baremetal"
+framework = "rtic"
+launch = "levels.launch.xml"
+# `nros_tests::alloc::BAREMETAL_RTIC_LEVELS_PORT`.
+locator = "tcp/10.0.2.2:10550"
+os_config = ["board-net-17.toml"]
+
+# The host build of the same launch: the census that checks the contract
+# against the code is taken by running it.
+[image.linux_levels]
+board = "linux"
+launch = "levels.launch.xml"
