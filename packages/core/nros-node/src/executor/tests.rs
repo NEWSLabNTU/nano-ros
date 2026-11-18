@@ -18629,7 +18629,21 @@ mod p9b_windows {
         cv: Condvar,
         /// A worker is inside `sem_take` now.
         waiting: core::sync::atomic::AtomicBool,
+        /// Hold the first park open, after its own wait ends, until
+        /// `lock_taken` is set (bounded by [`HOLD_LIMIT`]). A test that checks
+        /// "another thread takes the lock during the park" sets it, so that
+        /// thread cannot miss the park by being scheduled late.
+        hold_first_park: core::sync::atomic::AtomicBool,
+        /// Set by the thread that took the lock during the park.
+        lock_taken: core::sync::atomic::AtomicBool,
+        /// How long the first `sem_take` waited for a give or its timeout, in
+        /// µs (`u64::MAX` before it returns): the park the executor asked for,
+        /// without any `hold_first_park` extension.
+        first_wait_us: portable_atomic::AtomicU64,
     }
+
+    /// The most a held park waits for its lock taker.
+    const HOLD_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
 
     unsafe extern "C" fn sem_give(c: *mut core::ffi::c_void) {
         // SAFETY: the tests pass a leaked `Sem`.
@@ -18643,9 +18657,21 @@ mod p9b_windows {
         let s = unsafe { &*(c as *const Sem) };
         let g = s.count.lock().unwrap();
         s.waiting.store(true, Ordering::SeqCst);
+        let t0 = std::time::Instant::now();
         let (mut g, _) =
             s.cv.wait_timeout_while(g, std::time::Duration::from_micros(us), |c| *c == 0)
                 .unwrap();
+        let waited = t0.elapsed().as_micros() as u64;
+        let first = s
+            .first_wait_us
+            .compare_exchange(u64::MAX, waited, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok();
+        if first && s.hold_first_park.load(Ordering::SeqCst) {
+            g =
+                s.cv.wait_timeout_while(g, HOLD_LIMIT, |_| !s.lock_taken.load(Ordering::SeqCst))
+                    .unwrap()
+                    .0;
+        }
         s.waiting.store(false, Ordering::SeqCst);
         if *g > 0 {
             *g -= 1;
@@ -18660,6 +18686,9 @@ mod p9b_windows {
             count: Mutex::new(0),
             cv: Condvar::new(),
             waiting: core::sync::atomic::AtomicBool::new(false),
+            hold_first_park: core::sync::atomic::AtomicBool::new(false),
+            lock_taken: core::sync::atomic::AtomicBool::new(false),
+            first_wait_us: portable_atomic::AtomicU64::new(u64::MAX),
         }));
         let ctx = sem as *const Sem as *mut core::ffi::c_void;
         // SAFETY: the semaphore is leaked; both entries are thread-safe.
@@ -18671,6 +18700,15 @@ mod p9b_windows {
     /// band's next timer is due: a 50 ms timer under a 2 s budget is served
     /// well inside a second, and another thread takes the lock while the
     /// worker is parked (it would block until the pass ended otherwise).
+    ///
+    /// Every wait here is bounded and fails with what it waited for. The
+    /// helper used to spin until it SAW the park, unbounded, and the scope
+    /// joins it before the main loop's failure propagates. So a helper that
+    /// missed the park, or a pass that failed first, hung the suite to its
+    /// global timeout with one thread busy and no message (issue 2723, once
+    /// in a gate, at 870/876). The park is now held open until the helper
+    /// has taken the lock, so a late helper cannot miss it, and the park the
+    /// executor asked for is measured on its own (`first_wait_us`).
     #[test]
     fn a_band_worker_parks_until_its_timer_is_due() {
         let mut executor = executor_with_clock(MockSession::new());
@@ -18692,26 +18730,52 @@ mod p9b_windows {
             .unwrap();
         let (waiter, ctx) = leaked_waiter();
         let sem = ctx as usize;
+        // SAFETY: the leaked semaphore.
+        unsafe { &*(sem as *const Sem) }
+            .hold_first_park
+            .store(true, Ordering::SeqCst);
         let mut w = BandWorker::new(0, Band::new(0, 1).unwrap()).with_waiter(waiter);
         executor.attach_band_worker(&w);
         let shared = Shared(&mut executor);
         let t0 = std::time::Instant::now();
+        let deadline = std::time::Duration::from_secs(10);
+        // The main loop has ended (also on a failure): the helper stops.
+        let done = Arc::new(core::sync::atomic::AtomicBool::new(false));
         let taken_while_parked = Arc::new(AtomicUsize::new(0));
         let p = taken_while_parked.clone();
+        let helper_done = done.clone();
+        let mut passes = 0u32;
         std::thread::scope(|sc| {
             sc.spawn(move || {
                 // SAFETY: the leaked semaphore.
                 let s = unsafe { &*(sem as *const Sem) };
                 while !s.waiting.load(Ordering::SeqCst) {
+                    if helper_done.load(Ordering::SeqCst) || t0.elapsed() > deadline {
+                        return;
+                    }
                     std::thread::yield_now();
                 }
-                // SAFETY: the lock is taken before the executor is read.
-                let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
-                if s.waiting.load(Ordering::SeqCst) {
-                    p.fetch_add(1, Ordering::SeqCst);
+                {
+                    // SAFETY: the lock is taken before the executor is read.
+                    let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
+                    if s.waiting.load(Ordering::SeqCst) {
+                        p.fetch_add(1, Ordering::SeqCst);
+                    }
                 }
+                let _c = s.count.lock().unwrap();
+                s.lock_taken.store(true, Ordering::SeqCst);
+                s.cv.notify_all();
             });
-            while fired.load(Ordering::SeqCst) == 0 {
+            // Released on every exit from this closure, a failure included.
+            struct Done(Arc<core::sync::atomic::AtomicBool>);
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    self.0.store(true, Ordering::SeqCst);
+                }
+            }
+            let _done = Done(done.clone());
+            while fired.load(Ordering::SeqCst) == 0 && t0.elapsed() < deadline {
+                passes += 1;
                 // SAFETY: the lock is taken before the pass and held once.
                 let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
                 unsafe {
@@ -18721,16 +18785,32 @@ mod p9b_windows {
                         core::time::Duration::from_secs(2),
                     )
                 };
-                assert!(
-                    t0.elapsed() < std::time::Duration::from_secs(1),
-                    "parked past the timer"
-                );
             }
         });
+        // SAFETY: the leaked semaphore.
+        let s = unsafe { &*(sem as *const Sem) };
+        let parked_us = s.first_wait_us.load(Ordering::SeqCst);
+        assert_eq!(
+            fired.load(Ordering::SeqCst),
+            1,
+            "the 50 ms timer was not served within {deadline:?}: {passes} pass(es), first park \
+             {parked_us} us (u64::MAX = the worker never parked)"
+        );
+        assert!(
+            parked_us != u64::MAX,
+            "the worker never parked: {passes} pass(es)"
+        );
+        assert!(
+            (40_000..1_000_000).contains(&parked_us),
+            "the park should end when the 50 ms timer is due, not before it and not at the \
+             2 s budget: parked {parked_us} us"
+        );
         assert_eq!(
             taken_while_parked.load(Ordering::SeqCst),
             1,
-            "another thread took the lock during the park"
+            "another thread took the lock during the park (helper saw the park: {}, \
+             {passes} pass(es))",
+            s.lock_taken.load(Ordering::SeqCst)
         );
         drop(executor);
     }
