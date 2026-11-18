@@ -804,6 +804,15 @@ mod tests {
             ))
             .unwrap()
         };
+        // The same image with the stock node interfaces switched off, so a
+        // case can isolate one declared axis from the stock default.
+        let sys_off = |rmw: &str, features: &str| -> SystemToml {
+            toml::from_str(&format!(
+                "[system]\nname = \"t\"\nrmw = \"{rmw}\"\ndomain_id = 0\n\
+                 node_interfaces = \"none\"\nfeatures = [{features}]\n"
+            ))
+            .unwrap()
+        };
         let none = |_: &str| false;
         let all = |_: &str| true;
         let c = idx.resolve("cyclonedds").unwrap();
@@ -817,7 +826,7 @@ mod tests {
         for id in ["issue", "RFC-", "phase-", "#"] {
             assert!(!e.contains(id), "no tracker id in a user message: {e}");
         }
-        let l = runtime_interface_types_refusal(&c, &sys("cyclonedds", "\"lifecycle\""), &none)
+        let l = runtime_interface_types_refusal(&c, &sys_off("cyclonedds", "\"lifecycle\""), &none)
             .expect("lifecycle on cyclonedds with no lifecycle_msgs must be refused");
         assert!(
             l.contains("`lifecycle_msgs`") && l.contains("drop `lifecycle`"),
@@ -835,8 +844,13 @@ mod tests {
             ),
             None
         );
+        // The stock default alone (nothing declared) reaches the refusal; the
+        // off switch clears it.
+        let d = runtime_interface_types_refusal(&c, &sys("cyclonedds", ""), &none)
+            .expect("the stock default on cyclonedds with no rcl_interfaces must be refused");
+        assert!(d.contains("capability `param_services` is enabled"), "{d}");
         assert_eq!(
-            runtime_interface_types_refusal(&c, &sys("cyclonedds", ""), &none),
+            runtime_interface_types_refusal(&c, &sys_off("cyclonedds", ""), &none),
             None
         );
         let z = idx.resolve("zenoh").unwrap();
