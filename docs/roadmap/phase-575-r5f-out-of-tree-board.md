@@ -177,6 +177,14 @@ across boards with a hardware PTP clock.
 Acceptance: a board-supplied clock is what message timestamps carry, in a
 test with a stub clock; boards that supply none are unchanged.
 
+Also in W6 (manager, 2026-11-18): retire the FreeRTOS libc shims that answer
+wall-clock calls with ticks since the scheduler started (`_gettimeofday` in
+`nros-board-freertos`, `clock_gettime(CLOCK_REALTIME)` in
+`nros-platform-freertos`'s Cyclone compat), or route them through the selected
+source. Without this, the seam would not be the only answer to "what time is
+it". The detail is in issue 2691, including why `_gettimeofday` also feeds
+libstdc++'s `steady_clock` there.
+
 ### W7 — the book says what is generic and what is the board's
 
 - **Status:** OPEN
