@@ -3865,20 +3865,13 @@ fn prereq_state(
 fn tool_pin_status(index: &SdkIndex, name: &str, tool: &ToolPackage) -> (bool, Vec<String>) {
     let store = crate::orchestration::sdk_store::store_root();
     let _ = index;
-    let versioned = crate::orchestration::sdk_store::tool_prefix(&store, name, &tool.version);
-    let stamp = store.join(name).join(".installed-version");
-    let stamped = std::fs::read_to_string(&stamp)
+    // issue 2716 -- the same presence rule `nros doctor` reports drift with.
+    if crate::orchestration::sdk_store::pin_present(&store, name, tool) {
+        return (true, Vec::new());
+    }
+    let stamped = std::fs::read_to_string(store.join(name).join(".installed-version"))
         .ok()
         .map(|v| v.trim().to_string());
-
-    if versioned.is_dir() {
-        return (true, Vec::new());
-    }
-    if let (Some(found), Some(want)) = (stamped.as_deref(), tool.upstream.as_deref())
-        && found == want
-    {
-        return (true, Vec::new());
-    }
 
     let mut held: Vec<String> = std::fs::read_dir(store.join(name))
         .into_iter()

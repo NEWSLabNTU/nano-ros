@@ -1120,6 +1120,21 @@ pub struct RmwEntry {
 #[serde(deny_unknown_fields)]
 pub struct ToolPackage {
     pub version: String,
+    /// issue 2716 -- does every contributor host need this tool, or only a host
+    /// that asked for it?
+    ///
+    /// `nros doctor` compares the store with every pin, and needs this to know
+    /// which ABSENT tool is a gap and which is a choice. It lives here, on the
+    /// row, rather than as a list in the doctor: a second list of tool names is
+    /// the drift this index exists to remove. A `[board.*]` row is the other
+    /// half of the answer and is not repeated here: a tool a board lists is
+    /// required for `nros doctor --board <that board>` whatever this says.
+    ///
+    /// `Option` only so a hand-written test row need not carry it; every row
+    /// in `nros-sdk-index.toml` does, held by
+    /// `every_indexed_tool_states_whether_it_is_required`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub need: Option<ToolNeed>,
     /// The exact upstream revision the prebuilt is built/repackaged from (Phase
     /// 191.2) — e.g. ARM `13.2.rel1`, xPack `14.2.0-3`, a fork branch. The SSOT
     /// the build scripts consume (as the `build-tool.yml` `upstream` input)
@@ -1209,6 +1224,19 @@ pub struct ToolPackage {
     /// `parse` carries none, and that half then abstains — never refuses.
     #[serde(skip)]
     pub system_deps: Vec<(String, PrereqDep)>,
+}
+
+/// `[tool.*] need` -- issue 2716.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ToolNeed {
+    /// Every contributor host needs it: the gate runs it whatever the scope
+    /// (`cargo-nextest`, `clang-format`, `corrosion`, `make`, `ninja`). Absent
+    /// is a gap, and `nros doctor` warns with the setup command.
+    Required,
+    /// Provisioned on request: a platform scope's infra, a debugging aid, a
+    /// cache. Absent is a choice, and `nros doctor` says nothing about it.
+    OptIn,
 }
 
 /// `[build_type.<name>]` — the host tools a builder needs present.

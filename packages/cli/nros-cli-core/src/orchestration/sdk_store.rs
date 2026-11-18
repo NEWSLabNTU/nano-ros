@@ -282,6 +282,113 @@ pub fn newest_installed(root: &Path, tool: &str) -> Option<String> {
     installed_versions(root, tool).pop()
 }
 
+/// Is `name` present at the version its `[tool.*]` row pins, in the store at
+/// `root`?
+///
+/// The ONE answer `nros setup --check` and `nros doctor` both give (issue
+/// 2716). The pinned prefix existing is the answer; a legacy flat prefix whose
+/// `.installed-version` stamp names the row's `upstream` also counts, because
+/// that is what `just workspace install-corrosion` used to write (issue 0628).
+pub fn pin_present(root: &Path, name: &str, tool: &ToolPackage) -> bool {
+    if tool_prefix(root, name, &tool.version).is_dir() {
+        return true;
+    }
+    let stamped = std::fs::read_to_string(root.join(name).join(".installed-version"))
+        .ok()
+        .map(|v| v.trim().to_string());
+    matches!(
+        (stamped.as_deref(), tool.upstream.as_deref()),
+        (Some(found), Some(want)) if found == want
+    )
+}
+
+/// How one `[tool.*]` row stands against the store -- issue 2716.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ToolDrift {
+    /// The pinned version is installed.
+    Ok,
+    /// The pin is not installed and OTHER versions are: whatever runs this
+    /// tool runs one of those, silently, whether or not the row is required.
+    Stale { have: Vec<String> },
+    /// Nothing is installed and the tool is required.
+    MissingRequired,
+    /// Nothing is installed and the tool is opt-in: a choice, not a gap.
+    AbsentOptIn,
+}
+
+/// One `[tool.*]` row against the store.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolDriftRow {
+    pub name: String,
+    /// The pinned version.
+    pub want: String,
+    pub state: ToolDrift,
+    /// Versions installed BESIDE a present pin. Information only: nothing
+    /// resolves them while the pin is there, and nothing deletes them (the
+    /// store accumulates on purpose, issue 0500).
+    pub superseded: Vec<String>,
+}
+
+/// The whole store against the whole index -- issue 2716.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SdkDrift {
+    /// One per `[tool.*]` row, in index order.
+    pub rows: Vec<ToolDriftRow>,
+    /// Directories under the store root that no `[tool.*]` row names: a
+    /// retired tool, or one provisioned by something other than the index.
+    pub unindexed: Vec<String>,
+}
+
+/// Compare every `[tool.*]` pin with what the store at `root` holds.
+///
+/// `also_required` names tools that count as required for this question even
+/// where their row says `opt-in` -- the packages of a `[board.*]` the caller
+/// was asked about. Read-only: it lists the store and reads provenance
+/// markers, and never writes, provisions or deletes.
+pub fn sdk_drift(
+    index: &super::sdk_index::SdkIndex,
+    root: &Path,
+    also_required: &[&str],
+) -> SdkDrift {
+    use super::sdk_index::ToolNeed;
+
+    let mut rows = Vec::new();
+    for (name, tool) in &index.tool {
+        let present = pin_present(root, name, tool);
+        let others: Vec<String> = installed_versions(root, name)
+            .into_iter()
+            .filter(|v| *v != tool.version)
+            .collect();
+        let required =
+            tool.need == Some(ToolNeed::Required) || also_required.contains(&name.as_str());
+        let (state, superseded) = if present {
+            (ToolDrift::Ok, others)
+        } else if !others.is_empty() {
+            (ToolDrift::Stale { have: others }, Vec::new())
+        } else if required {
+            (ToolDrift::MissingRequired, Vec::new())
+        } else {
+            (ToolDrift::AbsentOptIn, Vec::new())
+        };
+        rows.push(ToolDriftRow {
+            name: name.clone(),
+            want: tool.version.clone(),
+            state,
+            superseded,
+        });
+    }
+    let mut unindexed: Vec<String> = std::fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| !index.tool.contains_key(n))
+        .collect();
+    unindexed.sort();
+    SdkDrift { rows, unindexed }
+}
+
 /// Point `<front_dir>/<name>` at the NEWEST installed version of `tool`, for
 /// each `bin/<name>` the index's `front` list names. Returns what was linked.
 ///
@@ -4583,6 +4690,161 @@ mod tests {
                 .iter()
                 .any(|c| c.contains("submodule status")),
             "a checkout's source must still be decided by its gitlink"
+        );
+    }
+}
+
+#[cfg(test)]
+mod sdk_drift_tests {
+    //! issue 2716 -- `nros doctor` compares the store with every pin. A
+    //! synthetic store and index, so each verdict is pinned to a fixture this
+    //! test owns and never to whatever a developer's `~/.nros` holds.
+    use super::*;
+    use crate::orchestration::sdk_index::{SdkIndex, ToolNeed};
+
+    const INDEX: &str = r#"
+[tool.okay]
+version = "2.0-nros1"
+need = "required"
+
+[tool.drifted]
+version = "0.17.0-nros1"
+need = "opt-in"
+
+[tool.gone]
+version = "1.0-nros1"
+need = "required"
+
+[tool.optional]
+version = "3.0-nros1"
+need = "opt-in"
+
+[tool.boarded]
+version = "4.0-nros1"
+need = "opt-in"
+"#;
+
+    fn install(root: &Path, tool: &str, version: &str) {
+        let prefix = tool_prefix(root, tool, version);
+        std::fs::create_dir_all(&prefix).unwrap();
+        std::fs::write(
+            prefix.join(".nros-provenance"),
+            format!("kind = \"prebuilt\"\nversion = \"{version}\"\n"),
+        )
+        .unwrap();
+    }
+
+    fn store(tag: &str) -> PathBuf {
+        let root = crate::test_support::scratch_dir(tag).join("sdk");
+        install(&root, "okay", "2.0-nros1");
+        install(&root, "okay", "1.0-nros1");
+        install(&root, "okay", "2.0-nros0");
+        install(&root, "drifted", "0.8.2-nros1");
+        // A source tree beside an install is not a version.
+        std::fs::create_dir_all(root.join("drifted").join("0.8.src")).unwrap();
+        install(&root, "retired", "1.7.2-nros1");
+        root
+    }
+
+    fn state<'a>(d: &'a SdkDrift, name: &str) -> &'a ToolDriftRow {
+        d.rows.iter().find(|r| r.name == name).unwrap()
+    }
+
+    #[test]
+    fn the_store_is_compared_with_every_pin() {
+        let index = SdkIndex::parse(INDEX).unwrap();
+        let root = store("i2716_drift");
+        let d = sdk_drift(&index, &root, &[]);
+
+        let okay = state(&d, "okay");
+        assert_eq!(okay.state, ToolDrift::Ok);
+        // Superseded, oldest first, and the pin itself is not one of them.
+        assert_eq!(okay.superseded, ["1.0-nros1", "2.0-nros0"]);
+
+        // Stale warns whatever the row's need: the old version is what runs.
+        assert_eq!(
+            state(&d, "drifted").state,
+            ToolDrift::Stale {
+                have: vec!["0.8.2-nros1".to_string()]
+            }
+        );
+        assert_eq!(state(&d, "gone").state, ToolDrift::MissingRequired);
+        assert_eq!(state(&d, "optional").state, ToolDrift::AbsentOptIn);
+        assert_eq!(state(&d, "boarded").state, ToolDrift::AbsentOptIn);
+
+        assert_eq!(d.unindexed, ["retired"]);
+    }
+
+    /// A tool a `[board.*]` row lists is required for that board, whatever its
+    /// own row says.
+    #[test]
+    fn a_board_package_is_required_for_that_board() {
+        let index = SdkIndex::parse(INDEX).unwrap();
+        let root = store("i2716_board");
+        let d = sdk_drift(&index, &root, &["boarded"]);
+        assert_eq!(state(&d, "boarded").state, ToolDrift::MissingRequired);
+        assert_eq!(state(&d, "optional").state, ToolDrift::AbsentOptIn);
+    }
+
+    /// No store at all is every tool absent, never an error.
+    #[test]
+    fn an_absent_store_is_every_tool_absent() {
+        let index = SdkIndex::parse(INDEX).unwrap();
+        let root = crate::test_support::scratch_dir("i2716_empty").join("sdk");
+        let d = sdk_drift(&index, &root, &[]);
+        assert_eq!(state(&d, "gone").state, ToolDrift::MissingRequired);
+        assert_eq!(state(&d, "okay").state, ToolDrift::MissingRequired);
+        assert_eq!(state(&d, "drifted").state, ToolDrift::AbsentOptIn);
+        assert!(d.unindexed.is_empty());
+    }
+
+    /// Read-only: the comparison leaves the store byte-for-byte as it was.
+    #[test]
+    fn the_comparison_changes_nothing_on_disk() {
+        fn listing(root: &Path) -> Vec<PathBuf> {
+            let mut out = Vec::new();
+            let mut stack = vec![root.to_path_buf()];
+            while let Some(d) = stack.pop() {
+                for e in std::fs::read_dir(&d).unwrap().flatten() {
+                    if e.path().is_dir() {
+                        stack.push(e.path());
+                    }
+                    out.push(e.path());
+                }
+            }
+            out.sort();
+            out
+        }
+        let index = SdkIndex::parse(INDEX).unwrap();
+        let root = store("i2716_readonly");
+        let before = listing(&root);
+        let _ = sdk_drift(&index, &root, &["boarded"]);
+        assert_eq!(listing(&root), before);
+    }
+
+    /// Every row in the shipped index says whether it is required, so the
+    /// doctor never has to guess, and never keeps a list of its own.
+    #[test]
+    fn every_indexed_tool_states_whether_it_is_required() {
+        let idx =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../nros-sdk-index.toml");
+        let index = SdkIndex::load(&idx).expect("load nros-sdk-index.toml");
+        let unstated: Vec<&str> = index
+            .tool
+            .iter()
+            .filter(|(_, t)| t.need.is_none())
+            .map(|(n, _)| n.as_str())
+            .collect();
+        assert!(
+            unstated.is_empty(),
+            "[tool.*] rows with no `need = \"required\" | \"opt-in\"`: {unstated:?}"
+        );
+        assert!(
+            index
+                .tool
+                .values()
+                .any(|t| t.need == Some(ToolNeed::Required)),
+            "no tool is required: the field is not being read"
         );
     }
 }
