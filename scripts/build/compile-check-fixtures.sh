@@ -445,6 +445,15 @@ _cc_write_verdict_stamp() {
         echo "  Rebuild the CLI (just setup-cli) and rebuild the fixtures." >&2
         return 1
     fi
+    # Issue 2591 — the same kind of answer from the NETWORK: cargo could not
+    # obtain a dependency's source. No input the row's signature watches can
+    # change that, so a recorded one stood until a forced rebuild.
+    if refusal="$(_cc_verdict_fetch_failure "$staged")"; then
+        echo "compile-check: $(basename "$staged"): the recorded output is cargo failing to fetch a" >&2
+        echo "  dependency (\"$refusal\"), an answer about the network, not a verdict about this" >&2
+        echo "  row — refusing to record it. Rebuild the fixtures once the network is back." >&2
+        return 1
+    fi
     {
         date -u +%Y-%m-%dT%H:%M:%SZ
         if [ "$_cc_resolver_arg" = "--resolver" ]; then
@@ -461,6 +470,31 @@ _cc_verdict_cli_refusal() {
     local staged="$1"
     nros_cli_refusal_in "$staged"/verdict.stdout "$staged"/verdict.stderr \
         "$staged"/verdict.prelude.stdout "$staged"/verdict.prelude.stderr
+}
+
+# Issue 2591 — print the source-fetch failure any captured output in <staged>
+# carries, or return 1. cargo failing to obtain a dependency is about the
+# network at build time, never about the code under test (issue 1926's class).
+# ONE list; matched with whitespace collapsed, as `nros_cli_refusal_in` does.
+_cc_verdict_fetch_failure() {
+    local staged="$1" f flat m
+    local markers=(
+        "failed to load source for dependency"
+        "failed to fetch into"
+        "network failure seems to have happened"
+        "Couldn't resolve host"
+    )
+    for f in "$staged"/verdict.stdout "$staged"/verdict.stderr \
+        "$staged"/verdict.prelude.stdout "$staged"/verdict.prelude.stderr; do
+        [ -f "$f" ] || continue
+        flat="$(tr -s ' \t\r\n' '    ' < "$f")"
+        for m in "${markers[@]}"; do
+            case "$flat" in
+                *"$m"*) printf '%s\n' "$m"; return 0 ;;
+            esac
+        done
+    done
+    return 1
 }
 
 # Run one compile, capturing its verdict under $2 (a file prefix). Never fails on
@@ -1145,6 +1179,11 @@ cc_row_reusable() {
     # declared `output` (the verdict rows declare `.verdict` itself).
     if [ -f "$stamp_dir/.verdict" ] && _cc_verdict_cli_refusal "$stamp_dir" >/dev/null; then
         echo "   not reusing $stamp_dir — its recorded verdict is the nros CLI refusing to run (issue 1926)"
+        return 1
+    fi
+    # Issue 2591 — nor one that records cargo failing to fetch a dependency.
+    if [ -f "$stamp_dir/.verdict" ] && _cc_verdict_fetch_failure "$stamp_dir" >/dev/null; then
+        echo "   not reusing $stamp_dir — its recorded verdict is a dependency fetch failure (issue 2591)"
         return 1
     fi
     want="$(bash "$repo_root/scripts/build/compile-check-signature.sh" "$record" 2>/dev/null || true)"
