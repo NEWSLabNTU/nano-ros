@@ -476,6 +476,15 @@ carries = "memory.heap_bytes"
 # cmake/platform/nano-ros-freertos.cmake.
 [[knob]]
 id = "FREERTOS_TASK_STACK_GUARD"
+scope = "board"
+class = "public"
+help = '''
+0 builds a FreeRTOS kernel that does not reprogram the board's task stack
+guard on a context switch, so a task that overflows its stack is no longer
+stopped by the MPU. 1 keeps the guard. Unset keeps the board's own default:
+on for a board that has a guard (MPS2-AN385 guards the lowest 256 bytes of
+each task stack), off for one that does not.
+'''
 
 [[knob]]
 id = "GRAPH_MAX_ENTITIES"
@@ -771,6 +780,8 @@ the crate default of 64 stands.
 
 [[knob]]
 id = "MAX_STRING_ARRAY_LEN"
+scope = "image"
+class = "public"
 toml = "params.max_string_array_len"
 type = "int"
 prompt = "String-array parameter capacity in elements (-1 = derive)"
