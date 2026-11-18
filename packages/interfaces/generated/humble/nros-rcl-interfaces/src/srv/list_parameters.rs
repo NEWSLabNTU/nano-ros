@@ -4,13 +4,16 @@
 
 use nros_core::{Deserialize, RosMessage, RosService, Serialize};
 use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
-pub const DEPTH_RECURSIVE: u64 = 0;
 
 /// ListParameters request message
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ListParametersRequest {
     pub prefixes: heapless::Vec<heapless::String<256>, 64>,
     pub depth: u64,
+}
+
+impl ListParametersRequest {
+    pub const DEPTH_RECURSIVE: u64 = 0;
 }
 
 impl Serialize for ListParametersRequest {

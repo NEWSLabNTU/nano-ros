@@ -8,7 +8,7 @@ links = "nros_msgs_nros_rcl_interfaces"
 # varies by host (ROS install vs vendored interfaces) and must never reach the
 # `version` field above, or it lands in consumers' lockfiles.
 [package.metadata.nros]
-ament_version = "1.2.2"
+ament_version = "1.2.3"
 
 [features]
 default = []

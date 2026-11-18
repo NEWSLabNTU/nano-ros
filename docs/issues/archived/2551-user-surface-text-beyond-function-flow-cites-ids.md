@@ -157,7 +157,7 @@ from the host's newer Humble, `ament_version` and eight more `rosgraph_msgs`
 types. A byte-for-byte drift check is therefore host-dependent and would fail
 today; regenerating it belongs with the codegen-version question, not with
 this gate. That drift is the one remaining place with ids in user-read text,
-and is [issue 2554](../2554-generated-humble-drifts-from-emitter.md).
+and is [issue 2554](2554-generated-humble-drifts-from-emitter.md).
 
 ## Resolution
 
@@ -171,4 +171,4 @@ gaps are stated in the checker (deeper flow, ambiguous names, assigned
 fields and builders, iterator chains, cross-file tables, C buffers, emitted
 `#[doc]` and plain comments) and hold no id in user text today. The tracked
 `generated/humble` tree's drift from its emitter does hold such text; it is
-filed as [issue 2554](../2554-generated-humble-drifts-from-emitter.md) rather than checked here.
+filed as [issue 2554](2554-generated-humble-drifts-from-emitter.md) rather than checked here.

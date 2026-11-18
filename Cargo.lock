@@ -1697,6 +1697,7 @@ dependencies = [
  "heapless",
  "nros-builtin-interfaces",
  "nros-core",
+ "nros-rcl-interfaces",
  "nros-serdes",
 ]
 

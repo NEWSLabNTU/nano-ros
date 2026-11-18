@@ -6,6 +6,16 @@
   "types": [
     {
       "cyclone_schema_shape": {
+        "fields": 6,
+        "kinds": 179,
+        "nested_depth": 5
+      },
+      "reason": "unbounded members: name (string), send_goal.name (string), send_goal.request_type.name (string), send_goal.response_type.name (string), get_result.name (string), get_result.request_type.name (string), get_result.response_type.name (string), cancel_goal.name (string), cancel_goal.request_type.name (string), cancel_goal.response_type.name (string), feedback.name (string), feedback.type.name (string), status.name (string), status.type.name (string)",
+      "state": "unbounded",
+      "type_name": "rosgraph_msgs/msg/Action"
+    },
+    {
+      "cyclone_schema_shape": {
         "fields": 1,
         "kinds": 3,
         "nested_depth": 2
@@ -14,6 +24,78 @@
       "state": "bounded",
       "tx_max_serialized_size": 12,
       "type_name": "rosgraph_msgs/msg/Clock"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 1,
+        "kinds": 538,
+        "nested_depth": 9
+      },
+      "reason": "unbounded member: nodes (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "rosgraph_msgs/msg/Graph"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 5,
+        "nested_depth": 3
+      },
+      "reason": "unbounded member: name (string)",
+      "state": "unbounded",
+      "type_name": "rosgraph_msgs/msg/InterfaceType"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 9,
+        "kinds": 536,
+        "nested_depth": 7
+      },
+      "reason": "unbounded members: name (string), parameters (sequence<T>), parameter_values (sequence<T>), publishers (sequence<T>), subscriptions (sequence<T>), service_clients (sequence<T>), service_servers (sequence<T>), action_clients (sequence<T>), action_servers (sequence<T>)",
+      "state": "unbounded",
+      "type_name": "rosgraph_msgs/msg/Node"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 8,
+        "kinds": 14,
+        "nested_depth": 2
+      },
+      "rx_max_serialized_size": 52,
+      "state": "bounded",
+      "tx_max_serialized_size": 36,
+      "type_name": "rosgraph_msgs/msg/QoSProfile"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 5,
+        "kinds": 43,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: name (string), request_type.name (string), response_type.name (string)",
+      "state": "unbounded",
+      "type_name": "rosgraph_msgs/msg/Service"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 3,
+        "kinds": 22,
+        "nested_depth": 4
+      },
+      "reason": "unbounded members: name (string), type.name (string)",
+      "state": "unbounded",
+      "type_name": "rosgraph_msgs/msg/Topic"
+    },
+    {
+      "cyclone_schema_shape": {
+        "fields": 2,
+        "kinds": 3,
+        "nested_depth": 2
+      },
+      "rx_max_serialized_size": 44,
+      "state": "bounded",
+      "tx_max_serialized_size": 37,
+      "type_name": "rosgraph_msgs/msg/TypeHash"
     }
   ]
 }

@@ -8,7 +8,7 @@ links = "nros_msgs_nros_rosgraph_msgs"
 # varies by host (ROS install vs vendored interfaces) and must never reach the
 # `version` field above, or it lands in consumers' lockfiles.
 [package.metadata.nros]
-ament_version = "1.2.2"
+ament_version = "1.2.3"
 
 [features]
 default = []
@@ -18,3 +18,4 @@ nros-core = { path = "../../../../core/nros-core", default-features = false }
 nros-serdes = { path = "../../../../core/nros-serdes", default-features = false }
 heapless = "0.8"
 nros-builtin-interfaces = { path = "../nros-builtin-interfaces", default-features = false }
+nros-rcl-interfaces = { path = "../nros-rcl-interfaces", default-features = false }

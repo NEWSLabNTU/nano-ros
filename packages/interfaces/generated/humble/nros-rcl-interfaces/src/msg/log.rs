@@ -4,11 +4,6 @@
 
 use nros_core::{Deserialize, RosMessage, Serialize};
 use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
-pub const DEBUG: u8 = 10;
-pub const INFO: u8 = 20;
-pub const WARN: u8 = 30;
-pub const ERROR: u8 = 40;
-pub const FATAL: u8 = 50;
 
 /// Log message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -20,6 +15,14 @@ pub struct Log {
     pub file: heapless::String<256>,
     pub function: heapless::String<256>,
     pub line: u32,
+}
+
+impl Log {
+    pub const DEBUG: u8 = 10;
+    pub const INFO: u8 = 20;
+    pub const WARN: u8 = 30;
+    pub const ERROR: u8 = 40;
+    pub const FATAL: u8 = 50;
 }
 
 impl Serialize for Log {

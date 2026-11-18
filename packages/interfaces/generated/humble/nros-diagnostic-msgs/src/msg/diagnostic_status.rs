@@ -4,10 +4,6 @@
 
 use nros_core::{Deserialize, RosMessage, Serialize};
 use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
-pub const OK: u8 = 0;
-pub const WARN: u8 = 1;
-pub const ERROR: u8 = 2;
-pub const STALE: u8 = 3;
 
 /// DiagnosticStatus message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -17,6 +13,13 @@ pub struct DiagnosticStatus {
     pub message: heapless::String<128>,
     pub hardware_id: heapless::String<96>,
     pub values: heapless::Vec<crate::msg::KeyValue, 8>,
+}
+
+impl DiagnosticStatus {
+    pub const OK: u8 = 0;
+    pub const WARN: u8 = 1;
+    pub const ERROR: u8 = 2;
+    pub const STALE: u8 = 3;
 }
 
 impl Serialize for DiagnosticStatus {

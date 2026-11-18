@@ -4,23 +4,26 @@
 
 use nros_core::{Deserialize, RosMessage, Serialize};
 use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
-pub const PRIMARY_STATE_UNKNOWN: u8 = 0;
-pub const PRIMARY_STATE_UNCONFIGURED: u8 = 1;
-pub const PRIMARY_STATE_INACTIVE: u8 = 2;
-pub const PRIMARY_STATE_ACTIVE: u8 = 3;
-pub const PRIMARY_STATE_FINALIZED: u8 = 4;
-pub const TRANSITION_STATE_CONFIGURING: u8 = 10;
-pub const TRANSITION_STATE_CLEANINGUP: u8 = 11;
-pub const TRANSITION_STATE_SHUTTINGDOWN: u8 = 12;
-pub const TRANSITION_STATE_ACTIVATING: u8 = 13;
-pub const TRANSITION_STATE_DEACTIVATING: u8 = 14;
-pub const TRANSITION_STATE_ERRORPROCESSING: u8 = 15;
 
 /// State message type
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
     pub id: u8,
     pub label: heapless::String<256>,
+}
+
+impl State {
+    pub const PRIMARY_STATE_UNKNOWN: u8 = 0;
+    pub const PRIMARY_STATE_UNCONFIGURED: u8 = 1;
+    pub const PRIMARY_STATE_INACTIVE: u8 = 2;
+    pub const PRIMARY_STATE_ACTIVE: u8 = 3;
+    pub const PRIMARY_STATE_FINALIZED: u8 = 4;
+    pub const TRANSITION_STATE_CONFIGURING: u8 = 10;
+    pub const TRANSITION_STATE_CLEANINGUP: u8 = 11;
+    pub const TRANSITION_STATE_SHUTTINGDOWN: u8 = 12;
+    pub const TRANSITION_STATE_ACTIVATING: u8 = 13;
+    pub const TRANSITION_STATE_DEACTIVATING: u8 = 14;
+    pub const TRANSITION_STATE_ERRORPROCESSING: u8 = 15;
 }
 
 impl Serialize for State {
