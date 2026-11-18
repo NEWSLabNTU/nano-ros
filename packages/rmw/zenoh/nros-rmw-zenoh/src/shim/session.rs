@@ -641,8 +641,8 @@ impl ZenohSession {
         // endpoint is on a link that joins two endpoints, in a build that
         // compiled unicast peer mode for it. That session has one remote end
         // and needs neither multicast nor an accept loop.
-        let point_to_point =
-            crate::zpico::ZPICO_POINT_TO_POINT_PEER_SUPPORTED && endpoints_are_point_to_point(properties);
+        let point_to_point = crate::zpico::ZPICO_POINT_TO_POINT_PEER_SUPPORTED
+            && endpoints_are_point_to_point(properties);
         if peer && !crate::zpico::ZPICO_PEER_MODE_SUPPORTED && !point_to_point {
             // Kept under nros-log's 256-byte buffer: a message that overflows is
             // replaced by "…", and a diagnostic nobody can read is the failure
@@ -2031,8 +2031,15 @@ fn endpoints_are_point_to_point(properties: &[(&str, &str)]) -> bool {
         if *key != "listen" && *key != "connect" {
             continue;
         }
-        for endpoint in value.split([';', ',']).map(str::trim).filter(|e| !e.is_empty()) {
-            if !POINT_TO_POINT_SCHEMES.iter().any(|scheme| endpoint.starts_with(scheme)) {
+        for endpoint in value
+            .split([';', ','])
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+        {
+            if !POINT_TO_POINT_SCHEMES
+                .iter()
+                .any(|scheme| endpoint.starts_with(scheme))
+            {
                 return false;
             }
             any = true;
@@ -2047,11 +2054,23 @@ mod point_to_point_tests {
 
     #[test]
     fn only_sessions_wholly_on_a_point_to_point_link_qualify() {
-        assert!(endpoints_are_point_to_point(&[("mode", "peer"), ("listen", "ivc/2")]));
+        assert!(endpoints_are_point_to_point(&[
+            ("mode", "peer"),
+            ("listen", "ivc/2")
+        ]));
         assert!(endpoints_are_point_to_point(&[("connect", "ivc/3")]));
         assert!(!endpoints_are_point_to_point(&[("mode", "peer")]));
-        assert!(!endpoints_are_point_to_point(&[("listen", "tcp/0.0.0.0:7447")]));
-        assert!(!endpoints_are_point_to_point(&[("listen", "ivc/2"), ("connect", "tcp/10.0.2.2:7800")]));
-        assert!(!endpoints_are_point_to_point(&[("connect", "ivc/2;tcp/10.0.2.2:7800")]));
+        assert!(!endpoints_are_point_to_point(&[(
+            "listen",
+            "tcp/0.0.0.0:7447"
+        )]));
+        assert!(!endpoints_are_point_to_point(&[
+            ("listen", "ivc/2"),
+            ("connect", "tcp/10.0.2.2:7800")
+        ]));
+        assert!(!endpoints_are_point_to_point(&[(
+            "connect",
+            "ivc/2;tcp/10.0.2.2:7800"
+        )]));
     }
 }

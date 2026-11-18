@@ -30,11 +30,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | | |
 | --- | --- |
 | Upstream base | `1.10.1` (merge base [e1ab223a28aa](https://github.com/eclipse-zenoh/zenoh-pico/commit/e1ab223a28aaebb5dec1e70d98eab152332f777a)) |
-| Commits on top | 90 |
+| Commits on top | 93 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 119, +10738/−262 |
+| Files changed | 120, +10826/−275 |
 
-**Pinned commit:** `c05434a70fdb0ca7bfc8a5499e6e7043cb733d99`
+**Pinned commit:** `92efaba64766e5e1be129990c460971ff59a3a88`
 
 ### Commits on top of upstream
 
@@ -130,12 +130,15 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [19a47ae7b1](https://github.com/jerry73204/zenoh-pico/commit/19a47ae7b12362b8828e338aab362cccf99fabe9) | fix: a send holds a transport use, so split lock frees publishers again |
 | [aa0f454535](https://github.com/jerry73204/zenoh-pico/commit/aa0f4545352c92c17a154e87ed8b54d3a4752d2d) | fix(nano-ros, lwip): the lwIP socket glue and links include no <unistd.h> |
 | [c05434a70f](https://github.com/jerry73204/zenoh-pico/commit/c05434a70fdb0ca7bfc8a5499e6e7043cb733d99) | feat(nano-ros, freertos): Z_FEATURE_NROS_PLATFORM_TIME routes the wall clock to nano-ros |
+| [328f56dea3](https://github.com/jerry73204/zenoh-pico/commit/328f56dea3c563f0fe0af77993abbec1d1b1bae3) | fix(nano-ros): a client session on IVC dereferenced NULL for its peer socket |
+| [2996fdefaa](https://github.com/jerry73204/zenoh-pico/commit/2996fdefaaaa182df03e678750935de7739b67fe) | feat(nano-ros): peer mode on a link that joins two endpoints |
+| [92efaba647](https://github.com/jerry73204/zenoh-pico/commit/92efaba64766e5e1be129990c460971ff59a3a88) | fix(nano-ros): a session on IVC can neither wait in its handshake nor read |
 
 Reproduce:
 
 ```bash
 base=1.10.1
-head=jerry73204:zenoh-pico:c05434a70fdb0ca7bfc8a5499e6e7043cb733d99
+head=jerry73204:zenoh-pico:92efaba64766e5e1be129990c460971ff59a3a88
 gh api "repos/eclipse-zenoh/zenoh-pico/compare/$base...$head" --jq '.ahead_by'
 ```
 
