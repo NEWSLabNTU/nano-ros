@@ -106,7 +106,8 @@ _snapshot | sort >"$out_dir/before"
 tokens="${NROS_GATE_TOKENS:-$(nproc 2>/dev/null || echo 4)}"
 sample_interval=30
 [ "${NROS_GATE_WAITS:-}" = 1 ] && sample_interval=5
-python3 scripts/build/run-load-sampler.py sample "$out_dir/load" --interval "$sample_interval" &
+python3 scripts/build/run-load-sampler.py sample "$out_dir/load" --interval "$sample_interval" \
+    --pool "$tokens" &
 sampler=$!
 rc=0
 nros_guard_lane "gates-$lane" nros_pool_own "gate lane \`$lane\`" "$tokens" \

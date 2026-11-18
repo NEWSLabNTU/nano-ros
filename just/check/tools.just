@@ -27,6 +27,8 @@ flake-quarantine:
 # built image through the harness and so inherits the staleness probe.
 [private]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 mem-report:
     @python3 scripts/nros-mem-report.py --selftest
 

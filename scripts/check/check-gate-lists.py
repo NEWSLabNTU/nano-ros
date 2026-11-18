@@ -141,21 +141,25 @@ def recipes(lines: list[str]) -> dict[str, bool]:
     return out
 
 
-def recipe_tiers() -> dict[str, list[str]]:
-    """Every `check` recipe's `[metadata("tier", ...)]` values (without the
-    leading "tier"), from `just --dump`, the one view of a recipe's attributes."""
+def recipe_metadata(key: str) -> dict[str, list[str]]:
+    """Every `check` recipe's `[metadata("<key>", ...)]` values (without the
+    leading key), from `just --dump`, the one view of a recipe's attributes."""
     out = subprocess.run(
         ["just", "--dump", "--dump-format", "json"],
         cwd=REPO, capture_output=True, text=True, check=True,
     ).stdout
     recs = json.loads(out)["modules"]["check"]["recipes"]
-    tiers: dict[str, list[str]] = {}
+    found: dict[str, list[str]] = {}
     for name, r in recs.items():
         for a in r.get("attributes", []):
             if isinstance(a, dict) and isinstance(a.get("metadata"), list) \
-                    and a["metadata"][:1] == ["tier"]:
-                tiers[name] = a["metadata"][1:]
-    return tiers
+                    and a["metadata"][:1] == [key]:
+                found[name] = a["metadata"][1:]
+    return found
+
+
+def recipe_tiers() -> dict[str, list[str]]:
+    return recipe_metadata("tier")
 
 
 def classify(just_text: str, tiers: dict[str, list[str]]) -> tuple[dict[str, list[str]], list[str]]:
@@ -238,6 +242,50 @@ def declared_weight(groups: set[str]) -> int:
     cpus = [int(g.removeprefix("cpu:")) for g in groups
             if g.startswith("cpu:") and g.removeprefix("cpu:").isdigit()]
     return max(cpus) if cpus else 1
+
+
+# Issue 2625. Every build-tier gate states its weight AND how it was chosen,
+# `[metadata("cpu-basis", "<kind>", "<how>")]` beside `[group('cpu:<n>')]`
+# (the number stays in ONE place, the group; this says where it came from):
+#   knee     measured: idle wall time against the gate's own parallelism,
+#            set at the knee (`cli-tests`: 530 s at nproc, 523 s at 4, 596 s
+#            at 2, so 4). The text holds the numbers.
+#   default  a parallel build whose knee is not measured yet: exactly
+#            DEFAULT_BUILDER_WEIGHT.
+#   light    runs one thing at a time: weight 1, and the text says why.
+# NOT a measured peak: a peak counts the pool tokens a gate's cargo held at its
+# busiest moment, so it scales with the host and varied 2 to 54 for one gate
+# on one host (issue 2683). A peak above the whole POOL is a different fault,
+# reported by the lane's load sampler.
+DEFAULT_BUILDER_WEIGHT = 2
+CPU_BASIS_KINDS = ("knee", "default", "light")
+
+
+def weight_basis_problems(build: list[str], groups: dict[str, set[str]],
+                          basis: dict[str, list[str]]) -> list[str]:
+    out = []
+    for name in sorted(build):
+        w = declared_weight(groups.get(name, set()))
+        vals = basis.get(name)
+        if not vals:
+            out.append(
+                f"  `{name}`: a build-tier gate with no stated weight basis.\n"
+                f'      Add `[metadata("cpu-basis", "<knee|default|light>", "<how>")]`: a build\n'
+                f"      gate that runs a parallel build takes `cpu:{DEFAULT_BUILDER_WEIGHT}` until its\n"
+                f"      knee is measured; one that does not, `light` with the reason.")
+            continue
+        kind, how = vals[0], " ".join(vals[1:]).strip()
+        if kind not in CPU_BASIS_KINDS:
+            out.append(f"  `{name}`: cpu-basis `{kind}` is not one of {', '.join(CPU_BASIS_KINDS)}.")
+        elif kind == "default" and w != DEFAULT_BUILDER_WEIGHT:
+            out.append(f"  `{name}`: cpu-basis `default` means `cpu:{DEFAULT_BUILDER_WEIGHT}`; it "
+                       f"declares {w}. A measured weight is `knee`, with its numbers.")
+        elif kind == "light" and w != 1:
+            out.append(f"  `{name}`: cpu-basis `light` means weight 1; it declares {w}.")
+        elif kind in ("knee", "light") and not how:
+            out.append(f"  `{name}`: cpu-basis `{kind}` with no text. Say how it was measured "
+                       "(knee) or why it runs one thing at a time (light).")
+    return out
 
 
 def needs_of(groups: set[str]) -> set[str]:
@@ -630,6 +678,16 @@ def self_test() -> None:
     t = {"heavy-gate": ["build"], "some-verb": ["exempt", "a verb"]}
     b, problems = classify(mini, t)
     assert problems == [], f"selftest: rejected a well-formed tree: {problems}"
+    # Issue 2625: every build gate states its weight's basis.
+    wg = {"k": {"cpu:6"}, "d": {"cpu:2"}, "l": set(), "bad-d": {"cpu:8"}, "bad-l": {"cpu:2"},
+          "none": set(), "mute": {"cpu:3"}}
+    wb = {"k": ["knee", "540 s at 6, 610 s at 3"], "d": ["default"], "l": ["light", "one cargo"],
+          "bad-d": ["default"], "bad-l": ["light", "x"], "mute": ["knee"]}
+    wp = "\n".join(weight_basis_problems(list(wg), wg, wb))
+    assert "`k`" not in wp and "`d`" not in wp and "`l`" not in wp, \
+        f"selftest: a well-stated weight was refused: {wp}"
+    for bad in ("bad-d", "bad-l", "none", "mute"):
+        assert f"`{bad}`" in wp, f"selftest: weight basis `{bad}` passed: {wp}"
     assert b["fast"] == ["alpha-gate", "beta-gate"], b["fast"]
     assert b["build"] == ["heavy-gate"], b["build"]
     assert b["exempt"] == ["some-verb"], b["exempt"]
@@ -767,6 +825,7 @@ def main(argv: list[str]) -> int:
     # having its recipe deleted, and this is what notices.
     if not problems:
         problems = ratchet(set(b["fast"] + b["build"]), load_baseline())
+    problems += weight_basis_problems(b["build"], recipe_groups(), recipe_metadata("cpu-basis"))
 
     if problems:
         print("check-gate-lists: the gate classification does not hold\n")

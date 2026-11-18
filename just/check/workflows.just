@@ -203,6 +203,7 @@ claim-protocol:
 # for 2.5 s CPU. The rest is still I/O wait, the one lstat per file.
 [private]
 [metadata("tier", "build")]
+[metadata("cpu-basis", "light", "reads built dists; peak 1 in every one of 9 build-tier runs on host 139")]
 dist-runtime-deps:
     @python3 scripts/check-dist-runtime-deps.py
 

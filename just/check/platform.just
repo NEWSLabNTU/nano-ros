@@ -91,6 +91,8 @@ r5f-hard-float-abi:
 [group('needs:cli')]
 [group('needs:arm-gcc')]
 [group('needs:cmake')]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 out-of-tree-board-images:
     @bash scripts/check/check-out-of-tree-board-images.sh
 
@@ -105,6 +107,8 @@ out-of-tree-board-images:
 [group('needs:cli')]
 [group('needs:cmake')]
 [group('needs:cc')]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 c-image-one-cargo-run:
     @bash scripts/check/check-c-image-one-cargo-run.sh
 
@@ -118,6 +122,8 @@ c-image-one-cargo-run:
 [group('needs:arm-gcc-any')]
 [group('needs:cmake')]
 [group('needs:tiarmclang')]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 tiarmclang-image:
     @bash scripts/check/check-tiarmclang-image.sh
 

@@ -954,6 +954,7 @@ toolchain-paths-persist:
 [group('needs:cmake')]
 [group('cpu:6')]
 [metadata("tier", "build")]
+[metadata("cpu-basis", "knee", "the number of configures its script runs side by side (NROS_WORKSPACE_PROBE_JOBS); solo 375 s on host 139 (issue 2683)")]
 workspace-probes:
     @bash scripts/check-workspace-probes.sh
 

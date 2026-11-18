@@ -56,6 +56,7 @@ api-parity:
 # so this builds exactly that row — the same stamp every fixture lane builds.
 [private]
 [metadata("tier", "build")]
+[metadata("cpu-basis", "light", "median peak 1 over 9 build-tier runs on host 139 (max 6)")]
 borrowed-e2e:
     #!/usr/bin/env bash
     set -e
@@ -139,6 +140,8 @@ c-link-smoke:
 # The build and the first link are `c-link-smoke` (issue 2685), which runs first.
 [private]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 c: c-fmt c-link-smoke
     #!/usr/bin/env bash
     set -e
@@ -1388,6 +1391,7 @@ pyo3-path-stable:
 [group('needs:colcon')]
 [group('needs:submodules')]
 [group('cpu:4')]
+[metadata("cpu-basis", "knee", "idle 20-core host: test run 530 s at nproc threads, 523 s at 4, 596 s at 2 (issue 2683)")]
 cli-tests:
     #!/usr/bin/env bash
     set -e
@@ -1600,6 +1604,8 @@ compile-smoke:
 [private]
 [metadata("tier", "build")]
 [group('needs:arm-gcc')]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 cpp-heap-free-image-link:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1625,6 +1631,8 @@ cpp-heap-free-image-link:
 # `.gitignore` row `check-scoped-target-dirs-ignored` holds.)
 [private]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 cpp: cpp-fmt
     #!/usr/bin/env bash
     set -e
@@ -4130,6 +4138,8 @@ dep-chain:
 # reach an embedded target's production-link view. The `check.yml` step (SSoT).
 [private]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 embedded-feature-unification:
     #!/usr/bin/env bash
     set -e
@@ -4168,6 +4178,8 @@ embedded-feature-unification:
 # answer without the submodule is no.
 [private]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 launch-resolve-builds:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -4388,6 +4400,8 @@ miri-executor-reentry:
 
 [group('uses:root-target')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 node-std-tests:
     #!/usr/bin/env bash
     set -e
@@ -4746,6 +4760,8 @@ node-std-tests:
 # the standard check tier.
 [private]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 nros-log-riscv32:
     @echo "Checking nros-log for riscv32imc..."
     cargo check -p nros-log --target riscv32imc-unknown-none-elf --no-default-features
@@ -4779,6 +4795,8 @@ nros-log-riscv32:
 [group("test")]
 [group('uses:root-target')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 required-features-tests:
     #!/usr/bin/env bash
     set -e
@@ -4804,6 +4822,7 @@ required-features-tests:
 # `cyclonedds::ci` recipe itself fails hard on real test failures.
 [private]
 [metadata("tier", "build")]
+[metadata("cpu-basis", "light", "median peak 1 over 9 build-tier runs on host 139")]
 rmw-cyclonedds:
     #!/usr/bin/env bash
     set -e
@@ -4832,6 +4851,8 @@ rmw-backend-list:
     @python3 scripts/gen-rmw-backend-list.py --check
 
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 rmw-uorb:
     #!/usr/bin/env bash
     set -e
@@ -4861,6 +4882,7 @@ rmw-uorb:
 # prerequisite is absent, so "not built here" can never read as "builds".
 [metadata("tier", "build")]
 [group('needs:submodules')]
+[metadata("cpu-basis", "light", "peak 1 in every one of 9 build-tier runs on host 139")]
 rmw-xrce:
     #!/usr/bin/env bash
     set -e
@@ -4905,6 +4927,8 @@ rmw-xrce:
 # they disagree: it prints one section per arm.
 [group('units')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 sched-dim-arms:
     @bash scripts/check-sched-dim-arms-compile.sh
 
@@ -4924,6 +4948,8 @@ sched-matrix:
 [private]
 [group('uses:root-target')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 source-gates:
     #!/usr/bin/env bash
     set -e
@@ -4982,6 +5008,7 @@ source-gates:
 [private]
 [group('uses:root-target')]
 [metadata("tier", "build")]
+[metadata("cpu-basis", "light", "median peak 1 over 9 build-tier runs on host 139 (max 9, once)")]
 staticlib-symbols:
     #!/usr/bin/env bash
     set -e
@@ -5026,6 +5053,8 @@ staticlib-symbols:
 [private]
 [group('uses:root-target')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 test-targets:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -5110,6 +5139,8 @@ workspace: workspace-fmt
 [private]
 [group('uses:root-target')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 workspace-all:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -5239,7 +5270,10 @@ workspace-embedded:
 # 62 to 87 % of the harness's 2400 s budget on a loaded host and timed out at
 # load ~90: 32 cargo roots each compile the nros stack, and issue 0616 forbids
 # them sharing a target dir, so the work is real and only its budget was
-# wrong. `cpu:8` weights each unit as a parallel build beside the other gates.
+# wrong. Each unit is weighed as a parallel build beside the other gates. It
+# declared `cpu:8` for that; across 9 build-tier runs on host 139 no unit ran
+# more than 4 threads (median 1), so it takes the builder default until its
+# knee is measured (issue 2625).
 #
 # Issue 2595 -- a one-node witness workspace's node packages are units too
 # (`lint-example-witness.sh`, through the workspace's own configure). They had
@@ -5248,8 +5282,9 @@ workspace-embedded:
 # tracked example package is in no unit and no named exclusion.
 [private]
 [group('units')]
-[group('cpu:8')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 linux-check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -5283,6 +5318,8 @@ example-lint-units:
 [private]
 [group('uses:root-target')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 workspace-features:
     @echo "Checking feature combinations..."
     # Phase 128.C.3 — `nros/rmw-zenoh-cffi` feature deleted; the
@@ -5385,6 +5422,7 @@ workspace-features:
 # On the BUILD lane: it compiles three crates. 0.6 s warm.
 [private]
 [metadata("tier", "build")]
+[metadata("cpu-basis", "light", "median peak 1 over 9 build-tier runs on host 139 (max 4)")]
 excluded-crate-tests:
     @bash scripts/run-excluded-crate-tests.sh
 
@@ -5395,6 +5433,7 @@ excluded-crate-tests:
 # with it. Subjects, triples and feature sets are derived; ~37 s cold.
 [private]
 [metadata("tier", "build")]
+[metadata("cpu-basis", "light", "peak 1 runnable in every one of 9 build-tier runs on host 139, cold ones included")]
 board-transport-variants:
     @python3 scripts/check/check-board-transport-variants.py
 
@@ -5409,6 +5448,7 @@ board-transport-variants:
 # lane's probes compile against that header under a DIFFERENT feature set.
 [private]
 [metadata("tier", "build")]
+[metadata("cpu-basis", "light", "median peak 1 over 9 build-tier runs on host 139 (max 2)")]
 cpp-ffi-tests:
     #!/usr/bin/env bash
     set -euo pipefail

@@ -169,6 +169,8 @@ example-matrix:
 [group('needs:cli')]
 [group('uses:scratch-tree')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 scaffold-builds:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -237,6 +239,8 @@ workspace-fixture-lang-reach:
 [group('needs:cli')]
 [group('uses:scratch-tree')]
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 template-copy-out:
     #!/usr/bin/env bash
     set -euo pipefail

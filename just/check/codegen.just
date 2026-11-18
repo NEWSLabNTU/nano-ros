@@ -308,6 +308,8 @@ emitter-just-spelling:
 # `build-serial`, not the fast line: the fixture links `nros-cpp` with
 # `metadata-mode` on.
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 census-hooks-complete:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -403,6 +405,8 @@ shared-build-dir:
 # BUILD-tier gate (`build-serial`), and gate.yml runs it in the merge group
 # beside `template-copy-out`.
 [metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
 ament-census-sizing:
     @bash scripts/check-ament-census-sizing.sh
 
