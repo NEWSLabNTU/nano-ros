@@ -911,7 +911,7 @@ this phase will fix it.
 - [issue 2681](../issues/2681-rust-node-builder-reaches-no-census-hook.md): a Rust node built with `Executor::node_builder(..).build()` or `Executor::create_node` reaches no census hook, so the census does not count it unless it declares a parameter.
 - [issue 2678](../issues/archived/2678-plain-executable-opt-out-on-a-board.md) (GitHub #4016, resolved): a board build had no public way to declare an executable that is not an image; `nano_ros_add_plain_executable` is it (I30).
 - [issue 2679](../issues/archived/2679-zephyr-board-network-file-net-config.md) (GitHub #4011, resolved): a board network file was refused on Zephyr; it renders into `NET_CONFIG_*` (I31).
-- [issue 2665](../issues/2665-target-session-chain-start-deadline-under-load.md): `target_session::tests::teardown_waits_for_a_chain_that_is_stopping` failed under host load at its 5 s chain-start deadline and passes alone.
+- [issue 2665](../issues/archived/2665-target-session-chain-start-deadline-under-load.md): `target_session::tests::teardown_waits_for_a_chain_that_is_stopping` failed under host load at its 5 s chain-start deadline and passes alone. Resolved: the chain could end before the helper first looked; it now waits for the test's go.
 - [issue 2660](../issues/archived/2660-pyo3-rebuilds-on-path-change.md) (GitHub #4084, resolved): the launch resolver rebuilt pyo3-ffi whenever PATH changed (I25).
 
 ## Issues homed here (2026-11-16)

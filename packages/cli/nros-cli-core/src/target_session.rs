@@ -851,6 +851,21 @@ pub(crate) mod tests {
     /// waits. Returns the group and the chain's group id.
     #[cfg(target_os = "linux")]
     fn runner_with_chain(chain: &str) -> (ProcessGroup, i32) {
+        // Issue 2665 -- this bounds the SETUP (a shell, its `setsid` and the
+        // chain's first process getting scheduled), not the behaviour under
+        // test, so it is long: a chain that never starts still fails. 5 s was
+        // missed at load average ~390.
+        runner_with_chain_seen_after(chain, Duration::ZERO, Duration::from_secs(60))
+    }
+
+    /// [`runner_with_chain`], looking for the chain only after `look_after`
+    /// (what a loaded host does to the helper by accident), within `setup`.
+    #[cfg(target_os = "linux")]
+    fn runner_with_chain_seen_after(
+        chain: &str,
+        look_after: Duration,
+        setup: Duration,
+    ) -> (ProcessGroup, i32) {
         let mut group = ProcessGroup::new();
         let script = format!(
             "setsid {chain} </dev/null >/dev/null 2>&1 & \
@@ -863,7 +878,7 @@ pub(crate) mod tests {
         let (tx, _rx) = channel();
         let chains = group.chain_log();
         spawn_stderr(err, tx, chains.clone());
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + setup;
         let pgid = loop {
             if let Some(&g) = chains.0.lock().unwrap().first() {
                 break g;
@@ -871,6 +886,7 @@ pub(crate) mod tests {
             assert!(Instant::now() < deadline, "no chain line");
             thread::sleep(Duration::from_millis(10));
         };
+        thread::sleep(look_after);
         // `setsid` makes its pid the group id once it has run.
         while group_members(pgid).is_empty() {
             assert!(Instant::now() < deadline, "the chain never started");
@@ -886,10 +902,22 @@ pub(crate) mod tests {
         // does while its guard goes from SIGTERM to SIGKILL.
         // It leaves a mark when it ends on its own, so a chain the teardown
         // killed early instead of waiting for is told apart.
+        //
+        // Issue 2665 -- the chain's half second starts only once the test
+        // says go. It used to start at once, so under load the chain could
+        // finish before `runner_with_chain` first looked for it, and an empty
+        // group then read as "the chain never started" for as long as the
+        // deadline allowed. Now the chain is alive and waiting whenever the
+        // helper looks, and its half second overlaps the teardown, as meant.
         let dir = tempfile::tempdir().unwrap();
         let mark = dir.path().join("ended");
-        let (mut group, pgid) =
-            runner_with_chain(&format!("sh -c 'sleep 0.5; touch {}'", mark.display()));
+        let go = dir.path().join("go");
+        let (mut group, pgid) = runner_with_chain(&format!(
+            "sh -c 'while [ ! -e {go} ]; do sleep 0.01; done; sleep 0.5; touch {mark}'",
+            go = go.display(),
+            mark = mark.display()
+        ));
+        std::fs::write(&go, b"").unwrap();
         let t = Instant::now();
         group.teardown(TEARDOWN_GRACE);
         assert!(group_members(pgid).is_empty(), "teardown returned first");
@@ -901,6 +929,46 @@ pub(crate) mod tests {
             t.elapsed() < CHAIN_GRACE,
             "a chain that stops by itself is not killed: {:?}",
             t.elapsed()
+        );
+    }
+
+    /// Issue 2665, the race made deterministic: a chain that ends on its own
+    /// half a second after it starts is gone by the time a helper that looks
+    /// a second late arrives, so the helper reads "the chain never started".
+    /// This is what a loaded host did to the test below it by accident, and
+    /// why that test's chain now waits for the test's go.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[should_panic(expected = "the chain never started")]
+    fn a_short_chain_is_gone_before_a_late_look() {
+        let _ = runner_with_chain_seen_after(
+            "sleep 0.5",
+            Duration::from_secs(1),
+            Duration::from_secs(3),
+        );
+    }
+
+    /// Issue 2665 -- the gated chain the teardown test now uses is seen
+    /// however late the helper looks: it lives until the test says go.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_gated_chain_is_seen_by_a_late_look() {
+        let dir = tempfile::tempdir().unwrap();
+        let go = dir.path().join("go");
+        let (mut group, pgid) = runner_with_chain_seen_after(
+            &format!(
+                "sh -c 'while [ ! -e {go} ]; do sleep 0.01; done'",
+                go = go.display()
+            ),
+            Duration::from_secs(1),
+            Duration::from_secs(3),
+        );
+        assert!(!group_members(pgid).is_empty(), "the gated chain is alive");
+        std::fs::write(&go, b"").unwrap();
+        group.teardown(TEARDOWN_GRACE);
+        assert!(
+            group_members(pgid).is_empty(),
+            "the chain outlived the teardown"
         );
     }
 
