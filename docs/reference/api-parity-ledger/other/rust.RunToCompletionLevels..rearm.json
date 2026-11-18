@@ -1,0 +1,5 @@
+{
+  "key": "rust:RunToCompletionLevels::rearm",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- arms the board one-shot at the earliest non-boot deadline. rclrs has no levels."
+}

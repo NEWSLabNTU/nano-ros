@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::next_timer_deadline_of_level_us",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- a level's band's next timer deadline, read at the end of that level's pass, which a run-to-completion level runner arms a board one-shot for. rclrs has no levels."
+}

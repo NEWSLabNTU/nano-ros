@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelWakeTimes::soonest_after",
+  "verdict": "extension",
+  "why": "phase-562 W10 -- the earliest non-boot deadline, what the board one-shot is armed at. rclrs has no levels."
+}

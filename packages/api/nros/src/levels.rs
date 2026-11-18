@@ -34,10 +34,13 @@
 
 use core::{ffi::c_void, time::Duration};
 
+// phase-562 W10 -- re-exported for the `nros::main!` RTIC level runner, which
+// builds each level's waiter as a `static`.
 use nros_node::executor::{
-    Band, BandWaiter, BandWorker,
+    Band, BandWorker,
     exec_lock::{ExecGuard, ExecLock, ExecLockFn, ThreadIdFn},
 };
+pub use nros_node::executor::{BandWaitFn, BandWaiter, WorkerWakeFn};
 
 use crate::{Executor, node_runtime::ExecutorNodeRuntime};
 
@@ -132,10 +135,30 @@ impl LevelCore {
     /// # Safety
     /// Called once per level, on the level's own thread.
     pub unsafe fn open_level(&self, level: u8) -> Result<&'static mut BandWorker, LevelError> {
+        unsafe { self.open_level_with(level, BandWaiter::platform()) }
+    }
+
+    // phase-562 W10.
+    /// [`Self::open_level`] with the level's own waiter, for a
+    /// runner whose levels cannot wait on the platform's wake object (an RTIC
+    /// level runs to completion: its waiter's `wake` spawns its task, and its
+    /// `wait` returns at once).
+    ///
+    /// # Safety
+    /// As [`Self::open_level`].
+    // The worker is LEAKED here (`Box::leak`), so the `&'static mut` is new
+    // and unaliased; it borrows nothing from `waiter`, which the worker only
+    // links to.
+    #[allow(clippy::mut_from_ref)]
+    pub unsafe fn open_level_with(
+        &self,
+        level: u8,
+        waiter: Option<&'static BandWaiter>,
+    ) -> Result<&'static mut BandWorker, LevelError> {
         if usize::from(level) >= crate::MAX_LEVELS {
             return Err(LevelError::BadLevel);
         }
-        let worker = match BandWaiter::platform() {
+        let worker = match waiter {
             Some(w) => BandWorker::new(level, Band::ALL).with_waiter(w),
             None => BandWorker::new(level, Band::ALL),
         };
@@ -227,5 +250,134 @@ impl LevelCore {
     pub unsafe fn spin_boot_once(&self, timeout: Duration) -> nros_node::SpinOnceResult {
         // SAFETY: as `spin_level_once`; the ticks run under the same guard.
         unsafe { ExecutorNodeRuntime::spin_once_shared(self.rt, timeout) }
+    }
+}
+
+// phase-562 W10.
+/// Levels that RUN TO COMPLETION: one pass per wake, never a
+/// blocking wait.
+///
+/// An RTIC level is a software task at its own hardware priority. A level
+/// that parked on a timed wait, as a threaded RTOS's level does, would hold
+/// its priority and starve every level below it, the boot level's transport
+/// included. So each non-boot level's task does ONE band pass
+/// ([`LevelCore::spin_level_once`] with a zero timeout) per wake, and two
+/// things wake it:
+///
+/// * an arrival in its band, through the level's [`BandWaiter`], whose `wake`
+///   the image points at "spawn this level's task" ([`LevelCore::open_level_with`]);
+/// * its band's next timer, through ONE board one-shot armed at the earliest
+///   deadline over the non-boot levels ([`Self::rearm`]). Without it a higher
+///   band's due timer would wait out the boot level's park, which is bounded
+///   by the boot band's own timers only.
+///
+/// A band's deadline is read at the end of that level's own pass, the one
+/// moment it is exact (a band's timers are credited their elapsed time by its
+/// own passes), and kept as an absolute time per level.
+///
+/// A `const` static: the image's boot task [`Self::install`]s the core once,
+/// before any level runs, and every level and the wake interrupt read it
+/// after.
+pub struct RunToCompletionLevels {
+    core: core::cell::UnsafeCell<Option<LevelCore>>,
+    installed: core::sync::atomic::AtomicBool,
+    workers: [core::sync::atomic::AtomicPtr<BandWorker>; crate::MAX_LEVELS],
+    /// Each level's next timer deadline.
+    times: crate::level_wake::LevelWakeTimes,
+}
+
+// SAFETY: `core` is written once, by `install`, before `installed` is set,
+// and only read after it is observed set; everything else is atomic.
+unsafe impl Sync for RunToCompletionLevels {}
+
+impl RunToCompletionLevels {
+    /// An empty runner, for a `static`.
+    pub const fn new() -> Self {
+        Self {
+            core: core::cell::UnsafeCell::new(None),
+            installed: core::sync::atomic::AtomicBool::new(false),
+            workers: [const { core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()) };
+                crate::MAX_LEVELS],
+            times: crate::level_wake::LevelWakeTimes::new(),
+        }
+    }
+
+    /// Hand the runner its core, once, before any level task runs. `false`
+    /// when it already has one.
+    ///
+    /// # Safety
+    /// No level task or wake interrupt reads this runner until it returns.
+    pub unsafe fn install(&self, core: LevelCore, boot_level: u8) -> bool {
+        use core::sync::atomic::Ordering;
+        if self.installed.load(Ordering::Acquire) {
+            return false;
+        }
+        unsafe { *self.core.get() = Some(core) };
+        self.times.set_boot(boot_level);
+        self.installed.store(true, Ordering::Release);
+        true
+    }
+
+    /// The core, once installed.
+    pub fn core(&self) -> Option<&LevelCore> {
+        if self.installed.load(core::sync::atomic::Ordering::Acquire) {
+            // SAFETY: written once before `installed` was set (`install`).
+            unsafe { (*self.core.get()).as_ref() }
+        } else {
+            None
+        }
+    }
+
+    /// Record `level`'s band worker (from [`LevelCore::open_level_with`]).
+    pub fn set_worker(&self, level: u8, worker: &'static mut BandWorker) {
+        if let Some(slot) = self.workers.get(usize::from(level)) {
+            slot.store(worker, core::sync::atomic::Ordering::Release);
+        }
+    }
+
+    /// One pass of `level`'s band, then its next deadline is recorded and the
+    /// board one-shot re-armed through `arm`. A level with no worker (or a
+    /// runner not yet installed) does nothing.
+    ///
+    /// # Safety
+    /// Called only from `level`'s own task, never re-entered for one level.
+    pub unsafe fn pass(&self, level: u8, arm: fn(Option<u64>)) {
+        use core::sync::atomic::Ordering;
+        let (Some(core), Some(slot)) = (self.core(), self.workers.get(usize::from(level))) else {
+            return;
+        };
+        let worker = slot.load(Ordering::Acquire);
+        if worker.is_null() {
+            return;
+        }
+        // SAFETY: the worker is this level's alone, and its task is the only
+        // caller for this level.
+        let worker = unsafe { &mut *worker };
+        let _ = unsafe { core.spin_level_once(worker, Duration::ZERO) };
+        let next =
+            unsafe { core.with_runtime(|rt| rt.executor().next_timer_deadline_of_level_us(level)) };
+        self.times.set(level, next, crate::time::now_us() as u32);
+        self.rearm(arm);
+    }
+
+    /// Arm the board one-shot at the earliest deadline over the non-boot
+    /// levels, or disarm it when none has a timer.
+    pub fn rearm(&self, arm: fn(Option<u64>)) {
+        arm(self
+            .times
+            .soonest_after(crate::time::now_us() as u32)
+            .map(u64::from));
+    }
+
+    /// Whether `level`'s next timer is due at `now` (the wake interrupt
+    /// spawns exactly these).
+    pub fn is_due(&self, level: u8, now: u64) -> bool {
+        self.times.is_due(level, now as u32)
+    }
+}
+
+impl Default for RunToCompletionLevels {
+    fn default() -> Self {
+        Self::new()
     }
 }

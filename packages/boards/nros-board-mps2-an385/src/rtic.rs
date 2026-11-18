@@ -267,7 +267,14 @@ impl RticBoardEntry for RticMps2An385 {
     type Runtime = RticRuntime;
     type Boot = RticBoot;
 
-    const DISPATCHERS: &'static [&'static str] = &["UARTRX0", "UARTTX0"];
+    /// phase-562 W10 -- one RTIC software-task priority per dispatcher, so
+    /// this list bounds how many derived levels an image may have. `I2S`
+    /// (NVIC 14) and `TSC` (NVIC 15) are added because QEMU's mps2 model
+    /// instantiates no I2S or touch-screen controller: nothing ever raises
+    /// those lines, so pending them is the only way they fire. The macro
+    /// keeps its own copy (it cannot read this at expansion time) and
+    /// asserts at compile time that the two agree.
+    const DISPATCHERS: &'static [&'static str] = &["UARTRX0", "UARTTX0", "I2S", "TSC"];
 
     fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Boot, Self::Runtime) {
         init_with_config(Config::qemu_slirp(), None)
@@ -308,6 +315,161 @@ impl RticBoardEntry for RticMps2An385 {
     fn on_interrupts_live() {
         #[cfg(feature = "ethernet")]
         crate::tickless::install();
+    }
+
+    // phase-562 W10 -- a multi-level image's executor lock and level wake.
+
+    fn level_lock_init(ceiling: u8) -> bool {
+        level_lock::init(ceiling)
+    }
+
+    unsafe extern "C" fn level_lock(_ctx: *mut core::ffi::c_void) -> i8 {
+        level_lock::lock()
+    }
+
+    unsafe extern "C" fn level_unlock(_ctx: *mut core::ffi::c_void) -> i8 {
+        level_lock::unlock()
+    }
+
+    unsafe extern "C" fn level_thread_id() -> usize {
+        level_lock::active_exception()
+    }
+
+    fn arm_level_wake(after_us: Option<u64>) {
+        level_wake::arm(after_us);
+    }
+
+    fn on_level_wake_irq() {
+        level_wake::acknowledge();
+    }
+}
+
+/// phase-562 W10 -- the executor lock of a multi-level RTIC image: a BASEPRI
+/// priority ceiling at the image's most urgent level.
+///
+/// Holding it masks every level's dispatcher, so no level task enters the
+/// executor while another is in its bookkeeping, and nothing blocks: on one
+/// core a task that could contend is simply not running. The two hardware
+/// tasks above the ceiling (the RX interrupt and the level wake) never take
+/// it. Recursive by depth: only the outermost release restores the priority
+/// the outermost take raised from.
+mod level_lock {
+    use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+
+    /// The ceiling as a BASEPRI value; 0 until `init` (and 0 masks nothing).
+    static CEILING: AtomicU8 = AtomicU8::new(0);
+    /// Holds taken and not yet released.
+    static DEPTH: AtomicUsize = AtomicUsize::new(0);
+    /// BASEPRI before the outermost take.
+    static SAVED: AtomicU8 = AtomicU8::new(0);
+
+    /// RTIC's logical-to-hardware priority mapping: logical 1 is the least
+    /// urgent, and a higher logical priority is a numerically LOWER BASEPRI.
+    pub(super) fn init(ceiling: u8) -> bool {
+        let bits = mps2_an385_pac::NVIC_PRIO_BITS;
+        if ceiling == 0 || u32::from(ceiling) >= (1u32 << bits) {
+            return false;
+        }
+        let hw = (((1u16 << bits) - u16::from(ceiling)) << (8 - bits)) as u8;
+        CEILING.store(hw, Ordering::Relaxed);
+        true
+    }
+
+    pub(super) fn lock() -> i8 {
+        let ceiling = CEILING.load(Ordering::Relaxed);
+        if ceiling == 0 {
+            return -1;
+        }
+        // Raise first: once BASEPRI is at the ceiling no level task can run,
+        // so the depth and the saved value below are this holder's alone.
+        let before = cortex_m::register::basepri::read();
+        // Raising BASEPRI only masks interrupts (a safe call); the restore is
+        // the matching `unlock`.
+        cortex_m::register::basepri_max::write(ceiling);
+        if DEPTH.fetch_add(1, Ordering::Relaxed) == 0 {
+            SAVED.store(before, Ordering::Relaxed);
+        }
+        0
+    }
+
+    pub(super) fn unlock() -> i8 {
+        match DEPTH.load(Ordering::Relaxed) {
+            0 => -1,
+            1 => {
+                DEPTH.store(0, Ordering::Relaxed);
+                // SAFETY: restores the value the outermost `lock` raised from.
+                unsafe { cortex_m::register::basepri::write(SAVED.load(Ordering::Relaxed)) };
+                0
+            }
+            n => {
+                DEPTH.store(n - 1, Ordering::Relaxed);
+                0
+            }
+        }
+    }
+
+    /// The active exception number (IPSR): one per RTIC priority level, as
+    /// each level runs on its own dispatcher interrupt. Offset by one so the
+    /// value is never 0, which the lock reads as "no thread".
+    pub(super) fn active_exception() -> usize {
+        let ipsr: u32;
+        // SAFETY: reading IPSR has no side effects.
+        unsafe { core::arch::asm!("mrs {}, IPSR", out(reg) ipsr, options(nomem, nostack)) };
+        (ipsr & 0x1FF) as usize + 1
+    }
+}
+
+/// phase-562 W10 -- the level wake: a one-shot on the CMSDK dual timer, the
+/// only counter here nobody else owns (TIMER0 is the monotonic clock, TIMER1
+/// the sporadic-server timer, SysTick the transport idle's one-shot; the dual
+/// timer was RTIC's phase-289 tick, removed in phase-521 W6). Its interrupt,
+/// `DUALTIMER` (NVIC 10), is the macro's level-wake hardware task.
+mod level_wake {
+    // CMSDK APB dual timer (QEMU `hw/timer/cmsdk-apb-dualtimer.c`, mapped at
+    // 0x4000_2000 by `hw/arm/mps2.c`). Its first counter: LOAD 0x00, CONTROL
+    // 0x08 (bit0 one-shot, bit1 32-bit, bit5 INTEN, bit7 EN), INTCLR 0x0C (any
+    // write clears). Clocked at the 25 MHz system clock.
+    const BASE: usize = 0x4000_2000;
+    const LOAD: usize = 0x00;
+    const CONTROL: usize = 0x08;
+    const INTCLR: usize = 0x0C;
+    const CTRL_ONESHOT: u32 = 1 << 0;
+    const CTRL_SIZE_32: u32 = 1 << 1;
+    const CTRL_INTEN: u32 = 1 << 5;
+    const CTRL_EN: u32 = 1 << 7;
+    const TICKS_PER_US: u64 = 25;
+
+    const _: () = assert!(
+        BASE != nros_platform_mps2_an385::clock::CLOCK_TIMER_BASE
+            && BASE != nros_platform_mps2_an385::sporadic_timer::SPORADIC_TIMER_BASE,
+        "the level wake must not share a counter with the clock or the sporadic server"
+    );
+
+    fn write(off: usize, v: u32) {
+        // SAFETY: CMSDK dual-timer MMIO on a single core. `arm` writes inside
+        // a critical section; `acknowledge` writes only INTCLR, from the timer's
+        // own interrupt, and a clear landing between `arm`'s writes clears an
+        // interrupt `arm` is about to re-arm anyway.
+        unsafe { core::ptr::write_volatile((BASE + off) as *mut u32, v) };
+    }
+
+    pub(super) fn arm(after_us: Option<u64>) {
+        cortex_m::interrupt::free(|_| {
+            write(CONTROL, 0);
+            write(INTCLR, 1);
+            if let Some(us) = after_us {
+                // A zero load never fires, so a due deadline fires at once on
+                // the next tick. A deadline past 32 bits (~171 s) fires early,
+                // and the level then re-arms for the rest.
+                let ticks = (us.saturating_mul(TICKS_PER_US)).clamp(1, u64::from(u32::MAX)) as u32;
+                write(LOAD, ticks);
+                write(CONTROL, CTRL_EN | CTRL_INTEN | CTRL_SIZE_32 | CTRL_ONESHOT);
+            }
+        });
+    }
+
+    pub(super) fn acknowledge() {
+        write(INTCLR, 1);
     }
 }
 
