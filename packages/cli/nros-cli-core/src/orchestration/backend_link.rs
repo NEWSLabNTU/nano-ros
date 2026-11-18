@@ -563,6 +563,82 @@ mod tests {
     use super::*;
     use cargo_nano_ros::rmw_resolver::test_support;
 
+    /// A user who opts in to the bundled interfaces (the search path names
+    /// `packages/cli/interfaces/`, ROS absent) must find every package the
+    /// runtime makes a node interface from, or a backend that needs a
+    /// generated descriptor for every type (Cyclone) refuses the image: the
+    /// CLI here, and the cmake road at configure. Both read the bundled root
+    /// as a directory of `<pkg>/package.xml`, so the table's packages must
+    /// each be one. Env-free: the bundled index alone, no ament.
+    /// The same opt-in, through the resolver the cmake road configures with
+    /// (`_nros_find_msg_package_root`): with no ROS (no AMENT_PREFIX_PATH)
+    /// and the bundled root on the search path, every table package resolves
+    /// to its bundled copy. Negative control: without the opt-in the bundled
+    /// copies are refused, so the script is answering the opt-in question
+    /// and not passing whatever it is asked.
+    #[test]
+    fn runtime_interface_packages_resolve_from_the_opted_in_bundle() {
+        let root = test_support::checkout();
+        let bundled = root.join("packages/cli/interfaces");
+        let script = root.join("scripts/check/runtime-interface-bundle-resolution.cmake");
+        let run = |opt_in: bool| {
+            let mut c = std::process::Command::new("cmake");
+            c.arg("-P").arg(&script).env_remove("AMENT_PREFIX_PATH");
+            if opt_in {
+                c.env("NROS_INTERFACE_SEARCH_PATH", &bundled);
+            } else {
+                c.env_remove("NROS_INTERFACE_SEARCH_PATH");
+            }
+            let out = c
+                .output()
+                .expect("running cmake -P (cmake is a build requirement of this repo)");
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            (out.status.success(), text)
+        };
+        let (ok, text) = run(true);
+        assert!(ok, "opted in, ROS absent:\n{text}");
+        for p in &nros_orchestration_ir::runtime_interface_types::table().packages {
+            let want = format!("{}={}", p.name, bundled.join(&p.name).display());
+            assert!(text.contains(&want), "{want} missing:\n{text}");
+        }
+        let (ok, text) = run(false);
+        assert!(
+            !ok && text
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .contains("does not generate it from its bundled copy"),
+            "not opted in, ROS absent, the bundle must be refused:\n{text}"
+        );
+    }
+
+    #[test]
+    fn every_runtime_interface_package_is_bundled() {
+        let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join("../interfaces");
+        let idx = rosidl_bindgen::ament::AmentIndex::from_directory(&bundled)
+            .expect("the bundled interfaces load");
+        let table = nros_orchestration_ir::runtime_interface_types::table();
+        assert!(
+            !table.packages.is_empty(),
+            "the table names no package, so this proves nothing"
+        );
+        let missing: Vec<&str> = table
+            .packages
+            .iter()
+            .map(|p| p.name.as_str())
+            .filter(|p| idx.find_package(p).is_none())
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "not bundled under {}: {missing:?}",
+            bundled.display()
+        );
+    }
+
     /// The deleted `west_app::backend_dir`, kept here as the oracle ruling 3
     /// must reproduce: a walk of `packages/rmw/<family>/<crate>` for the
     /// descriptor's `rlib_dep`.

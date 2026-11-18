@@ -1,0 +1,1 @@
+The bundled interface packages now include `rcl_interfaces`. A build that opts in to the bundled copies (`NROS_INTERFACE_SEARCH_PATH` naming them, with no ROS 2 sourced) can give a Cyclone DDS image its parameter services and `/rosout`: it used to stop at configure because the runtime makes those from `rcl_interfaces` types and the copy was not there.

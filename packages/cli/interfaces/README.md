@@ -20,11 +20,30 @@ crates.io, which only carries a yanked, unrelated `std_msgs` crate.
   `sensor_msgs` 4.9.2 (common_interfaces `0843449`) joined when the cmake
   find-stub gained its bundle rung and the local_msg_pkg compile-check
   fixture (which deliberately consumes AMENT pkgs) first ran ROS-less.
+  `rcl_interfaces` 1.2.3 (rcl_interfaces `82776fc9`, the commit
+  `action_msgs` and `lifecycle_msgs` came from) joined for the stock node
+  interfaces: the runtime makes the parameter services, `/parameter_events`
+  and `/rosout` from its types, and a backend that needs a generated
+  descriptor for every type (Cyclone) refuses an image it cannot find them
+  for. Without it, a build opted in to these copies could not give a
+  Cyclone image those interfaces. Byte-identical to upstream at that commit. One Humble copy
+  serves every edition, as for the others: against Jazzy (`7aa3caf4`, the
+  pin in `docs/reference/editions/jazzy/pins.toml`) the types the runtime
+  uses differ only in `Log.msg`'s level constants (`byte` there, `uint8` in
+  Jazzy, both one octet; constants are not in the REP-2011 type hash), and
+  Jazzy's logger-level services, which the runtime does not serve, are absent.
   All Apache-2.0. If an example grows a NEW interface dep, vendor it here in
   the same change — the acceptance is `nros configure examples/workspaces/<ws>`
   green with no `AMENT_PREFIX_PATH`.
 - Only the codegen inputs are vendored (`package.xml`, `msg/`) — no cmake,
   no IDL, no prebuilt bindings.
+- **Opt-in since issue 2278.** With no ROS 2 sourced, configure refuses to
+  generate from these copies in place of a ROS install (a bundled copy picks
+  a distro silently, and a peer built from another one disagrees on layout
+  and type hash, issue 2275). A build uses them only when
+  `NROS_INTERFACE_SEARCH_PATH` names this directory. The test
+  `runtime_interface_packages_resolve_from_the_opted_in_bundle`
+  (nros-cli-core) checks both halves for the runtime's packages.
 - A sourced ROS 2 environment always **takes precedence**: the ament index
   is loaded first and these fill gaps only
   (`AmentIndex::merge` in `rosidl-bindgen/src/ament.rs`,
