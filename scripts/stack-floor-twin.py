@@ -44,6 +44,7 @@ neither.
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.util
 import json
 import re
@@ -263,7 +264,8 @@ def verdict_observed(row: dict, role: dict, peak: int, size: int, drift) -> Verd
     return Verdict(ok, lines)
 
 
-def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w) -> Verdict:
+def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w,
+            drift) -> Verdict:
     key = parse_key(row["image"])
     assert key is not None
     template, lang, rmw, board = key
@@ -329,7 +331,7 @@ def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w) -> Ve
     peak = max(u for u, _ in peaks)
     size = peaks[-1][1]
     if "bytes" not in row:
-        return verdict_observed(row, role, peak, size, w.static_drift)
+        return verdict_observed(row, role, peak, size, drift)
     return verdict(row, role, peak, size, int(report_margin(report, row)), w.floor_formula)
 
 
@@ -404,7 +406,7 @@ def self_test() -> int:
     # issue 2402 — an observed row: the walk must cover the run.
     orow = {"image": "talker/rust/zenoh@b", "role": "OPEN", "peak": 30000, "static": 50000}
     orole = {"depth": 50000, "floor": 55000, "measured": True}
-    sd = w.static_drift
+    sd = functools.partial(w.static_drift, rise_pct=2)
     check("observed: a walk that covers the run is OK",
           verdict_observed(orow, orole, 30000, 65536, sd).ok)
     check("observed: a run above the static walk FAILS",
@@ -415,12 +417,15 @@ def self_test() -> int:
     check("observed: a full-stack run is no measurement",
           not verdict_observed(orow, orole, 65536, 65536, sd).ok)
     # phase-557 W8: the build's walk is held to the row's `static` too.
-    v = verdict_observed(orow, dict(orole, depth=50008), 30000, 65536, sd)
-    check("observed: a walk that ROSE past the row's static FAILS",
+    v = verdict_observed(orow, dict(orole, depth=51008), 30000, 65536, sd)
+    check("observed: a walk that ROSE more than drift_rise_pct past the row FAILS",
           not v.ok and any("ROSE" in x for x in v.lines))
+    v = verdict_observed(orow, dict(orole, depth=50008), 30000, 65536, sd)
+    check("observed: a walk that rose within drift_rise_pct is a note",
+          v.ok and any("note:" in x for x in v.lines))
     v = verdict_observed(orow, dict(orole, depth=48000), 30000, 65536, sd)
-    check("observed: a walk that fell 4 % below the row's static FAILS",
-          not v.ok and any("FELL" in x for x in v.lines))
+    check("observed: a walk that fell 4 % below the row's static is a note, never a failure",
+          v.ok and any("fell" in x for x in v.lines))
     v = verdict_observed(orow, dict(orole, depth=49500), 30000, 65536, sd)
     check("observed: a walk 1 % below the row's static is a note",
           v.ok and any("note:" in x for x in v.lines))
@@ -469,7 +474,8 @@ def main() -> int:
             print(f"{row['image']}: NOT RUN: board {key[3]} has no Renode twin")
             continue
         print(f"== {row['image']} {row['role']}", flush=True)
-        v = run_row(nros, row, Path(args.out), args.seconds, args.rounds, w)
+        v = run_row(nros, row, Path(args.out), args.seconds, args.rounds, w,
+                    functools.partial(w.static_drift, rise_pct=w.drift_rise_pct(doc)))
         ran += 1
         failed += not v.ok
         print("\n".join(v.lines), flush=True)

@@ -1149,8 +1149,9 @@ jobs:
   # phase-557 W8 — a recorded stack-floor `static` that drifts is caught here,
   # not found by accident. Re-walks every `[[observed]]` row's image (a fresh
   # `nros new` for a template key, the in-tree bringup for a bringup key) and
-  # holds the walk to the row: up by any amount or down by more than 2 %
-  # fails, naming the row and the re-measure commands. Nightly, not on the
+  # holds the walk to the row: a rise of more than `drift_rise_pct` over the
+  # row's recorded max fails, naming the row and the re-measure commands; a
+  # smaller rise, and any fall, is a note. Nightly, not on the
   # merge lane: four image builds cost minutes, and a day is soon enough.
   stack-floor-drift:
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.

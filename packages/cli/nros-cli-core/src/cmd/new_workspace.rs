@@ -265,16 +265,35 @@ pub fn template_main_stack(
     (floor > default).then_some(floor)
 }
 
-/// The OPEN floor `config/stack-floors.toml` records for `key`: the static walk
-/// plus its allowance (an `[[allowance]]` row) or plus nothing (an
-/// `[[observed]]` row, issue 2402: under `bind` the walk is the floor, a
-/// heuristic one that is order-dependent pending an exact search, issue 2550), then
-/// `margin_pct` percent, rounded up to a multiple of 8, exactly `floor_formula`
-/// in `scripts/nros-stack-floor.py`.
+/// `floor_formula` in `scripts/nros-stack-floor.py`: `depth` plus `margin`
+/// percent, rounded up to a multiple of 8.
+fn floor_formula(depth: i64, margin: i64) -> Option<u64> {
+    let raw = depth.max(0) * (100 + margin);
+    let raw = (raw + 99) / 100;
+    u64::try_from((raw + 7) / 8 * 8).ok()
+}
+
+/// The OPEN stack `config/stack-floors.toml` stamps for `key`:
+///
+/// * an `[[allowance]]` row: the static walk plus its allowance, then
+///   `margin_pct` percent (`floor_formula`);
+/// * an `[[observed]]` row (issue 2402: under `bind` the walk is the floor, a
+///   heuristic one that is order-dependent pending an exact search, issue
+///   2550): the recorded max, max(`static`, `walk_floor`), raised by the
+///   table's `drift_rise_pct`, then `margin_pct` percent. The drift check
+///   (`static_drift` in `scripts/nros-stack-floor.py`) passes any walk up to
+///   that same percent over the recorded max, and every build checks its stack
+///   against its own walk, so the stamp must carry the tolerance or a rise the
+///   check lets through would make a fresh project refuse to build (issue 2400
+///   Ruling (C)). Both sides read the one key.
+///
+/// `None` when the table has no row for `key`, or lacks `margin_pct` or
+/// `drift_rise_pct` (`--validate-table` refuses a table without either).
 #[must_use]
 pub fn recorded_floor(table: &str, key: &str) -> Option<u64> {
     let doc: toml::Value = toml::from_str(table).ok()?;
     let margin = doc.get("margin_pct")?.as_integer()?;
+    let rise = doc.get("drift_rise_pct")?.as_integer()?;
     let rows = |name: &str| {
         doc.get(name)
             .and_then(|v| v.as_array())
@@ -286,11 +305,7 @@ pub fn recorded_floor(table: &str, key: &str) -> Option<u64> {
                     && a.get("role").and_then(|v| v.as_str()) == Some("OPEN")
             })
     };
-    let floor = |depth: i64| {
-        let raw = depth.max(0) * (100 + margin);
-        let raw = (raw + 99) / 100;
-        u64::try_from((raw + 7) / 8 * 8).ok()
-    };
+    let floor = |depth: i64| floor_formula(depth, margin);
     let allowance = rows("allowance").filter_map(|a| {
         let bytes = a.get("bytes")?.as_integer()?;
         let stat = a.get("measured")?.get("static")?.as_integer()?;
@@ -305,7 +320,8 @@ pub fn recorded_floor(table: &str, key: &str) -> Option<u64> {
             .get("walk_floor")
             .and_then(toml::Value::as_integer)
             .unwrap_or(stat);
-        floor(stat.max(held))
+        let max = stat.max(held);
+        floor((max * (100 + rise) + 99) / 100)
     });
     allowance.chain(observed).max()
 }
@@ -973,10 +989,10 @@ mod tests {
         let k = |s: &str| format!("{s}@nucleo-f767zi-zephyr");
         assert_eq!(
             recorded_floor(&t, &k("action-server/rust/zenoh")),
-            Some(76200)
+            Some(77728)
         );
-        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(74056));
-        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(118424));
+        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(75536));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(120792));
         assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
     }
 
@@ -984,12 +1000,61 @@ mod tests {
     /// largest walk the image was seen to have under another callee order.
     #[test]
     fn a_rows_walk_floor_holds_the_recorded_floor() {
-        let t = "margin_pct = 10\n[[observed]]\nimage = \"k\"\nrole = \"OPEN\"\n\
-                 static = 1000\nwalk_floor = 2000\n";
+        let t = "margin_pct = 10\ndrift_rise_pct = 0\n[[observed]]\nimage = \"k\"\n\
+                 role = \"OPEN\"\nstatic = 1000\nwalk_floor = 2000\n";
         assert_eq!(recorded_floor(t, "k"), Some(2200));
+        let t = "margin_pct = 10\ndrift_rise_pct = 0\n[[observed]]\nimage = \"k\"\n\
+                 role = \"OPEN\"\nstatic = 1000\n";
+        assert_eq!(recorded_floor(t, "k"), Some(1104));
+        // No tolerance stated: no stamp, never a silent 0 %.
         let t = "margin_pct = 10\n[[observed]]\nimage = \"k\"\nrole = \"OPEN\"\n\
                  static = 1000\n";
-        assert_eq!(recorded_floor(t, "k"), Some(1104));
+        assert_eq!(recorded_floor(t, "k"), None);
+    }
+
+    /// Issue 2400 Ruling (C): the stamp carries the drift tolerance, read from
+    /// the one `drift_rise_pct` key. For every committed observed row, a
+    /// project stamped from it still holds the floor a build computes when its
+    /// walk is the recorded max + `drift_rise_pct` (which the drift check
+    /// passes as a note), and does NOT hold it at + 0.1 % more (which the
+    /// drift check fails). So the check and the stamp cannot disagree.
+    #[test]
+    fn a_stamp_holds_every_walk_the_drift_check_passes() {
+        let t = std::fs::read_to_string(repo_root().join("config/stack-floors.toml")).unwrap();
+        let doc: toml::Value = toml::from_str(&t).unwrap();
+        let margin = doc["margin_pct"].as_integer().unwrap();
+        let rise = doc["drift_rise_pct"].as_integer().unwrap();
+        let rows = doc["observed"].as_array().unwrap();
+        let mut seen = 0;
+        for row in rows.iter().filter(|r| r["role"].as_str() == Some("OPEN")) {
+            let key = row["image"].as_str().unwrap();
+            let stat = row["static"].as_integer().unwrap();
+            let held = row
+                .get("walk_floor")
+                .and_then(toml::Value::as_integer)
+                .unwrap_or(stat);
+            let max = stat.max(held);
+            let stamp = recorded_floor(&t, key).unwrap();
+            // the largest walk the drift check passes: walk * 100 <= max * (100 + rise)
+            let passes = max * (100 + rise) / 100;
+            let built = floor_formula(passes, margin).unwrap();
+            assert!(
+                built <= stamp,
+                "{key}: a walk of {passes} B passes drift but needs {built} B > the stamp {stamp} B"
+            );
+            // + 0.1 % more than the tolerance: drift fails, and the stamp no longer holds
+            let fails = max * (1000 + 10 * rise + 1) / 1000 + 8;
+            assert!(
+                fails * 100 > max * (100 + rise),
+                "{key}: {fails} B should fail drift"
+            );
+            assert!(
+                floor_formula(fails, margin).unwrap() > stamp,
+                "{key}: a walk of {fails} B, which drift fails, still fits the stamp {stamp} B"
+            );
+            seen += 1;
+        }
+        assert!(seen >= 4, "only {seen} observed OPEN rows");
     }
 
     /// The default is READ from the module's Kconfig, per language.
@@ -1062,8 +1127,9 @@ mod tests {
                 "zenoh",
                 "nucleo-f767zi-zephyr"
             ),
-            // issue 2402: the bind walk's walk_floor, 69,272 B, plus the 10 % margin
-            Some(76200)
+            // issue 2402: the bind walk's walk_floor, 69,272 B, plus the 2 % drift
+            // tolerance (issue 2400 Ruling (C)), plus the 10 % margin
+            Some(77728)
         );
         assert!(raised >= 1);
         // not a Zephyr board: the knob is not CONFIG_MAIN_STACK_SIZE

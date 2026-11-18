@@ -49,6 +49,6 @@ not.
 
 - The untyped sites are listed with the TU each comes from.
 - Either they are typed, or each remaining one has a reason.
-- The `[[drift]]` row is re-measured (a fall of more than 2 % fails the drift
-  check by design). If the walk comes within reach of the shipped stack, the
+- The `[[drift]]` row is re-measured. A fall is only a note under issue 2400
+  Ruling (C), so the drift check will not prompt this re-measure. If the walk comes within reach of the shipped stack, the
   row becomes an `[[observed]]` row with a measured peak.
