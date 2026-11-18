@@ -14,13 +14,13 @@ categories = ["embedded", "no-std"]
 # the receive ring the backend delivers into, and the calls zenoh-pico's
 # framed link makes.
 #
-#   - `unix-mock`: a backend over Unix datagram sockets, for host tests. Needs
-#                  `std`; each endpoint gets a reader thread that delivers the
-#                  way an RPMsg receive callback does.
+#   - `unix-mock`: a backend over Unix datagram sockets, for host tests.
+#                  Requires `std` (name both). Each endpoint gets a reader
+#                  thread that delivers the way an RPMsg receive callback does.
 [features]
 default = []
 std = []
-unix-mock = ["std"]
+unix-mock = []
 
 [lib]
 path = "src/lib.rs"

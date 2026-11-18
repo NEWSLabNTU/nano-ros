@@ -210,7 +210,7 @@ nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 # RFC-0134 -- the IVC host mock (`register_pair`) for `point_to_point_peer`.
 nvidia-ivc = { path = "../../../drivers/ipc/nvidia-ivc", features = ["unix-mock", "std"] }
-zpico-link-rpmsg = { path = "../zpico-link-rpmsg", features = ["unix-mock"] }
+zpico-link-rpmsg = { path = "../zpico-link-rpmsg", features = ["unix-mock", "std"] }
 nros-tests = { path = "../../../testing/nros-tests" }
 nros-ghost-types = { version = "0.6.0", path = "../../../verification/nros-ghost-types" }
 # Force `ConcretePlatform` resolution for tests under `platform-posix`.

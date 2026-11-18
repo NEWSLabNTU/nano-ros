@@ -132,6 +132,7 @@ CLASSIFICATION: dict[str, tuple[str | None, tuple[str, ...], str]] = {
     "nros-zpico-build": (None, (), "build-script helper"),
     "zpico-alloc": (None, (), "allocator glue"),
     "zpico-link-ivc": (None, (), "a zenoh-pico link, not a backend"),
+    "zpico-link-rpmsg": (None, (), "a zenoh-pico link, not a backend"),
     "zpico-serial": (None, (), "a zenoh-pico link, not a backend"),
     "zpico-platform-custom": (None, (), "platform shim for zenoh-pico"),
     # phase-527 W5 (RFC-0119 D5): command packages live beside the domain
