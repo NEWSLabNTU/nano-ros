@@ -32,6 +32,7 @@ pub mod image;
 pub mod image_net;
 pub mod image_priority_plan;
 pub mod launch_synth;
+pub mod link_arms;
 pub mod manifest;
 // W5.13 follow-up — relocated to nros-orchestration-ir (shared with the macro);
 // re-exported so `crate::orchestration::mapper_input::…` paths keep resolving.

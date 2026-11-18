@@ -193,9 +193,37 @@ pub struct PortRow {
     pub rerun_if_env_changed: Vec<String>,
     #[serde(default)]
     pub compiled_by: Option<CompiledBy>,
+    /// The default-off links (the schemes of
+    /// `nros_board_common::policy::LINK_BUILD_KNOBS` that need a platform
+    /// arm: `can`, `isotp`) this port compiles an arm for. A link the row
+    /// does not list has no `_z_open_<link>` on this platform, so an image
+    /// dialling it is refused at configure, not at the final link. Read by
+    /// the CLI only; the C build follows the platform macros.
+    #[serde(default)]
+    pub links: Vec<String>,
 }
 
+/// The [`PortRow::links`] vocabulary.
+pub const PORT_LINKS: &[&str] = &["can", "isotp"];
+
 impl PortRow {
+    /// [`Self::links`], checked against [`PORT_LINKS`]. `name` is the row's
+    /// platform, for the message.
+    pub fn checked_links(&self, name: &str) -> Result<&[String], String> {
+        if let Some(bad) = self
+            .links
+            .iter()
+            .find(|l| !PORT_LINKS.contains(&l.as_str()))
+        {
+            return Err(format!(
+                "[port.{name}] links names {bad:?}; a port row lists only the links that \
+                 need a platform arm ({})",
+                PORT_LINKS.join(", ")
+            ));
+        }
+        Ok(&self.links)
+    }
+
     /// This row as a [`PlatformEntry`], with the platform's own half supplied.
     pub fn into_entry(
         self,
