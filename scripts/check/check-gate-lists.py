@@ -226,6 +226,20 @@ def recipe_groups() -> dict[str, set[str]]:
     }
 
 
+def declared_weight(groups: set[str]) -> int:
+    """A gate's declared weight: its largest `[group('cpu:<n>')]`, else 1.
+
+    Issue 2683. The weight is what the harness reserves (`threads-required`),
+    so a gate that runs N things side by side must run exactly the N it
+    declares. Its scripts ask for it with `--weight <recipe>` rather than
+    stating the number again: `workspace-probes` declared 1 while running 6
+    configures, and on a 4-slot CI runner that starved its neighbours into
+    2400 s timeouts."""
+    cpus = [int(g.removeprefix("cpu:")) for g in groups
+            if g.startswith("cpu:") and g.removeprefix("cpu:").isdigit()]
+    return max(cpus) if cpus else 1
+
+
 def needs_of(groups: set[str]) -> set[str]:
     return {g.removeprefix("needs:") for g in groups if g.startswith("needs:")}
 
@@ -449,19 +463,18 @@ def nextest_config(b: dict[str, list[str]], junit: Path | None = None,
         for n in b[tier]:
             g = groups.get(n, set())
             uses = sorted(x.removeprefix("uses:") for x in g if x.startswith("uses:"))
-            cpus = [int(x.removeprefix("cpu:")) for x in g if x.startswith("cpu:")
-                    and x.removeprefix("cpu:").isdigit()]
+            weight = declared_weight(g)
             if len(uses) > 1:
                 raise SystemExit(f"check-gate-lists: `{n}` uses {uses}; nextest puts a "
                                  "test in ONE group, so a gate may use one resource")
-            if not uses and not cpus:
+            if not uses and weight == 1:
                 continue
             lines.append("[[profile.default.overrides]]")
             lines.append(f"filter = 'test(/^{tier}::check::{n}(#.*)?$/)'")
             if uses:
                 lines.append(f'test-group = "@tool:{TOOL}:{uses[0]}"')
-            if cpus:
-                lines.append(f"threads-required = {max(cpus)}")
+            if weight > 1:
+                lines.append(f"threads-required = {weight}")
             lines.append("")
     if order is not None:
         # The order-independence check: priority by NAME, not by last run's
@@ -542,6 +555,10 @@ def ratchet(present: set[str], baseline: set[str] | None) -> list[str]:
 
 
 def self_test() -> None:
+    # issue 2683: the declared weight is the largest `cpu:<n>`, else 1.
+    assert declared_weight(set()) == 1
+    assert declared_weight({"needs:cli", "cpu:6"}) == 6
+    assert declared_weight({"cpu:2", "cpu:4", "cpu:x"}) == 4
     # phase-543 W4: junit times read by test name; a missing or broken file is
     # no priority, never an error.
     import tempfile
@@ -668,6 +685,18 @@ def self_test() -> None:
     assert ratchet({"alpha"}, None), "selftest: a missing baseline passed"
 
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["--weight"]:
+        # Issue 2683: `--weight <recipe>` prints the weight that recipe
+        # declares, so the one number lives in its `cpu:<n>` attribute.
+        if len(argv) != 2:
+            print("usage: check-gate-lists.py --weight <recipe>", file=sys.stderr)
+            return 2
+        groups = recipe_groups()
+        if argv[1] not in groups:
+            print(f"check-gate-lists: --weight: no check recipe `{argv[1]}`", file=sys.stderr)
+            return 1
+        print(declared_weight(groups[argv[1]]))
+        return 0
     if argv[:1] == ["--junit-tsv"]:
         print(junit_tsv(Path(argv[1])), end="")
         return 0

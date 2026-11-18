@@ -1352,8 +1352,9 @@ pyo3-path-stable:
 # `parity_helpers::ros_share_root` ($ROS_DISTRO, else exactly one /opt/ros/<d>/share).
 # Where none is, the ledger says so (`nros_check_unverified`, phase-472 F2).
 #
-# phase-559 — `cpu:4` and `--test-threads=4` are ONE number, stated twice
-# because a just attribute cannot read a variable; change both together. The
+# phase-559 — `cpu:4` and `--test-threads` are ONE number: the recipe reads
+# its own attribute back (`check-gate-lists.py --weight cli-tests`, issue 2683),
+# so it is written only in `cpu:4`. The
 # gate harness gave this recipe one slot of its `--test-threads` (nproc), and
 # libtest then ran nproc tests at once: `configure_verb`'s 22 tests each run a
 # real `nros configure` with nested probe cargo builds, so the gate peaked at 18
@@ -1379,7 +1380,11 @@ cli-tests:
     # shellcheck source=scripts/build/pyo3-python.sh
     source scripts/build/pyo3-python.sh
     nros_pin_pyo3_python
-    threads=4  # = the cpu:4 weight above
+    # Issue 2683 -- the declared weight above, read back rather than restated.
+    if ! threads="$(python3 scripts/check/check-gate-lists.py --weight cli-tests)"; then
+        echo "cli-tests: cannot read the recipe's declared weight" >&2
+        exit 1
+    fi
     cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet -- --test-threads="$threads"
     # phase-527 W3 — the runner packages workspace (RFC-0119 D5) is a SEPARATE
     # cargo root, so the CLI run above compiles `nros-extension` as a path dep
