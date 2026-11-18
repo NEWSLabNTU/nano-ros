@@ -221,6 +221,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "inherited from FreertosMps2 \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "cyclonedds"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [
         "s32z270-freertos-rtd"
@@ -557,6 +564,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "xrce"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [
         "s32z270-rtu0-zephyr"
