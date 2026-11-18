@@ -204,8 +204,18 @@ pub fn derive_max_types(counted: usize) -> usize {
 ///
 /// The two are not independent pools that happen to look alike. `TypeRegistry::
 /// get_or_build` (`type_registry.rs`) inserts into its own `FnvIndexMap` and then
-/// calls `nros_rmw_cyclonedds_register_descriptor` for the SAME type, so every
+/// calls `nros_rmw_cyclonedds_try_register_descriptor` for the SAME type, so every
 /// name that reaches the Rust registry reaches the C++ table on the same line.
+///
+/// # One row per type, no factor
+///
+/// The C++ table holds a registration under ONE key (`descriptor_key` in
+/// `descriptors.cpp`: the descriptor's DDS-form `m_typename`), so a count of
+/// types IS a count of rows and this function multiplies by nothing. It used to
+/// hold the schema name too, two rows per type against a table sized at one, and
+/// an image past half the table was refused. The
+/// backend's own graph type is in no model count; `descriptors.cpp` adds its row
+/// on top of this number (`kBackendOwnDescriptorTypes`).
 /// The C++ table additionally receives the idlc-baked TUs' static-constructor
 /// registrations, and those are registrations of types this image compiled a
 /// descriptor for — i.e. the same set again, arrived at from the other side.
@@ -228,6 +238,7 @@ pub fn derive_max_types(counted: usize) -> usize {
 /// cause, as `publisher_create` returning UNSUPPORTED for whichever package
 /// happened to be link-order last. The autoware-safety-island workspace
 /// registers ~86 types; `std_msgs` + `geometry_msgs` alone are ~60.
+// Issue 2704 follow-up: one row per type (`descriptor_key`).
 pub fn derive_max_descriptor_types(counted: usize) -> usize {
     counted
 }

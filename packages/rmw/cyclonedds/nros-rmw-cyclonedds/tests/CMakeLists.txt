@@ -1018,6 +1018,26 @@ add_test(
 set_tests_properties(nros_rmw_cyclonedds_descriptor_table_capacity PROPERTIES
     ENVIRONMENT "${_nros_rmw_test_env}")
 
+# Issue 2704 follow-up -- a cargo-road image (ROS-form name, DDS-form
+# `m_typename`) of just over half the table's types is held, one row per type,
+# and resolves under both names. Against a two-keys-per-type table it is refused.
+add_executable(nros_rmw_cyclonedds_descriptor_table_cargo_road descriptor_table_cargo_road.cpp)
+target_link_libraries(nros_rmw_cyclonedds_descriptor_table_cargo_road
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_descriptor_table_cargo_road
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${NROS_RMW_CFFI_DIR}
+)
+add_test(
+    NAME nros_rmw_cyclonedds_descriptor_table_cargo_road
+    COMMAND nros_rmw_cyclonedds_descriptor_table_cargo_road
+)
+set_tests_properties(nros_rmw_cyclonedds_descriptor_table_cargo_road PROPERTIES
+    ENVIRONMENT "${_nros_rmw_test_env}")
+
 # phase-206 W2 — the bringup's own config is baked and reaches the backend.
 #
 # The test drives the REAL generator (`nros_bake_rmw_user_config`) against a
