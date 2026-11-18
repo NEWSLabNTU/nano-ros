@@ -130,6 +130,84 @@ pub struct KnobRow {
     /// included, is refused with [`RETIRED_KNOB_TEMPLATE`]; the row stays as the
     /// error table, the way [`Self::legacy`] does for a rename.
     pub retired: Option<&'static str>,
+    /// What the value describes (phase-569 W2): authored in the row.
+    pub scope: KnobScope,
+    /// Whether a user states it (phase-569 W2): authored in the row.
+    pub class: KnobClass,
+    /// For a [`KnobClass::Carrier`]: the knob id, ladder key or fact whose
+    /// decision it carries.
+    pub carries: Option<&'static str>,
+    /// The one-line prompt, where the row has one.
+    pub prompt: Option<&'static str>,
+    /// The help text, where the row has one.
+    pub help: Option<&'static str>,
+    /// Where the default comes from, DERIVED by the generator.
+    pub default: KnobDefault,
+    /// What values the knob takes, DERIVED by the generator.
+    pub values: KnobValues,
+    /// The one user spelling of a public knob
+    /// (`[image.<id>.knobs.<group>] <name>`), DERIVED. `None` for every other
+    /// class: a carrier's env or Kconfig spelling is never user surface.
+    pub surface: Option<&'static str>,
+}
+
+/// What a knob's value describes (phase-569 W2, RFC-0133).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KnobScope {
+    /// What the application needs: pool sizes, depths, timeouts.
+    Image,
+    /// The hardware: heap, stacks, sockets, link MTU.
+    Board,
+    /// The RTOS port.
+    Platform,
+}
+
+/// Whether a user states a knob (phase-569 W2, RFC-0133).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KnobClass {
+    /// A user states it, at [`KnobRow::surface`].
+    Public,
+    /// The transport of a decision made elsewhere ([`KnobRow::carries`]).
+    Carrier,
+    /// A test or tooling hook; never user surface.
+    Internal,
+    /// The knob no longer exists ([`KnobRow::retired`]).
+    Retired,
+}
+
+/// Where a knob's default comes from, derived by the generator, never authored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KnobDefault {
+    /// The Kconfig definition's `default` lines, in order. Kconfig takes the
+    /// first whose condition holds; the last is unconditional.
+    Kconfig(&'static [KconfigDefault]),
+    /// The platform/board ladder's builtin for [`KnobRow::toml`], which the
+    /// resolver (`nros-platform-config`) holds.
+    Ladder,
+    /// Stated only in the code that reads it.
+    Unstated,
+}
+
+/// One Kconfig `default` line: its value, verbatim, and its `if` condition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KconfigDefault {
+    pub value: &'static str,
+    pub when: Option<&'static str>,
+}
+
+/// What values a knob takes, derived by the generator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KnobValues {
+    Bool,
+    /// An integer, within [`KnobRow::range`] where stated, also accepting
+    /// [`KnobRow::names`] where listed.
+    Int,
+    Hex,
+    String,
+    /// An unsigned integer: an untyped row the ladder reads as `usize`.
+    UInt,
+    /// No type stated anywhere the catalog can read.
+    Unstated,
 }
 
 /// A knob the nano-ros Zephyr module DEFINES as a Kconfig symbol — a registry
@@ -199,6 +277,12 @@ pub fn knob_by_toml(key: &str) -> Option<&'static KnobRow> {
 #[must_use]
 pub fn knob_by_image_key(key: &str) -> Option<&'static KnobRow> {
     KNOBS.iter().find(|r| r.image_key == key)
+}
+
+/// The catalog's public knobs, in registry order (phase-569 W2): what
+/// `nros knob list` prints and the configuration reference lists.
+pub fn public_knobs() -> impl Iterator<Item = &'static KnobRow> {
+    KNOBS.iter().filter(|r| r.class == KnobClass::Public)
 }
 
 impl KnobRow {
@@ -615,6 +699,64 @@ fn kconfig_raw(body: &str, key: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    /// phase-569 W2 — the catalog as the compiled table carries it. Every
+    /// public knob has its one spelling and nothing else does; every Kconfig
+    /// default list ends unconditional; a conditional default stays a list
+    /// (ZENOH_GRAPH_DISCOVERY, ZEPHYR_HEAP_SIZE), never one value.
+    #[test]
+    fn catalog_rows_carry_derived_fields() {
+        for r in KNOBS {
+            assert_eq!(
+                r.surface.is_some(),
+                r.class == KnobClass::Public,
+                "{}",
+                r.id
+            );
+            assert_eq!(
+                r.retired.is_some(),
+                r.class == KnobClass::Retired,
+                "{}",
+                r.id
+            );
+            assert_eq!(
+                r.carries.is_some(),
+                r.class == KnobClass::Carrier,
+                "{}",
+                r.id
+            );
+            match r.default {
+                KnobDefault::Kconfig(d) => {
+                    assert!(r.ty.is_some(), "{}", r.id);
+                    assert!(d.last().is_some_and(|x| x.when.is_none()), "{}", r.id);
+                }
+                KnobDefault::Ladder => assert!(r.ty.is_none() && r.toml.is_some(), "{}", r.id),
+                KnobDefault::Unstated => assert!(r.ty.is_none() && r.toml.is_none(), "{}", r.id),
+            }
+        }
+        let gd = knob_row("NROS_ZENOH_GRAPH_DISCOVERY").unwrap();
+        let KnobDefault::Kconfig(d) = gd.default else {
+            panic!("graph discovery: {:?}", gd.default)
+        };
+        assert_eq!(d.len(), 2);
+        assert_eq!(d[0].value, "n");
+        assert!(
+            d[0].when
+                .is_some_and(|w| w.contains("!NROS_ZENOH_RAWETH_TRANSPORT"))
+        );
+        let hs = knob_row("NROS_ZEPHYR_HEAP_SIZE").unwrap();
+        let KnobDefault::Kconfig(d) = hs.default else {
+            panic!("heap: {:?}", hs.default)
+        };
+        assert_eq!(
+            d.iter().map(|x| x.value).collect::<Vec<_>>(),
+            ["1048576", "196608", "131072", "65536"]
+        );
+        let ms = knob_by_toml("net.max_sockets").unwrap();
+        assert_eq!(ms.surface, Some("[image.<id>.knobs.net] max_sockets"));
+        assert_eq!(ms.default, KnobDefault::Ladder);
+        assert_eq!(ms.values, KnobValues::UInt);
+    }
+
     /// phase-484 W8 — a project states a knob as `[image.<id>.knobs.<group>]
     /// <name>`: the board's `toml` key where the row has one, else the id split
     /// at its first `_`. Every row is found by its own key, and the deprecation

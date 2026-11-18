@@ -108,18 +108,65 @@ ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
 ENV = re.compile(r"^(NROS|ZPICO)_[A-Z0-9_]+$")
 TOML_KEY = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 FIELDS = {"id", "legacy", "kconfig", "toml", "names", "retired",
-          "type", "prompt", "kconfig_if", "kconfig_attrs", "help"}
+          "type", "prompt", "kconfig_if", "kconfig_attrs", "help",
+          "scope", "class", "carries"}
 # The Kconfig definition is all-or-nothing: `type` says the module defines the
-# symbol, and the rest only mean something beside it.
-KCONFIG_DEF_FIELDS = {"prompt", "kconfig_if", "kconfig_attrs", "help"}
+# symbol, and the rest only mean something beside it. `prompt` and `help` may
+# also stand on an untyped row (phase-569 W2): the catalog shows them, and no
+# Kconfig symbol is rendered from them.
+KCONFIG_DEF_FIELDS = {"kconfig_if", "kconfig_attrs"}
+
+# The catalog (phase-569 W2, RFC-0133). Two fields are AUTHORED, because each
+# is a judgement no source states:
+#   scope   what the value describes: `image` (what the application needs),
+#           `board` (the hardware) or `platform` (the RTOS port).
+#   class   `public` (a user states it, at its surface), `carrier` (the
+#           transport of a decision made elsewhere; `carries` names where),
+#           `internal` (a test or tooling hook, never user surface) or
+#           `retired` (the row has `retired`).
+# Three are DERIVED, never authored (the manager's ruling, 2026-11-17):
+#   default  the Kconfig definition's `default` lines, each with its `if`
+#            condition, in order (`KCONFIG`); else the platform/board ladder's
+#            builtin for the row's `toml` key, which the CLI asks the resolver
+#            for (`LADDER`); else nothing is stated (`UNSTATED`).
+#   values   the Kconfig type with its `range` or `names`; an untyped ladder
+#            row is an unsigned integer; else unstated.
+#   surface  the one user spelling: `[image.<id>.knobs.<group>] <name>` for a
+#            public row; none for any other class.
+SCOPES = ("image", "board", "platform")
+CLASSES = ("public", "carrier", "internal", "retired")
+DERIVED_FIELDS = ("default", "values", "surface")
+
+# Public rows the catalog cannot yet describe in full. Each list may only
+# SHRINK: a new public row must arrive with a stated default and help text,
+# and a row that gains one must leave its list (the generator refuses both a
+# new member and a stale one).
+#   NO_DEFAULT  no Kconfig definition and no ladder key, so its default lives
+#               only in the code that reads it (a build script, codegen).
+#   NO_HELP     no `help` text, so `nros knob show` has nothing to explain.
+NO_DEFAULT = {
+    "CYCLONEDDS_MAX_DESCRIPTOR_TYPES", "CYCLONEDDS_MAX_FIELDS", "CYCLONEDDS_MAX_KINDS",
+    "CYCLONEDDS_MAX_NESTED_DEPTH", "CYCLONEDDS_MAX_TYPES",
+    "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE", "XRCE_BUILTIN_SERVICE_SERVERS",
+    "ZENOH_MAX_SESSIONS", "ZENOH_MAX_TL_PUBLISHERS", "ZENOH_PUBLISHER_TX_BUFFER_SIZE",
+    "ZENOH_SUBSCRIBER_SIZE_THRESHOLD", "ZENOH_TL_RETAIN_BYTES", "ZENOH_TL_RETAIN_DEPTH",
+}
+NO_HELP = NO_DEFAULT | {
+    "KEYEXPR_STRING_SIZE", "LET_BUFFER_SIZE", "RMW_MAX_BACKENDS", "RMW_MAX_NODES",
+    "RMW_MESSAGE_INFO_SLOTS", "RMW_SUBSCRIBER_SLOT_BYTES", "RUNTIME_COMPONENT_SLOT_BYTES",
+    "RUNTIME_MAX_CELL_ENTITIES", "RUNTIME_MAX_CLASS_INSTANCES", "RUNTIME_MAX_COMPONENTS",
+    "SERVICE_TIMEOUT_MS", "SMOLTCP_BUFFER_SIZE", "SMOLTCP_CONNECT_TIMEOUT_MS",
+    "SMOLTCP_MAX_SOCKETS", "SMOLTCP_MAX_UDP_SOCKETS", "SMOLTCP_SOCKET_TIMEOUT_MS",
+    "ZENOH_BATCH_MULTICAST_SIZE", "ZENOH_CONNECT_FOREVER", "ZENOH_CONNECT_TIMEOUT_MS",
+}
 
 
 def load(path=SRC):
     with open(path, "rb") as fh:
-        return load_from_text(fh.read().decode())
+        return load_from_text(fh.read().decode(), strict_ratchets=(path == SRC))
 
 
-def load_from_text(text):
+def load_from_text(text, strict_ratchets=False):
     rows = tomllib.loads(text).get("knob", [])
     errors = []
     spellings = {}
@@ -173,6 +220,7 @@ def load_from_text(text):
         if names is not None and (ty != "int" or not names or not all(
                 isinstance(n, str) and re.match(r"^[a-z][a-z0-9_]*$", n) for n in names)):
             errors.append(f"{where}: `names` is a non-empty list of lowercase words, on an int row")
+        errors += catalog_problems(r, where)
         if ID.match(ident):
             key = image_key(r)
             if key is None:
@@ -184,7 +232,111 @@ def load_from_text(text):
     ids = [r.get("id") for r in rows]
     if ids != sorted(ids):
         errors.append("rows must be sorted by id (a merge then conflicts on one row, not the file)")
+    known = set(ids)
+    for r in rows:
+        c = r.get("carries", "")
+        if ID.match(c) and c not in known:
+            errors.append(f"knob {r.get('id')}: `carries` names knob {c}, which is no row")
+    if strict_ratchets:
+        errors += ratchet_problems(rows)
     return rows, errors
+
+
+def catalog_problems(r, where):
+    """The catalog fields of one row (phase-569 W2): the authored pair present
+    and valid, the derived three never authored, and every default statable."""
+    out = []
+    for f in DERIVED_FIELDS:
+        if f in r:
+            src = ("its Kconfig definition" if r.get("type")
+                   else "the ladder's builtin" if r.get("toml") else "the code that reads it")
+            out.append(f"{where}: `{f}` is derived, never authored -- it comes from {src}. "
+                       "Drop the field")
+    scope, cls = r.get("scope"), r.get("class")
+    if scope not in SCOPES:
+        out.append(f"{where}: `scope` must be one of {list(SCOPES)}")
+    if cls not in CLASSES:
+        out.append(f"{where}: `class` must be one of {list(CLASSES)}")
+    if (cls == "retired") != bool(r.get("retired")):
+        out.append(f"{where}: `class = \"retired\"` goes with a `retired` reason, and only with one")
+    if (cls == "carrier") != bool(r.get("carries")):
+        out.append(f"{where}: a carrier names what it carries (`carries`), and only a carrier does")
+    if r.get("type"):
+        try:
+            kconfig_defaults(r)
+        except ValueError as e:
+            out.append(f"{where}: {e}")
+    return out
+
+
+def ratchet_problems(rows):
+    """NO_DEFAULT and NO_HELP may only shrink."""
+    out = []
+    public = {r["id"]: r for r in rows if r.get("class") == "public"}
+    no_default = {i for i, r in public.items() if default_kind(r) == "UNSTATED"}
+    no_help = {i for i, r in public.items() if not r.get("help")}
+    for name, have, allowed, missing, gained in (
+        ("NO_DEFAULT", no_default, NO_DEFAULT,
+         "no default (no Kconfig definition and no ladder key)", "states a default"),
+        ("NO_HELP", no_help, NO_HELP, "no `help` text", "has `help` text"),
+    ):
+        for i in sorted(have - allowed):
+            out.append(f"knob {i}: a public row with {missing}. State it; {name} only shrinks")
+        for i in sorted(allowed - have):
+            out.append(f"knob {i}: now {gained}; remove it from {name} in "
+                       "scripts/gen-knob-registry.py")
+    return out
+
+
+def kconfig_defaults(r):
+    """The row's Kconfig `default` lines as [(value, condition or None)], in
+    order. Continuation lines (a trailing `\\`) are joined and comment lines
+    skipped. Kconfig takes the FIRST default whose condition holds, so a
+    conditional default is kept whole, never collapsed to one value."""
+    lines, cur = [], ""
+    for a in r.get("kconfig_attrs", []):
+        s = a.strip()
+        if not cur and s.startswith("#"):
+            continue
+        if s.endswith("\\"):
+            cur += s[:-1].strip() + " "
+            continue
+        lines.append((cur + s).strip())
+        cur = ""
+    if cur:
+        raise ValueError("`kconfig_attrs` ends inside a continued line")
+    out = []
+    for s in lines:
+        if not s.startswith("default "):
+            continue
+        body = s[len("default "):].strip()
+        m = re.match(r'^("(?:[^"\\]|\\.)*"|\S+)(?:\s+if\s+(.+))?$', body)
+        if not m:
+            raise ValueError(f"cannot read the Kconfig default `{s}`")
+        out.append((m.group(1), m.group(2).strip() if m.group(2) else None))
+    if r.get("type") and not out:
+        raise ValueError("a Kconfig definition with no `default` line")
+    if out and out[-1][1] is not None:
+        raise ValueError("the last Kconfig `default` is conditional, so some configurations "
+                         "have no default; end with an unconditional one")
+    return out
+
+
+def default_kind(r):
+    if r.get("type"):
+        return "KCONFIG"
+    if r.get("toml"):
+        return "LADDER"
+    return "UNSTATED"
+
+
+def surface(r):
+    """The one user spelling of a public row, else None."""
+    key = image_key(r)
+    if r.get("class") != "public" or key is None:
+        return None
+    group, _, name = key.rpartition(".")
+    return f"[image.<id>.knobs.{group}] {name}"
 
 
 def q(s):
@@ -240,6 +392,7 @@ def render(rows):
         out.append("        names: &[" + ", ".join(q(x) for x in r.get("names", [])) + "],")
         why = r.get("retired")
         out.append(f"        retired: {'Some(' + q(why) + ')' if why else 'None'},")
+        out += render_catalog(r)
         out.append("    },")
         if kconfig != "CONFIG_" + env and not r.get("retired"):
             pairs.append((env, kconfig))
@@ -281,6 +434,46 @@ def render(rows):
     out.append(f"pub const IMAGE_ENV_RETIRED_TEMPLATE: &str = {q(IMAGE_ENV_RETIRED)};")
     out.append("")
     return "\n".join(out)
+
+
+def rs_str(s):
+    """A Rust string literal for any text (help is multi-line, with quotes)."""
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+
+
+def rs_opt(s):
+    return f"Some({rs_str(s)})" if s is not None else "None"
+
+
+def values_kind(r):
+    ty = r.get("type")
+    if ty:
+        return {"bool": "Bool", "int": "Int", "hex": "Hex", "string": "String"}[ty]
+    return "UInt" if r.get("toml") else "Unstated"
+
+
+def render_catalog(r):
+    """The phase-569 W2 fields of one `KnobRow` literal."""
+    out = [
+        f"        scope: crate::KnobScope::{r.get('scope', 'image').capitalize()},",
+        f"        class: crate::KnobClass::{r.get('class', 'public').capitalize()},",
+        f"        carries: {rs_opt(r.get('carries'))},",
+        f"        prompt: {rs_opt(r.get('prompt'))},",
+        f"        help: {rs_opt(r['help'].strip() if r.get('help') else None)},",
+    ]
+    kind = default_kind(r)
+    if kind == "KCONFIG":
+        out.append("        default: crate::KnobDefault::Kconfig(&[")
+        for v, cond in kconfig_defaults(r):
+            out.append(f"            crate::KconfigDefault {{ value: {rs_str(v)}, when: {rs_opt(cond)} }},")
+        out.append("        ]),")
+    elif kind == "LADDER":
+        out.append("        default: crate::KnobDefault::Ladder,")
+    else:
+        out.append("        default: crate::KnobDefault::Unstated,")
+    out.append(f"        values: crate::KnobValues::{values_kind(r)},")
+    out.append(f"        surface: {rs_opt(surface(r))},")
+    return out
 
 
 def render_cmake(rows):
@@ -497,7 +690,7 @@ def self_test():
     text = "\n".join(errs)
     assert "image key `zenoh.x` is already A_B" in text, errs
     assert "`names` is a non-empty list" in text, errs
-    rs = render([{"id": "LOG_X", "type": "int", "kconfig_attrs": ["range 0 6"], "names": ["off"]}])
+    rs = render([{"id": "LOG_X", "type": "int", "kconfig_attrs": ["range 0 6", "default 0"], "names": ["off"]}])
     assert 'image_key: "log.x",\n        ty: Some("int"),\n        range: Some((0, 6)),\n        names: &["off"],' in rs, rs
     rendered = render([{"id": "ZENOH_X", "legacy": ["ZPICO_X"], "kconfig": "NROS_X"}, {"id": "Y"}])
     assert '("NROS_ZENOH_X", "CONFIG_NROS_X")' in rendered
@@ -537,8 +730,43 @@ def self_test():
     assert any("NROS_Y` (knob Y) is defined OUTSIDE" in p for p in kconfig_problems(stray, kc_rows))
     unmarked = good.replace(KCONFIG_END, "")
     assert kconfig_problems(unmarked, kc_rows) and splice_kconfig(unmarked, kc_rows) is None
-    _, errs = load_from_text('[[knob]]\nid = "A"\nprompt = "p"\n')
+    _, errs = load_from_text('[[knob]]\nid = "A"\nkconfig_attrs = ["default 1"]\n')
     assert any("without `type`" in e for e in errs), errs
+    # phase-569 W2 -- the catalog. A conditional Kconfig default is kept WHOLE,
+    # continued lines joined and comments skipped (ZENOH_GRAPH_DISCOVERY's shape).
+    gd = {"id": "ZENOH_GD", "type": "bool", "kconfig_attrs": [
+        "# a comment", "default n if (A || B) && \\", "             !C && \\", "             !D",
+        "default y"]}
+    assert kconfig_defaults(gd) == [("n", "(A || B) && !C && !D"), ("y", None)], kconfig_defaults(gd)
+    hs = {"id": "ZEPHYR_HEAP", "type": "int", "kconfig_attrs": [
+        "default 1048576 if X", "default 196608 if Y || Z", "default 131072 if RUST", "default 65536"]}
+    assert [v for v, _ in kconfig_defaults(hs)] == ["1048576", "196608", "131072", "65536"]
+    assert kconfig_defaults({"id": "S", "type": "string", "kconfig_attrs": ['default "a b"']}) == [('"a b"', None)]
+    rs = render([dict(gd, scope="image", **{"class": "public"})])
+    assert ('default: crate::KnobDefault::Kconfig(&[\n'
+            '            crate::KconfigDefault { value: "n", when: Some("(A || B) && !C && !D") },\n'
+            '            crate::KconfigDefault { value: "y", when: None },\n        ]),') in rs, rs
+    assert 'surface: Some("[image.<id>.knobs.zenoh] gd"),' in rs, rs
+    # NEGATIVE controls: an authored derived field, a default that can run out,
+    # a carrier with nothing carried, a bad scope.
+    _, errs = load_from_text('[[knob]]\nid = "A_B"\nscope = "image"\nclass = "public"\n'
+                             'type = "int"\nkconfig_attrs = ["default 1"]\ndefault = 2\n')
+    assert any("`default` is derived, never authored -- it comes from its Kconfig definition" in e
+               for e in errs), errs
+    _, errs = load_from_text('[[knob]]\nid = "A_B"\nscope = "image"\nclass = "public"\n'
+                             'type = "int"\nkconfig_attrs = ["default 1 if X"]\n')
+    assert any("last Kconfig `default` is conditional" in e for e in errs), errs
+    _, errs = load_from_text('[[knob]]\nid = "A_B"\nscope = "room"\nclass = "carrier"\n')
+    assert any("`scope` must be" in e for e in errs) and any("names what it carries" in e for e in errs), errs
+    assert rs_str('a "b"\\c\nd') == '"a \\"b\\"\\\\c\\nd"', rs_str('a "b"\\c\nd')
+    rows = [{"id": "A_B", "scope": "image", "class": "public", "help": "h", "toml": "a.b"},
+            {"id": "ZENOH_MAX_SESSIONS", "scope": "image", "class": "public"},
+            {"id": "ZENOH_NEW", "scope": "image", "class": "public"}]
+    probs = ratchet_problems(rows)
+    assert not any("ZENOH_MAX_SESSIONS" in p for p in probs), probs
+    assert any("ZENOH_NEW: a public row with no default (" in p for p in probs), probs
+    assert any("ZENOH_NEW: a public row with no `help` text" in p for p in probs), probs
+    assert any("CYCLONEDDS_MAX_TYPES: now states a default" in p for p in probs), probs
     cm = render_cmake([{"id": "ZENOH_X", "legacy": ["ZPICO_X"], "type": "int"}, {"id": "Y"}])
     assert 'set(NROS_KNOB_LEGACY_NROS_ZENOH_X "ZPICO_X")' in cm, cm
     assert "set(NROS_KNOB_CANONICAL_ZPICO_X NROS_ZENOH_X)" in cm, cm
