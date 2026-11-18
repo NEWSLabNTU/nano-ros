@@ -50,7 +50,6 @@ knobs.zenoh.max_subscribers = 6
 # of that build dir (tests/fixtures/knob-delivery/island-shaped-zephyr).
 [image.zephyr]
 board = "zephyr"
-os_config = ["zephyr/prj-posix.conf"]
 knobs.zenoh.max_publishers = 6
 knobs.zenoh.max_subscribers = 6
 
