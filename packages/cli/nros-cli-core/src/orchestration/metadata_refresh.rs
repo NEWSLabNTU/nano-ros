@@ -240,6 +240,8 @@ pub fn refresh_stale_sidecars(
     let mut report = RefreshReport::default();
     let workspace = Workspace::discover(ws_root)?;
     let declarations = workspace.component_declarations()?;
+    // Issue 2721 -- what the probe build must hold a table for, computed once.
+    let tables_needed = probe_tables_needed(ws_root, &declarations);
     // Issue 2425 — a bringup row whose workspace package no declaration
     // covers is a component this pass cannot probe. Said, never dropped: the
     // descriptor's answer for it is a refusal, which is safe and therefore
@@ -315,7 +317,13 @@ pub fn refresh_stale_sidecars(
             let seeding = seeding_of(&seed_models, decl);
             let node = (decl.config.package.clone(), decl.config.component.clone());
             cpp_seeding.insert(node, seeding.clone());
-            match cpp_probe_options(decl, nano_ros, &probe_root, &seeding) {
+            match cpp_probe_options(
+                decl,
+                nano_ros,
+                &probe_root,
+                &seeding,
+                tables_needed.as_deref(),
+            ) {
                 // issue 0641 — a C/C++ probe that FAILED at this exact source is
                 // not re-attempted until something changes. The Rust branch
                 // below has had this since #0288; the batch path never did, so
@@ -635,6 +643,7 @@ fn cpp_probe_options(
     nano_ros: Option<&Path>,
     probe_root: &Path,
     seeding: &Seeding,
+    tables_needed: Option<&[String]>,
 ) -> Result<Option<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions>, String> {
     // The declaration's refusals first, as before the split (issue 2238).
     let opts = cpp_probe_member(decl, nano_ros, probe_root, seeding)?;
@@ -644,7 +653,7 @@ fn cpp_probe_options(
     // Issue 2640 -- and the launch values it is seeded with.
     if component_probe_key(&decl.package_root, nano_ros, seeding)
         .is_some_and(|k| sidecar_is_fresh(&opts.output_path, &k))
-        && probe_build_present(probe_root)
+        && probe_build_present(probe_root, tables_needed)
     {
         return Ok(None);
     }
@@ -659,11 +668,55 @@ fn cpp_probe_options(
 /// tables, so no message-bound seed was written on any C/C++ west road and the
 /// promise check refused. The probe build is one per workspace, so its
 /// absence makes every C/C++ component stale; its CMake cache marks a project
-/// that was configured here, whatever interfaces its members name.
-fn probe_build_present(probe_root: &Path) -> bool {
+/// that was configured here.
+///
+/// Issue 2721 -- and its OUTPUTS, not a proxy for them. The CMake cache said
+/// only that a configure had started here: a probe whose build failed, or
+/// whose `nros-codegen/` was removed, left the cache behind, so the refresh
+/// called every committed sidecar current, never re-ran the probe, and every
+/// C/C++ west seed then found no bound table (measured: a forced configure
+/// of `examples/workspaces/cpp` with the tables removed stayed without them
+/// and refused 20 seeds). So the build must hold what the readers read: the
+/// probe aggregate `nros-metadata.json`, and a bound table for every package
+/// in the members' interface closure (`tables_needed`, the closure the seed
+/// asks for). `None` -- the closure could not be resolved -- is never
+/// present: the probe re-runs rather than trusting a smaller check.
+fn probe_build_present(probe_root: &Path, tables_needed: Option<&[String]>) -> bool {
     let dir = crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(probe_root);
-    dir.join("build").join("CMakeCache.txt").is_file()
+    let build = dir.join("build");
+    let Some(needed) = tables_needed else {
+        return false;
+    };
+    let codegen = build.join("nros-codegen");
+    build.join("CMakeCache.txt").is_file()
         && crate::orchestration::metadata_probe_cmake::probe_args_current(&dir)
+        && build.join("nros-metadata.json").is_file()
+        && needed.iter().all(|pkg| {
+            ["c", "cpp"].iter().any(|lang| {
+                codegen
+                    .join(format!("nano_ros_{lang}"))
+                    .join(pkg)
+                    .join(rosidl_codegen::INVENTORY_JSON_NAME)
+                    .is_file()
+            })
+        })
+}
+
+/// Issue 2721 -- the interface packages the probe must hold a bound table for:
+/// the closure over the workspace's C/C++ components, by the seed's own
+/// function. `None` when it cannot be resolved.
+fn probe_tables_needed(
+    ws_root: &Path,
+    declarations: &[ComponentDeclaration],
+) -> Option<Vec<String>> {
+    let dirs: Vec<PathBuf> = declarations
+        .iter()
+        .filter(|d| d.config.language != ComponentLanguage::Rust)
+        .map(|d| d.package_root.clone())
+        .collect();
+    let search = crate::cmd::configure::interface_search_path_for(ws_root);
+    crate::message_bound_knobs::interface_closure(&dirs, search.as_deref().and_then(|s| s.to_str()))
+        .ok()
 }
 
 /// Issue 2238 -- the probe options of a C/C++ component whatever its
@@ -1784,6 +1837,7 @@ pub(crate) fn stale_sidecar_components(root: &Path, nano_ros: Option<&Path>) -> 
     let Ok(declarations) = workspace.component_declarations() else {
         return Vec::new();
     };
+    let tables_needed = probe_tables_needed(root, &declarations);
     let mut out = Vec::new();
     // Issue 2640 -- the refresh's key includes the launch values.
     let seed_models = SeedModels::load(root, None);
@@ -1810,14 +1864,18 @@ pub(crate) fn stale_sidecar_components(root: &Path, nano_ros: Option<&Path>) -> 
                 sidecar.display()
             ));
         } else if decl.config.language != ComponentLanguage::Rust
-            && !probe_build_present(&root.join("build").join("nros-metadata"))
+            && !probe_build_present(
+                &root.join("build").join("nros-metadata"),
+                tables_needed.as_deref(),
+            )
         {
             // Issue 2435 -- the same predicate the refresh applies: a C/C++
             // sidecar is current only beside the probe build that holds its
             // bound tables.
             out.push(format!(
-                "metadata sidecar `{}` has no probe build beside it (the bound tables the \
-                 message-bound seeds read are under `build/nros-metadata`)",
+                "metadata sidecar `{}` is not backed by a complete probe build: \
+                 `build/nros-metadata` lacks the probe aggregate or a bound table the \
+                 message-bound seeds read",
                 sidecar.display()
             ));
         }
@@ -2262,6 +2320,7 @@ mod tests {
                 Some(&nano_ros),
                 &probe_root,
                 &Seeding::None,
+                Some(&[]),
             )
             .unwrap_or_else(|why| panic!("{language:?} must be probeable: {why}"))
             .unwrap_or_else(|| panic!("{language:?}: no sidecar exists, so a probe is needed"));
@@ -2273,6 +2332,7 @@ mod tests {
             Some(&nano_ros),
             &probe_root,
             &Seeding::None,
+            Some(&[]),
         )
         .expect_err("a Rust component has no cmake probe — it has the cargo harness");
         assert!(
@@ -2299,24 +2359,55 @@ mod tests {
         assert!(sidecar_is_fresh(&sidecar, &key));
 
         let probe_root = dir.join("probe");
-        let opts =
-            cpp_probe_options(&decl, Some(&root), &probe_root, &Seeding::None).expect("probeable");
+        let needed = ["std_msgs".to_string()];
+        let probe = |label: &str| {
+            cpp_probe_options(
+                &decl,
+                Some(&root),
+                &probe_root,
+                &Seeding::None,
+                Some(&needed),
+            )
+            .expect("probeable")
+            .is_some()
+            .then_some(())
+            .ok_or(label.to_string())
+        };
         assert!(
-            opts.is_some(),
+            probe("none").is_ok(),
             "no probe build here, so its bound tables are missing: the component must be probed"
         );
 
-        let cache =
+        let build =
             crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(&probe_root)
-                .join("build")
-                .join("CMakeCache.txt");
-        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
-        std::fs::write(&cache, "# configured\n").unwrap();
-        let opts =
-            cpp_probe_options(&decl, Some(&root), &probe_root, &Seeding::None).expect("probeable");
+                .join("build");
+        std::fs::create_dir_all(&build).unwrap();
+        std::fs::write(build.join("CMakeCache.txt"), "# configured\n").unwrap();
+        // Issue 2721 -- a cache alone is a configure that STARTED here: a
+        // failed build, or a removed `nros-codegen/`, leaves it behind.
         assert!(
-            opts.is_none(),
-            "fresh sidecar and a probe build: nothing to do"
+            probe("cache only").is_ok(),
+            "a CMake cache without the probe's outputs must not read as current"
+        );
+        std::fs::write(build.join("nros-metadata.json"), "{}").unwrap();
+        assert!(
+            probe("no table").is_ok(),
+            "the aggregate without the bound table a seed reads must not read as current"
+        );
+        let table = build
+            .join("nros-codegen/nano_ros_cpp/std_msgs")
+            .join(rosidl_codegen::INVENTORY_JSON_NAME);
+        std::fs::create_dir_all(table.parent().unwrap()).unwrap();
+        std::fs::write(&table, "{}").unwrap();
+        assert!(
+            probe("all present").is_err(),
+            "fresh sidecar, and the probe's outputs present: nothing to do"
+        );
+        // An unresolvable closure is never current.
+        assert!(
+            cpp_probe_options(&decl, Some(&root), &probe_root, &Seeding::None, None)
+                .expect("probeable")
+                .is_some()
         );
     }
 
@@ -2345,6 +2436,7 @@ mod tests {
                 Some(&nano_ros),
                 &probe_root,
                 &Seeding::None,
+                Some(&[]),
             )
             .expect_err("a west application cannot be configured for the host");
             assert!(
@@ -2363,6 +2455,7 @@ mod tests {
                 Some(&nano_ros),
                 &probe_root,
                 &Seeding::None,
+                Some(&[]),
             )
             .unwrap_or_else(|why| panic!("an ament package still probes: {why}"))
             .expect("no sidecar exists, so a probe is needed");

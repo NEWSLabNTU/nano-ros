@@ -1,7 +1,8 @@
 ---
 id: 2721
 title: "In the nightly's per-platform jobs the configure resolves the cpp workspace's Zephyr images where the metadata probe never ran, so their message-bound seeds find no bound table"
-status: open
+status: resolved
+resolved_in: "the change that archives this issue"
 type: bug
 severity: high
 area: [sizing, codegen, zephyr]
@@ -104,3 +105,66 @@ Answer the two questions above from the nightly workflow and the per-platform
 lane's recipe. Then either run the probe where images are resolved, or stop
 resolving and seeding an image whose host cannot build it. Fix it where the
 lane decides, so no other image on such a host is composed without its probe.
+
+## Fix (2026-11-19)
+
+**Reproduced, locally.** Configure `examples/workspaces/cpp`. Then remove
+the probe build's outputs (`nros-metadata.json` and `nros-codegen/`) and keep
+its `CMakeCache.txt`. A plain `nros configure` printed "up to date (90
+image(s))". `nros configure --force` re-ran sync, which still did not probe:
+the tables stayed missing and 20 seeds refused with "no bound table". This is
+the CI symptom.
+
+**Cause.** The refresh decides a C/C++ component is current when its
+committed sidecar is fresh AND `probe_build_present`. That predicate checked
+`CMakeCache.txt`, which says only that a configure STARTED here (issue 2435's
+check, one step short of its own rule). A probe build that failed, or whose
+`nros-codegen/` was removed, leaves the cache behind, so every committed
+sidecar read as current, the probe never ran again, and every C/C++ west seed
+found no table. Which earlier step left such a cache in the nightly's
+per-platform jobs is not identified. The predicate is wrong for every such
+step, so the fix does not depend on it.
+
+**Fix.** `probe_build_present` now requires what the readers read:
+- the cache, as before;
+- the probe aggregate `nros-metadata.json`;
+- a bound table for every package in the members' interface closure.
+
+The closure is computed by `message_bound_knobs::interface_closure`, the
+function the seed itself now uses, so the two cannot disagree. An
+unresolvable closure is never present, so the probe re-runs. Both callers use
+the predicate: the refresh (`cpp_probe_options`), and the configure stamp's
+`stale_sidecar_components`. So a plain configure now notices, too.
+
+Measured after the fix, from the broken state above:
+- a configure re-ran the probe; all five tables came back, 0 seeds refused
+  and 90 were seeded;
+- removing the outputs again with the same CLI: a plain configure reported
+  the sidecars "not backed by a complete probe build" and re-probed.
+
+`a_fresh_sidecar_without_the_probe_build_is_probed_again` now steps through
+four states: none, cache only, cache plus aggregate with no table, and all
+present. Only the last is current. On main, "cache only" reads as current.
+
+Issue 2520's `KNOWN_BOUND_TABLE_GAPS` exemption, and the `MissingBoundTable`
+kind it keyed on, are deleted: a missing table is an ordinary failure again,
+and refuses under `refuse`.
+
+**Question 1, the wider half: answered by the same fix.** In the broken state
+above, the forced configure printed 61 "no metadata probe at … composed from
+the model alone" lines, one per image of the workspace on every platform:
+ThreadX, FreeRTOS, NuttX, baremetal, Linux and Zephyr. Every one of those
+images was composed without the probe's floor (issue 1694's under-size
+risk), not just the 14 whose seeds refused. After the fix the same state
+printed 0 such lines. The per-platform jobs' 2110 lines are this.
+
+**Question 2: answered, no change.** A configure resolves every image of the
+workspace, including ones its host cannot build. That is right: the resolve
+(stage 3.5) reads only declarations and the probe, both host-independent, so
+it composes the same answer on any host, and with this fix the probe's outputs
+exist for it to read. The host-dependent step is the image's own configure
+(west, a cross toolchain), and that is already skipped where the host cannot
+run it ("no Zephyr found"). Skipping the resolve too would buy nothing, and
+it would make a resolve's answer depend on which host ran it.
+
+Sweep: `git grep -n 'probe_build_present\|interface_closure\|probe_tables_needed' -- packages/cli`

@@ -7511,17 +7511,14 @@ fn resolve_image(
                              ({why}). To record why, add `no_inventory = \"<reason>\"` under \
                              `[image.{image_id}]`."
                         ),
-                        (
-                            Some(
-                                nd @ (NotDerived::Failed(_) | NotDerived::MissingBoundTable { .. }),
-                            ),
-                            _,
-                        ) => crate::resolve::report_not_derived_under(
-                            policy,
-                            "entity counts not derived; configured defaults kept",
-                            image_id,
-                            nd,
-                        )?,
+                        (Some(nd @ NotDerived::Failed(_)), _) => {
+                            crate::resolve::report_not_derived_under(
+                                policy,
+                                "entity counts not derived; configured defaults kept",
+                                image_id,
+                                nd,
+                            )?
+                        }
                         (None, _) => {}
                     }
                 }
