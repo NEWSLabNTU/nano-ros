@@ -7,7 +7,7 @@ type: bug
 area: [cmake, boards, c-api, cpp-api, workspace]
 severity: high
 found: 2026-11-18
-related: [1946, 0687, 0794, 1434]
+related: [1946, 0687, 0794, 1434, phase-581]
 ---
 
 ## What is wrong
