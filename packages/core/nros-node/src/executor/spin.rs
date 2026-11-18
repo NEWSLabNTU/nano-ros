@@ -18423,7 +18423,27 @@ impl<'s> Executor<'s> {
         node_id: super::node_record::NodeId,
         topic: &str,
     ) -> Result<HandleId, NodeError> {
-        self.register_subscription_buffered_on::<
+        let handle = create_clock_sub(self, node_id, topic)?;
+        Ok(handle)
+    }
+}
+
+/// phase-556 W11 -- create the executor's `/clock` subscription:
+/// `rosgraph_msgs/msg/Clock` on `topic`, with [`QoSProfile::clock_default`],
+/// installing each sample as the image's ROS time while `use_sim_time` holds.
+///
+/// The ONE creation site `check-infra-queryable-counts` holds
+/// [`CLOCK_SUBSCRIPTIONS`](crate::time_source::CLOCK_SUBSCRIPTIONS) to, once
+/// per executor: the `use_sim_time` reconciliation creates it at most once
+/// (`sim_time_source`), and the sizing reserves that one whenever the image
+/// carries the `sim_time` capability.
+#[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+fn create_clock_sub(
+    exec: &mut Executor<'_>,
+    node_id: super::node_record::NodeId,
+    topic: &str,
+) -> Result<HandleId, NodeError> {
+    exec.register_subscription_buffered_on::<
             nros_rosgraph_msgs::msg::Clock,
             _,
             { crate::config::DEFAULT_RX_BUF_SIZE },
@@ -18448,7 +18468,6 @@ impl<'s> Executor<'s> {
             None, // no group — node default
             None, // the configured default RX buffer, unchanged
         )
-    }
 }
 
 // ============================================================================

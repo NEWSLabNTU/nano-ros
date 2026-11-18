@@ -247,8 +247,10 @@ endfunction()
 #     infra_families` instead (it was the `NROS_DECLARED_INFRA_QUERYABLES`
 #     carrier until phase-486).
 #     phase-556 W13: that tag also names `rosout` (a `+`-joined subset of
-#     param, lifecycle, rosout), whose publishers (one per node) reach the
-#     publisher and liveliness pools and no queryable.
+#     param, lifecycle, rosout, clock), whose one publisher per node reaches
+#     the publisher and liveliness pools and no queryable. phase-556 W11:
+#     and `clock`, the `/clock` subscription `use_sim_time` creates, once per
+#     executor: a subscriber, a callback slot, an arena entry and a token.
 #
 # Two exclusions this comment used to list are GONE (issue 1233): both
 # `NROS_EXECUTOR_MAX_NODES` and `NROS_SUBSCRIPTION_BUFFER_SIZE` now travel all

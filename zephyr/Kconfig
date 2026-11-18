@@ -1317,6 +1317,15 @@ config NROS_CAPABILITY_ROSOUT
       NROS_CAPABILITY_PARAM_SERVICES. A hand-written application's module
       reads it to choose the `rosout` cargo feature.
 
+config NROS_CAPABILITY_SIM_TIME
+    bool "The image's bringup declares the sim_time capability"
+    help
+      Set by `nros build` from the bringup's `[system] features` and its
+      `node_interfaces` switch. See NROS_CAPABILITY_PARAM_SERVICES. A
+      hand-written application's module reads it to choose the `sim-time`
+      cargo feature: every node serving parameters then declares
+      `use_sim_time`, and setting it true subscribes `/clock`.
+
 config NROS_PARAM_STORE
     bool "The image's launch file seeds a parameter"
     help
