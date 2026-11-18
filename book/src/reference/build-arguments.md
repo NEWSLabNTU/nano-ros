@@ -92,10 +92,10 @@ For example:
 Error: --cmake-args: `-DCONFIG_FOO=y` is refused: a `-DCONFIG_*` sets a Kconfig symbol directly on the west road, around the Kconfig fragments and the knob ladder; put Zephyr-native Kconfig in the image's `conf = [..]` fragment
 ```
 
-A few knobs are still accepted as a `-D`, because nano-ros cannot yet show
-that every road reads them from `system.toml` (several Zenoh wire and TX sizes,
-three XRCE pool sizes). Prefer the image's `[image.<id>.knobs.<group>]` table
-for those too, which
+A knob that means something on one platform only, such as
+`[image.<id>.knobs.zenoh] socket_timeout_ms` (Zephyr), is refused when an
+image on another platform states it, with the reason it does nothing there.
+The image's `[image.<id>.knobs.<group>]` table, which
 [Configure an image](../guide/build/configure-an-image.md) describes: it is
 the one spelling every board reads.
 
