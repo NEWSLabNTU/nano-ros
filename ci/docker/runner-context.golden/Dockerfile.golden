@@ -92,6 +92,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-example-interfaces \
         ros-humble-geometry-msgs \
         ros-humble-lifecycle-msgs \
+        ros-humble-rcl-interfaces \
         ros-humble-rosgraph-msgs \
         ros-humble-sensor-msgs \
         ros-humble-std-msgs \
