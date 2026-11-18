@@ -573,6 +573,7 @@ zenoh-source-manifest:
 # port from the sources and fails when a row disagrees in either direction.
 # Buildless; NOT VERIFIED when zenoh-pico is not checked out. Self-tests.
 [private]
+[group('needs:submodules')]
 zenoh-port-links:
     @python3 scripts/check/check-zenoh-port-links.py
 
