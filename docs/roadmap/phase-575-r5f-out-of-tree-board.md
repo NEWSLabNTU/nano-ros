@@ -229,7 +229,10 @@ Steps, in order:
      the D2 peering patch, and two IVC fixes the first end-to-end run found
      (a client on IVC dereferenced NULL for its peer socket; a session on
      IVC could neither wait in its handshake nor read). The nano-ros half is
-     the opt-in and the guard (RFC-0134 D1, amended). The user chose to push
+     the opt-in and the guard. The opt-in is by link set (RFC-0134 D1,
+     amended; ruled by the user on 2026-11-18): every image that compiles a
+     point-to-point link compiles peer mode, +5,188 B of code, no RAM or
+     heap, with no per-image knob. The user chose to push
      once a runtime test existed: `nros-rmw-zenoh`'s `point_to_point_peer`
      runs two processes over the IVC host mock, with no router.
    - **Link:** OPEN.

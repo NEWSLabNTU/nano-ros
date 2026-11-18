@@ -83,10 +83,10 @@ Facts read in zenoh-pico 1.10.1 (the pinned fork):
 - RFC-0109's refusal of `mode: "peer"` stays for every other link, with its
   reason (multicast is off). It is lifted only for the point-to-point case.
 
-**Amendment to D1 (2026-11-18, for the user's ruling; not yet approved).**
-As built, the opt-in is decided by the **link set alone**, not by the image's
-role. An image that compiles a point-to-point link compiles peer mode,
-whether or not it opens a peer session:
+**Amendment to D1 (ruled by the user 2026-11-18: by link set, as built).**
+The opt-in is decided by the **link set alone**, not by the image's role. An
+image that compiles a point-to-point link compiles peer mode, whether or not
+it opens a peer session:
 
 - **As approved:** peer mode only for images carrying the RPMsg (or IVC) link
   in a router-less role; default builds peer-free.
@@ -99,9 +99,10 @@ whether or not it opens a peer session:
   mode in costs 5,188 bytes of code, no static RAM and no heap (step 0
   Results). Default builds stay peer-free: no in-tree image compiles IVC.
 - **The cost:** every IVC (later RPMsg) image carries the 5 KB, used or not.
-- **The alternative, if the approved rule is preferred:** a per-image knob the
-  CLI sets only when the image's zenoh config states `mode: "peer"` with a
-  point-to-point endpoint, read by the same single function.
+- **Considered, not taken:** a per-image knob the CLI sets only when the
+  image's zenoh config states `mode: "peer"` with a point-to-point endpoint.
+  It would save the 5 KB in point-to-point images that stay in client mode,
+  at the cost of a second input that can disagree with the session config.
 
 The session guard is the other half: `mode: "peer"` without the multicast
 transport is refused unless every `listen`/`connect` endpoint is on a
@@ -262,5 +263,6 @@ Tracked by phase-575 W4:
 
 - 2026-11-18: drafted.
 - 2026-11-18: step 0 measured on FreeRTOS MPS2 QEMU (Results).
-- 2026-11-18: step 1 landed with a marked amendment to D1 (opt-in by link
-  set), and a host test of two peers over the IVC mock.
+- 2026-11-18: step 1 landed with an amendment to D1 (opt-in by link set),
+  ruled by the user the same day as built, and a host test of two peers over
+  the IVC mock.
