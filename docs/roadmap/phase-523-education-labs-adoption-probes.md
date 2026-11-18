@@ -316,7 +316,8 @@ documented as is.
 
 - **Status:** DONE (2026-11-18). Both ratchets reached zero and became
   hard rules; issues 2305, 2443, 2547, 2551 and 2581 (public API docs) are
-  archived. The API-doc ratchet's last 6 ids are issue 2554's.
+  archived. The API-doc ratchet is empty: the last 6 ids went with issue
+  2554's regeneration.
 
 **User ruling, 2026-11-12** ("Take your recommendation", option A): user-reachable
 output, build-stopping refusals included, names what, where and how to fix,
