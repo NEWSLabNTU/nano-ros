@@ -1871,6 +1871,8 @@ Maps to ZPICO_SERVICE_BUFFER_SIZE.
 
 [[knob]]
 id = "ZENOH_SOCKET_TIMEOUT_MS"
+only_on = "zephyr"
+only_on_why = "it sizes the recv window Zephyr's zsock layer holds the socket's per-fd lock for, and no other port couples send and recv that way"
 type = "int"
 prompt = "zenoh-pico socket recv timeout (ms)"
 kconfig_if = "NROS_RMW_ZENOH"

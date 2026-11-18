@@ -107,8 +107,11 @@ IMAGE_ENV_RETIRED = (
 ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
 ENV = re.compile(r"^(NROS|ZPICO)_[A-Z0-9_]+$")
 TOML_KEY = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
-FIELDS = {"id", "legacy", "kconfig", "toml", "names", "retired",
+FIELDS = {"id", "legacy", "kconfig", "toml", "names", "retired", "only_on", "only_on_why",
           "type", "prompt", "kconfig_if", "kconfig_attrs", "help"}
+# phase-568 W2c -- a knob with no meaning off one platform (`only_on`), and
+# why. Stated for another platform's image, it is refused rather than ignored.
+ONLY_ON_PLATFORMS = {"zephyr"}
 # The Kconfig definition is all-or-nothing: `type` says the module defines the
 # symbol, and the rest only mean something beside it.
 KCONFIG_DEF_FIELDS = {"prompt", "kconfig_if", "kconfig_attrs", "help"}
@@ -163,6 +166,15 @@ def load_from_text(text):
             if ty is not None:
                 errors.append(f"{where}: a `retired` knob has no Kconfig definition (drop `type`), "
                               "so a conf that still assigns it fails as an undefined symbol")
+        only = r.get("only_on")
+        only_why = r.get("only_on_why")
+        if (only is None) != (only_why is None):
+            errors.append(f"{where}: `only_on` and `only_on_why` come together")
+        if only is not None:
+            if only not in ONLY_ON_PLATFORMS:
+                errors.append(f"{where}: `only_on` must be one of {sorted(ONLY_ON_PLATFORMS)}")
+            if not isinstance(only_why, str) or not only_why.strip() or re.search(r'["\\$;]', only_why):
+                errors.append(f"{where}: `only_on_why` is a non-empty reason without `\"`, `\\`, `$` or `;`")
         t = r.get("toml")
         if t is not None:
             if not TOML_KEY.match(t):
@@ -240,6 +252,8 @@ def render(rows):
         out.append("        names: &[" + ", ".join(q(x) for x in r.get("names", [])) + "],")
         why = r.get("retired")
         out.append(f"        retired: {'Some(' + q(why) + ')' if why else 'None'},")
+        only = r.get("only_on")
+        out.append(f"        only_on: {'Some((' + q(only) + ', ' + q(r['only_on_why']) + '))' if only else 'None'},")
         out.append("    },")
         if kconfig != "CONFIG_" + env and not r.get("retired"):
             pairs.append((env, kconfig))

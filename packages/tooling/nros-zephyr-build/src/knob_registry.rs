@@ -16,6 +16,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ACTION_INBOX_DEPTH",
@@ -28,6 +29,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "CYCLONEDDS_HEAP_BUDGET_BYTES",
@@ -40,6 +42,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_DESCRIPTOR_TYPES",
@@ -52,6 +55,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_FIELDS",
@@ -64,6 +68,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_KINDS",
@@ -76,6 +81,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_NESTED_DEPTH",
@@ -88,6 +94,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_TYPES",
@@ -100,6 +107,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ENTRY_SPIN_MS",
@@ -112,6 +120,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_ACTION_CLIENTS",
@@ -124,6 +133,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_ARENA_SIZE",
@@ -136,6 +146,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_BACKING_U64S",
@@ -148,6 +159,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_EXTRA_SESSIONS",
@@ -160,6 +172,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_MAX_AGE_MONITORS",
@@ -172,6 +185,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_MAX_CBS",
@@ -184,6 +198,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_MAX_MONITORS",
@@ -196,6 +211,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_MAX_NODES",
@@ -208,6 +224,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_MAX_SC",
@@ -220,6 +237,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_MAX_SHUTDOWN_CBS",
@@ -232,6 +250,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_MAX_VIOLATIONS",
@@ -244,6 +263,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((1, 256)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "EXECUTOR_RUNTIME_REMAPS",
@@ -256,6 +276,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "FREERTOS_APP_STACK_KB",
@@ -268,6 +289,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "FREERTOS_HEAP_KB",
@@ -280,6 +302,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "FREERTOS_TASK_STACK_GUARD",
@@ -292,6 +315,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "GRAPH_MAX_ENTITIES",
@@ -304,6 +328,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "KEYEXPR_STRING_SIZE",
@@ -316,6 +341,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "LET_BUFFER_SIZE",
@@ -328,6 +354,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "LOG_BUFFER_SIZE",
@@ -340,6 +367,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((128, 4096)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "LOG_DYNAMIC_LOGGERS",
@@ -352,6 +380,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((0, 1024)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "LOG_EARLY_RECORDS",
@@ -364,6 +393,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((0, 256)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "LOG_MAX_LEVEL",
@@ -376,6 +406,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((0, 6)),
         names: &["trace", "debug", "info", "warn", "error", "fatal", "off"],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "LOG_ROSOUT_RECORDS",
@@ -388,6 +419,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((1, 1024)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "MAX_ARRAY_LEN",
@@ -400,6 +432,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "MAX_BYTE_ARRAY_LEN",
@@ -412,6 +445,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "MAX_PARAMETERS",
@@ -424,6 +458,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "MAX_PARAM_CONSTRAINTS_LEN",
@@ -436,6 +471,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((0, 256)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "MAX_PARAM_DESCRIPTION_LEN",
@@ -448,6 +484,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((0, 256)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "MAX_PARAM_NAME_LEN",
@@ -460,6 +497,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "MAX_STRING_ARRAY_LEN",
@@ -472,6 +510,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "MAX_STRING_VALUE_LEN",
@@ -484,6 +523,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "PARAM_EVENTS_DEPTH",
@@ -496,6 +536,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((1, 1000)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "PARAM_SERVICE_BUFFER_SIZE",
@@ -508,6 +549,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "PARAM_SERVICE_INBOX_BYTES",
@@ -520,6 +562,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "PARAM_SERVICE_INBOX_DEPTH",
@@ -532,6 +575,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "PUBSUB_QOS_DEPTH",
@@ -544,6 +588,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RMW_LOCAL_QUERYABLE",
@@ -556,6 +601,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((-1, 1)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RMW_MAX_BACKENDS",
@@ -568,6 +614,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RMW_MAX_NODES",
@@ -580,6 +627,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RMW_MESSAGE_INFO_SLOTS",
@@ -592,6 +640,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RMW_SUBSCRIBER_SLOTS",
@@ -604,6 +653,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RMW_SUBSCRIBER_SLOT_BYTES",
@@ -616,6 +666,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RUNTIME_COMPONENT_SLOT_BYTES",
@@ -628,6 +679,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RUNTIME_MAX_CELL_ENTITIES",
@@ -640,6 +692,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RUNTIME_MAX_CLASS_INSTANCES",
@@ -652,6 +705,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "RUNTIME_MAX_COMPONENTS",
@@ -664,6 +718,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SERVICE_INBOX_BYTES",
@@ -676,6 +731,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SERVICE_INBOX_DEPTH",
@@ -688,6 +744,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SERVICE_TIMEOUT_MS",
@@ -700,6 +757,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SMOLTCP_BUFFER_SIZE",
@@ -712,6 +770,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SMOLTCP_CONNECT_TIMEOUT_MS",
@@ -724,6 +783,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SMOLTCP_MAX_SOCKETS",
@@ -736,6 +796,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SMOLTCP_MAX_UDP_SOCKETS",
@@ -748,6 +809,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SMOLTCP_SOCKET_TIMEOUT_MS",
@@ -760,6 +822,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SUBSCRIBER_BUFFER_SIZE",
@@ -772,6 +835,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "SUBSCRIPTION_BUFFER_SIZE",
@@ -784,6 +848,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "THREADX_APP_STACK_KB",
@@ -796,6 +861,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_BUFFER_SIZE",
@@ -808,6 +874,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE",
@@ -820,6 +887,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_BUILTIN_SERVICE_SERVERS",
@@ -832,6 +900,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_CUSTOM_TRANSPORT_MTU",
@@ -844,6 +913,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((128, 65535)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_MAX_SERVICE_CLIENTS",
@@ -856,6 +926,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_MAX_SERVICE_SERVERS",
@@ -868,6 +939,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_MAX_SUBSCRIBERS",
@@ -880,6 +952,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_SERVICE_REPLY_BUFFER_SIZE",
@@ -892,6 +965,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_SERVICE_REQUEST_BUFFER_SIZE",
@@ -904,6 +978,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_STREAM_HISTORY",
@@ -916,6 +991,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((2, 16)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_SUBSCRIBER_BUFFER_SIZE",
@@ -928,6 +1004,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_SUBSCRIBER_RING_DEPTH",
@@ -940,6 +1017,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((1, 1024)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "XRCE_TRANSPORT_MTU",
@@ -952,6 +1030,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_BATCH_MULTICAST_SIZE",
@@ -964,6 +1043,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_BATCH_UNICAST_SIZE",
@@ -976,6 +1056,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_CONNECT_FOREVER",
@@ -988,6 +1069,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_CONNECT_TIMEOUT_MS",
@@ -1000,6 +1082,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_FRAG_MAX_SIZE",
@@ -1012,6 +1095,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_GET_POLL_INTERVAL_MS",
@@ -1024,6 +1108,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_GET_REPLY_BUF_SIZE",
@@ -1036,6 +1121,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_GRAPH_CACHE_SIZE",
@@ -1048,6 +1134,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_GRAPH_DISCOVERY",
@@ -1060,6 +1147,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_LEASE_PRIORITY",
@@ -1072,6 +1160,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: Some("zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread"),
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_MAX_LARGE_SUBSCRIBERS",
@@ -1084,6 +1173,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_MAX_LIVELINESS",
@@ -1096,6 +1186,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_MAX_PENDING_GETS",
@@ -1108,6 +1199,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_MAX_PUBLISHERS",
@@ -1120,6 +1212,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_MAX_QUERYABLES",
@@ -1132,6 +1225,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_MAX_SESSIONS",
@@ -1144,6 +1238,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_MAX_SUBSCRIBERS",
@@ -1156,6 +1251,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_MAX_TL_PUBLISHERS",
@@ -1168,6 +1264,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_PUBLISHER_TX_BUFFER_SIZE",
@@ -1180,6 +1277,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_READ_PRIORITY",
@@ -1192,6 +1290,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_RX_TASK_BUDGET_FRAMES",
@@ -1204,6 +1303,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((-1, 65535)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_RX_TASK_BUDGET_REST_US",
@@ -1216,6 +1316,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: Some((-1, 1000000)),
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_SERVICE_BUFFER_SIZE",
@@ -1228,6 +1329,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_SOCKET_TIMEOUT_MS",
@@ -1240,6 +1342,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: Some(("zephyr", "it sizes the recv window Zephyr's zsock layer holds the socket's per-fd lock for, and no other port couples send and recv that way")),
     },
     KnobRow {
         id: "ZENOH_SUBSCRIBER_LARGE_SIZE",
@@ -1252,6 +1355,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_SUBSCRIBER_RING_DEPTH",
@@ -1264,6 +1368,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_SUBSCRIBER_SIZE_THRESHOLD",
@@ -1276,6 +1381,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_TL_RETAIN_BYTES",
@@ -1288,6 +1394,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_TL_RETAIN_DEPTH",
@@ -1300,6 +1407,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_TX_BATCH",
@@ -1312,6 +1420,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_TX_BATCH_FLUSH_MS",
@@ -1324,6 +1433,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZENOH_TX_SPLIT_LOCK",
@@ -1336,6 +1446,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
     KnobRow {
         id: "ZEPHYR_HEAP_SIZE",
@@ -1348,6 +1459,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
     },
 ];
 

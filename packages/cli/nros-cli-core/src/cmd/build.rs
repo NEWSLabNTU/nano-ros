@@ -1740,6 +1740,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // tables. `[image] env` is LAST, so it outranks the
                 // implication and the derived pools and is outranked only by
                 // the calling environment (nothing here writes `force`).
+                crate::cmd::leaf_settings::refuse_off_platform_knobs(
+                    &image_id,
+                    image.knobs.0.keys(),
+                    descriptor.platform.kebab(),
+                )?;
                 env.extend(crate::cmd::leaf_settings::image_block_layers(
                     Some(&image_id),
                     &image,
@@ -8386,6 +8391,11 @@ fn cmake_image_rows(
         nano_ros_root,
         image.board.as_deref().unwrap_or_default(),
         crate::cmd::leaf_settings::BoardRungCarries::BoardOnly,
+    )?;
+    crate::cmd::leaf_settings::refuse_off_platform_knobs(
+        image_id,
+        image.knobs.0.keys(),
+        descriptor.platform.kebab(),
     )?;
     let mut rows =
         crate::cmd::leaf_settings::image_block_layers_over(Some(image_id), image, &board_rung)?;

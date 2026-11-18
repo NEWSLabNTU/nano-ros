@@ -160,6 +160,46 @@ mod tests {
         rust: Vec<(String, String)>,
         cmake: Vec<(String, String)>,
         kconfig: String,
+        /// Phase-568 W2c: data tables a build script reads env names from, one
+        /// row per knob (`define <MACRO> <ENV> <min>`), with comments dropped.
+        tables: String,
+    }
+
+    /// Build-script knob tables: a row naming `NROS_<ID>` as a word is a read,
+    /// made by the script that loads the table (named beside each).
+    const READER_TABLES: &[&str] = &[
+        // nros-rmw-xrce-cffi/build.rs, `config_path`.
+        "packages/rmw/xrce/xrce-config.txt",
+    ];
+
+    /// Phase-568 W2c: the registry-lookup helpers, by knob group. A function
+    /// whose body asks `registry_env("<group>", key)` (`wire_env_key`,
+    /// `tx_env_key`) reads a knob by its NAME within the group, so a row
+    /// `<group>.<name>` is read wherever `"<name>"` meets that helper.
+    fn lookup_helpers(rust: &[(String, String)]) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for (_, t) in rust {
+            for (i, _) in t.match_indices("registry_env(\"") {
+                let group: String = t[i + "registry_env(\"".len()..]
+                    .chars()
+                    .take_while(|c| *c != '"')
+                    .collect();
+                let Some(f) = t[..i].rfind("fn ") else {
+                    continue;
+                };
+                if i - f > 300 {
+                    continue;
+                }
+                let name: String = t[f + 3..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() && name != "registry_env" {
+                    out.push((group.clone(), name));
+                }
+            }
+        }
+        out
     }
 
     fn corpus(root: &Path) -> Corpus {
@@ -193,8 +233,20 @@ mod tests {
                 .map(|(p, t)| (p, cmake_uses(&t)))
                 .collect(),
             kconfig: std::fs::read_to_string(root.join("zephyr/Kconfig")).unwrap_or_default(),
+            tables: READER_TABLES
+                .iter()
+                .map(|t| {
+                    code(
+                        &std::fs::read_to_string(root.join(t)).unwrap_or_default(),
+                        "#",
+                    )
+                })
+                .collect(),
         }
     }
+
+    /// A road the knob means nothing on (`KnobRow::only_on`).
+    const NOT_APPLICABLE: &str = "n/a";
 
     fn cell(reader: bool, carried: bool) -> &'static str {
         match (reader, carried) {
@@ -207,15 +259,27 @@ mod tests {
     /// `id -> [cargo, cmake, west]`, measured.
     fn measure(c: &Corpus) -> BTreeMap<String, [&'static str; 3]> {
         let mut out = BTreeMap::new();
+        let helpers = lookup_helpers(&c.rust);
         for row in nros_zephyr_build::KNOBS
             .iter()
             .filter(|r| r.retired.is_none())
         {
             let env = row.env;
-            let rust = c
-                .rust
-                .iter()
-                .any(|(_, t)| t.contains(&format!("\"{env}\"")));
+            let by_name = row.image_key.rsplit_once('.').is_some_and(|(group, name)| {
+                let key = format!("\"{name}\"");
+                c.rust.iter().any(|(_, t)| {
+                    t.contains(&key)
+                        && (t.contains(&format!("registry_env(\"{group}\""))
+                            || helpers
+                                .iter()
+                                .any(|(g, f)| g == group && t.contains(&format!("{f}("))))
+                })
+            });
+            let rust = by_name
+                || names_word(&c.tables, env)
+                || c.rust
+                    .iter()
+                    .any(|(_, t)| t.contains(&format!("\"{env}\"")));
             let cmake_files: Vec<&String> = c
                 .cmake
                 .iter()
@@ -239,7 +303,20 @@ mod tests {
             // Issue 2496 — `nros_image_env_value` also reads the west road's
             // recorded row (`NROS_IMAGE_ENV_ROW_<name>`), so a cmake reader
             // that asks it is reached on west too.
-            let west = cell(reader, kconfig || !cmake || via_image_env);
+            // A Zephyr CMake reader of the Kconfig symbol (`${CONFIG_<sym>}`)
+            // is a west-road reader, carried by the Kconfig default.
+            let kconfig_reader = kconfig && c.cmake.iter().any(|(_, t)| names_word(t, row.kconfig));
+            let west = cell(reader || kconfig_reader, kconfig || !cmake || via_image_env);
+            // Phase-568 W2c: a Zephyr-only knob has no cargo or cmake road to
+            // be carried on; its west cell is measured like any other.
+            let [cargo, cmake_road] = match row.only_on {
+                Some(("zephyr", _)) => [NOT_APPLICABLE, NOT_APPLICABLE],
+                _ => [cargo, cmake_road],
+            };
+            let west = match row.only_on {
+                Some((p, _)) if p != "zephyr" => NOT_APPLICABLE,
+                _ => west,
+            };
             out.insert(row.id.to_string(), [cargo, cmake_road, west]);
         }
         out
@@ -248,12 +325,19 @@ mod tests {
     fn render(m: &BTreeMap<String, [&str; 3]>) -> String {
         let mut s = String::from(
             "# Generated by `knob_roads::tests` (phase-568 W2a): does [image.<id>.knobs]\n\
-             # reach each road's readers of the row? yes / no / ? (no reader found by name: unproven).\n\
+             # reach each road's readers of the row? yes / no / ? (no reader found by name: unproven)\n\
+             # / n/a (the knob means nothing on that road's platforms; `note` says why).\n\
              # Regenerate: NROS_KNOB_ROADS_WRITE=1 cargo nextest run -p nros-cli-core -E 'test(knob_roads)'\n\
-             id\tcargo\tcmake\twest\n",
+             id\tcargo\tcmake\twest\tnote\n",
         );
         for (id, [a, b, c]) in m {
-            s.push_str(&format!("{id}\t{a}\t{b}\t{c}\n"));
+            let note = nros_zephyr_build::KNOBS
+                .iter()
+                .find(|r| r.id == id)
+                .and_then(|r| r.only_on)
+                .map(|(p, why)| format!("{p} only: {why}"))
+                .unwrap_or_default();
+            s.push_str(&format!("{id}\t{a}\t{b}\t{c}\t{note}\n"));
         }
         s
     }

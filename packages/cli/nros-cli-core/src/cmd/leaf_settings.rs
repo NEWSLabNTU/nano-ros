@@ -776,6 +776,37 @@ pub fn registry_knob_of_env_row(key: &str) -> Option<&'static nros_zephyr_build:
         .find(|r| r.env == key || r.kconfig == symbol)
 }
 
+/// Phase-568 W2c — a knob that means something on ONE platform only
+/// (`KnobRow::only_on`), stated in `[image.<id>.knobs]` for an image whose
+/// board is another platform's, is refused with the reason, never ignored.
+/// `platform` is the board descriptor's (`PlatformKind::kebab`).
+pub fn refuse_off_platform_knobs<'a>(
+    image_id: &str,
+    knob_keys: impl IntoIterator<Item = &'a String>,
+    platform: &str,
+) -> Result<()> {
+    let refused: Vec<String> = knob_keys
+        .into_iter()
+        .filter_map(|key| {
+            let row = nros_zephyr_build::knob_by_image_key(key)?;
+            let (only, why) = row.only_on?;
+            (only != platform).then(|| {
+                let (g, n) = row.image_group_name();
+                format!(
+                    "`[image.{image_id}.knobs.{g}] {n}` does nothing on a {platform} image: \
+                     it applies to {only} images only, because {why}. Remove it from this \
+                     image's table."
+                )
+            })
+        })
+        .collect();
+    if refused.is_empty() {
+        Ok(())
+    } else {
+        Err(eyre!("{}", refused.join("\n")))
+    }
+}
+
 /// One `[image.<id>.knobs]` key → its registry row and the env value it
 /// renders to: an int as decimal, a bool as `1`/`0`, a string (a `string`
 /// knob, or one of an `int` knob's `names`) verbatim — the spellings the
@@ -1436,6 +1467,7 @@ pub fn write_shared(
     // Layer 4 — the APP rung: what this IMAGE states (`[image.<id>] env`).
     // Last, so it outranks the board and the implications above and is
     // outranked only by the calling environment.
+    refuse_off_platform_knobs(&img.image_id, img.decl.knobs.keys(), &img.platform)?;
     for (k, v) in leaf_app_rung(&img.decl)? {
         path_env.remove(&k);
         env.insert(k, v);
@@ -1690,6 +1722,26 @@ mod tests {
     /// Issue 2073 -- `params_files` become `--params-file` arguments ahead of
     /// `ros_args`, each file's text rides beside them, every token is hex, and
     /// an image stating neither key carries no row.
+    /// Phase-568 W2c: a Zephyr-only knob stated for a POSIX image is
+    /// refused with its reason; on a Zephyr image, and an ordinary knob
+    /// anywhere, it passes.
+    #[test]
+    fn a_platform_only_knob_off_its_platform_is_refused() {
+        let keys = ["zenoh.socket_timeout_ms".to_string()];
+        let e = refuse_off_platform_knobs("t", keys.iter(), "posix")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("`[image.t.knobs.zenoh] socket_timeout_ms` does nothing on a posix image")
+                && e.contains("zephyr images only")
+                && e.contains("zsock"),
+            "{e}"
+        );
+        assert!(refuse_off_platform_knobs("t", keys.iter(), "zephyr").is_ok());
+        let ordinary = ["freertos.app_stack_kb".to_string()];
+        assert!(refuse_off_platform_knobs("t", ordinary.iter(), "posix").is_ok());
+    }
+
     #[test]
     fn baked_ros_args_carry_files_then_arguments_as_hex() {
         let td = tempfile::tempdir().unwrap();

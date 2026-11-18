@@ -130,6 +130,11 @@ pub struct KnobRow {
     /// included, is refused with [`RETIRED_KNOB_TEMPLATE`]; the row stays as the
     /// error table, the way [`Self::legacy`] does for a rename.
     pub retired: Option<&'static str>,
+    /// `Some((platform, reason))` for a knob that means something on ONE
+    /// platform only (phase-568 W2c): `ZENOH_SOCKET_TIMEOUT_MS` exists because
+    /// Zephyr's zsock serialises send/recv per fd. Stated for another
+    /// platform's image it is refused, naming the reason, never ignored.
+    pub only_on: Option<(&'static str, &'static str)>,
 }
 
 /// A knob the nano-ros Zephyr module DEFINES as a Kconfig symbol — a registry

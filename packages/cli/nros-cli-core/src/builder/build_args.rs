@@ -181,7 +181,8 @@ pub fn split_posix(s: &str) -> Result<Vec<String>, Refusal> {
 ///
 /// Phase-568 W2c: the set IS the measurement. A row is refused exactly when
 /// `knob_road_coverage.tsv` (pinned by `knob_roads::tests` from the code) reads
-/// `yes yes yes`, so no hand list can name a row the remedy does not reach,
+/// `yes` on every road (or `n/a`, a road the knob means nothing on), so no hand
+/// list can name a row the remedy does not reach,
 /// and a row that becomes carried is refused by the same commit that records
 /// it. A `?` row (no reader found by name) stays accepted.
 pub fn knob_refusal_on() -> Vec<&'static str> {
@@ -192,7 +193,13 @@ pub fn knob_refusal_on() -> Vec<&'static str> {
         .filter_map(|l| {
             let mut c = l.split('\t');
             let id = c.next()?;
-            (c.collect::<Vec<_>>() == ["yes", "yes", "yes"]).then_some(id)
+            let cells: Vec<&str> = c.take(3).collect();
+            // `n/a` (a platform-only knob, `KnobRow::only_on`) is no gap: its
+            // home is the image's table on its own platform's road.
+            (cells.len() == 3
+                && cells.iter().all(|x| *x == "yes" || *x == "n/a")
+                && cells.contains(&"yes"))
+            .then_some(id)
         })
         .collect()
 }
@@ -213,8 +220,11 @@ fn define_refusal_with(arg: &str, name: &str, knob_refusal_on: &[&str]) -> Optio
             arg,
             format!(
                 "`{name}` is the knob `{}`; set it in system.toml as \
-                 `[image.<id>.knobs.{group}] {key} = …`, its one committed place",
-                row.env
+                 `[image.<id>.knobs.{group}] {key} = …`, its one committed place{}",
+                row.env,
+                row.only_on
+                    .map(|(p, why)| format!(" (on {p} images only: {why})"))
+                    .unwrap_or_default()
             ),
         ));
     }
@@ -743,6 +753,14 @@ mod tests {
             .expect("a row not measured carried everywhere");
         assert!(cmake(&format!("-D{}=1", open.env)).is_ok(), "{}", open.id);
         assert!(on.len() >= 99, "{}", on.len());
+    }
+
+    /// A platform-only knob (`n/a` on the other roads) is refused too, and
+    /// says which platform it is for.
+    #[test]
+    fn a_platform_only_knob_is_refused_naming_its_platform() {
+        let r = cmake("-DNROS_ZENOH_SOCKET_TIMEOUT_MS=50").unwrap_err();
+        assert!(r.reason.contains("on zephyr images only"), "{r}");
     }
 
     #[test]
