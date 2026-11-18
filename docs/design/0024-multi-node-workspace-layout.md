@@ -4,8 +4,8 @@ title: "Multi-Node Workspace Layout: the rationale that still holds"
 status: Stable
 area: workspace-system-model
 since: 2026-06
-last-reviewed: 2026-11-15
-implements-tracked-by: [phase-212]
+last-reviewed: 2026-11-18
+implements-tracked-by: [phase-212, phase-580]
 supersedes: []
 superseded-by: null
 ---
@@ -111,9 +111,51 @@ section drew (a hand-written workspace-root `Cargo.toml` /
 
 **No duplication.** Root pointer + per-system definition is two different concerns. The temptation to mirror per-system fields at root (e.g. `[workspace.metadata.nros.system.demo]`) is rejected — re-creates colcon's monorepo-of-systems pattern + breaks per-system `<exec_depend>` hygiene.
 
-Whether two bringups can share a `system.toml` fragment is still open, and
-duplication stays the answer until a workspace needs more:
-[issue 2587](../issues/2587-multi-bringup-shared-system-fragments.md).
+**Shared fragments: `include = [..]`** (ruled 2026-11-18, option (b) of
+[issue 2587](../issues/2587-multi-bringup-shared-system-fragments.md);
+implemented by [phase-580](../roadmap/phase-580-system-toml-include.md)).
+A bringup's `system.toml` may name fragment files it shares with other
+bringups:
+
+```toml
+include = ["../shared/topology.toml", "../shared/knobs.toml"]
+```
+
+The fragment is plain TOML in the `system.toml` schema. The system stays
+defined in the bringup; a fragment is not a system, and the workspace-root
+`nros.toml` still holds none. The rules:
+
+1. `include` is a top-level array of paths, each relative to the file that
+   names it. A fragment may include further fragments.
+2. Tables merge key by key, at every depth.
+3. A key that is not a table, stated by two files, is **refused**, naming
+   both files. There is no override in either direction, so every value has
+   exactly one source and a reader can always say where it came from. A
+   bringup that needs a different value does not include that fragment.
+   This changes the earlier plan, in which the including file's value won
+   (approved 2026-11-18). A refusal can later be relaxed into an override
+   without breaking anyone who relies on it. The reverse cannot: once
+   overrides are allowed, some files depend on them.
+4. An array of tables (`[[domain]]`, `[[bridge]]`, `[[component]]`)
+   concatenates: each include's entries in the listed order, then the
+   including file's own.
+5. A cycle (a file that reaches itself) and a diamond (one file reached
+   twice, whose array-of-table entries would count twice) are refused.
+6. A fragment may not set `[system] name`: the bringup's own file names the
+   system. Nor `[sources]` or `[tools]` (approved 2026-11-18): they hold this
+   machine's paths for the project, not shared topology, and build scripts
+   read them from the bringup's own file without a TOML parser. That keeps
+   `toml`/`serde` out of every board's build-script graph. The refusal says
+   to move them into the bringup's own `system.toml`.
+
+**One reader.** The rules are implemented once, by `nros_system_include`
+(`packages/tooling/nros-system-include`). Every Rust reader of a
+`system.toml` goes through it, and `check-system-toml-one-reader` refuses a
+new direct read. A tool that EDITS the file reads that file's own text
+(`read_own_text`), so it writes back only what the file states. A road that
+cannot expand includes yet (the CMake text reads, the colcon task, the
+Python check scripts) refuses a file with an `include` and never reads it
+raw. Phase-580 lists which road is which until all of them expand.
 
 ---
 
@@ -179,8 +221,9 @@ bringup, and `nros build` builds an image from it.
 All nine are closed:
 
 1. Bringup `Cargo.toml`: none (Path A), §4.
-2. Multi-system shared config: open, filed as
-   [issue 2587](../issues/2587-multi-bringup-shared-system-fragments.md), §5.
+2. Multi-system shared config: `include = [..]` fragments, §5
+   ([issue 2587](../issues/2587-multi-bringup-shared-system-fragments.md),
+   phase-580).
 3. `nros launch` vs `ros2 launch`: the bringup omits `<buildtool_depend>`,
    §11.1; the generated entry binary is the launch product.
 4. C++ workspaces: resolved, cmake through `nros build` (RFC-0130).

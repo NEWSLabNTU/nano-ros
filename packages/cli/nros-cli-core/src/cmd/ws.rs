@@ -2227,7 +2227,7 @@ fn verify_params_projected(model_path: &Path, system_toml: &Path) -> Result<()> 
     if !system_toml.is_file() {
         return Ok(());
     }
-    let Ok(raw) = std::fs::read_to_string(system_toml) else {
+    let Ok(raw) = nros_system_include::read_to_string(system_toml) else {
         return Ok(());
     };
     let Ok(sys) = toml::from_str::<toml::Value>(&raw) else {
@@ -2590,8 +2590,8 @@ fn synthesise_bringup_launch(bringup: &Path) -> Result<Option<PathBuf>> {
     let Some(dir) = model_location::generated_launch_dir(bringup) else {
         return Ok(None);
     };
-    let text =
-        std::fs::read_to_string(&system).wrap_err_with(|| format!("read {}", system.display()))?;
+    let text = nros_system_include::read_to_string(&system)
+        .wrap_err_with(|| format!("read {}", system.display()))?;
     let rows = component_rows(&text).map_err(|e| eyre::eyre!("{}: {e}", system.display()))?;
     // RFC-0071 D19 — a bringup whose every image names an OWNED entry runs
     // that entry's own `main`; there is nothing to launch and nothing to say.
@@ -2645,7 +2645,12 @@ fn synthesise_bringup_launch(bringup: &Path) -> Result<Option<PathBuf>> {
     // The mirror root's `system.toml` (`model_location::generated_launch_root`):
     // what the resolver records as `system.toml`, so the model matches the
     // authored layout's byte for byte. Consumers read the bringup's own.
-    write(&model_location::resolve_system_toml(bringup), &text)?;
+    // Issue 2587 — so it is the file's OWN bytes, never the expansion `text`
+    // above: the model gate hashes the bringup's file, and a re-serialized
+    // copy made every model built through this mirror read as stale.
+    let own = nros_system_include::read_own_text(&system)
+        .wrap_err_with(|| format!("read {}", system.display()))?;
+    write(&model_location::resolve_system_toml(bringup), &own)?;
     // A bringup's contract sidecar sits beside its launch file; with the
     // launch file generated, the authored one beside system.toml is carried,
     // exactly as for a leaf.
@@ -2773,7 +2778,7 @@ fn model_sched_targets(
     catalog: Option<&crate::orchestration::board_descriptor::BoardCatalog>,
 ) -> Targets {
     use nros_orchestration_ir::model_location::launch_to_model_rel;
-    let Ok(text) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
+    let Ok(text) = nros_system_include::read_to_string(bringup_dir.join("system.toml")) else {
         return Targets::None;
     };
     let Ok(sys) = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&text)
@@ -3575,7 +3580,7 @@ fn generate_facade_crates(
     )> = Vec::new();
     for p in scan.iter().filter(|p| p.dir.join("system.toml").is_file()) {
         let system_toml = p.dir.join("system.toml");
-        let raw = std::fs::read_to_string(&system_toml)
+        let raw = nros_system_include::read_to_string(&system_toml)
             .wrap_err_with(|| format!("sync: read {}", system_toml.display()))?;
         let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
             .wrap_err_with(|| format!("sync: parse {}", system_toml.display()))?;
@@ -3752,7 +3757,7 @@ fn generate_bridge_configs(
         if !system_toml.is_file() {
             continue;
         }
-        let raw = std::fs::read_to_string(&system_toml).unwrap_or_default();
+        let raw = nros_system_include::read_to_string(&system_toml).unwrap_or_default();
         let has_bridge = toml::from_str::<toml::Value>(&raw)
             .ok()
             .and_then(|v| {
@@ -4910,7 +4915,7 @@ fn resolve_sync_edition(
     }
     let sys_toml = ws_root.join("system.toml");
     if sys_toml.is_file() {
-        let raw = std::fs::read_to_string(&sys_toml)
+        let raw = nros_system_include::read_to_string(&sys_toml)
             .wrap_err_with(|| format!("sync: read {}", sys_toml.display()))?;
         let mut table: toml::Table = raw
             .parse()
@@ -4963,7 +4968,7 @@ fn bringup_edition(ws_root: &Path) -> Result<Option<RosEdition>> {
             .wrap_err_with(|| format!("sync: find the bringups under {}", dir.display()))?
         {
             let path = b.dir.join("system.toml");
-            let raw = std::fs::read_to_string(&path)
+            let raw = nros_system_include::read_to_string(&path)
                 .wrap_err_with(|| format!("sync: read {}", path.display()))?;
             let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
                 toml::from_str(&raw).wrap_err_with(|| format!("sync: parse {}", path.display()))?;
@@ -10374,6 +10379,28 @@ mod bringup_launch_tests {
     /// phase-531 W3 (RFC-0121 D3) — a bringup with no `launch/` gets its
     /// launch file generated under `<ws>/build/nros/launch/<bringup>/`, which
     /// is where every reader looks (`model_location::launch_dir`).
+    /// Issue 2587 — the mirror's `system.toml` is the file's own BYTES. The
+    /// resolver records the mirror's digest and the model gate compares it
+    /// with the bringup's file, so a re-serialized copy (comments dropped,
+    /// keys reordered) made every model built through it read as stale.
+    #[test]
+    fn the_mirror_system_toml_is_the_bringups_own_bytes() {
+        let text = "# a comment the re-serializer would drop\n[system]\nname = \"s\"\n\n\
+                    [[component]]\npkg = \"sensor_node\"\n\
+                    class = \"sensor_node::Talker\"\nname = \"sensor_node\"\n";
+        let (t, dir) = bringup("sensor", text);
+        synthesise_bringup_launch(&dir).unwrap().unwrap();
+        let mirror = std::fs::read_to_string(
+            t.path()
+                .join("build/nros/launch/sensor_bringup/system.toml"),
+        )
+        .unwrap();
+        assert_eq!(
+            mirror, text,
+            "the mirror must be byte-identical to the bringup's file"
+        );
+    }
+
     #[test]
     fn a_bringup_without_launch_gets_one_generated_from_its_rows() {
         let (t, dir) = bringup(

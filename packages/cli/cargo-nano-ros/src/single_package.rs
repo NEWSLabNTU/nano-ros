@@ -109,7 +109,17 @@ const ENTRY_HALF: [&str; 3] = ["system.toml", "README.md", "src/main.rs"];
 /// `main`, which is not a node a generated entry can boot.
 pub fn grow_workspace(ws: &Path, from: &Path, force: bool) -> Result<PathBuf> {
     let system = from.join("system.toml");
-    let Ok(text) = fs::read_to_string(&system) else {
+    // The file moves byte for byte, so its OWN text (issue 2587). A file that
+    // names fragments cannot move: its `include` paths are relative to it.
+    if nros_system_include::has_include(&system) {
+        bail!(
+            "nros new --workspace --from {}: its system.toml names shared fragments with \
+             `include = [..]`, whose paths are relative to it, so it cannot be moved. State the \
+             fragments' keys in the file, or make the workspace by hand.",
+            from.display()
+        );
+    }
+    let Ok(text) = nros_system_include::read_own_text(&system) else {
         bail!(
             "nros new --workspace --from {}: there is no system.toml there. `--from` takes a \
              package made by `nros new <name> --board <board>`.",

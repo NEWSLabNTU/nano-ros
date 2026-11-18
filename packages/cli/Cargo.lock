@@ -177,6 +177,7 @@ dependencies = [
  "nros-launcher",
  "nros-msg-to-idl",
  "nros-pkg-index",
+ "nros-system-include",
  "quick-xml",
  "rayon",
  "rosidl-bindgen",
@@ -851,6 +852,7 @@ dependencies = [
  "nros-pkg-index",
  "nros-qemu-ladder",
  "nros-sizing-descriptor",
+ "nros-system-include",
  "nros-zenoh-session-config",
  "nros-zephyr-build",
  "pathdiff",
@@ -941,6 +943,7 @@ dependencies = [
  "indexmap",
  "nros-build-paths",
  "nros-rmw",
+ "nros-system-include",
  "ros-launch-manifest-derive",
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
@@ -998,6 +1001,13 @@ name = "nros-sizing-descriptor"
 version = "0.5.0"
 dependencies = [
  "serde",
+ "toml",
+]
+
+[[package]]
+name = "nros-system-include"
+version = "0.6.0"
+dependencies = [
  "toml",
 ]
 

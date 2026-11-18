@@ -239,8 +239,8 @@ pub fn run(args: Args) -> Result<()> {
         None
     };
     if let Some(path) = system_toml {
-        let raw =
-            std::fs::read_to_string(&path).wrap_err_with(|| format!("read {}", path.display()))?;
+        let raw = nros_system_include::read_to_string(&path)
+            .wrap_err_with(|| format!("read {}", path.display()))?;
         let sys: SystemToml =
             toml::from_str(&raw).wrap_err_with(|| format!("parse {}", path.display()))?;
         // Phase 256 Wave 7 — audit the sibling `nros.toml` for deprecated overlay

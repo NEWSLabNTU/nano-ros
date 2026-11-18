@@ -220,7 +220,7 @@ fn add_image_block(
     cfg: &EntryScaffold,
     entry_name: &str,
 ) -> Result<()> {
-    let text = fs::read_to_string(system_toml)
+    let text = nros_system_include::read_own_text(system_toml)
         .wrap_err_with(|| format!("read {}", system_toml.display()))?;
     let mut doc: DocumentMut = text
         .parse()
@@ -347,7 +347,7 @@ fn exclude_from_one_root(workspace_root: &Path, entry_dir: &Path) -> Result<bool
 /// intermediate state (`nros new system` writes one before its packages
 /// exist), and refusing it would make the scaffolds usable only in one order.
 fn bringup_components(system_toml: &Path) -> Result<Vec<String>> {
-    let text = fs::read_to_string(system_toml)
+    let text = nros_system_include::read_to_string(system_toml)
         .wrap_err_with(|| format!("read {}", system_toml.display()))?;
     let doc: toml::Value =
         toml::from_str(&text).wrap_err_with(|| format!("parse {}", system_toml.display()))?;

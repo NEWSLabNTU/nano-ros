@@ -568,7 +568,8 @@ fn pick_deploys(
     };
     if let Some(leaf) = &claimed {
         let p = leaf.origin_path().to_path_buf();
-        let raw = std::fs::read_to_string(&p).map_err(|e| eyre!("reading {}: {e}", p.display()))?;
+        let raw = nros_system_include::read_to_string(&p)
+            .map_err(|e| eyre!("reading {}: {e}", p.display()))?;
         let sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
             .map_err(|e| eyre!("parsing {}: {e}", p.display()))?;
         return pick_from(&p, &sys, Some(leaf), nano_ros_root, catalog, deploy, board);
@@ -758,7 +759,7 @@ fn load_system_tomls(
     found
         .into_iter()
         .map(|path| {
-            let raw = std::fs::read_to_string(&path)
+            let raw = nros_system_include::read_to_string(&path)
                 .map_err(|e| eyre!("read {}: {e}", path.display()))?;
             let system = toml::from_str(&raw).map_err(|e| eyre!("{}: {e}", path.display()))?;
             Ok((path, system))

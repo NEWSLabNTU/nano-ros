@@ -479,7 +479,8 @@ pub(crate) fn transport_implications(
 /// directory exists, or its `system.toml` names one (`rmw_config`).
 fn may_name_rmw_file(dir: &Path) -> bool {
     dir.join("rmw").is_dir()
-        || std::fs::read_to_string(dir.join("system.toml")).is_ok_and(|t| t.contains("rmw_config"))
+        || nros_system_include::read_to_string(dir.join("system.toml"))
+            .is_ok_and(|t| t.contains("rmw_config"))
 }
 
 /// Issue 2096 — imply the zenoh-pico link build knobs an endpoint needs
@@ -1016,7 +1017,7 @@ fn write_selection_for(
 /// guard `nros sync` applies to a bringup applies to a leaf too.
 fn system_toml(img: &LeafImage) -> Result<crate::orchestration::cargo_metadata_schema::SystemToml> {
     let origin = img.decl.origin_path();
-    let mut table: toml::Table = std::fs::read_to_string(origin)
+    let mut table: toml::Table = nros_system_include::read_to_string(origin)
         .wrap_err_with(|| format!("reading {}", origin.display()))?
         .parse()
         .wrap_err_with(|| format!("parsing {}", origin.display()))?;

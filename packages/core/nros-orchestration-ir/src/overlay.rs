@@ -301,7 +301,7 @@ impl Overlay {
 
     /// Derive the overlay from a `system.toml` on disk.
     pub fn from_system_toml(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path)
+        let text = nros_system_include::read_to_string(path)
             .map_err(|e| format!("{}: cannot read: {e}", path.display()))?;
         Self::from_system_toml_str(&text, path)
     }

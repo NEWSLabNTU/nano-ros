@@ -337,7 +337,7 @@ impl Workspace {
         use crate::orchestration::cargo_metadata_schema::SystemToml;
         let mut found: Option<(PathBuf, Vec<String>)> = None;
         for path in self.packages.iter().filter_map(|p| p.system_toml.as_ref()) {
-            let Ok(raw) = std::fs::read_to_string(path) else {
+            let Ok(raw) = nros_system_include::read_to_string(path) else {
                 continue;
             };
             // A file that does not parse is reported where the build reads it,
@@ -516,7 +516,7 @@ impl Workspace {
                 continue;
             }
             let path = bringup.root.join("system.toml");
-            let doc: toml::Table = fs::read_to_string(&path)
+            let doc: toml::Table = nros_system_include::read_to_string(&path)
                 .wrap_err_with(|| format!("failed to read {}", path.display()))?
                 .parse()
                 .wrap_err_with(|| format!("failed to parse {}", path.display()))?;
@@ -1714,8 +1714,8 @@ fn declaring_system(dir: &Path) -> Result<Option<nros_orchestration_ir::leaf_sys
     if leaf_system::is_package_dir(dir) || !path.is_file() {
         return Ok(None);
     }
-    let raw =
-        fs::read_to_string(&path).wrap_err_with(|| format!("failed to read {}", path.display()))?;
+    let raw = nros_system_include::read_to_string(&path)
+        .wrap_err_with(|| format!("failed to read {}", path.display()))?;
     let doc: toml::Table =
         toml::from_str(&raw).wrap_err_with(|| format!("failed to parse {}", path.display()))?;
     let Some(image) = doc

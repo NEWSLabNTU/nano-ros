@@ -6,7 +6,7 @@ type: limitation
 area: [workspace, cli]
 severity: low
 found: 2026-11-15
-related: [2556, phase-555]
+related: [2556, phase-555, phase-580]
 ---
 
 Filed from RFC-0024's open question 2 by phase-555 W3 (ruling A1: a design
@@ -47,3 +47,17 @@ is still open, so the RFC can be Stable without carrying it.
 
 A workspace with two bringups that share a fragment states it once and both
 images build from it, or this is closed as wontfix with the reason.
+
+## Ruled (2026-11-18)
+
+Option (b), ruled by the user (relayed by the nros 241 manager):
+
+- an `include = ["<path>", …]` key, expanded by the one loader;
+- paths relative to the including file;
+- cycles refused;
+- an include may not set `[system].name`.
+
+The merge rules are in RFC-0024 §5. Implemented by
+[phase-580](../roadmap/phase-580-system-toml-include.md) in three PRs (Rust,
+Python, CMake with the user-facing docs). Each PR works on its own: a road
+that cannot expand includes yet refuses them.

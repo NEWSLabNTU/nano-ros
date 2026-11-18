@@ -143,7 +143,7 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     // typed capability blocks, the same checks the bake runs. Lenient parse mirrors
     // `schema_plan_json`'s read (a malformed system.toml is handled downstream).
     if let Some(p) = &system_toml_path
-        && let Ok(raw) = std::fs::read_to_string(p)
+        && let Ok(raw) = nros_system_include::read_to_string(p)
         && let Ok(sys) = toml::from_str::<super::cargo_metadata_schema::SystemToml>(&raw)
     {
         super::cargo_metadata_schema::validate_and_warn_capabilities(&sys)?;
@@ -715,7 +715,7 @@ fn schema_plan_json(
     // the per-package `nros.toml` overlay blocks are DEPRECATED fallbacks (warn),
     // kept one release for migration. Parsed once, reused for every block below.
     let system_caps = system_toml
-        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|p| nros_system_include::read_to_string(p).ok())
         .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
 
     // Phase 172.A / 256 — optional lifecycle block, before `build` (NrosPlan field
@@ -824,7 +824,9 @@ fn schema_build_json(
     // phase-486 W8 a retired table (`[deploy.*]`, `[param_services]`) is
     // exactly such a parse error — it must reach the user, naming the
     // replacement.
-    let sys = match system_toml.and_then(|p| std::fs::read_to_string(p).ok().map(|t| (p, t))) {
+    let sys = match system_toml
+        .and_then(|p| nros_system_include::read_to_string(p).ok().map(|t| (p, t)))
+    {
         Some((p, text)) => {
             let mut s = toml::from_str::<super::cargo_metadata_schema::SystemToml>(&text)
                 .map_err(|e| eyre!("parsing {}: {e}", p.display()))?;

@@ -47,8 +47,8 @@ pub struct Declarations {
 /// the question is only where a declaration sits, and validating the rest of
 /// the file is its own reader's job.
 fn has_overrides_table(path: &Path) -> Result<bool> {
-    let raw =
-        std::fs::read_to_string(path).map_err(|e| eyre!("reading {}: {e}", path.display()))?;
+    let raw = nros_system_include::read_to_string(path)
+        .map_err(|e| eyre!("reading {}: {e}", path.display()))?;
     let table: toml::Table =
         toml::from_str(&raw).map_err(|e| eyre!("parsing {}: {e}", path.display()))?;
     Ok(table.contains_key("overrides"))
@@ -115,7 +115,7 @@ fn leaf_system_toml_fallback(ws: &Path) -> Result<Declarations> {
     if !root_sys.is_file() {
         return Ok(Declarations::default());
     }
-    let raw = std::fs::read_to_string(&root_sys)
+    let raw = nros_system_include::read_to_string(&root_sys)
         .map_err(|e| eyre!("reading {}: {e}", root_sys.display()))?;
     let sys: SystemToml =
         toml::from_str(&raw).map_err(|e| eyre!("parsing {}: {e}", root_sys.display()))?;

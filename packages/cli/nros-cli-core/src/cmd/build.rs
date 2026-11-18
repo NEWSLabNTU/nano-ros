@@ -1122,7 +1122,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // image may select one; the bake of any other refuses, here, before
         // anything is generated. An unreadable `system.toml` is left to the
         // code whose job it is to report it.
-        if let Ok(raw) = std::fs::read_to_string(bringup_dir.join("system.toml"))
+        if let Ok(raw) = nros_system_include::read_to_string(bringup_dir.join("system.toml"))
             && let Ok(mut sys) =
                 toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
         {
@@ -1534,7 +1534,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 let mut owned_features: Vec<String> = Vec::new();
                 if generated.dir.is_none() && manifest_dir == hand_written {
                     let toml_path = bringup_dir.join("system.toml");
-                    let raw = std::fs::read_to_string(&toml_path)
+                    let raw = nros_system_include::read_to_string(&toml_path)
                         .map_err(|e| eyre::eyre!("reading {}: {e}", toml_path.display()))?;
                     let sys = toml::from_str::<
                         crate::orchestration::cargo_metadata_schema::SystemToml,
@@ -4911,7 +4911,7 @@ pub(crate) fn declared_capabilities_for(
     bringup_dir: &std::path::Path,
     image: Option<&str>,
 ) -> Vec<&'static str> {
-    let Ok(raw) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
+    let Ok(raw) = nros_system_include::read_to_string(bringup_dir.join("system.toml")) else {
         return Vec::new();
     };
     let Ok(sys) = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
@@ -5704,7 +5704,7 @@ fn generate_entry(
     // (issue 2393) and, below, the entry's selection (RFC-0071 D13).
     let sys = {
         let toml_path = bringup_dir.join("system.toml");
-        let raw = std::fs::read_to_string(&toml_path)
+        let raw = nros_system_include::read_to_string(&toml_path)
             .map_err(|e| eyre::eyre!("reading {}: {e}", toml_path.display()))?;
         toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
             .map_err(|e| eyre::eyre!("parsing {}: {e}", toml_path.display()))?
@@ -5727,7 +5727,7 @@ fn generate_entry(
         bringup_deps: {
             let mut v = Vec::new();
             let toml_path = bringup_dir.join("system.toml");
-            if std::fs::read_to_string(&toml_path)
+            if nros_system_include::read_to_string(&toml_path)
                 .ok()
                 .and_then(|t| t.parse::<toml::Value>().ok())
                 .and_then(|d| {
@@ -6154,7 +6154,7 @@ fn bridge_entry_deps(
     nros_root: &std::path::Path,
     candidates: &[&str],
 ) -> Result<Vec<String>> {
-    let Ok(text) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
+    let Ok(text) = nros_system_include::read_to_string(bringup_dir.join("system.toml")) else {
         return Ok(Vec::new());
     };
     let Ok(doc) = text.parse::<toml::Value>() else {
@@ -6930,7 +6930,7 @@ pub(crate) fn workspace_image_net(
     nano_ros_root: Option<&std::path::Path>,
 ) -> Result<Option<crate::orchestration::image_net::ImageNet>> {
     let path = bringup_dir.join("system.toml");
-    let Ok(raw) = std::fs::read_to_string(&path) else {
+    let Ok(raw) = nros_system_include::read_to_string(&path) else {
         return Ok(None);
     };
     let mut sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
@@ -9246,7 +9246,7 @@ pub(crate) fn bringup_components(
     let mut out = std::collections::BTreeMap::new();
     for (name, dir, _) in bringups {
         let path = dir.join("system.toml");
-        let text = std::fs::read_to_string(&path)
+        let text = nros_system_include::read_to_string(&path)
             .wrap_err_with(|| format!("reading {}", path.display()))?;
         let doc: toml::Table =
             toml::from_str(&text).wrap_err_with(|| format!("parsing {}", path.display()))?;
@@ -9372,7 +9372,7 @@ pub(crate) fn collect_images(
         if !system_toml.is_file() {
             continue;
         }
-        let text = std::fs::read_to_string(&system_toml)
+        let text = nros_system_include::read_to_string(&system_toml)
             .wrap_err_with(|| format!("reading {}", system_toml.display()))?;
         // A retired table (`[deploy.*]`, `[param_services]`) is refused here
         // by the schema itself, naming its replacement (phase-486 W8). The

@@ -146,7 +146,7 @@ impl Deployment {
         routed: &dyn Fn(Option<&str>) -> bool,
     ) -> Result<Option<Self>, String> {
         let path = dir.join(crate::leaf_system::SYSTEM_TOML);
-        let text = std::fs::read_to_string(&path)
+        let text = nros_system_include::read_to_string(&path)
             .map_err(|e| format!("{}: cannot read: {e}", path.display()))?;
         let doc: toml::Table =
             toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;

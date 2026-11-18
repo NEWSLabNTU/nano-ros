@@ -49,6 +49,7 @@ members = [
     # repo-relative paths without `just`/`.envrc`. Lets bare `cargo
     # build` succeed in a fresh shell (the audit blocker P1).
     "packages/tooling/nros-build-paths",
+    "packages/tooling/nros-system-include",
     "packages/tooling/nros-platform-config",
     # phase-454 W4 (RFC-0100 D4) — the sizing descriptor `nros sync` writes per
     # entry, and the ONE reader every consumer shares. Leaf by construction so a

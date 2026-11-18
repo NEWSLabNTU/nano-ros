@@ -449,6 +449,7 @@ dependencies = [
  "nros-entry-lower",
  "nros-orchestration-ir",
  "nros-pkg-index",
+ "nros-system-include",
  "proc-macro2",
  "quote",
  "ros-launch-manifest-model",
@@ -485,6 +486,7 @@ dependencies = [
  "indexmap",
  "nros-build-paths",
  "nros-rmw",
+ "nros-system-include",
  "ros-launch-manifest-derive",
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
@@ -625,6 +627,13 @@ dependencies = [
  "nros-builtin-interfaces",
  "nros-core",
  "nros-serdes",
+]
+
+[[package]]
+name = "nros-system-include"
+version = "0.6.0"
+dependencies = [
+ "toml",
 ]
 
 [[package]]

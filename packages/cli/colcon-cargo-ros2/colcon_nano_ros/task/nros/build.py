@@ -124,6 +124,14 @@ def _declares_image(system_toml, image):
         text = Path(system_toml).read_text(encoding="utf8")
     except OSError:
         return False
+    # Issue 2587 -- an `[image.<id>]` may sit in an included fragment, which a
+    # line match cannot see; refuse rather than answer from the file alone.
+    if any(line.split("=", 1)[0].strip() == "include" for line in text.splitlines()):
+        raise RuntimeError(
+            f"{system_toml} names shared fragments with `include = [..]`, which this "
+            "colcon task cannot read yet. Build it with `nros build`, or state the "
+            "fragments' keys in this system.toml itself."
+        )
     header = f"[image.{image}]"
     return any(line.strip() == header for line in text.splitlines())
 

@@ -1576,7 +1576,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .unwrap_or_else(|| bringup_dir.join("system.toml"));
         if system_toml_path.exists() {
             tracked.push(system_toml_path.clone());
-            if let Ok(raw) = std::fs::read_to_string(&system_toml_path)
+            if let Ok(raw) = nros_system_include::read_to_string(&system_toml_path)
                 && let Ok(doc) = raw.parse::<toml::Table>()
             {
                 nros_orchestration_ir::retired_tables::refuse_retired_tables(

@@ -487,7 +487,7 @@ pub(crate) fn owned_entry_without_model(
     image.entry.is_some()
         && image.launch.is_none()
         && !bringup_dir.join("launch").is_dir()
-        && std::fs::read_to_string(bringup_dir.join("system.toml"))
+        && nros_system_include::read_to_string(bringup_dir.join("system.toml"))
             .ok()
             .and_then(|t| crate::cmd::ws::component_rows(&t).ok())
             .is_some_and(|rows| rows.is_empty())
@@ -1335,7 +1335,7 @@ pub(crate) fn owned_entry_census_applies(bringup_dir: &Path, pkg: &Path) -> bool
 /// Does the bringup's `system.toml` declare a `[[component]]` row? An
 /// unreadable or unparseable file answers `false`, the old behaviour.
 fn bringup_declares_components(bringup_dir: &Path) -> bool {
-    std::fs::read_to_string(bringup_dir.join("system.toml"))
+    nros_system_include::read_to_string(bringup_dir.join("system.toml"))
         .ok()
         .and_then(|t| crate::cmd::ws::component_rows(&t).ok())
         .is_some_and(|rows| !rows.is_empty())
@@ -2077,7 +2077,7 @@ fn read_system_toml(
         // MALFORMED file below still is.
         return Ok(None);
     }
-    let raw = std::fs::read_to_string(path)
+    let raw = nros_system_include::read_to_string(path)
         .wrap_err_with(|| format!("cannot read `{}`", path.display()))?;
     let system =
         toml::from_str(&raw).wrap_err_with(|| format!("cannot parse `{}`", path.display()))?;

@@ -694,7 +694,7 @@ fn workspace_image_rmws(workspace: &Workspace) -> Vec<String> {
         .iter()
         .filter_map(|p| p.system_toml.as_ref())
     {
-        let Some(sys) = std::fs::read_to_string(path)
+        let Some(sys) = nros_system_include::read_to_string(path)
             .ok()
             .and_then(|raw| toml::from_str::<SystemToml>(&raw).ok())
         else {
@@ -1808,7 +1808,7 @@ pub const CAPABILITIES_DIGEST_PREFIX: &str = "capabilities:";
 /// with the build about what is on. A file that does not parse is an error,
 /// which the caller reports as STALE rather than as "unchanged".
 pub fn capabilities_digest(system_toml: &Path) -> Result<String, String> {
-    let raw = std::fs::read_to_string(system_toml)
+    let raw = nros_system_include::read_to_string(system_toml)
         .map_err(|e| format!("cannot read `{}`: {e}", system_toml.display()))?;
     let sys: super::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
         .map_err(|e| format!("cannot parse `{}`: {e}", system_toml.display()))?;

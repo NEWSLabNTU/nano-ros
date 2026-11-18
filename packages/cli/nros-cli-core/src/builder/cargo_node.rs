@@ -70,7 +70,7 @@ pub fn derived_registrations<'a>(
     packages: impl IntoIterator<Item = (&'a str, &'a Path)>,
 ) -> Result<Vec<CargoNodeRegistration>, String> {
     let path = bringup_dir.join("system.toml");
-    let Ok(text) = std::fs::read_to_string(&path) else {
+    let Ok(text) = nros_system_include::read_to_string(&path) else {
         // No system.toml, no rows: a bringup-less root registers nothing here.
         return Ok(Vec::new());
     };

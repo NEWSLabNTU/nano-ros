@@ -329,6 +329,7 @@ dependencies = [
  "indexmap",
  "nros-build-paths",
  "nros-rmw",
+ "nros-system-include",
  "ros-launch-manifest-derive",
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
@@ -354,6 +355,13 @@ name = "nros-serdes"
 version = "0.6.0"
 dependencies = [
  "heapless",
+]
+
+[[package]]
+name = "nros-system-include"
+version = "0.6.0"
+dependencies = [
+ "toml",
 ]
 
 [[package]]

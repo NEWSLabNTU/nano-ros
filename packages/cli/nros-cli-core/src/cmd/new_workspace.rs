@@ -750,8 +750,8 @@ pub fn scaffold_into_workspace(
 /// The `board` of every `[image.<id>]` in a bringup's `system.toml`.
 fn image_boards(bringup: &Path) -> Result<Vec<String>> {
     let path = bringup.join("system.toml");
-    let text =
-        std::fs::read_to_string(&path).wrap_err_with(|| format!("reading {}", path.display()))?;
+    let text = nros_system_include::read_to_string(&path)
+        .wrap_err_with(|| format!("reading {}", path.display()))?;
     let doc: toml::Table = text
         .parse()
         .wrap_err_with(|| format!("parsing {}", path.display()))?;
@@ -795,8 +795,8 @@ fn find_bringup(ws: &Path, b: &str) -> Result<PathBuf> {
 /// keeping every other line. A row for the same package is refused.
 fn add_component(bringup: &Path, node: &NodePackage<'_>) -> Result<()> {
     let path = bringup.join("system.toml");
-    let text =
-        std::fs::read_to_string(&path).wrap_err_with(|| format!("reading {}", path.display()))?;
+    let text = nros_system_include::read_own_text(&path)
+        .wrap_err_with(|| format!("reading {}", path.display()))?;
     let mut doc: toml_edit::DocumentMut = text
         .parse()
         .wrap_err_with(|| format!("parsing {}", path.display()))?;

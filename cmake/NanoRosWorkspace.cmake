@@ -68,6 +68,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosConfigureHook.cmake")
 # phase-484 W8 — refuse a retired `NANO_ROS_*` name the workspace set.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRetiredNames.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSystemInclude.cmake")  # issue 2587
 nros_refuse_retired_names()
 
 
@@ -323,6 +324,8 @@ function(nano_ros_workspace)
             nano_ros_read_leaf_system(DIR "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}"
                 IMAGE "${_nrw_image}" CLAIM)
         else()
+            nros_system_toml_refuse_include(
+                "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml" nano_ros_workspace)
             file(STRINGS "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml"
                 _nrw_image_rows REGEX "^[ \t]*\\[image\\.[^]]+\\.(knobs|env)[].]")
             if(_nrw_image_rows)

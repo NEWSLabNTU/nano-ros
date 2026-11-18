@@ -471,8 +471,8 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
         println!("  images     none: no system.toml here (pass --config <bringup>)");
         return Ok(());
     };
-    let raw =
-        std::fs::read_to_string(&config).wrap_err_with(|| format!("read {}", config.display()))?;
+    let raw = nros_system_include::read_to_string(&config)
+        .wrap_err_with(|| format!("read {}", config.display()))?;
     let system: SystemToml =
         toml::from_str(&raw).wrap_err_with(|| format!("parse {}", config.display()))?;
     println!("  bringup    {}", config.display());

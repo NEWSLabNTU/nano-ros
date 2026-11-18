@@ -198,8 +198,8 @@ fn write_adapter_now(
     let result = found
         .ok_or_else(|| format!("no bringup `{bringup}` under src/"))
         .and_then(|dir| {
-            let raw =
-                std::fs::read_to_string(dir.join("system.toml")).map_err(|e| e.to_string())?;
+            let raw = nros_system_include::read_to_string(dir.join("system.toml"))
+                .map_err(|e| e.to_string())?;
             let sys =
                 toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
                     .map_err(|e| e.to_string())?;

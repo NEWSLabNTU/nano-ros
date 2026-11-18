@@ -50,6 +50,7 @@ nros-entry-lower = { path = "../../cli/nros-entry-lower" }
 # codegen-system uses, so the macro's compile-time tier resolution can't drift
 # from the bake path (RFC-0032 §6). Proc-macro deps are host-only.
 nros-orchestration-ir = { workspace = true }
+nros-system-include = { path = "../../tooling/nros-system-include" }
 # RFC-0052 / phase-296 R2 — `model = "..."` arm: parse a play_launch-resolved
 # SystemModel at compile time (the canonical bake input). Same vendored crate
 # the CLI uses; path crosses into the cli sub-workspace (host-only proc-macro
