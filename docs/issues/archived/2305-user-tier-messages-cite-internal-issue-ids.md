@@ -42,6 +42,6 @@ The surfaces this issue did not reach went to issues
 [2443](2443-runtime-log-and-colcon-messages-cite-ids.md),
 [2547](2547-user-surface-text-formatted-away-or-tabled-cites-ids.md) and
 [2551](2551-user-surface-text-beyond-function-flow-cites-ids.md), all
-resolved. Public API docs (`pub` rustdoc, installed headers) are
-[issue 2581](../2581-rustdoc-and-public-headers-cite-ids.md), gated by its own
-counted ratchet.
+resolved. Public API docs (`pub` rustdoc, installed headers) were
+[issue 2581](2581-rustdoc-and-public-headers-cite-ids.md), resolved too; its
+counted ratchet's last ids belong to issue 2554.

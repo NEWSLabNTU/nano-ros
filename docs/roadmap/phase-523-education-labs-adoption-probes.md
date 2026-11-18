@@ -315,8 +315,8 @@ documented as is.
 ### W5 — No internal ids on the user surface (issues 2305, 2443)
 
 - **Status:** DONE (2026-11-18). Both ratchets reached zero and became
-  hard rules; issues 2305, 2443, 2547 and 2551 are archived. Public API docs
-  are issue 2581's, with its own ratchet.
+  hard rules; issues 2305, 2443, 2547, 2551 and 2581 (public API docs) are
+  archived. The API-doc ratchet's last 6 ids are issue 2554's.
 
 **User ruling, 2026-11-12** ("Take your recommendation", option A): user-reachable
 output, build-stopping refusals included, names what, where and how to fix,
