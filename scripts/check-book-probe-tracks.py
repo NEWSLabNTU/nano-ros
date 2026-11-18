@@ -247,7 +247,7 @@ def non_tip_rehearsal() -> list[str]:
     return bad
 
 
-def main() -> int:
+def main(argv: list[str]) -> int:
     selftest()
     rehearsal = non_tip_rehearsal()
     if rehearsal:
@@ -256,6 +256,18 @@ def main() -> int:
         for b in rehearsal:
             print(f"  {b}", file=sys.stderr)
         return 1
+    if argv == ["--self-test"]:
+        # Every repository this script builds (the selftest's and the
+        # rehearsal's clones), and none of the 78 chapter extractions, which
+        # build none. `check-hook-repo-side-effects` probes this arm in three
+        # repo shapes; the extractions were most of its per-shape cost.
+        print("check-book-probe-tracks: self-test OK (the selftest and the non-tip "
+              "rehearsal; chapters not extracted)")
+        return 0
+    if argv:
+        print(f"check-book-probe-tracks: unknown arguments {argv}; the only one is "
+              "--self-test", file=sys.stderr)
+        return 2
     failed = []
     names = platforms()
     with tempfile.TemporaryDirectory() as d:
@@ -275,4 +287,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
