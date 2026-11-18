@@ -6745,7 +6745,14 @@ fn board_module_configure_arg(
     )
 }
 
-/// The board package's `cmake/nano-ros-board-<board>.cmake`, if it ships one.
+/// The board package's `cmake/nano-ros-board-<module>.cmake`, if it ships one.
+///
+/// `<module>` is the definition's `cmake_module`, which is also the
+/// `NROS_BOARD` the platform module asks for (`leaf_system`), and only
+/// otherwise the board key. Two definitions in one package may share one
+/// module: `fixture-r5f-tiarmclang` is `fixture-r5f-freertos` built with TI
+/// Arm Clang, and keying on the board looked for a file that does not exist
+/// (phase-575 W3).
 fn board_package_module(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     board: &str,
@@ -6757,10 +6764,11 @@ fn board_package_module(
     } else {
         nano_ros_root?.join(source)
     };
+    let name = descriptor.cmake_module.as_deref().unwrap_or(board);
     let module = source
         .parent()?
         .join("cmake")
-        .join(format!("nano-ros-board-{board}.cmake"));
+        .join(format!("nano-ros-board-{name}.cmake"));
     module.is_file().then_some(module)
 }
 
@@ -12411,6 +12419,14 @@ mod board_heap_tests {
             board_module_configure_arg(&d, "heapy", None),
             "-DNROS_BOARD_MODULE=",
             "a relative source with no root to resolve it: never a cwd-relative read"
+        );
+        // A second definition sharing the package's module names it by
+        // `cmake_module`, not by its own key (phase-575 W3).
+        let mut shared = d.clone();
+        shared.cmake_module = Some("heapy".into());
+        assert_eq!(
+            board_module_configure_arg(&shared, "heapy-other-compiler", Some(t.path())),
+            format!("-DNROS_BOARD_MODULE={}", module.display())
         );
     }
 
