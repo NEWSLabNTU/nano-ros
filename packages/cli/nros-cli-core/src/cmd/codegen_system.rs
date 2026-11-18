@@ -2918,7 +2918,8 @@ structure:
     }
 
     /// phase-556 W13 -- the cmake list carries the node-interface switch:
-    /// `stock` lists the parameter services and `/rosout`, `none` drops them
+    /// `stock` lists the parameter services, `/rosout` and `use_sim_time`
+    /// (phase-556 W11), `none` drops them
     /// from what `features` declared, and a system with neither is unchanged.
     #[test]
     fn system_config_cmake_applies_the_node_interface_switch() {
@@ -2930,7 +2931,7 @@ structure:
         };
         assert!(
             render_system_config_cmake(&sys("node_interfaces = \"stock\"\n"))
-                .contains("set(NROS_FEATURES \"param_services;rosout\"")
+                .contains("set(NROS_FEATURES \"param_services;rosout;sim_time\"")
         );
         assert!(
             render_system_config_cmake(&sys(

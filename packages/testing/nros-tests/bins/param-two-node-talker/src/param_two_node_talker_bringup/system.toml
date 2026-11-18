@@ -16,6 +16,11 @@ domain_id = 0
 # The image a bare `nros configure` / `nros build` / `cargo build` builds.
 default_images = ["linux"]
 features = ["param_services"]
+# phase-556 W11 -- the stock node interfaces (the parameter services, `/rosout`
+# and `use_sim_time` with its `/clock` time source), so the parity test
+# compares this image's `ros2 param list` with a stock node's. Redundant once
+# the default flips to the stock set for every image (phase-556 W13 step 3).
+node_interfaces = "stock"
 
 # Host build. The locator and domain stay runtime env on native.
 [image_defaults]

@@ -1005,6 +1005,10 @@ use std::collections::BTreeMap;
 // is four bytes short of every message that actually reaches the bound.
 const CDR_HEADER_LEN: usize = 4;
 
+// phase-556 W11 -- the wire bound of `rosgraph_msgs/msg/Clock`: one
+// `builtin_interfaces/Time`, an `int32` and a `uint32`.
+const CLOCK_SAMPLE_BOUND: usize = 8;
+
 // The reliable streams' history when no endpoint declares reliable delivery.
 //
 // Not zero, and the reason is in `internal.h` beside the knob: both reliable
@@ -1530,6 +1534,21 @@ impl XrceDemand {
             }
             bound = bound.max(b);
             depth = depth.max(n as usize);
+        }
+        // phase-556 W11 -- the runtime's `/clock` subscription takes a slot of
+        // this ring too (its COUNT is in the descriptor's subscriber count),
+        // and no `[[endpoint]]` row itemises it. Its sample is a
+        // `builtin_interfaces/Time` (two 4-byte fields) at depth 1, so the
+        // entry and the ring are never sized below it. A family left unstated
+        // is assumed present, as every other runtime-family reader does.
+        let clock = desc
+            .image
+            .infra_families()
+            .stated()
+            .is_none_or(|f| f.switches()[3]);
+        if clock {
+            bound = bound.max(CLOCK_SAMPLE_BOUND);
+            depth = depth.max(1);
         }
         self.values
             .insert(ENV_SUBSCRIBER_BUFFER, bound + CDR_HEADER_LEN);

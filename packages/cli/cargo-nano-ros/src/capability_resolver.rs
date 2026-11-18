@@ -129,6 +129,19 @@ pub const CAPABILITIES: &[Capability] = &[
         c_define: Some("NROS_SYSTEM_ROSOUT"),
         cmake_token: None,
     },
+    // phase-556 W11 — the `/clock` time source: `use_sim_time` is declared on
+    // every node that serves parameters, and setting it true subscribes
+    // `/clock`. A stock node interface (`node_interfaces = "stock"`).
+    // Entry-umbrella-only, like `rosout`: it subscribes through whatever
+    // backend the image has. The C/C++ road carries no API of its own for it,
+    // so the cargo feature is the whole lowering (no cmake knob).
+    Capability {
+        declared: "sim_time",
+        nros_feature: Some("sim-time"),
+        backend_feature: None,
+        c_define: Some("NROS_SYSTEM_SIM_TIME"),
+        cmake_token: None,
+    },
     // Issue 2423, user ruling 2026-11-12 (option a) — the zenoh TLS link, for
     // an image with no package of its own to name `nros-rmw-zenoh/link-tls`
     // (a workspace image: its node packages may not name an RMW, issue 1509).
@@ -185,6 +198,16 @@ mod tests {
         // Phase 261 W1 — C/C++ lowering slots.
         assert_eq!(c.c_define, Some("NROS_SYSTEM_SAFETY_E2E"));
         assert_eq!(c.cmake_token, Some("NROS_SAFETY_E2E"));
+    }
+
+    #[test]
+    fn sim_time_is_entry_umbrella_only() {
+        let c = capability("sim_time").expect("sim_time axis");
+        assert_eq!(c.nros_feature, Some("sim-time"));
+        assert_eq!(c.backend_feature, None);
+        assert!(!c.backend_supports(&backend("zenoh")));
+        assert_eq!(c.c_define, Some("NROS_SYSTEM_SIM_TIME"));
+        assert_eq!(c.cmake_token, None);
     }
 
     #[test]
