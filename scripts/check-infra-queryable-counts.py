@@ -33,6 +33,7 @@ PARAMS = "packages/core/nros-node/src/parameter_services.rs"
 LIFECYCLE = "packages/core/nros-node/src/lifecycle_services.rs"
 ACTION = "packages/core/nros-node/src/executor/action.rs"
 ROSOUT = "packages/core/nros-node/src/rosout.rs"
+TIME_SOURCE = "packages/core/nros-node/src/time_source.rs"
 
 # (label, creation fn, constant, file that must define it)
 #
@@ -72,6 +73,17 @@ GROUPS = [
         "create_rosout_pub",
         "ROSOUT_PUBLISHERS",
         ROSOUT,
+    ),
+    # phase-556 W11 -- the `/clock` subscription the `use_sim_time`
+    # reconciliation creates, once per executor. A SUBSCRIBER, not a server:
+    # a callback slot, an arena entry, a session subscriber and a liveliness
+    # token, which the entity inventory and the zenoh liveliness default
+    # reserve whenever the `sim_time` capability is built in.
+    (
+        "ROS /clock subscription (per executor)",
+        "create_clock_sub",
+        "CLOCK_SUBSCRIPTIONS",
+        TIME_SOURCE,
     ),
 ]
 
@@ -154,7 +166,7 @@ def read(root, rel):
 MIRROR = re.compile(
     r"^(?:pub )?const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES|ACTION_SERVER_QUERYABLES"
     r"|ACTION_CLIENT_SERVICE_CLIENTS|LIFECYCLE_SERVICE_PUBLISHERS|PARAM_EVENT_PUBLISHERS"
-    r"|ROSOUT_PUBLISHERS)"
+    r"|ROSOUT_PUBLISHERS|CLOCK_SUBSCRIPTIONS)"
     r": usize = (\d+);",
     re.M,
 )
@@ -362,8 +374,9 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
            c_cli_action=3, c_inv_param=6, cli_chans=3, c_inv_cli=3,
            n_lc_pub=1, c_lc_pub=1, c_inv_lc_pub=1, c_shared_lc=5,
            n_pe_pub=1, c_pe_pub=1, c_inv_pe_pub=1, c_rosout=1, c_inv_rosout=1,
-           n_rosout=1):
-    for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, ROSOUT, "packages/rmw/zenoh/x/src/service.rs"):
+           n_rosout=1, n_clock=1, c_clock=1, c_inv_clock=1):
+    for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, ROSOUT, TIME_SOURCE,
+                "packages/rmw/zenoh/x/src/service.rs"):
         os.makedirs(os.path.join(root, os.path.dirname(rel)), exist_ok=True)
     body = "".join(f"        let h{i} = create_param_srv::<T>(\n" for i in range(n_param))
     body += "".join(f"        let l{i} = create_lc_srv::<T>(\n" for i in range(n_lc))
@@ -385,6 +398,11 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
     body += "fn create_rosout_pub(\n"
     body += "".join(
         f"            let r{i} = create_rosout_pub(self, node);\n" for i in range(n_rosout)
+    )
+    # phase-556 W11 -- the per-executor `/clock` creator, same two shapes.
+    body += "fn create_clock_sub(\n"
+    body += "".join(
+        f"        let c{i} = create_clock_sub(self, node_id, topic)?;\n" for i in range(n_clock)
     )
     open(os.path.join(root, SPIN), "w").write(body)
     open(os.path.join(root, PARAMS), "w").write(
@@ -415,6 +433,11 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
             f"pub const ROSOUT_PUBLISHERS: usize = {c_rosout};\n")
     else:
         open(os.path.join(root, ROSOUT), "w").write("// no definition\n")
+    if c_clock is not None:
+        open(os.path.join(root, TIME_SOURCE), "w").write(
+            f"// phase-556 W11\npub const CLOCK_SUBSCRIPTIONS: usize = {c_clock};\n")
+    else:
+        open(os.path.join(root, TIME_SOURCE), "w").write("// no definition\n")
     open(os.path.join(root, "packages/rmw/zenoh/x/src/service.rs"), "w").write(rmw_line + "\n")
     # The CLI mirror lives outside `packages/rmw`, so it is reached by a
     # different arm of the scan — exercise it rather than assume it.
@@ -432,6 +455,7 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
         f"const LIFECYCLE_SERVICE_PUBLISHERS: usize = {c_inv_lc_pub};\n"
         f"const PARAM_EVENT_PUBLISHERS: usize = {c_inv_pe_pub};\n"
         f"const ROSOUT_PUBLISHERS: usize = {c_inv_rosout};\n"
+        f"const CLOCK_SUBSCRIPTIONS: usize = {c_inv_clock};\n"
         f"const ACTION_CLIENT_SERVICE_CLIENTS: usize = {c_inv_cli};\n")
     # Issue 1743 -- the shared build-script mirror, spelled `pub const`.
     shared = EXTRA_MIRROR_FILES[2]
@@ -510,6 +534,23 @@ def self_test():
          "ROSOUT_PUBLISHERS drifted to 2 with one creation site"),
         ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 1, 1, 0), 1,
          "the /rosout publisher's creation pattern stopped matching"),
+        # phase-556 W11 -- the `/clock` subscription: a second creation site,
+        # the constant drifts off it, the pattern goes blind, the definition
+        # goes missing, a mirror drifts, a build-script mirror agrees.
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 2), 1,
+         "a second /clock subscription was created and the constant stayed 1"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 1, 2), 1,
+         "CLOCK_SUBSCRIPTIONS drifted to 2 with one creation site"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 0), 1,
+         "the /clock subscription's creation pattern stopped matching"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 1, None), 1,
+         "the /clock subscription count lost its definition"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 1, 1, 2), 1,
+         "the entity inventory's /clock mirror drifted"),
+        ((6, 5, 6, 5, "pub const CLOCK_SUBSCRIPTIONS: usize = 1;"), 0,
+         "a build-script /clock mirror that agrees"),
+        ((6, 5, 6, 5, "pub const CLOCK_SUBSCRIPTIONS: usize = 2;"), 1,
+         "a build-script /clock mirror that drifted"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()

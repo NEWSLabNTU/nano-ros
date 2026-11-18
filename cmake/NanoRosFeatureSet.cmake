@@ -356,6 +356,10 @@ function(nros_feature_set out_var)
         elseif(_cap STREQUAL "rosout")
             # issue 1589 — the `/rosout` bridge; umbrella feature, no backend half.
             list(APPEND _feats rosout)
+        elseif(_cap STREQUAL "sim_time")
+            # phase-556 W11 — the `/clock` time source behind `use_sim_time`;
+            # umbrella feature, no backend half.
+            list(APPEND _feats sim-time)
         elseif(_cap STREQUAL "safety")
             # phase-439 W4 — DECLARED, not named. This read
             # `if(_FS_RMW STREQUAL "zenoh")` and warned "only the zenoh RMW
@@ -397,7 +401,7 @@ function(nros_feature_set out_var)
         else()
             message(FATAL_ERROR
                 "nros_feature_set: unknown capability '${_cap}' "
-                "(known: param_services, params, lifecycle, safety, rosout)")
+                "(known: param_services, params, lifecycle, safety, rosout, sim_time)")
         endif()
     endforeach()
 

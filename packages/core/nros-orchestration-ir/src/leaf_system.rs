@@ -1664,7 +1664,7 @@ locator = "tcp/10.0.2.2:9800"
         assert!(l.features.is_empty() && l.node_interfaces.is_none());
         // (b)
         let l = at("node_interfaces = \"stock\"", img);
-        assert_eq!(l.features, vec!["param_services", "rosout"]);
+        assert_eq!(l.features, vec!["param_services", "rosout", "sim_time"]);
         assert!(
             l.declared_features.is_empty(),
             "the declared list is kept apart"
@@ -1683,7 +1683,7 @@ locator = "tcp/10.0.2.2:9800"
         );
         assert_eq!(
             l.features,
-            vec!["param_services", "rosout"],
+            vec!["param_services", "rosout", "sim_time"],
             "defaults over system"
         );
         let l = at(

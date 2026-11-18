@@ -329,6 +329,11 @@ lifecycle-services = ["nros/lifecycle-services", "nros-node/lifecycle-services"]
 # still links and answers `RCL_RET_UNSUPPORTED` / `false`. Chosen per image by
 # the `rosout` capability axis (`[system].features`), not named by hand.
 rosout = ["nros/rosout", "nros-node/rosout"]
+# phase-556 W11 — the `/clock` time source behind `use_sim_time`: every node
+# serving parameters declares it, and setting it true subscribes `/clock`.
+# Selected by the `sim_time` capability axis (`[system].features`, or
+# `node_interfaces = "stock"`), not named by hand.
+sim-time = ["nros/sim-time", "nros-node/sim-time"]
 
 # issue 0287 — HOST-ONLY. `just check workspace-embedded` builds the whole
 # workspace for a thumb target, and cargo unifies features across ALL members

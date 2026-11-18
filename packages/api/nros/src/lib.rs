@@ -1439,6 +1439,8 @@ pub mod __macro_support {
     pub const SAFETY_E2E_ENABLED: bool = cfg!(feature = "safety-e2e");
     /// See [`LIFECYCLE_SERVICES_ENABLED`].
     pub const ROSOUT_ENABLED: bool = cfg!(feature = "rosout");
+    /// See [`LIFECYCLE_SERVICES_ENABLED`].
+    pub const SIM_TIME_ENABLED: bool = cfg!(feature = "sim-time");
 
     /// The build-time executor callback-table size
     /// (`NROS_EXECUTOR_MAX_CBS`, default 4). Re-exported so the `nros::main!`
