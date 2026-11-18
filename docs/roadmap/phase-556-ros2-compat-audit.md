@@ -238,10 +238,10 @@ the plain check and passes".
 
 - **Status:** DONE (2026-11-13, this PR). Plain test:
   `ros2_cli_parity_interop::each_node_of_a_two_node_image_serves_the_parameter_services_as_stock_does`.
-  The `/parameter_events` half is a separate design gap (one writer per
-  executor), held in expected-failure form by
-  `ros2_cli_parity_interop::second_node_as_parameter_events_publisher_compared_with_stock`;
-  its issue is filed separately.
+  The `/parameter_events` half was a separate design gap (one writer per
+  executor), held in expected-failure form until W14 made it the plain check
+  `ros2_cli_parity_interop::each_node_of_a_two_node_image_publishes_parameter_events_as_stock_does`
+  (issue 2493).
 
 [Issue 2482](../issues/archived/2482-second-node-param-service-missing.md): in a
 two-node zenoh image the second node served 5 of the 6 parameter services
@@ -374,9 +374,10 @@ Progress (2026-11-14, step 2 of 5; no default changed yet):
 
 ### W14 — One `/parameter_events` writer per executor
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-17). Plain test:
+  `ros2_cli_parity_interop::each_node_of_a_two_node_image_publishes_parameter_events_as_stock_does`.
 
-[Issue 2493](../issues/2493-parameter-events-one-writer-per-executor.md):
+[Issue 2493](../issues/archived/2493-parameter-events-one-writer-per-executor.md):
 in a multi-node image `/parameter_events` is announced under the first node
 only, where stock lists every node. By design since issue 2023. Under W13's
 ruling (user, 2026-11-13) it moves to stock's shape: every node is a
@@ -388,6 +389,25 @@ keeps this half in expected-failure form until then.
 Acceptance: `ros2 topic info -v /parameter_events` lists every node of a
 multi-node image, as stock does; the test is flipped to the plain check and
 passes.
+
+Done:
+
+- The executor holds one `/parameter_events` writer per parameter node
+  (`ParamState::event_publishers`), through the ordinary publisher path
+  (`create_param_event_pub`, still the one creation site); each node's events
+  go out on its own writer, and opting out drops it. `PARAM_EVENT_PUBLISHERS`
+  is per node in the entity inventory and the zenoh liveliness default.
+- zenoh: a VOLATILE publisher on one of the runtime's stock topics
+  (`/parameter_events`, `/rosout`; any other publisher keeps its own zenoh
+  publisher), on a data key the session already publishes on,
+  with the same reliability and express choice, shares that zenoh publisher
+  (one data key, a liveliness token, gid and sequence number per ROS
+  publisher; undeclared when its last holder drops). No C ABI or vtable
+  change. `ZenohSession::declare_node_topic_writer` / `NodeTopicWriter` is the
+  helper phase-554 reuses for lifecycle `transition_event`. The same sharing
+  now backs W13's per-node `/rosout` writers, which closes its "a plain
+  publisher per node until W14" note.
+- DDS and XRCE: an ordinary writer per node.
 
 ### W15 — A refused graph token leaves no trace in a hosted image's output
 

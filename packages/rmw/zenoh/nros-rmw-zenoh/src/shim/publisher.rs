@@ -584,12 +584,85 @@ struct EventReg {
 /// Phase 129.C.3.a — call the canonical `nros_platform_*` C
 /// symbol directly instead of routing through `ConcretePlatform`.
 /// Drops this crate's `nros-platform/platform-<rtos>` forward.
-fn now_ms() -> u64 {
+pub(super) fn now_ms() -> u64 {
     unsafe extern "C" {
         fn nros_platform_time_now_ns() -> u64;
     }
     // Issue 0532 item 5 — the ABI is nanoseconds now; this caller wants ms.
     unsafe { nros_platform_time_now_ns() / 1_000_000 }
+}
+
+/// The NUL-terminated data keyexpr of `topic`, and its length without the NUL.
+fn data_keyexpr(
+    topic: &nros_rmw::TopicInfo,
+) -> Result<
+    (
+        heapless::String<KEYEXPR_STRING_SIZE>,
+        [u8; KEYEXPR_BUFFER_SIZE],
+    ),
+    TransportError,
+> {
+    let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key();
+    let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
+    let bytes = key.as_bytes();
+    if bytes.len() >= keyexpr_buf.len() {
+        return Err(TransportError::TopicNameInvalid);
+    }
+    keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
+    keyexpr_buf[bytes.len()] = 0;
+    Ok((key, keyexpr_buf))
+}
+
+/// Declare the zenoh publisher on `topic`'s data keyexpr, with the two
+/// declare-time options a granted profile decides (express, reliability).
+///
+/// Issue 2493 -- the ONE declare site, shared by [`ZenohPublisher`] and
+/// [`super::NodeTopicWriter`].
+pub(super) fn declare_data_publisher(
+    context: &Context,
+    topic: &nros_rmw::TopicInfo,
+    qos: &nros_rmw::QoSProfile,
+) -> Result<crate::zpico::Publisher<'static>, TransportError> {
+    let (_key, keyexpr_buf) = data_keyexpr(topic)?;
+
+    #[cfg(feature = "std")]
+    log::debug!("Publisher data keyexpr: {}", _key.as_str());
+
+    // Safety: We need to extend the lifetime because ZenohPublisher borrows from Context.
+    // This is safe because:
+    // 1. ZenohPublisher is stored in ZenohSession which owns the Context
+    // 2. The underlying C shim manages its own state
+    // 3. We transmute the lifetime to 'static for storage
+    let publisher = unsafe {
+        let pub_result = context.declare_publisher(
+            &keyexpr_buf,
+            topic.tx_express,
+            qos.reliability == nros_rmw::QoSReliabilityPolicy::Reliable,
+        );
+        match pub_result {
+            Ok(p) => core::mem::transmute::<
+                crate::zpico::Publisher<'_>,
+                crate::zpico::Publisher<'static>,
+            >(p),
+            Err(e) => return Err(TransportError::from(e)),
+        }
+    };
+    Ok(publisher)
+}
+
+/// The rmw_zenoh attachment every publication carries: sequence number,
+/// source timestamp (both little-endian), the gid's length and the gid.
+pub(super) fn serialize_rmw_attachment(
+    seq: i64,
+    ts: i64,
+    gid: &[u8; RMW_GID_SIZE],
+    buf: &mut [u8; RMW_ATTACHMENT_SIZE],
+) {
+    buf[0..8].copy_from_slice(&seq.to_le_bytes());
+    buf[8..16].copy_from_slice(&ts.to_le_bytes());
+    // VLE length (16 fits in single byte)
+    buf[16] = RMW_GID_SIZE as u8;
+    buf[17..33].copy_from_slice(gid);
 }
 
 impl ZenohPublisher {
@@ -600,39 +673,23 @@ impl ZenohPublisher {
         liveliness: Option<LivelinessToken>,
         qos: &nros_rmw::QoSProfile,
     ) -> Result<Self, TransportError> {
-        // Generate the topic key with null terminator
-        let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key();
+        Self::new_on(context, topic, liveliness, qos, None)
+    }
 
-        #[cfg(feature = "std")]
-        log::debug!("Publisher data keyexpr: {}", key.as_str());
-
-        // Create null-terminated keyexpr
-        let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
-        let bytes = key.as_bytes();
-        if bytes.len() >= keyexpr_buf.len() {
-            return Err(TransportError::TopicNameInvalid);
-        }
-        keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
-        keyexpr_buf[bytes.len()] = 0;
-
-        // Safety: We need to extend the lifetime because ZenohPublisher borrows from Context.
-        // This is safe because:
-        // 1. ZenohPublisher is stored in ZenohSession which owns the Context
-        // 2. The underlying C shim manages its own state
-        // 3. We transmute the lifetime to 'static for storage
-        let publisher = unsafe {
-            let pub_result = context.declare_publisher(
-                &keyexpr_buf,
-                topic.tx_express,
-                qos.reliability == nros_rmw::QoSReliabilityPolicy::Reliable,
-            );
-            match pub_result {
-                Ok(p) => core::mem::transmute::<
-                    crate::zpico::Publisher<'_>,
-                    crate::zpico::Publisher<'static>,
-                >(p),
-                Err(e) => return Err(TransportError::from(e)),
-            }
+    /// Issue 2493 -- [`Self::new`] over a zenoh publisher this session
+    /// already holds on the same data key (`shared`, a counted holder from
+    /// `ZenohSession::share_data_publisher`), or a fresh one when `None`.
+    pub(super) fn new_on(
+        context: &Context,
+        topic: &nros_rmw::TopicInfo,
+        liveliness: Option<LivelinessToken>,
+        qos: &nros_rmw::QoSProfile,
+        shared: Option<crate::zpico::Publisher<'static>>,
+    ) -> Result<Self, TransportError> {
+        let (key, keyexpr_buf) = data_keyexpr(topic)?;
+        let publisher = match shared {
+            Some(p) => p,
+            None => declare_data_publisher(context, topic, qos)?,
         };
 
         // phase-455 W5 / issue 1341 — the transient-local half. `admit` has
@@ -961,14 +1018,15 @@ impl ZenohPublisher {
 
     /// Serialize attachment for RMW compatibility
     fn serialize_attachment(&self, seq: i64, ts: i64, buf: &mut [u8; RMW_ATTACHMENT_SIZE]) {
-        // Sequence number (little-endian)
-        buf[0..8].copy_from_slice(&seq.to_le_bytes());
-        // Timestamp (little-endian)
-        buf[8..16].copy_from_slice(&ts.to_le_bytes());
-        // VLE length (16 fits in single byte)
-        buf[16] = RMW_GID_SIZE as u8;
-        // GID bytes
-        buf[17..33].copy_from_slice(&self.rmw_gid);
+        serialize_rmw_attachment(seq, ts, &self.rmw_gid, buf);
+    }
+
+    // Issue 2493.
+    /// The zenoh publisher handle this publisher publishes on: the session's
+    /// data-key table keys on it, and two publishers that report the same
+    /// handle share one zenoh publisher.
+    pub fn zenoh_handle(&self) -> i32 {
+        self.publisher.handle()
     }
 }
 

@@ -853,12 +853,12 @@ impl Drop for RefuseParameterStore {
     }
 }
 
-/// Issue 2023 — create the executor's ONE `/parameter_events` publisher,
+/// Issue 2023 / 2493 — create `node`'s `/parameter_events` publisher,
 /// `rcl_interfaces/msg/ParameterEvent`, announced under `node`.
 ///
 /// The ONE creation site `check-infra-queryable-counts` holds
 /// [`PARAM_EVENT_PUBLISHERS`](crate::parameter_services::PARAM_EVENT_PUBLISHERS)
-/// to. A node with a record goes through the node's own publisher path (its
+/// to, per node (issue 2493: every node is a publisher, as stock). A node with a record goes through the node's own publisher path (its
 /// session, QoS overrides and the declared-QoS check); an executor with no
 /// registered node — a direct-API image whose parameter services the
 /// reconcile serves under the executor's own identity — publishes under that
@@ -14186,7 +14186,7 @@ impl<'s> Executor<'s> {
     /// Every node served this way also PUBLISHES
     /// `/parameter_events` (`rcl_interfaces/msg/ParameterEvent`), rclcpp's and
     /// rclrs's default: a start-up event, then one event per declare, set and
-    /// undeclare. One VOLATILE publisher per executor
+    /// undeclare. One VOLATILE publisher per node, as stock
     /// ([`PARAM_EVENT_PUBLISHERS`](crate::parameter_services::PARAM_EVENT_PUBLISHERS)).
     /// A node opts out with
     /// [`disable_parameter_events_on`](Self::disable_parameter_events_on)
@@ -16278,9 +16278,9 @@ impl<'s> Executor<'s> {
     /// Issue 2023 — `node` publishes no `/parameter_events` (rclc's
     /// `notify_changed_over_dds = false`; rclcpp's
     /// `start_parameter_event_publisher(false)`). Stops logging its changes,
-    /// and keeps [`register_parameter_services`](Self::register_parameter_services)
-    /// from switching them on. The executor's one publisher stays up if
-    /// another node uses it.
+    /// keeps [`register_parameter_services`](Self::register_parameter_services)
+    /// from switching them on, and drops the node's publisher (issue 2493),
+    /// so the graph no longer lists it as one. Other nodes' publishers stay.
     pub(crate) fn disable_parameter_events_on(&mut self, node: super::node_record::NodeId) {
         if !self.ensure_parameter_store() {
             return;
@@ -16288,15 +16288,37 @@ impl<'s> Executor<'s> {
         if let Some(params) = self.params.as_deref_mut() {
             params.events_opt_out.set(node.into(), true);
             params.server.set_parameter_events(node.into(), false);
+            params.event_publishers.retain(|e| e.node != node.index());
         }
+    }
+
+    // Gated like its only callers, the `tests` module (`executor/mod.rs`).
+    #[cfg(all(
+        test,
+        feature = "param-services",
+        feature = "alloc",
+        not(feature = "rmw-cffi")
+    ))]
+    /// Issue 2493 — `node`'s `/parameter_events` publisher, if it has one.
+    pub(crate) fn parameter_event_publisher(
+        &self,
+        node: super::node_record::NodeId,
+    ) -> Option<&session::RmwPublisher> {
+        self.params.as_deref().and_then(|p| {
+            p.event_publishers
+                .iter()
+                .find(|e| e.node == node.index())
+                .map(|e| &e.publisher)
+        })
     }
 
     #[cfg(feature = "param-services")]
     /// phase-491 W3 (RFC-0105 D8) — publish `node`'s parameter changes on
     /// `/parameter_events` (rclc's `notify_changed_over_dds`).
     ///
-    /// Creates the executor's one `/parameter_events` publisher on the first
-    /// call (see `ParamState::event_publisher`), typed
+    /// Creates the node's own `/parameter_events` publisher on the first
+    /// call (see `ParamState::event_publishers`; one per node since issue
+    /// 2493, as stock), typed
     /// `rcl_interfaces/msg/ParameterEvent`, RELIABLE + VOLATILE as upstream's
     /// `parameter_events` profile. Its depth is upstream's 1000 on a hosted
     /// build and `NROS_PARAM_EVENTS_DEPTH` (default 1) otherwise, because a
@@ -16322,7 +16344,7 @@ impl<'s> Executor<'s> {
         if self
             .params
             .as_ref()
-            .is_some_and(|p| p.event_publisher.is_some())
+            .is_some_and(|p| p.event_publishers.iter().any(|e| e.node == idx))
         {
             if let Some(params) = self.params.as_mut() {
                 params.server.set_parameter_events(node.into(), true);
@@ -16345,9 +16367,23 @@ impl<'s> Executor<'s> {
         }
         crate::rmw_type_registry::register_type::<Event>()?;
         let qos = QoSProfile::parameter_events_default().depth(nros_params::PARAM_EVENTS_DEPTH);
+        // Issue 2493 — one slot per parameter node; refused, not created,
+        // when every slot is taken.
+        if self
+            .params
+            .as_ref()
+            .is_some_and(|p| p.event_publishers.is_full())
+        {
+            return Err(NodeError::NodeTableFull);
+        }
         let handle = create_param_event_pub(self, node, qos)?;
         if let Some(params) = self.params.as_mut() {
-            params.event_publisher = Some(handle);
+            let _ = params
+                .event_publishers
+                .push(crate::param_store::EventPublisher {
+                    node: idx,
+                    publisher: handle,
+                });
             params.server.set_parameter_events(node.into(), true);
         }
         Ok(())
@@ -16397,11 +16433,17 @@ impl<'s> Executor<'s> {
             let crate::param_store::ParamState {
                 server,
                 buffers,
-                event_publisher,
+                event_publishers,
                 ..
             } = &mut **params;
-            let (Some(publisher), Some(buffers)) = (event_publisher.as_ref(), buffers.as_mut())
-            else {
+            // Issue 2493 — the event goes out on its OWN node's publisher.
+            let (Some(publisher), Some(buffers)) = (
+                event_publishers
+                    .iter()
+                    .find(|e| e.node == idx)
+                    .map(|e| &e.publisher),
+                buffers.as_mut(),
+            ) else {
                 continue;
             };
             let value = match event.kind {

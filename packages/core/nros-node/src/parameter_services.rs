@@ -1334,15 +1334,19 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 /// `check-infra-queryable-counts` holds it to the number of creation sites.
 pub const PARAM_SERVICE_QUERYABLES: usize = 6;
 
-/// Publishers the parameter family claims: ONE
-/// `/parameter_events` writer per EXECUTOR (not per node — every event names
-/// its node in its own `node` field). VOLATILE (`parameter_events_default`),
-/// so it costs a publisher slot and a liveliness token and NO queryable.
+// issue 2493 -- per node since then; one per executor before.
+/// Publishers the parameter family claims PER NODE: one `/parameter_events`
+/// writer for each node that serves parameters (as stock: the
+/// graph lists every node as a publisher of the topic). It was one per
+/// executor until then, announced under the first node only. VOLATILE
+/// (`parameter_events_default`), so each costs a publisher handle and a
+/// liveliness token and NO queryable; a backend may back the writers of one
+/// session with a single transport publisher (the zenoh shim does).
 ///
 /// Same feature as the services, so an image without `param-services` pays
 /// nothing. `check-infra-queryable-counts` holds it to the
 /// `create_param_event_pub` creation sites, and the entity inventory and the
-/// zenoh liveliness default mirror it.
+/// zenoh liveliness default multiply it by the parameter nodes.
 pub const PARAM_EVENT_PUBLISHERS: usize = 1;
 
 /// phase-446 F3 -- whether [`param_service_buffer_bytes`] was derived from the

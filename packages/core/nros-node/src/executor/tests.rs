@@ -16231,9 +16231,7 @@ fn parameter_events_publish_each_change_in_its_slot() {
     executor.flush_parameter_events();
     fn publisher<'a>(executor: &'a Executor<'_>) -> &'a crate::mock::MockPublisher {
         executor
-            .params
-            .as_ref()
-            .and_then(|p| p.event_publisher.as_ref())
+            .parameter_event_publisher(NodeId::PRIMARY)
             .expect("the publisher exists")
     }
     assert_eq!(publisher(&executor).topic_name(), "/parameter_events");
@@ -16303,18 +16301,20 @@ fn parameter_events_publish_each_change_in_its_slot() {
     );
 }
 
-/// Issue 2023 — `register_parameter_services`, the road the C++ and Rust
-/// surfaces take, brings `/parameter_events` up with the six services: ONE
-/// publisher for every node, each node's START-UP event naming what it holds
-/// (its `use_sim_time` too, under `sim-time`, as upstream's), then one event
-/// per change — and a node that opted out publishes nothing.
+/// Issue 2023 / 2493 — `register_parameter_services`, the road the C++ and
+/// Rust surfaces take, brings `/parameter_events` up with the six services:
+/// ONE publisher PER NODE (as stock, so the graph lists each node as a
+/// publisher), each node's START-UP event naming what it holds (its
+/// `use_sim_time` too, under `sim-time`, as upstream's) on that node's own
+/// publisher, then one event per change -- and a node that opted out has no
+/// publisher and publishes nothing.
 #[cfg(feature = "param-services")]
 #[test]
 fn registering_parameter_services_publishes_parameter_events_for_every_node() {
     use nros_params::ParameterValue;
     let mut executor = executor_with_clock(MockSession::new());
     executor.set_node_identity("alpha", "/");
-    let _alpha = executor.node_builder("alpha").build().unwrap();
+    let alpha = executor.node_builder("alpha").build().unwrap();
     let beta = executor
         .node_builder("beta")
         .namespace("/ns")
@@ -16329,34 +16329,40 @@ fn registering_parameter_services_publishes_parameter_events_for_every_node() {
         .expect("mock services register");
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
 
-    fn publisher<'a>(executor: &'a Executor<'_>) -> &'a crate::mock::MockPublisher {
+    fn publisher<'a>(executor: &'a Executor<'_>, node: NodeId) -> &'a crate::mock::MockPublisher {
         executor
-            .params
-            .as_ref()
-            .and_then(|p| p.event_publisher.as_ref())
-            .expect("one /parameter_events publisher for the executor")
+            .parameter_event_publisher(node)
+            .expect("the node's own /parameter_events publisher")
     }
-    assert_eq!(publisher(&executor).topic_name(), "/parameter_events");
-    let frames: alloc::vec::Vec<Decoded> = (0..publisher(&executor).publish_count())
-        .filter_map(|i| publisher(&executor).retained(i))
-        .map(|(bytes, len)| decode(&bytes[..len]))
-        .collect();
+    fn frames(executor: &Executor<'_>, node: NodeId) -> alloc::vec::Vec<Decoded> {
+        let p = publisher(executor, node);
+        (0..p.publish_count())
+            .filter_map(|i| p.retained(i))
+            .map(|(bytes, len)| decode(&bytes[..len]))
+            .collect()
+    }
     assert!(
-        frames.iter().any(|(_, node, _)| node == "/alpha"),
-        "alpha's start-up event: {frames:?}"
+        executor.parameter_event_publisher(gamma).is_none(),
+        "gamma opted out, so it is not a publisher"
+    );
+    for node in [alpha, beta] {
+        assert_eq!(publisher(&executor, node).topic_name(), "/parameter_events");
+    }
+    let a = frames(&executor, alpha);
+    let b = frames(&executor, beta);
+    assert!(
+        !a.is_empty() && a.iter().all(|(_, node, _)| node == "/alpha"),
+        "alpha's publisher carries alpha's events only: {a:?}"
     );
     assert!(
-        frames
-            .iter()
-            .any(|(_, node, s)| node == "/ns/beta" && s[0] == Some(("gain".into(), 2, 3))),
-        "beta's start-up event names `gain`: {frames:?}"
-    );
-    assert!(
-        frames.iter().all(|(_, node, _)| node != "/gamma"),
-        "gamma opted out: {frames:?}"
+        b.iter().all(|(_, node, _)| node == "/ns/beta")
+            && b.iter()
+                .any(|(_, _, s)| s[0] == Some(("gain".into(), 2, 3))),
+        "beta's start-up event names `gain`, on beta's publisher: {b:?}"
     );
 
-    publisher(&executor).clear_published();
+    publisher(&executor, alpha).clear_published();
+    publisher(&executor, beta).clear_published();
     assert_eq!(
         executor.set_parameter_local_on(beta, "gain", ParameterValue::Integer(4)),
         Ok(())
@@ -16364,24 +16370,35 @@ fn registering_parameter_services_publishes_parameter_events_for_every_node() {
     let _ = executor.set_parameter_local_on(gamma, "quiet", ParameterValue::Integer(1));
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(
-        publisher(&executor).publish_count(),
+        publisher(&executor, beta).publish_count(),
         1,
-        "gamma's set is not published"
+        "beta's set, on beta's publisher"
     );
-    let (bytes, len) = publisher(&executor).last_published().unwrap();
+    assert_eq!(
+        publisher(&executor, alpha).publish_count(),
+        0,
+        "nothing of beta's or gamma's on alpha's publisher"
+    );
+    let (bytes, len) = publisher(&executor, beta).last_published().unwrap();
     let (_, node, slots) = decode(&bytes[..len]);
     assert_eq!(node, "/ns/beta");
     assert_eq!(slots[1], Some(("gain".into(), 2, 4)), "a set is CHANGED");
 
     assert!(executor.undeclare_parameter_on(beta, "gain"));
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
-    let (bytes, len) = publisher(&executor).last_published().unwrap();
+    let (bytes, len) = publisher(&executor, beta).last_published().unwrap();
     let (_, _, slots) = decode(&bytes[..len]);
     assert_eq!(
         slots[2],
         Some(("gain".into(), 0, 0)),
         "an undeclare is DELETED"
     );
+
+    // Issue 2493 — opting out later drops that node's publisher and leaves
+    // the others up.
+    executor.disable_parameter_events_on(beta);
+    assert!(executor.parameter_event_publisher(beta).is_none());
+    assert!(executor.parameter_event_publisher(alpha).is_some());
 }
 
 /// Issue 2023 — a node that holds NO parameter still announces itself: one
@@ -16395,11 +16412,7 @@ fn a_node_holding_no_parameter_announces_itself() {
         .enable_parameter_events_on(NodeId::PRIMARY)
         .expect("one publisher");
     executor.flush_parameter_events();
-    let p = executor
-        .params
-        .as_ref()
-        .and_then(|p| p.event_publisher.as_ref())
-        .unwrap();
+    let p = executor.parameter_event_publisher(NodeId::PRIMARY).unwrap();
     assert_eq!(p.publish_count(), 1);
     let (bytes, len) = p.last_published().unwrap();
     let (_, node, slots) = decode(&bytes[..len]);
