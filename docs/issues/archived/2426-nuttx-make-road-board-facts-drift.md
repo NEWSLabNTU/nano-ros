@@ -1,18 +1,19 @@
 ---
 id: 2426
 title: "The NuttX make road diverges from the board and the other roads: restated cargo settings, an armv7a-only archive path, a fallback that cannot build, and a CMake shell nothing reaches"
-status: open
+status: resolved
 type: bug
 area: [nuttx, build]
 severity: low
 found: 2026-11-10
+resolved_in: "docs(issue 2426): the NuttX make road's project step is in the book; every item is closed"
 related: [issue-2236, phase-530, phase-550, rfc-0098]
 ---
 
-**Home: [phase-550](../roadmap/phase-550-nuttx-native-build-infrastructure.md)**
-(W1 to W5, W8, W12), beside [issue 2236](2236-nuttx-make-app-as-project.md), whose
+**Home: [phase-550](../../roadmap/phase-550-nuttx-native-build-infrastructure.md)**
+(W1 to W5, W8, W12), beside [issue 2236](../2236-nuttx-make-app-as-project.md), whose
 design write-up found it while working on
-[phase-530](../roadmap/phase-530-nros-configure-single-pass.md).
+[phase-530](../../roadmap/phase-530-nros-configure-single-pass.md).
 
 ## What happens
 
@@ -216,3 +217,27 @@ Items 3-7 wait on the same ruling; this record proposes no fix for them.
   compiled.
 - **Both boards** build on the make road in a lane:
   `just nuttx build-make-road`, run daily by `nightly.yml` (W1).
+
+### Closed (2026-11-18)
+
+Every item, read against main:
+
+- Items 1–5 and 8 are fixed by phase-550 W2–W5, as listed above.
+- **Item 7**: phase-550 W8 deleted the CMake shell
+  (`integrations/nuttx/CMakeLists.txt`, bada4ae89c), so there is no lane
+  reading an undeclared `CONFIG_NROS_RMW` and no `external/` CMake subdir
+  to stage.
+- **Item 6**: phase-550 W6a/W6b gave the make road its consumer. An app's own
+  `Make.defs` names a project (`NROS_PROJECTS`, optionally `NROS_IMAGE`).
+  `make` then runs `nros configure` on it, builds the image's own facts
+  into the app, and refuses an image whose board, RMW or ROS edition
+  disagrees with the kernel's configuration. The book's steps 3–4 still
+  asked for that agreement without saying how to name a project, so the
+  check could not be reached from the docs. `nuttx.md` now shows the two
+  `Make.defs` lines and what `make` does with them.
+
+Acceptance (a make-road build on both boards, in a lane, with the board's
+cargo flags) is `just nuttx build-make-road`, run daily by `nightly.yml`. It
+was re-measured on main on 2026-11-18 (arm): the guest links, and the project
+make configures `nuttx_c_talker_bringup:qemu-armv7a-nuttx` sized from the
+probe.

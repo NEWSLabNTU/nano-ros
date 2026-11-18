@@ -183,7 +183,7 @@ the values, so an edited row re-runs the build script.
 Two of the board facts the make road restates by hand have already drifted
 from the board's `cargo_config` (`-Zbuild-std=std` against `core,alloc`, and
 armv7a-only flags on a tree that also serves rv-virt); that is filed as
-[issue 2426](2426-nuttx-make-road-board-facts-drift.md), held for this ruling.
+[issue 2426](archived/2426-nuttx-make-road-board-facts-drift.md), held for this ruling.
 
 ### 2. Options
 
@@ -499,7 +499,7 @@ claims that could not be checked there are marked "reported, not verified".
   A tree staged for the make road (an `external/` with no `CMakeLists.txt`)
   therefore stops a CMake configure. This corrects a claim that the
   subdirectory is optional; it agrees with
-  [issue 2426](2426-nuttx-make-road-board-facts-drift.md) item 7.
+  [issue 2426](archived/2426-nuttx-make-road-board-facts-drift.md) item 7.
 
 ### Rust
 

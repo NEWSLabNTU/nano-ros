@@ -15,7 +15,7 @@ claimed with `just claim phase-550-wN` before it starts.
 
 Homes:
 
-- [issue 2426](../issues/2426-nuttx-make-road-board-facts-drift.md), the make
+- [issue 2426](../issues/archived/2426-nuttx-make-road-board-facts-drift.md), the make
   road's verified defects (items 1 to 7): W1 to W5, W8, W12;
 - [issue 2495](../issues/archived/2495-nuttx-make-road-rust-edit-not-rebuilt.md), the
   make road rebuilding nano-ros only on a first build: W6b (fixed);
