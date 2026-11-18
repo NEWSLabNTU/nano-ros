@@ -637,16 +637,22 @@ impl ZenohSession {
         // build could have explained exactly was the one it explained least.
         // `NROS_SESSION_MODE=peer` is a documented value; a documented value
         // that cannot work has to say so rather than look like a network fault.
-        if peer && !crate::zpico::ZPICO_PEER_MODE_SUPPORTED {
+        // RFC-0134 D1 -- the one exception: a peer session whose every
+        // endpoint is on a link that joins two endpoints, in a build that
+        // compiled unicast peer mode for it. That session has one remote end
+        // and needs neither multicast nor an accept loop.
+        let point_to_point =
+            crate::zpico::ZPICO_POINT_TO_POINT_PEER_SUPPORTED && endpoints_are_point_to_point(properties);
+        if peer && !crate::zpico::ZPICO_PEER_MODE_SUPPORTED && !point_to_point {
             // Kept under nros-log's 256-byte buffer: a message that overflows is
             // replaced by "…", and a diagnostic nobody can read is the failure
             // this guard exists to prevent.
             // issue 0682, issue 0711
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_zenoh"),
-                "peer mode unsupported: shim built without multicast transport/scouting. \
-                 Use client mode with a router, or rebuild with \
-                 ZPICO_MULTICAST_TRANSPORT=1 at build time."
+                "peer mode unsupported: no multicast transport/scouting in this build, \
+                 and not every listen/connect endpoint is on a point-to-point link (ivc/). \
+                 Use client mode with a router, or ZPICO_MULTICAST_TRANSPORT=1."
             );
             return Err(TransportError::Unsupported);
         }
@@ -2009,4 +2015,43 @@ pub fn set_caller_rx_wakes_park(on: bool) {
 
 fn caller_rx_wakes_park() -> bool {
     CALLER_RX_WAKES_PARK.load(core::sync::atomic::Ordering::Acquire)
+}
+
+/// The endpoint schemes of links that join exactly two endpoints, on which a
+/// peer session has one remote end (RFC-0134 D2). RPMsg joins when its link
+/// lands; serial is deliberately absent, see `point_to_point_peer_derived`.
+const POINT_TO_POINT_SCHEMES: &[&str] = &["ivc/"];
+
+/// Whether a session's `listen`/`connect` endpoints are all on a
+/// point-to-point link, with at least one stated. A TCP endpoint beside an IVC
+/// one is a multi-peer session, which this build cannot open.
+fn endpoints_are_point_to_point(properties: &[(&str, &str)]) -> bool {
+    let mut any = false;
+    for (key, value) in properties {
+        if *key != "listen" && *key != "connect" {
+            continue;
+        }
+        for endpoint in value.split([';', ',']).map(str::trim).filter(|e| !e.is_empty()) {
+            if !POINT_TO_POINT_SCHEMES.iter().any(|scheme| endpoint.starts_with(scheme)) {
+                return false;
+            }
+            any = true;
+        }
+    }
+    any
+}
+
+#[cfg(test)]
+mod point_to_point_tests {
+    use super::endpoints_are_point_to_point;
+
+    #[test]
+    fn only_sessions_wholly_on_a_point_to_point_link_qualify() {
+        assert!(endpoints_are_point_to_point(&[("mode", "peer"), ("listen", "ivc/2")]));
+        assert!(endpoints_are_point_to_point(&[("connect", "ivc/3")]));
+        assert!(!endpoints_are_point_to_point(&[("mode", "peer")]));
+        assert!(!endpoints_are_point_to_point(&[("listen", "tcp/0.0.0.0:7447")]));
+        assert!(!endpoints_are_point_to_point(&[("listen", "ivc/2"), ("connect", "tcp/10.0.2.2:7800")]));
+        assert!(!endpoints_are_point_to_point(&[("connect", "ivc/2;tcp/10.0.2.2:7800")]));
+    }
 }

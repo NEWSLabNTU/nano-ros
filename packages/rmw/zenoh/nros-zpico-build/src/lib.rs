@@ -54,6 +54,12 @@ pub struct ShimConfig {
     /// the links where the domain's liveliness history is a burst the image
     /// cannot take.
     pub graph_discovery: bool,
+    /// Whether this build compiles zenoh-pico's unicast peer mode, for a peer
+    /// session on a link that joins two endpoints (RFC-0134 D1). Resolved by
+    /// [`point_to_point_peer_derived`] once the link policy is applied; the
+    /// same value writes `Z_FEATURE_UNICAST_PEER`, so the shim and the library
+    /// cannot disagree.
+    pub point_to_point_peer: bool,
     pub max_pending_gets: usize,
     /// Size of the C shim's session pool
     /// (`ZPICO_MAX_SESSIONS`, default 1). A single-session target keeps the
@@ -172,7 +178,11 @@ impl ShimConfig {
              /// Whether this shim was compiled with the multicast transport + scouting\n\
              /// that zenoh PEER mode needs. Emitted from the SAME constant\n\
              /// that writes the C `#define`, so the two cannot drift.\n\
-             pub const ZPICO_PEER_MODE_SUPPORTED: bool = {};\n",
+             pub const ZPICO_PEER_MODE_SUPPORTED: bool = {};\n\
+             /// Whether this shim was compiled with unicast peer mode for a link\n\
+             /// that joins two endpoints (IVC, RPMsg). Emitted from the SAME value\n\
+             /// that writes `Z_FEATURE_UNICAST_PEER`, so the two cannot drift.\n\
+             pub const ZPICO_POINT_TO_POINT_PEER_SUPPORTED: bool = {};\n",
             self.max_publishers,
             self.max_subscribers,
             self.max_queryables,
@@ -181,6 +191,7 @@ impl ShimConfig {
             self.max_sessions,
             self.queryable_table_declared,
             multicast_transport_enabled(),
+            self.point_to_point_peer,
         )
     }
 
@@ -244,6 +255,22 @@ impl ShimConfig {
             build.define(name, value.as_str());
         }
     }
+}
+
+/// Whether a build compiles zenoh-pico's unicast peer mode (RFC-0134 D1).
+///
+/// On only when the build compiles a link that joins two endpoints and is
+/// stated by the image: IVC today, RPMsg when its link lands. The point is a
+/// peer session on that link with no router; zenoh-pico runs it as one remote
+/// end (`_is_single_peer`), with no accept loop and no socket set.
+///
+/// Serial joins two endpoints too, but `LinkFeatures::serial` is on by DEFAULT
+/// for every hosted and bare-metal build, so it is not the image stating a
+/// point-to-point link, and keying on it would compile peer mode into nearly
+/// every image. Measured cost of compiling it in (RFC-0134, step 0): 5,188
+/// bytes of code, no static RAM, no heap.
+pub fn point_to_point_peer_derived(link: &LinkFeatures) -> bool {
+    link.ivc
 }
 
 /// The DERIVED rung of `ZPICO_GRAPH_DISCOVERY`: off when every link this build
@@ -612,7 +639,14 @@ pub fn config_header(
     writeln!(header, "#define Z_FEATURE_BATCH_PEER_MUTEX 0").unwrap();
     writeln!(header, "#define Z_FEATURE_MATCHING 1").unwrap();
     writeln!(header, "#define Z_FEATURE_RX_CACHE 0").unwrap();
-    writeln!(header, "#define Z_FEATURE_UNICAST_PEER 0").unwrap();
+    // RFC-0134 D1 -- on only for a build with a point-to-point link; the shim's
+    // `ZPICO_POINT_TO_POINT_PEER_SUPPORTED` reads the same function.
+    writeln!(
+        header,
+        "#define Z_FEATURE_UNICAST_PEER {}",
+        u8::from(point_to_point_peer_derived(link))
+    )
+    .unwrap();
     // phase-337 W7.b — see `Z_FEATURE_ENCODING_VALUES` above: orin-spe was the
     // only platform that set this to 0 (IVC has no reconnect notion).
     writeln!(header, "#define Z_FEATURE_AUTO_RECONNECT 1").unwrap();
@@ -1324,6 +1358,7 @@ int32_t zpico_init(void);\n";
             max_liveliness: 4,
             graph_cache_size: 4096,
             graph_discovery: true,
+            point_to_point_peer: false,
             max_pending_gets: 5,
             max_sessions: 9,
             get_reply_buf_size: 6,
@@ -1355,6 +1390,7 @@ int32_t zpico_init(void);\n";
             max_liveliness: 4,
             graph_cache_size: 4096,
             graph_discovery: true,
+            point_to_point_peer: false,
             max_pending_gets: 5,
             max_sessions: 1,
             get_reply_buf_size: 6,
@@ -1420,6 +1456,7 @@ int32_t zpico_init(void);\n";
                 max_liveliness: 4,
                 graph_cache_size: 4096,
                 graph_discovery: true,
+                point_to_point_peer: false,
                 max_pending_gets: 5,
                 max_sessions: 1,
                 get_reply_buf_size: 6,
@@ -1459,6 +1496,38 @@ int32_t zpico_init(void);\n";
                 tx_batch
             );
             // nros-c-macro-names: end
+        }
+    }
+
+    /// RFC-0134 D1 -- unicast peer mode is compiled only for a build with a
+    /// point-to-point link, and the library define and the shim constant come
+    /// from one function. Serial alone, on by default, does not turn it on.
+    #[test]
+    fn unicast_peer_follows_the_point_to_point_link_only() {
+        let link = |ivc: bool| LinkFeatures {
+            tcp: true,
+            udp_unicast: true,
+            udp_multicast: true,
+            serial: true,
+            raweth: false,
+            tls: false,
+            ivc,
+            can: false,
+            isotp: false,
+            custom: false,
+        };
+        let buf = ZenohBufferConfig {
+            frag_max_size: 4096,
+            batch_unicast_size: 2048,
+            batch_multicast_size: 1024,
+            rx_task_budget: None,
+        };
+        for ivc in [false, true] {
+            let l = link(ivc);
+            assert_eq!(point_to_point_peer_derived(&l), ivc);
+            let header = config_header(&l, &buf, false, false, false);
+            let want = format!("#define Z_FEATURE_UNICAST_PEER {}", u8::from(ivc));
+            assert!(header.contains(&want), "ivc={ivc}: no `{want}`");
         }
     }
 

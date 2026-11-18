@@ -1323,6 +1323,8 @@ fn shim_config_from_env() -> ShimConfig {
         // policy is applied (search `shim_config.graph_discovery =`), because
         // the derived rung needs the FINAL link set, which is not known here.
         graph_discovery: true,
+        // The BUILTIN, overwritten from the link set like `graph_discovery`.
+        point_to_point_peer: false,
         max_pending_gets: env_usize("NROS_ZENOH_MAX_PENDING_GETS", 4),
         max_sessions: env_usize("NROS_ZENOH_MAX_SESSIONS", 1),
         // phase-400 W6 — BUILTINS, like the tx pair below: these five are
@@ -2149,7 +2151,6 @@ pub fn run() {
         println!("cargo:frag_max_size={}", buf_config.frag_max_size);
         println!("cargo:batch_unicast_size={}", buf_config.batch_unicast_size);
     }
-    std::fs::write(out_dir.join("shim_constants.rs"), shim_config.rust_consts()).unwrap();
 
     // Phase 134.3 — `zenoh_generic_config.h` is the single source of
     // truth for every `Z_FEATURE_LINK_*` flag. Apply the per-platform
@@ -2202,6 +2203,10 @@ pub fn run() {
     let link_policy = LinkPolicy::for_board(link_policy, &board_capabilities);
     let link_features = link_features.apply(&link_policy);
     shim_config.graph_discovery = resolve_graph_discovery(&link_features);
+    shim_config.point_to_point_peer = crate::point_to_point_peer_derived(&link_features);
+    // Written once the link policy is applied, so every link-derived constant
+    // in it (`ZPICO_POINT_TO_POINT_PEER_SUPPORTED`) is this build's.
+    std::fs::write(out_dir.join("shim_constants.rs"), shim_config.rust_consts()).unwrap();
     generate_config_header(
         &out_dir,
         &link_features,
