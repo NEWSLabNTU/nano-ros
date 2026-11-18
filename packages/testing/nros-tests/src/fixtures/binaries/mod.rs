@@ -927,16 +927,34 @@ fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
 /// two halves of "was this built from what is on disk" are independent.
 ///
 /// Paths under the build root are skipped: they are this build's own output.
+/// Whether a `build.ninja` line is the edge that regenerates `build.ninja`
+/// itself (CMake's `RERUN_CMAKE`), whose implicit inputs (`| …`) are every
+/// file the host configure read.
+///
+/// Issue 2707 -- matched by its OUTPUTS, never by a fixed prefix. CMake 3.x
+/// writes `build build.ninja: RERUN_CMAKE | …`; CMake 4.x lists every
+/// `cmake_install.cmake` beside it (`build build.ninja <dir>/cmake_install.cmake
+/// …: RERUN_CMAKE | …`), so the old `starts_with("build build.ninja:")` found
+/// no edge, the configure inputs went unwatched, and every Zephyr image read
+/// fresh after a shared cmake module was edited.
+fn is_build_ninja_edge(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("build ") else {
+        return false;
+    };
+    let Some((outputs, _)) = rest.split_once(':') else {
+        return false;
+    };
+    // Outputs before an implicit-output `|` and after it both count.
+    outputs.split_whitespace().any(|o| o == "build.ninja")
+}
+
 fn ninja_configure_deps(build_root: &Path) -> Vec<PathBuf> {
     let Ok(text) = fs::read_to_string(build_root.join("build.ninja")) else {
         return Vec::new();
     };
     // `$` continues a line in ninja syntax; the edge is one logical line.
     let unfolded = text.replace("$\n", " ");
-    let Some(line) = unfolded
-        .lines()
-        .find(|l| l.starts_with("build build.ninja:"))
-    else {
+    let Some(line) = unfolded.lines().find(|l| is_build_ninja_edge(l)) else {
         return Vec::new();
     };
     let Some((_, deps)) = line.split_once('|') else {
@@ -8638,6 +8656,47 @@ pub fn build_qemu_rtic_action_client() -> TestResult<&'static Path> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2707 -- both CMake spellings of the `RERUN_CMAKE` edge are found,
+    /// and an edge that only NAMES `build.ninja` as an input is not.
+    #[test]
+    fn the_rerun_cmake_edge_is_found_in_both_cmake_spellings() {
+        let cmake3 = "build build.ninja: RERUN_CMAKE | /r/cmake/A.cmake";
+        let cmake4 = "build build.ninja /b/cmake_install.cmake /b/zephyr/cmake_install.cmake: \
+                      RERUN_CMAKE | /r/cmake/A.cmake";
+        assert!(is_build_ninja_edge(cmake3));
+        assert!(is_build_ninja_edge(cmake4));
+        assert!(!is_build_ninja_edge("build all: phony build.ninja"));
+        assert!(!is_build_ninja_edge("build CMakeFiles/x.o: CC build.ninja"));
+        assert!(!is_build_ninja_edge("rule RERUN_CMAKE"));
+    }
+
+    /// Issue 2707 -- `ninja_configure_deps` reads the inputs off a CMake 4.x
+    /// edge: the shape whose miss left every Zephyr image's configure inputs
+    /// unwatched.
+    #[test]
+    fn configure_deps_are_read_off_a_cmake_4_edge() {
+        let build = crate::project_root()
+            .join("tmp")
+            .join(format!("rerun-cmake-edge-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&build);
+        fs::create_dir_all(&build).unwrap();
+        let input = crate::project_root().join("cmake/NanoRosCodegenCore.cmake");
+        assert!(input.is_file(), "{} vanished", input.display());
+        fs::write(
+            build.join("build.ninja"),
+            format!(
+                "rule RERUN_CMAKE\n  command = cmake\n\
+                 build build.ninja {b}/cmake_install.cmake: RERUN_CMAKE | $\n    {i}\n",
+                b = build.display(),
+                i = input.display()
+            ),
+        )
+        .unwrap();
+        let deps = ninja_configure_deps(&build);
+        let _ = fs::remove_dir_all(&build);
+        assert_eq!(deps, vec![input]);
+    }
 
     /// Issue 1684 — the shared-group lane check, both arms, with synthetic
     /// coordinates (no env, no `OnceLock`). A lane with no coordinate on the
