@@ -1415,12 +1415,15 @@ int8_t nros_platform_wake_signal(void* w) {
     return 0;
 }
 
+/* Issue 2696 — REFUSED until a test reaches it. `k_sem_give` is documented
+ * ISR-safe on Zephyr, and so is a write to a non-blocking eventfd, so the body
+ * is likely `nros_zephyr_wake_give`; but a port claims an interrupt-safe wake
+ * only where a test takes the interrupt (issue 2706). Until
+ * then an interrupt's trigger sets the flag and the waiter sees it at its own
+ * deadline, and `trigger_from_isr` says so by returning false. */
 int8_t nros_platform_wake_signal_from_isr(void* w) {
-    if (w == NULL) return -1;
-    /* k_sem_give is documented ISR-safe on Zephyr, and so is a write to a
-     * non-blocking eventfd (see `nros_zephyr_wake_t`). */
-    nros_zephyr_wake_give((nros_zephyr_wake_t*)w);
-    return 0;
+    (void)w;
+    return -1;
 }
 
 size_t nros_platform_wake_storage_size(void) {

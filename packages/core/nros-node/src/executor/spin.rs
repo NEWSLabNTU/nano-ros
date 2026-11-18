@@ -1334,6 +1334,28 @@ impl WakeCtx {
         }
     }
 
+    /// Issue 2696 -- [`signal`](Self::signal) from an interrupt handler: the
+    /// flag, the executor's own wake object, and every band worker, each
+    /// through its interrupt-safe signal. `true` when the executor's own wake
+    /// object took the signal; `false` when there is none or its port refuses
+    /// (the flag is still set, and seen at the next deadline). A band
+    /// worker's `wake_from_isr` reports nothing back.
+    pub(crate) fn signal_from_isr(&self) -> bool {
+        self.flag.store(true, core::sync::atomic::Ordering::SeqCst);
+        let woke = self
+            .node_wake
+            .as_ref()
+            .is_some_and(|nw| nw.signal_from_isr());
+        let mut w = self.band_waiters.load(portable_atomic::Ordering::Acquire);
+        while !w.is_null() {
+            // SAFETY: only `'static` waiters are linked, never unlinked.
+            let waiter = unsafe { &*w };
+            waiter.signal_from_isr();
+            w = waiter.next.load(portable_atomic::Ordering::Acquire);
+        }
+        woke
+    }
+
     /// phase-397 W2 — an attributed arrival on entry `slot`: its bit, then the
     /// wake. The bit is set FIRST, so a waiter that sees the flag sees the bit.
     pub(crate) fn mark_ready(&self, slot: usize) {
@@ -1371,11 +1393,11 @@ impl WakeCtx {
 ///   thread that owns the wake duty — that pattern is Linux-only
 ///   (`signalfd`/`eventfd` are Linux syscalls, not POSIX), which is
 ///   why the `WakeSignalFd` worker is gated `target_os = "linux"`.
-/// * **RTOS ISR**: per-RTOS platform layer wraps the cv with an
-///   ISR-safe primitive (`xSemaphoreGiveFromISR`,
-///   `tx_event_flags_set` from ISR, `k_sem_give` from ISR on
-///   Zephyr). Backend's ISR caller routes through the platform's
-///   `signal_from_isr` API instead of this cb directly.
+/// * **NOT for an interrupt handler.** It reaches the port's thread signal
+///   (`xSemaphoreGive` on FreeRTOS, which must not run in an ISR). An
+///   interrupt calls [`nros_rmw_runtime_wake_cb_from_isr`] instead, which
+///   [`GuardCondition::trigger_from_isr`](super::GuardCondition::trigger_from_isr)
+///   reaches (issue 2696).
 /// * **Bounded execution time**: O(1) — atomic store + cv notify.
 ///   No allocation, no contended lock.
 ///
@@ -1600,38 +1622,25 @@ impl Drop for WakeSignalFd {
     }
 }
 
-/// Phase 124.B.7.b — ISR / interrupt-context wake callback.
-///
-/// Same semantics as [`nros_rmw_runtime_wake_cb`] but constrained to
-/// async-signal-safe / ISR-safe primitives.
-///
-/// Per-platform routing:
-///
-/// * **POSIX (std)**: `pthread_cond_signal` is NOT on the POSIX
-///   async-signal-safe function list. Calling from a SIGUSR1
-///   handler is technically UB. Real fix (Phase 124.B.7.c) routes
-///   via `signalfd`/`eventfd` + a runtime worker thread — Linux
-///   only, since neither syscall is POSIX; until that lands,
-///   signal-handler callers MUST use
-///   `rclc_guard_condition_trigger` from a **separate thread** (not
-///   from the handler itself), OR set the wake_flag and rely on
-///   the next poll deadline. This cb currently aliases the regular
-///   `wake_cb` and is safe only from non-signal-handler ISR-like
-///   contexts (e.g. timer thread, kernel callback).
-///
-/// * **RTOS no_std (Zephyr/FreeRTOS/ThreadX)**: routes through the
-///   platform-cffi `condvar_signal_from_isr` slot. Each backend
-///   uses its ISR-safe variant — `xSemaphoreGiveFromISR`,
-///   `tx_semaphore_put`, `k_condvar_signal`.
+/// Issue 2696 -- [`nros_rmw_runtime_wake_cb`] from an interrupt handler, or
+/// on POSIX from a signal handler: what
+/// [`GuardCondition::trigger_from_isr`](super::GuardCondition::trigger_from_isr)
+/// calls. It sets the flag and signals through each port's
+/// `nros_platform_wake_signal_from_isr` and each band worker's
+/// `wake_from_isr`, never the thread signal (`xSemaphoreGive` on FreeRTOS
+/// corrupts the scheduler from an interrupt). No allocation, no lock.
 ///
 /// `ctx` semantics identical to [`nros_rmw_runtime_wake_cb`].
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-#[allow(dead_code)] // Public exposure pending B.7.c signalfd worker.
-pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb_from_isr(ctx: *mut core::ffi::c_void) {
-    // Today: alias regular wake_cb. POSIX signal-handler safety
-    // pending B.7.c (signalfd worker-thread forward). Documented in
-    // the contract above so callers know the boundary.
-    unsafe { nros_rmw_runtime_wake_cb(ctx) };
+pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb_from_isr(
+    ctx: *mut core::ffi::c_void,
+) -> bool {
+    if ctx.is_null() {
+        return false;
+    }
+    // SAFETY: as `nros_rmw_runtime_wake_cb`.
+    let wake = unsafe { &*(ctx as *const WakeCtx) };
+    wake.signal_from_isr()
 }
 
 /// Executor-owned component tick slot.
@@ -11711,7 +11720,11 @@ impl<'s> Executor<'s> {
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             {
                 let ctx = self.wake_ctx_ptr();
-                guard_handle.set_wake_cb(nros_rmw_runtime_wake_cb, ctx);
+                guard_handle.set_wake_cb(
+                    nros_rmw_runtime_wake_cb,
+                    nros_rmw_runtime_wake_cb_from_isr,
+                    ctx,
+                );
             }
 
             let meta = CallbackMeta {
@@ -18845,12 +18858,64 @@ mod band_wake_routing_tests {
         0
     }
 
+    static THREAD_WAKES: AtomicUsize = AtomicUsize::new(0);
+    static ISR_WAKES: AtomicUsize = AtomicUsize::new(0);
+
+    unsafe extern "C" fn thread_wake(_ctx: *mut c_void) {
+        THREAD_WAKES.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn isr_wake(_ctx: *mut c_void) {
+        ISR_WAKES.fetch_add(1, Ordering::SeqCst);
+    }
+
+    // Issue 2696.
+    /// An interrupt-path wake reaches every band worker through its
+    /// `wake_from_isr` and never through its thread `wake`, which on
+    /// FreeRTOS is `xSemaphoreGive` and must not run in an interrupt
+    /// handler. The thread path is the negative control: it uses `wake`.
+    #[test]
+    fn an_isr_wake_uses_only_the_waiters_interrupt_safe_signal() {
+        // SAFETY: the functions ignore the context.
+        static W: BandWaiter =
+            unsafe { BandWaiter::new(thread_wake, isr_wake, wait, core::ptr::null_mut()) };
+        let flag = portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false));
+        let ctx = WakeCtx::new(flag.clone(), None);
+        ctx.band_waiters
+            .store(&W as *const _ as *mut _, Ordering::SeqCst);
+
+        // SAFETY: `ctx` is a live `WakeCtx`, as the executor installs it.
+        let woke = unsafe {
+            super::nros_rmw_runtime_wake_cb_from_isr(&ctx as *const WakeCtx as *mut c_void)
+        };
+        assert!(flag.load(Ordering::SeqCst), "the executor's flag is set");
+        assert!(
+            !woke,
+            "no wake object here, so the ISR wake reports it reached none"
+        );
+        assert_eq!(ISR_WAKES.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            THREAD_WAKES.load(Ordering::SeqCst),
+            0,
+            "no thread signal from an ISR"
+        );
+
+        // SAFETY: as above.
+        unsafe { super::nros_rmw_runtime_wake_cb(&ctx as *const WakeCtx as *mut c_void) };
+        assert_eq!(
+            THREAD_WAKES.load(Ordering::SeqCst),
+            1,
+            "the thread path uses `wake`"
+        );
+        assert_eq!(ISR_WAKES.load(Ordering::SeqCst), 1);
+    }
+
     #[test]
     fn an_attributed_arrival_wakes_its_band_and_an_unattributed_one_wakes_all() {
         // SAFETY: the contexts are plain indices `wake` decodes.
-        static A: BandWaiter = unsafe { BandWaiter::new(wake, wait, core::ptr::null_mut()) };
+        static A: BandWaiter = unsafe { BandWaiter::new(wake, wake, wait, core::ptr::null_mut()) };
         static B: BandWaiter =
-            unsafe { BandWaiter::new(wake, wait, core::ptr::without_provenance_mut(1)) };
+            unsafe { BandWaiter::new(wake, wake, wait, core::ptr::without_provenance_mut(1)) };
         A.slots.store(0b0011, Ordering::SeqCst);
         B.slots.store(0b0100, Ordering::SeqCst);
         let flag = portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false));

@@ -2278,3 +2278,11 @@ mod guest_failure_tests {
         );
     }
 }
+
+/// Issue 2696 -- what `isr-wake-freertos-mps2` prints: one
+/// `ISR_WAKE <latency_us>` per guard callback the timer interrupt woke, and
+/// `ISR_WAKE_DONE <interrupts> <callbacks> <refused>` when it has enough. The image's
+/// `main.rs` prints these exact words.
+pub const ISR_WAKE_SAMPLE: &str = "ISR_WAKE ";
+/// See [`ISR_WAKE_SAMPLE`].
+pub const ISR_WAKE_DONE: &str = "ISR_WAKE_DONE ";

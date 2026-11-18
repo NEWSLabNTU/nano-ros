@@ -717,8 +717,13 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime);
  *  * bare:     atomic flag + busy-spin against the platform clock.
  *
  * `wait_ms` returns 0 on signal, 1 on timeout, -1 on error.
- * `signal_from_isr` returns -1 if the backend has no ISR-safe path;
- * callers may fall back to `signal()` accepting the latency cost.
+ * `signal_from_isr` is what an interrupt handler (on POSIX, a signal
+ * handler) may call: interrupt-safe, bounded, non-blocking. It returns -1 if
+ * the backend has no such path, and the caller must NOT then call `signal()`
+ * from the interrupt (FreeRTOS's `xSemaphoreGive` corrupts the scheduler
+ * there); the waiter sees the wake at its own deadline.
+ * POSIX's is async-signal-safe: `sem_post` and a pipe `write`, with no
+ * `sem_getvalue`.
  * Storage is opaque to the caller; size/alignment via the probe
  * helpers below. */
 int8_t  nros_platform_wake_init(void *w);

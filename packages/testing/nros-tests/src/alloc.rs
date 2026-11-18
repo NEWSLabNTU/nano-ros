@@ -213,6 +213,12 @@ pub const BAREMETAL_RTIC_RUN_PLAN_PORT: u16 = aux_port(PlatformId::QemuBaremetal
 /// own.
 pub const BAREMETAL_RTIC_PUBSUB_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 4);
 
+/// FreeRTOS + MPS2-AN385 interrupt-wake image
+/// (`packages/testing/nros-tests/bins/isr-wake-freertos-mps2`, issue 2696): a
+/// timer interrupt triggers a guard condition while the executor parks. Its
+/// `config.toml` states this port as its locator.
+pub const FREERTOS_ISR_WAKE_PORT: u16 = aux_port(PlatformId::FreertosMps2, 0);
+
 /// Does this cell's image BAKE its isolation values at build time?
 ///
 /// Native cells are ephemeral (runtime ports, `unique_ros_domain_id`); every
@@ -359,6 +365,7 @@ mod tests {
             BAREMETAL_LARGE_MSG_PORT,
             BAREMETAL_RTIC_RUN_PLAN_PORT,
             BAREMETAL_RTIC_PUBSUB_PORT,
+            FREERTOS_ISR_WAKE_PORT,
         ] {
             assert!(
                 !ports.contains_key(&aux),

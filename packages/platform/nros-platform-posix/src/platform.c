@@ -707,9 +707,9 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 /* ============================================================
  *   Wake primitive (Phase 130)
  *
- *   Binary semaphore backed by `sem_t`. ISR-safety is not
- *   meaningful on a hosted POSIX target — `signal_from_isr`
- *   aliases to `signal`. (phase-500 W1 deleted a darwin
+ *   Binary semaphore backed by `sem_t`. `signal_from_isr` is the
+ *   async-signal-safe signal (issue 2696): what a POSIX signal handler, or
+ *   a NuttX interrupt handler, may call. (phase-500 W1 deleted a darwin
  *   `pthread_cond_t` fallback: AGENTS.md bans `__APPLE__`
  *   branches, and macOS cannot build this port anyway — it has
  *   no `timer_create` — nor the Linux-only host board.)
@@ -724,6 +724,18 @@ typedef struct {
     int pipe_r;
     atomic_int pipe_w;
 } nros_wake_t;
+
+/* Write the self-pipe's byte, if a handle park made the pipe. Non-blocking:
+ * a full pipe already holds a wake. `write` is async-signal-safe, as
+ * `sem_post` is. */
+static void nros_posix_wake_pipe_byte(nros_wake_t *wp) {
+    int pw = atomic_load(&wp->pipe_w);
+    if (pw >= 0) {
+        const uint8_t one = 1;
+        ssize_t r = write(pw, &one, 1);
+        (void) r;
+    }
+}
 
 /* phase-436 C2 — which clock a wake wait measures its deadline on.
  *
@@ -773,7 +785,15 @@ static int8_t nros_posix_wake_wait_rel_ns(nros_wake_t *wp, uint64_t rel_ns) {
 #else
         int r = sem_timedwait(&wp->sem, &ts);
 #endif
-        if (r == 0) return 0;
+        if (r == 0) {
+            /* Issue 2696 — `signal_from_isr` posts without the coalescing
+             * `sem_getvalue` guard (that call is not async-signal-safe), so
+             * the count may be above one: drain it, so the next wait parks
+             * instead of returning at once for a wake already served. */
+            while (sem_trywait(&wp->sem) == 0) {
+            }
+            return 0;
+        }
         if (errno == ETIMEDOUT) return 1;
         if (errno == EINTR)     continue;
         return -1;
@@ -794,8 +814,10 @@ int8_t nros_platform_wake_init(void *w) {
 #ifndef __NuttX__
     /* phase-521 W6 — a termination signal posts this object, so a parked
      * executor sees the guard's flag at once (termination.c). NuttX compiles
-     * this file without termination.c and has no guard. */
-    (void) nros_posix_termination_wake_add(nros_platform_wake_signal, w);
+     * this file without termination.c and has no guard. Issue 2696 — the
+     * post runs in the signal handler, so it is the async-signal-safe one:
+     * the thread signal's `sem_getvalue` is not. */
+    (void) nros_posix_termination_wake_add(nros_platform_wake_signal_from_isr, w);
 #endif
     return 0;
 }
@@ -908,20 +930,31 @@ int8_t nros_platform_wake_signal(void *w) {
     if (sem_getvalue(&wp->sem, &val) != 0) return -1;
     if (val > 0) return 0;
     if (sem_post(&wp->sem) != 0) return -1;
-    int pw = atomic_load(&wp->pipe_w);
-    if (pw >= 0) {
-        /* Non-blocking: a full pipe already holds a wake. `write` is
-         * async-signal-safe, as `sem_post` is. */
-        const uint8_t one = 1;
-        ssize_t r = write(pw, &one, 1);
-        (void) r;
-    }
+    nros_posix_wake_pipe_byte(wp);
     return 0;
 }
 
+/* Issue 2696 — the signal a POSIX signal handler may call. Only
+ * async-signal-safe calls: `sem_post` and a pipe `write`, no `sem_getvalue`
+ * (not on that list), so the count may pass one; the waiter drains it.
+ * `errno` is the interrupted code's, so it is restored.
+ *
+ * NuttX compiles this file and REFUSES: its interrupt handlers may post the
+ * semaphore but not `write`, and no test takes a NuttX interrupt yet
+ * (issue 2706). An interrupt's trigger there sets the flag only. */
 int8_t nros_platform_wake_signal_from_isr(void *w) {
-    /* POSIX hosted: ISR semantics not meaningful. Alias to signal. */
-    return nros_platform_wake_signal(w);
+#if defined(__NuttX__)
+    (void) w;
+    return -1;
+#else
+    if (w == NULL) return -1;
+    nros_wake_t *wp = (nros_wake_t *) w;
+    int saved = errno;
+    int8_t rc = sem_post(&wp->sem) == 0 ? 0 : -1;
+    nros_posix_wake_pipe_byte(wp);
+    errno = saved;
+    return rc;
+#endif
 }
 
 /* phase-521 W3 (RFC-0113 D3) — the park over the wake object AND the RMW

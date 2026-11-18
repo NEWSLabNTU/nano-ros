@@ -1723,6 +1723,11 @@ pub struct GuardCondition {
     /// latency). Bare/no-std builds leave it `None` — the arena
     /// flag is observed on the next spin iteration as before.
     wake_cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+    /// Issue 2696 -- the same wake from an interrupt handler (on POSIX, a
+    /// signal handler): `nros_rmw_runtime_wake_cb_from_isr`, which reaches
+    /// the port's `nros_platform_wake_signal_from_isr`. Installed beside
+    /// `wake_cb`; [`trigger_from_isr`](Self::trigger_from_isr) calls it.
+    wake_cb_from_isr: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> bool>,
     wake_ctx: *mut core::ffi::c_void,
 }
 
@@ -1750,6 +1755,7 @@ impl Clone for GuardCondition {
         Self {
             flag: self.flag,
             wake_cb: self.wake_cb,
+            wake_cb_from_isr: self.wake_cb_from_isr,
             wake_ctx: self.wake_ctx,
         }
     }
@@ -1769,6 +1775,7 @@ impl GuardCondition {
         Self {
             flag: unsafe { &*flag },
             wake_cb: None,
+            wake_cb_from_isr: None,
             wake_ctx: core::ptr::null_mut(),
         }
     }
@@ -1782,9 +1789,11 @@ impl GuardCondition {
     pub(crate) fn set_wake_cb(
         &mut self,
         cb: unsafe extern "C" fn(ctx: *mut core::ffi::c_void),
+        cb_from_isr: unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> bool,
         ctx: *mut core::ffi::c_void,
     ) {
         self.wake_cb = Some(cb);
+        self.wake_cb_from_isr = Some(cb_from_isr);
         self.wake_ctx = ctx;
     }
 
@@ -1793,12 +1802,43 @@ impl GuardCondition {
     /// The executor will invoke the associated callback on the next spin iteration.
     /// On std + rmw-cffi builds, `trigger` also signals the executor's
     /// wake condvar so a blocked `spin_once` resumes immediately.
+    ///
+    /// From THREAD context only. Its wake is the port's thread signal
+    /// (`xSemaphoreGive` on FreeRTOS, which must not run in an interrupt
+    /// handler). From an interrupt handler, or a POSIX signal handler, call
+    /// [`trigger_from_isr`](Self::trigger_from_isr).
     pub fn trigger(&self) {
         self.flag.store(true, portable_atomic::Ordering::Release);
         if let Some(cb) = self.wake_cb {
             // SAFETY: cb + ctx installed by Executor::register_guard_condition;
             // ctx points at WakeCtx valid for Executor's lifetime.
             unsafe { cb(self.wake_ctx) };
+        }
+    }
+
+    // Issue 2696; the refusing ports are issue 2706.
+    /// Trigger the guard condition from an interrupt handler, or on POSIX
+    /// from a signal handler.
+    ///
+    /// The same flag as [`trigger`](Self::trigger), then the interrupt-safe
+    /// wake: the port's `nros_platform_wake_signal_from_isr`
+    /// (`xSemaphoreGiveFromISR` and a yield on FreeRTOS, `k_sem_give` on
+    /// Zephyr, the semaphore put on ThreadX, `sem_post` and a pipe write on
+    /// POSIX), and each band worker's `wake_from_isr`. Bounded and
+    /// non-blocking.
+    ///
+    /// Returns whether the executor's wake object took the signal. `false`
+    /// means the flag is set but nothing was woken: a build with no wake
+    /// callback, or a port with no tested interrupt-safe signal (Zephyr,
+    /// ThreadX, NuttX and mps2 bare metal refuse until a test reaches them,
+    /// see the port's `nros_platform_wake_signal_from_isr`). The executor then
+    /// sees the trigger at its next deadline.
+    pub fn trigger_from_isr(&self) -> bool {
+        self.flag.store(true, portable_atomic::Ordering::Release);
+        match self.wake_cb_from_isr {
+            // SAFETY: as `trigger`; the callback is the interrupt-safe one.
+            Some(cb) => unsafe { cb(self.wake_ctx) },
+            None => false,
         }
     }
 

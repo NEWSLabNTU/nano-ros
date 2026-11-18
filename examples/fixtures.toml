@@ -3701,6 +3701,20 @@ image = "mps2-an385-freertos"
 target_dir = "target"
 target = "thumbv7m-none-eabi"
 
+# issue 2696 — a hardware interrupt wakes a parked FreeRTOS executor through
+# `GuardCondition::trigger_from_isr` (CMSDK TIMER1, every 20 ms). Opens a
+# session to a router on `alloc::FREERTOS_ISR_WAKE_PORT`.
+[[workspace_fixture]]
+id = "freertos-isr-wake-mps2"
+platform = "freertos"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/isr-wake-freertos-mps2"
+rmw = "zenoh"
+bringup = "src/isr_wake_freertos_mps2_bringup"
+image = "mps2-an385-freertos"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
+
 # issue 2507 — a task stack overflow on FreeRTOS + MPS2-AN385 hits the board's
 # MPU stack guard and names the task (not `*** MALLOC FAILED ***`); a sized
 # task's high-water read still works under the guard. Opens no session.
