@@ -724,6 +724,17 @@ sets the same symbols (naming both sources). RFC-0103 D10d's locator refusal
 now applies only to an RMW whose descriptor states a host peer, so a Cyclone
 DDS image is not refused.
 
+### I32 -- variants of one host may share a static address
+
+**Status: DESIGN (2026-11-18).** [Issue 2690](../issues/2690-image-alternatives.md),
+[RFC-0136](../design/0136-image-alternatives.md). The island builds its TAP
+image four ways (`fvp-tap`, `-stats`, `-trace`, `-trace-ring`), all at
+`192.168.10.2`, and boots one. `check_collisions` refuses the shared address,
+so the images cannot state it in a board network file (I31). A top-level
+`[image_alternatives] <group> = [ids]` declares the images mutually exclusive;
+the check lets one group share an address and MAC and still refuses any two
+images that can run together. Never inferred from names.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -861,6 +872,8 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       refused; a Cyclone DDS image off `qemu` with no locator is accepted and
       a zenoh one refused, read from the descriptor (issue 2679;
       `nros-cli-core` `image_net` and `builder::zephyr` tests).
+- [ ] I32: RFC-0136 built: `[image_alternatives]` validated, `check_collisions`
+      lets one group share an address and MAC, the D5 tests and D6 docs (issue 2690).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -888,6 +901,7 @@ this phase will fix it.
 
 ## Issues homed here (2026-11-18)
 
+- [issue 2690](../issues/2690-image-alternatives.md): images of one host that never run together are refused for sharing a static address; RFC-0136 lets an `[image_alternatives]` group share it (I32).
 - [issue 2686](../issues/2686-constraints-truncation-names-description-knob.md): a truncated `additional_constraints` text is logged as a description that did not fit, telling the user to raise `NROS_MAX_PARAM_DESCRIPTION_LEN` when `NROS_MAX_PARAM_CONSTRAINTS_LEN` sizes it.
 
 ## Issues homed here (2026-11-17)
