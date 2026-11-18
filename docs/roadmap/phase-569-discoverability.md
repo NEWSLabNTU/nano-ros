@@ -65,7 +65,7 @@ by the descriptor's own platform list, not by a list in `new.rs`.
 
 ### W2 — the knob catalog
 
-- **Status:** IN PROGRESS (W2a and W2b on one branch; W2c open)
+- **Status:** OPEN (W2a and W2b on one branch; W2c open)
 - **W2a, the catalog fields:** done. Each row authors `scope` and `class`
   (public, carrier, internal, retired; a carrier names what it `carries`).
   The generator derives `default` (the Kconfig `default` lines with their
