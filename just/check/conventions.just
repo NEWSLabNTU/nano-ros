@@ -185,6 +185,15 @@ git-grep-status:
 c-api-nros-names:
     @python3 scripts/check-c-api-nros-names.py
 
+# The rename map's GENERATOR side (issue 2713): every `nros_`/`NROS_` name the
+# nros-c headers AND the port seam headers declare is classified in the map.
+# `c-api-nros-names` covers the nros-c include tree; this also reaches the seam
+# headers the generator reads. The generator keeps every reviewed row, so a
+# reviewer's class and the rename history never read as stale. ~0.2 s.
+[private]
+c-rename-map:
+    @python3 scripts/gen-c-rename-map.py --check
+
 # phase-492 W1.b — a C name upstream also has takes upstream's CONTRACT, or a
 # distinct `rclc_` name (RFC-0089 rule 2). Parity compares names only, so W1
 # adopted sixteen spelling matches with a different arity or callback; this
