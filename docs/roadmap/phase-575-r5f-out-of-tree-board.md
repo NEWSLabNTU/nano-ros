@@ -117,8 +117,9 @@ TI's documentation). TI's AM64x MCU+ SDK offers GCC for R5, but no J784S4
 MCU+ SDK was found.
 
 Acceptance (scope settled 2026-11-18, nros 241 manager, on nros 118's
-measurements below): a minimal FreeRTOS image linked by a non-GCC toolchain
-in CI. nano-ros's C (zenoh-pico, lwIP, the platform and board glue) is built
+measurements below): a minimal FreeRTOS image linked by a non-GCC toolchain,
+checked by a local opt-in check (`just check tiarmclang-image`), and in CI
+only if a TI board joins nano-ros's tests (see Provisioning). nano-ros's C (zenoh-pico, lwIP, the platform and board glue) is built
 by the IMAGE's C compiler, and only the Rust staticlib by nano-ros's own
 toolchain (rustc). In that image a board's strong definition of a weak board
 hook overrides the weak default nano-ros's objects carry, and with no strong
@@ -160,8 +161,15 @@ the arch profile) and issue 2693 (the stack-floor check is off on this road).
 Provisioning (settled 2026-11-18): TI Arm Clang is a `[gated.ti-arm-clang]`
 row, never fetched by `nros setup`, because its licence (TI's "TI Text File"
 terms, plus a click-through in the installer) limits use to TI devices and is
-the user's to accept. The user accepted it for nano-ros's private self-hosted
-runner image only; no public image or mirror may carry it.
+the user's to accept. No public image or mirror may carry it.
+
+CI scope (user ruling, 2026-11-18): the CI runners install TI Arm Clang only
+when a TI board is included in nano-ros and is part of its tests. A TI board
+kept on the user side is the user's responsibility. The one TI board in-tree
+today is `fixture-r5f-tiarmclang`, a fixture standing in for a user's
+out-of-tree board, so no runner carries the toolchain: the runner tooling
+(PR #4202) was closed, and `just check tiarmclang-image` runs where a
+developer has installed TI Arm Clang (`TI_ARM_CLANG_ROOT`).
 
 ### W4 — `zpico-link-rpmsg`, zenoh-pico over RPMsg
 
