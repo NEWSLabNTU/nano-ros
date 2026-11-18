@@ -1,7 +1,7 @@
 # Phase 551 — The starter image
 
-**Status (2026-11-15). IN PROGRESS: W0–W7 are done; W8 is open, waiting on
-the arm64 runner.** The first release to publish the image is `0.6.0-nros9`
+**Status (2026-11-18). IN PROGRESS: W0–W7 are done; W8 is BLOCKED on the
+user's choice of an arm64 runner and on a release to publish it (see W8).** The first release to publish the image is `0.6.0-nros9`
 (W4); `0.6.0-nros10` published `starter` and, on dispatch, `starter-zephyr`
 (W3), and a second publish of `0.6.0-nros10` was refused (W4). Work for
 [RFC-0127](../design/0127-starter-image.md): option B (D1's structure, D4,
@@ -252,6 +252,26 @@ guarantee 3 holds; `nav_msgs` installs and the first project builds offline
 on top of it.
 
 ### W8 — arm64
+
+- **Status:** BLOCKED (2026-11-18) on two decisions, both the user's, and on
+  nothing in the tree. Read off the tree that day:
+  1. **Which arm64 runner.** No arm64 runner exists. The repository has only
+     two self-hosted runners, both `X64` (118 and 241), and no workflow
+     names an arm runner. `release-nros.yml`'s header says "linux-arm64 waits
+     on a runner decision". The candidates:
+     - GitHub's hosted `ubuntu-24.04-arm`, which costs nothing because the
+       repository is PUBLIC. The SDK's arm64 dists already use it (phase-187).
+     - A self-hosted arm64 runner, built from the same generated image as
+       the X64 ones (issue 1457).
+     Q6 ruled the ORDER (amd64 first, arm64 next), not the runner.
+  2. **A release that publishes it.** Acceptance is `starter` published for
+     `linux/arm64`, and a publish goes only through `release-nros.yml` (W4),
+     which is the user's call.
+  Once the runner is chosen, the code is one matrix row for the asset
+  (`build-release-asset.sh` on the arm runner), plus `linux/arm64` in the
+  starter image's platforms, plus W5's probe on that runner. A
+  `rehearse=true` dry run then proves it before any publish. The index
+  already has the `linux-arm64` host key.
 
 Gate: Q6, ruled 2026-11-12 (amd64 first, arm64 next), and the runner decision `release-nros.yml` already waits on. One
 matrix row for the asset and one platform for the image.
