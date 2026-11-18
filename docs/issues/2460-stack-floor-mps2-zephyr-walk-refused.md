@@ -42,3 +42,48 @@ they were read off the nucleo-f767zi (Cortex-M7) prologues. mps2-an385 is
 
 Acceptance: `just check template-copy-out` on the four leaves prints an UNMEASURED floor
 (walk + margin) instead of a refusal.
+
+## Measured 2026-11-18: the refusal is wider than three functions, and hand rows would be wrong
+
+Re-built `cpp-port-minimal-publisher/zephyr` (mps2-an385, thumbv7m) from main at
+5370be0bb9, copied out of the tree. The walk is still refused for root `main`, and
+the list of functions with no frame is longer than the one above:
+
+```
+functions reached with no frame in any input (a missing frame would count as 0):
+  __aeabi_memclr, __aeabi_memclr4, __aeabi_memclr8, __aeabi_memcpy, __aeabi_memcpy4,
+  __aeabi_memcpy8, __aeabi_memmove, __aeabi_memmove4, __aeabi_memmove8, memcmp, memcpy,
+  memmove, memset, nros_cpp_publish_std_msgs_msg_string, rclc_log_emit_fmt_at, strlen,
+  z_free, z_malloc, z_random_fill, z_sleep_ms ...
+```
+
+The walk also notes that the link used a `compiler_builtins` that no installed
+`thumbv7m-none-eabi` toolchain holds, which is where the `__aeabi_*` and `mem*`
+symbols come from.
+
+So adding rows for the five `platform_aliases.c` functions would not clear the
+refusal. The acceptance above needs the builtins and the two C/C++ functions as well.
+
+The five prologues on thumbv7m, read with the pinned `arm-none-eabi-objdump` from
+`zpico-sys`'s `platform_aliases.o` in that build:
+
+| function | prologue | frame |
+| --- | --- | --- |
+| `z_malloc` | `push {r7}` ... `pop {r7}`; `b.w nros_platform_alloc` | 4 |
+| `z_free` | `push {r7}` ... `pop {r7}`, tail call | 4 |
+| `z_random_fill` | `push {r7}` ... `pop {r7}`, tail call | 4 |
+| `z_sleep_us` | `push {r7, lr}`; `bl nros_platform_sleep_us` | 8 |
+| `z_sleep_ms` | `push {r7, lr}`; `bl nros_platform_sleep_ms` | 8 |
+
+These DIFFER from the thumbv7em rows in `config/stack-floors.toml`: there, `z_malloc`,
+`z_free` and `z_random_fill` are 0 (a bare `b.w`). Here this build keeps the frame
+pointer (`r7`), so the same source costs 4 bytes. A hand-read frame is a fact about
+one set of compile flags, not about a target. A `target =` row would be right for
+one build and silently low for another, which is the failure the walk exists to
+prevent.
+
+This makes the first fix direction the only sound one: give the `zpico-sys` cc build
+`-fstack-usage` (and `-fcallgraph-info=su`) whenever the stack floor is on, and
+retire the five hand rows. The builtins need their own answer: either frames from
+the linked image's `.debug_frame`, as the walk already does for 178 functions, or a
+`compiler_builtins` from the provisioned toolchain.
