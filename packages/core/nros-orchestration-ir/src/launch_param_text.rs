@@ -28,7 +28,36 @@
 //! text in `Str` (`rate: "50"` is the integer 50 there), so quoting it would
 //! turn such a model's integers into strings.
 
-use ros_launch_manifest_model::ParamValue;
+use ros_launch_manifest_model::{NodeInstance, ParamValue};
+
+/// Every launch parameter of the node `fqn` names, as the text an image bakes:
+/// `params_files` projected under the inline `<param>` values
+/// (`NodeInstance::resolved_params`), each value through [`launch_param_text`].
+/// Sorted by name.
+///
+/// The ONE projection from a model's node to its launch values. A firmware
+/// entry (`codegen entry`, `nros::main!`), the planner's record and the
+/// metadata probe's seeds all read it, so a value the probe constructs a node
+/// with is the value the image is baked with. `qos_overrides.*` keys are
+/// included; each consumer splits them off (`qos_override::is_qos_override`).
+pub fn baked_params(inst: &NodeInstance, fqn: &str) -> Vec<(String, String)> {
+    // Issue 2640 -- was spelled three times (entry, macro, plan record).
+    inst.resolved_params(fqn)
+        .iter()
+        .map(|(k, v)| (k.clone(), launch_param_text(v)))
+        .collect()
+}
+
+/// The executable a model's node instance names: its `exec`, else the last
+/// segment of its composable `plugin` (`pkg::Class` -> `Class`). With the
+/// node's `pkg`, the key a component's source metadata is matched on.
+pub fn instance_executable(inst: &NodeInstance) -> Option<String> {
+    inst.exec.clone().or_else(|| {
+        inst.plugin
+            .as_deref()
+            .map(|p| p.rsplit("::").next().unwrap_or(p).to_string())
+    })
+}
 
 /// The baked text for `value`. See the module docs.
 pub fn launch_param_text(value: &ParamValue) -> String {

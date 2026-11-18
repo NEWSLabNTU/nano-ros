@@ -536,33 +536,19 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             None => (None, None, None),
         });
         let (namespace, bare) = nros_orchestration_ir::overlay::split_fqn(fqn);
-        let exec = inst
-            .exec
-            .clone()
-            .or_else(|| {
-                // Library-component node: the plugin (class) names it; the
-                // typed emitters resolve the real class/header from cmake
-                // metadata by (pkg, exec/name) as usual.
-                inst.plugin
-                    .as_deref()
-                    .map(|p| p.rsplit("::").next().unwrap_or(p).to_string())
-            })
+        // Library-component node: the plugin (class) names it; the typed
+        // emitters resolve the real class/header from cmake metadata by
+        // (pkg, exec/name) as usual. Issue 2640 -- one rule, shared with the
+        // metadata probe's instance lookup.
+        let exec = nros_orchestration_ir::launch_param_text::instance_executable(inst)
             .ok_or_else(|| eyre::eyre!("model node '{fqn}' has neither exec nor plugin"))?;
         // #276 (model path) — project `params_files` YAML under the inline
         // `<param>` values. The retired launch path had its own projection
         // (~~`resolve_node_params`~~); every live bake goes through the MODEL,
         // so the projection lives here.
-        let resolved: Vec<(String, String)> = inst
-            .resolved_params(fqn)
-            .iter()
-            // Issue 2638 -- the device reader's convention: a list as `[a, b]`.
-            .map(|(k, v)| {
-                (
-                    k.clone(),
-                    nros_orchestration_ir::launch_param_text::launch_param_text(v),
-                )
-            })
-            .collect();
+        // Issue 2638 -- the device reader's convention: a list as `[a, b]`.
+        // Issue 2640 -- one projection, shared with the metadata probe's seeds.
+        let resolved = nros_orchestration_ir::launch_param_text::baked_params(inst, fqn);
         let qos_overrides =
             qos_overrides_from_params(&resolved).wrap_err_with(|| format!("node `{fqn}`"))?;
         let params = non_qos_params(&resolved);

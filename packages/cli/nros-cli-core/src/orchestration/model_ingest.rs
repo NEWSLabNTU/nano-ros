@@ -1825,17 +1825,13 @@ pub fn plan_record_from_model(model: &SystemModel) -> serde_json::Value {
             }
         };
         // #276 — projected params (files under inline).
-        let params: Vec<serde_json::Value> = inst
-            .resolved_params(fqn)
-            .iter()
-            // Issue 2638 -- the device reader's convention: a list as `[a, b]`.
-            .map(|(k, v)| {
-                serde_json::json!([
-                    k,
-                    nros_orchestration_ir::launch_param_text::launch_param_text(v)
-                ])
-            })
-            .collect();
+        // Issue 2638 -- the device reader's convention: a list as `[a, b]`.
+        // Issue 2640 -- through the projection the bakes and the probe share.
+        let params: Vec<serde_json::Value> =
+            nros_orchestration_ir::launch_param_text::baked_params(inst, fqn)
+                .into_iter()
+                .map(|(k, v)| serde_json::json!([k, v]))
+                .collect();
         let remaps: Vec<serde_json::Value> = inst
             .remaps
             .iter()
