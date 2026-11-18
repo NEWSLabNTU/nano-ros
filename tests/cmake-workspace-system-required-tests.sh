@@ -254,8 +254,10 @@ for _b in extra_bringup lean_bringup; do
 done
 printf '%s\n' '[system]' 'name = "extra"' 'rmw = "zenoh"' 'domain_id = 0' \
     'features = ["param_services", "lifecycle"]' > "$M/src/extra_bringup/system.toml"
+# `lean` turns the stock node interfaces off: with them on (the default) it
+# would need `rosout`, which this configure lacks, and K is about covered axes.
 printf '%s\n' '[system]' 'name = "lean"' 'rmw = "zenoh"' 'domain_id = 0' \
-    'features = []' > "$M/src/lean_bringup/system.toml"
+    'node_interfaces = "none"' 'features = []' > "$M/src/lean_bringup/system.toml"
 printf '%s\n' \
     'cmake_minimum_required(VERSION 3.22)' \
     'include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")' \
