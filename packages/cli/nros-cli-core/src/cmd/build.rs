@@ -2274,6 +2274,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                             deploy: Some(if b.is_empty() { platform.clone() } else { b }),
                             locator: net.as_ref().and_then(|n| n.locator.clone()),
                             domain_id: net.as_ref().and_then(|n| n.domain_id),
+                            image: None,
                         },
                     ));
                 }
