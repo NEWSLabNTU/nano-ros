@@ -24,9 +24,10 @@
  *     created and was not asked to destroy. It must return to its baseline
  *     after every remove: that is the action leaving the graph.
  *
- * And a negative control, in the same binary: the PRE-1609 teardown (`fini`
- * alone) on the same loop must exhaust the executor, otherwise the positive
- * loop could pass on an executor that never ran out in the first place.
+ * phase-573 W5b — and `fini` ALONE releases the entry too: the same loop with
+ * no remove must out-run the handle table, every fini returning the action to
+ * the baseline. Before W5b this was the negative control, and it exhausted the
+ * executor at its handle table with every fini'd server still on the graph.
  *
  * Same stub backend and same archive as the other run probes in this lane, so
  * it needs no router, no agent and no network.
@@ -243,45 +244,48 @@ static void client_cycles(struct rclc_support_t* support) {
     rig_close(&rig);
 }
 
-/* ---- 3. negative control: the pre-1609 teardown exhausts ---------------- */
+/* ---- 3. W5b: fini alone releases, for both halves ----------------------- */
 
-static void fini_alone_exhausts(struct rclc_support_t* support) {
+static void fini_alone_releases(struct rclc_support_t* support) {
     rig_t rig;
     rig_open(&rig, support, "fini_alone");
     const int32_t base_live = nros_stub_rmw_live_entities();
-
-    /* Storage outlives every iteration on purpose: the entries a fini-only
-     * teardown leaves behind keep naming it, and this control must not turn
-     * into a use-after-free of its own. */
-    static struct rcl_action_server_t servers[CYCLES];
-    int failed_at = -1;
-    rcl_ret_t failed_with = RCL_RET_OK;
+    int completed = 0;
     for (int i = 0; i < CYCLES; i++) {
-        servers[i] = rcl_action_get_zero_initialized_server();
-        CHECK_RET(rclc_action_server_init_with_callbacks(&servers[i], &rig.node, "fibonacci",
-                                                         &ACTION_TYPE, reject_goal, NULL, NULL,
-                                                         NULL),
-                  RCL_RET_OK, "control: init");
-        rcl_ret_t r = rclc_executor_attach_action_server(&rig.executor, &servers[i]);
-        if (r != RCL_RET_OK) {
-            failed_at = i;
-            failed_with = r;
-            (void)rcl_action_server_fini(&servers[i], &rig.node);
+        struct rcl_action_server_t server = rcl_action_get_zero_initialized_server();
+        struct rcl_action_client_t client = rcl_action_get_zero_initialized_client();
+        CHECK_RET(rclc_action_server_init_with_callbacks(
+                      &server, &rig.node, "fibonacci", &ACTION_TYPE, reject_goal, NULL, NULL, NULL),
+                  RCL_RET_OK, "server init");
+        CHECK_RET(rcl_action_client_init(&client, &rig.node, &ACTION_TYPE, "fibonacci", NULL),
+                  RCL_RET_OK, "client init");
+        rcl_ret_t rs = rclc_executor_attach_action_server(&rig.executor, &server);
+        rcl_ret_t rc = rclc_executor_attach_action_client(&rig.executor, &client);
+        if (rs != RCL_RET_OK || rc != RCL_RET_OK) {
+            fprintf(stderr, "FAIL: fini-alone cycle %d: add returned %d / %d\n", i, (int)rs,
+                    (int)rc);
+            s_failures++;
             break;
         }
-        /* fini WITHOUT remove — the teardown every C image used before 1609. */
-        CHECK_RET(rcl_action_server_fini(&servers[i], &rig.node), RCL_RET_OK, "control: fini");
+        /* fini WITHOUT remove. */
+        CHECK_RET(rcl_action_client_fini(&client, &rig.node), RCL_RET_OK, "client fini");
+        CHECK_RET(rcl_action_server_fini(&server, &rig.node), RCL_RET_OK, "server fini");
+        if (rclc_executor_get_handle_count(&rig.executor) != 0 ||
+            nros_stub_rmw_live_entities() != base_live) {
+            fprintf(stderr,
+                    "FAIL: fini-alone cycle %d: after fini handle_count=%d live=%d (base %d)\n", i,
+                    rclc_executor_get_handle_count(&rig.executor), nros_stub_rmw_live_entities(),
+                    base_live);
+            s_failures++;
+            break;
+        }
+        completed++;
     }
-    CHECK(failed_at >= 0, "an executor that never runs out proves nothing: fini alone must "
-                          "exhaust it, or the positive loop measured nothing");
-    CHECK(failed_at <= MAX_HANDLES, "and it runs out at the handle table");
-    CHECK(nros_stub_rmw_live_entities() - base_live == 5 * failed_at,
-          "every fini'd-but-not-removed server is still on the graph");
-    printf("  control: fini alone failed add #%d with %d; %d entities still live\n", failed_at,
-           (int)failed_with, nros_stub_rmw_live_entities() - base_live);
+    CHECK(completed == CYCLES && CYCLES > MAX_HANDLES,
+          "fini alone out-runs the handle table: every fini released its entry");
+    printf("  fini alone: %d server+client cycles, live entities back to %d\n", completed,
+           base_live);
     rig_close(&rig);
-    CHECK(nros_stub_rmw_live_entities() == base_live,
-          "rclc_executor_fini drops every entry it still held");
 }
 
 int main(void) {
@@ -298,7 +302,7 @@ int main(void) {
 
     server_cycles(&support);
     client_cycles(&support);
-    fini_alone_exhausts(&support);
+    fini_alone_releases(&support);
 
     (void)rclc_support_fini(&support);
 

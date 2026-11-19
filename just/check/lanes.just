@@ -478,8 +478,8 @@ c: c-fmt c-link-smoke
     # defect, and it compiles. 200 add/remove/fini cycles per kind, with the
     # arena's used bytes pinned at the first cycle (reuse, not mere headroom),
     # the backend's live-entity count back to baseline after every remove (the
-    # action left the graph), and a negative control in the same binary: the
-    # pre-1609 teardown (`fini` alone) must exhaust the executor. The stub runs
+    # action left the graph), and (phase-573 W5b) `fini` alone releasing the
+    # entry on the same loop, server and client both. The stub runs
     # in ACCEPT mode here so its creates succeed and are counted.
     # `test -f` first -- a missing TU must not read as a pass (issue 0196).
     test -f packages/api/nros-c/tests/run/action_remove_cycles.c || { \
@@ -540,8 +540,9 @@ c: c-fmt c-link-smoke
     echo "    executor, and a create/remove loop of each runs past the arena twice"
     # The other four kinds, in 1609's shape: arena used pinned at cycle 0 over
     # enough cycles to claim the arena twice, live entities back to baseline,
-    # a second remove NOT_FOUND, a remove on another executor NOT_FOUND, and the
-    # fini-only negative control exhausting at the handle table, per kind.
+    # a second remove NOT_FOUND, a remove on another executor NOT_FOUND, and
+    # (phase-573 W5b) the same loop with fini ALONE releasing every entry, per
+    # kind. That an executor can run out at all is the raw+info control.
     test -f packages/api/nros-c/tests/run/entity_remove_cycles.c || { \
         echo "ERROR: entity_remove_cycles.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }

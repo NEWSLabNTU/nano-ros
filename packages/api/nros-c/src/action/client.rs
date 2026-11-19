@@ -1077,11 +1077,12 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
 
 /// Finalize an action client.
 ///
-/// `fini` does NOT remove the client from an executor; its arena
-/// entry holds this struct as its callback `context`. Call
-/// `rclc_executor_remove_action_client(executor, client)` first, which drops
-/// the entry (the action leaves the graph) and brings the executor's
-/// `handle_count` back down.
+/// A client still added to an executor is removed from it first, as
+/// `rclc_executor_remove_action_client` would: its arena
+/// entry, which holds this struct as its callback `context`, is dropped and
+/// the action leaves the graph. Its executor must still exist; one already
+/// finalised released the entry itself. From a callback its executor is
+/// dispatching it returns `RCLC_RET_REENTRANT` and changes nothing.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_action_client_fini(
     client: *mut rcl_action_client_t,
@@ -1095,13 +1096,20 @@ pub unsafe extern "C" fn rcl_action_client_fini(
     let client = &mut *client;
 
     match client.state {
-        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED => {
-            // L2: client lives in executor arena (if registered) —
-            // reset metadata only. Releasing the entry needs the owning
-            // `rclc_executor_t` (issue 1609): that is
-            // `rclc_executor_remove_action_client`.
-        }
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED => {}
         _ => return RCL_RET_NOT_INIT,
+    }
+
+    // phase-573 W5b — still added to a live executor: leave it here, the
+    // release `rclc_executor_remove_action_client` performs, so nothing dispatches into
+    // this struct after it returns. Refused from a callback, as remove is.
+    if client._internal.arena_entry_index >= 0
+        && let Some(exec) = crate::executor::fini_executor(crate::executor::executor_of_opaque(
+            client._internal.executor_ptr,
+        ))
+        && crate::executor::detach_action_client(exec, client) == crate::error::RCLC_RET_REENTRANT
+    {
+        return crate::error::RCLC_RET_REENTRANT;
     }
 
     client._internal = ActionClientInternal::new();

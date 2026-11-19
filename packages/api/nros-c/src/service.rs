@@ -495,9 +495,10 @@ pub unsafe extern "C" fn rclc_service_init_with_options(
 
 /// Finalize a service server.
 ///
-/// The server is the executor arena's: remove it with
-/// `rclc_executor_remove_service` first if it was added and the executor
-/// keeps running. This resets the description and the handle.
+/// A server still added to an executor is removed from it first, as
+/// `rclc_executor_remove_service` would; its executor must
+/// still exist, and one already finalised released the entry itself. This
+/// resets the description and the handle.
 ///
 /// # Parameters
 /// * `service` - Pointer to an initialized service
@@ -506,6 +507,8 @@ pub unsafe extern "C" fn rclc_service_init_with_options(
 /// * `RCL_RET_OK` on success
 /// * `RCL_RET_INVALID_ARGUMENT` if service is NULL
 /// * `RCL_RET_NOT_INIT` if not initialized
+/// * `RCLC_RET_REENTRANT` if called from a callback its executor is
+///   dispatching (the entry may be the one running); nothing is changed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_service_fini(
     service: *mut rcl_service_t,
@@ -519,6 +522,18 @@ pub unsafe extern "C" fn rcl_service_fini(
     let service = &mut *service;
     if service.state != rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED {
         return RCL_RET_NOT_INIT;
+    }
+
+    // phase-573 W5b — still added to a live executor: leave it here, the
+    // release `rclc_executor_remove_service` performs, so nothing dispatches into
+    // this struct after it returns. Refused from a callback, as remove is.
+    if service._internal.arena_entry_index >= 0
+        && let Some(exec) = crate::executor::fini_executor(
+            service._internal.executor_ptr as *mut crate::executor::rclc_executor_t,
+        )
+        && crate::executor::detach_service(exec, service) == crate::error::RCLC_RET_REENTRANT
+    {
+        return crate::error::RCLC_RET_REENTRANT;
     }
 
     service._internal = ServiceServerInternal::new();
@@ -1499,9 +1514,10 @@ pub unsafe extern "C" fn rclc_client_init_with_options(
 
 /// Finalize a service client.
 ///
-/// The underlying transport handle lives in the executor's
-/// arena and is dropped automatically when the executor is finalised.
-/// This function only resets the C-side metadata + internal blob.
+/// A client still added to an executor is removed from it first, as
+/// `rclc_executor_remove_client` would: its entry is
+/// released, and a reply still in flight is abandoned. Its executor must still
+/// exist; one already finalised released the entry itself.
 ///
 /// # Parameters
 /// * `client` - Pointer to an initialized client
@@ -1510,6 +1526,8 @@ pub unsafe extern "C" fn rclc_client_init_with_options(
 /// * `RCL_RET_OK` on success
 /// * `RCL_RET_INVALID_ARGUMENT` if client is NULL
 /// * `RCL_RET_NOT_INIT` if not initialized
+/// * `RCLC_RET_REENTRANT` if called from a callback its executor is
+///   dispatching (the entry may be the one running); nothing is changed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_client_fini(
     client: *mut rcl_client_t,
@@ -1528,8 +1546,18 @@ pub unsafe extern "C" fn rcl_client_fini(
         return RCL_RET_NOT_INIT;
     }
 
-    // Reset the inline ServiceClientInternal. The RmwServiceClient lives
-    // in the executor's arena and is freed when the executor is destroyed.
+    // phase-573 W5b — still added to a live executor: leave it here, the
+    // release `rclc_executor_remove_client` performs, so nothing dispatches into
+    // this struct after it returns. Refused from a callback, as remove is.
+    if client._internal.arena_entry_index >= 0
+        && let Some(exec) = crate::executor::fini_executor(
+            client._internal.executor_ptr as *mut crate::executor::rclc_executor_t,
+        )
+        && crate::executor::detach_client(exec, client) == crate::error::RCLC_RET_REENTRANT
+    {
+        return crate::error::RCLC_RET_REENTRANT;
+    }
+
     client._internal = ServiceClientInternal::new();
     client.node = crate::node::rclc_node_ref_t::none();
     client.state = rclc_client_state_t::RCLC_CLIENT_STATE_SHUTDOWN;
