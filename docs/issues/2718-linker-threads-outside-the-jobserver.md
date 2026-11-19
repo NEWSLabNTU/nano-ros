@@ -65,3 +65,52 @@ Measure the link wall time at the chosen `<n>` against the default, solo, as
 Across several `NROS_GATE_WAITS=1 just check build` runs on a host whose CPU
 count equals its pool, the above-pool report names no gate. At that point it
 can become a failure rather than a report (issue 2625).
+
+## Deferred (manager ruling, 2026-11-19): the carrier, costed
+
+Not fixed now. On the hosts where today's gate timeouts were measured, the
+load came from other tenants' processes (issue 2683's waits tables), not
+from link threads. Both carriers below cost more than the measured gain. If
+`rust-lld` shows up as a top command in a gate waits table, start here.
+
+What any carrier must do: cap the threads of the host link (`rust-lld`,
+reached through `cc -fuse-ld=lld`) for every cargo root a gate builds. Those
+roots are the root workspace, `packages/cli`, the generated probe and lint
+roots, and the leaves. It must do this without changing a fingerprint
+between a gate build and a developer build of the same tree (issue 0491).
+
+**Option A: `-C link-arg=-Wl,--threads=<n>` in `.cargo/config.toml`.**
+
+- It needs a host-target table: `[target.'cfg(all(target_arch = "x86_64",
+  target_os = "linux"))'] rustflags`. Cargo ignores `[build] rustflags` once
+  a matching `target.*.rustflags` is set, so the table must repeat
+  `-C symbol-mangling-version=v0` from `[build]`. Two lists that must agree
+  need a gate of their own.
+- It applies checkout-wide, not to gates only: the config's walk-up reaches
+  every root under the checkout. Every host artifact rebuilds once, because
+  the rustflags change.
+- It assumes lld. GNU ld (bfd, 2.38 here) has no `--threads` (`ld.bfd --help`
+  lists none). A user who overrides the host linker therefore gets a link
+  error from a flag they never wrote. No config-level condition can ask which
+  linker a build will use.
+
+**Option B: count a link as a job.** A `linker =` wrapper takes one pool
+token for the link's duration (or `n` tokens for `--threads=n`) through the
+jobserver's fifo, then runs the real linker.
+
+- It is fairer: the pool then bounds links like compiles.
+- It needs the same host-target config entry as A (`linker =` instead of
+  `rustflags`), so it is checkout-wide too. A link outside a pool must pass
+  straight through.
+- It is a new program on every host link.
+
+**Rejected: an environment carrier (`RUSTFLAGS`,
+`CARGO_TARGET_<triple>_RUSTFLAGS`).** It reaches the gates only. But it
+REPLACES the config's `rustflags` rather than adding to them, so it drops
+the v0 mangling. Every gate build would then fingerprint differently from a
+developer build of the same tree, splitting the cache between them, which is
+issue 0491's class.
+
+**Measure first, whichever lands:** the solo link wall time of the largest
+gate links (`cli-tests`, `workspace-features`) at `--threads=4` against the
+default, as `cli-tests`' knee was measured.
