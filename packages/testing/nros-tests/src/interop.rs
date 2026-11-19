@@ -601,6 +601,15 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-ros2-cli-parity-qos-rust-zenoh",
        c(Linux, Rust, Zenoh, Qos, Interop, Runtime),
        LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_cli_parity_interop"),
+    // phase-556 W2 — `ros2 param` against the C and C++ parameter examples
+    // (`c-parameters`, `cpp-parameters`), each compared with an rclpy node
+    // declaring what the example holds.
+    ic("native-ros2-cli-parity-params-c-zenoh",
+       c(Linux, C, Zenoh, Params, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_cli_parity_interop"),
+    ic("native-ros2-cli-parity-params-cpp-zenoh",
+       c(Linux, Cpp, Zenoh, Params, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_cli_parity_interop"),
     // tests/c_param_server_interop.rs — phase-491 W6 (RFC-0105 §Interop
     // proof): a C node built only on rclc's parameter-server API, driven by
     // stock `ros2 param` — the callback's veto, the remotely enforced range,
@@ -930,6 +939,20 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-ros2-cli-parity-qos-rust-zenoh"),
     co("ros2_cli_parity_interop", "non_default_qos_of_a_subscription_reads_as_stock_does",
        "native-ros2-cli-parity-qos-rust-zenoh"),
+    // phase-556 W2 — refusals, /parameter_events, load, and the C and C++
+    // parameter examples.
+    co("ros2_cli_parity_interop", "set_of_an_undeclared_name_compared_with_stock",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop", "set_of_the_wrong_type_is_refused_as_stock_does",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop", "parameter_event_for_a_set_reads_as_stock_does",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop", "param_load_answers_as_stock_does",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop", "c_parameters_answer_ros2_param_as_stock_does",
+       "native-ros2-cli-parity-params-c-zenoh"),
+    co("ros2_cli_parity_interop", "cpp_parameters_answer_ros2_param_as_stock_does",
+       "native-ros2-cli-parity-params-cpp-zenoh"),
 
     // ── rosout_interop — issue 1589 gave it two more cells ──────────────
     // One case per language; each resolves its own probe (the Rust cargo

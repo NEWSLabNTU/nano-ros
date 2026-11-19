@@ -41,7 +41,7 @@
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 14 | 12 | 21 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 49 | 42 | 75 % |
 //! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 46 | 9 | 16 % |
-//! | tier 3 | everything | 275 | 56 | 100 % |
+//! | tier 3 | everything | 277 | 56 | 100 % |
 //!
 //! Added 2026-11-12 (phase-535 W8, RFC-0122 D8): the merge lane. It is not
 //! a rung of the ladder below: it is the set a per-merge cadence on the host
@@ -49,6 +49,11 @@
 //! board per shard by the dispatch-only `merge-runtime.yml`. The same day's
 //! ruling set those boards to `daily` (RFC-0122 D9), so the lane is how that
 //! cadence gets re-measured.
+//!
+//! Re-measured 2026-11-19 (phase-556 W2): two `ros2` CLI parity interop cells
+//! joined, the C and C++ parameter examples (Linux, C or C++, zenoh, Params),
+//! each at an existing coordinate. Tier 3 went 275 -> 277 cells over the same
+//! 56 coordinates; no lane's selection moved.
 //!
 //! Re-measured 2026-11-11 (issue 2389): the `ConnectBudget` workload joined
 //! with one Zephyr native_sim Rust zenoh Example cell. A new workload value is
@@ -1408,8 +1413,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 275,
-            "the table's tier-3 cell count (275) is stale; recomputed {total_cells}"
+            total_cells, 277,
+            "the table's tier-3 cell count (277) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,

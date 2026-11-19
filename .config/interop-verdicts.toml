@@ -316,6 +316,24 @@ where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp), phase-556-w1 bran
 evidence = "3 of 3 consecutive runs passed against examples_rclcpp_minimal_action_server"
 
 [[verdict]]
+cell = "native-ros2-cli-parity-params-c-zenoh"
+date = "2026-11-19"
+verdict = "pass"
+tests = ["c_parameters_answer_ros2_param_as_stock_does"]
+run = "just linux test-ros2-cli-parity"
+where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp), p556-followups branch on origin/main"
+evidence = "3 of 3 consecutive runs passed against an rclpy node declaring what the C parameters example holds (fixtures/ros2-param-peer, profile c_parameters): param list, list --param-type, get and describe of all four parameters, an accepted set and its read-back"
+
+[[verdict]]
+cell = "native-ros2-cli-parity-params-cpp-zenoh"
+date = "2026-11-19"
+verdict = "pass"
+tests = ["cpp_parameters_answer_ros2_param_as_stock_does"]
+run = "just linux test-ros2-cli-parity"
+where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp), p556-followups branch on origin/main"
+evidence = "3 of 3 consecutive runs passed against an rclpy node declaring what the C++ parameters example holds (fixtures/ros2-param-peer, profile cpp_parameters): param list, list --param-type, get and describe of all five parameters (one a double array), an accepted set and its read-back"
+
+[[verdict]]
 cell = "native-ros2-cli-parity-params-rust-zenoh"
 date = "2026-11-18"
 verdict = "pass"
