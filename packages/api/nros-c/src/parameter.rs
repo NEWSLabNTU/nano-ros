@@ -303,7 +303,9 @@ mod imp {
             };
         }
         let quota = (*server).max_params;
-        if exec.list_parameters_on(id, "").count() >= quota {
+        // The runtime's seeded `use_sim_time` is not the application's: rclc
+        // never declares it, so it is not charged against `max_params`.
+        if exec.declared_parameter_count_on(id) >= quota {
             // rclc's own answer for a server at its `max_params`, kept; the
             // line is ours (GitHub #4018).
             nros_log::log_error!(

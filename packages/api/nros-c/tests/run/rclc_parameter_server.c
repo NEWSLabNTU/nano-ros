@@ -16,7 +16,9 @@
  *    gets still work;
  *  - local sets skip read-only and range (rclc never checks them locally);
  *  - a typed set of the wrong type is RCLC_PARAMETER_TYPE_MISMATCH;
- *  - `max_params` is a per-node quota;
+ *  - `max_params` is a per-node quota, and the runtime's seeded
+ *    `use_sim_time` (this TU builds the stock shape, `sim-time`) is not
+ *    charged against it;
  *  - two nodes' servers keep two tables;
  *  - `fini` takes the node's parameters with it;
  *  - a declaration the image-wide store has no slot for answers
@@ -294,7 +296,28 @@ int main(void) {
     size_t count = 0;
     CHECK(rclc_parameter_list(&ps, NULL, NULL, 0, 0, &count) == RCLC_RET_FULL || count == 0,
           "list count call");
-    CHECK(count == 4, "talker lists %zu parameters, expected rate/frame/gains/frames", count);
+    /* The TU builds the stock shape (`sim-time` with the parameter services),
+     * so the runtime has declared `use_sim_time` on the node, as rclcpp does.
+     * It is listed, and it is NOT the application's: rclc never declares it,
+     * so it must not be charged against `max_params`. Before that was so, a
+     * node sized exactly for its own parameters refused its last one. */
+    CHECK(rclc_parameter_get_type(&ps, "use_sim_time") == RCLC_PARAMETER_BOOL,
+          "talker has no seeded use_sim_time: this TU must build nros-c with sim-time");
+    const size_t declared = 4; /* rate, frame, gains, frames */
+    CHECK(count == declared + 1, "talker lists %zu parameters, expected %zu declared + use_sim_time",
+          count, declared);
+    rcl_ret_t quota_ret = RCL_RET_OK;
+    for (size_t i = declared; i < opts.max_params; ++i) {
+        char qname[24];
+        snprintf(qname, sizeof(qname), "q%zu", i);
+        quota_ret = rclc_parameter_declare_int(&ps, qname, 0);
+        CHECK(quota_ret == RCL_RET_OK,
+              "declaration %zu of a max_params=%zu quota was refused (%d): the runtime's "
+              "use_sim_time was charged against it",
+              i + 1, opts.max_params, (int)quota_ret);
+    }
+    CHECK(rclc_parameter_declare_int(&ps, "over", 0) == RCL_RET_ERROR,
+          "max_params=%zu accepted a declaration past the quota", opts.max_params);
 
     /* add_parameter_server checks the executor is the node's. */
     struct rclc_executor_t other = rclc_executor_get_zero_initialized_executor();

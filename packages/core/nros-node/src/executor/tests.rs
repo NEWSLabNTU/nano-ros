@@ -5247,6 +5247,76 @@ fn use_sim_time_is_declared_by_registering_the_parameter_services_alone() {
 /// A seed on the primary alone would leave the second node's
 /// `ros2 param set /beta use_sim_time true` refused as undeclared, which is
 /// the pre-W2 behaviour for every node but the first.
+/// The seeded `use_sim_time` is the runtime's, so it is not charged against
+/// what a node DECLARED -- the count an rclc server's `max_params` is measured
+/// against. rclc never declares the name, so an application sizes `max_params`
+/// for its own parameters; charging the placeholder refused the last of them
+/// once the stock interface set carried `sim_time` (the C metadata probe of a
+/// node sized exactly for its 41 parameters exited on the 41st).
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn the_seeded_use_sim_time_is_not_counted_as_a_declared_parameter() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    executor.set_node_identity("alpha", "/");
+    let alpha = executor.node_builder("alpha").build().expect("alpha");
+    executor
+        .register_parameter_services()
+        .expect("mock services register");
+    assert_eq!(
+        executor.list_parameters_on(alpha, "").count(),
+        1,
+        "precondition: the runtime seeded use_sim_time"
+    );
+    assert_eq!(executor.declared_parameter_count_on(alpha), 0);
+
+    // A quota of N admits N declarations, so the STORE must hold them beside
+    // the placeholder: N + 1 names on the node, every one reading back. (The
+    // derived `NROS_MAX_PARAMETERS` counts the seed per node for this reason.)
+    const N: usize = 8;
+    for i in 0..N {
+        let name = alloc::format!("gain_{i}");
+        assert!(
+            executor.declare_parameter_on(
+                alpha,
+                &name,
+                nros_params::ParameterValue::Integer(i as i64)
+            ),
+            "the store refused {name} with only {i} declared beside the placeholder"
+        );
+    }
+    assert_eq!(executor.declared_parameter_count_on(alpha), N);
+    assert_eq!(executor.list_parameters_on(alpha, "").count(), N + 1);
+    for i in 0..N {
+        let name = alloc::format!("gain_{i}");
+        assert_eq!(
+            executor
+                .params()
+                .and_then(|p| p.get_integer(alpha.into(), &name)),
+            Some(i as i64),
+            "{name} did not read back"
+        );
+    }
+    assert_eq!(
+        executor
+            .params()
+            .and_then(|p| p.get_bool(alpha.into(), "use_sim_time")),
+        Some(false),
+        "the placeholder was displaced by the application's own declarations"
+    );
+
+    // Once the application declares the name itself it is the application's,
+    // and it counts.
+    assert!(executor.declare_parameter_on(
+        alpha,
+        "use_sim_time",
+        nros_params::ParameterValue::Bool(false)
+    ));
+    assert_eq!(executor.declared_parameter_count_on(alpha), N + 1);
+}
+
 #[cfg(all(feature = "sim-time", feature = "param-services"))]
 #[test]
 fn use_sim_time_is_declared_on_every_node_the_services_are_published_under() {

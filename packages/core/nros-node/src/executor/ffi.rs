@@ -221,6 +221,10 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
         prefix: &'p str,
     ) -> impl Iterator<Item = &'p str>;
 
+    /// The FFI entry point; see `Executor::declared_parameter_count_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn declared_parameter_count_on(&self, node: super::node_record::NodeId) -> usize;
+
     /// The FFI entry point; see `Executor::set_parameters_atomically_on` in `spin.rs`.
     #[cfg(feature = "param-store")]
     fn set_parameters_atomically_on<'x, I>(
@@ -966,6 +970,12 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
         prefix: &'p str,
     ) -> impl Iterator<Item = &'p str> {
         Executor::list_parameters_on(self, node, prefix)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn declared_parameter_count_on(&self, node: super::node_record::NodeId) -> usize {
+        Executor::declared_parameter_count_on(self, node)
     }
 
     #[inline]
