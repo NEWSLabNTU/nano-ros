@@ -37,7 +37,7 @@ import knob_registry as kr  # noqa: E402
 
 REPO = cn.REPO
 # RFC-0140 Appendix A's count. An entry beyond it is `appendix = "missed"`.
-APPENDIX_A = 87
+APPENDIX_A = 88
 
 
 def tracked_package_files(known):
