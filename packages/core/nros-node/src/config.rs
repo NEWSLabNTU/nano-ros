@@ -21,6 +21,34 @@ pub struct SchedTaskSizing {
     pub params: Option<usize>,
 }
 
+// Issue 2541.
+/// The most callbacks one executor can hold: its slot masks are one `u64`
+/// (`1u64 << slot`).
+pub const CALLBACK_SLOT_CAPACITY: usize = 64;
+
+// Issue 2541 -- nothing used to hold an image to that: a table sized past 64
+// registered a 65th callback and dispatched it through `1u64 << 64` (a panic
+// in a debug build, slot 0's bit in a release one). An image whose own count
+// is above it fails to compile here: the default table (`MAX_CBS`), and the
+// one executor a level runner opens over every sched task's callbacks.
+const _: () = {
+    let mut sum = 0usize;
+    let mut i = 0;
+    while i < SCHED_TASK_SIZINGS.len() {
+        sum += SCHED_TASK_SIZINGS[i].cbs;
+        i += 1;
+    }
+    assert!(
+        MAX_CBS <= CALLBACK_SLOT_CAPACITY,
+        "NROS_EXECUTOR_MAX_CBS is above 64, and one executor holds at most 64 callbacks"
+    );
+    assert!(
+        sum <= CALLBACK_SLOT_CAPACITY,
+        "this image's sched tasks declare more than 64 callbacks together, and the one \
+         executor a level runner opens over them holds at most 64"
+    );
+};
+
 /// Default arena bytes for a per-entry executor holding `cbs`
 /// callback slots. Scales the build-time [`ARENA_SIZE`] (which is sized for the
 /// default [`MAX_CBS`]) linearly by `cbs`, so a per-entry [`ExecutorSizing`] with
