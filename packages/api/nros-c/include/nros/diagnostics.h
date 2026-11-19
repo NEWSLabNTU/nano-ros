@@ -20,5 +20,7 @@
 #define NROS_DIAG_PLATFORM_NO_FAMILY "NROS-0005"
 /** no diagnostic has this code */
 #define NROS_DIAG_UNKNOWN_DIAG_CODE "NROS-0006"
+/** a knob is spelled with its retired name */
+#define NROS_DIAG_RETIRED_KNOB_SPELLING "NROS-0011"
 
 #endif /* NROS_DIAGNOSTICS_H */

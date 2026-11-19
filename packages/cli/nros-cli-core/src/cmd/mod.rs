@@ -35,6 +35,7 @@ pub mod entity_inventory;
 pub mod explain;
 pub mod extension;
 pub mod extension_check;
+pub mod fix;
 pub mod flash;
 pub mod generate;
 pub mod graph;
@@ -358,6 +359,10 @@ pub enum Cmd {
 
     /// Explain a diagnostic code, or render a generated nros-plan.json
     Explain(explain::Args),
+
+    /// Apply the mechanical remedies the build's refusals name; prints the
+    /// change, and writes it with --apply
+    Fix(fix::Args),
 
     /// Inspect or validate the current project's resolved configuration
     #[command(subcommand)]

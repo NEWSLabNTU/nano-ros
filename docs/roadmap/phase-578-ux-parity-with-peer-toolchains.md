@@ -99,7 +99,7 @@ schemas equal to their sources.
 
 ### W4 — errors that point at the line, and `nros fix`
 
-- **Status:** IN PROGRESS — design accepted 2026-11-19 (user ruling): [RFC-0129](../design/0129-diagnostic-codes.md) "Amendment (phase-578 W4)" (D7 locations, D8 `nros fix`, D9 gates), with its four drafted answers
+- **Status:** OPEN — in progress; design accepted 2026-11-19 (user ruling): [RFC-0129](../design/0129-diagnostic-codes.md) "Amendment (phase-578 W4)" (D7 locations, D8 `nros fix`, D9 gates), with its four drafted answers
 - **Owner:** nros 118, after its current batch
 - **Needs:** a design (an RFC-0129 amendment): the span format, and which
   refusals carry a machine-applicable fix.
@@ -111,6 +111,56 @@ knob in the wrong table, RFC-0135 D8's `fix:` lines) is applied by
 
 Acceptance: a retired knob spelling in `system.toml` is reported at its line,
 and `nros fix` rewrites it.
+
+**Slice 1 (2026-11-19): the acceptance shape, end to end.**
+- `Location` and `Refusal::at` in `nros-diagnostic-codes` render rustc's span
+  block (`-->`, gutter, carets) under the code line; `Refusal::fixable` adds
+  the `fix: nros fix` line.
+- `nros-cli-core::source_file::SourceFile::locate(key_path)` re-reads a
+  file's own text with `toml_edit` and returns the key's span. No serde
+  structure changed.
+- `nros-cli-core::fix`: a `Finding` (refusal plus optional `Fix`), the
+  `RenameKey` edit, and one collector both consumers share. It reads every
+  file a workspace's `system.toml`s reach, includes too. NROS-0011
+  `RetiredKnobSpelling` covers `[image.<id>] env` and `[image_defaults] env`;
+  a knob retired outright gets no fix.
+- `nros build` and `nros configure` run the collector as a preflight, so the
+  refusal arrives at its line before any reader meets the row.
+- `nros fix [PATH] [--apply]` prints a unified diff and writes only with
+  `--apply`. It refuses two fixes on one span, or a rename onto a key the
+  table already states, before writing anything. A file outside the
+  workspace gets no fix.
+
+Left for W4:
+- `MoveKey` (an `[image] env` row naming a registry knob, which belongs in
+  `[image.<id>.knobs.<group>]`; today `app_rung` refuses it with no line),
+  `ReplaceValue` (`native`/`posix` as the host board) and `SetKey`, each with
+  its fixture;
+- locations for `nros-board.toml`;
+- the secondary `note_at` location, and refusal groups;
+- D9's `check-diagnostics` rule (an entry that declares a fix kind names
+  `nros fix` in its explanation);
+- the [RFC-0140](../design/0140-configuration-registry.md) D4 contract
+  (agreed 2026-11-19, built by phase-581), in this order:
+  - `RenameKey` gains `scale`, and `MoveKey` is
+    `{ to_table, to_key, scale }`. The new value is the old value times the
+    factor, and an edit whose result falls outside the new row's type or
+    range is refused, naming the limit.
+  - The edits cover the `toml:` and `env:` roads. A `kconfig:` or `cmake:`
+    spelling is reported with its text and gets no edit.
+  - The collector asks `retired_spelling(road, spelling)` over the merged
+    catalog, which the loader builds in memory, because `nros fix` runs
+    before configure and may run on a fresh clone. It never reads
+    `<build>/nros/knobs/catalog.toml`.
+  - Today it asks `nros_zephyr_build::retired_spelling_refusal`, which knows
+    only core knobs. Until phase-581 lands the loader, that call stays the
+    source, so switching to the merged catalog changes one call site.
+  - One table-driven test runs every Appendix A rename through
+    `nros fix`, so a rename added to the registry gets its fix with no
+    hand-written case.
+
+`app_rung`'s map-level refusal stays as the backstop for a road that reads
+an image without the preflight.
 
 ### W5 — examples per board, from the CLI
 

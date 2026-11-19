@@ -18,6 +18,7 @@ user debug
 user dev
 user doctor
 user explain
+user fix
 user flash
 user generate
 user generate-px4-msgs

@@ -31,7 +31,10 @@ pub const ALIASES: &[(&str, &str)] = &[
 /// top-level verb is in exactly one group; a test holds that.
 pub const GROUPS: &[(&str, &[&str])] = &[
     ("Start", &["new", "setup"]),
-    ("Build", &["build", "configure", "clean", "materialize"]),
+    (
+        "Build",
+        &["build", "configure", "fix", "clean", "materialize"],
+    ),
     (
         "Run on a target",
         &["run", "flash", "monitor", "bench", "debug"],

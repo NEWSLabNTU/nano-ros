@@ -4068,6 +4068,9 @@ pub(crate) fn configure_implicitly(
         None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
     };
     let root = std::fs::canonicalize(&root).unwrap_or(root);
+    // RFC-0129 D7: a refused shape in a configuration file stops here, at its
+    // line, before any reader meets it with only the table's name.
+    crate::fix::preflight(&root)?;
     let images = match &args.board {
         Some(want) => {
             if let Some(why) = crate::cmd::build_next::refuse_board_with(&args.images, args.all) {

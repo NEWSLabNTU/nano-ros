@@ -239,6 +239,13 @@ def build_map():
             rows.append((name, name, "build", "config-variant link anchor"))
             continue
         if name.isupper() or name.startswith("NROS_"):
+            # A diagnostic code's macro is generated from the code list, so a
+            # new code is a new row of the same kind as every existing one; the
+            # generic fallback below guessed `ours` for the first code added
+            # after the list was classified by hand.
+            if name.startswith("NROS_DIAG_"):
+                rows.append((name, name, "build", "a diagnostic code, generated from the code list (RFC-0129 D4)"))
+                continue
             if BUILD_UPPER.match(name):
                 rows.append((name, name, "build", "build or configuration fact"))
                 continue

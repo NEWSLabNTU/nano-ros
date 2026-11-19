@@ -30,11 +30,29 @@ pub use nros_diagnostic_codes::{ALL, Diag, Entry};
 pub struct Refusal {
     diag: Diag,
     detail: String,
+    at: Option<crate::source_file::Located>,
+    fixable: bool,
     help: Option<String>,
     note: Option<String>,
 }
 
 impl Refusal {
+    // RFC-0129 D7.
+    /// The place in a configuration file this refusal is about.
+    #[must_use]
+    pub fn at(mut self, at: crate::source_file::Located) -> Self {
+        self.at = Some(at);
+        self
+    }
+
+    // RFC-0129 D8.
+    /// The remedy is mechanical, so the refusal names `nros fix`.
+    #[must_use]
+    pub fn fixable(mut self, fixable: bool) -> Self {
+        self.fixable = fixable;
+        self
+    }
+
     /// Replace the entry's remedy with a more specific one.
     #[must_use]
     pub fn help(mut self, help: impl fmt::Display) -> Self {
@@ -63,7 +81,14 @@ impl Refusal {
 
     /// Render with an explicit verbosity: the tests' seam.
     fn render(&self, f: &mut fmt::Formatter<'_>, verbose: bool) -> fmt::Result {
-        let mut r = self.diag.refuse(&self.detail).verbose(verbose);
+        let mut r = self
+            .diag
+            .refuse(&self.detail)
+            .verbose(verbose)
+            .fixable(self.fixable);
+        if let Some(at) = &self.at {
+            r = r.at(at.as_location());
+        }
         if let Some(h) = &self.help {
             r = r.help(h);
         }
@@ -99,6 +124,8 @@ impl DiagExt for Diag {
         Refusal {
             diag: self,
             detail: detail.to_string(),
+            at: None,
+            fixable: false,
             help: None,
             note: None,
         }
@@ -286,12 +313,23 @@ mod tests {
         assert!(ids(&t).is_empty(), "{t}");
         let e = explain("NROS-0099").unwrap_err();
         let r = e.downcast_ref::<Refusal>().unwrap();
+        // The nearest codes come from the table, so a new code does not break
+        // this test; what is pinned is the refusal's shape.
+        let near: Vec<&str> = nros_diagnostic_codes::nearest(99)
+            .iter()
+            .flatten()
+            .map(|e| e.code)
+            .collect();
+        assert_eq!(near.len(), 3);
         assert_eq!(
             quiet(r),
-            "error[NROS-0006]: no diagnostic has the code `NROS-0099`\n  \
-             help: the nearest codes are NROS-0006, NROS-0005, NROS-0004; check the code \
-             against the refusal that printed it\n  \
-             explain: nros explain NROS-0006"
+            format!(
+                "error[NROS-0006]: no diagnostic has the code `NROS-0099`\n  \
+                 help: the nearest codes are {}; check the code \
+                 against the refusal that printed it\n  \
+                 explain: nros explain NROS-0006",
+                near.join(", ")
+            )
         );
     }
 }

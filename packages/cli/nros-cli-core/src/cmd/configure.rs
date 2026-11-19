@@ -93,6 +93,10 @@ pub fn run(args: Args) -> Result<()> {
 /// [`run`], returning what it did.
 pub fn configure(args: Args) -> Result<Outcome> {
     let project = project_root(args.sync.workspace.as_deref())?;
+    // RFC-0129 D7: a refused shape stops the configure at its line.
+    if !args.migrate {
+        crate::fix::preflight(&project)?;
+    }
     if args.migrate {
         migrate(&project)?;
     }

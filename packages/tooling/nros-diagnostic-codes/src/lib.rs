@@ -195,6 +195,8 @@ impl Diag {
         Refusal {
             diag: self,
             detail,
+            at: None,
+            fixable: false,
             help: None,
             note: None,
             verbose: false,
@@ -210,18 +212,54 @@ impl Diag {
     }
 }
 
-/// A refusal, ready to render: the site's detail, the entry's remedy (or the
-/// site's own), and the line that explains it.
+// RFC-0129 D7.
+/// Where in a file a refusal points: the file as the user
+/// names it, the 1-based line and column, the span's length in characters,
+/// and the whole line's text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Location<'a> {
+    /// The file, as the refusal prints it.
+    pub path: &'a str,
+    /// The 1-based line.
+    pub line: u32,
+    /// The 1-based column, in characters.
+    pub column: u32,
+    /// How many characters the underline covers (at least one is drawn).
+    pub len: u32,
+    /// The line's text, without its line break.
+    pub text: &'a str,
+}
+
+/// A refusal, ready to render: the site's detail, where it points, the
+/// entry's remedy (or the site's own), and the line that explains it.
 #[derive(Clone, Copy)]
 pub struct Refusal<'a> {
     diag: Diag,
     detail: &'a dyn fmt::Display,
+    at: Option<Location<'a>>,
+    fixable: bool,
     help: Option<&'a dyn fmt::Display>,
     note: Option<&'a dyn fmt::Display>,
     verbose: bool,
 }
 
 impl<'a> Refusal<'a> {
+    /// The place in a file the refusal is about, rendered under the head line
+    /// the way rustc shows a span.
+    #[must_use]
+    pub fn at(mut self, at: Location<'a>) -> Self {
+        self.at = Some(at);
+        self
+    }
+
+    /// The remedy is mechanical: `nros fix` applies it, and the refusal says
+    /// so on a `fix:` line.
+    #[must_use]
+    pub fn fixable(mut self, fixable: bool) -> Self {
+        self.fixable = fixable;
+        self
+    }
+
     /// Replace the entry's remedy with a more specific one.
     #[must_use]
     pub fn help(mut self, help: &'a dyn fmt::Display) -> Self {
@@ -270,9 +308,18 @@ impl fmt::Display for Refusal<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let e = self.diag.entry();
         write!(f, "error[{}]: {}", e.code, self.detail)?;
+        if let Some(at) = &self.at {
+            write_location(f, at)?;
+        }
         match self.help {
             Some(h) => write!(f, "\n  help: {h}")?,
             None => write!(f, "\n  help: {}", e.remedy)?,
+        }
+        if self.fixable {
+            write!(
+                f,
+                "\n  fix: nros fix   (prints the change; --apply writes it)"
+            )?;
         }
         if self.verbose
             && let Some(n) = self.note
@@ -281,6 +328,36 @@ impl fmt::Display for Refusal<'_> {
         }
         write!(f, "\n  explain: nros explain {}", e.code)
     }
+}
+
+/// rustc's span block: the `-->` line, the source line with its number in a
+/// gutter, and a caret underline below the span.
+fn write_location(f: &mut fmt::Formatter<'_>, at: &Location<'_>) -> fmt::Result {
+    let mut width = 1;
+    let mut n = at.line / 10;
+    while n > 0 {
+        width += 1;
+        n /= 10;
+    }
+    write!(
+        f,
+        "\n{:w$}--> {}:{}:{}",
+        "",
+        at.path,
+        at.line,
+        at.column,
+        w = width + 1
+    )?;
+    write!(f, "\n{:w$} |", "", w = width + 1)?;
+    write!(f, "\n {:>w$} | {}", at.line, at.text, w = width)?;
+    write!(f, "\n{:w$} | ", "", w = width + 1)?;
+    for _ in 1..at.column {
+        f.write_str(" ")?;
+    }
+    for _ in 0..at.len.max(1) {
+        f.write_str("^")?;
+    }
+    Ok(())
 }
 
 impl fmt::Debug for Refusal<'_> {
