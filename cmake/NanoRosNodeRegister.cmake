@@ -591,6 +591,46 @@ function(_nros_node_register_carrier_image _target _pkg_sym _panic)
     endif()
 endfunction()
 
+# issue 2744 -- `_nros_carrier_claim(<var> <road> <carrier-target>)`: the ONE
+# rule for a registration that would build a package's single-node carrier
+# image (NuttX, ThreadX, FreeRTOS, native, Zephyr). Each road builds ONE
+# carrier per package, so a second registration on the same road used to be
+# skipped by a `NOT TARGET` guard: its library was built and linked into
+# nothing, and the image shipped with the first component only. It is now a
+# configure error naming both, when the registration names a DEPLOY (the
+# package IS an image). A carrier target that exists for another reason
+# (the package's own `add_executable(<project>)`) still turns the carrier off.
+# `<var>` names the caller's "this registration builds the carrier" flag; it
+# comes back TRUE only for the registration that builds it.
+function(_nros_carrier_claim _var _road _target)
+    if(NOT ${_var})
+        return()
+    endif()
+    get_property(_prev DIRECTORY PROPERTY _NROS_CARRIER_CLAIM)
+    # A registration with no DEPLOY is a workspace member's component, which a
+    # generated entry composes from its library; its carrier is a byproduct,
+    # and skipping a second one loses nothing.
+    if(_prev AND NOT _NRC_DEPLOY)
+        set(${_var} FALSE PARENT_SCOPE)
+        return()
+    endif()
+    if(_prev)
+        message(FATAL_ERROR
+            "nano_ros_node_register: package `${PROJECT_NAME}` registers a second "
+            "component for its ${_road} image (`${_NRC_NAME}`, class `${_NRC_CLASS}`) "
+            "after ${_prev}. A ${_road} package builds ONE firmware image holding one "
+            "component, so the second would be left out of it. Put each component in "
+            "its own package, or compose them in a bringup whose image uses a "
+            "generated entry.")
+    endif()
+    if(TARGET ${_target})
+        set(${_var} FALSE PARENT_SCOPE)
+        return()
+    endif()
+    set_property(DIRECTORY PROPERTY _NROS_CARRIER_CLAIM
+        "`${_NRC_NAME}` (class `${_NRC_CLASS}`)")
+endfunction()
+
 function(nano_ros_node_register)
     cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET;PANIC;PACKAGE;PACKAGE_DIR" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
     _nros_entities_retired("nano_ros_node_register(${_NRC_NAME})" ${ARGN})
@@ -1053,11 +1093,17 @@ function(nano_ros_node_register)
     # `__nros_component_<pkg>_register` symbol matches the entry's
     # `extern "C"` decl. Services / actions register but do not execute
     # (interpreter limit; deferred — see phase-238).
+    # issue 2744 -- one carrier image per package: a second registration
+    # that would build this carrier is refused, never dropped.
+    set(_nrc_carrier FALSE)
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND "nuttx" IN_LIST _NRC_DEPLOY
        AND _nrc_family STREQUAL "nuttx"
-       AND COMMAND nros_platform_link_app
-       AND NOT TARGET ${PROJECT_NAME})
+       AND COMMAND nros_platform_link_app)
+        set(_nrc_carrier TRUE)
+    endif()
+    _nros_carrier_claim(_nrc_carrier "nuttx" "${PROJECT_NAME}")
+    if(_nrc_carrier)
         nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         # Baked connect locator. QEMU slirp routes the guest to the host
@@ -1136,11 +1182,17 @@ function(nano_ros_node_register)
     #
     # TYPED-only: the legacy declarative-register + `NanoRosThreadxSystemCodegen`
     # NULL-context stub is retired on ThreadX (phase-246). Both C and C++.
+    # issue 2744 -- one carrier image per package: a second registration
+    # that would build this carrier is refused, never dropped.
+    set(_nrc_carrier FALSE)
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND _nrc_family STREQUAL "threadx"
        AND COMMAND nros_platform_link_app
-       AND _NRC_DEPLOY
-       AND NOT TARGET ${PROJECT_NAME})
+       AND _NRC_DEPLOY)
+        set(_nrc_carrier TRUE)
+    endif()
+    _nros_carrier_claim(_nrc_carrier "threadx" "${PROJECT_NAME}")
+    if(_nrc_carrier)
         if(NOT _NRC_TYPED)
             # History: RFC-0043.
             message(FATAL_ERROR
@@ -1212,11 +1264,17 @@ function(nano_ros_node_register)
     #
     # TYPED-only: the legacy declarative-register / NULL-context baker entry is
     # retired on FreeRTOS (phase-240.6). Both C and C++.
+    # issue 2744 -- one carrier image per package: a second registration
+    # that would build this carrier is refused, never dropped.
+    set(_nrc_carrier FALSE)
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND _nrc_family STREQUAL "freertos"
        AND COMMAND nros_platform_link_app
-       AND _NRC_DEPLOY
-       AND NOT TARGET ${PROJECT_NAME})
+       AND _NRC_DEPLOY)
+        set(_nrc_carrier TRUE)
+    endif()
+    _nros_carrier_claim(_nrc_carrier "freertos" "${PROJECT_NAME}")
+    if(_nrc_carrier)
         if(NOT _NRC_TYPED)
             # History: RFC-0043.
             message(FATAL_ERROR
@@ -1308,11 +1366,17 @@ function(nano_ros_node_register)
     # only into its component lib above) must fall through here — FATALing would
     # break every non-TYPED posix `nano_ros_node_register` (the 244.C4-collision
     # the phase-247 template sweep hit).
+    # issue 2744 -- one carrier image per package: a second registration
+    # that would build this carrier is refused, never dropped.
+    set(_nrc_carrier FALSE)
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND NROS_PLATFORM STREQUAL "posix"
        AND _NRC_TYPED
-       AND COMMAND nros_platform_link_app
-       AND NOT TARGET ${PROJECT_NAME})
+       AND COMMAND nros_platform_link_app)
+        set(_nrc_carrier TRUE)
+    endif()
+    _nros_carrier_claim(_nrc_carrier "native" "${PROJECT_NAME}")
+    if(_nrc_carrier)
         nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
@@ -1358,10 +1422,16 @@ function(nano_ros_node_register)
     # issue 0326 — the fused Zephyr carrier guard; the helper subsumes both the
     # platform test and the `TARGET app` requirement.
     _nros_is_zephyr(_nrc_is_zephyr_carrier)
+    # issue 2744 -- one carrier image per package: a second registration
+    # that would build this carrier is refused, never dropped.
+    set(_nrc_carrier FALSE)
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND "zephyr" IN_LIST _NRC_DEPLOY
-       AND _nrc_is_zephyr_carrier
-       AND NOT TARGET ${PROJECT_NAME}_nros_zephyr_entry)
+       AND _nrc_is_zephyr_carrier)
+        set(_nrc_carrier TRUE)
+    endif()
+    _nros_carrier_claim(_nrc_carrier "zephyr" "${PROJECT_NAME}_nros_zephyr_entry")
+    if(_nrc_carrier)
         if(NOT _NRC_TYPED)
             # History: RFC-0043.
             message(FATAL_ERROR
