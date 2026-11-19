@@ -698,6 +698,8 @@ debug = 1
 lto = "off"
 codegen-units = 16
 panic = "abort"
+# Issue 2318: build scripts and proc-macros carry no DWARF; the image keeps it.
+build-override.debug = 0
 
 # Opt-in for LOCAL ITERATION, where the same target dir is rebuilt after an edit
 # — the case incremental actually serves and the lanes never hit. Costs ~28 %

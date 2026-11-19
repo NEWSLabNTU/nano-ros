@@ -77,6 +77,18 @@ const fn s(key: &'static str, value: &'static str) -> Setting {
 /// `sccache: increment compilation is prohibited`. A profile setting is a
 /// different input (cargo passes `-C incremental=<dir>` and never sets that
 /// variable), which is why the profile below works and the env var does not.
+///
+/// # Why build scripts and proc-macros carry no debuginfo (issue 2318)
+///
+/// `build-override.debug = 0`: the HOST half of every fixture leaf's target
+/// dir (build scripts, proc-macros and their deps) was most of its bytes, and
+/// most of those were DWARF (`zpico-sys`'s build script 31.0 -> 10.7 MB,
+/// the `nros-macros` proc-macro 73.9 -> 19.9 MB stripped). Nothing reads a host
+/// artifact's DWARF: the stack-floor walk and `read-boot-report.py`'s
+/// `addr2line` read the linked IMAGE. The image keeps `debug = 1`, and so do
+/// the C objects a build script compiles for it: cargo still hands the build
+/// script `DEBUG=true` (measured on 1.99 with this override), which is what
+/// cc-rs reads.
 pub const RELWITHDEBINFO: Preset = Preset {
     name: "nros-relwithdebinfo",
     settings: &[
@@ -86,6 +98,7 @@ pub const RELWITHDEBINFO: Preset = Preset {
         s("lto", "off"),
         s("codegen-units", "16"),
         s("panic", "abort"),
+        s("build-override.debug", "0"),
     ],
 };
 
@@ -420,7 +433,9 @@ pub fn env(profile: &str) -> Vec<(String, String)> {
         .settings
         .iter()
         .map(|setting| {
-            let key = setting.key.to_ascii_uppercase().replace('-', "_");
+            // A dotted key (`build-override.debug`) is a nested table in TOML
+            // and one more `_` segment in cargo's env spelling.
+            let key = setting.key.to_ascii_uppercase().replace(['-', '.'], "_");
             (
                 format!("CARGO_PROFILE_{name}_{key}"),
                 setting.value.to_string(),
