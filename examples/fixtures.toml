@@ -5397,6 +5397,12 @@ dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
 output = ".verdict"
 
 [[compile_check_fixture]]
+id = "cmake_board_facts_board_outranks_leaf_board"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
 id = "cmake_register_without_entities"
 builder = "cmake-configure-verdict"
 dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
