@@ -344,6 +344,42 @@ What the three runs do and do not show:
   `workspace-all` ran in 235 s instead of being killed. Its first above-pool
   catch, the host linker's threads outside the jobserver, is issue 2718.
 
+### Three more timeouts, one host, one afternoon (2026-11-19)
+
+Host 139, load from other tenants throughout: a game engine, three Python
+jobs of another user (about one core each), an FVP and a vLLM engine. The
+1-minute load average read 37, then 52-65. `/home` was at 99 % (62 G free)
+during the first run.
+
+- **`check::cpp`, 2400 s.** A gate of PR #4379, run 1 (acd762f6e4):
+  `check::build` red after 1 h 20 min 19 s. `check::cpp` had printed every
+  step through the issue-2717 freestanding test, and that test, rebuilt and
+  run alone, passes both of its modes at once: no hang. Thread-seconds:
+
+  | gate | run | pipe | child | lock | disk |
+  | --- | --- | --- | --- | --- | --- |
+  | `cli-tests` | 1245 | 4815 | 21505 | 1295 | **85065** |
+  | `workspace-probes` | 1005 | 7180 | 51710 | 3200 | 8000 |
+  | `cpp` | **310** | 4425 | 5960 | 295 | 4095 |
+
+  `check::cpp` is one serial chain of compile-and-run steps. In eight green
+  gate logs on this host it took 457, 892, 919, 976, 1043, 1172, 1658 and
+  2229 s; two of ten logs on this host end in this timeout.
+  Another session's gate the same day (#4326) lost both `cli-tests` and
+  `check::cpp` to the 2400 s kill; its next gate lost `cli-tests` alone.
+- **A unit test, 60 s.** The same PR's gate, run 2, same SHA: `check::build`
+  green in 1 h 02 min 47 s, then `test-lane-contracts` red on
+  `fixtures::cache_key::tests::a_resolver_row_observation_reads_the_real_dep_file`
+  at its 60 s timeout. Alone it passes in 10.3 s. strace shows the cost: it
+  observes three times, each observation runs `nros source-stamp`, and each
+  of those runs `git status --porcelain=2 -uno` twice. One such `git status`
+  took 19 s wall at 2 % CPU on this host at load ~55. The stamp is now asked
+  once per process (its own pull request). In the same run `check::fast`
+  took 29 min 20 s, against 4 min 40 s in run 1.
+
+All three are the class above: work that waits on the disk more than it runs,
+under a timeout that a loaded host crosses. None is in the diff under test.
+
 ## Not the fix
 
 Raising the timeout. That moves the line and keeps the dependence on load
@@ -362,7 +398,12 @@ For the dev-host reds, once a red run is sampled: split the suite or make it fas
    from its measured knee (issue 2625), so the pool stops admitting more
    builders than the host can run. A peak above the pool, which means children
    outside the jobserver, is reported and fixed per gate.
-4. **Not the wrapper.** The A/B above rules it out. The host-side cache state
+4. **Split `check::cpp`.** Each of its runtime steps reads the stub backend
+   object and the built archives; whether any step needs another's output is
+   the first thing to establish. If none does, they run as parallel sub-gates
+   with stated weights instead of one serial chain under one timeout.
+   Caching the stub builds would help warm runs only.
+5. **Not the wrapper.** The A/B above rules it out. The host-side cache state
    (full at its limit, slow writes, a busy disk) is host configuration and
    goes to the host's owner.
 
