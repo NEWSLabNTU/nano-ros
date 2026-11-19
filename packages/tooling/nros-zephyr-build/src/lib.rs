@@ -360,6 +360,23 @@ pub struct EnvRow {
     pub retired_spellings: &'static [RetiredSpelling],
 }
 
+/// An in-tree package that declares rows in its own `nros-knobs.toml`
+/// (RFC-0140 D2, phase-581 W2). Its rows are in [`KNOBS`] and [`ENV_ROWS`]
+/// with core's; this says whose they are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InTreePackage {
+    /// `<name>` from the package's `package.xml`.
+    pub package: &'static str,
+    /// The package's owner word, the first segment of each of its keys.
+    pub owner: &'static str,
+    /// The file, relative to the checkout.
+    pub file: &'static str,
+    /// The keys of its knob rows.
+    pub knobs: &'static [&'static str],
+    /// The variable names of its env rows.
+    pub env: &'static [&'static str],
+}
+
 // Generated, so rustfmt leaves it as the generator wrote it and `--check` stays exact.
 #[rustfmt::skip]
 mod knob_registry;
@@ -371,6 +388,11 @@ pub use knob_registry::{
 #[rustfmt::skip]
 mod config_rows;
 pub use config_rows::{ENV_ROWS, STATEMENTS};
+// Generated beside them: core's owner words and the in-tree packages' rows
+// (phase-581 W2).
+#[rustfmt::skip]
+mod registry_packages;
+pub use registry_packages::{CORE_OWNERS, IN_TREE_PACKAGES};
 
 /// The Kconfig knob whose symbol is `symbol` (with or without `CONFIG_`).
 #[must_use]

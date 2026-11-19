@@ -1,0 +1,318 @@
+# The configuration rows this rmw package declares (RFC-0140 D2,
+# phase-581 W2). Found beside its descriptor (nros-rmw.toml) by the scan that finds
+# the package, so this file's presence is the declaration. The schema is core's
+# (packages/tooling/nros-zephyr-build/knobs.toml says what each field means);
+# every key starts with this file's owner word, `xrce`, which is derived
+# from the package (its RMW name)
+# and checked, never chosen. Edit, then run `python3 scripts/gen-knob-registry.py`.
+
+owner = "xrce"
+
+[[knob]]
+key = "xrce.buffer_size"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Per-slot static buffer size"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default 1024",
+]
+help = '''
+Size of the static buffer for each subscriber/service slot (bytes).
+Maps to XRCE_BUFFER_SIZE.
+
+This is the DEFAULT of the three per-family sizes
+(NROS_XRCE_SUBSCRIBER_BUFFER_SIZE, NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE,
+NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE), not an array size of its own. It stays the one lever that
+moves every receive buffer at once; state a family option instead
+when only one of them needs the room.
+'''
+
+# Issue 1808 -- the builtin (parameter + lifecycle) share of the XRCE
+# service-server slots and its request size. Derived by the cargo lane from the
+# sizing descriptor on every road, so neither has a Kconfig symbol; the image's
+# `[image.<id>.knobs.xrce]` rung states one where a person must.
+[[knob]]
+key = "xrce.builtin_service_request_buffer_size"
+scope = "image"
+class = "public"
+
+[[knob]]
+key = "xrce.builtin_service_servers"
+scope = "image"
+class = "public"
+
+[[knob]]
+key = "xrce.custom_transport_mtu"
+scope = "board"
+class = "public"
+ladder = true
+type = "int"
+prompt = "XRCE custom-transport MTU"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default NROS_XRCE_TRANSPORT_MTU",
+    "range 128 65535",
+]
+help = '''
+MTU of the CUSTOM transport, which on Zephyr is the ONLY transport
+compiled in (see NROS_XRCE_TRANSPORT_MTU for why). It sizes the
+two per-session reliable stream buffers, so the session struct carries
+2 x this x NROS_XRCE_STREAM_HISTORY bytes.
+Maps to UCLIENT_CUSTOM_TRANSPORT_MTU.
+
+Defaults to NROS_XRCE_TRANSPORT_MTU so an image states ONE MTU and gets
+it on whichever transport it actually links. Set this separately only
+when an image links both an IP transport and a custom one and they need
+different frame budgets.
+'''
+
+[[knob]]
+key = "xrce.max_service_clients"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Maximum concurrent service clients"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of concurrent XRCE service clients.
+Maps to XRCE_MAX_SERVICE_CLIENTS.
+
+-1 means DERIVE: the XRCE build reads the image's sizing descriptor and
+takes its declared service clients plus three per action client
+(send_goal, cancel_goal, get_result). Zero is a legitimate derived
+answer. With no descriptor, or one that does not state
+both counts, the crate default of 4 stands. Stating a number wins.
+'''
+
+[[knob]]
+key = "xrce.max_service_servers"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Maximum concurrent service servers"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of concurrent XRCE service servers.
+Maps to XRCE_MAX_SERVICE_SERVERS.
+
+-1 means DERIVE: from the image's entity inventory, the same
+NROS_DERIVED_MAX_QUERYABLES the zenoh queryable pool uses (an XRCE
+service server is a served request endpoint, so action servers and the
+parameter/lifecycle service families count too). Zero is a legitimate
+derived answer here. Stating a number wins over both.
+'''
+
+[[knob]]
+key = "xrce.max_subscribers"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Maximum concurrent subscribers"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of concurrent XRCE subscribers.
+Maps to XRCE_MAX_SUBSCRIBERS.
+
+-1 means DERIVE: take the count from the image's entity inventory
+(`nano_ros_node_register(... ENTITIES ...)`), the same
+NROS_DERIVED_MAX_SUBSCRIBERS the zenoh pools use, so an action-carrying
+image gets its action-client subscriptions counted too.
+
+An image whose inventory refuses -- any component that declared no
+ENTITIES -- falls through to the crate default of 8. Stating a number
+here still wins over both.
+
+This is worth deriving: a slot is XRCE_SUBSCRIBER_RING_DEPTH x
+XRCE_BUFFER_SIZE (32 x 1024) plus bookkeeping, so eight of them are
+266,368 bytes of the session struct -- 86% of it on a one-subscriber
+image, allocated from the Zephyr heap in a single request.
+'''
+
+[[knob]]
+key = "xrce.service_reply_buffer_size"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Service-client reply slot size"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Size of one service-client reply inbox (bytes).
+Maps to XRCE_SERVICE_REPLY_BUFFER_SIZE.
+
+-1 DERIVES it: the largest reply any declared client
+receives (the sizing descriptor's `reply_bound_bytes`, over an action
+client's three responses) plus the 4-byte CDR header. A reply above
+NROS_XRCE_BUFFER_SIZE now RAISES the slot rather than being dropped on
+arrival. One unpriced reply keeps NROS_XRCE_BUFFER_SIZE, and the build
+says which. Stating a number wins.
+'''
+
+[[knob]]
+key = "xrce.service_request_buffer_size"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Service-server request ring entry size"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Size of one service-server request inbox entry (bytes).
+Maps to XRCE_SERVICE_REQUEST_BUFFER_SIZE.
+
+-1 DERIVES it, from the APPLICATION's declared servers:
+their largest request (`wire_bound_bytes`, over an action server's
+three) plus the 4-byte CDR header. That is sound because the
+parameter (6 per node) and lifecycle (5) services, which no
+`[[endpoint]]` row itemises, have slots of their own: the cargo lane
+derives NROS_XRCE_BUILTIN_SERVICE_SERVERS beside the server total, and
+those slots take NROS_XRCE_BUFFER_SIZE raised to the parameter
+family's largest request (NROS_PARAM_SERVICE_INBOX_BYTES, or derived
+from the contract's `params:`). The derivation abstains,
+and says so, when a server row is unpriced or the rows do not account
+for every application server, and when NROS_XRCE_MAX_SERVICE_SERVERS
+is stated (the split is then not derived and every server shares one
+buffer, raised and refused as before). A value too large for the
+reliable stream's reassembly window (NROS_XRCE_STREAM_HISTORY
+fragments of the transport MTU) fails the build.
+'''
+
+[[knob]]
+key = "xrce.stream_history"
+scope = "image"
+class = "public"
+ladder = true
+type = "int"
+prompt = "Reliable stream history depth"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default 16",
+    "range 2 16",
+]
+help = '''
+Reliable stream history depth for XRCE-DDS. Must be >= 2.
+Maps to XRCE_STREAM_HISTORY.
+
+Defaults to 16 to match XRCE_STREAM_HISTORY in
+packages/rmw/xrce/nros-rmw-xrce/src/internal.h. This option was once
+inert (exported under a name nothing read), so the C default of 16 is
+what Zephyr XRCE images have always compiled; a default of 4 here
+would have shrunk every reliable stream buffer 4x the moment the knob
+started working. Raise or lower deliberately, not as a side effect.
+'''
+
+[[knob]]
+key = "xrce.subscriber_buffer_size"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Subscriber ring entry size"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Size of one subscriber ring entry (bytes).
+Maps to XRCE_SUBSCRIBER_BUFFER_SIZE.
+
+The biggest of the three families by a wide margin: a slot is
+NROS_XRCE_SUBSCRIBER_RING_DEPTH entries and the image holds
+NROS_XRCE_MAX_SUBSCRIBERS slots, so 32 x 8 copies of this number
+against 4 and 1 for the two service families. Sharing one size with
+them meant every subscriber entry paid for the largest type a
+SERVICE carries, and the other way round.
+
+-1 is the DERIVE sentinel: the build takes the
+largest wire bound over the subscriptions this image declares, plus
+the 4-byte CDR header, and falls back to NROS_XRCE_BUFFER_SIZE when
+the declaration does not price every one of them. It moves together
+with the ring depth or not at all — see
+XRCE_SUBSCRIBER_RING_DEPTH in nros-rmw-xrce/src/internal.h for why
+one of the two alone can make the pool LARGER.
+'''
+
+[[knob]]
+key = "xrce.subscriber_ring_depth"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Queued samples per subscriber"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default 32",
+    "range 1 1024",
+]
+help = '''
+How many samples one subscriber slot buffers before the topic
+callback drops the newest. Maps to XRCE_SUBSCRIBER_RING_DEPTH.
+
+This is the OTHER multiplier of a subscriber slot: a slot costs
+NROS_XRCE_SUBSCRIBER_RING_DEPTH x NROS_XRCE_BUFFER_SIZE (32 x 1024
+by default) plus bookkeeping. The slot COUNT is derived from the
+image's declared entities (NROS_XRCE_MAX_SUBSCRIBERS); this is the
+per-slot DEPTH,
+and it is deliberately NOT derivable -- no inventory knows how
+deep a burst a subscriber must survive. It is a policy, so it is
+stated.
+
+On Zephyr this option is the only way to change the depth: a
+Zephyr cargo build sees ONLY the knobs the `_nros_resolve_knob`
+resolver forwards, and shell exports do not survive it. 32 is the
+value every Zephyr XRCE image has always compiled; this option makes
+it reachable without moving it.
+
+Depth 32 exists because the Agent batches a whole publish burst
+onto the input stream inside one `uxr_run_session_time` call, so
+the listener cannot drain between callbacks -- see the comment on
+XRCE_SUBSCRIBER_RING_DEPTH in nros-rmw-xrce/src/internal.h before
+lowering it. A node that publishes only, or reads a slow topic,
+can drop it to 1 and save 31/32 of every subscriber slot.
+'''
+
+[[knob]]
+key = "xrce.transport_mtu"
+scope = "board"
+class = "public"
+type = "int"
+prompt = "XRCE transport MTU"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default 512",
+]
+help = '''
+MTU of the IP transports, and the value NROS_XRCE_CUSTOM_TRANSPORT_MTU
+defaults to. Also sizes the two per-session reliable stream
+buffers (MTU x NROS_XRCE_STREAM_HISTORY each).
+Maps to UCLIENT_UDP_TRANSPORT_MTU, UCLIENT_TCP_TRANSPORT_MTU.
+
+On Zephyr this option reaches the transport only through
+NROS_XRCE_CUSTOM_TRANSPORT_MTU. Both macros it maps to are declared
+inside `#ifdef UCLIENT_PROFILE_UDP` and NO Zephyr image defines that
+profile: the Zephyr transport is `transport_nros_udp.c` registered as a
+CUSTOM transport (xrce-config.txt binds UCLIENT_PROFILE_UDP to the
+`posix_ip` condition). Without that default, UCLIENT_CUSTOM_TRANSPORT_MTU
+would be 4096 — 2 x 4096 x 16 = 131,072 bytes of stream buffer, twice the whole
+65,536-byte platform heap, before a single entity slot.
+'''
+
+[[env]]
+key = "xrce.serial_baud"
+transitional = { name = "XRCE_SERIAL_BAUD" }
+disposition = "listed"
+parse = "int"
+help = "The XRCE serial transport's baud rate."

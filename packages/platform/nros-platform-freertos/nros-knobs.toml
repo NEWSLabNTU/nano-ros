@@ -1,0 +1,38 @@
+# The configuration rows this platform package declares (RFC-0140 D2,
+# phase-581 W2). Found beside its descriptor (nros-platform.toml) by the scan that finds
+# the package, so this file's presence is the declaration. The schema is core's
+# (packages/tooling/nros-zephyr-build/knobs.toml says what each field means);
+# every key starts with this file's owner word, `freertos`, which is derived
+# from the package (its platform name)
+# and checked, never chosen. Edit, then run `python3 scripts/gen-knob-registry.py`.
+
+owner = "freertos"
+
+[[knob]]
+key = "freertos.app_stack_kb"
+scope = "board"
+class = "carrier"
+carries = "memory.app_stack_bytes"
+
+[[knob]]
+key = "freertos.heap_kb"
+scope = "board"
+class = "carrier"
+carries = "memory.heap_bytes"
+
+# Issue 2507 -- 0 builds a FreeRTOS kernel that does not reprogram the
+# board's task stack guard on a context switch (MPS2-AN385: an MPU region
+# over each task stack's lowest 256 bytes). Unset keeps the board's default,
+# which is on. Read by nros-board-freertos/build.rs and, on the cmake road,
+# cmake/platform/nano-ros-freertos.cmake.
+[[knob]]
+key = "freertos.task_stack_guard"
+scope = "board"
+class = "public"
+help = '''
+0 builds a FreeRTOS kernel that does not reprogram the board's task stack
+guard on a context switch, so a task that overflows its stack is no longer
+stopped by the MPU. 1 keeps the guard. Unset keeps the board's own default:
+on for a board that has a guard (MPS2-AN385 guards the lowest 256 bytes of
+each task stack), off for one that does not.
+'''

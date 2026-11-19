@@ -896,6 +896,14 @@ reopened Q1 with a wider scope; this revision answers Q1.
   one `retired_spelling` lookup over a merged catalog built in memory, and
   `RenameKey`/`MoveKey` edits scaled by the factor.
 
+- 2026-11-20: **phase-581 W2.** The six in-tree packages carry their rows.
+  The Rust loader stays `nros_cli_core::knob_catalog` (`Catalog::build`
+  over the provider scan, which finds RMW, platform and board packages
+  alike): nothing outside the CLI loads the merged catalog yet. The
+  generated `IN_TREE_PACKAGES` table says which compiled row is whose, so a
+  scanned copy equal to it is the in-tree package itself and a different one
+  overlays it (later root wins, reported as shadowed).
+
 ## Appendix A - Settings that break the rule on `origin/main` (87)
 
 Columns: the old TOML key (a registry row with no `toml` column shows the key
