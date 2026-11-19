@@ -9052,7 +9052,7 @@ structure:
         assert_eq!(clock.max_publishers, none.max_publishers);
         assert_eq!(clock.max_queryables, none.max_queryables);
         assert_eq!(
-            InfraServices::from_model(&infra_model("sim_time"), None)
+            InfraServices::from_model(&infra_model("sim_time"))
                 .families()
                 .tag(),
             "clock"
