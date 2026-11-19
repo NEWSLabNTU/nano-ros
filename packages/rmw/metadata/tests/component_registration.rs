@@ -22,7 +22,25 @@ use nros::{
 // naming the crate is what links it.
 extern crate nros_platform_cffi as _;
 
-fn metadata_executor() -> nros::Executor<'static> {
+/// The census recorder behind every metadata executor is process-global (a
+/// census is one program per process), and the test harness runs these tests
+/// on parallel threads in one process. A test that records holds this guard
+/// for its whole body, so its nodes, entities and reads land in the recorder
+/// with no other test's in between. Opening a metadata executor takes the
+/// guard by reference, so a test cannot record without holding it.
+struct Census(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+fn census() -> Census {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // A test that failed while holding it poisons the lock; the next test
+    // still owns the recorder alone, which is all the lock is for.
+    Census(
+        LOCK.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
+}
+
+fn metadata_executor(_census: &Census) -> nros::Executor<'static> {
     let _ = nros_rmw_metadata::nros_rmw_metadata_register();
     let config = nros::ExecutorConfig::new("").rmw("metadata");
     nros::Executor::open(&config).expect("the metadata backend must open")
@@ -34,8 +52,8 @@ fn metadata_str(value: &str) -> MetadataString {
     s
 }
 
-fn record<C: Component>(recorder: &mut dyn NodeRuntime) -> NodeResult<()> {
-    let mut executor = metadata_executor();
+fn record<C: Component>(recorder: &mut dyn NodeRuntime, census: &Census) -> NodeResult<()> {
+    let mut executor = metadata_executor(census);
     nros::__macro::record_node_metadata::<C>(recorder, &mut executor)
 }
 
@@ -129,8 +147,9 @@ impl Component for TalkerComponent {
 
 #[test]
 fn component_records_metadata_without_transport() {
+    let census = census();
     let mut recorder = MetadataRecorder::<2, 8, 4>::new();
-    record::<TalkerComponent>(&mut recorder).unwrap();
+    record::<TalkerComponent>(&mut recorder, &census).unwrap();
 
     assert_eq!(recorder.nodes().len(), 1);
     assert_eq!(recorder.nodes()[0].name.as_str(), "talker");
@@ -165,8 +184,9 @@ impl Component for SafetyComponent {
 
 #[test]
 fn safety_opt_in_records_metadata_flag() {
+    let census = census();
     let mut recorder = MetadataRecorder::<2, 8, 4>::new();
-    record::<SafetyComponent>(&mut recorder).unwrap();
+    record::<SafetyComponent>(&mut recorder, &census).unwrap();
     let ents = recorder.entities();
     assert_eq!(ents.len(), 2);
     // Plain subscription on /a — no safety.
@@ -197,10 +217,11 @@ impl Component for InfoComponent {
 
 #[test]
 fn a_message_info_declaration_is_priced_as_a_buffered_subscription() {
+    let census = census();
     use nros_node::executor::declared_shape::DeclaredSubscriptionShape;
 
     let mut recorder = MetadataRecorder::<2, 8, 4>::new();
-    record::<InfoComponent>(&mut recorder).unwrap();
+    record::<InfoComponent>(&mut recorder, &census).unwrap();
     let ents = recorder.entities();
     assert_eq!(ents.len(), 2);
 
@@ -281,8 +302,9 @@ impl Component for BoundComponent {
 
 #[test]
 fn a_declared_subscription_records_its_message_bound() {
+    let census = census();
     let mut recorder = MetadataRecorder::<2, 8, 4>::new();
-    record::<BoundComponent>(&mut recorder).unwrap();
+    record::<BoundComponent>(&mut recorder, &census).unwrap();
     let by_topic = |t: &str| {
         recorder
             .entities()
@@ -332,10 +354,11 @@ fn a_declared_subscription_records_its_message_bound() {
 /// is the whole event.
 #[test]
 fn a_declared_subscription_states_the_path_its_registration_will_take() {
+    let census = census();
     use nros_node::executor::declared_shape::DeclaredSubscriptionShape;
 
     let mut recorder = MetadataRecorder::<2, 8, 4>::new();
-    record::<SafetyComponent>(&mut recorder).unwrap();
+    record::<SafetyComponent>(&mut recorder, &census).unwrap();
     let ents = recorder.entities();
 
     assert_eq!(
@@ -356,7 +379,7 @@ fn a_declared_subscription_states_the_path_its_registration_will_take() {
     // entry point must keep refusing, because nothing decided anything
     // for it (issue 1522's other three populations).
     let mut publishers = MetadataRecorder::<2, 8, 4>::new();
-    record::<TalkerComponent>(&mut publishers).unwrap();
+    record::<TalkerComponent>(&mut publishers, &census).unwrap();
     let pubs = publishers.entities();
     assert_eq!(pubs[0].kind, EntityKind::Publisher);
     assert_eq!(
@@ -400,8 +423,9 @@ impl Component for GroupedComponent {
 
 #[test]
 fn sticky_callback_group_stamps_subsequent_entities() {
+    let census = census();
     let mut recorder = MetadataRecorder::<2, 8, 4>::new();
-    record::<GroupedComponent>(&mut recorder).unwrap();
+    record::<GroupedComponent>(&mut recorder, &census).unwrap();
 
     let group_of = |idx: usize| {
         recorder.entities()[idx]
@@ -420,8 +444,9 @@ fn sticky_callback_group_stamps_subsequent_entities() {
 
 #[test]
 fn context_can_synthesize_stable_node_id_from_options_name() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 0, 0>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let node = context
             .create_node(NodeOptions::new("talker").namespace("/demo").domain_id(42))
@@ -447,8 +472,9 @@ fn context_can_synthesize_stable_node_id_from_options_name() {
 /// which needs an executor and a `/clock` override.
 #[test]
 fn a_declared_timer_records_the_clock_it_asked_for() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 2, 0>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("talker")).unwrap();
 
@@ -492,8 +518,9 @@ fn a_declared_timer_records_the_clock_it_asked_for() {
 
 #[test]
 fn synthesized_entity_helpers_record_topic_and_callback_ids() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 3, 2>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("talker")).unwrap();
 
@@ -555,8 +582,9 @@ fn synthesized_entity_helpers_record_topic_and_callback_ids() {
 
 #[test]
 fn named_callback_helpers_avoid_manual_callback_ids() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 3, 2>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("listener")).unwrap();
 
@@ -615,8 +643,9 @@ fn named_callback_helpers_avoid_manual_callback_ids() {
 
 #[test]
 fn synthesized_entity_ids_reject_collisions() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 2, 0>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("talker")).unwrap();
 
@@ -633,8 +662,9 @@ fn synthesized_entity_ids_reject_collisions() {
 
 #[test]
 fn component_rejects_effect_for_unknown_entity() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 1, 1>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let result = context
             .callback(CallbackId::new("cb"))
@@ -699,8 +729,9 @@ impl Component for RobotComponent {
 /// Verifies the component API records multi-node services, actions, and defaults.
 #[test]
 fn component_api_records_multi_node_services() {
+    let census = census();
     let mut recorder = MetadataRecorder::<4, 12, 4>::new();
-    record::<RobotComponent>(&mut recorder).unwrap();
+    record::<RobotComponent>(&mut recorder, &census).unwrap();
 
     assert_eq!(recorder.nodes().len(), 2);
     assert_eq!(recorder.nodes()[0].id.as_str(), "node_sensors");
@@ -777,8 +808,9 @@ fn component_api_records_multi_node_services() {
 
 #[test]
 fn component_api_json_contains_planner_callback_links() {
+    let census = census();
     let mut recorder = MetadataRecorder::<4, 12, 4>::new();
-    record::<RobotComponent>(&mut recorder).unwrap();
+    record::<RobotComponent>(&mut recorder, &census).unwrap();
 
     let json = recorder
         .to_source_metadata_json(&nros::SourceMetadataExport::new(
@@ -808,8 +840,9 @@ fn component_api_json_contains_planner_callback_links() {
 
 #[test]
 fn create_subscription_static_returns_tag_matching_topic() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 1, 1>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("listener")).unwrap();
         let tag = node
@@ -832,8 +865,9 @@ fn create_subscription_static_returns_tag_matching_topic() {
 
 #[test]
 fn create_service_static_returns_tag() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 1, 1>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("server")).unwrap();
         let tag = node
@@ -856,8 +890,9 @@ fn create_service_static_returns_tag() {
 
 #[test]
 fn create_service_helpers_use_name_as_entity_and_callback_id() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 2, 1>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("services")).unwrap();
         let server = node
@@ -891,8 +926,9 @@ fn create_service_helpers_use_name_as_entity_and_callback_id() {
 
 #[test]
 fn create_action_static_returns_tag() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 1, 1>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("server")).unwrap();
         let tag = node
@@ -929,8 +965,9 @@ fn create_action_static_returns_tag() {
 
 #[test]
 fn create_action_helpers_use_name_as_entity_and_default_callback_id() {
+    let census = census();
     let mut recorder = MetadataRecorder::<1, 2, 3>::new();
-    let mut __exec = metadata_executor();
+    let mut __exec = metadata_executor(&census);
     nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("actions")).unwrap();
         let server = node
@@ -983,6 +1020,7 @@ fn create_action_helpers_use_name_as_entity_and_default_callback_id() {
 // Uses `MetadataString` (heapless::String re-export) to stay no_std-compatible.
 #[test]
 fn node_identity_injected_wins_over_node_options() {
+    let census = census();
     /// Minimal NodeRuntime that applies the Phase 268 W1 identity override
     /// (same logic as `ExecutorSink::create_node`) and records the resolved values.
     struct CapturingRuntime {
@@ -1023,7 +1061,7 @@ fn node_identity_injected_wins_over_node_options() {
         resolved_ns: MetadataString::new(),
     };
     {
-        let mut __exec = metadata_executor();
+        let mut __exec = metadata_executor(&census);
         nros::__macro::__record_with_context("test_node", &mut rt_a, &mut __exec, |ctx| {
             ctx.create_node(NodeOptions::new("default").namespace("/d"))
                 .unwrap();
@@ -1039,7 +1077,7 @@ fn node_identity_injected_wins_over_node_options() {
         resolved_ns: MetadataString::new(),
     };
     {
-        let mut __exec = metadata_executor();
+        let mut __exec = metadata_executor(&census);
         nros::__macro::__record_with_context("test_node", &mut rt_b, &mut __exec, |ctx| {
             ctx.create_node(NodeOptions::new("default").namespace("/d"))
                 .unwrap();
@@ -1056,6 +1094,7 @@ fn node_identity_injected_wins_over_node_options() {
 // resolved wire name. No executor needed — tests the design contract.
 #[test]
 fn entity_names_resolved_through_launch_remaps() {
+    let census = census();
     struct CapturingRuntime {
         node_identity: (&'static str, &'static str),
         remaps: &'static [(&'static str, &'static str)],
@@ -1097,7 +1136,7 @@ fn entity_names_resolved_through_launch_remaps() {
         resolved: MetadataString::new(),
     };
     {
-        let mut __exec = metadata_executor();
+        let mut __exec = metadata_executor(&census);
         nros::__macro::__record_with_context("test_node", &mut rt, &mut __exec, |ctx| {
             let mut node = ctx
                 .create_node(NodeOptions::new("filter").namespace("/sensing"))
@@ -1111,7 +1150,7 @@ fn entity_names_resolved_through_launch_remaps() {
 
     // Un-remapped relative name → plain expansion.
     {
-        let mut __exec = metadata_executor();
+        let mut __exec = metadata_executor(&census);
         nros::__macro::__record_with_context("test_node", &mut rt, &mut __exec, |ctx| {
             let mut node = ctx
                 .create_node(NodeOptions::new("filter").namespace("/sensing"))
@@ -1124,7 +1163,7 @@ fn entity_names_resolved_through_launch_remaps() {
 
     // Parameter names bypass the remap seam.
     {
-        let mut __exec = metadata_executor();
+        let mut __exec = metadata_executor(&census);
         nros::__macro::__record_with_context("test_node", &mut rt, &mut __exec, |ctx| {
             let mut node = ctx
                 .create_node(NodeOptions::new("filter").namespace("/sensing"))
@@ -1140,8 +1179,9 @@ fn entity_names_resolved_through_launch_remaps() {
 /// name twice in one registration is refused, not silently merged.
 #[test]
 fn synthesized_node_ids_reject_duplicate_names() {
+    let census = census();
     let mut recorder = MetadataRecorder::<2, 0, 0>::new();
-    let mut exec = metadata_executor();
+    let mut exec = metadata_executor(&census);
     let second =
         nros::__macro::__record_with_context("test", &mut recorder, &mut exec, |context| {
             context.create_node(NodeOptions::new("talker")).unwrap();
@@ -1158,6 +1198,7 @@ fn synthesized_node_ids_reject_duplicate_names() {
 /// written once and shared between the two.
 #[test]
 fn a_component_and_a_program_share_one_node_type() {
+    let census = census();
     fn configure(node: &mut nros::Node<'_, 'static>) -> &'static str {
         let _clock = node.get_clock();
         assert!(node.fully_qualified_name().unwrap().ends_with(node.name()));
@@ -1169,13 +1210,13 @@ fn a_component_and_a_program_share_one_node_type() {
     }
 
     // The standalone road: the executor creates the node.
-    let mut exec = metadata_executor();
+    let mut exec = metadata_executor(&census);
     let mut node = exec.create_node("standalone").unwrap();
     assert_eq!(configure(&mut node), "program");
 
     // The component road: `register`'s context creates it.
     let mut recorder = MetadataRecorder::<1, 0, 0>::new();
-    let mut exec = metadata_executor();
+    let mut exec = metadata_executor(&census);
     let seen =
         nros::__macro::__record_with_context("shared", &mut recorder, &mut exec, |context| {
             let mut node = context
@@ -1195,6 +1236,7 @@ fn a_component_and_a_program_share_one_node_type() {
 /// deferral depends on.
 #[test]
 fn a_launch_parameter_read_before_create_node_lands_on_that_node() {
+    let census = census();
     struct CensusRuntime;
     impl NodeRuntime for CensusRuntime {
         fn create_node(&mut self, _id: NodeId<'_>, options: NodeOptions<'_>) -> NodeResult<()> {
@@ -1217,7 +1259,7 @@ fn a_launch_parameter_read_before_create_node_lands_on_that_node() {
     // A node the census already has open, as an earlier component leaves it.
     nros::census_hooks::on_node_create("earlier_node_2589", "/", 0);
     let mut runtime = CensusRuntime;
-    let mut exec = metadata_executor();
+    let mut exec = metadata_executor(&census);
     nros::__macro::__record_with_context("reader", &mut runtime, &mut exec, |ctx| {
         assert_eq!(
             ctx.param("early_2589"),
