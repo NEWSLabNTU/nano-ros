@@ -96,8 +96,12 @@ pub(crate) const fn set_result_reason(result: Result<(), ParameterError>) -> &'s
     }
 }
 
-/// What a remote set reports for a name the node never declared (issue
-/// 1151). rclrs `parameter.rs` `validate_parameter_setting`, verbatim.
+/// What a remote set reports for a name the node never declared when the
+/// reply has no room for the named reason (issue 1151; rclrs
+/// `parameter.rs` `validate_parameter_setting`, verbatim). The wire answer
+/// is rclcpp's, which names the parameter (`refusal_reason` in
+/// `parameter_services`, issue 2731); this is its bounded fallback, the
+/// longest reason a result's size is priced at.
 pub const UNDECLARED_REASON: &str =
     "Parameter was not declared and undeclared parameters are not allowed";
 
@@ -303,11 +307,11 @@ pub(crate) const UNKNOWN_TYPE_REASON: &str = "Unknown parameter type";
 /// as a CDR string.
 pub(crate) const SET_RESULT_BYTES: usize = 1 + CDR_STR + LONGEST_SET_REASON;
 
-/// What a remote delete of a statically typed parameter reports: rclpy's
-/// wording (`Node._apply_descriptor`), verbatim. rclcpp's is "cannot undeclare
-/// an statically typed parameter"; the compatibility tests compare against
-/// rclpy.
-pub const STATIC_UNDECLARE_REASON: &str = "Static parameter cannot be undeclared";
+/// What a remote delete of a statically typed parameter reports: rclcpp's
+/// wording, verbatim (its grammar included), as a Humble rclcpp node answers
+/// `ros2 param delete`. The reference is rclcpp by user ruling (2026-11-19,
+/// phase-556 W2); rclpy's is "Static parameter cannot be undeclared".
+pub const STATIC_UNDECLARE_REASON: &str = "cannot undeclare an statically typed parameter";
 
 /// The longest reason a `SetParametersResult` can carry: every
 /// [`set_result_reason`] arm, every `RmwParameterConversionError::reason`, and
