@@ -16365,24 +16365,29 @@ impl<'s> Executor<'s> {
             return;
         };
         let nodes = &self.nodes;
-        params.server.take_truncated_descriptions(|key, name| {
-            let (ns, node) = nodes
-                .get(key.index())
-                .map_or(("", "?"), |r| (r.namespace.as_str(), r.name.as_str()));
-            // phase-446 F2
-            nros_log::log_warn!(
-                nros_log::get_logger("nros"),
-                "parameter `{}` on node {}/{}: its description is longer than \
-                 NROS_MAX_PARAM_DESCRIPTION_LEN ({} bytes), so `ros2 param describe` \
-                 answers it truncated at a character boundary. Raise \
-                 NROS_MAX_PARAM_DESCRIPTION_LEN to keep it whole; 0 stores no \
-                 descriptions. Logged once for this parameter.",
-                name,
-                ns.trim_end_matches('/'),
-                node,
-                nros_params::MAX_PARAM_DESCRIPTION_LEN
-            );
-        });
+        params
+            .server
+            .take_truncated_descriptions(|key, name, text| {
+                let (ns, node) = nodes
+                    .get(key.index())
+                    .map_or(("", "?"), |r| (r.namespace.as_str(), r.name.as_str()));
+                // phase-446 F2; issue 2686 -- name the field that was cut and the
+                // knob that sizes IT: a constraints text has its own.
+                nros_log::log_warn!(
+                    nros_log::get_logger("nros"),
+                    "parameter `{}` on node {}/{}: its {} is longer than \
+                 {} ({} bytes), so `ros2 param describe` answers it truncated \
+                 at a character boundary. Raise {} to keep it whole; 0 stores \
+                 none. Logged once for this parameter.",
+                    name,
+                    ns.trim_end_matches('/'),
+                    node,
+                    text.field(),
+                    text.knob(),
+                    text.capacity(),
+                    text.knob()
+                );
+            });
     }
 
     /// Declare a parameter with a value and descriptor on the PRIMARY node.

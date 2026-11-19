@@ -4517,7 +4517,7 @@ fn a_truncated_description_is_reported_by_the_next_spin_once() {
     let reported = executor
         .params_mut()
         .expect("store")
-        .take_truncated_descriptions(|_, _| again += 1);
+        .take_truncated_descriptions(|_, _, _| again += 1);
     assert_eq!(
         (reported, again),
         (0, 0),

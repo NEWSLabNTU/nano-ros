@@ -607,9 +607,9 @@ pub struct ParameterDescriptor {
     /// bytes on the eight-parameter island, taking its reply past the 4,096
     /// fallback. An image that wants constraint text states the knob. Write it
     /// with [`Self::set_additional_constraints`], which truncates at a
-    /// character boundary and records the truncation exactly as the
-    /// description does, so a value that does not fit is reported rather than
-    /// dropped in silence.
+    /// character boundary and records the truncation under its own flag, so a
+    /// value that does not fit is reported, naming this field and
+    /// `NROS_MAX_PARAM_CONSTRAINTS_LEN`, rather than dropped in silence.
     pub additional_constraints: String<MAX_PARAM_CONSTRAINTS_LEN>,
     /// Whether the parameter is read-only
     pub read_only: bool,
@@ -624,6 +624,47 @@ pub struct ParameterDescriptor {
     ///
     /// [`ParameterServer::take_truncated_descriptions`]: crate::ParameterServerOps::take_truncated_descriptions
     description_truncated: bool,
+    /// Issue 2686 -- the same for `additional_constraints`, which has its own
+    /// knob (`NROS_MAX_PARAM_CONSTRAINTS_LEN`). A separate flag, so the
+    /// report names the field that was cut and the knob that sizes it.
+    constraints_truncated: bool,
+}
+
+// Issue 2686 -- a truncation report names the field and its knob.
+/// One of a descriptor's two prose fields. Each has its own capacity and its
+/// own knob, and a truncation report names both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DescriptorText {
+    /// `description`, sized by `NROS_MAX_PARAM_DESCRIPTION_LEN`.
+    Description,
+    /// `additional_constraints`, sized by `NROS_MAX_PARAM_CONSTRAINTS_LEN`.
+    Constraints,
+}
+
+impl DescriptorText {
+    /// The `rcl_interfaces/msg/ParameterDescriptor` field this text is.
+    pub const fn field(self) -> &'static str {
+        match self {
+            Self::Description => "description",
+            Self::Constraints => "additional_constraints",
+        }
+    }
+
+    /// The knob that sizes this field.
+    pub const fn knob(self) -> &'static str {
+        match self {
+            Self::Description => "NROS_MAX_PARAM_DESCRIPTION_LEN",
+            Self::Constraints => "NROS_MAX_PARAM_CONSTRAINTS_LEN",
+        }
+    }
+
+    /// This image's capacity for the field, in bytes.
+    pub const fn capacity(self) -> usize {
+        match self {
+            Self::Description => MAX_PARAM_DESCRIPTION_LEN,
+            Self::Constraints => MAX_PARAM_CONSTRAINTS_LEN,
+        }
+    }
 }
 
 /// Store as much of `text` as `dst` holds, cut at a UTF-8
@@ -659,6 +700,7 @@ impl ParameterDescriptor {
             dynamic_typing: false,
             range: ParameterRange::None,
             description_truncated: false,
+            constraints_truncated: false,
         })
     }
 
@@ -689,6 +731,29 @@ impl ParameterDescriptor {
         self.description_truncated
     }
 
+    // Issue 2686.
+    /// Whether the last constraints text set was truncated and not yet
+    /// reported.
+    pub fn constraints_truncated(&self) -> bool {
+        self.constraints_truncated
+    }
+
+    /// Whether either prose field was truncated and not yet reported.
+    pub fn any_text_truncated(&self) -> bool {
+        self.description_truncated || self.constraints_truncated
+    }
+
+    /// The prose fields truncated and not yet reported, description first.
+    pub fn truncated_texts(&self) -> impl Iterator<Item = DescriptorText> + use<> {
+        let d = self
+            .description_truncated
+            .then_some(DescriptorText::Description);
+        let c = self
+            .constraints_truncated
+            .then_some(DescriptorText::Constraints);
+        d.into_iter().chain(c)
+    }
+
     /// rclc's `additional_constraints`, the fourth argument of
     /// `rclc_add_parameter_description`. Truncated and recorded like the
     /// description; returns whether anything was cut.
@@ -698,14 +763,12 @@ impl ParameterDescriptor {
             crate::descriptor_text_observer::DescriptorText::Constraints,
             text.len(),
         );
-        let cut = fit_description(&mut self.additional_constraints, text);
-        // ONE truncation flag for both texts, deliberately. What the executor
-        // reports is "this parameter's descriptor prose did not fit", and the
-        // remedy — raise `NROS_MAX_PARAM_DESCRIPTION_LEN` — is the same for
-        // either field, because they share the knob. A second flag would
-        // report two states with one cure.
-        self.description_truncated |= cut;
-        cut
+        // Its own flag (issue 2686): the constraints text has its own knob,
+        // so a cut here is reported as the constraints field's, naming
+        // `NROS_MAX_PARAM_CONSTRAINTS_LEN`, and leaves an intact description
+        // unreported.
+        self.constraints_truncated = fit_description(&mut self.additional_constraints, text);
+        self.constraints_truncated
     }
 
     /// Builder form of [`Self::set_additional_constraints`].
@@ -714,9 +777,10 @@ impl ParameterDescriptor {
         self
     }
 
-    /// Mark the truncation as reported (phase-446 F2 -- once per parameter).
-    pub(crate) fn clear_description_truncated(&mut self) {
+    /// Mark every truncation as reported (phase-446 F2 -- once per parameter).
+    pub(crate) fn clear_truncated_texts(&mut self) {
         self.description_truncated = false;
+        self.constraints_truncated = false;
     }
 
     /// Set read-only flag
@@ -1603,5 +1667,35 @@ mod issue_0323_tests {
         let mut d = d;
         assert!(!d.set_description(""));
         assert!(!d.description_truncated());
+    }
+
+    /// Issue 2686 -- a constraints text that does not fit is the
+    /// constraints field's truncation, sized by its own knob, not a
+    /// description that did not fit. The description here is intact.
+    #[test]
+    fn a_truncated_constraints_text_is_not_a_truncated_description() {
+        let long = "c".repeat(MAX_PARAM_CONSTRAINTS_LEN + 1);
+        let mut d = ParameterDescriptor::new("p", ParameterType::Bool)
+            .unwrap()
+            .with_description("fits");
+        assert!(d.set_additional_constraints(&long));
+        assert!(
+            !d.description_truncated(),
+            "the description is whole; only the constraints were cut"
+        );
+        assert!(d.constraints_truncated());
+        let cut: heapless::Vec<DescriptorText, 2> = d.truncated_texts().collect();
+        assert_eq!(cut.as_slice(), &[DescriptorText::Constraints]);
+        assert_eq!(cut[0].knob(), "NROS_MAX_PARAM_CONSTRAINTS_LEN");
+        assert_eq!(cut[0].field(), "additional_constraints");
+        assert_eq!(cut[0].capacity(), MAX_PARAM_CONSTRAINTS_LEN);
+        // Both cut: both reported, each under its own knob.
+        d.set_description(&"d".repeat(MAX_PARAM_DESCRIPTION_LEN + 1));
+        let both: heapless::Vec<DescriptorText, 2> = d.truncated_texts().collect();
+        assert_eq!(
+            both.as_slice(),
+            &[DescriptorText::Description, DescriptorText::Constraints]
+        );
+        assert_eq!(both[0].knob(), "NROS_MAX_PARAM_DESCRIPTION_LEN");
     }
 }

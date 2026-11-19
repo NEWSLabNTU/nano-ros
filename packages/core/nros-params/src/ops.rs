@@ -23,7 +23,10 @@ impl sealed::Sealed for ParameterServer<'_> {}
 /// parameter verbs. Sealed.
 pub trait ParameterServerOps<'s>: sealed::Sealed + Sized {
     /// See `ParameterServer::take_truncated_descriptions` in `server.rs`.
-    fn take_truncated_descriptions(&mut self, report: impl FnMut(NodeKey, &str)) -> usize;
+    fn take_truncated_descriptions(
+        &mut self,
+        report: impl FnMut(NodeKey, &str, crate::DescriptorText),
+    ) -> usize;
 
     /// See `ParameterServer::new_in` in `server.rs`.
     fn new_in(table: ParameterTable<'s>) -> Self;
@@ -312,7 +315,10 @@ pub trait ParameterServerOps<'s>: sealed::Sealed + Sized {
 
 impl<'s> ParameterServerOps<'s> for ParameterServer<'s> {
     #[inline]
-    fn take_truncated_descriptions(&mut self, report: impl FnMut(NodeKey, &str)) -> usize {
+    fn take_truncated_descriptions(
+        &mut self,
+        report: impl FnMut(NodeKey, &str, crate::DescriptorText),
+    ) -> usize {
         ParameterServer::take_truncated_descriptions(self, report)
     }
 

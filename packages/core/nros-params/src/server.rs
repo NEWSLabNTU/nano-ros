@@ -546,16 +546,20 @@ pub struct ParameterServer<'s> {
 impl<'s> ParameterServer<'s> {
     /// phase-446 F2 -- report each declared parameter whose description was
     /// truncated to `NROS_MAX_PARAM_DESCRIPTION_LEN`, ONCE, and forget it.
+    /// Issue 2686: `report` is called once per truncated FIELD, with the
+    /// [`DescriptorText`](crate::DescriptorText) that names the field and the
+    /// knob that sizes it, so a cut constraints text is never reported as a
+    /// description.
     ///
     /// This crate has no logger, so it records the truncation on the
     /// descriptor and the executor, which has one, drains it here and logs.
     /// The truncation itself happens where the text is given
     /// ([`ParameterDescriptor::set_description`]), and a declaration can come
     /// through several builders; the store is where every one of them lands.
-    /// Returns how many were reported.
+    /// Returns how many truncated fields were reported.
     pub(crate) fn take_truncated_descriptions(
         &mut self,
-        mut report: impl FnMut(NodeKey, &str),
+        mut report: impl FnMut(NodeKey, &str, crate::DescriptorText),
     ) -> usize {
         if !self.truncation_pending {
             return 0;
@@ -564,11 +568,13 @@ impl<'s> ParameterServer<'s> {
         let mut n = 0;
         for entry in self.table.entries.iter_mut().flatten() {
             if let Some(d) = entry.descriptor.as_mut()
-                && d.description_truncated()
+                && d.any_text_truncated()
             {
-                d.clear_description_truncated();
-                report(entry.node, entry.param.name.as_str());
-                n += 1;
+                for text in d.truncated_texts() {
+                    report(entry.node, entry.param.name.as_str(), text);
+                    n += 1;
+                }
+                d.clear_truncated_texts();
             }
         }
         n
@@ -577,7 +583,7 @@ impl<'s> ParameterServer<'s> {
     /// Note a descriptor entering the store (phase-446 F2).
     #[inline]
     fn note_descriptor(&mut self, descriptor: Option<&ParameterDescriptor>) {
-        if descriptor.is_some_and(ParameterDescriptor::description_truncated) {
+        if descriptor.is_some_and(ParameterDescriptor::any_text_truncated) {
             self.truncation_pending = true;
         }
     }
@@ -1961,7 +1967,7 @@ mod tests {
         let other = NodeKey::new(1);
         let mut storage = ParameterStorage::<8>::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        assert_eq!(server.take_truncated_descriptions(|_, _| ()), 0);
+        assert_eq!(server.take_truncated_descriptions(|_, _, _| ()), 0);
 
         let d = ParameterDescriptor::new("plain", ParameterType::Integer)
             .unwrap()
@@ -1989,7 +1995,7 @@ mod tests {
         );
 
         let mut seen: heapless::Vec<(usize, heapless::String<16>), 8> = heapless::Vec::new();
-        let n = server.take_truncated_descriptions(|node, name| {
+        let n = server.take_truncated_descriptions(|node, name, _| {
             let mut s = heapless::String::new();
             s.push_str(name).unwrap();
             seen.push((node.index(), s)).unwrap();
@@ -2003,7 +2009,7 @@ mod tests {
         }
         assert!(!seen.iter().any(|(_, s)| s.as_str() == "short"));
         assert_eq!(
-            server.take_truncated_descriptions(|_, _| ()),
+            server.take_truncated_descriptions(|_, _, _| ()),
             0,
             "once per parameter"
         );
@@ -2564,7 +2570,11 @@ mod tests {
         // is what makes a capacity of 0 an honest default rather than a
         // trap. At a capacity that fits, nothing is reported.
         let mut reported = 0usize;
-        server.take_truncated_descriptions(|_, _| reported += 1);
+        server.take_truncated_descriptions(|_, _, text| {
+            // Issue 2686: the constraints field, not the description.
+            assert_eq!(text, crate::DescriptorText::Constraints);
+            reported += 1;
+        });
         assert_eq!(
             reported,
             usize::from(!constraints_fit),
