@@ -297,6 +297,9 @@ Options:
       --tool <NAME>
           Install tools by name (instead of a board's whole set), e.g. `--tool qemu`. Repeatable, like `--source`: `--tool ninja --tool make` is ONE plan — one system-package ask for the union, one lock write. The `just <module> setup` recipes call this
 
+      --by-need
+          With `--tool`: install each named tool as its own plan, and let its index row's `need` decide what a failure means -- a `required` tool fails the run, an `opt-in` one prints a warning and the rest go on. What `just workspace cargo-tools` runs, so the recipe never states a tool's need a second time
+
       --source <SOURCES>
           Provision a single `[source.*]` package by name from the index.
           

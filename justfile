@@ -5623,13 +5623,17 @@ _doctor-host:
     retired_store=""
     # shellcheck source=scripts/build/cargo.sh
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
-    if retired_cli="$(NROS_CLI= nros_cli_bin --checkout-only 2>/dev/null)"; then
-        while read -r kind retired_tool _; do
-            [ "$kind" = "[retired]" ] || continue
-            [ -d "${NROS_HOME:-$HOME/.nros}/sdk/$retired_tool" ] || continue
-            retired_store="$retired_store $retired_tool"
-        done < <("$retired_cli" setup --list 2>/dev/null || true)
+    retired_rows=""
+    if retired_cli="$(NROS_CLI= nros_cli_bin --checkout-only 2>/dev/null)" \
+        && ! retired_rows="$("$retired_cli" setup --list 2>/dev/null)"; then
+        echo "  [WARN] \`nros setup --list\` failed; retired store entries not checked"
+        retired_rows=""
     fi
+    while read -r kind retired_tool _; do
+        [ "$kind" = "[retired]" ] || continue
+        [ -d "${NROS_HOME:-$HOME/.nros}/sdk/$retired_tool" ] || continue
+        retired_store="$retired_store $retired_tool"
+    done <<< "$retired_rows"
     if [ -n "$retired_store" ]; then
         echo "  [WARN] retired SDK store entries still installed:$retired_store"
         echo "         nano-ros no longer ships these; nothing prunes the store."
