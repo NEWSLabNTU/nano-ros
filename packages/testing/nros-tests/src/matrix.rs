@@ -1389,6 +1389,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         ),
     ),
     ("output_marker_gate", NonCell::Static),
+    (
+        "owned_entry_run_verb",
+        NonCell::Probe(
+            "`nros run` resolves and runs a named owned entry's own executable (RFC-0071 D19)",
+        ),
+    ),
     ("pkg_index", NonCell::CompileCheck),
     ("platform", NonCell::Static),
     ("platform_header_compile", NonCell::CompileCheck),
