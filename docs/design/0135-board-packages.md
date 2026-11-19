@@ -1,7 +1,7 @@
 ---
 rfc: 0135
 title: "Board packages: one line switches the board, and the package carries everything"
-status: Draft
+status: Accepted
 area: boards
 since: 2026-11
 last-reviewed: 2026-11
@@ -13,9 +13,11 @@ superseded-by: null
 
 # RFC-0135 — Board packages
 
-**Status:** Draft (2026-11-18). The direction and the seven items below were
-approved by the user on 2026-11-18. The decisions D1–D9 are proposed and await
-the user's review of this text. Tracked by phase-577.
+**Status:** Accepted (2026-11-19). The direction and the seven items below were
+approved by the user on 2026-11-18, and the user accepted the decisions D1–D9
+on 2026-11-19, after D2, D5 and D8 were aligned with RFC-0140 (the
+configuration registry): a board package carries its own configuration rows
+in `nros-knobs.toml`. Tracked by phase-577.
 
 ## Summary
 
@@ -126,6 +128,8 @@ my-board-package/
   package.xml               identity, nano-ros version range (D6), announcements
   nros-board.toml           one or more board definitions
   nros-platform.toml        optional: the package's own [arch.*] profiles (D4)
+  nros-knobs.toml           optional: the package's own configuration rows
+                            (knobs and environment variables, RFC-0140 D2)
   src/ + Cargo.toml         optional: bring-up code (the board crate)
   cmake/nano-ros-board-<key>.cmake
                             optional: the board's CMake module, for C/C++ images
@@ -262,10 +266,35 @@ my-board-package/
   `FREERTOS_CONFIG_DIR`, so an outside package has no include path to reach
   the family's files. A family-configuration include seam would remove the
   copies; that is an issue homed in phase-577, not a precondition.
+- **The package carries its own configuration rows** (RFC-0140 D2, D6). A
+  board needs settings of its own: a pool sized for its RAM, a clock rate, a
+  driver option. Today each is a row in nano-ros's central `knobs.toml`, so an
+  outside board cannot declare one without patching nano-ros. Instead:
+  - the package ships `nros-knobs.toml` beside `nros-board.toml`. Its rows
+    are build knobs and environment variables, in the registry's one row
+    format;
+  - the file is found by the same catalog scan that finds the board
+    definition (D5), across all four roots. No board-definition field names
+    it: the file's presence is the declaration, and its absence means "no
+    rows";
+  - the rows' owner word is one of the package's board keys, with `-` read
+    as `_` (`acme-m7-freertos` gives `acme_m7_freertos`). A package with
+    several keys names which one in the file's `owner` line, and the loader
+    checks that it is one of them;
+  - the rows merge into the catalog when it loads, and RFC-0140's collision
+    rules C1–C4 are checked then: one owner per package, every row under its
+    owner, one row per spelled name. A board package cannot declare or
+    redefine a core row, the same additions-only rule D4 gives `[arch.*]`
+    profiles;
+  - an image sets a package row the way it sets a core one,
+    `[image.<id>.knobs.<owner>] <key> = <value>`, and the package's views
+    (its Kconfig, its typed Rust readers) are generated per build
+    (RFC-0140 D5).
 - **Scaffolding.** `nros board new` already scaffolds a board package. It
   emits D2's shape: `package.xml` with a version range and the runner
-  `exec_depend`, a board definition with run, flash and console tables, the
-  ament marker's install rule (D5) and one example (D7).
+  `exec_depend`, a board definition with run, flash and console tables, an
+  empty `nros-knobs.toml` with its `owner` line, the ament marker's install
+  rule (D5) and one example (D7).
 - **A new project names its board.** `nros new <name> --board <key>` writes
   the image's `board =`. The scaffold writes nothing platform-specific; the
   board definition brings that. Where today's `nros new` writes
@@ -370,6 +399,11 @@ reads the index from `$AMENT_PREFIX_PATH`.
   announces `kind="board"`, the `nros_cargo` build type's install step copies
   the package and writes the marker, and does not build the crate. The
   phase records that as its own item.
+- **What the scan reads.** For each board package it finds, the scan reads
+  `nros-board.toml`, and also `nros-platform.toml` (D4) and `nros-knobs.toml`
+  (D2, RFC-0140 D2) when present. A package found in two roots is one
+  package, not a collision: the first root wins and the shadowed copy is
+  reported, for its configuration rows as for its board definitions.
 - **What D8 of RFC-0087 keeps.** The user's own packages stay source-time, and
   nothing requires sourcing a `setup.sh`. The amendment is narrow: installed
   board packages (and, through D4, their profiles) become one more root.
@@ -473,6 +507,7 @@ It checks, from facts that already exist:
 | the BSP root the package names is set and exists | the board package's own variable |
 | every library the image uses can build for this board | D9 |
 | nano-ros version | D6 |
+| every package knob the image sets belongs to a package the image uses, and its value is valid for its row | the merged registry (RFC-0140 D2, D6) |
 | flash method's runner package and host tool installed | D3 |
 
 - **Each existing check stays the authority for its own fact.** D8 calls them
@@ -569,3 +604,7 @@ time.
   - D9 covers library needs;
   - a User flow section is added;
   - `nros check` stays the one verb.
+- 2026-11-19: aligned with RFC-0140 (the configuration registry): a board
+  package ships its own `nros-knobs.toml` (D2's contents and a new D2 item),
+  the D5 scan reads it, and D8 checks the image's package knobs against the
+  merged registry. Then ACCEPTED by the user's ruling of 2026-11-19.

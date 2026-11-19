@@ -1,7 +1,7 @@
 ---
 rfc: 0139
 title: "Device ports: accelerators, cameras and other job devices under the executor"
-status: Draft
+status: Accepted
 area: runtime-api
 since: 2026-11
 last-reviewed: 2026-11
@@ -13,12 +13,12 @@ superseded-by: null
 
 # RFC-0139 — Device ports
 
-**Status:** Draft (2026-11-18). The direction was reviewed with the user on
+**Status:** Accepted (2026-11-19, user ruling). Drafted 2026-11-18. The direction was reviewed with the user on
 2026-11-18: a generic device interface rather than an NPU-specific one; kept
 out of the ROS-counterpart user API; C as the canonical seam, with device
 implementors and device users as two distinct roles. The three questions
-raised in that review are settled below (D7, D6, D9). The decisions D1–D10
-await the user's review of this text. Tracked by phase-579.
+raised in that review are settled below (D7, D6, D9). The user accepted the
+decisions on 2026-11-19. Tracked by phase-579.
 
 ## Summary
 
@@ -464,3 +464,4 @@ vtable is the same ABI.
 
 - 2026-11-18: drafted.
 - 2026-11-18: who provides what per layer (D1), and mock ports (D11).
+- 2026-11-19: ACCEPTED by the user's ruling of 2026-11-19.
