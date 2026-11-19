@@ -270,9 +270,28 @@ pub fn verify(model: &Path, bringup_dir: Option<&Path>) -> Result<(), Refusal> {
     let bringup = bringup_dir
         .map(Path::to_path_buf)
         .or_else(|| infer_bringup_dir(model));
-    if let Some(reason) =
-        provenance_stale_with(model, bringup.as_deref(), PinPolicy::UnpinnedIsUnverifiable)
-    {
+    let self_resolved = bringup
+        .as_deref()
+        .is_some_and(|b| nros_orchestration_ir::model_location::is_self_resolved(b, model));
+    verify_provenance(model, bringup.as_deref(), self_resolved)
+}
+
+/// [`verify`]'s provenance half, once the marker has passed.
+///
+/// A model `ensure_model` resolved for itself (`self_resolved`) carries the
+/// resolver's own version, not the pin `nros sync` stamps, and is current by
+/// construction, so the pin check would refuse every one. [`open`] exempted
+/// it; `verify`'s other callers, the census check among them, refused it, and
+/// a component-less Zephyr leaf could then never configure.
+fn verify_provenance(
+    model: &Path,
+    bringup: Option<&Path>,
+    self_resolved: bool,
+) -> Result<(), Refusal> {
+    if self_resolved {
+        return Ok(());
+    }
+    if let Some(reason) = provenance_stale_with(model, bringup, PinPolicy::UnpinnedIsUnverifiable) {
         return Err(Refusal::Stale {
             model: model.to_path_buf(),
             reason,
@@ -336,9 +355,9 @@ pub fn open(bringup_dir: &Path, model_rel: &str) -> Result<Option<PathBuf>, Refu
     let Some(found) = candidates.into_iter().find(|c| c.is_file()) else {
         return Ok(None);
     };
-    if !model_location::is_self_resolved(bringup_dir, &found) {
-        verify(&found, Some(bringup_dir))?;
-    }
+    // Issue 2736 -- `verify` holds the self-resolved exemption, so this door
+    // and every other caller of `verify` apply one rule.
+    verify(&found, Some(bringup_dir))?;
     Ok(Some(found))
 }
 
@@ -978,6 +997,32 @@ mod tests {
         );
         assert!(matches!(
             verify(&model, Some(bringup)),
+            Err(Refusal::Stale { .. })
+        ));
+    }
+
+    /// A model `ensure_model` resolved for itself carries the resolver's own
+    /// version, so a pin check written for sync's models refuses it. `verify`
+    /// takes it as current, exactly as `open` does; the same file under any
+    /// other path is still refused.
+    #[test]
+    fn a_self_resolved_model_is_not_refused_for_its_resolver_version() {
+        if env!("NROS_PLAY_LAUNCH_SHA") == "unknown" {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        let content = b"[system]\n";
+        std::fs::write(bringup.join("system.toml"), content).unwrap();
+        let model =
+            write_model_with_pin(bringup, vec![("system.toml".into(), sha(content))], "0.9.0");
+        assert!(
+            verify_provenance(&model, Some(bringup), true).is_ok(),
+            "a self-resolved model must pass: {:?}",
+            verify_provenance(&model, Some(bringup), true)
+        );
+        assert!(matches!(
+            verify_provenance(&model, Some(bringup), false),
             Err(Refusal::Stale { .. })
         ));
     }

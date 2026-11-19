@@ -6,7 +6,7 @@ type: test-gap
 severity: medium
 area: [platform, freertos, zephyr, threadx, nuttx, boards]
 found: 2026-11-18
-related: [2696, phase-579]
+related: [2696, 2736, phase-579]
 ---
 
 **Home: [phase-579](../roadmap/phase-579-device-ports.md) W1**
