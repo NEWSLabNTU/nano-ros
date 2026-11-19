@@ -1,5 +1,5 @@
-C API: the headers moved from `nros/` into `rclc/` (RFC-0089 amendment
-2026-10-15, phase-501). `<rclc/rclc.h>` is the umbrella, and the content that
+C API: the headers moved from `nros/` into `rclc/`.
+`<rclc/rclc.h>` is the umbrella, and the content that
 was in `<nros/publisher.h>`, `<nros/log.h>`, `<nros/component.h>` and the rest
 now lives in `<rclc/publisher.h>`, `<rclc/log.h>`, `<rclc/component.h>`.
 Entry, configuration and generated-code support moved to `<rclc/detail/*.h>`,

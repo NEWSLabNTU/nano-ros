@@ -6,4 +6,4 @@ role under the package's names, so the C/C++ talker now publishes on a timer
 instead of once. The package flags follow `ros2 pkg create`: `--node-name`,
 `--dependencies`, `--license`, `--description`, `--maintainer-name`,
 `--maintainer-email` and `--destination-directory`. `--use-case`, which wrote
-a talker for every value, is refused, naming `--template` (phase-517 W12).
+a talker for every value, is refused, naming `--template`.

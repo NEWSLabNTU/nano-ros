@@ -1,5 +1,5 @@
 Two new probe tracks, `just probe renode-nucleo` and a Pico W track in Wokwi
-(since removed, issue 2283), boot the Nucleo-F767ZI and Pico W serial talkers
+(since removed), boot the Nucleo-F767ZI and Pico W serial talkers
 in their emulator twins from a pristine `ros:humble` container and assert that
 `ros2 topic echo` hears them. Both run in the weekly `probe-platforms`
 workflow; the Wokwi track needs a `WOKWI_CLI_TOKEN` secret and fails naming it

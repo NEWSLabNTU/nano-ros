@@ -1,1 +1,1 @@
-The pinned `nros` release is now `0.6.0-nros7`, cut from `main` at 538ccb9084: it carries every phase-523 round-one fix, including `nros run`, `nros setup --offline-dirs`, `nros build --explain-sizing` and `nros doctor --report`.
+The pinned `nros` release is now `0.6.0-nros7`, cut from `main` at 538ccb9084: it carries every fix from the first round of education-lab and adoption trials, including `nros run`, `nros setup --offline-dirs`, `nros build --explain-sizing` and `nros doctor --report`.

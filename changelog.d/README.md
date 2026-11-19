@@ -6,8 +6,8 @@ Types: `fix` `feat` `perf` `breaking` `docs` (see `[tool.towncrier]` in
 
 **Why fragments instead of editing `CHANGELOG.md`.** A single changelog file is
 a shared registry: every pull request edits the same region, so every pull
-request conflicts with every other one. That is the same defect issue 0884 fixed
-for the issue ledger, and towncrier exists for exactly this — upstream's words
+request conflicts with every other one. That is the same defect the issue ledger
+had and fixed, and towncrier exists for exactly this — upstream's words
 are that a monolithic changelog is "prone to merge conflicts", so contributors
 write independent fragments and the file is assembled at release.
 

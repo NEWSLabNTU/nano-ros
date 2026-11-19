@@ -1,1 +1,1 @@
-A generated Zephyr application keeps its workspace Zephyr modules when `nros build` passes the nano-ros module as `-DZEPHYR_EXTRA_MODULES`, and finds the workspace's own message packages without `NROS_INTERFACE_SEARCH_PATH` (issues 2609, 2610).
+A generated Zephyr application keeps its workspace Zephyr modules when `nros build` passes the nano-ros module as `-DZEPHYR_EXTRA_MODULES`, and finds the workspace's own message packages without `NROS_INTERFACE_SEARCH_PATH`.
