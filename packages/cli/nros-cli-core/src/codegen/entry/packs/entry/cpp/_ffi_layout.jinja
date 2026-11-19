@@ -1,0 +1,40 @@
+{#- Issue 2513 -- the field order every C++ entry template writes a cbindgen
+    FFI struct in, POSITIONALLY: C++14 has no designated initialisers, and the
+    cross toolchains refuse C99 designators in C++ at every standard
+    (`cmake/toolchain/NanoRosCrossToolchain.cmake`). A positional row silently
+    mis-assigns every field after an inserted or reordered one, so each list
+    here is checked twice:
+
+      * at BUILD time, by `layout(t)`: a chain of `static_assert`s that the
+        fields sit back to back in exactly this order, from offset 0 to
+        `sizeof`. Any insert, removal or reorder in the struct breaks a link;
+      * on the FAST line, by `check-ffi-struct-mirrors` (family 5), which
+        compares each list with the cbindgen header's declaration order.
+
+    The C templates use designated initialisers and need neither. Add a struct
+    here before writing it positionally in any C++ template. -#}
+{%- macro order(t) -%}
+{%- if t == "nros_cpp_monitor_row_t" -%}topic fqn min_rate_hz_milli max_latency_ms route_trigger route_max_latency_ms route_deadline_ms reaction_id mechanism
+{%- elif t == "nros_cpp_age_row_t" -%}topic fqn max_age_ms deadline_ms
+{%- elif t == "nros_cpp_hazard_member_t" -%}kind row
+{%- elif t == "nros_cpp_hazard_monitor_t" -%}all_of members n_members
+{%- elif t == "nros_cpp_hazard_rung_t" -%}mode output_row route_ms role starts_at n_starts_at level
+{%- elif t == "nros_cpp_hazard_row_t" -%}key ftti_ms settle_ms monitors n_monitors sink reaction_id rungs n_rungs
+{%- elif t == "nros_cpp_mode_row_t" -%}min_rate_hz_milli max_latency_ms route_max_latency_ms route_deadline_ms
+{%- elif t == "nros_cpp_mode_age_row_t" -%}max_age_ms
+{%- elif t == "nros_cpp_mode_deadline_t" -%}sc deadline_us
+{%- elif t == "nros_cpp_mode_t" -%}rows n_rows ages n_ages deadlines n_deadlines switch_budget_ms reaction
+{%- elif t == "nros_cpp_qos_override_t" -%}topic role policy value
+{%- elif t == "nros_sched_task_backing_t" -%}backing bytes
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro layout(t) -%}
+{%- set f = order(t) | trim | split(" ") | list -%}
+// issue 2513: the positional rows below rely on this field order.
+static_assert(offsetof(::{{ t }}, {{ f[0] }}) == 0, "{{ t }}: the entry writes {{ f[0] }} first; regenerate the entry templates' field order (_ffi_layout.jinja)");
+{%- for i in range(1, f | length) %}
+static_assert(offsetof(::{{ t }}, {{ f[i] }}) == (offsetof(::{{ t }}, {{ f[i - 1] }}) + sizeof(::{{ t }}::{{ f[i - 1] }}) + alignof(decltype(::{{ t }}::{{ f[i] }})) - 1) / alignof(decltype(::{{ t }}::{{ f[i] }})) * alignof(decltype(::{{ t }}::{{ f[i] }})), "{{ t }}: the entry writes {{ f[i] }} right after {{ f[i - 1] }}; update _ffi_layout.jinja and the positional rows");
+{%- endfor %}
+static_assert(sizeof(::{{ t }}) == (offsetof(::{{ t }}, {{ f[-1] }}) + sizeof(::{{ t }}::{{ f[-1] }}) + alignof(::{{ t }}) - 1) / alignof(::{{ t }}) * alignof(::{{ t }}), "{{ t }}: the entry writes {{ f[-1] }} last; a field was appended, update _ffi_layout.jinja");
+{%- endmacro -%}

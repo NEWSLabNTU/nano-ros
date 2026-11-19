@@ -423,7 +423,11 @@ fn typed_emit_rclcpp_shape_without_overrides_keeps_the_three_argument_handle() {
     plan.nodes[0].shape = Some("rclcpp".into());
     let src = emit_typed(&plan).expect("typed emit ok");
     assert!(src.contains("::rclcpp::NodeHandle __h("), "{src}");
-    assert!(!src.contains("nros_cpp_qos_override_t"), "{src}");
+    // issue 2513: the layout check names the struct in every entry; no TABLE.
+    assert!(
+        !src.contains("nros_cpp_qos_override_t __nros_qos_"),
+        "{src}"
+    );
     assert!(!src.contains("__nros_qos_"), "{src}");
 }
 

@@ -59,6 +59,23 @@
 {%- endif %}
 {%- if "rclcpp" in nodes | map(attribute="kind") | list %}
 #include <new> // placement-new into the component arena slot
+{%- import "ffi_layout_cpp.jinja" as ffi %}
+#include <cstddef> // offsetof, for the layout checks below
+
+/* issue 2513 -- the FFI structs this entry writes positionally, held to
+ * the header field by field: an insert or reorder fails here, not at run time. */
+{{ ffi.layout("nros_cpp_monitor_row_t") }}
+{{ ffi.layout("nros_cpp_age_row_t") }}
+{{ ffi.layout("nros_cpp_hazard_member_t") }}
+{{ ffi.layout("nros_cpp_hazard_monitor_t") }}
+{{ ffi.layout("nros_cpp_hazard_rung_t") }}
+{{ ffi.layout("nros_cpp_hazard_row_t") }}
+{{ ffi.layout("nros_cpp_mode_row_t") }}
+{{ ffi.layout("nros_cpp_mode_age_row_t") }}
+{{ ffi.layout("nros_cpp_mode_deadline_t") }}
+{{ ffi.layout("nros_cpp_mode_t") }}
+{{ ffi.layout("nros_cpp_qos_override_t") }}
+{{ ffi.layout("nros_sched_task_backing_t") }}
 {%- endif %}
 
 {% for h in headers %}#include "{{ h }}"

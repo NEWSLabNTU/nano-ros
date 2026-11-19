@@ -32,11 +32,11 @@ static nros_cpp_node_t __nros_node_1;
  * (`nros_cpp_install_monitors`), so an image with no contract carries none of
  * this. The storage is `uint64_t` so it is 8-aligned without C11 `_Alignas`. */
 static const nros_cpp_monitor_row_t __nros_mon_rows[1] = {
-    { "/chatter", "/talker/chatter", 10000u, 30u, NULL, 0u },
+    { .topic = "/chatter", .fqn = "/talker/chatter", .min_rate_hz_milli = 10000u, .max_latency_ms = 30u, .route_trigger = NULL, .route_max_latency_ms = 0u },
 };
 static uint64_t __nros_mon_storage[(1u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
 static const nros_cpp_age_row_t __nros_age_rows[1] = {
-    { "/chatter", "/listener/chatter", 150u, 0u },
+    { .topic = "/chatter", .fqn = "/listener/chatter", .max_age_ms = 150u, .deadline_ms = 0u },
 };
 static uint64_t __nros_age_storage[(1u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u];
 

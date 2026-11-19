@@ -30,6 +30,9 @@ templates = [
     { key = "boot_wrapper_cpp.jinja", file = "boot_wrapper.jinja" },
     { key = "service_trailer_cpp.jinja", file = "service_trailer.jinja" },
     { key = "monitor_statics_cpp.jinja", file = "monitor_statics.jinja" },
+    # issue 2513 -- the field order of every FFI struct a C++ template writes
+    # positionally, and the static_asserts that hold it to the header.
+    { key = "ffi_layout_cpp.jinja", file = "_ffi_layout.jinja" },
     { key = "rust_install_decls_cpp.jinja", file = "rust_install_decls.jinja" },
     # phase-521 W8 (b) -- the PX4 module entry (`px4.rs`), which renders this
     # pack's nodes with this pack's partials.

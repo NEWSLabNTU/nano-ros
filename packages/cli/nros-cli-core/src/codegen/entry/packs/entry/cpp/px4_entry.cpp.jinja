@@ -64,6 +64,23 @@ static ::{{ s.class }} __nros_comp_{{ loop.index0 }};
 {%- endif %}
 {%- endif %}
 {%- endfor %}
+
+{%- import "ffi_layout_cpp.jinja" as ffi %}
+#include <cstddef> // offsetof, for the layout checks below
+
+/* issue 2513 -- the FFI structs this entry writes positionally, held to
+ * the header field by field: an insert or reorder fails here, not at run time. */
+{{ ffi.layout("nros_cpp_monitor_row_t") }}
+{{ ffi.layout("nros_cpp_age_row_t") }}
+{{ ffi.layout("nros_cpp_hazard_member_t") }}
+{{ ffi.layout("nros_cpp_hazard_monitor_t") }}
+{{ ffi.layout("nros_cpp_hazard_rung_t") }}
+{{ ffi.layout("nros_cpp_hazard_row_t") }}
+{{ ffi.layout("nros_cpp_mode_row_t") }}
+{{ ffi.layout("nros_cpp_mode_age_row_t") }}
+{{ ffi.layout("nros_cpp_mode_deadline_t") }}
+{{ ffi.layout("nros_cpp_mode_t") }}
+{{ ffi.layout("nros_cpp_qos_override_t") }}
 {%- include "monitor_statics_cpp.jinja" %}
 
 {% for t in px4.sched_tasks -%}

@@ -30,6 +30,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 python3 - <<'PY'
+import glob
 import re
 import sys
 
@@ -462,7 +463,75 @@ if spec_rust != spec_names:
     fail(f"session-spec mirror DRIFTED: {SPEC_RUST} against {SPEC_C}")
     report_names(f"NrosSessionSpec ({SPEC_RUST})", spec_rust, spec_names)
 
+# ---------------------------------------------------------------------------
+# Family 5 — the entry templates' cbindgen tables (issue 2513). The C pack
+# writes every row with DESIGNATED initialisers; the C++ pack cannot (C++14,
+# and the cross g++ refuses C99 designators), so it writes rows positionally
+# in the order `_ffi_layout.jinja` states, and every C++ entry carries a
+# static_assert chain over that order. Checked here without a compile:
+#   * every list in `_ffi_layout.jinja` IS the header's declaration order;
+#   * every row of a C-pack table names only the header's fields, by name.
+# ---------------------------------------------------------------------------
+
+ENTRY_PACKS = "packages/cli/nros-cli-core/src/codegen/entry/packs/entry"
+LAYOUT = f"{ENTRY_PACKS}/cpp/_ffi_layout.jinja"
+FFI_HEADERS = [
+    "packages/api/nros-cpp/include/rclcpp/detail/nros_cpp_ffi.h",
+    "packages/api/nros-c/include/rclc/detail/main.h",
+]
+
+
+def header_fields(tag):
+    for h in FFI_HEADERS:
+        src = read(h)
+        m = re.search(r"typedef struct \w*\s*\{([^{}]*)\}\s*%s;" % re.escape(tag), src, re.S)
+        if m:
+            return [c_field_name(d) for d in decls(m.group(1))]
+    sys.exit(f"check-ffi-struct-mirrors: '{tag}' not found in {FFI_HEADERS}")
+
+
+layout_src = read(LAYOUT)
+layout = dict(
+    re.findall(r'(?:if|elif) t == "(\w+)" -%\}([^{]*)\{', layout_src)
+)
+if not layout:
+    sys.exit(f"check-ffi-struct-mirrors: no field lists found in {LAYOUT}")
+for tag, words in layout.items():
+    want = header_fields(tag)
+    got = words.split()
+    if got != want:
+        fail(f"entry layout DRIFTED: {LAYOUT} :: {tag}")
+        report_names(f"_ffi_layout.jinja ({tag})", got, want)
+        print(
+            "  The C++ entry writes this struct positionally in the order above.\n"
+            "  Restate the order (and the C++ templates' rows) from the header.",
+            file=sys.stderr,
+        )
+
+for tpl in sorted(glob.glob(f"{ENTRY_PACKS}/c/*.jinja")):
+    src = read(tpl)
+    for m in re.finditer(r"static const (nros_\w+_t) [^=;]*= \{\n(.*?)\n\};", src, re.S):
+        tag, body = m.group(1), m.group(2)
+        if tag == "nros_sched_task_memory_t" or tag == "nros_native_sched_task_spec_t":
+            continue  # family 2 / the platform headers' own macros
+        fields = set(header_fields(tag))
+        for line in body.splitlines():
+            row = line.strip()
+            if not row.startswith("{") or row.startswith(("{%", "{#", "{{")):
+                continue
+            names = re.findall(r"\.([A-Za-z_]\w*)\s*=", row)
+            if not names:
+                fail(f"POSITIONAL row in {tpl} ({tag}): {row[:80]}")
+                print(
+                    "  A C template writes FFI rows with designated initialisers, so an\n"
+                    "  inserted field cannot shift the others (issue 2513).",
+                    file=sys.stderr,
+                )
+            unknown = [n for n in names if n not in fields]
+            if unknown:
+                fail(f"{tpl} ({tag}) names fields the header lacks: {unknown}")
+
 sys.exit(1 if failed else 0)
 PY
 
-echo "FFI struct mirrors in sync (qos.hpp + nros_native_sched_task_spec_t ×8 + the session spec ×3)."
+echo "FFI struct mirrors in sync (qos.hpp + nros_native_sched_task_spec_t ×8 + the session spec ×3 + the entry templates' tables)."
