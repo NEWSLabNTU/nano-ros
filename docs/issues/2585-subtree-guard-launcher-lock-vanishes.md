@@ -47,3 +47,23 @@ launcher exited, but it is deleted with `$work` on exit.
   `launcher.log`'s content, instead of an empty pid.
 - Then find the start race the log shows (CLAUDE.md: no retries; a flaky start
   is a race to fix).
+
+## Second sighting, a different message (2026-11-19)
+
+At 08:09Z, `just ci gate` step 5 (`check::pristine-checkout`) on the issue-2624
+branch (which does not touch the guard) went red on this gate alone:
+
+    subtree_guard.sh: line 137: <pid> Killed  "$work/launcher.sh" > "$work/launcher.log" 2>&1
+    FAIL: a second pool with the SAME label started while the first ran — the
+    guard no longer refuses a concurrent build of one artifact set
+
+Its first four assertions passed in the same run. The host had 1,243 runnable
+threads at the lane's busiest sample, 699 of them another tenant's
+`component_node` processes; load average 143 a minute later. Run solo
+right after, `just check subtree-guard` passed 3 of 3.
+
+So, under heavy load, the guard's concurrent-build refusal path also fails. As in
+the first sighting, the launcher appears to leave before the assertion reads
+its state: `Killed` is the test's own SIGKILL path at line 137. The
+fix direction above (read the lock once, keep `launcher.log` on failure) covers
+this case too.
