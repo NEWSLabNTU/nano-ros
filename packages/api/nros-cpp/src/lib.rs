@@ -10441,13 +10441,7 @@ mod census_funnel_tests {
     /// the node, then declare its entities and parameters.
     unsafe extern "C" fn fixture_setup(exec: *mut c_void) -> i32 {
         let opts = nros_cpp_node_options_t::default();
-        // The executor keeps this node by pointer past `setup`, so it lives in
-        // a static, as a generated entry's does: a local here is dead stack
-        // the runner's own frame reuses, and the executor's later writes
-        // through it corrupted that frame (a census run that took the spin
-        // arm instead of returning).
-        static mut NODE: MaybeUninit<nros_cpp_node_t> = MaybeUninit::uninit();
-        let node = unsafe { &mut *core::ptr::addr_of_mut!(NODE) };
+        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
         let rc = unsafe {
             nros_cpp_node_create_ex(exec, c"census_fixture".as_ptr(), &opts, node.as_mut_ptr())
         };
@@ -10456,9 +10450,7 @@ mod census_funnel_tests {
         }
         let node = node.as_mut_ptr().cast_const();
 
-        // Kept past `setup`, like the node: the executor holds it by pointer.
-        static mut SUB: MaybeUninit<nros::internals::RmwSubscriber> = MaybeUninit::uninit();
-        let sub = unsafe { &mut *core::ptr::addr_of_mut!(SUB) };
+        let mut sub = MaybeUninit::<nros::internals::RmwSubscriber>::uninit();
         let rc = unsafe {
             nros_cpp_subscription_create(
                 node,
@@ -10473,9 +10465,10 @@ mod census_funnel_tests {
             return rc as i32;
         }
 
-        // Kept past `setup` for the same reason as the node above.
-        static mut PUBLISHER: MaybeUninit<nros::internals::RmwPublisher> = MaybeUninit::uninit();
-        let publisher = unsafe { &mut *core::ptr::addr_of_mut!(PUBLISHER) };
+        // `nros_cpp_publisher_create` writes a `CppPublisher` (the handle plus
+        // its monitor-cell pointer), so the storage is that type, never the
+        // bare handle, which is one pointer short.
+        let mut publisher = MaybeUninit::<crate::publisher::CppPublisher>::uninit();
         let rc = unsafe {
             nros_cpp_publisher_create(
                 node,
@@ -10634,13 +10627,7 @@ mod census_funnel_tests {
     /// image's `MAX_CBS` is derived from the contract.
     unsafe extern "C" fn over_sized_setup(exec: *mut c_void) -> i32 {
         let opts = nros_cpp_node_options_t::default();
-        // The executor keeps this node by pointer past `setup`, so it lives in
-        // a static, as a generated entry's does: a local here is dead stack
-        // the runner's own frame reuses, and the executor's later writes
-        // through it corrupted that frame (a census run that took the spin
-        // arm instead of returning).
-        static mut NODE: MaybeUninit<nros_cpp_node_t> = MaybeUninit::uninit();
-        let node = unsafe { &mut *core::ptr::addr_of_mut!(NODE) };
+        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
         let rc = unsafe {
             nros_cpp_node_create_ex(exec, c"census_oversized".as_ptr(), &opts, node.as_mut_ptr())
         };
@@ -10813,13 +10800,7 @@ mod census_funnel_tests {
             return rc as i32;
         }
         let opts = nros_cpp_node_options_t::default();
-        // The executor keeps this node by pointer past `setup`, so it lives in
-        // a static, as a generated entry's does: a local here is dead stack
-        // the runner's own frame reuses, and the executor's later writes
-        // through it corrupted that frame (a census run that took the spin
-        // arm instead of returning).
-        static mut NODE: MaybeUninit<nros_cpp_node_t> = MaybeUninit::uninit();
-        let node = unsafe { &mut *core::ptr::addr_of_mut!(NODE) };
+        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
         let rc = unsafe {
             nros_cpp_node_create_ex(
                 exec,
@@ -10831,9 +10812,10 @@ mod census_funnel_tests {
         if rc != NROS_CPP_RET_OK {
             return rc as i32;
         }
-        // Kept past `setup` for the same reason as the node above.
-        static mut PUBLISHER: MaybeUninit<nros::internals::RmwPublisher> = MaybeUninit::uninit();
-        let publisher = unsafe { &mut *core::ptr::addr_of_mut!(PUBLISHER) };
+        // `nros_cpp_publisher_create` writes a `CppPublisher` (the handle plus
+        // its monitor-cell pointer), so the storage is that type, never the
+        // bare handle, which is one pointer short.
+        let mut publisher = MaybeUninit::<crate::publisher::CppPublisher>::uninit();
         let rc = unsafe {
             nros_cpp_publisher_create(
                 node.as_mut_ptr().cast_const(),

@@ -32,8 +32,10 @@ pub extern "C" fn nros_cpp_rosout_enabled() -> bool {
 /// `qos` NULL takes the bounded profile (`nros_node::rosout::qos_bounded`).
 ///
 /// # Safety
-/// `node` is an initialised node handle, `storage` a publisher slot of
-/// `NROS_PUBLISHER_SIZE` bytes, `qos` NULL or valid.
+/// `node` is an initialised node handle, `storage` an 8-aligned publisher
+/// slot of `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes (it receives the
+/// same handle-plus-monitor-pointer `nros_cpp_publisher_create` writes),
+/// `qos` NULL or valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_rosout_publisher_create(
     node: *const nros_cpp_node_t,

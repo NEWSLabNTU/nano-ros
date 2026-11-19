@@ -219,7 +219,9 @@ mod census_fixture_tests {
         assert_eq!(rc, NROS_CPP_RET_OK);
 
         // One publisher at the default profile (depth 10).
-        let mut publisher = MaybeUninit::<nros::internals::RmwPublisher>::uninit();
+        // `nros_cpp_publisher_create` writes a `CppPublisher`, one pointer
+        // more than the bare handle.
+        let mut publisher = MaybeUninit::<crate::publisher::CppPublisher>::uninit();
         let rc = unsafe {
             nros_cpp_publisher_create(
                 node,
