@@ -793,7 +793,7 @@ mod tests {
         let specific =
             parse("[knobs.zephyr]\nheap_size = 262144\n[knobs.zenoh.tx]\nbatch = true\n");
         let merged = specific.with_base(&base);
-        let rows = crate::cmd::leaf_settings::image_block_layers(None, &merged).unwrap();
+        let rows = crate::cmd::leaf_settings::image_block_layers(None, &merged, None).unwrap();
         // The rows the retired env spelling of these knobs stated.
         let env: std::collections::BTreeMap<String, String> = [
             ("NROS_EXECUTOR_MAX_CBS", "8"),

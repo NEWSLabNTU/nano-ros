@@ -357,6 +357,13 @@ fn the_ladder_reads_the_catalog_this_writes() {
     assert_eq!(pool.meta.default.as_deref(), Some("2"));
     assert_eq!(pool.meta.range, Some((1, 64)));
     assert!(!pool.origin.is_compiled());
+    // A view rendered from the file equals the one rendered in memory.
+    let stated: BTreeMap<String, String> = [("NROS_ACME_POOL_SLOTS".into(), "4".into())].into();
+    assert_eq!(
+        kconfig_packages(&parsed, &["acme"], &stated),
+        kconfig_packages(&cat, &["acme"], &stated)
+    );
+    assert_eq!(registry_cmake(&parsed), registry_cmake(&cat));
     assert_eq!(parsed.owner_package("acme"), Some("acme_rmw"));
 }
 
