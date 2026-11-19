@@ -5,4 +5,3 @@ a release) no longer keeps running the old binary and failing "in-tree nros CLI
 is STALE". A bare `cmake` re-configure still keeps the cached tool, but refuses
 at once, naming the tool and both versions, when that tool's
 `--codegen-version` is outside what the nano-ros tree accepts.
-([#4067](https://github.com/NEWSLabNTU/nano-ros/issues/4067))

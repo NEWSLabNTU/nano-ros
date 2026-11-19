@@ -1,5 +1,5 @@
 C/C++ API: the application writes `int main(int argc, char** argv)`, as an
-rclc or rclcpp program does (RFC-0089 amendment 2026-10-13, phase-499 W5).
+rclc or rclcpp program does.
 `nano_ros_add_executable` compiles your sources with `main` renamed and
 reaches it from the platform's entry (POSIX `main`, Zephyr `main(void)`, an
 RTOS startup task); a cargo-rooted C/C++ image does the same through

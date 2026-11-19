@@ -5,5 +5,6 @@ Cortex-M3, enough to overflow the C++ FreeRTOS carrier's 64 KiB app stack into
 the kernel's globals. The value is now borrowed down to its table slot and
 copied once. Registering the lifecycle services no longer builds their ten
 receive buffers on the stack before boxing them (a 92 KiB frame for Nav2's
-`velocity_smoother`). Both phase-518 nodes now boot on the default 64 KiB app
-stack at the default capacities (issue 2070).
+`velocity_smoother`). Both ported C++ nodes (Autoware's
+`external_cmd_selector` and Nav2's `velocity_smoother`) now boot on the default
+64 KiB app stack at the default capacities.

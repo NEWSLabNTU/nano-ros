@@ -7,4 +7,4 @@ subscriber with the largest `rate_hz x burst`. A stated knob still wins, and an
 image that declares no ingress keeps an unbounded read task and is unchanged.
 `CONFIG_NROS_ZENOH_RX_TASK_BUDGET_REST_US` now defaults to -1 ("derive"), with
 1000 us still the builtin. The per-frame board cost is taken as 0 for now, so
-the task admits slightly less than the declared rate (RFC-0074).
+the task admits slightly less than the declared rate.
