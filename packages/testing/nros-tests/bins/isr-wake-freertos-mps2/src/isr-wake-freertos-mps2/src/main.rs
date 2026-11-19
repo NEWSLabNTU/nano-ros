@@ -45,7 +45,7 @@ const RELOAD_TICKS: u32 = PERIOD_US * TICKS_PER_US;
 const TIMER1_IRQ: usize = 9;
 
 /// The guard the interrupt triggers, leaked once set.
-static GUARD: AtomicPtr<GuardCondition> = AtomicPtr::new(core::ptr::null_mut());
+static GUARD: AtomicPtr<GuardCondition<'static>> = AtomicPtr::new(core::ptr::null_mut());
 /// Interrupts taken.
 static FIRES: AtomicU32 = AtomicU32::new(0);
 /// Interrupts whose `trigger_from_isr` reported the wake reached nothing.
@@ -131,7 +131,7 @@ extern "C" fn main() -> ! {
 }
 
 /// Leak the guard handle for the interrupt to reach.
-fn alloc_leak(g: GuardCondition) -> *mut GuardCondition {
+fn alloc_leak(g: GuardCondition<'static>) -> *mut GuardCondition<'static> {
     extern crate alloc;
     alloc::boxed::Box::leak(alloc::boxed::Box::new(g))
 }

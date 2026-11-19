@@ -1709,14 +1709,52 @@ pub enum ExecutorSemantics {
 
 /// Handle for triggering a guard condition from outside the executor.
 ///
-/// Obtained from `Executor::register_guard_condition`.
-/// Safe to use from any thread — the inner `&'static AtomicBool` is inherently
-/// `Send + Sync`.
-pub struct GuardCondition {
-    // The AtomicBool lives in the executor's arena, which is never moved or
-    // deallocated while handles exist. The 'static lifetime is asserted at
-    // construction time (see `new()`).
-    flag: &'static portable_atomic::AtomicBool,
+/// Obtained from `Executor::register_guard_condition`. Safe to use from any
+/// thread. It borrows the executor's backing (`'s`, the executor's own
+/// lifetime parameter), so it cannot outlive the memory its flag lives in;
+/// and it holds its own reference to the executor's wake state, so a trigger
+/// after the executor is dropped wakes nothing and touches nothing freed.
+///
+/// A handle cannot outlive the backing its executor was built over:
+///
+/// ```compile_fail
+/// # extern crate nros_platform_cffi as _; // the host port: links the binary
+/// use core::mem::MaybeUninit;
+/// use nros_node::executor::{Executor, ExecutorConfig, ExecutorSizing};
+/// let config = ExecutorConfig::new("");
+/// let sizing = ExecutorSizing::DEFAULT;
+/// let guard;
+/// {
+///     let mut backing = vec![MaybeUninit::<u64>::uninit(); sizing.u64_len()];
+///     // SAFETY: `backing` is `sizing.u64_len()` words, used by this executor alone.
+///     let mut executor = unsafe { Executor::open_in(&config, &mut backing, sizing) }.unwrap();
+///     guard = executor.register_guard_condition(|| {}).unwrap().1;
+/// }
+/// guard.trigger();
+/// ```
+///
+/// The same code with the handle used while the backing lives compiles, so the
+/// refusal above is the lifetime's and not an unrelated error:
+///
+/// ```no_run
+/// # extern crate nros_platform_cffi as _; // the host port: links the binary
+/// use core::mem::MaybeUninit;
+/// use nros_node::executor::{Executor, ExecutorConfig, ExecutorSizing};
+/// let config = ExecutorConfig::new("");
+/// let sizing = ExecutorSizing::DEFAULT;
+/// {
+///     let mut backing = vec![MaybeUninit::<u64>::uninit(); sizing.u64_len()];
+///     // SAFETY: `backing` is `sizing.u64_len()` words, used by this executor alone.
+///     let mut executor = unsafe { Executor::open_in(&config, &mut backing, sizing) }.unwrap();
+///     let guard = executor.register_guard_condition(|| {}).unwrap().1;
+///     guard.trigger();
+/// }
+/// ```
+pub struct GuardCondition<'s> {
+    // Issue 2727 -- the AtomicBool lives in the executor's arena, i.e. in the
+    // backing the executor borrows for `'s`. This was `&'static`, asserted at
+    // construction, so safe code could keep a handle past a stack backing.
+    flag: &'s portable_atomic::AtomicBool,
     /// Phase 124.B.5 — runtime wake callback. On std + rmw-cffi
     /// builds the executor sets this to `nros_rmw_runtime_wake_cb`
     /// with `ctx` pointing at the executor's WakeCtx. `trigger`
@@ -1730,14 +1768,30 @@ pub struct GuardCondition {
     /// the port's `nros_platform_wake_signal_from_isr`. Installed beside
     /// `wake_cb`; [`trigger_from_isr`](Self::trigger_from_isr) calls it.
     wake_cb_from_isr: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> bool>,
-    wake_ctx: *mut core::ffi::c_void,
+    wake_ctx: GuardWakeCtx,
 }
 
-// SAFETY: `wake_cb` is a plain function pointer; `wake_ctx` points
-// at a WakeCtx Arc allocated on Executor::new and never freed before
-// Executor::drop. Both are safe to share across threads.
-unsafe impl Send for GuardCondition {}
-unsafe impl Sync for GuardCondition {}
+// Issue 2727 -- the handle OWNS a reference to the executor's `WakeCtx`.
+// It held the raw pointer, and `Executor::drop` frees the last `Arc`, so a
+// `trigger` after the executor was dropped called the wake callback on freed
+// memory, from safe code. An `Arc` is one pointer, as the raw pointer was, so
+// the handle's size (which the C and C++ opaque storage is sized by) does not
+// change, and both FFIs already `drop_in_place` the handle.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+type GuardWakeCtx = Option<portable_atomic_util::Arc<super::spin::WakeCtx>>;
+#[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+type GuardWakeCtx = NoWakeCtx;
+
+/// A build with no wake callback holds no wake state.
+#[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+#[derive(Clone, Default)]
+struct NoWakeCtx;
+
+// SAFETY: `wake_cb` is a plain function pointer; `wake_ctx` is an `Arc` of a
+// `WakeCtx`, whose fields are atomics and `Arc`s of thread-safe wake objects.
+// Both are safe to share across threads.
+unsafe impl Send for GuardCondition<'_> {}
+unsafe impl Sync for GuardCondition<'_> {}
 
 /// phase-467 Row 8 — a SECOND handle to the same arena flag.
 ///
@@ -1752,18 +1806,18 @@ unsafe impl Sync for GuardCondition {}
 /// EXECUTOR owns for the backend to fire (issue 1385's shape). Not `Copy` —
 /// an implicit copy of a trigger handle reads as a value and behaves as an
 /// alias, which is exactly the confusion the 1385 fix is about.
-impl Clone for GuardCondition {
+impl Clone for GuardCondition<'_> {
     fn clone(&self) -> Self {
         Self {
             flag: self.flag,
             wake_cb: self.wake_cb,
             wake_cb_from_isr: self.wake_cb_from_isr,
-            wake_ctx: self.wake_ctx,
+            wake_ctx: self.wake_ctx.clone(),
         }
     }
 }
 
-impl GuardCondition {
+impl<'s> GuardCondition<'s> {
     /// Create a handle from a raw pointer to an arena-allocated `AtomicBool`.
     ///
     /// # Safety
@@ -1778,25 +1832,34 @@ impl GuardCondition {
             flag: unsafe { &*flag },
             wake_cb: None,
             wake_cb_from_isr: None,
-            wake_ctx: core::ptr::null_mut(),
+            wake_ctx: Default::default(),
         }
+    }
+
+    /// The wake callbacks' context: the `WakeCtx` this handle holds.
+    #[inline]
+    fn wake_ctx_ptr(&self) -> *mut core::ffi::c_void {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let Some(arc) = self.wake_ctx.as_ref() {
+            return portable_atomic_util::Arc::as_ptr(arc) as *mut core::ffi::c_void;
+        }
+        core::ptr::null_mut()
     }
 
     /// Phase 124.B.5 — install the executor's wake callback. Called
     /// once at handle creation; the executor passes its
     /// `nros_rmw_runtime_wake_cb` + WakeCtx pointer here so
     /// `trigger()` can signal the wake condvar from any thread / ISR.
-    #[cfg(any(all(feature = "alloc", feature = "rmw-cffi"), test))]
-    #[allow(dead_code)] // Wired by register_guard_condition under cfg.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) fn set_wake_cb(
         &mut self,
         cb: unsafe extern "C" fn(ctx: *mut core::ffi::c_void),
         cb_from_isr: unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> bool,
-        ctx: *mut core::ffi::c_void,
+        ctx: portable_atomic_util::Arc<super::spin::WakeCtx>,
     ) {
         self.wake_cb = Some(cb);
         self.wake_cb_from_isr = Some(cb_from_isr);
-        self.wake_ctx = ctx;
+        self.wake_ctx = Some(ctx);
     }
 
     /// Trigger the guard condition.
@@ -1813,8 +1876,8 @@ impl GuardCondition {
         self.flag.store(true, portable_atomic::Ordering::Release);
         if let Some(cb) = self.wake_cb {
             // SAFETY: cb + ctx installed by Executor::register_guard_condition;
-            // ctx points at WakeCtx valid for Executor's lifetime.
-            unsafe { cb(self.wake_ctx) };
+            // ctx is the `WakeCtx` this handle holds an `Arc` of (issue 2727).
+            unsafe { cb(self.wake_ctx_ptr()) };
         }
     }
 
@@ -1839,7 +1902,7 @@ impl GuardCondition {
         self.flag.store(true, portable_atomic::Ordering::Release);
         match self.wake_cb_from_isr {
             // SAFETY: as `trigger`; the callback is the interrupt-safe one.
-            Some(cb) => unsafe { cb(self.wake_ctx) },
+            Some(cb) => unsafe { cb(self.wake_ctx_ptr()) },
             None => false,
         }
     }

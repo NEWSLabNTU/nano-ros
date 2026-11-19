@@ -2212,7 +2212,7 @@ impl<'e, 's> Node<'e, 's> {
     pub fn create_guard_condition<F>(
         &mut self,
         callback: F,
-    ) -> Result<(super::types::HandleId, super::types::GuardCondition), NodeError>
+    ) -> Result<(super::types::HandleId, super::types::GuardCondition<'s>), NodeError>
     where
         F: FnMut() + 'static,
     {
