@@ -121,6 +121,13 @@ pub struct OwnedIdentity {
     pub locator: Option<String>,
     /// `NROS_DOMAIN_ID`, when the image resolves one.
     pub domain_id: Option<u32>,
+    /// `NROS_LEAF_IMAGE_ID` — the image board facts are asked for (issue
+    /// 2750). `board-facts --deploy` matches the bringup's `[image.*]` KEYS,
+    /// and `NROS_DEPLOY` is the board: an image not named after its board was
+    /// refused. Set by [`Self::agree`] to the first owned image; the owned
+    /// images of one configure share its board, so any of them answers the
+    /// same facts. Not part of the agreement.
+    pub image: Option<String>,
 }
 
 impl OwnedIdentity {
@@ -134,8 +141,11 @@ impl OwnedIdentity {
         let Some((first_id, first)) = it.next() else {
             return Ok(None);
         };
+        let same = |a: &OwnedIdentity, b: &OwnedIdentity| {
+            (&a.deploy, &a.locator, a.domain_id) == (&b.deploy, &b.locator, b.domain_id)
+        };
         for (id, other) in it {
-            if other != first {
+            if !same(other, first) {
                 return Err(format!(
                     // History: RFC-0071 D19.
                     "the owned entries of one configure state different identities: \
@@ -146,8 +156,12 @@ impl OwnedIdentity {
             }
         }
         Ok(
-            (first.deploy.is_some() || first.locator.is_some() || first.domain_id.is_some())
-                .then(|| first.clone()),
+            (first.deploy.is_some() || first.locator.is_some() || first.domain_id.is_some()).then(
+                || OwnedIdentity {
+                    image: Some(first_id.clone()),
+                    ..first.clone()
+                },
+            ),
         )
     }
 }
@@ -549,6 +563,10 @@ pub fn render(
         );
         if let Some(deploy) = &id.deploy {
             out.push_str(&format!("set(NROS_DEPLOY \"{deploy}\")\n"));
+        }
+        // Issue 2750: board facts are asked for an IMAGE, by its key.
+        if let Some(image) = &id.image {
+            out.push_str(&format!("set(NROS_LEAF_IMAGE_ID \"{image}\")\n"));
         }
         if id.locator.is_some() || id.domain_id.is_some() {
             if let Some(l) = &id.locator {
@@ -1361,6 +1379,7 @@ mod tests {
             deploy: Some("threadx-linux".to_string()),
             locator: Some("tcp/10.0.2.2:8381".to_string()),
             domain_id: Some(3),
+            image: Some("unit_test-threadx-linux".to_string()),
         });
         let body = render(&d, &root.join("build/posix"), &s).expect("renders");
         let apply = body.find("nros_apply_leaf_identity()").expect(&body);
@@ -1375,6 +1394,12 @@ mod tests {
             .find("set(NROS_DEPLOY \"threadx-linux\")")
             .expect(&body);
         assert!(deploy < body.find("nano_ros_workspace(").unwrap(), "{body}");
+        // Issue 2750 — board facts are asked for the IMAGE, whose key need not
+        // be its board id; `NROS_DEPLOY` stays the board.
+        let image = body
+            .find("set(NROS_LEAF_IMAGE_ID \"unit_test-threadx-linux\")")
+            .expect(&body);
+        assert!(image < body.find("nano_ros_workspace(").unwrap(), "{body}");
         assert!(
             body.find("find_package(nano_ros").unwrap() < apply,
             "{body}"
@@ -1390,6 +1415,7 @@ mod tests {
             deploy: None,
             locator: Some(l.to_string()),
             domain_id: Some(0),
+            image: None,
         };
         assert_eq!(OwnedIdentity::agree(&[]), Ok(None));
         assert_eq!(
@@ -1398,7 +1424,15 @@ mod tests {
             "an image stating nothing applies nothing"
         );
         let same = [("a".into(), at("tcp/x:1")), ("b".into(), at("tcp/x:1"))];
-        assert_eq!(OwnedIdentity::agree(&same), Ok(Some(at("tcp/x:1"))));
+        // Issue 2750 — the first image is the one board facts are asked for;
+        // the images' ids differ and are no disagreement.
+        assert_eq!(
+            OwnedIdentity::agree(&same),
+            Ok(Some(OwnedIdentity {
+                image: Some("a".into()),
+                ..at("tcp/x:1")
+            }))
+        );
         let e = OwnedIdentity::agree(&[("a".into(), at("tcp/x:1")), ("b".into(), at("tcp/x:2"))])
             .unwrap_err();
         assert!(e.contains("`a`") && e.contains("`b`"), "{e}");
