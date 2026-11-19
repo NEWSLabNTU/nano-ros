@@ -436,73 +436,6 @@ fn service_list_with_types_answers_as_stock_does() {
     .assert_same("the services of a node serving /add_two_ints");
 }
 
-/// `ros2 node info` of a node that declares one publisher, against stock's.
-///
-/// Every half but one matches stock: the publishers (`/chatter`,
-/// `/parameter_events`, `/rosout`) and the six parameter services. The
-/// subscriber half is held in expected-failure form: a stock node subscribes
-/// to `/parameter_events` and a nano-ros node does not (issue 2483).
-#[test]
-fn node_info_compared_with_stock() {
-    let nano_bin = build_native_talker().require("native-rust-talker");
-    require_zenohd();
-    require_ros2();
-    require_stock_package("demo_nodes_cpp");
-
-    let mut nano = GraphSide::new(Implementation::NanoRos, "/talker");
-    nano.spawn_nano_image(nano_bin, "talker");
-    nano.await_node();
-    let mut stock = GraphSide::new(Implementation::Stock, "/talker");
-    stock.spawn_stock("ros2 run demo_nodes_cpp talker", "stock talker");
-    stock.await_node();
-    let pair = Pair::new(nano, stock);
-
-    // Ready once the side lists its last parameter service and `/rosout`.
-    let c = pair.ask_until("node info {node}", SETTLE, |a| {
-        has_line(a, "/get_parameter_types: ") && has_line(a, "/rosout: ")
-    });
-    // `ros2 node info` prints a section head (`  Publishers:`) at two spaces
-    // and its entries at four.
-    let section = |text: &str, head: &str| -> String {
-        let mut out = Vec::new();
-        let mut inside = false;
-        for l in text.lines() {
-            if !l.starts_with("    ") {
-                inside = l.trim() == head;
-                continue;
-            }
-            if inside {
-                out.push(l.trim().to_string());
-            }
-        }
-        out.join("\n")
-    };
-    for head in ["Publishers:", "Service Servers:", "Service Clients:"] {
-        let (nano, stock) = (section(&c.nano_text, head), section(&c.stock_text, head));
-        assert_eq!(
-            nano,
-            stock,
-            "`ros2 node info` `{head}` of a talker differs from stock.\n{}",
-            c.report()
-        );
-    }
-    let (nano_subs, stock_subs) = (
-        section(&c.nano_text, "Subscribers:"),
-        section(&c.stock_text, "Subscribers:"),
-    );
-    assert!(
-        stock_subs.contains("/parameter_events: rcl_interfaces/msg/ParameterEvent"),
-        "a stock node subscribes to /parameter_events.\n{}",
-        c.report()
-    );
-    hold_gap_by(
-        nano_subs != stock_subs && !nano_subs.contains("/parameter_events"),
-        "a node as a /parameter_events subscriber",
-        "node info /talker",
-        &c.report(),
-    );
-}
-
 fn action_pair() -> Pair {
     let nano_bin = build_native_action_server().require("rust workspace linux_action_server");
     require_zenohd();
@@ -587,11 +520,12 @@ fn default_qos_of_a_published_topic_reads_as_stock_does() {
 
 // ── node info, topic list and QoS (phase-556 W4 to W6) ──────────────────────
 
-/// A line of the interfaces every stock node has by default and a nano-ros
-/// node does not yet: `/rosout`, `/parameter_events` (publisher and, for
-/// rclcpp, subscriber) and the six parameter services. Set aside where a test
-/// measures something else; `default_node_interfaces_compared_with_stock`
-/// holds the difference itself (phase-556 W13).
+/// A line of the interfaces every stock node has by default: `/rosout`,
+/// `/parameter_events` (publisher and, for rclcpp, subscriber) and the six
+/// parameter services. Set aside where a test measures something else;
+/// `default_node_interfaces_compared_with_stock` compares them itself (a
+/// nano-ros node has them all by default, phase-556 W13, but the
+/// subscription).
 fn is_default_node_interface_line(line: &str) -> bool {
     line.contains("/rosout: ")
         || line.contains("/parameter_events: ")
@@ -745,11 +679,12 @@ fn node_info_of_an_action_client_answers_as_stock_does() {
         .assert_same("the interfaces of a node calling the /fibonacci action");
 }
 
-/// Expected-failure: a stock node publishes `/rosout` and `/parameter_events`,
-/// subscribes to `/parameter_events` (rclcpp) and serves the six parameter
-/// services; a nano-ros node by default has none of them.
-// Default node interfaces: phase-556 W13 (the user ruled them on by default;
-// the flip is W13 step 3). RFC-0036 "Graph interfaces a node has by default".
+/// A stock node publishes `/rosout` and `/parameter_events`, serves the six
+/// parameter services and (rclcpp) subscribes to `/parameter_events`. A
+/// nano-ros node has the same by default (phase-556 W13), all but the
+/// subscription: held in expected-failure form, the one line it lacks.
+// The subscriber is issue 2483 (phase-556 W11). RFC-0036 "Graph interfaces a
+// node has by default".
 #[test]
 fn default_node_interfaces_compared_with_stock() {
     let pair = listener_pair();
@@ -763,30 +698,23 @@ fn default_node_interfaces_compared_with_stock() {
                 .iter()
                 .all(|(s, _)| has_line(a, &format!("/{s}: ")))
     };
+    // The nano-ros side the same, less the subscription it does not make.
+    let nano_ready = |a: &CliAnswer| {
+        has_line(a, "/chatter: ")
+            && has_line(a, "/rosout: ")
+            && has_line(a, "/parameter_events: ")
+            && PARAMETER_SERVICES
+                .iter()
+                .all(|(s, _)| has_line(a, &format!("/{s}: ")))
+    };
     let c = pair
-        .ask_each(
-            "node info {node}",
-            SETTLE,
-            |a| has_line(a, "/chatter: "),
-            stock_ready,
-        )
+        .ask_each("node info {node}", SETTLE, nano_ready, stock_ready)
         .filtered(node_info_lines);
     hold_gap(&c, "the interfaces a node has by default", |c| {
         let Some(d) = c.diff() else { return false };
-        let mut expected = vec![
-            "+     /parameter_events: rcl_interfaces/msg/ParameterEvent".to_string(),
-            "+     /parameter_events: rcl_interfaces/msg/ParameterEvent".to_string(),
-            "+     /rosout: rcl_interfaces/msg/Log".to_string(),
-        ];
-        expected.extend(
-            PARAMETER_SERVICES
-                .iter()
-                .map(|(s, t)| format!("+     {NODE_PLACEHOLDER}/{s}: {t}")),
-        );
-        let mut changed = changed_lines(&d);
-        changed.sort();
-        expected.sort();
-        changed == expected
+        // Only the stock side's `/parameter_events` subscription: the
+        // publishers and the parameter services match.
+        changed_lines(&d) == ["+     /parameter_events: rcl_interfaces/msg/ParameterEvent"]
     });
 }
 
