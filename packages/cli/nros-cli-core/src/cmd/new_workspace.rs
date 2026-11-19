@@ -992,7 +992,7 @@ mod tests {
             Some(77728)
         );
         assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(75536));
-        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(120792));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(125896));
         assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
     }
 

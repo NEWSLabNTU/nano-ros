@@ -149,8 +149,8 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 11876
-static = 107652
-method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main; static re-walked 2026-11-15 by the drift check, callee order masking the project name (phase-557 W8); static re-walked 2026-11-15 with the walk's callee order read from inlined v0 back-references, which no longer move with the checkout path (phase-557 W8 follow-up); static re-walked 2026-11-16 by the drift check after issue 2623's anchors stopped keeping the whole C API in the image: the link keeps fewer functions and the walk cuts its cycles elsewhere (+8,188 B, a different over-approximated chain through bound indirect calls, not a deeper runtime call)"
+static = 112200
+method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main; static re-walked 2026-11-15 by the drift check, callee order masking the project name (phase-557 W8); static re-walked 2026-11-15 with the walk's callee order read from inlined v0 back-references, which no longer move with the checkout path (phase-557 W8 follow-up); static re-walked 2026-11-16 by the drift check after issue 2623's anchors stopped keeping the whole C API in the image: the link keeps fewer functions and the walk cuts its cycles elsewhere (+8,188 B, a different over-approximated chain through bound indirect calls, not a deeper runtime call); static re-walked 2026-11-20 by the drift check after the guard condition began owning its wake state: one new indirect edge from GuardCondition::trigger, bound by type, joins a longer over-approximated chain through entity drops that no thread runs (106,776 to 112,200 B; peak unchanged), not a deeper runtime call; this is the bound-indirect over-approximation class of issue 2658, whose thread-entry narrowing should drop this path, so re-walk and lower the row when it lands)"
 issue = "2402"
 
 [observed.shape]
