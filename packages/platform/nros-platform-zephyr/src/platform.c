@@ -1415,15 +1415,21 @@ int8_t nros_platform_wake_signal(void* w) {
     return 0;
 }
 
-/* Issue 2696 — REFUSED until a test reaches it. `k_sem_give` is documented
- * ISR-safe on Zephyr, and so is a write to a non-blocking eventfd, so the body
- * is likely `nros_zephyr_wake_give`; but a port claims an interrupt-safe wake
- * only where a test takes the interrupt (issue 2706). Until
- * then an interrupt's trigger sets the flag and the waiter sees it at its own
- * deadline, and `trigger_from_isr` says so by returning false. */
+/* Issue 2706 — the same give as the thread signal, and interrupt-safe by
+ * what it calls:
+ * - `k_sem_give` is ISR-callable.
+ * - The eventfd (made with `ZVFS_EFD_NONBLOCK`) takes the non-blocking path of
+ *   `zvfs_eventfd_write`: an atomic fd-table lookup, a spinlock and
+ *   `k_poll_signal_raise`, with no mutex. Only its error paths write `errno`
+ *   (a bad fd, or a counter at its maximum), which a live wake object never
+ *   reaches.
+ * Reached by `tests/isr_wake_rtos.rs` on native_sim: a `k_timer` expiry,
+ * which runs in the system clock's interrupt handler, triggers a guard while
+ * the executor parks. */
 int8_t nros_platform_wake_signal_from_isr(void* w) {
-    (void)w;
-    return -1;
+    if (w == NULL) return -1;
+    nros_zephyr_wake_give((nros_zephyr_wake_t*)w);
+    return 0;
 }
 
 size_t nros_platform_wake_storage_size(void) {

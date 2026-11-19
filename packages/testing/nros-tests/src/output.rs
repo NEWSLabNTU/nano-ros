@@ -2297,6 +2297,10 @@ pub const ISR_WAKE_DONE: &str = "ISR_WAKE_DONE ";
 pub const ISR_RACE_SAMPLE: &str = "ISR_RACE ";
 /// See [`ISR_RACE_SAMPLE`].
 pub const ISR_RACE_DONE: &str = "ISR_RACE_DONE ";
+/// Issue 2706 -- the last line `isr-wake-zephyr-native-sim` prints:
+/// `ISR_WAKE_NOT_IN_ISR <n>`, the timer expiries that did NOT run in
+/// interrupt context (must be 0, or the run tested a thread wake).
+pub const ISR_WAKE_NOT_IN_ISR: &str = "ISR_WAKE_NOT_IN_ISR ";
 
 /// Issue 2714 — the hosted resolver's boot line (`nros::env::report`):
 /// `boot config: domain <n> (<source>), locator <l> (<source>), rmw …`.

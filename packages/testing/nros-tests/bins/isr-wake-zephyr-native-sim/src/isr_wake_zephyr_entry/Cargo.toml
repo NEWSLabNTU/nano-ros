@@ -1,0 +1,32 @@
+[package]
+name = "isr_wake_zephyr_entry"
+version = "0.1.0"
+edition = "2021"
+description = "Issue 2706: a Zephyr timer interrupt wakes a parked executor through trigger_from_isr"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "rustapp"
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+
+[dependencies]
+zephyr = "0.1.0"
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
+nros-node = { version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros-platform = { version = "*", default-features = false, features = ["platform-zephyr"] }
+nros-rmw-zenoh = { version = "*", optional = true, default-features = false, features = ["platform-zephyr"] }
+
+[build-dependencies]
+zephyr-build = "0.1.0"
+nros-zephyr-build = "*"
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false
+
+[workspace]

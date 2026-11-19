@@ -21,6 +21,7 @@ heap-free-cpp-poc-mps2               1   0     0       1      0
 heap-free-poc-mps2                   4   0     0       0      0
 isr-wake-baremetal-mps2              3   0     0       0      0
 isr-wake-freertos-mps2               4   0     0       0      0
+isr_wake_zephyr_entry                7   0     0       1      0
 lan9118-smoltcp                      5   4     0       0      0
 loan_copy_count                      4   0     0       5      0
 logging-smoke-nuttx-qemu-arm         1   0     0       1      0

@@ -22,10 +22,10 @@
 use nros_tests::{
     fixtures::{
         QemuProcess, RequireFixture, ZenohRouter, build_isr_wake_baremetal_mps2,
-        build_isr_wake_freertos_mps2, or_unmet,
+        build_isr_wake_freertos_mps2, build_isr_wake_zephyr_native_sim, or_unmet,
     },
     matrix::PlatformId,
-    output::{ISR_RACE_DONE, ISR_RACE_SAMPLE, ISR_WAKE_DONE, ISR_WAKE_SAMPLE},
+    output::{ISR_RACE_DONE, ISR_RACE_SAMPLE, ISR_WAKE_DONE, ISR_WAKE_NOT_IN_ISR, ISR_WAKE_SAMPLE},
     wait_for_port,
 };
 use std::time::Duration;
@@ -131,6 +131,50 @@ fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str, finish: &
     let output = qemu.collect_until(finish, Duration::from_secs(120));
     qemu.kill();
 
+    check_isr_wake_output(&output, port_name);
+    output
+}
+
+/// Issue 2706 -- the Zephyr twin, on native_sim. A `k_timer` expiry runs in
+/// the system clock's interrupt handler and calls `trigger_from_isr`, which
+/// reaches the port's `k_sem_give`. The image also counts any expiry that did
+/// not run in interrupt context, which must be none: otherwise this would test
+/// a thread wake under an interrupt's name.
+///
+/// Mutation, the port refusing again (`nros_platform_wake_signal_from_isr`
+/// returning -1): measured in issue 2706.
+#[test]
+fn a_timer_interrupt_wakes_the_parked_executor_on_zephyr_native_sim() {
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::ZephyrNativeSim],
+        "the Zephyr interrupt-wake image",
+    );
+    let binary = build_isr_wake_zephyr_native_sim()
+        .require("isr-wake-zephyr-native-sim — run `just zephyr build-fixtures`");
+    let router = or_unmet(ZenohRouter::start_unique());
+    let mut zephyr = nros_tests::zephyr::ZephyrProcess::start_with_locator(
+        binary,
+        nros_tests::zephyr::ZephyrPlatform::NativeSim,
+        &router.locator(),
+    )
+    .expect("start the Zephyr interrupt-wake image");
+    let output = zephyr.wait_for_pattern(ISR_WAKE_NOT_IN_ISR, Duration::from_secs(120));
+    zephyr.kill();
+    let not_in_isr: u64 = output
+        .lines()
+        .find_map(|l| l.split(ISR_WAKE_NOT_IN_ISR).nth(1))
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or_else(|| panic!("the image never finished (a lost wake?):\n{output}"));
+    assert_eq!(
+        not_in_isr, 0,
+        "the timer expiry ran outside interrupt context, so this did not test an interrupt wake"
+    );
+    check_isr_wake_output(&output, "Zephyr");
+}
+
+/// The bounds every interrupt-wake image is held to, over its `ISR_WAKE*`
+/// lines.
+fn check_isr_wake_output(output: &str, port_name: &str) {
     let done = output
         .lines()
         .find_map(|l| l.split(ISR_WAKE_DONE).nth(1))
@@ -155,7 +199,6 @@ fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str, finish: &
         samples.iter().min(),
         samples.iter().max()
     );
-
     assert!(
         callbacks >= 50 && samples.len() as u64 >= 50,
         "too few callbacks:\n{output}"
@@ -166,8 +209,7 @@ fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str, finish: &
     );
     assert!(
         fires <= callbacks + 1,
-        "{fires} interrupts were served by only {callbacks} callbacks: the \
-         interrupt's wake did not end the park"
+        "{fires} interrupts were served by only {callbacks} callbacks: the interrupt's wake did not end the park"
     );
     let on_time = samples.iter().filter(|&&us| us <= BOUND_US).count();
     assert!(
@@ -180,5 +222,4 @@ fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str, finish: &
         over_cap.is_empty(),
         "callbacks later than {CAP_US} us after their interrupt: {over_cap:?}"
     );
-    output
 }
