@@ -13,8 +13,10 @@ superseded-by: null
 # RFC-0129 — Diagnostic codes, defined once in code and explained by one verb
 
 **Status:** Draft (2026-11-12). Every question that shapes the design is
-ruled; the rulings are quoted under "Rulings". The RFC stays Draft until
-phase-552 lands the crate, the verb and the gates.
+ruled; the rulings are quoted under "Rulings". The phase-578 W4 amendment
+(D7 to D9) was accepted on 2026-11-19 with its four drafted answers. The RFC
+stays Draft until phase-552 lands the crate, the verb and the gates, and
+phase-578 W4 lands D7 to D9.
 
 Work: [phase-552](../roadmap/phase-552-diagnostic-codes.md). Per the standing
 rule of 2026-11-12, every design's implementation is tracked by a phase doc.
@@ -52,6 +54,16 @@ All five are user rulings of 2026-11-12, relayed by the manager session.
   [issue 2551](../issues/archived/2551-user-surface-text-beyond-function-flow-cites-ids.md)
   (the shapes those readings could not see) is too.
   Codes are prepended to those messages.
+- **The phase-578 W4 amendment (D7 to D9): accepted.** User ruling of
+  2026-11-19, relayed by the manager session, taking the four answers as
+  drafted:
+  - Q1: `system.toml` and `nros-board.toml` carry locations first; the other
+    configuration files follow as their refusals are touched.
+  - Q2: `nros fix` prints a diff by default and writes only with `--apply`.
+  - Q3: `nros build` only names the verb (`fix: nros fix`); it never edits a
+    file.
+  - Q4: board packages' `fix:` lines (RFC-0135 D8) use the same `Fix`
+    payload and the `help:` / `fix:` / `run:` labels.
 
 ## Problem
 
@@ -233,10 +245,10 @@ The verb's help says "a diagnostic code (`NROS-NNNN`) or a plan path".
     therefore compatible, and neither subsumes the other.
 - `check-user-surface-ids` keeps its rule.
 
-## Amendment, draft for ruling (phase-578 W4): a refusal points at its source, and `nros fix` applies the mechanical ones
+## Amendment (phase-578 W4): a refusal points at its source, and `nros fix` applies the mechanical ones
 
-Not ruled. Drafted 2026-11-18 by nros 118 for phase-578 W4; the questions at
-the end are what a ruling settles. D1 to D6 are unchanged.
+Accepted 2026-11-19 with the four drafted answers (see "Rulings"). Drafted
+2026-11-18 by nros 118 for phase-578 W4. D1 to D6 are unchanged.
 
 ### What happens today
 
@@ -374,7 +386,7 @@ RFC-0135 D8's board-package remedies use the same three labels and the same
   ("a retired knob spelling in `system.toml` is reported at its line, and
   `nros fix` rewrites it") as a test.
 
-### Questions for the ruling
+### Questions for the ruling (answered as drafted, 2026-11-19)
 
 1. **Scope of D7.** Locations for every configuration file the CLI reads
    (`system.toml`, `nros-board.toml`, `nros-platform.toml`, `package.xml`,
@@ -394,7 +406,7 @@ RFC-0135 D8's board-package remedies use the same three labels and the same
 Reviewed 2026-11-18 by nros 241 (RFC-0135's author) against RFC-0135 D8:
 direction approved; its five changes are in this draft (the `run:` label,
 `SetKey`, the secondary location, groups, workspace-only edits). Questions
-1 to 4 agreed as drafted. Still for the user's ruling.
+1 to 4 agreed as drafted. Accepted by the user on 2026-11-19, as drafted.
 
 ## Left to implementation
 
