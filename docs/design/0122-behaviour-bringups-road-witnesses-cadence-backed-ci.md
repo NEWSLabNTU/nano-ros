@@ -113,7 +113,7 @@ examples/workspaces/<lang>/src/
 ```
 
 A bringup's `system.toml` holds one `[image.<platform>_<role>[_<rmw>]]` row
-per (platform, role, rmw). The id follows `README-layout.md`'s one platform
+per (platform, role, rmw). The id follows `docs/development/example-workspace-layout.md`'s one platform
 vocabulary, and zenoh takes no suffix. One process per role stays. An image
 that hosts every role and picks one at run time is **rejected**: it would be
 sized for every node, and the per-image sizing class issue 1378 found would

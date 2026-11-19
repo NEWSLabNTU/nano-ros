@@ -87,7 +87,7 @@ name = "cpp_params_param_talker"
 # phase-426 W5 — the cross-language parameter node: a C++ component with a C
 # translation unit beside it, each declaring one parameter and reading the
 # other's on the SAME node. Named `mixed_*` by the `features/` convention for a
-# package where languages coexist (examples/workspaces/README-layout.md).
+# package where languages coexist (docs/development/example-workspace-layout.md).
 [[component]]
 pkg = "mixed_param_talker_pkg"
 class = "mixed_param_talker_pkg::ParamTalker"

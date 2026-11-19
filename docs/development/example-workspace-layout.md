@@ -7,12 +7,12 @@ structure is therefore kept parallel on purpose.
 ## Which layout class is this?
 
 The whole-tree taxonomy lives in
-[`examples/README.md` § Layout classes](../README.md#layout-classes) — two
+[`examples/README.md` § Layout classes](../../examples/README.md#layout-classes) — two
 questions (*who owns the link?* and *leaf or workspace?*), the classes, and the
 two that deliberately do not exist. This file owns the **workspace** half of it.
 Survey and work items:
-[phase-470](../../docs/roadmap/archived/phase-470-example-layout-unification.md) (done); its gaps:
-[phase-477](../../docs/roadmap/archived/phase-477-example-gaps-and-unreported-lanes.md) (done, 2026-10-13).
+[phase-470](../roadmap/archived/phase-470-example-layout-unification.md) (done); its gaps:
+[phase-477](../roadmap/archived/phase-477-example-gaps-and-unreported-lanes.md) (done, 2026-10-13).
 
 Three classes reach this directory, and **the class is a property of an IMAGE,
 not of a directory**:
@@ -20,7 +20,7 @@ not of a directory**:
 | class | the image's entry | recognise it by |
 | --- | --- | --- |
 | **1** | **generated** per `[image.*]`, built by cargo or cmake | `.colcon_workspace` + `src/*_bringup/system.toml`; the image's board is not a Zephyr board |
-| **1z** | built through **west** — a Zephyr image. Its west application is **generated** unless a hand-written `src/*_entry` package still claims the row ([RFC-0085](../../docs/design/0085-zephyr-workspace-and-west-handoff.md) D4) | the image's board resolves to a Zephyr board; a still-hand-written one also carries `entry = "<pkg>"` or lands on an existing `<id>_entry` package calling `find_package(Zephyr)` |
+| **1z** | built through **west** — a Zephyr image. Its west application is **generated** unless a hand-written `src/*_entry` package still claims the row ([RFC-0085](../design/0085-zephyr-workspace-and-west-handoff.md) D4) | the image's board resolves to a Zephyr board; a still-hand-written one also carries `entry = "<pkg>"` or lands on an existing `<id>_entry` package calling `find_package(Zephyr)` |
 | **1b** | none — no bringup at all | `.colcon_workspace` with no `*_bringup`; `nros build` builds every package in dependency order, colcon's default. Both members live in `examples/templates/`, not here |
 
 So `rust/` is not "a class": it declares 17 `[image.*]` rows, 15 of them
@@ -30,7 +30,7 @@ class 1 and two — `zephyr` and `zephyr_robot1` — class 1z. Of those two, onl
 **1z is defined by the ROAD, not by who wrote the entry.** It used to read "a
 hand-written Zephyr entry", which made it shrink to zero as phase-470 W5
 migrated rows — a class that exists only because something is unfinished, which
-is exactly what [`examples/README.md`](../README.md#two-classes-that-deliberately-do-not-exist)
+is exactly what [`examples/README.md`](../../examples/README.md#two-classes-that-deliberately-do-not-exist)
 refuses to name ("class 2"). A hand-written entry is a migration STATE of a 1z
 image, not a class.
 
