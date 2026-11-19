@@ -6,7 +6,7 @@ type: bug
 severity: high
 area: [zephyr, build, testing]
 found: 2026-11-17
-related: [phase-559]
+related: [2724, phase-559]
 ---
 
 **Home:** [phase-559](../../roadmap/phase-559-ci-workflow-organization.md)
@@ -143,3 +143,7 @@ Fixed by #4132 (de1f0447cc, on main): `zephyr/CMakeLists.txt` adds
 fast line (`just check unwind-table`). Both are as the Fix section above
 describes. Closed by nros 139 at the manager's request; the fix and the gate
 are nros 175's.
+
+## Second route (2026-11-19)
+
+[Issue 2724](2724-zephyr-native-sim-link-fails-on-aarch64-host.md) found the same unparsable prelink `.eh_frame` with this fix in place: on aarch64, `--sort-section=alignment` wrote the prelink's `.rela.eh_frame` out of offset order. The nros module now turns `CONFIG_LINKER_SORT_BY_ALIGNMENT` off for native-simulator images, and `check-unwind-table.py --prelink` checks the order.

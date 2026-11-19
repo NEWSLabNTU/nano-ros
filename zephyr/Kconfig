@@ -3160,3 +3160,31 @@ configdefault MAIN_STACK_SIZE
 endif # NROS_RMW_XRCE
 
 endif # NROS
+
+# Issue 2724 -- a native-simulator image (native_sim, native_sim/native/64,
+# nrf_bsim: NATIVE_LIBRARY) links `zephyr.elf` as a relocatable (`-r`), and
+# Zephyr adds `--sort-section=alignment` to that link while this symbol is y.
+# Measured on aarch64 (GNU ld 2.38): the sorted prelink's `.eh_frame` is
+# byte-identical to the unsorted one, but its `.rela.eh_frame` is written out
+# of offset order (one descent, 0x55644 then 0x44, of 9129 relocations; the
+# unsorted link has none). BFD's `.eh_frame` parser requires its relocations
+# in offset order, so the executable's link cannot parse the section ("no
+# .eh_frame_hdr table will be created"), and its `--gc-sections` can no longer
+# drop the dead code `.eh_frame` refers to: `zephyr-byo/app` failed to link on
+# three undefined symbols that only dead functions reached
+# (`zsock_getnameinfo`, `net_mgmt_NET_REQUEST_ETHERNET_SET_TXINJECTION_MODE`,
+# `_z_udp_unicast_endpoint_init`). It is the same class as issue 2664 (an
+# unparsable `.eh_frame` out of the same prelink, fixed by
+# `-Wl,--no-gc-sections` under NATIVE_LIBRARY in zephyr/CMakeLists.txt), by a
+# second route. Sorting by alignment only packs the intermediate `zephyr.elf`,
+# by the alignment of its input sections; turning it off for these images costs
+# at most that packing (x86_64 size and boot: see the commit that added this).
+# `scripts/build/check-unwind-table.py --prelink` refuses a prelink whose
+# `.rela.eh_frame` is out of order.
+#
+# A second definition of Zephyr's symbol: Kconfig takes the FIRST default
+# whose condition holds, and modules are sourced before Kconfig.zephyr's own
+# `default y`, so this one wins for an nros native-simulator image. A conf
+# file that sets the symbol still overrides it.
+config LINKER_SORT_BY_ALIGNMENT
+    default n if NROS && NATIVE_LIBRARY

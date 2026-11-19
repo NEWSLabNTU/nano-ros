@@ -15,8 +15,18 @@ This refuses such an executable, so the fixture build fails at the image
 instead of a runtime cell failing later with "exited with code 1" and no
 output. An executable with no `.eh_frame` at all needs no table and passes.
 
+Issue 2724 -- `--prelink` checks the native simulator's relocatable
+`zephyr.elf` instead, the input ld fails to parse. ld's parser needs an
+`.eh_frame`'s relocations in offset order; a `-r` link under
+`--sort-section=alignment` wrote one out of order on aarch64, and the
+executable's link then had no table AND kept every dead function `.eh_frame`
+names, so it failed on undefined symbols before this check could see an
+executable. Run on the prelink, it names that cause whether or not the final
+link succeeded.
+
 Usage:
     check-unwind-table.py [--log <build log>] <executable>...
+    check-unwind-table.py --prelink <zephyr.elf>...
     check-unwind-table.py --self-test
 
 Exit 0 when every executable is sound, 1 when one is not, 2 on a usage or
@@ -41,6 +51,12 @@ LD_LINE = "no .eh_frame_hdr table will be created"
 
 def sections(data: bytes) -> tuple[dict[str, tuple[int, int]], str]:
     """({name: (file offset, size)}, struct byte order) of a 64- or 32-bit ELF."""
+    secs, end, _ = sections_full(data)
+    return {k: (v[0], v[1]) for k, v in secs.items()}, end
+
+
+def sections_full(data: bytes) -> tuple[dict[str, tuple[int, int, int]], str, bool]:
+    """({name: (file offset, size, sh_type)}, byte order, is64)."""
     if data[:4] != b"\x7fELF":
         raise ValueError("not an ELF file")
     is64 = data[4] == 2
@@ -52,23 +68,56 @@ def sections(data: bytes) -> tuple[dict[str, tuple[int, int]], str]:
         shoff, = struct.unpack_from(end + "I", data, 0x20)
         shentsize, shnum, shstrndx = struct.unpack_from(end + "HHH", data, 0x2E)
 
-    def header(i: int) -> tuple[int, int, int]:
+    def header(i: int) -> tuple[int, int, int, int]:
         base = shoff + i * shentsize
+        name, sh_type = struct.unpack_from(end + "II", data, base)
         if is64:
-            name, = struct.unpack_from(end + "I", data, base)
             off, size = struct.unpack_from(end + "QQ", data, base + 0x18)
         else:
-            name, = struct.unpack_from(end + "I", data, base)
             off, size = struct.unpack_from(end + "II", data, base + 0x10)
-        return name, off, size
+        return name, sh_type, off, size
 
-    _, stroff, _ = header(shstrndx)
+    _, _, stroff, _ = header(shstrndx)
     out = {}
     for i in range(shnum):
-        name_off, off, size = header(i)
+        name_off, sh_type, off, size = header(i)
         name = data[stroff + name_off:data.index(b"\0", stroff + name_off)].decode()
-        out[name] = (off, size)
-    return out, end
+        out[name] = (off, size, sh_type)
+    return out, end, is64
+
+
+SHT_RELA, SHT_REL = 4, 9
+
+
+def prelink_verdict(path: Path) -> str:
+    """'' when `path`'s `.eh_frame` relocations are in offset order, else why not.
+
+    A relocatable with no `.eh_frame`, or one with no relocations for it,
+    passes: there is nothing for ld's parser to reject."""
+    data = path.read_bytes()
+    secs, end, is64 = sections_full(data)
+    for name, kind in ((".rela.eh_frame", SHT_RELA), (".rel.eh_frame", SHT_REL)):
+        if name not in secs:
+            continue
+        off, size, sh_type = secs[name]
+        if sh_type != kind:
+            return f"its {name} has section type {sh_type}, not {kind}"
+        if is64:
+            entsize = 24 if kind == SHT_RELA else 16
+            fmt = end + "Q"
+        else:
+            entsize = 12 if kind == SHT_RELA else 8
+            fmt = end + "I"
+        prev = None
+        for i in range(size // entsize):
+            r_offset, = struct.unpack_from(fmt, data, off + i * entsize)
+            if prev is not None and r_offset < prev:
+                return (f"its {name} is out of offset order: relocation {i} is at "
+                        f"0x{r_offset:x}, after one at 0x{prev:x} "
+                        f"({size // entsize} relocations); ld cannot parse that "
+                        ".eh_frame")
+            prev = r_offset
+    return ""
 
 
 def verdict(path: Path) -> str:
@@ -108,6 +157,29 @@ def ld_lines(log: Path | None) -> list[str]:
         return []
     return [line.strip() for line in log.read_text(errors="replace").splitlines()
             if LD_LINE in line]
+
+
+def report_prelink(paths: list[Path]) -> int:
+    bad = []
+    for p in paths:
+        try:
+            why = prelink_verdict(p)
+        except (OSError, ValueError, struct.error, IndexError) as e:
+            print(f"check-unwind-table: cannot read {p}: {e}", file=sys.stderr)
+            return 2
+        if why:
+            bad.append((p, why))
+    for p, why in bad:
+        print(f"check-unwind-table: {p}: {why}.", file=sys.stderr)
+    if bad:
+        print("  The executable's link cannot build an .eh_frame_hdr table from it, and\n"
+              "  its --gc-sections keeps every function that .eh_frame names, dead code\n"
+              "  included. A relocatable link under --sort-section=alignment wrote this\n"
+              "  order (CONFIG_LINKER_SORT_BY_ALIGNMENT); the nros module turns that off\n"
+              "  for native-simulator images, so check whether a conf file turns it on.",
+              file=sys.stderr)
+        return 1
+    return 0
 
 
 def report(paths: list[Path], log: Path | None) -> int:
@@ -173,6 +245,35 @@ def self_test() -> int:
                        check=True)
         if "no .eh_frame_hdr section" not in verdict(nohdr):
             failures.append("unwind data with no .eh_frame_hdr was not refused")
+        # --prelink: a relocatable of two inputs has its .eh_frame relocations
+        # in offset order (the negative control), and the same file with two
+        # of them swapped -- the order the sorted prelink wrote -- is refused.
+        src2 = Path(d) / "u.c"
+        src2.write_text("int helper(int x) { return x + 1; }\n")
+        objs = []
+        for s in (src, src2):
+            o = Path(d) / (s.stem + ".o")
+            subprocess.run([cc, "-c", "-funwind-tables", "-o", str(o), str(s)], check=True)
+            objs.append(str(o))
+        rel = Path(d) / "prelink.o"
+        subprocess.run([cc, "-r", "-nostdlib", "-o", str(rel), *objs], check=True)
+        if prelink_verdict(rel):
+            failures.append(f"an ordered prelink was refused: {prelink_verdict(rel)}")
+        data = bytearray(rel.read_bytes())
+        secs, end, is64 = sections_full(bytes(data))
+        name = ".rela.eh_frame" if ".rela.eh_frame" in secs else ".rel.eh_frame"
+        roff, rsize, rtype = secs[name]
+        ent = (24 if rtype == SHT_RELA else 16) if is64 else (12 if rtype == SHT_RELA else 8)
+        if rsize // ent < 2:
+            failures.append(f"the prelink fixture has {rsize // ent} .eh_frame relocation(s)")
+        else:
+            a, b = data[roff:roff + ent], data[roff + ent:roff + 2 * ent]
+            data[roff:roff + ent], data[roff + ent:roff + 2 * ent] = b, a
+            swapped = Path(d) / "swapped.o"
+            swapped.write_bytes(bytes(data))
+            if "out of offset order" not in prelink_verdict(swapped):
+                failures.append("a prelink with .eh_frame relocations out of order "
+                                "was not refused")
         log = Path(d) / "build.log"
         log.write_text(f"/usr/bin/ld: error in x.o(.eh_frame); {LD_LINE}\n")
         if not ld_lines(log):
@@ -181,7 +282,7 @@ def self_test() -> int:
         for f in failures:
             print(f"check-unwind-table self-test: FAIL, {f}")
         return 1
-    print("check-unwind-table self-test: OK (5 cases)")
+    print("check-unwind-table self-test: OK (7 cases)")
     return 0
 
 
@@ -189,12 +290,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--log", type=Path, help="the build log, to quote ld's line")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--prelink", action="store_true",
+                    help="the inputs are relocatable prelinks (zephyr.elf), checked "
+                         "for .eh_frame relocations in offset order")
     ap.add_argument("executables", nargs="*", type=Path)
     args = ap.parse_args()
     if args.self_test:
         return self_test()
     if not args.executables:
-        ap.error("name at least one executable")
+        ap.error("name at least one file")
+    if args.prelink:
+        return report_prelink(args.executables)
     return report(args.executables, args.log)
 
 
