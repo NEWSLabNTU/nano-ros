@@ -117,6 +117,10 @@ pub mod sizing_descriptor;
 pub(crate) mod configure_stamp;
 mod file_lock;
 pub mod interface_package;
+/// phase-581 W1 (RFC-0140 D4/D5) — the merged configuration catalog: core's
+/// registry plus each package's `nros-knobs.toml`, built in memory, and the
+/// one read path for a retired spelling on any road.
+pub mod knob_catalog;
 /// RFC-0119 D4 — reading the workspace's override declarations (`nros.toml [workspace.overrides]`), and the override report.
 pub mod provider_overrides;
 /// RFC-0094 D3 — which driver builds a package, and whether it is built here.

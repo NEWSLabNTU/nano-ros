@@ -309,6 +309,25 @@ fn take_censuses(project: &Path, want: &str, named: &[String], offline: bool) ->
 }
 
 /// The shared body of [`configure`] and [`ensure_current`].
+/// Write `<build>/nros/knobs/catalog.toml` (phase-581 W1, RFC-0140 D4/D5):
+/// core's registry plus every scanned package's `nros-knobs.toml`, built by
+/// the same call `nros fix` and the preflight make in memory. The file is a
+/// cache for cmake and Kconfig; a catalog that names one spelling twice stops
+/// the configure.
+fn write_knob_catalog(
+    project: &Path,
+    base_paths: &[PathBuf],
+    nano_ros_root: Option<&Path>,
+) -> Result<()> {
+    let ws_root = project
+        .canonicalize()
+        .unwrap_or_else(|_| project.to_path_buf());
+    let scan = ws::sync_provider_scan(&ws_root, base_paths, nano_ros_root)
+        .wrap_err("configure: scanning providers for the configuration catalog")?;
+    crate::knob_catalog::Catalog::build(&scan.providers)?.write(&ws_root)?;
+    Ok(())
+}
+
 fn configure_project(
     project: &Path,
     mut sync: ws::SyncArgs,
@@ -382,7 +401,16 @@ fn configure_project(
     // Issue 2478 — what C1-C6 read outside the project is recorded from here.
     configure_stamp::begin_external_reads();
     let syncs_before = ws::sync_runs();
+    // phase-581 W1 (RFC-0140 D4) — the catalog is built over the provider
+    // scan sync runs, so these are captured before `run_sync` consumes `sync`.
+    let catalog_base_paths = sync.sources.base_paths.clone();
+    let catalog_nano_ros_root = sync.nano_ros_root.clone();
     ws::run_sync(sync)?;
+    write_knob_catalog(
+        project,
+        &catalog_base_paths,
+        catalog_nano_ros_root.as_deref(),
+    )?;
 
     // ---- C2-C6: `nros build` stages 1-4, one image at a time ----------
     let mut out = Outcome::default();

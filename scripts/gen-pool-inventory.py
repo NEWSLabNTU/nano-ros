@@ -453,13 +453,13 @@ def fold_ladder_registry(knobs):
     would fold into that row — none can now (phase-484 W8,
     `check-retired-knob-spellings`), so the fold is a backstop.
     """
-    try:
-        import tomllib
-    except ModuleNotFoundError:  # Python < 3.11 — the repo's interpreter is 3.10
-        import tomli as tomllib
+    import sys
+
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import knob_registry  # the one reader of the registry
+
     path = os.path.join(ROOT, KNOB_REGISTRY)
-    with open(path, "rb") as fh:
-        rows = tomllib.load(fh).get("knob", [])
+    rows = knob_registry.knob_rows()
     with open(path, encoding="utf8") as fh:
         lines = fh.read().splitlines()
     for r in rows:
@@ -471,7 +471,7 @@ def fold_ladder_registry(knobs):
                 knobs.setdefault(canon, knobs[old])
                 del knobs[old]
         line = next(
-            (i + 1 for i, l in enumerate(lines) if l.strip() == f'id = "{r["id"]}"'), 1
+            (i + 1 for i, l in enumerate(lines) if l.strip() == f'key = "{r["key"]}"'), 1
         )
         knobs.setdefault(canon, (None, KNOB_REGISTRY, line, False))
 

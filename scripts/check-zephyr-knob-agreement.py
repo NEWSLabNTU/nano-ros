@@ -48,6 +48,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import knob_registry  # noqa: E402  -- the one reader of the registry
+
 try:
     import tomllib  # 3.11+
 except ModuleNotFoundError:  # 3.10 backport, as the sibling gates spell it
@@ -119,18 +122,17 @@ REGISTRY = os.path.join(ROOT, "packages/tooling/nros-zephyr-build/knobs.toml")
 def rewrite_registry_default(text, symbol, value):
     """`knobs.toml` text with the row defining `symbol` given `default <value>`.
 
-    The row is found by its Kconfig symbol (`kconfig = "<sym>"`, else
-    `NROS_<id>`); its first `"default <x>"` attribute line moves and nothing
-    else does. Returns the text unchanged when no row/default matches."""
+    The row is found by its Kconfig symbol, which the registry module derives
+    (`key`, or a `transitional` kconfig); its first `"default <x>"` attribute
+    line moves and nothing else does. Returns the text unchanged when no
+    row/default matches."""
+    rows = knob_registry.knob_rows(text=text)
     parts = re.split(r"(?m)^(?=\[\[knob\]\]\s*$)", text)
-    for i, part in enumerate(parts):
-        ident = re.search(r'(?m)^id = "([A-Z0-9_]+)"', part)
-        if not ident:
+    knob_parts = [i for i, part in enumerate(parts) if part.startswith("[[knob]]")]
+    for i, row in zip(knob_parts, rows):
+        if row.get("kconfig", "NROS_" + row["id"]) != symbol:
             continue
-        kc = re.search(r'(?m)^kconfig = "([A-Z0-9_]+)"', part)
-        if (kc.group(1) if kc else "NROS_" + ident.group(1)) != symbol:
-            continue
-        parts[i] = re.sub(r'"default [^"\s]+"', f'"default {value}"', part, count=1)
+        parts[i] = re.sub(r'"default [^"\s]+"', f'"default {value}"', parts[i], count=1)
         return "".join(parts)
     return text
 
@@ -163,9 +165,10 @@ def selftest():
     assert '    bool "batching"' in out and "      words" in out, "rewrite ate hand-wired text"
 
     # The registry rewrite moves the named row's default and no sibling's.
-    reg = ('[[knob]]\nid = "ZENOH_TX_BATCH"\ntype = "bool"\nkconfig_attrs = [\n'
-           '    "# note",\n    "default y",\n]\n\n'
-           '[[knob]]\nid = "OTHER"\ntype = "int"\nkconfig_attrs = ["default 3"]\n')
+    reg = ('owner = "core"\n\n[owners]\nother = "x"\n\n'
+           '[[knob]]\nkey = "other.x"\ntype = "int"\nkconfig_attrs = ["default 3"]\n\n'
+           '[[knob]]\nkey = "zenoh.tx_batch"\ntype = "bool"\nkconfig_attrs = [\n'
+           '    "# note",\n    "default y",\n]\n')
     got = rewrite_registry_default(reg, "NROS_ZENOH_TX_BATCH", "n")
     assert '"default n"' in got and '"default 3"' in got and '"# note"' in got, got
     assert rewrite_registry_default(reg, "NROS_ABSENT", "n") == reg

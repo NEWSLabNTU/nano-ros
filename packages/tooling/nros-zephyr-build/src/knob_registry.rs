@@ -27,6 +27,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.action] inbox_bytes"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "ACTION_INBOX_DEPTH",
@@ -50,6 +51,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.action] inbox_depth"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "CYCLONEDDS_HEAP_BUDGET_BYTES",
@@ -71,6 +73,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: None,
+        retired_spellings: &[],
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_DESCRIPTOR_TYPES",
@@ -92,6 +95,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.cyclonedds] max_descriptor_types"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_FIELDS",
@@ -113,6 +117,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.cyclonedds] max_fields"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_KINDS",
@@ -134,6 +139,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.cyclonedds] max_kinds"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_NESTED_DEPTH",
@@ -155,6 +161,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.cyclonedds] max_nested_depth"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "CYCLONEDDS_MAX_TYPES",
@@ -176,27 +183,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.cyclonedds] max_types"),
-    },
-    KnobRow {
-        id: "ENTRY_SPIN_MS",
-        env: "NROS_ENTRY_SPIN_MS",
-        legacy: &[],
-        kconfig: "CONFIG_NROS_ENTRY_SPIN_MS",
-        toml: None,
-        image_key: "entry.spin_ms",
-        ty: None,
-        range: None,
-        names: &[],
-        retired: None,
-        only_on: None,
-        scope: crate::KnobScope::Image,
-        class: crate::KnobClass::Internal,
-        carries: None,
-        prompt: None,
-        help: None,
-        default: crate::KnobDefault::Unstated,
-        values: crate::KnobValues::Unstated,
-        surface: None,
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_ACTION_CLIENTS",
@@ -220,6 +207,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] action_clients"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_ARENA_SIZE",
@@ -243,6 +231,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] arena_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_BACKING_U64S",
@@ -266,6 +255,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] backing_u64s"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_EXTRA_SESSIONS",
@@ -289,6 +279,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] extra_sessions"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_MAX_AGE_MONITORS",
@@ -312,6 +303,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] max_age_monitors"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_MAX_CBS",
@@ -335,6 +327,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] max_cbs"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_MAX_MONITORS",
@@ -358,6 +351,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] max_monitors"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_MAX_NODES",
@@ -381,6 +375,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] max_nodes"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_MAX_SC",
@@ -404,6 +399,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] max_sc"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_MAX_SHUTDOWN_CBS",
@@ -427,6 +423,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] max_shutdown_cbs"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_MAX_VIOLATIONS",
@@ -450,6 +447,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] max_violations"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "EXECUTOR_RUNTIME_REMAPS",
@@ -473,6 +471,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] runtime_remaps"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "FREERTOS_APP_STACK_KB",
@@ -494,6 +493,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: None,
+        retired_spellings: &[],
     },
     KnobRow {
         id: "FREERTOS_HEAP_KB",
@@ -515,6 +515,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: None,
+        retired_spellings: &[],
     },
     KnobRow {
         id: "FREERTOS_TASK_STACK_GUARD",
@@ -536,6 +537,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.freertos] task_stack_guard"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "GRAPH_MAX_ENTITIES",
@@ -559,6 +561,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.graph] max_entities"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "KEYEXPR_STRING_SIZE",
@@ -580,6 +583,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.zenoh.limits] keyexpr_string_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "LET_BUFFER_SIZE",
@@ -601,6 +605,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.runtime] let_buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "LOG_BUFFER_SIZE",
@@ -624,6 +629,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.log] buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "LOG_DYNAMIC_LOGGERS",
@@ -647,6 +653,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.log] dynamic_loggers"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "LOG_EARLY_RECORDS",
@@ -670,6 +677,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.log] early_records"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "LOG_MAX_LEVEL",
@@ -693,6 +701,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.log] max_level"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "LOG_ROSOUT_RECORDS",
@@ -716,6 +725,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.log] rosout_records"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "MAX_ARRAY_LEN",
@@ -739,6 +749,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.params] max_array_len"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "MAX_BYTE_ARRAY_LEN",
@@ -762,6 +773,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.params] max_byte_array_len"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "MAX_PARAMETERS",
@@ -785,6 +797,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.params] max_parameters"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "MAX_PARAM_CONSTRAINTS_LEN",
@@ -808,6 +821,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.params] max_param_constraints_len"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "MAX_PARAM_DESCRIPTION_LEN",
@@ -831,6 +845,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.params] max_param_description_len"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "MAX_PARAM_NAME_LEN",
@@ -854,6 +869,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.params] max_param_name_len"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "MAX_STRING_ARRAY_LEN",
@@ -877,6 +893,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.params] max_string_array_len"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "MAX_STRING_VALUE_LEN",
@@ -900,6 +917,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.params] max_string_value_len"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "PARAM_EVENTS_DEPTH",
@@ -923,6 +941,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.params] param_events_depth"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "PARAM_SERVICE_BUFFER_SIZE",
@@ -946,6 +965,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] param_service_buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "PARAM_SERVICE_INBOX_BYTES",
@@ -969,6 +989,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.param] service_inbox_bytes"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "PARAM_SERVICE_INBOX_DEPTH",
@@ -992,6 +1013,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.param] service_inbox_depth"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "PUBSUB_QOS_DEPTH",
@@ -1015,6 +1037,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.pubsub] qos_depth"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RMW_LOCAL_QUERYABLE",
@@ -1038,6 +1061,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.rmw] local_queryable"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RMW_MAX_BACKENDS",
@@ -1059,6 +1083,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.rmw] max_backends"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RMW_MAX_NODES",
@@ -1080,6 +1105,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.rmw] max_nodes"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RMW_MESSAGE_INFO_SLOTS",
@@ -1101,6 +1127,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.rmw] message_info_slots"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RMW_SUBSCRIBER_SLOTS",
@@ -1124,6 +1151,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.rmw] subscriber_slots"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RMW_SUBSCRIBER_SLOT_BYTES",
@@ -1145,6 +1173,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.rmw] subscriber_slot_bytes"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RUNTIME_COMPONENT_SLOT_BYTES",
@@ -1166,6 +1195,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.runtime] component_slot_bytes"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RUNTIME_MAX_CELL_ENTITIES",
@@ -1187,6 +1217,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.runtime] max_cell_entities"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RUNTIME_MAX_CLASS_INSTANCES",
@@ -1208,6 +1239,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.runtime] max_class_instances"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "RUNTIME_MAX_COMPONENTS",
@@ -1229,6 +1261,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.runtime] max_components"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "SERVICE_INBOX_BYTES",
@@ -1252,6 +1285,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.service] inbox_bytes"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "SERVICE_INBOX_DEPTH",
@@ -1275,6 +1309,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.service] inbox_depth"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "SERVICE_TIMEOUT_MS",
@@ -1296,6 +1331,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.zenoh.limits] service_timeout_ms"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "SMOLTCP_BUFFER_SIZE",
@@ -1317,6 +1353,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.net] buffer_size"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_SMOLTCP_BUFFER_SIZE",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "SMOLTCP_CONNECT_TIMEOUT_MS",
@@ -1338,6 +1383,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.net] connect_timeout_ms"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "SMOLTCP_MAX_SOCKETS",
@@ -1359,6 +1413,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.net] max_sockets"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_SMOLTCP_MAX_SOCKETS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "SMOLTCP_MAX_UDP_SOCKETS",
@@ -1380,6 +1443,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.net] max_udp_sockets"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_SMOLTCP_MAX_UDP_SOCKETS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "SMOLTCP_SOCKET_TIMEOUT_MS",
@@ -1401,6 +1473,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.net] socket_timeout_ms"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "SUBSCRIBER_BUFFER_SIZE",
@@ -1424,6 +1505,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.subscriber] buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "SUBSCRIPTION_BUFFER_SIZE",
@@ -1447,6 +1529,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.executor] subscription_buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "THREADX_APP_STACK_KB",
@@ -1468,6 +1551,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: None,
+        retired_spellings: &[],
     },
     KnobRow {
         id: "THREADX_BYTE_POOL_KB",
@@ -1489,6 +1573,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: None,
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_BUFFER_SIZE",
@@ -1512,6 +1597,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE",
@@ -1533,6 +1619,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.xrce] builtin_service_request_buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_BUILTIN_SERVICE_SERVERS",
@@ -1554,6 +1641,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.xrce] builtin_service_servers"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_CUSTOM_TRANSPORT_MTU",
@@ -1577,6 +1665,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] custom_transport_mtu"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_MAX_SERVICE_CLIENTS",
@@ -1600,6 +1689,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] max_service_clients"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_MAX_SERVICE_SERVERS",
@@ -1623,6 +1713,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] max_service_servers"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_MAX_SUBSCRIBERS",
@@ -1646,6 +1737,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] max_subscribers"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_SERVICE_REPLY_BUFFER_SIZE",
@@ -1669,6 +1761,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] service_reply_buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_SERVICE_REQUEST_BUFFER_SIZE",
@@ -1692,6 +1785,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] service_request_buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_STREAM_HISTORY",
@@ -1715,6 +1809,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] stream_history"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_SUBSCRIBER_BUFFER_SIZE",
@@ -1738,6 +1833,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] subscriber_buffer_size"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_SUBSCRIBER_RING_DEPTH",
@@ -1761,6 +1857,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] subscriber_ring_depth"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "XRCE_TRANSPORT_MTU",
@@ -1784,6 +1881,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.xrce] transport_mtu"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "ZENOH_BATCH_MULTICAST_SIZE",
@@ -1805,6 +1903,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.zenoh.wire] batch_multicast_size"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_BATCH_MULTICAST_SIZE",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_BATCH_UNICAST_SIZE",
@@ -1828,6 +1935,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh.wire] batch_unicast_size"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_BATCH_UNICAST_SIZE",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_CONNECT_FOREVER",
@@ -1849,6 +1965,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.zenoh.limits] connect_forever"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "ZENOH_CONNECT_TIMEOUT_MS",
@@ -1870,6 +1987,7 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Ladder,
         values: crate::KnobValues::UInt,
         surface: Some("[image.<id>.knobs.zenoh.limits] connect_timeout_ms"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "ZENOH_FRAG_MAX_SIZE",
@@ -1893,6 +2011,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh.wire] frag_max_size"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_FRAG_MAX_SIZE",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_GET_POLL_INTERVAL_MS",
@@ -1916,6 +2043,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh.wire] get_poll_interval_ms"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_GET_POLL_INTERVAL_MS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_GET_REPLY_BUF_SIZE",
@@ -1939,6 +2075,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh.wire] get_reply_buf_size"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_GET_REPLY_BUF_SIZE",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_GRAPH_CACHE_SIZE",
@@ -1962,6 +2107,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] graph_cache_size"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_GRAPH_CACHE_SIZE",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_GRAPH_DISCOVERY",
@@ -1986,6 +2140,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Bool,
         surface: Some("[image.<id>.knobs.zenoh] graph_discovery"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_GRAPH_DISCOVERY",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_LEASE_PRIORITY",
@@ -2007,6 +2170,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: None,
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_LEASE_TASK_PRIORITY",
+                factor: 1,
+                from_unit: None,
+                instead: Some("zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread"),
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_MAX_LARGE_SUBSCRIBERS",
@@ -2030,6 +2202,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] max_large_subscribers"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_MAX_LARGE_SUBSCRIBERS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_MAX_LIVELINESS",
@@ -2053,6 +2234,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] max_liveliness"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_MAX_LIVELINESS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_MAX_PENDING_GETS",
@@ -2076,6 +2266,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] max_pending_gets"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_MAX_PENDING_GETS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_MAX_PUBLISHERS",
@@ -2099,6 +2298,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] max_publishers"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_MAX_PUBLISHERS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_MAX_QUERYABLES",
@@ -2122,6 +2330,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] max_queryables"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_MAX_QUERYABLES",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_MAX_SESSIONS",
@@ -2143,6 +2360,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.zenoh] max_sessions"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_MAX_SESSIONS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_MAX_SUBSCRIBERS",
@@ -2166,6 +2392,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] max_subscribers"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_MAX_SUBSCRIBERS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_MAX_TL_PUBLISHERS",
@@ -2187,6 +2422,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.zenoh] max_tl_publishers"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_MAX_TL_PUBLISHERS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_PUBLISHER_TX_BUFFER_SIZE",
@@ -2208,6 +2452,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.zenoh] publisher_tx_buffer_size"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_PUBLISHER_TX_BUFFER_SIZE",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_READ_PRIORITY",
@@ -2231,6 +2484,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] read_priority"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_READ_TASK_PRIORITY",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_RX_TASK_BUDGET_FRAMES",
@@ -2254,6 +2516,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh.wire] rx_task_budget_frames"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "ZENOH_RX_TASK_BUDGET_REST_US",
@@ -2277,6 +2540,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh.wire] rx_task_budget_rest_us"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "ZENOH_SERVICE_BUFFER_SIZE",
@@ -2300,6 +2564,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: None,
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_SERVICE_BUFFER_SIZE",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_SOCKET_TIMEOUT_MS",
@@ -2323,6 +2596,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] socket_timeout_ms"),
+        retired_spellings: &[],
     },
     KnobRow {
         id: "ZENOH_SUBSCRIBER_LARGE_SIZE",
@@ -2346,6 +2620,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh] subscriber_large_size"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_SUBSCRIBER_LARGE_SIZE",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_SUBSCRIBER_RING_DEPTH",
@@ -2369,6 +2652,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh.limits] subscriber_ring_depth"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_SUBSCRIBER_RING_DEPTH",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_SUBSCRIBER_SIZE_THRESHOLD",
@@ -2390,6 +2682,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.zenoh] subscriber_size_threshold"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_SUBSCRIBER_SIZE_THRESHOLD",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_TL_RETAIN_BYTES",
@@ -2411,6 +2712,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.zenoh] tl_retain_bytes"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_TL_RETAIN_BYTES",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_TL_RETAIN_DEPTH",
@@ -2432,6 +2742,15 @@ pub const KNOBS: &[KnobRow] = &[
         default: crate::KnobDefault::Unstated,
         values: crate::KnobValues::Unstated,
         surface: Some("[image.<id>.knobs.zenoh] tl_retain_depth"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_TL_RETAIN_DEPTH",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_TX_BATCH",
@@ -2455,6 +2774,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Bool,
         surface: Some("[image.<id>.knobs.zenoh.tx] batch"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_TX_BATCH",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_TX_BATCH_FLUSH_MS",
@@ -2478,6 +2806,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zenoh.tx] flush_ms"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_TX_BATCH_FLUSH_MS",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZENOH_TX_SPLIT_LOCK",
@@ -2501,6 +2838,15 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Bool,
         surface: Some("[image.<id>.knobs.zenoh.tx] split_lock"),
+        retired_spellings: &[
+            crate::RetiredSpelling {
+                road: crate::RetiredRoad::Env,
+                spelling: "ZPICO_TX_SPLIT_LOCK",
+                factor: 1,
+                from_unit: None,
+                instead: None,
+            },
+        ],
     },
     KnobRow {
         id: "ZEPHYR_HEAP_SIZE",
@@ -2527,6 +2873,7 @@ pub const KNOBS: &[KnobRow] = &[
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zephyr] heap_size"),
+        retired_spellings: &[],
     },
 ];
 

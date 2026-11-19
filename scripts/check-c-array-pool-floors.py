@@ -204,13 +204,12 @@ _UORB_POOLS = (
 # producer pattern is that spelling, read from `knobs.toml` rather than
 # restated, and a macro the registry does not hold is its own env name.
 def _env_spellings() -> dict[str, str]:
-    try:
-        import tomllib
-    except ModuleNotFoundError:  # the repo's interpreter is 3.10
-        import tomli as tomllib
-    reg = REPO / "packages/tooling/nros-zephyr-build/knobs.toml"
-    with open(reg, "rb") as fh:
-        rows = tomllib.load(fh).get("knob", [])
+    import sys
+
+    sys.path.insert(0, str(REPO / "scripts" / "lib"))
+    import knob_registry  # the one reader of the registry
+
+    rows = knob_registry.knob_rows()
     return {legacy: "NROS_" + r["id"] for r in rows for legacy in r.get("legacy", [])}
 
 

@@ -71,12 +71,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python < 3.11 — the repo's interpreter is 3.10
-    import tomli as tomllib
-
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import knob_registry  # noqa: E402  -- the one reader of the registry
 REGISTRY = ROOT / "packages/tooling/nros-zephyr-build/knobs.toml"
 
 ALLOWED = {
@@ -112,7 +109,7 @@ def retired_names(registry_text: str | None = None) -> dict[str, str]:
     row's reason."""
     text = registry_text if registry_text is not None else REGISTRY.read_text()
     out = {}
-    for row in tomllib.loads(text).get("knob", []):
+    for row in knob_registry.knob_rows(text=text):
         canonical = "NROS_" + row["id"]
         if row.get("retired"):
             for s in [canonical] + row.get("legacy", []):
@@ -439,11 +436,14 @@ def self_test() -> int:
             bad += 1
             print(f"  self-test: {'missed' if want else 'false hit on'} (c prose): {text!r}")
     # The registry is the input, so its own parse is a case too.
-    table = retired_names('[[knob]]\nid = "ZENOH_X"\nlegacy = ["ZPICO_X"]\n')
+    hdr = 'owner = "core"\n[owners]\nx = "y"\n'
+    table = retired_names(hdr + '[[knob]]\nkey = "zenoh.x"\nscope = "image"\nclass = "internal"\n'
+                          'retired = [{ spelling = "env:ZPICO_X" }]\n')
     if table != {"ZPICO_X": "NROS_ZENOH_X"}:
         bad += 1
         print(f"  self-test: registry parse gave {table!r}")
-    table = retired_names('[[knob]]\nid = "ZENOH_G"\nlegacy = ["ZPICO_G"]\nretired = "x"\n')
+    table = retired_names(hdr + '[[knob]]\nkey = "zenoh.g"\nscope = "image"\nclass = "retired"\n'
+                          'retired = [{ spelling = "env:ZPICO_G" }]\ninstead = "x"\n')
     if set(table) != {"NROS_ZENOH_G", "ZPICO_G"} or "NROS_ZENOH_G" in table.values():
         bad += 1
         print(f"  self-test: a retired knob's spellings gave {table!r}")
