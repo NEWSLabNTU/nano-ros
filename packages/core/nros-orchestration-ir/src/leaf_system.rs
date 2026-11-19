@@ -1743,7 +1743,13 @@ locator = "tcp/10.0.2.2:9800"
         let l = read_image(d.path(), "i").unwrap().expect("declared");
         assert_eq!(
             l.features,
-            vec!["param_services", "rosout", "lifecycle", "safety"]
+            vec![
+                "param_services",
+                "rosout",
+                "lifecycle",
+                "safety",
+                "sim_time"
+            ]
         );
         assert_eq!(l.declared_features, vec!["param_services", "rosout"]);
         let l = read_image(d.path(), "off").unwrap().expect("declared");
