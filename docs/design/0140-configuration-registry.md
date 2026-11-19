@@ -410,6 +410,50 @@ image); for an image with no process environment it prints Part B's D10
 note instead. `NROS_DOMAIN_ID` never was a run-time variable, so a build
 refuses it, naming `[system] domain_id` and the override channel.
 
+**Mechanical fixes (`nros fix`, RFC-0129 D8, agreed with phase-578 W4 on
+2026-11-19).** The retired entries are also the input of `nros fix`, so
+every rename in Appendix A gets an automatic edit with no hand-written case.
+
+- **Shape.** An entry is `{ spelling = "<road>:<name>", factor = <int>,
+  from_unit = "<text>" }` or `{ spelling = "<road>:<name>", instead =
+  "<text>" }`. The road is one of `toml:`, `env:`, `kconfig:`, `cmake:`,
+  `run:`. The new spelling per road is DERIVED from the row's key (D3 N2);
+  the entry never states it.
+- **Factor.** A positive integer: new value = old value x factor. Absent
+  means 1, a pure rename that copies the value verbatim. All 87 renames fit:
+  `_kb` to `_bytes` is x 1024, `backing_u64s` to `backing_bytes` is x 8, the
+  rest x 1. `from_unit` is display text for the message only.
+- **Manual versus mechanical is inferred, never flagged.** An entry that
+  states `instead` is manual (`nros fix` reports the text and offers no
+  edit; this covers a `class = "retired"` row with no replacement and the six
+  `ZENOH_*` run-time variables). An entry that states no `instead` is
+  mechanical. The registry gate refuses an entry stating both `instead` and
+  `factor`, so there is no third state.
+- **Range.** The fix checks old x factor against the new row's type and
+  range and refuses the edit, naming the limit, rather than write an
+  out-of-range value.
+- **One read path.** The loader exposes `retired_spelling(road, spelling) ->
+  Option<(&Row, &RetiredEntry)>` over the MERGED catalog (core plus package
+  rows), and the generated core `KnobRow` carries `retired: &[(road,
+  spelling, factor)]`. Core's compiled table can never hold package rows
+  (D5), so for a package's rename `nros fix` reads the same triple from the
+  merged catalog the loader builds in memory (below). Nothing parses
+  `knobs.toml` by hand.
+- **Edits.** A `toml:` retirement that also moves a table is one fix
+  carrying both: `RenameKey { to, scale }` or `MoveKey { to_table, to_key,
+  scale }`. Per the RFC-0129 Q1 ruling, `nros fix` edits `toml:` and `env:`
+  spellings in `system.toml` now and board descriptors next; a `kconfig:`
+  or `cmake:` spelling in a conf or CMake file is reported with its text and
+  offered no edit until those files carry locations.
+- **The merged catalog is a library call, the file is a cache.** `nros fix`
+  and the build preflight run BEFORE configure, possibly on a fresh clone,
+  where `<build>/nros/knobs/catalog.toml` does not exist yet. So the loader
+  exposes the function that BUILDS the merged catalog in memory (core rows
+  plus the workspace's package rows, from the same package scan configure
+  uses), and configure writes the file from that same call. One derivation,
+  two consumers: the file serves out-of-process readers (cmake, Kconfig) and
+  is never the only source.
+
 ### D5 - Generated views, for in-tree and out-of-tree rows
 
 | View | In-tree rows (core + in-tree packages) | An out-of-tree package's rows |
@@ -845,6 +889,10 @@ reopened Q1 with a wider scope; this revision answers Q1.
   environment (Decision 8, D10); `ROS_NAMESPACE` IGNORE (Decision 3, Humble);
   `NROS_NODE_NAME`/`NROS_NODE_NAMESPACE` are read but do not rename a
   component or application node (D9).
+- 2026-11-19: D4 gains the `nros fix` contract agreed with phase-578 W4:
+  retired entries carry `factor`/`from_unit` or `instead` (never both),
+  one `retired_spelling` lookup over a merged catalog built in memory, and
+  `RenameKey`/`MoveKey` edits scaled by the factor.
 
 ## Appendix A - Settings that break the rule on `origin/main` (87)
 

@@ -81,6 +81,15 @@ board and RMW packages are self-contained.
   `just check knob-registry` covers the new tables; a row whose `stated` is
   neither a statement key nor a knob key fails generation; the retired-name
   tests of phase-484 W8 and `check-retired-runtime-aliases` pass unchanged.
+  The `nros fix` contract (RFC-0140 D4): a retired entry states `factor`
+  (positive integer, new = old x factor, absent = 1) and optional
+  `from_unit`, or `instead`, never both (the generator refuses both); the
+  generated `KnobRow` carries `retired: &[(road, spelling, factor)]`; the
+  loader exposes the in-memory build of the merged catalog (core plus the
+  workspace's package rows, from the same package scan configure uses) and
+  `retired_spelling(road, spelling) -> Option<(&Row, &RetiredEntry)>` over
+  it, and configure writes `<build>/nros/knobs/catalog.toml` from that same
+  call (the file is a cache for cmake and Kconfig, never the only source).
 
 ### W2 - Contributors: in-tree packages declare their own rows
 
@@ -151,7 +160,11 @@ board and RMW packages are self-contained.
   Kconfig symbols, fixture drivers).
 - **Acceptance:** each old spelling is refused on each road its tag names,
   with the message naming the new key and, for a unit change, the factor
-  (RFC-0140 G5, generated cases); `just ci gate` green; the W4 baseline
+  (RFC-0140 G5, generated cases); `nros fix`'s table-driven test over every
+  retired entry passes (each renamed `toml:`/`env:` spelling is rewritten,
+  its value scaled by the factor and range-checked against the new row; a
+  `kconfig:`/`cmake:` spelling is reported, not edited; an `instead` entry
+  offers no edit); `just ci gate` green; the W4 baseline
   shrinks by exactly the renamed rows; one Zephyr, one FreeRTOS and one
   ThreadX image built before and after have identical `.config` values and
   identical `nm` sizes of the affected pools (measured, numbers in the PR).
@@ -166,7 +179,7 @@ board and RMW packages are self-contained.
   `NROS_LOCATOR`/`NROS_DOMAIN_ID`/`NROS_NODE_NAME` reads moving to
   `NROS_ENTRY_*` (refusal for `NROS_DOMAIN_ID`, a build note for the two
   that stay run-time names).
-- **Acceptance:** as W5 (refusals per road, gate baseline shrinks, same
+- **Acceptance:** as W5 (refusals per road, `nros fix` table test, gate baseline shrinks, same
   `.config` before and after); a guest Zephyr project (no `system.toml`) with
   `CONFIG_NROS_CYCLONE_CONFIG_XML` in its `prj.conf` fails configure with the
   hook's message naming the new symbol; a FreeRTOS fixture build with
@@ -182,7 +195,8 @@ board and RMW packages are self-contained.
   stay `zenoh.max_*` as carrier rows with no Kconfig symbol, derived from the
   demand through the existing floor (`_nros_c_array_pool_floor`). The `kconfig`
   column is deleted from the generator.
-- **Acceptance:** the generator has no per-row Kconfig override; the
+- **Acceptance:** `nros fix`'s table test over every retired entry passes
+  (as W5); the generator has no per-row Kconfig override; the
   `check-c-array-pool-floors` and `check-c-array-guard-probe` gates pass
   unchanged; a Zephyr image whose declared demand is 0 publishers still gets
   a pool of 1 (issue 1015's case), measured from `.config` and the generated
