@@ -87,11 +87,14 @@ BASELINE_HEADER = (
 
 # phase-543 W6 — a recipe's TIER is an attribute on the recipe itself:
 #   [metadata("tier", "build")]             compiles, or needs something built
+#   [metadata("tier", "gate")]              run by `just ci gate` only (phase-584 W1)
 #   [metadata("tier", "exempt", "<why>")]   in no lane; the reason is required
 # No attribute: a fast gate. There is no list to append to, so two pull
 # requests adding gates never touch the same line (issues 0883/0884/1072), and
 # the reason for an exemption sits beside the recipe it explains.
-TIERS = ("build", "exempt")
+TIERS = ("build", "exempt", "gate")
+# Every tier a test name can carry, in listing order.
+LISTED_TIERS = ("fast", "build", "gate", "exempt")
 
 # A recipe header at column 0. Variables use `:=`, attributes start with `[`,
 # comments with `#`, and bodies are indented, so none of them match.
@@ -141,14 +144,26 @@ def recipes(lines: list[str]) -> dict[str, bool]:
     return out
 
 
+_DUMP: dict | None = None
+
+
+def just_dump() -> dict:
+    """`just --dump --dump-format json`, once per process: the one view of a
+    recipe's attributes, read by every function below."""
+    global _DUMP
+    if _DUMP is None:
+        out = subprocess.run(
+            ["just", "--dump", "--dump-format", "json"],
+            cwd=REPO, capture_output=True, text=True, check=True,
+        ).stdout
+        _DUMP = json.loads(out)
+    return _DUMP
+
+
 def recipe_metadata(key: str) -> dict[str, list[str]]:
     """Every `check` recipe's `[metadata("<key>", ...)]` values (without the
     leading key), from `just --dump`, the one view of a recipe's attributes."""
-    out = subprocess.run(
-        ["just", "--dump", "--dump-format", "json"],
-        cwd=REPO, capture_output=True, text=True, check=True,
-    ).stdout
-    recs = json.loads(out)["modules"]["check"]["recipes"]
+    recs = just_dump()["modules"]["check"]["recipes"]
     found: dict[str, list[str]] = {}
     for name, r in recs.items():
         for a in r.get("attributes", []):
@@ -174,6 +189,7 @@ def classify(just_text: str, tiers: dict[str, list[str]]) -> tuple[dict[str, lis
     parameterized = sorted(n for n, has_args in rec.items() if has_args)
     build: list[str] = []
     exempt: list[str] = []
+    gate: list[str] = []
     for name, vals in sorted(tiers.items()):
         tier = vals[0] if vals else ""
         if name not in rec:
@@ -200,10 +216,12 @@ def classify(just_text: str, tiers: dict[str, list[str]]) -> tuple[dict[str, lis
                     f"      a gate. A bare exemption is how a temporary one becomes permanent."
                 )
             exempt.append(name)
+        elif tier == "gate":
+            gate.append(name)
         else:
             build.append(name)
     plain = {n for n, has_args in rec.items() if not has_args}
-    fast = sorted(plain - set(build) - set(exempt))
+    fast = sorted(plain - set(build) - set(exempt) - set(gate))
     if not fast:
         problems.append(
             "  the derived FAST lane is EMPTY.\n"
@@ -211,7 +229,7 @@ def classify(just_text: str, tiers: dict[str, list[str]]) -> tuple[dict[str, lis
         )
     return (
         {"fast": fast, "build": sorted(build), "exempt": sorted(exempt),
-         "parameterized": parameterized},
+         "gate": sorted(gate), "parameterized": parameterized},
         problems,
     )
 
@@ -219,11 +237,7 @@ def classify(just_text: str, tiers: dict[str, list[str]]) -> tuple[dict[str, lis
 def recipe_groups() -> dict[str, set[str]]:
     """Every `check` recipe's `[group(...)]` values, read from `just --dump`,
     the one view of a recipe's attributes (phase-543)."""
-    out = subprocess.run(
-        ["just", "--dump", "--dump-format", "json"],
-        cwd=REPO, capture_output=True, text=True, check=True,
-    ).stdout
-    recipes = json.loads(out)["modules"]["check"]["recipes"]
+    recipes = just_dump()["modules"]["check"]["recipes"]
     return {
         name: {a["group"] for a in r.get("attributes", []) if isinstance(a, dict) and "group" in a}
         for name, r in recipes.items()
@@ -286,6 +300,52 @@ def weight_basis_problems(build: list[str], groups: dict[str, set[str]],
             out.append(f"  `{name}`: cpu-basis `{kind}` with no text. Say how it was measured "
                        "(knee) or why it runs one thing at a time (light).")
     return out
+
+
+def outside_gates(dump: dict | None = None) -> tuple[list[tuple[str, str, set[str]]], list[str]]:
+    """RFC-0131 D2: a recipe OUTSIDE the `check` module is a gate when it says
+    `[group('gate')]`. Returns ([(just target, tier, groups)], problems).
+
+    The target is the recipe's path (`test-unit`, `<module>::<recipe>`), which
+    is what the harness runs. Its tier is its `tier` metadata, `fast` without
+    one. A gate runs with no arguments, so a parameter without a default is a
+    problem; one WITH a default is not (phase-584 W1: `test-unit verbose=""`
+    runs as `just test-unit`). Units are not supported outside `check`."""
+    dump = dump if dump is not None else just_dump()
+    out: list[tuple[str, str, set[str]]] = []
+    problems: list[str] = []
+
+    def walk(mod: dict, prefix: str) -> None:
+        for name, r in mod.get("recipes", {}).items():
+            attrs = r.get("attributes", [])
+            groups = {a["group"] for a in attrs if isinstance(a, dict) and "group" in a}
+            if "gate" not in groups:
+                continue
+            target = prefix + name
+            tier = "fast"
+            for a in attrs:
+                if isinstance(a, dict) and isinstance(a.get("metadata"), list) \
+                        and a["metadata"][:1] == ["tier"]:
+                    tier = (a["metadata"][1:] or [""])[0]
+            if tier not in ("fast", "build", "gate"):
+                problems.append(f"  `{target}`: a `[group('gate')]` recipe with tier "
+                                f"`{tier}`; outside `check` a gate is fast, build or gate")
+                continue
+            if any(prm.get("default") is None for prm in r.get("parameters", [])):
+                problems.append(f"  `{target}`: a `[group('gate')]` recipe with a parameter "
+                                "that has no default; a gate runs with no arguments")
+                continue
+            if "units" in groups:
+                problems.append(f"  `{target}`: `[group('units')]` is supported only in `check`")
+                continue
+            out.append((target, tier, groups - {"gate"}))
+        for mname, m in mod.get("modules", {}).items():
+            if prefix == "" and mname == "check":
+                continue
+            walk(m, f"{prefix}{mname}::")
+
+    walk(dump, "")
+    return sorted(out), problems
 
 
 def needs_of(groups: set[str]) -> set[str]:
@@ -360,7 +420,7 @@ def test_names(b: dict[str, list[str]], lane_name: str | None = None) -> list[tu
     lane = load_lane(lane_name)
     groups = recipe_groups()
     out: list[tuple[str, str | None]] = []
-    for tier in ("fast", "build", "exempt"):
+    for tier in LISTED_TIERS:
         for n in b[tier]:
             g = groups.get(n, set())
             needs = needs_of(g)
@@ -373,6 +433,8 @@ def test_names(b: dict[str, list[str]], lane_name: str | None = None) -> list[tu
                     (f"{tier}::check::{n}#{u}", scope(lane, tier, needs | caps))
                     for u, caps in units
                 )
+    for target, tier, g in b.get("outside", []):
+        out.append((f"{tier}::{target}", scope(lane, tier, needs_of(g))))
     return out
 
 TOOL = "nros-gates"
@@ -507,23 +569,24 @@ def nextest_config(b: dict[str, list[str]], junit: Path | None = None,
         n = resource_capacity(r, spec, free_kib, cpus)
         lines.append(f'"@tool:{TOOL}:{r}" = {{ max-threads = {n} }}')
     lines.append("")
-    for tier in ("fast", "build", "exempt"):
-        for n in b[tier]:
-            g = groups.get(n, set())
-            uses = sorted(x.removeprefix("uses:") for x in g if x.startswith("uses:"))
-            weight = declared_weight(g)
-            if len(uses) > 1:
-                raise SystemExit(f"check-gate-lists: `{n}` uses {uses}; nextest puts a "
-                                 "test in ONE group, so a gate may use one resource")
-            if not uses and weight == 1:
-                continue
-            lines.append("[[profile.default.overrides]]")
-            lines.append(f"filter = 'test(/^{tier}::check::{n}(#.*)?$/)'")
-            if uses:
-                lines.append(f'test-group = "@tool:{TOOL}:{uses[0]}"')
-            if weight > 1:
-                lines.append(f"threads-required = {weight}")
-            lines.append("")
+    rows = [(t, f"check::{n}", groups.get(n, set())) for t in LISTED_TIERS for n in b[t]]
+    rows += [(t, target, g) for target, t, g in b.get("outside", [])]
+    for tier, target, g in rows:
+
+        uses = sorted(x.removeprefix("uses:") for x in g if x.startswith("uses:"))
+        weight = declared_weight(g)
+        if len(uses) > 1:
+            raise SystemExit(f"check-gate-lists: `{n}` uses {uses}; nextest puts a "
+                             "test in ONE group, so a gate may use one resource")
+        if not uses and weight == 1:
+            continue
+        lines.append("[[profile.default.overrides]]")
+        lines.append(f"filter = 'test(/^{tier}::{target}(#.*)?$/)'")
+        if uses:
+            lines.append(f'test-group = "@tool:{TOOL}:{uses[0]}"')
+        if weight > 1:
+            lines.append(f"threads-required = {weight}")
+        lines.append("")
     if order is not None:
         # The order-independence check: priority by NAME, not by last run's
         # time, so the two runs it compares differ in order and in nothing else.
@@ -549,7 +612,10 @@ def nextest_config(b: dict[str, list[str]], junit: Path | None = None,
 
 
 def buckets() -> tuple[dict[str, list[str]], list[str]]:
-    return classify(justfile_text(), recipe_tiers())
+    b, problems = classify(justfile_text(), recipe_tiers())
+    outside, more = outside_gates()
+    b["outside"] = outside
+    return b, problems + more
 
 
 def gate_names() -> list[str]:
@@ -603,6 +669,30 @@ def ratchet(present: set[str], baseline: set[str] | None) -> list[str]:
 
 
 def self_test() -> None:
+    # phase-584 W1: tier `gate` is its own bucket, never fast.
+    b, probs = classify("a:\nb:\nc:\n", {"b": ["gate"], "c": ["build"]})
+    assert b["gate"] == ["b"] and b["fast"] == ["a"] and b["build"] == ["c"], (b, probs)
+    # phase-584 W1 (RFC-0131 D2): `[group('gate')]` outside `check` is a gate,
+    # named by its path; a defaulted parameter is fine, a bare one is refused.
+    def rec(groups, tier=None, params=()):
+        attrs = [{"group": g} for g in groups]
+        if tier:
+            attrs.append({"metadata": ["tier", tier]})
+        return {"attributes": attrs, "parameters": [{"default": d} for d in params]}
+    dump = {
+        "recipes": {
+            "test-unit": rec(["main", "gate"], "gate", params=[""]),
+            "plain": rec(["main"]),
+            "needs-arg": rec(["gate"], params=[None]),
+        },
+        "modules": {
+            "check": {"recipes": {"inside": rec(["gate"])}, "modules": {}},
+            "zephyr": {"recipes": {"probe": rec(["gate", "needs:west"])}, "modules": {}},
+        },
+    }
+    got, probs = outside_gates(dump)
+    assert got == [("test-unit", "gate", {"main"}), ("zephyr::probe", "fast", {"needs:west"})], got
+    assert len(probs) == 1 and "needs-arg" in probs[0], probs
     # issue 2683: the declared weight is the largest `cpu:<n>`, else 1.
     assert declared_weight(set()) == 1
     assert declared_weight({"needs:cli", "cpu:6"}) == 6
@@ -806,9 +896,17 @@ def main(argv: list[str]) -> int:
         if lane == "exempt":
             # The gates in NO lane, with the reason each carries:
             # `<name>\t<reason>` (check-default-gates-run-somewhere's R4).
+            # phase-584 W1: tier `gate` is listed here too until W2/W6 give it
+            # its lane (`ci`) and R4 reads that lane, so a gate moved out of
+            # `exempt` is still proved to run somewhere in between.
             tiers = recipe_tiers()
             for name in b["exempt"]:
                 print(f"{name}\t{' '.join(tiers.get(name, [])[1:])}")
+            for name in b["gate"]:
+                print(f"{name}\ttier gate: run by `just ci gate`")
+            return 0
+        if lane == "gate":
+            print("\n".join(b["gate"] + [t for t, tier, _ in b["outside"] if tier == "gate"]))
             return 0
         if lane == "all":
             names = sorted(b["fast"] + b["build"])
@@ -843,6 +941,7 @@ def main(argv: list[str]) -> int:
     print(
         f"check-gate-lists OK — {len(b['fast'])} fast gate(s) derived, "
         f"{len(b['build'])} build-tier, "
+        f"{len(b['gate'])} `ci gate`-tier ({len(b['outside'])} outside `check`), "
         f"{len(b['exempt'])} exempt with a reason, "
         f"{len(b['parameterized'])} parameterized recipe(s) excluded."
     )
