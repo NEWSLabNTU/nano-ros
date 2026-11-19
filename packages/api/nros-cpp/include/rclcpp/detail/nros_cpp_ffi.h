@@ -3824,13 +3824,13 @@ nros_cpp_ret_t nros_cpp_guard_condition_clear(void *storage);
 nros_cpp_ret_t nros_cpp_guard_condition_release(void *executor_handle, size_t handle_id);
 
 /**
- * Drop a guard condition's local storage — a no-op drop.
+ * Drop a guard condition's local storage.
  *
- * `nros_node::GuardCondition` is `{ &'static AtomicBool, Option<fn>, *mut
- * c_void }` — no field has drop glue, so the `drop_in_place` below **runs no
- * destructor**. The arena entry the flag lives in is freed separately, by
- * `nros_cpp_guard_condition_release`, which the C++ destructor
- * calls first.
+ * The handle holds a reference to the executor's wake state, and this drop
+ * releases it, so the executor's wake state is freed when the executor and
+ * every handle are gone. It does not free the guard condition's arena entry:
+ * `nros_cpp_guard_condition_release`, which the C++ destructor calls first,
+ * does that.
  *
  * # Safety
  * `storage` must be a valid initialized guard condition storage, or NULL (no-op).
