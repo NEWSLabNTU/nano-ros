@@ -59,6 +59,8 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
+docs/design/0071-rmw-backend-descriptor.md:2744
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
+docs/roadmap/phase-583-owned-entry-executables.md:2744
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
