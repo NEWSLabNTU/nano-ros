@@ -91,10 +91,10 @@ uint64_t nros_platform_clock_resolution_ns(void) {
  * boot-relative time knowingly; after it, absolute time. There is no window
  * where a wrong absolute value is published.
  *
- * A spinlock, not two atomics: the zenoh source re-installs the offset for as
+ * Guarded, not two atomics: the zenoh source re-installs the offset for as
  * long as the image runs (issue 0758's re-acquisition requirement), and a
  * hi/lo pair read while a writer straddles a 2^32 us boundary would be off by
- * 71 minutes. SNTP alone wrote it once, which is what the pair assumed.
+ * 71 minutes. The guard is the shared store's (`nros/clock_epoch.h`).
  *
  * With neither source compiled in this answers `0`, which the header defines
  * as "no wall clock here" rather than an error. */
@@ -103,30 +103,13 @@ uint64_t nros_platform_clock_resolution_ns(void) {
 #include <zephyr/net/sntp.h>
 #endif
 
-/* Microseconds to add to `nros_platform_clock_ns()/1000` to get UNIX time.
- * Zero means "not acquired". */
-static uint64_t nros_zephyr_epoch_offset;
-static struct k_spinlock nros_zephyr_epoch_lock;
-
-static uint64_t nros_zephyr_epoch_offset_get(void) {
-    k_spinlock_key_t key = k_spin_lock(&nros_zephyr_epoch_lock);
-    uint64_t offset = nros_zephyr_epoch_offset;
-    k_spin_unlock(&nros_zephyr_epoch_lock, key);
-    return offset;
-}
-
-static void nros_zephyr_epoch_offset_set(uint64_t offset) {
-    k_spinlock_key_t key = k_spin_lock(&nros_zephyr_epoch_lock);
-    nros_zephyr_epoch_offset = offset;
-    k_spin_unlock(&nros_zephyr_epoch_lock, key);
-}
+/* The offset lives in the ONE shared store (RFC-0141 D3,
+ * `nros/clock_epoch.h`): one setter, one reader, under the platform's
+ * critical section. This port only feeds it. */
+#include <nros/clock_epoch.h>
 
 uint64_t nros_platform_epoch_us(void) {
-    uint64_t offset = nros_zephyr_epoch_offset_get();
-    if (offset == 0ULL) {
-        return 0ULL; /* not acquired — no wall clock */
-    }
-    return offset + nros_platform_clock_ns() / 1000ULL;
+    return nros_clock_epoch_us(); /* 0 before the first install: no wall clock */
 }
 #else /* neither source */
 uint64_t nros_platform_epoch_us(void) {
@@ -153,7 +136,7 @@ int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms) {
     uint64_t frac_us = ((uint64_t)ts.fraction * 1000000ULL) >> 32;
     uint64_t now_us = ts.seconds * 1000000ULL + frac_us;
     uint64_t mono_us = nros_platform_clock_ns() / 1000ULL;
-    nros_zephyr_epoch_offset_set(now_us - mono_us);
+    nros_clock_set_epoch_offset_us(now_us - mono_us);
     return 0;
 }
 #endif /* CONFIG_SNTP */
@@ -192,8 +175,8 @@ void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64) {
         return; /* not a wall-clock reading */
     }
     uint64_t offset = peer_us - mono_us;
-    if (nros_zephyr_epoch_offset_get() == 0ULL) {
-        nros_zephyr_epoch_offset_set(offset);
+    if (nros_clock_epoch_offset_us() == 0ULL) {
+        nros_clock_set_epoch_offset_us(offset);
         window_start_us = mono_us;
         window_max = 0;
         printk("nros: wall-clock epoch acquired from zenoh sample timestamps\n");
@@ -203,7 +186,7 @@ void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64) {
         window_max = offset;
     }
     if (mono_us - window_start_us >= (uint64_t)CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS * 1000ULL) {
-        nros_zephyr_epoch_offset_set(window_max);
+        nros_clock_set_epoch_offset_us(window_max);
         window_start_us = mono_us;
         window_max = 0;
     }
