@@ -88,15 +88,17 @@ impl std::fmt::Display for SpinPeriodTooSlow {
         write!(
             f,
             // RFC-0079
-            "sched task `{}` authors spin_period {} us, slower than its fastest release ({} us, {}). \
-             Remove `spin_period` to have it derived, or state one no slower than {} us.",
+            "sched task `{}` authors spin_period {} us, slower than its fastest release ({} us, {}): \
+             that release would run at the spin rate instead. Remove `spin_period` from \
+             `[tasks.{}]` in system.toml to have it derived, or state one no slower than {} us.",
             self.sched_task,
             self.authored_us,
             self.derived_us,
             self.from
                 .as_deref()
-                .map(|n| format!("member `{n}`"))
+                .map(|n| format!("member `{n}`'s timer"))
                 .unwrap_or_else(|| "the sched task's own period".to_string()),
+            self.sched_task,
             self.derived_us
         )
     }
@@ -173,6 +175,23 @@ pub fn apply_derived_spin_periods(
         }
     }
     Ok(notes)
+}
+
+/// [`apply_derived_spin_periods`] with the periods read from `model`: the
+/// realizer's per-node release periods ([`crate::rtos_realizer::node_periods_us`]
+/// over [`crate::mapper_input::mapper_input_from_model`]), each node's fastest
+/// timer trigger.
+///
+/// The one entry both entry roads call -- `nros` codegen's C/C++ entries and
+/// `nros::main!` -- so a sched task's spin period is derived, and an authored
+/// one slower than its tightest member timer refused, whichever road bakes it.
+pub fn apply_model_spin_periods(
+    model: &ros_launch_manifest_model::SystemModel,
+    table: &mut ResolvedSchedTaskTable,
+) -> Result<Vec<SpinPeriodNote>, SpinPeriodTooSlow> {
+    let input = crate::mapper_input::mapper_input_from_model(model);
+    let periods = crate::rtos_realizer::node_periods_us(&input);
+    apply_derived_spin_periods(table, &periods)
 }
 
 #[cfg(test)]
@@ -319,5 +338,52 @@ mod tests {
         apply_derived_spin_periods(&mut t, &island_periods()).unwrap();
         assert_eq!(t.sched_tasks[0].spin_period_us, Some(33_333));
         assert_eq!(t.sched_tasks[1].spin_period_us, Some(100_000));
+    }
+
+    /// One node, `/ctl`, whose path is released by a 30 Hz timer.
+    fn timer_model() -> ros_launch_manifest_model::SystemModel {
+        let yaml = "meta:\n  version: 1\n\
+             structure:\n  scopes:\n    d.launch.xml:\n      file: d.launch.xml\n  \
+             nodes:\n    /ctl:\n      scope: d.launch.xml\n      pkg: d\n      exec: ctl\n      \
+             node_name: ctl\n      namespace: /\n  \
+             topics:\n    /cmd:\n      type: std_msgs/msg/Empty\n      pub: [/ctl/cmd]\n\
+             contracts:\n  node_paths:\n    /ctl/loop:\n      output: [/ctl/cmd]\n      \
+             trigger:\n        kind: timer\n        value:\n          rate_hz: 30.0\n";
+        ros_launch_manifest_model::SystemModel::from_yaml_str(yaml).expect("fixture parses")
+    }
+
+    /// The model entry both roads call reads the release from the model's
+    /// timer trigger: an unset spin period becomes the timer's period.
+    #[test]
+    fn the_model_entry_derives_from_the_member_timer() {
+        let mut t = ResolvedSchedTaskTable {
+            sched_tasks: vec![sched_task("app", None, &["ctl"])],
+        };
+        let notes = apply_model_spin_periods(&timer_model(), &mut t).unwrap();
+        assert_eq!(t.sched_tasks[0].spin_period_us, Some(33_333));
+        assert!(
+            matches!(&notes[..], [SpinPeriodNote::Derived { from: Some(n), .. }] if n == "ctl"),
+            "{notes:?}"
+        );
+    }
+
+    /// A spin period longer than the member timer's period is refused through
+    /// the model entry, naming the sched task, both periods and the member.
+    #[test]
+    fn the_model_entry_refuses_a_spin_period_longer_than_the_member_timer() {
+        let mut t = ResolvedSchedTaskTable {
+            sched_tasks: vec![sched_task("app", Some(50_000), &["ctl"])],
+        };
+        let err = apply_model_spin_periods(&timer_model(), &mut t).unwrap_err();
+        let msg = err.to_string();
+        for want in [
+            "`app`",
+            "50000 us",
+            "33333 us",
+            "member `ctl`'s timer",
+            "`[tasks.app]` in system.toml",
+        ] {
+            assert!(msg.contains(want), "{want} missing: {msg}");
+        }
     }
 }

@@ -1069,9 +1069,7 @@ fn derive_sched_task_spin_periods(plan: &Plan, table: &mut ResolvedSchedTaskTabl
     // Topology and scheduling only; the plan already carries the image's
     // switches (`plan_from_model`).
     let model = crate::orchestration::model_ingest::load_model(&plan.launch_file, None)?;
-    let input = nros_orchestration_ir::mapper_input::mapper_input_from_model(&model);
-    let periods = nros_orchestration_ir::rtos_realizer::node_periods_us(&input);
-    let notes = nros_orchestration_ir::spin_period::apply_derived_spin_periods(table, &periods)
+    let notes = nros_orchestration_ir::spin_period::apply_model_spin_periods(&model, table)
         .map_err(|e| eyre::eyre!("codegen entry: {e}"))?;
     for n in &notes {
         eprintln!("codegen entry: {n}");

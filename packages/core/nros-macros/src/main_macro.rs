@@ -1481,6 +1481,17 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             );
             nros_orchestration_ir::validate_sched_task_platform_applicability(&table, &rtos)
                 .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+            // Issue 2527 -- the C/C++ entry road's spin-period rule, from the
+            // same function: an unset spin period is the sched task's fastest
+            // member release, and an authored one slower than that is refused
+            // (a member timer would otherwise fire at the spin rate). Before,
+            // this road baked an unset one as 1000 us and kept a slow one.
+            for note in
+                nros_orchestration_ir::spin_period::apply_model_spin_periods(&model, &mut table)
+                    .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?
+            {
+                eprintln!("nros::main!: {note}");
+            }
             // phase-462 W4c -- a mode moves its derived sched tasks' deadlines, and
             // its switch must fit its reaction budget at the slowest sched task's
             // spin. Both refusals are the bake's, before anything is emitted.
