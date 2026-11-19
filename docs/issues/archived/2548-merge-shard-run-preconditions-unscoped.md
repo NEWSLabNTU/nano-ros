@@ -1,7 +1,8 @@
 ---
 id: 2548
 title: "A merge shard's run refuses what its build correctly did not make, and its build makes host work it does not own: build and run scope a shard by different predicates"
-status: open
+status: resolved
+resolved_in: "merge-runtime 43773321880 (lane `tier1`, 2026-11-15)"
 type: bug
 area: [ci, build, testing]
 severity: medium
@@ -9,7 +10,7 @@ found: 2026-11-14
 related: [2510, 2475, 0828, phase-559]
 ---
 
-**Home: [phase-559](../roadmap/phase-559-ci-workflow-organization.md) W5b**
+**Home: [phase-559](../../roadmap/phase-559-ci-workflow-organization.md) W5b**
 (the per-board hosted tier-1 shards).
 
 ## Measured
@@ -188,3 +189,15 @@ A `merge-runtime.yml` tier-1 dispatch runs tests on the threadx_linux shard
 (preconditions pass). On the zephyr shard it reports the disk the build uses
 with host compile-checks out of scope: within budget, or the measured
 shortfall goes to the user (phase-559 W5b).
+
+## Resolved (2026-11-19): both halves met
+
+merge-runtime 43773321880 (`lane=tier1`, main `3a0daf8adb`, 2026-11-15):
+
+- **threadx_linux** (hosted): preconditions passed and the tests ran:
+  `check-skip-budget: 3086 ran, 580 deselected (out of lane), 0 skipped for
+  an unmet precondition`, `Real failures: 0 / 0`.
+- **zephyr** (hosted, `r9`): `just build tier1` passed with host
+  compile-checks out of scope, and ended at `92% used, 13G free — 79G
+  build`, within the runner's budget under the disk balloon. Then `just ci
+  tier1 run`: `3106 ran, 560 deselected, 0 unmet`, `Real failures: 0 / 0`.

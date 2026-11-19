@@ -1,7 +1,8 @@
 ---
 id: 2511
 title: "The zephyr-ci image bakes Zephyr SDK 0.17.4 while the 3.7 workspace pins 0.16.9, and `merge-runtime.yml` sets up Zephyr with `--skip-sdk`, so the `west_board_import` fixture refuses and the zephyr shard's fixture build fails"
-status: open
+status: resolved
+resolved_in: "PR #3777 (image r8), r9 since 9cc3ee772c; merge-runtime 43773321880"
 type: bug
 area: [ci, zephyr]
 severity: medium
@@ -9,7 +10,7 @@ found: 2026-11-14
 related: [2475, 1811, phase-535, phase-559]
 ---
 
-**Home: [phase-559](../roadmap/phase-559-ci-workflow-organization.md) W5b.**
+**Home: [phase-559](../../roadmap/phase-559-ci-workflow-organization.md) W5b.**
 Found by issue 2475's after-run. A missing runner dependency is fixed in the
 IMAGE.
 
@@ -98,3 +99,22 @@ now redundant; dropping it is a separate change.
 The zephyr shard of a `merge-runtime.yml` tier1 dispatch builds
 `west_board_import` with the image as shipped, and the refusal names its board
 and carries no issue id.
+
+## Resolved (2026-11-19): the image ships the pinned SDK
+
+- #3777 baked each line's pinned SDK from the index; 9cc3ee772c moved the
+  tag to `humble-sdk0.16.9-r9`, which every consumer now names (7 workflow
+  references, no `0.17.4` left).
+- merge-runtime 43773321880 (`lane=tier1`, 2026-11-15), hosted zephyr shard
+  on `r9`: the step `nros-zephyr-sdks-register` printed `Zephyr SDK 0.16.9
+  Setup`, `just build tier1` passed, and the run had `Real failures: 0 / 0`.
+- The refusal names an empty board as "the board the app's board.cmake
+  names" (`nros_zephyr_board_label`, and `builder/zephyr.rs`) and carries
+  no issue id.
+
+The done-when named `west_board_import`, and no lane on the image builds
+it now. Its test binary, `board_import`, is in every lane's
+filtered-out set: `test-all` prints `not binary(board_import)` beside the
+FVP suites, because the row configures the Corstone-300 FVP board. The
+defect, an image whose SDK the 3.7 pin refused, is closed by the evidence
+above. Building `west_board_import` itself waits on the FVP lane.

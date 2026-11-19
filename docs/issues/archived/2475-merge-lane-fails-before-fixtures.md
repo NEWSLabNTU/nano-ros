@@ -1,7 +1,8 @@
 ---
 id: 2475
 title: "The `merge` lane's hosted shards fail before building a fixture: an unprovisioned rosidl clone, three unprovisioned build sources, no pinned nextest in the zephyr-ci image, and 26-49 min of tree-wide codegen plus `check fast` inside `just build merge`"
-status: open
+status: resolved
+resolved_in: "merge-runtime 44090176782 (lane `merge`, 2026-11-17)"
 type: bug
 area: [ci, testing, tooling]
 severity: medium
@@ -9,7 +10,7 @@ found: 2026-11-12
 related: [2462, phase-535, phase-559]
 ---
 
-**Home: [phase-535](../roadmap/phase-535-example-reorg-and-cadence-ci.md) W8.2.**
+**Home: [phase-535](../../roadmap/phase-535-example-reorg-and-cadence-ci.md) W8.2.**
 Fix this before `merge-runtime.yml` (dispatch-only since the 2026-11-12
 ruling) re-measures what a per-merge cadence would cost for the host witness
 boards. Until then no measurement can produce a sample, because no shard
@@ -75,7 +76,7 @@ self-hosted runner.
 3. Defect 4 (per-board codegen scope) becomes its own phase-535 work item,
    with acceptance written before it starts; if large, the coordinator hears
    first.
-   **Now [phase-535 W10](../roadmap/phase-535-example-reorg-and-cadence-ci.md)**
+   **Now [phase-535 W10](../../roadmap/phase-535-example-reorg-and-cadence-ci.md)**
    (coordinator go 2026-11-13 for its items 1-2; the `check::fast` edge stays).
    `_codegen <lane>` generates only the codegen units the lane's rows live in.
    Measured on run 43438754804: time to first fixture is now 38.7 / 24.3 /
@@ -180,3 +181,23 @@ A cross-run cargo cache (sccache) would take most of the fixture build on a
 warm hit. It waits for a measurement of its size against the repository's
 10 GB Actions cache budget (issues 2141, 2412).
 
+## Resolved (2026-11-19): both shards reach `just ci merge`
+
+merge-runtime 44090176782 (`lane=merge`, main `2cfe9f0094`, 2026-11-17):
+
+| shard | runner | result | time |
+| --- | --- | --- | --- |
+| threadx_linux | hosted, `nano-ros-ci:humble` | `just ci merge` ran, `Real failures: 0 / 0` | 109 min |
+| zephyr | self-hosted (user ruling 2026-11-14, phase-559 W5b option a) | `just ci merge` ran, `Real failures: 0 / 0` | 56 min |
+
+`scripts/ci/merge-runtime-p95.py`, 2026-11-19, last 7 days:
+
+```
+threadx_linux    n_ok=2 n_fail=4 n_timed_out=0 n_no_verdict=0  p50=  97.4 min  p95= 109.0 min  (OVER 20 min)
+zephyr           n_ok=1 n_fail=6 n_timed_out=0 n_no_verdict=7  p50=  55.8 min  p95=  55.8 min  (OVER 20 min)
+```
+
+Both shards have samples, which is the done-when. Both are over RFC-0122
+D9's 20-minute p95. That cost is the manager's 2026-11-17 ruling (`merge`
+stays dispatch-only, the witness boards stay daily) and phase-559 W14/W15,
+not this issue.
