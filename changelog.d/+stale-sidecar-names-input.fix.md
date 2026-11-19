@@ -1,0 +1,1 @@
+A metadata sidecar reported stale against its sources now says which probe input moved, with its recorded and current values, or which input could not be computed and why. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4313))

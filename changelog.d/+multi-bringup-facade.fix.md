@@ -1,0 +1,1 @@
+In a workspace with several bringups, `nros sync` no longer writes a package's selection from whichever bringup it reaches first. When the bringups that claim an entry agree on its features and board, it is written once; when they disagree, the sync is refused, naming the entry, both bringups and what each states. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4250))

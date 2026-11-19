@@ -1,0 +1,1 @@
+`nros build` no longer refuses every build with "resolved off the pin set" when the tool store (by default `~/.nros`) sits inside a git repository, for example a home directory kept in git. A store source is no longer taken to be at the enclosing repository's commit. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4206))

@@ -1,0 +1,1 @@
+A C or C++ metadata probe is now treated as current only when its outputs are present (the aggregate metadata and a bound table for every interface package), not merely its `CMakeCache.txt`. Before, a probe build that failed or lost its outputs was never re-run, and images shipped default message bounds. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4312))

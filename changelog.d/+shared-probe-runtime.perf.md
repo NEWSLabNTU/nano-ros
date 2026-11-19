@@ -1,0 +1,1 @@
+Metadata probes of workspaces with identical runtime configuration now share one compiled runtime instead of compiling it once per workspace, which cuts probe build time and disk use substantially on a tree with many workspaces. Set `NROS_PROBE_SHARED_IMAGE_ROOT=0` to turn the sharing off. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4165))

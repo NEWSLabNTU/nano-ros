@@ -1,0 +1,1 @@
+The configure stamp now notices a platform or board descriptor added where a search finds it: a new `nros-platform.toml` in an earlier platform root, a new `nros-board.toml` under a board root, or either file in your own project now makes the configure stale. An existing stamp reads stale once after upgrading. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4275))

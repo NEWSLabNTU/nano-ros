@@ -1,0 +1,1 @@
+The NuttX platform guide now shows how to name your project on the NuttX make build: the two `Make.defs` lines and what `make` does with them, so its check that the board, RMW and edition agree with `system.toml` is reachable from the steps. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4244))

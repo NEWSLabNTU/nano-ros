@@ -1,0 +1,1 @@
+On zenoh, `ros2 topic info -v` now shows a nano-ros endpoint's real deadline, lifespan and liveliness. Before, the graph entry left them empty and every endpoint read `Infinite` and `AUTOMATIC` whatever it declared. Endpoints with default QoS are unchanged. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4287))
