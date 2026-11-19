@@ -895,9 +895,9 @@ fn thread_cpu() -> Duration {
 /// printed for the phase doc; the assertion is the bound that separates the
 /// two behaviours by two orders of magnitude.
 ///
-/// The control is a COUNT, never a rate. A loaded host publishes slower (249
-/// arrivals/s measured under a full gate, 775-803 solo), and a rate threshold
-/// failed there while the property held. What the verdict needs is enough
+/// Issue 2742 -- the control is a COUNT, never a rate. A loaded host
+/// publishes slower (249 arrivals/s measured under a full gate, 775-803
+/// solo), and a rate threshold failed there while the property held. What the verdict needs is enough
 /// arrivals that a fan-out member would have spun far past the park bound, so
 /// the run lasts at least [`RUN`] and continues, up to [`RUN_CAP`], until it
 /// has seen [`MIN_ARRIVALS`]. The bound is taken over the time it actually ran.
