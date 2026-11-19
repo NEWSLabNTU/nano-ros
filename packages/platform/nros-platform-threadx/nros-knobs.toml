@@ -1,0 +1,23 @@
+# The configuration rows this platform package declares (RFC-0140 D2,
+# phase-581 W2). Found beside its descriptor (nros-platform.toml) by the scan that finds
+# the package, so this file's presence is the declaration. The schema is core's
+# (packages/tooling/nros-zephyr-build/knobs.toml says what each field means);
+# every key starts with this file's owner word, `threadx`, which is derived
+# from the package (its platform name)
+# and checked, never chosen. Edit, then run `python3 scripts/gen-knob-registry.py`.
+
+owner = "threadx"
+
+[[knob]]
+key = "threadx.app_stack_kb"
+scope = "board"
+class = "carrier"
+carries = "memory.app_stack_bytes"
+
+# Issue 2624 -- the ThreadX byte pool (the port's whole allocator), in KiB.
+# Unset, the board build derives it: app stack + the RMW's measured working set.
+[[knob]]
+key = "threadx.byte_pool_kb"
+scope = "board"
+class = "carrier"
+carries = "memory.heap_bytes"

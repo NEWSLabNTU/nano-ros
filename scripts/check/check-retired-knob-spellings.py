@@ -74,7 +74,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import knob_registry  # noqa: E402  -- the one reader of the registry
-REGISTRY = ROOT / "packages/tooling/nros-zephyr-build/knobs.toml"
 
 ALLOWED = {
     "packages/tooling/nros-zephyr-build/knobs.toml",
@@ -84,6 +83,10 @@ ALLOWED = {
     "scripts/check/check-retired-knob-spellings.py",
     "book/src/reference/deprecated-names.md",
     "docs/issues/open.md",
+} | {
+    # The packages' own registry files (RFC-0140 D2) hold their rows' retired
+    # spellings, as core's knobs.toml does.
+    str(p.relative_to(ROOT)) for p in knob_registry.registry_files()
 }
 HISTORY_PREFIXES = (
     "docs/roadmap/",
@@ -107,9 +110,12 @@ def retired_names(registry_text: str | None = None) -> dict[str, str]:
     knob (a row with `retired`, RFC-0110 D2) has no replacement spelling, so
     every one of its names -- the canonical one too -- maps to a pointer at the
     row's reason."""
-    text = registry_text if registry_text is not None else REGISTRY.read_text()
+    if registry_text is None:  # core's file plus every in-tree package's
+        rows = knob_registry.knob_rows()
+    else:  # a self-test's core text alone
+        rows = knob_registry.knob_rows(text=registry_text, packages=())
     out = {}
-    for row in knob_registry.knob_rows(text=text):
+    for row in rows:
         canonical = "NROS_" + row["id"]
         if row.get("retired"):
             for s in [canonical] + row.get("legacy", []):
@@ -437,14 +443,14 @@ def self_test() -> int:
             print(f"  self-test: {'missed' if want else 'false hit on'} (c prose): {text!r}")
     # The registry is the input, so its own parse is a case too.
     hdr = 'owner = "core"\n[owners]\nx = "y"\n'
-    table = retired_names(hdr + '[[knob]]\nkey = "zenoh.x"\nscope = "image"\nclass = "internal"\n'
+    table = retired_names(hdr + '[[knob]]\nkey = "x.x"\nscope = "image"\nclass = "internal"\n'
                           'retired = [{ spelling = "env:ZPICO_X" }]\n')
-    if table != {"ZPICO_X": "NROS_ZENOH_X"}:
+    if table != {"ZPICO_X": "NROS_X_X"}:
         bad += 1
         print(f"  self-test: registry parse gave {table!r}")
-    table = retired_names(hdr + '[[knob]]\nkey = "zenoh.g"\nscope = "image"\nclass = "retired"\n'
+    table = retired_names(hdr + '[[knob]]\nkey = "x.g"\nscope = "image"\nclass = "retired"\n'
                           'retired = [{ spelling = "env:ZPICO_G" }]\ninstead = "x"\n')
-    if set(table) != {"NROS_ZENOH_G", "ZPICO_G"} or "NROS_ZENOH_G" in table.values():
+    if set(table) != {"NROS_X_G", "ZPICO_G"} or "NROS_X_G" in table.values():
         bad += 1
         print(f"  self-test: a retired knob's spellings gave {table!r}")
     return bad
