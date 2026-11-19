@@ -407,7 +407,7 @@ pub(crate) fn compose_image(
     rx: Option<crate::entity_inventory::RxFrameCost>,
     who: &str,
 ) -> Result<EntityInventory> {
-    let mut inv = fold_model(registered, model_source, model, workspace);
+    let mut inv = fold_model(registered, model_source, model, workspace)?;
     if rx.is_some() {
         inv.set_board_rx_cost(rx);
     }
@@ -444,17 +444,17 @@ fn with_model(
     model_source: &str,
     model: &nros_orchestration_ir::overlay::LoadedModel,
     workspace: Option<&std::path::Path>,
-) -> (EntityInventory, bool) {
+) -> Result<(EntityInventory, bool)> {
     let mut inv = metadata_inv.clone();
     // `from_model` returning None means NO WIRING DESCRIBED. Not an error and
     // not a zero: nobody authored a contract for this image, so the
     // declaration is the only source there is and it stands alone.
-    let wired = match crate::orchestration::metadata_refresh::contract_inventory(
+    let wired = match crate::orchestration::metadata_refresh::contract_inventory_reported(
         model_source,
         model,
         workspace,
         "nros: entity inventory",
-    ) {
+    )? {
         Some(model_inv) => {
             inv = inv.merged_per_kind_max(&model_inv);
             true
@@ -467,7 +467,7 @@ fn with_model(
     inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
         model,
     ));
-    (inv, wired)
+    Ok((inv, wired))
 }
 
 /// `--model` given more than once -- issue 1564.
@@ -507,7 +507,7 @@ fn run_several_models(args: &EntityInventoryArgs, metadata_inv: &EntityInventory
         let mut tables: Vec<(String, DeclaredQosHeaderTable)> = Vec::new();
         let mut first_unwired: Option<(String, DeclaredQosHeaderTable)> = None;
         for (src, model) in &models {
-            let (inv, wired) = with_model(metadata_inv, src, model, args.workspace.as_deref());
+            let (inv, wired) = with_model(metadata_inv, src, model, args.workspace.as_deref())?;
             let inv = narrow_to_component(
                 &inv,
                 args.component
@@ -608,7 +608,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         for p in &args.model {
             models.push((p.display().to_string(), load_model(p)?));
         }
-        inv = fold_models_for_shared_runtime(&inv, &models, args.workspace.as_deref());
+        inv = fold_models_for_shared_runtime(&inv, &models, args.workspace.as_deref())?;
     } else if let Some(model_path) = args.model.first() {
         let model = load_model(model_path)?;
         if args.output_params_header.is_some() {
@@ -635,7 +635,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
                 &model_path.display().to_string(),
                 &model,
                 args.workspace.as_deref(),
-            );
+            )?;
         }
     }
 
@@ -749,22 +749,22 @@ pub(crate) fn fold_models_for_shared_runtime(
     metadata_inv: &EntityInventory,
     models: &[(String, nros_orchestration_ir::overlay::LoadedModel)],
     workspace: Option<&std::path::Path>,
-) -> EntityInventory {
+) -> Result<EntityInventory> {
     let images: Vec<_> = models
         .iter()
         .map(|(src, model)| {
-            (
+            Ok((
                 src.clone(),
-                crate::orchestration::metadata_refresh::contract_inventory(
+                crate::orchestration::metadata_refresh::contract_inventory_reported(
                     src.clone(),
                     model,
                     workspace,
                     "nros: entity inventory",
-                ),
+                )?,
                 crate::entity_inventory::ParamDeclarations::from_model(model),
-            )
+            ))
         })
-        .collect();
+        .collect::<Result<_>>()?;
     // Issue 1701 -- every model's frame (what its launch tree starts), so an
     // image whose model describes no wiring still bounds its OWN need rather
     // than taking the union's.
@@ -783,7 +783,7 @@ pub(crate) fn fold_models_for_shared_runtime(
             unwired.join(", ")
         );
     }
-    inv
+    Ok(inv)
 }
 
 fn fold_model(
@@ -791,11 +791,11 @@ fn fold_model(
     model_source: &str,
     model: &nros_orchestration_ir::overlay::LoadedModel,
     workspace: Option<&std::path::Path>,
-) -> EntityInventory {
+) -> Result<EntityInventory> {
     // One fold, two callers: the single-model `run` and the fixture test want
     // only the inventory; the multi-model union also needs to know whether the
     // model described any wiring, which is `with_model`'s second value.
-    with_model(&inv, model_source, model, workspace).0
+    Ok(with_model(&inv, model_source, model, workspace)?.0)
 }
 
 /// A contract may not state `depth: 0` (issue 1084).
@@ -1145,6 +1145,7 @@ mod tests {
             &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
             None,
         )
+        .expect("composes")
     }
 
     /// Issue 1555 -- the metadata says WHICH components an image registers and
@@ -1634,7 +1635,8 @@ contracts:
             &format!("{REL}/declared_qos.yaml"),
             &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
             None,
-        );
+        )
+        .expect("composes");
         let narrowed = narrow_to_component(&inv, "demo::listener").expect("narrows");
         let want = std::fs::read_to_string(dir.join("rclc/detail/nros_declared_qos_generated.h"))
             .expect("the committed fixture header exists");
