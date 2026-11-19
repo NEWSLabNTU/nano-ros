@@ -1,0 +1,1 @@
+A FreeRTOS sched task's `budget` and `period` are now enforced. FreeRTOS has no kernel budget server, so the executor throttles a level that spends its budget until its period refills it, and reports each overrun on the console when it happens. The session-owning boot task is never budgeted.
