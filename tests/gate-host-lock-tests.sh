@@ -190,10 +190,110 @@ x="$tmp/x9"; run_dir "$x"
 for spec in 4:36000 8:18000 16:9000 48:9000; do
     n="${spec%%:*}" want="${spec#*:}"
     cmd_gate "$x" "n$n" 'true' "_NROS_GATE_LOCK_TEST_NPROC=$n"
-    if nros_grep_q "wall limit $want s ($((want / 60)) min, $n cores), hang limit 45 min without output or CPU, waiter cap $((want + 1800)) s" "$tmp/n$n.out"; then
-        ok "on $n cores the wall limit is $want s and the waiter cap $((want + 1800)) s"
-    else bad "on $n cores the wall limit is $want s and the waiter cap $((want + 1800)) s ($(head -1 "$tmp/n$n.out"))"; fi
+    # Issue 2733: the cap also covers the 900 s housekeeping limit.
+    cap=$((want + 900 + 1800))
+    if nros_grep_q "wall limit $want s ($((want / 60)) min, $n cores), hang limit 45 min without output or CPU, housekeeping limit 900 s outside both, waiter cap $cap s" "$tmp/n$n.out"; then
+        ok "on $n cores the wall limit is $want s and the waiter cap $cap s"
+    else bad "on $n cores the wall limit is $want s and the waiter cap $cap s ($(head -1 "$tmp/n$n.out"))"; fi
 done
+
+# Issue 2733 — housekeeping runs after the verdict, outside the wall limit and
+# the hang detector, under its own limit, and never decides the exit code.
+# A stand-in gate with a verdict command and a housekeeping command.
+hk_gate() { # <xdg> <tag> <verdict> <housekeeping> [extra env...]
+    local xdg="$1" tag="$2" verdict="$3" hk="$4"
+    shift 4
+    local t0; t0="$(date +%s)"
+    env XDG_RUNTIME_DIR="$xdg" _NROS_GATE_LOCK_TEST_TICK_S=1 "$@" bash "$lock_sh" \
+        --housekeeping "exec -a nros-gate-lock-test-$$ bash -c '$hk'" \
+        bash -c "exec -a nros-gate-lock-test-$$ bash -c '$verdict'" >"$tmp/$tag.out" 2>&1
+    echo $? >"$tmp/$tag.rc"
+    echo $(( $(date +%s) - t0 )) >"$tmp/$tag.secs"
+}
+
+# 10. Slow housekeeping (silent, no CPU, longer than both the wall limit and
+#     the hang limit) leaves rc 0 when the verdict passed: the 2026-11-19 run.
+#     Negative control: the same sleep at the TAIL of the verdict command, the
+#     old layout, is killed red at the wall limit.
+x="$tmp/x10"; run_dir "$x"
+hk_gate "$x" a10 'echo verdict ok' 'sleep 4; echo hk done' \
+    _NROS_GATE_LOCK_TEST_WALL_S=2 _NROS_GATE_LOCK_TEST_HANG_S=2 _NROS_GATE_LOCK_TEST_HOUSEKEEPING_S=20
+if [ "$(cat "$tmp/a10.rc")" = 0 ] && nros_grep_q "hk done" "$tmp/a10.out" \
+    && ! nros_grep_q "WARNING" "$tmp/a10.out" && ! nros_grep_q "timed out" "$tmp/a10.out"; then
+    ok "slow housekeeping past the wall and hang limits leaves a passed gate at rc 0"
+else bad "slow housekeeping past the wall and hang limits leaves a passed gate at rc 0 (rc $(cat "$tmp/a10.rc"))"; fi
+cmd_gate "$x" b10 'echo verdict ok; sleep 4; echo hk done' _NROS_GATE_LOCK_TEST_WALL_S=2
+[ "$(cat "$tmp/b10.rc")" = 1 ] && nros_grep_q "gate timed out" "$tmp/b10.out" \
+    && ok "negative control: housekeeping inside the verdict is killed red at the wall" \
+    || bad "negative control: housekeeping inside the verdict is killed red at the wall"
+
+# 11. A failing verdict is still non-zero, with its own status, after
+#     housekeeping that passes. Negative control: the same verdict passing is 0.
+x="$tmp/x11"; run_dir "$x"
+hk_gate "$x" a11 'exit 3' 'echo hk done'
+[ "$(cat "$tmp/a11.rc")" = 3 ] && nros_grep_q "hk done" "$tmp/a11.out" \
+    && ok "a failing verdict keeps its status after housekeeping" \
+    || bad "a failing verdict keeps its status after housekeeping (rc $(cat "$tmp/a11.rc"))"
+hk_gate "$x" b11 'exit 0' 'echo hk done'
+[ "$(cat "$tmp/b11.rc")" = 0 ] && ok "negative control: the passing verdict is 0" \
+    || bad "negative control: the passing verdict is 0"
+
+# 12. A housekeeping failure is rc 0 with a warning; a housekeeping that
+#     outlives its own limit is killed and is rc 0 with a warning, and it does
+#     not run on. Negative control: the passing housekeeping (case 10) warns
+#     nothing.
+x="$tmp/x12"; run_dir "$x"
+hk_gate "$x" a12 'true' 'exit 7'
+[ "$(cat "$tmp/a12.rc")" = 0 ] && nros_grep_q "WARNING: housekeeping FAILED (exit 7" "$tmp/a12.out" \
+    && ok "a housekeeping failure warns and leaves rc 0" \
+    || bad "a housekeeping failure warns and leaves rc 0 (rc $(cat "$tmp/a12.rc"))"
+hk_gate "$x" b12 'true' 'sleep 60' _NROS_GATE_LOCK_TEST_HOUSEKEEPING_S=2
+if [ "$(cat "$tmp/b12.rc")" = 0 ] && nros_grep_q "WARNING: housekeeping timed out after 2 s" "$tmp/b12.out" \
+    && [ "$(cat "$tmp/b12.secs")" -lt 15 ]; then
+    ok "a housekeeping timeout is killed at its own limit, warns, and leaves rc 0"
+else bad "a housekeeping timeout is killed at its own limit, warns, and leaves rc 0 (rc $(cat "$tmp/b12.rc"))"; fi
+pgrep -f "nros-gate-lock-test-$$" >/dev/null \
+    && bad "the timed-out housekeeping is gone" || ok "the timed-out housekeeping is gone"
+
+# 13. The wall limit and the hang detector still bind the verdict when
+#     housekeeping is configured, and the housekeeping still runs after them.
+x="$tmp/x13"; run_dir "$x"
+hk_gate "$x" a13 'sleep 60' 'echo hk done' _NROS_GATE_LOCK_TEST_WALL_S=2
+[ "$(cat "$tmp/a13.rc")" = 1 ] && nros_grep_q "gate timed out" "$tmp/a13.out" && nros_grep_q "hk done" "$tmp/a13.out" \
+    && ok "the wall limit still kills a slow verdict red, then housekeeping runs" \
+    || bad "the wall limit still kills a slow verdict red, then housekeeping runs"
+hk_gate "$x" b13 'sleep 60' 'echo hk done' _NROS_GATE_LOCK_TEST_HANG_S=2
+[ "$(cat "$tmp/b13.rc")" = 1 ] && nros_grep_q "gate hung: no progress" "$tmp/b13.out" && nros_grep_q "hk done" "$tmp/b13.out" \
+    && ok "the hang detector still kills an idle verdict red, then housekeeping runs" \
+    || bad "the hang detector still kills an idle verdict red, then housekeeping runs"
+
+# 14. Housekeeping holds the lock: a second gate waits for it. Negative
+#     control (case 1's): two lock dirs overlap.
+x="$tmp/x14"; run_dir "$x"
+hk_gate "$x" a14 'true' "sleep 2; date +%s.%N > $tmp/a14.hkend" & pids+=($!)
+wait_for "$tmp/x14/nros-gate.lock" 5
+sleep 0.5
+gate "$x" b14 0.1
+wait
+if [ -s "$tmp/b14.start" ] && [ -s "$tmp/a14.hkend" ] && gt "$(cat "$tmp/b14.start")" "$(cat "$tmp/a14.hkend")"; then
+    ok "housekeeping holds the lock; the next gate waits for it"
+else bad "housekeeping holds the lock; the next gate waits for it"; fi
+
+# 15. The one place: `just ci gate` names its housekeeping through the lock,
+#     and the verdict recipe runs none of it. Read from just/ci.just itself.
+ci_just="$here/just/ci.just"
+body() { # <recipe>: its body lines
+    awk -v r="$1:" '$0 == r { on = 1; next } on && /^[^ \t]/ { exit } on' "$ci_just"
+}
+body gate >"$tmp/gate.body"
+body _gate-inner >"$tmp/inner.body"
+body _gate-housekeeping >"$tmp/hk.body"
+if nros_grep_q -F -- "--housekeeping 'just ci::_gate-housekeeping' just ci::_gate-inner" "$tmp/gate.body" \
+    && nros_grep_q -F "trim-caches.py" "$tmp/hk.body" && nros_grep_q -F "worktree-prune.py" "$tmp/hk.body" \
+    && nros_grep_q -F "run-lane-steps.sh" "$tmp/inner.body" \
+    && ! nros_grep_q -E "trim-caches|worktree-prune" "$tmp/inner.body"; then
+    ok "\`just ci gate\` puts its housekeeping outside the verdict"
+else bad "\`just ci gate\` puts its housekeeping outside the verdict"; fi
 
 if [ "$fail" -ne 0 ]; then
     echo "gate-host-lock tests: FAILED" >&2
