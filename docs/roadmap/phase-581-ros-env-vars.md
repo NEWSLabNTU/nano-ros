@@ -1,9 +1,9 @@
 # Phase 581 - One configuration registry: knobs, Kconfig, carriers and environment variables
 
-**Status (2026-11-19). Draft, planned: design in review; no item started.**
-Implements [RFC-0140](../design/0140-ros-env-vars.md) as widened on
+**Status (2026-11-19). Active: design accepted by the user 2026-11-19; W0 in progress.**
+Implements [RFC-0140](../design/0140-configuration-registry.md) as widened on
 2026-11-19: one registry with three row kinds (knob, statement, env) and many
-contributors; one naming rule with a lint; the 86 settings that break it
+contributors; one naming rule with a lint; the 87 settings that break it
 renamed, their old spellings refused on every road; an open RMW set, so a
 board or RMW package declares its own knobs and environment variables without
 editing a central file; and the environment-variable rule of RFC-0140 Part B
@@ -30,7 +30,7 @@ board and RMW packages are self-contained.
 
 ### W0 - Measure
 
-- **Status:** OPEN
+- **Status:** IN PROGRESS (2026-11-19)
 - The first draft's run-time measurements: a Linux image per road (Rust, C,
   C++) and a `native_sim` image, each variable of RFC-0140 Appendix B set,
   recording whether the process acted on it (Decisions 8 and 11).
@@ -123,7 +123,7 @@ board and RMW packages are self-contained.
   setting cannot take a resource's variable (N8).
 - **Acceptance:** the self-test plants one violation of each rule in a
   temporary catalog and the gate names the row and the rule; the baseline has
-  86 entries and the gate fails if a new violation appears or if an entry is
+  87 entries and the gate fails if a new violation appears or if an entry is
   fixed but not removed.
 
 ### W5 - Renames, batch 1: structure and units (registry rows)
@@ -135,7 +135,8 @@ board and RMW packages are self-contained.
   platform heap and stack carriers folded into `memory.heap_bytes` and
   `memory.app_stack_bytes` (one carrier each; each platform's build converts
   at the one place that writes its RTOS configuration;
-  `memory_env_key_for` deleted). Every tracked use updated (the tracked
+  `memory_env_key_for` deleted). `NROS_THREADX_BYTE_POOL_KB` (PR #4355) becomes
+  `threadx.byte_pool_bytes` (x 1024), its derived default unchanged. Every tracked use updated (the tracked
   `[knobs.zenoh.tx]` table in one platform file and two
   `[image.<id>.knobs.zenoh.limits]` tables, the other image tables, C/C++ readers of the
   Kconfig symbols, fixture drivers).
@@ -318,7 +319,7 @@ board and RMW packages are self-contained.
 
 ## Related
 
-- [RFC-0140](../design/0140-ros-env-vars.md); RFC-0103 (D2b, D6), RFC-0049,
+- [RFC-0140](../design/0140-configuration-registry.md); RFC-0103 (D2b, D6), RFC-0049,
   RFC-0071 (D16, D18), RFC-0133 (phase-569 W2), RFC-0135 (phase-577),
   RFC-0045, RFC-0109.
 - Issue 2714 and PR #4285; phase-484 W8 (the retired-spelling pattern).

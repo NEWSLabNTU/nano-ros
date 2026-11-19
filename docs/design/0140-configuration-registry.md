@@ -13,7 +13,8 @@ superseded-by: null
 
 # RFC-0140 - One configuration registry: knobs, Kconfig, carriers and environment variables
 
-**Status:** Draft (2026-11-19). Nothing in Part A is built. The first draft
+**Status:** Draft, ACCEPTED by the user 2026-11-19 (design approved; work
+starts at phase-581 W0). Nothing in Part A is built. The first draft
 of this RFC (same day) covered only ROS 2 environment variables; the user
 ruled its open questions Q2 to Q11 and reopened Q1 with a wider scope (see
 "Decisions"). This revision answers Q1: environment variables and build knobs
@@ -49,7 +50,7 @@ This RFC decides:
    `<owner>.<name>`, two segments; every other spelling is mechanical;
    sizes end `_bytes`; RMW-, platform- and board-specific rows carry their
    package's owner word; a build name and a run name are never the same.
-4. **Renames now** (D4): 86 settings break the rule today (Appendix A). Each
+4. **Renames now** (D4): 87 settings break the rule today (Appendix A). Each
    is renamed, and its old spelling is refused on every road, naming the
    new one. Retired spellings live on the row that replaced them, which folds
    today's `legacy` column and `nros::retired_env::RETIRED_ENV_VARS` into one
@@ -337,12 +338,12 @@ aliases" stands and now has no exceptions.
   cannot take a resource's name, and resource variables are outside N1 to N4.
 
 **What the rule costs.** Appendix A lists every setting on `origin/main`
-that breaks N1 to N6: **86**. 53 are registry rows (52 renamed, 1 retired),
+that breaks N1 to N6: **87**. 54 are registry rows (53 renamed, 1 retired),
 12 are hand-written Zephyr Kconfig symbols, 9 are run-time variables (3
 renamed, the 6 retired `ZENOH_*` of Decision 4), 6 are build carriers outside
 the registry, and 6 are the demand symbols RFC-0103 D2b kept as a column
-(staged last, see below). 45 of the 53 registry rows change a TOML key a
-user writes in `system.toml` or a descriptor; the rest of the 86 change only
+(staged last, see below). 45 of the 54 registry rows change a TOML key a
+user writes in `system.toml` or a descriptor; the rest of the 87 change only
 carriers, Kconfig symbols and run-time variables.
 
 **The demand symbols.** RFC-0103 D2b measured that the six zenoh pools
@@ -795,8 +796,12 @@ reopened Q1 with a wider scope; this revision answers Q1.
   re-homed as Part B (D8 to D12); gates widened to build reads and the
   naming rule (D13); the 86-name rename list (Appendix A). Title changed;
   `amends` lists RFC-0103, RFC-0049, RFC-0071, RFC-0133.
+- 2026-11-19: **Accepted by the user.** File renamed from
+  `0140-ros-env-vars.md` to `0140-configuration-registry.md`. Appendix A
+  gains `NROS_THREADX_BYTE_POOL_KB` (PR #4355, merged after the
+  measurement), renamed to `threadx.byte_pool_bytes` in W5; 87 entries.
 
-## Appendix A - Settings that break the rule on `origin/main` (86)
+## Appendix A - Settings that break the rule on `origin/main` (87)
 
 Columns: the old TOML key (a registry row with no `toml` column shows the key
 the image rung uses, its id split at the first `_`), the old build env, the
@@ -806,7 +811,7 @@ three segments (N1), **U** unit (N4), **K** Kconfig column (N2), **P** owner
 word missing or wrong (N3), **F** folds two platform carriers into one
 `memory.*` knob.
 
-### A.1 Registry rows (52 renamed, 1 retired)
+### A.1 Registry rows (53 renamed, 1 retired)
 
 | Old key | Old env | Old Kconfig | New key | Why |
 | --- | --- | --- | --- | --- |
@@ -839,6 +844,7 @@ word missing or wrong (N3), **F** folds two platform carriers into one
 | `subscriber.buffer_size` | `NROS_SUBSCRIBER_BUFFER_SIZE` |  | `subscriber.buffer_bytes` | U |
 | `executor.subscription_buffer_size` | `NROS_SUBSCRIPTION_BUFFER_SIZE` |  | `executor.subscription_buffer_bytes` | U, P |
 | `threadx.app_stack_kb` | `NROS_THREADX_APP_STACK_KB` |  | `memory.app_stack_bytes` | U, F |
+| (carrier of `memory.heap_bytes`) | `NROS_THREADX_BYTE_POOL_KB` |  | `threadx.byte_pool_bytes` | U |
 | `xrce.buffer_size` | `NROS_XRCE_BUFFER_SIZE` |  | `xrce.buffer_bytes` | U |
 | `xrce.builtin_service_request_buffer_size` | `NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE` |  | `xrce.builtin_service_request_buffer_bytes` | U |
 | `xrce.service_reply_buffer_size` | `NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE` |  | `xrce.service_reply_buffer_bytes` | U |
@@ -874,7 +880,12 @@ Also in the registry:
   row of the same name. Not a rename (W0 confirms no build reader).
 - `executor.backing_u64s` to `executor.backing_bytes` changes the unit: the
   refusal states "x 8". `freertos.heap_kb`, `freertos.app_stack_kb`,
-  `threadx.app_stack_kb` state "x 1024".
+  `threadx.app_stack_kb` and `NROS_THREADX_BYTE_POOL_KB` state "x 1024".
+- `NROS_THREADX_BYTE_POOL_KB` (issue 2624, PR #4355, added after the
+  measurement at `365ad8d9e6`): the ThreadX byte pool is the port's whole
+  allocator, not the heap alone, so it becomes its own ThreadX row,
+  `threadx.byte_pool_bytes`, rather than folding into `memory.heap_bytes`;
+  its derived default (app stack plus the RMW's working set) is unchanged.
 - Units of seven rows whose help states none (`KEYEXPR_STRING_SIZE`,
   `LET_BUFFER_SIZE`, `SMOLTCP_BUFFER_SIZE`, `ZENOH_BATCH_MULTICAST_SIZE`,
   `ZENOH_PUBLISHER_TX_BUFFER_SIZE`, `ZENOH_SUBSCRIBER_SIZE_THRESHOLD`,
