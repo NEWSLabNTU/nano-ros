@@ -74,6 +74,22 @@ model against the bringup's own `system.toml`. If (b), fix the sidecar
 writer. Either way, warn when a bound group id is not among the code's
 declared groups.
 
+## Re-run (2026-11-19, main at 685656d351, host, in-tree CLI)
+
+The lab's own steps (the `lab-tiers` track's steps 2110 to 2160, extracted
+with `PROBE_EXTRACT_ONLY`), then `nros run`, no longer show the bug:
+
+- the build prints `derived schedule: declined - every callback group's
+  sched task is authored for freertos`;
+- the model has `bindings: /control_node/ctrl -> main,
+  /telemetry_node/telem -> main` and one task, `main`;
+- the sidecars record the groups as `ctrl` and `telem`;
+- the run prints `10 windows, 10 late`, as the lab says.
+
+So neither candidate above holds on this tree; a change since 2026-11-15
+fixed it. What is left is plan step 3 on the installed track (the docker
+probe), which is what failed weekly.
+
 ## Plan
 
 1. Decide which is wrong: the Rust road's handling of `group_tasks`, or the
