@@ -197,7 +197,7 @@ for spec in 4:36000 8:18000 16:9000 48:9000; do
     else bad "on $n cores the wall limit is $want s and the waiter cap $cap s ($(head -1 "$tmp/n$n.out"))"; fi
 done
 
-# Issue 2733 — housekeeping runs after the verdict, outside the wall limit and
+# Issue 2733: housekeeping runs after the verdict, outside the wall limit and
 # the hang detector, under its own limit, and never decides the exit code.
 # A stand-in gate with a verdict command and a housekeeping command.
 hk_gate() { # <xdg> <tag> <verdict> <housekeeping> [extra env...]

@@ -7,7 +7,7 @@
 # Usage: gate-host-lock.sh [--housekeeping <shell-command>] <command...>
 #   runs <command> (the VERDICT) holding the lock, then the housekeeping
 #
-# Issue 2733 — the verdict region and the housekeeping region, defined HERE:
+# Issue 2733: the verdict region and the housekeeping region, defined HERE:
 #   * The VERDICT is <command>. It alone runs under the wall limit and the hang
 #     detector below, and its status alone is the gate's exit code.
 #   * The HOUSEKEEPING (`--housekeeping`, one shell command) runs after the
@@ -175,7 +175,7 @@ if [ "${1:-}" = "--held" ]; then
     wait "$gate_pid" || rc=$?
     wait "$tee_pid" 2>/dev/null
     rm -rf "$run_dir"
-    # Issue 2733 — the verdict is decided (rc, hung). Housekeeping runs now,
+    # Issue 2733: the verdict is decided (rc, hung). Housekeeping runs now,
     # under its own deadline and outside the wall limit and the hang detector,
     # still holding the lock. Its status is reported, never returned.
     if [ -n "$housekeeping" ]; then

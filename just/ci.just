@@ -67,7 +67,7 @@ default: tier1
 # There is no knob that skips the lock, and nothing to delete by hand: the
 # kernel releases a flock when its holder dies, however it dies.
 #
-# Issue 2733 — the gate has two regions, and this line is where each is named.
+# Issue 2733: the gate has two regions, and this line is where each is named.
 # `_gate-inner` is the VERDICT: it runs under the lock's wall limit and hang
 # detector, and its status is the gate's. `_gate-housekeeping` runs after it,
 # outside both limits, under its own (15 min, `gate-host-lock.sh`), and only
@@ -139,7 +139,7 @@ _gate-housekeeping:
     #!/usr/bin/env bash
     set -uo pipefail
     hk_rc=0
-    # phase-543 W4 — keep this worktree's multi-target build caches to their
+    # phase-543 W4: keep this worktree's multi-target build caches to their
     # budgets (`.config/cache-budgets.toml`), least recently used first, after
     # every run: five runs in one worktree once grew them by 160 G. A run's own
     # cache is never evicted (used in the last 12 h). `NROS_KEEP_CACHES=1`
@@ -148,7 +148,7 @@ _gate-housekeeping:
         echo "ci gate: cache trim FAILED (see above)" >&2
         hk_rc=1
     }
-    # Issue 2611 — finished worktrees fill the host. One line, only when a
+    # Issue 2611: finished worktrees fill the host. One line, only when a
     # worktree of yours that `just worktree-prune --apply` would remove is over
     # 10 GB. Advisory.
     python3 scripts/worktree-prune.py --reminder 2>/dev/null || true
