@@ -1191,8 +1191,14 @@ pub fn fresh_probe_rows(
         if !fresh {
             notes.push(format!(
                 "{}: stale against its sources (re-run `nros configure`), so neither its counts nor \
-                 its registration observations are used",
-                sidecar.display()
+                 its registration observations are used. Moved: {}",
+                sidecar.display(),
+                stale_key_attribution(
+                    &sidecar,
+                    &decl.package_root,
+                    nano_ros,
+                    &seeding_of(&seed_models, &decl),
+                )
             ));
             continue;
         }
@@ -1651,19 +1657,144 @@ fn clear_unprobeable(sidecar: &Path) {
 /// NEVER fresh: the sidecar is re-probed rather than trusted over a smaller key.
 /// That is `cli-source-dirs.txt`'s rule for the CLI's own stamp (issue 0627).
 pub fn probe_inputs_key(package_root: &Path, nano_ros: Option<&Path>) -> Option<String> {
-    let pkg = source_digest(package_root).ok()?;
-    let closure = probe_closure_digest(nano_ros?)?;
+    let parts = probe_inputs_parts(package_root, nano_ros);
+    if parts.iter().any(|(_, v)| v.is_err()) {
+        return None;
+    }
+    let v = |i: usize| parts[i].1.as_deref().unwrap_or_default().to_string();
+    Some(format!("{}:{}:{}:{}{}", v(0), v(1), v(2), v(3), v(4)))
+}
+
+/// The labelled inputs [`probe_inputs_key`] folds, in key order. An `Err`
+/// names why that input could not be computed (which makes the key `None`).
+///
+/// Issue 2720 -- one list for the key and for [`stale_key_attribution`], so
+/// the diagnostic cannot name an input the key does not contain.
+fn probe_inputs_parts(
+    package_root: &Path,
+    nano_ros: Option<&Path>,
+) -> [(&'static str, Result<String, String>); 5] {
+    let pkg = source_digest(package_root).map_err(|e| format!("{e}"));
+    let closure = match nano_ros {
+        None => Err("no nano-ros checkout resolved for the probe closure".to_string()),
+        Some(root) => probe_closure_digest(root).ok_or_else(|| {
+            format!(
+                "no probe closure list at {}",
+                root.join(PROBE_SOURCE_DIRS).display()
+            )
+        }),
+    };
     // Issue 2680 -- and the workspace packages the probe adds before this one:
     // their names and sources. Empty without any, so such a key is unchanged.
-    let deps = super::probe_deps::key_field(package_root)?;
+    let deps = super::probe_deps::key_field(package_root)
+        .ok_or_else(|| "the workspace packages this one depends on could not be digested".into());
     // Issue 2640 -- and the knobs the probe's build pins (store and executor
     // sizes): a sidecar from a probe built under other values is not this
     // probe's answer.
-    Some(format!(
-        "{pkg}:{}:{closure}:{}{deps}",
-        env!("NROS_CLI_PLANNING_STAMP"),
-        super::metadata_probe_cmake::probe_knob_key()
-    ))
+    [
+        ("component sources", pkg),
+        (
+            "CLI planning stamp",
+            Ok(env!("NROS_CLI_PLANNING_STAMP").to_string()),
+        ),
+        ("nano-ros crates the probe compiles", closure),
+        (
+            "probe knobs",
+            Ok(super::metadata_probe_cmake::probe_knob_key()),
+        ),
+        ("workspace dependencies", deps),
+    ]
+}
+
+/// Issue 2720 -- say WHICH probe input makes a sidecar stale, with both
+/// values, instead of one opaque "stale". The recorded digest is the key's
+/// own text, so it splits back into the same five fields (issue 1018's
+/// per-input attribution, applied to the probe key). Falls back to both whole
+/// values when the recorded text does not split, e.g. one written under an
+/// older key layout.
+pub(crate) fn stale_key_attribution(
+    sidecar: &Path,
+    package_root: &Path,
+    nano_ros: Option<&Path>,
+    seeding: &Seeding,
+) -> String {
+    let recorded = std::fs::read_to_string(sidecar)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<SourceMetadata>(&raw).ok())
+        .and_then(|m| m.provenance)
+        .map(|p| p.inputs_digest);
+    let Some(recorded) = recorded else {
+        return "it records no probe-input digest".into();
+    };
+    let base = probe_inputs_parts(package_root, nano_ros);
+    // Issue 2640's sixth input, appended by `component_probe_key`.
+    let seeded = (
+        "launch values the probe is seeded with",
+        Ok(seeding
+            .digest()
+            .map(|d| format!(":{d}"))
+            .unwrap_or_default()),
+    );
+    let parts: Vec<(&str, Result<String, String>)> =
+        base.into_iter().chain(std::iter::once(seeded)).collect();
+    let unknown: Vec<String> = parts
+        .iter()
+        .filter_map(|(label, v)| v.as_ref().err().map(|why| format!("{label}: {why}")))
+        .collect();
+    if !unknown.is_empty() {
+        return format!(
+            "its current key cannot be computed ({})",
+            unknown.join("; ")
+        );
+    }
+    let Some(old) = split_recorded_key(&recorded) else {
+        let now = component_probe_key(package_root, nano_ros, seeding).unwrap_or_default();
+        return format!("recorded `{recorded}`, current `{now}`");
+    };
+    let moved: Vec<String> = parts
+        .iter()
+        .zip(old.iter())
+        .filter_map(|((label, now), was)| {
+            let now = now.as_deref().unwrap_or_default();
+            (now != was).then(|| format!("{label}: recorded `{was}`, now `{now}`"))
+        })
+        .collect();
+    if moved.is_empty() {
+        format!("recorded `{recorded}` differs only in layout from the current key")
+    } else {
+        moved.join("; ")
+    }
+}
+
+/// The six fields of a recorded key: `fnv1a64:<h>`, planning stamp,
+/// `fnv1a64:<h>`, knobs, an optional `:deps=...` and an optional
+/// `:sha256:<h>` seeding suffix (issue 2640).
+fn split_recorded_key(recorded: &str) -> Option<[String; 6]> {
+    let mut it = recorded.splitn(6, ':');
+    let (a, b, plan, c, d, rest) = (
+        it.next()?,
+        it.next()?,
+        it.next()?,
+        it.next()?,
+        it.next()?,
+        it.next()?,
+    );
+    let (rest, seed) = match rest.rfind(":sha256:") {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, ""),
+    };
+    let (knobs, deps) = match rest.find(":deps=") {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, ""),
+    };
+    Some([
+        format!("{a}:{b}"),
+        plan.to_string(),
+        format!("{c}:{d}"),
+        knobs.to_string(),
+        deps.to_string(),
+        seed.to_string(),
+    ])
 }
 
 /// Issue 2640 (phase-566 D4) -- one component's WHOLE probe key: the
@@ -1859,9 +1990,14 @@ pub(crate) fn stale_sidecar_components(root: &Path, nano_ros: Option<&Path>) -> 
             .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
         if !fresh {
             out.push(format!(
-                "metadata sidecar `{}` is stale (its probe inputs moved: component sources, the \
-                 CLI, the crates the probe compiles, or the launch values it is probed with)",
-                sidecar.display()
+                "metadata sidecar `{}` is stale. Moved: {}",
+                sidecar.display(),
+                stale_key_attribution(
+                    &sidecar,
+                    &decl.package_root,
+                    nano_ros,
+                    &seeding_of(&seed_models, decl),
+                )
             ));
         } else if decl.config.language != ComponentLanguage::Rust
             && !probe_build_present(
@@ -2345,6 +2481,58 @@ mod tests {
     /// build is gone: the bound tables the message-bound seeds read live there,
     /// and `rm -rf build` removes them while the sidecar (in the source tree)
     /// survives. With the probe's build present, the same sidecar is current.
+    /// Issue 2720 -- a stale sidecar names the input that moved, with both
+    /// values, and a key the reader cannot compute says why. A recorded key
+    /// splits back into the same fields the key is built from.
+    #[test]
+    fn a_stale_sidecar_names_the_input_that_moved() {
+        let root = fake_nano_ros("attr-root");
+        let dir = tmp("attr-pkg");
+        std::fs::write(dir.join("src/lib.rs"), "// the component\n").unwrap();
+        let decl = probeable_decl(&dir, ComponentLanguage::C);
+        let sidecar = decl.source_metadata_path();
+        std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        std::fs::write(&sidecar, sidecar_body("demo_pkg::talker", false)).unwrap();
+        let key = probe_inputs_key(&dir, Some(&root)).expect("keyed");
+        let fields = split_recorded_key(&key).expect("a key splits into its fields");
+        let parts = probe_inputs_parts(&dir, Some(&root));
+        for ((label, now), was) in parts.iter().zip(fields.iter()) {
+            assert_eq!(now.as_deref().unwrap(), was, "{label}");
+        }
+        assert_eq!(fields[5], "", "an unseeded key has no seeding field");
+        // A seeded key splits too, the seed digest in its own field.
+        let seeded_key = format!("{key}:sha256:00ff");
+        let f = split_recorded_key(&seeded_key).expect("a seeded key splits");
+        assert_eq!(f[5], ":sha256:00ff");
+        assert_eq!(f[4], fields[4], "deps unchanged by the seed suffix");
+
+        // The planning stamp the sidecar was written under is not this CLI's.
+        let old = key.replacen(env!("NROS_CLI_PLANNING_STAMP"), "0123456789abcdef", 1);
+        stamp_provenance(&sidecar, &old).unwrap();
+        let why = stale_key_attribution(&sidecar, &dir, Some(&root), &Seeding::None);
+        assert!(
+            why.starts_with("CLI planning stamp: recorded `0123456789abcdef`"),
+            "{why}"
+        );
+        assert!(
+            !why.contains("component sources"),
+            "only the moved input: {why}"
+        );
+
+        // The component's own source moved.
+        stamp_provenance(&sidecar, &key).unwrap();
+        std::fs::write(dir.join("src/lib.rs"), "// edited\n").unwrap();
+        let why = stale_key_attribution(&sidecar, &dir, Some(&root), &Seeding::None);
+        assert!(
+            why.starts_with("component sources: recorded `fnv1a64:"),
+            "{why}"
+        );
+
+        // No nano-ros checkout: the reader cannot compute a key at all.
+        let why = stale_key_attribution(&sidecar, &dir, None, &Seeding::None);
+        assert!(why.contains("no nano-ros checkout resolved"), "{why}");
+    }
+
     #[test]
     fn a_fresh_sidecar_without_the_probe_build_is_probed_again() {
         let root = fake_nano_ros("probe-build-root");
