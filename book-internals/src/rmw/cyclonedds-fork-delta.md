@@ -34,7 +34,7 @@ when upstream releases.
 ## What the fork adds
 
 27 commits, 56 files, +2623/−142 against the 0.10.x boundary `5041f356`.
-Eight groups.
+Nine groups.
 
 Re-measured 2026-08-29 and it had drifted BOTH ways: the headline said 15
 while the tables below listed 17, and `ae14b312` appeared in neither. A
@@ -272,6 +272,25 @@ The first two are backports of upstream 11.x behaviour onto 0.10.5. The third
 is ours: the select-mode receive loop retried a persistent `select()` failure
 with no back-off and logged every attempt. That is how one Zephyr image's
 console reached 91 GB (issues 1674, 1696, 1697).
+
+### 9. The short-enum ABI (1 commit)
+
+| commit | subject |
+| --- | --- |
+| `05b3c9ed` | ddsi: store XE (enum) plist fields at the ABI's enum size (issue 2755) |
+
+Every enum-kind QoS field (`durability`, `history`, `liveliness`,
+`destination_order`, `ownership`, `presentation`'s access scope, `ignorelocal`)
+is a C enum, and the generic plist code handled each one as an `unsigned`.
+arm-none-eabi's AAPCS default is variable-size enums
+(`Tag_ABI_enum_size: small`), so there each is 1 byte and the code read and
+wrote 4: validation read the padding after the kind as its value, and
+deserialisation wrote over the next field. On the mps3-an536 FreeRTOS image
+about 1 boot in 8 failed to create a node's parameter services, at a different
+policy each time, depending on what a recycled heap block left in the padding.
+The fields now go through an enum type of the policy kinds' size, asserted per
+kind type; the wire stays 4 bytes. AArch64 and hosted targets have int-sized
+enums and are unaffected.
 
 ## Re-deriving the delta
 
