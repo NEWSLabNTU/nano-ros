@@ -538,6 +538,10 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     ("fvp-aemv8r-smp", BoardFamily::Zephyr),
     // Issue 2631 -- the S32Z270 RTU0 R52 on Zephyr (`s32z2xxdc2@D/s32z270/rtu0`).
     ("s32z270-rtu0-zephyr", BoardFamily::Zephyr),
+    // The Arm MPS2+ AN521's two Cortex-M33 cores on Zephyr, one image per
+    // core (`mps2/an521/cpu0`, `mps2/an521/cpu1`): the dual-core RPMsg pair.
+    ("mps2-an521-cpu0-zephyr", BoardFamily::Zephyr),
+    ("mps2-an521-cpu1-zephyr", BoardFamily::Zephyr),
     // Issue 1902 — every name a board descriptor publishes is a key here, with
     // its descriptor's family; `board_key_table.rs` derives that from the
     // catalog, so a new descriptor name with no row is red. These two are
@@ -854,10 +858,11 @@ mod tests {
         // Phase-524 W3: plus `nucleo-f767zi-zephyr` and `rpi-pico-w-zephyr`.
         // Phase-553 W4: plus the four bare-metal descriptor names and the
         // bare `mps2-an385` Rust key. Issue 2631: plus `s32z270-rtu0-zephyr`.
-        // Issue 2632: plus `s32z270-freertos-rtd`.
+        // Issue 2632: plus `s32z270-freertos-rtd`. Plus the AN521's two
+        // per-core names (`mps2-an521-cpu0-zephyr`, `mps2-an521-cpu1-zephyr`).
         assert_eq!(
             BOARD_KEYS.len(),
-            29,
+            31,
             "a key was added or removed without a row"
         );
     }

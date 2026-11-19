@@ -249,6 +249,10 @@ fn family_keys_without_a_rust_board_are_exactly_these() {
             // phase-553 W4 -- descriptor aliases of the bare-metal board.
             "bare-metal",
             "baremetal",
+            // The AN521's two per-core Zephyr names: C/C++ images only, no
+            // Rust board crate.
+            "mps2-an521-cpu0-zephyr",
+            "mps2-an521-cpu1-zephyr",
             "mps3-an536-freertos",
             "s32z270",
             "s32z270-freertos",
