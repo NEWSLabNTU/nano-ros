@@ -794,6 +794,24 @@ c: c-fmt c-link-smoke
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/context_less_subscription
     ./tmp/context_less_subscription
+    echo "  - phase-573 W5d: a sized subscription registration refuses an undersized msg"
+    # rclc's forms take `msg` with no size; the sized forms check it against the
+    # descriptor's `message_size` before registering. Undersized refused by both,
+    # exact registered and delivered, a descriptor with no size refuses nothing.
+    test -f packages/api/nros-c/tests/run/sized_subscription.c || { \
+        echo "ERROR: sized_subscription.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/sized_subscription.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/sized_subscription
+    ./tmp/sized_subscription
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_sched_tasks.c` call `extern`. Its weak default used to live in

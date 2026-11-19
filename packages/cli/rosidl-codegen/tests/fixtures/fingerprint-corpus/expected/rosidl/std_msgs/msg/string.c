@@ -88,11 +88,22 @@ static int32_t std_msgs__msg__String__nros_deserialize_erased(const uint8_t* buf
 
 // The descriptor ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String)
 // yields (phase-492 W8). `serialized_size_max` is the receive bound, or 0 when
-// the type has none.
+// the type has none. `message_size` is the struct the deserialiser writes,
+// which `rclc_executor_add_subscription_sized` checks a caller's buffer
+// against.
 const rclc_message_type_t std_msgs__msg__String__nros_type = {
     .type_name = "std_msgs::msg::dds_::String_",
     .type_hash = "h",
     .serialized_size_max = 0,
     .serialize = std_msgs__msg__String__nros_serialize_erased,
     .deserialize = std_msgs__msg__String__nros_deserialize_erased,
+    .message_size = sizeof(std_msgs__msg__String),
 };
+
+// The struct `message_size` measures is the one `__init_in` wires: a caller
+// that sizes its buffer from `__init_in`'s argument gets the descriptor's
+// number. C11, so it holds on every compiler the generated code builds with.
+_Static_assert(_Generic(&std_msgs__msg__String__init_in,
+                        void (*)(std_msgs__msg__String*, std_msgs__msg__String__Storage*): 1,
+                        default: 0),
+               "std_msgs__msg__String__nros_type.message_size measures the struct __init_in wires");

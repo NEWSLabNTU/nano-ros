@@ -108,6 +108,15 @@ static uint8_t s_wire[2048];
 /* 1. capacity is a limit ---------------------------------------------------- */
 
 static void capacity_is_a_limit(void) {
+    /* phase-573 W5d: the generated descriptor states its struct's size, which
+     * the sized subscription registrations check a caller's buffer against. */
+    CHECK(std_msgs__msg__String__nros_type.message_size == sizeof(std_msgs__msg__String),
+          "String's descriptor states sizeof(String) (%zu)",
+          std_msgs__msg__String__nros_type.message_size);
+    CHECK(sensor_msgs__msg__LaserScan__nros_type.message_size ==
+              sizeof(sensor_msgs__msg__LaserScan),
+          "LaserScan's descriptor states sizeof(LaserScan) (%zu)",
+          sensor_msgs__msg__LaserScan__nros_type.message_size);
     /* A 20-character string, serialised from a buffer large enough for it. */
     char source[64];
     std_msgs__msg__String out;
