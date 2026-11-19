@@ -52,6 +52,13 @@
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Issue 2743 — `git bisect run` and `git rebase -x` hand this script the
+# worktree's GIT_DIR, and an inherited GIT_DIR overrides `git -C <submodule>`:
+# every submodule then reads the superproject's index and reports its whole
+# tree as deleted. Cleared once, here at the entry; what this runs inherits it.
+# shellcheck source=scripts/lib/git-hook-env.sh
+. "$repo_root/scripts/lib/git-hook-env.sh"
+nros_clear_inherited_git_env
 cd "$repo_root"
 
 if [ "${NROS_SKIP_SUBMODULE_DRIFT_CHECK:-0}" != "0" ]; then
