@@ -613,7 +613,7 @@ and a test asks for it by name (`resolve_coord_variant`).
   `src/<entry>` plus `src/<entry>_bringup`, every image naming that entry.
   The lifecycle node's bringup declares the `lifecycle` service family its
   old leaf picked. Logging had no `system.toml`, which `migrate-bringup`
-  refuses ([issue 2434](../issues/2434-migrate-bringup-refuses-a-package-with-no-system-toml.md)),
+  refuses ([issue 2434](../issues/archived/2434-migrate-bringup-refuses-a-package-with-no-system-toml.md)),
   so it was moved by hand.
 - **linux Rust callback client and `*-rtic` (in review).**
   `examples/linux/rust/service-client-callback` and the six

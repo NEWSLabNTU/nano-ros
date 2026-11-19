@@ -1,7 +1,7 @@
 ---
 id: 2434
 title: "`nros dev migrate-bringup` refuses a standalone package with no system.toml, so such a package is migrated by hand"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [cli, examples]
@@ -57,3 +57,12 @@ When `system.toml` is absent, either:
 `nros dev migrate-bringup` on a package with a `[[bin]]` and no
 `system.toml` either produces a workspace that `nros build` builds, or
 refuses and says which file to write.
+
+## Done (2026-11-19)
+
+The second fix shape. With no `system.toml`, `nros dev migrate-bringup` no
+longer says "there is nothing to migrate". It names the file to write and
+prints the smallest `system.toml` for a host program with its own `main`
+(one `linux` image naming the package as its entry). The test
+`no_system_toml_names_the_file_to_write` writes the suggested file and
+checks that the package then plans a migration.
