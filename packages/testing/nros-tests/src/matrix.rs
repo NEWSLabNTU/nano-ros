@@ -1305,7 +1305,9 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("interface_subset_linkage", NonCell::CompileCheck),
     (
         "isr_wake_rtos",
-        NonCell::Probe("an interrupt handler wakes a parked FreeRTOS executor (issue 2696)"),
+        NonCell::Probe(
+            "an interrupt handler wakes a parked FreeRTOS or bare-metal executor (issues 2696, 2706)",
+        ),
     ),
     (
         "killed_run_verb",

@@ -33,8 +33,10 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 - **As built:** `GuardCondition::trigger_from_isr() -> bool` (Rust),
   `WakeCtx`/`NodeWake::signal_from_isr`, and `BandWaiter::new` taking a
   `wake_from_isr`. FreeRTOS and POSIX are tested (`tests/isr_wake_rtos.rs`,
-  83 to 102 us; `c_port_posix_wake.rs`, a real signal handler). Zephyr,
-  ThreadX, NuttX and mps2 bare metal refuse until
+  83 to 102 us; `c_port_posix_wake.rs`, a real signal handler). mps2 bare
+  metal followed (2026-11-19, the same test file, 182 to 247 us), after its
+  park stopped reading the wake flag outside the idle's critical section.
+  Zephyr, ThreadX and NuttX refuse until
   [issue 2706](../issues/2706-isr-wake-ports-untested.md) adds their tests.
   The C/C++ front is W1b.
 

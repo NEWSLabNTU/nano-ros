@@ -3836,6 +3836,21 @@ image = "mps2-an385-freertos"
 target_dir = "target"
 target = "thumbv7m-none-eabi"
 
+# issue 2706 — the bare-metal twin of `freertos-isr-wake-mps2`: a hardware
+# interrupt (CMSDK TIMER1, every 20 ms) wakes a parked bare-metal executor
+# through `GuardCondition::trigger_from_isr`. Opens a session to a router on
+# `alloc::BAREMETAL_ISR_WAKE_PORT`.
+[[workspace_fixture]]
+id = "baremetal-isr-wake-mps2"
+platform = "baremetal"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/isr-wake-baremetal-mps2"
+rmw = "zenoh"
+bringup = "src/isr_wake_baremetal_mps2_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
+
 # issue 2507 — a task stack overflow on FreeRTOS + MPS2-AN385 hits the board's
 # MPU stack guard and names the task (not `*** MALLOC FAILED ***`); a sized
 # task's high-water read still works under the guard. Opens no session.

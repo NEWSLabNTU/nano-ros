@@ -20,7 +20,10 @@
 //! interrupts, the worst 19.7 ms late.
 
 use nros_tests::{
-    fixtures::{QemuProcess, RequireFixture, ZenohRouter, build_isr_wake_freertos_mps2, or_unmet},
+    fixtures::{
+        QemuProcess, RequireFixture, ZenohRouter, build_isr_wake_baremetal_mps2,
+        build_isr_wake_freertos_mps2, or_unmet,
+    },
     matrix::PlatformId,
     output::{ISR_WAKE_DONE, ISR_WAKE_SAMPLE},
     wait_for_port,
@@ -51,19 +54,43 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_freertos_mps2() {
     );
     let binary = build_isr_wake_freertos_mps2()
         .require("isr-wake-freertos-mps2 — run `just build freertos`");
-    let _zenohd = or_unmet(ZenohRouter::start_slirp(
+    run_and_check(
+        binary,
         nros_tests::alloc::FREERTOS_ISR_WAKE_PORT,
-    ));
+        "FreeRTOS",
+    );
+}
+
+/// Issue 2706 -- the bare-metal twin. The executor parks in the board's
+/// tickless `wfi` idle, and the platform's interrupt-safe signal is the wake
+/// flag that idle's critical section reads.
+///
+/// Mutation, the park reading the flag before the idle's critical section (as
+/// it did before issue 2706): see that issue for the measured result.
+#[test]
+fn a_timer_interrupt_wakes_the_parked_executor_on_baremetal_mps2() {
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::QemuBaremetal],
+        "the bare-metal interrupt-wake image",
+    );
+    let binary = build_isr_wake_baremetal_mps2()
+        .require("isr-wake-baremetal-mps2 — run `just build baremetal`");
+    run_and_check(
+        binary,
+        nros_tests::alloc::BAREMETAL_ISR_WAKE_PORT,
+        "bare-metal",
+    );
+}
+
+/// Boot `binary` against a router on `port` and hold its run to the bound.
+fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str) {
+    let _zenohd = or_unmet(ZenohRouter::start_slirp(port));
     assert!(
-        wait_for_port(
-            nros_tests::alloc::FREERTOS_ISR_WAKE_PORT,
-            Duration::from_secs(5)
-        ),
+        wait_for_port(port, Duration::from_secs(5)),
         "zenohd not reachable on the interrupt-wake port"
     );
-
     let mut qemu = QemuProcess::start_mps2_an385_networked_measured(binary)
-        .expect("start QEMU for the FreeRTOS interrupt-wake image");
+        .unwrap_or_else(|e| panic!("start QEMU for the {port_name} interrupt-wake image: {e:?}"));
     let output = qemu.collect_until(ISR_WAKE_DONE, Duration::from_secs(120));
     qemu.kill();
 
@@ -87,7 +114,7 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_freertos_mps2() {
         .filter_map(|v| v.trim().parse().ok())
         .collect();
     eprintln!(
-        "interrupt wake: {fires} interrupts, {callbacks} callbacks, latency min {:?} max {:?} us",
+        "{port_name} interrupt wake: {fires} interrupts, {callbacks} callbacks, latency min {:?} max {:?} us",
         samples.iter().min(),
         samples.iter().max()
     );
@@ -98,7 +125,7 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_freertos_mps2() {
     );
     assert_eq!(
         refused, 0,
-        "FreeRTOS's interrupt-safe wake must take every trigger (`trigger_from_isr` returned false)"
+        "{port_name}'s interrupt-safe wake must take every trigger (`trigger_from_isr` returned false)"
     );
     assert!(
         fires <= callbacks + 1,

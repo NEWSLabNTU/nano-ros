@@ -1,0 +1,19 @@
+# What this test image deploys to (RFC-0098 D3/D5). It keeps its own `main`
+# (no `nros::main!`) and declares no component table; the file names its
+# board. Its program is the image's OWNED entry (RFC-0071 D19), which names its
+# board crate itself; the generated adapter carries the image's RMW and link
+# features, and `build/<image>/nros-cargo.toml` the target / link settings.
+# The program opens its own session (`Executor::open`) to a router on
+# `nros_tests::alloc::BAREMETAL_ISR_WAKE_PORT`, so its executor parks on the
+# port's real wake object (the board's tickless `wfi` idle).
+
+[system]
+name = "isr_wake_baremetal"
+rmw = "zenoh"
+domain_id = 0
+
+[image.mps2-an385-baremetal]
+entry = "isr-wake-baremetal-mps2"
+board = "mps2-an385-baremetal"
+# `nros_tests::alloc::BAREMETAL_ISR_WAKE_PORT`, as in `main.rs`.
+locator = "tcp/10.0.2.2:10560"
