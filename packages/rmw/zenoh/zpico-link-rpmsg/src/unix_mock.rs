@@ -106,7 +106,12 @@ unsafe extern "C" fn mock_open(
             cv.notify_all();
         }
     });
-    Box::into_raw(Box::new(MockEp { sock: tx, stop, arrived })).cast()
+    Box::into_raw(Box::new(MockEp {
+        sock: tx,
+        stop,
+        arrived,
+    }))
+    .cast()
 }
 
 unsafe extern "C" fn mock_close(_ctx: *mut c_void, ep: *mut c_void) {
@@ -143,7 +148,9 @@ unsafe extern "C" fn mock_wait(_ctx: *mut c_void, ep: *mut c_void, timeout_ms: u
     let (count, cv) = &*ep.arrived;
     let pending = count.lock().expect("unix-mock wait poisoned");
     let (mut pending, _) = cv
-        .wait_timeout_while(pending, Duration::from_millis(u64::from(timeout_ms)), |c| *c == 0)
+        .wait_timeout_while(pending, Duration::from_millis(u64::from(timeout_ms)), |c| {
+            *c == 0
+        })
         .expect("unix-mock wait poisoned");
     *pending = pending.saturating_sub(1);
     0
