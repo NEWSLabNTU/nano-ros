@@ -27,6 +27,15 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 
 - **Status:** OPEN
 - **Owner:** nros 139
+- Landed in four PRs, in order:
+  - **W1a:** the one offset store, `nros/clock_epoch.h` (RFC-0141 D3), and
+    Zephyr's per-port store retired onto it. Gate `check clock-epoch-store`.
+  - **W1b:** `nros_wall_clock_state()` in C, C++ and Rust, and the D4 policy
+    (`unstamped` by default, `halt` opt-in).
+  - **W1c:** `[knobs.clock]`: one source or an ordered fallback, boot-time
+    resolution and latch, the opt-in monotonic upgrade, and a test per source.
+  - **W1d:** the board hook, its link rule and the selection-named TU, and
+    the linux stub-board stamp test in Rust, C and C++.
 - RFC-0141 D1–D4:
   - the `[knobs.clock]` group: `source` (one, or an ordered fallback),
     `fallback_settle_ms`, `upgrade`, `sntp_attempts`, `epoch_failure`
