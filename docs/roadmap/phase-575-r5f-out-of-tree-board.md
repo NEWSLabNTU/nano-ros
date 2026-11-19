@@ -270,7 +270,10 @@ tasks keep their deadlines.
 
 ### W6 — a time source hook for timestamps
 
-- **Status:** OPEN
+- **Status:** DROPPED (moved to phase-582, 2026-11-19)
+- The design moved to [phase-582](phase-582-wall-clock-source.md) (RFC-0141),
+  because it is a new seam on every platform, not this board's own work. The
+  text below is the shape as first agreed here.
 - **Owner:** nros 139, with issue 0758 (SNTP)
 
 A board can supply the clock that node timestamps read (a gPTP-disciplined

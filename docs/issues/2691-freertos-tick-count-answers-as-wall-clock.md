@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [platform, boards, freertos]
-related: [issue-0758, phase-575]
+related: [issue-0758, rfc-0141, phase-575, phase-582]
 found: 2026-11-18
 ---
 
