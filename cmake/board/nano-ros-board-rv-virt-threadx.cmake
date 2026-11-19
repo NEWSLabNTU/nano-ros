@@ -288,6 +288,11 @@ if(NOT TARGET threadx_glue)
     if(NROS_RISCV64_LIBC STREQUAL "newlib")
         list(APPEND _glue_srcs "${THREADX_BOARD_DIR}/reent.c")
     endif()
+    # Issue 2624 -- the byte pool `threadx_hooks.c` reserves, sized from the
+    # app thread's stack: the board's 512 KiB, the same number as
+    # `threadx_qemu_riscv64_build::APP_STACK_BYTES` and the board C's default.
+    include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosThreadxPool.cmake")
+    nros_threadx_byte_pool_defines(_nros_pool_defs 524288)
     nros_threadx_build_glue(
         SOURCES ${_glue_srcs}
         # Phase 155.E — `NX_BSD_ENABLE_NATIVE_API` flips the
@@ -303,6 +308,7 @@ if(NOT TARGET threadx_glue)
         DEFINES NROS_PLATFORM_BAREMETAL
                 NX_BSD_ENABLE_NATIVE_API
                 NX_INCLUDE_USER_DEFINE_FILE
+                ${_nros_pool_defs}
 )
     # The kernel's includes (qemu_virt board, netxduo BSD, virtio) are
     # already on threadx_kernel's INTERFACE — pull them onto threadx_glue

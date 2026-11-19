@@ -65,86 +65,74 @@ _Static_assert(sizeof(ULONG) == 4,
 
 /* ---- Sizing constants ---- */
 
-/* phase-448 W5 / issue 1145 — the byte pool and the executor backing are ONE
- * decision on this port, the way the picolibc arena and the backing are on
- * Zephyr.
+/* phase-448 W5 / issue 1145 paired this pool with the executor's backing:
+ * phase-392 W6 moved the backing out of the pool into the `.bss` static
+ * `nros_node::executor::backing::EXECUTOR_BACKING`, and a fixed 4 MiB pool then
+ * reserved those bytes twice, so the stated `backing_u64s` was subtracted from
+ * it. Issue 2624 sizes the pool from peaks MEASURED with the backing already in
+ * `.bss`, so there is nothing to give back and `backing_u64s` no longer reaches
+ * this file; it still sizes the static itself, in `nros-node`. */
+/* The byte pool's size, DERIVED (issue 2624).
  *
- * `byte_pool_storage` below is a fixed `.bss` array, and it is the allocator
- * every Rust ThreadX image draws from: `nros_platform_alloc` forwards to
- * `tx_byte_allocate` on this pool, and `nros-platform` installs the tree's one
- * `#[global_allocator]` over that. Before phase-392 W6 the executor's per-entry
- * storage was a `Box::leak` out of exactly here. W6 moved it into the named
- * `.bss` static `nros_node::executor::backing::EXECUTOR_BACKING` so
- * `mem-report` could price it — a MOVE, not a saving. Leaving the pool at its
- * old size reserves those bytes TWICE.
+ * The pool is the whole allocator on this port: the app thread's stack, every
+ * sched task's stack, NetX Duo's packet pool and IP/ARP/BSD stacks, and the
+ * RMW's working set. It was a 4 MiB literal that nothing derived. It is now
  *
- * `NROS_EXECUTOR_BACKING_U64S` is the image's STATEMENT of how many `u64`s that
- * static holds, and it is the same statement `nros-node` sizes the static from:
- * `[knobs.executor] backing_u64s` in the board's `nros-board.toml`,
- * resolved through the RFC-0049 ladder by `nros-node/build.rs` and, for this
- * file, by `threadx_sources::add_threadx_hooks_source`. One rung, two readers
- * — the subtrahend is never written down a second time, which is the defect
- * issue 1171 fixed on Zephyr.
+ *     app stack + WORKING_SET[rmw]
  *
- * UNSTATED (the default 0) leaves the pool at the base, which is the SAFE
- * direction: the image pays for the backing twice, exactly as it does today.
- * A C or C++ ThreadX image is in that case permanently and correctly — its
- * `rclc_executor_t` objects are file-scope statics and were never drawn from
- * this pool, so there is nothing to give back.
- */
-/* The BASE, documented against measured peaks (issue 1557, split from 1145).
- * The SUBTRAHEND below is derived — one rung, two readers, never written down
- * twice. The 4 MiB it is subtracted FROM dates from phase 152's "4 MB byte
- * pool" and was never derived; it is now MEASURED against, and kept.
+ * with each working set MEASURED: every image prints its own `nros: byte pool
+ * peak` (nros-board-threadx/src/entry.rs), and a working set is that peak less
+ * the one app-thread stack. The measurements, their margins and the tests that
+ * hold these literals to them are in nros-board-common/src/threadx_pool.rs;
+ * the RISC-V board judges them, because its NetX allocates from here and
+ * threadx-linux's does not.
  *
- * Every image prints its own `nros: byte pool peak` line (the reporter is in
- * nros-board-threadx/src/entry.rs; the figure is `total - min-ever-free`, read
- * after it has been stable, i.e. with the session up and traffic flowing):
+ *   board / image (cmake road, static executor backing)      peak of the pool
+ *   rv-virt-threadx rust action-server, zenoh (goal served)      725,088 B
+ *   rv-virt-threadx rust action-client, Cyclone (goal done)    1,317,840 B
  *
- *   board / image (zenoh, rmw_zenohd, 2026-10-01)        peak of the pool
- *   rv-virt-threadx rust action-server (goal served)        725,088 B
- *   rv-virt-threadx rust action-client (result received)    721,128 B
- *   rv-virt-threadx rust talker (publishing)                706,136 B
- *   rv-virt-threadx rust listener (39 samples received)     705,384 B
- *   threadx-linux talker (issue 1145; NetX is a no-op)      181,144 B
+ * The executor's backing is a `.bss` static (issue 1388), and every peak above
+ * was taken with it there, so the pool never holds it and nothing subtracts
+ * it any more.
  *
- * The RISC-V board is the one that judges the base: its NetX allocates the
- * packet pool and the IP/ARP/BSD thread stacks from here, which threadx-linux
- * never does. Its pool is 4,105,752 B (the base less its stated
- * 11,069-word backing), so the worst measured image leaves 3,380,664 B free —
- * the base carries 5.7x the measured worst case.
- *
- * Why the margin is KEPT rather than derived away: every row above is zenoh.
- * The Cyclone images of this board allocate their participant, discovery
- * endpoints and sample buffers from this same pool, and no Cyclone rust image
- * links today (issue 1590), while the C/C++ Cyclone images do not run the peak
- * reporter at all. A base cut to the zenoh figure would be a guess about
- * Cyclone in the unsafe direction. Measure a Cyclone image's peak before moving
- * this number, and add its row here. */
-#define BYTE_POOL_BASE_SIZE     (4 * 1024 * 1024)
-
-#ifndef NROS_EXECUTOR_BACKING_U64S
-#define NROS_EXECUTOR_BACKING_U64S 0
+ * A sched task's stack is NOT in the default: no compile of this file sees
+ * how many sched tasks the image declares. An image that has them states the
+ * pool (`[knobs.memory] byte_pool_bytes`); one that does not is refused at
+ * boot, naming the knob, before any task runs. */
+#ifndef NROS_THREADX_APP_STACK_BYTES
+#define NROS_THREADX_APP_STACK_BYTES (64u * 1024u)
+#endif
+/* 1 for a DDS backend (Cyclone): the larger working set. Set by the build that
+ * knows the image's RMW. */
+#ifndef NROS_THREADX_POOL_DDS
+#define NROS_THREADX_POOL_DDS 0
+#endif
+#define NROS_THREADX_ZENOH_WORKING_SET_BYTES 327680u
+#define NROS_THREADX_DDS_WORKING_SET_BYTES 1179648u
+/* The measured working sets, no margin: the least a stated pool may be. */
+#define NROS_THREADX_ZENOH_MEASURED_WORKING_SET_BYTES 200800u
+#define NROS_THREADX_DDS_MEASURED_WORKING_SET_BYTES 793552u
+#if NROS_THREADX_POOL_DDS
+#define NROS_THREADX_WORKING_SET_BYTES NROS_THREADX_DDS_WORKING_SET_BYTES
+#define NROS_THREADX_MEASURED_WORKING_SET_BYTES NROS_THREADX_DDS_MEASURED_WORKING_SET_BYTES
+#else
+#define NROS_THREADX_WORKING_SET_BYTES NROS_THREADX_ZENOH_WORKING_SET_BYTES
+#define NROS_THREADX_MEASURED_WORKING_SET_BYTES NROS_THREADX_ZENOH_MEASURED_WORKING_SET_BYTES
 #endif
 
-/* A word of the reservation is a `MaybeUninit<u64>`, so 8 bytes on every target
- * nano-ros builds for — the reason the knob is spelled in WORDS at all: the
- * derived size is target-dependent and a stated one is not (issue 1171). */
-#define BYTE_POOL_SIZE \
-    (BYTE_POOL_BASE_SIZE - 8 * (NROS_EXECUTOR_BACKING_U64S))
+/* `[knobs.memory] byte_pool_bytes` (env `NROS_THREADX_BYTE_POOL_KB`) when the
+ * board or image states it, handed in as `-DNROS_THREADX_BYTE_POOL_BYTES`. */
+#ifndef NROS_THREADX_BYTE_POOL_BYTES
+#define NROS_THREADX_BYTE_POOL_BYTES (NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_WORKING_SET_BYTES)
+#endif
 
-/* A statement larger than the pool would silently wrap `BYTE_POOL_SIZE` (it is
- * unsigned arithmetic on an array bound) into a multi-gigabyte `.bss`, which on
- * the RISC-V board fails to link with a message about `.bss` and nothing about
- * this knob. The floor is deliberately generous rather than exact: the pool also
- * feeds the NetX packet pool, the IP/ARP/BSD stacks and every sched task's thread
- * stack, so a pool that only just fits the backing is already wrong. */
-// issue 1145 / phase-448 W5 -- the 1 MiB floor.
-_Static_assert(BYTE_POOL_SIZE >= (1 * 1024 * 1024),
-               "NROS_EXECUTOR_BACKING_U64S leaves the ThreadX byte pool under "
-               "1 MiB. The pool is the WHOLE allocator on this port (NetX "
-               "packet pool, IP/ARP/BSD stacks, sched task stacks), not just the "
-               "executor's backing. Lower NROS_EXECUTOR_BACKING_U64S.");
+_Static_assert(NROS_THREADX_BYTE_POOL_BYTES >=
+                   NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_MEASURED_WORKING_SET_BYTES,
+               "the ThreadX byte pool is below the app thread's stack plus this RMW's "
+               "measured working set. Raise `[knobs.memory] byte_pool_bytes` "
+               "(NROS_THREADX_BYTE_POOL_KB).");
+
+#define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES)
 
 /* ---- Overlay-tunable parameters (weak getters — overlay strong-overrides) ----
  *
@@ -165,12 +153,20 @@ _Static_assert(BYTE_POOL_SIZE >= (1 * 1024 * 1024),
  * default, Rust `Executor::open`'s frame overran it, sp underflowed past
  * byte_pool storage into `.text` at `CffiSession::open_with_vtable+128`,
  * the next `sd s7, 88(sp)` corrupted that code → illegal-instruction trap. */
-__attribute__((weak)) uint32_t nros_board_app_stack_size(void) { return 64 * 1024; }
-__attribute__((weak)) uint32_t nros_board_app_priority(void) { return 4; }
+__attribute__((weak)) uint32_t nros_board_app_stack_size(void) {
+    return NROS_THREADX_APP_STACK_BYTES;
+}
+__attribute__((weak)) uint32_t nros_board_app_priority(void) {
+    return 4;
+}
 
 /* ---- Weak hooks the overlay implements ---- */
-__attribute__((weak)) void nros_board_log(const char *s) { (void)s; }
-__attribute__((weak)) int  nros_board_init_eth(void) { return 0; }
+__attribute__((weak)) void nros_board_log(const char* s) {
+    (void)s;
+}
+__attribute__((weak)) int nros_board_init_eth(void) {
+    return 0;
+}
 /* The application entry returned (issue 1741). On a real MCU the right answer
  * is the default: the app thread simply finishes and the kernel keeps running
  * whatever else it has. A board that is a HOST PROCESS (threadx-linux)
@@ -182,17 +178,20 @@ __attribute__((weak)) int  nros_board_init_eth(void) { return 0; }
  * succeeded. A C/C++ app's comes through `nros_app_main_returned()` below; a
  * Rust entry ends through `BoardExit` and never returns here, so its arm
  * passes 0. */
-__attribute__((weak)) void nros_board_app_returned(int exit_code) { (void)exit_code; }
-__attribute__((weak)) void nros_board_compute_rng_seed(uint32_t *out)
-{
+__attribute__((weak)) void nros_board_app_returned(int exit_code) {
+    (void)exit_code;
+}
+__attribute__((weak)) void nros_board_compute_rng_seed(uint32_t* out) {
     /* Default = constant non-zero seed; overlay overrides with an
      * IP/MAC-derived value so peers do not collide on zenoh-pico
      * session IDs. */
-    if (out) { *out = 0xDEADBEEFu; }
+    if (out) {
+        *out = 0xDEADBEEFu;
+    }
 }
 
 /* ---- Platform byte pool + RNG registration ---- */
-extern void nros_platform_threadx_set_byte_pool(TX_BYTE_POOL *pool);
+extern void nros_platform_threadx_set_byte_pool(TX_BYTE_POOL* pool);
 /* Issue 1145 — the pool's high-water lives in nros-platform-threadx beside the
  * allocator, because ThreadX keeps no minimum-ever-available of its own.
  * nros_platform_alloc notes itself; the three tx_byte_allocate calls in THIS
@@ -203,16 +202,54 @@ extern void nros_platform_threadx_note_pool_usage(void);
 extern void nros_platform_threadx_seed_rng(uint32_t value);
 
 /* Legacy: zpico-sys C system.c reads this global. */
-TX_BYTE_POOL *zpico_threadx_byte_pool;
+TX_BYTE_POOL* zpico_threadx_byte_pool;
 
 /* ---- Static objects ---- */
-static TX_BYTE_POOL     byte_pool;
-static UCHAR            byte_pool_storage[BYTE_POOL_SIZE];
-static TX_THREAD        app_thread;
+static TX_BYTE_POOL byte_pool;
+static UCHAR byte_pool_storage[BYTE_POOL_SIZE];
+static TX_THREAD app_thread;
+
+/* ---- Issue 2624: a stack the pool cannot hold is fatal, and says why ----
+ *
+ * The derived pool covers the app thread's stack and the RMW's working set,
+ * not an image's sched tasks (no compile of this file sees how many there are).
+ * An image whose sched tasks do not fit must stop HERE, at boot, before any
+ * task runs, naming the knob that raises the pool, never run with a task that
+ * silently did not start. */
+static void nros_tx_log_ulong(ULONG v) {
+    char buf[24];
+    int i = (int)sizeof(buf) - 1;
+    buf[i] = '\0';
+    do {
+        buf[--i] = (char)('0' + (int)(v % 10u));
+        v /= 10u;
+    } while (v != 0u && i > 0);
+    nros_board_log(&buf[i]);
+}
+
+static void nros_tx_pool_refuse(const char* what, ULONG requested) {
+    ULONG available = 0;
+    (void)tx_byte_pool_info_get(&byte_pool, TX_NULL, &available, TX_NULL, TX_NULL, TX_NULL,
+                                TX_NULL);
+    nros_board_log("FATAL: the ThreadX byte pool cannot hold ");
+    nros_board_log(what);
+    nros_board_log(": ");
+    nros_tx_log_ulong(requested);
+    nros_board_log(" bytes requested, ");
+    nros_tx_log_ulong(available);
+    nros_board_log(" free of ");
+    nros_tx_log_ulong((ULONG)BYTE_POOL_SIZE);
+    nros_board_log(". Raise `[knobs.memory] heap_bytes` (NROS_THREADX_BYTE_POOL_KB) "
+                   "by at least the shortfall; an image's sched tasks are not in "
+                   "the derived default.\n");
+    nros_board_app_returned(1);
+    for (;;) {
+    }
+}
 
 /* ---- Rust callback (set from Rust before tx_kernel_enter) ---- */
-static void (*rust_app_entry)(void *) = 0;
-static void *rust_app_arg = 0;
+static void (*rust_app_entry)(void*) = 0;
+static void* rust_app_arg = 0;
 
 /* ---- C/C++ entry point (set by `nros_threadx_set_app_main` or
  * left null for Rust-only builds). Stored as a function pointer
@@ -239,14 +276,12 @@ static void (*c_app_main)(void) = (void (*)(void))0;
 extern void app_main(void) __attribute__((weak));
 #endif
 
-void nros_threadx_set_app_callback(void (*entry)(void *), void *arg)
-{
+void nros_threadx_set_app_callback(void (*entry)(void*), void* arg) {
     rust_app_entry = entry;
     rust_app_arg = arg;
 }
 
-void nros_threadx_set_app_main(void (*entry)(void))
-{
+void nros_threadx_set_app_main(void (*entry)(void)) {
     c_app_main = entry;
 }
 
@@ -261,8 +296,7 @@ void nros_threadx_set_app_main(void (*entry)(void))
 void nros_app_main_returned(int exit_code);
 static int c_app_exit_code = 0;
 
-void nros_app_main_returned(int exit_code)
-{
+void nros_app_main_returned(int exit_code) {
     c_app_exit_code = exit_code;
 }
 
@@ -271,17 +305,19 @@ void nros_app_main_returned(int exit_code)
  * talker on rv-virt-threadx returned at once, and the console said only
  * "c_app_main returned"). Formatted by hand: this file is built on boards
  * whose libc is not ours to assume. */
-static void log_app_returned(const char *what, int exit_code)
-{
+static void log_app_returned(const char* what, int exit_code) {
     /* ONE call: a board's `nros_board_log` may end every call with a line
      * break (rv-virt-threadx does). */
     static const char head[] = "[app_thread] ";
     static const char mid[] = " returned, exit code ";
     char line[96];
     size_t n = 0;
-    for (const char *p = head; *p && n < sizeof(line) - 16; p++) line[n++] = *p;
-    for (const char *p = what; *p && n < sizeof(line) - 40; p++) line[n++] = *p;
-    for (const char *p = mid; *p && n < sizeof(line) - 16; p++) line[n++] = *p;
+    for (const char* p = head; *p && n < sizeof(line) - 16; p++)
+        line[n++] = *p;
+    for (const char* p = what; *p && n < sizeof(line) - 40; p++)
+        line[n++] = *p;
+    for (const char* p = mid; *p && n < sizeof(line) - 16; p++)
+        line[n++] = *p;
     char num[12];
     int i = (int)sizeof(num);
     unsigned int v = exit_code < 0 ? 0u - (unsigned int)exit_code : (unsigned int)exit_code;
@@ -290,7 +326,8 @@ static void log_app_returned(const char *what, int exit_code)
         v /= 10u;
     } while (v != 0u && i > 1);
     if (exit_code < 0) num[--i] = '-';
-    while (i < (int)sizeof(num)) line[n++] = num[i++];
+    while (i < (int)sizeof(num))
+        line[n++] = num[i++];
     line[n++] = '\n';
     line[n] = '\0';
     nros_board_log(line);
@@ -313,30 +350,33 @@ static void log_app_returned(const char *what, int exit_code)
  * end every call with a line break (rv-virt-threadx does). Declared here
  * rather than by including `<nros/platform.h>`, because this file is also
  * built on the Rust lane; the prototype is that header's. */
-void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint8_t *, uintptr_t,
-                                                      const uint8_t *, uintptr_t),
+void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint8_t*, uintptr_t,
+                                                      const uint8_t*, uintptr_t),
                                        void (*flusher)(void));
 
-static void c_app_log_writer(uint8_t severity, const uint8_t *name, uintptr_t name_len,
-                             const uint8_t *msg, uintptr_t msg_len)
-{
-    static const char *const labels[] = {
+static void c_app_log_writer(uint8_t severity, const uint8_t* name, uintptr_t name_len,
+                             const uint8_t* msg, uintptr_t msg_len) {
+    static const char* const labels[] = {
         "[TRACE] ", "[DEBUG] ", "[INFO] ", "[WARN] ", "[ERROR] ", "[FATAL] ",
     };
-    const char *label = severity < 6u ? labels[severity] : "[?] ";
+    const char* label = severity < 6u ? labels[severity] : "[?] ";
     char line[512];
     size_t n = 0;
     /* Room is kept for the line break and the terminator. */
     const size_t cap = sizeof(line) - 2u;
-    for (const char *p = label; *p && n < cap; p++) line[n++] = *p;
+    for (const char* p = label; *p && n < cap; p++)
+        line[n++] = *p;
     if (name != NULL) {
-        for (uintptr_t i = 0; i < name_len && n < cap; i++) line[n++] = (char)name[i];
+        for (uintptr_t i = 0; i < name_len && n < cap; i++)
+            line[n++] = (char)name[i];
         if (name_len != 0u) {
-            for (const char *p = ": "; *p && n < cap; p++) line[n++] = *p;
+            for (const char* p = ": "; *p && n < cap; p++)
+                line[n++] = *p;
         }
     }
     if (msg != NULL) {
-        for (uintptr_t i = 0; i < msg_len && n < cap; i++) line[n++] = (char)msg[i];
+        for (uintptr_t i = 0; i < msg_len && n < cap; i++)
+            line[n++] = (char)msg[i];
     }
     line[n++] = '\n';
     line[n] = '\0';
@@ -344,8 +384,7 @@ static void c_app_log_writer(uint8_t severity, const uint8_t *name, uintptr_t na
 }
 
 /* ---- App thread entry: invokes Rust callback or C/C++ app_main ---- */
-static void app_thread_entry(ULONG input)
-{
+static void app_thread_entry(ULONG input) {
     (void)input;
 
     if (rust_app_entry) {
@@ -377,18 +416,16 @@ static void app_thread_entry(ULONG input)
 }
 
 /* ---- ThreadX tx_application_define (called by tx_kernel_enter) ---- */
-void tx_application_define(void *first_unused_memory)
-{
+void tx_application_define(void* first_unused_memory) {
     UINT status;
-    UCHAR *pointer;
+    UCHAR* pointer;
     uint32_t stack_size;
     uint32_t priority;
 
     (void)first_unused_memory;
 
     nros_board_log("[app_define] Creating byte pool...\n");
-    status = tx_byte_pool_create(&byte_pool, "nros_byte_pool",
-                                  byte_pool_storage, BYTE_POOL_SIZE);
+    status = tx_byte_pool_create(&byte_pool, "nros_byte_pool", byte_pool_storage, BYTE_POOL_SIZE);
     if (status != TX_SUCCESS) {
         nros_board_log("ERROR: byte pool create failed\n");
         return;
@@ -403,7 +440,9 @@ void tx_application_define(void *first_unused_memory)
     {
         uint32_t seed = 0;
         nros_board_compute_rng_seed(&seed);
-        if (seed == 0) { seed = 1; }
+        if (seed == 0) {
+            seed = 1;
+        }
         srand(seed);
         nros_platform_threadx_seed_rng(seed);
     }
@@ -419,22 +458,16 @@ void tx_application_define(void *first_unused_memory)
     /* Create application thread. Resolve the overlay-tunable size/priority
      * via the weak getters once (the overlay strong-overrides the fns). */
     stack_size = nros_board_app_stack_size();
-    priority   = nros_board_app_priority();
+    priority = nros_board_app_priority();
     nros_board_log("[app_define] Creating app thread...\n");
-    status = tx_byte_allocate(&byte_pool, (VOID **)&pointer,
-                               stack_size, TX_NO_WAIT);
+    status = tx_byte_allocate(&byte_pool, (VOID**)&pointer, stack_size, TX_NO_WAIT);
     if (status != TX_SUCCESS) {
-        nros_board_log("ERROR: app thread stack alloc failed\n");
-        return;
+        nros_tx_pool_refuse("the app thread's stack", stack_size);
     }
     nros_platform_threadx_note_pool_usage();
 
-    status = tx_thread_create(&app_thread, "nros_app",
-                               app_thread_entry, 0,
-                               pointer, stack_size,
-                               priority,
-                               priority,
-                               TX_NO_TIME_SLICE, TX_AUTO_START);
+    status = tx_thread_create(&app_thread, "nros_app", app_thread_entry, 0, pointer, stack_size,
+                              priority, priority, TX_NO_TIME_SLICE, TX_AUTO_START);
     if (status != TX_SUCCESS) {
         nros_board_log("ERROR: app thread create failed\n");
         return;
@@ -484,14 +517,13 @@ void tx_application_define(void *first_unused_memory)
  * `tx_thread_create` error). */
 #define NROS_TX_MAX_TASKS 8
 static TX_THREAD nros_tx_task_blocks[NROS_TX_MAX_TASKS];
-static void (*nros_tx_task_entries[NROS_TX_MAX_TASKS])(void *);
-static void *nros_tx_task_args[NROS_TX_MAX_TASKS];
+static void (*nros_tx_task_entries[NROS_TX_MAX_TASKS])(void*);
+static void* nros_tx_task_args[NROS_TX_MAX_TASKS];
 static int nros_tx_task_count = 0;
 
 /* ULONG carries only the slot index (fits any port's ULONG width); the
  * pointer-width {entry, arg} pair is read back from the slot table. */
-static VOID nros_tx_task_trampoline(ULONG slot)
-{
+static VOID nros_tx_task_trampoline(ULONG slot) {
     nros_tx_task_entries[slot](nros_tx_task_args[slot]);
 }
 
@@ -499,13 +531,11 @@ static VOID nros_tx_task_trampoline(ULONG slot)
  * as the executor's lock: the port's recursive mutex (`tx_mutex_create` with
  * TX_INHERIT, nros_platform_mutex_rec_*), in storage the runner owns and
  * sizes from this, and the calling thread's identity. */
-size_t nros_threadx_exec_lock_size(void)
-{
+size_t nros_threadx_exec_lock_size(void) {
     return sizeof(TX_MUTEX);
 }
 
-uintptr_t nros_threadx_thread_id(void)
-{
+uintptr_t nros_threadx_thread_id(void) {
     return (uintptr_t)tx_thread_identify();
 }
 
@@ -517,9 +547,8 @@ uintptr_t nros_threadx_thread_id(void)
  * thread at 4 starved the spawned `high` sched task at 5 — zero publishes).
  * `preempt_threshold < 0` ⇒ = priority (no threshold effect).
  * Returns 0 on success, -1 on any ThreadX error. */
-int nros_threadx_set_current_priority(unsigned int priority, int preempt_threshold)
-{
-    TX_THREAD *self = tx_thread_identify();
+int nros_threadx_set_current_priority(unsigned int priority, int preempt_threshold) {
+    TX_THREAD* self = tx_thread_identify();
     UINT old_prio;
     UINT old_pt;
     UINT pt = (preempt_threshold < 0) ? priority : (UINT)preempt_threshold;
@@ -546,13 +575,12 @@ int nros_threadx_set_current_priority(unsigned int priority, int preempt_thresho
  * the Rust caller prints the accept marker or the loud fallback note so a
  * declared `core` is NEVER silently dropped. `core_plus1` is the emit/macro
  * `core + 1` encoding (0 = unpinned). */
-int nros_threadx_apply_current_core_exclude(unsigned int core_plus1)
-{
+int nros_threadx_apply_current_core_exclude(unsigned int core_plus1) {
     if (core_plus1 == 0u) {
         return 0; /* unpinned */
     }
 #ifdef TX_THREAD_SMP
-    TX_THREAD *self = tx_thread_identify();
+    TX_THREAD* self = tx_thread_identify();
     if (self == TX_NULL) {
         return 0;
     }
@@ -581,15 +609,14 @@ int nros_threadx_apply_current_core_exclude(unsigned int core_plus1)
  * ThreadX's default). A nonzero request rounds UP to at least 1 tick so a
  * sub-tick slice still yields. The tick constant lives here in the C shim where
  * the ThreadX config is visible (the Rust arm never mirrors it). */
-static ULONG nros_tx_time_slice_ticks(unsigned long time_slice_us)
-{
+static ULONG nros_tx_time_slice_ticks(unsigned long time_slice_us) {
     if (time_slice_us == 0ul) {
         return TX_NO_TIME_SLICE;
     }
     unsigned long long ticks =
-        ((unsigned long long)time_slice_us * (unsigned long long)TX_TIMER_TICKS_PER_SECOND
-         + 999999ull)
-        / 1000000ull;
+        ((unsigned long long)time_slice_us * (unsigned long long)TX_TIMER_TICKS_PER_SECOND +
+         999999ull) /
+        1000000ull;
     return (ticks == 0ull) ? 1ul : (ULONG)ticks;
 }
 
@@ -597,36 +624,29 @@ static ULONG nros_tx_time_slice_ticks(unsigned long time_slice_us)
  * among same-priority sched tasks is the placement dim's sibling: mirrors the W5.13
  * boot-reprioritize path. Returns 1 when a slice was set, 0 when unrequested
  * (0 µs) or the kernel rejected it. */
-int nros_threadx_apply_current_time_slice(unsigned long time_slice_us)
-{
+int nros_threadx_apply_current_time_slice(unsigned long time_slice_us) {
     if (time_slice_us == 0ul) {
         return 0;
     }
-    TX_THREAD *self = tx_thread_identify();
+    TX_THREAD* self = tx_thread_identify();
     ULONG old_slice;
     if (self == TX_NULL) {
         return 0;
     }
-    if (tx_thread_time_slice_change(self, nros_tx_time_slice_ticks(time_slice_us), &old_slice)
-        != TX_SUCCESS) {
+    if (tx_thread_time_slice_change(self, nros_tx_time_slice_ticks(time_slice_us), &old_slice) !=
+        TX_SUCCESS) {
         return 0;
     }
     return 1;
 }
 
-int nros_threadx_create_task(
-    const char *name,
-    void (*entry)(void *),
-    void *arg,
-    unsigned long stack_bytes,
-    unsigned int priority,
-    int preempt_threshold,
-    unsigned long time_slice_us)
-{
+int nros_threadx_create_task(const char* name, void (*entry)(void*), void* arg,
+                             unsigned long stack_bytes, unsigned int priority,
+                             int preempt_threshold, unsigned long time_slice_us) {
     UINT status;
     UINT pt;
-    TX_THREAD *thread;
-    UCHAR *stack;
+    TX_THREAD* thread;
+    UCHAR* stack;
     ULONG stack_size;
 
     if (entry == 0) {
@@ -640,10 +660,9 @@ int nros_threadx_create_task(
 
     /* Stack from the shared byte pool (same as the boot app thread). */
     stack_size = (stack_bytes != 0) ? (ULONG)stack_bytes : nros_board_app_stack_size();
-    status = tx_byte_allocate(&byte_pool, (VOID **)&stack, stack_size, TX_NO_WAIT);
+    status = tx_byte_allocate(&byte_pool, (VOID**)&stack, stack_size, TX_NO_WAIT);
     if (status != TX_SUCCESS) {
-        nros_board_log("ERROR: nros_threadx_create_task: stack alloc failed\n");
-        return -1;
+        nros_tx_pool_refuse("a sched task's stack", stack_size);
     }
     nros_platform_threadx_note_pool_usage();
 
@@ -654,11 +673,9 @@ int nros_threadx_create_task(
     pt = (preempt_threshold < 0) ? priority : (UINT)preempt_threshold;
 
     /* #0266 — round-robin time slice (TX_NO_TIME_SLICE when 0 µs = FIFO). */
-    status = tx_thread_create(thread, (CHAR *)(name ? name : "nros_sched_task"),
-                               nros_tx_task_trampoline, (ULONG)nros_tx_task_count,
-                               stack, stack_size,
-                               priority, pt,
-                               nros_tx_time_slice_ticks(time_slice_us), TX_AUTO_START);
+    status = tx_thread_create(thread, (CHAR*)(name ? name : "nros_sched_task"),
+                              nros_tx_task_trampoline, (ULONG)nros_tx_task_count, stack, stack_size,
+                              priority, pt, nros_tx_time_slice_ticks(time_slice_us), TX_AUTO_START);
     if (status != TX_SUCCESS) {
         nros_board_log("ERROR: nros_threadx_create_task: tx_thread_create failed\n");
         return -1;
@@ -671,13 +688,12 @@ int nros_threadx_create_task(
 /* Allocate `bytes` from the shared ThreadX byte pool. The Rust `run_sched_tasks`
  * uses this for each spawned sched task's heap context (mirrors the FreeRTOS
  * `nros_platform_alloc` → `pvPortMalloc` shape). Returns NULL on failure. */
-void *nros_threadx_alloc(unsigned long bytes)
-{
-    UCHAR *p;
+void* nros_threadx_alloc(unsigned long bytes) {
+    UCHAR* p;
     if (bytes == 0) {
         return 0;
     }
-    if (tx_byte_allocate(&byte_pool, (VOID **)&p, (ULONG)bytes, TX_NO_WAIT) != TX_SUCCESS) {
+    if (tx_byte_allocate(&byte_pool, (VOID**)&p, (ULONG)bytes, TX_NO_WAIT) != TX_SUCCESS) {
         return 0;
     }
     nros_platform_threadx_note_pool_usage();
@@ -697,10 +713,9 @@ void *nros_threadx_alloc(unsigned long bytes)
  * kernel's constant and it is visible here; a caller converting its own would be
  * mirroring a number it cannot see, which is how a tick rate ends up asserted in
  * two places and true in one. */
-void nros_threadx_sleep_ms(unsigned long ms)
-{
-    ULONG ticks = (ULONG)(((unsigned long long)ms * (unsigned long long)TX_TIMER_TICKS_PER_SECOND)
-                          / 1000ULL);
+void nros_threadx_sleep_ms(unsigned long ms) {
+    ULONG ticks =
+        (ULONG)(((unsigned long long)ms * (unsigned long long)TX_TIMER_TICKS_PER_SECOND) / 1000ULL);
     /* A nonzero request must not become a busy no-op. */
     if (ticks == 0 && ms != 0) {
         ticks = 1;
@@ -709,8 +724,7 @@ void nros_threadx_sleep_ms(unsigned long ms)
 }
 
 /* Free a block previously returned by `nros_threadx_alloc`. */
-void nros_threadx_free(void *ptr)
-{
+void nros_threadx_free(void* ptr) {
     if (ptr != 0) {
         tx_byte_release(ptr);
     }

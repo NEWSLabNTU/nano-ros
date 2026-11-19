@@ -215,7 +215,7 @@ unsafe extern "C" {
 // The byte pool is the WHOLE allocator on this port: it hands out the boot app
 // thread's stack, every sched task stack, zenoh-pico's buffers and nano-ros's own
 // allocations, plus NetX's packet pool and stacks on the boards that have one.
-// `BYTE_POOL_BASE_SIZE` in `threadx_hooks.c` is 4 MiB and nothing derived it —
+// ~~`BYTE_POOL_BASE_SIZE`~~ in `threadx_hooks.c` was 4 MiB and nothing derived it —
 // the SUBTRAHEND paired against the `.bss` executor backing is carefully
 // derived (issue 1171), the BASE it is subtracted from is a literal.
 //
@@ -265,9 +265,9 @@ unsafe extern "C" {
 //     — allocate NOTHING here. The RISC-V board runs the full NetX setup and is
 //     where the base has to be judged.
 //
-// So `BYTE_POOL_BASE_SIZE` is deliberately NOT changed on the strength of this.
-// 4 MiB is 23x what a hosted talker touches, which is suggestive and is not a
-// measurement of the port the number exists for.
+// So the pool was not sized from these. Issue 2624 sized it from the RISC-V
+// board's peaks, every role on zenoh and Cyclone, with the static backing:
+// `nros_board_common::threadx_pool` holds the numbers.
 
 /// After the netif is up, the session handshake, and the register pass.
 /// MILLISECONDS — `nros_threadx_sleep_ms` converts with the kernel's own
@@ -324,7 +324,7 @@ where
     // issue 1145: the pool base a board raises from this line.
     B::println(format_args!(
         "nros: byte pool peak {} of {} bytes ({} free) \
-         — the base is BYTE_POOL_BASE_SIZE in threadx_hooks.c",
+         — its size is `[knobs.memory] heap_bytes` (NROS_THREADX_BYTE_POOL_KB)",
         total.saturating_sub(free),
         total,
         free

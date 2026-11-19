@@ -81,12 +81,12 @@ checks or WHY it cannot check it. A port with no entry is itself a failure —
 "nobody has looked at this port" and "this port needs nothing" must not read
 the same, which is the shape issue 1145 left behind for five weeks.
 
-The ThreadX arm is the only one with arithmetic to check, and it is NOT the
-Zephyr shape: the subtraction is done by the C preprocessor from the ONE stated
-rung (`[knobs.executor] backing_u64s`), so the two numbers cannot
-disagree and there is nothing to add up. What CAN go wrong is a statement that
-reaches no subtraction — a board that reserves the backing and gives nothing
-back — so that is what is checked, in both directions.
+The ThreadX arm has no arithmetic since issue 2624: the byte pool is DERIVED
+from peaks measured with the executor's backing already in `.bss`, so it
+holds no backing and nothing is subtracted from it. What it checks is that
+inversion, in both directions: the pool is the derived figure (named, and
+forwarded by the board build), and it does NOT subtract `backing_u64s`,
+which would leave a measured pool short by the backing.
 
 NOT IN SCOPE: the spawned sched_tasks' backing (issue 1571). A sched-task Rust entry's
 `SchedTaskExecutorBacking` static is sized by TYPE (`EXECUTOR_BACKING_DEFAULT_U64S`
@@ -271,7 +271,8 @@ BOARD_TOML_TARGETS = {
 
 THREADX_POOL_C = "packages/boards/nros-board-common/c/threadx_hooks.c"
 THREADX_FORWARDER = "packages/boards/nros-board-common/src/threadx_sources.rs"
-THREADX_POOL_BASE_TOKEN = "BYTE_POOL_BASE_SIZE"
+THREADX_POOL_TOKEN = "NROS_THREADX_BYTE_POOL_BYTES"
+THREADX_FORWARD_TOKEN = "define_byte_pool"
 THREADX_KNOB_TOKEN = "NROS_EXECUTOR_BACKING_U64S"
 
 # --- issue 1284: the claim half -------------------------------------------
@@ -477,32 +478,33 @@ def check_board_rung(rel, text):
 
 
 def check_threadx_site(pool_c, forwarder_rs):
-    """-> complaints about the ThreadX subtraction site.
+    """-> complaints about the ThreadX pool site (issue 2624).
 
-    Two texts, because the knob has to survive both hops: the C file must
-    subtract it from a NAMED base, and the one build-script helper that compiles
-    that file for a Rust image must forward it. A stated rung that reaches
-    neither leaves the pool at its base with no diagnostic at all.
+    The pool is derived from peaks measured with the executor's backing in
+    `.bss`, so it must be the derived figure and must not subtract the backing.
+    Two texts, because the derivation has two hops: the C file sizes the pool
+    from `NROS_THREADX_BYTE_POOL_BYTES`, and the build-script helper that
+    compiles it for a Rust image forwards that number.
     """
     bad = []
-    if THREADX_POOL_BASE_TOKEN not in pool_c:
+    pool_line = next(
+        (l for l in pool_c.splitlines() if l.strip().startswith("#define BYTE_POOL_SIZE")), ""
+    )
+    if THREADX_POOL_TOKEN not in pool_line:
         bad.append(
-            f"{THREADX_POOL_C}: no `{THREADX_POOL_BASE_TOKEN}` — the byte pool's "
-            f"pre-pairing size has to be NAMED, or a reader cannot tell a paired "
-            f"pool from an arbitrary one (the reason the Zephyr arm needs a "
-            f"`# {BASE_MARKER}:` marker)"
+            f"{THREADX_POOL_C}: `BYTE_POOL_SIZE` is not `{THREADX_POOL_TOKEN}` — the "
+            f"pool has to be the derived figure (issue 2624), not a literal"
         )
-    if THREADX_KNOB_TOKEN not in pool_c:
+    if THREADX_KNOB_TOKEN in pool_line:
         bad.append(
-            f"{THREADX_POOL_C}: the pool size does not mention "
-            f"`{THREADX_KNOB_TOKEN}`, so nothing subtracts the executor backing "
-            f"and every Rust ThreadX image reserves it twice (issue 1145)"
+            f"{THREADX_POOL_C}: the pool subtracts `{THREADX_KNOB_TOKEN}`, but its size "
+            f"was measured with the backing already in `.bss`: the subtraction leaves "
+            f"it short by the backing (issue 2624)"
         )
-    if THREADX_KNOB_TOKEN not in forwarder_rs:
+    if THREADX_FORWARD_TOKEN not in forwarder_rs:
         bad.append(
-            f"{THREADX_FORWARDER}: does not forward `{THREADX_KNOB_TOKEN}` to the "
-            f"C compile, so the rung reaches `nros-node` and not the pool — the "
-            f"reservation is made and nothing is given back (issue 0460's shape)"
+            f"{THREADX_FORWARDER}: does not call `{THREADX_FORWARD_TOKEN}`, so a Rust "
+            f"image's pool ignores the stated `[knobs.memory] heap_bytes` and its RMW"
         )
     return bad
 
@@ -557,20 +559,17 @@ RUNG_SELF_TESTS = [
 
 THREADX_SITE_SELF_TESTS = [
     # (name, pool C body, forwarder body, expected complaints)
-    ("wired",
-     "#define BYTE_POOL_BASE_SIZE (4*1024*1024)\n"
-     "#define BYTE_POOL_SIZE (BYTE_POOL_BASE_SIZE - 8*(NROS_EXECUTOR_BACKING_U64S))\n",
-     'build.define("NROS_EXECUTOR_BACKING_U64S", w);\n', 0),
-    ("the pool stopped subtracting",
-     "#define BYTE_POOL_BASE_SIZE (4*1024*1024)\n"
-     "#define BYTE_POOL_SIZE BYTE_POOL_BASE_SIZE\n",
-     'build.define("NROS_EXECUTOR_BACKING_U64S", w);\n', 1),
-    ("the base stopped being named",
-     "#define BYTE_POOL_SIZE (4*1024*1024 - 8*(NROS_EXECUTOR_BACKING_U64S))\n",
-     'build.define("NROS_EXECUTOR_BACKING_U64S", w);\n', 1),
+    ("derived",
+     "#define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES)\n",
+     "define_byte_pool(build, app_stack_bytes);\n", 0),
+    ("back to a literal",
+     "#define BYTE_POOL_SIZE (4*1024*1024)\n",
+     "define_byte_pool(build, app_stack_bytes);\n", 1),
+    ("subtracts the backing again",
+     "#define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES - 8*(NROS_EXECUTOR_BACKING_U64S))\n",
+     "define_byte_pool(build, app_stack_bytes);\n", 1),
     ("the forwarder dropped it",
-     "#define BYTE_POOL_BASE_SIZE (4*1024*1024)\n"
-     "#define BYTE_POOL_SIZE (BYTE_POOL_BASE_SIZE - 8*(NROS_EXECUTOR_BACKING_U64S))\n",
+     "#define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES)\n",
      "build.file(&dest);\n", 1),
 ]
 
@@ -879,9 +878,9 @@ def main():
         for complaint in bad:
             failures.append(f"  {rel}: {complaint}")
 
-    # The ThreadX subtraction site is checked whenever a ThreadX board states
-    # the rung — and ONLY then, so a tree that has not paired ThreadX yet is not
-    # required to carry the plumbing.
+    # The ThreadX pool site is checked whenever a ThreadX board states the rung:
+    # the rung still sizes the `.bss` backing, and the pool must not subtract it
+    # (issue 2624).
     threadx_stated = any(
         last_int(RUNG_RE, (repo / rel).read_text(errors="replace")) is not None
         and PORTS.get(board_platform((repo / rel).read_text(errors="replace")), {}).get("site")

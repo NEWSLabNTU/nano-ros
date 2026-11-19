@@ -119,6 +119,12 @@ toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"
 # `EXECUTOR_BACKING + byte_pool_storage == BYTE_POOL_BASE_SIZE` (checked with
 # `nm -S` on the rebuilt image).
 #
+# Issue 2624 retired the subtraction: the byte pool is now DERIVED from peaks
+# measured with this backing already in `.bss`
+# (`nros_board_common::threadx_pool`), so it holds no backing and nothing gives
+# it back. This rung now sizes the static alone; the pool is
+# `[knobs.memory] heap_bytes` (`NROS_THREADX_BYTE_POOL_KB`).
+#
 # 11,071 since phase-476 W0 (2026-10-05): one 4-byte lifetime tag per callback
 # slot joined the backing, 4 slots x 4 B = 16 B = 2 words. `node-std-tests`
 # refused 11,069 on this target; its own `cargo check` accepts 11,071 and

@@ -1617,6 +1617,8 @@ pub fn memory_env_key_for(platform: &str, knob: &str) -> Option<&'static str> {
         "heap_bytes" if freertos => Some("NROS_FREERTOS_HEAP_KB"),
         "app_stack_bytes" if freertos => Some("NROS_FREERTOS_APP_STACK_KB"),
         "app_stack_bytes" if threadx => Some("NROS_THREADX_APP_STACK_KB"),
+        // Issue 2624 — ThreadX's heap is its byte pool: the whole allocator.
+        "heap_bytes" if threadx => Some("NROS_THREADX_BYTE_POOL_KB"),
         _ => None,
     }
 }
@@ -4970,8 +4972,13 @@ mod tests {
         );
         assert_eq!(r[1].1.value, 40 * 1024);
         assert_eq!(r[1].1.env_key, Some("NROS_THREADX_APP_STACK_KB"));
+        // ThreadX sizes its byte pool, which is its heap (issue 2624).
+        assert_eq!(
+            memory_env_key_for("threadx-riscv64", "heap_bytes"),
+            Some("NROS_THREADX_BYTE_POOL_KB")
+        );
         // No platform answers a heap spelling it does not size.
-        assert_eq!(memory_env_key_for("threadx-riscv64", "heap_bytes"), None);
+        assert_eq!(memory_env_key_for("nuttx", "heap_bytes"), None);
     }
 
     /// The name lists `memory_env_key_for` matches on are the platform files'

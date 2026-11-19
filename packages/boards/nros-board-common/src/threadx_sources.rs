@@ -102,7 +102,7 @@ pub fn add_threadx_port_sources(
 /// let mut glue = cc::Build::new();
 /// configure_arch(&mut glue);
 /// add_threadx_includes(&mut glue, &threadx_dir, &port_dir, &config_dir);
-/// nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue);
+/// nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue, 64 * 1024);
 /// glue.file(manifest_dir.join("c/board_threadx_linux.c"));
 /// glue.compile("glue");
 /// ```
@@ -135,7 +135,9 @@ pub fn apply_threadx_cflags(build: &mut cc::Build) {
     println!("cargo:rerun-if-env-changed=THREADX_CFLAGS");
 }
 
-pub fn add_threadx_hooks_source(build: &mut cc::Build) {
+/// Compile `c/threadx_hooks.c` into `build`, with the byte pool sized for an
+/// image whose app thread takes `app_stack_bytes`.
+pub fn add_threadx_hooks_source(build: &mut cc::Build, app_stack_bytes: usize) {
     const HOOKS_C: &str = include_str!("../c/threadx_hooks.c");
     let out_dir = std::path::PathBuf::from(
         std::env::var_os("OUT_DIR").expect("nros-board-common: OUT_DIR not set"),
@@ -144,50 +146,65 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build) {
     std::fs::write(&dest, HOOKS_C)
         .unwrap_or_else(|e| panic!("nros-board-common: write({}): {e}", dest.display()));
     build.file(&dest);
-    forward_executor_backing_words(build);
+    define_byte_pool(build, app_stack_bytes);
     println!(
         "cargo:rerun-if-changed={}/c/threadx_hooks.c",
         env!("CARGO_MANIFEST_DIR")
     );
 }
 
-/// phase-448 W5 / issue 1145 — hand `threadx_hooks.c` the SAME backing
-/// statement `nros-node` sizes `EXECUTOR_BACKING` from, so the byte pool can
-/// give those bytes back instead of reserving them twice.
+// Issue 2624.
+/// Size the byte pool `threadx_hooks.c` reserves.
 ///
-/// # Why it is resolved here and not passed in
+/// `[knobs.memory] heap_bytes` (env `NROS_THREADX_BYTE_POOL_KB`) when stated;
+/// else [`crate::threadx_pool::default_byte_pool_bytes`]: the app stack plus
+/// the RMW's measured working set. The RMW is this board crate's own feature:
+/// with no `rmw-zenoh` the image runs a DDS backend, which takes the larger
+/// working set (Cyclone's; XRCE's is unmeasured and smaller).
 ///
-/// The number has exactly one home — `[knobs.executor] backing_u64s` in
-/// the board's `nros-board.toml`, plus the `NROS_EXECUTOR_BACKING_U64S` env
-/// front-end that outranks it (RFC-0049). Both readers walk the same ladder
-/// through `BuildRungs`, so they cannot disagree. Writing the subtrahend down a
-/// second time — in a `.conf`, in a leaf `[env]`, in this file — is issue
-/// 1171's defect, and the reason Zephyr needed a gate to notice.
-///
-/// # Why the board crate CAN do this and FreeRTOS's could not
-///
-/// Issue 1197 established that a board crate cannot DERIVE the backing size: it
-/// is `arena + repr(Rust) tables`, the tables are the target compiler's to lay
-/// out, and probing `nros-node` from outside its own dependency graph gets the
-/// wrong features and the wrong env (measured: 87,256 against a linked 21,832).
-/// Nothing here derives anything. It forwards a STATED number, which is a fact
-/// about the board that the board file already holds.
-///
-/// Unstated → no define, so the C file's own `#ifndef` default (0) applies and
-/// the pool stays at its base. That is the pre-W6 behaviour and the safe
-/// direction: the image wastes the bytes rather than running out of them.
-/// The env-reading idiom itself is NOT here: `executor_rung_opt` lives beside
-/// `executor_env_key` in `platform_config`, so a migrated knob has one
-/// env-reading site in the tree (`check-knob-single-reader`). This file supplies
-/// only what to do with the answer.
-fn forward_executor_backing_words(build: &mut cc::Build) {
-    const KNOB: &str = "backing_u64s";
-    if let Some(words) = crate::platform_config::executor_rung_opt(KNOB) {
-        build.define(
-            crate::platform_config::executor_env_key(KNOB),
-            words.to_string().as_str(),
+/// A stated pool below the app stack plus the measured working set is refused
+/// here, naming the knob, and the C file's `_Static_assert` refuses it again
+/// on a road that skips this (cmake). Returns the pool's size.
+pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize {
+    use crate::threadx_pool::{PoolRmw, default_byte_pool_bytes, least_byte_pool_bytes};
+    const POOL_ENV: &str = "NROS_THREADX_BYTE_POOL_KB";
+    let rmw = if std::env::var_os("CARGO_FEATURE_RMW_ZENOH").is_some() {
+        PoolRmw::Zenoh
+    } else {
+        PoolRmw::Cyclone
+    };
+    let derived = default_byte_pool_bytes(app_stack_bytes, rmw);
+    crate::platform_config::watch_knob_env(POOL_ENV);
+    let pool = match crate::platform_config::BuildRungs::from_build_env() {
+        Some(rungs) => rungs.memory_value("heap_bytes", derived),
+        // A bare `cargo build` names no platform: the env rung alone.
+        None => crate::platform_config::knob_env(&|k| std::env::var(k).ok(), POOL_ENV)
+            .map(|v| {
+                v.trim()
+                    .parse::<usize>()
+                    .unwrap_or_else(|_| panic!("{POOL_ENV} must be a decimal KiB count, got `{v}`"))
+                    * 1024
+            })
+            .unwrap_or(derived),
+    };
+    let least = least_byte_pool_bytes(app_stack_bytes, rmw);
+    if pool < least {
+        panic!(
+            "the ThreadX byte pool is {pool} bytes, below the {least} this image needs \
+             (its {app_stack_bytes}-byte app stack plus the {rmw:?} working set measured \
+             on this port). Raise `[knobs.memory] heap_bytes` ({POOL_ENV}) to at least {} KiB.",
+            least.div_ceil(1024)
         );
     }
+    if rmw == PoolRmw::Cyclone {
+        build.define("NROS_THREADX_POOL_DDS", "1");
+    }
+    build.define(
+        "NROS_THREADX_APP_STACK_BYTES",
+        app_stack_bytes.to_string().as_str(),
+    );
+    build.define("NROS_THREADX_BYTE_POOL_BYTES", pool.to_string().as_str());
+    pool
 }
 
 pub fn add_nros_platform_threadx_build(build: &mut cc::Build) {
