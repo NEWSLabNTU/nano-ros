@@ -105,21 +105,21 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
 | 18 | `send_request` | Client (rmw's term; was `service_client`) | optional |
 | 19 | `take_response` | Client (rmw's term; was `service_client`) | optional |
 | 20 | `subscription_event_init` | Status events (optional) | optional |
-| 21 | `subscription_take_event` | Status events: how the three upstream parts map here | optional |
-| 22 | `publisher_take_event` | Status events: how the three upstream parts map here | optional |
-| 23 | `publisher_event_init` | Status events: how the three upstream parts map here | optional |
-| 24 | `publisher_assert_liveliness` | Status events: how the three upstream parts map here | optional |
-| 25 | `next_deadline_ms` | Status events: how the three upstream parts map here | optional |
-| 26 | `set_wake_callback` | Status events: how the three upstream parts map here | optional |
-| 27 | `borrow_loaned_message` | Status events: how the three upstream parts map here | optional |
-| 28 | `publish_loaned_message` | Status events: how the three upstream parts map here | optional |
-| 29 | `return_loaned_message_from_publisher` | Status events: how the three upstream parts map here | optional |
-| 30 | `take_loaned_message` | Status events: how the three upstream parts map here | optional |
-| 31 | `return_loaned_message_from_subscription` | Status events: how the three upstream parts map here | optional |
-| 32 | `service_server_is_available` | Status events: how the three upstream parts map here | optional |
-| 33 | `take_sequence` | Status events: how the three upstream parts map here | optional |
-| 34 | `publish_streamed` | Status events: how the three upstream parts map here | optional |
-| 35 | `ping_session` | Status events: how the three upstream parts map here | optional |
+| 21 | `subscription_take_event` | Status events (optional) | optional |
+| 22 | `publisher_take_event` | Status events (optional) | optional |
+| 23 | `publisher_event_init` | Status events (optional) | optional |
+| 24 | `publisher_assert_liveliness` | Status events (optional) | optional |
+| 25 | `next_deadline_ms` | Executor wake + next-deadline hints (optional) | optional |
+| 26 | `set_wake_callback` | Executor wake + next-deadline hints (optional) | optional |
+| 27 | `borrow_loaned_message` | Zero-copy loans (optional) | optional |
+| 28 | `publish_loaned_message` | Zero-copy loans (optional) | optional |
+| 29 | `return_loaned_message_from_publisher` | Zero-copy loans (optional) | optional |
+| 30 | `take_loaned_message` | Zero-copy loans (optional) | optional |
+| 31 | `return_loaned_message_from_subscription` | Zero-copy loans (optional) | optional |
+| 32 | `service_server_is_available` | Service-server availability (optional) | optional |
+| 33 | `take_sequence` | Batched take + streamed publish (optional) | optional |
+| 34 | `publish_streamed` | Batched take + streamed publish (optional) | optional |
+| 35 | `ping_session` | Session liveness probe (optional) | optional |
 | 36 | `subscription_supports_in_place` | Zero-copy in-place subscription take | optional |
 | 37 | `process_raw_in_place` | Zero-copy in-place subscription take | optional |
 | 38 | `get_implementation_identifier` | Identity + matched counts (all optional) | optional |
