@@ -527,8 +527,9 @@ executor's minimum always holds.
 - **NuttX fmu-v6x** was measured once from the spike recipe, with OPEN 7,528 B
   and SPIN 3,672 B at O3. It has no lane until phase-557 W3b.
 
-At `opt-level="z"` the walk conflates callers through the machine outliner
-(issue 2506). The detail is in
+At `opt-level="z"` the walk conflated callers through the machine outliner's
+bodies, which every module numbers from 0 (issue 2506, fixed: an outlined body
+is walked per object). The detail is in
 [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W3.
 
 ### W5: the cargo leaf CHECKs the board's stated stack (2026-11-13)
