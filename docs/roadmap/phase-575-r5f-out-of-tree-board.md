@@ -266,19 +266,23 @@ Steps, in order:
      500 ping/pong round trips with its cycle counter after 20 warm-up, one
      in flight; TX batching off). Re-measured after the board package took
      over the Kconfig (32 KiB main stack, IPM and RPMsg from the board's
-     `prj.conf`): superproject 423af0dfca, zenoh-pico fork 26041f73, Zephyr
-     v3.7.0 with SDK 0.16.8; both images rebuilt clean 12:08–12:12 UTC on
-     2026-11-19 (235 s), outside the nightly window.
+     `prj.conf`), on the toolchain Zephyr itself pins: superproject
+     501f936cb1 (measured at 9e237cde98, which adds only a changelog
+     fragment), zenoh-pico fork 26041f73, Zephyr v3.7.2 with SDK 0.16.9;
+     both images rebuilt from empty build directories 18:42–18:48 UTC on
+     2026-11-19 (339 s), outside the nightly window.
 
      | QEMU timing | p50 | p99 | max | lost |
      | --- | --- | --- | --- | --- |
-     | `-icount shift=5,sleep=off` (time = instructions × 32 ns; 3 runs, identical) | 1,607 µs | 1,691 µs | 1,802 µs | 0 |
-     | `-icount shift=auto` (tracks the host clock; one run) | 402 µs | 3,390 µs | 3,545 µs | 0 |
+     | `-icount shift=5,sleep=off` (time = instructions × 32 ns; 3 runs, identical) | 1,612 µs | 1,623 µs | 1,697 µs | 0 |
+     | `-icount shift=auto` (tracks the host clock; one run) | 403 µs | 53,420 µs | 63,120 µs | 0 |
 
-     The fixed-shift figures are the same as before the Kconfig move, to the
-     microsecond. The `shift=auto` row depends on host load and moved from
-     800/1,617 µs at 03:03 UTC to 402/3,390 µs here; it is not a comparison
-     figure.
+     Against the same tree built on Zephyr v3.7.0 with SDK 0.16.8 (12:08–12:12
+     UTC the same day: p50 1,607, p99 1,691, max 1,802 µs at the fixed
+     shift), the median moved by 5 µs and the tail tightened, which is code
+     generation, not a change in the link. The `shift=auto` row depends on
+     host load: its tail has read 1,617, 3,390, 806 and now 53,420 µs across
+     four runs of identical images, so it is not a comparison figure.
 
      The fixed shift is the comparable figure: about 50,000 instructions a
      round trip, so roughly 25,000 a hop. With TX batching on (the default)
