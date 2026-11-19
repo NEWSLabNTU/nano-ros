@@ -154,7 +154,7 @@ impl SeedModels {
             let Ok(bytes) = std::fs::read(&path) else {
                 continue;
             };
-            let Ok(model) = crate::orchestration::model_ingest::load_model(&path) else {
+            let Ok(model) = crate::orchestration::model_ingest::load_model(&path, None) else {
                 continue;
             };
             let shown = path
