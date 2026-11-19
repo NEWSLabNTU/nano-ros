@@ -7083,7 +7083,7 @@ fn test_handle_set_union() {
 #[test]
 fn test_readiness_snapshot() {
     let snap = ReadinessSnapshot {
-        bits: 0b101,
+        bits: super::slot_mask::SlotMask::from_word0(0b101),
         count: 3,
     };
     assert!(snap.is_ready(HandleId::for_owned_slot(0)));
@@ -20301,20 +20301,12 @@ fn a_name_resolves_against_the_node_its_entity_registers_on() {
     );
 }
 
-/// Issue 2541 -- an executor whose table is sized past the 64 slots its masks
-/// can name refuses the 65th callback, by name, and dispatches the 64 it took.
-/// The table's size came from the image with no upper bound while the
-/// callback index rode in `u64` masks (`1u64 << i`), so the 65th registration
-/// used to be ACCEPTED and its dispatch shifted by 64: a panic in a debug
-/// build ("attempt to shift left with overflow", spin.rs), slot 0's bit in a
-/// release one.
-#[test]
-fn an_executor_sized_past_64_callbacks_refuses_the_65th() {
-    use core::sync::atomic::{AtomicU32, Ordering};
-    const N: usize = 70;
+/// Issue 2541 -- an executor carved for `cbs` callbacks, with a clock, on a
+/// `'static` backing of its own.
+fn executor_sized_for(cbs: usize) -> Executor<'static> {
     let sizing = super::storage::ExecutorSizing {
-        cbs: N,
-        arena: super::storage::ExecutorSizing::DEFAULT.arena * 24,
+        cbs,
+        arena: super::storage::ExecutorSizing::DEFAULT.arena * cbs.div_ceil(3),
         ..super::storage::ExecutorSizing::DEFAULT
     };
     let backing: &'static mut [core::mem::MaybeUninit<u64>] =
@@ -20324,6 +20316,75 @@ fn an_executor_sized_past_64_callbacks_refuses_the_65th() {
     let mut executor = unsafe { Executor::from_session_in(MockSession::new(), backing, sizing) };
     executor.clock_us_fn = Some(test_clock_us);
     executor.last_spin_end_us = Some(test_clock_us());
+    executor
+}
+
+/// Issue 2541 -- spin until every counter has moved (or 5 s pass).
+fn spin_until_all_fired(
+    executor: &mut Executor<'static>,
+    counts: &[core::sync::atomic::AtomicU32],
+) {
+    use core::sync::atomic::Ordering;
+    let t0 = std::time::Instant::now();
+    while counts.iter().any(|c| c.load(Ordering::SeqCst) == 0)
+        && t0.elapsed() < std::time::Duration::from_secs(5)
+    {
+        executor.spin_once(core::time::Duration::from_millis(2));
+    }
+}
+
+/// Issue 2541 -- an executor sized past 64 callbacks takes them all and
+/// dispatches each one as itself. The callback index rode in `u64` masks
+/// (`1u64 << i`), so a 65th registration was first ACCEPTED and dispatched
+/// through a shift by 64 (a panic in a debug build, slot 0's bit in a release
+/// one), then refused; the masks are now as wide as the image's count, and
+/// cfg(test) gives them two words, so 70 fit. Each timer counts its own
+/// firings: a slot above 64 that aliased a low one would leave its own
+/// counter at zero and push the low one's ahead of the rest.
+#[test]
+fn an_executor_sized_past_64_callbacks_dispatches_every_one() {
+    use core::sync::atomic::{AtomicU32, Ordering};
+    const N: usize = 70;
+    const { assert!(N <= super::spin::MAX_CALLBACK_SLOTS, "cfg(test) holds 128") };
+    let mut executor = executor_sized_for(N);
+    let counts: std::sync::Arc<std::vec::Vec<AtomicU32>> =
+        std::sync::Arc::new((0..N).map(|_| AtomicU32::new(0)).collect());
+    for i in 0..N {
+        let c = counts.clone();
+        let id = executor
+            .register_timer(TimerDuration::from_millis(1), move || {
+                c[i].fetch_add(1, Ordering::SeqCst);
+            })
+            .unwrap_or_else(|e| panic!("callback {i} of {N} refused: {e}"));
+        assert_eq!(id.slot(), i);
+    }
+    spin_until_all_fired(&mut executor, &counts);
+    let never: std::vec::Vec<usize> = (0..N)
+        .filter(|&i| counts[i].load(Ordering::SeqCst) == 0)
+        .collect();
+    assert!(never.is_empty(), "timers that never fired: {never:?}");
+    // One more pass with every timer due: each fires once more, slot 0 and
+    // slot 64 alike.
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    let before: std::vec::Vec<u32> = counts.iter().map(|c| c.load(Ordering::SeqCst)).collect();
+    executor.spin_once(core::time::Duration::from_millis(0));
+    for i in [0usize, 1, 6, 63, 64, 65, 69] {
+        assert_eq!(
+            counts[i].load(Ordering::SeqCst),
+            before[i] + 1,
+            "slot {i} fires once per pass"
+        );
+    }
+}
+
+/// Issue 2541 -- the table refuses the callback one past the masks'
+/// capacity, by name, and dispatches the ones it took.
+#[test]
+fn an_executor_sized_past_its_slot_capacity_refuses_the_next_callback() {
+    use core::sync::atomic::{AtomicU32, Ordering};
+    const CAP: usize = super::spin::MAX_CALLBACK_SLOTS;
+    const N: usize = CAP + 2;
+    let mut executor = executor_sized_for(N);
     let counts: std::sync::Arc<std::vec::Vec<AtomicU32>> =
         std::sync::Arc::new((0..N).map(|_| AtomicU32::new(0)).collect());
     let mut refused = None;
@@ -20332,29 +20393,92 @@ fn an_executor_sized_past_64_callbacks_refuses_the_65th() {
         match executor.register_timer(TimerDuration::from_millis(1), move || {
             c[i].fetch_add(1, Ordering::SeqCst);
         }) {
-            Ok(_) => assert!(i < 64, "callback {i} registered past the 64 the masks name"),
+            Ok(_) => assert!(
+                i < CAP,
+                "callback {i} registered past the {CAP} the masks name"
+            ),
             Err(e) => {
                 refused = Some((i, e));
                 break;
             }
         }
     }
-    let (at, err) = refused.expect("a callback past 64 was not refused");
-    assert_eq!(at, 64, "the first refusal is the 65th callback");
+    let (at, err) = refused.expect("a callback past the capacity was not refused");
+    assert_eq!(at, CAP, "the first refusal is the one past the capacity");
     assert_eq!(err, NodeError::ExecutorFull);
     assert!(
         std::format!("{err}").contains("NROS_EXECUTOR_MAX_CBS"),
         "the refusal names the knob: {err}"
     );
-    // The 64 it took all dispatch, and nothing panics on the way.
-    let t0 = std::time::Instant::now();
-    while counts[..64].iter().any(|c| c.load(Ordering::SeqCst) == 0)
-        && t0.elapsed() < std::time::Duration::from_secs(5)
-    {
-        executor.spin_once(core::time::Duration::from_millis(2));
-    }
-    let never: std::vec::Vec<usize> = (0..64)
+    // The ones it took all dispatch, and nothing panics on the way.
+    spin_until_all_fired(&mut executor, &counts[..CAP]);
+    let never: std::vec::Vec<usize> = (0..CAP)
         .filter(|&i| counts[i].load(Ordering::SeqCst) == 0)
         .collect();
     assert!(never.is_empty(), "timers that never fired: {never:?}");
+}
+
+/// Issue 2541 -- dispatch order is rank order across the word boundary: a
+/// timer on slot 66 whose node holds rank 0 runs before the 66 timers below
+/// it whose node holds rank 3, which keep registration order among
+/// themselves.
+#[test]
+fn a_more_urgent_slot_past_64_dispatches_before_the_slots_below_it() {
+    const LOW: usize = 66;
+    let mut executor = executor_sized_for(LOW + 1);
+    executor.bind_node_rank("lo", "/", 3).unwrap();
+    executor.bind_node_rank("hi", "/", 0).unwrap();
+    let lo = executor.node_builder("lo").build().unwrap();
+    let hi = executor.node_builder("hi").build().unwrap();
+    let order = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<usize>::new()));
+    let mut lo_slots = std::vec::Vec::new();
+    for _ in 0..LOW {
+        let o = order.clone();
+        let slot = std::sync::Arc::new(core::sync::atomic::AtomicUsize::new(usize::MAX));
+        let s = slot.clone();
+        let id = executor
+            .node_mut(lo)
+            .create_timer_repeating(TimerDuration::from_millis(1), move || {
+                o.lock()
+                    .unwrap()
+                    .push(s.load(core::sync::atomic::Ordering::SeqCst));
+            })
+            .unwrap();
+        slot.store(id.slot(), core::sync::atomic::Ordering::SeqCst);
+        lo_slots.push(id.slot());
+    }
+    let o = order.clone();
+    let hi_slot = std::sync::Arc::new(core::sync::atomic::AtomicUsize::new(usize::MAX));
+    let h = hi_slot.clone();
+    let id = executor
+        .node_mut(hi)
+        .create_timer_repeating(TimerDuration::from_millis(1), move || {
+            o.lock()
+                .unwrap()
+                .push(h.load(core::sync::atomic::Ordering::SeqCst));
+        })
+        .unwrap();
+    hi_slot.store(id.slot(), core::sync::atomic::Ordering::SeqCst);
+    let hi_slot = id.slot();
+    assert!(hi_slot >= 64, "the urgent timer sits in the second word");
+    assert!(lo_slots.iter().any(|&s| s < 64) && lo_slots.iter().all(|&s| s < hi_slot));
+
+    // Every timer shares one period and one clock, so they come due in the
+    // same pass.
+    let t0 = std::time::Instant::now();
+    let pass = loop {
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        executor.spin_once(core::time::Duration::from_millis(0));
+        let fired = core::mem::take(&mut *order.lock().unwrap());
+        if !fired.is_empty() {
+            break fired;
+        }
+        assert!(
+            t0.elapsed() < std::time::Duration::from_secs(5),
+            "no timer fired"
+        );
+    };
+    let mut expected = std::vec![hi_slot];
+    expected.extend(lo_slots.iter().copied());
+    assert_eq!(pass, expected, "rank first, then registration order");
 }

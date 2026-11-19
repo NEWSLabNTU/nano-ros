@@ -132,6 +132,8 @@ pub(crate) mod spsc_ring;
 mod storage;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod triple_buffer;
+// Issue 2541 -- callback slot masks wider than one `u64`.
+pub(crate) mod slot_mask;
 mod types;
 #[cfg(all(any(has_rmw, test), feature = "wake-latency-probe"))]
 pub mod wake_probe;

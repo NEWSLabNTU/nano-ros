@@ -22,11 +22,15 @@
 //! ## Capacity
 //!
 //! The const-generic `N` caps the number of distinct `DescIdx` values
-//! the set can track. It holds N = 64 to match the existing
-//! `u64` readiness bitmap width; future MAX_HANDLES bumps will widen
-//! the storage accordingly (likely a bit set of N handles).
+//! the set can track. Presence is a [`SlotMask`], so `N` may be anything up
+//! to `crate::config::CALLBACK_SLOT_CAPACITY`, the executor's callback slot
+//! capacity; the executor instantiates every set at exactly that.
 
-use super::types::{ActiveJob, DescIdx};
+use super::{
+    slot_mask::SlotMask,
+    types::{ActiveJob, DescIdx},
+};
+use crate::config::CALLBACK_SLOT_CAPACITY;
 
 /// Capacity-overflow error returned from [`ReadySet::insert`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,14 +54,14 @@ pub(crate) trait ReadySet {
     fn contains(&self, desc_idx: DescIdx) -> bool;
 }
 
-/// FIFO ready set backed by a 64-bit presence bitmap.
+/// FIFO ready set backed by a presence bitmap ([`SlotMask`]).
 ///
 /// Selection order is the registration order of `desc_idx` (lowest
 /// bit first), which reproduces the pre-110.A `spin_once` behavior
 /// exactly.
 #[derive(Debug)]
 pub(crate) struct FifoReadySet<const N: usize> {
-    bits: u64,
+    bits: SlotMask,
 }
 
 impl<const N: usize> Default for FifoReadySet<N> {
@@ -68,24 +72,28 @@ impl<const N: usize> Default for FifoReadySet<N> {
 
 impl<const N: usize> FifoReadySet<N> {
     pub const fn new() -> Self {
-        // Capacity guard — 110.A bitmap width matches the existing
-        // executor scan. Wider sets land with the BitSet rewrite.
+        // Capacity guard: the presence bitmap is one callback slot mask.
         const {
-            assert!(N <= 64, "FifoReadySet capacity capped at 64");
+            assert!(
+                N <= CALLBACK_SLOT_CAPACITY,
+                "FifoReadySet capacity is capped at the callback slot capacity"
+            );
         }
-        Self { bits: 0 }
+        Self {
+            bits: SlotMask::EMPTY,
+        }
     }
 
     /// No `desc_idx` is queued.
     pub const fn bits_empty(&self) -> bool {
-        self.bits == 0
+        self.bits.is_empty()
     }
 
     /// Bulk-set the presence bitmap. Test-only helper: the
     /// runtime path inserts per-bit; only the unit tests set the bitmap in
     /// one shot.
     #[cfg(test)]
-    pub fn set_bits(&mut self, bits: u64) {
+    pub fn set_bits(&mut self, bits: SlotMask) {
         self.bits = bits;
     }
 }
@@ -93,12 +101,12 @@ impl<const N: usize> FifoReadySet<N> {
 impl<const N: usize> ReadySet for FifoReadySet<N> {
     #[cfg(test)]
     fn clear(&mut self) {
-        self.bits = 0;
+        self.bits = SlotMask::EMPTY;
     }
 
     #[cfg(test)]
     fn is_empty(&self) -> bool {
-        self.bits == 0
+        self.bits.is_empty()
     }
 
     fn insert(&mut self, job: ActiveJob) -> Result<(), Overflow> {
@@ -106,16 +114,14 @@ impl<const N: usize> ReadySet for FifoReadySet<N> {
         if idx >= N {
             return Err(Overflow);
         }
-        self.bits |= 1u64 << idx;
+        self.bits.set(idx);
         Ok(())
     }
 
     fn pop_next(&mut self) -> Option<ActiveJob> {
-        if self.bits == 0 {
-            return None;
-        }
-        let idx = self.bits.trailing_zeros() as DescIdx;
-        self.bits &= !(1u64 << idx);
+        let first = self.bits.first_set()?;
+        self.bits.clear(first);
+        let idx = first as DescIdx;
         Some(ActiveJob {
             sort_key: idx as u32,
             desc_idx: idx,
@@ -124,11 +130,7 @@ impl<const N: usize> ReadySet for FifoReadySet<N> {
 
     #[cfg(test)]
     fn contains(&self, desc_idx: DescIdx) -> bool {
-        let idx = desc_idx as usize;
-        if idx >= 64 {
-            return false;
-        }
-        self.bits & (1u64 << idx) != 0
+        self.bits.test(desc_idx as usize)
     }
 }
 
@@ -160,18 +162,21 @@ pub(crate) struct EdfReadySet<const N: usize> {
     heap: [(u32, super::types::DescIdx); N],
     len: usize,
     /// Presence bitmap for O(1) idempotency check on `insert`.
-    present: u64,
+    present: SlotMask,
 }
 
 impl<const N: usize> EdfReadySet<N> {
     pub const fn new() -> Self {
         const {
-            assert!(N <= 64, "EdfReadySet presence bitmap caps at 64");
+            assert!(
+                N <= CALLBACK_SLOT_CAPACITY,
+                "EdfReadySet presence bitmap is capped at the callback slot capacity"
+            );
         }
         Self {
             heap: [(0, 0); N],
             len: 0,
-            present: 0,
+            present: SlotMask::EMPTY,
         }
     }
 
@@ -217,7 +222,7 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
     #[cfg(test)]
     fn clear(&mut self) {
         self.len = 0;
-        self.present = 0;
+        self.present = SlotMask::EMPTY;
     }
 
     #[cfg(test)]
@@ -231,12 +236,12 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
             return Err(Overflow);
         }
         // Idempotent: skip when already in the heap.
-        if self.present & (1u64 << idx) != 0 {
+        if self.present.test(idx) {
             return Ok(());
         }
         self.heap[self.len] = (job.sort_key, job.desc_idx);
         self.len += 1;
-        self.present |= 1u64 << idx;
+        self.present.set(idx);
         self.sift_up(self.len - 1);
         Ok(())
     }
@@ -251,7 +256,7 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
             self.heap[0] = self.heap[self.len];
             self.sift_down(0);
         }
-        self.present &= !(1u64 << desc_idx as usize);
+        self.present.clear(desc_idx as usize);
         Some(super::types::ActiveJob {
             sort_key: key,
             desc_idx,
@@ -260,11 +265,7 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
 
     #[cfg(test)]
     fn contains(&self, desc_idx: super::types::DescIdx) -> bool {
-        let idx = desc_idx as usize;
-        if idx >= 64 {
-            return false;
-        }
-        self.present & (1u64 << idx) != 0
+        self.present.test(desc_idx as usize)
     }
 }
 
@@ -459,7 +460,7 @@ mod tests {
     #[test]
     fn fifo_set_bits_round_trip() {
         let mut r: FifoReadySet<64> = FifoReadySet::new();
-        r.set_bits(0b10110);
+        r.set_bits(SlotMask::from_word0(0b10110));
         assert_eq!(r.pop_next().unwrap().desc_idx, 1);
         assert_eq!(r.pop_next().unwrap().desc_idx, 2);
         assert_eq!(r.pop_next().unwrap().desc_idx, 4);
@@ -584,5 +585,42 @@ mod tests {
         for idx in 0..4u8 {
             assert!(!r.contains(idx));
         }
+    }
+
+    // Issue 2541.
+    /// The presence bitmaps hold a `desc_idx` past 64 as itself: no aliasing
+    /// onto the slot 64 below, and FIFO order runs across the word boundary.
+    #[test]
+    fn sets_hold_indices_past_64() {
+        let mut f: FifoReadySet<128> = FifoReadySet::new();
+        for idx in [100u8, 3, 64, 127] {
+            f.insert(job(idx)).unwrap();
+        }
+        assert!(f.contains(100) && !f.contains(36));
+        let order: Vec<DescIdx> =
+            core::iter::from_fn(|| f.pop_next().map(|j| j.desc_idx)).collect();
+        assert_eq!(order, vec![3, 64, 100, 127]);
+
+        let mut e: EdfReadySet<128> = EdfReadySet::new();
+        e.insert(ActiveJob {
+            sort_key: 5,
+            desc_idx: 100,
+        })
+        .unwrap();
+        e.insert(ActiveJob {
+            sort_key: 9,
+            desc_idx: 100,
+        })
+        .unwrap();
+        e.insert(ActiveJob {
+            sort_key: 7,
+            desc_idx: 36,
+        })
+        .unwrap();
+        assert!(e.contains(100) && e.contains(36) && !e.contains(64));
+        assert_eq!(e.pop_next().map(|j| j.desc_idx), Some(100));
+        assert!(!e.contains(100));
+        assert_eq!(e.pop_next().map(|j| j.desc_idx), Some(36));
+        assert_eq!(e.pop_next(), None);
     }
 }

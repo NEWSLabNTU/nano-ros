@@ -50,7 +50,9 @@
 
 use core::ffi::c_void;
 
-use portable_atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering::SeqCst};
+use portable_atomic::{AtomicBool, AtomicU8, Ordering::SeqCst};
+
+use super::slot_mask::{AtomicSlotMask, SlotMask};
 
 use super::spin::{MAX_WAKE_SOURCES, ParkUntilFn, WakeSourceId, WakeSourceSlot};
 
@@ -62,9 +64,9 @@ const _: () = assert!(MAX_WAKE_SOURCES < 256, "Worker::wake_source_count is a u8
 /// [`Priority::dispatch_level`]: super::sched_context::Priority::dispatch_level
 pub const MAX_DISPATCH_LEVEL: u8 = 31;
 
-/// Callback slots one scheduler orders: one machine word of ready bits, as
-/// the entity wake's ready word (`entity_wake::SLOTS`).
-pub const SCHEDULER_SLOTS: usize = usize::BITS as usize;
+/// Callback slots one scheduler orders: as many as the entity wake's ready
+/// words name (the image's callback count in whole machine words).
+pub const SCHEDULER_SLOTS: usize = super::slot_mask::ATOMIC_SLOTS;
 
 /// Workers (preemption levels) one scheduler can host: the
 /// `CONFIG_NROS_EXECUTOR_MAX_LEVELS` range's upper end.
@@ -227,7 +229,7 @@ pub type BandWaitFn = unsafe extern "C" fn(ctx: *mut c_void, us: u64) -> i32;
 pub struct BandWaiter {
     /// The band's slots, as the worker's last pass saw them. An arrival on
     /// one of them wakes this worker only.
-    pub(crate) slots: AtomicUsize,
+    pub(crate) slots: AtomicSlotMask,
     /// Signals the wake object (`k_sem_give`, a futex post).
     #[cfg_attr(not(all(feature = "alloc", feature = "rmw-cffi")), allow(dead_code))]
     // the arrival path
@@ -273,7 +275,7 @@ impl BandWaiter {
         ctx: *mut c_void,
     ) -> Self {
         Self {
-            slots: AtomicUsize::new(0),
+            slots: AtomicSlotMask::new(),
             wake,
             wake_from_isr,
             wait,
@@ -330,7 +332,7 @@ pub struct BandWorker {
 impl core::fmt::Debug for BandWaiter {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("BandWaiter")
-            .field("slots", &self.slots.load(SeqCst))
+            .field("slots", &self.slots.load())
             .finish_non_exhaustive()
     }
 }
@@ -400,7 +402,7 @@ pub struct Scheduler {
     /// Each slot's dispatch level; [`UNBOUND`] when no callback is bound.
     slot_level: [AtomicU8; SCHEDULER_SLOTS],
     /// One bit per slot with work queued.
-    ready: AtomicUsize,
+    ready: AtomicSlotMask,
     seats: [Option<Seat>; MAX_WORKERS],
     workers: u8,
 }
@@ -423,7 +425,7 @@ impl Scheduler {
     pub const fn new() -> Self {
         Self {
             slot_level: [const { AtomicU8::new(UNBOUND) }; SCHEDULER_SLOTS],
-            ready: AtomicUsize::new(0),
+            ready: AtomicSlotMask::new(),
             seats: [const { None }; MAX_WORKERS],
             workers: 0,
         }
@@ -518,7 +520,7 @@ impl Scheduler {
             return self.arrive_unattributed();
         };
         // The bit first, so a worker the wake reaches sees it.
-        self.ready.fetch_or(1usize << slot, SeqCst);
+        self.ready.set(slot);
         match self.worker_of(level) {
             Some(w) => {
                 self.wake(w);
@@ -557,9 +559,10 @@ impl Scheduler {
         let Some(band) = self.band(worker) else {
             return false;
         };
-        let ready = self.ready.load(SeqCst);
-        (0..SCHEDULER_SLOTS)
-            .any(|s| ready & (1usize << s) != 0 && band.contains(self.slot_level[s].load(SeqCst)))
+        self.ready
+            .load()
+            .iter_ones()
+            .any(|s| band.contains(self.slot_level[s].load(SeqCst)))
     }
 
     /// Take the most urgent queued slot of `worker`'s band: the lowest
@@ -568,24 +571,18 @@ impl Scheduler {
     pub fn pick(&self, worker: WorkerId) -> Option<usize> {
         let band = self.band(worker)?;
         loop {
-            let ready = self.ready.load(SeqCst);
+            let ready: SlotMask = self.ready.load();
             let mut best: Option<(u8, usize)> = None;
-            let mut bits = ready;
-            while bits != 0 {
-                let s = bits.trailing_zeros() as usize;
-                bits &= bits - 1;
+            for s in ready.iter_ones() {
                 let level = self.slot_level[s].load(SeqCst);
                 if band.contains(level) && best.is_none_or(|(l, _)| level < l) {
                     best = Some((level, s));
                 }
             }
             let (_, slot) = best?;
-            let bit = 1usize << slot;
-            if self
-                .ready
-                .compare_exchange(ready, ready & !bit, SeqCst, SeqCst)
-                .is_ok()
-            {
+            // One compare-exchange on the word holding the slot: it is taken
+            // only if that word is still as read, as the one word was.
+            if self.ready.clear_if_word_unchanged(slot, &ready) {
                 return Some(slot);
             }
         }
