@@ -7459,13 +7459,8 @@ fn resolve_image(
     })();
     // Issue 2482's shape -- an OWNED entry with no launch has no model to
     // resolve, and states its sizes nowhere else: nothing is declared.
-    let inventory = inventory.map_err(|nd| match nd {
-        NotDerived::Failed(why)
-            if crate::cmd::entity_census::owned_entry_without_model(bringup_dir, image) =>
-        {
-            NotDerived::NothingDeclared(why)
-        }
-        other => other,
+    let inventory = inventory.map_err(|nd| {
+        crate::cmd::entity_census::owned_entry_declares_nothing(bringup_dir, image, nd)
     });
     if inventory.is_ok() && image.no_inventory.is_some() {
         eyre::bail!(
@@ -7819,7 +7814,9 @@ fn seed_hand_written_west_bounds(
                 crate::message_bound_knobs::SeedBasis::ClosureAllowed,
             )
         });
-    match seeded {
+    match seeded.map_err(|nd| {
+        crate::cmd::entity_census::owned_entry_declares_nothing(bringup_dir, image, nd)
+    }) {
         Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
         Err(nd) => crate::resolve::report_not_derived(
             "message bounds not seeded",
@@ -7896,6 +7893,9 @@ fn resolve_rust_west_image(
                 crate::cmd::configure::interface_search_path_for(root).as_deref(),
                 crate::message_bound_knobs::SeedBasis::SubscribedOnly,
             )
+        })
+        .map_err(|nd| {
+            crate::cmd::entity_census::owned_entry_declares_nothing(bringup_dir, image, nd)
         }) {
         Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
         Err(nd) => crate::resolve::report_not_derived(

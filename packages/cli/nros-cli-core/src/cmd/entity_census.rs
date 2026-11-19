@@ -493,6 +493,29 @@ pub(crate) fn owned_entry_without_model(
             .is_some_and(|rows| rows.is_empty())
 }
 
+/// Issue 2482's rule, in one place: a derivation that failed for an image
+/// [`owned_entry_without_model`] holds for failed only because it looked for
+/// a model the image cannot have. Such an image states its sizes nowhere, so
+/// the failure is [`NotDerived::NothingDeclared`]. Every reader that derives
+/// from the image's model (the entity inventory, each west message-bound
+/// seed) maps its failure through here.
+///
+/// [`NotDerived::NothingDeclared`]: crate::resolve::NotDerived::NothingDeclared
+pub(crate) fn owned_entry_declares_nothing(
+    bringup_dir: &Path,
+    image: &crate::orchestration::image::ImageBlock,
+    nd: crate::resolve::NotDerived,
+) -> crate::resolve::NotDerived {
+    match nd {
+        crate::resolve::NotDerived::Failed(why)
+            if owned_entry_without_model(bringup_dir, image) =>
+        {
+            crate::resolve::NotDerived::NothingDeclared(why)
+        }
+        other => other,
+    }
+}
+
 /// A standalone C/C++ leaf (its `system.toml` beside its own code, `root`
 /// itself) that writes no `[[component]]` row and authors no launch, so
 /// `nros sync` synthesises no launch for it and it has no SystemModel, and
@@ -3018,6 +3041,38 @@ mod tests {
         assert!(
             !owned_entry_without_model(b, &owned),
             "an authored launch makes a model"
+        );
+    }
+
+    /// Issue 2737 -- every reader that derives from an image's model maps its
+    /// failure through one rule: for an owned entry with no model it is
+    /// "nothing declared" (never refused under `NROS_PROBE_FAILURE=refuse`),
+    /// and for any other image it stays a failure.
+    #[test]
+    fn a_failed_derivation_of_an_owned_entry_without_a_model_declares_nothing() {
+        use crate::resolve::NotDerived;
+        let t = tempfile::tempdir().unwrap();
+        let b = t.path();
+        std::fs::write(b.join("system.toml"), "[system]\nname = \"p\"\n").unwrap();
+        let owned = crate::orchestration::image::ImageBlock {
+            entry: Some("probe".into()),
+            ..Default::default()
+        };
+        let failed = || NotDerived::Failed("cannot resolve the SystemModel".into());
+        assert!(matches!(
+            owned_entry_declares_nothing(b, &owned, failed()),
+            NotDerived::NothingDeclared(_)
+        ));
+        assert!(
+            matches!(
+                owned_entry_declares_nothing(
+                    b,
+                    &crate::orchestration::image::ImageBlock::default(),
+                    failed()
+                ),
+                NotDerived::Failed(_)
+            ),
+            "a generated entry has a model, so its failure stays a failure"
         );
     }
 
