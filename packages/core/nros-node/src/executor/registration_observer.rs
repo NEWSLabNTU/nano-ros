@@ -181,6 +181,61 @@ pub(crate) fn observe_lifecycle(reg: ObservedLifecycle<'_>) {
     }
 }
 
+// Issue 2681.
+/// A node created through the executor's own builder.
+///
+/// The census counts a node when `nros::census_hooks::on_node_create` opens it
+/// in the recorder, and the C, C++ and declarative Rust routes call that hook.
+/// The imperative Rust routes -- `Executor::node_builder(..).build()`,
+/// `Executor::create_node` and the `create_node_on*` forms, all of which build
+/// through `NodeBuilder::build` -- live in this crate, below `nros`, so they
+/// could not call it, and a census of an image built that way recorded no row
+/// for its nodes. `build` reports here instead. Reopening a node is idempotent
+/// in the recorder, so the declarative route, which builds through
+/// the same builder and then calls the hook, still records once.
+///
+/// The node is named as the node table will hold it: the final name and
+/// namespace the builder resolved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObservedNodeCreate<'a> {
+    /// The node's final name.
+    pub name: &'a str,
+    /// The node's namespace, as the node table holds it.
+    pub namespace: &'a str,
+}
+
+/// A sink a metadata probe installs to hear every node the builder creates.
+pub type NodeCreateObserver = fn(ObservedNodeCreate<'_>);
+
+static NODE_CREATE_OBSERVER: Mutex<Option<NodeCreateObserver>> = Mutex::new(None);
+
+/// Install the node-creation sink. Same contract as [`set_observer`]: only
+/// `nros::metadata_mode` calls it, and the last caller wins.
+pub fn set_node_create_observer(observer: NodeCreateObserver) {
+    NODE_CREATE_OBSERVER.with(|slot| *slot = Some(observer));
+}
+
+/// Remove the node-creation sink.
+pub fn clear_node_create_observer() {
+    NODE_CREATE_OBSERVER.with(|slot| *slot = None);
+}
+
+/// Report one node creation. A no-op when nothing is listening.
+///
+/// Called BEFORE the node table answers, like `observe_parameter_declare`: a
+/// node the full table refuses is exactly the one the census must count.
+///
+/// Gated like [`observe`]: its only caller is the node builder, which exists
+/// only with an RMW seam.
+#[cfg(any(has_rmw, test))]
+pub(crate) fn observe_node_create(reg: ObservedNodeCreate<'_>) {
+    // Released before the sink runs, as in `observe`.
+    let sink = NODE_CREATE_OBSERVER.with(|slot| *slot);
+    if let Some(sink) = sink {
+        sink(reg);
+    }
+}
+
 // Issue 2670.
 /// A parameter that Rust code declared through one of the executor's own
 /// declaration routes.

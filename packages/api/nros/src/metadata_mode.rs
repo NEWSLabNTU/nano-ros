@@ -396,6 +396,20 @@ pub fn listen_for_registrations() {
     #[cfg(feature = "param-store")]
     listen_for_parameter_declarations();
     listen_for_descriptor_text();
+    // Issue 2681 -- a node the imperative Rust builder creates opens its row,
+    // as `census_hooks::on_node_create` does for every other route. It records
+    // domain 0, because the builder holds none (the 2670 rule).
+    nros_node::executor::registration_observer::set_node_create_observer(|reg| {
+        if !begin_node(reg.name, reg.namespace, 0) && crate::census_hooks::recording_run() {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros::metadata_mode"),
+                "node `{}` (namespace `{}`) could not be recorded: the recorder is full, so \
+                 the census under-counts this image's nodes",
+                reg.name,
+                reg.namespace
+            );
+        }
+    });
     nros_node::executor::registration_observer::set_observer(|reg| {
         // A dropped `false` here is a fact silently lost, which is the shape
         // every other recorder entry point is `#[must_use]` against. It is NOT
