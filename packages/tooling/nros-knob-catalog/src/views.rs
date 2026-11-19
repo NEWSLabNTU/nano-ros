@@ -10,7 +10,7 @@
 //!   after the committed file;
 //! - [`kconfig_packages`]: `<build>/nros/Kconfig.packages`, `osource`d by the
 //!   module's `Kconfig`;
-//! - [`env_header`]: `<build>/nros/knobs/<owner>_env.h`;
+//! - [`env_header`][]: `<build>/nros/knobs/<owner>_env.h`;
 //! - [`kconfig_rows`]: a package's own `Kconfig`, for a package that is its
 //!   own Zephyr module (`nros knob render --kconfig`, the guest case).
 

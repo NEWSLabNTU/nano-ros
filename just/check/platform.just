@@ -524,6 +524,19 @@ kconfig-knob-forwarding:
 knob-registry:
     @python3 scripts/gen-knob-registry.py --check
 
+# phase-581 W4 (RFC-0140 D3, D13 G1) — every configuration name follows the
+# naming rule N1-N8: a two-segment key under an owner word, spellings
+# mechanical from it, a unit in the name, no build name that is a run name, one
+# NROS_ prefix, no reused retired spelling, no resource variable. Over every
+# in-tree contributor (the merged registry, the fixtures' package files, hand
+# zephyr/Kconfig symbols); the baseline is RFC-0140 Appendix A in
+# `packages/tooling/nros-knob-catalog/config-names.toml` and only shrinks. The
+# catalog loader enforces the same rules on every package it loads. Buildless;
+# self-tests one planted violation per rule on each run.
+[private]
+config-names:
+    @python3 scripts/check/check-config-names.py
+
 # phase-484 W8 (RFC-0103 D2b) — the 32 `legacy` spellings in `knobs.toml` are
 # RETIRED: every reader refuses one that is set. This keeps any ENV reader or
 # writer (a Rust literal / `knob()` / `rerun-if-env-changed`, a cargo `[env]` or

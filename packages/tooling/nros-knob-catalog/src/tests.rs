@@ -431,3 +431,198 @@ fn a_build_script_reads_its_own_file_without_the_scan() {
         "{msg}"
     );
 }
+
+// --- phase-581 W4: the naming rule (RFC-0140 D3, D13 G1) ---------------------------
+
+/// The data file's `[[case]]` corpus, which the gate's self-test runs too
+/// (`scripts/lib/config_names.py`): one rule logic per language, one corpus.
+#[test]
+fn naming_cases_match_the_corpus() {
+    let doc: toml::Table = toml::from_str(naming::DATA).unwrap();
+    let data = naming::Data::get();
+    let c = &doc["case_context"];
+    let set = |k: &str| -> std::collections::BTreeSet<String> {
+        c[k].as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    };
+    let ctx = naming::Context {
+        owners: set("owners"),
+        env_names: set("env_names"),
+        retired: set("retired"),
+        resources: set("resources"),
+    };
+    let cases = doc["case"].as_array().unwrap();
+    assert!(cases.len() >= 8, "the corpus holds a case per rule");
+    let mut seen = std::collections::BTreeSet::new();
+    for case in cases {
+        let s = |k: &str| {
+            case.get(k)
+                .and_then(toml::Value::as_str)
+                .map(str::to_string)
+        };
+        let kind = s("kind").unwrap();
+        let key = s("key");
+        let subject = s("name").or_else(|| key.clone()).unwrap();
+        let spellings: Vec<(String, String)> = match case.get("spellings") {
+            Some(v) => v
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| {
+                    let (r, n) = x.as_str().unwrap().split_once(':').unwrap();
+                    (r.to_string(), n.to_string())
+                })
+                .collect(),
+            None => {
+                let k = key.clone().unwrap_or_default();
+                let id = derive_id(&k);
+                match kind.as_str() {
+                    "knob" => vec![
+                        ("toml".into(), k.clone()),
+                        ("env".into(), format!("NROS_{id}")),
+                        ("kconfig".into(), format!("CONFIG_NROS_{id}")),
+                        ("cmake".into(), format!("NROS_OVERRIDE_{id}")),
+                    ],
+                    "statement" => vec![
+                        ("toml".into(), k.clone()),
+                        ("env".into(), format!("NROS_ENTRY_{id}")),
+                    ],
+                    "env" => vec![("run".into(), subject.clone())],
+                    _ => vec![("kconfig".into(), subject.clone())],
+                }
+            }
+        };
+        let subj = naming::Subject {
+            kind,
+            subject: subject.clone(),
+            key,
+            spellings,
+            foreign: case.get("foreign").and_then(toml::Value::as_bool) == Some(true),
+        };
+        let got: Vec<&str> = naming::violations(&subj, &ctx, data)
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect();
+        let want: Vec<&str> = case["expect"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(got, want, "[[case]] {subject}");
+        seen.extend(got);
+    }
+    assert_eq!(
+        seen.into_iter().collect::<Vec<_>>(),
+        naming::RULES,
+        "a case per rule"
+    );
+}
+
+/// The in-tree catalog loads: every in-tree row that breaks the rule is one
+/// the baseline holds (RFC-0140 Appendix A).
+#[test]
+fn naming_the_in_tree_catalog_breaks_only_what_the_baseline_holds() {
+    let cat = Catalog::core();
+    let ctx = naming::Context::of(cat.rows(), cat.owners.keys().cloned());
+    let bad = naming::unheld(cat.rows(), &ctx);
+    assert!(bad.is_empty(), "{}", bad.join("\n"));
+}
+
+/// The baseline's row entries are exactly what the lint finds: an entry, or
+/// a rule of one, that no longer applies is a stale exemption. The gate
+/// checks the same on the Python side, so the two agree on every in-tree row.
+#[test]
+fn naming_every_baseline_row_entry_is_a_live_violation() {
+    let cat = Catalog::core();
+    let ctx = naming::Context::of(cat.rows(), cat.owners.keys().cloned());
+    let data = naming::Data::get();
+    let mut found = BTreeMap::new();
+    for r in cat.rows() {
+        let s = naming::Subject::of_row(r);
+        let rules: std::collections::BTreeSet<String> = naming::violations(&s, &ctx, data)
+            .into_iter()
+            .map(|(r, _)| r.to_string())
+            .collect();
+        if !rules.is_empty() {
+            found.insert((s.kind, s.subject), rules);
+        }
+    }
+    assert_eq!(found, data.baseline);
+}
+
+fn naming_refusal(text: &str) -> String {
+    let tmp = tempfile::tempdir().unwrap();
+    write_rows(tmp.path(), text);
+    Catalog::build(&[provider(tmp.path(), "acme_rmw")], &read)
+        .unwrap_err()
+        .to_string()
+}
+
+/// A downstream package with a bad name fails to load, naming the row and
+/// the rule. (N3 cannot be broken by a package: C2 already holds its keys
+/// under its own owner word.)
+#[test]
+fn naming_a_package_breaking_the_rule_fails_to_load_naming_row_and_rule() {
+    let cases = [
+        (
+            "N1",
+            "knob `acme.deep.name`",
+            "[[knob]]\nkey = \"acme.deep.name\"\n",
+        ),
+        (
+            "N2",
+            "knob `acme.symbol`",
+            "[[knob]]\nkey = \"acme.symbol\"\ntransitional = { id = \"ACME_SYM\" }\n",
+        ),
+        (
+            "N4",
+            "knob `acme.ring_size`",
+            "[[knob]]\nkey = \"acme.ring_size\"\n",
+        ),
+        (
+            "N5",
+            "knob `acme.trace`",
+            "[[knob]]\nkey = \"acme.trace\"\n\n[[env]]\nkey = \"acme.trace\"\n",
+        ),
+        (
+            "N6",
+            "env `NROS_ACME_LIB`",
+            "[[env]]\nname = \"NROS_ACME_LIB\"\nforeign = \"acme\"\n",
+        ),
+        (
+            "N7",
+            "knob `acme.old`",
+            "[[knob]]\nkey = \"acme.new\"\nretired = [{ spelling = \"env:NROS_ACME_OLD\" }]\n\n\
+             [[knob]]\nkey = \"acme.old\"\n",
+        ),
+        (
+            "N8",
+            "env `FREERTOS_DIR`",
+            "[[env]]\nname = \"FREERTOS_DIR\"\nforeign = \"acme\"\n",
+        ),
+    ];
+    for (rule, row, rows) in cases {
+        let msg = naming_refusal(&format!("owner = \"acme\"\n\n{rows}"));
+        assert!(msg.contains("breaks the naming rule"), "{rule}: {msg}");
+        assert!(
+            msg.lines()
+                .any(|l| l.contains(row) && l.contains(&format!(": {rule} - "))),
+            "{rule} on {row}: {msg}"
+        );
+    }
+    // A package's build script refuses the same, without the scan.
+    let tmp = tempfile::tempdir().unwrap();
+    let text = "owner = \"acme\"\n[[knob]]\nkey = \"acme.heap_kb\"\n";
+    let f = write_rows(tmp.path(), text);
+    let msg = parse_own_file("acme_rmw", &f, text)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("knob `acme.heap_kb`") && msg.contains(": N4 - "),
+        "{msg}"
+    );
+}

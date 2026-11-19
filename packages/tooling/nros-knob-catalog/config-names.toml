@@ -1,0 +1,791 @@
+# The naming rule's data and its baseline (RFC-0140 D3 N1-N8, D13 G1;
+# phase-581 W4).
+#
+# ONE file, two readers: the catalog loader (`nros_knob_catalog::naming`,
+# `include_str!`, so a downstream package with a bad name fails to load in the
+# user's own build) and the gate `just check config-names`
+# (`scripts/lib/config_names.py`, buildless, over every in-tree contributor).
+# The rule LOGIC is written twice, once per language; `[[case]]` below is the
+# corpus both run, so the two cannot drift apart without one of them failing.
+#
+# The rules, as the lint applies them to a row's names:
+#   N1  a knob's (or keyed env row's) key is `<owner>.<name>`: two segments,
+#       lower snake case. A statement key is one word.
+#   N2  every other spelling is mechanical from the key: build env
+#       NROS_<KEY>, Kconfig CONFIG_NROS_<KEY>, cmake NROS_OVERRIDE_<KEY>; a
+#       statement's carrier NROS_ENTRY_<KEY> and Kconfig CONFIG_NROS_<KEY>; a
+#       keyed env row's variable NROS_<KEY>.
+#   N3  the key's first segment (a hand Kconfig symbol's first word after
+#       NROS_) is an owner word: core's `[owners]` or a package's.
+#   N4  a unit is in the name: no `[units] banned` ending, and a name ending in
+#       a `[units] measure` noun ends in a unit instead, unless `[units] allow`
+#       holds the term with the reason its unit is fixed.
+#   N5  no build spelling of a knob or statement is the name of an env row.
+#   N6  every name nano-ros defines starts NROS_ (CONFIG_NROS_ in Kconfig); a
+#       foreign variable never does.
+#   N7  no live spelling is a spelling some row retired.
+#   N8  no spelling is a resource location's variable (`env` in
+#       nros-sdk-index.toml, RFC-0103 D6).
+
+# How many `[[baseline]]` entries the file holds (below). The baseline only
+# shrinks: lower this with every entry a rename removes, and never raise it to
+# admit a new name, which is renamed instead.
+baseline_entries = 88
+
+# --- N4's vocabulary -----------------------------------------------------------
+
+[units]
+# Last words that measure memory, time or a rate, so a unit must follow them.
+measure = ["frame", "frames", "stack", "heap", "pool", "timeout", "interval", "period", "delay", "threshold", "mtu", "baud"]
+
+# Last words that name no unit, or the wrong one. Each states the fix.
+[[units.banned]]
+ending = "kb"
+reason = "a KiB count: write `_bytes` and convert where the RTOS configuration is written"
+
+[[units.banned]]
+ending = "kib"
+reason = "a KiB count: write `_bytes`"
+
+[[units.banned]]
+ending = "size"
+reason = "names no unit: a memory size is `_bytes`, a count has no suffix"
+
+[[units.banned]]
+ending = "buffer"
+reason = "a buffer with no unit: `_bytes` for its size, `_depth` for its entries"
+
+[[units.banned]]
+ending = "u64s"
+reason = "a count of 8-byte words: write `_bytes`"
+
+# Terms whose unit the term itself fixes (RFC-0140 D3 N4): accepted as a last
+# word. Each states why.
+[[units.allow]]
+term = "mtu"
+reason = "a maximum transmission unit is a byte count by definition"
+
+[[units.allow]]
+term = "baud"
+reason = "a baud rate is symbols per second by definition"
+
+[[units.allow]]
+term = "frames"
+reason = "a count of transport frames: the unit is the frame"
+
+# --- Hand-written zephyr/Kconfig symbols that are not settings ------------------
+#
+# The lint reads every `config`/`menuconfig` outside the generated knob section.
+# These name the module's framework, not a value a user tunes, so no owner word
+# applies. Each states why.
+
+[[framework]]
+symbol = "CONFIG_NROS"
+reason = "the module's own menu: every other symbol sits under it"
+
+[[framework]]
+symbol = "CONFIG_NROS_C_API"
+reason = "a member of the language-surface choice `NROS_API`: which API the module builds, not a setting"
+
+[[framework]]
+symbol = "CONFIG_NROS_CPP_API"
+reason = "a member of the language-surface choice `NROS_API`: which API the module builds, not a setting"
+
+[[framework]]
+symbol = "CONFIG_NROS_RUST_API"
+reason = "a member of the language-surface choice `NROS_API`: which API the module builds, not a setting"
+
+[[framework]]
+symbol = "CONFIG_NROS_CODEGEN_TOOL"
+reason = "the path of the `nros` binary the module runs to generate code: build plumbing, not a setting"
+
+# --- The corpus both implementations run ------------------------------------------
+#
+# A case is one subject and the rules it breaks (`expect`, empty for a clean
+# name). Spellings default to the ones the key derives; a case that tests N2
+# states them. `case_context` is the world the cases are judged in.
+
+[case_context]
+owners = ["trace", "params", "zenoh"]
+env_names = ["NROS_TRACE_LEVEL"]
+retired = ["NROS_TRACE_OLD"]
+resources = ["NROS_TRACE_DIR"]
+
+[[case]]
+kind = "knob"
+key = "trace.max_depth"
+expect = []
+
+[[case]]
+kind = "knob"
+key = "trace.deep.name"
+expect = ["N1"]
+
+[[case]]
+kind = "knob"
+key = "trace.symbol"
+spellings = ["toml:trace.symbol", "env:NROS_TRACE_SYM", "kconfig:CONFIG_NROS_TRACE_SYMBOL"]
+expect = ["N2"]
+
+[[case]]
+kind = "knob"
+key = "param.thing"
+expect = ["N3"]
+
+[[case]]
+kind = "knob"
+key = "trace.ring_size"
+expect = ["N4"]
+
+[[case]]
+kind = "knob"
+key = "trace.ring_kb"
+expect = ["N4"]
+
+[[case]]
+kind = "knob"
+key = "trace.wait_timeout"
+expect = ["N4"]
+
+[[case]]
+kind = "knob"
+key = "trace.ring_bytes"
+expect = []
+
+[[case]]
+kind = "knob"
+key = "trace.link_mtu"
+expect = []
+
+[[case]]
+kind = "knob"
+key = "trace.rx_frames"
+expect = []
+
+[[case]]
+kind = "knob"
+key = "trace.level"
+expect = ["N5"]
+
+[[case]]
+kind = "env"
+name = "NROS_FOREIGN_THING"
+foreign = true
+expect = ["N6"]
+
+[[case]]
+kind = "env"
+name = "XRCE_THING"
+key = "trace.thing"
+expect = ["N2", "N6"]
+
+[[case]]
+kind = "env"
+name = "NROS_LOC"
+key = "locator"
+expect = ["N2"]
+
+[[case]]
+kind = "knob"
+key = "trace.old"
+expect = ["N7"]
+
+[[case]]
+kind = "knob"
+key = "trace.dir"
+expect = ["N8"]
+
+[[case]]
+kind = "statement"
+key = "domain_id"
+spellings = ["toml:domain_id", "env:NROS_ENTRY_DOMAIN_ID", "kconfig:CONFIG_NROS_ZENOH_DOMAIN_ID"]
+expect = ["N2"]
+
+[[case]]
+kind = "kconfig"
+name = "CONFIG_NROS_EPOCH_THING"
+expect = ["N3"]
+
+[[case]]
+kind = "kconfig"
+name = "CONFIG_NROS_TRACE_STACK_SIZE"
+expect = ["N4"]
+
+[[case]]
+kind = "kconfig"
+name = "CONFIG_NROS_TRACE_FRAME"
+expect = ["N4"]
+
+[[case]]
+kind = "kconfig"
+name = "CONFIG_NROS_TRACE_RING_BYTES"
+expect = []
+
+[[case]]
+kind = "kconfig"
+name = "CONFIG_NROS_C_API"
+expect = []
+
+# --- The baseline (RFC-0140 D13 G1) ---------------------------------------------
+#
+# Every name on `origin/main` that breaks the rule: RFC-0140 Appendix A, one
+# entry per row (`appendix` names its section), and only ever shrinking. The
+# gate fails on a violation no entry holds AND on an entry, or one rule of
+# one, that no longer applies, so a rename stage (phase-581 W5 to W7) removes
+# its rows here in the same change. The loader exempts an in-tree row only
+# through an entry here; nothing else exempts a name.
+#
+# `rules` is what the lint finds (exact). Three kinds of entry the lint cannot
+# see carry `why` and a presence probe instead:
+#   probe = "row"   a judgement about readers (N3): present while the row
+#                   exists
+#   kind = "read"   a name nano-ros reads outside the registry: present while a
+#                   tracked source line under packages/, cmake/, zephyr/ or
+#                   integrations/ uses it
+#   kind = "build-read"  the same, in a build-time read (`option_env!`,
+#                   `env!`, `rerun-if-env-changed=`, cmake `$ENV{}`)
+# `appendix = "missed"` is a violation the lint finds that Appendix A does
+# not list.
+
+[[baseline]]
+subject = "executor.arena_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "executor.backing_u64s"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "executor.param_service_buffer_size"
+kind = "knob"
+rules = ["N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "executor.subscription_buffer_size"
+kind = "knob"
+rules = ["N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "freertos.app_stack_kb"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "freertos.heap_kb"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "log.buffer_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "net.buffer_size"
+kind = "knob"
+rules = ["N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "net.connect_timeout_ms"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "net.max_sockets"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "net.max_udp_sockets"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "net.socket_timeout_ms"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "param.service_inbox_bytes"
+kind = "knob"
+rules = ["N3"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "param.service_inbox_depth"
+kind = "knob"
+rules = ["N3"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "params.max_array_len"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "params.max_byte_array_len"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "params.max_param_constraints_len"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "params.max_param_description_len"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "params.max_param_name_len"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "params.max_parameters"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "params.max_string_array_len"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "params.max_string_value_len"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "params.param_events_depth"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "runtime.let_buffer_size"
+kind = "knob"
+rules = ["N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "subscriber.buffer_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "threadx.app_stack_kb"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "threadx.byte_pool_kb"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "xrce.buffer_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "xrce.builtin_service_request_buffer_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "xrce.service_reply_buffer_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "xrce.service_request_buffer_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "xrce.subscriber_buffer_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.graph_cache_size"
+kind = "knob"
+rules = ["N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.limits.connect_forever"
+kind = "knob"
+rules = ["N1", "N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.limits.connect_timeout_ms"
+kind = "knob"
+rules = ["N1", "N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.limits.keyexpr_string_size"
+kind = "knob"
+rules = ["N1", "N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.limits.service_timeout_ms"
+kind = "knob"
+rules = ["N1", "N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.limits.subscriber_ring_depth"
+kind = "knob"
+rules = ["N1", "N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.max_large_subscribers"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.5"
+
+[[baseline]]
+subject = "zenoh.max_liveliness"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.5"
+
+[[baseline]]
+subject = "zenoh.max_pending_gets"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.5"
+
+[[baseline]]
+subject = "zenoh.max_publishers"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.5"
+
+[[baseline]]
+subject = "zenoh.max_queryables"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.5"
+
+[[baseline]]
+subject = "zenoh.max_subscribers"
+kind = "knob"
+rules = ["N2"]
+appendix = "A.5"
+
+[[baseline]]
+subject = "zenoh.publisher_tx_buffer_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.service_buffer_size"
+kind = "knob"
+rules = ["N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.subscriber_large_size"
+kind = "knob"
+rules = ["N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.subscriber_size_threshold"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.tx.batch"
+kind = "knob"
+rules = ["N1"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.tx.flush_ms"
+kind = "knob"
+rules = ["N1", "N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.tx.split_lock"
+kind = "knob"
+rules = ["N1"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.wire.batch_multicast_size"
+kind = "knob"
+rules = ["N1", "N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.wire.batch_unicast_size"
+kind = "knob"
+rules = ["N1", "N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.wire.frag_max_size"
+kind = "knob"
+rules = ["N1", "N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.wire.get_poll_interval_ms"
+kind = "knob"
+rules = ["N1", "N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.wire.get_reply_buf_size"
+kind = "knob"
+rules = ["N1", "N2", "N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.wire.rx_task_budget_frames"
+kind = "knob"
+rules = ["N1", "N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zenoh.wire.rx_task_budget_rest_us"
+kind = "knob"
+rules = ["N1", "N2"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "zephyr.heap_size"
+kind = "knob"
+rules = ["N4"]
+appendix = "A.1"
+
+[[baseline]]
+subject = "locator"
+kind = "statement"
+rules = ["N2"]
+appendix = "missed"
+why = "its Kconfig symbol is CONFIG_NROS_ZENOH_LOCATOR, not the CONFIG_NROS_LOCATOR RFC-0140 D1 derives; Appendix A does not list it"
+
+[[baseline]]
+subject = "NROS_CYCLONE_MATCH_TIMEOUT_MS"
+kind = "env"
+rules = ["N2"]
+appendix = "A.3"
+
+[[baseline]]
+subject = "NROS_RMW_CYCLONEDDS_SKIP_PREFIX"
+kind = "env"
+rules = ["N2"]
+appendix = "A.3"
+
+[[baseline]]
+subject = "XRCE_SERIAL_BAUD"
+kind = "env"
+rules = ["N2", "N6"]
+appendix = "A.3"
+
+[[baseline]]
+subject = "CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER"
+kind = "kconfig"
+rules = ["N4"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_CYCLONE_CONFIG_XML"
+kind = "kconfig"
+rules = ["N3"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_CYCLONE_DOMAIN_ID"
+kind = "kconfig"
+rules = ["N3"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_EDMA_WARM_RESET_QUIESCE"
+kind = "kconfig"
+rules = ["N3"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_EPOCH_FROM_ZENOH"
+kind = "kconfig"
+rules = ["N3"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS"
+kind = "kconfig"
+rules = ["N3"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_PARAM_STORE"
+kind = "kconfig"
+rules = ["N3"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_TRANSPORT_SERIAL"
+kind = "kconfig"
+rules = ["N3"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME"
+kind = "kconfig"
+rules = ["N4"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE"
+kind = "kconfig"
+rules = ["N4"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE"
+kind = "kconfig"
+rules = ["N4"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE"
+kind = "kconfig"
+rules = ["N4"]
+appendix = "A.2"
+
+[[baseline]]
+subject = "graph.max_entities"
+kind = "knob"
+rules = ["N3"]
+appendix = "A.1"
+probe = "row"
+why = "read only by the zenoh backend (W0), so its owner is zenoh: a judgement about readers the lint cannot make"
+
+[[baseline]]
+subject = "ZENOH_LISTEN"
+kind = "read"
+rules = ["N6"]
+appendix = "A.3"
+why = "a variable nano-ros invented in zenoh's prefix, still read by the zenoh shim; retired for ZENOH_CONFIG_OVERRIDE"
+
+[[baseline]]
+subject = "ZENOH_MULTICAST_SCOUTING"
+kind = "read"
+rules = ["N6"]
+appendix = "A.3"
+why = "a variable nano-ros invented in zenoh's prefix, still read by the zenoh shim; retired for ZENOH_CONFIG_OVERRIDE"
+
+[[baseline]]
+subject = "ZENOH_SCOUTING_TIMEOUT"
+kind = "read"
+rules = ["N6"]
+appendix = "A.3"
+why = "a variable nano-ros invented in zenoh's prefix, still read by the zenoh shim; retired for ZENOH_CONFIG_OVERRIDE"
+
+[[baseline]]
+subject = "ZENOH_TLS_ROOT_CA_CERTIFICATE"
+kind = "read"
+rules = ["N6"]
+appendix = "A.3"
+why = "a variable nano-ros invented in zenoh's prefix, still read by the zenoh shim; retired for ZENOH_CONFIG_OVERRIDE"
+
+[[baseline]]
+subject = "ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64"
+kind = "read"
+rules = ["N6"]
+appendix = "A.3"
+why = "a variable nano-ros invented in zenoh's prefix, still read by the zenoh shim; retired for ZENOH_CONFIG_OVERRIDE"
+
+[[baseline]]
+subject = "ZENOH_TLS_VERIFY_NAME_ON_CONNECT"
+kind = "read"
+rules = ["N6"]
+appendix = "A.3"
+why = "a variable nano-ros invented in zenoh's prefix, still read by the zenoh shim; retired for ZENOH_CONFIG_OVERRIDE"
+
+[[baseline]]
+subject = "NROS_DOMAIN_ID"
+kind = "build-read"
+rules = ["N5"]
+appendix = "A.4"
+why = "a build read of the statement's run-time spelling; the carrier is NROS_ENTRY_DOMAIN_ID"
+
+[[baseline]]
+subject = "NROS_LOCATOR"
+kind = "build-read"
+rules = ["N5"]
+appendix = "A.4"
+why = "a build read of the run-time variable; the carrier is NROS_ENTRY_LOCATOR"
+
+[[baseline]]
+subject = "NROS_NODE_NAME"
+kind = "build-read"
+rules = ["N5"]
+appendix = "A.4"
+why = "a build read of the run-time variable; the carrier is NROS_ENTRY_NODE_NAME"
+
+[[baseline]]
+subject = "NROS_ZPICO_DEBUG"
+kind = "build-read"
+rules = ["N3"]
+appendix = "A.4"
+why = "a build carrier outside the registry under `zpico`, no owner word; becomes NROS_ZENOH_DEBUG"
+
+[[baseline]]
+subject = "ZPICO_MULTICAST_TRANSPORT"
+kind = "build-read"
+rules = ["N3", "N6"]
+appendix = "A.4"
+why = "a build carrier outside the registry with no NROS_ prefix; becomes the knob zenoh.multicast_transport"
+
+[[baseline]]
+subject = "ZPICO_NO_SMOLTCP"
+kind = "build-read"
+rules = ["N3", "N6"]
+appendix = "A.4"
+why = "a build carrier outside the registry with no NROS_ prefix; becomes NROS_ZENOH_NO_SMOLTCP"

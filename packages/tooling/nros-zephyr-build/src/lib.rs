@@ -392,7 +392,7 @@ pub use config_rows::{ENV_ROWS, STATEMENTS};
 // (phase-581 W2).
 #[rustfmt::skip]
 mod registry_packages;
-pub use registry_packages::{CORE_OWNERS, IN_TREE_PACKAGES};
+pub use registry_packages::{CORE_OWNERS, IN_TREE_PACKAGES, RESOURCE_ENV_VARS, RETIRING_OWNERS};
 
 /// The Kconfig knob whose symbol is `symbol` (with or without `CONFIG_`).
 #[must_use]
