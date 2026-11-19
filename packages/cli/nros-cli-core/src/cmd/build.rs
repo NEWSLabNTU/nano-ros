@@ -1298,8 +1298,18 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         .map(|(b, _, id, _)| plan::qualified(&b, &id)),
                 );
             }
+            // Issue 2735 -- a standalone leaf sized by its census has no model
+            // for an image-qualified take to read; stage 4's
+            // `configure_zephyr_leaf` takes its census on the leaf road.
+            let leaf_road = crate::cmd::entity_census::leaf_sized_without_model(
+                &root,
+                &bringup_dir,
+                &image_id,
+                &image,
+            )
+            .is_some();
             for q in take {
-                if census_taken.insert(q.clone()) {
+                if !leaf_road && census_taken.insert(q.clone()) {
                     crate::cmd::entity_census::take_for_build(&root, &q, args.offline);
                 }
             }
@@ -7274,7 +7284,21 @@ fn resolve_image(
              test: it opens no session\"` under `[image.{image_id}]`, or remove the line."
         );
     }
+    // Issue 2735 -- a standalone leaf sized by its census has no model by
+    // construction, and its counts come from the leaf road, so this resolve
+    // composes nothing for it. Asked BEFORE the model road, so a launch an
+    // earlier `[[component]]` row left under `build/` is never read.
+    let leaf_road =
+        crate::cmd::entity_census::leaf_sized_without_model(root, bringup_dir, image_id, image)
+            .is_some();
     let inventory: Result<Composed, NotDerived> = (|| {
+        if leaf_road {
+            return Err(NotDerived::LeafRoad(
+                "this standalone leaf writes no `[[component]]`, so it has no SystemModel; its \
+                 configure sizes it from its census (`take --leaf`)"
+                    .to_string(),
+            ));
+        }
         let model_rel =
             model_location::launch_to_model_rel(bringup_dir, image.launch.as_deref(), &args_vec)
                 .map_err(|e| format!("cannot resolve the launch for this image: {e}"))?;
@@ -7516,11 +7540,18 @@ fn resolve_image(
                 // refusal that only lives in a file nobody opens is the silent
                 // shape RFC-0094 exists to remove.
                 None => {
-                    eprintln!(
-                        "nros build:   resolved → {} (entity counts not derived; configured \
-                         defaults kept)",
-                        w.toml_path.display()
-                    );
+                    if matches!(not_derived, Some(NotDerived::LeafRoad(_))) {
+                        eprintln!(
+                            "nros build:   resolved → {} (entity counts from the leaf's census)",
+                            w.toml_path.display()
+                        );
+                    } else {
+                        eprintln!(
+                            "nros build:   resolved → {} (entity counts not derived; configured \
+                             defaults kept)",
+                            w.toml_path.display()
+                        );
+                    }
                     match (&not_derived, &image.no_inventory) {
                         // Stated: the reason replaces the note.
                         (Some(NotDerived::NothingDeclared(_)), Some(why)) => {
@@ -7531,6 +7562,14 @@ fn resolve_image(
                              ({why}). To record why, add `no_inventory = \"<reason>\"` under \
                              `[image.{image_id}]`."
                         ),
+                        (Some(nd @ NotDerived::LeafRoad(_)), _) => {
+                            crate::resolve::report_not_derived_under(
+                                policy,
+                                "entity counts not composed",
+                                image_id,
+                                nd,
+                            )?
+                        }
                         (Some(nd @ NotDerived::Failed(_)), _) => {
                             crate::resolve::report_not_derived_under(
                                 policy,

@@ -493,6 +493,38 @@ pub(crate) fn owned_entry_without_model(
             .is_some_and(|rows| rows.is_empty())
 }
 
+/// A standalone C/C++ leaf (its `system.toml` beside its own code, `root`
+/// itself) that writes no `[[component]]` row and authors no launch, so
+/// `nros sync` synthesises no launch for it and it has no SystemModel, and
+/// whose image its own census sizes (the C/C++ default for a cross board,
+/// `leaf_census::entity_source`). Its counts are derived on the leaf road --
+/// `take --leaf` and the leaf's configure -- never from a model, so neither
+/// the image-qualified census take nor the model resolve has anything to read.
+/// `Some(the leaf)` when that holds.
+// Issue 2735: both asked the model first, and under issue 2520's refusal that
+// stopped every copied-out Zephyr C/C++ template before its census ran.
+pub(crate) fn leaf_sized_without_model<'a>(
+    root: &Path,
+    bringup_dir: &'a Path,
+    image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
+) -> Option<&'a Path> {
+    let standalone = root == bringup_dir
+        && nros_orchestration_ir::leaf_system::is_package_dir(bringup_dir)
+        && image.launch.is_none()
+        && !bringup_dir.join("launch").is_dir()
+        && nros_system_include::read_to_string(bringup_dir.join("system.toml"))
+            .ok()
+            .and_then(|t| crate::cmd::ws::component_rows(&t).ok())
+            .is_some_and(|rows| rows.is_empty());
+    (standalone
+        && crate::leaf_census::entity_source_of(bringup_dir, Some(image_id))
+            .ok()
+            .flatten()
+            .is_some_and(crate::leaf_census::EntitySource::is_census))
+    .then_some(bringup_dir)
+}
+
 fn image_model_rel(
     bringup_dir: &Path,
     image: &crate::orchestration::image::ImageBlock,
@@ -2983,6 +3015,68 @@ mod tests {
         assert!(
             !owned_entry_without_model(b, &owned),
             "an authored launch makes a model"
+        );
+    }
+
+    /// Issue 2735 -- a standalone cross C/C++ leaf with no `[[component]]`
+    /// and a program its census can run is sized on the leaf road and has no
+    /// SystemModel; a component row, an authored `launch/`, a workspace
+    /// bringup (`root` above it) or a leaf with no program keeps the model
+    /// road's question.
+    #[test]
+    fn a_census_sized_leaf_with_no_component_has_no_model() {
+        let t = tempfile::tempdir().unwrap();
+        let leaf = t.path();
+        let img = crate::orchestration::image::ImageBlock::default();
+        std::fs::write(
+            leaf.join("package.xml"),
+            "<package><name>p</name></package>\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("CMakeLists.txt"),
+            "find_package(Zephyr)\nproject(p)\nnano_ros_add_executable(p src/p.cpp ROS2_MAIN)\n",
+        )
+        .unwrap();
+        let head = "[system]\nname = \"p\"\n\n[image.zephyr]\nboard = \"mps2-an385-zephyr\"\n";
+        std::fs::write(leaf.join("system.toml"), head).unwrap();
+        assert_eq!(
+            leaf_sized_without_model(leaf, leaf, "zephyr", &img),
+            Some(leaf),
+            "no component, a program: the census sizes it"
+        );
+        assert_eq!(
+            leaf_sized_without_model(t.path().parent().unwrap(), leaf, "zephyr", &img),
+            None,
+            "a bringup under a workspace root is not a standalone leaf"
+        );
+        std::fs::write(
+            leaf.join("system.toml"),
+            format!("{head}\n[[component]]\npkg = \"p\"\nname = \"p\"\n"),
+        )
+        .unwrap();
+        assert_eq!(
+            leaf_sized_without_model(leaf, leaf, "zephyr", &img),
+            None,
+            "a component row synthesises a launch, so a model"
+        );
+        std::fs::write(leaf.join("system.toml"), head).unwrap();
+        std::fs::create_dir_all(leaf.join("launch")).unwrap();
+        assert_eq!(
+            leaf_sized_without_model(leaf, leaf, "zephyr", &img),
+            None,
+            "an authored launch makes a model"
+        );
+        std::fs::remove_dir(leaf.join("launch")).unwrap();
+        std::fs::write(
+            leaf.join("CMakeLists.txt"),
+            "find_package(Zephyr)\nproject(p)\n",
+        )
+        .unwrap();
+        assert_eq!(
+            leaf_sized_without_model(leaf, leaf, "zephyr", &img),
+            None,
+            "no program: no census sizes it (`NoProgram` refuses on its own)"
         );
     }
 

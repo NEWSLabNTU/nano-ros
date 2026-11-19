@@ -923,6 +923,11 @@ pub enum NotDerived {
     NothingDeclared(String),
     /// Something is declared and could not be derived: a defect.
     Failed(String),
+    /// Declared, and derived by another road than this resolve: a standalone
+    /// leaf whose own configure sizes it from its census, and which has no
+    /// SystemModel for this resolve to read.
+    // Issue 2735.
+    LeafRoad(String),
 }
 
 impl NotDerived {
@@ -932,7 +937,7 @@ impl NotDerived {
 
     pub fn reason(&self) -> &str {
         match self {
-            Self::NothingDeclared(r) | Self::Failed(r) => r,
+            Self::NothingDeclared(r) | Self::Failed(r) | Self::LeafRoad(r) => r,
         }
     }
 }
@@ -957,6 +962,7 @@ impl From<String> for NotDerived {
 /// not seeded"); `image` the image, for the line a refusal names.
 ///
 /// * nothing declared: a note, at any policy;
+/// * derived on the leaf road: a note naming that road, at any policy;
 /// * failed, `warn`: a warning naming the reason;
 /// * failed, `refuse`: an error naming the reason and what to fix. A
 ///   `no_inventory` statement does not excuse it: it states that nothing is
@@ -978,6 +984,10 @@ pub(crate) fn report_not_derived_under(
     match nd {
         NotDerived::NothingDeclared(why) => {
             eprintln!("nros build:   `{image}`: {what} (nothing declared to derive from: {why})");
+            Ok(())
+        }
+        NotDerived::LeafRoad(why) => {
+            eprintln!("nros build:   `{image}`: {what} here; {why}");
             Ok(())
         }
         NotDerived::Failed(why) => match policy {
@@ -1019,6 +1029,15 @@ mod not_derived_tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("the model does not resolve"), "{err}");
+    }
+
+    /// Issue 2735 -- a leaf sized on its own road is not a failure of this
+    /// resolve: a note at any policy.
+    #[test]
+    fn a_leaf_road_image_is_never_refused() {
+        let nd = NotDerived::LeafRoad("sized from its census".into());
+        assert!(report_not_derived_under(Refuse, "w", "b:i", &nd).is_ok());
+        assert!(report_not_derived_under(Warn, "w", "b:i", &nd).is_ok());
     }
 }
 
