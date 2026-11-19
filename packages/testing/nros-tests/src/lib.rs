@@ -364,6 +364,12 @@ fn domain_in_slot(slot: u32, seq: u32) -> u8 {
 #[cfg(target_os = "linux")]
 fn domain_discovery_port_busy(domain: u8) -> bool {
     let want = 7400u32 + 250 * u32::from(domain);
+    // Issue 2757 -- and participant index 0's unicast metatraffic port. A
+    // unicast-only participant (`AllowMulticast=false`, as this repo's own
+    // pinned profile is) never binds the multicast discovery port, so that
+    // port alone read a busy domain as free, and Cyclone then failed with
+    // "Failed to find a free participant index".
+    let want_unicast = want + 10;
     for table in ["/proc/net/udp", "/proc/net/udp6"] {
         let Ok(body) = std::fs::read_to_string(table) else {
             continue;
@@ -376,7 +382,10 @@ fn domain_discovery_port_busy(domain: u8) -> bool {
             let Some((_, port_hex)) = local.rsplit_once(':') else {
                 continue;
             };
-            if u32::from_str_radix(port_hex, 16).ok() == Some(want) {
+            if u32::from_str_radix(port_hex, 16)
+                .ok()
+                .is_some_and(|p| p == want || p == want_unicast)
+            {
                 return true;
             }
         }
@@ -1434,6 +1443,25 @@ pub fn pinned_nightly() -> String {
 #[cfg(test)]
 mod tests {
     // ---- issue 0707: the domain assigner steps around an occupied bus -------
+
+    /// Issue 2757 -- a UNICAST-ONLY participant (`AllowMulticast=false`, as
+    /// this repo's own pinned profile is) binds its index's unicast ports and
+    /// never the multicast discovery port. Bound alone, index 0's metatraffic
+    /// port must read as busy. Domain 97 is far above the band the assigner
+    /// hands out, so no live test is on it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_unicast_only_participant_reads_as_busy() {
+        let domain = 97u8;
+        let meta = 7400 + 250 * u16::from(domain) + 10;
+        let Ok(_held) = std::net::UdpSocket::bind(("0.0.0.0", meta)) else {
+            panic!("could not bind 0.0.0.0:{meta} to stand in for a participant");
+        };
+        assert!(
+            super::domain_discovery_port_busy(domain),
+            "a domain whose participant index 0 is bound read as free"
+        );
+    }
 
     #[test]
     fn a_free_domain_is_the_same_answer_as_before() {
