@@ -22,6 +22,12 @@
 # States, and which a caller must treat as unprovisioned:
 #
 #   missing          not initialised (`status` marks `-`)            RED
+#   deregistered     `status` marks `-`, yet this worktree HAS it     RED
+#                    checked out: its registration in the config every
+#                    linked worktree shares was removed under it, which
+#                    is what `git submodule deinit` in ANY linked worktree
+#                    does (issue 2505). Re-registering restores it and
+#                    touches no file.
 #   not-submodule    the path names no submodule of this checkout    RED
 #   incomplete:<n>   initialised, but <n> tracked files are absent   RED
 #                    from its working tree or staged as deleted: an
@@ -59,6 +65,14 @@ nros_submodule_provision_state() {
     fi
     mark="${line:0:1}"
     if [ "$mark" = "-" ]; then
+        # Issue 2505 -- a checkout that git no longer counts as initialised.
+        # The working tree has its own git dir and a commit, so it was
+        # provisioned; only the shared registration is gone.
+        if [ -e "$p/.git" ] && [ -n "$(git -C "$p" ls-files 2>/dev/null | head -n 1)" ] \
+            && git -C "$p" rev-parse --verify -q HEAD >/dev/null 2>&1; then
+            echo deregistered
+            return 0
+        fi
         echo missing
         return 0
     fi
@@ -103,7 +117,7 @@ nros_submodule_provision_state() {
 # rc 0 when <state> (from `nros_submodule_provision_state`) is unprovisioned.
 nros_submodule_state_is_red() {
     case "$1" in
-        missing | not-submodule | incomplete:* | diverged) return 0 ;;
+        missing | deregistered | not-submodule | incomplete:* | diverged) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -113,6 +127,9 @@ nros_submodule_state_remedy() {
     local state="$1" p="$2"
     case "$state" in
         missing) echo "git submodule update --init $p" ;;
+        deregistered)
+            echo "git submodule init -- $p   (re-registers it; its checkout is untouched. Another worktree's \`git submodule deinit\` unregistered it: remove a finished worktree with \`just worktree-prune\` or \`git worktree remove --force\`, never deinit)"
+            ;;
         not-submodule) echo "fix its [[provision.submodule]] row in .config/gate-lanes.toml (renamed?)" ;;
         incomplete:*)
             echo "git submodule update --init --force $p   (an interrupted checkout; first check git -C $p status holds nothing you need)"

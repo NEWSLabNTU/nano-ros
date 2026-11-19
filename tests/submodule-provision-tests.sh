@@ -6,7 +6,8 @@
 # right, every tracked file staged as deleted) and one on another line (HEAD at
 # upstream `main`). Both used to read as provisioned. `behind` and `ahead` are
 # asserted NOT red, because a developer's un-updated or mid-fork submodule must
-# not refuse a lane.
+# not refuse a lane. Issue 2505 adds the linked-worktree shape: a checkout
+# whose shared registration another worktree's deinit removed.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/git-hook-env.sh
@@ -77,6 +78,21 @@ g -C sub checkout -q main
 echo modified >"sub/f2"
 expect "a modified file is someone's work, not a broken checkout" "ok no"
 g -C sub checkout -q -- f2
+
+# Issue 2505 -- linked worktrees share the registration. A deinit in one
+# unregisters the submodule in every other, whose checkout stays on disk.
+g worktree add -q "$work/wtA"
+g worktree add -q "$work/wtB"
+for w in wtA wtB; do g -C "$work/$w" submodule -q update --init; done
+g -C "$work/wtA" submodule -q deinit -f sub
+# In this shell, not a subshell: `expect` counts into `fails`.
+cd "$work/wtB"
+expect "checked out here, unregistered by another worktree's deinit" "deregistered yes"
+# The remedy re-registers it without touching the checkout.
+g submodule -q init -- sub
+expect "re-registered by the remedy" "ok no"
+cd "$work/super"
+g -C "$work/wtA" submodule -q update --init
 
 g submodule -q deinit -f sub
 expect "not initialised" "missing yes"

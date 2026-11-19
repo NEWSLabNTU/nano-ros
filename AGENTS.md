@@ -877,6 +877,16 @@ and verified.
   uncommitted work is a silent loss until you notice the tree is clean. Use a
   branch and a commit, or `git diff > $project/tmp/x.patch`. If you do stash,
   `git stash list` before and after, and pop immediately.
+- **Never `git submodule deinit` in a linked worktree; remove a finished one
+  with `just worktree-prune` or `git worktree remove --force` (issue 2505).**
+  A submodule's registration (`submodule.<name>.active`/`.url`) lives in the
+  config every worktree SHARES, so a deinit in one worktree unregisters that
+  submodule in all of them, the main checkout included. Their files stay, so
+  nothing looks wrong until a sibling's next gate refuses on "unmet
+  provisioning". `git worktree remove` refuses a worktree holding submodules;
+  `--force` is the answer, never a deinit first. `just setup-worktree` and the
+  lane preflight name the state (`deregistered`) and re-register it without
+  touching the checkout.
 - **An agent worktree INHERITS the parent checkout's `activate.sh` exports, so
   gates measure the WRONG TREE.** `NROS_C_INCLUDE` / `NROS_CPP_INCLUDE` and the
   rest are absolute paths baked into the environment when `activate.sh` ran;
