@@ -38,19 +38,25 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosStackFloor.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 
 function(nros_resolve_cargo_profile)
-    # Resolved earlier — in this configure, or in an earlier one of the same
-    # build dir FOR THE SAME PROFILE. Issue 2318: this asked only whether a
-    # DIR was cached, so re-configuring an existing build dir with another
-    # `-DNROS_CARGO_PROFILE` kept the old profile's DIR and ENV beside the new
-    # name, and the build looked for its artifacts under the wrong `target/`
-    # subdir.
+    # Resolved earlier in THIS configure, for the same profile. Issue 2318:
+    # the answer is resolved again on every configure, never carried over from
+    # an earlier one through the cache. The ENV is the CLI's compiled profile
+    # TABLE (`nros-cargo-profile`), so a rebuilt `nros` can change it under an
+    # unchanged profile NAME — a cached copy kept a build dir on the old
+    # definition for good (measured: `build-override.debug = 0` never reached
+    # an existing fixture dir until its cache entries were removed). A GLOBAL
+    # property lives for one configure run only, so this saves the repeat
+    # calls from the several CMakeLists that ask, and nothing more.
+    get_property(_resolved GLOBAL PROPERTY _NROS_CARGO_PROFILE_RESOLVED_THIS_RUN)
     if(NROS_CARGO_PROFILE AND DEFINED NROS_CARGO_PROFILE_DIR
-       AND NROS_CARGO_PROFILE STREQUAL "${_NROS_CARGO_PROFILE_RESOLVED}")
+       AND NROS_CARGO_PROFILE STREQUAL "${_resolved}")
         return()
     endif()
 
     _nros_resolve_codegen_tool(_NANO_ROS_CODEGEN_TOOL)
     set(_nros "${_NANO_ROS_CODEGEN_TOOL}")
+    # The answer is the tool's table: a rebuilt tool re-runs this configure.
+    nros_codegen_tool_reconfigure("${_nros}")
 
     # An explicit -DNROS_CARGO_PROFILE=<name> wins; a user profile is passed
     # through verbatim and NOT defined by us (see the ownership rule in
@@ -92,8 +98,7 @@ function(nros_resolve_cargo_profile)
         "target/ subdirectory for NROS_CARGO_PROFILE")
     set(NROS_CARGO_PROFILE_ENV "${_env}" CACHE INTERNAL
         "CARGO_PROFILE_* definition of NROS_CARGO_PROFILE, empty for user-owned profiles")
-    set(_NROS_CARGO_PROFILE_RESOLVED "${_profile}" CACHE INTERNAL
-        "The NROS_CARGO_PROFILE that NROS_CARGO_PROFILE_DIR/_ENV were resolved for")
+    set_property(GLOBAL PROPERTY _NROS_CARGO_PROFILE_RESOLVED_THIS_RUN "${_profile}")
 
     message(STATUS
         "nano-ros: cargo profile `${_profile}` (CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}) "
@@ -108,6 +113,7 @@ endfunction()
 # <out-prefix>_PROFILE / _DIR / _ENV in the caller's scope.
 function(nros_resolve_carve_out_profile _name _prefix)
     _nros_resolve_codegen_tool(_NANO_ROS_CODEGEN_TOOL)
+    nros_codegen_tool_reconfigure("${_NANO_ROS_CODEGEN_TOOL}")
     execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" dev profile carve-out "${_name}"
         OUTPUT_VARIABLE _profile ERROR_VARIABLE _err RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)

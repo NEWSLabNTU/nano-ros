@@ -158,7 +158,7 @@ NOT_EMITTING = {
     "board cmake-vars": "a fact verb, read back inside its own configure (module docstring)",
     "profile resolve": "names the active cargo PROFILE; its answer is the knob, not the tool's code",
     "profile dir": "names the active cargo PROFILE's dir; its answer is the knob, not the tool's code",
-    "profile env": "names the active cargo PROFILE's env; its answer is the knob, not the tool's code",
+    "profile env": "EMITS the tool's compiled profile table (issue 2318: a rebuilt CLI changed it under an unchanged name), and NanoRosCargoProfile.cmake registers the tool itself; exempt only because its last word `env` is also `cmake -E env`, which token matching cannot tell from a call",
     "profile carve-out": "names a platform's profile carve-out; its answer is the knob, not the tool's code",
     "config show": "prints the user's own config; its answer is that file, not the tool's code",
     "sdk-root": "a STORE path query; the answer is the store's layout, not generated code",
