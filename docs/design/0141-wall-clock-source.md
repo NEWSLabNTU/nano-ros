@@ -15,8 +15,9 @@ superseded-by: null
 
 **Status:** Draft (2026-11-19). The shape was agreed with the manager on
 2026-11-18 as phase-575 W6, then moved here because it is a new seam on every
-platform, not a board's own work. Decisions D1–D7 await the user's review.
-Tracked by phase-582.
+platform, not a board's own work. The user ruled on 2026-11-19: D1 allows an ordered fallback, with the stale-stamp
+risk answered in the design; D4's failure policy defaults to `unstamped`.
+D2, D3 and D5–D7 stand as drafted. Tracked by phase-582.
 
 ## Summary
 
@@ -43,9 +44,11 @@ Two gaps follow from that:
   other than the symbol (issue 2691).
 
 This RFC makes the source a stated choice per image:
-- ONE source is selected by a knob, never a cascade.
+- One source is selected by a knob. An image may write an ordered fallback, resolved
+  before the first stamp and then latched.
 - A board supplies its clock through a hook that says whether it is synced.
-- Every source that can fail falls under one stated failure policy.
+- Every source that can fail falls under one stated failure policy, by default
+  "keep running, stamps marked unset", visible to the application.
 - The libc shims answer from the same symbol.
 
 ## Motivation
@@ -70,16 +73,21 @@ This RFC makes the source a stated choice per image:
 
 ## Design
 
-### D1 — Select one source; never cascade
+### D1 — A declared source, with an optional ordered fallback
 
 A new knob group, `[knobs.clock]`, in the knob registry
-(`packages/tooling/nros-zephyr-build/knobs.toml`), with one key:
+(`packages/tooling/nros-zephyr-build/knobs.toml`):
 
 ```toml
 [knobs.clock]
-source = "board" | "sntp" | "zenoh-hlc" | "platform"
+source = "sntp"                    # one source: the default shape
+# or an ordered fallback, written by the image:
+source = ["sntp", "platform"]
+fallback_settle_ms = 10000         # how long boot waits for each source
+upgrade = "never" | "monotonic"    # default "never"
 ```
 
+The sources:
 - `platform`: the port's own clock. POSIX `CLOCK_REALTIME`. On FreeRTOS and
   ThreadX it means "none", the honest answer.
 - `sntp`: an SNTP exchange sets the offset (Zephyr today; FreeRTOS + lwIP
@@ -88,10 +96,44 @@ source = "board" | "sntp" | "zenoh-hlc" | "platform"
   today, `CONFIG_NROS_EPOCH_FROM_ZENOH`).
 - `board`: the board's hook (D2) answers.
 
-The board descriptor states the default for its board; an image may override
-it with the usual knob rungs. Exactly one source runs in an image. If it is
-not synced, the answer is "no wall clock" under D4, never another source's
-answer.
+The board descriptor states the default for its board, and an image may
+override it with the usual knob rungs.
+
+**A single source is the default.** With one source written, or none (the
+board's default), exactly that source runs. If it is not synced, the answer
+is "no wall clock" under D4, never another source's answer.
+
+**A fallback is the image's knowing choice** (user ruling, 2026-11-19). An
+ordered list lets an image say "SNTP, else the platform clock". The risk the
+first draft cited stays: a source dropping out or arriving mid-run changes
+the clock under live stamps. Consumers then see a stamp jump, or a stamp from
+an earlier epoch after a later one, and reject it as stale (issue 0758). The
+design answers it in two rules, rather than waiving it:
+
+1. **Resolved before the first stamp, then latched.** During boot, before the
+   executor runs, each source in the list is tried in order and given up to
+   `fallback_settle_ms` (SNTP: its `sntp_attempts`). The first that answers
+   is the image's source for the rest of the run. Nothing stamped before
+   resolution exists, because the executor has not run. If none answers, D4
+   applies. With `upgrade = "never"` (the default), the resolved source never
+   changes, even if a source earlier in the list becomes reachable later, so
+   no stamp in the run comes from two clocks.
+2. **A later change is a reported, monotonic-guarded step**, and only with
+   `upgrade = "monotonic"`. If a source earlier in the list syncs after boot,
+   the image moves to it, under three guards:
+   - the wall clock never goes backwards: each reading is at least the last
+     one returned, so a new source behind the old one holds the clock still
+     until it catches up, instead of stepping back;
+   - the step is reported once, with the old source, the new source and the
+     step size: one log line, and a counter the application reads (D4's
+     query);
+   - only a move UP the list is taken, never down. If the resolved source
+     later stops answering, it keeps its last offset; it does not fall
+     through to a lower source.
+
+Which source answered, and whether it ever changed, is visible to the
+application through D4's query. A consumer that cannot tolerate a step leaves
+`upgrade` at `never`, or writes one source.
 
 ### D2 — The board hook says whether it is synced
 
@@ -131,21 +173,42 @@ by the existing SNTP and zenoh-HLC tests.
 
 `epoch_us` is `time_now_ns / 1000`. The monotonic `clock_ns` is untouched.
 
-### D4 — One failure policy for every source that can fail
+### D4 — One failure policy, defaulting to running unstamped
 
 ```toml
 [knobs.clock]
-sntp_attempts = 3                   # sntp only
-epoch_failure = "halt" | "unstamped"
+sntp_attempts = 3                    # sntp only
+epoch_failure = "unstamped" | "halt" # default "unstamped" (user ruling, 2026-11-19)
 ```
 
-When the selected source has not answered by the end of boot (`board` returns
-false, SNTP has used its attempts, no HLC timestamp has arrived):
-- `halt` stops the image with one message naming the source.
-- `unstamped` runs with "no wall clock": `time_now_ns` returns 0, as
-  `platform.h` already defines, and it says so once.
+When the source (or, with a fallback, every source in the list) has not
+answered by the end of boot (`board` returns false, SNTP has used its
+attempts, no HLC timestamp has arrived):
+- `unstamped`, the DEFAULT: the image keeps running, and publishes with the
+  stamp marked unset. `time_now_ns` returns 0, as `platform.h` already
+  defines "no wall clock", so `header.stamp` is zero, ROS's "unset" time. It
+  says so once in the log.
+- `halt`, opt-in: the image stops, with one message naming the source(s).
 
-The image chooses; the board hook no longer decides by calling `exit`.
+**Visible to the application.** One query, in C, C++ and Rust, answers what
+the stamps mean right now: whether the wall clock is synced, which source
+answered, and how many steps D1 rule 2 has taken. In C:
+
+```c
+typedef struct {
+    bool     synced;
+    uint8_t  source;   /* the knob's value: board, sntp, zenoh-hlc, platform */
+    uint32_t steps;    /* source changes since boot (D1 rule 2) */
+} nros_wall_clock_state_t;
+nros_wall_clock_state_t nros_wall_clock_state(void);
+```
+
+An application that must not publish unstamped data asks it before
+publishing. A board hook no longer decides by calling `exit`.
+
+If SNTP re-acquire (D5) later succeeds on an unstamped image, stamps begin
+from that point, a forward step from "unset" that is counted and reported
+like any other.
 
 ### D5 — SNTP re-acquires
 
@@ -179,9 +242,12 @@ separate decision per backend.
 
 ## Alternatives considered
 
-- **A cascade** (board, else SNTP, else HLC, else platform). Rejected: a
-  source dropping out changes the clock mid-run, which is the stale-stamp
-  failure in Motivation.
+- **A free cascade** (board, else SNTP, else HLC, else platform, switching
+  whenever availability changes). Rejected: a source dropping out changes
+  the clock mid-run, which is the stale-stamp failure in Motivation. D1's
+  fallback keeps the ordering the user asked for and removes the free
+  switching: resolved before the first stamp and latched, or, if opted in,
+  a reported step that never goes backwards and only moves up the list.
 - **A weak default board hook returning 0.** Rejected: 0 is a valid instant
   as well as a sentinel. Also, the measured linker rule means an archived
   board hook silently loses to the weak default.
@@ -207,3 +273,8 @@ separate decision per backend.
 ## Changelog
 
 - 2026-11-19: Draft, from the shape agreed for phase-575 W6.
+- 2026-11-19: User ruling. D1 allows an ordered fallback, resolved before
+  the first stamp and latched by default, or with `upgrade = "monotonic"` a
+  reported step that never goes backwards and only moves up the list. D4
+  defaults to `unstamped`, with a state query for the application; `halt`
+  is opt-in.
