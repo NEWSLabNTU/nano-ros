@@ -96,7 +96,11 @@ fn a_contract_restating_the_code_bakes_no_table() {
     );
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("typed C++ emit");
     assert!(src.contains("::rclcpp::NodeHandle __h("), "{src}");
-    assert!(!src.contains("nros_cpp_qos_override_t"), "{src}");
+    // issue 2513: the layout check names the struct in every C++ entry; no TABLE.
+    assert!(
+        !src.contains("nros_cpp_qos_override_t __nros_qos_"),
+        "{src}"
+    );
 }
 
 /// The contract-only liveliness line changes the baked table, on the handler
