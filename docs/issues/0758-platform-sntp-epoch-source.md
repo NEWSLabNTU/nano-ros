@@ -5,7 +5,7 @@ title: "No platform wall-clock epoch source — embedded consumers hand-roll
 status: open
 type: enhancement
 area: core, boards
-related: [rfc-0052, phase-478, phase-575]
+related: [rfc-0052, rfc-0141, phase-478, phase-575, phase-582]
 ---
 
 **Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — re-homed 2026-10-12 from phase-364, which is archived.
@@ -322,3 +322,13 @@ Not on ASI's critical path yet. The design is to share one clock seam with
 the board-supplied timestamp clock (phase-575 W6), so SNTP re-acquire, a
 gPTP-disciplined board clock and the default all answer through the same
 symbol.
+
+## Design moved to RFC-0141 (2026-11-19)
+
+The shared clock seam this issue's requirement calls for is
+[RFC-0141](../design/0141-wall-clock-source.md), tracked by
+[phase-582](../roadmap/phase-582-wall-clock-source.md):
+- one selected source, never a cascade (D1);
+- a board hook that says whether it is synced (D2);
+- one stated epoch-failure policy (D4);
+- SNTP re-acquire (D5, phase-582 W3).

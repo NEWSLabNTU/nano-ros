@@ -90,7 +90,7 @@ item of this phase; anything else is where it is already tracked.
 | 5.1, 5.2, 5.7 | violations invisible; ring keeps the first 8; start-up entries | phase-474 D1, D2, I1, I2, T4 |
 | 5.3 | the runtime monitor checks a callback, the budget is a route | phase-474 D3 |
 | 1.4 | a budget is also a deadline and a monitor | phase-474 D4 |
-| 5.4 | no board time source over serial | here D4 (Zephyr landed); issue 0758 |
+| 5.4 | no board time source over serial | here D4 (Zephyr landed); issue 0758; the generic board clock seam is [phase-582](phase-582-wall-clock-source.md) |
 | 5.6 | instruments that read zero or are absent | phase-474 I3, T2 |
 | 7.2 | `find .` walks into worktrees | issue 1565 (resolved) |
 | 7.5 | issue status drift | here T1 (refreshed 2026-10-24); issue 1489 (resolved) |
