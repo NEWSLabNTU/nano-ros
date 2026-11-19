@@ -1,0 +1,24 @@
+[package]
+name = "nros-knob-catalog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The configuration catalog loader: core's registry plus every package's nros-knobs.toml (RFC-0140 D2/D5)"
+
+# The ONE loader of `nros-knobs.toml` (RFC-0140 D2). The `nros` CLI builds the
+# merged catalog with it, and a package's build script reaches it through
+# `nros-knob-build`, which cannot reach the CLI. Leaf by construction, like
+# `nros-platform-config`: serde, toml and the registry's compiled tables only,
+# so any build script can depend on it.
+[package.metadata.nros]
+host-only = true
+host-only-reason = "build-script and CLI configuration loader, runs on the host"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+nros-zephyr-build = { path = "../nros-zephyr-build" }
+
+[dev-dependencies]
+tempfile = "3"

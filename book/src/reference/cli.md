@@ -1319,9 +1319,10 @@ List the knobs a project can state, or show one: where to state it, the values i
 Usage: nros knob <COMMAND>
 
 Commands:
-  list  List every knob a project can state: its name, scope, default and what it is for
-  show  Show one knob: where to state it, the values it takes, its default and its help
-  help  Print this message or the help of the given subcommand(s)
+  list    List every knob a project can state: its name, scope, default and what it is for
+  show    Show one knob: where to state it, the values it takes, its default and its help
+  render  Render a package's rows as a view it commits: `--kconfig`, the Kconfig of a package that is its own Zephyr module
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
@@ -1339,7 +1340,7 @@ Options:
       --json                 Print one JSON object instead of a table
       --platform <PLATFORM>  Resolve each knob's value for this platform, and say which rung of the platform/board ladder set it (`builtin`, `platform`, `board`, `env`)
       --board-toml <FILE>    With `--platform`: the board's `nros-board.toml`, for its rung
-      --workspace <DIR>      With `--platform`: the workspace whose platform packages are searched
+      --workspace <DIR>      The workspace whose packages are searched for their knobs (and, with `--platform`, its platform packages). Default: the current directory
   -h, --help                 Print help
   -V, --version              Print version
 ```
@@ -1355,9 +1356,25 @@ Arguments:
   <NAME>  The knob, as `nros knob list` names it (e.g. `net.max_sockets`)
 
 Options:
-      --json     Print one JSON object instead of text
-  -h, --help     Print help
-  -V, --version  Print version
+      --json             Print one JSON object instead of text
+      --workspace <DIR>  The workspace whose packages are searched for their knobs (default: the current directory)
+  -h, --help             Print help
+  -V, --version          Print version
+```
+
+#### `nros knob render`
+
+```text
+Render a package's rows as a view it commits: `--kconfig`, the Kconfig of a package that is its own Zephyr module
+
+Usage: nros knob render [OPTIONS] --kconfig <PACKAGE>
+
+Options:
+      --kconfig <PACKAGE>  The package: a directory holding its `nros-knobs.toml`, or its `package.xml` name in the workspace's provider scan
+      --workspace <DIR>    The workspace whose packages are searched (default: the current directory)
+      --out <FILE>         Write here instead of stdout
+  -h, --help               Print help
+  -V, --version            Print version
 ```
 
 ### `nros config`

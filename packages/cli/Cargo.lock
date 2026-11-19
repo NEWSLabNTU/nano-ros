@@ -845,6 +845,7 @@ dependencies = [
  "nros-diagnostic-codes",
  "nros-entry-lower",
  "nros-extension",
+ "nros-knob-catalog",
  "nros-lang",
  "nros-launch-parser",
  "nros-launcher",
@@ -902,6 +903,15 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nros-knob-catalog"
+version = "0.6.0"
+dependencies = [
+ "nros-zephyr-build",
+ "serde",
+ "toml",
 ]
 
 [[package]]

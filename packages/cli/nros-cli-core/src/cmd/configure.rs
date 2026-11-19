@@ -325,7 +325,7 @@ fn write_knob_catalog(
         .unwrap_or_else(|_| project.to_path_buf());
     let scan = ws::sync_provider_scan(&ws_root, base_paths, nano_ros_root)
         .wrap_err("configure: scanning providers for the configuration catalog")?;
-    let catalog = crate::knob_catalog::Catalog::build(&scan.providers)?;
+    let catalog = crate::knob_catalog::build_workspace(&scan.providers, Some(&scan))?;
     // RFC-0140 D2: a package found in two roots is reported, never refused.
     for s in catalog.shadowed() {
         let others: Vec<String> = s.shadowed.iter().map(|p| p.display().to_string()).collect();
@@ -337,7 +337,8 @@ fn write_knob_catalog(
             others.join(", ")
         );
     }
-    catalog.write(&ws_root)?;
+    crate::knob_catalog::write(&catalog, &ws_root)?;
+    crate::knob_catalog::set_current(catalog);
     Ok(())
 }
 
@@ -415,15 +416,15 @@ fn configure_project(
     configure_stamp::begin_external_reads();
     let syncs_before = ws::sync_runs();
     // phase-581 W1 (RFC-0140 D4) — the catalog is built over the provider
-    // scan sync runs, so these are captured before `run_sync` consumes `sync`.
-    let catalog_base_paths = sync.sources.base_paths.clone();
-    let catalog_nano_ros_root = sync.nano_ros_root.clone();
-    ws::run_sync(sync)?;
+    // scan sync runs. phase-581 W3 — and written BEFORE sync, because sync
+    // writes the leaf's `nros-cargo.toml`, which names the catalog to cargo
+    // (`NROS_KNOB_CATALOG`) only when it exists.
     write_knob_catalog(
         project,
-        &catalog_base_paths,
-        catalog_nano_ros_root.as_deref(),
+        &sync.sources.base_paths,
+        sync.nano_ros_root.as_deref(),
     )?;
+    ws::run_sync(sync)?;
 
     // ---- C2-C6: `nros build` stages 1-4, one image at a time ----------
     let mut out = Outcome::default();

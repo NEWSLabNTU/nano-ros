@@ -67,6 +67,12 @@ pub const LISTENER_READY_MARKER: &str = "Subscriber created for topic:";
 /// delegates to.
 pub const OUT_OF_TREE_RMW_PUBLISH_MARKER: &str = "acme rmw: publishing through backend acme";
 
+/// The out-of-tree `acme` backend's own knob (RFC-0140 G6, phase-581 W3): its
+/// build script reads `[image.<id>.knobs.acme] pool_slots` (the fixture states
+/// 4) through `nros_knob_build::emit`, and the backend logs the value it was
+/// built with beside [`OUT_OF_TREE_RMW_PUBLISH_MARKER`].
+pub const OUT_OF_TREE_RMW_KNOB_MARKER: &str = "acme rmw: pool_slots = 4";
+
 /// Readiness marker for the SAFETY chatter listener
 /// (the `safety-chatter-listener` bin), which prints
 /// `Safety subscriber created for topic: /chatter`.

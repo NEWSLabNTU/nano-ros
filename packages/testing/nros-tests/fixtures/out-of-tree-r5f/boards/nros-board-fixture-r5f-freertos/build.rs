@@ -3,6 +3,9 @@
 use nros_board_common::freertos_build::{Overlay, OverlayEnv, run_overlay};
 
 fn main() {
+    // RFC-0140 D5 (phase-581 W3) -- this package's own configuration rows
+    // (`nros-knobs.toml`) as `$OUT_DIR/nros_knobs.rs`, with the image's values.
+    nros_knob_build::emit(env!("CARGO_MANIFEST_DIR"));
     // The SDK root's CONTENT is watched, never its spelling (issue 0491).
     let sdk = nros_build_paths::env_path_watched("FIXTURE_R5F_SDK_ROOT").unwrap_or_default();
     let sdk_include = sdk.join("include");

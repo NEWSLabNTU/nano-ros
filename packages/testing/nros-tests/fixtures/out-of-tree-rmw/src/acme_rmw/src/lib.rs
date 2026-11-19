@@ -31,6 +31,17 @@ use nros_rmw_zenoh::ZenohRmw;
 /// Printed once, on the first sample published through `acme`.
 pub const PUBLISH_MARKER: &str = "acme rmw: publishing through backend acme";
 
+/// This package's own configuration rows (`nros-knobs.toml`), as the build
+/// resolved them (RFC-0140 D5): `knobs::POOL_SLOTS` is the image's
+/// `[image.<id>.knobs.acme] pool_slots`, else the row's default.
+pub mod knobs {
+    include!(concat!(env!("OUT_DIR"), "/nros_knobs.rs"));
+}
+
+/// Printed once, with [`PUBLISH_MARKER`]: the knob value this backend was
+/// built with, so a test sees the stated value reach the build script.
+pub const POOL_SLOTS_MARKER: &str = "acme rmw: pool_slots =";
+
 /// The zenoh table this backend delegates to.
 const ZENOH: NrosRmwVtable = RustBackendAdapter::<ZenohRmw>::VTABLE;
 
@@ -53,6 +64,12 @@ unsafe extern "C" fn acme_publish(
 ) -> rmw_ret_t {
     if !ANNOUNCED.swap(true, Ordering::AcqRel) {
         nros_log::log_info!(nros_log::get_logger("acme_rmw"), "{}", PUBLISH_MARKER);
+        nros_log::log_info!(
+            nros_log::get_logger("acme_rmw"),
+            "{} {}",
+            POOL_SLOTS_MARKER,
+            knobs::POOL_SLOTS
+        );
     }
     match ZENOH.publish {
         // SAFETY: the runtime's arguments, forwarded unchanged to the slot

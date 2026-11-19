@@ -111,6 +111,9 @@ nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }
 # build scripts' knob ladder reads, so the renderer cannot pair a knob with a
 # symbol the ladder does not. Zero-dependency, host-only crate.
 nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
+# phase-581 W3 (RFC-0140 D2/D5) — the one loader of `nros-knobs.toml`, shared
+# with a package's build script (`nros-knob-build`).
+nros-knob-catalog = { path = "../../tooling/nros-knob-catalog" }
 # phase-290 W4 — the RFC-0049 platform/board knob resolver for `nros config explain`.
 nros-board-common = { path = "../../boards/nros-board-common", features = ["build-helpers"] }
 

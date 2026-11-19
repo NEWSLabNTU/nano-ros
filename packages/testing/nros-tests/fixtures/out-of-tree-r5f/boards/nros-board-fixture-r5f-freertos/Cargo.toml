@@ -25,6 +25,8 @@ zpico-sys = { version = "0.6", default-features = false, features = ["freertos",
 [build-dependencies]
 nros-board-common = { version = "0.6", features = ["build-helpers"] }
 nros-build-paths = "0.6"
+# RFC-0140 D5 (phase-581 W3) -- reads this package's own `nros-knobs.toml`.
+nros-knob-build = "0.6"
 cc = "1"
 
 [features]

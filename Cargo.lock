@@ -1372,6 +1372,25 @@ name = "nros-ghost-types"
 version = "0.6.0"
 
 [[package]]
+name = "nros-knob-build"
+version = "0.6.0"
+dependencies = [
+ "nros-knob-catalog",
+ "nros-zephyr-build",
+ "tempfile",
+]
+
+[[package]]
+name = "nros-knob-catalog"
+version = "0.6.0"
+dependencies = [
+ "nros-zephyr-build",
+ "serde",
+ "tempfile",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "nros-lifecycle-msgs"
 version = "0.0.0"
 dependencies = [
