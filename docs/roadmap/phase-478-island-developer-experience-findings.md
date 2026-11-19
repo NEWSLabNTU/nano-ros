@@ -902,7 +902,7 @@ this phase will fix it.
 
 ## Issues homed here (2026-11-02)
 
-- [issue 2165](../issues/2165-zephyr-smp-nros-log-stops-after-four-records.md): on the island's Zephyr SMP image (`fvp_baser_aemv8r_smp`), only the four early-ring `nros_log` records reach the console. Every later record is lost with no `report_lost` warning. The same sources log normally on FreeRTOS.
+- [issue 2165](../issues/archived/2165-zephyr-smp-nros-log-stops-after-four-records.md) (resolved 2026-11-19: does not reproduce at main; the sink hazard is [issue 2738](../issues/2738-zephyr-log-sink-buffer-on-caller-stack.md)): on the island's Zephyr SMP image (`fvp_baser_aemv8r_smp`), only the four early-ring `nros_log` records reach the console. Every later record is lost with no `report_lost` warning. The same sources log normally on FreeRTOS.
 
 ## Issues homed here (2026-11-18)
 

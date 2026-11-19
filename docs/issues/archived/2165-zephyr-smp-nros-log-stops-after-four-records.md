@@ -1,15 +1,16 @@
 ---
 id: 2165
 title: "On a Zephyr SMP image only the first four `nros_log` records reach the console; every later record is lost while the application runs on"
-status: open
+status: resolved
+resolved_in: "not reproducing at main 93368ca929 (ASI image, workaround off); the sink hazard moves to issue 2738"
 type: bug
 area: [zephyr, log]
 severity: medium
 found: 2026-10-30
-related: [2000, 1037, 1123, phase-478]
+related: [2000, 1037, 1123, 2738, phase-478]
 ---
 
-**Home:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
+**Home:** [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)
 — an island finding. The ASI Zephyr SMP image loses every `nros_log` record after the early ring.
 
 ## What was measured
@@ -152,3 +153,28 @@ Still reproduces for ASI and is still worked around ([ASI](https://github.com/NE
 `asi_common/include/common/logger/logger.hpp:54-67` sends every record to
 `printk` on Zephyr, bypassing `nros_log`, so CI greps still see "Actuation
 Safety Island is Live". ASI moves to `RCLCPP_*` / `rclc_log` once this closes.
+
+## Resolved: not reproducing at main (2026-11-19)
+
+Measured by session NXP 175 on ASI's image, nano-ros main 93368ca929:
+`fvp_baser_aemv8r_smp`, 4 CPUs, `CONFIG_LOG_MODE_IMMEDIATE=y`,
+`CONFIG_NROS_LOG_EARLY_RECORDS=4`, Cyclone DDS, parameter services, FVP
+11.31.28. The three counters were read over Iris on CPU 0 at addresses from
+`nm -S` on the same ELF. Each run also read 16 bytes of rodata the same way
+and matched them against the ELF, so the reads are of this image.
+
+| run | ASI's `printk` workaround | `nros_log` records on the console | GUARD / PENDING / LOST at 10, 31, 61, 121 s |
+| --- | --- | --- | --- |
+| 1 | on | 246 `<inf> nros:` through 121 s | 0 / 0 / 0 at every read |
+| 2 | **off** (compiled out; ASI's lines go through `rclc_log_emit_fmt`) | 259, including "Safety Island startup..." and "Actuation Safety Island is Live" | 0 / 0 / 0 at every read |
+
+Run 1 alone proved nothing: with the workaround on, ASI's own lines never
+entered `nros_log`. Run 2 is the closing measurement. No fault, panic or
+assert, and no `log record(s) lost` line, in either run. Mechanism 1 (a guard
+never released) would read GUARD = 1, PENDING = 4 and a growing LOST.
+
+So the symptom does not reproduce at current main, on the image and
+configuration that reported it. ASI drops its workaround. What 2165 does not
+settle: the Zephyr sink still formats every record into a 1280-byte buffer on
+the caller's stack, which would produce exactly mechanism 1 on a thread with
+a small stack. That hazard is [issue 2738](../2738-zephyr-log-sink-buffer-on-caller-stack.md).
