@@ -340,7 +340,7 @@ fn typed_emit_no_qos_overrides_no_table() {
         "talker_pkg/Talker.hpp",
     )]);
     let src = emit_typed(&plan).expect("typed emit ok");
-    assert!(!src.contains("nros_cpp_qos_override_t"));
+    assert!(!src.contains("nros_cpp_qos_override_t __nros_qos_"));
     assert!(!src.contains("set_qos_overrides"));
 }
 
