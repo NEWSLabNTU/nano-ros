@@ -802,14 +802,19 @@ fn write_applied_result(
 ///   has no `.` after "range", and neither has this);
 /// * a value inside the range but off its step: `The parameter value for
 ///   <name> is not a valid step. Min: .., max: .., value: .., step: ..` (for
-///   a float, "is not close enough to a valid step").
+///   a float, "is not close enough to a valid step");
+/// * a value of another type than a statically typed parameter's: `Wrong
+///   parameter type, expected 'Type.<DECLARED>' got 'Type.<GIVEN>'`
+///   ([`rclpy_type_name`]; phase-556 W2).
 ///
 /// Floats print in their shortest round-trip form, as Python's `str` does
 /// for every value outside the exponent forms (`1e16` here, `1e+16` there).
 ///
-/// rclcpp words both differently: "cannot undeclare an statically typed
-/// parameter", and "Parameter {<name>} doesn't comply with integer range." for
-/// an out-of-range and an off-step value alike.
+/// rclcpp words these differently: "cannot undeclare an statically typed
+/// parameter", "Parameter {<name>} doesn't comply with integer range." for
+/// an out-of-range and an off-step value alike, and "Wrong parameter type,
+/// parameter {<name>} is of type {integer}, setting it to {string} is not
+/// allowed." for a value of the wrong type.
 ///
 /// Every other verdict keeps the store's reason ([`set_result_reason`]), and
 /// so does a range reason that would not fit the reply's string. On the wire
@@ -830,6 +835,27 @@ pub(crate) fn refusal_reason<'b>(
             if matches!(value, InternalValue::NotSet) && server.has(node, name) =>
         {
             STATIC_UNDECLARE_REASON
+        }
+        Err(ParameterError::TypeMismatch) => {
+            buf.clear();
+            let declared = server
+                .get_descriptor(node, name)
+                .map(|d| d.param_type)
+                .filter(|t| *t != InternalType::NotSet)
+                .or_else(|| server.get_type(node, name));
+            let written = match declared {
+                Some(declared) => write!(
+                    buf,
+                    "Wrong parameter type, expected 'Type.{}' got 'Type.{}'",
+                    rclpy_type_name(declared),
+                    rclpy_type_name(value.param_type())
+                ),
+                None => Err(core::fmt::Error),
+            };
+            match written {
+                Ok(()) => buf.as_str(),
+                Err(_) => set_result_reason(result),
+            }
         }
         Err(ParameterError::OutOfRange) => {
             buf.clear();
@@ -875,6 +901,23 @@ pub(crate) fn refusal_reason<'b>(
             }
         }
         _ => set_result_reason(result),
+    }
+}
+
+/// The member name of rclpy's `Parameter.Type` for a parameter type, as a
+/// type refusal prints it (`Type.INTEGER`).
+const fn rclpy_type_name(t: InternalType) -> &'static str {
+    match t {
+        InternalType::NotSet => "NOT_SET",
+        InternalType::Bool => "BOOL",
+        InternalType::Integer => "INTEGER",
+        InternalType::Double => "DOUBLE",
+        InternalType::String => "STRING",
+        InternalType::ByteArray => "BYTE_ARRAY",
+        InternalType::BoolArray => "BOOL_ARRAY",
+        InternalType::IntegerArray => "INTEGER_ARRAY",
+        InternalType::DoubleArray => "DOUBLE_ARRAY",
+        InternalType::StringArray => "STRING_ARRAY",
     }
 }
 
@@ -3477,6 +3520,28 @@ mod tests {
             assert!(!reply.results[0].successful, "{name}");
             assert_eq!(reply.results[0].reason.as_str(), reason);
         }
+    }
+
+    /// phase-556 W2 -- a value of another type than a statically typed
+    /// parameter's is refused in rclpy's words, naming both types, and the
+    /// parameter keeps its value.
+    #[test]
+    fn type_refusals_carry_stock_s_reason() {
+        let mut server = described_server();
+        let mut request = Box::new(SetParametersRequest::default());
+        let mut value = wire_value_of(2);
+        value.integer_value = 3;
+        push_param!(request, "speed", value);
+        let streamed = run_streaming(&encode(&*request), |reader, writer| {
+            stream_set_parameters(&mut server, &mut staged(), NODE, reader, writer)
+        });
+        let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
+        assert!(!reply.results[0].successful);
+        assert_eq!(
+            reply.results[0].reason.as_str(),
+            "Wrong parameter type, expected 'Type.DOUBLE' got 'Type.INTEGER'"
+        );
+        assert_eq!(server.get_double(NODE, "speed"), Some(1.0));
     }
 
     /// A range reason is written only while the reply has room for it and
