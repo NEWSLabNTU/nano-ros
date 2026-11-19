@@ -103,6 +103,10 @@ OWNERS: dict[str, str] = {
     # issue 2400 W5b — the ThreadX front-end of the same rung, read by the
     # riscv64 board's build helper.
     "NROS_THREADX_APP_STACK_KB": "packages/boards/nros-board-common/src/threadx_qemu_riscv64_build.rs",
+    # Issue 2624 -- the ThreadX byte pool (the `heap_bytes` rung on ThreadX):
+    # every cargo-road compile of `threadx_hooks.c` sizes it through
+    # `threadx_sources::define_byte_pool`.
+    "NROS_THREADX_BYTE_POOL_KB": "packages/boards/nros-board-common/src/threadx_sources.rs",
     # The Zephyr heap joined the memory tenant once `nros-platform` could reach
     # the ladder — it could not while the reader lived in `nros-board-common`,
     # which depends on `nros-platform`.

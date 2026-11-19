@@ -106,6 +106,12 @@ pool.app = [15, 31]
 # is issue 1171's defect, and it is what a stated number buys over an `nm`
 # reading.
 #
+# Issue 2624 retired the subtraction: the byte pool is now DERIVED from peaks
+# measured with this backing already in `.bss`
+# (`nros_board_common::threadx_pool`), so it holds no backing and nothing gives
+# it back. This rung now sizes the static alone; the pool is
+# `[knobs.memory] heap_bytes` (`NROS_THREADX_BYTE_POOL_KB`).
+#
 # THE NUMBER, and why it is NOT the per-role measurement (issue 1388).
 #
 # It was 4,494 from 2026-09-12 to 2026-09-20, derived as `35,952 / 8` from the

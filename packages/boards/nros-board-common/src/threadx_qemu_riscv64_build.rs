@@ -259,16 +259,14 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     glue.include(virtio_driver_dir.join("include"));
     glue.file(manifest_dir.join("c/entry.s"));
     glue.file(manifest_dir.join("c/trap.c"));
-    crate::threadx_sources::add_threadx_hooks_source(&mut glue);
-    glue.file(manifest_dir.join("c/board_threadx_qemu_riscv64.c"));
     // issue 2400 W5b — the app thread's stack, resolved on the knob ladder
     // instead of a constant in the board's C, and stated for `nros build`'s
-    // stack-floor check.
+    // stack-floor check. `add_threadx_hooks_source` defines it for the whole
+    // glue build (this board's C reads it too) and sizes the byte pool from it
+    // (issue 2624).
     let app_stack = app_stack_bytes_from_build_env();
-    glue.define(
-        "NROS_THREADX_APP_STACK_BYTES",
-        app_stack.to_string().as_str(),
-    );
+    crate::threadx_sources::add_threadx_hooks_source(&mut glue, app_stack as usize);
+    glue.file(manifest_dir.join("c/board_threadx_qemu_riscv64.c"));
     crate::stack_stated::emit(
         &out_dir,
         &[crate::stack_stated::Stated {

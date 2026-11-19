@@ -192,7 +192,7 @@ client got its sum and the action client got its full Fibonacci result.
 Swept for the same pattern on the other platforms' cmake roads: none. ThreadX
 sizes its byte pool with one literal (`BYTE_POOL_BASE_SIZE`, 4 MiB) on BOTH
 roads. That is not a road split, but it is the same "fixed literal, not
-derived" shape, so it is filed as [issue 2624](2624-threadx-byte-pool-base-is-a-literal.md)
+derived" shape, so it is filed as [issue 2624](archived/2624-threadx-byte-pool-base-is-a-literal.md)
 and not changed here. Zephyr and NuttX take their
 heaps from Kconfig on every road, and freertos-posix uses heap_3 over the host
 `malloc`.
