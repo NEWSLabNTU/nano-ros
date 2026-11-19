@@ -1,7 +1,8 @@
 ---
 id: 2612
 title: "Nothing asks for a changelog fragment, so a user-visible change can merge without one"
-status: open
+status: resolved
+resolved: 2026-11-19
 type: tech-debt
 area: [release, ci]
 severity: low
@@ -9,7 +10,8 @@ found: 2026-11-15
 related: [0885]
 ---
 
-**Ruled 2026-11-15 (user): option (c) now, (a) later.** (c) is done (below);
+**Ruled 2026-11-15 (user): option (c) now, (a) later. Ruled 2026-11-19 (user,
+via the manager): (a) now.** Both are done (below);
 the issue stays open for (a). **Home:** no active phase owns release tooling. The release phases (phase-431, phase-443)
 are archived. The nearest active doc is phase-535, whose item 5 (`release-gate`,
 release preconditions on `release-nros.yml`) is related; phase-535 is parked.
@@ -126,3 +128,28 @@ summary, never dropped silently. The audit imports that predicate rather than
 keeping a second one. Same change: the PR lookup is one aliased GraphQL query
 per 100 commits instead of one REST call per commit. Since `nros-0.6.0-nros11`
 (19 commits, 16 PRs, one call): 2 flagged, 1 skipped as docs-only.
+
+## Ruled 2026-11-19: (a) now
+
+The user turned (a) on, waiving the "stayed quiet" condition on the nros12
+audit: since `nros-0.6.0-nros11`, 37 of 234 merged PRs touched shipped paths
+with no fragment and no trailer, about 25 of them user-visible (new boards,
+RMW sessions, `system.toml` includes, CLI fixes). Those were backfilled as
+fragments before the gate landed, so the nros12 notes are complete.
+
+## Done: (a)
+
+`changelog-audit.py --require` (`just check changelog-required`, fast line,
+`needs:git-history`) reads the branch from its merge base with `origin/main`
+as one pull request, with the audit's own selector: the same shipped paths
+and exclusions, the same docs-only skip, the same fragment and trailer tests.
+A branch that changes a shipped path with neither is refused, and the message
+lists the paths and says exactly what to add: a
+`changelog.d/+<words>.<type>.md` fragment, or a `Changelog: none` line at the
+end of any commit message on the branch. Under `GITHUB_EVENT_NAME`
+`merge_group` or `push` it passes, saying why: the pull request was judged
+before it queued. Its self-test covers code alone, a fragment in a later
+commit, a trailer, trailer words mid-line, test-only, tooling-only, a book
+page, and book plus cmake. Mutating `require()` to never refuse, or to ignore
+the trailer, turns it red.
+

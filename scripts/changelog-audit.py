@@ -52,6 +52,18 @@ request check (option (a)); until then a row is a question, not an error.
   changelog-audit.py --no-gh            one row per commit, no network
   changelog-audit.py --self-test        the selector's cases on a scratch repository
   changelog-audit.py --gate             the self-test, failing on a red (`just check changelog-audit`)
+  changelog-audit.py --require [--base <ref>]
+                                        REFUSE this branch (merge-base with `origin/main`, or
+                                        <ref>, to HEAD) if it changes a shipped path with no
+                                        fragment and no trailer (`just check changelog-required`)
+
+`--require` is option (a), ruled ON 2026-11-19 (user, via the manager; the
+"stayed quiet" condition waived on the nros12 audit's numbers). It reads the
+branch as ONE pull request with this script's own selector: the same SHIPPED
+paths and exclusions, the same docs-only skip, the same fragment and trailer
+tests. A merge-queue or push run has no branch of its own to judge (the PR
+was judged before it queued), so under `GITHUB_EVENT_NAME` merge_group or
+push it says so and passes.
 
 Every invocation runs the self-test first; a report from a selector whose
 cases fail is not printed (a note says so), and the exit status is still 0.
@@ -68,6 +80,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
+import check_skip  # noqa: E402  the NOT VERIFIED ledger
+import git_history  # noqa: E402  what this clone's history can answer
 
 SHIPPED = ("packages/", "cmake/", "book/")
 NOT_SHIPPED = ("packages/testing/", "book/src/migrating/releases/")
@@ -241,6 +255,55 @@ def audit(cwd, since, until, use_gh, included=None):
     return rows, skipped, len(cs), len(groups), bool(prs), credit
 
 
+FRAGMENT_TYPES = ("fix", "feat", "perf", "breaking", "docs")
+
+
+def require(cwd, base, head, included=None):
+    """Option (a) over one branch: the shipped paths it changes when it needs
+    a changelog entry and has none, else [].
+
+    It reads what CI's lane holds and nothing more: the branch's NET change
+    as one diff of two trees (the merge base's and the tip's, both present
+    in a treeless CI clone, which fetches the base tip first), and the
+    branch's commit MESSAGES (commits only, no trees) for the trailer. So a
+    fragment added in any commit and kept counts, and no old tree is walked.
+    Raises git_history.HistoryUnknown when the diff cannot be read here."""
+    if included is None:
+        included = GATE_TIER.included_markdown()
+    # In a treeless CI clone the merge base's tree is absent when main moved
+    # after the PR's merge ref was made. A two-tree diff descends only into
+    # the directories that differ, a handful of objects, so it may fetch them
+    # lazily (git_history's `fetch=True` case), bounded; a timeout or a
+    # failure raises HistoryUnknown, which the caller reports NOT VERIFIED.
+    lazy = not all(git_history.tree_present(cwd, rev) for rev in (base, head))
+    paths = [p for p in git_history.history_git(
+        cwd, "diff", "--name-only", "--no-renames", base, head, fetch=lazy).stdout.splitlines() if p]
+    msgs = git(["log", "--no-merges", "--format=%B%x00", f"{base}..{head}"], cwd)
+    covered = (any(p.startswith(FRAGMENTS) for p in paths)
+               or any(TRAILER.search(m) for m in msgs.split("\0")))
+    ship = [p for p in paths if shipped(p)]
+    if not ship or covered or docs_only(paths, included):
+        return []
+    return ship
+
+
+def require_message(ship):
+    shown = "\n".join(f"    {p}" for p in ship[:8])
+    more = f"\n    … and {len(ship) - 8} more" if len(ship) > 8 else ""
+    return (
+        "changelog-required: this branch changes what nano-ros ships and adds no "
+        "changelog entry:\n"
+        f"{shown}{more}\n"
+        "Add ONE of these to the branch:\n"
+        f"  * a fragment, changelog.d/+<a-few-words>.<type>.md (type: {', '.join(FRAGMENT_TYPES)}),\n"
+        "    saying in a sentence or two what a user now sees, with no issue or phase ids; or\n"
+        "  * if no user sees the change (tests, gates, internal tooling), this line on its own\n"
+        "    at the end of any commit message on the branch:\n"
+        "      Changelog: none\n"
+        "    (`git commit --amend` adds it to the last commit; a new commit works too)."
+    )
+
+
 def render(rows, skipped, since, until, n_commits, n_groups, by_pr, credit=None):
     credit = credit or {"cited": 0, "listed": 0, "bad": []}
     unit = "pull request(s)" if by_pr else "commit(s), no PR lookup"
@@ -372,6 +435,46 @@ def self_test():
                 fails.append("the report does not name a flagged PR")
             if "3 more skipped as docs-only" not in text or "3 more skipped as docs-only" not in md:
                 fails.append("the report does not state the docs-only skipped count")
+            # Option (a), --require: one branch read as one PR.
+            git(["checkout", "-q", "-b", "req-base"], r)
+            base = git(["rev-parse", "HEAD"], r).strip()
+            req_cases = [
+                ("code alone", [(["packages/core/r1.rs"], None)], True),
+                ("code, fragment in a later commit", [(["packages/core/r2.rs"], None),
+                                                      (["changelog.d/+r2.fix.md"], None)], False),
+                ("code with a trailer", [(["packages/core/r3.rs"], "r3\n\nChangelog: none\n")], False),
+                ("trailer words mid-line", [(["packages/core/r4.rs"], "r4: Changelog: none here\n")], True),
+                ("test harness only", [(["packages/testing/r5.rs"], None)], False),
+                ("tooling only", [(["scripts/r6.sh"], None)], False),
+                ("book page only", [(["book/src/guide/r7.md"], None)], False),
+                ("book page and cmake", [(["book/src/guide/r8.md"], None), (["cmake/r8.cmake"], None)], True),
+            ]
+            for name, steps, want_refused in req_cases:
+                git(["checkout", "-q", "-B", "req", base], r)
+                for paths, msg in steps:
+                    commit(paths, msg)
+                got_ship = require(str(r), base, "HEAD", included=set())
+                if bool(got_ship) != want_refused:
+                    fails.append(f"--require, {name}: want {'refused' if want_refused else 'passed'}")
+            # The third outcome: what this clone cannot answer is UNKNOWN.
+            try:
+                require(str(r), "0" * 40, "HEAD", included=set())
+                fails.append("--require: a tree not in the clone did not raise HistoryUnknown")
+            except git_history.HistoryUnknown:
+                pass
+            if branch_base(str(r), "main")[0] is None:
+                fails.append("--require: a full clone found no merge base with main")
+            shallow = Path(t) / "shallow"
+            git(["clone", "-q", "--depth", "1", "--branch", "req", f"file://{r}", str(shallow)], r)
+            got_base, why = branch_base(str(shallow), "origin/main")
+            if got_base is not None or "shallow" not in (why or ""):
+                fails.append(f"--require: a shallow clone must say so, got {got_base!r} {why!r}")
+            msg = require_message(["packages/core/x.rs"])
+            for needle in ("changelog.d/+", "Changelog: none", "packages/core/x.rs", "fix, feat"):
+                if needle not in msg:
+                    fails.append(f"--require message lacks {needle!r}")
+            git(["checkout", "-q", "main"], r)
+
             # The batched lookup: one query per GQL_BATCH commits, aliases map back.
             many = [f"{i:040x}" for i in range(GQL_BATCH * 2 + 1)]
             if [len(b) for b in chunks(many, GQL_BATCH)] != [GQL_BATCH, GQL_BATCH, 1]:
@@ -392,7 +495,7 @@ def self_test():
         print(f"changelog-audit self-test FAIL: {f}", file=sys.stderr)
     if fails:
         return 1
-    print("changelog-audit self-test: OK (tag choice, fragment, trailer, exclusions, book navigation, docs-only skip, PR grouping, batched lookup, /pull/ citation, none-list)")
+    print("changelog-audit self-test: OK (tag choice, fragment, trailer, exclusions, book navigation, docs-only skip, PR grouping, batched lookup, /pull/ citation, none-list, --require)")
     return 0
 
 
@@ -417,6 +520,8 @@ def main(argv):
         return 0
     nros_clear_inherited_git_env()
     cwd = os.getcwd()
+    if "--require" in argv:
+        return require_main(cwd, argv)
     until = argv[argv.index("--until") + 1] if "--until" in argv else "HEAD"
     try:
         since = argv[argv.index("--since") + 1] if "--since" in argv else last_tag(cwd, until)
@@ -435,6 +540,42 @@ def main(argv):
                 f.write(md)
         except OSError as e:
             print(f"changelog-audit: summary not written ({e})")
+    return 0
+
+
+def branch_base(cwd, main="origin/main"):
+    """(merge base of HEAD and `main`, None), or (None, why it cannot be had)."""
+    p = subprocess.run(["git", "merge-base", "HEAD", main], cwd=cwd, capture_output=True, text=True)
+    if p.returncode == 0 and p.stdout.strip():
+        return p.stdout.strip(), None
+    why = "this clone is shallow" if git_history.is_truncated(cwd) else f"no {main} to compare with"
+    return None, f"no merge base with {main} ({why}; `git fetch --unshallow origin main`)"
+
+
+def require_main(cwd, argv):
+    """Three outcomes: OK, REFUSED (exit 1, with the remedy), or NOT VERIFIED
+    through the skip ledger when this clone cannot answer (shallow, no merge
+    base, a tree not here). Truncation can only hide history, so it is never
+    read as a pass or a refusal (git_history's rule)."""
+    name = "changelog-required"
+    event = os.environ.get("GITHUB_EVENT_NAME", "")
+    if event in ("merge_group", "push"):
+        print(f"{name}: OK ({event}: the pull request was judged before it queued)")
+        return 0
+    if "--base" in argv:
+        base = argv[argv.index("--base") + 1]
+    else:
+        base, why = branch_base(cwd)
+        if base is None:
+            return check_skip.unverified(name, why)
+    try:
+        ship = require(cwd, base, "HEAD")
+    except (git_history.HistoryUnknown, RuntimeError, OSError) as e:
+        return check_skip.unverified(name, f"cannot read the branch here: {e}")
+    if ship:
+        print(require_message(ship), file=sys.stderr)
+        return 1
+    print(f"changelog-required: OK ({base[:10]}..HEAD has an entry, a trailer, or changes nothing shipped)")
     return 0
 
 
