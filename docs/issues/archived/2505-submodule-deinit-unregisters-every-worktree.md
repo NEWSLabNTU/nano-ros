@@ -1,7 +1,8 @@
 ---
 id: 2505
 title: "`git submodule deinit` in one linked worktree unregisters the submodules of every worktree, so tidying a finished agent worktree breaks the live ones"
-status: open
+status: resolved
+resolved_in: "the change that archives this issue"
 type: limitation
 severity: medium
 area: [git, worktree, multi-session]
@@ -76,3 +77,30 @@ a linked worktree. It acts on state that every worktree shares.
 - **Repo.** A short line in AGENTS.md's multi-session pitfalls would put this where every
   session reads it. Optionally, `just setup-worktree` could report when it is RE-registering
   submodules that a worktree already has checked out, since that is this issue's signature.
+
+## Resolved (2026-11-19)
+
+There is no hook on `git submodule deinit`, so the guard is in three places:
+
+- **The safe recipe exists.** `just worktree-prune` (issue 2611) removes a
+  finished worktree and never deinits. `git worktree remove --force` is the
+  manual form.
+- **Every session is told.** AGENTS.md's multi-session pitfalls now say: never
+  deinit in a linked worktree; use one of those two.
+- **The damage is named where it shows up.** `nros_submodule_provision_state`
+  (`scripts/lib/submodule-provision.sh`), the one answer that
+  `setup-worktree`, the lane preflight and the drift check share, has a new
+  state, `deregistered`. It means `git submodule status` marks the submodule
+  `-` while this worktree still has it checked out (a git dir, tracked files
+  and a commit). The state is red, and its remedy, `git submodule init --
+  <path>`, re-registers the submodule without touching its files.
+  `setup-worktree` (`claim-provision.sh`) applies the remedy itself and prints
+  `[RE-REGISTERED]`, naming another worktree's deinit as the cause. Before,
+  the victim's own history could not say why its submodules had gone.
+
+`tests/submodule-provision-tests.sh` covers it with two linked worktrees. A
+deinit in one reads as `deregistered` and red in the other, and the remedy
+returns it to `ok`. With the detection disabled, the case fails (`got
+missing, want deregistered`). The control found a defect in the case's first
+draft: `expect` ran in a subshell, so the failure was not counted and the
+script still printed OK.

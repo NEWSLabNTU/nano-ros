@@ -52,6 +52,16 @@ claim_submodules() {
         state="$(nros_submodule_provision_state "$p")"
         case "$state" in
             missing) want+=("$p") ;;
+            deregistered)
+                # Issue 2505 -- re-register only; the checkout is someone's
+                # and stays as it is. Said loudly: the cause is another
+                # session, which this worktree's own history cannot show.
+                echo "  [RE-REGISTERED] $p was checked out here but no longer registered:"
+                echo "            another linked worktree ran \`git submodule deinit\`, which removes the"
+                echo "            registration every worktree shares. Remove a finished worktree with"
+                echo "            \`just worktree-prune\` or \`git worktree remove --force\`, never deinit."
+                git submodule init -- "$p" >/dev/null || broken=$((broken + 1))
+                ;;
             incomplete:* | diverged)
                 broken=$((broken + 1))
                 echo "  [BROKEN]  $p is ${state%%:*} ($state): an interrupted or redirected checkout."
