@@ -1851,6 +1851,18 @@ impl<'s> GuardCondition<'s> {
         }
     }
 
+    /// How many owners the executor's wake state has, this handle included;
+    /// 0 for a handle with no wake. For tests that prove the handle keeps the
+    /// state alive past its executor.
+    #[doc(hidden)]
+    pub fn wake_state_owners(&self) -> usize {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let Some(arc) = self.wake_ctx.as_ref() {
+            return portable_atomic_util::Arc::strong_count(arc);
+        }
+        0
+    }
+
     /// The wake callbacks' context: the `WakeCtx` this handle holds.
     #[inline]
     fn wake_ctx_ptr(&self) -> *mut core::ffi::c_void {

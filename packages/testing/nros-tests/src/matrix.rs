@@ -1278,6 +1278,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         ),
     ),
     ("generated_message_code_compiles", NonCell::CompileCheck),
+    ("guard_condition_outlives_executor", NonCell::FeatureLane),
     (
         "host_connect_facts",
         NonCell::Probe(
