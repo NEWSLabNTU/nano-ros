@@ -6,7 +6,7 @@ type: bug
 severity: high
 area: [zephyr, build, testing]
 found: 2026-11-17
-related: [phase-559]
+related: [2724, phase-559]
 ---
 
 **Home:** [phase-559](../roadmap/phase-559-ci-workflow-organization.md)
@@ -133,3 +133,7 @@ and the image printed nothing because it aborted inside the unwinder.
 `zephyr.elf` the same way). No other board we build links a relocatable
 `zephyr.elf`. The only other `-r` link in Zephyr is `CONFIG_LLEXT_TYPE_ELF_
 RELOCATABLE`, which no image here enables.
+
+## Second route (2026-11-19)
+
+[Issue 2724](archived/2724-zephyr-native-sim-link-fails-on-aarch64-host.md) found the same unparsable prelink `.eh_frame` with this fix in place: on aarch64, `--sort-section=alignment` wrote the prelink's `.rela.eh_frame` out of offset order. The nros module now turns `CONFIG_LINKER_SORT_BY_ALIGNMENT` off for native-simulator images, and `check-unwind-table.py --prelink` checks the order.
