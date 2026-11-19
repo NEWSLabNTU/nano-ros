@@ -1,0 +1,1 @@
+`nros dev migrate-bringup` on a package with no `system.toml` no longer says "there is nothing to migrate". It names the file to write and shows the smallest `system.toml` for a host program, and with that file the package migrates.

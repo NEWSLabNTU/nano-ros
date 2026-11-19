@@ -538,6 +538,34 @@ fn rename_class_paths(system_text: &str, old: &str, new: &str) -> Result<String>
     Ok(doc.to_string())
 }
 
+/// The refusal for a package with no `system.toml`. The package may still
+/// need a bringup (a program with its own `main` that opens no session never
+/// had one), so this names the file to write and the smallest one that works
+/// for a host program, instead of reading as "already migrated".
+fn missing_system_message(dir: &Path) -> String {
+    let name = std::fs::read_to_string(dir.join("package.xml"))
+        .ok()
+        .and_then(|xml| package_name(&xml))
+        .unwrap_or_else(|| "<package>".to_string());
+    format!(
+        "{dir} has no system.toml, so there is no board or image to migrate.\n\
+         Write {dir}/system.toml, then run this again. For a program with its \
+         own main that runs on the host, this is enough:\n\
+         \n\
+         [system]\n\
+         name = \"{name}\"\n\
+         rmw = \"zenoh\"\n\
+         default_images = [\"linux\"]\n\
+         \n\
+         [image_defaults]\n\
+         board = \"linux\"\n\
+         \n\
+         [image.linux]\n\
+         entry = \"{name}\"",
+        dir = dir.display()
+    )
+}
+
 /// Plan the migration of `dir`. Pure: reads, never writes.
 pub fn plan(dir: &Path) -> Result<Plan> {
     plan_with(dir, &*catalog_west_board(dir))
@@ -547,10 +575,7 @@ pub fn plan(dir: &Path) -> Result<Plan> {
 pub fn plan_with(dir: &Path, west_board_of: &WestBoardOf<'_>) -> Result<Plan> {
     let system_path = dir.join("system.toml");
     if !system_path.is_file() {
-        bail!(
-            "{} has no system.toml: there is nothing to migrate",
-            dir.display()
-        );
+        bail!("{}", missing_system_message(dir));
     }
     let has_cargo = dir.join("Cargo.toml").is_file();
     let has_cmake = dir.join("CMakeLists.txt").is_file();
@@ -2001,6 +2026,39 @@ dir = "examples/linux/rust/listener"
             .parse()
             .unwrap();
         assert!(image_for_rmw(&two, "xrce").is_err());
+    }
+
+    /// A package with its own `main` and no `system.toml` (a program that
+    /// opens no session) still needs a bringup. The refusal names the file to
+    /// write and a minimal one, and that file makes the package migratable
+    /// (issue 2434).
+    #[test]
+    fn no_system_toml_names_the_file_to_write() {
+        let d = scratch("no-system");
+        write(
+            &d.join("Cargo.toml"),
+            "[package]\nname = \"native_logging\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n\
+             [[bin]]\nname = \"native_logging\"\npath = \"src/main.rs\"\n",
+        );
+        write(
+            &d.join("package.xml"),
+            &package_xml("native_logging", "nros_cargo"),
+        );
+        write(&d.join("src/main.rs"), "fn main() {}\n");
+
+        let err = plan_with(&d, &|_, _| None).unwrap_err().to_string();
+        let wanted = d.join("system.toml");
+        assert!(err.contains(&wanted.display().to_string()), "{err}");
+        assert!(!err.contains("nothing to migrate"), "{err}");
+        let suggested = err
+            .split_once("this is enough:\n\n")
+            .map(|(_, toml)| toml)
+            .unwrap_or_else(|| panic!("no suggested system.toml in: {err}"));
+        assert!(suggested.contains("entry = \"native_logging\""), "{err}");
+
+        write(&wanted, suggested);
+        plan_with(&d, &|_, _| None).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
