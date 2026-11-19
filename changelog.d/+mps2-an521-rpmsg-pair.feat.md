@@ -1,0 +1,1 @@
+Two new Zephyr board keys, `mps2-an521-cpu0-zephyr` and `mps2-an521-cpu1-zephyr`, build one image per Cortex-M33 core of the Arm MPS2+ AN521 and pair them over RPMsg. The board package carries the IPM and RPMsg configuration, so an application names the board and nothing else. The pair builds and runs in QEMU; the workspace fetches the open-amp and libmetal modules it needs.
