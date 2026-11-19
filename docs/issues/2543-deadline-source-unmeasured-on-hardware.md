@@ -29,3 +29,9 @@ read the park's wake reason on target.
 One run on a hardware board with a smoltcp transport shows a park ended by
 the smoltcp deadline (not by the caller's budget or a timer), with the wake
 reason read from the target, recorded in RFC-0106's coverage table.
+
+## Status (2026-11-19)
+
+Parked: needs hardware with a network port. The only attached island board,
+MR-CANHUBK344, runs no smoltcp image. The run is planned for the S32K389EVB /
+S32Z280-400EVB bring-up (the K389 is backordered to late November).
