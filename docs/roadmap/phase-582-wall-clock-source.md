@@ -55,6 +55,12 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   - With `upgrade = "monotonic"`, a source that arrives behind the current
     clock never makes a reading go backwards, and the step is counted in the
     state query.
+  - Every clock test asserts a LOWER bound as well as an upper one. The
+    latched and the monotonic-step cases must also show the clock ADVANCING
+    (a later reading is at least the elapsed monotonic time past an earlier
+    one), so a clock that never moves fails "never goes backwards" instead
+    of passing it. Each such test is mutation-checked against a frozen
+    clock.
 
 ### W2 — The FreeRTOS libc shims answer from the symbol
 
