@@ -76,6 +76,10 @@ SCOPED = re.compile(r"\bwith_image_features\s*\(")
 # image-less load that reads no capability switch. Each must still match.
 IMAGELESS_ALLOWED: dict[tuple[str, str], str] = {
     (
+        "packages/cli/nros-cli-core/src/orchestration/probe_seeds.rs",
+        "load_model(&path, None)",
+    ): "launch values only: the probe seeds read each instance's parameters, never a switch",
+    (
         "packages/core/nros-orchestration-ir/src/router_rule.rs",
         "LoadedModel::load(model_path, None)",
     ): "topic rates only: the router rule reads topology, never a switch",
