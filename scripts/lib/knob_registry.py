@@ -1,7 +1,19 @@
 """The one Python reader of the configuration registry (RFC-0140 D1-D4, phase-581 W1).
 
-`packages/tooling/nros-zephyr-build/knobs.toml` holds three row kinds in one
-namespace: `[[knob]]` (a build value with the RFC-0049 ladder), `[[statement]]`
+The registry is core's `packages/tooling/nros-zephyr-build/knobs.toml` plus each
+in-tree package's `nros-knobs.toml`, found beside its descriptor
+(`nros-rmw.toml`, `nros-platform.toml`, `nros-board.toml`) under IN_TREE_DIRS
+(RFC-0140 D2, phase-581 W2). A package file holds `owner = "<word>"`,
+`[[knob]]` and `[[env]]` rows; its owner word is DERIVED from the package's
+`package.xml` announcements (an RMW's or platform's first name, a board's key)
+and checked, every key sits under it (C2), and a foreign variable it declares
+is its own library's (C4). Two packages on one word (C1) and one spelling used
+twice (C3) are refused. `parse()` returns the merged set, knob rows sorted by
+id and env rows by name, so a view does not depend on which file holds a row.
+The Rust loader (`nros_cli_core::knob_catalog`) applies the same rules to the
+packages a workspace's provider scan finds.
+
+The registry holds three row kinds in one namespace: `[[knob]]` (a build value with the RFC-0049 ladder), `[[statement]]`
 (a `system.toml` selection) and `[[env]]` (a variable a running process reads).
 Every script that needs the rows asks this module; none parses the file itself.
 
@@ -30,6 +42,7 @@ differs from `NROS_<id>`), `legacy` (the `env:` retired spellings) and
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 try:
@@ -42,14 +55,20 @@ SRC = REPO / "packages/tooling/nros-zephyr-build/knobs.toml"
 
 ROADS = ("toml", "env", "kconfig", "cmake", "run")
 DISPOSITIONS = ("respect", "ignore", "refuse", "listed")
-FOREIGN = ("ros2", "rcutils", "rust", "zenoh", "cyclonedds")
+# C4: core declares the variables of ROS 2, rcutils and Rust; a library's own
+# variable (`ZENOH_*`, `CYCLONEDDS_URI`) is its package's, `foreign = "<owner>"`.
+FOREIGN_CORE = ("ros2", "rcutils", "rust")
 PARSES = ("str", "int", "bool")
 
-# Owner words of core rows that belong to an in-tree PACKAGE, not to core: the
-# rows move to that package's `nros-knobs.toml` in phase-581 W2, which empties
-# this set. And owner words the naming rule renames (W5/W6). Both only shrink.
-PACKAGE_OWNERS_PENDING_MOVE = {"zenoh", "xrce", "cyclonedds", "freertos", "threadx", "zephyr"}
+# Owner words of core rows the naming rule renames (W5/W6). Only shrinks.
 OWNERS_PENDING_RENAME = {"param"}
+
+# RFC-0140 D2: a package declares its rows in `nros-knobs.toml` beside its
+# descriptor; the descriptor says which kind of package it is. The in-tree
+# packages live under these directories (RFC-0071 D14 for the RMW one).
+PACKAGE_FILE = "nros-knobs.toml"
+DESCRIPTORS = {"nros-rmw.toml": "rmw", "nros-platform.toml": "platform", "nros-board.toml": "board"}
+IN_TREE_DIRS = ("packages/rmw", "packages/platform", "packages/boards")
 
 KEY = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 WORD = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -141,38 +160,100 @@ def _transitional(row, allowed, derived, where, errors):
     return t
 
 
-def _owner_problem(key, owners, where):
+def _owner_problem(key, owners, where, file_owner=None):
+    """RFC-0140 D2 C2: a core row's first key segment is a core owner word; a
+    package row's is the package's own word."""
     owner = key.split(".")[0]
-    if owner in owners or owner in PACKAGE_OWNERS_PENDING_MOVE or owner in OWNERS_PENDING_RENAME:
+    if file_owner is not None:
+        if owner == file_owner:
+            return None
+        return (f"{where}: key `{key}` is not under this package's owner word `{file_owner}` "
+                "(a package declares only its own rows, RFC-0140 D2 C2)")
+    if owner in owners or owner in OWNERS_PENDING_RENAME:
         return None
     return (f"{where}: owner word `{owner}` is not in [owners] (a core row's first key segment "
             "names a core owner, RFC-0140 D2)")
 
 
-def parse(text: str | None = None, path: Path = SRC):
-    """(registry, errors). `registry` has `owner`, `owners`, `knob` (normalised
-    rows), `statement` and `env`. Errors are sentences."""
-    doc = read(path, text)
-    errors = []
-    extra = set(doc) - {"owner", "owners", "knob", "statement", "env"}
-    if extra:
-        errors.append(f"unknown top-level key(s) {sorted(extra)}")
-    owner = doc.get("owner")
-    if owner != "core":
-        errors.append("the core registry's `owner` line is `owner = \"core\"`")
-    owners = doc.get("owners", {})
-    if not isinstance(owners, dict) or not owners:
-        errors.append("an `[owners]` table names the core owner words, one description each")
-        owners = {}
-    for w, d in owners.items():
-        if not WORD.match(w) or not isinstance(d, str) or not d.strip():
-            errors.append(f"[owners] `{w}`: a lower-case word with a one-line description")
-        if w in PACKAGE_OWNERS_PENDING_MOVE:
-            errors.append(f"[owners] `{w}` is a package's word (RFC-0140 D2), not a core one")
+def _rel(path):
+    if path is None:
+        return "<text>"
+    try:
+        return str(Path(path).resolve().relative_to(REPO))
+    except ValueError:
+        return str(path)
 
+
+# --- In-tree contributors (RFC-0140 D2, phase-581 W2) ------------------------
+
+def _provisions(package_xml):
+    """(`<name>`, [(kind, name)]) of a package.xml: the announcements the
+    provider scan reads (`<nano_ros_provides kind=... name=...>`), in order."""
+    root = ET.parse(package_xml).getroot()
+    name = (root.findtext("name") or "").strip()
+    provides = [(e.get("kind", ""), e.get("name", "")) for e in root.iter("nano_ros_provides")]
+    return name, provides
+
+
+def derive_owner(kind, provides, stated):
+    """RFC-0140 D2's owner word of a package, or (None, reason). An RMW or
+    platform package's word is its canonical name (the first it provides); a
+    board package's is one of its board keys, the one its `owner` line names.
+    `-` reads as `_`."""
+    names = [n.replace("-", "_") for k, n in provides if k == kind]
+    if not names:
+        return None, f"the package provides no {kind} (no `<nano_ros_provides kind=\"{kind}\">`)"
+    if kind == "board":
+        if stated in names:
+            return stated, None
+        return None, f"a board package's owner is one of its board keys ({', '.join(names)})"
+    return names[0], None
+
+
+def in_tree_packages(repo=REPO):
+    """Every in-tree package that declares rows: an `nros-knobs.toml` beside a
+    descriptor under IN_TREE_DIRS. Returns ([{file, package, kind, owner}],
+    errors). The Rust provider scan finds the same set (a unit test of
+    `nros_cli_core::knob_catalog` holds the two equal)."""
+    out, errors = [], []
+    seen = set()
+    for d in IN_TREE_DIRS:
+        for pattern in ("*/" + PACKAGE_FILE, "*/*/" + PACKAGE_FILE):
+            for f in sorted((repo / d).glob(pattern)):
+                if f in seen:
+                    continue
+                seen.add(f)
+                where = _rel(f)
+                kinds = [k for desc, k in DESCRIPTORS.items() if (f.parent / desc).is_file()]
+                if len(kinds) != 1:
+                    errors.append(f"{where}: an nros-knobs.toml sits beside exactly one descriptor "
+                                  f"({', '.join(DESCRIPTORS)}), found {len(kinds)}")
+                    continue
+                if not (f.parent / "package.xml").is_file():
+                    errors.append(f"{where}: no package.xml beside it, so no scan finds the package")
+                    continue
+                package, provides = _provisions(f.parent / "package.xml")
+                try:
+                    stated = read(f).get("owner")
+                except Exception as e:  # a parse error is reported by parse()
+                    stated = None
+                    errors.append(f"{where}: {e}")
+                owner, why = derive_owner(kinds[0], provides, stated)
+                if owner is None:
+                    errors.append(f"{where}: {why}")
+                    continue
+                out.append({"file": f, "package": package, "kind": kinds[0], "owner": owner})
+    return out, errors
+
+
+def _parse_file(doc, where_file, owners, file_owner, errors):
+    """The rows of ONE file (core when `file_owner` is None, else a package's),
+    with the checks that need nothing outside it."""
+    is_core = file_owner is None
+    tag = "" if is_core else f" in {where_file}"
     knobs = []
     for i, r in enumerate(doc.get("knob", [])):
-        where = f"knob #{i + 1} ({r.get('key', '?')})"
+        where = f"knob #{i + 1} ({r.get('key', '?')}){tag}"
         bad = set(r) - KNOB_FIELDS
         for f in DERIVED_SPELLINGS:
             if f in r:
@@ -187,7 +268,7 @@ def parse(text: str | None = None, path: Path = SRC):
         if not KEY.match(key):
             errors.append(f"{where}: `key` is `<owner>.<name>`, lower snake case")
             continue
-        p = _owner_problem(key, owners, where)
+        p = _owner_problem(key, owners, where, file_owner)
         if p:
             errors.append(p)
         if "ladder" in r and r["ladder"] is not True:
@@ -224,7 +305,11 @@ def parse(text: str | None = None, path: Path = SRC):
             n["retired"] = instead
         n["key"] = key
         n["retired_entries"] = entries
+        n["file"] = where_file
         knobs.append(n)
+    ids = [k["id"] for k in knobs]
+    if ids != sorted(ids):
+        errors.append(f"rows must be sorted by id{tag} (a merge then conflicts on one row, not the file)")
 
     statements = []
     for i, r in enumerate(doc.get("statement", [])):
@@ -253,10 +338,9 @@ def parse(text: str | None = None, path: Path = SRC):
     if st_keys != sorted(st_keys) or len(set(st_keys)) != len(st_keys):
         errors.append("statement rows must be sorted by key, each key once")
 
-    knob_keys = {k["key"] for k in knobs}
     envs = []
     for i, r in enumerate(doc.get("env", [])):
-        where = f"env #{i + 1} ({r.get('key') or r.get('name', '?')})"
+        where = f"env #{i + 1} ({r.get('key') or r.get('name', '?')}){tag}"
         bad = set(r) - ENV_FIELDS
         if bad:
             errors.append(f"{where}: unknown field(s) {sorted(bad)}")
@@ -265,20 +349,27 @@ def parse(text: str | None = None, path: Path = SRC):
                           "NROS_<KEY>) or `name` (a foreign or patterned one), exactly one")
             continue
         foreign = r.get("foreign")
-        if foreign is not None and foreign not in FOREIGN:
-            errors.append(f"{where}: `foreign` is one of {list(FOREIGN)}")
+        if foreign is not None:
+            if is_core and foreign not in FOREIGN_CORE:
+                errors.append(f"{where}: `foreign` is one of {list(FOREIGN_CORE)} in core; a "
+                              "library's own variable is declared by its package (RFC-0140 D2 C4)")
+            if not is_core and foreign != file_owner:
+                errors.append(f"{where}: a package declares only its own library's variables "
+                              f"(`foreign = \"{file_owner}\"`), not `{foreign}`'s (RFC-0140 D2 C4)")
         if "pattern" in r and r["pattern"] is not True:
             errors.append(f"{where}: `pattern` is written only as `pattern = true`")
+        if not is_core and r.get("pattern"):
+            errors.append(f"{where}: a patterned variable is core's (RFC-0140 D2)")
         if "key" in r:
             key = r["key"]
             if foreign is not None:
                 errors.append(f"{where}: a foreign variable keeps its own `name`, it has no `key`")
             if WORD.match(key):
-                if key not in st_keys:
-                    errors.append(f"{where}: a one-word key is the run-time override of a statement "
-                                  f"(NROS_<KEY>), and `{key}` is no statement")
+                if not is_core:
+                    errors.append(f"{where}: a one-word key is a statement's override, which is core's")
+                # resolved against the merged statements in parse()
             elif KEY.match(key):
-                p = _owner_problem(key, owners, where)
+                p = _owner_problem(key, owners, where, file_owner)
                 if p:
                     errors.append(p)
             else:
@@ -299,10 +390,6 @@ def parse(text: str | None = None, path: Path = SRC):
         disp = r.get("disposition")
         if disp not in DISPOSITIONS:
             errors.append(f"{where}: `disposition` is one of {list(DISPOSITIONS)}")
-        stated = r.get("stated")
-        if stated is not None and stated not in st_keys and stated not in knob_keys:
-            errors.append(f"{where}: `stated = \"{stated}\"` is neither a statement key nor a knob "
-                          "key (RFC-0140 D8)")
         if r.get("parse") is not None and r["parse"] not in PARSES:
             errors.append(f"{where}: `parse` is one of {list(PARSES)}")
         if disp == "refuse" and not r.get("instead"):
@@ -315,20 +402,98 @@ def parse(text: str | None = None, path: Path = SRC):
             "foreign": foreign,
             "pattern": bool(r.get("pattern")),
             "disposition": disp,
-            "stated": stated,
+            "stated": r.get("stated"),
             "parse": r.get("parse"),
             "instead": r.get("instead"),
             "refuse_if": r.get("refuse_if"),
             "help": r.get("help"),
             "retired_entries": _retired_entries(r.get("retired"), where, False, errors),
+            "file": where_file,
+            "_where": where,
         })
     names = [e["name"] for e in envs]
     if names != sorted(names):
-        errors.append("env rows must be sorted by variable name (a merge then conflicts on one row)")
+        errors.append(f"env rows must be sorted by variable name{tag} (a merge then conflicts on one row)")
+    return knobs, statements, envs
+
+
+def parse(text: str | None = None, path: Path = SRC, packages=None):
+    """(registry, errors) of the merged in-tree registry: core's file (`text`,
+    else `path`) plus each package file (`packages`: [{file, package, owner}],
+    default every in-tree one, `in_tree_packages()`). `registry` has `owner`,
+    `owners`, `packages`, `knob` (normalised rows, sorted by id), `statement`
+    and `env` (sorted by name). Errors are sentences."""
+    doc = read(path, text)
+    errors = []
+    if packages is None:
+        packages, perr = in_tree_packages()
+        errors += perr
+    extra = set(doc) - {"owner", "owners", "knob", "statement", "env"}
+    if extra:
+        errors.append(f"unknown top-level key(s) {sorted(extra)}")
+    owner = doc.get("owner")
+    if owner != "core":
+        errors.append("the core registry's `owner` line is `owner = \"core\"`")
+    owners = doc.get("owners", {})
+    if not isinstance(owners, dict) or not owners:
+        errors.append("an `[owners]` table names the core owner words, one description each")
+        owners = {}
+    for w, d in owners.items():
+        if not WORD.match(w) or not isinstance(d, str) or not d.strip():
+            errors.append(f"[owners] `{w}`: a lower-case word with a one-line description")
+
+    knobs, statements, envs = _parse_file(doc, _rel(path), owners, None, errors)
+
+    # Rule C1: one owner word, one package. C2: no package takes a core word.
+    by_owner = {}
+    for p in packages:
+        rel = _rel(p["file"])
+        if p["owner"] in owners:
+            errors.append(f"{rel}: owner word `{p['owner']}` is a core owner ([owners] in "
+                          f"{_rel(path)}); a package cannot declare a core owner's rows "
+                          "(RFC-0140 D2 C2)")
+        if p["owner"] in by_owner and by_owner[p["owner"]]["package"] != p["package"]:
+            other = by_owner[p["owner"]]
+            errors.append(f"owner word `{p['owner']}` is claimed by two packages: "
+                          f"{other['package']} ({_rel(other['file'])}) and {p['package']} ({rel}) "
+                          "(one owner, one package, RFC-0140 D2 C1)")
+        by_owner.setdefault(p["owner"], p)
+        pdoc = read(p["file"])
+        pextra = set(pdoc) - {"owner", "knob", "env"}
+        if pextra:
+            errors.append(f"{rel}: a package file holds `owner`, `[[knob]]` and `[[env]]` rows, "
+                          f"not {sorted(pextra)} (statements and [owners] are core's)")
+        if pdoc.get("owner") != p["owner"]:
+            errors.append(f"{rel}: `owner = \"{pdoc.get('owner')}\"`, but the package's derived "
+                          f"owner word is `{p['owner']}` (RFC-0140 D2: stated so the file reads on "
+                          "its own, checked so it cannot drift)")
+        k, _, e = _parse_file(pdoc, rel, owners, p["owner"], errors)
+        knobs += k
+        envs += e
+    knobs.sort(key=lambda r: r["id"])
+    envs.sort(key=lambda r: r["name"])
+
+    st_keys = {s["key"] for s in statements}
+    knob_keys = {k["key"] for k in knobs}
+    for e in envs:
+        key, where = e["key"], e.pop("_where")
+        if key is not None and WORD.match(key) and key not in st_keys:
+            errors.append(f"{where}: a one-word key is the run-time override of a statement "
+                          f"(NROS_<KEY>), and `{key}` is no statement")
+        stated = e["stated"]
+        if stated is not None and stated not in st_keys and stated not in knob_keys:
+            errors.append(f"{where}: `stated = \"{stated}\"` is neither a statement key nor a knob "
+                          "key (RFC-0140 D8)")
 
     errors += spelling_collisions(knobs, statements, envs)
-    reg = {"owner": owner, "owners": owners, "knob": knobs, "statement": statements, "env": envs}
+    reg = {"owner": owner, "owners": owners, "packages": packages, "knob": knobs,
+           "statement": statements, "env": envs}
     return reg, errors
+
+
+def _label(kind, n, name, file):
+    core = file is None or file == _rel(SRC)
+    return f"{kind} #{n} {name}" + ("" if core else f" ({file})")
 
 
 def spellings(reg_or_parts):
@@ -337,7 +502,7 @@ def spellings(reg_or_parts):
     knobs, statements, envs = reg_or_parts
     out = []
     for i, k in enumerate(knobs):
-        label = f"knob #{i + 1} {k['key']}"
+        label = _label("knob", i + 1, k["key"], k.get("file"))
         out.append(("NROS_" + k["id"], label))
         out.append(("CONFIG_" + k.get("kconfig", "NROS_" + k["id"]), label))
         out.append((k["key"], label))
@@ -351,7 +516,7 @@ def spellings(reg_or_parts):
             out.append((s["kconfig"], label))
         out += [(e["name"], label) for e in s["retired_entries"]]
     for i, e in enumerate(envs):
-        label = f"env #{i + 1} {e['name']}"
+        label = _label("env", i + 1, e["name"], e.get("file"))
         out.append((e["name"], label))
         out += [(x["name"], label) for x in e["retired_entries"]]
     return out
@@ -366,17 +531,37 @@ def spelling_collisions(knobs, statements, envs):
     return errors
 
 
-def knob_rows(path: Path = SRC, text: str | None = None):
-    """The knob rows, normalised (see the module doc). Raises on a registry
-    that does not parse, so a gate never reads half a table."""
-    reg, errors = parse(text, path)
-    if errors:
-        raise ValueError("knobs.toml: " + "; ".join(errors))
-    return reg["knob"]
+def knob_rows(path: Path = SRC, text: str | None = None, packages=None):
+    """The knob rows of the merged in-tree registry, normalised (see the module
+    doc). Raises on a registry that does not parse, so a gate never reads half
+    a table."""
+    return registry(path, text, packages)["knob"]
 
 
-def registry(path: Path = SRC, text: str | None = None):
-    reg, errors = parse(text, path)
+def registry(path: Path = SRC, text: str | None = None, packages=None):
+    reg, errors = parse(text, path, packages)
     if errors:
-        raise ValueError("knobs.toml: " + "; ".join(errors))
+        raise ValueError("knob registry: " + "; ".join(errors))
     return reg
+
+
+def registry_files(repo=REPO):
+    """Core's file and every in-tree package file, core first: the files a
+    writer that edits a row must choose among."""
+    pkgs, errors = in_tree_packages(repo)
+    if errors:
+        raise ValueError("knob registry: " + "; ".join(errors))
+    return [SRC] + [p["file"] for p in pkgs]
+
+
+def file_knob_rows(path: Path, text: str | None = None):
+    """The knob rows of ONE registry file (core's or a package's), normalised,
+    in the file's order: for a writer that edits a row in place. Only the
+    checks one file can answer run, and their errors are not raised; the
+    merged `registry()` is what a reader trusts."""
+    doc = read(path, text)
+    owner = doc.get("owner")
+    file_owner = None if owner == "core" else owner
+    owners = doc.get("owners", {}) if file_owner is None else {}
+    knobs, _, _ = _parse_file(doc, _rel(path), owners, file_owner, [])
+    return knobs

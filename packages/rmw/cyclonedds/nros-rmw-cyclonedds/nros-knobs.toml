@@ -1,0 +1,62 @@
+# The configuration rows this rmw package declares (RFC-0140 D2,
+# phase-581 W2). Found beside its descriptor (nros-rmw.toml) by the scan that finds
+# the package, so this file's presence is the declaration. The schema is core's
+# (packages/tooling/nros-zephyr-build/knobs.toml says what each field means);
+# every key starts with this file's owner word, `cyclonedds`, which is derived
+# from the package (its RMW name)
+# and checked, never chosen. Edit, then run `python3 scripts/gen-knob-registry.py`.
+
+owner = "cyclonedds"
+
+[[knob]]
+key = "cyclonedds.heap_budget_bytes"
+scope = "image"
+class = "carrier"
+carries = "the sizing descriptor's [target] heap_budget_bytes"
+
+[[knob]]
+key = "cyclonedds.max_descriptor_types"
+scope = "image"
+class = "public"
+
+[[knob]]
+key = "cyclonedds.max_fields"
+scope = "image"
+class = "public"
+
+[[knob]]
+key = "cyclonedds.max_kinds"
+scope = "image"
+class = "public"
+
+[[knob]]
+key = "cyclonedds.max_nested_depth"
+scope = "image"
+class = "public"
+
+[[knob]]
+key = "cyclonedds.max_types"
+scope = "image"
+class = "public"
+
+[[env]]
+name = "CYCLONEDDS_URI"
+foreign = "cyclonedds"
+disposition = "respect"
+stated = "rmw_config"
+parse = "str"
+help = "Cyclone's own configuration; it COMPOSES with the baked rmw_config file."
+
+[[env]]
+key = "cyclonedds.match_timeout_ms"
+transitional = { name = "NROS_CYCLONE_MATCH_TIMEOUT_MS" }
+disposition = "listed"
+parse = "int"
+help = "Test control of the Cyclone backend: how long a match wait lasts."
+
+[[env]]
+key = "cyclonedds.skip_prefix"
+transitional = { name = "NROS_RMW_CYCLONEDDS_SKIP_PREFIX" }
+disposition = "listed"
+parse = "str"
+help = "Test control of the Cyclone backend: topic prefixes it skips."

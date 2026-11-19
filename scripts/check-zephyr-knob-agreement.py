@@ -116,17 +116,15 @@ def rewrite_default(text, symbol, value):
     return text[: m.start(1)] + fixed + text[m.end(1) :]
 
 
-REGISTRY = os.path.join(ROOT, "packages/tooling/nros-zephyr-build/knobs.toml")
-
-
 def rewrite_registry_default(text, symbol, value):
-    """`knobs.toml` text with the row defining `symbol` given `default <value>`.
+    """Registry file text (core's `knobs.toml` or a package's `nros-knobs.toml`,
+    RFC-0140 D2) with the row defining `symbol` given `default <value>`.
 
     The row is found by its Kconfig symbol, which the registry module derives
     (`key`, or a `transitional` kconfig); its first `"default <x>"` attribute
     line moves and nothing else does. Returns the text unchanged when no
     row/default matches."""
-    rows = knob_registry.knob_rows(text=text)
+    rows = knob_registry.file_knob_rows(None, text=text)
     parts = re.split(r"(?m)^(?=\[\[knob\]\]\s*$)", text)
     knob_parts = [i for i, part in enumerate(parts) if part.startswith("[[knob]]")]
     for i, row in zip(knob_parts, rows):
@@ -205,9 +203,13 @@ def main():
         )
         return 0
 
-    with open(REGISTRY, encoding="utf-8") as fh:
-        registry = fh.read()
-    problems, wrote = [], []
+    # The rows live in core's file and the packages' (RFC-0140 D2): each
+    # rewrite goes to the file that defines the symbol.
+    registry = {}
+    for path in knob_registry.registry_files():
+        with open(path, encoding="utf-8") as fh:
+            registry[path] = fh.read()
+    problems, wrote, changed = [], [], set()
     for key, symbol in PAIRS.items():
         if key not in tx:
             continue
@@ -220,8 +222,13 @@ def main():
                 f"renamed or removed?"
             )
         elif got != want and args.write:
-            registry = rewrite_registry_default(registry, symbol, want)
-            wrote.append(f"{symbol}: {got} -> {want}")
+            for path, text in registry.items():
+                new = rewrite_registry_default(text, symbol, want)
+                if new != text:
+                    registry[path] = new
+                    changed.add(path)
+                    wrote.append(f"{symbol}: {got} -> {want} ({os.path.relpath(path, ROOT)})")
+                    break
         elif got != want:
             problems.append(
                 f"[knobs.zenoh.tx].{key} = {tx[key]!r} (→ {want}) but "
@@ -241,13 +248,14 @@ def main():
             )
 
     if wrote:
-        with open(REGISTRY, "w", encoding="utf-8") as fh:
-            fh.write(registry)
+        for path in changed:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(registry[path])
         import subprocess
         subprocess.run([sys.executable, os.path.join(ROOT, "scripts/gen-knob-registry.py")],
                        check=True)
         for w in wrote:
-            print(f"zephyr knob agreement: rewrote {w} (knobs.toml, then rendered)")
+            print(f"zephyr knob agreement: rewrote {w}, then rendered")
 
     if problems:
         sys.stderr.write("check-zephyr-knob-agreement: FAILED\n")

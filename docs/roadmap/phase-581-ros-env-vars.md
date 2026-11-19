@@ -94,7 +94,7 @@ board and RMW packages are self-contained.
 
 ### W2 - Contributors: in-tree packages declare their own rows
 
-- **Status:** OPEN
+- **Status:** DONE (59 knob and 7 env rows moved to six package `nros-knobs.toml` files; every committed view regenerates identical, the render sorts the merged set; C1-C4 and shadowing enforced by the Python reader and by `nros_cli_core::knob_catalog::Catalog::build`, the one Rust loader, with a test holding the provider scan's in-tree set equal to the generated `IN_TREE_PACKAGES`; configure records each package file as a stamp input)
 - One loader (`nros_knob_catalog::load`) merges core `knobs.toml` with every
   `nros-knobs.toml` found beside a descriptor by the existing scans (board
   catalog, platform search path, RMW provider scan), enforcing RFC-0140 D2's

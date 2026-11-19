@@ -12,10 +12,17 @@
 //! [`Catalog::retired_spelling`] is the one read path for a retired spelling
 //! on any road: nothing parses `knobs.toml` by hand.
 //!
-//! Scope of phase-581 W1: no package declares rows yet, so the merged catalog
-//! equals core's. Owner derivation and collision rules C1, C2 and C4 are W2's;
-//! what is enforced here is RFC-0140 D1's one namespace (C3): a spelling used
-//! by two rows refuses the catalog, naming both.
+//! The compiled tables hold the IN-TREE set: core's rows and the rows of the
+//! in-tree packages (zenoh, xrce, cyclonedds, freertos, threadx, zephyr) that
+//! moved to their own `nros-knobs.toml` (phase-581 W2), each tagged with its
+//! package by `IN_TREE_PACKAGES`. A scanned package file is merged over them
+//! under RFC-0140 D2: its owner word is DERIVED from the package (an RMW's or
+//! platform's canonical name, a board's key) and checked against the file's
+//! `owner` line; C1 one owner word, one package; C2 a row stays under its
+//! owner, and no package takes a core word; C3 one spelling, one row; C4 a
+//! package declares only its own library's foreign variables. The same
+//! package found in two roots is not a collision: the later root wins (the
+//! provider scan's precedence) and the other copy is reported as shadowed.
 
 use std::{
     collections::BTreeMap,
@@ -25,12 +32,22 @@ use std::{
 use cargo_nano_ros::provider_scan::ProviderPackage;
 use eyre::{Result, WrapErr, bail};
 use nros_zephyr_build::{
-    ENV_ROWS, EnvRow, KNOBS, KnobRow, RetiredRoad, RetiredSpelling, STATEMENTS, StatementRow,
+    CORE_OWNERS, ENV_ROWS, EnvRow, IN_TREE_PACKAGES, InTreePackage, KNOBS, KnobRow, RetiredRoad,
+    RetiredSpelling, STATEMENTS, StatementRow,
 };
 use serde::Serialize;
 
 /// The file a package declares its rows in, beside its descriptor (RFC-0140 D2).
 pub const PACKAGE_FILE: &str = "nros-knobs.toml";
+
+/// The descriptors a package file may sit beside, and the provider kind each
+/// one names (RFC-0140 D2). The descriptor says which kind of package it is,
+/// and so which of its announced names is its owner word.
+pub const DESCRIPTORS: &[(&str, &str)] = &[
+    ("nros-rmw.toml", "rmw"),
+    ("nros-platform.toml", "platform"),
+    ("nros-board.toml", "board"),
+];
 
 /// Where configure writes the merged catalog, under a workspace root.
 #[must_use]
@@ -56,8 +73,45 @@ pub enum RowKind {
 pub enum Origin {
     /// Core's `knobs.toml`, compiled into `nros-zephyr-build`.
     Core,
-    /// A package's `nros-knobs.toml`.
+    /// A package's `nros-knobs.toml`. For an in-tree package's compiled rows,
+    /// `file` is relative to the checkout.
     Package { package: String, file: PathBuf },
+}
+
+impl Origin {
+    fn of_compiled(kind: RowKind, name: &str) -> Self {
+        let owner = |p: &&InTreePackage| match kind {
+            RowKind::Knob => p.knobs.contains(&name),
+            RowKind::Env => p.env.contains(&name),
+            RowKind::Statement => false,
+        };
+        match IN_TREE_PACKAGES.iter().find(owner) {
+            Some(p) => Origin::Package {
+                package: p.package.to_string(),
+                file: PathBuf::from(p.file),
+            },
+            None => Origin::Core,
+        }
+    }
+
+    fn package(&self) -> Option<&str> {
+        match self {
+            Origin::Core => None,
+            Origin::Package { package, .. } => Some(package),
+        }
+    }
+}
+
+/// One package found in more than one root (RFC-0140 D2 C1's exception): the
+/// copy the catalog uses and the ones it does not, nearest first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Shadowed {
+    pub package: String,
+    /// The `nros-knobs.toml` whose rows the catalog holds.
+    pub winner: PathBuf,
+    /// The other copies, in precedence order. An in-tree package's compiled
+    /// rows appear as their checkout-relative file.
+    pub shadowed: Vec<PathBuf>,
 }
 
 /// One spelling a row replaced (RFC-0140 D4), owned so a package row can hold one.
@@ -121,7 +175,7 @@ impl Row {
                 .iter()
                 .map(RetiredEntry::from_compiled)
                 .collect(),
-            origin: Origin::Core,
+            origin: Origin::of_compiled(RowKind::Knob, k.image_key),
         }
     }
 
@@ -156,7 +210,7 @@ impl Row {
                 .iter()
                 .map(RetiredEntry::from_compiled)
                 .collect(),
-            origin: Origin::Core,
+            origin: Origin::of_compiled(RowKind::Env, e.name),
         }
     }
 
@@ -179,10 +233,18 @@ impl Row {
     }
 }
 
-/// The merged catalog: core rows, then each package's, in scan order.
+/// The merged catalog: the compiled in-tree rows, then each scanned
+/// package's, in scan order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Catalog {
     rows: Vec<Row>,
+    shadowed: Vec<Shadowed>,
+}
+
+/// A package file the scan found, with the provider it belongs to.
+struct Found<'a> {
+    provider: &'a ProviderPackage,
+    file: PathBuf,
 }
 
 impl Catalog {
@@ -195,29 +257,129 @@ impl Catalog {
             .chain(STATEMENTS.iter().map(Row::from_statement))
             .chain(ENV_ROWS.iter().map(Row::from_env))
             .collect();
-        Catalog { rows }
+        Catalog {
+            rows,
+            shadowed: Vec::new(),
+        }
     }
 
     /// Core plus every scanned provider's `nros-knobs.toml` (RFC-0140 D2: the
-    /// file's presence beside the descriptor is the declaration).
+    /// file's presence beside the descriptor is the declaration). The one
+    /// loader: `nros configure` writes its result, and `nros fix` and the
+    /// preflight call it in memory.
     ///
     /// # Errors
     ///
-    /// A package file that does not parse, or a spelling two rows use (C3).
+    /// A package file that does not parse or breaks one of RFC-0140 D2's
+    /// rules C1 to C4.
     pub fn build(providers: &[ProviderPackage]) -> Result<Self> {
         let mut cat = Catalog::core();
+
+        // Every copy of each package, highest precedence first: a LATER root
+        // wins, as in the provider scan (`provider_scan::candidates`).
         let mut seen_dirs = std::collections::BTreeSet::new();
+        let mut copies: BTreeMap<&str, Vec<Found<'_>>> = BTreeMap::new();
         for p in providers {
             let file = p.dir.join(PACKAGE_FILE);
             if !seen_dirs.insert(p.dir.clone()) || !file.is_file() {
                 continue;
             }
-            let text = std::fs::read_to_string(&file)
-                .wrap_err_with(|| format!("reading {}", file.display()))?;
-            cat.rows.extend(parse_package(&p.package, &file, &text)?);
+            copies
+                .entry(p.package.as_str())
+                .or_default()
+                .push(Found { provider: p, file });
+        }
+        for list in copies.values_mut() {
+            list.sort_by(|a, b| {
+                b.provider
+                    .root_index
+                    .cmp(&a.provider.root_index)
+                    .then(a.provider.dir.cmp(&b.provider.dir))
+            });
+        }
+
+        // C1's claims: owner word -> (package, where it was found).
+        let mut claims: BTreeMap<String, (String, String)> = IN_TREE_PACKAGES
+            .iter()
+            .map(|p| {
+                (
+                    p.owner.to_string(),
+                    (p.package.to_string(), format!("{} (built in)", p.file)),
+                )
+            })
+            .collect();
+        let mut problems = Vec::new();
+        for (package, list) in &copies {
+            let Some((winner, losers)) = list.split_first() else {
+                continue;
+            };
+            let text = crate::configure_stamp::read_external(&winner.file)
+                .wrap_err_with(|| format!("reading {}", winner.file.display()))?;
+            let (owner, rows) = parse_package(winner.provider, &winner.file, &text)?;
+            let mut shadowed: Vec<PathBuf> = losers.iter().map(|f| f.file.clone()).collect();
+            if let Some(intree) = IN_TREE_PACKAGES.iter().find(|p| p.package == *package) {
+                // The compiled rows ARE this package's in-tree copy. A scanned
+                // copy that says the same is that copy; one that differs
+                // overlays it.
+                let compiled: Vec<&Row> = cat
+                    .rows
+                    .iter()
+                    .filter(|r| r.origin.package() == Some(package))
+                    .collect();
+                if !same_rows(&compiled, &rows) {
+                    cat.rows.retain(|r| r.origin.package() != Some(package));
+                    cat.rows.extend(rows);
+                    shadowed.push(PathBuf::from(intree.file));
+                }
+            } else {
+                cat.rows.extend(rows);
+            }
+            let here = format!(
+                "{} (root {})",
+                winner.file.display(),
+                winner.provider.root_index
+            );
+            if CORE_OWNERS.contains(&owner.as_str()) {
+                // RFC-0140 D2 C2: core cannot take a package's word, nor a
+                // package a core one.
+                problems.push(format!(
+                    "{here}: owner word `{owner}` is a core owner; a package cannot declare \
+                     a core owner's rows"
+                ));
+            }
+            match claims.get(&owner) {
+                Some((other, at)) if other != package => problems.push(format!(
+                    "owner word `{owner}` is claimed by two packages: {other} ({at}) and \
+                     {package} ({here}); one owner word belongs to one package"
+                )),
+                _ => {
+                    claims.insert(owner, (package.to_string(), here));
+                }
+            }
+            if !shadowed.is_empty() {
+                cat.shadowed.push(Shadowed {
+                    package: package.to_string(),
+                    winner: winner.file.clone(),
+                    shadowed,
+                });
+            }
+        }
+        if !problems.is_empty() {
+            // RFC-0140 D2 rules C1 and C2.
+            bail!(
+                "the configuration catalog has an owner word problem:\n  {}",
+                problems.join("\n  ")
+            );
         }
         cat.check_one_namespace()?;
         Ok(cat)
+    }
+
+    /// Packages found in more than one root, and which copy the catalog uses
+    /// (reported, never refused: RFC-0140 D2 C1).
+    #[must_use]
+    pub fn shadowed(&self) -> &[Shadowed] {
+        &self.shadowed
     }
 
     /// Every row, core first.
@@ -362,17 +524,103 @@ impl Catalog {
     }
 }
 
-/// The rows of one package's `nros-knobs.toml`. Phase-581 W1 reads what the
-/// catalog needs (keys, today's spellings and retired entries); W2 adds the
-/// owner rules and checks every field.
-fn parse_package(package: &str, file: &Path, text: &str) -> Result<Vec<Row>> {
+/// The owner word RFC-0140 D2 derives for a package: an RMW's or platform's
+/// canonical name (the first it announces), a board's key (one of those it
+/// announces, the one its `owner` line names). `-` reads as `_`. The kind is
+/// the descriptor the file sits beside.
+fn derive_owner(p: &ProviderPackage, file: &Path, stated: Option<&str>) -> Result<String> {
+    let kinds: Vec<&str> = DESCRIPTORS
+        .iter()
+        .filter(|(d, _)| p.dir.join(d).is_file())
+        .map(|(_, k)| *k)
+        .collect();
+    let [kind] = kinds.as_slice() else {
+        bail!(
+            "{}: an {PACKAGE_FILE} sits beside exactly one descriptor ({}), found {}",
+            file.display(),
+            DESCRIPTORS
+                .iter()
+                .map(|(d, _)| *d)
+                .collect::<Vec<_>>()
+                .join(", "),
+            kinds.len()
+        );
+    };
+    let names: Vec<String> = p
+        .provides
+        .iter()
+        .filter(|pr| pr.kind == *kind)
+        .map(|pr| pr.name.replace('-', "_"))
+        .collect();
+    let Some(first) = names.first() else {
+        bail!(
+            "{}: package {} announces no {kind} (`<nano_ros_provides kind=\"{kind}\">`), \
+             so it has no owner word",
+            file.display(),
+            p.package
+        );
+    };
+    if *kind != "board" {
+        return Ok(first.clone());
+    }
+    match stated {
+        Some(s) if names.iter().any(|n| n == s) => Ok(s.to_string()),
+        _ => bail!(
+            "{}: a board package's owner word is one of its board keys ({}); its `owner` \
+             line names which",
+            file.display(),
+            names.join(", ")
+        ),
+    }
+}
+
+/// Do two row sets say the same thing (kind, name, spellings, retired),
+/// whatever their origin and order?
+fn same_rows(a: &[&Row], b: &[Row]) -> bool {
+    fn sorted<'r>(rows: impl Iterator<Item = &'r Row>) -> Vec<(u8, &'r Row)> {
+        let mut v: Vec<_> = rows.map(|r| (r.kind as u8, r)).collect();
+        v.sort_by(|p, q| (&p.1.name, p.0).cmp(&(&q.1.name, q.0)));
+        v
+    }
+    let (x, y) = (sorted(a.iter().copied()), sorted(b.iter()));
+    x.len() == y.len()
+        && x.iter().zip(&y).all(|((_, p), (_, q))| {
+            (p.kind, &p.name, &p.spellings, &p.retired)
+                == (q.kind, &q.name, &q.spellings, &q.retired)
+        })
+}
+
+/// The owner word and rows of one package's `nros-knobs.toml`, with RFC-0140
+/// D2's per-file rules: the `owner` line equals the derived word, every key is
+/// under it (C2), and a foreign variable is the package's own library's (C4).
+fn parse_package(p: &ProviderPackage, file: &Path, text: &str) -> Result<(String, Vec<Row>)> {
     let doc: toml::Table =
         toml::from_str(text).wrap_err_with(|| format!("parsing {}", file.display()))?;
+    let where_ = |what: &str| format!("{}: {what}", file.display());
+    if let Some(extra) = doc
+        .keys()
+        .find(|k| !matches!(k.as_str(), "owner" | "knob" | "env"))
+    {
+        bail!(where_(&format!(
+            "`{extra}`: a package file holds `owner`, `[[knob]]` and `[[env]]` rows \
+             (statements and [owners] are core's)"
+        )));
+    }
+    let stated = doc.get("owner").and_then(toml::Value::as_str);
+    let owner = derive_owner(p, file, stated)?;
+    if stated != Some(owner.as_str()) {
+        bail!(where_(&format!(
+            "`owner = {}`, but package {}'s derived owner word is `{owner}`; state it so the \
+             file reads on its own",
+            stated.map_or_else(|| "(missing)".to_string(), |s| format!("\"{s}\"")),
+            p.package
+        )));
+    }
+    let under = |key: &str| key.split('.').next() == Some(owner.as_str()) && key.contains('.');
     let origin = Origin::Package {
-        package: package.to_string(),
+        package: p.package.clone(),
         file: file.to_path_buf(),
     };
-    let where_ = |what: &str| format!("{}: {what}", file.display());
     let mut rows = Vec::new();
     for (kind, list) in [("knob", doc.get("knob")), ("env", doc.get("env"))] {
         let Some(list) = list else { continue };
@@ -385,12 +633,25 @@ fn parse_package(package: &str, file: &Path, text: &str) -> Result<Vec<Row>> {
                 .ok_or_else(|| eyre::eyre!(where_(&format!("a `{kind}` row is a table"))))?;
             let trans = t.get("transitional").and_then(toml::Value::as_table);
             let tstr = |k: &str| trans.and_then(|tt| tt.get(k)).and_then(toml::Value::as_str);
-            let retired = parse_retired(t.get("retired"), &where_)?;
+            let mut retired = parse_retired(t.get("retired"), &where_)?;
+            // A retired knob's entries all refuse with the row's reason.
+            if t.get("class").and_then(toml::Value::as_str) == Some("retired") {
+                let why = t.get("instead").and_then(toml::Value::as_str);
+                for e in retired.iter_mut().filter(|e| e.instead.is_none()) {
+                    e.instead = why.map(str::to_string);
+                }
+            }
             let row = if kind == "knob" {
                 let key = t
                     .get("key")
                     .and_then(toml::Value::as_str)
                     .ok_or_else(|| eyre::eyre!(where_("a knob row states `key`")))?;
+                if !under(key) {
+                    bail!(where_(&format!(
+                        "key `{key}` is not under this package's owner word `{owner}`; a \
+                         package declares only its own rows"
+                    )));
+                }
                 let derived = derive_id(key);
                 let id = tstr("id").unwrap_or(&derived).to_string();
                 let kconfig = tstr("kconfig")
@@ -413,13 +674,31 @@ fn parse_package(package: &str, file: &Path, text: &str) -> Result<Vec<Row>> {
                 }
             } else {
                 let name = match (t.get("key").and_then(toml::Value::as_str), t.get("name")) {
-                    (Some(key), None) => tstr("name")
-                        .map(str::to_string)
-                        .unwrap_or_else(|| format!("NROS_{}", derive_id(key))),
-                    (None, Some(n)) => n
-                        .as_str()
-                        .ok_or_else(|| eyre::eyre!(where_("`name` is a string")))?
-                        .to_string(),
+                    (Some(key), None) => {
+                        if !under(key) {
+                            bail!(where_(&format!(
+                                "key `{key}` is not under this package's owner word \
+                                 `{owner}`; a package declares only its own rows"
+                            )));
+                        }
+                        tstr("name")
+                            .map(str::to_string)
+                            .unwrap_or_else(|| format!("NROS_{}", derive_id(key)))
+                    }
+                    (None, Some(n)) => {
+                        let n = n
+                            .as_str()
+                            .ok_or_else(|| eyre::eyre!(where_("`name` is a string")))?;
+                        let foreign = t.get("foreign").and_then(toml::Value::as_str);
+                        if foreign != Some(owner.as_str()) {
+                            bail!(where_(&format!(
+                                "`{n}`: a package declares only its own library's variables \
+                                 (`foreign = \"{owner}\"`); ROS 2's, rcutils' and Rust's \
+                                 are core's"
+                            )));
+                        }
+                        n.to_string()
+                    }
                     _ => bail!(where_("an env row states `key` or `name`, exactly one")),
                 };
                 Row {
@@ -433,7 +712,7 @@ fn parse_package(package: &str, file: &Path, text: &str) -> Result<Vec<Row>> {
             rows.push(row);
         }
     }
-    Ok(rows)
+    Ok((owner, rows))
 }
 
 fn parse_retired(
@@ -511,18 +790,218 @@ mod tests {
     use super::*;
 
     fn provider(dir: &Path, name: &str) -> ProviderPackage {
+        rmw_package(dir, name, "acme", 0)
+    }
+
+    /// An RMW package announcing `rmw`, with its descriptor, in root `root`.
+    fn rmw_package(dir: &Path, name: &str, rmw: &str, root: usize) -> ProviderPackage {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("nros-rmw.toml"), "[rmw]\n").unwrap();
         ProviderPackage {
             package: name.to_string(),
             dir: dir.to_path_buf(),
-            root_index: 0,
-            provides: Vec::new(),
+            root_index: root,
+            provides: vec![cargo_nano_ros::package_xml::Provision {
+                kind: "rmw".into(),
+                name: rmw.into(),
+            }],
             depends: Default::default(),
         }
     }
 
+    fn write_rows(dir: &Path, text: &str) -> PathBuf {
+        let f = dir.join(PACKAGE_FILE);
+        std::fs::write(&f, text).unwrap();
+        f
+    }
+
+    const ACME: &str = "owner = \"acme\"\n\n[[knob]]\nkey = \"acme.frame_bytes\"\n";
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf()
+    }
+
+    /// RFC-0140 D2 / phase-581 W2: the provider scan of the checkout finds
+    /// exactly the in-tree package files the generator rendered, with the
+    /// owner word the generator derived, and their rows equal the compiled
+    /// ones (so no in-tree package reads as shadowed).
+    #[test]
+    fn the_scan_finds_the_in_tree_packages_the_generator_rendered() {
+        let root = repo_root();
+        let roots: Vec<PathBuf> = ["packages/rmw", "packages/platform", "packages/boards"]
+            .iter()
+            .map(|d| root.join(d))
+            .collect();
+        let scan = cargo_nano_ros::provider_scan::scan_roots(&roots).unwrap();
+        let mut found: Vec<(String, String, String)> = scan
+            .providers
+            .iter()
+            .filter(|p| p.dir.join(PACKAGE_FILE).is_file())
+            .map(|p| {
+                let file = p.dir.join(PACKAGE_FILE);
+                let text = std::fs::read_to_string(&file).unwrap();
+                let (owner, _) = parse_package(p, &file, &text).unwrap();
+                let rel = file.strip_prefix(&root).unwrap().display().to_string();
+                (p.package.clone(), owner, rel)
+            })
+            .collect();
+        found.sort();
+        let mut want: Vec<(String, String, String)> = IN_TREE_PACKAGES
+            .iter()
+            .map(|p| (p.package.into(), p.owner.into(), p.file.into()))
+            .collect();
+        want.sort();
+        assert_eq!(found, want);
+        assert_eq!(
+            want.len(),
+            6,
+            "zenoh, xrce, cyclonedds, freertos, threadx, zephyr"
+        );
+        let cat = Catalog::build(&scan.providers).expect("the in-tree set loads");
+        assert!(cat.shadowed().is_empty(), "{:?}", cat.shadowed());
+        assert_eq!(cat, Catalog::core());
+        // A moved row keeps its spellings and names its package.
+        let row = cat
+            .rows()
+            .iter()
+            .find(|r| r.name == "zenoh.max_queryables")
+            .unwrap();
+        assert!(
+            matches!(&row.origin, Origin::Package { package, .. } if package == "nros_rmw_zenoh")
+        );
+    }
+
+    /// C1: two different packages, one owner word. The message names both files.
+    #[test]
+    fn two_packages_with_one_owner_word_are_refused_naming_both_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = tmp.path().join("acme_a");
+        let b = tmp.path().join("acme_b");
+        let pa = rmw_package(&a, "acme_a", "acme", 0);
+        let pb = rmw_package(&b, "acme_b", "acme", 1);
+        let fa = write_rows(&a, ACME);
+        let fb = write_rows(&b, "owner = \"acme\"\n\n[[knob]]\nkey = \"acme.other\"\n");
+        let msg = format!("{:#}", Catalog::build(&[pa, pb]).unwrap_err());
+        assert!(
+            msg.contains("owner word `acme` is claimed by two packages"),
+            "{msg}"
+        );
+        assert!(msg.contains(&fa.display().to_string()), "{msg}");
+        assert!(msg.contains(&fb.display().to_string()), "{msg}");
+        // An in-tree word is claimed by its package too.
+        let z = tmp.path().join("my_zenoh");
+        let pz = rmw_package(&z, "my_zenoh", "zenoh", 1);
+        write_rows(&z, "owner = \"zenoh\"\n\n[[knob]]\nkey = \"zenoh.mine\"\n");
+        let msg = format!("{:#}", Catalog::build(&[pz]).unwrap_err());
+        assert!(
+            msg.contains("nros_rmw_zenoh (packages/rmw/zenoh/nros-rmw-zenoh/nros-knobs.toml"),
+            "{msg}"
+        );
+    }
+
+    /// C2: a package row under another owner's word, and a package on a core word.
+    #[test]
+    fn a_package_row_under_another_owner_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = provider(tmp.path(), "acme_rmw");
+        write_rows(
+            tmp.path(),
+            "owner = \"acme\"\n\n[[knob]]\nkey = \"zenoh.max_sessions_mine\"\n",
+        );
+        let msg = format!("{:#}", Catalog::build(&[p.clone()]).unwrap_err());
+        assert!(
+            msg.contains(
+                "key `zenoh.max_sessions_mine` is not under this package's owner word `acme`"
+            ),
+            "{msg}"
+        );
+        write_rows(tmp.path(), "owner = \"acme\"\n\n[[env]]\nkey = \"log.x\"\n");
+        let msg = format!("{:#}", Catalog::build(&[p.clone()]).unwrap_err());
+        assert!(msg.contains("key `log.x` is not under"), "{msg}");
+        // The `owner` line is checked against the derived word.
+        write_rows(tmp.path(), "owner = \"zenoh\"\n");
+        let msg = format!("{:#}", Catalog::build(&[p]).unwrap_err());
+        assert!(msg.contains("derived owner word is `acme`"), "{msg}");
+        // A package whose word is a core owner's.
+        let l = tmp.path().join("log_rmw");
+        let pl = rmw_package(&l, "log_rmw", "log", 0);
+        write_rows(&l, "owner = \"log\"\n");
+        let msg = format!("{:#}", Catalog::build(&[pl]).unwrap_err());
+        assert!(msg.contains("owner word `log` is a core owner"), "{msg}");
+    }
+
+    /// C4: a package declares only its own library's foreign variables.
+    #[test]
+    fn a_package_declaring_another_projects_variable_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_rows(
+            tmp.path(),
+            "owner = \"acme\"\n\n[[env]]\nname = \"ROS_DOMAIN_ID\"\nforeign = \"ros2\"\n",
+        );
+        let msg = format!(
+            "{:#}",
+            Catalog::build(&[provider(tmp.path(), "acme_rmw")]).unwrap_err()
+        );
+        assert!(msg.contains("its own library's variables"), "{msg}");
+    }
+
+    /// C1's exception: the same package in two roots is shadowed, not refused.
+    #[test]
+    fn the_same_package_in_two_roots_is_shadowed_not_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let under = tmp.path().join("underlay/acme_rmw");
+        let over = tmp.path().join("overlay/acme_rmw");
+        let pu = rmw_package(&under, "acme_rmw", "acme", 0);
+        let po = rmw_package(&over, "acme_rmw", "acme", 1);
+        let fu = write_rows(&under, ACME);
+        let fo = write_rows(
+            &over,
+            "owner = \"acme\"\n\n[[knob]]\nkey = \"acme.frame_bytes\"\n\n\
+             [[knob]]\nkey = \"acme.overlay_only\"\n",
+        );
+        let cat = Catalog::build(&[pu, po]).expect("one package in two roots is no collision");
+        assert_eq!(
+            cat.shadowed(),
+            &[Shadowed {
+                package: "acme_rmw".into(),
+                winner: fo,
+                shadowed: vec![fu],
+            }]
+        );
+        // The later root's rows are the ones the catalog holds.
+        assert!(cat.rows().iter().any(|r| r.name == "acme.overlay_only"));
+        assert_eq!(
+            cat.rows()
+                .iter()
+                .filter(|r| r.name == "acme.frame_bytes")
+                .count(),
+            1
+        );
+        // An overlay of an in-tree package shadows its compiled rows.
+        let z = tmp.path().join("overlay/nros_rmw_zenoh");
+        let pz = rmw_package(&z, "nros_rmw_zenoh", "zenoh", 1);
+        let fz = write_rows(
+            &z,
+            "owner = \"zenoh\"\n\n[[knob]]\nkey = \"zenoh.only_knob\"\n",
+        );
+        let cat = Catalog::build(&[pz]).expect("an overlay of an in-tree package");
+        assert_eq!(cat.shadowed()[0].winner, fz);
+        assert_eq!(
+            cat.shadowed()[0].shadowed,
+            vec![PathBuf::from(
+                "packages/rmw/zenoh/nros-rmw-zenoh/nros-knobs.toml"
+            )]
+        );
+        assert!(!cat.rows().iter().any(|r| r.name == "zenoh.max_queryables"));
+    }
+
     #[test]
     fn core_catalog_holds_every_row_kind() {
-        let cat = Catalog::build(&[]).expect("core's catalog has one namespace");
+        let cat = Catalog::build(&[]).expect("the in-tree catalog has one namespace");
         assert_eq!(
             cat.rows().len(),
             KNOBS.len() + STATEMENTS.len() + ENV_ROWS.len()
@@ -654,7 +1133,7 @@ mod tests {
     #[test]
     fn a_spelling_two_rows_use_refuses_the_catalog_naming_both() {
         let tmp = tempfile::tempdir().unwrap();
-        // The package retires a name core's ZENOH_MAX_QUERYABLES already retired.
+        // The package retires a name the zenoh package's max_queryables already retired.
         std::fs::write(
             tmp.path().join(PACKAGE_FILE),
             "owner = \"acme\"\n\n[[knob]]\nkey = \"acme.queryables\"\n\
@@ -664,7 +1143,10 @@ mod tests {
         let err = Catalog::build(&[provider(tmp.path(), "acme_rmw")]).unwrap_err();
         let msg = format!("{err:#}");
         let old = "ZPICO_MAX_QUERYABLES"; // a retired spelling of core's row
-        let want = format!("`{old}` is spelled by knob `zenoh.max_queryables` (core knobs.toml)");
+        let want = format!(
+            "`{old}` is spelled by knob `zenoh.max_queryables` (package nros_rmw_zenoh, \
+             packages/rmw/zenoh/nros-rmw-zenoh/nros-knobs.toml)"
+        );
         assert!(msg.contains(&want), "{msg}");
         assert!(msg.contains("package acme_rmw"), "{msg}");
     }
@@ -674,7 +1156,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join(PACKAGE_FILE),
-            "[[knob]]\nkey = \"acme.x\"\nretired = [{ spelling = \"env:NROS_ACME_Y\", factor = 2, instead = \"no\" }]\n",
+            "owner = \"acme\"\n[[knob]]\nkey = \"acme.x\"\nretired = [{ spelling = \"env:NROS_ACME_Y\", factor = 2, instead = \"no\" }]\n",
         )
         .unwrap();
         let err = Catalog::build(&[provider(tmp.path(), "acme_rmw")]).unwrap_err();

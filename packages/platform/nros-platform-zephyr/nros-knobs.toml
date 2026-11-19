@@ -1,0 +1,105 @@
+# The configuration rows this platform package declares (RFC-0140 D2,
+# phase-581 W2). Found beside its descriptor (nros-platform.toml) by the scan that finds
+# the package, so this file's presence is the declaration. The schema is core's
+# (packages/tooling/nros-zephyr-build/knobs.toml says what each field means);
+# every key starts with this file's owner word, `zephyr`, which is derived
+# from the package (its platform name)
+# and checked, never chosen. Edit, then run `python3 scripts/gen-knob-registry.py`.
+
+owner = "zephyr"
+
+[[knob]]
+key = "zephyr.heap_size"
+scope = "board"
+class = "public"
+type = "int"
+prompt = "Application heap arena size (bytes)"
+kconfig_attrs = [
+    "default 1048576 if NROS_RMW_CYCLONEDDS",
+    "default 196608 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE || NROS_CAPABILITY_LIFECYCLE",
+    "default 131072 if RUST",
+    "default 65536",
+]
+help = '''
+A PARAM_SERVICES image, one whose launch seeds a parameter
+(NROS_PARAM_STORE), and a LIFECYCLE one get 192 KiB: those capabilities
+allocate their services' buffers from this arena, and nothing sized it
+from the declaration, so such an image LINKED and then halted at boot.
+
+The PARAMETER STORE is NOT in this arena any more. Those two symbols are
+exactly what makes nros-params carve the store out of the executor's
+.bss backing (nros_params::IMPLIED_STORE_SLOTS), so the store's ~8.5 KiB
+a slot -- 285,696 bytes at the default 32 slots, the `HEAP EXHAUSTED
+(TOO SMALL): request 285696` such an image used to halt with -- moved to
+the linker and out of this default. It was 512 KiB for param_services
+until 2026-10-09; MEASURED after the move, zephyr_cpp_params (both axes)
+boots at 192 KiB, prints `parameter store: 32 slots (285696 B) carved
+from the executor backing` and reads its launch-seeded 250 back. A store
+only application code reaches is invisible to the build, stays on this
+heap, and is refused at run time with its size.
+
+MEASURED on native_sim/native/64 (boot record, live router,
+`read-boot-report.py --heap-headroom`), on features' images that
+declare BOTH axes: zephyr_cpp_params peaks at 111,360 without the store
+(46,848 with param_services alone, so lifecycle costs ~64.5 KiB --
+five services, each owning a 2 x 4,096-byte buffer pair); the Rust
+params image at 114,144 without it, and the lifecycle and qos images'
+peaks less the store at 113,904 and 120,896.
+Worst + the 24,576-byte floor is 145,472, hence 192 KiB for either axis
+now that the store is carved.
+
+A CYCLONE image gets 1 MiB: ddsrt's whole heap lands here
+since the Zephyr road compiles the platform funnel (heap/nros/heap.c),
+where it used to be picolibc's 16 MiB arena. MEASURED on
+native_sim/native/64, c/talker cyclonedds: 840 nros_platform_alloc calls
+and a 153,072-byte peak by the first dds_write (gdb); 1 MiB is ~6.8x
+that, for discovery and samples in flight a peerless run does not reach.
+A Rust Cyclone image's Rust allocations share it.
+
+A RUST application gets twice the default: its Rust
+`alloc` goes through this arena too -- it used to land in a second,
+unpriced heap (zephyr-lang-rust's CONFIG_RUST_ALLOC over libc malloc).
+MEASURED one-heap peaks on native_sim/native/64 (boot record, 10 s
+against a live peer): rust/talker xrce 46,256; rust/listener zenoh
+42,304; rust/action-server zenoh 58,288 -- which leaves 7,760 bytes of
+a 64 KiB arena and is refused by `read-boot-report.py --heap-headroom`.
+128 KiB keeps the 24,576-byte floor over the worst of them.
+
+A C or C++ zenoh image keeps 64 KiB. MEASURED peaks (boot
+record, 20-40 s against a live peer, Zephyr 3.7): talker 13,472 on
+mps2_an385 (C and C++), 11,664 on nucleo_f767zi (serial, Renode twin),
+16,544 on native_sim/native/64; and on native_sim, listener 15,984,
+service server 16,816, service client 20,496, action server 33,648,
+action client 33,568 (C and C++ alike). The action images set the
+default: 33,648 + the 24,576-byte floor is 58,224. A C image that
+declares no action could take 48 KiB; nothing in Kconfig knows what an
+image declares, so that image states it.
+
+Size of the rlsf arena in nros-platform's zephyr_heap, which backs
+BOTH z_malloc and __rust_alloc since the allocation funnel moved off
+Zephyr's kernel heap.
+
+CONFIG_HEAP_MEM_POOL_SIZE does NOT govern application allocation any
+more; this does. An application that outgrows the arena does not
+fault or log -- it stops, so size this to what the application
+actually needs rather than leaving the default in place and
+inferring from a hang.
+
+An NROS_ZEPHYR_HEAP_SIZE environment variable overrides this value.
+
+The boot record's capacity word reads this value + 512: zpico-alloc
+carves an 8 x 64 B slab beside the arena, so a
+configured 102400 reads 102912. Size from a dump with
+`read-boot-report.py --heap-headroom`, which judges the RUNNING peak
+(as of the dump) against a 24,576-byte floor and names the knob
+(peak + floor - 512); take the dump after the host graph has joined,
+not at boot.
+
+PERMANENTLY OPERATOR-STATED beyond those defaults. The
+arena's peak is a RUNTIME property: it moves with what the peers send
+(discovery, the graph, samples in flight), which nothing in the image
+declares, so no build can derive it. The defaults above are floors per
+declared capability; the measured peak, read off the boot record by
+`read-boot-report.py --heap-headroom`, is how an image is sized past
+them, and it names the value to state.
+'''

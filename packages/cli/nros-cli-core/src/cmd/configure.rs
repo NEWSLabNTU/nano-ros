@@ -310,7 +310,8 @@ fn take_censuses(project: &Path, want: &str, named: &[String], offline: bool) ->
 
 /// The shared body of [`configure`] and [`ensure_current`].
 /// Write `<build>/nros/knobs/catalog.toml` (phase-581 W1, RFC-0140 D4/D5):
-/// core's registry plus every scanned package's `nros-knobs.toml`, built by
+/// core's registry plus every scanned package's `nros-knobs.toml` (each read
+/// as a stamp input, so an edit to one re-runs the configure), built by
 /// the same call `nros fix` and the preflight make in memory. The file is a
 /// cache for cmake and Kconfig; a catalog that names one spelling twice stops
 /// the configure.
@@ -324,7 +325,19 @@ fn write_knob_catalog(
         .unwrap_or_else(|_| project.to_path_buf());
     let scan = ws::sync_provider_scan(&ws_root, base_paths, nano_ros_root)
         .wrap_err("configure: scanning providers for the configuration catalog")?;
-    crate::knob_catalog::Catalog::build(&scan.providers)?.write(&ws_root)?;
+    let catalog = crate::knob_catalog::Catalog::build(&scan.providers)?;
+    // RFC-0140 D2: a package found in two roots is reported, never refused.
+    for s in catalog.shadowed() {
+        let others: Vec<String> = s.shadowed.iter().map(|p| p.display().to_string()).collect();
+        eprintln!(
+            "configure: package {} declares configuration rows in more than one root; using {}, \
+             shadowing {}",
+            s.package,
+            s.winner.display(),
+            others.join(", ")
+        );
+    }
+    catalog.write(&ws_root)?;
     Ok(())
 }
 
