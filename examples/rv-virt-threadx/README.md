@@ -50,4 +50,3 @@ Test lanes: `just threadx_riscv64 test`, `test-all`.
   are missing — run setup first.
 - NetX Duo BSD `SO_RCVTIMEO` takes `nx_bsd_timeval*`, not int ms
   (`book-internals/src/platform/implementation-notes.md`).
-- Known limitation: firmware NULL `c_app_main` after rebuild on some hosts.

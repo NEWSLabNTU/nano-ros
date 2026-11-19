@@ -29,6 +29,3 @@ CI fixtures.
 | Role | c | cpp | rust |
 | --- | --- | --- | --- |
 | talker | yes | – | – |
-
-Known limitation: nros-c currently cannot compile for riscv32 (no 64-bit
-atomics).
