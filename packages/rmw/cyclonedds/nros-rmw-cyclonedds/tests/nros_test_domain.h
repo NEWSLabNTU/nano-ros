@@ -106,8 +106,17 @@
 /// Answers `false` when the tables cannot be read (a non-Linux host, a container
 /// without /proc): unknown must not read as busy, or every domain looks taken
 /// and the stepping below degrades to its fallback for no reason.
+///
+/// Issue 2757 — and its participant index 0's unicast metatraffic port,
+/// `7400 + 250*d + 10`. A participant configured unicast-only
+/// (`AllowMulticast=false`, as this repo's own pinned profile is) never binds
+/// the multicast discovery port, so that port alone read a busy domain as free
+/// and the test then failed with "Failed to find a free participant index".
+/// Every participant binds its index's unicast ports, and index 0 is the first
+/// one taken.
 static inline bool nros_test_domain_busy(uint32_t domain) {
     const unsigned long want = 7400UL + 250UL * static_cast<unsigned long>(domain);
+    const unsigned long want_unicast = want + 10UL;
     for (const char *table : {"/proc/net/udp", "/proc/net/udp6"}) {
         std::FILE *f = std::fopen(table, "r");
         if (f == nullptr) {
@@ -130,7 +139,7 @@ static inline bool nros_test_domain_busy(uint32_t domain) {
                 continue;
             }
             unsigned long port = std::strtoul(colon + 1, nullptr, 16);
-            if (port == want) {
+            if (port == want || port == want_unicast) {
                 std::fclose(f);
                 return true;
             }
