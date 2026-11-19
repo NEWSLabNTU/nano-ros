@@ -2459,6 +2459,7 @@ class Node {
     /// @param period_ms  Timer period in milliseconds, ON THAT CLOCK.
     /// @param callback   C function pointer invoked on each tick.
     /// @param context    User context passed to the callback (may be nullptr).
+    ///                   KEPT: see the "What a registration keeps" note in this class.
     Result create_timer(Timer& out, const Clock& clock, uint64_t period_ms,
                         nros_cpp_timer_callback_t callback, void* context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -2517,6 +2518,7 @@ class Node {
     /// @param period_ms  Timer period in milliseconds.
     /// @param callback   C function pointer invoked on each tick.
     /// @param context    User context passed to the callback (may be nullptr).
+    ///                   KEPT: see the "What a registration keeps" note in this class.
     Result create_wall_timer(Timer& out, uint64_t period_ms, nros_cpp_timer_callback_t callback,
                              void* context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -2543,12 +2545,32 @@ class Node {
     // PARAMETER, so the trampoline is a capture-less lambda that converts to
     // the executor's raw `void(*)(void*)` and `self` is the context. That is
     // why this overload, unlike the `std::chrono` one, reaches every target.
+    //
+    // What a registration keeps. Every `create_*timer*` and
+    // `create_guard_condition` form that takes a `C* self` or a `void* context`
+    // stores that POINTER in the executor entry and hands it back on every
+    // dispatch; nothing is copied. So:
+    //   * the object it points to must OUTLIVE the registration: until the
+    //     `Timer` is destroyed or cancelled, or the `GuardCondition` destroyed.
+    //     Holding the `Timer` / `GuardCondition` as a member of that same
+    //     object gives this for free (the handle's destructor runs before the
+    //     object's storage goes);
+    //   * the object must NOT MOVE while registered. Moving it (returning it
+    //     by value, storing it in a growing container, `std::move` into
+    //     another) moves the handle member with it but leaves the entry
+    //     holding the OLD address, and the next tick calls into that. Register
+    //     from the object's final home, or re-register after it moves.
+    // No debug check stands behind this: a move of the owner is invisible to
+    // the runtime, which sees only the pointer it was given.
 
     /// Bind a member `void C::on_tick()` as a wall-timer callback.
     ///
     /// ```cpp
     /// return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
     /// ```
+    ///
+    /// `self` is KEPT: it must outlive `out` and must not move while `out` is
+    /// registered (see the "What a registration keeps" note in this class).
     template <class C, void (C::*Method)()>
     Result create_wall_timer(Timer& out, uint64_t period_ms, C* self) {
         return this->create_wall_timer(
@@ -2561,6 +2583,8 @@ class Node {
     /// A `RCL_ROS_TIME` clock follows `/clock` and stops when the bag
     /// stops; a `RCL_STEADY_TIME` one does not. `create_wall_timer`
     /// above is the steady verb and is unaffected by simulated time.
+    ///
+    /// `self` is KEPT, as for `create_wall_timer<C, Method>`.
     template <class C, void (C::*Method)()>
     Result create_timer(Timer& out, const Clock& clock, uint64_t period_ms, C* self) {
         return this->create_timer(
@@ -2568,7 +2592,8 @@ class Node {
     }
 
     /// Bind a member `void C::on_tick()` as a timer IN a callback group
-    /// — the member-binding half of `create_timer_in_group`.
+    /// — the member-binding half of `create_timer_in_group`. `self` is KEPT,
+    /// as for `create_wall_timer<C, Method>`.
     template <class C, void (C::*Method)()>
     Result create_timer_in_group(const ::rclcpp::CallbackGroup& group, Timer& out,
                                  uint64_t period_ms, C* self) {
@@ -2584,6 +2609,7 @@ class Node {
     /// @param delay_ms  Delay in milliseconds before the callback fires.
     /// @param callback  C function pointer invoked once.
     /// @param context   User context passed to the callback (may be nullptr).
+    ///                  KEPT: see the "What a registration keeps" note in this class.
     Result create_timer_oneshot(Timer& out, uint64_t delay_ms, nros_cpp_timer_callback_t callback,
                                 void* context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -2657,6 +2683,7 @@ class Node {
     /// @param period_ms  Timer period in milliseconds.
     /// @param callback   C function pointer invoked on each tick.
     /// @param context    User context passed to the callback (may be nullptr).
+    ///                   KEPT: see the "What a registration keeps" note in this class.
     Result create_timer_in_group(const ::rclcpp::CallbackGroup& group, Timer& out,
                                  uint64_t period_ms, nros_cpp_timer_callback_t callback,
                                  void* context = nullptr) {
@@ -2723,6 +2750,10 @@ class Node {
     /// @param out       Receives the initialized guard condition.
     /// @param callback  C function pointer invoked when triggered.
     /// @param context   User context passed to the callback (may be nullptr).
+    ///                  KEPT until `out` is destroyed, and passed to every
+    ///                  dispatch: what it points to must outlive `out` and must
+    ///                  not move while `out` is alive (see the "What a registration
+    ///                  keeps" note in this class).
     Result create_guard_condition(::rclcpp::GuardCondition& out, nros_cpp_guard_callback_t callback,
                                   void* context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
