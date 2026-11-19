@@ -1938,7 +1938,7 @@ pub(crate) mod image_features_fixture {
             param: true,
             rosout: true,
             lifecycle: false,
-            families: "param+rosout",
+            families: "param+rosout+clock",
         },
         Case {
             image: "small",
@@ -1952,7 +1952,7 @@ pub(crate) mod image_features_fixture {
             param: true,
             rosout: true,
             lifecycle: true,
-            families: "param+lifecycle+rosout",
+            families: "param+lifecycle+rosout+clock",
         },
     ];
 

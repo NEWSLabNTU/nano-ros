@@ -211,10 +211,17 @@ mod tests {
     #[test]
     fn an_image_adds_over_the_system_and_its_switch_applies_to_the_union() {
         let none: [&str; 0] = [];
-        // An image-level opt-in joins the system list, once.
+        // An image-level opt-in joins the system list, once; no switch is
+        // the stock set (phase-556 W13).
         assert_eq!(
             image_features(&["lifecycle"], &["safety", "lifecycle"], None),
-            vec!["lifecycle", "safety"]
+            vec![
+                "lifecycle",
+                "safety",
+                "param_services",
+                "rosout",
+                "sim_time"
+            ]
         );
         // An image-level opt-out removes a stock axis the SYSTEM declared.
         assert_eq!(
