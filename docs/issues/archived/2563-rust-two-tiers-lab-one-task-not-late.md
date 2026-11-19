@@ -1,7 +1,7 @@
 ---
 id: 2563
 title: "Two-tiers lab, Rust tab: the one-sched-task run prints `10 windows, 0 late`, not `10 late`"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [realtime, book, probe]
@@ -9,12 +9,12 @@ related: [issue-2269, phase-537]
 found: 2026-11-15
 ---
 
-**Home: [phase-537](../roadmap/phase-537-book-user-guide-organization.md).**
+**Home: [phase-537](../../roadmap/phase-537-book-user-guide-organization.md).**
 The `lab-tiers` probe track (Rust, weekly) fails at its first run step.
 
 ## What
 
-The lab ([two-tiers.md](../../book/src/tutorial/two-tiers.md)) puts a 100 Hz
+The lab ([two-tiers.md](../../../book/src/tutorial/two-tiers.md)) puts a 100 Hz
 control loop and a 60 ms telemetry job on one sched task, with
 `group_tasks = { ctrl = "main" }` (and the telemetry group on `main` too), and
 expects the loop to miss its deadlines: `10 windows, 10 late`. Then it moves
@@ -97,3 +97,25 @@ probe), which is what failed weekly.
 2. Fix that side; the lab's two runs must print `10 late` then `0 late` in
    every language.
 3. Run the `lab-tiers`, `lab-tiers-c` and `lab-tiers-cpp` tracks.
+
+## Done (2026-11-19): does not reproduce on main
+
+Closed on the re-run above, on main at 685656d351 (host, in-tree CLI). The
+steps, run in a fresh directory:
+
+```
+PROBE_TRACK=installed PROBE_PLATFORM=lab-tiers PROBE_EXTRACT_ONLY=steps.sh \
+  ./scripts/probe/run-bootstrap-probe.sh
+```
+
+then the extracted script's prelude and steps 2110 to 2160, then `nros run`.
+It printed:
+
+```
+nros::main!: derived schedule: declined - every callback group's sched task is authored for `freertos` (`[tasks.*.freertos]`), and an authored placement wins
+[INFO] control_node: [   25.932513] 10 windows, 10 late
+```
+
+The commit that fixed it was not identified. The weekly `lab-tiers` track
+is the check that it stays fixed. Plan steps 2 and 3 need no work beyond
+that.
