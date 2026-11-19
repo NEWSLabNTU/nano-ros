@@ -183,7 +183,7 @@ probe() {
 # The declared `param_services` and `lifecycle`, plus the `rosout` writer of
 # the stock node interfaces every image gets by default.
 probe "$W/src/zephyr_entry" "$TEST_TMPDIR/d.log"
-if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle;rosout\]' "$TEST_TMPDIR/d.log"; then
+if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle;rosout;sim_time\]' "$TEST_TMPDIR/d.log"; then
     fail "D: an unset NROS_FEATURES did not become the image's axes (rc=$RC)"
     tail -15 "$TEST_TMPDIR/d.log" >&2
     # Issue 2180: the macro's empty answer has three causes and it reported
@@ -205,9 +205,9 @@ if ! nros_grep_q 'missing: *lifecycle' "$TEST_TMPDIR/e.log" \
 fi
 
 probe "$W/src/zephyr_entry" "$TEST_TMPDIR/f.log" \
-    "-DNROS_FEATURES=param_services;lifecycle;rosout"
+    "-DNROS_FEATURES=param_services;lifecycle;rosout;sim_time"
 if [ "$RC" -ne 0 ] \
-    || ! nros_grep_q 'RESULT=\[param_services;lifecycle;rosout\]' "$TEST_TMPDIR/f.log"; then
+    || ! nros_grep_q 'RESULT=\[param_services;lifecycle;rosout;sim_time\]' "$TEST_TMPDIR/f.log"; then
     fail "F: a superset of the declared axes was not left alone (rc=$RC)"
     tail -15 "$TEST_TMPDIR/f.log" >&2
 fi
@@ -227,7 +227,7 @@ mkdir -p "$TEST_TMPDIR/bare-rustup"
 printf '%s\n' '#!/bin/sh' 'exit 0' > "$TEST_TMPDIR/bare-rustup/rustup"
 chmod +x "$TEST_TMPDIR/bare-rustup/rustup"
 PATH="$TEST_TMPDIR/bare-rustup:$PATH" probe "$W/src/zephyr_entry" "$TEST_TMPDIR/h.log"
-if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle;rosout\]' "$TEST_TMPDIR/h.log"; then
+if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle;rosout;sim_time\]' "$TEST_TMPDIR/h.log"; then
     fail "H: a toolchain missing the image's Rust target emptied the query (rc=$RC, issue 2180)"
     tail -15 "$TEST_TMPDIR/h.log" >&2
 fi
