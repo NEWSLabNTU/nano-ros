@@ -8932,7 +8932,7 @@ structure:
         let one = knobs(&model("true", "false"));
         let two = knobs(&model("true", "true"));
         assert_eq!(
-            InfraServices::from_model(&model("true", "true"), None).managed_nodes,
+            InfraServices::from_model(&model("true", "true")).managed_nodes,
             2
         );
         assert_eq!(
