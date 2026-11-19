@@ -7,12 +7,12 @@ documented in the book:
 - `src/demo_bringup/`: Bringup package with `package.xml`, `system.toml`,
   `launch/`, and optional config files. It has no build file.
 - `src/zephyr_entry/`: the one Entry package still written by hand — a west
-  application's Kconfig overlays are not derivable (RFC-0065 D5). Every other
+  application's Kconfig overlays are not derivable. Every other
   image's entry is generated.
 
 A workspace is a directory of packages, like a colcon workspace: there is no
-root `Cargo.toml` and no root `CMakeLists.txt`, and no entry package to write
-(RFC-0098 D9). Everything generated lands under `build/`, `dist/` and `log/`.
+root `Cargo.toml` and no root `CMakeLists.txt`, and no entry package to write.
+Everything generated lands under `build/`, `dist/` and `log/`.
 Build one with the user workflow:
 
 ```bash
@@ -30,11 +30,11 @@ image's board implies — so no build command carries a board, an RMW or a domai
 The Rust workspace's images all reuse the same Node and Bringup packages, and
 every one but Zephyr has NO entry package in `src/`: `nros build <image>`
 GENERATES it under `build/<coord>/<image>_entry/` from the image's
-`[image.<id>]` in `demo_bringup/system.toml` (RFC-0065 D4, phase-445 W5) — the
+`[image.<id>]` in `demo_bringup/system.toml` — the
 one-line `nros::main!(launch = "demo_bringup:system.launch.xml")` plus whatever
 the board descriptor's `[board.entry]` says the board needs. `src/zephyr_entry/`
 (every Zephyr board) stays hand-written because a west application's Kconfig
-overlays are not derivable (RFC-0065 D5); its board, RMW and locator are still
+overlays are not derivable; its board, RMW and locator are still
 its image's.
 
 ## ESP32-C3 QEMU image
@@ -48,7 +48,7 @@ build-std` (the workspace fixture lane supplies both). Its generated entry is
 `esp-hal` / `esp-backtrace` dependencies and the app descriptor, and the image
 states the locator it dials. Build + run via:
 
-**Dormant (issue 1525):** ESP32 support is parked — the `[image.esp32]` image and
+**Dormant:** ESP32 support is parked — the `[image.esp32]` image and
 its board are kept for future use, but no lane builds or runs them and the
 `esp32` just module is not mounted.
 
@@ -59,7 +59,7 @@ graph (talker + listener) in one process, and covers **every Zephyr board** —
 the board is chosen at `west build -b` time, not baked into the package. On
 Zephyr the RTOS framework is the workflow: `west build` is the build verb, and
 the bringup image's `rmw` (`system.toml`) selects the RMW -- the nano-ros Zephyr
-module renders it into Kconfig (phase-481). There is no `nros launch` build path.
+module renders it into Kconfig. There is no `nros launch` build path.
 
 ```bash
 source ./activate.sh
@@ -81,8 +81,8 @@ for the full flow.
 ## FVP image (realtime-cpp `[image.fvp]`)
 
 `realtime-cpp`'s `demo_bringup` declares `[image.fvp] board =
-"fvp-aemv8r-smp"` (phase-292 W1.a, the Autoware Safety Island
-reference-consumer shape). Its west application is GENERATED (issue 1288):
+"fvp-aemv8r-smp"` (the Autoware Safety Island
+reference-consumer shape). Its west application is GENERATED:
 `nros build` passes the Zephyr board id from the descriptor and hands the
 application the board package's base config and DTS overlay
 (`packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/`) — what the

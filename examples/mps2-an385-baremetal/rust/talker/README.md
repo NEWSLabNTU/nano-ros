@@ -1,7 +1,7 @@
 # `talker` — mps2-an385-baremetal / rust
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
@@ -32,10 +32,10 @@ The bringup's second image, `docker`, is the one the compose test
 ## Config
 
 Board, RMW, domain and locator: `src/qemu_bsp_talker_bringup/system.toml`
-(`[image.mps2-an385-baremetal]` + `[system]`, RFC-0098 D3/D5). No build
+(`[image.mps2-an385-baremetal]` + `[system]`). No build
 command carries any of them, and `src/qemu_bsp_talker/Cargo.toml` names no
 board crate: the generated entry states the board, its RMW backend and its
-runtime (RFC-0121 D6), so switching board is the `[image.*] board` line and
+runtime, so switching board is the `[image.*] board` line and
 nothing else.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

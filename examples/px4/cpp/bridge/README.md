@@ -11,13 +11,13 @@ PX4 publisher ──uORB──▶ nros_uorb_bridge ──zenoh/CDR──▶ ROS 
 
 ## What this is NOT
 
-The sibling `examples/px4/cpp/firmware` (phase-325 W2) demonstrates the
+The sibling `examples/px4/cpp/firmware` demonstrates the
 **zero-copy** property: nano-ros publishes a PX4 struct into uORB with no
 serialization, and a stock PX4 `listener` reads it.
 
 This example demonstrates **reach**, and the serialization uORB avoids comes back
 here, at the RMW boundary — necessarily. Zero-copy is not claimed for the outward
-half. Conflating the two would overclaim (phase-325 W4.3).
+half. Conflating the two would overclaim.
 
 ## Status (2026-08-06): WORKING
 
@@ -32,8 +32,7 @@ INFO  [nros_uorb_bridge] forwarded 100 samples (key=velx value=99.0)
 (`px4_mavlink_debug start` supplies the uORB samples; nothing publishes
 `debug_key_value` by default.)
 
-Getting here fixed five real defects — see
-[issue 0436](../../../../docs/issues/archived/0436-px4-bridge-init-transport-error.md):
+Getting here fixed five real defects:
 
 1. **Two copies of zenoh-pico** in one image (umbrella core + a complete second
    from the platform archive), each with its own statics — `z_open` failed having
@@ -57,7 +56,7 @@ just px4 build-bridge-example                       # debug_key_value, jazzy, ze
 just px4 build-bridge-example vehicle_status        # a different topic
 just px4 build-bridge-example debug_key_value humble  # a different ROS edition
 
-# phase-325 W3.3 — the OUTWARD backend. An env var, not an argument (below).
+# The OUTWARD backend. An env var, not an argument (below).
 NROS_PX4_BRIDGE_RMW=xrce just px4 build-bridge-example
 ```
 
@@ -86,18 +85,16 @@ One thing to know, measured:
 * **Build for your subscriber's edition.** The `edition` argument (default
   `jazzy`) decides the data key: a `humble` image is seen only by a Humble
   subscriber and a `jazzy` image only by an Iron+ one. Until 2026-10-15 every
-  image published Humble keys whatever you asked for
-  ([issue 1893](../../../../docs/issues/archived/1893-px4-bridge-edition-misses-zenoh-keyexpr.md)).
+  image published Humble keys whatever you asked for.
 
 `NROS_PX4_BRIDGE_RMW=xrce` runs beside PX4's own `uxrce_dds_client` in one
 `px4_sitl_default` image: nano-ros's copy of Micro-XRCE-DDS-Client compiles under
-private `nros_` symbol names, so the two clients no longer bind to each other
-([issue 1896](../../../../docs/issues/archived/1896-px4-bridge-xrce-collides-with-uxrce-dds-client.md)).
+private `nros_` symbol names, so the two clients no longer bind to each other.
 Point the bridge at the same agent PX4 dials, e.g.
 `NROS_LOCATOR=udp/127.0.0.1:8888`; `just px4 test-bridge-xrce-ros2` runs both
 into a ROS 2 subscriber.
 
-## Test: a real ROS 2 subscriber (phase-325 W3.4)
+## Test: a real ROS 2 subscriber
 
 ```sh
 just px4 test-bridge-ros2
@@ -128,8 +125,8 @@ command, so start it after the bridge and the subscriber.)
 Publishing on a wire (rather than into uORB) pulls in three things the W2 demo
 needs none of:
 
-1. **Generated CDR types.** `nros px4 msgs --lang cpp --topics …`
-   (issue 0362). `rmw_zenoh` keys discovery on the **RIHS01 type hash**, so a
+1. **Generated CDR types.** `nros px4 msgs --lang cpp --topics …`.
+   `rmw_zenoh` keys discovery on the **RIHS01 type hash**, so a
    hand-rolled payload with a guessed hash is either invisible to ROS 2 or —
    worse — visible and decoded as the wrong type. The hash therefore comes from
    the same generator that emits the struct, and is byte-identical to the one the
@@ -166,7 +163,7 @@ The inward node binds `"uorb"`, the outward node binds the networked backend, vi
 first-registered backend, which is `BACKENDS` argument order — an argument list,
 not a contract — so both are named explicitly.
 
-## Layout: a generated entry (phase-521 W8)
+## Layout: a generated entry
 
 This directory is also a nano-ros workspace. The component
 `uorb_bridge_pkg::UorbBridge` (`src/uorb_bridge_pkg/`) is the only

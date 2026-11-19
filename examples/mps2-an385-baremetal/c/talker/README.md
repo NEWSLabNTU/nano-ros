@@ -23,8 +23,8 @@ On this board the entry's `main` is the board's C start,
 the board bring-up written in Rust (CMSDK Timer0 clock, LAN9118 + smoltcp
 network, semihosting console, the `nros_log` sinks), then calls the entry. The
 board crate, `cortex-m-rt` and the PAC come in through the image's Rust
-staticlib, so the link is rooted in CMake like every RTOS board's (phase-553
-W4). The C library is newlib-nano, so `printf` and `snprintf` work.
+staticlib, so the link is rooted in CMake like every RTOS board's.
+The C library is newlib-nano, so `printf` and `snprintf` work.
 
 The main stack is 256 KiB with an MPU guard below it; raise it with
 `NROS_BAREMETAL_STACK_KB`. An overflow stops the image with

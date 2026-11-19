@@ -26,7 +26,7 @@ just threadx_riscv64 zenohd &            # router
 just threadx_riscv64 talker              # boot rust/talker in QEMU
 ```
 
-The peer listener is a workspace image since phase-535 W5: build and run
+The peer listener is a workspace image: build and run
 `pubsub_bringup:riscv_threadx_listener` in `examples/workspaces/rust` with
 `nros build` / `nros run`, in a second shell. The C and C++ listeners, on
 zenoh and Cyclone, are images of `examples/workspaces/{c,cpp}`'s
@@ -50,5 +50,4 @@ Test lanes: `just threadx_riscv64 test`, `test-all`.
   are missing — run setup first.
 - NetX Duo BSD `SO_RCVTIMEO` takes `nx_bsd_timeval*`, not int ms
   (`book-internals/src/platform/implementation-notes.md`).
-- Known limitation: firmware NULL `c_app_main` after rebuild on some hosts —
-  issue #127.
+- Known limitation: firmware NULL `c_app_main` after rebuild on some hosts.

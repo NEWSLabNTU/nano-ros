@@ -27,7 +27,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 (Fixture id `workspace-cpp-native-realtime-subnode-portable`; e2e
 `realtime_subnode_cpp_portable_e2e`.)
 
-## The same package, freestanding (phase-427 W12)
+## The same package, freestanding
 
 `[image.freertos]` builds the **identical** `subnode_pkg` for
 FreeRTOS/mps2-an385 — `arm-none-eabi-g++`, `thumbv7m-none-eabi`, no OS
@@ -37,7 +37,7 @@ block, all in `deploy_bringup/system.toml`. That is the portability claim of
 this workspace measured against a cross toolchain rather than a second sched task
 vocabulary.
 
-Why it is worth a fixture: RFC-0089 correction 1 measured that deriving
+Why it is worth a fixture: it was measured that deriving
 `rclcpp::Node` costs nothing freestanding (no allocator, no exceptions, no
 vtable), and correction 8 recorded that **no in-tree fixture exercised it** —
 every consumer of a `SHAPE rclcpp` package was `platform = "linux"`. This image
@@ -67,5 +67,5 @@ Identical to the `-subnode` variant — that is the point:
 [subnode/telem] tick=N
 ```
 
-<!-- phase-331 W6 renamed this workspace and dropped the README with the old
+<!-- A rename of this workspace dropped the README with the old
      directory; content restored from a92778843^ with the ws- prefixes updated. -->

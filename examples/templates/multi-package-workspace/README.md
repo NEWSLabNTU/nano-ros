@@ -2,7 +2,7 @@
 
 > For the canonical 3-role (Node + Bringup + Entry) workspace pattern, see [`multi-node-workspace/`](../multi-node-workspace/). This template demonstrates a polyglot (Rust/C/C++) app-node workspace.
 
-**Phase 123.A.10** — concrete Pattern A workspace with mixed C / C++ / Rust
+A concrete Pattern A workspace with mixed C / C++ / Rust
 packages sharing one nano-ros source tree.
 
 ## Layout
@@ -28,10 +28,10 @@ multi-package-workspace/
 ```
 
 There is no `.cargo/config.toml` in the Rust package and no workspace-root
-`Cargo.toml` (RFC-0098 D1/D9): `nros configure` writes what the board choice implies
+`Cargo.toml`: `nros configure` writes what the board choice implies
 into `build/<image>/`, and the build reads it from there.
 
-### …and no `.colcon_workspace`, deliberately (issue 1515)
+### …and no `.colcon_workspace`, deliberately
 
 Every other multi-package tree under `examples/` carries a tracked
 `.colcon_workspace` at its root — the marker `detect_workspace_root` answers with
@@ -65,7 +65,7 @@ self-contained inside the nano-ros source repo.
 ## What it shows
 
 * **One nano-ros source per workspace.** Both CMake packages
-  `add_subdirectory(<path-to-nano-ros>)` (Phase 140) — there is no
+  `add_subdirectory(<path-to-nano-ros>)` — there is no
   install prefix to populate up front. The Rust package names nano-ros
   crates registry-style and `nros configure` resolves them against the same
   checkout — the resolution is generated, never hand-written.
@@ -75,7 +75,7 @@ self-contained inside the nano-ros source repo.
 * **Workspace-shared codegen cache.** `NROS_GEN_CACHE_DIR` lets
   `std_msgs__nano_ros_c` and `std_msgs__nano_ros_cpp` build **once**
   across the C + C++ packages. Without the cache, each package would
-  regenerate the bindings independently. See Phase 123.A.7.
+  regenerate the bindings independently.
 * **`NanoRos::NanoRos` umbrella target.** `add_subdirectory(nano-ros)`
   exposes `NanoRos::NanoRos` / `NanoRos::NanoRosCpp` INTERFACE
   targets that transitively wire the RMW staticlib + platform shim
@@ -92,7 +92,7 @@ source ./activate.sh
 nros setup linux --rmw zenoh           # host toolchains + the zenoh router
 ```
 
-No install step — Phase 140 removed the `install-local` recipe. The
+No install step — there is no `install-local` recipe. The
 source tree IS the consumption surface.
 
 ## Build the three packages
@@ -164,10 +164,10 @@ ROS 2 distro on hand (or who don't want to install colcon).
 ## Open follow-ups
 
 * A workspace-level `Cargo.toml` is **not** the plan and will not
-  arrive: RFC-0098 D9 makes a workspace a directory of packages with
+  arrive: a workspace is a directory of packages with
   no root build file, and the cargo settings a package needs are
   generated per image under `build/`. The old `.cargo/config.toml`
   shim this template used to carry is gone for the same reason.
 * Rust codegen is still per-package — the `NROS_GEN_CACHE_DIR`
   sharing that the C and C++ packages get has no cargo-side
-  equivalent yet (Phase 123.A.7 follow-up).
+  equivalent yet.

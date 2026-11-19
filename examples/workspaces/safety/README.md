@@ -1,7 +1,7 @@
 # `safety` — E2E message integrity, one workspace
 
-Phase-331 W4 folded `ws-safety-{c,cpp,rust}` into this one, for the reason
-RFC-0066 gives for the `features/` consolidation: coverage was being expressed
+`ws-safety-{c,cpp,rust}` were folded into this one, for the same reason as
+the `features/` consolidation: coverage was being expressed
 as DIRECTORIES — one workspace per language — which multiplied build cost
 without multiplying what was actually covered.
 
@@ -25,7 +25,8 @@ and lowers to `NROS_SAFETY_E2E` for the C/C++ build and the `safety-e2e`
 cargo feature for the runtime. With it on, the runtime attaches a CRC-32 +
 sequence number to every publish and validates it on receive; the listener reads
 the per-sample verdict (CRC ok, sequence gap, duplicate) alongside the payload.
-The protocol is RFC-0028.
+The protocol is described in the
+[E2E safety protocol design](../../../docs/design/0028-e2e-safety-protocol-integration.md).
 
 **None of that is written in a node package.** The talkers here are plain
 talkers and the listeners declare a validated subscription and read a verdict;
@@ -39,7 +40,7 @@ it is stated beside the declaration that causes it and nowhere else.
 ```
 src/
   demo_bringup/                    one launch file per (role × language)
-    boards/native_sim_native_64/   the Zephyr image's Kconfig (RFC-0065 D4)
+    boards/native_sim_native_64/   the Zephyr image's Kconfig
   {c,cpp,rust}_safety_talker_pkg/  the node packages
   {c,cpp,rust}_safety_listener_pkg/
 ```
@@ -47,8 +48,8 @@ src/
 Languages sit side by side so the language seam is exercised inside one
 workspace rather than across three copies of it. **No entry is in `src/`** — the
 bringup declares seven `[image.*]` and every one of them, the six native ones
-and the Zephyr one, has its entry generated under `build/<coord>/` (RFC-0098 D9;
-the Zephyr west application around it since phase-470 W5.b2, issue 1288).
+and the Zephyr one, has its entry generated under `build/<coord>/`
+(the Zephyr west application around it too).
 
 ## Building
 
@@ -63,6 +64,6 @@ entry, alongside the build settings each image's board implies. The Zephyr image
 keeps `west build` as its verb, with `nros configure` before it.
 
 Do NOT pass `-DNROS_SAFETY_E2E=ON` by hand. The declaration above is the
-source of truth and reaches the build on its own (phase-323); forcing the knob
+source of truth and reaches the build on its own; forcing the knob
 was the workaround that outlived its own issue, and the SSoT gate now rejects
 it.

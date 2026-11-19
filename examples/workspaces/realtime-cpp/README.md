@@ -1,6 +1,6 @@
 # ws-realtime-cpp — two-node, two-sched-task realtime demo (C++)
 
-The C++ base of the scheduling-sched-tasks differentiator (RFC-0015 §4.2): a control
+The C++ base of the scheduling-sched-tasks differentiator: a control
 node and a telemetry node run on two priority sched tasks declared **in config**,
 not in node code.
 

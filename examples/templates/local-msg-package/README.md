@@ -1,6 +1,6 @@
-# local-msg-package — Phase 210.A.4 fixture
+# local-msg-package — fixture
 
-Demonstrates the **ROS-convention codegen** Phase 210 ships:
+Demonstrates nano-ros's **ROS-convention codegen**:
 
 * `src/local_msgs/` — a **verbatim** ROS 2 msg package (stock `package.xml` +
   stock `CMakeLists.txt` calling `rosidl_generate_interfaces(...)`). Zero
@@ -24,11 +24,11 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
   (`NROS_INTERFACE_SEARCH_PATH > AMENT_PREFIX_PATH > bundled`) and routes
   each pkg's codegen identically regardless of which layer it lived in.
 
-* `src/rust_consumer/` — **Phase 210.D.3** Rust sibling of the C++
+* `src/rust_consumer/` — Rust sibling of the C++
   consumer. Same four-msg-family coverage. Builds via `nros configure` +
   plain `cargo build`. See the "Build — Rust" section below.
 
-* No root build file (RFC-0098 D9, phase-445 W5). The umbrella
+* No root build file. The umbrella
   `CMakeLists.txt` that used to be the only nano-ros-specific file is gone:
   this workspace has no bringup, so `nros build` builds it the way colcon
   does — every package, in dependency order, each with its own driver and its
@@ -88,13 +88,13 @@ non-zero if the generated crates are stale.
 
 ## What's exercised
 
-| Phase 210 piece | Where |
+| Codegen piece | Where |
 |---|---|
-| `rosidl_generate_interfaces(...)` wrapper (210.A.1) | `src/local_msgs/CMakeLists.txt` |
-| Message-package resolver (`cmake/find/_NrosFindRosMsgPackage.cmake`, 210.A.2) | `find_package(local_msgs)` in `src/consumer/CMakeLists.txt` |
-| Per-pkg Find delegators (210.A.3) | `find_package(std_msgs)` |
-| Workspace Find-stub auto-emit (210.A.4) | `NROS_INTERFACE_SEARCH_PATH=./src` → auto-emits `Findlocal_msgs.cmake` so the consumer resolves it |
-| `nros_workspace_interfaces()` bulk + topo-sort (210.B.2) | `local_msgs` built before `extra_msgs` automatically |
+| `rosidl_generate_interfaces(...)` wrapper | `src/local_msgs/CMakeLists.txt` |
+| Message-package resolver (`cmake/find/_NrosFindRosMsgPackage.cmake`) | `find_package(local_msgs)` in `src/consumer/CMakeLists.txt` |
+| Per-pkg Find delegators | `find_package(std_msgs)` |
+| Workspace Find-stub auto-emit | `NROS_INTERFACE_SEARCH_PATH=./src` → auto-emits `Findlocal_msgs.cmake` so the consumer resolves it |
+| `nros_workspace_interfaces()` bulk + topo-sort | `local_msgs` built before `extra_msgs` automatically |
 | Mixed workspace + AMENT msg sources | `find_package(local_msgs)` + `find_package(geometry_msgs)` resolve identically; codegen wires both |
 | Multi-level dep closure cache (`_NROS_PKG_<pkg>_GENERATED_RS_FILES`) | `sensor_msgs` FFI sees `std_msgs` types even though `std_msgs` was generated indirectly via `local_msgs` earlier in the configure pass |
 | `${pkg}::${pkg}` upstream-shape link target | `target_link_libraries(consumer local_msgs::local_msgs)` |

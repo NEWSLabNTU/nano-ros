@@ -1,6 +1,6 @@
 # rclcpp-compat smoke
 
-Integration test for the ported-node path that phase-209 built (A
+Integration test for the ported-node path (A
 `<rclcpp/rclcpp.hpp>` + B `cmake/NanoRosAmentSurface.cmake` + C
 `<rclcpp_components/register_node_macro.hpp>` + D
 `packages/api/nros-diagnostic-updater`). Builds a ROS-2-idiom node — `rclcpp::Node` subclass
@@ -47,7 +47,7 @@ ros2 topic echo /diagnostics
 ## Running the same source on an RTOS
 
 The two directories beside `src/` build **the same `src/talker.cpp`** for a
-microcontroller (phase-482 W3), exactly as `cpp-port-minimal-publisher` does:
+microcontroller, exactly as `cpp-port-minimal-publisher` does:
 `mps2-an385-freertos/` (FreeRTOS on MPS2-AN385, QEMU) and `zephyr/` (Zephyr on
 `mps2/an385`, QEMU). Each is a `CMakeLists.txt` around
 

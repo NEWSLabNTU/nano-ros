@@ -15,7 +15,7 @@ multi-node-workspace/
                             #               `[image.linux]` names the image to build.
 ```
 
-The Entry pkg is GENERATED (RFC-0065 D4): `nros build linux` writes it to
+The Entry pkg is GENERATED: `nros build linux` writes it to
 `build/posix-zenoh/linux_entry/`. `nros materialize linux` copies it into
 `src/` if you ever need to own it.
 
@@ -23,7 +23,7 @@ The Entry pkg is GENERATED (RFC-0065 D4): `nros build linux` writes it to
 
 | Role        | What it is | Marker |
 | ----------- | ---------- | ------ |
-| **Node pkg**    | A library implementing `nros::Node` (+ optional `ExecutableNode`), stamped with `nros::node!(T)`. One per node. | `[package.metadata.nros.node]` in its own `Cargo.toml` REGISTERS the class (the Rust `nros_components_register_node`); a `[[component]]` row in the bringup's `system.toml` (`pkg` / `class` / `name`) runs it — [issue 1289](../../../docs/issues/archived/1289-workspace-node-tables-still-in-manifests.md) |
+| **Node pkg**    | A library implementing `nros::Node` (+ optional `ExecutableNode`), stamped with `nros::node!(T)`. One per node. | `[package.metadata.nros.node]` in its own `Cargo.toml` REGISTERS the class (the Rust `nros_components_register_node`); a `[[component]]` row in the bringup's `system.toml` (`pkg` / `class` / `name`) runs it |
 | **Bringup pkg** | Pure declarative — owns the launch topology and every image the workspace deploys. No compiled code. | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) |
 | **Entry pkg**   | A binary that boots a topology against a `Board`, via `nros::main!(...)`. One per image — **generated, never written**. | `[image.<id>] board = "<board>"` in `system.toml` |
 
@@ -51,7 +51,7 @@ nros configure            # generated bindings + resolves the bringup's
 nros build linux    # the `[image.linux]` declared in demo_bringup/system.toml
 ```
 
-There is no workspace `Cargo.toml` (RFC-0098 D9): the workspace is a
+There is no workspace `Cargo.toml`: the workspace is a
 directory of packages, as in colcon. `nros build linux` GENERATES the entry
 package `build/posix-zenoh/linux_entry/` — a one-line
 `nros::main!(launch = "demo_bringup")` over the node packages the launch file
@@ -99,7 +99,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 - **`nros plan demo_bringup` / `nros check <plan.json>`** need
   pre-collected source-metadata sidecars (`record.json` +
   per-pkg `_metadata/*.json`) for lib-only Node pkgs in this release —
-  the host metadata-mode auto-build (no user-tier verb yet, issue 2394) and the
+  the host metadata-mode auto-build (no user-tier verb yet) and the
   launch record parser are not yet wired for this shape. The
   `nros check --bringup` / `nros check --workspace` lints above do work
   and are the relevant gates for a template. See

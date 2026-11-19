@@ -1,4 +1,4 @@
-# ws-violation-cpp - the violation channel, end to end (phase-474 T4)
+# ws-violation-cpp - the violation channel, end to end
 
 One C++ component, `violation_pkg::Handler`, whose 10 Hz timer publishes
 `std_msgs/Int32` on `/t4/state`. `src/demo_bringup/launch/system.contract.yaml`
@@ -36,7 +36,7 @@ Build: `NROS_ZEPHYR_FIXTURE_FILTER=violation just build zephyr`
 (fixtures `workspace-zephyr-cpp-violation` and
 `workspace-zephyr-cortex-m-cpp-violation`).
 
-phase-544 W2: `[image.zephyr_mps2]` is the same image for the Zephyr Cortex-M
+`[image.zephyr_mps2]` is the same image for the Zephyr Cortex-M
 QEMU board (`mps2-an385-zephyr`), whose own Kconfig lives in
 `boards/mps2_an385/`. The test boots it under the board descriptor's
 `-icount shift=auto`, so the 50 ms bound and the arming are measured on the

@@ -1,7 +1,7 @@
 # `action-server` — linux / rust
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
@@ -28,8 +28,8 @@ nros run linux    # builds it if stale and starts the zenoh router it needs
 ## Config
 
 Board, RMW, domain and locator: `src/native_action_server_bringup/system.toml`
-(`[image.*]` + `[system]`, RFC-0098 D3/D5). No build command carries any of
+(`[image.*]` + `[system]`). No build command carries any of
 them, and `src/native_action_server/Cargo.toml` names no board crate: the generated
-entry states the board, its RMW backend and its features (RFC-0121 D6).
+entry states the board, its RMW backend and its features.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

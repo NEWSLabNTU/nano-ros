@@ -1,7 +1,7 @@
 # Scheduling-sched-tasks (real-time) showcase workspace
 
-A nano-ros **differentiator** demo (phase-263 B2): deployment-time real-time
-scheduling (RFC-0015) — a control loop and a telemetry node on two priority sched tasks,
+A nano-ros **differentiator** demo: deployment-time real-time
+scheduling — a control loop and a telemetry node on two priority sched tasks,
 declared in config, no node-code change to retune.
 
 ```
@@ -9,17 +9,17 @@ src/ctrl_pkg/      — Node pkg, 10 ms control loop, callback group `ctrl` → s
 src/telem_pkg/     — Node pkg, 100 ms telemetry,  callback group `telem` → sched task `low`.
 src/demo_bringup/  — Bringup: system.toml declares [tasks.high] / [tasks.low],
                      and boards/native_sim_native_64/ holds the Zephyr image's
-                     Kconfig (RFC-0065 D4).
+                     Kconfig.
 src/derived_bringup/ — Bringup for the SAME two nodes with NO authored sched tasks:
                      launch/system.contract.yaml states their rates and
                      `nros::main!` derives the table. Its one Zephyr image
                      lowers the transport band (its `env` NROS_ZENOH_READ_PRIORITY), so the
                      derived priorities must come from the image's own .config
-                     to land below it (issue 1537; sched_dims_applied_e2e).
+                     to land below it (sched_dims_applied_e2e).
 ```
 
 **Every** image's entry is generated from its `[image.*]`, so `src/` holds no
-entry at all — not `linux_entry`, and since phase-470 W5.b2 (issue 1288) not
+entry at all — not `linux_entry`, and not
 `zephyr_entry` either: `nros build` writes the west application around the
 generated staticlib under `build/<coord>/`.
 
@@ -47,8 +47,8 @@ there is nothing to keep in step.
    ```
 
    …and the node labels its entities at runtime: `node.callback_group("ctrl")?`.
-   (The `[[component]]` row is the only place the binding lives — RFC-0047 /
-   phase-273 W2. The older `[package.metadata.nros.node] callback_groups` form
+   (The `[[component]]` row is the only place the binding lives.
+   The older `[package.metadata.nros.node] callback_groups` form
    in a node's `Cargo.toml` is retired and refused at parse.)
 
 2. The bringup gives each sched task its per-RTOS knobs:

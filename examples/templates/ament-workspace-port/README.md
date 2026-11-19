@@ -1,7 +1,7 @@
 # ament-workspace-port
 
 A ported ROS 2 workspace, built for posix, FreeRTOS and Zephyr with the
-package's own `CMakeLists.txt` unchanged (phase-518 W4).
+package's own `CMakeLists.txt` unchanged.
 
 `src/` holds two stock ament_cmake packages, written the way ROS 2 packages
 are. Neither has a nano-ros line in it:
@@ -28,7 +28,7 @@ directory, as Autoware's and Nav2's build helpers do. On a board that
 directory also compiles the image's own entry code.
 
 Each of these shapes is one that ros2/demos `composition`, Nav2 or Autoware
-uses, and each failed the FreeRTOS or the Zephyr build until phase-518. On a
+uses, and each used to fail the FreeRTOS or the Zephyr build. On a
 board, nano-ros builds `add_executable` as an image with
 `nano_ros_add_executable(... ROS2_MAIN)`. It builds the `SHARED` libraries
 `STATIC`, and makes the packages' C++ hosted.
@@ -54,12 +54,12 @@ Each directory beside `src/` is a root that configures the same two packages.
 On Zephyr the target is `mps2/an385` under QEMU; `native_sim` cannot run a
 ported node. `system.toml` names the board package `mps2-an385-zephyr`, which
 lowers to `west build -b mps2_an385` and carries the QEMU network Kconfig, so a
-copy of this template names nothing outside itself (issue 1782).
+copy of this template names nothing outside itself.
 
 The two board roots are packages too, so each has its own name:
 `ament_workspace_port_freertos` and `ament_workspace_port_zephyr`. A package
 name names one package across every source root, as in colcon, so two roots
-sharing a name would make the whole workspace refuse to build (RFC-0119 D4).
+sharing a name would make the whole workspace refuse to build.
 
 ## Run
 

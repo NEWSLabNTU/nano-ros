@@ -1,7 +1,7 @@
 # nano-ros Zephyr starter (bring-your-own west workspace)
 
 A **manifest + app** starter for consuming nano-ros as a Zephyr `west` module in
-your own workspace — **not** a vendored or pre-patched Zephyr (Phase 205.A). It
+your own workspace — **not** a vendored or pre-patched Zephyr. It
 pins a nano-ros-tested Zephyr line and imports nano-ros; the patches are applied
 to *your* workspace by `nros setup` / `west patch`, never shipped pre-applied.
 
@@ -50,8 +50,7 @@ export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk-0.16.9
 # 5. nano-ros's patch set for the workspace's Zephyr line, into YOUR workspace:
 #    the native_sim socket (NSOS) patches and, in a workspace that holds
 #    zephyr-lang-rust, the change that carries nano-ros's settings to a Rust
-#    image's cargo (a Rust image's configure refuses a workspace without it,
-#    issue 2185).
+#    image's cargo (a Rust image's configure refuses a workspace without it).
 nros setup board zephyr --zephyr-workspace "$PWD" --workspace modules/nano-ros
 
 # 6. Build + run. The C codegen resolves std_msgs's .msg via NROS_STD_MSGS_DIR
@@ -60,7 +59,7 @@ nros setup board zephyr --zephyr-workspace "$PWD" --workspace modules/nano-ros
 export NROS_STD_MSGS_DIR=/opt/ros/humble/share/std_msgs
 # NSOS (host sockets, no TAP device) is the nano-ros module's `nros-nsos`
 # snippet. Board `zephyr` in system.toml names it, so the module adds it; the
-# `-S` only says so out loud. One file for every Zephyr line (issue 2157).
+# `-S` only says so out loud. One file for every Zephyr line.
 west build -b native_sim/native/64 -S nros-nsos nano-ros-app/app
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &       # the router, from ROS
 ./build/zephyr/zephyr.exe            # → "Published: 1", "Published: 2", …
@@ -70,7 +69,7 @@ Or let `nros` drive the same build: `cd nano-ros-app/app && nros configure && nr
 build --zephyr-workspace "$PWD/../.."`. It builds `native_sim/native/64` (the
 generic `zephyr` board in `system.toml`), whose `nros-nsos` snippet the module
 adds, so nothing network-related is passed by hand.
-`check-template-copy-out` builds a copy of this app that way (issue 2140).
+`check-template-copy-out` builds a copy of this app that way.
 
 `nros` on PATH is auto-resolved as the codegen tool. A real board (e.g.
 `qemu_cortex_a9`) swaps `-b`, the SDK target, and drops the native_sim overlay;
@@ -81,7 +80,7 @@ see the book.
 > [Install](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/start/install.md)
 > page. Until one exists, the way to obtain `nros` is a *separate* nano-ros
 > checkout with `./scripts/bootstrap.sh` — separate on purpose: a nano-ros
-> checkout's own build is only correct against that checkout (RFC-0090), and
+> checkout's own build is only correct against that checkout, and
 > `modules/nano-ros` is a west module of *your* workspace, not a development
 > tree. Building the CLI out of it is a contributor's workflow in a user's
 > project, and this template used to say to do exactly that.
@@ -97,5 +96,5 @@ see the book.
 - Full reference: the book's *Getting Started → Zephyr (west module)*
   (`book/src/guide/platforms/zephyr.md`) and
   `modules/nano-ros/examples/zephyr/` for the multi-RMW examples.
-- Verified end-to-end (Phase 202): this flow builds `app` to `zephyr.exe` and runs
+- Verified end-to-end: this flow builds `app` to `zephyr.exe` and runs
   to `Published: 1` on a fresh BYO workspace.

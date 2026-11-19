@@ -13,16 +13,16 @@ rust/
         └── boards/       #   plus the per-board Kconfig each Zephyr image names
 ```
 
-Every `[image.*]` here is generated — `zephyr_robot1` too, since phase-477 W1
-(issue 1288). It was kept hand-written for a while as the only evidence that an
+Every `[image.*]` here is generated — `zephyr_robot1` too.
+It was kept hand-written for a while as the only evidence that an
 explicit `entry =` key outranks the `src/<id>_entry` rung of `cmd::build`'s
 discriminator; that precedence is now a unit test there
 (`an_explicit_entry_outranks_the_id_entry_package`), so the leaf went.
 
 `[image.zephyr]`'s
 west application — `CMakeLists.txt`, `build.rs`, the staticlib manifest and
-`src/lib.rs` — is emitted by `nros build` into `build/zephyr-zenoh/zephyr_entry/`
-(phase-470 W5.a); its Kconfig is authored once, in
+`src/lib.rs` — is emitted by `nros build` into `build/zephyr-zenoh/zephyr_entry/`;
+its Kconfig is authored once, in
 `src/demo_bringup/boards/native_sim_native_64/`, which is what `nros build`
 passes as `APPLICATION_CONFIG_DIR`.
 
@@ -40,8 +40,8 @@ nros build linux
 
 `nros build` walks the packages, resolves the image, checks the
 toolchain, generates what the build system needs, and hands off to
-cargo/cmake/west — so compiler errors are the compiler's, unchanged
-(RFC-0065). `nros build` with no image lists what this workspace
+cargo/cmake/west — so compiler errors are the compiler's, unchanged.
+`nros build` with no image lists what this workspace
 declares. The old `codegen-system` / `check` steps still work; they are
 just no longer something you have to type — but `nros configure` still is.
 A workspace that has never been synced has no generated message crates,

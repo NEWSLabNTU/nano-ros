@@ -1,7 +1,7 @@
 # `service-server-rtic` — linux / rust
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
@@ -28,10 +28,9 @@ nros run linux
 ## Config
 
 Board, RMW, domain and locator: `src/native_rtic_service_server_bringup/system.toml`
-(`[image.*]` + `[system]`, RFC-0098 D3/D5). No build command carries any of
+(`[image.*]` + `[system]`). No build command carries any of
 them. `src/native_rtic_service_server/Cargo.toml` names the board crate it calls into
 (`nros-board-linux`); its RMW and edition features come from the
-`native_rtic_service_server_nros_derived` adapter crate `nros build` generates from the bringup
-(RFC-0071 D13/D19).
+`native_rtic_service_server_nros_derived` adapter crate `nros build` generates from the bringup.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

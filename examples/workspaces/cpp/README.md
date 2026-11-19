@@ -24,8 +24,8 @@ nros build linux
 
 `nros build` walks the packages, resolves the image, checks the
 toolchain, generates what the build system needs, and hands off to
-cargo/cmake/west — so compiler errors are the compiler's, unchanged
-(RFC-0065). `nros build` with no image lists what this workspace
+cargo/cmake/west — so compiler errors are the compiler's, unchanged.
+`nros build` with no image lists what this workspace
 declares. The old `codegen-system` / `check` steps still work; they are
 just no longer something you have to type — but `nros configure` still is.
 A workspace that has never been synced has no generated message crates,

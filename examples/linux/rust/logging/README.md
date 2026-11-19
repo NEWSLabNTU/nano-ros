@@ -1,7 +1,7 @@
 # `logging` — linux / rust
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
@@ -26,7 +26,7 @@ nros run linux
 ## Config
 
 Board: `src/native_logging_bringup/system.toml`
-(`[image.*]` + `[system]`, RFC-0098 D3/D5). No build command carries any of
+(`[image.*]` + `[system]`). No build command carries any of
 them.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).
