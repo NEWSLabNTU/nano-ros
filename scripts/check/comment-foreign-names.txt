@@ -453,7 +453,6 @@ clippy::format_in_format_args
 clippy::if_same_then_else
 clippy::manual_contains
 clippy::unnecessary_sort_by
-compile_fail
 default_alloc_error_hook
 default_constructed_unit_structs
 deref_addrof
