@@ -1,7 +1,8 @@
 ---
 id: 2585
 title: "subtree-guard's test reads its lock twice; the lock can vanish between the reads, and the launcher log that would say why is deleted"
-status: open
+status: resolved
+resolved_in: "the change that archives this issue"
 type: flaky-test
 area: [testing, build]
 severity: low
@@ -67,3 +68,48 @@ the first sighting, the launcher appears to leave before the assertion reads
 its state: `Killed` is the test's own SIGKILL path at line 137. The
 fix direction above (read the lock once, keep `launcher.log` on failure) covers
 this case too.
+
+## Cause: two races, both in the test
+
+**Sighting 1, the lock vanishes.** The test's cleanup ran
+`pkill -f nros-guard-test-payload`, mid-test (after path 3) and in its EXIT
+trap. That name was the same for every run of the test on the host. So
+another run elsewhere, such as another worktree's `check fast` or a pre-push
+hook, killed THIS run's payload leader. Only the leader carries the name.
+The launcher's `wait` then returned, so it removed its lock and exited,
+while the leader's two `sleep` children kept the group at depth 3.
+
+Measured directly: a launcher holding its lock, then one foreign
+`pkill -f <name>`. Afterwards the lock is gone, the launcher is gone, and the
+group still has 3 members. That is sighting 1's state: the depth check
+passed, the pgid read succeeded, and the pid read found nothing.
+
+**Sighting 2, the same-label pool starts.** Path 5 held `sibling-a`'s guard
+for a fixed 8 s. Under a load average of 143, starting and finishing
+`sibling-b` took longer than that, so `sibling-a` had already released and
+the same-label pool found no holder. Measured: with `sibling-b` delayed by
+10 s, the old test fails with sighting 2's exact message. The `Killed` line
+beside it is bash's notice for path 3's own SIGKILL, and is not the failure.
+
+## Fix
+
+- The payload carries this run's own name, `nros-subtree-guard-payload-<scratch
+  dir>`. It shares no prefix with the old name, so an old run elsewhere
+  cannot match it either. Cleanup kills the recorded group as well as the
+  name.
+- The lock is read once (`read_lock`). A lock that is gone or empty fails as
+  "the launcher left early". Every failure prints the tail of each scratch
+  log, which used to be deleted with the scratch dir.
+- Path 5's stub holds its guard until the test releases it, never for a
+  duration. It also lets go if the scratch dir disappears, so a failed test
+  leaves no pool waiting.
+- The reaping launcher of path 3 is stopped once it is ready. Before, every
+  run leaked one payload group for 240 s.
+
+Negative controls, each a copy of the test with one line injected:
+
+| control | old test | new test |
+| --- | --- | --- |
+| foreign `pkill -f nros-guard-test-payload` after path 1 starts | FAIL `no payload pgid recorded` | pass |
+| this run's own leader killed after path 1 starts | n/a | FAIL "the guard's lock ... is gone or empty ... the launcher left early" |
+| `sibling-b` delayed 10 s | FAIL "a second pool with the SAME label started" | pass |

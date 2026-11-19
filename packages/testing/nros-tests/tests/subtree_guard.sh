@@ -29,16 +29,27 @@ guard="$repo_root/scripts/build/subtree-guard.sh"
 }
 
 work="$(mktemp -d)"
-trap 'rm -rf "$work"; pkill -f "nros-guard-test-payload" 2>/dev/null || true' EXIT
+# The payload's name is THIS run's, never a host-wide one. Issue 2585: the
+# cleanup used to `pkill -f nros-guard-test-payload`, which also killed the
+# payload leader of any other run of this test on the host (another worktree's
+# `check fast`, a pre-push hook). Losing its leader ends that run's launcher
+# `wait`, so the launcher removes its lock and exits while the leader's
+# children keep the group at depth -- measured: the lock vanished between two
+# reads, and path 1 failed with an empty launcher pid. The name shares no prefix
+# with the old one, so a run of the old test elsewhere cannot match it either.
+payload_tag="nros-subtree-guard-payload-${work##*/}"
+# The GROUP, not just processes carrying the name: only the payload's leader
+# carries it, so a name kill alone left its `sleep` children running.
+trap 'rm -rf "$work"; [ -n "${pgid:-}" ] && kill -TERM -"$pgid" 2>/dev/null; pkill -f "$payload_tag" 2>/dev/null || true' EXIT
 
 export NROS_GUARD_LOCK_DIR="$work/guards"
 
 # A payload with real depth: the orphans that motivated this were four levels
 # below the launcher, and a one-level test would pass against a guard that only
 # killed its direct child.
-cat > "$work/payload.sh" <<'PAYLOAD'
+cat > "$work/payload.sh" <<PAYLOAD
 #!/usr/bin/env bash
-exec -a nros-guard-test-payload bash -c 'bash -c "sleep 240 & sleep 240 & wait" & wait'
+exec -a $payload_tag bash -c 'bash -c "sleep 240 & sleep 240 & wait" & wait'
 PAYLOAD
 chmod +x "$work/payload.sh"
 
@@ -50,8 +61,16 @@ nros_guard_exec guardtest bash "$work/payload.sh"
 LAUNCHER
 chmod +x "$work/launcher.sh"
 
+# A failure keeps what the launcher said: `$work` goes with the EXIT trap, and
+# its log is the only record of why a launcher left early (issue 2585).
 fail() {
     echo "FAIL: $*" >&2
+    local log
+    for log in "$work"/*.log; do
+        [ -s "$log" ] || continue
+        echo "--- ${log##*/} ---" >&2
+        tail -n 40 "$log" >&2
+    done
     exit 1
 }
 
@@ -66,16 +85,16 @@ fail() {
 . "$(cd "$(dirname "$guard")/../lib" && pwd)/grep-q.sh"
 guard_lock() { _nros_guard_lock_path guardtest; }
 
-payload_pgid() {
-    awk '{print $2}' "$(guard_lock)" 2>/dev/null
-}
-
-launcher_pid() {
-    awk '{print $1}' "$(guard_lock)" 2>/dev/null
-}
-
-guard_lock_tree() {
-    awk '{print $3}' "$(guard_lock)" 2>/dev/null
+# The lock, read ONCE into `lpid pgid ltree`: three reads of one file can
+# describe three states, and did (issue 2585). A lock that is gone or empty here
+# is a launcher that left, and that is the failure, said as such.
+read_lock() {
+    local lock
+    lock="$(guard_lock)"
+    lpid="" pgid="" ltree=""
+    [ -s "$lock" ] && read -r lpid pgid ltree < "$lock"
+    [ -n "$lpid" ] && [ -n "$pgid" ] \
+        || fail "the guard's lock ($lock) is gone or empty while its launcher should hold it -- the launcher left early"
 }
 
 # The PIDs currently in $1, so a later check can ask about THOSE processes
@@ -177,9 +196,7 @@ start_launcher() {
 
 # --- path 1: trap -----------------------------------------------------------
 start_launcher
-pgid="$(payload_pgid)"
-lpid="$(launcher_pid)"
-[ -n "$pgid" ] || fail "no payload pgid recorded"
+read_lock
 [ "$(group_size "$pgid")" -ge 3 ] || fail "payload tree never reached depth (got $(group_size "$pgid"))"
 
 members="$(group_members "$pgid" | tr '\n' ' ')"
@@ -194,8 +211,7 @@ echo "  ok: SIGTERM to the launcher killed the whole subtree"
 
 # --- path 2: refuse while a launcher is alive -------------------------------
 start_launcher
-pgid="$(payload_pgid)"
-lpid="$(launcher_pid)"
+read_lock
 out="$("$work/launcher.sh" 2>&1)" && fail "a second build started while the first was running"
 grep -q "already running" <<<"$out" \
     || fail "expected a refusal naming the running build, got: $out"
@@ -216,13 +232,23 @@ wait_until 10 bash -c "! kill -0 $lpid 2>/dev/null" || fail "launcher survived S
 # satisfy the announcement assertion below, which is the kind of pass that
 # looks like coverage and is not.
 "$work/launcher.sh" > "$work/reap.log" 2>&1 &
+reaper=$!
 wait_until 30 bash -c '[ "$(group_size "'"$pgid"'")" -eq 0 ]' \
     || fail "orphans from a SIGKILLed launcher were NOT reaped — $(group_size "$pgid") still alive in pgid $pgid. A guard that refuses instead of reaping here leaves them running forever (the discriminator must be the launcher, not the payload leader)."
 grep -q "reaping" "$work/reap.log" \
     || fail "orphans were collected but not ANNOUNCED; a build that silently kills processes it did not start is indistinguishable from one that hangs. Log was: $(cat "$work/reap.log")"
 echo "  ok: orphans from a SIGKILLed launcher are reaped and announced"
 
-pkill -f nros-guard-test-payload 2>/dev/null || true
+# The reaping launcher went on to start a payload of its own, which nothing
+# else stops: SIGTERM to it is path 1's own promise, and it takes its subtree.
+# Once it is READY (its lock names it, its tree is at depth): before that it
+# has no trap yet, and a SIGTERM would orphan the payload it just forked.
+wait_for_start "$reaper" "the reaping launcher" "$work/reap.log" \
+    bash -c 'read -r l g _ < "$1" 2>/dev/null && [ "$l" = "$2" ] && [ "$(group_size "$g")" -ge 3 ]' \
+    _ "$(guard_lock)" "$reaper"
+kill -TERM "$reaper" 2>/dev/null || true
+wait "$reaper" 2>/dev/null || true
+pkill -f "$payload_tag" 2>/dev/null || true
 
 # --- path 4: two checkouts do not collide -----------------------------------
 #
@@ -302,18 +328,29 @@ pool_lib="$repo_root/scripts/build/jobserver-pool.sh"
 cat > "$work/stub-make" <<'STUB'
 #!/usr/bin/env bash
 # Stands in for pinned make 4.4: answers the version probe, otherwise holds the
-# pool's guard for STUB_HOLD seconds and succeeds.
+# pool's guard until the file STUB_RELEASE names exists (none: no hold), and
+# succeeds. A RELEASE, not a duration: a fixed hold ran out under a load average
+# of 143 before the same-label pool was even asked, so that pool found no
+# holder and started (issue 2585).
 [ "${1:-}" = "--version" ] && { echo "GNU Make 4.4.1 (subtree_guard.sh stub)"; exit 0; }
-sleep "${STUB_HOLD:-0}"
+if [ -n "${STUB_RELEASE:-}" ]; then
+    deadline=$(( SECONDS + 600 ))
+    # Also released when the test's scratch dir is gone: a failed test exits
+    # without releasing, and must not leave a pool waiting.
+    until [ -e "$STUB_RELEASE" ] || [ ! -d "${STUB_RELEASE%/*}" ]; do
+        [ "$SECONDS" -lt "$deadline" ] || exit 1
+        sleep 0.2
+    done
+fi
 STUB
 chmod +x "$work/stub-make"
 
 # One pool, in a fresh shell with no inherited guard/jobserver: `$1` = label,
-# `$2` = seconds to hold. Two units, so the pool path (not the serial fallback)
-# is the one taken.
+# `$2` = the release file it holds its guard until (empty: no hold). Two units,
+# so the pool path (not the serial fallback) is the one taken.
 run_pool() {
     env -u NROS_SUBTREE_GUARD -u NROS_JOBSERVER -u NROS_GUARD_DISABLE \
-        -u NROS_GUARD_FORCE -u MAKEFLAGS STUB_HOLD="$2" \
+        -u NROS_GUARD_FORCE -u MAKEFLAGS STUB_RELEASE="$2" \
         POOL_LIB="$pool_lib" STUB_MAKE="$work/stub-make" POOL_WORK="$work/pool" \
         bash -c '
             cd "$(dirname "$POOL_LIB")/../.." || exit 9
@@ -333,19 +370,21 @@ pool_lock_dir() {
 pool_lock_held() { compgen -G "$(pool_lock_dir)/jobserver-pool*.pgid" >/dev/null; }
 
 mkdir -p "$work/pool"
-run_pool sibling-a 8 > "$work/pool-a.log" 2>&1 &
+release_a="$work/release-sibling-a"
+run_pool sibling-a "$release_a" > "$work/pool-a.log" 2>&1 &
 pool_a=$!
 wait_for_start "$pool_a" "pool 'sibling-a' (guard lock under $(pool_lock_dir))" \
     "$work/pool-a.log" pool_lock_held
 
-run_pool sibling-b 0 > "$work/pool-b.log" 2>&1 \
+run_pool sibling-b "" > "$work/pool-b.log" 2>&1 \
     || fail "a pool with a DIFFERENT label was refused while 'sibling-a' ran — the issue 1886 collision (two gates in one lane fan-out, disjoint artifacts). Log: $(cat "$work/pool-b.log")"
 
-run_pool sibling-a 0 > "$work/pool-a2.log" 2>&1 \
+run_pool sibling-a "" > "$work/pool-a2.log" 2>&1 \
     && fail "a second pool with the SAME label started while the first ran — the guard no longer refuses a concurrent build of one artifact set"
 nros_grep_q -F "already running" "$work/pool-a2.log" \
     || fail "the same-label pool failed, but not with the guard's refusal. Log: $(cat "$work/pool-a2.log")"
 
+: > "$release_a"
 wait "$pool_a" || fail "pool 'sibling-a' itself failed. Log: $(cat "$work/pool-a.log")"
 echo "  ok: sibling pool labels run concurrently; a same-label pool still refuses"
 
