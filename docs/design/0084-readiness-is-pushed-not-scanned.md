@@ -15,8 +15,9 @@ superseded-by: null
 
 **Status:** Stable (2026-11-14, phase-555 W3). Built by
 [phase-397](../roadmap/archived/phase-397-pushed-readiness-executor.md). The
-open questions are answered or filed (section 9): the 64-callback ceiling is
-[issue 2541](../issues/2541-executor-callback-slots-capped-at-64.md), and the
+open questions are answered or filed (section 9): the 64-callback ceiling was
+[issue 2541](../issues/archived/2541-executor-callback-slots-capped-at-64.md)
+(answered, see the changelog), and the
 backends that do not attribute arrivals (XRCE, uORB, bare metal) are
 [issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md).
 
@@ -328,6 +329,27 @@ Answered or filed on 2026-11-14 (phase-555 W3):
    that needs poking to progress is a poll-only backend and keeps today's
    path. Making XRCE and uORB attribute is
    [issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md).
-3. **`ready_bits` is a `u64`, so an executor holds at most 64 callbacks.**
-   Open, filed as
-   [issue 2541](../issues/2541-executor-callback-slots-capped-at-64.md).
+3. ~~**`ready_bits` is a `u64`, so an executor holds at most 64 callbacks.**~~
+   **Answered: per-word atomics, sized from the image** (issue 2541, see the
+   changelog below). The ready word is an array of machine-word atomics,
+   each written by one `fetch_or`, so the arrival path stays one lock-free
+   read-modify-write on one word, as it was, from a backend callback or an
+   interrupt. Its width is the image's own callback count in whole words, so
+   an image that fits one word keeps exactly the one it had.
+
+## Changelog
+
+- **2026-11-19 — open question 3 answered** by the fix for
+  [issue 2541](../issues/archived/2541-executor-callback-slots-capped-at-64.md)
+  (PR_NUMBER). The question was whether widening past one `u64` needed a
+  lock-free multi-word set-bit on the arrival path. It does not need one
+  operation across words: each slot's bit is independent, and no reader needs
+  a multi-word snapshot. So the word became `AtomicSlotMask`, one
+  `portable_atomic::AtomicUsize` per machine word, and an arrival is still
+  one `fetch_or` on one word, lock-free on every target that had it before
+  (the no-CAS fallback is `portable_atomic`'s, unchanged). The executor's
+  per-pass masks became `SlotMask`, `SLOT_WORDS` `u64` words derived from the
+  image's callback count. An image of 64 callbacks or fewer keeps one mask
+  word, and its atomic words cover its own count, so a small image's wake
+  path is the one it had.
+

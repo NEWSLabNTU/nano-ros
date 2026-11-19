@@ -1260,11 +1260,14 @@ mod group_filter_tests {
 /// callback. Backends store the raw pointer + invoke the callback;
 /// the callback decodes back to `&WakeCtx`.
 ///
-/// `repr(align(64))` because an entity waker carries its slot in the low six
-/// bits of a pointer to this struct (phase-397 W2, `entity_wake`).
+/// `repr(align(64))`, or more past 64 callback slots (`entity_wake::WAKE_CTX_ALIGN`),
+/// because an entity waker carries its slot in the low bits of a pointer to
+/// this struct (phase-397 W2, `entity_wake`).
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 #[repr(align(64))]
 pub(crate) struct WakeCtx {
+    /// Zero-sized: raises the alignment past 64 when the slot capacity does.
+    _slot_align: [super::entity_wake::WakeCtxAlign; 0],
     pub(crate) flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     /// The wake primitive. Phase 130.3 added it beside a `std::sync::Condvar`
     /// pair and noted that "a future migration to a single primitive flips one
@@ -1275,10 +1278,10 @@ pub(crate) struct WakeCtx {
     /// since the executor last took the word. Set by an entity waker
     /// (`entity_wake`), never by the session-scoped callback, which cannot
     /// name an entry. W3 reads it instead of scanning.
-    /// A `usize`, not a `u64`: 32-bit targets without 64-bit atomics have no
-    /// `AtomicU64`, so the word names `usize::BITS` slots (`entity_wake::SLOTS`)
-    /// and an entry above that keeps the session wake.
-    pub(crate) ready: portable_atomic::AtomicUsize,
+    /// `usize` words, not `u64`: 32-bit targets without 64-bit atomics have
+    /// no `AtomicU64`. As many words as name every callback slot
+    /// (`entity_wake::SLOTS`), each written with one single-word atomic.
+    pub(crate) ready: super::slot_mask::AtomicSlotMask,
     /// phase-509 P9b item 3 (RFC-0108 D7) -- the band workers' wake objects
     /// (`Executor::attach_band_worker`), a list of `'static` waiters that is
     /// only ever pushed to. An attributed arrival wakes the worker whose band
@@ -1293,9 +1296,10 @@ impl WakeCtx {
         node_wake: Option<portable_atomic_util::Arc<super::node_wake::NodeWake>>,
     ) -> Self {
         Self {
+            _slot_align: [],
             flag,
             node_wake,
-            ready: portable_atomic::AtomicUsize::new(0),
+            ready: super::slot_mask::AtomicSlotMask::new(),
             band_waiters: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
         }
     }
@@ -1359,16 +1363,14 @@ impl WakeCtx {
     /// phase-397 W2 — an attributed arrival on entry `slot`: its bit, then the
     /// wake. The bit is set FIRST, so a waiter that sees the flag sees the bit.
     pub(crate) fn mark_ready(&self, slot: usize) {
-        self.ready
-            .fetch_or(1usize << slot, core::sync::atomic::Ordering::SeqCst);
+        self.ready.set(slot);
         // phase-509 P9b item 3 (RFC-0108 D7) -- only the worker whose band
         // holds the slot; the executor's own worker when no band does.
-        let bit = 1usize << slot;
         let mut w = self.band_waiters.load(portable_atomic::Ordering::Acquire);
         while !w.is_null() {
             // SAFETY: only `'static` waiters are linked, never unlinked.
             let waiter = unsafe { &*w };
-            if waiter.slots.load(portable_atomic::Ordering::SeqCst) & bit != 0 {
+            if waiter.slots.test(slot) {
                 waiter.signal();
                 return;
             }
@@ -1701,14 +1703,14 @@ unsafe impl Sync for ComponentSlot {}
 
 /// phase-271 — fixed capacity of the per-spin ready-sets (FIFO bitmap + EDF
 /// heap) and the dispatch loop's upper bound. The executor's callback index is
-/// carried in a `u64` active-mask (`1u64 << i`), so a callback table can hold at
-/// most 64 entries regardless of per-entry sizing; the ready-sets are sized to
-/// this ceiling (stack-transient) so any entry slice up to 64 dispatches
-/// correctly. `EdfReadySet`'s presence bitmap independently asserts `N <= 64`.
+/// carried in slot masks (`slot_mask::SlotMask`), so a callback table holds at
+/// most this many entries regardless of per-entry sizing; the ready-sets are
+/// sized to this ceiling (stack-transient) so any entry slice up to it
+/// dispatches correctly.
 ///
-/// Issue 2541 -- the value is `crate::config::CALLBACK_SLOT_CAPACITY`, where an
-/// image deriving more callbacks than it fails to compile; the carve caps
-/// every table at it (`storage::callback_slots`).
+/// The value is `crate::config::CALLBACK_SLOT_CAPACITY`, derived from the
+/// image's own callback counts; the carve caps every table at it
+/// (`storage::callback_slots`).
 pub(crate) const MAX_CALLBACK_SLOTS: usize = crate::config::CALLBACK_SLOT_CAPACITY;
 
 /// Whether a
@@ -2165,10 +2167,10 @@ pub struct Executor<'s> {
     pub(crate) component_slots: super::storage::CarvedVec<'s, ComponentSlot>,
     /// Issue 2146 -- callback slots the host DEFERS (`set_deferred`): the
     /// spin queues them instead of running them. One bit per slot.
-    pub(crate) deferred_mask: u64,
+    pub(crate) deferred_mask: super::slot_mask::SlotMask,
     /// Issue 2146 -- deferred slots queued by a spin and not yet run by
     /// `run_deferred` / `run_deferred_handle`.
-    pub(crate) deferred_pending: u64,
+    pub(crate) deferred_pending: super::slot_mask::SlotMask,
     /// Issue 2146 -- the host's `(notifier, ctx)`, called once per queueing.
     pub(crate) defer_notify: Option<(super::types::DeferNotify, *mut core::ffi::c_void)>,
     /// Phase 104.C.3 — extra sessions opened by `node_builder.rmw()`
@@ -2309,7 +2311,7 @@ pub struct Executor<'s> {
     /// both halves: the ready bits are only a complete answer when every live
     /// entry that can have data is attributed.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    pub(crate) entity_attributed: u64,
+    pub(crate) entity_attributed: super::slot_mask::SlotMask,
     /// phase-397 W3 — attributed slots the NEXT spin must ask `has_data`
     /// about, although no arrival marked them: each one that was ready on
     /// this spin (dispatched or not, since a dispatch may leave data behind
@@ -2318,7 +2320,7 @@ pub struct Executor<'s> {
     /// registration, which the ABI says the caller closes with one
     /// `has_data`). A slot drops out the first spin its `has_data` is false.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    pub(crate) entity_recheck: u64,
+    pub(crate) entity_recheck: super::slot_mask::SlotMask,
     /// Issue 2060 — attributed SUBSCRIPTION slots whose `has_data` the scan
     /// asks EVERY pass, arrival or not, because a status event is polled
     /// there. Every backend that carries subscription status events polls
@@ -2337,7 +2339,7 @@ pub struct Executor<'s> {
     /// added either: the cadence is the spin's own (one park per pass), and
     /// each backend rate-limits its own walk inside `has_data`.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    pub(crate) entity_status_polled: u64,
+    pub(crate) entity_status_polled: super::slot_mask::SlotMask,
     /// phase-397 W3 — `has_data` calls the readiness scan has made, for the
     /// test that proves a pushed spin makes none. Wrapping; read only through
     /// [`Executor::readiness_probe_count`].
@@ -2753,8 +2755,8 @@ impl<'s> Executor<'s> {
             remap_len: 0,
             launch_remaps: None,
             component_slots,
-            deferred_mask: 0,
-            deferred_pending: 0,
+            deferred_mask: super::slot_mask::SlotMask::EMPTY,
+            deferred_pending: super::slot_mask::SlotMask::EMPTY,
             defer_notify: None,
             extra_sessions,
             extra_session_ids,
@@ -2789,11 +2791,11 @@ impl<'s> Executor<'s> {
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             has_async_wake: false,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-            entity_attributed: 0,
+            entity_attributed: super::slot_mask::SlotMask::EMPTY,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-            entity_recheck: 0,
+            entity_recheck: super::slot_mask::SlotMask::EMPTY,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-            entity_status_polled: 0,
+            entity_status_polled: super::slot_mask::SlotMask::EMPTY,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             readiness_probes: 0,
             // Phase 141.A.3 — alloc-mode wake state init. Constructed
@@ -2902,8 +2904,8 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// `backing` must be ≥ `sizing.u64_len()` words, stay alive for `'s`, and
     /// not be otherwise accessed while the executor lives (it aliases it).
-    /// A `sizing.cbs` above 64 (the `u64` ready-set ceiling) carves 64 slots
-    /// (`storage::callback_slots`), issue 2541.
+    /// A `sizing.cbs` above `MAX_CALLBACK_SLOTS` (the slot masks' width)
+    /// carves that many slots (`storage::callback_slots`), issue 2541.
     pub(crate) unsafe fn from_session_in(
         session: session::ConcreteSession,
         backing: &'s mut [MaybeUninit<u64>],
@@ -4451,28 +4453,31 @@ impl<'s> Executor<'s> {
     /// phase-509 P9b item 2 -- the slots whose dispatch level is in `band`.
     /// Every slot for [`super::scheduler::Band::ALL`], the one-level worker's
     /// band, without looking at one.
-    fn band_slots(&self, level: u8, band: super::scheduler::Band) -> u64 {
+    fn band_slots(&self, level: u8, band: super::scheduler::Band) -> super::slot_mask::SlotMask {
+        // Issue 2541 -- every slot of the table: the carve caps it at the
+        // mask's capacity, so the old `.min(64)` dropped nothing here any more.
+        let slots = self.entries.len().min(MAX_CALLBACK_SLOTS);
         // phase-509 P9b item 4 -- levels that own their slots by
         // registration (a level runner): the worker of `level` runs exactly
         // what its level's setup registered, whatever the ranks say.
         if self.worker.registering_level != super::scheduler::NO_OWNING_LEVEL {
-            let mut mask = 0u64;
-            for i in 0..self.entries.len().min(64) {
+            let mut mask = super::slot_mask::SlotMask::EMPTY;
+            for i in 0..slots {
                 if self.entries[i].is_some()
                     && self.slot_tags.get(i).is_some_and(|t| t.level == level)
                 {
-                    mask |= 1u64 << i;
+                    mask.set(i);
                 }
             }
             return mask;
         }
         if band == super::scheduler::Band::ALL {
-            return u64::MAX;
+            return super::slot_mask::SlotMask::ALL;
         }
-        let mut mask = 0u64;
-        for i in 0..self.entries.len().min(64) {
+        let mut mask = super::slot_mask::SlotMask::EMPTY;
+        for i in 0..slots {
             if self.entries[i].is_some() && band.contains(self.slot_level(i)) {
-                mask |= 1u64 << i;
+                mask.set(i);
             }
         }
         mask
@@ -4628,10 +4633,9 @@ impl<'s> Executor<'s> {
         let Some(waiter) = worker.waiter else {
             return;
         };
-        waiter.slots.store(
-            self.band_slots(worker.level, worker.band) as usize,
-            portable_atomic::Ordering::SeqCst,
-        );
+        waiter
+            .slots
+            .store(self.band_slots(worker.level, worker.band));
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         if let Some(ctx) = self.wake_ctx.as_ref() {
             let w = waiter as *const super::scheduler::BandWaiter as *mut _;
@@ -4670,9 +4674,7 @@ impl<'s> Executor<'s> {
         let mut s: &mut Self = unsafe { &mut *this };
         if let Some(waiter) = w.waiter {
             let mask = s.band_slots(w.level, w.band);
-            waiter
-                .slots
-                .store(mask as usize, portable_atomic::Ordering::SeqCst);
+            waiter.slots.store(mask);
             let budget_us = timeout.as_micros().min(u64::MAX as u128) as u64;
             // A band timer's remainder is as of the worker's last pass; the
             // time since is already spent.
@@ -4705,10 +4707,10 @@ impl<'s> Executor<'s> {
 
     /// phase-509 P9b item 3 -- whether an arrival for one of `mask`'s slots
     /// is already in the ready word (it then does not park).
-    fn band_has_arrivals(&self, mask: u64) -> bool {
+    fn band_has_arrivals(&self, mask: super::slot_mask::SlotMask) -> bool {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         if let Some(ctx) = self.wake_ctx.as_ref() {
-            return ctx.ready.load(portable_atomic::Ordering::SeqCst) as u64 & mask != 0;
+            return ctx.ready.intersects(mask);
         }
         let _ = mask;
         false
@@ -5210,12 +5212,15 @@ impl<'s> Executor<'s> {
 
     /// phase-509 P9b item 3 -- [`Self::next_timer_deadline_us`] over the
     /// timers in `mask`'s slots.
-    pub(crate) fn next_timer_deadline_in_us(&self, mask: u64) -> Option<u64> {
+    pub(crate) fn next_timer_deadline_in_us(
+        &self,
+        mask: super::slot_mask::SlotMask,
+    ) -> Option<u64> {
         let arena_ptr = self.arena.as_ptr() as *const u8;
         let mut soonest: Option<u64> = None;
         for (i, meta) in self.entries.iter().enumerate() {
             let Some(meta) = meta else { continue };
-            if i < 64 && mask & (1u64 << i) == 0 {
+            if i < MAX_CALLBACK_SLOTS && !mask.test(i) {
                 continue;
             }
             // phase-509 P9b item 2 -- not a timer running in another worker's
@@ -5287,7 +5292,7 @@ impl<'s> Executor<'s> {
             let Some(meta) = meta.as_ref() else {
                 continue;
             };
-            if i < 64 && mask & (1u64 << i) == 0 {
+            if i < MAX_CALLBACK_SLOTS && !mask.test(i) {
                 continue;
             }
             if !matches!(meta.kind, EntryKind::Timer) || Self::slot_held(self.slot_tags, i) {
@@ -7791,9 +7796,7 @@ impl<'s> Executor<'s> {
         // refused one costs one cheap probe per pass, a missed mark costs the
         // event.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-        if slot < super::entity_wake::SLOTS {
-            self.entity_status_polled |= 1u64 << slot;
-        }
+        self.entity_status_polled.set(slot);
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
         // SAFETY: as `subscription_handle`; `&mut self` makes the borrow unique.
         Some(unsafe { &mut *(arena_ptr.add(offset) as *mut session::RmwSubscriber) })
@@ -8242,10 +8245,10 @@ impl<'s> Executor<'s> {
         }
         // phase-397 W2 — the slot's next occupant arms (or not) on its own.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-        if index < super::entity_wake::SLOTS {
-            self.entity_attributed &= !(1u64 << index);
-            self.entity_recheck &= !(1u64 << index);
-            self.entity_status_polled &= !(1u64 << index);
+        {
+            self.entity_attributed.clear(index);
+            self.entity_recheck.clear(index);
+            self.entity_status_polled.clear(index);
         }
         // Issue 2146 -- the slot's next occupant starts inline and unqueued.
         self.forget_deferred(index);
@@ -8322,35 +8325,36 @@ impl<'s> Executor<'s> {
             { super::sched_context::Priority::COUNT },
             { MAX_CALLBACK_SLOTS },
         >,
-        settled: &mut u64,
+        settled: &mut super::slot_mask::SlotMask,
         arena_ptr: *mut u8,
-        band_mask: u64,
+        band_mask: super::slot_mask::SlotMask,
     ) {
-        let mut fresh: u64 = 0;
+        use super::slot_mask::SlotMask;
+        let mut fresh = SlotMask::EMPTY;
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         let attributed = self.entity_attributed;
         #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
-        let attributed: u64 = 0;
+        let attributed = SlotMask::EMPTY;
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         {
             // phase-509 P9b item 2 -- this band's arrivals only.
             let arrived = self
                 .wake_ctx
                 .as_ref()
-                .map_or(0, |ctx| take_band_bits(&ctx.ready, band_mask))
+                .map_or(SlotMask::EMPTY, |ctx| take_band_bits(&ctx.ready, band_mask))
                 & attributed;
             // Kept for the next pass: its scan asks `has_data` (the bit has
             // left the word, and its wake already ended no park early).
             self.entity_recheck |= arrived & *settled;
-            fresh |= arrived & !*settled;
+            fresh |= arrived.and_not(*settled);
         }
         if self.reprobe_each_callback {
             let mut probes: u32 = 0;
             for (i, meta) in self.entries.iter().enumerate() {
-                let bit = 1u64 << i;
+                let bit = SlotMask::bit(i);
                 let Some(meta) = meta else { continue };
-                if (*settled | attributed | fresh) & bit != 0
-                    || band_mask & bit == 0
+                if (*settled | attributed | fresh).intersects(bit)
+                    || !band_mask.intersects(bit)
                     || matches!(meta.kind, EntryKind::Timer | EntryKind::GuardCondition)
                     || matches!(meta.invocation, InvocationMode::Always)
                     || Self::slot_held(self.slot_tags, i)
@@ -8373,20 +8377,17 @@ impl<'s> Executor<'s> {
         }
         // Issue 2146 -- a deferred slot that became ready mid-pass is queued,
         // not joined to the pass.
-        if self.deferred_mask & fresh != 0 {
+        if self.deferred_mask.intersects(fresh) {
             fresh = self.defer_ready(fresh);
         }
-        if fresh == 0 {
+        if fresh.is_empty() {
             return;
         }
         if !self.age_table.is_empty() {
             super::monitor::credit_arrivals(self.age_table, fresh);
         }
-        let mut rest = fresh;
-        while rest != 0 {
-            let i = rest.trailing_zeros() as usize;
-            let bit = 1u64 << i;
-            rest &= !bit;
+        for i in fresh.iter_ones() {
+            let bit = SlotMask::bit(i);
             if self.entries.get(i).is_none_or(|e| e.is_none()) || Self::slot_held(self.slot_tags, i)
             {
                 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -8677,15 +8678,14 @@ impl<'s> Executor<'s> {
             else {
                 return;
             };
-            let bit = 1u64 << slot;
             if register(&waker) {
-                self.entity_attributed |= bit;
+                self.entity_attributed.set(slot);
                 // W3 — the backend replays nothing that arrived before this
                 // call, so the first spin asks `has_data` once.
-                self.entity_recheck |= bit;
+                self.entity_recheck.set(slot);
             } else {
-                self.entity_attributed &= !bit;
-                self.entity_recheck &= !bit;
+                self.entity_attributed.clear(slot);
+                self.entity_recheck.clear(slot);
             }
         }
     }
@@ -8715,25 +8715,46 @@ impl<'s> Executor<'s> {
         self.arm_entity_wake(slot, |w| register(unsafe { &*entry }, w));
     }
 
-    /// The ready word, taken: every slot an attributed arrival
-    /// marked since the last take. `spin_once` consumes it (W3), so a caller
-    /// that also spins sees only what arrived since the last spin. Tests only.
+    /// The ready words' first 64 slots, taken: every slot below 64 an
+    /// attributed arrival marked since the last take (a slot above stays in
+    /// its word; [`Self::take_entity_ready_mask`] takes every slot).
+    /// `spin_once` consumes the words (W3), so a caller that also spins sees
+    /// only what arrived since the last spin. Tests only.
     #[doc(hidden)]
     pub fn take_entity_ready_bits(&self) -> u64 {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         if let Some(ctx) = self.wake_ctx.as_ref() {
-            return ctx.ready.swap(0, core::sync::atomic::Ordering::SeqCst) as u64;
+            return ctx
+                .ready
+                .take_masked(super::slot_mask::SlotMask::from_word0(u64::MAX))
+                .word(0);
         }
         0
     }
 
-    /// The slots whose backend accepted an entity waker.
+    /// [`Self::take_entity_ready_bits`] over every slot.
+    #[allow(dead_code)] // tests only
+    pub(crate) fn take_entity_ready_mask(&self) -> super::slot_mask::SlotMask {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let Some(ctx) = self.wake_ctx.as_ref() {
+            return ctx.ready.take();
+        }
+        super::slot_mask::SlotMask::EMPTY
+    }
+
+    /// The slots below 64 whose backend accepted an entity waker
+    /// ([`Self::entity_attributed_mask`] names every slot).
     #[doc(hidden)]
     pub fn entity_attributed_slots(&self) -> u64 {
+        self.entity_attributed_mask().word(0)
+    }
+
+    /// The slots whose backend accepted an entity waker.
+    pub(crate) fn entity_attributed_mask(&self) -> super::slot_mask::SlotMask {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         return self.entity_attributed;
         #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
-        0
+        super::slot_mask::SlotMask::EMPTY
     }
 
     /// How many `has_data` calls the readiness scan has made
@@ -12548,15 +12569,16 @@ impl<'s> Executor<'s> {
         // equals, so an image whose nodes hold one rank is bit-identical
         // to the pre-refactor `for (i, meta) in entries.iter().enumerate()`
         // loop.
-        let mut bits: u64 = 0;
+        use super::slot_mask::SlotMask;
+        let mut bits = SlotMask::EMPTY;
         let mut count: usize = 0;
-        let mut non_timer_mask: u64 = 0;
+        let mut non_timer_mask = SlotMask::EMPTY;
         // Issue 2162 -- the guard conditions. A ready guard passes
         // `Trigger::Any` like a ready subscription does (rclc's
         // `rclc_executor_trigger_any` counts every handle), but an IDLE guard
         // never holds `Any` or `All` back, so it stays out of `non_timer_mask`.
-        let mut guard_mask: u64 = 0;
-        let mut always_mask: u64 = 0;
+        let mut guard_mask = SlotMask::EMPTY;
+        let mut always_mask = SlotMask::EMPTY;
 
         // phase-397 W3 (RFC-0084) — an ATTRIBUTED slot's readiness is pushed,
         // not probed. Its arrivals set its bit in the ready word (W2), so the
@@ -12588,9 +12610,9 @@ impl<'s> Executor<'s> {
             let arrived = s
                 .wake_ctx
                 .as_ref()
-                .map_or(0, |ctx| take_band_bits(&ctx.ready, band_mask));
+                .map_or(SlotMask::EMPTY, |ctx| take_band_bits(&ctx.ready, band_mask));
             let recheck = s.entity_recheck & band_mask;
-            s.entity_recheck &= !band_mask;
+            s.entity_recheck = s.entity_recheck.and_not(band_mask);
             // Issue 2060 — a slot whose status events are polled from
             // `has_data` is asked every pass, like a recheck that never
             // drains. It is folded in AFTER the clear, so it never leaks into
@@ -12599,26 +12621,26 @@ impl<'s> Executor<'s> {
             (attributed, arrived & attributed, recheck & attributed)
         };
         #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
-        let (attributed, arrived, recheck) = (0u64, 0u64, 0u64);
+        let (attributed, arrived, recheck) = (SlotMask::EMPTY, SlotMask::EMPTY, SlotMask::EMPTY);
         // Attributed slots the scan could not settle (held mid-dispatch).
-        let mut carry: u64 = 0;
+        let mut carry = SlotMask::EMPTY;
         let mut probes: u32 = 0;
 
         for (i, meta) in s.entries.iter().enumerate() {
             let Some(meta) = meta else { continue };
-            let bit = 1u64 << i;
-            if band_mask & bit == 0 {
+            if !band_mask.test(i) {
                 continue;
             }
+            let bit = SlotMask::bit(i);
             if Self::slot_held(s.slot_tags, i) {
                 carry |= (arrived | recheck) & bit;
                 continue;
             }
             {
-                let pushed = attributed & bit != 0;
-                let ready = if pushed && arrived & bit != 0 {
+                let pushed = attributed.test(i);
+                let ready = if pushed && arrived.test(i) {
                     true
-                } else if pushed && recheck & bit == 0 {
+                } else if pushed && !recheck.test(i) {
                     false
                 } else {
                     probes = probes.wrapping_add(1);
@@ -12634,7 +12656,7 @@ impl<'s> Executor<'s> {
                     _ => non_timer_mask |= bit,
                 }
                 if matches!(meta.invocation, InvocationMode::Always) {
-                    always_mask |= 1u64 << i;
+                    always_mask |= bit;
                 }
                 count += 1;
             }
@@ -12643,10 +12665,10 @@ impl<'s> Executor<'s> {
         // host's drain (and its notifier called), never dispatched here, and
         // takes no part in the trigger. Taken out before the recheck below:
         // the drain asks for the recheck when it runs the callback.
-        if s.deferred_mask != 0 {
+        if !s.deferred_mask.is_empty() {
             bits = s.defer_ready(bits);
-            non_timer_mask &= !s.deferred_mask;
-            always_mask &= !s.deferred_mask;
+            non_timer_mask = non_timer_mask.and_not(s.deferred_mask);
+            always_mask = always_mask.and_not(s.deferred_mask);
         }
         // Every attributed slot that was ready is asked again next spin: a
         // dispatch takes what one call takes, and a trigger that does not
@@ -12660,7 +12682,7 @@ impl<'s> Executor<'s> {
         let _ = (carry, probes);
 
         // phase-462 W5b — an armed deadline row's arrival evidence.
-        if bits != 0 && !s.age_table.is_empty() {
+        if !bits.is_empty() && !s.age_table.is_empty() {
             super::monitor::credit_arrivals(s.age_table, bits);
         }
 
@@ -12672,8 +12694,10 @@ impl<'s> Executor<'s> {
             // waited for unrelated traffic (possibly forever) while `Any`
             // read only `non_timer_mask`. The `non_timer_mask == 0` arm is
             // unchanged: a timer/guard-only executor still passes every spin.
-            Trigger::Any => bits & (non_timer_mask | guard_mask) != 0 || non_timer_mask == 0,
-            Trigger::All => bits & non_timer_mask == non_timer_mask,
+            Trigger::Any => {
+                bits.intersects(non_timer_mask | guard_mask) || non_timer_mask.is_empty()
+            }
+            Trigger::All => bits.contains_all(non_timer_mask),
             Trigger::One(id) => snapshot.is_ready(*id),
             Trigger::AllOf(set) => snapshot.all_ready(*set),
             Trigger::AnyOf(set) => snapshot.any_ready(*set),
@@ -12681,13 +12705,13 @@ impl<'s> Executor<'s> {
             Trigger::Predicate(f) => f(&snapshot),
             Trigger::RawPredicate { callback, context } => {
                 // Convert ReadinessSnapshot bitmask to a bool array for the C callback
-                let mut ready_array = [false; 64];
+                let mut ready_array = [false; MAX_CALLBACK_SLOTS];
                 for (i, slot) in ready_array
                     .iter_mut()
                     .enumerate()
-                    .take(snapshot.count.min(64))
+                    .take(snapshot.count.min(MAX_CALLBACK_SLOTS))
                 {
-                    *slot = snapshot.bits & (1u64 << i) != 0;
+                    *slot = snapshot.bits.test(i);
                 }
                 // SAFETY: The callback and context are provided by the C API caller.
                 // The ready_array is valid for snapshot.count elements.
@@ -12726,7 +12750,7 @@ impl<'s> Executor<'s> {
                     continue;
                 };
                 if matches!(meta.kind, EntryKind::Timer)
-                    && band_mask & (1u64 << i) != 0
+                    && band_mask.test(i)
                     && !Self::slot_held(s.slot_tags, i)
                 {
                     let data_ptr = unsafe { arena_ptr.add(meta.offset) };
@@ -12879,7 +12903,7 @@ impl<'s> Executor<'s> {
             for (i, meta) in s.entries.iter().enumerate() {
                 let Some(meta) = meta else { continue };
                 if matches!(meta.kind, EntryKind::Subscription)
-                    && band_mask & (1u64 << i) != 0
+                    && band_mask.test(i)
                     && !Self::slot_held(s.slot_tags, i)
                 {
                     let data_ptr = unsafe { arena_ptr.add(meta.offset) };
@@ -12958,7 +12982,7 @@ impl<'s> Executor<'s> {
         }
 
         for i in 0..s.entries.len() {
-            if active_mask & (1u64 << i) == 0 {
+            if !active_mask.test(i) {
                 continue;
             }
             let sc_idx = s.sched_context_bindings[i].0 as usize;
@@ -13169,7 +13193,7 @@ impl<'s> Executor<'s> {
         // it never joins the pass again, so each entry runs at most once per
         // pass (a timer's clock advances by one `delta_us` per pass, and a
         // callback that readies itself cannot hold the pass forever).
-        let mut settled: u64 = active_mask;
+        let mut settled: SlotMask = active_mask;
         // phase-509 P3 -- the LET semantics dispatch the pass's snapshot,
         // sampled before any callback ran; nothing joins it mid-pass.
         // A trigger narrower than "any" (`One`, `AllOf`, a predicate) chose
@@ -13201,8 +13225,8 @@ impl<'s> Executor<'s> {
             let data_ptr = unsafe { arena_ptr.add(meta.offset) };
             // phase-8 — `desc_idx` is the entry slot index, threaded through so
             // the leaf hooks in `arena.rs` can name the callback they bracket.
-            // `MAX_CALLBACK_SLOTS` is 64 (enforced by the `u64` ready-set
-            // bitmask), so the `as u8` cannot truncate a live slot.
+            // `MAX_CALLBACK_SLOTS` is at most 256 (asserted in `crate::config`),
+            // so the `as u8` cannot truncate a live slot.
             // phase-463 W7 — time the dispatch and attribute its publishes
             // (host `profile-mode` only). ONE call site for both builds, so no
             // second `unsafe` block; the binding is the only change an RTOS
@@ -17989,17 +18013,20 @@ impl Drop for ThreadHandle {
 #[cfg(feature = "alloc")]
 unsafe impl<'s> Send for Executor<'s> {}
 
-/// phase-509 P9b item 2 -- take the bits of `mask` out of a ready word and
-/// leave the rest for the workers of the other bands. One swap for the
-/// one-level worker's every-slot mask, as before.
+/// phase-509 P9b item 2 -- take the bits of `mask` out of the ready words and
+/// leave the rest for the workers of the other bands. One swap per word for
+/// the one-level worker's every-slot mask, as before.
 #[cfg(any(has_rmw, test))]
 #[allow(dead_code)] // no ready word without `alloc` + `rmw-cffi`
 #[inline]
-fn take_band_bits(word: &portable_atomic::AtomicUsize, mask: u64) -> u64 {
-    if mask == u64::MAX {
-        word.swap(0, portable_atomic::Ordering::SeqCst) as u64
+fn take_band_bits(
+    words: &super::slot_mask::AtomicSlotMask,
+    mask: super::slot_mask::SlotMask,
+) -> super::slot_mask::SlotMask {
+    if mask == super::slot_mask::SlotMask::ALL {
+        words.take()
     } else {
-        (word.fetch_and(!(mask as usize), portable_atomic::Ordering::SeqCst) as u64) & mask
+        words.take_masked(mask)
     }
 }
 
@@ -18994,11 +19021,14 @@ mod cancel_tests {
 /// worker whose band holds the slot.
 #[cfg(all(test, feature = "alloc", feature = "rmw-cffi"))]
 mod band_wake_routing_tests {
-    use super::{super::scheduler::BandWaiter, WakeCtx};
+    use super::{
+        super::{scheduler::BandWaiter, slot_mask::SlotMask},
+        WakeCtx,
+    };
     use core::ffi::c_void;
     use portable_atomic::{AtomicUsize, Ordering};
 
-    static WOKEN: [AtomicUsize; 2] = [AtomicUsize::new(0), AtomicUsize::new(0)];
+    static WOKEN: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
 
     unsafe extern "C" fn wake(ctx: *mut c_void) {
         WOKEN[ctx as usize].fetch_add(1, Ordering::SeqCst);
@@ -19066,8 +19096,8 @@ mod band_wake_routing_tests {
         static A: BandWaiter = unsafe { BandWaiter::new(wake, wake, wait, core::ptr::null_mut()) };
         static B: BandWaiter =
             unsafe { BandWaiter::new(wake, wake, wait, core::ptr::without_provenance_mut(1)) };
-        A.slots.store(0b0011, Ordering::SeqCst);
-        B.slots.store(0b0100, Ordering::SeqCst);
+        A.slots.store(SlotMask::from_word0(0b0011));
+        B.slots.store(SlotMask::from_word0(0b0100));
         let flag = portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false));
         let ctx = WakeCtx::new(flag.clone(), None);
         B.next.store(&A as *const _ as *mut _, Ordering::SeqCst);
@@ -19102,6 +19132,51 @@ mod band_wake_routing_tests {
             "unattributed: every band"
         );
         assert_eq!(WOKEN[1].load(Ordering::SeqCst), 2);
-        assert_eq!(ctx.ready.load(Ordering::SeqCst), 0b100110);
+        assert_eq!(ctx.ready.load(), SlotMask::from_word0(0b100110));
+    }
+
+    // Issue 2541.
+    /// An entity on a slot past 64 gets an attributed waker: its arrival
+    /// marks its own bit (not slot `i % 64`'s or `i % 32`'s) and wakes only
+    /// the band worker that holds it. Before, the ready word was one `usize`,
+    /// so such a slot got no waker and kept the session-wide wake.
+    #[test]
+    fn an_arrival_on_a_slot_past_64_marks_its_own_bit_and_wakes_its_band() {
+        use super::super::entity_wake;
+        const HIGH: usize = 100;
+        const {
+            assert!(
+                HIGH < entity_wake::SLOTS,
+                "cfg(test) holds at least 128 slots"
+            )
+        };
+        // SAFETY: the context is a plain index `wake` decodes.
+        static H: BandWaiter =
+            unsafe { BandWaiter::new(wake, wake, wait, core::ptr::without_provenance_mut(2)) };
+        H.slots.store(SlotMask::bit(HIGH));
+        let flag = portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false));
+        let ctx = portable_atomic_util::Arc::new(WakeCtx::new(flag.clone(), None));
+        assert_eq!(
+            portable_atomic_util::Arc::as_ptr(&ctx) as usize % entity_wake::WAKE_CTX_ALIGN,
+            0,
+            "the slot rides in the pointer's low bits"
+        );
+        ctx.band_waiters
+            .store(&H as *const _ as *mut _, Ordering::SeqCst);
+
+        assert!(
+            entity_wake::waker(&ctx, entity_wake::SLOTS).is_none(),
+            "past the capacity there is no attributed waker"
+        );
+        let waker = entity_wake::waker(&ctx, HIGH).expect("slot 100 is attributed");
+        waker.wake_by_ref();
+        assert_eq!(ctx.ready.load(), SlotMask::bit(HIGH), "its own bit only");
+        assert_eq!(WOKEN[2].load(Ordering::SeqCst), 1, "its band's worker");
+        assert!(
+            !flag.load(Ordering::SeqCst),
+            "the executor's own worker sleeps on"
+        );
+        assert_eq!(ctx.ready.take(), SlotMask::bit(HIGH));
+        drop(waker);
     }
 }

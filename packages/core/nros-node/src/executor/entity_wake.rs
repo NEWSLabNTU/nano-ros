@@ -15,9 +15,9 @@
 //! - the owning executor's [`WakeCtx`], an `Arc` the waker holds a strong
 //!   reference to, so a backend that keeps a clone past the entry's release
 //!   cannot dangle;
-//! - the entry's slot, in the low bits of the same pointer (six on a 64-bit
-//!   target, five on a 32-bit one). `WakeCtx` is
-//!   `repr(align(64))`, so those bits are free.
+//! - the entry's slot, in the low bits of the same pointer: six for an image
+//!   of 64 callbacks or fewer, one more per doubling past that. `WakeCtx` is
+//!   aligned to [`WAKE_CTX_ALIGN`], so those bits are free.
 //!
 //! Waking it sets that slot's bit in [`WakeCtx::ready`] and then does exactly
 //! what the session callback does: flag, probe, signal. A backend that
@@ -35,17 +35,54 @@ use portable_atomic_util::Arc;
 
 use super::spin::WakeCtx;
 
-/// Slots the ready word can name: one `usize` (64 on a 64-bit target, 32 on
-/// a 32-bit one, which may have no 64-bit atomics). An entry above this keeps
-/// the session-scoped wake.
-pub(crate) const SLOTS: usize = usize::BITS as usize;
+/// Slots the ready words can name: the image's own callback count, rounded
+/// up to whole machine words (at least one: 64 slots on a 64-bit target, 32
+/// on a 32-bit one). An entry above this keeps the session-scoped wake.
+// Issue 2541 -- this was always one `usize` word; the ready words are now an
+// `AtomicSlotMask` (`slot_mask::ATOMIC_WORDS`) that grows with the image.
+pub(crate) const SLOTS: usize = super::slot_mask::ATOMIC_SLOTS;
 
-const SLOT_MASK: usize = SLOTS - 1;
+/// `WakeCtx`'s alignment: the slot capacity rounded up to a power of two,
+/// and never below the 64 it always had.
+pub(crate) const WAKE_CTX_ALIGN: usize = if SLOTS <= 64 {
+    64
+} else {
+    SLOTS.next_power_of_two()
+};
+
+const SLOT_MASK: usize = WAKE_CTX_ALIGN - 1;
 
 const _: () = assert!(
-    core::mem::align_of::<WakeCtx>() >= SLOTS,
-    "the slot rides in the low bits of the WakeCtx pointer, so WakeCtx must be aligned to SLOTS"
+    core::mem::align_of::<WakeCtx>() >= WAKE_CTX_ALIGN && SLOT_MASK >= SLOTS - 1,
+    "the slot rides in the low bits of the WakeCtx pointer, so WakeCtx must be aligned past SLOTS"
 );
+
+/// A zero-sized field type that raises `WakeCtx`'s alignment to
+/// [`WAKE_CTX_ALIGN`]: `()` at 64 (its `repr(align(64))` already holds), an
+/// over-aligned marker above. `repr(align)` takes only a literal, hence the
+/// lookup.
+pub(crate) type WakeCtxAlign = <AlignFor<WAKE_CTX_ALIGN> as SelectAlign>::Marker;
+
+pub(crate) struct AlignFor<const N: usize>;
+
+pub(crate) trait SelectAlign {
+    type Marker;
+}
+
+#[repr(align(128))]
+pub(crate) struct Align128;
+#[repr(align(256))]
+pub(crate) struct Align256;
+
+impl SelectAlign for AlignFor<64> {
+    type Marker = ();
+}
+impl SelectAlign for AlignFor<128> {
+    type Marker = Align128;
+}
+impl SelectAlign for AlignFor<256> {
+    type Marker = Align256;
+}
 
 /// The waker for `slot` of the executor that owns `ctx`, or `None` when the
 /// slot is beyond what the ready word can name.
@@ -54,7 +91,7 @@ pub(crate) fn waker(ctx: &Arc<WakeCtx>, slot: usize) -> Option<Waker> {
         return None;
     }
     let base = Arc::into_raw(ctx.clone()) as usize;
-    debug_assert_eq!(base & SLOT_MASK, 0, "WakeCtx is not aligned to SLOTS");
+    debug_assert_eq!(base & SLOT_MASK, 0, "WakeCtx is not aligned past SLOTS");
     let raw = RawWaker::new((base | slot) as *const (), &VTABLE);
     // SAFETY: the vtable honours the RawWaker contract: `clone` takes a strong
     // reference, `drop` releases one, and `wake` consumes the one it was given.

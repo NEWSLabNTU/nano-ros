@@ -3038,7 +3038,8 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
     // Issue 1419 -- written EVEN WHEN setup failed, with the failure still the
     // exit code. The census executor is not sized from the contract it checks
     // (`CENSUS_SIZING`), so what still stops setup here is code that boots at
-    // no sizing -- a constructor's own error, more than 64 callbacks.
+    // no sizing -- a constructor's own error, more callbacks than the
+    // executor's masks can name (`CALLBACK_SLOT_CAPACITY`).
     // Discarding the file left the cross configure reading "census missing"
     // (a warning); kept, the CLI marks it incomplete and every check against
     // it refuses.

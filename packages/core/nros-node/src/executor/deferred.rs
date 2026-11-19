@@ -23,8 +23,8 @@
 //!    queued callback, [`Executor::run_deferred_handle`] runs one (for a host
 //!    that maps callbacks onto tasks of different priorities).
 //!
-//! The queue is one bit per callback slot (the executor already caps its
-//! callback table at 64 slots, `MAX_CALLBACK_SLOTS`), so it allocates nothing
+//! The queue is one bit per callback slot (a `SlotMask`, which names every
+//! slot the callback table can hold, `MAX_CALLBACK_SLOTS`), so it allocates nothing
 //! and an enqueue of a callback that is already queued is a no-op: the
 //! callback runs once per drain, and takes what one dispatch takes. Data left
 //! behind is found by the next spin, which queues the callback again.
@@ -35,6 +35,7 @@
 
 use super::{
     arena::EntryKind,
+    slot_mask::SlotMask,
     spin::Executor,
     types::{DeferNotify, HandleId, SpinOnceResult},
 };
@@ -66,12 +67,11 @@ impl<'s> Executor<'s> {
         if matches!(meta.kind, EntryKind::Timer) {
             return false;
         }
-        let bit = 1u64 << slot;
         if deferred {
-            self.deferred_mask |= bit;
+            self.deferred_mask.set(slot);
         } else {
-            self.deferred_mask &= !bit;
-            self.deferred_pending &= !bit;
+            self.deferred_mask.clear(slot);
+            self.deferred_pending.clear(slot);
         }
         true
     }
@@ -79,7 +79,7 @@ impl<'s> Executor<'s> {
     /// Whether `id` names a deferred callback.
     pub fn is_deferred(&self, id: HandleId) -> bool {
         self.resolve_handle(id)
-            .is_some_and(|slot| self.deferred_mask & (1u64 << slot) != 0)
+            .is_some_and(|slot| self.deferred_mask.test(slot))
     }
 
     /// Install the notifier the spin calls when it queues a deferred
@@ -104,13 +104,13 @@ impl<'s> Executor<'s> {
 
     /// Whether any deferred callback is queued and waiting for a drain.
     pub fn has_deferred(&self) -> bool {
-        self.deferred_pending != 0
+        !self.deferred_pending.is_empty()
     }
 
     /// Whether the deferred callback `id` is queued.
     pub fn is_deferred_pending(&self, id: HandleId) -> bool {
         self.resolve_handle(id)
-            .is_some_and(|slot| self.deferred_pending & (1u64 << slot) != 0)
+            .is_some_and(|slot| self.deferred_pending.test(slot))
     }
 
     /// Run every queued deferred callback once, in slot (registration)
@@ -122,10 +122,7 @@ impl<'s> Executor<'s> {
     pub fn run_deferred(&mut self) -> SpinOnceResult {
         let mut result = SpinOnceResult::new();
         self.reap_deferred_releases();
-        let mut rest = self.deferred_pending;
-        while rest != 0 {
-            let slot = rest.trailing_zeros() as usize;
-            rest &= rest - 1;
+        for slot in self.deferred_pending.iter_ones() {
             self.dispatch_deferred_slot(slot, &mut result);
         }
         result
@@ -149,40 +146,30 @@ impl<'s> Executor<'s> {
     /// The spin's half: move every deferred bit of `ready` into the queue,
     /// notify the newly queued ones, and return what is left for the spin to
     /// dispatch inline.
-    pub(crate) fn defer_ready(&mut self, ready: u64) -> u64 {
+    pub(crate) fn defer_ready(&mut self, ready: SlotMask) -> SlotMask {
         let deferred = ready & self.deferred_mask;
-        if deferred == 0 {
+        if deferred.is_empty() {
             return ready;
         }
-        let fresh = deferred & !self.deferred_pending;
+        let fresh = deferred.and_not(self.deferred_pending);
         self.deferred_pending |= deferred;
         if let Some((notify, ctx)) = self.defer_notify {
-            let mut rest = fresh;
-            while rest != 0 {
-                let slot = rest.trailing_zeros() as usize;
-                rest &= rest - 1;
+            for slot in fresh.iter_ones() {
                 notify(ctx, self.handle_for(slot));
             }
         }
-        ready & !self.deferred_mask
+        ready.and_not(self.deferred_mask)
     }
 
     /// Forget a slot's deferral when its entry is released, so the slot's
     /// next occupant starts inline and unqueued.
     pub(crate) fn forget_deferred(&mut self, slot: usize) {
-        if slot < 64 {
-            let bit = 1u64 << slot;
-            self.deferred_mask &= !bit;
-            self.deferred_pending &= !bit;
-        }
+        self.deferred_mask.clear(slot);
+        self.deferred_pending.clear(slot);
     }
 
     fn dispatch_deferred_slot(&mut self, slot: usize, result: &mut SpinOnceResult) -> bool {
-        if slot >= 64 {
-            return false;
-        }
-        let bit = 1u64 << slot;
-        if self.deferred_pending & bit == 0 {
+        if !self.deferred_pending.test(slot) {
             return false;
         }
         // Held: its release is pending (it never runs again) or its callback
@@ -191,7 +178,7 @@ impl<'s> Executor<'s> {
         if Self::slot_held(self.slot_tags, slot) {
             return false;
         }
-        self.deferred_pending &= !bit;
+        self.deferred_pending.clear(slot);
         let Some(meta) = self.entries.get(slot).and_then(|e| e.as_ref()) else {
             return false;
         };
@@ -211,7 +198,7 @@ impl<'s> Executor<'s> {
         // `has_data` again next spin, exactly as the inline drain arranges.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         {
-            self.entity_recheck |= bit & self.entity_attributed;
+            self.entity_recheck |= SlotMask::bit(slot) & self.entity_attributed;
         }
         match processed {
             Ok(true) => match kind {
