@@ -455,9 +455,23 @@ pub(crate) const fn extra_session_slots(sizing: ExecutorSizing) -> usize {
 }
 
 /// The counts this build was configured with, for `sizing`.
+/// Issue 2541 -- the callback slots `sizing` carves: its `cbs`, but never more
+/// than the masks can name. A table sized past them registered a 65th
+/// callback and dispatched it through `1u64 << 64`. Capped HERE, for both the
+/// layout and the carve, so the two agree, every loop over the entries stays
+/// within the masks, and the 65th registration is the full table's
+/// `ExecutorFull`.
+pub(crate) const fn callback_slots(sizing: ExecutorSizing) -> usize {
+    if sizing.cbs < super::spin::MAX_CALLBACK_SLOTS {
+        sizing.cbs
+    } else {
+        super::spin::MAX_CALLBACK_SLOTS
+    }
+}
+
 const fn counts_for(sizing: ExecutorSizing) -> RegionCounts {
     RegionCounts {
-        cbs: sizing.cbs,
+        cbs: callback_slots(sizing),
         sc: sizing.sc,
         nodes: sizing.nodes,
         extra_sessions: extra_session_slots(sizing),
@@ -762,11 +776,11 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
     // the image's own model (`NROS_EXECUTOR_ARENA_SIZE`) is 25,724 -- exactly
     // the two extra bases. See [`levels_arena_bytes`].
     let arena = levels_arena_bytes(arena, sched_tasks.len());
-    // One executor dispatches at most one ready word of slots; a level image
-    // past it is refused at registration, loudly, as any executor is.
-    let max_cbs = super::spin::MAX_CALLBACK_SLOTS;
+    // One executor dispatches at most one ready word of slots: an image whose
+    // sched tasks declare more fails to compile (issue 2541, beside
+    // `MAX_CALLBACK_SLOTS`), and `callback_slots` caps any table at it.
     Some(ExecutorSizing {
-        cbs: if cbs < max_cbs { cbs } else { max_cbs },
+        cbs,
         sc: crate::config::MAX_SC,
         arena,
         nodes,
@@ -811,13 +825,14 @@ pub(crate) unsafe fn carve<'s>(
     sizing: ExecutorSizing,
 ) -> ExecutorSlices<'s> {
     let ExecutorSizing {
-        cbs,
+        cbs: _,
         sc,
         arena,
         nodes: node_slots,
         params: param_slots,
         remaps: remap_slots,
     } = sizing;
+    let cbs = callback_slots(sizing);
     let extra_slots = extra_session_slots(sizing);
     let o = compute_offsets(sizing);
     // Fail-loud on EVERY profile (not `debug_assert!`): embedded release builds

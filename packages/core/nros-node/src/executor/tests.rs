@@ -20300,3 +20300,61 @@ fn a_name_resolves_against_the_node_its_entity_registers_on() {
         "/configured/cmd"
     );
 }
+
+/// Issue 2541 -- an executor whose table is sized past the 64 slots its masks
+/// can name refuses the 65th callback, by name, and dispatches the 64 it took.
+/// The table's size came from the image with no upper bound while the
+/// callback index rode in `u64` masks (`1u64 << i`), so the 65th registration
+/// used to be ACCEPTED and its dispatch shifted by 64: a panic in a debug
+/// build ("attempt to shift left with overflow", spin.rs), slot 0's bit in a
+/// release one.
+#[test]
+fn an_executor_sized_past_64_callbacks_refuses_the_65th() {
+    use core::sync::atomic::{AtomicU32, Ordering};
+    const N: usize = 70;
+    let sizing = super::storage::ExecutorSizing {
+        cbs: N,
+        arena: super::storage::ExecutorSizing::DEFAULT.arena * 24,
+        ..super::storage::ExecutorSizing::DEFAULT
+    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+        alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    // SAFETY: `backing` is exactly `sizing.u64_len()` words, `'static`, and is
+    // handed to this executor alone.
+    let mut executor = unsafe { Executor::from_session_in(MockSession::new(), backing, sizing) };
+    executor.clock_us_fn = Some(test_clock_us);
+    executor.last_spin_end_us = Some(test_clock_us());
+    let counts: std::sync::Arc<std::vec::Vec<AtomicU32>> =
+        std::sync::Arc::new((0..N).map(|_| AtomicU32::new(0)).collect());
+    let mut refused = None;
+    for i in 0..N {
+        let c = counts.clone();
+        match executor.register_timer(TimerDuration::from_millis(1), move || {
+            c[i].fetch_add(1, Ordering::SeqCst);
+        }) {
+            Ok(_) => assert!(i < 64, "callback {i} registered past the 64 the masks name"),
+            Err(e) => {
+                refused = Some((i, e));
+                break;
+            }
+        }
+    }
+    let (at, err) = refused.expect("a callback past 64 was not refused");
+    assert_eq!(at, 64, "the first refusal is the 65th callback");
+    assert_eq!(err, NodeError::ExecutorFull);
+    assert!(
+        std::format!("{err}").contains("NROS_EXECUTOR_MAX_CBS"),
+        "the refusal names the knob: {err}"
+    );
+    // The 64 it took all dispatch, and nothing panics on the way.
+    let t0 = std::time::Instant::now();
+    while counts[..64].iter().any(|c| c.load(Ordering::SeqCst) == 0)
+        && t0.elapsed() < std::time::Duration::from_secs(5)
+    {
+        executor.spin_once(core::time::Duration::from_millis(2));
+    }
+    let never: std::vec::Vec<usize> = (0..64)
+        .filter(|&i| counts[i].load(Ordering::SeqCst) == 0)
+        .collect();
+    assert!(never.is_empty(), "timers that never fired: {never:?}");
+}
