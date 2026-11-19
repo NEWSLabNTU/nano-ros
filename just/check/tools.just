@@ -295,6 +295,17 @@ worktree-prune:
 changelog-audit:
     @python3 scripts/changelog-audit.py --gate
 
+# Issue 2612 option (a), ruled on 2026-11-19: a branch that changes what
+# nano-ros ships (packages/, cmake/, book/, minus the audit's exclusions and
+# its docs-only skip) carries a changelog.d/ fragment or a `Changelog: none`
+# trailer. Reads the branch from its merge base with origin/main; the
+# message says exactly what to add. Passes on merge_group and push, where the
+# PR was already judged. Buildless, ~1 s.
+[private]
+[group('needs:git-history')]
+changelog-required:
+    @python3 scripts/changelog-audit.py --require
+
 # The release notes cite no issue: a changelog fragment's number is a
 # docs/issues id, and towncrier used to render it as a link to the GitHub
 # issue of that number, an unrelated item. `issue_format` renders nothing;
