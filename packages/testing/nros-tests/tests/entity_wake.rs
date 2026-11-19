@@ -894,6 +894,13 @@ fn thread_cpu() -> Duration {
 /// core). With entity wakes the member sleeps out each park. The numbers are
 /// printed for the phase doc; the assertion is the bound that separates the
 /// two behaviours by two orders of magnitude.
+///
+/// The control is a COUNT, never a rate. A loaded host publishes slower (249
+/// arrivals/s measured under a full gate, 775-803 solo), and a rate threshold
+/// failed there while the property held. What the verdict needs is enough
+/// arrivals that a fan-out member would have spun far past the park bound, so
+/// the run lasts at least [`RUN`] and continues, up to [`RUN_CAP`], until it
+/// has seen [`MIN_ARRIVALS`]. The bound is taken over the time it actually ran.
 #[rstest]
 fn an_idle_member_parks_through_kilohertz_arrivals_for_another(zenohd_unique: ZenohRouter) {
     use std::sync::{
@@ -901,7 +908,13 @@ fn an_idle_member_parks_through_kilohertz_arrivals_for_another(zenohd_unique: Ze
         atomic::{AtomicBool, AtomicU64, Ordering::SeqCst},
     };
     const RUN: Duration = Duration::from_secs(3);
+    /// The longest a slow host may stretch the run to reach [`MIN_ARRIVALS`].
+    const RUN_CAP: Duration = Duration::from_secs(15);
     const PARK: Duration = Duration::from_millis(500);
+    /// A fan-out member spins once per arrival; ten times the park bound over
+    /// the longest run separates the two behaviours by an order of magnitude
+    /// even at the cap.
+    const MIN_ARRIVALS: u64 = 10 * ((RUN_CAP.as_millis() / PARK.as_millis()) as u64 + 2);
     require_zenohd();
     let locator = zenohd_unique.locator();
     let domain = u32::from(nros_tests::unique_ros_domain_id());
@@ -952,7 +965,9 @@ fn an_idle_member_parks_through_kilohertz_arrivals_for_another(zenohd_unique: Ze
     let cpu_from = thread_cpu();
     let start = Instant::now();
     let mut spins = 0u32;
-    while start.elapsed() < RUN {
+    while start.elapsed() < RUN
+        || (published.load(SeqCst) - published_from < MIN_ARRIVALS && start.elapsed() < RUN_CAP)
+    {
         other.spin_once(PARK);
         spins += 1;
     }
@@ -970,23 +985,26 @@ fn an_idle_member_parks_through_kilohertz_arrivals_for_another(zenohd_unique: Ze
         f64::from(spins) / elapsed.as_secs_f64(),
         cpu.as_secs_f64() * 100.0 / elapsed.as_secs_f64(),
     );
-    // Control: the arrivals really came at a rate that would have woken a
-    // fan-out member hundreds of times a second.
+    // Control: enough arrivals came that a fan-out member, which spins once
+    // per arrival, would have spun at least ten times the park bound.
     assert!(
-        rate >= 300.0,
-        "only {rate:.0} arrivals/s were published, too few to tell a fan-out member from a \
-         parked one"
+        arrivals >= MIN_ARRIVALS,
+        "only {arrivals} arrivals were published in {elapsed:?} (the run stretched to its \
+         {RUN_CAP:?} cap), fewer than the {MIN_ARRIVALS} needed to tell a fan-out member from \
+         a parked one"
     );
     assert_ne!(
         owner.take_entity_ready_bits(),
         0,
         "the owner saw no arrival while `other` spun, so `other` staying parked proves nothing"
     );
-    let bound = (RUN.as_millis() / PARK.as_millis()) as u32 + 2;
+    // One spin per park over the time it actually ran, plus the partial park
+    // at each end.
+    let bound = (elapsed.as_millis() / PARK.as_millis()) as u32 + 2;
     assert!(
         spins <= bound,
-        "the idle member spun {spins} times in {elapsed:?} (bound {bound}, one per {PARK:?} \
-         park): another member's arrivals are waking it"
+        "the idle member spun {spins} times in {elapsed:?} for {arrivals} arrivals (bound \
+         {bound}, one per {PARK:?} park): another member's arrivals are waking it"
     );
 }
 
