@@ -224,6 +224,29 @@ mod tests {
         assert!(!goal_accepted(&[0, 1, 0, 0]));
     }
 
+    /// Issue 2490 / RFC-0069 — a body whose first word is 256 serializes as
+    /// `00 01 00 00`, byte for byte an encapsulation header. The splice is
+    /// unconditional, so it still gets the frame's header in front; a reader
+    /// that sniffed would take the body's first word for framing and read the
+    /// rest one word short.
+    #[test]
+    fn a_body_that_reads_as_a_header_still_gets_the_frames_header() {
+        let body = [0x00, 0x01, 0x00, 0x00, 0xAA];
+        let mut msg = [0u8; FEEDBACK_PAYLOAD_OFFSET + 5];
+        msg[..4].copy_from_slice(&[0, 1, 0, 0]);
+        msg[FEEDBACK_PAYLOAD_OFFSET..].copy_from_slice(&body);
+        let mut out = [0u8; 16];
+        let n = splice_feedback(&msg, &mut out).unwrap();
+        assert_eq!(&out[..n], &[0, 1, 0, 0, 0x00, 0x01, 0x00, 0x00, 0xAA]);
+
+        let mut reply = [0u8; 8 + 5];
+        reply[..4].copy_from_slice(&[0, 1, 0, 0]);
+        reply[4] = 4; // Succeeded
+        reply[8..].copy_from_slice(&body);
+        let n = splice_result(&reply, &mut out).unwrap();
+        assert_eq!(&out[..n], &[0, 1, 0, 0, 0x00, 0x01, 0x00, 0x00, 0xAA]);
+    }
+
     #[test]
     fn feedback_splices_the_frames_own_header() {
         let mut msg = [0u8; FEEDBACK_PAYLOAD_OFFSET + 2];

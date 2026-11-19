@@ -534,8 +534,8 @@ pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback(
     // Phase 177.9.F — strip the C++ serializer's CDR header before handing
     // feedback to the core, exactly as `nros_cpp_action_server_complete_goal`
     // does for results. The core action storage keeps FIELDS ONLY; the
-    // client-side `cpp_feedback_trampoline` re-adds a CDR header before C++
-    // deserialize. Without this strip the feedback travelled with its header,
+    // client's executor dispatch splices the frame's CDR header back before C++
+    // deserialize (issue 2490). Without this strip the feedback travelled with its header,
     // the trampoline added a second one, and the C++ deserializer read the
     // inner header's bytes as the sequence length → garbage → `feedback=0`
     // on the cpp/xrce action E2E.
@@ -1035,30 +1035,15 @@ unsafe extern "C" fn cpp_cancel_response_trampoline(
     }
 }
 
-/// Issue #179 — a raw payload never starts with a CDR encapsulation
-/// identifier (`00 {00|01|06|07|0a|0b}`). The upstream dispatch (arena /
-/// poll) now delivers action payloads WITH a single encap header (splicing
-/// one in when a C server's stripped-fields reply arrives raw), so the
-/// trampolines must prepend ONLY when the header is genuinely absent —
-/// the old unconditional prepend double-framed every zenoh delivery.
-fn payload_has_cdr_encap(buf: &[u8]) -> bool {
-    buf.len() >= 2 && buf[0] == 0 && matches!(buf[1], 0 | 1 | 6 | 7 | 0x0a | 0x0b)
-}
-
-/// Frame a dispatched payload for a C++ callback: verbatim when it already
-/// carries an encapsulation header, else behind a little-endian one.
-fn frame_for_callback(data: &[u8], framed: &mut [u8; DEFAULT_RX_BUF_SIZE]) -> usize {
-    if payload_has_cdr_encap(data) {
-        let n = data.len().min(DEFAULT_RX_BUF_SIZE);
-        framed[..n].copy_from_slice(&data[..n]);
-        n
-    } else {
-        framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
-        let n = data.len().min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
-        framed[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&data[..n]);
-        CDR_HEADER_LEN + n
-    }
-}
+// Issue 2490 — the feedback and result payloads reach these trampolines from
+// the executor's raw action-client dispatch, which splices the frame's own
+// encapsulation header in front of the fields on every backend (RFC-0069,
+// `nros_node::action_frame::splice_{feedback,result}`; the
+// `RawFeedbackCallback` / `RawResultCallback` contract). So they are forwarded
+// as they are. This crate's `payload_has_cdr_encap` (deleted) used to guess from the first bytes
+// whether a header was there and prepend one if not: a VALUE test that a body
+// whose first word is 256 (`00 01 00 00`) defeats, the class RFC-0069 retired
+// from the executor.
 
 // Issue 2011 — the feedback and result trampolines FORWARD, and keep nothing.
 // They used to copy every payload into ~~`FEEDBACK_STASH`~~ / ~~`RESULT_STASH`~~, two
@@ -1079,14 +1064,11 @@ unsafe extern "C" fn cpp_feedback_trampoline(
     let Some(cb) = client.callbacks.feedback else {
         return;
     };
-    let data = unsafe { core::slice::from_raw_parts(feedback_data, feedback_len) };
-    let mut framed = [0u8; DEFAULT_RX_BUF_SIZE];
-    let framed_len = frame_for_callback(data, &mut framed);
     unsafe {
         cb(
             &(*goal_id).uuid,
-            framed.as_ptr(),
-            framed_len,
+            feedback_data,
+            feedback_len,
             client.callbacks.context,
         )
     };
@@ -1103,12 +1085,7 @@ unsafe extern "C" fn cpp_result_trampoline(
     let Some(cb) = client.callbacks.result else {
         return;
     };
-    // User callbacks expect normal CDR bytes. The upstream dispatch delivers
-    // WITH a single encap header (issue #179); prepend only when it is
-    // genuinely absent.
-    let data = unsafe { core::slice::from_raw_parts(result_data, result_len) };
-    let mut framed = [0u8; DEFAULT_RX_BUF_SIZE];
-    let framed_len = frame_for_callback(data, &mut framed);
+    // Already a whole CDR message behind its header (issue 2490): forwarded.
     let s = match status {
         nros::GoalStatusCode::Succeeded => 4i32,
         nros::GoalStatusCode::Canceled => 5,
@@ -1119,8 +1096,8 @@ unsafe extern "C" fn cpp_result_trampoline(
         cb(
             &(*goal_id).uuid,
             s,
-            framed.as_ptr(),
-            framed_len,
+            result_data,
+            result_len,
             client.callbacks.context,
         )
     };

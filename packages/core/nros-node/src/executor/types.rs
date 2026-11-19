@@ -1628,7 +1628,10 @@ pub type RawGoalResponseCallback = unsafe extern "C" fn(
 ///
 /// # Safety
 /// - `goal_id` is valid for the duration of the call
-/// - `result_data` points to `result_len` valid bytes (CDR-encoded result)
+/// - `result_data` points to `result_len` valid bytes: the result as a whole
+///   CDR message, behind the reply's own encapsulation header. The executor
+///   splices that header in on every backend, so a callback never
+///   has to guess whether one is there.
 pub type RawResultCallback = unsafe extern "C" fn(
     goal_id: *const nros_core::GoalUuid,
     status: nros_core::GoalStatusCode,
@@ -1679,7 +1682,9 @@ pub type RawCancelResponseCallback = unsafe extern "C" fn(
 ///
 /// # Safety
 /// - `goal_id` is valid for the duration of the call
-/// - `feedback_data` points to `feedback_len` valid bytes (CDR-encoded feedback)
+/// - `feedback_data` points to `feedback_len` valid bytes: the feedback as a
+///   whole CDR message, behind the frame's own encapsulation header, spliced
+///   in by the executor on every backend.
 pub type RawFeedbackCallback = unsafe extern "C" fn(
     goal_id: *const nros_core::GoalUuid,
     feedback_data: *const u8,
