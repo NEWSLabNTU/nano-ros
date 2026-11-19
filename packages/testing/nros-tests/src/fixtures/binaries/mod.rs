@@ -6867,6 +6867,27 @@ pub fn build_condvar_contract_threadx_linux() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the issue-2706 `isr-wake-threadx-riscv64` image.
+static ISR_WAKE_THREADX_RISCV64_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Issue 2706 -- the prebuilt `isr-wake-threadx-riscv64` image: the RISC-V
+/// `virt` machine timer triggers a guard condition while the executor parks.
+/// Workspace row `threadx-riscv64-isr-wake`, built in the threadx_riscv64
+/// fixture lane like the logging smoke beside it.
+pub fn build_isr_wake_threadx_riscv64() -> TestResult<&'static Path> {
+    ISR_WAKE_THREADX_RISCV64_BINARY
+        .get_or_try_init(|| {
+            const DIR: &str = "packages/testing/nros-tests/bins/isr-wake-threadx-riscv64";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the Phase 88.15.d `logging-smoke-threadx-riscv64`
 /// fixture binary (ThreadX + NetX Duo on QEMU `virt` RV64).
 static LOGGING_SMOKE_THREADX_RISCV64_BINARY: OnceCell<PathBuf> = OnceCell::new();

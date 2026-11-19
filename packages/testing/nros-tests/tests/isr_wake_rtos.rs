@@ -22,7 +22,8 @@
 use nros_tests::{
     fixtures::{
         QemuProcess, RequireFixture, ZenohRouter, build_isr_wake_baremetal_mps2,
-        build_isr_wake_freertos_mps2, build_isr_wake_zephyr_native_sim, or_unmet,
+        build_isr_wake_freertos_mps2, build_isr_wake_threadx_riscv64,
+        build_isr_wake_zephyr_native_sim, or_unmet,
     },
     matrix::PlatformId,
     output::{ISR_RACE_DONE, ISR_RACE_SAMPLE, ISR_WAKE_DONE, ISR_WAKE_NOT_IN_ISR, ISR_WAKE_SAMPLE},
@@ -170,6 +171,37 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_zephyr_native_sim() {
         "the timer expiry ran outside interrupt context, so this did not test an interrupt wake"
     );
     check_isr_wake_output(&output, "Zephyr");
+}
+
+/// Issue 2706 -- the ThreadX twin, on the QEMU RISC-V `virt` machine. The
+/// machine-timer trap runs ThreadX's tick and then the image's tick hook,
+/// which triggers the guard every second tick (20 ms); the port's signal is
+/// `tx_semaphore_ceiling_put`, taken at the trap's context restore.
+///
+/// Mutation, the port refusing (`nros_platform_wake_signal_from_isr`
+/// returning -1): measured in issue 2706.
+#[test]
+fn a_timer_interrupt_wakes_the_parked_executor_on_threadx_riscv64() {
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::ThreadxRiscv64],
+        "the ThreadX interrupt-wake image",
+    );
+    if !nros_tests::fixtures::is_qemu_riscv64_available() {
+        nros_tests::unmet!("qemu-system-riscv64 not available");
+    }
+    let binary = build_isr_wake_threadx_riscv64()
+        .require("isr-wake-threadx-riscv64 — run `just threadx_riscv64 build-fixtures`");
+    let port = nros_tests::alloc::THREADX_ISR_WAKE_PORT;
+    let _zenohd = or_unmet(ZenohRouter::start_slirp(port));
+    assert!(
+        wait_for_port(port, Duration::from_secs(5)),
+        "zenohd not reachable on the interrupt-wake port"
+    );
+    let mut qemu = QemuProcess::start_riscv64_virt(binary, 0)
+        .unwrap_or_else(|e| panic!("start QEMU for the ThreadX interrupt-wake image: {e:?}"));
+    let output = qemu.collect_until(ISR_WAKE_DONE, Duration::from_secs(120));
+    qemu.kill();
+    check_isr_wake_output(&output, "ThreadX");
 }
 
 /// The bounds every interrupt-wake image is held to, over its `ISR_WAKE*`
