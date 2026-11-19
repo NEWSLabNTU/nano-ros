@@ -4061,6 +4061,23 @@ image = "rv-virt-threadx"
 target_dir = "target"
 target = "riscv64gc-unknown-none-elf"
 
+# Issue 2706 — the ThreadX interrupt-wake image: the RISC-V `virt` machine
+# timer's trap calls the image's tick hook, which triggers a guard condition
+# from interrupt context while the executor parks. An owned entry with no
+# component, like the logging smoke above. Its router is on
+# `alloc::THREADX_ISR_WAKE_PORT`, stated in its `config.toml` and
+# `system.toml`. Consumed by tests/isr_wake_rtos.rs.
+[[workspace_fixture]]
+id = "threadx-riscv64-isr-wake"
+platform = "threadx-riscv64"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/isr-wake-threadx-riscv64"
+rmw = "zenoh"
+bringup = "src/isr_wake_threadx_riscv64_bringup"
+image = "rv-virt-threadx"
+target_dir = "target"
+target = "riscv64gc-unknown-none-elf"
+
 # Issue 1706 — a talker with one declared parameter whose contract makes the
 # store visible to the build, so the store is CARVED from the executor backing
 # (phase-382 W3'). A cargo `[[bin]]` with `nros::main!()` on the cargo-leaf

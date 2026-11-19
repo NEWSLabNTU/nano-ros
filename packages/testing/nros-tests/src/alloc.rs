@@ -231,6 +231,12 @@ pub const BAREMETAL_ISR_WAKE_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 6);
 /// `west_zenoh_locator`.
 pub const ZEPHYR_ISR_WAKE_PORT: u16 = aux_port(PlatformId::ZephyrNativeSim, 0);
 
+/// ThreadX RISC-V `virt` interrupt-wake image
+/// (`packages/testing/nros-tests/bins/isr-wake-threadx-riscv64`, issue 2706):
+/// the machine-timer interrupt triggers a guard condition while the executor
+/// parks. Its `config.toml` and `system.toml` state this port as its locator.
+pub const THREADX_ISR_WAKE_PORT: u16 = aux_port(PlatformId::ThreadxRiscv64, 0);
+
 /// FreeRTOS + MPS2-AN385 interrupt-wake image
 /// (`packages/testing/nros-tests/bins/isr-wake-freertos-mps2`, issue 2696): a
 /// timer interrupt triggers a guard condition while the executor parks. Its
@@ -385,6 +391,7 @@ mod tests {
             BAREMETAL_RTIC_PUBSUB_PORT,
             BAREMETAL_RTIC_LEVELS_PORT,
             FREERTOS_ISR_WAKE_PORT,
+            THREADX_ISR_WAKE_PORT,
             BAREMETAL_ISR_WAKE_PORT,
             ZEPHYR_ISR_WAKE_PORT,
         ] {

@@ -1,0 +1,12 @@
+# ThreadX RISC-V QEMU interrupt-wake network config (Slirp NAT).
+# Read at compile time via `include_str!("../config.toml")` ->
+# `Config::from_toml`. The locator's port is
+# `nros_tests::alloc::THREADX_ISR_WAKE_PORT`.
+[node]
+domain_id = 0
+locator = "tcp/10.0.2.2:9700"
+
+[eth0]
+network = "qemu"
+host = 41
+mac = "52:54:00:12:34:9a"

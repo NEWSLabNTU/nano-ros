@@ -36,8 +36,9 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
   83 to 102 us; `c_port_posix_wake.rs`, a real signal handler). mps2 bare
   metal followed (2026-11-19, the same test file, 182 to 247 us), after its
   park stopped reading the wake flag outside the idle's critical section.
-  Zephyr followed (2026-11-19, a `k_timer` expiry on native_sim).
-  ThreadX and NuttX refuse until
+  Zephyr followed (2026-11-19, a `k_timer` expiry on native_sim), then
+  ThreadX (2026-11-19, the RISC-V `virt` machine timer; the hosted
+  `threadx-linux` port still refuses). NuttX refuses until
   [issue 2706](../issues/2706-isr-wake-ports-untested.md) adds their tests.
   The C/C++ front is W1b.
 

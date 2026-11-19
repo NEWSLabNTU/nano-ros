@@ -19,6 +19,13 @@
 #define OS_IS_EXT_INT(mcause)      (mcause == 0x800000000000000bull)
 
 extern void _tx_timer_interrupt(void);
+
+/* Issue 2706 -- called in the machine-timer trap, after ThreadX's tick, with
+ * the interrupted context already saved: an interrupt-context seam an image
+ * may define (strongly) to act on a real timer interrupt. The interrupt-wake
+ * test image (`isr-wake-threadx-riscv64`) calls `trigger_from_isr` from it.
+ * The default does nothing. */
+__attribute__((weak)) void nros_rv_virt_tick_hook(void) {}
 /* uart_puts is declared in uart.h as int uart_puts(const char *) */
 
 static void print_hex(uintptr_t val)
@@ -60,6 +67,7 @@ void trap_handler(uintptr_t mcause, uintptr_t mepc, uintptr_t mtval)
         if (OS_IS_TICK_INT(mcause)) {
             hwtimer_handler();
             _tx_timer_interrupt();
+            nros_rv_virt_tick_hook();
         } else if (OS_IS_EXT_INT(mcause)) {
             int ret = plic_irq_intr();
             if (ret) {
