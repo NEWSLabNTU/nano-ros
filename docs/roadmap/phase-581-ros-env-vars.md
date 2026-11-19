@@ -66,7 +66,7 @@ board and RMW packages are self-contained.
 
 ### W1 - Registry schema: kinds, keys, owners, retired spellings
 
-- **Status:** OPEN
+- **Status:** DONE (knob/statement/env rows with `key`, `transitional` and road-tagged `retired`; cmake and Kconfig views byte-identical, `knob_registry.rs` changed only by `retired_spellings` and the `ENTRY_SPIN_MS` row leaving for `[[env]]`; `nros_cli_core::knob_catalog` builds the merged catalog and configure writes `build/nros/knobs/catalog.toml`)
 - `knobs.toml` gains the `owner` line, an `[owners]` table, `[[statement]]`
   and `[[env]]` tables, and per-row `key` and `retired`. `id`, `toml` and
   `kconfig` become derived; the generator refuses a row that states one. The
@@ -85,7 +85,7 @@ board and RMW packages are self-contained.
   The `nros fix` contract (RFC-0140 D4): a retired entry states `factor`
   (positive integer, new = old x factor, absent = 1) and optional
   `from_unit`, or `instead`, never both (the generator refuses both); the
-  generated `KnobRow` carries `retired: &[(road, spelling, factor)]`; the
+  generated `KnobRow` carries `retired_spellings: &[RetiredSpelling]`; the
   loader exposes the in-memory build of the merged catalog (core plus the
   workspace's package rows, from the same package scan configure uses) and
   `retired_spelling(road, spelling) -> Option<(&Row, &RetiredEntry)>` over

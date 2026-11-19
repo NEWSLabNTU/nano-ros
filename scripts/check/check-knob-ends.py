@@ -292,12 +292,9 @@ def registry_spellings() -> list[set[str]]:
     A row is ONE knob: `nros_zephyr_build::knob()` reads all of its spellings,
     so a reader that names `"ZPICO_FRAG_MAX_SIZE"` reads `NROS_ZENOH_FRAG_MAX_SIZE`
     too, and a document claiming the canonical name has that reader."""
-    try:
-        import tomllib
-    except ModuleNotFoundError:  # the repo's interpreter is 3.10
-        import tomli as tomllib
-    with open(os.path.join(ROOT, "packages/tooling/nros-zephyr-build/knobs.toml"), "rb") as fh:
-        rows = tomllib.load(fh).get("knob", [])
+    import knob_registry  # scripts/lib: the one reader of the registry
+
+    rows = knob_registry.knob_rows()
     return [{"NROS_" + r["id"], *r.get("legacy", [])} for r in rows]
 
 

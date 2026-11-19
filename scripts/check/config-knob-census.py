@@ -612,8 +612,9 @@ def _registry_rows():
     path = os.path.join(ROOT, "packages/tooling/nros-zephyr-build/knobs.toml")
     if not os.path.exists(path):
         return []
-    with open(path, "rb") as fh:
-        return tomllib.load(fh).get("knob", [])
+    import knob_registry  # scripts/lib (on sys.path above): the one reader
+
+    return knob_registry.knob_rows()
 
 
 def registry_spellings(ladder_only=False):

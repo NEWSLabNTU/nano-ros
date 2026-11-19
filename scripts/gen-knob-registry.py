@@ -4,30 +4,40 @@
     python3 scripts/gen-knob-registry.py           # write
     python3 scripts/gen-knob-registry.py --check   # fail if the committed file differs
 
-Input:  packages/tooling/nros-zephyr-build/knobs.toml   (the ONLY hand-kept list)
+Input:  packages/tooling/nros-zephyr-build/knobs.toml   (the ONLY hand-kept list,
+        read through scripts/lib/knob_registry.py)
 Output: packages/tooling/nros-zephyr-build/src/knob_registry.rs
+        packages/tooling/nros-zephyr-build/src/config_rows.rs  (statement + env rows)
+        packages/api/nros/src/retired_env.rs  (RETIRED_ENV_VARS, from `run:` retirements)
         cmake/NanoRosKnobRegistry.cmake   (the retired spellings, for the cmake lanes)
         zephyr/Kconfig                    (the knob section, between its markers)
         zephyr/Kconfig.knob-prompts       (a guest's prompts, phase-484 W5b)
 
+The schema is RFC-0140 D1-D4 (phase-581 W1): a knob row authors `key`, and
+`id`, `toml` and `kconfig` are derived from it (today's spellings that differ
+sit in `transitional`); `retired` lists every replaced spelling by road. The
+registry module normalises each knob row to the shape the renders below read
+(`id`, `legacy`, `kconfig`, `toml`, `retired` reason), so the views are what
+they were before the schema moved.
+
 `nros-zephyr-build` is dependency-free on purpose (every build script that reads
 a knob reaches it), so it cannot parse TOML at build time; the table is
 generated and committed instead, and `just check knob-registry` holds the two
-equal. Every spelling of a knob derives from its row:
+equal. Every spelling of a knob derives from its (normalised) row:
 
-  env      `NROS_<id>`. Each `legacy` name is RETIRED (phase-484 W8): set, it
-           stops the build naming `NROS_<id>`. The column stays as that
-           error table for good: an unlisted old name would be ignored.
+  env      `NROS_<id>`. Each retired `env:` spelling (the normalised row's
+           `legacy`) is RETIRED (phase-484 W8): set, it stops the build naming
+           `NROS_<id>`. The list stays as that error table for good: an
+           unlisted old name would be ignored.
   Kconfig  `CONFIG_<kconfig>`, default `CONFIG_NROS_<id>`
-  TOML     `[knobs.<toml>]`, where a typed tenant of the ladder has a key for
-           it. A board's `[knobs]` takes every row by its image key; a row
-           with no `toml` is carried in the image's rows (issue 2194).
-  image    `[image.<id>.knobs.<group>] <name>` in a project's system.toml
-           (phase-484 W8): the `toml` key where the row has one, so a project
-           and a board spell a knob the same way, else the id split at its
-           first `_` (`ZEPHYR_HEAP_SIZE` -> `zephyr.heap_size`). An
-           `[image.<id>] env` row naming the knob is refused, in
-           `IMAGE_ENV_RETIRED_TEMPLATE`'s words.
+  TOML     `[knobs.<key>]` on a `ladder = true` row, where a typed tenant of the
+           ladder reads it. A board's `[knobs]` takes every row by its image
+           key; a row without `ladder` is carried in the image's rows (issue
+           2194).
+  image    `[image.<id>.knobs.<owner>] <name>` in a project's system.toml
+           (phase-484 W8): the row's `key`, so a project and a board spell a
+           knob the same way. An `[image.<id>] env` row naming the knob is
+           refused, in `IMAGE_ENV_RETIRED_TEMPLATE`'s words.
 
 A row whose knob has a Zephyr Kconfig symbol also carries that symbol's
 DEFINITION — `type`, `prompt`, the `if` it sits under (`kconfig_if`), its
@@ -46,29 +56,28 @@ not `CONFIG_<spelling>` — the shape `kconfig_key_for` and its harvesting gate
 (`check-kconfig-knob-forwarding`) already read. A retired spelling has no pair:
 nothing reads one any more (phase-484 W8).
 
-A row with `retired = "<reason>"` is a knob that no longer EXISTS, not one that
+A row with `class = "retired"` and `instead = "<reason>"` is a knob that no longer EXISTS, not one that
 was renamed (RFC-0110 D2 retired the zenoh lease-task priority when zenoh-pico
 1.10 folded the lease task into its executor). Every spelling of it -- the
 canonical one included -- stops the build with `RETIRED_KNOB`'s sentence, in a
 build script, a configure and the CLI alike. It carries no Kconfig definition,
 so a prj.conf that still assigns the symbol fails Zephyr's own undefined-symbol
-check. The row stays for good as the error table, like `legacy`.
+check. The row stays for good as the error table, like its retired spellings.
 """
 import re
 import sys
 from pathlib import Path
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python < 3.11 — the repo's interpreter is 3.10
-    import tomli as tomllib
-
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+import knob_registry  # noqa: E402  -- the one reader of knobs.toml
 SRC = REPO / "packages/tooling/nros-zephyr-build/knobs.toml"
 OUT = REPO / "packages/tooling/nros-zephyr-build/src/knob_registry.rs"
 CMAKE_OUT = REPO / "cmake/NanoRosKnobRegistry.cmake"
 KCONFIG_OUT = REPO / "zephyr/Kconfig"
 PROMPTS_OUT = REPO / "zephyr/Kconfig.knob-prompts"
+ROWS_OUT = REPO / "packages/tooling/nros-zephyr-build/src/config_rows.rs"
+RETIRED_ENV_OUT = REPO / "packages/api/nros/src/retired_env.rs"
 # Where the module hook writes the generated file, as Kconfig spells it
 # (`KCONFIG_BINARY_DIR` is `<build>/Kconfig` on 3.7 and 4.4; D2b).
 KCONFIG_GENERATED = "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml"
@@ -107,9 +116,6 @@ IMAGE_ENV_RETIRED = (
 ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
 ENV = re.compile(r"^(NROS|ZPICO)_[A-Z0-9_]+$")
 TOML_KEY = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
-FIELDS = {"id", "legacy", "kconfig", "toml", "names", "retired", "only_on", "only_on_why",
-          "type", "prompt", "kconfig_if", "kconfig_attrs", "help",
-          "scope", "class", "carries"}
 # phase-568 W2c -- a knob with no meaning off one platform (`only_on`), and
 # why. Stated for another platform's image, it is refused rather than ignored.
 ONLY_ON_PLATFORMS = {"zephyr"}
@@ -126,7 +132,7 @@ KCONFIG_DEF_FIELDS = {"kconfig_if", "kconfig_attrs"}
 #   class   `public` (a user states it, at its surface), `carrier` (the
 #           transport of a decision made elsewhere; `carries` names where),
 #           `internal` (a test or tooling hook, never user surface) or
-#           `retired` (the row has `retired`).
+#           `retired` (the row has `instead`).
 # Three are DERIVED, never authored (the manager's ruling, 2026-11-17):
 #   default  the Kconfig definition's `default` lines, each with its `if`
 #            condition, in order (`KCONFIG`); else the platform/board ladder's
@@ -172,28 +178,27 @@ def load(path=SRC):
 
 
 def load_from_text(text, strict_ratchets=False):
-    rows = tomllib.loads(text).get("knob", [])
-    errors = []
-    spellings = {}
+    """(knob rows normalised by `scripts/lib/knob_registry.py`, errors). The
+    registry module checks the schema (keys, owners, transitional spellings,
+    retired entries, statements, env rows, one namespace); the checks below are
+    the generator's own, over the normalised knob rows."""
+    reg, errors = load_registry(text, strict_ratchets)
+    return reg["knob"], errors
+
+
+def load_registry(text, strict_ratchets=False):
+    reg, errors = knob_registry.parse(text)
+    rows = reg["knob"]
     tomls = {}
     image_keys = {}
     for i, r in enumerate(rows):
         where = f"knob #{i + 1} ({r.get('id', '?')})"
-        extra = set(r) - FIELDS
-        if extra:
-            errors.append(f"{where}: unknown field(s) {sorted(extra)}")
         ident = r.get("id", "")
         if not ID.match(ident) or ident.startswith("NROS_"):
             errors.append(f"{where}: id must be the env name without `NROS_`")
         for s in ["NROS_" + ident] + list(r.get("legacy", [])):
             if not ENV.match(s):
                 errors.append(f"{where}: `{s}` is not an env spelling")
-            if s in spellings:
-                errors.append(f"{where}: `{s}` is already a spelling of {spellings[s]}")
-            spellings[s] = ident
-        k = r.get("kconfig")
-        if k is not None and (not ID.match(k) or k == "NROS_" + ident):
-            errors.append(f"{where}: `kconfig` is written only where it differs from NROS_<id>")
         ty = r.get("type")
         if ty is None and KCONFIG_DEF_FIELDS & set(r):
             errors.append(f"{where}: {sorted(KCONFIG_DEF_FIELDS & set(r))} without `type`")
@@ -208,9 +213,9 @@ def load_from_text(text, strict_ratchets=False):
         why = r.get("retired")
         if why is not None:
             if not isinstance(why, str) or not why.strip():
-                errors.append(f"{where}: `retired` is the reason, a non-empty string")
+                errors.append(f"{where}: `instead` is the reason, a non-empty string")
             elif re.search(r'["\\$;]', why):
-                errors.append(f"{where}: a `retired` reason cannot hold `\"`, `\\`, `$` or `;` "
+                errors.append(f"{where}: a retired row's `instead` cannot hold `\"`, `\\`, `$` or `;` "
                               "(it is emitted verbatim into Rust and cmake strings)")
             if ty is not None:
                 errors.append(f"{where}: a `retired` knob has no Kconfig definition (drop `type`), "
@@ -226,10 +231,9 @@ def load_from_text(text, strict_ratchets=False):
                 errors.append(f"{where}: `only_on_why` is a non-empty reason without `\"`, `\\`, `$` or `;`")
         t = r.get("toml")
         if t is not None:
-            if not TOML_KEY.match(t):
-                errors.append(f"{where}: `toml` must be `<group>.<name>`")
             if t in tomls:
                 errors.append(f"{where}: toml key `{t}` is already {tomls[t]}")
+            tomls[t] = ident
         names = r.get("names")
         if names is not None and (ty != "int" or not names or not all(
                 isinstance(n, str) and re.match(r"^[a-z][a-z0-9_]*$", n) for n in names)):
@@ -237,9 +241,7 @@ def load_from_text(text, strict_ratchets=False):
         errors += catalog_problems(r, where)
         if ID.match(ident):
             key = image_key(r)
-            if key is None:
-                errors.append(f"{where}: an id with no `_` needs a `toml` key to be stated in a project")
-            elif key in image_keys:
+            if key in image_keys:
                 errors.append(f"{where}: image key `{key}` is already {image_keys[key]}")
             else:
                 image_keys[key] = ident
@@ -253,7 +255,7 @@ def load_from_text(text, strict_ratchets=False):
             errors.append(f"knob {r.get('id')}: `carries` names knob {c}, which is no row")
     if strict_ratchets:
         errors += ratchet_problems(rows)
-    return rows, errors
+    return reg, errors
 
 
 def catalog_problems(r, where):
@@ -272,7 +274,7 @@ def catalog_problems(r, where):
     if cls not in CLASSES:
         out.append(f"{where}: `class` must be one of {list(CLASSES)}")
     if (cls == "retired") != bool(r.get("retired")):
-        out.append(f"{where}: `class = \"retired\"` goes with a `retired` reason, and only with one")
+        out.append(f"{where}: `class = \"retired\"` goes with an `instead` reason, and only with one")
     if (cls == "carrier") != bool(r.get("carries")):
         out.append(f"{where}: a carrier names what it carries (`carries`), and only a carrier does")
     if r.get("type"):
@@ -409,6 +411,7 @@ def render(rows):
         only = r.get("only_on")
         out.append(f"        only_on: {'Some((' + q(only) + ', ' + q(r['only_on_why']) + '))' if only else 'None'},")
         out += render_catalog(r)
+        out += render_retired_spellings(r.get("retired_entries", []), "        ")
         out.append("    },")
         if kconfig != "CONFIG_" + env and not r.get("retired"):
             pairs.append((env, kconfig))
@@ -490,6 +493,106 @@ def render_catalog(r):
     out.append(f"        values: crate::KnobValues::{values_kind(r)},")
     out.append(f"        surface: {rs_opt(surface(r))},")
     return out
+
+
+def render_retired_spellings(entries, indent):
+    """`retired_spellings: &[...]` (RFC-0140 D4): every spelling the row
+    replaced, by road, with the factor `nros fix` multiplies by."""
+    if not entries:
+        return [f"{indent}retired_spellings: &[],"]
+    out = [f"{indent}retired_spellings: &["]
+    for e in entries:
+        out.append(f"{indent}    crate::RetiredSpelling {{")
+        out.append(f"{indent}        road: crate::RetiredRoad::{e['road'].capitalize()},")
+        out.append(f"{indent}        spelling: {rs_str(e['name'])},")
+        out.append(f"{indent}        factor: {e['factor']},")
+        out.append(f"{indent}        from_unit: {rs_opt(e['from_unit'])},")
+        out.append(f"{indent}        instead: {rs_opt(e['instead'])},")
+        out.append(f"{indent}    }},")
+    out.append(f"{indent}],")
+    return out
+
+
+def render_rows(reg):
+    """`config_rows.rs`: the statement and env rows (RFC-0140 D1), for the
+    loader's in-memory catalog. Nothing reads a variable through this table
+    yet (phase-581 W10 adds the reader); it is the catalog's source."""
+    out = [
+        "// @generated by scripts/gen-knob-registry.py from knobs.toml — do not edit.",
+        "// Edit knobs.toml and re-run the script; `just check knob-registry` holds the two equal.",
+        "",
+        "use crate::{EnvRow, StatementRow};",
+        "",
+        "/// The `system.toml` selections (RFC-0140 D1), sorted by key.",
+        "pub const STATEMENTS: &[StatementRow] = &[",
+    ]
+    for s in reg["statement"]:
+        out.append("    StatementRow {")
+        out.append(f"        key: {q(s['key'])},")
+        out.append(f"        carrier: {rs_opt(s['carrier'])},")
+        out.append(f"        kconfig: {rs_opt(s['kconfig'])},")
+        out.append(f"        help: {rs_opt(s['help'])},")
+        out += render_retired_spellings(s["retired_entries"], "        ")
+        out.append("    },")
+    out.append("];")
+    out.append("")
+    out.append("/// The run-time variables (RFC-0140 Part B), sorted by name.")
+    out.append("pub const ENV_ROWS: &[EnvRow] = &[")
+    for e in reg["env"]:
+        out.append("    EnvRow {")
+        out.append(f"        name: {q(e['name'])},")
+        out.append(f"        key: {rs_opt(e['key'])},")
+        out.append(f"        foreign: {rs_opt(e['foreign'])},")
+        out.append(f"        pattern: {'true' if e['pattern'] else 'false'},")
+        out.append(f"        disposition: crate::EnvDisposition::{e['disposition'].capitalize()},")
+        out.append(f"        stated: {rs_opt(e['stated'])},")
+        out.append(f"        parse: {rs_opt(e['parse'])},")
+        out.append(f"        instead: {rs_opt(e['instead'])},")
+        out.append(f"        refuse_if: {rs_opt(e['refuse_if'])},")
+        out.append(f"        help: {rs_opt(e['help'])},")
+        out += render_retired_spellings(e["retired_entries"], "        ")
+        out.append("    },")
+    out.append("];")
+    out.append("")
+    return "\n".join(out)
+
+
+def retired_env_pairs(reg):
+    """(retired, replacement) for every MECHANICAL `run:` retirement of an env
+    row: the pairs the hosted reader refuses today. A manual entry (`instead`)
+    has no replacement name, and its refusal is phase-581 W13's."""
+    return [(x["name"], e["name"]) for e in reg["env"] for x in e["retired_entries"]
+            if x["road"] == "run" and x["instead"] is None]
+
+
+def render_retired_env(reg):
+    """`packages/api/nros/src/retired_env.rs`, the `RETIRED_ENV_VARS` view."""
+    out = [
+        "// @generated by scripts/gen-knob-registry.py from",
+        "// packages/tooling/nros-zephyr-build/knobs.toml -- do not edit: each pair is",
+        "// a `run:` entry in an `[[env]]` row's `retired` list, and the gate",
+        "// `just check knob-registry` holds this file equal to the render.",
+        "",
+        "//! The RETIRED runtime env aliases and their canonical names.",
+        "//!",
+        "//! ONE table, read by the hosted env reader (`crate::env`). It was shared by",
+        "//! two readers until they were merged.",
+        "//! A set retired name is [`BootConfigError::RetiredEnvVar`], never a silent",
+        "//! skip: an ignored `ZENOH_LOCATOR` dials the backend's DEFAULT router, which",
+        "//! reads as \"no delivery\" rather than as a configuration mistake.",
+        "//!",
+        "//! The gate `check-retired-runtime-aliases` refuses any other tracked reader",
+        "//! of these names, so this file is the one place they are spelled in code.",
+        "//!",
+        "//! [`BootConfigError::RetiredEnvVar`]: nros_node::BootConfigError::RetiredEnvVar",
+        "",
+        "/// `(retired, replacement)` pairs, in the order the readers check them.",
+        "pub const RETIRED_ENV_VARS: &[(&str, &str)] = &[",
+    ]
+    out += [f"    ({q(a)}, {q(b)})," for a, b in retired_env_pairs(reg)]
+    out.append("];")
+    out.append("")
+    return "\n".join(out)
 
 
 def render_cmake(rows):
@@ -682,28 +785,72 @@ def kconfig_problems(text, rows):
     return problems
 
 
+# A registry's two header lines, for the self-test's fixtures.
+HDR = 'owner = "core"\n\n[owners]\na = "x"\nb = "y"\n\n'
+
+
 def self_test():
     import tempfile
-    bad = (
-        '[[knob]]\nid = "B"\nlegacy = ["ZPICO_A"]\n\n'
-        '[[knob]]\nid = "A"\nkconfig = "NROS_A"\nlegacy = ["ZPICO_A"]\ntoml = "x"\n'
+    bad = HDR + (
+        '[[knob]]\nkey = "b.x"\nretired = [{ spelling = "env:ZPICO_A" }]\n\n'
+        '[[knob]]\nkey = "a.x"\ntransitional = { kconfig = "NROS_A_X" }\n'
+        'retired = [{ spelling = "env:ZPICO_A" }]\ntoml = "x"\n'
     )
     with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as fh:
         fh.write(bad)
     _, errs = load(Path(fh.name))
     Path(fh.name).unlink()
     text = "\n".join(errs)
-    for want in ("already a spelling", "only where it differs", "`<group>.<name>`", "sorted by id"):
+    for want in ("spelled by both", "is what `key` derives -- delete it",
+                 "`toml` is derived from `key`, never stated", "sorted by id"):
         assert want in text, f"selftest: no `{want}` error in {errs!r}"
+    # phase-581 W1 (RFC-0140 D4/D8) -- the retired entries, the env rows and
+    # the statement each env row is compared with. NEGATIVE controls:
+    _, errs = load_from_text(HDR + '[[knob]]\nkey = "a.x"\nscope = "image"\nclass = "internal"\n'
+                             'retired = [{ spelling = "env:A_OLD", factor = 8, instead = "no" },'
+                             ' { spelling = "nope:A" }, { spelling = "env:B", factor = 0 }]\n'
+                             'legacy = ["X"]\n')
+    text = "\n".join(errs)
+    for want in ("states both `instead` and `factor`", "must start with one of",
+                 "`factor` is a positive integer", "`legacy` became `retired"):
+        assert want in text, f"selftest: no `{want}` error in {errs!r}"
+    _, errs = load_from_text(HDR + '[[statement]]\nkey = "domain_id"\n\n'
+                             '[[env]]\nname = "ROS_DOMAIN_ID"\nforeign = "ros2"\n'
+                             'disposition = "respect"\nstated = "domian_id"\n\n'
+                             '[[env]]\nkey = "a.x"\ndisposition = "respect"\n'
+                             'transitional = { name = "NROS_A_X" }\n')
+    text = "\n".join(errs)
+    for want in ("`stated = \"domian_id\"` is neither a statement key nor a knob key",
+                 "transitional `name = \"NROS_A_X\"` is what `key` derives", "sorted by variable name"):
+        assert want in text, f"selftest: no `{want}` error in {errs!r}"
+    _, errs = load_from_text(HDR + '[[knob]]\nkey = "nowhere.x"\nscope = "image"\nclass = "internal"\n')
+    assert any("owner word `nowhere` is not in [owners]" in e for e in errs), errs
+    good = HDR + ('[[knob]]\nkey = "a.y"\nscope = "image"\nclass = "internal"\n'
+                  'retired = [{ spelling = "env:NROS_A_Y_KB", factor = 1024, from_unit = "KiB" }]\n\n'
+                  '[[statement]]\nkey = "locator"\ncarrier = true\n\n'
+                  '[[env]]\nkey = "locator"\ndisposition = "respect"\nstated = "locator"\n'
+                  'retired = [{ spelling = "run:OLD_LOCATOR" }, { spelling = "run:GONE", instead = "x" }]\n')
+    reg, errs = load_registry(good)
+    assert not errs, errs
+    assert retired_env_pairs(reg) == [("OLD_LOCATOR", "NROS_LOCATOR")], retired_env_pairs(reg)
+    assert reg["knob"][0]["retired_entries"][0]["factor"] == 1024
+    rs = render(reg["knob"])
+    assert ("retired_spellings: &[\n            crate::RetiredSpelling {\n"
+            "                road: crate::RetiredRoad::Env,\n"
+            '                spelling: "NROS_A_Y_KB",\n                factor: 1024,\n'
+            '                from_unit: Some("KiB"),\n') in rs, rs
+    assert 'carrier: Some("NROS_ENTRY_LOCATOR"),' in render_rows(reg)
+    assert '    ("OLD_LOCATOR", "NROS_LOCATOR"),' in render_retired_env(reg)
     # phase-484 W8 -- the image spelling: the board's `toml` key, else the id
     # split at its first `_`; two rows on one key, or `names` off an int row,
     # are refused.
     assert image_key({"id": "ZEPHYR_HEAP_SIZE"}) == "zephyr.heap_size"
     assert image_key({"id": "MAX_ARRAY_LEN", "toml": "params.max_array_len"}) == "params.max_array_len"
-    _, errs = load_from_text(
-        '[[knob]]\nid = "A_B"\ntoml = "zenoh.x"\n\n'
-        '[[knob]]\nid = "ZENOH_X"\ntype = "bool"\nnames = ["off"]\n')
+    _, errs = load_from_text(HDR +
+        '[[knob]]\nkey = "zenoh.x"\ntransitional = { id = "A_B", kconfig = "NROS_A_B" }\nladder = true\n\n'
+        '[[knob]]\nkey = "zenoh.x"\ntype = "bool"\nnames = ["off"]\n')
     text = "\n".join(errs)
+    assert "`zenoh.x` is spelled by both knob #1 zenoh.x and knob #2 zenoh.x" in text, errs
     assert "image key `zenoh.x` is already A_B" in text, errs
     assert "`names` is a non-empty list" in text, errs
     rs = render([{"id": "LOG_X", "type": "int", "kconfig_attrs": ["range 0 6", "default 0"], "names": ["off"]}])
@@ -746,7 +893,7 @@ def self_test():
     assert any("NROS_Y` (knob Y) is defined OUTSIDE" in p for p in kconfig_problems(stray, kc_rows))
     unmarked = good.replace(KCONFIG_END, "")
     assert kconfig_problems(unmarked, kc_rows) and splice_kconfig(unmarked, kc_rows) is None
-    _, errs = load_from_text('[[knob]]\nid = "A"\nkconfig_attrs = ["default 1"]\n')
+    _, errs = load_from_text(HDR + '[[knob]]\nkey = "a.b"\nkconfig_attrs = ["default 1"]\n')
     assert any("without `type`" in e for e in errs), errs
     # phase-569 W2 -- the catalog. A conditional Kconfig default is kept WHOLE,
     # continued lines joined and comments skipped (ZENOH_GRAPH_DISCOVERY's shape).
@@ -765,14 +912,14 @@ def self_test():
     assert 'surface: Some("[image.<id>.knobs.zenoh] gd"),' in rs, rs
     # NEGATIVE controls: an authored derived field, a default that can run out,
     # a carrier with nothing carried, a bad scope.
-    _, errs = load_from_text('[[knob]]\nid = "A_B"\nscope = "image"\nclass = "public"\n'
+    _, errs = load_from_text(HDR + '[[knob]]\nkey = "a.b"\nscope = "image"\nclass = "public"\n'
                              'type = "int"\nkconfig_attrs = ["default 1"]\ndefault = 2\n')
     assert any("`default` is derived, never authored -- it comes from its Kconfig definition" in e
                for e in errs), errs
-    _, errs = load_from_text('[[knob]]\nid = "A_B"\nscope = "image"\nclass = "public"\n'
+    _, errs = load_from_text(HDR + '[[knob]]\nkey = "a.b"\nscope = "image"\nclass = "public"\n'
                              'type = "int"\nkconfig_attrs = ["default 1 if X"]\n')
     assert any("last Kconfig `default` is conditional" in e for e in errs), errs
-    _, errs = load_from_text('[[knob]]\nid = "A_B"\nscope = "room"\nclass = "carrier"\n')
+    _, errs = load_from_text(HDR + '[[knob]]\nkey = "a.b"\nscope = "room"\nclass = "carrier"\n')
     assert any("`scope` must be" in e for e in errs) and any("names what it carries" in e for e in errs), errs
     assert rs_str('a "b"\\c\nd') == '"a \\"b\\"\\\\c\\nd"', rs_str('a "b"\\c\nd')
     rows = [{"id": "A_B", "scope": "image", "class": "public", "help": "h", "toml": "a.b"},
@@ -801,21 +948,23 @@ def self_test():
     rs = render(ret)
     assert 'retired: Some("no task left"),' in rs, rs
     assert "ZENOH_GONE" not in render_kconfig_section(ret), "selftest: a retired knob got a symbol"
-    _, errs = load_from_text('[[knob]]\nid = "ZENOH_GONE"\nretired = "x"\ntype = "int"\n')
+    _, errs = load_from_text(HDR + '[[knob]]\nkey = "zenoh.gone"\nclass = "retired"\ninstead = "x"\ntype = "int"\n')
     assert any("has no Kconfig definition" in e for e in errs), errs
-    _, errs = load_from_text('[[knob]]\nid = "ZENOH_GONE"\nretired = "say \\"x\\""\n')
+    _, errs = load_from_text(HDR + '[[knob]]\nkey = "zenoh.gone"\nclass = "retired"\ninstead = "say \\"x\\""\n')
     assert any("cannot hold" in e for e in errs), errs
 
 
 def main():
     self_test()
-    rows, errors = load()
+    reg, errors = load_registry(SRC.read_text(), strict_ratchets=True)
+    rows = reg["knob"]
     if errors:
         sys.stderr.write("gen-knob-registry: FAILED — knobs.toml:\n")
         for e in errors:
             sys.stderr.write(f"    {e}\n")
         return 1
-    outputs = [(OUT, render(rows)), (CMAKE_OUT, render_cmake(rows))]
+    outputs = [(OUT, render(rows)), (CMAKE_OUT, render_cmake(rows)),
+               (ROWS_OUT, render_rows(reg)), (RETIRED_ENV_OUT, render_retired_env(reg))]
     if "--check-kconfig" in sys.argv:
         problems = kconfig_problems(KCONFIG_OUT.read_text(), rows)
         if (PROMPTS_OUT.read_text() if PROMPTS_OUT.exists() else "") != render_prompts(rows):
@@ -841,7 +990,8 @@ def main():
             )
         if stale:
             return 1
-        print(f"knob-registry: OK — {len(rows)} knob(s), generated tables current")
+        print(f"knob-registry: OK — {len(rows)} knob(s), {len(reg['statement'])} statement(s), "
+              f"{len(reg['env'])} env row(s), generated tables current")
         return 0
     for p, text in outputs:
         p.write_text(text)

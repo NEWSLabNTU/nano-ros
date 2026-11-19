@@ -1538,6 +1538,35 @@ fn provider_roots_for_sync(
     }
 }
 
+/// The provider scan sync ran, for a reader after it (phase-581 W1: the
+/// configuration catalog). Reads `<ws>/build/nros/providers.json` when it was
+/// written for these roots, else scans them: the same roots and the same
+/// result, so the catalog sees exactly the packages sync indexed.
+///
+/// # Errors
+///
+/// An unreadable `nros.toml`, a bad `--base-paths` entry, or a failed scan.
+pub(crate) fn sync_provider_scan(
+    ws_root: &Path,
+    base_paths: &[PathBuf],
+    nano_ros_root: Option<&Path>,
+) -> Result<provider_scan::ScanResult> {
+    let search_path = provider_roots_for_sync(ws_root, base_paths, nano_ros_root)?;
+    let roots = search_path.paths();
+    if let Ok(idx) = provider_scan::ProviderIndex::read(&provider_index_path(ws_root))
+        && idx.is_valid_for(&roots)
+    {
+        return Ok(provider_scan::ScanResult {
+            providers: idx.providers,
+            errors: Vec::new(),
+            inputs: idx.inputs,
+            ..Default::default()
+        }
+        .with_origins(&search_path));
+    }
+    provider_scan::scan_search_path(&search_path)
+}
+
 /// Refresh `<ws>/build/nros/providers.json` over an explicit root list. Warns
 /// rather than failing — see the call site in `run_sync`.
 fn write_provider_index_with(

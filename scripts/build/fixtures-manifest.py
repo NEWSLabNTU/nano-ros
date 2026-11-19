@@ -849,8 +849,9 @@ def west_overrides(entry):
         return []
     if not isinstance(table, dict):
         _fail(entry, "west_overrides must be a table { <KNOB_ID> = \"<value>\" }")
-    with open(KNOB_REGISTRY, "rb") as f:
-        rows = tomllib.load(f).get("knob", [])
+    import knob_registry  # scripts/lib: the one reader of the registry
+
+    rows = knob_registry.knob_rows(KNOB_REGISTRY)
     by_id = {r["id"]: r for r in rows}
     out = []
     for knob, value in table.items():

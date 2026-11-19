@@ -154,6 +154,11 @@ pub struct KnobRow {
     /// (`[image.<id>.knobs.<group>] <name>`), DERIVED. `None` for every other
     /// class: a carrier's env or Kconfig spelling is never user surface.
     pub surface: Option<&'static str>,
+    /// Every spelling the row replaced, by road, with the factor a value is
+    /// converted by (RFC-0140 D4, phase-581 W1): the `retired` list of
+    /// `knobs.toml`, and the input of `nros fix`. [`Self::legacy`] is its
+    /// `env:` road, which the ladder refuses.
+    pub retired_spellings: &'static [RetiredSpelling],
 }
 
 /// What a knob's value describes (phase-569 W2, RFC-0133).
@@ -238,6 +243,123 @@ pub struct KconfigKnob {
     pub depends: &'static [&'static str],
 }
 
+/// The road a retired spelling was written on (RFC-0140 D4): `toml:`, `env:`,
+/// `kconfig:`, `cmake:` or `run:` in `knobs.toml`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum RetiredRoad {
+    /// A key in `system.toml` or a platform/board descriptor.
+    Toml,
+    /// A variable of the BUILD's environment.
+    Env,
+    /// A Kconfig symbol (`CONFIG_...`) in a conf file or on the command line.
+    Kconfig,
+    /// A cmake `-D` cache entry.
+    Cmake,
+    /// A variable of a RUNNING process's environment.
+    Run,
+}
+
+impl RetiredRoad {
+    /// Every road, in the order `knobs.toml` documents them.
+    pub const ALL: [RetiredRoad; 5] = [
+        RetiredRoad::Toml,
+        RetiredRoad::Env,
+        RetiredRoad::Kconfig,
+        RetiredRoad::Cmake,
+        RetiredRoad::Run,
+    ];
+
+    /// The prefix `knobs.toml` writes before the `:` (`env`).
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            RetiredRoad::Toml => "toml",
+            RetiredRoad::Env => "env",
+            RetiredRoad::Kconfig => "kconfig",
+            RetiredRoad::Cmake => "cmake",
+            RetiredRoad::Run => "run",
+        }
+    }
+
+    /// The road a `knobs.toml` prefix names.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<RetiredRoad> {
+        RetiredRoad::ALL.into_iter().find(|r| r.as_str() == s)
+    }
+}
+
+/// One spelling a registry row replaced (RFC-0140 D4), kept for good so a
+/// build or a process that still uses it is refused rather than ignored.
+///
+/// The entry is the input of `nros fix`: one that states [`Self::instead`] is
+/// MANUAL (the text says what to do, no edit is offered); any other is a
+/// mechanical rename to the row's spelling on the same road, with the value
+/// multiplied by [`Self::factor`]. The generator refuses an entry stating both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetiredSpelling {
+    pub road: RetiredRoad,
+    /// The old name on that road, without the road prefix.
+    pub spelling: &'static str,
+    /// new value = old value x factor; 1 for a pure rename.
+    pub factor: u32,
+    /// The old unit, for the refusal's text only (`KiB`).
+    pub from_unit: Option<&'static str>,
+    /// Set on a manual retirement: what to do instead.
+    pub instead: Option<&'static str>,
+}
+
+/// A `system.toml` selection (RFC-0140 D1): `domain_id`, `locator`, ...
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatementRow {
+    /// The key a project writes under `[system]` / `[image.<id>]`.
+    pub key: &'static str,
+    /// The build carrier, `NROS_ENTRY_<KEY>`, where the build carries it.
+    pub carrier: Option<&'static str>,
+    /// The Kconfig symbol (with `CONFIG_`) where the Zephyr module consumes it.
+    pub kconfig: Option<&'static str>,
+    pub help: Option<&'static str>,
+    pub retired_spellings: &'static [RetiredSpelling],
+}
+
+/// What a running process does with a set variable (RFC-0140 D9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnvDisposition {
+    /// Read: the value overrides the statement, warned once on a mismatch.
+    Respect,
+    /// Not read; a notice says so.
+    Ignore,
+    /// The process refuses to start.
+    Refuse,
+    /// Registered and read, with no statement rule (tooling and test controls).
+    Listed,
+}
+
+/// A variable a running process reads (RFC-0140 D1 `env` row, Part B). The
+/// disposition is the ruled one; the readers follow it as phase-581 W10 to
+/// W15 land.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnvRow {
+    /// The variable (`<N>` marks the variable part of a patterned one).
+    pub name: &'static str,
+    /// The registry key of a nano-ros variable (`entry.spin_ms`); `None` for
+    /// a foreign or patterned one.
+    pub key: Option<&'static str>,
+    /// The project that defines a foreign variable (`ros2`, `zenoh`, ...).
+    pub foreign: Option<&'static str>,
+    pub pattern: bool,
+    pub disposition: EnvDisposition,
+    /// The statement or knob key the value is compared with.
+    pub stated: Option<&'static str>,
+    /// `str`, `int` or `bool`.
+    pub parse: Option<&'static str>,
+    /// For a refused variable: what to do instead.
+    pub instead: Option<&'static str>,
+    /// For a conditionally refused variable: the condition.
+    pub refuse_if: Option<&'static str>,
+    pub help: Option<&'static str>,
+    pub retired_spellings: &'static [RetiredSpelling],
+}
+
 // Generated, so rustfmt leaves it as the generator wrote it and `--check` stays exact.
 #[rustfmt::skip]
 mod knob_registry;
@@ -245,6 +367,10 @@ pub use knob_registry::{
     IMAGE_ENV_RETIRED_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_KNOB_TEMPLATE,
     RETIRED_TEMPLATE,
 };
+// Generated beside it: the statement and env rows (phase-581 W1).
+#[rustfmt::skip]
+mod config_rows;
+pub use config_rows::{ENV_ROWS, STATEMENTS};
 
 /// The Kconfig knob whose symbol is `symbol` (with or without `CONFIG_`).
 #[must_use]
@@ -1183,5 +1309,62 @@ mod tests {
         let cfg = "# CONFIG_NROS_RMW_XRCE is not set\n\
                    CONFIG_NROS_XRCE_AGENT_ADDR=\"10.0.0.1\"\n";
         assert!(bake_directives(cfg).is_empty());
+    }
+
+    // phase-581 W1 (RFC-0140 D4) — `legacy` is the `env:` road of the row's
+    // retired spellings, so the ladder's refusal table and the catalog's
+    // `retired_spelling` read one list.
+    #[test]
+    fn legacy_is_the_env_road_of_retired_spellings() {
+        for row in KNOBS {
+            let env: Vec<&str> = row
+                .retired_spellings
+                .iter()
+                .filter(|s| s.road == RetiredRoad::Env)
+                .map(|s| s.spelling)
+                .collect();
+            assert_eq!(env, row.legacy, "knob {}", row.id);
+        }
+        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 32);
+    }
+
+    #[test]
+    fn a_retired_knob_entry_carries_the_rows_reason() {
+        for row in KNOBS.iter().filter(|r| r.class == KnobClass::Retired) {
+            for s in row.retired_spellings {
+                assert_eq!(s.instead, row.retired, "knob {}", row.id);
+                assert_eq!(s.factor, 1, "a retired knob converts nothing");
+            }
+        }
+    }
+
+    #[test]
+    fn retired_roads_round_trip() {
+        for road in RetiredRoad::ALL {
+            assert_eq!(RetiredRoad::parse(road.as_str()), Some(road));
+        }
+        assert_eq!(RetiredRoad::parse("nope"), None);
+    }
+
+    #[test]
+    fn env_rows_name_their_statements() {
+        let statements: Vec<&str> = STATEMENTS.iter().map(|s| s.key).collect();
+        for e in ENV_ROWS {
+            if let Some(stated) = e.stated {
+                assert!(
+                    statements.contains(&stated) || KNOBS.iter().any(|k| k.image_key == stated),
+                    "env {} states `{stated}`, neither a statement nor a knob",
+                    e.name
+                );
+            }
+        }
+        let locator = ENV_ROWS.iter().find(|e| e.name == "NROS_LOCATOR").unwrap();
+        assert_eq!(locator.stated, Some("locator"));
+        assert!(
+            locator
+                .retired_spellings
+                .iter()
+                .any(|s| s.road == RetiredRoad::Run)
+        );
     }
 }

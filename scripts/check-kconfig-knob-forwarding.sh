@@ -144,12 +144,10 @@ INJECTED_READERS=(
 REGISTRY=packages/tooling/nros-zephyr-build/knobs.toml
 LADDER_SPELLINGS="$(python3 - "$REGISTRY" <<'PY'
 import sys
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
-with open(sys.argv[1], "rb") as fh:
-    for r in tomllib.load(fh).get("knob", []):
+sys.path.insert(0, "scripts/lib")
+import knob_registry  # the one reader of the registry
+from pathlib import Path
+for r in knob_registry.knob_rows(Path(sys.argv[1])):
         if r.get("toml"):
             print("NROS_" + r["id"])
             for l in r.get("legacy", []):
@@ -166,12 +164,10 @@ PY
 # same rule `check-knob-single-reader` applies in the other direction.
 ROW_SPELLINGS="$(python3 - "$REGISTRY" <<'PY'
 import sys
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
-with open(sys.argv[1], "rb") as fh:
-    for r in tomllib.load(fh).get("knob", []):
+sys.path.insert(0, "scripts/lib")
+import knob_registry  # the one reader of the registry
+from pathlib import Path
+for r in knob_registry.knob_rows(Path(sys.argv[1])):
         print(" ".join(["NROS_" + r["id"]] + list(r.get("legacy", []))))
 PY
 )" || { echo "[FAIL] cannot read $REGISTRY" >&2; exit 1; }

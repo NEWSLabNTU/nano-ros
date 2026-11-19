@@ -1,34 +1,98 @@
-# The knob registry: ONE row per build-time knob (RFC-0103 D2b, phase-484 W5a).
+# The configuration registry: ONE row per configuration name nano-ros defines
+# or reads (RFC-0103 D2b, phase-484 W5a; RFC-0140 D1-D4, phase-581 W1).
 #
-# Every other spelling of a knob is DERIVED from its row:
-#   env      NROS_<id>; `legacy` names are RETIRED (phase-484 W8): set, each
-#            stops the build naming NROS_<id>. Kept for good as the error
-#            table: an unlisted old name would be ignored, not refused.
-#   Kconfig  CONFIG_<kconfig>, default CONFIG_NROS_<id>. A row names `kconfig`
-#            only where today's symbol differs; no Kconfig symbol is renamed
-#            (phase-481 owns them). The zenoh pools read the RMW-agnostic
-#            DEMAND symbol, which is why the id is not the Kconfig stem.
-#   TOML     `[knobs.<toml>]` — the key a TYPED tenant of the platform/board
-#            ladder reads (nros-platform-config `Knobs`, via NROS_BOARD_TOML),
-#            where one exists. A BOARD's `[knobs]` takes every row, keyed
-#            as an image's `[image.<id>.knobs]` is; a row with no `toml`
-#            reaches the build in the image's rows (issue 2194).
+# Three row kinds share one namespace, so no spelled name is used twice:
+#   [[knob]]       a build-time value with the RFC-0049 ladder
+#                  (builtin < platform < board < image).
+#   [[statement]]  a system.toml selection (domain_id, locator, rmw, ...): no
+#                  ladder; its build carrier is NROS_ENTRY_<KEY>.
+#   [[env]]        a variable a running process reads, with its disposition
+#                  (respect | ignore | refuse | listed, RFC-0140 D9). This file
+#                  only DECLARES the disposition; the readers follow it as
+#                  phase-581 W10 to W15 land.
 #
-# The catalog (phase-569 W2, RFC-0133). Each row AUTHORS two judgements:
+# A knob row authors ONE name, `key` = `<owner>.<name>`, and every spelling
+# derives from it:
+#   id       the key upper-cased, `.` read as `_` (`zenoh.tx_batch` -> ZENOH_TX_BATCH)
+#   env      NROS_<id>
+#   Kconfig  CONFIG_NROS_<id>
+#   TOML     `[image.<id>.knobs.<owner>] <name>` in a project, and the same key
+#            under a board's `[knobs]`. `ladder = true` says the typed tenant of
+#            the platform/board ladder (nros-platform-config `Knobs`, via
+#            NROS_BOARD_TOML) reads it there too; a row without it reaches the
+#            build in the image's rows (issue 2194).
+# A row never states `id`, `toml` or `kconfig` (the generator refuses one).
+# Where a spelling in use TODAY is not the derived one, the row carries it in
+# `transitional = { id = ..., kconfig = ... }` until phases W5 to W7 rename it;
+# a transitional value equal to the derived one is refused.
+#
+# `retired` lists every spelling a row replaced, by road (`toml:`, `env:`,
+# `kconfig:`, `cmake:`, `run:`), kept for good: an unlisted old name would be
+# ignored, not refused. An entry is
+#   { spelling = "<road>:<name>", factor = <int>, from_unit = "<text>" }
+# (a mechanical rename, new = old x factor, factor absent = 1) or
+#   { spelling = "<road>:<name>", instead = "<text>" }
+# (manual), never both. A retired `env:` spelling stops the build naming the
+# row's env spelling. A row with `class = "retired"` is a knob that no longer
+# exists; its `instead` says what to do, and every spelling of it refuses.
+#
+# The catalog (phase-569 W2, RFC-0133). Each knob row AUTHORS two judgements:
 #   scope    image | board | platform: what the value describes.
 #   class    public | carrier | internal | retired. A carrier also names what
 #            it carries (`carries`).
 # and the generator DERIVES three, which a row never states (it refuses one
 # that does): the default (from the Kconfig definition, else the ladder's
-# builtin for `toml`), the values (the Kconfig type, range and names) and the
-# surface (a public row's `[image.<id>.knobs.<group>] <name>`). `prompt` and
-# `help` may stand on any row; `nros knob show` prints them.
+# builtin), the values (the Kconfig type, range and names) and the surface (a
+# public row's `[image.<id>.knobs.<owner>] <name>`). `prompt` and `help` may
+# stand on any row; `nros knob show` prints them.
 #
 # Edit here, then run `python3 scripts/gen-knob-registry.py`; the generated
-# Rust beside it is checked by `just check knob-registry`.
+# views are checked by `just check knob-registry`. Every script reads this
+# file through scripts/lib/knob_registry.py, never by hand.
+
+owner = "core"
+
+# The core owner words (RFC-0140 D2): the first segment of a core row's key.
+# Adding one is a breaking change, named in the changelog, because a
+# downstream package may already hold the word. Rows still under a package's
+# word (zenoh, xrce, cyclonedds, freertos, threadx, zephyr) move to that
+# package's `nros-knobs.toml` in phase-581 W2.
+[owners]
+action = "action servers and clients"
+arena = "the executor arena"
+bless = "test-expectation blessing"
+boot = "the boot sequence"
+bridge = "the domain bridge"
+capability = "image capability switches"
+census = "the entity census"
+console = "the console sink"
+declared = "facts the build declares to the code"
+entity = "the image's entity demand"
+entry = "the generated entry point"
+executor = "the executor and its callback slots"
+fault = "fault handling"
+graph = "the ROS graph cache"
+heap = "the heap"
+init = "initialisation"
+link = "the link layer"
+log = "logging"
+memory = "stacks and heaps, per image"
+monitor = "the runtime monitor"
+net = "the network stack"
+params = "parameters and their services"
+profile = "profiling"
+pubsub = "publishers and subscriptions"
+rmw = "the RMW layer, backend-independent"
+runtime = "the component runtime"
+service = "service servers and clients"
+session = "the middleware session"
+sntp = "SNTP time"
+subscriber = "subscriber buffers"
+trace = "tracing"
+violation = "contract violations"
 
 [[knob]]
-id = "ACTION_INBOX_BYTES"
+key = "action.inbox_bytes"
 scope = "image"
 class = "public"
 type = "int"
@@ -50,7 +114,7 @@ the service family's resolved size. Maps to NROS_ACTION_INBOX_BYTES.
 '''
 
 [[knob]]
-id = "ACTION_INBOX_DEPTH"
+key = "action.inbox_depth"
 scope = "image"
 class = "public"
 type = "int"
@@ -67,46 +131,41 @@ NROS_ACTION_INBOX_DEPTH.
 '''
 
 [[knob]]
-id = "CYCLONEDDS_HEAP_BUDGET_BYTES"
+key = "cyclonedds.heap_budget_bytes"
 scope = "image"
 class = "carrier"
 carries = "the sizing descriptor's [target] heap_budget_bytes"
 
 [[knob]]
-id = "CYCLONEDDS_MAX_DESCRIPTOR_TYPES"
+key = "cyclonedds.max_descriptor_types"
 scope = "image"
 class = "public"
 
 [[knob]]
-id = "CYCLONEDDS_MAX_FIELDS"
+key = "cyclonedds.max_fields"
 scope = "image"
 class = "public"
 
 [[knob]]
-id = "CYCLONEDDS_MAX_KINDS"
+key = "cyclonedds.max_kinds"
 scope = "image"
 class = "public"
 
 [[knob]]
-id = "CYCLONEDDS_MAX_NESTED_DEPTH"
+key = "cyclonedds.max_nested_depth"
 scope = "image"
 class = "public"
 
 [[knob]]
-id = "CYCLONEDDS_MAX_TYPES"
+key = "cyclonedds.max_types"
 scope = "image"
 class = "public"
 
 [[knob]]
-id = "ENTRY_SPIN_MS"
-scope = "image"
-class = "internal"
-
-[[knob]]
-id = "EXECUTOR_ACTION_CLIENTS"
+key = "executor.action_clients"
 scope = "image"
 class = "public"
-toml = "executor.action_clients"
+ladder = true
 type = "int"
 prompt = "Callback slots to budget at ActionClient size (-1 = derive)"
 kconfig_attrs = [
@@ -138,10 +197,10 @@ read the advisory, then set this.
 '''
 
 [[knob]]
-id = "EXECUTOR_ARENA_SIZE"
+key = "executor.arena_size"
 scope = "image"
 class = "public"
-toml = "executor.arena_size"
+ladder = true
 type = "int"
 prompt = "Executor arena size in bytes (0 = derive)"
 kconfig_attrs = [
@@ -173,10 +232,10 @@ registration that does not fit, not at link.
 '''
 
 [[knob]]
-id = "EXECUTOR_BACKING_U64S"
+key = "executor.backing_u64s"
 scope = "image"
 class = "public"
-toml = "executor.backing_u64s"
+ladder = true
 type = "int"
 prompt = "Executor backing reservation in 64-bit words (-1 = derive, 0 = none)"
 kconfig_attrs = [
@@ -233,7 +292,7 @@ the linker price them.
 '''
 
 [[knob]]
-id = "EXECUTOR_EXTRA_SESSIONS"
+key = "executor.extra_sessions"
 scope = "image"
 class = "public"
 type = "int"
@@ -256,7 +315,7 @@ backend that allows it); a full table is NodeError::NodeTableFull.
 '''
 
 [[knob]]
-id = "EXECUTOR_MAX_AGE_MONITORS"
+key = "executor.max_age_monitors"
 scope = "image"
 class = "public"
 type = "int"
@@ -274,10 +333,10 @@ terms, and a longer table is refused naming this knob.
 '''
 
 [[knob]]
-id = "EXECUTOR_MAX_CBS"
+key = "executor.max_cbs"
 scope = "image"
 class = "public"
-toml = "executor.max_cbs"
+ladder = true
 type = "int"
 prompt = "Maximum executor callback slots (-1 = derive)"
 kconfig_attrs = [
@@ -317,7 +376,7 @@ been built, and honouring it would have grown a native_sim listener's
 '''
 
 [[knob]]
-id = "EXECUTOR_MAX_MONITORS"
+key = "executor.max_monitors"
 scope = "image"
 class = "public"
 type = "int"
@@ -342,10 +401,10 @@ NROS_CPP_RET_FULL; a Rust entry fails to compile), never truncated.
 '''
 
 [[knob]]
-id = "EXECUTOR_MAX_NODES"
+key = "executor.max_nodes"
 scope = "image"
 class = "public"
-toml = "executor.max_nodes"
+ladder = true
 type = "int"
 prompt = "Maximum nodes per executor (-1 = derive)"
 kconfig_attrs = [
@@ -356,10 +415,10 @@ Nodes attachable to one executor (nros-node build.rs MAX_NODES).
 '''
 
 [[knob]]
-id = "EXECUTOR_MAX_SC"
+key = "executor.max_sc"
 scope = "image"
 class = "public"
-toml = "executor.max_sc"
+ladder = true
 type = "int"
 prompt = "Maximum scheduling-context slots per executor (-1 = derive)"
 kconfig_attrs = [
@@ -381,10 +440,10 @@ create_sched_context, which names this knob.
 '''
 
 [[knob]]
-id = "EXECUTOR_MAX_SHUTDOWN_CBS"
+key = "executor.max_shutdown_cbs"
 scope = "image"
 class = "public"
-toml = "executor.max_shutdown_cbs"
+ladder = true
 type = "int"
 prompt = "Shutdown-hook slots per phase"
 kconfig_attrs = [
@@ -405,7 +464,7 @@ dropped.
 '''
 
 [[knob]]
-id = "EXECUTOR_MAX_VIOLATIONS"
+key = "executor.max_violations"
 scope = "image"
 class = "public"
 type = "int"
@@ -429,7 +488,7 @@ the record. Raise it only when a burst must be kept whole.
 '''
 
 [[knob]]
-id = "EXECUTOR_RUNTIME_REMAPS"
+key = "executor.runtime_remaps"
 scope = "image"
 class = "public"
 type = "int"
@@ -453,13 +512,13 @@ NROS_CPP_RET_FULL); state a count here to restore runtime slots.
 '''
 
 [[knob]]
-id = "FREERTOS_APP_STACK_KB"
+key = "freertos.app_stack_kb"
 scope = "board"
 class = "carrier"
 carries = "memory.app_stack_bytes"
 
 [[knob]]
-id = "FREERTOS_HEAP_KB"
+key = "freertos.heap_kb"
 scope = "board"
 class = "carrier"
 carries = "memory.heap_bytes"
@@ -470,7 +529,7 @@ carries = "memory.heap_bytes"
 # which is on. Read by nros-board-freertos/build.rs and, on the cmake road,
 # cmake/platform/nano-ros-freertos.cmake.
 [[knob]]
-id = "FREERTOS_TASK_STACK_GUARD"
+key = "freertos.task_stack_guard"
 scope = "board"
 class = "public"
 help = '''
@@ -482,7 +541,7 @@ each task stack), off for one that does not.
 '''
 
 [[knob]]
-id = "GRAPH_MAX_ENTITIES"
+key = "graph.max_entities"
 scope = "image"
 class = "public"
 type = "int"
@@ -516,22 +575,24 @@ answer.
 '''
 
 [[knob]]
-id = "KEYEXPR_STRING_SIZE"
+key = "zenoh.limits.keyexpr_string_size"
+transitional = { id = "KEYEXPR_STRING_SIZE", kconfig = "NROS_KEYEXPR_STRING_SIZE" }
 scope = "image"
 class = "public"
-toml = "zenoh.limits.keyexpr_string_size"
+ladder = true
 
 [[knob]]
-id = "LET_BUFFER_SIZE"
+key = "runtime.let_buffer_size"
+transitional = { id = "LET_BUFFER_SIZE", kconfig = "NROS_LET_BUFFER_SIZE" }
 scope = "image"
 class = "public"
-toml = "runtime.let_buffer_size"
+ladder = true
 
 [[knob]]
-id = "LOG_BUFFER_SIZE"
+key = "log.buffer_size"
 scope = "image"
 class = "public"
-toml = "log.buffer_size"
+ladder = true
 type = "int"
 prompt = "nros-log per-call formatting buffer (bytes)"
 kconfig_attrs = [
@@ -549,10 +610,10 @@ deprecated buffer-size-<N> cargo features.
 '''
 
 [[knob]]
-id = "LOG_DYNAMIC_LOGGERS"
+key = "log.dynamic_loggers"
 scope = "image"
 class = "public"
-toml = "log.dynamic_loggers"
+ladder = true
 type = "int"
 prompt = "Loggers nros-log may create at run time"
 kconfig_attrs = [
@@ -576,10 +637,10 @@ this Kconfig value outranks it, and the environment outranks both.
 '''
 
 [[knob]]
-id = "LOG_EARLY_RECORDS"
+key = "log.early_records"
 scope = "image"
 class = "public"
-toml = "log.early_records"
+ladder = true
 type = "int"
 prompt = "nros-log records held for delivery"
 kconfig_attrs = [
@@ -597,10 +658,10 @@ Replaces the deprecated early-records-<N> cargo features.
 '''
 
 [[knob]]
-id = "LOG_MAX_LEVEL"
+key = "log.max_level"
 scope = "image"
 class = "public"
-toml = "log.max_level"
+ladder = true
 type = "int"
 # A project or board may also write the level's name; the index is the value.
 names = ["trace", "debug", "info", "warn", "error", "fatal", "off"]
@@ -622,10 +683,10 @@ beneath it. Replaces the retired max-level-* cargo features.
 '''
 
 [[knob]]
-id = "LOG_ROSOUT_RECORDS"
+key = "log.rosout_records"
 scope = "image"
 class = "public"
-toml = "log.rosout_records"
+ladder = true
 type = "int"
 prompt = "nros-log /rosout queue depth"
 kconfig_attrs = [
@@ -641,10 +702,11 @@ cargo features.
 '''
 
 [[knob]]
-id = "MAX_ARRAY_LEN"
+key = "params.max_array_len"
+transitional = { id = "MAX_ARRAY_LEN", kconfig = "NROS_MAX_ARRAY_LEN" }
 scope = "image"
 class = "public"
-toml = "params.max_array_len"
+ladder = true
 type = "int"
 prompt = "Array parameter capacity in elements (-1 = derive)"
 kconfig_attrs = [
@@ -662,10 +724,11 @@ declaration the crate default of 32 stands.
 '''
 
 [[knob]]
-id = "MAX_BYTE_ARRAY_LEN"
+key = "params.max_byte_array_len"
+transitional = { id = "MAX_BYTE_ARRAY_LEN", kconfig = "NROS_MAX_BYTE_ARRAY_LEN" }
 scope = "image"
 class = "public"
-toml = "params.max_byte_array_len"
+ladder = true
 type = "int"
 prompt = "Byte-array parameter capacity in bytes (-1 = derive)"
 kconfig_attrs = [
@@ -681,10 +744,11 @@ the crate default of 256 stands.
 '''
 
 [[knob]]
-id = "MAX_PARAMETERS"
+key = "params.max_parameters"
+transitional = { id = "MAX_PARAMETERS", kconfig = "NROS_MAX_PARAMETERS" }
 scope = "image"
 class = "public"
-toml = "params.max_parameters"
+ladder = true
 type = "int"
 prompt = "Maximum declared parameters per image (-1 = derive)"
 kconfig_attrs = [
@@ -705,10 +769,11 @@ crate default of 32. Stating a number here WINS.
 '''
 
 [[knob]]
-id = "MAX_PARAM_CONSTRAINTS_LEN"
+key = "params.max_param_constraints_len"
+transitional = { id = "MAX_PARAM_CONSTRAINTS_LEN", kconfig = "NROS_MAX_PARAM_CONSTRAINTS_LEN" }
 scope = "image"
 class = "public"
-toml = "params.max_param_constraints_len"
+ladder = true
 type = "int"
 prompt = "Parameter additional_constraints capacity in bytes"
 kconfig_attrs = [
@@ -733,10 +798,11 @@ naming this knob.
 '''
 
 [[knob]]
-id = "MAX_PARAM_DESCRIPTION_LEN"
+key = "params.max_param_description_len"
+transitional = { id = "MAX_PARAM_DESCRIPTION_LEN", kconfig = "NROS_MAX_PARAM_DESCRIPTION_LEN" }
 scope = "image"
 class = "public"
-toml = "params.max_param_description_len"
+ladder = true
 type = "int"
 prompt = "Parameter description capacity in bytes"
 kconfig_attrs = [
@@ -756,10 +822,11 @@ character boundary and logged once per parameter, naming this knob.
 '''
 
 [[knob]]
-id = "MAX_PARAM_NAME_LEN"
+key = "params.max_param_name_len"
+transitional = { id = "MAX_PARAM_NAME_LEN", kconfig = "NROS_MAX_PARAM_NAME_LEN" }
 scope = "image"
 class = "public"
-toml = "params.max_param_name_len"
+ladder = true
 type = "int"
 prompt = "Longest parameter name in bytes (-1 = derive)"
 kconfig_attrs = [
@@ -774,10 +841,11 @@ the crate default of 64 stands.
 '''
 
 [[knob]]
-id = "MAX_STRING_ARRAY_LEN"
+key = "params.max_string_array_len"
+transitional = { id = "MAX_STRING_ARRAY_LEN", kconfig = "NROS_MAX_STRING_ARRAY_LEN" }
 scope = "image"
 class = "public"
-toml = "params.max_string_array_len"
+ladder = true
 type = "int"
 prompt = "String-array parameter capacity in elements (-1 = derive)"
 kconfig_attrs = [
@@ -798,10 +866,11 @@ the crate default of 32 stands.
 '''
 
 [[knob]]
-id = "MAX_STRING_VALUE_LEN"
+key = "params.max_string_value_len"
+transitional = { id = "MAX_STRING_VALUE_LEN", kconfig = "NROS_MAX_STRING_VALUE_LEN" }
 scope = "image"
 class = "public"
-toml = "params.max_string_value_len"
+ladder = true
 type = "int"
 prompt = "String parameter capacity in bytes (-1 = derive)"
 kconfig_attrs = [
@@ -823,10 +892,11 @@ declaration the crate default of 256 stands.
 '''
 
 [[knob]]
-id = "PARAM_EVENTS_DEPTH"
+key = "params.param_events_depth"
+transitional = { id = "PARAM_EVENTS_DEPTH", kconfig = "NROS_PARAM_EVENTS_DEPTH" }
 scope = "image"
 class = "public"
-toml = "params.param_events_depth"
+ladder = true
 type = "int"
 prompt = "/parameter_events publisher history depth"
 kconfig_attrs = [
@@ -843,10 +913,11 @@ matches.
 '''
 
 [[knob]]
-id = "PARAM_SERVICE_BUFFER_SIZE"
+key = "executor.param_service_buffer_size"
+transitional = { id = "PARAM_SERVICE_BUFFER_SIZE", kconfig = "NROS_PARAM_SERVICE_BUFFER_SIZE" }
 scope = "image"
 class = "public"
-toml = "executor.param_service_buffer_size"
+ladder = true
 type = "int"
 prompt = "Parameter service request/reply buffer size (bytes) (-1 = derive)"
 kconfig_attrs = [
@@ -867,7 +938,7 @@ once per service.
 '''
 
 [[knob]]
-id = "PARAM_SERVICE_INBOX_BYTES"
+key = "param.service_inbox_bytes"
 scope = "image"
 class = "public"
 type = "int"
@@ -904,7 +975,7 @@ Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
 '''
 
 [[knob]]
-id = "PARAM_SERVICE_INBOX_DEPTH"
+key = "param.service_inbox_depth"
 scope = "image"
 class = "public"
 type = "int"
@@ -927,7 +998,7 @@ Must be >= 1. Maps to NROS_PARAM_SERVICE_INBOX_DEPTH.
 '''
 
 [[knob]]
-id = "PUBSUB_QOS_DEPTH"
+key = "pubsub.qos_depth"
 scope = "image"
 class = "public"
 type = "int"
@@ -961,7 +1032,7 @@ spin -- so raise it, or state the depths, rather than trimming it to fit.
 '''
 
 [[knob]]
-id = "RMW_LOCAL_QUERYABLE"
+key = "rmw.local_queryable"
 scope = "image"
 class = "public"
 type = "int"
@@ -998,25 +1069,25 @@ names no backend. Only the zenoh backend consumes it.
 '''
 
 [[knob]]
-id = "RMW_MAX_BACKENDS"
+key = "rmw.max_backends"
 scope = "image"
 class = "public"
-toml = "rmw.max_backends"
+ladder = true
 
 [[knob]]
-id = "RMW_MAX_NODES"
+key = "rmw.max_nodes"
 scope = "image"
 class = "public"
-toml = "rmw.max_nodes"
+ladder = true
 
 [[knob]]
-id = "RMW_MESSAGE_INFO_SLOTS"
+key = "rmw.message_info_slots"
 scope = "image"
 class = "public"
-toml = "rmw.message_info_slots"
+ladder = true
 
 [[knob]]
-id = "RMW_SUBSCRIBER_SLOTS"
+key = "rmw.subscriber_slots"
 scope = "image"
 class = "public"
 type = "int"
@@ -1048,37 +1119,37 @@ carrying either must state this knob.
 '''
 
 [[knob]]
-id = "RMW_SUBSCRIBER_SLOT_BYTES"
+key = "rmw.subscriber_slot_bytes"
 scope = "image"
 class = "public"
-toml = "rmw.subscriber_slot_bytes"
+ladder = true
 
 [[knob]]
-id = "RUNTIME_COMPONENT_SLOT_BYTES"
+key = "runtime.component_slot_bytes"
 scope = "image"
 class = "public"
-toml = "runtime.component_slot_bytes"
+ladder = true
 
 [[knob]]
-id = "RUNTIME_MAX_CELL_ENTITIES"
+key = "runtime.max_cell_entities"
 scope = "image"
 class = "public"
-toml = "runtime.max_cell_entities"
+ladder = true
 
 [[knob]]
-id = "RUNTIME_MAX_CLASS_INSTANCES"
+key = "runtime.max_class_instances"
 scope = "image"
 class = "public"
-toml = "runtime.max_class_instances"
+ladder = true
 
 [[knob]]
-id = "RUNTIME_MAX_COMPONENTS"
+key = "runtime.max_components"
 scope = "image"
 class = "public"
-toml = "runtime.max_components"
+ladder = true
 
 [[knob]]
-id = "SERVICE_INBOX_BYTES"
+key = "service.inbox_bytes"
 scope = "image"
 class = "public"
 type = "int"
@@ -1111,7 +1182,7 @@ plus a fixed header; the map (just mem-report) prices it exactly.
 '''
 
 [[knob]]
-id = "SERVICE_INBOX_DEPTH"
+key = "service.inbox_depth"
 scope = "image"
 class = "public"
 type = "int"
@@ -1129,48 +1200,54 @@ NROS_SERVICE_INBOX_DEPTH.
 '''
 
 [[knob]]
-id = "SERVICE_TIMEOUT_MS"
+key = "zenoh.limits.service_timeout_ms"
+transitional = { id = "SERVICE_TIMEOUT_MS", kconfig = "NROS_SERVICE_TIMEOUT_MS" }
 scope = "image"
 class = "public"
-toml = "zenoh.limits.service_timeout_ms"
+ladder = true
 
 [[knob]]
-id = "SMOLTCP_BUFFER_SIZE"
+key = "net.buffer_size"
+transitional = { id = "SMOLTCP_BUFFER_SIZE", kconfig = "NROS_SMOLTCP_BUFFER_SIZE" }
 scope = "board"
 class = "public"
-legacy = ["ZPICO_SMOLTCP_BUFFER_SIZE"]
-toml = "net.buffer_size"
+retired = [{ spelling = "env:ZPICO_SMOLTCP_BUFFER_SIZE" }]
+ladder = true
 
 [[knob]]
-id = "SMOLTCP_CONNECT_TIMEOUT_MS"
+key = "net.connect_timeout_ms"
+transitional = { id = "SMOLTCP_CONNECT_TIMEOUT_MS", kconfig = "NROS_SMOLTCP_CONNECT_TIMEOUT_MS" }
 scope = "board"
 class = "public"
-legacy = ["ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS"]
-toml = "net.connect_timeout_ms"
+retired = [{ spelling = "env:ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS" }]
+ladder = true
 
 [[knob]]
-id = "SMOLTCP_MAX_SOCKETS"
+key = "net.max_sockets"
+transitional = { id = "SMOLTCP_MAX_SOCKETS", kconfig = "NROS_SMOLTCP_MAX_SOCKETS" }
 scope = "board"
 class = "public"
-legacy = ["ZPICO_SMOLTCP_MAX_SOCKETS"]
-toml = "net.max_sockets"
+retired = [{ spelling = "env:ZPICO_SMOLTCP_MAX_SOCKETS" }]
+ladder = true
 
 [[knob]]
-id = "SMOLTCP_MAX_UDP_SOCKETS"
+key = "net.max_udp_sockets"
+transitional = { id = "SMOLTCP_MAX_UDP_SOCKETS", kconfig = "NROS_SMOLTCP_MAX_UDP_SOCKETS" }
 scope = "board"
 class = "public"
-legacy = ["ZPICO_SMOLTCP_MAX_UDP_SOCKETS"]
-toml = "net.max_udp_sockets"
+retired = [{ spelling = "env:ZPICO_SMOLTCP_MAX_UDP_SOCKETS" }]
+ladder = true
 
 [[knob]]
-id = "SMOLTCP_SOCKET_TIMEOUT_MS"
+key = "net.socket_timeout_ms"
+transitional = { id = "SMOLTCP_SOCKET_TIMEOUT_MS", kconfig = "NROS_SMOLTCP_SOCKET_TIMEOUT_MS" }
 scope = "board"
 class = "public"
-legacy = ["ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS"]
-toml = "net.socket_timeout_ms"
+retired = [{ spelling = "env:ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS" }]
+ladder = true
 
 [[knob]]
-id = "SUBSCRIBER_BUFFER_SIZE"
+key = "subscriber.buffer_size"
 scope = "image"
 class = "public"
 type = "int"
@@ -1206,10 +1283,11 @@ sample can exceed, which is a SILENT drop on the C++ arena path.
 '''
 
 [[knob]]
-id = "SUBSCRIPTION_BUFFER_SIZE"
+key = "executor.subscription_buffer_size"
+transitional = { id = "SUBSCRIPTION_BUFFER_SIZE", kconfig = "NROS_SUBSCRIPTION_BUFFER_SIZE" }
 scope = "image"
 class = "public"
-toml = "executor.subscription_buffer_size"
+ladder = true
 type = "int"
 prompt = "Per-subscription receive buffer size in bytes (-1 = derive)"
 kconfig_attrs = [
@@ -1242,7 +1320,7 @@ derive is the shape that cannot disagree.
 '''
 
 [[knob]]
-id = "THREADX_APP_STACK_KB"
+key = "threadx.app_stack_kb"
 scope = "board"
 class = "carrier"
 carries = "memory.app_stack_bytes"
@@ -1250,13 +1328,13 @@ carries = "memory.app_stack_bytes"
 # Issue 2624 -- the ThreadX byte pool (the port's whole allocator), in KiB.
 # Unset, the board build derives it: app stack + the RMW's measured working set.
 [[knob]]
-id = "THREADX_BYTE_POOL_KB"
+key = "threadx.byte_pool_kb"
 scope = "board"
 class = "carrier"
 carries = "memory.heap_bytes"
 
 [[knob]]
-id = "XRCE_BUFFER_SIZE"
+key = "xrce.buffer_size"
 scope = "image"
 class = "public"
 type = "int"
@@ -1281,20 +1359,20 @@ when only one of them needs the room.
 # sizing descriptor on every road, so neither has a Kconfig symbol; the image's
 # `[image.<id>.knobs.xrce]` rung states one where a person must.
 [[knob]]
-id = "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE"
+key = "xrce.builtin_service_request_buffer_size"
 scope = "image"
 class = "public"
 
 [[knob]]
-id = "XRCE_BUILTIN_SERVICE_SERVERS"
+key = "xrce.builtin_service_servers"
 scope = "image"
 class = "public"
 
 [[knob]]
-id = "XRCE_CUSTOM_TRANSPORT_MTU"
+key = "xrce.custom_transport_mtu"
 scope = "board"
 class = "public"
-toml = "xrce.custom_transport_mtu"
+ladder = true
 type = "int"
 prompt = "XRCE custom-transport MTU"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1316,7 +1394,7 @@ different frame budgets.
 '''
 
 [[knob]]
-id = "XRCE_MAX_SERVICE_CLIENTS"
+key = "xrce.max_service_clients"
 scope = "image"
 class = "public"
 type = "int"
@@ -1337,7 +1415,7 @@ both counts, the crate default of 4 stands. Stating a number wins.
 '''
 
 [[knob]]
-id = "XRCE_MAX_SERVICE_SERVERS"
+key = "xrce.max_service_servers"
 scope = "image"
 class = "public"
 type = "int"
@@ -1358,7 +1436,7 @@ derived answer here. Stating a number wins over both.
 '''
 
 [[knob]]
-id = "XRCE_MAX_SUBSCRIBERS"
+key = "xrce.max_subscribers"
 scope = "image"
 class = "public"
 type = "int"
@@ -1387,7 +1465,7 @@ image, allocated from the Zephyr heap in a single request.
 '''
 
 [[knob]]
-id = "XRCE_SERVICE_REPLY_BUFFER_SIZE"
+key = "xrce.service_reply_buffer_size"
 scope = "image"
 class = "public"
 type = "int"
@@ -1409,7 +1487,7 @@ says which. Stating a number wins.
 '''
 
 [[knob]]
-id = "XRCE_SERVICE_REQUEST_BUFFER_SIZE"
+key = "xrce.service_request_buffer_size"
 scope = "image"
 class = "public"
 type = "int"
@@ -1440,10 +1518,10 @@ fragments of the transport MTU) fails the build.
 '''
 
 [[knob]]
-id = "XRCE_STREAM_HISTORY"
+key = "xrce.stream_history"
 scope = "image"
 class = "public"
-toml = "xrce.stream_history"
+ladder = true
 type = "int"
 prompt = "Reliable stream history depth"
 kconfig_if = "NROS_RMW_XRCE"
@@ -1464,7 +1542,7 @@ started working. Raise or lower deliberately, not as a side effect.
 '''
 
 [[knob]]
-id = "XRCE_SUBSCRIBER_BUFFER_SIZE"
+key = "xrce.subscriber_buffer_size"
 scope = "image"
 class = "public"
 type = "int"
@@ -1494,7 +1572,7 @@ one of the two alone can make the pool LARGER.
 '''
 
 [[knob]]
-id = "XRCE_SUBSCRIBER_RING_DEPTH"
+key = "xrce.subscriber_ring_depth"
 scope = "image"
 class = "public"
 type = "int"
@@ -1532,7 +1610,7 @@ can drop it to 1 and save 31/32 of every subscriber slot.
 '''
 
 [[knob]]
-id = "XRCE_TRANSPORT_MTU"
+key = "xrce.transport_mtu"
 scope = "board"
 class = "public"
 type = "int"
@@ -1558,19 +1636,20 @@ would be 4096 — 2 x 4096 x 16 = 131,072 bytes of stream buffer, twice the whol
 '''
 
 [[knob]]
-id = "ZENOH_BATCH_MULTICAST_SIZE"
+key = "zenoh.wire.batch_multicast_size"
+transitional = { id = "ZENOH_BATCH_MULTICAST_SIZE", kconfig = "NROS_ZENOH_BATCH_MULTICAST_SIZE" }
 scope = "board"
 class = "public"
-legacy = ["ZPICO_BATCH_MULTICAST_SIZE"]
-toml = "zenoh.wire.batch_multicast_size"
+retired = [{ spelling = "env:ZPICO_BATCH_MULTICAST_SIZE" }]
+ladder = true
 
 [[knob]]
-id = "ZENOH_BATCH_UNICAST_SIZE"
+key = "zenoh.wire.batch_unicast_size"
+transitional = { id = "ZENOH_BATCH_UNICAST_SIZE", kconfig = "NROS_BATCH_UNICAST_SIZE" }
 scope = "board"
 class = "public"
-legacy = ["ZPICO_BATCH_UNICAST_SIZE"]
-kconfig = "NROS_BATCH_UNICAST_SIZE"
-toml = "zenoh.wire.batch_unicast_size"
+retired = [{ spelling = "env:ZPICO_BATCH_UNICAST_SIZE" }]
+ladder = true
 type = "int"
 prompt = "Maximum unicast batch size"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1583,24 +1662,26 @@ Maps to ZPICO_BATCH_UNICAST_SIZE.
 '''
 
 [[knob]]
-id = "ZENOH_CONNECT_FOREVER"
+key = "zenoh.limits.connect_forever"
+transitional = { id = "ZENOH_CONNECT_FOREVER", kconfig = "NROS_ZENOH_CONNECT_FOREVER" }
 scope = "image"
 class = "public"
-toml = "zenoh.limits.connect_forever"
+ladder = true
 
 [[knob]]
-id = "ZENOH_CONNECT_TIMEOUT_MS"
+key = "zenoh.limits.connect_timeout_ms"
+transitional = { id = "ZENOH_CONNECT_TIMEOUT_MS", kconfig = "NROS_ZENOH_CONNECT_TIMEOUT_MS" }
 scope = "image"
 class = "public"
-toml = "zenoh.limits.connect_timeout_ms"
+ladder = true
 
 [[knob]]
-id = "ZENOH_FRAG_MAX_SIZE"
+key = "zenoh.wire.frag_max_size"
+transitional = { id = "ZENOH_FRAG_MAX_SIZE", kconfig = "NROS_FRAG_MAX_SIZE" }
 scope = "board"
 class = "public"
-legacy = ["ZPICO_FRAG_MAX_SIZE"]
-kconfig = "NROS_FRAG_MAX_SIZE"
-toml = "zenoh.wire.frag_max_size"
+retired = [{ spelling = "env:ZPICO_FRAG_MAX_SIZE" }]
+ladder = true
 type = "int"
 prompt = "Maximum reassembled message size"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1613,12 +1694,12 @@ Maps to ZPICO_FRAG_MAX_SIZE.
 '''
 
 [[knob]]
-id = "ZENOH_GET_POLL_INTERVAL_MS"
+key = "zenoh.wire.get_poll_interval_ms"
+transitional = { id = "ZENOH_GET_POLL_INTERVAL_MS", kconfig = "NROS_GET_POLL_INTERVAL_MS" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_GET_POLL_INTERVAL_MS"]
-kconfig = "NROS_GET_POLL_INTERVAL_MS"
-toml = "zenoh.wire.get_poll_interval_ms"
+retired = [{ spelling = "env:ZPICO_GET_POLL_INTERVAL_MS" }]
+ladder = true
 type = "int"
 prompt = "Get poll interval (ms)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1631,12 +1712,12 @@ Maps to ZPICO_GET_POLL_INTERVAL_MS.
 '''
 
 [[knob]]
-id = "ZENOH_GET_REPLY_BUF_SIZE"
+key = "zenoh.wire.get_reply_buf_size"
+transitional = { id = "ZENOH_GET_REPLY_BUF_SIZE", kconfig = "NROS_GET_REPLY_BUF_SIZE" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_GET_REPLY_BUF_SIZE"]
-kconfig = "NROS_GET_REPLY_BUF_SIZE"
-toml = "zenoh.wire.get_reply_buf_size"
+retired = [{ spelling = "env:ZPICO_GET_REPLY_BUF_SIZE" }]
+ladder = true
 type = "int"
 prompt = "Get reply buffer size"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1649,11 +1730,11 @@ Maps to ZPICO_GET_REPLY_BUF_SIZE.
 '''
 
 [[knob]]
-id = "ZENOH_GRAPH_CACHE_SIZE"
+key = "zenoh.graph_cache_size"
+transitional = { kconfig = "NROS_GRAPH_CACHE_SIZE" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_GRAPH_CACHE_SIZE"]
-kconfig = "NROS_GRAPH_CACHE_SIZE"
+retired = [{ spelling = "env:ZPICO_GRAPH_CACHE_SIZE" }]
 type = "int"
 prompt = "Graph liveliness cache size"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1685,10 +1766,10 @@ drop count rather than as a wrong answer.
 '''
 
 [[knob]]
-id = "ZENOH_GRAPH_DISCOVERY"
+key = "zenoh.graph_discovery"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_GRAPH_DISCOVERY"]
+retired = [{ spelling = "env:ZPICO_GRAPH_DISCOVERY" }]
 type = "bool"
 prompt = "Keep a graph cache (liveliness subscriber on the whole domain)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1732,21 +1813,21 @@ compiles an IP link keeps the old default.
 '''
 
 [[knob]]
-id = "ZENOH_LEASE_PRIORITY"
+key = "zenoh.lease_priority"
 scope = "image"
 class = "retired"
-legacy = ["ZPICO_LEASE_TASK_PRIORITY"]
+retired = [{ spelling = "env:ZPICO_LEASE_TASK_PRIORITY" }]
 # RFC-0110 D2: zenoh-pico 1.10 runs the lease and keep-alive as futures on the
 # executor thread, so the lease task this knob prioritised does not exist. The
 # row stays as the error table; no Kconfig symbol is defined for it any more.
-retired = "zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread"
+instead = "zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread"
 
 [[knob]]
-id = "ZENOH_MAX_LARGE_SUBSCRIBERS"
+key = "zenoh.max_large_subscribers"
+transitional = { kconfig = "NROS_MAX_LARGE_SUBSCRIBERS" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_MAX_LARGE_SUBSCRIBERS"]
-kconfig = "NROS_MAX_LARGE_SUBSCRIBERS"
+retired = [{ spelling = "env:ZPICO_MAX_LARGE_SUBSCRIBERS" }]
 type = "int"
 prompt = "Subscribers served from the large payload class (-1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1777,11 +1858,11 @@ NROS_SUBSCRIBER_BUFFER_SIZE for the rest of that caveat.
 '''
 
 [[knob]]
-id = "ZENOH_MAX_LIVELINESS"
+key = "zenoh.max_liveliness"
+transitional = { kconfig = "NROS_MAX_LIVELINESS" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_MAX_LIVELINESS"]
-kconfig = "NROS_MAX_LIVELINESS"
+retired = [{ spelling = "env:ZPICO_MAX_LIVELINESS" }]
 type = "int"
 prompt = "Maximum concurrent liveliness tokens (-1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1809,11 +1890,11 @@ state it.
 '''
 
 [[knob]]
-id = "ZENOH_MAX_PENDING_GETS"
+key = "zenoh.max_pending_gets"
+transitional = { kconfig = "NROS_MAX_PENDING_GETS" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_MAX_PENDING_GETS"]
-kconfig = "NROS_MAX_PENDING_GETS"
+retired = [{ spelling = "env:ZPICO_MAX_PENDING_GETS" }]
 type = "int"
 prompt = "Maximum concurrent pending get operations"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1826,11 +1907,11 @@ Maps to ZPICO_MAX_PENDING_GETS.
 '''
 
 [[knob]]
-id = "ZENOH_MAX_PUBLISHERS"
+key = "zenoh.max_publishers"
+transitional = { kconfig = "NROS_MAX_PUBLISHERS" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_MAX_PUBLISHERS"]
-kconfig = "NROS_MAX_PUBLISHERS"
+retired = [{ spelling = "env:ZPICO_MAX_PUBLISHERS" }]
 type = "int"
 prompt = "Maximum concurrent publishers (-1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1857,11 +1938,11 @@ carrying either must state this knob.
 '''
 
 [[knob]]
-id = "ZENOH_MAX_QUERYABLES"
+key = "zenoh.max_queryables"
+transitional = { kconfig = "NROS_MAX_QUERYABLES" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_MAX_QUERYABLES"]
-kconfig = "NROS_MAX_QUERYABLES"
+retired = [{ spelling = "env:ZPICO_MAX_QUERYABLES" }]
 type = "int"
 prompt = "Maximum concurrent queryables (-1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1898,17 +1979,17 @@ Two nodes already need 12, which is over the historical default of 8.
 '''
 
 [[knob]]
-id = "ZENOH_MAX_SESSIONS"
+key = "zenoh.max_sessions"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_MAX_SESSIONS"]
+retired = [{ spelling = "env:ZPICO_MAX_SESSIONS" }]
 
 [[knob]]
-id = "ZENOH_MAX_SUBSCRIBERS"
+key = "zenoh.max_subscribers"
+transitional = { kconfig = "NROS_MAX_SUBSCRIBERS" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_MAX_SUBSCRIBERS"]
-kconfig = "NROS_MAX_SUBSCRIBERS"
+retired = [{ spelling = "env:ZPICO_MAX_SUBSCRIBERS" }]
 type = "int"
 prompt = "Maximum concurrent subscribers (-1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1935,22 +2016,22 @@ carrying either must state this knob.
 '''
 
 [[knob]]
-id = "ZENOH_MAX_TL_PUBLISHERS"
+key = "zenoh.max_tl_publishers"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_MAX_TL_PUBLISHERS"]
+retired = [{ spelling = "env:ZPICO_MAX_TL_PUBLISHERS" }]
 
 [[knob]]
-id = "ZENOH_PUBLISHER_TX_BUFFER_SIZE"
+key = "zenoh.publisher_tx_buffer_size"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_PUBLISHER_TX_BUFFER_SIZE"]
+retired = [{ spelling = "env:ZPICO_PUBLISHER_TX_BUFFER_SIZE" }]
 
 [[knob]]
-id = "ZENOH_READ_PRIORITY"
+key = "zenoh.read_priority"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_READ_TASK_PRIORITY"]
+retired = [{ spelling = "env:ZPICO_READ_TASK_PRIORITY" }]
 type = "int"
 prompt = "zenoh-pico read task priority (normalised band, 0-255)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1991,10 +2072,11 @@ modes with real cost.
 '''
 
 [[knob]]
-id = "ZENOH_RX_TASK_BUDGET_FRAMES"
+key = "zenoh.wire.rx_task_budget_frames"
+transitional = { id = "ZENOH_RX_TASK_BUDGET_FRAMES", kconfig = "NROS_ZENOH_RX_TASK_BUDGET_FRAMES" }
 scope = "image"
 class = "public"
-toml = "zenoh.wire.rx_task_budget_frames"
+ladder = true
 type = "int"
 prompt = "zenoh read task frame budget (-1 = derive, else unbounded)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -2021,10 +2103,11 @@ sched_task's slack. Maps to Z_RX_TASK_BUDGET_FRAMES.
 '''
 
 [[knob]]
-id = "ZENOH_RX_TASK_BUDGET_REST_US"
+key = "zenoh.wire.rx_task_budget_rest_us"
+transitional = { id = "ZENOH_RX_TASK_BUDGET_REST_US", kconfig = "NROS_ZENOH_RX_TASK_BUDGET_REST_US" }
 scope = "image"
 class = "public"
-toml = "zenoh.wire.rx_task_budget_rest_us"
+ladder = true
 type = "int"
 prompt = "zenoh read task rest after a full budget (us, -1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -2049,12 +2132,12 @@ Maps to Z_RX_TASK_BUDGET_REST_US.
 '''
 
 [[knob]]
-id = "ZENOH_SERVICE_BUFFER_SIZE"
+key = "zenoh.service_buffer_size"
+transitional = { kconfig = "NROS_SERVICE_BUFFER_SIZE" }
 scope = "image"
 class = "carrier"
 carries = "SERVICE_INBOX_BYTES"
-legacy = ["ZPICO_SERVICE_BUFFER_SIZE"]
-kconfig = "NROS_SERVICE_BUFFER_SIZE"
+retired = [{ spelling = "env:ZPICO_SERVICE_BUFFER_SIZE" }]
 type = "int"
 prompt = "Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -2069,7 +2152,7 @@ Maps to ZPICO_SERVICE_BUFFER_SIZE.
 '''
 
 [[knob]]
-id = "ZENOH_SOCKET_TIMEOUT_MS"
+key = "zenoh.socket_timeout_ms"
 scope = "image"
 class = "public"
 only_on = "zephyr"
@@ -2093,11 +2176,11 @@ read-task wakeups.
 '''
 
 [[knob]]
-id = "ZENOH_SUBSCRIBER_LARGE_SIZE"
+key = "zenoh.subscriber_large_size"
+transitional = { kconfig = "NROS_SUBSCRIBER_LARGE_SIZE" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_SUBSCRIBER_LARGE_SIZE"]
-kconfig = "NROS_SUBSCRIBER_LARGE_SIZE"
+retired = [{ spelling = "env:ZPICO_SUBSCRIBER_LARGE_SIZE" }]
 type = "int"
 prompt = "Large-class payload buffer size (-1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -2118,12 +2201,12 @@ The crate default then applies and costs nothing.
 '''
 
 [[knob]]
-id = "ZENOH_SUBSCRIBER_RING_DEPTH"
+key = "zenoh.limits.subscriber_ring_depth"
+transitional = { id = "ZENOH_SUBSCRIBER_RING_DEPTH", kconfig = "NROS_SUBSCRIBER_RING_DEPTH" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_SUBSCRIBER_RING_DEPTH"]
-kconfig = "NROS_SUBSCRIBER_RING_DEPTH"
-toml = "zenoh.limits.subscriber_ring_depth"
+retired = [{ spelling = "env:ZPICO_SUBSCRIBER_RING_DEPTH" }]
+ladder = true
 type = "int"
 prompt = "Receive ring depth per subscriber"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -2140,29 +2223,29 @@ Maps to ZPICO_SUBSCRIBER_RING_DEPTH.
 '''
 
 [[knob]]
-id = "ZENOH_SUBSCRIBER_SIZE_THRESHOLD"
+key = "zenoh.subscriber_size_threshold"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_SUBSCRIBER_SIZE_THRESHOLD"]
+retired = [{ spelling = "env:ZPICO_SUBSCRIBER_SIZE_THRESHOLD" }]
 
 [[knob]]
-id = "ZENOH_TL_RETAIN_BYTES"
+key = "zenoh.tl_retain_bytes"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_TL_RETAIN_BYTES"]
+retired = [{ spelling = "env:ZPICO_TL_RETAIN_BYTES" }]
 
 [[knob]]
-id = "ZENOH_TL_RETAIN_DEPTH"
+key = "zenoh.tl_retain_depth"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_TL_RETAIN_DEPTH"]
+retired = [{ spelling = "env:ZPICO_TL_RETAIN_DEPTH" }]
 
 [[knob]]
-id = "ZENOH_TX_BATCH"
+key = "zenoh.tx.batch"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_TX_BATCH"]
-toml = "zenoh.tx.batch"
+retired = [{ spelling = "env:ZPICO_TX_BATCH" }]
+ladder = true
 type = "bool"
 prompt = "zenoh-pico tx batching (one send per executor spin)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -2188,11 +2271,12 @@ kconfig_platform_default_drift test asserts the mirror.
 '''
 
 [[knob]]
-id = "ZENOH_TX_BATCH_FLUSH_MS"
+key = "zenoh.tx.flush_ms"
+transitional = { id = "ZENOH_TX_BATCH_FLUSH_MS", kconfig = "NROS_ZENOH_TX_BATCH_FLUSH_MS" }
 scope = "image"
 class = "public"
-legacy = ["ZPICO_TX_BATCH_FLUSH_MS"]
-toml = "zenoh.tx.flush_ms"
+retired = [{ spelling = "env:ZPICO_TX_BATCH_FLUSH_MS" }]
+ladder = true
 type = "int"
 prompt = "zenoh-pico tx batch flush cadence (ms)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -2212,11 +2296,11 @@ Forwards to zpico.c's ZPICO_TX_BATCH_FLUSH_MS.
 '''
 
 [[knob]]
-id = "ZENOH_TX_SPLIT_LOCK"
+key = "zenoh.tx.split_lock"
 scope = "image"
 class = "public"
-legacy = ["ZPICO_TX_SPLIT_LOCK"]
-toml = "zenoh.tx.split_lock"
+retired = [{ spelling = "env:ZPICO_TX_SPLIT_LOCK" }]
+ladder = true
 type = "bool"
 prompt = "zenoh-pico split tx locking (append while sending)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -2237,7 +2321,7 @@ session. DEFAULT ON for Zephyr; mirrors config/zephyr/nros-platform.toml
 '''
 
 [[knob]]
-id = "ZEPHYR_HEAP_SIZE"
+key = "zephyr.heap_size"
 scope = "board"
 class = "public"
 type = "int"
@@ -2331,3 +2415,328 @@ declared capability; the measured peak, read off the boot record by
 `read-boot-report.py --heap-headroom`, is how an image is sized past
 them, and it names the value to state.
 '''
+
+# ---------------------------------------------------------------------------
+# Statements (RFC-0140 D1): the system.toml selections. `carrier = true` says
+# the build carries it as NROS_ENTRY_<KEY>; `zephyr = true` that the Zephyr
+# module consumes it itself as CONFIG_NROS_<KEY> (a different symbol today
+# stays in `transitional` until phase-581 W6).
+
+[[statement]]
+key = "domain_id"
+carrier = true
+zephyr = true
+help = "[system] / [image.<id>] domain_id. Overridden at run time by ROS_DOMAIN_ID."
+
+[[statement]]
+key = "locator"
+carrier = true
+zephyr = true
+transitional = { kconfig = "NROS_ZENOH_LOCATOR" }
+help = "[system] / [image.<id>] locator: where the image connects. Overridden at run time by NROS_LOCATOR."
+
+[[statement]]
+key = "node_name"
+help = "The launch-declared node name, baked in the boot blob. Overridden at run time by NROS_NODE_NAME."
+
+[[statement]]
+key = "node_namespace"
+help = "The launch-declared node namespace, baked in the boot blob. Overridden at run time by NROS_NODE_NAMESPACE."
+
+[[statement]]
+key = "rmw"
+carrier = true
+help = "[system] / [image.<id>] rmw: the backend among the linked ones. Overridden at run time by NROS_RMW."
+
+[[statement]]
+key = "rmw_config"
+help = "[image.<id>] rmw_config: the middleware file (rmw/zenoh.json5, rmw/cyclonedds.xml), lowered at build."
+
+# ---------------------------------------------------------------------------
+# Run-time variables (RFC-0140 Part B, Appendix B). A nano-ros variable states
+# `key` and is named NROS_<KEY> (a one-word key is the run-time override of
+# that statement); a foreign or patterned one states `name`. `stated` names the
+# statement or knob the value is compared with. Sorted by variable name.
+
+[[env]]
+name = "CYCLONEDDS_URI"
+foreign = "cyclonedds"
+disposition = "respect"
+stated = "rmw_config"
+parse = "str"
+help = "Cyclone's own configuration; it COMPOSES with the baked rmw_config file."
+
+[[env]]
+key = "bless.probe_sidecar"
+disposition = "listed"
+help = "Test control: where the metadata probe's sidecar is blessed."
+
+[[env]]
+name = "NROS_BRIDGE_<N>_DOMAIN"
+pattern = true
+disposition = "respect"
+parse = "int"
+help = "The bridge binary: domain of bridged domain <N>, compared with its [[domain]] id."
+
+[[env]]
+name = "NROS_BRIDGE_<N>_LOCATOR"
+pattern = true
+disposition = "respect"
+parse = "str"
+help = "The bridge binary: locator of bridged domain <N>, compared with its [[domain]] locator."
+
+[[env]]
+key = "census.out"
+disposition = "listed"
+parse = "str"
+help = "Tooling: where the entity census is written."
+
+[[env]]
+key = "cyclonedds.match_timeout_ms"
+transitional = { name = "NROS_CYCLONE_MATCH_TIMEOUT_MS" }
+disposition = "listed"
+parse = "int"
+help = "Test control of the Cyclone backend: how long a match wait lasts."
+
+[[env]]
+key = "entry.expect_message_callbacks"
+disposition = "listed"
+help = "Test control read by the nros::main! expansion."
+
+[[env]]
+key = "entry.spin_ms"
+disposition = "listed"
+parse = "int"
+help = "The bounded spin of a hosted entry, in ms (the external-observer test path). Read at run time only: it was a build knob with no build reader."
+
+[[env]]
+key = "entry.spin_step_ms"
+disposition = "listed"
+parse = "int"
+help = "The step of a bounded hosted spin, in ms (the nros::main! expansion)."
+
+[[env]]
+key = "graph.dump"
+disposition = "listed"
+parse = "str"
+help = "Tooling: where the ROS graph is dumped."
+
+[[env]]
+key = "locator"
+disposition = "respect"
+stated = "locator"
+parse = "str"
+retired = [{ spelling = "run:ZENOH_LOCATOR" }]
+help = "Where the image connects. A SET empty value is the environment's answer: the backend's default locator."
+
+[[env]]
+key = "node_name"
+disposition = "respect"
+stated = "node_name"
+parse = "str"
+help = "The node name; empty means unset."
+
+[[env]]
+key = "node_namespace"
+disposition = "respect"
+stated = "node_namespace"
+parse = "str"
+help = "The node namespace; empty means unset."
+
+[[env]]
+key = "profile.inputs"
+disposition = "listed"
+parse = "str"
+help = "Tooling: the profiler's inputs."
+
+[[env]]
+key = "profile.out"
+disposition = "listed"
+parse = "str"
+help = "Tooling: where the profile is written."
+
+[[env]]
+key = "rmw"
+disposition = "respect"
+stated = "rmw"
+parse = "str"
+help = "Picks the backend among the image's linked ones."
+
+[[env]]
+key = "cyclonedds.skip_prefix"
+transitional = { name = "NROS_RMW_CYCLONEDDS_SKIP_PREFIX" }
+disposition = "listed"
+parse = "str"
+help = "Test control of the Cyclone backend: topic prefixes it skips."
+
+[[env]]
+key = "rmw.trace_open"
+disposition = "listed"
+help = "Tooling: trace RMW entity opens."
+
+[[env]]
+key = "session.mode"
+disposition = "respect"
+stated = "rmw_config"
+parse = "str"
+retired = [{ spelling = "run:ZENOH_MODE" }]
+help = "client | peer; compared with the zenoh file's `mode`."
+
+[[env]]
+name = "RCUTILS_COLORIZED_OUTPUT"
+foreign = "rcutils"
+disposition = "respect"
+help = "Colour in the Linux console sink."
+
+[[env]]
+name = "RCUTILS_CONSOLE_OUTPUT_FORMAT"
+foreign = "rcutils"
+disposition = "respect"
+parse = "str"
+help = "The line format of the Linux console sink."
+
+[[env]]
+name = "RCUTILS_LOGGING_BUFFERED_STREAM"
+foreign = "rcutils"
+disposition = "ignore"
+help = "One sink per board."
+
+[[env]]
+name = "RCUTILS_LOGGING_USE_STDOUT"
+foreign = "rcutils"
+disposition = "ignore"
+help = "One sink per board."
+
+[[env]]
+name = "RMW_IMPLEMENTATION"
+foreign = "ros2"
+disposition = "ignore"
+stated = "rmw"
+help = "Not a backend selector (an image links its backends at build time; NROS_RMW picks among them). Noticed only when it maps to a backend other than the image's."
+
+[[env]]
+name = "RMW_ZENOH_<N>"
+foreign = "ros2"
+pattern = true
+disposition = "ignore"
+help = "rmw_zenoh_cpp's own variables (RMW_ZENOH_CONFIG_URI, ...); nano-ros reads none."
+
+[[env]]
+name = "ROS_AUTOMATIC_DISCOVERY_RANGE"
+foreign = "ros2"
+disposition = "ignore"
+help = "Discovery scope is the middleware file's (rmw_config)."
+
+[[env]]
+name = "ROS_DISABLE_LOANED_MESSAGES"
+foreign = "ros2"
+disposition = "ignore"
+help = "nano-ros does not switch loans by the environment."
+
+[[env]]
+name = "ROS_DOMAIN_ID"
+foreign = "ros2"
+disposition = "respect"
+stated = "domain_id"
+parse = "int"
+help = "Overrides the stated domain on a process with an environment."
+
+[[env]]
+name = "ROS_HOME"
+foreign = "ros2"
+disposition = "ignore"
+help = "nano-ros writes no log file."
+
+[[env]]
+name = "ROS_LOCALHOST_ONLY"
+foreign = "ros2"
+disposition = "ignore"
+help = "Discovery scope is the middleware file's (rmw_config)."
+
+[[env]]
+name = "ROS_LOG_DIR"
+foreign = "ros2"
+disposition = "ignore"
+help = "nano-ros writes no log file."
+
+[[env]]
+name = "ROS_NAMESPACE"
+foreign = "ros2"
+disposition = "ignore"
+help = "Stock rcl ignores it too; NROS_NODE_NAMESPACE is the override."
+
+[[env]]
+name = "ROS_SECURITY_ENABLE"
+foreign = "ros2"
+disposition = "refuse"
+refuse_if = "ROS_SECURITY_STRATEGY=Enforce"
+instead = "nano-ros has no SROS2 support; unset ROS_SECURITY_ENABLE or ROS_SECURITY_STRATEGY"
+help = "Refused only with ROS_SECURITY_STRATEGY=Enforce (running unsecured while the operator believes otherwise); otherwise ignored."
+
+[[env]]
+name = "ROS_SECURITY_ENCLAVE_OVERRIDE"
+foreign = "ros2"
+disposition = "ignore"
+help = "No SROS2."
+
+[[env]]
+name = "ROS_SECURITY_KEYSTORE"
+foreign = "ros2"
+disposition = "ignore"
+help = "No SROS2."
+
+[[env]]
+name = "ROS_SECURITY_STRATEGY"
+foreign = "ros2"
+disposition = "ignore"
+help = "No SROS2 (see ROS_SECURITY_ENABLE for the refused case)."
+
+[[env]]
+name = "ROS_STATIC_PEERS"
+foreign = "ros2"
+disposition = "ignore"
+help = "The middleware file's peer list (rmw_config)."
+
+[[env]]
+name = "RUST_LOG"
+foreign = "rust"
+disposition = "respect"
+parse = "str"
+help = "The log level of the linux board's stdout sink, Rust road only."
+
+[[env]]
+key = "xrce.serial_baud"
+transitional = { name = "XRCE_SERIAL_BAUD" }
+disposition = "listed"
+parse = "int"
+help = "The XRCE serial transport's baud rate."
+
+[[env]]
+name = "ZENOH_CONFIG_OVERRIDE"
+foreign = "zenoh"
+disposition = "respect"
+stated = "rmw_config"
+parse = "str"
+retired = [
+    { spelling = "run:ZENOH_LISTEN", instead = "ZENOH_CONFIG_OVERRIDE='listen/endpoints=[...]'" },
+    { spelling = "run:ZENOH_MULTICAST_SCOUTING", instead = "ZENOH_CONFIG_OVERRIDE='scouting/multicast/enabled=...'" },
+    { spelling = "run:ZENOH_SCOUTING_TIMEOUT", instead = "ZENOH_CONFIG_OVERRIDE='scouting/timeout=...'" },
+    { spelling = "run:ZENOH_TLS_ROOT_CA_CERTIFICATE", instead = "ZENOH_CONFIG_OVERRIDE='transport/link/tls/root_ca_certificate=...'" },
+    { spelling = "run:ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64", instead = "ZENOH_CONFIG_OVERRIDE='transport/link/tls/root_ca_certificate_base64=...'" },
+    { spelling = "run:ZENOH_TLS_VERIFY_NAME_ON_CONNECT", instead = "ZENOH_CONFIG_OVERRIDE='transport/link/tls/verify_name_on_connect=...'" },
+]
+help = "Key overrides of the zenoh session config, lowered by the same reader as the session file. The six ZENOH_* variables nano-ros invented are retired in its favour; a later release refuses them, and until then they are still read."
+
+[[env]]
+name = "ZENOH_ROUTER_CONFIG_URI"
+foreign = "zenoh"
+disposition = "ignore"
+help = "A router variable; nano-ros ships no router."
+
+[[env]]
+name = "ZENOH_SESSION_CONFIG_URI"
+foreign = "zenoh"
+disposition = "respect"
+stated = "rmw_config"
+parse = "str"
+help = "Replaces the baked session table whole."

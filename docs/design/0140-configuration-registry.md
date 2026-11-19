@@ -434,9 +434,11 @@ every rename in Appendix A gets an automatic edit with no hand-written case.
   out-of-range value.
 - **One read path.** The loader exposes `retired_spelling(road, spelling) ->
   Option<(&Row, &RetiredEntry)>` over the MERGED catalog (core plus package
-  rows), and the generated core `KnobRow` carries `retired: &[(road,
-  spelling, factor)]`. Core's compiled table can never hold package rows
-  (D5), so for a package's rename `nros fix` reads the same triple from the
+  rows), and the generated core `KnobRow` carries `retired_spellings:
+  &[RetiredSpelling]` (road, spelling, factor, `from_unit`, `instead`; the
+  name `retired` already holds a retired row's reason). Core's compiled table
+  can never hold package rows (D5), so for a package's rename `nros fix`
+  reads the same entry from the
   merged catalog the loader builds in memory (below). Nothing parses
   `knobs.toml` by hand.
 - **Edits.** A `toml:` retirement that also moves a table is one fix

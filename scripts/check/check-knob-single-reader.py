@@ -239,12 +239,12 @@ def registry_spellings() -> dict[str, list[str]]:
     knob: `ZPICO_FRAG_MAX_SIZE` and `NROS_ZENOH_FRAG_MAX_SIZE` are one row, so a
     second reader using the OLD literal is still a second reader.
     """
-    try:
-        import tomllib
-    except ModuleNotFoundError:  # Python < 3.11 — the repo's interpreter is 3.10
-        import tomli as tomllib
-    with open(REPO / "packages/tooling/nros-zephyr-build/knobs.toml", "rb") as fh:
-        rows = tomllib.load(fh).get("knob", [])
+    import sys
+
+    sys.path.insert(0, str(REPO / "scripts" / "lib"))
+    import knob_registry  # the one reader of the registry
+
+    rows = knob_registry.knob_rows()
     return {"NROS_" + r["id"]: ["NROS_" + r["id"], *r.get("legacy", [])] for r in rows}
 
 
