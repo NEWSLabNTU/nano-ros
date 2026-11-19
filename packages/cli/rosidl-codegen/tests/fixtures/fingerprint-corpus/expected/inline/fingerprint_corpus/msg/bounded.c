@@ -136,11 +136,22 @@ static int32_t fingerprint_corpus__msg__Bounded__nros_deserialize_erased(const u
 
 // The descriptor ROSIDL_GET_MSG_TYPE_SUPPORT(fingerprint_corpus, msg, Bounded)
 // yields (phase-492 W8). `serialized_size_max` is the receive bound, or 0 when
-// the type has none.
+// the type has none. `message_size` is the struct the deserialiser writes,
+// which `rclc_executor_add_subscription_sized` checks a caller's buffer
+// against.
 const rclc_message_type_t fingerprint_corpus__msg__Bounded__nros_type = {
     .type_name = "fingerprint-corpus::msg::dds_::Bounded_",
     .type_hash = "h",
     .serialized_size_max = 136,
     .serialize = fingerprint_corpus__msg__Bounded__nros_serialize_erased,
     .deserialize = fingerprint_corpus__msg__Bounded__nros_deserialize_erased,
+    .message_size = sizeof(fingerprint_corpus__msg__Bounded),
 };
+
+// The struct `message_size` measures is the one `__init_in` wires: a caller
+// that sizes its buffer from `__init_in`'s argument gets the descriptor's
+// number. C11, so it holds on every compiler the generated code builds with.
+_Static_assert(_Generic(&fingerprint_corpus__msg__Bounded__init_in,
+                        void (*)(fingerprint_corpus__msg__Bounded*, fingerprint_corpus__msg__Bounded__Storage*): 1,
+                        default: 0),
+               "fingerprint_corpus__msg__Bounded__nros_type.message_size measures the struct __init_in wires");

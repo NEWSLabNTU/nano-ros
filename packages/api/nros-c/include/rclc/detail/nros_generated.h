@@ -2271,6 +2271,14 @@ typedef struct rclc_message_type_t {
    * which `rclc_executor_add_subscription_with_context` refuses.
    */
   rclc_message_deserialize_fn_t deserialize;
+  /**
+   * The message struct's size in memory, `sizeof(<pkg>__msg__<Name>)`: what
+   * `rclc_executor_add_subscription_sized` checks the caller's `msg` buffer
+   * against. 0 = unknown (a descriptor built from names alone, or generated
+   * before this field), which no buffer is refused against. APPENDED: a
+   * descriptor written without it zero-fills it.
+   */
+  size_t message_size;
 } rclc_message_type_t;
 
 /**
@@ -6426,7 +6434,9 @@ rcl_ret_t rclc_executor_add_subscription_raw_validated(struct rclc_executor_t *e
  * * `executor` and `subscription` must be valid, initialised objects.
  * * `msg` must point to writable storage of the subscription's type and stay
  *   valid for as long as the subscription is registered. Nothing here
- *   allocates it, copies it, or frees it.
+ *   allocates it, copies it, or frees it, and nothing CHECKS its size: rclc's
+ *   arguments carry none. [`rclc_executor_add_subscription_with_context_sized`]
+ *   is the checked form.
  */
 NROS_PUBLIC
 rcl_ret_t rclc_executor_add_subscription_with_context(struct rclc_executor_t *executor,
@@ -6457,7 +6467,8 @@ rcl_ret_t rclc_executor_add_subscription_with_context(struct rclc_executor_t *ex
  * for a NULL `callback`.
  *
  * # Safety
- * As [`rclc_executor_add_subscription_with_context`].
+ * As [`rclc_executor_add_subscription_with_context`]: `msg`'s size is not
+ * checked. [`rclc_executor_add_subscription_sized`] is the checked form.
  */
 NROS_PUBLIC
 rcl_ret_t rclc_executor_add_subscription(struct rclc_executor_t *executor,
@@ -6465,6 +6476,55 @@ rcl_ret_t rclc_executor_add_subscription(struct rclc_executor_t *executor,
                                          void *msg,
                                          rclc_subscription_callback_t callback,
                                          enum rclc_executor_handle_invocation_t invocation);
+
+/**
+ * [`rclc_executor_add_subscription_with_context`] with the size of `msg`,
+ * CHECKED: a buffer smaller than the subscription's message struct (its
+ * descriptor's `message_size`, the generated `sizeof`) is refused before
+ * anything is registered, where the unsized form would let every dispatch
+ * write past it.
+ *
+ * ```c
+ * std_msgs__msg__String msg;
+ * rclc_executor_add_subscription_with_context_sized(&exec, &sub, &msg, sizeof msg,
+ *                                                   on_msg, &ctx, ON_NEW_DATA);
+ * ```
+ *
+ * # Returns
+ * As [`rclc_executor_add_subscription_with_context`], and
+ * `RCL_RET_INVALID_ARGUMENT` for `msg_size` below the type's size. A
+ * descriptor that states no size (`message_size == 0`) refuses no buffer.
+ *
+ * # Safety
+ * As [`rclc_executor_add_subscription_with_context`]; `msg` must be valid
+ * for `msg_size` bytes.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_subscription_with_context_sized(struct rclc_executor_t *executor,
+                                                            struct rcl_subscription_t *subscription,
+                                                            void *msg,
+                                                            size_t msg_size,
+                                                            rclc_subscription_callback_with_context_t callback,
+                                                            void *context,
+                                                            enum rclc_executor_handle_invocation_t invocation);
+
+/**
+ * [`rclc_executor_add_subscription`] with the size of `msg`, CHECKED as
+ * [`rclc_executor_add_subscription_with_context_sized`] is.
+ *
+ * # Returns
+ * As [`rclc_executor_add_subscription_with_context_sized`].
+ *
+ * # Safety
+ * As [`rclc_executor_add_subscription_with_context_sized`].
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_subscription_sized(struct rclc_executor_t *executor,
+                                               struct rcl_subscription_t *subscription,
+                                               void *msg,
+                                               size_t msg_size,
+                                               rclc_subscription_callback_t callback,
+                                               enum rclc_executor_handle_invocation_t invocation);
 
 /**
  * Register a BYTE-oriented subscription, supplying its

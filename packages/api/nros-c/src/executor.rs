@@ -2432,7 +2432,9 @@ pub type rclc_subscription_callback_with_context_t =
 /// * `executor` and `subscription` must be valid, initialised objects.
 /// * `msg` must point to writable storage of the subscription's type and stay
 ///   valid for as long as the subscription is registered. Nothing here
-///   allocates it, copies it, or frees it.
+///   allocates it, copies it, or frees it, and nothing CHECKS its size: rclc's
+///   arguments carry none. [`rclc_executor_add_subscription_with_context_sized`]
+///   is the checked form.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_add_subscription_with_context(
     executor: *mut rclc_executor_t,
@@ -2535,7 +2537,8 @@ unsafe extern "C" fn context_less_subscription_trampoline(
 /// for a NULL `callback`.
 ///
 /// # Safety
-/// As [`rclc_executor_add_subscription_with_context`].
+/// As [`rclc_executor_add_subscription_with_context`]: `msg`'s size is not
+/// checked. [`rclc_executor_add_subscription_sized`] is the checked form.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_add_subscription(
     executor: *mut rclc_executor_t,
@@ -2557,6 +2560,109 @@ pub unsafe extern "C" fn rclc_executor_add_subscription(
             invocation,
         )
     }
+}
+
+/// `Some(RCL_RET_INVALID_ARGUMENT)` when `msg_size` is smaller than the
+/// subscription's message struct, which the deserialiser writes in full.
+///
+/// `None` (no opinion) for a subscription with no descriptor yet (its init
+/// call answers for that) and for a descriptor that states no size
+/// (`message_size == 0`: built from names alone, or generated before the
+/// field existed).
+unsafe fn undersized_msg(
+    subscription: *const rcl_subscription_t,
+    msg_size: usize,
+) -> Option<rcl_ret_t> {
+    if subscription.is_null() {
+        return None;
+    }
+    // SAFETY: non-null, and the caller's contract makes it a valid object.
+    let ty = unsafe { (*subscription).type_support };
+    if ty.is_null() {
+        return None;
+    }
+    // SAFETY: a non-null descriptor is the static the init call was given.
+    let need = unsafe { (*ty).message_size };
+    if need != 0 && msg_size < need {
+        crate::error_handling::set_static(
+            "msg_size is smaller than the subscription's message type: pass storage of that \
+             type and sizeof it",
+            file!(),
+            line!(),
+        );
+        return Some(RCL_RET_INVALID_ARGUMENT);
+    }
+    None
+}
+
+/// [`rclc_executor_add_subscription_with_context`] with the size of `msg`,
+/// CHECKED: a buffer smaller than the subscription's message struct (its
+/// descriptor's `message_size`, the generated `sizeof`) is refused before
+/// anything is registered, where the unsized form would let every dispatch
+/// write past it.
+///
+/// ```c
+/// std_msgs__msg__String msg;
+/// rclc_executor_add_subscription_with_context_sized(&exec, &sub, &msg, sizeof msg,
+///                                                   on_msg, &ctx, ON_NEW_DATA);
+/// ```
+///
+/// # Returns
+/// As [`rclc_executor_add_subscription_with_context`], and
+/// `RCL_RET_INVALID_ARGUMENT` for `msg_size` below the type's size. A
+/// descriptor that states no size (`message_size == 0`) refuses no buffer.
+///
+/// # Safety
+/// As [`rclc_executor_add_subscription_with_context`]; `msg` must be valid
+/// for `msg_size` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_subscription_with_context_sized(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+    msg: *mut core::ffi::c_void,
+    msg_size: usize,
+    callback: rclc_subscription_callback_with_context_t,
+    context: *mut core::ffi::c_void,
+    invocation: rclc_executor_handle_invocation_t,
+) -> rcl_ret_t {
+    validate_not_null!(executor, subscription, msg);
+    if let Some(ret) = unsafe { undersized_msg(subscription, msg_size) } {
+        return ret;
+    }
+    unsafe {
+        rclc_executor_add_subscription_with_context(
+            executor,
+            subscription,
+            msg,
+            callback,
+            context,
+            invocation,
+        )
+    }
+}
+
+/// [`rclc_executor_add_subscription`] with the size of `msg`, CHECKED as
+/// [`rclc_executor_add_subscription_with_context_sized`] is.
+///
+/// # Returns
+/// As [`rclc_executor_add_subscription_with_context_sized`].
+///
+/// # Safety
+/// As [`rclc_executor_add_subscription_with_context_sized`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_subscription_sized(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+    msg: *mut core::ffi::c_void,
+    msg_size: usize,
+    callback: rclc_subscription_callback_t,
+    invocation: rclc_executor_handle_invocation_t,
+) -> rcl_ret_t {
+    validate_not_null!(executor, subscription, msg);
+    if let Some(ret) = unsafe { undersized_msg(subscription, msg_size) } {
+        return ret;
+    }
+    unsafe { rclc_executor_add_subscription(executor, subscription, msg, callback, invocation) }
 }
 
 /// Register a BYTE-oriented subscription, supplying its
@@ -6190,6 +6296,7 @@ mod tests {
             serialized_size_max: 1234,
             serialize: None,
             deserialize: None,
+            message_size: 0,
         };
         let unbounded = crate::publisher::rclc_message_type_t {
             serialized_size_max: 0,

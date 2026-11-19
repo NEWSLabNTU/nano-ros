@@ -69,6 +69,7 @@ pub unsafe extern "C" fn rclc_rosout_publisher_init(
             serialized_size_max: rosout::TX_BUF,
             serialize: None,
             deserialize: None,
+            message_size: 0,
         };
 
         let bounded;
