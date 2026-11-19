@@ -1107,7 +1107,7 @@ location = "store"
 dest = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 git = "https://github.com/jerry73204/zenoh-pico.git"
-ref = "e27088048b1159ae7bae91760166fd1b7918b12e"
+ref = "26041f73d22025354c1a158b2a977d5dac393e25"
 
 # px4-rs Rust bindings fork. The px4 examples path-dep its crates, AND the root
 # workspace lists `packages/testing/nros-tests` which path-deps px4-sitl-tests
