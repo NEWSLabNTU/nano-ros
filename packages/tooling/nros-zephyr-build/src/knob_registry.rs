@@ -1480,6 +1480,7 @@ pub const KNOBS: &[KnobRow] = &[
         range: None,
         names: &[],
         retired: None,
+        only_on: None,
         scope: crate::KnobScope::Board,
         class: crate::KnobClass::Carrier,
         carries: Some("memory.heap_bytes"),
