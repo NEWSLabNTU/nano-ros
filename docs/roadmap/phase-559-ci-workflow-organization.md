@@ -1007,10 +1007,10 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   on one day, and its per-script probes have no time limit. It cancelled the
   merge group for #4125. Fix: a per-probe timeout that fails naming the
   probe, plus per-probe timings.
-- [issue 2664](../issues/2664-native-sim-prelink-drops-unwind-table.md) — a
+- [issue 2664](../issues/archived/2664-native-sim-prelink-drops-unwind-table.md) — a
   native_sim image linked with no unwind search table aborts at a thread exit
   by layout. Found as W5b's hosted tier-1 zephyr shard red (two XRCE C cells);
-  W5b re-arms on a green shard after its fix.
+  W5b re-arms on a green shard after its fix. Resolved by #4132.
 - [issue 2682](../issues/archived/2682-fixture-tree-selftest-walks-shared-caches.md) — RESOLVED 2026-11-17 —
   the follow-up to 2669. `fixture-tree.sh --self-test` overran the new 120 s
   probe budget under another gate's load, because its `sync` case swept the

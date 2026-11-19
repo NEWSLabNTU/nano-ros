@@ -1,7 +1,7 @@
 ---
 id: 2664
 title: "A native_sim image is linked with no unwind search table, so it aborts at a thread exit, silently and by layout"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [zephyr, build, testing]
@@ -9,7 +9,7 @@ found: 2026-11-17
 related: [phase-559]
 ---
 
-**Home:** [phase-559](../roadmap/phase-559-ci-workflow-organization.md)
+**Home:** [phase-559](../../roadmap/phase-559-ci-workflow-organization.md)
 (it blocked W5b's hosted tier-1 zephyr shard). Owner: nros 175.
 
 ## What happens
@@ -133,3 +133,13 @@ and the image printed nothing because it aborted inside the unwinder.
 `zephyr.elf` the same way). No other board we build links a relocatable
 `zephyr.elf`. The only other `-r` link in Zephyr is `CONFIG_LLEXT_TYPE_ELF_
 RELOCATABLE`, which no image here enables.
+
+## Resolved (2026-11-19)
+
+Fixed by #4132 (de1f0447cc, on main): `zephyr/CMakeLists.txt` adds
+`-Wl,--no-gc-sections` to a `CONFIG_NATIVE_LIBRARY` board's link, and
+`scripts/build/check-unwind-table.py` refuses a fixture `zephyr.exe` with
+`.eh_frame` and no search table (the fixture build), with its controls on the
+fast line (`just check unwind-table`). Both are as the Fix section above
+describes. Closed by nros 139 at the manager's request; the fix and the gate
+are nros 175's.
