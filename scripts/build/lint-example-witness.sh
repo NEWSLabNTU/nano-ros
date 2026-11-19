@@ -51,7 +51,9 @@ fi
 # stack-floor link flags of a bare-metal image) is about linking, not linting.
 line="$(grep -oE '(^| )cargo build --manifest-path .*' "$log" | head -1 | sed 's/^ //')"
 rm -f "$log"
-read -r -a words <<<"${line#cargo build }"
+# `--dry-run` shell-quotes each word (issue 2692), so split it as a shell does.
+mapfile -d '' -t words < <(python3 -c 'import shlex,sys; sys.stdout.write("".join(w + "\0" for w in shlex.split(sys.argv[1])))' "${line#cargo build }")
+wait $! || { echo "lint-example-witness: could not split the dry-run line: $line" >&2; exit 1; }
 manifest=""; cargo_args=()
 i=0
 while [ "$i" -lt "${#words[@]}" ]; do
@@ -59,9 +61,15 @@ while [ "$i" -lt "${#words[@]}" ]; do
     case "$w" in
         --manifest-path) manifest="${words[$((i + 1))]}"; i=$((i + 2)); continue ;;
         --config)
-            # Relative to the workspace; clippy runs from the package.
+            # A FILE is relative to the workspace, and clippy runs from the
+            # package. A `key=value` setting (the stack-floor walk restates the
+            # forced arch C-flags row as one, issue 2692) is not a path, and
+            # passes through as written.
             c="${words[$((i + 1))]}"
-            cargo_args+=(--config "$(cd "$ws" && cd "$(dirname "$c")" && pwd)/$(basename "$c")")
+            case "$c" in
+                *=*) cargo_args+=(--config "$c") ;;
+                *) cargo_args+=(--config "$(cd "$ws" && cd "$(dirname "$c")" && pwd)/$(basename "$c")") ;;
+            esac
             i=$((i + 2)); continue ;;
         # The image's profile: a board image names one now (it defaults to
         # `release`), and the lane names its own in `$flags`. Cargo refuses

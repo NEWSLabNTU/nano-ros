@@ -137,18 +137,24 @@ impl Handoff {
 
     /// Render the command the way a user could retype it.
     ///
-    /// For `--dry-run` and for error messages. NOT shell-quoted, and it must
-    /// not become the thing a shell runs: this is for a human to read.
+    /// For `--dry-run` and for error messages. Each word is shell-quoted when
+    /// it needs to be, so the line pastes into a POSIX shell as the same argv
+    /// (issue 2692: a `--config` value with spaces fell apart for a user and
+    /// for every script that splits this line). A plain word prints as is.
     #[must_use]
     pub fn display(&self) -> String {
         let mut s = String::new();
         for (k, v) in &self.env {
-            s.push_str(&format!("{}={} ", k.to_string_lossy(), v.to_string_lossy()));
+            s.push_str(&format!(
+                "{}={} ",
+                k.to_string_lossy(),
+                shell_word(&v.to_string_lossy())
+            ));
         }
-        s.push_str(&self.program.to_string_lossy());
+        s.push_str(&shell_word(&self.program.to_string_lossy()));
         for a in &self.args {
             s.push(' ');
-            s.push_str(&a.to_string_lossy());
+            s.push_str(&shell_word(&a.to_string_lossy()));
         }
         s
     }
@@ -295,6 +301,21 @@ pub fn exec(handoff: &Handoff) -> Result<std::convert::Infallible, String> {
     ))
 }
 
+/// `w` as one POSIX shell word: unchanged when every character is one a
+/// shell leaves alone, else single-quoted (a `'` inside becomes `'\''`).
+fn shell_word(w: &str) -> String {
+    let plain = !w.is_empty()
+        && w.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '_' | '-' | '.' | '/' | ':' | ',' | '=' | '+' | '@' | '%')
+        });
+    if plain {
+        w.to_string()
+    } else {
+        format!("'{}'", w.replace('\'', "'\\''"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -423,5 +444,34 @@ mod tests {
         // it were new information.
         let h = Handoff::new("cmake", vec!["--build", "."]);
         assert!(h.without_offline().is_none());
+    }
+
+    #[test]
+    fn display_round_trips_through_a_shell_split() {
+        let argv = [
+            "build",
+            "--config",
+            "env.CFLAGS_x.value=\"-mcpu=cortex-m3 -mthumb -fstack-usage\"",
+            "it's",
+            "",
+            "$HOME",
+        ];
+        let h = Handoff::new("cargo", argv).with_env("K", "a b");
+        let line = h.display();
+        // A real POSIX shell splits it back into the same words.
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("printf '%s\\0' {line}"))
+            .output()
+            .expect("sh");
+        let words: Vec<String> = String::from_utf8(out.stdout)
+            .unwrap()
+            .split_terminator('\0')
+            .map(str::to_string)
+            .collect();
+        let mut want = vec!["K=a b".to_string(), "cargo".to_string()];
+        want.extend(argv.iter().map(|a| (*a).to_string()));
+        assert_eq!(words, want, "{line}");
+        assert!(line.starts_with("K='a b' cargo "), "{line}");
     }
 }
