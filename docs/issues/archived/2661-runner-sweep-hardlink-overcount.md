@@ -1,7 +1,8 @@
 ---
 id: 2661
 title: "runner-sweep counts a hard-linked file once per eviction unit, so it stops evicting before the area is really under budget, and says nothing"
-status: open
+status: resolved
+resolved_in: "d838a673d3 (#4127)"
 type: bug
 severity: medium
 area: [ci, runner]
@@ -9,7 +10,7 @@ related: [phase-559, issue-1094, issue-1353]
 found: 2026-11-17
 ---
 
-**Home:** [phase-559](../roadmap/phase-559-ci-workflow-organization.md)
+**Home:** [phase-559](../../roadmap/phase-559-ci-workflow-organization.md)
 (runner disk). Owner: nros 175.
 
 ## What happens
@@ -59,3 +60,16 @@ the sweep defect the leak exposed.
   only when the list ran out.
 - Test: a sweep test whose units share hard-linked files, asserting the real
   remaining total and the warning.
+
+## Resolved (2026-11-19)
+
+Fixed by d838a673d3 (#4127, merged 2026-11-18). The sweep now stops on the
+area's measured remainder: one `du -sc` over the members not yet evicted,
+each inode counted once. The over-budget warning reads the same number.
+
+The proving gate is `check runner-sweep-hardlink`. It runs a real deleting
+sweep over three units that hard-link one file. On the old sweep it was 2 of
+4 red; with the fix it is 4 of 4. The gate is on the fast line, and it passed
+in a full `just ci gate` on main today:
+`PASS [ 1.383s] nros-gates::gates fast::check::runner-sweep-hardlink`
+(the issue 2585 gate, 2026-11-19).

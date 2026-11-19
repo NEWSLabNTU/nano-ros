@@ -1,7 +1,8 @@
 ---
 id: 2671
 title: "Cargo's libgit2 transport fails a git dependency fetch with `SSL error: unknown error` where the git CLI fetches the same URL cleanly"
-status: open
+status: resolved
+resolved_in: "5be0dc3148 + ac33a3f7cf (#4140)"
 type: bug
 severity: medium
 area: [build, ci, tooling]
@@ -59,3 +60,19 @@ A zephyr `merge-runtime` shard and a `just ci gate` run on a `main` that
 carries the change get past the metadata harness without a libgit2 error. If
 the error comes back with the CLI transport, this issue's diagnosis is wrong
 and it reopens with the new evidence.
+
+## Resolved (2026-11-19)
+
+Fixed by 5be0dc3148 (cargo fetches git dependencies through the git CLI)
+and ac33a3f7cf (`nros` sets `CARGO_NET_GIT_FETCH_WITH_CLI` for every cargo
+it runs; `nros doctor` checks git), merged in #4140 on 2026-11-17.
+
+Done when, met:
+- **zephyr `merge-runtime` shard:** run 44090176782 ran at `2cfe9f0094`,
+  which contains both commits. Its zephyr shard got past the metadata
+  harness and passed, with no `SSL error` or `libgit2` line in the run's
+  log.
+- **`just ci gate` on main:** today's full gates on main (the issue 2585,
+  2720/2734 and 2735 gates, all green) ran the metadata probes in
+  `check::build` with no libgit2 error. Tonight's nightly (44463027311) has
+  no `SSL error` line either.
