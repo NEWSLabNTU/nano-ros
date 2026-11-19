@@ -58,6 +58,32 @@ pub(crate) fn init(w: *mut core::ffi::c_void) -> i8 {
     0
 }
 
+/// Issue 2706 -- a test-only hook, run in [`park_until_us`] after the flag is
+/// read and before the board's idle: the exact window a signal from an
+/// interrupt handler must not be lost in. A test image installs a hook that
+/// pends an interrupt there, which makes that race deterministic instead of a
+/// matter of timing. Absent without the `park-race-probe` feature.
+#[cfg(feature = "park-race-probe")]
+static PARK_PROBE: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
+
+/// Install the [`PARK_PROBE`] hook.
+#[cfg(feature = "park-race-probe")]
+pub fn set_park_probe(f: fn()) {
+    PARK_PROBE.store(f as *mut (), Ordering::Release);
+}
+
+#[inline(always)]
+fn park_probe() {
+    #[cfg(feature = "park-race-probe")]
+    {
+        let f = PARK_PROBE.load(Ordering::Acquire);
+        if !f.is_null() {
+            // SAFETY: stored from a `fn()` by `set_park_probe`.
+            unsafe { core::mem::transmute::<*mut (), fn()>(f)() };
+        }
+    }
+}
+
 pub(crate) fn signal(w: *mut core::ffi::c_void) -> i8 {
     match flag(w) {
         Some(f) => {
@@ -87,6 +113,7 @@ pub(crate) fn park_until_us(w: *mut core::ffi::c_void, rel_us: u64) -> i8 {
             if f.swap(false, Ordering::AcqRel) {
                 return Some(0);
             }
+            park_probe();
             if crate::clock::clock_ns() >= deadline {
                 return Some(1);
             }

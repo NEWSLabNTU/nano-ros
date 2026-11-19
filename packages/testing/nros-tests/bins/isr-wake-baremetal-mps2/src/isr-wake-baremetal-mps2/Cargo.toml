@@ -21,9 +21,13 @@ nros-node = { path = "../../../../../../core/nros-node", default-features = fals
 nros-rmw-zenoh = { path = "../../../../../../rmw/zenoh/nros-rmw-zenoh" }
 # The CMSDK TIMER1 periodic slot (`sporadic_timer`), whose handler this
 # image's interrupt runs in.
-nros-platform-mps2-an385 = { path = "../../../../../../platform/nros-platform-mps2-an385" }
+nros-platform-mps2-an385 = { path = "../../../../../../platform/nros-platform-mps2-an385", features = ["park-race-probe"] }
 
 cortex-m-semihosting = "0.5"
+# The race probe pends DUALTIMER (NVIC 10), which a non-RTIC image leaves
+# unused.
+cortex-m = "0.7"
+mps2-an385-pac = { path = "../../../../../../boards/mps2-an385-pac" }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 
 [profile.release]
