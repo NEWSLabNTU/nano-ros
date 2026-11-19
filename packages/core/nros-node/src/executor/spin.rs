@@ -2390,7 +2390,7 @@ pub struct Executor<'s> {
     ///
     /// [`clear_graph_change_signal`]: Self::clear_graph_change_signal
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    pub(crate) graph_change_target: Option<alloc::boxed::Box<GuardCondition>>,
+    pub(crate) graph_change_target: Option<alloc::boxed::Box<GuardCondition<'s>>>,
     /// Phase 124.B.7.c — lazily-allocated Linux signalfd worker.
     /// Owned by the Executor; spawned on first `signal_fd()` call.
     /// Drop joins the worker thread and closes the fd.
@@ -6575,7 +6575,7 @@ impl<'s> Executor<'s> {
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) fn install_graph_change_guard(
         &mut self,
-        guard: &GuardCondition,
+        guard: &GuardCondition<'s>,
     ) -> Result<(), NodeError> {
         use nros_rmw::Session as _;
         self.clear_graph_change_signal();
@@ -11827,7 +11827,7 @@ impl<'s> Executor<'s> {
     pub fn register_guard_condition<F>(
         &mut self,
         callback: F,
-    ) -> Result<(HandleId, GuardCondition), NodeError>
+    ) -> Result<(HandleId, GuardCondition<'s>), NodeError>
     where
         F: FnMut() + 'static,
     {
@@ -11845,7 +11845,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         callback: F,
-    ) -> Result<(HandleId, GuardCondition), NodeError>
+    ) -> Result<(HandleId, GuardCondition<'s>), NodeError>
     where
         F: FnMut() + 'static,
     {
@@ -11871,7 +11871,10 @@ impl<'s> Executor<'s> {
             // also signals the executor's wake_cv.
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             {
-                let ctx = self.wake_ctx_ptr();
+                // Issue 2727 -- the handle holds its own `Arc`, so a trigger
+                // after the executor is dropped reaches live memory.
+                let _ = self.wake_ctx_ptr();
+                let ctx = self.wake_ctx.clone().expect("wake_ctx_ptr just set it");
                 guard_handle.set_wake_cb(
                     nros_rmw_runtime_wake_cb,
                     nros_rmw_runtime_wake_cb_from_isr,
@@ -11921,7 +11924,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         callback: F,
-    ) -> Result<(HandleId, GuardCondition), NodeError>
+    ) -> Result<(HandleId, GuardCondition<'s>), NodeError>
     where
         F: FnMut() + 'static,
     {
@@ -11943,7 +11946,7 @@ impl<'s> Executor<'s> {
     pub fn register_graph_change_guard<F>(
         &mut self,
         callback: F,
-    ) -> Result<(HandleId, GuardCondition), NodeError>
+    ) -> Result<(HandleId, GuardCondition<'s>), NodeError>
     where
         F: FnMut() + 'static,
     {
@@ -11972,7 +11975,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         callback: F,
-    ) -> Result<(HandleId, GuardCondition), NodeError>
+    ) -> Result<(HandleId, GuardCondition<'s>), NodeError>
     where
         F: FnMut() + 'static,
     {
@@ -11986,7 +11989,7 @@ impl<'s> Executor<'s> {
     pub fn register_graph_change_guard<F>(
         &mut self,
         callback: F,
-    ) -> Result<(HandleId, GuardCondition), NodeError>
+    ) -> Result<(HandleId, GuardCondition<'s>), NodeError>
     where
         F: FnMut() + 'static,
     {
@@ -19019,6 +19022,83 @@ mod cancel_tests {
 
 /// phase-509 P9b item 3 (RFC-0108 D7) -- the arrival path wakes only the
 /// worker whose band holds the slot.
+// Issue 2727 -- a guard condition handle keeps the executor's wake state
+// alive. The handle held a raw pointer to the `WakeCtx` whose last `Arc` the
+// executor drops, so `trigger` after `drop(executor)` called the wake callback
+// on freed memory, from safe code. `executor::tests` does not build with
+// `rmw-cffi` (it needs `MockSession`), so these hold the handle to what
+// `register_guard_condition_on` gives it: the executor's `Arc`, cloned.
+#[cfg(all(test, feature = "alloc", feature = "rmw-cffi"))]
+mod guard_wake_ctx_tests {
+    use super::*;
+    use portable_atomic_util::Arc;
+
+    /// The executor's side: the one `Arc` it owns, as `wake_ctx_ptr` builds it.
+    fn executor_wake_ctx() -> Arc<WakeCtx> {
+        Arc::new(WakeCtx::new(
+            Arc::new(portable_atomic::AtomicBool::new(false)),
+            None,
+        ))
+    }
+
+    /// A handle wired the way `register_guard_condition_on` wires it.
+    fn handle_on<'a>(
+        flag: &'a portable_atomic::AtomicBool,
+        ctx: &Arc<WakeCtx>,
+    ) -> GuardCondition<'a> {
+        // SAFETY: `flag` outlives the handle (`'a`).
+        let mut g = unsafe { GuardCondition::new(flag) };
+        g.set_wake_cb(
+            nros_rmw_runtime_wake_cb,
+            nros_rmw_runtime_wake_cb_from_isr,
+            ctx.clone(),
+        );
+        g
+    }
+
+    #[test]
+    fn a_guard_condition_keeps_the_wake_state_alive_past_its_executor() {
+        let arena_flag = portable_atomic::AtomicBool::new(false);
+        let owned = executor_wake_ctx();
+        let wake_flag = owned.flag.clone();
+        let handle = handle_on(&arena_flag, &owned);
+        let weak = Arc::downgrade(&owned);
+
+        // The executor drops its `Arc` (`Executor::drop`).
+        drop(owned);
+        assert!(
+            weak.upgrade().is_some(),
+            "the handle holds the wake state past its executor"
+        );
+
+        handle.trigger();
+        assert!(arena_flag.load(portable_atomic::Ordering::SeqCst));
+        assert!(
+            wake_flag.load(portable_atomic::Ordering::SeqCst),
+            "the trigger after the executor is gone reaches the state the handle holds"
+        );
+
+        let second = handle.clone();
+        drop(handle);
+        assert!(weak.upgrade().is_some(), "a clone holds it too");
+        drop(second);
+        assert!(
+            weak.upgrade().is_none(),
+            "the last handle releases it: nothing else kept it"
+        );
+    }
+
+    #[test]
+    fn a_guard_condition_is_one_pointer_of_wake_state() {
+        // The C and C++ opaque storage is sized from this type; the `Arc`
+        // took the raw pointer's place, not a second word.
+        assert_eq!(
+            core::mem::size_of::<Option<Arc<WakeCtx>>>(),
+            core::mem::size_of::<*mut core::ffi::c_void>()
+        );
+    }
+}
+
 #[cfg(all(test, feature = "alloc", feature = "rmw-cffi"))]
 mod band_wake_routing_tests {
     use super::{

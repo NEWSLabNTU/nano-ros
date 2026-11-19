@@ -4419,6 +4419,20 @@ node-std-tests:
     # phase-488 -- `lifecycle-services` joined: its mock-session tests (the
     # per-node naming one among them) were behind a feature no lane enabled.
     cargo test -p nros-node --lib --features alloc,log,sim-time,param-services,lifecycle-services --quiet
+    # Issue 2727 -- `GuardCondition`'s lifetime is its soundness: a handle that
+    # outlives the backing its executor borrowed is a use-after-free in safe
+    # code. The proof is a `compile_fail` doctest and its compiling twin, and no
+    # other lane runs a doctest (nextest cannot). Both are counted, so a filter
+    # that stops matching, or a `cfg` that hides `Executor::open_in`, fails here
+    # rather than passing on zero tests.
+    gc_out="$(cargo test -p nros-node --doc --features alloc,rmw-cffi -- 'executor::types::GuardCondition' 2>&1)" || { printf '%s\n' "$gc_out"; exit 1; }
+    gc_fail="$(printf '%s\n' "$gc_out" | grep -c 'GuardCondition (line [0-9]*) - compile fail ... ok' || true)"
+    gc_twin="$(printf '%s\n' "$gc_out" | grep -c 'GuardCondition (line [0-9]*) - compile ... ok' || true)"
+    if [ "$gc_fail" != 1 ] || [ "$gc_twin" != 1 ]; then
+        printf '%s\n' "$gc_out"
+        echo "node-std-tests: expected GuardCondition's compile_fail doctest and its twin, saw $gc_fail and $gc_twin (issue 2727)." >&2
+        exit 1
+    fi
     # Lint the build this lane just compiled. `test-targets` clippies nros-node
     # with NO features (workspace) and its own DEFAULT features (per crate) —
     # both without `std` — so a test that only compiles under `std` was linted
