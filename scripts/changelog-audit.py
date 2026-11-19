@@ -83,6 +83,7 @@ from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
 import check_skip  # noqa: E402  the NOT VERIFIED ledger
 import git_history  # noqa: E402  what this clone's history can answer
 
+ROOT = Path(__file__).resolve().parents[1]
 SHIPPED = ("packages/", "cmake/", "book/")
 NOT_SHIPPED = ("packages/testing/", "book/src/migrating/releases/")
 # The book's NAVIGATION: a change to these alone changes no page a user reads
@@ -255,10 +256,47 @@ def audit(cwd, since, until, use_gh, included=None):
     return rows, skipped, len(cs), len(groups), bool(prs), credit
 
 
-FRAGMENT_TYPES = ("fix", "feat", "perf", "breaking", "docs")
+def fragment_types(pyproject_text):
+    """The fragment types towncrier is configured for, in pyproject order:
+    each `[[tool.towncrier.type]]` table's `directory`. A fragment of any
+    other type is dropped from the notes without a word."""
+    out = []
+    for block in re.split(r"^\[\[tool\.towncrier\.type\]\]\s*$", pyproject_text, flags=re.M)[1:]:
+        block = re.split(r"^\[", block, maxsplit=1, flags=re.M)[0]
+        m = re.search(r'^directory\s*=\s*"([^"]+)"', block, re.M)
+        if m:
+            out.append(m.group(1))
+    return tuple(out)
 
 
-def require(cwd, base, head, included=None):
+def fragment_type(path):
+    """`changelog.d/<name>.<type>.md` -> <type>; None for a file that is not a
+    fragment (the directory's README) or carries no type."""
+    if not path.startswith(FRAGMENTS) or not path.endswith(".md"):
+        return None
+    base = path[len(FRAGMENTS):]
+    if "/" in base or base == "README.md":
+        return None
+    parts = base[:-len(".md")].split(".")
+    return parts[-1] if len(parts) >= 2 else ""
+
+
+def untyped_fragments(paths, types):
+    """The fragments among `paths` whose type towncrier is not configured for."""
+    return [p for p in paths if fragment_type(p) is not None and fragment_type(p) not in types]
+
+
+def untyped_message(bad, types):
+    shown = "\n".join(f"    {p}" for p in bad)
+    return (
+        "changelog-required: these fragments have a type towncrier is not configured for, "
+        "so the release notes would drop them without a word:\n"
+        f"{shown}\n"
+        f"Rename each to changelog.d/<name>.<type>.md with <type> one of: {', '.join(types)}."
+    )
+
+
+def require(cwd, base, head, included=None, types=None):
     """Option (a) over one branch: the shipped paths it changes when it needs
     a changelog entry and has none, else [].
 
@@ -278,6 +316,11 @@ def require(cwd, base, head, included=None):
     lazy = not all(git_history.tree_present(cwd, rev) for rev in (base, head))
     paths = [p for p in git_history.history_git(
         cwd, "diff", "--name-only", "--no-renames", base, head, fetch=lazy).stdout.splitlines() if p]
+    if types is None:
+        types = fragment_types((Path(cwd) / "pyproject.toml").read_text())
+    bad = untyped_fragments(paths, types)
+    if bad:
+        raise UntypedFragments(bad, types)
     msgs = git(["log", "--no-merges", "--format=%B%x00", f"{base}..{head}"], cwd)
     covered = (any(p.startswith(FRAGMENTS) for p in paths)
                or any(TRAILER.search(m) for m in msgs.split("\0")))
@@ -287,7 +330,13 @@ def require(cwd, base, head, included=None):
     return ship
 
 
-def require_message(ship):
+class UntypedFragments(Exception):
+    def __init__(self, bad, types):
+        super().__init__(untyped_message(bad, types))
+        self.bad, self.types = bad, types
+
+
+def require_message(ship, types=None):
     shown = "\n".join(f"    {p}" for p in ship[:8])
     more = f"\n    … and {len(ship) - 8} more" if len(ship) > 8 else ""
     return (
@@ -295,7 +344,7 @@ def require_message(ship):
         "changelog entry:\n"
         f"{shown}{more}\n"
         "Add ONE of these to the branch:\n"
-        f"  * a fragment, changelog.d/+<a-few-words>.<type>.md (type: {', '.join(FRAGMENT_TYPES)}),\n"
+        f"  * a fragment, changelog.d/+<a-few-words>.<type>.md (type: {', '.join(types or fragment_types((ROOT / 'pyproject.toml').read_text()))}),\n"
         "    saying in a sentence or two what a user now sees, with no issue or phase ids; or\n"
         "  * if no user sees the change (tests, gates, internal tooling), this line on its own\n"
         "    at the end of any commit message on the branch:\n"
@@ -453,12 +502,12 @@ def self_test():
                 git(["checkout", "-q", "-B", "req", base], r)
                 for paths, msg in steps:
                     commit(paths, msg)
-                got_ship = require(str(r), base, "HEAD", included=set())
+                got_ship = require(str(r), base, "HEAD", included=set(), types=("fix", "feat", "changed"))
                 if bool(got_ship) != want_refused:
                     fails.append(f"--require, {name}: want {'refused' if want_refused else 'passed'}")
             # The third outcome: what this clone cannot answer is UNKNOWN.
             try:
-                require(str(r), "0" * 40, "HEAD", included=set())
+                require(str(r), "0" * 40, "HEAD", included=set(), types=("fix",))
                 fails.append("--require: a tree not in the clone did not raise HistoryUnknown")
             except git_history.HistoryUnknown:
                 pass
@@ -469,7 +518,36 @@ def self_test():
             got_base, why = branch_base(str(shallow), "origin/main")
             if got_base is not None or "shallow" not in (why or ""):
                 fails.append(f"--require: a shallow clone must say so, got {got_base!r} {why!r}")
-            msg = require_message(["packages/core/x.rs"])
+            # A fragment of a type towncrier is not configured for is refused,
+            # naming the valid types; the directory's README is not a fragment.
+            git(["checkout", "-q", "-B", "req", base], r)
+            commit(["packages/core/t1.rs", "changelog.d/+t1.changes.md"])
+            try:
+                require(str(r), base, "HEAD", included=set(), types=("fix", "feat", "changed"))
+                fails.append("--require: a fragment of an unconfigured type was accepted")
+            except UntypedFragments as e:
+                if e.bad != ["changelog.d/+t1.changes.md"] or "fix, feat, changed" not in str(e):
+                    fails.append(f"--require: the untyped refusal is wrong: {e}")
+            git(["checkout", "-q", "-B", "req", base], r)
+            commit(["changelog.d/README.md", "changelog.d/+t2.changed.md", "packages/core/t2.rs"])
+            try:
+                if require(str(r), base, "HEAD", included=set(), types=("fix", "feat", "changed")):
+                    fails.append("--require: a configured fragment plus the README was refused")
+            except UntypedFragments as e:
+                fails.append(f"--require: the README or a configured type was called untyped: {e}")
+            cfg = ('[[tool.towncrier.type]]\ndirectory = "fix"\nname = "Fixed"\n\n'
+                   '[[tool.towncrier.type]]\ndirectory = "changed"\nname = "Changed"\n\n'
+                   '[tool.other]\ndirectory = "nope"\n')
+            if fragment_types(cfg) != ("fix", "changed"):
+                fails.append(f"fragment_types: want fix, changed; got {fragment_types(cfg)}")
+            if fragment_types((ROOT / "pyproject.toml").read_text())[:2] != ("fix", "feat"):
+                fails.append("fragment_types does not read this repo's pyproject")
+            for path, want in (("changelog.d/2541.fix.md", "fix"), ("changelog.d/+a-b.changed.md", "changed"),
+                               ("changelog.d/README.md", None), ("changelog.d/nodot.md", ""),
+                               ("book/x.fix.md", None)):
+                if fragment_type(path) != want:
+                    fails.append(f"fragment_type({path}): want {want!r}, got {fragment_type(path)!r}")
+            msg = require_message(["packages/core/x.rs"], ("fix", "feat"))
             for needle in ("changelog.d/+", "Changelog: none", "packages/core/x.rs", "fix, feat"):
                 if needle not in msg:
                     fails.append(f"--require message lacks {needle!r}")
@@ -495,7 +573,7 @@ def self_test():
         print(f"changelog-audit self-test FAIL: {f}", file=sys.stderr)
     if fails:
         return 1
-    print("changelog-audit self-test: OK (tag choice, fragment, trailer, exclusions, book navigation, docs-only skip, PR grouping, batched lookup, /pull/ citation, none-list, --require)")
+    print("changelog-audit self-test: OK (tag choice, fragment, trailer, exclusions, book navigation, docs-only skip, PR grouping, batched lookup, /pull/ citation, none-list, --require, fragment types)")
     return 0
 
 
@@ -570,6 +648,9 @@ def require_main(cwd, argv):
             return check_skip.unverified(name, why)
     try:
         ship = require(cwd, base, "HEAD")
+    except UntypedFragments as e:
+        print(e, file=sys.stderr)
+        return 1
     except (git_history.HistoryUnknown, RuntimeError, OSError) as e:
         return check_skip.unverified(name, f"cannot read the branch here: {e}")
     if ship:
