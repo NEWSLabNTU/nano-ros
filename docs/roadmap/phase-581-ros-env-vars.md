@@ -34,12 +34,13 @@ board and RMW packages are self-contained.
 - **Result:** M5 green and M6 refusing on Zephyr 3.7 and 4.4; `native_sim`
   has no environment; Humble ignores `ROS_NAMESPACE`; `SERVICE_TIMEOUT_MS`
   is core and `LET_BUFFER_SIZE` has no reader; `NROS_NODE_NAME` is read but
-  does not rename a component node. Data:
+  does not rename a component node (filed as issue 2739). Data:
   [`data/phase-581-w0-measure.md`](data/phase-581-w0-measure.md); RFC-0140
   carries the results (D3, D4, D6, D7, D9, D10, Appendix A and B, Decisions
   3, 8, 11). Not measured: Jazzy (no install or image), the `freertos-posix`
   Rust road at run time (no in-tree image), the Cyclone, XRCE and bridge
-  rows (no such image built).
+  rows (no such image built). These are OPEN, not settled: W12 to W15 measure
+  each before relying on it.
 - The first draft's run-time measurements: a Linux image per road (Rust, C,
   C++) and a `native_sim` image, each variable of RFC-0140 Appendix B set,
   recording whether the process acted on it (Decisions 8 and 11).
@@ -268,6 +269,10 @@ board and RMW packages are self-contained.
   `NROS_NODE_NAMESPACE`, `NROS_SESSION_MODE` through `nros-env`, with the
   mismatch warning for the four issue 2714 did not cover; the
   `freertos-posix` Rust road reads them (Decision 11).
+- Fixes issue 2739: `NROS_NODE_NAME` / `NROS_NODE_NAMESPACE` are read on
+  every Linux road today and silently change nothing for a component or
+  application-named node (measured in W0); W12 must make the read act or make
+  the row IGNORE with a notice.
 - **Acceptance:** per row, on Rust, C and C++ images: env unset uses the
   stated value; env set uses the env value; the warning appears exactly when
   both are set and differ, once.
