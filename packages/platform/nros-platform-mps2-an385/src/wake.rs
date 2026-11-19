@@ -76,15 +76,29 @@ pub(crate) fn park_until_us(w: *mut core::ffi::c_void, rel_us: u64) -> i8 {
     };
     let deadline = crate::clock::clock_ns().saturating_add(rel_us.saturating_mul(1000));
     loop {
-        if f.swap(false, Ordering::AcqRel) {
-            return 0;
-        }
-        if crate::clock::clock_ns() >= deadline {
-            return 1;
-        }
-        // SAFETY: the board's primitive, installed by `set_wake_idle`.
-        if unsafe { idle(deadline) } {
-            return 0;
+        // Issue 2706 -- the flag is read and the idle entered with interrupts
+        // masked. A signal from an interrupt handler that lands between the
+        // read and the idle's `wfi` is then pending rather than taken: the
+        // `wfi` returns at once (a pending interrupt wakes it whatever
+        // PRIMASK says), the handler runs when this section ends, and the
+        // next pass reads its flag. Read outside the section, that handler
+        // ran before the `wfi`, and the park slept to its deadline.
+        let r = cortex_m::interrupt::free(|_| {
+            if f.swap(false, Ordering::AcqRel) {
+                return Some(0);
+            }
+            if crate::clock::clock_ns() >= deadline {
+                return Some(1);
+            }
+            // SAFETY: the board's primitive, installed by `set_wake_idle`.
+            // It masks interrupts itself, which nests.
+            if unsafe { idle(deadline) } {
+                return Some(0);
+            }
+            None
+        });
+        if let Some(r) = r {
+            return r;
         }
     }
 }

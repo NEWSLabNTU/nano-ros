@@ -218,6 +218,12 @@ pub const BAREMETAL_RTIC_PUBSUB_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 
 /// `system.toml` states this port as its locator.
 pub const BAREMETAL_RTIC_LEVELS_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 5);
 
+/// Bare-metal MPS2-AN385 interrupt-wake image
+/// (`packages/testing/nros-tests/bins/isr-wake-baremetal-mps2`, issue 2706): a
+/// timer interrupt triggers a guard condition while the executor parks. Its
+/// `main.rs` and `system.toml` state this port as its locator.
+pub const BAREMETAL_ISR_WAKE_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 6);
+
 /// FreeRTOS + MPS2-AN385 interrupt-wake image
 /// (`packages/testing/nros-tests/bins/isr-wake-freertos-mps2`, issue 2696): a
 /// timer interrupt triggers a guard condition while the executor parks. Its
@@ -372,6 +378,7 @@ mod tests {
             BAREMETAL_RTIC_PUBSUB_PORT,
             BAREMETAL_RTIC_LEVELS_PORT,
             FREERTOS_ISR_WAKE_PORT,
+            BAREMETAL_ISR_WAKE_PORT,
         ] {
             assert!(
                 !ports.contains_key(&aux),

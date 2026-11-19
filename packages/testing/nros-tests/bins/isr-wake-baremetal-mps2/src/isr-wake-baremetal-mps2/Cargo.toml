@@ -1,0 +1,33 @@
+[workspace]
+
+[package]
+name = "isr-wake-baremetal-mps2"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Issue 2706: a timer interrupt triggers a guard condition on bare-metal MPS2-AN385"
+
+[[bin]]
+name = "isr-wake-baremetal-mps2"
+test = false
+bench = false
+
+[dependencies]
+nros-board-mps2-an385 = { path = "../../../../../../boards/nros-board-mps2-an385", default-features = false }
+isr_wake_baremetal_mps2_nros_derived = { path = "../../generated/nros-derived/isr-wake-baremetal-mps2" }
+nros = { path = "../../../../../../api/nros", default-features = false, features = ["rmw-cffi"] }
+nros-node = { path = "../../../../../../core/nros-node", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros-rmw-zenoh = { path = "../../../../../../rmw/zenoh/nros-rmw-zenoh" }
+# The CMSDK TIMER1 periodic slot (`sporadic_timer`), whose handler this
+# image's interrupt runs in.
+nros-platform-mps2-an385 = { path = "../../../../../../platform/nros-platform-mps2-an385" }
+
+cortex-m-semihosting = "0.5"
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+[profile.release]
+debug = true
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
