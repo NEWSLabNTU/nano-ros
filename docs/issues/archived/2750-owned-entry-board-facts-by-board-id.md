@@ -1,7 +1,9 @@
 ---
 id: 2750
 title: "An owned entry's workspace configure asks board facts for the board id, so an image named otherwise is refused"
-status: open
+status: resolved
+resolved: 2026-11-20
+resolved_in: "the change that archives this issue"
 type: bug
 severity: medium
 area: [cli, cmake, build]
@@ -67,3 +69,24 @@ generated entry's configure has `NROS_IMAGE`), and board facts takes the
 image, keeping `NROS_DEPLOY` the board for the entry verb. When one
 configure holds several owned images on one board, any of them answers the
 same board facts, so the first is enough.
+
+## Resolution (2026-11-20)
+
+The generated root also states `NROS_LEAF_IMAGE_ID "<image>"`, which
+`nros_resolve_board_facts` already prefers over `NROS_DEPLOY`. So board
+facts are asked for the IMAGE, and `NROS_DEPLOY` stays the board for the
+entry verb.
+
+`OwnedIdentity::agree` names the configure's first owned image. It now
+REFUSES owned images of one configure that name different boards, naming
+both images and both boards. That is asserted, never assumed, so no image
+is built on another board's facts.
+
+Reproduced on a scratch copy of `examples/linux/c/talker` with one image
+`talker_main` on board `linux`. Before the fix: `no [image.linux] naming a
+board`. After it, the configure and build pass.
+
+Unit tests (`cmake_root`):
+- the root states the image id before `nano_ros_workspace(`;
+- agreement names the first image;
+- two boards are refused.
