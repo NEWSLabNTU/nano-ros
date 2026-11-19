@@ -13,13 +13,24 @@
 //! interrupt.
 //!
 //! Each callback prints `ISR_WAKE <latency_us>`; after [`SAMPLES`] the image
-//! prints `ISR_WAKE_DONE <fires> <callbacks> <refused>` and exits. The host
-//! test asserts the bound.
+//! prints `ISR_WAKE_DONE <fires> <callbacks> <refused>`.
+//!
+//! Then the race probe, which makes the park's one window deterministic
+//! instead of a matter of timing. TIMER1 is stopped, so nothing else can end
+//! a park. For each of [`RACE_ROUNDS`] rounds the platform's park hook
+//! (`wake::set_park_probe`, feature `park-race-probe`) pends DUALTIMER
+//! exactly between the park's flag read and its idle, and DUALTIMER's handler
+//! calls `trigger_from_isr`. With the read inside the idle's critical
+//! section the pending interrupt ends the `wfi` at once. With the read
+//! outside it, the handler runs before the idle, and the park sleeps to its
+//! deadline. Each round prints `ISR_RACE <latency_us>`, measured from the
+//! pend, then `ISR_RACE_DONE <rounds>`, and the image exits. The host test
+//! asserts both bounds.
 
 #![no_std]
 #![no_main]
 
-use core::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 use nros::{Executor, ExecutorConfig, GuardCondition};
 use nros_board_mps2_an385::{Config, println, run_bare};
 use panic_semihosting as _;
@@ -28,6 +39,8 @@ use panic_semihosting as _;
 const PERIOD_US: u32 = 20_000;
 /// How many callbacks the run collects.
 const SAMPLES: u32 = 50;
+/// How many race-probe rounds the run makes.
+const RACE_ROUNDS: u32 = 10;
 
 /// CMSDK APB TIMER1's current-value register, clocked at the 25 MHz system
 /// clock. The platform's periodic slot owns the timer; this image only reads
@@ -42,6 +55,31 @@ static GUARD: AtomicPtr<GuardCondition<'static>> = AtomicPtr::new(core::ptr::nul
 static FIRES: AtomicU32 = AtomicU32::new(0);
 /// Interrupts whose `trigger_from_isr` reported the wake reached nothing.
 static REFUSED: AtomicU32 = AtomicU32::new(0);
+/// The race probe pends DUALTIMER on the next park when set.
+static RACE_ARMED: AtomicBool = AtomicBool::new(false);
+/// When the probe pended it, in microseconds of `clock_ns` (wrapping, never
+/// 0); 0 in the timer phase. 32 bits: thumbv7m has no 64-bit atomics.
+static PENDED_AT_US: AtomicU32 = AtomicU32::new(0);
+
+fn now_us() -> u32 {
+    (nros_platform_mps2_an385::clock::clock_ns() / 1000) as u32
+}
+
+/// The park hook: in the window between the flag read and the idle, pend
+/// DUALTIMER once per armed round.
+fn race_probe() {
+    if RACE_ARMED.swap(false, Ordering::AcqRel) {
+        PENDED_AT_US.store(now_us().max(1), Ordering::Release);
+        cortex_m::peripheral::NVIC::pend(mps2_an385_pac::Interrupt::DUALTIMER);
+    }
+}
+
+/// DUALTIMER's handler (NVIC 10; the PAC's vector table names it): the
+/// probe's interrupt, which triggers the guard as TIMER1's does.
+#[unsafe(no_mangle)]
+extern "C" fn DUALTIMER() {
+    on_timer(core::ptr::null_mut());
+}
 
 fn timer_value() -> u32 {
     // SAFETY: TIMER1's value register, read-only here.
@@ -79,7 +117,15 @@ fn main() -> ! {
         let mut executor = Executor::open(&exec_config)?;
 
         static CALLBACKS: AtomicU32 = AtomicU32::new(0);
+        static RACE_CALLBACKS: AtomicU32 = AtomicU32::new(0);
         let (_id, guard) = executor.register_guard_condition(|| {
+            let pended = PENDED_AT_US.swap(0, Ordering::AcqRel);
+            if pended != 0 {
+                let late_us = now_us().wrapping_sub(pended);
+                RACE_CALLBACKS.fetch_add(1, Ordering::Relaxed);
+                println!("ISR_RACE {}", late_us);
+                return;
+            }
             // Ticks since the interrupt reloaded TIMER1: how late this
             // callback ran.
             let elapsed = RELOAD_TICKS.saturating_sub(timer_value());
@@ -105,6 +151,27 @@ fn main() -> ! {
             CALLBACKS.load(Ordering::Relaxed),
             REFUSED.load(Ordering::Relaxed)
         );
+
+        // The race probe. Drain anything the timer phase left, then one pend
+        // per round, in the park's window.
+        for _ in 0..3 {
+            let _ = executor.spin_once(core::time::Duration::from_millis(10));
+        }
+        nros_platform_mps2_an385::wake::set_park_probe(race_probe);
+        // SAFETY: DUALTIMER's handler is defined above and touches only
+        // atomics; single core.
+        unsafe { cortex_m::peripheral::NVIC::unmask(mps2_an385_pac::Interrupt::DUALTIMER) };
+        for round in 0..RACE_ROUNDS {
+            RACE_ARMED.store(true, Ordering::Release);
+            // One spin: its park pends the interrupt. A lost wake makes this
+            // spin run to its budget, and the callback then reports it.
+            let mut spins = 0;
+            while RACE_CALLBACKS.load(Ordering::Relaxed) <= round && spins < 5 {
+                let _ = executor.spin_once(core::time::Duration::from_millis(1000));
+                spins += 1;
+            }
+        }
+        println!("ISR_RACE_DONE {}", RACE_CALLBACKS.load(Ordering::Relaxed));
         Ok::<(), nros::NodeError>(())
     })
 }

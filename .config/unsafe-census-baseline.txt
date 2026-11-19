@@ -19,7 +19,7 @@ condvar-contract-threadx-linux       1   0     0       1      0
 contract-monitor                     1   0     0       1      0
 heap-free-cpp-poc-mps2               1   0     0       1      0
 heap-free-poc-mps2                   4   0     0       0      0
-isr-wake-baremetal-mps2              2   0     0       0      0
+isr-wake-baremetal-mps2              3   0     0       0      0
 isr-wake-freertos-mps2               4   0     0       0      0
 lan9118-smoltcp                      5   4     0       0      0
 loan_copy_count                      4   0     0       5      0
@@ -63,7 +63,7 @@ nros-platform                       16   5     1       8      0
 nros-platform-api                   22   5     1      10      0
 nros-platform-cffi                 105   0     4     128      0
 nros-platform-critical-section       2   2     1       1      0
-nros-platform-mps2-an385            23   6     3       8      0
+nros-platform-mps2-an385            24   6     3       8      0
 nros-platform-stm32f4               15   6     3       2      0
 nros-port-metric-bench               3   0     0       3      0
 nros-rmw                            21   7    11      13      0

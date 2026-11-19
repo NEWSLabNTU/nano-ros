@@ -25,7 +25,7 @@ use nros_tests::{
         build_isr_wake_freertos_mps2, or_unmet,
     },
     matrix::PlatformId,
-    output::{ISR_WAKE_DONE, ISR_WAKE_SAMPLE},
+    output::{ISR_RACE_DONE, ISR_RACE_SAMPLE, ISR_WAKE_DONE, ISR_WAKE_SAMPLE},
     wait_for_port,
 };
 use std::time::Duration;
@@ -58,6 +58,7 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_freertos_mps2() {
         binary,
         nros_tests::alloc::FREERTOS_ISR_WAKE_PORT,
         "FreeRTOS",
+        ISR_WAKE_DONE,
     );
 }
 
@@ -65,8 +66,14 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_freertos_mps2() {
 /// tickless `wfi` idle, and the platform's interrupt-safe signal is the wake
 /// flag that idle's critical section reads.
 ///
+/// Then the race probe: the image pends an interrupt exactly between the
+/// park's flag read and its idle, [`RACE_ROUNDS`] times, with nothing else
+/// running to end a park. Each round's wake must arrive within
+/// [`RACE_BOUND_US`].
+///
 /// Mutation, the park reading the flag before the idle's critical section (as
-/// it did before issue 2706): see that issue for the measured result.
+/// it did before issue 2706): 6 of 10 rounds lost their wake and slept 326 to
+/// 671 ms, in each of 3 runs. Red every run.
 #[test]
 fn a_timer_interrupt_wakes_the_parked_executor_on_baremetal_mps2() {
     nros_tests::fixtures::lane::require_platform_in_lane(
@@ -75,15 +82,45 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_baremetal_mps2() {
     );
     let binary = build_isr_wake_baremetal_mps2()
         .require("isr-wake-baremetal-mps2 — run `just build baremetal`");
-    run_and_check(
+    let output = run_and_check(
         binary,
         nros_tests::alloc::BAREMETAL_ISR_WAKE_PORT,
         "bare-metal",
+        ISR_RACE_DONE,
+    );
+    let rounds: u64 = output
+        .lines()
+        .find_map(|l| l.split(ISR_RACE_DONE).nth(1))
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or_else(|| panic!("the race probe never finished:\n{output}"));
+    let race: Vec<u64> = output
+        .lines()
+        .filter_map(|l| l.split(ISR_RACE_SAMPLE).nth(1))
+        .filter_map(|v| v.trim().parse().ok())
+        .collect();
+    eprintln!("bare-metal park race probe: {rounds} rounds, latency {race:?} us");
+    assert_eq!(
+        (rounds, race.len() as u64),
+        (RACE_ROUNDS, RACE_ROUNDS),
+        "every race-probe round must be served:\n{output}"
+    );
+    let late: Vec<&u64> = race.iter().filter(|&&us| us > RACE_BOUND_US).collect();
+    assert!(
+        late.is_empty(),
+        "an interrupt pended between the park's flag read and its idle was served late \
+         ({late:?} us > {RACE_BOUND_US} us): the park lost the wake and slept on"
     );
 }
 
+/// The race probe's rounds (the image's `RACE_ROUNDS`).
+const RACE_ROUNDS: u64 = 10;
+/// How late a race-probe wake may be. The pended interrupt ends the `wfi` at
+/// once, so this is the dispatch path alone; a lost wake sleeps to the park's
+/// deadline, which is far above it.
+const RACE_BOUND_US: u64 = 5_000;
+
 /// Boot `binary` against a router on `port` and hold its run to the bound.
-fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str) {
+fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str, finish: &str) -> String {
     let _zenohd = or_unmet(ZenohRouter::start_slirp(port));
     assert!(
         wait_for_port(port, Duration::from_secs(5)),
@@ -91,7 +128,7 @@ fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str) {
     );
     let mut qemu = QemuProcess::start_mps2_an385_networked_measured(binary)
         .unwrap_or_else(|e| panic!("start QEMU for the {port_name} interrupt-wake image: {e:?}"));
-    let output = qemu.collect_until(ISR_WAKE_DONE, Duration::from_secs(120));
+    let output = qemu.collect_until(finish, Duration::from_secs(120));
     qemu.kill();
 
     let done = output
@@ -143,4 +180,5 @@ fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str) {
         over_cap.is_empty(),
         "callbacks later than {CAP_US} us after their interrupt: {over_cap:?}"
     );
+    output
 }

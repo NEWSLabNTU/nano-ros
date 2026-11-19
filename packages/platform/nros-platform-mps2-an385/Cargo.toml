@@ -25,6 +25,10 @@ name = "nros_platform_mps2_an385"
 # avoid a `duplicate symbol: strtol` link conflict; PRNG / sleep / timing stay.
 default = ["libc-stubs", "libc-heap"]
 libc-stubs = ["nros-baremetal-common/libc-stubs"]
+# Issue 2706 -- a test-only hook between the wake park's flag read and its
+# idle (`wake::set_park_probe`), so an interrupt-wake test can pend an
+# interrupt in exactly that window. Only `isr-wake-baremetal-mps2` turns it on.
+park-race-probe = []
 # phase-391 W5-endgame (issues 0816/0843) — the HEAP libc shims
 # (`malloc`/`free`/`realloc`/`calloc`, src/libc_stubs.rs) get their own gate so
 # a heap-free-tier image can drop the symbols entirely: the W1 link gate

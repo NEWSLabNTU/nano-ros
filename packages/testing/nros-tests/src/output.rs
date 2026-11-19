@@ -2291,6 +2291,12 @@ mod guest_failure_tests {
 pub const ISR_WAKE_SAMPLE: &str = "ISR_WAKE ";
 /// See [`ISR_WAKE_SAMPLE`].
 pub const ISR_WAKE_DONE: &str = "ISR_WAKE_DONE ";
+/// Issue 2706 -- what `isr-wake-baremetal-mps2`'s race probe prints: one
+/// `ISR_RACE <latency_us>` per round (an interrupt pended between the park's
+/// flag read and its idle), then `ISR_RACE_DONE <rounds>`.
+pub const ISR_RACE_SAMPLE: &str = "ISR_RACE ";
+/// See [`ISR_RACE_SAMPLE`].
+pub const ISR_RACE_DONE: &str = "ISR_RACE_DONE ";
 
 /// Issue 2714 — the hosted resolver's boot line (`nros::env::report`):
 /// `boot config: domain <n> (<source>), locator <l> (<source>), rmw …`.

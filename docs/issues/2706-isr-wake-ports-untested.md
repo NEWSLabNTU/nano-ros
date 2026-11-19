@@ -61,10 +61,15 @@ Measured (`isr_wake_rtos::a_timer_interrupt_wakes_the_parked_executor_on_baremet
   247 us.
 - Mutation, the port refusing (main before this): 1700 interrupts were
   served by 50 callbacks, worst 12.5 ms, and every trigger was refused. Red.
-- Mutation, the old park (flag read outside the critical section): 3 runs
-  passed, and one had a 6.86 ms sample. That is consistent with the window
-  above (a lost wake lasts until the next interrupt, at most 20 ms), but a
-  narrow window is not caught every run, and the test's 95 % share absorbs
-  one sample. The fix rests on the reasoning above. The test catches the
-  port refusing, and not this race reliably.
-
+- Mutation, the old park (flag read outside the critical section): first
+  measured statistically, 3 runs passed with one 6.86 ms sample. The window
+  is too narrow to be caught by timing, so the test now makes it
+  deterministic. A test-only hook (`wake::set_park_probe`, feature
+  `park-race-probe`, enabled only by this image) runs between the park's
+  flag read and its idle. The image's race probe uses it to pend DUALTIMER,
+  whose handler calls `trigger_from_isr`, for 10 rounds, with TIMER1 stopped
+  so nothing else ends a park.
+  - Fixed: 3 of 3 runs served all 10 rounds in 83 to 154 us.
+  - Old ordering, with the hook at the same point: 3 of 3 runs red. Each
+    time 6 of 10 rounds lost their wake and slept 326 to 671 ms (671 ms is
+    the board's SysTick one-shot limit).
