@@ -393,7 +393,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   (`workspaces/{rust,c,cpp,mixed}`). The themed `ws-*` dirs are GONE (W3, verified zero remain) —
   don't reintroduce one. Naming rules (no language prefixes in single-language workspaces,
   role-not-payload pkg names, one platform vocabulary for entries) →
-  `examples/workspaces/README-layout.md`. West-built zephyr entry leaves need BOTH the nested
+  `docs/development/example-workspace-layout.md`. West-built zephyr entry leaves need BOTH the nested
   workspace `exclude` AND a repo-root `Cargo.toml` exclude, and their dep keys must match the
   generated `<entry>_nros_selection` package name (phase-331 fallout class, 2026-08-03).
 - **SystemModels are BUILD ARTIFACTS — never committed, never referenced by entries**
