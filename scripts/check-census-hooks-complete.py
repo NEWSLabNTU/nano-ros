@@ -490,8 +490,8 @@ def self_test(files: dict[str, str]) -> None:
     drop_once(
         BACKEND,
         m,
-        "        qos: nros_rmw::QoSProfile,\n    ) -> Result<Self::SubscriptionHandle, Self::Error> {\n        record(EntityKind::Subscription, topic.name, topic.type_name, qos)?;",
-        "        _qos: nros_rmw::QoSProfile,\n    ) -> Result<Self::SubscriptionHandle, Self::Error> {\n        record(EntityKind::Subscription, topic.name, topic.type_name, Default::default())?;",
+        "        qos: nros_rmw::QoSProfile,\n    ) -> Result<Self::SubscriptionHandle, Self::Error> {\n        record(\n            EntityKind::Subscription,\n            topic.name,\n            topic.type_name,\n            qos,\n",
+        "        _qos: nros_rmw::QoSProfile,\n    ) -> Result<Self::SubscriptionHandle, Self::Error> {\n        record(\n            EntityKind::Subscription,\n            topic.name,\n            topic.type_name,\n            Default::default(),\n",
     )
     red("subscription QoS dropped", m, "drops the QoS")
 

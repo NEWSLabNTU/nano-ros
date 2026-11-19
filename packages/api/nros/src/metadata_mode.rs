@@ -173,6 +173,13 @@ pub struct EntityRecord<'a> {
     /// Which timer entry point the entity came through; ignored for every
     /// kind but [`EntityKind::Timer`].
     pub timer_kind: TimerKind,
+    // Issue 2518.
+    /// The node the entity was created ON, by name, when the
+    /// adapter knows it (the RMW seam's `TopicInfo::node_name` /
+    /// `ServiceInfo::node_name`). [`record`] files the entity under that node
+    /// when it is open. `None` falls back to the current-node cursor, which is
+    /// only right while the owner is the node opened last.
+    pub owner: Option<&'a str>,
 }
 
 impl<'a> EntityRecord<'a> {
@@ -186,6 +193,7 @@ impl<'a> EntityRecord<'a> {
             period_ms: None,
             qos: None,
             timer_kind: TimerKind::Wall,
+            owner: None,
         }
     }
 }
@@ -218,12 +226,23 @@ pub fn record_entity(
     })
 }
 
-/// Record one entity, with everything the adapter knows about it, against the
-/// current node. See [`record_entity`] for the refusal contract.
+/// Record one entity, with everything the adapter knows about it, against
+/// the node that owns it. See [`record_entity`] for the refusal contract.
+///
+/// By OWNER, not by recency. With [`EntityRecord::owner`] set
+/// and that node open, the entity lands on it, so a component that opens a
+/// second node and then creates an entity on the first files it under the
+/// first. Without an owner (an adapter with no node in scope) it lands on the
+/// node opened last, as before. An owner that is not open is not guessed: it
+/// also falls back to the cursor.
 #[must_use]
 pub fn record(rec: EntityRecord<'_>) -> bool {
     state().with(|st| {
-        let Some(node_id) = st.current_node.clone() else {
+        let owned = rec
+            .owner
+            .filter(|n| !n.is_empty() && st.recorder.has_node(n))
+            .map(String::from);
+        let Some(node_id) = owned.or_else(|| st.current_node.clone()) else {
             return false;
         };
         let type_name = intern(rec.type_name);
@@ -1000,6 +1019,57 @@ mod tests {
         assert!(
             !json.contains("\"in_place\""),
             "an unobserved row must omit the key, not state a false: {json}"
+        );
+        reset();
+    }
+
+    /// Issue 2518 -- an entity lands on the node that OWNS it, not on the node
+    /// opened last. The interleaved shape: two nodes open, then an entity on
+    /// the FIRST. Without an owner the cursor still decides (the fallback).
+    #[test]
+    fn an_entity_lands_on_its_owning_node_not_the_last_opened() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(begin_node("first", "/", 0));
+        assert!(begin_node("second", "/", 0));
+        assert!(record(EntityRecord {
+            owner: Some("first"),
+            ..EntityRecord::new(EntityKind::Publisher, "/from_first", "std_msgs/msg/String")
+        }));
+        assert!(record(EntityRecord::new(
+            EntityKind::Publisher,
+            "/no_owner",
+            "std_msgs/msg/String"
+        )));
+        // An owner no hook opened is not guessed: the cursor decides.
+        assert!(record(EntityRecord {
+            owner: Some("never_opened"),
+            ..EntityRecord::new(
+                EntityKind::Publisher,
+                "/unknown_owner",
+                "std_msgs/msg/String"
+            )
+        }));
+        let export = SourceMetadataExport::new("fixture_pkg", "fixture").language("cpp");
+        let json = to_json(&export).expect("serialize");
+        // The node rows, in declaration order: `first` up to `second`, then
+        // `second` to the end. Keyed on the node's own row, not any `{"id":`,
+        // which entities carry too.
+        let at = |id: &str| {
+            json.find(&alloc::format!("{{\"id\":\"{id}\",\"declaration_slot\""))
+                .unwrap_or_else(|| panic!("no node row {id}: {json}"))
+        };
+        let (a, b) = (at("first"), at("second"));
+        let (first, second) = (&json[a..b], &json[b..]);
+        assert!(first.contains("/from_first"), "the owner's row: {json}");
+        assert!(
+            !second.contains("/from_first"),
+            "not the last-opened node's: {json}"
+        );
+        assert!(second.contains("/no_owner"), "no owner: the cursor: {json}");
+        assert!(
+            second.contains("/unknown_owner"),
+            "unopened owner: the cursor: {json}"
         );
         reset();
     }
