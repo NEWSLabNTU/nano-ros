@@ -398,6 +398,13 @@ pub struct RmwDispatchArgs {
     /// dispatching one. This is what feeds `NROS_RMW_KNOWN`.
     #[arg(long)]
     pub known: bool,
+
+    /// With `--known`: print `name<TAB>ON|OFF` per backend, whether a
+    /// generated image crate bundles it into the image's own staticlib (a
+    /// Rust backend with a register crate). The Rust side of the gate that
+    /// holds `cmake/NanoRosImageCrate.cmake`'s own decision to it.
+    #[arg(long, requires = "known", conflicts_with = "lines")]
+    pub image_bundles: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -1028,6 +1035,14 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
 
     if args.known {
         let names = known_rmw_in(&scan);
+        if args.image_bundles {
+            for n in &names {
+                let r = resolve_rmw_in(&scan, n).map_err(|e| eyre!("{n}: {e}"))?;
+                let on = r.descriptor.image_crate_bundles();
+                println!("{n}\t{}", if on { "ON" } else { "OFF" });
+            }
+            return Ok(());
+        }
         if args.lines {
             println!("NROS_RMW_KNOWN\t{}", names.join(";"));
         } else {
