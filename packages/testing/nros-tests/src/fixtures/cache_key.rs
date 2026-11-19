@@ -513,7 +513,19 @@ fn kconfig_files(build_root: &Path) -> Vec<(String, u64)> {
 /// the number we want — the stamp over the sources AS THEY ARE NOW, which is
 /// what a key must hash. A stale CLI is a legitimate state to observe; it is
 /// not a reason to refuse.
+///
+/// Asked ONCE per process. Each `nros source-stamp` runs `git status` twice,
+/// which is I/O-bound: measured 19 s for one `git status --porcelain=2 -uno`
+/// on a host at load ~55, at 2 % CPU. Asked per observation, the unit test
+/// that observes three times passed in 10 s alone and hit its 60 s timeout
+/// in a gate (issue 2683). The CLI's sources do not move while a test process
+/// runs; the observations this process makes all describe one tree.
 fn cli_source_stamp() -> Option<u64> {
+    static STAMP: OnceLock<Option<u64>> = OnceLock::new();
+    *STAMP.get_or_init(cli_source_stamp_uncached)
+}
+
+fn cli_source_stamp_uncached() -> Option<u64> {
     let root = project_root();
     // This checkout's own build, never a resolver ladder: the key hashes THIS
     // tree's sources, and only this tree's CLI embeds a stamp over them.
