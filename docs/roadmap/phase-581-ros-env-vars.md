@@ -30,7 +30,7 @@ board and RMW packages are self-contained.
 
 ### W0 - Measure
 
-- **Status:** IN PROGRESS (2026-11-19)
+- **Status:** OPEN (in progress (2026-11-19))
 - The first draft's run-time measurements: a Linux image per road (Rust, C,
   C++) and a `native_sim` image, each variable of RFC-0140 Appendix B set,
   recording whether the process acted on it (Decisions 8 and 11).
