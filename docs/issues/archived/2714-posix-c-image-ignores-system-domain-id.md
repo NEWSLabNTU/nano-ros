@@ -1,7 +1,8 @@
 ---
 id: 2714
 title: "A `linux` image drops `[system]`/`[image]` `domain_id` and `locator` on both roads, so a host node joins domain 0 when system.toml says otherwise"
-status: open
+status: resolved
+resolved_in: "d87836b231 (#4285)"
 type: bug
 area: [cmake, boards, c-api, cpp-api, workspace]
 severity: high
@@ -81,3 +82,27 @@ it, and its behaviour does not change.
   unset), not only the baked value.
 - The locator gets the same treatment as the domain, in the same places.
 - The sweep above is re-run in the fix's commit message.
+
+## Resolved (2026-11-19)
+
+Fixed by d87836b231 (#4285, merged 2026-11-18). Each done-when item:
+
+- **Baked rung on both roads.** A `linux` image in Rust, C and C++ takes its
+  stated `domain_id`/`locator` with the environment unset, and
+  `$ROS_DOMAIN_ID` / `$NROS_LOCATOR` still win when set. That is
+  `hosted_baked_rung` on the Rust board, and on C/C++ the host runners'
+  leading (locator, domain_id) that `NanoRosEntry.cmake` bakes.
+- **One precedence rule.** `nros::env::env_overrides_statement` decides it
+  once for the Rust board and for `nros_cpp_warn_env_overrides_stated`. The
+  cross-road test `host_connect_facts` compares the precedence (env set and
+  unset, stated and unstated) across the three languages. It is not limited
+  to the baked value, and the image warns exactly when both are set and
+  differ.
+- **The locator gets the same treatment as the domain**, in the same places.
+- **The sweep is re-run in the commit message.**
+
+Proved on CI: run-matrix 44471252909 (head `eeddd35198`, which carries the
+fix), tier 1:
+`PASS [ 2.426s] nros-tests::host_connect_facts
+a_linux_image_takes_its_stated_connect_facts_below_the_environment_and_warns_when_overridden`.
+The fix commit records that the test fails on the old linux board.
