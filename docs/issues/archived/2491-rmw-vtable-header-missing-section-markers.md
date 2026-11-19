@@ -1,7 +1,9 @@
 ---
 id: 2491
 title: "RFC-0035's generated slot table files the loan slots and `ping_session` under \"Status events\": `rmw_vtable.h` has no section markers before them"
-status: open
+status: resolved
+resolved: 2026-11-19
+resolved_in: "the change that archives this issue"
 type: tech-debt
 severity: low
 area: [rmw, abi, docs]
@@ -42,3 +44,23 @@ review. It is archived as a duplicate of this one. What it added:
   (around line 846).
 - Closing evidence: the table regenerated, and `scripts/gen-abi-bindings.sh`
   re-run to show the committed bindings did not move.
+
+## Resolved (2026-11-19)
+
+The table was wrong in two places, not one.
+
+- **Missing markers.** Five section markers are added in `rmw_vtable.h`:
+  executor wake and next-deadline hints (25-26), zero-copy loans (27-31),
+  service-server availability (32), batched take and streamed publish
+  (33-34), and session liveness (35). Slots 25-35 had all been filed under
+  status events.
+- **A false marker.** The explanatory block inside the status-events
+  section began `/* ---- Status events: how the three upstream parts map
+  here ----`, which the generator read as a section of its own. It split
+  slot 20 from slots 21-24. That block is now an ordinary comment, so all
+  five event slots group under "Status events".
+
+`scripts/gen-rmw-slot-table.py` regenerated RFC-0035's table (`--check` OK,
+78 slots). Comments only: `just check abi-bindings` reports "ABI bindings
+match the C-header SSoT (bindgen 0.72.1, libclang 14)", so the committed
+bindgen output did not move.

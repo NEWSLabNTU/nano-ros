@@ -435,7 +435,7 @@ typedef struct nros_rmw_vtable_t {
      *  unsupported-kind conventions as `subscription_event_init`.
      *  `deadline_ms` is consulted for
      *  `NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED` only. */
-    /* ---- Status events: how the three upstream parts map here ----
+    /* How status events map onto the three upstream parts.
      *
      * Upstream's model is three-part: `*_event_init` fills an `rmw_event_t`
      * HANDLE, `rmw_event_set_callback` attaches a callback to that handle, and
@@ -512,6 +512,7 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*publisher_assert_liveliness)(
         const rmw_publisher_t *publisher);
 
+    /* ---- Executor wake + next-deadline hints (optional) ---- */
     /** Backend's next internal-event deadline in
      *  milliseconds from now (lease keepalive, heartbeat, reader
      *  ACK-NACK timeout, etc.). The runtime caps its `drive_io`
@@ -569,6 +570,7 @@ typedef struct nros_rmw_vtable_t {
                                          void (*cb)(void *ctx),
                                          void *ctx);
 
+    /* ---- Zero-copy loans (optional) ---- */
     /** Zero-copy publisher loan.
      *
      *  Reserve a writable slot of at least `requested_len` bytes inside
@@ -667,6 +669,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL = paired NULL with `sub_borrow`. */
     rmw_ret_t (*return_loaned_message_from_subscription)(const rmw_subscription_t *subscription, rmw_loan_token_t *token);
 
+    /* ---- Service-server availability (optional) ---- */
     /** Service-server availability probe.
      *
      *  `*out_available` says whether ≥ 1 matching server has been
@@ -713,6 +716,7 @@ typedef struct nros_rmw_vtable_t {
         const rmw_client_t *client,
         bool *out_available);
 
+    /* ---- Batched take + streamed publish (optional) ---- */
     /** Upstream `rmw_take_sequence`.
      *  The COUNT moves to `*taken`, matching upstream's
      *  `size_t *taken`, and the return carries only a status.
@@ -815,6 +819,7 @@ typedef struct nros_rmw_vtable_t {
                          size_t *out_written, void *user_ctx),
         void *user_ctx);
 
+    /* ---- Session liveness probe (optional) ---- */
     /** Session-level connectivity probe.
      *
      *  Sends a wire-level round-trip probe ("is the peer / agent /
