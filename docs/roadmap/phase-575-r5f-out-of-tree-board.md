@@ -248,6 +248,43 @@ Steps, in order:
    emulated dual-core target (Zephyr's OpenAMP samples on a dual-core QEMU
    machine), with p50/p99 hop latency recorded. The same over IVC if that
    comes cheap, since it is the same seam.
+   - **Runs (2026-11-19), not yet landed.** Two Zephyr 3.7 images on the two
+     Cortex-M33 cores of QEMU's `mps2-an521` (board package
+     `nros-board-mps2-an521-zephyr`), over Zephyr's RPMsg service on the MHU
+     and a 32 KiB shared SRAM window. cpu1 (RPMsg remote) listens, cpu0
+     (master) connects; each session is an `rmw_config` file
+     (`examples/workspaces/c/src/amp_bringup`). The pubsub pair delivered
+     every message in order in 5 of 5 runs.
+   - **Fit on cpu1** (`just mem-report`, the listener image): 336,312 of
+     479,232 B flash (70.2 %), 314,168 of 524,288 B RAM (59.9 %). The
+     largest RAM symbol is the zenoh session table, 82.7 KB.
+   - **Round trip** (`packages/testing/nros-bench/rpmsg-latency`: cpu0 times
+     500 ping/pong round trips with its cycle counter after 20 warm-up, one
+     in flight; TX batching off). Superproject 5f8c91ae5e plus the change,
+     zenoh-pico fork 26041f73; both images rebuilt clean at 03:03 UTC
+     (295 s), outside the nightly window.
+
+     | QEMU timing | p50 | p99 | max | lost |
+     | --- | --- | --- | --- | --- |
+     | `-icount shift=5,sleep=off` (time = instructions × 32 ns; 3 runs, identical) | 1,607 µs | 1,691 µs | 1,802 µs | 0 |
+     | `-icount shift=auto` (tracks the host clock) | 800 µs | 1,617 µs | 1,773 µs | 0 |
+
+     The fixed shift is the comparable figure: about 50,000 instructions a
+     round trip, so roughly 25,000 a hop. With TX batching on (the default)
+     the round trip is set by the 50 ms batch flush (p50 60 ms) and says
+     nothing about the link. QEMU time is emulated; this is the software
+     path's cost, not a hardware figure.
+   - **Found on the way.** (a) The framed link's read answered at once when
+     empty, and the zenoh executor's read does no sleeping of its own on a
+     threaded build, so on one core the read task spun and starved the
+     transmit flush and keep-alives; the board contract gains a required
+     `wait`, and the fork's framed link calls it. (b) A frame that arrives
+     before the session opens was dropped, and zenoh does not resend a
+     handshake; the Zephyr binding holds the first frames until open.
+     (c) The distro QEMU 6.2 never ticks this machine's SysTick; the pinned
+     store QEMU (11.0.0) and the Zephyr SDK's 7.0 do.
+   - **Left:** the fixture row and test, the board's registration rows, the
+     gate pass, and the fork push (26041f73 is local).
 
 The Linux end (the `rpmsg_char` bridge, or the router's serial locator on an
 RPMsg tty) is generic follow-up for the vision island, not this item's
