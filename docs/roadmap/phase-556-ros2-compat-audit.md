@@ -276,9 +276,9 @@ Acceptance: as W2.
   default node interfaces set aside), and W10's two-node test.
   Expected-failure: `default_node_interfaces_compared_with_stock` (`/rosout`,
   `/parameter_events` and the six parameter services, which a stock node has
-  and a nano-ros node does not by default), held for W13. W13 has no issue
-  of its own; the test's comment names W13 and RFC-0036's section. Flip it
-  when W13 step 3 lands; W14 is not needed for it (one node).
+  and a nano-ros node did not by default), held for W13. W13 step 3 flipped
+  it: the publishers and services now match, and the one held line is the
+  `/parameter_events` subscription (issue 2483, W11).
 
 Publishers, subscribers, service servers and clients, action servers and
 clients, as `ros2 node info` lists them for each node.
@@ -585,10 +585,11 @@ Progress (2026-11-14, step 3 of 5; the default is flipped):
   8-slot Zephyr queryable default, so it keeps the stock interfaces. Its RAM
   (89.5 % before the flip) is not measured yet: if the image no longer
   links, the step 5 run decides between a board knob and an opt-out.
-- Tests: the service-list parity case compares the parameter services; new
-  `node_info_compared_with_stock` (publishers and services plain, the
-  `/parameter_events` subscriber held as an expected-failure gap, issue
-  2483); the macro, overlay, leaf and CLI tests gain an off-switch case.
+- Tests: the service-list parity case compares the parameter services;
+  W4-W6's `default_node_interfaces_compared_with_stock` is flipped to the
+  one remaining gap (publishers and services match; the `/parameter_events`
+  subscriber is held as an expected-failure, issue 2483); the macro,
+  overlay, leaf and CLI tests gain an off-switch case.
 - Open: W14; the RAM measurement (step 5); issue 2559 (RTIC); the
   `app_main!` / `zephyr_component_main!` leaves register neither interface
   although their descriptor now sizes for them.
