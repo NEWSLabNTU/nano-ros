@@ -124,3 +124,18 @@ fn a_call_without_entities_never_reaches_the_tombstone() -> TestResult<()> {
     );
     Ok(())
 }
+
+/// Issue 2751 -- the host census build of an owned entry configures the
+/// package alone: no `system.toml`, `NROS_LEAF_BOARD=linux`, and the entry
+/// verb's host deploy in `NROS_DEPLOY`. Board facts answer from the stated
+/// board instead of asking for an image `linux` no file declares.
+#[test]
+fn a_census_host_configure_resolves_board_facts_from_its_stated_board() -> TestResult<()> {
+    let out = outcome("cmake_board_facts_census_host_board")?;
+    assert!(
+        out.success(),
+        "the census host configure must resolve board facts:\n{}",
+        out.stderr
+    );
+    Ok(())
+}
