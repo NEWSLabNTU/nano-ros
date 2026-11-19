@@ -1932,7 +1932,10 @@ fn check_census(args: CheckArgs) -> Result<()> {
     // The model gate FIRST, before anything is read: a check that opens a
     // refused model and then passes has laundered the refusal (phase-460 W1).
     if let Some(model) = args.model.as_deref() {
-        crate::model_gate::verify(model, None)
+        // The bringup is known here (its `system.toml`), and a model resolved
+        // in the user cache cannot have it inferred from its path.
+        let bringup = args.system_toml.as_deref().and_then(Path::parent);
+        crate::model_gate::verify(model, bringup)
             .map_err(|r| eyre::eyre!("{r}"))
             .wrap_err("the model this census was taken against")?;
     }
