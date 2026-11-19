@@ -33,8 +33,10 @@ in the order below.
     is `<exe>`, and the generated entry TU goes in
     `nros-entry/<exe>/main.cpp`.
   - Issue 2744's refusal is lifted on those roads.
-  - Zephyr builds one `app` per configure, so a second registration there
-    stays refused, with that reason.
+  - Zephyr builds one `app` per configure (measured: a second program fails
+    to link with `multiple definition of 'main'`), so a second registration
+    there stays refused, worded "Zephyr builds one program per package;
+    split the package"; issue 2746 tracks the sysbuild route.
 - **Fixture-locator migration, same commit (#393):** about 50 TYPED
   packages' carrier artifacts move from `<project>` to `<exe>`. Every test-side
   locator (`nros-tests` fixture resolvers), every `fixtures.toml`

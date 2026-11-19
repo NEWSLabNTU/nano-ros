@@ -1076,6 +1076,15 @@ Measured on rv-virt-threadx, threadx-riscv64, in C.
   names are global and two packages may both have a `talker`. Its
   `OUTPUT_NAME` is `<exe>`, and its generated entry TU lives in a per-exe
   directory.
+- **Zephyr: one program per package, for now (issue 2746).** A west build is
+  ONE image: `find_package(Zephyr)` makes one `app` target linked into one
+  `zephyr.elf`, and every nano-ros program on that road is appended to it.
+  Measured on native_sim with a second own-`main` program in
+  `examples/zephyr/c/talker`: the link fails with `multiple definition of
+  'main'`. So a second program in a Zephyr package is refused ("Zephyr
+  builds one program per package; split the package"). That is a gap in
+  this rule, not part of it: sysbuild, one child image per executable, is
+  the tracked route.
 - **Per-program facts are keyed per executable.** The stack-floor report and
   the sizing descriptor of an owned entry with several executables are
   keyed `<entry>/<exe>@<board>`. One key per program, so no report
