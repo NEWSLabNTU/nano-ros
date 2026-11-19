@@ -880,7 +880,7 @@ mod tests {
         };
         assert_eq!(
             d.iter().map(|x| x.value).collect::<Vec<_>>(),
-            ["1048576", "196608", "131072", "65536"]
+            ["1048576", "196608", "196608", "114688", "131072", "65536"]
         );
         let ms = knob_by_toml("net.max_sockets").unwrap();
         assert_eq!(ms.surface, Some("[image.<id>.knobs.net] max_sockets"));

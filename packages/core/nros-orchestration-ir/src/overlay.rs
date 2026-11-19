@@ -900,8 +900,14 @@ mod tests {
     fn a_featureless_bringup_gets_the_stock_node_interfaces_by_default() {
         let ov = o("[system]\nname = \"t\"\n[image.a]\nboard = \"linux\"\n");
         assert!(ov.is_empty());
-        assert_eq!(ov.system_features(), vec!["param_services", "rosout"]);
-        assert_eq!(ov.features_for_image("a"), vec!["param_services", "rosout"]);
+        assert_eq!(
+            ov.system_features(),
+            vec!["param_services", "rosout", "sim_time"]
+        );
+        assert_eq!(
+            ov.features_for_image("a"),
+            vec!["param_services", "rosout", "sim_time"]
+        );
         let off =
             o("[system]\nname = \"t\"\n[image.a]\nboard = \"linux\"\nnode_interfaces = \"none\"\n");
         assert!(off.features_for_image("a").is_empty());
@@ -945,7 +951,7 @@ mod tests {
         assert_eq!(ov.features_for_image("mcu"), vec!["lifecycle"]);
         assert_eq!(
             ov.features_for_image("host"),
-            vec!["param_services", "rosout", "lifecycle"]
+            vec!["param_services", "rosout", "lifecycle", "sim_time"]
         );
         let lm = LoadedModel {
             overlay: ov,
@@ -955,7 +961,10 @@ mod tests {
             lm.clone().for_image(Some("mcu")).features(),
             vec!["lifecycle"]
         );
-        assert_eq!(lm.features(), vec!["param_services", "rosout", "lifecycle"]);
+        assert_eq!(
+            lm.features(),
+            vec!["param_services", "rosout", "lifecycle", "sim_time"]
+        );
     }
 
     /// (d) image > image_defaults > system.
@@ -1114,17 +1123,17 @@ mod tests {
                     [image.b]\nboard = \"linux\"\n");
         assert_eq!(
             ov.features_for_image("a"),
-            vec!["safety", "rosout", "param_services"]
+            vec!["safety", "rosout", "param_services", "sim_time"]
         );
         assert_eq!(
             ov.features_for_image("b"),
-            vec!["safety", "rosout", "param_services"]
+            vec!["safety", "rosout", "param_services", "sim_time"]
         );
         // An image the overlay does not mention builds with the system list,
         // plus the stock set every image gets by default.
         assert_eq!(
             ov.features_for_image("c"),
-            vec!["safety", "param_services", "rosout"]
+            vec!["safety", "param_services", "rosout", "sim_time"]
         );
         let back = Overlay::parse(&ov.render(), Path::new("nros.toml")).unwrap();
         assert_eq!(back, ov);
@@ -1136,11 +1145,11 @@ mod tests {
         assert!(ov.features.is_empty());
         assert_eq!(
             ov.features_for_image("linux"),
-            vec!["lifecycle", "param_services", "rosout"]
+            vec!["lifecycle", "param_services", "rosout", "sim_time"]
         );
         assert_eq!(
             ov.features_for_image("mcu"),
-            vec!["param_services", "rosout"]
+            vec!["param_services", "rosout", "sim_time"]
         );
     }
 
@@ -1415,7 +1424,7 @@ mod tests {
             "meta:\n  version: 2\nstructure: {}\nexecution:\n  features:\n  - param_services\n",
         )
         .unwrap();
-        assert_eq!(l.features(), vec!["param_services", "rosout"]);
+        assert_eq!(l.features(), vec!["param_services", "rosout", "sim_time"]);
         assert!(legacy_projected_features("meta:\n  version: 2\nstructure: {}\n").is_empty());
         assert!(legacy_projected_features("not: [a model").is_empty());
     }

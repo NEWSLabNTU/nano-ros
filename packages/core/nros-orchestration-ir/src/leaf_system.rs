@@ -1638,7 +1638,7 @@ locator = "tcp/10.0.2.2:9800"
         // bringup with an empty `execution.features` does; phase-556 W13 -- it
         // is built with the stock node interfaces, the default.
         assert!(l.declared_features.is_empty());
-        assert_eq!(l.features, vec!["param_services", "rosout"]);
+        assert_eq!(l.features, vec!["param_services", "rosout", "sim_time"]);
     }
 
     /// Issue 1142 — `[system] features` is the leaf's channel for the service
@@ -1656,7 +1656,10 @@ locator = "tcp/10.0.2.2:9800"
         ]);
         let l = read(d.path()).unwrap().expect("declared");
         assert_eq!(l.declared_features, vec!["param_services", "lifecycle"]);
-        assert_eq!(l.features, vec!["param_services", "lifecycle", "rosout"]);
+        assert_eq!(
+            l.features,
+            vec!["param_services", "lifecycle", "rosout", "sim_time"]
+        );
 
         let d = leaf(&[
             ("Cargo.toml", CARGO),
@@ -1689,7 +1692,7 @@ locator = "tcp/10.0.2.2:9800"
         // (a)
         let l = at("", img);
         assert!(l.node_interfaces.is_none());
-        assert_eq!(l.features, vec!["param_services", "rosout"]);
+        assert_eq!(l.features, vec!["param_services", "rosout", "sim_time"]);
         // (b)
         let l = at("node_interfaces = \"stock\"", img);
         assert_eq!(l.features, vec!["param_services", "rosout", "sim_time"]);

@@ -160,11 +160,11 @@ mod tests {
         let none: [&str; 0] = [];
         assert_eq!(
             effective_features(&none, None),
-            vec!["param_services", "rosout"]
+            vec!["param_services", "rosout", "sim_time"]
         );
         assert_eq!(
             effective_features(&["lifecycle", "param_services"], None),
-            vec!["lifecycle", "param_services", "rosout"]
+            vec!["lifecycle", "param_services", "rosout", "sim_time"]
         );
     }
 
