@@ -1149,14 +1149,13 @@ fn c_status_to_rust(status: rclc_goal_status_t) -> nros_node::GoalStatusCode {
 
 /// Finalize an action server.
 ///
-/// `fini` does NOT remove the server from an executor. It is
-/// handed only the entity, and an executor-registered server's arena entry
-/// (its three service servers, two publishers and the callback `context`,
-/// which is `server` itself) is undone by
-/// `rclc_executor_remove_action_server(executor, server)`, which also brings
-/// the executor's `handle_count` back down. Call that first; a server that is
-/// finalised while still registered keeps answering goals into this struct
-/// until `rclc_executor_fini`.
+/// A server still added to an executor is removed from it first, as
+/// `rclc_executor_remove_action_server` would: its arena
+/// entry (three service servers, two publishers, and `server` itself as the
+/// callback `context`) is dropped, so no goal is answered into this struct
+/// after this returns. Its executor must still exist; one already finalised
+/// released the entry itself. From a callback its executor is dispatching it
+/// returns `RCLC_RET_REENTRANT` and changes nothing.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_action_server_fini(
     server: *mut rcl_action_server_t,
@@ -1170,13 +1169,20 @@ pub unsafe extern "C" fn rcl_action_server_fini(
     let server = &mut *server;
 
     match server.state {
-        rclc_action_server_state_t::RCLC_ACTION_SERVER_STATE_INITIALIZED => {
-            // L2: action server lives in executor arena (if registered) —
-            // reset metadata only. Releasing the entry needs the owning
-            // `rclc_executor_t` (issue 1609): that is
-            // `rclc_executor_remove_action_server`.
-        }
+        rclc_action_server_state_t::RCLC_ACTION_SERVER_STATE_INITIALIZED => {}
         _ => return RCL_RET_NOT_INIT,
+    }
+
+    // phase-573 W5b — still added to a live executor: leave it here, the
+    // release `rclc_executor_remove_action_server` performs, so nothing dispatches into
+    // this struct after it returns. Refused from a callback, as remove is.
+    if server._internal.is_handle_set()
+        && let Some(exec) = crate::executor::fini_executor(crate::executor::executor_of_opaque(
+            server._internal.executor_ptr,
+        ))
+        && crate::executor::detach_action_server(exec, server) == crate::error::RCLC_RET_REENTRANT
+    {
+        return crate::error::RCLC_RET_REENTRANT;
     }
 
     server._internal = ActionServerInternal::invalid_default();

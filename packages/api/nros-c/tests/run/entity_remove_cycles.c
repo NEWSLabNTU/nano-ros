@@ -23,10 +23,17 @@
  *     zero — asserted, not skipped).
  *
  * Plus, per kind: a second remove answers NOT_FOUND (a stale handle must not
- * release whatever registers into the slot next), and a NEGATIVE CONTROL — the
- * pre-1631 teardown, `fini` alone, on the same loop must exhaust the executor
- * at its handle table. Without it the positive loop could pass on an executor
- * that never runs out.
+ * release whatever registers into the slot next).
+ *
+ * phase-573 W5b — `fini` ALONE releases the entry too: the same loop runs with
+ * no remove at all, and must out-run the handle table and the arena exactly as
+ * remove + fini does. Before W5b a fini left its entry registered, still
+ * writing into the caller's message storage, and the executor ran out at its
+ * handle table. That an executor CAN run out (so the loop measures something)
+ * is shown by the direct-arg `raw+info` control below. A fini after its
+ * executor was finalised has nothing left to release and still succeeds; a
+ * fini from the entity's own callback answers RCLC_RET_REENTRANT and leaves it
+ * registered.
  *
  * Same stub backend as the other run probes in `just check c`: no router, no
  * agent, no network.
@@ -124,9 +131,7 @@ typedef struct {
     struct rclc_support_t* support;
 } rig_t;
 
-/* One entity of any of the four kinds. Each cycle owns one; the control keeps
- * CONTROL_SLOTS alive in static storage, because the entries a fini-only
- * teardown leaves behind keep naming them. */
+/* One entity of any of the four kinds. Each cycle owns one. */
 typedef union {
     struct rcl_subscription_t sub;
     struct rcl_timer_t timer;
@@ -243,7 +248,8 @@ static void rig_close(rig_t* rig) {
 
 /* ---- positive: add / remove / fini until twice the arena has cycled ----- */
 
-static void cycles(const kind_t* k, struct rclc_support_t* support) {
+/* `fini_alone`: tear each cycle down with `fini` and no remove (W5b). */
+static void cycles(const kind_t* k, struct rclc_support_t* support, bool fini_alone) {
     rig_t rig;
     rig_open(&rig, support, "remove_cycles");
 
@@ -291,14 +297,23 @@ static void cycles(const kind_t* k, struct rclc_support_t* support) {
         }
         CHECK(rclc_executor_get_handle_count(&rig.executor) == 1, "one handle while registered");
 
-        CHECK_RET(k->remove(&rig, &e), RCL_RET_OK, "remove");
+        if (fini_alone) {
+            CHECK_RET(k->fini(&e, &rig), RCL_RET_OK, "fini without remove");
+        } else {
+            CHECK_RET(k->remove(&rig, &e), RCL_RET_OK, "remove");
+        }
         if (rclc_executor_get_handle_count(&rig.executor) != 0 ||
             nros_stub_rmw_live_entities() != base_live) {
-            fprintf(stderr, "FAIL: %s cycle %d: after remove handle_count=%d live=%d (base %d)\n",
-                    k->name, i, rclc_executor_get_handle_count(&rig.executor),
-                    nros_stub_rmw_live_entities(), base_live);
+            fprintf(stderr, "FAIL: %s cycle %d: after %s handle_count=%d live=%d (base %d)\n",
+                    k->name, i, fini_alone ? "fini" : "remove",
+                    rclc_executor_get_handle_count(&rig.executor), nros_stub_rmw_live_entities(),
+                    base_live);
             s_failures++;
             break;
+        }
+        if (fini_alone) {
+            completed++;
+            continue;
         }
         if (i == 0) {
             CHECK_RET(k->remove(&rig, &e), RCLC_RET_NOT_FOUND, "a second remove finds nothing");
@@ -309,44 +324,26 @@ static void cycles(const kind_t* k, struct rclc_support_t* support) {
     CHECK(completed == target, "every cycle completed");
     CHECK(target > MAX_HANDLES && (size_t)target * entry > capacity,
           "precondition: the loop out-runs both the handle table and the arena");
-    printf("  %-12s %6d cycles, arena used pinned at %zu of %zu (entry %zu bytes), "
+    printf("  %-12s %6d cycles (%s), arena used pinned at %zu of %zu (entry %zu bytes), "
            "live entities back to %d\n",
-           k->name, completed, high_water, capacity, entry, base_live);
+           k->name, completed, fini_alone ? "fini alone" : "remove + fini", high_water, capacity,
+           entry, base_live);
     rig_close(&rig);
 }
 
-/* ---- negative control: the pre-1631 teardown exhausts ------------------- */
+/* ---- W5b: a fini after its executor's fini has nothing to release -------- */
 
-static void fini_alone_exhausts(const kind_t* k, struct rclc_support_t* support) {
+static void fini_after_executor_fini(const kind_t* k, struct rclc_support_t* support) {
     rig_t rig;
-    rig_open(&rig, support, "fini_alone");
+    rig_open(&rig, support, "fini_after_exec");
     const int32_t base_live = nros_stub_rmw_live_entities();
-
-    static entity_t entities[CONTROL_SLOTS];
-    int failed_at = -1;
-    rcl_ret_t failed_with = RCL_RET_OK;
-    for (int i = 0; i < CONTROL_SLOTS; i++) {
-        CHECK_RET(k->init(&entities[i], &rig), RCL_RET_OK, "control: init");
-        rcl_ret_t r = k->add(&rig, &entities[i]);
-        if (r != RCL_RET_OK) {
-            failed_at = i;
-            failed_with = r;
-            (void)k->fini(&entities[i], &rig);
-            break;
-        }
-        /* fini WITHOUT remove — the teardown every C image used before 1631. */
-        CHECK_RET(k->fini(&entities[i], &rig), RCL_RET_OK, "control: fini");
-    }
-    CHECK(failed_at >= 0, "an executor that never runs out proves nothing: fini alone must "
-                          "exhaust it, or the positive loop measured nothing");
-    CHECK(failed_at <= MAX_HANDLES, "and it runs out at the handle table");
-    CHECK(nros_stub_rmw_live_entities() - base_live == k->live_per_entity * failed_at,
-          "every fini'd-but-not-removed entity is still on the graph");
-    printf("  %-12s control: fini alone failed add #%d with %d; %d entities still live\n", k->name,
-           failed_at, (int)failed_with, nros_stub_rmw_live_entities() - base_live);
-    rig_close(&rig);
-    CHECK(nros_stub_rmw_live_entities() == base_live,
-          "rclc_executor_fini drops every entry it still held");
+    entity_t e;
+    CHECK_RET(k->init(&e, &rig), RCL_RET_OK, "init");
+    CHECK_RET(k->add(&rig, &e), RCL_RET_OK, "add");
+    CHECK_RET(rclc_executor_fini(&rig.executor), RCL_RET_OK, "executor finalised first");
+    CHECK_RET(k->fini(&e, &rig), RCL_RET_OK, "the entity's fini still succeeds");
+    (void)rcl_node_fini(&rig.node);
+    CHECK(nros_stub_rmw_live_entities() == base_live, "rclc_executor_fini dropped the entry");
 }
 
 /* ---- a remove on the wrong executor is NOT_FOUND ----------------------- */
@@ -365,6 +362,37 @@ static void wrong_executor_is_not_found(const kind_t* k, struct rclc_support_t* 
     CHECK_RET(k->fini(&e, &a), RCL_RET_OK, "fini");
     rig_close(&b);
     rig_close(&a);
+}
+
+/* ---- W5b: a fini from the entity's own callback is refused ---------------- */
+
+static rcl_ret_t s_self_fini_ret = RCL_RET_ERROR;
+static int s_self_fini_calls = 0;
+
+static void on_timer_fini_self(struct rcl_timer_t* timer, int64_t last_call_time) {
+    (void)last_call_time;
+    if (s_self_fini_calls++ == 0) {
+        s_self_fini_ret = rcl_timer_fini(timer);
+    }
+}
+
+static void fini_from_own_callback_is_reentrant(struct rclc_support_t* support) {
+    rig_t rig;
+    rig_open(&rig, support, "fini_reentrant");
+    struct rcl_timer_t timer = rcl_get_zero_initialized_timer();
+    CHECK_RET(rclc_timer_init_default(&timer, support, 1000000ULL, on_timer_fini_self), RCL_RET_OK,
+              "timer init");
+    CHECK_RET(rclc_executor_add_timer(&rig.executor, &timer), RCL_RET_OK, "timer added");
+    for (int i = 0; i < 200 && s_self_fini_calls == 0; i++) {
+        (void)rclc_executor_spin_some(&rig.executor, 10000000ULL);
+    }
+    CHECK(s_self_fini_calls > 0, "the timer fired");
+    CHECK_RET(s_self_fini_ret, RCLC_RET_REENTRANT, "a fini from its own callback is refused");
+    CHECK(rclc_timer_is_valid(&timer), "and the timer is still initialised");
+    CHECK(rclc_executor_get_handle_count(&rig.executor) == 1, "and still registered");
+    CHECK_RET(rcl_timer_fini(&timer), RCL_RET_OK, "outside dispatch, fini releases it");
+    CHECK(rclc_executor_get_handle_count(&rig.executor) == 0, "and the executor forgot it");
+    rig_close(&rig);
 }
 
 /* ---- issue 1668: the direct-arg form hands back nothing to remove by ----- */
@@ -410,11 +438,13 @@ int main(void) {
     }
 
     for (size_t i = 0; i < sizeof KINDS / sizeof KINDS[0]; i++) {
-        cycles(&KINDS[i], &support);
-        fini_alone_exhausts(&KINDS[i], &support);
+        cycles(&KINDS[i], &support, false);
+        cycles(&KINDS[i], &support, true);
+        fini_after_executor_fini(&KINDS[i], &support);
         wrong_executor_is_not_found(&KINDS[i], &support);
     }
 
+    fini_from_own_callback_is_reentrant(&support);
     raw_with_info_is_unremovable(&support);
 
     (void)rclc_support_fini(&support);

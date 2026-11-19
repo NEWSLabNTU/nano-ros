@@ -530,9 +530,17 @@ pub unsafe extern "C" fn rcl_timer_reset(timer: *mut rcl_timer_t) -> rcl_ret_t {
 /// # Parameters
 /// * `timer` - Pointer to a timer, or NULL
 ///
+/// A timer still added to an executor is removed from it first, as
+/// `rclc_executor_remove_timer` would, so its callback never
+/// fires with this pointer again. Its executor must still exist; one already
+/// finalised released the entry itself.
+///
 /// # Returns
-/// * `RCL_RET_OK` — always. A NULL timer and an already-finalised one are
+/// * `RCL_RET_OK` — finalised. A NULL timer and an already-finalised one are
 ///   successes with nothing to do, not errors.
+/// * `RCLC_RET_REENTRANT` — called from a callback its executor is
+///   dispatching (the entry may be the one running); nothing is changed. The
+///   one code upstream does not produce here.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_timer_fini(timer: *mut rcl_timer_t) -> rcl_ret_t {
     if timer.is_null() {
@@ -545,6 +553,17 @@ pub unsafe extern "C" fn rcl_timer_fini(timer: *mut rcl_timer_t) -> rcl_ret_t {
         || timer.state == rclc_timer_state_t::RCLC_TIMER_STATE_SHUTDOWN
     {
         return RCL_RET_OK;
+    }
+
+    // phase-573 W5b — still added to a live executor: leave it here, the
+    // release `rclc_executor_remove_timer` performs, so nothing dispatches into
+    // this struct after it returns. Refused from a callback, as remove is.
+    if timer.handle_id != usize::MAX
+        && let Some(exec) =
+            crate::executor::fini_executor(crate::executor::executor_of_opaque(timer._executor))
+        && crate::executor::detach_timer(exec, timer) == crate::error::RCLC_RET_REENTRANT
+    {
+        return crate::error::RCLC_RET_REENTRANT;
     }
 
     timer.callback = None;

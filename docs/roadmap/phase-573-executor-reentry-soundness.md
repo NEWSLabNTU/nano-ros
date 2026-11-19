@@ -1,6 +1,6 @@
 # Phase 573 — a callback that calls back into its executor is sound
 
-**Status (2026-11-19). OPEN: W1, W2 and W5a are done; W2b, W3 and W4 are open.** Fixes
+**Status (2026-11-19). OPEN: W1, W2, W5a, W5b and W5c are done; W2b, W3, W4, W5d and W5e are open.** Fixes
 [issue 2675](../issues/2675-callback-reentry-aliases-executor.md) by amending
 [RFC-0108](../design/0108-executor-preemption-levels.md) ("Re-entry from a
 callback"). Ahead of [phase-572](phase-572-rust-component-graph-query.md),
@@ -152,3 +152,71 @@ property. 142's W10 adds the same shape on its backend.
 
 Acceptance: the W2 harness runs that case through `spin_band_once` with two
 bands.
+
+### W5b — A C entity's fini releases its executor entry
+
+- **Status:** DONE (2026-11-19)
+
+`rcl_subscription_fini` left its arena entry registered, so a fini without
+`rclc_executor_remove_subscription` left the executor deserialising into the
+caller's `msg` storage, and dispatching into the finalised struct. The same
+held for every C entity the executor registers: timer, service, client,
+action server and action client.
+
+Each fini now releases the entry when the entity is still added to a live
+executor, through the same `detach_*` core the `rclc_executor_remove_*`
+calls use (those are now argument checks over it). From a callback its
+executor is dispatching, a fini returns `RCLC_RET_REENTRANT` and changes
+nothing, as remove does. A fini after `rclc_executor_fini` has nothing left
+to release and succeeds: it reads the executor's state, never its zeroed
+`_opaque` (the old subscription fini did read it).
+
+Acceptance:
+- `entity_remove_cycles.c` and `action_remove_cycles.c` run the create / add
+  / fini loop with NO remove, and it must out-run the handle table and the
+  arena with the backend's live count back at its baseline every cycle.
+  Before W5b these were the negative controls, which exhausted the executor.
+- A fini after the executor's fini succeeds; a timer finalising itself from
+  its own callback is refused and stays registered.
+
+### W5c — The C++ lifetime contract is written where it is used
+
+- **Status:** DONE (2026-11-19, #4338)
+
+`create_wall_timer<C, &C::m>(..., C* self)`, the other `create_timer*`
+forms and `create_guard_condition(..., context)` keep `self` / `context`
+in the executor entry, so the owner must outlive the registration and must
+not move while it is registered. `node.hpp` says so at each of them, with a
+debug-build check where one is cheap.
+
+Acceptance: each such declaration states the contract; any debug check has a
+test that trips it.
+
+### W5d — A sized C subscription registration refuses an undersized buffer
+
+- **Status:** OPEN (user ruling 2026-11-19: option B)
+
+`rclc_executor_add_subscription[_with_context]` take rclc's exact arguments,
+so the executor deserialises into `msg` with no size to check it against.
+
+- The generated message descriptor gains `message_size` (the type's
+  `sizeof`), appended.
+- `rclc_executor_add_subscription_sized` and
+  `rclc_executor_add_subscription_with_context_sized` take `msg_size` and
+  refuse `msg_size < message_size` with `RCL_RET_INVALID_ARGUMENT`.
+- The rclc-named forms keep their signatures; their docs name the sized form
+  as the checked one.
+- The generated code asserts `message_size` against the struct `__init_in`
+  wires.
+
+Acceptance: the FFI-mirror gate covers the appended field; ledger rows for
+the two new entry points; a test refuses an undersized buffer and accepts
+an exact one.
+
+### W5e — A lane runs AddressSanitizer
+
+- **Status:** OPEN — [issue 2728](../issues/2728-no-lane-runs-addresssanitizer.md)
+
+W5a's use-after-free showed only under AddressSanitizer, which no lane runs.
+A lane that builds the C run probes and the executor harness with ASan makes
+that class visible without a hand-run.
