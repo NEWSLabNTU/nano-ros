@@ -153,12 +153,20 @@ NROS-0005 E live" "$main_lock" "-" >/dev/null \
     printf '%s\nNROS-0004 D live\nNROS-0005 E live\n' "$main_lock" >"$tmp/work/$LOCK_REL"
     rc=0; (cd "$tmp/work" && check origin) >/dev/null 2>&1 || rc=$?
     [ "$rc" -eq 1 ] || { echo "self-test: end to end, an unclaimed code passed" >&2; return 1; }
+    # a remote that holds no claim at all (a local stand-in) cannot judge (b):
+    # not verified, through. The clash check (a) still runs against main.
+    git init -q --bare "$tmp/standin.git"
+    git -C "$tmp/work" push -q "$tmp/standin.git" HEAD:refs/heads/main
+    git -C "$tmp/work" remote set-url origin "$tmp/standin.git"
+    rc=0; out="$(cd "$tmp/work" && check origin 2>&1)" || rc=$?
+    [ "$rc" -eq 0 ] && [[ "$out" == *"holds no $REF_NS"* ]] \
+        || { echo "self-test: a claim-less stand-in remote gave rc=$rc: $out" >&2; return 1; }
     # an unreachable remote warns and lets the push through.
     git -C "$tmp/work" remote set-url origin "$tmp/gone.git"
     rc=0; out="$(cd "$tmp/work" && check origin 2>&1)" || rc=$?
     [ "$rc" -eq 0 ] && [[ "$out" == *"NOT VERIFIED"* ]] \
         || { echo "self-test: unreachable remote gave rc=$rc: $out" >&2; return 1; }
-    echo "diag-codes-check: self-test OK (clash, unclaimed, founding, claimed, unreachable)"
+    echo "diag-codes-check: self-test OK (clash, unclaimed, founding, claimed, stand-in, unreachable)"
 }
 
 # check <remote|""> — the real check, in the current directory's repository.
@@ -180,7 +188,18 @@ check() {
     fi
     if [ -n "$remote" ]; then
         if listing="$(GIT_TERMINAL_PROMPT=0 git ls-remote "$remote" "$REF_NS/*" 2>/dev/null)"; then
-            claims="$(awk '{n=$2; sub(".*/", "", n); print n}' <<<"$listing")"
+            if [ -z "$listing" ]; then
+                # A remote holding no claim at all is not the remote claims
+                # are made on (origin holds every one since NROS-0001): a
+                # local clone standing in for it, as `check-hook-repo-side-
+                # effects` and `pristine-checkout` run the hook against. It
+                # cannot judge a claim, exactly as an unreachable remote
+                # cannot, so the same NOT VERIFIED. Decided by what the remote
+                # holds, never by a variable a caller could set.
+                echo "diag-codes-check: NOT VERIFIED (b): '$remote' holds no $REF_NS at all (not the remote codes are claimed on), so new codes' claims are unchecked" >&2
+            else
+                claims="$(awk '{n=$2; sub(".*/", "", n); print n}' <<<"$listing")"
+            fi
         else
             echo "diag-codes-check: NOT VERIFIED (b): '$remote' is unreachable, so new codes' claims are unchecked" >&2
         fi
