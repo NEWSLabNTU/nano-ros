@@ -10,7 +10,7 @@ found: 2026-11-10
 ---
 
 **Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md)**,
-where issue 2322 ([open again](../2322-image-not-reproducible-across-paths.md))
+where issue 2322 ([resolved again](2322-image-not-reproducible-across-paths.md))
 was fixed. Found by phase-531 W6 while it was building Zephyr fixtures.
 
 ## Measured

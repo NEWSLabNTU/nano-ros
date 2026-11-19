@@ -1,7 +1,9 @@
 ---
 id: 2322
 title: "An image embeds its absolute workspace path, so the same project built in another directory is not byte-identical, and the book does not say so"
-status: open
+status: resolved
+resolved: 2026-11-19
+resolved_in: "the change that archives this issue"
 type: enhancement
 area: build, reproducibility, book
 purpose: [industrial]
@@ -9,7 +11,7 @@ related: [phase-523]
 found: 2026-11-07
 ---
 
-**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round two. Found 2026-11-07 on release `nros-0.6.0-nros7` in a pristine `ubuntu:24.04` with Jazzy, reading only the book. Probe ids: `I<n>` = industrial stop n, `E<n>` = education stop n (runs: `docs/development/adoption-probes/runs/2026-11-07-round-2-{industrial,education}.md`).
+**Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round two. Found 2026-11-07 on release `nros-0.6.0-nros7` in a pristine `ubuntu:24.04` with Jazzy, reading only the book. Probe ids: `I<n>` = industrial stop n, `E<n>` = education stop n (runs: `docs/development/adoption-probes/runs/2026-11-07-round-2-{industrial,education}.md`).
 
 ## Measured
 
@@ -57,3 +59,35 @@ pinned 1.99).
 
 **Suggested owner: the phase-523 / build owner, after a maintainer
 decision** between those two.
+
+## Resolved (2026-11-19): option A, per-workspace
+
+User ruling 2026-11-19: revive the `_ws` link, guarded, scoped to "a
+copied-out project builds byte-identical from any directory".
+
+- The entry reaches its workspace through `_ws -> ../../..` again (the
+  revert of e56647ee05), and the workspace path is remapped out of debug
+  info.
+- The guard that 2385 called for: `builder::paths::workspace_path_escape`
+  walks every `Cargo.toml` in the workspace and follows each relative
+  dependency closure. If any relative path leaves the workspace, NO crate of
+  it is routed, and `nros build` names the crate and the path. It is all or
+  nothing per workspace because two crates reaching a shared crate by two
+  spellings would build two units of it (issue 0616's class).
+- RFC-0098's amendment is restored with the guard added.
+
+Measured, a scaffold (`nros new ws --board <b> --template talker`) built in
+two scratch directories:
+
+| board | ELF sha256 | `objcopy -O binary` | project-path strings |
+| --- | --- | --- | --- |
+| linux (debug) | `f8a341fb...` both | `2b4ec32b...` both | 0 |
+| mps2-an385-baremetal | `78dd18a1...` both | `2992fe02...` both | 0 |
+
+Issue 2385's repro, a cold `nros configure` in
+`examples/workspaces/features`, completes. It prints the guard's notice
+(`generated/custom_msgs` names `../../../../../packages/...`) and builds as
+before the link existed.
+
+An in-tree workspace still reproduces only at the same path; the book's
+promise is for a copied-out project.

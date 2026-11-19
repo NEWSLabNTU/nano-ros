@@ -96,9 +96,338 @@ pub fn rebase_relative(from_dir: &Path, to_dir: &Path, rel: &str) -> Result<Stri
     relative_or_err(&lexical_normalize(to_dir), &target)
 }
 
+/// The link a generated cargo entry carries to its own workspace (issue 2322).
+///
+/// cargo's `-C metadata` hashes a path dependency by its path RELATIVE to the
+/// cargo root when it can strip the root's prefix, and by its ABSOLUTE path
+/// when it cannot (`SourceId::stable_hash`). A generated entry is its own root
+/// (`<ws>/build/<coord>/<entry>/`, RFC-0098 D9), so every `src/` and
+/// `generated/` crate it reached sat outside it and was hashed absolutely: the
+/// same project built in two directories differed in every mangled name and in
+/// its codegen-unit split, and no path remapping could repair that (measured,
+/// 20,446 symbol lines). Reaching the workspace through a link INSIDE the root
+/// makes those paths strip: cargo normalises a path dependency lexically and
+/// never canonicalises it, so `_ws/src/talker` stays under the root and hashes
+/// the same wherever the workspace lives. The link is relative (`../../..`),
+/// so it too is the same bytes in every directory.
+pub const WS_LINK: &str = "_ws";
+
+/// The workspace a generated entry belongs to: `<ws>` for
+/// `<ws>/build/<coord>/<entry>`, and `None` for any other shape (a single
+/// package's own manifest, a west application), which keeps its paths as they
+/// are.
+#[must_use]
+pub fn entry_workspace(entry_dir: &Path) -> Option<&Path> {
+    let build = entry_dir.parent()?.parent()?;
+    (build.file_name()? == "build").then_some(())?;
+    build.parent()
+}
+
+/// `to`, re-rooted under the entry's [`WS_LINK`] when it lies inside the
+/// entry's workspace — the ONE spelling every cargo-root path to a workspace
+/// crate goes through (issue 2322). Anything else (the SDK, a registry crate's
+/// patch, a non-entry `entry_dir`) is returned unchanged; such a path is the
+/// same on one host wherever the workspace sits.
+#[must_use]
+pub fn through_ws_link(entry_dir: &Path, to: &Path) -> PathBuf {
+    let to = lexical_normalize(to);
+    let Some(ws) = entry_workspace(entry_dir) else {
+        return to;
+    };
+    match to.strip_prefix(ws) {
+        // Never route the entry's own build tree through the link: a crate
+        // under `build/` is generated output beside the entry, not a workspace
+        // source, and `_ws/build/...` would loop back into the root.
+        Ok(rel) if !rel.starts_with("build") => match workspace_path_escape(ws) {
+            None => entry_dir.join(WS_LINK).join(rel),
+            Some((krate, dep)) => {
+                report_unrouted(ws, &krate, &dep);
+                to
+            }
+        },
+        _ => to,
+    }
+}
+
+/// Issue 2385 — the first RELATIVE path dependency, in the closure of the
+/// crate at `crate_dir`, that leaves `ws`: `(the crate that names it, the
+/// path as written)`. `None` when every one stays inside.
+///
+/// cargo normalises a path dependency LEXICALLY, against the directory it
+/// reached the manifest through. Reached through [`WS_LINK`], a crate's
+/// `../..` that climbs out of the workspace lands under the entry's build
+/// tree instead of where it was written for (an in-tree workspace's generated
+/// message crate naming `../../../../../packages/core/nros-core`). So a crate
+/// is routed only when its whole relative closure stays inside; the walk
+/// follows each relative dependency that stays inside, since cargo reaches it
+/// through the link too. Absolute paths are left alone: they mean the same
+/// thing from anywhere.
+#[must_use]
+pub fn path_deps_leaving(crate_dir: &Path, ws: &Path) -> Option<(PathBuf, String)> {
+    let ws = lexical_normalize(ws);
+    let mut seen = std::collections::BTreeSet::new();
+    let mut todo = vec![lexical_normalize(crate_dir)];
+    while let Some(dir) = todo.pop() {
+        if !seen.insert(dir.clone()) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+            continue;
+        };
+        let Ok(doc) = text.parse::<toml::Table>() else {
+            continue;
+        };
+        for rel in manifest_relative_path_deps(&doc) {
+            let target = lexical_normalize(&dir.join(&rel));
+            if !target.starts_with(&ws) {
+                return Some((dir, rel));
+            }
+            todo.push(target);
+        }
+    }
+    None
+}
+
+/// Every relative `path = "…"` a manifest's dependency tables name:
+/// `[dependencies]`, `[build-dependencies]` and their `[target.*]` forms.
+/// Dev-dependencies are left out: cargo never resolves a non-root crate's.
+fn manifest_relative_path_deps(doc: &toml::Table) -> Vec<String> {
+    const TABLES: &[&str] = &["dependencies", "build-dependencies"];
+    let mut tables: Vec<&toml::Table> = TABLES
+        .iter()
+        .filter_map(|t| doc.get(*t).and_then(toml::Value::as_table))
+        .collect();
+    if let Some(targets) = doc.get("target").and_then(toml::Value::as_table) {
+        for cfg in targets.values().filter_map(toml::Value::as_table) {
+            tables.extend(
+                TABLES
+                    .iter()
+                    .filter_map(|t| cfg.get(*t).and_then(toml::Value::as_table)),
+            );
+        }
+    }
+    tables
+        .into_iter()
+        .flat_map(|t| t.values())
+        .filter_map(|v| v.get("path").and_then(toml::Value::as_str))
+        .filter(|p| !Path::new(p).is_absolute())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Issue 2385 — the first crate under `ws` whose relative path closure leaves
+/// it, or `None` when none does. All or nothing per WORKSPACE: routing some of
+/// its crates through [`WS_LINK`] and not others would let two of them reach a
+/// shared crate by two spellings, which cargo builds as two units of one crate
+/// (issue 0616's duplicate `#[no_mangle]` class). Memoised per process.
+///
+/// The walk covers every `Cargo.toml` under `ws` outside its build output
+/// (`build/`, `target*/`, `install/`, `log/` and hidden directories), stopping
+/// at a nested repository.
+fn workspace_path_escape(ws: &Path) -> Option<(PathBuf, String)> {
+    static MEMO: std::sync::Mutex<std::collections::BTreeMap<PathBuf, Option<(PathBuf, String)>>> =
+        std::sync::Mutex::new(std::collections::BTreeMap::new());
+    let ws = lexical_normalize(ws);
+    if let Some(hit) = MEMO.lock().ok().and_then(|m| m.get(&ws).cloned()) {
+        return hit;
+    }
+    let mut found = None;
+    let mut dirs = vec![ws.clone()];
+    'walk: while let Some(dir) = dirs.pop() {
+        if dir != ws && (dir.join(".git").exists() || dir.join(WS_LINK).symlink_metadata().is_ok())
+        {
+            continue;
+        }
+        if dir.join("Cargo.toml").is_file()
+            && let Some(hit) = path_deps_leaving(&dir, &ws)
+        {
+            found = Some(hit);
+            break 'walk;
+        }
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let Ok(ft) = e.file_type() else { continue };
+            if !ft.is_dir() {
+                continue;
+            }
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.')
+                || name.starts_with("target")
+                || (dir == ws && matches!(name.as_str(), "build" | "install" | "log"))
+            {
+                continue;
+            }
+            dirs.push(e.path());
+        }
+    }
+    if let Ok(mut m) = MEMO.lock() {
+        m.insert(ws, found.clone());
+    }
+    found
+}
+
+/// Say, once per workspace per process, that its crates are reached by their
+/// own paths: the build is correct, but the image's bytes depend on where the
+/// project sits (issue 2322's promise covers a project whose paths stay
+/// inside it).
+fn report_unrouted(to: &Path, krate: &Path, dep: &str) {
+    static REPORTED: std::sync::Mutex<std::collections::BTreeSet<PathBuf>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+    let first = REPORTED
+        .lock()
+        .map(|mut set| set.insert(to.to_path_buf()))
+        .unwrap_or(false);
+    if first {
+        eprintln!(
+            "nros build: the crates of {} are built from their own paths, because {} \
+             depends on `{dep}`, which leaves the project. The image is correct, but it \
+             is not the same bytes when the project is built in another directory; give \
+             that dependency an absolute path or a registry version to make it so.",
+            to.display(),
+            krate.join("Cargo.toml").display(),
+        );
+    }
+}
+
+/// The path a generated entry's manifest writes for a dependency on `to`:
+/// [`relative_or_err`] from the entry, after [`through_ws_link`]. Every
+/// entry-relative dependency path goes through this, so no site can reach a
+/// workspace crate around the link (issue 2322).
+pub fn entry_dep_rel(entry_dir: &Path, to: &Path) -> Result<String, String> {
+    relative_or_err(entry_dir, &through_ws_link(entry_dir, to))
+}
+
+/// Create (or repair) the entry's [`WS_LINK`]. A no-op for a directory that is
+/// not a generated entry. The target is relative, so moving the workspace
+/// carries the link with it.
+pub fn ensure_ws_link(entry_dir: &Path) -> std::io::Result<()> {
+    if entry_workspace(entry_dir).is_none() {
+        return Ok(());
+    }
+    let link = entry_dir.join(WS_LINK);
+    let target = Path::new("../../..");
+    if std::fs::read_link(&link).is_ok_and(|t| t == target) {
+        return Ok(());
+    }
+    if link.symlink_metadata().is_ok() {
+        std::fs::remove_file(&link)?;
+    }
+    std::fs::create_dir_all(entry_dir)?;
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, &link)
+    }
+    #[cfg(not(unix))]
+    {
+        Err(std::io::Error::other(
+            "a generated cargo entry links its workspace with a symlink; this host has none",
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write(dir: &Path, manifest: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), manifest).unwrap();
+    }
+
+    /// Issue 2385: a crate whose relative closure leaves the workspace is not
+    /// routed through the link (cargo would resolve its `..`s against the
+    /// link and miss); one whose closure stays inside is.
+    #[test]
+    fn a_crate_whose_relative_paths_leave_the_workspace_is_not_routed() {
+        let root = tempfile::tempdir().unwrap();
+        let ws = root.path().join("ws");
+        let entry = ws.join("build/posix-x/linux_entry");
+        // inside -> inside: routed.
+        write(
+            &ws.join("src/talker"),
+            "[dependencies]\nmsgs = { path = \"../../generated/msgs\" }\n",
+        );
+        write(
+            &ws.join("generated/msgs"),
+            "[dependencies]\nheapless = \"0.8\"\n",
+        );
+        assert_eq!(path_deps_leaving(&ws.join("src/talker"), &ws), None);
+        assert_eq!(
+            through_ws_link(&entry, &ws.join("src/talker")),
+            entry.join("_ws/src/talker")
+        );
+        // a dependency two crates down climbs out: not routed, and named.
+        write(
+            &ws.join("generated/msgs"),
+            "[dependencies]\nnros-core = { path = \"../../../packages/core/nros-core\" }\n",
+        );
+        let (krate, dep) = path_deps_leaving(&ws.join("src/talker"), &ws).unwrap();
+        assert_eq!(krate, ws.join("generated/msgs"));
+        assert_eq!(dep, "../../../packages/core/nros-core");
+        // per WORKSPACE (memoised), so a fresh workspace shows the refusal.
+        let ws2 = root.path().join("ws2");
+        let entry2 = ws2.join("build/posix-x/linux_entry");
+        write(
+            &ws2.join("src/talker"),
+            "[dependencies]\nnros-core = { path = \"../../../x\" }\n",
+        );
+        write(
+            &ws2.join("src/other"),
+            "[dependencies]\nheapless = \"0.8\"\n",
+        );
+        assert_eq!(
+            through_ws_link(&entry2, &ws2.join("src/other")),
+            ws2.join("src/other"),
+            "one escaping crate keeps every crate of its workspace off the link"
+        );
+        // an ABSOLUTE path out of the workspace means the same from anywhere.
+        write(
+            &ws.join("generated/msgs"),
+            "[target.'cfg(unix)'.dependencies]\nnros-core = { path = \"/opt/nros/nros-core\" }\n",
+        );
+        assert_eq!(path_deps_leaving(&ws.join("src/talker"), &ws), None);
+        // a target-specific relative escape counts.
+        write(
+            &ws.join("generated/msgs"),
+            "[target.'cfg(unix)'.build-dependencies]\nx = { path = \"../../../x\" }\n",
+        );
+        assert!(path_deps_leaving(&ws.join("src/talker"), &ws).is_some());
+    }
+
+    /// Issue 2322: a workspace crate is reached through the entry's link, so
+    /// cargo hashes it relative to the root; the SDK and the build tree are not.
+    #[test]
+    fn workspace_crates_route_through_the_entry_link() {
+        let entry = Path::new("/w/build/posix-x/linux_entry");
+        assert_eq!(entry_workspace(entry), Some(Path::new("/w")));
+        assert_eq!(
+            through_ws_link(entry, Path::new("/w/src/talker")),
+            Path::new("/w/build/posix-x/linux_entry/_ws/src/talker")
+        );
+        assert_eq!(
+            through_ws_link(
+                entry,
+                Path::new("/w/build/posix-x/linux_entry/../../../generated/std_msgs")
+            ),
+            Path::new("/w/build/posix-x/linux_entry/_ws/generated/std_msgs")
+        );
+        assert_eq!(
+            through_ws_link(entry, Path::new("/sdk/packages/api/nros")),
+            Path::new("/sdk/packages/api/nros")
+        );
+        assert_eq!(
+            through_ws_link(entry, Path::new("/w/build/other")),
+            Path::new("/w/build/other")
+        );
+        let not_entry = Path::new("/w/src/pkg");
+        assert_eq!(entry_workspace(not_entry), None);
+        assert_eq!(
+            through_ws_link(not_entry, Path::new("/w/src/talker")),
+            Path::new("/w/src/talker")
+        );
+    }
     use std::path::PathBuf;
 
     #[test]
