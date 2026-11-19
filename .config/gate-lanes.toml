@@ -77,6 +77,18 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 # (`just check lane dev`, and the pre-push hook's `check fast`).
 local = "a developer worktree: `just check lane dev` and the pre-push `check fast`; provisioned by `just setup-worktree`"
 
+[lane.ci]
+# phase-584 (RFC-0131 D3, amended 2026-11-20): `just ci gate` as ONE nextest
+# run. Every tier `ci gate` runs (fast, build, and `gate`, the gates only it
+# runs), on a developer worktree's claims. The preconditions run first, in
+# order, in the lane wrapper: every later gate reads the CLI or the resolver
+# they check. Each is also listed as `precondition::check::<name>`, which
+# reports the wrapper's verdict.
+tiers = ["fast", "build", "gate"]
+claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
+preconditions = ["cli-fresh", "cli-noop-build", "launch-resolve-fresh"]
+local = "`just ci gate` (phase-584 W2 moves it onto this lane; until then `just check lane ci`)"
+
 [lane.runner]
 # The self-hosted runner image (nros-qemu, nros-sdk-zephyr, nros-big), at the
 # point `just build <lane>` / `just ci matrix` run the gate tiers: BEFORE any

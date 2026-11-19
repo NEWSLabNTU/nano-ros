@@ -71,6 +71,31 @@ if ! python3 scripts/check/gate-lane-preflight.py "$lane"; then
     exit 1
 fi
 
+# phase-584 W3 (RFC-0131 D3/D5) -- the lane's preconditions: gates every other
+# gate reads the subject of (the CLI's and the resolver's freshness), run here,
+# serially and fail-fast, BEFORE nextest starts, so none of them races a gate
+# that needs it. Each verdict is written to a directory of THIS run, which the
+# harness reads for its `precondition::check::<name>` test: a precondition is
+# in the junit by name and runs once. A stale verdict cannot pass a later run,
+# because the directory is new.
+if ! preconditions="$(python3 scripts/check/check-gate-lists.py --preconditions "$lane")"; then
+    exit 1
+fi
+NROS_GATE_PRECONDITIONS="$(mktemp -d "${TMPDIR:-/tmp}/nros-gate-pre.XXXXXX")"
+export NROS_GATE_PRECONDITIONS
+for p in $preconditions; do
+    echo "gate lane \`$lane\`: precondition \`check::$p\`"
+    p_rc=0
+    just check "$p" >"$NROS_GATE_PRECONDITIONS/$p.log" 2>&1 || p_rc=$?
+    echo "$p_rc" >"$NROS_GATE_PRECONDITIONS/$p.rc"
+    if [ "$p_rc" -ne 0 ]; then
+        cat "$NROS_GATE_PRECONDITIONS/$p.log" >&2
+        echo "gate lane \`$lane\`: precondition \`check::$p\` FAILED (rc=$p_rc); no gate ran." >&2
+        rm -rf "$NROS_GATE_PRECONDITIONS"
+        exit 1
+    fi
+done
+
 jobs="${NROS_GATE_JOBS:-$(nproc)}"
 _share=$(( $(nproc 2>/dev/null || echo 4) / jobs ))
 [ "$_share" -lt 1 ] && _share=1
@@ -81,7 +106,7 @@ export NROS_GATE_JOBS="$jobs" NROS_GATE_LANE="$lane" GIT_OPTIONAL_LOCKS=0
 export NROS_GATE_RUN="${lane}-$$-$(date +%s)"
 
 out_dir="$(mktemp -d "${TMPDIR:-/tmp}/nros-gate-lane.XXXXXX")"
-trap 'rm -rf "$out_dir"' EXIT
+trap 'rm -rf "$out_dir" "${NROS_GATE_PRECONDITIONS:-}"' EXIT
 
 # Tracked: a content hash of each file that differs from HEAD, so an edit that
 # was already there before the run is not blamed on a gate. Untracked: the

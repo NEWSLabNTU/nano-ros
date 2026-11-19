@@ -100,6 +100,83 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::FAILURE
 }
 
+/// phase-584 W3 -- the harness's own test of [`precondition_in`], listed in
+/// every lane as [`SELF_TEST`] so the negative control runs on every run: no
+/// directory, no record, and a failed record are each red, and only a
+/// recorded 0 passes.
+const SELF_TEST: &str = "self::precondition-verdicts";
+
+fn self_test() -> ExitCode {
+    let dir = std::env::temp_dir().join(format!("nros-gates-selftest-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        return fail(format_args!(
+            "{SELF_TEST}: cannot make {}: {e}",
+            dir.display()
+        ));
+    }
+    let n = "precondition::check::p";
+    let t = "check::p";
+    let red = |c: ExitCode| c != ExitCode::SUCCESS;
+    let mut bad = Vec::new();
+    if !red(precondition_in(n, t, None)) {
+        bad.push("no NROS_GATE_PRECONDITIONS passed");
+    }
+    if !red(precondition_in(n, t, Some(dir.clone().into()))) {
+        bad.push("no record passed");
+    }
+    let _ = std::fs::write(dir.join("p.rc"), "3\n");
+    if !red(precondition_in(n, t, Some(dir.clone().into()))) {
+        bad.push("a failed record (rc=3) passed");
+    }
+    let _ = std::fs::write(dir.join("p.rc"), "0\n");
+    if red(precondition_in(n, t, Some(dir.clone().into()))) {
+        bad.push("a recorded 0 failed");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    if bad.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        fail(format_args!("{SELF_TEST}: {}", bad.join("; ")))
+    }
+}
+
+/// phase-584 W3 (RFC-0131 D3) -- a lane precondition's test. The lane wrapper
+/// (`scripts/build/gate-lane.sh`) ran `just <target>` before nextest started
+/// and recorded `<name>.rc` and `<name>.log` in `NROS_GATE_PRECONDITIONS`, a
+/// directory of that run. This reports the record and never runs the recipe,
+/// so a precondition runs once and races no gate. No directory, or no record,
+/// is red: a precondition nobody ran never reads as a pass.
+fn precondition(name: &str, target: &str) -> ExitCode {
+    precondition_in(name, target, std::env::var_os("NROS_GATE_PRECONDITIONS"))
+}
+
+fn precondition_in(name: &str, target: &str, dir: Option<OsString>) -> ExitCode {
+    let Some(dir) = dir else {
+        return fail(format_args!(
+            "`{name}` reports a lane precondition, and NROS_GATE_PRECONDITIONS is unset: \
+             run the lane through its wrapper (`just check lane <lane>`), which runs it"
+        ));
+    };
+    let gate = target.strip_prefix("check::").unwrap_or(target);
+    let dir = PathBuf::from(dir);
+    let rc = match std::fs::read_to_string(dir.join(format!("{gate}.rc"))) {
+        Ok(rc) => rc,
+        Err(e) => {
+            return fail(format_args!(
+                "`{name}`: no verdict recorded in {} ({e}); the wrapper did not run it",
+                dir.display()
+            ));
+        }
+    };
+    let log = std::fs::read_to_string(dir.join(format!("{gate}.log"))).unwrap_or_default();
+    print!("{log}");
+    match rc.trim() {
+        "0" => ExitCode::SUCCESS,
+        other => fail(format_args!("precondition `{target}` failed (rc={other})")),
+    }
+}
+
 fn run(root: &Path, name: &str, target: &str, unit: Option<&str>) -> ExitCode {
     let ledger = std::env::temp_dir().join(format!(
         "nros-gate-skips-{}-{}",
@@ -165,6 +242,9 @@ fn main() -> ExitCode {
                         println!("{name}: test");
                     }
                 }
+                if !ignored {
+                    println!("{SELF_TEST}: test");
+                }
                 ExitCode::SUCCESS
             }
             Err(e) => fail(e),
@@ -174,7 +254,11 @@ fn main() -> ExitCode {
     // nextest runs one test per process: `<name> --exact --nocapture`.
     let names: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
     match (has("--exact"), names.as_slice()) {
+        (true, [name]) if name.as_str() == SELF_TEST => self_test(),
         (true, [name]) => match target_of(name) {
+            Some((target, None)) if name.starts_with("precondition::") => {
+                precondition(name, target)
+            }
             Some((target, unit)) => run(&root, name, target, unit),
             None => fail(format_args!("`{name}` is not <tier>::<just target>")),
         },

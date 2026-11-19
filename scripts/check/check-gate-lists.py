@@ -382,7 +382,8 @@ LANES_FILE = REPO / ".config" / "gate-lanes.toml"
 
 
 def load_lane(name: str | None) -> dict | None:
-    """The lane's `{tiers, claims}`, or None for no lane: everything in scope."""
+    """The lane's `{tiers, claims, preconditions}`, or None for no lane:
+    everything in scope."""
     if not name:
         return None
     try:
@@ -392,7 +393,13 @@ def load_lane(name: str | None) -> dict | None:
     lanes = tomllib.loads(LANES_FILE.read_text())["lane"]
     if name not in lanes:
         raise SystemExit(f"check-gate-lists: no lane `{name}` in {LANES_FILE.relative_to(REPO)}")
-    return {"tiers": set(lanes[name]["tiers"]), "claims": set(lanes[name]["claims"])}
+    return {
+        "tiers": set(lanes[name]["tiers"]),
+        "claims": set(lanes[name]["claims"]),
+        # phase-584 W3 (RFC-0131 D3): `check` gates the lane wrapper runs before
+        # nextest starts, in this order.
+        "preconditions": list(lanes[name].get("preconditions", [])),
+    }
 
 
 def scope(lane: dict | None, tier: str, needs: set[str]) -> str | None:
@@ -420,11 +427,19 @@ def test_names(b: dict[str, list[str]], lane_name: str | None = None) -> list[tu
     lane = load_lane(lane_name)
     groups = recipe_groups()
     out: list[tuple[str, str | None]] = []
+    pre = lane["preconditions"] if lane else []
+    # phase-584 W3: a precondition is listed once, as `precondition::check::<n>`,
+    # a test that reports the verdict the lane wrapper recorded; its regular
+    # entry is listed as ignored, so it never runs twice in the lane.
+    for n in pre:
+        out.append((f"precondition::check::{n}", None))
     for tier in LISTED_TIERS:
         for n in b[tier]:
             g = groups.get(n, set())
             needs = needs_of(g)
             why = scope(lane, tier, needs)
+            if why is None and n in pre:
+                why = "a precondition of this lane: `precondition::check::" + n + "` reports it"
             units = gate_units(n) if "units" in g and why is None else None
             if units is None:
                 out.append((f"{tier}::check::{n}", why))
@@ -844,6 +859,23 @@ def main(argv: list[str]) -> int:
             print(f"check-gate-lists: --weight: no check recipe `{argv[1]}`", file=sys.stderr)
             return 1
         print(declared_weight(groups[argv[1]]))
+        return 0
+    if argv[:1] == ["--preconditions"]:
+        # phase-584 W3: the lane's preconditions, one per line, in order, for
+        # the lane wrapper (`scripts/build/gate-lane.sh`).
+        if len(argv) != 2:
+            print("usage: check-gate-lists.py --preconditions <lane>", file=sys.stderr)
+            return 2
+        lane = load_lane(argv[1])
+        b, problems = buckets()
+        known = set(b["fast"]) | set(b["build"]) | set(b["exempt"]) | set(b["gate"]) \
+            | set(recipe_groups())
+        bad = [n for n in lane["preconditions"] if n not in known]
+        if bad:
+            print(f"check-gate-lists: lane `{argv[1]}` names precondition(s) no `check` "
+                  f"recipe defines: {', '.join(bad)}", file=sys.stderr)
+            return 1
+        print("\n".join(lane["preconditions"]))
         return 0
     if argv[:1] == ["--junit-tsv"]:
         print(junit_tsv(Path(argv[1])), end="")
