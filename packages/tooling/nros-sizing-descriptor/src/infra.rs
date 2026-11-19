@@ -39,7 +39,8 @@
 /// `check-infra-queryable-counts`.
 pub const PARAM_SERVICE_QUERYABLES: usize = 6;
 
-/// Service servers the REP-2002 lifecycle family registers, once per executor.
+/// Service servers the REP-2002 lifecycle family registers, once per managed
+/// node (issue 2553: each managed node has its own machine, RFC-0128 D1).
 /// Mirrors `nros_node::lifecycle_services::LIFECYCLE_SERVICE_QUERYABLES`, held
 /// the same way.
 pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
@@ -162,6 +163,31 @@ pub fn declared_families(infra: Option<&str>) -> Option<Families> {
     Some(f)
 }
 
+/// Issue 2553 -- how many REP-2002 state machines the image registers.
+///
+/// One per managed node (`[image] lifecycle_nodes`, RFC-0128 D1), and at least
+/// one when the lifecycle family is on: an image whose bringup turns the
+/// family on while its model marks no node (a feature switch, an owned entry)
+/// keeps the pre-2553 price of one machine. Zero when the family is off.
+/// Undeclared families are priced present, as everywhere here.
+///
+/// # Panics
+/// On a `lifecycle_nodes` value that is not a count, as [`declared_nodes`].
+pub fn lifecycle_machines(infra: Option<&str>, lifecycle_nodes: Option<&str>) -> usize {
+    let on = declared_families(infra).unwrap_or(Families::ALL).lifecycle;
+    let marked = match stated(lifecycle_nodes) {
+        Some(v) => v.trim().parse::<usize>().unwrap_or_else(|_| {
+            panic!(
+                "the model's managed-node count {v:?} is not a count. It is the number \
+                 of nodes the model marks lifecycle; each registers its own five \
+                 lifecycle services: give a whole number."
+            )
+        }),
+        None => 0,
+    };
+    if marked > 0 { marked } else { usize::from(on) }
+}
+
 /// The service servers the runtime registers on the image's behalf, from the
 /// two facts.
 ///
@@ -170,20 +196,23 @@ pub fn declared_families(infra: Option<&str>) -> Option<Families> {
 /// that must not take that direction (a FLOOR it refuses on) checks
 /// [`stated`] itself before calling.
 pub fn infra_service_servers(infra: Option<&str>, nodes: Option<&str>) -> usize {
-    let Families {
-        param, lifecycle, ..
-    } = declared_families(infra).unwrap_or(Families::ALL);
+    infra_service_servers_with(infra, nodes, None)
+}
+
+/// [`infra_service_servers`] with the managed-node count (issue 2553): the
+/// lifecycle family costs its five servers per [`lifecycle_machines`].
+pub fn infra_service_servers_with(
+    infra: Option<&str>,
+    nodes: Option<&str>,
+    lifecycle_nodes: Option<&str>,
+) -> usize {
+    let Families { param, .. } = declared_families(infra).unwrap_or(Families::ALL);
     let params = if param {
         PARAM_SERVICE_QUERYABLES * declared_nodes(nodes)
     } else {
         0
     };
-    params
-        + if lifecycle {
-            LIFECYCLE_SERVICE_QUERYABLES
-        } else {
-            0
-        }
+    params + LIFECYCLE_SERVICE_QUERYABLES * lifecycle_machines(infra, lifecycle_nodes)
 }
 
 /// Issue 2482 -- is the PER-NODE term of [`infra_service_servers`] a guess?
@@ -253,6 +282,26 @@ mod tests {
             11
         );
         assert_eq!(infra_service_servers(Some("all"), None), 11);
+    }
+
+    #[test]
+    fn the_lifecycle_family_is_priced_per_managed_node() {
+        // Issue 2553 -- three launch-marked managed nodes run three machines.
+        assert_eq!(
+            infra_service_servers_with(Some("lifecycle"), None, Some("3")),
+            3 * LIFECYCLE_SERVICE_QUERYABLES
+        );
+        // The family on, no node marked: one machine, the pre-2553 price.
+        assert_eq!(
+            infra_service_servers_with(Some("lifecycle"), None, Some("0")),
+            5
+        );
+        assert_eq!(infra_service_servers_with(Some("lifecycle"), None, None), 5);
+        // A marked node registers its machine even if the switch is off.
+        assert_eq!(lifecycle_machines(Some("param"), Some("2")), 2);
+        assert_eq!(lifecycle_machines(Some("none"), None), 0);
+        // Undeclared families: priced present, at least one machine.
+        assert_eq!(lifecycle_machines(None, None), 1);
     }
 
     #[test]

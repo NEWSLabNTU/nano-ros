@@ -672,6 +672,7 @@ pub struct Image {
     service_server_queryables: Option<usize>,
     entity_liveliness_tokens: Option<usize>,
     model_nodes: Option<usize>,
+    lifecycle_nodes: Option<usize>,
     infra_families: Option<InfraFamilies>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
@@ -701,6 +702,7 @@ impl Image {
         "service_server_queryables",
         "entity_liveliness_tokens",
         "model_nodes",
+        "lifecycle_nodes",
         "infra_families",
     ];
 
@@ -950,6 +952,17 @@ impl Image {
         fact(&self.model_nodes, "model_nodes", &self.refused)
     }
 
+    /// Issue 2553 -- how many MANAGED nodes the image runs: the nodes the
+    /// model marks `lifecycle` (a launch `<lifecycle_node>`, a contract's
+    /// `lifecycle: true`). The runtime gives each its own REP-2002 state
+    /// machine (RFC-0128 D1): five service servers and a `transition_event`
+    /// publisher PER node, so the lifecycle family is priced per managed node
+    /// ([`crate::infra::lifecycle_machines`]), never once per image. Absent
+    /// reads as one machine, the pre-2553 price.
+    pub fn lifecycle_nodes(&self) -> Fact<usize> {
+        fact(&self.lifecycle_nodes, "lifecycle_nodes", &self.refused)
+    }
+
     /// Which of the runtime's own service families the image builds (see
     /// [`InfraFamilies`]). The ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier's
     /// descriptor home: a MODEL fact (the bringup's `features`, plus, on a
@@ -1065,6 +1078,10 @@ impl Image {
         self.model_nodes = v;
         self
     }
+    pub fn set_lifecycle_nodes(&mut self, v: Option<usize>) -> &mut Self {
+        self.lifecycle_nodes = v;
+        self
+    }
     pub fn set_infra_families(&mut self, v: Option<InfraFamilies>) -> &mut Self {
         self.infra_families = v;
         self
@@ -1107,6 +1124,7 @@ impl Image {
             "service_server_queryables" => self.service_server_queryables?.to_string(),
             "entity_liveliness_tokens" => self.entity_liveliness_tokens?.to_string(),
             "model_nodes" => self.model_nodes?.to_string(),
+            "lifecycle_nodes" => self.lifecycle_nodes?.to_string(),
             "infra_families" => quoted(self.infra_families?.tag()),
             _ => return None,
         })
@@ -1170,6 +1188,7 @@ impl Image {
                     self.entity_liveliness_tokens.is_some(),
                 ),
                 ("model_nodes", self.model_nodes.is_some()),
+                ("lifecycle_nodes", self.lifecycle_nodes.is_some()),
                 ("infra_families", self.infra_families.is_some()),
             ],
         )
