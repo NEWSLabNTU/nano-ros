@@ -29,6 +29,8 @@
 //! | service | rust workspace `linux_service_client` (`/add_client`) | `demo_nodes_cpp add_two_ints_client` |
 //! | action | rust workspace `linux_action_client` (`/fibonacci_client`) | `examples_rclcpp_minimal_action_client` |
 //! | qos | `bins/qos-override-pubsub`, `graph-profile` (`/qos_override`) | `fixtures/ros2-qos-peer/qos_peer.py` (rclpy, the same profile) |
+//! | params (C) | `examples/linux/c/parameters` (`/c_parameters`) | `param_peer.py c_parameters c_parameters` |
+//! | params (C++) | `examples/linux/cpp/parameters` (`/cpp_parameters`) | `param_peer.py cpp_parameters cpp_parameters` |
 //!
 //! Live peer: the host's ROS 2 (Humble) with `rmw_zenoh_cpp`. Run with
 //! `just linux test-ros2-cli-parity`; cells `native-ros2-cli-parity-*` in
@@ -57,6 +59,13 @@ use nros_tests::{
         build_qos_override_pubsub,
     },
     ros2_compat::PARAMETER_SERVICES,
+};
+
+// phase-556 W2 — the C and C++ parameter examples, and the pure comparison
+// for answers read concurrently with a set.
+use nros_tests::{
+    fixtures::{build_c_parameters, build_cpp_parameters},
+    ros2_compat::compare,
 };
 
 const SETTLE: Duration = Duration::from_secs(20);
@@ -803,6 +812,224 @@ fn cases_bound_to_interop_cells() {
             (Linux, Rust, Zenoh, Action),
             (Linux, Rust, Zenoh, Pubsub),
             (Linux, Rust, Zenoh, Qos),
+            (Linux, C, Zenoh, Params),
+            (Linux, Cpp, Zenoh, Params),
         ],
+    );
+}
+
+// ── parameter refusals, /parameter_events, load, C and C++ (phase-556 W2) ───
+
+/// Expected-failure: `ros2 param set` of a name the node never declared is
+/// refused by both, with the same exit status, but with another reason: the
+/// stock peer (rclpy) says `('Invalid access to undeclared parameter(s)', [])`,
+/// nano-ros says rclrs's `Parameter was not declared and undeclared
+/// parameters are not allowed`. rclcpp words it a third way.
+// Issue 2731: which client's wording to copy is open.
+#[test]
+fn set_of_an_undeclared_name_compared_with_stock() {
+    let pair = param_pair();
+    params_discovered(&pair);
+    let c = pair.ask("param set {node} nope 1");
+    hold_gap(&c, "the refusal of a set of an undeclared parameter", |c| {
+        c.diff().is_some_and(|d| {
+            changed_lines(&d)
+                == vec![
+                    "- Setting parameter failed: Parameter was not declared and undeclared \
+                     parameters are not allowed"
+                        .to_string(),
+                    "+ Setting parameter failed: ('Invalid access to undeclared parameter(s)', [])"
+                        .to_string(),
+                ]
+        })
+    });
+}
+
+/// Matches stock: `ros2 param set` of a declared integer parameter with a
+/// string value is refused, with the stock peer's (rclpy's) reason naming
+/// both types, and exit status, and the value is unchanged. rclcpp words it
+/// differently (it names the parameter and the types in lower case).
+#[test]
+fn set_of_the_wrong_type_is_refused_as_stock_does() {
+    let pair = param_pair();
+    params_discovered(&pair);
+    pair.ask("param set {node} rate hello")
+        .assert_same("the refusal of a set of an integer parameter to a string");
+    pair.ask("param get {node} rate")
+        .assert_same("the value of an integer parameter after a refused set");
+}
+
+/// The `/parameter_events` message a side's node publishes for `set`, as
+/// `ros2 topic echo --once` prints it. The echo is started first and the set
+/// is sent once the echo's subscription is in the side's graph, so the one
+/// message it prints is the set's. Only the node's own events are echoed: the
+/// `ros2 param set` CLI is a node too, and announces its own parameters.
+fn parameter_event_for(side: &GraphSide, set: &str) -> CliAnswer {
+    let echo = "topic echo --once --filter \"m.node == '{node}'\" /parameter_events \
+                rcl_interfaces/msg/ParameterEvent";
+    let subscriptions = |a: &CliAnswer| {
+        a.output
+            .lines()
+            .find_map(|l| l.strip_prefix("Subscription count: "))
+            .and_then(|n| n.trim().parse::<u32>().ok())
+    };
+    let info = "topic info /parameter_events";
+    let before = side.query_until(info, SETTLE, |a| subscriptions(a).is_some());
+    let before = subscriptions(&before)
+        .unwrap_or_else(|| panic!("`ros2 {info}` printed no subscription count:\n{before}"));
+    std::thread::scope(|s| {
+        let echoed = s.spawn(|| {
+            side.query(echo)
+                .unwrap_or_else(|e| panic!("{} side: {e}", side.implementation))
+        });
+        let subscribed = side.query_until(info, SETTLE, |a| {
+            subscriptions(a).is_some_and(|n| n > before)
+        });
+        assert!(
+            subscriptions(&subscribed).is_some_and(|n| n > before),
+            "the {} side's `ros2 topic echo /parameter_events` never subscribed:\n{subscribed}",
+            side.implementation
+        );
+        std::thread::sleep(Duration::from_secs(1));
+        let set_answer = side
+            .query(set)
+            .unwrap_or_else(|e| panic!("{} side: {e}", side.implementation));
+        let event = echoed.join().expect("the echo thread panicked");
+        assert!(
+            has_line(&event, "changed_parameters:") || has_line(&event, "new_parameters:"),
+            "the {} side's node published no /parameter_events message for \
+             `ros2 {set}`:\n{event}\nThe set answered:\n{set_answer}",
+            side.implementation
+        );
+        event
+    })
+}
+
+/// Matches stock: the `/parameter_events` message a node publishes for an
+/// accepted `ros2 param set`: the node's name and the new, changed and deleted
+/// parameter lists, field by field. The stamp is set aside.
+#[test]
+fn parameter_event_for_a_set_reads_as_stock_does() {
+    let pair = param_pair();
+    params_discovered(&pair);
+    let set = "param set {node} rate 13";
+    let nano = parameter_event_for(&pair.nano, set);
+    let stock = parameter_event_for(&pair.stock, set);
+    compare(
+        "topic echo --once /parameter_events",
+        nano,
+        &pair.nano.node,
+        stock,
+        &pair.stock.node,
+    )
+    .filtered(without_lines_containing(&["stamp:", "sec:", "nanosec:"]))
+    .assert_same("the /parameter_events message for an accepted set");
+}
+
+/// Matches stock: `ros2 param load` of a parameter file naming two declared
+/// parameters: its report, and the values read back.
+#[test]
+fn param_load_answers_as_stock_does() {
+    let pair = param_pair();
+    params_discovered(&pair);
+    let dir = tempfile::tempdir().expect("create a dir for the parameter file");
+    let file = dir.path().join("params.yaml");
+    std::fs::write(
+        &file,
+        "/**:\n  ros__parameters:\n    rate: 12\n    stepped: 15\n",
+    )
+    .expect("write the parameter file");
+
+    pair.ask(&format!("param load {{node}} {}", file.display()))
+        .assert_same("`ros2 param load` of a file naming two declared parameters");
+    pair.ask_until("param get {node} rate", SETTLE, |a| has_line(a, "12"))
+        .assert_same("the value of `rate` after the load");
+    pair.ask_until("param get {node} stepped", SETTLE, |a| has_line(a, "15"))
+        .assert_same("the value of `stepped` after the load");
+}
+
+/// nano-ros: a C or C++ parameter example, left spinning. Stock: the rclpy
+/// peer declaring what that example holds once its own local roundtrip is
+/// done (`param_peer.py`'s `profile`).
+fn example_param_pair(nano_bin: &std::path::Path, node: &str, profile: &str) -> Pair {
+    require_zenohd();
+    require_ros2();
+    let peer = nros_tests::project_root()
+        .join("packages/testing/nros-tests/fixtures/ros2-param-peer/param_peer.py");
+    let bare = node.trim_start_matches('/');
+    let pair = role_pair(
+        nano_bin,
+        node,
+        // The example answers its parameter services only while it spins.
+        &[("NROS_SPIN_MS", "300000")],
+        &format!("python3 -u {} {bare} {profile}", peer.display()),
+        node,
+    );
+    let c = pair.ask_until("param list {node}", SETTLE, |a| {
+        a.output.lines().filter(|l| l.starts_with("  ")).count() >= 4
+    });
+    for (side, a) in [("nano-ros", &c.nano), ("stock", &c.stock)] {
+        assert!(
+            a.output.lines().filter(|l| l.starts_with("  ")).count() >= 4,
+            "the {side} node {node}'s parameter services were never discovered:\n{a}"
+        );
+    }
+    pair
+}
+
+/// `param list`, `list --param-type`, `get` and `describe` of each name,
+/// an accepted `set` and its read-back.
+fn assert_core_param_queries_match(pair: &Pair, names: &[&str], set: (&str, &str)) {
+    let no_sim_time = || without_lines_containing(&["use_sim_time"]);
+    pair.ask("param list {node}")
+        .filtered(no_sim_time())
+        .assert_same("the declared parameter names");
+    pair.ask("param list --param-type {node}")
+        .filtered(no_sim_time())
+        .assert_same("the declared parameter names and types");
+    for name in names {
+        pair.ask(&format!("param get {{node}} {name}"))
+            .assert_same(&format!("the value of `{name}`"));
+        pair.ask(&format!("param describe {{node}} {name}"))
+            .assert_same(&format!("the descriptor of `{name}`"));
+    }
+    let (name, value) = set;
+    pair.ask(&format!("param set {{node}} {name} {value}"))
+        .assert_same(&format!("an accepted set of `{name}`"));
+    pair.ask_until(&format!("param get {{node}} {name}"), SETTLE, |a| {
+        has_line(a, value)
+    })
+    .assert_same(&format!("the value of `{name}` read back after the set"));
+}
+
+/// Matches stock: `ros2 param list`, `get`, `describe` and an accepted `set`
+/// against the C parameter example (rclc's parameter server).
+#[test]
+fn c_parameters_answer_ros2_param_as_stock_does() {
+    let nano_bin = build_c_parameters().require("c-parameters");
+    let pair = example_param_pair(nano_bin, "/c_parameters", "c_parameters");
+    assert_core_param_queries_match(
+        &pair,
+        &["verbose", "publish_rate_hz", "scale_factor", "topic_name"],
+        ("scale_factor", "2.5"),
+    );
+}
+
+/// Matches stock: `ros2 param list`, `get`, `describe` and an accepted `set`
+/// against the C++ parameter example.
+#[test]
+fn cpp_parameters_answer_ros2_param_as_stock_does() {
+    let nano_bin = build_cpp_parameters().require("cpp-parameters");
+    let pair = example_param_pair(nano_bin, "/cpp_parameters", "cpp_parameters");
+    assert_core_param_queries_match(
+        &pair,
+        &[
+            "verbose",
+            "max_iters",
+            "ctrl_period",
+            "frame_id",
+            "mpc_weights",
+        ],
+        ("ctrl_period", "0.25"),
     );
 }
