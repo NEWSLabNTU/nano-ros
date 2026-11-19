@@ -7,6 +7,12 @@ tests are the plain check now. One question for the user (W13). A second
 measurement (W4 to W6, 2026-11-18) found one more gap, the unstated deadline,
 lifespan and liveliness of the zenoh graph token, fixed in W6; W4 stays open
 on W13's default interfaces.**
+**Update (2026-11-19): W2 and W7 are done.** W2's last queries (a set of an
+undeclared name and of the wrong type, `/parameter_events` content,
+`ros2 param load`, C and C++ nodes) are tests; one new gap, the reason a set
+of an undeclared name carries, is held for
+[issue 2731](../issues/2731-param-set-undeclared-reason.md).
+
 The user's goal is to "ensure the interface compatibility among nano-ros and
 stock ROS 2". This phase measures it: a nano-ros node and a stock `rclcpp`
 node that declare the same interface are asked the same `ros2` CLI questions,
@@ -73,20 +79,24 @@ our QoS, against our own actual-QoS slot) and `graph_interop.rs` (the GID a
 stock peer reads, against our own). Paths are under
 `packages/testing/nros-tests/tests/`.
 
-| axis | checks only that nano-ros answers | no test |
-|---|---|---|
-| param list, get, set | `params.rs` (string matches), `params_per_node_interop.rs` (zenoh, cyclone, xrce), `c_param_server_interop.rs` | |
-| param describe | `params.rs`, a loose match | |
-| param dump | | yes |
-| the six parameter services | `qos_override_e2e.rs` (names, no types) | types |
-| `service list -t` | `ros2_action_e2e.rs` (waits for one hidden service) | `-t` output |
-| `action list -t` | `ros2_action_e2e.rs` drives goals, never lists | listing |
-| `node list` | `graph_interop.rs`, `rust_multi_node_per_node_graph.rs` | |
-| `node info` | `rust_multi_node_per_node_graph.rs` (XRCE only, one section) | zenoh |
-| `topic list -t` | a helper in `src/ros2.rs` that no test calls | yes |
-| `/rosout`, `/parameter_events` | `rosout_interop.rs`, `params_per_node_interop.rs`, `c_param_server_interop.rs` (echo the content) | presence in the graph |
-| `topic info -v` QoS | `workspace_features_e2e.rs`, `qos_override_e2e.rs` (against the declared profile); `graph_interop.rs`, `xrce_ros2_interop.rs` (GID) | |
-| lifecycle | `interop_e2e.rs`, `workspace_features_e2e.rs`, `entry_e2e.rs` (stock `ros2 lifecycle` drives a nano-ros node) | phase-554 owns it (W7) |
+| axis | checks only that nano-ros answers | no test | compared with stock (added by this phase) |
+|---|---|---|---|
+| param list, get, set | `params.rs` (string matches), `params_per_node_interop.rs` (zenoh, cyclone, xrce), `c_param_server_interop.rs` | | W2: `declared_parameters_answer_ros2_param_as_stock_does`, `set_of_the_wrong_type_is_refused_as_stock_does`, `off_step_set_is_refused_as_stock_does`, `delete_of_a_statically_typed_parameter_is_refused_as_stock_does`, `get_parameters_reply_for_an_undeclared_name_answers_as_stock_does`; expected-failure `set_of_an_undeclared_name_compared_with_stock` (issue 2731); C and C++: `c_parameters_answer_ros2_param_as_stock_does`, `cpp_parameters_answer_ros2_param_as_stock_does` |
+| param describe | `params.rs`, a loose match | | W2: `declared_parameters_answer_ros2_param_as_stock_does`, `describe_parameters_reply_for_an_undeclared_name_answers_as_stock_does`, and the C and C++ tests |
+| param dump | | yes | W2: `declared_parameters_answer_ros2_param_as_stock_does` |
+| param load | | yes | W2: `param_load_answers_as_stock_does` |
+| the six parameter services | `qos_override_e2e.rs` (names, no types) | types | W2: `first_node_serves_the_six_parameter_services_as_stock_does`; W10: `each_node_of_a_two_node_image_serves_the_parameter_services_as_stock_does` |
+| `service list -t` | `ros2_action_e2e.rs` (waits for one hidden service) | `-t` output | W3: `service_list_with_types_answers_as_stock_does`, `hidden_action_services_and_topics_answer_as_stock_does` |
+| `action list -t` | `ros2_action_e2e.rs` drives goals, never lists | listing | W3: `action_list_and_info_answer_as_stock_does` |
+| `node list` | `graph_interop.rs`, `rust_multi_node_per_node_graph.rs` | | every pair (`GraphSide::await_node`) |
+| `node info` | `rust_multi_node_per_node_graph.rs` (XRCE only, one section) | zenoh | W4: `node_info_of_a_{publisher,subscriber,service_server,service_client}_answers_as_stock_does`, `node_info_of_an_action_{server,client}_answers_as_stock_does`; expected-failure `default_node_interfaces_compared_with_stock` (W13) |
+| `topic list -t` | a helper in `src/ros2.rs` that no test calls | yes | W5: `topic_list_with_types_answers_as_stock_does`; W3's hidden-topic test |
+| `/rosout`, `/parameter_events` | `rosout_interop.rs`, `params_per_node_interop.rs`, `c_param_server_interop.rs` (echo the content) | presence in the graph | W2: `parameter_event_for_a_set_reads_as_stock_does` (message content); expected-failure `second_node_as_parameter_events_publisher_compared_with_stock` (W14) and `default_node_interfaces_compared_with_stock` (W13) |
+| `topic info -v` QoS | `workspace_features_e2e.rs`, `qos_override_e2e.rs` (against the declared profile); `graph_interop.rs`, `xrce_ros2_interop.rs` (GID) | | W6: `default_qos_of_a_published_topic_reads_as_stock_does`, `default_qos_of_a_subscription_reads_as_stock_does`, `non_default_qos_of_a_publisher_reads_as_stock_does`, `non_default_qos_of_a_subscription_reads_as_stock_does` |
+| lifecycle | `interop_e2e.rs`, `workspace_features_e2e.rs`, `entry_e2e.rs` (stock `ros2 lifecycle` drives a nano-ros node) | | not re-measured here (W7). [Phase-554](phase-554-per-node-lifecycle.md) answers it: W4 (`service list -t` and `topic list -t` per managed node as an rclcpp `LifecycleNode` shows them), W9 (cells comparing `ros2 lifecycle nodes/get/list/set` and `node list` against stock `lifecycle_talker`), W13 (`transition_event` content against rclcpp), W14 (the same cells in Rust, C and C++). All four OPEN on 2026-11-19 |
+
+The tests in the last column are in
+`packages/testing/nros-tests/tests/ros2_cli_parity_interop.rs`.
 
 ### First measurement of W2 to W6 (2026-11-13, by hand)
 
@@ -186,14 +196,34 @@ integer range with a step.
 
 ### W2 — Parameter services
 
-- **Status:** OPEN (in progress). Plain: `declared_parameters_answer_ros2_param_as_stock_does`
-  (`param list`, `list --param-type`, `get`, `describe`, `dump`, an accepted
-  `set` and its read-back, on declared parameters) and
-  `first_node_serves_the_six_parameter_services_as_stock_does`. Expected-failure:
-  W10 to W12's tests. Not covered yet: a set of an undeclared name and of a
-  wrong type (both refused by both, with reasons that differ between rclpy and
-  rclcpp too), C and C++ nano-ros nodes, `/parameter_events` content,
-  `ros2 param load`.
+- **Status:** DONE (2026-11-19). Plain, in `ros2_cli_parity_interop`:
+  `declared_parameters_answer_ros2_param_as_stock_does` (`param list`,
+  `list --param-type`, `get`, `describe`, `dump`, an accepted `set` and its
+  read-back, on declared parameters),
+  `first_node_serves_the_six_parameter_services_as_stock_does`,
+  `set_of_the_wrong_type_is_refused_as_stock_does`,
+  `parameter_event_for_a_set_reads_as_stock_does` (the `/parameter_events`
+  message for a set: node, new, changed and deleted lists, field by field;
+  the stamp set aside), `param_load_answers_as_stock_does` (the report and the
+  values read back), and the C and C++ nodes:
+  `c_parameters_answer_ros2_param_as_stock_does` and
+  `cpp_parameters_answer_ros2_param_as_stock_does` (`param list`,
+  `list --param-type`, `get` and `describe` of every parameter, an accepted
+  `set` and its read-back, against the `c-parameters` and `cpp-parameters`
+  examples; new cells `native-ros2-cli-parity-params-{c,cpp}-zenoh`). W12's
+  four tests cover the undeclared-name replies and the delete and off-step
+  refusals. Expected-failure: `set_of_an_undeclared_name_compared_with_stock`
+  ([issue 2731](../issues/2731-param-set-undeclared-reason.md): the reason
+  differs, and which client's wording to copy is a question for the user),
+  and W10 to W12's held tests. The stock peer of every parameter test is
+  rclpy (`fixtures/ros2-param-peer/param_peer.py`, one profile per nano-ros
+  node), so the reasons compared are rclpy's; rclcpp words the refusals
+  differently.
+
+  Fixed here: a set of the wrong type was refused as `Type mismatch`; it now
+  carries rclpy's reason, naming the declared and the given type
+  (`refusal_reason`, `nros-node` `parameter_services.rs`; unit test
+  `type_refusals_carry_stock_s_reason`).
 
 `ros2 param list`, `get`, `set`, `describe` and `dump` against both nodes:
 the six parameter service names and types, value types, descriptors, and the
@@ -284,7 +314,8 @@ Acceptance: as W2.
 
 ### W7 — Lifecycle cross-reference
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-19). The W0 table's lifecycle row names
+  phase-554's W4, W9, W13 and W14.
 
 No new measurement. Record which of phase-554's items answer the lifecycle
 part of the user's goal, so this audit's result table is complete.
