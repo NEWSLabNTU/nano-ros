@@ -13354,6 +13354,24 @@ impl<'s> Executor<'s> {
                 // shipped image recorded per-callback runtime anywhere — while
                 // the comment above claimed it did.
                 if let Some(state) = sporadic_states.get_mut(sc_idx).and_then(|s| s.as_mut()) {
+                    // phase-575 W5 -- an overrun is reported when it happens,
+                    // not only through the throttle window above: one
+                    // callback that spends more than the budget left is a
+                    // single event, and a window of 200 opportunities never
+                    // judges it. With no kernel budget server (FreeRTOS,
+                    // ThreadX, Zephyr) this is the only place an overrun is
+                    // visible, and the context is skipped until its refill.
+                    let left = state.budget_remaining_us;
+                    if elapsed_us > left {
+                        nros_log::log_warn!(
+                            nros_log::get_logger("nros"),
+                            "sporadic budget overrun sched context {}: a callback ran {} us with {} us of its {} us budget left; the context is throttled until its next refill",
+                            sc_idx,
+                            elapsed_us,
+                            left,
+                            state.budget_capacity_us
+                        );
+                    }
                     state.consume(elapsed_us);
                 }
             };

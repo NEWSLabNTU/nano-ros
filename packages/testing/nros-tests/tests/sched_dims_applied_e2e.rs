@@ -53,10 +53,10 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
-        build_native_workspace_rust_realtime_entry, build_nuttx_workspace_cpp_realtime_entry,
-        build_nuttx_workspace_rust_realtime_entry, build_threadx_workspace_rust_realtime_entry,
-        build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_c_realtime_entry_smp,
-        build_zephyr_workspace_cpp_realtime_entry,
+        build_freertos_workspace_rust_realtime_entry, build_native_workspace_rust_realtime_entry,
+        build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
+        build_threadx_workspace_rust_realtime_entry, build_zephyr_workspace_c_realtime_entry,
+        build_zephyr_workspace_c_realtime_entry_smp, build_zephyr_workspace_cpp_realtime_entry,
         build_zephyr_workspace_rust_realtime_derived_entry,
         build_zephyr_workspace_rust_realtime_entry,
     },
@@ -989,6 +989,52 @@ fn dotconfig_has_line(dotconfig: &Path, line: &str) -> bool {
     std::fs::read_to_string(dotconfig)
         .map(|text| text.lines().any(|l| l.trim() == line))
         .unwrap_or(false)
+}
+
+/// A FreeRTOS level that overruns its declared budget is throttled by the
+/// EXECUTOR (phase-575 W5).
+///
+/// FreeRTOS has no kernel budget server, so the runner lowers the level's
+/// `[tasks.high.freertos]` budget (5 ms per 10 ms) onto the level's own sched
+/// context and the executor enforces it. The Rust `ws-realtime` image's `high`
+/// member runs one tick in fifty for 8 ms on this board. The assertions, from
+/// the guest console:
+///
+/// - the runner lowered the budget and the executor enforces it
+///   (`enforced by the EXECUTOR`);
+/// - the overrun happened (tick 25) and the executor reported it and
+///   throttled the context until its refill (`sporadic budget overrun`);
+/// - the level kept dispatching afterwards (the SECOND overrun, tick 75), so
+///   the throttle released at the refill instead of starving the level;
+/// - the boot level, the session owner, was never budgeted.
+#[test]
+fn freertos_level_budget_overrun_is_throttled_by_the_executor() {
+    if !nros_tests::lane_scope::admits(MP::FreertosMps2) {
+        return;
+    }
+    let entry = build_freertos_workspace_rust_realtime_entry()
+        .map(|p| p.to_path_buf())
+        .require("freertos-mps2 rust realtime");
+    let port = port_of(MP::FreertosMps2, ML::Rust, MW::RealtimeSchedTasks);
+    let _router = ZenohRouter::start_on("0.0.0.0", port)
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+    let groups: Vec<Vec<String>> = vec![
+        vec!["nros: level budget sched_task=`high` 5000us/10000us enforced by the EXECUTOR".into()],
+        vec!["on_ctrl: overran the level budget at tick 25 (".into()],
+        vec!["sporadic budget overrun sched context".into()],
+        vec!["on_ctrl: overran the level budget at tick 75 (".into()],
+    ];
+    let mut q = QemuProcess::start_mps2_an385_networked(&entry)
+        .unwrap_or_else(|e| panic!("[freertos-mps2 rust] boot QEMU: {e}"));
+    let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+    q.kill();
+    let log = log.unwrap_or_else(|e| {
+        panic!("[freertos-mps2 rust] the overrunning level was not shown throttled by the executor: {e}")
+    });
+    assert!(
+        !log.contains("level budget sched_task=`low`"),
+        "[freertos-mps2 rust] the session-owning boot level was budgeted:\n{log}"
+    );
 }
 
 /// Issue 2018 -- a NuttX level that overruns its declared budget is throttled

@@ -256,8 +256,8 @@ phase-576.
 
 ### W5 — budget enforcement and deadline monitors on FreeRTOS
 
-- **Status:** OPEN
-- **Owner:** nros 142, after its RTIC-priorities work item
+- **Status:** OPEN (step 1 in progress, 2026-11-19)
+- **Owner:** nros 241 (moved from nros 142 by the manager, 2026-11-19)
 
 Enforce the `budget_us` a FreeRTOS sched task already carries: a sporadic
 server, on the pattern of the bare-metal `sporadic_timer.rs`, with the
@@ -267,6 +267,29 @@ declared `deadline_policy`.
 Acceptance: on the FreeRTOS QEMU board, an injected overrun is throttled at
 its budget and logged, a deadline miss runs its policy, and the other sched
 tasks keep their deadlines.
+
+Steps:
+
+1. **The budget, on the Rust level runner.** FreeRTOS has no kernel budget
+   server, so the level runner lowers each spawned level's budget, period,
+   deadline and deadline policy onto the level's own sched context and the
+   executor enforces the budget (the NuttX runner's `apply_level_policy`,
+   with no kernel half). The session-owning boot level is never budgeted.
+   The executor now reports each overrun when it happens (`sporadic budget
+   overrun`), not only through its 200-opportunity throttle window, which
+   one overrun never closes. The Rust `realtime-rust` image declares
+   `[tasks.high.freertos]` 5 ms per 10 ms and overruns one tick in fifty for
+   8 ms; `freertos_level_budget_overrun_is_throttled_by_the_executor` reads
+   the console.
+2. **The deadline policy.** A deadline policy reaches a sched task only from
+   the launch contract (`miss.action` on a node path), so the fixture needs
+   a contract on the `high` level's path, and a deadline below the 8 ms
+   overrun.
+3. **The C runner.** `freertos_run_sched_tasks.c` carries the four fields and
+   consumes none of them; it lowers them the same way.
+4. **A refill timer.** Refill is polled at the next spin today. A FreeRTOS
+   software timer behind `PlatformTimer::create_periodic` would refill on
+   time, on the pattern of the bare-metal `sporadic_timer.rs`.
 
 ### W6 — a time source hook for timestamps
 

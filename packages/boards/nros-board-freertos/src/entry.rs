@@ -817,6 +817,39 @@ fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
 /// # Safety
 /// `arg` is an `nros_platform_alloc`-allocated `SchedTaskCtx<F>` from
 /// [`spawn_next_sched_task`]; this task consumes + frees it.
+/// Lower a level's scheduling policy onto its own scheduling context: the
+/// budget and period (when `budget`), the deadline and the deadline policy.
+///
+/// FreeRTOS has no kernel budget server, so the executor is the one enforcer:
+/// a level that spends its budget is skipped until the period refills it, and
+/// a callback that runs past `deadline_us` runs the declared deadline policy.
+/// Call on the level's runtime, after the level opened and before its setup.
+fn apply_level_policy<B: BoardPrint>(
+    crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
+    sched_task: &SchedTaskSpec<'_>,
+    budget: bool,
+) {
+    let (period_us, budget_us) = if budget {
+        (sched_task.period_us, sched_task.budget_us)
+    } else {
+        (None, None)
+    };
+    let sc = crt.apply_level_sched_policy(
+        sched_task.class,
+        period_us,
+        budget_us,
+        sched_task.deadline_us,
+        sched_task.deadline_policy,
+        false,
+    );
+    if let (Some(_), Some(b), Some(p)) = (sc, budget_us, period_us) {
+        B::println(format_args!(
+            "nros: level budget sched_task=`{}` {}us/{}us enforced by the EXECUTOR",
+            sched_task.name, b, p
+        ));
+    }
+}
+
 unsafe extern "C" fn sched_task_entry<B, F, E>(arg: *mut c_void)
 where
     B: BoardPrint + BoardExit,
@@ -855,6 +888,7 @@ where
             // ON, so this level registers NOTHING rather than registering on
             // a quietly narrower set.
             let _ = crt.executor_mut().set_active_groups(sched_task.groups);
+            apply_level_policy::<B>(crt, &sched_task, true);
             let mut runtime = RuntimeCtx::with_runtime(crt);
             (setup)(&mut runtime)
         })
@@ -1087,6 +1121,10 @@ where
     // SAFETY: the runtime reference lives inside the closure only.
     let rc = unsafe {
         core.with_runtime(|crt| {
+            // The session-owning boot level is never budgeted: a throttled
+            // boot level would stall the shared session's flush (the NuttX
+            // runner's rule, issue #246). Only its deadline lowers.
+            apply_level_policy::<B>(crt, &boot_sched_task, false);
             let mut runtime = RuntimeCtx::with_runtime(crt);
             (setup)(&mut runtime)
         })
