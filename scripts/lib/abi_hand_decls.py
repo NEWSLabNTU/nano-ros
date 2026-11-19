@@ -125,6 +125,22 @@ SURFACES = {
             "nros_board_freertos_run_init_array": (
                 "FreeRTOS board ctor runner, board-local (no ABI header)"
             ),
+            "nros_board_nuttx_isr_timer_start": (
+                "nros-board-nuttx-qemu's interrupt-context test timer "
+                "(c/nuttx_isr_timer.c), board-local (no ABI header)"
+            ),
+            "nros_board_nuttx_isr_timer_stop": (
+                "nros-board-nuttx-qemu's interrupt-context test timer "
+                "(c/nuttx_isr_timer.c), board-local (no ABI header)"
+            ),
+            "nros_board_nuttx_isr_timer_now_ns": (
+                "nros-board-nuttx-qemu's interrupt-context test timer "
+                "(c/nuttx_isr_timer.c), board-local (no ABI header)"
+            ),
+            "nros_board_nuttx_isr_timer_not_in_isr": (
+                "nros-board-nuttx-qemu's interrupt-context test timer "
+                "(c/nuttx_isr_timer.c), board-local (no ABI header)"
+            ),
         },
     ),
 }

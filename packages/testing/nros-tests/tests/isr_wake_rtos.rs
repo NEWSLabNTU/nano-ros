@@ -22,11 +22,14 @@
 use nros_tests::{
     fixtures::{
         QemuProcess, RequireFixture, ZenohRouter, build_isr_wake_baremetal_mps2,
-        build_isr_wake_freertos_mps2, build_isr_wake_threadx_riscv64,
-        build_isr_wake_zephyr_native_sim, or_unmet,
+        build_isr_wake_freertos_mps2, build_isr_wake_nuttx_qemu_arm,
+        build_isr_wake_threadx_riscv64, build_isr_wake_zephyr_native_sim, or_unmet,
     },
     matrix::PlatformId,
-    output::{ISR_RACE_DONE, ISR_RACE_SAMPLE, ISR_WAKE_DONE, ISR_WAKE_NOT_IN_ISR, ISR_WAKE_SAMPLE},
+    output::{
+        ISR_PARK_DONE, ISR_PARK_SAMPLE, ISR_RACE_DONE, ISR_RACE_SAMPLE, ISR_WAKE_DONE,
+        ISR_WAKE_NOT_IN_ISR, ISR_WAKE_SAMPLE,
+    },
     wait_for_port,
 };
 use std::time::Duration;
@@ -132,7 +135,7 @@ fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str, finish: &
     let output = qemu.collect_until(finish, Duration::from_secs(120));
     qemu.kill();
 
-    check_isr_wake_output(&output, port_name);
+    check_isr_wake_output(&output, port_name, Latency::Bounded);
     output
 }
 
@@ -170,7 +173,7 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_zephyr_native_sim() {
         not_in_isr, 0,
         "the timer expiry ran outside interrupt context, so this did not test an interrupt wake"
     );
-    check_isr_wake_output(&output, "Zephyr");
+    check_isr_wake_output(&output, "Zephyr", Latency::Bounded);
 }
 
 /// Issue 2706 -- the ThreadX twin, on the QEMU RISC-V `virt` machine. The
@@ -201,12 +204,151 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_threadx_riscv64() {
         .unwrap_or_else(|e| panic!("start QEMU for the ThreadX interrupt-wake image: {e:?}"));
     let output = qemu.collect_until(ISR_WAKE_DONE, Duration::from_secs(120));
     qemu.kill();
-    check_isr_wake_output(&output, "ThreadX");
+    check_isr_wake_output(&output, "ThreadX", Latency::Bounded);
+}
+
+/// How late a handle park may end after its interrupt. The byte reaches the
+/// pipe through NuttX's low-priority work queue, a thread hop the semaphore
+/// park does not take, so its bound is its own; a park that missed the
+/// interrupt sleeps to its 1 s deadline and is far past it.
+const PARK_BOUND_US: u64 = 10_000;
+/// How many handle-park rounds the NuttX image makes.
+const PARK_ROUNDS: u64 = 10;
+
+/// Issue 2706 -- the NuttX twin, on the QEMU ARM `virt` machine. A watchdog,
+/// whose function runs from the timer interrupt, triggers a guard condition
+/// while the executor parks on its semaphore. Then the HANDLE park, which
+/// wakes on the wake object's pipe: an interrupt cannot `write` on NuttX, so
+/// the port queues the pipe byte on the work queue, and the watchdog signals
+/// the raw wake object while the main thread parks on it with no handles and
+/// a 1 s deadline. Every round must end on the signal, within
+/// [`PARK_BOUND_US`]. The board counts watchdog fires outside interrupt
+/// context, which must be none.
+///
+/// Mutations, measured in issue 2706: the port refusing, and the port posting
+/// the semaphore without queueing the pipe byte.
+#[test]
+fn a_timer_interrupt_wakes_the_parked_executor_on_nuttx_qemu_arm() {
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::NuttxArm],
+        "the NuttX interrupt-wake image",
+    );
+    if !nros_tests::fixtures::is_qemu_available() {
+        nros_tests::unmet!("qemu-system-arm not available");
+    }
+    let binary = build_isr_wake_nuttx_qemu_arm()
+        .require("isr-wake-nuttx-qemu-arm — run `just nuttx build-fixtures`");
+    let port = nros_tests::alloc::NUTTX_ISR_WAKE_PORT;
+    let _zenohd = or_unmet(ZenohRouter::start_slirp(port));
+    assert!(
+        wait_for_port(port, Duration::from_secs(5)),
+        "zenohd not reachable on the interrupt-wake port"
+    );
+    let mut qemu = QemuProcess::start_nuttx_virt(binary, true)
+        .unwrap_or_else(|e| panic!("start QEMU for the NuttX interrupt-wake image: {e:?}"));
+    let output = qemu.collect_until(ISR_WAKE_NOT_IN_ISR, Duration::from_secs(120));
+    qemu.kill();
+
+    // (latency from the interrupt in us, the park's return, how long it
+    // parked in us, interrupts that signalled during it).
+    let parks: Vec<(i64, i64, u64, u64)> = output
+        .lines()
+        .filter_map(|l| l.split(ISR_PARK_SAMPLE).nth(1))
+        .filter_map(|v| {
+            let mut it = v.split_whitespace();
+            Some((
+                it.next()?.parse().ok()?,
+                it.next()?.parse().ok()?,
+                it.next()?.parse().ok()?,
+                it.next()?.parse().ok()?,
+            ))
+        })
+        .collect();
+    eprintln!("NuttX handle park: {parks:?}");
+    // Issue 2748: every round's latency is printed before any assertion, so a
+    // red run shows both phases.
+    let samples: Vec<&str> = output
+        .lines()
+        .filter_map(|l| l.split(ISR_WAKE_SAMPLE).nth(1))
+        .map(str::trim)
+        .collect();
+    eprintln!("NuttX executor wake latencies (us): {samples:?}");
+    check_isr_wake_output(&output, "NuttX", Latency::CapOnly);
+    let done = output
+        .lines()
+        .find_map(|l| l.split(ISR_PARK_DONE).nth(1))
+        .unwrap_or_else(|| panic!("the handle-park phase never finished:\n{output}"));
+    let mut it = done
+        .split_whitespace()
+        .map(|v| v.parse::<u64>().unwrap_or(u64::MAX));
+    let (woken, refused) = (it.next().unwrap_or(0), it.next().unwrap_or(u64::MAX));
+    assert_eq!(
+        refused, 0,
+        "a handle park's interrupt signal was refused: {parks:?}"
+    );
+    assert_eq!(
+        woken, PARK_ROUNDS,
+        "only {woken} of {PARK_ROUNDS} handle parks ended on the interrupt's signal: {parks:?}"
+    );
+    assert_eq!(
+        parks.len() as u64,
+        PARK_ROUNDS,
+        "handle-park rounds printed: {parks:?}"
+    );
+    // Lower bounds: a woken park had an interrupt signal during it, and was
+    // not observed before that interrupt's stamp.
+    let unprompted: Vec<_> = parks.iter().filter(|p| p.1 == 0 && p.3 == 0).collect();
+    assert!(
+        unprompted.is_empty(),
+        "handle parks woken with no interrupt during them: {unprompted:?}"
+    );
+    let early: Vec<_> = parks.iter().filter(|p| p.0 < 0).collect();
+    assert!(
+        early.is_empty(),
+        "handle parks observed before their interrupt: {early:?}"
+    );
+    let late: Vec<_> = parks
+        .iter()
+        .filter(|p| p.0 as u64 > PARK_BOUND_US)
+        .collect();
+    assert!(
+        late.is_empty(),
+        "handle parks later than {PARK_BOUND_US} us: {late:?}"
+    );
+    let not_in_isr: u64 = output
+        .lines()
+        .find_map(|l| l.split(ISR_WAKE_NOT_IN_ISR).nth(1))
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(u64::MAX);
+    assert_eq!(
+        not_in_isr, 0,
+        "the watchdog ran outside interrupt context, so this did not test an interrupt wake"
+    );
+}
+
+/// Which latency bound an image is held to.
+#[derive(Clone, Copy, PartialEq)]
+enum Latency {
+    /// [`ON_TIME_SHARE`] of the samples within [`BOUND_US`], and every one
+    /// under [`CAP_US`].
+    Bounded,
+    /// Every sample under [`CAP_US`] only. PER-PLATFORM, BECAUSE OF QEMU'S
+    /// `-icount shift=auto` (issue 2748): the networked launchers must keep it,
+    /// and it raises the shift mid-run, so guest time per instruction doubles
+    /// and a fixed wake path measures 39, 78, 159, 317, then 645 us in ONE
+    /// run on NuttX. A microsecond bound there tracks QEMU's shift, not the
+    /// wake path. The FreeRTOS, bare-metal and ThreadX paths are short enough
+    /// to stay under [`BOUND_US`] at the shifts seen; NuttX's is not. Do not
+    /// "tighten" a `CapOnly` image back to `Bounded` without a clock that does
+    /// not scale with the shift. The teeth stay: the served and refused
+    /// counts, the lower bounds, and the cap.
+    CapOnly,
 }
 
 /// The bounds every interrupt-wake image is held to, over its `ISR_WAKE*`
-/// lines.
-fn check_isr_wake_output(output: &str, port_name: &str) {
+/// lines. Latencies are parsed SIGNED: a wake observed before its interrupt's
+/// stamp is a defect of the measurement or the wake, never a fast wake.
+fn check_isr_wake_output(output: &str, port_name: &str, latency: Latency) {
     let done = output
         .lines()
         .find_map(|l| l.split(ISR_WAKE_DONE).nth(1))
@@ -221,16 +363,29 @@ fn check_isr_wake_output(output: &str, port_name: &str) {
         it.next().unwrap_or(0),
         it.next().unwrap_or(u64::MAX),
     );
-    let samples: Vec<u64> = output
+    let signed: Vec<i64> = output
         .lines()
         .filter_map(|l| l.split(ISR_WAKE_SAMPLE).nth(1))
         .filter_map(|v| v.trim().parse().ok())
         .collect();
     eprintln!(
         "{port_name} interrupt wake: {fires} interrupts, {callbacks} callbacks, latency min {:?} max {:?} us",
-        samples.iter().min(),
-        samples.iter().max()
+        signed.iter().min(),
+        signed.iter().max()
     );
+    // Lower bounds: no callback observed before its interrupt, and no
+    // callback without one (a guard here is triggered only from the
+    // interrupt).
+    let early: Vec<&i64> = signed.iter().filter(|&&us| us < 0).collect();
+    assert!(
+        early.is_empty(),
+        "callbacks observed BEFORE their interrupt's stamp: {early:?}"
+    );
+    assert!(
+        callbacks <= fires,
+        "{callbacks} callbacks for only {fires} interrupts: something other than the interrupt woke the guard"
+    );
+    let samples: Vec<u64> = signed.iter().map(|&us| us as u64).collect();
     assert!(
         callbacks >= 50 && samples.len() as u64 >= 50,
         "too few callbacks:\n{output}"
@@ -243,12 +398,14 @@ fn check_isr_wake_output(output: &str, port_name: &str) {
         fires <= callbacks + 1,
         "{fires} interrupts were served by only {callbacks} callbacks: the interrupt's wake did not end the park"
     );
-    let on_time = samples.iter().filter(|&&us| us <= BOUND_US).count();
-    assert!(
-        on_time as f64 >= ON_TIME_SHARE * samples.len() as f64,
-        "only {on_time} of {} callbacks within {BOUND_US} us of their interrupt: {samples:?}",
-        samples.len()
-    );
+    if latency == Latency::Bounded {
+        let on_time = samples.iter().filter(|&&us| us <= BOUND_US).count();
+        assert!(
+            on_time as f64 >= ON_TIME_SHARE * samples.len() as f64,
+            "only {on_time} of {} callbacks within {BOUND_US} us of their interrupt: {samples:?}",
+            samples.len()
+        );
+    }
     let over_cap: Vec<&u64> = samples.iter().filter(|&&us| us > CAP_US).collect();
     assert!(
         over_cap.is_empty(),

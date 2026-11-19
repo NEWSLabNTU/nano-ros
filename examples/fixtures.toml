@@ -3901,6 +3901,25 @@ skip_probe = true
 # since phase-531 W7 (issue 2448).
 env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
 
+# Issue 2706 — the NuttX interrupt-wake image: a watchdog (whose function runs
+# from the timer interrupt) triggers a guard condition while the executor
+# parks, then signals a raw wake object while the main thread takes a handle
+# park. An owned entry with no component, like the logging smoke above. Its
+# router is on `alloc::NUTTX_ISR_WAKE_PORT`, stated in `main.rs` and
+# `system.toml`. Consumed by tests/isr_wake_rtos.rs.
+[[workspace_fixture]]
+id = "nuttx-isr-wake"
+platform = "nuttx"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/isr-wake-nuttx-qemu-arm"
+rmw = "zenoh"
+bringup = "src/isr_wake_nuttx_qemu_arm_bringup"
+image = "qemu-armv7a-nuttx"
+target_dir = "target"
+target = "armv7a-nuttx-eabihf"
+skip_probe = true
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
+
 # Issue 1706 — a talker with one declared parameter whose contract makes the
 # store visible to the build, so the store is CARVED from the executor backing
 # (phase-382 W3'). Same build shape as the talker rows below (`skip_probe`, the

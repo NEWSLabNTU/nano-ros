@@ -120,7 +120,7 @@ or refuse it, and the two sites that already signalled from a handler use it.
   - POSIX: async-signal-safe (`sem_post` + pipe `write`, no `sem_getvalue`,
     `errno` restored; the waiter drains stacked posts), tested.
   - Zephyr, ThreadX, NuttX and mps2 bare metal REFUSE (-1) until a test
-    reaches each: [issue 2706](../2706-isr-wake-ports-untested.md).
+    reaches each: [issue 2706](2706-isr-wake-ports-untested.md).
   - The trait default (`PlatformThreading::wake_signal_from_isr`) refuses
     instead of forwarding to the thread signal, and `platform.h` says a
     caller must not fall back to `signal()` from an interrupt.

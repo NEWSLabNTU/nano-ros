@@ -78,9 +78,13 @@ fn main() {
     // entry's reference has to resolve regardless of archive order.
     let run_components = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../nros-board-common/c/nros_rtos_run_components.c");
+    // Issue 2706 -- a periodic callback in interrupt context (a watchdog),
+    // what the interrupt-wake test image reaches interrupt context through.
+    let isr_timer = Path::new(env!("CARGO_MANIFEST_DIR")).join("c/nuttx_isr_timer.c");
     nros_board_common::nuttx_platform_build::compile_entry_seams(&[
         run_sched_tasks.as_path(),
         run_components.as_path(),
+        isr_timer.as_path(),
     ]);
     // Empty-builtins stub lives in this board crate's `c/` (see its header
     // for why libapps' `builtin_list.o` must be preempted).

@@ -37,9 +37,11 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
   metal followed (2026-11-19, the same test file, 182 to 247 us), after its
   park stopped reading the wake flag outside the idle's critical section.
   Zephyr followed (2026-11-19, a `k_timer` expiry on native_sim), then
-  ThreadX (2026-11-19, the RISC-V `virt` machine timer; the hosted
-  `threadx-linux` port still refuses). NuttX refuses until
-  [issue 2706](../issues/2706-isr-wake-ports-untested.md) adds their tests.
+  ThreadX (2026-11-19, the RISC-V `virt` machine timer) and NuttX
+  (2026-11-20, a watchdog, over a semaphore park and a handle park); see
+  [issue 2706](../issues/archived/2706-isr-wake-ports-untested.md). Only the
+  hosted `threadx-linux` port still refuses
+  ([issue 2745](../issues/2745-threadx-linux-isr-wake-refused.md)).
   The C/C++ front is W1b.
 
 ### W1b — The C and C++ interrupt-safe wake
