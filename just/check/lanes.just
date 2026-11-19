@@ -45,7 +45,7 @@
 #
 # Verify the user API still corresponds to rclc / rclcpp / rclrs.
 [group("check")]
-[metadata("tier", "exempt", "compiles (rustdoc JSON of `nros` + deps, clang AST): gate.yml's `check-fast-compile` job runs it by name on every event `check-fast` runs on, beside it; `default:` and `just ci gate` name it (phase-489 W5)")]
+[metadata("tier", "gate")]
 api-parity:
     @python3 scripts/api-parity.py --edition all --check --require-disposition
 
@@ -5505,7 +5505,7 @@ cpp-ffi-tests:
 # of 456 gates and misses both of the gates the issue was filed about.
 # ~55 s (it IS the fast tier, in a `--local --shared` clone). Not a fast gate,
 # because the tier would recurse; `just ci gate` runs it after `check::fast`.
-[metadata("tier", "exempt", "RUNS `check fast` in a submodule-free clone, so as a fast gate the tier would recurse; `just ci gate` runs it after `check::fast` (issue 1373)")]
+[metadata("tier", "gate")]
 pristine-checkout:
     @bash scripts/ci/pristine-checkout-fast.sh
 

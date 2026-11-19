@@ -503,7 +503,7 @@ lane-scope-consumers:
 # two the scope admits that need a fixture are listed, not failed. ~30 s of
 # run on top of the `nros-tests` test-binary build. Step of `just ci gate`.
 [group("ci")]
-[metadata("tier", "exempt", "builds every nros-tests test binary (listing IS building, issue 1500); a step of `just ci gate` and of gate.yml's merge-group `check-lane-contracts` job (issue 1900)")]
+[metadata("tier", "gate")]
 out-of-lane-deselected:
     @python3 scripts/test/check-out-of-lane-deselected.py
 

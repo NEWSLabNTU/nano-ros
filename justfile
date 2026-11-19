@@ -1258,7 +1258,10 @@ test-ignored package="":
     exit "$rc"
 
 # Workspace lib/bin/unit tests, excluding the integration crate.
+# phase-584 W1: a gate of the `gate` tier, run by `just ci gate`.
 [group("main")]
+[group('gate')]
+[metadata("tier", "gate")]
 test-unit verbose="":
     #!/usr/bin/env bash
     set -e
@@ -3749,7 +3752,10 @@ mod ci 'just/ci.just'
 # temporary `NROS_FIXTURE_STAMP` under `tmp/`, resolves no real fixture, and runs
 # in ~0.6 s. `check-lane-contracts` reads this line, so the rule is checked and
 # not merely asserted here.
+# phase-584 W1: a gate of the `gate` tier, run by `just ci gate`.
 [group("main")]
+[group('gate')]
+[metadata("tier", "gate")]
 test-lane-contracts:
     #!/usr/bin/env bash
     set -euo pipefail
