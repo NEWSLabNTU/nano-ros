@@ -166,10 +166,19 @@ bool nros_board_wall_clock_ns(uint64_t *out_ns);
 
 `sntp` and `zenoh-hlc` both produce an offset from the monotonic clock. Today
 each port keeps that offset itself; Zephyr's is a spinlock-guarded pair in
-`nros-platform-zephyr/src/platform.c`. It moves to ONE shared C file with one
-setter (`nros_clock_set_epoch_offset`) and one reader, used by every port.
-The per-port offset code is deleted in the same PR, as its own commit, guarded
-by the existing SNTP and zenoh-HLC tests.
+`nros-platform-zephyr/src/platform.c`. It moves to ONE shared header,
+`nros/clock_epoch.h`: one weak storage definition (the link keeps one object),
+one setter (`nros_clock_set_epoch_offset_us`) and one reader, under the
+platform's critical section, included by every port that calibrates.
+
+A header rather than a `.c` (amended 2026-11-19, phase-582 W1a): every port's
+sources are compiled by a different road (per-board CMake lists, cargo build
+scripts, Zephyr's module), so a shared `.c` is a file to add on each, and a
+road that missed it fails late. Every port's `platform.c` already reaches the
+header. The first draft also said the move was "guarded by the existing SNTP
+and zenoh-HLC tests"; no test covered either source. W1a adds a store test
+(both bounds, a frozen-clock negative control, one object across translation
+units), and W1c the per-source tests.
 
 `epoch_us` is `time_now_ns / 1000`. The monotonic `clock_ns` is untouched.
 

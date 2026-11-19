@@ -48,6 +48,17 @@
 arch-profile-resolution:
     @python3 scripts/check-arch-profile-resolution.py
 
+# RFC-0141 D3 (phase-582 W1a) -- the ONE wall-clock epoch store,
+# `nros/clock_epoch.h`, against the POSIX port: unset reads 0; after a set the
+# reading sits between offset + monotonic before and after; two readings 20 ms
+# apart differ by at least 20 ms (a frozen clock fails, which the negative
+# control proves); and a set in one translation unit is the read in another
+# (the weak definition's one object). Compiles a small C program; ~1 s.
+[private]
+[group('needs:cc')]
+clock-epoch-store:
+    @bash tests/clock-epoch-store-tests.sh
+
 # RFC-0135 D2 (phase-577 W8) -- a board's CMake module has ONE lookup,
 # `nros_board_module_path()` (cmake/NanoRosBoardModule.cmake), so a board
 # package outside nano-ros can ship its own and `nros build` can name it
