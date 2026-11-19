@@ -68,3 +68,13 @@ Two reasons it reached a release:
 Dispatch `starter-image.yml` with `version=0.6.0-nros11`, `target=starter`,
 `scripts_from_main=true` once this is on main, then `starter-zephyr`, then
 move `latest` through W5's `image` probe track.
+
+## Status (2026-11-19): both images rebuilt; `latest` not moved
+
+The fix merged as #4029 (0ffe141668, 2026-11-16 07:30Z). The two dispatches
+"Next" asks for then ran green:
+- `starter-image.yml` run 43825309370, `build + push starter 0.6.0-nros11`;
+- run 43829081957, `build + push starter-zephyr 0.6.0-nros11`.
+
+Both skipped the retag job, and no dispatch since has run it. What is left
+is moving `latest` through W5's `image` probe track. Then this issue closes.
