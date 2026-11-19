@@ -30,6 +30,15 @@ directory = "feat"
 name = "Added"
 showcontent = true
 
+# A change to existing behaviour that is neither a fix nor breaking. 46
+# fragments used this type before it was configured, and towncrier drops a
+# fragment of an unconfigured type without a word; `changelog-audit.py
+# --require` now refuses one.
+[[tool.towncrier.type]]
+directory = "changed"
+name = "Changed"
+showcontent = true
+
 [[tool.towncrier.type]]
 directory = "perf"
 name = "Performance"
