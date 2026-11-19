@@ -925,6 +925,25 @@ reopened Q1 with a wider scope; this revision answers Q1.
   `Knobs::registry` as the descriptors' parsed shape are not done (phase
   doc W3).
 
+- 2026-11-20: **phase-581 W4.** G1 landed. The rule's data, the unit
+  allowlist and the baseline are one file,
+  `packages/tooling/nros-knob-catalog/config-names.toml`, compiled into the
+  loader (`nros_knob_catalog::naming`) and read by the buildless gate; the
+  rule logic is written in Rust and in Python and held together by a case
+  corpus in that file which both run. N4 is checked on a name's last word: a
+  banned ending (`_kb`, `_kib`, `_size`, `_buffer`, `_u64s`), or a word that
+  measures something (`timeout`, `stack`, `frame`, `threshold`, ...) with no
+  unit after it, unless the allowlist fixes the term's unit. N8 reads every
+  `env` of `nros-sdk-index.toml` through a generated table. The lint sees 74
+  of Appendix A's 87 rows; the other 13 (`graph.max_entities`'s owner, the
+  six invented `ZENOH_*` variables, the six A.4 carriers) are judgements
+  about readers, held in the baseline by a presence probe. It also finds one
+  row Appendix A misses: the `locator` statement's Kconfig symbol is
+  `CONFIG_NROS_ZENOH_LOCATOR`, not the `CONFIG_NROS_LOCATOR` D1 derives (in
+  the baseline as `missed`, awaiting a ruling). Five hand Kconfig symbols are
+  exempt as framework, each with its reason: `CONFIG_NROS`, the three
+  `NROS_API` choice members and `CONFIG_NROS_CODEGEN_TOOL`.
+
 ## Appendix A - Settings that break the rule on `origin/main` (87)
 
 Columns: the old TOML key (a registry row with no `toml` column shows the key

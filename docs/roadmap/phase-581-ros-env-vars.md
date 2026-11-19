@@ -133,7 +133,7 @@ board and RMW packages are self-contained.
 
 ### W4 - The naming rule and its lint
 
-- **Status:** OPEN
+- **Status:** OPEN (landed: `nros_knob_catalog::naming` refuses a package row that breaks N1 to N8 at load, in `Catalog::build` and a build script's `parse_own_file`, naming row and rule; the gate `just check config-names` on the fast line over the merged registry, the fixtures' package files and the hand `zephyr/Kconfig` symbols; the rule data, unit allowlist (each term with its reason) and baseline in `packages/tooling/nros-knob-catalog/config-names.toml`, whose `[[case]]` corpus both implementations run; N8 reads `nros-sdk-index.toml` through the generated `RESOURCE_ENV_VARS`. The baseline holds Appendix A's 87 entries, failing on a new violation, on a fixed entry and on a count that is not `baseline_entries`; 13 of them are judgements the lint cannot see, held by a presence probe. Remains: a ruling on one violation Appendix A misses, the `locator` statement's Kconfig symbol `CONFIG_NROS_ZENOH_LOCATOR` (D1 derives `CONFIG_NROS_LOCATOR`), in the baseline as `appendix = "missed"` for now, so it holds 88; and on the five hand Kconfig symbols exempted as `[[framework]]` (`CONFIG_NROS`, the three `NROS_API` choice members, `CONFIG_NROS_CODEGEN_TOOL`), which N3 would otherwise flag)
 - N1 to N8 enforced by the loader (so a downstream package with a bad name
   fails to load), and the gate `config-names` (RFC-0140 G1) running it over
   every in-tree contributor, with a baseline equal to RFC-0140 Appendix A
