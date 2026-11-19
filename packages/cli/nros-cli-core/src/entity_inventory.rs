@@ -8803,12 +8803,13 @@ contracts:
             both.infra_queryables
                 + LIFECYCLE_SERVICE_PUBLISHERS
                 + PARAM_EVENT_PUBLISHERS
-                + 2 * ROSOUT_PUBLISHERS,
+                + 2 * ROSOUT_PUBLISHERS
+                + CLOCK_SUBSCRIPTIONS,
             "one token per runtime server, one for the `~/transition_event`
-             publisher (issue 1587), one for `/parameter_events` (issue 2023)
-             and one `/rosout` writer per node (the stock set the parameter
-             services come with); lifecycle lives on the components' nodes, so
-             no node name of its own"
+             publisher (issue 1587), one for `/parameter_events` (issue 2023),
+             one `/rosout` writer per node and the `/clock` subscription (the
+             stock set the parameter services come with); lifecycle lives on
+             the components' nodes, so no node name of its own"
         );
         assert_eq!(
             both.infra_queryables,
@@ -8882,11 +8883,14 @@ contracts:
             PARAM_SERVICE_QUERYABLES * params.param_service_nodes,
             "the writer claims no queryable"
         );
+        // Naming `param_services` brings the stock set, whose `/clock`
+        // subscription (phase-556 W11) holds a token too.
         assert_eq!(
             params.max_liveliness - none.max_liveliness,
             PARAM_SERVICE_QUERYABLES * params.param_service_nodes
                 + PARAM_EVENT_PUBLISHERS
-                + 2 * ROSOUT_PUBLISHERS,
+                + 2 * ROSOUT_PUBLISHERS
+                + CLOCK_SUBSCRIPTIONS,
         );
     }
 
@@ -9071,7 +9075,7 @@ structure:
         );
         assert_eq!(
             InfraServices::from_model(&off).families(),
-            nros_sizing_descriptor::InfraFamilies::ParamRosout
+            nros_sizing_descriptor::InfraFamilies::ParamRosoutClock
         );
     }
 
@@ -9096,21 +9100,32 @@ structure:
             CLOCK_SUBSCRIPTIONS
         );
         assert_eq!(clock.max_cbs - none.max_cbs, CLOCK_SUBSCRIPTIONS);
+        // Since phase-556 W13 naming `sim_time` brings the whole stock set, so
+        // the parameter family's and `/rosout`'s shares are counted beside the
+        // `/clock` subscription; the subscriber and callback rows above are
+        // `/clock`'s alone (the other two families claim neither).
+        let params = knobs(&infra_model("param_services"));
+        assert_eq!(params.max_subscribers, clock.max_subscribers);
         assert_eq!(
             clock.max_liveliness - none.max_liveliness,
-            CLOCK_SUBSCRIPTIONS
+            PARAM_SERVICE_QUERYABLES * params.param_service_nodes
+                + PARAM_EVENT_PUBLISHERS
+                + 2 * ROSOUT_PUBLISHERS
+                + CLOCK_SUBSCRIPTIONS
         );
         assert_eq!(
             clock.entity_liveliness_tokens, none.entity_liveliness_tokens,
             "a runtime entity, not one of the application's"
         );
-        assert_eq!(clock.max_publishers, none.max_publishers);
-        assert_eq!(clock.max_queryables, none.max_queryables);
+        // `/clock` claims no publisher and no queryable: whatever the stock set
+        // adds there is the parameter family's and `/rosout`'s.
+        assert_eq!(clock.max_publishers, params.max_publishers);
+        assert_eq!(clock.max_queryables, params.max_queryables);
         assert_eq!(
             InfraServices::from_model(&infra_model("sim_time"))
                 .families()
                 .tag(),
-            "clock"
+            "param+rosout+clock"
         );
     }
 
@@ -9540,8 +9555,10 @@ execution:
             1 + tl + 2 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
         );
         assert_eq!(
-            both.max_cbs, none.max_cbs,
-            "both families live outside the executor arena: no callback slot"
+            both.max_cbs - none.max_cbs,
+            CLOCK_SUBSCRIPTIONS,
+            "both families live outside the executor arena: no callback slot; \
+             the stock `/clock` subscription they come with claims one"
         );
 
         // phase-461 W6 -- the `params` axis is the store without the
@@ -13214,9 +13231,11 @@ contracts:
         .expect("a contract");
         let d = alone.derive();
         let k = d.knobs().expect("the contract derives");
+        // Beyond the stock `/clock` time source (phase-556 W11's `sim_time`,
+        // on by default since W13), which every image reserves.
         assert_eq!(
             (k.max_cbs, k.max_subscribers),
-            (0, 0),
+            (CLOCK_SUBSCRIPTIONS, CLOCK_SUBSCRIPTIONS),
             "the contract alone counts only what it names -- the issue-1694 shape"
         );
         // The talker's node, plus the `/diagnostics` reporter's (issue 1676);
@@ -13533,7 +13552,11 @@ to = { node = "s1", topic = "/header" }
         assert!(expanded.bridges().is_empty());
         let k = expanded.derive().knobs().expect("derives").clone();
         assert_eq!(k.max_nodes, 3, "talker + s0 + s1: {k:?}");
-        assert_eq!(k.max_subscribers, 2, "/chatter + /header on s0: {k:?}");
+        assert_eq!(
+            k.max_subscribers,
+            2 + CLOCK_SUBSCRIPTIONS,
+            "/chatter + /header on s0, and the stock `/clock`: {k:?}"
+        );
         assert!(k.max_publishers >= 3, "talker's + two on s1: {k:?}");
         assert!(
             k.max_cbs >= 3,
@@ -13544,7 +13567,11 @@ to = { node = "s1", topic = "/header" }
         let mut bare = inv.clone();
         bare.bridges.clear();
         let b = bare.derive().knobs().expect("derives").clone();
-        assert_eq!((b.max_nodes, b.max_subscribers), (1, 0), "{b:?}");
+        assert_eq!(
+            (b.max_nodes, b.max_subscribers),
+            (1, CLOCK_SUBSCRIPTIONS),
+            "{b:?}"
+        );
     }
 
     /// No runtime config: a bridge that names its topics is charged an upper
@@ -13560,7 +13587,8 @@ to = { node = "s1", topic = "/header" }
         .expect("described");
         let k = named.derive().knobs().expect("bounded").clone();
         assert_eq!(k.max_nodes, 3, "{k:?}");
-        assert_eq!(k.max_subscribers, 1, "{k:?}");
+        // `/chatter`, and the stock `/clock`.
+        assert_eq!(k.max_subscribers, 1 + CLOCK_SUBSCRIPTIONS, "{k:?}");
         assert_eq!(
             named.with_bridge_rows(None).derive().knobs(),
             Some(&k),

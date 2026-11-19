@@ -224,7 +224,9 @@ What still diverges, by name:
   `/parameter_events`, as an rclcpp node does, unless its image states
   `node_interfaces = "none"` in `system.toml`. Three differences remain:
   `/rosout` is VOLATILE where rcl's is TRANSIENT_LOCAL; a node does not
-  subscribe to `/parameter_events` (issue 2483); and in a multi-node image
+  subscribe to `/parameter_events` (decided in phase-556 W11: a set of
+  `use_sim_time` is acted on where the parameter service applies it); and in
+  a multi-node image
   only the first node publishes `/parameter_events` (phase-556 W14). The
   opt-outs are exactly three: the Pico W (its board budget holds one service
   server), PX4 (the flight stack serves its own parameters), and the RTIC
