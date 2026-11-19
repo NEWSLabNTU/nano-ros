@@ -122,3 +122,103 @@ fn each_xrce_arrival_marks_its_own_subscription() {
     let _ = exec.close();
     drop(agent);
 }
+
+/// Issue 2542 -- the executor-level half of the same claim: an XRCE arrival
+/// is dispatched from its entity's ready bit, so the spin that runs the
+/// callback asks no `has_data`. The zenoh sibling is
+/// `entity_wake::a_pushed_spin_dispatches_without_probing_readiness`.
+///
+/// The callback count is the lower bound: a spin that skipped the arrival
+/// would also make 0 probes, so the assertion is only read on the spin that
+/// DID dispatch. Each such spin's probe count is printed
+/// (`probes per dispatching spin: N`), which is how the before/after number
+/// in issue 2542 was taken: with the three vtable slots reverted to NULL the
+/// slot is unattributed and that spin probes it.
+#[test]
+fn a_pushed_xrce_spin_dispatches_without_probing_readiness() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    };
+
+    require_xrce_agent();
+    let agent = XrceAgent::start_unique().expect("start XRCE agent");
+
+    let _ = nros_rmw_xrce_cffi::register();
+    let addr = agent.addr();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+    let config = ExecutorConfig::new(&addr)
+        .node_name("xrce_entity_wake_pushed")
+        .domain_id(domain);
+    let mut exec = Executor::open(&config).expect("Executor::open over XRCE");
+    let node = exec
+        .node_builder("xrce_entity_wake_pushed")
+        .build()
+        .expect("node");
+    let topic = "/xrce_entity_wake/pushed";
+    let received = Arc::new(AtomicU32::new(0));
+    let received_cb = received.clone();
+    let before = exec.entity_attributed_slots();
+    exec.node_mut(node)
+        .subscription(topic)
+        .generic(TYPE, "")
+        .qos(QoSProfile::default())
+        .rx_buffer::<256>()
+        .build(move |_data: &[u8]| {
+            received_cb.fetch_add(1, Ordering::SeqCst);
+        })
+        .expect("register subscription");
+    assert_eq!(
+        (exec.entity_attributed_slots() & !before).count_ones(),
+        1,
+        "the XRCE subscription was not attributed, so its readiness can only be probed"
+    );
+    let publisher = exec
+        .node_mut(node)
+        .create_publisher_raw(topic, TYPE, "")
+        .expect("publisher");
+
+    // The first spin after arming asks `has_data` once, for data that may
+    // predate the registration. After that an idle spin asks nothing.
+    exec.spin_once(Duration::from_millis(20));
+    let idle_from = exec.readiness_probe_count();
+    exec.spin_once(Duration::from_millis(20));
+    assert_eq!(
+        exec.readiness_probe_count() - idle_from,
+        0,
+        "an idle spin over one attributed XRCE subscription probed its readiness"
+    );
+
+    let start = Instant::now();
+    let mut last_publish: Option<Instant> = None;
+    loop {
+        assert!(
+            start.elapsed() < ARRIVAL_BUDGET,
+            "the XRCE subscription dispatched nothing within {ARRIVAL_BUDGET:?} of publishing"
+        );
+        if last_publish.is_none_or(|t| t.elapsed() > Duration::from_millis(500)) {
+            publisher.publish_serialized(PAYLOAD).expect("publish");
+            last_publish = Some(Instant::now());
+        }
+        let probes_before = exec.readiness_probe_count();
+        exec.spin_once(Duration::from_millis(100));
+        let probes = exec.readiness_probe_count() - probes_before;
+        if received.load(Ordering::SeqCst) > 0 {
+            eprintln!("probes per dispatching spin: {probes}");
+            assert_eq!(
+                probes, 0,
+                "the spin that dispatched the XRCE arrival made {probes} `has_data` call(s); \
+                 its readiness came from the entity's ready bit"
+            );
+            break;
+        }
+    }
+    assert!(
+        received.load(Ordering::SeqCst) >= 1,
+        "the arrival was dispatched (the lower bound the zero above depends on)"
+    );
+
+    drop(publisher);
+    let _ = exec.close();
+    drop(agent);
+}

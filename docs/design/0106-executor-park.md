@@ -12,9 +12,9 @@ implements-tracked-by: [phase-436, phase-521]
 
 **Status:** Stable (2026-11-14, phase-555 W3). Drafted 2026-10-16 to record
 the design that phase-436 built and, until then, held only in its phase doc;
-D5 amended by RFC-0113. The remaining open items are issues: the backends
-that still fan out wakes are
-[issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md), and
+D5 amended by RFC-0113. The remaining open item is an issue: the backends
+thought to still fan out wakes were
+[issue 2542](../issues/archived/2542-arrival-attribution-xrce-uorb-baremetal.md) (they attribute; see the changelog), and
 the deadline source never run on hardware is
 [issue 2543](../issues/2543-deadline-source-unmeasured-on-hardware.md).
 
@@ -240,8 +240,10 @@ budget is a floor on the wait, not a bound on the call.
   arrival (zenoh, Cyclone): the arrival wakes its owner, not the session.
   Measured 2026-10-24 (phase-397 W6, x86_64): an idle member under ~950
   foreign arrivals/s spins once per park instead of once per arrival, 0.003 %
-  of a core instead of 0.22 %. XRCE, uORB and bare metal still fan out:
-  [issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md).
+  of a core instead of 0.22 %. XRCE (all three entity kinds, issue 2109)
+  and uORB subscriptions (phase-521 W8) attribute too. Bare metal is poll-only
+  by D5, and uORB has no services or clients:
+  [issue 2542](../issues/archived/2542-arrival-attribution-xrce-uorb-baremetal.md), RFC-0084 section 8.
 - **Deadline sources on hardware.** smoltcp's is the only port source. It
   wins a park on QEMU when the budget leaves it room (phase-436 Path B's
   exit); no hardware run yet:
@@ -272,3 +274,7 @@ budget is a floor on the wait, not a bound on the call.
 - 2026-10-16 — Filed from phase-436's design text, with D5's poll-only
   reading, D7's weak-reference rule and D8 (single-executor entries) added in
   the same change.
+- 2026-11-19 -- issue 2542 resolved: XRCE and uORB subscriptions attribute
+  their arrivals, so the per-entity wake routing item no longer says they
+  fan out. RFC-0084 section 8 states which slots stay NULL and why.
+
