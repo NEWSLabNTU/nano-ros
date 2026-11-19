@@ -6993,6 +6993,42 @@ west_id = "zephyr/mps2/an385/rust/talker-serial/zenoh"
 west_zenoh_locator = "serial/uart@40005000#baudrate=115200"
 skip_probe = true
 
+# phase-575 W4 -- the dual-core pair: the C workspace's talker on cpu0 and its
+# listener on cpu1 of an Arm MPS2+ AN521, peering over RPMsg with no router.
+# One QEMU `mps2-an521` runs both images: cpu0's as the kernel, cpu1's through
+# `-device loader`, and cpu0 releases cpu1 once its RPMsg service is up. The
+# session of each image is its `rmw_config` (peer mode, one `rpmsg/` endpoint),
+# so neither row states a locator, and the west lane gives these two roles no
+# allocator cell: there is no router or Agent to isolate. Consumed by
+# tests/zephyr_amp_rpmsg_qemu.rs.
+[[workspace_fixture]]
+id = "zephyr-cortex-m-c-amp-talker-zenoh"
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/amp_bringup"
+image = "amp_talker"
+board = "mps2/an521/cpu0"
+west_role = "amp-talker"
+west_build_name = "build-cortex-m-c-amp-talker-zenoh"
+west_id = "zephyr/mps2/an521/cpu0/c/amp-talker/zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-cortex-m-c-amp-listener-zenoh"
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/amp_bringup"
+image = "amp_listener"
+board = "mps2/an521/cpu1"
+west_role = "amp-listener"
+west_build_name = "build-cortex-m-c-amp-listener-zenoh"
+west_id = "zephyr/mps2/an521/cpu1/c/amp-listener/zenoh"
+skip_probe = true
+
 # phase-521 W7 (RFC-0113 D2) -- the RTOS idle-wake witness, the
 # (ZephyrQemuCortexM, C, {Zenoh, Xrce}, IdleWake) cells. One idle subscription
 # and one 1 s timer; the image counts its executor thread's switch-ins over five

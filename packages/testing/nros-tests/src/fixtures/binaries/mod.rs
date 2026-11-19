@@ -6119,6 +6119,26 @@ pub fn build_zephyr_cortex_m_sched_task_stacks_dtcm() -> TestResult<PathBuf> {
     )
 }
 
+/// phase-575 W4 -- the `build-cortex-m-c-amp-{talker,listener}-zenoh` rows: the
+/// C workspace's `amp_bringup` pair for the two cores of an MPS2+ AN521, cpu0's
+/// talker and cpu1's listener, peering over RPMsg with no router. Returns
+/// `(cpu0, cpu1)`; one QEMU boots both (`tests/zephyr_amp_rpmsg_qemu.rs`).
+pub fn build_zephyr_cortex_m_amp_pair() -> TestResult<(PathBuf, PathBuf)> {
+    let cpu0 = build_zephyr_cortex_m_leaf(
+        "examples/workspaces/c",
+        "build-cortex-m-c-amp-talker-zenoh",
+        "c",
+        Rmw::Zenoh,
+    )?;
+    let cpu1 = build_zephyr_cortex_m_leaf(
+        "examples/workspaces/c",
+        "build-cortex-m-c-amp-listener-zenoh",
+        "c",
+        Rmw::Zenoh,
+    )?;
+    Ok((cpu0, cpu1))
+}
+
 /// Phase 168.4 — collapsed-shape Zephyr C / C++ example resolver.
 /// `lang` is `"c"` or `"cpp"`. Mirrors the Rust resolver.
 pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {

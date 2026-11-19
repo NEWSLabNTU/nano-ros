@@ -25,6 +25,12 @@ rust_target = "thumbv8m.main-none-eabi"
 rust_prereqs = ["clang", "libclang-dev"]
 rust_components = ["clippy"]
 
+# The emulator the pair runs under (RFC-0118 D4), named on cpu0 only: cpu0's
+# image is the kernel QEMU boots, and cpu1's rides beside it (`-device
+# loader`), so cpu1 alone is never a run.
+[board.run]
+emulator = "qemu:mps2-an521"
+
 [board.capabilities]
 heap = true
 atomics = true
