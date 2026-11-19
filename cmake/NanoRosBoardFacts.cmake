@@ -62,6 +62,16 @@ function(nros_resolve_board_facts)
     if(_board STREQUAL "")
         set(_board "${NROS_BOARD}")
     endif()
+    # Issue 2751 -- a host census build of an OWNED entry configures the
+    # package alone (`entity-census take`, `-DNROS_LEAF_BOARD=linux`). A leaf's
+    # census turns that into `NROS_BOARD` through its `system.toml`; an owned
+    # package has none, so nothing named the board and the entry verb's host
+    # deploy (`linux`) was asked for as an IMAGE in a dir that declares none.
+    # The board the configure states answers instead: with `--board`, a dir
+    # with no `system.toml` resolves that board's descriptor facts.
+    if(_board STREQUAL "" AND DEFINED NROS_LEAF_BOARD)
+        set(_board "${NROS_LEAF_BOARD}")
+    endif()
 
     # issue 0755 — the caller that knows the deploy is the entry verb, which
     # already resolved it (explicit `DEPLOY`, else the package.xml tuple
