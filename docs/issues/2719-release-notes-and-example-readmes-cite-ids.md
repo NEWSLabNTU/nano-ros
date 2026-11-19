@@ -13,8 +13,7 @@ related: [2581]
 
 Changelog fragments become the release page, and an example's README is
 what a user copies from, so both are user text and the no-ids rule covers
-them. `check-user-surface-ids` reads both, but for internal project names
-only (`name_only_hits`, `NAME_ONLY_SCOPE`). Their ids are not checked.
+them. `check-user-surface-ids` did not read either.
 
 Counted on 2026-11-19 with the check's own `ids()`:
 
@@ -23,24 +22,25 @@ Counted on 2026-11-19 with the check's own `ids()`:
 | `changelog.d/*.md` | 646 | 408 | 346 (both scopes together: ~450) |
 | `examples/**/README*` | 108 | 468 | 107 (see the row above) |
 
-## A second surface: the links towncrier adds
+## A second surface: the links towncrier added (fixed)
 
-`pyproject.toml`'s `[tool.towncrier]` sets
-`issue_format = "[#{issue}](https://github.com/NEWSLabNTU/nano-ros/issues/{issue})"`.
-A fragment named `NNNN.<type>.md` is therefore rendered with a `[#NNNN]`
-link, whatever its text says. That id is in the file name, not the text, so
-no text check sees it. Worse, `NNNN` is the `docs/issues/` number, which is
-not the GitHub issue of that number, so the link leads to an unrelated
-GitHub issue. Fragments named `+<slug>.<type>.md` carry no link.
+`pyproject.toml`'s `[tool.towncrier]` set
+`issue_format = "[#{issue}](https://github.com/NEWSLabNTU/nano-ros/issues/{issue})"`,
+so a fragment named `NNNN.<type>.md` rendered with a `[#NNNN]` link, whatever
+its text said. `NNNN` is the `docs/issues/` number, not the GitHub issue of
+that number, so the link led to an unrelated GitHub item; `CHANGELOG.md`'s
+0.6.0 section held 150 of them. PR #4298 set `issue_format = ""` (no
+reference rendered), stripped the 150, and added
+`check-changelog-issue-links`. A fragment's number now reaches no reader, so
+`changelog-add` may keep naming fragments by it.
 
 ## Plan
 
-1. A per-file ratchet for the two scopes, like the API-doc one
-   (`.config/api-doc-ids-ratchet.json`, `--update-ratchet`), so no new id
-   lands from the first commit.
-2. Decide the towncrier link: drop `issue_format` and name fragments
-   `+<slug>`, or map to something a user can open. Then make
-   `changelog-add` name new fragments to match.
+1. Done: `check-user-surface-ids` reads both scopes, and
+   `.config/user-text-ids-ratchet.json` holds their ids per file (790 in 455
+   files when it landed; link targets and HTML comments do not count),
+   written by `--update-ratchet` with the API-doc one. No new id lands.
+2. Done in PR #4298: the towncrier link (above).
 3. Sweep both scopes down to zero. A fragment describes a change, so
    replace an id with what changed and why; do not just delete it. A
    README replaces an id with the fact it stood for, or moves contributor

@@ -20,6 +20,10 @@ Subjects, all checked on every run:
   audience: contributor material belongs in the Internals book
   `check-book-no-just` uses (`scripts/lib/book_contributor.py`, one rule for
   both gates). HTML comments do not render and are not read;
+* the changelog fragments (`changelog.d/*.md`, which become the release
+  page) and every example README (`examples/**/README*`, what a user copies
+  from), through a per-file counted ratchet in
+  `.config/user-text-ids-ratchet.json` (issue 2719);
 * the RENDERED help: `nros --help`, `nros help --all`, and `--help` of every
   verb and nested verb, hidden ones included (clap turns `///` doc comments
   into help text, so this is the only reading that sees what renders);
@@ -2487,36 +2491,91 @@ def api_doc_sites() -> dict[str, list[str]]:
     return sites
 
 
-def api_doc_hits(update: bool = False) -> list[str]:
+def ratchet_problems(sites: dict[str, list[str]], ratchet: Path, where: str,
+                     update: bool = False) -> list[str]:
+    """A per-file counted ratchet: a file may hold at most its recorded count,
+    and a count that fell must be written back so it cannot rise again."""
     import json
 
-    sites = api_doc_sites()
+    shown = ratchet.relative_to(ROOT) if ratchet.is_relative_to(ROOT) else ratchet
     counts = {rel: len(h) for rel, h in sorted(sites.items())}
     if update:
-        API_DOC_RATCHET.write_text(json.dumps(counts, indent=1, sort_keys=True) + "\n")
-        print(f"{NAME}: wrote {API_DOC_RATCHET.relative_to(ROOT)} "
+        ratchet.write_text(json.dumps(counts, indent=1, sort_keys=True) + "\n")
+        print(f"{NAME}: wrote {shown} "
               f"({sum(counts.values())} id(s) in {len(counts)} file(s))")
         return []
-    base = json.loads(API_DOC_RATCHET.read_text()) if API_DOC_RATCHET.exists() else {}
+    base = json.loads(ratchet.read_text()) if ratchet.exists() else {}
     bad, fell = [], []
     for rel, hits in sorted(sites.items()):
         allowed = base.get(rel, 0)
         if len(hits) > allowed:
-            bad.append(f"{rel}: {len(hits)} id(s) in public API docs, ratchet allows {allowed}:")
+            bad.append(f"{rel}: {len(hits)} id(s) in {where}, ratchet allows {allowed}:")
             bad.extend(f"    {h}" for h in hits)
     for rel, allowed in sorted(base.items()):
         if counts.get(rel, 0) < allowed:
             fell.append(f"{rel}: {counts.get(rel, 0)} < {allowed}")
     if fell:
         bad.append(
-            "the public-API-doc ratchet fell; lower it with "
+            f"the {where} ratchet ({shown}) fell; lower it with "
             "`python3 scripts/check/check-user-surface-ids.py --update-ratchet`: "
             + "; ".join(fell)
         )
     return bad
 
 
+def api_doc_hits(update: bool = False) -> list[str]:
+    return ratchet_problems(api_doc_sites(), API_DOC_RATCHET, "public API docs", update)
+
+
+# Issue 2719: changelog fragments become the release page, and an example's
+# README is what a user copies from, so both are user text. Their phase,
+# issue and RFC ids are held by a per-file counted ratchet while a sweep
+# takes them to zero.
+USER_TEXT_SCOPE = "changelog fragments and example READMEs (ratchet)"
+USER_TEXT_FILE = re.compile(r"^changelog\.d/[^/]+\.md$|^examples/.+/README[^/]*$")
+USER_TEXT_RATCHET = ROOT / ".config" / "user-text-ids-ratchet.json"
+
+
+def user_text_lines() -> list[tuple[str, int, str]]:
+    """Every rendered line of a changelog fragment or example README: HTML
+    comments and link targets do not render, so they are blanked."""
+    files = subprocess.run(
+        ["git", "ls-files", "changelog.d", "examples"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    out = []
+    for rel in files:
+        if not USER_TEXT_FILE.match(rel):
+            continue
+        text = HTML_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), (ROOT / rel).read_text())
+        for number, line in enumerate(text.splitlines(), 1):
+            out.append((rel, number, LINK_TARGET.sub("]", line)))
+    return out
+
+
+def user_text_sites() -> dict[str, list[str]]:
+    sites: dict[str, list[str]] = {}
+    for rel, number, line in user_text_lines():
+        for m in ID.finditer(line):
+            sites.setdefault(rel, []).append(f"{rel}:{number}: {m.group(0)!r} in {line.strip()[:90]!r}")
+    return sites
+
+
+def user_text_hits(update: bool = False) -> list[str]:
+    return ratchet_problems(user_text_sites(), USER_TEXT_RATCHET,
+                            "changelog fragments and example READMEs", update)
+
+
 def self_test() -> None:
+    # The per-file ratchet: a rise fails, a fall asks to be written back, an
+    # equal count passes, and a file the ratchet does not list is held at 0.
+    with tempfile.TemporaryDirectory() as tmp:
+        r = Path(tmp) / "r.json"
+        r.write_text('{"a.md": 1}\n')
+        assert not ratchet_problems({"a.md": ["x"]}, r, "t"), "self-test: an equal count failed"
+        assert ratchet_problems({"a.md": ["x", "y"]}, r, "t"), "self-test: a rise passed"
+        assert ratchet_problems({}, r, "t"), "self-test: a fall was not reported"
+        assert ratchet_problems({"a.md": ["x"], "b.md": ["z"]}, r, "t"), "self-test: a new file passed"
     must = ["see phase-525 W1", "Phase 401", "issue 1043", "(#2169)", "RFC-0116", "issues #0628"]
     for s in must:
         assert ids(s), f"self-test: {s!r} not caught"
@@ -2980,12 +3039,13 @@ def main() -> int:
         return 0
     if args.update_ratchet:
         api_doc_hits(update=True)
+        user_text_hits(update=True)
         return 0
 
     bad = (
         source_hits() + library_hits() + book_hits() + build_script_warning_hits()
         + colcon_hits() + shell_hits() + runtime_hits() + compile_time_hits() + assembled_hits()
-        + deferred_hits() + api_doc_hits()
+        + deferred_hits() + api_doc_hits() + user_text_hits()
     )
     cli = args.cli
     if cli is None:
@@ -3017,7 +3077,7 @@ def main() -> int:
         f"{NAME}: OK (cmd/ strings, CLI library, build-script panics, build-script warnings, colcon "
         f"messages, user-run shell scripts, runtime log and panic text, compile-time text, "
         f"assembled error text, text that reaches a print later, public API docs (ratchet), "
-        f"{BOOK_SCOPE}, "
+        f"{BOOK_SCOPE}, {USER_TEXT_SCOPE}, "
         f"{rendered})"
     )
     return 0
