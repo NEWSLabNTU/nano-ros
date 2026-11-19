@@ -386,8 +386,6 @@ RMW_ZENOH_DEFAULT_RELIABILITY
 SerializedBagMessage
 TimeSource
 _CREATED_BY_BARE_DDS_APP_
-_apply_floating_point_range
-_apply_integer_range
 action_tutorials
 action_tutorials_py
 best_available_qos
