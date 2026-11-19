@@ -1,7 +1,8 @@
 ---
 id: 2518
 title: "A metadata census records every entity on the node opened LAST, not on the node that owns it, so an entity created after a second node is opened lands on the wrong node row"
-status: open
+status: resolved
+resolved_in: "the change that archives this issue"
 type: bug
 severity: medium
 area: [metadata, sizing, lifecycle, cpp]
@@ -9,7 +10,7 @@ related: [phase-554, issue-1419, issue-1594]
 found: 2026-11-14
 ---
 
-**Home: [phase-554](../roadmap/phase-554-per-node-lifecycle.md)** (W2.b's probe field, where it was seen).
+**Home: [phase-554](../../roadmap/phase-554-per-node-lifecycle.md)** (W2.b's probe field, where it was seen).
 
 ## What
 
@@ -73,3 +74,29 @@ name and namespace into `record`, and keep `current_node` only as the fallback
 for an adapter that genuinely has no node in scope (and say so per call site).
 A test in the shape of the repro above, asserting each entity's row, is the
 acceptance.
+
+## Fix (2026-11-19)
+
+Attributed by OWNER. The RMW seam already names the node an endpoint is
+created on (`TopicInfo::node_name`, `ServiceInfo::node_name`: the field the
+other backends key liveliness on), and the cffi adapter carries it across the
+C vtable.
+
+- `nros::metadata_mode::EntityRecord` gains `owner`. `record` files the
+  entity under that node when it is open. With no owner (an adapter with no
+  node in scope: the C API's executor-level timers and guard conditions in
+  `census_hooks`), or with an owner no hook opened, it falls back to the
+  cursor, as before.
+- `nros-rmw-metadata` passes `topic.node_name` / `service.node_name` on every
+  create.
+
+Tests, each red with the owner ignored:
+- `an_entity_lands_on_its_owning_node_not_the_last_opened` (the recorder):
+  two nodes open, an entity on the first lands on the first; no owner and an
+  unopened owner use the cursor.
+- `census_states_lifecycle_for_exactly_the_code_managed_node` (nros-cpp,
+  through the real ABI, the repro above): all five `/coded_node/*` services
+  and `/coded_node/transition_event` are on `coded_node`'s row, and none on
+  `launch_marked_node`'s.
+
+Sweep: `git grep -n 'EntityRecord {\|metadata_mode::record(' -- packages`

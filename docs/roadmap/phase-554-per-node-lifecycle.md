@@ -511,7 +511,7 @@ both issues are archived.
 
 ## Known issues found on the way
 
-- [Issue 2518](../issues/2518-census-entities-attach-to-last-opened-node.md):
+- [Issue 2518](../issues/archived/2518-census-entities-attach-to-last-opened-node.md) (resolved 2026-11-19):
   the metadata census records each entity on the node opened last, not on
   the node that owns it. Seen while writing W2.b's census test. W5's
   per-node lifecycle sizing reads the census per node, so it needs this

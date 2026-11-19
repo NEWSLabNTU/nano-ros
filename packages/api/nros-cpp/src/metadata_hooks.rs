@@ -1028,5 +1028,26 @@ mod census_lifecycle_tests {
                 "`{plain}` carries no code-managed fact: {json}"
             );
         }
+        // Issue 2518 -- the machine's endpoints sit on the node that OWNS
+        // them, not on `launch_marked_node`, the node opened last. Before the
+        // fix every `/coded_node/*` service and the `transition_event`
+        // publisher landed in `launch_marked_node`'s row.
+        // Rows in declaration order, keyed on each node's own row.
+        let at = |id: &str| {
+            json.find(&alloc::format!("{{\"id\":\"{id}\",\"declaration_slot\""))
+                .unwrap_or_else(|| panic!("no node row {id}: {json}"))
+        };
+        let (c, l) = (at("coded_node"), at("launch_marked_node"));
+        let coded = &json[c..l];
+        let launch_marked = &json[l..];
+        assert!(
+            coded.contains("/coded_node/change_state")
+                && coded.contains("/coded_node/transition_event"),
+            "the coded node's own services and publisher: {json}"
+        );
+        assert!(
+            !launch_marked.contains("/coded_node/"),
+            "nothing of coded_node's on the node opened last: {json}"
+        );
     }
 }

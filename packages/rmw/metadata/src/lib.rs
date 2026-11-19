@@ -107,9 +107,14 @@ fn record(
     name: &str,
     type_name: &str,
     qos: nros_rmw::QoSProfile,
+    owner: Option<&str>,
 ) -> Result<(), TransportError> {
+    // Issue 2518 -- the seam names the node the entity is created on (it is
+    // what the other backends key liveliness on), so the census files it
+    // there rather than on the node opened last.
     let rec = nros::metadata_mode::EntityRecord {
         qos: Some(qos),
+        owner,
         ..nros::metadata_mode::EntityRecord::new(kind, name, type_name)
     };
     if nros::metadata_mode::record(rec) {
@@ -145,7 +150,13 @@ impl Session for MetadataSession {
         topic: &TopicInfo<'_>,
         qos: nros_rmw::QoSProfile,
     ) -> Result<Self::PublisherHandle, Self::Error> {
-        record(EntityKind::Publisher, topic.name, topic.type_name, qos)?;
+        record(
+            EntityKind::Publisher,
+            topic.name,
+            topic.type_name,
+            qos,
+            topic.node_name,
+        )?;
         Ok(MetadataPublisher)
     }
 
@@ -154,7 +165,13 @@ impl Session for MetadataSession {
         topic: &TopicInfo<'_>,
         qos: nros_rmw::QoSProfile,
     ) -> Result<Self::SubscriptionHandle, Self::Error> {
-        record(EntityKind::Subscription, topic.name, topic.type_name, qos)?;
+        record(
+            EntityKind::Subscription,
+            topic.name,
+            topic.type_name,
+            qos,
+            topic.node_name,
+        )?;
         Ok(MetadataSubscription)
     }
 
@@ -168,6 +185,7 @@ impl Session for MetadataSession {
             service.name,
             service.type_name,
             qos,
+            service.node_name,
         )?;
         Ok(MetadataService)
     }
@@ -182,6 +200,7 @@ impl Session for MetadataSession {
             service.name,
             service.type_name,
             qos,
+            service.node_name,
         )?;
         Ok(MetadataClient)
     }
