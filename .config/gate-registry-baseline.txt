@@ -151,6 +151,7 @@ grep-q-error-conflation
 hook-repo-side-effects
 host-platform-vocabulary
 host-triple-literals
+image-crate-bundling-agreement
 image-panic-policy
 infra-queryable-counts
 interface-glob-configure-depends

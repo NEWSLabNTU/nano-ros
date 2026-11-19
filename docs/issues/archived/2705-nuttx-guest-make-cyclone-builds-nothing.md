@@ -87,6 +87,11 @@ with and without one; an unknown name is refused naming the buildable set;
 and every RMW `integrations/nuttx/Kconfig` offers resolves to a provider and
 is either built or refused, as the registry says (no NuttX build needed).
 
+The bundling rule is still spelled twice, in `image_crate_bundles()` and in
+`nros_image_backend()`. `check-image-crate-bundling-agreement` holds them equal
+in both directions, with negative controls; issue 2726 tracks making the cmake
+side read a Rust-computed row instead.
+
 **When this road gains a Cyclone build** (or any CMake-linked backend), it
 must also call `nros_runtime_interface_types()` (issue 2704,
 `check-runtime-interface-types-roads`), and the refusal moves with it: the

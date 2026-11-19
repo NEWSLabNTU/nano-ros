@@ -886,6 +886,17 @@ freertos-shell-diagnostics:
 generated-root-profiles:
     @python3 scripts/check-generated-root-profiles.py
 
+# Issue 2726 -- whether the image crate bundles a backend is decided twice:
+# `RmwDescriptor::image_crate_bundles()` (the CLI; the NuttX make road's
+# refusal asks it) and `nros_image_backend()` in cmake/NanoRosImageCrate.cmake.
+# For every RMW the scan announces they agree in both directions; three
+# negative controls mutate the dispatch rows and must go red. A few cmake
+# script runs, no compiler; under a second.
+[private]
+[group('needs:cli')]
+image-crate-bundling-agreement:
+    @python3 scripts/check-image-crate-bundling-agreement.py
+
 # phase-517 W5 -- default-level cmake output (STATUS/NOTICE/WARNING, build
 # COMMENTs) names no issue, RFC or phase: a correct build tells its user what
 # happened, and the reasoning goes to nros_message_detail() for `nros build -v`.
