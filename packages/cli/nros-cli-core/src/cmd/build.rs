@@ -1230,10 +1230,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // phase-581 W3 (RFC-0140 D5/D6) — the catalog configure wrote holds
         // the out-of-tree packages' knobs; an image states one only for a
         // package it links (its rmw, board or platform).
-        crate::knob_catalog::ensure_current(&root);
-        if let Some(cat) = crate::knob_catalog::current() {
+        let pkg_catalog = crate::knob_catalog::load_written(&root);
+        if let Some(cat) = &pkg_catalog {
             crate::knob_catalog::refuse_unlinked_package_knobs(
-                &cat,
+                cat,
                 &image_id,
                 image.knobs.0.keys(),
                 &crate::knob_catalog::linked_owners(
@@ -1786,6 +1786,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 env.extend(crate::cmd::leaf_settings::image_block_layers(
                     Some(&image_id),
                     &image,
+                    pkg_catalog.as_ref(),
                 )?);
                 // Issue 1869 (RFC-0100 D13) — a caller that names ONE target
                 // dir for several images (the fixture lanes) gets a build dir
@@ -2212,6 +2213,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &image_id,
                     &image,
                     &bringup_dir,
+                    crate::knob_catalog::load_written(&root).as_ref(),
                 )?;
                 // Issue 2692 — and the image's arch C flags, forced, so every
                 // cc-rs build the configure's cargo runs takes the profile.
@@ -8584,6 +8586,7 @@ fn cmake_image_rows(
     image_id: &str,
     image: &crate::orchestration::image::ImageBlock,
     bringup_dir: &Path,
+    pkg: Option<&crate::knob_catalog::Catalog>,
 ) -> Result<std::collections::BTreeMap<String, String>> {
     let board_rung = crate::cmd::leaf_settings::board_rung_of(
         descriptor,
@@ -8596,8 +8599,12 @@ fn cmake_image_rows(
         image.knobs.0.keys(),
         descriptor.platform.kebab(),
     )?;
-    let mut rows =
-        crate::cmd::leaf_settings::image_block_layers_over(Some(image_id), image, &board_rung)?;
+    let mut rows = crate::cmd::leaf_settings::image_block_layers_over(
+        Some(image_id),
+        image,
+        &board_rung,
+        pkg,
+    )?;
     crate::cmd::leaf_settings::session_link_build_implications(
         crate::orchestration::rmw_config::session_text(bringup_dir, image_id)
             .map_err(|e| eyre::eyre!("{e}"))?
@@ -8625,7 +8632,10 @@ fn image_config_digest(
     use sha2::{Digest as _, Sha256};
     // A retired `[image] env` key is refused where the rows are WRITTEN (the
     // cmake road's image-env file); the coordinate only needs a stable name.
-    let mut rows = crate::cmd::leaf_settings::image_block_layers(None, image).ok()?;
+    // phase-581 W3 -- an out-of-tree package's knob is in the catalog the
+    // workspace's configure wrote, read for this bringup's workspace.
+    let pkg = crate::knob_catalog::load_written_for(bringup_dir);
+    let mut rows = crate::cmd::leaf_settings::image_block_layers(None, image, pkg.as_ref()).ok()?;
     // GitHub #3899 (issue 2593) -- the profile picks the build type every
     // library in this configure compiles with, so two profiles of one image
     // must not share a configure.
@@ -13179,10 +13189,14 @@ mod per_image_configure_tests {
             cmake_configuration_key("native", &image(&[], None), Path::new("/nonexistent"))
         );
         assert_eq!(
-            crate::cmd::leaf_settings::image_block_layers(None, &image(&[], Some("serial/UART_0")))
-                .unwrap()
-                .get("ZPICO_NO_SMOLTCP")
-                .map(String::as_str),
+            crate::cmd::leaf_settings::image_block_layers(
+                None,
+                &image(&[], Some("serial/UART_0")),
+                None
+            )
+            .unwrap()
+            .get("ZPICO_NO_SMOLTCP")
+            .map(String::as_str),
             Some("1")
         );
     }
@@ -13683,8 +13697,8 @@ mod board_knob_rung_tests {
         ))
         .unwrap();
         let bringup = tempfile::tempdir().unwrap();
-        let rows =
-            cmake_image_rows(descriptor, Some(&root), "t", &image, bringup.path()).expect("rows");
+        let rows = cmake_image_rows(descriptor, Some(&root), "t", &image, bringup.path(), None)
+            .expect("rows");
         for (k, v) in board_rung_tests::expected(BoardRungCarries::BoardOnly) {
             assert_eq!(rows.get(&k), Some(&v), "{k}: {rows:?}");
         }

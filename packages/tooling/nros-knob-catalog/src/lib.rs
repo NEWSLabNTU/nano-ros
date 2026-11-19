@@ -702,6 +702,22 @@ impl Catalog {
             range: Option<[i64; 2]>,
             #[serde(skip_serializing_if = "Option::is_none")]
             disposition: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            prompt: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            kconfig_if: Option<&'a str>,
+            #[serde(skip_serializing_if = "<[String]>::is_empty")]
+            kconfig_attrs: &'a [String],
+            #[serde(skip_serializing_if = "Option::is_none")]
+            scope: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            class: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            foreign: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            key: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            help: Option<&'a str>,
             #[serde(skip_serializing_if = "Vec::is_empty")]
             retired: Vec<FileRetired<'a>>,
         }
@@ -744,6 +760,14 @@ impl Catalog {
                     default: r.meta.default.as_deref(),
                     range: r.meta.range.map(|(lo, hi)| [lo, hi]),
                     disposition: r.meta.disposition.as_deref(),
+                    prompt: r.meta.prompt.as_deref(),
+                    kconfig_if: r.meta.kconfig_if.as_deref(),
+                    kconfig_attrs: &r.meta.kconfig_attrs,
+                    scope: r.meta.scope.as_deref(),
+                    class: r.meta.class.as_deref(),
+                    foreign: r.meta.foreign.as_deref(),
+                    key: r.meta.key.as_deref(),
+                    help: r.meta.help.as_deref(),
                     retired: r
                         .retired
                         .iter()
@@ -765,8 +789,9 @@ impl Catalog {
         )
     }
 
-    /// `catalog.toml`'s rows read back: kind, name, origin, spellings, type,
-    /// default, range, disposition and retired spellings. What a build-side reader
+    /// `catalog.toml`'s rows read back: names, origin, spellings, retired
+    /// spellings and every [`Meta`] field, so a per-build view rendered from
+    /// the file equals one rendered in memory. What a build-side reader
     /// that cannot run the scan sees (`nros-platform-config`'s validation of a
     /// descriptor's `[knobs]`).
     ///
@@ -859,7 +884,23 @@ impl Catalog {
                             },
                         ),
                     disposition: s("disposition"),
-                    ..Meta::default()
+                    prompt: s("prompt"),
+                    kconfig_if: s("kconfig_if"),
+                    kconfig_attrs: t
+                        .get("kconfig_attrs")
+                        .and_then(toml::Value::as_array)
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(toml::Value::as_str)
+                                .map(str::to_string)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    scope: s("scope"),
+                    class: s("class"),
+                    foreign: s("foreign"),
+                    key: s("key"),
+                    help: s("help"),
                 },
             });
         }

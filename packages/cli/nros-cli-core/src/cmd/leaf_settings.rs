@@ -543,20 +543,27 @@ pub(crate) fn transport_implications_of(
 /// --image-env-out` hands exactly these rows to the CMAKE road, which has no
 /// settings file of its own. One composition, so a C leaf and a Rust leaf
 /// cannot read one `system.toml` two ways.
-pub fn image_layers(decl: &LeafSystem) -> Result<BTreeMap<String, String>> {
-    image_layers_over(decl, &BoardRung::new())
+pub fn image_layers(
+    decl: &LeafSystem,
+    pkg: Option<&crate::knob_catalog::Catalog>,
+) -> Result<BTreeMap<String, String>> {
+    image_layers_over(decl, &BoardRung::new(), pkg)
 }
 
 /// [`image_layers`] over the image's BOARD rung (issue 2194): the board's
 /// knob rows first, so every layer the image states outranks them key by key
 /// (RFC-0049: builtin < platform < board < the image's front-end).
-pub fn image_layers_over(decl: &LeafSystem, board: &BoardRung) -> Result<BTreeMap<String, String>> {
+pub fn image_layers_over(
+    decl: &LeafSystem,
+    board: &BoardRung,
+    pkg: Option<&crate::knob_catalog::Catalog>,
+) -> Result<BTreeMap<String, String>> {
     let mut env: BTreeMap<String, String> = board
         .iter()
         .map(|(k, (v, _))| (k.clone(), v.clone()))
         .collect();
     transport_implications(decl, &mut env)?;
-    env.extend(leaf_app_rung(decl)?);
+    env.extend(leaf_app_rung(decl, pkg)?);
     if let Some(v) = baked_ros_args(decl)? {
         env.insert(BAKED_ROS_ARGS_ENV.to_string(), v);
     }
@@ -711,11 +718,15 @@ pub fn baked_ros_args(decl: &LeafSystem) -> Result<Option<String>> {
 
 /// The APP rung of a leaf's image alone — its `[image.<id>.knobs]` rendered,
 /// beside its `[image.<id>] env` rows ([`app_rung`]).
-pub fn leaf_app_rung(decl: &LeafSystem) -> Result<BTreeMap<String, String>> {
+pub fn leaf_app_rung(
+    decl: &LeafSystem,
+    pkg: Option<&crate::knob_catalog::Catalog>,
+) -> Result<BTreeMap<String, String>> {
     app_rung(
         Some(decl.image.as_deref().unwrap_or("<id>")),
         &decl.knobs,
         &decl.env,
+        pkg,
     )
 }
 
@@ -734,6 +745,7 @@ pub fn app_rung(
     image: Option<&str>,
     knobs: &BTreeMap<String, nros_orchestration_ir::leaf_system::KnobValue>,
     env: &BTreeMap<String, String>,
+    pkg: Option<&crate::knob_catalog::Catalog>,
 ) -> Result<BTreeMap<String, String>> {
     refuse_retired_env_keys(env)?;
     let id = image.unwrap_or("<id>");
@@ -747,7 +759,7 @@ pub fn app_rung(
             }
             // phase-581 W3 (RFC-0140 D5) — not in the compiled table: an
             // out-of-tree package's knob, from the catalog of this run.
-            Err(e) => match package_knob_env_row(&table, key, value) {
+            Err(e) => match package_knob_env_row(pkg, &table, key, value) {
                 Some(Ok((env, v))) => {
                     rows.insert(env, v);
                 }
@@ -816,17 +828,17 @@ pub fn refuse_off_platform_knobs<'a>(
 }
 
 /// An out-of-tree package's knob (RFC-0140 D5): the row of the catalog of
-/// this run (`knob_catalog::current`) whose key is `key`, rendered to its env
+/// configure wrote (`pkg`, the caller's) whose key is `key`, rendered to its env
 /// spelling the way [`knob_env_row`] renders a compiled one. `None` when no
 /// catalog is current or it holds no such package knob.
 fn package_knob_env_row(
+    pkg: Option<&crate::knob_catalog::Catalog>,
     table: &str,
     key: &str,
     value: &nros_orchestration_ir::leaf_system::KnobValue,
 ) -> Option<std::result::Result<(String, String), String>> {
     use nros_orchestration_ir::leaf_system::KnobValue;
-    let cat = crate::knob_catalog::current()?;
-    let row = cat.knob(key).filter(|r| !r.origin.is_compiled())?;
+    let row = pkg?.knob(key).filter(|r| !r.origin.is_compiled())?;
     let env = row
         .spelling(nros_zephyr_build::RetiredRoad::Env)?
         .to_string();
@@ -952,8 +964,9 @@ pub fn refuse_retired_env_keys(env: &BTreeMap<String, String>) -> Result<()> {
 pub fn image_block_layers(
     image_id: Option<&str>,
     image: &crate::orchestration::image::ImageBlock,
+    pkg: Option<&crate::knob_catalog::Catalog>,
 ) -> Result<BTreeMap<String, String>> {
-    image_block_layers_over(image_id, image, &BoardRung::new())
+    image_block_layers_over(image_id, image, &BoardRung::new(), pkg)
 }
 
 /// [`image_block_layers`] over the image's board rung (issue 2194), lowest.
@@ -961,6 +974,7 @@ pub fn image_block_layers_over(
     image_id: Option<&str>,
     image: &crate::orchestration::image::ImageBlock,
     board: &BoardRung,
+    pkg: Option<&crate::knob_catalog::Catalog>,
 ) -> Result<BTreeMap<String, String>> {
     let mut env: BTreeMap<String, String> = board
         .iter()
@@ -968,7 +982,7 @@ pub fn image_block_layers_over(
         .collect();
     transport_implications_of(image.link_kind(), &mut env);
     link_build_implications(image.locator.as_deref(), &mut env);
-    env.extend(app_rung(image_id, &image.knobs.0, &image.env)?);
+    env.extend(app_rung(image_id, &image.knobs.0, &image.env, pkg)?);
     Ok(env)
 }
 
@@ -1511,7 +1525,8 @@ pub fn write_shared(
     // Last, so it outranks the board and the implications above and is
     // outranked only by the calling environment.
     refuse_off_platform_knobs(&img.image_id, img.decl.knobs.keys(), &img.platform)?;
-    for (k, v) in leaf_app_rung(&img.decl)? {
+    let pkg = crate::knob_catalog::load_written_for(&img.leaf);
+    for (k, v) in leaf_app_rung(&img.decl, pkg.as_ref())? {
         path_env.remove(&k);
         env.insert(k, v);
     }
@@ -1734,6 +1749,16 @@ fn states_its_own_build_flags(doc: &toml_edit::DocumentMut) -> bool {
 mod tests {
     use super::*;
 
+    /// The APP rung with no out-of-tree package catalog: these tests state
+    /// only compiled knobs (the package rows have their own tests).
+    fn app_rung(
+        image: Option<&str>,
+        knobs: &BTreeMap<String, nros_orchestration_ir::leaf_system::KnobValue>,
+        env: &BTreeMap<String, String>,
+    ) -> Result<BTreeMap<String, String>> {
+        super::app_rung(image, knobs, env, None)
+    }
+
     /// A `LeafSystem` with only the fields a test cares about set.
     fn decl(transport: Option<&str>, env: &[(&str, &str)]) -> LeafSystem {
         LeafSystem {
@@ -1806,7 +1831,7 @@ mod tests {
         decl.origin = leaf_system::Origin::SystemToml(td.path().join("system.toml"));
         assert_eq!(baked_ros_args(&decl).unwrap(), None);
         assert!(
-            !image_layers(&decl)
+            !image_layers(&decl, None)
                 .unwrap()
                 .contains_key(BAKED_ROS_ARGS_ENV)
         );
@@ -1829,7 +1854,7 @@ mod tests {
         ]
         .join(" ");
         assert_eq!(row, want);
-        assert_eq!(image_layers(&decl).unwrap()[BAKED_ROS_ARGS_ENV], want);
+        assert_eq!(image_layers(&decl, None).unwrap()[BAKED_ROS_ARGS_ENV], want);
 
         decl.params_files = vec!["missing.yaml".into()];
         let e = baked_ros_args(&decl).unwrap_err().to_string();
@@ -3229,7 +3254,7 @@ pub(crate) mod board_rung_tests {
         )
         .unwrap();
         let decl = leaf_system::read(td.path()).unwrap().unwrap();
-        let rows = image_layers_over(&decl, &board).unwrap();
+        let rows = image_layers_over(&decl, &board, None).unwrap();
         assert_eq!(rows["NROS_ZENOH_MAX_SUBSCRIBERS"], "3", "the image wins");
         assert_eq!(
             rows["NROS_ZEPHYR_HEAP_SIZE"], "32768",
@@ -3238,7 +3263,7 @@ pub(crate) mod board_rung_tests {
 
         let image: crate::orchestration::image::ImageBlock =
             toml::from_str("board = \"b\"\n[knobs.zenoh]\nmax_subscribers = 3\n").unwrap();
-        let rows = image_block_layers_over(Some("t"), &image, &board).unwrap();
+        let rows = image_block_layers_over(Some("t"), &image, &board, None).unwrap();
         assert_eq!(rows["NROS_ZENOH_MAX_SUBSCRIBERS"], "3");
         assert_eq!(rows["NROS_ZEPHYR_HEAP_SIZE"], "32768");
     }

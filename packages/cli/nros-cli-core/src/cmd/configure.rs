@@ -338,7 +338,6 @@ fn write_knob_catalog(
         );
     }
     crate::knob_catalog::write(&catalog, &ws_root)?;
-    crate::knob_catalog::set_current(catalog);
     Ok(())
 }
 

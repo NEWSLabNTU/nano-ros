@@ -318,6 +318,7 @@ pub fn render(
         overrides,
         &crate::cmd::leaf_settings::BoardRung::new(),
         &cargo_nano_ros::rmw_resolver::test_support::in_tree_index(),
+        None,
     )
 }
 
@@ -333,6 +334,7 @@ pub fn render_over(
     overrides: &BTreeMap<String, String>,
     board: &crate::cmd::leaf_settings::BoardRung,
     rmws: &RmwIndex,
+    pkg: Option<&crate::knob_catalog::Catalog>,
 ) -> Result<Rendered, String> {
     let origin = leaf.origin_path().display().to_string();
     let image = leaf.image.clone().unwrap_or_default();
@@ -530,9 +532,9 @@ pub fn render_over(
         nros_zephyr_build::knob_by_image_key(k)
             .map(|r| (r.env.to_string(), format!("knobs {k} = {v}")))
     }));
-    let own = crate::cmd::leaf_settings::image_layers(leaf).map_err(|e| e.to_string())?;
+    let own = crate::cmd::leaf_settings::image_layers(leaf, pkg).map_err(|e| e.to_string())?;
     for (key, value) in
-        crate::cmd::leaf_settings::image_layers_over(leaf, board).map_err(|e| e.to_string())?
+        crate::cmd::leaf_settings::image_layers_over(leaf, board, pkg).map_err(|e| e.to_string())?
     {
         let symbol = nros_zephyr_build::kconfig_key_for(&key);
         let Some(sym) = syms.get(&symbol) else {
@@ -971,6 +973,7 @@ endif # NROS
                 &BTreeMap::new(),
                 &crate::cmd::leaf_settings::BoardRung::new(),
                 rmws,
+                None,
             )
         };
         // No `[rmw.zephyr]`: refused, naming the key and the vocabulary.

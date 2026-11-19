@@ -709,7 +709,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             // does not link is refused.
             let ws_root =
                 crate::cmd::image_facts::workspace_root_from(&dir).unwrap_or_else(|| dir.clone());
-            crate::knob_catalog::ensure_current(&ws_root);
+            let pkg = crate::knob_catalog::load_written(&ws_root);
             let platform_word = catalog
                 .as_ref()
                 .and_then(|cat| crate::cmd::board_facts::resolve_board(cat, &board))
@@ -719,7 +719,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                 Some(board.as_str()),
                 platform_word.as_deref(),
             );
-            if let Some(cat) = crate::knob_catalog::current() {
+            if let Some(cat) = &pkg {
                 crate::knob_catalog::refuse_unlinked_package_knobs(
                     &cat,
                     leaf.image.as_deref().unwrap_or("<id>"),
@@ -735,6 +735,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                 &overrides,
                 &board_rung,
                 &rmws,
+                pkg.as_ref(),
             )
             .map_err(|e| eyre!(e))?;
             // The RMW choice above is read from the backend's descriptor, so
@@ -756,8 +757,9 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                 println!("NROS_LEAF_KCONFIG_DEFAULTS={}", d.display());
             }
             if let Some(p) = &args.kconfig_packages_out {
-                let cat = crate::knob_catalog::current()
-                    .map_or_else(crate::knob_catalog::Catalog::core, |c| (*c).clone());
+                let cat = pkg
+                    .clone()
+                    .unwrap_or_else(crate::knob_catalog::Catalog::core);
                 let owners: Vec<&str> = linked.iter().map(String::as_str).collect();
                 let body = crate::cmd::leaf_kconfig::packages_text(&leaf, &cat, &owners)
                     .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
@@ -778,7 +780,11 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             )?;
             (
                 None,
-                crate::cmd::leaf_settings::image_layers_over(&leaf, &board_rung)?,
+                crate::cmd::leaf_settings::image_layers_over(
+                    &leaf,
+                    &board_rung,
+                    crate::knob_catalog::load_written_for(&dir).as_ref(),
+                )?,
             )
         }
     };
@@ -1232,7 +1238,7 @@ mod tests {
                 std::fs::write(td.path().join("rmw/zenoh.json5"), f).unwrap();
             }
             let leaf = leaf_system::read(td.path()).unwrap().unwrap();
-            crate::cmd::leaf_settings::image_layers(&leaf).unwrap()
+            crate::cmd::leaf_settings::image_layers(&leaf, None).unwrap()
         };
 
         let isotp = layers("locator = \"isotp/vcan0#tx_id=0x200;rx_id=0x201\"\n", None);
@@ -1270,7 +1276,7 @@ mod tests {
              knobs = { log = { max_level = \"warn\" } }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
-        let layers = crate::cmd::leaf_settings::image_layers(&leaf).unwrap();
+        let layers = crate::cmd::leaf_settings::image_layers(&leaf, None).unwrap();
         assert_eq!(layers["ZPICO_NO_SMOLTCP"], "1", "the serial implication");
         assert_eq!(
             layers["NROS_LINK_IP"], "1",
@@ -1315,7 +1321,7 @@ mod tests {
              env = { ZPICO_MAX_QUERYABLES = \"4\" }\n", // retired spelling: the refusal case
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
-        let err = crate::cmd::leaf_settings::image_layers(&leaf)
+        let err = crate::cmd::leaf_settings::image_layers(&leaf, None)
             .expect_err("a retired key must refuse")
             .to_string();
         assert!(
@@ -1331,7 +1337,7 @@ mod tests {
              env = { NROS_ZENOH_MAX_QUERYABLES = \"4\" }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
-        let err = crate::cmd::leaf_settings::image_layers(&leaf)
+        let err = crate::cmd::leaf_settings::image_layers(&leaf, None)
             .expect_err("an env row naming a registry knob must refuse")
             .to_string();
         assert!(
@@ -1344,7 +1350,7 @@ mod tests {
              knobs = { zenoh = { max_queryables = 4 } }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
-        let layers = crate::cmd::leaf_settings::image_layers(&leaf).unwrap();
+        let layers = crate::cmd::leaf_settings::image_layers(&leaf, None).unwrap();
         assert_eq!(layers["NROS_ZENOH_MAX_QUERYABLES"], "4");
     }
 

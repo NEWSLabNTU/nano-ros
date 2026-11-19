@@ -19,40 +19,24 @@ pub use nros_knob_catalog::{
     knobs_dir, parse_own_file, parse_package, registry_cmake,
 };
 
-/// The catalog of this run (phase-581 W3): the one `nros configure` built,
-/// or loaded by the stage that needs it. The APP rung reads an out-of-tree
-/// package's knob from it ([`crate::cmd::leaf_settings::app_rung`]), whose
-/// many callers have no workspace in hand.
-static CURRENT: std::sync::RwLock<Option<std::sync::Arc<Catalog>>> = std::sync::RwLock::new(None);
-
-/// Make `cat` the catalog of this run.
-pub fn set_current(cat: Catalog) {
-    *CURRENT
-        .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(std::sync::Arc::new(cat));
-}
-
-/// The catalog of this run, if one was built or loaded.
+/// The catalog `nros configure` wrote for `ws_root`
+/// (`<ws_root>/build/nros/knobs/catalog.toml`), read back; `None` when
+/// configure wrote none (the image has only compiled rows). Callers pass it
+/// explicitly to the APP rung ([`crate::cmd::leaf_settings::app_rung`]):
+/// there is no process-wide catalog, so two workspaces in one process (a
+/// configure then a build, or parallel tests) never see each other's.
 #[must_use]
-pub fn current() -> Option<std::sync::Arc<Catalog>> {
-    CURRENT
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
+pub fn load_written(ws_root: &Path) -> Option<Catalog> {
+    let text = std::fs::read_to_string(catalog_path(ws_root)).ok()?;
+    Catalog::parse_toml(&text).ok()
 }
 
-/// Make the catalog `nros configure` wrote for `ws_root` the catalog of this
-/// run, unless one is set already. A workspace configure never wrote has only
-/// the compiled rows, so nothing is set.
-pub fn ensure_current(ws_root: &Path) {
-    if current().is_some() {
-        return;
-    }
-    if let Ok(text) = std::fs::read_to_string(catalog_path(ws_root))
-        && let Ok(cat) = Catalog::parse_toml(&text)
-    {
-        set_current(cat);
-    }
+/// [`load_written`] for the workspace `dir` sits in (a bringup, a leaf), or
+/// `dir` itself when it is the project root.
+#[must_use]
+pub fn load_written_for(dir: &Path) -> Option<Catalog> {
+    let ws = crate::cmd::image_facts::workspace_root_from(dir).unwrap_or_else(|| dir.to_path_buf());
+    load_written(&ws)
 }
 
 /// The owner words an image LINKS (RFC-0140 D6): its RMW's, its board's (the
