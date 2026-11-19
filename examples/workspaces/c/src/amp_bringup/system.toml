@@ -1,0 +1,38 @@
+include = ["../../shared/system-defaults.toml"]  # rmw, domain_id: shared by every bringup here
+
+# The pubsub pair on the two Cortex-M33 cores of an Arm MPS2+ AN521, one
+# image per core, peering over RPMsg with no router (RFC-0134). QEMU's
+# `mps2-an521` machine runs both: cpu0's image is the kernel, cpu1's is
+# loaded beside it, and cpu0 releases cpu1 once its RPMsg service is up.
+#
+# cpu1 is the RPMsg remote, so it LISTENS; cpu0 is the master and CONNECTS
+# (the remote cannot send before the master has). Each image's session is
+# its `rmw_config` file: peer mode and one `rpmsg/` endpoint.
+
+[system]
+name = "c_amp"
+default_launch = "talker.launch.xml"
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[[component]]
+pkg = "listener_pkg"
+class = "listener_pkg::Listener"
+name = "listener"
+
+[image.amp_talker]
+board = "mps2-an521-cpu0-zephyr"
+launch = "talker.launch.xml"
+os_config = ["prj-amp-master.conf"]
+rmw_config = "rmw/zenoh-rpmsg-connect.json5"
+env = { NROS_ZENOH_LINK_RPMSG = "1", NROS_ZENOH_LINK_TCP = "0", NROS_ZENOH_LINK_UDP_UNICAST = "0", NROS_ZENOH_LINK_UDP_MULTICAST = "0" }
+
+[image.amp_listener]
+board = "mps2-an521-cpu1-zephyr"
+launch = "listener.launch.xml"
+os_config = ["prj-amp-remote.conf"]
+rmw_config = "rmw/zenoh-rpmsg-listen.json5"
+env = { NROS_ZENOH_LINK_RPMSG = "1", NROS_ZENOH_LINK_TCP = "0", NROS_ZENOH_LINK_UDP_UNICAST = "0", NROS_ZENOH_LINK_UDP_MULTICAST = "0" }

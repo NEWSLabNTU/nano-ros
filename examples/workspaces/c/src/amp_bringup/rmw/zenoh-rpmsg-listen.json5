@@ -1,0 +1,6 @@
+// cpu1, the RPMsg remote: a peer that listens on the RPMsg endpoint for
+// cpu0's handshake.
+{
+  mode: "peer",
+  listen: { endpoints: ["rpmsg/nros"] },
+}

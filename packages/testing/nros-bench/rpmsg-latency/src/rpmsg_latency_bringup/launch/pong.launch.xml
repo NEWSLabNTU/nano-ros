@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="pong_pkg" exec="pong" name="pong"/>
+</launch>

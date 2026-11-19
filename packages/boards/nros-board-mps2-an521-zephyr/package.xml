@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_board_mps2_an521_zephyr</name>
+  <version>0.0.0</version>
+  <description>
+    Board support for the two cores of an Arm MPS2+ AN521 under Zephyr
+    (`mps2-an521-cpu0-zephyr`, `mps2-an521-cpu1-zephyr`), peering over RPMsg.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cmake</build_type>
+    <nano_ros_provides kind="board" name="mps2-an521-cpu0-zephyr"/>
+    <nano_ros_provides kind="board" name="mps2-an521-cpu1-zephyr"/>
+  </export>
+</package>

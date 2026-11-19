@@ -3536,7 +3536,7 @@ pub const INTERFACE_KINDS: &[&str] = &["ethernet", "wifi", "serial", "custom"];
 /// names a subset of it, and zenoh-pico's `link-*` features map onto it
 /// (`tcp` / `udp` → `link-ip`).
 pub const LINK_KINDS: &[&str] = &[
-    "serial", "tcp", "udp", "can", "isotp", "ivc", "raweth", "custom",
+    "serial", "tcp", "udp", "can", "isotp", "ivc", "rpmsg", "raweth", "custom",
 ];
 
 /// Who owns a board's network devices (RFC-0109 D2): `[board.net] stack`.

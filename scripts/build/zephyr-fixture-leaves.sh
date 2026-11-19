@@ -312,6 +312,17 @@ workload_for_role() {
     esac
 }
 
+# The roles whose image reaches no router, Agent or DDS domain, so there is
+# nothing for the allocator to isolate: the logging smoke leaf, and the
+# dual-core RPMsg pair (phase-575 W4), whose two images peer with each other
+# inside one QEMU and nowhere else.
+role_needs_no_isolation() {
+    case "$1" in
+        logging-smoke|amp-talker|amp-listener) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Phase-535 W2 (RFC-0122 D7) — a workspace west row (role `entry`) is the
 # image of a pair cell when it is an image of a behaviour bringup. The bringup
 # names the workload and the image id must carry one of its two role tokens:
@@ -551,7 +562,7 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
                 exit 2
             fi
         fi
-    elif [ "$role" != "logging-smoke" ]; then
+    elif ! role_needs_no_isolation "$role"; then
         # The six role leaves take the allocator's values whole.
         if [ -z "$iso_key" ]; then
             echo "zephyr-fixture-leaves: row $id: role '$role' is the image of no allocator cell, and the row states no isolation values" >&2

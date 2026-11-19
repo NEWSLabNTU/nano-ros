@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rpmsg_latency_bringup</name>
+  <version>0.1.0</version>
+  <description>Round-trip latency of a nano-ros message over RPMsg between two cores, with no router.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>ping_pkg</exec_depend>
+  <exec_depend>pong_pkg</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

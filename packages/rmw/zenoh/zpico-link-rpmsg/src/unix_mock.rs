@@ -14,7 +14,7 @@ use std::{
     os::unix::net::UnixDatagram,
     string::String,
     sync::{
-        Arc, Mutex, Once,
+        Arc, Condvar, Mutex, Once,
         atomic::{AtomicBool, Ordering},
     },
     thread,
@@ -29,6 +29,7 @@ static MOCK_BACKEND: Backend = Backend {
     open: Some(mock_open),
     close: Some(mock_close),
     send: Some(mock_send),
+    wait: Some(mock_wait),
     ctx: core::ptr::null_mut(),
 };
 
@@ -53,6 +54,10 @@ pub fn register(name: &str, sock: UnixDatagram) {
 struct MockEp {
     sock: UnixDatagram,
     stop: Arc<AtomicBool>,
+    /// Deliveries not yet waited for, and the signal the reader thread
+    /// gives after each: `wait` takes one, as a board's wait takes the
+    /// semaphore its receive callback gives.
+    arrived: Arc<(Mutex<u64>, Condvar)>,
 }
 
 struct SendPtr(*mut Endpoint);
@@ -77,6 +82,8 @@ unsafe extern "C" fn mock_open(
     };
     let stop = Arc::new(AtomicBool::new(false));
     let reader_stop = Arc::clone(&stop);
+    let arrived = Arc::new((Mutex::new(0u64), Condvar::new()));
+    let reader_arrived = Arc::clone(&arrived);
     let link_ep = SendPtr(link_ep);
     rx.set_read_timeout(Some(Duration::from_millis(50))).ok();
     thread::spawn(move || {
@@ -94,9 +101,17 @@ unsafe extern "C" fn mock_open(
                 }
                 thread::sleep(Duration::from_micros(200));
             }
+            let (count, cv) = &*reader_arrived;
+            *count.lock().expect("unix-mock wait poisoned") += 1;
+            cv.notify_all();
         }
     });
-    Box::into_raw(Box::new(MockEp { sock: tx, stop })).cast()
+    Box::into_raw(Box::new(MockEp {
+        sock: tx,
+        stop,
+        arrived,
+    }))
+    .cast()
 }
 
 unsafe extern "C" fn mock_close(_ctx: *mut c_void, ep: *mut c_void) {
@@ -122,4 +137,21 @@ unsafe extern "C" fn mock_send(
         Ok(n) if n == len => 0,
         _ => -1,
     }
+}
+
+unsafe extern "C" fn mock_wait(_ctx: *mut c_void, ep: *mut c_void, timeout_ms: u32) -> c_int {
+    // SAFETY: the box `mock_open` leaked.
+    let ep = unsafe { &*ep.cast::<MockEp>() };
+    // A counting semaphore, like the one a board's receive callback gives: a
+    // delivery that lands before this call is still counted, so no wake is
+    // lost between the link's empty check and here.
+    let (count, cv) = &*ep.arrived;
+    let pending = count.lock().expect("unix-mock wait poisoned");
+    let (mut pending, _) = cv
+        .wait_timeout_while(pending, Duration::from_millis(u64::from(timeout_ms)), |c| {
+            *c == 0
+        })
+        .expect("unix-mock wait poisoned");
+    *pending = pending.saturating_sub(1);
+    0
 }

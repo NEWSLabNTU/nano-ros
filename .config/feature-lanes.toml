@@ -58,8 +58,8 @@ reason = "zenoh-pico over IVC, a link with two endpoints, on which a peer sessio
 
 [feature.link-rpmsg]
 class = "config"
-config = "PeerMode"
-reason = "zenoh-pico over RPMsg, a link with two endpoints, on which a peer session needs no router — same messages, no router"
+config = "Rpmsg"
+reason = "zenoh-pico over RPMsg, a link between two cores of one chip, on which a peer session needs no router — same messages, no router or network"
 
 [feature.census-param-store-test]
 class = "harness"

@@ -1,0 +1,75 @@
+# Arm MPS2+ AN521 under Zephyr: two Cortex-M33 cores, one image on each, the
+# two talking RPMsg over Zephyr's RPMsg service (OpenAMP) on the MHU and a
+# shared SRAM window. QEMU's `mps2-an521` machine emulates both cores, so the
+# pair runs with no hardware; it is the emulated stand-in for any AMP SoC
+# whose cores peer over RPMsg with no router (RFC-0134).
+#
+# cpu0 is the RPMsg master: it starts cpu1, and its image CONNECTS. cpu1 is
+# the RPMsg remote, and its image LISTENS (the remote cannot send before the
+# master has; see `NROS_ZENOH_LINK_RPMSG`). Neither core has a network.
+
+[[board]]
+names = ["mps2-an521-cpu0-zephyr"]
+platform = "zephyr"
+toolchain = "stable"
+entry_kind = "zephyr-staticlib"
+supported_netstacks = []
+
+[board.entry]
+crate_root_extra = "extern crate zephyr;"
+crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
+
+[board.zephyr]
+west_board = "mps2/an521/cpu0"
+rust_target = "thumbv8m.main-none-eabi"
+rust_prereqs = ["clang", "libclang-dev"]
+rust_components = ["clippy"]
+
+# The emulator the pair runs under (RFC-0118 D4), named on cpu0 only: cpu0's
+# image is the kernel QEMU boots, and cpu1's rides beside it (`-device
+# loader`), so cpu1 alone is never a run.
+[board.run]
+emulator = "qemu:mps2-an521"
+
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
+
+[board.net]
+stack = "os"
+links = ["rpmsg"]
+
+[board.provisioning]
+zephyr_line = "3.7"
+rust_targets = ["thumbv8m.main-none-eabi"]
+
+[[board]]
+names = ["mps2-an521-cpu1-zephyr"]
+platform = "zephyr"
+toolchain = "stable"
+entry_kind = "zephyr-staticlib"
+supported_netstacks = []
+
+[board.entry]
+crate_root_extra = "extern crate zephyr;"
+crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
+
+[board.zephyr]
+west_board = "mps2/an521/cpu1"
+rust_target = "thumbv8m.main-none-eabi"
+rust_prereqs = ["clang", "libclang-dev"]
+rust_components = ["clippy"]
+
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
+
+[board.net]
+stack = "os"
+links = ["rpmsg"]
+
+[board.provisioning]
+zephyr_line = "3.7"
+rust_targets = ["thumbv8m.main-none-eabi"]

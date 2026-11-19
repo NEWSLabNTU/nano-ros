@@ -43,12 +43,19 @@ typedef struct {
      * call may wait for a transmit buffer for a bounded time. Returns 0 once
      * the message is queued, non-zero if it was not sent. */
     int (*send)(void *ctx, void *ep, const uint8_t *data, size_t len);
+    /* Wait until a message may have been delivered on `ep`, or `timeout_ms`
+     * has passed; the return value is not read. Required: the link reads
+     * from its ring, which answers at once when empty, and this is where the
+     * reading thread sleeps instead of spinning. A semaphore the receive
+     * callback gives after nros_rpmsg_deliver() is the usual shape; a wake
+     * with nothing delivered is harmless. */
+    int (*wait)(void *ctx, void *ep, uint32_t timeout_ms);
     void *ctx;
 } nros_rpmsg_backend_t;
 
 /* Install the board's binding. Call once, before the session opens; the
  * table must outlive the program. Returns 0, or non-zero if a backend is
- * already installed. */
+ * already installed or `open`, `send` or `wait` is NULL. */
 int nros_rpmsg_register_backend(const nros_rpmsg_backend_t *backend);
 
 /* Hand one received message to the link. Safe from an interrupt handler or

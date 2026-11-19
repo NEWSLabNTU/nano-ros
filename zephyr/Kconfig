@@ -825,6 +825,50 @@ config NROS_ZENOH_SCOUTING
       Enable scouting for automatic router discovery via UDP.
       Maps to Z_FEATURE_SCOUTING.
 
+config NROS_ZENOH_LINK_RPMSG
+    bool "RPMsg link between cores"
+    depends on RPMSG_SERVICE
+    default n
+    help
+      Enable zenoh-pico's RPMsg link, between images on two cores of one
+      SoC, over Zephyr's RPMsg service (OpenAMP). Maps to
+      Z_FEATURE_LINK_RPMSG, and pulls zpico-link-rpmsg into the cargo
+      build.
+
+      It is a point-to-point link, so it also compiles zenoh-pico's peer
+      mode (Z_FEATURE_UNICAST_PEER): two images peer over it directly,
+      with no router. The image that runs the RPMsg service as remote
+      LISTENS (`listen` locator `rpmsg/<name>`); the master connects.
+      The remote cannot send until the master has, so the other way
+      round never completes its handshake.
+
+if NROS_ZENOH_LINK_RPMSG
+
+config NROS_ZENOH_RPMSG_ENDPOINT
+    string "RPMsg endpoint name"
+    default "nros"
+    help
+      The RPMsg service endpoint the link opens, registered at boot. Both
+      cores must name the same endpoint, and a locator `rpmsg/<name>`
+      must name this one.
+
+config NROS_ZENOH_RPMSG_BIND_TIMEOUT_MS
+    int "How long the master waits for the remote endpoint (ms)"
+    default 5000
+    help
+      On the master core, opening the link waits this long for the remote
+      core to announce its endpoint, then fails.
+
+config NROS_ZENOH_RPMSG_START_REMOTE
+    bool "Start the remote core at boot"
+    default y if SOC_MPS2_AN521 && RPMSG_SERVICE_MODE_MASTER
+    help
+      On the master core, release the remote core once the RPMsg service
+      is up (the SoC's wakeup_cpu1()). On a SoC whose boot ROM or loader
+      starts every core, leave it off.
+
+endif # NROS_ZENOH_LINK_RPMSG
+
 config NROS_ZENOH_LINK_SERIAL
     bool "Serial/UART link"
     depends on SERIAL
@@ -2615,7 +2659,7 @@ config NROS_ZENOH_GRAPH_DISCOVERY
     default n if (NROS_ZENOH_LINK_SERIAL || NROS_ZENOH_LINK_CAN || NROS_ZENOH_LINK_ISOTP) && \
                  !NROS_ZENOH_LINK_TCP && !NROS_ZENOH_LINK_UDP_UNICAST && \
                  !NROS_ZENOH_LINK_UDP_MULTICAST && !NROS_ZENOH_LINK_WS && \
-                 !NROS_ZENOH_RAWETH_TRANSPORT
+                 !NROS_ZENOH_LINK_RPMSG && !NROS_ZENOH_RAWETH_TRANSPORT
     default y
     help
       Maps to ZPICO_GRAPH_DISCOVERY (env ZPICO_GRAPH_DISCOVERY=0/1 wins over

@@ -731,6 +731,10 @@ pub enum Config {
     /// (`ZPICO_MULTICAST_TRANSPORT=1`), so a peer-mode session needs no
     /// router. Same messages, no router (phase-535 W6, issue 0711).
     PeerMode,
+    /// zenoh-pico peers over an RPMsg link between two cores of one chip, each
+    /// image's session its own `rmw_config` (`rpmsg/<endpoint>`). Same
+    /// messages, no router and no network (phase-575 W4).
+    Rpmsg,
 }
 
 impl Config {
@@ -743,6 +747,7 @@ impl Config {
             Config::Serial => "serial",
             Config::Rtic => "rtic",
             Config::PeerMode => "peer-mode",
+            Config::Rpmsg => "rpmsg",
         }
     }
 }
@@ -1016,6 +1021,9 @@ pub enum Consumer {
     /// `tests/zephyr_connect_budget.rs` -- a zenoh open ends at its connect
     /// budget on native_sim (issue 2389).
     ZephyrConnectBudget,
+    /// `tests/zephyr_amp_rpmsg_qemu.rs` -- two images on the two cores of one
+    /// MPS2+ AN521, peering over RPMsg with no router (phase-575 W4).
+    ZephyrAmpRpmsg,
 }
 
 impl Consumer {
@@ -1061,6 +1069,7 @@ impl Consumer {
         Consumer::ViolationChannel,
         Consumer::Nano2nano,
         Consumer::ZephyrConnectBudget,
+        Consumer::ZephyrAmpRpmsg,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -1106,6 +1115,7 @@ impl Consumer {
             Consumer::ViolationChannel => "violation_channel_e2e",
             Consumer::Nano2nano => "nano2nano",
             Consumer::ZephyrConnectBudget => "zephyr_connect_budget",
+            Consumer::ZephyrAmpRpmsg => "zephyr_amp_rpmsg_qemu",
         }
     }
 }
@@ -1539,6 +1549,8 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             (P::FreertosMps2, [Config::Lending]) => Some(LendingFreertos),
             (P::QemuBaremetal, [Config::Serial] | [Config::Rtic]) => Some(Emulator),
             (P::Linux, [Config::PeerMode]) => Some(Nano2nano),
+            // phase-575 W4 -- the C workspace's dual-core pair on an MPS2+ AN521.
+            (P::ZephyrQemuCortexM, [Config::Rpmsg]) => Some(ZephyrAmpRpmsg),
             _ => None,
         };
     }

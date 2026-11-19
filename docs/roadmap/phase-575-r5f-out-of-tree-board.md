@@ -248,6 +248,84 @@ Steps, in order:
    emulated dual-core target (Zephyr's OpenAMP samples on a dual-core QEMU
    machine), with p50/p99 hop latency recorded. The same over IVC if that
    comes cheap, since it is the same seam.
+   - **Runs (2026-11-19), not yet landed.** Two Zephyr 3.7 images on the two
+     Cortex-M33 cores of QEMU's `mps2-an521` (board package
+     `nros-board-mps2-an521-zephyr`), over Zephyr's RPMsg service on the MHU
+     and a 32 KiB shared SRAM window. cpu1 (RPMsg remote) listens, cpu0
+     (master) connects; each session is an `rmw_config` file
+     (`examples/workspaces/c/src/amp_bringup`). The pubsub pair delivered
+     every message in order in 5 of 5 runs.
+   - **Fit on cpu1** (`just mem-report`, the listener image): 336,312 of
+     479,232 B flash (70.2 %), 330,552 of 524,288 B RAM (63.0 %). The
+     largest RAM symbol is the zenoh session table, 82.7 KB. RAM was
+     314,168 B (59.9 %) until the board package took over the IPM, the
+     RPMsg service and main's stack: the module's Rust main-stack floor is
+     32 KiB, the board states it for every image, and the C images pay the
+     16 KiB difference.
+   - **Round trip** (`packages/testing/nros-bench/rpmsg-latency`: cpu0 times
+     500 ping/pong round trips with its cycle counter after 20 warm-up, one
+     in flight; TX batching off). Re-measured after the board package took
+     over the Kconfig (32 KiB main stack, IPM and RPMsg from the board's
+     `prj.conf`), on the toolchain Zephyr itself pins: superproject
+     501f936cb1 (measured at 9e237cde98, which adds only a changelog
+     fragment), zenoh-pico fork 26041f73, Zephyr v3.7.2 with SDK 0.16.9;
+     both images rebuilt from empty build directories 18:42–18:48 UTC on
+     2026-11-19 (339 s), outside the nightly window.
+
+     | QEMU timing | p50 | p99 | max | lost |
+     | --- | --- | --- | --- | --- |
+     | `-icount shift=5,sleep=off` (time = instructions × 32 ns; 3 runs, identical) | 1,612 µs | 1,623 µs | 1,697 µs | 0 |
+     | `-icount shift=auto` (tracks the host clock; one run) | 403 µs | 53,420 µs | 63,120 µs | 0 |
+
+     Against the same tree built on Zephyr v3.7.0 with SDK 0.16.8 (12:08–12:12
+     UTC the same day: p50 1,607, p99 1,691, max 1,802 µs at the fixed
+     shift), the median moved by 5 µs and the tail tightened, which is code
+     generation, not a change in the link. The `shift=auto` row depends on
+     host load: its tail has read 1,617, 3,390, 806 and now 53,420 µs across
+     four runs of identical images, so it is not a comparison figure.
+
+     The fixed shift is the comparable figure: about 50,000 instructions a
+     round trip, so roughly 25,000 a hop. With TX batching on (the default)
+     the round trip is set by the 50 ms batch flush (p50 60 ms) and says
+     nothing about the link. QEMU time is emulated; this is the software
+     path's cost, not a hardware figure.
+   - **Found on the way.** (a) The framed link's read answered at once when
+     empty, and the zenoh executor's read does no sleeping of its own on a
+     threaded build, so on one core the read task spun and starved the
+     transmit flush and keep-alives; the board contract gains a required
+     `wait`, and the fork's framed link calls it. (b) A frame that arrives
+     before the session opens was dropped, and zenoh does not resend a
+     handshake; the Zephyr binding holds the first frames until open.
+     (c) The distro QEMU 6.2 never ticks this machine's SysTick, so both
+     images hang at their first sleep; the pinned store QEMU (11.0.0) and
+     the Zephyr SDK's 7.0 run it. The fixture must resolve the pinned store
+     QEMU and never fall back to `$PATH`.
+   - **Provisioning:** open-amp and libmetal join `[zephyr_module.*]` for the
+     3.7 line; `nros setup zephyr --dry-run` prices them at 2 MB and 1 MB of
+     a fresh workspace.
+   - **Fork:** 26041f73 (the framed link's `rx_wait`) is pushed to
+     `nano-ros-1.10.1` (user OK, 2026-11-19).
+   - **Fixture and test:** two west-lane rows at the Cortex-M workspace
+     coordinate (`zephyr-cortex-m-c-amp-{talker,listener}-zenoh`) and
+     `tests/zephyr_amp_rpmsg_qemu.rs`, which boots both images in one QEMU and
+     asserts that cpu1 hears five samples cpu0 published, in order. The cell
+     is a configuration of the Cortex-M witness's platform
+     (`Config::Rpmsg`): each image's session is its own `rmw_config`, so it
+     bakes no allocator port and the west lane gives these roles no
+     isolation values. A new configuration is one more 1-wise requirement,
+     so tier 2 now builds and runs the pair (15 cells over 13 coordinates).
+     QEMU resolves through the one ladder, which refuses a missing pinned
+     QEMU rather than take one from `$PATH`. Passed 5 of 5 on images rebuilt
+     after the pin bump (about 7 s each); the shared Zephyr workspace's
+     manifest gains open-amp only when this lands, so these images came from
+     `nros build` with the modules named on the command line, not from the
+     lane.
+   - **Registration:** a `board-support.toml` row booked on cpu0 (the image
+     QEMU boots as the kernel), `runs = "emulator"` at a manual cadence dated
+     2026-11-19, inheriting the Cortex-M witness's breadth, maintained by
+     jerry73204 (user, 2026-11-19); cpu0's descriptor names
+     `qemu:mps2-an521`.
+   - **Left:** the gate pass.
 
 The Linux end (the `rpmsg_char` bridge, or the router's serial locator on an
 RPMsg tty) is generic follow-up for the vision island, not this item's

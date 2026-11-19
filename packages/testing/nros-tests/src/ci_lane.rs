@@ -38,10 +38,10 @@
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 28 | 12 | 21 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 14 | 12 | 21 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 49 | 42 | 75 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 15 | 13 | 23 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 50 | 42 | 75 % |
 //! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 46 | 9 | 16 % |
-//! | tier 3 | everything | 277 | 56 | 100 % |
+//! | tier 3 | everything | 278 | 56 | 100 % |
 //!
 //! Added 2026-11-12 (phase-535 W8, RFC-0122 D8): the merge lane. It is not
 //! a rung of the ladder below: it is the set a per-merge cadence on the host
@@ -54,6 +54,14 @@
 //! joined, the C and C++ parameter examples (Linux, C or C++, zenoh, Params),
 //! each at an existing coordinate. Tier 3 went 275 -> 277 cells over the same
 //! 56 coordinates; no lane's selection moved.
+//!
+//! Re-measured 2026-11-19 (phase-575 W4): `Config::Rpmsg` joined with one
+//! Zephyr Cortex-M C zenoh Pubsub Workspace cell, the dual-core RPMsg pair. A
+//! new config value is one more 1-wise requirement, and tier 2 had no
+//! `zephyr-cortex-m` Workspace coordinate, so tier 2 went 14 -> 15 cells over
+//! 12 -> 13 coordinates and nightly 49 -> 50 cells over the same 42. Tier 1
+//! did not move: it selects host-executable cells only. Tier 3 went 277 -> 278
+//! cells over the same 56 coordinates.
 //!
 //! Re-measured 2026-11-11 (issue 2389): the `ConnectBudget` workload joined
 //! with one Zephyr native_sim Rust zenoh Example cell. A new workload value is
@@ -1389,8 +1397,8 @@ _tier-build:
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
             (CiLane::Tier1, 28, 12),
-            (CiLane::Tier2, 14, 12),
-            (CiLane::Tier2Nightly, 49, 42),
+            (CiLane::Tier2, 15, 13),
+            (CiLane::Tier2Nightly, 50, 42),
             (CiLane::Merge, 46, 9),
         ];
         for (lane, want_cells, want_coords) in documented {
@@ -1413,8 +1421,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 277,
-            "the table's tier-3 cell count (277) is stale; recomputed {total_cells}"
+            total_cells, 278,
+            "the table's tier-3 cell count (278) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,

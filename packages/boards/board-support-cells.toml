@@ -322,6 +322,18 @@ at = ["ZephyrQemuCortexM", "Cpp", "Zenoh", "ViolationChannel", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
+comment = '''
+// phase-575 W4 -- the C workspace's talker and listener on the two Cortex-M33
+// cores of one MPS2+ AN521 (`amp_bringup`), peering over RPMsg with no router:
+// one QEMU `mps2-an521` runs both images. A configuration, not the default
+// build: each image's session is its own `rmw_config`, so it bakes no
+// allocator port.
+'''
+at = ["ZephyrQemuCortexM", "C", "Zenoh", "Pubsub", "Workspace"]
+status = 'Runtime'
+with = "&[Config::Rpmsg]"
+
+[[cell]]
 at = ["ZephyrQemuCortexM", "C", "Zenoh", "Service", "Example"]
 status = '''
 BuildOnly("phase-337 W2.f — the runner reproduces W2.b's manual setup \

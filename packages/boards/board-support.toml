@@ -411,6 +411,25 @@ notes = "Runtime is run by a maintainer, hence `cadence = \"manual\"`. The model
 # directory in this crate (boards/s32z270-rtu0-zephyr/). No emulator models the
 # SoC, no CI lane builds it and no hardware run is recorded here, so the row
 # claims no run and no matrix_platform.
+# phase-575 W4 -- the Arm MPS2+ AN521 under Zephyr, one image on each of its
+# two Cortex-M33 cores, peering over RPMsg with no router. QEMU's `mps2-an521`
+# runs the pair: cpu0's image is the kernel, cpu1's is loaded beside it. The
+# evidence is the `Config::Rpmsg` cell at the ZephyrQemuCortexM coordinate
+# (`tests/zephyr_amp_rpmsg_qemu.rs`), which is a configuration of that
+# witness's platform rather than a platform of its own, so the row borrows no
+# `matrix_platform`; it states the run it holds, taken by hand, with its date.
+# No `book_run`: maintainer-run, and the run steps are the test's.
+[[board]]
+crate = "nros-board-mps2-an521-zephyr"
+board_keys = ["mps2-an521-cpu0-zephyr"]
+real_hardware = false
+runs = "emulator"
+cadence = "manual"
+last_run = "2026-11-19"
+breadth = "inherits ZephyrQemuCortexM"
+maintainers = ["jerry73204"]
+notes = "Two Cortex-M33 cores, one nano-ros image on each, talking over RPMsg with no router or network. QEMU runs both cores; cpu0 starts cpu1."
+
 [[board]]
 crate = "nros-board-zephyr"
 board_keys = ["s32z270-rtu0-zephyr"]

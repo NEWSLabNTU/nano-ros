@@ -1,0 +1,46 @@
+# Round-trip latency over RPMsg between the two Cortex-M33 cores of an Arm
+# MPS2+ AN521 under QEMU, peer to peer with no router (RFC-0134). cpu0 runs
+# `ping`, which times each round trip with its cycle counter; cpu1 runs
+# `pong`, which echoes. The board, devicetree and session files are the
+# ones `examples/workspaces/c/src/amp_bringup` uses for its pubsub pair.
+#
+# QEMU time is emulated: these are numbers about the software path on an
+# emulated machine, comparable run to run on one host, not a hardware figure.
+
+[system]
+name = "rpmsg_latency"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "ping.launch.xml"
+
+[[component]]
+pkg = "ping_pkg"
+class = "ping_pkg::Ping"
+name = "ping"
+
+[[component]]
+pkg = "pong_pkg"
+class = "pong_pkg::Pong"
+name = "pong"
+
+[image.amp_ping]
+board = "mps2-an521-cpu0-zephyr"
+launch = "ping.launch.xml"
+os_config = ["prj-amp-master.conf"]
+rmw_config = "rmw/zenoh-rpmsg-connect.json5"
+env = { NROS_ZENOH_LINK_RPMSG = "1", NROS_ZENOH_LINK_TCP = "0", NROS_ZENOH_LINK_UDP_UNICAST = "0", NROS_ZENOH_LINK_UDP_MULTICAST = "0" }
+
+# The bench measures the link, so a publication leaves when it is made rather
+# than on the 50 ms batch flush.
+[image.amp_ping.knobs.zenoh.tx]
+batch = false
+
+[image.amp_pong]
+board = "mps2-an521-cpu1-zephyr"
+launch = "pong.launch.xml"
+os_config = ["prj-amp-remote.conf"]
+rmw_config = "rmw/zenoh-rpmsg-listen.json5"
+env = { NROS_ZENOH_LINK_RPMSG = "1", NROS_ZENOH_LINK_TCP = "0", NROS_ZENOH_LINK_UDP_UNICAST = "0", NROS_ZENOH_LINK_UDP_MULTICAST = "0" }
+
+[image.amp_pong.knobs.zenoh.tx]
+batch = false
