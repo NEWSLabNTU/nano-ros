@@ -4,7 +4,7 @@ title: "Every gate is a nextest test, and a lane is a capability claim"
 status: Draft
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: [phase-543, phase-565]
+implements-tracked-by: [phase-543, phase-565, phase-584]
 supersedes: []
 superseded-by: null
 ---
@@ -13,8 +13,11 @@ superseded-by: null
 
 **Status:** Draft (2026-11-15). This RFC records the design that
 [phase-543](../roadmap/archived/phase-543-nextest-gates.md) built (W0-W6, merged). It
-adds nothing new. The decisions marked "maintainer" were made on 2026-11-06
-and 2026-11-07, in the phase doc. It goes to Stable after the maintainer's OK.
+added nothing new when written. The decisions marked "maintainer" were made
+on 2026-11-06 and 2026-11-07, in the phase doc. Amended 2026-11-20 (user
+ruling): the `gate` tier, the `ci` lane and lane preconditions, built by
+[phase-584](../roadmap/phase-584-ci-gate-one-nextest.md). It goes to Stable
+after the maintainer's OK.
 
 ## Summary
 
@@ -70,6 +73,7 @@ interfaces for the same jobs: filters, timeouts, junit, sharding and kills.
 | --- | --- |
 | `[group('gate')]` | a recipe outside `check` is a gate; inside `check`, every non-private recipe is |
 | `[metadata("tier", "build")]` | the build tier (needs a build); the default is `fast` |
+| `[metadata("tier", "gate")]` | the `ci gate` tier: a gate `just ci gate` runs and neither `check fast` nor `check build` does (amended 2026-11-20) |
 | `[metadata("tier", "exempt", "<why>")]` | in no tier, with its reason stated on the recipe |
 | `[group('needs:<cap>')]` | a capability the gate requires (D3) |
 | `[group('uses:<res>')]` | a shared resource the gate holds (D4) |
@@ -78,6 +82,13 @@ interfaces for the same jobs: filters, timeouts, junit, sharding and kills.
 
 - A recipe that takes parameters cannot be a gate, because gates run with no
   arguments.
+- The `gate` tier (user ruling, 2026-11-20; phase-584). Before it, a gate that
+  only `just ci gate` ran was `exempt`, with "a step of `ci gate`" as its
+  reason, and ran from a bash list outside the harness. Those gates are in
+  tier `gate` now, beside `test-unit` and `test-lane-contracts`, which join
+  through `[group('gate')]`. A `fast` lane does not list a `gate`-tier test,
+  so `pristine-checkout`, which runs `check fast` in a clone, no longer
+  recurses.
 - A unit may add its own `needs:` (`<unit>\tneeds:<cap>` from its lister).
 - A gate whose lister fails is listed as ONE test, and that test fails. A
   broken lister is a red, never a dropped gate.
@@ -86,7 +97,24 @@ interfaces for the same jobs: filters, timeouts, junit, sharding and kills.
 
 `.config/gate-lanes.toml` holds `[capabilities]`, each with a description, and
 `[lane.<name>]` tables of `{tiers, claims}`. A lane is named for where it
-runs: `fast`, `build`, `dev`, `runner`, `merge`, `pristine`.
+runs: `fast`, `build`, `dev`, `runner`, `merge`, `pristine`, `ci`.
+
+- **The `ci` lane** (user ruling, 2026-11-20; phase-584) is `just ci gate`:
+  tiers `fast`, `build` and `gate`, the claims of `dev`, run as ONE nextest
+  invocation with one junit. It replaces the bash list `just ci gate` ran
+  (`steps=(…)` in `just/ci.just`), where `check fast`, `check build` and
+  `test-unit` were three nextest runs and eight steps ran outside any harness.
+  A docs-only diff still runs `check fast` alone.
+- **A lane may name preconditions** (`preconditions = [...]`, same ruling):
+  gates that must hold before any other gate runs, because the others read
+  what they check (the CLI and resolver freshness gates). D5's wrapper runs
+  them, serially and fail-fast, before nextest starts, and records a verdict
+  for each. The harness lists each as `precondition::<name>`, a test that
+  reports that verdict and never runs the recipe. So a precondition is in the
+  lane's listing and junit by name, runs once, and races nothing.
+- `pristine` stays a lane: the one `pristine-checkout` runs, in the clone it
+  makes. The step that starts it is a `gate`-tier gate of the `ci` lane now,
+  no longer a line of `just ci gate`.
 
 - Every lane runs somewhere (phase-565 W4, gate `gate-lane-jobs`): it is the
   `NROS_GATE_SCOPE` of a workflow job, or names the `local` place it runs
@@ -166,6 +194,8 @@ experimental and its overrides cannot set environment.
   - clear the `GITHUB_*` step files;
   - complete the pinned Rust toolchains, as `[INFRA]` (issue 1868);
   - run the claims preflight;
+  - run the lane's preconditions (D3), serially and fail-fast, writing one
+    verdict each (amended 2026-11-20);
   - set one CPU budget (`NROS_GATE_CPU_SHARE`).
 - **Disk:** `just check nextest-gates` itself refuses to start with less than
   `NROS_GATE_MIN_FREE_GIB` (default 30) free, naming the numbers and the trim
@@ -176,7 +206,8 @@ experimental and its overrides cannot set environment.
   - write a timing profile from junit.
 - `just check fast` and `just check build` are that wrapper, each restricted
   to its own tier. The lane comes from `NROS_GATE_SCOPE` (default `dev`).
-  `pre-push` runs `check fast`, and `ci gate` runs both tiers.
+  `pre-push` runs `check fast`, and `ci gate` runs the `ci` lane: both of
+  those tiers and the `gate` tier, in one nextest run (amended 2026-11-20).
 - CI shards the build tier with `gate-shard.py` over
   `.config/build-gate-weights.txt`, by measured weight and run by name. The
   shard is not split with `--partition slice`, because a slice deals tests by
@@ -222,3 +253,6 @@ in D3 below, as phase-565 built it.
 - 2026-11-15: open question 1 and the D3/D5 gaps measured on main are
   tracked by phase-565.
 - 2026-11-16: open question 1 decided in D3 (phase-565 W1-W6): the claims are the one provisioning list, `setup-worktree` is the `dev` lane's provisioner, the `queue` lane is deleted, and every lane runs somewhere.
+- 2026-11-20: the `gate` tier (D2), the `ci` lane and lane preconditions (D3,
+  D5), approved by the user as proposed; `just ci gate` becomes one nextest
+  run. Implemented by phase-584.
