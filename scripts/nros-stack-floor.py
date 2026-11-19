@@ -1103,14 +1103,21 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
     used is compiled."""
     out: list[str] = []
     bcs: list[Path] = []
-    # Fat LTO merges a dir's crates into one module the map does not name
-    # by unit: that dir's module is the image's code and is always kept.
-    fat_bcs: list[Path] = []
+    # Issue 2710 -- a fat-LTO dir's merged module goes through the same link
+    # filter as every other unit. Its unit is the final crate's
+    # `<crate>-<hash>.<crate>.<hash>-cgu.0.rcgu`, which the link map names as
+    # the staticlib's member, so a run whose archive the image never loaded
+    # is left out. (It used to be kept unconditionally, on the belief that
+    # the map does not name a fat module by unit: a C image then walked both
+    # its runs' merged modules while linking one.)
+    fat_units = 0
     for d in bitcode_dirs:
         names = list(Path(d).glob("*.bc"))  # flat dir, not a walk
         objs = {p.name[: -len(".o")] for p in Path(d).glob("*.rcgu.o")}  # flat dir, not a walk
-        fat = any(p.name.endswith(".rcgu.lto.input.bc") for p in names)
-        (fat_bcs if fat else bcs).extend(pick_codegen_bitcode(names, objs))
+        picked = pick_codegen_bitcode(names, objs)
+        if any(p.name.endswith(".rcgu.lto.input.bc") for p in names):
+            fat_units += len(picked)
+        bcs.extend(picked)
     for i in inputs:
         p = Path(i)
         if p.suffix == ".bc":
@@ -1119,8 +1126,15 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
             bcs += rlib_bitcode(p, llvm_bin, cache)
         else:
             out.append(i)
+    given = len(bcs)
     bcs, left = select_linked_bitcode(bcs, units)
-    bcs = fat_bcs + bcs
+    if given and not bcs:
+        # Every module was filtered out: the walk would carry no Rust frames
+        # at all and read far too shallow, which no row may be measured from.
+        raise ToolMissing(
+            f"nros-stack-floor: none of the {given} Rust bitcode module(s) under "
+            f"--bitcode-dir is one the link map loaded ({fat_units} of them fat-LTO): "
+            "the --bitcode-dir globs name another build, or the map is stale")
     llc = bitcode_tool("llc", bcs, llvm_bin)
     if left:
         print(f"nros-stack-floor: {left} Rust codegen unit(s) under --bitcode-dir are not in "
@@ -3502,6 +3516,30 @@ def self_test() -> int:
                                             "w.rcgu.thin-lto-after-pm.bc"] and left == 2)
         check("bitcode: no map, nothing left out",
               select_linked_bitcode(bcs, None) == (bcs, 0))
+        # issue 2710: two fat-LTO cargo runs in one build dir, the image links
+        # one. Names as rustc writes them (island_bringup, rustc 1.99.0).
+        runs = {"rt": "nros_ws_runtime-1234.nros_ws_runtime.4f88-cgu.0.rcgu",
+                "cpp": "nros_cpp-3e79.nros_cpp.663a-cgu.0.rcgu"}
+        for run, unit in runs.items():
+            Path(d, run).mkdir()
+            Path(d, run, unit + ".lto.input.bc").write_bytes(b"in-" + run.encode())
+            Path(d, run, unit + ".bc").write_bytes(b"merged-" + run.encode())
+            Path(d, run, "dep-1.dep.2-cgu.0.rcgu.bc").write_bytes(b"dep-" + run.encode())
+        fat_map = ("libnros_ws_runtime.a(" + runs["rt"] + ".o)\n"
+                   "                              main.c.obj (zpico_session_acquire)\n")
+        fat_units = linked_codegen_units(fat_map)
+        fat_bcs = [m for run in runs for m in pick_codegen_bitcode(list(Path(d, run).glob("*.bc")))]
+        kept_fat, _ = select_linked_bitcode(fat_bcs, fat_units)
+        check("fat LTO: only the run whose archive the link loaded is walked",
+              [str(p.relative_to(d)) for p in kept_fat] == ["rt/" + runs["rt"] + ".bc"])
+        try:
+            expand_inputs([], [str(Path(d, "cpp"))], None, Path(d, "llc"), fat_units)
+            check("fat LTO: a walk left with no linked module refuses", False)
+        except ToolMissing as e:
+            check("fat LTO: a walk left with no linked module refuses",
+                  "none of the 1 Rust bitcode module" in str(e) and "1 of them fat-LTO" in str(e))
+        except Exception:  # noqa: BLE001 -- the unlinked module reached llc
+            check("fat LTO: a walk left with no linked module refuses", False)
     # the stack a board's build states, found through cargo's JSON
     with tempfile.TemporaryDirectory() as d:
         Path(d, "a").mkdir(); Path(d, "b").mkdir()
