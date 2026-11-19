@@ -1171,6 +1171,7 @@ fn run_nuttx_image_env(args: &Args, sdk_root: &std::path::Path) -> Result<()> {
         target_dir: None,
         kconfig_out: None,
         kconfig_defaults_out: None,
+        kconfig_packages_out: None,
         overrides: Vec::new(),
         language: None,
     })?;

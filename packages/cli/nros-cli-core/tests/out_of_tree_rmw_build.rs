@@ -209,6 +209,83 @@ fn nros_build_links_and_registers_a_workspace_rmw_provider() {
         "the `(image)` arm must register `acme_rmw`:\n{main_rs}"
     );
 
+    // RFC-0140 G6 (phase-581 W3) — acme's `nros-knobs.toml` declares a knob and
+    // an env row with no edit outside the fixture. Configure put both in the
+    // merged catalog it names to cargo, and the image's stated
+    // `[image.linux.knobs.acme] pool_slots = 4` is the build env row the
+    // package's build script (`nros_knob_build::emit`) reads. That the script
+    // read it is asserted from the image's own output, by
+    // `nros-tests/tests/out_of_tree_rmw_e2e.rs`.
+    let catalog = fs::read_to_string(ws.join("build/nros/knobs/catalog.toml"))
+        .expect("configure writes the merged catalog");
+    for want in ["name = \"acme.pool_slots\"", "name = \"NROS_ACME_TRACE\""] {
+        assert!(
+            catalog.contains(want),
+            "`{want}` not in catalog.toml:\n{catalog}"
+        );
+    }
+    let settings = fs::read_to_string(entry.join("nros-cargo.toml")).unwrap();
+    assert!(
+        settings.contains("NROS_ACME_POOL_SLOTS = \"4\""),
+        "the stated package knob is a build env row:\n{settings}"
+    );
+    assert!(
+        settings.contains("NROS_KNOB_CATALOG = { value = ") && settings.contains("relative = true"),
+        "the catalog is named to cargo as a relative path:\n{settings}"
+    );
+    // `nros knob show acme.pool_slots` prints it with its package.
+    nros(&["knob", "show", "acme.pool_slots", "--workspace", wss])
+        .unwrap_or_else(|e| panic!("`nros knob show acme.pool_slots`: {e}"));
+    let cat = nros_cli_core::cmd::knob::workspace_catalog(Some(&ws)).unwrap();
+    let row = cat.find("acme.pool_slots").expect("the package knob");
+    let shown = nros_cli_core::cmd::knob::render_show(&nros_cli_core::cmd::knob::package_item(row));
+    for want in [
+        "acme.pool_slots",
+        "system.toml, [image.<id>.knobs.acme] pool_slots",
+        "package:    acme_rmw",
+        "an integer from 1 to 64",
+    ] {
+        assert!(shown.contains(want), "`{want}` not in:\n{shown}");
+    }
+
+    let _ = fs::remove_dir_all(ws.parent().unwrap());
+}
+
+/// RFC-0140 D6 / G6 (phase-581 W3) — an image states a package's knob only if
+/// it links that package. An image on `rmw = "zenoh"` stating
+/// `[image.<id>.knobs.acme]` is refused, naming the owner and its package.
+#[test]
+fn an_image_stating_a_knob_of_a_package_it_does_not_link_is_refused() {
+    setup();
+    let ws = scratch_copy();
+    let wss = ws.to_str().unwrap();
+    let system = ws.join("src/demo_bringup/system.toml");
+    let mut text = fs::read_to_string(&system).unwrap();
+    text.push_str(
+        "\n[image.plain]\nboard = \"linux\"\nrmw = \"zenoh\"\n\n\
+         [image.plain.knobs.acme]\npool_slots = 4\n",
+    );
+    fs::write(&system, text).unwrap();
+
+    let err = nros_cli_core::cmd::configure::ensure_current(&ws, &[], false, false, "build", None)
+        .map_err(|e| format!("{e:?}"))
+        .and_then(|_| {
+            nros(&[
+                "build",
+                "demo_bringup:plain",
+                "--dry-run",
+                "--workspace",
+                wss,
+            ])
+        })
+        .expect_err("a knob of a package the image does not link");
+    assert!(
+        err.contains(
+            "`[image.plain.knobs.acme] pool_slots` is a knob of package acme_rmw (owner `acme`)"
+        ) && err.contains("does not link"),
+        "{err}"
+    );
+
     let _ = fs::remove_dir_all(ws.parent().unwrap());
 }
 
@@ -324,6 +401,7 @@ fn nros_build_generates_a_west_application_over_a_workspace_rmw_provider() {
     let frag = ws.join("build/kconfig-zephyr.conf");
     let defaults = ws.join("build/kconfig-zephyr-defaults.conf");
     let env = ws.join("build/kconfig-zephyr-env.toml");
+    let packages = ws.join("build/Kconfig.packages");
     nros(&[
         "dev",
         "image",
@@ -339,6 +417,8 @@ fn nros_build_generates_a_west_application_over_a_workspace_rmw_provider() {
         frag.to_str().unwrap(),
         "--kconfig-defaults-out",
         defaults.to_str().unwrap(),
+        "--kconfig-packages-out",
+        packages.to_str().unwrap(),
         "--image-env-out",
         env.to_str().unwrap(),
     ])
@@ -347,6 +427,16 @@ fn nros_build_generates_a_west_application_over_a_workspace_rmw_provider() {
     assert!(
         fragment.contains("CONFIG_NROS_RMW_ZENOH=y"),
         "an `acme` image selects the module backend it is built over:\n{fragment}"
+    );
+    // RFC-0140 G6 (phase-581 W3) — acme's knob reaches `.config` through
+    // `<build>/nros/Kconfig.packages`, which the module's Kconfig `osource`s:
+    // prompt-less, with the image's value as its first default. That
+    // `<build>/zephyr/.config` holds it is asserted on the built image by
+    // `nros-tests/tests/out_of_tree_rmw_zephyr_e2e.rs`.
+    let kpkg = fs::read_to_string(&packages).unwrap();
+    assert!(
+        kpkg.contains("config NROS_ACME_POOL_SLOTS\n    int\n    default 4\n    default 2\n"),
+        "the image's acme knob is a Kconfig default:\n{kpkg}"
     );
 
     let _ = fs::remove_dir_all(ws.parent().unwrap());

@@ -251,7 +251,14 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
             "every spelling of one ladder knob (`knobs.toml` rows with a `toml` key) — "
             "sizes, intervals and flags",
         ("packages/tooling/nros-zephyr-build/src/lib.rs", "env_spelled", "s"):
-            "every env spelling of a registry knob (`knobs.toml`) — an integer or a flag",
+            "every env spelling of a registry knob (`knobs.toml`, or an out-of-tree "
+            "package's `nros-knobs.toml` through the catalog) — an integer or a flag",
+        ("packages/tooling/nros-knob-build/src/lib.rs", "watch", "canonical"):
+            "the build env spelling of a package's own knob row (`nros-knobs.toml`, "
+            "`NROS_<OWNER>_<NAME>`) — a knob value, never a path",
+        ("packages/tooling/nros-knob-build/src/lib.rs", "watch", "e.spelling"):
+            "a retired build env spelling of a package's own knob row — watched only "
+            "so setting one refuses; never read as a value or a path",
         ("packages/tooling/nros-zephyr-build/src/lib.rs", "refuse_retired_knobs", "s"):
             "every spelling of a RETIRED registry knob (`knobs.toml` rows with `retired`) "
             "— watched only so setting one refuses; never read as a value or a path",

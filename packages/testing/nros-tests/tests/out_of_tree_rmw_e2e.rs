@@ -106,6 +106,12 @@ fn a_workspace_rmw_backend_publishes_through_nros_build() {
             Duration::from_secs(15),
         )
         .unwrap_or_else(|e| panic!("the talker never published through backend `acme`: {e}"));
+    // RFC-0140 G6 — the package's build script read the image's stated knob.
+    talker
+        .wait_for_output_pattern(output::OUT_OF_TREE_RMW_KNOB_MARKER, Duration::from_secs(5))
+        .unwrap_or_else(|e| {
+            panic!("the acme build script did not read `[image.linux.knobs.acme] pool_slots`: {e}")
+        });
     let heard = listener
         .wait_for_output_count(output::LISTENER_LOG_PREFIX, 3, Duration::from_secs(15))
         .unwrap_or_else(|e| panic!("the listener heard nothing from the `acme` talker: {e}"));

@@ -18,5 +18,10 @@ name = "talker"
 board = "fixture-r5f-freertos"
 locator = "tcp/192.0.3.1:7447"
 
+# RFC-0140 D5/G6 (phase-581 W3) -- a knob the BOARD PACKAGE declares, stated
+# exactly as a core one; the board crate's build script reads it.
+[image.fixture-r5f-freertos.knobs.fixture_r5f_freertos]
+uart_rx_slots = 3
+
 [board_config."fixture-r5f-freertos"]
 netstack = "lwip"

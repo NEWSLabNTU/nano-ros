@@ -137,6 +137,14 @@ pub struct LeafSystemArgs {
     #[arg(long, value_name = "PATH", requires = "kconfig_out")]
     pub kconfig_defaults_out: Option<PathBuf>,
 
+    /// With `--kconfig-out`, write the knobs of the out-of-tree packages the
+    /// image links, prompt-less with the image's values as defaults, to PATH,
+    /// `<build>/nros/Kconfig.packages`, which the module's `Kconfig`
+    /// `osource`s. Printed as `NROS_LEAF_KCONFIG_PACKAGES`.
+    // phase-581 W3 (RFC-0140 D5).
+    #[arg(long, value_name = "PATH", requires = "kconfig_out")]
+    pub kconfig_packages_out: Option<PathBuf>,
+
     /// A transient knob value for this build only, `ID=VALUE`.
     ///
     /// `ID` is the registry id: `EXECUTOR_ARENA_SIZE=32`. The Zephyr module hook
@@ -695,6 +703,31 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             // scan, so an out-of-tree backend resolves here as it does on
             // `nros build`.
             let rmws = crate::orchestration::rmw_index::for_dir(&dir)?;
+            // phase-581 W3 (RFC-0140 D5/D6) -- the catalog `nros configure`
+            // wrote (the hook ran it just before), so the APP rung renders an
+            // out-of-tree package's knob, and one of a package this image
+            // does not link is refused.
+            let ws_root =
+                crate::cmd::image_facts::workspace_root_from(&dir).unwrap_or_else(|| dir.clone());
+            crate::knob_catalog::ensure_current(&ws_root);
+            let platform_word = catalog
+                .as_ref()
+                .and_then(|cat| crate::cmd::board_facts::resolve_board(cat, &board))
+                .map(|d| d.platform.kebab().to_string());
+            let linked = crate::knob_catalog::linked_owners(
+                leaf.rmw.as_deref(),
+                Some(board.as_str()),
+                platform_word.as_deref(),
+            );
+            if let Some(cat) = crate::knob_catalog::current() {
+                crate::knob_catalog::refuse_unlinked_package_knobs(
+                    &cat,
+                    leaf.image.as_deref().unwrap_or("<id>"),
+                    leaf.knobs.keys(),
+                    &linked,
+                )
+                .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
+            }
             let r = crate::cmd::leaf_kconfig::render_over(
                 &leaf,
                 language,
@@ -721,6 +754,15 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                 let body = crate::cmd::leaf_kconfig::defaults_text(&leaf, &r);
                 crate::cmd::leaf_kconfig::write_fragment(d, Some(&body))?;
                 println!("NROS_LEAF_KCONFIG_DEFAULTS={}", d.display());
+            }
+            if let Some(p) = &args.kconfig_packages_out {
+                let cat = crate::knob_catalog::current()
+                    .map_or_else(crate::knob_catalog::Catalog::core, |c| (*c).clone());
+                let owners: Vec<&str> = linked.iter().map(String::as_str).collect();
+                let body = crate::cmd::leaf_kconfig::packages_text(&leaf, &cat, &owners)
+                    .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
+                crate::cmd::leaf_kconfig::write_fragment(p, Some(&body))?;
+                println!("NROS_LEAF_KCONFIG_PACKAGES={}", p.display());
             }
             (Some(written), r.cargo_rows)
         }
@@ -952,6 +994,7 @@ mod tests {
             target_dir: None,
             kconfig_out: None,
             kconfig_defaults_out: None,
+            kconfig_packages_out: None,
             overrides: Vec::new(),
             language: Some("c".to_string()),
         }
@@ -1077,6 +1120,7 @@ mod tests {
             run(LeafSystemArgs {
                 kconfig_out: Some(out.join("frag.conf")),
                 kconfig_defaults_out: Some(defaults.clone()),
+                kconfig_packages_out: None,
                 ..args(td.path())
             })
             .expect("the Zephyr road renders");

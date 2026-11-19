@@ -1,0 +1,23 @@
+[package]
+name = "nros-knob-build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Build-script helper: a package's own configuration rows as typed Rust items (RFC-0140 D5)"
+
+# A package that declares rows in its `nros-knobs.toml` reads them in its
+# build script through `nros_knob_build::emit` (RFC-0140 D5): the file is
+# parsed by `nros-knob-catalog`, the one loader, and each knob resolved by the
+# one ladder, `nros_zephyr_build::knob`. A build script cannot reach the `nros`
+# CLI, which is why the loader is a crate of its own.
+[package.metadata.nros]
+host-only = true
+host-only-reason = "build-script helper, runs on the host"
+
+[dependencies]
+nros-knob-catalog = { path = "../nros-knob-catalog" }
+nros-zephyr-build = { path = "../nros-zephyr-build" }
+
+[dev-dependencies]
+tempfile = "3"
