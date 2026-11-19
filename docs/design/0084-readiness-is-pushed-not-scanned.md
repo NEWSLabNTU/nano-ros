@@ -341,7 +341,7 @@ Answered or filed on 2026-11-14 (phase-555 W3):
 
 - **2026-11-19 — open question 3 answered** by the fix for
   [issue 2541](../issues/archived/2541-executor-callback-slots-capped-at-64.md)
-  (PR_NUMBER). The question was whether widening past one `u64` needed a
+  (#4320). The question was whether widening past one `u64` needed a
   lock-free multi-word set-bit on the arrival path. It does not need one
   operation across words: each slot's bit is independent, and no reader needs
   a multi-word snapshot. So the word became `AtomicSlotMask`, one
