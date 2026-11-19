@@ -138,7 +138,7 @@ user measured.
    (`NROS_ZEPHYR_TIER_STACK_SIZE`) and the main stack belong to issue 2360 /
    2365.
 
-Still open: item 4's stack half, which issue 2360 / 2365 own. Items 5 and 6
+Still open: item 4's stack half, which issue 2360 owns (parked; see the last section). Items 5 and 6
 are PR #3390's. This issue stays open until the stacks are settled there.
 
 Parked follow-up (maintainer ruling 2026-11-10: filed, not done now): a
@@ -287,3 +287,23 @@ What this settles:
 
 The static walk's floors for the same two images are 3-10x these peaks, and
 are filed separately as issue 2658.
+
+## Parked behind issue 2360 (2026-11-19)
+
+Two items remain. Both are RAM savings, and both are parked: the agreed order is
+bugs, API parity and knob wiring before optimisation.
+
+* **The tier-slot stacks (item 4's stack half).** Parked behind issue 2360,
+  which owns the Zephyr stack sizing and has no owner. Issue 2365, the other
+  owner named above, is resolved. The four images measured so far peak at
+  152-2,416 B against a 16,384 B slot, and four images are not a census.
+
+  **Next step:** census the slot peaks with the thread analyzer on every
+  zenoh Zephyr fixture image class: C, C++ and Rust, each as talker,
+  listener, service and action, on mps2-an385 (QEMU), the nucleo-f767zi
+  Renode twin and qemu-cortex-a53 SMP. Then set the
+  `NROS_ZEPHYR_TIER_STACK_SIZE` default to about twice the worst peak, with
+  an image's stated value still winning. Those are many QEMU and Renode runs,
+  which is why the census waits.
+* **The 48 KiB `NROS_ZEPHYR_HEAP_SIZE` tier** for images that declare no
+  action stays parked by the maintainer's 2026-11-10 ruling (above).
