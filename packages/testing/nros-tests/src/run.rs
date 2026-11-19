@@ -326,6 +326,37 @@ pub fn host_image(image: &Command, plan_args: &[(&str, &str)]) -> TestResult<Hos
     })
 }
 
+/// Execute a plan `nros run` RESOLVED (its `--dry-run --json`), as written:
+/// the run half of a resolve-then-run test, with nothing built.
+///
+/// # Errors
+///
+/// The `nros` CLI is not built, or the plan directory cannot be written.
+pub fn resolved_plan(plan: &serde_json::Value) -> TestResult<HostRun> {
+    let nros = nros_cli()?;
+    let image_line = plan
+        .pointer("/artifacts/elf")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("<no elf>")
+        .to_string();
+    let (dir, command) = verb_command(nros, plan)?;
+    Ok(HostRun {
+        command,
+        image_line,
+        dir,
+    })
+}
+
+/// The `nros` CLI, as a path, for a test that drives a verb other than
+/// `run --plan` (the resolve half of a resolve-then-run test).
+///
+/// # Errors
+///
+/// The `nros` CLI is not built.
+pub fn nros_cli_path() -> TestResult<PathBuf> {
+    nros_cli()
+}
+
 /// The `nros` CLI, or why no image can be run through `nros run --plan`.
 fn nros_cli() -> TestResult<PathBuf> {
     crate::nros_cli_bin_path().ok_or_else(|| {

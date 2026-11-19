@@ -2493,9 +2493,18 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // (the fixture locator's two shapes).
                 // RFC-0071 D19 — a NAMED owned entry's executable is whatever
                 // its own CMakeLists.txt calls it, under `pkg/<name>/`.
-                let named_owned = image.entry.is_some()
-                    && matches!(owned_entry_dir(&root, &image_id, &image), Ok(Some(_)));
+                let owned_entry = match image.entry {
+                    Some(_) => owned_entry_dir(&root, &image_id, &image).ok().flatten(),
+                    None => None,
+                };
+                let named_owned = owned_entry.is_some();
+                if named_owned && !args.dry_run {
+                    // Its executable is read back from CMake after the build.
+                    crate::builder::cmake_file_api::request_codemodel(&manifest_dir.join("cmake"))
+                        .wrap_err("ask CMake to name the owned entry's executable")?;
+                }
                 output = Some(crate::cmd::build_next::BuildOutput::CMake {
+                    owned_entry,
                     build_dir: manifest_dir.join("cmake"),
                     executable: (!named_owned).then(|| {
                         if root
@@ -3739,6 +3748,7 @@ fn plan_single_package_cmake(
         output: Some(crate::cmd::build_next::BuildOutput::CMake {
             build_dir: output_dir,
             executable: crate::cmd::build_next::cmake_leaf_executable(root),
+            owned_entry: None,
         }),
         descriptor: Some(descriptor.clone()),
         run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&decl, image_net.as_ref()),
