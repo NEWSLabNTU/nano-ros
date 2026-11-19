@@ -29,9 +29,14 @@ choice
     prompt "RMW backend"
     default NROS_RMW_ZENOH
     help
-      Selects the ROS 2 middleware nano-ros uses. The choice flips
-      the matching `--features rmw-<name>` Cargo flag in the
-      sibling Makefile.
+      Selects the ROS 2 middleware nano-ros uses. The sibling
+      Makefile passes the choice to the image crate generator as
+      `<name>` (CONFIG_NROS_RMW_<NAME>=y).
+
+      This make build links the image staticlib alone, so it builds
+      only a backend the image crate bundles. It refuses any other
+      choice before compiling, naming the backends it can build
+      (read from each backend's nros-rmw.toml, not listed here).
 
 config NROS_RMW_ZENOH
     bool "Zenoh (zenoh-pico)"

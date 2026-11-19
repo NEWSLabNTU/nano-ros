@@ -109,8 +109,10 @@ pub struct Args {
     #[arg(long)]
     pub out: Option<PathBuf>,
 
-    /// `nuttx-cargo-config` mode, with `--project`: the RMW the kernel's
-    /// Kconfig selects, checked against the project's image.
+    /// `nuttx-cargo-config` mode (required): the RMW the kernel's Kconfig
+    /// selects. Refused unless the NuttX make road can build it (a backend the
+    /// image crate bundles); with `--project`, also checked against the
+    /// project's image.
     #[arg(long)]
     pub rmw: Option<String>,
 
@@ -119,8 +121,8 @@ pub struct Args {
     #[arg(long)]
     pub ros_edition: Option<String>,
 
-    /// `nuttx-cargo-config` mode, with `--project`: the kernel's `.config`,
-    /// named when its choices disagree with the image.
+    /// `nuttx-cargo-config` mode: the kernel's `.config`, named when its
+    /// choices are refused or disagree with the image.
     #[arg(long)]
     pub kconfig: Option<PathBuf>,
 }
@@ -984,6 +986,23 @@ fn run_nuttx_cargo_config(args: &Args, sdk_root: &std::path::Path) -> Result<()>
              <CONFIG_ARCH_BOARD>, --target-dir <dir> and --out <file>"
         );
     };
+    let Some(rmw) = args.rmw.as_deref() else {
+        bail!(
+            "`nros locate nuttx-cargo-config` needs --rmw <name>: the RMW the kernel's Kconfig \
+             selects (`CONFIG_NROS_RMW_<NAME>=y`), which this road must be able to build"
+        );
+    };
+    let kconfig = args
+        .kconfig
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(".config"));
+    // Issue 2705 -- before anything is configured or compiled, and with or
+    // without a project: the RMW must be one this road can build.
+    let rmw_index = match args.project.as_deref() {
+        Some(project) => crate::orchestration::rmw_index::for_dir(project)?,
+        None => crate::orchestration::rmw_index::for_sdk_root_path(sdk_root)?,
+    };
+    check_nuttx_make_rmw(&rmw_index, rmw, &kconfig).map_err(|e| eyre::eyre!(e))?;
     let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(sdk_root)
         .map_err(|e| eyre::eyre!("load board catalog: {e}"))?;
     let board = select_nuttx_board(catalog.descriptors(), triple, arch_board)
@@ -992,16 +1011,12 @@ fn run_nuttx_cargo_config(args: &Args, sdk_root: &std::path::Path) -> Result<()>
     // this kernel before anything is configured, and record the image it
     // builds beside the settings file for the configure step to read.
     if let Some(project) = args.project.as_deref() {
-        let kconfig = args
-            .kconfig
-            .clone()
-            .unwrap_or_else(|| PathBuf::from(".config"));
         let key = check_nuttx_project(
             &nros_build_paths::canonical(project),
             args.image.as_deref(),
             board,
             &kconfig,
-            args.rmw.as_deref(),
+            Some(rmw),
             args.ros_edition.as_deref(),
         )
         .map_err(|e| eyre::eyre!(e))?;
@@ -1675,6 +1690,68 @@ fn check_nuttx_project(
     Ok(chosen.key.clone())
 }
 
+/// The RMWs the NuttX make road can build: every backend on `index`'s search
+/// whose descriptor the generated image crate bundles
+/// ([`RmwDescriptor::image_crate_bundles`](cargo_nano_ros::rmw_descriptor::RmwDescriptor::image_crate_bundles)).
+/// The road links the image staticlib alone (`integrations/nuttx/Make.defs`
+/// puts `libnros_c.a` / `libnros_cpp.a` on `EXTRA_LIBS` and nothing else), so
+/// a backend the crate leaves for a CMake build to link never reaches it.
+/// Derived from the registry, never listed: a new bundled backend is
+/// buildable here the moment its descriptor says so.
+fn nuttx_make_buildable_rmws(index: &crate::orchestration::rmw_index::RmwIndex) -> Vec<String> {
+    index
+        .known()
+        .into_iter()
+        .filter(|n| {
+            index
+                .resolve(n)
+                .is_ok_and(|r| r.descriptor.image_crate_bundles())
+        })
+        .collect()
+}
+
+/// Issue 2705 -- refuse, at configure time, a Kconfig RMW the NuttX make road
+/// cannot build. Without this the road generated an image crate with no
+/// backend in it and linked an image with no backend registered (or failed
+/// at the link), and no step said why. Returns the canonical name.
+fn check_nuttx_make_rmw(
+    index: &crate::orchestration::rmw_index::RmwIndex,
+    rmw: &str,
+    kconfig: &std::path::Path,
+) -> std::result::Result<String, String> {
+    let symbol = format!("CONFIG_NROS_RMW_{}=y", rmw.to_ascii_uppercase());
+    let buildable = nuttx_make_buildable_rmws(index);
+    let resolved = index.resolve(rmw).map_err(|e| {
+        format!(
+            "{} selects `{symbol}`, and no RMW provider resolves `{rmw}`: {e}. The NuttX make \
+             road (integrations/nuttx/Makefile) builds: {}.",
+            kconfig.display(),
+            buildable.join(", ")
+        )
+    })?;
+    if resolved.descriptor.image_crate_bundles() {
+        return Ok(resolved.declared.clone());
+    }
+    Err(format!(
+        "the NuttX make road (integrations/nuttx/Makefile) cannot build RMW `{name}`, which {} \
+         selects (`{symbol}`). This road links the image staticlib alone, and `{name}` is not \
+         bundled into it ([rmw.link] strategy = \"{strategy}\"): its CMake target `{target}` \
+         is linked by a CMake build, which this road does not run. RMWs this road builds: {}. \
+         Select one of them (`make menuconfig`, nano-ros -> RMW backend), or build a `{name}` \
+         image on a road that links CMake backends (`nros build` on the CMake road, or west \
+         on Zephyr) where the backend supports the platform.",
+        kconfig.display(),
+        buildable.join(", "),
+        name = resolved.declared,
+        strategy = resolved.descriptor.link_strategy,
+        target = if resolved.descriptor.cmake_target.is_empty() {
+            "(none)"
+        } else {
+            resolved.descriptor.cmake_target.as_str()
+        },
+    ))
+}
+
 /// The one NuttX board that builds for `triple`. Several share it only when
 /// they differ by NuttX board, so `CONFIG_ARCH_BOARD` narrows them by the
 /// board part of their `[board.nuttx] board_config` (`qemu-armv7a-nsh`,
@@ -1960,6 +2037,161 @@ mod nuttx_project_tests {
         for body in &cases {
             let e = check(body, None, "xrce").unwrap_err();
             assert!(!id.is_match(&e), "{e}");
+        }
+    }
+}
+
+/// Issue 2705 -- the NuttX make road refuses, at configure time, any RMW it
+/// cannot build, with or without a project, naming the RMWs it can.
+#[cfg(test)]
+mod nuttx_make_rmw_tests {
+    use super::{Args, check_nuttx_make_rmw, nuttx_make_buildable_rmws, run_nuttx_cargo_config};
+    use crate::orchestration::rmw_index;
+    use clap::Parser;
+    use std::path::{Path, PathBuf};
+
+    fn root() -> PathBuf {
+        nros_build_paths::canonical(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.."))
+    }
+
+    /// A one-bringup project whose image is for the kernel's board and states `rmw`.
+    fn project(rmw: &str) -> tempfile::TempDir {
+        let ws = tempfile::tempdir().unwrap();
+        let b = ws.path().join("src/demo_bringup");
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(
+            b.join("package.xml"),
+            "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>demo_bringup</name>\n  \
+             <version>0.1.0</version>\n  <description>d</description>\n  \
+             <maintainer email=\"a@b.c\">a</maintainer>\n  <license>Apache-2.0</license>\n  \
+             <export>\n    <build_type>nros_cmake</build_type>\n  </export>\n</package>\n",
+        )
+        .unwrap();
+        std::fs::write(
+            b.join("system.toml"),
+            format!(
+                "[system]\nname = \"demo\"\nrmw = \"{rmw}\"\ndomain_id = 0\n\n\
+                 [[component]]\npkg = \"demo\"\nclass = \"demo::Talker\"\nname = \"talker\"\n\
+                 entities = []\n\n[image.arm]\nboard = \"qemu-armv7a-nuttx\"\n"
+            ),
+        )
+        .unwrap();
+        ws
+    }
+
+    /// `nros locate nuttx-cargo-config` as the Makefile runs it, for the arm
+    /// kernel, Kconfig selecting `rmw`, with `project` when given.
+    fn run(rmw: &str, project: Option<&Path>) -> eyre::Result<()> {
+        let out = tempfile::tempdir().unwrap();
+        let file = out.path().join("make/nros-cargo.toml");
+        let mut argv: Vec<String> = [
+            "locate",
+            "nuttx-cargo-config",
+            "--target",
+            "armv7a-nuttx-eabihf",
+            "--nuttx-board",
+            "qemu-armv7a",
+            "--rmw",
+            rmw,
+            "--ros-edition",
+            "humble",
+            "--kconfig",
+            "/k/.config",
+        ]
+        .map(String::from)
+        .to_vec();
+        argv.extend([
+            "--target-dir".into(),
+            out.path().join("target").display().to_string(),
+            "--out".into(),
+            file.display().to_string(),
+        ]);
+        if let Some(p) = project {
+            argv.extend(["--project".into(), p.display().to_string()]);
+        }
+        let args = Args::try_parse_from(argv).expect("args");
+        run_nuttx_cargo_config(&args, &root())
+    }
+
+    fn assert_refused(e: &str) {
+        assert!(
+            e.contains("NuttX make road")
+                && e.contains("`cyclonedds`")
+                && e.contains("CONFIG_NROS_RMW_CYCLONEDDS=y")
+                && e.contains("/k/.config")
+                && e.contains("RMWs this road builds: xrce, zenoh"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn buildable_set_is_the_bundled_backends() {
+        let index = rmw_index::for_sdk_root_path(&root()).unwrap();
+        assert_eq!(nuttx_make_buildable_rmws(&index), ["xrce", "zenoh"]);
+    }
+
+    #[test]
+    fn cyclonedds_is_refused_without_a_project() {
+        let e = run("cyclonedds", None).unwrap_err().to_string();
+        assert_refused(&e);
+    }
+
+    #[test]
+    fn cyclonedds_is_refused_with_a_project_that_states_it_too() {
+        let ws = project("cyclonedds");
+        let e = run("cyclonedds", Some(ws.path())).unwrap_err().to_string();
+        assert_refused(&e);
+    }
+
+    #[test]
+    fn zenoh_and_xrce_pass_without_a_project() {
+        for rmw in ["zenoh", "xrce"] {
+            run(rmw, None).unwrap_or_else(|e| panic!("{rmw}: {e}"));
+        }
+    }
+
+    #[test]
+    fn zenoh_and_xrce_pass_with_a_project() {
+        for rmw in ["zenoh", "xrce"] {
+            let ws = project(rmw);
+            run(rmw, Some(ws.path())).unwrap_or_else(|e| panic!("{rmw}: {e}"));
+        }
+    }
+
+    #[test]
+    fn an_rmw_no_provider_resolves_is_refused_naming_the_buildable_ones() {
+        let index = rmw_index::for_sdk_root_path(&root()).unwrap();
+        let e = check_nuttx_make_rmw(&index, "nosuch", Path::new("/k/.config")).unwrap_err();
+        assert!(
+            e.contains("CONFIG_NROS_RMW_NOSUCH=y") && e.contains("builds: xrce, zenoh"),
+            "{e}"
+        );
+    }
+
+    /// Every RMW `integrations/nuttx/Kconfig` offers is either built by this
+    /// road or refused by the check above: each resolves to a provider (so
+    /// the Makefile's `CONFIG_NROS_RMW_<NAME>` -> `<name>` lowering names a
+    /// real backend), and the check's answer for it agrees with the registry.
+    #[test]
+    fn every_kconfig_rmw_is_buildable_or_refused() {
+        let kconfig = std::fs::read_to_string(root().join("integrations/nuttx/Kconfig")).unwrap();
+        let offered: Vec<String> = kconfig
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("config NROS_RMW_"))
+            .map(|n| n.trim().to_ascii_lowercase())
+            .collect();
+        assert!(!offered.is_empty(), "no NROS_RMW_* choice in the NuttX Kconfig");
+        let index = rmw_index::for_sdk_root_path(&root()).unwrap();
+        for rmw in &offered {
+            let resolved = index
+                .resolve(rmw)
+                .unwrap_or_else(|e| panic!("Kconfig offers `{rmw}`, which resolves nowhere: {e}"));
+            let answer = check_nuttx_make_rmw(&index, rmw, Path::new("/k/.config"));
+            assert_eq!(
+                answer.is_ok(),
+                resolved.descriptor.image_crate_bundles(),
+                "{rmw}: {answer:?}"
+            );
         }
     }
 }

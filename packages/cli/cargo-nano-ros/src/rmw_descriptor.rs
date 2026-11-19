@@ -400,6 +400,23 @@ pub fn derive_link_strategy(rlib_dep: &str, cmake_target: &str) -> Option<&'stat
     }
 }
 
+impl RmwDescriptor {
+    /// Does a generated image crate (`cmake/NanoRosImageCrate.cmake`,
+    /// `nros_image_backend()`) bundle this backend into the image's own
+    /// staticlib? True for a [`LINK_UMBRELLA`] backend with a Rust register
+    /// crate: the image crate depends on it and anchors its registration.
+    /// Anything else is left for the build around the crate to link (a CMake
+    /// road whole-archives a [`LINK_CMAKE`] target), so a road that links the
+    /// image staticlib ALONE, such as the NuttX make road, cannot build it.
+    ///
+    /// The same two facts `nros_image_backend()` reads off the dispatch query
+    /// (`NROS_RMW_LINK_STRATEGY`, `NROS_RMW_REGISTER_CRATE`).
+    #[must_use]
+    pub fn image_crate_bundles(&self) -> bool {
+        self.link_strategy == LINK_UMBRELLA && !self.register_crate.is_empty()
+    }
+}
+
 /// A descriptor may restate a derivable field; it may not disagree with it.
 ///
 /// Empty means "not stated" — after phase-420 W5 the field's whole point is to
