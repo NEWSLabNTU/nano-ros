@@ -508,7 +508,23 @@ fn infra_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
     //
     // Issue 1743 — the arithmetic is the SHARED one, so XRCE's service-server
     // slots and this queryable table cannot price the same servers differently.
-    nros_sizing_descriptor::infra::infra_service_servers(infra, nodes)
+    //
+    // Issue 2553 -- the lifecycle family per STATE MACHINE: one per managed
+    // node the descriptor counts (`[image] lifecycle_nodes`), one when it
+    // counts none.
+    nros_sizing_descriptor::infra::infra_service_servers_with(
+        infra,
+        nodes,
+        described_lifecycle_nodes().as_deref(),
+    )
+}
+
+/// Issue 2553 -- `[image] lifecycle_nodes`, the managed-node count the
+/// lifecycle family is priced over, from the named descriptor. `None` (no
+/// descriptor, or the field absent) prices one machine when the family is on.
+fn described_lifecycle_nodes() -> Option<String> {
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
+    desc.image.lifecycle_nodes().stated().map(usize::to_string)
 }
 
 /// phase-462 W6b -- the read-task budget the sizing descriptor states,
@@ -632,12 +648,17 @@ fn liveliness_with_runtime(
     // executor shares a component's name -- the inventory's rule.
     let nodes_here = components.unwrap_or(1).max(declared_nodes(nodes));
     let node_names = nodes_here + usize::from(lifecycle);
+    // Issue 2553 -- one `transition_event` per state machine.
+    let machines = if lifecycle {
+        nros_sizing_descriptor::infra::lifecycle_machines(
+            infra,
+            described_lifecycle_nodes().as_deref(),
+        )
+    } else {
+        0
+    };
     let runtime = infra_queryables(infra, nodes)
-        + if lifecycle {
-            LIFECYCLE_SERVICE_PUBLISHERS
-        } else {
-            0
-        }
+        + LIFECYCLE_SERVICE_PUBLISHERS * machines
         + if param { PARAM_EVENT_PUBLISHERS } else { 0 }
         // phase-556 W13 -- each node's `/rosout` writer's token.
         + if rosout {

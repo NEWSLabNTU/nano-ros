@@ -1607,6 +1607,7 @@ mod tests {
             Some(crate::entity_inventory::InfraServices {
                 param_services: param,
                 lifecycle,
+                managed_nodes: 0,
                 model_nodes: nodes,
                 launch_seeds_params: false,
                 param_store: false,

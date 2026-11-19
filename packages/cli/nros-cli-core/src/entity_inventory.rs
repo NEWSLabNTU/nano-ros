@@ -1796,8 +1796,16 @@ pub struct InfraServices {
     /// The bringup declares `param_services`: six servers on EVERY node
     /// (phase-426 W3), because `ros2 param` addresses nodes.
     pub param_services: bool,
-    /// The bringup declares `lifecycle`: five servers, once per executor.
+    /// The bringup declares `lifecycle` (a feature switch, or the typed
+    /// `[lifecycle]` block): the family is in the image.
     pub lifecycle: bool,
+    /// Issue 2553 -- how many MANAGED nodes the model marks (`lifecycle: true`,
+    /// from a launch `<lifecycle_node>` or a contract), counted by the same
+    /// [`nros_orchestration_ir::overlay::LoadedModel::managed_nodes`] the
+    /// generated entry registers its machines from. Each managed node is its
+    /// own REP-2002 state machine (RFC-0128 D1): five servers and a
+    /// `transition_event` publisher each. See [`Self::lifecycle_machines`].
+    pub managed_nodes: usize,
     /// How many nodes the model resolves. [`Self::param_nodes`] takes the
     /// larger of this and the image's component count, floored at one -- the
     /// executor's own rule (`nodes.len().max(1)` sets).
@@ -1883,6 +1891,10 @@ impl InfraServices {
     ) -> Self {
         let mut infra = Self::from_features(&model.features(image), model.structure.nodes.len());
         infra.lifecycle |= model_declares_lifecycle_block(model);
+        // Issue 2553 -- one machine per managed node, from the registration's
+        // own list; a marked node turns the family on whatever the switches say.
+        infra.managed_nodes = model.managed_nodes().len();
+        infra.lifecycle |= infra.managed_nodes > 0;
         infra.launch_seeds_params = model_seeds_params(model);
         infra
     }
@@ -1898,6 +1910,8 @@ impl InfraServices {
         Self {
             param_services: has("param_services"),
             lifecycle: has("lifecycle"),
+            // A feature list names no node, so it marks none managed.
+            managed_nodes: 0,
             model_nodes: nodes,
             // A feature list has no launch tree to seed from.
             launch_seeds_params: false,
@@ -1942,23 +1956,32 @@ impl InfraServices {
         }
     }
 
+    /// Issue 2553 -- the REP-2002 state machines the image registers: one per
+    /// managed node, and one when the family is on with no node marked (a
+    /// feature switch, an owned entry: the pre-2553 price). Zero when off.
+    /// The same rule as `nros_sizing_descriptor::infra::lifecycle_machines`,
+    /// which the build scripts price the descriptor's facts with.
+    pub fn lifecycle_machines(self) -> usize {
+        if self.managed_nodes > 0 {
+            self.managed_nodes
+        } else {
+            usize::from(self.lifecycle)
+        }
+    }
+
     /// Queryables (service servers) the two families claim at boot.
     pub fn queryables(self, components: usize) -> usize {
-        let lifecycle = if self.lifecycle {
-            LIFECYCLE_SERVICE_QUERYABLES
-        } else {
-            0
-        };
+        // Issue 2553 -- five per state machine, not five per image.
+        let lifecycle = LIFECYCLE_SERVICE_QUERYABLES * self.lifecycle_machines();
         PARAM_SERVICE_QUERYABLES * self.param_nodes(components) + lifecycle
     }
 
     /// PUBLISHERS the two families claim at boot — issue 1587.
     ///
-    /// One, `~/transition_event`, when the bringup declares `lifecycle`. Once per EXECUTOR and not per node, exactly
-    /// as [`LIFECYCLE_SERVICE_QUERYABLES`] is: `register_lifecycle_services`
-    /// builds one set under the executor's own FQN, which is why
-    /// [`Self::queryables`] multiplies the parameter term by
-    /// [`Self::param_nodes`] and leaves the lifecycle term alone.
+    /// One `~/transition_event` per lifecycle state machine
+    /// ([`Self::lifecycle_machines`], issue 2553): each managed node registers
+    /// its own machine (RFC-0128 D1), exactly as each claims its own
+    /// [`LIFECYCLE_SERVICE_QUERYABLES`] in [`Self::queryables`].
     ///
     /// Counted here rather than conjured below the declaration. The bringup
     /// states the FEATURE, so this inventory can see it — the same argument
@@ -1973,11 +1996,8 @@ impl InfraServices {
     /// ([`Self::rosout_nodes`]) when the effective features carry `rosout`:
     /// the executor creates each node's `/rosout` writer.
     pub fn publishers(self, components: usize) -> usize {
-        let lifecycle = if self.lifecycle {
-            LIFECYCLE_SERVICE_PUBLISHERS
-        } else {
-            0
-        };
+        // Issue 2553 -- one `transition_event` per state machine.
+        let lifecycle = LIFECYCLE_SERVICE_PUBLISHERS * self.lifecycle_machines();
         let params = if self.param_services {
             PARAM_EVENT_PUBLISHERS
         } else {
@@ -2007,6 +2027,7 @@ impl InfraServices {
         Self {
             param_services: self.param_services || other.param_services,
             lifecycle: self.lifecycle || other.lifecycle,
+            managed_nodes: self.managed_nodes.max(other.managed_nodes),
             model_nodes: self.model_nodes.max(other.model_nodes),
             launch_seeds_params: self.launch_seeds_params || other.launch_seeds_params,
             param_store: self.param_store || other.param_store,
@@ -8870,6 +8891,63 @@ contracts:
             lifecycle.tl_publishers, none.tl_publishers,
             "and it is not a transient-local publisher, so the retention pool \
              and `transient_local_publishers_over`'s count do not move either"
+        );
+    }
+
+    /// Issue 2553 -- a managed node is its own REP-2002 state machine
+    /// (RFC-0128 D1): two launch-marked managed nodes cost two machines, ten
+    /// service servers and two `transition_event` publishers, never one
+    /// machine for the image. The count is the model's managed set, the list
+    /// the generated entry registers its machines from.
+    #[test]
+    fn each_launch_marked_managed_node_is_priced_its_own_machine() {
+        let model = |a: &str, b: &str| {
+            let yaml = format!(
+                r#"
+meta:
+  version: 1
+structure:
+  nodes:
+    /a: {{ scope: s.launch.xml, pkg: p, exec: a, node_name: a, lifecycle: {a} }}
+    /b: {{ scope: s.launch.xml, pkg: p, exec: b, node_name: b, lifecycle: {b} }}
+  topics:
+    /chatter:
+      type: std_msgs/msg/String
+      pub: [/b/chatter]
+"#
+            );
+            nros_orchestration_ir::overlay::LoadedModel::from_legacy_yaml(&yaml)
+                .expect("model fixture parses")
+        };
+        let knobs = |m: &nros_orchestration_ir::overlay::LoadedModel| {
+            EntityInventory::from_model("t", m)
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
+        };
+        let none = knobs(&model("false", "false"));
+        let one = knobs(&model("true", "false"));
+        let two = knobs(&model("true", "true"));
+        assert_eq!(
+            InfraServices::from_model(&model("true", "true"), None).managed_nodes,
+            2
+        );
+        assert_eq!(
+            one.max_queryables - none.max_queryables,
+            LIFECYCLE_SERVICE_QUERYABLES,
+            "one managed node: one machine"
+        );
+        assert_eq!(
+            two.max_queryables - none.max_queryables,
+            2 * LIFECYCLE_SERVICE_QUERYABLES,
+            "two managed nodes: two machines, not one per image"
+        );
+        assert_eq!(
+            two.max_publishers - none.max_publishers,
+            2 * LIFECYCLE_SERVICE_PUBLISHERS,
+            "one `transition_event` per machine"
         );
     }
 

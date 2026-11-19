@@ -1564,6 +1564,10 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
     // floors the count at one (`infra::declared_nodes`), so `0` and absent are
     // one answer, and absent keeps an empty model at no file.
     img.set_model_nodes(inputs.infra.map(|i| i.model_nodes).filter(|&n| n > 0));
+    // Issue 2553 -- the managed-node count the lifecycle family is priced
+    // over, per machine. Zero is absent: every consumer then prices one
+    // machine when the family is on, the pre-2553 answer.
+    img.set_lifecycle_nodes(inputs.infra.map(|i| i.managed_nodes).filter(|&n| n > 0));
     // phase-486 -- the families travel with it, as their two carriers did.
     img.set_infra_families(inputs.infra_families);
     img
@@ -2871,6 +2875,9 @@ fn compose_unwired(
     // Zero is absent, as in `image_facts`: every consumer floors it at one.
     let model_nodes = model_nodes.filter(|&n| n > 0);
     desc.image.set_model_nodes(model_nodes);
+    // Issue 2553 -- and the managed-node count, as in `image_facts`.
+    desc.image
+        .set_lifecycle_nodes(Some(infra.managed_nodes).filter(|&n| n > 0));
     // phase-486 -- the families wherever the node count is stated: the two
     // carriers always travelled together. (An empty model therefore states
     // neither and keeps no file; its carrier said `none`, which no consumer can

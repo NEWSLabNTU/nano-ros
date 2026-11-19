@@ -337,9 +337,12 @@ Status: OPEN.
 - The `ZENOH_MAX_QUERYABLES` help text in `knobs.toml` is corrected.
 - From W2.b's readers: price the family per managed node, from the model's
   managed set, and do not add it again for a node whose rows the probe
-  already carries (it counts those twice today). Issue 2553 is the
-  under-size: launch-marked nodes, which have no probe rows, are priced once
-  per image.
+  already carries (it counts those twice today). Issue 2553 was the
+  under-size: launch-marked nodes, which have no probe rows, were priced once
+  per image. **Landed 2026-11-19:** `InfraServices`,
+  `nros_sizing_descriptor::infra`, the zenoh runner and XRCE now price one
+  machine per managed node (`[image] lifecycle_nodes`). The double count is
+  still open.
 
 Acceptance:
 

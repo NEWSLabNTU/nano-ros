@@ -389,10 +389,16 @@ fn main() {
     let model_nodes = desc
         .as_ref()
         .and_then(|d| d.image.model_nodes().stated().map(usize::to_string));
+    // Issue 2553 -- the managed-node count the lifecycle family is priced
+    // over, one state machine (five servers) each.
+    let lifecycle_nodes = desc
+        .as_ref()
+        .and_then(|d| d.image.lifecycle_nodes().stated().map(usize::to_string));
     demand.derive_service_servers(
         desc.as_ref(),
         infra_families.as_deref(),
         model_nodes.as_deref(),
+        lifecycle_nodes.as_deref(),
         host_is_posix,
     );
     if knobs.stated(ENV_SERVICE_SERVERS, 0, &config_path).is_some() {
@@ -1231,10 +1237,11 @@ impl XrceDemand {
         desc: Option<&SizingDescriptor>,
         infra: Option<&str>,
         nodes: Option<&str>,
+        lifecycle_nodes: Option<&str>,
         hosted: bool,
     ) {
         use nros_sizing_descriptor::infra::{
-            infra_service_servers, per_node_term_is_unknown, stated,
+            infra_service_servers, infra_service_servers_with, per_node_term_is_unknown, stated,
         };
         if stated(infra).is_none() {
             return;
@@ -1245,7 +1252,7 @@ impl XrceDemand {
         // application -- what zenoh's hosted guess buys, priced in this
         // backend's slots.
         let undeclared = hosted.then(|| infra_service_servers(None, None) + HEADER_SERVICE_SERVERS);
-        let runtime = infra_service_servers(infra, nodes);
+        let runtime = infra_service_servers_with(infra, nodes, lifecycle_nodes);
         // Issue 2482 -- the families are stated and the node count is not, so
         // `runtime` priced ONE node: never below the undeclared budget, and no
         // builtin split (its share would be the same guess).
@@ -1878,7 +1885,7 @@ fn xrce_demand_selftest() {
         let mut d = image(vec![]);
         d.image.set_service_server_queryables(app);
         let mut x = XrceDemand::derive(Some(&d));
-        x.derive_service_servers(Some(&d), infra, nodes, false);
+        x.derive_service_servers(Some(&d), infra, nodes, None, false);
         (x.for_knob(ENV_SERVICE_SERVERS), x.notes.len())
     };
     // The measured image: no application servers, both families on one node.
@@ -1915,7 +1922,7 @@ fn xrce_demand_selftest() {
         let mut d = image(vec![]);
         d.image.set_service_server_queryables(app);
         let mut x = XrceDemand::derive(Some(&d));
-        x.derive_service_servers(Some(&d), infra, nodes, true);
+        x.derive_service_servers(Some(&d), infra, nodes, None, true);
         x
     };
     let two_nodes = 2 * PARAM_SERVICE_QUERYABLES;
@@ -1939,12 +1946,29 @@ fn xrce_demand_selftest() {
     let mut d = image(vec![]);
     d.image.set_service_server_queryables(None);
     let mut x = XrceDemand::derive(Some(&d));
-    x.derive_service_servers(Some(&d), Some("param"), None, false);
+    x.derive_service_servers(Some(&d), Some("param"), None, None, false);
     assert_eq!(
         x.for_knob(ENV_SERVICE_SERVERS),
         Some(PARAM_SERVICE_QUERYABLES + HEADER_SERVICE_SERVERS)
     );
 
+    // 13a. Issue 2553 -- the lifecycle family is priced per managed node:
+    //      three launch-marked managed nodes register three state machines,
+    //      fifteen servers, all of them the runtime's (builtin) share.
+    {
+        let mut d = image(vec![]);
+        d.image.set_service_server_queryables(Some(0));
+        let mut x = XrceDemand::derive(Some(&d));
+        x.derive_service_servers(Some(&d), Some("lifecycle"), Some("3"), Some("3"), false);
+        assert_eq!(x.for_knob(ENV_BUILTIN_SERVERS), Some(15));
+        let mut one = XrceDemand::derive(Some(&d));
+        one.derive_service_servers(Some(&d), Some("lifecycle"), Some("3"), None, false);
+        assert_eq!(
+            one.for_knob(ENV_BUILTIN_SERVERS),
+            Some(5),
+            "absent: one machine"
+        );
+    }
     // 13b. Issue 1808 — the split: the builtin share is the runtime's servers,
     //      and the application's request slot is its own declared servers'
     //      largest request, only when the rows account for every one of them.
@@ -1952,7 +1976,7 @@ fn xrce_demand_selftest() {
         let mut d = image(eps);
         d.image.set_service_server_queryables(Some(app));
         let mut x = XrceDemand::derive(Some(&d));
-        x.derive_service_servers(Some(&d), Some("param+lifecycle"), Some("1"), false);
+        x.derive_service_servers(Some(&d), Some("param+lifecycle"), Some("1"), None, false);
         x
     };
     let server = |kind: EndpointKind, topic: &str, bound: Option<usize>| {
