@@ -49,8 +49,12 @@ NROS_TEST_DOMAIN_MAX=101
 # domain looks taken and the stepping degrades to its fallback for nothing.
 nros_domain_busy() {
     local domain="$1"
-    local want
+    local want want_unicast
     want=$(printf '%04X' $(( 7400 + 250 * domain )))
+    # Issue 2757 -- and participant index 0's unicast metatraffic port: a
+    # unicast-only participant (AllowMulticast=false, as the pinned profile
+    # is) never binds the multicast discovery port above.
+    want_unicast=$(printf '%04X' $(( 7400 + 250 * domain + 10 )))
     local table
     for table in /proc/net/udp /proc/net/udp6; do
         [ -r "$table" ] || continue
@@ -60,9 +64,9 @@ nros_domain_busy() {
         # non-zero, and this function would answer "not busy" for every domain
         # on the very hosts CI runs. /proc prints the port as fixed 4-digit
         # uppercase hex, which `printf '%04X'` matches exactly.
-        if awk -v want="$want" 'NR > 1 {
+        if awk -v want="$want" -v want_unicast="$want_unicast" 'NR > 1 {
                 split($2, a, ":")
-                if (a[2] == want) { found = 1; exit }
+                if (a[2] == want || a[2] == want_unicast) { found = 1; exit }
             }
             END { exit(found ? 0 : 1) }' "$table"; then
             return 0
