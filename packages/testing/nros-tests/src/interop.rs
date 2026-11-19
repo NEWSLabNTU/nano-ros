@@ -941,7 +941,7 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-ros2-cli-parity-qos-rust-zenoh"),
     // phase-556 W2 — refusals, /parameter_events, load, and the C and C++
     // parameter examples.
-    co("ros2_cli_parity_interop", "set_of_an_undeclared_name_compared_with_stock",
+    co("ros2_cli_parity_interop", "set_of_an_undeclared_name_is_refused_as_stock_does",
        "native-ros2-cli-parity-params-rust-zenoh"),
     co("ros2_cli_parity_interop", "set_of_the_wrong_type_is_refused_as_stock_does",
        "native-ros2-cli-parity-params-rust-zenoh"),
@@ -953,6 +953,10 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-ros2-cli-parity-params-c-zenoh"),
     co("ros2_cli_parity_interop", "cpp_parameters_answer_ros2_param_as_stock_does",
        "native-ros2-cli-parity-params-cpp-zenoh"),
+    // The read-only refusal, against rclcpp's (`turtlesim_node`): the C
+    // example holds the read-only parameter.
+    co("ros2_cli_parity_interop", "set_of_a_read_only_parameter_is_refused_as_stock_does",
+       "native-ros2-cli-parity-params-c-zenoh"),
 
     // ── rosout_interop — issue 1589 gave it two more cells ──────────────
     // One case per language; each resolves its own probe (the Rust cargo
