@@ -13,6 +13,12 @@ extern crate zpico_sys;
 
 pub use nros_board_freertos::{BaseConfig, Config};
 
+/// This package's own configuration rows (`nros-knobs.toml`), as the build
+/// resolved them (RFC-0140 D5).
+pub mod knobs {
+    include!(concat!(env!("OUT_DIR"), "/nros_knobs.rs"));
+}
+
 /// The board's marker type, named in this crate's `[package.metadata.nros.board] type`.
 pub struct FixtureR5f;
 

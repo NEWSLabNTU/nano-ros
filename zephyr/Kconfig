@@ -2980,6 +2980,14 @@ endif # NROS_RMW_ZENOH
 
 # <<< knob registry <<<
 
+# phase-581 W3 (RFC-0140 D5) -- the knobs of the out-of-tree packages this image
+# links (a board, platform or RMW package's own `nros-knobs.toml`), which the
+# registry section above cannot hold. The module hook writes the file for a
+# project with a system.toml, prompt-less with the image's value as a default,
+# like every knob above; a guest has none (a package that supports guests is its
+# own Zephyr module, `nros knob render --kconfig`).
+osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.packages"
+
 # =============================================================================
 # RMW resource sizing -- OVERRIDABLE defaults
 # =============================================================================

@@ -107,6 +107,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCliRows.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSystemInclude.cmake")  # issue 2587
 # phase-484 W5b -- the Kconfig knob ids and symbols (`NROS_KNOB_KCONFIG_*`).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobRegistry.cmake")
+# phase-581 W3 -- and the out-of-tree packages' rows, from `nros configure`.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobPackages.cmake")
 # phase-530 W4 -- `nros_configured_locate`, which publishes where configure put
 # this image's answer for the module's readers.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
@@ -186,6 +188,8 @@ function(nros_image_kconfig_hook)
         set(_kbin "${CMAKE_CURRENT_BINARY_DIR}/Kconfig")
     endif()
     get_filename_component(_kgen "${_kbin}/../nros/Kconfig.from-system-toml" ABSOLUTE)
+    # phase-581 W3 (RFC-0140 D5) -- the out-of-tree packages' knobs, beside it.
+    get_filename_component(_kpkg "${_kbin}/../nros/Kconfig.packages" ABSOLUTE)
     # Every `-DNROS_OVERRIDE_<ID>=<v>` on the configure line (cache entries).
     #
     # Issue 2363 -- TRANSIENT means this configure's, so each is CONSUMED: its
@@ -259,6 +263,9 @@ function(nros_image_kconfig_hook)
         endif()
         configure_file("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig.knob-prompts" "${_kgen}"
             COPYONLY)
+        # A guest has no package knobs here (RFC-0140 D5); drop an earlier
+        # system.toml configure's.
+        file(REMOVE "${_kpkg}")
         _nros_image_kconfig_stamp("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig" "${_kgen}" "${_bin}")
         # Issue 2157 -- a hand-written entry is a guest here, and its board's
         # snippets arrive as `-DNROS_BOARD_SNIPPETS` from `nros build`.
@@ -386,7 +393,8 @@ function(nros_image_kconfig_hook)
         COMMAND "${_nros}" dev image leaf-system "${_dir}"
                 --nano-ros-path "${_NROS_IMAGE_KCONFIG_ROOT}"
                 ${_args} --kconfig-out "${_frag}" --image-env-out "${_env}"
-                --kconfig-defaults-out "${_kgen}" ${_override_args}
+                --kconfig-defaults-out "${_kgen}" --kconfig-packages-out "${_kpkg}"
+                ${_override_args}
         OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     # A configure re-runs when the file changes, and when the CLI that rendered
@@ -581,6 +589,13 @@ function(_nros_image_kconfig_stamp _kconfig _kgen _bin)
         file(SHA256 "${_kgen}" _d2)
         string(APPEND _text
             "# nano-ros Kconfig.from-system-toml digest (RFC-0120 D6): ${_d2}\n")
+    endif()
+    # phase-581 W3 -- and the out-of-tree packages' knobs, sourced beside it.
+    get_filename_component(_kdir "${_kgen}" DIRECTORY)
+    if(EXISTS "${_kdir}/Kconfig.packages")
+        file(SHA256 "${_kdir}/Kconfig.packages" _d3)
+        string(APPEND _text
+            "# nano-ros Kconfig.packages digest (RFC-0140 D5): ${_d3}\n")
     endif()
     set(_old "")
     if(EXISTS "${_stamp}")

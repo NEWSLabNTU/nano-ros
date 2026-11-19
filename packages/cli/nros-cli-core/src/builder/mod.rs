@@ -91,3 +91,17 @@ pub fn codegen_tool_arg_for(exe: &std::path::Path) -> String {
 pub fn workspace_root_arg(workspace_root: &std::path::Path) -> String {
     format!("-DNROS_WORKSPACE_ROOT={}", workspace_root.display())
 }
+
+/// The configure argument that names the merged configuration catalog `nros
+/// configure` wrote for `workspace_root` (phase-581 W3, RFC-0140 D5), so the
+/// cmake road's knob readers (`registry.cmake` beside it) and the Rust lane's
+/// knob ladder see an out-of-tree package's rows. `None` when configure wrote
+/// none. The cargo roads carry the same path as a `relative = true` `[env]`
+/// row ([`cargo_config`]).
+#[must_use]
+pub fn knob_catalog_arg(workspace_root: &std::path::Path) -> Option<String> {
+    let catalog = crate::knob_catalog::catalog_path(workspace_root);
+    catalog
+        .is_file()
+        .then(|| format!("-DNROS_KNOB_CATALOG={}", catalog.display()))
+}

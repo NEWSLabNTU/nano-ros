@@ -98,6 +98,20 @@ fn a_workspace_rmw_backend_publishes_on_zephyr_through_the_west_road() {
         "`acme-rmw` must point at the workspace provider:\n{manifest}"
     );
 
+    // RFC-0140 G6 (phase-581 W3) — the knob an out-of-tree package declares
+    // reached the image's Kconfig through `<build>/nros/Kconfig.packages`.
+    let dotconfig = entry
+        .parent()
+        .map(|d| d.join(".config"))
+        .expect("the image sits in <build>/zephyr/");
+    let config = std::fs::read_to_string(&dotconfig)
+        .unwrap_or_else(|e| panic!("read {}: {e}", dotconfig.display()));
+    assert!(
+        config.lines().any(|l| l == "CONFIG_NROS_ACME_POOL_SLOTS=4"),
+        "`[image.zephyr.knobs.acme] pool_slots = 4` is not in {}",
+        dotconfig.display()
+    );
+
     let router = or_unmet(ZenohRouter::start_unique());
     let locator = router.locator();
 
@@ -121,6 +135,7 @@ fn a_workspace_rmw_backend_publishes_on_zephyr_through_the_west_road() {
         output::OUT_OF_TREE_RMW_PUBLISH_MARKER,
         Duration::from_secs(30),
     );
+    let knob = zephyr.wait_for_pattern(output::OUT_OF_TREE_RMW_KNOB_MARKER, Duration::from_secs(5));
     let heard = listener
         .wait_for_output_count(output::LISTENER_LOG_PREFIX, 3, Duration::from_secs(20))
         .unwrap_or_else(|e| {
@@ -133,6 +148,10 @@ fn a_workspace_rmw_backend_publishes_on_zephyr_through_the_west_road() {
     assert!(
         seen.contains(output::OUT_OF_TREE_RMW_PUBLISH_MARKER),
         "the Zephyr talker never published through backend `acme`:\n{seen}"
+    );
+    assert!(
+        knob.contains(output::OUT_OF_TREE_RMW_KNOB_MARKER),
+        "the acme build script did not read `[image.zephyr.knobs.acme] pool_slots`:\n{knob}"
     );
     let received = count_pattern(&heard, output::LISTENER_LOG_PREFIX);
     assert!(

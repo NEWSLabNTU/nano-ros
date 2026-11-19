@@ -166,7 +166,9 @@ ROLES = [
     (
         "knob-resolver",
         "resolves RFC-0049 knobs into a generated config module",
-        lambda t, ctx: re.search(r"_config\.rs|nros_zephyr_build::|rustc-env=", t),
+        # phase-581 W3 — `nros_knob_build::emit` is the same job for a
+        # package's own rows (`nros-knobs.toml` -> `nros_knobs.rs`).
+        lambda t, ctx: re.search(r"_config\.rs|nros_zephyr_build::|nros_knob_build::|rustc-env=", t),
         None,
     ),
     (

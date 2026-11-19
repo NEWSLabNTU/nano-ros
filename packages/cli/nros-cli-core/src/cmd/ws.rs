@@ -6653,6 +6653,11 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         // phase-291 (#211) — the zephyr-leaf build.rs bake helper; a
         // [build-dependencies] row in every zephyr rust example / ws entry.
         ("nros-zephyr-build", "packages/tooling/nros-zephyr-build"),
+        // phase-581 W3 (RFC-0140 D5) -- the build-script helper a package
+        // outside the tree names to read its own `nros-knobs.toml`
+        // (`nros_knob_build::emit`), and the loader it reaches.
+        ("nros-knob-build", "packages/tooling/nros-knob-build"),
+        ("nros-knob-catalog", "packages/tooling/nros-knob-catalog"),
         // issue 1542 — the cc policy helper (strict declarations, issue 0383;
         // the gcc-safe frame pointer, issue 0478). A [build-dependencies] row in
         // any example whose build.rs drives `cc::Build`, the first being the

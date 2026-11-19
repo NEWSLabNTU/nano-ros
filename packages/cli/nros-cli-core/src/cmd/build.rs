@@ -1227,6 +1227,23 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         }
         crate::cmd::setup::expose_store_tools(descriptor, nano_ros_root.as_deref());
 
+        // phase-581 W3 (RFC-0140 D5/D6) — the catalog configure wrote holds
+        // the out-of-tree packages' knobs; an image states one only for a
+        // package it links (its rmw, board or platform).
+        crate::knob_catalog::ensure_current(&root);
+        if let Some(cat) = crate::knob_catalog::current() {
+            crate::knob_catalog::refuse_unlinked_package_knobs(
+                &cat,
+                &image_id,
+                image.knobs.0.keys(),
+                &crate::knob_catalog::linked_owners(
+                    image.rmw.as_deref(),
+                    Some(board.as_str()),
+                    Some(descriptor.platform.kebab()),
+                ),
+            )?;
+        }
+
         // Issue 1716 — a QUERY stops here. Everything it answers is fixed by
         // now (the push below reads only the image, its board descriptor and
         // its driver), and everything after this line WRITES: the resolved
@@ -2360,6 +2377,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // the verb refuses, so FreeRTOS images there got no
                 // `FREERTOS_PORT` and `zpico-sys` panicked.
                 a.push(format!("-DNROS_BRINGUP_DIR={}", bringup_dir.display()));
+                // phase-581 W3 (RFC-0140 D5) — the merged configuration catalog.
+                a.extend(crate::builder::knob_catalog_arg(&root));
                 // RFC-0103 D10f (phase-497 W2) — the image's resolved network.
                 // `nros_board_net_c` renders the C initializer from it.
                 if let Some(n) = &image_net {
@@ -2966,6 +2985,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // generated entry stopped at that entry's own `[workspace]`
                 // table in any workspace with no `.colcon_workspace`.
                 resolved_opt.push(crate::builder::workspace_root_arg(&root));
+                // phase-581 W3 (RFC-0140 D5) -- the merged configuration catalog.
+                resolved_opt.extend(crate::builder::knob_catalog_arg(&root));
                 let mut tail: Vec<String> = Vec::new();
                 tail.extend(west_opts);
                 tail.extend(resolved_opt);

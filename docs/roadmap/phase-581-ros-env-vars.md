@@ -109,7 +109,7 @@ board and RMW packages are self-contained.
 
 ### W3 - Out-of-tree contributors and per-build views
 
-- **Status:** OPEN
+- **Status:** OPEN (landed: the loader split into `nros-knob-catalog` + `nros-knob-build::emit`, `NROS_KNOB_CATALOG` on the cargo, cmake and Zephyr Rust lanes, the ladder's catalog fallthrough, `registry.cmake`, `Kconfig.packages` + `osource`, `<owner>_env.h`, `nros knob list/show` with package and root, `nros knob render --kconfig`, the unlinked-package refusal, and both fixtures' knob and env row. Remains: the image's run-row table (its consumer is W10's startup sweep), `Knobs::registry` as the descriptors' parsed shape validated against the catalog, and two G6 runs on built images: the native_sim `.config` assertion in `out_of_tree_rmw_zephyr_e2e` and the board fixture's check in `check-out-of-tree-board-images` are written but were not run here. The acme linux image was built with `nros build` and printed `acme rmw: pool_slots = 4`)
 - `nros configure` writes `<build>/nros/knobs/catalog.toml` and names it as
   `NROS_KNOB_CATALOG` (cargo `[env]` `relative = true`, cmake `-D`); the
   ladder `nros_zephyr_build::knob()` falls through to it;

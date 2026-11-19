@@ -15,12 +15,22 @@
 //! Neither verb prints an env spelling, a Kconfig symbol or a `-D` define:
 //! those carry a decision between build layers and are never where a user
 //! makes it (RFC-0133, "one field says which spellings are user surface").
+//!
+//! phase-581 W3 (RFC-0140 D5): both verbs read the MERGED catalog of the
+//! workspace (`--workspace`, default the current directory): core's rows and
+//! the in-tree packages' from the compiled table, and every out-of-tree
+//! package's `nros-knobs.toml` the provider scan finds, each with the package
+//! that declared it and the root it was found in. `nros knob render --kconfig
+//! <package>` writes a package's own Zephyr module `Kconfig` from its rows, for
+//! a package that is its own Zephyr module (a guest has no `nros configure`).
 
 use std::path::PathBuf;
 
 use clap::{Args as ClapArgs, Subcommand};
 use eyre::{Result, eyre};
 use nros_zephyr_build::{KNOBS, KnobClass, KnobDefault, KnobRow, KnobScope, KnobValues};
+
+use crate::knob_catalog::{Catalog, Origin, Row, RowKind};
 use serde::Serialize;
 
 use crate::cmd::config::{ExplainArgs, Ladder, resolve_ladder};
@@ -38,6 +48,23 @@ pub enum Args {
     /// Show one knob: where to state it, the values it takes, its default and
     /// its help
     Show(ShowArgs),
+    /// Render a package's rows as a view it commits: `--kconfig`, the Kconfig
+    /// of a package that is its own Zephyr module
+    Render(RenderArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct RenderArgs {
+    /// The package: a directory holding its `nros-knobs.toml`, or its
+    /// `package.xml` name in the workspace's provider scan
+    #[arg(long, value_name = "PACKAGE")]
+    pub kconfig: String,
+    /// The workspace whose packages are searched (default: the current directory)
+    #[arg(long, value_name = "DIR")]
+    pub workspace: Option<PathBuf>,
+    /// Write here instead of stdout
+    #[arg(long, value_name = "FILE")]
+    pub out: Option<PathBuf>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -52,8 +79,9 @@ pub struct ListArgs {
     /// With `--platform`: the board's `nros-board.toml`, for its rung
     #[arg(long, value_name = "FILE", requires = "platform")]
     pub board_toml: Option<PathBuf>,
-    /// With `--platform`: the workspace whose platform packages are searched
-    #[arg(long, value_name = "DIR", requires = "platform")]
+    /// The workspace whose packages are searched for their knobs (and, with
+    /// `--platform`, its platform packages). Default: the current directory
+    #[arg(long, value_name = "DIR")]
     pub workspace: Option<PathBuf>,
 }
 
@@ -64,6 +92,10 @@ pub struct ShowArgs {
     /// Print one JSON object instead of text
     #[arg(long)]
     pub json: bool,
+    /// The workspace whose packages are searched for their knobs (default: the
+    /// current directory)
+    #[arg(long, value_name = "DIR")]
+    pub workspace: Option<PathBuf>,
 }
 
 /// One knob, as `list` and `show` report it.
@@ -76,7 +108,7 @@ pub struct KnobItem {
     /// `public`, `carrier`, `internal` or `retired`.
     pub class: &'static str,
     /// Where a project states it; `None` unless public.
-    pub surface: Option<&'static str>,
+    pub surface: Option<String>,
     /// Where a board's or platform's `[knobs]` table states it, if it can.
     pub board_key: Option<&'static str>,
     /// The values it takes, in words.
@@ -93,6 +125,13 @@ pub struct KnobItem {
     /// With `--platform`: the resolved value and the rung that set it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved: Option<Resolved>,
+    /// The package that declared it (`package.xml` name); `None` for core.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    /// Where that package was found: `built in` for an in-tree package, else
+    /// the provider scan's root.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
 }
 
 /// Where a knob's default comes from.
@@ -127,7 +166,143 @@ pub fn run(args: Args) -> Result<()> {
     match args {
         Args::List(a) => list(a),
         Args::Show(a) => show(a),
+        Args::Render(a) => render(a),
     }
+}
+
+/// The merged catalog of `workspace` (default: the current directory): the
+/// provider scan `nros configure` runs, memoised in `build/nros/providers.json`.
+pub fn workspace_catalog(workspace: Option<&std::path::Path>) -> Result<Catalog> {
+    let ws = match workspace {
+        Some(w) => w.to_path_buf(),
+        None => std::env::current_dir()?,
+    };
+    let ws = ws.canonicalize().unwrap_or(ws);
+    let scan = crate::cmd::ws::sync_provider_scan(&ws, &[], None)?;
+    crate::knob_catalog::build_workspace(&scan.providers, Some(&scan))
+}
+
+/// The knobs of out-of-tree packages a user states, as items, sorted by name.
+pub fn package_items(cat: &Catalog) -> Vec<KnobItem> {
+    let mut items: Vec<KnobItem> = cat
+        .package_rows()
+        .filter(|r| r.kind == RowKind::Knob)
+        .filter(|r| matches!(r.meta.class.as_deref(), None | Some("public")))
+        .map(package_item)
+        .collect();
+    items.sort_by(|a, b| a.name.cmp(&b.name));
+    items
+}
+
+/// An out-of-tree package's knob as an item: everything comes from its row.
+pub fn package_item(r: &Row) -> KnobItem {
+    let (group, name) = r.name.rsplit_once('.').unwrap_or(("", &r.name));
+    let values = match (r.meta.ty.as_deref(), r.meta.range) {
+        (Some("bool"), _) => "true or false".to_string(),
+        (Some("int"), Some((lo, hi))) => format!("an integer from {lo} to {hi}"),
+        (Some("int"), None) => "an integer".to_string(),
+        (Some("hex"), _) => "a hex integer".to_string(),
+        (Some("string"), _) => "a string".to_string(),
+        _ => "an integer (not checked before the build)".to_string(),
+    };
+    let default = match &r.meta.default {
+        Some(v) => DefaultItem::Stated {
+            choices: vec![Choice {
+                value: match (r.meta.ty.as_deref(), v.as_str()) {
+                    (Some("bool"), "y") => "true".to_string(),
+                    (Some("bool"), "n") => "false".to_string(),
+                    _ => v.clone(),
+                },
+                when: None,
+            }],
+        },
+        None => DefaultItem::Build,
+    };
+    let (package, root) = match &r.origin {
+        Origin::Package { package, root, .. } => (
+            Some(package.clone()),
+            Some(root.clone().unwrap_or_else(|| "built in".to_string())),
+        ),
+        Origin::Core => (None, None),
+    };
+    KnobItem {
+        name: r.name.clone(),
+        scope: match r.meta.scope.as_deref() {
+            Some("board") => "board",
+            Some("platform") => "platform",
+            _ => "image",
+        },
+        class: "public",
+        surface: Some(format!("[image.<id>.knobs.{group}] {name}")),
+        board_key: None,
+        values,
+        default,
+        summary: r
+            .meta
+            .prompt
+            .clone()
+            .or_else(|| {
+                r.meta
+                    .help
+                    .as_deref()
+                    .and_then(|h| h.lines().map(str::trim).find(|l| !l.is_empty()))
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| "(no description yet)".to_string()),
+        help: r.meta.help.clone(),
+        note: None,
+        resolved: None,
+        package,
+        root,
+    }
+}
+
+/// `nros knob render --kconfig <package>` (RFC-0140 D5): the package's own
+/// Zephyr module `Kconfig`, every typed knob WITH its prompt, for a guest
+/// project (no `system.toml`, so no `nros configure` and no
+/// `Kconfig.packages`) to set from `prj.conf`. The package commits it.
+fn render(args: RenderArgs) -> Result<()> {
+    let dir = PathBuf::from(&args.kconfig);
+    let file = dir.join(crate::knob_catalog::PACKAGE_FILE);
+    let (label, rows): (String, Vec<Row>) = if file.is_file() {
+        let text =
+            std::fs::read_to_string(&file).map_err(|e| eyre!("reading {}: {e}", file.display()))?;
+        let (_, rows) = crate::knob_catalog::parse_own_file(&args.kconfig, &file, &text)?;
+        (file.display().to_string(), rows)
+    } else {
+        let cat = workspace_catalog(args.workspace.as_deref())?;
+        let rows: Vec<Row> = cat
+            .rows()
+            .iter()
+            .filter(|r| r.origin.package() == Some(args.kconfig.as_str()))
+            .cloned()
+            .collect();
+        if rows.is_empty() {
+            return Err(eyre!(
+                "`{}` is neither a directory holding {} nor a package with configuration \
+                 rows in this workspace",
+                args.kconfig,
+                crate::knob_catalog::PACKAGE_FILE
+            ));
+        }
+        (format!("package {}", args.kconfig), rows)
+    };
+    let knobs: Vec<&Row> = rows
+        .iter()
+        .filter(|r| r.kind == RowKind::Knob && r.meta.ty.is_some())
+        .collect();
+    let body = format!(
+        "# @generated by `nros knob render --kconfig` from {label} -- do not\n\
+         # edit; re-render after changing the rows. This package's knobs, with their\n\
+         # prompts, for an application that builds it as its own Zephyr module.\n{}",
+        crate::knob_catalog::kconfig_rows(&knobs, &Default::default(), true)
+    );
+    match &args.out {
+        Some(out) => crate::atomic_file::atomic_write(out, &body)
+            .map_err(|e| eyre!("writing {}: {e}", out.display()))?,
+        None => print!("{body}"),
+    }
+    Ok(())
 }
 
 fn list(args: ListArgs) -> Result<()> {
@@ -140,7 +315,10 @@ fn list(args: ListArgs) -> Result<()> {
         })?),
         None => None,
     };
-    let items = public_items(ladder.as_ref());
+    let mut items = public_items(ladder.as_ref());
+    let cat = workspace_catalog(args.workspace.as_deref())?;
+    items.extend(package_items(&cat));
+    items.sort_by(|a, b| a.name.cmp(&b.name));
     if args.json {
         let doc = serde_json::json!({
             "schema": LIST_SCHEMA,
@@ -155,8 +333,21 @@ fn list(args: ListArgs) -> Result<()> {
 }
 
 fn show(args: ShowArgs) -> Result<()> {
-    let row = find(&args.name)?;
-    let item = item(row, None);
+    let item = match find(&args.name) {
+        Ok(row) => item(row, None),
+        Err(e) => {
+            // phase-581 W3 — an out-of-tree package's knob is in the merged
+            // catalog only.
+            let cat = workspace_catalog(args.workspace.as_deref())?;
+            match cat
+                .find(&args.name)
+                .filter(|r| r.kind == RowKind::Knob && !r.origin.is_compiled())
+            {
+                Some(r) => package_item(r),
+                None => return Err(e),
+            }
+        }
+    };
     if args.json {
         let doc = serde_json::json!({ "schema": SHOW_SCHEMA, "item": item });
         println!("{}", serde_json::to_string_pretty(&doc)?);
@@ -227,7 +418,7 @@ pub fn item(r: &KnobRow, ladder: Option<&Ladder>) -> KnobItem {
         name: r.image_key.to_string(),
         scope: scope_word(r.scope),
         class: class_word(r.class),
-        surface: r.surface,
+        surface: r.surface.map(str::to_string),
         board_key: r.toml.filter(|_| r.class == KnobClass::Public),
         values: values_text(r),
         default: default_item(r),
@@ -235,6 +426,14 @@ pub fn item(r: &KnobRow, ladder: Option<&Ladder>) -> KnobItem {
         help: r.help.map(user_words),
         note: note(r),
         resolved,
+        package: nros_zephyr_build::IN_TREE_PACKAGES
+            .iter()
+            .find(|p| p.knobs.contains(&r.image_key))
+            .map(|p| p.package.to_string()),
+        root: nros_zephyr_build::IN_TREE_PACKAGES
+            .iter()
+            .any(|p| p.knobs.contains(&r.image_key))
+            .then(|| "built in".to_string()),
     }
 }
 
@@ -434,6 +633,18 @@ fn default_cell(d: &DefaultItem) -> String {
 
 pub fn render_list(items: &[KnobItem], resolved: bool) -> String {
     let w = items.iter().map(|i| i.name.len()).max().unwrap_or(4).max(4);
+    let p = items
+        .iter()
+        .map(|i| i.package.as_deref().unwrap_or("core").len())
+        .max()
+        .unwrap_or(7)
+        .max(7);
+    let r = items
+        .iter()
+        .map(|i| i.root.as_deref().unwrap_or("-").len())
+        .max()
+        .unwrap_or(4)
+        .max(4);
     let mut out = String::new();
     if resolved {
         out.push_str(&format!(
@@ -442,8 +653,8 @@ pub fn render_list(items: &[KnobItem], resolved: bool) -> String {
         ));
     } else {
         out.push_str(&format!(
-            "{:<w$}  {:<8}  {:<20}  {}\n",
-            "KNOB", "SCOPE", "DEFAULT", "WHAT IT IS"
+            "{:<w$}  {:<8}  {:<20}  {:<p$}  {:<r$}  {}\n",
+            "KNOB", "SCOPE", "DEFAULT", "PACKAGE", "ROOT", "WHAT IT IS"
         ));
     }
     for i in items {
@@ -458,10 +669,12 @@ pub fn render_list(items: &[KnobItem], resolved: bool) -> String {
             ));
         } else {
             out.push_str(&format!(
-                "{:<w$}  {:<8}  {:<20}  {}\n",
+                "{:<w$}  {:<8}  {:<20}  {:<p$}  {:<r$}  {}\n",
                 i.name,
                 i.scope,
                 default_cell(&i.default),
+                i.package.as_deref().unwrap_or("core"),
+                i.root.as_deref().unwrap_or("-"),
                 i.summary
             ));
         }
@@ -479,7 +692,7 @@ pub fn render_show(i: &KnobItem) -> String {
         out.push_str(&format!("  {n}\n"));
         return out;
     }
-    if let Some(s) = i.surface {
+    if let Some(s) = &i.surface {
         out.push_str(&format!("  set it in:  system.toml, {s}\n"));
     }
     if let Some(k) = i.board_key {
@@ -488,6 +701,13 @@ pub fn render_show(i: &KnobItem) -> String {
         ));
     }
     out.push_str(&format!("  scope:      {}\n", i.scope));
+    out.push_str(&format!(
+        "  package:    {}\n",
+        i.package.as_deref().unwrap_or("core")
+    ));
+    if let Some(r) = &i.root {
+        out.push_str(&format!("  root:       {r}\n"));
+    }
     out.push_str(&format!("  values:     {}\n", i.values));
     match &i.default {
         DefaultItem::Stated { choices } if choices.len() > 1 => {

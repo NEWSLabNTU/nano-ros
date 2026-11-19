@@ -283,6 +283,20 @@ pub fn render(spec: &CargoConfigSpec, config_path: &Path) -> Result<String, Stri
     ws.insert("value", rel(&spec.workspace)?.into());
     ws.insert("relative", true.into());
     env.insert("NROS_WORKSPACE_ROOT", Item::Value(Value::InlineTable(ws)));
+    // phase-581 W3 (RFC-0140 D5) — the merged configuration catalog `nros
+    // configure` wrote for this workspace, so the knob ladder answers an
+    // out-of-tree package's knob. A path, hence `relative = true`, and never a
+    // `rerun-if-env-changed` (issue 0491): the ladder watches the file.
+    let catalog = crate::knob_catalog::catalog_path(&spec.workspace);
+    if catalog.is_file() {
+        let mut row = InlineTable::new();
+        row.insert("value", rel(&catalog)?.into());
+        row.insert("relative", true.into());
+        env.insert(
+            crate::knob_catalog::CATALOG_ENV,
+            Item::Value(Value::InlineTable(row)),
+        );
+    }
     // Issue 1820 — a caller row may restate a key the descriptor's own `[env]`
     // already holds (the cargo-leaf road hands the board facts back in as
     // `env`/`path_env`). Replacing the row used to drop the descriptor's

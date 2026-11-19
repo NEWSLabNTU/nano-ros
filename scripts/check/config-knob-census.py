@@ -542,6 +542,12 @@ KNOB_CLASS = {
     "NROS_MODEL_DIR": ("infra", "path"),
     "NROS_WORKSPACE": ("infra", "path"),
     "NROS_WORKSPACE_ROOT": ("infra", "path"),
+    # phase-581 W3: the merged configuration catalog the knob ladder falls
+    # through to for an out-of-tree package's knob.
+    "NROS_KNOB_CATALOG": ("infra", "path"),
+    # phase-581 W3: the out-of-tree `acme` test fixture's own package knob,
+    # which nano-ros does not own; the ladder test spells it.
+    "NROS_ACME_POOL_SLOTS": ("infra", "a test fixture package's knob, not nano-ros's"),
     "NROS_LAUNCH_RESOLVE": ("infra", "resolver binary path"),
     "NROS_METADATA_PROBE_CACHE": ("infra", "cache path"),
     "NROS_RMW": ("infra", "the selected backend, not a size"),
@@ -752,6 +758,10 @@ def kconfig_symbols():
 # and a callee in neither is a FAILURE: the same "a new knob forces a decision"
 # rule this file already applies to knobs, applied to the idioms that read them.
 READ_CALLEES = {
+    # phase-581 W3. Rung 1 for an out-of-tree package's knob, whose retired
+    # spellings come from the merged catalog (`nros_zephyr_build`): refuses a
+    # set retired spelling, then reads the canonical one.
+    "read_catalog_spelled",
     # Issue 2096. `nros-board-common::policy::knob_on`: is a default-off
     # zenoh-pico link's build knob (`NROS_LINK_CAN` / `NROS_LINK_ISOTP`) on.
     "knob_on",

@@ -685,6 +685,56 @@ pub fn defaults_text(leaf: &LeafSystem, r: &Rendered) -> String {
     s
 }
 
+/// `<build>/nros/Kconfig.packages` for a project with a `system.toml`
+/// (phase-581 W3, RFC-0140 D5): every typed knob of the out-of-tree packages
+/// the image links (`owners`), prompt-less, with the image's
+/// `[image.<id>.knobs.<owner>]` value as a `default`, so it lands in
+/// `<build>/zephyr/.config` and the build-script ladder's `$DOTCONFIG` rung
+/// reads it.
+///
+/// # Errors
+///
+/// A stated value that does not fit its knob's type.
+pub fn packages_text(
+    leaf: &LeafSystem,
+    cat: &crate::knob_catalog::Catalog,
+    owners: &[&str],
+) -> Result<String, String> {
+    let mut stated = BTreeMap::new();
+    for (key, value) in &leaf.knobs {
+        let Some(row) = cat.knob(key).filter(|r| !r.origin.is_compiled()) else {
+            continue;
+        };
+        if !owners.contains(&row.owner()) {
+            continue;
+        }
+        let symbol = row
+            .spelling(nros_zephyr_build::RetiredRoad::Kconfig)
+            .unwrap_or_default();
+        let bare = symbol.strip_prefix("CONFIG_").unwrap_or(symbol).to_string();
+        let ty = match row.meta.ty.as_deref() {
+            Some("bool") => SymType::Bool,
+            Some("hex") => SymType::Hex,
+            Some("string") => SymType::String,
+            _ => SymType::Int,
+        };
+        use nros_orchestration_ir::leaf_system::KnobValue;
+        let raw = match value {
+            KnobValue::Int(n) => n.to_string(),
+            KnobValue::Bool(b) => if *b { "1" } else { "0" }.to_string(),
+            KnobValue::Str(s) => s.clone(),
+        };
+        let v = kconfig_value(ty, &raw).map_err(|why| {
+            format!(
+                "[image.{}.knobs] {key}: on Zephyr this knob is {symbol}, {why}",
+                leaf.image.as_deref().unwrap_or("")
+            )
+        })?;
+        stated.insert(bare, v);
+    }
+    Ok(crate::knob_catalog::kconfig_packages(cat, owners, &stated))
+}
+
 /// The fragment's text, or `None` when there is nothing to state.
 #[must_use]
 pub fn fragment_text(leaf: &LeafSystem, r: &Rendered) -> Option<String> {

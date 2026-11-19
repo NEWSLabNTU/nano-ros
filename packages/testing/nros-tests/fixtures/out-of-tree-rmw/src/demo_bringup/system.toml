@@ -19,6 +19,12 @@ name = "talker"
 board = "linux"
 rmw = "acme"
 
+# RFC-0140 D5/G6 (phase-581 W3) -- a knob the acme PACKAGE declares, stated
+# exactly as a core one. Its build script reads the value; the backend prints
+# it on its first publish.
+[image.linux.knobs.acme]
+pool_slots = 4
+
 # RFC-0071 D16 step 3 (issue 2372) — the same image on the west road. The
 # board id is `zephyr` (its `[board.zephyr] west_board` is
 # `native_sim/native/64`; issue 1519 refuses an image that spells the Zephyr
@@ -28,3 +34,8 @@ rmw = "acme"
 [image.zephyr]
 board = "zephyr"
 rmw = "acme"
+
+# The same knob reaches the west road through `Kconfig.packages`, so it is in
+# `<build>/zephyr/.config` as CONFIG_NROS_ACME_POOL_SLOTS.
+[image.zephyr.knobs.acme]
+pool_slots = 4

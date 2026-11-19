@@ -15,6 +15,13 @@ out-of-tree with zero core edits", on the `nros build` road.
 
 Nothing under `packages/` outside this directory names `acme`.
 
+RFC-0140 G6 (phase-581 W3): `src/acme_rmw/nros-knobs.toml` declares one knob,
+`acme.pool_slots`, and one run-time variable, `NROS_ACME_TRACE` (key
+`acme.trace`). Both images state `[image.<id>.knobs.acme] pool_slots = 4`;
+acme's `build.rs` reads it through `nros_knob_build::emit`, and the backend
+logs `acme rmw: pool_slots = 4` beside its publish marker. On the west road the
+knob reaches `<build>/zephyr/.config` through `<build>/nros/Kconfig.packages`.
+
 - `nros-cli-core/tests/out_of_tree_rmw_build.rs` drives `nros build`'s
   configure and entry generation over a copy and asserts the generated entry
   path-depends on `acme-rmw` and registers it.

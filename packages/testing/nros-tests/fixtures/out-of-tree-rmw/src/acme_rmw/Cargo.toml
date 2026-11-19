@@ -17,6 +17,10 @@ nros-rmw-cffi = { version = "*", default-features = false, features = ["alloc"] 
 nros-rmw-zenoh = { version = "*", default-features = false }
 nros-log = { version = "*", default-features = false }
 
+# RFC-0140 D5 (phase-581 W3) -- reads this package's own `nros-knobs.toml`.
+[build-dependencies]
+nros-knob-build = { version = "*" }
+
 [features]
 default = []
 # The board descriptor's `platform_feature`: `linux` → `platform-posix`, and

@@ -142,6 +142,22 @@ for lang in c cpp rust; do
         echo "$why"
         fail=1
     fi
+    # RFC-0140 G6 (phase-581 W3) -- the board package declares a knob in its own
+    # nros-knobs.toml; the Rust image states it (`uart_rx_slots = 3`), and the
+    # board crate's build script must have read that value: its output,
+    # `nros_knobs.rs`, holds it.
+    if [ "$lang" = rust ]; then
+        if ! knobs="$(find "$ex/build" -type f -path '*nros-board-fixture-r5f-freertos-*/out/nros_knobs.rs' | head -1)"; then
+            knobs=""
+        fi
+        if [ -z "$knobs" ]; then
+            say "rust: the board crate's build script wrote no nros_knobs.rs under $ex/build"
+            fail=1
+        elif ! grep -qx 'pub const UART_RX_SLOTS: i64 = 3;' "$knobs"; then
+            say "rust: the board crate did not read [image.*.knobs.fixture_r5f_freertos] uart_rx_slots = 3 ($knobs)"
+            fail=1
+        fi
+    fi
     if [ "$lang" = c ]; then
         rc=0
         nros_grep_q 'CFLAGS_armv7r_none_eabihf is the image.s arch profile followed by your CFLAGS (`-fno-common`)' "$work/$lang.log" || rc=$?
@@ -195,4 +211,4 @@ selftest() {
 selftest || fail=1
 
 [ "$fail" -eq 0 ] || exit 1
-say "OK — C, C++ and Rust images from the out-of-tree board package (copied, reached by NROS_EXTRA_BOARD_PATH and FIXTURE_R5F_SDK_ROOT) all carry Tag_ABI_VFP_args: VFP registers and Tag_FP_arch: VFPv3-D16, and every member of every target archive is R-profile with that FPU, and every member stating a calling convention uses VFP registers; a user CFLAGS is merged and reported; selftest: a softfp object, an archive with an M-profile member and one with a softfp member are refused, an archive with a hard-float assembly member passes"
+say "OK — the board package's own knob reached its build script; C, C++ and Rust images from the out-of-tree board package (copied, reached by NROS_EXTRA_BOARD_PATH and FIXTURE_R5F_SDK_ROOT) all carry Tag_ABI_VFP_args: VFP registers and Tag_FP_arch: VFPv3-D16, and every member of every target archive is R-profile with that FPU, and every member stating a calling convention uses VFP registers; a user CFLAGS is merged and reported; selftest: a softfp object, an archive with an M-profile member and one with a softfp member are refused, an archive with a hard-float assembly member passes"

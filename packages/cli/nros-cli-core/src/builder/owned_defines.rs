@@ -84,6 +84,10 @@ pub const OWNED: &[OwnedDefine] = &[
     exact("NROS_IMAGE_STACK_FLOOR_IMAGE", "the stack-floor raise"),
     exact("NROS_IMAGE_STACK_FLOOR_MODE", "the stack-floor raise"),
     exact("NROS_IMAGE_SYSTEM_DIR", "the image's system.toml dir"),
+    exact(
+        "NROS_KNOB_CATALOG",
+        "the merged configuration catalog `nros configure` wrote",
+    ),
     exact("NROS_LEAF_BOARD", "the census probe's board"),
     exact("NROS_REPO_DIR", "the nano-ros checkout"),
     exact("NROS_RMW", "the RMW, derived from `[system] rmw`"),
