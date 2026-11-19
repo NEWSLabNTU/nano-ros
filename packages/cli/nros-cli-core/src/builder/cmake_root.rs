@@ -145,6 +145,19 @@ impl OwnedIdentity {
             (&a.deploy, &a.locator, a.domain_id) == (&b.deploy, &b.locator, b.domain_id)
         };
         for (id, other) in it {
+            // Issue 2750 -- the configure's board facts are asked for its FIRST
+            // owned image, which is right only because every owned image of
+            // one configure names the same board. Asserted, never assumed: two
+            // boards would build the second image on the first one's facts.
+            if other.deploy != first.deploy {
+                return Err(format!(
+                    "the owned entries of one configure name different boards: image \
+                     `{first_id}` is for `{}`, image `{id}` is for `{}`. A configure builds \
+                     for one board; give each board its own bringup",
+                    first.deploy.as_deref().unwrap_or("<none>"),
+                    other.deploy.as_deref().unwrap_or("<none>"),
+                ));
+            }
             if !same(other, first) {
                 return Err(format!(
                     // History: RFC-0071 D19.
@@ -1436,6 +1449,26 @@ mod tests {
         let e = OwnedIdentity::agree(&[("a".into(), at("tcp/x:1")), ("b".into(), at("tcp/x:2"))])
             .unwrap_err();
         assert!(e.contains("`a`") && e.contains("`b`"), "{e}");
+        // Issue 2750 -- two boards in one configure: refused, naming both
+        // images and both boards, so the second is never built on the first
+        // one's board facts.
+        let on = |b: &str| OwnedIdentity {
+            deploy: Some(b.to_string()),
+            ..at("tcp/x:1")
+        };
+        let e = OwnedIdentity::agree(&[
+            ("unit_test-a".into(), on("freertos-posix")),
+            ("unit_test-b".into(), on("mps3-an536-freertos")),
+        ])
+        .unwrap_err();
+        assert!(
+            e.contains("`unit_test-a`")
+                && e.contains("`unit_test-b`")
+                && e.contains("`freertos-posix`")
+                && e.contains("`mps3-an536-freertos`")
+                && e.contains("different boards"),
+            "{e}"
+        );
     }
 
     #[test]
