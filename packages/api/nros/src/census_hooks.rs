@@ -51,8 +51,9 @@
 /// purpose, and the census producer is that same image. So a contract one
 /// entity short sized its own census run one slot short: setup stopped at
 /// `ExecutorFull` before the recorder saw the entity that did not fit. A census
-/// opens its executor at the executor's own ceilings instead: 64 callback slots
-/// (the `u64` ready-set bitmask), 64 nodes, and 16 MiB of `MaybeUninit` arena
+/// opens its executor at the executor's own ceilings instead: every callback slot
+/// its masks can name (`nros_node::config::CALLBACK_SLOT_CAPACITY`), 64 nodes,
+/// and 16 MiB of `MaybeUninit` arena
 /// (address space, not resident memory). Census-only: the backing is leaked
 /// from the heap of a host process that writes one file and exits, and none of
 /// it exists on the RTOS road, where `metadata-mode` is not compiled.
@@ -60,7 +61,7 @@
 pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
     let d = nros_node::ExecutorSizing::DEFAULT;
     nros_node::ExecutorSizing {
-        cbs: 64,
+        cbs: nros_node::config::CALLBACK_SLOT_CAPACITY,
         sc: d.sc,
         nodes: if d.nodes > 64 { d.nodes } else { 64 },
         arena: if d.arena > (16 << 20) {

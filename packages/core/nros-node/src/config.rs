@@ -21,31 +21,57 @@ pub struct SchedTaskSizing {
     pub params: Option<usize>,
 }
 
-// Issue 2541.
-/// The most callbacks one executor can hold: its slot masks are one `u64`
-/// (`1u64 << slot`).
-pub const CALLBACK_SLOT_CAPACITY: usize = 64;
-
-// Issue 2541 -- nothing used to hold an image to that: a table sized past 64
-// registered a 65th callback and dispatched it through `1u64 << 64` (a panic
-// in a debug build, slot 0's bit in a release one). An image whose own count
-// is above it fails to compile here: the default table (`MAX_CBS`), and the
-// one executor a level runner opens over every sched task's callbacks.
-const _: () = {
+/// The most callbacks one executor of this image holds: the larger of the
+/// default table ([`MAX_CBS`]) and the one executor a level runner opens over
+/// every sched task's callbacks (the sum of [`SCHED_TASK_SIZINGS`]`[..].cbs`).
+pub const MAX_EXECUTOR_CBS: usize = {
     let mut sum = 0usize;
     let mut i = 0;
     while i < SCHED_TASK_SIZINGS.len() {
         sum += SCHED_TASK_SIZINGS[i].cbs;
         i += 1;
     }
+    if sum > MAX_CBS { sum } else { MAX_CBS }
+};
+
+// Issue 2541 -- the slot masks are `SLOT_WORDS` `u64` words, sized from the
+// image. An image of 64 callbacks or fewer gets exactly one word, the layout
+// it had when the masks were a bare `u64`. nros-node's own unit tests take two
+// words whatever the build derived, so the multi-word path is what they run.
+const SLOT_WORDS_FLOOR: usize = if cfg!(test) { 2 } else { 1 };
+
+/// `u64` words in one callback slot mask: enough for [`MAX_EXECUTOR_CBS`].
+pub const SLOT_WORDS: usize = {
+    let derived = MAX_EXECUTOR_CBS.div_ceil(64);
+    if derived > SLOT_WORDS_FLOOR {
+        derived
+    } else {
+        SLOT_WORDS_FLOOR
+    }
+};
+
+/// The most callbacks one executor can hold: one bit per slot in each of its
+/// slot masks ([`SLOT_WORDS`] words of 64).
+pub const CALLBACK_SLOT_CAPACITY: usize = 64 * SLOT_WORDS;
+
+// Issue 2541 -- the capacity is derived from the very counts checked here, so
+// these only trip if the derivation and the counts disagree. The slot index
+// itself travels as a `u8` (`DescIdx`, and the `try_process` slot argument a
+// dispatch hands every entry), so 256 is the ceiling the masks cannot raise.
+const _: () = {
     assert!(
         MAX_CBS <= CALLBACK_SLOT_CAPACITY,
-        "NROS_EXECUTOR_MAX_CBS is above 64, and one executor holds at most 64 callbacks"
+        "NROS_EXECUTOR_MAX_CBS is above the callback slots one executor's masks hold"
     );
     assert!(
-        sum <= CALLBACK_SLOT_CAPACITY,
-        "this image's sched tasks declare more than 64 callbacks together, and the one \
-         executor a level runner opens over them holds at most 64"
+        MAX_EXECUTOR_CBS <= CALLBACK_SLOT_CAPACITY,
+        "this image's sched tasks declare more callbacks together than the one \
+         executor a level runner opens over them holds"
+    );
+    assert!(
+        CALLBACK_SLOT_CAPACITY <= 256,
+        "one executor holds at most 256 callbacks: a callback slot index is a u8 \
+         (lower NROS_EXECUTOR_MAX_CBS, or split the sched tasks across executors)"
     );
 };
 

@@ -1,12 +1,14 @@
 ---
 id: 2541
 title: "An executor holds at most 64 callbacks, because its ready bits are one u64"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: [executor, runtime]
 related: [rfc-0084, rfc-0108, phase-555]
 found: 2026-11-14
+resolved: 2026-11-19
+resolved_in: "feat(nros-node, issue 2541): the executor's slot masks are sized from the image"
 ---
 
 ## What
@@ -60,3 +62,47 @@ First step, the refusal (this issue stays open for the second):
 
 Second step: a multi-word slot mask sized from the image, which raises the
 cap. Its acceptance is this issue's.
+
+## Resolution (2026-11-19)
+
+The first acceptance branch: an executor with more than 64 callbacks
+registers, dispatches in rank order and receives pushed arrivals for all of
+them, measured.
+
+- `config::SLOT_WORDS` is derived from the image: the larger of `MAX_CBS`
+  and the sched tasks' summed callbacks, in words of 64, at least one (two in
+  nros-node's own unit tests, so the multi-word path runs on every test
+  run). `CALLBACK_SLOT_CAPACITY = 64 * SLOT_WORDS`, at most 256 (`DescIdx`
+  stays a `u8`, asserted). The const assert and `storage::callback_slots`
+  from the first step now read the derived capacity.
+- `SlotMask` (`[u64; SLOT_WORDS]`) replaces every slot-indexed `u64`: the
+  executor's fields, the pass's locals, the readiness snapshot, `HandleSet`,
+  band masks, deferred dispatch, the age monitor's credit, and both ready
+  sets. Two sites the survey missed were found on the way: `HandleSet`
+  (`Trigger::AllOf`/`AnyOf`) and the raw predicate's `ready_array`, a
+  `[bool; 64]` handed to C with the slot count. Past 64 slots, the C side
+  would have read that array out of bounds.
+- `AtomicSlotMask` replaces the cross-thread words (`WakeCtx.ready`, the band
+  waiters', the scheduler's): one machine-word atomic per word, each
+  operation one `fetch_or` / `swap` / `fetch_and` / `compare_exchange` on one
+  word. Its width is the image's own callback count in whole words, so a
+  small image keeps the one word it had. Single-word fast paths keep that
+  image's code on the old path. RFC-0084 open question 3 is answered in its
+  changelog.
+
+Tests:
+- 70 timers on a 70-slot executor: all register and all fire, and one more
+  pass fires slots 0, 63, 64 and 69 exactly once.
+- The registration past the capacity is refused, by name.
+- A rank-0 slot at index 66 dispatches before 66 rank-3 slots below it.
+- A slot at index 100 gets an attributed wake: its bit only, its band's
+  worker only.
+- Indices 63, 64, 65 and 127 in the mask and both ready sets.
+- Mutation, every slot aliased onto word 0: all three executor tests fail.
+
+Measured on the mps2-an385 bare-metal talker (thumbv7m, one word), against
+the first step's commit:
+- RAM is identical: data 4260 B, bss 258204 B.
+- Flash is +748 B (0.14 %): `Executor::pass` +288 B for the masks' range
+  guards, and inlining shifting around it.
+

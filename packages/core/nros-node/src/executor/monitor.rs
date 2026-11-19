@@ -382,10 +382,10 @@ pub(crate) fn deadline_unbind(ages: &[AgeMonitorSpec], slot: usize) {
 /// entry passes on the spin thread: an os-priority entry is dispatched on a
 /// worker thread that holds no executor state, and a cooperative one only when
 /// its trigger passes.
-pub(crate) fn credit_arrivals(ages: &[AgeMonitorSpec], ready: u64) {
+pub(crate) fn credit_arrivals(ages: &[AgeMonitorSpec], ready: super::slot_mask::SlotMask) {
     for spec in ages {
         let slot = spec.cell.deadline_slot.load(Ordering::Relaxed);
-        if slot != 0 && slot <= 64 && ready & (1u64 << (slot - 1)) != 0 {
+        if slot != 0 && ready.test(slot as usize - 1) {
             spec.cell.arrivals.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -4409,16 +4409,38 @@ mod unserved_deadline_tests {
             deadline_ms: 10,
             cell: &C,
         }];
-        credit_arrivals(&T, 1 << 3);
+        use crate::executor::slot_mask::SlotMask;
+        credit_arrivals(&T, SlotMask::bit(3));
         assert_eq!(C.arrivals.load(Ordering::Relaxed), 0, "not armed");
         C.deadline_slot.store(4, Ordering::Relaxed);
-        credit_arrivals(&T, 1 << 2);
-        credit_arrivals(&T, 1 << 3);
+        credit_arrivals(&T, SlotMask::bit(2));
+        credit_arrivals(&T, SlotMask::bit(3));
         assert_eq!(C.arrivals.load(Ordering::Relaxed), 1);
         deadline_unbind(&T, 2);
         assert_eq!(C.deadline_slot.load(Ordering::Relaxed), 4, "another slot");
         deadline_unbind(&T, 3);
         assert_eq!(C.deadline_slot.load(Ordering::Relaxed), 0);
+    }
+
+    // Issue 2541.
+    /// A row armed on a slot past 64 is credited by that slot's bit, and
+    /// never by the slot 64 below it.
+    #[test]
+    fn readiness_credits_a_slot_past_64_by_its_own_bit() {
+        use crate::executor::slot_mask::SlotMask;
+        static C: SubMonitorCell = SubMonitorCell::new();
+        static T: [AgeMonitorSpec; 1] = [AgeMonitorSpec {
+            topic: "/t",
+            fqn: "/n/t",
+            max_age_ms: 0,
+            deadline_ms: 10,
+            cell: &C,
+        }];
+        C.deadline_slot.store(101, Ordering::Relaxed);
+        credit_arrivals(&T, SlotMask::bit(36));
+        assert_eq!(C.arrivals.load(Ordering::Relaxed), 0, "slot 36 is not 100");
+        credit_arrivals(&T, SlotMask::bit(100));
+        assert_eq!(C.arrivals.load(Ordering::Relaxed), 1);
     }
 
     /// An armed deadline-only row judges arrivals over the deadline; fed, it

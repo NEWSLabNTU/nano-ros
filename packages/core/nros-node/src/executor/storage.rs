@@ -456,11 +456,11 @@ pub(crate) const fn extra_session_slots(sizing: ExecutorSizing) -> usize {
 
 /// The counts this build was configured with, for `sizing`.
 /// Issue 2541 -- the callback slots `sizing` carves: its `cbs`, but never more
-/// than the masks can name. A table sized past them registered a 65th
-/// callback and dispatched it through `1u64 << 64`. Capped HERE, for both the
-/// layout and the carve, so the two agree, every loop over the entries stays
-/// within the masks, and the 65th registration is the full table's
-/// `ExecutorFull`.
+/// than the slot masks can name (`MAX_CALLBACK_SLOTS`). A table sized past
+/// one `u64` mask registered a 65th callback and dispatched it through
+/// `1u64 << 64`. Capped HERE, for both the layout and the carve, so the two
+/// agree, every loop over the entries stays within the masks, and the
+/// registration past the capacity is the full table's `ExecutorFull`.
 pub(crate) const fn callback_slots(sizing: ExecutorSizing) -> usize {
     if sizing.cbs < super::spin::MAX_CALLBACK_SLOTS {
         sizing.cbs
@@ -569,12 +569,14 @@ pub const fn executor_storage_u64_len(sizing: ExecutorSizing) -> usize {
 /// principle): the entry / macro / FFI supplies these as plain `usize`s rather
 /// than as type/const generics C can't name. Used to size + carve the backing.
 ///
-/// `cbs` is capped at 64 by the executor's `u64` ready-set bitmask (asserted in
-/// `carve`-time / `open_in`).
+/// `cbs` is capped at the executor's callback slot capacity
+/// (`crate::config::CALLBACK_SLOT_CAPACITY`, the width of its slot masks) when
+/// the backing is carved.
 #[derive(Clone, Copy)]
 pub struct ExecutorSizing {
     /// Callback-table slots (`entries`, the per-entry SC bindings, and the
-    /// per-callback-group sched table). ≤ 64.
+    /// per-callback-group sched table). At most
+    /// `crate::config::CALLBACK_SLOT_CAPACITY`.
     pub cbs: usize,
     /// Scheduling-context slots (`sched_contexts`, the sporadic state tables
     /// and alive supervision's per-SC records).
@@ -776,9 +778,9 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
     // the image's own model (`NROS_EXECUTOR_ARENA_SIZE`) is 25,724 -- exactly
     // the two extra bases. See [`levels_arena_bytes`].
     let arena = levels_arena_bytes(arena, sched_tasks.len());
-    // One executor dispatches at most one ready word of slots: an image whose
-    // sched tasks declare more fails to compile (issue 2541, beside
-    // `MAX_CALLBACK_SLOTS`), and `callback_slots` caps any table at it.
+    // One executor dispatches at most `MAX_CALLBACK_SLOTS` slots, which the
+    // image's own counts size (issue 2541, `crate::config::SLOT_WORDS`), and
+    // `callback_slots` caps any table at it.
     Some(ExecutorSizing {
         cbs,
         sc: crate::config::MAX_SC,
@@ -1434,9 +1436,11 @@ mod tests {
                 // worker's padding; scales with nothing.
                 + size_of::<u32>()
                 // Issue 2146 -- the deferred-dispatch queue: the deferred and
-                // queued slot masks (one `u64` each, whatever MAX_CBS is, as
-                // the ready word) and the host's optional `(notifier, ctx)`.
-                + 2 * size_of::<u64>()
+                // queued slot masks and the host's optional `(notifier, ctx)`.
+                // Issue 2541 -- a mask is one `u64` per 64 callback slots
+                // (`SLOT_WORDS`), so one word at 64 or fewer; cfg(test) takes
+                // two. It is sized by the slot capacity, not by MAX_CBS.
+                + 2 * size_of::<super::super::slot_mask::SlotMask>()
                 + size_of::<Option<(super::super::types::DeferNotify, *mut core::ffi::c_void)>>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
@@ -1450,13 +1454,13 @@ mod tests {
                 >()
                 .saturating_sub(size_of::<[super::super::monitor::MonitorState; 8]>());
         // phase-397 W2/W3 -- the mask of entry slots whose backend accepted an
-        // entity waker and the mask W3 re-probes: one `u64` each, whatever
-        // MAX_CBS is (the ready word they describe is one machine word), plus
-        // W3's `u32` probe counter. Issue 2060 adds a third mask, the slots
-        // whose status events are polled every pass (`entity_status_polled`).
+        // entity waker and the mask W3 re-probes, plus W3's `u32` probe
+        // counter. Issue 2060 adds a third mask, the slots whose status events
+        // are polled every pass (`entity_status_polled`). Each is a slot mask,
+        // sized as the deferred queue's above.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         {
-            ceiling += 3 * size_of::<u64>() + size_of::<u32>();
+            ceiling += 3 * size_of::<super::super::slot_mask::SlotMask>() + size_of::<u32>();
         }
         // Issue 1938 -- `signal-fd-wake`'s worker: an fd, one `Arc` to its
         // context and the task handle. Scales with nothing; it sat unnamed and

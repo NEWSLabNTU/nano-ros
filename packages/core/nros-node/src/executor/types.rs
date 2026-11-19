@@ -965,9 +965,9 @@ pub(crate) const DEFAULT_TX_BUF: usize = crate::config::DEFAULT_RX_BUF_SIZE;
 // Phase 110.A — ReadySet
 // ============================================================================
 
-/// Index into the executor's `entries[]` array. Phase 110.A caps at
-/// 64 to match the existing readiness bitmap width; if a future
-/// MAX_HANDLES bump goes past 64 the type widens accordingly.
+/// Index into the executor's `entries[]` array. A `u8`, as the slot index
+/// a dispatch hands `try_process` is: `crate::config` refuses an image whose
+/// `CALLBACK_SLOT_CAPACITY` passes 256.
 #[cfg(any(has_rmw, test))]
 pub(crate) type DescIdx = u8;
 
@@ -1182,40 +1182,42 @@ impl SlotTag {
 
 /// A set of handle IDs, represented as a bitset.
 ///
-/// Supports up to 64 handles. Construct via `HandleId` operators:
+/// Holds any handle of the executor's callback table (one bit per slot).
+/// A handle whose slot is past the executor's capacity is never in a set.
+/// Construct via `HandleId` operators:
 /// ```ignore
 /// let set = imu | gps | lidar;  // HandleSet from 3 handles
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct HandleSet(pub(crate) u64);
+pub struct HandleSet(pub(crate) super::slot_mask::SlotMask);
 
 impl HandleSet {
     /// Empty set.
-    pub const EMPTY: Self = Self(0);
+    pub const EMPTY: Self = Self(super::slot_mask::SlotMask::EMPTY);
 
     /// Insert a handle into the set.
     pub const fn insert(self, id: HandleId) -> Self {
-        Self(self.0 | (1u64 << id.slot()))
+        Self(self.0.with(id.slot()))
     }
 
     /// Check if the set contains a handle.
     pub const fn contains(self, id: HandleId) -> bool {
-        self.0 & (1u64 << id.slot()) != 0
+        self.0.test(id.slot())
     }
 
     /// Union of two sets.
     pub const fn union(self, other: Self) -> Self {
-        Self(self.0 | other.0)
+        Self(self.0.union(other.0))
     }
 
     /// Number of handles in the set.
     pub const fn len(self) -> u32 {
-        self.0.count_ones()
+        self.0.count()
     }
 
     /// Check if the set is empty.
     pub const fn is_empty(self) -> bool {
-        self.0 == 0
+        self.0.is_empty()
     }
 }
 
@@ -1248,29 +1250,29 @@ impl core::ops::BitOr for HandleSet {
 ///
 /// Passed to [`Trigger::Predicate`] functions. Query by [`HandleId`].
 pub struct ReadinessSnapshot {
-    pub(crate) bits: u64,
+    pub(crate) bits: super::slot_mask::SlotMask,
     pub(crate) count: usize,
 }
 
 impl ReadinessSnapshot {
     /// Check if a specific handle has data.
     pub const fn is_ready(&self, id: HandleId) -> bool {
-        self.bits & (1u64 << id.slot()) != 0
+        self.bits.test(id.slot())
     }
 
     /// Check if all handles in the set have data.
     pub const fn all_ready(&self, set: HandleSet) -> bool {
-        self.bits & set.0 == set.0
+        self.bits.contains_all(set.0)
     }
 
     /// Check if any handle in the set has data.
     pub const fn any_ready(&self, set: HandleSet) -> bool {
-        self.bits & set.0 != 0
+        self.bits.intersects(set.0)
     }
 
     /// Number of handles that have data.
     pub const fn ready_count(&self) -> u32 {
-        self.bits.count_ones()
+        self.bits.count()
     }
 
     /// Total registered handles.
@@ -2798,6 +2800,7 @@ pub(crate) struct ShutdownHook {
 #[cfg(kani)]
 mod verification {
     use super::*;
+    use crate::executor::slot_mask::SlotMask;
 
     // ---- HandleSet algebraic properties ----
 
@@ -2824,8 +2827,8 @@ mod verification {
     fn handleset_union_commutative() {
         let a: u64 = kani::any();
         let b: u64 = kani::any();
-        let set_a = HandleSet(a);
-        let set_b = HandleSet(b);
+        let set_a = HandleSet(SlotMask::from_word0(a));
+        let set_b = HandleSet(SlotMask::from_word0(b));
         assert_eq!(set_a.union(set_b).0, set_b.union(set_a).0);
     }
 
@@ -2834,9 +2837,9 @@ mod verification {
         let a: u64 = kani::any();
         let b: u64 = kani::any();
         let c: u64 = kani::any();
-        let sa = HandleSet(a);
-        let sb = HandleSet(b);
-        let sc = HandleSet(c);
+        let sa = HandleSet(SlotMask::from_word0(a));
+        let sb = HandleSet(SlotMask::from_word0(b));
+        let sc = HandleSet(SlotMask::from_word0(c));
         assert_eq!(sa.union(sb).union(sc).0, sa.union(sb.union(sc)).0);
     }
 
@@ -2893,7 +2896,10 @@ mod verification {
         let bits: u64 = kani::any();
         let idx: usize = kani::any();
         kani::assume(idx < 64);
-        let snap = ReadinessSnapshot { bits, count: 64 };
+        let snap = ReadinessSnapshot {
+            bits: SlotMask::from_word0(bits),
+            count: 64,
+        };
         let id = HandleId(idx);
         // is_ready matches the bit
         assert_eq!(snap.is_ready(id), bits & (1u64 << idx) != 0);
@@ -2903,8 +2909,11 @@ mod verification {
     fn snapshot_all_ready_correct() {
         let bits: u64 = kani::any();
         let set_bits: u64 = kani::any();
-        let snap = ReadinessSnapshot { bits, count: 64 };
-        let set = HandleSet(set_bits);
+        let snap = ReadinessSnapshot {
+            bits: SlotMask::from_word0(bits),
+            count: 64,
+        };
+        let set = HandleSet(SlotMask::from_word0(set_bits));
         // all_ready iff every bit in set is present in bits
         assert_eq!(snap.all_ready(set), bits & set_bits == set_bits);
     }
@@ -2913,8 +2922,11 @@ mod verification {
     fn snapshot_any_ready_correct() {
         let bits: u64 = kani::any();
         let set_bits: u64 = kani::any();
-        let snap = ReadinessSnapshot { bits, count: 64 };
-        let set = HandleSet(set_bits);
+        let snap = ReadinessSnapshot {
+            bits: SlotMask::from_word0(bits),
+            count: 64,
+        };
+        let set = HandleSet(SlotMask::from_word0(set_bits));
         // any_ready iff at least one bit overlaps
         assert_eq!(snap.any_ready(set), bits & set_bits != 0);
     }
@@ -2947,9 +2959,9 @@ mod verification {
     fn trigger_allof_fires_iff_all_set() {
         let readiness: u64 = kani::any();
         let set_bits: u64 = kani::any();
-        let set = HandleSet(set_bits);
-        // Trigger::AllOf(set) fires when readiness & set.0 == set.0
-        let fires = readiness & set.0 == set.0;
+        let set = HandleSet(SlotMask::from_word0(set_bits));
+        // Trigger::AllOf(set) fires when readiness & set.0.word(0) == set.0.word(0)
+        let fires = readiness & set.0.word(0) == set.0.word(0);
         // AllOf with empty set always fires
         if set_bits == 0 {
             assert!(fires);
@@ -2964,9 +2976,9 @@ mod verification {
     fn trigger_anyof_fires_iff_any_set() {
         let readiness: u64 = kani::any();
         let set_bits: u64 = kani::any();
-        let set = HandleSet(set_bits);
-        // Trigger::AnyOf(set) fires when readiness & set.0 != 0
-        let fires = readiness & set.0 != 0;
+        let set = HandleSet(SlotMask::from_word0(set_bits));
+        // Trigger::AnyOf(set) fires when readiness & set.0.word(0) != 0
+        let fires = readiness & set.0.word(0) != 0;
         // AnyOf with empty set never fires
         if set_bits == 0 {
             assert!(!fires);
@@ -2995,7 +3007,7 @@ mod verification {
         let singleton = HandleSet::EMPTY.insert(id);
         // One(id) and AnyOf({id}) produce the same result
         let one_fires = readiness & (1u64 << id.0) != 0;
-        let anyof_fires = readiness & singleton.0 != 0;
+        let anyof_fires = readiness & singleton.0.word(0) != 0;
         assert_eq!(one_fires, anyof_fires);
     }
 }
