@@ -1,11 +1,12 @@
 ---
 id: 2716
 title: "`nros doctor` never compares the SDK store with the [tool.*] pins, so a stale tool runs silently"
-status: open
+status: resolved
+resolved_in: "PR 4272 (the doctor drift report), then the retired-tools follow-up"
 type: bug
 severity: medium
 area: [tooling, setup]
-related: [0466, 0493, 0500, 0929, 1273, 1413]
+related: [0466, 0493, 0500, 0653, 0929, 1273, 1413]
 found: 2026-11-18
 ---
 
@@ -63,13 +64,11 @@ a row that was deleted on purpose:
   cargo-tools` runs `nros setup --tool espflash` (non-fatal, so it now fails
   quietly on every `just setup base`), and `just workspace doctor` counts
   `espflash` absent from `PATH` as a missing cargo tool. Both are dead since the
-  board left; they are a follow-up, not part of this fix.
+  board left; both are removed by the follow-up below.
 
 `scripts/sdk-retired-tools.txt` (read by `just doctor`'s "retired SDK store
 entries" warning, issue 0653) names only `zenohd`; the other three retired rows
-never joined it. The new doctor section lists all four from the index alone,
-because a store dir no `[tool.*]` row names is retired or foreign by
-definition.
+never joined it. The follow-up below replaces that list with index data.
 
 ## Fix
 
@@ -98,3 +97,35 @@ definition.
 
 Re-provisioning `sccache` and `openocd` on the host that found this is held
 for the owner's ruling; the doctor only reports.
+
+## Follow-up: retired rows are index data
+
+The first fix left three things a second list or a recipe still decided.
+
+1. **Retired tools are a table in the index.** `[retired.<name>]` carries
+   `since` (the commit that removed the `[tool.*]` row) and `reason`, read by
+   the existing `SdkIndex` parser (`RetiredTool`); `validate` refuses a name
+   that is both a live row and retired. All four rows above are listed.
+   `scripts/sdk-retired-tools.txt` is deleted. A `git log` of the index was
+   the other option and was rejected: the gate workflow's `actions/checkout`
+   takes the default depth 1, where the commit that deleted a row is not
+   there, and a history walk cannot carry the reason.
+2. **Both doctors read it.** `sdk_drift` splits the store dirs no `[tool.*]`
+   row names into `retired` (with since and reason) and `unknown`; `nros
+   doctor` prints them as two lines. `just doctor`'s retired-entry warning
+   (issue 0653) reads the `[retired]` rows `nros setup --list` now prints,
+   through the checkout's own CLI, so no shell parses the index.
+3. **`just workspace cargo-tools` reads `need`.** `nros setup --by-need --tool
+   ..` installs each named tool as its own plan and lets the row's `need`
+   decide: a `required` failure fails the run after the rest are tried, an
+   `opt-in` one warns, and a name with no row counts as required. The recipe
+   no longer states fatal or non-fatal per tool, and runs `just setup-cli`
+   first so the flag is there.
+
+The espflash callers are gone: `cargo-tools` no longer provisions it, and
+`just workspace doctor` no longer counts it as a cargo tool. `zenohd` stays
+wherever it names the ROS router (`rmw_zenohd`, `scripts/dev/zenohd.sh`,
+`just zenohd`): that is the replacement the retired row points at, not the
+store copy. `play_launch_parser` stays as the crate `nros-launch-resolve`
+links. The comment in `scripts/lib/qemu-bin.sh` that named
+`[tool.esp32-qemu]` no longer does.

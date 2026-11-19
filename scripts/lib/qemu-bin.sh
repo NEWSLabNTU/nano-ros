@@ -91,8 +91,8 @@ _nros_qemu_store_builds() {
 #
 # Prints the binary to run for `<exe>` (`qemu-system-arm`, …). `<tool>` is the
 # index row whose store copy is rung 3 (default `qemu`); `noprefix` skips rung
-# 2, for a QEMU the project prefix never holds (the ESP32 fork,
-# `[tool.esp32-qemu]`). When no rung answers it prints the bare name and
+# 2, for a QEMU the project prefix never holds (a fork the index ships as its
+# own `[tool.*]` row). When no rung answers it prints the bare name and
 # returns 1, so a caller can either run it (and get the shell's own "not
 # found") or test the status. A stale project prefix returns 2 with nothing on
 # stdout and the reason on stderr (issue 0930).

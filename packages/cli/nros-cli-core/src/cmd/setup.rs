@@ -64,6 +64,15 @@ pub struct Args {
     #[arg(long = "tool", value_name = "NAME")]
     pub tools: Vec<String>,
 
+    /// With `--tool`: install each named tool as its own plan, and let its
+    /// index row's `need` decide what a failure means -- a `required` tool
+    /// fails the run, an `opt-in` one prints a warning and the rest go on.
+    /// What `just workspace cargo-tools` runs, so the recipe never states a
+    /// tool's need a second time.
+    // issue 2716.
+    #[arg(long = "by-need", requires = "tools")]
+    pub by_need: bool,
+
     /// Provision a single `[source.*]` package by name from the index.
     ///
     /// E.g. `--source freertos-kernel`. Repeatable. The index is the SSOT —
@@ -364,7 +373,7 @@ fn offline_dirs(
 
 fn route(args: &Args) -> Result<Route> {
     // (flag as the user typed it, given?)
-    let given: [(&str, bool); 13] = [
+    let given: [(&str, bool); 14] = [
         ("<board>", args.board.is_some()),
         ("--list", args.list),
         ("--licenses", args.licenses),
@@ -373,6 +382,7 @@ fn route(args: &Args) -> Result<Route> {
         ("--system", args.system),
         ("--build-sources", args.build_sources),
         ("--tool", !args.tools.is_empty()),
+        ("--by-need", args.by_need),
         ("--source", !args.sources.is_empty()),
         ("--check", args.check),
         ("--rmw", args.rmw.is_some()),
@@ -421,7 +431,7 @@ fn route(args: &Args) -> Result<Route> {
         Route::CheckAll => &["--check", "<board>"],
         // `--prefix` places a TOOL; with no `--tool` it has nothing to place.
         Route::Install if args.tools.is_empty() => &["--source"],
-        Route::Install => &["--tool", "--source", "--prefix"],
+        Route::Install => &["--tool", "--by-need", "--source", "--prefix"],
         Route::Board => &["<board>", "--rmw"],
     };
     let dropped: Vec<String> = given
@@ -604,6 +614,45 @@ fn run_install(
     Ok(())
 }
 
+/// `--tool .. --by-need` (issue 2716): one plan per tool, in the order given,
+/// and the index row's `need` decides what a failure means. A `required` tool
+/// that fails fails the run, after the rest were tried; an `opt-in` one is a
+/// warning. A name with no row, or a row with no `need`, counts as required:
+/// a typo must not pass as an optional tool that failed quietly.
+///
+/// One plan per tool on purpose: a single plan makes the whole set's exit
+/// status the only verdict (phase-447 E1), which is exactly what cannot tell a
+/// coverage aid failing from the test runner failing.
+fn install_by_need(
+    index: &SdkIndex,
+    names: &[&str],
+    install_one: &mut dyn FnMut(&str) -> Result<()>,
+) -> Result<()> {
+    use crate::orchestration::sdk_index::ToolNeed;
+
+    let mut failed_required = Vec::new();
+    for &name in names {
+        let Err(e) = install_one(name) else {
+            continue;
+        };
+        let need = index.tool.get(name).and_then(|t| t.need);
+        if need == Some(ToolNeed::OptIn) {
+            eprintln!("WARNING: {name} provisioning failed (need = \"opt-in\", non-fatal): {e:#}");
+        } else {
+            eprintln!("ERROR: {name} provisioning failed (need = \"required\"): {e:#}");
+            failed_required.push(name);
+        }
+    }
+    if !failed_required.is_empty() {
+        bail!(
+            "nros setup --by-need: {} required tool(s) failed: {}",
+            failed_required.len(),
+            failed_required.join(", ")
+        );
+    }
+    Ok(())
+}
+
 /// Per-invocation shallow override from `--full` / `--shallow`: `None` = use the
 /// per-source index default, `Some(false)` = full history, `Some(true)` = force
 /// shallow.
@@ -755,14 +804,22 @@ pub fn run(args: Args) -> Result<()> {
         return run_install(
             &args,
             |names| {
-                install_tools(
-                    &index,
-                    names,
-                    args.prefix.as_deref(),
-                    args.dry_run,
-                    args.sudo,
-                    Jobs::from_env(args.jobs)?,
-                )
+                let jobs = Jobs::from_env(args.jobs)?;
+                let install = |names: &[&str]| {
+                    install_tools(
+                        &index,
+                        names,
+                        args.prefix.as_deref(),
+                        args.dry_run,
+                        args.sudo,
+                        jobs,
+                    )
+                };
+                if args.by_need {
+                    install_by_need(&index, names, &mut |n| install(&[n]))
+                } else {
+                    install(names)
+                }
             },
             |sources| {
                 provision_named_sources(
@@ -3091,6 +3148,11 @@ fn print_list(index: &SdkIndex) {
     }
     for (name, g) in &index.gated {
         println!("  [gated]  {name:<22} {} (${})", g.version, g.env);
+    }
+    // issue 2716 -- what `just doctor` reads to warn about a retired tool's
+    // store dir, so the shell never parses the index itself.
+    for (name, r) in &index.retired {
+        println!("  [retired] {name:<21} {} -- {}", r.since, r.reason);
     }
 }
 
@@ -7688,6 +7750,75 @@ mod workspace_scan_tests {
             },
         );
         assert!(err.is_err() && !ran_sources.get());
+    }
+
+    /// Issue 2716 -- `--by-need` reads each tool's `need` from the index: an
+    /// opt-in failure warns and the rest still run; a required failure (or a
+    /// name with no row) fails the run, after the rest were tried.
+    #[test]
+    fn by_need_fails_only_on_a_required_tool() {
+        let index = SdkIndex::parse(
+            r#"
+[tool.nextest]
+version = "1"
+need = "required"
+[tool.llvm-cov]
+version = "1"
+need = "opt-in"
+[tool.sweep]
+version = "1"
+need = "opt-in"
+"#,
+        )
+        .unwrap();
+        let tried = std::cell::RefCell::new(Vec::<String>::new());
+        let failing = |fail: &'static [&'static str]| {
+            let tried = &tried;
+            move |n: &str| -> Result<()> {
+                tried.borrow_mut().push(n.to_string());
+                if fail.contains(&n) {
+                    bail!("{n} failed")
+                }
+                Ok(())
+            }
+        };
+
+        // Opt-in failures only: success, and every tool was tried in order.
+        let names = ["nextest", "llvm-cov", "sweep"];
+        install_by_need(&index, &names, &mut failing(&["llvm-cov", "sweep"])).unwrap();
+        assert_eq!(*tried.borrow(), names);
+
+        // A required failure fails the run, names the tool, and the opt-in
+        // ones after it were still tried.
+        tried.borrow_mut().clear();
+        let err = install_by_need(&index, &names, &mut failing(&["nextest"]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("1 required tool(s) failed: nextest"), "{err}");
+        assert_eq!(*tried.borrow(), names);
+
+        // A name the index does not know is required, never quietly optional.
+        let err = install_by_need(&index, &["typo"], &mut failing(&["typo"]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("typo"), "{err}");
+    }
+
+    /// `--by-need` belongs to `--tool`: clap refuses it alone, and the Install
+    /// arm consumes it.
+    #[test]
+    fn by_need_rides_on_tool() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: Args,
+        }
+        assert!(Cli::try_parse_from(["nros", "--by-need"]).is_err());
+        let cli = Cli::try_parse_from(["nros", "--by-need", "--tool", "a", "--tool", "b"]).unwrap();
+        assert!(cli.args.by_need);
+        assert_eq!(route(&cli.args).unwrap(), Route::Install);
     }
 
     /// Issue 1935 — every combination the arms used to drop silently is

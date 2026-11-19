@@ -1002,6 +1002,40 @@ dist.linux-x86_64 = { url = "https://github.com/verus-lang/verus/releases/downlo
 dist.macos-arm64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-arm64-macos.zip", sha256 = "225978b94c0f75edeeee76a042bc865afe0e76e87ceb97a305ea89ab21183d98", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-arm64-macos {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify", floor = { macos = "11.0" } }
 dist.macos-x86_64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-x86-macos.zip", sha256 = "4d6b27a6e96079b56d910ec9290485467985aa9f8d68de03c5ca19a91312be75", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-x86-macos {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify", floor = { macos = "11.0" } }
 
+# --- retired host tools (issue 2716) ---
+#
+# A `[tool.*]` row deleted on purpose. Deleting the row stops new installs, but
+# the store accumulates by design (issue 0500) and nothing prunes it, so every
+# existing `~/.nros/sdk/<name>/` stays where it was. A row here is what lets the
+# doctors tell that directory apart from one nano-ros never shipped: `nros
+# doctor` prints the reason beside it, and `just doctor` warns with the
+# `rm -rf` (issue 0653: a stale tool on PATH is a stale tool that gets USED).
+#
+# Data in the index rather than a list beside it or a `git log` walk: the list
+# (`scripts/sdk-retired-tools.txt`) had already drifted to one name of four, and
+# the gate checks out depth 1, where the history that deleted a row is not there.
+#
+#   since    the commit that removed the `[tool.*]` row
+#   reason   what replaced it, in one line
+#
+# A name may not be both a `[tool.*]` row and retired (`SdkIndex::validate`).
+
+[retired.zenohd]
+since = "bc9de35a9b"
+reason = "the router is ROS's rmw_zenohd, shipped with rmw_zenoh_cpp (phase-362, RFC-0075)"
+
+[retired.play_launch_parser]
+since = "1c6ca2e35d"
+reason = "nros-launch-resolve links the parser crate statically (issue 1413)"
+
+[retired.esp32-qemu]
+since = "1cfa392bb6"
+reason = "the ESP32-C3 board retired (phase-521 W6)"
+
+[retired.espflash]
+since = "1cfa392bb6"
+reason = "the ESP32-C3 board retired (phase-521 W6)"
+
 # --- source packages (built with the app for the user's target) ---
 #
 # Phase 195.B — data-driven provisioning. Each source is a committed submodule,
