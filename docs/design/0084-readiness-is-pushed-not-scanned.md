@@ -18,8 +18,9 @@ superseded-by: null
 open questions are answered or filed (section 9): the 64-callback ceiling was
 [issue 2541](../issues/archived/2541-executor-callback-slots-capped-at-64.md)
 (answered, see the changelog), and the
-backends that do not attribute arrivals (XRCE, uORB, bare metal) are
-[issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md).
+backends thought not to attribute arrivals (XRCE, uORB, bare metal) were
+[issue 2542](../issues/archived/2542-arrival-attribution-xrce-uorb-baremetal.md): XRCE and uORB do, and what is left is stated in
+section 8.
 
 > **Amendment 2026-10-17.** §4.2's premise does not hold on `main`: the
 > entity-scoped wake functions end in `register_waker`, which no
@@ -201,8 +202,9 @@ spin_once:
   dispatch
 ```
 
-Poll-only backends (XRCE-DDS-Client, bare-metal smoltcp, uORB) never
-supply a token, always report UNKNOWN, and get **exactly today's behaviour**.
+A backend that leaves the slots NULL never supplies a token, always reports
+UNKNOWN, and gets **exactly today's behaviour**. Which backends that is: see
+section 8's "backends touched" row. As built, XRCE and uORB do supply one.
 This is the same graceful-degradation contract `supports_wake_callback` already
 states, one level finer.
 
@@ -310,7 +312,8 @@ already wrong in principle on an image whose whole purpose is bounded latency.
 | executor state | one `AtomicU64` in `WakeCtx` (8 B) |
 | hot path added | one `fetch_or` per arrival |
 | hot path removed | up to 64 indirect calls per spin |
-| backends touched | zenoh (through the Rust adapter) and Cyclone (`on_data_available` receives the reader; all three slots, phase-397 W2.b), both landed; XRCE, uORB and bare metal leave the slots NULL and keep today's behaviour |
+| backends touched | zenoh (through the Rust adapter) and Cyclone (`on_data_available` receives the reader; all three slots, phase-397 W2.b), both landed. XRCE: all three slots (issue 2109), routed by the reader, replier or requester `object_id` in its arrival callbacks and fired from `drive_io`. uORB: the subscription slot (phase-521 W8, the PX4 callback glue). Its service and client slots stay NULL because uORB has no services or clients (creating one is refused), and its non-PX4 build has no broker callback, states readiness NONE and is refused at open (RFC-0113 D5). Bare metal is not a backend: zenoh or XRCE over smoltcp, poll-only by RFC-0106 D5, so no arrival is pushed there |
+| measured (issue 2542, XRCE, aarch64) | `xrce_entity_wake::a_pushed_xrce_spin_dispatches_without_probing_readiness`, one subscription through a live Agent: the spin that dispatches an arrival makes 0 `has_data` calls, and an idle spin 0. With the three XRCE slots reverted to NULL, the slot is unattributed and each makes 1 (one per unattributed slot) |
 | risk | the arrived-vs-present semantics of §4.4 |
 | measured (phase-397 W6, zenoh, x86_64) | an idle shared-session member under ~950 foreign arrivals/s: 949 spins/s and 0.22 % of a core with the fan-out, 2 spins/s and 0.003 % without; arrival-to-callback median 22 us under a 1 s park |
 
@@ -327,8 +330,8 @@ Answered or filed on 2026-11-14 (phase-555 W3):
    arrivals is settled by its bit; every other slot keeps its `has_data`
    probe, once per pass (section 5's resolution; RFC-0108 P3). A backend
    that needs poking to progress is a poll-only backend and keeps today's
-   path. Making XRCE and uORB attribute is
-   [issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md).
+   path. XRCE and uORB attribute, and which slots stay probed is in
+   section 8; that was [issue 2542](../issues/archived/2542-arrival-attribution-xrce-uorb-baremetal.md).
 3. ~~**`ready_bits` is a `u64`, so an executor holds at most 64 callbacks.**~~
    **Answered: per-word atomics, sized from the image** (issue 2541, see the
    changelog below). The ready word is an array of machine-word atomics,
@@ -352,4 +355,10 @@ Answered or filed on 2026-11-14 (phase-555 W3):
   image's callback count. An image of 64 callbacks or fewer keeps one mask
   word, and its atomic words cover its own count, so a small image's wake
   path is the one it had.
+- **2026-11-19 — section 8 corrected** ([issue 2542](../issues/archived/2542-arrival-attribution-xrce-uorb-baremetal.md)). The
+  "backends touched" row said XRCE, uORB and bare metal leave the per-entity
+  slots NULL. XRCE has filled all three since issue 2109 and uORB its
+  subscription slot since phase-521 W8. The row now says which slots stay
+  NULL and why, and gains a measured XRCE row. Section 4.3's list of
+  poll-only backends defers to that row.
 
