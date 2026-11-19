@@ -93,7 +93,7 @@ impl rcl_guard_condition_t {
     }
 
     /// Get the guard handle for triggering.
-    pub(crate) fn get_guard_handle(&self) -> Option<&nros_node::GuardCondition> {
+    pub(crate) fn get_guard_handle(&self) -> Option<&nros_node::GuardCondition<'_>> {
         if !self._guard_valid {
             None
         } else {

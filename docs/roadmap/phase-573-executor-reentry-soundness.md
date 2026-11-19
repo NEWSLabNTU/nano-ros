@@ -1,6 +1,6 @@
 # Phase 573 — a callback that calls back into its executor is sound
 
-**Status (2026-11-17). OPEN: W1 and W2 are done; W2b, W3 and W4 are open.** Fixes
+**Status (2026-11-19). OPEN: W1, W2 and W5a are done; W2b, W3 and W4 are open.** Fixes
 [issue 2675](../issues/2675-callback-reentry-aliases-executor.md) by amending
 [RFC-0108](../design/0108-executor-preemption-levels.md) ("Re-entry from a
 callback"). Ahead of [phase-572](phase-572-rust-component-graph-query.md),
@@ -119,6 +119,24 @@ pointer derived from a temporary reborrow. A caller that keeps it while the
 executor writes the session through its own field holds a disabled tag, the
 same defect the client handles had. The sweep covers it: the fix is a raw
 place, and a Miri case keeps the pointer across a `spin_once`.
+
+### W5a — A guard condition cannot outlive its executor
+
+- **Status:** DONE (2026-11-19)
+
+[Issue 2727](../issues/archived/2727-guard-condition-outlives-executor.md).
+A `GuardCondition` kept past its executor triggered through a freed
+`WakeCtx`, and could outlive the backing its flag lives in, from safe code.
+The handle is now `GuardCondition<'s>`, borrowing the executor's backing,
+and owns an `Arc<WakeCtx>` clone of the same size as the pointer it
+replaces.
+
+Acceptance:
+- A `Weak<WakeCtx>` taken before the executor's `Arc` drops still upgrades
+  afterwards.
+- A `compile_fail` doctest refuses a handle kept past its backing. Its
+  compiling twin is run and counted by `just check node-std-tests`.
+- A mutation of each half fails its test.
 
 ### W4 — The multi-level and RTIC case
 
