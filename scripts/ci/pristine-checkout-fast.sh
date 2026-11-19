@@ -140,11 +140,19 @@ for cand in "${NROS_SUBMODULE_PIN_BASELINE:-}" origin/main; do
     pin_baseline=""
 done
 
+# The same stale `origin/main` would make `changelog-required` diff the branch
+# against that old local main, so the clone's gates get this checkout's own
+# `origin/main` as the branch base (scripts/changelog-audit.py branch_base).
+main_baseline="$(git -C "$repo_root" rev-parse --verify -q 'origin/main^{commit}' || true)"
+
 run_in_clone() {
     (
         cd "$clone" || exit 2
-        unset NROS_CHECK_SKIP_STRICT NROS_SUBMODULE_PIN_BASELINE \
+        unset NROS_CHECK_SKIP_STRICT NROS_SUBMODULE_PIN_BASELINE NROS_MAIN_BASELINE \
             GITHUB_ACTIONS CI GITHUB_EVENT_NAME GITHUB_EVENT_PATH
+        if [ -n "$main_baseline" ]; then
+            export NROS_MAIN_BASELINE="$main_baseline"
+        fi
         if [ -n "$pin_baseline" ]; then
             export NROS_SUBMODULE_PIN_BASELINE="$pin_baseline"
         fi

@@ -314,11 +314,16 @@ def require(cwd, base, head, included=None, types=None):
     # lazily (git_history's `fetch=True` case), bounded; a timeout or a
     # failure raises HistoryUnknown, which the caller reports NOT VERIFIED.
     lazy = not all(git_history.tree_present(cwd, rev) for rev in (base, head))
-    paths = [p for p in git_history.history_git(
-        cwd, "diff", "--name-only", "--no-renames", base, head, fetch=lazy).stdout.splitlines() if p]
+    rows = [r.split("\t", 1) for r in git_history.history_git(
+        cwd, "diff", "--name-status", "--no-renames", base, head, fetch=lazy).stdout.splitlines() if "\t" in r]
+    paths = [p for _, p in rows]
     if types is None:
         types = fragment_types((Path(cwd) / "pyproject.toml").read_text())
-    bad = untyped_fragments(paths, types)
+    # Only a fragment the branch leaves in the tree can be dropped from the
+    # notes. Deleting an old one is fine (the release that removed
+    # `1341.feature.md` did exactly that, and a stale base showed it as this
+    # branch's change).
+    bad = untyped_fragments([p for st, p in rows if st != "D"], types)
     if bad:
         raise UntypedFragments(bad, types)
     msgs = git(["log", "--no-merges", "--format=%B%x00", f"{base}..{head}"], cwd)
@@ -535,6 +540,29 @@ def self_test():
                     fails.append("--require: a configured fragment plus the README was refused")
             except UntypedFragments as e:
                 fails.append(f"--require: the README or a configured type was called untyped: {e}")
+            # Deleting an old fragment of an unconfigured type is not adding
+            # one: a release removed `1341.feature.md`, and a stale base made
+            # that deletion read as this branch's untyped fragment.
+            git(["checkout", "-q", "-B", "req", base], r)
+            old = commit(["changelog.d/1341.feature.md"])
+            git(["rm", "-q", "changelog.d/1341.feature.md"], r)
+            git(["commit", "-q", "-m", "drop the old fragment"], r)
+            try:
+                require(str(r), old, "HEAD", included=set(), types=("fix", "feat", "changed"))
+            except UntypedFragments as e:
+                fails.append(f"--require: deleting an untyped fragment was refused: {e}")
+            # $NROS_MAIN_BASELINE (the pristine clone's real main) wins over
+            # the clone's own stale origin/main.
+            prior_baseline = os.environ.get(BASELINE_ENV)
+            os.environ[BASELINE_ENV] = old
+            try:
+                if branch_base(str(r))[0] != old:
+                    fails.append(f"--require: branch_base ignored ${BASELINE_ENV}")
+            finally:
+                if prior_baseline is None:
+                    os.environ.pop(BASELINE_ENV, None)
+                else:
+                    os.environ[BASELINE_ENV] = prior_baseline
             cfg = ('[[tool.towncrier.type]]\ndirectory = "fix"\nname = "Fixed"\n\n'
                    '[[tool.towncrier.type]]\ndirectory = "changed"\nname = "Changed"\n\n'
                    '[tool.other]\ndirectory = "nope"\n')
@@ -621,8 +649,19 @@ def main(argv):
     return 0
 
 
-def branch_base(cwd, main="origin/main"):
-    """(merge base of HEAD and `main`, None), or (None, why it cannot be had)."""
+BASELINE_ENV = "NROS_MAIN_BASELINE"
+
+
+def branch_base(cwd, main=None):
+    """(merge base of HEAD and `main`, None), or (None, why it cannot be had).
+
+    `main` defaults to $NROS_MAIN_BASELINE, else `origin/main`. The pristine
+    checkout gate sets the variable: its `git clone --local --shared` has the
+    source repository as `origin`, so the clone's `origin/main` is that
+    repository's LOCAL main. In a nested worktree that main can be a release
+    or more old, and the branch then spans hundreds of other commits."""
+    if main is None:
+        main = os.environ.get(BASELINE_ENV) or "origin/main"
     p = subprocess.run(["git", "merge-base", "HEAD", main], cwd=cwd, capture_output=True, text=True)
     if p.returncode == 0 and p.stdout.strip():
         return p.stdout.strip(), None
