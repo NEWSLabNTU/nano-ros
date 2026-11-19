@@ -869,6 +869,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2",
+ "similar",
  "tempfile",
  "thiserror 1.0.69",
  "toml",

@@ -52,6 +52,7 @@ Start:
 Build:
   build        Build a nano-ros workspace
   configure    Configure a project: generate message bindings and the cargo patch config, then resolve and generate every image's build inputs
+  fix          Apply the mechanical remedies the build's refusals name; prints the change, and writes it with --apply
   clean        Remove the generated bindings and the managed patch block from each Rust package. Leaves user-written sections alone
   materialize  Take ownership of a generated entry package
 
@@ -642,6 +643,22 @@ Options:
 
   -V, --version
           Print version
+```
+
+### `nros fix`
+
+```text
+Apply the mechanical remedies the build's refusals name; prints the change, and writes it with --apply
+
+Usage: nros fix [OPTIONS] [PATH]
+
+Arguments:
+  [PATH]  The workspace (default: the current directory)
+
+Options:
+      --apply    Write the change; without it, only the diff prints
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### `nros clean`

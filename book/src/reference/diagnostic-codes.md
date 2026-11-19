@@ -24,6 +24,7 @@ changes its meaning, and a retired code names the one that replaced it.
 | [NROS-0004](#NROS-0004) | an image names no board |
 | [NROS-0005](#NROS-0005) | a board's platform reaches no built-in family |
 | [NROS-0006](#NROS-0006) | no diagnostic has this code |
+| [NROS-0011](#NROS-0011) | a knob is spelled with its retired name |
 
 <a id="NROS-0001"></a>
 
@@ -213,5 +214,38 @@ A file that happens to be named like a code is reached as a path:
 The refusal's `help` line, unless the site gives a more specific one:
 
 > check the code against the refusal that printed it
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0011"></a>
+
+## NROS-0011: a knob is spelled with its retired name
+
+A knob in `system.toml` is spelled with a name that has been retired. Each
+knob has one current spelling; older spellings (`ZPICO_MAX_QUERYABLES` for
+`NROS_ZENOH_MAX_QUERYABLES`, for example) are refused rather than read,
+because two names for one setting is how a build ends up reading the one you
+did not change.
+
+The refusal points at the key in the file and names the current spelling.
+
+### How to fix it
+
+Rename the key. `nros fix` does it for every retired spelling in the
+workspace's `system.toml` files: it prints the change first, and writes it
+with `--apply`.
+
+```sh
+nros fix            # show what would change
+nros fix --apply    # write it
+```
+
+A knob whose setting was removed outright, not renamed, has no current
+spelling. Its refusal names the reason instead, and the row has to be deleted
+by hand.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> rename the key to the knob's current spelling, which the refusal names; `nros fix` does it
 
 [Back to the list of codes](#diagnostic-codes)

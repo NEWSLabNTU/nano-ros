@@ -736,19 +736,7 @@ fn load_system_tomls(
         crate::orchestration::cargo_metadata_schema::SystemToml,
     )>,
 > {
-    let mut found: Vec<PathBuf> = Vec::new();
-    let direct = ws.join("system.toml");
-    if direct.is_file() {
-        found.push(direct);
-    } else if let Ok(entries) = std::fs::read_dir(ws.join("src")) {
-        for e in entries.flatten() {
-            let p = e.path().join("system.toml");
-            if p.is_file() {
-                found.push(p);
-            }
-        }
-    }
-    found.sort();
+    let found = crate::fix::system_toml_paths(ws);
     if found.is_empty() {
         return Err(eyre!(
             "no system.toml at {} or {}/src/*/",

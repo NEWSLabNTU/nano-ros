@@ -60,10 +60,13 @@ pub mod declared_params_header;
 /// phase-552 W2 (RFC-0129 D2) — a refusal is constructed from its diagnostic
 /// code: `Diag::X.err(format_args!(..))`.
 pub mod diag;
+// RFC-0129 D7/D8 (phase-578 W4): refusals at their line, and `nros fix`.
 /// phase-463 W3 -- the census CHECK: the join of the contract, the census and
 /// the derived inventory, one verdict per (node, kind, name). The producer is
 /// `cmd::entity_census`; this is the comparison it feeds.
 pub mod entity_census;
+pub mod fix;
+pub mod source_file;
 // phase-403 W9 (issue 0965) — the ENTITY inventory: WHICH entities an image
 // creates, the half the BOUND inventory (which prices a TYPE) cannot answer.
 // Shaped like `rosidl_codegen::bounds` — one data model, three transports —
@@ -382,6 +385,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Plan(args) => cmd::plan::run(args),
         cmd::Cmd::Check(args) => cmd::check::run(args),
         cmd::Cmd::Explain(args) => cmd::explain::run(args),
+        cmd::Cmd::Fix(args) => cmd::fix::run(args),
         cmd::Cmd::Config(args) => cmd::config::run(args),
         cmd::Cmd::Setup(args) => cmd::setup::run(args),
         cmd::Cmd::Init(args) => cmd::init::run(args),

@@ -348,3 +348,31 @@ fn a_remedy_survives_cmake_quoting() {
     let cmake = views::cmake_module();
     assert!(cmake.contains(r#"set(_NROS_DIAG_REMEDY_ImageNoBoard "add `board = \"<board>\"` to"#));
 }
+
+#[test]
+fn a_located_refusal_renders_rustc_s_span_block_and_the_fix_line() {
+    let at = crate::Location {
+        path: "src/app_bringup/system.toml",
+        line: 12,
+        column: 7,
+        len: 7,
+        text: "rmw = \"zenoh\"",
+    };
+    let detail = "image `talker` needs threads";
+    let text = format!(
+        "{}",
+        crate::Diag::BoardUnknown
+            .refuse(&detail)
+            .at(at)
+            .fixable(true)
+    );
+    let want = "error[NROS-0002]: image `talker` needs threads\n   \
+                --> src/app_bringup/system.toml:12:7\n    |\n \
+                12 | rmw = \"zenoh\"\n    |       ^^^^^^^\n  help: ";
+    assert!(text.starts_with(want), "{text}");
+    assert!(text.contains("\n  fix: nros fix"), "{text}");
+    assert!(
+        text.ends_with("\n  explain: nros explain NROS-0002"),
+        "{text}"
+    );
+}

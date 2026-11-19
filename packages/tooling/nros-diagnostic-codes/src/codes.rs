@@ -61,4 +61,15 @@ diagnostics! {
         surfaces: [Cli],
         remedy: "check the code against the refusal that printed it",
     }
+
+    /// A `system.toml` env row is spelled with a knob's retired name. The
+    /// knob registry (`nros-zephyr-build/knobs.toml`) holds both spellings,
+    /// so the rename is mechanical and `nros fix` applies it. History:
+    /// phase-484 W8 (the refusal), phase-578 W4 (its location and fix).
+    0011 RetiredKnobSpelling {
+        title: "a knob is spelled with its retired name",
+        surfaces: [Cli],
+        remedy: "rename the key to the knob's current spelling, which the refusal names; \
+                 `nros fix` does it",
+    }
 }

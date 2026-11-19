@@ -17,6 +17,7 @@ CODES = {
     "ImageNoBoard": ("NROS-0004", "an image names no board", "add `board = \"<board>\"` to the `[image.<id>]` table in system.toml"),
     "PlatformNoFamily": ("NROS-0005", "a board's platform reaches no built-in family", "add `inherits = \"<family>\"` to the platform's nros-platform.toml"),
     "UnknownDiagCode": ("NROS-0006", "no diagnostic has this code", "check the code against the refusal that printed it"),
+    "RetiredKnobSpelling": ("NROS-0011", "a knob is spelled with its retired name", "rename the key to the knob's current spelling, which the refusal names; `nros fix` does it"),
 }
 
 

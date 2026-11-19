@@ -26,6 +26,8 @@ set(_NROS_DIAG_CODE_PlatformNoFamily "NROS-0005")
 set(_NROS_DIAG_REMEDY_PlatformNoFamily "add `inherits = \"<family>\"` to the platform's nros-platform.toml")
 set(_NROS_DIAG_CODE_UnknownDiagCode "NROS-0006")
 set(_NROS_DIAG_REMEDY_UnknownDiagCode "check the code against the refusal that printed it")
+set(_NROS_DIAG_CODE_RetiredKnobSpelling "NROS-0011")
+set(_NROS_DIAG_REMEDY_RetiredKnobSpelling "rename the key to the knob's current spelling, which the refusal names; `nros fix` does it")
 
 function(nros_refuse _name)
     if(DEFINED _NROS_DIAG_RETIRED_${_name})

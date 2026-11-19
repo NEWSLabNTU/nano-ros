@@ -1,0 +1,1 @@
+A configuration error in `system.toml` now points at its line: the refusal shows the file, line and column, the line itself and a marker under the key, the way rustc reports a source error. A knob spelled with its retired name is refused this way, and the new `nros fix` command renames it: `nros fix` prints the change as a diff, and `nros fix --apply` writes it.
