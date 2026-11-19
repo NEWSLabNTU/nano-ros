@@ -1,0 +1,1 @@
+A system model this `nros` cannot read or parse, such as one written by a newer version, is now treated as stale, with the reason named, so `nros sync` regenerates it. Before, `nros sync` skipped the regeneration and the build later failed with `unsupported SystemModel schema version`. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4225))

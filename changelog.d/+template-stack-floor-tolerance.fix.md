@@ -1,0 +1,1 @@
+The stack floor `nros new` records in a new project's template now includes the same 2 % rise tolerance the stack-floor drift check allows, so a fresh project never refuses to build on a stack measurement the drift check accepts. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4253))

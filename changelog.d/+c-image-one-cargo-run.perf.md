@@ -1,0 +1,1 @@
+A C image on the CMake road now runs cargo once instead of twice: `nros_c-static` is an interface over the `nros_cpp-static` archive, which already contains the C API, and the C code compiles against the header that same run produces. A FreeRTOS C talker's build drops about 19 seconds of cargo. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4235))

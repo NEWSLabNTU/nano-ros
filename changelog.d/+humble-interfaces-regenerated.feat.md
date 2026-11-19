@@ -1,0 +1,1 @@
+The bundled Humble message crates are regenerated from the Humble packages that current ROS 2 images ship. `nros-rosgraph-msgs` gains eight graph-description messages beside `Clock` (among them `Node`, `Topic`, `Service`, `Action` and `QoSProfile`). ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4273))

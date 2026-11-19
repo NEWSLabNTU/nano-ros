@@ -1,0 +1,1 @@
+The public API documentation (rustdoc and installed C headers) no longer cites internal tracking numbers, and module docs that described retired scaffolding or future plans now describe what the code does. ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4255))

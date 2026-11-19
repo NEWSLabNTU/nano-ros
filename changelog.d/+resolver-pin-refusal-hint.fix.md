@@ -1,0 +1,1 @@
+When `nros` refuses a launch resolver built from another pin and this checkout has not built its own, the refusal now names the empty per-checkout location, which resolver answered instead, and the command that builds this checkout's own (`./scripts/bootstrap.sh`). ([details](https://github.com/NEWSLabNTU/nano-ros/pull/4251))
