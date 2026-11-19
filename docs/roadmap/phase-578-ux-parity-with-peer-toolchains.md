@@ -99,7 +99,7 @@ schemas equal to their sources.
 
 ### W4 — errors that point at the line, and `nros fix`
 
-- **Status:** OPEN — design drafted for ruling: [RFC-0129](../design/0129-diagnostic-codes.md) "Amendment, draft for ruling (phase-578 W4)" (D7 locations, D8 `nros fix`, four questions)
+- **Status:** IN PROGRESS — design accepted 2026-11-19 (user ruling): [RFC-0129](../design/0129-diagnostic-codes.md) "Amendment (phase-578 W4)" (D7 locations, D8 `nros fix`, D9 gates), with its four drafted answers
 - **Owner:** nros 118, after its current batch
 - **Needs:** a design (an RFC-0129 amendment): the span format, and which
   refusals carry a machine-applicable fix.
