@@ -1,6 +1,6 @@
 # Phase 581 - One configuration registry: knobs, Kconfig, carriers and environment variables
 
-**Status (2026-11-19). Active: design accepted by the user 2026-11-19; W0 in progress.**
+**Status (2026-11-19). Active: design accepted by the user 2026-11-19; W0 done, W1 next.**
 Implements [RFC-0140](../design/0140-configuration-registry.md) as widened on
 2026-11-19: one registry with three row kinds (knob, statement, env) and many
 contributors; one naming rule with a lint; the 87 settings that break it
@@ -30,7 +30,16 @@ board and RMW packages are self-contained.
 
 ### W0 - Measure
 
-- **Status:** OPEN (in progress (2026-11-19))
+- **Status:** DONE (2026-11-19)
+- **Result:** M5 green and M6 refusing on Zephyr 3.7 and 4.4; `native_sim`
+  has no environment; Humble ignores `ROS_NAMESPACE`; `SERVICE_TIMEOUT_MS`
+  is core and `LET_BUFFER_SIZE` has no reader; `NROS_NODE_NAME` is read but
+  does not rename a component node. Data:
+  [`data/phase-581-w0-measure.md`](data/phase-581-w0-measure.md); RFC-0140
+  carries the results (D3, D4, D6, D7, D9, D10, Appendix A and B, Decisions
+  3, 8, 11). Not measured: Jazzy (no install or image), the `freertos-posix`
+  Rust road at run time (no in-tree image), the Cyclone, XRCE and bridge
+  rows (no such image built).
 - The first draft's run-time measurements: a Linux image per road (Rust, C,
   C++) and a `native_sim` image, each variable of RFC-0140 Appendix B set,
   recording whether the process acted on it (Decisions 8 and 11).
@@ -46,7 +55,7 @@ board and RMW packages are self-contained.
   `NanoRosCodegenCore.cmake`, Rust build scripts), for W7.
 - The owner of `SERVICE_TIMEOUT_MS` (read by `nros-c` and the zenoh
   backend); confirmation that `ENTRY_SPIN_MS` has no build-time reader; the
-  unit of the seven rows whose help states none; the 31 user-settable cmake
+  unit of the seven rows whose help states none; the user-settable cmake
   `NROS_*` entries classified as row, resource or plumbing.
 - **Acceptance:** RFC-0140's Appendix B carries a "measured" mark per row and
   any row the run contradicts is corrected in the same PR; M5 and M6 are
@@ -184,8 +193,9 @@ board and RMW packages are self-contained.
 - **Status:** OPEN (after W0's M5)
 - `[rmw.zephyr] module = "<dir>"` in the descriptor; the hook adds the
   directory to `ZEPHYR_EXTRA_MODULES`; `Kconfig.packages` adds
-  `NROS_RMW_<OWNER>` to the choice (or, if M5 is red, the committed
-  `NROS_RMW_EXTERNAL` member plus `NROS_RMW_EXTERNAL_NAME`);
+  `NROS_RMW_<OWNER>` to the choice (W0's M5: green on 3.7 and 4.4); the
+  hook refuses a conf member that disagrees with the image's `rmw`, because
+  Kconfig takes the last assignment silently (M5);
   `ZEPHYR_MODULE_BACKENDS` derived from the in-tree members plus the scan;
   the in-tree members of the Zephyr and NuttX RMW choices rendered from the
   descriptors.

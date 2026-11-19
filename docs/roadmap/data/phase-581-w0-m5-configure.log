@@ -1,0 +1,276 @@
+# phase-581 W0 M5: does a member added from another Kconfig file join the nano-ros module's
+# 'choice NROS_RMW_BACKEND' (declared with its prompt in zephyr/Kconfig), select, and what does a conf
+# assignment of another member do? Guest app (no system.toml), BOARD=native_sim, ros2 distrobox, 2026-11-19.
+#
+# Variant a: the member is in an out-of-tree Zephyr module (ZEPHYR_EXTRA_MODULES=<nano-ros>;<acme_mod>),
+#   whose zephyr/Kconfig is sourced by Zephyr's module mechanism (an osource of Kconfig.modules).
+# Variant b: the member is in <build>/nros/Kconfig.packages, osourced by a line added to the worktree's
+#   zephyr/Kconfig right after the existing 'osource .../nros/Kconfig.from-system-toml' (line 1404); the
+#   edit was reverted with 'git checkout zephyr/Kconfig' after the run. This is the RFC-0140 D6 shape.
+# The member file, both variants:
+#   # phase-581 W0 M5: an out-of-tree RMW package that is its own Zephyr module
+#   # adds a member to the nano-ros module's `choice NROS_RMW_BACKEND`.
+#   if NROS
+#   choice NROS_RMW_BACKEND
+#   config NROS_RMW_ACME
+#       bool "acme (phase-581 W0 M5 probe)"
+#       select P581W0_ACME_SELECTED_MARKER
+#   endchoice
+#   endif
+#   config P581W0_ACME_SELECTED_MARKER
+#       bool
+# Command: cmake -GNinja -S m5app -B <bd>/b -DBOARD=native_sim -DCONF_FILE=<bd>/case.conf -DZEPHYR_EXTRA_MODULES=<mods> -DDTC=<sdk dtc> [4.4: -DPython3_EXECUTABLE=<py3.12 venv>]
+# Each case: conf lines, Kconfig-stage log lines, then the resulting .config lines. Any cmake error after
+# 'Configuration saved' is the module's own cmake (early runs met a stale nros CLI on PATH) and is not M5.
+
+## variant a, Zephyr 3.7, case acme
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ACME=y
+Kconfig stage:
+  Parsing <zephyr-3.7>/zephyr/Kconfig
+  Loaded configuration '<zephyr-3.7>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  # CONFIG_NROS_RMW_ZENOH is not set
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_P581W0_ACME_SELECTED_MARKER=y
+
+## variant a, Zephyr 3.7, case acme-then-zenoh
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_NROS_RMW_ZENOH=y
+Kconfig stage:
+  Parsing <zephyr-3.7>/zephyr/Kconfig
+  Loaded configuration '<zephyr-3.7>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  CONFIG_NROS_RMW_ZENOH=y
+  # CONFIG_NROS_RMW_ACME is not set
+
+## variant a, Zephyr 3.7, case zenoh-then-acme
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ZENOH=y
+  CONFIG_NROS_RMW_ACME=y
+Kconfig stage:
+  Parsing <zephyr-3.7>/zephyr/Kconfig
+  Loaded configuration '<zephyr-3.7>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  # CONFIG_NROS_RMW_ZENOH is not set
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_P581W0_ACME_SELECTED_MARKER=y
+
+## variant a, Zephyr 3.7, case default
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+Kconfig stage:
+  Parsing <zephyr-3.7>/zephyr/Kconfig
+  Loaded configuration '<zephyr-3.7>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  CONFIG_NROS_RMW_ZENOH=y
+  # CONFIG_NROS_RMW_ACME is not set
+
+## variant a, Zephyr 4.4, case acme
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ACME=y
+Kconfig stage:
+  Parsing <zephyr-4.4>/zephyr/Kconfig
+  Loaded configuration '<zephyr-4.4>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  # CONFIG_NROS_RMW_ZENOH is not set
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_P581W0_ACME_SELECTED_MARKER=y
+
+## variant a, Zephyr 4.4, case acme-then-zenoh
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_NROS_RMW_ZENOH=y
+Kconfig stage:
+  Parsing <zephyr-4.4>/zephyr/Kconfig
+  Loaded configuration '<zephyr-4.4>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  CONFIG_NROS_RMW_ZENOH=y
+  # CONFIG_NROS_RMW_ACME is not set
+
+## variant a, Zephyr 4.4, case zenoh-then-acme
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ZENOH=y
+  CONFIG_NROS_RMW_ACME=y
+Kconfig stage:
+  Parsing <zephyr-4.4>/zephyr/Kconfig
+  Loaded configuration '<zephyr-4.4>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  # CONFIG_NROS_RMW_ZENOH is not set
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_P581W0_ACME_SELECTED_MARKER=y
+
+## variant a, Zephyr 4.4, case default
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+Kconfig stage:
+  Parsing <zephyr-4.4>/zephyr/Kconfig
+  Loaded configuration '<zephyr-4.4>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  CONFIG_NROS_RMW_ZENOH=y
+  # CONFIG_NROS_RMW_ACME is not set
+
+## variant b, Zephyr 3.7, case acme
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ACME=y
+Kconfig stage:
+  Parsing <zephyr-3.7>/zephyr/Kconfig
+  Loaded configuration '<zephyr-3.7>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  # CONFIG_NROS_RMW_ZENOH is not set
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_P581W0_ACME_SELECTED_MARKER=y
+
+## variant b, Zephyr 3.7, case acme-then-zenoh
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_NROS_RMW_ZENOH=y
+Kconfig stage:
+  Parsing <zephyr-3.7>/zephyr/Kconfig
+  Loaded configuration '<zephyr-3.7>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  CONFIG_NROS_RMW_ZENOH=y
+  # CONFIG_NROS_RMW_ACME is not set
+
+## variant b, Zephyr 3.7, case zenoh-then-acme
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ZENOH=y
+  CONFIG_NROS_RMW_ACME=y
+Kconfig stage:
+  Parsing <zephyr-3.7>/zephyr/Kconfig
+  Loaded configuration '<zephyr-3.7>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  # CONFIG_NROS_RMW_ZENOH is not set
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_P581W0_ACME_SELECTED_MARKER=y
+
+## variant b, Zephyr 3.7, case default
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+Kconfig stage:
+  Parsing <zephyr-3.7>/zephyr/Kconfig
+  Loaded configuration '<zephyr-3.7>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  CONFIG_NROS_RMW_ZENOH=y
+  # CONFIG_NROS_RMW_ACME is not set
+
+## variant b, Zephyr 4.4, case acme
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ACME=y
+Kconfig stage:
+  Parsing <zephyr-4.4>/zephyr/Kconfig
+  Loaded configuration '<zephyr-4.4>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  # CONFIG_NROS_RMW_ZENOH is not set
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_P581W0_ACME_SELECTED_MARKER=y
+
+## variant b, Zephyr 4.4, case acme-then-zenoh
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_NROS_RMW_ZENOH=y
+Kconfig stage:
+  Parsing <zephyr-4.4>/zephyr/Kconfig
+  Loaded configuration '<zephyr-4.4>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  CONFIG_NROS_RMW_ZENOH=y
+  # CONFIG_NROS_RMW_ACME is not set
+
+## variant b, Zephyr 4.4, case zenoh-then-acme
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+  CONFIG_NROS_RMW_ZENOH=y
+  CONFIG_NROS_RMW_ACME=y
+Kconfig stage:
+  Parsing <zephyr-4.4>/zephyr/Kconfig
+  Loaded configuration '<zephyr-4.4>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  # CONFIG_NROS_RMW_ZENOH is not set
+  CONFIG_NROS_RMW_ACME=y
+  CONFIG_P581W0_ACME_SELECTED_MARKER=y
+
+## variant b, Zephyr 4.4, case default
+case.conf:
+  CONFIG_NROS=y
+  CONFIG_NROS_C_API=y
+Kconfig stage:
+  Parsing <zephyr-4.4>/zephyr/Kconfig
+  Loaded configuration '<zephyr-4.4>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  Merged configuration '<bd>/b/nros-module-kconfig.conf'
+  Configuration saved to '<bd>/b/zephyr/.config'
+.config:
+  CONFIG_NROS_RMW_ZENOH=y
+  # CONFIG_NROS_RMW_ACME is not set

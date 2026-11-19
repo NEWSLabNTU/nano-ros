@@ -1,0 +1,37 @@
+# phase-581 W0 M6: a prj.conf assignment to an undefined symbol (plain Zephyr app: no nano-ros module, no hook).
+# Driver: kconf.sh (scratch, /mnt/wd/nt/p581w0), BOARD=native_sim, run in the ros2 distrobox 2026-11-19.
+# Command per line: cmake -GNinja -S m6app -B <bd>/b -DBOARD=native_sim -DCONF_FILE=<bd>/case.conf -DDTC=<sdk dtc> [4.4: -DPython3_EXECUTABLE=<py3.12 venv>]
+# Excerpt: the Kconfig-stage lines of each configure log (grep), paths shortened. Stream order of
+# stderr warnings vs stdout lines is not preserved by the log.
+
+## Zephyr 3.7 (ZEPHYR_BASE=<zephyr-3.7>/zephyr)
+case.conf:
+  CONFIG_P581W0_UNDEFINED_SYMBOL=y
+  CONFIG_NROS_P581W0_UNDEFINED_INT=4
+configure log (excerpt):
+  <bd>/case.conf:1: warning: attempt to assign the value 'y' to the undefined symbol P581W0_UNDEFINED_SYMBOL
+  <bd>/case.conf:2: warning: attempt to assign the value '4' to the undefined symbol NROS_P581W0_UNDEFINED_INT
+  Parsing <zephyr-3.7>/zephyr/Kconfig
+  Loaded configuration '<zephyr-3.7>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  error: Aborting due to Kconfig warnings
+  CMake Error at <zephyr-3.7>/zephyr/cmake/modules/kconfig.cmake:389 (message):
+    command failed with return code: 1
+  -- Configuring incomplete, errors occurred!
+cmake exit status: 1; .config written: no
+
+## Zephyr 4.4 (ZEPHYR_BASE=<zephyr-4.4>/zephyr)
+case.conf:
+  CONFIG_P581W0_UNDEFINED_SYMBOL=y
+  CONFIG_NROS_P581W0_UNDEFINED_INT=4
+configure log (excerpt):
+  Parsing <zephyr-4.4>/zephyr/Kconfig
+  Loaded configuration '<zephyr-4.4>/zephyr/boards/native/native_sim/native_sim_defconfig'
+  Merged configuration '<bd>/case.conf'
+  <bd>/case.conf:1: warning: attempt to assign the value 'y' to the undefined symbol P581W0_UNDEFINED_SYMBOL
+  <bd>/case.conf:2: warning: attempt to assign the value '4' to the undefined symbol NROS_P581W0_UNDEFINED_INT
+  error: Aborting due to Kconfig warnings
+  CMake Error at <zephyr-4.4>/zephyr/cmake/modules/kconfig.cmake:424 (message):
+    command failed with return code: 1
+  -- Configuring incomplete, errors occurred!
+cmake exit status: 1; .config written: no
