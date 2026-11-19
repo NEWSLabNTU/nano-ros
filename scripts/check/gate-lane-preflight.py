@@ -31,6 +31,8 @@ except ModuleNotFoundError:
     import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
 LANES = ROOT / ".config" / "gate-lanes.toml"
 
 
@@ -247,6 +249,10 @@ def self_test() -> None:
 
 
 def main(argv: list[str]) -> int:
+    # Issue 2743 — under `git bisect run` / `git rebase -x` an inherited
+    # GIT_DIR makes every probe below read the superproject's index from
+    # inside each submodule. Cleared once, before any probe spawns git.
+    nros_clear_inherited_git_env()
     self_test()
     if not argv:
         print(__doc__, file=sys.stderr)

@@ -826,6 +826,11 @@ setup-hooks:
 setup-worktree:
     #!/usr/bin/env bash
     set -uo pipefail
+    # Issue 2743 — an inherited GIT_DIR (`git bisect run`, `git rebase -x`)
+    # overrides `git -C <submodule>`, so every submodule would read the
+    # superproject's index. Cleared once at the entry; children inherit it.
+    . scripts/lib/git-hook-env.sh
+    nros_clear_inherited_git_env
     # phase-565 W2 (RFC-0131 D3) — a worktree is the `dev` lane's environment,
     # so this provisions `[lane.dev] claims` with the code CI's provisioner
     # runs (scripts/lib/claim-provision.sh, driven by `[provision.claim]` in
@@ -883,6 +888,11 @@ setup-worktree:
 _require-worktree-provisioning:
     #!/usr/bin/env bash
     set -uo pipefail
+    # Issue 2743 — an inherited GIT_DIR (`git bisect run`, `git rebase -x`)
+    # overrides `git -C <submodule>`, so every submodule would read the
+    # superproject's index. Cleared once at the entry; children inherit it.
+    . scripts/lib/git-hook-env.sh
+    nros_clear_inherited_git_env
     missing=()
     # Issue 2306 — the CHECKOUT, not only HEAD: an interrupted checkout (files
     # staged as deleted, HEAD on the pin or on upstream `main`) used to read as

@@ -1032,6 +1032,159 @@ $(sed 's/^/          /' "$PROBE_LOG" | head -20)"
     fi
 fi
 
+# ---------------------------------------------------------------------------
+# The READ side: provisioning and the lane preflight under `git bisect run` —
+# issue 2743.
+# ---------------------------------------------------------------------------
+#
+# Everything above is about a script WRITING to the wrong repository from a
+# hook. `git bisect run` and `git rebase -x` export the worktree's GIT_DIR with
+# no hook involved, and an inherited GIT_DIR overrides `git -C <submodule>` for
+# reads too: `check-submodule-drift.sh` then asked each submodule for its
+# deleted files, got the SUPERPROJECT's index, and reported every one of the
+# 20 as an INCOMPLETE checkout of ~14,860 files. `just setup-worktree` refused
+# on that, so every step of a bisect skipped and the bisect named nothing.
+#
+# The rule: an ENTRY that `just setup-worktree` or the lane preflight starts,
+# and that runs git (itself, or through a library it sources), clears the
+# inherited environment once, with the shared helper. A sourced library never
+# clears: that would rewrite its caller's environment, and its caller is an
+# entry. The entries are DERIVED from the two roots' own command lines (comment
+# lines dropped; a path named in prose is not a call), one level deep, because a
+# transitive text harvest reached 70-odd scripts through `just` recipes named in
+# remedy text, which is the 0196 shape the other way round (issue 1452).
+
+# entry_text <kind> <name> — the node's text with comment lines dropped.
+entry_text() {
+    case "$1" in
+        recipe) just --justfile "$REPO/justfile" --show "$2" 2>/dev/null ;;
+        script) [ -f "$REPO/$2" ] && cat "$REPO/$2" ;;
+    esac | grep -vE '^[[:space:]]*#' || true
+}
+# The git a node can run: a subcommand that READS a repository, or a Python argv.
+RUNS_GIT_ERE='(^|[^[:alnum:]_./-])git[[:space:]]+(-C[[:space:]]|submodule|rev-parse|ls-files|ls-tree|status|diff|rev-list|cat-file|log)|"git",'
+runs_git() { nros_grep_q -E -- "$RUNS_GIT_ERE"; }
+# entry_edges <text> — "script <path>" / "recipe <name>" / "sourced <path>" lines.
+entry_edges() {
+    local text="$1"
+    printf '%s\n' "$text" \
+        | grep -oE '(bash|python3)[[:space:]]+"?(\$[A-Za-z_]+/|@ROOT/)?scripts/[A-Za-z0-9_./-]+\.(sh|py)' \
+        | grep -oE 'scripts/.*' | sed 's/^/script /' || true
+    printf '%s\n' "$text" | grep -E 'subprocess\.' \
+        | grep -oE '"scripts"([[:space:]]*/[[:space:]]*"[A-Za-z0-9_.-]+")+' \
+        | sed -E 's/"[[:space:]]*\/[[:space:]]*"/\//g; s/"//g; s/^/script /' || true
+    printf '%s\n' "$text" | grep -E 'subprocess\.' \
+        | grep -oE '"just",[[:space:]]*"[a-z_][a-z0-9_-]*"' \
+        | sed -E 's/.*"([^"]+)"$/recipe \1/' || true
+    printf '%s\n' "$text" \
+        | grep -oE '(^|[[:space:];])(\.|source)[[:space:]]+"?(\$[A-Za-z_]+/)?scripts/[A-Za-z0-9_./-]+\.sh' \
+        | grep -oE 'scripts/.*' | sed 's/^/sourced /' || true
+}
+
+# Negative control: the classifier and the harvest must each be able to fire.
+if ! printf 'x="$(git -C "$p" ls-files --deleted)"\n' | runs_git \
+   || printf 'echo "remedy: git is fine"\n' | runs_git \
+   || [ "$(entry_edges 'r = subprocess.run(["bash", str(ROOT / "scripts" / "a.sh")])')" != "script scripts/a.sh" ] \
+   || [ "$(entry_edges '    . scripts/lib/b.sh')" != "sourced scripts/lib/b.sh" ]; then
+    bad "the 2743 entry classifier failed its own negative control — the sweep below proves nothing."
+fi
+
+echo "check-hook-repo-side-effects: every provisioning/preflight entry that reads git clears first"
+entries=0
+entry_bad=0
+declare -A entry_seen=()
+entry_queue=("recipe setup-worktree" "script scripts/check/gate-lane-preflight.py")
+for root_node in "${entry_queue[@]}"; do
+    root_text="$(entry_text ${root_node})"
+    [ -n "$root_text" ] || { bad "cannot read the entry root '$root_node' — the sweep is broken."; continue; }
+    nodes=("$root_node")
+    while IFS= read -r e; do
+        case "$e" in script\ *|recipe\ *) nodes+=("$e") ;; esac
+    done <<< "$(entry_edges "$root_text")"
+    for node in "${nodes[@]}"; do
+        [ -n "${entry_seen[$node]:-}" ] && continue
+        entry_seen[$node]=1
+        text="$(entry_text ${node})"
+        [ -n "$text" ] || continue
+        git_via=""
+        if runs_git <<<"$text"; then
+            git_via="itself"
+        else
+            while IFS= read -r e; do
+                case "$e" in sourced\ *)
+                    lib="${e#sourced }"
+                    [ "$lib" = "$LIB" ] && continue
+                    if entry_text script "$lib" | runs_git; then git_via="$lib"; break; fi ;;
+                esac
+            done <<< "$(entry_edges "$text")"
+        fi
+        [ -n "$git_via" ] || continue
+        entries=$((entries + 1))
+        if ! nros_grep_q -- "$CLEAR_FN" <<<"$text"; then
+            entry_bad=$((entry_bad + 1))
+            bad "${node#* } (${node%% *}) runs git (via $git_via) and never calls $CLEAR_FN.
+        Under \`git bisect run\` / \`git rebase -x\` the inherited GIT_DIR makes
+        \`git -C <submodule>\` read the superproject (issue 2743). Clear it once
+        at the top, before the first git."
+        fi
+    done
+done
+if [ "$entries" -lt 3 ]; then
+    bad "only $entries provisioning/preflight entr(ies) run git — the derivation is broken
+        (setup-worktree's submodule claim and the preflight's drift probe alone are three)."
+elif [ "$entry_bad" -eq 0 ]; then
+    ok "$entries provisioning/preflight entr(ies) run git; every one clears first"
+fi
+
+# The dynamic half, in the shape `bisect run` produces: a superproject with one
+# submodule, a LINKED worktree of it, and that worktree's GIT_DIR exported with
+# no hook and no GIT_WORK_TREE. The drift probe runs from a copy of this
+# checkout's scripts inside it. Its control is the same copy with the clearing
+# call removed, which must report the false INCOMPLETE — otherwise this fixture
+# no longer reproduces the shape, and a CLEAN below would prove nothing.
+read_side_probe() {
+    local t rc_fixed rc_ctrl gd
+    t="$(mktemp -d)" || { bad "2743 probe: mktemp failed"; return; }
+    (
+        set -e
+        nros_clear_inherited_git_env
+        export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+            GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+        g() { git -c protocol.file.allow=always "$@"; }
+        g init -q "$t/dep"; echo a > "$t/dep/a"; g -C "$t/dep" add a; g -C "$t/dep" commit -qm dep
+        g init -q "$t/super"
+        mkdir -p "$t/super/scripts"
+        cp -r "$REPO/scripts/lib" "$t/super/scripts/lib"
+        cp "$REPO/scripts/check-submodule-drift.sh" "$t/super/scripts/"
+        grep -v "^$CLEAR_FN\$" "$REPO/scripts/check-submodule-drift.sh" > "$t/super/scripts/drift-control.sh"
+        g -C "$t/super" submodule add -q "$t/dep" dep >/dev/null 2>&1
+        g -C "$t/super" add -A; g -C "$t/super" commit -qm super
+        g -C "$t/super" worktree add -q "$t/wt" 2>/dev/null
+        g -C "$t/wt" submodule update -q --init 2>/dev/null
+    ) > "$t/build.log" 2>&1 || { bad "2743 probe: could not build its fixture:
+$(sed 's/^/          /' "$t/build.log" | tail -8)"; rm -rf "$t"; return; }
+    # Asked of git, never modelled (issue 1336): the linked worktree's own gitdir.
+    gd="$(nros_clear_inherited_git_env; git -C "$t/wt" rev-parse --absolute-git-dir)" \
+        || { bad "2743 probe: cannot resolve the fixture worktree's git dir"; rm -rf "$t"; return; }
+    rc_fixed=0; ( cd "$t/wt" && "${NROS_DEADLINE[@]}" 60 env -u NROS_GATE_SKIP_LEDGER \
+        GIT_DIR="$gd" GIT_PREFIX= bash scripts/check-submodule-drift.sh ) > "$t/fixed.log" 2>&1 || rc_fixed=$?
+    rc_ctrl=0; ( cd "$t/wt" && "${NROS_DEADLINE[@]}" 60 env -u NROS_GATE_SKIP_LEDGER \
+        GIT_DIR="$gd" GIT_PREFIX= bash scripts/drift-control.sh ) > "$t/ctrl.log" 2>&1 || rc_ctrl=$?
+    if [ "$rc_ctrl" -eq 0 ] || ! nros_grep_q -- 'INCOMPLETE' "$t/ctrl.log"; then
+        bad "2743 probe: the control (no clearing) did NOT report the false INCOMPLETE, so this
+        fixture no longer reproduces the \`bisect run\` shape. Its output:
+$(sed 's/^/          /' "$t/ctrl.log" | head -8)"
+    elif [ "$rc_fixed" -ne 0 ]; then
+        bad "check-submodule-drift.sh is red under an inherited GIT_DIR (the \`git bisect run\`
+        shape) on a fixture whose one submodule is correct (issue 2743):
+$(sed 's/^/          /' "$t/fixed.log" | head -8)"
+    else
+        ok "check-submodule-drift.sh reads each submodule's own repository under the \`bisect run\` shape (control reproduces)"
+    fi
+    rm -rf "$t"
+}
+read_side_probe
+
 if [ "$fail" -ne 0 ]; then
     echo "check-hook-repo-side-effects: FAILED" >&2
     exit 1

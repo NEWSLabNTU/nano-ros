@@ -18,6 +18,13 @@
 # host remedy; every provisioner named in the table is a function here).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# Issue 2743 — `git bisect run` and `git rebase -x` hand this script the
+# worktree's GIT_DIR, and an inherited GIT_DIR overrides `git -C <submodule>`:
+# every submodule then reads the superproject's index and reports its whole
+# tree as deleted. Cleared once, here at the entry; what this runs inherits it.
+# shellcheck source=scripts/lib/git-hook-env.sh
+. scripts/lib/git-hook-env.sh
+nros_clear_inherited_git_env
 
 # --- submodules ---------------------------------------------------------------
 # The `[[provision.submodule]]` rows whose tiers meet the lane's (issue 1513's
