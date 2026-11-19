@@ -121,6 +121,9 @@ Acceptance:
   compiling twin is run and counted by `just check node-std-tests`.
 - A mutation of each half fails its test.
 
+The use-after-free itself showed only under AddressSanitizer, which no lane
+runs: [issue 2728](../issues/2728-no-lane-runs-addresssanitizer.md).
+
 ### W4 — The multi-level and RTIC case
 
 - **Status:** OPEN
