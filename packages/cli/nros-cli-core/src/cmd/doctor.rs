@@ -400,7 +400,8 @@ pub fn run(args: Args) -> Result<()> {
 /// What is required comes from the index alone (`[tool.*] need`, plus the
 /// `--board`'s packages); this keeps no list of tool names. Nothing here is a
 /// problem count: a stale or missing tool is a WARNING naming the setup verb,
-/// superseded versions and unindexed directories are information, and the
+/// superseded versions and unindexed directories (retired or unknown, by the
+/// index's `[retired.*]`) are information, and the
 /// store is only read.
 fn report_sdk_drift(workspace: Option<&Path>, board: Option<&str>, store: &Path) {
     let Some(index_path) = crate::cmd::setup::locate_index(workspace) else {
@@ -476,10 +477,23 @@ fn render_sdk_drift(drift: &crate::orchestration::sdk_store::SdkDrift) -> Vec<St
             lines.push(format!("           {s}"));
         }
     }
-    if !drift.unindexed.is_empty() {
+    // Retired or unknown: the index's `[retired.*]` table decides which, so a
+    // directory nano-ros once shipped reads differently from one it never did.
+    if !drift.retired.is_empty() {
+        lines.push(
+            "  [--]   store dirs of retired tools (information only; `just doctor` names \
+             the rm -rf):"
+                .to_string(),
+        );
+        for (name, since, reason) in &drift.retired {
+            lines.push(format!("           {name}: retired in {since} -- {reason}"));
+        }
+    }
+    if !drift.unknown.is_empty() {
         lines.push(format!(
-            "  [--]   store dirs no [tool.*] row names (information only): {}",
-            drift.unindexed.join(", ")
+            "  [--]   store dirs neither [tool.*] nor [retired.*] names (information only; \
+             not provisioned by this index): {}",
+            drift.unknown.join(", ")
         ));
     }
     lines
@@ -1214,7 +1228,12 @@ mod sdk_drift_render_tests {
                 row("nextest", "0.9", ToolDrift::MissingRequired, &[]),
                 row("mdbook", "0.4", ToolDrift::AbsentOptIn, &[]),
             ],
-            unindexed: vec!["zenohd".into()],
+            retired: vec![(
+                "zenohd".into(),
+                "bc9de35a9b".into(),
+                "the router is ROS's rmw_zenohd".into(),
+            )],
+            unknown: vec!["mystery".into()],
         };
         let text = render_sdk_drift(&drift).join("\n");
         assert!(
@@ -1236,9 +1255,20 @@ mod sdk_drift_render_tests {
         );
         assert!(text.contains("1 tool(s) at their pin (1 opt-in"), "{text}");
         assert!(text.contains("okay 1.0"), "{text}");
-        assert!(text.contains("names (information only): zenohd"), "{text}");
-        // Information only: no line offers to delete anything.
-        assert!(!text.contains("rm "), "{text}");
+        // Retired and unknown are told apart, the retired one with its reason.
+        assert!(
+            text.contains("zenohd: retired in bc9de35a9b -- the router is ROS's rmw_zenohd"),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "nor [retired.*] names (information only; not provisioned by this index): mystery"
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("mystery: retired"), "{text}");
+        // Information only: no line runs or offers a delete of its own.
+        assert!(!text.contains("rm -rf "), "{text}");
     }
 }
 

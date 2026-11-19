@@ -5614,13 +5614,22 @@ _doctor-host:
     # zenohd` returned a RETIRED router (1.7.2) months after RFC-0075 moved the
     # router to ROS's `rmw_zenohd` (zenoh-c 1.8.0). Reported rather than deleted
     # — doctor is read-only, and this is the user's machine.
+    #
+    # Issue 2716 — WHICH tools are retired is the index's `[retired.*]` table,
+    # read through the checkout's own CLI (`nros setup --list` prints one
+    # `[retired]` row each). The hand-kept list this replaced had drifted to
+    # one name of four. No CLI yet means nothing to read it with: the CLI line
+    # above already says so, and `nros doctor` prints the same dirs with why.
     retired_store=""
-    while IFS= read -r retired_tool; do
-        case "$retired_tool" in ''|\#*) continue ;; esac
-        d="${NROS_HOME:-$HOME/.nros}/sdk/$retired_tool"
-        [ -d "$d" ] || continue
-        retired_store="$retired_store $retired_tool"
-    done < "{{justfile_directory()}}/scripts/sdk-retired-tools.txt"
+    # shellcheck source=scripts/build/cargo.sh
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    if retired_cli="$(NROS_CLI= nros_cli_bin --checkout-only 2>/dev/null)"; then
+        while read -r kind retired_tool _; do
+            [ "$kind" = "[retired]" ] || continue
+            [ -d "${NROS_HOME:-$HOME/.nros}/sdk/$retired_tool" ] || continue
+            retired_store="$retired_store $retired_tool"
+        done < <("$retired_cli" setup --list 2>/dev/null || true)
+    fi
     if [ -n "$retired_store" ]; then
         echo "  [WARN] retired SDK store entries still installed:$retired_store"
         echo "         nano-ros no longer ships these; nothing prunes the store."

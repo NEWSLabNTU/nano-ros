@@ -26,6 +26,13 @@ pub struct SdkIndex {
     /// Prebuilt host tools (qemu, cross-gcc, zenohd, …), keyed by tool name.
     #[serde(default)]
     pub tool: BTreeMap<String, ToolPackage>,
+    /// `[retired.<name>]` -- a `[tool.*]` row deleted on purpose (issue 2716).
+    ///
+    /// The store keeps every directory it was ever given, so a retired tool's
+    /// `~/.nros/sdk/<name>/` outlives its row. This is what lets a doctor say
+    /// "retired, and why" for such a directory instead of "unknown".
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub retired: BTreeMap<String, RetiredTool>,
     /// Source packages built with the app (kernels, small C libs), by name.
     #[serde(default)]
     pub source: BTreeMap<String, SourcePackage>,
@@ -1226,6 +1233,16 @@ pub struct ToolPackage {
     pub system_deps: Vec<(String, PrereqDep)>,
 }
 
+/// `[retired.<name>]` -- a host tool nano-ros no longer ships (issue 2716).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetiredTool {
+    /// The commit that deleted the `[tool.<name>]` row.
+    pub since: String,
+    /// What replaced it, in one line.
+    pub reason: String,
+}
+
 /// `[tool.*] need` -- issue 2716.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1944,6 +1961,11 @@ impl SdkIndex {
     /// `[rmw.*].packages`. Catches typos/renames that would otherwise silently
     /// skip (a board's/RMW's tool would just not install).
     pub fn validate(&self) -> Result<()> {
+        // issue 2716 -- a retired name that is also a live row would make the
+        // doctor call an installed, pinned tool retired.
+        if let Some(name) = self.retired.keys().find(|n| self.tool.contains_key(*n)) {
+            bail!("'{name}' is both a [tool.{name}] row and [retired.{name}]");
+        }
         let known = |pkg: &str| {
             self.tool.contains_key(pkg)
                 || self.source.contains_key(pkg)

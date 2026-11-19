@@ -417,7 +417,7 @@ doctor:
     fi
 
     # --- cargo-tools ---
-    # cargo-installed tools (nextest / llvm-cov / espflash) land in ~/.cargo/bin,
+    # cargo-installed tools (nextest / llvm-cov) land in ~/.cargo/bin,
     # which rustup adds to PATH on install. `nros` is different: Phase 218
     # moved the CLI in-tree at `packages/cli/target/release/nros` (preferred)
     # with `~/.nros/bin/nros` as the transitional fallback. The user may not
@@ -426,7 +426,7 @@ doctor:
     # `export PATH=…` for the transitional case) instead of looping on
     # `just workspace cargo-tools` → install → already-installed short-circuit.
     tool_missing=()
-    for t in cargo-nextest cargo-llvm-cov espflash; do
+    for t in cargo-nextest cargo-llvm-cov; do
         check command -v "$t" || tool_missing+=("$t")
     done
     nros_path_status="ok"
@@ -641,7 +641,7 @@ rust-targets:
         echo "  WARNING: armv7a-nuttx-eabi not in nightly target list — NuttX builds may fail"
     fi
 
-# Install cargo tools (nextest, llvm-cov, espflash, nano-ros CLI).
+# Install cargo tools (nextest, llvm-cov, asm/sweep aids, nano-ros CLI).
 [group("setup")]
 cargo-tools:
     #!/usr/bin/env bash
@@ -655,36 +655,22 @@ cargo-tools:
     # tool here with no pin at all while `.config/nextest.toml` is
     # version-sensitive enough that a stale filter kills every nextest run
     # (issue 0743).
-    # Fatal only for what the index marks `need = "required"` (issue 2716):
-    # cargo-nextest runs every gate scope; cargo-llvm-cov is opt-in (no gate
-    # runs it), so it is non-fatal like the tools below. Each stays separate
-    # on purpose: one plan would make the whole set's exit status the only
-    # verdict (phase-447 E1).
-    nros setup --tool cargo-nextest
-    nros setup --tool cargo-llvm-cov     || echo "WARNING: cargo-llvm-cov provisioning failed (non-fatal)"
-    # phase-422 W5 — FORWARDER, not a second producer. `espflash` is
-    # `[tool.espflash]` in the index, pinned to `v4.5.0` with a source recipe
-    # that installs into the versioned store prefix; `cargo install` put a
-    # second copy in `~/.cargo/bin` with no pin at all. Both end up on PATH
-    # (`scripts/sdk-path-tools.txt` adds the store's bin dir), and which one
-    # wins is an accident of PATH order — issue 0500's shape, which is why the
-    # `esp32 build-qemu` pack step exists to be broken by it.
     #
-    # Still non-fatal: espflash is only needed to FLASH, and a workstation that
-    # never touches hardware should not fail its whole tool setup over it.
-    nros setup --tool espflash           || echo "WARNING: espflash provisioning failed (non-fatal)"
-    # Non-fatal, as before: both are debugging aids, and a workstation that
-    # never reads disassembly should not fail its tool setup over them. Source
-    # builds (upstream publishes no binaries), so they are also the slow two.
-    nros setup --tool rustfilt           || echo "WARNING: rustfilt provisioning failed (non-fatal)"
-    nros setup --tool cargo-show-asm     || echo "WARNING: cargo-show-asm provisioning failed (non-fatal)"
-    # Issue 2191: what `runner-sweep.sh` prunes the host target dirs with. Also
-    # a source build, and non-fatal for the same reason: without it the sweep
-    # reports those dirs instead of pruning them, which is what it did before.
-    nros setup --tool cargo-sweep        || echo "WARNING: cargo-sweep provisioning failed (non-fatal)"
+    # Issue 2716: fatal or not is each row's `need` in nros-sdk-index.toml,
+    # read by `--by-need`, and deliberately not restated here (the recipe and
+    # the index disagreed once already). `--by-need` installs each tool as its
+    # own plan (phase-447 E1), warns on an opt-in failure, and fails on a
+    # required one after trying the rest. espflash left with its board
+    # (phase-521 W6).
+    #
     # Phase 218 — `nros` lives in-tree at `packages/cli/` (the merge
     # back into nano-ros). Build from source via `just setup-cli`
     # (idempotent: skips if the binary is fresh relative to
     # packages/cli/Cargo.lock). Contributors hacking on nros itself
-    # still have `$NROS_CLI` as the override knob.
+    # still have `$NROS_CLI` as the override knob. FIRST since issue 2716:
+    # `--by-need` is this checkout's flag, and the justfile's PATH puts the
+    # in-tree build first, so an older build or a release would refuse it.
     just setup-cli
+    nros setup --by-need \
+        --tool cargo-nextest --tool cargo-llvm-cov \
+        --tool rustfilt --tool cargo-show-asm --tool cargo-sweep

@@ -334,9 +334,12 @@ pub struct ToolDriftRow {
 pub struct SdkDrift {
     /// One per `[tool.*]` row, in index order.
     pub rows: Vec<ToolDriftRow>,
-    /// Directories under the store root that no `[tool.*]` row names: a
-    /// retired tool, or one provisioned by something other than the index.
-    pub unindexed: Vec<String>,
+    /// Directories under the store root that no `[tool.*]` row names but a
+    /// `[retired.*]` row does: `(name, since, reason)`, by name.
+    pub retired: Vec<(String, String, String)>,
+    /// Directories under the store root that neither table names: provisioned
+    /// by something other than the index, or retired without a row.
+    pub unknown: Vec<String>,
 }
 
 /// Compare every `[tool.*]` pin with what the store at `root` holds.
@@ -386,7 +389,18 @@ pub fn sdk_drift(
         .filter(|n| !index.tool.contains_key(n))
         .collect();
     unindexed.sort();
-    SdkDrift { rows, unindexed }
+    let (mut retired, mut unknown) = (Vec::new(), Vec::new());
+    for name in unindexed {
+        match index.retired.get(&name) {
+            Some(r) => retired.push((name, r.since.clone(), r.reason.clone())),
+            None => unknown.push(name),
+        }
+    }
+    SdkDrift {
+        rows,
+        retired,
+        unknown,
+    }
 }
 
 /// Point `<front_dir>/<name>` at the NEWEST installed version of `tool`, for
@@ -4722,6 +4736,14 @@ need = "opt-in"
 [tool.boarded]
 version = "4.0-nros1"
 need = "opt-in"
+
+[retired.retired]
+since = "0123456789"
+reason = "replaced by something else"
+
+[retired.never-installed]
+since = "0123456789"
+reason = "a retired row with no store dir is not reported"
 "#;
 
     fn install(root: &Path, tool: &str, version: &str) {
@@ -4743,6 +4765,7 @@ need = "opt-in"
         // A source tree beside an install is not a version.
         std::fs::create_dir_all(root.join("drifted").join("0.8.src")).unwrap();
         install(&root, "retired", "1.7.2-nros1");
+        install(&root, "foreign", "1.0");
         root
     }
 
@@ -4772,7 +4795,17 @@ need = "opt-in"
         assert_eq!(state(&d, "optional").state, ToolDrift::AbsentOptIn);
         assert_eq!(state(&d, "boarded").state, ToolDrift::AbsentOptIn);
 
-        assert_eq!(d.unindexed, ["retired"]);
+        // An unindexed dir is retired (with its reason) or unknown; a retired
+        // row with no dir on disk is not reported at all.
+        assert_eq!(
+            d.retired,
+            [(
+                "retired".to_string(),
+                "0123456789".to_string(),
+                "replaced by something else".to_string()
+            )]
+        );
+        assert_eq!(d.unknown, ["foreign"]);
     }
 
     /// A tool a `[board.*]` row lists is required for that board, whatever its
@@ -4795,7 +4828,7 @@ need = "opt-in"
         assert_eq!(state(&d, "gone").state, ToolDrift::MissingRequired);
         assert_eq!(state(&d, "okay").state, ToolDrift::MissingRequired);
         assert_eq!(state(&d, "drifted").state, ToolDrift::AbsentOptIn);
-        assert!(d.unindexed.is_empty());
+        assert!(d.retired.is_empty() && d.unknown.is_empty());
     }
 
     /// Read-only: the comparison leaves the store byte-for-byte as it was.
@@ -4845,6 +4878,46 @@ need = "opt-in"
                 .values()
                 .any(|t| t.need == Some(ToolNeed::Required)),
             "no tool is required: the field is not being read"
+        );
+    }
+
+    /// The shipped index names the four rows issue 2716 found residue of, each
+    /// with the commit that retired it and a reason, and none is also live.
+    #[test]
+    fn the_shipped_index_names_the_retired_tools() {
+        let idx =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../nros-sdk-index.toml");
+        let index = SdkIndex::load(&idx).expect("load nros-sdk-index.toml");
+        for name in ["zenohd", "play_launch_parser", "esp32-qemu", "espflash"] {
+            let r = index
+                .retired
+                .get(name)
+                .unwrap_or_else(|| panic!("[retired.{name}] missing"));
+            assert!(
+                r.since.len() >= 10 && r.since.chars().all(|c| c.is_ascii_hexdigit()),
+                "[retired.{name}] since = {:?} is not a commit",
+                r.since
+            );
+            assert!(
+                !r.reason.trim().is_empty(),
+                "[retired.{name}] has no reason"
+            );
+        }
+    }
+
+    /// A name cannot be both pinned and retired: the doctor would call a live
+    /// tool retired.
+    #[test]
+    fn a_retired_name_with_a_live_row_is_refused() {
+        let index = SdkIndex::parse(
+            "[tool.x]\nversion = \"1\"\n[retired.x]\nsince = \"abc\"\nreason = \"r\"\n",
+        )
+        .unwrap();
+        let err = index.validate().unwrap_err().to_string();
+        assert!(err.contains("[retired.x]"), "{err}");
+        // An unknown key in a retired row is a schema error, not ignored.
+        assert!(
+            SdkIndex::parse("[retired.y]\nsince = \"a\"\nreason = \"r\"\nwhy = \"w\"\n").is_err()
         );
     }
 }
