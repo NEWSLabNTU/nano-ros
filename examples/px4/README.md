@@ -9,9 +9,9 @@ the **transport case**, not an RMW): in-firmware **uORB** modules (C++) and an
 `examples/px4/` is **class X** in
 [`examples/README.md` § Layout classes](../README.md#layout-classes): it matches
 neither canonical shape — a standalone leaf `<platform>/<lang>/<example>`
-([RFC-0026](../../docs/design/0026-example-directory-layout.md)) nor a colcon
+([example directory layout](../../docs/design/0026-example-directory-layout.md)) nor a colcon
 workspace with a generated entry
-([RFC-0098](../../docs/design/0098-generated-leaf-build-config.md) D9). It reads
+([generated leaf build config](../../docs/design/0098-generated-leaf-build-config.md)). It reads
 like an outlier to migrate. **It is not one, and nothing here moves.** Unifying
 it produces a firmware tree PX4's build cannot find.
 
@@ -28,8 +28,7 @@ it produces a firmware tree PX4's build cannot find.
    XRCE-DDS companion — and the language follows from that, not the other way
    round. So a reader expecting the usual `<lang>/` level will go looking for a
    `cpp/` companion and a `rust/` firmware module. **Neither can exist**: C is
-   not on the PX4 module API, and the Rust uORB backend was retired in
-   phase-115.K.4.
+   not on the PX4 module API, and the Rust uORB backend was retired.
 3. **There is no RMW axis.** In-firmware is uORB-only; the companion speaks
    XRCE-DDS to `uxrce_dds_client`. The `<rmw>` coordinate every other example
    carries is not a free choice here.
@@ -40,11 +39,6 @@ host cargo bins with a `package.xml` and no `system.toml`, so
 `px4/rust/<example>` would be well-formed. Moving them would delete the one
 directory level that records the transport case, to buy uniformity with leaves
 that do not share PX4's constraints. Not worth it.
-
-Measured in
-[issue 1516](../../docs/issues/archived/1516-px4-is-a-foreign-build-integration.md);
-written down by
-[phase-470](../../docs/roadmap/archived/phase-470-example-layout-unification.md) W4.
 
 ## Prerequisites
 
@@ -57,7 +51,7 @@ just setup px4                # nros setup --source px4-rs --source px4-autopilo
 ## RMW selection
 
 None — PX4 is uORB-only for in-firmware modules (the Rust uORB backend was
-retired in phase-115.K.4); the companion path speaks XRCE-DDS to the
+retired); the companion path speaks XRCE-DDS to the
 `uxrce_dds_client` in PX4 firmware.
 
 ## Build & run
@@ -65,7 +59,7 @@ retired in phase-115.K.4); the companion path speaks XRCE-DDS to the
 ```sh
 just px4 build-examples       # SITL with EXTERNAL_MODULES_LOCATION=packages/testing/nros-px4-register-check
 just px4 build-fixtures       # px4-stub / companion XRCE fixtures (px4_msgs bindings)
-just px4 test-sitl            # E2E: px4_xrce_e2e (Track B). Track A is build-only — see issue 0356
+just px4 test-sitl            # E2E: px4_xrce_e2e (Track B). Track A is build-only
 ```
 
 ## Cases
@@ -74,7 +68,7 @@ just px4 test-sitl            # E2E: px4_xrce_e2e (Track B). Track A is build-on
 | --- | --- |
 | `cpp/firmware/` | in-firmware uORB interop module (`nros_uorb_demo`) — `just px4 build-sitl-example` |
 | `cpp/bridge/` | in-firmware uORB→RMW bridge (`nros_uorb_bridge`) + its generated-message FFI staticlib — `just px4 build-bridge-example` |
-| `rust/companion/offboard-companion/` | XRCE companion receiving `/fmu/out` telemetry (RFC-0039 Track B) |
+| `rust/companion/offboard-companion/` | XRCE companion receiving `/fmu/out` telemetry |
 | `rust/companion/px4-stub/` | fake-PX4 stub publishing `/fmu/out/vehicle_odometry` (CI without SITL) |
 | `rust/companion/px4-probe/` | XRCE probe utility |
 

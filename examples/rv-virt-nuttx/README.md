@@ -31,4 +31,4 @@ CI fixtures.
 | talker | yes | – | – |
 
 Known limitation: nros-c currently cannot compile for riscv32 (no 64-bit
-atomics) — see issue #130.
+atomics).

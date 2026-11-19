@@ -1,6 +1,6 @@
 # `ws-managed-cpp` — a C++ lifecycle node that manages ITSELF
 
-Phase 270 (issue 0103). This workspace exists because the lifecycle capability
+This workspace exists because the lifecycle capability
 has two shapes, and only one of them fits in the `features` workspace.
 
 The `features` bringup asks the ENTRY CODEGEN to drive the machine: it emits
@@ -10,7 +10,7 @@ declarative shape: `<lifecycle_node>` says which node is managed, and
 `[lifecycle] autostart` in a bringup's `system.toml` is the default boot state.
 
 Here the node drives ITSELF. `ManagedTalker` is an
-`rclcpp_lifecycle::LifecycleNode` (phase-482 W4), whose constructor registers the
+`rclcpp_lifecycle::LifecycleNode`, whose constructor registers the
 REP-2002 services; it then runs Configure, Activate, Deactivate and Cleanup and
 goes Active again from its own constructor, so its `system.toml` carries **no
 `[lifecycle]` block** — the entry just boots and spins. Wiring lifecycle on both sides would register the REP-2002
@@ -26,7 +26,7 @@ src/
 
 There is no entry package to write: `[image.linux_managed]` in the bringup
 declares the image, and its entry — which boots and spins, with no lifecycle
-wiring — is generated (RFC-0098 D9).
+wiring — is generated.
 
 ## Building
 
@@ -37,7 +37,7 @@ nros build linux_managed
 
 ## Why it stayed out of `features`
 
-Phase-331 W2 folded the per-feature workspaces into `features`, but that
+The per-feature workspaces were folded into `features`, but that
 workspace's bringup selects the entry-driven lifecycle shape for every one of
 its lifecycle entries. Keeping the self-managed variant separate is what makes
 the distinction testable: the two shapes differ precisely in whether the ENTRY

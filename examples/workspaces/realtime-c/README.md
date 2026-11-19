@@ -2,7 +2,7 @@
 
 ## What it shows
 
-The C projection of the scheduling-sched-tasks differentiator (RFC-0015 §4.2):
+The C projection of the scheduling-sched-tasks differentiator:
 `ctrl_node` (`ctrl_pkg::Ctrl`) publishes `/ctrl` every 10 ms on the `high`
 sched task (posix prio 80); `telem_node` (`telem_pkg::Telem`) publishes `/telem`
 every 100 ms on the `low` sched task (prio 10). Sched task definitions and the

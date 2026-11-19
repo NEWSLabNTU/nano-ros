@@ -1,4 +1,4 @@
-# `custom-transport-loopback` — Phase 115.F
+# `custom-transport-loopback`
 
 Pure-C demonstration of the runtime-pluggable transport vtable
 (`nros_transport_ops_t`). The example installs a transport via

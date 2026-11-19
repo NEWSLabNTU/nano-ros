@@ -1,4 +1,4 @@
-# workspace-shadowing — Phase 210.F.4 fixture
+# workspace-shadowing — fixture
 
 Smoke fixture proving the **workspace-over-AMENT** interface-package
 shadowing contract.
@@ -28,9 +28,9 @@ line is emitted at configure time.
 # 1. Source ROS 2 so AMENT_PREFIX_PATH points at the upstream std_msgs.
 source /opt/ros/humble/setup.bash
 
-# 2. Build. No root build file (RFC-0098 D9) and no bringup, so `nros build`
+# 2. Build. No root build file and no bringup, so `nros build`
 #    builds each package into its own `build/<pkg>/`, generating the cmake
-#    root the consumer needs (phase-445 W5).
+#    root the consumer needs.
 cd examples/templates/workspace-shadowing
 source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
 nros configure
@@ -71,8 +71,6 @@ fixture is the smoke proof for the Layer 1 > Layer 2 case.
 
 ## Cross-references
 
-* Phase doc — `docs/roadmap/phase-210-ros-convention-codegen.md`
-  §210.F.4.
 * Layered resolver — `cmake/find/_NrosFindRosMsgPackage.cmake`.
 * Bulk codegen orchestrator — `cmake/NanoRosGenerateInterfaces.cmake`'s
   `nros_workspace_interfaces()` (handles intra-workspace shadowing).

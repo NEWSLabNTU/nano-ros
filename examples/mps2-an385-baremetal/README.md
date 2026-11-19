@@ -38,8 +38,8 @@ Test lanes: `just qemu test`, `test-basic`, `test-zenoh`, `test-all`.
 | Lang | Role | variants |
 | --- | --- | --- |
 | rust | talker / listener | plain |
-| c | talker | plain (issue 1512) |
-| cpp | talker | plain (issue 1512) |
+| c | talker | plain |
+| cpp | talker | plain |
 
 **The C/C++ talkers are the witnesses; the other C/C++ roles live in the
 language workspaces.** `c/talker` and `cpp/talker` are one-package CMake
@@ -48,13 +48,13 @@ component with no `main` and no board name, and `src/<pkg>_bringup/system.toml`
 names the board. `nros build` generates the image's entry and links it on the
 CMake road, where the board's C start (`nros_board_mps2_an385_start`, in
 `nros-board-mps2-an385`'s `c/c_main.c`) is `main`: it brings up the clock, the
-LAN9118 and the network, then runs the entry (phase-553 W4/W5).
+LAN9118 and the network, then runs the entry.
 
 The C and C++ listener, service and action roles are `baremetal_<role>` images
 of `examples/workspaces/{c,cpp}`'s pubsub, service and action bringups, beside
 the RTOS images of the same components. The entry passes each image's network
 identity to the board's C start at run time (`<nros/board.h>`'s
-`nros_board_image_config_t`, issue 2555), so a bringup's images share one
+`nros_board_image_config_t`), so a bringup's images share one
 configure. Every row says `builder = "cmake"`
 (`scripts/build/workspace-fixtures-build.sh baremetal c` / `cpp`).
 
@@ -63,17 +63,16 @@ to end under QEMU, each against its own router.
 
 The UART configurations (zenoh `serial/UART_0` pair, XRCE `custom://uart`
 talker) are images of `examples/workspaces/rust/src/pubsub_bringup`:
-`baremetal_{talker,listener}_serial` and `baremetal_talker_xrce_serial`
-(phase-535 W6).
+`baremetal_{talker,listener}_serial` and `baremetal_talker_xrce_serial`.
 
 RTIC is the same board with another entry framework (`board =
 "mps2-an385-baremetal"` plus `framework = "rtic"`). Its talker/listener, service and action pairs are the
 `baremetal_<role>_rtic` images of the Rust workspace's pubsub, service and
-action bringups (phase-535 W6); `tests/emulator.rs` runs them.
+action bringups; `tests/emulator.rs` runs them.
 
 `rust/dds/` is build support, not a case. Test-only e2e fixtures
 (`rtic-run-plan-e2e`, `qemu-baremetal-main-e2e`) live under
-`packages/testing/nros-tests/bins/`, not here (RFC-0026).
+`packages/testing/nros-tests/bins/`, not here.
 
 ## Gotchas
 

@@ -6,7 +6,7 @@ the same Node pkg / Bringup pkg shape with a generated entry, built with CMake.
 
 ## Layout
 
-- `src/talker_pkg/`, `src/listener_pkg/` — typed components (RFC-0043):
+- `src/talker_pkg/`, `src/listener_pkg/` — typed components:
   `Result configure(rclcpp::Node&)`; the talker binds a 500 ms `create_wall_timer<Talker, &Talker::on_tick>`
   publishing `std_msgs/Int32` on `/chatter`; the listener uses
   `bind_subscription` (typed member callback on the generated `std_msgs::msg::Int32`).
@@ -15,8 +15,8 @@ the same Node pkg / Bringup pkg shape with a generated entry, built with CMake.
   `qos_overrides./chatter.publisher.depth = 5`). Not `reliability =
   best_effort`: a DDS RMW never matches that writer to the listener's
   reliable reader, so the default CycloneDDS build would receive nothing.
-There is no root `CMakeLists.txt` and no entry package (RFC-0098 D9, RFC-0065
-D4): `nros build` generates the cmake root and the image's C++ entry
+There is no root `CMakeLists.txt` and no entry package:
+`nros build` generates the cmake root and the image's C++ entry
 (`linux_entry`) under `build/`, resolving the bringup's launch file into a
 SystemModel there (SystemModels are build artifacts — never committed).
 

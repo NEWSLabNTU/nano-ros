@@ -2,7 +2,7 @@
 
 `examples/workspaces/{rust,c,cpp}` are read **side by side** — they express the
 same system in three languages, so a reader can compare them directly. Their
-structure is therefore kept parallel on purpose (phase-331 W2b, RFC-0066).
+structure is therefore kept parallel on purpose.
 
 ## Which layout class is this?
 
@@ -19,8 +19,8 @@ not of a directory**:
 
 | class | the image's entry | recognise it by |
 | --- | --- | --- |
-| **1** | **generated** per `[image.*]` (RFC-0098 D9), built by cargo or cmake | `.colcon_workspace` + `src/*_bringup/system.toml`; the image's board is not a Zephyr board |
-| **1z** | built through **west** — a Zephyr image. Its west application is **generated** (phase-470 W5) unless a hand-written `src/*_entry` package still claims the row ([RFC-0085](../../docs/design/0085-zephyr-workspace-and-west-handoff.md) D4) | the image's board resolves to a Zephyr board; a still-hand-written one also carries `entry = "<pkg>"` or lands on an existing `<id>_entry` package calling `find_package(Zephyr)` |
+| **1** | **generated** per `[image.*]`, built by cargo or cmake | `.colcon_workspace` + `src/*_bringup/system.toml`; the image's board is not a Zephyr board |
+| **1z** | built through **west** — a Zephyr image. Its west application is **generated** unless a hand-written `src/*_entry` package still claims the row ([RFC-0085](../../docs/design/0085-zephyr-workspace-and-west-handoff.md) D4) | the image's board resolves to a Zephyr board; a still-hand-written one also carries `entry = "<pkg>"` or lands on an existing `<id>_entry` package calling `find_package(Zephyr)` |
 | **1b** | none — no bringup at all | `.colcon_workspace` with no `*_bringup`; `nros build` builds every package in dependency order, colcon's default. Both members live in `examples/templates/`, not here |
 
 So `rust/` is not "a class": it declares 17 `[image.*]` rows, 15 of them
@@ -34,7 +34,7 @@ is exactly what [`examples/README.md`](../README.md#two-classes-that-deliberatel
 refuses to name ("class 2"). A hand-written entry is a migration STATE of a 1z
 image, not a class.
 
-That migration (issue 1288) took 15 hand-written entry packages, serving 16
+That migration took 15 hand-written entry packages, serving 16
 Zephyr image rows, down to a handful — W5.a for the first Rust image, W5.b1/b2
 for the rest of Rust, W5.b3 for six C/C++ images. Each one still hand-written is
 blocked by something other than the generator, recorded in issue 1288. **Recount

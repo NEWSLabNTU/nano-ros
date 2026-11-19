@@ -36,9 +36,9 @@ your firmware. See the header comment in
 A single-node workspace: `src/native_c_custom_platform` is the program, with
 its own `main()`, and `src/native_c_custom_platform_bringup` holds the
 `system.toml` that says what to build. The `linux` image builds that same
-`main` (an owned entry, RFC-0071 D19); it keeps its hand-written `main`
-because a user-supplied platform is one of the manual-entry demos RFC-0122 D10
-keeps.
+`main` (an owned entry); it keeps its hand-written `main`
+because a user-supplied platform is one of the demos that keep a manual
+entry.
 
 ```bash
 cp -r examples/linux/c/custom-platform ~/my-platform && cd ~/my-platform
@@ -48,7 +48,7 @@ nros build linux
 
 Nothing to build by hand first: `find_package(nano_ros)` builds the `nros-c`
 library the example links. The board, the RMW and the domain come from the
-bringup's `system.toml` (`[image.linux]` + `[system]`, RFC-0098 D3/D5), not
+bringup's `system.toml` (`[image.linux]` + `[system]`), not
 from a `-D` flag.
 
 ## Running

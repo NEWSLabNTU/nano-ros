@@ -38,7 +38,7 @@ Test lanes: `just threadx_linux test`, `test-all`, `test-c-port`.
 | action-server / action-client | yes | yes | yes (+`_entry`) |
 
 `<case>_entry` = Entry-pkg siblings (`nros::main!()`); underscore naming is an
-interim exception (RFC-0026, phase-275). `rust/dds/` is build support, not a
+interim exception. `rust/dds/` is build support, not a
 case.
 
 ## Gotchas

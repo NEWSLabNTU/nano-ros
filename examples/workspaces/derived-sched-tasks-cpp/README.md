@@ -1,6 +1,6 @@
-# ws-derived-sched-tasks-cpp - four C++ components, no authored sched tasks (phase-459 W0)
+# ws-derived-sched-tasks-cpp - four C++ components, no authored sched tasks
 
-The fixture every phase-459 wave's gate runs against. It mirrors the shape of
+The fixture the sched-task derivation gates run against. It mirrors the shape of
 the Autoware Safety Island: four `SHAPE rclcpp` components, one wall timer
 each, two at 30 Hz and two at 10 Hz, registered with `CALLBACK_GROUPS main`
 and NOTHING else. `demo_bringup/system.toml` declares no `[tasks.*]` and no
@@ -9,8 +9,7 @@ and NOTHING else. `demo_bringup/system.toml` declares no `[tasks.*]` and no
 `examples/workspaces/realtime-cpp` is the authored-sched-task neighbour (every sched task
 written three times: sched task, RTOS sub-table, binding). This workspace is what the
 rate-monotonic derivation (`nros-orchestration-ir::derive`) has to reach from
-what a cmake image actually authors - issue 1426 measured that today it does
-not.
+what a cmake image actually authors.
 
 ## What it declares
 
@@ -36,7 +35,7 @@ placement, which is the island's case and the one W6 keeps legal.
   `paths.on_timer.trigger.timer.rate_hz` (what the schedule ranks by) and its
   `pub.*.min_rate_hz` (a publication floor, never a schedule input). The two
   numbers differ on purpose, so that ranking by the floor would invert the
-  schedule; see the comment there (issue 1372 / phase-459 W7).
+  schedule; see the comment there.
 * `src/demo_bringup/system.toml` - the four `[[component]]` rows and the
   images. No sched tasks, no bindings.
 
@@ -49,5 +48,5 @@ nros build demo_bringup:linux --workspace . --offline
 ```
 
 `src/zephyr_entry/` is the hand-written west application `[image.zephyr]`
-claims (RFC-0065 D5), so the later waves can bake the same four components for
+claims, so the later waves can bake the same four components for
 Zephyr and read the resulting `.config`.

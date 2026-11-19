@@ -1,4 +1,4 @@
-# ws-launch-rust — advanced launch composition (phase-263 B5)
+# ws-launch-rust — advanced launch composition
 
 A minimal product-shaped nano-ros workspace whose topology lives in **launch
 XML**, exercising the nano-ros launch v1 surface end-to-end.

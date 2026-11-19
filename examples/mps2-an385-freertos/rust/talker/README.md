@@ -1,7 +1,7 @@
 # `talker` — mps2-an385-freertos / rust
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
@@ -27,10 +27,10 @@ QEMU / flashing steps live in the [mps2-an385-freertos README](https://github.co
 ## Config
 
 Board, RMW, domain and locator: `src/freertos_rs_talker_bringup/system.toml`
-(`[image.mps2-an385-freertos]` + `[system]`, RFC-0098 D3/D5). No build command
+(`[image.mps2-an385-freertos]` + `[system]`). No build command
 carries any of them, and `src/freertos_rs_talker/Cargo.toml` names no board
-crate: the generated entry states the board, its RMW backend and its runtime
-(RFC-0121 D6), so switching board is the `[image.*] board` line and nothing
+crate: the generated entry states the board, its RMW backend and its runtime,
+so switching board is the `[image.*] board` line and nothing
 else.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

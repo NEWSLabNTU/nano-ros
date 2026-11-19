@@ -1,6 +1,6 @@
-# ws-levels-cpp - three preemption levels on Zephyr (phase-509 P9)
+# ws-levels-cpp - three preemption levels on Zephyr
 
-The fixture for RFC-0108's level runner. Three C++ components, one wall timer
+The fixture for the preemption-level runner. Three C++ components, one wall timer
 each, and nothing else: no `[tasks.*]`, no `group_tasks`. The contract beside
 the launch file states each timer's rate, and the derivation gives one
 preemption level per distinct rank.
@@ -19,7 +19,7 @@ ready, so the only way another marker prints between a `begin=` and its
 inside a `[lazy]` pair, and never a less urgent marker inside a more urgent
 pair. It also checks each spawned level's stack is the derived one.
 
-## The real-time verification images (phase-162)
+## The real-time verification images
 
 Three more Linux images share this bringup, each with its own launch file.
 The three-node `linux` and `zephyr` images above launch none of their nodes,
@@ -28,7 +28,7 @@ and those nodes are the only reason the bringup has `[tasks.*]` and
 
 | Image | Launch | What it runs |
 | --- | --- | --- |
-| `linux_s1` | `s1.launch.xml` | RFC-0002 S1: `attitude` (1 kHz, 300 us of work, 1 ms deadline) and `load` (5 ms of CPU at 10 Hz) on two derived levels |
+| `linux_s1` | `s1.launch.xml` | the flight-controller scenario: `attitude` (1 kHz, 300 us of work, 1 ms deadline) and `load` (5 ms of CPU at 10 Hz) on two derived levels |
 | `linux_s1_flat` | `s1_flat.launch.xml` | the same two nodes bound to one authored sched task: the negative control |
 | `linux_budget` | `budget.launch.xml` | `load_capped` (10 ms of CPU per release) on the `capped` sched task, 2 ms per 10 ms under `SCHED_DEADLINE`, beside the boot level `load_boot` |
 
@@ -44,7 +44,7 @@ chapter says how to run it.
 
 They share one bringup, not one each, so they build in one cmake tree
 (`build/posix-zenoh-linux-demo_bringup/cmake`) over one runtime. A cmake
-build dir is per bringup (issue 2287), so a bringup each would build the
+build dir is per bringup, so a bringup each would build the
 runtime once per bringup.
 
 ## Configure
@@ -61,11 +61,10 @@ nros configure
 ## What a level costs
 
 `python3 scripts/nros-mem-report.py --levels <zephyr.exe>` prints the per-level
-cost and `--check` compares it with what the entry generated. Since phase-509
-P9b the three levels are worker threads over ONE executor per core (RFC-0108
-"As built in P9b"); native_sim, `.bss`:
+cost and `--check` compares it with what the entry generated. The three levels
+are worker threads over ONE executor per core; native_sim, `.bss`:
 
-| | P9 (an executor per level) | P9b (workers over one executor) |
+| | earlier: an executor per level | now: workers over one executor |
 | --- | --- | --- |
 | executor contexts | 3 x 3,144 | 3,184 |
 | executor backings | 3 x 11,288 | 18,408 (every level's members) |

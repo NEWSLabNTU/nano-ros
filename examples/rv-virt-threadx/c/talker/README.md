@@ -1,7 +1,7 @@
 # `talker` — rv-virt-threadx / c
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
@@ -28,7 +28,7 @@ QEMU / flashing steps live in the [rv-virt-threadx README](https://github.com/NE
 ## Config
 
 Board, RMW, domain and locator: `src/riscv64_threadx_c_talker_bringup/system.toml`
-(`[image.rv-virt-threadx]` + `[system]`, RFC-0098 D3/D5). No build command carries any
+(`[image.rv-virt-threadx]` + `[system]`). No build command carries any
 of them, and the node package names no board.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

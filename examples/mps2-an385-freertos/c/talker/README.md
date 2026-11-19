@@ -1,7 +1,7 @@
 # `talker` — mps2-an385-freertos / c
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
@@ -25,7 +25,7 @@ QEMU / flashing steps live in the [mps2-an385-freertos README](https://github.co
 ## Config
 
 Board, RMW, domain and locator: `src/freertos_c_talker_bringup/system.toml`
-(`[image.mps2-an385-freertos]` + `[system]`, RFC-0098 D3/D5). No build command carries any
+(`[image.mps2-an385-freertos]` + `[system]`). No build command carries any
 of them, and the node package names no board.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

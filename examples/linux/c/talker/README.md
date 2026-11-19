@@ -1,7 +1,7 @@
 # `talker` — linux / c
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
@@ -24,7 +24,7 @@ The built binary lands under `build/`.
 ## Config
 
 Board, RMW, domain and locator: `system.toml` beside `CMakeLists.txt`
-(`[image.linux]` + `[system]`, RFC-0098 D3/D5). `find_package(nano_ros)`
+(`[image.linux]` + `[system]`). `find_package(nano_ros)`
 reads it while CMake configures, so switching board is editing that one
 line and re-configuring (`cmake -B build`); no build command and no
 manifest names a board.

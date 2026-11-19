@@ -10,16 +10,16 @@ For the promoted Node + Bringup + Entry workflow examples, use
 
 ## Contents
 
-- `pure-c-workspace/` — Phase 223 pure-C 3-role workspace: C Node
+- `pure-c-workspace/` — pure-C 3-role workspace: C Node
   pkgs, C Bringup pkg, and a C Entry pkg generated through
   `nano_ros_entry(LANG c LAUNCH ...)`.
 
-- `c-and-cpp-mixed-workspace/` — Phase 223 mixed-language 3-role
+- `c-and-cpp-mixed-workspace/` — mixed-language 3-role
   workspace: C Node pkg, C++ Node pkg, Bringup pkg, and C++ Entry pkg.
 
 - `multi-package-workspace/` — mixed C + C++ + Rust packages
   sharing one nano-ros install via `CMAKE_PREFIX_PATH` and
-  Cargo `[patch.crates-io]`. Demonstrates the Phase 123 Pattern A
+  Cargo `[patch.crates-io]`. Demonstrates the Pattern A
   layout where each downstream workspace pins one nano-ros source
   checkout under `src/nano-ros/`.
 
@@ -28,12 +28,12 @@ For the promoted Node + Bringup + Entry workflow examples, use
   + a declarative Bringup pkg + an Entry pkg (`nros::main!(launch =
   …)`), copy-out-and-rename ready.
 
-- `multi-node-workspace-cpp/` — the C++ counterpart (Phase 240.2b /
-  RFC-0043 / phase-257): typed component Node pkgs routed through
+- `multi-node-workspace-cpp/` — the C++ counterpart: typed component
+  Node pkgs routed through
   `nano_ros_entry(... TYPED)` to the real executor
   (`Board::run_components`).
 
-- `cpp-port-minimal-publisher/` — Phase 209.G iter 2: the upstream
+- `cpp-port-minimal-publisher/` — the upstream
   ROS 2 "minimal publisher" tutorial C++ node vendored **unmodified**,
   building against nano-ros's own rclcpp / ament CMake surface with
   only three build-glue lines changed.
@@ -45,34 +45,32 @@ For the promoted Node + Bringup + Entry workflow examples, use
   subclass with `diagnostic_updater::Updater` built against nano-ros
   with one glue line per layer.
 
-- `topic-state-monitor-port/` — Phase 209.G first iteration: a
+- `topic-state-monitor-port/` — a
   synthetic in-tree port modeled on Autoware's `topic_state_monitor`,
   exercising multi-subscription + per-topic diagnostic patterns a
   real port would hit (no vendored upstream source yet).
 
-- `ament-workspace-port/` — phase-518: a stock ament_cmake package
+- `ament-workspace-port/` — a stock ament_cmake package
   (a `SHARED` component library with its own include path and compile
   definition, and a plain `add_executable` that links it) built
   unchanged on posix, FreeRTOS and Zephyr. The other port templates hand
   one source to `nano_ros_add_executable`; this one tests the package's
   own `CMakeLists.txt` on a board.
 
-- `local-msg-package/` — Phase 210.A.4 fixture demonstrating
+- `local-msg-package/` — fixture demonstrating
   ROS-convention codegen: verbatim ROS 2 msg packages (workspace +
   cross-workspace deps) consumed alongside AMENT-installed messages
   by a verbatim ROS 2 C++ consumer node.
 
-- `workspace-shadowing/` — Phase 210.F.4 fixture proving the
+- `workspace-shadowing/` — fixture proving the
   workspace-over-AMENT interface-package shadowing contract: a
   workspace `std_msgs` (carrying a message AMENT's does not ship)
   shadows the AMENT-installed `std_msgs`.
 
-- `zephyr-byo/` — Zephyr "bring-your-own west workspace" starter
-  (Phase 205.A): a `west.yml` pinning a tested Zephyr + the nano-ros
+- `zephyr-byo/` — Zephyr "bring-your-own west workspace" starter:
+  a `west.yml` pinning a tested Zephyr + the nano-ros
   module import, plus a zenoh `std_msgs/Int32` talker app skeleton.
   Source for the standalone `nano-ros-zephyr-example` repo; see its
   `README.md` for the current `west init -> nros setup zephyr ->
   nros setup board zephyr --zephyr-workspace <ws> (the patch set) ->
-  west build -> run` quickstart (e2e-verified, Phase 202; the earlier
-  `west patch` step was retired in Phase 208.E.9, and the patch set is
-  `nros setup board`'s since issue 2185).
+  west build -> run` quickstart (e2e-verified).

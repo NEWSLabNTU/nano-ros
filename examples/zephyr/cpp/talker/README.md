@@ -1,4 +1,4 @@
-# Zephyr C++ talker — typed component (RFC-0043)
+# Zephyr C++ talker — typed component
 
 The node is a stateful **component** rather than a hand-written imperative
 `main.cpp`: `Talker::configure(node)` binds a `std_msgs/String` publisher on
@@ -34,14 +34,12 @@ and `mps2_zenoh` targets `mps2/an385`. From the checkout,
 ## Config
 
 Board, RMW, domain and locator: `src/zephyr_cpp_talker_bringup/system.toml`
-(`[image.*]` + `[system]`, RFC-0098 D3/D5). The base Zephyr `prj.conf` of each
+(`[image.*]` + `[system]`). The base Zephyr `prj.conf` of each
 board is `boards/<board>/prj.conf` in the bringup, and each image's
 `os_config` names its RMW fragments. Switching board is choosing another
 image; no build command names a board.
 
 ## History
 
-This dir absorbed the former `examples/zephyr/cpp/talker-typed` (phase-240.8
-typed-carrier draft): both were the same TYPED component modulo namespace
-after phase-244.C2 converted this example to the component shape, so the
-duplicate was removed in phase-277 W7.
+This dir absorbed the former `examples/zephyr/cpp/talker-typed`: both were
+the same TYPED component modulo namespace, so the duplicate was removed.

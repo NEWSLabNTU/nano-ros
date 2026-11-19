@@ -1,4 +1,4 @@
-# cpp-port-minimal-publisher — Phase 209.G iter 2
+# cpp-port-minimal-publisher
 
 The canonical ROS 2 "minimal publisher" tutorial node
 ([source pattern](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Writing-A-Simple-Cpp-Publisher-And-Subscriber.html)
@@ -12,7 +12,7 @@ not by rewriting the source.
 ## What changed vs an upstream ROS 2 package
 
 The C++ source (`src/minimal_publisher.cpp`) is the upstream tutorial's
-`minimal_publisher.cpp` **verbatim** — true as of 2026-09-04 (phase-417 stage 1).
+`minimal_publisher.cpp` **verbatim** — true as of 2026-09-04.
 It was NOT true when first written: three lines carried adaptations, and the
 README claimed verbatim anyway. What made the claim true is that
 `rclcpp::Publisher<T>::SharedPtr` / `rclcpp::TimerBase::SharedPtr` now resolve
@@ -21,8 +21,8 @@ README claimed verbatim anyway. What made the claim true is that
 `message.data = "Hello, world! " + std::to_string(count_++);` assignment are
 upstream's own lines again.
 
-**One of those two lines is now on a deprecation clock** (phase-430 W7,
-2026-09-08). `rclcpp::TimerBase` is RETIRED: nano-ros has no timer hierarchy,
+**One of those two lines is now on a deprecation clock** (2026-09-08).
+`rclcpp::TimerBase` is RETIRED: nano-ros has no timer hierarchy,
 because the executor dispatches through a raw function pointer and a
 polymorphic base would be a vtable nothing calls. The name survives one release
 as a deprecated alias for `rclcpp::Timer` — which is precisely why this file is
@@ -31,7 +31,7 @@ a warning carrying the migration. When the alias goes, THIS FILE STOPS BEING
 VERBATIM: the line becomes `rclcpp::Timer::SharedPtr timer_;`.
 
 That is worth stating rather than quietly fixing, because it is a real datum
-about the campaign: RFC-0089's rule is that a name we cannot honour must fail to
+about the campaign: nano-ros's rule is that a name we cannot honour must fail to
 compile, and here it collides with this example's whole purpose. The deprecation
 is the interval in which both can be true. The CMakeLists.txt's stock-ROS-2 shape
 (`find_package(ament_cmake_auto)` / `ament_auto_add_executable` /
@@ -69,7 +69,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 ## Running the same source on an RTOS
 
 The two directories beside `src/` build **the same `src/minimal_publisher.cpp`**
-for a microcontroller (phase-482 W3). Each one is the whole port for its
+for a microcontroller. Each one is the whole port for its
 platform: a `CMakeLists.txt`, the package's `package.xml`, a `system.toml`
 naming the board, and on Zephyr the Kconfig fragments.
 
@@ -77,8 +77,7 @@ On Zephyr, `system.toml` names the board package `mps2-an385-zephyr`, which
 lowers to `west build -b mps2_an385` and carries the board's own Kconfig (the
 in-kernel IP stack on QEMU's lan9118, the Slirp address, sizing and entropy).
 The image's `os_config` adds `prj-zenoh.conf`. So a copy of this template
-names nothing outside itself; `nros build` in `zephyr/` is the whole build
-(issue 1782).
+names nothing outside itself; `nros build` in `zephyr/` is the whole build.
 
 | directory | target | run with |
 | --- | --- | --- |
@@ -108,7 +107,7 @@ on Zephyr.
 
 Zephyr's `native_sim` is **not** a target for this. A ported program needs the
 full C++ standard library. On `native_sim` Zephyr links its own C library, which
-the host's libstdc++ cannot run on (the blocker phase-209 G.2 measured), so the
+the host's libstdc++ cannot run on, so the
 port uses a Cortex-M board instead.
 
 `port_templates_e2e` runs all three builds: posix, FreeRTOS and Zephyr. They

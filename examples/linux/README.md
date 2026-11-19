@@ -18,12 +18,12 @@ came from; a plain cmake configure of a C/C++ copy-out names it with
 
 The RMW is part of the deployment, so it is named where the rest of the
 deployment is: `[system] rmw = "zenoh" | "xrce" | "cyclonedds"` in the example's
-`system.toml`, identically for C, C++ and Rust (RFC-0098 D3/D5). Edit that line
+`system.toml`, identically for C, C++ and Rust. Edit that line
 and re-run `nros configure` — there is no Cargo feature and no `-D` flag to pass.
 
 (The `rmw-*` Cargo features still exist in the Rust manifests, and the few
 leaves that have not gained a `system.toml` yet still resolve their backend
-through them. RFC-0098 retires that spelling.)
+through them. That spelling is being retired.)
 
 ## Build & run one example
 
@@ -55,7 +55,7 @@ Contributor test lanes: `just linux test` (Rust), `test-c`, `test-cpp`, `test-rm
 
 The listener, service and action pairs are images of the language workspaces
 (`examples/workspaces/<lang>/src/{pubsub,service,action}_bringup`, image ids
-`linux_<role>[_xrce|_cyclonedds]`, RFC-0122 D1). The leaves left here are the
+`linux_<role>[_xrce|_cyclonedds]`). The leaves left here are the
 talker witness, the variants and the feature demos.
 
 | Role | c | cpp | rust |

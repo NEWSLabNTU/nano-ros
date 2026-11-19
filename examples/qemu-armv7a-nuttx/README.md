@@ -28,8 +28,8 @@ just nuttx talker                        # build + boot rust/talker in QEMU
 ```
 
 The peers (listener, service and action roles) are `nuttx_<role>` images of
-the behaviour bringups in `examples/workspaces/{rust,c,cpp}` (phase-535 W5,
-RFC-0122 D1); `just nuttx build-examples` builds them too.
+the behaviour bringups in `examples/workspaces/{rust,c,cpp}`;
+`just nuttx build-examples` builds them too.
 
 Test lanes: `just nuttx test`, `test-all`.
 

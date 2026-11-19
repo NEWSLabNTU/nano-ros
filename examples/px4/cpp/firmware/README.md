@@ -3,7 +3,7 @@
 **In-firmware** PX4 modules: nano-ros running *inside* the autopilot, on the uORB
 backend. The sibling `examples/px4/rust/companion/` runs *beside* PX4 over
 XRCE-DDS — that is what the `firmware/` vs `companion/` level names (a deployment
-axis, not an RMW; see RFC-0026).
+axis, not an RMW).
 
 ## What this demonstrates
 
@@ -53,13 +53,13 @@ A demo where a nano-ros subscriber reads a nano-ros publisher proves nothing
 here. On this backend the interesting failure is a layout or size disagreement
 with PX4's `orb_metadata`, and a nano-ros-to-nano-ros test is satisfied
 identically by a correct encoding and a broken one — both ends share the bug.
-The stock consumer IS the measurement (issue 0351).
+The stock consumer IS the measurement.
 
 ## Layout
 
 PX4 requires `<EXTERNAL_MODULES_LOCATION>/src/modules/<name>/`, so that is the
 shape here; this directory is the location root. It is also a nano-ros
-workspace (phase-521 W8, RFC-0113 D9):
+workspace:
 
 | Path | What it is |
 | --- | --- |

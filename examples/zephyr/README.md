@@ -15,8 +15,8 @@ so `nros` can generate the interface crates before the west build.
 
 ## RMW selection
 
-An IMAGE of the leaf's `system.toml`, not a conf overlay (phase-481, RFC-0098
-D10/D11). Every leaf declares one image per RMW — `[image.zephyr_zenoh]`,
+An IMAGE of the leaf's `system.toml`, not a conf overlay.
+Every leaf declares one image per RMW — `[image.zephyr_zenoh]`,
 `[image.zephyr_xrce]`, `[image.zephyr_cyclonedds]` — and a build selects one with
 `-DNROS_IMAGE=<id>` (no selection builds `default_images`, zenoh). The nano-ros
 Zephyr module renders the selected image into a Kconfig fragment merged after
@@ -32,13 +32,13 @@ west build -b native_sim/native/64 examples/zephyr/rust/listener -- \
     -DCONF_FILE=prj.conf -DNROS_IMAGE=zephyr_xrce
 ```
 
-The three talkers (`c/`, `cpp/`, `rust/`) are single-node WORKSPACES instead
-(phase-531 W6): `src/<node>` plus `src/<node>_bringup`, built with
+The three talkers (`c/`, `cpp/`, `rust/`) are single-node WORKSPACES instead:
+`src/<node>` plus `src/<node>_bringup`, built with
 `nros build <node>_bringup:<image>` from the talker directory, which generates
 the west application. See each talker's README.
 
 The host-socket network (NSOS) comes from the board: `[board.zephyr] snippets`
-names `nros-nsos`, and the module adds it to `SNIPPET` (issue 2157).
+names `nros-nsos`, and the module adds it to `SNIPPET`.
 
 The `build-one` recipe wires this for you.
 

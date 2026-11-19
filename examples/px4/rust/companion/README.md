@@ -1,10 +1,10 @@
 # PX4 XRCE-DDS companion examples
 
-Companion-side PX4 examples (RFC-0039 Track B / Phase 233): nano-ros nodes that
+Companion-side PX4 examples: nano-ros nodes that
 talk `px4_msgs` over a `MicroXRCEAgent` — the same agent PX4's
 `uxrce_dds_client` connects to. Unlike the in-firmware uORB modules, these run
 on the host or a peer MCU **beside** PX4 — which is what the `companion/` path
-level names (phase-316: it is a deployment axis, not an RMW).
+level names (a deployment axis, not an RMW).
 
 Full bring-up (agent + SITL + QoS): [`docs/reference/px4-xrce-companion.md`](../../../../docs/reference/px4-xrce-companion.md).
 
@@ -57,5 +57,4 @@ This is the CI round-trip (`nros-tests::px4_xrce`, built by `just px4 build-fixt
 The cross-session companion ↔ PX4 receive is regression-guarded by
 `nros-tests::px4_xrce::test_px4_companion_cross_session_receive`. (It once
 failed — a poll-based spin-pacing bug closed the node before DDS discovery;
-fixed, see
-[issue 0026](../../../../docs/issues/archived/0026-px4-xrce-bare-agent-type-matching.md).)
+fixed.)

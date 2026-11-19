@@ -1,7 +1,7 @@
 # `talker` — zephyr / rust
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
@@ -27,7 +27,7 @@ QEMU / flashing steps live in the [zephyr README](https://github.com/NEWSLabNTU/
 ## Config
 
 Board, RMW, domain and locator: `src/zephyr_talker_node_bringup/system.toml`
-(`[image.*]` + `[system]`, RFC-0098 D3/D5). The base Zephyr `prj.conf` of each
+(`[image.*]` + `[system]`). The base Zephyr `prj.conf` of each
 board is `boards/<board>/prj.conf` in the bringup, and each image's
 `os_config` names its RMW fragments. Switching board is choosing another
 image; no build command names a board.

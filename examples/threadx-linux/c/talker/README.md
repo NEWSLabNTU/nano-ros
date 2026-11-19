@@ -1,14 +1,13 @@
 # `talker` — threadx-linux / c
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
-is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
+is required ([example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
 
 ## Build
 
 A single-node workspace: `src/threadx_c_talker` is the program, with its own
 `main()`, and `src/threadx_c_talker_bringup` holds the `system.toml` that says what to
-build. Each `[image.*]` builds that same `main` once (an owned entry,
-RFC-0071 D19).
+build. Each `[image.*]` builds that same `main` once (an owned entry).
 
 ```bash
 cp -r examples/threadx-linux/c/talker ~/my-talker && cd ~/my-talker
@@ -25,7 +24,7 @@ is `build/threadx-linux-<rmw>-threadx_c_talker_bringup/cmake/pkg/threadx_c_talke
 ## Config
 
 Board, RMW, domain and locator: `src/threadx_c_talker_bringup/system.toml`
-(`[image.*]` + `[system]`, RFC-0098 D3/D5). `threadx-linux` is zenoh;
+(`[image.*]` + `[system]`). `threadx-linux` is zenoh;
 `threadx-linux-cyclonedds` is Cyclone DDS on its own domain. No build command
 carries any of them, and `src/threadx_c_talker/CMakeLists.txt` names no board.
 

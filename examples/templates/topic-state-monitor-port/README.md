@@ -1,4 +1,4 @@
-# topic_state_monitor — port template (Phase 209.G, first iteration)
+# topic_state_monitor — port template
 
 Synthetic in-tree port modeled on Autoware's `topic_state_monitor` (system/),
 the survey's smallest Tier-1 candidate (465 SLOC upstream — a multi-topic
@@ -34,7 +34,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 ## Running the same source on an RTOS
 
 The two directories beside `src/` build **the same
-`src/topic_state_monitor.cpp`** for a microcontroller (phase-482 W3), exactly as
+`src/topic_state_monitor.cpp`** for a microcontroller, exactly as
 `cpp-port-minimal-publisher` does: `mps2-an385-freertos/` (FreeRTOS on
 MPS2-AN385, QEMU) and `zephyr/` (Zephyr on `mps2/an385`, QEMU). Each is a
 `CMakeLists.txt` around
@@ -53,7 +53,7 @@ ERROR (stale); once a host `int32-source` publishes `/a` and `/b` every 100 ms,
 both must be reported OK. The order matters: a clock that never advanced would
 report every topic OK with no publisher at all.
 
-## Gap surfaced (filed against Phase 209.A; since closed)
+## Gap surfaced (since closed)
 
 The 209.A follow-up closed this: capturing-lambda subscriptions compile
 unchanged, and `src/topic_state_monitor.cpp` uses them. The original finding

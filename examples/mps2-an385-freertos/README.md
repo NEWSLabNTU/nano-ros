@@ -38,7 +38,7 @@ Test lanes: `just freertos test`, `test-all`.
 | action-server / action-client | yes | yes | yes (+`_entry`) |
 
 The `<case>_entry` Rust variants are Entry-pkg siblings (`nros::main!()` run-plan
-shape); the underscore naming is an interim exception (RFC-0026, phase-275).
+shape); the underscore naming is an interim exception.
 `rust/dds/` is a shared build-support crate, not an example case.
 
 ## Gotchas
