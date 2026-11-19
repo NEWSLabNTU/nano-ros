@@ -39,10 +39,8 @@ _z_f_link_open_udp_multicast
 _z_f_link_tcp
 _z_get_entity_id
 _z_hashmap_insert
-_z_link_clear
 _z_link_free
 _z_link_send_t_msg
-_z_link_t
 _z_liveliness_query
 _z_locators_by_scout
 _z_open

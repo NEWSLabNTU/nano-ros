@@ -307,7 +307,7 @@ targets = ["descriptor_seam", "registry_race"]
 runner = "required-features-tests"
 crate = "nros-rmw-zenoh"
 features = ["platform-posix", "link-custom"]
-targets = ["custom_transport"]
+targets = ["custom_transport", "custom_link_round_trip"]
 
 # RFC-0134 D2 -- two peers on a point-to-point link (IVC and RPMsg, host mocks), no router.
 [[lane]]

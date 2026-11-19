@@ -277,6 +277,18 @@ pub unsafe extern "C" fn _z_rpmsg_rx_release(ch: *mut c_void) {
     }
 }
 
+/// Whether a frame is waiting, without waiting for one: the framed link's
+/// read returns "nothing yet" and comes back, as it did before the link
+/// gained a wait entry. A board wait on the backend (so the reading thread
+/// sleeps until the other core delivers) replaces this.
+// The board wait is draft PR #4383's; this keeps the link building until it
+// lands.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _z_rpmsg_rx_wait(ch: *mut c_void, _timeout_ms: u32) -> bool {
+    let ep = unsafe { endpoint(ch) };
+    ep.tail.load(Ordering::Relaxed) != ep.head.load(Ordering::Acquire)
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_rpmsg_tx_get(ch: *mut c_void, cap_out: *mut usize) -> *mut u8 {
     let ep = unsafe { endpoint(ch) };

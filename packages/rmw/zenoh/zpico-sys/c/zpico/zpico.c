@@ -5515,3 +5515,38 @@ void zpico_clock_start(uint8_t* clock_buf) {
 unsigned long zpico_clock_elapsed_ms_since(uint8_t* clock_buf) {
     return z_clock_elapsed_ms((z_clock_t*)clock_buf);
 }
+
+#if Z_FEATURE_LINK_CUSTOM == 1
+#include <zenoh-pico/link/link.h>
+// Issue 2747 -- a test seam for the custom link's RECEIVE path, the one a
+// session's reader takes after the handshake: `_z_link_socket_recv_zbuf`. It
+// opens a link on `custom/probe` (the registered user transport's `open`),
+// receives once into `out`, and closes it. Returns the bytes received, or
+// SIZE_MAX when the link would not open or the read failed. No session, no
+// peer, no network: what regressed was which read this function reaches, and
+// a custom link that reached its socket-shaped read returned 0 here.
+// Unreferenced by every image, so the linker drops it there.
+size_t zpico_custom_link_recv_probe(uint8_t *out, size_t cap) {
+    _z_link_t zl;
+    memset(&zl, 0, sizeof(zl));
+    _z_string_t loc = _z_string_alias_str("custom/probe");
+    if (_z_open_link(&zl, &loc, NULL, NULL) != _Z_RES_OK) {
+        return SIZE_MAX;
+    }
+    _z_zbuf_t zbf = _z_zbuf_make(cap);
+    const _z_sys_net_socket_t *own = _z_link_get_socket(&zl);
+    _z_sys_net_socket_t sock;
+    memset(&sock, 0, sizeof(sock));
+    if (own != NULL) {
+        sock = *own;
+    }
+    size_t rb = _z_link_socket_recv_zbuf(&zl, &zbf, sock);
+    if (rb != SIZE_MAX) {
+        size_t n = _z_zbuf_len(&zbf);
+        memcpy(out, _z_zbuf_get_rptr(&zbf), n < cap ? n : cap);
+    }
+    _z_zbuf_clear(&zbf);
+    _z_link_clear(&zl);
+    return rb;
+}
+#endif
