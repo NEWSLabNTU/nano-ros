@@ -41,6 +41,31 @@ pub const CORE_OWNERS: &[&str] = &[
     "violation",
 ];
 
+/// The words in CORE_OWNERS only until a rename retires them (they hold rows
+/// today, and are no owner word under RFC-0140 D3 N3), sorted.
+pub const RETIRING_OWNERS: &[&str] = &[
+    "param",
+];
+
+/// Every resource location's variable, the `env` of a row of
+/// `nros-sdk-index.toml` (RFC-0103 D6), sorted: no setting may take one
+/// (RFC-0140 D3 N8).
+pub const RESOURCE_ENV_VARS: &[&str] = &[
+    "CYCLONEDDS_SOURCE_DIR",
+    "FREERTOS_DIR",
+    "LWIP_DIR",
+    "NETX_DIR",
+    "NROS_ROSIDL_ADAPTER_BIN_DIR",
+    "NUTTX_APPS_DIR",
+    "NUTTX_DIR",
+    "NXP_FREERTOS_S32ZE_DIR",
+    "PX4_AUTOPILOT_DIR",
+    "S32_RTD_PATH",
+    "THREADX_DIR",
+    "TI_ARM_CLANG_ROOT",
+    "TONBANDGERAET_DIR",
+];
+
 /// The in-tree packages that declare rows, by owner word. `file` is relative
 /// to the checkout.
 pub const IN_TREE_PACKAGES: &[InTreePackage] = &[

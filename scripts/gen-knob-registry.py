@@ -6,12 +6,14 @@
 
 Input:  packages/tooling/nros-zephyr-build/knobs.toml   (core's rows) and each
         in-tree package's nros-knobs.toml (RFC-0140 D2, phase-581 W2), merged
-        and read through scripts/lib/knob_registry.py
+        and read through scripts/lib/knob_registry.py; nros-sdk-index.toml's
+        resource variables (RFC-0140 D3 N8, for RESOURCE_ENV_VARS)
 Output: packages/tooling/nros-zephyr-build/src/knob_registry.rs
         packages/tooling/nros-zephyr-build/src/config_rows.rs  (statement + env rows)
         packages/api/nros/src/retired_env.rs  (RETIRED_ENV_VARS, from `run:` retirements)
         packages/tooling/nros-zephyr-build/src/registry_packages.rs  (core owner
-                                          words, which package declares which rows)
+                                          words, which package declares which rows,
+                                          the resource variables)
         cmake/NanoRosKnobRegistry.cmake   (the retired spellings, for the cmake lanes)
         zephyr/Kconfig                    (the knob section, between its markers)
         zephyr/Kconfig.knob-prompts       (a guest's prompts, phase-484 W5b)
@@ -74,6 +76,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
 import knob_registry  # noqa: E402  -- the one reader of knobs.toml
+import config_names  # noqa: E402  -- the resource variables of nros-sdk-index.toml (N8)
 SRC = REPO / "packages/tooling/nros-zephyr-build/knobs.toml"
 OUT = REPO / "packages/tooling/nros-zephyr-build/src/knob_registry.rs"
 CMAKE_OUT = REPO / "cmake/NanoRosKnobRegistry.cmake"
@@ -582,6 +585,19 @@ def render_packages(reg):
     ]
     words = sorted(set(reg["owners"]) | knob_registry.OWNERS_PENDING_RENAME)
     out += [f"    {q(w)}," for w in words]
+    out.append("];")
+    out.append("")
+    out.append("/// The words in CORE_OWNERS only until a rename retires them (they hold rows")
+    out.append("/// today, and are no owner word under RFC-0140 D3 N3), sorted.")
+    out.append("pub const RETIRING_OWNERS: &[&str] = &[")
+    out += [f"    {q(w)}," for w in sorted(knob_registry.OWNERS_PENDING_RENAME)]
+    out.append("];")
+    out.append("")
+    out.append("/// Every resource location's variable, the `env` of a row of")
+    out.append("/// `nros-sdk-index.toml` (RFC-0103 D6), sorted: no setting may take one")
+    out.append("/// (RFC-0140 D3 N8).")
+    out.append("pub const RESOURCE_ENV_VARS: &[&str] = &[")
+    out += [f"    {q(w)}," for w in sorted(config_names.resource_vars())]
     out.append("];")
     out.append("")
     out.append("/// The in-tree packages that declare rows, by owner word. `file` is relative")

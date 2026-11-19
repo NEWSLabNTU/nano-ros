@@ -21,6 +21,10 @@
 //! against the file's `owner` line; C1 one owner word, one package; C2 a row
 //! stays under its owner, and no package takes a core word; C3 one spelling,
 //! one row; C4 a package declares only its own library's foreign variables.
+//! Every row also follows RFC-0140 D3's naming rule ([`naming`], phase-581
+//! W4): a row that breaks it fails the load unless `config-names.toml`'s
+//! baseline holds it, so a downstream package's bad name fails in its user's
+//! build.
 //! The same package found in two roots is not a collision: the later root
 //! wins (the provider scan's precedence) and the other copy is reported as
 //! shadowed.
@@ -571,6 +575,14 @@ impl Catalog {
                 problems.join("\n  ")
             );
         }
+        // RFC-0140 D3 N1-N8 (D13 G1: the lint is the loader). A row breaking
+        // the rule loads only if the baseline holds it: the in-tree rows a
+        // rename stage has not reached yet, never a downstream package's.
+        let ctx = naming::Context::of(&cat.rows, cat.owners.keys().cloned());
+        let bad = naming::unheld(&cat.rows, &ctx);
+        if !bad.is_empty() {
+            bail!("{}", naming::refusal(&bad));
+        }
         cat.check_one_namespace()?;
         Ok(cat)
     }
@@ -1030,6 +1042,17 @@ pub fn parse_own_file(package: &str, file: &Path, text: &str) -> Result<(String,
         root: Some(String::new()),
     };
     let rows = parse_rows(&doc, &owner, &origin, file)?;
+    // RFC-0140 D3, judged against core's rows: the same rule `nros configure`
+    // applies to the merged catalog.
+    let core = Catalog::core();
+    let ctx = naming::Context::of(
+        core.rows.iter().chain(&rows),
+        core.owners.into_keys().chain([owner.clone()]),
+    );
+    let bad = naming::unheld(&rows, &ctx);
+    if !bad.is_empty() {
+        bail!("{}", naming::refusal(&bad));
+    }
     Ok((owner, rows))
 }
 
@@ -1266,6 +1289,7 @@ pub fn derive_id(key: &str) -> String {
     key.to_ascii_uppercase().replace('.', "_")
 }
 
+pub mod naming;
 mod views;
 pub use views::{env_header, kconfig_packages, kconfig_rows, registry_cmake};
 
