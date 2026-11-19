@@ -255,8 +255,13 @@ if(EXISTS "${NETX_DIR}/addons/BSD/nxd_bsd.h"
         CACHE INTERNAL "Extra compile defines for nros_platform_threadx")
 endif()
 
+# Issue 2624 -- the byte pool `threadx_hooks.c` reserves, sized from this
+# board's 64 KiB app stack (the hooks' default).
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosThreadxPool.cmake")
+nros_threadx_byte_pool_defines(_nros_pool_defs 65536)
 set(THREADX_GLUE_DEFINES
     ${NROS_THREADX_DEFINES}
+    ${_nros_pool_defs}
     CACHE INTERNAL "Compile defines for THREADX_STARTUP_SOURCE / APP_DEFINE TUs")
 
 # ---------------------------------------------------------------------------

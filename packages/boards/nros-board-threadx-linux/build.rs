@@ -119,7 +119,9 @@ fn main() {
     let mut glue = cc::Build::new();
     configure_linux(&mut glue);
     add_threadx_includes(&mut glue, &threadx_dir, &threadx_port_dir, &config_dir);
-    nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue);
+    // Issue 2624 — the byte pool is sized from the app thread's stack: this
+    // board keeps `threadx_hooks.c`'s 64 KiB default.
+    nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue, 64 * 1024);
     glue.file(manifest_dir.join("c/board_threadx_linux.c"));
     // Phase 212.M-F.10.3 — pull the emitted NROS_APP_CONFIG TU into the
     // same `glue` staticlib. The emitted .c includes the shipped header

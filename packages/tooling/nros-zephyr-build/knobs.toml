@@ -1247,6 +1247,14 @@ scope = "board"
 class = "carrier"
 carries = "memory.app_stack_bytes"
 
+# Issue 2624 -- the ThreadX byte pool (the port's whole allocator), in KiB.
+# Unset, the board build derives it: app stack + the RMW's measured working set.
+[[knob]]
+id = "THREADX_BYTE_POOL_KB"
+scope = "board"
+class = "carrier"
+carries = "memory.heap_bytes"
+
 [[knob]]
 id = "XRCE_BUFFER_SIZE"
 scope = "image"

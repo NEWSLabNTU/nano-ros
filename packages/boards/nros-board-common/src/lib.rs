@@ -43,6 +43,8 @@
 // ~~`board_init`~~) stays.
 pub mod threadx_config;
 pub use threadx_config::ThreadxConfig;
+// Issue 2624 — the ThreadX byte pool's derived size.
+pub mod threadx_pool;
 
 // phase-337 W1.b — the `{mac, ip, netmask, gateway, locator, domain_id}` core
 // twelve board `Config` structs re-declare. ADDITIVE: no board adopts it yet;
