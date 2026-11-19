@@ -51,6 +51,11 @@ members = [
     "packages/tooling/nros-build-paths",
     "packages/tooling/nros-system-include",
     "packages/tooling/nros-platform-config",
+    # phase-581 W3 (RFC-0140 D2/D5) — the ONE loader of `nros-knobs.toml`,
+    # shared by the `nros` CLI and a package's build script, and the
+    # build-script helper that reads a package's own rows (`emit`).
+    "packages/tooling/nros-knob-catalog",
+    "packages/tooling/nros-knob-build",
     # phase-454 W4 (RFC-0100 D4) — the sizing descriptor `nros sync` writes per
     # entry, and the ONE reader every consumer shares. Leaf by construction so a
     # `no_std` crate's build script can depend on it.

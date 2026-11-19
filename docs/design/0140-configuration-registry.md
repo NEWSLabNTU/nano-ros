@@ -904,6 +904,22 @@ reopened Q1 with a wider scope; this revision answers Q1.
   scanned copy equal to it is the in-tree package itself and a different one
   overlays it (later root wins, reported as shadowed).
 
+- 2026-11-20: **phase-581 W3.** The loader moved out of the CLI into
+  `nros-knob-catalog` (`packages/tooling/`), which the CLI and
+  `nros-knob-build` (`emit`, a package's build script) both depend on; it is
+  still the one parser of `nros-knobs.toml`. Settled while building D5:
+  `catalog.toml` is read back twice, by `Catalog::parse_toml` and by a
+  dependency-free reader in `nros-zephyr-build` (the ladder's fallthrough
+  needs a row's Kconfig symbol and retired spellings, nothing else), held
+  together by a writer-side test. Configure writes the catalog BEFORE sync,
+  because sync writes the `nros-cargo.toml` that names it. A board package
+  reached only through `$NROS_EXTRA_BOARD_PATH` is not in the provider scan,
+  so the catalog also reads the board catalog's extra roots (D2's "the scan
+  that already finds the descriptor"). "A package the image links" is its
+  rmw word, board key and platform name. The image's run-row table and
+  `Knobs::registry` as the descriptors' parsed shape are not done (phase
+  doc W3).
+
 ## Appendix A - Settings that break the rule on `origin/main` (87)
 
 Columns: the old TOML key (a registry row with no `toml` column shows the key

@@ -17,6 +17,8 @@
 
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosKnobRegistry.cmake")
+# phase-581 W3 -- and the out-of-tree packages' rows, from `nros configure`.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosKnobPackages.cmake")
 
 # _nros_knob_canonical(<name> <out_var>)
 #

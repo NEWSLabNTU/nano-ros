@@ -745,7 +745,15 @@ pub fn app_rung(
             Ok((row, v)) => {
                 rows.insert(row.env.to_string(), v);
             }
-            Err(e) => errors.push(e),
+            // phase-581 W3 (RFC-0140 D5) — not in the compiled table: an
+            // out-of-tree package's knob, from the catalog of this run.
+            Err(e) => match package_knob_env_row(&table, key, value) {
+                Some(Ok((env, v))) => {
+                    rows.insert(env, v);
+                }
+                Some(Err(pe)) => errors.push(pe),
+                None => errors.push(e),
+            },
         }
     }
     if !errors.is_empty() {
@@ -805,6 +813,41 @@ pub fn refuse_off_platform_knobs<'a>(
     } else {
         Err(eyre!("{}", refused.join("\n")))
     }
+}
+
+/// An out-of-tree package's knob (RFC-0140 D5): the row of the catalog of
+/// this run (`knob_catalog::current`) whose key is `key`, rendered to its env
+/// spelling the way [`knob_env_row`] renders a compiled one. `None` when no
+/// catalog is current or it holds no such package knob.
+fn package_knob_env_row(
+    table: &str,
+    key: &str,
+    value: &nros_orchestration_ir::leaf_system::KnobValue,
+) -> Option<std::result::Result<(String, String), String>> {
+    use nros_orchestration_ir::leaf_system::KnobValue;
+    let cat = crate::knob_catalog::current()?;
+    let row = cat.knob(key).filter(|r| !r.origin.is_compiled())?;
+    let env = row
+        .spelling(nros_zephyr_build::RetiredRoad::Env)?
+        .to_string();
+    let (group, name) = key.rsplit_once('.').unwrap_or(("", key));
+    let bad = |want: &str| format!("`[{table}.{group}] {name} = {value}`: {env} is {want}");
+    let rendered = match (row.meta.ty.as_deref(), value) {
+        (Some("int" | "hex") | None, KnobValue::Int(n)) => {
+            if let Some((lo, hi)) = row.meta.range
+                && !(lo..=hi).contains(n)
+            {
+                return Some(Err(bad(&format!("in {lo}..={hi}"))));
+            }
+            n.to_string()
+        }
+        (Some("int" | "hex"), _) => return Some(Err(bad("an integer"))),
+        (Some("bool") | None, KnobValue::Bool(b)) => if *b { "1" } else { "0" }.to_string(),
+        (Some("bool"), _) => return Some(Err(bad("a bool (true / false)"))),
+        (Some("string") | None, KnobValue::Str(s)) => s.clone(),
+        (Some(_), _) => return Some(Err(bad("a string"))),
+    };
+    Some(Ok((env, rendered)))
 }
 
 /// One `[image.<id>.knobs]` key → its registry row and the env value it

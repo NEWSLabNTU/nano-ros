@@ -405,6 +405,13 @@ list(APPEND _nros_rust_lane_env ${_nros_derived_env})
 if(DEFINED NROS_WORKSPACE_ROOT AND NOT NROS_WORKSPACE_ROOT STREQUAL "")
     list(APPEND _nros_rust_lane_env "NROS_WORKSPACE_ROOT=${NROS_WORKSPACE_ROOT}")
 endif()
+# phase-581 W3 (RFC-0140 D5) -- and the merged configuration catalog, so the
+# knob ladder in a package's build script answers an out-of-tree knob's row
+# (its retired spellings). The value itself reaches the lane through
+# `$DOTCONFIG` (`Kconfig.packages`), like every module knob.
+if(DEFINED NROS_KNOB_CATALOG AND NOT NROS_KNOB_CATALOG STREQUAL "")
+    list(APPEND _nros_rust_lane_env "NROS_KNOB_CATALOG=${NROS_KNOB_CATALOG}")
+endif()
 # Issue 2177 -- and the C cross compiler, which the Rust lane's `cc` builds
 # (zpico-sys's zenoh-pico) needed and never got: on mps2-an385 cc fell back to
 # a PATH `arm-none-eabi-gcc` an installed host does not have. The triple is

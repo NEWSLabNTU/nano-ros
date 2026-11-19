@@ -1,0 +1,32 @@
+# The configuration rows the `acme` backend declares (RFC-0140 D2, phase-581
+# W3). Found beside `nros-rmw.toml` by the provider scan, so this file's
+# presence is the declaration: nothing in the nano-ros tree names these rows.
+# Every key starts with the owner word `acme`, the RMW name `package.xml`
+# announces, which the loader derives and checks.
+
+owner = "acme"
+
+# An image states it as `[image.<id>.knobs.acme] pool_slots = <n>`; the build
+# script reads it through `nros_knob_build::emit` (build.rs) and the backend
+# prints the value it was built with on its first publish.
+[[knob]]
+key = "acme.pool_slots"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Acme publish pool slots"
+kconfig_attrs = [
+    "default 2",
+    "range 1 64",
+]
+help = '''
+How many publish slots the acme backend reserves. A fixture value: the
+backend only reports it.
+'''
+
+# A run-time variable the backend declares (RFC-0140 D1 `env` row).
+[[env]]
+key = "acme.trace"
+disposition = "listed"
+parse = "bool"
+help = "Set to 1 to make the acme backend trace every publish."

@@ -480,12 +480,163 @@ pub fn spellings(name: &str) -> Vec<&str> {
 /// Rung 1: the value set under the knob's CANONICAL spelling, after refusing
 /// any retired spelling that is set (phase-484 W8).
 fn env_spelled(name: &str, watch: bool) -> Option<(String, String)> {
+    if knob_row(name).is_none()
+        && let Some(row) = process_catalog_knob(name)
+    {
+        // phase-581 W3 (RFC-0140 D5) — an out-of-tree package's knob: the
+        // compiled table cannot hold it, so its retired spellings come from
+        // the catalog `nros configure` named.
+        if watch {
+            for s in std::iter::once(name).chain(row.retired_env.iter().map(String::as_str)) {
+                println!("cargo:rerun-if-env-changed={s}");
+            }
+        }
+        return read_catalog_spelled(name, &row, &|k| env::var(k).ok());
+    }
     if watch {
         for s in spellings(name) {
             println!("cargo:rerun-if-env-changed={s}");
         }
     }
     read_spelled_from(name, &|k| env::var(k).ok())
+}
+
+/// The variable that names `<build>/nros/knobs/catalog.toml` to a build
+/// (RFC-0140 D5, phase-581 W3): a `relative = true` cargo `[env]` row and a
+/// cmake `-D`, written by `nros configure`. A PATH, so it is never watched by
+/// value (issue 0491): the file it names is watched by content, and only when
+/// the ladder found a row in it.
+pub const KNOB_CATALOG_ENV: &str = "NROS_KNOB_CATALOG";
+
+/// A knob of the merged catalog that the compiled table does not hold: an
+/// out-of-tree package's (RFC-0140 D5). What the ladder needs of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogKnob {
+    /// Its Kconfig symbol, with `CONFIG_`.
+    pub kconfig: String,
+    /// Its retired build-env spellings, refused when set.
+    pub retired_env: Vec<String>,
+}
+
+/// The knob row whose build env spelling is `env_name`, read from a
+/// `catalog.toml` body.
+///
+/// A dependency-free reader of the shape `nros_knob_catalog::Catalog::render_toml`
+/// writes: `[[row]]` tables with `kind`, `name` and a one-line `spellings`
+/// array, and `[[row.retired]]` tables with `spelling`. The writer's test
+/// (`the_ladder_reads_the_catalog_this_writes`) holds the two together; this
+/// crate cannot depend on a TOML parser (see the module docs).
+#[must_use]
+pub fn catalog_knob(text: &str, env_name: &str) -> Option<CatalogKnob> {
+    #[derive(Default)]
+    struct R {
+        knob: bool,
+        spellings: Vec<String>,
+        retired: Vec<String>,
+    }
+    fn quoted(v: &str) -> Vec<String> {
+        v.split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect()
+    }
+    let mut rows: Vec<R> = Vec::new();
+    let mut in_retired = false;
+    for line in text.lines().map(str::trim) {
+        match line {
+            "[[row]]" => {
+                rows.push(R::default());
+                in_retired = false;
+                continue;
+            }
+            "[[row.retired]]" => {
+                in_retired = true;
+                continue;
+            }
+            _ if line.starts_with('[') => {
+                in_retired = false;
+                continue;
+            }
+            _ => {}
+        }
+        let Some(r) = rows.last_mut() else { continue };
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        match (k.trim(), in_retired) {
+            ("kind", false) => r.knob = quoted(v).first().map(String::as_str) == Some("knob"),
+            ("spellings", false) => r.spellings = quoted(v),
+            ("spelling", true) => r.retired.extend(quoted(v)),
+            _ => {}
+        }
+    }
+    let want = format!("env:{env_name}");
+    let r = rows
+        .into_iter()
+        .find(|r| r.knob && r.spellings.contains(&want))?;
+    Some(CatalogKnob {
+        kconfig: r
+            .spellings
+            .iter()
+            .find_map(|s| s.strip_prefix("kconfig:"))
+            .map_or_else(|| format!("CONFIG_{env_name}"), str::to_string),
+        retired_env: r
+            .retired
+            .iter()
+            .filter_map(|s| s.strip_prefix("env:"))
+            .map(str::to_string)
+            .collect(),
+    })
+}
+
+/// [`catalog_knob`] over the catalog `$NROS_KNOB_CATALOG` names, read once per
+/// build script. Watches the file by content when it holds the row.
+///
+/// # Panics
+///
+/// When the variable names a file that cannot be read: `nros configure`
+/// wrote it, so its absence is a broken build, not "no package knobs"
+/// (issue 1134's rule for `$DOTCONFIG`).
+fn process_catalog_knob(env_name: &str) -> Option<CatalogKnob> {
+    static TEXT: std::sync::OnceLock<Option<(String, String)>> = std::sync::OnceLock::new();
+    let (path, text) = TEXT
+        .get_or_init(|| {
+            let path = env::var(KNOB_CATALOG_ENV).ok().filter(|p| !p.is_empty())?;
+            match fs::read_to_string(&path) {
+                Ok(t) => Some((path, t)),
+                Err(e) => panic!(
+                    "nros-zephyr-build: {KNOB_CATALOG_ENV}={path} could not be read ({e}). \
+                     `nros configure` writes it; re-run `nros configure` (or `nros build`)."
+                ),
+            }
+        })
+        .as_ref()?;
+    let row = catalog_knob(text, env_name)?;
+    println!("cargo:rerun-if-changed={path}");
+    Some(row)
+}
+
+/// Rung 1 for a catalog knob: refuse a set retired spelling, then read the
+/// canonical one.
+fn read_catalog_spelled(
+    name: &str,
+    row: &CatalogKnob,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Option<(String, String)> {
+    for s in &row.retired_env {
+        if env(s).is_some_and(|v| !v.trim().is_empty()) {
+            panic!(
+                "nros-zephyr-build: {}",
+                RETIRED_TEMPLATE
+                    .replace("{legacy}", s)
+                    .replace("{env}", name)
+            );
+        }
+    }
+    env(name)
+        .filter(|v| !v.trim().is_empty())
+        .map(|v| (name.to_string(), v))
 }
 
 /// phase-484 W8 — the refusal a RETIRED spelling earns, or `None` for a
@@ -594,7 +745,9 @@ pub fn read_spelled_from(
 pub fn kconfig_key_for(env_name: &str) -> String {
     match knob_row(env_name) {
         Some(row) => row.kconfig.to_string(),
-        None => format!("CONFIG_{env_name}"),
+        // phase-581 W3 — an out-of-tree package's knob: its row in the catalog.
+        None => process_catalog_knob(env_name)
+            .map_or_else(|| format!("CONFIG_{env_name}"), |r| r.kconfig),
     }
 }
 
@@ -615,6 +768,10 @@ pub fn kconfig_key_for(env_name: &str) -> String {
 ///    the tree;
 /// 3. the platform/board rung, when the caller [`Knob::rung`]s one in;
 /// 4. the crate's own builtin, which only [`Knob::resolve`] supplies.
+///
+/// A name the compiled table lacks (an out-of-tree package's knob, RFC-0140
+/// D5) is looked up in the catalog [`KNOB_CATALOG_ENV`] names, for its Kconfig
+/// symbol and its retired spellings; the rungs are the same.
 ///
 /// Rung 3 is an INPUT and never a source this crate reads. The rungs live in
 /// `nros-platform-config`, which depends on `serde`; this crate is
@@ -852,6 +1009,39 @@ fn kconfig_raw(body: &str, key: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    /// phase-581 W3 — the catalog fallthrough: a package knob's Kconfig symbol
+    /// and retired spellings come from `catalog.toml`, and a set retired
+    /// spelling is refused naming the canonical one.
+    #[test]
+    fn a_catalog_knob_reads_its_row_and_refuses_its_retired_spelling() {
+        let text = "[[row]]\nkind = \"knob\"\nname = \"acme.pool_slots\"\n\
+                    origin = \"acme_rmw\"\n\
+                    spellings = [\"toml:acme.pool_slots\", \"env:NROS_ACME_POOL_SLOTS\", \
+                    \"kconfig:CONFIG_NROS_ACME_POOL_SLOTS\"]\n\n\
+                    [[row.retired]]\nspelling = \"env:ACME_SLOTS\"\nfactor = 1\n\n\
+                    [[row]]\nkind = \"env\"\nname = \"ACME_SLOTS_RUN\"\n\
+                    spellings = [\"run:ACME_SLOTS_RUN\"]\n";
+        let row = super::catalog_knob(text, "NROS_ACME_POOL_SLOTS").unwrap();
+        assert_eq!(row.kconfig, "CONFIG_NROS_ACME_POOL_SLOTS");
+        assert_eq!(row.retired_env, vec!["ACME_SLOTS".to_string()]);
+        assert!(super::catalog_knob(text, "ACME_SLOTS_RUN").is_none());
+        let env = |k: &str| (k == "NROS_ACME_POOL_SLOTS").then(|| "4".to_string());
+        assert_eq!(
+            super::read_catalog_spelled("NROS_ACME_POOL_SLOTS", &row, &env),
+            Some(("NROS_ACME_POOL_SLOTS".into(), "4".into()))
+        );
+        let old = |k: &str| (k == "ACME_SLOTS").then(|| "4".to_string());
+        let why = std::panic::catch_unwind(|| {
+            super::read_catalog_spelled("NROS_ACME_POOL_SLOTS", &row, &old)
+        })
+        .unwrap_err();
+        let why = why.downcast_ref::<String>().unwrap();
+        assert!(
+            why.contains("ACME_SLOTS is a retired spelling of NROS_ACME_POOL_SLOTS"),
+            "{why}"
+        );
+    }
+
     /// phase-569 W2 — the catalog as the compiled table carries it. Every
     /// public knob has its one spelling and nothing else does; every Kconfig
     /// default list ends unconditional; a conditional default stays a list

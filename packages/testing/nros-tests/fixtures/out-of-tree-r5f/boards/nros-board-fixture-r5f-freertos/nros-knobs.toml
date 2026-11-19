@@ -1,0 +1,31 @@
+# The configuration rows the board package `fixture-r5f-freertos` declares
+# (RFC-0140 D2, phase-581 W3). Found beside `nros-board.toml` by the board
+# catalog's scan ($NROS_EXTRA_BOARD_PATH), so this file's presence is the
+# declaration: nothing in the nano-ros tree names these rows. A board package
+# announcing several keys names its owner word: one of them, `-` read as `_`.
+
+owner = "fixture_r5f_freertos"
+
+# An image states it as `[image.<id>.knobs.fixture_r5f_freertos] uart_rx_slots`;
+# the board crate's build script reads it through `nros_knob_build::emit`.
+[[knob]]
+key = "fixture_r5f_freertos.uart_rx_slots"
+scope = "board"
+class = "public"
+type = "int"
+prompt = "Fixture UART receive slots"
+kconfig_attrs = [
+    "default 2",
+    "range 1 16",
+]
+help = '''
+How many receive slots the fixture board's debug UART keeps. A fixture
+value: the board crate only records it.
+'''
+
+# A run-time variable the board package declares.
+[[env]]
+key = "fixture_r5f_freertos.console_echo"
+disposition = "listed"
+parse = "bool"
+help = "Set to 1 to echo console input on the fixture board's debug UART."
