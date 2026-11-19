@@ -10904,7 +10904,7 @@ impl<'s> Executor<'s> {
     // Issue 2717.
     /// The same registration with the caller's CAPTURE held by the arena:
     /// the metadata twin of
-    /// [`add_arena_subscription_c_callback_with_capture`](Self::add_arena_subscription_c_callback_with_capture).
+    /// `add_arena_subscription_c_callback_with_capture` (the plain C path).
     /// `capture`'s bytes are copied into the entry's region; `make` builds the
     /// callback from the context pointer it is to dispatch with (the arena
     /// copy, or `context` when there is none) and owns whatever releases the
