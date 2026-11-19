@@ -348,6 +348,13 @@ name = "readiness_park"
 path = "tests/readiness_park.rs"
 required-features = ["trigger-test"]
 
+# Issue 2727 -- a guard condition handle kept past `Executor::drop`, over a
+# stub backend that takes the wake callback.
+[[test]]
+name = "guard_condition_outlives_executor"
+path = "tests/guard_condition_outlives_executor.rs"
+required-features = ["trigger-test"]
+
 # phase-521 W7 (RFC-0113 D2.5) — the wake fan-out over one session: what a
 # low-sched-task arrival costs the high sched tasks, attributing vs not.
 [[test]]

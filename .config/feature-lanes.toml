@@ -200,6 +200,8 @@ targets = ["trigger_conditions", "wake_latency", "ftti_detection_bounds",
            "dispatch_strategy", "signal_fd_wake", "entity_wake",
            # phase-521 W3 — a tier parked on a session's waitable handle.
            "readiness_park",
+           # issue 2727 — a guard condition handle past `Executor::drop`.
+           "guard_condition_outlives_executor",
            # phase-521 W7 — the wake fan-out bound (RFC-0113 D2.5).
            "sched_task_wake_fanout",
            # phase-510 W2 — behind `component-runtime-test` since issue 0900

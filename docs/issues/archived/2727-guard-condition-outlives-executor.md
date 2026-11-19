@@ -71,6 +71,15 @@ Tests, each failing without its half of the fix:
   - The state must be released with the last handle.
   - Mutation: keep the address only, as before. The test fails at "the
     handle holds the wake state past its executor". It runs in `test-unit`.
+- `nros-tests` `guard_condition_outlives_executor` (the `trigger-test` lane):
+  the same property through a REAL `Executor::drop`, over a stub backend that
+  takes the wake callback.
+  - The drop clears the backend's callback.
+  - Afterwards the handle is the wake state's only owner
+    (`GuardCondition::wake_state_owners`, `#[doc(hidden)]`), and `trigger`
+    reaches it.
+  - Mutation, keeping only the address: fails ("saw 0").
+  - The test is nros 133's design, from its unpushed version of this fix.
 - **`GuardCondition`'s `compile_fail` doctest**:
   - The doctest is a handle kept past the block that holds its executor's
     backing. Its twin is the same code with the handle used inside the block,
