@@ -237,6 +237,13 @@ pub const ZEPHYR_ISR_WAKE_PORT: u16 = aux_port(PlatformId::ZephyrNativeSim, 0);
 /// parks. Its `config.toml` and `system.toml` state this port as its locator.
 pub const THREADX_ISR_WAKE_PORT: u16 = aux_port(PlatformId::ThreadxRiscv64, 0);
 
+/// NuttX QEMU ARM `virt` interrupt-wake image
+/// (`packages/testing/nros-tests/bins/isr-wake-nuttx-qemu-arm`, issue 2706): a
+/// watchdog in the timer interrupt triggers a guard condition while the
+/// executor parks. Its `main.rs` and `system.toml` state this port as its
+/// locator.
+pub const NUTTX_ISR_WAKE_PORT: u16 = aux_port(PlatformId::NuttxArm, 0);
+
 /// FreeRTOS + MPS2-AN385 interrupt-wake image
 /// (`packages/testing/nros-tests/bins/isr-wake-freertos-mps2`, issue 2696): a
 /// timer interrupt triggers a guard condition while the executor parks. Its
@@ -392,6 +399,7 @@ mod tests {
             BAREMETAL_RTIC_LEVELS_PORT,
             FREERTOS_ISR_WAKE_PORT,
             THREADX_ISR_WAKE_PORT,
+            NUTTX_ISR_WAKE_PORT,
             BAREMETAL_ISR_WAKE_PORT,
             ZEPHYR_ISR_WAKE_PORT,
         ] {

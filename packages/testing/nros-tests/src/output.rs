@@ -2316,6 +2316,13 @@ pub const ISR_RACE_DONE: &str = "ISR_RACE_DONE ";
 /// `ISR_WAKE_NOT_IN_ISR <n>`, the timer expiries that did NOT run in
 /// interrupt context (must be 0, or the run tested a thread wake).
 pub const ISR_WAKE_NOT_IN_ISR: &str = "ISR_WAKE_NOT_IN_ISR ";
+/// Issue 2706 -- what `isr-wake-nuttx-qemu-arm`'s handle-park phase prints:
+/// one `ISR_PARK <latency_us> <rc> <parked_us> <interrupts>` per round (the
+/// park's return: 0 woken, 1 deadline; the interrupts that signalled during
+/// it), then `ISR_PARK_DONE <woken> <refused>`.
+pub const ISR_PARK_SAMPLE: &str = "ISR_PARK ";
+/// See [`ISR_PARK_SAMPLE`].
+pub const ISR_PARK_DONE: &str = "ISR_PARK_DONE ";
 
 /// Issue 2714 — the hosted resolver's boot line (`nros::env::report`):
 /// `boot config: domain <n> (<source>), locator <l> (<source>), rmw …`.

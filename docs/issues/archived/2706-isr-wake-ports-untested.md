@@ -1,15 +1,17 @@
 ---
 id: 2706
-title: "NuttX refuses an interrupt-safe executor wake until a test reaches it"
-status: open
+title: "Zephyr, ThreadX and NuttX refused an interrupt-safe executor wake until a test reached each"
+status: resolved
 type: test-gap
 severity: medium
 area: [platform, freertos, zephyr, threadx, nuttx, boards]
 found: 2026-11-18
-related: [2696, 2736, phase-579]
+resolved: 2026-11-20
+resolved_in: "fix(nuttx, issue 2706): an interrupt wakes a parked NuttX executor and a handle park, tested from a watchdog"
+related: [2696, 2736, 2737, 2745, 2748, phase-579]
 ---
 
-**Home: [phase-579](../roadmap/phase-579-device-ports.md) W1**
+**Home: [phase-579](../../roadmap/phase-579-device-ports.md) W1**
 
 ## What
 
@@ -17,7 +19,7 @@ Issue 2696 gave the executor an interrupt-safe wake:
 `GuardCondition::trigger_from_isr` reaches each port's
 `nros_platform_wake_signal_from_isr`. A port claims that signal only where a
 test takes a real interrupt (or, on POSIX, a real signal) and shows the wake
-arriving. Five ports have one:
+arriving. Six ports have one:
 
 | Port | Interrupt-safe signal | Test |
 | --- | --- | --- |
@@ -26,17 +28,15 @@ arriving. Five ports have one:
 | mps2-an385 bare metal | the wake flag (`wake::signal`), read by the park with interrupts masked | `tests/isr_wake_rtos.rs`: a CMSDK TIMER1 interrupt on the bare-metal image (`isr-wake-baremetal-mps2`) |
 | Zephyr | `nros_zephyr_wake_give` (`k_sem_give`; a non-blocking eventfd write) | `tests/isr_wake_rtos.rs`: a `k_timer` expiry, in the system clock's interrupt handler, on `native_sim` (`isr-wake-zephyr-native-sim`) |
 | ThreadX (bare-metal ports) | `tx_semaphore_ceiling_put`, inside the port's interrupt context save/restore | `tests/isr_wake_rtos.rs`: the RISC-V `virt` machine-timer interrupt, through the board's tick hook (`isr-wake-threadx-riscv64`) |
+| NuttX | `sem_post`; when a handle park has made the wake object's pipe, its byte through the low-priority work queue, written through the pipe's `struct file` | `tests/isr_wake_rtos.rs`: a watchdog (timer interrupt) on the QEMU ARM `virt` image (`isr-wake-nuttx-qemu-arm`), over a semaphore park and a handle park |
 
-One port, and one port variant, still REFUSE: `nros_platform_wake_signal_from_isr` returns -1, and
-`trigger_from_isr` returns `false`. The flag is still set, so the executor
-sees the trigger at its next deadline instead of at once.
+One port variant still REFUSES, and is tracked on its own:
+[issue 2745](../2745-threadx-linux-isr-wake-refused.md), the hosted ThreadX
+Linux port (`threadx-linux`), whose "interrupt" is a host thread. There
+`trigger_from_isr` returns `false`, and the executor sees the trigger at its
+next deadline.
 
-| Port | What the body would be | The test it needs |
-| --- | --- | --- |
-| ThreadX hosted Linux port (`threadx-linux`) | `tx_semaphore_ceiling_put`, but the port's "interrupt" is its timer thread, a host thread | a trigger from that timer thread, on `threadx-linux` |
-| NuttX | `sem_post` only: `write` is not interrupt-safe, so a handle park needs the pipe byte through the work queue | a NuttX QEMU image with a timer interrupt handler, covering both a semaphore wait and a handle park |
-
-## Closing it
+## Closing it (as it was done)
 
 Per port: give `nros_platform_wake_signal_from_isr` the body above, add the
 test, and move the port's row to the first table. The FreeRTOS cell
@@ -122,3 +122,52 @@ Measured (`isr_wake_rtos::a_timer_interrupt_wakes_the_parked_executor_on_threadx
   under 10 ms, and each run met both.
 - Mutation, the port refusing (main before this): 1010 interrupts were
   served by 50 callbacks, and every trigger was refused. Red.
+
+## NuttX (2026-11-20)
+
+Done:
+- `nros_platform_wake_signal_from_isr` posts the semaphore, which NuttX
+  allows from an interrupt. A handle park (`nros_platform_wake_park_handles_us`)
+  waits on the wake object's pipe, and an interrupt cannot `write`. So when
+  the pipe exists, the signal queues the byte on the low-priority work queue
+  (`work_queue(LPWORK, ...)`, callable from an interrupt). `wake_drop`
+  cancels a queued byte (`work_cancel_sync`).
+- The worker writes through the pipe's `struct file` (`file_get` when the pipe
+  is made, `file_put` on drop), never through the descriptor. The first
+  version wrote through the descriptor, and every handle park slept to its
+  deadline: a NuttX descriptor names a file only in its own task's table, and
+  the work queue's thread is another task. The test found this.
+- Without `CONFIG_SCHED_LPWORK` there is no such queue. The post still wakes a
+  semaphore park, but for a wake object that parks on handles the signal
+  returns -1, and the first handle park prints one named line ("CONFIG_SCHED_LPWORK
+  required for handle park"). The QEMU ARM board sets it.
+- The board compiles `c/nuttx_isr_timer.c`: a periodic NuttX watchdog, whose
+  function runs from the timer interrupt, calling the image's callback. It
+  counts fires outside interrupt context (`up_interrupt_context`), and the test
+  requires 0.
+
+The test image `isr-wake-nuttx-qemu-arm` has two phases:
+1. A guard condition triggered from the interrupt while the executor parks
+   (its semaphore park).
+2. Ten rounds of the wake object signalled from the interrupt while the main
+   thread takes a handle park with no handles and a 1 s deadline. Each must
+   end on the signal, within 10 ms of it.
+
+Measured (`isr_wake_rtos::a_timer_interrupt_wakes_the_parked_executor_on_nuttx_qemu_arm`,
+a 20 ms watchdog):
+- The first bound, the 500 us share the other ports meet, failed 3 times in
+  32 runs, under load and once after a rebuild. It was the bound, not the
+  wake: no interrupt went unserved. NuttX's clock counts 1 ms ticks, and
+  QEMU's `-icount shift=auto` doubles guest time per instruction mid-run.
+  [Issue 2748](2748-nuttx-executor-isr-wake-late-under-load.md) has the data.
+  NuttX is held to the 10 ms cap and the lower bounds; the image reads the
+  ARM generic timer.
+- After that: 5 of 5 quiet runs and 10 of 10 under saturation (load 18 to 90)
+  green. Every run had 50 interrupts and 50 callbacks, and 10 of 10 handle
+  parks were woken by the signal. Latency read 39 to 1485 us, scaling with
+  the icount shift.
+- Mutation, the port refusing: 624 interrupts were served by 50 callbacks,
+  and every trigger was refused. Red.
+- Mutation, the worker writing through the descriptor (the first version):
+  the semaphore phase stayed green, while 9 of 10 handle parks slept their
+  full 1 s. Red. So each phase catches its own defect.

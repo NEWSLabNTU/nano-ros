@@ -715,6 +715,15 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
  *   no `timer_create` — nor the Linux-only host board.)
  * ============================================================ */
 
+/* Issue 2706 -- a NuttX interrupt handler may post a semaphore but not
+ * `write`, so an interrupt's signal reaches a handle park's pipe through the
+ * low-priority work queue (`work_queue` may be called from an interrupt). */
+#if defined(__NuttX__) && defined(CONFIG_SCHED_LPWORK)
+#include <nuttx/fs/fs.h>
+#include <nuttx/wqueue.h>
+#define NROS_POSIX_ISR_PIPE_WORK 1
+#endif
+
 typedef struct {
     sem_t sem;
     /* phase-521 W3 — a self-pipe, made on the first handle park only, so an
@@ -723,6 +732,17 @@ typedef struct {
      * atomic; `pipe_r` only by the one waiter. -1 until made. */
     int pipe_r;
     atomic_int pipe_w;
+#ifdef NROS_POSIX_ISR_PIPE_WORK
+    /* Issue 2706 -- the pipe byte an interrupt's signal queues. One item per
+     * wake object: queued again while pending, it is re-queued, and one byte
+     * is all a park needs. */
+    struct work_s isr_pipe_work;
+    /* The pipe's write end as a `struct file`, referenced while the pipe
+     * exists. A descriptor names a file only in its own task's table, and the
+     * work queue's thread is another task, so the worker writes through this
+     * instead of `pipe_w`. NULL until the pipe is made. */
+    FAR struct file *_Atomic isr_pipe_filep;
+#endif
 } nros_wake_t;
 
 /* Write the self-pipe's byte, if a handle park made the pipe. Non-blocking:
@@ -810,6 +830,10 @@ int8_t nros_platform_wake_init(void *w) {
     nros_wake_t *wp = (nros_wake_t *) w;
     wp->pipe_r = -1;
     atomic_init(&wp->pipe_w, -1);
+#ifdef NROS_POSIX_ISR_PIPE_WORK
+    memset(&wp->isr_pipe_work, 0, sizeof(wp->isr_pipe_work));
+    atomic_init(&wp->isr_pipe_filep, NULL);
+#endif
     if (sem_init(&wp->sem, 0, 0) != 0) return -1;
 #ifndef __NuttX__
     /* phase-521 W6 — a termination signal posts this object, so a parked
@@ -828,6 +852,14 @@ int8_t nros_platform_wake_drop(void *w) {
     nros_posix_termination_wake_remove(w);
 #endif
     nros_wake_t *wp = (nros_wake_t *) w;
+#ifdef NROS_POSIX_ISR_PIPE_WORK
+    /* Issue 2706 -- a queued pipe byte must not run on freed storage. */
+    (void) work_cancel_sync(LPWORK, &wp->isr_pipe_work);
+    {
+        FAR struct file *filep = atomic_exchange(&wp->isr_pipe_filep, NULL);
+        if (filep != NULL) (void) file_put(filep);
+    }
+#endif
     int pw = atomic_exchange(&wp->pipe_w, -1);
     if (pw >= 0) close(pw);
     if (wp->pipe_r >= 0) close(wp->pipe_r);
@@ -939,16 +971,41 @@ int8_t nros_platform_wake_signal(void *w) {
  * (not on that list), so the count may pass one; the waiter drains it.
  * `errno` is the interrupted code's, so it is restored.
  *
- * NuttX compiles this file and REFUSES: its interrupt handlers may post the
- * semaphore but not `write`, and no test takes a NuttX interrupt yet
- * (issue 2706). An interrupt's trigger there sets the flag only. */
+ * Issue 2706 -- on NuttX, what an INTERRUPT handler may call. `sem_post` is
+ * interrupt-safe there; `write` is not, so when a handle park has made the
+ * pipe, its byte is written by the low-priority work queue instead, after
+ * the post (the park drains the pipe and then takes the post). The worker
+ * writes through the pipe's `struct file`, since its thread is another task
+ * and the descriptor means nothing in that task's table. A NuttX
+ * configuration without `CONFIG_SCHED_LPWORK` has no such queue: the post
+ * still wakes a semaphore wait, but a handle park would sleep to its
+ * deadline, so it returns -1 then and `trigger_from_isr` says the wake did
+ * not reach the waiter. */
+#ifdef NROS_POSIX_ISR_PIPE_WORK
+static void nros_posix_wake_isr_pipe_worker(FAR void *arg) {
+    nros_wake_t *wp = (nros_wake_t *) arg;
+    FAR struct file *filep = atomic_load(&wp->isr_pipe_filep);
+    if (filep != NULL) {
+        const uint8_t one = 1;
+        (void) file_write(filep, &one, 1);
+    }
+}
+#endif
+
 int8_t nros_platform_wake_signal_from_isr(void *w) {
-#if defined(__NuttX__)
-    (void) w;
-    return -1;
-#else
     if (w == NULL) return -1;
     nros_wake_t *wp = (nros_wake_t *) w;
+#if defined(__NuttX__)
+    if (sem_post(&wp->sem) != 0) return -1;
+    if (atomic_load(&wp->pipe_w) < 0) return 0;
+#  ifdef NROS_POSIX_ISR_PIPE_WORK
+    return work_queue(LPWORK, &wp->isr_pipe_work, nros_posix_wake_isr_pipe_worker, wp, 0) == 0
+               ? 0
+               : -1;
+#  else
+    return -1;
+#  endif
+#else
     int saved = errno;
     int8_t rc = sem_post(&wp->sem) == 0 ? 0 : -1;
     nros_posix_wake_pipe_byte(wp);
@@ -998,8 +1055,36 @@ static int nros_posix_wake_make_pipe(nros_wake_t *wp) {
             return -1;
         }
     }
+#ifdef NROS_POSIX_ISR_PIPE_WORK
+    /* Issue 2706 -- the reference the work-queue writer holds (see the
+     * struct). Taken before the pipe is published, so an interrupt that sees
+     * `pipe_w` finds it. */
+    {
+        FAR struct file *filep = NULL;
+        if (file_get(fds[1], &filep) != 0) {
+            close(fds[0]);
+            close(fds[1]);
+            return -1;
+        }
+        atomic_store(&wp->isr_pipe_filep, filep);
+    }
+#endif
     wp->pipe_r = fds[0];
     atomic_store(&wp->pipe_w, fds[1]);
+#if defined(__NuttX__) && !defined(NROS_POSIX_ISR_PIPE_WORK)
+    /* Issue 2706 -- named once, in thread context, where the refusal is
+     * decided: an interrupt can post this object's semaphore but cannot
+     * reach this pipe, so `trigger_from_isr` returns false for every wake
+     * object that parks on handles. */
+    static atomic_int warned;
+    if (atomic_exchange(&warned, 1) == 0) {
+        fprintf(stderr,
+                "nros: an interrupt cannot wake a handle park on this NuttX build: "
+                "CONFIG_SCHED_LPWORK required for handle park (the interrupt-safe "
+                "wake queues the pipe byte on the low-priority work queue); "
+                "trigger_from_isr returns false until it is set\n");
+    }
+#endif
     return 0;
 }
 

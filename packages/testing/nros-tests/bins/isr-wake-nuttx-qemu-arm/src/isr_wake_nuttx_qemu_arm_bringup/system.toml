@@ -1,0 +1,22 @@
+# What this test image deploys to (RFC-0098 D3/D5). Its program is the image's
+# OWNED entry (RFC-0071 D19), `isr-wake-nuttx-qemu-arm`, which keeps its own
+# `main`, opens its own session to a per-test router on
+# `nros_tests::alloc::NUTTX_ISR_WAKE_PORT`, and declares no component table.
+
+[system]
+name = "isr_wake_nuttx"
+rmw = "zenoh"
+domain_id = 0
+
+# NuttX on the QEMU ARM virt machine. `main.rs` declares its own
+# `#[panic_handler]`, so the image says `platform` (RFC-0077).
+[image.qemu-armv7a-nuttx]
+entry = "isr-wake-nuttx-qemu-arm"
+board = "nuttx"
+panic = "platform"
+locator = "tcp/10.0.2.2:8500"
+# No component table to derive sizes from: `main` registers one guard
+# condition, which the configured default executor holds.
+no_inventory = "an interrupt-wake test: main registers one guard condition and nothing else"
+
+[board_config."qemu-armv7a-nuttx"]

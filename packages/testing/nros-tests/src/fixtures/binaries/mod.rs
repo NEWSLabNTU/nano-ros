@@ -6993,6 +6993,26 @@ pub fn build_logging_smoke_threadx_linux() -> TestResult<&'static Path> {
 /// fixture binary (NuttX flat-build kernel image for QEMU ARM virt).
 static LOGGING_SMOKE_NUTTX_QEMU_ARM_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the issue-2706 `isr-wake-nuttx-qemu-arm` image.
+static ISR_WAKE_NUTTX_QEMU_ARM_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Issue 2706 -- the prebuilt `isr-wake-nuttx-qemu-arm` image: a watchdog in
+/// the timer interrupt wakes a parked executor, then a handle park. Workspace
+/// row `nuttx-isr-wake`, built with the NuttX fixtures.
+pub fn build_isr_wake_nuttx_qemu_arm() -> TestResult<&'static Path> {
+    ISR_WAKE_NUTTX_QEMU_ARM_BINARY
+        .get_or_try_init(|| {
+            const DIR: &str = "packages/testing/nros-tests/bins/isr-wake-nuttx-qemu-arm";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
+        })
+        .map(|p| p.as_path())
+}
+
 /// Resolve the prebuilt Phase 88.15.c logging smoke binary. Built
 /// by `just nuttx build-fixtures` (folded the fixture into the same
 /// parallel sweep that builds the NuttX example tree).
