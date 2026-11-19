@@ -2023,6 +2023,12 @@ ros_package = [
 ]
 # No dnf/pacman/brew and no `check` probe, for the reason the row above gives.
 
+[prereq.ros-parity-peers]
+role = "package"
+why = "the stock ROS 2 nodes `ros2_cli_parity_interop` compares nano-ros against, beyond `demo_nodes_cpp`/`demo_nodes_py`: `examples_rclcpp_minimal_action_client` is the stock action client the node-info tests compare (phase-556 W4), and `turtlesim` is the rclcpp node the parameter refusal-reason tests compare against (phase-556 W2; user ruling 2026-11-19: reasons follow rclcpp, and turtlesim, which ships with ROS, is the reference peer, so no test compiles one). On a host without them those tests are red with an unmet precondition, never a skip (issue 1758). The apt name is DERIVED from $ROS_DISTRO exactly as `[prereq.ros-rmw-zenoh-cpp]`'s is (phase-435 W3)."
+ros_package = ["examples_rclcpp_minimal_action_client", "turtlesim"]
+# No dnf/pacman/brew and no `check` probe, for the reason `[prereq.ros-rmw-zenoh-cpp]` gives.
+
 [prereq.doxygen]
 role = "workspace"
 why = "C API reference docs (just docs-c; found undeclared by check-sysdep-remedies)"
