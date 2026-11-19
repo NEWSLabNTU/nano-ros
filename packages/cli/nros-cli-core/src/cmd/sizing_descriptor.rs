@@ -325,12 +325,12 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     // Issue 1694 -- floored by the workspace's probe sidecars when the caller
     // names one, exactly as `nros ws entity-inventory --workspace` composes the
     // same image: a contract never shrinks a count below what the code creates.
-    let inventory = crate::orchestration::metadata_refresh::contract_inventory(
+    let inventory = crate::orchestration::metadata_refresh::contract_inventory_reported(
         model_path.display().to_string(),
         &model,
         args.workspace.as_deref(),
         "nros dev image sizing-descriptor",
-    )
+    )?
     // phase-457 W0 (issue 1407) — COMPOSE the metadata's component population
     // with the contract's, exactly as `nros ws entity-inventory` does and in
     // the same direction (metadata on the left, model on the right), so the two
@@ -645,7 +645,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
         &metadata_inventory,
         &labelled,
         args.workspace.as_deref(),
-    );
+    )?;
     let (mut inventory, conflicts) =
         crate::sizing_descriptor::reconcile_runtime_qos(&composed, &wired);
     for c in &conflicts {

@@ -930,26 +930,29 @@ pub fn floor_by_recorded(
     ws_root: &Path,
     model: &ros_launch_manifest_model::SystemModel,
     contract: &crate::entity_inventory::EntityInventory,
+    // Issue 2734 -- and the stale sidecars it skipped, for the verdict.
 ) -> (
     crate::entity_inventory::EntityInventory,
     Vec<PathBuf>,
     Vec<String>,
+    Vec<StaleSidecar>,
 ) {
     let nano_ros = crate::orchestration::nano_ros_root::resolve(None, ws_root);
-    let (rows, read, mut notes) = match fresh_probe_rows(ws_root, nano_ros.as_deref()) {
+    let (rows, read, mut notes, stale) = match probe_rows_and_stale(ws_root, nano_ros.as_deref()) {
         Ok(v) => v,
         Err(e) => (
             Vec::new(),
             Vec::new(),
             vec![format!(
                 "no probe sidecar read ({e}); every launched node the contract does not \
-                 describe refuses the derivation"
+                     describe refuses the derivation"
             )],
+            Vec::new(),
         ),
     };
     let recorded = crate::entity_inventory::EntityInventory::recorded_for_launch(model, &rows);
     notes.dedup();
-    (recorded.merged_per_kind_max(contract), read, notes)
+    (recorded.merged_per_kind_max(contract), read, notes, stale)
 }
 
 /// Issue 1694 -- THE contract inventory every model road composes: what
@@ -961,12 +964,17 @@ pub fn floor_by_recorded(
 /// ([`probe_inventory`], phase-517 W5); otherwise `None`, so the "no contract,
 /// no change" control every caller guards on holds for every image the probe
 /// does not fully describe. `who` prefixes the notes this prints.
+///
+/// `Err` when a package the model launches has a STALE probe sidecar: its code
+/// was described and the description could not be read, so the counts are
+/// declared and not derived. Each caller reports it under
+/// `NROS_PROBE_FAILURE`, never as "nothing declared" (issue 2734).
 pub fn contract_inventory(
     source: impl Into<String>,
     model: &nros_orchestration_ir::overlay::LoadedModel,
     workspace: Option<&Path>,
     who: &str,
-) -> Option<crate::entity_inventory::EntityInventory> {
+) -> std::result::Result<Option<crate::entity_inventory::EntityInventory>, String> {
     let source = source.into();
     // Issue 2076 -- a `[[bridge]]`'s runtime-created rows, expanded HERE so
     // every consumer of this composition (knobs, descriptor rows, fragments)
@@ -976,21 +984,60 @@ pub fn contract_inventory(
     let Some(contract) =
         crate::entity_inventory::EntityInventory::from_model(source.clone(), model)
     else {
-        let ws = workspace?;
-        let (inv, _read, notes) = probe_inventory(source, ws, model);
+        let Some(ws) = workspace else {
+            return Ok(None);
+        };
+        let nano_ros = crate::orchestration::nano_ros_root::resolve(None, ws);
+        let (inv, _read, notes, stale) =
+            probe_inventory_with(source, ws, nano_ros.as_deref(), model);
         for n in notes {
             eprintln!("{who}: {n}");
         }
-        return inv.map(|i| i.with_bridge_rows(runtime.as_ref()));
+        if inv.is_none()
+            && let Some(why) = stale_launched_reason(model, &stale)
+        {
+            return Err(why);
+        }
+        return Ok(inv.map(|i| i.with_bridge_rows(runtime.as_ref())));
     };
     let Some(ws) = workspace else {
-        return Some(contract.with_bridge_rows(None));
+        return Ok(Some(contract.with_bridge_rows(None)));
     };
-    let (floored, _read, notes) = floor_by_recorded(ws, model, &contract);
+    let (floored, _read, notes, stale) = floor_by_recorded(ws, model, &contract);
     for n in notes {
         eprintln!("{who}: {n}");
     }
-    Some(floored.with_bridge_rows(runtime.as_ref()))
+    // A stale floor is a missing floor: the contract alone may under-count
+    // what the code creates (issue 1694's reason for the floor).
+    if let Some(why) = stale_launched_reason(model, &stale) {
+        return Err(why);
+    }
+    Ok(Some(floored.with_bridge_rows(runtime.as_ref())))
+}
+
+/// [`contract_inventory`] for a composer that keeps going without a
+/// derivation: a stale launched sidecar is reported under
+/// `NROS_PROBE_FAILURE` (a warning, or under `refuse` an error), and with no
+/// refusal the image is composed as if the model described no wiring.
+// Issue 2734.
+pub fn contract_inventory_reported(
+    source: impl Into<String>,
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+    workspace: Option<&Path>,
+    who: &str,
+) -> Result<Option<crate::entity_inventory::EntityInventory>> {
+    let source = source.into();
+    match contract_inventory(source.clone(), model, workspace, who) {
+        Ok(inv) => Ok(inv),
+        Err(why) => {
+            crate::resolve::report_not_derived(
+                "entity counts not derived",
+                &source,
+                &crate::resolve::NotDerived::Failed(why),
+            )?;
+            Ok(None)
+        }
+    }
 }
 
 /// Issue 2076 -- the bringup's generated `nros-bridge.toml` (`nros sync`'s
@@ -1077,7 +1124,8 @@ pub fn probe_inventory(
     Vec<String>,
 ) {
     let nano_ros = crate::orchestration::nano_ros_root::resolve(None, ws_root);
-    probe_inventory_with(source, ws_root, nano_ros.as_deref(), model)
+    let (inv, read, notes, _) = probe_inventory_with(source, ws_root, nano_ros.as_deref(), model);
+    (inv, read, notes)
 }
 
 /// [`probe_inventory`] against a named nano-ros root (the probe key's
@@ -1091,11 +1139,12 @@ fn probe_inventory_with(
     Option<crate::entity_inventory::EntityInventory>,
     Vec<PathBuf>,
     Vec<String>,
+    Vec<StaleSidecar>,
 ) {
     if model.structure.nodes.is_empty() {
-        return (None, Vec::new(), Vec::new());
+        return (None, Vec::new(), Vec::new(), Vec::new());
     }
-    let (rows, read, mut notes) = match fresh_probe_rows(ws_root, nano_ros) {
+    let (rows, read, mut notes, stale) = match probe_rows_and_stale(ws_root, nano_ros) {
         Ok(v) => v,
         Err(e) => {
             return (
@@ -1105,6 +1154,7 @@ fn probe_inventory_with(
                     "no probe sidecar read ({e}); with no contract, the image keeps its \
                      configured pool knobs"
                 )],
+                Vec::new(),
             );
         }
     };
@@ -1128,7 +1178,7 @@ fn probe_inventory_with(
         }
     };
     notes.dedup();
-    (inv, read, notes)
+    (inv, read, notes, stale)
 }
 
 /// One FRESH probe sidecar, as [`fresh_probe_rows`] read it.
@@ -1167,12 +1217,32 @@ pub fn fresh_probe_rows(
     ws_root: &Path,
     nano_ros: Option<&Path>,
 ) -> Result<(Vec<ProbeRow>, Vec<PathBuf>, Vec<String>)> {
+    probe_rows_and_stale(ws_root, nano_ros).map(|(rows, read, notes, _)| (rows, read, notes))
+}
+
+/// A probe sidecar that exists and is stale: the package it describes and why
+/// it is stale (the moved input). The probe DID describe this package, so a
+/// reader that loses its rows has lost a declaration, not found none.
+// Issue 2734.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaleSidecar {
+    pub pkg: String,
+    pub why: String,
+}
+
+/// What [`probe_rows_and_stale`] read: the fresh rows, every sidecar it
+/// consulted, its notes, and the stale sidecars it skipped.
+pub type ProbeRead = (Vec<ProbeRow>, Vec<PathBuf>, Vec<String>, Vec<StaleSidecar>);
+
+/// [`fresh_probe_rows`], plus every stale sidecar it skipped, by package.
+pub fn probe_rows_and_stale(ws_root: &Path, nano_ros: Option<&Path>) -> Result<ProbeRead> {
     use crate::entity_inventory::ComponentEntities;
 
     let workspace = Workspace::discover(ws_root)?;
     let mut notes = Vec::new();
     let mut read: Vec<PathBuf> = Vec::new();
     let mut rows: Vec<ProbeRow> = Vec::new();
+    let mut stale: Vec<StaleSidecar> = Vec::new();
     // Issue 2640 -- the key the refresh probed under includes the launch values.
     let seed_models = SeedModels::load(ws_root, None);
     for decl in workspace.component_declarations()? {
@@ -1189,7 +1259,7 @@ pub fn fresh_probe_rows(
         )
         .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
         if !fresh {
-            notes.push(format!(
+            let note = format!(
                 "{}: stale against its sources (re-run `nros configure`), so neither its counts nor \
                  its registration observations are used. Moved: {}",
                 sidecar.display(),
@@ -1199,7 +1269,25 @@ pub fn fresh_probe_rows(
                     nano_ros,
                     &seeding_of(&seed_models, &decl),
                 )
-            ));
+            );
+            // The package the stale sidecar describes, from the sidecar itself
+            // (it still parses: staleness is about its key, not its shape).
+            let pkg = std::fs::read_to_string(&sidecar)
+                .ok()
+                .and_then(|raw| crate::leaf_entity_env::declaration_from_probe(&raw).ok())
+                .map(|(pkg, _, _)| pkg)
+                .or_else(|| {
+                    decl.package_root
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                });
+            if let Some(pkg) = pkg {
+                stale.push(StaleSidecar {
+                    pkg,
+                    why: note.clone(),
+                });
+            }
+            notes.push(note);
             continue;
         }
         let raw = std::fs::read_to_string(&sidecar)
@@ -1236,7 +1324,37 @@ pub fn fresh_probe_rows(
             Err(e) => notes.push(format!("{}: {e}", sidecar.display())),
         }
     }
-    Ok((rows, read, notes))
+    Ok((rows, read, notes, stale))
+}
+
+/// The stale sidecars of packages `model` launches, as one failure reason, or
+/// `None` when every launched package's sidecar is fresh or absent.
+// Issue 2734 -- such an image's counts are declared and could not be read, so
+// it is a failure to derive, never "nothing declared".
+pub fn stale_launched_reason(
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+    stale: &[StaleSidecar],
+) -> Option<String> {
+    let launched: std::collections::BTreeSet<&str> = model
+        .structure
+        .nodes
+        .values()
+        .filter_map(|n| n.pkg.as_deref())
+        .collect();
+    let hit: Vec<&StaleSidecar> = stale
+        .iter()
+        .filter(|s| launched.contains(s.pkg.as_str()))
+        .collect();
+    (!hit.is_empty()).then(|| {
+        format!(
+            "the probe's counts for {} launched component(s) are stale: {}",
+            hit.len(),
+            hit.iter()
+                .map(|s| s.why.as_str())
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    })
 }
 
 /// Issue 1639 — remove the sidecars of components no declaration names.
@@ -3228,7 +3346,8 @@ mod tests {
             .unwrap(),
         );
 
-        let (inv, read, notes) = probe_inventory_with("m", &ws, Some(&root), &model);
+        let (inv, read, notes, stale) = probe_inventory_with("m", &ws, Some(&root), &model);
+        assert!(stale.is_empty(), "{stale:?}");
         let inv = inv.unwrap_or_else(|| panic!("a fresh sidecar states the image: {notes:?}"));
         assert_eq!(inv.stated_by(), StatedBy::Probe);
         assert_eq!(read, vec![sidecar.clone()]);
@@ -3236,15 +3355,35 @@ mod tests {
         let k = d.knobs().expect("derives");
         assert_eq!((k.max_cbs, k.max_publishers), (1, 1), "{k:?}");
 
-        // The component's source moves; the sidecar is now stale and the image
-        // is unstated -- the refusal it had before this existed.
+        // The component's source moves; the sidecar is now stale, so the probe
+        // states nothing -- and, issue 2734, the verdict names the stale
+        // launched component as a failure, never "nothing declared".
         std::fs::write(pkg.join("src/lib.rs"), "// the component, edited\n").unwrap();
-        let (inv, _, notes) = probe_inventory_with("m", &ws, Some(&root), &model);
+        let (inv, _, notes, stale) = probe_inventory_with("m", &ws, Some(&root), &model);
         assert!(inv.is_none(), "a stale sidecar states nothing");
         assert!(
             notes.iter().any(|n| n.contains("stale")),
             "the skip is said: {notes:?}"
         );
+        assert_eq!(
+            stale.iter().map(|s| s.pkg.as_str()).collect::<Vec<_>>(),
+            ["talker_pkg"]
+        );
+        let why = stale_launched_reason(&model, &stale).expect("a launched package is stale");
+        assert!(
+            why.contains("1 launched component(s) are stale") && why.contains("Moved:"),
+            "{why}"
+        );
+        // A stale sidecar of a package this image does not launch is not its
+        // failure.
+        let other = nros_orchestration_ir::overlay::LoadedModel::bare(
+            serde_yaml_ng::from_str(
+                "meta: { version: 1 }\nstructure:\n  nodes:\n    /other:\n      \
+                 { scope: system.launch.xml, pkg: other_pkg, exec: other, node_name: other }\n",
+            )
+            .unwrap(),
+        );
+        assert_eq!(stale_launched_reason(&other, &stale), None);
     }
 
     #[test]

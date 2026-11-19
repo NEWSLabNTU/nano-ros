@@ -7415,6 +7415,9 @@ fn resolve_image(
             Some(root),
             "nros build:  ",
         )
+        // Issue 2734 -- a stale launched sidecar is a failure, not "nothing
+        // declared".
+        .map_err(NotDerived::Failed)?
         .map(|mut inv| {
             inv.set_param_declarations(params.clone());
             // phase-462 W6c -- the board's per-frame receive cost, so the
@@ -8248,7 +8251,8 @@ fn resolve_coordinate(
                     &registered,
                     &named,
                     Some(root),
-                );
+                )
+                .map_err(|e| format!("{e:#}"))?;
                 if rx_cost.is_some() {
                     inv.set_board_rx_cost(rx_cost);
                 }
