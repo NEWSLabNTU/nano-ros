@@ -9,9 +9,10 @@ lifespan and liveliness of the zenoh graph token, fixed in W6; W4 stays open
 on W13's default interfaces.**
 **Update (2026-11-19): W2 and W7 are done.** W2's last queries (a set of an
 undeclared name and of the wrong type, `/parameter_events` content,
-`ros2 param load`, C and C++ nodes) are tests; one new gap, the reason a set
-of an undeclared name carries, is held for
-[issue 2731](../issues/2731-param-set-undeclared-reason.md).
+`ros2 param load`, C and C++ nodes) are tests. By user ruling the same day,
+every parameter refusal reason follows rclcpp's wording, and the reason tests
+compare against an rclcpp node; that closed the one new gap,
+[issue 2731](../issues/archived/2731-param-set-undeclared-reason.md).
 
 The user's goal is to "ensure the interface compatibility among nano-ros and
 stock ROS 2". This phase measures it: a nano-ros node and a stock `rclcpp`
@@ -81,7 +82,7 @@ stock peer reads, against our own). Paths are under
 
 | axis | checks only that nano-ros answers | no test | compared with stock (added by this phase) |
 |---|---|---|---|
-| param list, get, set | `params.rs` (string matches), `params_per_node_interop.rs` (zenoh, cyclone, xrce), `c_param_server_interop.rs` | | W2: `declared_parameters_answer_ros2_param_as_stock_does`, `set_of_the_wrong_type_is_refused_as_stock_does`, `off_step_set_is_refused_as_stock_does`, `delete_of_a_statically_typed_parameter_is_refused_as_stock_does`, `get_parameters_reply_for_an_undeclared_name_answers_as_stock_does`; expected-failure `set_of_an_undeclared_name_compared_with_stock` (issue 2731); C and C++: `c_parameters_answer_ros2_param_as_stock_does`, `cpp_parameters_answer_ros2_param_as_stock_does` |
+| param list, get, set | `params.rs` (string matches), `params_per_node_interop.rs` (zenoh, cyclone, xrce), `c_param_server_interop.rs` | | W2: `declared_parameters_answer_ros2_param_as_stock_does`, `get_parameters_reply_for_an_undeclared_name_answers_as_stock_does`; the refusals, against rclcpp: `set_of_an_undeclared_name_is_refused_as_stock_does`, `set_of_the_wrong_type_is_refused_as_stock_does`, `set_of_a_read_only_parameter_is_refused_as_stock_does`, `off_step_set_is_refused_as_stock_does`, `delete_of_a_statically_typed_parameter_is_refused_as_stock_does`; C and C++: `c_parameters_answer_ros2_param_as_stock_does`, `cpp_parameters_answer_ros2_param_as_stock_does` |
 | param describe | `params.rs`, a loose match | | W2: `declared_parameters_answer_ros2_param_as_stock_does`, `describe_parameters_reply_for_an_undeclared_name_answers_as_stock_does`, and the C and C++ tests |
 | param dump | | yes | W2: `declared_parameters_answer_ros2_param_as_stock_does` |
 | param load | | yes | W2: `param_load_answers_as_stock_does` |
@@ -201,7 +202,6 @@ integer range with a step.
   `list --param-type`, `get`, `describe`, `dump`, an accepted `set` and its
   read-back, on declared parameters),
   `first_node_serves_the_six_parameter_services_as_stock_does`,
-  `set_of_the_wrong_type_is_refused_as_stock_does`,
   `parameter_event_for_a_set_reads_as_stock_does` (the `/parameter_events`
   message for a set: node, new, changed and deleted lists, field by field;
   the stamp set aside), `param_load_answers_as_stock_does` (the report and the
@@ -210,20 +210,38 @@ integer range with a step.
   `cpp_parameters_answer_ros2_param_as_stock_does` (`param list`,
   `list --param-type`, `get` and `describe` of every parameter, an accepted
   `set` and its read-back, against the `c-parameters` and `cpp-parameters`
-  examples; new cells `native-ros2-cli-parity-params-{c,cpp}-zenoh`). W12's
-  four tests cover the undeclared-name replies and the delete and off-step
-  refusals. Expected-failure: `set_of_an_undeclared_name_compared_with_stock`
-  ([issue 2731](../issues/2731-param-set-undeclared-reason.md): the reason
-  differs, and which client's wording to copy is a question for the user),
-  and W10 to W12's held tests. The stock peer of every parameter test is
-  rclpy (`fixtures/ros2-param-peer/param_peer.py`, one profile per nano-ros
-  node), so the reasons compared are rclpy's; rclcpp words the refusals
-  differently.
+  examples; new cells `native-ros2-cli-parity-params-{c,cpp}-zenoh`). These
+  compare against an rclpy node declaring the same names
+  (`fixtures/ros2-param-peer/param_peer.py`, one profile per nano-ros node).
 
-  Fixed here: a set of the wrong type was refused as `Type mismatch`; it now
-  carries rclpy's reason, naming the declared and the given type
-  (`refusal_reason`, `nros-node` `parameter_services.rs`; unit test
-  `type_refusals_carry_stock_s_reason`).
+  The refusal reasons compare against rclcpp, by user ruling (2026-11-19):
+  `set_of_an_undeclared_name_is_refused_as_stock_does`,
+  `set_of_the_wrong_type_is_refused_as_stock_does`,
+  `set_of_a_read_only_parameter_is_refused_as_stock_does`, and W12's
+  `off_step_set_is_refused_as_stock_does` and
+  `delete_of_a_statically_typed_parameter_is_refused_as_stock_does`. The
+  stock side is `turtlesim_node`, a shipped rclcpp node with a ranged,
+  statically typed integer (`background_r`) and rclcpp's read-only
+  `qos_overrides.*` parameters, so the names differ between the sides and
+  are read as `<param>`. rclcpp gives one reason for an off-step and an
+  out-of-range value (measured against a Humble rclcpp node with a step of
+  5); no shipped node declares a step above 1, so the off-step value is
+  compared with turtlesim's out-of-range one. W12's other two tests cover
+  the undeclared-name replies.
+
+  Fixed here: every refusal reason nano-ros sends is rclcpp's, measured
+  against a running Humble rclcpp node: an undeclared name
+  ([issue 2731](../issues/archived/2731-param-set-undeclared-reason.md),
+  which held it in expected-failure form until the ruling), a read-only
+  parameter, a value of the wrong type (was `Type mismatch`), a delete of a
+  statically typed parameter, and a value out of range or off its step
+  (W12 had given rclpy's for the last three). `refusal_reason` and
+  `rclcpp_type_name` in `nros-node` `parameter_services.rs`; unit tests
+  `type_refusals_carry_stock_s_reason`, `range_refusals_carry_stock_s_reasons`
+  and the reason assertions beside them. The worst-message bound test now
+  writes the set reply into a buffer of exactly the bound, as the executor
+  does, because a named reason for a long name is longer than the reason the
+  buffer is priced at and gives way to it there.
 
 `ros2 param list`, `get`, `set`, `describe` and `dump` against both nodes:
 the six parameter service names and types, value types, descriptors, and the
@@ -421,9 +439,10 @@ Acceptance: as W10, comparing `param list` and `param get use_sim_time`.
   `get_parameters_reply_for_an_undeclared_name_answers_as_stock_does`,
   `describe_parameters_reply_for_an_undeclared_name_answers_as_stock_does`,
   `delete_of_a_statically_typed_parameter_is_refused_as_stock_does`,
-  `off_step_set_is_refused_as_stock_does`. The stock peer is rclpy, so the
-  reasons compared are rclpy's; rclcpp words both differently (the issue's
-  Resolution lists both). `GetParameterTypes` had the same filler shape and
+  `off_step_set_is_refused_as_stock_does`. The stock peer was rclpy, so the
+  reasons compared were rclpy's; by user ruling (2026-11-19) the reasons
+  follow rclcpp's wording since, and the two refusal tests compare against
+  an rclcpp node (W2). `GetParameterTypes` had the same filler shape and
   answers empty too.
 
 [Issue 2484](../issues/archived/2484-param-service-undeclared-replies.md):
