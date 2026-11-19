@@ -290,8 +290,27 @@ Steps, in order:
      a fresh workspace.
    - **Fork:** 26041f73 (the framed link's `rx_wait`) is pushed to
      `nano-ros-1.10.1` (user OK, 2026-11-19).
-   - **Left:** the fixture row and test, the board's registration rows, and
-     the gate pass.
+   - **Fixture and test:** two west-lane rows at the Cortex-M workspace
+     coordinate (`zephyr-cortex-m-c-amp-{talker,listener}-zenoh`) and
+     `tests/zephyr_amp_rpmsg_qemu.rs`, which boots both images in one QEMU and
+     asserts that cpu1 hears five samples cpu0 published, in order. The cell
+     is a configuration of the Cortex-M witness's platform
+     (`Config::Rpmsg`): each image's session is its own `rmw_config`, so it
+     bakes no allocator port and the west lane gives these roles no
+     isolation values. A new configuration is one more 1-wise requirement,
+     so tier 2 now builds and runs the pair (15 cells over 13 coordinates).
+     QEMU resolves through the one ladder, which refuses a missing pinned
+     QEMU rather than take one from `$PATH`. Passed 5 of 5 on images rebuilt
+     after the pin bump (about 7 s each); the shared Zephyr workspace's
+     manifest gains open-amp only when this lands, so these images came from
+     `nros build` with the modules named on the command line, not from the
+     lane.
+   - **Registration:** a `board-support.toml` row booked on cpu0 (the image
+     QEMU boots as the kernel), `runs = "emulator"` at a manual cadence dated
+     2026-11-19, inheriting the Cortex-M witness's breadth, maintained by
+     jerry73204 (user, 2026-11-19); cpu0's descriptor names
+     `qemu:mps2-an521`.
+   - **Left:** the gate pass.
 
 The Linux end (the `rpmsg_char` bridge, or the router's serial locator on an
 RPMsg tty) is generic follow-up for the vision island, not this item's
