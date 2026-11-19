@@ -161,3 +161,37 @@ fn a_second_member_registration_without_deploy_is_not_refused() -> TestResult<()
     );
     Ok(())
 }
+
+/// Issue 2751 -- the host census build of an owned entry configures the
+/// package alone: no `system.toml`, `NROS_LEAF_BOARD=linux`, and the entry
+/// verb's host deploy in `NROS_DEPLOY`. Board facts answer from the stated
+/// board instead of asking for an image `linux` no file declares.
+#[test]
+fn a_census_host_configure_resolves_board_facts_from_its_stated_board() -> TestResult<()> {
+    let out = outcome("cmake_board_facts_census_host_board")?;
+    assert!(
+        out.success(),
+        "the census host configure must resolve board facts:\n{}",
+        out.stderr
+    );
+    Ok(())
+}
+
+/// Issue 2751 -- the precedence the fallback must keep: a named `NROS_BOARD`
+/// outranks `NROS_LEAF_BOARD`. Naming a board no descriptor declares fails
+/// the configure on THAT board, so the fallback never answers over it.
+#[test]
+fn a_named_board_outranks_the_census_leaf_board() -> TestResult<()> {
+    let out = outcome("cmake_board_facts_board_outranks_leaf_board")?;
+    assert!(
+        !out.success(),
+        "a named NROS_BOARD must be the board asked for:\n{}",
+        out.stderr
+    );
+    assert!(
+        out.stderr.contains("no_such_board_2751"),
+        "the failure names the named board:\n{}",
+        out.stderr
+    );
+    Ok(())
+}

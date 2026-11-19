@@ -1,7 +1,9 @@
 ---
 id: 2751
 title: "The census of an owned C/C++ entry that declares interfaces cannot configure: its host build asks board facts for image `linux`"
-status: open
+status: resolved
+resolved: 2026-11-20
+resolved_in: "the change that archives this issue"
 type: bug
 severity: medium
 area: [cli, cmake, census, sizing]
@@ -59,3 +61,23 @@ interfaces, so they never reach board facts.
 A host census configure has no board: it should not ask for board facts, or
 should ask with no deploy (the host board's facts), rather than naming an
 image no file declares.
+
+## Resolution (2026-11-20)
+
+`nros_resolve_board_facts` falls back to `NROS_LEAF_BOARD` when no board is
+named. That is the board the census host configure states
+(`-DNROS_LEAF_BOARD=linux`). With `--board`, a dir with no `system.toml`
+answers from that board's descriptor, so the host deploy is never asked
+for as an image.
+
+A named `NROS_BOARD` still wins.
+
+Reproduced on a scratch copy of `examples/threadx-linux/c/talker`, made a
+C++ owned entry depending on `geometry_msgs`. Before the fix it failed with
+this issue's exact error; after it, the census and the build pass.
+
+Tests (verdict rows in `cmake_node_register_misuse`):
+- `a_census_host_configure_resolves_board_facts_from_its_stated_board`.
+  Mutation: disabling the fallback reproduces the error.
+- `a_named_board_outranks_the_census_leaf_board`. Mutation: putting
+  `NROS_LEAF_BOARD` first turns it red.
