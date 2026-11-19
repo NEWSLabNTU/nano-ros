@@ -16,3 +16,6 @@
 4093 build-internal: a no-op cargo build of the CLI compiles nothing; nothing a user runs changes
 4097 test-harness: the test harness refuses a missing pinned QEMU instead of using $PATH's
 4115 no user surface yet: the table of -D names nros build owns, and a parser nothing calls (the flags came in #4124/#4126)
+4249 test-only: the CLI teardown test's chain waits for the test's go, so a late look under load still finds it
+4262 test-only: the Cyclone ros2 interop scripts start each deadline after the ros2 CLI is up
+4264 test-only: the point-to-point peer test's capability check is a compile-time assert
