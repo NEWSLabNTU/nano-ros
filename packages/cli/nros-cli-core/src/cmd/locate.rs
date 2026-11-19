@@ -1704,7 +1704,7 @@ fn check_nuttx_project(
 /// whose descriptor the generated image crate bundles
 /// ([`RmwDescriptor::image_crate_bundles`](cargo_nano_ros::rmw_descriptor::RmwDescriptor::image_crate_bundles)).
 /// The road links the image staticlib alone (`integrations/nuttx/Make.defs`
-/// puts `libnros_c.a` / `libnros_cpp.a` on `EXTRA_LIBS` and nothing else), so
+/// puts `libnros_c.a` / `libnros_cpp.a` on the app link and nothing else), so
 /// a backend the crate leaves for a CMake build to link never reaches it.
 /// Derived from the registry, never listed: a new bundled backend is
 /// buildable here the moment its descriptor says so.
@@ -2190,7 +2190,10 @@ mod nuttx_make_rmw_tests {
             .filter_map(|l| l.trim().strip_prefix("config NROS_RMW_"))
             .map(|n| n.trim().to_ascii_lowercase())
             .collect();
-        assert!(!offered.is_empty(), "no NROS_RMW_* choice in the NuttX Kconfig");
+        assert!(
+            !offered.is_empty(),
+            "no NROS_RMW_* choice in the NuttX Kconfig"
+        );
         let index = rmw_index::for_sdk_root_path(&root()).unwrap();
         for rmw in &offered {
             let resolved = index
