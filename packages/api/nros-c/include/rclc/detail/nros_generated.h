@@ -4757,11 +4757,12 @@ NROS_PUBLIC rcl_ret_t rclc_action_client_poll(struct rcl_action_client_t *client
 /**
  * Finalize an action client.
  *
- * `fini` does NOT remove the client from an executor; its arena
- * entry holds this struct as its callback `context`. Call
- * `rclc_executor_remove_action_client(executor, client)` first, which drops
- * the entry (the action leaves the graph) and brings the executor's
- * `handle_count` back down.
+ * A client still added to an executor is removed from it first, as
+ * `rclc_executor_remove_action_client` would: its arena
+ * entry, which holds this struct as its callback `context`, is dropped and
+ * the action leaves the graph. Its executor must still exist; one already
+ * finalised released the entry itself. From a callback its executor is
+ * dispatching it returns `RCLC_RET_REENTRANT` and changes nothing.
  */
 NROS_PUBLIC
 rcl_ret_t rcl_action_client_fini(struct rcl_action_client_t *client,
@@ -5276,14 +5277,13 @@ rcl_ret_t rclc_action_get_goal_status(const struct rcl_action_server_t *server,
 /**
  * Finalize an action server.
  *
- * `fini` does NOT remove the server from an executor. It is
- * handed only the entity, and an executor-registered server's arena entry
- * (its three service servers, two publishers and the callback `context`,
- * which is `server` itself) is undone by
- * `rclc_executor_remove_action_server(executor, server)`, which also brings
- * the executor's `handle_count` back down. Call that first; a server that is
- * finalised while still registered keeps answering goals into this struct
- * until `rclc_executor_fini`.
+ * A server still added to an executor is removed from it first, as
+ * `rclc_executor_remove_action_server` would: its arena
+ * entry (three service servers, two publishers, and `server` itself as the
+ * callback `context`) is dropped, so no goal is answered into this struct
+ * after this returns. Its executor must still exist; one already finalised
+ * released the entry itself. From a callback its executor is dispatching it
+ * returns `RCLC_RET_REENTRANT` and changes nothing.
  */
 NROS_PUBLIC
 rcl_ret_t rcl_action_server_fini(struct rcl_action_server_t *server,
@@ -6941,9 +6941,9 @@ rcl_ret_t rclc_executor_attach_action_client(struct rclc_executor_t *executor,
  * * the trigger table's entity pointer for the slot is cleared.
  *
  * The server stays INITIALIZED: it can be re-added, or finalised with
- * `rcl_action_server_fini`. Call this BEFORE `fini` and before the
- * `rcl_action_server_t` storage goes away. A server that is never removed
- * keeps its entry until `rclc_executor_fini`, which drops every entry.
+ * `rcl_action_server_fini`, which removes a server still added itself
+ *. Either must happen before the `rcl_action_server_t`
+ * storage goes away; until then the entry dispatches into it.
  *
  * # Returns
  * * `RCL_RET_OK` — removed.
@@ -6966,8 +6966,8 @@ rcl_ret_t rclc_executor_remove_action_server(struct rclc_executor_t *executor,
  * The client half of [`rclc_executor_remove_action_server`], with the same
  * three tables and the same reason: the arena entry
  * `rclc_executor_attach_action_client` registered holds `client` itself as its
- * callback `context`, and `rcl_action_client_fini` cannot reach the
- * executor to undo it. The entry is dropped in place
+ * callback `context`, so it must go before that storage does
+ * (`rcl_action_client_fini` also does this). The entry is dropped in place
  * (`Executor::release_action_client_raw`, the default-sized form the add
  * used) — its three service clients and feedback subscription are destroyed
  * and its slot and bytes are reused — `handle_count` comes back down, and the
@@ -7002,7 +7002,8 @@ rcl_ret_t rclc_executor_remove_action_client(struct rclc_executor_t *executor,
  * the trigger table forgets the subscription.
  *
  * The subscription stays INITIALIZED: it can be re-added, or finalised with
- * `rcl_subscription_fini`. Call this BEFORE `fini`. Typed message storage
+ * `rcl_subscription_fini`, which removes it itself if it is still added
+ *. Typed message storage
  * handed to `rclc_executor_add_subscription_with_context` is not written again
  * after this returns.
  *
@@ -7033,7 +7034,8 @@ rcl_ret_t rclc_executor_remove_subscription(struct rclc_executor_t *executor,
  * trigger table, as [`rclc_executor_remove_subscription`] does.
  *
  * The timer keeps its state (RUNNING or CANCELED) and can be re-added, or
- * finalised with `rcl_timer_fini`. Call this BEFORE `fini`.
+ * finalised with `rcl_timer_fini`, which removes it itself if it is still
+ * added.
  *
  * # Returns
  * As [`rclc_executor_remove_subscription`].
@@ -9021,9 +9023,10 @@ rcl_ret_t rclc_service_init_with_options(struct rcl_service_t *service,
 /**
  * Finalize a service server.
  *
- * The server is the executor arena's: remove it with
- * `rclc_executor_remove_service` first if it was added and the executor
- * keeps running. This resets the description and the handle.
+ * A server still added to an executor is removed from it first, as
+ * `rclc_executor_remove_service` would; its executor must
+ * still exist, and one already finalised released the entry itself. This
+ * resets the description and the handle.
  *
  * # Parameters
  * * `service` - Pointer to an initialized service
@@ -9032,6 +9035,8 @@ rcl_ret_t rclc_service_init_with_options(struct rcl_service_t *service,
  * * `RCL_RET_OK` on success
  * * `RCL_RET_INVALID_ARGUMENT` if service is NULL
  * * `RCL_RET_NOT_INIT` if not initialized
+ * * `RCLC_RET_REENTRANT` if called from a callback its executor is
+ *   dispatching (the entry may be the one running); nothing is changed.
  */
 NROS_PUBLIC rcl_ret_t rcl_service_fini(struct rcl_service_t *service, struct rcl_node_t *node);
 
@@ -9304,9 +9309,10 @@ rcl_ret_t rclc_client_init_with_options(struct rcl_client_t *client,
 /**
  * Finalize a service client.
  *
- * The underlying transport handle lives in the executor's
- * arena and is dropped automatically when the executor is finalised.
- * This function only resets the C-side metadata + internal blob.
+ * A client still added to an executor is removed from it first, as
+ * `rclc_executor_remove_client` would: its entry is
+ * released, and a reply still in flight is abandoned. Its executor must still
+ * exist; one already finalised released the entry itself.
  *
  * # Parameters
  * * `client` - Pointer to an initialized client
@@ -9315,6 +9321,8 @@ rcl_ret_t rclc_client_init_with_options(struct rcl_client_t *client,
  * * `RCL_RET_OK` on success
  * * `RCL_RET_INVALID_ARGUMENT` if client is NULL
  * * `RCL_RET_NOT_INIT` if not initialized
+ * * `RCLC_RET_REENTRANT` if called from a callback its executor is
+ *   dispatching (the entry may be the one running); nothing is changed.
  */
 NROS_PUBLIC rcl_ret_t rcl_client_fini(struct rcl_client_t *client, struct rcl_node_t *node);
 
@@ -10262,9 +10270,11 @@ rcl_ret_t rclc_polling_subscription_fini(struct rclc_polling_subscription_t *sub
 /**
  * Finalize a subscription.
  *
- * The subscriber is the executor arena's: remove it with
- * `rclc_executor_remove_subscription` first if it was added. This resets
- * the description and the handle.
+ * A subscription still added to an executor is removed from it first, as
+ * `rclc_executor_remove_subscription` would: its entry and
+ * subscriber are released, and the message storage it was given is not
+ * written again after this returns. Its executor must still exist; one that
+ * was already finalised released the entry itself.
  *
  * # Returns
  * * `RCL_RET_OK` on success
@@ -10274,6 +10284,9 @@ rcl_ret_t rclc_polling_subscription_fini(struct rclc_polling_subscription_t *sub
  *   here because three sites documented a
  *   stale-node verdict they could not produce, and the same sweep found this
  *   one producing it without saying so.
+ * * `RCLC_RET_REENTRANT` if called from a callback its executor is
+ *   dispatching (the entry may be the one running); nothing is changed, and
+ *   the subscription stays added.
  *
  * # Safety
  * * `subscription` must be a valid pointer
@@ -10706,9 +10719,17 @@ NROS_PUBLIC rcl_ret_t rcl_timer_reset(struct rcl_timer_t *timer);
  * # Parameters
  * * `timer` - Pointer to a timer, or NULL
  *
+ * A timer still added to an executor is removed from it first, as
+ * `rclc_executor_remove_timer` would, so its callback never
+ * fires with this pointer again. Its executor must still exist; one already
+ * finalised released the entry itself.
+ *
  * # Returns
- * * `RCL_RET_OK` — always. A NULL timer and an already-finalised one are
+ * * `RCL_RET_OK` — finalised. A NULL timer and an already-finalised one are
  *   successes with nothing to do, not errors.
+ * * `RCLC_RET_REENTRANT` — called from a callback its executor is
+ *   dispatching (the entry may be the one running); nothing is changed. The
+ *   one code upstream does not produce here.
  */
 NROS_PUBLIC rcl_ret_t rcl_timer_fini(struct rcl_timer_t *timer);
 

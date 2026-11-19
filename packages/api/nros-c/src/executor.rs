@@ -168,7 +168,55 @@ impl core::ops::DerefMut for CExecRef<'_> {
 /// same place when a host owns it (phase-492 W4).
 #[inline]
 pub(crate) fn executor_ptr(executor: &mut rclc_executor_t) -> *mut core::ffi::c_void {
-    executor._opaque.as_mut_ptr() as *mut core::ffi::c_void
+    // Phase-573 W5b: derived from a pointer to the WHOLE struct, never through
+    // `&mut executor._opaque`. A field reborrow narrows the pointer's
+    // provenance to the field, and `executor_of_opaque` steps back out of it
+    // to reach the executor's tables. Same address as before.
+    let whole: *mut rclc_executor_t = executor;
+    whole
+        .cast::<u8>()
+        .wrapping_add(core::mem::offset_of!(rclc_executor_t, _opaque))
+        .cast()
+}
+
+/// The `rclc_executor_t` whose `_opaque` is `opaque` — the inverse of
+/// [`executor_ptr`], for an entity that records the opaque pointer (a timer,
+/// an action server or client) and must reach the C executor's tables from
+/// its own fini. Sound only for a pointer [`executor_ptr`] made, whose
+/// provenance is the whole executor.
+pub(crate) fn executor_of_opaque(opaque: *mut core::ffi::c_void) -> *mut rclc_executor_t {
+    if opaque.is_null() {
+        return ptr::null_mut();
+    }
+    (opaque as *mut u8).wrapping_sub(core::mem::offset_of!(rclc_executor_t, _opaque))
+        as *mut rclc_executor_t
+}
+
+/// Phase-573 W5b — the executor an entity's fini still has to release its
+/// entry from: the one the entity recorded, if it is still live.
+///
+/// `None` for an entity never added (or already removed), and for one whose
+/// executor was finalised first: `rclc_executor_fini` dropped every entry it
+/// held, so there is nothing left to release, and its `_opaque` is zeroed
+/// storage that must not be read as an executor.
+///
+/// # Safety
+/// `executor` is NULL or the entity's recorded executor, whose storage the
+/// caller keeps alive until the entity is finalised (rclc's own contract).
+pub(crate) unsafe fn fini_executor(
+    executor: *mut rclc_executor_t,
+) -> Option<&'static mut rclc_executor_t> {
+    if executor.is_null() {
+        return None;
+    }
+    // SAFETY: the caller's contract above.
+    let executor = unsafe { &mut *executor };
+    matches!(
+        executor.state,
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+            | rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
+    )
+    .then_some(executor)
 }
 
 /// Get a mutable reference to the internal executor from a raw pointer.
@@ -4394,9 +4442,9 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
 /// * the trigger table's entity pointer for the slot is cleared.
 ///
 /// The server stays INITIALIZED: it can be re-added, or finalised with
-/// `rcl_action_server_fini`. Call this BEFORE `fini` and before the
-/// `rcl_action_server_t` storage goes away. A server that is never removed
-/// keeps its entry until `rclc_executor_fini`, which drops every entry.
+/// `rcl_action_server_fini`, which removes a server still added itself
+///. Either must happen before the `rcl_action_server_t`
+/// storage goes away; until then the entry dispatches into it.
 ///
 /// # Returns
 /// * `RCL_RET_OK` — removed.
@@ -4426,6 +4474,17 @@ pub unsafe extern "C" fn rclc_executor_remove_action_server(
         server,
         rclc_action_server_state_t::RCLC_ACTION_SERVER_STATE_INITIALIZED
     );
+    detach_action_server(executor, server)
+}
+
+/// The executor side of [`rclc_executor_remove_action_server`], past its argument checks: refuses from
+/// inside a dispatch, answers NOT_FOUND for an entity registered elsewhere,
+/// and otherwise releases the entry. The entity's own fini
+/// reaches it too, so the two can never disagree.
+pub(crate) unsafe fn detach_action_server(
+    executor: &mut rclc_executor_t,
+    server: &mut rcl_action_server_t,
+) -> rcl_ret_t {
     if executor.in_dispatch {
         return RCLC_RET_REENTRANT;
     }
@@ -4460,8 +4519,8 @@ pub unsafe extern "C" fn rclc_executor_remove_action_server(
 /// The client half of [`rclc_executor_remove_action_server`], with the same
 /// three tables and the same reason: the arena entry
 /// `rclc_executor_attach_action_client` registered holds `client` itself as its
-/// callback `context`, and `rcl_action_client_fini` cannot reach the
-/// executor to undo it. The entry is dropped in place
+/// callback `context`, so it must go before that storage does
+/// (`rcl_action_client_fini` also does this). The entry is dropped in place
 /// (`Executor::release_action_client_raw`, the default-sized form the add
 /// used) — its three service clients and feedback subscription are destroyed
 /// and its slot and bytes are reused — `handle_count` comes back down, and the
@@ -4494,6 +4553,17 @@ pub unsafe extern "C" fn rclc_executor_remove_action_client(
         client,
         rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
+    detach_action_client(executor, client)
+}
+
+/// The executor side of [`rclc_executor_remove_action_client`], past its argument checks: refuses from
+/// inside a dispatch, answers NOT_FOUND for an entity registered elsewhere,
+/// and otherwise releases the entry. The entity's own fini
+/// reaches it too, so the two can never disagree.
+pub(crate) unsafe fn detach_action_client(
+    executor: &mut rclc_executor_t,
+    client: &mut rcl_action_client_t,
+) -> rcl_ret_t {
     if executor.in_dispatch {
         return RCLC_RET_REENTRANT;
     }
@@ -4552,7 +4622,8 @@ fn forget_removed_handle(
 /// the trigger table forgets the subscription.
 ///
 /// The subscription stays INITIALIZED: it can be re-added, or finalised with
-/// `rcl_subscription_fini`. Call this BEFORE `fini`. Typed message storage
+/// `rcl_subscription_fini`, which removes it itself if it is still added
+///. Typed message storage
 /// handed to `rclc_executor_add_subscription_with_context` is not written again
 /// after this returns.
 ///
@@ -4573,7 +4644,6 @@ pub unsafe extern "C" fn rclc_executor_remove_subscription(
 ) -> rcl_ret_t {
     validate_not_null!(executor, subscription);
 
-    let executor_ptr = executor as *mut core::ffi::c_void;
     let executor = &mut *executor;
     // phase-492 W1.b — rclc takes `const`; the entity is the caller's mutable
     // storage, and removal clears the handle slot it records.
@@ -4587,6 +4657,18 @@ pub unsafe extern "C" fn rclc_executor_remove_subscription(
         subscription,
         rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED
     );
+    detach_subscription(executor, subscription)
+}
+
+/// The executor side of [`rclc_executor_remove_subscription`], past its argument checks: refuses from
+/// inside a dispatch, answers NOT_FOUND for an entity registered elsewhere,
+/// and otherwise releases the entry. The entity's own fini
+/// reaches it too, so the two can never disagree.
+pub(crate) unsafe fn detach_subscription(
+    executor: &mut rclc_executor_t,
+    subscription: &mut rcl_subscription_t,
+) -> rcl_ret_t {
+    let executor_ptr = executor as *mut rclc_executor_t as *mut core::ffi::c_void;
     if executor.in_dispatch {
         return RCLC_RET_REENTRANT;
     }
@@ -4628,7 +4710,8 @@ pub unsafe extern "C" fn rclc_executor_remove_subscription(
 /// trigger table, as [`rclc_executor_remove_subscription`] does.
 ///
 /// The timer keeps its state (RUNNING or CANCELED) and can be re-added, or
-/// finalised with `rcl_timer_fini`. Call this BEFORE `fini`.
+/// finalised with `rcl_timer_fini`, which removes it itself if it is still
+/// added.
 ///
 /// # Returns
 /// As [`rclc_executor_remove_subscription`].
@@ -4656,6 +4739,17 @@ pub unsafe extern "C" fn rclc_executor_remove_timer(
     {
         return RCL_RET_NOT_INIT;
     }
+    detach_timer(executor, timer)
+}
+
+/// The executor side of [`rclc_executor_remove_timer`], past its argument checks: refuses from
+/// inside a dispatch, answers NOT_FOUND for an entity registered elsewhere,
+/// and otherwise releases the entry. The entity's own fini
+/// reaches it too, so the two can never disagree.
+pub(crate) unsafe fn detach_timer(
+    executor: &mut rclc_executor_t,
+    timer: &mut rcl_timer_t,
+) -> rcl_ret_t {
     if executor.in_dispatch {
         return RCLC_RET_REENTRANT;
     }
@@ -4698,7 +4792,6 @@ pub unsafe extern "C" fn rclc_executor_remove_service(
 ) -> rcl_ret_t {
     validate_not_null!(executor, service);
 
-    let executor_ptr = executor as *mut core::ffi::c_void;
     let executor = &mut *executor;
     // phase-492 W1.b — rclc takes `const`; the entity is the caller's mutable
     // storage, and removal clears the handle slot it records.
@@ -4712,6 +4805,18 @@ pub unsafe extern "C" fn rclc_executor_remove_service(
         service,
         rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED
     );
+    detach_service(executor, service)
+}
+
+/// The executor side of [`rclc_executor_remove_service`], past its argument checks: refuses from
+/// inside a dispatch, answers NOT_FOUND for an entity registered elsewhere,
+/// and otherwise releases the entry. The entity's own fini
+/// reaches it too, so the two can never disagree.
+pub(crate) unsafe fn detach_service(
+    executor: &mut rclc_executor_t,
+    service: &mut rcl_service_t,
+) -> rcl_ret_t {
+    let executor_ptr = executor as *mut rclc_executor_t as *mut core::ffi::c_void;
     if executor.in_dispatch {
         return RCLC_RET_REENTRANT;
     }
@@ -4756,7 +4861,6 @@ pub unsafe extern "C" fn rclc_executor_remove_client(
 ) -> rcl_ret_t {
     validate_not_null!(executor, client);
 
-    let executor_ptr = executor as *mut core::ffi::c_void;
     let executor = &mut *executor;
     // phase-492 W1.b — rclc takes `const`; the entity is the caller's mutable
     // storage, and removal clears the handle slot it records.
@@ -4773,6 +4877,18 @@ pub unsafe extern "C" fn rclc_executor_remove_client(
     {
         return RCL_RET_NOT_INIT;
     }
+    detach_client(executor, client)
+}
+
+/// The executor side of [`rclc_executor_remove_client`], past its argument checks: refuses from
+/// inside a dispatch, answers NOT_FOUND for an entity registered elsewhere,
+/// and otherwise releases the entry. The entity's own fini
+/// reaches it too, so the two can never disagree.
+pub(crate) unsafe fn detach_client(
+    executor: &mut rclc_executor_t,
+    client: &mut rcl_client_t,
+) -> rcl_ret_t {
+    let executor_ptr = executor as *mut rclc_executor_t as *mut core::ffi::c_void;
     if executor.in_dispatch {
         return RCLC_RET_REENTRANT;
     }

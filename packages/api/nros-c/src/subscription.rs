@@ -1352,9 +1352,11 @@ pub unsafe extern "C" fn rclc_polling_subscription_fini(
 
 /// Finalize a subscription.
 ///
-/// The subscriber is the executor arena's: remove it with
-/// `rclc_executor_remove_subscription` first if it was added. This resets
-/// the description and the handle.
+/// A subscription still added to an executor is removed from it first, as
+/// `rclc_executor_remove_subscription` would: its entry and
+/// subscriber are released, and the message storage it was given is not
+/// written again after this returns. Its executor must still exist; one that
+/// was already finalised released the entry itself.
 ///
 /// # Returns
 /// * `RCL_RET_OK` on success
@@ -1364,6 +1366,9 @@ pub unsafe extern "C" fn rclc_polling_subscription_fini(
 ///   here because three sites documented a
 ///   stale-node verdict they could not produce, and the same sweep found this
 ///   one producing it without saying so.
+/// * `RCLC_RET_REENTRANT` if called from a callback its executor is
+///   dispatching (the entry may be the one running); nothing is changed, and
+///   the subscription stays added.
 ///
 /// # Safety
 /// * `subscription` must be a valid pointer
@@ -1383,18 +1388,19 @@ pub unsafe extern "C" fn rcl_subscription_fini(
         return RCL_RET_NOT_INIT;
     }
 
-    // Issue 1972 — free this subscription's status-event slots. The arena
-    // entry (and its backend registration) may outlive this call; the slot's
-    // generation tag makes any later backend call a no-op.
-    #[cfg(feature = "rmw-cffi")]
-    if !subscription._executor.is_null() && subscription.handle_id != usize::MAX {
-        let exec_t = subscription._executor as *mut crate::executor::rclc_executor_t;
-        let exec = crate::executor::get_executor(exec_t);
-        if let Some(handle) = exec.subscription_handle(subscription.handle_id) {
-            crate::event::status_event_slots::release_owner(
-                handle as *const nros::internals::RmwSubscriber as usize,
-            );
-        }
+    // phase-573 W5b — a subscription still added to a live executor leaves it
+    // here: the entry, its status-event slots (issue 1972) and its subscriber
+    // go, so nothing writes into the caller's message storage after this
+    // returns. The same release `rclc_executor_remove_subscription` performs;
+    // from the subscription's own callback it is refused, as remove is.
+    if subscription.handle_id != usize::MAX
+        && let Some(exec) = crate::executor::fini_executor(
+            subscription._executor as *mut crate::executor::rclc_executor_t,
+        )
+        && crate::executor::detach_subscription(exec, subscription)
+            == crate::error::RCLC_RET_REENTRANT
+    {
+        return crate::error::RCLC_RET_REENTRANT;
     }
 
     subscription.handle_id = usize::MAX;

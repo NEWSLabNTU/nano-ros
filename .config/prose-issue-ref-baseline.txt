@@ -59,6 +59,11 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
+#   2728  IN FLIGHT — filed on PR #4334 (W5a, a guard condition outliving its
+#         executor). phase-573's W5e cites it. REMOVE THIS ROW when #4334
+#         merges.
+#
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
+docs/roadmap/phase-573-executor-reentry-soundness.md:2728
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
