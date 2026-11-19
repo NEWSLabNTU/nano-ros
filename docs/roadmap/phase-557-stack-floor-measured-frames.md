@@ -28,9 +28,9 @@ Related: [issue 2402](../issues/archived/2402-rmw-vtable-slot-binding-stack-walk
 slot), [issue 2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md)
 (the deferred bitcode store),
 [issue 2460](../issues/2460-stack-floor-mps2-zephyr-walk-refused.md),
-[issue 2496](../issues/archived/2496-freertos-cmake-app-stack-no-system-toml.md),
-[issue 2506](../issues/2506-stack-floor-walk-machine-outliner.md), and the
-resolved [2461](../issues/archived/2461-stack-floor-freertos-stated-key.md),
+[issue 2496](../issues/archived/2496-freertos-cmake-app-stack-no-system-toml.md), and the
+resolved [2506](../issues/archived/2506-stack-floor-walk-machine-outliner.md),
+[2461](../issues/archived/2461-stack-floor-freertos-stated-key.md),
 [2466](../issues/archived/2466-stack-floor-ci-image-missing-c-frames.md)
 and [2473](../issues/archived/2473-stack-floor-table-needs-toml-parser.md).
 
@@ -191,7 +191,7 @@ worktree:
 | profile | OPEN static (floor) | SPIN static (floor) |
 | --- | --- | --- |
 | release, `opt-level=3` | 7,528 B (8,288) | 3,672 B (4,040) |
-| spike, `opt-level="z"`, fat LTO, 1 CGU | 77,240 B | 69,680 B: wrong, [issue 2506](../issues/2506-stack-floor-walk-machine-outliner.md) |
+| spike, `opt-level="z"`, fat LTO, 1 CGU | 77,240 B | 69,680 B: wrong, [issue 2506](../issues/archived/2506-stack-floor-walk-machine-outliner.md) (fixed, not re-walked) |
 
 The O3 numbers agree with issue 2398's frames: SPIN 3,624 B. OPEN is lower
 only because issue 2401 shrank `open_marshalling_properties` from 8,472 B to
@@ -216,9 +216,9 @@ a recipe and a lane exist.
 Phase-542 W8.b already owns "prebuilt NuttX archives for one `px4_fmu-*`
 target". It is deferred pending a maintainer ruling on hardware. So W3b is
 not a second recipe: when W8.b lands, its placer passes `--stack-floor
-px4-uorb`, and its lane asserts the floors are in the placed header. W3b
-also needs [issue 2506](../issues/2506-stack-floor-walk-machine-outliner.md)
-fixed, if that recipe ships at `opt-level="z"` as the spike did.
+px4-uorb`, and its lane asserts the floors are in the placed header. The
+`opt-level="z"` walk it would have needed is fixed
+([issue 2506](../issues/archived/2506-stack-floor-walk-machine-outliner.md)).
 
 Acceptance: a lane builds the fmu-v6x archive through the placer, and the
 placed header carries `NROS_STACK_FLOOR_OPEN/_SPIN`. A configure with a

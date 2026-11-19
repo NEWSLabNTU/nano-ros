@@ -91,6 +91,12 @@ class Graph:
     # `int ns::f(int)`), not a symbol: name(args) -> bytes, matched to the
     # symbol table by `resolve_cxx_su_frames`.
     su_signatures: dict[str, int] = field(default_factory=dict)
+    # issue 2506 — a LOCAL function's node name -> its symbol name. Two
+    # codegen units may each define `OUTLINED_FUNCTION_0` (LLVM's machine
+    # outliner, at opt-level `s`/`z`), different bodies under one name.
+    # `load_object` keys each local by `local_key`; `separate_locals` then
+    # keeps apart only those, and walks every other local by name.
+    locals: dict[str, str] = field(default_factory=dict)
 
 
 class WalkRefused(Exception):
@@ -510,6 +516,8 @@ INDIRECT_RE = re.compile(
     r"\t(blx\s+r\d+|blx\s+(ip|lr|sp)|bl?x?\s+\{|blr\s+x\d+|jalr\s|"
     r"c\.jalr\s|callq?\s+\*|call\s+\*)")
 FUNC_LABEL_RE = re.compile(r"^[0-9a-f]+ <(.+)>:$")
+# llvm-objdump's per-object header: `path:` or `archive(member):`, then the format
+OBJ_HEADER_RE = re.compile(r"^(.+):\s+file format \S+$")
 # `file:line:col:name`, where a C++ name is a signature holding `::` and spaces
 SU_RE = re.compile(r"^(?P<loc>[^\t]*?:\d+:\d+):(?P<fn>[^\t]+)\t(?P<size>\d+)\t(?P<kind>\S+)")
 
@@ -1145,6 +1153,11 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
     EXPANDED_BITCODE[:] = bcs
     IR_OBJECTS.clear()
     IR_OBJECTS.update(ir_objs)
+    IR_UNITS.clear()
+    for bc, o in zip(bcs, ir_objs):
+        m = _UNIT_IN_NAME.search(bc.name)
+        if m:
+            IR_UNITS[o] = m.group(1)
     return out
 
 
@@ -1153,6 +1166,21 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
 EXPANDED_BITCODE: list[Path] = []
 # The objects llc compiled from that bitcode, by the path `load_object` sees.
 IR_OBJECTS: set[str] = set()
+# Each of those objects' codegen unit (issue 2506): the unit's own native
+# object, an archive member the link map names, is the same code.
+IR_UNITS: dict[str, str] = {}
+_UNIT_IN_NAME = re.compile(r"([^\s()/]+\.rcgu)(?:\.|$)")
+
+
+def object_unit(obj: str) -> str:
+    """What a LOCAL function's name is unique within (issue 2506). A Rust
+    codegen unit, whether llc compiled it from bitcode or rustc's own object
+    is an archive member: the walk loads both, and one unit's local is one
+    function. Anything else (a C object) is its own."""
+    if obj in IR_UNITS:
+        return IR_UNITS[obj]
+    m = _UNIT_IN_NAME.search(obj.rsplit("/", 1)[-1] if "(" not in obj else obj[obj.index("("):])
+    return m.group(1) if m else obj
 # Relocations that are a CALL or a branch to their symbol. Any other relocation
 # in code that names a function loads its ADDRESS.
 CALL_RELOCS = frozenset({
@@ -1972,22 +2000,63 @@ def ir_text(bc: Path, dis: str, cache: Path) -> str:
     return p.read_text(errors="replace")
 
 
+def local_key(name: str, obj: str) -> str:
+    """The node of a LOCAL function `name` defined in input `obj` (an object
+    path, or `archive(member)` as llvm-readobj and llvm-objdump both print it)."""
+    return f"{name} [{obj}]"
+
+
+def _sym_field(sym: dict, key: str):
+    v = sym.get(key)
+    return v["Name"] if isinstance(v, dict) else v
+
+
+def local_functions(doc: dict) -> set[str]:
+    """The functions one object defines with LOCAL binding."""
+    out = set()
+    for s in doc.get("Symbols", []):
+        sym = s["Symbol"]
+        sec = sym.get("Section", {})
+        idx = sec.get("Value") if isinstance(sec, dict) else None
+        if (_sym_field(sym, "Type") == "Function" and _sym_field(sym, "Binding") == "Local"
+                and isinstance(idx, int) and idx > 0):
+            out.add(_sym_field(sym, "Name"))
+    return out
+
+
 def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) -> None:
     """Read objects/archives. Several paths go to ONE llvm-readobj and ONE
     llvm-objdump each: per-object processes were 5 s of a 5.3 s warm run
-    (issue 2400), and every build pays that once measuring is per build."""
+    (issue 2400), and every build pays that once measuring is per build.
+
+    A LOCAL function is keyed by `local_key` (issue 2506): its name is only
+    unique within its codegen unit. Call `separate_locals` once every input
+    is loaded."""
     if isinstance(paths, str):
         paths = [paths]
+    docs = readobj_json(readobj, ["-S", "--symbols", "-r"], paths)
+    locals_in = {doc.get("FileSummary", {}).get("File", ""): local_functions(doc)
+                 for doc in docs}
+
+    def node(obj: str, name: str) -> str:
+        if name in locals_in.get(obj, ()):
+            k = local_key(name, object_unit(obj))
+            g.locals[k] = name
+            return k
+        return name
+
     for doc in readobj_json(readobj, ["--stack-sizes"], paths):
+        obj = doc.get("FileSummary", {}).get("File", "")
         for e in doc.get("StackSizes", []):
             ent = e["Entry"]
             for fn in ent["Functions"]:
+                fn = node(obj, fn)
                 g.frames[fn] = max(g.frames.get(fn, 0), ent["Size"])
                 g.functions.add(fn)
 
-    docs = readobj_json(readobj, ["-S", "--symbols", "-r"], paths)
     for doc in docs:
-        from_ir = doc.get("FileSummary", {}).get("File", "") in IR_OBJECTS
+        obj = doc.get("FileSummary", {}).get("File", "")
+        from_ir = obj in IR_OBJECTS
         secs = {s["Section"]["Index"]: s["Section"] for s in doc.get("Sections", [])}
         # function symbols per section: (start, end, name)
         by_sec: dict[int, list[tuple[int, int, str]]] = {}
@@ -1996,6 +2065,8 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
             sym = s["Symbol"]
             name = sym["Name"]["Name"] if isinstance(sym["Name"], dict) else sym["Name"]
             typ = sym["Type"]["Name"] if isinstance(sym["Type"], dict) else sym["Type"]
+            if typ == "Function":
+                name = node(obj, name)
             sec = sym.get("Section", {})
             idx = sec.get("Value") if isinstance(sec, dict) else None
             if typ == "Function":
@@ -2034,6 +2105,8 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
                 tgt = rr["Symbol"]["Name"]
                 if tgt in sec_name_funcs and len(sec_name_funcs[tgt]) == 1:
                     tgt = sec_name_funcs[tgt][0]
+                else:
+                    tgt = node(obj, tgt)
                 if not sym_is_func.get(tgt) and tgt not in g.frames:
                     # undefined here: a call to another member/archive keeps its
                     # name; data refs to non-functions are dropped below
@@ -2062,10 +2135,15 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
     dis = subprocess.run([objdump, "-d", "--no-show-raw-insn", *paths],
                          check=True, capture_output=True, text=True).stdout
     cur = None
+    obj = ""
     for line in dis.splitlines():
+        m = OBJ_HEADER_RE.match(line)
+        if m:
+            obj, cur = m.group(1), None
+            continue
         m = FUNC_LABEL_RE.match(line)
         if m:
-            cur = m.group(1)
+            cur = node(obj, m.group(1))
             continue
         if cur and INDIRECT_RE.search(line):
             g.indirect_sites[cur] = g.indirect_sites.get(cur, 0) + 1
@@ -2073,6 +2151,69 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
     # Undefined references that are data-only were added to address_taken /
     # edges by name; anything never defined as a function is pruned at walk
     # time as "NO FRAME" unless named external.
+
+
+OUTLINED_NAME = re.compile(r"^OUTLINED_FUNCTION_\d+$")
+
+
+def separate_locals(g: Graph) -> list[str]:
+    """Merge every LOCAL function back under its bare name, except LLVM's
+    machine-outliner bodies that two codegen units (or a unit and a global)
+    share a name with (issue 2506). Returns the names kept apart.
+
+    The outliner numbers its `OUTLINED_FUNCTION_<n>` bodies from 0 in every
+    module it runs on (opt-level `s`/`z`), so one name is unrelated code in
+    each: merged, a root of one module reads the callees of another's body.
+
+    Every other local keeps today's by-name walk, deliberately. Its name
+    comes from the source, so two copies are almost always one body: a C
+    header's `static inline` is instantiated in every TU that uses it, and
+    the TUs' copies call the same things. Split per object they are also
+    distinct steps a type-bound indirect chain takes before it repeats,
+    where one name is a cycle the walk cuts at once: measured on the nucleo
+    Zephyr rows, splitting zenoh-pico's 13 `_z_slice_clear` copies raised
+    the walks 12-14 %. Two unrelated C statics of one name still merge, as
+    before; that over-counts, the safe direction."""
+    by_name: dict[str, list[str]] = {}
+    for k, name in g.locals.items():
+        by_name.setdefault(name, []).append(k)
+    referenced = {t for ts in g.edges.values() for t in ts}
+    referenced |= g.address_taken | g.code_taken
+    ren = {}
+    kept = []
+    for name, keys in sorted(by_name.items()):
+        if OUTLINED_NAME.match(name) and (
+                len(keys) > 1 or name in g.functions or name in g.frames
+                or name in referenced):
+            kept.append(name)
+        else:
+            ren.update((k, name) for k in keys)
+    if not ren:
+        return kept
+
+    def r(n: str) -> str:
+        return ren.get(n, n)
+
+    frames: dict[str, int] = {}
+    for k, v in g.frames.items():  # copies merged by name: the largest frame
+        frames[r(k)] = max(frames.get(r(k), 0), v)
+    g.frames = frames
+    edges: dict[str, set[str]] = {}
+    for k, v in g.edges.items():
+        edges.setdefault(r(k), set()).update(r(t) for t in v)
+    g.edges = edges
+    sites: dict[str, int] = {}
+    for k, v in g.indirect_sites.items():
+        sites[r(k)] = max(sites.get(r(k), 0), v)
+    g.indirect_sites = sites
+    g.address_taken = {r(n) for n in g.address_taken}
+    g.code_taken = {r(n) for n in g.code_taken}
+    g.c_taken = {r(n) for n in g.c_taken}
+    g.functions = {r(n) for n in g.functions}
+    g.alias_groups = [{r(n) for n in grp} for grp in g.alias_groups]
+    for k in ren:
+        del g.locals[k]
+    return kept
 
 
 # GCC `-fcallgraph-info=su`: one node per function, titled by its ASSEMBLER
@@ -2851,6 +2992,11 @@ def run(args: argparse.Namespace) -> int:
                                 args.llvm_bin, cache, units)
     for i in range(0, len(args.inputs), LOAD_CHUNK):
         load_object(g, args.inputs[i:i + LOAD_CHUNK], readobj, objdump)
+    apart = separate_locals(g)
+    if apart:
+        print(f"nros-stack-floor: {len(apart)} local function name(s) more than one input "
+              "uses, walked per object: " + ", ".join(apart[:6])
+              + (" ..." if len(apart) > 6 else ""), file=sys.stderr)
     for su in args.su or []:
         load_su(g, Path(su))
     for spec in args.frame or []:
@@ -2872,7 +3018,8 @@ def run(args: argparse.Namespace) -> int:
         # and named. A frameless function the image DOES define still refuses.
         if LINKED_FUNCTIONS:
             gone = sorted(fn for fn in g.functions
-                          if fn not in g.frames and fn not in LINKED_FUNCTIONS)
+                          if fn not in g.frames and g.locals.get(fn, fn) not in g.frames
+                          and g.locals.get(fn, fn) not in LINKED_FUNCTIONS)
             if gone:
                 externals_unlinked.update(gone)
                 print(f"nros-stack-floor: {len(gone)} function(s) an input defines are not in "
@@ -3540,6 +3687,52 @@ def self_test() -> int:
                   "none of the 1 Rust bitcode module" in str(e) and "1 of them fat-LTO" in str(e))
         except Exception:  # noqa: BLE001 -- the unlinked module reached llc
             check("fat LTO: a walk left with no linked module refuses", False)
+    # issue 2506: a local name is one object's own. Two objects' outlined
+    # bodies share `OUTLINED_FUNCTION_0`; merged, a root of one reads the
+    # deepest body of the other.
+    oa, ob = local_key("OUTLINED_FUNCTION_0", "x.a(a.o)"), local_key("OUTLINED_FUNCTION_0", "x.a(b.o)")
+    sa = local_key("small", "x.a(a.o)")
+    gl = Graph(frames={"a_root": 24, oa: 0, ob: 0, sa: 24, "big": 4024, "b_root": 24},
+               edges={"a_root": {oa}, oa: {sa}, "b_root": {ob}, ob: {"big"}},
+               functions={"a_root", oa, ob, sa, "big", "b_root"},
+               locals={oa: "OUTLINED_FUNCTION_0", ob: "OUTLINED_FUNCTION_0", sa: "small"})
+    kept = separate_locals(gl)
+    p = worst_path(gl, "a_root", indirect_charge=None, recursion_allowance=None)
+    check("locals: two objects' outlined bodies stay apart",
+          kept == ["OUTLINED_FUNCTION_0"] and p.depth == 48 and p.chain[1] == oa)
+    check("locals: a name only one object uses reads bare",
+          p.chain == ["a_root", oa, "small"] and "small" in gl.frames and sa not in gl.frames)
+    for clash, why in (({"functions": {"OUTLINED_FUNCTION_0"}}, "a global has its name"),
+                       ({"edges": {"x": {"OUTLINED_FUNCTION_0"}}}, "an input calls it by name")):
+        gc = Graph(frames={oa: 0}, functions={oa}, locals={oa: "OUTLINED_FUNCTION_0"})
+        gc.functions |= clash.get("functions", set())
+        gc.edges.update(clash.get("edges", {}))
+        check(f"locals: an outlined body is kept apart when {why}",
+              separate_locals(gc) == ["OUTLINED_FUNCTION_0"] and oa in gc.frames)
+    # a source-named local keeps the by-name walk: a C header's `static
+    # inline` in two TUs is one body, and split copies are steps a bound
+    # chain takes before it repeats (nucleo rows: +12-14 %)
+    ca, cb = local_key("_z_slice_clear", "a.o"), local_key("_z_slice_clear", "b.o")
+    gt = Graph(frames={ca: 16, cb: 24}, edges={ca: {"free"}, cb: {"drop"}},
+               functions={ca, cb, "free", "drop"}, address_taken={cb},
+               locals={ca: "_z_slice_clear", cb: "_z_slice_clear"})
+    check("locals: a source-named static in two objects is one node, as before",
+          separate_locals(gt) == [] and gt.frames == {"_z_slice_clear": 24}
+          and gt.edges == {"_z_slice_clear": {"free", "drop"}}
+          and gt.address_taken == {"_z_slice_clear"})
+    # a Rust unit's local is one function whether rustc's own object (an
+    # archive member) or llc's object from its bitcode holds it
+    u = "nros_cpp-3e.nros_cpp.66-cgu.0.rcgu"
+    IR_UNITS["/cache/llc/9f.o"] = u
+    check("locals: a Rust unit is its own identity, native or llc-compiled",
+          object_unit(f"/b/libnros_cpp.a({u}.o)") == u
+          and object_unit(f"/cache/members/k/{u}.o") == u
+          and object_unit("/cache/llc/9f.o") == u
+          and _UNIT_IN_NAME.search(f"{u}.lto.input.bc").group(1) == u)
+    check("locals: a C object is its own identity",
+          object_unit("/b/libzpico.a(sample.o)") == "/b/libzpico.a(sample.o)"
+          and object_unit("/w/d(x)/a.c.o") == "/w/d(x)/a.c.o")
+    IR_UNITS.clear()
     # the stack a board's build states, found through cargo's JSON
     with tempfile.TemporaryDirectory() as d:
         Path(d, "a").mkdir(); Path(d, "b").mkdir()
