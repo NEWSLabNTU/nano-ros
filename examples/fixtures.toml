@@ -6692,6 +6692,26 @@ west_role = "logging-smoke"
 west_build_name = "build-logging-smoke"
 west_id = "zephyr/native_sim/native/64/logging-smoke"
 
+# issue 2706 — a Zephyr interrupt (a k_timer expiry, in the system clock's
+# interrupt handler) wakes a parked executor through
+# `GuardCondition::trigger_from_isr`. The image's owned entry boots its own
+# `rust_main`. Its router is on `alloc::ZEPHYR_ISR_WAKE_PORT`. Consumed by
+# tests/isr_wake_rtos.rs.
+[[workspace_fixture]]
+id = "zephyr-rust-isr-wake-zenoh"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/isr-wake-zephyr-native-sim"
+bringup = "src/isr_wake_zephyr_bringup"
+image = "zephyr_zenoh"
+board = "native_sim/native/64"
+west_role = "isr-wake"
+west_build_name = "build-isr-wake"
+west_id = "zephyr/native_sim/native/64/isr-wake"
+west_zenoh_locator = "tcp/127.0.0.1:7700"
+skip_probe = true
+
 
 # ---------------------------------------------------------------------------
 # zephyr single-node WITNESSES — phase-531 W6 batch 8 (RFC-0121, RFC-0122 D1).

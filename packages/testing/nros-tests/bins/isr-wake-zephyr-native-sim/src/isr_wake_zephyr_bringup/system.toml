@@ -1,0 +1,19 @@
+# What this test image deploys to (RFC-0098 D3/D5). Its program is the image's
+# OWNED entry (RFC-0071 D19), `isr_wake_zephyr_entry`, which boots its own
+# `rust_main` and declares no component table; it opens its own session to a
+# per-test router (`-testargs --nros-locator`), else the row's baked
+# `nros_tests::alloc::ZEPHYR_ISR_WAKE_PORT`.
+
+[system]
+name = "isr_wake_zephyr"
+rmw = "zenoh"
+domain_id = 0
+default_images = ["zephyr_zenoh"]
+
+[image.zephyr_zenoh]
+entry = "isr_wake_zephyr_entry"
+board = "zephyr"
+rmw = "zenoh"
+# No component table to derive sizes from: `rust_main` registers one guard
+# condition, which the configured default executor holds.
+no_inventory = "an interrupt-wake test: rust_main registers one guard condition and nothing else"

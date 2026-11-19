@@ -7018,6 +7018,25 @@ pub fn build_logging_smoke_zephyr_native_sim() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+static ISR_WAKE_ZEPHYR_NATIVE_SIM_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Issue 2706 -- the prebuilt `isr-wake-zephyr-native-sim` image: a Zephyr
+/// timer interrupt triggers a guard condition through `trigger_from_isr`.
+/// Built by the Zephyr west-leaves lane into
+/// `<zephyr-workspace>/build-isr-wake/zephyr/zephyr.exe`.
+pub fn build_isr_wake_zephyr_native_sim() -> TestResult<&'static Path> {
+    ISR_WAKE_ZEPHYR_NATIVE_SIM_BINARY
+        .get_or_try_init(|| {
+            let binary = zephyr_build_root().join("build-isr-wake/zephyr/zephyr.exe");
+            crate::fixtures::lane::require_west_leaf_in_lane(
+                "build-isr-wake",
+                "packages/testing/nros-tests/bins/isr-wake-zephyr-native-sim",
+            )?;
+            require_prebuilt_binary_fresh(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
 /// Build the qemu-wcet-bench example and return its path (cached)
 pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
     QEMU_WCET_BENCH_BINARY

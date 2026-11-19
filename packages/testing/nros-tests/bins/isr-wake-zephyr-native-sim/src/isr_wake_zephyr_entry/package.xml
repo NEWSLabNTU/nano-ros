@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>isr_wake_zephyr_entry</name>
+  <version>0.1.0</version>
+  <description>Issue 2706: a Zephyr timer interrupt wakes a parked executor (the image's owned entry)</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

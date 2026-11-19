@@ -224,6 +224,13 @@ pub const BAREMETAL_RTIC_LEVELS_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 
 /// `main.rs` and `system.toml` state this port as its locator.
 pub const BAREMETAL_ISR_WAKE_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 6);
 
+/// Zephyr native_sim interrupt-wake image
+/// (`packages/testing/nros-tests/bins/isr-wake-zephyr-native-sim`, issue
+/// 2706): a timer interrupt triggers a guard condition while the executor
+/// parks. Its `fixtures.toml` row states this port as its
+/// `west_zenoh_locator`.
+pub const ZEPHYR_ISR_WAKE_PORT: u16 = aux_port(PlatformId::ZephyrNativeSim, 0);
+
 /// FreeRTOS + MPS2-AN385 interrupt-wake image
 /// (`packages/testing/nros-tests/bins/isr-wake-freertos-mps2`, issue 2696): a
 /// timer interrupt triggers a guard condition while the executor parks. Its
@@ -379,6 +386,7 @@ mod tests {
             BAREMETAL_RTIC_LEVELS_PORT,
             FREERTOS_ISR_WAKE_PORT,
             BAREMETAL_ISR_WAKE_PORT,
+            ZEPHYR_ISR_WAKE_PORT,
         ] {
             assert!(
                 !ports.contains_key(&aux),
