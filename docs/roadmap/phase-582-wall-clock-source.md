@@ -28,7 +28,10 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 - **Status:** OPEN
 - **Owner:** nros 139
 - RFC-0141 D1–D4:
-  - the `[knobs.clock]` group: `source`, `sntp_attempts`, `epoch_failure`;
+  - the `[knobs.clock]` group: `source` (one, or an ordered fallback),
+    `fallback_settle_ms`, `upgrade`, `sntp_attempts`, `epoch_failure`
+    (default `unstamped`);
+  - the state query `nros_wall_clock_state()` in C, C++ and Rust;
   - the board descriptor's default;
   - `bool nros_board_wall_clock_ns(uint64_t *)`, referenced only with
     `source = "board"`, and with NO default compiled then;
@@ -44,7 +47,14 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   - A board that does not select `board` is byte-for-byte unchanged in what
     it links.
   - The existing Zephyr SNTP and zenoh-HLC tests pass on the shared store.
-  - `epoch_failure = "halt"` and `"unstamped"` each have a test.
+  - `epoch_failure`: the default `unstamped` publishes a zero stamp and the
+    state query says unsynced; `halt` stops the image. Each has a test.
+  - A fallback `["sntp", "platform"]` with no SNTP server resolves to
+    `platform` before the first stamp, and with `upgrade = "never"` stays
+    there when the server appears.
+  - With `upgrade = "monotonic"`, a source that arrives behind the current
+    clock never makes a reading go backwards, and the step is counted in the
+    state query.
 
 ### W2 — The FreeRTOS libc shims answer from the symbol
 
