@@ -319,10 +319,10 @@ evidence = "3 of 3 consecutive runs passed against examples_rclcpp_minimal_actio
 cell = "native-ros2-cli-parity-params-c-zenoh"
 date = "2026-11-19"
 verdict = "pass"
-tests = ["c_parameters_answer_ros2_param_as_stock_does"]
+tests = ["c_parameters_answer_ros2_param_as_stock_does", "set_of_a_read_only_parameter_is_refused_as_stock_does"]
 run = "just linux test-ros2-cli-parity"
 where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp), p556-followups branch on origin/main"
-evidence = "3 of 3 consecutive runs passed against an rclpy node declaring what the C parameters example holds (fixtures/ros2-param-peer, profile c_parameters): param list, list --param-type, get and describe of all four parameters, an accepted set and its read-back"
+evidence = "3 of 3 consecutive runs passed against an rclpy node declaring what the C parameters example holds (fixtures/ros2-param-peer, profile c_parameters): param list, list --param-type, get and describe of all four parameters, an accepted set and its read-back; and the refusal of a set of the read-only topic_name against an rclcpp node (turtlesim_node's read-only qos_overrides parameter), in rclcpp's words"
 
 [[verdict]]
 cell = "native-ros2-cli-parity-params-cpp-zenoh"

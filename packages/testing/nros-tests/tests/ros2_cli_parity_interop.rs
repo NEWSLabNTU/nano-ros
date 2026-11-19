@@ -31,6 +31,7 @@
 //! | qos | `bins/qos-override-pubsub`, `graph-profile` (`/qos_override`) | `fixtures/ros2-qos-peer/qos_peer.py` (rclpy, the same profile) |
 //! | params (C) | `examples/linux/c/parameters` (`/c_parameters`) | `param_peer.py c_parameters c_parameters` |
 //! | params (C++) | `examples/linux/cpp/parameters` (`/cpp_parameters`) | `param_peer.py cpp_parameters cpp_parameters` |
+//! | params, refusal reasons | `param-two-node-talker` (`/alpha`), the C example (`/c_parameters`) | `turtlesim turtlesim_node` (rclcpp; the reasons follow rclcpp by user ruling) |
 //!
 //! Live peer: the host's ROS 2 (Humble) with `rmw_zenoh_cpp`. Run with
 //! `just linux test-ros2-cli-parity`; cells `native-ros2-cli-parity-*` in
@@ -358,28 +359,42 @@ fn describe_parameters_reply_for_an_undeclared_name_answers_as_stock_does() {
         .assert_same("`ros2 param describe` of an undeclared name");
 }
 
-/// Matches stock: deleting a statically typed parameter is refused, with the
-/// stock peer's (rclpy's) reason.
+/// Matches stock: deleting a statically typed parameter is refused, with
+/// rclcpp's reason (`turtlesim_node`'s `background_r` on the stock side).
 ///
-/// Issue 2484 (resolved): nano-ros refused it as `Type mismatch`.
+/// Issue 2484 (resolved): nano-ros refused it as `Type mismatch`. The
+/// reference is rclcpp by user ruling (phase-556 W2, 2026-11-19).
 #[test]
 fn delete_of_a_statically_typed_parameter_is_refused_as_stock_does() {
-    let pair = param_pair();
-    params_discovered(&pair);
-    pair.ask("param delete {node} rate")
-        .assert_same("the refusal of a delete of a statically typed parameter");
+    let pair = rclcpp_reason_pair();
+    refusal_compared(
+        &pair,
+        "param delete {node} rate",
+        "param delete {node} background_r",
+    )
+    .assert_same("the refusal of a delete of a statically typed parameter");
 }
 
-/// Matches stock: a set off the declared step is refused, with the stock
-/// peer's (rclpy's) reason naming the step.
+/// Matches stock: a set off the declared step is refused, with rclcpp's
+/// reason naming the parameter and the range kind.
+///
+/// rclcpp gives an off-step value and an out-of-range value the same reason
+/// (measured against a Humble rclcpp node declaring `stepped` with 0..100 step
+/// 5: `stepped 7` and `stepped 105` both read `Parameter {stepped} doesn't
+/// comply with integer range.`). No shipped rclcpp node declares a step above
+/// 1, so the stock side is `turtlesim_node`'s `background_r` (0..255 step 1)
+/// set out of range.
 ///
 /// Issue 2484 (resolved): nano-ros refused it as `Value out of range`.
 #[test]
 fn off_step_set_is_refused_as_stock_does() {
-    let pair = param_pair();
-    params_discovered(&pair);
-    pair.ask("param set {node} stepped 7")
-        .assert_same("the refusal of a set off the declared step");
+    let pair = rclcpp_reason_pair();
+    refusal_compared(
+        &pair,
+        "param set {node} stepped 7",
+        "param set {node} background_r 300",
+    )
+    .assert_same("the refusal of a set off the declared step");
 }
 
 // ── the service, action and pubsub pairs ────────────────────────────────────
@@ -820,43 +835,146 @@ fn cases_bound_to_interop_cells() {
 
 // ── parameter refusals, /parameter_events, load, C and C++ (phase-556 W2) ───
 
-/// Expected-failure: `ros2 param set` of a name the node never declared is
-/// refused by both, with the same exit status, but with another reason: the
-/// stock peer (rclpy) says `('Invalid access to undeclared parameter(s)', [])`,
-/// nano-ros says rclrs's `Parameter was not declared and undeclared
-/// parameters are not allowed`. rclcpp words it a third way.
-// Issue 2731: which client's wording to copy is open.
-#[test]
-fn set_of_an_undeclared_name_compared_with_stock() {
-    let pair = param_pair();
-    params_discovered(&pair);
-    let c = pair.ask("param set {node} nope 1");
-    hold_gap(&c, "the refusal of a set of an undeclared parameter", |c| {
-        c.diff().is_some_and(|d| {
-            changed_lines(&d)
-                == vec![
-                    "- Setting parameter failed: Parameter was not declared and undeclared \
-                     parameters are not allowed"
-                        .to_string(),
-                    "+ Setting parameter failed: ('Invalid access to undeclared parameter(s)', [])"
-                        .to_string(),
-                ]
+/// The stock rclcpp node the refusal reasons are compared against:
+/// `turtlesim_node`, a shipped rclcpp node with statically typed integer
+/// parameters in a range (`background_r`, 0..255 step 1) and read-only ones
+/// (`qos_overrides./parameter_events.publisher.*`). No display: Qt draws
+/// offscreen.
+///
+/// The reference is rclcpp by user ruling (phase-556 W2, 2026-11-19); the
+/// other parameter tests keep the rclpy peer, which declares the same names
+/// as the nano-ros node.
+fn rclcpp_reference_side() -> GraphSide {
+    require_stock_package("turtlesim");
+    let mut stock = GraphSide::new(Implementation::Stock, "/turtlesim");
+    stock.spawn_stock(
+        "env QT_QPA_PLATFORM=offscreen ros2 run turtlesim turtlesim_node",
+        "stock turtlesim_node (rclcpp)",
+    );
+    stock.await_node();
+    stock
+}
+
+/// Ready once the side's `param list` shows `name`.
+fn param_listed(side: &GraphSide, name: &str) {
+    let a = side.query_until("param list {node}", SETTLE, |a| has_line(a, name));
+    assert!(
+        has_line(&a, name),
+        "the {} node's parameter services never listed `{name}`:\n{a}",
+        side.implementation
+    );
+}
+
+/// nano-ros: `param-two-node-talker`'s `/alpha`. Stock: `turtlesim_node`.
+fn rclcpp_reason_pair() -> Pair {
+    let nano_bin = build_native_param_two_node_talker().require("param-two-node-talker");
+    require_zenohd();
+    require_ros2();
+    let mut nano = GraphSide::new(Implementation::NanoRos, "/alpha");
+    nano.spawn_nano_image(nano_bin, "param-two-node-talker");
+    nano.await_node();
+    let stock = rclcpp_reference_side();
+    param_listed(&nano, "stepped");
+    param_listed(&stock, "background_r");
+    Pair::new(nano, stock)
+}
+
+/// Ask each side its own refusal query (the stock node declares other
+/// names) and compare the answers, with every parameter name the two queries
+/// name read as `<param>` in the `{name}` and `'name'` forms the reasons use.
+fn refusal_compared(pair: &Pair, nano_args: &str, stock_args: &str) -> Compared {
+    let nano = pair
+        .nano
+        .query_until(nano_args, SETTLE, |a| !a.output.trim().is_empty());
+    let stock = pair
+        .stock
+        .query_until(stock_args, SETTLE, |a| !a.output.trim().is_empty());
+    // A refusal on both sides, so the comparison is about its reason.
+    for a in [&nano, &stock] {
+        assert!(
+            has_line(a, "failed: "),
+            "`ros2 {}` was not refused:\n{a}",
+            a.args
+        );
+    }
+    let names: Vec<String> = [nano_args, stock_args]
+        .iter()
+        .filter_map(|q| q.split_whitespace().nth(3).map(str::to_string))
+        .collect();
+    compare(
+        &format!("{nano_args}` / `ros2 {stock_args}"),
+        nano,
+        &pair.nano.node,
+        stock,
+        &pair.stock.node,
+    )
+    .mapped(move |l| {
+        names.iter().fold(l.to_string(), |l, n| {
+            l.replace(&format!("{{{n}}}"), "{<param>}")
+                .replace(&format!("'{n}'"), "'<param>'")
         })
-    });
+    })
+}
+
+/// Matches stock: `ros2 param set` of a name the node never declared is
+/// refused with rclcpp's reason, which names the parameter, and the same exit
+/// status.
+///
+/// Issue 2731 (resolved): nano-ros gave rclrs's `Parameter was not declared
+/// and undeclared parameters are not allowed`; the user ruled for rclcpp's
+/// wording (2026-11-19).
+#[test]
+fn set_of_an_undeclared_name_is_refused_as_stock_does() {
+    let pair = rclcpp_reason_pair();
+    refusal_compared(&pair, "param set {node} nope 1", "param set {node} nope 1")
+        .assert_same("the refusal of a set of an undeclared parameter");
 }
 
 /// Matches stock: `ros2 param set` of a declared integer parameter with a
-/// string value is refused, with the stock peer's (rclpy's) reason naming
-/// both types, and exit status, and the value is unchanged. rclcpp words it
-/// differently (it names the parameter and the types in lower case).
+/// string value is refused with rclcpp's reason, naming the parameter and
+/// both types, and the same exit status; the value is unchanged.
 #[test]
 fn set_of_the_wrong_type_is_refused_as_stock_does() {
-    let pair = param_pair();
-    params_discovered(&pair);
-    pair.ask("param set {node} rate hello")
-        .assert_same("the refusal of a set of an integer parameter to a string");
-    pair.ask("param get {node} rate")
-        .assert_same("the value of an integer parameter after a refused set");
+    let pair = rclcpp_reason_pair();
+    refusal_compared(
+        &pair,
+        "param set {node} rate hello",
+        "param set {node} background_r hello",
+    )
+    .assert_same("the refusal of a set of an integer parameter to a string");
+    let after = pair
+        .nano
+        .query("param get {node} rate")
+        .unwrap_or_else(|e| panic!("nano-ros side: {e}"));
+    assert!(
+        has_line(&after, "Integer value is: 10"),
+        "a refused set changed the value of `rate`:\n{after}"
+    );
+}
+
+/// Matches stock: `ros2 param set` of a read-only parameter is refused with
+/// rclcpp's reason, naming the parameter. nano-ros: the C parameter example's
+/// `topic_name` (read-only through `rclc_set_parameter_read_only`). Stock:
+/// `turtlesim_node`'s `qos_overrides./parameter_events.publisher.depth`,
+/// which rclcpp declares read-only on every node.
+#[test]
+fn set_of_a_read_only_parameter_is_refused_as_stock_does() {
+    let nano_bin = build_c_parameters().require("c-parameters");
+    require_zenohd();
+    require_ros2();
+    let mut nano = GraphSide::new(Implementation::NanoRos, "/c_parameters");
+    nano.spawn_nano_image_with_env(nano_bin, "c-parameters", &[("NROS_SPIN_MS", "300000")]);
+    nano.await_node();
+    let stock = rclcpp_reference_side();
+    param_listed(&nano, "topic_name");
+    param_listed(&stock, "qos_overrides./parameter_events.publisher.depth");
+    let pair = Pair::new(nano, stock);
+    refusal_compared(
+        &pair,
+        "param set {node} topic_name /other",
+        "param set {node} qos_overrides./parameter_events.publisher.depth 5",
+    )
+    .assert_same("the refusal of a set of a read-only parameter");
 }
 
 /// The `/parameter_events` message a side's node publishes for `set`, as
