@@ -142,6 +142,39 @@ fn joined(existing: Option<OsString>, extra: &str) -> OsString {
 
 /// Add `extra` to `key` in `hand`'s environment: after a value the handoff
 /// already sets, else after the one this process has, so neither is replaced.
+/// The value of a FORCED `[env]` row for `key` in the settings files the
+/// cargo command names with `--config <file>` (the last one that sets it,
+/// as cargo merges them). `None` when no file forces it.
+fn forced_config_env(hand: &Handoff, key: &str) -> Option<String> {
+    let mut found = None;
+    for pair in hand.args.windows(2) {
+        if pair[0] != "--config" {
+            continue;
+        }
+        let mut path = PathBuf::from(&pair[1]);
+        if path.is_relative()
+            && let Some(cwd) = &hand.cwd
+        {
+            path = cwd.join(path);
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(doc) = text.parse::<toml_edit::DocumentMut>() else {
+            continue;
+        };
+        let Some(row) = doc.get("env").and_then(|e| e.get(key)) else {
+            continue;
+        };
+        if row.get("force").and_then(|f| f.as_bool()) == Some(true)
+            && let Some(v) = row.get("value").and_then(|v| v.as_str())
+        {
+            found = Some(v.to_string());
+        }
+    }
+    found
+}
+
 fn merge_env(hand: &mut Handoff, key: &str, extra: &str, inherited: Option<OsString>) {
     if let Some(slot) = hand.env.iter_mut().find(|(k, _)| k == key) {
         slot.1 = joined(Some(std::mem::take(&mut slot.1)), extra);
@@ -248,6 +281,18 @@ fn plan_one(
         .or_else(|| env("TARGET_CFLAGS"))
         .or_else(|| env("CFLAGS"));
     merge_env(hand, &cf, "-fstack-usage -fcallgraph-info=su", inherited);
+    // Issue 2692's carrier writes this same variable as a FORCED `[env]` row
+    // in the build's settings file, and a forced row beats the process
+    // environment, so the merge above alone never reached cc-rs: the walk
+    // found no C frame and refused the role. Restate the row with the walk's
+    // flags after it, as a later `--config`, which cargo merges over the
+    // file's value (measured). The profile flags stay first.
+    if let Some(row) = forced_config_env(hand, &cf) {
+        let merged = joined(Some(row.into()), "-fstack-usage -fcallgraph-info=su");
+        let value = toml_edit::Value::from(merged.to_string_lossy().into_owned());
+        hand.args.push("--config".into());
+        hand.args.push(format!("env.{cf}.value={value}").into());
+    }
     // A profile with no debuginfo (release, nros-minsizerel) makes cargo pass
     // `-C strip=debuginfo`, which drops the `.debug_frame` the walk reads
     // newlib's frames from (`--cfi-elf`). The profile's own knob keeps it, so
@@ -525,6 +570,40 @@ mod tests {
         }
         assert!(!disabled(None));
         assert!(!disabled(Some("ON")));
+    }
+
+    #[test]
+    fn a_forced_settings_row_is_restated_with_the_walks_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("forced.toml"),
+            "[env]\nCFLAGS_x = { value = \"-mcpu=\\\"r5\\\" -O2\", force = true }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("plain.toml"),
+            "[env]\nCFLAGS_x = { value = \"-O1\" }\n",
+        )
+        .unwrap();
+        let mut h = Handoff::new("cargo", ["build", "--config", "forced.toml"]);
+        h.cwd = Some(dir.path().to_path_buf());
+        // A forced row is found (relative to the command's directory)...
+        assert_eq!(
+            forced_config_env(&h, "CFLAGS_x").as_deref(),
+            Some("-mcpu=\"r5\" -O2")
+        );
+        assert_eq!(forced_config_env(&h, "CFLAGS_y"), None);
+        // ...an unforced one is not: the process environment already wins
+        // over it, so the merge into `hand.env` reaches cc-rs.
+        let mut p = Handoff::new("cargo", ["build", "--config", "plain.toml"]);
+        p.cwd = Some(dir.path().to_path_buf());
+        assert_eq!(forced_config_env(&p, "CFLAGS_x"), None);
+        // The restatement is a `--config` value cargo parses back to the
+        // profile flags followed by the walk's.
+        let merged = joined(Some("-mcpu=\"r5\" -O2".into()), "-fstack-usage");
+        let value = toml_edit::Value::from(merged.to_string_lossy().into_owned());
+        let doc: toml_edit::DocumentMut = format!("v = {value}").parse().unwrap();
+        assert_eq!(doc["v"].as_str(), Some("-mcpu=\"r5\" -O2 -fstack-usage"));
     }
 
     #[test]
