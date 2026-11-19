@@ -74,7 +74,7 @@ RUN apt-get update \
 
 # The ROS layer -- the zenoh router and nothing else of ROS (issue 1695).
 # Resolved from nros-sdk-index.toml by scripts/sdk/prereq-packages.py --manager apt
-# Keys: ros-rmw-zenoh-cpp ros-interface-packages (ROS_DISTRO=humble)
+# Keys: ros-rmw-zenoh-cpp ros-interface-packages ros-parity-peers (ROS_DISTRO=humble)
 #
 # The second RUN is the acceptance this layer exists for, checked at build time
 # with the repo's OWN resolver and launcher (scripts/dev/zenohd.sh, copied in):
@@ -97,6 +97,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-sensor-msgs \
         ros-humble-std-msgs \
         ros-humble-unique-identifier-msgs \
+        ros-humble-examples-rclcpp-minimal-action-client \
+        ros-humble-turtlesim \
     && rm -rf /var/lib/apt/lists/*
 ENV ROS_DISTRO=humble
 ENV AMENT_PREFIX_PATH=/opt/ros/humble

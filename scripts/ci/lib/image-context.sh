@@ -176,7 +176,9 @@ fi
 # the layer resolves catkin_pkg from packages.ros.org -- which is the image's
 # own apt answering, exactly as 1481 designed it -- and the two agree.
 ROS_DISTRO_IMAGE="${NROS_RUNNER_ROS_DISTRO:-humble}"
-ROS_PREREQ_KEYS=(ros-rmw-zenoh-cpp ros-interface-packages)
+# `ros-parity-peers`: the stock nodes the ROS 2 CLI parity tests compare against
+# (phase-556; turtlesim and the rclcpp minimal action client, user ruling 2026-11-19).
+ROS_PREREQ_KEYS=(ros-rmw-zenoh-cpp ros-interface-packages ros-parity-peers)
 if ! ROS_PACKAGES="$(ROS_DISTRO="$ROS_DISTRO_IMAGE" python3 \
         "$REPO_ROOT/scripts/sdk/prereq-packages.py" --manager apt "${ROS_PREREQ_KEYS[@]}")" \
         || [ -z "$ROS_PACKAGES" ]; then
