@@ -231,7 +231,7 @@ the user ruled; all five stand:
   zephyr shard was stopped by the balloon at 2 G free: ~90 G available, 44 G
   of Zephyr builds plus ~35 G of host compile-check work a zephyr shard does
   not own. Both are issue 2548
-  ([2548](../issues/2548-merge-shard-run-preconditions-unscoped.md)); the
+  ([2548](../issues/archived/2548-merge-shard-run-preconditions-unscoped.md)); the
   zephyr disk answer is re-measured after it.
 
   Fifth measurement, run 43568845036 (2026-11-14, main 36f665bedc, with the
@@ -376,8 +376,8 @@ the user ruled; all five stand:
   | shard | job | free after reclaim | failed on |
   | --- | --- | --- | --- |
   | linux | 141.5 min | 105 G | ENOSPC writing an `nros-cpp` rmeta (`build/sizes-probe`), 97 min into the fixture build (14:45 first fixture, 16:22 failure), on row `workspace-cpp-native-talker-cyclonedds`; 77 rows had finished |
-  | threadx_linux | 91.8 min | 105 G | `build-compile-check-fixtures`: two FreeRTOS cross-build rows, `freertos-kernel` not provisioned ([issue 2510](../issues/2510-compile-check-cross-rows-unprovisioned-kernel.md)); the same exit as the before-run |
-  | zephyr | 64.4 min | 80 G | `west_board_import`: the image bakes SDK 0.17.4, the 3.7 workspace pins 0.16.9 ([issue 2511](../issues/2511-zephyr-ci-image-lacks-pinned-sdk.md)); 6 of 7 west fixtures built |
+  | threadx_linux | 91.8 min | 105 G | `build-compile-check-fixtures`: two FreeRTOS cross-build rows, `freertos-kernel` not provisioned ([issue 2510](../issues/archived/2510-compile-check-cross-rows-unprovisioned-kernel.md)); the same exit as the before-run |
+  | zephyr | 64.4 min | 80 G | `west_board_import`: the image bakes SDK 0.17.4, the 3.7 workspace pins 0.16.9 ([issue 2511](../issues/archived/2511-zephyr-ci-image-lacks-pinned-sdk.md)); 6 of 7 west fixtures built |
 
   **Disk, linux: does not fit, measured twice.** Both runs had ~105 G free
   when `reclaim-disk.sh` finished (109,917,100 KB on the second run), and the
@@ -951,7 +951,7 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
 ### W14 — A lane shard's run step runs the lane's cells, not `test-all`
 
 - **Owner:** nros 175. Added at the manager's direction (2026-11-17), from
-  [issue 2475](../issues/2475-merge-lane-fails-before-fixtures.md)'s cost
+  [issue 2475](../issues/archived/2475-merge-lane-fails-before-fixtures.md)'s cost
   split.
 - **What.** On a hosted lane shard, `just ci merge` / `just ci tier1 run` is
   `test-all`. On threadx_linux (run 43982551835) that was 22.8 min: five
