@@ -15,6 +15,8 @@
 # and requires case 3 to fail; without it, case 3 could be vacuous.
 set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/lib/grep-q.sh
+. "$root/scripts/lib/grep-q.sh"
 cc="${CC:-cc}"
 command -v "$cc" >/dev/null || { echo "clock-epoch-store: no C compiler ($cc)" >&2; exit 1; }
 tmp="$(mktemp -d)"
@@ -93,8 +95,18 @@ if ! build "$tmp/frozen" "$tmp/frozen.c"; then
     cat "$tmp/frozen.err" >&2
     exit 1
 fi
-out="$("$tmp/frozen")"; rc=$?
-if [ "$rc" -eq 0 ] || ! printf '%s\n' "$out" | grep -q 'FAIL advance: at least'; then
+rc=0; out="$("$tmp/frozen")" || rc=$?
+if [ "$rc" -eq 0 ]; then
+    echo "clock-epoch-store: negative control: a FROZEN clock passed every case" >&2
+    printf '%s\n' "$out" >&2
+    exit 1
+fi
+nros_grep_q 'FAIL advance: at least' <<<"$out"; m=$?
+if [ "$m" -ge 2 ]; then
+    echo "clock-epoch-store: grep failed reading the negative control's output" >&2
+    exit 1
+fi
+if [ "$m" -ne 0 ]; then
     echo "clock-epoch-store: negative control: a FROZEN clock passed the advance case" >&2
     printf '%s\n' "$out" >&2
     exit 1
