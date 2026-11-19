@@ -1817,6 +1817,21 @@ impl Clone for GuardCondition<'_> {
     }
 }
 
+impl GuardCondition<'_> {
+    /// Whether a handle holds a reference to its executor's wake state, so
+    /// that dropping it releases one: true in a build with both `alloc` and
+    /// `rmw-cffi`, where the handle wakes the executor, and false otherwise.
+    /// A binding that drops the handle from foreign storage can state what that
+    /// drop does from this, and `core::mem::needs_drop` agrees with it.
+    pub const OWNS_WAKE_STATE: bool = cfg!(all(feature = "alloc", feature = "rmw-cffi"));
+}
+
+const _: () = assert!(
+    core::mem::needs_drop::<GuardCondition<'static>>()
+        == GuardCondition::<'static>::OWNS_WAKE_STATE,
+    "GuardCondition::OWNS_WAKE_STATE must say whether dropping a handle runs drop glue",
+);
+
 impl<'s> GuardCondition<'s> {
     /// Create a handle from a raw pointer to an arena-allocated `AtomicBool`.
     ///
