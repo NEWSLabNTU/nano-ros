@@ -336,7 +336,22 @@ pub fn render(spec: &CargoConfigSpec, config_path: &Path) -> Result<String, Stri
                     nros_cargo_profile::toml_value(s)
                 )
             })?;
-            t.insert(s.key, Item::Value(v));
+            // A dotted key (`build-override.debug`) is a nested table.
+            match s.key.split_once('.') {
+                Some((head, leaf)) => {
+                    let sub = t
+                        .entry(head)
+                        .or_insert_with(|| Item::Table(Table::new()))
+                        .as_table_mut()
+                        .ok_or_else(|| {
+                            format!("[profile.{}] {head} is not a table", preset.name)
+                        })?;
+                    sub.insert(leaf, Item::Value(v));
+                }
+                None => {
+                    t.insert(s.key, Item::Value(v));
+                }
+            }
         }
         let profile = table(&mut doc, "profile");
         profile.set_implicit(true);
@@ -580,8 +595,12 @@ build-std = ["core", "alloc"]
         for preset in nros_cargo_profile::PRESETS {
             let block = &v["profile"][preset.name];
             for setting in preset.settings {
+                let found = match setting.key.split_once('.') {
+                    Some((head, leaf)) => block.get(head).and_then(|t| t.get(leaf)),
+                    None => block.get(setting.key),
+                };
                 assert!(
-                    block.get(setting.key).is_some(),
+                    found.is_some(),
                     "[profile.{}] lacks {}",
                     preset.name,
                     setting.key
