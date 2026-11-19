@@ -2126,6 +2126,7 @@ fn cmake_and_cargo_plans_record_where_their_handoff_builds() {
         Some(BuildOutput::CMake {
             build_dir: root.join("build/posix-zenoh-linux-demo_bringup/cmake"),
             executable: Some("linux_entry".into()),
+            owned_entry: None,
         })
     );
 

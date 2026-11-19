@@ -49,8 +49,13 @@ pub enum BuildOutput {
         /// Absolute cmake binary dir.
         build_dir: PathBuf,
         /// The executable's path RELATIVE to `build_dir`; `None` when the
-        /// project's own CMakeLists names it and it could not be read.
+        /// project's own CMakeLists names it (see `owned_entry`).
         executable: Option<String>,
+        /// A named owned entry's source dir (RFC-0071 D19): its program is
+        /// whatever its own CMakeLists.txt calls it, so the artifact is read
+        /// back from CMake after the build
+        /// (`builder::cmake_file_api::entry_executable`).
+        owned_entry: Option<PathBuf>,
     },
     /// A west build dir (`west build -d`).
     West {
@@ -64,6 +69,29 @@ impl BuildOutput {
     /// The built file, when the output names one.
     #[must_use]
     pub fn artifact(&self) -> Option<PathBuf> {
+        self.resolve_artifact().ok().flatten()
+    }
+
+    /// [`Self::artifact`], with the reason a named owned entry's executable
+    /// could not be read back from CMake. `Ok(None)` is an output that names
+    /// no single file (a library, or several cargo bins).
+    ///
+    /// # Errors
+    /// A named owned entry with no file-API reply, or with no executable or
+    /// several.
+    pub fn resolve_artifact(&self) -> Result<Option<PathBuf>, String> {
+        if let BuildOutput::CMake {
+            build_dir,
+            executable: None,
+            owned_entry: Some(entry),
+        } = self
+        {
+            return crate::builder::cmake_file_api::entry_executable(build_dir, entry).map(Some);
+        }
+        Ok(self.planned_artifact())
+    }
+
+    fn planned_artifact(&self) -> Option<PathBuf> {
         match self {
             BuildOutput::Cargo {
                 target_dir,
@@ -81,6 +109,7 @@ impl BuildOutput {
             BuildOutput::CMake {
                 build_dir,
                 executable,
+                ..
             } => Some(build_dir.join(executable.as_ref()?)),
             BuildOutput::West { build_dir } => {
                 let z = build_dir.as_ref()?.join("zephyr");
@@ -944,6 +973,7 @@ mod tests {
             BuildOutput::CMake {
                 build_dir: "/ws/build/freertos-zenoh-freertos-posix/cmake".into(),
                 executable: Some("posix_entry".into()),
+                owned_entry: None,
             },
         );
         let s = next_steps(&host, &descriptor(&cat, "freertos-posix"), &store_qemu);
@@ -961,6 +991,7 @@ mod tests {
             BuildOutput::CMake {
                 build_dir: "/leaf/build/mps2-an385-freertos/cmake".into(),
                 executable: Some("c_talker".into()),
+                owned_entry: None,
             },
         );
         let s = next_steps(
@@ -1061,6 +1092,7 @@ mod tests {
                 BuildOutput::CMake {
                     build_dir: "/b".into(),
                     executable: Some("e".into()),
+                    owned_entry: None,
                 },
             ),
             &descriptor(&cat, "s32z270"),

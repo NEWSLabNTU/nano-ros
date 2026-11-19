@@ -77,15 +77,10 @@ pub fn arm_cmake(plans: &mut [ResolvedBuild]) {
 /// Where the build's walk wrote its report, and the executable it walked.
 fn report_and_exe(p: &ResolvedBuild) -> Option<(PathBuf, Option<PathBuf>)> {
     match (&p.output, &p.stack_floor) {
-        (
-            Some(BuildOutput::CMake {
-                build_dir,
-                executable,
-            }),
-            _,
-        ) => Some((
+        (Some(o @ BuildOutput::CMake { build_dir, .. }), _) => Some((
             build_dir.join("nros/stack-floor/report.json"),
-            executable.as_ref().map(|e| build_dir.join(e)),
+            // A named owned entry's executable is read back from CMake.
+            o.artifact(),
         )),
         (_, Some(StackFloorStep::Check(c))) => {
             Some((c.dir.join("report.json"), Some(c.exe.clone())))

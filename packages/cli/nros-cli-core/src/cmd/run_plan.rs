@@ -951,7 +951,15 @@ fn finish(
         }
         Some(BuildOutput::CMake { build_dir, .. }) => {
             plan.build_dir = Some(build_dir.clone());
-            if let Some(a) = i.output.and_then(BuildOutput::artifact) {
+            // A named owned entry's program is read back from CMake; when it
+            // cannot be, say why rather than run a plan with no `elf`.
+            let resolved = i
+                .output
+                .map(BuildOutput::resolve_artifact)
+                .transpose()
+                .map_err(|e| ResolveError::Unresolved(format!("image `{}`: {e}", i.image)))?
+                .flatten();
+            if let Some(a) = resolved {
                 plan.artifacts.insert("elf".into(), a);
             }
         }

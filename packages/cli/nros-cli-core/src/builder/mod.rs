@@ -25,6 +25,7 @@ pub mod cargo_config;
 pub mod cargo_node;
 pub mod cargo_root;
 pub mod cmake_configure;
+pub mod cmake_file_api;
 pub mod cmake_root;
 pub mod discover;
 pub mod dist;
