@@ -17154,6 +17154,33 @@ impl<'s> Executor<'s> {
             .flat_map(move |p| p.server.list_with_prefix(node.into(), prefix))
     }
 
+    /// How many parameters `node` holds that someone DECLARED -- every name
+    /// [`list_parameters_on`](Self::list_parameters_on) yields, less the
+    /// runtime's seeded `use_sim_time` placeholder while it is still one.
+    ///
+    /// This is the count an rclc parameter server's `max_params` is measured
+    /// against. rclc never declares `use_sim_time`, so an application sizes
+    /// `max_params` for its own names; charging it for a placeholder the
+    /// runtime seeded (and steps aside the moment the application declares
+    /// the name itself) made a node sized exactly for its parameters refuse
+    /// its last one once the stock interface set carried `sim_time`.
+    pub(crate) fn declared_parameter_count_on(&self, node: super::node_record::NodeId) -> usize {
+        let listed = self.list_parameters_on(node, "").count();
+        listed.saturating_sub(usize::from(self.sim_time_placeholder_on(node)))
+    }
+
+    /// Whether `node`'s `use_sim_time` is still the runtime's placeholder.
+    fn sim_time_placeholder_on(&self, node: super::node_record::NodeId) -> bool {
+        #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+        if let Some(params) = self.params.as_deref()
+            && params.sim_time_seeded.get(node.index()).copied() == Some(true)
+        {
+            return true;
+        }
+        let _ = node;
+        false
+    }
+
     /// [`list_parameters_on`](Self::list_parameters_on) for the primary node.
     // phase-515 R10 -- the node is the parameter receiver.
     #[deprecated(

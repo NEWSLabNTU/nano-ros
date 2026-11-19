@@ -1238,6 +1238,11 @@ c: c-fmt c-link-smoke
     # `param-services`, so the archive every step above links has none of these
     # symbols at all.
     #
+    # It carries `sim-time` too: the stock node interfaces bring it with the
+    # parameter services, and the runtime's seeded `use_sim_time` is a name on
+    # every such node that rclc's `max_params` must not be charged for -- a
+    # shape without it never meets that placeholder.
+    #
     # That second shape gets its OWN target dir: `<dir>/debug/libnros_c.a` is
     # whichever shape last LINKED there, so sharing the shipped shape's dir
     # would link this TU against that archive. Its header is placed from THIS
@@ -1263,7 +1268,7 @@ c: c-fmt c-link-smoke
     param_dir="$PWD/target/nros-c-param-services"
     NROS_MAX_PARAM_CONSTRAINTS_LEN=256 CARGO_TARGET_DIR="$param_dir" \
         nros_cargo_placed "$param_dir/placed" nros-c -- build -p nros-c --no-default-features \
-        --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
+        --features "{{C_API_SHIPPED_FEATURES}},param-services,sim-time" --quiet
     mkdir -p tmp
     cc -std=c11 -Wall -Wextra -D_GNU_SOURCE \
         -I"$(nros_locate_artifact c-include --placed-dir "$param_dir/placed")" \
