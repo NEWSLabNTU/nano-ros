@@ -218,6 +218,9 @@ pub fn keep_failed_run_logs(run_dir: &Path, dest: &Path, cell: &str) -> Vec<Path
         .file_name()
         .map_or_else(|| "run".to_string(), |n| n.to_string_lossy().into_owned());
     let mut kept = Vec::new();
+    // treewalk-exempt: the walk is over one run's own temp workspace, and
+    // `nros run` writes its logs under that workspace's `build/nros/run/`,
+    // so build output is what it looks for; it never reaches a fixture tree.
     let mut todo = vec![run_dir.to_path_buf()];
     while let Some(d) = todo.pop() {
         let Ok(entries) = std::fs::read_dir(&d) else {
