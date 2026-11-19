@@ -788,38 +788,35 @@ fn write_applied_result(
 
 /// The reason a remote set of `name` to `value` carries for `result`.
 ///
-/// The store's verdict names the rule a value broke; for two of them stock
-/// ROS 2 says more, and a user reading `ros2 param set` or `ros2 param
-/// delete` is told what stock would tell them. The wording is rclpy's
-/// (`Node._apply_descriptor`, `_apply_integer_range`,
-/// `_apply_floating_point_range`), which is what the compatibility tests
-/// compare against:
+/// The store's verdict names the rule a value broke; stock ROS 2 says more,
+/// and a user reading `ros2 param set` or `ros2 param delete` is told what a
+/// stock node would tell them. The wording is rclcpp's, by user ruling
+/// (2026-11-19, phase-556 W2): every string below was measured against a
+/// running Humble rclcpp node, not copied from its sources.
 ///
+/// * a name the node never declared: `parameter '<name>' cannot be set
+///   because it was not declared` (issue 2731; also what rclcpp answers a
+///   delete of such a name);
+/// * a read-only parameter, set or deleted: `parameter '<name>' cannot be set
+///   because it is read-only`;
 /// * a delete (a `NOT_SET` value) of a statically typed parameter:
 ///   [`STATIC_UNDECLARE_REASON`];
-/// * a value outside an integer or floating-point range: `Parameter <name>
-///   out of range. Min: <min>, Max: <max>, value: <v>` (rclpy's float form
-///   has no `.` after "range", and neither has this);
-/// * a value inside the range but off its step: `The parameter value for
-///   <name> is not a valid step. Min: .., max: .., value: .., step: ..` (for
-///   a float, "is not close enough to a valid step");
 /// * a value of another type than a statically typed parameter's: `Wrong
-///   parameter type, expected 'Type.<DECLARED>' got 'Type.<GIVEN>'`
-///   ([`rclpy_type_name`]; phase-556 W2).
+///   parameter type, parameter {<name>} is of type {<declared>}, setting it
+///   to {<given>} is not allowed.` ([`rclcpp_type_name`]);
+/// * a value outside an integer or floating-point range, or inside it and off
+///   its step (rclcpp does not tell the two apart): `Parameter {<name>}
+///   doesn't comply with integer range.` (`floating point range.` for a
+///   float).
 ///
-/// Floats print in their shortest round-trip form, as Python's `str` does
-/// for every value outside the exponent forms (`1e16` here, `1e+16` there).
-///
-/// rclcpp words these differently: "cannot undeclare an statically typed
-/// parameter", "Parameter {<name>} doesn't comply with integer range." for
-/// an out-of-range and an off-step value alike, and "Wrong parameter type,
-/// parameter {<name>} is of type {integer}, setting it to {string} is not
-/// allowed." for a value of the wrong type.
+/// rclpy words every one of these differently; the compatibility tests
+/// compare against rclcpp.
 ///
 /// Every other verdict keeps the store's reason ([`set_result_reason`]), and
-/// so does a range reason that would not fit the reply's string. On the wire
-/// a range reason also gives way to the store's when the reply buffer has no
-/// room for it (`write_applied_result`).
+/// so does a reason that would not fit the reply's string. On the wire a
+/// reason longer than [`LONGEST_SET_REASON`] (a long parameter name) also
+/// gives way to the store's when the reply buffer has no room for it
+/// (`write_applied_result`).
 pub(crate) fn refusal_reason<'b>(
     server: &ParameterServer,
     node: NodeKey,
@@ -830,94 +827,75 @@ pub(crate) fn refusal_reason<'b>(
 ) -> &'b str {
     use core::fmt::Write as _;
     use nros_params::ParameterRange;
-    match result {
+    buf.clear();
+    let written = match result {
         Err(ParameterError::TypeMismatch)
             if matches!(value, InternalValue::NotSet) && server.has(node, name) =>
         {
-            STATIC_UNDECLARE_REASON
+            return STATIC_UNDECLARE_REASON;
         }
+        Err(ParameterError::Undeclared) => write!(
+            buf,
+            "parameter '{name}' cannot be set because it was not declared"
+        ),
+        Err(ParameterError::ReadOnly) => write!(
+            buf,
+            "parameter '{name}' cannot be set because it is read-only"
+        ),
         Err(ParameterError::TypeMismatch) => {
-            buf.clear();
             let declared = server
                 .get_descriptor(node, name)
                 .map(|d| d.param_type)
                 .filter(|t| *t != InternalType::NotSet)
                 .or_else(|| server.get_type(node, name));
-            let written = match declared {
+            match declared {
                 Some(declared) => write!(
                     buf,
-                    "Wrong parameter type, expected 'Type.{}' got 'Type.{}'",
-                    rclpy_type_name(declared),
-                    rclpy_type_name(value.param_type())
+                    "Wrong parameter type, parameter {{{name}}} is of type {{{}}}, setting it \
+                     to {{{}}} is not allowed.",
+                    rclcpp_type_name(declared),
+                    rclcpp_type_name(value.param_type())
                 ),
                 None => Err(core::fmt::Error),
-            };
-            match written {
-                Ok(()) => buf.as_str(),
-                Err(_) => set_result_reason(result),
             }
         }
         Err(ParameterError::OutOfRange) => {
-            buf.clear();
-            let range = server.get_descriptor(node, name).map(|d| d.range);
-            let written = match (range, value) {
-                (Some(ParameterRange::Integer(r)), InternalValue::Integer(v)) => {
-                    if *v < r.min || *v > r.max {
-                        write!(
-                            buf,
-                            "Parameter {name} out of range. Min: {}, Max: {}, value: {v}",
-                            r.min, r.max
-                        )
-                    } else {
-                        write!(
-                            buf,
-                            "The parameter value for {name} is not a valid step. Min: {}, max: \
-                             {}, value: {v}, step: {}",
-                            r.min, r.max, r.step
-                        )
-                    }
+            match server.get_descriptor(node, name).map(|d| d.range) {
+                Some(ParameterRange::Integer(_)) => {
+                    write!(
+                        buf,
+                        "Parameter {{{name}}} doesn't comply with integer range."
+                    )
                 }
-                (Some(ParameterRange::FloatingPoint(r)), InternalValue::Double(v)) => {
-                    if !(*v >= r.min && *v <= r.max) {
-                        write!(
-                            buf,
-                            "Parameter {name} out of range Min: {:?}, Max: {:?}, value: {v:?}",
-                            r.min, r.max
-                        )
-                    } else {
-                        write!(
-                            buf,
-                            "The parameter value for {name} is not close enough to a valid \
-                             step. Min: {:?}, max: {:?}, value: {v:?}, step: {:?}",
-                            r.min, r.max, r.step
-                        )
-                    }
-                }
+                Some(ParameterRange::FloatingPoint(_)) => write!(
+                    buf,
+                    "Parameter {{{name}}} doesn't comply with floating point range."
+                ),
                 _ => Err(core::fmt::Error),
-            };
-            match written {
-                Ok(()) => buf.as_str(),
-                Err(_) => set_result_reason(result),
             }
         }
-        _ => set_result_reason(result),
+        _ => Err(core::fmt::Error),
+    };
+    match written {
+        Ok(()) => buf.as_str(),
+        Err(_) => set_result_reason(result),
     }
 }
 
-/// The member name of rclpy's `Parameter.Type` for a parameter type, as a
-/// type refusal prints it (`Type.INTEGER`).
-const fn rclpy_type_name(t: InternalType) -> &'static str {
+/// rclcpp's name for a parameter type, as its type refusal prints it
+/// (`rclcpp::to_string(ParameterType)`: `integer`, `string_array`).
+const fn rclcpp_type_name(t: InternalType) -> &'static str {
     match t {
-        InternalType::NotSet => "NOT_SET",
-        InternalType::Bool => "BOOL",
-        InternalType::Integer => "INTEGER",
-        InternalType::Double => "DOUBLE",
-        InternalType::String => "STRING",
-        InternalType::ByteArray => "BYTE_ARRAY",
-        InternalType::BoolArray => "BOOL_ARRAY",
-        InternalType::IntegerArray => "INTEGER_ARRAY",
-        InternalType::DoubleArray => "DOUBLE_ARRAY",
-        InternalType::StringArray => "STRING_ARRAY",
+        InternalType::NotSet => "not set",
+        InternalType::Bool => "bool",
+        InternalType::Integer => "integer",
+        InternalType::Double => "double",
+        InternalType::String => "string",
+        InternalType::ByteArray => "byte_array",
+        InternalType::BoolArray => "bool_array",
+        InternalType::IntegerArray => "integer_array",
+        InternalType::DoubleArray => "double_array",
+        InternalType::StringArray => "string_array",
     }
 }
 
@@ -2715,7 +2693,18 @@ mod tests {
         request: &[u8],
         handler: impl FnOnce(&mut CdrReader<'_>, &mut CdrWriter<'_>) -> Result<(), TransportError>,
     ) -> AllocVec<u8> {
-        let mut reply = vec![0u8; WIRE_BUF];
+        run_streaming_in(request, WIRE_BUF, handler)
+    }
+
+    /// [`run_streaming`] into a reply buffer of exactly `capacity` bytes, as
+    /// the live executor's buffer is (`param_service_buffer_bytes`): a reason
+    /// longer than the bound prices is written only when it still fits.
+    fn run_streaming_in(
+        request: &[u8],
+        capacity: usize,
+        handler: impl FnOnce(&mut CdrReader<'_>, &mut CdrWriter<'_>) -> Result<(), TransportError>,
+    ) -> AllocVec<u8> {
+        let mut reply = vec![0u8; capacity];
         let len = {
             let mut reader = CdrReader::new_with_header(request).expect("request header");
             let mut writer = CdrWriter::new_with_header(&mut reply).expect("reply header");
@@ -3309,7 +3298,7 @@ mod tests {
 
     /// Issue 1151 — `ros2 param set /node max_speeed 5.0` on a node that
     /// declared `max_speed` used to answer "successful" and create
-    /// `max_speeed`. Now it is refused with rclrs's reason, and the store is
+    /// `max_speeed`. Now it is refused with rclcpp's reason, and the store is
     /// untouched. Asserted on the LIVE streaming path, decoded with the
     /// generated message type so the reason string is checked on the wire.
     #[test]
@@ -3328,7 +3317,10 @@ mod tests {
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert_eq!(reply.results.len(), 1);
         assert!(!reply.results[0].successful);
-        assert_eq!(reply.results[0].reason.as_str(), UNDECLARED_REASON);
+        assert_eq!(
+            reply.results[0].reason.as_str(),
+            "parameter 'max_speeed' cannot be set because it was not declared"
+        );
 
         assert!(
             !server.has(NODE, "max_speeed"),
@@ -3429,7 +3421,7 @@ mod tests {
     }
 
     /// Issue 2484 -- a delete (a NOT_SET value) of a statically typed
-    /// parameter is refused with rclpy's reason, and the parameter stays.
+    /// parameter is refused with rclcpp's reason, and the parameter stays.
     #[test]
     fn deleting_a_statically_typed_parameter_is_refused_with_stock_s_reason() {
         let mut server = described_server();
@@ -3444,8 +3436,9 @@ mod tests {
         assert_eq!(server.get_double(NODE, "speed"), Some(1.0));
     }
 
-    /// Issue 2484 -- the four range refusals in rclpy's words: out of range
-    /// and off the step, integer and float.
+    /// Issue 2484 -- the four range refusals in rclcpp's words (by user
+    /// ruling 2026-11-19, phase-556 W2): out of range and off the step,
+    /// integer and float. rclcpp gives one reason for both.
     #[test]
     fn range_refusals_carry_stock_s_reasons() {
         let mut server = leaked_server();
@@ -3481,30 +3474,28 @@ mod tests {
                 2,
                 7,
                 0.0,
-                "The parameter value for stepped is not a valid step. Min: 0, max: 100, value: \
-                 7, step: 5",
+                "Parameter {stepped} doesn't comply with integer range.",
             ),
             (
                 "stepped",
                 2,
                 105,
                 0.0,
-                "Parameter stepped out of range. Min: 0, Max: 100, value: 105",
+                "Parameter {stepped} doesn't comply with integer range.",
             ),
             (
                 "speed",
                 3,
                 0,
                 4.2,
-                "The parameter value for speed is not close enough to a valid step. Min: 0.0, \
-                 max: 10.0, value: 4.2, step: 0.5",
+                "Parameter {speed} doesn't comply with floating point range.",
             ),
             (
                 "speed",
                 3,
                 0,
                 12.5,
-                "Parameter speed out of range Min: 0.0, Max: 10.0, value: 12.5",
+                "Parameter {speed} doesn't comply with floating point range.",
             ),
         ];
         for (name, type_, int, double, reason) in cases {
@@ -3523,8 +3514,9 @@ mod tests {
     }
 
     /// phase-556 W2 -- a value of another type than a statically typed
-    /// parameter's is refused in rclpy's words, naming both types, and the
-    /// parameter keeps its value.
+    /// parameter's is refused in rclcpp's words, naming the parameter and
+    /// both types, and the parameter keeps its value; so are a read-only
+    /// parameter and an undeclared name.
     #[test]
     fn type_refusals_carry_stock_s_reason() {
         let mut server = described_server();
@@ -3539,9 +3531,44 @@ mod tests {
         assert!(!reply.results[0].successful);
         assert_eq!(
             reply.results[0].reason.as_str(),
-            "Wrong parameter type, expected 'Type.DOUBLE' got 'Type.INTEGER'"
+            "Wrong parameter type, parameter {speed} is of type {double}, setting it to \
+             {integer} is not allowed."
         );
         assert_eq!(server.get_double(NODE, "speed"), Some(1.0));
+
+        assert!(
+            server.declare_with_descriptor(
+                NODE,
+                "frozen",
+                InternalValue::Integer(1),
+                Some(
+                    InternalDescriptor::new("frozen", InternalType::Integer)
+                        .expect("name fits")
+                        .with_read_only(true),
+                ),
+            )
+        );
+        for (name, reason) in [
+            (
+                "frozen",
+                "parameter 'frozen' cannot be set because it is read-only",
+            ),
+            (
+                "nope",
+                "parameter 'nope' cannot be set because it was not declared",
+            ),
+        ] {
+            let mut request = Box::new(SetParametersRequest::default());
+            let mut value = wire_value_of(2);
+            value.integer_value = 3;
+            push_param!(request, name, value);
+            let streamed = run_streaming(&encode(&*request), |reader, writer| {
+                stream_set_parameters(&mut server, &mut staged(), NODE, reader, writer)
+            });
+            let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
+            assert!(!reply.results[0].successful, "{name}");
+            assert_eq!(reply.results[0].reason.as_str(), reason);
+        }
     }
 
     /// A range reason is written only while the reply has room for it and
@@ -3554,20 +3581,27 @@ mod tests {
         assert!(
             server.declare_with_descriptor(
                 NODE,
-                "stepped",
+                "left_wheel_speed_limit_xx",
                 InternalValue::Integer(10),
                 Some(
-                    InternalDescriptor::new("stepped", InternalType::Integer)
+                    InternalDescriptor::new("left_wheel_speed_limit_xx", InternalType::Integer)
                         .expect("name fits")
                         .with_integer_range(0, 100, 5),
                 ),
             )
         );
         let value = InternalValue::Integer(7);
-        let result = server.check_apply(NODE, "stepped", &value);
+        let result = server.check_apply(NODE, "left_wheel_speed_limit_xx", &value);
         assert_eq!(result, Err(ParameterError::OutOfRange));
         let mut buf = heapless::String::new();
-        let long = refusal_reason(&server, NODE, "stepped", &value, result, &mut buf);
+        let long = refusal_reason(
+            &server,
+            NODE,
+            "left_wheel_speed_limit_xx",
+            &value,
+            result,
+            &mut buf,
+        );
         assert!(long.len() > LONGEST_SET_REASON, "{long}");
 
         let fixed = set_result_reason(result);
@@ -3586,7 +3620,7 @@ mod tests {
                 &mut writer,
                 &server,
                 NODE,
-                "stepped",
+                "left_wheel_speed_limit_xx",
                 &value,
                 result,
                 results_after,
@@ -3638,11 +3672,10 @@ mod tests {
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(!reply.results[0].successful);
-        // Issue 2484 -- rclpy's wording, not the store's "Value out of range".
+        // rclcpp's wording, not the store's "Value out of range".
         assert_eq!(
             reply.results[0].reason.as_str(),
-            "The parameter value for speed is not close enough to a valid step. Min: 0.0, \
-             max: 10.0, value: 4.2, step: 0.5"
+            "Parameter {speed} doesn't comply with floating point range."
         );
         assert_eq!(server.get_double(NODE, "speed"), Some(1.0));
     }
@@ -3794,7 +3827,10 @@ mod tests {
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(!reply.results[0].successful);
-        assert_eq!(reply.results[0].reason.as_str(), UNDECLARED_REASON);
+        assert_eq!(
+            reply.results[0].reason.as_str(),
+            "parameter 'fresh' cannot be set because it was not declared"
+        );
 
         assert_eq!(server.get_integer(TALKER, "fresh"), Some(7));
         assert!(!server.has(LISTENER, "fresh"));
@@ -3836,7 +3872,10 @@ mod tests {
             });
             let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
             assert!(!reply.results[0].successful);
-            assert_eq!(reply.results[0].reason.as_str(), UNDECLARED_REASON);
+            assert_eq!(
+                reply.results[0].reason.as_str(),
+                "parameter 'speeed' cannot be set because it was not declared"
+            );
 
             let streamed = run_streaming(&encode(&*off_step), |reader, writer| {
                 stream_set_parameters(&mut server, &mut staged(), node, reader, writer)
@@ -3845,8 +3884,7 @@ mod tests {
             assert!(!reply.results[0].successful);
             assert_eq!(
                 reply.results[0].reason.as_str(),
-                "The parameter value for speed is not close enough to a valid step. Min: \
-                 0.0, max: 10.0, value: 4.2, step: 0.5"
+                "Parameter {speed} doesn't comply with floating point range."
             );
 
             // SetParametersAtomically — the same two requests, re-encoded
@@ -4273,9 +4311,13 @@ mod tests {
         // The worst set REPLY carries the longest reason on every result.
         // That reason is the issue-1151 refusal, so run the very same request
         // against a node that has declared NOTHING: same request bytes, eight
-        // results each carrying `UNDECLARED_REASON`.
+        // results each carrying `UNDECLARED_REASON`. The wire reason names the
+        // parameter (issue 2731), and for these long names it is longer than
+        // the bound prices, so the reply is written into a buffer of exactly
+        // the bound, as the live one is, where each result falls back to the
+        // priced reason rather than outgrow it.
         assert_eq!(LONGEST_SET_REASON, UNDECLARED_REASON.len());
-        let set_reply = run_streaming(&set_req, |r, w| {
+        let set_reply = run_streaming_in(&set_req, bound.set_reply, |r, w| {
             stream_set_parameters(&mut server, &mut staged(), NodeKey::new(1), r, w)
         });
         check("set_parameters reply", set_reply.len(), bound.set_reply);
