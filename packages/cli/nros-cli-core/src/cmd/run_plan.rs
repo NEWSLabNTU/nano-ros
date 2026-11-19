@@ -1207,9 +1207,11 @@ impl Selection {
         if let Some(n) = &self.nano_ros_path {
             v.extend(["--nano-ros-path".into(), n.display().to_string()]);
         }
-        if !self.base_paths.is_empty() {
-            v.push("--base-paths".into());
-            v.extend(self.base_paths.iter().map(|p| p.display().to_string()));
+        // One `--base-paths=<path>` per path. `--base-paths` takes several
+        // values, so `--base-paths a b <image>` read the image as one more
+        // path (issue 2753); the `=` form ends each value where it starts.
+        for p in &self.base_paths {
+            v.push(format!("--base-paths={}", p.display()));
         }
         if let Some(i) = &self.image {
             v.push(i.clone());
@@ -1490,6 +1492,50 @@ mod tests {
         assert_eq!(edition_mismatch_note("humble", None), None);
         assert_eq!(edition_mismatch_note("humble", Some("")), None);
         assert_eq!(edition_mismatch_note("humble", Some("rolling")), None);
+    }
+
+    /// Issue 2753 -- a selection with base paths and an image reaches
+    /// `nros build` with both: the paths as paths, the image as the image.
+    /// The old spelling (`--base-paths a b <image>`) is the control: clap
+    /// reads the image as one more base path.
+    #[test]
+    fn a_selection_with_base_paths_keeps_its_image() {
+        let sel = Selection {
+            workspace: None,
+            nano_ros_path: None,
+            image: Some("test_bringup:unit_test-freertos-posix".into()),
+            base_paths: vec![
+                PathBuf::from("src/test_bringup"),
+                PathBuf::from("src/asi_tests"),
+            ],
+        };
+        let args = selection_build_args(&sel).expect("the selection parses as `nros build`");
+        assert_eq!(
+            args.images,
+            vec!["test_bringup:unit_test-freertos-posix".to_string()]
+        );
+        assert_eq!(
+            args.selection.sources.base_paths,
+            vec![
+                PathBuf::from("src/test_bringup"),
+                PathBuf::from("src/asi_tests")
+            ]
+        );
+
+        let old = <crate::cmd::build::Args as clap::Parser>::try_parse_from([
+            "build",
+            "--dry-run",
+            "--base-paths",
+            "src/test_bringup",
+            "src/asi_tests",
+            "test_bringup:unit_test-freertos-posix",
+        ])
+        .expect("parses");
+        assert!(
+            old.images.is_empty(),
+            "control: the old spelling loses the image"
+        );
+        assert_eq!(old.selection.sources.base_paths.len(), 3);
     }
 
     fn repo_root() -> PathBuf {

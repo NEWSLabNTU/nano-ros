@@ -1,12 +1,14 @@
 ---
 id: 2753
 title: "`nros run --base-paths` forwards the image after the paths, so its build reads the image as one more base path"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [cli, run]
 related: [0646]
 found: 2026-11-19
+resolved: 2026-11-20
+resolved_in: "fix(cli, issue 2753): nros run forwards each base path as --base-paths=<path>"
 ---
 
 ## Measured
@@ -34,3 +36,12 @@ more path.
 Emit the image before the option, or one `--base-paths=<p>` per path. A test
 that round-trips a selection with base paths and an image through
 `build::Args` would hold it.
+
+## Fix
+
+`Selection::build_args` emits one `--base-paths=<path>` per path, so each
+value ends where it starts and the image stays the positional. The unit test
+`a_selection_with_base_paths_keeps_its_image` round-trips a selection with two
+base paths and an image through `nros build`'s parser, with the old spelling as
+its control (it parses three base paths and no image).
+
