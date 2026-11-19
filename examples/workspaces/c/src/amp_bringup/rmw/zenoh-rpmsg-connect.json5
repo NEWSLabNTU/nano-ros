@@ -1,0 +1,6 @@
+// cpu0, the RPMsg master: a peer that connects to cpu1 over the RPMsg
+// endpoint both cores register (`CONFIG_NROS_ZENOH_RPMSG_ENDPOINT`).
+{
+  mode: "peer",
+  connect: { endpoints: ["rpmsg/nros"] },
+}

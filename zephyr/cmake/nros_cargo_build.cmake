@@ -1229,7 +1229,7 @@ function(nros_resolve_knobs)
             set(_nros_gd_kconfig 0)
         endif()
         set(_nros_gd_links "")
-        foreach(_nros_gd_l SERIAL CAN ISOTP TCP UDP_UNICAST UDP_MULTICAST WS)
+        foreach(_nros_gd_l SERIAL CAN ISOTP TCP UDP_UNICAST UDP_MULTICAST WS RPMSG)
             if(CONFIG_NROS_ZENOH_LINK_${_nros_gd_l})
                 string(TOLOWER "${_nros_gd_l}" _nros_gd_lc)
                 list(APPEND _nros_gd_links "${_nros_gd_lc}")
@@ -1243,7 +1243,7 @@ function(nros_resolve_knobs)
             CONFIG_NROS_ZENOH_LINK_ISOTP) AND
            NOT CONFIG_NROS_ZENOH_LINK_TCP AND NOT CONFIG_NROS_ZENOH_LINK_UDP_UNICAST AND
            NOT CONFIG_NROS_ZENOH_LINK_UDP_MULTICAST AND NOT CONFIG_NROS_ZENOH_LINK_WS AND
-           NOT CONFIG_NROS_ZENOH_RAWETH_TRANSPORT)
+           NOT CONFIG_NROS_ZENOH_LINK_RPMSG AND NOT CONFIG_NROS_ZENOH_RAWETH_TRANSPORT)
             set(_nros_gd_derived 0)
         else()
             set(_nros_gd_derived 1)

@@ -563,6 +563,16 @@ if(CONFIG_NROS_TRACE_CALLBACKS)
     set(_nros_trace_suffix ",trace-callbacks")
 endif()
 
+# The zenoh links that need Rust in the image, appended to the same four
+# feature strings as `_nros_trace_suffix` and for the same reason. The RPMsg
+# link's glue and receive ring are the crate zpico-link-rpmsg, reached as a
+# feature on the backend dependency (`<crate>/<feature>`, issue 1893), never
+# as a bare name nros-c would have to declare. Peer mode follows it on the
+# Rust side (`ZPICO_POINT_TO_POINT_PEER_SUPPORTED`).
+if(CONFIG_NROS_ZENOH_LINK_RPMSG)
+    string(APPEND _nros_trace_suffix ",nros-rmw-zenoh/link-rpmsg")
+endif()
+
 # issue 1529 -- the C++ parameter STORE, split from the six SERVICES.
 #
 # The C++ node facades (`rclcpp::Node::declare_parameter`,

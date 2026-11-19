@@ -334,6 +334,14 @@ if(CONFIG_NROS_ZENOH_SERIAL_TCM)
     zephyr_code_relocate(FILES ${_nros_serial_uart_c} LOCATION ITCM_TEXT)
     zephyr_code_relocate(FILES ${_nros_serial_uart_c} LOCATION DTCM_BSS)
 endif()
+# The RPMsg link between cores. Its board half is the module's binding over
+# Zephyr's RPMsg service; the link glue and receive ring are zpico-link-rpmsg,
+# which the cargo build pulls (nros_cargo_build.cmake).
+_nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_RPMSG)
+if(CONFIG_NROS_ZENOH_LINK_RPMSG)
+    zephyr_library_sources(${NROS_ZEPHYR_DIR}/nros_rpmsg_zephyr.c)
+    zephyr_include_directories(${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-link-rpmsg/include)
+endif()
 # RFC-0080 — CONFIG_NROS_ZENOH_LINK_CAN -> Z_FEATURE_LINK_CAN.
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_CAN)
 # RFC-0083 — CONFIG_NROS_ZENOH_LINK_ISOTP -> Z_FEATURE_LINK_ISOTP.

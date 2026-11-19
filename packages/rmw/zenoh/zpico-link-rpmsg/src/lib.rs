@@ -58,6 +58,7 @@ pub struct Backend {
     >,
     pub close: Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
     pub send: Option<unsafe extern "C" fn(*mut c_void, *mut c_void, *const u8, usize) -> c_int>,
+    pub wait: Option<unsafe extern "C" fn(*mut c_void, *mut c_void, u32) -> c_int>,
     pub ctx: *mut c_void,
 }
 
@@ -143,7 +144,13 @@ fn backend() -> Option<&'static Backend> {
 /// Install the board's binding: `nros_rpmsg_register_backend`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rpmsg_register_backend(backend: *const Backend) -> c_int {
-    if backend.is_null() {
+    // SAFETY: the caller passes a table that outlives the program, or NULL.
+    let Some(b) = (unsafe { backend.as_ref() }) else {
+        return -1;
+    };
+    // `wait` is required: without it the link's read answers at once when
+    // nothing has arrived, and the thread reading it spins.
+    if b.open.is_none() || b.send.is_none() || b.wait.is_none() {
         return -1;
     }
     match BACKEND.compare_exchange(
@@ -247,6 +254,26 @@ pub unsafe extern "C" fn _z_rpmsg_notify(_ch: *mut c_void) {}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_rpmsg_frame_size(_ch: *mut c_void) -> u32 {
     FRAME_SIZE as u32
+}
+
+/// Wait up to `timeout_ms` for a frame: the framed link's `rx_wait`. `true`
+/// when one is waiting.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _z_rpmsg_rx_wait(ch: *mut c_void, timeout_ms: u32) -> bool {
+    let ep = unsafe { endpoint(ch) };
+    let ready = || ep.head.load(Ordering::Acquire) != ep.tail.load(Ordering::Relaxed);
+    if ready() {
+        return true;
+    }
+    let board_ep = ep.board_ep.load(Ordering::Acquire);
+    if let Some(b) = backend()
+        && let Some(wait) = b.wait
+        && !board_ep.is_null()
+    {
+        // SAFETY: the board's `wait`, on the endpoint its `open` returned.
+        unsafe { wait(b.ctx, board_ep, timeout_ms) };
+    }
+    ready()
 }
 
 #[unsafe(no_mangle)]

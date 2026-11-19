@@ -1680,6 +1680,21 @@ needed_by = ["native_sim", "mps2_an385"]
 approx_mb = 16
 lines = ["3.7", "4.4"]
 
+[zephyr_module.open-amp]
+# Zephyr's RPMsg service (subsys/ipc/rpmsg_service) is OpenAMP, so an image
+# whose zenoh link is RPMsg (`CONFIG_NROS_ZENOH_LINK_RPMSG`) needs it. Only
+# the 3.7 line has been measured (the AN521 pair, phase-575 W4).
+why = "OpenAMP, under Zephyr's RPMsg service — the zenoh RPMsg link between cores"
+needed_by = ["mps2_an521"]
+approx_mb = 2
+lines = ["3.7"]
+
+[zephyr_module.libmetal]
+why = "OpenAMP's portability layer; open-amp does not build without it"
+needed_by = ["mps2_an521"]
+approx_mb = 1
+lines = ["3.7"]
+
 [zephyr_module.net-tools]
 why = "the native_sim networking lanes' host-side tooling"
 needed_by = ["native_sim"]

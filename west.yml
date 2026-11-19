@@ -54,6 +54,10 @@ manifest:
           - mcuboot
           # Tools
           - net-tools
+          # Inter-core messaging: Zephyr's RPMsg service, for the zenoh RPMsg
+          # link (the MPS2 AN521 pair).
+          - open-amp
+          - libmetal
 
     # Rust language support for Zephyr. Phase 199.2 — pin a specific SHA (not
     # `main`, which drifts): the support unit is the (zephyr × zephyr-lang-rust)

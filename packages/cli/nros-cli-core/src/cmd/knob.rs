@@ -399,7 +399,7 @@ const CONDITIONS: &[(&str, &str)] = &[
         "(NROS_ZENOH_LINK_SERIAL || NROS_ZENOH_LINK_CAN || NROS_ZENOH_LINK_ISOTP) && \
          !NROS_ZENOH_LINK_TCP && !NROS_ZENOH_LINK_UDP_UNICAST && \
          !NROS_ZENOH_LINK_UDP_MULTICAST && !NROS_ZENOH_LINK_WS && \
-         !NROS_ZENOH_RAWETH_TRANSPORT",
+         !NROS_ZENOH_LINK_RPMSG && !NROS_ZENOH_RAWETH_TRANSPORT",
         "every zenoh link the image builds is serial or CAN",
     ),
 ];

@@ -1,0 +1,16 @@
+/*
+ * The RPMsg service's transport: the MHU doorbell and a 32 KiB window of
+ * SRAM both cores map, at the same address on each (Zephyr's own
+ * rpmsg_service sample uses this layout).
+ */
+/ {
+	chosen {
+		zephyr,ipc_shm = &sramx;
+		zephyr,ipc = &mhu0;
+	};
+
+	sramx: memory@281F8000 {
+		compatible = "mmio-sram";
+		reg = <0x281F8000 0x8000>;
+	};
+};
