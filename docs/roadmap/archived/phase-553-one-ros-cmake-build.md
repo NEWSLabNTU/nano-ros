@@ -215,7 +215,7 @@ configure with `missing-source-metadata`.
   `example_metadata_coverage`, missed them because its classifier knew only
   `nano_ros_node_register(`; it now also knows `nano_ros_add_node(`, and its
   wider blind spot (82 `nano_ros_auto_add_library` packages) is
-  [issue 2552](../../issues/2552-metadata-coverage-classifier-misses-ament-auto-components.md).
+  [issue 2552](../../issues/archived/2552-metadata-coverage-classifier-misses-ament-auto-components.md).
 
 Measured 2026-11-14 (QEMU 11.0): `test_qemu_baremetal_capi_e2e`, 6/6 pass,
 both talkers' pub/sub pairs among them (each against the still cargo-rooted

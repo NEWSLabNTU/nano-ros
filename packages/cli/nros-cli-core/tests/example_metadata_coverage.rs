@@ -29,7 +29,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nros_cli_core::orchestration::{source_metadata::ComponentLanguage, workspace::Workspace};
+use nros_cli_core::orchestration::{
+    source_metadata::ComponentLanguage,
+    workspace::{CMAKE_NODE_VERBS, Workspace},
+};
 use ros_launch_manifest_model::SystemModel;
 
 /// Package shapes, classified from the manifests alone (no build).
@@ -37,7 +40,8 @@ use ros_launch_manifest_model::SystemModel;
 enum Shape {
     /// Declares a node through Cargo metadata — the canonical Rust Node pkg.
     RustNode,
-    /// Declares a node through `nano_ros_node_register` in CMake — C / C++.
+    /// Declares a node through one of the CLI's CMake node verbs
+    /// (`workspace::CMAKE_NODE_VERBS`) — C / C++.
     CmakeNode,
     /// Declares a node through a standalone/folded `[component]` table.
     ComponentToml,
@@ -85,10 +89,13 @@ fn classify(pkg_dir: &Path) -> Shape {
         .map(|l| l.split('#').next().unwrap_or(""))
         .collect::<Vec<_>>()
         .join("\n");
-    // phase-553 W5 — `nano_ros_add_node(` is the verb `nros new` emits and the
-    // bare-metal talkers moved to; matching only `nano_ros_node_register(`
-    // dropped them from the count the day they became CMake components.
-    if cmake_calls.contains("nano_ros_node_register(") || cmake_calls.contains("nano_ros_add_node(")
+    // The verbs the CLI's own CMake discovery reads, never a list kept here:
+    // phase-553 W5 had to add `nano_ros_add_node(` by hand, and issue 2552
+    // found the split spelling (`nros_components_register_node(`, beside
+    // `nano_ros_auto_add_library(`) still missing in 83 packages.
+    if CMAKE_NODE_VERBS
+        .iter()
+        .any(|verb| cmake_calls.contains(&format!("{verb}(")))
     {
         return Shape::CmakeNode;
     }
@@ -189,8 +196,11 @@ fn every_node_declaring_example_is_a_metadata_candidate() {
     // non-talker examples one-package workspaces whose cargo package is the
     // image's owned entry (no component table), 50 -> 40. phase-531 W6 made
     // the mps2-an385 bare-metal Rust talker a one-package workspace, 40 -> 39.
+    // Issue 2552 classified by the CLI's own verb list, which added the 83
+    // split-spelling C/C++ packages (`nano_ros_auto_add_library` +
+    // `nros_components_register_node`), 42 -> 125.
     assert!(
-        counted >= 39,
+        counted >= 125,
         "only {counted} node-declaring example packages found; the tree has far \
          more, so the classifier stopped recognising a shape"
     );

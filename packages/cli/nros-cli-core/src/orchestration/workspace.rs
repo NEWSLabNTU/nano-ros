@@ -870,6 +870,22 @@ fn stated_shape(explicit: Option<String>, verb_default: &str) -> Option<String> 
     Some(explicit.map_or_else(|| verb_default.to_string(), |s| s.to_ascii_lowercase()))
 }
 
+/// `nano_ros_node_register(NAME … CLASS …)`: the all-keyword registration.
+const VERB_NODE_REGISTER: &str = "nano_ros_node_register";
+/// `nano_ros_add_node(<name> CLASS … <sources…>)`: the ament-shape spelling.
+const VERB_ADD_NODE: &str = "nano_ros_add_node";
+/// `nros_components_register_node(<lib> PLUGIN … EXECUTABLE …)`: the split
+/// spelling, beside a `nano_ros_auto_add_library(<lib> …)` that builds `<lib>`.
+const VERB_REGISTER_NODE: &str = "nros_components_register_node";
+
+/// Every CMake call [`discover_cmake_node_metadata`] reads as declaring a node,
+/// and so the one list a reader that asks "does this CMakeLists declare a
+/// node?" uses. The discovery below reads exactly these verbs, so the two
+/// cannot disagree on which spellings count.
+// Issue 2552 -- a second, hand-kept list missed the split spelling in 83
+// example packages.
+pub const CMAKE_NODE_VERBS: [&str; 3] = [VERB_NODE_REGISTER, VERB_ADD_NODE, VERB_REGISTER_NODE];
+
 fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<CmakeNodeSummary>> {
     let cmakelists = root.join("CMakeLists.txt");
     if !cmakelists.is_file() {
@@ -879,7 +895,7 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
         .wrap_err_with(|| format!("read {}", cmakelists.display()))?;
     let stripped = strip_cmake_comments(&text);
     let mut out = Vec::new();
-    for call in extract_cmake_calls(&stripped, "nano_ros_node_register") {
+    for call in extract_cmake_calls(&stripped, VERB_NODE_REGISTER) {
         let Some(args) = parse_cmake_kwargs(&call) else {
             continue;
         };
@@ -913,7 +929,7 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
     // `nano_ros_add_node(<name> CLASS <ns::Class> [TYPED] <sources…> [DEPLOY <t>…])`.
     // Positional name + sources (unlike node_register's all-keyword form), so it needs
     // a dedicated parse. Language is inferred from the source extensions.
-    for call in extract_cmake_calls(&stripped, "nano_ros_add_node") {
+    for call in extract_cmake_calls(&stripped, VERB_ADD_NODE) {
         let Some(summary) = parse_add_node_call(&call, package_name, &cmakelists) else {
             continue;
         };
@@ -933,7 +949,7 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
             lib_sources.insert(lib, it.collect());
         }
     }
-    for call in extract_cmake_calls(&stripped, "nros_components_register_node") {
+    for call in extract_cmake_calls(&stripped, VERB_REGISTER_NODE) {
         let Some(summary) =
             parse_register_node_call(&call, package_name, &cmakelists, &lib_sources)
         else {
