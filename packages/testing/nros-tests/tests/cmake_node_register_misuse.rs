@@ -124,3 +124,40 @@ fn a_call_without_entities_never_reaches_the_tombstone() -> TestResult<()> {
     );
     Ok(())
 }
+
+/// Issue 2744 -- a package builds ONE carrier image per road. A second
+/// registration that names a DEPLOY (the package IS an image) used to be
+/// skipped by a `NOT TARGET` guard: built into a library nothing linked, while
+/// the image shipped with the first component only. It is refused, naming both.
+#[test]
+fn a_second_carrier_registration_is_refused() -> TestResult<()> {
+    let out = outcome("cmake_carrier_second_registration_refused")?;
+    assert!(
+        !out.success(),
+        "expected the configure to fail on a second carrier registration:\n{}",
+        out.stderr
+    );
+    // CMake re-wraps a message at its own width.
+    let err = out.stderr.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        err.contains("`second_exe`")
+            && err.contains("`first_exe`")
+            && err.contains("ONE firmware image"),
+        "expected the refusal to name both registrations, got:\n{}",
+        out.stderr
+    );
+    Ok(())
+}
+
+/// Issue 2744 -- the negative control: a workspace member's second component
+/// (no DEPLOY) is composed by a generated entry, so it is not refused.
+#[test]
+fn a_second_member_registration_without_deploy_is_not_refused() -> TestResult<()> {
+    let out = outcome("cmake_carrier_member_without_deploy")?;
+    assert!(
+        out.success(),
+        "a member's second component must configure:\n{}",
+        out.stderr
+    );
+    Ok(())
+}

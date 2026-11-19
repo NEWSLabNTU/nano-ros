@@ -5374,6 +5374,18 @@ dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
 output = ".verdict"
 
 [[compile_check_fixture]]
+id = "cmake_carrier_second_registration_refused"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_carrier_member_without_deploy"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
 id = "cmake_register_without_entities"
 builder = "cmake-configure-verdict"
 dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
