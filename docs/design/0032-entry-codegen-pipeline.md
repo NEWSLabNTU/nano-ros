@@ -33,9 +33,9 @@ superseded-by: null
 >   [RFC-0043](0043-entry-real-callback-binding.md): the executor callback
 >   registration, not the recording op set.
 >
-> §8's open items are closed (see there); the one the code did not answer, the
-> spin-period bound check, is
-> [issue 2527](../issues/2527-sched-task-spin-period-bound-not-checked.md).
+> §8's open items are closed (see there). The last one the code answered, the
+> spin-period bound check, closed with
+> [issue 2527](../issues/archived/2527-sched-task-spin-period-bound-not-checked.md).
 
 **Status:** Stable (2026-11-14): the sched-task contract, landed (phases 212, 228
 and 236, archived).
@@ -384,7 +384,7 @@ for the record, each with its outcome:
 - *Proc-macro emit of `run_sched_tasks`* — landed (`main_macro.rs`).
 - *FreeRTOS `run_sched_tasks`* — landed, with every other RTOS family
   (`nros-board-freertos/src/entry.rs`, NuttX, ThreadX, Zephyr).
-- *Spin-period bound check* — not built: [issue 2527](../issues/2527-sched-task-spin-period-bound-not-checked.md).
+- *Spin-period bound check* — built: both entry roads refuse a `spin_period` longer than the task's tightest member timer and derive an unset one from it (`nros_orchestration_ir::spin_period`, RFC-0079), [issue 2527](../issues/archived/2527-sched-task-spin-period-bound-not-checked.md).
 - *§3.1 boot-scaffold fixes (phase-212 O.1, issue 0045)* — overtaken: the panic
   provider is the image's RFC-0077 policy (`panic = "platform" | "halt" | "own"`),
   and a board states its own provider in its descriptor
