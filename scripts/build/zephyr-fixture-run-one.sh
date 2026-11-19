@@ -464,6 +464,15 @@ set +e
         python3 "$nros_root/scripts/build/check-unwind-table.py" \
             --log "$log" "$build_dir/zephyr/zephyr.exe" || rc=1
     fi
+    # Issue 2724 — the same class one step earlier: the native simulator's
+    # relocatable prelink (`zephyr.elf`, beside its `NSI/` dir) must keep its
+    # `.eh_frame` relocations in offset order, or the executable's link cannot
+    # parse it. Checked whether or not that link succeeded, because on
+    # aarch64 it FAILED on undefined symbols and the check above never ran.
+    if [ -d "$build_dir/zephyr/NSI" ] && [ -f "$build_dir/zephyr/zephyr.elf" ]; then
+        python3 "$nros_root/scripts/build/check-unwind-table.py" \
+            --prelink "$build_dir/zephyr/zephyr.elf" || rc=1
+    fi
     if [ "$rc" -eq 0 ] && [ "$use_west" = "1" ]; then
         printf '%s\n' "$sig" > "$sig_file"
     fi
