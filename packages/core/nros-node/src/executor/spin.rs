@@ -1705,7 +1705,11 @@ unsafe impl Sync for ComponentSlot {}
 /// most 64 entries regardless of per-entry sizing; the ready-sets are sized to
 /// this ceiling (stack-transient) so any entry slice up to 64 dispatches
 /// correctly. `EdfReadySet`'s presence bitmap independently asserts `N <= 64`.
-pub(crate) const MAX_CALLBACK_SLOTS: usize = 64;
+///
+/// Issue 2541 -- the value is `crate::config::CALLBACK_SLOT_CAPACITY`, where an
+/// image deriving more callbacks than it fails to compile; the carve caps
+/// every table at it (`storage::callback_slots`).
+pub(crate) const MAX_CALLBACK_SLOTS: usize = crate::config::CALLBACK_SLOT_CAPACITY;
 
 /// Whether a
 /// slot whose backend cannot attribute an arrival (XRCE, uORB) is probed after
@@ -2898,7 +2902,8 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// `backing` must be ≥ `sizing.u64_len()` words, stay alive for `'s`, and
     /// not be otherwise accessed while the executor lives (it aliases it).
-    /// `sizing.cbs` must be ≤ 64 (the `u64` ready-set bitmask ceiling).
+    /// A `sizing.cbs` above 64 (the `u64` ready-set ceiling) carves 64 slots
+    /// (`storage::callback_slots`), issue 2541.
     pub(crate) unsafe fn from_session_in(
         session: session::ConcreteSession,
         backing: &'s mut [MaybeUninit<u64>],
