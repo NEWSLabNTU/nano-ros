@@ -27,7 +27,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test zephyr_amp_rpmsg_qemu`
 
 use nros_tests::{
-    fixtures::{QemuProcess, build_zephyr_cortex_m_amp_pair},
+    fixtures::{QemuProcess, RequireFixture, build_zephyr_cortex_m_amp_pair},
     matrix::PlatformId,
     output::{LISTENER_LOG_PREFIX, TALKER_LOG_PREFIX},
     qemu::qemu_system_has_machine,
@@ -70,13 +70,7 @@ fn zephyr_amp_rpmsg_pair_delivers_across_cores() {
              pinned QEMU with `nros setup`"
         );
     }
-    let (cpu0, cpu1) = build_zephyr_cortex_m_amp_pair().unwrap_or_else(|e| {
-        panic!(
-            "the amp_bringup pair did not resolve. The lane gate already asserted \
-             these fixtures are built, so this is a real failure -- read the verdict \
-             before rebuilding: {e:?}"
-        )
-    });
+    let (cpu0, cpu1) = build_zephyr_cortex_m_amp_pair().require("the amp_bringup dual-core pair");
 
     let loader = format!("loader,file={}", cpu1.display());
     let boot = QemuBoot::table("arm", MACHINE)

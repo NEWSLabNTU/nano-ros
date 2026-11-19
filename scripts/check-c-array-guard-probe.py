@@ -96,6 +96,17 @@ PROBE_CONTEXT = {
         ],
         "defines": ["-DZENOH_LINUX=1", "-DZ_FEATURE_UNSTABLE_API=1"],
     },
+    # phase-575 W4 -- the RPMsg round-trip bench's sample buffer. Its headers
+    # are the generated rclc and std_msgs ones a `nros build` writes, which no
+    # checkout holds.
+    "packages/testing/nros-bench/rpmsg-latency/src/ping_pkg/src/Ping.c": {
+        "mode": "preprocess",
+        "cc": "cc",
+        "std": "c11",
+        "defines": [],
+        "why": "rclc and std_msgs headers are generated per workspace by `nros build`",
+        "enclosing": "none -- the guard sits at file scope",
+    },
     # phase-521 W6f -- the NSOS receive-notify watcher includes `tx_api.h`,
     # which needs the ThreadX port headers a host lane does not configure.
     "packages/drivers/net/nsos-netx/src/nsos_rx_notify.c": {

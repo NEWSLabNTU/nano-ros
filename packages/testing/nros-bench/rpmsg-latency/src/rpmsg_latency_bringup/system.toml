@@ -28,6 +28,7 @@ board = "mps2-an521-cpu0-zephyr"
 launch = "ping.launch.xml"
 os_config = ["prj-amp-master.conf"]
 rmw_config = "rmw/zenoh-rpmsg-connect.json5"
+env = { NROS_ZENOH_LINK_RPMSG = "1", NROS_ZENOH_LINK_TCP = "0", NROS_ZENOH_LINK_UDP_UNICAST = "0", NROS_ZENOH_LINK_UDP_MULTICAST = "0" }
 
 # The bench measures the link, so a publication leaves when it is made rather
 # than on the 50 ms batch flush.
@@ -39,6 +40,7 @@ board = "mps2-an521-cpu1-zephyr"
 launch = "pong.launch.xml"
 os_config = ["prj-amp-remote.conf"]
 rmw_config = "rmw/zenoh-rpmsg-listen.json5"
+env = { NROS_ZENOH_LINK_RPMSG = "1", NROS_ZENOH_LINK_TCP = "0", NROS_ZENOH_LINK_UDP_UNICAST = "0", NROS_ZENOH_LINK_UDP_MULTICAST = "0" }
 
 [image.amp_pong.knobs.zenoh.tx]
 batch = false

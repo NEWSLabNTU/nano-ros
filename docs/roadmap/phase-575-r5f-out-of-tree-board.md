@@ -256,8 +256,12 @@ Steps, in order:
      (`examples/workspaces/c/src/amp_bringup`). The pubsub pair delivered
      every message in order in 5 of 5 runs.
    - **Fit on cpu1** (`just mem-report`, the listener image): 336,312 of
-     479,232 B flash (70.2 %), 314,168 of 524,288 B RAM (59.9 %). The
-     largest RAM symbol is the zenoh session table, 82.7 KB.
+     479,232 B flash (70.2 %), 330,552 of 524,288 B RAM (63.0 %). The
+     largest RAM symbol is the zenoh session table, 82.7 KB. RAM was
+     314,168 B (59.9 %) until the board package took over the IPM, the
+     RPMsg service and main's stack: the module's Rust main-stack floor is
+     32 KiB, the board states it for every image, and the C images pay the
+     16 KiB difference.
    - **Round trip** (`packages/testing/nros-bench/rpmsg-latency`: cpu0 times
      500 ping/pong round trips with its cycle counter after 20 warm-up, one
      in flight; TX batching off). Superproject 5f8c91ae5e plus the change,

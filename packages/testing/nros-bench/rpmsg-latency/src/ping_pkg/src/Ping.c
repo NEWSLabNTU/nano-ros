@@ -41,6 +41,9 @@ static int64_t bench_ms(void) { return (int64_t)(bench_cycles() / 1000000u); }
 #ifndef NROS_BENCH_SAMPLES
 #define NROS_BENCH_SAMPLES 500
 #endif
+#if NROS_BENCH_SAMPLES < 1
+#error "NROS_BENCH_SAMPLES must be >= 1: it sizes a C array"
+#endif
 /* Samples discarded first: the session's own start-up traffic. */
 #define NROS_BENCH_WARMUP 20
 /* A ping unanswered this long is counted lost and the next one goes. */

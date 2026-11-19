@@ -256,8 +256,9 @@ pub unsafe extern "C" fn _z_rpmsg_frame_size(_ch: *mut c_void) -> u32 {
     FRAME_SIZE as u32
 }
 
-/// Wait up to `timeout_ms` for a frame: the framed link's `rx_wait`. `true`
-/// when one is waiting.
+/// Wait up to `timeout_ms` for a frame: the wait hook of zenoh-pico's framed
+/// link backend (`framed.h`), which its read calls when the ring is empty.
+/// `true` when one is waiting.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_rpmsg_rx_wait(ch: *mut c_void, timeout_ms: u32) -> bool {
     let ep = unsafe { endpoint(ch) };
