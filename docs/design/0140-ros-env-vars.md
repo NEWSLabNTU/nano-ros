@@ -1,128 +1,954 @@
 ---
 rfc: 0140
-title: "ROS 2 environment variables and what system.toml states"
+title: "One configuration registry: knobs, Kconfig, carriers and environment variables"
 status: Draft
 area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-581]
-amends: []
+amends: [rfc-0103, rfc-0049, rfc-0071, rfc-0133]  # 0103 D2b + D6 naming; 0049 central schema; 0071 D18 closed Zephyr set; 0133 knob catalog source
 supersedes: []
 superseded-by: null
 ---
 
-# RFC-0140 — ROS 2 environment variables and system.toml
+# RFC-0140 - One configuration registry: knobs, Kconfig, carriers and environment variables
 
-**Status:** Draft (2026-11-19). Nothing is built. It generalises one user
-ruling, made for `ROS_DOMAIN_ID` and implemented for the domain and the
-locator by issue 2714 (PR #4285). Every other
-row below is a proposal; the user's 2026-11-19 ruling on the open questions
-is recorded under "Decisions" at the end, and reopens Q1 with a wider
-scope. Tracked by
-[phase-581](../roadmap/phase-581-ros-env-vars.md).
+**Status:** Draft (2026-11-19). Nothing in Part A is built. The first draft
+of this RFC (same day) covered only ROS 2 environment variables; the user
+ruled its open questions Q2 to Q11 and reopened Q1 with a wider scope (see
+"Decisions"). This revision answers Q1: environment variables and build knobs
+are designed together, as rows of ONE registry with many contributors and ONE
+naming rule. The first draft's environment-variable design survives as
+Part B. Tracked by [phase-581](../roadmap/phase-581-ros-env-vars.md).
+
+Every count below was measured on `origin/main` at `365ad8d9e6` with
+`git grep` / `git show` unless the text says "not measured".
 
 ## Summary
 
-A ROS 2 user exports environment variables (`ROS_DOMAIN_ID`,
-`RMW_IMPLEMENTATION`, `ROS_LOCALHOST_ONLY`, `CYCLONEDDS_URI`, ...) and
-expects a node to act on them. A nano-ros image also has a `system.toml`
-that states many of the same facts. This RFC decides, per variable, which one
-wins, and how a user learns about it.
+nano-ros states one configuration fact under up to five names: a
+`system.toml` key, an `NROS_*` build carrier, a `CONFIG_NROS_*` Kconfig
+symbol, a cmake variable, and sometimes a run-time environment variable.
+RFC-0103 D2b and D6 made the build knobs mechanical from one registry row,
+but kept 14 Kconfig symbols and 15 three-level TOML keys as exceptions, and
+the registry covers neither the 68 hand-written Zephyr Kconfig settings nor
+any run-time variable. A board or RMW package that lives outside this tree can
+build with no core edit (RFC-0071 D16, RFC-0135), but cannot declare one knob
+or one environment variable of its own.
 
-The rule, from the user's ruling on `ROS_DOMAIN_ID`:
+This RFC decides:
 
-1. **The value `system.toml` states is respected.** It is the image's value
-   when nothing overrides it.
-2. **On a Linux process, an environment value overrides it.**
-3. **A mismatch is warned, never silent.** When both state a value and they
-   differ, the image says so at boot, once.
+1. **One registry, three row kinds** (D1): `knob` (build time), `statement`
+   (a `system.toml` selection such as `domain_id`), `env` (run time). One
+   namespace across all three.
+2. **Many contributors** (D2): core keeps `knobs.toml`; every board, platform
+   and RMW package ships its own rows in `nros-knobs.toml` beside its
+   descriptor, under its own owner word. Rows are merged when the catalog
+   loads; a collision is refused there, naming both files.
+3. **One naming rule** (D3, replacing RFC-0103 D2b's exceptions): a knob is
+   `<owner>.<name>`, two segments; every other spelling is mechanical;
+   sizes end `_bytes`; RMW-, platform- and board-specific rows carry their
+   package's owner word; a build name and a run name are never the same.
+4. **Renames now** (D4): 86 settings break the rule today (Appendix A). Each
+   is renamed, and its old spelling is refused on every road, naming the
+   new one. Retired spellings live on the row that replaced them, which folds
+   today's `legacy` column and `nros::retired_env::RETIRED_ENV_VARS` into one
+   list.
+5. **Generated views for contributors** (D5): in-tree rows keep their
+   committed views; an out-of-tree package's rows are rendered per build
+   into `<build>/nros/` (Kconfig through the `osource` the module already
+   has, cmake through an include, Rust and C through a catalog file and the
+   package's own build script).
+6. **Self-contained packages and an open RMW set** (D6): no central file is
+   edited to add a package's knobs, env rows, or (on Zephyr) RMW choice
+   member.
+7. **Hand-kept lists fold in or are exempted with a reason** (D7), held by a
+   gate.
 
-Every variable gets one of three dispositions:
-
-- **RESPECT**: the rule above.
-- **IGNORE**: nano-ros does not act on it. The docs say so, and a process
-  that finds it set prints a one-time notice naming what to use instead.
-- **REFUSE**: a set value stops the boot with a reason (the two retired
-  `ZENOH_*` aliases today; a security request nano-ros cannot honour).
-
-The decision lives in ONE place for C, C++ and Rust: a registry of every
-environment variable a nano-ros process reads, beside the build-time knob
-registry, and one small reader below every backend. A gate refuses a new
-environment read that does not go through it.
+Part B keeps the first draft's environment-variable rule (env over
+statement over default on a process with an environment, warn on mismatch,
+IGNORE with a notice, REFUSE where unsafe), now expressed as `env` rows.
 
 ## Motivation
 
 ### The worked example: issue 2714
 
 Issue 2714 found that a `linux` image dropped the `domain_id` and `locator`
-its `system.toml` states, on every language road. The Rust board's baked rung
-left them out on purpose (issue #48's reasoning: "keep the environment
-authoritative"), and the C/C++ host runners passed NULL and 0. A deployment
-that stated domain 7 got domain 0, with nothing said.
+its `system.toml` states. PR #4285 fixed it with one Rust decision
+(`nros::env::env_overrides_statement`) reached from both language roads, and
+a warning when the environment overrides the statement. The first draft of
+this RFC generalised that to every environment variable. The user then
+widened the question: an environment variable is a configuration name like
+any other, and nano-ros has too many of those, in too many places, spelled
+too many ways.
 
-The fix (PR #4285) puts the rule in three places:
+### What the user ruled (2026-11-19)
 
-| Piece | Where |
+1. Environment variables are designed together with knobs: one source of
+   truth and one naming scheme across `system.toml` keys, `NROS_*` build
+   carriers, `CONFIG_NROS_*` Kconfig symbols and run-time variables. The
+   earlier knob RFCs are read too (RFC-0004, RFC-0049, RFC-0098, RFC-0103,
+   RFC-0109, RFC-0114, RFC-0133, RFC-0135, RFC-0071).
+2. A setting that breaks the naming rule is RENAMED now; the old name is
+   refused at build time, naming the new one (the phase-484 W8 pattern).
+3. A custom board package and a custom RMW package are self-contained,
+   colcon-style packages that declare their own knobs and environment
+   variables without editing central in-tree files.
+
+### Where configuration names live today
+
+| Place | Count on `origin/main` | Generated from a registry? |
+| --- | --- | --- |
+| `packages/tooling/nros-zephyr-build/knobs.toml` | 112 `[[knob]]` rows: 105 public, 5 carrier, 1 internal, 1 retired; 54 name a `toml` key, 14 a `kconfig` symbol that is not `CONFIG_NROS_<id>`, 32 a `legacy` spelling | It IS the registry (RFC-0103 D2b) |
+| Committed views of it | `knob_registry.rs` (`KNOBS`), `cmake/NanoRosKnobRegistry.cmake`, the `zephyr/Kconfig` block between `# >>> knob registry >>>` and `# <<< knob registry <<<` (lines 1387 to 2981, 73 `config` entries), `zephyr/Kconfig.knob-prompts`; plus `knob_road_coverage.tsv` (111 rows, written by a test) | Yes |
+| `zephyr/Kconfig` outside that block | 77 `config` entries: 8 structural (the `NROS` menu, 3 `NROS_API` and 3 `NROS_RMW_BACKEND` choice members, Zephyr's own `LINKER_SORT_BY_ALIGNMENT`), 1 path (`NROS_CODEGEN_TOOL`), 68 settings | No |
+| `integrations/nuttx/Kconfig` | 10 `config` entries, all menus and choice members (RMW, ROS edition, API) | No |
+| `nros-platform-config/src/platform_config.rs` | 56 typed `Option<_>` fields in 11 tenant structs; 54 restate a registry row's `toml` key, 2 (`memory.heap_bytes`, `memory.app_stack_bytes`) have no row; `memory_env_key_for` maps those 2 to 4 platform spellings in two units (`NROS_FREERTOS_HEAP_KB`, `NROS_ZEPHYR_HEAP_SIZE`, ...) | Partly: a test holds the 54 equal to the `toml` column |
+| cmake cache entries and options named `NROS_*` (in `cmake/`, `zephyr/`, `*.cmake`, `CMakeLists.txt`) | 57 names; 30 cache entries are not `INTERNAL`, plus 1 `option()` (`NROS_BUILD_CODEGEN`) | Some (the `NROS_KNOB_*` ones are the cmake registry view) |
+| Build-script reads (literal `rerun-if-env-changed=` lines, outside `packages/cli`) | 46 nano-ros-shaped names (`NROS_*`, `ZPICO_*`, `XRCE_*`, `CYCLONE*`); 22 are not registry rows or legacy spellings (`NROS_LOCATOR`, `NROS_DOMAIN_ID`, `NROS_ZPICO_DEBUG`, `ZPICO_NO_SMOLTCP`, `ZPICO_MULTICAST_TRANSPORT`, `NROS_LINK_IP`, `NROS_BOOT_REPORT`, the `NROS_DECLARED_*` and `NROS_ENTITY_*` carriers, ...). A lower bound: reads through the `knob()` helper are not literal | No |
+| Run-time environment reads | about 25 names (Appendix B); `NROS_ENTRY_SPIN_MS` alone has 7 readers with 4 spellings of the read | No registry |
+| Retired run-time names | `nros::retired_env::RETIRED_ENV_VARS`, 2 rows (`ZENOH_LOCATOR`, `ZENOH_MODE`) | A separate list |
+| Zephyr RMW set | `ZEPHYR_MODULE_BACKENDS = ["zenoh", "xrce", "cyclonedds"]` (`rmw_descriptor.rs`) and the hand-written `choice NROS_RMW_BACKEND` | Closed by RFC-0071 D18 |
+
+### What the measurement says
+
+1. **The mechanical rule has holes.** 30 of 112 registry rows have an env
+   stem that is not the mechanical form of their TOML key: 13 because the
+   key has three segments (`zenoh.wire.frag_max_size` is `NROS_ZENOH_FRAG_MAX_SIZE`,
+   `zenoh.limits.service_timeout_ms` is `NROS_SERVICE_TIMEOUT_MS`), 17
+   because the stem's group differs from the key's (`params.max_parameters`
+   is `NROS_MAX_PARAMETERS`; `net.max_sockets` is `NROS_SMOLTCP_MAX_SOCKETS`).
+   14 more carry a Kconfig symbol that is not the stem (RFC-0103 D2b kept
+   them so no guest `prj.conf` broke).
+2. **Units are spelled five ways.** `memory.heap_bytes` (bytes),
+   `NROS_FREERTOS_HEAP_KB` (KiB), `NROS_ZEPHYR_HEAP_SIZE` (bytes),
+   `NROS_EXECUTOR_BACKING_U64S` (8-byte words); `_SIZE`, `_LEN` and
+   `_BUF_SIZE` stand for bytes in 26 more registry rows. A queued PR (#4355, not read here) adds
+   `THREADX_BYTE_POOL_KB`.
+3. **An owner word is missing or doubled.** Zenoh-only rows with no
+   `ZENOH_` (`KEYEXPR_STRING_SIZE`, `GRAPH_MAX_ENTITIES`); Cyclone spelled
+   `CYCLONE`, `CYCLONEDDS` and `RMW_CYCLONEDDS`; parameters spelled `PARAM`
+   and `PARAMS`; the smoltcp rows spelled `net` in TOML and `SMOLTCP` in env.
+4. **Build and run share names.** `NROS_LOCATOR` is a run-time variable on a
+   Linux process (`nros::env::env_rung`) and a build-time `option_env!` in
+   `nros::init::Context::baked` and two board configs (`mps2-an385`,
+   `nuttx-qemu`); its build-time sibling `NROS_DOMAIN_ID` is read by
+   `option_env!` in five. `NROS_NODE_NAME`
+   likewise (`nros-board-mps2-an385/src/rtic.rs`). `ENTRY_SPIN_MS` is a
+   registry knob (class `internal`) whose only readers by name are 7
+   run-time `getenv`s.
+5. **A package cannot declare a row.** A board's `[knobs]` accepts only
+   registry rows (issue 2194's `Knobs::registry` map is keyed on them); the
+   one open map, `Knobs::backends`, accepts only `[knobs.<backend>.tx]`. An
+   RMW descriptor has no knob or env field. To add a knob a package edits
+   `knobs.toml`, re-runs the generator over four committed views, edits the
+   typed tenant struct, and on Zephyr edits the module `Kconfig` choice and
+   `ZEPHYR_MODULE_BACKENDS`. RFC-0049 called a central file "the
+   out-of-tree wall"; for knobs the wall is still standing.
+
+## Part A - The registry
+
+### D1 - One registry, three row kinds, one namespace
+
+Every configuration name nano-ros defines or reads is a row of one registry.
+A row is one of three kinds, and the kind fixes its phase:
+
+| Kind | Phase | What it is | User spelling | Derived spellings |
+| --- | --- | --- | --- | --- |
+| `knob` | build | A sizing, policy or feature value with a built-in default and the RFC-0049 ladder (builtin < platform < board < image) | `[knobs.<owner>] <name>` in a platform or board descriptor; `[image.<id>.knobs.<owner>] <name>` in `system.toml` | build env `NROS_<OWNER>_<NAME>`, Kconfig `CONFIG_NROS_<OWNER>_<NAME>`, cmake override `-DNROS_OVERRIDE_<OWNER>_<NAME>` |
+| `statement` | build | A `system.toml` selection: `domain_id`, `locator`, `rmw`, and the launch-declared `node_name` and `node_namespace` | `[system]` / `[image.<id>] <key>`, or the launch file | build carrier `NROS_ENTRY_<KEY>`; Kconfig `CONFIG_NROS_<KEY>` where the Zephyr module consumes the statement itself |
+| `env` | run | A variable a running process reads | the variable itself | none |
+
+The schema, in the files D2 names:
+
+```toml
+owner = "zenoh"                 # the file's one owner word (D2)
+
+[[knob]]
+key = "zenoh.frag_max_bytes"    # <owner>.<name>; every spelling derives from it
+scope = "image"                 # RFC-0133: image | board | platform
+class = "public"                # RFC-0133: public | carrier | internal | retired
+type = "int"
+prompt = "Maximum reassembled message size (bytes)"
+kconfig_if = "NROS_RMW_ZENOH"   # framework condition, as today
+retired = [                     # D4: every old spelling this row replaces
+  "toml:zenoh.wire.frag_max_size",
+  "env:NROS_ZENOH_FRAG_MAX_SIZE",
+  "env:ZPICO_FRAG_MAX_SIZE",
+  "kconfig:CONFIG_NROS_FRAG_MAX_SIZE",
+]
+
+[[env]]
+name = "ZENOH_SESSION_CONFIG_URI"
+foreign = "zenoh"               # defined by another project; never renamed
+disposition = "respect"         # Part B: respect | ignore | refuse | listed
+stated = "rmw_config"           # the statement it is compared with
+parse = "str"
+```
+
+`[[statement]]` rows exist only in core's file (the `system.toml` schema is
+core's). `id`, `toml` and `kconfig` stop being authored: `key` is the one
+authored name, and the generator refuses a row that states a spelling D3
+would derive. RFC-0133's catalog fields (`scope`, `class`, `prompt`, `help`,
+the derived `default`, `values`, `surface`) are unchanged.
+
+**One namespace.** Every spelled name of every row (TOML key, build env,
+Kconfig symbol, cmake override, run-time variable, and every retired
+spelling) is unique across the merged registry. The loader checks it; a
+second use is a load error naming both rows (D2 rule C3).
+
+**Why kinds, not one shape.** A statement is not a knob: it has no ladder
+(the platform and board never state a domain), and its build carrier is
+`NROS_ENTRY_<KEY>`, which already exists for the two that have one
+(`NROS_ENTRY_LOCATOR`, `NROS_ENTRY_DOMAIN_ID`, read by
+`nros-board-mps2-an385/src/config.rs`). A run-time variable has no carrier at
+all. Folding the three into one row shape would leave most fields empty on
+most rows; three kinds in one namespace keeps one name per fact and one
+loader.
+
+### D2 - Owners: who may declare a row
+
+**The core file stays** (`packages/tooling/nros-zephyr-build/knobs.toml`).
+It declares the `[[statement]]` rows, the core knob and env rows, and the
+foreign env rows of ROS 2 itself (`ROS_*`, `RMW_IMPLEMENTATION`,
+`RCUTILS_*`) and of Rust (`RUST_LOG`). It lists the core owner words in an
+`[owners]` table, one line of description each. The list starts as the
+first segments core rows use today, in the registry and in the hand Kconfig
+and run-time reads D7 folds: `action`, `arena`, `bless`, `boot`,
+`bridge`, `capability`, `census`, `console`, `declared`, `entity`, `entry`,
+`executor`, `fault`, `graph`, `heap`, `init`, `link`, `log`, `memory`,
+`monitor`, `net`, `params`, `profile`, `pubsub`, `rmw`, `runtime`,
+`service`, `session`, `sntp`, `subscriber`, `trace`, `violation`. Adding a core owner word is a breaking change and is
+named in the changelog, because a downstream package may already hold it.
+
+**A package file.** A board, platform or RMW package declares its rows in
+`nros-knobs.toml` beside its descriptor (`nros-board.toml`,
+`nros-platform.toml`, `nros-rmw.toml`). The file is found by the scan that
+already finds the descriptor: the board catalog's roots (RFC-0135 D5), the
+platform search path (RFC-0049, RFC-0086), the RMW provider scan (RFC-0071
+D5). No descriptor gains a field for it, because a field would be a second
+place naming the same file; the file's presence is the declaration, and its
+absence means "no rows".
+
+**The owner word is derived, not chosen:**
+
+- an RMW package: its RMW name, the word an image writes in `rmw = "<name>"`
+  (`zenoh`, `xrce`, `cyclonedds`, `uorb`, `acme`);
+- a platform package: its platform name (`freertos`, `threadx`, `zephyr`,
+  `nuttx`, `posix`);
+- a board package: one of the board keys it defines, with `-` read as `_`
+  (`nucleo-f767zi` gives `nucleo_f767zi`). A package that defines several
+  keys names which one in its `owner` line; the loader checks that it is one
+  of them.
+
+The file's `owner` line must equal the derived word; it is stated so the file
+reads on its own, and checked so it cannot drift.
+
+**Collision rules, all checked when the catalog loads** (every `nros`
+command that loads it: `configure`, `build`, `knob list`, `knob show`):
+
+- **C1 - one owner, one package.** Two different packages with the same
+  owner word are refused, naming both files and their roots. The SAME
+  package found in two roots is not a collision: RFC-0135 D5's precedence
+  picks the first and reports the shadowed copy (identity is the package
+  name, RFC-0087).
+- **C2 - a row stays under its owner.** A package row whose key does not
+  start with the file's owner word, or a core row whose owner is not in
+  `[owners]`, is refused. A package cannot declare a core owner's row, and
+  core cannot take a package's word.
+- **C3 - one spelling, one row.** Any spelled name used twice (including a
+  retired spelling, a foreign variable, and a resource variable from
+  `nros-sdk-index.toml`, RFC-0103 D6) is refused, naming both rows.
+- **C4 - foreign rows have one declarer.** A foreign variable is declared
+  by core (ROS 2, rcutils, Rust) or by the package whose library defines it
+  (`ZENOH_*` by the zenoh package, `CYCLONEDDS_URI` by the cyclonedds
+  package). A second declarer is C3.
+
+**What core may read.** Hand-written core code never reads a
+package-owned name. A generated view is not a reader: the Zephyr module's
+generated forwarding of `CONFIG_NROS_ZENOH_*` into cargo's environment
+(today `zephyr/cmake/nros_cargo_build.cmake`) is rendered from the rows and
+stays in core. The gate (D9 G3) holds this; today one row breaks it
+(`SERVICE_TIMEOUT_MS`, TOML key `zenoh.limits.service_timeout_ms`, is also
+read by `nros-c`), and W0 decides whether it is a core fact
+(`service.timeout_ms`) or a zenoh one.
+
+**The in-tree packages move their rows out.** zenoh, xrce, cyclonedds,
+freertos, threadx and zephyr rows leave the core file for their packages'
+`nros-knobs.toml`. This is the proof that the contributor path works; the
+committed views are rendered from the merged in-tree set and stay
+byte-identical apart from row order.
+
+### D3 - The naming rule (amends RFC-0103 D2b and D6)
+
+This replaces the "Knobs" bullet of RFC-0103 D6 and the "the Kconfig symbol
+is a COLUMN, not the id" paragraph of D2b. RFC-0103's "no pairs table, no
+aliases" stands and now has no exceptions.
+
+- **N1 - Two segments.** A knob's key is `<owner>.<name>`: exactly two
+  segments, lower snake case, `<owner>` an owner word from D2. A TOML
+  sub-table (`[knobs.zenoh.tx]`, `.wire`, `.limits`) is a third segment and
+  is not allowed. Grouping for display is the row's `help` and RFC-0133's
+  listing, not its name. Reason: the first segment is what makes ownership
+  checkable (C2), and a third segment either leaks into every spelling
+  (`CONFIG_NROS_ZENOH_WIRE_FRAG_MAX_SIZE`) or is silently dropped from some,
+  which is how 13 of today's 30 mismatches arose.
+- **N2 - Every other spelling is mechanical.** From key `a.b`: build env
+  `NROS_A_B`, Kconfig `CONFIG_NROS_A_B`, cmake override
+  `-DNROS_OVERRIDE_A_B`, image TOML `[image.<id>.knobs.a] b`. A statement's
+  carrier is `NROS_ENTRY_<KEY>` and its Kconfig symbol `CONFIG_NROS_<KEY>`.
+  A C macro inside a backend (`ZPICO_*`, `XRCE_*`) is generated by that
+  backend's build and is not a configuration name; it is out of scope of the
+  rule, and it is never read from the environment.
+- **N3 - The owner is whoever's code it configures.** A row whose readers
+  are all in one RMW, platform or board package is owned by that package,
+  so its name carries that package's word (`zenoh.keyexpr_string_bytes`, not
+  `KEYEXPR_STRING_SIZE`). A row read by core code is a core row, even when
+  only one backend's Kconfig section shows it today: `SERVICE_INBOX_BYTES` is
+  read by `nros-node`, so it stays `service.inbox_bytes`. One subject has one
+  owner word: `params`, not `param`; `cyclonedds`, not `cyclone` or
+  `rmw_cyclonedds`; `net`, not `smoltcp`.
+- **N4 - Units.** A memory size ends `_bytes` and its value is in bytes. A
+  duration ends `_ms` or `_us`. A count has no unit suffix; `_depth` is a
+  queue's entries, `_len` is a number of elements (never bytes). A short
+  allowlist in the lint holds terms whose unit the term fixes: `mtu` (bytes),
+  `baud`, `frames`. Banned endings: `_kb`, `_kib`, `_size`, `_buf_size`,
+  `_buffer` with no unit, `_u64s`. A carrier that a platform needs in
+  another unit (FreeRTOS `configTOTAL_HEAP_SIZE`, a KiB stack) is converted
+  at the one place that writes the RTOS configuration, never in the name.
+- **N5 - A build name is never a run name.** No spelled build name (knob or
+  statement carrier) equals a spelled `env` row. A run-time override of a
+  statement is `NROS_<KEY>` (`NROS_LOCATOR`, `NROS_RMW`, `NROS_NODE_NAME`)
+  or the foreign variable (`ROS_DOMAIN_ID`); the statement's build carrier is
+  `NROS_ENTRY_<KEY>`. Any other nano-ros `env` row is `NROS_<OWNER>_<NAME>`
+  from a two-segment key, like a knob, and the uniqueness check (C3) keeps it
+  apart from the build rows.
+- **N6 - One prefix.** Every name nano-ros defines starts `NROS_` (env and
+  cmake) or `CONFIG_NROS_` (Kconfig). A name another project defines
+  (`ROS_*`, `RMW_*`, `RCUTILS_*`, `RUST_LOG`, `ZENOH_*`, `CYCLONEDDS_URI`) is
+  a `foreign` row, never renamed, and nano-ros invents no name in another
+  project's prefix: the six `ZENOH_*` variables nano-ros invented are retired
+  (Decision 4).
+- **N7 - A spelling is never reused.** A retired spelling stays in the
+  registry for good (D4), so C3 refuses a new row that would take it.
+- **N8 - A resource location is not a setting.** Its one variable is the
+  `env` of its row in `nros-sdk-index.toml` (RFC-0103 D6:
+  `NROS_HOME`, `FREERTOS_DIR`, ...). The lint reads the index so a setting
+  cannot take a resource's name, and resource variables are outside N1 to N4.
+
+**What the rule costs.** Appendix A lists every setting on `origin/main`
+that breaks N1 to N6: **86**. 53 are registry rows (52 renamed, 1 retired),
+12 are hand-written Zephyr Kconfig symbols, 9 are run-time variables (3
+renamed, the 6 retired `ZENOH_*` of Decision 4), 6 are build carriers outside
+the registry, and 6 are the demand symbols RFC-0103 D2b kept as a column
+(staged last, see below). 45 of the 53 registry rows change a TOML key a
+user writes in `system.toml` or a descriptor; the rest of the 86 change only
+carriers, Kconfig symbols and run-time variables.
+
+**The demand symbols.** RFC-0103 D2b measured that the six zenoh pools
+(`ZENOH_MAX_PUBLISHERS`, `_SUBSCRIBERS`, `_QUERYABLES`, `_LIVELINESS`,
+`_PENDING_GETS`, `_LARGE_SUBSCRIBERS`) read the RMW-agnostic DEMAND symbol
+`CONFIG_NROS_MAX_*`, while the env carrier is the pool after its floor
+(issues 1015/1033). That is two facts sharing one Kconfig name, which is why
+D2b needed a column. Under N3 they are two rows: a core `entity.max_<x>`
+(the demand, `CONFIG_NROS_ENTITY_MAX_<X>`, replacing the
+`NROS_MAX_<X>` cmake carriers in `cmake/NanoRosMessageBounds.cmake` and
+`cmake/NanoRosCodegenCore.cmake`) and the zenoh pool `zenoh.max_<x>`
+(class `carrier`, derived from the demand through the floor, no Kconfig
+symbol). The readers of the `NROS_MAX_*` carriers were found but not
+enumerated here, so this split is its own stage after a census (phase W7).
+
+### D4 - Retired spellings live on the row that replaced them
+
+A row's `retired` list holds every spelling it replaced, tagged by road:
+`toml:`, `env:`, `kconfig:`, `cmake:`, `run:`. A unit change carries its
+factor, so the refusal can say what to write:
+
+```toml
+retired = [{ spelling = "env:NROS_FREERTOS_HEAP_KB", factor = 1024 }]
+```
+
+A spelling retired with no replacement row (today `ZENOH_LEASE_PRIORITY`,
+class `retired`) stays a `class = "retired"` row with an `instead` text.
+
+This is the one list. Today's 32 `legacy` spellings fold into it, and so do
+the two rows of `nros::retired_env::RETIRED_ENV_VARS`, which become the
+`retired` entries of the `NROS_LOCATOR` and `NROS_SESSION_MODE` env rows.
+`RETIRED_ENV_VARS` becomes a generated view, so the gate
+`check-retired-runtime-aliases` keeps its subject.
+
+**Where a retired spelling is refused, by road.** Each check reads the
+merged registry, so a package's retired spellings are refused like core's:
+
+| Road | Who refuses | What the user sees |
+| --- | --- | --- |
+| `toml:` | the knob parser (platform, board, image tables) | `[knobs.zenoh.wire] frag_max_size` is retired: write `[knobs.zenoh] frag_max_bytes` |
+| `env:` (build) | `nros configure` / `nros build`, once per configure, over the build shell; and the one ladder (`nros_zephyr_build::knob`) and `cmake/NanoRosKnobEnv.cmake` for a build not started by `nros` | `NROS_FREERTOS_HEAP_KB=64 is retired: set memory.heap_bytes = 65536 (KiB x 1024)` |
+| `kconfig:` | the module hook, before Kconfig runs, over the merged conf files and Zephyr's `CLI_CONFIG_*` cache, in a project with a `system.toml` and in a guest without one | `CONFIG_NROS_FRAG_MAX_SIZE is retired: CONFIG_NROS_ZENOH_FRAG_MAX_BYTES` (guest) or the `system.toml` key (managed project) |
+| `run:` | the `nros-env` startup sweep (Part B, D11) | the boot stops: `ZENOH_LISTEN is retired: use ZENOH_CONFIG_OVERRIDE='listen/endpoints=[...]'` |
+
+Retirement is permanent (phase-484 W8's ruling of 2026-10-14: an unlisted
+old name would be ignored, not refused). The hook refuses a retired Kconfig
+symbol itself because what Zephyr does with an assignment to an undefined
+symbol was not measured for this RFC (W0 measures it on 3.7 and 4.4); the
+design does not depend on the answer.
+
+Two run-time names stay as run-time variables while their build-time
+meaning is retired: `NROS_LOCATOR` and `NROS_NODE_NAME`. A build that finds
+them in its shell does not refuse (a developer exports them to RUN a hosted
+image); for an image with no process environment it prints Part B's D10
+note instead. `NROS_DOMAIN_ID` never was a run-time variable, so a build
+refuses it, naming `[system] domain_id` and the override channel.
+
+### D5 - Generated views, for in-tree and out-of-tree rows
+
+| View | In-tree rows (core + in-tree packages) | An out-of-tree package's rows |
+| --- | --- | --- |
+| Rust knob table (`KNOBS` in `knob_registry.rs`) | committed, as today | not in the table. `nros configure` writes the image's merged catalog to `<build>/nros/knobs/catalog.toml` and names it to every road as `NROS_KNOB_CATALOG` (a `relative = true` cargo `[env]` row and a cmake `-D`, the channel the sizing descriptor already uses, RFC-0100 D4). The ladder `nros_zephyr_build::knob()` answers a name the table lacks from that file |
+| A package's own Rust readers | n/a | the package's build script calls `nros_knob_build::emit(manifest_dir)`, which reads the package's own `nros-knobs.toml` and writes `$OUT_DIR/nros_knobs.rs` (typed `static` rows, env rows included) for the crate to `include!` |
+| cmake registry (`NanoRosKnobRegistry.cmake`) | committed | `<build>/nros/knobs/registry.cmake`, included right after the committed file |
+| Zephyr Kconfig | committed block in `zephyr/Kconfig`, plus `Kconfig.knob-prompts` for a guest | `<build>/nros/Kconfig.packages`, written by the module hook and `osource`d by the module `Kconfig` beside the existing `osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml"` (line 1404). RFC-0103 D2b measured that shape on 3.7 and 4.4 |
+| C header of env names (`<nros/env_rows.h>`) | committed | `<build>/nros/knobs/<owner>_env.h` |
+| The image's run-row table (Part B's startup sweep) | n/a | generated into the image's entry, which already lists the image's backends (RFC-0071 D13); it names core rows and the linked packages' rows |
+| `nros knob list` / `show`, the book page | the book page is committed (phase-569 W2c) | `nros knob list` reads the merged catalog of the workspace (provider scan, memoised as `build/nros/providers.json` already is), with a package and root column |
+| `knob_road_coverage.tsv` | committed, written by its test | not covered: a package's road coverage is its own CI's |
+
+**Limits, stated.**
+
+- A core crate's compiled table can never hold an out-of-tree row; that is
+  why the ladder falls through to a file. Compiling package rows into
+  `KNOBS` per image was rejected (Alternatives): it makes the build helper's
+  fingerprint depend on the image's package set, the 0491 class.
+- A Zephyr GUEST project (RFC-0072: no `system.toml`, so no `nros configure`
+  and no `Kconfig.packages`) sees no out-of-tree package's knobs through the
+  nano-ros module. A package that wants guest support is a Zephyr module of
+  its own; `nros knob render --kconfig <package>` writes that module's
+  `Kconfig` from its `nros-knobs.toml`, and the package commits it.
+- NuttX's `Kconfig` holds only menus and choices; NuttX images take knobs
+  through the cargo and cmake carriers, so a package's knobs reach a NuttX
+  image the same way as any other road. No NuttX-specific view is designed.
+
+### D6 - Self-contained board and RMW packages; an open RMW set
+
+**Central files a package no longer touches**, each with what replaces it:
+
+| Central file today | Replaced by |
 | --- | --- |
-| The precedence (env > baked > default) | `nros_node::ExecutorConfig::try_resolve_with`, unchanged; reached through `nros::env::try_resolve_hosted` |
-| The pure mismatch decision | `nros::env::env_overrides_statement`, returning `StatementOverrides { domain_id, locator }` |
-| The warning | `nros::env::warn_env_overrides_statement`, through `nros_log::log_warn!` on logger `nros`: `ROS_DOMAIN_ID=7 overrides system.toml's domain_id=42` |
-| Rust caller | `nros-board-linux::resolve_hosted_boot` (both funnels) |
-| C/C++ caller | `nros-cpp`'s `warn_env_overrides_stated`, called by each `nros_board_native_run_*_in` runner, and exported as `nros_cpp_warn_env_overrides_stated` for `rclcpp::init_in` |
+| `knobs.toml` | the package's `nros-knobs.toml` (D2) |
+| the four committed views | per-build views (D5) |
+| `platform_config.rs` typed tenants | the generic `Knobs::registry` map (issue 2194's), keyed by row and validated against the merged catalog, becomes the only parsed shape for platform and board files too. In-tree rows get generated typed accessors, so build scripts keep a typed read. An unknown key is refused against the catalog, which keeps RFC-0049's "unknown keys fail loud" (`deny_unknown_fields` is what cannot see a package's rows) |
+| `knob_road_coverage.tsv` | not needed for package rows (D5) |
+| `zephyr/Kconfig`'s `choice NROS_RMW_BACKEND` and `ZEPHYR_MODULE_BACKENDS` | generated from the descriptors, below |
+| a platform's `[arch.*]` | RFC-0135 D4 (not this RFC) |
 
-So the decision has one implementation, in Rust, and both language roads
-reach it. That is the right shape, and this RFC keeps it.
+**An image states a package's knob** exactly as a core one:
+`[image.<id>.knobs.acme] pool_slots = 4`. A key whose owner is not a package
+of this image is refused, naming the owner and the packages the image links.
 
-**Can `nros::env` be THE one implementation point for every variable? Not
-where it sits.** Measured (below), nano-ros reads environment variables in at
-least eleven runtime files, and four of them cannot reach `nros::env`:
+**The open RMW set (amends RFC-0071 D18).** D18's `[rmw.zephyr]
+module_backend = "zenoh"` stays for a backend built over an existing module
+member (the `acme` fixture). A backend with its own Zephyr code adds:
 
-- `nros-rmw-zenoh` (`src/shim/session.rs`) is below the `nros` crate in the
-  dependency graph; it reads `ZENOH_SESSION_CONFIG_URI` and seven `ZENOH_*`
-  names itself.
-- The Cyclone backend is C++ (`nros-rmw-cyclonedds/src/env_compat.hpp`,
-  `service.cpp`, `graph.cpp`); it can call a C symbol, not a Rust module.
-- `nros-rmw-cffi` (`src/lib.rs`, `NROS_RMW_TRACE_OPEN`) and the XRCE C
-  transport (`transport_posix_serial.c`, `XRCE_SERIAL_BAUD`) are below it too.
-- Cyclone DDS's own config loader reads `CYCLONEDDS_URI` inside third-party
-  code, which nano-ros does not edit.
+```toml
+[rmw.zephyr]
+module = "zephyr"     # the package directory that holds its own module.yml
+```
 
-Also, `nros::env` is compiled only for `target_os = "linux"`
-(`packages/api/nros/src/lib.rs`, `#[cfg(target_os = "linux")] pub mod env`),
-and its module comment claims "Every env var nano-ros honours is read HERE
-and nowhere else", which the inventory shows is false. D4 moves the reader
-and the decision one level down, so every reader can reach them, and keeps
-`nros::env` as the boot-config ladder that calls them.
+The hook adds that directory to `ZEPHYR_EXTRA_MODULES`, and
+`Kconfig.packages` adds the member `NROS_RMW_<OWNER>` to
+`choice NROS_RMW_BACKEND`. Whether a named choice declared, with its prompt,
+in `zephyr/Kconfig` accepts a member from an `osource`d file is NOT measured
+(RFC-0103's M1 measured a different shape, a prompt-less redefinition, and
+found it red). W0 measures it as M5 on 3.7 and 4.4. If it is red, the
+committed choice gains one fixed member, `NROS_RMW_EXTERNAL`, plus a string
+`NROS_RMW_EXTERNAL_NAME`, and the package's module keys on the name. Either
+way `ZEPHYR_MODULE_BACKENDS` stops being a literal: it is the in-tree
+members plus the module-providing packages the scan finds, and D18's unit
+test compares it with the rendered choice. NuttX's RMW choice
+(`integrations/nuttx/Kconfig`) is generated from the in-tree descriptors the
+same way; an out-of-tree NuttX RMW is not designed here.
 
-### The three questions a user asks
+### D7 - Hand-kept lists fold in or are exempted with a reason
 
-- "I exported X. Did my node use it?" Today the answer is in the code. Only
-  the boot line (`nros::env::report`: `boot config: domain N (env), locator
-  ... (baked), rmw ... (default)`) says where three fields came from.
-- "My `system.toml` says Y. Why does the node use something else?" Before
-  issue 2714, nothing said. After it, two fields warn.
-- "Does this variable do anything on my board?" On an embedded target, never;
-  nothing says so.
+| List | Disposition |
+| --- | --- |
+| 68 settings in `zephyr/Kconfig` outside the generated block | Fold into rows. The generator already renders `kconfig_if` and `kconfig_attrs` (`depends on`, `select`, conditional defaults), which RFC-0049's amendment of 2026-11-14 made the reason a generator is acceptable. 12 of the 68 are renamed in the same stage (Appendix A.2); the rest already satisfy N1 to N6 once their first segment is a declared owner |
+| 9 other entries there | Exempt, with the reason in the exemption file: the `NROS` menu and the `NROS_API` choice (structure, not settings); Zephyr's own `LINKER_SORT_BY_ALIGNMENT` (not ours); `NROS_CODEGEN_TOOL` (a path, RFC-0103 D6); the 3 `NROS_RMW_BACKEND` members until D6 generates them |
+| 10 entries in `integrations/nuttx/Kconfig` | Exempt (menus and choices); the RMW choice is generated by D6 |
+| 56 typed tenant fields | Folded by D6's generic map; the 2 `memory.*` fields get rows (Appendix A.1) and `memory_env_key_for` is deleted |
+| 32 `legacy` spellings and `RETIRED_ENV_VARS` | Folded by D4 |
+| `Knobs::backends` (`[knobs.<backend>.tx]`, a third segment; empty in every in-tree file per its own doc comment) | Replaced by the backend package's own rows (`[knobs.<backend>] tx_batch`) |
+| 31 user-settable cmake `NROS_*` cache entries and options | W0 classifies each as a row, a resource location (RFC-0103 D6), or build plumbing (exempt, with the reason). Names that become rows take N2 spellings; candidates seen but not counted in Appendix A: `NROS_RMW_CYCLONEDDS_FOREIGN_WAKE`, `NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE`, `NROS_PLATFORM_FREERTOS_HEAP_3` |
+| 22 build-script env names that are not rows | Each becomes a row (most are carriers, `class = "carrier"`) or a resource location, or is exempt as cargo's or the toolchain's own variable |
+| Run-time reads (Appendix B) | Every one becomes an `env` row (Part B) |
 
-## Inventory (measured 2026-11-19)
+## Part B - Environment variables
 
-**Method.** In this tree, `git grep` for each variable name over
+Part B is the first draft's design, unchanged in substance, with each
+variable now an `env` row of D1 and each Q ruled.
+
+### D8 - The rule, and where it applies
+
+For a variable whose disposition is RESPECT, on a process that has an
+environment:
+
+```
+value = env (when set) > stated (system.toml, as baked) > built-in default
+```
+
+The precedence is the existing one (`try_resolve_with`, RFC-0045). When the
+environment and the statement both give a value and they differ, the process
+warns once:
+
+```
+[WARN] [nros.env]: ROS_DOMAIN_ID=7 overrides system.toml's domain_id=42
+```
+
+"Stated" means what the image's build inputs say: `system.toml`, its launch
+file (node name and namespace) and its `rmw_config` file; never a built-in
+default. The `env` row names its statement in `stated`, which is a
+`[[statement]]` key or a knob key; the generator refuses a `stated` that is
+neither. A process "has an environment" when it is a Linux process with a C
+library, or a NuttX process (Decision 9); D10 covers the rest.
+
+### D9 - Disposition per variable
+
+| Variable | Disposition | Reason |
+| --- | --- | --- |
+| `ROS_DOMAIN_ID` | RESPECT (done by issue 2714) | The user's ruling |
+| `NROS_LOCATOR` | RESPECT (done by issue 2714) | Where the image connects |
+| `NROS_RMW` | RESPECT, warn on mismatch with `rmw` | An override can pick only among linked backends; a mismatch is worth a line |
+| `NROS_NODE_NAME`, `NROS_NODE_NAMESPACE` | RESPECT, warn on mismatch with the launch-declared value | A silent identity override is how a graph gets two nodes of one name |
+| `NROS_SESSION_MODE` | RESPECT, warn when the zenoh file states another `mode` | Core's `ExecutorConfig` field, so owner `session`; RFC-0109 puts the mode in the middleware file |
+| `ZENOH_SESSION_CONFIG_URI` | RESPECT, warn when the image baked a file | Replaces the baked table whole (RFC-0109 D8) |
+| `ZENOH_CONFIG_OVERRIDE` | RESPECT on both roads, lowered by the same reader as the session file; warn when it changes a key the baked file states | Decision 4: the stock spelling for key overrides |
+| `ZENOH_MULTICAST_SCOUTING`, `ZENOH_SCOUTING_TIMEOUT`, `ZENOH_LISTEN`, `ZENOH_TLS_ROOT_CA_CERTIFICATE`, `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64`, `ZENOH_TLS_VERIFY_NAME_ON_CONNECT` | REFUSE, each naming the `ZENOH_CONFIG_OVERRIDE` key that replaces it | Decision 4: nano-ros inventions in zenoh's prefix (N6) |
+| `CYCLONEDDS_URI` | RESPECT, warn when the image baked a file, saying the two COMPOSE | Cyclone composes them (RFC-0109 D8 amendment 3) |
+| `NROS_BRIDGE_<N>_LOCATOR`, `NROS_BRIDGE_<N>_DOMAIN` | RESPECT, warn on mismatch with `[[domain]]` | A patterned row (`pattern = true`) |
+| `ROS_LOCALHOST_ONLY`, `ROS_AUTOMATIC_DISCOVERY_RANGE`, `ROS_STATIC_PEERS` | IGNORE, notice naming the middleware file | Decision 2 |
+| `RMW_IMPLEMENTATION` | IGNORE as a selector; notice only when it maps to a backend other than the image's | Fixed map `rmw_zenoh_cpp`/`rmw_cyclonedds_cpp`/`rmw_microxrcedds` keeps the common case silent; the `Context.rmw` hint keeps reading it |
+| `ROS_NAMESPACE` | Whatever stock rclcpp does, measured in W0 (RESPECT as a namespace override, or IGNORE with a notice naming `NROS_NODE_NAMESPACE`); the `ExecutorConfig::namespace` doc is corrected to the measurement | Decision 3 |
+| `ROS_LOG_DIR`, `ROS_HOME` | IGNORE, notice | nano-ros writes no log file |
+| `RCUTILS_COLORIZED_OUTPUT`, `RCUTILS_CONSOLE_OUTPUT_FORMAT` | RESPECT in the Linux console sink, on every road with that sink | Decision 5 |
+| `RCUTILS_LOGGING_USE_STDOUT`, `RCUTILS_LOGGING_BUFFERED_STREAM` | IGNORE, notice | One sink per board |
+| `RUST_LOG` | RESPECT on the Rust road only (the `nros-board-linux` stdout sink, as today) | Decision 5 |
+| `ROS_DISABLE_LOANED_MESSAGES` | IGNORE, notice | Decision 6 |
+| `ROS_SECURITY_ENABLE` with `ROS_SECURITY_STRATEGY=Enforce` | REFUSE | Running unsecured while the operator believes otherwise is the one unsafe IGNORE |
+| other `ROS_SECURITY_*` | IGNORE, notice | No SROS2 |
+| `ZENOH_LOCATOR`, `ZENOH_MODE` | REFUSE (unchanged; now `retired` entries of `NROS_LOCATOR`/`NROS_SESSION_MODE`) | phase-484 W8c |
+| `ZENOH_ROUTER_CONFIG_URI` | IGNORE, notice | Decision 7 |
+| Operational `NROS_*` (`NROS_ENTRY_SPIN_MS`, `NROS_ENTRY_SPIN_STEP_MS`, `NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS`, `NROS_CENSUS_OUT`, `NROS_PROFILE_OUT`, `NROS_PROFILE_INPUTS`, `NROS_GRAPH_DUMP`, `NROS_RMW_TRACE_OPEN`, `NROS_BLESS_PROBE_SIDECAR`), and the package rows `NROS_XRCE_SERIAL_BAUD`, `NROS_CYCLONEDDS_MATCH_TIMEOUT_MS`, `NROS_CYCLONEDDS_SKIP_PREFIX` | Registered, read through D11, no statement rule | Tooling and test controls. `ENTRY_SPIN_MS` stops being a build knob: its only readers by name are run-time (Appendix A.1) |
+
+No new `system.toml` key is proposed: discovery scope, session mode and
+middleware tuning are middleware wiring (RFC-0109), and logging format has
+no deployment owner.
+
+### D10 - A process with no environment
+
+An embedded image (FreeRTOS, ThreadX, Zephyr on hardware or QEMU, bare
+metal) has no process environment; the stated value is the value. Zephyr
+`native_sim` is measured in W0 (Decision 8). NuttX reads its environment
+(Decision 9).
+
+A user learns that a variable does nothing from:
+
+1. **Docs.** The book's reference renders the `env` rows, with a "has an
+   environment" column per board, read from one board-descriptor fact
+   (`process_env = true | false`).
+2. **A build-time note.** `nros build` and `nros configure`, for an image
+   whose board has no process environment, check the build's shell for every
+   RESPECT row and print, once per variable:
+
+   ```
+   note: ROS_DOMAIN_ID=5 is set in this shell, but image `talker`
+         (board mps2-an385) has no process environment: it uses
+         system.toml's domain_id=7. Change system.toml to change it.
+   ```
+
+   A one-build override of a statement stays RFC-0103 D2's command-line
+   channel (printed, recorded as `transient`). After D4, an exported
+   `NROS_DOMAIN_ID` is not part of it: the build refuses it (Appendix A.4).
+
+### D11 - One implementation point for `env` rows
+
+A `#![no_std]` crate `nros-env` (in `packages/core/`, depending only on
+`nros-log`) holds the one `getenv` call and the decisions:
+
+- `get(row) -> Option<&'static str>`, compiled to "always unset" where the
+  target has no environment;
+- `resolve(row, stated) -> Option<T>`: env over stated, with the mismatch
+  warning (issue 2714's `env_overrides_statement` and
+  `warn_env_overrides_statement`, generalised from two fields to a row);
+- `notice_if_set(row)`, `refuse_if_set(row)`;
+- a once-per-row atomic bitset, so a row warns at most once per process
+  however many sessions, tiers or levels resolve it;
+- the startup sweep: the first resolve walks the image's IGNORE and REFUSE
+  rows (the generated table of D5) and every `run:` retired spelling;
+- a C ABI (`nros_env_get`, `nros_env_resolve_str`, `nros_env_resolve_u32`,
+  `nros_env_notice_if_set`) and `<nros/env.h>`, which returns NULL under
+  `__STDC_HOSTED__ == 0` as `env_compat.hpp` does today, so the Cyclone C++
+  backend and the XRCE C transport call it.
+
+A row is a `&'static EnvRow`: core rows from the committed table, a
+package's rows from its own `$OUT_DIR/nros_knobs.rs` (D5). Warnings go
+through `nros_log::log_warn!` on logger `nros.env` (RFC-0102), never a raw
+stderr write (issue 0589); notices are `log_info!`; plain lines first, with
+`NROS-NNNN` codes later under RFC-0129 (Decision 10). `nros::env` stays the
+boot-config ladder and its `report`, built on `nros-env`.
+
+### D12 - Stock ROS 2 semantics, and where nano-ros differs
+
+Each becomes an RFC-0036 divergence row when it lands.
+
+- **Discovery range.** Jazzy deprecates `ROS_LOCALHOST_ONLY` for
+  `ROS_AUTOMATIC_DISCOVERY_RANGE` plus `ROS_STATIC_PEERS`; Humble has only
+  the former. nano-ros IGNOREs all three with a notice (issue 1009 measured
+  that a half-isolated pair finds nothing).
+- **`RMW_IMPLEMENTATION`.** Stock loads an RMW library by it; a nano-ros
+  image links its backends at build time and uses `NROS_RMW` among them.
+- **`ROS_DOMAIN_ID` on embedded.** Stock always reads it; D10's note is the
+  replacement.
+- **Logging.** Stock rcutils reads four `RCUTILS_*` variables and writes
+  files under `ROS_LOG_DIR`; nano-ros honours two of them on Linux and writes
+  no files.
+- **Security.** Stock enforces; nano-ros refuses the enforced case.
+- **Precedence.** Stock has no statement rung; the warning is how a ROS user
+  sees that one existed.
+
+## Part C - Gates
+
+### D13 - The gates
+
+Gates are tests in `packages/testing/nros-gates` (RFC-0131). Each has a
+self-test that plants the violation in a temporary tree and asserts the gate
+names it.
+
+- **G1 - `config-names` (the lint is the loader).** The catalog loader
+  enforces N1 to N8 and C1 to C4, so an out-of-tree package with a bad name
+  fails to load in the user's own build, not only in our CI. The gate runs
+  the loader over every in-tree contributor. It lands with a baseline equal
+  to Appendix A that may only shrink, and the rename stages empty it.
+- **G2 - `knob-registry` (existing), widened.** The committed views equal
+  the render of the merged in-tree set; `zephyr-kconfig-knobs` keeps its
+  check; the generated `RETIRED_ENV_VARS` view joins it.
+- **G3 - `config-reads-through-registry`** (the first draft's D5, widened
+  to build reads). Every run-time read primitive (`getenv(`, `std::getenv`,
+  `env::var(`, `env::var_os(`, `env_lookup(`) outside `nros-env`, and every
+  build-script read (`rerun-if-env-changed=`, `env::var` in a build script,
+  `option_env!`), names a registry row, a resource row (RFC-0103 D6), or a
+  variable cargo or the toolchain defines. Hand-written core code reading a
+  package-owned name fails (D2). The file set is derived from `git ls-files`,
+  not authored (issue 0196's reach rule); a ratchet baseline lists today's
+  bypasses.
+- **G4 - `hand-kept-config-lists`.** Every `config NROS_*` outside a
+  generated block in `zephyr/Kconfig` and `integrations/nuttx/Kconfig`, every
+  typed tenant field, and every non-`INTERNAL` cmake `NROS_*` cache entry or
+  option is a row or an entry of `config-exemptions.toml`, which carries a
+  reason per entry. Reasons are free text, but an entry with an empty reason
+  fails.
+- **G5 - `retired-spellings-refused`** (replaces
+  `check-retired-knob-spellings` and the alias half of
+  `check-retired-runtime-aliases`). For every retired spelling, a generated
+  case on each road its tag names asserts the refusal and that the message
+  names the replacement.
+- **G6 - the contributor fixtures.** The out-of-tree RMW fixture
+  (`packages/testing/nros-tests/fixtures/out-of-tree-rmw/`, RFC-0071 D16)
+  and the outside board fixture (phase-577 W8) each declare one knob and one
+  `env` row. Each image builds with the knob stated, the knob's value reaches
+  the package's build script, `nros knob show acme.<name>` prints it, and the
+  env row is reported by the startup sweep. A third fixture declares an owner
+  word already taken and asserts C1's message.
+
+## Staging
+
+Phase-581 stages the work so that every rename is its own stage, and so the
+registry can carry contributors before any name moves:
+
+1. Measure (W0): the first draft's run-time measurements, plus M5 (an
+   `osource`d choice member), the undefined-symbol behaviour of Zephyr's
+   Kconfig, the demand-carrier census, and the owners of the rows N3 cannot
+   decide by reading.
+2. The registry gains kinds, `key`, `owner` and `retired`, with no behaviour
+   change (W1); then contributors, with the in-tree packages' rows moved out
+   (W2); then out-of-tree contributors and their per-build views (W3).
+3. The naming lint lands with Appendix A as its baseline (W4).
+4. Renames, one stage per class (W5 to W7), each emptying part of the
+   baseline and adding its refusals.
+5. The open RMW set (W8) and the hand-kept folds (W9).
+6. Part B's reader and its batches (W10 to W15), which may run beside 3 to 5
+   because they depend only on W1.
+
+## Alternatives considered
+
+- **A sibling `env-vars.toml` registry.** Rejected by the user's ruling: two
+  registries can each be consistent and still disagree with each other.
+- **A phase prefix (`NROS_BUILD_*` for carriers, `NROS_*` for run-time).**
+  Rejected: four names collide across phases today, and a prefix would rename
+  all 112 carriers to fix them, although carriers are not user surface
+  (RFC-0133). N5 plus the load-time uniqueness check fixes the four.
+- **Allow TOML sub-tables, with every segment in every spelling.**
+  Rejected: `CONFIG_NROS_ZENOH_WIRE_FRAG_MAX_SIZE` makes a display grouping
+  permanent in every spelling, and ownership needs one segment to check.
+- **Keep D2b's Kconfig column as a permanent alias.** Rejected by ruling 2,
+  and by measurement: the column is how two facts (demand and pool) came to
+  share one symbol.
+- **Package rows by pull request to the core file.** Rejected: that is
+  RFC-0049's out-of-tree wall, and a downstream vendor cannot wait for our
+  merge queue.
+- **Compile package rows into core's `KNOBS` per image** (the build helper
+  reads the catalog at its own build time). Rejected: the helper's
+  fingerprint then depends on the image's package set, so two images sharing
+  a target directory rebuild each other (the issue 0491 class). A file read
+  at build-script run time has no such edge.
+- **A descriptor field naming the rows file.** Rejected: a second place
+  naming one file. The file beside the descriptor is found by the scan that
+  already finds the descriptor.
+- **Open deep-merge of package files** (cargo or Nix style). Not what this
+  is: packages contribute DECLARATIONS under disjoint owner words, refused on
+  overlap. VALUES keep RFC-0004's and RFC-0049's fixed ladder.
+- **Deprecate first, refuse a release later.** Rejected by ruling 2. A
+  rename lands with its refusal.
+
+## Non-goals
+
+- Changing any default or any value; a rename keeps the value (a unit change
+  keeps the quantity and states the factor).
+- Command-line `--ros-args`: argv, owned by `nros::init_with_args`.
+- Resource locations (`NROS_HOME`, `FREERTOS_DIR`, `NROS_MODEL_DIR`,
+  `NROS_LAUNCH_RESOLVE`, ...): RFC-0103 D6's index rows. N8 only keeps the
+  two namespaces apart.
+- A remote package index (RFC-0135 D5 leaves it out too).
+- A board package's own `[arch.*]` profiles: RFC-0135 D4.
+- Re-deciding which pools are derived; the demand split only names the two
+  facts the code already has.
+- C macro names inside a backend (`ZPICO_*`, `XRCE_*` defines,
+  `NROS_RMW_UORB_PX4_MAX_CALLBACKS`): generated, never read from an
+  environment (N2).
+
+## Open questions
+
+None for the user. Every point above is decided; the items that depend on a
+measurement (M5, `ROS_NAMESPACE`, `native_sim`, the demand-carrier census,
+the owner of `SERVICE_TIMEOUT_MS`, the units of seven rows whose help does
+not state one) carry a stated default and a fallback, and W0 records the
+result.
+
+## Decisions (user ruling, 2026-11-19)
+
+The user accepted the first draft's recommendations on Q2 to Q11 and
+reopened Q1 with a wider scope; this revision answers Q1.
+
+1. **Registry home: one registry with the knobs** (Q1, reopened, answered by
+   D1 to D7 and D13). Environment variables are `env` rows of the knob
+   registry under one naming scheme; board and RMW packages declare their own
+   rows; rule-breaking names are renamed now and their old spellings refused.
+2. **Discovery range: IGNORE with a notice** for `ROS_LOCALHOST_ONLY`,
+   `ROS_AUTOMATIC_DISCOVERY_RANGE` and `ROS_STATIC_PEERS`. RESPECT on the
+   Cyclone backend is later work.
+3. **`ROS_NAMESPACE`: match stock rclcpp**, after measuring what rcl and
+   rclcpp do with it; the `ExecutorConfig::namespace` doc follows the
+   measurement.
+4. **nano-ros' own `ZENOH_*` variables: RETIRE.** The six inventions are
+   REFUSED, each naming its replacement, the stock `ZENOH_CONFIG_OVERRIDE`,
+   lowered by the same reader as the session file.
+5. **Logging: RESPECT** `RCUTILS_COLORIZED_OUTPUT` and
+   `RCUTILS_CONSOLE_OUTPUT_FORMAT` in the Linux console sink. `RUST_LOG`
+   stays Rust-only.
+6. **Loans: IGNORE** `ROS_DISABLE_LOANED_MESSAGES`.
+7. **Router variables:** `ZENOH_ROUTER_CONFIG_URI` gets a notice like every
+   other ignored row.
+8. **`native_sim`: measure** whether its libc sees the host environment,
+   then correct whichever of RFC-0109 D6a and the Cyclone backend's comment
+   is wrong.
+9. **NuttX: RESPECT.** The reader is compiled for `target_os = "nuttx"`.
+10. **Diagnostic codes: plain log lines first.** `NROS-NNNN` codes come
+    later, under RFC-0129.
+11. **`freertos-posix` Rust: RESPECT**, as `threadx-linux` does through
+    `resolve_boot`, so its Rust road agrees with its C/C++ road.
+
+## Related
+
+- RFC-0103 (D2b and D6 amended here), RFC-0049 (one file per package; its
+  "schema declared centrally" becomes "declared per owner, merged at load"),
+  RFC-0071 D16 and D18 (the out-of-tree RMW fixture; D18's closed set
+  opened), RFC-0133 (the knob catalog's source becomes the merged catalog),
+  RFC-0135 D5 (where a board package is found), RFC-0114 (a downstream
+  package's registry row: the same merge shape), RFC-0004 (fixed ladder),
+  RFC-0098 D10/D11 (the image rung), RFC-0109 D6a and D8, RFC-0045,
+  RFC-0036, RFC-0102, RFC-0129, RFC-0131, RFC-0072 (the Zephyr guest),
+  RFC-0065 (the colcon-like builder that builds these packages).
+- Issue 2714 and PR #4285; issues 0196, 0491, 0687, 0794, 1009, 1015, 1033,
+  2194; phase-484 W8 (the retired-spelling pattern), phase-569 W2 (the
+  catalog), phase-577 W8 (the outside board fixture).
+
+## Changelog
+
+- 2026-11-19: Draft (ROS 2 environment variables against `system.toml`).
+- 2026-11-19: Q2 to Q11 decided by the user; Q1 reopened.
+- 2026-11-19: **Widened** to one configuration registry, per the user's
+  ruling: three row kinds in one namespace (D1); contributors with owner
+  words and load-time collision rules (D2); a complete naming rule amending
+  RFC-0103 D2b and D6 (D3); retired spellings on the replacing row, refused
+  on every road (D4); per-build views for out-of-tree rows (D5);
+  self-contained packages and an open Zephyr RMW set, amending RFC-0071 D18
+  (D6); hand-kept lists folded (D7); the environment-variable design
+  re-homed as Part B (D8 to D12); gates widened to build reads and the
+  naming rule (D13); the 86-name rename list (Appendix A). Title changed;
+  `amends` lists RFC-0103, RFC-0049, RFC-0071, RFC-0133.
+
+## Appendix A - Settings that break the rule on `origin/main` (86)
+
+Columns: the old TOML key (a registry row with no `toml` column shows the key
+the image rung uses, its id split at the first `_`), the old build env, the
+old Kconfig symbol where it differs from `CONFIG_` plus the env, and the new
+key. Every new spelling is mechanical from the new key (N2). Reasons: **S**
+three segments (N1), **U** unit (N4), **K** Kconfig column (N2), **P** owner
+word missing or wrong (N3), **F** folds two platform carriers into one
+`memory.*` knob.
+
+### A.1 Registry rows (52 renamed, 1 retired)
+
+| Old key | Old env | Old Kconfig | New key | Why |
+| --- | --- | --- | --- | --- |
+| `executor.arena_size` | `NROS_EXECUTOR_ARENA_SIZE` |  | `executor.arena_bytes` | U |
+| `executor.backing_u64s` | `NROS_EXECUTOR_BACKING_U64S` |  | `executor.backing_bytes` | U |
+| `freertos.app_stack_kb` | `NROS_FREERTOS_APP_STACK_KB` |  | `memory.app_stack_bytes` | U, F |
+| `freertos.heap_kb` | `NROS_FREERTOS_HEAP_KB` |  | `memory.heap_bytes` | U, F |
+| `graph.max_entities` | `NROS_GRAPH_MAX_ENTITIES` |  | `zenoh.graph_max_entities` | P |
+| `zenoh.limits.keyexpr_string_size` | `NROS_KEYEXPR_STRING_SIZE` |  | `zenoh.keyexpr_string_bytes` | S, U |
+| `runtime.let_buffer_size` | `NROS_LET_BUFFER_SIZE` |  | `runtime.let_buffer_bytes` | U, P |
+| `log.buffer_size` | `NROS_LOG_BUFFER_SIZE` |  | `log.buffer_bytes` | U |
+| `params.max_array_len` | `NROS_MAX_ARRAY_LEN` |  | `params.max_array_len` | P |
+| `params.max_byte_array_len` | `NROS_MAX_BYTE_ARRAY_LEN` |  | `params.max_byte_array_bytes` | U, P |
+| `params.max_parameters` | `NROS_MAX_PARAMETERS` |  | `params.max_parameters` | P |
+| `params.max_param_constraints_len` | `NROS_MAX_PARAM_CONSTRAINTS_LEN` |  | `params.max_constraints_bytes` | U, P |
+| `params.max_param_description_len` | `NROS_MAX_PARAM_DESCRIPTION_LEN` |  | `params.max_description_bytes` | U, P |
+| `params.max_param_name_len` | `NROS_MAX_PARAM_NAME_LEN` |  | `params.max_name_bytes` | U, P |
+| `params.max_string_array_len` | `NROS_MAX_STRING_ARRAY_LEN` |  | `params.max_string_array_len` | P |
+| `params.max_string_value_len` | `NROS_MAX_STRING_VALUE_LEN` |  | `params.max_string_value_bytes` | U, P |
+| `params.param_events_depth` | `NROS_PARAM_EVENTS_DEPTH` |  | `params.events_depth` | P |
+| `executor.param_service_buffer_size` | `NROS_PARAM_SERVICE_BUFFER_SIZE` |  | `executor.param_service_buffer_bytes` | U, P |
+| `param.service_inbox_bytes` | `NROS_PARAM_SERVICE_INBOX_BYTES` |  | `params.service_inbox_bytes` | P |
+| `param.service_inbox_depth` | `NROS_PARAM_SERVICE_INBOX_DEPTH` |  | `params.service_inbox_depth` | P |
+| `zenoh.limits.service_timeout_ms` | `NROS_SERVICE_TIMEOUT_MS` |  | `zenoh.service_timeout_ms` | S |
+| `net.buffer_size` | `NROS_SMOLTCP_BUFFER_SIZE` |  | `net.buffer_bytes` | U, P |
+| `net.connect_timeout_ms` | `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` |  | `net.connect_timeout_ms` | P |
+| `net.max_sockets` | `NROS_SMOLTCP_MAX_SOCKETS` |  | `net.max_sockets` | P |
+| `net.max_udp_sockets` | `NROS_SMOLTCP_MAX_UDP_SOCKETS` |  | `net.max_udp_sockets` | P |
+| `net.socket_timeout_ms` | `NROS_SMOLTCP_SOCKET_TIMEOUT_MS` |  | `net.socket_timeout_ms` | P |
+| `subscriber.buffer_size` | `NROS_SUBSCRIBER_BUFFER_SIZE` |  | `subscriber.buffer_bytes` | U |
+| `executor.subscription_buffer_size` | `NROS_SUBSCRIPTION_BUFFER_SIZE` |  | `executor.subscription_buffer_bytes` | U, P |
+| `threadx.app_stack_kb` | `NROS_THREADX_APP_STACK_KB` |  | `memory.app_stack_bytes` | U, F |
+| `xrce.buffer_size` | `NROS_XRCE_BUFFER_SIZE` |  | `xrce.buffer_bytes` | U |
+| `xrce.builtin_service_request_buffer_size` | `NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE` |  | `xrce.builtin_service_request_buffer_bytes` | U |
+| `xrce.service_reply_buffer_size` | `NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE` |  | `xrce.service_reply_buffer_bytes` | U |
+| `xrce.service_request_buffer_size` | `NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE` |  | `xrce.service_request_buffer_bytes` | U |
+| `xrce.subscriber_buffer_size` | `NROS_XRCE_SUBSCRIBER_BUFFER_SIZE` |  | `xrce.subscriber_buffer_bytes` | U |
+| `zenoh.wire.batch_multicast_size` | `NROS_ZENOH_BATCH_MULTICAST_SIZE` |  | `zenoh.batch_multicast_bytes` | S, U |
+| `zenoh.wire.batch_unicast_size` | `NROS_ZENOH_BATCH_UNICAST_SIZE` | `CONFIG_NROS_BATCH_UNICAST_SIZE` | `zenoh.batch_unicast_bytes` | S, U, K |
+| `zenoh.limits.connect_forever` | `NROS_ZENOH_CONNECT_FOREVER` |  | `zenoh.connect_forever` | S |
+| `zenoh.limits.connect_timeout_ms` | `NROS_ZENOH_CONNECT_TIMEOUT_MS` |  | `zenoh.connect_timeout_ms` | S |
+| `zenoh.wire.frag_max_size` | `NROS_ZENOH_FRAG_MAX_SIZE` | `CONFIG_NROS_FRAG_MAX_SIZE` | `zenoh.frag_max_bytes` | S, U, K |
+| `zenoh.wire.get_poll_interval_ms` | `NROS_ZENOH_GET_POLL_INTERVAL_MS` | `CONFIG_NROS_GET_POLL_INTERVAL_MS` | `zenoh.get_poll_interval_ms` | S, K |
+| `zenoh.wire.get_reply_buf_size` | `NROS_ZENOH_GET_REPLY_BUF_SIZE` | `CONFIG_NROS_GET_REPLY_BUF_SIZE` | `zenoh.get_reply_buffer_bytes` | S, U, K |
+| `zenoh.graph_cache_size` | `NROS_ZENOH_GRAPH_CACHE_SIZE` | `CONFIG_NROS_GRAPH_CACHE_SIZE` | `zenoh.graph_cache_bytes` | U, K |
+| `zenoh.publisher_tx_buffer_size` | `NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE` |  | `zenoh.publisher_tx_buffer_bytes` | U |
+| `zenoh.wire.rx_task_budget_frames` | `NROS_ZENOH_RX_TASK_BUDGET_FRAMES` |  | `zenoh.rx_task_budget_frames` | S |
+| `zenoh.wire.rx_task_budget_rest_us` | `NROS_ZENOH_RX_TASK_BUDGET_REST_US` |  | `zenoh.rx_task_budget_rest_us` | S |
+| `zenoh.subscriber_large_size` | `NROS_ZENOH_SUBSCRIBER_LARGE_SIZE` | `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE` | `zenoh.subscriber_large_bytes` | U, K |
+| `zenoh.limits.subscriber_ring_depth` | `NROS_ZENOH_SUBSCRIBER_RING_DEPTH` | `CONFIG_NROS_SUBSCRIBER_RING_DEPTH` | `zenoh.subscriber_ring_depth` | S, K |
+| `zenoh.subscriber_size_threshold` | `NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD` |  | `zenoh.subscriber_large_threshold_bytes` | U |
+| `zenoh.tx.batch` | `NROS_ZENOH_TX_BATCH` |  | `zenoh.tx_batch` | S |
+| `zenoh.tx.flush_ms` | `NROS_ZENOH_TX_BATCH_FLUSH_MS` |  | `zenoh.tx_batch_flush_ms` | S |
+| `zenoh.tx.split_lock` | `NROS_ZENOH_TX_SPLIT_LOCK` |  | `zenoh.tx_split_lock` | S |
+| `zephyr.heap_size` | `NROS_ZEPHYR_HEAP_SIZE` |  | `memory.heap_bytes` | U, F |
+
+Also in the registry:
+
+- `zenoh.service_buffer_size` (`NROS_ZENOH_SERVICE_BUFFER_SIZE`,
+  `CONFIG_NROS_SERVICE_BUFFER_SIZE`): its own help calls it "the one-release
+  ALIAS of NROS_SERVICE_INBOX_BYTES". RETIRED, refused naming
+  `service.inbox_bytes`.
+- `entry.spin_ms` (`NROS_ENTRY_SPIN_MS`): no build-time reader found by
+  name; its 7 readers are run-time. It moves from a `knob` row to an `env`
+  row of the same name. Not a rename (W0 confirms no build reader).
+- `executor.backing_u64s` to `executor.backing_bytes` changes the unit: the
+  refusal states "x 8". `freertos.heap_kb`, `freertos.app_stack_kb`,
+  `threadx.app_stack_kb` state "x 1024".
+- Units of seven rows whose help states none (`KEYEXPR_STRING_SIZE`,
+  `LET_BUFFER_SIZE`, `SMOLTCP_BUFFER_SIZE`, `ZENOH_BATCH_MULTICAST_SIZE`,
+  `ZENOH_PUBLISHER_TX_BUFFER_SIZE`, `ZENOH_SUBSCRIBER_SIZE_THRESHOLD`,
+  `XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE`) are taken as bytes; W0 reads
+  each reader to confirm.
+
+### A.2 Hand-written `zephyr/Kconfig` symbols (12)
+
+| Old symbol | New symbol | Why |
+| --- | --- | --- |
+| `CONFIG_NROS_CYCLONE_DOMAIN_ID` | `CONFIG_NROS_CYCLONEDDS_DOMAIN_ID` | P (`cmake/NanoRosDomainAgreement.cmake` keeps it equal to the domain) |
+| `CONFIG_NROS_CYCLONE_CONFIG_XML` | `CONFIG_NROS_CYCLONEDDS_CONFIG_XML` | P |
+| `CONFIG_NROS_EPOCH_FROM_ZENOH` | `CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH` | P (depends on `NROS_RMW_ZENOH`) |
+| `CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS` | `CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH_INTERVAL_MS` | P |
+| `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE` | `CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES` | U |
+| `CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE` | `CONFIG_NROS_ZEPHYR_TIER_STACK_BYTES` | U |
+| `CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE` | `CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES` | U |
+| `CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME` | `CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES` | U (prompt says bytes) |
+| `CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER` | `CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER_BYTES` | U (prompt says bytes) |
+| `CONFIG_NROS_EDMA_WARM_RESET_QUIESCE` | `CONFIG_NROS_ZEPHYR_EDMA_WARM_RESET_QUIESCE` | P (a Zephyr SoC-driver workaround read by `zephyr/CMakeLists.txt`) |
+| `CONFIG_NROS_PARAM_STORE` | `CONFIG_NROS_PARAMS_STORE` | P (`params`, not `param`) |
+| `CONFIG_NROS_TRANSPORT_SERIAL` | retired: `[image.<id>] transport = "serial"` in a managed project, `CONFIG_NROS_ZENOH_LINK_SERIAL` in a guest | it only `select`s the zenoh serial link; transport is an image statement (RFC-0098) |
+
+### A.3 Run-time variables (3 renamed, 6 retired)
+
+| Old | New | Why |
+| --- | --- | --- |
+| `XRCE_SERIAL_BAUD` | `NROS_XRCE_SERIAL_BAUD` | N6 (ours, in no `NROS_` prefix) |
+| `NROS_CYCLONE_MATCH_TIMEOUT_MS` | `NROS_CYCLONEDDS_MATCH_TIMEOUT_MS` | P |
+| `NROS_RMW_CYCLONEDDS_SKIP_PREFIX` | `NROS_CYCLONEDDS_SKIP_PREFIX` | P |
+| `ZENOH_MULTICAST_SCOUTING`, `ZENOH_SCOUTING_TIMEOUT`, `ZENOH_LISTEN`, `ZENOH_TLS_ROOT_CA_CERTIFICATE`, `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64`, `ZENOH_TLS_VERIFY_NAME_ON_CONNECT` | retired: `ZENOH_CONFIG_OVERRIDE` | N6, Decision 4 |
+
+### A.4 Build carriers outside the registry (6)
+
+| Old | New | Why |
+| --- | --- | --- |
+| `ZPICO_NO_SMOLTCP` | `NROS_ZENOH_NO_SMOLTCP` (a carrier row, written by `nros` from `transport = "serial"`) | N6, P |
+| `ZPICO_MULTICAST_TRANSPORT` | `zenoh.multicast_transport` (a public knob: the zenoh backend's own error text tells users to set it) | N6, P |
+| `NROS_ZPICO_DEBUG` | `NROS_ZENOH_DEBUG` | P |
+| `NROS_DOMAIN_ID` (build) | `NROS_ENTRY_DOMAIN_ID` (refused at build, naming `[system] domain_id`) | N5; RFC-0103 section 3 already lists it as a retired input |
+| `NROS_LOCATOR` (build, `option_env!` in `Context::baked` and the `mps2-an385` and `nuttx-qemu` board configs) | `NROS_ENTRY_LOCATOR`; `NROS_LOCATOR` stays the run-time variable | N5 |
+| `NROS_NODE_NAME` (build, `nros-board-mps2-an385/src/rtic.rs`) | `NROS_ENTRY_NODE_NAME`; `NROS_NODE_NAME` stays the run-time variable | N5 |
+
+### A.5 The demand symbols (6; staged after a census)
+
+| Old Kconfig / carrier | New |
+| --- | --- |
+| `CONFIG_NROS_MAX_PUBLISHERS` / `NROS_MAX_PUBLISHERS` | `entity.max_publishers` |
+| `CONFIG_NROS_MAX_SUBSCRIBERS` / `NROS_MAX_SUBSCRIBERS` | `entity.max_subscribers` |
+| `CONFIG_NROS_MAX_QUERYABLES` / `NROS_MAX_QUERYABLES` | `entity.max_queryables` |
+| `CONFIG_NROS_MAX_LIVELINESS` / `NROS_MAX_LIVELINESS` | `entity.max_liveliness` |
+| `CONFIG_NROS_MAX_PENDING_GETS` / `NROS_MAX_PENDING_GETS` | `entity.max_pending_gets` |
+| `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` / `NROS_MAX_LARGE_SUBSCRIBERS` | `entity.max_large_subscribers` |
+
+The zenoh pool rows keep their keys (`zenoh.max_publishers`, ...) as
+`class = "carrier"` rows with no Kconfig symbol.
+
+## Appendix B - Run-time inventory (first draft, measured 2026-11-19)
+
+**Method.** `git grep` for each variable over
 `packages/{api,core,rmw,platform,boards,drivers}`, `cmake/` and `zephyr/`,
-excluding `tests/`, `third-party/`, generated code and Markdown; then every
-runtime read primitive (`getenv(`, `std::getenv`, `env::var(`,
-`env::var_os(`, `nros::env::var(`, `env_lookup(`, `option_env!(`), with each
-hit read to classify it. Build scripts (`build.rs`, `*_build.rs`) are
-build-time and are listed only where they bake a fact the runtime uses. "Not
-read" means no runtime read of that name exists in those paths; a name in a
-comment or a test harness does not count. Platform reach was read from the
-`cfg` guarding each reader, not run, except where a row cites a measurement.
+excluding tests, third-party, generated code and Markdown, then every
+run-time read primitive (`getenv(`, `std::getenv`, `env::var(`,
+`env::var_os(`, `nros::env::var(`, `env_lookup(`, `option_env!(`), each hit
+read to classify it. Platform reach was read from the `cfg` guarding each
+reader, not run; W0 runs it. Re-checked on `origin/main` `365ad8d9e6`, which
+adds three run-time names the first draft missed:
+`NROS_ENTRY_SPIN_STEP_MS` and `NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS` (the
+`nros::main!` expansion) and confirms `NROS_ZPICO_DEBUG` is build-time
+(`nros-zpico-build`).
 
-**Roads.** "Rust" is `nros::main!` on a Rust board; "C/C++" is the
-`nros-c`/`nros-cpp` staticlib (its boot resolver `resolve_boot` in
-`nros-c/src/support.rs` and `nros-cpp/src/lib.rs`). "Linux" means a Linux
-process: the `linux` board (platform `posix`), `threadx-linux`,
-`freertos-posix`, and Zephyr `native_sim`, which all compile Rust for the
-host triple (`target_os = "linux"`).
+"Rust" is `nros::main!` on a Rust board; "C/C++" is the `nros-c`/`nros-cpp`
+staticlib. "Linux" means a Linux process: the `linux` board, `threadx-linux`,
+`freertos-posix`, and Zephyr `native_sim`.
 
 ### ROS 2 standard variables
 
@@ -164,319 +990,9 @@ host triple (`target_os = "linux"`).
 | `NROS_BRIDGE_<N>_LOCATOR`, `NROS_BRIDGE_<N>_DOMAIN` | Yes: `nros-bridge` `config.rs`, `std::env` | The bridge binary (Linux) | `[[domain]] locator` / `id` |
 | Operational: `NROS_ENTRY_SPIN_MS`, `NROS_CENSUS_OUT`, `NROS_PROFILE_OUT`, `NROS_PROFILE_INPUTS`, `NROS_GRAPH_DUMP`, `NROS_RMW_TRACE_OPEN`, `NROS_RMW_CYCLONEDDS_SKIP_PREFIX`, `NROS_CYCLONE_MATCH_TIMEOUT_MS`, `XRCE_SERIAL_BAUD`, `NROS_BLESS_PROBE_SIDECAR` | Yes, each through its own reader | Linux | None (tooling and test controls), except `NROS_ENTRY_SPIN_MS`, which is also a build knob (`entry.spin_ms` in the knob registry) |
 
-**One measurement worth keeping.** `NROS_ENTRY_SPIN_MS` alone has seven
-runtime readers with four spellings of the read: `std::getenv` in
-`rclcpp/detail/main.hpp`, `getenv` in `nros_rtos_run_components.c`,
-`std::env::var` in `nros-board-linux` and `nros-bridge`, `env_str` in
-`nros-board-threadx-linux`, `nros::env::var` in `nros-cpp`, and `std::env` in
-the `nros::main!` expansion. That is the shape CLAUDE.md's "fix the class"
-rule describes, and it is why D5 is a gate rather than a convention.
-
-### What the inventory says
-
-1. Every RESPECT-shaped read today is on a Linux process, and the readers
-   agree on the five identity fields because they share `env_rung`.
-2. Two road gaps: the six `ZENOH_*` property variables are Rust-only, and
-   `freertos-posix` reads the environment on its C/C++ road but not its Rust
-   road. Neither is reported.
-3. No standard ROS 2 variable except `ROS_DOMAIN_ID` (and the
-   `RMW_IMPLEMENTATION` hint) is read, and none of the unread ones says so.
-4. `NROS_LOCATOR` means two things: a run-time variable on a Linux process
-   and a build-time variable for an embedded image.
-
-## Design
-
-### D1 - The rule, and where it applies
-
-For a variable whose disposition is RESPECT, on a process that has an
-environment:
-
-```
-value = env (when set) > stated (system.toml, as baked) > built-in default
-```
-
-The precedence is the existing one (`try_resolve_with`, RFC-0045); this RFC
-does not change it. It adds the report: when the environment and the
-statement both give a value and the values differ, the process warns once:
-
-```
-[WARN] [nros.env]: ROS_DOMAIN_ID=7 overrides system.toml's domain_id=42
-```
-
-"Stated" means what the image's build inputs say: `system.toml`, its launch
-file (for node name and namespace) and its `rmw_config` file. It never means
-a built-in default: issue 2714's `warn_env_overrides_statement` doc already
-draws this line ("An RTOS simulator's baked rung is its board config whether
-or not anything was stated, so it would report a default as a statement"),
-and D4 keeps it by carrying "stated" as its own bit rather than inferring it
-from a non-empty baked value.
-
-A process "has an environment" when it is a Linux process with a C library
-(`target_os = "linux"`). D3 covers the rest.
-
-### D2 - Disposition per variable
-
-| Variable | Disposition | Reason |
-| --- | --- | --- |
-| `ROS_DOMAIN_ID` | RESPECT (done by issue 2714) | The user's ruling |
-| `NROS_LOCATOR` | RESPECT (done by issue 2714) | Same fact class as the domain: where the image connects |
-| `NROS_RMW` | RESPECT, warn on mismatch with `rmw` | An image links only the backends its statement names, so an override can only pick among them; a mismatch is still worth a line |
-| `NROS_NODE_NAME`, `NROS_NODE_NAMESPACE` | RESPECT, warn on mismatch with the launch-declared value | Identity is stated by the launch file; overriding it silently is how a graph ends up with two nodes of one name |
-| `NROS_SESSION_MODE` | RESPECT, warn when the zenoh file states another `mode` | Only the file states a mode today. No new `system.toml` key: RFC-0109 puts session wiring in the middleware's own file |
-| `ZENOH_SESSION_CONFIG_URI` | RESPECT, warn when the image baked a file | Already replaces the baked table whole (RFC-0109 D8); today it does so without a word |
-| `CYCLONEDDS_URI` | RESPECT, warn when the image baked a file, saying the two COMPOSE | Cyclone composes them (scalars: env wins; lists: append). The warning must say "composes with", not "overrides", or it misdescribes a loopback file plus a loopback env, the case RFC-0109 measured stopping delivery |
-| `ZENOH_MULTICAST_SCOUTING`, `ZENOH_SCOUTING_TIMEOUT`, `ZENOH_LISTEN`, `ZENOH_TLS_*` | RESPECT on both roads (read through the D4 reader, not `std::env`), warn when the zenoh file states the key | Removes the Rust-only gap. See Q4 for retiring them in favour of the stock spelling |
-| `NROS_BRIDGE_<N>_LOCATOR`, `NROS_BRIDGE_<N>_DOMAIN` | RESPECT, warn on mismatch with `[[domain]]` | The same rule for a bridge's sessions |
-| `ROS_LOCALHOST_ONLY`, `ROS_AUTOMATIC_DISCOVERY_RANGE`, `ROS_STATIC_PEERS` | IGNORE, notice naming the middleware file | Mirroring them is per-backend work (Cyclone config generation; zenoh scouting). No `system.toml` key: discovery scope is middleware wiring, which RFC-0109 gives to the middleware file. See Q2 |
-| `RMW_IMPLEMENTATION` | IGNORE as a selector. Notice only when its value maps to a backend other than the image's | A sourced ROS shell sets it for every process; a nano-ros image must not change backend because of it (its vocabulary is ROS names, the selector's is registry names: the reason `rmw_selector` gives). Comparing through a fixed map (`rmw_zenoh_cpp` to `zenoh`, `rmw_cyclonedds_cpp` to `cyclonedds`, `rmw_microxrcedds` to `xrce`) keeps the common case (they agree) silent. The `Context.rmw` hint keeps reading it, through the registry |
-| `ROS_NAMESPACE` | IGNORE, notice naming `NROS_NODE_NAMESPACE` | Keeps the existing deliberate choice (`ExecutorConfig::namespace` doc). See Q3 |
-| `ROS_LOG_DIR`, `ROS_HOME` | IGNORE, notice | nano-ros writes no log file |
-| `RCUTILS_CONSOLE_OUTPUT_FORMAT`, `RCUTILS_COLORIZED_OUTPUT`, `RCUTILS_LOGGING_USE_STDOUT`, `RCUTILS_LOGGING_BUFFERED_STREAM` | IGNORE, notice | `nros_log` has one fixed format and sink per board. See Q5 |
-| `ROS_DISABLE_LOANED_MESSAGES` | IGNORE, notice | The loan slot exists but no API path consults this variable. See Q6 |
-| `ROS_SECURITY_ENABLE` with `ROS_SECURITY_STRATEGY=Enforce` | REFUSE | Stock ROS 2 refuses to start an enforced node it cannot secure. Running it unsecured while the operator believes otherwise is the one IGNORE that is unsafe |
-| other `ROS_SECURITY_*` | IGNORE, notice | No SROS2 |
-| `ZENOH_LOCATOR`, `ZENOH_MODE` | REFUSE (unchanged) | Retired aliases, phase-484 W8c |
-| `ZENOH_CONFIG_OVERRIDE` | IGNORE, notice, until Q4 is ruled | Stock's spelling for key overrides; nano-ros could lower it with the same reader as the session file |
-| `ZENOH_ROUTER_CONFIG_URI` | Listed, no notice | A router's variable. A stock node does not read it either, so a notice in every nano-ros process would be noise. See Q7 |
-| `RUST_LOG` | RESPECT on every road with a console sink, not only the Rust `linux` board. No statement, so nothing to mismatch | Today a C/C++ process on the same board ignores it silently |
-| Operational `NROS_*` (`NROS_ENTRY_SPIN_MS`, census, profile, trace, dump) | Registered, read through D4, no statement rule | Tooling controls; a `system.toml` equivalent exists only for `NROS_ENTRY_SPIN_MS` (the build knob), and that one gets the mismatch warning |
-
-**Where a variable has no `system.toml` equivalent.** None is proposed. The
-candidates (discovery range, session mode, middleware tuning) are
-middleware wiring, which RFC-0109 gives to the middleware's own file under
-`rmw_config`; logging format has no deployment owner yet (Q5).
-
-### D3 - A process with no environment
-
-An embedded image (FreeRTOS, ThreadX, NuttX, Zephyr on hardware or QEMU, bare
-metal) has no process environment. The stated value is the value. On Zephyr
-`native_sim` the Rust and C code compile for the host triple and link
-`getenv`, but the cited behaviour is that the simulator's libc sees no host
-environment (Q8).
-
-A user learns that a variable does nothing in two ways:
-
-1. **Docs.** The book's reference gets one generated table (D4's registry
-   rendered), with a "has an environment" column per board family. The
-   board catalog states the fact once (a board descriptor field, `process_env
-   = true | false`), so the table and the build-time note read one source.
-2. **A build-time note.** `nros build` (and `nros configure`) for an image
-   whose board has no process environment checks the BUILD's shell for every
-   RESPECT row and prints, once per variable:
-
-   ```
-   note: ROS_DOMAIN_ID=5 is set in this shell, but image `talker`
-         (board mps2-an385) has no process environment: it uses
-         system.toml's domain_id=7. Change system.toml, or export
-         NROS_DOMAIN_ID=5 to override it for this build.
-   ```
-
-   The second sentence exists because the build-time spellings
-   (`NROS_DOMAIN_ID`, `NROS_LOCATOR` through `option_env!`) are a real
-   override channel today. RFC-0103 D2 already prints and records them as
-   `transient`; this RFC adds the same mismatch warning there, so the rule is
-   "override, and say so" on both sides of the build.
-
-NuttX is the exception that does not fit "embedded means no environment":
-NuttX has `getenv` and an NSH `set`, but `nros::env` compiles only for
-`target_os = "linux"`. Q9 asks whether NuttX should RESPECT.
-
-### D4 - One implementation point
-
-**The registry.** One table of every environment variable a nano-ros process
-reads, as rows:
-
-```toml
-[[env]]
-name = "ROS_DOMAIN_ID"
-disposition = "respect"          # respect | ignore | refuse | listed
-stated = "domain_id"             # the statement it is compared with, or absent
-kind = "u32"                     # parse rule; malformed is an error, as today
-instead = ""                     # for ignore/refuse: what to use
-reader = "nros-env"              # or "third-party:cyclonedds" for a value
-                                 # another library reads; nano-ros reads it
-                                 # only to compare and report
-```
-
-It lives beside the build-time knob registry
-(`packages/tooling/nros-zephyr-build/knobs.toml`, RFC-0103 D2b), generated by
-the same script (`scripts/gen-knob-registry.py`) into a Rust table, a C
-header and the book table. Q1 asks whether it is a section of that file or a
-sibling file. It is not a second registry for a fact the knob registry
-already holds: a run-time variable that is also a build knob
-(`NROS_ENTRY_SPIN_MS`) names its knob row.
-
-**The reader and the decision move one level down.** A new `#![no_std]`
-crate, `nros-env` (in `packages/core/`), depends only on `nros-log` and
-holds:
-
-- `get(row) -> Option<&'static str>`: the one `getenv` call (the body of
-  today's `nros::env::raw`/`var`), compiled to "always unset" where
-  `target_os != "linux"`;
-- `resolve(row, stated: Option<T>) -> Option<T>`: env > stated, with the
-  mismatch warning (today's `env_overrides_statement` plus
-  `warn_env_overrides_statement`, generalised from two fields to a row);
-- `notice_if_set(row)`: the one-time IGNORE notice; `refuse_if_set(row)` for
-  REFUSE;
-- a C ABI over the same functions (`nros_env_get`, `nros_env_resolve_str`,
-  `nros_env_resolve_u32`, `nros_env_notice_if_set`) and a header
-  `<nros/env.h>`, which returns NULL under `__STDC_HOSTED__ == 0` exactly as
-  `env_compat.hpp` does today, so the Cyclone C++ backend and the XRCE C
-  transport call it.
-
-Every reader in the inventory reaches `nros-env`: the zenoh backend,
-`nros-rmw-cffi` and `nros-bridge` already depend on `nros-log`, which is the
-only dependency;
-the C/C++ backends link the C symbol from the image's staticlib, as they link
-`nros_platform_*` today. `nros::env` stays the boot-config ladder: it builds
-the `EnvRung` from `nros-env` rows and keeps `report`. Issue 2714's
-`StatementOverrides` becomes a call per row.
-
-**The warning.** `nros_log::log_warn!` on logger `nros.env` (a child of 2714's
-`nros`, RFC-0102), so it reaches every board's console sink and is filtered
-like every other nano-ros log line; never a raw `stderr` write, which on
-`native_sim` is issue 0589's hazard. A notice is `log_info!`. Each row has
-one bit in a static atomic bitset, so a row warns at most once per process,
-however many sessions or tiers resolve it (a levels runner resolves once per
-level today). A warning carries an `NROS-NNNN` diagnostic code (RFC-0129) so
-`nros explain` can say more than one line can; Q10.
-
-**Startup sweep.** The first resolve in a process also walks the IGNORE and
-REFUSE rows, so a set-but-ignored variable is reported whether or not any
-code path would have read it.
-
-### D5 - The gate
-
-`env-reads-through-registry` (a test in `packages/testing/nros-gates`,
-RFC-0131), on the fast line:
-
-1. Every runtime environment read in tracked sources (`getenv(`,
-   `std::getenv`, `env::var(`, `env::var_os(`, `env_lookup(`, a raw
-   `extern "C" fn getenv` declaration) outside `nros-env` itself fails, with
-   the file and the variable name, naming `nros_env::get`. Build scripts,
-   `packages/cli`, `packages/tooling`, test code and `scripts/` are out of
-   scope: they read the BUILD's environment, which RFC-0103 governs.
-2. Every name passed to `nros_env::get` / `nros_env_get` is a registry row.
-3. Every registry row is read somewhere, or is `listed`/`ignore`/`refuse`
-   (a registered RESPECT row with no reader is the unwired-producer shape).
-4. `option_env!` of a registry name is allowed only in the files the
-   registry lists for its build-time spelling.
-
-A self-test plants one bypassing read in a temporary tree and asserts the
-gate names it (the negative control every gate here carries). The reach
-check (0196's rule): the gate's file set is derived from `git ls-files`
-over the runtime crates, not authored.
-
-### D6 - Stock ROS 2 semantics, and where nano-ros differs
-
-These are divergences in RFC-0036's sense; each gets a row there when it
-lands.
-
-- **`ROS_LOCALHOST_ONLY` and `ROS_AUTOMATIC_DISCOVERY_RANGE`.** In Jazzy,
-  `ROS_LOCALHOST_ONLY` is deprecated in favour of
-  `ROS_AUTOMATIC_DISCOVERY_RANGE` (`SUBNET`, `LOCALHOST`, `OFF`,
-  `SYSTEM_DEFAULT`) plus `ROS_STATIC_PEERS`; Humble has only the former.
-  nano-ros supports both editions, so if these are ever RESPECTed, both
-  spellings must be, with Jazzy's precedence. This RFC proposes IGNORE first:
-  the harness already learned (issue 1009) that `ROS_LOCALHOST_ONLY` reaches
-  ROS processes only, and that a half-isolated pair finds nothing. A notice
-  is better than a partial imitation.
-- **`RMW_IMPLEMENTATION`.** Stock uses it to load an RMW library at run
-  time. A nano-ros image links its backends at build time, so the variable
-  cannot select anything the image does not contain; nano-ros uses
-  `NROS_RMW` among linked backends and reports a disagreeing
-  `RMW_IMPLEMENTATION`.
-- **`ROS_DOMAIN_ID` on embedded.** Stock always reads it; an embedded
-  nano-ros image cannot. D3's note is the replacement.
-- **Logging variables.** Stock `rcutils` reads the four `RCUTILS_*`
-  variables and writes log files under `ROS_LOG_DIR` (default
-  `$ROS_HOME/log`). nano-ros has neither a configurable console format nor
-  file logging.
-- **`ROS_SECURITY_*`.** Stock enforces; nano-ros refuses the enforced case
-  rather than run unsecured.
-- **Precedence.** Stock has no `system.toml`; a stock node takes the
-  environment or its compiled default. nano-ros adds the statement rung
-  between them, and the warning is how a ROS user who expects "env decides"
-  sees that a statement existed.
-
-## Alternatives considered
-
-- **Keep the decision in `nros::env` and have each backend re-implement it.**
-  Rejected: that is a spelling per language and per crate, which the
-  inventory shows already produced a Rust-only gap and seven readers of one
-  variable.
-- **The statement always wins; the environment is refused when it
-  disagrees.** Rejected by the user's ruling: on a Linux host the
-  environment is how tests and one-off runs pick a domain.
-- **Mirror every stock variable.** Rejected for now: several need per-backend
-  work (discovery range on two backends), and a partial imitation is worse
-  than a stated IGNORE.
-- **A notice for every unknown `ROS_*` variable.** Rejected: a sourced ROS
-  shell sets `ROS_DISTRO`, `ROS_VERSION`, `ROS_PYTHON_VERSION`, which no node
-  acts on. Only registry rows are reported.
-
-## Non-goals
-
-- Command-line `--ros-args` (remaps, `__ns`, `__node`, `--log-level`,
-  `--params-file`): argv, not the environment; `nros::init_with_args`
-  owns it.
-- The CLI's and build scripts' own variables (`NROS_HOME`, `NROS_BOARD`,
-  `FREERTOS_PORT`, the `NROS_*` build knobs): RFC-0103.
-- Making a launcher write the environment from `system.toml`: issue 2714
-  made the bake carry the statement, so no launcher needs to.
-
-## Decisions (user ruling, 2026-11-19)
-
-The user accepted the recommendations on Q2 to Q11 below. Q1 is reopened
-with a wider scope and is not decided yet.
-
-1. **Registry home: REOPENED, scope widened.** Environment variables are to
-   be designed TOGETHER WITH the knobs: one configuration source of truth and
-   one naming scheme across `system.toml` keys, `NROS_*` build carriers,
-   `CONFIG_NROS_*` Kconfig symbols and run-time environment variables. So an
-   environment variable becomes a row of the same knob registry, not a row of
-   a sibling `env-vars.toml`. The ruling also asks that a custom board package
-   and a custom RMW package be self-contained, colcon-style packages that can
-   declare their own knobs and environment variables without editing central
-   in-tree files. D4 and D5 will be revised against a survey of today's
-   registries; until then they describe the narrower design.
-2. **Discovery range: IGNORE with a notice** for `ROS_LOCALHOST_ONLY`,
-   `ROS_AUTOMATIC_DISCOVERY_RANGE` and `ROS_STATIC_PEERS`. RESPECT on the
-   Cyclone backend is later work, not this phase.
-3. **`ROS_NAMESPACE`: match stock rclcpp**, after verifying what rcl and
-   rclcpp actually do with it. The `ExecutorConfig::namespace` doc's claim
-   is corrected to whatever the measurement says.
-4. **nano-ros' own `ZENOH_*` variables: RETIRE.** The six inventions
-   (`ZENOH_MULTICAST_SCOUTING`, `ZENOH_SCOUTING_TIMEOUT`, `ZENOH_LISTEN`,
-   three `ZENOH_TLS_*`) are REFUSED, each naming its replacement, the stock
-   `ZENOH_CONFIG_OVERRIDE`, lowered by the same reader as the session file.
-5. **Logging: RESPECT** `RCUTILS_COLORIZED_OUTPUT` and
-   `RCUTILS_CONSOLE_OUTPUT_FORMAT` in the Linux console sink. `RUST_LOG`
-   stays a Rust-only variable.
-6. **Loans: IGNORE** `ROS_DISABLE_LOANED_MESSAGES`.
-7. **Router variables:** `ZENOH_ROUTER_CONFIG_URI` gets a notice like every
-   other ignored row.
-8. **`native_sim`: measure** whether its libc sees the host environment,
-   then correct whichever of RFC-0109 D6a and the Cyclone backend's comment
-   is wrong.
-9. **NuttX: RESPECT.** The reader is compiled for `target_os = "nuttx"`.
-10. **Diagnostic codes: plain log lines first.** `NROS-NNNN` codes come
-    later, under RFC-0129.
-11. **`freertos-posix` Rust: RESPECT**, as `threadx-linux` does through
-    `resolve_boot`, so its Rust road agrees with its C/C++ road.
-
-## Related
-
-- RFC-0045 (one boot-config resolver), RFC-0103 D2 (an override is not a
-  source), RFC-0109 D6a and D8 (run-time overrides on hosted builds; the
-  middleware's own file), RFC-0036 (divergences), RFC-0102 (logger
-  hierarchy), RFC-0129 (diagnostic codes), RFC-0131 (gates are tests).
-- Issue 2714 and PR #4285 (the domain and locator); issues 0687 (one env
-  reader), 0794, 1009, 1434.
-
-## Changelog
-
-- 2026-11-19: Draft.
-- 2026-11-19: Q2 to Q11 decided by the user; Q1 reopened (env vars join the
-  knob registry under one naming scheme; self-contained board and RMW
-  packages).
+`NROS_ENTRY_SPIN_MS` alone has seven run-time readers with four spellings of
+the read: `std::getenv` in `rclcpp/detail/main.hpp`, `getenv` in
+`nros_rtos_run_components.c`, `std::env::var` in `nros-board-linux` and
+`nros-bridge`, `env_str` in `nros-board-threadx-linux`, `nros::env::var` in
+`nros-cpp`, and `std::env` in the `nros::main!` expansion (re-counted on
+`origin/main`).
