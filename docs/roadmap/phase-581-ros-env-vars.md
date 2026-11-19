@@ -7,8 +7,11 @@ REFUSE) from one registry, read through one reader shared by C, C++ and Rust;
 an environment value that overrides what `system.toml` states is warned once,
 and an ignored variable is reported once.
 
-No item starts before the user rules on RFC-0140's open questions; W1 and W2
-do not depend on the rulings, the per-variable batches do. Each item is one
+The user ruled on RFC-0140's open questions on 2026-11-19: Q2 to Q11 are
+decided (RFC-0140 "Decisions"); Q1 is reopened, because environment
+variables are to join the knob registry under one naming scheme and board and
+RMW packages are to declare their own rows. So W1 (the registry) and W2 (the
+reader) wait for the revised Q1 design; W0's measurements do not. Each item is one
 PR, claimed with `just claim phase-581-wN`.
 
 ## Why
