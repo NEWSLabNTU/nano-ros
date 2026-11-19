@@ -1,7 +1,8 @@
 ---
 id: 2681
 title: "A Rust node built with `Executor::node_builder(..).build()` or `Executor::create_node` reaches no census hook, so the census does not count it"
-status: open
+status: resolved
+resolved_in: "the change that archives this issue"
 type: bug
 area: [testing, params]
 severity: medium
@@ -9,7 +10,7 @@ found: 2026-11-17
 related: [1419, 2670, phase-478]
 ---
 
-**Home:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md),
+**Home:** [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md),
 "Issues homed here (2026-11-17)". Found while fixing issue 2670, which is the
 same gap for parameters.
 
@@ -50,3 +51,27 @@ would not record twice. Arming is already in place: since issue 2670 the
 census boot funnel (`nros-board-linux`'s `census_arm`) calls
 `listen_for_registrations` before the executor opens, so an observer fired
 from the first imperative `build()` is heard.
+
+## Fix (2026-11-19)
+
+The "possible shape" above, as written:
+- `nros-node`'s `registration_observer` gains `ObservedNodeCreate` and
+  `set_node_create_observer`. `NodeBuilder::build` reports each node with its
+  final name and namespace before the node table answers, so a node a full
+  table refuses is still counted. Every imperative route builds through it:
+  `node_builder(..).build()`, `create_node`, and the `create_node_on*` forms.
+  It sits behind the `registration-observer` feature, like every observer.
+- `nros::metadata_mode::listen_for_registrations` installs the sink, which
+  opens the node in the recorder (`begin_node`, domain 0, the 2670 rule) and
+  warns in a census run if the recorder is full. Reopening is idempotent
+  (issue 1419), so the declarative route, which builds through the same
+  builder and then calls `on_node_create`, still records once.
+
+`imperative_param_census` now also builds `quiet` (`node_builder(..).build()`)
+and `silent` (`create_node`), neither of which declares a parameter, and
+asserts that every imperatively built node has exactly one row. With the
+builder's report disabled, `quiet` has no row and the test fails; with it,
+the test passes. The nros metadata_mode tests (12) and the nros-cpp census
+tests (13) are unchanged and green.
+
+Sweep: `git grep -n 'observe_node_create\|set_node_create_observer' -- packages`

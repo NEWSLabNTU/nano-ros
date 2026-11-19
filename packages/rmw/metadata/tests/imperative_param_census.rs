@@ -1,5 +1,6 @@
 //! Issue 2670: a parameter Rust code declares through the executor's own
-//! routes reaches the census.
+//! routes reaches the census. Issue 2681: so does every node those routes
+//! build, whether or not it declares a parameter.
 //!
 //! The store's slot count comes from the contract's `params:`, and the guard
 //! against a contract that lists too few is the census's
@@ -85,6 +86,17 @@ fn imperative_rust_declarations_reach_the_census() {
         ParameterValue::Double(1.5),
         ParameterDescriptor::new("gain", ParameterType::Double).unwrap(),
     ));
+    // Issue 2681 -- nodes that declare NOTHING, built both imperative ways.
+    // Issue 2670's fix counts a node only through its first parameter, so
+    // these two were missing from the census before the builder reported its
+    // nodes itself.
+    let _quiet = executor
+        .node_builder("quiet")
+        .build()
+        .expect("node quiet registers");
+    let _silent = executor
+        .create_node("silent")
+        .expect("node silent registers");
     assert!(executor.declare_parameter("primary_flag", ParameterValue::Bool(true)));
     assert!(executor.declare_parameter_with_descriptor(
         "primary_count",
@@ -96,6 +108,17 @@ fn imperative_rust_declarations_reach_the_census() {
         .executable("imperative")
         .language("rust");
     let json = nros::metadata_mode::to_json(&export).expect("serialize");
+
+    // Issue 2681 -- every imperatively built node has its row, parameters or
+    // not, and each exactly once.
+    for node in ["alpha", "beta", "quiet", "silent"] {
+        let row = format!("{{\"id\":\"{node}\",\"declaration_slot\"");
+        assert_eq!(
+            json.matches(&row).count(),
+            1,
+            "`{node}` has exactly one node row: {json}"
+        );
+    }
 
     let params = recorded_parameters(&json);
     let has = |node: &str, name: &str, ty: &str| {

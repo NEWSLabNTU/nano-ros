@@ -488,6 +488,16 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             rosout: RosoutWriter::Pending,
         };
 
+        // Issue 2681 -- the census hears every node this builder creates, the
+        // imperative Rust routes included, BEFORE the table answers. Behind the
+        // feature only a metadata probe turns on, like every observer.
+        #[cfg(feature = "registration-observer")]
+        crate::executor::registration_observer::observe_node_create(
+            crate::executor::registration_observer::ObservedNodeCreate {
+                name: record.name.as_str(),
+                namespace: record.namespace.as_str(),
+            },
+        );
         self.executor
             .nodes
             .push(record)
