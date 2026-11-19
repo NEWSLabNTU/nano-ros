@@ -186,7 +186,8 @@ the callback.
 enforced.** Read-only matches rclc. Range enforcement is stricter than rclc and
 matches rclcpp. The range is what `describe_parameters` advertises, so a tool
 that reads it expects a set outside it to be refused. A refused set's reason
-is a static string (`"Value out of range"`). It does not print the range, so
+is rclcpp's (`Parameter {<name>} doesn't comply with integer range.`; phase-556
+W2, by user ruling 2026-11-19). It names the parameter and not the range, so
 the callee never formats a double (D10). ADOPT-BOUNDED: a request rclc accepts can be refused,
 never the reverse.
 

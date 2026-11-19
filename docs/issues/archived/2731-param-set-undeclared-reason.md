@@ -1,11 +1,12 @@
 ---
 id: 2731
 title: "A set of an undeclared parameter is refused with rclrs's reason, where the stock peer the compatibility tests use (rclpy) gives its own"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [params, interop]
 found: 2026-11-19
+resolved: 2026-11-19
 related: [phase-556]
 ---
 
@@ -53,8 +54,34 @@ The reason is one constant; the decision is which client to copy.
 
 ## Acceptance
 
-`ros2_cli_parity_interop::set_of_an_undeclared_name_compared_with_stock`
-holds the difference in expected-failure form. If the wording moves to
-rclpy's, it is flipped to the plain check and passes. If another wording is
-chosen, the test is replaced by a row in RFC-0036's divergence table and this
-issue is closed as by design.
+`ros2_cli_parity_interop` compares the refusal with a stock node's and finds
+the same answer.
+
+## Resolution
+
+The user ruled on 2026-11-19 that every parameter refusal reason nano-ros
+sends follows rclcpp's wording, and that this one is rclcpp's text, which
+names the parameter. Fixed in phase-556 W2, in `refusal_reason`
+(`nros-node`, `parameter_services.rs`):
+
+```
+$ ros2 param set /alpha nope 1          # nano-ros
+Setting parameter failed: parameter 'nope' cannot be set because it was not declared
+```
+
+The same ruling moved the other reasons to rclcpp's words, each measured
+against a running Humble rclcpp node: a read-only parameter (`parameter
+'<name>' cannot be set because it is read-only`), a value of the wrong type
+(`Wrong parameter type, parameter {<name>} is of type {integer}, setting it
+to {string} is not allowed.`), a delete of a statically typed parameter
+(`cannot undeclare an statically typed parameter`), and a value out of range
+or off its step (`Parameter {<name>} doesn't comply with integer range.`,
+`floating point range.` for a float).
+
+rclrs's text stays as the fallback a result carries when the reply buffer has
+no room for the named reason (a long parameter name; the buffer is priced at
+the fallback's length).
+
+The test was held as `set_of_an_undeclared_name_compared_with_stock` and is
+now the plain `set_of_an_undeclared_name_is_refused_as_stock_does`, against
+`turtlesim_node` (a shipped rclcpp node).

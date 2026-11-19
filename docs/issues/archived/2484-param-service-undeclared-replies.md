@@ -88,6 +88,12 @@ reason `One or more parameters could not be set`, where both stock libraries
 return the first refused parameter's own reason. No `ros2 param` verb sends
 it.
 
+Note (2026-11-19): the wording above was later changed. By user ruling, the
+refusal reasons follow rclcpp, not rclpy, and the reason tests compare
+against an rclcpp node (phase-556 W2,
+[issue 2731](2731-param-set-undeclared-reason.md)). A range reason no longer
+carries numbers.
+
 Plain tests in `ros2_cli_parity_interop`:
 `get_parameters_reply_for_an_undeclared_name_answers_as_stock_does`,
 `describe_parameters_reply_for_an_undeclared_name_answers_as_stock_does`,
