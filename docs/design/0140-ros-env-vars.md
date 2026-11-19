@@ -16,8 +16,9 @@ superseded-by: null
 **Status:** Draft (2026-11-19). Nothing is built. It generalises one user
 ruling, made for `ROS_DOMAIN_ID` and implemented for the domain and the
 locator by issue 2714 (PR #4285). Every other
-row below is a proposal awaiting the user's review; the open questions are
-listed at the end. Tracked by
+row below is a proposal; the user's 2026-11-19 ruling on the open questions
+is recorded under "Decisions" at the end, and reopens Q1 with a wider
+scope. Tracked by
 [phase-581](../roadmap/phase-581-ros-env-vars.md).
 
 ## Summary
@@ -424,43 +425,45 @@ lands.
 - Making a launcher write the environment from `system.toml`: issue 2714
   made the bake carry the statement, so no launcher needs to.
 
-## Open questions for the user
+## Decisions (user ruling, 2026-11-19)
 
-1. **Registry home.** A section of `knobs.toml` (one file, one generator) or
-   a sibling `env-vars.toml` beside it (same generator)?
-2. **Discovery range.** IGNORE with a notice for `ROS_LOCALHOST_ONLY`,
-   `ROS_AUTOMATIC_DISCOVERY_RANGE`, `ROS_STATIC_PEERS` for now, or RESPECT
-   them on the Cyclone backend (generate the Cyclone config the way
-   `rmw_cyclonedds_cpp` does) in this phase? What `rmw_zenoh_cpp` does with
-   them was not verified here.
-3. **`ROS_NAMESPACE`.** Keep IGNORE (the current deliberate choice), or
-   RESPECT it below `NROS_NODE_NAMESPACE`? The `ExecutorConfig::namespace`
-   doc says ROS 2 honours it; that claim was not verified for rcl here.
-4. **nano-ros' own `ZENOH_*` variables.** Six names
+The user accepted the recommendations on Q2 to Q11 below. Q1 is reopened
+with a wider scope and is not decided yet.
+
+1. **Registry home: REOPENED, scope widened.** Environment variables are to
+   be designed TOGETHER WITH the knobs: one configuration source of truth and
+   one naming scheme across `system.toml` keys, `NROS_*` build carriers,
+   `CONFIG_NROS_*` Kconfig symbols and run-time environment variables. So an
+   environment variable becomes a row of the same knob registry, not a row of
+   a sibling `env-vars.toml`. The ruling also asks that a custom board package
+   and a custom RMW package be self-contained, colcon-style packages that can
+   declare their own knobs and environment variables without editing central
+   in-tree files. D4 and D5 will be revised against a survey of today's
+   registries; until then they describe the narrower design.
+2. **Discovery range: IGNORE with a notice** for `ROS_LOCALHOST_ONLY`,
+   `ROS_AUTOMATIC_DISCOVERY_RANGE` and `ROS_STATIC_PEERS`. RESPECT on the
+   Cyclone backend is later work, not this phase.
+3. **`ROS_NAMESPACE`: match stock rclcpp**, after verifying what rcl and
+   rclcpp actually do with it. The `ExecutorConfig::namespace` doc's claim
+   is corrected to whatever the measurement says.
+4. **nano-ros' own `ZENOH_*` variables: RETIRE.** The six inventions
    (`ZENOH_MULTICAST_SCOUTING`, `ZENOH_SCOUTING_TIMEOUT`, `ZENOH_LISTEN`,
-   three `ZENOH_TLS_*`) are nano-ros inventions under zenoh's prefix. Keep and
-   make them work on C/C++ too (D2), or retire them (REFUSE, naming the
-   replacement) in favour of the stock `ZENOH_CONFIG_OVERRIDE`, lowered by
-   the same reader as the session file?
-5. **Logging.** IGNORE the `RCUTILS_*` variables, or RESPECT
-   `RCUTILS_COLORIZED_OUTPUT` / `RCUTILS_CONSOLE_OUTPUT_FORMAT` in the Linux
-   console sink? And should `RUST_LOG` become a C/C++ variable too, or be
-   replaced by a ROS-flavoured level variable?
-6. **Loans.** IGNORE `ROS_DISABLE_LOANED_MESSAGES`, or RESPECT it where the
-   backend fills the loan slot?
-7. **Router variables.** `ZENOH_ROUTER_CONFIG_URI` listed without a notice
-   (a stock node ignores it too), or a notice like every other ignored row?
-8. **`native_sim`.** RFC-0109 D6a lists `native_sim` as a hosted build whose
-   environment overrides the bake; the Cyclone backend's comment says its
-   libc sees no host environment. One of them is wrong. Measure it in W0 and
-   correct the other?
-9. **NuttX.** NuttX has an environment. RESPECT there (compile the reader for
-   `target_os = "nuttx"`), or treat it as embedded?
-10. **Diagnostic codes.** Give each warning and notice an `NROS-NNNN` code now,
-    or plain log lines first?
-11. **`freertos-posix` Rust.** Its Rust road reads no environment while its
-    C/C++ road does. Make it RESPECT (as `threadx-linux` does through
-    `resolve_boot`), or is the Rust road's behaviour intended?
+   three `ZENOH_TLS_*`) are REFUSED, each naming its replacement, the stock
+   `ZENOH_CONFIG_OVERRIDE`, lowered by the same reader as the session file.
+5. **Logging: RESPECT** `RCUTILS_COLORIZED_OUTPUT` and
+   `RCUTILS_CONSOLE_OUTPUT_FORMAT` in the Linux console sink. `RUST_LOG`
+   stays a Rust-only variable.
+6. **Loans: IGNORE** `ROS_DISABLE_LOANED_MESSAGES`.
+7. **Router variables:** `ZENOH_ROUTER_CONFIG_URI` gets a notice like every
+   other ignored row.
+8. **`native_sim`: measure** whether its libc sees the host environment,
+   then correct whichever of RFC-0109 D6a and the Cyclone backend's comment
+   is wrong.
+9. **NuttX: RESPECT.** The reader is compiled for `target_os = "nuttx"`.
+10. **Diagnostic codes: plain log lines first.** `NROS-NNNN` codes come
+    later, under RFC-0129.
+11. **`freertos-posix` Rust: RESPECT**, as `threadx-linux` does through
+    `resolve_boot`, so its Rust road agrees with its C/C++ road.
 
 ## Related
 
@@ -474,3 +477,6 @@ lands.
 ## Changelog
 
 - 2026-11-19: Draft.
+- 2026-11-19: Q2 to Q11 decided by the user; Q1 reopened (env vars join the
+  knob registry under one naming scheme; self-contained board and RMW
+  packages).
