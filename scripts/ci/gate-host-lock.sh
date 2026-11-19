@@ -4,7 +4,23 @@
 # on two hosts (a `cli-tests` timeout on newslab-243; both gates red at load ~50
 # on newslab-175, then a push on partial reruns).
 #
-# Usage: gate-host-lock.sh <command...>     runs <command> holding the lock
+# Usage: gate-host-lock.sh [--housekeeping <shell-command>] <command...>
+#   runs <command> (the VERDICT) holding the lock, then the housekeeping
+#
+# Issue 2733 — the verdict region and the housekeeping region, defined HERE:
+#   * The VERDICT is <command>. It alone runs under the wall limit and the hang
+#     detector below, and its status alone is the gate's exit code.
+#   * The HOUSEKEEPING (`--housekeeping`, one shell command) runs after the
+#     verdict has ended, however it ended, OUTSIDE those limits. It gets its own
+#     limit (15 min), it reports, and it never changes the exit code: a failure
+#     or a timeout is a warning line. Anything that cannot change the verdict
+#     (cache trims, reminders) belongs here, not at the tail of <command>.
+#     On 2026-11-19 a gate whose 11 steps all passed was killed red at the wall
+#     limit during the cache trim at the end of its body (newslab-175).
+#   * The housekeeping still HOLDS the lock: the trim deletes target dirs under
+#     load the next gate would contend with, and the lock's promise is one gate's
+#     work per host at a time. The waiter cap covers it (wall + housekeeping +
+#     30 min), so a waiter still outlasts any live holder.
 #
 # The design (user-approved, 2026-11-15):
 #   * `flock -o -w <cap> <lock> <command>`: the `flock` process holds the lock,
@@ -28,13 +44,14 @@
 #     EITHER new gate output OR growth in the CPU time (utime+stime, children's
 #     included) of the gate's process tree, so a long quiet compile lives and a
 #     deadlock at 0 % CPU (a nested cargo once held a host 3 h) does not.
-#   * The waiter has a cap, the holder's wall limit + 30 min, so it outlasts any
+#   * The waiter has a cap, the holder's wall limit + its housekeeping limit
+#     + 30 min (issue 2733), so it outlasts any
 #     live holder. On expiry it exits red naming the holder, and it NEVER runs
 #     its command without the lock. Both limits are printed when a gate starts.
 #   * No knob skips the lock, and nothing anywhere says to delete it: either
 #     would become the bypass. The limits are NOT user knobs. The tests shorten
 #     them through `_NROS_GATE_LOCK_TEST_*` variables (WALL_S, WAIT_S, HANG_S,
-#     TICK_S, REPORT_S, NPROC), and none of them can make a gate run unlocked: a
+#     TICK_S, REPORT_S, NPROC, HOUSEKEEPING_S), and none of them can make a gate run unlocked: a
 #     zero wait is an immediate refusal.
 set -uo pipefail
 
@@ -43,12 +60,13 @@ ncpu="${_NROS_GATE_LOCK_TEST_NPROC:-$(nproc)}"
 # 2.5 h x max(1, 16 / nproc), in whole seconds.
 if [ "$ncpu" -ge 16 ]; then wall_default=9000; else wall_default=$((9000 * 16 / ncpu)); fi
 gate_s="${_NROS_GATE_LOCK_TEST_WALL_S:-$wall_default}"
-wait_s="${_NROS_GATE_LOCK_TEST_WAIT_S:-$((gate_s + 1800))}"
+housekeeping_s="${_NROS_GATE_LOCK_TEST_HOUSEKEEPING_S:-900}"
+wait_s="${_NROS_GATE_LOCK_TEST_WAIT_S:-$((gate_s + housekeeping_s + 1800))}"
 hang_s="${_NROS_GATE_LOCK_TEST_HANG_S:-2700}"
 tick_s="${_NROS_GATE_LOCK_TEST_TICK_S:-60}"
 report_s="${_NROS_GATE_LOCK_TEST_REPORT_S:-300}"
 limits_line() {
-    echo "wall limit ${gate_s} s ($((gate_s / 60)) min, ${ncpu} cores), hang limit $((hang_s / 60)) min without output or CPU, waiter cap ${wait_s} s"
+    echo "wall limit ${gate_s} s ($((gate_s / 60)) min, ${ncpu} cores), hang limit $((hang_s / 60)) min without output or CPU, housekeeping limit ${housekeeping_s} s outside both, waiter cap ${wait_s} s"
 }
 
 # CPU seconds x 100 (clock ticks) used by <pid> and every descendant, live
@@ -102,9 +120,11 @@ holder_line() { # <lock>
 }
 
 if [ "${1:-}" = "--held" ]; then
-    # Run by `flock` once the lock is taken: argv is `--held <lock> <command...>`.
+    # Run by `flock` once the lock is taken: argv is
+    # `--held <lock> <housekeeping or ""> <command...>`.
     lock="$2"
-    shift 2
+    housekeeping="$3"
+    shift 3
     if [ -n "${NROS_GATE_LOCK_REPORTER:-}" ]; then
         kill "$NROS_GATE_LOCK_REPORTER" 2>/dev/null || true
     fi
@@ -155,6 +175,18 @@ if [ "${1:-}" = "--held" ]; then
     wait "$gate_pid" || rc=$?
     wait "$tee_pid" 2>/dev/null
     rm -rf "$run_dir"
+    # Issue 2733 — the verdict is decided (rc, hung). Housekeeping runs now,
+    # under its own deadline and outside the wall limit and the hang detector,
+    # still holding the lock. Its status is reported, never returned.
+    if [ -n "$housekeeping" ]; then
+        hk_rc=0
+        "${NROS_DEADLINE[@]}" "$housekeeping_s" bash -c "$housekeeping" || hk_rc=$?
+        if [ "$hk_rc" -eq 124 ] || [ "$hk_rc" -eq 137 ]; then
+            echo "ci gate: WARNING: housekeeping timed out after ${housekeeping_s} s and was killed; the gate's verdict is unaffected (issue 2733)." >&2
+        elif [ "$hk_rc" -ne 0 ]; then
+            echo "ci gate: WARNING: housekeeping FAILED (exit ${hk_rc}, see above); the gate's verdict is unaffected (issue 2733)." >&2
+        fi
+    fi
     : >"$lock"
     if [ "$hung" = 1 ]; then
         echo "ci gate: gate hung: no progress for $((hang_s / 60)) min (no new output, no CPU time in its process tree); it was killed, and the host's gate lock is free (issue 2602)." >&2
@@ -169,8 +201,17 @@ if [ "${1:-}" = "--held" ]; then
     exit "$rc"
 fi
 
+housekeeping=""
+if [ "${1:-}" = "--housekeeping" ]; then
+    if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        echo "usage: gate-host-lock.sh [--housekeeping <shell-command>] <command...>" >&2
+        exit 2
+    fi
+    housekeeping="$2"
+    shift 2
+fi
 if [ "$#" -eq 0 ]; then
-    echo "usage: gate-host-lock.sh <command...>" >&2
+    echo "usage: gate-host-lock.sh [--housekeeping <shell-command>] <command...>" >&2
     exit 2
 fi
 
@@ -202,7 +243,7 @@ fi
 
 rc=0
 NROS_GATE_LOCK_REPORTER="$reporter" flock -o -E "$conflict" -w "$wait_s" "$lock" \
-    bash "$0" --held "$lock" "$@" || rc=$?
+    bash "$0" --held "$lock" "$housekeeping" "$@" || rc=$?
 [ -n "$reporter" ] && kill "$reporter" 2>/dev/null
 if [ "$rc" -eq "$conflict" ]; then
     echo "ci gate: NOT RUN — waited ${wait_s} s for this host's gate lock, still held by: $(holder_line "$lock")" >&2

@@ -66,10 +66,17 @@ default: tier1
 # frees the lock itself; a waiter past its cap is red and never runs unlocked.
 # There is no knob that skips the lock, and nothing to delete by hand: the
 # kernel releases a flock when its holder dies, however it dies.
+#
+# Issue 2733 — the gate has two regions, and this line is where each is named.
+# `_gate-inner` is the VERDICT: it runs under the lock's wall limit and hang
+# detector, and its status is the gate's. `_gate-housekeeping` runs after it,
+# outside both limits, under its own (15 min, `gate-host-lock.sh`), and only
+# reports: it never changes the exit code. A step that cannot change the
+# verdict goes in `_gate-housekeeping`, never at the tail of `_gate-inner`.
 # Compile + lint + unit, no fixtures; one per host (issue 2602).
 [group("main")]
 gate:
-    @bash scripts/ci/gate-host-lock.sh just ci::_gate-inner
+    @bash scripts/ci/gate-host-lock.sh --housekeeping 'just ci::_gate-housekeeping' just ci::_gate-inner
 
 # The gate's body, run only under the host lock above (issue 2602).
 [private]
@@ -113,18 +120,8 @@ _gate-inner:
     steps=(check::cli-fresh check::cli-noop-build check::launch-resolve-fresh check::fast check::pristine-checkout check::api-parity check::probe-workspace-caps check::build test-unit test-lane-contracts check::out-of-lane-deselected)
     gate_rc=0
     bash scripts/ci/run-lane-steps.sh gate "${steps[@]}" || gate_rc=$?
-    # phase-543 W4 — keep this worktree's multi-target build caches to their
-    # budgets (`.config/cache-budgets.toml`), least recently used first, after
-    # every run: five runs in one worktree once grew them by 160 G. A run's own
-    # cache is never evicted (used in the last 12 h). The trim cannot change
-    # the verdict: a failure here is reported, and the gate's status stands.
-    # `NROS_KEEP_CACHES=1` reports instead.
-    python3 scripts/build/trim-caches.py --apply \
-        || echo "ci gate: cache trim FAILED (see above); the gate's verdict is unaffected" >&2
-    # Issue 2611 — finished worktrees fill the host. One line, only when a
-    # worktree of yours that `just worktree-prune --apply` would remove is over
-    # 10 GB. Advisory: it cannot change the verdict.
-    python3 scripts/worktree-prune.py --reminder 2>/dev/null || true
+    # Post-verdict housekeeping is NOT here: it is `_gate-housekeeping`, outside
+    # the wall limit (issue 2733).
     if [ "$gate_rc" -eq 0 ]; then
         echo "CI gate passed (compile + unit; no fixtures were built or needed)."
         exit 0
@@ -132,6 +129,30 @@ _gate-inner:
     printf '  `check::build` is the only place the C/C++ backends compile, so a red\n'
     printf '  step before it means they were not built at all (issue 0952).\n'
     exit 1
+
+# The gate's housekeeping, run by the host lock after `_gate-inner` has ended,
+# outside its wall limit and hang detector and under a limit of its own (issue
+# 2733). It reports and never decides the gate's exit code, so a failure here is
+# a warning, and nothing in it may be a verdict step.
+[private]
+_gate-housekeeping:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    hk_rc=0
+    # phase-543 W4 — keep this worktree's multi-target build caches to their
+    # budgets (`.config/cache-budgets.toml`), least recently used first, after
+    # every run: five runs in one worktree once grew them by 160 G. A run's own
+    # cache is never evicted (used in the last 12 h). `NROS_KEEP_CACHES=1`
+    # reports instead.
+    python3 scripts/build/trim-caches.py --apply || {
+        echo "ci gate: cache trim FAILED (see above)" >&2
+        hk_rc=1
+    }
+    # Issue 2611 — finished worktrees fill the host. One line, only when a
+    # worktree of yours that `just worktree-prune --apply` would remove is over
+    # 10 GB. Advisory.
+    python3 scripts/worktree-prune.py --reminder 2>/dev/null || true
+    exit "$hk_rc"
 
 # Deprecated spelling of `just ci gate`. Kept because it is what CLAUDE.md,
 # automation.yml (`notify`) and the docs say today.
