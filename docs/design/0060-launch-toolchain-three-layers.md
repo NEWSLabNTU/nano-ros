@@ -35,7 +35,9 @@ What this amendment does not change: the switch is still a nano-ros build
 fact, so it lives in `system.toml` and the overlay `nros.toml`, never in the
 SystemModel (the rule below). Divergences from stock, recorded with the
 ruling: `/rosout` is VOLATILE (rcl's is TRANSIENT_LOCAL), and a node does not
-yet subscribe to `/parameter_events` (issue 2483). The opt-outs are exactly
+subscribe to `/parameter_events` (decided in phase-556 W11; RFC-0036). The
+stock set also declares `use_sim_time` (the `sim_time` axis, phase-556 W11).
+The opt-outs are exactly
 three: the Pico W (its board budget holds one service server), PX4, and the
 RTIC entry, which registers neither interface (issue 2559). The XRCE images
 that state their service-server cap raise it by six per node instead (user

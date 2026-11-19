@@ -1891,7 +1891,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing {needle}:\n{with}"))
         };
         assert!(
-            with.contains("set(NROS_FEATURES \"param_services;lifecycle;rosout\")"),
+            with.contains("set(NROS_FEATURES \"param_services;lifecycle;rosout;sim_time\")"),
             "a cmake LIST, which `IN_LIST` reads: {with}"
         );
         assert!(at("set(NROS_FEATURES") < at("find_package(Zephyr"));

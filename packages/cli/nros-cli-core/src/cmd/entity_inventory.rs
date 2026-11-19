@@ -1225,10 +1225,12 @@ contracts:
         );
         let k = inv.derive().knobs().expect("derived").clone();
         assert_eq!(k.entity_total, 3);
-        assert_eq!(k.max_cbs, 2, "the publisher claims no slot");
+        // The subscription and the timer; the publisher claims no slot, and the
+        // stock `/clock` time source (phase-556 W11, on by default) claims one.
+        assert_eq!(k.max_cbs, 3, "the publisher claims no slot");
         assert_eq!(
             inv.to_env(),
-            "NROS_EXECUTOR_MAX_CBS=2\nNROS_EXECUTOR_ACTION_CLIENTS=0\n\
+            "NROS_EXECUTOR_MAX_CBS=3\nNROS_EXECUTOR_ACTION_CLIENTS=0\n\
              NROS_RUNTIME_MAX_CELL_ENTITIES=1\n"
         );
     }

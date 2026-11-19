@@ -10710,8 +10710,12 @@ domain_id = 0
         ));
         let mut got = declared_capabilities_for(d.path(), None);
         got.sort_unstable();
-        // phase-556 W13 -- plus the stock `rosout` every image gets.
-        assert_eq!(got, vec!["lifecycle", "param_services", "rosout"]);
+        // phase-556 W13 -- plus the stock `rosout` and (W11) `sim_time` every
+        // image gets.
+        assert_eq!(
+            got,
+            vec!["lifecycle", "param_services", "rosout", "sim_time"]
+        );
     }
 
     /// The deprecated typed `[safety]` block still counts — both spellings
@@ -13768,7 +13772,9 @@ mod coordinate_union_tests {
         ] {
             let dir = compose(&members);
             assert_eq!(dir, coordinate_resolve_dir(root, &shared));
-            assert_eq!(max_cbs(&dir), "max_cbs = 3");
+            // The larger member's callbacks plus the stock `/clock` time source
+            // (phase-556 W11's `sim_time`, on by default since W13).
+            assert_eq!(max_cbs(&dir), "max_cbs = 4");
             let m = read_coordinate_members(&dir).expect("coordinate.toml");
             assert_eq!(m.coordinate, shared.id());
             assert_eq!(
@@ -13777,9 +13783,10 @@ mod coordinate_union_tests {
                 "every image on the coordinate, sorted"
             );
         }
-        // The control: each member alone states its own need.
-        assert_eq!(max_cbs(&compose(&[small])), "max_cbs = 1");
-        assert_eq!(max_cbs(&compose(&[big])), "max_cbs = 3");
+        // The control: each member alone states its own need (each plus the
+        // stock `/clock` callback).
+        assert_eq!(max_cbs(&compose(&[small])), "max_cbs = 2");
+        assert_eq!(max_cbs(&compose(&[big])), "max_cbs = 4");
     }
 
     /// The members are every image on the coordinate, the ones this build did

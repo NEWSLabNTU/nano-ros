@@ -1664,10 +1664,11 @@ mod tests {
         assert_eq!(tag(&none, (true, true)), InfraFamilies::ParamLifecycle);
         assert_eq!(tag(&none, (false, false)), InfraFamilies::None);
         let param = leaf_model_with("param_services");
-        // phase-556 W13 -- `param_services` comes with `/rosout`.
+        // phase-556 W13 -- `param_services` comes with `/rosout` and (W11)
+        // the `/clock` time source.
         assert_eq!(
             tag(&param, (false, true)),
-            InfraFamilies::ParamLifecycleRosout
+            InfraFamilies::ParamLifecycleRosoutClock
         );
         assert_eq!(
             leaf_infra(Some(&param), (false, false))

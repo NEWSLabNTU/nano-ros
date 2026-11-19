@@ -177,8 +177,8 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables(
         );
         assert_eq!(
             desc.image.infra_families().stated(),
-            Some(&nros_sizing_descriptor::InfraFamilies::ParamRosout),
-            "{lang}: no `[system] features`, the stock parameter family and `/rosout`"
+            Some(&nros_sizing_descriptor::InfraFamilies::ParamRosoutClock),
+            "{lang}: no `[system] features`, the stock parameter family, `/rosout` and `/clock`"
         );
         checked += 1;
     }

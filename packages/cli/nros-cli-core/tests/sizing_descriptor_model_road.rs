@@ -82,7 +82,9 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
     assert!(sub.durability().is_stated());
     assert_eq!(desc.image.node_count().stated(), Some(&2));
     assert_eq!(desc.image.backend_count().stated(), Some(&1));
-    assert_eq!(desc.image.subscriber_count().stated(), Some(&2));
+    // The fixture's two, and the stock `/clock` time source (phase-556 W11,
+    // on by default since W13).
+    assert_eq!(desc.image.subscriber_count().stated(), Some(&(2 + 1)));
     // `[target]` is the BOARD's, not this process's (RFC-0100 D1) — 4 on the
     // thumbv7em triple above, where a host build script would have said 8.
     assert_eq!(desc.target.pointer_bytes().stated(), Some(&4));

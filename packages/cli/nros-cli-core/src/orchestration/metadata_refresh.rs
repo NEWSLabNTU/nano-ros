@@ -2467,7 +2467,7 @@ mod tests {
         std::fs::write(&st, base).unwrap();
         let none = capabilities_digest(&st).unwrap();
         // phase-556 W13 -- no feature is the stock node interfaces.
-        assert_eq!(none, "capabilities:param_services,rosout");
+        assert_eq!(none, "capabilities:param_services,rosout,sim_time");
 
         // The `[census]` policy and waivers live in the same file and are
         // applied TO the census; editing them must not stale it.
@@ -2488,11 +2488,14 @@ mod tests {
         )
         .unwrap();
         let listed = capabilities_digest(&st).unwrap();
-        assert_eq!(listed, "capabilities:param_services,lifecycle,rosout");
+        assert_eq!(
+            listed,
+            "capabilities:param_services,lifecycle,rosout,sim_time"
+        );
         std::fs::write(&st, format!("{base}\n[safety]\nenabled = true\n")).unwrap();
         assert_eq!(
             capabilities_digest(&st).unwrap(),
-            "capabilities:safety,param_services,rosout"
+            "capabilities:safety,param_services,rosout,sim_time"
         );
 
         // And through the freshness path: recorded under none, read after the

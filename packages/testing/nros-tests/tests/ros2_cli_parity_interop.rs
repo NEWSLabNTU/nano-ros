@@ -682,9 +682,10 @@ fn node_info_of_an_action_client_answers_as_stock_does() {
 /// A stock node publishes `/rosout` and `/parameter_events`, serves the six
 /// parameter services and (rclcpp) subscribes to `/parameter_events`. A
 /// nano-ros node has the same by default (phase-556 W13), all but the
-/// subscription: held in expected-failure form, the one line it lacks.
-// The subscriber is issue 2483 (phase-556 W11). RFC-0036 "Graph interfaces a
-// node has by default".
+/// subscription, which phase-556 W11 decided it does not need (a set of
+/// `use_sim_time` is acted on where the parameter service applies it). That
+/// one line is held in expected-failure form so that any other change shows.
+// RFC-0036 "Graph interfaces a node has by default".
 #[test]
 fn default_node_interfaces_compared_with_stock() {
     let pair = listener_pair();

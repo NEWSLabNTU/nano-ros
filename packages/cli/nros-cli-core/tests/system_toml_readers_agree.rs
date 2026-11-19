@@ -347,7 +347,7 @@ fn both_readers_build_every_image_with_the_same_node_interfaces() {
     // `[system]` states no switch, so it gets the stock set (the default).
     assert_eq!(
         get("<system>"),
-        vec!["lifecycle", "param_services", "rosout"]
+        vec!["lifecycle", "param_services", "rosout", "sim_time"]
     );
     assert_eq!(get("a"), vec!["lifecycle"]);
     assert_eq!(
