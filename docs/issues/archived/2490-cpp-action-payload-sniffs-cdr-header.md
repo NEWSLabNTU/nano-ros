@@ -1,7 +1,9 @@
 ---
 id: 2490
 title: "nros-cpp's action path still decides whether a payload has a CDR header by sniffing its bytes, the value-based check RFC-0069 removed from the executor"
-status: open
+status: resolved
+resolved: 2026-11-19
+resolved_in: "the change that archives this issue"
 type: bug
 severity: low
 area: [cpp-api, actions]
@@ -46,3 +48,23 @@ review. It is archived as a duplicate of this one. What it added:
   verbatim; otherwise it prepends a little-endian header.
 - If some road does deliver a raw payload, frame it on that road, where the
   framing is known, rather than guessing in the trampoline.
+
+## Resolved (2026-11-19)
+
+Traced: `cpp_feedback_trampoline` and `cpp_result_trampoline` have one
+caller, the executor's raw action-client dispatch
+(`register_action_client_raw`). It hands them `splice_feedback` /
+`splice_result` output: the frame's own encapsulation header followed by
+the fields, on every backend. So the sniff's "no header" branch was
+unreachable in practice, and its "header" branch was a copy.
+
+- The trampolines forward the dispatch's buffer as it is. They no longer
+  copy it into a stack frame or truncate it to `DEFAULT_RX_BUF_SIZE`.
+- nros-cpp's `payload_has_cdr_encap` and `frame_for_callback` are deleted.
+- The contract is stated where a callback author reads it:
+  `RawFeedbackCallback` / `RawResultCallback` say the payload is a whole CDR
+  message behind its header, spliced by the executor.
+- Test: `action_frame`'s
+  `a_body_that_reads_as_a_header_still_gets_the_frames_header`. A feedback
+  or result body whose first word is 256 (`00 01 00 00`) still gets the
+  frame's header in front, which a sniffing reader would have misread.
