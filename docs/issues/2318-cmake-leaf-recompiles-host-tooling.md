@@ -205,3 +205,40 @@ candidate mechanism.
 
 **Suggested owner: the phase-489 owner, or a maintainer decision** on
 whether to resume lever 2.
+
+## Lever 1 measured (2026-11-19)
+
+`build-override.debug = 0` on `nros-relwithdebinfo`, one row
+(`linux-c-zenoh-talker`). Each state is a cold build into an emptied leaf
+cargo directory (`nros-cpp-image_<hash>`):
+
+| | host half (`nros-relwithdebinfo/`) | target half | `libnros_macros-*.so` | `zpico-sys` build script |
+|---|---|---|---|---|
+| before | 842 MiB | 191 MiB | 78.4 MB | 31.4 MB |
+| after | 375 MiB | 191 MiB | 21.5 MB | 11.0 MB |
+
+The host half is 55 % smaller, and the leaf's directory goes from 1033 to
+566 MiB. The target half is unchanged, and its rlibs keep `.debug_info`.
+
+### The setting did not reach an existing build dir
+
+The cmake road carries the profile as configure-time env
+(`NROS_CARGO_PROFILE_ENV`, from `nros dev profile env`).
+`nros_resolve_cargo_profile()` cached that answer and returned early on any
+later configure for the same profile NAME. So a dir configured before the
+change kept the old definition, even after a reconfigure: both a rebuilt CLI
+plus `cmake <dir>`, and a re-run of the fixture build, left
+`BUILD_OVERRIDE_DEBUG` out of the Makefiles. Only removing the cache entries
+picked it up. Every persistent fixture tree would have kept paying the full
+host half.
+
+Fixed with lever 1. The answer is resolved again on every configure (a
+GLOBAL property memoises it within one run). The resolver registers the tool
+(`nros_codegen_tool_reconfigure`), so a rebuilt `nros` re-runs the
+configure. Measured: an entry stripped from the cache by hand comes back on
+a plain `cmake <dir>`.
+
+`check-codegen-tool-reconfigure` exempts `profile env` and cannot gate it:
+the gate matches a verb by its last word, and `env` is also `cmake -E env`.
+The exemption's reason now says so, rather than claiming the answer is not
+the tool's.
