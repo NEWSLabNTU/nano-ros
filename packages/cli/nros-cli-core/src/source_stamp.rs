@@ -132,6 +132,11 @@ fn is_cli_input(rel: &str) -> bool {
         // and a fixture edit would then stale the CLI and force a rebuild for
         // nothing — the cost this predicate exists to avoid.
         || rel.ends_with("askama.toml")
+        // phase-568 W2c — `builder/build_args.rs` embeds the measured knob
+        // road table with `include_str!`, so a table-only edit changes what
+        // the CLI refuses while touching no `.rs`. Named exactly, like the
+        // two lists above: a blanket `.tsv` clause would watch fixture data.
+        || rel == KNOB_ROAD_COVERAGE_FILE
         // phase-517 W12 — a TEMPLATE TREE is consumed whole by `include_str!`,
         // whatever the file's extension: `nros new`'s role templates
         // (`cargo-nano-ros/templates/roles/*.{rs,c,cpp,hpp}`) and the workspace
@@ -619,6 +624,11 @@ pub fn source_stamp(root: &Path) -> Option<String> {
 
 /// Repo-relative location of the generated planning set (issue 2441).
 const CLI_PLANNING_SET_FILE: &str = "packages/cli/cli-planning-set.txt";
+
+/// The measured knob road table `builder/build_args.rs` embeds
+/// (`include_str!`), watched by name in [`is_cli_input`].
+const KNOB_ROAD_COVERAGE_FILE: &str =
+    "packages/cli/nros-cli-core/src/builder/knob_road_coverage.tsv";
 
 /// `path` is `prefix` or lies under it (a component boundary, not a string
 /// prefix: `nros-cli` must not cover `nros-cli-core`).
