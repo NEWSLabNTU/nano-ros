@@ -42,7 +42,7 @@ use nros_tests::{
     },
     ros2::{DEFAULT_ROS_DISTRO, is_ros2_package_available},
     ros2_compat::{
-        CliAnswer, Compared, GraphSide, Implementation, NODE_PLACEHOLDER, Pair,
+        CliAnswer, Compared, GraphSide, Implementation, NODE_PLACEHOLDER, Pair, changed_lines,
         is_parameter_service_line, only_lines_containing, parameter_service_lines,
         without_lines_containing,
     },
