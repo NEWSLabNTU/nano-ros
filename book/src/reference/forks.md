@@ -158,11 +158,11 @@ nano-ros builds `third-party/dds/cyclonedds` from the fork [NEWSLabNTU/cyclonedd
 | | |
 | --- | --- |
 | Upstream base | `0.10.5` (merge base [2cdd114cbd18](https://github.com/eclipse-cyclonedds/cyclonedds/commit/2cdd114cbd18340c606573b4cc8dc20cc161ec5a)) |
-| Commits on top | 35 |
+| Commits on top | 36 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 66, +4105/−204 |
+| Files changed | 67, +4137/−216 |
 
-**Pinned commit:** `404fc5d9603dd80af624e3557d52fa1369e274d0`
+**Pinned commit:** `05b3c9eda50a389cbcc197c24eb0e9743344cd92`
 
 Why each patch exists, and what retires it: [cyclonedds-fork-delta.md](../internals/rmw/cyclonedds-fork-delta.html).
 
@@ -205,12 +205,13 @@ Why each patch exists, and what retires it: [cyclonedds-fork-delta.md](../intern
 | [2314625c52](https://github.com/NEWSLabNTU/cyclonedds/commit/2314625c5226f5c2b6853ecc493f9e24ce17b91d) | ddsi: rate-limit and back off a persistently failing select in the waitset |
 | [8665a51f70](https://github.com/NEWSLabNTU/cyclonedds/commit/8665a51f7080c146b7e5f628f3f5599f294cbda1) | ddsrt: take the log sink lock exclusively where the scratch buffer is shared |
 | [404fc5d960](https://github.com/NEWSLabNTU/cyclonedds/commit/404fc5d9603dd80af624e3557d52fa1369e274d0) | ddsrt: re-take the mutex after a timed k_condvar_wait on Zephyr 4.x |
+| [05b3c9eda5](https://github.com/NEWSLabNTU/cyclonedds/commit/05b3c9eda50a389cbcc197c24eb0e9743344cd92) | ddsi: store XE (enum) plist fields at the ABI's enum size |
 
 Reproduce:
 
 ```bash
 base=0.10.5
-head=NEWSLabNTU:cyclonedds:404fc5d9603dd80af624e3557d52fa1369e274d0
+head=NEWSLabNTU:cyclonedds:05b3c9eda50a389cbcc197c24eb0e9743344cd92
 gh api "repos/eclipse-cyclonedds/cyclonedds/compare/$base...$head" --jq '.ahead_by'
 ```
 
