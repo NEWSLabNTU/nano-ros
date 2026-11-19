@@ -3,7 +3,7 @@
 **Status (2026-11-19). Active: design accepted by the user 2026-11-19; W0 done, W1 next.**
 Implements [RFC-0140](../design/0140-configuration-registry.md) as widened on
 2026-11-19: one registry with three row kinds (knob, statement, env) and many
-contributors; one naming rule with a lint; the 87 settings that break it
+contributors; one naming rule with a lint; the 88 settings that break it
 renamed, their old spellings refused on every road; an open RMW set, so a
 board or RMW package declares its own knobs and environment variables without
 editing a central file; and the environment-variable rule of RFC-0140 Part B
@@ -133,7 +133,7 @@ board and RMW packages are self-contained.
 
 ### W4 - The naming rule and its lint
 
-- **Status:** OPEN (landed: `nros_knob_catalog::naming` refuses a package row that breaks N1 to N8 at load, in `Catalog::build` and a build script's `parse_own_file`, naming row and rule; the gate `just check config-names` on the fast line over the merged registry, the fixtures' package files and the hand `zephyr/Kconfig` symbols; the rule data, unit allowlist (each term with its reason) and baseline in `packages/tooling/nros-knob-catalog/config-names.toml`, whose `[[case]]` corpus both implementations run; N8 reads `nros-sdk-index.toml` through the generated `RESOURCE_ENV_VARS`. The baseline holds Appendix A's 87 entries, failing on a new violation, on a fixed entry and on a count that is not `baseline_entries`; 13 of them are judgements the lint cannot see, held by a presence probe. Remains: a ruling on one violation Appendix A misses, the `locator` statement's Kconfig symbol `CONFIG_NROS_ZENOH_LOCATOR` (D1 derives `CONFIG_NROS_LOCATOR`), in the baseline as `appendix = "missed"` for now, so it holds 88; and on the five hand Kconfig symbols exempted as `[[framework]]` (`CONFIG_NROS`, the three `NROS_API` choice members, `CONFIG_NROS_CODEGEN_TOOL`), which N3 would otherwise flag)
+- **Status:** DONE (`nros_knob_catalog::naming` refuses a row that breaks N1 to N8 at load, in `Catalog::build` and a build script's `parse_own_file`, naming row and rule; the gate `just check config-names` on the fast line over the merged registry, the fixtures' package files and the hand `zephyr/Kconfig` symbols; rule data, unit allowlist (each term with its reason), the five `[[framework]]` Kconfig exemptions and the baseline in `packages/tooling/nros-knob-catalog/config-names.toml`, whose `[[case]]` corpus both implementations run; N8 reads `nros-sdk-index.toml` through the generated `RESOURCE_ENV_VARS`. The baseline is Appendix A's 88 entries (the `locator` statement's Kconfig symbol added to A.2 by the 2026-11-20 ruling), 13 of them judgements held by a presence probe; the gate fails on a new violation, a fixed entry and a count that is not `baseline_entries`)
 - N1 to N8 enforced by the loader (so a downstream package with a bad name
   fails to load), and the gate `config-names` (RFC-0140 G1) running it over
   every in-tree contributor, with a baseline equal to RFC-0140 Appendix A
@@ -142,7 +142,7 @@ board and RMW packages are self-contained.
   setting cannot take a resource's variable (N8).
 - **Acceptance:** the self-test plants one violation of each rule in a
   temporary catalog and the gate names the row and the rule; the baseline has
-  87 entries and the gate fails if a new violation appears or if an entry is
+  88 entries and the gate fails if a new violation appears or if an entry is
   fixed but not removed.
 
 ### W5 - Renames, batch 1: structure and units (registry rows)
@@ -174,8 +174,9 @@ board and RMW packages are self-contained.
 
 - **Status:** OPEN
 - The Appendix A.1 rows whose only reason is P or K (the `params` family,
-  the smoltcp rows to `net.*`, `zenoh.*` owner words); the 12 hand Kconfig
-  symbols of A.2; the 3 run-time renames of A.3 (the 6 retired `ZENOH_*` are
+  the smoltcp rows to `net.*`, `zenoh.*` owner words); the 13 hand Kconfig
+  symbols of A.2 (`CONFIG_NROS_ZENOH_LOCATOR` among them, retired as a
+  `kconfig:` spelling of the `locator` statement); the 3 run-time renames of A.3 (the 6 retired `ZENOH_*` are
   W13's); the 6 build carriers of A.4, including the build-time
   `NROS_LOCATOR`/`NROS_DOMAIN_ID`/`NROS_NODE_NAME` reads moving to
   `NROS_ENTRY_*` (refusal for `NROS_DOMAIN_ID`, a build note for the two

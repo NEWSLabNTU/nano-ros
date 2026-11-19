@@ -605,8 +605,7 @@ appendix = "A.1"
 subject = "locator"
 kind = "statement"
 rules = ["N2"]
-appendix = "missed"
-why = "its Kconfig symbol is CONFIG_NROS_ZENOH_LOCATOR, not the CONFIG_NROS_LOCATOR RFC-0140 D1 derives; Appendix A does not list it"
+appendix = "A.2"
 
 [[baseline]]
 subject = "NROS_CYCLONE_MATCH_TIMEOUT_MS"

@@ -50,7 +50,7 @@ This RFC decides:
    `<owner>.<name>`, two segments; every other spelling is mechanical;
    sizes end `_bytes`; RMW-, platform- and board-specific rows carry their
    package's owner word; a build name and a run name are never the same.
-4. **Renames now** (D4): 87 settings break the rule today (Appendix A). Each
+4. **Renames now** (D4): 88 settings break the rule today (Appendix A). Each
    is renamed, and its old spelling is refused on every road, naming the
    new one. Retired spellings live on the row that replaced them, which folds
    today's `legacy` column and `nros::retired_env::RETIRED_ENV_VARS` into one
@@ -342,12 +342,13 @@ aliases" stands and now has no exceptions.
   cannot take a resource's name, and resource variables are outside N1 to N4.
 
 **What the rule costs.** Appendix A lists every setting on `origin/main`
-that breaks N1 to N6: **87**. 54 are registry rows (52 renamed, 2 retired),
-12 are hand-written Zephyr Kconfig symbols, 9 are run-time variables (3
+that breaks N1 to N6: **88**. 54 are registry rows (52 renamed, 2 retired),
+13 are hand-written Zephyr Kconfig symbols (one of them the `locator`
+statement's), 9 are run-time variables (3
 renamed, the 6 retired `ZENOH_*` of Decision 4), 6 are build carriers outside
 the registry, and 6 are the demand symbols RFC-0103 D2b kept as a column
 (staged last, see below). 45 of the 54 registry rows change a TOML key a
-user writes in `system.toml` or a descriptor; the rest of the 87 change only
+user writes in `system.toml` or a descriptor; the rest of the 88 change only
 carriers, Kconfig symbols and run-time variables.
 
 **The demand symbols.** RFC-0103 D2b measured that the six zenoh pools
@@ -420,7 +421,7 @@ every rename in Appendix A gets an automatic edit with no hand-written case.
   `run:`. The new spelling per road is DERIVED from the row's key (D3 N2);
   the entry never states it.
 - **Factor.** A positive integer: new value = old value x factor. Absent
-  means 1, a pure rename that copies the value verbatim. All 87 renames fit:
+  means 1, a pure rename that copies the value verbatim. All 88 renames fit:
   `_kb` to `_bytes` is x 1024, `backing_u64s` to `backing_bytes` is x 8, the
   rest x 1. `from_unit` is display text for the message only.
 - **Manual versus mechanical is inferred, never flagged.** An entry that
@@ -934,17 +935,18 @@ reopened Q1 with a wider scope; this revision answers Q1.
   banned ending (`_kb`, `_kib`, `_size`, `_buffer`, `_u64s`), or a word that
   measures something (`timeout`, `stack`, `frame`, `threshold`, ...) with no
   unit after it, unless the allowlist fixes the term's unit. N8 reads every
-  `env` of `nros-sdk-index.toml` through a generated table. The lint sees 74
-  of Appendix A's 87 rows; the other 13 (`graph.max_entities`'s owner, the
+  `env` of `nros-sdk-index.toml` through a generated table. The lint sees 75
+  of Appendix A's 88 rows; the other 13 (`graph.max_entities`'s owner, the
   six invented `ZENOH_*` variables, the six A.4 carriers) are judgements
-  about readers, held in the baseline by a presence probe. It also finds one
-  row Appendix A misses: the `locator` statement's Kconfig symbol is
-  `CONFIG_NROS_ZENOH_LOCATOR`, not the `CONFIG_NROS_LOCATOR` D1 derives (in
-  the baseline as `missed`, awaiting a ruling). Five hand Kconfig symbols are
-  exempt as framework, each with its reason: `CONFIG_NROS`, the three
+  about readers, held in the baseline by a presence probe. The lint found
+  one row Appendix A missed, and the user ruled the rule right
+  (2026-11-20): the `locator` statement's Kconfig symbol is
+  `CONFIG_NROS_ZENOH_LOCATOR`, not the `CONFIG_NROS_LOCATOR` D1 derives, so
+  A.2 gains it and Appendix A counts 88. Five hand Kconfig symbols are
+  exempt as framework (ruled the same day), each with its reason: `CONFIG_NROS`, the three
   `NROS_API` choice members and `CONFIG_NROS_CODEGEN_TOOL`.
 
-## Appendix A - Settings that break the rule on `origin/main` (87)
+## Appendix A - Settings that break the rule on `origin/main` (88)
 
 Columns: the old TOML key (a registry row with no `toml` column shows the key
 the image rung uses, its id split at the first `_`), the old build env, the
@@ -1042,7 +1044,7 @@ Also in the registry:
   string capacity or a comparison with payload lengths); `LET_BUFFER_SIZE`
   has no reader (above).
 
-### A.2 Hand-written `zephyr/Kconfig` symbols (12)
+### A.2 Hand-written `zephyr/Kconfig` symbols (13)
 
 | Old symbol | New symbol | Why |
 | --- | --- | --- |
@@ -1057,6 +1059,7 @@ Also in the registry:
 | `CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER` | `CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER_BYTES` | U (prompt says bytes) |
 | `CONFIG_NROS_EDMA_WARM_RESET_QUIESCE` | `CONFIG_NROS_ZEPHYR_EDMA_WARM_RESET_QUIESCE` | P (a Zephyr SoC-driver workaround read by `zephyr/CMakeLists.txt`) |
 | `CONFIG_NROS_PARAM_STORE` | `CONFIG_NROS_PARAMS_STORE` | P (`params`, not `param`) |
+| `CONFIG_NROS_ZENOH_LOCATOR` | `CONFIG_NROS_LOCATOR` | K (the `locator` statement's symbol: D1 derives `CONFIG_NROS_<KEY>`; the old symbol is retired as a `kconfig:` spelling of the statement in the rename stage; found by the W4 lint, ruled 2026-11-20) |
 | `CONFIG_NROS_TRANSPORT_SERIAL` | retired: `[image.<id>] transport = "serial"` in a managed project, `CONFIG_NROS_ZENOH_LINK_SERIAL` in a guest | it only `select`s the zenoh serial link; transport is an image statement (RFC-0098) |
 
 ### A.3 Run-time variables (3 renamed, 6 retired)
