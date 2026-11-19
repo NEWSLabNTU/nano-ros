@@ -916,7 +916,12 @@ reopened Q1 with a wider scope; this revision answers Q1.
   reached only through `$NROS_EXTRA_BOARD_PATH` is not in the provider scan,
   so the catalog also reads the board catalog's extra roots (D2's "the scan
   that already finds the descriptor"). "A package the image links" is its
-  rmw word, board key and platform name. The image's run-row table and
+  rmw word, board key and platform name (ruled 2026-11-20, as is reading
+  the `$NROS_EXTRA_BOARD_PATH` roots after the scan's). The APP rung takes
+  the catalog as an argument from each caller, read from the
+  `catalog.toml` of that caller's workspace; there is no process-wide
+  catalog, so a configure-then-build or parallel tests in one process never
+  see another workspace's rows. The image's run-row table and
   `Knobs::registry` as the descriptors' parsed shape are not done (phase
   doc W3).
 
