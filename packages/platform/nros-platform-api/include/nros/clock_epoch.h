@@ -1,4 +1,4 @@
-/* The ONE wall-clock epoch store (RFC-0141 D3, phase-582 W1a).
+/* The ONE wall-clock epoch store.
  *
  * A wall-clock source that works by calibration — an SNTP exchange, or the
  * zenoh HLC timestamps on received samples — produces an OFFSET: UNIX time
@@ -7,11 +7,10 @@
  * waits on a network, and readings are monotonic between installs.
  *
  * Each port used to keep that offset itself (Zephyr's was a spinlock-guarded
- * static in its platform.c). Three copies of one invariant drift: Zephyr's
- * needed fixing when a second writer arrived (issue 0758, 2026-09-29: a hi/lo
- * pair read while a writer straddles a 2^32 us boundary is off by 71
- * minutes). This header is the one copy, included by every port that
- * calibrates:
+ * static in its platform.c). Copies of one invariant drift: Zephyr's needed
+ * fixing when a second writer arrived (a hi/lo pair read while a writer
+ * straddles a 2^32 us boundary is off by 71 minutes). This header is the one
+ * copy, included by every port that calibrates:
  *
  *   - ONE storage object, defined weak here so every including translation
  *     unit names the same object and the linker keeps one (GNU ld and TI's
