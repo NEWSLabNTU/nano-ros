@@ -15,7 +15,7 @@
 //! `<platform>_<role>[_<variant>][_<rmw>][_<config>…]`, every part a fixed token:
 //!
 //! - `<platform>` — [`image_prefix`], the entry vocabulary
-//!   `examples/workspaces/README-layout.md` names (`freertos`, `nuttx`,
+//!   `docs/development/example-workspace-layout.md` names (`freertos`, `nuttx`,
 //!   `threadx`, `zephyr`, …). Where a workspace already spells a platform
 //!   (`threadx` for threadx-linux, `riscv_threadx`, `riscv_nuttx`,
 //!   `freertos_posix`) this reuses it, so a bringup's ids read the same as
@@ -27,7 +27,7 @@
 //!   service client. A variant is NOT a cell axis: its image is modelled by the
 //!   same coordinate's Example cell as the plain role, so a test asks for it by
 //!   name ([`resolve_coord_variant`]) and the cell lookup ignores it.
-//! - `<rmw>` — omitted for zenoh (README-layout's "zenoh takes no suffix"),
+//! - `<rmw>` — omitted for zenoh (example-workspace-layout's "zenoh takes no suffix"),
 //!   else `xrce` / `cyclonedds`.
 //! - `<config>` — a configured cell's `Config` set (RFC-0051 §7a), in the
 //!   cell's order, `-` spelled `_`.

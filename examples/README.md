@@ -401,7 +401,7 @@ new directory** (RFC-0066, phase-331). The per-capability `ws-<topic>-<lang>`
 directories this list used to enumerate are **gone**: QoS, params, lifecycle,
 custom-msg and remap folded into `features/`, and the three `ws-safety-*` into
 `safety/`. Don't reintroduce one. Naming rules and the workspace classes →
-[`workspaces/README-layout.md`](workspaces/README-layout.md).
+[`docs/development/example-workspace-layout.md`](../docs/development/example-workspace-layout.md).
 
 Every workspace has its own README; one line each. Recount with
 `ls -d examples/workspaces/*/` rather than trusting this list:
