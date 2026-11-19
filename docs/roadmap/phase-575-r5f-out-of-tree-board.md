@@ -281,10 +281,17 @@ Steps, in order:
      `wait`, and the fork's framed link calls it. (b) A frame that arrives
      before the session opens was dropped, and zenoh does not resend a
      handshake; the Zephyr binding holds the first frames until open.
-     (c) The distro QEMU 6.2 never ticks this machine's SysTick; the pinned
-     store QEMU (11.0.0) and the Zephyr SDK's 7.0 do.
-   - **Left:** the fixture row and test, the board's registration rows, the
-     gate pass, and the fork push (26041f73 is local).
+     (c) The distro QEMU 6.2 never ticks this machine's SysTick, so both
+     images hang at their first sleep; the pinned store QEMU (11.0.0) and
+     the Zephyr SDK's 7.0 run it. The fixture must resolve the pinned store
+     QEMU and never fall back to `$PATH`.
+   - **Provisioning:** open-amp and libmetal join `[zephyr_module.*]` for the
+     3.7 line; `nros setup zephyr --dry-run` prices them at 2 MB and 1 MB of
+     a fresh workspace.
+   - **Fork:** 26041f73 (the framed link's `rx_wait`) is pushed to
+     `nano-ros-1.10.1` (user OK, 2026-11-19).
+   - **Left:** the fixture row and test, the board's registration rows, and
+     the gate pass.
 
 The Linux end (the `rpmsg_char` bridge, or the router's serial locator on an
 RPMsg tty) is generic follow-up for the vision island, not this item's
