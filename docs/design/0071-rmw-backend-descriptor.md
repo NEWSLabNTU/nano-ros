@@ -5,7 +5,7 @@ status: Draft
 area: rmw-wire
 since: 2026-08
 last-reviewed: 2026-11
-implements-tracked-by: [phase-347, phase-348, phase-506, phase-531, phase-545]
+implements-tracked-by: [phase-347, phase-348, phase-506, phase-531, phase-545, phase-583]
 supersedes: []
 superseded-by: null
 ---
@@ -1017,6 +1017,77 @@ a model from it. A bringup whose rows are all removed (an owned-entry bringup
 needs none) now has both removed by the next sync, rather than keeping a
 model that sizes the image for components it no longer has.
 
+## Amendment 2026-11-20: an owned entry with several executables (D20)
+
+**Status: Accepted (user ruling, 2026-11-20). Implemented in phase-583.**
+
+D19 made one owned entry serve several images, but each image runs one
+program: whatever the entry's own `CMakeLists.txt` builds. A package that
+builds several programs (a set of test programs, say) had no shape. `nros
+run` refused it, and on the RTOS carrier roads a second registration was
+dropped silently (issue 2744, now a configure error until D20 lands).
+
+### What was measured
+
+Measured on rv-virt-threadx, threadx-riscv64, in C.
+
+- **Two own-`main` programs** (`nano_ros_add_executable` twice) in one owned
+  entry: one configure builds two complete firmware ELFs, 5,905,624 and
+  5,905,632 bytes, each with the kernel entry. Both boot under QEMU through
+  `nros run --plan`.
+- **Two `nros_components_register_node(… DEPLOY threadx)` calls**: one
+  firmware, named after the package, holding the first component only (issue
+  2744).
+- **Facts that assume one program per image:**
+  - the stack-floor report, one per build dir keyed `<bringup or
+    entry>@<board>`;
+  - the sizing descriptor, one per entry;
+  - the run plan's single `elf`;
+  - `nros build`'s one run line.
+
+### D20 — a program is chosen at run time, as in ROS
+
+- **The ROS convention.** A package holds many executables, chosen when it
+  runs: `ros2 run <pkg> <exe>`, or launch `<node pkg="…" exec="…">`. nano-ros
+  takes the same rule, on native and RTOS alike.
+- **Choosing.** An image's program is:
+  - its entry's ONE executable; or
+  - the one `nros run <image> --exec <name>` names; or
+  - the one its bringup's launch file names with `<node pkg="<entry>"
+    exec="<name>">`.
+
+  The SystemModel already carries `pkg` and `exec` for every node, and the
+  generated-entry road already keys components by them. Several
+  executables with none named is refused, listing them and saying to name
+  one with `--exec`.
+- **No `[image]` key.** The choice belongs to the run, as in ROS. An image
+  key would restate what a launch file's `exec` already states.
+- **An owned-entry bringup MAY carry a launch file.** D19 said such a
+  bringup needs none, and with one program it still needs none. With
+  several, its launch file is one of the two ways to name the program.
+- **RTOS: one firmware per executable.** An RTOS executable is a whole
+  firmware image, not a process. Each program is linked as its own image
+  (kernel, network stack, startup). Choosing one at run time picks which
+  ELF the QEMU, flash or serial road loads; those roads already take one
+  `elf`.
+- **One carrier per `EXECUTABLE`.** A registered component's carrier is
+  named for its `EXECUTABLE`, as `rclcpp_components_register_node` makes one
+  executable per node. The target is `<pkg>__<exe>`, because CMake target
+  names are global and two packages may both have a `talker`. Its
+  `OUTPUT_NAME` is `<exe>`, and its generated entry TU lives in a per-exe
+  directory.
+- **Per-program facts are keyed per executable.** The stack-floor report and
+  the sizing descriptor of an owned entry with several executables are
+  keyed `<entry>/<exe>@<board>`. One key per program, so no report
+  describes one program while claiming to be the image's.
+
+### What D20 does not change
+
+- A generated entry: its program is the one nano-ros writes.
+- An owned entry with one executable: it runs as today (#4391), with
+  nothing to name. Only the artifact NAME of a registered-component
+  carrier moves, to its `EXECUTABLE`.
+
 ## What this does NOT change
 
 * **The vtable ABI.** RFC-0035 is not the gap. A backend still populates
@@ -1202,3 +1273,10 @@ machinery.
   entry's one adapter holds every image behind an `image-<id>` feature the
   build turns on, and `node_features` turns on the entry's own features with
   `--features`.
+- 2026-11-20: D20 (user ruling). An owned entry may build several
+  executables, and the run chooses one: `nros run <image> --exec <name>`, or
+  the bringup's launch `exec`. One executable needs no choice, and several
+  with none named are refused. There is no `[image]` key. On RTOS each
+  executable is its own firmware: carriers become one per `EXECUTABLE`
+  (target `<pkg>__<exe>`, `OUTPUT_NAME <exe>`), and stack-floor and sizing
+  facts are keyed per executable.
