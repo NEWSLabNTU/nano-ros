@@ -26,14 +26,10 @@
 
 use core::sync::atomic::{AtomicPtr, Ordering};
 
+// Issue 2686 -- defined beside the descriptor, where the truncation report
+// uses it too.
 /// Which descriptor text was set. Each has its own knob.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DescriptorText {
-    /// `description`, sized by `NROS_MAX_PARAM_DESCRIPTION_LEN`.
-    Description,
-    /// `additional_constraints`, sized by `NROS_MAX_PARAM_CONSTRAINTS_LEN`.
-    Constraints,
-}
+pub use crate::types::DescriptorText;
 
 /// A sink a metadata probe installs to hear the byte length of every
 /// description or constraints text the code sets.

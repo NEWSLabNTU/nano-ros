@@ -810,7 +810,11 @@ mod tests {
                 "terminal {which} lost the constraints text"
             );
             let mut reported = 0usize;
-            server.take_truncated_descriptions(|_, _| reported += 1);
+            server.take_truncated_descriptions(|_, _, text| {
+                // Issue 2686: the constraints field, not the description.
+                assert_eq!(text, crate::DescriptorText::Constraints);
+                reported += 1;
+            });
             assert_eq!(
                 reported,
                 usize::from(!fits),
