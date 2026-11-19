@@ -793,10 +793,20 @@ from before W6.
     identical `(platform, lang, rmw)` multiset; `validate-workspaces` passes.
     `migrate-bringup --dry-run` on an `origin/main` copy of the C ThreadX leaf
     gives the same layout as the tree.
-  - Not yet built or run: the batch's fixture rebuild (`just threadx_riscv64
-    build-fixtures`, `just nuttx build-riscv-c`) and their tests were stopped
-    when the build disk fell below its 80 GB floor, so nothing is claimed for
-    the images here.
+  - Built and run on `main` at `b696cf941b`, 2026-11-19, under the host gate
+    lock. `just threadx_riscv64 build-fixtures` and `just nuttx build-riscv-c`
+    both passed (19:11–19:40 UTC). `just test threadx_riscv64`: 11 of 11 run
+    tests pass. That includes the C, C++ and Rust `rtos_e2e` pubsub and service
+    cells and the three `cyclonedds_two_qemu` pubsub cells.
+    `just test nuttx`: every `rtos_e2e` NuttX cell passes. The one cell for
+    this batch, `c_riscv_nuttx_talker_delivers_cross_process`, was skipped in
+    that run, because its native Rust listener peer is outside the lane. After
+    building that peer alone
+    (`workspace-fixtures-build.sh linux rust --id
+    workspace-rust-native-listener`), the cell passes (4.7 s). The run's one
+    red was `realtime_sched_tasks`, whose `nuttx-riscv/rust` fixture that run
+    never built. The fixture is a realtime-rust image, not one of this batch's
+    rows.
   - `just threadx_riscv64` builds no C++ or Cyclone C leaf any more (the
     workspace rows build at the end of `build-fixture-extras`).
     `just nuttx build-riscv-c` is now `build-riscv-c-workspaces`: the riscv
