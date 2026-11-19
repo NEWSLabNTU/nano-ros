@@ -21,9 +21,9 @@ Homes:
   make road rebuilding nano-ros only on a first build: W6b (fixed);
 - [issue 2236](../issues/2236-nuttx-make-app-as-project.md), the design
   questions: W0, W6, W7, and the gates below.
-- [issue 2705](../issues/2705-nuttx-guest-make-cyclone-builds-nothing.md), the
+- [issue 2705](../issues/archived/2705-nuttx-guest-make-cyclone-builds-nothing.md), the
   make road offering Cyclone DDS in Kconfig while it builds no Cyclone image
-  (not yet a work item).
+  (fixed: the road refuses, at configure time, every RMW it cannot build).
 
 Related, not homed here: [issue 2622](../issues/archived/2622-nuttx-build-writes-into-vendored-tree.md),
 nano-ros's build markers, lock and export snapshots, written into the vendored

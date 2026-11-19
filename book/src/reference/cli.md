@@ -1779,13 +1779,13 @@ Options:
           `nuttx-cargo-config` mode: the file to write. Its grandparent is the directory cargo resolves the file's relative paths against
 
       --rmw <RMW>
-          `nuttx-cargo-config` mode, with `--project`: the RMW the kernel's Kconfig selects, checked against the project's image
+          `nuttx-cargo-config` mode (required): the RMW the kernel's Kconfig selects. Refused unless the NuttX make road can build it (a backend the image crate bundles); with `--project`, also checked against the project's image
 
       --ros-edition <ROS_EDITION>
           `nuttx-cargo-config` mode, with `--project`: the ROS edition the kernel's Kconfig selects, checked against the project's image
 
       --kconfig <KCONFIG>
-          `nuttx-cargo-config` mode, with `--project`: the kernel's `.config`, named when its choices disagree with the image
+          `nuttx-cargo-config` mode: the kernel's `.config`, named when its choices are refused or disagree with the image
 
   -h, --help
           Print help (see a summary with '-h')

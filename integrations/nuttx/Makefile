@@ -234,8 +234,30 @@ NROS_IMAGE_KEY = $(NROS_IMAGE_ROOT)/make/image-key
 NROS_FACTS_CONFIG = $(NROS_IMAGE_ROOT)/make/nros-image-facts.toml
 NROS_IMAGE_ENV_CONFIG = $(NROS_IMAGE_ROOT)/make/nros-image-env.toml
 NROS_PROJECT_ARGS = $(if $(NROS_PROJECT_LIST),--project $(NROS_PROJECT_LIST) \
-	$(if $(NROS_IMAGE),--image $(NROS_IMAGE)) --rmw $(NROS_RMW) \
-	--ros-edition $(NROS_ROS_EDITION) --kconfig $(TOPDIR)/.config)
+	$(if $(NROS_IMAGE),--image $(NROS_IMAGE)) \
+	--ros-edition $(NROS_ROS_EDITION))
+
+# Issue 2705 -- the Kconfig RMW reaches `nros locate nuttx-cargo-config` on
+# EVERY build, project or not, and an RMW this road cannot build is refused
+# there, before cargo runs. The road links the image staticlib alone (see
+# `Make.defs`), so it builds only a backend the image crate bundles; a
+# CMake-linked one (`[rmw.link] strategy = "cmake"`) would be left out of the
+# image with nothing said. The buildable set is the RMW registry's, read by
+# the CLI, so no RMW is named here.
+NROS_KCONFIG_ARGS = --rmw $(NROS_RMW) --kconfig $(TOPDIR)/.config
+
+# The cargo settings (and, with a project, its check against this kernel)
+# are NROS_CARGO_CONFIG_STEP, run FIRST in NROS_ARCHIVE_STEPS: it is where an
+# RMW this road cannot build is refused (issue 2705), so nothing is generated
+# or compiled for one.
+define NROS_CARGO_CONFIG_STEP
+	$(NROS_CLI) locate nuttx-cargo-config \
+		--index $(NROS_REPO_DIR)/nros-sdk-index.toml \
+		--target $(NROS_RUST_TRIPLE) \
+		--nuttx-board $(patsubst "%",%,$(CONFIG_ARCH_BOARD)) \
+		--target-dir $(NROS_IMAGE_TARGET_DIR) \
+		--out $(NROS_CARGO_CONFIG) $(NROS_KCONFIG_ARGS) $(NROS_PROJECT_ARGS) >/dev/null
+endef
 
 # The image crate's manifest and features are the two words of
 # $(NROS_IMAGE_SPEC), read when the line runs; $(3) = the image flavor (`c` /
@@ -271,12 +293,6 @@ NROS_PROJECT_ARGS = $(if $(NROS_PROJECT_LIST),--project $(NROS_PROJECT_LIST) \
 # `libs/` half (`nuttx_export::snapshot_root`) is read only by board crates,
 # which this image does not build, and falls through when `libs/` is absent.
 define NROS_CARGO_BUILD
-	$(NROS_CLI) locate nuttx-cargo-config \
-		--index $(NROS_REPO_DIR)/nros-sdk-index.toml \
-		--target $(NROS_RUST_TRIPLE) \
-		--nuttx-board $(patsubst "%",%,$(CONFIG_ARCH_BOARD)) \
-		--target-dir $(NROS_IMAGE_TARGET_DIR) \
-		--out $(NROS_CARGO_CONFIG) $(NROS_PROJECT_ARGS) >/dev/null
 	$(if $(NROS_PROJECT_LIST),cd $(NROS_PROJECT_LIST) && $(NROS_CLI) configure --image "$$(cat $(NROS_IMAGE_KEY))")
 	$(if $(NROS_PROJECT_LIST),$(NROS_CLI) locate nuttx-image-env \
 		--index $(NROS_REPO_DIR)/nros-sdk-index.toml \
@@ -311,13 +327,15 @@ define NROS_CARGO_CLEAN
 endef
 
 ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
-# The steps that make the archive: the object dirs, the image crate, then
-# configure (with a project) and cargo. phase-550 W4 deleted the branch that
+# The steps that make the archive: the object dirs, the cargo settings (where
+# an RMW this road cannot build is refused), the image crate, then configure
+# (with a project) and cargo. phase-550 W4 deleted the branch that
 # called upstream's `RUST_CARGO_BUILD` with an empty `--target`: it could not
 # build, and an arch with no triple is now refused by `RustTriple.mk` instead.
 define NROS_ARCHIVE_STEPS
 	$(if $(word 2,$(NROS_PROJECT_LIST)),$(error nano-ros: more than one app names a project in NROS_PROJECTS: $(NROS_PROJECT_LIST). One NuttX build takes one project; keep a single `NROS_PROJECTS +=` line across the apps' Make.defs files))
 	$(Q) mkdir -p $(NROS_APPS_BUILD) $(dir $(addprefix $(NROS_APPS_BUILD),$(CSRCS))) $(NROS_IMAGE_ROOT)
+	$(NROS_CARGO_CONFIG_STEP)
 	$(NROS_IMAGE_CRATE)
 	$(call NROS_CARGO_BUILD,,,$(NROS_IMAGE_FLAVOR),$(NROS_IMAGE_HEADER_PACKAGES))
 endef

@@ -25,8 +25,9 @@ The roads that can build a Cyclone image (2026-11-18 sweep):
                      at create time (`rmw_type_registry::register_type`)
                      through the backend's Rust registrar, so the runtime's
                      types are covered there by construction;
-  * NuttX guest-make `integrations/nuttx` -- builds no Cyclone image at all
-                     (issue 2705), so it has no per-message road to hold.
+  * NuttX guest-make `integrations/nuttx` -- builds no Cyclone image: it
+                     refuses one at configure time (issue 2705), so it has
+                     no per-message road to hold.
 
 What this gate checks:
 
