@@ -84,11 +84,22 @@ static int32_t builtin_interfaces__msg__Time__nros_deserialize_erased(const uint
 
 // The descriptor ROSIDL_GET_MSG_TYPE_SUPPORT(builtin_interfaces, msg, Time)
 // yields (phase-492 W8). `serialized_size_max` is the receive bound, or 0 when
-// the type has none.
+// the type has none. `message_size` is the struct the deserialiser writes,
+// which `rclc_executor_add_subscription_sized` checks a caller's buffer
+// against.
 const rclc_message_type_t builtin_interfaces__msg__Time__nros_type = {
     .type_name = "builtin_interfaces::msg::dds_::Time_",
     .type_hash = "h",
     .serialized_size_max = 16,
     .serialize = builtin_interfaces__msg__Time__nros_serialize_erased,
     .deserialize = builtin_interfaces__msg__Time__nros_deserialize_erased,
+    .message_size = sizeof(builtin_interfaces__msg__Time),
 };
+
+// The struct `message_size` measures is the one `__init_in` wires: a caller
+// that sizes its buffer from `__init_in`'s argument gets the descriptor's
+// number. C11, so it holds on every compiler the generated code builds with.
+_Static_assert(_Generic(&builtin_interfaces__msg__Time__init_in,
+                        void (*)(builtin_interfaces__msg__Time*, builtin_interfaces__msg__Time__Storage*): 1,
+                        default: 0),
+               "builtin_interfaces__msg__Time__nros_type.message_size measures the struct __init_in wires");

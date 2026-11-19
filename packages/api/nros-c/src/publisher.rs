@@ -67,6 +67,12 @@ pub struct rclc_message_type_t {
     /// The type's deserialiser; NULL in a descriptor built from names alone,
     /// which `rclc_executor_add_subscription_with_context` refuses.
     pub deserialize: rclc_message_deserialize_fn_t,
+    /// The message struct's size in memory, `sizeof(<pkg>__msg__<Name>)`: what
+    /// `rclc_executor_add_subscription_sized` checks the caller's `msg` buffer
+    /// against. 0 = unknown (a descriptor built from names alone, or generated
+    /// before this field), which no buffer is refused against. APPENDED: a
+    /// descriptor written without it zero-fills it.
+    pub message_size: usize,
 }
 
 /// Service type descriptor: what `ROSIDL_GET_SRV_TYPE_SUPPORT(pkg, srv, Name)`
@@ -1333,6 +1339,7 @@ mod verification {
             serialized_size_max: 4,
             serialize: None,
             deserialize: None,
+            message_size: 0,
         };
 
         let mut node = crate::node::rcl_get_zero_initialized_node();
@@ -1505,6 +1512,7 @@ mod name_resolution_tests {
             serialized_size_max: 4,
             serialize: None,
             deserialize: None,
+            message_size: 0,
         };
         let topic = b"~/private\0";
         let mut pub_ = rcl_get_zero_initialized_publisher();

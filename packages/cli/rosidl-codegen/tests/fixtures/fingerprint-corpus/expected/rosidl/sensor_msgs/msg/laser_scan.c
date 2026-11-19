@@ -137,11 +137,22 @@ static int32_t sensor_msgs__msg__LaserScan__nros_deserialize_erased(const uint8_
 
 // The descriptor ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, LaserScan)
 // yields (phase-492 W8). `serialized_size_max` is the receive bound, or 0 when
-// the type has none.
+// the type has none. `message_size` is the struct the deserialiser writes,
+// which `rclc_executor_add_subscription_sized` checks a caller's buffer
+// against.
 const rclc_message_type_t sensor_msgs__msg__LaserScan__nros_type = {
     .type_name = "sensor_msgs::msg::dds_::LaserScan_",
     .type_hash = "h",
     .serialized_size_max = 0,
     .serialize = sensor_msgs__msg__LaserScan__nros_serialize_erased,
     .deserialize = sensor_msgs__msg__LaserScan__nros_deserialize_erased,
+    .message_size = sizeof(sensor_msgs__msg__LaserScan),
 };
+
+// The struct `message_size` measures is the one `__init_in` wires: a caller
+// that sizes its buffer from `__init_in`'s argument gets the descriptor's
+// number. C11, so it holds on every compiler the generated code builds with.
+_Static_assert(_Generic(&sensor_msgs__msg__LaserScan__init_in,
+                        void (*)(sensor_msgs__msg__LaserScan*, sensor_msgs__msg__LaserScan__Storage*): 1,
+                        default: 0),
+               "sensor_msgs__msg__LaserScan__nros_type.message_size measures the struct __init_in wires");

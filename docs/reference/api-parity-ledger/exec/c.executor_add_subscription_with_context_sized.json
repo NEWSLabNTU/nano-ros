@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_subscription_with_context_sized",
+  "verdict": "extension",
+  "why": "ours-only (phase-573 W5d, user ruling 2026-11-19): the SIZED form of `rclc_executor_add_subscription_with_context`, with the caller's `msg_size` after `msg`. The RTOS reason is that a C image has no allocator and no type-checked buffer: rclc's arguments carry no size, so the deserialiser writes the whole message struct into whatever `msg` points at, and an undersized buffer is a silent overflow on every dispatch. The descriptor states the struct's size (`message_size`, the generated `sizeof`), and this refuses `msg_size < message_size` with `RCL_RET_INVALID_ARGUMENT` before registering; a descriptor that states no size refuses nothing. The rclc-named form keeps rclc's signature for ported code and names this one as the checked form. Held by `packages/api/nros-c/tests/run/sized_subscription.c` in `just check c`."
+}
