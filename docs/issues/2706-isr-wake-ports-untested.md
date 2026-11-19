@@ -1,6 +1,6 @@
 ---
 id: 2706
-title: "ThreadX and NuttX refuse an interrupt-safe executor wake until a test reaches each"
+title: "NuttX refuses an interrupt-safe executor wake until a test reaches it"
 status: open
 type: test-gap
 severity: medium
@@ -17,7 +17,7 @@ Issue 2696 gave the executor an interrupt-safe wake:
 `GuardCondition::trigger_from_isr` reaches each port's
 `nros_platform_wake_signal_from_isr`. A port claims that signal only where a
 test takes a real interrupt (or, on POSIX, a real signal) and shows the wake
-arriving. Four ports have one:
+arriving. Five ports have one:
 
 | Port | Interrupt-safe signal | Test |
 | --- | --- | --- |
@@ -25,14 +25,15 @@ arriving. Four ports have one:
 | POSIX (Linux) | `sem_post` + pipe `write`, `errno` kept | `nros-platform-cffi/tests/c_port_posix_wake.rs`: a real `SIGUSR2` handler |
 | mps2-an385 bare metal | the wake flag (`wake::signal`), read by the park with interrupts masked | `tests/isr_wake_rtos.rs`: a CMSDK TIMER1 interrupt on the bare-metal image (`isr-wake-baremetal-mps2`) |
 | Zephyr | `nros_zephyr_wake_give` (`k_sem_give`; a non-blocking eventfd write) | `tests/isr_wake_rtos.rs`: a `k_timer` expiry, in the system clock's interrupt handler, on `native_sim` (`isr-wake-zephyr-native-sim`) |
+| ThreadX (bare-metal ports) | `tx_semaphore_ceiling_put`, inside the port's interrupt context save/restore | `tests/isr_wake_rtos.rs`: the RISC-V `virt` machine-timer interrupt, through the board's tick hook (`isr-wake-threadx-riscv64`) |
 
-Two ports still REFUSE: `nros_platform_wake_signal_from_isr` returns -1, and
+One port, and one port variant, still REFUSE: `nros_platform_wake_signal_from_isr` returns -1, and
 `trigger_from_isr` returns `false`. The flag is still set, so the executor
 sees the trigger at its next deadline instead of at once.
 
 | Port | What the body would be | The test it needs |
 | --- | --- | --- |
-| ThreadX | `nros_platform_wake_signal` (`tx_semaphore_ceiling_put`, ISR-callable per the spec) | an interrupt on a ThreadX board image (`threadx-riscv64` QEMU timer), or a `TX_TIMER_PROCESS_IN_ISR` application timer |
+| ThreadX hosted Linux port (`threadx-linux`) | `tx_semaphore_ceiling_put`, but the port's "interrupt" is its timer thread, a host thread | a trigger from that timer thread, on `threadx-linux` |
 | NuttX | `sem_post` only: `write` is not interrupt-safe, so a handle park needs the pipe byte through the work queue | a NuttX QEMU image with a timer interrupt handler, covering both a semaphore wait and a handle park |
 
 ## Closing it
@@ -98,3 +99,26 @@ Measured (`isr_wake_rtos::a_timer_interrupt_wakes_the_parked_executor_on_zephyr_
   refusal count are what have teeth here.
 - Mutation, the port refusing (`return -1`, main before this): 2500
   interrupts were served by 50 callbacks, every trigger refused. Red.
+
+## ThreadX (2026-11-19)
+
+Done:
+- `nros_platform_wake_signal_from_isr` calls `tx_semaphore_ceiling_put` on
+  the bare-metal ThreadX ports. The ThreadX spec allows the call from an ISR
+  that runs inside the port's context save/restore, which takes any
+  preemption it causes at the restore. The RISC-V `virt` board's trap entry
+  does that save before `trap_handler`.
+- The hosted Linux port (`NROS_THREADX_HOSTED_PORT`) still refuses. Its
+  "interrupt" is the port's timer thread, and no test triggers from it.
+- The `rv-virt-threadx` board's trap handler calls a weak
+  `nros_rv_virt_tick_hook` after ThreadX's tick, in interrupt context. The
+  default does nothing; the test image `isr-wake-threadx-riscv64` defines it
+  and triggers the guard every second tick (20 ms), stamping `mtime`.
+
+Measured (`isr_wake_rtos::a_timer_interrupt_wakes_the_parked_executor_on_threadx_riscv64`,
+50 samples per run):
+- Fixed: 5 of 5 runs had 50 interrupts and 50 callbacks, with latency 38 to
+  927 us. The test needs 95 % of samples within 500 us and every sample
+  under 10 ms, and each run met both.
+- Mutation, the port refusing (main before this): 1010 interrupts were
+  served by 50 callbacks, and every trigger was refused. Red.

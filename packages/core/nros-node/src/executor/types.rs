@@ -1926,9 +1926,9 @@ impl<'s> GuardCondition<'s> {
     ///
     /// Returns whether the executor's wake object took the signal. `false`
     /// means the flag is set but nothing was woken: a build with no wake
-    /// callback, or a port with no tested interrupt-safe signal (ThreadX and
-    /// NuttX refuse until a test reaches them, see the port's
-    /// `nros_platform_wake_signal_from_isr`). The executor then
+    /// callback, or a port with no tested interrupt-safe signal (NuttX and
+    /// the hosted ThreadX Linux port refuse until a test reaches them, see the
+    /// port's `nros_platform_wake_signal_from_isr`). The executor then
     /// sees the trigger at its next deadline.
     pub fn trigger_from_isr(&self) -> bool {
         self.flag.store(true, portable_atomic::Ordering::Release);

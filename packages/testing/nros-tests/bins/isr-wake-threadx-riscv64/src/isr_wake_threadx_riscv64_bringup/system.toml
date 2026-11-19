@@ -1,0 +1,20 @@
+# What this test image deploys to (RFC-0098 D3/D5). Its program is the image's
+# OWNED entry (RFC-0071 D19), `isr-wake-threadx-riscv64`, which keeps its own
+# `main`, opens its own session to a per-test router on
+# `nros_tests::alloc::THREADX_ISR_WAKE_PORT`, and declares no component table.
+
+[system]
+name = "isr_wake_threadx_riscv64"
+rmw = "zenoh"
+domain_id = 0
+
+# ThreadX on the QEMU RISC-V virt machine. `main.rs` takes the platform's
+# panic ending (`nros::panic_to_platform!`).
+[image.rv-virt-threadx]
+entry = "isr-wake-threadx-riscv64"
+board = "rv-virt-threadx"
+panic = "platform"
+locator = "tcp/10.0.2.2:9700"
+# No component table to derive sizes from: `main` registers one guard
+# condition, which the configured default executor holds.
+no_inventory = "an interrupt-wake test: main registers one guard condition and nothing else"

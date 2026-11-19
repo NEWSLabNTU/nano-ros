@@ -1142,15 +1142,26 @@ int8_t nros_platform_wake_signal(void *w) {
     return rc == TX_SUCCESS ? 0 : -1;
 }
 
-/* Issue 2696 — REFUSED until a test reaches it. `tx_semaphore_put` and
- * `_ceiling_put` are ISR-callable per the ThreadX spec, so the body is likely
- * `nros_platform_wake_signal`; but a port claims an interrupt-safe wake only
- * where a test takes the interrupt (issue 2706). Until then an interrupt's
- * trigger sets the flag and the waiter sees it at its own deadline, and
- * `trigger_from_isr` says so by returning false. */
+/* Issue 2706 -- the interrupt-safe signal. `tx_semaphore_ceiling_put` is
+ * callable from an ISR per the ThreadX spec, provided the ISR runs inside the
+ * port's context save/restore (a preemption it causes is taken at the
+ * restore). On the bare-metal ports that is every interrupt;
+ * `tests/isr_wake_rtos.rs` takes the RISC-V `virt` machine timer
+ * (`isr-wake-threadx-riscv64`).
+ *
+ * The HOSTED Linux port still REFUSES: its "interrupt" is the port's timer
+ * thread, a host thread, and no test reaches a trigger from it. Until one
+ * does, `trigger_from_isr` there sets the flag, returns false, and the waiter
+ * sees it at its own deadline. */
 int8_t nros_platform_wake_signal_from_isr(void *w) {
-    (void)w;
+#if NROS_THREADX_HOSTED_PORT
+    (void) w;
     return -1;
+#else
+    if (w == NULL) return -1;
+    UINT rc = tx_semaphore_ceiling_put((TX_SEMAPHORE *) w, 1u);
+    return rc == TX_SUCCESS ? 0 : -1;
+#endif
 }
 
 size_t nros_platform_wake_storage_size(void) {
