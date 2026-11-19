@@ -941,9 +941,9 @@ fn a_mode_sched_task_deadline_lowers_onto_each_executor_shape() {
     // The sched-context shape: one executor, the sched task's index translated.
     let sched = emit(Lang::C, &group_split(c_sched_task_plan("linux")));
     for want in [
-        "static const nros_cpp_mode_deadline_t __nros_mode_deadlines_0[1] = {\n    { 0u, 5000u },",
-        "static const nros_cpp_mode_deadline_t __nros_mode_deadlines_1[1] = {\n    { 0u, 2000u },",
-        "__nros_mode_deadlines_1, 1u, 50u, \"//enter_tight\" }",
+        "static const nros_cpp_mode_deadline_t __nros_mode_deadlines_0[1] = {\n    { .sc = 0u, .deadline_us = 5000u },",
+        "static const nros_cpp_mode_deadline_t __nros_mode_deadlines_1[1] = {\n    { .sc = 0u, .deadline_us = 2000u },",
+        ".deadlines = __nros_mode_deadlines_1, .n_deadlines = 1u, .switch_budget_ms = 50u, .reaction = \"//enter_tight\" }",
         ".sc_ids = __nros_sc_ids,",
         "(NROS_CPP_MODE_TABLE_STORAGE + 1u * NROS_CPP_MODE_DEADLINE_STORAGE)",
     ] {
@@ -957,15 +957,25 @@ fn a_mode_sched_task_deadline_lowers_onto_each_executor_shape() {
         (Lang::Cpp, cpp_sched_task_plan("linux")),
     ] {
         let src = emit(lang, &p);
+        // issue 2513: C writes designated rows, C++ positional ones (held by
+        // static_asserts).
+        let (row, tail) = if lang == Lang::C {
+            (
+                "{ .sc = 0u, .deadline_us = 5000u },",
+                ".switch_budget_ms = 50u, .reaction = \"//enter_tight\" }",
+            )
+        } else {
+            ("{ 0u, 5000u },", "50u, \"//enter_tight\" }")
+        };
         assert!(
-            src.contains(
-                "nros_cpp_mode_deadline_t __nros_mode_deadlines_0[1] = {\n    { 0u, 5000u },"
-            ),
+            src.contains(&format!(
+                "nros_cpp_mode_deadline_t __nros_mode_deadlines_0[1] = {{\n    {row}"
+            )),
             "{src}"
         );
         assert_eq!(src.matches("__nros_mode_deadlines_0[").count(), 1, "{src}");
         assert!(!src.contains(".sc_ids = __nros_sc_ids"), "{src}");
-        assert!(src.contains("50u, \"//enter_tight\" }"), "{src}");
+        assert!(src.contains(tail), "{src}");
     }
 
     // The negative control: no mode moves a deadline, so no row and no sc_ids.

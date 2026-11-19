@@ -1,7 +1,9 @@
 ---
 id: 2513
 title: "The C and C++ entry templates initialise cbindgen FFI structs by position, so a field inserted mid-struct mis-assigns every generated entry with no gate noticing"
-status: open
+status: resolved
+resolved: 2026-11-19
+resolved_in: "the change that archives this issue"
 type: tech-debt
 severity: medium
 area: [codegen, c-api, cpp-api]
@@ -59,3 +61,31 @@ Rust struct, which is the half that was never at risk.
 Acceptance: a mutation that swaps two `uint32_t` fields of
 `nros_cpp_hazard_rung_t` in the Rust struct fails a gate (or the build) before
 any image is produced.
+
+## Resolved (2026-11-19)
+
+- **C pack:** every FFI row is a designated initialiser. That covers the 12
+  monitor, hazard and mode tables, `node_body`'s QoS overrides and
+  `boot_wrapper`'s executor backings. An insert or reorder in the struct
+  cannot shift a value.
+- **C++ pack:** C++14 cannot use designators, so `cpp/_ffi_layout.jinja` states
+  the positional order of each struct it writes once. Every C++ entry (and
+  the PX4 entry) carries a `static_assert` chain over that order: the first
+  field at offset 0, each next field exactly at the aligned end of the one
+  before, and `sizeof` exactly at the aligned end of the last. 67 asserts in
+  a native entry; they compile clean against the real headers.
+- **Fast line:** `check-ffi-struct-mirrors` family 5 compares each
+  `_ffi_layout.jinja` list with the cbindgen header's declaration order, and
+  refuses a C-pack row that is positional or names a field the header lacks.
+
+Measured against mutations of a copy of `nros_cpp_ffi.h`:
+
+| mutation | caught by |
+| --- | --- |
+| swap `mode` / `output_row` in `nros_cpp_hazard_rung_t` | the build: "the entry writes mode first" |
+| insert `uint32_t` after `ftti_ms` in `nros_cpp_hazard_row_t` | the build: "the entry writes settle_ms right after ftti_ms" |
+| a C row back to positional | family 5: "POSITIONAL row" |
+| a reordered `_ffi_layout.jinja` list | family 5: "entry layout DRIFTED" |
+
+Not covered: the `NROS_SCHED_TASK_MEMORY` macros, which are hand-written
+in the same header as the struct they fill and shared with C++.

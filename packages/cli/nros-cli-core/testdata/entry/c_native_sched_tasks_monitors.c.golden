@@ -32,12 +32,12 @@ static nros_cpp_node_t __nros_node_1;
  * (`nros_cpp_install_monitors`), so an image with no contract carries none of
  * this. The storage is `uint64_t` so it is 8-aligned without C11 `_Alignas`. */
 static const nros_cpp_monitor_row_t __nros_mon_rows[2] = {
-    { "/cmd", "/ctrl/cmd", 100000u, 5u, "/setpoint", 8u },
-    { "/telemetry", "/telem/telemetry", 1000u, 0u, NULL, 0u },
+    { .topic = "/cmd", .fqn = "/ctrl/cmd", .min_rate_hz_milli = 100000u, .max_latency_ms = 5u, .route_trigger = "/setpoint", .route_max_latency_ms = 8u },
+    { .topic = "/telemetry", .fqn = "/telem/telemetry", .min_rate_hz_milli = 1000u, .max_latency_ms = 0u, .route_trigger = NULL, .route_max_latency_ms = 0u },
 };
 static uint64_t __nros_mon_storage[(2u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
 static const nros_cpp_age_row_t __nros_age_rows[1] = {
-    { "/cmd", "/telem/cmd", 50u, 0u },
+    { .topic = "/cmd", .fqn = "/telem/cmd", .max_age_ms = 50u, .deadline_ms = 0u },
 };
 static uint64_t __nros_age_storage[(1u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u];
 
@@ -200,7 +200,7 @@ static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];
 #if defined(NROS_CPP_LEVELS_BACKING_SIZE)
 static uint64_t __nros_levels_backing[NROS_CPP_LEVELS_BACKING_SIZE / 8u];
 static const nros_sched_task_backing_t __nros_level_backings[1] = {
-    {__nros_levels_backing, sizeof(__nros_levels_backing)},
+    { .backing = __nros_levels_backing, .bytes = sizeof(__nros_levels_backing) },
 };
 #define NROS_ENTRY_LEVEL_BACKINGS __nros_level_backings
 #else

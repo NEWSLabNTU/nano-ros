@@ -99,7 +99,7 @@ static nros_cpp_node_t __nros_node_{{ loop.index0 }};
 {%- if m.rows %}
 static const nros_cpp_monitor_row_t __nros_mon_rows[{{ m.rows | length }}] = {
 {%- for r in m.rows %}
-    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u, {% if r.route_trigger %}"{{ r.route_trigger | c_str }}"{% else %}NULL{% endif %}, {{ r.route_max_latency_ms }}u{% if r.route_deadline_ms %}, {{ r.route_deadline_ms }}u, {{ r.reaction_id }}u, {{ r.mechanism }}u{% endif %} },
+    { .topic = "{{ r.topic | c_str }}", .fqn = "{{ r.fqn | c_str }}", .min_rate_hz_milli = {{ r.min_rate_hz_milli }}u, .max_latency_ms = {{ r.max_latency_ms }}u, .route_trigger = {% if r.route_trigger %}"{{ r.route_trigger | c_str }}"{% else %}NULL{% endif %}, .route_max_latency_ms = {{ r.route_max_latency_ms }}u{% if r.route_deadline_ms %}, .route_deadline_ms = {{ r.route_deadline_ms }}u, .reaction_id = {{ r.reaction_id }}u, .mechanism = {{ r.mechanism }}u{% endif %} },
 {%- endfor %}
 };
 static uint64_t __nros_mon_storage[({{ m.rows | length }}u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
@@ -117,7 +117,7 @@ void nros_app_reaction_hook(const nros_cpp_reaction_event_t* event, void* ctx) _
 {%- if m.ages %}
 static const nros_cpp_age_row_t __nros_age_rows[{{ m.ages | length }}] = {
 {%- for r in m.ages %}
-    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.max_age_ms }}u, {{ r.deadline_ms }}u },
+    { .topic = "{{ r.topic | c_str }}", .fqn = "{{ r.fqn | c_str }}", .max_age_ms = {{ r.max_age_ms }}u, .deadline_ms = {{ r.deadline_ms }}u },
 {%- endfor %}
 };
 static uint64_t __nros_age_storage[({{ m.ages | length }}u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u];
@@ -131,13 +131,13 @@ static uint64_t __nros_age_storage[({{ m.ages | length }}u * NROS_CPP_AGE_ROW_ST
 {%- for g in h.monitors %}
 static const nros_cpp_hazard_member_t __nros_hz_members_{{ hi }}_{{ loop.index0 }}[{{ g.members | length }}] = {
 {%- for mm in g.members %}
-    { {{ mm.kind }}u, {{ mm.row }}u },
+    { .kind = {{ mm.kind }}u, .row = {{ mm.row }}u },
 {%- endfor %}
 };
 {%- endfor %}
 static const nros_cpp_hazard_monitor_t __nros_hz_monitors_{{ hi }}[{{ h.monitors | length }}] = {
 {%- for g in h.monitors %}
-    { {% if g.all_of %}1{% else %}0{% endif %}u, __nros_hz_members_{{ hi }}_{{ loop.index0 }}, {{ g.members | length }}u },
+    { .all_of = {% if g.all_of %}1{% else %}0{% endif %}u, .members = __nros_hz_members_{{ hi }}_{{ loop.index0 }}, .n_members = {{ g.members | length }}u },
 {%- endfor %}
 };
 {%- if h.rungs %}
@@ -148,13 +148,13 @@ static const nros_cpp_hazard_monitor_t __nros_hz_monitors_{{ hi }}[{{ h.monitors
 {%- for r in h.rungs %}{% if r.starts_at %}
 static const nros_cpp_hazard_member_t __nros_hz_starts_{{ hi }}_{{ loop.index0 }}[{{ r.starts_at | length }}] = {
 {%- for mm in r.starts_at %}
-    { {{ mm.kind }}u, {{ mm.row }}u },
+    { .kind = {{ mm.kind }}u, .row = {{ mm.row }}u },
 {%- endfor %}
 };
 {%- endif %}{% endfor %}
 static const nros_cpp_hazard_rung_t __nros_hz_rungs_{{ hi }}[{{ h.rungs | length }}] = {
 {%- for r in h.rungs %}
-    { {{ r.mode }}u, {{ r.output_row }}u, {{ r.route_ms }}u, {{ r.role }}u, {% if r.starts_at %}__nros_hz_starts_{{ hi }}_{{ loop.index0 }}{% else %}NULL{% endif %}, {{ r.starts_at | length }}u, "{{ r.level | c_str }}" },
+    { .mode = {{ r.mode }}u, .output_row = {{ r.output_row }}u, .route_ms = {{ r.route_ms }}u, .role = {{ r.role }}u, .starts_at = {% if r.starts_at %}__nros_hz_starts_{{ hi }}_{{ loop.index0 }}{% else %}NULL{% endif %}, .n_starts_at = {{ r.starts_at | length }}u, .level = "{{ r.level | c_str }}" },
 {%- endfor %}
 };
 {%- endif %}
@@ -164,7 +164,7 @@ static const nros_cpp_hazard_row_t __nros_hz_rows[{{ m.hazards | length }}] = {
 {%- if h.requirement %}
     /* requirement: {{ h.requirement | replace("*/", "* /") }} */
 {%- endif %}
-    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_monitors_{{ loop.index0 }}, {{ h.monitors | length }}u, {{ h.sink }}u, {{ h.reaction_id }}u, {% if h.rungs %}__nros_hz_rungs_{{ loop.index0 }}{% else %}NULL{% endif %}, {{ h.rungs | length }}u },
+    { .key = "{{ h.key | c_str }}", .ftti_ms = {{ h.ftti_ms }}u, .settle_ms = {{ h.settle_ms }}u, .monitors = __nros_hz_monitors_{{ loop.index0 }}, .n_monitors = {{ h.monitors | length }}u, .sink = {{ h.sink }}u, .reaction_id = {{ h.reaction_id }}u, .rungs = {% if h.rungs %}__nros_hz_rungs_{{ loop.index0 }}{% else %}NULL{% endif %}, .n_rungs = {{ h.rungs | length }}u },
 {%- endfor %}
 };
 {%- if m.hazards | selectattr("reaction_id") | list %}
@@ -189,14 +189,14 @@ static uint64_t __nros_hz_storage[({{ m.hazards | length }}u * NROS_CPP_HAZARD_R
 {%- if md.rows %}
 static const nros_cpp_mode_row_t __nros_mode_rows_{{ mi }}[{{ md.rows | length }}] = {
 {%- for r in md.rows %}
-    { {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u, {{ r.route_max_latency_ms }}u, {{ r.route_deadline_ms }}u },
+    { .min_rate_hz_milli = {{ r.min_rate_hz_milli }}u, .max_latency_ms = {{ r.max_latency_ms }}u, .route_max_latency_ms = {{ r.route_max_latency_ms }}u, .route_deadline_ms = {{ r.route_deadline_ms }}u },
 {%- endfor %}
 };
 {%- endif %}
 {%- if md.ages %}
 static const nros_cpp_mode_age_row_t __nros_mode_ages_{{ mi }}[{{ md.ages | length }}] = {
 {%- for a in md.ages %}
-    { {{ a }}u },
+    { .max_age_ms = {{ a }}u },
 {%- endfor %}
 };
 {%- endif %}
@@ -207,20 +207,20 @@ static const nros_cpp_mode_age_row_t __nros_mode_ages_{{ mi }}[{{ md.ages | leng
  * contexts{% if m.deadline_sc_is_sched_task %} by sched task index into __nros_sc_ids{% endif %}. */
 static const nros_cpp_mode_deadline_t __nros_mode_deadlines_0[{{ m.base_deadlines | length }}] = {
 {%- for d in m.base_deadlines %}
-    { {{ d.sc }}u, {{ d.deadline_us }}u },
+    { .sc = {{ d.sc }}u, .deadline_us = {{ d.deadline_us }}u },
 {%- endfor %}
 };
 {%- for md in m.modes %}{% set mi = loop.index %}
 static const nros_cpp_mode_deadline_t __nros_mode_deadlines_{{ mi }}[{{ md.deadlines | length }}] = {
 {%- for d in md.deadlines %}
-    { {{ d.sc }}u, {{ d.deadline_us }}u },
+    { .sc = {{ d.sc }}u, .deadline_us = {{ d.deadline_us }}u },
 {%- endfor %}
 };
 {%- endfor %}
 {%- endif %}
 static const nros_cpp_mode_t __nros_modes[{{ m.modes | length }}] = {
 {%- for md in m.modes %}{% set mi = loop.index %}
-    { {% if md.rows %}__nros_mode_rows_{{ mi }}{% else %}NULL{% endif %}, {{ md.rows | length }}u, {% if md.ages %}__nros_mode_ages_{{ mi }}{% else %}NULL{% endif %}, {{ md.ages | length }}u, {% if m.base_deadlines %}__nros_mode_deadlines_{{ mi }}{% else %}NULL{% endif %}, {{ md.deadlines | length }}u, {{ md.switch_budget_ms }}u, {% if md.reaction %}"{{ md.reaction | c_str }}"{% else %}NULL{% endif %} },
+    { .rows = {% if md.rows %}__nros_mode_rows_{{ mi }}{% else %}NULL{% endif %}, .n_rows = {{ md.rows | length }}u, .ages = {% if md.ages %}__nros_mode_ages_{{ mi }}{% else %}NULL{% endif %}, .n_ages = {{ md.ages | length }}u, .deadlines = {% if m.base_deadlines %}__nros_mode_deadlines_{{ mi }}{% else %}NULL{% endif %}, .n_deadlines = {{ md.deadlines | length }}u, .switch_budget_ms = {{ md.switch_budget_ms }}u, .reaction = {% if md.reaction %}"{{ md.reaction | c_str }}"{% else %}NULL{% endif %} },
 {%- endfor %}
 };
 static uint64_t __nros_mode_storage[(({{ m.modes | length }}u + 1u) * (NROS_CPP_MODE_TABLE_STORAGE + {{ m.base_deadlines | length }}u * NROS_CPP_MODE_DEADLINE_STORAGE) + {{ m.modes | selectattr("rows") | list | length }}u * {{ m.rows | length }}u * NROS_CPP_MODE_ROW_STORAGE + {{ m.modes | selectattr("ages") | list | length }}u * {{ m.ages | length }}u * NROS_CPP_MODE_AGE_STORAGE + 7u) / 8u];

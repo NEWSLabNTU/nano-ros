@@ -71,9 +71,15 @@ fn typed_emit_bakes_qos_overrides_before_configure() {
         "{src}"
     );
     // (topic, role=0 publisher, policy=0 reliability, value=0 best_effort)
-    assert!(src.contains("{ \"/chatter\", 0, 0, 0 },"), "{src}");
+    assert!(
+        src.contains("{ .topic = \"/chatter\", .role = 0, .policy = 0, .value = 0 },"),
+        "{src}"
+    );
     // (topic, role=1 subscription, policy=3 depth, value=7)
-    assert!(src.contains("{ \"/chatter\", 1, 3, 7 },"), "{src}");
+    assert!(
+        src.contains("{ .topic = \"/chatter\", .role = 1, .policy = 3, .value = 7 },"),
+        "{src}"
+    );
     assert!(
         src.contains("nros_cpp_node_set_qos_overrides(&__nros_node_0, __nros_qos_0, 2)"),
         "{src}"
@@ -743,7 +749,7 @@ fn typed_emit_bakes_monitor_table_before_nodes() {
             format!("\"{}\"", r.route_trigger)
         };
         let c_row = format!(
-            "{{ \"{}\", \"{}\", {}u, {}u, {}, {}u }},",
+            "{{ .topic = \"{}\", .fqn = \"{}\", .min_rate_hz_milli = {}u, .max_latency_ms = {}u, .route_trigger = {}, .route_max_latency_ms = {}u }},",
             r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms, trigger, r.route_max_latency_ms
         );
         let rust_row = format!(
@@ -761,7 +767,7 @@ fn typed_emit_bakes_monitor_table_before_nodes() {
     }
     for a in &ages {
         let c_row = format!(
-            "{{ \"{}\", \"{}\", {}u, {}u }},",
+            "{{ .topic = \"{}\", .fqn = \"{}\", .max_age_ms = {}u, .deadline_ms = {}u }},",
             a.topic, a.fqn, a.max_age_ms, a.deadline_ms
         );
         assert!(
@@ -850,7 +856,7 @@ fn typed_emit_bakes_supervised_route_and_reaction_hook() {
     rows[0].reaction_id = 1;
     rows[0].mechanism = 1;
     let src = emit_typed_monitored(&plan, &rows, &ages).expect("emit ok");
-    assert!(src.contains("\"/trigger\", 25u, 25u, 1u, 1u },"), "{src}");
+    assert!(src.contains(".route_trigger = \"/trigger\", .route_max_latency_ms = 25u, .route_deadline_ms = 25u, .reaction_id = 1u, .mechanism = 1u },"), "{src}");
     assert!(
         src.contains(
             "row 0 /talker/chatter: deadline 25 ms, reaction 1 (/talker/brake_now), mechanism timer"
@@ -890,12 +896,12 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
     )
     .expect("hazard emit ok");
     assert!(
-        src.contains("{ 0u, 0u },") && src.contains("{ 1u, 0u },"),
+        src.contains("{ .kind = 0u, .row = 0u },") && src.contains("{ .kind = 1u, .row = 0u },"),
         "members: age row 0 and rate row 0; src:\n{src}"
     );
     assert!(
         src.contains(
-            "{ \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_monitors_0, 1u, 65535u, 0u, NULL, 0u },"
+            "{ .key = \"d.launch.xml/chatter_lost\", .ftti_ms = 400u, .settle_ms = 0u, .monitors = __nros_hz_monitors_0, .n_monitors = 1u, .sink = 65535u, .reaction_id = 0u, .rungs = NULL, .n_rungs = 0u },"
         ),
         "hazard row (no safe_state: no sink; no rungs: no route); src:\n{src}"
     );
@@ -931,7 +937,7 @@ fn typed_emit_carries_a_hazards_requirement_beside_its_row() {
     .expect("hazard emit ok");
     assert!(
         src.contains(
-            "    /* requirement: SR-7 (hara.md) */\n    { \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_monitors_0, 1u, 65535u, 0u, NULL, 0u },"
+            "    /* requirement: SR-7 (hara.md) */\n    { .key = \"d.launch.xml/chatter_lost\", .ftti_ms = 400u, .settle_ms = 0u, .monitors = __nros_hz_monitors_0, .n_monitors = 1u, .sink = 65535u, .reaction_id = 0u, .rungs = NULL, .n_rungs = 0u },"
         ),
         "requirement comment above the unchanged row; src:\n{src}"
     );
@@ -957,9 +963,9 @@ fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
     )
     .expect("hazard emit ok");
     assert!(
-        src.contains("__nros_hz_monitors_0, 1u, 0u, 1u, __nros_hz_rungs_0, 1u },")
-            && src.contains("{ 65535u, 0u, 13u, 2u, __nros_hz_starts_0_0, 1u, \"react\" },")
-            && src.contains("{ 0u, 0u },"),
+        src.contains(".monitors = __nros_hz_monitors_0, .n_monitors = 1u, .sink = 0u, .reaction_id = 1u, .rungs = __nros_hz_rungs_0, .n_rungs = 1u },")
+            && src.contains("{ .mode = 65535u, .output_row = 0u, .route_ms = 13u, .role = 2u, .starts_at = __nros_hz_starts_0_0, .n_starts_at = 1u, .level = \"react\" },")
+            && src.contains("{ .kind = 0u, .row = 0u },"),
         "sink rate row 0, reaction id 1, one floor rung (no mode, level \"react\") on rate row 0 at 13 ms \
          whose clock starts at the listener's age row; src:\n{src}"
     );
@@ -1005,8 +1011,14 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
         src.contains("static const nros_cpp_mode_row_t __nros_mode_rows_1["),
         "{src}"
     );
-    assert!(src.contains(", 77u, "), "the mode's latency; src:\n{src}");
-    assert!(src.contains("{ 999u },"), "the mode's age; src:\n{src}");
+    assert!(
+        src.contains(".max_latency_ms = 77u, "),
+        "the mode's latency; src:\n{src}"
+    );
+    assert!(
+        src.contains("{ .max_age_ms = 999u },"),
+        "the mode's age; src:\n{src}"
+    );
     assert!(
         src.contains(
             "static uint64_t __nros_mode_storage[((1u + 1u) * (NROS_CPP_MODE_TABLE_STORAGE + 0u * \
@@ -1069,14 +1081,14 @@ fn typed_emit_aliases_a_mode_equal_to_the_base() {
         "the mode equal to the base bakes no rows; src:\n{src}"
     );
     assert!(
-        src.contains("{ NULL, 0u, NULL, 0u, "),
+        src.contains("{ .rows = NULL, .n_rows = 0u, .ages = NULL, .n_ages = 0u, "),
         "it aliases both base tables; src:\n{src}"
     );
     assert!(
         src.contains("static const nros_cpp_mode_row_t __nros_mode_rows_1["),
         "the differing mode bakes its rows; src:\n{src}"
     );
-    assert!(src.contains(", 77u, "), "{src}");
+    assert!(src.contains(".max_latency_ms = 77u, "), "{src}");
     assert!(
         !src.contains("__nros_mode_ages_1["),
         "and aliases the ages it shares; src:\n{src}"

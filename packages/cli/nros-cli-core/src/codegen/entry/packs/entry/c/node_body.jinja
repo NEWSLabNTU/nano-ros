@@ -20,7 +20,7 @@
 {%- if n.qos_overrides %}
         static const nros_cpp_qos_override_t __nros_qos_{{ idx }}[] = {
 {%- for q in n.qos_overrides %}
-            { "{{ q.topic | c_str }}", {{ q.role }}, {{ q.policy }}, {{ q.value }} },
+            { .topic = "{{ q.topic | c_str }}", .role = {{ q.role }}, .policy = {{ q.policy }}, .value = {{ q.value }} },
 {%- endfor %}
         };
         {

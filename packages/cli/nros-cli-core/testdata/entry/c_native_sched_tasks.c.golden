@@ -159,7 +159,7 @@ static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];
 #if defined(NROS_CPP_LEVELS_BACKING_SIZE)
 static uint64_t __nros_levels_backing[NROS_CPP_LEVELS_BACKING_SIZE / 8u];
 static const nros_sched_task_backing_t __nros_level_backings[1] = {
-    {__nros_levels_backing, sizeof(__nros_levels_backing)},
+    { .backing = __nros_levels_backing, .bytes = sizeof(__nros_levels_backing) },
 };
 #define NROS_ENTRY_LEVEL_BACKINGS __nros_level_backings
 #else

@@ -32,8 +32,8 @@ static int32_t __nros_entry_setup(void* executor) {
         nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "talker", "/", &__nros_node_0);
         if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
         static const nros_cpp_qos_override_t __nros_qos_0[] = {
-            { "/demo/chatter", 1, 2, 5 },
-            { "/demo/status", 0, 1, 2 },
+            { .topic = "/demo/chatter", .role = 1, .policy = 2, .value = 5 },
+            { .topic = "/demo/status", .role = 0, .policy = 1, .value = 2 },
         };
         {
             nros_cpp_ret_t qrc = nros_cpp_node_set_qos_overrides(&__nros_node_0, __nros_qos_0, 2);

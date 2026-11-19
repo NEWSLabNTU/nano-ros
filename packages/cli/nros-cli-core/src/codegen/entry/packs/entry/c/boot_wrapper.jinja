@@ -99,7 +99,7 @@ static uint64_t __nros_sched_task_executor_storage[{{ boot.n_sched_tasks }}][(NR
 #define NROS_ENTRY_SCHED_TASKS_BACKED 1
 {% for r in boot.task_memory.rows %}static uint64_t __nros_sched_task_backing_{{ r.index }}[NROS_CPP_SCHED_TASK_BACKING_SIZE_{{ r.index }} / 8u];
 {% endfor %}static const nros_sched_task_backing_t __nros_sched_task_backings[{{ boot.n_sched_tasks }}] = {
-{% for r in boot.task_memory.rows %}    {__nros_sched_task_backing_{{ r.index }}, sizeof(__nros_sched_task_backing_{{ r.index }})},
+{% for r in boot.task_memory.rows %}    { .backing = __nros_sched_task_backing_{{ r.index }}, .bytes = sizeof(__nros_sched_task_backing_{{ r.index }}) },
 {% endfor %}};
 #endif
 
@@ -121,7 +121,7 @@ static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];
 #if defined(NROS_CPP_LEVELS_BACKING_SIZE)
 static uint64_t __nros_levels_backing[NROS_CPP_LEVELS_BACKING_SIZE / 8u];
 static const nros_sched_task_backing_t __nros_level_backings[1] = {
-    {__nros_levels_backing, sizeof(__nros_levels_backing)},
+    { .backing = __nros_levels_backing, .bytes = sizeof(__nros_levels_backing) },
 };
 #define NROS_ENTRY_LEVEL_BACKINGS __nros_level_backings
 #else
