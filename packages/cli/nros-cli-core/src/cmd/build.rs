@@ -6509,7 +6509,8 @@ fn deploy_names_target(tokens: &[String], board: &str, platform: &str) -> bool {
 /// the order `nros dev ws order` gives the cmake road). The west application
 /// adds its subdirs in this order, so a package whose standalone fallback
 /// `add_subdirectory()`s a dependency finds it already added (issue 2756). A
-/// cycle among the closure's packages is an error naming them.
+/// cycle is refused by `discover`, naming its packages, before any order is
+/// taken.
 fn launch_closure(
     root: &std::path::Path,
     plan: &crate::codegen::entry::Plan,
@@ -6569,19 +6570,14 @@ fn package_closure<'a>(
             nodes.push((pkg.name.clone(), pkg.dir.clone()));
         }
     }
-    // Build order over the whole closure (launched + reached, interface
-    // packages included so an edge through one still orders its two ends),
-    // then filtered to what is emitted. A launched name with no package.xml
-    // (the `src/<pkg>` fallback) has no edges and keeps its place at the end.
-    let closure: Vec<cargo_nano_ros::provider_scan::WorkspacePackage> = found
+    // Build order: `discover` already returns the WHOLE workspace in
+    // topological order (ties by name) and refuses a `<depend>` cycle, so the
+    // closure takes each package's rank there. A restriction of a topological
+    // order is still one, and interface packages that are not emitted keep
+    // ordering their two ends. A launched name with no package.xml (the
+    // `src/<pkg>` fallback) has no edges and keeps its place at the end.
+    let rank: std::collections::HashMap<&str, usize> = found
         .packages
-        .iter()
-        .filter(|p| seen.contains(&p.name) || reached.contains(p.name.as_str()))
-        .cloned()
-        .collect();
-    let order = cargo_nano_ros::provider_scan::topological_order(&closure)
-        .map_err(|cycle| format!("dependency cycle among workspace packages: {cycle}"))?;
-    let rank: std::collections::HashMap<&str, usize> = order
         .iter()
         .enumerate()
         .map(|(i, p)| (p.name.as_str(), i))
@@ -13996,7 +13992,9 @@ mod package_closure_tests {
     }
 
     /// A `<depend>` cycle inside the closure is refused, naming its packages,
-    /// rather than emitted in an order that cannot configure.
+    /// rather than emitted in an order that cannot configure. The refusal is
+    /// `discover`'s: it orders the whole workspace before the closure is
+    /// taken, so a cycle among the closure's packages never reaches it.
     #[test]
     fn a_dependency_cycle_in_the_closure_is_refused() {
         let td = tempfile::tempdir().unwrap();
