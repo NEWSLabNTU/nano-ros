@@ -1165,6 +1165,8 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     ("board_agnostic_run_plan", NonCell::CompileCheck),
     ("board_import", NonCell::CompileCheck),
+    // Issue 2754 -- the generated root a real `nros build` wrote.
+    ("bringup_scoped_root", NonCell::CompileCheck),
     ("board_link_archives", NonCell::Static),
     (
         "borrowed_e2e",
