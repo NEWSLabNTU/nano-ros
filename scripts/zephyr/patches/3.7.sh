@@ -101,3 +101,10 @@ echo "[zephyr setup] applying Phase 11W.8 cyclonedds multicast-join best-effort 
 cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
 echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."
 cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh
+
+# Issue 2764 -- record that this set ran, LAST, so a set that failed part-way
+# records nothing. `check-zephyr-pin-drift.py` reads the record and names a
+# workspace that lacks it before a build fails at configure.
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$REPO_ROOT/scripts/lib/zephyr-patchset.sh"
+nros_zephyr_patchset_record "$WORKSPACE" "$REPO_ROOT" 3.7

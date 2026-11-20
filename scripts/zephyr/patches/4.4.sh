@@ -77,3 +77,10 @@ bash ./scripts/zephyr/zephyr-lang-rust-bindgen-include-patch.sh "$WORKSPACE"
 echo "[zephyr setup] 4.4 line: applying cargo-features patch (idempotent)..."
 bash ./scripts/zephyr/cargo-features-patch.sh "$WORKSPACE"
 echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped (Tasks 4-9)"
+
+# Issue 2764 -- record that this set ran, LAST, so a set that failed part-way
+# records nothing. `check-zephyr-pin-drift.py` reads the record and names a
+# workspace that lacks it before a build fails at configure.
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$REPO_ROOT/scripts/lib/zephyr-patchset.sh"
+nros_zephyr_patchset_record "$WORKSPACE" "$REPO_ROOT" 4.4

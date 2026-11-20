@@ -14,7 +14,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 pass=0
-# phase-543 — two units: rows 1-8 (west stubbed, run anywhere) and row 9
+# phase-543 — two units: rows 1-8 and 11 (west stubbed, run anywhere) and row 9
 # (real west, `needs:west`), so a lane without west keeps rows 1-8 and leaves
 # row 9 out of scope by name instead of turning the whole gate red.
 if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
@@ -43,23 +43,39 @@ exit "${STUB_WEST_RC:-0}"
 EOF
 chmod +x "$tmp/bin/west"
 
+# stub_patchset <dir> : a checkout's 3.7 patch set that logs "<ws>" to
+# $STUB_PATCH_LOG and exits $STUB_PATCH_RC (default 0).
+stub_patchset() {
+    mkdir -p "$1/scripts/zephyr/patches"
+    # shellcheck disable=SC2016
+    printf '%s\n' '#!/usr/bin/env bash' \
+        '[ -z "${STUB_PATCH_LOG:-}" ] || printf "%s\n" "$1" >> "$STUB_PATCH_LOG"' \
+        'exit "${STUB_PATCH_RC:-0}"' > "$1/scripts/zephyr/patches/3.7.sh"
+}
+
 # fresh <copy-content|-> : a workspace whose manifest project is `nano-ros`
-# and file `west.yml`; `-` means the copy is missing. Checkout holds "new".
+# and file `west.yml`; `-` means the copy is missing. Checkout holds "new"
+# and a stub 3.7 patch set; the workspace's zephyr/VERSION says 3.7.
 fresh() {
     rm -rf "$tmp/ws" "$tmp/co"
-    mkdir -p "$tmp/ws/.west" "$tmp/ws/nano-ros" "$tmp/co"
+    mkdir -p "$tmp/ws/.west" "$tmp/ws/nano-ros" "$tmp/ws/zephyr" "$tmp/co"
     printf '[manifest]\npath = nano-ros\nfile = west.yml\n' > "$tmp/ws/.west/config"
+    printf 'VERSION_MAJOR = 3\nVERSION_MINOR = 7\n' > "$tmp/ws/zephyr/VERSION"
     [ "$1" = - ] || printf '%s\n' "$1" > "$tmp/ws/nano-ros/west.yml"
     printf 'new\n' > "$tmp/co/west.yml"
+    stub_patchset "$tmp/co"
     : > "$tmp/west.log"
+    : > "$tmp/patch.log"
 }
 run() {   # -> rc, out
     rc=0
     out="$(STUB_WEST_LOG="$tmp/west.log" STUB_WEST_RC="${1:-0}" \
+        STUB_PATCH_LOG="$tmp/patch.log" STUB_PATCH_RC="${2:-0}" \
         NROS_PYTHON="$tmp/bin/python3" PATH="$tmp/bin:$PATH" \
         bash "$sync" "$tmp/ws" "$tmp/co" 2>&1)" || rc=$?
 }
 calls() { wc -l < "$tmp/west.log" | tr -d ' '; }
+patches() { wc -l < "$tmp/patch.log" | tr -d ' '; }
 
 if [ "$unit" != real-west ]; then
 # 1. Current copy: no network, rc 0.
@@ -116,6 +132,38 @@ printf 'old44\n' > "$tmp/ws/nano-ros/west-4.4.yml"; printf 'new44\n' > "$tmp/co/
 [ "$rc" -eq 0 ] && [ "$(cat "$tmp/ws/nano-ros/west-4.4.yml")" = new44 ] && [ "$(calls)" = 1 ] && r=ok || r=bad
 check "the config's manifest file is the one compared" "$r"
 
+# 11. Issue 2764 -- the update resets our in-place edits, so the sync applies
+# the line's patch set ITSELF. Run on its own it used to leave the workspace
+# unpatched until a configure failed.
+fresh old; printf 'line 3.7\ndigest x\n' > "$tmp/ws/.west/nros-patchset"; run
+[ "$rc" -eq 0 ] && [ "$(cat "$tmp/patch.log")" = "$tmp/ws" ] && r=ok || r=bad
+check "a sync that updated applies the line's patch set to the workspace once (rc=$rc)" "$r"
+[ ! -e "$tmp/ws/.west/nros-patchset" ] && r=ok || r=bad
+check "...after dropping the record the update made stale" "$r"
+run
+[ "$(patches)" = 1 ] && r=ok || r=bad
+check "...and a current manifest applies nothing" "$r"
+
+fresh old; printf 'line 3.7\ndigest x\n' > "$tmp/ws/.west/nros-patchset"; run 3
+[ "$rc" -eq 3 ] && [ "$(patches)" = 0 ] && [ -e "$tmp/ws/.west/nros-patchset" ] && r=ok || r=bad
+check "a failed update applies no patch set and keeps the record (its edits came back)" "$r"
+
+fresh old; run 0 5
+[ "$rc" -ne 0 ] && [ "$(patches)" = 1 ] && r=ok || r=bad
+check "a patch set that fails after the update fails the sync (rc=$rc)" "$r"
+case "$out" in *"not (fully) patched"*) r=ok ;; *) r=bad ;; esac
+check "...saying the workspace is not patched" "$r"
+
+fresh old; rm -f "$tmp/ws/zephyr/VERSION"; run
+[ "$rc" -ne 0 ] && [ "$(patches)" = 0 ] && r=ok || r=bad
+case "$out" in *UNPATCHED*) ;; *) r=bad ;; esac
+check "no zephyr/VERSION after the update fails, naming the workspace UNPATCHED (rc=$rc)" "$r"
+
+fresh old; printf 'VERSION_MAJOR = 9\nVERSION_MINOR = 9\n' > "$tmp/ws/zephyr/VERSION"; run
+[ "$rc" -ne 0 ] && [ "$(patches)" = 0 ] && r=ok || r=bad
+case "$out" in *"no"*"patch set"*) ;; *) r=bad ;; esac
+check "a line the checkout has no patch set for fails (rc=$rc)" "$r"
+
 fi
 
 # 9. REAL west, end to end — the runner's exact shape. Rows 1-8 stub west, so
@@ -164,8 +212,12 @@ elif [ -n "$real_py" ] && PATH="$(dirname "$real_py"):$PATH" command -v west >/d
         for m in "$@"; do printf '          - %s\n' "$m"; done
         printf '  self:\n    path: nano-ros\n'
     }
+    printf 'VERSION_MAJOR = 3\nVERSION_MINOR = 7\n' > "$up/zephyr/VERSION"
+    gitq -C "$up/zephyr" add VERSION
+    gitq -C "$up/zephyr" commit -qm version
     rm -rf "$tmp/ws" "$tmp/co"
     mkdir -p "$tmp/ws/nano-ros" "$tmp/co"
+    stub_patchset "$tmp/co"
     manifest modA > "$tmp/ws/nano-ros/west.yml"
     west_real() { (cd "$tmp/ws" && env -u GIT_DIR -u GIT_WORK_TREE PATH="$real_bin:$PATH" west "$@"); }
     if west_real init -l --mf west.yml nano-ros >/dev/null 2>&1 && west_real update >/dev/null 2>&1 \
@@ -188,9 +240,8 @@ elif [ -n "$real_py" ] && PATH="$(dirname "$real_py"):$PATH" command -v west >/d
     # 10. Issue 2476 — a project our patch set edited IN PLACE, then a pin
     # move. `west update` must check out the new revision over the edit,
     # which git refuses ("Your local changes ... would be overwritten").
-    # The sync sets the edit aside to a diff, updates, and leaves the
-    # re-patching to the patch set that runs after it. A failed update
-    # restores the edit exactly.
+    # The sync sets the edit aside to a diff, updates, and re-applies the
+    # patch set (a stub here). A failed update restores the edit exactly.
     gitq init -q -b main "$up/modC"
     printf 'v1\n' > "$up/modC/f"; gitq -C "$up/modC" add f; gitq -C "$up/modC" commit -qm v1
     c1="$(gitq -C "$up/modC" rev-parse HEAD)"
@@ -201,7 +252,9 @@ elif [ -n "$real_py" ] && PATH="$(dirname "$real_py"):$PATH" command -v west >/d
         printf '      revision: %s\n  self:\n    path: nano-ros\n' "$1"
     }
     rm -rf "$tmp/ws" "$tmp/co"
-    mkdir -p "$tmp/ws/nano-ros" "$tmp/co"
+    mkdir -p "$tmp/ws/nano-ros" "$tmp/ws/zephyr" "$tmp/co"
+    printf 'VERSION_MAJOR = 3\nVERSION_MINOR = 7\n' > "$tmp/ws/zephyr/VERSION"
+    stub_patchset "$tmp/co"
     pinned "$c1" > "$tmp/ws/nano-ros/west.yml"
     if west_real init -l --mf west.yml nano-ros >/dev/null 2>&1 && west_real update >/dev/null 2>&1 \
         && [ "$(cat "$tmp/ws/modC/f")" = v1 ]; then

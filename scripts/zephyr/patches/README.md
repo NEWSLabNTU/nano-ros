@@ -27,6 +27,12 @@ The recipe runs `bash scripts/zephyr/patches/${NROS_ZEPHYR_VERSION}.sh
 - One positional arg: the Zephyr workspace dir.
 - `cd`s to the repo root (works regardless of caller cwd).
 - Every patch must be **idempotent** (`just setup zephyr` re-runs them).
+- The set's LAST step is `nros_zephyr_patchset_record "$WORKSPACE" "$REPO_ROOT"
+  <line>` (`scripts/lib/zephyr-patchset.sh`), which records in
+  `<ws>/.west/nros-patchset` that this set ran. `check-zephyr-pin-drift.py`
+  fails a workspace that lacks the record, and
+  `sync-workspace-manifest.sh` re-runs the set after every `west update`,
+  because the update resets the set's edits.
 - `zephyr/` is a **hard** requirement: a patch whose Zephyr target file is
   missing exits non-zero. `modules/lang/rust` is **optional** — a C/C++-only
   workspace has no zephyr-lang-rust (book: `zephyr-west-app.md`), and

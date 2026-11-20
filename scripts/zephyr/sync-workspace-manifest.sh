@@ -32,6 +32,13 @@
 #
 # A workspace with no `.west/config` is not ours to repair: exit 0, the way
 # `unbind-manifest-project.sh --from-config` treats it.
+#
+# After a successful update it RE-APPLIES the line's patch set itself (issue
+# 2764). The update resets our in-place edits (below), and this script used to
+# leave re-applying them to its caller. Both setup callers did; a person who
+# ran it on its own, as `check-zephyr-pin-drift.py`'s remedy told them to, got
+# an unpatched workspace that failed only later, at configure. The callers
+# still run the set after this, which is idempotent and costs a few seconds.
 set -euo pipefail
 
 ws="${1:?usage: sync-workspace-manifest.sh <workspace> <checkout>}"
@@ -85,9 +92,9 @@ nros_zephyr_activate
 # workspace) stayed red until someone repaired it by hand. Issue 2476.
 #
 # So before the update, every project with tracked edits has them SAVED to a
-# diff under `.west/nros-preupdate/` and is reset to its HEAD. The patch set
-# runs after this script on both callers (`just zephyr setup`,
-# `scripts/zephyr/setup.sh`), and re-applies our edits to the new revision.
+# diff under `.west/nros-preupdate/` and is reset to its HEAD. After the
+# update this script runs the line's patch set, which re-applies our edits to
+# the new revision.
 # Anything else in the diff (a user's own edit) is kept in that file and
 # named on the console, never discarded. If the update fails, the saved
 # diffs go back, so a failed run leaves each project as it found it.
@@ -149,3 +156,28 @@ if [ "$rc" -ne 0 ]; then
 fi
 [ -z "$backup" ] || rm -f "$backup"
 echo "[zephyr setup] workspace updated to $manifest"
+
+# The update moved the projects, so whatever patch set the record names is no
+# longer what the tree carries. Drop the record first: if the set below fails,
+# the workspace reads as unpatched, which it is.
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/zephyr-patchset.sh"
+rm -f "$(nros_zephyr_patchset_stamp "$ws")"
+if ! line="$(nros_zephyr_workspace_line "$ws")"; then
+    echo "sync-workspace-manifest: $ws/zephyr/VERSION is missing or unreadable after the update," >&2
+    echo "  so which line's patch set to apply is unknown. The workspace is UNPATCHED;" >&2
+    echo "  run: bash $checkout/scripts/zephyr/patches/<line>.sh $ws" >&2
+    exit 1
+fi
+patchset="$checkout/scripts/zephyr/patches/$line.sh"
+if [ ! -f "$patchset" ]; then
+    echo "sync-workspace-manifest: the workspace checks out Zephyr $line and $checkout has no" >&2
+    echo "  patch set for it ($patchset). The workspace is UNPATCHED." >&2
+    exit 1
+fi
+echo "[zephyr setup] re-applying the $line patch set the update reset ($patchset)"
+if ! bash "$patchset" "$ws"; then
+    echo "sync-workspace-manifest: the $line patch set failed after the update, so $ws is" >&2
+    echo "  updated but not (fully) patched; a build there fails at configure." >&2
+    echo "  Fix the failure above, then run: bash $patchset $ws" >&2
+    exit 1
+fi
