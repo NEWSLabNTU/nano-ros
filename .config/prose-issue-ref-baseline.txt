@@ -59,6 +59,11 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
+#   2774  IN FLIGHT — filed on PR #4472 (transient-local re-query) and
+#         resolved on PR #4478. Issue 2779 is its open remainder on the
+#         platform ports. REMOVE THESE ROWS when #4472 merges.
+#
+docs/issues/2779-tcp-end-of-stream-unreported-on-platform-ports.md:2774
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
