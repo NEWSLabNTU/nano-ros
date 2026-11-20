@@ -3229,10 +3229,9 @@ pub const KNOBS: &[KnobRow] = &[
         class: crate::KnobClass::Public,
         carries: None,
         prompt: Some("Log sink buffers (records formatted at once)"),
-        help: Some("How many nros_log records the Zephyr log sink can format at the same\ntime. Each buffer is 1280 bytes of .bss, owned by the sink and claimed with\none atomic bit, so a thread or an ISR on any CPU can take one without a\nlock. A buffer is held for one format and one LOG_* call.\n\nThe default is two per CPU (4 on an SMP image, 2 otherwise): one record from\na thread and one from an interrupt in flight on each CPU. When every buffer\nis in use, a record is formatted into a 160-byte stack buffer instead,\ntruncated and marked \"...\", and the sink says once that the pool ran dry.\nA record is never dropped for want of a buffer.\n\n0 formats every record in a 1280-byte buffer on the stack of the thread that\nlogged, as the sink did before this knob. A thread whose stack is sized for\nits own work (1-2 KiB) then overflows the first time it logs."),
+        help: Some("How many nros_log records the Zephyr log sink can format at the same\ntime. Each buffer is 1280 bytes of .bss, owned by the sink and claimed with\none atomic bit, so a thread or an ISR on any CPU can take one without a\nlock. A buffer is held for one format and one LOG_* call.\n\nThe default is 1. nros_log delivers one record at a time to every sink,\nacross all threads and CPUs, so the sink is never entered twice at once\nthrough it, and a second buffer would sit unused. Raise it only for code that\ncalls the sink directly from several contexts. When every buffer is in use, a\nrecord is formatted into a 160-byte stack buffer instead, truncated and\nmarked \"...\", and the sink says once that the pool ran dry. A record is never\ndropped for want of a buffer.\n\n0 formats every record in a 1280-byte buffer on the stack of the thread that\nlogged, as the sink did before this knob. A thread whose stack is sized for\nits own work (1-2 KiB) then overflows the first time it logs."),
         default: crate::KnobDefault::Kconfig(&[
-            crate::KconfigDefault { value: "4", when: Some("SMP") },
-            crate::KconfigDefault { value: "2", when: None },
+            crate::KconfigDefault { value: "1", when: None },
         ]),
         values: crate::KnobValues::Int,
         surface: Some("[image.<id>.knobs.zephyr] log_sink_buffers"),
