@@ -21,6 +21,14 @@ the `zephyr` and `socketcan` backends; the device table and its carrier; the
 delivery to `open(NULL)` on every road). W9.f (the `board` hook and the
 consumer) is open.
 
+**Status (2026-11-21):** the census host build links the CAN mock (RFC-0132
+D6), so a C/C++ entry that calls the driver gets through its host census and
+a consumer can set `[census] on_missing = "error"`. What remains open here:
+the `s32z270-freertos` strong symbols over the vendor's real-time drivers
+(blocked on the licence: no host here has the drivers), and the `"board"`
+stack's hand-off of the `[canN]` name to the board package (deferred until a
+board-stack consumer needs it). The issue stays open for both.
+
 **Claim:** an earlier holder's claim on `issue-2633` expired unreported (59-99 h
 without a renewal or a report); it was taken over on 2026-11-20.
 

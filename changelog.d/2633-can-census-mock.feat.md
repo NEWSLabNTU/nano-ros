@@ -1,0 +1,1 @@
+A C or C++ entry that calls the CAN frame driver now gets through its host census: the census build links a mock CAN backend (`open` succeeds, `send` checks the frame and drops it, `recv` has nothing queued), so a `nros build` on a cross board such as `freertos-posix` no longer stops at an undefined `nros_platform_can_open`, and a consumer can set `[census] on_missing = "error"`.

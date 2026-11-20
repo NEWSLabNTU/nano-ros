@@ -18,6 +18,10 @@
 #                        else (a default would be vcan0, or none).
 #   image `linux_vcan0`  device = <iface>: `open(NULL)` opens it and sends
 #                        0x263#26330E00CAFE0102, which candump must read.
+#   image `freertos_posix_vcan0` (cmake road only): the same on a cross board,
+#                        built with its host census ON; that census build
+#                        links the CAN mock (RFC-0132 D6), and its run must
+#                        open the mock.
 #
 # The cargo-road images open an executor before the component registers, so a
 # zenoh router runs for them on a private port (scripts/dev/zenohd.sh). The
@@ -101,7 +105,8 @@ build() { # <road> <image> -> prints the executable
     fi
     case "$road" in
         rust) bin="$(find "$WORK/rust/build" -type f -perm -u+x -path "*/${image}_entry/target/*/${image}_entry" | head -1)" ;;
-        c) bin="$(find "$WORK/c/build" -type f -perm -u+x -name can_image_probe_c -path "*/cmake/*" | head -1)" ;;
+        c) bin="$(find "$WORK/c/build" -type f -perm -u+x -name can_image_probe_c -path "*/cmake/pkg/*" \
+                -path "*-${BOARD_OF[$image]:-linux}-*" | head -1)" ;;
     esac
     [ -n "$bin" ] || { echo "[$NAME] FAIL: $road road: no executable for $image" >&2; return 1; }
     echo "$bin"
@@ -122,10 +127,15 @@ run() { # <road> <image> <bin> -> the probe's CAN-IMAGE lines in $OUT/<road>-<im
         kill "$pid" 2>/dev/null
         wait "$pid" 2>/dev/null
     else
-        "${NROS_DEADLINE[@]}" 30 "$bin" >"$log" 2>&1
+        # The C probe brings up a ROS session after its CAN lines; a dead
+        # locator makes that fail at once, whatever router the host runs.
+        NROS_LOCATOR="tcp/127.0.0.1:9" "${NROS_DEADLINE[@]}" 30 "$bin" >"$log" 2>&1
     fi
     sed 's/^/    /' "$log" | grep "CAN-IMAGE" || sed 's/^/    /' "$log" >&2
 }
+
+# The board each image's cmake tree is named after.
+declare -A BOARD_OF=([linux]=linux [linux_vcan0]=linux [freertos_posix_vcan0]=freertos-posix)
 
 PORT=$((20000 + RANDOM % 20000))
 nros_router_exec "tcp/127.0.0.1:$PORT" >"$OUT/router.log" 2>&1 &
@@ -168,6 +178,34 @@ for road in rust c; do
     fi
 done
 
+# RFC-0132 D6 -- the same C probe on `freertos-posix`, a cross board whose C
+# entry is sized by its host census. That census build links the CAN mock, so
+# a plain `nros build` gets through it (it stopped at an undefined
+# `nros_platform_can_open` before), and the image then opens vcan0 by
+# `open(NULL)` like the linux one.
+if bin="$(build c freertos_posix_vcan0)"; then
+    if nros_grep_q "^CAN-IMAGE: device=- open(NULL)=0\$" "$OUT/build-c-freertos_posix_vcan0.log"; then
+        echo "[$NAME] c road: image \`freertos_posix_vcan0\`: its host census ran the probe over the CAN mock"
+    else
+        echo "[$NAME] FAIL: c road: the census run did not open the CAN mock" >&2
+        fail=1
+    fi
+    before="$(wc -l <"$OUT/dump.log")"
+    run c freertos_posix_vcan0 "$bin"
+    sleep 1
+    after="$(tail -n +"$((before + 1))" "$OUT/dump.log")"
+    if nros_grep_q "^CAN-IMAGE: device=$IFACE open(NULL)=0\$" "$OUT/c-freertos_posix_vcan0.log" \
+        && nros_grep_q " $IFACE $EXPECTED\$" <<<"$after"; then
+        echo "[$NAME] c road: image \`freertos_posix_vcan0\` opened $IFACE by open(NULL); candump read its frame"
+    else
+        echo "[$NAME] FAIL: c road: image \`freertos_posix_vcan0\` did not send on $IFACE:" >&2
+        sed 's/^/    /' <<<"$after" >&2
+        fail=1
+    fi
+else
+    fail=1
+fi
+
 if [ "$fail" -ne 0 ]; then
     echo "[$NAME] FAIL (logs: $OUT)" >&2
     trap - EXIT
@@ -175,4 +213,4 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 rm -rf "$OUT"
-echo "[$NAME] PASS: the image's CAN device reached open(NULL) on the cargo and cmake roads"
+echo "[$NAME] PASS: the image's CAN device reached open(NULL) on the cargo and cmake roads, and a CAN-calling C entry got through its host census"

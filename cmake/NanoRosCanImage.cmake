@@ -19,6 +19,9 @@
 #   3. compiles a per-entry hand-off TU whose constructor stores the device
 #      before `main`, so the application's `open(NULL)` opens it.
 #
+# In a census host build (`NROS_LEAF_CENSUS_HOST`) it links the census mock
+# instead (RFC-0132 D6) and hands nothing over.
+#
 # Per entry, not per configure: two images of one configure may name two
 # devices, and the hand-off is in each image's own executable. An image that
 # names no device gets neither the library nor the TU, so its link is
@@ -46,7 +49,40 @@ function(_nros_can_socketcan_library)
     set_target_properties(nros_can_socketcan PROPERTIES LINKER_LANGUAGE C)
 endfunction()
 
+# RFC-0132 D6 -- the census host build's CAN backend: the mock's C twin
+# (`nros-can-mock/c/census_mock.c`) and the device store, as archive members,
+# so an entry that never calls the driver links none of them.
+function(_nros_can_census_mock_library)
+    if(TARGET nros_can_census_mock)
+        return()
+    endif()
+    get_filename_component(_root "${_NROS_CAN_IMAGE_ROOT}" ABSOLUTE)
+    # The device store too: its reader is board-internal, but a census build
+    # links the same program the image does, store reference included.
+    add_library(nros_can_census_mock STATIC
+        "${_root}/packages/drivers/can/nros-can-mock/c/census_mock.c"
+        "${_root}/packages/boards/nros-board-common/c/nros_board_can_image.c")
+    target_include_directories(nros_can_census_mock
+        PUBLIC "${_root}/packages/boards/nros-board-common/c"
+        PRIVATE "${_root}/packages/platform/nros-platform-api/include")
+    set_target_properties(nros_can_census_mock PROPERTIES LINKER_LANGUAGE C)
+endfunction()
+
 function(nros_entry_can_image target board)
+    # RFC-0132 D6 -- the census builds its host image with the mock: it counts
+    # the program, it never reaches a bus, and the image's own device (a
+    # SocketCAN interface, a devicetree node, a board's `[canN]`) is not the
+    # host's. Every entry of a census host build gets it, whatever the image
+    # names, so an entry that calls the driver links on the census's road too.
+    if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
+        get_property(_langs GLOBAL PROPERTY ENABLED_LANGUAGES)
+        if(NOT "C" IN_LIST _langs)
+            enable_language(C)
+        endif()
+        _nros_can_census_mock_library()
+        target_link_libraries(${target} PRIVATE nros_can_census_mock)
+        return()
+    endif()
     nros_image_net(_net)
     if("${_net}" STREQUAL "")
         return()

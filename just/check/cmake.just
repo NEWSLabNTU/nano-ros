@@ -676,6 +676,26 @@ hand-written-image-facts:
     fi
     ./tests/cmake-hand-written-image-facts-tests.sh
 
+# RFC-0132 D6 (phase-560 W9.f) -- the census host build's CAN backend. A C/C++
+# entry on a cross board is sized by its host census, and an entry that calls
+# the CAN frame driver needs a backend there: `nros_entry_can_image` links the
+# mock's C twin into every census host build. A tiny project drives it: the
+# entry links and runs against the mock under `NROS_LEAF_CENSUS_HOST`, and
+# (negative control) links no backend outside a census build with no device.
+# Configure + build of one C file; seconds.
+[group('needs:cmake')]
+[group('needs:cc')]
+can-census-mock:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip can-census-mock "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/can-census-mock-tests.sh
+
 # issue 2336 -- a ThreadX image's `NROS_APP_CONFIG` carries its own network. The
 # images of one shared configure each state one, and the configure's single
 # config TU gave every executable the last image's address. The writer is
