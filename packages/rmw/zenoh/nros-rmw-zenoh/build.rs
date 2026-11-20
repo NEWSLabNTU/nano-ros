@@ -356,9 +356,10 @@ fn main() {
         };
         let (frag, batch) = (parse(frag), parse(batch));
         // Issue 2853 -- the ONE receive-need computation, shared with the
-        // zpico runner's hosted derivation.
+        // zpico runner's hosted derivation. phase-581 W7: each knob is read
+        // through `receive_knob`, so the large-class pool reads its demand.
         let stated = stated_receive(sizing.as_ref(), &|name, derived| {
-            nros_zephyr_build::knob(name).rung(derived).stated()
+            nros_zephyr_build::receive_knob(name).rung(derived).stated()
         });
         if let Some(msg) = receive_ceiling_refusal(stated.need, frag, batch) {
             panic!("nros-rmw-zenoh: {msg}");
@@ -371,7 +372,7 @@ fn main() {
         }
     } else if let Some(reason) = nros_sizing_descriptor::receive_ceiling::stated_receive(
         sizing.as_ref(),
-        &|name, derived| nros_zephyr_build::knob(name).rung(derived).stated(),
+        &|name, derived| nros_zephyr_build::receive_knob(name).rung(derived).stated(),
     )
     .unpriced
     {
@@ -696,7 +697,7 @@ fn declared_action_queryables(desc: Option<&SizingDescriptor>) -> usize {
 /// runtime's share.
 ///
 /// **The Zephyr resolver road (issue 1485).** A Zephyr west entry receives
-/// neither carrier above: its queryable table is `NROS_MAX_QUERYABLES`, which
+/// neither carrier above: its queryable table is `NROS_ENTITY_MAX_QUERYABLES`, which
 /// `nros_resolve_knobs()` resolves from the entity inventory's
 /// `NROS_DERIVED_MAX_QUERYABLES`, and that road never ran the CMake road's
 /// `nros_entity_facts_env`. So the inventory publishes the application's share
@@ -1167,8 +1168,8 @@ const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAMS_SERVICE_INBOX_BYTES=0: 0 is 
 /// read by `nros-node` through the derived spelling and had no row in this
 /// table, so one Kconfig symbol sized one crate and not the other while the
 /// comment beside it said "keep them in sync". The pairing is a property of
-/// the KNOB, so it lives with the resolver (`nros_zephyr_build::KCONFIG_PAIRS`)
-/// and a knob whose two names agree needs no row at all.
+/// the KNOB: its symbol is its registry row's (`CONFIG_<env spelling>` for
+/// every row since phase-581 W7), read by the resolver.
 fn env_usize(name: &str, default: usize) -> usize {
     nros_zephyr_build::knob(name).resolve(default)
 }
@@ -1181,8 +1182,16 @@ fn env_usize(name: &str, default: usize) -> usize {
 /// callers are knobs with no tenant, and a rung parameter they always pass
 /// `None` for would say the ladder reaches further than it does. `Knob::rung`
 /// is the builder step that makes "no rung" the absence of a call.
+///
+/// phase-581 W7 (RFC-0140 D3) -- the large-class pool is a CARRIER of the
+/// entity demand (`entity.max_large_subscribers`) with no Kconfig symbol of
+/// its own, so it reads the stated demand below its forwarded value
+/// (`nros_zephyr_build::receive_knob`); zero is an answer there, so nothing
+/// raises it.
 fn env_usize_rung(name: &str, rung: Option<usize>, default: usize) -> usize {
-    nros_zephyr_build::knob(name).rung(rung).resolve(default)
+    nros_zephyr_build::receive_knob(name)
+        .rung(rung)
+        .resolve(default)
 }
 
 /// issue 1122 / 1199 — a `NROS_DECLARED_*` fact cmake derived for THIS image.

@@ -56,7 +56,7 @@ endfunction()
 # Write <out_file> (`osource`d by `zephyr/Kconfig` before the module's own
 # defaults) with the pools' derived defaults, under `if NROS_RMW_ZENOH`, from
 # the counts `nros configure` resolved. A table the image STATES as a knob
-# (`Kconfig.from-system-toml`, <knob_defaults>: `[image.<id>.knobs.zenoh]
+# (`Kconfig.from-system-toml`, <knob_defaults>: `[image.<id>.knobs.entity]
 # max_subscribers` / `max_queryables`) is sized at the larger of the two, as
 # the zenoh tables themselves are. With no resolved fragment the file is
 # removed, so a guest, or an image that stopped resolving, keeps the module
@@ -92,9 +92,10 @@ function(nros_zpico_pthread_pool_kconfig _resolved _out_file)
     if(_qrys LESS 1)
         set(_qrys 1)
     endif()
-    # A stated table (`config NROS_MAX_<T>` with a `default` row).
+    # A stated table (`config NROS_ENTITY_MAX_<T>` with a `default` row;
+    # phase-581 W7 renamed it from the retired `NROS_MAX_<T>`).
     foreach(_t SUBSCRIBERS QUERYABLES)
-        if(_knobs MATCHES "\nconfig NROS_MAX_${_t}\n    int\n(    depends on [^\n]*\n)*    default ([0-9]+)\n")
+        if(_knobs MATCHES "\nconfig NROS_ENTITY_MAX_${_t}\n    int\n(    depends on [^\n]*\n)*    default ([0-9]+)\n")
             set(_stated ${CMAKE_MATCH_2})
             if(_t STREQUAL "SUBSCRIBERS" AND _stated GREATER _subs)
                 set(_subs ${_stated})

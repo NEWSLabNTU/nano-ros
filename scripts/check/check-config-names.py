@@ -124,10 +124,6 @@ retired = [{ spelling = "env:NROS_TRACE_OLD" }]
 [[knob]]
 key = "trace.ring_size"
 
-[[knob]]
-key = "trace.symbol"
-transitional = { id = "TRACE_SYM", kconfig = "NROS_TRACE_SYM" }
-
 [[env]]
 name = "NROS_PLANTED_FOREIGN"
 foreign = "ros2"
@@ -140,7 +136,6 @@ disposition = "listed"
 PLANTED_KCONFIG = "config NROS_EPOCH_PLANTED\n\tbool\n"
 PLANTED = {  # rule -> the row that breaks it
     "N1": "knob `trace.deep.name`",
-    "N2": "knob `trace.symbol`",
     "N3": "knob `param.thing`",
     "N4": "knob `trace.ring_size`",
     "N5": "knob `trace.level`",
@@ -164,6 +159,14 @@ def self_test(rules) -> list:
         core = Path(tmp) / "knobs.toml"
         core.write_text(PLANTED_CORE)
         reg, _c3 = kr.parse(path=core, packages=[])  # N5/N7 also break C3; the lint names its rule
+        # N2 cannot be planted in a registry any more: every spelling derives
+        # from `key`, and the per-row override that could break it is refused
+        # (phase-581 W7). The `[[case]]` corpus above still holds the rule.
+        core.write_text('owner = "core"\n\n[owners]\ntrace = "x"\n\n[[knob]]\nkey = "trace.symbol"\n'
+                        'transitional = { kconfig = "NROS_TRACE_SYM" }\n')
+        _, errs = kr.parse(path=core, packages=[])
+        if not any("`transitional` was deleted" in e for e in errs):
+            fails.append(f"a per-row spelling override was not refused ({errs})")
     subjects = cn.registry_subjects(reg, core_where="planted/knobs.toml")
     subjects += cn.kconfig_subjects(PLANTED_KCONFIG, set(), where="planted/Kconfig")
     pctx = cn.registry_context(reg, {"NROS_TRACE_DIR"})
@@ -220,7 +223,7 @@ def main() -> int:
         return 1
     n = len(rules["baseline"])
     print(f"check-config-names: OK ({len(found)} rows break the rule, all in the baseline of {n}; "
-          f"self-test planted N1-N8 and ran {len(rules['case'])} cases)")
+          f"self-test planted N1 and N3-N8, refused an N2 override and ran {len(rules['case'])} cases)")
     return 0
 
 

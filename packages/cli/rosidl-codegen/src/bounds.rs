@@ -5,7 +5,7 @@
 //! number was emitted only as a `#define` inside a generated header, so every
 //! later stage that needed it invented a substitute: the arena multiplied
 //! `MAX_CBS` by an action-client worst case, the zenoh payload classes were two
-//! hand-set constants, and `NROS_MAX_LARGE_SUBSCRIBERS` was a number a human
+//! hand-set constants, and `NROS_ENTITY_MAX_LARGE_SUBSCRIBERS` was a number a human
 //! produced by reading generated headers with their eyes. That last one is
 //! measured, not hypothetical -- bringing the island up on mr-canhubk344 meant
 //! copying `Control 2052` and `Odometry 1804` out of generated C++ headers into
