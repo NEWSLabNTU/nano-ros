@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery::get_node_names_with_enclaves",
+  "verdict": "extension",
+  "why": "the `GraphQuery` seam's `get_node_names_with_enclaves`, which `TickCtx::get_node_names_with_enclaves` and `NodeContext::get_node_names_with_enclaves` forward to (phase-572 W2). Same name and visitor signature as rclrs's `Node::get_node_names_with_enclaves`; the seam sits in the doc-hidden `nros::__macro`, see `rust:GraphQuery`."
+}

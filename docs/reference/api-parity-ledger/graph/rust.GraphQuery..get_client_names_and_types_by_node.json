@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery::get_client_names_and_types_by_node",
+  "verdict": "extension",
+  "why": "the `GraphQuery` seam's `get_client_names_and_types_by_node`, which `TickCtx::get_client_names_and_types_by_node` and `NodeContext::get_client_names_and_types_by_node` forward to (phase-572 W2). Same name and visitor signature as rclrs's `Node::get_client_names_and_types_by_node`; the seam sits in the doc-hidden `nros::__macro`, see `rust:GraphQuery`."
+}

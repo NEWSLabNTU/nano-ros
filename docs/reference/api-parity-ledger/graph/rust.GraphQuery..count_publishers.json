@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery::count_publishers",
+  "verdict": "extension",
+  "why": "the `GraphQuery` seam's `count_publishers`, which `TickCtx::count_publishers` and `NodeContext::count_publishers` forward to (phase-572 W2). Same name and visitor signature as rclrs's `Node::count_publishers`; the seam sits in the doc-hidden `nros::__macro`, see `rust:GraphQuery`."
+}

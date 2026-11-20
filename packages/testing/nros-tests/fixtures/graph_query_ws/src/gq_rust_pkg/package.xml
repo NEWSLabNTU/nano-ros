@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>gq_rust_pkg</name>
+  <version>0.1.0</version>
+  <description>A Rust component that asks the graph about /chatter from its tick.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>cargo</buildtool_depend>
+  <depend>nros</depend>
+  <export>
+    <build_type>nros_cargo</build_type>
+  </export>
+</package>

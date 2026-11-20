@@ -728,6 +728,22 @@ image = "linux"
 codegen_out = "build-workspace-codegen/seeds_bringup"
 build_subdir = "build/posix-zenoh-linux-seeds_bringup/cmake"
 
+# Phase-572 W2 — one image, three components: a C, a C++ and a Rust probe,
+# each asking the ROS graph about `/chatter` through its own language's
+# surface (the rclc executor, `rclcpp::Node`, the Rust `TickCtx`). Consumed by
+# tests/graph_query_parity.rs, which starts the peer and compares the answers.
+[[workspace_fixture]]
+id = "workspace-graph-query-parity"
+platform = "linux"
+lang = "mixed"
+builder = "cmake"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/graph_query_ws"
+bringup = "src/graph_query_bringup"
+image = "linux"
+codegen_out = "build-workspace-codegen/graph_query_bringup"
+build_subdir = "build/posix-zenoh-linux-graph_query_bringup/cmake"
+
 # RFC-0071 D16 step 2 (phase-545 W3, issue 2295) — an RMW backend nano-ros does
 # not know about. The image declares `rmw = "acme"`, provided by the fixture's
 # own `src/acme_rmw` (nothing under `packages/` outside the fixture names it),

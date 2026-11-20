@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="gq_c_pkg" exec="gq_c" name="gq_c"/>
+  <node pkg="gq_cpp_pkg" exec="gq_cpp" name="gq_cpp"/>
+  <node pkg="gq_rust_pkg" exec="gq_rust" name="gq_rust"/>
+</launch>

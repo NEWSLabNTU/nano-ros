@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery::get_subscriptions_info_by_topic",
+  "verdict": "extension",
+  "why": "the `GraphQuery` seam's `get_subscriptions_info_by_topic`, which `TickCtx::get_subscriptions_info_by_topic` and `NodeContext::get_subscriptions_info_by_topic` forward to (phase-572 W2). Same name and visitor signature as rclrs's `Node::get_subscriptions_info_by_topic`; the seam sits in the doc-hidden `nros::__macro`, see `rust:GraphQuery`."
+}

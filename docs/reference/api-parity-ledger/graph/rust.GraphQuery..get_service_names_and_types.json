@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery::get_service_names_and_types",
+  "verdict": "extension",
+  "why": "the `GraphQuery` seam's `get_service_names_and_types`, which `TickCtx::get_service_names_and_types` and `NodeContext::get_service_names_and_types` forward to (phase-572 W2). Same name and visitor signature as rclrs's `Node::get_service_names_and_types`; the seam sits in the doc-hidden `nros::__macro`, see `rust:GraphQuery`."
+}

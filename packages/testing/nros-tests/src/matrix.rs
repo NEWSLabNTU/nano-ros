@@ -1412,6 +1412,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     // Issue 2640 -- the metadata probe's sidecars of a built workspace.
     ("probe_seeds_workspace", NonCell::CompileCheck),
+    (
+        "graph_query_parity",
+        NonCell::Probe(
+            "one graph queried through the C, C++ and Rust component surfaces in one image",
+        ),
+    ),
     ("px4_bridge_compile", NonCell::CompileCheck),
     ("qemu_patched_binary", NonCell::Static),
     (

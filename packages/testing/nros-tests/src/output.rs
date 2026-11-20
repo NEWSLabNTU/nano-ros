@@ -2354,3 +2354,9 @@ pub const ENV_OVERRIDES_DOMAIN: &str = "overrides system.toml's domain_id=";
 /// Issue 2714 — the locator twin of [`ENV_OVERRIDES_DOMAIN`]:
 /// `NROS_LOCATOR=<env> overrides system.toml's locator=<stated>`.
 pub const ENV_OVERRIDES_LOCATOR: &str = "overrides system.toml's locator=";
+
+/// Phase-572 W2 — the answer each graph-query parity probe prints once
+/// (`packages/testing/nros-tests/fixtures/graph_query_ws`):
+/// `GRAPH_QUERY lang=<c|cpp|rust> nodes=<n> topics=<n> services=<n>
+/// chatter_publishers=<n> chatter_type=<type>`.
+pub const GRAPH_QUERY_MARKER: &str = "GRAPH_QUERY lang=";
