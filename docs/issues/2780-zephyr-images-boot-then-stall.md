@@ -1,12 +1,12 @@
 ---
 id: 2780
-title: "Zephyr images boot then stall: three merge-runtime regressions in 2cfe9f0094..b13a5d4b18"
+title: "merge-runtime zephyr shard, 2cfe9f0094..b13a5d4b18: two Zephyr realtime rows stall (unconfirmed solo); the shim cell is load"
 status: open
 type: bug
-area: [zephyr, ci, testing]
+area: [zephyr, ci, testing, params]
 severity: high
 found: 2026-11-21
-related: [2777, 1575, 1551]
+related: [2777, 1575, 1551, 2782]
 ---
 
 ## What fails
@@ -54,7 +54,39 @@ boot line on native_sim). Suspects, by subject:
 2. `67d36cb764` a board's executor backing rung is a floor, not a ceiling.
 3. `1a896a6722` durations read the monotonic clock (issue 2760).
 
+## Closes when (superseded)
+
+As filed: all three pass again with the cause named. Superseded by the
+narrowed condition at the end.
+
+## Narrowed, 2026-11-21
+
+Each of the three was run again on its own, outside the merge lane.
+
+### 1. `cli_bringup_zephyr_adapter_shim_boots_native_sim`: not a regression
+
+It passes 3 of 3 solo at `b13a5d4b18` (nros 142, host load about 20, fixture
+freshly built). The empty output on the merge lane fits host load against the
+cell's 2 s boot window. That window is load-sensitive, and that is the only
+thing this issue keeps of it.
+
+### 2. `a_rows_entry_registers_its_nodes_at_runtime`: real, a Linux image, filed as issue 2782
+
+`workspace-probe-seeds` is a LINUX row (cmake, mixed C/C++); it was in the
+zephyr shard's junit, which is why this issue first called it a Zephyr image.
+It reproduces 3 of 3 solo: its C component's 41 declared parameters are
+refused by an 8-slot parameter store, and the image exits `-6` with nothing
+printed. That is a different class from a stalled Zephyr boot, so it is
+tracked on its own as issue 2782 and leaves this issue.
+
+### 3. `realtime_sched_tasks` (`zephyr/cpp-derived`, `zephyr/cpp-levels`): not yet re-run
+
+These need Zephyr native_sim images (`workspace-zephyr-cpp-derived-sched-tasks`,
+`workspace-zephyr-cpp-levels`). newslab-118's shared Zephyr workspace is behind
+its pins, so they are to be run solo on newslab-241. Until then it is open
+whether they are load against their tick windows or real.
+
 ## Closes when
 
-All three pass again on the merge lane with the cause named here; if the 2777
-bisect proves one root for both, they close together.
+Item 3 is either shown to pass solo (and recorded as load-sensitive) or
+fixed. Item 2 closes with issue 2782.
