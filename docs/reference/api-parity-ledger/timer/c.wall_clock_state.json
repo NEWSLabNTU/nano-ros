@@ -1,0 +1,6 @@
+{
+  "key": "c:wall_clock_state",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`rclc_wall_clock_state()` answers what the wall-clock stamps mean right now: whether the wall clock is synced, which source answers it (`NROS_WALL_CLOCK_SOURCE_*`: the platform clock, SNTP, the zenoh HLC, the board) and how many times that source has changed since boot (RFC-0141 D4, phase-582 W1b). While unsynced the wall clock reads 0, so an `RCL_SYSTEM_TIME` stamp is ROS's unset time; an application that must not publish unstamped data asks this first. rcl has no equivalent: upstream's system clock is the host's, always set. Forwards the platform-ABI `nros_platform_wall_clock_state`, which every port defines."
+}
