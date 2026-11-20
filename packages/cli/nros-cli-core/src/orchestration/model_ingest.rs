@@ -114,6 +114,13 @@ pub fn apply_model_execution(
         .iter()
         .map(|(name, t)| (name.clone(), sched_task_from_model(t, target_rtos)))
         .collect();
+    // The contract's `miss.action` is the source of `deadline_policy`; the
+    // one lowering every road that builds this table applies.
+    nros_orchestration_ir::violation_agreement::apply_contract_deadline_policies(
+        model,
+        &mut system.sched_tasks,
+    )
+    .map_err(|e| eyre::eyre!("{e}"))?;
 
     let component_names: Vec<&str> = system.components.iter().map(|c| c.name.as_str()).collect();
 
