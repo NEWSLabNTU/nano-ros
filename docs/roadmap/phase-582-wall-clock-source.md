@@ -45,6 +45,17 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     Also D4's `epoch_failure`: at the end of resolution, `unstamped` (the
     default) logs once and runs on; `halt` stops the image with one message
     naming the source(s). The halt test lands here.
+    Split 2026-11-20 (manager ruling) into **W1c-1**: the registry's `enum`
+    and `enum_list` kinds and the `[knobs.clock]` rows, the retired Zephyr
+    switches, `nros/clock_resolve.h` (resolution, latch, the store's
+    admission rule and monotonic floor, `epoch_failure`), host-tested with a
+    fake clock (`check clock-resolve`); and **W1c-2**: the Zephyr wiring, the
+    resolve point moved after registration, and native_sim cells (sntp,
+    `["sntp", "platform"]` with no server, zenoh-hlc). W1c-2 must show the HLC
+    sample is observable at the resolve point without the executor
+    dispatching; if zenoh-pico surfaces it only through a dispatched
+    callback, the wait gets a bounded pump that runs no user callbacks, and
+    the doc says so. The shape refinements are recorded in RFC-0141 D1.
   - **W1d:** the board hook, its link rule and the selection-named TU, and
     the linux stub-board stamp test in Rust, C and C++.
 - RFC-0141 D1–D4:
