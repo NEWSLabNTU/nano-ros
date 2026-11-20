@@ -1,11 +1,13 @@
 ---
 id: 2774
 title: "A zenoh-pico client whose router closes the TCP link without a zenoh CLOSE reads end-of-stream forever: it never reopens, burns a core, and a later session close can hang"
-status: open
+status: resolved
 type: bug
 area: [rmw-zenoh, zenoh-pico]
 severity: high
 found: 2026-11-21
+resolved: 2026-11-21
+resolved_in: "zenoh-pico fork e0b8077c (nano-ros-1.10.1)"
 related: [2366, 2596, 1749]
 ---
 
@@ -56,3 +58,37 @@ close with a query outstanding returns. The session re-open phase of
 `interop_e2e::interop::case_13` (issue 2366: a value changed while the
 subscription's session was away is read exactly once) is added with it, since
 until then every router stop the harness can make measures this bug instead.
+
+## Resolution
+
+zenoh-pico fork commit `e0b8077c` (`nano-ros-1.10.1`):
+
+* `_z_tcp_posix_read` returns `_Z_LINK_READ_EOF` (defined in
+  `link/transport/tcp.h`) when `recv` returns 0 for a non-empty buffer, which
+  on POSIX is only end-of-stream. No other read result uses that value.
+* The recv helpers in `link.c` record it as `_z_link_t::_rx_closed` and hand
+  their callers 0, as before, so no caller of a link read changes. The
+  WebSocket layer, which calls the TCP read directly, maps it back to 0.
+* The unicast read task closes the session on seeing `_rx_closed`, exactly as
+  it does for `_tx_broken` (issue 2389), and closing is what starts the
+  reconnect.
+
+Only links that know a 0 means end-of-stream report it. FreeRTOS+TCP returns
+0 on a timeout and a non-blocking custom link (IVC, RPMsg) on "nothing yet",
+so those, and the Zephyr and lwIP TCP links, are unchanged; each would need
+the same two lines once its `recv`'s 0 is confirmed to mean the same thing.
+
+Measured with `constrained-link-probe`, two routers, the subscription's router
+stopped and started again 6 s later:
+
+| | before | after |
+| --- | --- | --- |
+| SIGKILL: `recvfrom` returning 0 | ~1.5 million | 1 |
+| SIGKILL: `connect` calls | 1 | 9 (one a second until the router is back) |
+| value changed during the outage | never read | read once (3 of 3; SIGTERM 1 of 1) |
+| process exit after its window | hung in `_z_sync_group_wait` | clean |
+
+`interop_e2e::interop::case_13` gains phase 5: the subscription's router is
+stopped with the harness's own stop, the publisher changes the value, the
+router comes back, and the subscription reads the new value exactly once,
+after the restart. 3 of 3 green.

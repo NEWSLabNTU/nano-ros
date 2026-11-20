@@ -201,6 +201,10 @@ pub const CLP_RECEIVED_PREFIX: &str = "CLP_RECEIVED ";
 /// [`CLP_RECEIVED_PREFIX`] line (`CLP_RECEIVED_AT <n> <unix ms>`; issue 2366).
 pub const CLP_RECEIVED_AT_PREFIX: &str = "CLP_RECEIVED_AT ";
 
+/// The constrained-link probe's publisher role, once per publish
+/// (`CLP_PUBLISHED <n>`).
+pub const CLP_PUBLISHED_PREFIX: &str = "CLP_PUBLISHED ";
+
 /// issue 2163 — the probe's graph answer when graph discovery is compiled in
 /// (`CLP_GRAPH_NODES <count>`).
 pub const CLP_GRAPH_NODES_PREFIX: &str = "CLP_GRAPH_NODES ";
