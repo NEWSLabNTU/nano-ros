@@ -14956,7 +14956,12 @@ fn a_declaration_past_the_stock_carve_is_refused_naming_the_knob() {
         "the line states the stock capacity: {first}"
     );
     let line = seen.join(" ");
-    for needle in [name, "max_parameters", "NROS_MAX_PARAMETERS", "params:"] {
+    for needle in [
+        name,
+        "max_parameters",
+        "NROS_PARAMS_MAX_PARAMETERS",
+        "params:",
+    ] {
         assert!(line.contains(needle), "the line names `{needle}`: {line}");
     }
 }
