@@ -87,7 +87,7 @@ local = "a developer worktree: `just check lane dev` and the pre-push `check fas
 tiers = ["fast", "build", "gate"]
 claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
 preconditions = ["cli-fresh", "cli-noop-build", "launch-resolve-fresh"]
-local = "`just ci gate` (phase-584 W2 moves it onto this lane; until then `just check lane ci`)"
+local = "`just ci gate`"
 
 [lane.runner]
 # The self-hosted runner image (nros-qemu, nros-sdk-zephyr, nros-big), at the

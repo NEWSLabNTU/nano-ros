@@ -109,25 +109,23 @@ _gate-inner:
         exit "$docs_rc"
     fi
     echo "ci gate: full lane ($(sed -n 2p <<<"$tier_out"))."
-    # `check::api-parity` left this list once (issue 1500) because it was in
-    # the FAST lane too and ran twice. phase-489 W5 moved it and
-    # `check::probe-workspace-caps` OUT of the fast lane (both compile; CI runs
-    # them in `check-fast-compile`, beside `check-fast`), so they are named here
-    # again, once each (`check-lane-step-duplicates`).
-    # `check::cli-fresh` stays although fast also derives it: it is 0.02 s, and
-    # its POSITION is the point (issue 1320) — a stale CLI fails here, first,
-    # instead of as a confusing CMake error inside the fast fan-out.
-    steps=(check::cli-fresh check::cli-noop-build check::launch-resolve-fresh check::fast check::pristine-checkout check::api-parity check::probe-workspace-caps check::build test-unit test-lane-contracts check::out-of-lane-deselected)
+    # phase-584 W2 (RFC-0131 D3): the full gate is the `ci` lane
+    # (`.config/gate-lanes.toml`), ONE nextest run with one junit. Its tiers
+    # (fast, build, gate) hold every gate the old step list named, each once;
+    # its preconditions (`check::cli-fresh` first, issue 1320) run in order
+    # before nextest starts, fail-fast, so a stale CLI still fails first and
+    # by name. `check-gate-lists.py --lane-steps ci` lists what it runs.
     gate_rc=0
-    bash scripts/ci/run-lane-steps.sh gate "${steps[@]}" || gate_rc=$?
+    just check lane ci || gate_rc=$?
     # Post-verdict housekeeping is NOT here: it is `_gate-housekeeping`, outside
     # the wall limit (issue 2733).
     if [ "$gate_rc" -eq 0 ]; then
         echo "CI gate passed (compile + unit; no fixtures were built or needed)."
         exit 0
     fi
-    printf '  `check::build` is the only place the C/C++ backends compile, so a red\n'
-    printf '  step before it means they were not built at all (issue 0952).\n'
+    # One nextest run does not stop at the first red gate, so every gate past a
+    # passing precondition has a verdict in the junit; the red ones are named
+    # in nextest's summary above.
     exit 1
 
 # The gate's housekeeping, run by the host lock after `_gate-inner` has ended,

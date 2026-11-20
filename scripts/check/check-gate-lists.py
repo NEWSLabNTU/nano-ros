@@ -626,6 +626,23 @@ def nextest_config(b: dict[str, list[str]], junit: Path | None = None,
     return "\n".join(lines)
 
 
+def lane_steps(b: dict[str, list[str]], lane_name: str) -> list[str]:
+    """The `just` addresses `lane_name` runs, in listing order (phase-584 W2).
+
+    Derived from `test_names`, the harness's own listing, so the steps a
+    checker credits are exactly the tests the lane runs: a deselected entry
+    (it carries a reason) is not a step, a unit (`#<unit>`) is its recipe's,
+    and the tier prefix (`fast::`, `gate::`, `precondition::`) is dropped."""
+    out: list[str] = []
+    for name, why in test_names(b, lane_name):
+        if why is not None or "::" not in name:
+            continue
+        target = name.split("::", 1)[1].split("#", 1)[0]
+        if target and target not in out:
+            out.append(target)
+    return out
+
+
 def buckets() -> tuple[dict[str, list[str]], list[str]]:
     b, problems = classify(justfile_text(), recipe_tiers())
     outside, more = outside_gates()
@@ -876,6 +893,24 @@ def main(argv: list[str]) -> int:
                   f"recipe defines: {', '.join(bad)}", file=sys.stderr)
             return 1
         print("\n".join(lane["preconditions"]))
+        return 0
+    if argv[:1] == ["--lane-steps"]:
+        # phase-584 W2: the `just` addresses a lane runs, one per line, in the
+        # harness's order: its preconditions, then every in-scope gate
+        # (`check::<name>`, or an outside recipe's path such as `test-unit`).
+        # A gate the lane deselects (a tier or claim it lacks) is not one of its
+        # steps. `just ci gate` IS `just check lane ci`, so the checkers that
+        # used to read its `steps=(...)` array read this instead.
+        if len(argv) != 2:
+            print("usage: check-gate-lists.py --lane-steps <lane>", file=sys.stderr)
+            return 2
+        b, problems = buckets()
+        if problems:
+            print("check-gate-lists: refusing to emit lane steps over a broken registry:",
+                  file=sys.stderr)
+            print("\n".join(problems), file=sys.stderr)
+            return 1
+        print("\n".join(lane_steps(b, argv[1])))
         return 0
     if argv[:1] == ["--junit-tsv"]:
         print(junit_tsv(Path(argv[1])), end="")

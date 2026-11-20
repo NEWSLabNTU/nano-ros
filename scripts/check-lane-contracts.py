@@ -717,6 +717,7 @@ JUST_CALL = re.compile(r"^\s*@?just\s+((?:[a-z0-9_:-]+)(?:\s+[a-z0-9_:-]+)*)\s*$
 # header-only walk (fixed), `just ci l1` as two words (fixed), and now an array
 # -- which is why the vacuity guard at the end of `main` matters more than any
 # one of these patterns.
+LANE_CALL = re.compile(r"\bjust\s+check\s+lane\s+([A-Za-z0-9_-]+)")
 STEPS_ARRAY = re.compile(r"^\s*steps=\(\s*([^)]*?)\s*\)\s*$", re.M)
 
 # Lanes whose membership is DERIVED rather than written as `just` edges.
@@ -726,6 +727,22 @@ STEPS_ARRAY = re.compile(r"^\s*steps=\(\s*([^)]*?)\s*\)\s*$", re.M)
 # -- the same list the runner itself uses, from the one tool that owns it.
 DERIVED_LANES = {"check::fast": "fast-serial", "check::fast-serial": "fast-serial",
                  "check::fast-parallel": "fast-serial", "check::build": "build-serial"}
+
+
+@__import__("functools").lru_cache(maxsize=None)
+def _lane_steps(lane):
+    """The `just` addresses gate lane `lane` runs (phase-584 W2), as
+    `check-gate-lists.py --lane-steps` lists them."""
+    import subprocess
+
+    tool = os.path.join(ROOT, "scripts", "check", "check-gate-lists.py")
+    if not os.path.isfile(tool):
+        return []
+    r = subprocess.run([sys.executable, tool, "--lane-steps", lane],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return []
+    return [n.strip() for n in r.stdout.split("\n") if n.strip()]
 
 
 @__import__("functools").lru_cache(maxsize=None)
@@ -794,6 +811,13 @@ def closure(recipes, root):
             stack.extend(m.group(1).split())
         for line in recipes[r]["body"]:
             stack.extend(embedded_just_calls(line, recipes))
+            # phase-584 W2 -- `just check lane <name>` runs a gate LANE through
+            # the nextest harness (`just ci gate` is `just check lane ci ||
+            # gate_rc=$?`). Its members are the harness's own listing, not
+            # `just` edges, so they are asked for.
+            if not line.lstrip().startswith("#"):
+                for lane in LANE_CALL.findall(line):
+                    stack.extend(_lane_steps(lane))
             m = JUST_CALL.match(line)
             if not m:
                 continue

@@ -427,12 +427,33 @@ def ci_gate_steps():
 
     Read, never re-derived: an authored copy would answer from a stale set the
     next time the lane gains a step, and in the direction that reports OK.
+
+    phase-584 W2: the gate now runs ONE lane (`just check lane ci`), so its
+    steps are that lane's, from the harness's own listing
+    (`check-gate-lists.py --lane-steps <lane>`). A body that still writes a
+    `steps=(...)` array is read as before.
     """
     for line in _ci_lane_body("gate"):
+        if line.lstrip().startswith("#"):
+            continue
         m = re.search(r"^\s*steps=\(([^)]*)\)", line)
         if m:
             return m.group(1).split()
+        m = re.search(r"\bjust check lane ([A-Za-z0-9_-]+)", line)
+        if m:
+            return lane_steps(m.group(1))
     return []
+
+
+def lane_steps(lane):
+    """The `just` addresses gate lane `lane` runs (phase-584 W2)."""
+    tool = ROOT / "scripts" / "check" / "check-gate-lists.py"
+    r = subprocess.run([sys.executable, str(tool), "--lane-steps", lane],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.stderr.write(r.stderr)
+        return []
+    return [s for s in r.stdout.split() if s]
 
 
 def ci_gate_check_gates(steps, fast, build, default):
