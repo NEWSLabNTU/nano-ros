@@ -275,3 +275,12 @@ esac
 echo ""
 echo "nros-install: next →  nros setup <board>    (e.g. \`nros setup linux\`)"
 echo "nros-install:         nros new <name>       scaffold a project"
+
+# phase-569 W4 — the line that turns on `<Tab>` completion, for the user's
+# shell (`$SHELL`). Nothing is printed for a shell `nros` does not complete in.
+if completion=$("$prefix/bin/nros" completions 2>/dev/null); then
+    echo ""
+    printf '%s\n' "$completion" | while IFS= read -r l; do
+        echo "nros-install: $l"
+    done
+fi

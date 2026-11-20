@@ -3,7 +3,7 @@
 //! Pure clap dispatch shell. All real work lives in `nros-cli-core`.
 
 use clap::{CommandFactory, FromArgMatches, Parser};
-use clap_complete::{Shell, generate};
+use clap_complete::{CompleteEnv, Shell, generate};
 use eyre::Result;
 use nros_cli_core::cmd::Cmd;
 use std::io;
@@ -91,6 +91,11 @@ fn run() -> Result<()> {
         eyre::bail!(e);
     }
     nros_cli_core::orchestration::dispatch::redispatch()?;
+    // phase-569 W4 (RFC-0133 D7) — a `<Tab>`: the shell runs
+    // `COMPLETE=<shell> nros …`, and this answers it and exits. After the
+    // redispatch, so a pinned toolchain's `nros` answers with its own names;
+    // before everything else, so a completion spawns nothing.
+    CompleteEnv::with_factory(Cli::command).complete();
     // phase-517 W10 — `nros setup` installs rustup into `~/.cargo` without
     // touching the user's PATH, so every `cargo` this process (or a `cmake` it
     // drives) spawns must find it there. One place, for every spawn site;
@@ -174,14 +179,17 @@ fn run() -> Result<()> {
         Cli::command().print_help()?;
         return Ok(());
     };
-    // `completions` is wired here (not in nros-cli-core) because clap_complete
-    // needs the binary's `clap::Command` tree, which lives at the
-    // front-end. Phase 111.A.13.
-    if let Cmd::Completions(args) = &command {
-        let shell: Shell = args
-            .shell
+    // `completions --static` is answered here (not in nros-cli-core) because
+    // generating the script needs the binary's `clap::Command` tree, which
+    // lives at the front-end. Without `--static` the core prints the
+    // registration line for dynamic completion.
+    if let Cmd::Completions(args) = &command
+        && args.static_script
+    {
+        let name = nros_cli_core::cmd::completions::shell(args)?;
+        let shell: Shell = name
             .parse()
-            .map_err(|e| eyre::eyre!("unsupported shell `{}`: {e}", args.shell))?;
+            .map_err(|e| eyre::eyre!("unsupported shell `{name}`: {e}"))?;
         let mut cmd = Cli::command();
         let bin = cmd.get_name().to_string();
         generate(shell, &mut cmd, bin, &mut io::stdout());

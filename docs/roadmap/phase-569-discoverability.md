@@ -128,7 +128,47 @@ without building.
 
 ### W4 — dynamic completion and its registration
 
-- **Status:** OPEN
+- **Status:** OPEN (W4a landed 2026-11-21; W4b open)
+- **W4a, the engine and its registration:** done.
+  - `clap_complete` is pinned to `=4.6.3` with `unstable-dynamic`, in
+    `nros-cli` and `nros-cli-core`.
+  - `CompleteEnv::with_factory(Cli::command).complete()` runs in `main`
+    right after the toolchain-pin redispatch.
+  - `cmd::complete` holds the completers: board keys and aliases (the board
+    catalog `nros board list` reads), RMW names and aliases (the RMW index),
+    and public knob names with their summaries (the compiled-in registry).
+    They are on every board-name argument of `nros board`, on
+    `nros rmw show` and on `nros knob show`. A source a completer cannot
+    read offers no names.
+  - `nros completions [<shell>]` prints the registration line for the shell
+    `$SHELL` names (or the one named), with the startup file it goes in.
+    `--static` prints the old generated script. The not-implemented stub is
+    gone.
+  - `activate.sh` registers the glue in interactive bash and zsh (zsh after
+    `compinit`), `activate.fish` in interactive fish. `install.sh` prints
+    the line. The first `nros setup` that provisions prints it once, and
+    records that in `$NROS_HOME/state/completion-tip-shown`.
+  - The book's Install page gains step 5, "Turn on completion".
+  - **Tests:**
+    - `nros-cli/tests/completion_glue.rs` sources the real bash glue and
+      completes `nros board show <Tab>` (board keys) and `nros rmw show
+      zen<Tab>` (`zenoh`).
+    - The fish and zsh glue were driven by hand on newslab-server139: fish
+      with `complete -C`, and zsh with `_describe` stubbed, since zsh's
+      completion functions run only inside its line editor. Both returned
+      the board keys and `zenoh`. They have no test yet: no gate lane claims
+      zsh or fish, so a test needing them needs a capability first (see W4b).
+    - One completion took about 7 ms with a checkout `nros`.
+- **W4b, open:**
+  - the completion cache `build/nros/complete.json`, which `nros build` and
+    `nros configure` write, with its schema version and search path;
+  - the workspace names it serves (packages, images);
+  - completers for platforms, interface types, templates, codes and
+    toolchains;
+  - `SubcommandCandidates` for extension verbs;
+  - the timing and `strace` acceptance;
+  - the zsh and fish glue tests, which need a `zsh`/`fish` gate capability
+    that a lane claims.
 
 Enable clap_complete's `unstable-dynamic`, pinned to an exact version.
 `CompleteEnv::with_factory(Cli::command).complete()` goes in `main` after the

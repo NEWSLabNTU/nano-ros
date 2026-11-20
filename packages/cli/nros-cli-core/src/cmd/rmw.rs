@@ -53,6 +53,7 @@ pub struct ListArgs {
 #[derive(Debug, ClapArgs)]
 pub struct ShowArgs {
     /// The RMW name, as `rmw = "…"` spells it (e.g. `zenoh`)
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::rmws))]
     pub name: String,
     /// Print one JSON object instead of text
     #[arg(long)]

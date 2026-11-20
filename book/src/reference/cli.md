@@ -1833,12 +1833,13 @@ Options:
 ```text
 Generate shell completions (bash | zsh | fish | powershell)
 
-Usage: nros completions <SHELL>
+Usage: nros completions [OPTIONS] [SHELL]
 
 Arguments:
-  <SHELL>  Shell to emit completion script for [possible values: bash, zsh, fish, powershell]
+  [SHELL]  The shell. Default: the one `$SHELL` names [possible values: bash, zsh, fish, powershell]
 
 Options:
+      --static   Print a generated script instead of the registration line: verbs and flags complete, names do not
   -h, --help     Print help
   -V, --version  Print version
 ```

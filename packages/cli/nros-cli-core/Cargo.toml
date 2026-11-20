@@ -50,6 +50,9 @@ nros-extension = { path = "../../runners/nros-extension" }
 # issue 0382 — model node maps preserve launch declaration order.
 indexmap = "2"
 clap = { workspace = true }
+# phase-569 W4: the dynamic completers; exact pin, because `unstable-dynamic`
+# may change in a patch.
+clap_complete = { version = "=4.6.3", features = ["unstable-dynamic"] }
 eyre = "0.6"
 # phase-262 W1/W2 — pkg_index + launch_parser extracted to leaf crates;
 # re-exported as `pkg_index` / `launch_parser`.
