@@ -169,7 +169,7 @@ pub fn git_store_name(rev: &str) -> String {
 /// The CLI a checkout's `scripts/bootstrap.sh` (and `just setup-cli`) builds.
 #[must_use]
 pub fn checkout_cli_bin(checkout: &Path) -> PathBuf {
-    checkout.join("packages/cli/target/release/nros")
+    nros_build_paths::nros_cli_in_checkout(checkout)
 }
 
 /// A `rev` must be a full 40-hex commit. A branch, a tag or a short sha is

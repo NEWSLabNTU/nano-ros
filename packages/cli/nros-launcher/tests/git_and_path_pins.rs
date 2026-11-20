@@ -28,12 +28,8 @@ fn write(path: &Path, body: &str) {
 }
 
 fn executable(path: &Path, body: &str) {
-    write(path, body);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    nros_launcher::test_support::write_executable_stub(path, body);
 }
 
 fn pin_file(dir: &Path, body: &str) -> PathBuf {
@@ -82,7 +78,9 @@ fn a_git_pin_names_its_store_directory() {
     );
     assert_eq!(
         got.candidate_bins(Path::new("/s"))[0],
-        Path::new("/s/toolchains").join(format!("git-{REV}")).join("bin/nros")
+        Path::new("/s/toolchains")
+            .join(format!("git-{REV}"))
+            .join("bin/nros")
     );
 }
 
@@ -136,7 +134,7 @@ fn a_path_pin_is_relative_to_its_file_and_must_be_a_checkout() {
     assert_eq!(got.source, PinSource::Path(abs.clone()));
     assert_eq!(
         got.candidate_bins(Path::new("/s")),
-        vec![abs.join("packages/cli/target/release/nros")]
+        vec![pin::checkout_cli_bin(&abs)]
     );
 
     let p = pin_file(&proj, "path = \"modules\"\n");
@@ -171,7 +169,10 @@ fn a_git_pin_resolves_to_its_store_directory_or_is_missing() {
         panic!("expected Missing, got {plan:?}");
     };
     assert!(matches!(source, PinSource::Git { .. }));
-    assert_eq!(looked_in[0], git_pin::store_dir(&store, REV).join("bin/nros"));
+    assert_eq!(
+        looked_in[0],
+        git_pin::store_dir(&store, REV).join("bin/nros")
+    );
 
     executable(&looked_in[0], "#!/bin/sh\n");
     let plan = launch::resolve(&ctx(&proj, &store)).unwrap();
@@ -185,7 +186,10 @@ fn a_git_pin_resolves_to_its_store_directory_or_is_missing() {
 fn a_git_toolchain_is_never_the_unpinned_default() {
     let tmp = tempfile::tempdir().unwrap();
     let store = tmp.path().join("store");
-    executable(&store.join("toolchains/0.6.0-nros11/bin/nros"), "#!/bin/sh\n");
+    executable(
+        &store.join("toolchains/0.6.0-nros11/bin/nros"),
+        "#!/bin/sh\n",
+    );
     executable(
         &git_pin::store_dir(&store, REV).join("bin/nros"),
         "#!/bin/sh\n",
@@ -217,7 +221,7 @@ fn a_path_pin_resolves_to_the_checkouts_own_build() {
     let e = dispatch::fetch(&store, &store, version, pin_path, looked_in, source).unwrap_err();
     assert!(format!("{e:#}").contains("scripts/bootstrap.sh"), "{e:#}");
 
-    let built = checkout.join("packages/cli/target/release/nros");
+    let built = pin::checkout_cli_bin(&checkout);
     executable(&built, "#!/bin/sh\n");
     let plan = launch::resolve(&ctx(&proj, &store)).unwrap();
     assert!(
@@ -250,19 +254,23 @@ fn git(dir: &Path, args: &[&str]) -> String {
 fn upstream(dir: &Path, ok: bool) -> String {
     std::fs::create_dir_all(dir).unwrap();
     git(dir, &["init", "-q"]);
+    // The CLI a real bootstrap.sh builds, relative to the tree's root.
+    let cli = pin::checkout_cli_bin(Path::new("."));
+    let cli = cli.display();
     let body = if ok {
-        "#!/usr/bin/env bash\nset -e\n\
-         [ \"$1\" = --no-prompt ] || exit 9\n\
-         command -v cargo >/dev/null || exit 8\n\
-         ! command -v nros >/dev/null || exit 7\n\
-         mkdir -p packages/cli/target/release\n\
-         printf '#!/bin/sh\\n[ \"$1\" = source-stamp ] && echo fresh\\nexit 0\\n' \
-         > packages/cli/target/release/nros\n\
-         chmod +x packages/cli/target/release/nros\n"
+        format!(
+            "#!/usr/bin/env bash\nset -e\n\
+             [ \"$1\" = --no-prompt ] || exit 9\n\
+             command -v cargo >/dev/null || exit 8\n\
+             ! command -v nros >/dev/null || exit 7\n\
+             mkdir -p \"$(dirname {cli})\"\n\
+             printf '#!/bin/sh\\n[ \"$1\" = source-stamp ] && echo fresh\\nexit 0\\n' > {cli}\n\
+             chmod +x {cli}\n"
+        )
     } else {
-        "#!/usr/bin/env bash\nexit 1\n"
+        "#!/usr/bin/env bash\nexit 1\n".to_string()
     };
-    executable(&dir.join("scripts/bootstrap.sh"), body);
+    executable(&dir.join("scripts/bootstrap.sh"), &body);
     git(dir, &["add", "-A"]);
     git(dir, &["commit", "-q", "-m", "c"]);
     git(dir, &["rev-parse", "HEAD"])
@@ -277,20 +285,21 @@ fn build_path(tmp: &Path) -> OsString {
     let launcher = tmp.join("launcher-bin");
     executable(&launcher.join("nros"), "#!/bin/sh\nexit 0\n");
     let mut dirs = vec![launcher, tools];
-    dirs.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
+    dirs.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
     std::env::join_paths(dirs).unwrap()
 }
 
-fn toolchain_names(store: &Path) -> Vec<String> {
-    let mut v: Vec<String> = std::fs::read_dir(store.join("toolchains"))
+fn toolchain_names(store: &Path) -> std::collections::BTreeSet<String> {
+    let dir = store.join("toolchains");
+    std::fs::read_dir(dir)
         .map(|d| {
             d.flatten()
                 .map(|e| e.file_name().to_string_lossy().into_owned())
                 .collect()
         })
-        .unwrap_or_default();
-    v.sort();
-    v
+        .unwrap_or_default()
 }
 
 #[test]
@@ -309,7 +318,10 @@ fn a_git_pin_installs_atomically_and_once() {
     let dir = git_pin::store_dir(&store, &rev);
     assert_eq!(git(&dir, &["rev-parse", "HEAD"]), rev);
     // Only the finished name: no partial left behind.
-    assert_eq!(toolchain_names(&store), vec![format!("git-{rev}")]);
+    assert_eq!(
+        toolchain_names(&store),
+        std::iter::once(format!("git-{rev}")).collect()
+    );
 
     // The second ask is the lookup, not a rebuild: a broken upstream now
     // cannot matter.
@@ -336,7 +348,11 @@ fn a_failed_build_leaves_nothing_in_the_store() {
     )
     .unwrap_err();
     assert!(format!("{e:#}").contains("bootstrap.sh"), "{e:#}");
-    assert!(toolchain_names(&store).is_empty(), "{:?}", toolchain_names(&store));
+    assert!(
+        toolchain_names(&store).is_empty(),
+        "{:?}",
+        toolchain_names(&store)
+    );
 }
 
 #[test]
@@ -383,7 +399,10 @@ fn no_cargo_is_refused_and_rustup_is_not_installed() {
     )
     .unwrap_err();
     let e = format!("{e:#}");
-    assert!(e.contains("`cargo` is not on PATH") && e.contains("rustup"), "{e}");
+    assert!(
+        e.contains("`cargo` is not on PATH") && e.contains("rustup"),
+        "{e}"
+    );
     assert!(!store.join("toolchains").exists() || toolchain_names(&store).is_empty());
 }
 
