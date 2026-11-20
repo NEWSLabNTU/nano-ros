@@ -49,6 +49,10 @@ WALL_CLOCK_READERS = {
         "the PlatformTime forwarder and export macro, the seam itself",
     "packages/platform/nros-platform-cffi/tests/c_stub_platform.rs":
         "exercises every ABI symbol once",
+    "packages/platform/nros-platform-mps2-an385/src/lib.rs":
+        "its host test asserts the wall clock reads 0 (no RTC)",
+    "packages/platform/nros-platform-stm32f4/src/lib.rs":
+        "its host test asserts the wall clock reads 0 (no RTC)",
     "packages/rmw/xrce/nros-rmw-xrce/src/session.c":
         "received_timestamp, a stamp",
     "packages/rmw/xrce/nros-rmw-xrce/tests/received_timestamp.c":
