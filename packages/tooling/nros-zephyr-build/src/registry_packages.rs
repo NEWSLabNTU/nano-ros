@@ -178,7 +178,9 @@ pub const IN_TREE_PACKAGES: &[InTreePackage] = &[
         package: "nros_platform_zephyr",
         owner: "zephyr",
         file: "packages/platform/nros-platform-zephyr/nros-knobs.toml",
-        knobs: &[],
+        knobs: &[
+            "zephyr.log_sink_buffers",
+        ],
         env: &[],
     },
 ];

@@ -131,6 +131,9 @@ config NROS_SNTP_SERVER
 config NROS_SNTP_TIMEOUT_MS
     int "SNTP reply timeout (ms)"
 
+config NROS_ZEPHYR_LOG_SINK_BUFFERS
+    int "Log sink buffers (records formatted at once)"
+
 if NROS_RMW_XRCE
 
 config NROS_XRCE_BUFFER_BYTES
