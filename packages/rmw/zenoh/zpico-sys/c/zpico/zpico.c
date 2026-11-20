@@ -210,6 +210,70 @@ extern void nros_smoltcp_idle_until_ms(uint64_t deadline_ms);
 // Internal Data Structures
 // ============================================================================
 
+/* Publishers a transient-local subscription remembers the newest sequence
+ * number of (`struct zpico_tl_sub::gid`). A latched topic has one writer in
+ * every case measured; four leaves room for a few at 24 bytes each, in the
+ * heap block only a transient-local subscription allocates. */
+#ifndef ZPICO_TL_DEDUP_WRITERS
+#define ZPICO_TL_DEDUP_WRITERS 4
+#endif
+#if ZPICO_TL_DEDUP_WRITERS < 1
+#error "ZPICO_TL_DEDUP_WRITERS must be >= 1: it sizes a C array"
+#endif
+/* The row counters are `uint8_t`. */
+#if ZPICO_TL_DEDUP_WRITERS > 255
+#error "ZPICO_TL_DEDUP_WRITERS must be <= 255: its row counters are uint8_t"
+#endif
+
+struct zpico_session;
+
+/* A transient-local subscription's state (issue 2366), allocated by
+ * `zpico_subscriber_history_query` and pointed to by its slot's `tl`.
+ *
+ * A subscription's ring has two producers of the same stream: a publisher
+ * cache's REPLY and the live SAMPLE, in either order, and the cache is queried
+ * more than once -- at creation, and again each time a publisher's `@adv`
+ * liveliness token appears (a late publisher, or every publisher after a
+ * session re-open). So a cached value the subscription already read comes
+ * back, and a cache reply can land after a newer live sample, which would
+ * leave the ring's last entry stale until the next change -- for an on-change
+ * topic, never. Each sample is therefore checked against the newest sequence
+ * number delivered from its publisher (GID), for the subscription's whole
+ * life, and one that is not newer is dropped. Past ZPICO_TL_DEDUP_WRITERS
+ * publishers the oldest-recorded row is replaced; what that can cost is a
+ * repeated delivery of its cached value on a later re-query, never a lost
+ * sample.
+ *
+ * Lifetime: `refs` counts the slot's ownership plus each history query still
+ * out (its dropper releases it; zenoh-pico runs a query's dropper exactly
+ * once, on every path). The `@adv` watch holds no reference: undeclaring it
+ * waits for its callbacks. `idx` and the slot's `tl` are cleared together
+ * under the slot lock when the subscription goes, so a late reply finds no
+ * subscription rather than another one in the reused slot. */
+struct zpico_tl_sub {
+    struct zpico_session* s;
+    int idx;
+    uint32_t refs;
+    uint8_t count;
+    uint8_t next;
+    uint8_t gid[ZPICO_TL_DEDUP_WRITERS][16];
+    int64_t seq[ZPICO_TL_DEDUP_WRITERS];
+    /* A history query is out. */
+    volatile bool active;
+    /* A publisher's `@adv` token appeared since the last query was sent: the
+     * next `zpico_spin_once` sends it again. */
+    volatile bool requery;
+    uint32_t timeout_ms;
+    /* The liveliness subscriber on `**` under `<topic keyexpr>/@adv/pub/`. */
+    z_owned_subscriber_t watch;
+    bool watching;
+    uint32_t queries;
+    uint32_t replies;
+    uint32_t dropped;
+    /* The history query's keyexpr, NUL-terminated. */
+    char key[];
+};
+
 // Subscriber entry with callback (supports legacy, attachment, and direct-write modes)
 typedef struct {
     z_owned_subscriber_t subscriber;
@@ -231,29 +295,11 @@ typedef struct {
     // `zpico_ring_desc_t` in the header. NULL = not in ring mode.
     bool ring_mode;
     zpico_ring_desc_t* ring;
-    /* Transient-local history window (`zpico_subscriber_history_query`).
-     *
-     * While a subscription's one history query is outstanding, the ring has two
-     * producers of the same stream: the publisher cache's REPLY and the live
-     * SAMPLE, in either order. A latched topic makes the order matter -- a cache
-     * reply that lands after a newer live sample would leave the ring's last
-     * entry stale until the next change, which for an on-change topic can be
-     * never. So each sample in the window is checked against the newest
-     * (publisher GID, sequence number) the window has already delivered, and a
-     * sample from the same publisher that is not newer is dropped.
-     *
-     * One pair, not a table: a latched topic has one writer in every case this
-     * serves, and a second writer's samples are delivered (different GID) --
-     * what is lost is only the cross-writer dedup, never a sample. The window
-     * closes when the query's dropper fires. `hist_active` is written by the
-     * caller's thread before the query is sent and by the dropper after; the
-     * rest only by the ring's producer (the read task), so they need no lock. */
-    volatile bool hist_active;
-    bool hist_have;
-    uint8_t hist_gid[16];
-    int64_t hist_seq;
-    uint32_t hist_replies;
-    uint32_t hist_dropped;
+    /* Transient-local state (`zpico_subscriber_history_query`, issue 2366),
+     * on the heap and only for a transient-local subscription: NULL for every
+     * other, so an image pays one pointer per subscriber slot for it. Set and
+     * cleared under the slot lock. */
+    struct zpico_tl_sub* tl;
 #if defined(Z_FEATURE_UNSTABLE_API)
     bool zero_copy; // true = zero-copy mode (borrows from zenoh-pico buffer)
     ZpicoZeroCopyCallback zero_copy_cb;
@@ -283,6 +329,13 @@ typedef struct {
     ZpicoQueryCallback callback;
     void* ctx;
     bool active;
+    /* A transient-local publisher's cache queryable also declares a liveliness
+     * token on its own keyexpr, the `@adv` token a stock advanced publisher
+     * declares, so a subscription that exists BEFORE the publisher learns
+     * there is a cache to query (issue 2366). On the heap, NULL for every
+     * other queryable; held here, not in the `liveliness` table, because it
+     * lives and dies with the queryable. */
+    z_owned_liveliness_token_t* adv_token;
 } queryable_entry_t;
 
 // ZPICO_MAX_PUBLISHERS, ZPICO_MAX_SUBSCRIBERS, ZPICO_MAX_QUERYABLES,
@@ -1454,22 +1507,27 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
     _zpico_notify_spin(s);
 }
 
-/* The PURE half of the history-window dedup (phase-473 W2): is the sample
- * whose rmw attachment is `att[0..att_len)` newer than the newest one the window
- * has delivered? The window state is three caller-owned fields, so a test can
- * drive the real rule without a session -- the `zpico_graph_set_apply` shape.
+/* The PURE half of the transient-local dedup (phase-473 W2, issue 2366): is
+ * the sample whose rmw attachment is `att[0..att_len)` newer than the newest one
+ * delivered from the same publisher? The state is caller-owned -- `capacity`
+ * rows of a 16-byte GID (`gids`, row-major) and its newest sequence number
+ * (`seqs`), `*count` of them filled, `*next` the row the next new publisher
+ * replaces once all are -- so a test can drive the real rule without a session,
+ * the `zpico_graph_set_apply` shape.
  *
  * The attachment is the layout `RmwAttachment` writes: `int64 seq (LE) | int64
  * timestamp | VLE len (16) | 16-byte GID`, 33 bytes (`safety-e2e` appends a
  * CRC after them). One too short, or not carrying a 16-byte GID, takes no part
  * in the dedup and is admitted: a sample is never dropped on a guess.
  *
- * Returns 1 to admit (and records it as the newest), 0 to drop (a sample from
- * the same publisher at or below the recorded sequence number; `*dropped` is
- * counted), `ZPICO_ERR_INVALID` for a NULL state pointer. */
-int32_t zpico_history_admit_apply(bool* have, uint8_t* gid, int64_t* seq, uint32_t* dropped,
-                                  const uint8_t* att, size_t att_len) {
-    if (have == NULL || gid == NULL || seq == NULL || dropped == NULL) {
+ * Returns 1 to admit (and records it as its publisher's newest), 0 to drop (a
+ * sample from a recorded publisher at or below its sequence number; `*dropped`
+ * is counted), `ZPICO_ERR_INVALID` for a NULL state pointer or no capacity. */
+int32_t zpico_history_admit_apply(uint8_t* count, uint8_t* next, uint8_t* gids, int64_t* seqs,
+                                  uint32_t capacity, uint32_t* dropped, const uint8_t* att,
+                                  size_t att_len) {
+    if (count == NULL || next == NULL || gids == NULL || seqs == NULL || dropped == NULL ||
+        capacity == 0 || capacity > 255) {
         return ZPICO_ERR_INVALID;
     }
     if (att == NULL || att_len < 33 || att[16] != 16) {
@@ -1480,20 +1538,38 @@ int32_t zpico_history_admit_apply(bool* have, uint8_t* gid, int64_t* seq, uint32
         v = (v << 8) | att[i];
     }
     int64_t s = (int64_t)v;
-    if (*have && memcmp(gid, att + 17, 16) == 0 && s <= *seq) {
-        (*dropped)++;
-        return 0;
+    uint32_t n = *count < capacity ? *count : capacity;
+    for (uint32_t i = 0; i < n; i++) {
+        if (memcmp(gids + 16 * i, att + 17, 16) == 0) {
+            if (s <= seqs[i]) {
+                (*dropped)++;
+                return 0;
+            }
+            seqs[i] = s;
+            return 1;
+        }
     }
-    *have = true;
-    memcpy(gid, att + 17, 16);
-    *seq = s;
+    uint32_t row;
+    if (n < capacity) {
+        row = n;
+        *count = (uint8_t)(n + 1);
+    } else {
+        row = *next % capacity;
+        *next = (uint8_t)((row + 1) % capacity);
+    }
+    memcpy(gids + 16 * row, att + 17, 16);
+    seqs[row] = s;
     return 1;
 }
 
-/* Whether a sample arriving in a subscription's history window is NEW.
- * Outside a window every sample is. */
+static void _zpico_history_release(struct zpico_session* s, subscriber_entry_t* entry);
+static void _zpico_history_requery_due(struct zpico_session* s);
+
+/* Whether a sample arriving on a transient-local subscription is NEW. Every
+ * sample of a VOLATILE one is. */
 static bool _zpico_history_admit(subscriber_entry_t* entry, const z_loaned_bytes_t* attachment) {
-    if (!entry->hist_active) {
+    struct zpico_tl_sub* tl = entry->tl;
+    if (tl == NULL) {
         return true;
     }
     uint8_t att[33];
@@ -1502,8 +1578,8 @@ static bool _zpico_history_admit(subscriber_entry_t* entry, const z_loaned_bytes
         z_bytes_reader_t r = z_bytes_get_reader(attachment);
         n = z_bytes_reader_read(&r, att, sizeof(att));
     }
-    return zpico_history_admit_apply(&entry->hist_have, entry->hist_gid, &entry->hist_seq,
-                                     &entry->hist_dropped, att, n) != 0;
+    return zpico_history_admit_apply(&tl->count, &tl->next, &tl->gid[0][0], tl->seq,
+                                     ZPICO_TL_DEDUP_WRITERS, &tl->dropped, att, n) != 0;
 }
 
 static inline void zpico_slot_lock(struct zpico_session* s);
@@ -2837,6 +2913,7 @@ void zpico_close(zpico_session_t* session) {
     // Clean up subscribers
     for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
         if (s->subscribers[i].active) {
+            _zpico_history_release(s, &s->subscribers[i]);
             z_undeclare_subscriber(z_subscriber_move(&s->subscribers[i].subscriber));
             s->subscribers[i].active = false;
             s->subscribers[i].callback = NULL;
@@ -2859,6 +2936,11 @@ void zpico_close(zpico_session_t* session) {
 
     // Clean up queryables
     for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
+        if (s->queryables[i].adv_token != NULL) {
+            z_liveliness_undeclare_token(z_liveliness_token_move(s->queryables[i].adv_token));
+            z_free(s->queryables[i].adv_token);
+            s->queryables[i].adv_token = NULL;
+        }
         if (s->queryables[i].active) {
             z_undeclare_queryable(z_queryable_move(&s->queryables[i].queryable));
             s->queryables[i].active = false;
@@ -3353,10 +3435,7 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
     s->subscribers[idx].ring = desc;
     /* Issue 1979 -- the consumer's claim takes this session's slot lock. */
     desc->lock_session = s;
-    s->subscribers[idx].hist_active = false;
-    s->subscribers[idx].hist_have = false;
-    s->subscribers[idx].hist_replies = 0;
-    s->subscribers[idx].hist_dropped = 0;
+    s->subscribers[idx].tl = NULL;
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
@@ -3395,48 +3474,168 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
     return idx;
 }
 
+static void _zpico_tl_unref(struct zpico_tl_sub* tl) {
+    struct zpico_session* s = tl->s;
+    zpico_slot_lock(s);
+    bool last = --tl->refs == 0;
+    zpico_slot_unlock(s);
+    if (last) {
+        z_free(tl);
+    }
+}
+
+/* The slot the state still belongs to, or NULL once the subscription is gone. */
+static subscriber_entry_t* _zpico_tl_entry(struct zpico_tl_sub* tl) {
+    struct zpico_session* s = tl->s;
+    subscriber_entry_t* entry = NULL;
+    zpico_slot_lock(s);
+    if (tl->idx >= 0 && s->subscribers[tl->idx].tl == tl) {
+        entry = &s->subscribers[tl->idx];
+    }
+    zpico_slot_unlock(s);
+    return entry;
+}
+
 /* Reply handler of a transient-local history query: each cached sample goes
  * into the subscription's ring exactly as a live one would, through the same
- * producer and the same window dedup. An error reply (a peer's queryable
- * refusing) carries no sample and is ignored. */
+ * producer and the same dedup. An error reply (a peer's queryable refusing)
+ * carries no sample and is ignored. */
 static void history_reply_handler(z_loaned_reply_t* reply, void* arg) {
-    struct zpico_session* s = _zpico_unpack_session(arg);
-    int idx = _zpico_unpack_slot(arg);
-    if (idx < 0 || idx >= ZPICO_MAX_SUBSCRIBERS) {
+    struct zpico_tl_sub* tl = (struct zpico_tl_sub*)arg;
+    if (!z_reply_is_ok(reply)) {
         return;
     }
-    subscriber_entry_t* entry = &s->subscribers[idx];
-    if (!entry->active || !entry->ring_mode || !z_reply_is_ok(reply)) {
+    subscriber_entry_t* entry = _zpico_tl_entry(tl);
+    if (entry == NULL || !entry->active || !entry->ring_mode) {
         return;
     }
     const z_loaned_sample_t* sample = z_reply_ok(reply);
-    entry->hist_replies++;
-    _zpico_ring_push(s, entry, z_sample_payload(sample), z_sample_attachment(sample));
+    tl->replies++;
+    _zpico_ring_push(tl->s, entry, z_sample_payload(sample), z_sample_attachment(sample));
 }
 
-/* The query is complete (every queryable answered, or the timeout fired):
- * close the window, so later samples skip the dedup. */
+/* The query is complete (every queryable answered, the timeout fired, or it
+ * could not be sent). A re-query that a token asked for while this one was
+ * out goes on the next spin, which this wakes. */
 static void history_reply_dropper(void* arg) {
-    struct zpico_session* s = _zpico_unpack_session(arg);
-    int idx = _zpico_unpack_slot(arg);
-    if (idx < 0 || idx >= ZPICO_MAX_SUBSCRIBERS) {
+    struct zpico_tl_sub* tl = (struct zpico_tl_sub*)arg;
+    struct zpico_session* s = tl->s;
+    tl->active = false;
+    _zpico_notify_spin(s);
+    _zpico_tl_unref(tl);
+}
+
+/* A publisher's `@adv` liveliness token appeared: a cache exists that this
+ * subscription may not have read -- a publisher that came up after it, whose
+ * first live sample its own write filter can drop before the route is known,
+ * or any publisher, re-announced after a session re-open replayed this watch.
+ * Only a flag: the query itself goes out on the caller's thread in the next
+ * `zpico_spin_once`, because this runs inside zenoh-pico's receive path and
+ * the declare lock is never taken from there. A burst of tokens therefore
+ * costs one query, and the dedup absorbs what the subscription already holds.
+ * A DELETE (the publisher left) asks nothing. */
+static void history_watch_handler(z_loaned_sample_t* sample, void* arg) {
+    struct zpico_tl_sub* tl = (struct zpico_tl_sub*)arg;
+    if (z_sample_kind(sample) != Z_SAMPLE_KIND_PUT) {
         return;
     }
-    s->subscribers[idx].hist_active = false;
-    _zpico_notify_spin(s);
+    tl->requery = true;
+    _zpico_notify_spin(tl->s);
 }
 
-/* The SUBSCRIBER half of transient-local durability: one history query, at
- * creation, on `keyexpr` -- the caller passes `**` under `<subscription keyexpr>/@adv/`,
- * the global query `rmw_zenoh_cpp`'s advanced subscriber issues, which
- * intersects every advanced publisher's cache queryable
- * (`<topic keyexpr>/@adv/pub/<zid>/<eid>/_`, served by nano-ros's own TL
- * publishers too). Replies land in the subscription's ring beside live
- * samples; see `hist_active` for the ordering rule.
+/* Send the subscription's history query once more. The caller holds no lock. */
+static int32_t _zpico_history_send(struct zpico_tl_sub* tl) {
+    struct zpico_session* s = tl->s;
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, tl->key) < 0) {
+        return ZPICO_ERR_KEYEXPR;
+    }
+    z_get_options_t opts;
+    z_get_options_default(&opts);
+    opts.target = Z_QUERY_TARGET_ALL;
+    opts.timeout_ms = (uint64_t)tl->timeout_ms;
+    /* Every cache's reply, as it arrives: consolidation would keep one reply
+     * per key, and all replies here carry the TOPIC key. */
+    opts.consolidation.mode = Z_CONSOLIDATION_MODE_NONE;
+    /* A cache replies on the TOPIC key, which does not intersect the query
+     * key `**` under `<topic>/@adv/`; without `_anyke` the publisher's session refuses
+     * to send that reply and answers only the final one. Measured on the
+     * safety island against a stock rclpy latched publisher: the query was
+     * routed, the final reply came back 0.5 ms later, and no sample. This is
+     * what `rmw_zenoh_cpp`'s advanced subscriber sets too
+     * (`accept_replies(ReplyKeyExpr::Any)`). */
+    opts.accept_replies = Z_REPLY_KEYEXPR_ANY;
+    zpico_slot_lock(s);
+    tl->refs++;
+    zpico_slot_unlock(s);
+    tl->active = true;
+    tl->queries++;
+    z_owned_closure_reply_t callback;
+    z_closure(&callback, history_reply_handler, history_reply_dropper, tl);
+    zpico_declare_lock(s);
+    z_result_t hist_ret =
+        z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts);
+    zpico_declare_unlock(s);
+    /* On a failure zenoh-pico has already run the dropper, which cleared
+     * `active` and released the query's reference. */
+    return hist_ret < 0 ? ZPICO_ERR_GENERIC : 0;
+}
+
+/* The subscription is going: undeclare the `@adv` watch (which waits for its
+ * callbacks), detach the state from the slot, and release the slot's
+ * reference. A query still out keeps the state until its dropper runs. The
+ * caller holds the declare lock. */
+static void _zpico_history_release(struct zpico_session* s, subscriber_entry_t* entry) {
+    struct zpico_tl_sub* tl = entry->tl;
+    if (tl == NULL) {
+        return;
+    }
+    if (tl->watching) {
+        z_undeclare_subscriber(z_subscriber_move(&tl->watch));
+        tl->watching = false;
+    }
+    zpico_slot_lock(s);
+    entry->tl = NULL;
+    tl->idx = -1;
+    zpico_slot_unlock(s);
+    _zpico_tl_unref(tl);
+}
+
+/* Send the re-queries the `@adv` watch asked for. Runs on the caller's thread
+ * at the head of every `zpico_spin_once`; a subscription whose query is still
+ * out keeps its flag until the dropper closes it. */
+static void _zpico_history_requery_due(struct zpico_session* s) {
+    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
+        struct zpico_tl_sub* tl = s->subscribers[i].tl;
+        if (tl == NULL || !tl->requery || tl->active || !s->subscribers[i].active) {
+            continue;
+        }
+        tl->requery = false;
+        (void)_zpico_history_send(tl);
+    }
+}
+
+/* The SUBSCRIBER half of transient-local durability, on `keyexpr` -- the
+ * caller passes `**` under `<subscription keyexpr>/@adv/`, the global query
+ * `rmw_zenoh_cpp`'s advanced subscriber issues, which intersects every
+ * advanced publisher's cache queryable (`<topic keyexpr>/@adv/pub/<zid>/<eid>/_`,
+ * served by nano-ros's own TL publishers too). Replies land in the
+ * subscription's ring beside live samples; see `struct zpico_tl_sub` for the
+ * ordering rule.
  *
- * Costs no slot of the pending-get table: the context is the subscriber's own
- * index, and zenoh-pico holds the pending query until its dropper runs.
- * Returns 0 once the query is sent, ZPICO_ERR_* otherwise. */
+ * The query goes out now and again whenever a publisher's `@adv` liveliness
+ * token appears under `<subscription keyexpr>/@adv/pub/` -- the late-publisher
+ * detection a stock advanced subscriber does (issue 2366). The watch is
+ * declared with history, so a session re-open, which replays its interest,
+ * re-reads every cache too. It is declared BEFORE the first query, so a
+ * publisher that appears in between is not missed.
+ *
+ * Costs no slot of the pending-get table, and nothing in a fixed table: the
+ * state, the watch and the query key are heap, allocated here and only for a
+ * transient-local subscription. A second call for the same subscription is a
+ * no-op. Returns 0 once the query is sent, ZPICO_ERR_* otherwise; a watch that
+ * cannot be declared is not fatal (the query still serves every publisher
+ * that already exists). */
 int32_t zpico_subscriber_history_query(zpico_session_t* session, int32_t handle,
                                        const char* keyexpr, uint32_t timeout_ms) {
     struct zpico_session* s = (struct zpico_session*)session;
@@ -3451,62 +3650,84 @@ int32_t zpico_subscriber_history_query(zpico_session_t* session, int32_t handle,
         return ZPICO_ERR_INVALID;
     }
     subscriber_entry_t* entry = &s->subscribers[handle];
-    if (entry->hist_active) {
-        return 0; /* one window per subscription; the first query serves it */
+    if (entry->tl != NULL) {
+        return 0;
     }
-    z_view_keyexpr_t ke;
-    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+    size_t len = strlen(keyexpr);
+    z_view_keyexpr_t probe;
+    if (z_view_keyexpr_from_str(&probe, keyexpr) < 0) {
         return ZPICO_ERR_KEYEXPR;
     }
-    z_get_options_t opts;
-    z_get_options_default(&opts);
-    opts.target = Z_QUERY_TARGET_ALL;
-    opts.timeout_ms = (uint64_t)timeout_ms;
-    /* Every cache's reply, as it arrives: consolidation would keep one reply
-     * per key, and all replies here carry the TOPIC key. */
-    opts.consolidation.mode = Z_CONSOLIDATION_MODE_NONE;
-    /* A cache replies on the TOPIC key, which does not intersect the query
-     * key `**` under `<topic>/@adv/`; without `_anyke` the publisher's session refuses
-     * to send that reply and answers only the final one. Measured on the
-     * safety island against a stock rclpy latched publisher: the query was
-     * routed, the final reply came back 0.5 ms later, and no sample. This is
-     * what `rmw_zenoh_cpp`'s advanced subscriber sets too
-     * (`accept_replies(ReplyKeyExpr::Any)`). */
-    opts.accept_replies = Z_REPLY_KEYEXPR_ANY;
-    entry->hist_have = false;
-    entry->hist_replies = 0;
-    entry->hist_dropped = 0;
-    entry->hist_active = true;
-    z_owned_closure_reply_t callback;
-    z_closure(&callback, history_reply_handler, history_reply_dropper, _zpico_pack_ctx(s, handle));
-    zpico_declare_lock(s);
-    z_result_t hist_ret =
-        z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts);
-    zpico_declare_unlock(s);
-    if (hist_ret < 0) {
-        entry->hist_active = false;
+    struct zpico_tl_sub* tl = (struct zpico_tl_sub*)z_malloc(sizeof(struct zpico_tl_sub) + len + 1);
+    if (tl == NULL) {
         return ZPICO_ERR_GENERIC;
     }
-    return 0;
+    memset(tl, 0, sizeof(struct zpico_tl_sub));
+    memcpy(tl->key, keyexpr, len + 1);
+    tl->s = s;
+    tl->idx = handle;
+    tl->refs = 1;
+    tl->timeout_ms = timeout_ms;
+
+    /* The watch is the query key with its trailing `**` replaced by `pub/` and `**`. */
+    static const char suffix[] = "/@adv/**";
+    const size_t suffix_len = sizeof(suffix) - 1;
+    if (len > suffix_len && strcmp(keyexpr + len - suffix_len, suffix) == 0) {
+        char* watch = (char*)z_malloc(len + 5);
+        if (watch != NULL) {
+            memcpy(watch, keyexpr, len - 2);
+            memcpy(watch + len - 2, "pub/**", 7);
+            z_view_keyexpr_t wke;
+            if (z_view_keyexpr_from_str(&wke, watch) == _Z_RES_OK) {
+                z_owned_closure_sample_t closure;
+                z_closure_sample(&closure, history_watch_handler, NULL, tl);
+                z_liveliness_subscriber_options_t lopts;
+                z_liveliness_subscriber_options_default(&lopts);
+                lopts.history = true;
+                zpico_declare_lock(s);
+                z_result_t w_ret = z_liveliness_declare_subscriber(
+                    z_session_loan(&s->session), &tl->watch, z_view_keyexpr_loan(&wke),
+                    z_closure_sample_move(&closure), &lopts);
+                zpico_declare_unlock(s);
+                tl->watching = w_ret == _Z_RES_OK;
+            }
+            /* zenoh-pico copied the keyexpr into its declaration. */
+            z_free(watch);
+        }
+    }
+
+    /* Attached before the first query, so its replies find the dedup. */
+    zpico_slot_lock(s);
+    entry->tl = tl;
+    zpico_slot_unlock(s);
+
+    int32_t rc = _zpico_history_send(tl);
+    if (rc < 0) {
+        zpico_declare_lock(s);
+        _zpico_history_release(s, entry);
+        zpico_declare_unlock(s);
+    }
+    return rc;
 }
 
-/* What the history window did, for a test or a probe: `out_replies` cached
- * samples arrived, `out_dropped` samples (either source) were older than one
- * already delivered. Returns 1 while the window is open, 0 once closed. */
+/* What the history machinery did, for a test or a probe: `out_replies` cached
+ * samples arrived, `out_dropped` samples (either source) were not newer than
+ * one already delivered from their publisher. Returns 1 while a query is out,
+ * 0 otherwise (and for a subscription that is not transient-local). */
 int32_t zpico_subscriber_history_stats(zpico_session_t* session, int32_t handle,
                                        uint32_t* out_replies, uint32_t* out_dropped) {
     struct zpico_session* s = (struct zpico_session*)session;
     if (s == NULL || handle < 0 || handle >= ZPICO_MAX_SUBSCRIBERS) {
         return ZPICO_ERR_INVALID;
     }
-    subscriber_entry_t* entry = &s->subscribers[handle];
+    struct zpico_tl_sub* tl = s->subscribers[handle].tl;
     if (out_replies != NULL) {
-        *out_replies = entry->hist_replies;
+        *out_replies = tl != NULL ? tl->replies : 0;
     }
     if (out_dropped != NULL) {
-        *out_dropped = entry->hist_dropped;
+        *out_dropped = tl != NULL ? tl->dropped : 0;
     }
-    return entry->hist_active ? 1 : 0;
+    return tl != NULL && tl->active ? 1 : 0;
 }
 
 #if defined(Z_FEATURE_UNSTABLE_API)
@@ -3579,6 +3800,7 @@ int32_t zpico_undeclare_subscriber(zpico_session_t* session, int32_t handle) {
     }
 
     zpico_declare_lock(s);
+    _zpico_history_release(s, &s->subscribers[handle]);
     z_undeclare_subscriber(z_subscriber_move(&s->subscribers[handle].subscriber));
     zpico_declare_unlock(s);
     zpico_release_slot(s, subscribers, handle);
@@ -3660,6 +3882,8 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
         return ZPICO_ERR_SESSION;
     }
     _zpico_report_link_tx_failures(s);
+    /* Issue 2366 -- the re-queries a publisher's `@adv` token asked for. */
+    _zpico_history_requery_due(s);
 
 #if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && ZPICO_TX_BATCH_THREAD == 0
     /* phase-279 (#145) — rate-limited batch flush (platforms WITHOUT the
@@ -4109,6 +4333,7 @@ int32_t zpico_declare_queryable(zpico_session_t* session, const char* keyexpr,
     }
 
     s->queryables[idx].callback = callback;
+    s->queryables[idx].adv_token = NULL;
     s->queryables[idx].ctx = ctx;
 
     z_view_keyexpr_t ke;
@@ -4147,6 +4372,52 @@ int32_t zpico_declare_queryable(zpico_session_t* session, const char* keyexpr,
     return idx;
 }
 
+/* Declare the `@adv` liveliness token of a transient-local publisher's cache
+ * queryable `handle`, on `keyexpr` -- the queryable's own keyexpr,
+ * `<topic keyexpr>/@adv/pub/<zid>/<eid>/_`, which is where a stock advanced
+ * publisher declares it. A subscription watching `**` under `<topic keyexpr>/@adv/pub/`
+ * (ours, or a stock advanced subscriber's late-publisher detection) learns from
+ * it that this cache exists and queries it (issue 2366). On the heap,
+ * pointed to by the queryable's slot and undeclared with it, so it takes no
+ * slot of the `liveliness` table. Returns 0, or ZPICO_ERR_*. */
+int32_t zpico_queryable_declare_adv_token(zpico_session_t* session, int32_t handle,
+                                          const char* keyexpr) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || keyexpr == NULL) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (!s->session_open) {
+        return ZPICO_ERR_SESSION;
+    }
+    if (handle < 0 || handle >= ZPICO_MAX_QUERYABLES || !s->queryables[handle].active) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (s->queryables[handle].adv_token != NULL) {
+        return 0;
+    }
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        return ZPICO_ERR_KEYEXPR;
+    }
+    z_owned_liveliness_token_t* token =
+        (z_owned_liveliness_token_t*)z_malloc(sizeof(z_owned_liveliness_token_t));
+    if (token == NULL) {
+        return ZPICO_ERR_GENERIC;
+    }
+    zpico_declare_lock(s);
+    z_result_t ret =
+        z_liveliness_declare_token(z_session_loan(&s->session), token, z_view_keyexpr_loan(&ke), NULL);
+    if (ret == _Z_RES_OK) {
+        s->queryables[handle].adv_token = token;
+    }
+    zpico_declare_unlock(s);
+    if (ret != _Z_RES_OK) {
+        z_free(token);
+        return ZPICO_ERR_GENERIC;
+    }
+    return 0;
+}
+
 int32_t zpico_undeclare_queryable(zpico_session_t* session, int32_t handle) {
     struct zpico_session* s = (struct zpico_session*)session;
     if (handle < 0 || handle >= ZPICO_MAX_QUERYABLES || !s->queryables[handle].active) {
@@ -4154,6 +4425,11 @@ int32_t zpico_undeclare_queryable(zpico_session_t* session, int32_t handle) {
     }
 
     zpico_declare_lock(s);
+    if (s->queryables[handle].adv_token != NULL) {
+        z_liveliness_undeclare_token(z_liveliness_token_move(s->queryables[handle].adv_token));
+        z_free(s->queryables[handle].adv_token);
+        s->queryables[handle].adv_token = NULL;
+    }
     z_undeclare_queryable(z_queryable_move(&s->queryables[handle].queryable));
     zpico_declare_unlock(s);
     zpico_release_slot(s, queryables, handle);

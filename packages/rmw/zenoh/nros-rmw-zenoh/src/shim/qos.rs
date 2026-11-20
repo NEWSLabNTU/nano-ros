@@ -219,9 +219,10 @@ pub(super) fn admit(
     // queryable on `<keyexpr>/@adv/pub/<zid>/<eid>/_`, which is where a stock
     // `ze_advanced_subscriber`'s history query lands. Served by a SUBSCRIPTION
     // (phase-473 W2) through the same convention from the other side: at
-    // creation it issues the one global history query a stock advanced
-    // subscriber issues, `<keyexpr>/@adv/**`, and the replies land in its ring
-    // beside the live samples (`zpico_subscriber_history_query`). Refused for a
+    // creation it issues the global history query a stock advanced subscriber
+    // issues, `<keyexpr>/@adv/**`, and again whenever a publisher's `@adv`
+    // token appears (issue 2366); the replies land in its ring beside the live
+    // samples (`zpico_subscriber_history_query`). Refused for a
     // service or a client -- a queryable has no history to replay.
     //
     // phase-455 W5 / issue 1341 — this arm refused ALL FOUR kinds from

@@ -445,7 +445,8 @@ fn flood_count(router: &ZenohRouter, note: &str) -> usize {
            latched value through one `@adv/**` history query (W2), and an image \
            built with graph discovery off declares no liveliness subscriber, so \
            the router sends it no graph (W1); discovery on and a VOLATILE \
-           subscription are the negative controls",
+           subscription are the negative controls; issue 2366: a latched publisher \
+           that appears after the subscription is read exactly once",
 })]
 fn interop(#[case] cell: Cell) {
     // Issue 0352 / phase-324 W4.d — per-case binding: the coordinate this case
@@ -969,6 +970,100 @@ fn interop(#[case] cell: Cell) {
                  come from the transient-local history query ({}):\n{out}",
                 cell.note
             );
+
+            // Issue 2366: the history query is not a one-shot. Both cases below
+            // run nano-ros on both ends, built with graph discovery off.
+            let probe_bin = build_zenoh_constrained_link_probe(false)
+                .require("constrained-link-probe")
+                .to_path_buf();
+            let probe = |locator: &str, name: &str, envs: &[(&str, &str)]| {
+                let mut cmd = Command::new(&probe_bin);
+                cmd.env("RUST_LOG", "info")
+                    .env("NROS_LOCATOR", locator)
+                    .env("NROS_SESSION_MODE", "client")
+                    .env("CLP_GRAPH_MS", "500");
+                for (k, v) in envs {
+                    cmd.env(k, v);
+                }
+                ManagedProcess::spawn_image(cmd, name)
+                    .unwrap_or_else(|e| panic!("spawn {name}: {e}"))
+            };
+            let unix_ms = || {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_millis())
+            };
+            // (value, wall-clock ms it was received at), in arrival order.
+            let received_at = |out: &str| -> Vec<(i32, u128)> {
+                out.lines()
+                    .filter_map(|l| l.trim().strip_prefix(output::CLP_RECEIVED_AT_PREFIX))
+                    .filter_map(|rest| {
+                        let mut it = rest.split_whitespace();
+                        Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
+                    })
+                    .collect()
+            };
+
+            // 4. A latched publisher that appears AFTER the subscription and
+            //    publishes once, at creation. zenoh-pico's write filter drops
+            //    that live sample until the router answers the publisher's
+            //    interest (measured before the fix: lost in 4 of 5 runs), so
+            //    the value arrives only if the publisher's `@adv` token makes
+            //    the subscription query its cache. Exactly once: the live
+            //    sample and the cache reply, when both arrive, are one.
+            const LATE_PUBLISHER_VALUE: i32 = 2366;
+            const LATE_PUBLISHER_TOPIC: &str = "/latched_after_subscription";
+            let mut sub = probe(
+                &locator,
+                "constrained-link-probe: subscription before its publisher",
+                &[
+                    ("CLP_TOPIC", LATE_PUBLISHER_TOPIC),
+                    ("CLP_WINDOW_MS", "12000"),
+                ],
+            );
+            let ready = sub
+                .wait_for_output_pattern(output::CLP_READY_MARKER, Duration::from_secs(20))
+                .unwrap_or_else(|e| panic!("the subscription never came up: {e}"));
+            // The subscription's own creation query has run and found nothing.
+            std::thread::sleep(Duration::from_secs(2));
+            let published_from = unix_ms();
+            let value = LATE_PUBLISHER_VALUE.to_string();
+            let mut late_publisher = probe(
+                &locator,
+                "constrained-link-probe: publisher after its subscription",
+                &[
+                    ("CLP_TOPIC", LATE_PUBLISHER_TOPIC),
+                    ("CLP_ROLE", "publish"),
+                    ("CLP_VALUE", &value),
+                    ("CLP_WINDOW_MS", "20000"),
+                ],
+            );
+            let out = format!(
+                "{ready}{}",
+                sub.collect_until(output::CLP_DONE_MARKER, Duration::from_secs(40))
+            );
+            sub.kill();
+            late_publisher.kill();
+            let got = received_at(&out);
+            assert_eq!(
+                got.iter().map(|g| g.0).collect::<Vec<_>>(),
+                vec![LATE_PUBLISHER_VALUE],
+                "issue 2366: a TRANSIENT_LOCAL subscription did not read, exactly once, the \
+                 value a publisher that appeared after it published at creation ({}):\n{out}",
+                cell.note
+            );
+            assert!(
+                got[0].1 >= published_from,
+                "issue 2366: the value was received at {} ms, before its publisher was \
+                 started at {published_from} ms, so it did not come from that publisher:\n{out}",
+                got[0].1
+            );
+            // The session re-open half of issue 2366 is measured by hand (two
+            // routers, the subscription's router stopped while the value
+            // changes: 0 of 3 before the fix, 3 of 3 after) and is not a phase
+            // here yet: every router stop this harness can make leaves a
+            // zenoh-pico client reading end-of-stream without reopening
+            // (issue 2774), so the phase would measure that instead.
         }
         Scenario::ZenohServiceResponseHeaderCpp => {
             let bin = build_cmake_leaf_rmw(

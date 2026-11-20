@@ -310,15 +310,16 @@ unsafe extern "C" {
         callback: ZpicoZeroCopyCallback,
         ctx: *mut c_void,
     ) -> i32;
-    /// Transient-local, the subscriber half: one history query on `keyexpr`
-    /// into ring subscription `handle`. See `c/zpico/zpico.c`.
+    /// Transient-local, the subscriber half: the history query on `keyexpr`
+    /// into ring subscription `handle`, sent now and again whenever a
+    /// publisher's `@adv` liveliness token appears. See `c/zpico/zpico.c`.
     pub fn zpico_subscriber_history_query(
         session: *mut zpico_session_t,
         handle: i32,
         keyexpr: *const core::ffi::c_char,
         timeout_ms: u32,
     ) -> i32;
-    /// The history window's reply and drop counts; 1 while it is open.
+    /// The history queries' reply and drop counts; 1 while one is out.
     pub fn zpico_subscriber_history_stats(
         session: *mut zpico_session_t,
         handle: i32,
@@ -342,6 +343,14 @@ unsafe extern "C" {
         ctx: *mut c_void,
     ) -> i32;
     pub fn zpico_undeclare_queryable(session: *mut zpico_session_t, handle: i32) -> i32;
+    // Issue 2366.
+    /// The `@adv` liveliness token of a transient-local publisher's cache
+    /// queryable `handle`, on its own keyexpr. See `c/zpico/zpico.c`.
+    pub fn zpico_queryable_declare_adv_token(
+        session: *mut zpico_session_t,
+        handle: i32,
+        keyexpr: *const core::ffi::c_char,
+    ) -> i32;
     pub fn zpico_query_reply(
         session: *mut zpico_session_t,
         queryable_handle: i32,
@@ -738,17 +747,21 @@ mod tests {
         );
     }
 
-    /// phase-473 W2 -- the transient-local history window's dedup, through the
-    /// REAL C rule. The case it exists for: a latched topic's cache reply
-    /// arriving AFTER a newer live sample must not become the last value the
-    /// subscription reads.
+    /// phase-473 W2 / issue 2366 -- the transient-local dedup, through the REAL
+    /// C rule. The cases it exists for: a latched topic's cache reply arriving
+    /// AFTER a newer live sample must not become the last value the
+    /// subscription reads, and a cache the subscription queries AGAIN (a late
+    /// publisher's token, a session re-open) must not deliver a value twice --
+    /// for every publisher it has recorded, not only the last one.
     #[test]
-    fn history_window_drops_what_is_not_newer_from_the_same_publisher() {
+    fn history_dedup_drops_what_is_not_newer_from_each_publisher() {
         unsafe extern "C" {
             fn zpico_history_admit_apply(
-                have: *mut bool,
-                gid: *mut u8,
-                seq: *mut i64,
+                count: *mut u8,
+                next: *mut u8,
+                gids: *mut u8,
+                seqs: *mut i64,
+                capacity: u32,
                 dropped: *mut u32,
                 att: *const u8,
                 att_len: usize,
@@ -763,19 +776,23 @@ mod tests {
             a[17..].fill(gid_byte);
             a
         }
+        const CAP: usize = 2;
         struct W {
-            have: bool,
-            gid: [u8; 16],
-            seq: i64,
+            count: u8,
+            next: u8,
+            gids: [[u8; 16]; CAP],
+            seqs: [i64; CAP],
             dropped: u32,
         }
         impl W {
             fn admit(&mut self, a: &[u8]) -> i32 {
                 unsafe {
                     zpico_history_admit_apply(
-                        &mut self.have,
-                        self.gid.as_mut_ptr(),
-                        &mut self.seq,
+                        &mut self.count,
+                        &mut self.next,
+                        self.gids.as_mut_ptr().cast(),
+                        self.seqs.as_mut_ptr(),
+                        CAP as u32,
                         &mut self.dropped,
                         a.as_ptr(),
                         a.len(),
@@ -784,9 +801,10 @@ mod tests {
             }
         }
         let mut w = W {
-            have: false,
-            gid: [0; 16],
-            seq: 0,
+            count: 0,
+            next: 0,
+            gids: [[0; 16]; CAP],
+            seqs: [0; CAP],
             dropped: 0,
         };
         // Live sample 7 from publisher A lands first; A's cache then answers
@@ -798,25 +816,54 @@ mod tests {
         // A second publisher's latched value is its own history, not stale.
         assert_eq!(w.admit(&att(3, 0xB)), 1, "another publisher is admitted");
         assert_eq!(w.admit(&att(8, 0xB)), 1, "and so is its newer sample");
+        // A re-query returns A's cached 7 again AFTER B spoke: still a repeat.
+        // One pair (the rule before issue 2366) admitted it a second time.
+        assert_eq!(w.admit(&att(7, 0xA)), 0, "A's cached value read twice");
+        assert_eq!(w.admit(&att(8, 0xB)), 0, "B's cached value read twice");
+        assert_eq!(w.dropped, 4);
+        // A third publisher past the capacity replaces the oldest row (A), so
+        // A's cache is admitted once more -- a repeat, never a loss.
+        assert_eq!(w.admit(&att(1, 0xC)), 1, "a third publisher is admitted");
+        assert_eq!(w.admit(&att(7, 0xA)), 1, "the replaced publisher repeats");
+        assert_eq!(w.admit(&att(8, 0xB)), 1, "and B was replaced by A");
         // An attachment the rule cannot read is never dropped on a guess.
         assert_eq!(w.admit(&att(1, 0xB)[..20]), 1, "a short attachment passes");
         assert_eq!(w.admit(&[]), 1, "no attachment passes");
         let mut bad = att(1, 0xB);
         bad[16] = 8;
         assert_eq!(w.admit(&bad), 1, "a GID length other than 16 passes");
-        assert_eq!(w.dropped, 2, "none of those counted as a drop");
+        assert_eq!(w.dropped, 4, "none of those counted as a drop");
         assert_eq!(
             unsafe {
                 zpico_history_admit_apply(
                     core::ptr::null_mut(),
-                    w.gid.as_mut_ptr(),
-                    &mut w.seq,
+                    &mut w.next,
+                    w.gids.as_mut_ptr().cast(),
+                    w.seqs.as_mut_ptr(),
+                    CAP as u32,
                     &mut w.dropped,
                     core::ptr::null(),
                     0,
                 )
             },
             ZPICO_ERR_INVALID
+        );
+        let a = att(9, 0xD);
+        assert_eq!(
+            unsafe {
+                zpico_history_admit_apply(
+                    &mut w.count,
+                    &mut w.next,
+                    w.gids.as_mut_ptr().cast(),
+                    w.seqs.as_mut_ptr(),
+                    0,
+                    &mut w.dropped,
+                    a.as_ptr(),
+                    a.len(),
+                )
+            },
+            ZPICO_ERR_INVALID,
+            "no capacity is refused, not divided by"
         );
     }
 

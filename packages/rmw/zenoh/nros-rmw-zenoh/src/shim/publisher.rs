@@ -39,8 +39,9 @@ use super::RMW_ATTACHMENT_SIZE_WITH_CRC;
 /// key. That global query is what serves the case the profile exists for: a
 /// client attaching after a goal has already terminated. The per-publisher
 /// query beside it is late-joiner detection, driven by a zenoh liveliness token
-/// under the same `@adv` prefix, and this module declares NO such token (see
-/// "What this does not do").
+/// under the same `@adv` prefix, which this module declares on the cache's own
+/// key (issue 2366), so a subscription that existed before the publisher --
+/// stock or ours -- queries the cache when the token reaches it.
 ///
 /// The reply carries the TOPIC keyexpr, not the queryable's — that is what the
 /// cache does and why the advanced subscriber accepts a reply keyexpr differing
@@ -51,11 +52,6 @@ use super::RMW_ATTACHMENT_SIZE_WITH_CRC;
 /// * **The subscriber half** is not here: it is `shim/subscriber.rs`'s history
 ///   query at creation (phase-473 W2), which is how a nano-ros subscription
 ///   gets a latched topic's last value from this cache or a stock one.
-/// * **A `@adv` liveliness token**, so a stock subscriber that existed BEFORE
-///   this publisher does not detect it as a late joiner and does not query it
-///   individually. It receives the live samples from that moment on, which is
-///   what a volatile publisher would have given it, plus whatever the global
-///   query at its own creation collected.
 /// * **Retain a STREAMED publish.** `publish_streamed` produces its payload
 ///   through caller callbacks, so it holds no contiguous buffer this module
 ///   could copy without invoking the producer a second time. It says so once,
@@ -810,6 +806,33 @@ impl ZenohPublisher {
             queryable.handle(),
             &topic_keyexpr_nul[..=topic_key.len().min(KEYEXPR_BUFFER_SIZE - 1)],
         );
+        // Issue 2366 -- the `@adv` liveliness token, on the cache's own key, so
+        // a subscription that exists BEFORE this publisher queries the cache
+        // when the token reaches it. Without it, the one way such a
+        // subscription reads a latched value is the live sample, and this
+        // publisher's first one is dropped by zenoh-pico's write filter until
+        // the router has answered its interest (measured: lost in 4 of 5 runs
+        // of a publish-once at creation). Declared AFTER the queryable is armed,
+        // so a query the token prompts finds a cache that can answer.
+        // Not fatal: the cache still serves the global query a subscription
+        // sends at its own creation.
+        let token_rc = crate::zpico::ffi_guard(|| unsafe {
+            zpico_sys::zpico_queryable_declare_adv_token(
+                context.handle(),
+                queryable.handle(),
+                adv_nul.as_ptr().cast(),
+            )
+        });
+        if token_rc < 0 {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "qos: TRANSIENT_LOCAL cache token not declared ({}); a subscription \
+                 created before this publisher reads its latched value only if a live \
+                 sample reaches it. topic '{}'",
+                token_rc,
+                topic_key
+            );
+        }
         Ok(TransientLocalRetention {
             slot,
             queryable: Some(queryable),
