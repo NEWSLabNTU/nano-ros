@@ -123,7 +123,7 @@ every image pays: code, and the slots' net change. A first version kept this
 state inline in every subscriber slot (144 -> 288 B, +320 B bss on the serial
 listener); it moved to the heap so that a board short of RAM pays nothing for
 a feature it does not use. The heap of a transient-local endpoint on a serial
-board, and its link traffic, are issue 2776.
+board, and its link traffic, are [issue 2776](2776-tl-adv-cost-on-serial-board.md).
 
 Measured after the fix:
 
