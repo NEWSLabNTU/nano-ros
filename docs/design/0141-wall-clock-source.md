@@ -135,6 +135,35 @@ Which source answered, and whether it ever changed, is visible to the
 application through D4's query. A consumer that cannot tolerate a step leaves
 `upgrade` at `never`, or writes one source.
 
+Refined 2026-11-20 (phase-582 W1c, manager rulings; implementation shape
+inside the user's 2026-11-19 rulings, which the user may overturn):
+- **Knob kinds.** The registry gains `enum` (stated values) and `enum_list`
+  (an ordered list of distinct members). `source` is an `enum_list`;
+  `upgrade` and `epoch_failure` are `enum`s. Env and cmake carry one comma-joined
+  spelling (`sntp,platform`), Kconfig a string. A value outside the set is
+  refused at configure on all three roads.
+- **The old switches are retired, not aliased.** `CONFIG_NROS_SNTP_EPOCH` and
+  `CONFIG_NROS_EPOCH_FROM_ZENOH` refuse, naming `clock.source`.
+- **Which source a port can resolve.** Zephyr: `platform` (which on Zephyr is
+  "none"), `sntp`, `zenoh-hlc`. POSIX: `platform` (`CLOCK_REALTIME`). FreeRTOS,
+  ThreadX, NuttX: `platform` ("none"). `board` arrives with D2. Any other pair is
+  refused at build time, naming the port.
+- **`platform` always answers.** It is the port's own clock, so as a fallback
+  it is the image's knowing choice of whatever that port has, "none"
+  included; `epoch_failure` applies only when no listed source answered.
+- **When resolution runs.** After the image's entities are registered and
+  before the executor first runs. Nothing is stamped before it, and a
+  subscription already exists to deliver the HLC sample `zenoh-hlc` waits
+  for. While a source is tried, the store admits installs from that source
+  alone, so a reading another thread delivers meanwhile cannot take the slot.
+- **The mid-run switch and stale stamps.** The risk this section opens with,
+  a consumer rejecting a stamp from an earlier epoch after a later one, is
+  answered by the `upgrade = "monotonic"` floor: the store keeps the last
+  reading it returned and never answers below it, so a source that takes
+  over while behind holds the clock still until it catches up, and the step
+  is counted in D4's query. With `upgrade = "never"` (the default) the
+  question does not arise: only the latched source may install.
+
 ### D2 — The board hook says whether it is synced
 
 ```c
@@ -303,3 +332,8 @@ separate decision per backend.
   reported step that never goes backwards and only moves up the list. D4
   defaults to `unstamped`, with a state query for the application; `halt`
   is opt-in.
+- 2026-11-20: Refinements for phase-582 W1c (manager rulings, inside the
+  user's): the `enum` / `enum_list` knob kinds, retiring the old Zephyr
+  switches, the per-port source table, `platform` always answering, the
+  resolve point after registration, and the monotonic floor as the answer
+  to the mid-run stale-stamp risk (D1).
