@@ -256,7 +256,7 @@ phase-576.
 
 ### W5 — budget enforcement and deadline monitors on FreeRTOS
 
-- **Status:** OPEN (step 1 in progress, 2026-11-19)
+- **Status:** OPEN (steps 1 and 2 in review, 2026-11-20)
 - **Owner:** nros 241 (moved from nros 142 by the manager, 2026-11-19)
 
 Enforce the `budget_us` a FreeRTOS sched task already carries: a sporadic
@@ -282,9 +282,17 @@ Steps:
    8 ms; `freertos_level_budget_overrun_is_throttled_by_the_executor` reads
    the console.
 2. **The deadline policy.** A deadline policy reaches a sched task only from
-   the launch contract (`miss.action` on a node path), so the fixture needs
-   a contract on the `high` level's path, and a deadline below the 8 ms
-   overrun.
+   the launch contract (`miss.action` on a node path). The `realtime-rust`
+   bringup gains `launch/system.contract.yaml`: `miss.action: continue`
+   (report) on `control_node`'s `on_ctrl` path, plus the publisher and timer
+   rows the census check requires of any contract. `[tasks.high.freertos]`
+   gains a 6 ms `deadline`, below the 8 ms overrun. The same test now also
+   reads a `deadline-miss-runtime` violation judged against 6000 us.
+   Building it found that no Rust entry applied the contract at all:
+   `nros::main!` built its sched task table without the lowering, so every
+   Rust image baked no deadline policy. One helper now lowers the contract
+   for all three roads that build that table (a separate fix, ahead of this
+   step).
 3. **The C runner.** `freertos_run_sched_tasks.c` carries the four fields and
    consumes none of them; it lowers them the same way.
 4. **A refill timer.** Refill is polled at the next spin today. A FreeRTOS

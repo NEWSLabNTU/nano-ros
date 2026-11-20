@@ -1170,6 +1170,10 @@ pub const RULE_MAX_AGE_RUNTIME: &str = "max-age-runtime";
 /// Path max-latency violation rule id (a contracted path's `max_latency`).
 pub const RULE_MAX_LATENCY_RUNTIME: &str = "max-latency-runtime";
 
+/// A dispatch that ran past its sched context's deadline (`check_deadline_miss`
+/// in `nros-node/src/executor/spin.rs`); its fqn is `sched-context`.
+pub const RULE_DEADLINE_MISS_RUNTIME: &str = "deadline-miss-runtime";
+
 /// Input-triggered route latency violation rule id (phase10-B3).
 pub const RULE_ROUTE_LATENCY_RUNTIME: &str = "route-latency-runtime";
 

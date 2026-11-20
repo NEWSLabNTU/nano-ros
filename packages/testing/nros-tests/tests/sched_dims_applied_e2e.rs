@@ -70,9 +70,9 @@ use nros_tests::{
         LINUX_CORE_PIN_FALLBACK_MARKER, LINUX_CORE_PIN_MARKER, NUTTX_CORE_PIN_FALLBACK_MARKER,
         NUTTX_CORE_PIN_MARKER, NUTTX_SCHED_TASK_PRIORITY_FAILED_MARKER,
         NUTTX_SCHED_TASK_PRIORITY_MARKER, NUTTX_SPORADIC_FALLBACK_MARKER, NUTTX_SPORADIC_MARKER,
-        THREADX_CORE_PIN_FALLBACK_MARKER, THREADX_CORE_PIN_MARKER, THREADX_PREEMPT_MARKER,
-        THREADX_TIME_SLICE_MARKER, ZEPHYR_CORE_PIN_FALLBACK_MARKER, ZEPHYR_CORE_PIN_MARKER,
-        ZEPHYR_CORE_PIN_OBSERVED_CPU1, ZEPHYR_EDF_DEADLINE_MARKER,
+        RULE_DEADLINE_MISS_RUNTIME, THREADX_CORE_PIN_FALLBACK_MARKER, THREADX_CORE_PIN_MARKER,
+        THREADX_PREEMPT_MARKER, THREADX_TIME_SLICE_MARKER, ZEPHYR_CORE_PIN_FALLBACK_MARKER,
+        ZEPHYR_CORE_PIN_MARKER, ZEPHYR_CORE_PIN_OBSERVED_CPU1, ZEPHYR_EDF_DEADLINE_MARKER,
         ZEPHYR_SCHED_TASK_MEETS_TRANSPORT_MARKER, ZEPHYR_SCHED_TASK_NOT_CHECKED_MARKER,
         sched_task_dispatch_marker, zephyr_multi_sched_task_entry_up_line,
     },
@@ -1006,7 +1006,12 @@ fn dotconfig_has_line(dotconfig: &Path, line: &str) -> bool {
 ///   throttled the context until its refill (`sporadic budget overrun`);
 /// - the level kept dispatching afterwards (the SECOND overrun, tick 75), so
 ///   the throttle released at the refill instead of starving the level;
-/// - the boot level, the session owner, was never budgeted.
+/// - the boot level, the session owner, was never budgeted;
+/// - the overrunning tick also missed the level's 6 ms
+///   `[tasks.high.freertos]` deadline, and the executor reported it as a
+///   `deadline-miss-runtime` violation against that 6 ms -- the action the
+///   bringup's contract states (`miss.action: continue`), which reaches the
+///   level only through the launch contract.
 #[test]
 fn freertos_level_budget_overrun_is_throttled_by_the_executor() {
     if !nros_tests::lane_scope::admits(MP::FreertosMps2) {
@@ -1023,6 +1028,9 @@ fn freertos_level_budget_overrun_is_throttled_by_the_executor() {
         vec!["on_ctrl: overran the level budget at tick 25 (".into()],
         vec!["sporadic budget overrun sched context".into()],
         vec!["on_ctrl: overran the level budget at tick 75 (".into()],
+        vec![format!(
+            "{RULE_DEADLINE_MISS_RUNTIME} sched-context measured="
+        )],
     ];
     let mut q = QemuProcess::start_mps2_an385_networked(&entry)
         .unwrap_or_else(|e| panic!("[freertos-mps2 rust] boot QEMU: {e}"));
@@ -1034,6 +1042,16 @@ fn freertos_level_budget_overrun_is_throttled_by_the_executor() {
     assert!(
         !log.contains("level budget sched_task=`low`"),
         "[freertos-mps2 rust] the session-owning boot level was budgeted:\n{log}"
+    );
+    let miss = format!("{RULE_DEADLINE_MISS_RUNTIME} sched-context measured=");
+    let judged_against_6ms = log
+        .lines()
+        .filter(|l| l.contains(&miss))
+        .all(|l| l.trim_end().ends_with("declared=6000"));
+    assert!(
+        judged_against_6ms,
+        "[freertos-mps2 rust] a deadline miss was judged against something other than the \
+         level's 6 ms freertos deadline:\n{log}"
     );
 }
 
