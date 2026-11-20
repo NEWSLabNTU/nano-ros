@@ -218,13 +218,15 @@ pub fn install_with_path(
 /// Fetch, build and verify into `dir`.
 fn build(dir: &Path, url: &str, rev: &str, build_path: &std::ffi::OsStr) -> Result<()> {
     let git = |args: &[&str]| {
-        let mut c = Command::new("git");
+        // A hook's GIT_DIR / GIT_INDEX_FILE must not aim these at another
+        // repository (issue 1659).
+        let mut c = nros_build_paths::git_env::nros_git_command("git");
         c.arg("-C").arg(dir).args(args).env("PATH", build_path);
         c
     };
     run(
         "git init",
-        Command::new("git")
+        nros_build_paths::git_env::nros_git_command("git")
             .args(["init", "-q"])
             .arg(dir)
             .env("PATH", build_path),
@@ -260,7 +262,7 @@ fn build(dir: &Path, url: &str, rev: &str, build_path: &std::ffi::OsStr) -> Resu
     }
     run(
         "scripts/bootstrap.sh (build the nros CLI)",
-        Command::new("bash")
+        nros_build_paths::git_env::nros_clear_inherited_git_env(&mut Command::new("bash"))
             .arg(&bootstrap)
             .arg("--no-prompt")
             .current_dir(dir)
