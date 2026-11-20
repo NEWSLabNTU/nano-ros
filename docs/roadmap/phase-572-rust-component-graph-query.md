@@ -1,8 +1,8 @@
 # Phase 572 — a Rust component can query the ROS graph
 
-**Status (2026-11-20). OPEN: W1 is done; W2 and W3 are open (no longer
-waiting on [phase-573](phase-573-executor-reentry-soundness.md), see W2); W4
-waits on W2.** Tracks
+**Status (2026-11-21). OPEN: W1, W2 and W3 are done (`3e37927b51`); W4 is
+open. W2's soundness conditions still hold while
+[phase-573](phase-573-executor-reentry-soundness.md) W3/W4 are open.** Tracks
 [issue 2674](../issues/2674-rust-component-api-has-no-graph-query.md). Implements
 no new RFC. It closes a language-parity gap in the surface RFC-0089 adopted.
 Owner: nros 243 (W2 onward, released by nros 133 on 2026-11-20).
@@ -54,7 +54,7 @@ Decided 2026-11-17:
 
 ### W2 — The queries on the Rust component surface
 
-- **Status:** OPEN (unblocked 2026-11-20 by phase-573's author)
+- **Status:** DONE (2026-11-21, `3e37927b51`)
 
 Implement W1's shape. The dispatch site already holds the executor, so each
 method forwards to it.
@@ -95,17 +95,24 @@ Acceptance:
 
 ### W3 — One graph, three languages
 
-- **Status:** OPEN (built with W2)
+- **Status:** DONE (2026-11-21, `3e37927b51`, built with W2)
 
 A test per language (Rust, C, C++), each a component on native Linux over
 zenoh, with the same peer on the graph.
 
 Acceptance: all three report the same topics, services and nodes for that
-peer.
+peer. `tests/graph_query_parity.rs` runs the three as components of one image
+beside a zenoh talker, and asserts that they give one answer.
+
+That probe found issue 2775: on zenoh, all three agreed on
+`std_msgs::msg::dds_::String_` for `/chatter`'s type, where ROS 2 reports
+`std_msgs/msg/String`. They agreed because they share one backend. The fix
+demangles where a type leaves the zenoh shim, and the probe now asserts the
+ROS form.
 
 ### W4 — The Rust graph-query stack measurement (issue 2360)
 
-- **Status:** BLOCKED (on W2)
+- **Status:** OPEN (W2 landed)
 
 Once W2 lands, take issue 2360's missing measurement: the main-thread peak, on
 the nucleo-f767zi Renode twin, of a Rust Zephyr image whose component queries
