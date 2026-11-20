@@ -380,6 +380,30 @@ pub fn contract_deadline_policies(
     Ok(out)
 }
 
+/// Apply [`contract_deadline_policies`] to a sched task table built from the
+/// same model: the ONE spelling of the lowering, for every road that builds
+/// `SchedTaskDef`s from `execution.tasks`.
+///
+/// Three roads build that table -- the CLI's entry plan (C/C++ entries), the
+/// system codegen, and the `nros::main!` macro (Rust entries) -- and until
+/// this helper only the first applied the contract, so a Rust image baked
+/// `deadline_policy: None` for a sched task whose contract named a
+/// `miss.action`, and the executor ignored every miss. A sched task
+/// the contract says nothing about keeps whatever it authored; one the table
+/// does not declare is skipped (a groupless node has no sched task to land
+/// on).
+pub fn apply_contract_deadline_policies(
+    model: &SystemModel,
+    sched_tasks: &mut BTreeMap<String, crate::SchedTaskDef>,
+) -> Result<(), ViolationAgreementError> {
+    for (sched_task, action) in contract_deadline_policies(model)? {
+        if let Some(def) = sched_tasks.get_mut(&sched_task) {
+            def.deadline_policy = Some(action);
+        }
+    }
+    Ok(())
+}
+
 /// The agreement gate, for the bake road that only needs a verdict.
 pub fn check_model(model: &SystemModel) -> Result<(), ViolationAgreementError> {
     contract_deadline_policies(model).map(|_| ())
@@ -428,6 +452,34 @@ mod tests {
         let by_node = node_actions(&m).expect("resolves");
         let site = by_node.get("/ctrl/control_node").expect("declared");
         assert_eq!(site.action, ViolationAction::Fault);
+    }
+
+    /// The shared lowering writes the contract's word into a table built from
+    /// the same model -- the step the Rust `nros::main!` road was missing --
+    /// and leaves a sched task the contract does not reach as authored.
+    #[test]
+    fn the_shared_lowering_writes_the_contracts_word_into_the_table() {
+        let m = parse(&model_yaml(MISS_ABORT, "", ""));
+        let mut table: BTreeMap<String, crate::SchedTaskDef> = m
+            .execution
+            .tasks
+            .iter()
+            .map(|(n, t)| (n.clone(), crate::sched_task_from_model(t, "freertos")))
+            .collect();
+        table.insert(
+            "idle".into(),
+            crate::sched_task_from_model(&m.execution.tasks["rt"], "freertos"),
+        );
+        assert_eq!(
+            table["rt"].deadline_policy, None,
+            "negative control: the bare table states nothing"
+        );
+        apply_contract_deadline_policies(&m, &mut table).expect("no disagreement");
+        assert_eq!(table["rt"].deadline_policy.as_deref(), Some("fault"));
+        assert_eq!(
+            table["idle"].deadline_policy, None,
+            "an uncontracted sched task keeps its own word"
+        );
     }
 
     /// An `on_violation` with no miss policy on its reaction still has to be
