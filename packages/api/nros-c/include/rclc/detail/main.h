@@ -432,7 +432,7 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_sched_tasks_ns(
  * passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE` and
  * the sched task count it emits, so the storage is `.bss` the linker places and
  * `mem-report` names, instead of `n_sched_tasks` heap blocks out of the
- * `CONFIG_NROS_ZEPHYR_HEAP_SIZE` arena that nothing priced (the issue: four
+ * `CONFIG_NROS_MEMORY_HEAP_BYTES` arena that nothing priced (the issue: four
  * sched tasks of storage alone exceeded the 64 KiB default, and the image died in
  * tier 1 of 4). A `storage_stride` below this build's executor size is refused
  * with a message rather than overrun.

@@ -5,14 +5,14 @@
 #
 # On the cmake road the image's knob rows rode only the cargo commands the
 # configure spawns (`NanoRosImageEnv.cmake`, issue 1712). A reader that runs
-# in CMake itself never saw them: `[image.<id>.knobs.freertos] app_stack_kb =
-# 20` left a FreeRTOS C image's `.app_stack_bytes` at 65536. Such a reader now
+# in CMake itself never saw them: `[image.<id>.knobs.memory] app_stack_bytes =
+# 20480` left a FreeRTOS C image's `.app_stack_bytes` at 65536. Such a reader now
 # asks `nros_image_env_value`, the one answer on both roads (the cmake road's
 # image-env file, the west road's recorded `NROS_IMAGE_ENV_ROW_<name>`).
 #
 # WHAT IS ASSERTED (script mode, no toolchain)
 #
-#   A. the image's row reaches `_nros_freertos_entry_app_stack`: 20 -> 20480.
+#   A. the image's row reaches `_nros_freertos_entry_app_stack`: 20480 bytes.
 #   B. a `-D` still wins over the row.
 #   C. the environment still wins over the row (cargo's own precedence).
 #   D. no row anywhere keeps the 64 KiB default.
@@ -48,12 +48,12 @@ fi
 
 init_test_tmpdir "nros-image-knob-readers"
 trap 'cleanup_test_tmpdir' EXIT
-unset NROS_FREERTOS_APP_STACK_KB NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES
+unset NROS_MEMORY_APP_STACK_BYTES NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES
 
 ROW="$TEST_TMPDIR/image-env.toml"
-printf '%s\n' 'NROS_FREERTOS_APP_STACK_KB = "20"' > "$ROW"
+printf '%s\n' 'NROS_MEMORY_APP_STACK_BYTES = "20480"' > "$ROW"
 BAD="$TEST_TMPDIR/bad-env.toml"
-printf '%s\n' 'NROS_FREERTOS_APP_STACK_KB = "abc"' > "$BAD"
+printf '%s\n' 'NROS_MEMORY_APP_STACK_BYTES = "abc"' > "$BAD"
 
 printf '%s\n' \
     'cmake_minimum_required(VERSION 3.22)' \
@@ -62,8 +62,8 @@ printf '%s\n' \
     '  set_property(GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG "${ENVTOML}")' \
     'endif()' \
     'if(WESTROW)' \
-    '  set(NROS_IMAGE_ENV_ROWS NROS_FREERTOS_APP_STACK_KB CACHE INTERNAL "")' \
-    '  set(NROS_IMAGE_ENV_ROW_NROS_FREERTOS_APP_STACK_KB "${WESTROW}" CACHE INTERNAL "")' \
+    '  set(NROS_IMAGE_ENV_ROWS NROS_MEMORY_APP_STACK_BYTES CACHE INTERNAL "")' \
+    '  set(NROS_IMAGE_ENV_ROW_NROS_MEMORY_APP_STACK_BYTES "${WESTROW}" CACHE INTERNAL "")' \
     'endif()' \
     '_nros_freertos_entry_app_stack(_b)' \
     'message(STATUS "BYTES=${_b}")' > "$TEST_TMPDIR/stack.cmake"
@@ -87,23 +87,23 @@ expect_bytes() {  # <case> <log> <bytes>
 stack "$TEST_TMPDIR/a.log" -DENVTOML="$ROW"
 expect_bytes "A (the image's row reaches the app stack)" "$TEST_TMPDIR/a.log" 20480
 
-stack "$TEST_TMPDIR/b.log" -DENVTOML="$ROW" -DNROS_FREERTOS_APP_STACK_KB=32
+stack "$TEST_TMPDIR/b.log" -DENVTOML="$ROW" -DNROS_MEMORY_APP_STACK_BYTES=32768
 expect_bytes "B (a -D wins over the row)" "$TEST_TMPDIR/b.log" 32768
 
 RC=0
-(cd "$TEST_TMPDIR" && NROS_FREERTOS_APP_STACK_KB=24 cmake -DNROS_REPO_DIR="$PROJECT_ROOT" \
+(cd "$TEST_TMPDIR" && NROS_MEMORY_APP_STACK_BYTES=24576 cmake -DNROS_REPO_DIR="$PROJECT_ROOT" \
     -DENVTOML="$ROW" -P "$TEST_TMPDIR/stack.cmake") >"$TEST_TMPDIR/c.log" 2>&1 || RC=$?
 expect_bytes "C (the environment wins over the row)" "$TEST_TMPDIR/c.log" 24576
 
 stack "$TEST_TMPDIR/d.log"
 expect_bytes "D (no row keeps the default)" "$TEST_TMPDIR/d.log" 65536
 
-stack "$TEST_TMPDIR/e.log" -DWESTROW=28
+stack "$TEST_TMPDIR/e.log" -DWESTROW=28672
 expect_bytes "E (the west road's recorded row)" "$TEST_TMPDIR/e.log" 28672
 
 stack "$TEST_TMPDIR/f.log" -DENVTOML="$BAD"
-if [ "$RC" -eq 0 ] || ! nros_grep_q 'app_stack_kb' "$TEST_TMPDIR/f.log"; then
-    fail "F: a non-number row was not refused naming app_stack_kb (rc=$RC)"
+if [ "$RC" -eq 0 ] || ! nros_grep_q 'app_stack_bytes' "$TEST_TMPDIR/f.log"; then
+    fail "F: a non-number row was not refused naming app_stack_bytes (rc=$RC)"
     tail -8 "$TEST_TMPDIR/f.log" >&2
 fi
 

@@ -21,7 +21,7 @@
 //!
 //! # Sizing
 //!
-//! `NROS_ZEPHYR_HEAP_SIZE` (compile-time env, decimal bytes), default 64 KiB —
+//! `NROS_MEMORY_HEAP_BYTES` (compile-time env, decimal bytes), default 64 KiB —
 //! matching the zenoh images' previous `CONFIG_HEAP_MEM_POOL_SIZE=65536`, so a
 //! converted image's RAM is net-neutral before any tuning. An image that has
 //! NOT set its pool to 0 temporarily carries both arenas; convert the conf in
@@ -31,7 +31,7 @@ use zpico_alloc::FreeListHeap;
 
 const DEFAULT_HEAP_SIZE: usize = 64 * 1024;
 
-const HEAP_SIZE: usize = match option_env!("NROS_ZEPHYR_HEAP_SIZE") {
+const HEAP_SIZE: usize = match option_env!("NROS_MEMORY_HEAP_BYTES") {
     Some(s) => parse_usize(s),
     None => DEFAULT_HEAP_SIZE,
 };
@@ -45,7 +45,7 @@ const fn parse_usize(s: &str) -> usize {
     while i < b.len() {
         assert!(
             b[i] >= b'0' && b[i] <= b'9',
-            "NROS_ZEPHYR_HEAP_SIZE must be decimal bytes"
+            "NROS_MEMORY_HEAP_BYTES must be decimal bytes"
         );
         v = v * 10 + (b[i] - b'0') as usize;
         i += 1;
@@ -88,7 +88,7 @@ pub extern "C" fn nros_zephyr_heap_capacity() -> usize {
 /// platform's `nros_platform_heap_used_bytes()` answered from Zephyr's
 /// `_system_heap` instead -- the heap the application STOPPED allocating from
 /// when the funnel moved here. The figure that would size
-/// `NROS_ZEPHYR_HEAP_SIZE` was measuring a different arena.
+/// `NROS_MEMORY_HEAP_BYTES` was measuring a different arena.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_zephyr_heap_used() -> usize {
     HEAP.used()
@@ -96,7 +96,7 @@ pub extern "C" fn nros_zephyr_heap_used() -> usize {
 
 /// The most this arena has ever had handed out at once.
 ///
-/// This is the number `NROS_ZEPHYR_HEAP_SIZE` should be set from, plus
+/// This is the number `NROS_MEMORY_HEAP_BYTES` should be set from, plus
 /// headroom. `used` sampled at an arbitrary instant reports whatever happened
 /// to be live at the moment of the read, which is not what the knob bounds.
 #[unsafe(no_mangle)]

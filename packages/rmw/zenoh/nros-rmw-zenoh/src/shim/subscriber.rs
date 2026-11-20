@@ -227,8 +227,8 @@ type LargePayloadBlock = [[u8; SUBSCRIBER_LARGE_SIZE]; SUBSCRIBER_RING_DEPTH];
 // These two are the pools issue 0271 measured: `LARGE_PAYLOADS` at its
 // defaults is 131,072 bytes, which is what a correctly-rightsized 256 KB image
 // silently inherited because nobody knew the three knobs existed.
-// nros-pool: SMALL_PAYLOADS = NROS_ZENOH_MAX_SUBSCRIBERS * NROS_ZENOH_SUBSCRIBER_RING_DEPTH * NROS_SUBSCRIBER_BUFFER_SIZE
-// nros-pool: LARGE_PAYLOADS = NROS_ZENOH_MAX_LARGE_SUBSCRIBERS * NROS_ZENOH_SUBSCRIBER_RING_DEPTH * NROS_ZENOH_SUBSCRIBER_LARGE_SIZE
+// nros-pool: SMALL_PAYLOADS = NROS_ZENOH_MAX_SUBSCRIBERS * NROS_ZENOH_SUBSCRIBER_RING_DEPTH * NROS_SUBSCRIBER_BUFFER_BYTES
+// nros-pool: LARGE_PAYLOADS = NROS_ZENOH_MAX_LARGE_SUBSCRIBERS * NROS_ZENOH_SUBSCRIBER_RING_DEPTH * NROS_ZENOH_SUBSCRIBER_LARGE_BYTES
 static mut SMALL_PAYLOADS: [SmallPayloadBlock; ZPICO_MAX_SUBSCRIBERS] =
     [[[0u8; SUBSCRIBER_BUFFER_SIZE]; SUBSCRIBER_RING_DEPTH]; ZPICO_MAX_SUBSCRIBERS];
 static mut LARGE_PAYLOADS: [LargePayloadBlock; MAX_LARGE_SUBSCRIBERS] =
@@ -361,7 +361,7 @@ pub struct SubscriberAllocReport {
     /// The platform rlsf arena: bytes out now, the most ever out at once, and
     /// its capacity.
     ///
-    /// phase-412 -- `NROS_ZEPHYR_HEAP_SIZE` is hand-picked, and until the
+    /// phase-412 -- `NROS_MEMORY_HEAP_BYTES` is hand-picked, and until the
     /// port's stats were repointed at this arena nothing could say what it
     /// used. `heap_peak` is the figure the knob wants; `heap_used` sampled here
     /// is whatever is live at the last subscription. 0 means the image was
@@ -584,7 +584,7 @@ pub(super) fn alloc_payload_block(rx_buffer_hint: usize) -> Option<(*mut u8, usi
     // shipped defaults (threshold 2048, small block 1024), so `hint > threshold`
     // sent every hint in 1025..=2048 to a block that could not hold it. That
     // window is reachable by following `create_subscription`'s own build error,
-    // which says to raise `NROS_SUBSCRIPTION_BUFFER_SIZE` — at 2048 the hint is
+    // which says to raise `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` — at 2048 the hint is
     // not > 2048, so it lands small and the sample is dropped at the transport:
     // the exact failure the assertion exists to prevent.
     //

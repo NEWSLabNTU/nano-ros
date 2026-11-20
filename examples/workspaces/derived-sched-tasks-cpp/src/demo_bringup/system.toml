@@ -66,5 +66,5 @@ socket_timeout_ms = 5
 # native_sim/native/64 (2026-11-21); it is generous, and gives way to
 # the boot peak + 24,576 once measured, then to a floor derived from
 # the node count.
-[image.zephyr.knobs.zephyr]
-heap_size = 327680
+[image.zephyr.knobs.memory]
+heap_bytes = 327680

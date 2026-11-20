@@ -371,12 +371,12 @@ static void report_app_stack_peak(void) {
     s_stack_peak_reported = true;
     /* One `printf` of a prebuilt line: the console is shared with the app task
      * and the log writer, and a single `_write` cannot interleave. */
-    /* NROS_FREERTOS_APP_STACK_KB is the knob on both roads (the cmake one
+    /* NROS_MEMORY_APP_STACK_BYTES is the knob on both roads (the cmake one
      * since issue 2070), as the Rust lane's message says. */
     char line[192];
     snprintf(line, sizeof(line),
              "nros: app task stack peak %lu of %lu bytes (%lu free) "
-             "- raise with NROS_FREERTOS_APP_STACK_KB / `[node.rt] app_stack_bytes`\n",
+             "- raise with NROS_MEMORY_APP_STACK_BYTES / `[node.rt] app_stack_bytes`\n",
              (unsigned long)(total - unused), (unsigned long)total, (unsigned long)unused);
     printf("%s", line);
 }
@@ -402,7 +402,7 @@ static void report_app_stack_peak(void) {
  *
  * The TOTAL comes from `nros_platform_heap_total_bytes()` and NOT from
  * `configTOTAL_HEAP_SIZE` here, although that macro is in scope. The macro is
- * `NROS_FREERTOS_HEAP_KB * 1024` and that define is a build-env knob the BOARD
+ * `NROS_FREERTOS_HEAP_KB * 1024` and that define is the build-env knob the BOARD
  * CRATE's `build.rs` passes to the TUs it compiles; this file is compiled by the
  * cmake overlay instead (`FREERTOS_STARTUP_SOURCE`), which never forwards it. So
  * reading the macro here would give heap_4's number on one lane and the
@@ -426,7 +426,7 @@ static void report_heap_peak(void) {
     char line[160];
     snprintf(line, sizeof(line),
              "nros: heap peak %lu of %lu bytes (%lu free) "
-             "- raise with NROS_FREERTOS_HEAP_KB\n",
+             "- raise with NROS_MEMORY_HEAP_BYTES\n",
              (unsigned long)(total - min_free), (unsigned long)total, (unsigned long)min_free);
     printf("%s", line);
 }

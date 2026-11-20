@@ -242,7 +242,7 @@ endif()
 # image used). A selector rather than a number, so the number has one home:
 # the header.
 # On `freertos_config`, because every TU that reads `configTOTAL_HEAP_SIZE`
-# must agree on it (issue 1197). An explicit `NROS_FREERTOS_HEAP_KB` still wins over both.
+# must agree on it (issue 1197). An explicit `NROS_MEMORY_HEAP_BYTES` still wins over both.
 # ---------------------------------------------------------------------------
 string(TOLOWER "${NROS_RMW}" _nros_freertos_rmw)
 # Keyed on `freertos_config`, the target that carries FreeRTOSConfig.h to every

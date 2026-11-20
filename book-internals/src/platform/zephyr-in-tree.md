@@ -208,16 +208,16 @@ keys (table above).
 | `CONFIG_NROS_MAX_PUBLISHERS` | int | 8 | Max concurrent publishers |
 | `CONFIG_NROS_MAX_SUBSCRIBERS` | int | 8 | Max concurrent subscribers |
 | `CONFIG_NROS_MAX_QUERYABLES` | int | -1 (derive) | Max concurrent queryables (service servers). the `param_services` capability costs 6 **per node**, `[lifecycle]` 5 once — a value below that floor fails the build, naming this knob (phase-426 W3) |
-| `CONFIG_NROS_FRAG_MAX_SIZE` | int | 2048 | Max reassembled message size |
-| `CONFIG_NROS_BATCH_UNICAST_SIZE` | int | 1024 | Max unicast batch size |
-| `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | int | -1 (derive) | Per-subscriber buffer, small payload class |
+| `CONFIG_NROS_ZENOH_FRAG_MAX_BYTES` | int | 2048 | Max reassembled message size |
+| `CONFIG_NROS_ZENOH_BATCH_UNICAST_BYTES` | int | 1024 | Max unicast batch size |
+| `CONFIG_NROS_SUBSCRIBER_BUFFER_BYTES` | int | -1 (derive) | Per-subscriber buffer, small payload class |
 | `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` | int | -1 (derive) | Blocks in the large payload class |
-| `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE` | int | -1 (derive) | Per-sample capacity of the large class |
+| `CONFIG_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES` | int | -1 (derive) | Per-sample capacity of the large class |
 | `CONFIG_NROS_SERVICE_BUFFER_SIZE` | int | 1024 | Per-service buffer |
 
 #### `-1` means "derive it from the message bounds"
 
-Three of the rows above, plus `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE`, default to
+Three of the rows above, plus `CONFIG_NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`, default to
 `-1`. That is not a size: it is how an image says *nothing here chose a number,
 work it out* (phase-403 W8, issue 0940).
 
@@ -227,7 +227,7 @@ build composes those, and the configure prints what it concluded:
 
 ```
 -- nros: message-bound sizing DERIVED from 84 types in 11 interface packages (all bounded)
--- nros:   largest type std_msgs/msg/Float64MultiArray at 1496 B -> NROS_SUBSCRIPTION_BUFFER_SIZE
+-- nros:   largest type std_msgs/msg/Float64MultiArray at 1496 B -> NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES
 -- nros:   0 types over the 2048 B ceiling -> NROS_MAX_LARGE_SUBSCRIBERS
 ```
 
@@ -265,10 +265,10 @@ The answer, and why it came out that way, is written to
 | `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS` | int | -1 (derive) | Max service servers |
 | `CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS` | int | -1 (derive) | Max service clients |
 | `CONFIG_NROS_XRCE_SUBSCRIBER_RING_DEPTH` | int | 32 | Queued samples per subscriber |
-| `CONFIG_NROS_XRCE_BUFFER_SIZE` | int | 1024 | Per-slot buffer size; the default of the three below |
-| `CONFIG_NROS_XRCE_SUBSCRIBER_BUFFER_SIZE` | int | -1 (derive) | Subscriber ring entry size |
-| `CONFIG_NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE` | int | -1 (= `BUFFER_SIZE`) | Service-server request entry size |
-| `CONFIG_NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE` | int | -1 (= `BUFFER_SIZE`) | Service-client reply slot size |
+| `CONFIG_NROS_XRCE_BUFFER_BYTES` | int | 1024 | Per-slot buffer size; the default of the three below |
+| `CONFIG_NROS_XRCE_SUBSCRIBER_BUFFER_BYTES` | int | -1 (derive) | Subscriber ring entry size |
+| `CONFIG_NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES` | int | -1 (= `BUFFER_SIZE`) | Service-server request entry size |
+| `CONFIG_NROS_XRCE_SERVICE_REPLY_BUFFER_BYTES` | int | -1 (= `BUFFER_SIZE`) | Service-client reply slot size |
 | `CONFIG_NROS_XRCE_STREAM_HISTORY` | int | 16 | Reliable stream depth (2-16) |
 
 Every option in this table except the agent address and port is a

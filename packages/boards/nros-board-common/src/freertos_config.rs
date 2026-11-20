@@ -102,10 +102,11 @@ impl Default for FreertosScheduling {
     }
 }
 
-/// Resolve the app-task stack size from the `NROS_FREERTOS_APP_STACK_KB` build
-/// override, in the one spelling both readers share.
+/// Resolve the app-task stack size from the `NROS_MEMORY_APP_STACK_BYTES` build
+/// override (`memory.app_stack_bytes`, in bytes), in the one spelling both
+/// readers share.
 ///
-/// The Rust `Config` passes `option_env!("NROS_FREERTOS_APP_STACK_KB")`, a
+/// The Rust `Config` passes `option_env!("NROS_MEMORY_APP_STACK_BYTES")`, a
 /// `build.rs` passes `env::var(..).ok().as_deref()`. Both land here so the
 /// parser cannot drift.
 ///
@@ -153,15 +154,15 @@ impl Default for FreertosScheduling {
 ///   for the default: an entry that overflows 384 KiB is not served by a
 ///   384 KiB default either. Nothing in this tree sets the override.
 ///
-/// A bigger entry raises it — `NROS_FREERTOS_APP_STACK_KB`, or a `[node.rt]
+/// A bigger entry raises it — `NROS_MEMORY_APP_STACK_BYTES`, or a `[node.rt]
 /// app_stack_bytes`. Getting it wrong is loud but MISATTRIBUTED, which is worth
 /// knowing before you read the log. The bracketing run, same image, same
 /// router:
 ///
-/// - `NROS_FREERTOS_APP_STACK_KB=40` → boots, serves goals, and reports
+/// - `NROS_MEMORY_APP_STACK_BYTES=40960` → boots, serves goals, and reports
 ///   `app task stack peak 36160 of 40960 bytes (4800 free)`. The measurement
 ///   predicts the boundary to within 5 KiB.
-/// - `NROS_FREERTOS_APP_STACK_KB=32` → `*** MALLOC FAILED ***` and a hang.
+/// - `NROS_MEMORY_APP_STACK_BYTES=32768` → `*** MALLOC FAILED ***` and a hang.
 ///   **NOT** `*** STACK OVERFLOW: <task> ***`, even though the shared
 ///   `FreeRTOSConfig.h` sets `configCHECK_FOR_STACK_OVERFLOW 2` and the hook is
 ///   wired: heap_4 hands out the task stack, so the overflow lands in the
@@ -177,9 +178,9 @@ impl Default for FreertosScheduling {
 /// # Panics
 /// On a non-decimal value — a typo'd stack size must not silently become the
 /// default and stack-overflow at runtime.
-pub const fn app_stack_bytes(kb: Option<&str>) -> u32 {
-    match kb {
-        Some(s) => parse_kb(s) * 1024,
+pub const fn app_stack_bytes(bytes: Option<&str>) -> u32 {
+    match bytes {
+        Some(s) => parse_decimal(s),
         None => DEFAULT_APP_STACK_BYTES,
     }
 }
@@ -196,7 +197,7 @@ pub const fn app_stack_bytes(kb: Option<&str>) -> u32 {
 /// default too — so a sched-task image multiplies this term rather than sharing it.
 /// The deepest in-tree image (`examples/workspaces/realtime-rust`) declares two
 /// sched tasks; three is one more than anything shipped, and a deeper image raises
-/// `NROS_FREERTOS_HEAP_KB` with its own `heap peak` line as the evidence.
+/// `NROS_MEMORY_HEAP_BYTES` with its own `heap peak` line as the evidence.
 pub const DEFAULT_HEAP_APP_TASK_SLOTS: usize = 3;
 
 /// Heap an executor costs when it is NOT the one that took the `.bss`
@@ -299,7 +300,7 @@ pub const fn default_heap_bytes(app_stack_bytes: u32) -> usize {
 /// because what was NOT measured is a REMOTE participant: the run had none on
 /// its LAN, and every remote participant and endpoint adds proxy state that
 /// this measurement cannot price. An image in a populated graph reads its own
-/// `nros: heap peak` line and raises `NROS_FREERTOS_HEAP_KB` from it. XRCE has
+/// `nros: heap peak` line and raises `NROS_MEMORY_HEAP_BYTES` from it. XRCE has
 /// no FreeRTOS image at all; its working set is static pools rather than DDS
 /// discovery, so a Cyclone-derived bound over-provisions it rather than under.
 pub const DEFAULT_HEAP_DDS_WORKING_SET_BYTES: usize = 589_824;
@@ -330,20 +331,38 @@ pub const fn default_dds_heap_bytes(app_stack_bytes: u32) -> usize {
     app_stack_bytes as usize + DEFAULT_HEAP_DDS_WORKING_SET_BYTES
 }
 
-/// Const decimal parser for the `NROS_FREERTOS_APP_STACK_KB` build env.
-const fn parse_kb(s: &str) -> u32 {
+/// Const decimal parser for the `NROS_MEMORY_APP_STACK_BYTES` build env.
+const fn parse_decimal(s: &str) -> u32 {
     let bytes = s.as_bytes();
     let mut i = 0;
     let mut acc: u32 = 0;
     while i < bytes.len() {
         let d = bytes[i];
         if !d.is_ascii_digit() {
-            panic!("NROS_FREERTOS_APP_STACK_KB must be a decimal integer");
+            panic!("NROS_MEMORY_APP_STACK_BYTES must be a decimal byte count");
         }
         acc = acc * 10 + (d - b'0') as u32;
         i += 1;
     }
     acc
+}
+
+// phase-581 W5, RFC-0140 D3 N4.
+/// `memory.heap_bytes` as the KiB `FreeRTOSConfig.h` takes (`NROS_FREERTOS_HEAP_KB`
+/// is that header's C macro, not a knob): the ONE conversion on the cargo road,
+/// the twin of `cmake/platform/nano-ros-freertos.cmake`'s on the cmake road.
+///
+/// # Panics
+/// On a size that is not a whole number of KiB: the header cannot hold it, and
+/// rounding would build a heap of a size nobody stated.
+#[must_use]
+pub fn kib_of_heap_bytes(bytes: usize) -> usize {
+    assert!(
+        bytes % 1024 == 0,
+        "NROS_MEMORY_HEAP_BYTES={bytes} is not a whole number of KiB: the FreeRTOS heap \
+         is configured in KiB, so state a multiple of 1024"
+    );
+    bytes / 1024
 }
 
 #[cfg(test)]
@@ -352,7 +371,7 @@ mod tests {
 
     #[test]
     fn the_stack_override_is_read_in_kib() {
-        assert_eq!(app_stack_bytes(Some("256")), 262144);
+        assert_eq!(app_stack_bytes(Some("262144")), 262144);
         assert_eq!(app_stack_bytes(None), DEFAULT_APP_STACK_BYTES);
     }
 
@@ -503,30 +522,29 @@ mod tests {
             "FreeRTOSConfig.h's non-zenoh heap default is not the derivation"
         );
         // The carrier template takes `.app_stack_bytes` from the configure
-        // (`NROS_FREERTOS_APP_STACK_KB`, phase-518 W4); its default is the
-        // first `set(_kb N)` in `_nros_freertos_entry_app_stack`.
+        // (`NROS_MEMORY_APP_STACK_BYTES`, phase-518 W4); its default is the
+        // first `set(_bytes N)` in `_nros_freertos_entry_app_stack`.
         let template = include_str!("../../../../cmake/templates/freertos_app_config.c.in");
         assert!(
             template.contains(".app_stack_bytes         = @NROS_ENTRY_APP_STACK_BYTES@u"),
             "the carrier template no longer takes .app_stack_bytes from the configure"
         );
         let board_net = include_str!("../../../../cmake/NanoRosBoardNet.cmake");
-        let default_kb: u32 = board_net
+        let default_bytes: u32 = board_net
             .split("function(_nros_freertos_entry_app_stack")
             .nth(1)
             .and_then(|body| {
                 body.lines().find_map(|l| {
                     l.trim()
-                        .strip_prefix("set(_kb ")
+                        .strip_prefix("set(_bytes ")
                         .and_then(|r| r.strip_suffix(')'))
                 })
             })
-            .expect("_nros_freertos_entry_app_stack states its default KiB")
+            .expect("_nros_freertos_entry_app_stack states its default bytes")
             .parse()
-            .expect("a decimal KiB count");
+            .expect("a decimal byte count");
         assert_eq!(
-            default_kb * 1024,
-            C_CARRIER_APP_STACK_BYTES,
+            default_bytes, C_CARRIER_APP_STACK_BYTES,
             "the C/C++ carrier's app stack moved; the DDS heap default must follow it"
         );
     }

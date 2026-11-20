@@ -219,7 +219,7 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
 
 /// E2E test: talker sends 4096B payloads, listener with 8192B shim buffer receives them.
 ///
-/// The listener is built with `NROS_SUBSCRIBER_BUFFER_SIZE=8192` so it can fit
+/// The listener is built with `NROS_SUBSCRIBER_BUFFER_BYTES=8192` so it can fit
 /// 4096B payloads (which would overflow the default 1024B buffer). The talker
 /// uses the same large-buf binary — publish path has no shim buffer constraint,
 /// but using the same binary simplifies the test.
@@ -338,13 +338,13 @@ fn xrce_roundtrip(binary: &std::path::Path, payload: &str, topic: &str) -> Strin
 /// 1024 rather than a family-specific number because phase-454 W6.b left
 /// `XRCE_BUFFER_SIZE` as the DEFAULT of the three receive families, and this
 /// fixture declares no endpoints for the build to derive one from. That is why
-/// `NROS_XRCE_BUFFER_SIZE=8192` still raises it, in the sibling test below.
+/// `NROS_XRCE_BUFFER_BYTES=8192` still raises it, in the sibling test below.
 ///
 /// What this test actually guards is the ERROR NAME, not the refusal. Before
 /// phase-384 W1 the backend's `MessageTooLarge` was rewritten to
 /// `DeserializationError` by a `map_err(|_| ...)` on a code path that
 /// deserializes nothing — so the one diagnostic that names its own remedy
-/// (raise `NROS_XRCE_BUFFER_SIZE`) was replaced by one that sends the reader
+/// (raise `NROS_XRCE_BUFFER_BYTES`) was replaced by one that sends the reader
 /// looking at the serializer. Two drafts of phase-384 chased the Agent because
 /// of it. Asserting only "delivery fails" would pass on that tree.
 #[rstest]
@@ -375,7 +375,7 @@ fn xrce_payload_over_the_ring_is_refused_by_name(xrce_stress_test_binary: PathBu
     );
 }
 
-/// …and raising `NROS_XRCE_BUFFER_SIZE` delivers the same payload intact.
+/// …and raising `NROS_XRCE_BUFFER_BYTES` delivers the same payload intact.
 ///
 /// This is the half that proves the ceiling is a CONFIGURATION limit and not the
 /// Agent's — phase-384's original premise was that the Agent's hardcoded

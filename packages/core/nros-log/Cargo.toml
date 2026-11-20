@@ -66,7 +66,7 @@ rosout = []
 # the build in `build.rs`, naming the knob to state instead:
 #
 #   max-level-*          -> NROS_LOG_MAX_LEVEL       (trace..fatal, off; builtin trace)
-#   buffer-size-<N>      -> NROS_LOG_BUFFER_SIZE     (128..=4096; builtin 256)
+#   buffer-size-<N>      -> NROS_LOG_BUFFER_BYTES     (128..=4096; builtin 256)
 #   early-records-<N>    -> NROS_LOG_EARLY_RECORDS   (0..=256; builtin 4)
 #   rosout-records-<N>   -> NROS_LOG_ROSOUT_RECORDS  (1..=1024; builtin 16)
 #   dynamic-loggers-<N>  -> NROS_LOG_DYNAMIC_LOGGERS (0..=1024; builtin 16)

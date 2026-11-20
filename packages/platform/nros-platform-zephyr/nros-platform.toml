@@ -36,7 +36,7 @@ per_fd_tx_ceiling = true
 # NROS_ZENOH_TX_* `default` lines are DERIVED from it — render them with
 # `scripts/check-zephyr-knob-agreement.py --write`, which is also the gate
 # (phase-405 W6). Edit here, never there.
-[knobs.zenoh.tx]
-batch = true
-split_lock = true
-flush_ms = 50
+[knobs.zenoh]
+tx_batch = true
+tx_split_lock = true
+tx_batch_flush_ms = 50

@@ -52,7 +52,7 @@
 #  11. on a road with no platform link command (Zephyr), the link pass the
 #      ament verbs ask for is a no-op, not a deferred call to a missing one;
 #  12. the C/C++ FreeRTOS carrier's app stack is 64 KiB unless the configure
-#      sets `NROS_FREERTOS_APP_STACK_KB` (issue 2070).
+#      sets `NROS_MEMORY_APP_STACK_BYTES` (issue 2070).
 #  14. `nano_ros_add_plain_executable` is the builtin `add_executable` on a
 #      board too: a helper that is not an image (issue 2678).
 set -euo pipefail
@@ -475,19 +475,19 @@ expect "11. with no platform link command the link pass is a no-op" "Generating 
 refute "11. ...and schedules no call to a missing command" "Unknown CMake command" "$out"
 
 # 12. phase-518 -- the C/C++ FreeRTOS carrier's app stack, from
-#     NROS_FREERTOS_APP_STACK_KB (issue 2070), 64 KiB unset.
+#     NROS_MEMORY_APP_STACK_BYTES (issue 2070), 64 KiB unset.
 d="$WORK/app-stack"; mkdir -p "$d"
 cat > "$d/CMakeLists.txt" <<CML
 cmake_minimum_required(VERSION 3.22)
 project(appstack NONE)
 include("$ROOT/cmake/NanoRosBoardNet.cmake")
 _nros_freertos_entry_app_stack(_def)
-set(NROS_FREERTOS_APP_STACK_KB 192)
+set(NROS_MEMORY_APP_STACK_BYTES 196608)
 _nros_freertos_entry_app_stack(_set)
 message(STATUS "stack default=[\${_def}] set=[\${_set}]")
 CML
 out="$(cmake -S "$d" -B "$d/b" 2>&1)" || true
-expect "12. the app stack defaults to 64 KiB and follows NROS_FREERTOS_APP_STACK_KB" \
+expect "12. the app stack defaults to 64 KiB and follows NROS_MEMORY_APP_STACK_BYTES" \
     "stack default=[65536] set=[196608]" "$out"
 
 # 13. issue 2095 -- `nros_link_app_dependency` on a STATIC library (Zephyr's

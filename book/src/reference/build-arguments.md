@@ -81,7 +81,7 @@ Each refusal names the argument and says where the setting belongs. From
 | `-DCONFIG_*` | it sets a Zephyr Kconfig symbol around the Kconfig fragments and the knob ladder | the image's `conf = [..]` fragment |
 | `-DCMAKE_BUILD_TYPE` | `nros build` passes it from the image's profile | `--profile=`, or `[image.<id>] profile` |
 | `-DNROS_IMAGE`, `-DCMAKE_TOOLCHAIN_FILE`, and the other names `nros build` passes itself | the build sets them | the `system.toml` key the refusal names |
-| a nano-ros knob, in any spelling (`-DNROS_FREERTOS_APP_STACK_KB`, its `CONFIG_NROS_*` or legacy name) | the image's knob table is its one committed place, and every build road reads it | `[image.<id>.knobs.<group>]`, named in the error |
+| a nano-ros knob, in any spelling (`-DNROS_MEMORY_APP_STACK_BYTES`, its `CONFIG_NROS_*` or legacy name) | the image's knob table is its one committed place, and every build road reads it | `[image.<id>.knobs.<group>]`, named in the error |
 | cargo `--release` | the profile is a build setting | `--profile=release`, or `[image.<id>] profile` |
 | cargo `--target` | the target is the board's | change the image's `board` |
 | a feature the build derives, such as `platform-posix` or `rmw-xrce` | the RMW, platform and capability features follow from `system.toml` | the image's `rmw`, `board` or capability in `system.toml` |

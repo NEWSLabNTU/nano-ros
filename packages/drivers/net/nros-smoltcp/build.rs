@@ -51,8 +51,8 @@ fn main() {
     let max_udp_sockets = nros_zephyr_build::knob("NROS_SMOLTCP_MAX_UDP_SOCKETS")
         .rung(rungs.max_udp_sockets)
         .resolve(if rtps { 4 } else { 1 });
-    let buffer_size = nros_zephyr_build::knob("NROS_SMOLTCP_BUFFER_SIZE")
-        .rung(rungs.buffer_size)
+    let buffer_size = nros_zephyr_build::knob("NROS_NET_BUFFER_BYTES")
+        .rung(rungs.buffer_bytes)
         .resolve(2048);
     let connect_timeout_ms = nros_zephyr_build::knob("NROS_SMOLTCP_CONNECT_TIMEOUT_MS")
         .rung(rungs.connect_timeout_ms)
@@ -87,7 +87,7 @@ fn main() {
          pub const MAX_UDP_SOCKETS: usize = {max_udp_sockets};\n\
          \n\
          /// Per-socket staging buffer size in bytes \
-         (set via NROS_SMOLTCP_BUFFER_SIZE, default 2048).\n\
+         (set via NROS_NET_BUFFER_BYTES, default 2048).\n\
          pub const SOCKET_BUFFER_SIZE: usize = {buffer_size};\n\
          \n\
          /// Timeout for TCP connect in milliseconds \

@@ -96,7 +96,7 @@ pub enum DeclarationError {
     /// Every slot of the caller-owned table is taken. No rclrs correspondent:
     /// rclrs's store grows, ours is the storage the caller placed.
     StorageFull,
-    /// The name is longer than `NROS_MAX_PARAM_NAME_LEN`. No rclrs
+    /// The name is longer than `NROS_PARAMS_MAX_NAME_BYTES`. No rclrs
     /// correspondent, same reason.
     NameTooLong,
     /// A read-only parameter was declared with no default (rclrs
@@ -124,7 +124,7 @@ impl core::fmt::Display for DeclarationError {
                 crate::STORE_SIZE_REMEDY
             ),
             DeclarationError::NameTooLong => f.write_str(
-                "the parameter's name is longer than NROS_MAX_PARAM_NAME_LEN \
+                "the parameter's name is longer than NROS_PARAMS_MAX_NAME_BYTES \
                  (`max_param_name_len` under `[knobs.params]`)",
             ),
             DeclarationError::NoValueAvailable => {
@@ -545,7 +545,7 @@ pub struct ParameterServer<'s> {
 
 impl<'s> ParameterServer<'s> {
     /// phase-446 F2 -- report each declared parameter whose description was
-    /// truncated to `NROS_MAX_PARAM_DESCRIPTION_LEN`, ONCE, and forget it.
+    /// truncated to `NROS_PARAMS_MAX_DESCRIPTION_BYTES`, ONCE, and forget it.
     /// Issue 2686: `report` is called once per truncated FIELD, with the
     /// [`DescriptorText`](crate::DescriptorText) that names the field and the
     /// knob that sizes it, so a cut constraints text is never reported as a
@@ -2518,7 +2518,7 @@ mod tests {
     /// these adds no table of its own.
     #[test]
     // The comparison and the `min` below read as "always true" to clippy on a
-    // build that leaves `NROS_MAX_PARAM_CONSTRAINTS_LEN` at its default of 0 --
+    // build that leaves `NROS_PARAMS_MAX_CONSTRAINTS_BYTES` at its default of 0 --
     // and that is the point: the constant is a KNOB, the test is written
     // against it so it holds at 0, at 64 and at 256, and a version specialised
     // to whichever value this build resolved would read as coverage on the
@@ -2538,7 +2538,7 @@ mod tests {
         let desc = server.get_descriptor(NODE, "rate").expect("descriptor");
         assert_eq!(desc.description.as_str(), "publish rate");
         // Written against the CAPACITY, not a literal: `additional_constraints`
-        // has its own knob (`NROS_MAX_PARAM_CONSTRAINTS_LEN`) whose default is
+        // has its own knob (`NROS_PARAMS_MAX_CONSTRAINTS_BYTES`) whose default is
         // 0, so the default build stores a zero-length prefix. A test that
         // asserted the whole string would pass only on a build that states the
         // knob, and would read as coverage everywhere else.

@@ -302,7 +302,7 @@ impl<'s> ParamState<'s> {
 }
 
 /// Bytes of each carved request/reply buffer: the build's resolved
-/// `param_service_buffer_bytes()` (a stated `NROS_PARAM_SERVICE_BUFFER_SIZE`,
+/// `param_service_buffer_bytes()` (a stated `NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES`,
 /// or the bound the contract's declared parameters derive).
 ///
 /// Issue 1897 -- ZERO in a build without `param-services`: nothing there reads
