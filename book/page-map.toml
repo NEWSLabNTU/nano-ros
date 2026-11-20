@@ -1838,3 +1838,10 @@ path = "guide/build/bring-your-own-cpp-library.md"
 action = "new issue-2646"
 batch = "issue-2646"
 note = "Bring your own C++ library (issue 2646's documentation gap): find and link a library nano-ros does not ship, as a workspace package or from a prefix you own, with nano_ros_hosted_cxx() on a freestanding board"
+
+[[page]]
+book = "user"
+path = "guide/build/pin-a-commit.md"
+action = "new issue-2645"
+batch = "issue-2645"
+note = "Pin a commit or a checkout (issue 2645): the git + rev and path forms of nros-toolchain.toml beside the release version, how a git pin is built into the store, and the stale-CLI check under each"
