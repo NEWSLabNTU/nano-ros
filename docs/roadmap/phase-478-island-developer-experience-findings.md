@@ -462,7 +462,7 @@ by measurement (board conf lines 683-700): `CONFIG_MAIN_THREAD_PRIORITY=5`
 (Zephyr's 0 sits above the read task's band while main registers entities) and
 `CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES=4096` (default 1024, `zephyr/Kconfig:682-685`;
 measured 793-1024 at joins, 1,226 in a soak). [phase-474](archived/phase-474-safety-island-board-findings.md)
-T3 owns closing [issue 1534](../issues/archived/1534-zephyr-tx-flush-task-outranks-the-read-task.md) (resolved 2026-10-30; residue [issue 2164](../issues/2164-zephyr-serial-join-main-priority-and-rx-ring-default.md))
+T3 owns closing [issue 1534](../issues/archived/1534-zephyr-tx-flush-task-outranks-the-read-task.md) (resolved 2026-10-30; residue [issue 2164](../issues/archived/2164-zephyr-serial-join-main-priority-and-rx-ring-default.md))
 with a derived main priority and a measured ring default. This item is only the
 DX half, and it is cheap: until T3 lands, the serial-link guide and the Kconfig
 help name both lines and why; when T3 lands, the default moves under
