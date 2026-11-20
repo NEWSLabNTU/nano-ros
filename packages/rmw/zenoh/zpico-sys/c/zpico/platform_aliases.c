@@ -128,6 +128,10 @@ void z_random_fill(void *buf, size_t len) {
  *  second with a new sub-second remainder the way the split could.
  * ----------------------------------------------------------------------- */
 
+/* zenoh-pico's `z_time_*` is its WALL-time API (upstream answers it from
+ * `gettimeofday`), so this stays on the wall clock. zenoh-pico's only
+ * duration over it is the emscripten websocket link, which no nano-ros image
+ * builds; its timeouts use `z_clock_*`, the monotonic one. */
 static uint64_t nros_zp_now_ms(void) {
     return nros_platform_time_now_ns() / 1000000ULL;
 }
@@ -192,7 +196,10 @@ void z_yield(void) {
  * ----------------------------------------------------------------------- */
 
 uint64_t smoltcp_clock_now_ms(void) {
-    return nros_zp_now_ms();
+    /* MONOTONIC (issue 2760): its readers time durations (connect waits,
+     * smoltcp's own timers). It read the wall clock, which is 0 on a port
+     * without one, so every such wait stood still. */
+    return nros_platform_clock_ns() / 1000000ULL;
 }
 
 /* -------------------------------------------------------------------------

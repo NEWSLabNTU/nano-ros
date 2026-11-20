@@ -27,8 +27,9 @@ use core::sync::atomic::{AtomicPtr, Ordering};
 use crate::deadline::{NOTHING_PENDING_US, deadline_source_ctx, next_deadline_us};
 
 unsafe extern "C" {
-    /// The platform wall clock, nanoseconds — the one the bridge polls with.
-    fn nros_platform_time_now_ns() -> u64;
+    /// The platform monotonic clock, nanoseconds — the one the bridge polls
+    /// with, and the one a board's sleep primitive compares `deadline_ns` to.
+    fn nros_platform_clock_ns() -> u64;
 }
 
 /// A board's sleep primitive: return no later than `deadline_ns` (on the
@@ -83,7 +84,7 @@ pub fn idle_until_ms(deadline_ms: u64) {
     }
     // SAFETY: the platform clock ABI, resolved for every image that links this
     // crate (the bridge polls with it).
-    let now_ns = unsafe { nros_platform_time_now_ns() };
+    let now_ns = unsafe { nros_platform_clock_ns() };
     // SAFETY: the context is the static source, armed by `NetworkState::set`;
     // no `&mut` to the interface is live here, since the loop's poll returned.
     let stack_us = unsafe { next_deadline_us(deadline_source_ctx()) };

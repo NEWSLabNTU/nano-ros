@@ -61,10 +61,10 @@ use smoltcp::{
 };
 
 unsafe extern "C" {
-    /// The canonical platform wall clock, nanoseconds. Same symbol
+    /// The canonical platform MONOTONIC clock, nanoseconds. Same symbol
     /// `SmoltcpBridge::poll` times its `iface.poll` with, so the deadline this
     /// module reports and the poll it is a deadline for share one clock.
-    fn nros_platform_time_now_ns() -> u64;
+    fn nros_platform_clock_ns() -> u64;
 }
 
 /// What a source contributes when it has nothing to ask for.
@@ -205,7 +205,7 @@ pub unsafe extern "C" fn next_deadline_us(ctx: *mut c_void) -> u64 {
     let source = unsafe { &*(ctx as *const SmoltcpDeadlineSource) };
     // SAFETY: the extern clock is the platform ABI's, resolved for every
     // image that links this crate.
-    let now_ns = unsafe { nros_platform_time_now_ns() };
+    let now_ns = unsafe { nros_platform_clock_ns() };
     // SAFETY: `arm`'s contract, upheld by `NetworkState::set`.
     unsafe { source.next_deadline_us_at(now_ns) }
 }
