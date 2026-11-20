@@ -6504,8 +6504,12 @@ fn deploy_names_target(tokens: &[String], board: &str, platform: &str) -> bool {
 /// interface packages out) or a Zephyr module (`zephyr/module.yml`). Message
 /// and other external names are not workspace packages and are skipped.
 ///
-/// Order: the launch-named packages in plan order, then the dependencies in the
-/// workspace's topological order. The west application sorts what it emits.
+/// Order: BUILD order — every package after the workspace packages it reaches
+/// through `<depend>`, ties broken by name (`provider_scan::topological_order`,
+/// the order `nros dev ws order` gives the cmake road). The west application
+/// adds its subdirs in this order, so a package whose standalone fallback
+/// `add_subdirectory()`s a dependency finds it already added (issue 2756). A
+/// cycle among the closure's packages is an error naming them.
 fn launch_closure(
     root: &std::path::Path,
     plan: &crate::codegen::entry::Plan,
@@ -6565,6 +6569,24 @@ fn package_closure<'a>(
             nodes.push((pkg.name.clone(), pkg.dir.clone()));
         }
     }
+    // Build order over the whole closure (launched + reached, interface
+    // packages included so an edge through one still orders its two ends),
+    // then filtered to what is emitted. A launched name with no package.xml
+    // (the `src/<pkg>` fallback) has no edges and keeps its place at the end.
+    let closure: Vec<cargo_nano_ros::provider_scan::WorkspacePackage> = found
+        .packages
+        .iter()
+        .filter(|p| seen.contains(&p.name) || reached.contains(p.name.as_str()))
+        .cloned()
+        .collect();
+    let order = cargo_nano_ros::provider_scan::topological_order(&closure)
+        .map_err(|cycle| format!("dependency cycle among workspace packages: {cycle}"))?;
+    let rank: std::collections::HashMap<&str, usize> = order
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.name.as_str(), i))
+        .collect();
+    nodes.sort_by_key(|(n, _)| rank.get(n.as_str()).copied().unwrap_or(usize::MAX));
     Ok(nodes)
 }
 
@@ -13927,9 +13949,8 @@ mod package_closure_tests {
         pkg(root, "unrelated_pkg", &[], &cmake);
 
         let got = package_closure(root, ["talker_pkg", "talker_pkg"]).expect("closure");
-        let mut names: Vec<&str> = got.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names[0], "talker_pkg", "launch packages first: {names:?}");
-        names.sort_unstable();
+        let names: Vec<&str> = got.iter().map(|(n, _)| n.as_str()).collect();
+        // Build order: each package after what it depends on, ties by name.
         assert_eq!(
             names,
             ["deep_pkg", "kconfig_pkg", "support_pkg", "talker_pkg"]
@@ -13937,6 +13958,44 @@ mod package_closure_tests {
         for (n, d) in &got {
             assert_eq!(d, &root.join("src").join(n));
         }
+    }
+
+    /// Issue 2756 -- the closure is in BUILD order, not name order: a launched
+    /// package sorting BEFORE its dependency by name still comes after it, and
+    /// so does one reached through an interface package that is not emitted.
+    /// Name order (`app_pkg`, `mid_pkg`, `zeta_lib`) is the wrong answer here
+    /// on purpose: it is what the west application emitted before.
+    #[test]
+    fn the_closure_is_in_dependency_order_not_name_order() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        let cmake = [("CMakeLists.txt", "")];
+        pkg(root, "app_pkg", &["mid_pkg", "iface_msgs"], &cmake);
+        pkg(root, "mid_pkg", &["zeta_lib"], &cmake);
+        pkg(
+            root,
+            "iface_msgs",
+            &["zeta_lib"],
+            &[("CMakeLists.txt", ""), ("msg/Foo.msg", "int32 a\n")],
+        );
+        pkg(root, "zeta_lib", &[], &cmake);
+
+        let got = package_closure(root, ["app_pkg"]).expect("closure");
+        let names: Vec<&str> = got.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["zeta_lib", "mid_pkg", "app_pkg"]);
+    }
+
+    /// A `<depend>` cycle inside the closure is refused, naming its packages,
+    /// rather than emitted in an order that cannot configure.
+    #[test]
+    fn a_dependency_cycle_in_the_closure_is_refused() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        let cmake = [("CMakeLists.txt", "")];
+        pkg(root, "a_pkg", &["b_pkg"], &cmake);
+        pkg(root, "b_pkg", &["a_pkg"], &cmake);
+        let err = package_closure(root, ["a_pkg"]).expect_err("a cycle");
+        assert!(err.contains("a_pkg") && err.contains("b_pkg"), "{err}");
     }
 }
 

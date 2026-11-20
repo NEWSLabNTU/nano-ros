@@ -1,7 +1,8 @@
 ---
 id: 2756
 title: "The generated Zephyr application adds an image's packages sorted by name, not in <depend> order"
-status: open
+status: resolved
+resolved_in: "fix(cli): the Zephyr application adds packages in depend order (issue 2756)"
 type: bug
 severity: medium
 area: [cli, zephyr, build]
@@ -47,3 +48,19 @@ package after the packages it depends on.
 Order the Zephyr application's subdirectories by `<depend>` (topological
 order, with names as the tie-break so the file stays stable), as the CMake
 road does.
+
+## Resolved
+
+The cause was in two places, not one. Besides the `subdirs.sort()` in
+`west_app.rs`, `package_closure` (`cmd/build.rs`) did not compute a
+dependency order either: it returned the launched packages first and their
+dependencies after, so dropping the sort alone would still have added
+`autoware_interpolation` before `autoware_universe_utils`.
+
+`package_closure` now returns build order: `provider_scan::topological_order`
+over the whole closure, ties by name, the order `nros dev ws order` gives the
+CMake road. `resolve_cmake` keeps it. A `<depend>` cycle among an image's
+packages is refused, naming them. Tests in `package_closure_tests` (a
+launched package sorting before its dependency by name; a cycle) and
+`west_app`'s subdir-order test. The island's add-once guards can go.
+
