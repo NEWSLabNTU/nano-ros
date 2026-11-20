@@ -62,6 +62,7 @@
 # Testing and Verification
 
 - [Creating Examples](./testing/creating-examples.md)
+- [The example tree's layout](./testing/example-tree-layout.md)
 - [Formal Verification](./testing/verification.md)
 - [Patched qemu-system-arm](./testing/qemu-patched-binary.md)
 - [FreeRTOS LAN9118 Debugging](./testing/freertos-lan9118-debugging.md)

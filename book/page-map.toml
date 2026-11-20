@@ -1578,6 +1578,13 @@ action = "move"
 batch = "w2"
 
 [[page]]
+book = "internals"
+path = "testing/example-tree-layout.md"
+action = "new issue-2719"
+batch = "issue-2719"
+note = "The example tree's layout: the contributor half of examples/README.md"
+
+[[page]]
 old = "internals/verification.md"
 book = "internals"
 path = "testing/verification.md"

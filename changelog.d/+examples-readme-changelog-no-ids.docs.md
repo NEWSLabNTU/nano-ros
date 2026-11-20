@@ -1,0 +1,1 @@
+The examples overview (`examples/README.md`) and the release history (`CHANGELOG.md`) state facts instead of citing internal issue, phase and design ids. The overview keeps what you copy from; why the example tree has its shape moved to the contributor book.

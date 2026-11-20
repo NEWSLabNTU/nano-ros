@@ -21,8 +21,9 @@ Subjects, all checked on every run:
   `check-book-no-just` uses (`scripts/lib/book_contributor.py`, one rule for
   both gates). HTML comments do not render and are not read;
 * the changelog fragments (`changelog.d/*.md`, which become the release
-  page) and every example README (`examples/**/README*`, what a user copies
-  from): for internal project names (`INTERNAL_NAME`), and for ids through a
+  page), the release history they render into (`CHANGELOG.md`), and every
+  example README (`examples/README.md` and `examples/**/README*`, what a user
+  copies from): for internal project names (`INTERNAL_NAME`), and for ids through a
   per-file counted ratchet in `.config/user-text-ids-ratchet.json` (issue 2719);
 * the RENDERED help: `nros --help`, `nros help --all`, and `--help` of every
   verb and nested verb, hidden ones included (clap turns `///` doc comments
@@ -2562,7 +2563,10 @@ def api_doc_hits(update: bool = False) -> list[str]:
 # issue and RFC ids are held by a per-file counted ratchet while a sweep
 # takes them to zero.
 USER_TEXT_SCOPE = "changelog fragments and example READMEs (ratchet)"
-USER_TEXT_FILE = re.compile(r"^changelog\.d/[^/]+\.md$|^examples/.+/README[^/]*$")
+# The pattern reaches as far as the rule: `examples/README.md` itself and the
+# rendered `CHANGELOG.md` went unread while `examples/.+/README` needed a
+# directory below `examples/` (issue 2719).
+USER_TEXT_FILE = re.compile(r"^changelog\.d/[^/]+\.md$|^CHANGELOG\.md$|^examples/(.+/)?README[^/]*$")
 USER_TEXT_RATCHET = ROOT / ".config" / "user-text-ids-ratchet.json"
 
 
@@ -2570,7 +2574,7 @@ def user_text_lines() -> list[tuple[str, int, str]]:
     """Every rendered line of a changelog fragment or example README: HTML
     comments and link targets do not render, so they are blanked."""
     files = subprocess.run(
-        ["git", "ls-files", "changelog.d", "examples"],
+        ["git", "ls-files", "changelog.d", "CHANGELOG.md", "examples"],
         cwd=ROOT, capture_output=True, text=True, check=True,
     ).stdout.split()
     out = []
@@ -2597,6 +2601,13 @@ def user_text_hits(update: bool = False) -> list[str]:
 
 
 def self_test() -> None:
+    # The user-text scope reaches every file its rule names, the top-level
+    # ones included, and nothing beside them.
+    for rel in ["changelog.d/+x.fix.md", "CHANGELOG.md", "examples/README.md",
+                "examples/linux/rust/talker/README.md"]:
+        assert USER_TEXT_FILE.match(rel), f"self-test: user-text scope misses {rel}"
+    for rel in ["changelog.d/sub/x.md", "docs/CHANGELOG.md", "examples/linux/rust/talker/src/x.md"]:
+        assert not USER_TEXT_FILE.match(rel), f"self-test: user-text scope reads {rel}"
     # The per-file ratchet: a rise fails, a fall asks to be written back, an
     # equal count passes, and a file the ratchet does not list is held at 0.
     with tempfile.TemporaryDirectory() as tmp:
