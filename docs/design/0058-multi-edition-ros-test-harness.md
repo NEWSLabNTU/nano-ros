@@ -136,11 +136,12 @@ just ros_editions image E                     # once, cached
 - The docker lanes are **gated**: excluded from default `just ci` (they need
   docker + a slow image build); a `just ros_editions ci <distro>` composite runs
   them for internal/CI use. `test-all` deselects them with
-  `not binary(~ros_editions)` (`justfile:2851-2854`). No workflow runs that
-  composite today (reviewed 2026-11-13). Ruled 2026-11-14 (phase-555 C10): a
-  Humble+Jazzy lane is added, Iron is not claimed, and Jazzy is listed as
-  codegen-checked until that lane is green. The lane is
-  [issue 2558](../issues/2558-ros-editions-humble-jazzy-lane.md).
+  `not binary(~ros_editions)` (`justfile:2851-2854`). Ruled 2026-11-14
+  (phase-555 C10): a Humble+Jazzy lane is added, Iron is not claimed, and
+  Jazzy is listed as codegen-checked until that lane is green. The lane is
+  `weekly.yml` job `ros-editions`, a humble/jazzy matrix on a hosted runner,
+  weekly and on dispatch; its first run was green, so Jazzy is Supported
+  ([issue 2558](../issues/archived/2558-ros-editions-humble-jazzy-lane.md)).
 
 ## Alternatives considered
 
