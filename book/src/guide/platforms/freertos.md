@@ -66,7 +66,7 @@ router first. An image that should wait for a router started later, as on a
 bench where the board powers up first, sets a knob:
 
 ```toml
-[image.freertos.knobs.zenoh.limits]
+[image.freertos.knobs.zenoh]
 connect_forever = true        # or connect_timeout_ms = 30000 for a bounded wait
 ```
 

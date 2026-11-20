@@ -9,9 +9,15 @@
 owner = "xrce"
 
 [[knob]]
-key = "xrce.buffer_size"
+key = "xrce.buffer_bytes"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:xrce.buffer_size" },
+    { spelling = "env:NROS_XRCE_BUFFER_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_XRCE_BUFFER_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_XRCE_BUFFER_SIZE" },
+]
 type = "int"
 prompt = "Per-slot static buffer size"
 kconfig_if = "NROS_RMW_XRCE"
@@ -34,9 +40,13 @@ when only one of them needs the room.
 # sizing descriptor on every road, so neither has a Kconfig symbol; the image's
 # `[image.<id>.knobs.xrce]` rung states one where a person must.
 [[knob]]
-key = "xrce.builtin_service_request_buffer_size"
+key = "xrce.builtin_service_request_buffer_bytes"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:xrce.builtin_service_request_buffer_size" },
+    { spelling = "env:NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE" },
+]
 
 [[knob]]
 key = "xrce.builtin_service_servers"
@@ -140,9 +150,15 @@ image, allocated from the Zephyr heap in a single request.
 '''
 
 [[knob]]
-key = "xrce.service_reply_buffer_size"
+key = "xrce.service_reply_buffer_bytes"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:xrce.service_reply_buffer_size" },
+    { spelling = "env:NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_XRCE_SERVICE_REPLY_BUFFER_SIZE" },
+]
 type = "int"
 prompt = "Service-client reply slot size"
 kconfig_if = "NROS_RMW_XRCE"
@@ -162,9 +178,15 @@ says which. Stating a number wins.
 '''
 
 [[knob]]
-key = "xrce.service_request_buffer_size"
+key = "xrce.service_request_buffer_bytes"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:xrce.service_request_buffer_size" },
+    { spelling = "env:NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_XRCE_SERVICE_REQUEST_BUFFER_SIZE" },
+]
 type = "int"
 prompt = "Service-server request ring entry size"
 kconfig_if = "NROS_RMW_XRCE"
@@ -217,9 +239,15 @@ started working. Raise or lower deliberately, not as a side effect.
 '''
 
 [[knob]]
-key = "xrce.subscriber_buffer_size"
+key = "xrce.subscriber_buffer_bytes"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:xrce.subscriber_buffer_size" },
+    { spelling = "env:NROS_XRCE_SUBSCRIBER_BUFFER_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_XRCE_SUBSCRIBER_BUFFER_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_XRCE_SUBSCRIBER_BUFFER_SIZE" },
+]
 type = "int"
 prompt = "Subscriber ring entry size"
 kconfig_if = "NROS_RMW_XRCE"

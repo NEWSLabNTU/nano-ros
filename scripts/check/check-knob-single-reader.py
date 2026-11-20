@@ -74,13 +74,13 @@ REPO = Path(__file__).resolve().parents[2]
 # Now a knob that reaches the ladder with no owner here FAILS, so the second
 # half of migrating a knob cannot be skipped, only done or deliberately
 # excused.
-OWNERS: dict[str, str] = {
+OWNERS: dict[str, str | tuple[str, ...]] = {
     "NROS_EXECUTOR_MAX_CBS": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_MAX_SC": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_MAX_NODES": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_ACTION_CLIENTS": "packages/core/nros-node/build.rs",
-    "NROS_EXECUTOR_ARENA_SIZE": "packages/core/nros-node/build.rs",
+    "NROS_EXECUTOR_ARENA_BYTES": "packages/core/nros-node/build.rs",
     # phase-448 W5 / issue 1145. `nros-node` OWNS it: it sizes `EXECUTOR_BACKING`
     # from it and carries the Kconfig rung this knob also has. The ThreadX byte
     # pool has to subtract exactly `8 *` the same number, and does NOT parse the
@@ -89,43 +89,50 @@ OWNERS: dict[str, str] = {
     # EXEMPT below as "the resolver names every knob; that is the map, not a
     # second reader". Two readers of one rung cannot disagree; two env-parsing
     # sites can, which is this gate's whole subject.
-    "NROS_EXECUTOR_BACKING_U64S": "packages/core/nros-node/build.rs",
+    "NROS_EXECUTOR_BACKING_BYTES": "packages/core/nros-node/build.rs",
     # Classed `derived` by the census (phase-403 makes it per-type) but still
     # ON the ladder as the fallback for a type with no declared bound, so it
     # keeps a single owner. Listed here deliberately: it is checked, and the
     # membership check below skips it because the census does not call it
     # `ladder`.
-    "NROS_SUBSCRIPTION_BUFFER_SIZE": "packages/core/nros-node/build.rs",
-    "NROS_PARAM_SERVICE_BUFFER_SIZE": "packages/core/nros-node/build.rs",
-    # The memory tenant (phase-400 W6). The stack is read inside the crate that
-    # owns the ladder; the heap by the board crate that sizes `ucHeap`.
-    "NROS_FREERTOS_APP_STACK_KB": "packages/boards/nros-board-common/src/freertos_build.rs",
-    # issue 2400 W5b — the ThreadX front-end of the same rung, read by the
-    # riscv64 board's build helper.
-    "NROS_THREADX_APP_STACK_KB": "packages/boards/nros-board-common/src/threadx_qemu_riscv64_build.rs",
+    "NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES": "packages/core/nros-node/build.rs",
+    "NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES": "packages/core/nros-node/build.rs",
+    # The memory tenant (phase-400 W6). ONE knob per fact on every platform
+    # since phase-581 W5 (RFC-0140 Appendix A.1, reason F), read once PER
+    # PLATFORM, by the build that writes that RTOS's configuration and converts
+    # the bytes to its unit there: the FreeRTOS stack by the crate that owns the
+    # ladder, the ThreadX one by the riscv64 board's build helper (issue 2400
+    # W5b). A tuple names one owner per platform; each still has one reader.
+    "NROS_MEMORY_APP_STACK_BYTES": (
+        "packages/boards/nros-board-common/src/freertos_build.rs",
+        "packages/boards/nros-board-common/src/threadx_qemu_riscv64_build.rs",
+    ),
     # Issue 2624 -- the ThreadX byte pool (the `heap_bytes` rung on ThreadX):
     # every cargo-road compile of `threadx_hooks.c` sizes it through
     # `threadx_sources::define_byte_pool`.
-    "NROS_THREADX_BYTE_POOL_KB": "packages/boards/nros-board-common/src/threadx_sources.rs",
-    # The Zephyr heap joined the memory tenant once `nros-platform` could reach
-    # the ladder — it could not while the reader lived in `nros-board-common`,
-    # which depends on `nros-platform`.
-    "NROS_ZEPHYR_HEAP_SIZE": "packages/platform/nros-platform/build.rs",
-    "NROS_FREERTOS_HEAP_KB": "packages/boards/nros-board-freertos/build.rs",
+    "NROS_THREADX_BYTE_POOL_BYTES": "packages/boards/nros-board-common/src/threadx_sources.rs",
+    # The heap, per platform: the Zephyr heap joined the memory tenant once
+    # `nros-platform` could reach the ladder — it could not while the reader
+    # lived in `nros-board-common`, which depends on `nros-platform` — and the
+    # FreeRTOS heap is read by the board crate that sizes `ucHeap`.
+    "NROS_MEMORY_HEAP_BYTES": (
+        "packages/platform/nros-platform/build.rs",
+        "packages/boards/nros-board-freertos/build.rs",
+    ),
     # The transport and zenoh-tx tenants resolve inside the ladder itself, so
     # the resolver IS the owner. `nros-zpico-build` re-read the tx trio for its
     # no-platform case until W8 replaced that with `tx_env_only`.
     # The parameter tenant (phase-400 W6).
     "NROS_MAX_PARAMETERS": "packages/core/nros-params/build.rs",
-    "NROS_MAX_PARAM_NAME_LEN": "packages/core/nros-params/build.rs",
-    "NROS_MAX_STRING_VALUE_LEN": "packages/core/nros-params/build.rs",
+    "NROS_PARAMS_MAX_NAME_BYTES": "packages/core/nros-params/build.rs",
+    "NROS_PARAMS_MAX_STRING_VALUE_BYTES": "packages/core/nros-params/build.rs",
     "NROS_MAX_ARRAY_LEN": "packages/core/nros-params/build.rs",
     "NROS_MAX_STRING_ARRAY_LEN": "packages/core/nros-params/build.rs",
-    "NROS_MAX_BYTE_ARRAY_LEN": "packages/core/nros-params/build.rs",
-    "NROS_MAX_PARAM_DESCRIPTION_LEN": "packages/core/nros-params/build.rs",
+    "NROS_PARAMS_MAX_BYTE_ARRAY_BYTES": "packages/core/nros-params/build.rs",
+    "NROS_PARAMS_MAX_DESCRIPTION_BYTES": "packages/core/nros-params/build.rs",
     # phase-417 W4.a -- the descriptor's OTHER free text. Its own capacity,
     # default 0, so no image pays for a field it never sets.
-    "NROS_MAX_PARAM_CONSTRAINTS_LEN": "packages/core/nros-params/build.rs",
+    "NROS_PARAMS_MAX_CONSTRAINTS_BYTES": "packages/core/nros-params/build.rs",
     "NROS_PARAM_EVENTS_DEPTH": "packages/core/nros-params/build.rs",
     # phase-479 W5 (RFC-0102 D5) -- the logging tenant. The deprecated
     # `dynamic-loggers-<N>` features are read in the SAME script, never a
@@ -134,7 +141,7 @@ OWNERS: dict[str, str] = {
     # issue 1037 -- the rest of the logging tenant, same script, same rule for
     # their deprecated feature families.
     "NROS_LOG_MAX_LEVEL": "packages/core/nros-log/build.rs",
-    "NROS_LOG_BUFFER_SIZE": "packages/core/nros-log/build.rs",
+    "NROS_LOG_BUFFER_BYTES": "packages/core/nros-log/build.rs",
     "NROS_LOG_EARLY_RECORDS": "packages/core/nros-log/build.rs",
     "NROS_LOG_ROSOUT_RECORDS": "packages/core/nros-log/build.rs",
     # The RMW static-pool tenant (phase-400 W6). `NROS_RMW_SUBSCRIBER_SLOTS`
@@ -152,7 +159,7 @@ OWNERS: dict[str, str] = {
     # the LEAF crate; it cannot see `nros-board-common` without a cycle.
     "NROS_SMOLTCP_MAX_SOCKETS": "packages/drivers/net/nros-smoltcp/build.rs",
     "NROS_SMOLTCP_MAX_UDP_SOCKETS": "packages/drivers/net/nros-smoltcp/build.rs",
-    "NROS_SMOLTCP_BUFFER_SIZE": "packages/drivers/net/nros-smoltcp/build.rs",
+    "NROS_NET_BUFFER_BYTES": "packages/drivers/net/nros-smoltcp/build.rs",
     "NROS_SMOLTCP_CONNECT_TIMEOUT_MS": "packages/drivers/net/nros-smoltcp/build.rs",
     "NROS_SMOLTCP_SOCKET_TIMEOUT_MS": "packages/drivers/net/nros-smoltcp/build.rs",
     # The component-runtime tenant (phase-400 W6). phase-391 emits the consts
@@ -167,10 +174,10 @@ OWNERS: dict[str, str] = {
     # in raw FreeRTOS units, so a rung would be a THIRD path to one number.
     # Keyed by CANONICAL spelling (phase-484 W5a): a row stands for every
     # spelling the knob registry gives it, and `readers` searches all of them.
-    "NROS_ZENOH_BATCH_UNICAST_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
-    "NROS_ZENOH_BATCH_MULTICAST_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
-    "NROS_ZENOH_FRAG_MAX_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
-    "NROS_ZENOH_GET_REPLY_BUF_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_BATCH_UNICAST_BYTES": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_BATCH_MULTICAST_BYTES": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_FRAG_MAX_BYTES": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_GET_REPLY_BUFFER_BYTES": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     "NROS_ZENOH_GET_POLL_INTERVAL_MS": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     "NROS_ZENOH_RX_TASK_BUDGET_FRAMES": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     "NROS_ZENOH_RX_TASK_BUDGET_REST_US": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
@@ -181,15 +188,19 @@ OWNERS: dict[str, str] = {
     # issue 2207 — the client connect budget, one resolver for both knobs.
     "NROS_ZENOH_CONNECT_TIMEOUT_MS": "packages/tooling/nros-platform-config/src/platform_config.rs",
     "NROS_ZENOH_CONNECT_FOREVER": "packages/tooling/nros-platform-config/src/platform_config.rs",
-    "NROS_KEYEXPR_STRING_SIZE": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
+    "NROS_ZENOH_KEYEXPR_STRING_BYTES": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
     "NROS_ZENOH_SUBSCRIBER_RING_DEPTH": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
     "NROS_XRCE_CUSTOM_TRANSPORT_MTU": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
     "NROS_XRCE_STREAM_HISTORY": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
-    "NROS_LET_BUFFER_SIZE": "packages/tooling/nros-build-helpers/src/c.rs",
     "NROS_ZENOH_TX_BATCH": "packages/tooling/nros-platform-config/src/platform_config.rs",
     "NROS_ZENOH_TX_SPLIT_LOCK": "packages/tooling/nros-platform-config/src/platform_config.rs",
     "NROS_ZENOH_TX_BATCH_FLUSH_MS": "packages/tooling/nros-platform-config/src/platform_config.rs",
 }
+
+
+def owner_files(owner: str | tuple[str, ...]) -> tuple[str, ...]:
+    """An OWNERS value as a tuple: one file, or one per platform (phase-581 W5)."""
+    return (owner,) if isinstance(owner, str) else owner
 
 
 def census_class(classes: tuple[str, ...]) -> set[str]:
@@ -236,7 +247,7 @@ def registry_spellings() -> dict[str, list[str]]:
     """canonical env name -> every spelling, from the knob registry.
 
     phase-484 W5a. A knob read under a deprecated spelling is still the same
-    knob: `ZPICO_FRAG_MAX_SIZE` and `NROS_ZENOH_FRAG_MAX_SIZE` are one row, so a
+    knob: `ZPICO_FRAG_MAX_SIZE` and `NROS_ZENOH_FRAG_MAX_BYTES` are one row, so a
     second reader using the OLD literal is still a second reader.
     """
     import sys
@@ -1038,7 +1049,7 @@ def main() -> int:
     # rows pointed at `nros-board-common/src/platform_config.rs` for weeks
     # after `b05096bfb0` moved the resolver to `nros-platform-config`.
     dangling = sorted(
-        {(k, v) for k, v in OWNERS.items() if v not in tracked_rs}
+        {(k, v) for k, vs in OWNERS.items() for v in owner_files(vs) if v not in tracked_rs}
         | {("(exempt)", e) for e in EXEMPT if e not in tracked_rs}
     )
     if dangling:
@@ -1084,7 +1095,7 @@ def main() -> int:
 
     failures = []
     for knob, owner in sorted(MIGRATED.items()):
-        extra = sorted(readers[knob] - {owner})
+        extra = sorted(readers[knob] - set(owner_files(owner)))
         if extra:
             failures.append(
                 f"  {knob}: migrated, owner is {owner}, but also read by:\n"

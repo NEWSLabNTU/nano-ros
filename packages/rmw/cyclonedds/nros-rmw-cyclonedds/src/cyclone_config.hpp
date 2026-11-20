@@ -58,7 +58,7 @@
 // on its desktop defaults: a 1 MiB `Sizing/ReceiveBufferSize`, per-socket
 // receive threads, and — because no domain was composed — a
 // `CONFIG_NROS_CYCLONE_CONFIG_XML` that reached nothing. Since issue 1633 ddsrt
-// allocates from the nros heap (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`, 1 MiB with
+// allocates from the nros heap (`CONFIG_NROS_MEMORY_HEAP_BYTES`, 1 MiB with
 // Cyclone), so the receive buffer alone (1,048,576 + the 48-byte ~~`nn_rbuf`~~
 // header = the measured 1,048,624-byte request) no longer fit, and the FVP
 // image aborted in `dds_create_participant`. Being a simulator is not what

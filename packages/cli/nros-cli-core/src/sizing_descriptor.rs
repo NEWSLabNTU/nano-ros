@@ -1650,7 +1650,7 @@ fn param_facts(inputs: &DescriptorInputs<'_>) -> Params {
     p
 }
 
-/// Issue 2650 -- the smallest `NROS_MAX_PARAM_DESCRIPTION_LEN` a watched image
+/// Issue 2650 -- the smallest `NROS_PARAMS_MAX_DESCRIPTION_BYTES` a watched image
 /// is given, when its code sets no description at all. Never 0 (the ruling):
 /// a description that reaches the store by a route the probe could not watch
 /// still keeps its first bytes, and the store logs the truncation.
@@ -1964,7 +1964,7 @@ fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
 /// endpoint nobody declared, has to fit too.
 ///
 /// The rule is [`crate::leaf_take_buffer::derive`]'s and is CALLED, not
-/// restated: that is the cargo leaf's `NROS_SUBSCRIPTION_BUFFER_SIZE`, and
+/// restated: that is the cargo leaf's `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`, and
 /// `cmake/NanoRosMessageBounds.cmake`'s `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE`
 /// is the same maximum over the same registered set. A third spelling is issue
 /// 1025's shape. Independent of the inventory, because the closure is a

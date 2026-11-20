@@ -6,7 +6,7 @@ On Zephyr the zenoh tx knobs feed two lanes:
 
   * `zephyr/Kconfig` defaults, forwarded to the C lane by
     `zephyr/cmake/nros_rmw_zenoh.cmake` as `zephyr_compile_definitions(...)`;
-  * `nros-platform-zephyr/nros-platform.toml`'s `[knobs.zenoh.tx]`, which the
+  * `nros-platform-zephyr/nros-platform.toml`'s `[knobs.zenoh] tx_*`, which the
     RFC-0049 ladder resolves for the Rust lane.
 
 THE DIRECTION IS DECLARED: the TOML is the authority, the Kconfig `default`
@@ -74,10 +74,12 @@ PLATFORM = _find_platform(ROOT, "zephyr")
 # platform TOML key -> Kconfig symbol. Both halves of each row are read below;
 # a row whose Kconfig symbol is absent is a failure, not a skip, because a
 # renamed symbol is exactly the drift this exists to catch.
+# The tx keys of the platform's `[knobs.zenoh]` (`[knobs.zenoh.tx]` until
+# phase-581 W5 flattened it, RFC-0140 D3 N1).
 PAIRS = {
-    "batch": "NROS_ZENOH_TX_BATCH",
-    "split_lock": "NROS_ZENOH_TX_SPLIT_LOCK",
-    "flush_ms": "NROS_ZENOH_TX_BATCH_FLUSH_MS",
+    "tx_batch": "NROS_ZENOH_TX_BATCH",
+    "tx_split_lock": "NROS_ZENOH_TX_SPLIT_LOCK",
+    "tx_batch_flush_ms": "NROS_ZENOH_TX_BATCH_FLUSH_MS",
 }
 
 
@@ -193,12 +195,13 @@ def main():
     with open(PLATFORM, "rb") as fh:
         toml_doc = tomllib.load(fh)
 
-    tx = toml_doc.get("knobs", {}).get("zenoh", {}).get("tx")
+    zenoh = toml_doc.get("knobs", {}).get("zenoh", {})
+    tx = {k: v for k, v in zenoh.items() if k.startswith("tx_")}
     if not tx:
         # Deleting the table is a legitimate way to end the duplication — but it
         # has to be deliberate, so say so rather than passing silently.
         print(
-            "zephyr knob agreement: OK (no [knobs.zenoh.tx] in the platform "
+            "zephyr knob agreement: OK (no [knobs.zenoh] tx_* in the platform "
             "TOML — Kconfig is the sole source)"
         )
         return 0
@@ -217,7 +220,7 @@ def main():
         got = kconfig_default(kconfig, symbol)
         if got is None:
             problems.append(
-                f"the zephyr platform descriptor sets [knobs.zenoh.tx].{key} "
+                f"the zephyr platform descriptor sets [knobs.zenoh] {key} "
                 f"but zephyr/Kconfig has no `config {symbol}` with a default — "
                 f"renamed or removed?"
             )
@@ -231,7 +234,7 @@ def main():
                     break
         elif got != want:
             problems.append(
-                f"[knobs.zenoh.tx].{key} = {tx[key]!r} (→ {want}) but "
+                f"[knobs.zenoh] {key} = {tx[key]!r} (→ {want}) but "
                 f"zephyr/Kconfig {symbol} defaults to {got}. The TOML is the "
                 f"authority and the Kconfig default its mirror, so re-render "
                 f"it: `python3 {os.path.basename(__file__)} --write`"
@@ -242,7 +245,7 @@ def main():
     for key in tx:
         if key not in PAIRS:
             problems.append(
-                f"[knobs.zenoh.tx].{key} has no Kconfig counterpart in PAIRS "
+                f"[knobs.zenoh] {key} has no Kconfig counterpart in PAIRS "
                 f"({os.path.basename(__file__)}) — add one, or say why the knob "
                 f"has no Zephyr Kconfig"
             )

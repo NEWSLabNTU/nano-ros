@@ -113,7 +113,6 @@ priority = 10
 # the other side must SAY so with `above = "transport"` on the sched task.
 priority = 98
 
-
 # Issue 0951 — the implicit machine this system runs on. A host says WHERE a
 # node runs; what it is built as comes from `[image.*]`. Unscoped and with no
 # `nodes`, so it governs every launch file and every node — which is what the
@@ -155,7 +154,6 @@ panic = "platform"
 # is the image's (RFC-0098 D10), rendered into Kconfig by the module.
 [image.zephyr_smp.knobs.zenoh]
 socket_timeout_ms = 5
-
 # Issue 2384 -- the test harness boots this image on QEMU's user network
 # (slirp), not the TAP Zephyr's own `west build -t run` uses, and on a loaded
 # host slirp drops frames toward the guest during its first seconds. With the
@@ -164,5 +162,5 @@ socket_timeout_ms = 5
 # rest of the cell (measured: 6 of 12 failures under `taskset -c 0-3`). A
 # bounded budget lets zenoh-pico retry the transport failure (100 ms doubling to
 # 1 s) until the handshake gets through, and still fails if no router is there.
-[image.zephyr_smp.knobs.zenoh.limits]
 connect_timeout_ms = 10000
+

@@ -114,15 +114,11 @@ fn generate_config(
     let _ = watch_param_store_shape();
 
     // --- C API knobs (nros-c only, not shared with nros-node) ---
-    // phase-400 W6 — the `[knobs.runtime]` rungs for the LET buffer.
+    // phase-581 W5 -- `NROS_LET_BUFFER_SIZE` sized a constant nothing read
+    // (phase-581 W0), so the knob is retired with no replacement; a set one is
+    // refused here, where it used to be read, naming why.
+    nros_zephyr_build::refuse_retired_knobs();
     let rungs = nros_platform_config::platform_config::BuildRungs::from_build_env();
-    let let_buffer_size = nros_zephyr_build::knob("NROS_LET_BUFFER_SIZE")
-        .rung(
-            rungs
-                .as_ref()
-                .and_then(|r| r.runtime_rungs().let_buffer_size),
-        )
-        .resolve(512);
     // Phase 192.4 — default service-client RPC timeout, shared with the
     // zenoh backend's Rust const. issue 2007 — both resolve it through
     // `resolve_service_timeout_ms`, so the C define and the Rust const take
@@ -130,7 +126,7 @@ fn generate_config(
     let service_timeout_ms = nros_platform_config::platform_config::resolve_service_timeout_ms(
         &rungs
             .as_ref()
-            .map(|r| r.zenoh_limit_rungs())
+            .map(|r| r.service_rungs())
             .unwrap_or_default(),
     );
 
@@ -221,7 +217,6 @@ fn generate_config(
     // `size_of`, so a wrong number is a build error rather than a short buffer.
     let contents = read_template(manifest_dir, "nros_c_config.rs.template")
         .replace("@NROS_EXECUTOR_MAX_HANDLES@", &max_cbs.to_string())
-        .replace("@LET_BUFFER_SIZE@", &let_buffer_size.to_string())
         .replace(
             "@SERVICE_DEFAULT_TIMEOUT_MS@",
             &service_timeout_ms.to_string(),

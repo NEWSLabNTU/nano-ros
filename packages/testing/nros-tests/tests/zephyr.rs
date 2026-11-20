@@ -351,7 +351,7 @@ fn heap_verdicts(procs: [(&str, &mut ZephyrProcess); 2]) -> Vec<(String, Result<
 
 /// Every image in the cell kept the headroom `read-boot-report.py
 /// --heap-headroom` requires over its MEASURED platform-heap peak, or the cell
-/// fails naming `CONFIG_NROS_ZEPHYR_HEAP_SIZE` and the value to raise it to.
+/// fails naming `CONFIG_NROS_MEMORY_HEAP_BYTES` and the value to raise it to.
 fn assert_heap_verdicts(cell: &Cell, verdicts: Vec<(String, Result<String, String>)>) {
     let mut refused = Vec::new();
     for (role, v) in verdicts {

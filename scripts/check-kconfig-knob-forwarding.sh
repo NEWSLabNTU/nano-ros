@@ -38,7 +38,7 @@
 #
 # 2. **The pairing.** `Knob` derives `CONFIG_<env name>` and consults
 #    `KCONFIG_PAIRS` where the two vocabularies differ
-#    (`ZPICO_SUBSCRIBER_RING_DEPTH` <-> `CONFIG_NROS_SUBSCRIBER_RING_DEPTH`).
+#    (`ZPICO_SUBSCRIBER_RING_DEPTH` <-> `CONFIG_NROS_ZENOH_SUBSCRIBER_RING_DEPTH`).
 #    Which of those is right for a given knob is the PRODUCER's decision, and
 #    the producer writes it down: most `_nros_resolve_knob()` calls pass a
 #    literal `"${CONFIG_<SYM>}"`. So the pairing is HARVESTED from cmake and

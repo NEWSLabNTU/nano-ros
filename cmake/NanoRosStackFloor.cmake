@@ -404,7 +404,7 @@ function(nros_stack_floor_freertos_check _exe _stack_bytes _bringup_dir)
     nros_stack_floor_check(${_exe}
         ROOT    app_task_entry
         STACK   "${_stack_bytes}"
-        KNOB    "NROS_FREERTOS_APP_STACK_KB={kb}"
+        KNOB    "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}"
         BOARD   "${_board}"
         TARGET  "${_triple}"
         RMW     "${NROS_RMW}"

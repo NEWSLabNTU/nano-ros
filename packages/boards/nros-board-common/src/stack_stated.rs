@@ -26,7 +26,8 @@ pub struct Stated<'a> {
     /// The stack the image was built with, in bytes.
     pub bytes: u32,
     /// What a user sets to raise it; `{bytes}` / `{kb}` stand for the floor
-    /// in that knob's unit.
+    /// in that knob's unit, `{bytes_kib}` for the floor in bytes rounded up
+    /// to a whole KiB.
     pub knob: &'a str,
 }
 
@@ -83,12 +84,12 @@ mod tests {
             role: "OPEN",
             root: "~app_task_entry_",
             bytes: 131_072,
-            knob: "NROS_FREERTOS_APP_STACK_KB={kb}",
+            knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
         }]);
         assert_eq!(
             t,
             "{\"schema\":1,\"stacks\":[{\"role\":\"OPEN\",\"root\":\"~app_task_entry_\",\
-             \"bytes\":131072,\"knob\":\"NROS_FREERTOS_APP_STACK_KB={kb}\"}]}\n"
+             \"bytes\":131072,\"knob\":\"NROS_MEMORY_APP_STACK_BYTES={bytes_kib}\"}]}\n"
         );
     }
 }

@@ -83,7 +83,7 @@ fn talker_variants() -> Vec<(&'static str, &'static str, FixtureVariant)> {
         (
             "stress env",
             STRESS_LEAF,
-            FixtureVariant::plain().with_env(&[("NROS_SUBSCRIBER_BUFFER_SIZE", "8192")]),
+            FixtureVariant::plain().with_env(&[("NROS_SUBSCRIBER_BUFFER_BYTES", "8192")]),
         ),
     ]
 }

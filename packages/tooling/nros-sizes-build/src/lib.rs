@@ -2310,11 +2310,11 @@ mod tests {
         unsafe { env::remove_var("NROS_SOME_KNOB_INVENTED_BY_THIS_TEST") }
 
         // And a REAL sizing knob, to state the case that actually broke.
-        unsafe { env::set_var("NROS_EXECUTOR_ARENA_SIZE", "65536") }
+        unsafe { env::set_var("NROS_EXECUTOR_ARENA_BYTES", "65536") }
         assert_ne!(
             baseline,
             probe_key("x86_64-unknown-linux-gnu", &[]),
-            "NROS_EXECUTOR_ARENA_SIZE did not key the probe"
+            "NROS_EXECUTOR_ARENA_BYTES did not key the probe"
         );
 
         restore_knob_env(prior);

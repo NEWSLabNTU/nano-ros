@@ -1062,7 +1062,7 @@ log_header "P -- an open CLOSURE type does not poison the payload classes"
 # issue 0963, the fix case O was written against. The take buffer and the
 # payload classes answer different questions:
 #
-#   * NROS_SUBSCRIPTION_BUFFER_SIZE is one global size, aliased by
+#   * NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES is one global size, aliased by
 #     DEFAULT_TX_BUF, so a type the image only PUBLISHES must fit it -- an open
 #     type anywhere in the closure genuinely poisons it;
 #   * the payload classes size staging pools for what the image RECEIVES, which

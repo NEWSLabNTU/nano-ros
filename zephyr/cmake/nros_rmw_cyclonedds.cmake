@@ -215,7 +215,7 @@ list(FILTER _cdds_ddsc EXCLUDE REGEX "shm_monitor\\.c$")
 # picks up `heap/posix/heap.c` (libc malloc); without the switch that file was
 # live and every ddsrt allocation went to picolibc's arena
 # (`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`) while Rust and zenoh-pico in the
-# same image used the nros heap (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`): two heaps,
+# same image used the nros heap (`CONFIG_NROS_MEMORY_HEAP_BYTES`): two heaps,
 # two budgets, only one in the boot record. With the switch the posix TU
 # compiles out and `heap/nros/heap.c` routes ddsrt_{malloc,calloc,realloc,
 # free} onto `nros_platform_{alloc,realloc,dealloc}` (`platform.c`'s

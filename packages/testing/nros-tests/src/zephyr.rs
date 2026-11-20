@@ -517,7 +517,7 @@ impl ZephyrProcess {
         }
     }
 
-    /// Issue 1424 — score `CONFIG_NROS_ZEPHYR_HEAP_SIZE` against the heap peak
+    /// Issue 1424 — score `CONFIG_NROS_MEMORY_HEAP_BYTES` against the heap peak
     /// this LIVE image has measured, through the same gate a board dump goes
     /// through (`read-boot-report.py --heap-headroom`).
     ///
@@ -609,7 +609,7 @@ impl ZephyrProcess {
     }
 
     /// [`Self::heap_headroom`], fatal: panics with the decoder's verdict, which
-    /// names `CONFIG_NROS_ZEPHYR_HEAP_SIZE` and the value it should be raised to.
+    /// names `CONFIG_NROS_MEMORY_HEAP_BYTES` and the value it should be raised to.
     pub fn assert_heap_headroom(&mut self, what: &str) {
         match self.heap_headroom() {
             Ok(v) => eprintln!("[{what}] {v}"),

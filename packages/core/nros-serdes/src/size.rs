@@ -1,6 +1,6 @@
 //! A message's serialized size, computed instead of guessed.
 //!
-//! `NROS_SUBSCRIPTION_BUFFER_SIZE` defaults to 1024 bytes and is a GUESS.
+//! `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` defaults to 1024 bytes and is a GUESS.
 //! Nothing checks it against the messages an image actually subscribes to, so a
 //! sample that does not fit is dropped AFTER the transport ACKed it, and
 //! `report_dropped_take` can only say "raise the knob" because the runtime does
@@ -525,7 +525,7 @@ pub const fn buffer_fits<M: crate::schema::Message>(
 ///
 /// The VALUE behind [`bound_fits`]'s predicate. A subscription that knows its
 /// type's bound can be routed to a size class instead of forcing the GLOBAL
-/// buffer knob up: `NROS_SUBSCRIBER_BUFFER_SIZE` multiplies across
+/// buffer knob up: `NROS_SUBSCRIBER_BUFFER_BYTES` multiplies across
 /// `MAX_SUBSCRIBERS x RING_DEPTH`, so raising it from 1024 to 4096 for one
 /// 4 KiB topic costs 98,304 bytes, while the large class that topic belongs in
 /// is already reserved and empty.

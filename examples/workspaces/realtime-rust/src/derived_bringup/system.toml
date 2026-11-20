@@ -85,8 +85,8 @@ locator = "tcp/127.0.0.1:7491"
 read_priority = 100
 socket_timeout_ms = 5
 
-[image.zephyr_derived.knobs.zephyr]
-heap_size = 262144
+[image.zephyr_derived.knobs.memory]
+heap_bytes = 262144
 
 # Issue 1419 -- the HOST sibling `zephyr_derived`'s census is taken with. The
 # west road's `nros build` stage 4 checks a Rust Zephyr image's census against
