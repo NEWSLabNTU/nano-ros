@@ -41,7 +41,9 @@ pub const STATED_FILE: &str = "nros-stack-stated.json";
 /// when its board build scripts call `nros_board_common::stack_stated::emit`;
 /// until then its images are reported as not checked, and pay nothing.
 /// Bare metal states the mps2-an385 main stack (root `main`) since issue 2494.
-const STATING_PLATFORMS: &[&str] = &["freertos", "bare-metal"];
+/// NuttX states its init task's stack (root `nros_nuttx_entry`, the kernel's
+/// `CONFIG_INIT_STACKSIZE`), which the image runs on, since phase-557 W5b.
+const STATING_PLATFORMS: &[&str] = &["freertos", "bare-metal", "nuttx"];
 
 /// What [`arm`] decided for one image.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,6 +177,62 @@ fn forced_config_env(hand: &Handoff, key: &str) -> Option<String> {
     found
 }
 
+/// The linker the image's `--config` files name for `triple`
+/// (`[target.<triple>] linker`; the last file that states one wins, as cargo
+/// merges them), or `None` when they state none.
+fn config_linker(hand: &Handoff, triple: &str) -> Option<String> {
+    let mut found = None;
+    for pair in hand.args.windows(2) {
+        if pair[0] != "--config" {
+            continue;
+        }
+        let mut path = PathBuf::from(&pair[1]);
+        if path.is_relative()
+            && let Some(cwd) = &hand.cwd
+        {
+            path = cwd.join(path);
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(doc) = text.parse::<toml_edit::DocumentMut>() else {
+            continue;
+        };
+        if let Some(l) = doc
+            .get("target")
+            .and_then(|t| t.get(triple))
+            .and_then(|t| t.get("linker"))
+            .and_then(|l| l.as_str())
+        {
+            found = Some(l.to_string());
+        }
+    }
+    found
+}
+
+/// Phase-557 W5b -- the rustc flag that makes the link write its map. A C
+/// compiler driver (NuttX links through `arm-none-eabi-gcc`) passes a linker
+/// flag only behind `-Wl,` and rejects a bare `-Map=`, while a direct linker
+/// (rust-lld, `ld`) takes `-Map=` and rejects `-Wl,`.
+fn map_link_arg(linker: Option<&str>, map: &Path) -> String {
+    let driver = linker
+        .map(|l| {
+            let name = Path::new(l)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            ["gcc", "g++", "cc", "c++", "clang", "clang++"]
+                .iter()
+                .any(|d| name == *d || name.ends_with(&format!("-{d}")))
+        })
+        .unwrap_or(false);
+    if driver {
+        format!("-Clink-arg=-Wl,-Map={}", map.display())
+    } else {
+        format!("-Clink-arg=-Map={}", map.display())
+    }
+}
+
 fn merge_env(hand: &mut Handoff, key: &str, extra: &str, inherited: Option<OsString>) {
     if let Some(slot) = hand.env.iter_mut().find(|(k, _)| k == key) {
         slot.1 = joined(Some(std::mem::take(&mut slot.1)), extra);
@@ -270,7 +328,13 @@ fn plan_one(
     // replacing them, as a bare RUSTFLAGS would.
     let t = env_triple(&triple);
     let rf = format!("CARGO_TARGET_{t}_RUSTFLAGS");
-    let map = format!("-Csave-temps -Clink-arg=-Map={}", step.map().display());
+    let linker = env(&format!("CARGO_TARGET_{t}_LINKER"))
+        .map(|v| v.to_string_lossy().into_owned())
+        .or_else(|| config_linker(hand, &triple));
+    let map = format!(
+        "-Csave-temps {}",
+        map_link_arg(linker.as_deref(), &step.map())
+    );
     let inherited = env(&rf);
     merge_env(hand, &rf, &map, inherited);
     // cc-rs reads the FIRST of CFLAGS_<triple>, CFLAGS_<t_>, TARGET_CFLAGS,
@@ -539,7 +603,7 @@ mod tests {
             run_tables: Default::default(),
             package_depends: None,
         };
-        let mut v = vec![image("bare-metal"), image("threadx")];
+        let mut v = vec![image("bare-metal"), image("threadx"), image("nuttx")];
         arm(&mut v, Some(&root), None, &|_| None);
         let _ = std::fs::remove_dir_all(&root);
         assert!(
@@ -552,6 +616,40 @@ mod tests {
             "{:?}",
             v[1].stack_floor
         );
+        // phase-557 W5b -- NuttX states its init task's stack.
+        assert!(
+            matches!(v[2].stack_floor, Some(StackFloorStep::Check(_))),
+            "{:?}",
+            v[2].stack_floor
+        );
+    }
+
+    /// Phase-557 W5b -- NuttX links through a gcc driver, which rejects a
+    /// bare `-Map=`; a direct linker rejects `-Wl,`.
+    #[test]
+    fn the_map_flag_follows_the_linker_flavor() {
+        let m = Path::new("/b/image.map");
+        assert_eq!(
+            map_link_arg(Some("arm-none-eabi-gcc"), m),
+            "-Clink-arg=-Wl,-Map=/b/image.map"
+        );
+        assert_eq!(
+            map_link_arg(Some("/opt/x/bin/riscv64-unknown-elf-gcc"), m),
+            "-Clink-arg=-Wl,-Map=/b/image.map"
+        );
+        assert_eq!(
+            map_link_arg(Some("clang"), m),
+            "-Clink-arg=-Wl,-Map=/b/image.map"
+        );
+        assert_eq!(
+            map_link_arg(Some("rust-lld"), m),
+            "-Clink-arg=-Map=/b/image.map"
+        );
+        assert_eq!(
+            map_link_arg(Some("arm-none-eabi-ld"), m),
+            "-Clink-arg=-Map=/b/image.map"
+        );
+        assert_eq!(map_link_arg(None, m), "-Clink-arg=-Map=/b/image.map");
     }
 
     #[test]

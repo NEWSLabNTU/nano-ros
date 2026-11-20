@@ -336,8 +336,8 @@ variants of each unit. So the walk's flags do not thrash a shared dir.
 
 ### W5b — The other cargo-road platforms state a stack
 
-- **Status:** OPEN. Bare metal is DONE (2026-11-14, #3757); ThreadX and
-  NuttX are open.
+- **Status:** OPEN. Bare metal is DONE (2026-11-14, #3757); NuttX is DONE
+  (2026-11-21); ThreadX is open (issue 2514).
 
 On the cargo road, ThreadX, NuttX and bare metal stated no stack, so W5
 reports their images as not checked. Each joins when its board build script
@@ -356,8 +356,27 @@ calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
   - **Still not checked.** `threadx-riscv64` is not in `STATING_PLATFORMS`
     yet: the walk refuses, because the board's bundled libc objects carry no
     frame and no CFI ([issue 2514](../issues/2514-stack-floor-walk-riscv-libc-no-frames.md)).
-- **NuttX.** The sched-task stack: `NROS_NUTTX_SCHED_TASK_STACK_BYTES`, or
-  `[tasks.*.nuttx].stack_bytes`.
+- **NuttX (DONE 2026-11-21).** Not the sched-task stack this line first
+  named: NuttX starts the image as its init task (`CONFIG_INIT_ENTRYPOINT =
+  nros_nuttx_entry`), which runs board bringup and then the image's `main`, so
+  registration, `Executor::open` and the spin loop run on the INIT task's
+  stack. The board states that, as role `OPEN` rooted at `nros_nuttx_entry`,
+  sized by the linked kernel's `CONFIG_INIT_STACKSIZE`, read from its own
+  `include/nuttx/config.h` (`nuttx_export::emit_init_stack_stated`), never
+  from the board's defconfig, since a user's kernel may set its own. A sched
+  task (`[tasks.*.nuttx].stack_bytes`, else
+  `NROS_NUTTX_SCHED_TASK_STACK_BYTES`) is a pthread with its own stack: one
+  more role, unchecked, as on FreeRTOS. `nuttx` joined `STATING_PLATFORMS`.
+  - **The link map flag follows the linker flavor.** NuttX links through
+    `arm-none-eabi-gcc`, a compiler driver, which rejected the walk's
+    `-Clink-arg=-Map=` and failed the image's link. The flag is now
+    `-Wl,-Map=` when the image's `[target.<triple>] linker` is a gcc, cc or
+    clang driver, and `-Map=` for a direct linker, as before.
+  - **Measured** on `examples/qemu-armv7a-nuttx/rust/talker`: the image
+    links; the kernel's frames come from the image's `.debug_frame` (1,385
+    functions); the walk from `nros_nuttx_entry` is 101,488 B, a floor of
+    111,640 B, which the 512 KiB init stack holds. It is reported as
+    UNMEASURED (no observed row), never enforced.
 - **Bare metal (mps2-an385).** The board states its main stack since
   phase-553 W7 ([issue 2494](../issues/archived/2494-mps2-baremetal-stack-unbounded.md)):
   `NROS_BAREMETAL_STACK_KB`, 256 KiB by default, written to
