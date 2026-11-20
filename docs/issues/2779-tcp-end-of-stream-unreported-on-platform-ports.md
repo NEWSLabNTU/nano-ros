@@ -77,3 +77,41 @@ exactly once.
 
 Each port above reports end-of-stream and reconnects in that measurement, with
 a cell (or a `rtos_e2e` case) that asserts it on at least Zephyr native_sim.
+
+## Fixed in the tree, 2026-11-21 (still open: the per-target measurement)
+
+**The read each target compiles, checked against the manifests.** This
+corrects "What is wrong" above:
+
+| target | TCP read compiled | fixed by |
+| --- | --- | --- |
+| native Linux, NuttX | zenoh-pico `tcp_posix.c` | issue 2774 |
+| Zephyr | zenoh-pico `tcp_zephyr.c` (`ZENOH_ZEPHYR` is defined; the alias TU's network section is elided, `zenoh-sources.txt` "Zephyr's vendored platform TUs") | fork `e9675d97` |
+| FreeRTOS + lwIP | zenoh-pico `tcp_lwip.c` (the alias TU is off on FreeRTOS) | fork `e9675d97` |
+| FreeRTOS on a host stack | zenoh-pico `tcp_posix.c` | issue 2774 |
+| ThreadX (`NROS_PLATFORM_ALIASES`) | alias `_z_tcp_read` -> `nros_platform_tcp_read` (NetX Duo BSD) | the port |
+| bare metal | alias -> `nros-smoltcp`'s `PlatformTcp::read` | the bridge |
+
+So on Zephyr and FreeRTOS + lwIP, the nros port's `nros_platform_tcp_read`
+is not what zenoh reads through. Their ports return the new result anyway,
+because the ABI rule is that every port does.
+
+What changed:
+
+* `platform_net.h`: `NROS_PLATFORM_NET_SOCKET_EOF` (`SIZE_MAX - 1`), with
+  Rust `nros_platform_api::NET_SOCKET_EOF`. The alias TU static-asserts that
+  it equals `_Z_LINK_READ_EOF`.
+* Every C port returns it when a `recv` yields 0 for a non-empty buffer, and
+  its `read_exact` stops on it. ThreadX's "not readable" stays 0: that is
+  decided before any `recv`.
+* `nros-smoltcp` drains `CloseWait` and records the peer's close; `read`
+  returns EOF once the staged bytes are read.
+* zenoh-pico fork `e9675d97`: the Zephyr, lwIP, ESP32 and Windows links.
+* ThreadX's unlinked `c/platform/threadx/network.c` is deleted.
+* Gate `check-platform-tcp-eof`: every port, every Rust `PlatformTcp`, and
+  every zenoh-pico TCP link that reads with BSD `recv()`.
+
+Measured so far: the POSIX port's `c_port_posix_net` test (data, then EOF,
+from `read` and `read_exact`), and a FreeRTOS fixture build that recompiles
+`tcp_lwip.c`. The two-router re-open ("How to confirm each port") is not yet
+run on any of these targets. The closing condition is unchanged.
