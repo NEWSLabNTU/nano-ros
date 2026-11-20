@@ -127,12 +127,22 @@ Route query    for <domain>/<topic>/<type>/<hash>/@adv/pub/<zid>/<eid>/_
   attachment a live publication would have. The advanced subscriber accepts a
   reply keyexpr differing from the query's, which is what makes that legal.
 
-nano-ros serves the publisher half of this
-(`shim/publisher.rs::transient_local`) and declares no `@adv` liveliness token,
-so it answers the global query and not the per-publisher one. The subscriber
-half — querying a stock transient-local publisher on match — is not
-implemented, and `shim/qos.rs::admit` refuses `TRANSIENT_LOCAL` on a
-subscription rather than pretending.
+nano-ros does both halves. A transient-local publisher
+(`shim/publisher.rs::transient_local`) serves the cache queryable and declares
+the `@adv` liveliness token on the same key, so a subscription that existed
+before it, stock or nano-ros, learns there is a cache to query. A
+transient-local subscription (`shim/subscriber.rs`, `zpico.c`) sends the global
+query at creation, watches `<topic keyexpr>/@adv/pub/**`, and sends the query
+again on the next spin after a token appears. The watch is declared with
+history, so after a session re-open, which replays it, every publisher's cache
+is read again. Each subscription drops a sample that is not newer than the last
+one it delivered from the same publisher (GID and sequence number), so a cache
+read twice delivers nothing twice.
+
+The watch matters even between two nano-ros nodes on one router. A zenoh-pico
+publisher in a threaded build opens with its write filter closed until the
+router answers its interest, so a sample published right after the publisher
+is created reaches nobody, and only the cache query delivers it.
 
 ### 4. CDR Message Format
 

@@ -7,8 +7,16 @@
 //! * **W2** — a TRANSIENT_LOCAL subscription issues one `<key>/@adv/**`
 //!   history query, so a late joiner reads a stock latched publisher's value.
 //!   The program subscribes AFTER the value was published and prints
-//!   `CLP_RECEIVED <n>` per sample. `CLP_DURABILITY=volatile` is the negative
-//!   control: the same late join must receive nothing.
+//!   `CLP_RECEIVED <n>` per sample, and `CLP_RECEIVED_AT <n> <unix ms>` beside
+//!   it. `CLP_DURABILITY=volatile` is the negative control: the same late join
+//!   must receive nothing.
+//! * **Issue 2366** -- `CLP_ROLE=publish` makes the program a TRANSIENT_LOCAL
+//!   publisher instead: it publishes `CLP_VALUE` once, right after creating
+//!   the publisher (before the router can have answered its interest), and
+//!   `CLP_VALUE2` once more after `CLP_VALUE2_AFTER_MS`, then spins out the
+//!   window. A subscription that exists before it must still read the value
+//!   (the `@adv` token makes it query the cache), and one whose session
+//!   reopens must read a value published while it was away.
 //! * **W1** — `graph_discovery = false` compiles the graph cache and its
 //!   liveliness subscriber out. After the receive window the program asks for
 //!   the domain's node names: an image with discovery ON subscribes to the
@@ -70,6 +78,41 @@ fn main() {
     } else {
         base.transient_local()
     };
+    if std::env::var("CLP_ROLE").is_ok_and(|v| v.trim() == "publish") {
+        let value = env_u64("CLP_VALUE", 0) as i32;
+        let publisher = executor
+            .node_mut(nid)
+            .create_publisher_with_qos::<Int32>(topic, qos)
+            .expect("create publisher");
+        publisher
+            .publish(Int32 { data: value })
+            .expect("publish");
+        say(&format!("CLP_PUBLISHED {value}"));
+        // An optional second value, published once at a set time -- while the
+        // test holds the router down, for the session re-open case.
+        let second = std::env::var("CLP_VALUE2")
+            .ok()
+            .and_then(|v| v.trim().parse::<i32>().ok());
+        let second_at =
+            Instant::now() + Duration::from_millis(env_u64("CLP_VALUE2_AFTER_MS", 0));
+        let mut second = second;
+        let deadline = Instant::now() + window;
+        while Instant::now() < deadline {
+            executor.spin_once(Duration::from_millis(50));
+            if let Some(v) = second
+                && Instant::now() >= second_at
+            {
+                // The link may be down: the publish can fail, and the value
+                // must still be retained for the cache to serve it.
+                let rc = publisher.publish(Int32 { data: v });
+                say(&format!("CLP_PUBLISHED {v} ok={}", rc.is_ok()));
+                second = None;
+            }
+        }
+        say("CLP_DONE");
+        let _ = executor.close();
+        return;
+    }
     let received: Rc<RefCell<Vec<i32>>> = Rc::new(RefCell::new(Vec::new()));
     let sink = Rc::clone(&received);
     executor
@@ -79,6 +122,12 @@ fn main() {
         .typed::<Int32>()
         .build(move |msg| {
             say(&format!("CLP_RECEIVED {}", msg.data));
+            // When, on the host's wall clock, so a test can bound it below by
+            // something another process did (issue 2366).
+            let unix_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis());
+            say(&format!("CLP_RECEIVED_AT {} {unix_ms}", msg.data));
             sink.borrow_mut().push(msg.data);
         })
         .expect("create subscription");

@@ -942,9 +942,16 @@ pub(super) const TL_HISTORY_QUERY_TIMEOUT_MS: u32 = 5_000;
 /// live sample, which is what it would have had as VOLATILE. It is said at
 /// ERROR, because a latched topic that never changes again is then never read,
 /// and a late joiner that sees nothing is exactly the silence this exists to
-/// remove. Per-publisher late-joiner detection (the `@adv` liveliness token a
-/// stock subscriber also watches) is not done: a publisher that appears after
-/// this subscription delivers its first sample live.
+/// remove.
+///
+/// Issue 2366 -- the query is not sent once only. The C side also watches the
+/// publishers' `@adv` liveliness tokens under `<key>/@adv/pub/`, as a stock
+/// advanced subscriber does, and sends the query again on the next spin after
+/// one appears: a publisher that comes up after this subscription (whose first
+/// live sample its own write filter can drop before the route is known), and,
+/// because the watch is declared with history, every publisher again after a
+/// session re-open. What the subscription already read is dropped by the
+/// per-publisher dedup, so a re-read cache delivers nothing twice.
 fn query_history(context: &Context, handle: i32, key: &str, topic: &str) {
     let mut buf = [0u8; KEYEXPR_BUFFER_SIZE];
     let suffix = b"/@adv/**";
@@ -1272,8 +1279,9 @@ impl ZenohSubscriber {
             }
         };
 
-        // phase-473 W2 -- the SUBSCRIBER half of transient-local: one history
-        // query, now, on the key a stock advanced subscriber queries. Issued
+        // phase-473 W2 -- the SUBSCRIBER half of transient-local: the history
+        // query, now, on the key a stock advanced subscriber queries, and
+        // again whenever a publisher's `@adv` token appears (issue 2366). Issued
         // AFTER the subscriber is declared, so nothing published in between is
         // missed: a sample that arrives both ways is deduplicated by the shim.
         if qos.durability == nros_rmw::QoSDurabilityPolicy::TransientLocal {

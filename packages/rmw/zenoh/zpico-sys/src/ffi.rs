@@ -529,10 +529,12 @@ mod cbindgen_stubs {
         0
     }
 
-    /// The SUBSCRIBER half of transient-local durability: one history query on
+    /// The SUBSCRIBER half of transient-local durability: the history query on
     /// `keyexpr` (`**` under `<subscription keyexpr>/@adv/`) whose replies land in the
-    /// ring subscription `handle` beside its live samples. Older-or-equal
-    /// samples from the same publisher are dropped while the query is open.
+    /// ring subscription `handle` beside its live samples, sent now and again
+    /// whenever a publisher's `@adv` liveliness token appears under
+    /// `<subscription keyexpr>/@adv/pub/**`. Older-or-equal samples from a
+    /// publisher already delivered are dropped for the subscription's life.
     ///
     /// # Returns
     /// 0 once the query is sent, a negative error code otherwise.
@@ -546,14 +548,19 @@ mod cbindgen_stubs {
         0
     }
 
-    /// The pure dedup rule of a history window, over caller-owned state:
-    /// 1 admits the sample whose rmw attachment is `att` (and records it as
-    /// the newest), 0 drops it as not newer than one from the same publisher.
+    /// The pure transient-local dedup rule, over caller-owned state: `capacity`
+    /// rows of a 16-byte publisher GID (`gids`, row-major) and its newest
+    /// sequence number (`seqs`), `count` of them filled, `next` the row a new
+    /// publisher replaces once all are. 1 admits the sample whose rmw
+    /// attachment is `att` (and records it as its publisher's newest), 0 drops
+    /// it as not newer than one already delivered from that publisher.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_history_admit_apply(
-        _have: *mut bool,
-        _gid: *mut u8,
-        _seq: *mut i64,
+        _count: *mut u8,
+        _next: *mut u8,
+        _gids: *mut u8,
+        _seqs: *mut i64,
+        _capacity: u32,
         _dropped: *mut u32,
         _att: *const u8,
         _att_len: usize,
@@ -561,11 +568,28 @@ mod cbindgen_stubs {
         1
     }
 
-    /// What subscription `handle`'s history window did: cached samples that
+    /// Declare the `@adv` liveliness token of a transient-local publisher's
+    /// cache queryable `handle`, on its own keyexpr
+    /// (`<topic keyexpr>/@adv/pub/<zid>/<eid>/_`), so a subscription that existed
+    /// before the publisher learns there is a cache to query. Undeclared with
+    /// the queryable.
+    ///
+    /// # Returns
+    /// 0 once declared, a negative error code otherwise.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_queryable_declare_adv_token(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+        _keyexpr: *const c_char,
+    ) -> i32 {
+        0
+    }
+
+    /// What subscription `handle`'s history queries did: cached samples that
     /// arrived, and samples dropped as not newer than one already delivered.
     ///
     /// # Returns
-    /// 1 while the window is open, 0 once it closed, negative on a bad handle.
+    /// 1 while a query is out, 0 otherwise, negative on a bad handle.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_subscriber_history_stats(
         _session: *mut zpico_session_t,

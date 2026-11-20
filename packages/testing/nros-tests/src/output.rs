@@ -197,6 +197,10 @@ pub const RESPONSE_INFO_DONE_MARKER: &str = "RESPONSE_INFO done";
 /// (`CLP_RECEIVED <n>`).
 pub const CLP_RECEIVED_PREFIX: &str = "CLP_RECEIVED ";
 
+/// The constrained-link probe's receive time, beside each
+/// [`CLP_RECEIVED_PREFIX`] line (`CLP_RECEIVED_AT <n> <unix ms>`; issue 2366).
+pub const CLP_RECEIVED_AT_PREFIX: &str = "CLP_RECEIVED_AT ";
+
 /// issue 2163 — the probe's graph answer when graph discovery is compiled in
 /// (`CLP_GRAPH_NODES <count>`).
 pub const CLP_GRAPH_NODES_PREFIX: &str = "CLP_GRAPH_NODES ";
@@ -206,6 +210,9 @@ pub const CLP_GRAPH_UNSUPPORTED_MARKER: &str = "CLP_GRAPH_UNSUPPORTED";
 
 /// issue 2163 — what the probe prints last.
 pub const CLP_DONE_MARKER: &str = "CLP_DONE";
+
+/// The constrained-link probe's subscription exists (`CLP_READY topic=...`).
+pub const CLP_READY_MARKER: &str = "CLP_READY";
 
 /// issue 2120 — the env var that picks the `service-info-server` bin's
 /// service QoS (`default` | `best_effort`), so a stock peer can read back

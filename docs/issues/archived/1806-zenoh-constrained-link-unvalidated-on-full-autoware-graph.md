@@ -86,4 +86,4 @@ reported to the island.
 ## Not done here
 
 Per-publisher late-joiner detection, and re-issuing the history query when the
-session re-opens, are [issue 2366](../2366-transient-local-history-query-is-issued-once.md).
+session re-opens, are [issue 2366](2366-transient-local-history-query-is-issued-once.md).

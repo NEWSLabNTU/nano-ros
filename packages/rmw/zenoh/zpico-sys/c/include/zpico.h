@@ -307,11 +307,16 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * Push bytes through the C producer (unit tests).
  */
 /**
- * Transient-local, the subscriber half: one history query on `keyexpr`
- * into ring subscription `handle`. See `c/zpico/zpico.c`.
+ * Transient-local, the subscriber half: the history query on `keyexpr`
+ * into ring subscription `handle`, sent now and again whenever a
+ * publisher's `@adv` liveliness token appears. See `c/zpico/zpico.c`.
  */
 /**
- * The history window's reply and drop counts; 1 while it is open.
+ * The history queries' reply and drop counts; 1 while one is out.
+ */
+/**
+ * The `@adv` liveliness token of a transient-local publisher's cache
+ * queryable `handle`, on its own keyexpr. See `c/zpico/zpico.c`.
  */
 /**
  * `zpico_query_reply` that keeps the query open for another
@@ -736,10 +741,12 @@ int32_t zpico_ring_push_bytes(struct zpico_ring_desc_t *_desc,
                               size_t _len);
 
 /**
- * The SUBSCRIBER half of transient-local durability: one history query on
+ * The SUBSCRIBER half of transient-local durability: the history query on
  * `keyexpr` (`**` under `<subscription keyexpr>/@adv/`) whose replies land in the
- * ring subscription `handle` beside its live samples. Older-or-equal
- * samples from the same publisher are dropped while the query is open.
+ * ring subscription `handle` beside its live samples, sent now and again
+ * whenever a publisher's `@adv` liveliness token appears under
+ * `<subscription keyexpr>/@adv/pub/**`. Older-or-equal samples from a
+ * publisher already delivered are dropped for the subscription's life.
  *
  * # Returns
  * 0 once the query is sent, a negative error code otherwise.
@@ -750,23 +757,42 @@ int32_t zpico_subscriber_history_query(struct zpico_session_t *_session,
                                        uint32_t _timeout_ms);
 
 /**
- * The pure dedup rule of a history window, over caller-owned state:
- * 1 admits the sample whose rmw attachment is `att` (and records it as
- * the newest), 0 drops it as not newer than one from the same publisher.
+ * The pure transient-local dedup rule, over caller-owned state: `capacity`
+ * rows of a 16-byte publisher GID (`gids`, row-major) and its newest
+ * sequence number (`seqs`), `count` of them filled, `next` the row a new
+ * publisher replaces once all are. 1 admits the sample whose rmw
+ * attachment is `att` (and records it as its publisher's newest), 0 drops
+ * it as not newer than one already delivered from that publisher.
  */
-int32_t zpico_history_admit_apply(bool *_have,
-                                  uint8_t *_gid,
-                                  int64_t *_seq,
+int32_t zpico_history_admit_apply(uint8_t *_count,
+                                  uint8_t *_next,
+                                  uint8_t *_gids,
+                                  int64_t *_seqs,
+                                  uint32_t _capacity,
                                   uint32_t *_dropped,
                                   const uint8_t *_att,
                                   size_t _att_len);
 
 /**
- * What subscription `handle`'s history window did: cached samples that
+ * Declare the `@adv` liveliness token of a transient-local publisher's
+ * cache queryable `handle`, on its own keyexpr
+ * (`<topic keyexpr>/@adv/pub/<zid>/<eid>/_`), so a subscription that existed
+ * before the publisher learns there is a cache to query. Undeclared with
+ * the queryable.
+ *
+ * # Returns
+ * 0 once declared, a negative error code otherwise.
+ */
+int32_t zpico_queryable_declare_adv_token(struct zpico_session_t *_session,
+                                          int32_t _handle,
+                                          const char *_keyexpr);
+
+/**
+ * What subscription `handle`'s history queries did: cached samples that
  * arrived, and samples dropped as not newer than one already delivered.
  *
  * # Returns
- * 1 while the window is open, 0 once it closed, negative on a bad handle.
+ * 1 while a query is out, 0 otherwise, negative on a bad handle.
  */
 int32_t zpico_subscriber_history_stats(struct zpico_session_t *_session,
                                        int32_t _handle,
