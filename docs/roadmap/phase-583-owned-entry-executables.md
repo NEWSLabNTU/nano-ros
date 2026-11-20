@@ -1,7 +1,7 @@
 # Phase 583 — An owned entry with several executables
 
-**Status (2026-11-20). OPEN: design accepted (user ruling 2026-11-20); W0
-in progress. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
+**Status (2026-11-21). OPEN: design accepted (user ruling 2026-11-20); W0
+done (`a49a3dcf82`). Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
 - an owned entry may build several executables, chosen at run time as in
   ROS (`nros run <image> --exec <name>`, or the bringup's launch `exec`);
 - on RTOS, each executable is its own firmware, one carrier per
@@ -26,10 +26,15 @@ in the order below.
 
 ### W0 — A build root adds only its bringup's closure (issue 2754)
 
-- **Status:** OPEN
-- **Progress:** code and unit tests are in this item's PR; the fixture-row
-  acceptance below has not run yet. It is a bug, so it comes before W1
-  (user ruling 2026-11-20, option A of the design note).
+- **Status:** DONE (2026-11-21, `a49a3dcf82`)
+- **Progress:** landed as `a49a3dcf82` (a generated CMake root adds only its
+  bringup's closure). The fixture-row acceptance ran on that change's head: every
+  scope built; the cmake-driver rows passed; the two linux reds were both
+  pre-existing on main: an undersized parameter store in the
+  `workspace-probe-seeds` row (exit 250, reproduced on main) and a
+  custom-transport row that predated a zenoh-pico fix. `tests/bringup_scoped_root.rs` guards that
+  a real `nros build` never takes the unscoped fallback. It was a bug, so it
+  came before W1 (user ruling 2026-11-20, option A of the design note).
 - **Contract.** The generated CMake root for one bringup's images adds:
   - the bringup package;
   - the packages each image on that configure reaches: its launch plan's

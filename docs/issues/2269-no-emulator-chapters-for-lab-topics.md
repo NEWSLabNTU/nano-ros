@@ -35,3 +35,11 @@ Progress (2026-11-11):
   [2428](2428-workspace-lifecycle-is-one-machine-per-image.md). A workspace
   image has one lifecycle state machine, named `/nros_app`, and no component
   can see its state, so a node publishes while `unconfigured`.
+
+Progress (2026-11-21): six of the seven topics are covered. Services and
+parameters are covered by Tutorial ch6 (`tutorial/services-and-actions.md`)
+and ch7 (`tutorial/parameters-and-launch-files.md`), both probed on QEMU
+(`mps2-an385-freertos`). Publish and the ROS 2 graph were covered at filing,
+and QoS and real-time tiers by the two labs above. Only lifecycle remains,
+blocked on issue [2428](2428-workspace-lifecycle-is-one-machine-per-image.md)
+and phase-554 W6/W9.

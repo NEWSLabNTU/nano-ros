@@ -1,7 +1,9 @@
 ---
 id: 2752
 title: "`nros run` resolves no executable for an image whose `entry` names a hand-written C/C++ package"
-status: open
+status: resolved
+resolved: 2026-11-21
+resolved_in: "68aaaaebe0"
 type: bug
 severity: medium
 area: [cli, run, cmake]
@@ -51,3 +53,22 @@ Read the executable back: the owned package's binary dir is `pkg/<name>/`,
 and its image is the one executable target there (or the target named like
 the package, as `nano_ros_add_executable` writes it). Failing that, a key
 naming it on the image row.
+
+## Resolution (2026-11-21)
+
+Fixed by `68aaaaebe0` (`nros run` resolves a named owned entry's executable
+from CMake). `nros build` now asks CMake's file API for a codemodel reply
+before configuring (`builder::cmake_file_api::request_codemodel`). After the
+build, `entry_executable` reads the reply back and takes the one
+`EXECUTABLE` target whose source dir is the entry's. The run plan carries it
+as `elf`. No file name is guessed, and no `[image]` key was needed.
+
+An entry that defines no executable, or several, is refused by name: the
+several case lists its targets, because nothing says which one is the image.
+Whether an entry may hold several programs, chosen at run time as ROS does,
+is a separate design question (a draft RFC-0071 D19 amendment, for the user's
+decision).
+
+Acceptance: `tests/owned_entry_run_verb.rs` resolves the
+`linux-c-zenoh-talker` row's own executable through `nros run --dry-run`, and
+runs that plan to the talker's first publish.
