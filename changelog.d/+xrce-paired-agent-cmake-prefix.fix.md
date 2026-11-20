@@ -1,0 +1,1 @@
+The ROS-paired XRCE agent build (`scripts/xrce-agent/build.sh`) now names the ROS prefix it detected to CMake. Before, it found Fast-DDS through `AMENT_PREFIX_PATH`, but only a sourced `setup.bash` let CMake find Fast-CDR. On a host or image with `AMENT_PREFIX_PATH` set and nothing sourced, the build failed with `Could not find a package configuration file provided by "fastcdr"`.
