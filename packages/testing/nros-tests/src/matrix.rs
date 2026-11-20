@@ -878,6 +878,12 @@ const NO_DELIVERY_TEST: &str = "builds; only rmw_coordinate_truth boots it (node
 /// resolved by no test. Unlocked by a Cyclone arm in that table.
 const ENTRY_E2E_IS_ZENOH_ONLY: &str = "builds; entry_e2e's exec table has no Cyclone arm (it booted \
      the zenoh image for this cell) — phase-510 W3";
+/// Issue 2761 -- the FreeRTOS POSIX port image is built to prove it LINKS (an
+/// entry with no board entry header, on a board linked without
+/// `--gc-sections`); no consumer boots it. Unlocked by a port-template runner
+/// for this board in `port_templates_e2e`.
+const FREERTOS_POSIX_PORT_IS_A_LINK_CHECK: &str = "builds as a link check (entry includes no board \
+     entry header, no --gc-sections); no port_templates_e2e arm boots it -- issue 2761";
 /// phase-510 W5 — a `Config::Lending` cell on a backend with no loan slot.
 const NO_LOAN_SLOT: &str = "the backend's vtable has no loan slot (Cyclone, XRCE, uORB): a loan \
      is refused permanently in every build (issue 0814 option 2) — nothing to run";

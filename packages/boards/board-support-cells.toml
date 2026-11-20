@@ -1178,6 +1178,16 @@ status = 'Runtime'
 
 [[cell]]
 comment = '''
+// Issue 2761 -- the ported tutorial publisher on the POSIX simulator, a LINK
+// check: its entry includes no board entry header, and this host board links
+// without `--gc-sections`, so a runner that reaches an optional hook by a
+// plain `extern` fails to build here. Built by `build-fixtures-posix`.
+'''
+at = ["FreertosPosix", "Cpp", "Zenoh", "Port", "Example"]
+status = 'BuildOnly(FREERTOS_POSIX_PORT_IS_A_LINK_CHECK)'
+
+[[cell]]
+comment = '''
 // phase-511 B1 — the FreeRTOS C++ Cyclone workspace entry, answered by
 // `freertos_qemu` on the mps3-an536 entry (`workspace-cpp-mps3-an536-freertos`),
 // which boots under QEMU and delivers in-image. The coordinate is the
