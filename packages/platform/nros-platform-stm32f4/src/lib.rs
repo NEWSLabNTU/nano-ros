@@ -227,11 +227,12 @@ impl nros_platform_api::PlatformRandom for Stm32f4Platform {
 impl nros_platform_api::PlatformTime for Stm32f4Platform {
     #[inline]
     fn time_now_ns() -> u64 {
-        // No RTC on this board: the monotonic millisecond counter is all there
-        // is, so this reports uptime on the wall-clock symbol rather than a
-        // real Unix time — exactly what the three retired methods derived
-        // from, minus the seconds/remainder split that could tear.
-        clock::clock_ms() * 1_000_000
+        // No RTC on this board, so no wall clock: 0, which the ABI defines as
+        // "no wall clock" and every stamp reads as ROS's "unset" time. It
+        // used to return uptime, a stamp that looks real and is not; the
+        // smoltcp timers that relied on it read the monotonic clock now
+        // (issue 2760).
+        0
     }
 }
 
@@ -385,5 +386,20 @@ impl nros_platform_api::PlatformThreading for Stm32f4Platform {
         abstime: u64,
     ) -> i8 {
         Self::condvar_wait_until(cv, m, abstime)
+    }
+}
+
+/// Issue 2760: no RTC, so no wall clock, however long the board has run. The
+/// uptime counter is ADVANCED first, so a `time_now_ns` that answered uptime
+/// (as it did) reads 5 s here and fails.
+#[cfg(test)]
+mod wall_clock_tests {
+    use nros_platform_api::PlatformTime;
+
+    #[test]
+    fn the_wall_clock_reads_zero_after_uptime_advances() {
+        crate::clock::advance_clock_ms(5_000);
+        assert!(crate::clock::clock_ms() >= 5_000, "uptime advanced");
+        assert_eq!(<super::Stm32f4Platform as PlatformTime>::time_now_ns(), 0);
     }
 }
