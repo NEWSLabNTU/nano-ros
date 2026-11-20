@@ -5336,8 +5336,9 @@ linux-check:
 
 # Issue 2602 -- `just ci gate` holds one `flock` per host. Six cases against a
 # throwaway lock dir, each with a negative control: a second gate waits; kill -9
-# of the holder frees it within ~1 s; an orphaned child holds nothing (without
-# `-o` it would); a hung holder times out red; the waiter's cap is red, names
+# of the holder frees it before the holder's command ends; an orphaned child
+# holds nothing (without `-o` it would) and its gate returns while it runs
+# (issue 2763); a hung holder times out red; the waiter's cap is red, names
 # the holder and never runs; a zero wait refuses; the hang detector spares a
 # busy silent gate and kills an idle one; the wall limit scales with nproc.
 # Buildless, ~60 s.

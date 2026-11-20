@@ -25,7 +25,9 @@
 # The design (user-approved, 2026-11-15):
 #   * `flock -o -w <cap> <lock> <command>`: the `flock` process holds the lock,
 #     and `-o` closes the descriptor in the command, so an orphaned cargo or QEMU
-#     never holds it after `flock` is gone. The kernel releases a flock on any
+#     never holds it after `flock` is gone. Nor does the holder wait for one:
+#     an orphan still holding the gate's output pipe gets a bounded drain, not
+#     an unbounded wait (issue 2763). The kernel releases a flock on any
 #     death (SIGKILL, OOM, reboot), so there is no pidfile, no "file exists"
 #     test, and nothing to clean up by hand.
 #   * ONE lock per host, on a local filesystem: `$XDG_RUNTIME_DIR/nros-gate.lock`,
@@ -65,6 +67,8 @@ wait_s="${_NROS_GATE_LOCK_TEST_WAIT_S:-$((gate_s + housekeeping_s + 1800))}"
 hang_s="${_NROS_GATE_LOCK_TEST_HANG_S:-2700}"
 tick_s="${_NROS_GATE_LOCK_TEST_TICK_S:-60}"
 report_s="${_NROS_GATE_LOCK_TEST_REPORT_S:-300}"
+# How long `tee` may drain the gate's output after the gate has exited.
+drain_s=5
 limits_line() {
     echo "wall limit ${gate_s} s ($((gate_s / 60)) min, ${ncpu} cores), hang limit $((hang_s / 60)) min without output or CPU, housekeeping limit ${housekeeping_s} s outside both, waiter cap ${wait_s} s"
 }
@@ -173,6 +177,17 @@ if [ "${1:-}" = "--held" ]; then
         fi
     done
     wait "$gate_pid" || rc=$?
+    # Issue 2763: an orphan the gate left running inherited the FIFO's write
+    # end, so `tee` sees no EOF until the orphan exits, and an unbounded wait
+    # here held the host's lock for the orphan's whole life. Give `tee` a
+    # drain grace for what the gate already wrote, then stop it; anything the
+    # orphan writes later is not the gate's output.
+    drain=0
+    while kill -0 "$tee_pid" 2>/dev/null && [ "$drain" -lt "$((drain_s * 10))" ]; do
+        sleep 0.1
+        drain=$((drain + 1))
+    done
+    kill "$tee_pid" 2>/dev/null
     wait "$tee_pid" 2>/dev/null
     rm -rf "$run_dir"
     # Issue 2733: the verdict is decided (rc, hung). Housekeeping runs now,
