@@ -37,12 +37,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 2,
+        "NROS_ENTITY_MAX_QUERYABLES": 4,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 0,
         "NROS_EXECUTOR_ACTION_CLIENTS": 1,
         "NROS_EXECUTOR_MAX_CBS": 1,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 2,
-        "NROS_MAX_QUERYABLES": 4,
-        "NROS_MAX_SUBSCRIBERS": 0
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 103240,
       "target": "thumbv7em-none-eabi",
@@ -56,12 +56,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 1,
+        "NROS_ENTITY_MAX_QUERYABLES": 0,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 0,
         "NROS_EXECUTOR_ACTION_CLIENTS": 0,
         "NROS_EXECUTOR_MAX_CBS": 1,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 1,
-        "NROS_MAX_QUERYABLES": 0,
-        "NROS_MAX_SUBSCRIBERS": 0
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 66776,
       "target": "thumbv7em-none-eabi",
@@ -75,12 +75,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 4,
+        "NROS_ENTITY_MAX_QUERYABLES": 10,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 1,
         "NROS_EXECUTOR_ACTION_CLIENTS": 1,
         "NROS_EXECUTOR_MAX_CBS": 2,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 4,
-        "NROS_MAX_QUERYABLES": 10,
-        "NROS_MAX_SUBSCRIBERS": 1
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 108152,
       "target": "thumbv7m-none-eabi",
@@ -94,12 +94,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 3,
+        "NROS_ENTITY_MAX_QUERYABLES": 6,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 1,
         "NROS_EXECUTOR_ACTION_CLIENTS": 0,
         "NROS_EXECUTOR_MAX_CBS": 2,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 3,
-        "NROS_MAX_QUERYABLES": 6,
-        "NROS_MAX_SUBSCRIBERS": 1
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 72084,
       "target": "thumbv7m-none-eabi",
@@ -113,12 +113,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 3,
+        "NROS_ENTITY_MAX_QUERYABLES": 6,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 1,
         "NROS_EXECUTOR_ACTION_CLIENTS": 0,
         "NROS_EXECUTOR_MAX_CBS": 2,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 3,
-        "NROS_MAX_QUERYABLES": 6,
-        "NROS_MAX_SUBSCRIBERS": 1
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 79728,
       "target": "thumbv7m-none-eabi",
@@ -132,12 +132,12 @@
       "rmw": "zenoh",
       "role": "SNTP_RESYNC",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 3,
+        "NROS_ENTITY_MAX_QUERYABLES": 7,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 1,
         "NROS_EXECUTOR_ACTION_CLIENTS": 0,
         "NROS_EXECUTOR_MAX_CBS": 2,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 3,
-        "NROS_MAX_QUERYABLES": 7,
-        "NROS_MAX_SUBSCRIBERS": 1
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 90728,
       "target": "thumbv7m-none-eabi",
@@ -155,12 +155,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 1,
+        "NROS_ENTITY_MAX_QUERYABLES": 0,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 0,
         "NROS_EXECUTOR_ACTION_CLIENTS": 0,
         "NROS_EXECUTOR_MAX_CBS": 1,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 1,
-        "NROS_MAX_QUERYABLES": 0,
-        "NROS_MAX_SUBSCRIBERS": 0
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 72000,
       "target": "thumbv7em-none-eabi",
@@ -174,12 +174,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 3,
+        "NROS_ENTITY_MAX_QUERYABLES": 7,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 1,
         "NROS_EXECUTOR_ACTION_CLIENTS": 0,
         "NROS_EXECUTOR_MAX_CBS": 2,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 3,
-        "NROS_MAX_QUERYABLES": 7,
-        "NROS_MAX_SUBSCRIBERS": 1
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "target": "x86_64-unknown-linux-gnu",
       "unwalked": "a host image's app thread runs through the host libc, whose frames the walk does not size"

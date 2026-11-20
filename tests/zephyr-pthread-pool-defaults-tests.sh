@@ -90,10 +90,26 @@ render "$WORK/resolved.cmake"
 [ "$(pool MUTEX)" = 70 ] || fail "B: mutex default $(pool MUTEX), want 70 (11 + 31 + 24 + 4)"
 
 resolved 2 9
-printf '%s\n' '# knobs' '' 'config NROS_MAX_QUERYABLES' '    int' \
+printf '%s\n' '# knobs' '' 'config NROS_ENTITY_MAX_QUERYABLES' '    int' \
     '    depends on NROS_RMW_ZENOH' '    default 40' '' > "$WORK/kgen"
 render "$WORK/resolved.cmake" "$WORK/kgen"
 [ "$(pool COND)" = 50 ] || fail "C: cond default $(pool COND), want 50 (2 + stated 40 + 8)"
+
+# C2 -- the island's shape, in the spelling the knob renderer writes today:
+# 4 subscribers derived, `knobs.entity.max_subscribers = 6` stated, 15
+# queryables. The stated 6 must win; reading the retired `NROS_MAX_<T>` lost
+# it and sized the pool at 27 against the build's own floor of 29.
+resolved 4 15
+printf '%s\n' '# knobs' '' 'config NROS_ENTITY_MAX_SUBSCRIBERS' '    int' \
+    '    default 6' '' > "$WORK/kgen"
+render "$WORK/resolved.cmake" "$WORK/kgen"
+[ "$(pool COND)" = 29 ] || fail "C2: cond default $(pool COND), want 29 (stated 6 + 15 + 8)"
+
+# C3 -- the retired spelling states nothing: a stale fragment must not size a pool.
+printf '%s\n' '# knobs' '' 'config NROS_MAX_SUBSCRIBERS' '    int' \
+    '    default 6' '' > "$WORK/kgen"
+render "$WORK/resolved.cmake" "$WORK/kgen"
+[ "$(pool COND)" = 27 ] || fail "C3: cond default $(pool COND), want 27 (the retired spelling ignored)"
 
 resolved 0 0
 render "$WORK/resolved.cmake"

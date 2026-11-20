@@ -371,7 +371,7 @@ RX for the serial link, issue 0852). No crate.
   leaf road has no board knob rung. A prompt-less knob in `prj.conf` is a
   configure error. So the descriptor header records the numbers and the
   ethernet heap's shortfall: 32 KiB against a 39,728-byte peak plus floor.
-  An image states `[image.<id>.knobs.zenoh] max_large_subscribers = 0`.
+  An image states `[image.<id>.knobs.entity] max_large_subscribers = 0`.
   **Since issue 2194 (resolved):** the descriptor's `[knobs.zenoh]` states
   it and every road carries it below the image's own knobs, so no image
   restates it. The ethernet image's three extra knobs stay per image: they

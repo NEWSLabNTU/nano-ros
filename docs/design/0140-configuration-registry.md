@@ -945,6 +945,31 @@ reopened Q1 with a wider scope; this revision answers Q1.
   A.2 gains it and Appendix A counts 88. Five hand Kconfig symbols are
   exempt as framework (ruled the same day), each with its reason: `CONFIG_NROS`, the three
   `NROS_API` choice members and `CONFIG_NROS_CODEGEN_TOOL`.
+- 2026-11-20: **phase-581 W7.** A.5 landed: the six `entity.max_*` demand
+  rows are core knobs (`CONFIG_NROS_ENTITY_MAX_*`, `NROS_ENTITY_MAX_*`,
+  `[image.<id>.knobs.entity]`), and `CONFIG_NROS_MAX_*`, the `NROS_MAX_*`
+  env carriers and `-DNROS_OVERRIDE_ZENOH_MAX_*` are their retired
+  spellings. The six zenoh pools are `class = "carrier"` rows with no
+  Kconfig symbol, `carries` naming the demand. The generator has no per-row
+  override any more: `transitional` and the generated `KCONFIG_PAIRS` view
+  are deleted, a row that states `transitional` is refused, and every
+  knob's Kconfig symbol is `CONFIG_NROS_<ID>`. As implemented: the pool is
+  derived from the demand through the floor at three places, each the
+  pool's producer or consumer and never the shared derivation -- the Zephyr
+  module (`_nros_c_array_pool_floor` over the resolved demand), the CLI
+  (`carry_demand_to_pools`, writing a stated demand's pool row, floored
+  with `c_array_pool_floor`; the Kconfig renderer drops those rows, since on
+  Zephyr the module derives the pool), and the build scripts
+  (`nros_zephyr_build::Knob::from_demand`, below the pool's own forwarded
+  value, which is how a Zephyr Rust image with no forwarded environment
+  reads a stated `CONFIG_NROS_ENTITY_MAX_*`). Stating a pool's own key
+  (`[image.<id>.knobs.zenoh] max_publishers`) is refused naming the demand;
+  because the pool's key is live (N7), that refusal is the carrier's, not a
+  `toml:` retirement. The demand rows keep the zenoh guard
+  (`kconfig_if = "NROS_RMW_ZENOH"`, as `action.inbox_bytes` does), so no
+  image's `.config` gains a symbol. The baseline shrinks 12 -> 6; the six
+  left are A.3's invented `ZENOH_*` variables, which W13 retires, so it is
+  not yet empty.
 
 ## Appendix A - Settings that break the rule on `origin/main` (88)
 

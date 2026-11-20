@@ -5,7 +5,7 @@
 # bound and three transports to carry it out of codegen. Nothing read any of
 # them, so every size downstream was still a number a human typed -- and on the
 # one bring-up that measured it, every one of those numbers was wrong at least
-# once. `NROS_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE` were read
+# once. `NROS_ENTITY_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE` were read
 # off generated C++ headers BY EYE, and the headers they were read off state an
 # ESTIMATE rather than a bound (W6's own finding).
 #
@@ -25,7 +25,7 @@
 #   DERIVABLE HERE -- a question about sizes:
 #     NROS_SUBSCRIBER_BUFFER_BYTES     the small payload class
 #     NROS_SUBSCRIBER_LARGE_SIZE      the large payload class
-#     NROS_MAX_LARGE_SUBSCRIBERS      how many SUBSCRIPTIONS receive a type over the
+#     NROS_ENTITY_MAX_LARGE_SUBSCRIBERS      how many SUBSCRIPTIONS receive a type over the
 #                                     small ceiling -- needs the entity join below;
 #                                     on the closure alone only `0` (issue 2201)
 #     NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES   the take buffer for a caller with no type
@@ -33,7 +33,7 @@
 #   NOT DERIVABLE HERE -- a question about entity COUNTS, which needs a second
 #   source (an entity inventory), not this one:
 #     NROS_EXECUTOR_MAX_CBS, NROS_EXECUTOR_ARENA_BYTES,
-#     NROS_MAX_SUBSCRIBERS, NROS_MAX_PUBLISHERS
+#     NROS_ENTITY_MAX_SUBSCRIBERS, NROS_ENTITY_MAX_PUBLISHERS
 #
 #   A package's TYPE count is not an image's ENTITY count. Deriving those from
 #   this inventory would produce exactly the plausible-wrong-number this
@@ -64,7 +64,7 @@
 #
 #   BASIS `subscribed` -- the THREE PAYLOAD-CLASS knobs
 #     NROS_SUBSCRIBER_BUFFER_BYTES, NROS_SUBSCRIBER_LARGE_SIZE,
-#     NROS_MAX_LARGE_SUBSCRIBERS
+#     NROS_ENTITY_MAX_LARGE_SUBSCRIBERS
 #   These size the backend's two topic payload pools. Those pools are reached
 #   through exactly one allocation -- `alloc_payload_block(rx_buffer_hint)` in
 #   `shim/subscriber.rs` -- with exactly one caller, the `declare_subscriber`
@@ -780,7 +780,7 @@ function(nros_derive_message_bound_knobs)
             endif()
             if(_pc_reports)
                 message(STATUS
-                    "nros: the payload classes (NROS_MAX_LARGE_SUBSCRIBERS, "
+                    "nros: the payload classes (NROS_ENTITY_MAX_LARGE_SUBSCRIBERS, "
                     "NROS_SUBSCRIBER_LARGE_SIZE, NROS_SUBSCRIBER_BUFFER_BYTES) "
                     "keep their configured values because this image declares no "
                     "entities. Declare them (`system.toml` `[[component]] "
@@ -836,7 +836,7 @@ function(nros_derive_message_bound_knobs)
             message(WARNING
                 "nros: the three PAYLOAD-CLASS knobs are REFUSED -- "
                 "NROS_SUBSCRIBER_BUFFER_BYTES, NROS_SUBSCRIBER_LARGE_SIZE and "
-                "NROS_MAX_LARGE_SUBSCRIBERS keep their configured values.\n"
+                "NROS_ENTITY_MAX_LARGE_SUBSCRIBERS keep their configured values.\n"
                 "  ${_payload_why}\n"
                 "  They are NOT falling back to the closure: this image states "
                 "what it receives, and a class sized over types it does not "
@@ -850,12 +850,12 @@ function(nros_derive_message_bound_knobs)
             if(DEFINED NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
                 message(STATUS
                     "nros:   ${_sub_large_count} over the ${_ceiling} B ceiling -> "
-                    "NROS_MAX_LARGE_SUBSCRIBERS")
+                    "NROS_ENTITY_MAX_LARGE_SUBSCRIBERS")
             else()
                 # Issue 2201 -- the closure names large TYPES, not how many
                 # subscriptions receive them.
                 message(STATUS
-                    "nros:   NROS_MAX_LARGE_SUBSCRIBERS not derived -- "
+                    "nros:   NROS_ENTITY_MAX_LARGE_SUBSCRIBERS not derived -- "
                     "${_sub_large_count} linked type(s) are over the ${_ceiling} B "
                     "ceiling and this image declares no entities, so how many "
                     "subscriptions receive them is unknown; it keeps its "
@@ -1348,7 +1348,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
             string(APPEND _c "set(NROS_MESSAGE_BOUNDS_PAYLOAD_REASON \"${_pr}\")\n")
             string(APPEND _c
                 "# NROS_SUBSCRIBER_BUFFER_BYTES, NROS_SUBSCRIBER_LARGE_SIZE and\n"
-                "# NROS_MAX_LARGE_SUBSCRIBERS are NOT derived and do NOT fall back to the\n"
+                "# NROS_ENTITY_MAX_LARGE_SUBSCRIBERS are NOT derived and do NOT fall back to the\n"
                 "# closure. This image states what it receives, so the classes come from\n"
                 "# that or from nowhere; each keeps its configured value.\n")
         else()
@@ -1390,7 +1390,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
                     "set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS ${NROS_DERIVED_MAX_LARGE_SUBSCRIBERS})\n")
             else()
                 string(APPEND _c
-                    "# NROS_MAX_LARGE_SUBSCRIBERS is NOT derived: it counts\n"
+                    "# NROS_ENTITY_MAX_LARGE_SUBSCRIBERS is NOT derived: it counts\n"
                     "# SUBSCRIPTIONS, and the closure names only the types above. It keeps\n"
                     "# its configured value until this image declares what it receives.\n")
             endif()
