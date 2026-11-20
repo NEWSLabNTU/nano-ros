@@ -1,0 +1,1 @@
+On the NuttX make road, `make distclean` now cleans the external apps under `apps/external`, so the next build links. Before, their objects outlived the cleaned library and the link failed with undefined `nros_platform_*` symbols. A tree staged before this change prints a line naming the staging command to re-run.

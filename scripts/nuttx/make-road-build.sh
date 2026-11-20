@@ -107,23 +107,30 @@ echo 'source "$APPSDIR/external/nros-make-road-smoke/Kconfig"' >> "$APPDIR/exter
 # Configure the way a user does: NuttX's own configure over the board config
 # (a fragment), then nano-ros and the app switched on with `kconfig-tweak`, as
 # the NuttX book page says, and resolved again.
-nros_nuttx_configure "$work/nuttx" "$APPDIR" "$defconfig" "$work/nuttx/$makedefs" \
-    "$work/configure" >/dev/null || exit 1
-(
-    cd "$work/nuttx"
-    kconfig-tweak --file .config --enable CONFIG_NROS --enable CONFIG_NROS_MAKE_ROAD_SMOKE
-    # A make-road kernel boots NSH, which runs the app as a builtin. The board
-    # config names `nros_nuttx_entry`, the entry a `nros build` image defines;
-    # nothing here defines it, so the entry goes back to NSH's.
-    kconfig-tweak --file .config --set-str CONFIG_INIT_ENTRYPOINT nsh_main
-    make olddefconfig >/dev/null
-)
-for sym in CONFIG_NROS CONFIG_NROS_MAKE_ROAD_SMOKE; do
-    if ! nros_grep_q -Fx "$sym=y" "$work/nuttx/.config"; then
-        echo "make-road-build: $sym=y did not survive olddefconfig (a dependency is unmet in $id's defconfig)" >&2
-        exit 1
-    fi
-done
+# A function because step 6 configures the tree again after `make distclean`,
+# exactly as here.
+configure_kernel() {
+    rm -rf "$work/configure"
+    nros_nuttx_configure "$work/nuttx" "$APPDIR" "$defconfig" "$work/nuttx/$makedefs" \
+        "$work/configure" >/dev/null || exit 1
+    (
+        cd "$work/nuttx"
+        kconfig-tweak --file .config --enable CONFIG_NROS --enable CONFIG_NROS_MAKE_ROAD_SMOKE
+        # A make-road kernel boots NSH, which runs the app as a builtin. The board
+        # config names `nros_nuttx_entry`, the entry a `nros build` image defines;
+        # nothing here defines it, so the entry goes back to NSH's.
+        kconfig-tweak --file .config --set-str CONFIG_INIT_ENTRYPOINT nsh_main
+        make olddefconfig >/dev/null
+    )
+    local sym
+    for sym in CONFIG_NROS CONFIG_NROS_MAKE_ROAD_SMOKE; do
+        if ! nros_grep_q -Fx "$sym=y" "$work/nuttx/.config"; then
+            echo "make-road-build: $sym=y did not survive olddefconfig (a dependency is unmet in $id's defconfig)" >&2
+            exit 1
+        fi
+    done
+}
+configure_kernel
 
 # --- 3. build ---------------------------------------------------------------
 log="$work/make.log"
@@ -197,6 +204,53 @@ if [ "$after" = "$before" ]; then
 fi
 echo "make-road-build [$id]: guest OK — $elf ($(stat -c %s "$elf") bytes, $nros_count nros_* functions); an edit rebuilt the archive"
 
+# --- 6. `make distclean` reaches the external apps (issue 2781) -------------
+# A NuttX user's `make distclean` must clean apps/external as well. It used
+# not to (the apps tree cleans only `*/Makefile` directories, and
+# apps/external had none), so libapps.a went while every external app's
+# objects and `.built` stamp stayed, and the rebuild after reconfiguring
+# linked without them. Run last: it unconfigures the kernel tree.
+distclean_cleans_external() {
+    local dlog="$work/make-distclean.log" left rc=0
+    (cd "$work/nuttx" && make distclean) >"$dlog" 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "make-road-build [$id]: make distclean FAILED (exit $rc); see $dlog" >&2
+        tail -n 15 "$dlog" >&2
+        exit 1
+    fi
+    # `.built` is the stamp that lets a rebuild skip re-archiving; the
+    # shell's build root is where its own stamp and objects live.
+    left="$(find -L "$APPDIR/external" \( -name .built -o -path '*/.nros-build/*' \) -print -quit 2>/dev/null)" || left=""
+    if [ -n "$left" ]; then
+        echo "make-road-build [$id]: make distclean left an external app's build state behind ($left): a rebuild after reconfiguring would link without its objects" >&2
+        exit 1
+    fi
+    # ...and the outcome a user sees: the same configure and `make` LINK, with
+    # the platform layer the shell compiles in the image. A clean that
+    # differed but still lost those objects fails here, not only above.
+    configure_kernel
+    local rlog="$work/make-after-distclean.log"
+    rc=0
+    (
+        cd "$work/nuttx"
+        python3 "$ROOT/scripts/build/make-stall-watchdog.py" \
+            --label "nuttx make road ($id, after distclean)" --diag-dir "$work" -- \
+            make -j"$(nproc)"
+    ) >"$rlog" 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "make-road-build [$id]: the make after distclean FAILED (exit $rc); see $rlog" >&2
+        grep -nE 'undefined reference|(^|[^a-z_])(error|Error)([:[ ]|$)|\*\*\*' "$rlog" | cut -c1-300 | head -n 20 >&2 || true
+        exit 1
+    fi
+    local rfuncs
+    rfuncs="$(readelf -sW "$work/nuttx/nuttx" | awk '$4 == "FUNC" && $7 != "UND" { print $8 }')"
+    if ! nros_grep_q -Fx nros_platform_clock_ns <<<"$rfuncs"; then
+        echo "make-road-build [$id]: the image built after distclean lacks nros_platform_clock_ns (the shell's platform objects)" >&2
+        exit 1
+    fi
+    echo "make-road-build [$id]: make distclean cleaned apps/external, and the reconfigured make links the platform layer"
+}
+
 # --- 5. a PROJECT build (phase-550 W6c, issue 2236 section 5) ---------------
 # An app names a nano-ros project (`NROS_PROJECTS` in its Make.defs), and the
 # same make then configures that project's image (W6a), hands cargo its facts
@@ -213,6 +267,7 @@ case "$id" in
 esac
 if [ -z "$proj_src" ]; then
     echo "make-road-build [$id]: no in-tree example has an image for this board; project case not run"
+    distclean_cleans_external
     exit 0
 fi
 
@@ -337,3 +392,4 @@ fi
 sed -i 's|^entities = \["timer"\]$|entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]|' "$bringup_toml"
 run_make "project, agreeing declaration" "$work/make-project-agree.log"
 echo "make-road-build [$id]: project OK — \`$key\` configured in the make, sized from the probe ($descriptor); a second make was a no-op; a knob edit rebuilt the archive; a declaration that disagrees with the probe is refused, one that agrees builds"
+distclean_cleans_external

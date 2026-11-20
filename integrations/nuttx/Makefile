@@ -332,7 +332,15 @@ ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # (with a project) and cargo. phase-550 W4 deleted the branch that
 # called upstream's `RUST_CARGO_BUILD` with an empty `--target`: it could not
 # build, and an arch with no triple is now refused by `RustTriple.mk` instead.
+# Issue 2781 — an apps tree staged before apps/external had a Makefile is
+# never entered by `make clean` / `make distclean`, so a rebuild after either
+# links without this shell's objects. Say so, once a build, naming the fix:
+# re-running the staging script installs the Makefile.
+NROS_STALE_STAGE_NOTE = $(if $(wildcard $(APPDIR)$(DELIM)external$(DELIM)Makefile),,\
+	$(Q) echo "nano-ros: $(APPDIR)/external has no Makefile so make clean and make distclean skip it and the next build links without nano-ros; re-stage it: \"$$(nros locate nano-ros)/scripts/nuttx/stage-external-apps.sh\" $(APPDIR)" >&2)
+
 define NROS_ARCHIVE_STEPS
+	$(NROS_STALE_STAGE_NOTE)
 	$(if $(word 2,$(NROS_PROJECT_LIST)),$(error nano-ros: more than one app names a project in NROS_PROJECTS: $(NROS_PROJECT_LIST). One NuttX build takes one project; keep a single `NROS_PROJECTS +=` line across the apps' Make.defs files))
 	$(Q) mkdir -p $(NROS_APPS_BUILD) $(dir $(addprefix $(NROS_APPS_BUILD),$(CSRCS))) $(NROS_IMAGE_ROOT)
 	$(NROS_CARGO_CONFIG_STEP)

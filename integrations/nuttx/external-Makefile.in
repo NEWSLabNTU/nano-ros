@@ -1,0 +1,47 @@
+############################################################################
+# apps/external/Makefile, installed by scripts/nuttx/stage-external-apps.sh.
+#
+# Issue 2781. The apps tree cleans only the top-level directories that hold
+# a Makefile (`CLEANDIRS := $(dir $(wildcard $(APPDIR)/*/Makefile))`, in
+# apps/Make.defs). With only a Make.defs and a Kconfig here, `make clean` and
+# `make distclean` never came into apps/external, so no external app's clean
+# ran. `libapps.a` was deleted while each app's objects and its `.built` stamp
+# survived, so the next build found the stamp current and archived nothing:
+# the nano-ros shell's platform objects were missing from the link
+# (`undefined reference to nros_platform_clock_ns`).
+#
+# This file is ONLY that clean edge. Builds still come from Make.defs
+# (BUILDIRS / CONFIGURED_APPS), and Kconfig from the staged Kconfig, because
+# the apps tree reads neither from a Makefile. It is not upstream's
+# Directory.mk on purpose:
+#   - Directory.mk cleans only the subdirectories holding a bare `.built` or
+#     `.depend`. The nano-ros shell builds under a PREFIX
+#     (`.nros-build/<arch>/`), so it would be skipped, and this bug kept.
+#   - A MENUDESC would make `preconfig` regenerate this directory's Kconfig,
+#     and `distclean` delete it; the staging script owns that file.
+# So every subdirectory with a Makefile is cleaned, which is what each app's
+# own `clean` rule is for.
+############################################################################
+
+include $(APPDIR)/Make.defs
+
+EXTERNAL_SUBDIRS := $(dir $(wildcard */Makefile))
+
+$(foreach SDIR, $(EXTERNAL_SUBDIRS), $(eval $(call SDIR_template,$(SDIR),clean)))
+$(foreach SDIR, $(EXTERNAL_SUBDIRS), $(eval $(call SDIR_template,$(SDIR),distclean)))
+
+.PHONY: all nothing preconfig install clean distclean
+
+all: nothing
+
+nothing:
+
+install:
+
+preconfig:
+
+clean: $(foreach SDIR, $(EXTERNAL_SUBDIRS), $(SDIR)_clean)
+	@:
+
+distclean: $(foreach SDIR, $(EXTERNAL_SUBDIRS), $(SDIR)_distclean)
+	@:
