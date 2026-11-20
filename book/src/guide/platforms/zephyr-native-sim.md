@@ -100,7 +100,7 @@ What each backend needs from Zephyr goes in its fragment:
 - **XRCE-DDS:** `CONFIG_NET_TCP=y`, on the BSD sockets every image enables.
 - **Cyclone DDS:** `CONFIG_CPP=y` (its source is C++, even for a Rust node),
   `CONFIG_MAIN_STACK_SIZE=524288`, and `CONFIG_NET_IPV4_IGMP=y` for
-  discovery. Raise its heap with `[image.<id>.knobs.zephyr] heap_size`, not
+  discovery. Raise its heap with `[image.<id>.knobs.memory] heap_bytes`, not
   in the conf.
 
 ## The Zephyr lines

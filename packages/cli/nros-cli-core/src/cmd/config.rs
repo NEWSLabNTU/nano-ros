@@ -225,7 +225,10 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
             || board
                 .as_ref()
                 .is_some_and(|b| b.knobs.backends.contains_key(rmw));
-        let in_registry = registry_env(&format!("{rmw}.tx"), "batch").is_some();
+        // Zenoh's rows are `zenoh.tx_*` (phase-581 W5), another backend's the
+        // generic `<rmw>.tx.*`.
+        let in_registry = registry_env(&format!("{rmw}.tx"), "batch").is_some()
+            || registry_env(rmw, "tx_batch").is_some();
         if !declared && !in_registry {
             continue;
         }
@@ -241,9 +244,15 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
             tree.capability_check(&args.platform, &mut tx)
                 .map_err(|e| eyre!("{e}"))?,
         );
+        let zenoh_keys = registry_env(rmw, "tx_batch").is_some();
         let mut row = |knob: &str, value: String, source: KnobSource| {
+            let key = match (zenoh_keys, knob) {
+                (true, "flush_ms") => format!("{rmw}.tx_batch_flush_ms"),
+                (true, _) => format!("{rmw}.tx_{knob}"),
+                (false, _) => format!("{rmw}.tx.{knob}"),
+            };
             values.push(LadderValue {
-                key: format!("{rmw}.tx.{knob}"),
+                key,
                 value,
                 source: source.as_str(),
                 env: None,
@@ -271,8 +280,8 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
         ("max_sc", 8),
         ("max_nodes", 4),
         ("max_shutdown_cbs", 2),
-        ("subscription_buffer_size", 1024),
-        ("param_service_buffer_size", 4096),
+        ("subscription_buffer_bytes", 1024),
+        ("param_service_buffer_bytes", 4096),
     ];
     let resolved = tree
         .resolve_executor(
@@ -298,7 +307,7 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
         .find(|(n, _)| *n == "max_cbs")
         .map_or(4, |(_, r)| r.value);
     //
-    // phase-448 W5 adds `backing_u64s` here for the same reason: its builtin is
+    // phase-448 W5 adds `backing_bytes` here for the same reason: its builtin is
     // `ExecutorSizing::DEFAULT.u64_len()`, a const only the TARGET compiler can
     // evaluate, so no number can be printed for it. `0` cannot stand in either
     // — that is this knob's documented opt-out ("emit no static"), the opposite
@@ -306,8 +315,8 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
     // value.
     let derived_defaults: &[(&str, usize)] = &[
         ("action_clients", max_cbs),
-        ("arena_size", 0),
-        ("backing_u64s", 0),
+        ("arena_bytes", 0),
+        ("backing_bytes", 0),
     ];
     let derived = tree
         .resolve_executor(
@@ -319,8 +328,8 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
         .map_err(|e| eyre!("{e}"))?;
 
     for (name, r) in resolved.iter().chain(derived.iter()) {
-        let unstated = *name == "backing_u64s" && r.source == KnobSource::Builtin;
-        let shown = if (*name == "arena_size" && r.value == 0) || unstated {
+        let unstated = *name == "backing_bytes" && r.source == KnobSource::Builtin;
+        let shown = if (*name == "arena_bytes" && r.value == 0) || unstated {
             "derived".to_string()
         } else {
             r.value.to_string()
@@ -340,9 +349,6 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
         ("component_slot_bytes", 512),
         ("max_class_instances", 2),
         ("max_cell_entities", 8),
-        // Issue 2013 — read by `nros-build-helpers/src/c.rs` for the C API's
-        // LET buffer, not by `nros/build.rs`, and its 512 default lives there.
-        ("let_buffer_size", 512),
     ];
     for (name, r) in tree
         .resolve_runtime(
@@ -372,7 +378,7 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
             &[
                 ("dynamic_loggers", 16),
                 ("max_level", 0),
-                ("buffer_size", 256),
+                ("buffer_bytes", 256),
                 ("early_records", 4),
                 ("rosout_records", 16),
             ],
@@ -401,7 +407,7 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
     let net_defaults: &[(&str, usize)] = &[
         ("max_sockets", 1),
         ("max_udp_sockets", 1),
-        ("buffer_size", 2048),
+        ("buffer_bytes", 2048),
         ("connect_timeout_ms", 30_000),
         ("socket_timeout_ms", 10_000),
     ];
@@ -454,17 +460,17 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
     // `nros-params/build.rs`, which stays the authority on them.
     let param_defaults: &[(&str, usize)] = &[
         ("max_parameters", 32),
-        ("max_param_name_len", 64),
-        ("max_string_value_len", 256),
+        ("max_name_bytes", 64),
+        ("max_string_value_bytes", 256),
         ("max_array_len", 32),
         ("max_string_array_len", 32),
-        ("max_byte_array_len", 256),
-        ("max_param_description_len", 256),
+        ("max_byte_array_bytes", 256),
+        ("max_description_bytes", 256),
         // phase-417 W4.a -- the descriptor's `additional_constraints`. DEFAULT
         // 0, unlike its sibling: the field is new, so there is no old
         // effective value to keep, and the describe reply's derived bound
         // prices capacity rather than use.
-        ("max_param_constraints_len", 0),
+        ("max_constraints_bytes", 0),
         // phase-491 W3 -- `/parameter_events` history depth. 1 is the RTOS
         // default; a hosted build defaults to upstream's 1000 instead.
         ("param_events_depth", 1),
@@ -501,10 +507,10 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
         (2048, 1024, 1024)
     };
     let wire_defaults: &[(&str, usize)] = &[
-        ("batch_unicast_size", batch_uni),
-        ("batch_multicast_size", batch_multi),
-        ("frag_max_size", frag),
-        ("get_reply_buf_size", 4096),
+        ("batch_unicast_bytes", batch_uni),
+        ("batch_multicast_bytes", batch_multi),
+        ("frag_max_bytes", frag),
+        ("get_reply_buffer_bytes", 4096),
         ("get_poll_interval_ms", 10),
         ("rx_task_budget_frames", 0),
         ("rx_task_budget_rest_us", 1000),
@@ -519,7 +525,7 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
         .map_err(|e| eyre!("{e}"))?
     {
         values.push(LadderValue {
-            key: format!("zenoh.wire.{name}"),
+            key: format!("zenoh.{name}"),
             value: r.value.to_string(),
             source: r.source.as_str(),
             env: r.env_key,
@@ -531,11 +537,7 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
     // can also be DERIVED from the image's sizing descriptor, below both
     // stated rungs; an image is not a fact this command has, so it shows 4.
     let limit_defaults: &[(&str, usize)] = &[
-        ("keyexpr_string_size", 256),
-        (
-            "service_timeout_ms",
-            nros_board_common::platform_config::BUILTIN_SERVICE_TIMEOUT_MS,
-        ),
+        ("keyexpr_string_bytes", 256),
         ("subscriber_ring_depth", 4),
         // issue 2207 — the client connect budget (0 = one attempt) and the
         // bool that outranks it; one resolver in nros-platform-config.
@@ -555,7 +557,29 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
         .map_err(|e| eyre!("{e}"))?
     {
         values.push(LadderValue {
-            key: format!("zenoh.limits.{name}"),
+            key: format!("zenoh.{name}"),
+            value: r.value.to_string(),
+            source: r.source.as_str(),
+            env: r.env_key,
+        });
+    }
+
+    // phase-581 W5 — the core service tenant (`[knobs.service]`), whose one
+    // knob left the zenoh limits tenant: `nros-c` reads it too.
+    for (name, r) in tree
+        .resolve_service(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.service),
+            &env_get,
+            &[(
+                "timeout_ms",
+                nros_board_common::platform_config::BUILTIN_SERVICE_TIMEOUT_MS,
+            )],
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        values.push(LadderValue {
+            key: format!("service.{name}"),
             value: r.value.to_string(),
             source: r.source.as_str(),
             env: r.env_key,
@@ -584,8 +608,8 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
 
     // phase-400 W6 — the platform memory tenant. Defaults mirror the board
     // crate that sizes each: FreeRTOS heap_4 `ucHeap` at the `rmw-zenoh` 2 MiB,
-    // and the `nros_app` task stack. Both in BYTES, which is the ladder's unit;
-    // their env front-ends are KiB and convert at the rung.
+    // and the `nros_app` task stack. Both in BYTES, which is the ladder's unit
+    // and, since phase-581 W5, their one env spelling's too.
     let mem_defaults: &[(&str, usize)] =
         &[("heap_bytes", 2048 * 1024), ("app_stack_bytes", 128 * 1024)];
     for (name, r) in tree

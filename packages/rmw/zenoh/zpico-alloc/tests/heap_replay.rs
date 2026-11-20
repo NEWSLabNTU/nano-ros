@@ -21,7 +21,7 @@ const ZEPHYR_C_TALKER: &str = include_str!("data/zephyr-native-sim-c-talker.trac
 /// (the header of the trace file).
 const ZEPHYR_C_TALKER_IMAGE_PEAK: usize = 15_504;
 
-/// The shipped `CONFIG_NROS_ZEPHYR_HEAP_SIZE` default.
+/// The shipped `CONFIG_NROS_MEMORY_HEAP_BYTES` default.
 const ZEPHYR_DEFAULT_ARENA: usize = 65_536;
 
 #[test]

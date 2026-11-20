@@ -54,9 +54,9 @@ threads = true
 stack = "os"
 links = ["tcp", "udp"]
 
-# The nros allocator funnel's arena (CONFIG_NROS_ZEPHYR_HEAP_SIZE). The R52 is
+# The nros allocator funnel's arena (CONFIG_NROS_MEMORY_HEAP_BYTES). The R52 is
 # 32-bit, so the rlsf heap holds at most 4 MiB, and the image must fit the
 # 7 MiB SRAM region the overlay chooses. 2 MiB is 3.4x the peak ASI's
 # controller reaches on the emulated R52 (mps3-an536: 618,880 B with Cyclone).
-[knobs.zephyr]
-heap_size = 2097152
+[knobs.memory]
+heap_bytes = 2097152

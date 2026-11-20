@@ -251,8 +251,11 @@ def _env_subject(e, where):
 
 
 def registry_subjects(reg, core_where="packages/tooling/nros-zephyr-build/knobs.toml"):
-    """Subjects of a parsed registry (`knob_registry.parse`)."""
-    out = [_knob_subject(k, core_where) for k in reg["knob"]]
+    """Subjects of a parsed registry (`knob_registry.parse`). A `class =
+    "retired"` row names a knob that no longer exists: its key is kept only as
+    the error table (RFC-0140 D4), so it is no live name and is not judged
+    (its spellings stay reserved through N7)."""
+    out = [_knob_subject(k, core_where) for k in reg["knob"] if not k.get("retired")]
     for s in reg["statement"]:
         sp = [("toml", s["key"])]
         if s["carrier"]:

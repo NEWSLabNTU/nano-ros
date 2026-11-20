@@ -95,7 +95,7 @@ platform-freertos = ["dep:nros-platform-cffi"]
 platform-threadx = ["dep:nros-platform-cffi"]
 # phase-412 -- `zpico-alloc/stats` is NOT optional here. It is what makes
 # `nros_platform_heap_used_bytes()`/`_peak` able to answer about the arena
-# this port actually allocates from, and NROS_ZEPHYR_HEAP_SIZE cannot be set
+# this port actually allocates from, and NROS_MEMORY_HEAP_BYTES cannot be set
 # from a measurement without it -- the island's 94,208 was guessed for
 # exactly that reason.
 #
@@ -106,7 +106,7 @@ platform-threadx = ["dep:nros-platform-cffi"]
 # counters are simply always on for this port. Two atomics per alloc.
 #
 # issue 1324 — and `global-allocator`: a Zephyr image's Rust `alloc` goes through
-# `nros_platform_alloc`, the same rlsf arena (`NROS_ZEPHYR_HEAP_SIZE`) zenoh-pico
+# `nros_platform_alloc`, the same rlsf arena (`NROS_MEMORY_HEAP_BYTES`) zenoh-pico
 # uses. Pure-Rust leaves used to take zephyr-lang-rust's `CONFIG_RUST_ALLOC`
 # allocator instead, which is libc `malloc`: picolibc's arena on a zenoh image,
 # the HOST glibc heap on an XRCE native_sim image — a second heap either way,
@@ -232,7 +232,7 @@ nros-platform-config = { path = "../../tooling/nros-platform-config" }
 # issue 0460 — the shared Kconfig-via-$DOTCONFIG knob fallback. A Zephyr RUST
 # image inherits none of the cmake `set(ENV{...})` knob exports, so a bare
 # environment read compiles the crate default whatever Kconfig says. Needed
-# here since phase-8 made NROS_ZEPHYR_HEAP_SIZE a forwarded knob; see build.rs.
+# here since phase-8 made NROS_MEMORY_HEAP_BYTES a forwarded knob; see build.rs.
 nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 
 [dev-dependencies]

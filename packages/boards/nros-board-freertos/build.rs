@@ -158,7 +158,7 @@ fn main() {
     // its fallback, and the DDS one the CMAKE road selects by RMW
     // (`default_dds_heap_bytes` = 640 KiB, issue 1624). Two overrides,
     // env wins:
-    //   1. explicit `NROS_FREERTOS_HEAP_KB` build env (any value), else
+    //   1. explicit `NROS_MEMORY_HEAP_BYTES` build env (any value), else
     //   2. the `rmw-zenoh` feature (forwarded from the board) → the DERIVATION
     //      in `nros_board_common::freertos_config::default_heap_bytes`. The
     //      FreeRTOS task stacks are allocated *from* this heap (heap_4), so the
@@ -189,8 +189,9 @@ fn main() {
     // phase-400 W6 — the platform and board rungs sit UNDER the two overrides
     // this already had, and the env front-end still wins over all of them.
     //
-    // The knob keeps its KiB spelling at the front end and the ladder stores
-    // bytes, so the define is converted back here: FreeRTOSConfig.h reads KiB.
+    // The knob is BYTES (`memory.heap_bytes`, phase-581 W5) on every road, and
+    // FreeRTOSConfig.h reads KiB, so this is the one place the cargo road
+    // converts: `kib_of_heap_bytes` refuses a size that is not whole KiB.
     //
     // `app_stack_bytes` comes from the knob's ONE owner
     // (`freertos_build::app_stack_bytes_from_build_env`, which also emits the
@@ -206,15 +207,20 @@ fn main() {
             // No lane default means "leave FreeRTOSConfig.h's default alone",
             // which is not a number this can invent — so only ask the ladder
             // when something below it has an opinion.
-            zenoh_default_kb.map(|kb| rungs.memory_value("heap_bytes", kb * 1024) / 1024)
+            zenoh_default_kb.map(|kb| {
+                nros_board_common::freertos_config::kib_of_heap_bytes(
+                    rungs.memory_value("heap_bytes", kb * 1024),
+                )
+            })
         }
         // phase-484 W5a — rung 1 through the registry, as the ladder arm above
         // reads it: every spelling, and two that disagree refused.
         None => nros_board_common::platform_config::knob_env(
             &|k| env::var(k).ok(),
-            "NROS_FREERTOS_HEAP_KB",
+            "NROS_MEMORY_HEAP_BYTES",
         )
         .and_then(|v| v.trim().parse::<usize>().ok())
+        .map(nros_board_common::freertos_config::kib_of_heap_bytes)
         .or(zenoh_default_kb),
     };
     // issue 1197 — the define reaches EVERY TU that includes FreeRTOSConfig.h,
@@ -272,7 +278,7 @@ fn main() {
         }
     };
     apply_heap_kb(&mut freertos);
-    nros_board_common::platform_config::watch_knob_env("NROS_FREERTOS_HEAP_KB");
+    nros_board_common::platform_config::watch_knob_env("NROS_MEMORY_HEAP_BYTES");
     for src in &[
         "tasks.c",
         "queue.c",

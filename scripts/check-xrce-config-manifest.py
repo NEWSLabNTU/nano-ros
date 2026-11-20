@@ -109,7 +109,7 @@ NO_KCONFIG_OPTION: dict[str, str] = {
     # source for a number the build already knows. Env-statable for the rare
     # image that wants to pin it.
     "NROS_XRCE_BUILTIN_SERVICE_SERVERS": "derived beside the server total (issue 1808)",
-    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE": (
+    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_BYTES": (
         "defaults to XRCE_BUFFER_SIZE raised to XRCE_PARAM_REQUEST_BYTES, both of "
         "which already have their rungs (issue 1808)"
     ),
@@ -342,13 +342,13 @@ def self_test() -> None:
         "value ucdr CONFIG_MACHINE_ENDIANNESS 1\n"
         "knob  uxr  UCLIENT_UDP_TRANSPORT_MTU NROS_XRCE_TRANSPORT_MTU 4096 128\n"
         "flag  uxr  UCLIENT_PROFILE_UDP posix_ip  # trailing\n"
-        "define XRCE_BUFFER_SIZE NROS_XRCE_BUFFER_SIZE 64\n"
+        "define XRCE_BUFFER_SIZE NROS_XRCE_BUFFER_BYTES 64\n"
     )
     v, k, f, d = parse_manifest(good, "T")
     assert v == [("ucdr", "CONFIG_MACHINE_ENDIANNESS", "1")], v
     assert k == [("uxr", "UCLIENT_UDP_TRANSPORT_MTU", "NROS_XRCE_TRANSPORT_MTU", 4096, 128)], k
     assert f == [("uxr", "UCLIENT_PROFILE_UDP", "posix_ip")], f
-    assert d == [("XRCE_BUFFER_SIZE", "NROS_XRCE_BUFFER_SIZE", 64)], d
+    assert d == [("XRCE_BUFFER_SIZE", "NROS_XRCE_BUFFER_BYTES", 64)], d
     assert manifest_problems(v, k, f, d, "T") == []
 
     for broken in ("value uxr X\n", "knob uxr X E 1\n", "flag uxr X\n", "banana\n",
@@ -427,7 +427,7 @@ def self_test() -> None:
         "    int \"x\"\n"
         "    help\n"
         "      Maps to UCLIENT_UDP_TRANSPORT_MTU, UCLIENT_TCP_TRANSPORT_MTU.\n"
-        "config NROS_XRCE_BUFFER_SIZE\n"
+        "config NROS_XRCE_BUFFER_BYTES\n"
         "    int \"y\"\n"
         "    help\n"
         "      Maps to XRCE_BUFFER_SIZE.\n"
@@ -436,31 +436,31 @@ def self_test() -> None:
     maps = kconfig_maps_to(kcfg)
     assert maps == {
         "NROS_XRCE_TRANSPORT_MTU": ["UCLIENT_UDP_TRANSPORT_MTU", "UCLIENT_TCP_TRANSPORT_MTU"],
-        "NROS_XRCE_BUFFER_SIZE": ["XRCE_BUFFER_SIZE"],
+        "NROS_XRCE_BUFFER_BYTES": ["XRCE_BUFFER_SIZE"],
     }, maps
     wired = manifest_bindings(
         [
             ("uxr", "UCLIENT_UDP_TRANSPORT_MTU", "NROS_XRCE_TRANSPORT_MTU", 4096, 128),
             ("uxr", "UCLIENT_TCP_TRANSPORT_MTU", "NROS_XRCE_TRANSPORT_MTU", 4096, 128),
         ],
-        [("XRCE_BUFFER_SIZE", "NROS_XRCE_BUFFER_SIZE", 64)],
+        [("XRCE_BUFFER_SIZE", "NROS_XRCE_BUFFER_BYTES", 64)],
     )
     for env, syms in maps.items():
         assert sorted(wired[env]) == sorted(syms), (env, wired[env], syms)
     crossed = manifest_bindings(
         [
             # Same shape, wrong wire: the UDP MTU now reads the BUFFER_SIZE knob.
-            ("uxr", "UCLIENT_UDP_TRANSPORT_MTU", "NROS_XRCE_BUFFER_SIZE", 4096, 128),
+            ("uxr", "UCLIENT_UDP_TRANSPORT_MTU", "NROS_XRCE_BUFFER_BYTES", 4096, 128),
             ("uxr", "UCLIENT_TCP_TRANSPORT_MTU", "NROS_XRCE_TRANSPORT_MTU", 4096, 128),
         ],
-        [("XRCE_BUFFER_SIZE", "NROS_XRCE_BUFFER_SIZE", 64)],
+        [("XRCE_BUFFER_SIZE", "NROS_XRCE_BUFFER_BYTES", 64)],
     )
     assert sorted(crossed["NROS_XRCE_TRANSPORT_MTU"]) != sorted(
         maps["NROS_XRCE_TRANSPORT_MTU"]
     ), "a crossed wire must not match the Kconfig contract"
 
-    assert _FORWARDED.findall("_nros_resolve_knob(NROS_XRCE_BUFFER_SIZE \"${X}\")") == [
-        "NROS_XRCE_BUFFER_SIZE"
+    assert _FORWARDED.findall("_nros_resolve_knob(NROS_XRCE_BUFFER_BYTES \"${X}\")") == [
+        "NROS_XRCE_BUFFER_BYTES"
     ]
     assert _FORWARDED.findall(
         "_nros_resolve_derivable_knob(NROS_XRCE_MAX_SUBSCRIBERS\n \"${X}\" Y)"

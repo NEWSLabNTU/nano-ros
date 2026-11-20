@@ -242,14 +242,14 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 | `CONFIG_NROS_MAX_PUBLISHERS` | int | 8 | Max concurrent publishers |
 | `CONFIG_NROS_MAX_SUBSCRIBERS` | int | 8 | Max concurrent subscribers |
 | `CONFIG_NROS_MAX_QUERYABLES` | int | -1 (derive) | Max concurrent queryables (service servers). the `param_services` capability costs 6 **per node**, `[lifecycle]` 5 once — a value below that floor fails the build, naming this knob (phase-426 W3) |
-| `CONFIG_NROS_FRAG_MAX_SIZE` | int | 2048 | Max reassembled message size |
-| `CONFIG_NROS_BATCH_UNICAST_SIZE` | int | 1024 | Max unicast batch size |
-| `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | int | -1 (derive) | Per-subscriber buffer, small payload class |
+| `CONFIG_NROS_ZENOH_FRAG_MAX_BYTES` | int | 2048 | Max reassembled message size |
+| `CONFIG_NROS_ZENOH_BATCH_UNICAST_BYTES` | int | 1024 | Max unicast batch size |
+| `CONFIG_NROS_SUBSCRIBER_BUFFER_BYTES` | int | -1 (derive) | Per-subscriber buffer, small payload class |
 | `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` | int | -1 (derive) | Blocks in the large payload class |
-| `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE` | int | -1 (derive) | Per-sample capacity of the large class |
+| `CONFIG_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES` | int | -1 (derive) | Per-sample capacity of the large class |
 | `CONFIG_NROS_SERVICE_BUFFER_SIZE` | int | 1024 | Per-service buffer |
 
-`-1` on the three rows above, and on `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE`,
+`-1` on the three rows above, and on `CONFIG_NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`,
 means the build derives the number from this image's message-bound inventory
 (phase-403 W8 / issue 0963) rather than a person choosing one. Anything you
 state wins; the derived number is an upper bound over the interface closure you
@@ -269,7 +269,7 @@ you receive, in the [book](../platform/zephyr-in-tree.md) and
 | `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS` | int | -1 (derive) | Max service servers |
 | `CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS` | int | 4 | Max service clients |
 | `CONFIG_NROS_XRCE_SUBSCRIBER_RING_DEPTH` | int | 32 | Queued samples per subscriber |
-| `CONFIG_NROS_XRCE_BUFFER_SIZE` | int | 1024 | Per-slot buffer size |
+| `CONFIG_NROS_XRCE_BUFFER_BYTES` | int | 1024 | Per-slot buffer size |
 | `CONFIG_NROS_XRCE_STREAM_HISTORY` | int | 16 | Reliable stream depth (2–16) |
 
 ### C API Options (visible when `CONFIG_NROS_C_API=y`)

@@ -35,9 +35,9 @@ embedded image has no run-time configuration.
    ```text
    knob                     value      set by
    ----                     -----      ------
-   zenoh.tx.batch           true       platform
-   zenoh.tx.split_lock      true       platform
-   zenoh.tx.flush_ms        50         platform
+   zenoh.tx_batch           true       platform
+   zenoh.tx_split_lock      true       platform
+   zenoh.tx_batch_flush_ms  50         platform
    ```
 
 2. Turn on transmit batching for an image that publishes many small or
@@ -45,11 +45,11 @@ embedded image has no run-time configuration.
    the transport's write buffer and leave as one socket send per flush:
 
    ```toml
-   [image.posix.knobs.zenoh.tx]
-   batch = true
+   [image.posix.knobs.zenoh]
+   tx_batch = true
    ```
 
-   A flush thread sends the batch every `flush_ms`; ThreadX has no
+   A flush thread sends the batch every `tx_batch_flush_ms`; ThreadX has no
    background tasks, so there the executor's spin sends it. Service requests
    and replies never wait in the batch. Do not batch a timer-paced image
    that publishes less than once per flush period: there is nothing to
@@ -58,12 +58,12 @@ embedded image has no run-time configuration.
 3. Add split locking if a tight-loop or bursty publisher is still limited by
    the transport. The flush then sends one batch while publishers fill the
    next, and a full batch no longer blocks the publishing thread. It needs
-   `batch`:
+   `tx_batch`:
 
    ```toml
-   [image.posix.knobs.zenoh.tx]
-   batch = true
-   split_lock = true
+   [image.posix.knobs.zenoh]
+   tx_batch = true
+   tx_split_lock = true
    ```
 
    On Zephyr `native_sim`, 64-byte messages from a tight loop went from about
@@ -72,13 +72,13 @@ embedded image has no run-time configuration.
    absolute numbers move with the host.
 
 4. Bound the latency batching adds. A non-express sample waits up to
-   `flush_ms`; lower it toward 10 to 20 ms when your budget needs fresher
+   `tx_batch_flush_ms`; lower it toward 10 to 20 ms when your budget needs fresher
    samples, at the cost of more, smaller sends:
 
    ```toml
-   [image.posix.knobs.zenoh.tx]
-   batch = true
-   flush_ms = 20
+   [image.posix.knobs.zenoh]
+   tx_batch = true
+   tx_batch_flush_ms = 20
    ```
 
 5. Mark a low-rate, latency-critical publisher express, such as a control
@@ -121,21 +121,21 @@ They depend on your network and your largest message, so the build does not
 derive them. Set them per image:
 
 ```toml
-[image.posix.knobs.zenoh.wire]
-frag_max_size = 1400
-batch_unicast_size = 1024
-get_reply_buf_size = 1024
+[image.posix.knobs.zenoh]
+frag_max_bytes = 1400
+batch_unicast_bytes = 1024
+get_reply_buffer_bytes = 1024
 ```
 
 or for one build, in its environment, where an exported value wins:
 
 ```bash
-NROS_ZENOH_FRAG_MAX_SIZE=1400 NROS_ZENOH_BATCH_UNICAST_SIZE=1024 nros build
+NROS_ZENOH_FRAG_MAX_BYTES=1400 NROS_ZENOH_BATCH_UNICAST_BYTES=1024 nros build
 ```
 
 or in the board descriptor's `[knobs]`, when the budget belongs to the
-hardware. `frag_max_size` is the largest message the image can receive; a
-larger one is dropped. `batch_unicast_size` is the largest it sends without
+hardware. `frag_max_bytes` is the largest message the image can receive; a
+larger one is dropped. `batch_unicast_bytes` is the largest it sends without
 fragmenting. On a network with a 1500-byte MTU, or Zephyr's default of about
 1400, keep the batch sizes below the MTU. A serial image gets a 1500-byte
 unicast batch by default.
@@ -161,10 +161,10 @@ name = "host_node"
 [image.posix]
 board = "linux"
 
-[image.posix.knobs.zenoh.tx]
-batch = true
-split_lock = true
-flush_ms = 20
+[image.posix.knobs.zenoh]
+tx_batch = true
+tx_split_lock = true
+tx_batch_flush_ms = 20
 ```
 
 with the command publisher built `tx_express(true)` as in step 5. Build it
@@ -174,9 +174,9 @@ with `nros build posix`.
 
 | What you see | What to change |
 | --- | --- |
-| Large messages never arrive | raise `frag_max_size`: the message exceeds the reassembly limit |
+| Large messages never arrive | raise `frag_max_bytes`: the message exceeds the reassembly limit |
 | A subscription receives truncated data, or a large-type subscription fails to create | the receive slot is too small; see [Size an image from its contract](../contracts/size-an-image-from-its-contract.md#which-knobs-the-build-derives) |
-| Service calls with large replies time out | raise `get_reply_buf_size` |
+| Service calls with large replies time out | raise `get_reply_buffer_bytes` |
 | Several concurrent service calls fail | raise `NROS_ZENOH_MAX_PENDING_GETS` |
 | An entity create fails at run time | a pool is full; the [Static pool inventory](../../reference/static-pool-inventory.md) names the knob that sizes it |
 | A benchmark listener counts far fewer messages than were sent | its receive ring is too shallow for a batch arriving at once; build the listener with `NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024` |

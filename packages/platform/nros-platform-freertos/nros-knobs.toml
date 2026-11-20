@@ -8,17 +8,9 @@
 
 owner = "freertos"
 
-[[knob]]
-key = "freertos.app_stack_kb"
-scope = "board"
-class = "carrier"
-carries = "memory.app_stack_bytes"
-
-[[knob]]
-key = "freertos.heap_kb"
-scope = "board"
-class = "carrier"
-carries = "memory.heap_bytes"
+# The heap and the app task stack are core's `memory.heap_bytes` and
+# `memory.app_stack_bytes` (RFC-0140 Appendix A.1): this platform's build
+# converts the bytes to the KiB its FreeRTOSConfig.h takes, in one place.
 
 # Issue 2507 -- 0 builds a FreeRTOS kernel that does not reprogram the
 # board's task stack guard on a context switch (MPS2-AN385: an MPU region

@@ -123,5 +123,5 @@ max_subscribers = 1
 service_buffer_size = 1024
 max_queryables = 1
 
-[knobs.zephyr]
-heap_size = 32768
+[knobs.memory]
+heap_bytes = 32768

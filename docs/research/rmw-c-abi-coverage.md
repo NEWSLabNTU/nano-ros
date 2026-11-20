@@ -574,7 +574,7 @@ escapes the fixed-size arenas.
 **nano-ros parallel:**
 
 - `NROS_RMW_MAX_BACKENDS` (set by phase 104.B.1) — same pattern.
-- `NROS_EXECUTOR_MAX_CBS`, `NROS_EXECUTOR_ARENA_SIZE` — runtime
+- `NROS_EXECUTOR_MAX_CBS`, `NROS_EXECUTOR_ARENA_BYTES` — runtime
   arena knobs.
 - Per-handle: callers pass `Cap<TX_BUF>` const generics.
 

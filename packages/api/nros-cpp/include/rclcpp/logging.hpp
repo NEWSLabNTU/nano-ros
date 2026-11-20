@@ -747,7 +747,7 @@ inline rclc_logger_t log_handle(const Logger& logger) {
 /// The longest a RUNTIME refusal may be — MEASURED.
 ///
 /// `nros_log`'s formatting buffer is 256 bytes by default
-/// (`nros_log::format_buffer_capacity`; `NROS_LOG_BUFFER_SIZE` can make it 128),
+/// (`nros_log::format_buffer_capacity`; `NROS_LOG_BUFFER_BYTES` can make it 128),
 /// and `heapless::String::push_str` is ALL-OR-NOTHING: a body that does not fit
 /// is not truncated, it is DROPPED, and the console shows the header plus a
 /// lone `…`. So a long runtime refusal is not a shortened refusal, it is an

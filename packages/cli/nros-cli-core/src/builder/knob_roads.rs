@@ -391,7 +391,7 @@ mod tests {
     #[test]
     fn the_cmake_road_carries_its_configure_time_readers() {
         let m = measure(&corpus(&repo_root()));
-        for id in ["FREERTOS_APP_STACK_KB", "CYCLONEDDS_MAX_DESCRIPTOR_TYPES"] {
+        for id in ["MEMORY_APP_STACK_BYTES", "CYCLONEDDS_MAX_DESCRIPTOR_TYPES"] {
             assert_eq!(m[id][1], "yes", "{id}: {:?}", m[id]);
         }
         // The Cyclone cap also runs on the Zephyr road, where it reaches the

@@ -39,7 +39,7 @@
 //!
 //! - **`NROS_EXECUTOR_MAX_CBS`** (default 4) — maximum number of registered
 //!   callbacks (subscriptions + timers + services + guard conditions).
-//! - **`NROS_EXECUTOR_ARENA_SIZE`** (default 4096) — byte budget for storing
+//! - **`NROS_EXECUTOR_ARENA_BYTES`** (default 4096) — byte budget for storing
 //!   callback closures inline.
 //!
 //! A subscription's arena receive buffer is sized from the MESSAGE TYPE's own
@@ -1364,7 +1364,7 @@ pub use nros_node::{
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::config::arena_size_for;
 
-/// The configured default receive-buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`).
+/// The configured default receive-buffer size (`NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`).
 ///
 /// NOT a fallback for a missing bound any more: [`rx_buffer_for!`]
 /// used to expand to this for an unbounded type and now refuses to compile

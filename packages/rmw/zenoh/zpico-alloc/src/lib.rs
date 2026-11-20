@@ -615,7 +615,7 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
     /// The `HEAP EXHAUSTED` line used to print the request and the capacity,
     /// which cannot tell "the arena is too small" from "the arena has the bytes
     /// in the wrong shape" — and the remedy differs: the first wants a bigger
-    /// `NROS_ZEPHYR_HEAP_SIZE`, the second wants an allocation pattern (or a
+    /// `NROS_MEMORY_HEAP_BYTES`, the second wants an allocation pattern (or a
     /// pool) that does not fragment, and a bigger arena only postpones it.
     pub fn classify_refusal(&self, size: usize) -> Exhaustion {
         Exhaustion::classify(size, self.free_shape())

@@ -177,7 +177,7 @@ Times are host local (+08:00).
 - 09:33:38 to 09:33:59. After `rustup component add llvm-tools` (online), `llvm-size -A` printed:
   - `.text 681296`, `.rodata 129728`, `.data 1984`, `.bss 173188`;
   - top statics: `HEAP` 132,816 B (b), `g_sessions` 17,072 B, `zpico_serial::port::PORTS` 4,128 B, `SMALL_PAYLOADS` 4,096 B, `MESSAGE_INFO_TABLE` 4,096 B and `EXECUTOR_BACKING` 3,824 B;
-  - a boot message that suggested `arena over-provisioned: set NROS_EXECUTOR_ARENA_SIZE=1024 … 184/2048 bytes claimed`.
+  - a boot message that suggested `arena over-provisioned: set NROS_EXECUTOR_ARENA_BYTES=1024 … 184/2048 bytes claimed`.
 - 09:34. `cargo metadata` failed because jq was missing; the python listing gave 140 packages. Licenses include MIT/Apache, 0BSD (smoltcp, managed), Unlicense, BSL-1.0 (ryu) and BSD-3-Clause (encoding_rs).
 - 09:34:43. `nros doctor --report` and `nros board show` ran; their content is in stops 8 and 12. The report also lists the pins `nros-toolchain.toml` (`version = "0.6.0-nros7"`, written by `nros build`) and `nros-sdk.lock`.
 - Forks index: zenoh-pico 1.10.1, cyclonedds 0.10.5, lwip STABLE-2_2_1, threadx and netxduo v6.4.5.202504_rel, nuttx 12.13.0, libc 0.2, qemu v11.0.0 and ros2-rust-examples main. This image uses zenoh-pico, possibly mbedtls, and the qemu fork as a host tool.

@@ -4840,7 +4840,7 @@ pub fn build_test_fixture_at_profile(
     // its `packages/testing/` sibling — did not, and step 3's "0 multi-row
     // leaves left on the path route" was measured over the migrated funnel only.
     // `nros-bench/stress-zenoh` was reached through here and IS a two-row leaf
-    // (plain + `NROS_SUBSCRIBER_BUFFER_SIZE=8192`), so with the `target_dir`
+    // (plain + `NROS_SUBSCRIBER_BUFFER_BYTES=8192`), so with the `target_dir`
     // column deleted both rows share `<dir>/target`, `groups::attribute` calls
     // that ambiguous and declines to redirect, and this funnel resolved the
     // un-redirected leaf path — where a pre-group build had left a binary. All
@@ -8218,7 +8218,7 @@ pub fn zenoh_stress_test_binary() -> PathBuf {
 
 /// Build the zenoh-stress-test binary with large subscriber buffer (8192B, cached).
 ///
-/// Uses `NROS_SUBSCRIBER_BUFFER_SIZE=8192`. The separation from its plain
+/// Uses `NROS_SUBSCRIBER_BUFFER_BYTES=8192`. The separation from its plain
 /// sibling is the row's own cargo group, not the `target-large-buf` directory
 /// this comment used to name — issue 0517 step 3 deleted that column.
 pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
@@ -8229,7 +8229,7 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
             let row = crate::fixtures::groups::select_row(
                 "packages/testing/nros-bench/stress-zenoh",
                 &crate::fixtures::groups::FixtureVariant::plain()
-                    .with_env(&[("NROS_SUBSCRIBER_BUFFER_SIZE", "8192")]),
+                    .with_env(&[("NROS_SUBSCRIBER_BUFFER_BYTES", "8192")]),
             )?;
             let rel = PathBuf::from(format!("{}/zenoh-stress-test", cargo_target_profile_dir()));
             require_prebuilt_row_binary_fresh(row, &rel)
@@ -8264,8 +8264,8 @@ pub fn xrce_stress_test_binary() -> PathBuf {
 
 /// Build the xrce-stress-test binary with a large receive ring (8192B, cached).
 ///
-/// phase-384 W2. Uses `NROS_XRCE_BUFFER_SIZE=8192`, mirroring the
-/// `NROS_SUBSCRIBER_BUFFER_SIZE` row for stress-zenoh. The XRCE ring entry is
+/// phase-384 W2. Uses `NROS_XRCE_BUFFER_BYTES=8192`, mirroring the
+/// `NROS_SUBSCRIBER_BUFFER_BYTES` row for stress-zenoh. The XRCE ring entry is
 /// a fixed `uint8_t data[XRCE_BUFFER_SIZE]` (`nros-rmw-xrce/src/internal.h`), so
 /// the caller's own `RX_BUF` cannot raise it — this env knob is the only lever,
 /// and this row is what proves it works.
@@ -8275,7 +8275,7 @@ pub fn build_xrce_stress_test_large_buf() -> TestResult<&'static Path> {
             let row = crate::fixtures::groups::select_row(
                 "packages/testing/nros-bench/stress-xrce",
                 &crate::fixtures::groups::FixtureVariant::plain()
-                    .with_env(&[("NROS_XRCE_BUFFER_SIZE", "8192")]),
+                    .with_env(&[("NROS_XRCE_BUFFER_BYTES", "8192")]),
             )?;
             let rel = PathBuf::from(format!("{}/xrce-stress-test", cargo_target_profile_dir()));
             require_prebuilt_row_binary_fresh(row, &rel)
