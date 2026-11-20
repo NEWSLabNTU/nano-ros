@@ -931,7 +931,7 @@ impl Ros2Liveliness {
     }
 
     /// A liveliness token's type back to its ROS name: the inverse of
-    /// [`crate::keyexpr::DdsTypeName`] (`std_msgs::msg::dds_::String_` ->
+    /// `keyexpr::DdsTypeName` (`std_msgs::msg::dds_::String_` ->
     /// `std_msgs/msg/String`), which is how `rmw_zenoh_cpp`'s graph and
     /// `ros2 topic list -t` spell it.
     ///
