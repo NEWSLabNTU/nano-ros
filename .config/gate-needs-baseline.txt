@@ -1,5 +1,5 @@
 # Recipes that call nros_check_skip/unverified and declare no needs: yet
 # (phase-543 W3 ratchet, check-gate-needs). Remove a line when its
 # recipe gains [group('needs:<cap>')]; never add one.
-cpp
+cpp-headers
 rustdoc-links
