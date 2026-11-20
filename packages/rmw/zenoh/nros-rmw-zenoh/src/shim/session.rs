@@ -465,10 +465,14 @@ pub(super) fn group_names_and_types<E>(
         // one place that costs storage, and it is bounded.
         let mut types: heapless::Vec<heapless::String<GRAPH_NAME_MAX>, GRAPH_TYPES_MAX> =
             heapless::Vec::new();
+        // Issue 2775 -- each type in its ROS form, as the topic name is below
+        // and as `rmw_zenoh_cpp` reports it; a type whose ROS form does not
+        // fit stays in the wire form rather than being cut.
         for_each(&mut |topic, ty| {
             if topic == name.as_str()
                 && let Some(t) = ty
-                && let Ok(ty) = heapless::String::try_from(t)
+                && let Some(ty) = Ros2Liveliness::demangle_type_name::<GRAPH_NAME_MAX>(t)
+                    .or_else(|| heapless::String::try_from(t).ok())
                 && !types.contains(&ty)
             {
                 let _ = types.push(ty);
@@ -1890,10 +1894,13 @@ impl Session for ZenohSession {
                 return true;
             }
             let ns = Ros2Liveliness::demangle_topic_name::<GRAPH_NAME_MAX>(e.namespace);
+            // Issue 2775 -- the ROS form, as the names-and-types queries give it.
+            let raw_type = e.type_name.unwrap_or("");
+            let ros_type = Ros2Liveliness::demangle_type_name::<GRAPH_NAME_MAX>(raw_type);
             let info = nros_rmw::GraphEndpointInfo {
                 node_name: e.node_name,
                 node_namespace: ns.as_str(),
-                topic_type: e.type_name.unwrap_or(""),
+                topic_type: ros_type.as_deref().unwrap_or(raw_type),
                 is_publisher: publishers,
                 // Issue 1495 — the token carries no gid FIELD, but it carries
                 // everything `rmw_zenoh_cpp` derives one from: an entity's gid
