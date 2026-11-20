@@ -119,3 +119,4 @@ ZENOH_TL_RETAIN_DEPTH	yes	yes	yes
 ZENOH_TX_BATCH	yes	yes	yes	
 ZENOH_TX_BATCH_FLUSH_MS	yes	yes	yes	
 ZENOH_TX_SPLIT_LOCK	yes	yes	yes	
+ZEPHYR_LOG_SINK_BUFFERS	n/a	n/a	yes	zephyr only: it sizes the Zephyr log sink's buffer pool, which only the Zephyr port's nros_log sink has
