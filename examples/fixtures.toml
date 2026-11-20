@@ -6866,10 +6866,13 @@ west_id = "zephyr/native_sim/native/64/logging-smoke"
 # SMP image (qemu_cortex_a53/smp). The pool row is the fix; the legacy row
 # builds the same image with the old caller-stack sink buffer and is the
 # negative control, which must overflow. Consumed by
-# tests/log_sink_small_stack.rs. No network: the image opens no session.
+# tests/log_sink_small_stack.rs. No network: the image opens no session;
+# `rmw` is stated (the module's Kconfig choice needs one) so the emitter and
+# this row agree on the leaf's label.
 [[fixture]]
 platform = "zephyr"
 lang = "c"
+rmw = "zenoh"
 builder = "west"
 dir = "packages/testing/nros-tests/bins/log-sink-small-stack-zephyr-smp"
 board = "qemu_cortex_a53/qemu_cortex_a53/smp"
@@ -6881,6 +6884,7 @@ conf_files = ["prj.conf"]
 [[fixture]]
 platform = "zephyr"
 lang = "c"
+rmw = "zenoh"
 builder = "west"
 dir = "packages/testing/nros-tests/bins/log-sink-small-stack-zephyr-smp"
 board = "qemu_cortex_a53/qemu_cortex_a53/smp"

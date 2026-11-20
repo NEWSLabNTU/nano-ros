@@ -22,7 +22,9 @@
 //! Run with: `cargo nextest run -p nros-tests --test log_sink_small_stack`
 
 use nros_tests::{
-    fixtures::{build_log_sink_small_stack_legacy_smp, build_log_sink_small_stack_smp},
+    fixtures::{
+        RequireFixture, build_log_sink_small_stack_legacy_smp, build_log_sink_small_stack_smp,
+    },
     zephyr::{ZephyrPlatform, ZephyrProcess},
 };
 use std::time::Duration;
@@ -38,7 +40,7 @@ fn record(i: usize) -> String {
 
 #[test]
 fn a_small_stack_thread_logs_every_record_through_the_pool() {
-    let binary = build_log_sink_small_stack_smp().expect("the pool image is built");
+    let binary = build_log_sink_small_stack_smp().require("the pool image");
     let proc = ZephyrProcess::start(binary, ZephyrPlatform::QemuCortexA53Smp)
         .expect("qemu_cortex_a53/smp boots");
     let out = proc.wait_for_pattern(DONE, BOOT);
@@ -67,7 +69,7 @@ fn a_small_stack_thread_logs_every_record_through_the_pool() {
 
 #[test]
 fn the_negative_control_overflows_on_the_callers_stack() {
-    let binary = build_log_sink_small_stack_legacy_smp().expect("the legacy image is built");
+    let binary = build_log_sink_small_stack_legacy_smp().require("the legacy-sink image");
     let proc = ZephyrProcess::start(binary, ZephyrPlatform::QemuCortexA53Smp)
         .expect("qemu_cortex_a53/smp boots");
     let out = proc.wait_for_pattern(THREAD_DONE, BOOT);
