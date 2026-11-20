@@ -72,7 +72,7 @@ pub fn kconfig_rows(rows: &[&Row], stated: &BTreeMap<String, String>, prompts: b
         }
         for r in group {
             let sym = symbol(r);
-            let ty = r.meta.ty.as_deref().unwrap_or("int");
+            let ty = r.meta.kconfig_type();
             s.push('\n');
             if let Some(p) = &r.meta.prompt
                 && !prompts
@@ -107,12 +107,56 @@ pub fn kconfig_rows(rows: &[&Row], stated: &BTreeMap<String, String>, prompts: b
                     }
                 }
             }
+            // A choice knob's member bools: Kconfig cannot test a string for a
+            // member, so a member that must select options gets its own bool,
+            // which the module refuses when it disagrees with the string.
+            for (m, depends, select) in &r.meta.member_kconfig {
+                let msym = member_symbol(&sym, m);
+                s.push_str(&format!("\nconfig {msym}\n"));
+                if prompts {
+                    s.push_str(&format!(
+                        "    bool \"{sym} names {m} (must agree with it)\"\n"
+                    ));
+                } else {
+                    s.push_str("    bool\n");
+                }
+                if let Some(v) = stated.get(&sym)
+                    && choice_names(v, m)
+                {
+                    s.push_str("    default y\n");
+                }
+                for d in depends {
+                    s.push_str(&format!("    depends on {d}\n"));
+                }
+                for x in select {
+                    s.push_str(&format!("    select {x}\n"));
+                }
+            }
         }
         if let Some(c) = cond {
             s.push_str(&format!("\nendif # {c}\n"));
         }
     }
     s
+}
+
+/// A choice knob member's derived bool: `<SYMBOL>_HAS_<MEMBER>` (`-` read as
+/// `_`), the generator's spelling for core rows too.
+fn member_symbol(sym: &str, member: &str) -> String {
+    format!(
+        "{sym}_HAS_{}",
+        member.to_ascii_uppercase().replace('-', "_")
+    )
+}
+
+/// Whether a stated choice value (a Kconfig string, quotes allowed; members
+/// comma-joined) names `member`.
+fn choice_names(value: &str, member: &str) -> bool {
+    value
+        .trim()
+        .trim_matches('"')
+        .split(',')
+        .any(|x| x.trim() == member)
 }
 
 /// `<build>/nros/Kconfig.packages` (RFC-0140 D5): the prompt-less definition
@@ -165,6 +209,40 @@ pub fn registry_cmake(cat: &Catalog) -> String {
         ));
         out.push_str(&format!("set(NROS_KNOB_IMAGE_TABLE_{id} {table})\n"));
         out.push_str(&format!("set(NROS_KNOB_IMAGE_NAME_{id} {name})\n"));
+        if r.meta.is_choice() {
+            // The committed registry's CHOICE tables, so the cmake road refuses
+            // a package knob's out-of-set value as it does a core one's.
+            let kind = r.meta.ty.as_deref().unwrap_or_default();
+            let members = r.meta.values.join(", ");
+            let want = if kind == "enum" {
+                format!("one of: {members}")
+            } else {
+                format!(
+                    "an ordered list of distinct members, comma-separated, at least one, of: \
+                     {members}"
+                )
+            };
+            let sym = symbol(r);
+            let member_syms: Vec<String> = r
+                .meta
+                .member_kconfig
+                .iter()
+                .map(|(m, _, _)| format!("{m}={}", member_symbol(&sym, m)))
+                .collect();
+            out.push_str(&format!("list(APPEND NROS_KNOB_CHOICE_IDS {id})\n"));
+            out.push_str(&format!("set(NROS_KNOB_CHOICE_KIND_{id} {kind})\n"));
+            out.push_str(&format!(
+                "set(NROS_KNOB_CHOICES_{id} \"{}\")\n",
+                r.meta.values.join(";")
+            ));
+            out.push_str(&format!("set(NROS_KNOB_KEY_{id} {})\n", r.name));
+            out.push_str(&format!("set(NROS_KNOB_CHOICE_SYMBOL_{id} {sym})\n"));
+            out.push_str(&format!("set(NROS_KNOB_CHOICE_WANT_{id} \"{want}\")\n"));
+            out.push_str(&format!(
+                "set(NROS_KNOB_MEMBER_SYMBOLS_{id} \"{}\")\n",
+                member_syms.join(";")
+            ));
+        }
     }
     for r in cat.package_rows().filter(|r| r.kind == RowKind::Knob) {
         let env = format!("NROS_{}", id(r));

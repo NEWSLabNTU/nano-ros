@@ -252,6 +252,117 @@ pub struct Meta {
     pub foreign: Option<String>,
     /// An env row's registry key (`acme.trace`), where it has one.
     pub key: Option<String>,
+    /// A CHOICE knob's members (`type = "enum"` / `"enum_list"`): one of them,
+    /// or an ordered list of distinct ones comma-joined. Empty on other rows.
+    pub values: Vec<String>,
+    /// A choice knob's member bools: `(member, depends, select)`, rendered as
+    /// `config <SYMBOL>_HAS_<MEMBER>` so a member can select Kconfig options.
+    pub member_kconfig: Vec<MemberKconfig>,
+}
+
+/// A choice knob's member bool: `(member, depends, select)`.
+pub type MemberKconfig = (String, Vec<String>, Vec<String>);
+
+/// The two choice row types.
+pub const CHOICE_TYPES: [&str; 2] = ["enum", "enum_list"];
+
+impl Meta {
+    /// Whether this is a choice knob (`enum` / `enum_list`).
+    #[must_use]
+    pub fn is_choice(&self) -> bool {
+        self.ty
+            .as_deref()
+            .is_some_and(|t| CHOICE_TYPES.contains(&t))
+    }
+
+    /// The Kconfig type the knob's symbol is defined with: a choice knob is a
+    /// `string`, its one Kconfig spelling.
+    #[must_use]
+    pub fn kconfig_type(&self) -> &str {
+        if self.is_choice() {
+            "string"
+        } else {
+            self.ty.as_deref().unwrap_or("int")
+        }
+    }
+}
+
+/// `values` and `member_kconfig` of a knob row, validated against its type: a
+/// choice row states distinct lower-case members, any other row neither field.
+fn parse_choice(
+    t: &toml::Table,
+    ty: Option<&str>,
+    key: &str,
+) -> std::result::Result<(Vec<String>, Vec<MemberKconfig>), String> {
+    let is_choice = ty.is_some_and(|t| CHOICE_TYPES.contains(&t));
+    if !is_choice {
+        for f in ["values", "member_kconfig"] {
+            if t.contains_key(f) {
+                return Err(format!(
+                    "knob `{key}`: `{f}` is authored only on a `type = \"enum\"` or \
+                     `\"enum_list\"` row"
+                ));
+            }
+        }
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let values: Vec<String> = t
+        .get("values")
+        .and_then(toml::Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(toml::Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    if values.is_empty() {
+        return Err(format!(
+            "knob `{key}`: a `{}` row states its members, `values = [\"a\", ...]`, non-empty",
+            ty.unwrap_or_default()
+        ));
+    }
+    for v in &values {
+        let word = !v.is_empty()
+            && v.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if !word {
+            return Err(format!(
+                "knob `{key}`: `values` members are lower-case words (`-` allowed), not `{v}`"
+            ));
+        }
+    }
+    for (i, v) in values.iter().enumerate() {
+        if values[..i].contains(v) {
+            return Err(format!("knob `{key}`: `values` lists `{v}` more than once"));
+        }
+    }
+    let mut members = Vec::new();
+    if let Some(mk) = t.get("member_kconfig") {
+        let mk = mk
+            .as_table()
+            .ok_or_else(|| format!("knob `{key}`: `member_kconfig` is a table keyed by member"))?;
+        for (m, spec) in mk {
+            if !values.contains(m) {
+                return Err(format!(
+                    "knob `{key}`: `member_kconfig.{m}` names no member of `values`"
+                ));
+            }
+            let list = |f: &str| -> Vec<String> {
+                spec.get(f)
+                    .and_then(toml::Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(toml::Value::as_str)
+                            .map(str::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            members.push((m.clone(), list("depends"), list("select")));
+        }
+    }
+    Ok((values, members))
 }
 
 /// One row of the merged catalog.
@@ -325,6 +436,16 @@ impl Row {
                 disposition: None,
                 foreign: None,
                 key: None,
+                values: k.choices.iter().map(|v| (*v).to_string()).collect(),
+                member_kconfig: nros_zephyr_build::member_kconfig(k.id)
+                    .map(|m| {
+                        (
+                            m.member.to_string(),
+                            m.depends.iter().map(|d| (*d).to_string()).collect(),
+                            Vec::new(),
+                        )
+                    })
+                    .collect(),
             },
         }
     }
@@ -718,8 +839,18 @@ impl Catalog {
             key: Option<&'a str>,
             #[serde(skip_serializing_if = "Option::is_none")]
             help: Option<&'a str>,
+            #[serde(skip_serializing_if = "<[String]>::is_empty")]
+            values: &'a [String],
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            member_kconfig: Vec<FileMember<'a>>,
             #[serde(skip_serializing_if = "Vec::is_empty")]
             retired: Vec<FileRetired<'a>>,
+        }
+        #[derive(Serialize)]
+        struct FileMember<'a> {
+            member: &'a str,
+            depends: &'a [String],
+            select: &'a [String],
         }
         #[derive(Serialize)]
         struct FileRetired<'a> {
@@ -768,6 +899,17 @@ impl Catalog {
                     foreign: r.meta.foreign.as_deref(),
                     key: r.meta.key.as_deref(),
                     help: r.meta.help.as_deref(),
+                    values: &r.meta.values,
+                    member_kconfig: r
+                        .meta
+                        .member_kconfig
+                        .iter()
+                        .map(|(m, d, sel)| FileMember {
+                            member: m,
+                            depends: d,
+                            select: sel,
+                        })
+                        .collect(),
                     retired: r
                         .retired
                         .iter()
@@ -901,6 +1043,21 @@ impl Catalog {
                     foreign: s("foreign"),
                     key: s("key"),
                     help: s("help"),
+                    values: strs(t.get("values")),
+                    member_kconfig: t
+                        .get("member_kconfig")
+                        .and_then(toml::Value::as_array)
+                        .map(Vec::as_slice)
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|m| {
+                            Some((
+                                m.get("member")?.as_str()?.to_string(),
+                                strs(m.get("depends")),
+                                strs(m.get("select")),
+                            ))
+                        })
+                        .collect(),
                 },
             });
         }
@@ -1071,6 +1228,18 @@ fn attrs_default_range(attrs: &[String]) -> (Option<String>, Option<(i64, i64)>)
     (default, range)
 }
 
+/// A TOML array of strings, or empty.
+fn strs(v: Option<&toml::Value>) -> Vec<String> {
+    v.and_then(toml::Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(toml::Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn parse_rows(doc: &toml::Table, owner: &str, origin: &Origin, file: &Path) -> Result<Vec<Row>> {
     let where_ = |what: &str| err(format!("{}: {what}", file.display()));
     let under = |key: &str| key.split('.').next() == Some(owner) && key.contains('.');
@@ -1130,6 +1299,9 @@ fn parse_rows(doc: &toml::Table, owner: &str, origin: &Origin, file: &Path) -> R
                     })
                     .unwrap_or_default();
                 let (default, range) = attrs_default_range(&kconfig_attrs);
+                let (values, member_kconfig) =
+                    parse_choice(t, t.get("type").and_then(toml::Value::as_str), key)
+                        .map_err(|e| where_(&e))?;
                 Row {
                     kind: RowKind::Knob,
                     name: key.to_string(),
@@ -1149,6 +1321,8 @@ fn parse_rows(doc: &toml::Table, owner: &str, origin: &Origin, file: &Path) -> R
                         disposition: None,
                         foreign: None,
                         key: None,
+                        values,
+                        member_kconfig,
                     },
                 }
             } else {
