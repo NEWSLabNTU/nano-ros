@@ -29,6 +29,46 @@
 
 use std::path::{Path, PathBuf};
 
+/// `p` with its `.` and `..` components folded away, without touching the
+/// filesystem: `<ws>/src/zephyr_entry/../demo_bringup` is `<ws>/src/demo_bringup`.
+///
+/// Every rule here derives a place from a bringup's PARENTS
+/// (`<ws>/src/<bringup>`, so `<ws>` is two levels up), and a parent is
+/// lexical: the grandparent of the unfolded spelling above is
+/// `<ws>/src/zephyr_entry`. Each public function here folds its `bringup_dir`
+/// first, so no caller has to. A `..` that would climb above a relative
+/// path's start is kept.
+// Issue 2767 -- a hand-written entry names its bringup relative to itself;
+// unfolded, the generated launch tree was looked for under the entry, the
+// model's recorded launch input read as missing, and the census check
+// refused a model that was current.
+#[must_use]
+pub fn lexical(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let can_pop = matches!(out.components().next_back(), Some(Component::Normal(_)));
+                if can_pop {
+                    out.pop();
+                } else if !matches!(
+                    out.components().next_back(),
+                    Some(Component::RootDir | Component::Prefix(_))
+                ) {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    if out.as_os_str().is_empty() {
+        out.push(".");
+    }
+    out
+}
+
 /// Candidate model paths for `bringup_dir`/`model_rel`, most-preferred first.
 ///
 /// `model_rel` is the bringup-relative path (`config/system_model.yaml`, or a
@@ -36,6 +76,7 @@ use std::path::{Path, PathBuf};
 /// its FILE NAME: a build directory is already scoped to one build, so
 /// re-nesting `config/` there would add a level that means nothing.
 pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
+    let bringup_dir = &lexical(bringup_dir);
     let name = Path::new(model_rel)
         .file_name()
         .map(PathBuf::from)
@@ -118,6 +159,7 @@ pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
 /// [`generated_launch_dir`]) and for a bringup outside that layout.
 #[must_use]
 pub fn generated_launch_root(bringup_dir: &Path) -> Option<PathBuf> {
+    let bringup_dir = &lexical(bringup_dir);
     if crate::leaf_system::is_package_dir(bringup_dir) {
         return None;
     }
@@ -133,6 +175,7 @@ pub fn generated_launch_root(bringup_dir: &Path) -> Option<PathBuf> {
 /// sync has always written it.
 #[must_use]
 pub fn generated_launch_dir(bringup_dir: &Path) -> Option<PathBuf> {
+    let bringup_dir = &lexical(bringup_dir);
     if crate::leaf_system::is_package_dir(bringup_dir) {
         let name = bringup_dir.file_name()?;
         return Some(
@@ -153,6 +196,7 @@ pub fn generated_launch_dir(bringup_dir: &Path) -> Option<PathBuf> {
 /// identically, and adding `launch/` replaces the generated file.
 #[must_use]
 pub fn launch_dir(bringup_dir: &Path) -> PathBuf {
+    let bringup_dir = &lexical(bringup_dir);
     let authored = bringup_dir.join("launch");
     if authored.is_dir() {
         return authored;
@@ -165,6 +209,7 @@ pub fn launch_dir(bringup_dir: &Path) -> PathBuf {
 /// [`generated_launch_root`] when its launch file is generated.
 #[must_use]
 pub fn launch_root(bringup_dir: &Path) -> PathBuf {
+    let bringup_dir = &lexical(bringup_dir);
     if bringup_dir.join("launch").is_dir() {
         return bringup_dir.to_path_buf();
     }
@@ -176,6 +221,7 @@ pub fn launch_root(bringup_dir: &Path) -> PathBuf {
 /// `system.toml`, as it records the bringup's own).
 #[must_use]
 pub fn resolve_system_toml(bringup_dir: &Path) -> PathBuf {
+    let bringup_dir = &lexical(bringup_dir);
     launch_root(bringup_dir).join("system.toml")
 }
 
@@ -184,6 +230,7 @@ pub fn resolve_system_toml(bringup_dir: &Path) -> PathBuf {
 /// [`launch_root`]. An absolute `rel` is returned as is.
 #[must_use]
 pub fn recorded_input_path(bringup_dir: &Path, rel: &Path) -> PathBuf {
+    let bringup_dir = &lexical(bringup_dir);
     if rel == Path::new("system.toml") {
         return bringup_dir.join("system.toml");
     }
@@ -193,6 +240,7 @@ pub fn recorded_input_path(bringup_dir: &Path, rel: &Path) -> PathBuf {
 /// Whether [`launch_dir`] answers with a generated directory for `bringup_dir`.
 #[must_use]
 pub fn launch_is_generated(bringup_dir: &Path) -> bool {
+    let bringup_dir = &lexical(bringup_dir);
     !bringup_dir.join("launch").is_dir() && generated_launch_dir(bringup_dir).is_some()
 }
 
@@ -610,6 +658,7 @@ pub fn launch_resolver_missing_help(l: &LaunchResolverLadder<'_>) -> String {
 /// the final rung. Nothing READS these cache paths (only the writer returns
 /// the path it wrote), so trying several cannot split writer from reader.
 fn model_write_dirs(bringup_dir: &Path) -> Vec<PathBuf> {
+    let bringup_dir = &lexical(bringup_dir);
     let bringup_name = bringup_dir
         .file_name()
         .map(PathBuf::from)
@@ -649,6 +698,8 @@ fn model_write_dirs(bringup_dir: &Path) -> Vec<PathBuf> {
 /// so a provenance check written for sync's models does not apply to it. The
 /// refusal marker still does.
 pub fn is_self_resolved(bringup_dir: &Path, model: &Path) -> bool {
+    let bringup_dir = &lexical(bringup_dir);
+    let model = lexical(model);
     let Some(parent) = model.parent() else {
         return false;
     };
@@ -682,6 +733,7 @@ fn create_model_write_dir(bringup_dir: &Path) -> Result<PathBuf, String> {
 /// **Both the reader and the writer must call this.** They are the only two
 /// places that spell the directory, and they are in this file for that reason.
 fn build_scoped_dir(bringup_dir: &Path) -> String {
+    let bringup_dir = &lexical(bringup_dir);
     let name = bringup_dir
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -889,6 +941,67 @@ fn is_fresh(path: &Path, inputs: &[PathBuf]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Issue 2767 -- the folding itself, every component shape.
+    #[test]
+    fn lexical_folds_dot_and_dot_dot() {
+        let cases = [
+            ("/ws/src/entry/../demo_bringup", "/ws/src/demo_bringup"),
+            ("/ws/src/./demo_bringup/", "/ws/src/demo_bringup"),
+            ("/ws/src/demo_bringup", "/ws/src/demo_bringup"),
+            ("/..", "/"),
+            ("../a/../b", "../b"),
+            ("a/..", "."),
+            ("../../x", "../../x"),
+        ];
+        for (input, want) in cases {
+            assert_eq!(lexical(Path::new(input)), PathBuf::from(want), "{input}");
+        }
+    }
+
+    // Issue 2767 -- a bringup spelled through its sibling entry
+    // (`<ws>/src/zephyr_entry/../demo_bringup`, a hand-written west entry's
+    // own spelling) finds the same generated launch tree, the same recorded
+    // input and the same model candidates as the folded spelling. Before, its
+    // grandparent was `<ws>/src/zephyr_entry`, and every one of these pointed
+    // under the entry.
+    #[test]
+    fn an_entry_relative_bringup_resolves_like_the_folded_one() {
+        let tmp = std::env::temp_dir().join(format!("nros-lexical-{}", std::process::id()));
+        let ws = tmp.join("ws");
+        let bringup = ws.join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::create_dir_all(ws.join("src/zephyr_entry")).unwrap();
+        std::fs::write(bringup.join("system.toml"), "[system]\n").unwrap();
+        let generated = ws.join("build/nros/launch/demo_bringup/launch");
+        std::fs::create_dir_all(&generated).unwrap();
+        std::fs::write(generated.join("system.launch.xml"), "<launch/>\n").unwrap();
+
+        let spelled = ws.join("src/zephyr_entry/../demo_bringup");
+        let rel = Path::new("launch/system.launch.xml");
+        assert_eq!(
+            generated_launch_root(&spelled),
+            generated_launch_root(&bringup)
+        );
+        assert_eq!(
+            launch_root(&spelled),
+            ws.join("build/nros/launch/demo_bringup")
+        );
+        assert!(
+            recorded_input_path(&spelled, rel).is_file(),
+            "the recorded input is found"
+        );
+        // Under the env lock: the candidates read NROS_MODEL_DIR and OUT_DIR,
+        // which other tests here set.
+        with_env(&[], || {
+            assert_eq!(
+                model_search_paths(&spelled, "config/system_model.yaml"),
+                model_search_paths(&bringup, "config/system_model.yaml"),
+            );
+        });
+        assert_eq!(build_scoped_dir(&spelled), build_scoped_dir(&bringup));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 
     /// Issue 2711 -- a ladder that fell past an empty checkout rung says so,
     /// names the rung that answered, and names the command; one that found

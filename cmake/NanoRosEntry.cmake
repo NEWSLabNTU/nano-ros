@@ -224,8 +224,10 @@ function(_nros_entry_require_fresh_census)
     # this road the census may legitimately cover fewer nodes than the
     # contract while a workspace is being edited; the explicit
     # `just check entity-census` gate is where strict belongs.
-    if(EXISTS "${_RFC_BRINGUP}/system.toml")
-        list(APPEND _rfc_args --system-toml "${_RFC_BRINGUP}/system.toml")
+    # Issue 2767 -- the normalized bringup, as `_rfc_ws` above: the CLI
+    # derives the generated launch tree from this path's parents.
+    if(EXISTS "${_rfc_bringup_abs}/system.toml")
+        list(APPEND _rfc_args --system-toml "${_rfc_bringup_abs}/system.toml")
     endif()
     set(_rfc_inventory "${CMAKE_BINARY_DIR}/nros/entity_inventory.json")
     if(EXISTS "${_rfc_inventory}")
