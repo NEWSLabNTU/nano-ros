@@ -53,6 +53,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from lib.git_history import HistoryUnknown, history_git, history_objects_unreadable  # noqa: E402
+from lib.git_hook_env import nros_clear_inherited_git_env  # noqa: E402
 
 LINES = ("3.7", "4.4")
 
@@ -302,4 +303,9 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    # Every git call here reads a WORKSPACE project (or a scratch repository
+    # in the self-test), never this checkout. Reached from a git hook, an
+    # inherited GIT_DIR would point each of them at the caller's repository
+    # instead, so clear it once, before anything runs.
+    nros_clear_inherited_git_env()
     sys.exit(main(sys.argv[1:]))
