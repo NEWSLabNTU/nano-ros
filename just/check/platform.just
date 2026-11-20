@@ -549,6 +549,16 @@ kconfig-knob-forwarding:
 knob-registry:
     @python3 scripts/gen-knob-registry.py --check
 
+# Every `int` / `hex` Kconfig symbol nano-ros defines (the module's Kconfig
+# files, merged across files, and every registry row the configure renders)
+# has an unconditional default. Kconfig emits an int with no value EMPTY, and
+# Zephyr's configs.c then fails to assemble in EVERY image; no host gate builds
+# one, so a retired int that lost its default passed a green `ci gate`.
+# Buildless, ~0.3 s; self-test on the normal path.
+[private]
+kconfig-number-defaults:
+    @python3 scripts/check/check-kconfig-number-defaults.py
+
 # phase-484 W8 (RFC-0103 D2b) — the 32 `legacy` spellings in `knobs.toml` are
 # RETIRED: every reader refuses one that is set. This keeps any ENV reader or
 # writer (a Rust literal / `knob()` / `rerun-if-env-changed`, a cargo `[env]` or

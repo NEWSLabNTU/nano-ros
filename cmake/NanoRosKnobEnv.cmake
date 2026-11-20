@@ -145,8 +145,12 @@ endfunction()
 function(_nros_check_kconfig_knob_values)
     set(_refusals "")
     foreach(_s IN LISTS NROS_KNOB_RETIRED_KCONFIG)
+        # A retired number keeps a default (an empty int breaks configs.c),
+        # so "set" is "not that default".
         if(DEFINED CONFIG_${_s} AND NOT "${CONFIG_${_s}}" STREQUAL ""
-           AND NOT "${CONFIG_${_s}}" STREQUAL "n")
+           AND NOT "${CONFIG_${_s}}" STREQUAL "n"
+           AND NOT (DEFINED NROS_KNOB_RETIRED_KCONFIG_UNSET_${_s}
+                    AND "${CONFIG_${_s}}" STREQUAL "${NROS_KNOB_RETIRED_KCONFIG_UNSET_${_s}}"))
             string(APPEND _refusals "\n  ${NROS_KNOB_RETIRED_KCONFIG_MSG_${_s}}")
         endif()
     endforeach()

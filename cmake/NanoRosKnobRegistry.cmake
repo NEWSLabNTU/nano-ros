@@ -292,6 +292,7 @@ set(NROS_KNOB_MEMBER_SYMBOLS_CLOCK_UPGRADE "")
 # (`_nros_refuse_retired_kconfig`, cmake/NanoRosKnobEnv.cmake).
 set(NROS_KNOB_RETIRED_KCONFIG "NROS_EPOCH_FROM_ZENOH_INTERVAL_MS;NROS_SNTP_EPOCH;NROS_EPOCH_FROM_ZENOH")
 set(NROS_KNOB_RETIRED_KCONFIG_MSG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS "CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS is retired: set [image.<id>.knobs.clock] hlc_interval_ms instead (CONFIG_NROS_CLOCK_HLC_INTERVAL_MS where a conf file states it)")
+set(NROS_KNOB_RETIRED_KCONFIG_UNSET_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS -1)
 set(NROS_KNOB_RETIRED_KCONFIG_MSG_NROS_SNTP_EPOCH "CONFIG_NROS_SNTP_EPOCH is retired: set clock.source to a list naming sntp, for example sntp,platform")
 set(NROS_KNOB_RETIRED_KCONFIG_MSG_NROS_EPOCH_FROM_ZENOH "CONFIG_NROS_EPOCH_FROM_ZENOH is retired: set clock.source to a list naming zenoh-hlc, for example zenoh-hlc,platform")
 

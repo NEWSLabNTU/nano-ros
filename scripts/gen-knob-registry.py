@@ -332,6 +332,15 @@ def choice_default_problems(r, where):
     return out
 
 
+# The value a retired `int` / `hex` symbol holds when nothing assigned it. A
+# Kconfig int with no default is emitted EMPTY (`CONFIG_X=`), and Zephyr's
+# generated configs.c turns that into `.equ CONFIG_X,`, which fails to
+# assemble in EVERY image. So a retired number keeps this default, and the
+# refusal reads "set" as "not this value". Never a meaningful setting of any
+# knob this tree has retired.
+RETIRED_UNSET = {"int": "-1", "hex": "0x0"}
+
+
 def retired_kconfig(r):
     """[(symbol without CONFIG_, Kconfig type, message)] for every `kconfig:`
     retired spelling of row `r`: the module keeps each defined, with a prompt,
@@ -796,8 +805,10 @@ def render_cmake(rows):
     out.append("# prompt, and the Zephyr configure stops when one is set, with its message")
     out.append("# (`_nros_refuse_retired_kconfig`, cmake/NanoRosKnobEnv.cmake).")
     out.append('set(NROS_KNOB_RETIRED_KCONFIG "' + ";".join(s for s, _, _ in rk) + '")')
-    for s, _, msg in rk:
+    for s, _ty, msg in rk:
         out.append(f"set(NROS_KNOB_RETIRED_KCONFIG_MSG_{s} {cmake_str(msg)})")
+        if _ty in RETIRED_UNSET:
+            out.append(f"set(NROS_KNOB_RETIRED_KCONFIG_UNSET_{s} {RETIRED_UNSET[_ty]})")
     out.append("")
     retired = [r for r in rows if r.get("retired")]
     out.append("# RETIRED knobs: every spelling below stops a configure, with its row's reason")
@@ -908,8 +919,10 @@ def render_kconfig_section(rows):
             "",
         ]
         for sym, ty, msg in rk:
-            out += [f"config {sym}", f'    {ty} "Retired -- setting it stops the configure"',
-                    "    help", f"      {msg}", ""]
+            out += [f"config {sym}", f'    {ty} "Retired -- setting it stops the configure"']
+            if ty in RETIRED_UNSET:
+                out.append(f"    default {RETIRED_UNSET[ty]}")
+            out += ["    help", f"      {msg}", ""]
     out.append(KCONFIG_END)
     return "\n".join(out)
 
@@ -1233,6 +1246,14 @@ def self_test():
     assert ("config NROS_A_C_HAS_B_C\n    bool\n    depends on NET\n    select SNTP\n") in sec, sec
     assert ('config NROS_OLD_C\n    bool "Retired -- setting it stops the configure"\n    help\n'
             "      CONFIG_NROS_OLD_C is retired: set a.c instead\n") in sec, sec
+    # A retired int keeps a default: Kconfig emits an int with none EMPTY, and
+    # Zephyr's configs.c then fails to assemble in every image.
+    num = choice('values = ["a"]\nretired = [{ spelling = "kconfig:CONFIG_NROS_OLD_N", type = "int", '
+                 'instead = "set a.c instead" }]\n')
+    nrows = load_registry(num)[0]["knob"]
+    assert ('config NROS_OLD_N\n    int "Retired -- setting it stops the configure"\n'
+            f"    default {RETIRED_UNSET['int']}\n") in render_kconfig_section(nrows)
+    assert f"set(NROS_KNOB_RETIRED_KCONFIG_UNSET_NROS_OLD_N {RETIRED_UNSET['int']})" in render_cmake(nrows)
     pr = render_prompts(rows)
     assert 'config NROS_A_C\n    string "p"\n' in pr, pr
     assert 'config NROS_A_C_HAS_B_C\n    bool "NROS_A_C names b-c (must agree with it)"\n    depends on NET\n' in pr, pr
@@ -1308,6 +1329,13 @@ def cmake_road_selftest():
         rk = [x for r in rows.values() for x in retired_kconfig(r)]
         if rk:
             cases.append(("kconfig", None, ((f"CONFIG_{rk[0][0]}", "y"),), False, "is retired"))
+        # A retired NUMBER keeps a default (empty, it breaks configs.c in every
+        # image), so its default must read as unset and any other value as set.
+        num = next(((s, t) for s, t, _ in rk if t in RETIRED_UNSET), None)
+        if num:
+            s, t = num
+            cases.append(("kconfig", None, ((f"CONFIG_{s}", RETIRED_UNSET[t]),), True, None))
+            cases.append(("kconfig", None, ((f"CONFIG_{s}", "1000"),), False, "is retired"))
         if members:
             m = next(iter(members))
             cases.append(("kconfig", None, ((sym, m),), False, "disagrees with it"))
