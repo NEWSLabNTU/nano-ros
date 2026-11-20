@@ -7,7 +7,7 @@
  *   - `Reset_Handler` (data copy + bss zero + jump to `main`)
  *   - `Default_Handler` (infinite loop for unhandled IRQs)
  *   - the LAN9118 netif registration + poll (the strong overrides for
- *     `network_glue.c`'s weak `nros_board_*` hooks)
+ *     `network_glue.c`'s weak `nros_board_*` hooks) and its RX interrupt
  *
  * W5.c removed ~~`nros_freertos_diag_network`~~ — ~180 lines of raw LAN9118 CSR
  * pokes and a hand-assembled ARP frame, duplicated into the retired
@@ -32,6 +32,7 @@
 
 /* Drain-loop hooks in nros-board-freertos/c/network_glue.c (issue 0917). */
 void nros_freertos_net_rx_backlog(void);
+void nros_freertos_net_wake_from_isr(void);
 
 /* ---- Linker symbols ---- */
 extern uint32_t _etext;
@@ -66,7 +67,9 @@ void TIMER1_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
 void DUALTIMER_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
 void SPI_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
 void UARTOVF_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
-void ETHERNET_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
+/* ETHERNET_IRQHandler (IRQ 13) is the board's own: the LAN9118 RX interrupt,
+ * defined below next to the netif it services. */
+void ETHERNET_IRQHandler(void);
 void I2S_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
 void TSC_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
 void GPIO2_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));
@@ -120,6 +123,12 @@ extern int main(void);
 struct netif lan9118_netif;
 struct lan9118_config lan9118_cfg;
 
+/* NVIC registers for the LAN9118's line (QEMU hw/arm/mps2.c wires it to
+ * external IRQ 13). */
+#define ETHERNET_IRQ 13u
+#define NVIC_ISER0 (*(volatile uint32_t *)0xE000E100u)
+#define NVIC_IPR   ((volatile uint8_t *)0xE000E400u)
+
 /* ---- Strong overrides for the generic network_glue.c hooks ---- */
 
 int nros_board_register_netif(const uint8_t mac[6], const uint8_t ip[4], const uint8_t netmask[4],
@@ -144,17 +153,41 @@ int nros_board_register_netif(const uint8_t mac[6], const uint8_t ip[4], const u
     netifapi_netif_set_default(&lan9118_netif);
     netifapi_netif_set_up(&lan9118_netif);
     netifapi_netif_set_link_up(&lan9118_netif);
+
+    /* Arm RX interrupts: the MAC's own mask first, then the NVIC. The order
+     * matters: until lan9118_lwip_init has set IRQ_POL|IRQ_TYPE the part's
+     * line reads active-low and is held asserted, so an NVIC enabled earlier
+     * takes the interrupt at once, against a netif that does not exist yet.
+     * The priority is the kernel's (lowest urgency), which may call the
+     * FreeRTOS ...FromISR API. Issue 0917, as on the mps3-an536 board. */
+    lan9118_lwip_rx_irq_enable(&lan9118_netif);
+    NVIC_IPR[ETHERNET_IRQ] = (uint8_t)configKERNEL_INTERRUPT_PRIORITY;
+    NVIC_ISER0 = 1u << ETHERNET_IRQ;
     return 0;
 }
 
 void nros_board_poll_netif(void) {
     lan9118_lwip_poll(&lan9118_netif);
-    /* No RX interrupt is wired here, so a drain that stopped at its budget
-     * would otherwise wait the full poll interval with frames in the FIFO.
-     * Issue 0917. */
-    if (lan9118_lwip_rx_pending(&lan9118_netif)) {
+    /* Re-arm once the FIFO is empty; the line stays masked for as long as
+     * there is work, so a burst cannot re-enter the handler per frame.
+     *
+     * Either way frames can still be waiting with no interrupt coming: the
+     * drain stopped at its budget, or a frame landed while re-arming and the
+     * re-arm cleared its status bit (see lan9118_lwip_rx_irq_rearm). Tell
+     * the drain loop to come straight back rather than after the full poll
+     * interval. Issue 0917. */
+    if (lan9118_lwip_rx_pending(&lan9118_netif) ||
+        lan9118_lwip_rx_irq_rearm(&lan9118_netif)) {
         nros_freertos_net_rx_backlog();
     }
+}
+
+/* The LAN9118 RX interrupt. Do the minimum: silence the source, wake the drain
+ * task, return. lwIP must not be touched from here: `netif->input` takes
+ * locks and allocates. */
+void ETHERNET_IRQHandler(void) {
+    lan9118_lwip_rx_irq_mask(&lan9118_netif);
+    nros_freertos_net_wake_from_isr();
 }
 
 /* ---- Interrupt vector table ---- */

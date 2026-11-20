@@ -2,13 +2,20 @@
  * LAN9118/SMSC911x lwIP netif driver for QEMU MPS2-AN385
  *
  * Register map and init sequence from the lan9118-smoltcp Rust driver.
- * Polling-based RX, lwIP pbuf-based TX.
+ * RX is drained by lan9118_lwip_poll, from a task a board wakes on the RX
+ * interrupt (lan9118_lwip_rx_irq_*) or on a timer; lwIP pbuf-based TX.
+ *
+ * Every frame the driver takes, sends or loses is counted in lwIP's link
+ * stats (LINK_STATS), including the frames the part itself dropped because
+ * its RX FIFO was full (the RX_DROP counter). Without that, loss at this
+ * layer is invisible: every pool above it reads clean while the NIC drops.
  */
 
 #include "lan9118_lwip.h"
 
 #include "lwip/etharp.h"
 #include "lwip/pbuf.h"
+#include "lwip/stats.h"
 #include "netif/ethernet.h"
 
 #include <string.h>
@@ -31,6 +38,7 @@
 #define REG_RX_FIFO_INF   0x7C
 #define REG_TX_FIFO_INF   0x80
 #define REG_GPIO_CFG      0x88
+#define REG_RX_DROP       0xA0
 #define REG_MAC_CSR_CMD   0xA4
 #define REG_MAC_CSR_DATA  0xA8
 #define REG_AFC_CFG       0xAC
@@ -360,12 +368,16 @@ static struct pbuf *rx_receive(uint32_t base) {
      * case the words cannot be counted, so only it fast-forwards. */
     if (pkt_len < 4 || pkt_len > MAX_FRAME_SIZE) {
         rx_discard(base);
+        LINK_STATS_INC(link.lenerr);
+        LINK_STATS_INC(link.drop);
         return NULL;
     }
 
     /* Error check */
     if (rx_stat & RX_STAT_ES) {
         rx_drain_words(base, pkt_len);
+        LINK_STATS_INC(link.err);
+        LINK_STATS_INC(link.drop);
         return NULL;
     }
 
@@ -375,6 +387,8 @@ static struct pbuf *rx_receive(uint32_t base) {
     struct pbuf *p = pbuf_alloc(PBUF_RAW, (u16_t)data_len, PBUF_POOL);
     if (p == NULL) {
         rx_drain_words(base, pkt_len);
+        LINK_STATS_INC(link.memerr);
+        LINK_STATS_INC(link.drop);
         return NULL;
     }
 
@@ -406,6 +420,7 @@ static struct pbuf *rx_receive(uint32_t base) {
         fifo_offset += (fifo_offset < data_len) ? 0 : 0;
     }
 
+    LINK_STATS_INC(link.recv);
     return p;
 }
 
@@ -418,13 +433,19 @@ static err_t low_level_output(struct netif *netif, struct pbuf *p) {
     uint32_t base = cfg->base_addr;
 
     uint16_t total = p->tot_len;
-    if (total > MAX_FRAME_SIZE)
+    if (total > MAX_FRAME_SIZE) {
+        LINK_STATS_INC(link.lenerr);
+        LINK_STATS_INC(link.drop);
         return ERR_BUF;
+    }
 
     /* Check TX FIFO has enough space (frame + 8 bytes for commands) */
     uint32_t tx_free = reg_read(base, REG_TX_FIFO_INF) & TX_FIFO_INF_TXDFREE_MASK;
-    if (tx_free < (uint32_t)(total + 8))
+    if (tx_free < (uint32_t)(total + 8)) {
+        LINK_STATS_INC(link.memerr);
+        LINK_STATS_INC(link.drop);
         return ERR_MEM;
+    }
 
     /* TX Command A */
     uint32_t cmd_a = TX_CMD_A_FIRST_SEG | TX_CMD_A_LAST_SEG | (uint32_t)total;
@@ -456,6 +477,7 @@ static err_t low_level_output(struct netif *netif, struct pbuf *p) {
         reg_write(base, REG_TX_DATA_PORT, word);
     }
 
+    LINK_STATS_INC(link.xmit);
     return ERR_OK;
 }
 
@@ -503,12 +525,24 @@ err_t lan9118_lwip_init(struct netif *netif) {
 /* ---- RX interrupt support (issue 0917) ----
  *
  * The controller drives its IRQ pin from INT_STS & INT_EN. RSFL ("RX status
- * FIFO level") asserts while the RX status FIFO is non-empty, so it is a LEVEL
- * condition, not an edge: it stays asserted until the frames are drained.
- * An ISR must therefore MASK it rather than try to clear it, or the line
- * re-asserts the instant the handler returns and the core livelocks.
+ * FIFO level") is a STATUS bit, set when a received frame takes the RX status
+ * FIFO past its programmed level (FIFO_INT, 0 here: any frame) and cleared by
+ * writing 1. It is not re-raised for frames already sitting in the FIFO:
+ * QEMU's model (hw/net/lan9118.c) sets it once per received frame. Two rules
+ * follow:
  *
- * The split is: ISR masks and hands off; the drain task unmasks when the FIFO
+ * - The ISR MASKS the source and leaves the draining to a task. Clearing it
+ *   alone does not stop a burst from re-entering the handler per frame.
+ * - Re-arming clears the stale bit and then unmasks, so a frame that lands
+ *   between the drain's last "FIFO empty" read and that clear has its only
+ *   interrupt wiped. The FIFO holds that frame and nothing will announce it:
+ *   the drain sleeps its full poll interval while the burst behind it fills
+ *   the FIFO and the part drops the tail - the exact loss the interrupt was
+ *   added to prevent. `lan9118_lwip_rx_irq_rearm` therefore looks at the FIFO
+ *   AFTER unmasking and reports a frame found there, so the caller drains
+ *   again instead of waiting.
+ *
+ * The split is: ISR masks and hands off; the drain task re-arms when the FIFO
  * is empty. IRQ_CFG is already programmed with IRQ_EN|IRQ_POL|IRQ_TYPE by
  * lan9118_lwip_init (active-high, push-pull), which is what the QEMU model
  * requires to assert the line at all — with either bit clear it treats the
@@ -531,6 +565,19 @@ void lan9118_lwip_rx_irq_mask(struct netif *netif) {
     reg_write(base, REG_INT_STS, INT_STS_RSFL);
 }
 
+int lan9118_lwip_rx_irq_rearm(struct netif *netif) {
+    struct lan9118_config *cfg = (struct lan9118_config *)netif->state;
+    uint32_t base = cfg->base_addr;
+    lan9118_lwip_rx_irq_enable(netif);
+    if (rx_packets_pending(base) == 0) {
+        return 0;
+    }
+    /* A frame arrived while re-arming; its status bit may be gone. Stay
+     * masked and let the caller drain it now. */
+    lan9118_lwip_rx_irq_mask(netif);
+    return 1;
+}
+
 int lan9118_lwip_rx_pending(struct netif *netif) {
     struct lan9118_config *cfg = (struct lan9118_config *)netif->state;
     return rx_packets_pending(cfg->base_addr) > 0;
@@ -540,6 +587,14 @@ void lan9118_lwip_poll(struct netif *netif) {
     struct lan9118_config *cfg = (struct lan9118_config *)netif->state;
     uint32_t base = cfg->base_addr;
     uint32_t budget = 16;
+
+#if LINK_STATS
+    /* Frames the part refused because its RX FIFO was full. RX_DROP is
+     * clear-on-read on the part, so each read is the count since the last
+     * one. QEMU's model (through 11.0) back-pressures its backend instead of
+     * dropping and reads this register as 0. */
+    lwip_stats.link.drop += (STAT_COUNTER)reg_read(base, REG_RX_DROP);
+#endif
 
     /* Drain a bounded batch. This poller commonly runs above the app task on
      * FreeRTOS; an unbounded drain can starve application startup if RX status
@@ -551,6 +606,7 @@ void lan9118_lwip_poll(struct netif *netif) {
 
         if (netif->input(p, netif) != ERR_OK) {
             pbuf_free(p);
+            LINK_STATS_INC(link.drop);
         }
     }
 }

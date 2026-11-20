@@ -79,6 +79,10 @@ pub mod run;
 pub mod sdk_tree;
 pub mod tcp_listener;
 pub mod treewalk;
+// Issue 0917 -- a 100 Mbps wire with NIC overflow between a QEMU guest and
+// slirp, for cells that must see a burst arrive the way the link delivers it.
+#[cfg(unix)]
+pub mod wire;
 pub mod zephyr;
 
 /// A precondition this test needs is NOT met — the test FAILS.

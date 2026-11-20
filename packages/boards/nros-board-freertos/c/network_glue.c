@@ -189,9 +189,15 @@ void nros_freertos_poll_network(void) {
  * fell back to the 5 ms poll the interrupt replaced.
  *
  * The board says so by calling this from inside nros_board_poll_netif; the
- * drain loop then waits ONE tick instead of the ceiling. One tick still yields
- * the CPU to the application between batches, and 16 frames a millisecond is
- * above a 100 Mbps link's 12.5 KB/ms of full-size frames. It is a call FROM the
+ * drain loop then drains again AT ONCE, and only a second backlog in a row
+ * waits ONE tick. A wait is not free here: the LAN9118's FIFO holds about
+ * seven full frames, which a 100 Mbps link fills in ~0.8 ms, so a one-tick
+ * wait after the first backlog loses the tail of the burst it was called for
+ * (the common backlog is a frame that landed while the drain re-armed the
+ * interrupt, not a full budget). Two backlogs in a row means the link is
+ * keeping the drain busy; one tick then still yields the CPU to the
+ * application between batches, and 16 frames a millisecond is above a
+ * 100 Mbps link's 12.5 KB/ms of full-size frames. It is a call FROM the
  * board rather than a weak query hook so it adds no weak symbol (and no
  * archive-order tie, see nros_board_register_netif above). Same task as the
  * drain loop, so the flag needs no synchronisation. */
@@ -211,12 +217,21 @@ void nros_freertos_net_rx_backlog(void) {
  * Never returns. */
 void nros_freertos_net_drain_loop(uint32_t poll_ms) {
     const TickType_t ceiling = pdMS_TO_TICKS(poll_ms);
+    int backlog_run = 0;
     nros_freertos_net_register_drain_task();
     for (;;) {
         s_rx_backlog = 0;
         nros_freertos_poll_network();
         TickType_t wait = ceiling;
-        if (s_rx_backlog && ceiling > 1) {
+        if (!s_rx_backlog) {
+            backlog_run = 0;
+        } else if (backlog_run++ == 0) {
+            /* First backlog: drain again now, letting equal-priority tasks
+             * (tcpip_thread, which consumes what the drain hands up) run. */
+            taskYIELD();
+            continue;
+        } else if (ceiling > 1) {
+            backlog_run = 0;
             wait = 1;
         }
         ulTaskNotifyTake(pdTRUE, wait);

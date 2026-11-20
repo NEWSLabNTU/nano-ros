@@ -247,7 +247,7 @@ that witness, converting this path would have changed the action wire format wit
 nothing in the tree able to tell.
 
 **Not measured, and not expected to move:** delivery rate at the fragment sizes
-in [#0917](../0917-an536-fragmented-sample-never-syncs.md). That cliff is the
+in [#0917](0917-an536-fragmented-sample-never-syncs.md). That cliff is the
 LAN9118's RX FIFO capacity and has nothing to do with serialisation. What should
 move on that lane is per-message CPU and allocation, so the rate below the cliff
 and the jitter — an an536 measurement still owed.

@@ -552,6 +552,24 @@ impl QemuProcess {
         )
     }
 
+    /// Start QEMU `mps3-an536` with its LAN9118 on a 100 Mbps
+    /// [`crate::wire::WireLink`] whose far end is QEMU's user network with
+    /// `hostfwd`, so a host peer reaches the guest exactly as through
+    /// [`Self::start_mps3_an536_slirp`], but a burst reaches the NIC at line
+    /// rate and a frame the NIC cannot take is lost (issue 0917).
+    #[cfg(unix)]
+    pub fn start_mps3_an536_wire(
+        binary: &Path,
+        wire: &crate::wire::WireLink,
+        hostfwd: &str,
+    ) -> TestResult<Self> {
+        let model = MPS3_AN536.nic_model()?;
+        Self::start(
+            binary,
+            MPS3_AN536.boot()?.then(wire.qemu_args(&model, hostfwd)),
+        )
+    }
+
     /// Start QEMU with MPS2-AN385 machine + external serial device
     ///
     /// Connects UART0 to the given serial device path (e.g., a socat PTY).

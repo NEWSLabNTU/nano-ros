@@ -36,8 +36,21 @@
 //! reliable reader that loses a fragment's tail stalls the stream. The image
 //! prints each sample's sequence number and length, so the test asks the same
 //! question the talker cell does — did delivery LAST — and also that every
-//! sample arrived whole. Both legs share the baked domain and forwarded ports,
+//! sample arrived whole. All legs share the baked domain and forwarded ports,
 //! so `.config/nextest.toml` runs them one at a time.
+//!
+//! ## The line-rate leg (issue 0917)
+//!
+//! Over plain slirp neither leg above can catch a slow RX drain: QEMU hands
+//! the NIC a burst at once and back-pressures a full FIFO instead of dropping.
+//! [`nros_freertos_an536_cyclone_listener_keeps_up_with_a_line_rate_burst`]
+//! puts the NIC on [`nros_tests::wire::WireLink`]: frames arrive back to back
+//! at 100 Mbps and a frame the FIFO cannot take is lost, as on the part. The
+//! sample is [`BURST_LEN`] bytes, eleven frames on the wire, which outruns
+//! what the lane can buffer (the FIFO's seven frames plus the two the wire's
+//! loss model leaves in flight) unless the guest drains while the burst is
+//! still arriving. A 5 ms polled drain delivered about one sample in ten
+//! there; the interrupt-driven drain delivers nearly all.
 //!
 //! ## Constants that are baked
 //!
@@ -67,6 +80,7 @@ use nros_tests::{
     process::ManagedProcess,
     ros2::{DEFAULT_ROS_DISTRO, require_ros2_cyclonedds, ros2_env_setup_cyclonedds_with_profile},
     unmet,
+    wire::{WireConfig, WireLink},
 };
 use std::{process::Command, time::Duration};
 
@@ -190,9 +204,29 @@ const BULK_LEN: usize = 10_576;
 /// The host publisher's rate, the trajectory's.
 const BULK_HZ: u32 = 10;
 
+/// The line-rate leg's sample: eleven frames on the wire (one ~16 KB UDP
+/// datagram of `DATA_FRAG`s, IP-fragmented), within the 16384-byte bound.
+const BURST_LEN: usize = 16_000;
+
+/// How long the line-rate leg listens.
+const BURST_HOLD: Duration = Duration::from_secs(40);
+
+/// The share of samples (from the first one received on) the line-rate leg
+/// must deliver. Measured on a free-running QEMU (2026-11-20, 6 runs each): a
+/// 5 ms polled drain delivered 11-15 %, the interrupt-driven drain 98-99 %.
+/// The bar sits well below the latter because the lane is sensitive to the
+/// host scheduling QEMU at a lower priority: at `nice 5` the interrupt-driven
+/// drain measured 73-84 % (and the polled one 1-5 %).
+const BURST_MIN_DELIVERED: f64 = 0.5;
+
 /// The host half of the fragmented leg: a stock rclpy node publishing
 /// `<seq>:` padded to [`BULK_LEN`] at [`BULK_HZ`], reliable, until killed.
 fn bulk_publisher_script() -> String {
+    publisher_script(BULK_LEN)
+}
+
+/// [`bulk_publisher_script`] for a sample of `len` bytes.
+fn publisher_script(len: usize) -> String {
     format!(
         "import rclpy, time\n\
          from rclpy.node import Node\n\
@@ -203,7 +237,7 @@ fn bulk_publisher_script() -> String {
          i = 0\n\
          while rclpy.ok():\n\
          \x20   head = '%d:' % i\n\
-         \x20   p.publish(String(data=head + 'x' * ({BULK_LEN} - len(head))))\n\
+         \x20   p.publish(String(data=head + 'x' * ({len} - len(head))))\n\
          \x20   print('published', i, flush=True)\n\
          \x20   i += 1\n\
          \x20   time.sleep({period})\n",
@@ -358,5 +392,98 @@ fn cases_bound_to_interop_cells() {
     nros_tests::interop::assert_test_bound(
         "pubsub_freertos_an536_cyclone_ros2_interop_e2e",
         &[(FreertosMps2, Cpp, Cyclonedds, EntryPubsub)],
+    );
+}
+
+#[test]
+fn nros_freertos_an536_cyclone_listener_keeps_up_with_a_line_rate_burst() {
+    let _domain = nros_tests::hold_baked_domain(DOMAIN);
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::FreertosMps2],
+        "the FreeRTOS mps3-an536 Cyclone ROS 2 interop cell",
+    );
+    require_ros2_cyclonedds();
+    if !freertos::is_freertos_available() {
+        unmet!(
+            "no FreeRTOS kernel tree provisioned - run `just freertos setup`, or set FREERTOS_DIR"
+        );
+    }
+    if !freertos::is_lwip_available() {
+        unmet!("no lwIP tree provisioned - run `just freertos setup`, or set LWIP_DIR");
+    }
+    if !freertos::is_arm_gcc_available() {
+        unmet!("arm-none-eabi-gcc not found - `nros setup --tool arm-none-eabi-gcc`");
+    }
+    if !is_qemu_available() {
+        unmet!("qemu-system-arm not found");
+    }
+    let iface = default_route_interface()
+        .unwrap_or_else(|| unmet!("no default IPv4 route: the host half needs one interface"));
+
+    let entry = build_freertos_workspace_cpp_an536_slirp_bulk_entry()
+        .require("mps3-an536 slirp Cyclone bulk-listener entry");
+    let pair = pair();
+
+    let wire = WireLink::start(WireConfig::fast_ethernet()).expect("start the 100 Mbps wire");
+    let mut guest = QemuProcess::start_mps3_an536_wire(entry, &wire, &pair.qemu_hostfwd(GUEST_IP))
+        .unwrap_or_else(|e| panic!("boot freertos QEMU (mps3-an536, wire): {e}"));
+
+    let mut pub_cmd = Command::new("bash");
+    pub_cmd.args(["-c"]).arg(format!(
+        "{} && exec python3 -c \"$NROS_BULK_PUB\" < /dev/null",
+        ros2_env_setup_cyclonedds_with_profile(
+            DEFAULT_ROS_DISTRO,
+            pair.domain,
+            &pair.host_config_uri(&iface)
+        )
+    ));
+    pub_cmd.env("NROS_BULK_PUB", publisher_script(BURST_LEN));
+    let mut publisher = ManagedProcess::spawn_command(pub_cmd, "an536-cyclone-burst-pub")
+        .expect("spawn rclpy publisher");
+
+    const SENTINEL: &str = "\u{1}nros-hold-sentinel";
+    let console = guest.collect_until(SENTINEL, BURST_HOLD);
+    guest.kill();
+    let published = publisher.collect_until(SENTINEL, Duration::from_millis(500));
+    publisher.kill();
+    let stats = wire.stop();
+    let sent = published
+        .lines()
+        .filter(|l| l.starts_with("published"))
+        .count();
+
+    let got = received_bulk(&console);
+    let short: Vec<_> = got.iter().filter(|(_, len)| *len != BURST_LEN).collect();
+    assert!(
+        short.is_empty(),
+        "{} of {} line-rate samples reached the callback with the wrong length \
+         (expected {BURST_LEN}): {short:?}\n--- guest console ---\n{console}",
+        short.len(),
+        got.len()
+    );
+    let Some(&(first, _)) = got.first() else {
+        panic!(
+            "the mps3-an536 FreeRTOS Cyclone listener received NO {BURST_LEN}-byte sample \
+             in {}s on a 100 Mbps wire, from a host rclpy publisher that sent {sent}: \
+             the RX drain is not keeping up with a burst (issue 0917). Wire: {stats:?}\n\
+             --- guest console ---\n{console}\n--- publisher ---\n{published}",
+            BURST_HOLD.as_secs()
+        );
+    };
+    let offered = (i64::try_from(sent).unwrap_or(i64::MAX) - first).max(1);
+    let share = got.len() as f64 / offered as f64;
+    assert!(
+        share >= BURST_MIN_DELIVERED,
+        "the listener delivered {} of the {offered} {BURST_LEN}-byte samples sent from \
+         seq {first} on ({:.0} %, need {:.0} %) on a 100 Mbps wire: frames of each burst \
+         were lost in the NIC because the RX drain ran late (issue 0917). Wire: {stats:?}\n\
+         --- guest console ---\n{console}",
+        got.len(),
+        share * 100.0,
+        BURST_MIN_DELIVERED * 100.0
+    );
+    eprintln!(
+        "line-rate leg: {} of {offered} samples from seq {first}, wire {stats:?}",
+        got.len()
     );
 }

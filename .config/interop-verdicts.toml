@@ -49,6 +49,16 @@ evidence = "5 of 5 runs passed (77 s each), identically under -icount: the 75 s 
 note = "Witness for issue 0917, which stays open: over slirp under -icount the fragmented sample is delivered, so the in-tree lane does not reproduce the island's tap-path failure (unpaced frames into the stock RX FIFO)."
 
 [[verdict]]
+cell = "freertos-an536-pubsub-cpp-cyclone-r2n"
+date = "2026-11-20"
+verdict = "pass"
+tests = ["nros_freertos_an536_cyclone_listener_keeps_up_with_a_line_rate_burst"]
+run = "just freertos test-ros2-cyclone"
+where = "aeon's workstation, Ubuntu 22.04, ROS 2 Humble apt (rmw_cyclonedds_cpp, rclpy publisher), QEMU 11.0.0-nros8 mps3-an536 with -icount shift=auto, LAN9118 on nros_tests::wire::WireLink (100 Mbps, NIC overflow modelled) into slirp; stock RX FIFO"
+evidence = "Passed (41.6 s) with the interrupt-driven RX drain, twice. The same cell with the old 5 ms sleep-first polled drain swapped into the fixture failed its delivery bar. Free-running, 6 runs per arm: 16 000-byte samples (11 frames) reached the callback 11-15 % of the time with the polled drain and 98-99 % with the interrupt-driven drain."
+note = "Closes issue 0917: the lane reproduces the drain defect without root."
+
+[[verdict]]
 cell = "freertos-mps2-pubsub-c-zenoh-n2r"
 date = "2026-10-11"
 verdict = "pass"
