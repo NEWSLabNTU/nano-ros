@@ -1291,6 +1291,46 @@ fn entries_for_other_boards_are_not_listed() {
     );
 }
 
+/// Issue 2777 -- a bringup-less workspace member that is a single-package
+/// leaf (its own `system.toml` declares an image) is planned by the leaf road,
+/// as `nros build` in its directory plans it: the cargo build gets the leaf's
+/// generated settings (`--config <leaf>/build/<image>/nros-cargo.toml`), which
+/// is what carries its sizing descriptor. The plain cargo arm gave it none, so
+/// `local-msg-package`'s `rust_consumer` carved no parameter store.
+#[test]
+fn a_leaf_member_of_a_bringup_less_workspace_takes_the_leaf_road() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path();
+    write(&ws.join(".colcon_workspace"), "");
+    write(&ws.join("src/app/package.xml"), &pkg_xml("app"));
+    write(
+        &ws.join("src/app/Cargo.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+    );
+    write(&ws.join("src/app/src/main.rs"), "fn main() {}\n");
+    write(
+        &ws.join("src/app/system.toml"),
+        "[system]\nname = \"app\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n[image.linux]\nboard = \"linux\"\n",
+    );
+    let plans = plan_builds(&args(ws, &[])).expect("a bringup-less workspace plans");
+    let leaf = plans
+        .iter()
+        .find(|p| p.qualified.starts_with("app"))
+        .unwrap_or_else(|| {
+            panic!(
+                "no plan for the leaf: {:?}",
+                plans.iter().map(|p| &p.qualified).collect::<Vec<_>>()
+            )
+        });
+    assert_eq!(leaf.qualified, "app:linux", "planned as the leaf's image");
+    assert_eq!(leaf.driver, Driver::Cargo);
+    let hand = leaf.handoff.as_ref().expect("a cargo handoff").display();
+    assert!(
+        hand.contains("--config") && hand.contains("nros-cargo.toml"),
+        "the leaf's generated settings reach cargo: {hand}"
+    );
+}
+
 /// A workspace with NO bringup builds package by package (RFC-0065 D1,
 /// RFC-0098 D9, phase-445 W5) — `local-msg-package` / `workspace-shadowing`'s
 /// shape. Before this, `nros build` refused it ("declares no `[image.*]`"), and
