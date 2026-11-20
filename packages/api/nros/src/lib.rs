@@ -1447,6 +1447,19 @@ pub mod __macro_support {
     /// is refused at boot instead of at compile time.
     pub const PARAM_STORE_ENABLED: bool = cfg!(feature = "param-store");
 
+    /// How many parameter-store slots this build carves from the executor
+    /// backing (`nros_params::IMPLIED_STORE_SLOTS`), 0 when it carves none.
+    ///
+    /// The `nros::main!` expansion const-asserts it is non-zero wherever the
+    /// image serves the parameter services. Zero there means no road told
+    /// `nros-params` the image has a store, and the runtime would ask the heap
+    /// for the whole crate-default store in one allocation instead: 283,392 B
+    /// on a ThreadX-linux image, which its pool refused, and the image exited
+    /// at boot (issue 2777). Refused at build, naming the knob, instead.
+    pub const PARAM_STORE_CARVED_SLOTS: usize = ::nros_params::IMPLIED_STORE_SLOTS;
+    /// The refusal text for [`PARAM_STORE_CARVED_SLOTS`] being 0.
+    pub use ::nros_params::STORE_NOT_CARVED as PARAM_STORE_NOT_CARVED;
+
     /// The same answer for the other capability axes a leaf
     /// can declare in `[system] features`. A Form-1 `nros::main!()`
     /// const-asserts the flag of every declared axis

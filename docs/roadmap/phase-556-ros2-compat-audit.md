@@ -616,6 +616,26 @@ Progress (2026-11-18, the refusal the default needs):
   checked on each side.
 - Gap, named: a node a component opens on another RMW in its own code is
   invisible to the model, so it is neither refused nor guessed at (issue 2708).
+- Refinement, the parameter store's size (issue 2777, applying the user's
+  2026-11-16 ruling: "sized from the DECLARED parameter count
+  (contract/census/launch) with a small floor for the stock services"):
+  1. The count is what the build can see: one `use_sim_time` per node, the
+     contract's `params:`, the declarations the metadata probe recorded
+     (issue 2768) and launch-seeded names, floored at `STOCK_STORE_SLOTS`
+     (8). For a stock-only or fully counted image the 8 is a floor over a
+     known count, never a guess.
+  2. Where there is evidence of declarations the build cannot count, the
+     build refuses, naming `[knobs.params] max_parameters`.
+  3. No road falls back to asking the heap for the crate-default store at
+     boot. Each road carries the store fact, or the build refuses:
+     `nros::main!` const-asserts that an image serving the parameter services
+     carves a store (`PARAM_STORE_CARVED_SLOTS > 0`). The cargo-leaf road had
+     lost the fact for a leaf whose `nros` features come from its generated
+     selection package, and the ThreadX-linux listener asked the heap for
+     283,392 B and exited.
+  4. One text names the knob in every report: `nros_params::STORE_SIZE_KNOB`
+     and `STORE_SIZE_DERIVED`, used by the build refusal
+     (`STORE_NOT_CARVED`), the Rust executor and the C parameter server.
 
 ### W14 — One `/parameter_events` writer per executor
 
