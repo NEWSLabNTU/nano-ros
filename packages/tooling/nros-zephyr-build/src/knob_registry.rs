@@ -4046,6 +4046,32 @@ pub const KNOBS: &[KnobRow] = &[
             },
         ],
     },
+    KnobRow {
+        id: "ZEPHYR_LOG_SINK_BUFFERS",
+        env: "NROS_ZEPHYR_LOG_SINK_BUFFERS",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS",
+        toml: None,
+        image_key: "zephyr.log_sink_buffers",
+        ty: Some("int"),
+        range: Some((0, 32)),
+        names: &[],
+        choices: &[],
+        retired: None,
+        only_on: None,
+        scope: crate::KnobScope::Image,
+        class: crate::KnobClass::Public,
+        carries: None,
+        prompt: Some("Log sink buffers (records formatted at once)"),
+        help: Some("How many nros_log records the Zephyr log sink can format at the same\ntime. Each buffer is 1280 bytes of .bss, owned by the sink and claimed with\none atomic bit, so a thread or an ISR on any CPU can take one without a\nlock. A buffer is held for one format and one LOG_* call.\n\nThe default is two per CPU (4 on an SMP image, 2 otherwise): one record from\na thread and one from an interrupt in flight on each CPU. When every buffer\nis in use, a record is formatted into a 160-byte stack buffer instead,\ntruncated and marked \"...\", and the sink says once that the pool ran dry.\nA record is never dropped for want of a buffer.\n\n0 formats every record in a 1280-byte buffer on the stack of the thread that\nlogged, as the sink did before this knob. A thread whose stack is sized for\nits own work (1-2 KiB) then overflows the first time it logs."),
+        default: crate::KnobDefault::Kconfig(&[
+            crate::KconfigDefault { value: "4", when: Some("SMP") },
+            crate::KconfigDefault { value: "2", when: None },
+        ]),
+        values: crate::KnobValues::Int,
+        surface: Some("[image.<id>.knobs.zephyr] log_sink_buffers"),
+        retired_spellings: &[],
+    },
 ];
 
 /// The canonical env spellings whose Kconfig symbol is not `CONFIG_<spelling>`,
@@ -4628,6 +4654,13 @@ pub const KCONFIG_KNOBS: &[crate::KconfigKnob] = &[
         ty: "bool",
         kconfig_if: Some("NROS_RMW_ZENOH"),
         depends: &["NROS_ZENOH_TX_BATCH"],
+    },
+    crate::KconfigKnob {
+        symbol: "NROS_ZEPHYR_LOG_SINK_BUFFERS",
+        id: "ZEPHYR_LOG_SINK_BUFFERS",
+        ty: "int",
+        kconfig_if: None,
+        depends: &[],
     },
 ];
 
