@@ -1,12 +1,14 @@
 ---
 id: 2740
 title: "A census test reads the process-global \"current node\" while sibling tests in the same binary open nodes, so under load a parameter lands on another test's node"
-status: open
+status: resolved
 type: flaky-test
 severity: low
 area: [testing, census, metadata]
 related: [issue-2221]
 found: 2026-11-19
+resolved: 2026-11-19
+resolved_in: "90191a6869 (#4394)"
 ---
 
 ## What happened
@@ -41,3 +43,17 @@ only producer of `talker` near the failing assertion.
 No retries (CLAUDE.md): make the tests that read or write the census's
 global state hold one lock for their whole body, or reset and own that state
 per test. Then the test cannot observe another test's node.
+
+## Fix
+
+90191a6869 (#4394) fixed it in the test binary, not the product. The census
+recorder stays process-global by design (one program per process, whose
+sched tasks may create nodes on several threads). Every recording test in
+`component_registration.rs` takes a `Census` guard first and holds it to its
+end. The guard is one process-wide mutex that tolerates poisoning.
+`metadata_executor` and `record` take the guard by reference, so no test can
+open a recording executor without holding it. The type system is the sweep:
+all 24 tests in the binary are guarded.
+
+Measured with 16 test threads per run: 3 of 300 runs failed before the fix,
+0 of 300 and 0 of 2000 after.
