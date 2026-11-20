@@ -692,9 +692,17 @@ targets = [\"${NROS_RUST_TARGET}\"]
   # board rung is the judgment call that leaves one lane silently without
   # it, which is how the Zephyr arm shipped inert.
   nros_resolve_board_facts()
+  # Phase-557 W9b -- bitcode for the stack-floor walk, as the generic
+  # generator's FFI command gets it (NanoRosGenerateInterfaces.cmake). The
+  # call above re-reads NROS_BOARD_FACTS_ENV as the board's facts alone, which
+  # drops the Zephyr lane's stack-floor rows, so this archive's own functions
+  # and the compiler_builtins `-Zbuild-std` compiles into it had no frame and
+  # the walk refused (issue 2460). Empty when the floor is off.
+  nros_stack_floor_cargo_env_list(_ffi_stack_floor_env)
   set(_ffi_env "")
-  if(NOT _NROS_FFI_ENV STREQUAL "")
-    set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV})
+  if(NOT _NROS_FFI_ENV STREQUAL "" OR NOT _ffi_stack_floor_env STREQUAL "")
+    set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV}
+        ${_ffi_stack_floor_env})
   endif()
   # issue 0820 — the sibling of the generic generator's block, and the
   # narrower of the two: DEPENDS here names only the crate's manifest and

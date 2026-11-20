@@ -1,11 +1,13 @@
 ---
 id: 2460
 title: "The stack-floor walk is refused on mps2-an385-zephyr images: z_malloc, z_free and z_sleep_us have no frame, because the zpico-sys frame rows are stated for thumbv7em only"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: [memory, zephyr, build]
 found: 2026-11-12
+resolved: 2026-11-21
+resolved_in: "fix(stack-floor): toolchain builtins take frames from their own objects (phase-557 W9b)"
 related: [issue-2400, issue-2402, phase-557]
 ---
 
@@ -107,4 +109,32 @@ come from the C++ FFI image staticlib, which the Zephyr road builds with no
 `-Csave-temps`, so neither its own functions nor the `compiler_builtins` that
 `-Zbuild-std` compiles into it have bitcode to read. Both are phase-557 W9b, which
 closes this issue.
+
+## Resolution (2026-11-21, phase-557 W9a and W9b)
+
+Every function in the refusal now has a frame from something the build or the toolchain
+measured, and none is typed by hand:
+
+- **`z_*` (W9a).** cc-rs C is compiled with `-fstack-usage` on both Zephyr cargo lanes, so
+  `platform_aliases.c`'s frames are this build's; the five hand rows are gone.
+- **libgcc's hand-written routines (W9b).** `__aeabi_dadd`, `__aeabi_dsub`, `__aeabi_l2d` and
+  the rest carry no CFI. `just zephyr stack-builtins <archive>` measures every function of a
+  toolchain archive from its own objects (Thumb prologue decoding, plus the deepest chain of
+  calls inside the archive) into `config/stack-builtins.toml`, keyed by the archive's content
+  hash. The walk reads the rows of exactly the archives its link map names. An archive with no
+  row is a refusal naming it and the recipe, never a near key's numbers.
+- **The C++ FFI image (W9b).** Zephyr's `_nros_zephyr_cpp_ffi_image` lost the stack-floor
+  cargo rows (`nros_resolve_board_facts()` re-reads the board facts alone), so the image
+  staticlib had no bitcode and `nros_cpp_publish_*` no frame. It now adds them, as the generic
+  generator does.
+- **`compiler_builtins`' `#[naked]` routines (W9b).** `-Zbuild-std` compiles them into the
+  image's staticlib, and `llc --stack-sizes` states no frame for a naked function. The walk
+  reads them off the linked objects with the same decoder, and only for what the link map
+  PLACED from a `compiler_builtins` member: the staticlib also carries weakened copies of
+  libgcc's routines (issue 2092), and those are not the ones linked.
+
+Measured on `cpp-port-minimal-publisher` (mps2-an385, thumbv7m) rebuilt from the branch: the
+walk finishes and prints the UNMEASURED floor, 170,284 B walked + margin = 187,320 B. That
+walk is issue 2658's over-approximation, and the image has no observed row, so it is reported
+and never enforced, as ruling (A) says.
 

@@ -58,6 +58,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from build_walk import build_files  # noqa: E402  the one walk of build output
+import stack_builtins  # noqa: E402  phase-557 W9b: a toolchain archive's measured frames
 
 # ---------------------------------------------------------------------------
 # The graph and the walk (pure; the self-test drives these directly)
@@ -451,7 +452,9 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
     if missing:
         problems.append("functions reached with no frame in any input (a missing "
                         "frame would count as 0): " + ", ".join(sorted(missing)[:20])
-                        + (" ..." if len(missing) > 20 else ""))
+                        + (" ..." if len(missing) > 20 else "")
+                        + "".join(f"\n      {fn}: {BUILTIN_HINTS[fn]}"
+                                  for fn in sorted(missing)[:20] if fn in BUILTIN_HINTS))
     if cycles and recursion_allowance is None:
         shown = "; ".join(" -> ".join(c) for c in cycles[:5])
         problems.append(f"recursion has no static bound ({len(cycles)} cycle(s): {shown}); "
@@ -1012,6 +1015,144 @@ def load_cfi_frames(g: Graph, elf: str, readobj: str, objdump: str) -> int:
             if fn not in g.frames:
                 g.frames[fn] = depth
                 g.functions.add(fn)
+                n += 1
+    return n
+
+
+# Per function the walk has no frame for, what the builtins table said about
+# it: the archive that defines it and why that gave no frame. Read by the
+# refusal, so its remedy names the archive and the recipe.
+BUILTIN_HINTS: dict[str, str] = {}
+
+
+def builtins_table_path(table: str | None, stated: str | None) -> Path | None:
+    """`--builtins`, else `stack-builtins.json` beside `--table`."""
+    if stated:
+        return Path(stated)
+    if table:
+        p = Path(table).with_name("stack-builtins.json")
+        return p if p.is_file() else None
+    return None
+
+
+def apply_builtins(g: Graph, archives: list[str], table: dict, nm: str) -> int:
+    """Frames, from the builtins table, for functions the toolchain archives the
+    link loaded define and no input or CFI states (phase-557 W9b). Keyed by
+    each archive's content hash, never by target: an archive the table holds no
+    row for gives no frame, and a function it defines is refused with the
+    archive and the recipe named. Returns how many functions got a frame."""
+    BUILTIN_HINTS.clear()
+    n = 0
+    frameless = {fn for fn in g.functions if fn not in g.frames}
+    seen: set[str] = set()
+    for a in archives:
+        path = Path(re.sub(r"\([^()]*\)$", "", a))
+        if str(path) in seen or path.suffix not in (".a", ".rlib") or not path.is_file():
+            continue
+        seen.add(str(path))
+        sha = stack_builtins.archive_sha256(path)
+        rows = stack_builtins.frames_for(table, sha)
+        if rows is not None:
+            for fn in sorted(frameless):
+                if fn in rows and fn not in g.frames:
+                    g.frames[fn] = rows[fn]
+                    n += 1
+            unmeasured = stack_builtins.unmeasured_for(table, sha)
+            for fn in frameless:
+                if fn in g.frames:
+                    continue
+                if fn in unmeasured:
+                    BUILTIN_HINTS.setdefault(
+                        fn, f"{path.name} (sha256 {sha[:12]}) is in the builtins table, which "
+                            f"could not measure it: {unmeasured[fn]}")
+                elif stack_builtins.FIXED_POINT.match(fn):
+                    BUILTIN_HINTS.setdefault(
+                        fn, "GCC's fixed-point runtime (ISO TR 18037), which the builtins "
+                            "recipe does not measure")
+            continue
+        if not (frameless - set(g.frames)):
+            continue
+        defined = stack_builtins.defined_names(path, nm)
+        for fn in sorted((frameless - set(g.frames)) & defined):
+            BUILTIN_HINTS.setdefault(
+                fn, f"defined by {path} (sha256 {sha[:12]}), an archive "
+                    f"config/stack-builtins.toml holds no row for: measure it with "
+                    f"`{stack_builtins.RECIPE} {path}`")
+    return n
+
+
+_MAP_SECTION = re.compile(r"^ (?P<sec>\.\S+)(?:\s+0x(?P<addr>[0-9a-f]+)\s+0x[0-9a-f]+\s+(?P<file>\S.*))?$")
+_MAP_FILE = re.compile(r"^\s+0x(?P<addr>[0-9a-f]+)\s+0x[0-9a-f]+\s+(?P<file>\S.*)$")
+_MAP_SYMBOL = re.compile(r"^\s+0x[0-9a-f]+\s+(?P<name>[A-Za-z_.$][\w.$]*)$")
+
+
+def placed_from(map_text: str, member_pred) -> set[str]:
+    """Function symbols a GNU ld map PLACES from an input whose member name
+    satisfies `member_pred` (the symbol lines under each placed input section,
+    after `Linker script and memory map`; discarded sections are not placed)."""
+    out: set[str] = set()
+    _, sep, body = map_text.partition("Linker script and memory map")
+    if not sep:
+        return out
+    cur_ok = False
+    pending = False  # a section name alone on its line; its file is on the next
+    for line in body.splitlines():
+        m = _MAP_SECTION.match(line)
+        if m:
+            if m["file"] is None:
+                pending, cur_ok = True, False
+                continue
+            pending = False
+            mem = re.search(r"\(([^()]+)\)$", m["file"].strip())
+            cur_ok = bool(int(m["addr"], 16)) and bool(mem) and member_pred(mem[1])
+            continue
+        if pending:
+            m = _MAP_FILE.match(line)
+            pending = False
+            if m:
+                mem = re.search(r"\(([^()]+)\)$", m["file"].strip())
+                cur_ok = bool(int(m["addr"], 16)) and bool(mem) and member_pred(mem[1])
+                continue
+        if cur_ok:
+            m = _MAP_SYMBOL.match(line)
+            if m:
+                out.add(m["name"])
+    return out
+
+
+def apply_linked_compiler_builtins(g: Graph, inputs: list[str], llvm_bin: str | None,
+                                   placed: set[str] | None) -> int:
+    """Frames for the `#[naked]` routines of a `compiler_builtins` the link
+    took from an image's own staticlib (`-Zbuild-std` compiles it from the
+    pinned toolchain's source, so no committed table can key it): read off
+    those linked objects by the builtins decoder. Only `compiler_builtins`
+    members, so a crate or C file that lost its own frame source still
+    refuses. Returns how many functions got a frame."""
+    frameless = {fn for fn in g.functions if fn not in g.frames}
+    if placed is not None:
+        # only a function the link took FROM compiler_builtins: an image's
+        # staticlib also carries weakened copies of libgcc's routines (issue
+        # 2092), and the copy the link placed is libgcc's
+        frameless &= placed
+    if not frameless:
+        return 0
+    ar = llvm_tool("llvm-ar", llvm_bin)
+    objdump = llvm_tool("llvm-objdump", llvm_bin)
+    nm = llvm_tool("llvm-nm", llvm_bin)
+    n = 0
+    for a in dict.fromkeys(inputs):
+        path = Path(a)
+        if path.suffix not in (".a", ".rlib") or not path.is_file():
+            continue
+        r = subprocess.run([ar, "t", str(path)], capture_output=True, text=True)
+        if r.returncode or not any(stack_builtins.is_compiler_builtins(m)
+                                   for m in r.stdout.split()):
+            continue
+        got = stack_builtins.measure_archive(path, objdump, nm, ar,
+                                             only=stack_builtins.is_compiler_builtins)
+        for fn in sorted(frameless):
+            if fn not in g.frames and "bytes" in got.get(fn, {}):
+                g.frames[fn] = got[fn]["bytes"]
                 n += 1
     return n
 
@@ -2380,6 +2521,7 @@ def parse_indirect(s: str | None) -> tuple[str, int | None]:
 
 ROLES = ("OPEN", "SPIN")
 ISSUE_ID = re.compile(r"^\d{4}$")
+# `frame` is a known kind only so its refusal names the replacement (phase-557 W9)
 POLICY_KINDS = ("cut", "external", "frame")
 # The image SHAPE an allowance was measured on: the derived entity counts the
 # build already carries (issue 2400, ruled 2026-11-12). An image whose counts
@@ -2567,8 +2709,11 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
         key = "match" if kind == "cut" or (kind == "external" and "match" in row) else "name"
         if not row.get(key):
             problems.append(f"{where}: a {kind} needs `{key}`")
-        if kind == "frame" and not isinstance(row.get("bytes"), int):
-            problems.append(f"{where}: a frame needs integer `bytes`")
+        if kind == "frame":
+            problems.append(f"{where}: a hand-typed frame (`{row.get('name')}`) is retired "
+                            "(phase-557 W9): C/C++ frames come from the compiler's `.su`, and a "
+                            "toolchain builtin's from config/stack-builtins.toml, which "
+                            f"`{stack_builtins.RECIPE} <archive>` measures")
         if not str(row.get("reason", "")).strip():
             problems.append(f"{where}: no reason ({row.get(key)})")
     seen: set[tuple] = set()
@@ -2741,8 +2886,6 @@ def apply_policy(args: argparse.Namespace, doc: dict) -> None:
                 args.external_match = (getattr(args, "external_match", None) or []) + [row["match"]]
             else:
                 args.external = (args.external or []) + [row["name"]]
-        else:
-            args.frame = (args.frame or []) + [f"{row['name']}={row['bytes']}"]
     ind = doc.get("indirect", {})
     ind = ind.get(args.rmw or "") or ind.get("default", {})
     args.indirect = args.indirect or ind.get("mode")
@@ -2968,6 +3111,7 @@ def run(args: argparse.Namespace) -> int:
     externals_unlinked: set[str] = set()
     cache = Path(args.llc_cache or Path.home() / ".cache" / "nros-stack-floor")
     units: set[str] | None = None
+    dropped: list[str] = []
     if args.link_map:
         mp = Path(args.link_map)
         units = linked_codegen_units(mp.read_text(errors="replace")) or None
@@ -3026,6 +3170,18 @@ def run(args: argparse.Namespace) -> int:
                       f"{Path(args.cfi_elf).name} (the link dropped them): walked as 0-byte "
                       "leaves: " + ", ".join(gone[:6]) + (" ..." if len(gone) > 6 else ""),
                       file=sys.stderr)
+    got = apply_linked_compiler_builtins(
+        g, list(args.inputs), args.llvm_bin,
+        placed_from(Path(args.link_map).read_text(errors="replace"),
+                    stack_builtins.is_compiler_builtins) if args.link_map else None)
+    if got:
+        print(f"nros-stack-floor: {got} frame(s) of `#[naked]` compiler_builtins routines "
+              "read off the linked objects", file=sys.stderr)
+    bt_path = builtins_table_path(args.table, args.builtins)
+    if bt_path is not None and dropped:
+        got = apply_builtins(g, dropped, load_table(bt_path), llvm_tool("llvm-nm", args.llvm_bin))
+        print(f"nros-stack-floor: {got} frame(s) from {bt_path.name}, by the content hash of "
+              "the toolchain archives the link loaded", file=sys.stderr)
     resolve_cxx_su_frames(g, lambda names: subprocess.run(
         [cxx_demangler(args.cxxfilt, args.llvm_bin)], input="\n".join(names), check=True,
         capture_output=True, text=True).stdout.splitlines())
@@ -3268,6 +3424,38 @@ def self_test() -> int:
               functions={"root", "a", "b", "c"})
     p = worst_path(g, "root", indirect_charge=None, recursion_allowance=None)
     check("deepest of two branches", p.depth == 500 and p.chain == ["root", "b"])
+
+    # phase-557 W9b -- the builtins table: its decoder, depth rules and lookup
+    for name, ok in stack_builtins.self_checks():
+        check(name, ok)
+    # ...a compiler_builtins frame goes only to what the link placed from it
+    mp = ("Discarded input sections\n"
+          " .text.__aeabi_dadd\n"
+          "                0x0000000000000000        0xc /b/libimg.a(compiler_builtins-1.cgu.0.rcgu.o)\n"
+          "\nLinker script and memory map\n\n"
+          " .text.memcpy   0x0000000000038226        0xc /b/libimg.a(compiler_builtins-1.cgu.0.rcgu.o)\n"
+          "                0x0000000000038226                memcpy\n"
+          " .text.__aeabi_dadd\n"
+          "                0x0000000000038300       0x40 /s/libgcc.a(_arm_addsubdf3.o)\n"
+          "                0x0000000000038300                __aeabi_dadd\n"
+          " .text.strlen\n"
+          "                0x0000000000038400       0x1a /b/libimg.a(compiler_builtins-1.cgu.0.rcgu.o)\n"
+          "                0x0000000000038400                strlen\n")
+    check("builtins: placed_from takes what the link placed from compiler_builtins, "
+          "not a discarded copy and not libgcc's",
+          placed_from(mp, stack_builtins.is_compiler_builtins) == {"memcpy", "strlen"})
+    # ...and a refusal names the archive a frameless builtin came from
+    gb = Graph(frames={"root": 8}, edges={"root": {"__aeabi_dadd"}},
+               functions={"root", "__aeabi_dadd"})
+    BUILTIN_HINTS.clear()
+    BUILTIN_HINTS["__aeabi_dadd"] = "defined by /x/libgcc.a (sha256 0123), ..."
+    try:
+        worst_path(gb, "root", indirect_charge=None, recursion_allowance=None)
+        check("builtins: a frameless builtin still refuses", False)
+    except WalkRefused as e:
+        check("builtins: the refusal names the archive the builtin came from",
+              "__aeabi_dadd: defined by /x/libgcc.a" in str(e))
+    BUILTIN_HINTS.clear()
 
     # a `~text` root is every function containing `text`; none is a refusal
     gr = Graph(frames={"_RIN22app_task_entry_bareXE": 8, "_RIN25app_task_entry_runtimeYE": 16,
@@ -3810,8 +3998,6 @@ def self_test() -> int:
     check("the floor never goes below zero", floor_formula(100, -500, 10) == 0)
     good = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2,
             "policy": [{"kind": "cut", "match": "panicking", "reason": "diverges"},
-                       {"kind": "frame", "name": "z_malloc", "bytes": 0, "target": "t",
-                        "reason": "tail call"},
                        {"kind": "external", "match": "3mem6memcpy", "reason": "leaf"}],
             "allowance": [{"image": "img", "rmw": "zenoh", "target": "t", "role": "OPEN",
                            "bytes": 2952, "issue": "2402", "reason": "RMW vtable",
@@ -3829,6 +4015,12 @@ def self_test() -> int:
     bad["allowance"][0]["bytes"] = 3000
     check("an allowance off peak - static is refused",
           any("measured.peak - measured.static = 2952" in p for p in validate_table(bad, set())))
+    bad = json.loads(json.dumps(good))
+    bad["policy"].append({"kind": "frame", "name": "z_malloc", "bytes": 0, "target": "t",
+                          "reason": "tail call"})
+    check("a hand-typed frame row is refused (phase-557 W9b)",
+          any("hand-typed frame" in p and "stack-builtins" in p
+              for p in validate_table(bad, set())))
     bad = json.loads(json.dumps(good))
     bad["policy"][0]["reason"] = ""
     check("a policy row with no reason is refused",
@@ -4302,6 +4494,15 @@ def main() -> int:
     ap.add_argument("--target", help="the image's target triple (selects policy and allowance)")
     ap.add_argument("--image", help="the image's shape id (selects its measured allowance; "
                     "an image with no row is unmeasured, reported and never enforced)")
+    ap.add_argument("--builtins", help="config/stack-builtins.json: measured frames of toolchain "
+                    "archives, by content hash (default: the one beside --table)")
+    ap.add_argument("--measure-builtins", metavar="ARCHIVE",
+                    help="measure every function of a toolchain archive (libgcc.a, ...) and "
+                         "write its row into --into (the `just stack-builtins` recipe)")
+    ap.add_argument("--into", metavar="TABLE", help="with --measure-builtins: the table to "
+                    "write (config/stack-builtins.toml); its .json twin is rewritten too")
+    ap.add_argument("--toolchain", help="with --measure-builtins: the toolchain that shipped "
+                    "the archive, as its compiler's `--version` first line")
     ap.add_argument("--validate-table", metavar="TABLE",
                     help="offline: every reason, allowance issue and floor formula holds")
     ap.add_argument("--sync-json", metavar="TABLE",
@@ -4319,6 +4520,8 @@ def main() -> int:
         json_twin(toml_path).write_text(render_json_twin(load_toml(toml_path)), encoding="utf-8")
         print(f"wrote {json_twin(toml_path)}")
         return 0
+    if args.measure_builtins:
+        return measure_builtins(args)
     if args.validate_table:
         # The negative control runs on the normal path: a broken formula or
         # validator must not be able to pass the table.
@@ -4336,6 +4539,11 @@ def main() -> int:
         toml_path = Path(args.validate_table)
         doc = load_toml(toml_path)
         problems = validate_table(doc, ids, root) + twin_problems(toml_path, doc)
+        bt = toml_path.with_name("stack-builtins.toml")
+        if bt.is_file():
+            bdoc = load_toml(bt)
+            problems += [f"{bt.name}: {p}" for p in stack_builtins.validate(bdoc, sdk_store())]
+            problems += twin_problems(bt, bdoc)
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
         print(f"{args.validate_table}: {len(problems)} problem(s)")
@@ -4364,6 +4572,40 @@ def main() -> int:
         print("nros-stack-floor: WARNING: the floor of an UNMEASURED image could not be "
               "computed; not enforced", file=sys.stderr)
         return 0
+
+
+def sdk_store() -> Path:
+    """RFC-0103 D6: the store root is `$NROS_HOME`, else `~/.nros`."""
+    return Path(os.environ.get("NROS_HOME") or Path.home() / ".nros") / "sdk"
+
+
+def measure_builtins(args: argparse.Namespace) -> int:
+    """`just stack-builtins <archive>`: measure every function the archive
+    defines and write its row (replacing a row for the same hash)."""
+    if not args.into:
+        raise SystemExit("nros-stack-floor: --measure-builtins needs --into TABLE")
+    archive = Path(args.measure_builtins).resolve()
+    if not archive.is_file():
+        raise SystemExit(f"nros-stack-floor: no archive at {archive}")
+    result = stack_builtins.measure_archive(
+        archive, llvm_tool("llvm-objdump", args.llvm_bin), llvm_tool("llvm-nm", args.llvm_bin),
+        llvm_tool("llvm-ar", args.llvm_bin))
+    store = sdk_store().resolve()
+    label = str(archive.relative_to(store)) if archive.is_relative_to(store) else str(archive)
+    sha = stack_builtins.archive_sha256(archive)
+    toolchain = args.toolchain or label.split("/lib/")[0]
+    import datetime
+    row = stack_builtins.render_row(label, sha, toolchain,
+                                    datetime.date.today().isoformat(), result)
+    into = Path(args.into)
+    text = into.read_text(encoding="utf-8") if into.is_file() else ""
+    text = stack_builtins.replace_row(text, sha, row)
+    into.write_text(text, encoding="utf-8")
+    json_twin(into).write_text(render_json_twin(load_toml(into)), encoding="utf-8")
+    got = sum(1 for r in result.values() if "bytes" in r)
+    print(f"{into}: {archive.name} (sha256 {sha[:12]}): {got} of {len(result)} function(s) "
+          "measured; the rest name why")
+    return 0
 
 
 def checked_image_measured(args: argparse.Namespace) -> bool:
