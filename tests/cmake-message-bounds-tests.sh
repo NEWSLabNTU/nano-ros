@@ -373,7 +373,7 @@ if nros_grep_q "set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS" "$T/b1-knobs.cmake"; the
     fail "A: the answer file carries a large count on the closure basis (issue 2201):"; cat "$T/b1-knobs.cmake"
 fi
 check
-if ! nros_grep_q "NROS_MAX_LARGE_SUBSCRIBERS not derived" <<< "$OUT"; then
+if ! nros_grep_q "NROS_ENTITY_MAX_LARGE_SUBSCRIBERS not derived" <<< "$OUT"; then
     fail "A: the underived large count must be reported, not silently absent:"; echo "$OUT"
 fi
 check

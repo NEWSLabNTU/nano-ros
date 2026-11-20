@@ -45,5 +45,5 @@ rmw = "cyclonedds"
 [image.linux_short_liveliness]
 entry = "param-two-node-talker"
 
-[image.linux_short_liveliness.knobs.zenoh]
+[image.linux_short_liveliness.knobs.entity]
 max_liveliness = 4

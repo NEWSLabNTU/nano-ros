@@ -273,6 +273,13 @@ fn env_rows(file: &SourceFile, editable: bool, prefix: &[String], t: &toml::Tabl
                     .iter()
                     .find(|s| s.road == nros_zephyr_build::RetiredRoad::Env && s.spelling == key)
                     .map_or(1, |s| s.factor);
+                // phase-581 W7 (RFC-0140 D3) -- a pool CARRIER is not a
+                // setting: its value is derived from the demand it carries
+                // (`zenoh.max_queryables` from `entity.max_queryables`), and
+                // the `[knobs]` reader refuses the carrier's own key. So the
+                // row moves to the demand, the same redirect that refusal
+                // names (`carried_knob`).
+                let row = nros_zephyr_build::carried_knob(row).unwrap_or(row);
                 let (group, name) = row.image_group_name();
                 let mut to_table = prefix.to_vec();
                 to_table.push("knobs".into());
@@ -720,7 +727,7 @@ mod tests {
         assert!(text.contains("system.toml:6:9"), "{text}");
         assert!(text.contains("^^^^^^^^^^^^^^^^^^^^"), "{text}");
         assert!(
-            text.contains("help: state it as `[image.talker.knobs.zenoh] max_queryables = 4`"),
+            text.contains("help: state it as `[image.talker.knobs.entity] max_queryables = 4`"),
             "{text}"
         );
         assert!(text.contains("fix: nros fix"), "{text}");
@@ -739,7 +746,7 @@ mod tests {
         assert!(new.contains("MY_OWN = \"1\""), "{new}");
         assert!(new.contains("# kept"), "{new}");
         assert!(
-            new.contains("[image.talker.knobs.zenoh]\nmax_queryables = 4\n"),
+            new.contains("[image.talker.knobs.entity]\nmax_queryables = 4\n"),
             "{new}"
         );
         // What it wrote is what `nros build` reads: nothing left to refuse,
@@ -747,7 +754,7 @@ mod tests {
         assert!(workspace_findings(td.path()).is_empty());
         preflight(td.path()).unwrap();
         let t: toml::Table = new.parse().unwrap();
-        let v = t["image"]["talker"]["knobs"]["zenoh"]["max_queryables"].clone();
+        let v = t["image"]["talker"]["knobs"]["entity"]["max_queryables"].clone();
         assert_eq!(v.as_integer(), Some(4));
         let rows = reads_back(&td, "talker").unwrap();
         assert_eq!(rows["NROS_ZENOH_MAX_QUERYABLES"], "4");
@@ -803,7 +810,7 @@ mod tests {
         let new = fixed(&td);
         let t: toml::Table = new.parse().unwrap();
         assert_eq!(
-            t["image_defaults"]["knobs"]["zenoh"]["max_queryables"].as_integer(),
+            t["image_defaults"]["knobs"]["entity"]["max_queryables"].as_integer(),
             Some(6),
             "{new}"
         );
@@ -825,7 +832,7 @@ mod tests {
     fn a_move_onto_a_knob_already_stated_is_refused_and_nothing_is_applied() {
         let td = ws_with(&format!(
             "[image.talker]\nboard = \"linux\"\nenv = {{ {OLD} = \"4\" }}\n\n\
-             [image.talker.knobs.zenoh]\nmax_queryables = 8\n"
+             [image.talker.knobs.entity]\nmax_queryables = 8\n"
         ));
         let e = apply(&workspace_findings(td.path()))
             .unwrap_err()
@@ -969,7 +976,7 @@ mod tests {
     fn a_current_spelling_is_not_a_finding() {
         let td = ws_with(
             "[image.talker]\nboard = \"linux\"\nenv = { MY_OWN = \"1\" }\n\
-             [image.talker.knobs.zenoh]\nmax_queryables = 4\n",
+             [image.talker.knobs.entity]\nmax_queryables = 4\n",
         );
         assert!(workspace_findings(td.path()).is_empty());
     }
