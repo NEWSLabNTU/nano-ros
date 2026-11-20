@@ -117,6 +117,8 @@ them, and it names the value to state.
 key = "zephyr.log_sink_buffers"
 scope = "image"
 class = "public"
+only_on = "zephyr"
+only_on_why = "it sizes the Zephyr log sink's buffer pool, which only the Zephyr port's nros_log sink has"
 type = "int"
 prompt = "Log sink buffers (records formatted at once)"
 kconfig_attrs = [

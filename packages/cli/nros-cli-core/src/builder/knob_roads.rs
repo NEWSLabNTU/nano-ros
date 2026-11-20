@@ -159,6 +159,10 @@ mod tests {
     struct Corpus {
         rust: Vec<(String, String)>,
         cmake: Vec<(String, String)>,
+        /// Issue 2738 — C sources: a Zephyr port reads a knob as its Kconfig
+        /// symbol (`CONFIG_NROS_<ID>`), which the west road's Kconfig default
+        /// reaches like a CMake reader of the same symbol.
+        c: Vec<(String, String)>,
         kconfig: String,
         /// Phase-568 W2c: data tables a build script reads env names from, one
         /// row per knob (`define <MACRO> <ENV> <min>`), with comments dropped.
@@ -215,6 +219,10 @@ mod tests {
         // reads NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES). Scanning only `cmake/`
         // and `zephyr/` counted such a row as carried by having no cmake reader.
         walk(&root.join("packages"), &[".cmake"], &mut cm);
+        let mut csrc = Vec::new();
+        for d in ["packages", "zephyr"] {
+            walk(&root.join(d), &[".c", ".h"], &mut csrc);
+        }
         let read = |files: Vec<PathBuf>, comment: &str| {
             files
                 .into_iter()
@@ -232,6 +240,7 @@ mod tests {
                 .into_iter()
                 .map(|(p, t)| (p, cmake_uses(&t)))
                 .collect(),
+            c: read(csrc, "//"),
             kconfig: std::fs::read_to_string(root.join("zephyr/Kconfig")).unwrap_or_default(),
             tables: READER_TABLES
                 .iter()
@@ -305,7 +314,9 @@ mod tests {
             // that asks it is reached on west too.
             // A Zephyr CMake reader of the Kconfig symbol (`${CONFIG_<sym>}`)
             // is a west-road reader, carried by the Kconfig default.
-            let kconfig_reader = kconfig && c.cmake.iter().any(|(_, t)| names_word(t, row.kconfig));
+            let kconfig_reader = kconfig
+                && (c.cmake.iter().any(|(_, t)| names_word(t, row.kconfig))
+                    || c.c.iter().any(|(_, t)| names_word(t, row.kconfig)));
             let west = cell(reader || kconfig_reader, kconfig || !cmake || via_image_env);
             // Phase-568 W2c: a Zephyr-only knob has no cargo or cmake road to
             // be carried on; its west cell is measured like any other.

@@ -3224,7 +3224,7 @@ pub const KNOBS: &[KnobRow] = &[
         names: &[],
         choices: &[],
         retired: None,
-        only_on: None,
+        only_on: Some(("zephyr", "it sizes the Zephyr log sink's buffer pool, which only the Zephyr port's nros_log sink has")),
         scope: crate::KnobScope::Image,
         class: crate::KnobClass::Public,
         carries: None,
