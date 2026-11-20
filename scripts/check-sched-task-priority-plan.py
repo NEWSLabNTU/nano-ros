@@ -102,8 +102,39 @@ def cross_reference(plans, errors):
     # say so, so the gate compares them. Absent or unparsable is an error.
     lo, hi = plan["reserved"].get("foreign", (None, None))
     lwip = ROOT / "packages/boards/nros-board-freertos/config/lwipopts.h"
+    posix_hdr = ROOT / "packages/boards/nros-board-freertos-posix/config/FreeRTOSConfig.h"
+    # The POSIX simulator board shares the platform's plan, so its kernel
+    # config is held to the same range and band.
+    pdefs = [d for d in per_item.c_defines(posix_hdr.read_text(encoding="utf-8"))
+             if d.name == "configMAX_PRIORITIES" and not d.conditional]
+    if plan.get("range") and (len(pdefs) != 1 or not (pdefs[0].value or "").isdigit()
+                              or int(pdefs[0].value) - 1 != plan["range"][1]):
+        errors.append(
+            f"{posix_hdr.relative_to(ROOT)}: configMAX_PRIORITIES = "
+            f"{[d.value for d in pdefs] or 'none'} but the freertos priority plan's "
+            f"range tops out at {plan['range'][1]}: the board runs priorities the "
+            "plan does not describe")
+    threadx_plan = plans.get("threadx")
+    if threadx_plan is not None:
+        tlo, thi = threadx_plan["reserved"].get("foreign", (None, None))
+        rv = ROOT / "packages/boards/nros-board-threadx-qemu-riscv64/c/board_threadx_qemu_riscv64.c"
+        for macro, who in (("IP_THREAD_PRIORITY", "NetX Duo's IP thread"),
+                           ("BSD_THREAD_PRIORITY", "NetX Duo's BSD socket thread")):
+            found = [d for d in per_item.c_defines(rv.read_text(encoding="utf-8"))
+                     if d.name == macro and not d.conditional]
+            if len(found) != 1 or not (found[0].value or "").isdigit():
+                errors.append(f"{rv.relative_to(ROOT)}: expected one numeric "
+                              f"`#define {macro}`")
+                continue
+            v = int(found[0].value)
+            if tlo is None or not (tlo <= v <= thi):
+                errors.append(
+                    f"{macro} = {v} ({rv.relative_to(ROOT)}) puts {who} outside "
+                    f"the threadx priority plan's reserved.foreign = [{tlo}, {thi}]")
     for src, macro, who in (
         (hdr, "configTIMER_TASK_PRIORITY", "the kernel's timer service task"),
+        (posix_hdr, "configTIMER_TASK_PRIORITY",
+         "the POSIX simulator's timer service task"),
         (lwip, "TCPIP_THREAD_PRIO", "lwIP's tcpip_thread"),
     ):
         found = [d for d in per_item.c_defines(src.read_text(encoding="utf-8"))

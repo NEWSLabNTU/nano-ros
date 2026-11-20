@@ -170,3 +170,9 @@ void nros_board_freertos_report_task_census(void) {
         "nros: task census unavailable: configUSE_TRACE_FACILITY is 0\n");
 #endif
 }
+
+/* The runner-neutral name the single-executor runner calls
+ * (`nros_board_optional_hook.h`). */
+void nros_board_report_task_census(void) {
+    nros_board_freertos_report_task_census();
+}

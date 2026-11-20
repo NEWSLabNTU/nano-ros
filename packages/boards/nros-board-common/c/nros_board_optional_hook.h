@@ -67,4 +67,10 @@
  * board whose link comes up after the entry starts overrides it strongly. */
 NROS_BOARD_OPTIONAL_HOOK(nros_board_network_wait);
 
+/* The boot task census (`nros: task census name=... prio=...`): every task the
+ * kernel holds, printed once the image is up, which a test classifies against
+ * the port's priority plan. A board that can enumerate its kernel's tasks
+ * defines it; the single-executor runner calls it after setup. */
+NROS_BOARD_OPTIONAL_HOOK(nros_board_report_task_census);
+
 #endif /* NROS_BOARD_OPTIONAL_HOOK_H */

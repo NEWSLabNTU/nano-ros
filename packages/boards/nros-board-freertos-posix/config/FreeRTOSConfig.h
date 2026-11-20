@@ -44,7 +44,13 @@
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
 #define configUSE_TICKLESS_IDLE                 0
 #define configTICK_RATE_HZ                      ((TickType_t)1000)
-#define configMAX_PRIORITIES                    10
+/* 8, as on the hardware boards: the FreeRTOS priority plan
+ * (nros-platform-freertos/nros-platform.toml, `range = [1, 7]`) is one
+ * platform fact for every FreeRTOS board. At 10 this board ran zenoh-pico's
+ * read task at its default `configMAX_PRIORITIES / 2` = 5 and the timer task
+ * at 9, neither where the plan puts them. At 8 the read task lands on the
+ * plan's transport band, 4. Measured by the boot task census. */
+#define configMAX_PRIORITIES                    8
 /* In WORDS. 4096 words = 32 KB on a 64-bit host: the POSIX port allocates a
  * real pthread stack per task, and host libc frames (CycloneDDS, getaddrinfo)
  * are far larger than a Cortex-M's. The family's 256 would fault immediately. */
@@ -82,7 +88,10 @@
 
 /* ---- Software timers ---- */
 #define configUSE_TIMERS                        1
-#define configTIMER_TASK_PRIORITY               (configMAX_PRIORITIES - 1)
+/* The kernel's timer service task is a FOREIGN task to the priority plan:
+ * `reserved.foreign = [4, 4]`, beside the transport, as on the hardware boards
+ * (nros-board-freertos/config/FreeRTOSConfig.h). */
+#define configTIMER_TASK_PRIORITY               4
 #define configTIMER_QUEUE_LENGTH                20
 #define configTIMER_TASK_STACK_DEPTH            (configMINIMAL_STACK_SIZE * 2)
 

@@ -801,3 +801,9 @@ void nros_board_threadx_report_task_census(void) {
     line[n] = '\0';
     nros_board_log(line);
 }
+
+/* The runner-neutral name the single-executor runner calls
+ * (`nros_board_optional_hook.h`). */
+void nros_board_report_task_census(void) {
+    nros_board_threadx_report_task_census();
+}

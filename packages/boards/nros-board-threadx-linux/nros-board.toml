@@ -101,8 +101,13 @@ pool.app = [15, 30]
 # `threadx_thread_census_is_placed_by_the_priority_plan` on the realtime
 # image): the kernel's timer thread, `System Timer Thread`, at 0
 # (TX_TIMER_THREAD_PRIORITY's port default; config/tx_user.h does not set it).
-# The image creates no NetX Duo IP thread: networking is host sockets.
-reserved.foreign = [0, 0]
+# This board creates no NetX Duo thread: networking is host sockets. The plan
+# is the ThreadX PLATFORM's (`sched_task_key = "threadx"`), so it also holds
+# the riscv64 QEMU board, whose census measured NetX Duo's IP thread
+# (`nros_ip`, IP_THREAD_PRIORITY) at 1 and its BSD socket thread (`BSD thread
+# task`, BSD_THREAD_PRIORITY) at 2, in
+# nros-board-threadx-qemu-riscv64/c/board_threadx_qemu_riscv64.c.
+reserved.foreign = [0, 2]
 
 # phase-448 W5 / issue 1145 — the executor backing, reserved ONCE.
 #

@@ -307,10 +307,13 @@ pool.app = [1, 99]
 # The threads nano-ros does not create, MEASURED by the boot thread census
 # (`nros: task census name=... prio=...`, read by the e2e
 # `nuttx_thread_census_is_placed_by_the_priority_plan` on the qemu-armv7a
-# realtime images, Rust, C++ and C): the kernel's low-priority work queue
-# (`lpwork`, two threads) at 100 and its high-priority work queue (`hpwork`)
-# at 192. `Idle_Task` is 0, below `range`; the network-init thread has exited
-# by the time the census runs. The band spans both work queues, so no sched
-# task can sit between them; any priority above the pool was already refused
-# by the transport band.
-reserved.foreign = [100, 192]
+# realtime images, Rust, C++ and C, and by
+# `nuttx_riscv_thread_census_is_placed_by_the_priority_plan` on the rv-virt
+# ones): the kernel's low-priority work queue (`lpwork`) at 100 and its
+# high-priority work queue (`hpwork`) at 192 on qemu-armv7a and at 224 on
+# rv-virt, where the config leaves CONFIG_SCHED_HPWORKPRIORITY at its Kconfig
+# default. `Idle_Task` is 0, below `range`; the network-init thread has exited
+# by the time the census runs. The band spans both work queues on both
+# boards, so no sched task can sit between them; any priority above the pool
+# was already refused by the transport band.
+reserved.foreign = [100, 224]

@@ -351,6 +351,9 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
     if (setup_rc != 0) {
         out = setup_rc;
     } else {
+        /* Every task the image runs is up once setup returns: the board's
+         * boot task census, for its priority plan, when it has one. */
+        NROS_BOARD_CALL_OPTIONAL_HOOK(nros_board_report_task_census);
         const uint32_t bound_ms = nros_freertos_entry_spin_bound_ms();
         if (bound_ms != 0u) {
             /* Issue 0329 — the bounded path is the shared wall-clock budgeted
