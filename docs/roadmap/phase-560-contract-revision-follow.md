@@ -265,7 +265,22 @@ and each states its acceptance before it lands.
   overlay sets `nros,can` opens that node on the west road; no new `NROS_*`
   environment variable or Kconfig symbol appears
   (`python3 scripts/nros-build-wiring.py` shows no new knob source).
-- **W9.f -- The `board` hook and the consumer.** Weak fail-loud defaults and
+- **W9.f -- The `board` hook and the consumer.** IN PROGRESS (2026-11-20).
+  Done: the weak fail-loud defaults
+  (`nros-board-common/c/nros_board_can_unsupported.c`), compiled as an
+  object of the app by `s32z270-freertos` on both roads through its own TU
+  (`c/can_unsupported.c`, which names the board), held by
+  `just check can-board-defaults` (no strong symbols: `open` returns ENOTSUP
+  and the line names `s32z270-freertos`; a strong `open` in another object
+  wins; only `"board"`-stack boards compile the defaults); the follow-up
+  issue [2769](../issues/2769-zenoh-can-link-over-frame-driver.md) (GitHub
+  #4456) against RFC-0080. Open: the RTD strong symbols (no host here has the
+  licensed RTD; the in-tree s32z270 image builds with the defaults); the
+  census host build's CAN backend (the mock, RFC-0132 D6: today a CAN-calling
+  C/C++ entry on `freertos-posix` stops at its host census, whose build links
+  no CAN backend); the `"board"` stack's hand-off of the `[canN]` name to the
+  board package; ASI's side (its `platform_can.h` chain, `on_missing`).
+  Weak fail-loud defaults and
   the `s32z270-freertos` strong symbols over the NXP RTD driver (GitHub
   #4015); ASI's `platform_can.h` `#if` chain replaced; the follow-up issue
   for rebasing the zenoh-pico CAN link onto this driver (RFC-0132 open

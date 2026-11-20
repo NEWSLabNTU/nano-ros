@@ -1,0 +1,1 @@
+On `s32z270-freertos`, an image whose board package supplies no CAN frame driver now fails at `nros_platform_can_open` with `NROS_PLATFORM_CAN_ENOTSUP` and one line naming the board, instead of at link. A board package (or the consumer's board glue) supplies the driver as strong `nros_platform_can_*` definitions, linked as objects of the image.

@@ -48,7 +48,10 @@ set(_NROS_FREERTOS_SHARED_C
     "${_NROS_BOARDS_COMMON_C_DIR}/nros_rtos_run_components.c"
     "${_NROS_BOARDS_COMMON_C_DIR}/cxx_static_abi.c"  # issue 1753
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_c_entry.c"
-    "${_NROS_BOARD_DIR}/c/board_s32z270.c")
+    "${_NROS_BOARD_DIR}/c/board_s32z270.c"
+    # RFC-0132 D3 -- the CAN frame driver's weak fail-loud defaults, an
+    # object of the app so a strong driver in any object of the image wins.
+    "${_NROS_BOARD_DIR}/c/can_unsupported.c")
 
 foreach(_f
         "${_NROS_BOARD_CONFIG_DIR}/FreeRTOSConfig.h"
@@ -143,6 +146,8 @@ set(FREERTOS_STARTUP_SOURCE
 set(FREERTOS_STARTUP_INCLUDES
     ${NROS_FREERTOS_INCLUDES}
     ${NROS_FREERTOS_LWIP_INCLUDES}
+    # `<nros/platform_can.h>`, for c/can_unsupported.c.
+    "${_NROS_BOARD_ROOT}/packages/platform/nros-platform-api/include"
     CACHE INTERNAL "Include dirs for FREERTOS_STARTUP_SOURCE TUs")
 
 function(nros_board_link_app target)

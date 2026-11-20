@@ -19,7 +19,9 @@ beside issue [2573](2573-can-fd-e2e-profile-and-flexcan-helper.md) (GitHub
 **Progress (2026-11-20):** W9.a-W9.e done (the header, bindings and mock;
 the `zephyr` and `socketcan` backends; the device table and its carrier; the
 delivery to `open(NULL)` on every road). W9.f (the `board` hook and the
-consumer) is open.
+consumer) is in progress: the weak fail-loud defaults and the link follow-up
+(issue [2769](2769-zenoh-can-link-over-frame-driver.md)) are done; the RTD
+strong symbols, the census mock and ASI's side are open.
 
 **Claim:** an earlier holder's claim on `issue-2633` expired unreported (59-99 h
 without a renewal or a report); it was taken over on 2026-11-20.
