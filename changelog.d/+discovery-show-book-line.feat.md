@@ -1,0 +1,1 @@
+`nros rmw show` and `nros knob show` end with a Book line, the link to the page that explains the item. A name that matches nothing is refused with the nearest known name (for `zenho`, it asks whether you meant `zenoh`) and the `list` command that names every one.

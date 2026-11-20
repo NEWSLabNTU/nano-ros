@@ -884,6 +884,7 @@ dependencies = [
  "serde_yaml_ng",
  "sha2",
  "similar",
+ "strsim",
  "tempfile",
  "thiserror 1.0.69",
  "toml",

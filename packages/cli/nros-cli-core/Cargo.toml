@@ -71,6 +71,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = "0.10"
 sha2 = "0.10"
+# The nearest names in a discovery verb's refusal (cmd::frame); clap already
+# builds it for its own suggestions.
+strsim = "0.11"
 toml = { workspace = true }
 toml_edit = "0.22"
 similar = "2"

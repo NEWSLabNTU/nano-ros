@@ -205,7 +205,17 @@ Acceptance:
 
 ### W5 — the shared frame, and existing verbs adopt it
 
-- **Status:** OPEN
+- **Status:** OPEN (W5a on its branch; W5b and W5c open)
+- **W5a, the frame:** `cmd::frame` renders a `list` table, a `show`'s
+  fields and Book line, the `--json` document, and the unknown-name refusal
+  with the nearest names. The Book URL is the CLI workspace's
+  `documentation` field, which `build.rs` compiles in, and a test checks
+  `book/book.toml`'s new `site-url` against it. `rmw` and `knob` adopt it.
+- **W5b, open:** `board list` (board keys, the crate as a column) and
+  `board show` rendering every table of the descriptor from the schema's
+  field documentation.
+- **W5c, open:** `interface`, `toolchain list` and `nros list` adopt the
+  frame and gain `--json`; a contract test per schema.
 
 One helper renders `list` (table or `--json`), `show` (fields, then the Book
 line) and the unknown-name refusal with the nearest names. `board`,

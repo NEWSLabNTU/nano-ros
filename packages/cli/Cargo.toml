@@ -40,7 +40,10 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/NEWSLabNTU/nano-ros"
 homepage = "https://github.com/NEWSLabNTU/nano-ros"
-documentation = "https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/cli"
+# The Book. The discovery verbs compile it in as the base of their Book lines
+# (phase-569 W5); book/book.toml's `site-url` is its path, and a test in
+# nros-cli-core (cmd::frame) keeps the two equal.
+documentation = "https://newslabntu.github.io/nano-ros-book/"
 rust-version = "1.75"
 
 [workspace.dependencies]

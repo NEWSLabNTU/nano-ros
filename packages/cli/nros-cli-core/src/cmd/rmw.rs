@@ -21,7 +21,10 @@ use eyre::{Result, WrapErr, eyre};
 use serde::Serialize;
 
 use crate::{
-    cmd::board_support::{Row, Status},
+    cmd::{
+        board_support::{Row, Status},
+        frame::{self, Fields, Table},
+    },
     orchestration::{board_descriptor::BoardCatalog, rmw_index, sdk_index::SdkIndex},
 };
 
@@ -104,9 +107,7 @@ pub fn run(args: Args) -> Result<()> {
 fn list(args: ListArgs) -> Result<()> {
     let items = collect(args.workspace)?;
     if args.json {
-        let doc = serde_json::json!({ "schema": LIST_SCHEMA, "items": items });
-        println!("{}", serde_json::to_string_pretty(&doc)?);
-        return Ok(());
+        return frame::print_json(LIST_SCHEMA, "items", &items, &[]);
     }
     print!("{}", render_list(&items));
     Ok(())
@@ -116,9 +117,7 @@ fn show(args: ShowArgs) -> Result<()> {
     let items = collect(args.workspace)?;
     let item = find(&items, &args.name)?;
     if args.json {
-        let doc = serde_json::json!({ "schema": SHOW_SCHEMA, "item": item });
-        println!("{}", serde_json::to_string_pretty(&doc)?);
-        return Ok(());
+        return frame::print_json(SHOW_SCHEMA, "item", item, &[]);
     }
     print!("{}", render_show(item));
     Ok(())
@@ -130,12 +129,11 @@ pub fn find<'a>(items: &'a [RmwItem], name: &str) -> Result<&'a RmwItem> {
         .iter()
         .find(|i| i.name == name || i.aliases.iter().any(|a| a == name))
         .ok_or_else(|| {
-            let known: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
-            eyre!(
-                "no RMW named `{name}`; the known RMWs are: {}\n  \
-                 `nros rmw list` shows each one",
-                known.join(", ")
-            )
+            let known = items
+                .iter()
+                .flat_map(|i| std::iter::once(&i.name).chain(&i.aliases))
+                .map(String::as_str);
+            frame::unknown("RMW", name, known, "nros rmw list")
         })
 }
 
@@ -347,53 +345,34 @@ fn board_names(boards: &[BoardRef]) -> String {
         .join(", ")
 }
 
-/// The `list` table: name, host peer, boards, summary.
+/// The `list` table: name, host peer, summary, and the boards under it.
 pub fn render_list(items: &[RmwItem]) -> String {
-    if items.is_empty() {
-        return "No RMW backends found.\n".into();
-    }
-    let w = items.iter().map(|i| i.name.len()).max().unwrap_or(4).max(4);
-    let pw = items
-        .iter()
-        .map(|i| i.host_peer.len())
-        .max()
-        .unwrap_or(9)
-        .max(9);
-    let mut out = format!("{:<w$}  {:<pw$}  {}\n", "NAME", "HOST PEER", "SUMMARY");
+    let mut t = Table::new(&["NAME", "HOST PEER", "SUMMARY"], "No RMW backends found.");
     for i in items {
-        out.push_str(&format!(
-            "{:<w$}  {:<pw$}  {}\n",
-            i.name, i.host_peer, i.summary
-        ));
-        out.push_str(&format!(
-            "{:<w$}  {:<pw$}  verified on: {}\n",
-            "",
-            "",
-            board_names(&i.boards)
-        ));
+        t.row_with_notes(
+            vec![i.name.clone(), i.host_peer.clone(), i.summary.clone()],
+            vec![format!("verified on: {}", board_names(&i.boards))],
+        );
     }
-    out.push_str("\n`nros rmw show <name>` shows one backend in full.\n");
-    out
+    t.footer("`nros rmw show <name>` shows one backend in full.");
+    t.render()
 }
+
+/// The page that compares the backends; each backend's guide links from it.
+pub const BOOK_PAGE: &str = "reference/matrices/rmw-feature-matrix.html";
 
 /// The `show` text.
 pub fn render_show(i: &RmwItem) -> String {
-    let mut out = format!("{}\n  {}\n\n", i.name, i.summary);
-    let line = |k: &str, v: String| format!("  {k:<18} {v}\n");
+    let mut out = frame::show_head(&i.name, &i.summary);
+    let mut f = Fields::new();
     if !i.aliases.is_empty() {
-        out.push_str(&line("also named", i.aliases.join(", ")));
+        f.field("also named", i.aliases.join(", "));
     }
-    out.push_str(&line("selected by", format!("rmw = \"{}\"", i.name)));
-    out.push_str(&line("host peer", i.host_peer.clone()));
-    out.push_str(&line(
-        "host packages",
-        if i.host_packages.is_empty() {
-            "-".into()
-        } else {
-            i.host_packages.join(", ")
-        },
-    ));
-    out.push_str(&line("package", i.package.clone()));
+    f.field("selected by", format!("rmw = \"{}\"", i.name))
+        .field("host peer", i.host_peer.clone())
+        .field("host packages", i.host_packages.join(", "))
+        .field("package", i.package.clone());
+    out.push_str(&f.render());
     out.push('\n');
     out.push_str("  Verified on (a test runs over it):\n");
     out.push_str(&boards_block(&i.boards));
@@ -401,6 +380,7 @@ pub fn render_show(i: &RmwItem) -> String {
         out.push_str("  Built, not run:\n");
         out.push_str(&boards_block(&i.build_only_boards));
     }
+    out.push_str(&frame::book_line(BOOK_PAGE));
     out
 }
 
@@ -515,9 +495,10 @@ mod tests {
         };
         let items = vec![item];
         assert_eq!(find(&items, "xrce-dds").unwrap().name, "xrce");
-        let err = find(&items, "zenho").unwrap_err().to_string();
+        let err = find(&items, "xrcd").unwrap_err().to_string();
         assert!(
-            err.contains("no RMW named `zenho`") && err.contains("xrce"),
+            err.contains("no RMW named `xrcd`; did you mean `xrce`?")
+                && err.contains("`nros rmw list` names every one"),
             "{err}"
         );
     }

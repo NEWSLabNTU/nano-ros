@@ -35,6 +35,10 @@ command = "python3 ../scripts/mdbook-file-blocks.py"
 command = "python3 ../scripts/mdbook-level-badge.py"
 
 [output.html]
+# Where the Book is published. The CLI's Book lines use the same URL
+# (packages/cli/Cargo.toml, [workspace.package] documentation); a test keeps
+# them equal.
+site-url = "/nano-ros-book/"
 git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"
 additional-js = ["mermaid.min.js", "mermaid-init.js", "theme/nros-highlight.js"]
 # Code-block edge for the dark themes; see the file's header.

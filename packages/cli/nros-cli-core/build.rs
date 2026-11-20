@@ -34,6 +34,8 @@ fn main() {
     // phase-478 I7 — and before it too: the rlm tag is read from this crate's
     // OWN manifest, which exists in every build, in-tree or not.
     emit_rlm_tag();
+    // phase-569 W5 — the Book URL, from the CLI workspace manifest.
+    emit_book_url();
 
     // issue 1558 — the marker walk, not a hop count (RFC-0101 D3).
     // `try_repo_root` and not `repo_root`: this build script must keep working
@@ -204,6 +206,30 @@ fn main() {
     // lives inside `play_launch_pin` now, so it cannot be forgotten at one site.
     let pin = play_launch_pin(&root).unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=NROS_PLAY_LAUNCH_SHA={pin}");
+}
+
+/// phase-569 W5 — the Book's URL, as `NROS_BOOK_URL`, for the discovery
+/// verbs' Book lines (`cmd::frame::BOOK_BASE`). It is defined once, as the CLI
+/// workspace's `[workspace.package] documentation`; cargo does not hand that
+/// field to the compiler, so it is read here. A build with no workspace
+/// manifest above this crate gets no Book lines rather than a wrong URL.
+fn emit_book_url() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.toml");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    let url = std::fs::read_to_string(&manifest)
+        .ok()
+        .and_then(|text| {
+            // The table's own header line, not a mention of it in a comment.
+            let section = text.split("\n[workspace.package]\n").nth(1)?;
+            let section = section.split("\n[").next()?;
+            section
+                .lines()
+                .find(|l| l.trim_start().starts_with("documentation"))
+                .and_then(|l| l.split('"').nth(1))
+                .map(str::to_string)
+        })
+        .unwrap_or_default();
+    println!("cargo:rustc-env=NROS_BOOK_URL={url}");
 }
 
 /// phase-478 I7 — the ros-launch-manifest tag this CLI parses contracts with,

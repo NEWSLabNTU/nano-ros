@@ -33,7 +33,10 @@ use nros_zephyr_build::{KNOBS, KnobClass, KnobDefault, KnobRow, KnobScope, KnobV
 use crate::knob_catalog::{Catalog, Origin, Row, RowKind};
 use serde::Serialize;
 
-use crate::cmd::config::{ExplainArgs, Ladder, resolve_ladder};
+use crate::cmd::{
+    config::{ExplainArgs, Ladder, resolve_ladder},
+    frame::{self, Table},
+};
 
 /// The `--json` schema names (RFC-0133 D1). Adding a key keeps the version;
 /// removing or renaming one is a new version.
@@ -321,13 +324,12 @@ fn list(args: ListArgs) -> Result<()> {
     items.extend(package_items(&cat));
     items.sort_by(|a, b| a.name.cmp(&b.name));
     if args.json {
-        let doc = serde_json::json!({
-            "schema": LIST_SCHEMA,
-            "platform": args.platform,
-            "items": items,
-        });
-        println!("{}", serde_json::to_string_pretty(&doc)?);
-        return Ok(());
+        return frame::print_json(
+            LIST_SCHEMA,
+            "items",
+            &items,
+            &[("platform", serde_json::json!(args.platform))],
+        );
     }
     print!("{}", render_list(&items, ladder.is_some()));
     Ok(())
@@ -345,14 +347,27 @@ fn show(args: ShowArgs) -> Result<()> {
                 .filter(|r| r.kind == RowKind::Knob && !r.origin.is_compiled())
             {
                 Some(r) => package_item(r),
-                None => return Err(e),
+                // Refused against every knob this workspace has: the public
+                // core rows and its packages' rows, whose names `find` does
+                // not know.
+                None if package_items(&cat).is_empty() => return Err(e),
+                None => {
+                    let pkg: Vec<String> =
+                        package_items(&cat).into_iter().map(|i| i.name).collect();
+                    return Err(frame::unknown(
+                        "knob",
+                        &args.name,
+                        nros_zephyr_build::public_knobs()
+                            .map(|r| r.image_key)
+                            .chain(pkg.iter().map(String::as_str)),
+                        "nros knob list",
+                    ));
+                }
             }
         }
     };
     if args.json {
-        let doc = serde_json::json!({ "schema": SHOW_SCHEMA, "item": item });
-        println!("{}", serde_json::to_string_pretty(&doc)?);
-        return Ok(());
+        return frame::print_json(SHOW_SCHEMA, "item", &item, &[]);
     }
     print!("{}", render_show(&item));
     Ok(())
@@ -386,24 +401,11 @@ pub fn find(name: &str) -> Result<&'static KnobRow> {
     {
         return Ok(r);
     }
-    let mut near: Vec<&str> = nros_zephyr_build::public_knobs()
-        .map(|r| r.image_key)
-        .filter(|k| {
-            let (g, _) = k.rsplit_once('.').unwrap_or(("", k));
-            name.starts_with(g)
-                || k.contains(name)
-                || name.contains(k.rsplit('.').next().unwrap_or(k))
-        })
-        .collect();
-    near.sort_unstable();
-    near.truncate(8);
-    let hint = if near.is_empty() {
-        String::new()
-    } else {
-        format!("; the closest are: {}", near.join(", "))
-    };
-    Err(eyre!(
-        "no knob named `{name}`{hint}\n  `nros knob list` names every knob a project can state"
+    Err(frame::unknown(
+        "knob",
+        name,
+        nros_zephyr_build::public_knobs().map(|r| r.image_key),
+        "nros knob list",
     ))
 }
 
@@ -641,64 +643,56 @@ fn default_cell(d: &DefaultItem) -> String {
 }
 
 pub fn render_list(items: &[KnobItem], resolved: bool) -> String {
-    let w = items.iter().map(|i| i.name.len()).max().unwrap_or(4).max(4);
-    let p = items
-        .iter()
-        .map(|i| i.package.as_deref().unwrap_or("core").len())
-        .max()
-        .unwrap_or(7)
-        .max(7);
-    let r = items
-        .iter()
-        .map(|i| i.root.as_deref().unwrap_or("-").len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
-    let mut out = String::new();
-    if resolved {
-        out.push_str(&format!(
-            "{:<w$}  {:<8}  {:<12}  {:<9}  {}\n",
-            "KNOB", "SCOPE", "VALUE", "SET BY", "WHAT IT IS"
-        ));
+    let mut t = if resolved {
+        Table::new(
+            &["KNOB", "SCOPE", "VALUE", "SET BY", "WHAT IT IS"],
+            "No knobs.",
+        )
     } else {
-        out.push_str(&format!(
-            "{:<w$}  {:<8}  {:<20}  {:<p$}  {:<r$}  {}\n",
-            "KNOB", "SCOPE", "DEFAULT", "PACKAGE", "ROOT", "WHAT IT IS"
-        ));
-    }
+        Table::new(
+            &["KNOB", "SCOPE", "DEFAULT", "PACKAGE", "ROOT", "WHAT IT IS"],
+            "No knobs.",
+        )
+    };
     for i in items {
         if resolved {
             let (v, by) = match &i.resolved {
                 Some(r) => (r.value.clone(), r.set_by),
                 None => (default_cell(&i.default), "-"),
             };
-            out.push_str(&format!(
-                "{:<w$}  {:<8}  {:<12}  {:<9}  {}\n",
-                i.name, i.scope, v, by, i.summary
-            ));
+            t.row(vec![
+                i.name.clone(),
+                i.scope.to_string(),
+                v,
+                by.into(),
+                i.summary.clone(),
+            ]);
         } else {
-            out.push_str(&format!(
-                "{:<w$}  {:<8}  {:<20}  {:<p$}  {:<r$}  {}\n",
-                i.name,
-                i.scope,
+            t.row(vec![
+                i.name.clone(),
+                i.scope.to_string(),
                 default_cell(&i.default),
-                i.package.as_deref().unwrap_or("core"),
-                i.root.as_deref().unwrap_or("-"),
-                i.summary
-            ));
+                i.package.as_deref().unwrap_or("core").to_string(),
+                i.root.as_deref().unwrap_or("-").to_string(),
+                i.summary.clone(),
+            ]);
         }
     }
-    out.push_str(&format!(
-        "\n{} knobs. `nros knob show <knob>` says where to state one and what it takes.\n",
+    t.footer(&format!(
+        "{} knobs. `nros knob show <knob>` says where to state one and what it takes.",
         items.len()
     ));
-    out
+    t.render()
 }
 
+/// The configuration reference, generated from the same rows.
+pub const BOOK_PAGE: &str = "reference/configuration-surface.html";
+
 pub fn render_show(i: &KnobItem) -> String {
-    let mut out = format!("{}\n  {}\n\n", i.name, i.summary);
+    let mut out = frame::show_head(&i.name, &i.summary);
     if let Some(n) = &i.note {
         out.push_str(&format!("  {n}\n"));
+        out.push_str(&frame::book_line(BOOK_PAGE));
         return out;
     }
     if let Some(s) = &i.surface {
@@ -743,6 +737,7 @@ pub fn render_show(i: &KnobItem) -> String {
             }
         }
     }
+    out.push_str(&frame::book_line(BOOK_PAGE));
     out
 }
 
