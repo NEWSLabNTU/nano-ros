@@ -1,0 +1,1 @@
+A new guide page, "Run managed nodes", explains lifecycle nodes as they work today: which nodes are managed (a `<lifecycle_node>` in the launch file, `lifecycle: true` in a contract, or a C++ `rclcpp_lifecycle::LifecycleNode`), the image's `[lifecycle] autostart`, driving a node with `ros2 lifecycle`, and what is not built yet.

@@ -385,7 +385,21 @@ Acceptance:
 
 ### W8 — The book's lifecycle chapter
 
-Status: OPEN.
+Status: PARTLY DONE (2026-11-20). The page landed as the user-guide page
+`guide/deploy/run-managed-nodes.md`, written only to what is built: one
+machine per managed node (W1), the three ways a node becomes managed (W2,
+W2.b), the image's one `autostart` value and its refusal, and the bound C
+node (W3.b). It states that publishers do not follow the node's state (W6)
+and that there is no per-node `autostart` (W7), with no dates.
+
+It is prose and file blocks only. The book refuses a shell step with no probe
+fence, and no lane runs `nros run` and `ros2 lifecycle` against such an image
+yet, so the build-and-run step and the `ros2 lifecycle` verbs are described,
+not given as commands. W9's acceptance cells give them a probe lane; whoever
+builds W9 adds the commands, fenced to it, with their output blocks. Still to
+come besides: the per-node zenoh and DDS cost from W9's measurement, and the
+rclcpp comparison of W0 item 1 once W6 makes it a difference. W6 and W7 each
+update the page when they land.
 
 The user-guide chapter states:
 
@@ -430,6 +444,10 @@ Acceptance:
 - Every cell is green in its lane.
 - The per-node RAM delta is recorded for each backend, on the named board,
   with the commit it was measured on.
+- The book page `guide/deploy/run-managed-nodes.md` (W8) gains its run step
+  and `ros2 lifecycle` commands as shell steps fenced to these cells' probe
+  lane, with output blocks taken from the run. It has none today because no
+  lane ran them.
 
 ### Phase C — callbacks
 
