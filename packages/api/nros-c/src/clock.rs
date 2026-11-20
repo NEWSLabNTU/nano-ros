@@ -628,6 +628,26 @@ pub extern "C" fn rclc_time_compare(a: rclc_time_t, b: rclc_time_t) -> c_int {
 }
 
 // ============================================================================
+// Wall-clock state
+// ============================================================================
+
+/// What the wall-clock stamps mean right now: whether the wall clock is
+/// synced, which source answers (`NROS_WALL_CLOCK_SOURCE_*`), and how many
+/// times that source has changed since boot.
+///
+/// An application that must not publish unstamped data asks this before
+/// publishing. While `synced` is false the wall clock reads 0, so a stamp
+/// taken from `RCL_SYSTEM_TIME` is ROS's "unset" time.
+///
+/// The type is declared in `rclc/detail/wall_clock_state.h`.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_wall_clock_state() -> nros_platform_cffi::nros_wall_clock_state_t {
+    // SAFETY: no arguments; every port defines the symbol (no default), and
+    // the struct is the generated binding of the platform header's.
+    unsafe { nros_platform_cffi::nros_platform_wall_clock_state() }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -636,6 +656,18 @@ mod tests {
     use super::*;
 
     const NS: i64 = NANOS_PER_SEC as i64;
+
+    /// The C surface's wall-clock state is the linked port's. The test image
+    /// links the POSIX C port, whose clock is `CLOCK_REALTIME`: synced, its
+    /// own source, never stepped. A forwarder that invented an answer would
+    /// have to invent this one exactly.
+    #[test]
+    fn wall_clock_state_is_the_posix_ports() {
+        let st = nros_wall_clock_state();
+        assert!(st.synced, "CLOCK_REALTIME answers on a host");
+        assert_eq!(st.source, 0, "NROS_WALL_CLOCK_SOURCE_PLATFORM");
+        assert_eq!(st.steps, 0);
+    }
 
     /// The two surfaces answer "what is ROS time with no `/clock` installed"
     /// identically — issue 1334, and the cross-language negative control.

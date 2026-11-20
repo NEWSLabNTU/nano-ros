@@ -254,6 +254,87 @@ fn platform_steady_clock() -> Option<Time> {
     None
 }
 
+/// Which source answers the wall clock ([`WallClockState::source`]); the
+/// values of `NROS_WALL_CLOCK_SOURCE_*` in `nros/platform.h`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WallClockSource {
+    /// The port's own clock (POSIX `CLOCK_REALTIME`; none on FreeRTOS/ThreadX).
+    Platform,
+    /// An SNTP exchange set the offset.
+    Sntp,
+    /// Zenoh HLC timestamps on received samples set the offset.
+    ZenohHlc,
+    /// The board's clock hook.
+    Board,
+    /// A value this crate does not know, from a newer port.
+    Unknown(u8),
+}
+
+/// What the wall-clock stamps mean right now: the answer to
+/// `nros_platform_wall_clock_state()`, field for field.
+///
+/// An application that must not publish unstamped data asks
+/// [`wall_clock_state`] before publishing. While `synced` is false the wall
+/// clock reads 0, so every `header.stamp` is ROS's "unset" time.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WallClockState {
+    /// `true`: the wall clock answers real UNIX time.
+    pub synced: bool,
+    /// The raw `NROS_WALL_CLOCK_SOURCE_*` value; [`WallClockState::source`]
+    /// names it.
+    pub source_id: u8,
+    /// How many times the answering source has changed since boot.
+    pub steps: u32,
+}
+
+// The C struct is `{ bool; uint8_t; uint32_t; }`: 8 bytes, `steps` at 4, on
+// every ABI nano-ros targets. A field added on one side only fails here.
+const _: () = {
+    assert!(core::mem::size_of::<WallClockState>() == 8);
+    assert!(core::mem::offset_of!(WallClockState, source_id) == 1);
+    assert!(core::mem::offset_of!(WallClockState, steps) == 4);
+};
+
+impl WallClockState {
+    /// The source answering, or the one that will once it syncs.
+    pub const fn source(&self) -> WallClockSource {
+        match self.source_id {
+            0 => WallClockSource::Platform,
+            1 => WallClockSource::Sntp,
+            2 => WallClockSource::ZenohHlc,
+            3 => WallClockSource::Board,
+            other => WallClockSource::Unknown(other),
+        }
+    }
+}
+
+/// The wall clock's state from the linked port, or `None` when this build has
+/// no port to ask (no `platform-clock`), the same condition under which
+/// [`Clock::system`] falls back to its counter.
+///
+/// Every port DEFINES `nros_platform_wall_clock_state`; a port that does not
+/// fails to link, naming the symbol.
+#[cfg(feature = "platform-clock")]
+pub fn wall_clock_state() -> Option<WallClockState> {
+    // The C ABI's name for the struct, so this declaration reads as the
+    // header's prototype.
+    #[allow(non_camel_case_types)]
+    type nros_wall_clock_state_t = WallClockState;
+    unsafe extern "C" {
+        fn nros_platform_wall_clock_state() -> nros_wall_clock_state_t;
+    }
+    // SAFETY: no arguments; returns a `repr(C)` struct whose layout is
+    // asserted above against the C declaration.
+    Some(unsafe { nros_platform_wall_clock_state() })
+}
+
+/// See the `platform-clock` variant: no port is linked, so there is no state.
+#[cfg(not(feature = "platform-clock"))]
+pub fn wall_clock_state() -> Option<WallClockState> {
+    None
+}
+
 impl Clock {
     /// Create a new clock of the specified type
     ///
@@ -570,6 +651,56 @@ mod tests {
         extern "C" fn nros_platform_clock_ns() -> u64 {
             STEADY_NS.load(Ordering::Relaxed)
         }
+
+        /// The state the fake port reports: synced on SNTP after 3 steps, a
+        /// combination no default could produce, so a test reading it sees
+        /// the PORT's answer and not a constant on this side.
+        pub(super) const STATE: super::WallClockState = super::WallClockState {
+            synced: true,
+            source_id: 1,
+            steps: 3,
+        };
+
+        #[unsafe(no_mangle)]
+        extern "C" fn nros_platform_wall_clock_state() -> super::WallClockState {
+            STATE
+        }
+    }
+
+    /// The state query returns the linked port's answer, field for field.
+    #[test]
+    #[cfg(feature = "platform-clock")]
+    fn wall_clock_state_reads_the_linked_port() {
+        let st = wall_clock_state().expect("a port is linked");
+        assert_eq!(st, fake_port::STATE);
+        assert!(st.synced);
+        assert_eq!(st.source(), WallClockSource::Sntp);
+        assert_eq!(st.steps, 3);
+    }
+
+    /// With no port there is no state, rather than an invented one.
+    #[test]
+    #[cfg(not(feature = "platform-clock"))]
+    fn wall_clock_state_is_none_without_a_port() {
+        assert_eq!(wall_clock_state(), None);
+    }
+
+    /// Every C source value has a name, and an unknown one is kept.
+    #[test]
+    fn wall_clock_source_names_each_c_value() {
+        let named = |id| {
+            WallClockState {
+                synced: false,
+                source_id: id,
+                steps: 0,
+            }
+            .source()
+        };
+        assert_eq!(named(0), WallClockSource::Platform);
+        assert_eq!(named(1), WallClockSource::Sntp);
+        assert_eq!(named(2), WallClockSource::ZenohHlc);
+        assert_eq!(named(3), WallClockSource::Board);
+        assert_eq!(named(9), WallClockSource::Unknown(9));
     }
 
     #[test]

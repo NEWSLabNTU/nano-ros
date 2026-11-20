@@ -27,6 +27,9 @@
  * goal handle, declared under the guard the generated message shares;
  * excluded from export below. */
 #include "rclc/detail/uuid.h"
+/* `nros_wall_clock_state_t`, under the guard the platform header shares;
+ * excluded from export below. */
+#include "rclc/detail/wall_clock_state.h"
 
 /* Forward declarations for callback typedefs that reference these
  * structs before they appear in source-order output. Without these,
@@ -4245,6 +4248,19 @@ struct rclc_time_t rclc_time_sub(struct rclc_time_t time,
  * Compare two times.
  */
 NROS_PUBLIC int rclc_time_compare(struct rclc_time_t a, struct rclc_time_t b);
+
+/**
+ * What the wall-clock stamps mean right now: whether the wall clock is
+ * synced, which source answers (`NROS_WALL_CLOCK_SOURCE_*`), and how many
+ * times that source has changed since boot.
+ *
+ * An application that must not publish unstamped data asks this before
+ * publishing. While `synced` is false the wall clock reads 0, so a stamp
+ * taken from `RCL_SYSTEM_TIME` is ROS's "unset" time.
+ *
+ * The type is declared in `rclc/detail/wall_clock_state.h`.
+ */
+NROS_PUBLIC nros_wall_clock_state_t nros_wall_clock_state(void);
 
 /**
  * rcl's `rcl_set_error_state(error_string, file, line_number)`: record an

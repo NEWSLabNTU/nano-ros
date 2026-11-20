@@ -111,7 +111,7 @@ pub use action::{
 };
 #[allow(deprecated)]
 pub use action::{CancelReturnCode, GoalId, GoalStatus};
-pub use clock::{Clock, ClockType};
+pub use clock::{Clock, ClockType, WallClockSource, WallClockState, wall_clock_state};
 // RFC-0090 — generated code names these directly, so they are re-exported at
 // the root: an emitted `const` assertion should not have to spell a module path
 // that could be reorganised under it.
