@@ -879,6 +879,10 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       `nros-cli-core` `image_net` and `builder::zephyr` tests).
 - [ ] I32: RFC-0136 built: `[image_alternatives]` validated, `check_collisions`
       lets one group share an address and MAC, the D5 tests and D6 docs (issue 2690).
+- [ ] I33: nano-ros carries the Zephyr CTF `app_marker` event patch (and the
+      `k_thread_priority_set` CTF fix) in `zephyr/patches/`, applied by
+      `nros setup board`, so a CTF image emits callback and application
+      markers with no consumer patch (issue 2766).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -903,6 +907,10 @@ this phase will fix it.
 ## Issues homed here (2026-11-02)
 
 - [issue 2165](../issues/archived/2165-zephyr-smp-nros-log-stops-after-four-records.md) (resolved 2026-11-19: does not reproduce at main; the sink hazard is [issue 2738](../issues/2738-zephyr-log-sink-buffer-on-caller-stack.md)): on the island's Zephyr SMP image (`fvp_baser_aemv8r_smp`), only the four early-ring `nros_log` records reach the console. Every later record is lost with no `report_lost` warning. The same sources log normally on FreeRTOS.
+
+## Issues homed here (2026-11-20)
+
+- [issue 2766](../issues/2766-zephyr-ctf-app-marker-patch-carried-by-consumer.md): the Zephyr trace sink calls `sys_trace_app_marker` through a weak reference, and the CTF event that defines it is a Zephyr patch only the island carries, so other users' CTF images emit no markers (I33; GitHub #4008).
 
 ## Issues homed here (2026-11-18)
 
