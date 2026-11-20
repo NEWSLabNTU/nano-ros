@@ -105,6 +105,10 @@ pub enum Decision {
         version: String,
         pin_path: PathBuf,
         looked_in: Vec<PathBuf>,
+        /// Which form the pin was written in: a release is fetched by
+        /// `install.sh`, a git pin is built from source (issue 2645), and a
+        /// path pin is the user's own checkout, which nothing here builds.
+        source: pin::PinSource,
     },
 }
 
@@ -150,15 +154,16 @@ pub fn decide(ctx: &Context) -> Result<Decision> {
     if p.version == mine {
         return Ok(Decision::Proceed("the pin names this binary"));
     }
-    match pin::installed_bin(&ctx.store, &p.version) {
+    match p.installed_bin(&ctx.store) {
         Some(bin) => Ok(Decision::Exec {
             version: p.version,
             bin,
         }),
         None => Ok(Decision::Missing {
-            looked_in: pin::candidate_bins(&ctx.store, &p.version),
+            looked_in: p.candidate_bins(&ctx.store),
             version: p.version,
             pin_path: p.path,
+            source: p.source,
         }),
     }
 }
@@ -172,6 +177,10 @@ fn is_dispatched_binary(ctx: &Context, version: &str) -> bool {
         return true;
     }
     let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    // A `path` pin (issue 2645) dispatches to its checkout's own build.
+    if let Some(dir) = version.strip_prefix("path:") {
+        return canon(&pin::checkout_cli_bin(Path::new(dir))) == canon(&ctx.exe);
+    }
     pin::installed_bin(&ctx.store, version).is_some_and(|b| canon(&b) == canon(&ctx.exe))
 }
 
@@ -207,7 +216,27 @@ pub fn fetch(
     version: &str,
     pin_path: &Path,
     looked_in: &[PathBuf],
+    source: &pin::PinSource,
 ) -> Result<PathBuf> {
+    match source {
+        pin::PinSource::Release => {}
+        // Issue 2645: a commit has no release asset, so it is built from
+        // source into the store.
+        pin::PinSource::Git { url, rev } => {
+            return crate::git_pin::install(store, url, rev, pin_path);
+        }
+        // The user's own checkout: building it is theirs to do, as it is for
+        // any contributor, and its stale guard says when it is out of date.
+        pin::PinSource::Path(dir) => bail!(
+            "{} pins the nano-ros checkout {}, and it has no built CLI at {}.\n\
+             Build it there and run again:\n\
+             \x20   {}/scripts/bootstrap.sh --no-prompt",
+            pin_path.display(),
+            dir.display(),
+            pin::checkout_cli_bin(dir).display(),
+            dir.display()
+        ),
+    }
     let looked = looked_in
         .iter()
         .map(|p| format!("\n\x20     {}", p.display()))
@@ -279,7 +308,10 @@ pub fn redispatch() -> Result<()> {
             version,
             pin_path,
             looked_in,
-        } => fetch(&ctx.exe, &ctx.store, &version, &pin_path, &looked_in)?,
+            source,
+        } => fetch(
+            &ctx.exe, &ctx.store, &version, &pin_path, &looked_in, &source,
+        )?,
     };
     let version = pin::running_version(&bin)
         .map(|(v, _)| v)

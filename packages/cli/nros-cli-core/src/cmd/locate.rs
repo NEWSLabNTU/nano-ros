@@ -848,10 +848,7 @@ mod tests {
     };
 
     fn pin(v: &str) -> nros_launcher::pin::Pin {
-        nros_launcher::pin::Pin {
-            path: std::path::PathBuf::from("/p/nros-toolchain.toml"),
-            version: v.to_string(),
-        }
+        nros_launcher::pin::Pin::release(std::path::PathBuf::from("/p/nros-toolchain.toml"), v)
     }
 
     #[test]

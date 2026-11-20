@@ -99,7 +99,8 @@ fn main() -> ExitCode {
             version,
             pin_path,
             looked_in,
-        } => match dispatch::fetch(&ctx.exe, &ctx.store, version, pin_path, looked_in) {
+            source,
+        } => match dispatch::fetch(&ctx.exe, &ctx.store, version, pin_path, looked_in, source) {
             Ok(b) => b,
             Err(e) => {
                 eprintln!("nros: {e:?}");
@@ -120,8 +121,14 @@ fn main() -> ExitCode {
         }
     };
 
+    // A checkout's build (a `path` pin) has no store version; the pin's own
+    // name is what the child is told it was dispatched as.
     let version = nros_launcher::pin::running_version(&bin)
         .map(|(v, _)| v)
+        .or_else(|| match &plan {
+            Plan::Exec { version, .. } | Plan::Missing { version, .. } => Some(version.clone()),
+            _ => None,
+        })
         .unwrap_or_default();
     match dispatch::exec(&bin, &version, &args) {
         // `exec` does not return on success, so reaching here is the failure.

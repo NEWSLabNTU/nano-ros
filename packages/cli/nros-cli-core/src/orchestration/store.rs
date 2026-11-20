@@ -591,6 +591,15 @@ pub fn load_pin_file(path: &Path) -> Result<PinSource> {
                 .wrap_err_with(|| format!("parse pin file {}", path.display()))?;
             let mut out = Vec::new();
             collect_strings(&value, &mut out);
+            // Issue 2645: a git pin's store directory is `git-<rev>`, a string
+            // the file never spells out. Read it through the pin's own parser
+            // so the reclaim guard protects it too.
+            if name.as_deref() == Some(super::pin::FILE_NAME)
+                && let Ok(p) = super::pin::load(path)
+                && matches!(p.source, super::pin::PinSource::Git { .. })
+            {
+                out.push(p.version);
+            }
             out.into_iter().map(PinRule::AnyVersion).collect()
         }
     };
@@ -1013,6 +1022,27 @@ mod tests {
         let src = load_pin_file(&path).unwrap();
         assert!(src.rules.contains(&PinRule::AnyVersion("0.6.2".into())));
         assert!(src.rules.contains(&PinRule::AnyVersion("stable".into())));
+    }
+
+    /// Issue 2645: a git pin's store directory, `git-<rev>`, is a string the
+    /// file never spells out, and the reclaim guard still sees it.
+    #[test]
+    fn a_git_pin_protects_its_store_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nros-toolchain.toml");
+        let rev = "09219edc75c9b9a788590c6ac586a7ba45185eab";
+        std::fs::write(
+            &path,
+            format!("[toolchain]\ngit = \"https://e/nano-ros\"\nrev = \"{rev}\"\n"),
+        )
+        .unwrap();
+        let src = load_pin_file(&path).unwrap();
+        assert!(
+            src.rules
+                .contains(&PinRule::AnyVersion(format!("git-{rev}"))),
+            "{:?}",
+            src.rules
+        );
     }
 
     /// RFC-0103 D5 — a materialised source tree is named by no project pin

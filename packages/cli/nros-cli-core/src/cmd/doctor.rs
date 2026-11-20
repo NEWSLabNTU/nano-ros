@@ -228,11 +228,11 @@ fn install_report(store: &Path, exe: &Path, cwd: &Path) -> (Vec<String>, usize) 
         ),
         Ok(Some(p)) => {
             let running = pin::running_version(exe).map(|(v, _)| v);
-            if let Some(bin) = pin::installed_bin(store, &p.version) {
+            if let Some(bin) = p.installed_bin(store) {
                 lines.push(format!(
-                    "  [OK] pin        {} names nano-ros {} → {}",
+                    "  [OK] pin        {} names {} → {}",
                     p.path.display(),
-                    p.version,
+                    p.describe(),
                     bin.display()
                 ));
             } else if running.as_deref() == Some(p.version.as_str()) {
@@ -243,18 +243,33 @@ fn install_report(store: &Path, exe: &Path, cwd: &Path) -> (Vec<String>, usize) 
                 ));
             } else {
                 problems += 1;
+                // Issue 2645: each pin form has its own remedy.
+                let remedy = match &p.source {
+                    pin::PinSource::Release => format!(
+                        "install it:  curl -fsSL <install.sh> | sh -s -- --version {}",
+                        p.version
+                    ),
+                    pin::PinSource::Git { .. } => {
+                        "the launcher (`nros` from the store) fetches and builds it on the \
+                         next command run here"
+                            .to_string()
+                    }
+                    pin::PinSource::Path(dir) => format!(
+                        "build it:  {}/scripts/bootstrap.sh --no-prompt",
+                        dir.display()
+                    ),
+                };
                 lines.push(format!(
-                    "  [!!] pin        {} names nano-ros {}, which is not in this store\n\
+                    "  [!!] pin        {} names {}, which is not built or installed\n\
                      \x20              looked in: {}\n\
-                     \x20              install it:  curl -fsSL <install.sh> | sh -s -- --version {}",
+                     \x20              {remedy}",
                     p.path.display(),
-                    p.version,
-                    pin::candidate_bins(store, &p.version)
+                    p.describe(),
+                    p.candidate_bins(store)
                         .iter()
                         .map(|b| b.display().to_string())
                         .collect::<Vec<_>>()
                         .join(", "),
-                    p.version
                 ));
             }
         }

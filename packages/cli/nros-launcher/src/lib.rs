@@ -42,6 +42,7 @@
 
 pub mod checkout;
 pub mod dispatch;
+pub mod git_pin;
 pub mod launch;
 pub mod pin;
 pub mod session;
