@@ -1455,7 +1455,8 @@ pub mod __macro_support {
     /// `nros-params` the image has a store, and the runtime would ask the heap
     /// for the whole crate-default store in one allocation instead: 283,392 B
     /// on a ThreadX-linux image, which its pool refused, and the image exited
-    /// at boot (issue 2777). Refused at build, naming the knob, instead.
+    /// at boot. Refused at build, naming the knob, instead.
+    // Issue 2777.
     pub const PARAM_STORE_CARVED_SLOTS: usize = ::nros_params::IMPLIED_STORE_SLOTS;
     /// The refusal text for [`PARAM_STORE_CARVED_SLOTS`] being 0.
     pub use ::nros_params::STORE_NOT_CARVED as PARAM_STORE_NOT_CARVED;

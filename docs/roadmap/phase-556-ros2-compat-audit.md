@@ -621,7 +621,7 @@ Progress (2026-11-18, the refusal the default needs):
   (contract/census/launch) with a small floor for the stock services"):
   1. The count is what the build can see: one `use_sim_time` per node, the
      contract's `params:`, the declarations the metadata probe recorded
-     (issue 2768) and launch-seeded names, floored at `STOCK_STORE_SLOTS`
+     and launch-seeded names, floored at `STOCK_STORE_SLOTS`
      (8). For a stock-only or fully counted image the 8 is a floor over a
      known count, never a guess.
   2. Where there is evidence of declarations the build cannot count, the
