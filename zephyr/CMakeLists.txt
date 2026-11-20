@@ -29,6 +29,11 @@ if(CONFIG_NROS)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 
+# What Kconfig decided for the knobs it cannot check itself: a retired option
+# that is set, a choice knob's string, and its derived member options
+# (`_nros_check_kconfig_knob_values`, cmake/NanoRosKnobEnv.cmake).
+_nros_check_kconfig_knob_values()
+
 # Issue 2077 -- RFC-0045's `.nros_boot_config` blob is placed in rodata here,
 # not left an orphan section: as one it landed in the S32K344's 0x100-byte
 # IVT_HEADER region. See nros_boot_config.ld.

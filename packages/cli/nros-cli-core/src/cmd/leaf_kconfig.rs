@@ -602,6 +602,13 @@ pub fn render_over(
             ));
         }
         let ty = syms.get(&symbol).map_or(SymType::Int, |s| s.ty);
+        // A CHOICE knob's override is a value of it, or refused like any other.
+        if let Some(row) = nros_zephyr_build::knob_row(&format!("NROS_{}", knob.id))
+            && let Some(why) =
+                nros_zephyr_build::choice_refusal(row, &format!("-DNROS_OVERRIDE_{id}"), value)
+        {
+            return Err(why);
+        }
         let v = kconfig_value(ty, value).map_err(|why| format!("{from}: {symbol} is {why}"))?;
         out.knobs.retain(|l| l.symbol != symbol);
         out.knobs.push(Line {
@@ -678,6 +685,32 @@ pub fn defaults_text(leaf: &LeafSystem, r: &Rendered) -> String {
             }
             if let Some(l) = stated {
                 s.push_str(&format!("    default {}\n", l.value));
+            }
+            // A CHOICE knob's derived member bools: `y` exactly when the
+            // value (the image's, else the module default) names the member.
+            for m in nros_zephyr_build::member_kconfig(k.id) {
+                let value = stated.map(|l| l.value.clone()).or_else(|| {
+                    let row = nros_zephyr_build::knob_row(&format!("NROS_{}", k.id))?;
+                    match row.default {
+                        nros_zephyr_build::KnobDefault::Kconfig(ds) => {
+                            ds.last().map(|d| d.value.to_string())
+                        }
+                        _ => None,
+                    }
+                });
+                let named = value
+                    .as_deref()
+                    .is_some_and(|v| v.trim_matches('"').split(',').any(|x| x.trim() == m.member));
+                s.push_str(&format!(
+                    "\n# derived: {} names `{}`\nconfig {}\n    bool\n",
+                    k.id, m.member, m.symbol
+                ));
+                for d in m.depends {
+                    s.push_str(&format!("    depends on {d}\n"));
+                }
+                if named {
+                    s.push_str("    default y\n");
+                }
             }
         }
         if let Some(c) = cond {
@@ -1185,6 +1218,67 @@ endif # NROS
         );
         let e = render(&x, None, &syms, &o(&[("ZENOH_MAX_QUERYABLES", "3")])).unwrap_err();
         assert!(e.contains("if NROS_RMW_ZENOH"), "{e}");
+    }
+
+    /// A CHOICE knob (`enum` / `enum_list`) on the system.toml road: a value
+    /// outside its members is refused naming the `system.toml` key, from the
+    /// image's table and from an override alike (negative controls); an
+    /// accepted list becomes a Kconfig string, and its derived member bool is
+    /// stated exactly when the list names the member.
+    #[test]
+    fn a_choice_knob_is_checked_and_states_its_member_bools() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap();
+        let syms = KconfigSymbols::load(root).unwrap();
+        let sys = |source: &str| {
+            format!(
+                "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n\
+                 knobs = {{ clock = {{ source = \"{source}\" }} }}\n"
+            )
+        };
+        let (_d, l) = leaf(&sys("sntp,platform"), &[]);
+        let r = render(&l, None, &syms, &BTreeMap::new()).unwrap();
+        assert_eq!(
+            knob_rows(&r)["CONFIG_NROS_CLOCK_SOURCE"],
+            "\"sntp,platform\""
+        );
+        let d = defaults_text(&l, &r);
+        assert!(
+            d.contains("config NROS_CLOCK_SOURCE_HAS_SNTP\n    bool\n    depends on NETWORKING\n    default y\n"),
+            "{d}"
+        );
+        for bad in ["gps", "sntp,sntp", ""] {
+            let (_d, l) = leaf(&sys(bad), &[]);
+            let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();
+            assert!(
+                e.contains("clock.source takes an ordered list"),
+                "{bad:?}: {e}"
+            );
+        }
+        // Not stated: the module default (`platform`) names no sntp.
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let r = render(&l, None, &syms, &BTreeMap::new()).unwrap();
+        let d = defaults_text(&l, &r);
+        assert!(
+            d.contains("config NROS_CLOCK_SOURCE_HAS_SNTP\n    bool\n    depends on NETWORKING\n")
+                && !d.contains(
+                    "NROS_CLOCK_SOURCE_HAS_SNTP\n    bool\n    depends on NETWORKING\n    default y"
+                ),
+            "{d}"
+        );
+        let o: BTreeMap<String, String> =
+            [("CLOCK_UPGRADE".to_string(), "sometimes".to_string())].into();
+        let e = render(&l, None, &syms, &o).unwrap_err();
+        assert!(
+            e.contains("-DNROS_OVERRIDE_CLOCK_UPGRADE = \"sometimes\" is refused")
+                && e.contains("clock.upgrade takes one of: never, monotonic"),
+            "{e}"
+        );
     }
 
     #[test]

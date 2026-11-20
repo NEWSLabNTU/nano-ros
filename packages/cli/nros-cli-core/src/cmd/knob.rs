@@ -547,6 +547,7 @@ fn values_text(r: &KnobRow) -> String {
         }
         KnobValues::Hex => "a hex integer".to_string(),
         KnobValues::String => "a string".to_string(),
+        KnobValues::Enum | KnobValues::EnumList => nros_zephyr_build::choice_want(r),
         KnobValues::UInt => "an integer of 0 or more".to_string(),
         KnobValues::Unstated => "an integer (not checked before the build)".to_string(),
     }
@@ -573,7 +574,9 @@ fn value_word(r: &KnobRow, v: &str) -> String {
     match (r.values, v) {
         (KnobValues::Bool, "y") => "true".to_string(),
         (KnobValues::Bool, "n") => "false".to_string(),
-        (KnobValues::String, v) => v.trim_matches('"').to_string(),
+        (KnobValues::String | KnobValues::Enum | KnobValues::EnumList, v) => {
+            v.trim_matches('"').to_string()
+        }
         _ => v.to_string(),
     }
 }

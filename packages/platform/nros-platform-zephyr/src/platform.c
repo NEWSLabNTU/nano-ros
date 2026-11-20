@@ -76,10 +76,14 @@ uint64_t nros_platform_clock_resolution_ns(void) {
 /* issue 0758 — the Zephyr wall-clock epoch, kept as an OFFSET from the
  * monotonic clock. Two sources may install it:
  *
- *   - SNTP (CONFIG_SNTP), one exchange at boot;
- *   - the timestamps on received zenoh samples (CONFIG_NROS_EPOCH_FROM_ZENOH,
- *     phase-478 D4), for a board whose only link to the host is the zenoh
- *     session itself — a UART, so no IP stack and no SNTP.
+ *   - SNTP (`clock.source` names `sntp`), one exchange at boot;
+ *   - the timestamps on received zenoh samples (`clock.source` names
+ *     `zenoh-hlc`, phase-478 D4), for a board whose only link to the host is
+ *     the zenoh session itself — a UART, so no IP stack and no SNTP.
+ *
+ * Which of them the image uses, in what order, and what happens when none
+ * answers is decided once at boot by `nros/clock_resolve.h` (RFC-0141 D1/D4),
+ * called from `nros_zephyr_epoch_acquire_configured`.
  *
  * WHY AN OFFSET AND NOT A QUERY PER CALL. `epoch_us` is on the message-stamp
  * path, so a network round trip per call is not an option. We take a reading,
@@ -96,9 +100,11 @@ uint64_t nros_platform_clock_resolution_ns(void) {
  * hi/lo pair read while a writer straddles a 2^32 us boundary would be off by
  * 71 minutes. The guard is the shared store's (`nros/clock_epoch.h`).
  *
- * With neither source compiled in this answers `0`, which the header defines
- * as "no wall clock here" rather than an error. */
-#if defined(CONFIG_SNTP) || defined(CONFIG_NROS_EPOCH_FROM_ZENOH)
+ * With no source installed this answers `0`, which the header defines as "no
+ * wall clock here" rather than an error. The store is header-only and its
+ * reads are a critical section, so it is compiled into every image rather
+ * than behind a switch: `clock.source` is a string, which no `#if` can
+ * test. */
 #ifdef CONFIG_SNTP
 #include <zephyr/net/sntp.h>
 #endif
@@ -107,35 +113,19 @@ uint64_t nros_platform_clock_resolution_ns(void) {
  * `nros/clock_epoch.h`): one setter, one reader, under the platform's
  * critical section. This port only feeds it. */
 #include <nros/clock_epoch.h>
+#include <nros/clock_resolve.h>
 
 uint64_t nros_platform_epoch_us(void) {
     return nros_clock_epoch_us(); /* 0 before the first install: no wall clock */
 }
 
-/* The source this image waits on before its first install. SNTP is asked at
- * boot; with both compiled in it is the one named, and an HLC install that
- * lands instead is reported as that source. */
-#ifdef CONFIG_SNTP
-#define NROS_ZEPHYR_EPOCH_SOURCE NROS_WALL_CLOCK_SOURCE_SNTP
-#else
-#define NROS_ZEPHYR_EPOCH_SOURCE NROS_WALL_CLOCK_SOURCE_ZENOH_HLC
-#endif
-
+/* Before boot resolution the state names the first source the image
+ * declared; after it, the one resolution latched (the store answers that). */
 nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
-    return nros_clock_epoch_state(NROS_ZEPHYR_EPOCH_SOURCE);
+    uint8_t sources[NROS_CLOCK_MAX_SOURCES];
+    uint8_t n = nros_clock_parse_sources(CONFIG_NROS_CLOCK_SOURCE, sources);
+    return nros_clock_epoch_state(n != 0u ? sources[0] : NROS_WALL_CLOCK_SOURCE_PLATFORM);
 }
-#else /* neither source */
-uint64_t nros_platform_epoch_us(void) {
-    return 0;
-}
-
-/* No source compiled in: the wall clock is the port's, and this port has
- * none, so it answers 0 and says so. */
-nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
-    nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
-    return st;
-}
-#endif
 
 #ifdef CONFIG_SNTP
 int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms);
@@ -172,7 +162,7 @@ int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms) {
  * compares against, which is the only clock this exists to agree with.
  *
  * A sample's stamp is taken BEFORE it reaches us, so `stamp - mono` is low by
- * the one-way latency. Within each CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS
+ * the one-way latency. Within each CONFIG_NROS_CLOCK_HLC_INTERVAL_MS
  * window the LARGEST offset seen is the least-delayed sample, and it is
  * installed when the window closes; the first sample installs at once so the
  * image stops stamping boot-relative time as early as it can. Re-installing
@@ -185,7 +175,17 @@ int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms) {
  * forwards none) — can call it unconditionally on Zephyr. */
 void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64);
 void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64) {
-#ifdef CONFIG_NROS_EPOCH_FROM_ZENOH
+    /* Only an image whose `clock.source` names zenoh-hlc listens. Parsed
+     * once: the read task is the only caller. */
+    static int8_t listens = -1;
+    if (listens < 0) {
+        uint8_t sources[NROS_CLOCK_MAX_SOURCES];
+        uint8_t n = nros_clock_parse_sources(CONFIG_NROS_CLOCK_SOURCE, sources);
+        listens = nros_clock_sources_name(sources, n, NROS_WALL_CLOCK_SOURCE_ZENOH_HLC) ? 1 : 0;
+    }
+    if (listens == 0) {
+        return;
+    }
     static uint64_t window_start_us;
     static uint64_t window_max;
     /* NTP64: seconds in the upper 32 bits, a binary fraction in the lower. */
@@ -196,23 +196,24 @@ void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64) {
     }
     uint64_t offset = peer_us - mono_us;
     if (nros_clock_epoch_offset_us() == 0ULL) {
-        nros_clock_set_epoch_offset_us(offset, NROS_WALL_CLOCK_SOURCE_ZENOH_HLC);
-        window_start_us = mono_us;
-        window_max = 0;
-        printk("nros: wall-clock epoch acquired from zenoh sample timestamps\n");
+        /* The store may refuse it: while boot resolution tries another
+         * source, or after it latched one and this is not allowed to take
+         * over. Then the next sample asks again. */
+        if (nros_clock_set_epoch_offset_us(offset, NROS_WALL_CLOCK_SOURCE_ZENOH_HLC)) {
+            window_start_us = mono_us;
+            window_max = 0;
+            printk("nros: wall-clock epoch acquired from zenoh sample timestamps\n");
+        }
         return;
     }
     if (offset > window_max) {
         window_max = offset;
     }
-    if (mono_us - window_start_us >= (uint64_t)CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS * 1000ULL) {
-        nros_clock_set_epoch_offset_us(window_max, NROS_WALL_CLOCK_SOURCE_ZENOH_HLC);
+    if (mono_us - window_start_us >= (uint64_t)CONFIG_NROS_CLOCK_HLC_INTERVAL_MS * 1000ULL) {
+        (void)nros_clock_set_epoch_offset_us(window_max, NROS_WALL_CLOCK_SOURCE_ZENOH_HLC);
         window_start_us = mono_us;
         window_max = 0;
     }
-#else
-    (void)ntp64;
-#endif
 }
 
 /* ---- Allocation ----

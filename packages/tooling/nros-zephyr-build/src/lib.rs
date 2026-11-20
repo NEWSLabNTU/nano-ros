@@ -117,14 +117,19 @@ pub struct KnobRow {
     /// RFC-0103 D6): [`Self::toml`] where the row has one, so a project and a
     /// board spell the knob the same way, else the id split at its first `_`.
     pub image_key: &'static str,
-    /// The Kconfig type (`bool`, `int`, `hex`, `string`) of a row the Zephyr
-    /// module defines, which is also what an `[image.<id>.knobs]` value must be.
+    /// The row's type (`bool`, `int`, `hex`, `string`, or a CHOICE type,
+    /// `enum` / `enum_list`) for a row the Zephyr module defines, which is also
+    /// what an `[image.<id>.knobs]` value must be. A choice row's Kconfig
+    /// symbol is a `string` ([`KconfigKnob::ty`]).
     pub ty: Option<&'static str>,
     /// The row's `range <lo> <hi>`, inclusive, where it states one.
     pub range: Option<(i64, i64)>,
     /// Names an `int` knob also accepts in TOML, the index being the value
     /// (`log.max_level = "warn"`). Empty for every other row.
     pub names: &'static [&'static str],
+    /// The members a CHOICE row (`ty` `enum` / `enum_list`) takes, in order.
+    /// Empty for every other row. Test a value with [`choice_refusal`].
+    pub choices: &'static [&'static str],
     /// `Some(reason)` for a knob that no longer EXISTS (RFC-0110 D2 retired the
     /// zenoh lease-task priority). Every spelling of it, the canonical one
     /// included, is refused with [`RETIRED_KNOB_TEMPLATE`]; the row stays as the
@@ -216,6 +221,11 @@ pub enum KnobValues {
     String,
     /// An unsigned integer: an untyped row the ladder reads as `usize`.
     UInt,
+    /// One of [`KnobRow::choices`].
+    Enum,
+    /// An ordered, non-empty list of distinct [`KnobRow::choices`], spelled
+    /// comma-joined (`sntp,platform`) in env, cmake and Kconfig alike.
+    EnumList,
     /// No type stated anywhere the catalog can read.
     Unstated,
 }
@@ -235,11 +245,30 @@ pub struct KconfigKnob {
     pub symbol: &'static str,
     /// The registry id of the row that defines it; `-DNROS_OVERRIDE_<id>`.
     pub id: &'static str,
-    /// `bool`, `int`, `hex` or `string`.
+    /// `bool`, `int`, `hex` or `string` (a choice row is a `string`).
     pub ty: &'static str,
     /// The `if` the module's definition sits under, if any.
     pub kconfig_if: Option<&'static str>,
     /// The definition's `depends on` expressions, verbatim.
+    pub depends: &'static [&'static str],
+}
+
+/// A derived bool the module defines for one member of a CHOICE knob (its
+/// row's `member_kconfig`): `y` exactly when the knob's value names `member`,
+/// so the module can `select` what the member needs, which Kconfig cannot
+/// decide from a string. The module's knob renderer states it for a project;
+/// a guest states it beside the knob, and the configure refuses a disagreement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KconfigMember {
+    /// The symbol WITHOUT `CONFIG_` (`NROS_CLOCK_SOURCE_HAS_SNTP`).
+    pub symbol: &'static str,
+    /// The registry id of the choice knob.
+    pub id: &'static str,
+    /// The member it stands for (`sntp`).
+    pub member: &'static str,
+    /// The `if` the knob's definition sits under, if any.
+    pub kconfig_if: Option<&'static str>,
+    /// The bool's `depends on` expressions, verbatim.
     pub depends: &'static [&'static str],
 }
 
@@ -381,8 +410,8 @@ pub struct InTreePackage {
 #[rustfmt::skip]
 mod knob_registry;
 pub use knob_registry::{
-    IMAGE_ENV_RETIRED_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_KNOB_TEMPLATE,
-    RETIRED_TEMPLATE,
+    CHOICE_REFUSED_TEMPLATE, IMAGE_ENV_RETIRED_TEMPLATE, KCONFIG_KNOBS, KCONFIG_MEMBERS,
+    KCONFIG_PAIRS, KNOBS, RETIRED_KNOB_TEMPLATE, RETIRED_TEMPLATE,
 };
 // Generated beside it: the statement and env rows (phase-581 W1).
 #[rustfmt::skip]
@@ -399,6 +428,81 @@ pub use registry_packages::{CORE_OWNERS, IN_TREE_PACKAGES};
 pub fn kconfig_knob(symbol: &str) -> Option<&'static KconfigKnob> {
     let s = symbol.strip_prefix("CONFIG_").unwrap_or(symbol);
     KCONFIG_KNOBS.iter().find(|k| k.symbol == s)
+}
+
+/// The derived member bools of the choice knob `id`, in registry order.
+pub fn member_kconfig(id: &str) -> impl Iterator<Item = &'static KconfigMember> + '_ {
+    KCONFIG_MEMBERS.iter().filter(move |m| m.id == id)
+}
+
+/// Why `value` is not a value of the CHOICE row `row`, or `None` when it is
+/// (or `row` is no choice row). The value is spelled as env and cmake carry
+/// it: one member, or for an `enum_list` members comma-joined; a Kconfig
+/// string's surrounding quotes are not part of it.
+#[must_use]
+pub fn choice_problem(row: &KnobRow, value: &str) -> Option<String> {
+    let mut v = value.trim();
+    if v.len() >= 2 && v.starts_with('"') && v.ends_with('"') {
+        v = &v[1..v.len() - 1];
+    }
+    match row.values {
+        KnobValues::Enum => {
+            if row.choices.contains(&v) {
+                None
+            } else if v.is_empty() {
+                Some("empty".to_string())
+            } else {
+                Some("not one of the members".to_string())
+            }
+        }
+        KnobValues::EnumList => {
+            if v.trim().is_empty() {
+                return Some("empty".to_string());
+            }
+            let items: Vec<&str> = v.split(',').map(str::trim).collect();
+            if items.iter().any(|x| x.is_empty()) {
+                return Some("an empty member".to_string());
+            }
+            if let Some(x) = items.iter().find(|x| !row.choices.contains(x)) {
+                return Some(format!("`{x}` is not a member"));
+            }
+            for (i, x) in items.iter().enumerate() {
+                if items[..i].contains(x) {
+                    return Some(format!("`{x}` is listed twice"));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// What a CHOICE row takes, in user words.
+#[must_use]
+pub fn choice_want(row: &KnobRow) -> String {
+    let members = row.choices.join(", ");
+    if row.values == KnobValues::Enum {
+        format!("one of: {members}")
+    } else {
+        format!("an ordered list of distinct members, comma-separated, at least one, of: {members}")
+    }
+}
+
+/// The refusal `value`, given under `spelling`, earns for the CHOICE row
+/// `row`, in [`CHOICE_REFUSED_TEMPLATE`]'s words (the cmake twin's), or `None`
+/// when it is a value of the row.
+#[must_use]
+pub fn choice_refusal(row: &KnobRow, spelling: &str, value: &str) -> Option<String> {
+    let why = choice_problem(row, value)?;
+    let key = row.image_key;
+    Some(
+        CHOICE_REFUSED_TEMPLATE
+            .replace("{spelling}", spelling)
+            .replace("{value}", value.trim().trim_matches('"'))
+            .replace("{why}", &why)
+            .replace("{key}", key)
+            .replace("{want}", &choice_want(row)),
+    )
 }
 
 /// The Kconfig knob a registry id names (`-DNROS_OVERRIDE_<id>`).
@@ -849,6 +953,32 @@ impl<'a> Knob<'a> {
         kconfig_key_for(self.env_name)
     }
 
+    /// Rungs 1–2 of a CHOICE knob (`enum` / `enum_list`), as its one text
+    /// spelling (members comma-joined), or `None` when nothing is stated.
+    ///
+    /// The value is CHECKED: one that is not a member (or, for a list, is
+    /// empty or repeats one) stops the build naming the knob's `system.toml`
+    /// key and the members it takes, whichever rung it came from. An env value
+    /// is taken verbatim; a `.config` value is read as the Kconfig string it
+    /// is. Panics on a knob that is no choice row, which is a caller's bug.
+    #[must_use]
+    pub fn stated_choice(&self) -> Option<String> {
+        let row = knob_row(self.env_name)
+            .filter(|r| matches!(r.values, KnobValues::Enum | KnobValues::EnumList))
+            .unwrap_or_else(|| panic!("nros-zephyr-build: {} is not a choice knob", self.env_name));
+        let (spelling, value) = match env_spelled(self.env_name, true) {
+            Some((name, v)) => (name, v),
+            None => {
+                let key = self.kconfig_key();
+                (key.clone(), dotconfig_str(&key)?)
+            }
+        };
+        if let Some(why) = choice_refusal(row, &spelling, &value) {
+            panic!("nros-zephyr-build: {why}");
+        }
+        Some(value.trim().to_string())
+    }
+
     /// Rungs 1–3: what a person, a `.config` or a descriptor STATED, or `None`.
     ///
     /// For a knob whose builtin is not a number this script can name — a const
@@ -973,6 +1103,23 @@ fn dotconfig(kconfig_key: &str) -> KnobSource {
             None => KnobSource::AbsentFromConfig,
         },
         Err(e) => KnobSource::ConfigUnreadable(path, e.to_string()),
+    }
+}
+
+/// Rung 2 as a STRING: `<kconfig_key>`'s value in the `.config` named by
+/// `$DOTCONFIG`, unquoted, or `None` when there is no `.config` or the key is
+/// absent or empty. An unreadable `.config` is the same refusal as
+/// [`dotconfig`]'s (issue 1134).
+fn dotconfig_str(kconfig_key: &str) -> Option<String> {
+    println!("cargo:rerun-if-env-changed=DOTCONFIG");
+    let path = env::var("DOTCONFIG").ok()?;
+    println!("cargo:rerun-if-changed={path}");
+    match fs::read_to_string(&path) {
+        Ok(body) => kconfig_str(&body, kconfig_key),
+        Err(e) => panic!(
+            "nros-zephyr-build: DOTCONFIG={path} could not be read ({e}), so \
+             `{kconfig_key}` cannot be resolved."
+        ),
     }
 }
 
@@ -1548,6 +1695,61 @@ mod tests {
                 assert_eq!(s.factor, 1, "a retired knob converts nothing");
             }
         }
+    }
+
+    /// A CHOICE knob's value is checked against its members on the Rust road:
+    /// the negative controls are an unknown member, an empty list, an empty
+    /// member and a repeated member, each refused naming the `system.toml` key.
+    #[test]
+    fn a_choice_value_outside_its_members_is_refused() {
+        let source = knob_row("NROS_CLOCK_SOURCE").expect("clock.source row");
+        assert_eq!(source.values, KnobValues::EnumList);
+        assert_eq!(source.ty, Some("enum_list"));
+        assert_eq!(
+            kconfig_knob("CONFIG_NROS_CLOCK_SOURCE").unwrap().ty,
+            "string"
+        );
+        assert_eq!(choice_problem(source, "platform"), None);
+        assert_eq!(choice_problem(source, "sntp,platform"), None);
+        assert_eq!(choice_problem(source, "\"zenoh-hlc, board\""), None);
+        for (bad, why) in [
+            ("gps", "`gps` is not a member"),
+            ("", "empty"),
+            ("sntp,", "an empty member"),
+            ("sntp,platform,sntp", "`sntp` is listed twice"),
+        ] {
+            assert_eq!(choice_problem(source, bad).as_deref(), Some(why), "{bad:?}");
+            let msg = choice_refusal(source, "NROS_CLOCK_SOURCE", bad).unwrap();
+            assert!(msg.contains("clock.source takes an ordered list"), "{msg}");
+            assert!(msg.contains("platform, sntp, zenoh-hlc, board"), "{msg}");
+        }
+        let upgrade = knob_row("NROS_CLOCK_UPGRADE").expect("clock.upgrade row");
+        assert_eq!(upgrade.values, KnobValues::Enum);
+        assert_eq!(choice_problem(upgrade, "monotonic"), None);
+        assert_eq!(
+            choice_problem(upgrade, "never,monotonic").as_deref(),
+            Some("not one of the members"),
+            "an enum takes ONE member"
+        );
+        assert_eq!(
+            choice_refusal(upgrade, "NROS_CLOCK_UPGRADE", "sometimes").unwrap(),
+            "NROS_CLOCK_UPGRADE = \"sometimes\" is refused (not one of the members): \
+             clock.upgrade takes one of: never, monotonic"
+        );
+        // Every choice row's Kconfig default is a value of it.
+        for r in KNOBS.iter().filter(|r| !r.choices.is_empty()) {
+            if let KnobDefault::Kconfig(ds) = r.default {
+                for d in ds {
+                    assert_eq!(choice_problem(r, d.value), None, "{} {}", r.id, d.value);
+                }
+            }
+        }
+        let m: Vec<_> = member_kconfig("CLOCK_SOURCE").collect();
+        assert_eq!(m.len(), 1);
+        assert_eq!(
+            (m[0].symbol, m[0].member),
+            ("NROS_CLOCK_SOURCE_HAS_SNTP", "sntp")
+        );
     }
 
     #[test]

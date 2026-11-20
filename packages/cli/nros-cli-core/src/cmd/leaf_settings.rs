@@ -925,6 +925,21 @@ fn knob_env_row(
         (Some("hex"), _) => return Err(bad("an integer")),
         (Some("bool") | None, KnobValue::Bool(b)) => if *b { "1" } else { "0" }.to_string(),
         (Some("bool"), _) => return Err(bad("a bool (true / false)")),
+        // A CHOICE knob: one member, or members comma-joined, as a string.
+        (Some("enum" | "enum_list"), KnobValue::Str(s)) => {
+            if let Some(why) =
+                nros_zephyr_build::choice_refusal(row, &format!("[{table}.{group}] {name}"), s)
+            {
+                return Err(why);
+            }
+            s.trim().to_string()
+        }
+        (Some("enum" | "enum_list"), _) => {
+            return Err(bad(&format!(
+                "a string: {}",
+                nros_zephyr_build::choice_want(row)
+            )));
+        }
         (Some("string") | None, KnobValue::Str(s)) => s.clone(),
         (Some(_), _) => return Err(bad("a string")),
     };

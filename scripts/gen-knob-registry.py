@@ -87,7 +87,10 @@ PACKAGES_OUT = REPO / "packages/tooling/nros-zephyr-build/src/registry_packages.
 KCONFIG_GENERATED = "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml"
 KCONFIG_BEGIN = "# >>> knob registry >>>"
 KCONFIG_END = "# <<< knob registry <<<"
-KCONFIG_TYPES = {"bool", "int", "hex", "string"}
+KCONFIG_TYPES = set(knob_registry.KCONFIG_TYPES)
+# A CHOICE row (`type = "enum"` / `"enum_list"`, with `values`): Kconfig
+# carries it as a `string`, env and cmake comma-joined (knob_registry's doc).
+CHOICE_TYPES = set(knob_registry.CHOICE_TYPES)
 
 # The one message a retired spelling earns, written ONCE here and emitted into
 # both outputs (phase-484 W8): the Rust ladder (`nros-zephyr-build`) and the
@@ -111,6 +114,18 @@ RETIRED = (
 # knob is gone, so there is no replacement spelling to name -- the row's reason
 # says what to do instead. `{spelling}` and `{reason}` are replaced.
 RETIRED_KNOB = "{spelling} is a retired knob: {reason}"
+# The refusal a CHOICE knob's value earns when it is not one of the row's
+# members (or, for a list, is empty or repeats one), on every road: the Rust
+# build-script reader, the cmake resolver, the Zephyr configure (which reads
+# Kconfig's string back) and the CLI. `{spelling}` is the name the value was
+# given under, `{value}` the value, `{why}` what is wrong with it, `{key}` the
+# knob's `system.toml` key and `{want}` what it takes.
+CHOICE_REFUSED = '{spelling} = "{value}" is refused ({why}): {key} takes {want}'
+# The refusal a RETIRED Kconfig spelling earns at the Zephyr configure. The
+# module keeps the symbol defined, with a prompt, so a conf file that still
+# assigns it reaches the configure instead of failing Kconfig's undefined-symbol
+# check without a word about what replaced it.
+RETIRED_KCONFIG = "{spelling} is retired: {instead}"
 IMAGE_ENV_RETIRED = (
     "[image.{image}] env {env} names the knob [image.{image}.knobs.{group}] {name} "
     "(refused after release 0.6.0 deprecated it) -- "
@@ -210,8 +225,8 @@ def load_registry(text, strict_ratchets=False, packages=()):
         if ty is None and KCONFIG_DEF_FIELDS & set(r):
             errors.append(f"{where}: {sorted(KCONFIG_DEF_FIELDS & set(r))} without `type`")
         if ty is not None:
-            if ty not in KCONFIG_TYPES:
-                errors.append(f"{where}: `type` must be one of {sorted(KCONFIG_TYPES)}")
+            if ty not in KCONFIG_TYPES | CHOICE_TYPES:
+                errors.append(f"{where}: `type` must be one of {sorted(KCONFIG_TYPES | CHOICE_TYPES)}")
             if '"' in r.get("prompt", ""):
                 errors.append(f"{where}: a `prompt` cannot hold a double quote")
             for a in r.get("kconfig_attrs", []):
@@ -246,6 +261,8 @@ def load_registry(text, strict_ratchets=False, packages=()):
                 isinstance(n, str) and re.match(r"^[a-z][a-z0-9_]*$", n) for n in names)):
             errors.append(f"{where}: `names` is a non-empty list of lowercase words, on an int row")
         errors += catalog_problems(r, where)
+        errors += choice_default_problems(r, where)
+        errors += retired_kconfig_problems(r, where)
         if ID.match(ident):
             key = image_key(r)
             if key in image_keys:
@@ -290,6 +307,64 @@ def catalog_problems(r, where):
             kconfig_defaults(r)
         except ValueError as e:
             out.append(f"{where}: {e}")
+    return out
+
+
+def choice_default_problems(r, where):
+    """A choice row's every Kconfig default is a quoted string that is a value
+    of the row (a member, or for a list an ordered list of distinct members)."""
+    if r.get("type") not in CHOICE_TYPES or not r.get("choices"):
+        return []
+    out = []
+    try:
+        defaults = kconfig_defaults(r)
+    except ValueError:
+        return []  # catalog_problems already said why
+    for v, _ in defaults:
+        if not (len(v) >= 2 and v[0] == v[-1] == '"'):
+            out.append(f"{where}: a `{r['type']}` row's Kconfig default is a quoted string, "
+                       f"not `{v}`")
+            continue
+        why = knob_registry.choice_problem(r, v)
+        if why:
+            out.append(f"{where}: its default {v} is refused ({why}): it takes "
+                       f"{knob_registry.choice_want(r)}")
+    return out
+
+
+def retired_kconfig(r):
+    """[(symbol without CONFIG_, Kconfig type, message)] for every `kconfig:`
+    retired spelling of row `r`: the module keeps each defined, with a prompt,
+    so that an assignment of it is refused at the configure by name."""
+    out = []
+    for e in r.get("retired_entries", []):
+        if e["road"] != "kconfig":
+            continue
+        ty = e.get("type") or (None if e["instead"] or r.get("retired")
+                               else knob_registry.kconfig_type(r))
+        if e["instead"]:
+            instead = e["instead"]
+        else:
+            new = "CONFIG_" + kconfig_symbol(r)
+            where = surface(r) or new
+            instead = f"set {where} instead ({new} where a conf file states it)"
+            if e["factor"] != 1:
+                instead += f"; the new value is the old one times {e['factor']}"
+        msg = RETIRED_KCONFIG.replace("{spelling}", e["name"]).replace("{instead}", instead)
+        out.append((e["name"][len("CONFIG_"):], ty, msg))
+    return out
+
+
+def retired_kconfig_problems(r, where):
+    out = []
+    for sym, ty, msg in retired_kconfig(r):
+        if ty is None:
+            out.append(f"{where}: retired `kconfig:CONFIG_{sym}` says what to do `instead`, so it "
+                       f"states the Kconfig `type` the symbol had (the module keeps it defined "
+                       "to refuse an assignment by name)")
+        if re.search(r'["\\$;]', msg):
+            out.append(f"{where}: retired `kconfig:CONFIG_{sym}`: its message cannot hold `\"`, "
+                       "`\\`, `$` or `;` (it is emitted into Kconfig help and cmake strings)")
     return out
 
 
@@ -414,6 +489,7 @@ def render(rows):
         rng = int_range(r)
         out.append(f"        range: {'Some((' + str(rng[0]) + ', ' + str(rng[1]) + '))' if rng else 'None'},")
         out.append("        names: &[" + ", ".join(q(x) for x in r.get("names", [])) + "],")
+        out.append("        choices: &[" + ", ".join(q(x) for x in r.get("choices", [])) + "],")
         why = r.get("retired")
         out.append(f"        retired: {'Some(' + q(why) + ')' if why else 'None'},")
         only = r.get("only_on")
@@ -442,11 +518,32 @@ def render(rows):
         out.append("    crate::KconfigKnob {")
         out.append(f"        symbol: {q(kconfig_symbol(r))},")
         out.append(f"        id: {q(r['id'])},")
-        out.append(f"        ty: {q(r['type'])},")
+        out.append(f"        ty: {q(knob_registry.kconfig_type(r))},")
         out.append(f"        kconfig_if: {'Some(' + q(cond) + ')' if cond else 'None'},")
         out.append("        depends: &[" + ", ".join(q(d) for d in depends_on(r)) + "],")
         out.append("    },")
     out.append("];")
+    out.append("")
+    out.append("/// The derived bools a CHOICE knob's `member_kconfig` members define: `y`")
+    out.append("/// exactly when the knob's value names `member`. Read through")
+    out.append("/// [`crate::member_kconfig`].")
+    out.append("pub const KCONFIG_MEMBERS: &[crate::KconfigMember] = &[")
+    for r in rows:
+        for m, spec in (r.get("member_kconfig") or {}).items():
+            out.append("    crate::KconfigMember {")
+            out.append(f"        symbol: {q(knob_registry.member_symbol(r, m))},")
+            out.append(f"        id: {q(r['id'])},")
+            out.append(f"        member: {q(m)},")
+            cond = r.get("kconfig_if")
+            out.append(f"        kconfig_if: {'Some(' + q(cond) + ')' if cond else 'None'},")
+            out.append("        depends: &[" + ", ".join(q(d) for d in spec["depends"]) + "],")
+            out.append("    },")
+    out.append("];")
+    out.append("")
+    out.append("/// The refusal a CHOICE knob's value earns when it is not one of its members.")
+    out.append("/// Substitute `{spelling}`, `{value}`, `{why}`, `{key}` and `{want}`; the cmake")
+    out.append("/// twin refuses in the same words.")
+    out.append(f"pub const CHOICE_REFUSED_TEMPLATE: &str = {rs_str(CHOICE_REFUSED)};")
     out.append("")
     out.append("/// The refusal when a knob arrives under a RETIRED spelling (phase-484 W8).")
     out.append("/// Substitute `{legacy}` and `{env}`; the cmake twin refuses in the same words.")
@@ -475,7 +572,8 @@ def rs_opt(s):
 def values_kind(r):
     ty = r.get("type")
     if ty:
-        return {"bool": "Bool", "int": "Int", "hex": "Hex", "string": "String"}[ty]
+        return {"bool": "Bool", "int": "Int", "hex": "Hex", "string": "String",
+                "enum": "Enum", "enum_list": "EnumList"}[ty]
     return "UInt" if r.get("toml") else "Unstated"
 
 
@@ -674,6 +772,33 @@ def render_cmake(rows):
         out.append(f"set(NROS_KNOB_IMAGE_TABLE_{r['id']} {table})")
         out.append(f"set(NROS_KNOB_IMAGE_NAME_{r['id']} {name})")
     out.append("")
+    choice = [r for r in rows if r.get("type") in CHOICE_TYPES]
+    out.append("# CHOICE knobs (`type = \"enum\"` / `\"enum_list\"`): a value is one member, or")
+    out.append("# an ordered list of distinct members comma-joined. NROS_KNOB_CHOICES_<id> are")
+    out.append("# the members, NROS_KNOB_CHOICE_KIND_<id> the type, NROS_KNOB_KEY_<id> its")
+    out.append("# system.toml key, NROS_KNOB_CHOICE_WANT_<id> what it takes in words and")
+    out.append("# NROS_KNOB_MEMBER_SYMBOLS_<id> its derived `member=SYMBOL` bools. Checked by")
+    out.append("# `_nros_knob_choice_check` (cmake/NanoRosKnobEnv.cmake).")
+    out.append("set(NROS_KNOB_CHOICE_REFUSED_TEMPLATE " + cmake_str(CHOICE_REFUSED) + ")")
+    out.append('set(NROS_KNOB_CHOICE_IDS "' + ";".join(r["id"] for r in choice) + '")')
+    for r in choice:
+        i = r["id"]
+        out.append(f"set(NROS_KNOB_CHOICE_KIND_{i} {r['type']})")
+        out.append(f'set(NROS_KNOB_CHOICES_{i} "' + ";".join(r["choices"]) + '")')
+        out.append(f"set(NROS_KNOB_KEY_{i} {r['key']})")
+        out.append(f"set(NROS_KNOB_CHOICE_SYMBOL_{i} {kconfig_symbol(r)})")
+        out.append(f"set(NROS_KNOB_CHOICE_WANT_{i} {cmake_str(knob_registry.choice_want(r))})")
+        out.append(f'set(NROS_KNOB_MEMBER_SYMBOLS_{i} "' + ";".join(
+            f"{m}={knob_registry.member_symbol(r, m)}" for m in (r.get("member_kconfig") or {})) + '")')
+    out.append("")
+    rk = [x for r in rows for x in retired_kconfig(r)]
+    out.append("# RETIRED Kconfig spellings: the module keeps each symbol defined, with a")
+    out.append("# prompt, and the Zephyr configure stops when one is set, with its message")
+    out.append("# (`_nros_refuse_retired_kconfig`, cmake/NanoRosKnobEnv.cmake).")
+    out.append('set(NROS_KNOB_RETIRED_KCONFIG "' + ";".join(s for s, _, _ in rk) + '")')
+    for s, _, msg in rk:
+        out.append(f"set(NROS_KNOB_RETIRED_KCONFIG_MSG_{s} {cmake_str(msg)})")
+    out.append("")
     retired = [r for r in rows if r.get("retired")]
     out.append("# RETIRED knobs: every spelling below stops a configure, with its row's reason")
     out.append("# substituted into NROS_KNOB_RETIRED_KNOB_TEMPLATE.")
@@ -693,6 +818,11 @@ def render_cmake(rows):
             out.append(f"set(NROS_KNOB_CANONICAL_{l} {env})")
     out.append("")
     return "\n".join(out)
+
+
+def cmake_str(s):
+    """A double-quoted cmake argument holding `s` literally."""
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace(";", "\\;") + '"'
 
 
 def kconfig_symbol(r):
@@ -753,14 +883,33 @@ def render_kconfig_section(rows):
             if r.get("prompt") is not None:
                 out.append(f'# prompt: {r["prompt"]}')
             out.append(f"config {kconfig_symbol(r)}")
-            out.append(f'    {r["type"]}')
+            out.append(f'    {knob_registry.kconfig_type(r)}')
             out += ["    " + a for a in r.get("kconfig_attrs", [])]
             if r.get("help") is not None:
                 out.append("    help")
                 out += [("      " + h) if h else "" for h in r["help"].split("\n")]
             out.append("")
+            for m, spec in (r.get("member_kconfig") or {}).items():
+                out.append(f"# derived: y exactly when {r['key']} names `{m}`")
+                out.append(f"config {knob_registry.member_symbol(r, m)}")
+                out.append("    bool")
+                out += [f"    depends on {d}" for d in spec["depends"]]
+                out += [f"    select {s}" for s in spec["select"]]
+                out.append("")
         if cond:
             out += [f"endif # {cond}", ""]
+    rk = [x for r in rows for x in retired_kconfig(r)]
+    if rk:
+        out += [
+            "# RETIRED Kconfig spellings. Each is defined, WITH a prompt, only so that a",
+            "# conf file still assigning it reaches the configure, which stops naming",
+            "# what replaced it (`_nros_refuse_retired_kconfig`). Undefined, it would",
+            "# fail Kconfig's undefined-symbol check without that word.",
+            "",
+        ]
+        for sym, ty, msg in rk:
+            out += [f"config {sym}", f'    {ty} "Retired -- setting it stops the configure"',
+                    "    help", f"      {msg}", ""]
     out.append(KCONFIG_END)
     return "\n".join(out)
 
@@ -786,9 +935,14 @@ def render_prompts(rows):
         for r in group:
             out.append(f"config {kconfig_symbol(r)}")
             prompt = r.get("prompt") or r["id"].replace("_", " ").lower()
-            out.append(f'    {r["type"]} "{prompt}"')
+            out.append(f'    {knob_registry.kconfig_type(r)} "{prompt}"')
             out += [f"    depends on {d}" for d in depends_on(r)]
             out.append("")
+            for m, spec in (r.get("member_kconfig") or {}).items():
+                out.append(f"config {knob_registry.member_symbol(r, m)}")
+                out.append(f'    bool "{kconfig_symbol(r)} names {m} (must agree with it)"')
+                out += [f"    depends on {d}" for d in spec["depends"]]
+                out.append("")
         if cond:
             out += [f"endif # {cond}", ""]
     return "\n".join(out)
@@ -833,6 +987,13 @@ def kconfig_problems(text, rows):
                 "  generated knob section. A registry knob's symbol has one definition,\n"
                 "  rendered from its row: move its type/prompt/attributes/help into the\n"
                 "  row and delete the hand-written block.")
+        extra = [knob_registry.member_symbol(r, m) for m in (r.get("member_kconfig") or {})]
+        extra += [s for s, _, _ in retired_kconfig(r)]
+        for sym in extra:
+            if re.search(r"(?m)^\s*(?:menu)?config\s+" + re.escape(sym) + r"\s*$", outside):
+                problems.append(
+                    f"zephyr/Kconfig: `config {sym}` (rendered from knob {r['id']}) is also\n"
+                    "  defined OUTSIDE the generated knob section: delete the hand-written block.")
     return problems
 
 
@@ -1033,6 +1194,128 @@ def self_test():
         assert any("declares only its own library's variables" in e for e in errs), errs
         _, errs = load_from_text(core, packages=[one])
         assert not errs, errs
+    # CHOICE rows (`enum` / `enum_list`). NEGATIVE controls first: no members,
+    # a repeated member, a default outside the set, a list default that repeats
+    # one, `values` on a row that is no choice row, a member bool for a
+    # non-member, and a manual retired Kconfig spelling with no `type`.
+    def choice(extra, ty="enum_list", default='"a"'):
+        return (HDR + f'[[knob]]\nkey = "a.c"\nscope = "image"\nclass = "public"\nhelp = "h"\n'
+                f"type = \"{ty}\"\nkconfig_attrs = ['default {default}']\n" + extra)
+    for text, want in [
+        (choice(""), "states its members, `values"),
+        (choice('values = ["a", "b", "a"]\n'), "more than once"),
+        (choice('values = ["a", "b"]\n', default='"z"'), 'its default "z" is refused (`z` is not a member)'),
+        (choice('values = ["a", "b"]\n', default='"a,a"'), "is listed twice"),
+        (choice('values = ["a", "b"]\n', ty="enum", default='"a,b"'), "not one of the members"),
+        (choice('values = ["a", "b"]\n', default="a"), "is a quoted string"),
+        (choice('values = ["A b"]\n'), "lower-case words"),
+        (HDR + '[[knob]]\nkey = "a.c"\nscope = "image"\nclass = "internal"\ntype = "int"\n'
+               'kconfig_attrs = ["default 1"]\nvalues = ["a"]\n', "authored only on"),
+        (choice('values = ["a"]\nmember_kconfig = { q = { select = ["X"] } }\n'), "names no member"),
+        (choice('values = ["a"]\nretired = [{ spelling = "kconfig:CONFIG_NROS_OLD", instead = "x" }]\n'),
+         "states the Kconfig `type`"),
+        (choice('values = ["a"]\nretired = [{ spelling = "env:OLD_A", type = "bool" }]\n'),
+         "a retired `kconfig:` spelling had"),
+    ]:
+        _, errs = load_from_text(text)
+        assert any(want in e for e in errs), f"selftest: no `{want}` error in {errs!r}"
+    good = choice('values = ["a", "b-c"]\nprompt = "p"\n'
+                  'member_kconfig = { "b-c" = { depends = ["NET"], select = ["SNTP"] } }\n'
+                  'retired = [{ spelling = "kconfig:CONFIG_NROS_OLD_C", type = "bool", '
+                  'instead = "set a.c instead" }]\n', default='"b-c,a"')
+    reg, errs = load_registry(good)
+    assert not errs, errs
+    rows = reg["knob"]
+    assert knob_registry.choice_problem(rows[0], '"a,b-c"') is None
+    assert knob_registry.choice_problem(rows[0], "a,") == "an empty member"
+    sec = render_kconfig_section(rows)
+    assert "config NROS_A_C\n    string\n    default \"b-c,a\"\n" in sec, sec
+    assert ("config NROS_A_C_HAS_B_C\n    bool\n    depends on NET\n    select SNTP\n") in sec, sec
+    assert ('config NROS_OLD_C\n    bool "Retired -- setting it stops the configure"\n    help\n'
+            "      CONFIG_NROS_OLD_C is retired: set a.c instead\n") in sec, sec
+    pr = render_prompts(rows)
+    assert 'config NROS_A_C\n    string "p"\n' in pr, pr
+    assert 'config NROS_A_C_HAS_B_C\n    bool "NROS_A_C names b-c (must agree with it)"\n    depends on NET\n' in pr, pr
+    rs = render(rows)
+    assert 'ty: Some("enum_list"),' in rs and 'choices: &["a", "b-c"],' in rs, rs
+    assert 'values: crate::KnobValues::EnumList,' in rs, rs
+    assert 'symbol: "NROS_A_C",\n        id: "A_C",\n        ty: "string",' in rs, rs
+    assert 'symbol: "NROS_A_C_HAS_B_C",\n        id: "A_C",\n        member: "b-c",' in rs, rs
+    cm = render_cmake(rows)
+    for want in ('set(NROS_KNOB_CHOICE_IDS "A_C")', "set(NROS_KNOB_CHOICE_KIND_A_C enum_list)",
+                 'set(NROS_KNOB_CHOICES_A_C "a;b-c")', "set(NROS_KNOB_KEY_A_C a.c)",
+                 'set(NROS_KNOB_MEMBER_SYMBOLS_A_C "b-c=NROS_A_C_HAS_B_C")',
+                 'set(NROS_KNOB_RETIRED_KCONFIG "NROS_OLD_C")',
+                 'set(NROS_KNOB_RETIRED_KCONFIG_MSG_NROS_OLD_C "CONFIG_NROS_OLD_C is retired: set a.c instead")'):
+        assert want in cm, f"selftest: no `{want}` in the cmake render"
+    stray = ("menuconfig NROS\nif NROS\n" + render_kconfig_section(rows)
+             + "\nconfig NROS_OLD_C\n    bool\nendif\n")
+    assert any("NROS_OLD_C` (rendered from knob A_C) is also" in x
+               for x in kconfig_problems(stray, rows)), kconfig_problems(stray, rows)
+    _, errs = load_from_text(good + '\n[[knob]]\nkey = "a.c_has_b_c"\nscope = "image"\nclass = "internal"\n')
+    assert any("spelled by both" in e for e in errs), errs
+
+
+def cmake_road_selftest():
+    """The cmake road's choice refusal, run against the COMMITTED
+    cmake/NanoRosKnobEnv.cmake and generated registry: one accepted value and
+    one refused value per check, each a `cmake -P` run. Returns a status line;
+    without a `cmake` on PATH it says the road was NOT VERIFIED."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+    cmake = shutil.which("cmake")
+    if cmake is None:
+        return "cmake road NOT VERIFIED (no cmake on PATH)"
+    rows = {r["id"]: r for r in load_registry(SRC.read_text())[0]["knob"]}
+    lst = next((r for r in rows.values() if r.get("type") == "enum_list"), None)
+    if lst is None:
+        return "cmake road: no enum_list row to exercise"
+    env_name = "NROS_" + lst["id"]
+    sym = "CONFIG_" + kconfig_symbol(lst)
+    script = (
+        "cmake_minimum_required(VERSION 3.20)\n"
+        f'include("{REPO}/cmake/NanoRosKnobEnv.cmake")\n'
+        'if(MODE STREQUAL "env")\n'
+        f"  _nros_knob_env({env_name} _v)\n"
+        "else()\n"
+        "  _nros_check_kconfig_knob_values()\n"
+        "endif()\n")
+    good = ",".join(lst["choices"][:2])
+    members = lst.get("member_kconfig") or {}
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "probe.cmake"
+        path.write_text(script)
+
+        def run(mode, env_value=None, defs=()):
+            env = {k: v for k, v in os.environ.items() if not k.startswith("NROS_")}
+            if env_value is not None:
+                env[env_name] = env_value
+            args = [cmake, f"-DMODE={mode}", *[f"-D{k}={v}" for k, v in defs], "-P", str(path)]
+            r = subprocess.run(args, env=env, capture_output=True, text=True)
+            return r.returncode, " ".join((r.stdout + r.stderr).split())
+
+        member_defs = tuple((f"CONFIG_{knob_registry.member_symbol(lst, m)}", "y")
+                            for m in members if m in good.split(","))
+        cases = [
+            ("env", good, (), True, None),
+            ("env", "nope", (), False, f"{lst['key']} takes"),
+            ("env", f"{lst['choices'][0]},{lst['choices'][0]}", (), False, "is listed twice"),
+            ("kconfig", None, ((sym, good),) + member_defs, True, None),
+            ("kconfig", None, ((sym, ""),), False, "is refused (empty)"),
+        ]
+        rk = [x for r in rows.values() for x in retired_kconfig(r)]
+        if rk:
+            cases.append(("kconfig", None, ((f"CONFIG_{rk[0][0]}", "y"),), False, "is retired"))
+        if members:
+            m = next(iter(members))
+            cases.append(("kconfig", None, ((sym, m),), False, "disagrees with it"))
+        for mode, ev, defs, ok, want in cases:
+            rc, out = run(mode, ev, defs)
+            assert (rc == 0) == ok, f"cmake road selftest: {mode} {ev!r} {defs!r}: rc={rc}: {out}"
+            assert want is None or want in out, f"cmake road selftest: no `{want}` in: {out}"
+    return f"cmake road: {sum(1 for c in cases if not c[3])} refusal(s) caught"
 
 
 def main():
@@ -1058,8 +1341,10 @@ def main():
         if problems:
             return 1
         n = sum(1 for r in rows if r.get("type"))
+        nr = sum(len(retired_kconfig(r)) for r in rows)
         print(f"zephyr-kconfig-knobs: OK — {n} knob symbol(s) rendered from knobs.toml, "
-              "none defined outside the section, all prompt-less, guest prompts current "
+              "none defined outside the section, all prompt-less "
+              f"(and {nr} retired spelling(s) prompted only to be refused), guest prompts current "
               "(selftest: 4 negative controls caught)")
         return 0
     if "--check" in sys.argv:
@@ -1072,8 +1357,9 @@ def main():
             )
         if stale:
             return 1
+        road = cmake_road_selftest()
         print(f"knob-registry: OK — {len(rows)} knob(s), {len(reg['statement'])} statement(s), "
-              f"{len(reg['env'])} env row(s), generated tables current")
+              f"{len(reg['env'])} env row(s), generated tables current ({road})")
         return 0
     for p, text in outputs:
         p.write_text(text)

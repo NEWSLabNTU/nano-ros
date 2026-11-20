@@ -7,6 +7,28 @@
 # <build>/nros/Kconfig.from-system-toml, which that section sources, so
 # prj.conf, menuconfig and -DCONFIG_* configure the knobs as they always did.
 
+config NROS_CLOCK_EPOCH_FAILURE
+    string "What boot does when no wall-clock source answers"
+
+config NROS_CLOCK_FALLBACK_SETTLE_MS
+    int "How long boot waits for each wall-clock source (ms)"
+
+config NROS_CLOCK_HLC_INTERVAL_MS
+    int "Re-take the epoch from zenoh sample timestamps every (ms)"
+
+config NROS_CLOCK_SNTP_ATTEMPTS
+    int "SNTP queries per boot before the source gives up"
+
+config NROS_CLOCK_SOURCE
+    string "Wall-clock source, or an ordered fallback list"
+
+config NROS_CLOCK_SOURCE_HAS_SNTP
+    bool "NROS_CLOCK_SOURCE names sntp (must agree with it)"
+    depends on NETWORKING
+
+config NROS_CLOCK_UPGRADE
+    string "Whether a better source may replace the latched one later"
+
 config NROS_EXECUTOR_ACTION_CLIENTS
     int "Callback slots to budget at ActionClient size (-1 = derive)"
 
@@ -96,6 +118,12 @@ config NROS_PUBSUB_QOS_DEPTH
 
 config NROS_RMW_SUBSCRIBER_SLOTS
     int "Static subscription-handle slots (no_std targets) (-1 = derive)"
+
+config NROS_SNTP_SERVER
+    string "SNTP server (host or IP)"
+
+config NROS_SNTP_TIMEOUT_MS
+    int "SNTP reply timeout (ms)"
 
 config NROS_SUBSCRIPTION_BUFFER_SIZE
     int "Per-subscription receive buffer size in bytes (-1 = derive)"

@@ -954,7 +954,7 @@ static int32_t zephyr_run_sched_tasks(const char* locator, uint8_t domain_id, co
      *
      * Unconditional on purpose — the shim decides. The Rust sched task arm
      * (`entry_sched_tasks.rs`) makes the same call at the same point, and it cannot
-     * hold a `#ifdef CONFIG_NROS_SNTP_EPOCH` because Kconfig knobs do not reach
+     * hold the `[knobs.clock]` decision because Kconfig knobs do not reach
      * the cargo lane (issue 0460). One decision in C is the only shape in which
      * the two arms cannot drift. */
     nros_zephyr_epoch_acquire_configured();

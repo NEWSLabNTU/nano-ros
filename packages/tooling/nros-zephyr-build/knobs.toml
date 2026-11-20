@@ -71,6 +71,7 @@ boot = "the boot sequence"
 bridge = "the domain bridge"
 capability = "image capability switches"
 census = "the entity census"
+clock = "the wall clock and its sources"
 console = "the console sink"
 declared = "facts the build declares to the code"
 entity = "the image's entity demand"
@@ -134,6 +135,113 @@ Requests one action server queryable holds before the newest is
 dropped: the family depth 4 was designed for, and the twin of the C
 shim's ZPICO_MAX_PENDING_REPLIES (both 4). Must be >= 1. Maps to
 NROS_ACTION_INBOX_DEPTH.
+'''
+
+[[knob]]
+key = "clock.epoch_failure"
+scope = "image"
+class = "public"
+type = "enum"
+values = ["unstamped", "halt"]
+prompt = "What boot does when no wall-clock source answers"
+kconfig_attrs = [
+    'default "unstamped"',
+]
+help = '''
+What the image does when every source in clock.source has been tried and
+none answered. `unstamped` boots on: the platform reports no wall clock and
+messages carry boot-relative stamps, knowingly. `halt` stops at boot, for an
+image whose peers refuse a stamp that is not absolute.
+'''
+
+[[knob]]
+key = "clock.fallback_settle_ms"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "How long boot waits for each wall-clock source (ms)"
+kconfig_attrs = [
+    "default 10000",
+    "range 0 600000",
+]
+help = '''
+How long boot waits for each source in clock.source to answer before
+trying the next one. 0 tries each once without waiting.
+'''
+
+[[knob]]
+key = "clock.hlc_interval_ms"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Re-take the epoch from zenoh sample timestamps every (ms)"
+kconfig_attrs = [
+    "default 1000",
+    "range 10 3600000",
+]
+retired = [{ spelling = "kconfig:CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS" }]
+help = '''
+For the zenoh-hlc source: the window over which the least-delayed
+timestamped sample is kept before its offset replaces the installed one.
+Shorter tracks a drifting tick more closely; longer is more likely to hold
+one low-latency sample.
+'''
+
+[[knob]]
+key = "clock.sntp_attempts"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "SNTP queries per boot before the source gives up"
+kconfig_attrs = [
+    "default 3",
+    "range 1 100",
+]
+help = '''
+For the sntp source: how many queries boot sends, each waiting up to
+sntp.timeout_ms, before the source counts as not answering.
+'''
+
+[[knob]]
+key = "clock.source"
+scope = "image"
+class = "public"
+type = "enum_list"
+values = ["platform", "sntp", "zenoh-hlc", "board"]
+member_kconfig = { sntp = { depends = ["NETWORKING"], select = ["SNTP", "DNS_RESOLVER"] } }
+prompt = "Wall-clock source, or an ordered fallback list"
+kconfig_attrs = [
+    'default "platform"',
+]
+retired = [
+    { spelling = "kconfig:CONFIG_NROS_SNTP_EPOCH", type = "bool", instead = "set clock.source to a list naming sntp, for example sntp,platform" },
+    { spelling = "kconfig:CONFIG_NROS_EPOCH_FROM_ZENOH", type = "bool", instead = "set clock.source to a list naming zenoh-hlc, for example zenoh-hlc,platform" },
+]
+help = '''
+Where the image takes its wall-clock epoch from: one source, or an ordered
+fallback tried at boot, comma-separated (sntp,platform). The first source
+that answers is latched.
+
+  platform   the platform's own clock (an RTC, or a host's clock)
+  sntp       an SNTP query to sntp.server
+  zenoh-hlc  the timestamps on zenoh samples the image receives
+  board      a source the board package provides
+'''
+
+[[knob]]
+key = "clock.upgrade"
+scope = "image"
+class = "public"
+type = "enum"
+values = ["never", "monotonic"]
+prompt = "Whether a better source may replace the latched one later"
+kconfig_attrs = [
+    'default "never"',
+]
+help = '''
+`never` keeps the source boot latched. `monotonic` lets a source earlier in
+clock.source that answers later replace it, provided the wall clock does
+not step backwards.
 '''
 
 [[knob]]
@@ -1177,6 +1285,35 @@ scope = "board"
 class = "public"
 retired = [{ spelling = "env:ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS" }]
 ladder = true
+
+[[knob]]
+key = "sntp.server"
+scope = "image"
+class = "public"
+type = "string"
+prompt = "SNTP server (host or IP)"
+kconfig_attrs = [
+    'default "10.0.2.2"',
+]
+help = '''
+The server the sntp clock source queries. The default is the QEMU/slirp
+host address, where an emulated board reaches a host-side time source.
+'''
+
+[[knob]]
+key = "sntp.timeout_ms"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "SNTP reply timeout (ms)"
+kconfig_attrs = [
+    "default 3000",
+    "range 100 60000",
+]
+help = '''
+How long one SNTP query waits for its reply. clock.sntp_attempts says how
+many queries boot sends.
+'''
 
 [[knob]]
 key = "subscriber.buffer_size"

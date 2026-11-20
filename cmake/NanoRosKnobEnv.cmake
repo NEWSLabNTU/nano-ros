@@ -59,6 +59,140 @@ function(_nros_refuse_retired_knobs)
     endif()
 endfunction()
 
+# _nros_knob_choice_problem(<id> <value> <out_why>)
+#
+# Why `value` is not a value of the CHOICE knob `id` (a registry row of type
+# `enum` / `enum_list`), or "" when it is -- the cmake twin of
+# `nros_zephyr_build::choice_problem`, in the same words. A value is one
+# member, or for a list members comma-joined; a Kconfig string's quotes are
+# not part of it.
+function(_nros_knob_choice_problem id value out_why)
+    string(STRIP "${value}" _v)
+    if(_v MATCHES "^\"(.*)\"$")
+        set(_v "${CMAKE_MATCH_1}")
+    endif()
+    set(_choices "${NROS_KNOB_CHOICES_${id}}")
+    set(_why "")
+    if(NROS_KNOB_CHOICE_KIND_${id} STREQUAL "enum")
+        if(_v STREQUAL "")
+            set(_why "empty")
+        elseif(NOT _v IN_LIST _choices)
+            set(_why "not one of the members")
+        endif()
+    else()
+        string(STRIP "${_v}" _vs)
+        if(_vs STREQUAL "")
+            set(_why "empty")
+        elseif(_v MATCHES "(^|,)[ \t]*(,|$)")
+            set(_why "an empty member")
+        else()
+            string(REPLACE "," ";" _items "${_v}")
+            set(_seen "")
+            foreach(_i IN LISTS _items)
+                string(STRIP "${_i}" _i)
+                if(NOT _i IN_LIST _choices)
+                    set(_why "`${_i}` is not a member")
+                    break()
+                endif()
+                if(_i IN_LIST _seen)
+                    set(_why "`${_i}` is listed twice")
+                    break()
+                endif()
+                list(APPEND _seen "${_i}")
+            endforeach()
+        endif()
+    endif()
+    set(${out_why} "${_why}" PARENT_SCOPE)
+endfunction()
+
+# _nros_knob_choice_check(<id> <spelling> <value>)
+#
+# A FATAL_ERROR when `value`, given under `spelling`, is not a value of the
+# CHOICE knob `id`, naming the knob's system.toml key and its members. A
+# no-op for any other knob.
+function(_nros_knob_choice_check id spelling value)
+    if(NOT id IN_LIST NROS_KNOB_CHOICE_IDS)
+        return()
+    endif()
+    _nros_knob_choice_problem("${id}" "${value}" _why)
+    if(_why STREQUAL "")
+        return()
+    endif()
+    string(STRIP "${value}" _v)
+    if(_v MATCHES "^\"(.*)\"$")
+        set(_v "${CMAKE_MATCH_1}")
+    endif()
+    set(_msg "${NROS_KNOB_CHOICE_REFUSED_TEMPLATE}")
+    string(REPLACE "{spelling}" "${spelling}" _msg "${_msg}")
+    string(REPLACE "{value}" "${_v}" _msg "${_msg}")
+    string(REPLACE "{why}" "${_why}" _msg "${_msg}")
+    string(REPLACE "{key}" "${NROS_KNOB_KEY_${id}}" _msg "${_msg}")
+    string(REPLACE "{want}" "${NROS_KNOB_CHOICE_WANT_${id}}" _msg "${_msg}")
+    message(FATAL_ERROR "nros: ${_msg}")
+endfunction()
+
+# _nros_check_kconfig_knob_values()
+#
+# The Zephyr configure's check of what Kconfig decided, run by the module's
+# CMakeLists after Kconfig (CONFIG_* are set). Kconfig cannot test a string
+# against a set, so:
+#   * a RETIRED Kconfig spelling that is set (the module keeps it defined with
+#     a prompt for this) stops the configure with what replaced it;
+#   * a CHOICE knob's `CONFIG_<symbol>` must be a value of it;
+#   * each derived member bool (`NROS_<id>_HAS_<MEMBER>`) must agree with the
+#     knob: `y` exactly when the value names the member. The module's knob
+#     renderer states it for a project; a guest states it beside the knob.
+function(_nros_check_kconfig_knob_values)
+    set(_refusals "")
+    foreach(_s IN LISTS NROS_KNOB_RETIRED_KCONFIG)
+        if(DEFINED CONFIG_${_s} AND NOT "${CONFIG_${_s}}" STREQUAL ""
+           AND NOT "${CONFIG_${_s}}" STREQUAL "n")
+            string(APPEND _refusals "\n  ${NROS_KNOB_RETIRED_KCONFIG_MSG_${_s}}")
+        endif()
+    endforeach()
+    if(NOT _refusals STREQUAL "")
+        message(FATAL_ERROR "nros: a retired Kconfig option is set:${_refusals}")
+    endif()
+    foreach(_id IN LISTS NROS_KNOB_CHOICE_IDS)
+        set(_sym "${NROS_KNOB_CHOICE_SYMBOL_${_id}}")
+        if(NOT DEFINED CONFIG_${_sym})
+            continue()
+        endif()
+        _nros_knob_choice_check("${_id}" "CONFIG_${_sym}" "${CONFIG_${_sym}}")
+        string(REPLACE "," ";" _named "${CONFIG_${_sym}}")
+        list(TRANSFORM _named STRIP)
+        foreach(_pair IN LISTS NROS_KNOB_MEMBER_SYMBOLS_${_id})
+            string(REPLACE "=" ";" _kv "${_pair}")
+            list(GET _kv 0 _member)
+            list(GET _kv 1 _msym)
+            set(_want FALSE)
+            if(_member IN_LIST _named)
+                set(_want TRUE)
+            endif()
+            set(_have FALSE)
+            if(CONFIG_${_msym})
+                set(_have TRUE)
+            endif()
+            if(_want AND NOT _have)
+                string(APPEND _refusals
+                    "\n  ${NROS_KNOB_KEY_${_id}} = \"${CONFIG_${_sym}}\" names ${_member}, but "
+                    "CONFIG_${_msym} is not set. A system.toml image sets it from the knob; an "
+                    "application with no system.toml sets CONFIG_${_msym}=y beside "
+                    "CONFIG_${_sym}. If it is set and still off, what it depends on is missing "
+                    "(see its `depends on` in the module's Kconfig).")
+            elseif(_have AND NOT _want)
+                string(APPEND _refusals
+                    "\n  CONFIG_${_msym} is set, but ${NROS_KNOB_KEY_${_id}} = "
+                    "\"${CONFIG_${_sym}}\" does not name ${_member}: drop it, or add "
+                    "${_member} to the list.")
+            endif()
+        endforeach()
+    endforeach()
+    if(NOT _refusals STREQUAL "")
+        message(FATAL_ERROR "nros: a knob's derived option disagrees with it:${_refusals}")
+    endif()
+endfunction()
+
 # _nros_knob_env(<name> <out_value> [<out_spelling>])
 #
 # Rung 1 of `name`'s row: the value set under its CANONICAL spelling, or ""
@@ -95,6 +229,11 @@ function(_nros_knob_env name out_value)
         if(NOT _value STREQUAL "")
             set(_from "${_canon}")
         endif()
+    endif()
+    # A CHOICE knob's value is checked at the rung that reads it.
+    if(NOT _from STREQUAL "")
+        string(REGEX REPLACE "^NROS_" "" _id "${_canon}")
+        _nros_knob_choice_check("${_id}" "${_canon}" "${_value}")
     endif()
     set(${out_value} "${_value}" PARENT_SCOPE)
     if(ARGC GREATER 2)

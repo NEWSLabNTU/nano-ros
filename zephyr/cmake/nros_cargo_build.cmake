@@ -223,6 +223,10 @@ function(_nros_resolve_knob env_name kconfig_value)
     else()
         set(_resolved "${kconfig_value}")
     endif()
+    # A CHOICE knob's resolved value is checked whichever rung decided it.
+    _nros_knob_canonical("${env_name}" _canon)
+    string(REGEX REPLACE "^NROS_" "" _id "${_canon}")
+    _nros_knob_choice_check("${_id}" "${env_name} (from ${_source})" "${_resolved}")
     set(NROS_KNOB_SOURCE_${env_name} "${_source}" CACHE INTERNAL
         "which rung of the knob ladder decided ${env_name} (issue 1549)")
 
