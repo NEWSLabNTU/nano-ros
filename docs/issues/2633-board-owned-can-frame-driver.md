@@ -16,6 +16,14 @@ beside issue [2573](2573-can-fd-e2e-profile-and-flexcan-helper.md) (GitHub
 #3761): this is the portable layer under 2573's FlexCAN helper. Design:
 [RFC-0132](../design/0132-board-can-frame-driver.md) (Accepted 2026-11-17).
 
+**Progress (2026-11-20):** W9.a-W9.e done (the header, bindings and mock;
+the `zephyr` and `socketcan` backends; the device table and its carrier; the
+delivery to `open(NULL)` on every road). W9.f (the `board` hook and the
+consumer) is open.
+
+**Claim:** an earlier holder's claim on `issue-2633` expired unreported (59-99 h
+without a renewal or a report); it was taken over on 2026-11-20.
+
 ## What is missing
 
 The platform ABI has no CAN frame interface (`packages/drivers/` holds `ipc/`,

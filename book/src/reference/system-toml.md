@@ -210,7 +210,11 @@ a host or `"os"` board, `driver = "mock"` on a board that is not a host
 process, several `[canN]` with none marked (or more than one marked), any
 other `driver`, and a device on a board whose `[board.net] links` lack `can`.
 The resolved device rides `NROS_IMAGE_NET` as a `can` row and is written to
-`build/nros/net/<image>.toml` under `[can]`.
+`build/nros/net/<image>.toml` under `[can]`. The application opens it with
+`nros_platform_can_open(&can, NULL, want_fd)`: on a host board the board
+hands the device to the SocketCAN backend at boot (a Rust entry), or a
+generated constructor does before `main` (a C or C++ entry on `linux`). A
+second device is opened by its name instead of `NULL`.
 
 ## The middleware's own file
 

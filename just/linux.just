@@ -1288,3 +1288,13 @@ test-can-frames IFACE="vcan0" CLASSIC="":
             --test can_socketcan_probe --no-run
     fi
     exec scripts/test/can-frame-socketcan.sh "{{IFACE}}" {{ if CLASSIC == "" { "" } else { quote(CLASSIC) } }}
+
+# RFC-0132 D4 / phase-560 W9.e — the image's CAN frame device reaches the
+# backend's `open(NULL)` on the cargo road and on the cmake road. Builds the
+# `tests/can-image-device/` fixtures (a copy, under a temp dir): an image
+# naming `vcan7` must report that device and ENODEV, and one naming IFACE (an
+# up SocketCAN interface) must send a frame candump reads. A missing nros,
+# interface, candump or zenoh router is a reported skip.
+[group("debug")]
+test-can-image-device IFACE="vcan0":
+    scripts/test/can-image-device.sh "{{IFACE}}"

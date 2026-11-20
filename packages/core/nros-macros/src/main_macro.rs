@@ -3882,7 +3882,8 @@ fn executor_capacity_assert(
 #[derive(Default)]
 struct DeployOverlayLit {
     locator: Option<String>,
-    /// RFC-0103 D10f (phase-497 W2) — whether the image states an interface.
+    /// RFC-0103 D10f (phase-497 W2) — whether the image states an interface
+    /// (or, RFC-0132 D4, a CAN frame device).
     /// The ADDRESS is not resolved here: it needs the board's default network,
     /// its interfaces and a derived MAC, which only the CLI's board catalog
     /// has, so the CLI hands the answer to the build as `NROS_IMAGE_NET` and
@@ -3916,7 +3917,12 @@ fn overlay_from_leaf(leaf: &nros_orchestration_ir::leaf_system::LeafSystem) -> D
     let net = &leaf.network;
     DeployOverlayLit {
         locator: net.locator.clone(),
-        net: !net.net.is_empty(),
+        // RFC-0132 D4 (phase-560 W9.e) -- a CAN frame device rides the same
+        // text as a `can` row, so an image that names only a device bakes it
+        // too (the predicate the CLI writes the text on,
+        // `orchestration::image_net::leaf_states_network`, minus `os_config`,
+        // which alone resolves to no row).
+        net: !net.net.is_empty() || !net.can.is_empty() || !net.can_tables.is_empty(),
         domain_id: net.domain_id,
         transport: net.transport.clone(),
         rmw: leaf.rmw.clone(),

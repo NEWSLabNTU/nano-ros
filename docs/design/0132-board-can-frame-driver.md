@@ -319,7 +319,7 @@ writer, with the new row kind. Per road:
 | road | carrier | reader |
 | --- | --- | --- |
 | cargo | the `NROS_IMAGE_NET` `[env]` row in the generated `nros-cargo.toml` | `nros::main!` bakes it into `DeployOverlay::net`; the board decodes the `can` row at boot and hands the device to the backend for `open(NULL)` |
-| cmake | the entry's `IMAGE_NET` argument, compiled as the `NROS_IMAGE_NET` define (`NanoRosEntry.cmake`) | the same decode, from the C board entry |
+| cmake | the entry's `IMAGE_NET` argument (`NanoRosEntry.cmake`) | the same codec, asked at configure (`nros dev board net --format cmake` prints the device); a generated per-entry constructor stores it before `main` (`NanoRosCanImage.cmake`) |
 | west | none from nano-ros: the fact's home is devicetree, which Zephyr carries itself | `DT_CHOSEN(nros_can)`, else `DT_CHOSEN(zephyr_canbus)`, in `can.c` |
 
 No new environment variable, cache variable or Kconfig symbol is added, so no
@@ -427,6 +427,14 @@ because its image is the binary that gets flashed.
 
 ## Changelog
 
+- 2026-11-20 -- W9.e landed: the device reaches `open(NULL)` on the cargo and
+  cmake roads. The board hands it to a store apart from the backends
+  (`nros-board-common/c/nros_board_can_image.c`), so a board that hands a
+  device over links no backend by doing so. The cmake road's row in D4 is
+  revised: a C entry has no Rust board to decode the row at boot, so the CLI
+  decodes it at configure with the same codec and the entry compiles a
+  constructor that stores the device; the codec stays the carrier's one
+  reader.
 - 2026-11-18 -- W9.d landed: `[image.<id>.can]` and `[canN]`, the `can` row
   of `NROS_IMAGE_NET`, and the D5/D6 refusals in `nros configure`. The
   FD-at-open split (D2's `fd_active` item) is recorded as decided by the

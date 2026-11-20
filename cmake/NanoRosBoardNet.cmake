@@ -4,8 +4,12 @@
 # descriptor.
 #
 #   nros_board_net_c(<board> <out_var> [ROOT <nano-ros root>]
-#                    [GATEWAY_VAR <var>] [LOCATOR_VAR <var>] [OPTIONAL])
+#                    [GATEWAY_VAR <var>] [LOCATOR_VAR <var>]
+#                    [CAN_DEVICE_VAR <var>] [OPTIONAL])
 #
+# `CAN_DEVICE_VAR` returns the image's CAN frame device, the `can` row of
+# `NROS_IMAGE_NET` decoded by the same codec the board crates use at boot
+# (RFC-0132 D4), or "" when the image names none.
 # `GATEWAY_VAR` also returns the resolved gateway (dotted). `LOCATOR_VAR`
 # returns the router an image on this board dials when nothing states one,
 # from the CLI's `board_net::default_locator` (the one rule the board crates
@@ -40,7 +44,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageEnv.cmake")  # issue 2496
 
 function(nros_board_net_c board out_var)
-    cmake_parse_arguments(_NBN "OPTIONAL" "ROOT;GATEWAY_VAR;LOCATOR_VAR" "" ${ARGN})
+    cmake_parse_arguments(_NBN "OPTIONAL" "ROOT;GATEWAY_VAR;LOCATOR_VAR;CAN_DEVICE_VAR" "" ${ARGN})
     if(NOT _NBN_ROOT)
         get_filename_component(_NBN_ROOT "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
     endif()
@@ -100,6 +104,9 @@ function(nros_board_net_c board out_var)
     endif()
     if(_NBN_LOCATOR_VAR)
         set(${_NBN_LOCATOR_VAR} "${NROS_BOARD_NET_DEFAULT_LOCATOR}" PARENT_SCOPE)
+    endif()
+    if(_NBN_CAN_DEVICE_VAR)
+        set(${_NBN_CAN_DEVICE_VAR} "${NROS_BOARD_NET_CAN_DEVICE}" PARENT_SCOPE)
     endif()
 endfunction()
 

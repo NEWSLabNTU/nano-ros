@@ -3,7 +3,7 @@
 **Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch v0.32.0,
 #3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE (every level
 charged since #3758); W9 (the CAN frame driver, RFC-0132) OPEN, RFC accepted
-2026-11-17, W9.a, W9.b, W9.c and W9.d DONE. nano-ros's
+2026-11-17, W9.a, W9.b, W9.c, W9.d and W9.e DONE. nano-ros's
 share of two play_launch phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -231,7 +231,30 @@ and each states its acceptance before it lands.
   `[canN]` tables, and a device on a board whose `links` lacks `can`; the
   image-net codec round-trips a `can` row in its unit tests.
 - **W9.e -- Delivery on every road.** The board decode of the `can` row and
-  the hand-off to `open(NULL)`.
+  the hand-off to `open(NULL)`. DONE (2026-11-20):
+  `scripts/test/can-image-device.sh` (`just linux test-can-image-device`)
+  passes on vcan0: on each of the cargo and cmake roads an image naming
+  `vcan7` prints `device=vcan7 open(NULL)=-7` (ENODEV: the name came from
+  `system.toml`), and an image naming `vcan0` opens it by `open(NULL)` and
+  sends `263#26330E00CAFE0102`, which `candump` reads. The west road is
+  W9.b's `fd` shape of `scripts/test/can-frame-zephyr.sh`: `nros,can` names
+  `can0` while `zephyr,canbus` stays on the loopback controller, and
+  `open(NULL)` sends on `can0`. `nros-build-wiring.py` against main: the same
+  knob-source kinds and Kconfig count (149); only the two fixture
+  `system.toml` files are new.
+  The device store is `nros-board-common/c/nros_board_can_image.c`, its own
+  object in the `nros_can_socketcan` archive, so a board's reference pulls no
+  backend. Cargo road: `nros::main!` bakes `NROS_IMAGE_NET` for an image that
+  names only a CAN device, and `nros-board-linux`, `nros-board-freertos-posix`
+  and `nros-board-threadx-linux` decode the `can` row at boot
+  (`nros_board_common::can_image::boot_device`) on every entry funnel. Cmake
+  road: `nano_ros_entry` on `linux` asks the CLI for the device
+  (`nros dev board net --format cmake` prints `NROS_BOARD_NET_CAN_DEVICE`,
+  the same codec), links `nros_can_socketcan` and compiles a per-entry
+  constructor that stores it (`cmake/NanoRosCanImage.cmake`). Not covered:
+  a C entry on `freertos-posix` or `threadx-linux` (their cmake road links
+  no CAN backend yet), and the `board` stack's hand-off, which W9.f's hook
+  reads.
   *Accepted when:* a non-default probe (`[image.<id>.can] device = "vcan7"`)
   reaches `open(NULL)` on the cargo road and on the cmake road (an image built
   each way reports the device it opened), and a `native_sim` image whose

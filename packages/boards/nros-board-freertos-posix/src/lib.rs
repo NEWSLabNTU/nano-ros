@@ -134,7 +134,27 @@ impl nros_platform::BoardEntry for FreertosPosix {
     }
 }
 
+/// RFC-0132 D4 (phase-560 W9.e) -- the image's CAN frame device, from the
+/// `can` row of its baked network text to the store the `socketcan` backend's
+/// `open(NULL)` reads (`nros-board-common/c/nros_board_can_image.c`, compiled
+/// into this board's `nros_can_socketcan` archive). Every entry funnel builds
+/// its `Config` through [`config_with_overlay`], so the hand-off rides it.
+fn hand_off_can_device(deploy: &nros_platform::DeployOverlay) {
+    unsafe extern "C" {
+        fn nros_board_can_set_image_device(name: *const core::ffi::c_char, len: usize) -> i8;
+    }
+    if let Some(dev) = nros_board_common::can_image::boot_device(deploy.net) {
+        // SAFETY: `dev` is `dev.len()` readable bytes; the store copies them.
+        let rc = unsafe { nros_board_can_set_image_device(dev.as_ptr().cast(), dev.len()) };
+        assert!(
+            rc == 0,
+            "NROS_IMAGE_NET: CAN device `{dev}` does not fit the board's store"
+        );
+    }
+}
+
 fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
+    hand_off_can_device(deploy);
     let mut config = Config::default();
     config.base.apply_overlay(deploy);
     config
