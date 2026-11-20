@@ -78,7 +78,7 @@ logs an error and emits nothing. The id is never moved onto another one.
 
 | Platform | Default sink |
 | --- | --- |
-| Zephyr | `sys_trace_app_marker`, into the CTF stream, when `CONFIG_TRACING_CTF` is on and the image carries that event. The sched-task entry installs it, and keeps a sink you installed first. |
+| Zephyr | `sys_trace_app_marker`, into the CTF stream as an `app_marker` event (fields `marker_id`, `arg`), when `CONFIG_TRACING_CTF` is on. `nros setup board` adds that event to the Zephyr workspace, so no patch of your own is needed. The sched-task entry installs it, and keeps a sink you installed first. |
 | FreeRTOS | none. Install a sink of your own, for example a RAM ring you read with a debugger. |
 | POSIX (Linux) | none. Install a sink of your own. |
 | NuttX, ThreadX | none. Install a sink of your own. |

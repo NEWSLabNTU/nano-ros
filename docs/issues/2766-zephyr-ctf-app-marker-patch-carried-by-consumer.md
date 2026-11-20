@@ -44,6 +44,30 @@ already ships (`native-sim-ipproto-ip-4.4.patch` and the others), and
 marker event with no consumer patch. The island then drops its copies and
 `apply-zephyr-patches.sh`. Upstreaming the event to Zephyr is a separate step.
 
+## Fix (in review; open until the acceptance build)
+
+nano-ros's patch set carries both events now, as anchor-edit appliers like
+the rest of `scripts/zephyr/` (nothing reads `zephyr/patches/*.patch`, so a
+copy there would apply nowhere):
+
+- `scripts/zephyr/ctf-app-marker-patch.sh <ws> <id>`: the island's 0002 event,
+  same name and fields (`app_marker`: `marker_id`, `arg`), so a reader keyed
+  on the metadata reads either. The id is per line: **0x70 on 3.7** (the
+  island's, free in its 8-bit space) and **0xF000 on 4.4**, where ids are
+  16-bit and 0x70 is upstream's `gpio_port_set_bits_raw_exit`. The script
+  refuses an id the tree already uses, one too wide for its id type, and a
+  tree carrying the event in some of its three files but not all. It adds a
+  prototype beside the definition, which the island's copy lacked.
+- `scripts/zephyr/ctf-priority-set-patch.sh <ws>`: 3.7 only, the one-line
+  mapping the island's 0001 README settled on (its earlier
+  `sys_port_trace_k_thread_priority_set` define is unreached and not carried).
+  4.4 has upstream's mapping already.
+
+On a 3.7 copy, the result matches the island's 0001 + 0002 applied to the same
+tree in everything but comments, the prototype and that unreached define.
+The island's 0003 (an out-of-tree tracing backend) is not part of this issue:
+nothing in nano-ros needs it, and its exit plan retires it on 4.x.
+
 ## Acceptance
 
 - A Zephyr image with CTF tracing on and callback tracing enabled, built on a
