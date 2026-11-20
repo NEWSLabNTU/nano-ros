@@ -1326,17 +1326,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // same thing wrong: a model that authored one sched task derived nothing for
         // any other node, however much contract those nodes carried. Rules and
         // the shared predicate: `derive::placement_is_unauthored`.
-        let mut sched_tasks: BTreeMap<String, nros_orchestration_ir::SchedTaskDef> = model
-            .execution
-            .tasks
-            .iter()
-            .map(|(name, t)| {
-                (
-                    name.clone(),
-                    nros_orchestration_ir::sched_task_from_model(t, &rtos),
-                )
-            })
-            .collect();
+        let mut sched_tasks = authored_sched_tasks(&model, &rtos).map_err(|e| {
+            syn::Error::new(
+                model_lit.span(),
+                format!("nros::main!: contract deadline policy: {e}"),
+            )
+        })?;
         // issue 0438 — remember that sched tasks were AUTHORED, so a collapse to the
         // degenerate default below can be reported instead of taken.
         authored_sched_task_names = model.execution.tasks.keys().cloned().collect();
@@ -5138,6 +5133,37 @@ fn sched_task_group_list_tokens(
     quote! { &[ #(#groups),* ] }
 }
 
+/// The AUTHORED sched task table for `rtos`: `execution.tasks` lowered to
+/// `SchedTaskDef`s, with the contract's `miss.action` written in as each
+/// sched task's `deadline_policy` -- the same lowering the CLI's entry plan
+/// applies. Without the second step a Rust entry baked `None` for a level
+/// whose contract named a reaction, and the executor ignored every deadline
+/// miss.
+fn authored_sched_tasks(
+    model: &ros_launch_manifest_model::SystemModel,
+    rtos: &str,
+) -> Result<
+    BTreeMap<String, nros_orchestration_ir::SchedTaskDef>,
+    nros_orchestration_ir::violation_agreement::ViolationAgreementError,
+> {
+    let mut sched_tasks: BTreeMap<String, nros_orchestration_ir::SchedTaskDef> = model
+        .execution
+        .tasks
+        .iter()
+        .map(|(name, t)| {
+            (
+                name.clone(),
+                nros_orchestration_ir::sched_task_from_model(t, rtos),
+            )
+        })
+        .collect();
+    nros_orchestration_ir::violation_agreement::apply_contract_deadline_policies(
+        model,
+        &mut sched_tasks,
+    )?;
+    Ok(sched_tasks)
+}
+
 fn sched_task_specs_tokens(
     table: &ResolvedSchedTaskTable,
     node_namespaces: &BTreeMap<String, String>,
@@ -7963,5 +7989,50 @@ mod system_toml_fragment_tests {
         let _ = std::fs::remove_dir_all(&td);
         assert_eq!(tracked.len(), 3, "{tracked:?}");
         assert!(tracked[2].ends_with("shared.toml"), "{tracked:?}");
+    }
+}
+
+#[cfg(test)]
+mod contract_deadline_policy_tests {
+    //! The Rust entry road carries the contract's `miss.action` into the sched
+    //! task table it bakes, as the CLI's entry plan does for C/C++.
+    use super::*;
+
+    /// One contracted node path on sched task `rt`; `miss` is the path's miss
+    /// policy (empty for none).
+    fn model(miss: &str) -> ros_launch_manifest_model::SystemModel {
+        let yaml = format!(
+            "meta:\n  version: 1\nstructure:\n  scopes:\n    demo.launch.xml:\n      \
+             file: demo.launch.xml\n  nodes:\n    /control_node:\n      \
+             scope: demo.launch.xml\n      pkg: demo\n      exec: control_node\n      \
+             node_name: control_node\n      namespace: /\ncontracts:\n  node_paths:\n    \
+             /control_node/on_ctrl:\n      output: []\n{miss}execution:\n  bindings:\n    \
+             /control_node: rt\n  tasks:\n    rt:\n      class: real_time\n      \
+             freertos:\n        priority: 3\n        deadline: 6ms\n"
+        );
+        ros_launch_manifest_model::SystemModel::from_yaml_str(&yaml).expect("fixture parses")
+    }
+
+    #[test]
+    fn a_contracts_miss_action_reaches_the_rust_entry_table() {
+        let table = authored_sched_tasks(
+            &model("      miss:\n        action: continue\n"),
+            "freertos",
+        )
+        .expect("no disagreement");
+        assert_eq!(table["rt"].deadline_policy.as_deref(), Some("warn"));
+        assert_eq!(
+            table["rt"].deadline_us,
+            Some(6000),
+            "the scoped deadline rides along"
+        );
+    }
+
+    /// Negative control: the same model with no `miss` bakes no policy, so
+    /// the assertion above is about the contract and nothing else.
+    #[test]
+    fn a_path_without_a_miss_policy_bakes_none() {
+        let table = authored_sched_tasks(&model(""), "freertos").expect("no disagreement");
+        assert_eq!(table["rt"].deadline_policy, None);
     }
 }

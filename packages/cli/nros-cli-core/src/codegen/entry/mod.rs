@@ -494,9 +494,8 @@ pub fn plan_from_model(
     // fact. The map is applied to the sched task defs below; the error is raised
     // here, before anything is baked, for the reason the QoS check above
     // gives.
-    let contract_deadline_policies =
-        nros_orchestration_ir::violation_agreement::contract_deadline_policies(&model)
-            .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
+    nros_orchestration_ir::violation_agreement::check_model(&model)
+        .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
     // ... and the rows the lowering produces, whose own refusals are about a
     // reaction the image could not run (an unknown reaction path, an
     // `on_violation` with no `max_age_ms` to detect it by).
@@ -635,11 +634,11 @@ pub fn plan_from_model(
     // this map is empty by construction -- phase-459 W2 is what gives such a
     // node a SchedContext, and until it lands W2's deadline half reaches
     // exactly the images that declare sched tasks.
-    for (sched_task, action) in &contract_deadline_policies {
-        if let Some(def) = sched_tasks.get_mut(sched_task) {
-            def.deadline_policy = Some(action.clone());
-        }
-    }
+    nros_orchestration_ir::violation_agreement::apply_contract_deadline_policies(
+        &model,
+        &mut sched_tasks,
+    )
+    .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
 
     // RFC-0128 D2/D6 (phase-554 W2) — the managed nodes this image runs, each
     // with its own autostart (the overlay's `[lifecycle] autostart` fills only
