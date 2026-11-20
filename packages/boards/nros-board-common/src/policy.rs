@@ -371,12 +371,10 @@ impl LinkPolicy {
     }
 
     /// ThreadX (both Linux sim and RV64 board).
-    /// `c/platform/threadx/network.c` ships TCP/UDP/serial code over
-    /// NetX Duo BSD but is NOT listed under `[platform.threadx]
-    /// extra_sources` — threadx uses `platform_aliases.c` for
-    /// network ops instead, and the alias TU has no serial wrapper.
-    /// Force serial off to match: every ThreadX example uses
-    /// TCP/UDP over NetX Duo BSD, none use serial.
+    /// ThreadX's network ops are `platform_aliases.c`, over the NetX Duo BSD
+    /// port, and the alias TU has no serial wrapper. Force serial off to
+    /// match: every ThreadX example uses TCP/UDP over NetX Duo BSD, none use
+    /// serial.
     pub const fn threadx() -> Self {
         Self {
             tcp: PolicyChoice::Follow,

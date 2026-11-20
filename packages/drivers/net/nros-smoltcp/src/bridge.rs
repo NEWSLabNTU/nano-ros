@@ -220,6 +220,10 @@ struct SocketEntry {
     remote_port: u16,
     local_port: u16,
     connected: bool,
+    // Issue 2779.
+    /// The peer closed the connection (FIN or RST) after it was established.
+    /// Once the staged RX is drained, a read is at end-of-stream.
+    peer_closed: bool,
     staging: StagingState,
 }
 
@@ -231,6 +235,7 @@ impl SocketEntry {
         remote_port: 0,
         local_port: 0,
         connected: false,
+        peer_closed: false,
         staging: StagingState::INIT,
     };
 
@@ -674,6 +679,7 @@ impl SmoltcpBridge {
                     entry.allocated = false;
                     entry.handle_raw = handle;
                     entry.connected = false;
+                    entry.peer_closed = false;
                     entry.local_port = allocate_ephemeral_port();
                     entry.staging.reset();
                     return i as i32;
@@ -858,9 +864,14 @@ impl SmoltcpBridge {
                 }
                 let handle = entry.handle();
                 let socket = sockets.get_mut::<TcpSocket>(handle);
-                match socket.state() {
-                    TcpState::Established => {
-                        entry.connected = true;
+                let state = socket.state();
+                match state {
+                    // Issue 2779 -- CloseWait too: the peer sent its FIN, and
+                    // what it sent before it is still to be read.
+                    TcpState::Established | TcpState::CloseWait => {
+                        if state == TcpState::Established {
+                            entry.connected = true;
+                        }
                         if socket.can_recv() {
                             entry.staging.compact_rx(&mut SOCKET_RX_BUFFERS[idx]);
                             let space = entry.staging.rx_space();
@@ -879,9 +890,19 @@ impl SmoltcpBridge {
                         }
                     }
                     TcpState::Closed | TcpState::TimeWait => {
+                        // Reset or fully closed after it was up: the peer is
+                        // gone (issue 2779).
+                        if entry.connected {
+                            entry.peer_closed = true;
+                        }
                         entry.connected = false;
                     }
                     _ => {}
+                }
+                // The peer's FIN is in and everything before it is staged:
+                // nothing more will arrive (issue 2779).
+                if state == TcpState::CloseWait && !socket.may_recv() {
+                    entry.peer_closed = true;
                 }
             }
 
@@ -921,6 +942,7 @@ impl SmoltcpBridge {
                 if !entry.allocated && entry.has_handle() {
                     entry.allocated = true;
                     entry.connected = false;
+                    entry.peer_closed = false;
                     entry.remote_ip = [0; 4];
                     entry.remote_port = 0;
                     entry.staging.reset();
@@ -949,6 +971,20 @@ impl SmoltcpBridge {
         }
     }
 
+    // Issue 2779.
+    /// Whether a TCP read is at end-of-stream: the peer closed the connection
+    /// and every byte it sent before that has been read.
+    pub fn tcp_peer_closed(handle: i32) -> bool {
+        if handle < 0 || handle >= MAX_SOCKETS as i32 {
+            return false;
+        }
+
+        unsafe {
+            let entry = &SOCKET_TABLE[handle as usize];
+            entry.allocated && entry.peer_closed && !entry.staging.has_rx_data()
+        }
+    }
+
     /// Check if a TCP socket is connected.
     pub fn tcp_is_connected(handle: i32) -> bool {
         if handle < 0 || handle >= MAX_SOCKETS as i32 {
@@ -971,6 +1007,7 @@ impl SmoltcpBridge {
             let entry = &mut SOCKET_TABLE[handle as usize];
             entry.allocated = false;
             entry.connected = false;
+            entry.peer_closed = false;
             entry.remote_ip = [0; 4];
             entry.remote_port = 0;
             0

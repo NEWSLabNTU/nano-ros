@@ -47,6 +47,15 @@ extern "C" {
 
 #define NROS_PLATFORM_NET_SOCKET_ERROR ((size_t) -1)
 
+/** What a TCP read returns when the peer closed the stream (end-of-stream):
+ *  distinct from `NROS_PLATFORM_NET_SOCKET_ERROR` and from 0, which means
+ *  "nothing read yet". A port returns it only when it KNOWS the peer closed
+ *  (a BSD `recv` that returns 0 for a non-empty buffer); one whose read
+ *  returns 0 for a timeout keeps returning 0. zenoh-pico closes the session on
+ *  it, which starts a reconnect; without it a client whose router died polls
+ *  the dead socket forever. Equal to zenoh-pico's `_Z_LINK_READ_EOF`. */
+#define NROS_PLATFORM_NET_SOCKET_EOF ((size_t) -2)
+
 /* ---- TCP ---- */
 
 /** Resolve `(address, port)` strings into the caller-allocated endpoint
@@ -81,11 +90,13 @@ int8_t nros_platform_tcp_listen(void *sock, const void *endpoint);
 /** Close a TCP socket. */
 void nros_platform_tcp_close(void *sock);
 
-/** Read up to `len` bytes. Returns bytes received, or
+/** Read up to `len` bytes. Returns bytes received (0: nothing yet),
+ *  `NROS_PLATFORM_NET_SOCKET_EOF` when the peer closed the stream, or
  *  `NROS_PLATFORM_NET_SOCKET_ERROR` on error. */
 size_t nros_platform_tcp_read(const void *sock, uint8_t *buf, size_t len);
 
-/** Read exactly `len` bytes. Returns `len` on success, or
+/** Read exactly `len` bytes. Returns `len` on success,
+ *  `NROS_PLATFORM_NET_SOCKET_EOF` when the peer closed the stream first, or
  *  `NROS_PLATFORM_NET_SOCKET_ERROR` on error. */
 size_t nros_platform_tcp_read_exact(const void *sock, uint8_t *buf, size_t len);
 

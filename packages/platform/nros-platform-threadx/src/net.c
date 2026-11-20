@@ -326,7 +326,12 @@ size_t nros_platform_tcp_read(const void *sock_raw, uint8_t *buf, size_t len) {
     const nros_threadx_socket_t *sock = (const nros_threadx_socket_t *) sock_raw;
     if (!nros_threadx_tcp_readable(sock->fd)) return 0;
     INT r = nx_bsd_recv(sock->fd, buf, (INT) len, 0);
-    return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
+    if (r < 0) return NROS_PLATFORM_NET_SOCKET_ERROR;
+    /* Issue 2779: "nothing ready" is the 0 returned ABOVE, before any recv.
+     * A socket select called readable whose recv then yields nothing for a
+     * non-empty buffer is at end-of-stream: the peer closed it. */
+    if (r == 0 && len > 0) return NROS_PLATFORM_NET_SOCKET_EOF;
+    return (size_t) r;
 }
 
 /* One blocking receive, for `read_exact`: the open handshake waits for bytes
@@ -334,7 +339,10 @@ size_t nros_platform_tcp_read(const void *sock_raw, uint8_t *buf, size_t len) {
 static size_t nros_threadx_tcp_recv_blocking(const void *sock_raw, uint8_t *buf, size_t len) {
     const nros_threadx_socket_t *sock = (const nros_threadx_socket_t *) sock_raw;
     INT r = nx_bsd_recv(sock->fd, buf, (INT) len, 0);
-    return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
+    if (r < 0) return NROS_PLATFORM_NET_SOCKET_ERROR;
+    /* Issue 2779: a blocking recv returns 0 only at end-of-stream. */
+    if (r == 0 && len > 0) return NROS_PLATFORM_NET_SOCKET_EOF;
+    return (size_t) r;
 }
 
 size_t nros_platform_tcp_read_exact(const void *sock_raw, uint8_t *buf, size_t len) {
@@ -342,7 +350,7 @@ size_t nros_platform_tcp_read_exact(const void *sock_raw, uint8_t *buf, size_t l
     size_t n = 0;
     while (n < len) {
         size_t r = nros_threadx_tcp_recv_blocking(sock_raw, buf + n, len - n);
-        if (r == NROS_PLATFORM_NET_SOCKET_ERROR) return r;
+        if (r == NROS_PLATFORM_NET_SOCKET_ERROR || r == NROS_PLATFORM_NET_SOCKET_EOF) return r;
         if (r == 0) return 0;
         n += r;
     }

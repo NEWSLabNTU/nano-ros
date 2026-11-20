@@ -833,6 +833,17 @@ pub trait PlatformCriticalSection {
 // Networking — TCP
 // ============================================================================
 
+/// What a socket read returns on error (`NROS_PLATFORM_NET_SOCKET_ERROR`).
+pub const NET_SOCKET_ERROR: usize = usize::MAX;
+
+// Issue 2779.
+/// What a TCP read returns when the peer closed the stream
+/// (`NROS_PLATFORM_NET_SOCKET_EOF`): distinct from [`NET_SOCKET_ERROR`] and
+/// from 0, which means "nothing read yet". A port returns it only when it knows
+/// the peer closed; zenoh-pico then closes the session and reconnects, where a
+/// 0 would leave it polling a dead socket forever.
+pub const NET_SOCKET_EOF: usize = usize::MAX - 1;
+
 /// TCP networking.
 ///
 /// Socket and endpoint parameters are opaque `*mut c_void` pointers to
@@ -865,9 +876,12 @@ pub trait PlatformTcp {
     fn listen(sock: *mut c_void, endpoint: *const c_void) -> i8;
     /// Close a TCP socket.
     fn close(sock: *mut c_void);
-    /// Read up to `len` bytes. Returns bytes read, or `usize::MAX` on error.
+    /// Read up to `len` bytes. Returns bytes read (0: nothing yet),
+    /// [`NET_SOCKET_EOF`] when the peer closed the stream, or
+    /// [`NET_SOCKET_ERROR`] on error.
     fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
-    /// Read exactly `len` bytes. Returns `len` on success, `usize::MAX` on error.
+    /// Read exactly `len` bytes. Returns `len` on success, [`NET_SOCKET_EOF`]
+    /// when the peer closed the stream first, [`NET_SOCKET_ERROR`] on error.
     fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
     /// Send up to `len` bytes, waiting at most about the socket's timeout
     /// (the `timeout_ms` it was opened with) for the stack to take them.

@@ -267,14 +267,18 @@ size_t nros_platform_tcp_read(const void *sock_raw, uint8_t *buf, size_t len) {
     if (sock_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
     int r = lwip_recv(sock->fd, buf, len, 0);
-    return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
+    if (r < 0) return NROS_PLATFORM_NET_SOCKET_ERROR;
+    /* Issue 2779: a BSD recv returns 0 for a non-empty buffer only at
+     * end-of-stream (a timeout is r < 0, EAGAIN). */
+    if (r == 0 && len > 0) return NROS_PLATFORM_NET_SOCKET_EOF;
+    return (size_t) r;
 }
 
 size_t nros_platform_tcp_read_exact(const void *sock_raw, uint8_t *buf, size_t len) {
     size_t n = 0;
     while (n < len) {
         size_t r = nros_platform_tcp_read(sock_raw, buf + n, len - n);
-        if (r == NROS_PLATFORM_NET_SOCKET_ERROR) return r;
+        if (r == NROS_PLATFORM_NET_SOCKET_ERROR || r == NROS_PLATFORM_NET_SOCKET_EOF) return r;
         if (r == 0) return 0;
         n += r;
     }

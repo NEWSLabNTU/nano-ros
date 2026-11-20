@@ -76,6 +76,7 @@ unsafe extern "C" {
     fn nros_platform_tcp_listen(sock: *mut c_void, ep: *const c_void) -> i8;
     fn nros_platform_tcp_close(sock: *mut c_void);
     fn nros_platform_tcp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    fn nros_platform_tcp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
     fn nros_platform_tcp_send(sock: *const c_void, buf: *const u8, len: usize) -> usize;
     fn nros_platform_socket_accept(sock_in: *const c_void, sock_out: *mut c_void) -> i8;
 
@@ -167,6 +168,67 @@ fn tcp_loopback_roundtrip() {
         let _ = accepted_thread.join();
 
         nros_platform_tcp_close(server.as_mut_ptr() as *mut c_void);
+        nros_platform_tcp_free_endpoint(ep.as_mut_ptr() as *mut c_void);
+    }
+}
+
+// Issue 2779.
+/// A peer that closes the connection is END-OF-STREAM to a read, not "nothing
+/// yet": `nros_platform_tcp_read` returns `NROS_PLATFORM_NET_SOCKET_EOF`, which
+/// zenoh-pico closes the session on (and reconnects). A 0 here left a client
+/// whose router died polling the dead socket forever. Data the peer sent before
+/// closing is still read first.
+#[test]
+fn tcp_read_reports_end_of_stream_after_the_peers_data() {
+    use std::io::Write;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = format!("{}\0", listener.local_addr().expect("addr").port()).into_bytes();
+    let addr = b"127.0.0.1\0";
+    let server = thread::spawn(move || {
+        let (mut con, _) = listener.accept().expect("accept");
+        con.write_all(b"bye").expect("write");
+        // Dropping the stream sends the FIN.
+    });
+
+    unsafe {
+        let mut ep = MaybeUninit::<PosixEndpoint>::zeroed();
+        assert_eq!(
+            nros_platform_tcp_create_endpoint(
+                ep.as_mut_ptr() as *mut c_void,
+                addr.as_ptr(),
+                port.as_ptr(),
+            ),
+            0,
+        );
+        let mut client = MaybeUninit::<PosixSocket>::zeroed();
+        assert_eq!(
+            nros_platform_tcp_open(
+                client.as_mut_ptr() as *mut c_void,
+                ep.as_ptr() as *const c_void,
+                1000,
+            ),
+            0,
+        );
+        server.join().expect("server");
+
+        let sock = client.as_ptr() as *const c_void;
+        let mut buf = [0u8; 16];
+        let n = nros_platform_tcp_read(sock, buf.as_mut_ptr(), buf.len());
+        assert_eq!(&buf[..n], b"bye", "the peer's data comes before its close");
+        let eof = nros_platform_tcp_read(sock, buf.as_mut_ptr(), buf.len());
+        assert_eq!(
+            eof,
+            nros_platform_api::NET_SOCKET_EOF,
+            "a read after the peer closed must be end-of-stream (got {eof})"
+        );
+        assert_ne!(eof, ERR);
+        assert_eq!(
+            nros_platform_tcp_read_exact(sock, buf.as_mut_ptr(), 4),
+            nros_platform_api::NET_SOCKET_EOF,
+            "read_exact passes end-of-stream through"
+        );
+
+        nros_platform_tcp_close(client.as_mut_ptr() as *mut c_void);
         nros_platform_tcp_free_endpoint(ep.as_mut_ptr() as *mut c_void);
     }
 }

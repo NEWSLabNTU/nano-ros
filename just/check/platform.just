@@ -612,6 +612,16 @@ leaf-conf-nros-knobs:
 zenoh-pthread-pools-derived:
     @python3 scripts/check-zenoh-pthread-pools-derived.py
 
+# issue 2779 — every platform port's TCP read reports a peer's close as
+# end-of-stream (`NROS_PLATFORM_NET_SOCKET_EOF`), so zenoh-pico closes the
+# session and reconnects; one port left returning 0 is the never-reopen on that
+# target. It also reads zenoh-pico's TCP links, so it needs the submodule and is
+# deselected on a lane that claims none (the pristine checkout).
+[group("checks")]
+[group('needs:submodules')]
+platform-tcp-eof:
+    @python3 scripts/check-platform-tcp-eof.py
+
 # issue 2157 — native_sim's network (NSOS) has ONE source, the module's
 # `nros-nsos` snippet, which a board package names: no tracked conf elsewhere
 # enables it or names a line-specific TAP-driver symbol.
