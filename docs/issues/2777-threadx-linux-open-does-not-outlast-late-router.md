@@ -1,12 +1,12 @@
 ---
 id: 2777
-title: "A threadx_linux image built with connect_forever no longer outlasts a router that starts after it: it boots and never comes up"
+title: "A threadx_linux image that outlasts a late router then exits: the stock parameter services ask for 283,392 bytes in one allocation (a regression from 6229085857)"
 status: open
 type: bug
 area: [threadx, zenoh, ci]
 severity: high
 found: 2026-11-21
-related: [2207, 2760, 2624, 2706]
+related: [2207, 2760, 2624, 2706, 2780]
 ---
 
 ## What fails
@@ -53,3 +53,27 @@ this cannot set up.
 ## Closes when
 
 The test passes again on the merge lane, with the cause named here.
+
+## Bisected, 2026-11-21 (nros 142)
+
+The first failing commit is `6229085857` (phase W13: every image serves the
+stock node interfaces by default). Its parent `ed72edbd8f` passes 3 of 3.
+
+The open is NOT what fails. The session opens once the late router appears;
+after that, the parameter services cannot be created and the image exits 1:
+
+```
+parameter store refused: needs 283392 bytes in one allocation (32 slots x 8856)
+Application error: Capability { name: "param_services", reason: "Transport::BadAlloc" }
+```
+
+So the title's first reading ("its open is not retrying", the test's own
+message) was wrong. The test's message is phrased for the one failure it was
+written for: a missing `Application setup complete` line. Any failure after
+the open reaches it the same way. The real defect is a pool size: the
+default-on stock interfaces add a parameter store whose single allocation the
+ThreadX byte pool cannot satisfy, which suspect 2 above (`2a0260282f`,
+pools derived from measured working sets) may have tightened.
+
+The fix is with the nros 175 session. Closes when the test passes again on
+the merge lane.
