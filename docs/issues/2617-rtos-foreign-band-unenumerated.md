@@ -60,9 +60,55 @@ the software timers, including a level's budget refill.
 `freertos_task_census_is_placed_by_the_priority_plan` reads the census and
 fails on a task no band holds, or on a foreign task outside the foreign band.
 
-Still open: the FreeRTOS POSIX simulator board's own `FreeRTOSConfig.h` sets
-`configTIMER_TASK_PRIORITY` to `configMAX_PRIORITIES - 1`, and nothing has
-measured it. NuttX and ThreadX have no enumerator yet.
+## NuttX and ThreadX: measured (2026-11-20)
+
+Both runners on both kernels print the same census at the end of their spawn
+chain (NuttX: `nros_board_nuttx_report_task_census` over `nxsched_foreach`, in
+`nuttx_run_sched_tasks.c`; ThreadX: `nros_board_threadx_report_task_census`
+over the kernel's created-thread list, in `threadx_hooks.c`).
+
+**NuttX**, qemu-armv7a realtime images, Rust, C++ and C:
+
+| Thread | Priority | Created by |
+| --- | ---: | --- |
+| `lpwork` (two) | 100 | the kernel's low-priority work queue |
+| `hpwork` | 192 | the kernel's high-priority work queue |
+| `Idle_Task` | 0 | the kernel, below `range` |
+| `nros_nuttx_entry` (levels, transport) | 98-100 | nano-ros |
+
+The network-init thread has exited by the time the census runs. The plan
+states `reserved.foreign = [100, 192]`. It adds no restriction a pin could
+meet, since any priority above the pool was already refused by the transport
+band, but it makes the work queues a stated fact that the test checks.
+
+**ThreadX**, threadx-linux realtime image, Rust:
+
+| Thread | Priority | Created by |
+| --- | ---: | --- |
+| `System Timer Thread` | 0 | the kernel (`TX_TIMER_THREAD_PRIORITY`'s port default) |
+| `nros_level`, `nros_app` | 15, 16 | nano-ros |
+| `nsos-rx-notify` | 31 | the nsos-netx receive notifier |
+
+This found a second live defect. `nsos-rx-notify` sits at the lowest priority
+on purpose: it blocks in a host `poll()`, which ThreadX counts as running, so
+it starves every thread at or below its priority. `pool.app` was [15, 31], so
+a level could be allocated at 31 and never run. The pool is [15, 30] now, and
+the plan states `reserved.foreign = [0, 0]` for the timer thread.
+
+Both are read by `nuttx_thread_census_is_placed_by_the_priority_plan` and
+`threadx_thread_census_is_placed_by_the_priority_plan`.
+
+## Still open
+
+- The FreeRTOS POSIX simulator board's own `FreeRTOSConfig.h` sets
+  `configTIMER_TASK_PRIORITY` to `configMAX_PRIORITIES - 1`, and nothing has
+  measured it.
+- `nros-board-threadx-qemu-riscv64` creates a NetX Duo IP thread
+  (`nx_ip_create`) that the threadx-linux image does not have; the shared
+  ThreadX plan has not been measured on it.
+- The NuttX riscv realtime images use the same plan and were not booted here.
+- Linux's `reserved.foreign = []` is still checked only by a probe no test or
+  gate runs.
 
 ## What closes it
 

@@ -107,6 +107,12 @@ static UART_LOGGER: UartLogger = UartLogger;
 // `//` not `///`: rustdoc does not generate documentation for an extern block,
 // so a doc comment here documents nothing and `unused_doc_comments` says so.
 unsafe extern "C" {
+    /// Print every thread the kernel holds with its priority, once the image
+    /// is up (`nros-board-common/c/threadx_hooks.c`).
+    fn nros_board_threadx_report_task_census();
+}
+
+unsafe extern "C" {
     fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
     fn nros_platform_wake_park_granularity_us() -> u64;
 }
@@ -497,6 +503,9 @@ where
     E: core::fmt::Debug,
 {
     let Some((sched_task, rest)) = remaining.split_first() else {
+        // The chain's end: every level is up, so the image's thread set is
+        // complete. Print it for the priority plan (`task census`).
+        unsafe { nros_board_threadx_report_task_census() };
         return Ok(());
     };
     let size = core::mem::size_of::<LevelTaskCtx<F>>();

@@ -695,6 +695,13 @@ where
 // declared / kernel rejection — the C side logs the marker or the loud
 // fallback; the executor's cooperative Sporadic SchedContext remains the
 // enforcement either way).
+// The boot thread census, printed once every level is up (defined beside
+// the runner in `nuttx_run_sched_tasks.c`).
+#[cfg(target_os = "nuttx")]
+unsafe extern "C" {
+    fn nros_board_nuttx_report_task_census();
+}
+
 #[cfg(target_os = "nuttx")]
 unsafe extern "C" {
     fn nros_nuttx_apply_current_sporadic(
@@ -1272,6 +1279,9 @@ where
     E: core::fmt::Debug,
 {
     let Some(&index) = order.get(pos) else {
+        // The chain's end: every level is up, so the image's thread set is
+        // complete. Print it for the priority plan (`task census`).
+        unsafe { nros_board_nuttx_report_task_census() };
         return true;
     };
     let sched_task = &all[index];

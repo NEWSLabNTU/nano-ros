@@ -43,6 +43,10 @@
 #include <unistd.h>
 
 #include "../../nros-board-common/c/nros_board_optional_hook.h" /* issue 2761 */
+#include <nuttx/sched.h>
+
+/* Every thread with its base priority, once the image is up (defined below). */
+void nros_board_nuttx_report_task_census(void);
 
 /* --- nros-cpp C FFI forward declarations ---
  *
@@ -590,6 +594,8 @@ static int nuttx_spawn_next_sched_task(void* session_handle, uint8_t domain_id,
                                  const nros_sched_task_spec_t* remaining, size_t n_remaining,
                                  unsigned char* storage, size_t storage_stride) {
     if (n_remaining == 0u) {
+        /* The chain's end: every sched task is up (`task census`). */
+        nros_board_nuttx_report_task_census();
         return 0;
     }
     const nros_sched_task_spec_t* t = &remaining[0];
@@ -1050,6 +1056,64 @@ typedef struct {
 static void nuttx_spawn_next_level(void* scheduler, const nros_sched_task_spec_t* remaining,
                                    size_t n_remaining, const nros_sched_task_memory_t* task_memory);
 
+/* The thread census: every task and thread the kernel holds, with its base
+ * priority, printed once when the image is fully up (after the last level's
+ * setup). A priority plan reserves bands for threads nano-ros does not create
+ * (the work queues, netinit); the image says what is there and a test
+ * classifies each one against the plan. One line per thread:
+ *
+ *   nros: task census name=`<name>` prio=<n>
+ *
+ * then `nros: task census done tasks=<n>`. `nxsched_foreach` walks the task
+ * list inside a critical section, so the callback only copies; the printing
+ * happens after it returns. */
+#define NROS_NUTTX_CENSUS_MAX 64
+struct nros_nuttx_census_row {
+    char name[32];
+    int prio;
+};
+struct nros_nuttx_census {
+    struct nros_nuttx_census_row rows[NROS_NUTTX_CENSUS_MAX];
+    size_t n;
+    size_t dropped;
+};
+
+static void nuttx_census_visit(FAR struct tcb_s* tcb, FAR void* arg) {
+    struct nros_nuttx_census* c = (struct nros_nuttx_census*)arg;
+    if (c->n >= NROS_NUTTX_CENSUS_MAX) {
+        c->dropped++;
+        return;
+    }
+    struct nros_nuttx_census_row* r = &c->rows[c->n++];
+#if CONFIG_TASK_NAME_SIZE > 0
+    strncpy(r->name, tcb->name, sizeof(r->name) - 1u);
+    r->name[sizeof(r->name) - 1u] = '\0';
+#else
+    snprintf(r->name, sizeof(r->name), "pid%d", (int)tcb->pid);
+#endif
+#ifdef CONFIG_PRIORITY_INHERITANCE
+    r->prio = (int)tcb->base_priority;
+#else
+    r->prio = (int)tcb->sched_priority;
+#endif
+}
+
+void nros_board_nuttx_report_task_census(void) {
+    static struct nros_nuttx_census census;
+    census.n = 0;
+    census.dropped = 0;
+    nxsched_foreach(nuttx_census_visit, &census);
+    for (size_t i = 0; i < census.n; ++i) {
+        printf("nros: task census name=`%s` prio=%d\n", census.rows[i].name, census.rows[i].prio);
+    }
+    if (census.dropped != 0u) {
+        printf("nros: task census dropped=%u (more than %d threads)\n", (unsigned)census.dropped,
+               NROS_NUTTX_CENSUS_MAX);
+    }
+    printf("nros: task census done tasks=%u\n", (unsigned)census.n);
+    fflush(stdout);
+}
+
 /* Issue 2018 (RFC-0108 As-built) -- the registering level's own sched
  * context, from its row's policy: what its setup registers binds to it, not
  * to the executor's default, which every level shares. `kernel` says the
@@ -1129,6 +1193,8 @@ static void* nuttx_level_thread(void* arg) {
 static void nuttx_spawn_next_level(void* scheduler, const nros_sched_task_spec_t* remaining,
                                    size_t n_remaining, const nros_sched_task_memory_t* task_memory) {
     if (n_remaining == 0u) {
+        /* The chain's end: every level is up (`task census`). */
+        nros_board_nuttx_report_task_census();
         return;
     }
     const nros_sched_task_spec_t* t = &remaining[0];
