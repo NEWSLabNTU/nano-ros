@@ -435,3 +435,26 @@ On the reporting host: `/home/aeon/repos/nano-ros/.claude/worktrees/p555-rmw/tmp
 The A/B runs (host 139): the same directory, `ab-ab1-on-warm.log` through
 `ab-ab6-on-cold-rep.log`, with the raw samples of each under that worktree's
 `build/gates/waits/`.
+
+## `cli-tests` by phase, and its biggest binary (2026-11-20, host 118)
+
+`cli-tests`' phases, run one after another on an idle 48-core host (load
+about 1): compile 64 s, the CLI workspace tests 323 s, the runner packages
+6 s, the rosidl parity tests 6 s, the colcon flag parity tests 43 s.
+
+Of the workspace tests' 323 s, `nros-cli-core/tests/configure_verb.rs` took
+219 s: 16 of its 23 tests run a real `nros configure` of a scratch leaf, 12-17
+s each alone, and they barely overlap at 4 threads. A trace of one shows where
+a configure's 16 s go: **11.5 s are one `cargo update --workspace`** (the
+prune after seeding the leaf's lock), which refreshes the crates.io index and
+fetches the git dependencies from GitHub. So each configure test spent most
+of its time on the network, not on the property it tests, and a slow network
+or a loaded host stretched every one of them.
+
+Fix: the file resolves online ONCE per process (a warm-up configure in its
+`setup`), then passes `--offline` to every `configure`, `sync` and `build` it
+runs, reading the cache the warm-up filled. Measured on host 118:
+`configure_verb` 219 s -> 43 s, all 22 tests passing; and 56 s with an EMPTY
+`CARGO_HOME`, where only the warm-up fills the cache, so a fresh host needs
+nothing extra. The test binary's other configure-driving files each run one
+configure, so a warm-up there would buy nothing.
