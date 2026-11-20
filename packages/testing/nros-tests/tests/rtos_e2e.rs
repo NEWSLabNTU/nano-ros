@@ -181,6 +181,17 @@ impl RtosProcess {
         }
     }
 
+    /// Whether the image has already exited. A readiness wait that ends with
+    /// the image gone is a different failure from one that ran out of time,
+    /// and the verdict has to say which (issue 2777: an exit 1 on a refused
+    /// allocation read as "the open is not retrying").
+    fn exited(&mut self) -> bool {
+        match self {
+            RtosProcess::Qemu(p) => !p.is_running(),
+            RtosProcess::Managed(p) => !p.is_running(),
+        }
+    }
+
     /// Issue 1770 — QEMU's own exit status once the image ends, or `None` if it
     /// is still running after `timeout`. A host-process image (`Managed`)
     /// answers `None`: its status is issue 1752's, read elsewhere.
@@ -725,7 +736,14 @@ fn start_server_then_client(
 ) -> TestResult<(RtosProcess, String, RtosProcess)> {
     let mut server = platform.start_process(server_bin, 0, server_name, lang)?;
     let server_boot = server.collect_until(ready_marker, boot_budget(platform));
-    ensure_ready(&server_boot, ready_marker, platform, &server.command_line());
+    let exited = server.exited();
+    ensure_ready(
+        &server_boot,
+        ready_marker,
+        platform,
+        &server.command_line(),
+        exited,
+    );
     let client = platform.start_process(client_bin, 1, client_name, lang)?;
     Ok((server, server_boot, client))
 }
@@ -1098,7 +1116,51 @@ fn router_state_at_failure(zenohd: &mut ZenohRouter) -> String {
     )
 }
 
-fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform, cmdline: &str) {
+/// `output` for a verdict: all of it when short, else its head AND its tail.
+/// The cause of an early exit is printed LAST, so a head-only cut (what this
+/// file did) drops exactly the lines that explain the failure (issue 2777).
+fn transcript(output: &str) -> String {
+    const HEAD: usize = 1024;
+    const TAIL: usize = 3072;
+    if output.len() <= HEAD + TAIL {
+        return output.to_string();
+    }
+    let head_end = (0..=HEAD)
+        .rev()
+        .find(|&i| output.is_char_boundary(i))
+        .unwrap_or(0);
+    let tail_start = (output.len() - TAIL..output.len())
+        .find(|&i| output.is_char_boundary(i))
+        .unwrap_or(output.len());
+    format!(
+        "{}\n[... {} bytes elided ...]\n{}",
+        &output[..head_end],
+        tail_start - head_end,
+        &output[tail_start..]
+    )
+}
+
+/// The lead of a verdict whose image did not reach readiness: an image that
+/// EXITED names that first, because whatever the test expected of a running
+/// image (a retry, a boot budget) is not what happened.
+fn exited_lead(exited: bool, readiness_pattern: &str) -> String {
+    if exited {
+        format!(
+            "the image EXITED before printing `{readiness_pattern}`; its last lines \
+             below say why (an error or `exited with code N`). "
+        )
+    } else {
+        String::new()
+    }
+}
+
+fn ensure_ready(
+    output: &str,
+    readiness_pattern: &str,
+    platform: Platform,
+    cmdline: &str,
+    exited: bool,
+) {
     if output.contains(readiness_pattern) {
         if platform == Platform::Nuttx {
             assert_nuttx_eth0_on_slirp(output, cmdline);
@@ -1123,11 +1185,12 @@ fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform, cmdli
         ""
     };
     panic!(
-        "{} E2E failed — readiness pattern '{}' not observed.\nStarted with:\n  {}\nOutput so far (truncated):\n{}{}",
+        "{} E2E failed — readiness pattern '{}' not observed. {}\nStarted with:\n  {}\nOutput:\n{}{}",
         platform,
         readiness_pattern,
+        exited_lead(exited, readiness_pattern),
         cmdline,
-        &output[..output.len().min(2048)],
+        transcript(output),
         hint
     );
 }
@@ -1246,11 +1309,13 @@ fn test_rtos_pubsub_e2e(
     // the marker per lang so the readiness gate matches the actual image.
     let ready_marker = listener_ready_marker(platform, lang);
     let listener_boot = listener.collect_until(ready_marker, boot_budget(platform));
+    let exited = listener.exited();
     ensure_ready(
         &listener_boot,
         ready_marker,
         platform,
         &listener.command_line(),
+        exited,
     );
 
     // ⚠️ The talker is FREE-RUNNING and nothing here may cut it short. ⚠️
@@ -1425,7 +1490,14 @@ fn test_rtos_quiet_link_keeps_its_session(
         // anyone reads it: say what the router was doing HERE, in the verdict.
         eprintln!("{}", router_state_at_failure(&mut zenohd));
     }
-    ensure_ready(&boot, ready_marker, platform, &listener.command_line());
+    let exited = listener.exited();
+    ensure_ready(
+        &boot,
+        ready_marker,
+        platform,
+        &listener.command_line(),
+        exited,
+    );
 
     // Nothing to wait FOR — the point is that nothing happens. Collect until a
     // pattern that never appears, so the window is the whole lease.
@@ -1498,7 +1570,14 @@ fn test_rtos_listener_reopens_after_its_router_restarts(
         .expect("Failed to start listener");
     let ready_marker = listener_ready_marker(platform, lang);
     let boot = listener.collect_until(ready_marker, boot_budget(platform));
-    ensure_ready(&boot, ready_marker, platform, &listener.command_line());
+    let exited = listener.exited();
+    ensure_ready(
+        &boot,
+        ready_marker,
+        platform,
+        &listener.command_line(),
+        exited,
+    );
     let mut talker = platform
         .start_process(talker_bin, 0, "reopen-talker", lang)
         .expect("Failed to start talker");
@@ -1596,14 +1675,26 @@ fn test_rtos_session_open_outlasts_a_late_router(
 
     let ready_marker = listener_ready_marker(platform, lang);
     let boot = listener.collect_until(ready_marker, boot_budget(platform));
+    let exited = listener.exited();
     let listener_cmd = listener.command_line();
     listener.kill();
     let output = format!("{early}{boot}");
+    // Issue 2777 -- an image that exits after its router appears has opened
+    // and then failed; only one still running at the deadline is a stalled
+    // open.
+    let why = if exited {
+        exited_lead(true, ready_marker)
+    } else {
+        format!(
+            "it is still running and never reported `{ready_marker}`: an image built with \
+             connect_forever did not outlast the gap, so its open is not retrying (issue \
+             2207)."
+        )
+    };
     assert!(
         output.contains(ready_marker),
-        "{platform} late router: the image started {LATE_ROUTER_DELAY:?} before its router \
-         and never reported `{ready_marker}` — an image built with connect_forever did \
-         not outlast the gap, so its open is not retrying (issue 2207).\n\
+        "{platform} late router: the image started {LATE_ROUTER_DELAY:?} before its router; \
+         {why}\n\
          Router:   {} (port {})\n\
          Listener: {}\n\
          Listener output:\n{}",
