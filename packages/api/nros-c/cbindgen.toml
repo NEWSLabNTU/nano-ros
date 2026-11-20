@@ -30,6 +30,9 @@ header = """/**
  * goal handle, declared under the guard the generated message shares;
  * excluded from export below. */
 #include "rclc/detail/uuid.h"
+/* `nros_wall_clock_state_t`, under the guard the platform header shares;
+ * excluded from export below. */
+#include "rclc/detail/wall_clock_state.h"
 
 /* Forward declarations for callback typedefs that reference these
  * structs before they appear in source-order output. Without these,
@@ -80,6 +83,9 @@ usize_is_size_t = true
 # values from the non-cffi cfg branch, which produces redefinition
 # warnings and wrong fallback storage sizes.
 exclude = [
+    # Hand-written in `rclc/detail/wall_clock_state.h` under the guard the
+    # platform header shares.
+    "nros_wall_clock_state_t",
     "SESSION_OPAQUE_U64S",
     "PUBLISHER_OPAQUE_U64S",
     "GUARD_HANDLE_OPAQUE_U64S",

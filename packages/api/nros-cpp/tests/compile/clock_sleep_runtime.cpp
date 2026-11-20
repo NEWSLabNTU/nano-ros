@@ -14,6 +14,10 @@
 //   5. from inside a callback it is `false` (the executor is not reentrant);
 //   6. a ROS-time clock frozen by the override wakes when a timer ADVANCES the
 //      simulated time, long before the same span of wall time.
+//
+// And `rclcpp::Clock::wall_clock_state()`, the image's wall-clock state, is the
+// linked port's: this program links the POSIX port, whose clock is
+// CLOCK_REALTIME, so it is synced, on its own source, never stepped.
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -51,6 +55,15 @@ int64_t g_sim_ns = 0;
 
 int main() {
     rclcpp::Clock steady(RCL_STEADY_TIME);
+
+    // The wall-clock state, by its signature (a drift fails to compile) and
+    // by the POSIX port's answer.
+    nros_wall_clock_state_t (*state_fn)() = &rclcpp::Clock::wall_clock_state;
+    const nros_wall_clock_state_t wall = state_fn();
+    check(wall.synced, "wall_clock_state: CLOCK_REALTIME answers on a host");
+    check(wall.source == NROS_WALL_CLOCK_SOURCE_PLATFORM,
+          "wall_clock_state: the port's own source");
+    check(wall.steps == 0u, "wall_clock_state: never stepped");
 
     // rclcpp's signatures, taken as pointers so a drift fails to compile.
     bool (rclcpp::Clock::*until_ctx)(rclcpp::Time, rclcpp::Context) = &rclcpp::Clock::sleep_until;

@@ -105,6 +105,18 @@ class Clock {
     /// Which kind of clock this is.
     rcl_clock_type_t get_clock_type() const { return rclc_clock_get_type(&clock_); }
 
+    /// What the wall-clock stamps mean right now: whether the wall clock is
+    /// synced, which source answers (`NROS_WALL_CLOCK_SOURCE_*`), and how many
+    /// times that source changed since boot. The image's, not this clock's:
+    /// every `RCL_SYSTEM_TIME` reading, and a `RCL_ROS_TIME` one with no
+    /// `/clock` source, comes from that one wall clock.
+    ///
+    /// An application that must not publish unstamped data asks this before
+    /// publishing. While `synced` is false the wall clock reads 0, so a
+    /// `header.stamp` from it is ROS's "unset" time. A nano-ros addition:
+    /// rclcpp has no equivalent.
+    static nros_wall_clock_state_t wall_clock_state() { return ::nros_wall_clock_state(); }
+
     /// Whether the clock initialised. False for a clock built with an invalid
     /// type; the same predicate as `Node::is_valid()` / `Timer::is_valid()`.
     bool is_valid() const { return rclc_clock_is_valid(&clock_); }
