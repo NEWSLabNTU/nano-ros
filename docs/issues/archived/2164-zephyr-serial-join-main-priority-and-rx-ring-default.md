@@ -1,21 +1,23 @@
 ---
 id: 2164
 title: "A Zephyr board joining a live domain over a serial link needs CONFIG_MAIN_THREAD_PRIORITY below the read task (now refused otherwise) and a bigger RX ring (documented, not measured)"
-status: open
+status: resolved
 type: limitation
 area: zenoh, zephyr, serial, scheduling
 severity: low
 found: 2026-10-30
 related: [issue-1534, issue-0852, issue-2179, phase-474, phase-478, phase-524]
+resolved: 2026-11-21
+resolved_in: "measured on the S32K344 board; the 1024 default kept, its Kconfig help restated"
 ---
 
-**Home: [phase-524](../roadmap/phase-524-emulator-twins.md)** — re-homed 2026-11-05 from phase-474 T3 (archived): the measured RX-ring default waits on a serial-join lane, and the Nucleo-F767ZI serial twin (W4c) is one. It is the residue of issue 1534 (archived), split out when 1534's own
+**Home: [phase-524](../../roadmap/phase-524-emulator-twins.md)** — re-homed 2026-11-05 from phase-474 T3 (archived): the measured RX-ring default waits on a serial-join lane, and the Nucleo-F767ZI serial twin (W4c) is one. It is the residue of issue 1534 (archived), split out when 1534's own
 defect, the tx-flush task outranking the read task, was closed on every port.
 
 ## What is left
 
 Measured on the safety island (S32K344, phase8-W10; numbers and traces in
-[issue 1534](archived/1534-zephyr-tx-flush-task-outranks-the-read-task.md)):
+[issue 1534](1534-zephyr-tx-flush-task-outranks-the-read-task.md)):
 a board that joins a domain whose peers are ALREADY sending loses the
 router's write-filter interest replies unless
 
@@ -111,3 +113,62 @@ register map and Zephyr's F7 driver programs the newer one.
 So no emulator in the tree feeds this link at line rate, and item 2 needs
 hardware. It moves to the S32K344 board batch, which is the board the
 original numbers came from.
+
+## Measured on the board (2026-11-20/21) -- resolved
+
+The S32K344 board batch this issue moved to. The safety island's board image
+at its nano-ros pin (3c2e8cf685), 921,600 baud, the host router
+(`rmw_zenohd`) on the serial line. Each join: the board held halted, a fresh
+router started, every input the island subscribes to published at its
+contract rate (control command 30 Hz; kinematic state, availability, control
+mode and operation mode 10 Hz; about 17 KB/s toward the board once it
+subscribes) for 20 s, then the board hardware-reset into that live domain.
+40 s later `_z_zephyr_serial_stats` was read over SWD; the host counted
+every island output in the window 15-40 s after the reset. Rows marked 3x
+publish every input at three times its rate (about 34 KB/s). Two more joins
+reset the board while the router still held its previous session and
+streamed to it (the mid-run reset of issue 1534).
+
+| main priority | RX ring | inputs | joins with all 6 outputs at rate | ring high water | ring overflows | first output after reset |
+| --- | --- | --- | --- | --- | --- | --- |
+| 5 (stated) | 4096 | 1x | 5 of 5 | 1024-1189 | 0 | 1.7-2.3 s |
+| 5 | 2048 | 1x | 5 of 5 | 1080-1189 | 0 | 1.7-5.2 s |
+| 5 | 1024 (default) | 1x | 5 of 5 | 766-767 | 0 | 1.7-2.2 s |
+| 5 | 1024 | 3x | 3 of 3 | 766-767 | 0 | 1.7 s |
+| 0 (Zephyr default) | 4096 | 1x | 3 of 3 | 1024-1189 | 0 | 0.7 s |
+| 0 | 1024 | 1x | 3 of 3 | 767 | 0 | 0.7-0.8 s |
+| 0 | 4096 | 3x | 1 of 1 | 1460 | 0 | 0.7 s |
+| 0 | 1024 | 3x | 3 of 3 | 767 | 0 | 0.7-0.8 s |
+| 5 | 4096 | 1x, reset under the old session | 2 of 2 | 1189 | 0 | 1.7-4.3 s |
+
+No UART overrun in any join; bad frames 0, except 2 at the first boot after
+a flash.
+
+**Item 2, the RX ring: the 1024 default holds.** The high water stays at
+766-767 with a 1024 ring, at the contract rate and at three times it. A
+larger ring fills further (up to 1460), not because more arrives but because
+the ISR wakes the read task at half the ring or at a frame end, whichever
+comes first; with 1024 the half-ring wake comes earlier. So the default is
+not raised; the `NROS_ZENOH_SERIAL_RX_RING_BYTES` help now states this
+measurement instead of "at its edge, not measured". The 815-1024 high water
+and one-in-five overflow of issue 1534 were on an earlier island pin.
+
+**Item 1, the main priority: the refusal stays, though main 0 no longer
+loses a join here.** Built only for this measurement, with the configure
+refusal made a warning and the island's supervisor assert removed, the
+main-0 image joined every time, and sooner than main 5. The read task no
+longer starves at this pin. The refusal is kept for the reason written when
+it landed: the same main thread runs the executor above the transport for
+the image's life, the app-above-transport inversion issue 0623 retired.
+
+**Two measuring traps, both on the bench side.** `pyocd reset` (the soft
+reset) after the board had been halted for tens of seconds left SWT0
+interrupting continuously: the image never reached the link, whatever its
+configuration. A hardware reset (`pyocd reset -m hw`) cleared it, and every
+join above used it. A soft reset under a router still streaming to the
+board's previous session also ended with the router logging `Unexpected Init
+flag in message` and the board silent; with the hardware reset the same
+case joins (last row).
+
+Logs, scripts, the measurement-only diffs and the input feeder:
+`/mnt/mx500/aeon/worktrees/k2164-logs` on the board owner's host.

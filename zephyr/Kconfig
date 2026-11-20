@@ -858,16 +858,19 @@ config NROS_ZENOH_SERIAL_RX_RING_BYTES
       Maps to _Z_ZEPHYR_SERIAL_RX_RING_BYTES (zenoh-pico
       src/link/transport/serial/uart_zephyr.c), whose default is the same 1024.
 
-      The 1024 default is at its edge for a board that JOINS a live domain
-      at 921600 baud: an S32K344 board measured a high water of 815-1024
-      with one join in five overflowing, and states 4096. A board that
-      joins an idle domain stays far below it. The default is not raised
-      here because no lane measures it; read `ring_high_water` on the
-      board and size from it.
+      The 1024 default holds a board that JOINS a live domain at 921600
+      baud. Measured on the safety island (S32K344, issue 2164): joining
+      while every input it subscribes to already flows (17 KB/s toward the
+      board, and 34 KB/s at three times the rate), the high water was
+      766-767 of 1024 in 14 joins and no byte was lost; a 2048 or 4096
+      ring filled to 1024-1460 instead, because the read task is woken at
+      half the ring or at a frame end, whichever comes first. An earlier
+      pin of the island saw 815-1024 with one join in five overflowing
+      (issue 1534). Read `ring_high_water` on your board and raise the
+      ring if it reaches the size.
 
       Pair it with the main thread's priority. Zephyr's default
-      CONFIG_MAIN_THREAD_PRIORITY, 0, outranks the read task, so the ring
-      fills while main creates entities. State
+      CONFIG_MAIN_THREAD_PRIORITY, 0, outranks the read task. State
       CONFIG_MAIN_THREAD_PRIORITY=5, below the read task at the default
       NROS_ZENOH_READ_PRIORITY on 15 preempt priorities. The configure
       refuses a serial image whose main thread is not below the read task

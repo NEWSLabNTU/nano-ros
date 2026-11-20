@@ -10,7 +10,7 @@ rfcs: []
 related: [0626, 0623, 0852, 1533, 2164, phase-474, phase-478]
 ---
 
-**Resolved 2026-10-30** -- see the last section; residue in [issue 2164](../2164-zephyr-serial-join-main-priority-and-rx-ring-default.md). **Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Resolved 2026-10-30** -- see the last section; residue in [issue 2164](2164-zephyr-serial-join-main-priority-and-rx-ring-default.md). **Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 # On Zephyr the tx-flush task runs above the read task
 
@@ -178,7 +178,7 @@ is closed on every port that has a flush task, not only Zephyr:
   `zpico_set_flush_task_config` still wins. ThreadX runs no flush task.
 
 What this issue also carried and is NOT closed here moved to
-[issue 2164](../2164-zephyr-serial-join-main-priority-and-rx-ring-default.md):
+[issue 2164](2164-zephyr-serial-join-main-priority-and-rx-ring-default.md):
 the main thread's priority during registration on a serial link (checked by a
 configure warning, not derived) and a measured RX-ring default (needs a lane
 that joins a serial image into a live domain).
