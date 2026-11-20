@@ -165,7 +165,7 @@ KNOB_CLASS = {
     "NROS_XRCE_BUILTIN_SERVICE_SERVERS": ("derived", "the parameter / lifecycle share of the service-server slots; the runtime's servers, beside the total (issue 1808)"),
     "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_BYTES": ("derived", "builtin-family request entry; XRCE_BUFFER_SIZE raised to the parameter family's priced request, so lifecycle's unbounded ChangeState keeps the floor (issue 1808)"),
     "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
-    "NROS_ZENOH_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
+    "NROS_ZENOH_SERVICE_BUFFER_BYTES": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # phase-461 W1 / issue 1352 -- the service inbox per FAMILY. The two slot
     # sizes are DERIVED: W3 prices each family's `_Request` types and the
     # derivable call replaces the plain one. The two depths are policy defaults
@@ -826,6 +826,9 @@ READ_CALLEES = {
 # Not reads. Named rather than ignored by default, so the failure below stays
 # meaningful.
 NON_READ_CALLEES = {
+    # phase-581 W5 -- formats the refusal of a FreeRTOS size that is not whole
+    # KiB, naming the knob; it reads nothing.
+    "not_whole_kib",
     # phase-468 W4 -- maps an env NAME to its Kconfig symbol. It touches no
     # environment; `knob()` (already a read above) is what resolves through it.
     "kconfig_key_for",

@@ -101,7 +101,7 @@ ZENOH_PUBLISHER_TX_BUFFER_BYTES	yes	yes	yes
 ZENOH_READ_PRIORITY	yes	yes	yes	
 ZENOH_RX_TASK_BUDGET_FRAMES	yes	yes	yes	
 ZENOH_RX_TASK_BUDGET_REST_US	yes	yes	yes	
-ZENOH_SERVICE_BUFFER_SIZE	yes	yes	yes	
+ZENOH_SERVICE_BUFFER_BYTES	yes	yes	yes	
 ZENOH_SOCKET_TIMEOUT_MS	n/a	n/a	yes	zephyr only: it sizes the recv window Zephyr's zsock layer holds the socket's per-fd lock for, and no other port couples send and recv that way
 ZENOH_SUBSCRIBER_LARGE_BYTES	yes	yes	yes	
 ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES	yes	yes	yes	

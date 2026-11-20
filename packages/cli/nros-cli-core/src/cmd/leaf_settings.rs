@@ -3232,7 +3232,7 @@ pub(crate) mod board_rung_tests {
         for (k, v) in [
             ("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS", "0"),
             ("NROS_ZENOH_MAX_SUBSCRIBERS", "1"),
-            ("NROS_ZENOH_SERVICE_BUFFER_SIZE", "1024"),
+            ("NROS_ZENOH_SERVICE_BUFFER_BYTES", "1024"),
             ("NROS_ZENOH_MAX_QUERYABLES", "1"),
         ] {
             assert_eq!(rows.get(k).map(String::as_str), Some(v), "{k} in {rows:?}");

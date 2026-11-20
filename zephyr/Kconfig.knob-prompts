@@ -211,8 +211,8 @@ config NROS_ZENOH_RX_TASK_BUDGET_FRAMES
 config NROS_ZENOH_RX_TASK_BUDGET_REST_US
     int "zenoh read task rest after a full budget (us, -1 = derive)"
 
-config NROS_SERVICE_BUFFER_SIZE
-    int "Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)"
+config NROS_ZENOH_SERVICE_BUFFER_BYTES
+    int "Per-service static buffer size (bytes; the default of NROS_SERVICE_INBOX_BYTES)"
 
 config NROS_ZENOH_SOCKET_TIMEOUT_MS
     int "zenoh-pico socket recv timeout (ms)"

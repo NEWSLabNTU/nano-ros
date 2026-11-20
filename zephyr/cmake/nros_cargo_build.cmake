@@ -1285,8 +1285,8 @@ function(nros_resolve_knobs)
         _nros_resolve_derivable_knob(NROS_SUBSCRIBER_BUFFER_BYTES
             "${CONFIG_NROS_SUBSCRIBER_BUFFER_BYTES}"
             NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
-        _nros_resolve_knob(NROS_ZENOH_SERVICE_BUFFER_SIZE
-            "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
+        _nros_resolve_knob(NROS_ZENOH_SERVICE_BUFFER_BYTES
+            "${CONFIG_NROS_ZENOH_SERVICE_BUFFER_BYTES}")
         # The transient-local retention SLOT: the largest serialized bound over
         # the types this image publishes transient-local
         # (`_nros_bounds_tl_retain` in NanoRosMessageBounds.cmake). The pool is
@@ -1844,7 +1844,7 @@ function(nros_resolve_knobs)
     # NOT `_nros_resolve_derivable_knob`, and the difference is the ALIAS. That
     # helper resolves the derived value into this name, which would make a
     # derivation outrank a board `.conf` that states only
-    # `CONFIG_NROS_SERVICE_BUFFER_SIZE` -- a knob this release still honours.
+    # `CONFIG_NROS_ZENOH_SERVICE_BUFFER_BYTES` -- a knob this release still honours.
     # Forwarding nothing leaves both rungs visible to the build script under
     # their own names, which is the one place that can rank them.
     if(NOT "${CONFIG_NROS_SERVICE_INBOX_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")

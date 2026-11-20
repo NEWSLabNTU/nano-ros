@@ -2,7 +2,7 @@
 
 Measured 2026-11-20 in the `ros2` distrobox (Ubuntu 22.04, ROS 2 Humble), per
 [phase-581 W5](../phase-581-ros-env-vars.md). "Before" is the W4 tip
-(`b9923d063d`), checked out as a scratch worktree under `/mnt/wd/nt/` and
+(the commit that closed W4), checked out as a scratch worktree under `/mnt/wd/nt/` and
 removed afterwards; "after" is the W5 working tree. Each side ran its own
 `just setup-cli` (and, before, `just setup-launch-resolve`), then built the
 same three images with no knob stated, so every value below is a default or a

@@ -156,7 +156,7 @@ pub const IN_TREE_PACKAGES: &[InTreePackage] = &[
             "zenoh.read_priority",
             "zenoh.rx_task_budget_frames",
             "zenoh.rx_task_budget_rest_us",
-            "zenoh.service_buffer_size",
+            "zenoh.service_buffer_bytes",
             "zenoh.socket_timeout_ms",
             "zenoh.subscriber_large_bytes",
             "zenoh.subscriber_large_threshold_bytes",

@@ -342,7 +342,7 @@ aliases" stands and now has no exceptions.
   cannot take a resource's name, and resource variables are outside N1 to N4.
 
 **What the rule costs.** Appendix A lists every setting on `origin/main`
-that breaks N1 to N6: **88**. 54 are registry rows (52 renamed, 2 retired),
+that breaks N1 to N6: **88**. 54 are registry rows (53 renamed, 1 retired),
 13 are hand-written Zephyr Kconfig symbols (one of them the `locator`
 statement's), 9 are run-time variables (3
 renamed, the 6 retired `ZENOH_*` of Decision 4), 6 are build carriers outside
@@ -956,7 +956,7 @@ three segments (N1), **U** unit (N4), **K** Kconfig column (N2), **P** owner
 word missing or wrong (N3), **F** folds two platform carriers into one
 `memory.*` knob.
 
-### A.1 Registry rows (52 renamed, 2 retired)
+### A.1 Registry rows (53 renamed, 1 retired)
 
 | Old key | Old env | Old Kconfig | New key | Why |
 | --- | --- | --- | --- | --- |
@@ -1006,6 +1006,7 @@ word missing or wrong (N3), **F** folds two platform carriers into one
 | `zenoh.publisher_tx_buffer_size` | `NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE` |  | `zenoh.publisher_tx_buffer_bytes` | U |
 | `zenoh.wire.rx_task_budget_frames` | `NROS_ZENOH_RX_TASK_BUDGET_FRAMES` |  | `zenoh.rx_task_budget_frames` | S |
 | `zenoh.wire.rx_task_budget_rest_us` | `NROS_ZENOH_RX_TASK_BUDGET_REST_US` |  | `zenoh.rx_task_budget_rest_us` | S |
+| `zenoh.service_buffer_size` | `NROS_ZENOH_SERVICE_BUFFER_SIZE` | `CONFIG_NROS_SERVICE_BUFFER_SIZE` | `zenoh.service_buffer_bytes` | U, K |
 | `zenoh.subscriber_large_size` | `NROS_ZENOH_SUBSCRIBER_LARGE_SIZE` | `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE` | `zenoh.subscriber_large_bytes` | U, K |
 | `zenoh.limits.subscriber_ring_depth` | `NROS_ZENOH_SUBSCRIBER_RING_DEPTH` | `CONFIG_NROS_SUBSCRIBER_RING_DEPTH` | `zenoh.subscriber_ring_depth` | S, K |
 | `zenoh.subscriber_size_threshold` | `NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD` |  | `zenoh.subscriber_large_threshold_bytes` | U |
@@ -1017,9 +1018,14 @@ word missing or wrong (N3), **F** folds two platform carriers into one
 Also in the registry:
 
 - `zenoh.service_buffer_size` (`NROS_ZENOH_SERVICE_BUFFER_SIZE`,
-  `CONFIG_NROS_SERVICE_BUFFER_SIZE`): its own help calls it "the one-release
-  ALIAS of NROS_SERVICE_INBOX_BYTES". RETIRED, refused naming
-  `service.inbox_bytes`.
+  `CONFIG_NROS_SERVICE_BUFFER_SIZE`): its help called it "the one-release
+  ALIAS of NROS_SERVICE_INBOX_BYTES", and this appendix first retired it
+  naming `service.inbox_bytes`. It is not only an alias: `nros-rmw-zenoh`'s
+  build script sizes the static `SERVICE_BUFFERS` pool from it and uses it as
+  the inbox's default, so retiring it would leave that pool unsized. Ruled
+  2026-11-20 (phase-581 W5): renamed to `zenoh.service_buffer_bytes` (row
+  above), which moves it from A.1's retired count to its renamed count; the
+  total stays 88, since the lint already held it (N2, N4).
 - `entry.spin_ms` (`NROS_ENTRY_SPIN_MS`): no build-time reader (W0
   confirmed: no `rerun-if-env-changed`, `option_env!` or `CONFIG_` reader);
   its 7 readers are run-time. It moves from a `knob` row to an `env` row of

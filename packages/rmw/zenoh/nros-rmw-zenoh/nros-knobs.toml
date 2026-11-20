@@ -553,23 +553,27 @@ Maps to Z_RX_TASK_BUDGET_REST_US.
 '''
 
 [[knob]]
-key = "zenoh.service_buffer_size"
-transitional = { kconfig = "NROS_SERVICE_BUFFER_SIZE" }
+key = "zenoh.service_buffer_bytes"
 scope = "image"
 class = "carrier"
 carries = "SERVICE_INBOX_BYTES"
-retired = [{ spelling = "env:ZPICO_SERVICE_BUFFER_SIZE" }]
+retired = [
+    { spelling = "env:ZPICO_SERVICE_BUFFER_SIZE" },
+    { spelling = "toml:zenoh.service_buffer_size" },
+    { spelling = "env:NROS_ZENOH_SERVICE_BUFFER_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_SERVICE_BUFFER_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_SERVICE_BUFFER_SIZE" },
+]
 type = "int"
-prompt = "Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)"
+prompt = "Per-service static buffer size (bytes; the default of NROS_SERVICE_INBOX_BYTES)"
 kconfig_if = "NROS_RMW_ZENOH"
 kconfig_attrs = [
     "default 1024",
 ]
 help = '''
-The one-release ALIAS of NROS_SERVICE_INBOX_BYTES,
-which defaults to this value. Set that symbol instead; this one stays
-so a board .conf that states it keeps building the same image.
-Maps to ZPICO_SERVICE_BUFFER_SIZE.
+Bytes of payload in each static zenoh service buffer
+(ZPICO_SERVICE_BUFFER_SIZE in the shim), and the default of
+NROS_SERVICE_INBOX_BYTES. Set that symbol for the inbox slot size.
 '''
 
 [[knob]]

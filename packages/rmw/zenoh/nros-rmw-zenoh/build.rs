@@ -33,7 +33,7 @@ fn main() {
     // issue 0682 — the peer-mode build input (`just test-zpico-peer`).
     println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
     println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_BYTES");
-    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SERVICE_BUFFER_SIZE");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SERVICE_BUFFER_BYTES");
     // phase-461 W1 - the per-family service inboxes (`Knob::stated` prints
     // this line too; stating it here keeps the watch list in one place with
     // its siblings).
@@ -117,7 +117,7 @@ fn main() {
     // depth). The declared service surface supplies the DEFAULT; a stated
     // knob, and the Kconfig rung on Zephyr, still win.
     //
-    // phase-461 W1 - `ZPICO_SERVICE_BUFFER_SIZE` / `CONFIG_NROS_SERVICE_BUFFER_SIZE`
+    // phase-461 W1 - `ZPICO_SERVICE_BUFFER_SIZE` / `CONFIG_NROS_ZENOH_SERVICE_BUFFER_BYTES`
     // is the one-release ALIAS of `NROS_SERVICE_INBOX_BYTES`: it resolves
     // exactly as before, and the new name outranks it when both are stated.
     //
@@ -131,7 +131,7 @@ fn main() {
     // DEMAND, and a consumer that needs a floor applies its own.
     let declared_request_bytes = declared_service_request_bytes(sizing.as_ref(), SERVICE_FAMILY)
         .unwrap_or(SERVICE_BUFFER_SIZE_DEFAULT);
-    let svc_size: usize = env_usize("NROS_ZENOH_SERVICE_BUFFER_SIZE", declared_request_bytes);
+    let svc_size: usize = env_usize("NROS_ZENOH_SERVICE_BUFFER_BYTES", declared_request_bytes);
     // phase-461 W1 - one inbox per FAMILY (issue 1352). The user-service and
     // action families each get a slot size and a ring depth; both default to
     // what the single table was (the derived-or-1024 slot at depth 4), so an
@@ -492,11 +492,11 @@ fn main() {
             "/// Subscriber buffer size (set via NROS_SUBSCRIBER_BUFFER_BYTES, default 1024).\n\
              pub const SUBSCRIBER_BUFFER_SIZE: usize = {sub_size};\n\
              /// The one-release alias of `SERVICE_INBOX_BYTES` (set via\n\
-             /// NROS_ZENOH_SERVICE_BUFFER_SIZE; default is the largest declared service/action\n\
+             /// NROS_ZENOH_SERVICE_BUFFER_BYTES; default is the largest declared service/action\n\
              /// bound, floored at 1024). `NROS_SERVICE_INBOX_BYTES` wins.\n\
              pub const SERVICE_BUFFER_SIZE: usize = {service_inbox_bytes};\n\
              /// The user-service family's slot size (set via\n\
-             /// NROS_SERVICE_INBOX_BYTES; default is what NROS_ZENOH_SERVICE_BUFFER_SIZE resolved).\n\
+             /// NROS_SERVICE_INBOX_BYTES; default is what NROS_ZENOH_SERVICE_BUFFER_BYTES resolved).\n\
              pub const SERVICE_INBOX_BYTES: usize = {service_inbox_bytes};\n\
              /// The user-service family's ring depth (set via\n\
              /// NROS_SERVICE_INBOX_DEPTH, default {SERVICE_INBOX_DEPTH_DEFAULT}).\n\

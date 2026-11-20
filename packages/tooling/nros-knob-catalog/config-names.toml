@@ -30,7 +30,7 @@
 # How many `[[baseline]]` entries the file holds (below). The baseline only
 # shrinks: lower this with every entry a rename removes, and never raise it to
 # admit a new name, which is renamed instead.
-baseline_entries = 46
+baseline_entries = 45
 
 # --- N4's vocabulary -----------------------------------------------------------
 
@@ -342,12 +342,6 @@ subject = "zenoh.max_subscribers"
 kind = "knob"
 rules = ["N2"]
 appendix = "A.5"
-
-[[baseline]]
-subject = "zenoh.service_buffer_size"
-kind = "knob"
-rules = ["N2", "N4"]
-appendix = "A.1"
 
 [[baseline]]
 subject = "locator"

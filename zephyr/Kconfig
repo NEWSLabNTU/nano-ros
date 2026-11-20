@@ -2870,15 +2870,14 @@ config NROS_ZENOH_RX_TASK_BUDGET_REST_US
       Maps to Z_RX_TASK_BUDGET_REST_US.
 
 
-# prompt: Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)
-config NROS_SERVICE_BUFFER_SIZE
+# prompt: Per-service static buffer size (bytes; the default of NROS_SERVICE_INBOX_BYTES)
+config NROS_ZENOH_SERVICE_BUFFER_BYTES
     int
     default 1024
     help
-      The one-release ALIAS of NROS_SERVICE_INBOX_BYTES,
-      which defaults to this value. Set that symbol instead; this one stays
-      so a board .conf that states it keeps building the same image.
-      Maps to ZPICO_SERVICE_BUFFER_SIZE.
+      Bytes of payload in each static zenoh service buffer
+      (ZPICO_SERVICE_BUFFER_SIZE in the shim), and the default of
+      NROS_SERVICE_INBOX_BYTES. Set that symbol for the inbox slot size.
 
 
 # prompt: zenoh-pico socket recv timeout (ms)

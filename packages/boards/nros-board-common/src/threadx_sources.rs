@@ -158,7 +158,8 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build, app_stack_bytes: usize) {
 /// Size the byte pool `threadx_hooks.c` reserves.
 ///
 /// `threadx.byte_pool_bytes` (env `NROS_THREADX_BYTE_POOL_BYTES`) when stated,
-/// else a board's or platform's `[knobs.memory] heap_bytes` rung; else
+/// else `memory.heap_bytes` (its env `NROS_MEMORY_HEAP_BYTES`, then a board's
+/// or platform's `[knobs.memory] heap_bytes`); else
 /// [`crate::threadx_pool::default_byte_pool_bytes`]: the app stack plus
 /// the RMW's measured working set. The RMW is this board crate's own feature:
 /// with no `rmw-zenoh` the image runs a DDS backend, which takes the larger
@@ -185,13 +186,16 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
             .parse::<usize>()
             .unwrap_or_else(|_| panic!("{POOL_ENV} must be a decimal byte count, got `{v}`"))
     });
+    // The order before the rename, the pool's own spelling on top: the stated pool,
+    // else the `memory.heap_bytes` ladder (its env, then the board's and the
+    // platform's `[knobs.memory] heap_bytes`), else the derivation. A bare
+    // `cargo build` names no platform: the pool's env alone.
     let pool = match stated {
         Some(bytes) => bytes,
-        // The board's or platform's `[knobs.memory] heap_bytes` rung; a bare
-        // `cargo build` names no platform and has none.
-        None => crate::platform_config::BuildRungs::from_build_env()
-            .and_then(|rungs| rungs.memory_rungs().heap_bytes)
-            .unwrap_or(derived),
+        None => match crate::platform_config::BuildRungs::from_build_env() {
+            Some(rungs) => rungs.memory_value("heap_bytes", derived),
+            None => derived,
+        },
     };
     let least = least_byte_pool_bytes(app_stack_bytes, rmw);
     if pool < least {

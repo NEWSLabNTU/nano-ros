@@ -1612,8 +1612,8 @@ mod tests {
                 .collect();
             assert_eq!(env, row.legacy, "knob {}", row.id);
         }
-        // 32 retired by phase-484 W8, 32 by phase-581 W5's renames.
-        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 64);
+        // 32 retired by phase-484 W8, 33 by phase-581 W5's renames.
+        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 65);
     }
 
     /// RFC-0140 G5 (phase-581 W5) -- EVERY retired `env:` and `toml:` spelling

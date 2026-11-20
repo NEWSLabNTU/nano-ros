@@ -124,7 +124,7 @@ hand is an override, not a requirement.
 | `NROS_EXECUTOR_ARENA_BYTES` | the same inventory, in the executor's own build; the variable is the override |
 
 The transport's wire buffers (`NROS_ZENOH_FRAG_MAX_BYTES`, the batch sizes,
-`NROS_ZENOH_SERVICE_BUFFER_SIZE`, `NROS_ZENOH_GET_REPLY_BUFFER_BYTES`,
+`NROS_ZENOH_SERVICE_BUFFER_BYTES`, `NROS_ZENOH_GET_REPLY_BUFFER_BYTES`,
 `NROS_ZENOH_MAX_PENDING_GETS`), the smoltcp socket pools and the parameter
 store limits are not derived: they are yours. They are covered in
 [Tune throughput and latency](../rmw/tune-throughput-and-latency.md#transport-buffers-and-limits).
