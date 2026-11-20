@@ -214,6 +214,10 @@ static bool cyclone_event_type_is_supported(rmw_event_type_t event_type) {
     case NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE:
     case NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE:
         return true;
+    /* Issue 2758 — the int-width pin, not a kind. Listed rather than hidden
+     * behind a `default:` so -Wswitch still flags a real kind added later. */
+    case NROS_RMW_EVENT_FORCE_INT_WIDTH_:
+        break;
     }
     return false;
 }

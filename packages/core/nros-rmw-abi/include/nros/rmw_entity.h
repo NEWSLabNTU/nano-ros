@@ -101,7 +101,11 @@
 typedef enum rmw_feature_t {
     RMW_FEATURE_MESSAGE_INFO_PUBLICATION_SEQUENCE_NUMBER = 0,
     RMW_FEATURE_MESSAGE_INFO_RECEPTION_SEQUENCE_NUMBER   = 1,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    RMW_FEATURE_FORCE_INT_WIDTH_ = 0x7fffffff,
 } rmw_feature_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(rmw_feature_t);
 
 #ifndef NROS_RMW_TIME_POINT_VALUE_T_DEFINED
 #define NROS_RMW_TIME_POINT_VALUE_T_DEFINED
@@ -387,7 +391,11 @@ typedef enum rmw_liveliness_kind_t {
     /** Upstream's `RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE` (Iron+), issue
      *  1973. A request value only — see `NROS_RMW_RELIABILITY_BEST_AVAILABLE`. */
     NROS_RMW_LIVELINESS_BEST_AVAILABLE    = 5,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    NROS_RMW_LIVELINESS_FORCE_INT_WIDTH_ = 0x7fffffff,
 } rmw_liveliness_kind_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(rmw_liveliness_kind_t);
 
 /**
  * Full DDS-shaped QoS profile.
@@ -512,7 +520,11 @@ typedef enum rmw_qos_compatibility_type_t {
     RMW_QOS_COMPATIBILITY_OK      = 0,
     RMW_QOS_COMPATIBILITY_WARNING = 1,
     RMW_QOS_COMPATIBILITY_ERROR   = 2,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    RMW_QOS_COMPATIBILITY_FORCE_INT_WIDTH_ = 0x7fffffff,
 } rmw_qos_compatibility_type_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(rmw_qos_compatibility_type_t);
 
 /** Which policies clashed, as a bitmask. A nano-ros extension: upstream reports
  *  the reason only as prose, which a target cannot act on. */
@@ -523,7 +535,11 @@ typedef enum nros_rmw_qos_clash_t {
     NROS_RMW_QOS_CLASH_DEADLINE         = 1u << 2,
     NROS_RMW_QOS_CLASH_LIVELINESS_KIND  = 1u << 3,
     NROS_RMW_QOS_CLASH_LIVELINESS_LEASE = 1u << 4,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    NROS_RMW_QOS_CLASH_FORCE_INT_WIDTH_ = 0x7fffffff,
 } nros_rmw_qos_clash_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(nros_rmw_qos_clash_t);
 
 /** Which policies of `offered` (a publisher's) and `requested` (a
  *  subscription's) are incompatible, as a bitmask — no strings, so an image
@@ -582,14 +598,22 @@ typedef enum rmw_log_severity_t {
     RMW_LOG_SEVERITY_WARN  = 30,
     RMW_LOG_SEVERITY_ERROR = 40,
     RMW_LOG_SEVERITY_FATAL = 50,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    RMW_LOG_SEVERITY_FORCE_INT_WIDTH_ = 0x7fffffff,
 } rmw_log_severity_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(rmw_log_severity_t);
 
 /** Which end of a topic an endpoint is — upstream `rmw_endpoint_type_t`. */
 typedef enum rmw_endpoint_type_t {
     RMW_ENDPOINT_INVALID      = 0,
     RMW_ENDPOINT_PUBLISHER    = 1,
     RMW_ENDPOINT_SUBSCRIPTION = 2,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    RMW_ENDPOINT_FORCE_INT_WIDTH_ = 0x7fffffff,
 } rmw_endpoint_type_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(rmw_endpoint_type_t);
 
 /** One discovered endpoint — upstream `rmw_topic_endpoint_info_t`.
  *
@@ -622,7 +646,11 @@ typedef enum rmw_transport_protocol_t {
     RMW_TRANSPORT_PROTOCOL_UDP     = 1,
     RMW_TRANSPORT_PROTOCOL_TCP     = 2,
     RMW_TRANSPORT_PROTOCOL_COUNT   = 3,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    RMW_TRANSPORT_PROTOCOL_FORCE_INT_WIDTH_ = 0x7fffffff,
 } rmw_transport_protocol_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(rmw_transport_protocol_t);
 
 /** Internet protocol of a network flow — upstream `rmw_internet_protocol_t`. */
 typedef enum rmw_internet_protocol_t {
@@ -630,7 +658,11 @@ typedef enum rmw_internet_protocol_t {
     RMW_INTERNET_PROTOCOL_IPV4    = 1,
     RMW_INTERNET_PROTOCOL_IPV6    = 2,
     RMW_INTERNET_PROTOCOL_COUNT   = 3,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    RMW_INTERNET_PROTOCOL_FORCE_INT_WIDTH_ = 0x7fffffff,
 } rmw_internet_protocol_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(rmw_internet_protocol_t);
 
 /** Upstream's value, kept exactly: it sizes a field that crosses the ABI, and
  *  upstream took it from `linux/inet.h` for the same reason. */

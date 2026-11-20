@@ -202,4 +202,29 @@ typedef int32_t rmw_ret_t;
  *  point of pinning to upstream's numbering. */
 #define NROS_RMW_RET_INCORRECT_RMW_IMPLEMENTATION 12  /* upstream, unreachable here */
 
+/* ---- Enum width pin ------------------------------------------------------
+ * Every enum in these headers crosses the C ABI by memory (struct fields,
+ * out-parameters), and its Rust mirror is bindgen output generated on the
+ * host, where an unfixed C enum is `unsigned int`. arm-none-eabi's AAPCS
+ * default is variable-size enums (the smallest integer that holds the
+ * values), so the same enum was ONE byte in C there and four in Rust. Each
+ * enum therefore carries a `*_FORCE_INT_WIDTH_ = 0x7fffffff` enumerator,
+ * which makes it `int`-sized on every ABI, and this assert beside it, so
+ * any C or C++ TU that includes the header proves the width on its own
+ * target. `-fno-short-enums` is not
+ * the fix: every consumer, in tree and out, would have to pass it.
+ * `just check abi-enum-width` fails an enum here without both. */
+#if defined(__cplusplus) && __cplusplus >= 201103L
+#define NROS_RMW_ASSERT_ENUM_INT_WIDTH(T)                                       \
+    static_assert(sizeof(T) == sizeof(int),                                   \
+                  #T " must be int-sized: its Rust mirror is c_uint")
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define NROS_RMW_ASSERT_ENUM_INT_WIDTH(T)                                       \
+    _Static_assert(sizeof(T) == sizeof(int),                                  \
+                   #T " must be int-sized: its Rust mirror is c_uint")
+#else
+#define NROS_RMW_ASSERT_ENUM_INT_WIDTH(T)                                       \
+    typedef char nros_rmw_enum_int_width_##T[(sizeof(T) == sizeof(int)) ? 1 : -1]
+#endif
+
 #endif /* NROS_RMW_RET_H */

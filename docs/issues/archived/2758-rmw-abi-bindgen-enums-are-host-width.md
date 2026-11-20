@@ -1,12 +1,14 @@
 ---
 id: 2758
 title: "The RMW ABI's Rust bindings give every C enum the host's 4-byte width; on arm-none-eabi the C enum is 1 byte"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: rmw
 related: [issue-0238, issue-1330, issue-2755, rfc-0054]
 found: 2026-11-20
+resolved: 2026-11-20
+resolved_in: "fix(issue 2758): pin every rmw ABI enum to int width"
 ---
 
 ## Measured
@@ -132,3 +134,39 @@ consumer, in tree and out, would need it.
   the in-header asserts.
 - A gate fails when a `typedef enum` is added to an ABI header without a
   width pin (or the cross-target probe covers the rmw ABI).
+
+## Resolution
+
+Fixed as directed. Each of the ten enums in `rmw_entity.h`, `rmw_event.h`
+and `rmw_vtable.h` carries a `*_FORCE_INT_WIDTH_ = 0x7fffffff` enumerator
+and `NROS_RMW_ASSERT_ENUM_INT_WIDTH(T)` beside it (defined in `rmw_ret.h`:
+C11 `_Static_assert`, C++11 `static_assert`, a negative-array typedef for
+older standards). Rust sizes do not move; the C side grows to match.
+`generated.rs` gains the ten constants. Cyclone's exhaustive
+`cyclone_event_type_is_supported` switch lists the pin so `-Wswitch` still
+catches a real kind added later. `abi_layout_check.c`'s stale comment is
+rewritten.
+
+Re-measured with the same probe after the fix (C arm-none-eabi-gcc
+cortex-r52, Rust armv8r-none-eabihf):
+
+| quantity | C before | C after | Rust |
+|---|---|---|---|
+| `sizeof(rmw_qos_compatibility_type_t)` | 1 | 4 | 4 |
+| `sizeof(rmw_endpoint_type_t)` | 1 | 4 | 4 |
+| `sizeof(rmw_network_flow_endpoint_t)` | 60 | 68 | 68 |
+| flow offsets port / label / dscp / address | 2/4/8/9 | 8/12/16/17 | 8/12/16/17 |
+| `sizeof(rmw_topic_endpoint_info_t)` | 68 | 68 | 68 |
+
+The headers compile clean as C99/C11/gnu17 and C++98/11/17 on the host and
+for cortex-m0 / cortex-r52; `workspace-c-freertos` (mps2-an385, C) and
+`workspace-cpp-s32z270-freertos` (ARMv8-R, C++ Cyclone) build.
+
+Gate: `just check abi-enum-width` (`scripts/check/check-abi-enum-width.py`,
+fast tier). It parses `scripts/gen-abi-bindings.sh` for every bindgen run
+(wrapper heredoc includes, direct header inputs, `-I` directories), takes
+the include closure under those directories, and fails any `enum` there
+without the pin and a `sizeof(T) == sizeof(int)` static assert (spelled out,
+or through a macro the header set defines as exactly that). An empty or
+unresolved parse fails. Self-tests on every run; on the pre-fix
+`rmw_entity.h` it reports 16 violations.

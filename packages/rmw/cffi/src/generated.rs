@@ -1063,6 +1063,8 @@ pub mod rmw_feature_t {
     pub type Type = core::ffi::c_uint;
     pub const RMW_FEATURE_MESSAGE_INFO_PUBLICATION_SEQUENCE_NUMBER: Type = 0;
     pub const RMW_FEATURE_MESSAGE_INFO_RECEPTION_SEQUENCE_NUMBER: Type = 1;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const RMW_FEATURE_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 pub mod rmw_liveliness_kind_t {
     #[doc = " Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`.\n\n  Upstream's numbering (W5/B2). `MANUAL_BY_NODE` and `MANUAL_BY_TOPIC` were\n  SWAPPED here until 2026-08-24 — 2 meant BY_TOPIC to us and BY_NODE to\n  upstream — which the cyclonedds backend then translated into a real DDS\n  liveliness kind a ROS peer matches on."]
@@ -1079,6 +1081,8 @@ pub mod rmw_liveliness_kind_t {
     pub const NROS_RMW_LIVELINESS_UNKNOWN: Type = 4;
     #[doc = " Upstream's `RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE` (Iron+), issue\n  1973. A request value only — see `NROS_RMW_RELIABILITY_BEST_AVAILABLE`."]
     pub const NROS_RMW_LIVELINESS_BEST_AVAILABLE: Type = 5;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const NROS_RMW_LIVELINESS_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 pub mod rmw_qos_compatibility_type_t {
     #[doc = " Verdict of a QoS compatibility check. Upstream `rmw_qos_compatibility_type_t`,\n  values included.\n\n  `WARNING` means \"compatible as far as could be checked, but at least one\n  policy on one side is `*_UNKNOWN`\" — the backend could not read it back.\n  Reachable since W5/B2 gave the policies an UNKNOWN encoding; it was defined\n  and unreachable before that, so the value could not be reused for anything\n  else in the meantime.\n\n  A definite clash OUTRANKS an unknown: if the policies that COULD be compared\n  are already incompatible the verdict is `ERROR`, because softening it to a\n  warning would hide something the caller can act on."]
@@ -1086,6 +1090,8 @@ pub mod rmw_qos_compatibility_type_t {
     pub const RMW_QOS_COMPATIBILITY_OK: Type = 0;
     pub const RMW_QOS_COMPATIBILITY_WARNING: Type = 1;
     pub const RMW_QOS_COMPATIBILITY_ERROR: Type = 2;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const RMW_QOS_COMPATIBILITY_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 pub mod nros_rmw_qos_clash_t {
     #[doc = " Which policies clashed, as a bitmask. A nano-ros extension: upstream reports\n  the reason only as prose, which a target cannot act on."]
@@ -1096,6 +1102,8 @@ pub mod nros_rmw_qos_clash_t {
     pub const NROS_RMW_QOS_CLASH_DEADLINE: Type = 4;
     pub const NROS_RMW_QOS_CLASH_LIVELINESS_KIND: Type = 8;
     pub const NROS_RMW_QOS_CLASH_LIVELINESS_LEASE: Type = 16;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const NROS_RMW_QOS_CLASH_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 pub mod rmw_log_severity_t {
     #[doc = " Log severity — upstream `rmw_log_severity_t`, values included.\n\n  The values are `rcutils`' ladder (`DEBUG 10`, `INFO 20`, …), not a dense\n  0..N, so they are written out rather than renumbered: a caller that has an\n  `rcutils` severity in hand can pass it straight through.\n\n  There is no `TRACE`. `nros_log::Severity` has one, and it maps to `DEBUG`\n  crossing this seam — losing a distinction upstream never had is better than\n  inventing a value a ROS-side caller cannot produce."]
@@ -1106,6 +1114,8 @@ pub mod rmw_log_severity_t {
     pub const RMW_LOG_SEVERITY_WARN: Type = 30;
     pub const RMW_LOG_SEVERITY_ERROR: Type = 40;
     pub const RMW_LOG_SEVERITY_FATAL: Type = 50;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const RMW_LOG_SEVERITY_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 pub mod rmw_endpoint_type_t {
     #[doc = " Which end of a topic an endpoint is — upstream `rmw_endpoint_type_t`."]
@@ -1113,6 +1123,8 @@ pub mod rmw_endpoint_type_t {
     pub const RMW_ENDPOINT_INVALID: Type = 0;
     pub const RMW_ENDPOINT_PUBLISHER: Type = 1;
     pub const RMW_ENDPOINT_SUBSCRIPTION: Type = 2;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const RMW_ENDPOINT_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 pub mod rmw_transport_protocol_t {
     #[doc = " Transport protocol of a network flow — upstream `rmw_transport_protocol_t`,\n  values included."]
@@ -1121,6 +1133,8 @@ pub mod rmw_transport_protocol_t {
     pub const RMW_TRANSPORT_PROTOCOL_UDP: Type = 1;
     pub const RMW_TRANSPORT_PROTOCOL_TCP: Type = 2;
     pub const RMW_TRANSPORT_PROTOCOL_COUNT: Type = 3;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const RMW_TRANSPORT_PROTOCOL_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 pub mod rmw_internet_protocol_t {
     #[doc = " Internet protocol of a network flow — upstream `rmw_internet_protocol_t`."]
@@ -1129,6 +1143,8 @@ pub mod rmw_internet_protocol_t {
     pub const RMW_INTERNET_PROTOCOL_IPV4: Type = 1;
     pub const RMW_INTERNET_PROTOCOL_IPV6: Type = 2;
     pub const RMW_INTERNET_PROTOCOL_COUNT: Type = 3;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const RMW_INTERNET_PROTOCOL_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 pub mod rmw_event_type_t {
     #[doc = " Status event kinds. Stable integer values; new kinds extend the enum at\n  the END, never in the middle."]
@@ -1151,6 +1167,8 @@ pub mod rmw_event_type_t {
     pub const NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE: Type = 7;
     #[doc = " Subscription: an endpoint on the same topic was seen with a\n  DIFFERENT type. Payload: `incompatible_type`. Upstream\n  RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE."]
     pub const NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE: Type = 8;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const NROS_RMW_EVENT_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 pub mod nros_rmw_session_mode_t {
     #[doc = " Session mode for `create_session`'s @p mode parameter.\n\n These values were previously an undocumented bare `uint8_t` with no legal-\n value list — the only slot in the vtable without one — encoded inline as\n `0u8` / `1u8` at the Rust boundary.\n\n Divergence from `rmw.h`, recorded deliberately: Humble's\n `rmw_init_options_t` carries `instance_id`, `implementation_identifier`,\n `domain_id`, `security_options`, `localhost_only`, `enclave`, `allocator`\n and `impl` — and has NO session-mode concept. (This list said \"domain_id,\n enclave, security_options and discovery_options\" until 2026-08-24, which\n omitted five of the eight and named one, `discovery_options`, that is an\n IRON field and does not exist in the distro our recorded contract is taken\n from.) This parameter is closest to zenoh's `whatami`, and a\n backend that has no such notion (cyclonedds, XRCE) is expected to IGNORE it\n rather than fail. Folding it into backend-private config behind the locator\n — so the agnostic vtable stops carrying a backend-shaped field — is the\n structural fix, and is not done here."]
@@ -1159,6 +1177,8 @@ pub mod nros_rmw_session_mode_t {
     pub const NROS_RMW_SESSION_MODE_CLIENT: Type = 0;
     #[doc = " Peer-to-peer, no router. Backends without a peer mode ignore this."]
     pub const NROS_RMW_SESSION_MODE_PEER: Type = 1;
+    #[doc = " Width pin, not a value: never emitted. New\n  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH."]
+    pub const NROS_RMW_SESSION_MODE_FORCE_INT_WIDTH_: Type = 2147483647;
 }
 unsafe extern "C" {
     #[doc = " Which policies of `offered` (a publisher's) and `requested` (a\n  subscription's) are incompatible, as a bitmask — no strings, so an image\n  that only needs the verdict never links the reason table.\n\n  Argument order is upstream's: publisher profile first.\n\n  Writes `*compatibility` and `*clash_mask` on `NROS_RMW_RET_OK`;\n  `NROS_RMW_RET_INVALID_ARGUMENT` if either out-parameter is NULL."]

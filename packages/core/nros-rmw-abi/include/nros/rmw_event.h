@@ -65,7 +65,11 @@ typedef enum rmw_event_type_t {
      *  DIFFERENT type. Payload: `incompatible_type`. Upstream
      *  RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE. */
     NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE = 8,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    NROS_RMW_EVENT_FORCE_INT_WIDTH_ = 0x7fffffff,
 } rmw_event_type_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(rmw_event_type_t);
 
 /** Liveliness payload. Mirrors the DDS
  *  `rmw_liveliness_changed_status_t` shape. */

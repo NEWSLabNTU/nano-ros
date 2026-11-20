@@ -1640,7 +1640,11 @@ typedef enum nros_rmw_session_mode_t {
     NROS_RMW_SESSION_MODE_CLIENT = 0,
     /** Peer-to-peer, no router. Backends without a peer mode ignore this. */
     NROS_RMW_SESSION_MODE_PEER = 1,
+    /** Width pin, not a value: never emitted. New
+     *  enumerators go above it. See NROS_RMW_ASSERT_ENUM_INT_WIDTH. */
+    NROS_RMW_SESSION_MODE_FORCE_INT_WIDTH_ = 0x7fffffff,
 } nros_rmw_session_mode_t;
+NROS_RMW_ASSERT_ENUM_INT_WIDTH(nros_rmw_session_mode_t);
 
 /** Register a backend under a stable name. Multiple
  *  backends can coexist (bridge nodes); consumers select via
