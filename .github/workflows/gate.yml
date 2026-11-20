@@ -1460,6 +1460,19 @@ jobs:
           source ./activate.sh
           just check cpp-ffi-tests
 
+      # Issue 2760 -- the two bare-metal Rust ports (mps2-an385, stm32f4) sit
+      # outside the host workspace, so `test-unit` never reaches their host
+      # tests: with no RTC their wall clock reads 0, where it once answered
+      # uptime and kept a silent timer bug alive. Measured on a loaded 32-core
+      # host: 8 s cold (fresh target dir), 0.3 s warm.
+      - name: just check bare-metal-wall-clock
+        if: >-
+          ${{ contains(fromJSON('["pull_request","merge_group"]'), github.event_name)
+              && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check bare-metal-wall-clock
+
       # Issue 2722 -- clippy -D warnings over every feature set a recipe, a
       # script or a feature lane BUILDS and no clippy site covers. The list is
       # derived from those build sites, so a set is linted the day a lane
