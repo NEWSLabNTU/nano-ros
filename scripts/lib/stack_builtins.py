@@ -5,10 +5,18 @@ members (`__aeabi_dadd`, `__aeabi_l2d`, `__aeabi_cdcmple`, ...) carry no CFI
 either, so a linked image's `.debug_frame` has no frame for them and the walk
 refuses. This module measures each global function of such an archive ONCE,
 from the archive's own objects, and the walk reads the result back keyed by
-the archive's CONTENT HASH, the identity of exactly what the link loaded:
+the archive's CODE KEY: a hash of every member's executable sections and the
+relocations on them, by member and section name. That is what a frame is a
+fact about, and it is the same on every host:
 
-- a different GCC, multilib (cpu, float ABI) or build of the same library is a
-  different hash, so a frame is never borrowed from a near toolchain;
+- the toolchain store is built per HOST arch, so one target library is
+  different bytes on an x86_64 and an aarch64 host (archive headers,
+  `.comment`, debug paths) with identical code; a whole-file hash split one
+  library into two keys and failed validation on the other host. Measured:
+  arm-none-eabi 13.2's v7-m libgcc hashes c6a3bf92... (x86_64) and
+  8001f36d... (aarch64), with one code key and identical frames;
+- a different GCC, multilib (cpu, float ABI) or build is different code, so a
+  different key, and a frame is never borrowed from a near toolchain;
 - a hash the table does not hold is a refusal that names the archive and the
   recipe that measures it (`just zephyr stack-builtins <archive>`).
 
@@ -35,8 +43,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-#: The table's schema; bump with a reader change.
-SCHEMA = 1
+#: The table's schema; bump with a reader change. 2: `code_sha256` (the code
+#: key) replaces `sha256` (the whole file's bytes, which differ by host).
+SCHEMA = 2
 
 #: GCC's fixed-point runtime (ISO TR 18037 `_Fract`/`_Accum`, libgcc's
 #: fixed-bit.c): about 1,000 of libgcc's 1,271 functions, and nothing in this
@@ -59,11 +68,79 @@ def is_compiler_builtins(member: str) -> bool:
     return Path(member).name.startswith("compiler_builtins-")
 
 
-def archive_sha256(path: Path) -> str:
+_AR_SKIP = (b"/", b"/SYM64/", b"__.SYMDEF", b"__.SYMDEF SORTED")
+
+
+def _ar_members(data: bytes) -> list[tuple[str, bytes]]:
+    """The members of a System V / GNU `ar` archive, in order."""
+    if data[:8] != b"!<arch>\n":
+        raise ValueError("not an ar archive")
+    off, longnames, out = 8, b"", []
+    while off + 60 <= len(data):
+        hdr = data[off:off + 60]
+        name, size = hdr[:16].rstrip(b" "), int(hdr[48:58])
+        body = data[off + 60:off + 60 + size]
+        off += 60 + size + (size & 1)
+        if name in _AR_SKIP:
+            continue
+        if name == b"//":
+            longnames = body
+            continue
+        if name.startswith(b"/") and name[1:].isdigit():
+            i = int(name[1:])
+            name = longnames[i:longnames.index(b"/\n", i)]
+        else:
+            name = name.rstrip(b"/")
+        out.append((name.decode(errors="replace"), body))
+    return out
+
+
+def _code_sections(obj: bytes) -> list[tuple[str, bytes]] | None:
+    """An ELF object's executable sections and its relocation sections, by
+    name. `None` for a member that is not ELF."""
+    import struct
+    if obj[:4] != b"\x7fELF":
+        return None
+    e = "<" if obj[5] == 1 else ">"
+    if obj[4] == 1:
+        (shoff,) = struct.unpack_from(e + "I", obj, 0x20)
+        shentsize, shnum, shstrndx = struct.unpack_from(e + "HHH", obj, 0x2E)
+        fmt = e + "IIIIIIIIII"
+    else:
+        (shoff,) = struct.unpack_from(e + "Q", obj, 0x28)
+        shentsize, shnum, shstrndx = struct.unpack_from(e + "HHH", obj, 0x3A)
+        fmt = e + "IIQQQQIIQQ"
+    secs = [struct.unpack_from(fmt, obj, shoff + i * shentsize) for i in range(shnum)]
+    names = secs[shstrndx][4]
+    out = []
+    for s in secs:
+        sh_name, sh_type, sh_flags, sh_off, sh_size = s[0], s[1], s[2], s[4], s[5]
+        # SHF_EXECINSTR (and not NOBITS), or SHT_RELA / SHT_REL: the code, and
+        # what it calls. Not .symtab/.strtab/.comment/debug, which carry paths
+        # and build details that differ by host while the code does not.
+        if (sh_flags & 0x4 and sh_type != 8) or sh_type in (4, 9):
+            nm = obj[names + sh_name:obj.index(b"\0", names + sh_name)].decode(errors="replace")
+            out.append((nm, obj[sh_off:sh_off + sh_size]))
+    return out
+
+
+def archive_code_key(path: Path) -> str:
+    """The archive's CODE KEY: a sha256 over each ELF member's executable and
+    relocation sections, ordered by member then section name (a repeated
+    member name counts its occurrences), so the same code on any host gives
+    the same key."""
+    rows: list[tuple[str, str, bytes]] = []
+    seen: dict[str, int] = {}
+    for name, body in _ar_members(path.read_bytes()):
+        secs = _code_sections(body)
+        if secs is None:
+            continue
+        n = seen.get(name, 0)
+        seen[name] = n + 1
+        rows += [(f"{name}#{n}", sn, b) for sn, b in secs]
     h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
+    for mem, sn, b in sorted(rows, key=lambda r: (r[0], r[1])):
+        h.update(mem.encode() + b"\0" + sn.encode() + b"\0" + len(b).to_bytes(8, "little") + b)
     return h.hexdigest()
 
 
@@ -393,7 +470,7 @@ def frames_for(table: dict, sha: str) -> dict[str, int] | None:
     """The measured frames of the archive with this content hash, or None when
     the table holds no row for it."""
     for row in table.get("archive", []):
-        if row.get("sha256") == sha:
+        if row.get("code_sha256") == sha:
             return {k: v for k, v in row.get("frames", {}).items() if isinstance(v, int)}
     return None
 
@@ -409,9 +486,9 @@ def validate(table: dict, root: Path | None = None) -> list[str]:
     seen: set[str] = set()
     for i, row in enumerate(table.get("archive", [])):
         where = f"[[archive]] #{i + 1}"
-        sha = row.get("sha256", "")
+        sha = row.get("code_sha256", "")
         if not re.fullmatch(r"[0-9a-f]{64}", str(sha)):
-            problems.append(f"{where}: `sha256` is not a 64-hex content hash")
+            problems.append(f"{where}: `code_sha256` is not a 64-hex code key")
         if sha in seen:
             problems.append(f"{where}: a second row for archive {sha[:12]}")
         seen.add(sha)
@@ -432,9 +509,12 @@ def validate(table: dict, root: Path | None = None) -> list[str]:
                 problems.append(f"{where}: `{name}` is both measured and unmeasured")
         if root is not None and row.get("path"):
             p = root / row["path"]
-            if p.is_file() and archive_sha256(p) != sha:
-                problems.append(f"{where}: {row['path']} does not hash to its `sha256` (the "
-                                f"archive changed; re-run `{RECIPE} {p}`)")
+            # A store copy built for another host has other bytes and the
+            # same code, so it is checked by code key; an archive this host
+            # does not have is not checked at all (never a failure).
+            if p.is_file() and archive_code_key(p) != sha:
+                problems.append(f"{where}: {row['path']}'s code no longer matches its "
+                                f"`code_sha256` (the archive changed; re-run `{RECIPE} {p}`)")
     return problems
 
 
@@ -443,7 +523,7 @@ def render_row(path_label: str, sha: str, toolchain: str, measured: str,
     """One `[[archive]]` block, in the one spelling the recipe writes."""
     lines = ["[[archive]]",
              f'path = "{path_label}"',
-             f'sha256 = "{sha}"',
+             f'code_sha256 = "{sha}"',
              f'toolchain = "{toolchain}"',
              'method = "thumb prologue sum, plus the deepest in-archive callee chain"',
              f'measured = "{measured}"',
@@ -464,7 +544,7 @@ def render_row(path_label: str, sha: str, toolchain: str, measured: str,
 def unmeasured_for(table: dict, sha: str) -> dict[str, str]:
     """Why the recipe could not measure each such function of this archive."""
     for row in table.get("archive", []):
-        if row.get("sha256") == sha:
+        if row.get("code_sha256") == sha:
             return dict(row.get("unmeasured") or {})
     return {}
 
@@ -477,12 +557,13 @@ def defined_names(archive: Path, nm: str) -> set[str]:
 HEADER = f"""# Stack frames of toolchain builtins, measured from the toolchain's own archive.
 #
 # Phase-557 W9b. GENERATED: every row is written by `{RECIPE} <archive>` and
-# none is typed by hand (`--validate-table` checks each row's hash and, where
-# the archive is installed, that it still hashes to it). A row is keyed by the
-# archive's CONTENT HASH: the walk reads the frames of exactly the archives
-# its link map names, so a different compiler, multilib or build is a
-# different key, and a key with no row is a refusal naming the archive and the
-# recipe, never a near key's numbers.
+# none is typed by hand (`--validate-table` checks each row's key and, where
+# the archive is installed, that its code still has that key). A row is keyed
+# by the archive's CODE KEY (its executable and relocation sections, which are
+# the same bytes on every host the toolchain is built for): the walk reads the
+# frames of exactly the archives its link map names, so a different compiler,
+# multilib or build is a different key, and a key with no row is a refusal
+# naming the archive and the recipe, never a near key's numbers.
 #
 # A frame is the function's total depth: its own pushes plus the deepest chain
 # of calls it makes inside the same archive (the walk does not descend into a
@@ -499,7 +580,7 @@ def replace_row(text: str, sha: str, row: str) -> str:
         return HEADER + "\n" + row
     blocks = re.split(r"(?m)^(?=\[\[archive\]\]\s*$)", text)
     head, rest = blocks[0], blocks[1:]
-    out = [b for b in rest if f'sha256 = "{sha}"' not in b]
+    out = [b for b in rest if f'code_sha256 = "{sha}"' not in b]
     out.append(row)
     out.sort(key=lambda b: (re.search(r'(?m)^path = "(.*)"$', b) or [None, ""])[1])
     return head.rstrip("\n") + "\n\n" + "\n".join(o.rstrip("\n") + "\n" for o in out)
@@ -579,8 +660,44 @@ def self_checks() -> list[tuple[str, bool]]:
                 r["__aeabi_d2ulz"] == {"bytes": 32}))
     out.append(("builtins: a call back into its own jump component is not measured",
                 "calls into its own code" in r["selfcall"].get("unmeasured", "")))
+    # The code key: the same code built on two hosts (other ar header bytes,
+    # another `.comment`) is one key; other code is another.
+    import struct as _st
+
+    def _elf(text: bytes, comment: bytes) -> bytes:
+        shstr = b"\0.text\0.comment\0.shstrtab\0"
+        body = text + comment + shstr
+        shoff = 52 + len(body)
+        hdr = b"\x7fELF\x01\x01\x01" + b"\0" * 9 + _st.pack(
+            "<HHIIIIIHHHHHH", 1, 40, 1, 0, 0, shoff, 0, 52, 0, 0, 40, 4, 3)
+        sh = b"\0" * 40
+        sh += _st.pack("<IIIIIIIIII", 1, 1, 0x6, 0, 52, len(text), 0, 0, 2, 0)
+        sh += _st.pack("<IIIIIIIIII", 7, 1, 0x30, 0, 52 + len(text), len(comment), 0, 0, 1, 1)
+        sh += _st.pack("<IIIIIIIIII", 16, 3, 0, 0, 52 + len(text) + len(comment), len(shstr),
+                       0, 0, 1, 0)
+        return hdr + body + sh
+
+    def _ar(members: list[tuple[str, bytes]], stamp: str) -> bytes:
+        out = b"!<arch>\n"
+        for name, body in members:
+            out += (f"{name + '/':<16}{stamp:<12}{'0':<6}{'0':<6}{'644':<8}{len(body):<10}`\n"
+                    .encode()) + body + (b"\n" if len(body) & 1 else b"")
+        return out
+
+    with tempfile.TemporaryDirectory() as d:
+        code = b"\x10\xb5\x10\xbd"  # push {r4, lr}; pop {r4, pc}
+        a1 = Path(d, "a.a")
+        a1.write_bytes(_ar([("x.o", _elf(code, b"GCC: x86_64 host\0"))], "1700000000"))
+        a2 = Path(d, "b.a")
+        a2.write_bytes(_ar([("x.o", _elf(code, b"GCC: an aarch64 host build\0"))], "1800000000"))
+        a3 = Path(d, "c.a")
+        a3.write_bytes(_ar([("x.o", _elf(b"\x30\xb5\x30\xbd", b"GCC: x86_64 host\0"))],
+                           "1700000000"))
+        out.append(("builtins: one code on two hosts is one code key; other code is another",
+                    archive_code_key(a1) == archive_code_key(a2) != archive_code_key(a3)))
+
     good = {"schema": SCHEMA, "archive": [{
-        "path": "x/libgcc.a", "sha256": "a" * 64, "toolchain": "gcc 12.2.0",
+        "path": "x/libgcc.a", "code_sha256": "a" * 64, "toolchain": "gcc 12.2.0",
         "method": "m", "measured": "2026-11-21", "frames": {"__aeabi_dadd": 12},
         "unmeasured": {"abort_user": "calls `abort`"}}]}
     out.append(("builtins: the fixed-point family is skipped, the rest of __gnu_ is not",
@@ -590,12 +707,12 @@ def self_checks() -> list[tuple[str, bool]]:
                 and not FIXED_POINT.match("__gnu_Unwind_Save_VFP")
                 and not FIXED_POINT.match("__aeabi_dadd")))
     out.append(("builtins: a complete table validates", validate(good) == []))
-    bad = {"schema": SCHEMA, "archive": [dict(good["archive"][0], sha256="nothex",
+    bad = {"schema": SCHEMA, "archive": [dict(good["archive"][0], code_sha256="nothex",
                                               frames={"__aeabi_dadd": -1})]}
     probs = validate(bad)
     out.append(("builtins: a bad hash and a negative frame are refused",
-                any("sha256" in p for p in probs) and any("byte count" in p for p in probs)))
-    out.append(("builtins: lookup is by exact content hash, never a near key",
+                any("code_sha256" in p for p in probs) and any("byte count" in p for p in probs)))
+    out.append(("builtins: lookup is by exact code key, never a near key",
                 frames_for(good, "a" * 64) == {"__aeabi_dadd": 12}
                 and frames_for(good, "b" * 64) is None))
     t = replace_row("", "a" * 64, render_row("x/libgcc.a", "a" * 64, "gcc", "d",

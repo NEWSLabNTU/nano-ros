@@ -1124,12 +1124,21 @@ build where that number was read.
   refusal; a build with one flag changed (frame pointer) refuses, naming the
   key.
   - **Status: DONE (2026-11-21).** As built:
-    - **The key is the archive's content hash**, not a version string plus
-      flags: it is the identity of exactly what the link loaded, so a
-      different GCC, multilib or build is a different key by construction.
-      The three pinned archives (Zephyr SDK 0.16.8 `thumb/v7e-m/nofp` and
-      `thumb/v7-m/nofp` libgcc, arm-none-eabi-gcc 13.2 `thumb/v7-m/nofp`)
-      have rows; the 13.2 libgcc hashes the same in all three store copies.
+    - **The key is the archive's CODE KEY**, not a version string plus
+      flags: a sha256 over each member's executable and relocation
+      sections, by member and section name, so a different GCC, multilib or
+      build is a different key by construction.
+      - **Not the whole file's sha256, which W9b first used.** The toolchain
+        store is built per host arch, so one library is different bytes on an
+        x86_64 and an aarch64 host. arm-none-eabi 13.2's v7-m libgcc hashed
+        c6a3bf92... and 8001f36d... with the same code and identical
+        measured frames, and `check fast` went red on every aarch64 host
+        (2026-11-21). The code key is one key for both.
+      - The rows are arm-none-eabi-gcc 13.2 `thumb/v7-m/nofp` and the pinned
+        Zephyr SDK 0.16.9's `thumb/v7e-m/nofp` and `thumb/v7-m/nofp` libgcc.
+        0.16.8's two have the same code keys as 0.16.9's.
+      - `--validate-table` checks the code key of an archive the host has,
+        and skips one it does not.
     - **The recipe** is `just zephyr stack-builtins <archive>`
       (`scripts/lib/stack_builtins.py`): Thumb prologue decoding, the SUM of
       a body's stack decrements (an upper bound), plus the deepest chain of

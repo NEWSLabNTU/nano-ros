@@ -250,5 +250,5 @@ reason = "a failed C assert prints and aborts; the path diverges, as the Rust pa
 
 # libgcc's hand-assembly builtins (`__aeabi_cdcmple`, `__aeabi_dadd`, ...) carry
 # no CFI, so their frames come from config/stack-builtins.toml, measured from
-# the toolchain's own archive and keyed by its content hash (phase-557 W9b).
+# the toolchain's own archive and keyed by its code key (phase-557 W9b).
 # `__aeabi_cdcmple` was a hand-read 12 B row here; the recipe measures 12 B.

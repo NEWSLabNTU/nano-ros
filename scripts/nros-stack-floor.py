@@ -1038,7 +1038,7 @@ def builtins_table_path(table: str | None, stated: str | None) -> Path | None:
 def apply_builtins(g: Graph, archives: list[str], table: dict, nm: str) -> int:
     """Frames, from the builtins table, for functions the toolchain archives the
     link loaded define and no input or CFI states (phase-557 W9b). Keyed by
-    each archive's content hash, never by target: an archive the table holds no
+    each archive's code key, never by target: an archive the table holds no
     row for gives no frame, and a function it defines is refused with the
     archive and the recipe named. Returns how many functions got a frame."""
     BUILTIN_HINTS.clear()
@@ -1050,7 +1050,7 @@ def apply_builtins(g: Graph, archives: list[str], table: dict, nm: str) -> int:
         if str(path) in seen or path.suffix not in (".a", ".rlib") or not path.is_file():
             continue
         seen.add(str(path))
-        sha = stack_builtins.archive_sha256(path)
+        sha = stack_builtins.archive_code_key(path)
         rows = stack_builtins.frames_for(table, sha)
         if rows is not None:
             for fn in sorted(frameless):
@@ -1063,7 +1063,7 @@ def apply_builtins(g: Graph, archives: list[str], table: dict, nm: str) -> int:
                     continue
                 if fn in unmeasured:
                     BUILTIN_HINTS.setdefault(
-                        fn, f"{path.name} (sha256 {sha[:12]}) is in the builtins table, which "
+                        fn, f"{path.name} (code key {sha[:12]}) is in the builtins table, which "
                             f"could not measure it: {unmeasured[fn]}")
                 elif stack_builtins.FIXED_POINT.match(fn):
                     BUILTIN_HINTS.setdefault(
@@ -1075,7 +1075,7 @@ def apply_builtins(g: Graph, archives: list[str], table: dict, nm: str) -> int:
         defined = stack_builtins.defined_names(path, nm)
         for fn in sorted((frameless - set(g.frames)) & defined):
             BUILTIN_HINTS.setdefault(
-                fn, f"defined by {path} (sha256 {sha[:12]}), an archive "
+                fn, f"defined by {path} (code key {sha[:12]}), an archive "
                     f"config/stack-builtins.toml holds no row for: measure it with "
                     f"`{stack_builtins.RECIPE} {path}`")
     return n
@@ -3180,7 +3180,7 @@ def run(args: argparse.Namespace) -> int:
     bt_path = builtins_table_path(args.table, args.builtins)
     if bt_path is not None and dropped:
         got = apply_builtins(g, dropped, load_table(bt_path), llvm_tool("llvm-nm", args.llvm_bin))
-        print(f"nros-stack-floor: {got} frame(s) from {bt_path.name}, by the content hash of "
+        print(f"nros-stack-floor: {got} frame(s) from {bt_path.name}, by the code key of "
               "the toolchain archives the link loaded", file=sys.stderr)
     resolve_cxx_su_frames(g, lambda names: subprocess.run(
         [cxx_demangler(args.cxxfilt, args.llvm_bin)], input="\n".join(names), check=True,
@@ -4495,12 +4495,14 @@ def main() -> int:
     ap.add_argument("--image", help="the image's shape id (selects its measured allowance; "
                     "an image with no row is unmeasured, reported and never enforced)")
     ap.add_argument("--builtins", help="config/stack-builtins.json: measured frames of toolchain "
-                    "archives, by content hash (default: the one beside --table)")
+                    "archives, by code key (default: the one beside --table)")
     ap.add_argument("--measure-builtins", metavar="ARCHIVE",
                     help="measure every function of a toolchain archive (libgcc.a, ...) and "
                          "write its row into --into (the `just stack-builtins` recipe)")
     ap.add_argument("--into", metavar="TABLE", help="with --measure-builtins: the table to "
                     "write (config/stack-builtins.toml); its .json twin is rewritten too")
+    ap.add_argument("--label", help="with --measure-builtins: the archive's path under the SDK "
+                    "store, when the copy measured is not the store's (an extracted release)")
     ap.add_argument("--toolchain", help="with --measure-builtins: the toolchain that shipped "
                     "the archive, as its compiler's `--version` first line")
     ap.add_argument("--validate-table", metavar="TABLE",
@@ -4591,8 +4593,14 @@ def measure_builtins(args: argparse.Namespace) -> int:
         archive, llvm_tool("llvm-objdump", args.llvm_bin), llvm_tool("llvm-nm", args.llvm_bin),
         llvm_tool("llvm-ar", args.llvm_bin))
     store = sdk_store().resolve()
-    label = str(archive.relative_to(store)) if archive.is_relative_to(store) else str(archive)
-    sha = stack_builtins.archive_sha256(archive)
+    if args.label:
+        label = args.label
+    elif archive.is_relative_to(store):
+        label = str(archive.relative_to(store))
+    else:
+        raise SystemExit(f"nros-stack-floor: {archive} is outside the SDK store ({store}); name "
+                         "where the store keeps it with --label <path under the store>")
+    sha = stack_builtins.archive_code_key(archive)
     toolchain = args.toolchain or label.split("/lib/")[0]
     import datetime
     row = stack_builtins.render_row(label, sha, toolchain,
@@ -4603,7 +4611,7 @@ def measure_builtins(args: argparse.Namespace) -> int:
     into.write_text(text, encoding="utf-8")
     json_twin(into).write_text(render_json_twin(load_toml(into)), encoding="utf-8")
     got = sum(1 for r in result.values() if "bytes" in r)
-    print(f"{into}: {archive.name} (sha256 {sha[:12]}): {got} of {len(result)} function(s) "
+    print(f"{into}: {archive.name} (code key {sha[:12]}): {got} of {len(result)} function(s) "
           "measured; the rest name why")
     return 0
 
