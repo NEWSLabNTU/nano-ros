@@ -69,6 +69,21 @@ clock-epoch-store:
 can-board-defaults:
     @bash tests/can-board-defaults-tests.sh
 
+# RFC-0141 D1/D4 (phase-582 W1c) -- boot resolution of the wall-clock source,
+# `nros/clock_resolve.h`, and the policy it latches into the epoch store,
+# against a fake platform whose clock the test moves: one source; a fallback
+# that waits each source's settle time; only the source being tried may
+# install; `upgrade = never` refuses every other source; `monotonic` takes a
+# source earlier in the list as one counted step, refuses one later, and holds
+# a reading that would go backwards until the new source catches up;
+# `unstamped` says so once and reads 0; `halt` stops through
+# nros_platform_panic naming every source. Negative control: a frozen clock
+# fails both "advances" cases. Compiles a small C program; ~1 s.
+[private]
+[group('needs:cc')]
+clock-resolve:
+    @bash tests/clock-resolve-tests.sh
+
 # RFC-0135 D2 (phase-577 W8) -- a board's CMake module has ONE lookup,
 # `nros_board_module_path()` (cmake/NanoRosBoardModule.cmake), so a board
 # package outside nano-ros can ship its own and `nros build` can name it
