@@ -247,8 +247,9 @@ config NROS_TRACE_CALLBACKS
       a plain `extern "C" fn(uint32_t, uint32_t)`; nothing here presumes CTF.
       On a Zephyr image that also sets CONFIG_TRACING_CTF, the sink that the
       entry path installs (`nros_zephyr_trace_marker`, in
-      `nros_platform_zephyr_shims.c`) forwards to an out-of-tree `app_marker`
-      CTF event; without CONFIG_TRACING_CTF that shim is empty and the events
+      `nros_platform_zephyr_shims.c`) forwards to the `app_marker` CTF
+      event, which nano-ros's Zephyr patch set adds to the workspace (stock
+      Zephyr has none); without CONFIG_TRACING_CTF that shim is empty and the events
       cost a call and a return. Enabling this alone therefore instruments the
       executor but records nothing — pair it with a tracing backend.
 
