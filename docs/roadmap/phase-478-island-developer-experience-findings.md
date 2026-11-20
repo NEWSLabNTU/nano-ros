@@ -6,8 +6,9 @@ of I8 had already landed under phase-474 I5 and issue 1534's configure warning,
 and most issues the 2026-10-05 text cited as open are resolved (T1). What is
 left needs the S32K344 and the island tree: the fresh-worktree and island
 `image-facts` re-run (T2), the stated-below-derived build of the island image
-(T3), and on-board confirmation of D4's epoch. I8's second half waits on
-phase-474 T3. I9-I11 were added 2026-11-15, from the island's GitHub reports:
+(T3), and on-board confirmation of D4's epoch. I8 is complete (2026-11-20):
+phase-474 T3 closed issue 1534 with a configure refusal instead of a new
+default, so the help text is where the pair stays. I9-I11 were added 2026-11-15, from the island's GitHub reports:
 the CMake road's image `profile` (I9), then a generated Zephyr app's package
 closure and its workspace Zephyr modules (I10 and I11, issue 2594, option A,
 done).
@@ -479,7 +480,18 @@ reports a stated value below it.
   (2026-10-24) names both lines and why. Its stale Zephyr row (`uart_poll_*`
   only) now names the interrupt-driven ring of issue 0852.
 
-The second half waits on phase-474 T3; issue 1534 stays open there.
+**Second half (2026-11-20).** Phase-474 T3 closed issue 1534 without moving
+either default: the main priority is Zephyr's symbol and Kconfig cannot derive
+`read_k + 1`, so the configure refuses a serial image whose main thread is not
+below the read task and prints the number (issue 2164), and the RX ring stays
+1024 because no lane measures a serial join. The `configdefault` this item
+planned is therefore not built, and the help text carries the pair for good:
+- `ZENOH_READ_PRIORITY`'s help no longer says the read task sits below the
+  main thread (true only at Zephyr's main 0, the case a serial image refuses),
+  and names `CONFIG_MAIN_THREAD_PRIORITY=5`, the refusal and the RX ring.
+- `NROS_ZENOH_SERIAL_RX_RING_BYTES`'s help states the main-priority line and
+  why, with no issue ids or project names in its text.
+- The serial guide's Zephyr step already names both lines and the refusal.
 
 ### I9 -- an image's `profile` reaches the CMake road
 
@@ -841,8 +853,8 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       recipe for a console-less board.
 - [x] I7: `nros version` names the vendored play_launch commit and rlm tag
       (`--version` stays one line; I7).
-- [ ] I8: the serial-link guide and Kconfig help name the main-priority and
-      RX-ring lines (done) until 474 T3 makes them defaults (waits on T3).
+- [x] I8: the serial-link guide and Kconfig help name the main-priority and
+      RX-ring lines; 474 T3 kept them stated, not defaults, so they stay.
 - [x] I19: a declaration past a full parameter store stops the boot in C++
       (`set_error`), returns `RCLC_RET_FULL` in C and `Err` in Rust, and the
       logged line names the knob; a test per language (issue 2634).

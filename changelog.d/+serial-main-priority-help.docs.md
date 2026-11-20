@@ -1,0 +1,1 @@
+The help of `ZENOH_READ_PRIORITY` and `NROS_ZENOH_SERIAL_RX_RING_BYTES` names the main-thread priority a Zephyr image needs on a serial link (`CONFIG_MAIN_THREAD_PRIORITY=5` at the default read priority) and why. The read-priority help no longer says the read task runs below the main thread.

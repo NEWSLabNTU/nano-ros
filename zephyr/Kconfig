@@ -847,7 +847,7 @@ config NROS_ZENOH_SERIAL_RX_RING_BYTES
     default 1024
     range 64 16384
     help
-      With interrupt-driven RX (issue 0852) the UART ISR drains the hardware
+      With interrupt-driven RX the UART ISR drains the hardware
       FIFO into this ring and zenoh-pico's read task decodes frames out of it.
       The ring holds what arrives while the read task is not running: at
       115200 baud 1024 bytes are 89 ms of line, at 921600 they are 11 ms.
@@ -859,14 +859,19 @@ config NROS_ZENOH_SERIAL_RX_RING_BYTES
       src/link/transport/serial/uart_zephyr.c), whose default is the same 1024.
 
       The 1024 default is at its edge for a board that JOINS a live domain
-      at 921600 baud (issue 1534): the safety island measured a high water
-      of 815-1024 with one join in five overflowing, and states 4096. A
-      board that joins an idle domain stays far below it. The default is
-      not raised here because no lane measures it; read `ring_high_water`
-      on the board and size from it. Pair it with
-      CONFIG_MAIN_THREAD_PRIORITY below the read task, which the configure
-      requires on a serial link and refuses otherwise, naming the number
-      (issue 2164).
+      at 921600 baud: an S32K344 board measured a high water of 815-1024
+      with one join in five overflowing, and states 4096. A board that
+      joins an idle domain stays far below it. The default is not raised
+      here because no lane measures it; read `ring_high_water` on the
+      board and size from it.
+
+      Pair it with the main thread's priority. Zephyr's default
+      CONFIG_MAIN_THREAD_PRIORITY, 0, outranks the read task, so the ring
+      fills while main creates entities. State
+      CONFIG_MAIN_THREAD_PRIORITY=5, below the read task at the default
+      NROS_ZENOH_READ_PRIORITY on 15 preempt priorities. The configure
+      refuses a serial image whose main thread is not below the read task
+      and names the number to use.
 
 config NROS_ZENOH_SERIAL_TX_RING_BYTES
     int "Serial link: transmit ring between the sending thread and the UART ISR (bytes)"
@@ -2824,14 +2829,25 @@ config NROS_ZENOH_READ_PRIORITY
 
       Why 200: on a CONFIG_NUM_PREEMPT_PRIORITIES=15 image it maps to SCHED_RR
       10, i.e. k_thread 4 — ABOVE the sched_task pool ([8,14] in
-      [board.priority_plan]) and below the main thread. That ordering is
-      CHOSEN, not inherited: it is what the board's priority plan already
-      declares, and what FreeRTOS ships (app 3 / transport 4). The reverse
-      starves the RX drain and stalls publishers on retransmission timeouts.
-      Both orderings are legitimate; choose one on purpose.
+      [board.priority_plan]). That ordering is CHOSEN, not inherited: it is
+      what the board's priority plan already declares, and what FreeRTOS
+      ships (app 3 / transport 4). The reverse starves the RX drain and stalls
+      publishers on retransmission timeouts. Both orderings are legitimate;
+      choose one on purpose.
 
       The number is IMAGE-DERIVED: re-resolve it against your own .config
       rather than assuming k_thread 4.
+
+      The main thread is the other half of the pair. Zephyr's default
+      CONFIG_MAIN_THREAD_PRIORITY is 0, above this task, so while main creates
+      entities the read task waits. Over a network that costs little; over a
+      SERIAL link the UART receive ring fills meanwhile, and a board that joins
+      a domain whose peers already send loses the router's replies. A serial
+      image therefore needs main BELOW this task: CONFIG_MAIN_THREAD_PRIORITY=5
+      against the default 200 on 15 preempt priorities. The configure refuses a
+      serial image whose main thread is not below it and names the number, and
+      CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES is the ring to raise if joins
+      still drop frames.
 
       Raising it above your RT sched_tasks means transport preempts control;
       lowering it below means a busy sched_task can starve the RX drain, which

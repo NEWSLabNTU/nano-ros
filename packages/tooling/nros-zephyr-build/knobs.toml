@@ -2060,14 +2060,25 @@ scale and its conversion are deleted; this band is the only one left.
 
 Why 200: on a CONFIG_NUM_PREEMPT_PRIORITIES=15 image it maps to SCHED_RR
 10, i.e. k_thread 4 — ABOVE the sched_task pool ([8,14] in
-[board.priority_plan]) and below the main thread. That ordering is
-CHOSEN, not inherited: it is what the board's priority plan already
-declares, and what FreeRTOS ships (app 3 / transport 4). The reverse
-starves the RX drain and stalls publishers on retransmission timeouts.
-Both orderings are legitimate; choose one on purpose.
+[board.priority_plan]). That ordering is CHOSEN, not inherited: it is
+what the board's priority plan already declares, and what FreeRTOS
+ships (app 3 / transport 4). The reverse starves the RX drain and stalls
+publishers on retransmission timeouts. Both orderings are legitimate;
+choose one on purpose.
 
 The number is IMAGE-DERIVED: re-resolve it against your own .config
 rather than assuming k_thread 4.
+
+The main thread is the other half of the pair. Zephyr's default
+CONFIG_MAIN_THREAD_PRIORITY is 0, above this task, so while main creates
+entities the read task waits. Over a network that costs little; over a
+SERIAL link the UART receive ring fills meanwhile, and a board that joins
+a domain whose peers already send loses the router's replies. A serial
+image therefore needs main BELOW this task: CONFIG_MAIN_THREAD_PRIORITY=5
+against the default 200 on 15 preempt priorities. The configure refuses a
+serial image whose main thread is not below it and names the number, and
+CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES is the ring to raise if joins
+still drop frames.
 
 Raising it above your RT sched_tasks means transport preempts control;
 lowering it below means a busy sched_task can starve the RX drain, which
