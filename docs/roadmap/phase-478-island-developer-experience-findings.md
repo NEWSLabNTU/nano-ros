@@ -883,6 +883,10 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       `k_thread_priority_set` CTF fix) in `zephyr/patches/`, applied by
       `nros setup board`, so a CTF image emits callback and application
       markers with no consumer patch (issue 2766).
+- [ ] I34: `nros pin --rev <sha>` / `--path <dir>` write a commit or checkout
+      pin, refusing what the launcher refuses (issue 2770).
+- [ ] I35: `nros doctor` reports a toolchain pin that disagrees with
+      `west.yml`'s nano-ros revision (issue 2771).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -910,6 +914,8 @@ this phase will fix it.
 
 ## Issues homed here (2026-11-20)
 
+- [issue 2770](../issues/2770-nros-pin-rev-and-path.md): `nros pin` writes only a release pin; a commit or checkout pin from issue 2645 is edited by hand (I34).
+- [issue 2771](../issues/2771-doctor-toolchain-pin-matches-west.md): `nros doctor` does not compare a commit pin with `west.yml`'s nano-ros revision, so a Zephyr consumer keeps its own lockstep script (I35).
 - [issue 2766](../issues/2766-zephyr-ctf-app-marker-patch-carried-by-consumer.md): the Zephyr trace sink calls `sys_trace_app_marker` through a weak reference, and the CTF event that defines it is a Zephyr patch only the island carries, so other users' CTF images emit no markers (I33; GitHub #4008).
 
 ## Issues homed here (2026-11-18)
