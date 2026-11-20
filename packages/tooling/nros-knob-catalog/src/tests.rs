@@ -250,9 +250,20 @@ fn retired_env_vars_view_is_the_registry_run_road() {
                 .map(move |e| (e.spelling.clone(), r.name.clone()))
         })
         .collect();
+    // Sorted by the replacing row's name; phase-581 W6 added the three
+    // run-time renames of RFC-0140 Appendix A.3.
     let want: Vec<(String, String)> = [
+        (
+            "NROS_CYCLONE_MATCH_TIMEOUT_MS",
+            "NROS_CYCLONEDDS_MATCH_TIMEOUT_MS",
+        ),
+        (
+            "NROS_RMW_CYCLONEDDS_SKIP_PREFIX",
+            "NROS_CYCLONEDDS_SKIP_PREFIX",
+        ),
         ("ZENOH_LOCATOR", "NROS_LOCATOR"),
         ("ZENOH_MODE", "NROS_SESSION_MODE"),
+        ("XRCE_SERIAL_BAUD", "NROS_XRCE_SERIAL_BAUD"),
     ]
     .into_iter()
     .map(|(a, b)| (a.to_string(), b.to_string()))

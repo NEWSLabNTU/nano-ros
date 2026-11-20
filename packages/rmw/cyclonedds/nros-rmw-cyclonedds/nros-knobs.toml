@@ -49,14 +49,14 @@ help = "Cyclone's own configuration; it COMPOSES with the baked rmw_config file.
 
 [[env]]
 key = "cyclonedds.match_timeout_ms"
-transitional = { name = "NROS_CYCLONE_MATCH_TIMEOUT_MS" }
+retired = [{ spelling = "run:NROS_CYCLONE_MATCH_TIMEOUT_MS" }]
 disposition = "listed"
 parse = "int"
 help = "Test control of the Cyclone backend: how long a match wait lasts."
 
 [[env]]
 key = "cyclonedds.skip_prefix"
-transitional = { name = "NROS_RMW_CYCLONEDDS_SKIP_PREFIX" }
+retired = [{ spelling = "run:NROS_RMW_CYCLONEDDS_SKIP_PREFIX" }]
 disposition = "listed"
 parse = "str"
 help = "Test control of the Cyclone backend: topic prefixes it skips."

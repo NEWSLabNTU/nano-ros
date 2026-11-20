@@ -166,7 +166,7 @@ if [ -n "$xrce_agent_port" ]; then
     replace_or_append_arg "-DCONFIG_NROS_XRCE_AGENT_PORT" "$xrce_agent_port"
 fi
 if [ -n "$zenoh_locator" ]; then
-    replace_or_append_arg "-DCONFIG_NROS_ZENOH_LOCATOR" "\"$zenoh_locator\""
+    replace_or_append_arg "-DCONFIG_NROS_LOCATOR" "\"$zenoh_locator\""
 fi
 if [ -n "$dds_domain" ]; then
     replace_or_append_arg "-DCONFIG_NROS_DOMAIN_ID" "$dds_domain"

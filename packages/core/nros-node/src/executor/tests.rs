@@ -5274,7 +5274,7 @@ fn the_seeded_use_sim_time_is_not_counted_as_a_declared_parameter() {
 
     // A quota of N admits N declarations, so the STORE must hold them beside
     // the placeholder: N + 1 names on the node, every one reading back. (The
-    // derived `NROS_MAX_PARAMETERS` counts the seed per node for this reason.)
+    // derived `NROS_PARAMS_MAX_PARAMETERS` counts the seed per node for this reason.)
     const N: usize = 8;
     for i in 0..N {
         let name = alloc::format!("gain_{i}");
@@ -14818,8 +14818,8 @@ fn a_full_store_reports_the_refusal_and_names_its_knob() {
         "store_full_probe_4018",
         "max_parameters",
         "[knobs.params]",
-        "NROS_MAX_PARAMETERS",
-        "CONFIG_NROS_MAX_PARAMETERS",
+        "NROS_PARAMS_MAX_PARAMETERS",
+        "CONFIG_NROS_PARAMS_MAX_PARAMETERS",
         "params:",
     ] {
         assert!(line.contains(needle), "the line names `{needle}`: {line}");
@@ -14852,8 +14852,8 @@ fn a_full_store_error_names_its_knob() {
     let text = std::format!("{}", nros_params::DeclarationError::StorageFull);
     for needle in [
         "max_parameters",
-        "NROS_MAX_PARAMETERS",
-        "CONFIG_NROS_MAX_PARAMETERS",
+        "NROS_PARAMS_MAX_PARAMETERS",
+        "CONFIG_NROS_PARAMS_MAX_PARAMETERS",
     ] {
         assert!(text.contains(needle), "`{needle}` in: {text}");
     }

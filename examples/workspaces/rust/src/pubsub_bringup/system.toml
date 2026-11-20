@@ -53,7 +53,7 @@ os_config = ["board-net-16.toml"]
 # Bare metal over UART0 (phase-535 W6, RFC-0122 D2): the `serial`
 # configuration of the same two packages. The locator IS the link: a
 # `serial/...` (zenoh) or `custom://uart` (XRCE) locator makes `nros configure`
-# derive `ZPICO_NO_SMOLTCP=1` + `NROS_LINK_IP=0`, so the image carries no IP
+# derive `NROS_ZENOH_NO_SMOLTCP=1` + `NROS_LINK_IP=0`, so the image carries no IP
 # stack and no `os_config`. The router (or Agent) sits on the other end of a
 # socat PTY pair, so these images dial no port.
 
@@ -151,7 +151,9 @@ rmw = "cyclonedds"
 [image.linux_listener_peer_mode]
 board = "linux"
 launch = "listener.launch.xml"
-env = { ZPICO_MULTICAST_TRANSPORT = "1" }
+
+[image.linux_listener_peer_mode.knobs.zenoh]
+multicast_transport = true
 
 # ThreadX's Linux simulator (a hosted process, NSOS host sockets): it
 # dials loopback directly. `locator` is the cell's `alloc::port_of`; the

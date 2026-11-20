@@ -38,8 +38,8 @@ include!(concat!(env!("OUT_DIR"), "/nros_board_net.rs"));
 impl Default for Config {
     /// The board's network defaults over the shared core (RFC-0103 D10).
     ///
-    /// The connect pair also takes a build-time `NROS_LOCATOR` /
-    /// `NROS_DOMAIN_ID` (a fixture row's `env`, for a workspace image whose
+    /// The connect pair also takes a build-time `NROS_ENTRY_LOCATOR` /
+    /// `NROS_ENTRY_DOMAIN_ID` (a fixture row's `env`, for a workspace image whose
     /// `system.toml` states none). It is a BOARD-level default: the image's
     /// own `[image.<id>] locator` / `domain_id` still win, applied by
     /// [`Config::with_deploy`] (issue 1836).
@@ -51,11 +51,11 @@ impl Default for Config {
                 netmask: BOARD_NET_NETMASK,
                 gateway: BOARD_NET_GATEWAY,
                 mac: BOARD_NET_MAC,
-                zenoh_locator: match option_env!("NROS_LOCATOR") {
+                zenoh_locator: match option_env!("NROS_ENTRY_LOCATOR") {
                     Some(locator) => locator,
                     None => BOARD_NET_LOCATOR,
                 },
-                domain_id: option_env!("NROS_DOMAIN_ID")
+                domain_id: option_env!("NROS_ENTRY_DOMAIN_ID")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(base.domain_id),
             },
@@ -158,12 +158,12 @@ impl Config {
             .apply_direct(&nros_board_common::parse_direct_toml(toml, |_, _, _| {}));
 
         // Phase 177.38 — build-time ROS-domain override for per-fixture
-        // isolation. `NROS_DOMAIN_ID` set at build time bakes a distinct domain
+        // isolation. `NROS_ENTRY_DOMAIN_ID` set at build time bakes a distinct domain
         // into this fixture without editing config.toml (the example default
         // stays clean). Cyclone derives RTPS ports from the domain, so
         // build-fixtures gives each communicating role-set its own domain and
         // concurrent fixtures don't collide. Empty/unset keeps the config value.
-        if let Some(d) = option_env!("NROS_DOMAIN_ID").and_then(parse_u32) {
+        if let Some(d) = option_env!("NROS_ENTRY_DOMAIN_ID").and_then(parse_u32) {
             config.base.domain_id = d;
         }
 
@@ -208,8 +208,8 @@ mod tests {
         assert_eq!(c.prefix(), 24);
         assert_eq!(c.gateway(), [10, 0, 2, 2]);
         assert_eq!(c.locator(), "tcp/10.0.2.2:7447");
-        // NROS_DOMAIN_ID is unset in a plain `cargo test`, so the TOML wins.
-        if option_env!("NROS_DOMAIN_ID").is_none() {
+        // NROS_ENTRY_DOMAIN_ID is unset in a plain `cargo test`, so the TOML wins.
+        if option_env!("NROS_ENTRY_DOMAIN_ID").is_none() {
             assert_eq!(c.domain_id(), 7);
         }
     }

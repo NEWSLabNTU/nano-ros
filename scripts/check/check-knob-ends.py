@@ -213,7 +213,7 @@ def readers_in(path: str, text: str, read_callees: set[str]) -> set[str]:
         # also an associated const read through its type (`env::var(Self::ENV)`,
         # `ProbeFailurePolicy::ENV` in metadata_refresh.rs).
         for const, n in re.findall(r"const\s+([A-Z_][A-Z0-9_]*)\s*:\s*&(?:'static\s+)?str\s*=\s*\"(" + NAME + r")\"", t):
-            if re.search(r"\b(?:var|var_os)\s*\(\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*" + const + r"\b", t):
+            if re.search(r"\b(?:var|var_os|env_refusing_retired)\s*\(\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*" + const + r"\b", t):
                 out.add(n)
         # A (env, CONFIG_*) pair table is a READ table: `kconfig_fallback`
         # looks the env name up in it (nros-zpico-build's KCONFIG_KNOBS).

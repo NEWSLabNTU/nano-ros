@@ -728,7 +728,7 @@ pub enum Config {
     /// (phase-535 W6).
     Rtic,
     /// zenoh-pico with the multicast transport and scouting compiled in
-    /// (`ZPICO_MULTICAST_TRANSPORT=1`), so a peer-mode session needs no
+    /// (`NROS_ZENOH_MULTICAST_TRANSPORT=1`), so a peer-mode session needs no
     /// router. Same messages, no router (phase-535 W6, issue 0711).
     PeerMode,
 }

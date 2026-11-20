@@ -547,7 +547,7 @@ int nros_zephyr_report_sched_task_vs_transport(const char* sched_task, size_t sc
 #endif
 
 /* Issue 2365 -- the task stack is its own budget, never main's: the module
- * forwards CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE (default 16 KiB), and this
+ * forwards CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES (default 16 KiB), and this
  * fallback only serves a build with no Kconfig (the host shim tests). */
 #ifndef NROS_ZEPHYR_STACK_SIZE
 #define NROS_ZEPHYR_STACK_SIZE 16384
@@ -952,7 +952,7 @@ static void nros_zephyr_sched_task_trampoline(void* entry, void* arg, void* unus
  * (K_THREAD_STACK_ARRAY_DEFINE), so the request cannot resize them — a
  * request past the slot prints LOUD and the sched task runs on the slot
  * anyway (phase-302 W2 / issue 0262: previously the knob was silently
- * ignored). Raise CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE to honor bigger sched tasks.
+ * ignored). Raise CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES to honor bigger sched tasks.
  * Returns 0 on success, -1 when the pool is exhausted (more than
  * CONFIG_NROS_ZEPHYR_MAX_SCHED_TASKS spawns).
  */
@@ -969,7 +969,7 @@ int nros_zephyr_sched_task_create(void* (*entry)(void*), void* arg, int32_t prio
     }
     if (stack_bytes > (size_t)NROS_ZEPHYR_SCHED_TASK_STACK_SIZE) {
         printk("nros: sched task stack request %u > fixed slot %u sched_task=`%s` — running with the "
-               "slot; raise CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE\n",
+               "slot; raise CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES\n",
                (unsigned)stack_bytes, (unsigned)NROS_ZEPHYR_SCHED_TASK_STACK_SIZE,
                (name != NULL) ? name : "?");
     }

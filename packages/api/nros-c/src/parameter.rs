@@ -540,7 +540,7 @@ mod imp {
     /// node is not bound to an executor — the store is the executor's, so
     /// there is nothing to serve from yet. Bind it with
     /// `rclc_executor_node_init` first. `RCLC_RET_FULL` when `max_params`
-    /// exceeds the store's build-time capacity (`NROS_MAX_PARAMETERS`).
+    /// exceeds the store's build-time capacity (`NROS_PARAMS_MAX_PARAMETERS`).
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_parameter_server_init_with_option(
         server: *mut rclc_parameter_server_t,
@@ -871,7 +871,7 @@ mod imp {
     macro_rules! array {
         ($declare:ident, $set:ident, $get:ident, $t:ty, $from:path, $as:ident) => {
             /// Extension: declare an array parameter (bounded by
-            /// `NROS_MAX_ARRAY_LEN`; longer is refused).
+            /// `NROS_PARAMS_MAX_ARRAY_LEN`; longer is refused).
             #[unsafe(no_mangle)]
             pub unsafe extern "C" fn $declare(
                 server: *mut rclc_parameter_server_t,

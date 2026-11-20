@@ -16,14 +16,14 @@ function(nros_zephyr_configure_rmw_zenoh)
 # empty bottom rung and opened no session (a board: `nros_cpp_init` -100,
 # Transport ConnectionFailed at stage 2). `nros_locator_c_define` spells it
 # (NanoRosEntryLocator.cmake, shared with every other road since phase-553 W4).
-if(DEFINED CONFIG_NROS_ZENOH_LOCATOR)
+if(DEFINED CONFIG_NROS_LOCATOR)
     # RFC-0109 D10 (phase-514 W5) -- a CAN rate is the controller's (devicetree
     # `bus-speed`), never wiring, and zenoh-pico no longer applies one. This is
     # the Kconfig road's copy of `nros_zenoh_session_config::refuse_device_facts`
     # (`DEVICE_FACT_KEYS`), which every CLI road asks; keep the two in step.
-    if(CONFIG_NROS_ZENOH_LOCATOR MATCHES "^(can|isotp)/[^#]*#(.*;)?(d?bitrate)=")
+    if(CONFIG_NROS_LOCATOR MATCHES "^(can|isotp)/[^#]*#(.*;)?(d?bitrate)=")
         message(FATAL_ERROR
-            "CONFIG_NROS_ZENOH_LOCATOR=\"${CONFIG_NROS_ZENOH_LOCATOR}\" states "
+            "CONFIG_NROS_LOCATOR=\"${CONFIG_NROS_LOCATOR}\" states "
             "`${CMAKE_MATCH_3}`, a fact about the CAN controller rather than wiring. "
             "Zephyr sets the rate from the controller's devicetree "
             "`bus-speed`, and the board starts it before any session opens. Drop "
@@ -32,7 +32,7 @@ if(DEFINED CONFIG_NROS_ZENOH_LOCATOR)
     # `;` too: it is CMake's list separator, and split
     # `isotp/can#tx_id=..;rx_id=..` into two definitions.
     nros_locator_c_define(_nros_entry_loc_def NROS_ENTRY_LOCATOR
-        "${CONFIG_NROS_ZENOH_LOCATOR}")
+        "${CONFIG_NROS_LOCATOR}")
     zephyr_compile_definitions("${_nros_entry_loc_def}")
 endif()
 

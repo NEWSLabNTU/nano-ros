@@ -24,11 +24,11 @@
 use std::path::Path;
 
 fn main() {
-    // issue 1836 — `Config::default()` takes a build-time `NROS_LOCATOR` /
-    // `NROS_DOMAIN_ID` as the board's connect default (moved here from the
+    // issue 1836 — `Config::default()` takes a build-time `NROS_ENTRY_LOCATOR` /
+    // `NROS_ENTRY_DOMAIN_ID` as the board's connect default (moved here from the
     // family driver `nros-board-nuttx`, which now receives the merged pair).
-    println!("cargo:rerun-if-env-changed=NROS_LOCATOR");
-    println!("cargo:rerun-if-env-changed=NROS_DOMAIN_ID");
+    println!("cargo:rerun-if-env-changed=NROS_ENTRY_LOCATOR");
+    println!("cargo:rerun-if-env-changed=NROS_ENTRY_DOMAIN_ID");
     // RFC-0109 D2 (phase-514 W4) — the network defaults, ONCE and before any
     // early return, because `src/config.rs` `include!`s what it writes. NuttX
     // owns this board's network (`[board.net] stack = "os"`), so the address

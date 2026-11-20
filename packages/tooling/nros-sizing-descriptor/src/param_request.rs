@@ -15,7 +15,7 @@
 //!
 //! `nros-node` prices the same request from the same token plus the parameter
 //! store's string and array caps, and const-asserts a stated
-//! `NROS_PARAM_SERVICE_INBOX_BYTES` against it. That one needs the store's caps,
+//! `NROS_PARAMS_SERVICE_INBOX_BYTES` against it. That one needs the store's caps,
 //! which only `nros-params` resolves, so it cannot live here; the two agree on
 //! every token this function prices (the Safety Island's worst node,
 //! `8:170:1:17:0:0:0:0:0`, is 672 B on both).

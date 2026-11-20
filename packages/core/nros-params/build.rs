@@ -10,7 +10,7 @@ fn main() {
 
     // phase-400 W6 — the platform and board rungs sit under the env/Kconfig
     // front-end each of these already had. phase-292's ASI consumer needed
-    // `NROS_MAX_PARAMETERS=256` and set it in a `build.sh`: a board fact living
+    // `NROS_PARAMS_MAX_PARAMETERS=256` and set it in a `build.sh`: a board fact living
     // in a shell script because there was nowhere to declare it.
     //
     // `None` when no lane names a platform (a bare `cargo build`), and then
@@ -50,7 +50,7 @@ fn main() {
     refuse_partial_declaration();
 
     let max_parameters = knob(
-        "NROS_MAX_PARAMETERS",
+        "NROS_PARAMS_MAX_PARAMETERS",
         rungs.max_parameters,
         // Issue 1649 -- the descriptor's `[params]` alone; the
         // ~~`NROS_DECLARED_MAX_PARAMETERS`~~ carrier retired onto it.
@@ -79,7 +79,7 @@ fn main() {
         256,
     );
     let max_array_len = capacity(
-        "NROS_MAX_ARRAY_LEN",
+        "NROS_PARAMS_MAX_ARRAY_LEN",
         "max_array_len",
         rungs.max_array_len,
         declared("NROS_DECLARED_MAX_ARRAY_LEN"),
@@ -92,7 +92,7 @@ fn main() {
     // `string` plus a `double_array` (each need sizing one bound) cost 32 x
     // 256 B in every slot when nothing declared a string array at all.
     let max_string_array_len = capacity(
-        "NROS_MAX_STRING_ARRAY_LEN",
+        "NROS_PARAMS_MAX_STRING_ARRAY_LEN",
         "max_string_array_len",
         rungs.max_string_array_len,
         declared("NROS_DECLARED_MAX_STRING_ARRAY_LEN"),
@@ -165,8 +165,8 @@ fn main() {
         Ok("linux" | "macos" | "windows")
     );
     let param_events_depth = knob(
-        "NROS_PARAM_EVENTS_DEPTH",
-        rungs.param_events_depth,
+        "NROS_PARAMS_EVENTS_DEPTH",
+        rungs.events_depth,
         None,
         if hosted { 1000 } else { 1 },
     )
@@ -187,7 +187,7 @@ fn main() {
     // phase-382 W3' (issue 1702 measured the unconditional store).
     let contents = format!(
         "/// Maximum number of parameters the server can store \
-         (set via NROS_MAX_PARAMETERS, default 32).\n\
+         (set via NROS_PARAMS_MAX_PARAMETERS, default 32).\n\
          ///\n\
          /// IMAGE-WIDE, not per node. `ParameterStorage` is ONE flat\n\
          /// `[Option<ParameterEntry>; N]` for the whole image and each entry\n\
@@ -208,11 +208,11 @@ fn main() {
          pub const MAX_STRING_VALUE_LEN: usize = {max_string_value_len};\n\
          \n\
          /// Maximum length for array parameters \
-         (set via NROS_MAX_ARRAY_LEN, default 32).\n\
+         (set via NROS_PARAMS_MAX_ARRAY_LEN, default 32).\n\
          pub const MAX_ARRAY_LEN: usize = {max_array_len};\n\
          \n\
          /// Maximum elements in a string-array parameter \
-         (set via NROS_MAX_STRING_ARRAY_LEN, default 32); each element is \
+         (set via NROS_PARAMS_MAX_STRING_ARRAY_LEN, default 32); each element is \
          bounded by `MAX_STRING_VALUE_LEN`.\n\
          pub const MAX_STRING_ARRAY_LEN: usize = {max_string_array_len};\n\
          \n\
@@ -231,7 +231,7 @@ fn main() {
          pub const MAX_PARAM_CONSTRAINTS_LEN: usize = {max_param_constraints_len};\n\
          \n\
          /// History depth of each node's `/parameter_events` publisher \
-         (set via NROS_PARAM_EVENTS_DEPTH; default 1000 on a hosted target, \
+         (set via NROS_PARAMS_EVENTS_DEPTH; default 1000 on a hosted target, \
          1 otherwise).\n\
          pub const PARAM_EVENTS_DEPTH: u32 = {param_events_depth};\n\
          \n\
@@ -289,7 +289,7 @@ fn main() {
 ///   code reaches.
 ///
 /// A source stating 0 is "this source says no", never a veto over another:
-/// the west road writes `CONFIG_NROS_PARAM_STORE=n` for every image without a
+/// the west road writes `CONFIG_NROS_PARAMS_STORE=n` for every image without a
 /// seed, including ones that declare `param_services`.
 ///
 /// NOT the `param-store` cargo feature. Every C++ image carries it (issue

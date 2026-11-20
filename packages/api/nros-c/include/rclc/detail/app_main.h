@@ -72,7 +72,7 @@ void nros_app_main_returned(int exit_code);
  * This used to define both macros HERE, as
  * `""` and `0`, with no derivation, while `<rclcpp/detail/main.hpp>` derived them from
  * Kconfig. Same two names, two answers: a TU that saw only this header dialled
- * nothing on a board whose locator comes from `CONFIG_NROS_ZENOH_LOCATOR`.
+ * nothing on a board whose locator comes from `CONFIG_NROS_LOCATOR`.
  * That is free today only because an embedded C entry is routed to the C++
  * emitter; it stops being free the moment a pure C entry exists, and it would
  * arrive as a silent no-connect (an empty locator dials nothing) rather than as an error.

@@ -77,7 +77,7 @@ uint64_t nros_platform_clock_resolution_ns(void) {
  * monotonic clock. Two sources may install it:
  *
  *   - SNTP (CONFIG_SNTP), one exchange at boot;
- *   - the timestamps on received zenoh samples (CONFIG_NROS_EPOCH_FROM_ZENOH,
+ *   - the timestamps on received zenoh samples (CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH,
  *     phase-478 D4), for a board whose only link to the host is the zenoh
  *     session itself — a UART, so no IP stack and no SNTP.
  *
@@ -98,7 +98,7 @@ uint64_t nros_platform_clock_resolution_ns(void) {
  *
  * With neither source compiled in this answers `0`, which the header defines
  * as "no wall clock here" rather than an error. */
-#if defined(CONFIG_SNTP) || defined(CONFIG_NROS_EPOCH_FROM_ZENOH)
+#if defined(CONFIG_SNTP) || defined(CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH)
 #ifdef CONFIG_SNTP
 #include <zephyr/net/sntp.h>
 #endif
@@ -152,7 +152,7 @@ int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms) {
  * compares against, which is the only clock this exists to agree with.
  *
  * A sample's stamp is taken BEFORE it reaches us, so `stamp - mono` is low by
- * the one-way latency. Within each CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS
+ * the one-way latency. Within each CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH_INTERVAL_MS
  * window the LARGEST offset seen is the least-delayed sample, and it is
  * installed when the window closes; the first sample installs at once so the
  * image stops stamping boot-relative time as early as it can. Re-installing
@@ -165,7 +165,7 @@ int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms) {
  * forwards none) — can call it unconditionally on Zephyr. */
 void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64);
 void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64) {
-#ifdef CONFIG_NROS_EPOCH_FROM_ZENOH
+#ifdef CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH
     static uint64_t window_start_us;
     static uint64_t window_max;
     /* NTP64: seconds in the upper 32 bits, a binary fraction in the lower. */
@@ -185,7 +185,8 @@ void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64) {
     if (offset > window_max) {
         window_max = offset;
     }
-    if (mono_us - window_start_us >= (uint64_t)CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS * 1000ULL) {
+    if (mono_us - window_start_us >=
+        (uint64_t)CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH_INTERVAL_MS * 1000ULL) {
         nros_clock_set_epoch_offset_us(window_max);
         window_start_us = mono_us;
         window_max = 0;
@@ -1155,8 +1156,8 @@ int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime_ms) 
  * and mutexes/condvars above no longer go down with it. */
 #if defined(CONFIG_DYNAMIC_THREAD) && defined(CONFIG_THREAD_STACK_INFO)
 
-/* phase-412 — this read ~~`NROS_ZEPHYR_TASK_STACK_SIZE`~~, a spelling nothing
- * defines: CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE reaches C as
+/* phase-412 — this read `NROS_ZEPHYR_TASK_STACK_SIZE`, a spelling nothing
+ * defined: CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES reaches C as
  * NROS_ZEPHYR_STACK_SIZE (zephyr/CMakeLists.txt), which is what the shim's task
  * pool reads. So the Kconfig knob that documents itself as "the stack given to
  * every task nano-ros creates on Zephyr" never reached this path. Read the
@@ -1645,7 +1646,7 @@ void nros_platform_log_flush(void) {
  * native_sim test parallelism: the test harness starts a per-test zenohd on an
  * ephemeral port and launches the image with `-testargs --nros-locator=<loc>`.
  * Reading that here (preferred over the build-time-baked
- * `CONFIG_NROS_ZENOH_LOCATOR`) gives every test a distinct router port, so the
+ * `CONFIG_NROS_LOCATOR`) gives every test a distinct router port, so the
  * zenoh e2e lanes stop serializing on one shared baked port.
  *
  * Why `-testargs`: native_sim's own option parser ABORTS on an unregistered

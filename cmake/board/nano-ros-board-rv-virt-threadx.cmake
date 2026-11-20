@@ -648,8 +648,8 @@ nros_stack_floor_cargo_env(${_crate_target}-static)
 
     # Issue #214 — DOMAIN bake for the Rust `Config::default()` (drives the
     # Executor/Cyclone participant; mirrors the C fixtures' `-DNROS_DOMAIN_ID`).
-    # Reaches `option_env!("NROS_DOMAIN_ID")` via corrosion build env; falls
-    # back to `NROS_DOMAIN_ID`, then the leaf image's `domain_id` (published
+    # Reaches `option_env!("NROS_ENTRY_DOMAIN_ID")` via corrosion build env; falls
+    # back to `-DNROS_DOMAIN_ID`, then the leaf image's `domain_id` (published
     # by `nano_ros_read_leaf_system`, which refuses a disagreeing `-D` — issue
     # 1946; an `add_subdirectory` leaf never has the variable). The NetX wire
     # identity is NOT set here — it comes from the `NROS_APP_NET_{IP,MAC}_LAST`
@@ -657,11 +657,11 @@ nros_stack_floor_cargo_env(${_crate_target}-static)
     # generated `NROS_APP_CONFIG` TU that startup.c applies pre-kernel).
     get_property(_leaf_domain GLOBAL PROPERTY NROS_TOP_LEAF_DOMAIN_ID)
     if(DEFINED _A_DOMAIN)
-        corrosion_set_env_vars(${_crate_target} "NROS_DOMAIN_ID=${_A_DOMAIN}")
+        corrosion_set_env_vars(${_crate_target} "NROS_ENTRY_DOMAIN_ID=${_A_DOMAIN}")
     elseif(DEFINED NROS_DOMAIN_ID)
-        corrosion_set_env_vars(${_crate_target} "NROS_DOMAIN_ID=${NROS_DOMAIN_ID}")
+        corrosion_set_env_vars(${_crate_target} "NROS_ENTRY_DOMAIN_ID=${NROS_DOMAIN_ID}")
     elseif(NOT "${_leaf_domain}" STREQUAL "")
-        corrosion_set_env_vars(${_crate_target} "NROS_DOMAIN_ID=${_leaf_domain}")
+        corrosion_set_env_vars(${_crate_target} "NROS_ENTRY_DOMAIN_ID=${_leaf_domain}")
     endif()
 
     # Empty TU so the executable has a C compilation unit for the link driver;

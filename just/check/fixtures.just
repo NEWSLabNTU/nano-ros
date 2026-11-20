@@ -298,7 +298,7 @@ fixture-artifact-dir-inputs:
 
 # Issue 1581 — every embedded cargo IMAGE row bakes a locator its board READS.
 # The bringup's `[image.<id>] locator` reaches every board; a row's
-# `NROS_LOCATOR` env reaches only boards that `option_env!` it. Four images lost
+# `NROS_ENTRY_LOCATOR` env reaches only boards that `option_env!` it. Four images lost
 # their locator when phase-383 deleted the entry packages that carried it, and
 # dialled the board default while the test's router listened elsewhere — one of
 # them beside a row env that looked like a bake and reached nothing. Buildless:

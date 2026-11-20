@@ -41,6 +41,17 @@ endfunction()
 # `nros_zephyr_build::refuse_retired_knobs`, in the same words.
 function(_nros_refuse_retired_knobs)
     set(_refusals "")
+    # phase-581 W6 (RFC-0140 D4) -- a statement's retired build variable
+    # (NROS_DOMAIN_ID), the twin of
+    # `nros_zephyr_build::refuse_retired_statement_env`, in the same words.
+    foreach(_s IN LISTS NROS_KNOB_RETIRED_STATEMENT_ENV)
+        if(DEFINED ENV{${_s}})
+            string(STRIP "$ENV{${_s}}" _v)
+            if(NOT _v STREQUAL "")
+                string(APPEND _refusals "\n  ${NROS_KNOB_RETIRED_STATEMENT_ENV_MSG_${_s}}")
+            endif()
+        endif()
+    endforeach()
     foreach(_s IN LISTS NROS_KNOB_RETIRED_SPELLINGS)
         if(NOT DEFINED ENV{${_s}})
             continue()

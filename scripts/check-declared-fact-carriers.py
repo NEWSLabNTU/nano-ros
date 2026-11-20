@@ -569,11 +569,11 @@ def _carried(entry, road):
 # The resolver delivers to the knob's registry name (renamed to `_BYTES` by
 # phase-581 W5); the DECLARED carrier keeps the fact's own suffix.
 for _fact, _knob in (
-    ("NROS_DERIVED_MAX_PARAMETERS", "NROS_MAX_PARAMETERS"),
+    ("NROS_DERIVED_MAX_PARAMETERS", "NROS_PARAMS_MAX_PARAMETERS"),
     ("NROS_DERIVED_MAX_PARAM_NAME_LEN", "NROS_PARAMS_MAX_NAME_BYTES"),
     ("NROS_DERIVED_MAX_STRING_VALUE_LEN", "NROS_PARAMS_MAX_STRING_VALUE_BYTES"),
-    ("NROS_DERIVED_MAX_ARRAY_LEN", "NROS_MAX_ARRAY_LEN"),
-    ("NROS_DERIVED_MAX_STRING_ARRAY_LEN", "NROS_MAX_STRING_ARRAY_LEN"),
+    ("NROS_DERIVED_MAX_ARRAY_LEN", "NROS_PARAMS_MAX_ARRAY_LEN"),
+    ("NROS_DERIVED_MAX_STRING_ARRAY_LEN", "NROS_PARAMS_MAX_STRING_ARRAY_LEN"),
     ("NROS_DERIVED_MAX_BYTE_ARRAY_LEN", "NROS_PARAMS_MAX_BYTE_ARRAY_BYTES"),
 ):
     FACT_DISPOSITION[_fact] = {
@@ -585,7 +585,7 @@ for _fact, _knob in (
             "SystemModel, so it has no parameter declaration to forward"),
         "declared": (
             _RETIRED_PARAM_COUNTS
-            if _knob in ("NROS_MAX_PARAMETERS", "NROS_PARAMS_MAX_NAME_BYTES")
+            if _knob in ("NROS_PARAMS_MAX_PARAMETERS", "NROS_PARAMS_MAX_NAME_BYTES")
             else ("NROS_DECLARED_" + _fact[len("NROS_DERIVED_"):],)
         ),
     }

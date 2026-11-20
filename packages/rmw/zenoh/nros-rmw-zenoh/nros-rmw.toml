@@ -453,9 +453,9 @@ include = ["system/common", "system/zephyr"]
 # this define from the bare-metal path; the manifest had no opinion so
 # `ZPICO_SMOLTCP` was simply not emitted.
 #
-# #189 — the legacy `ZPICO_NO_SMOLTCP` env-based opt-out (Phase 132) IS
+# #189 — the legacy `NROS_ZENOH_NO_SMOLTCP` env-based opt-out (Phase 132) IS
 # wired again, in the runner (Step 6 of `build_zenoh_pico_unified`): a
-# serial-only link set + `ZPICO_NO_SMOLTCP` swaps this define for
+# serial-only link set + `NROS_ZENOH_NO_SMOLTCP` swaps this define for
 # `ZPICO_SERIAL`. The serial-only boards were never hypothetical
 # (mps2-an385-baremetal serial-talker/-listener predate the migration),
 # and the smoltcp spin branch's clock is frozen without a smoltcp iface

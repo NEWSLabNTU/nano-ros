@@ -23,11 +23,11 @@ take effect.
 | `NROS_EXECUTOR_MAX_CBS` | Max executor callback slots (shared with Rust API) | `4` |
 | `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` | Per-entity receive buffer size (shared with Rust API) | `1024` |
 | `NROS_MAX_CONCURRENT_GOALS` | Max concurrent goals per action server | `4` |
-| `NROS_MAX_PARAMETERS` | Max parameters in parameter server | `32` |
+| `NROS_PARAMS_MAX_PARAMETERS` | Max parameters in parameter server | `32` |
 | `NROS_PARAMS_MAX_NAME_BYTES` | Max parameter name length | `64` |
 | `NROS_PARAMS_MAX_STRING_VALUE_BYTES` | Max string parameter value length | `256` |
-| `NROS_MAX_ARRAY_LEN` | Max bool/integer/double array parameter length | `32` |
-| `NROS_MAX_STRING_ARRAY_LEN` | Max string-array parameter length, in elements | `32` |
+| `NROS_PARAMS_MAX_ARRAY_LEN` | Max bool/integer/double array parameter length | `32` |
+| `NROS_PARAMS_MAX_STRING_ARRAY_LEN` | Max string-array parameter length, in elements | `32` |
 | `NROS_PARAMS_MAX_BYTE_ARRAY_BYTES` | Max byte array parameter length | `256` |
 | `NROS_PARAMS_MAX_DESCRIPTION_BYTES` | Max parameter description length (0 = none) | `256` |
 

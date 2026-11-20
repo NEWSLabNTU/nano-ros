@@ -482,7 +482,7 @@ fn note(r: &KnobRow) -> Option<String> {
 }
 
 /// `text` with each knob's env, retired or Kconfig spelling replaced by the
-/// name a project states it by (`NROS_SMOLTCP_MAX_SOCKETS` and
+/// name a project states it by (`NROS_NET_MAX_SOCKETS` and
 /// `CONFIG_NROS_MAX_PUBLISHERS` become `net.max_sockets` and
 /// `zenoh.max_publishers`). The registry's help was written for menuconfig,
 /// where those are the names; here the project's name is.
@@ -590,7 +590,7 @@ pub fn condition_text(cond: &str) -> &str {
 const CONDITIONS: &[(&str, &str)] = &[
     ("NROS_RMW_CYCLONEDDS", "the image uses Cyclone DDS"),
     (
-        "NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE || NROS_CAPABILITY_LIFECYCLE",
+        "NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAMS_STORE || NROS_CAPABILITY_LIFECYCLE",
         "the image has parameter services, a parameter store or lifecycle nodes",
     ),
     ("RUST", "the image has Rust code"),
@@ -811,7 +811,7 @@ mod tests {
 
     #[test]
     fn a_knob_is_found_by_every_spelling_a_user_meets() {
-        let r = nros_zephyr_build::knob_row("NROS_GRAPH_MAX_ENTITIES").expect("row");
+        let r = nros_zephyr_build::knob_row("NROS_ZENOH_GRAPH_MAX_ENTITIES").expect("row");
         for spelling in [
             r.image_key,
             r.env,

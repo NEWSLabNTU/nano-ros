@@ -1756,8 +1756,8 @@ function(nros_resolve_knobs)
     # The same check the cmake road runs stops the configure first.
     nros_entity_inventory_knobs_file(_nros_param_inv)
     nros_refuse_refused_param_declaration("${_nros_param_inv}")
-    _nros_resolve_derivable_knob(NROS_MAX_PARAMETERS
-        "${CONFIG_NROS_MAX_PARAMETERS}" NROS_DERIVED_MAX_PARAMETERS
+    _nros_resolve_derivable_knob(NROS_PARAMS_MAX_PARAMETERS
+        "${CONFIG_NROS_PARAMS_MAX_PARAMETERS}" NROS_DERIVED_MAX_PARAMETERS
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     _nros_resolve_derivable_knob(NROS_PARAMS_MAX_NAME_BYTES
         "${CONFIG_NROS_PARAMS_MAX_NAME_BYTES}" NROS_DERIVED_MAX_PARAM_NAME_LEN
@@ -1765,11 +1765,11 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_PARAMS_MAX_STRING_VALUE_BYTES
         "${CONFIG_NROS_PARAMS_MAX_STRING_VALUE_BYTES}" NROS_DERIVED_MAX_STRING_VALUE_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-    _nros_resolve_derivable_knob(NROS_MAX_ARRAY_LEN
-        "${CONFIG_NROS_MAX_ARRAY_LEN}" NROS_DERIVED_MAX_ARRAY_LEN
+    _nros_resolve_derivable_knob(NROS_PARAMS_MAX_ARRAY_LEN
+        "${CONFIG_NROS_PARAMS_MAX_ARRAY_LEN}" NROS_DERIVED_MAX_ARRAY_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-    _nros_resolve_derivable_knob(NROS_MAX_STRING_ARRAY_LEN
-        "${CONFIG_NROS_MAX_STRING_ARRAY_LEN}" NROS_DERIVED_MAX_STRING_ARRAY_LEN
+    _nros_resolve_derivable_knob(NROS_PARAMS_MAX_STRING_ARRAY_LEN
+        "${CONFIG_NROS_PARAMS_MAX_STRING_ARRAY_LEN}" NROS_DERIVED_MAX_STRING_ARRAY_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     _nros_resolve_derivable_knob(NROS_PARAMS_MAX_BYTE_ARRAY_BYTES
         "${CONFIG_NROS_PARAMS_MAX_BYTE_ARRAY_BYTES}" NROS_DERIVED_MAX_BYTE_ARRAY_LEN
@@ -1795,7 +1795,7 @@ function(nros_resolve_knobs)
         set(_nros_store_axis 0)
     endif()
     _nros_resolve_knob(NROS_CAPABILITY_PARAM_SERVICES "${_nros_store_axis}")
-    if(CONFIG_NROS_PARAM_STORE)
+    if(CONFIG_NROS_PARAMS_STORE)
         set(_nros_store_seed 1)
     else()
         set(_nros_store_seed 0)
@@ -1812,8 +1812,8 @@ function(nros_resolve_knobs)
     _nros_resolve_knob(NROS_PARAMS_MAX_CONSTRAINTS_BYTES
         "${CONFIG_NROS_PARAMS_MAX_CONSTRAINTS_BYTES}")
     # phase-491 W3 -- the /parameter_events publisher's history depth.
-    _nros_resolve_knob(NROS_PARAM_EVENTS_DEPTH
-        "${CONFIG_NROS_PARAM_EVENTS_DEPTH}")
+    _nros_resolve_knob(NROS_PARAMS_EVENTS_DEPTH
+        "${CONFIG_NROS_PARAMS_EVENTS_DEPTH}")
     # phase-479 W5 (RFC-0102 D5) -- the runtime-logger arenas, on the plain
     # ladder: Kconfig states it, the environment wins, nros-log's build script
     # reads it (and, on the Rust lane, reads the same symbol from $DOTCONFIG).
@@ -1869,10 +1869,10 @@ function(nros_resolve_knobs)
     # sentinel forwards NOTHING, so both build scripts run their own
     # derivation from `NROS_DECLARED_PARAM_SERVICE_SHAPE`; a stated 0 is
     # forwarded and REFUSED there, naming this knob.
-    if(NOT "${CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")
-        _nros_resolve_knob(NROS_PARAM_SERVICE_INBOX_BYTES "${CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES}")
+    if(NOT "${CONFIG_NROS_PARAMS_SERVICE_INBOX_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")
+        _nros_resolve_knob(NROS_PARAMS_SERVICE_INBOX_BYTES "${CONFIG_NROS_PARAMS_SERVICE_INBOX_BYTES}")
     endif()
-    _nros_resolve_knob(NROS_PARAM_SERVICE_INBOX_DEPTH "${CONFIG_NROS_PARAM_SERVICE_INBOX_DEPTH}")
+    _nros_resolve_knob(NROS_PARAMS_SERVICE_INBOX_DEPTH "${CONFIG_NROS_PARAMS_SERVICE_INBOX_DEPTH}")
 
     # phase-461 W3 -- the two families' slot sizes, DERIVED from the request
     # types this image's declared service and action endpoints carry

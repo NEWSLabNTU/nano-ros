@@ -80,7 +80,7 @@ pub struct ImageTables {
     pub board_locator: Option<String>,
     /// Where [`Self::board_locator`] was read when the board's rule answered
     /// nothing and the build's merged Kconfig did: the symbol and the file
-    /// (`CONFIG_NROS_ZENOH_LOCATOR in <build>/zephyr/.config`), which `--why`
+    /// (`CONFIG_NROS_LOCATOR in <build>/zephyr/.config`), which `--why`
     /// names beside the rung (issue 2368). `None`: the board's own rule.
     pub board_locator_from: Option<String>,
     /// The image's resolved network as the build receives it (the
@@ -241,7 +241,7 @@ fn board_net_locator(
 }
 
 /// The router a west-built image dials, from the merged Kconfig the build
-/// wrote (`<build_dir>/zephyr/.config`): `CONFIG_NROS_ZENOH_LOCATOR`, else
+/// wrote (`<build_dir>/zephyr/.config`): `CONFIG_NROS_LOCATOR`, else
 /// the XRCE agent pair as `udp/<addr>:<port>` (issue 2301). Zephyr merges the
 /// module default, the board's `prj.conf` and the image's fragment last-wins,
 /// so only this file holds what the firmware dials; any other reader would
@@ -253,7 +253,7 @@ pub fn west_build_locator(build_dir: &Path) -> Option<String> {
 }
 
 /// [`west_build_locator`], with the symbol(s) and file it was read from
-/// (`CONFIG_NROS_ZENOH_LOCATOR in <build_dir>/zephyr/.config`), so `--why`
+/// (`CONFIG_NROS_LOCATOR in <build_dir>/zephyr/.config`), so `--why`
 /// names what a reader would change (issue 2368).
 #[must_use]
 pub fn west_build_locator_from(build_dir: &Path) -> Option<(String, String)> {
@@ -270,11 +270,8 @@ pub fn west_build_locator_from(build_dir: &Path) -> Option<(String, String)> {
             (!v.is_empty()).then(|| v.to_string())
         })
     };
-    if let Some(l) = value("CONFIG_NROS_ZENOH_LOCATOR") {
-        return Some((
-            l,
-            format!("CONFIG_NROS_ZENOH_LOCATOR in {}", file.display()),
-        ));
+    if let Some(l) = value("CONFIG_NROS_LOCATOR") {
+        return Some((l, format!("CONFIG_NROS_LOCATOR in {}", file.display())));
     }
     let addr = value("CONFIG_NROS_XRCE_AGENT_ADDR")?;
     let port = value("CONFIG_NROS_XRCE_AGENT_PORT")?;
@@ -2163,8 +2160,8 @@ mod tests {
 
         std::fs::write(
             dir.join("zephyr/.config"),
-            "CONFIG_NROS_RMW_ZENOH=y\n# CONFIG_NROS_TRANSPORT_SERIAL is not set\n\
-             CONFIG_NROS_ZENOH_LOCATOR=\"tcp/10.0.2.2:7447\"\n",
+            "CONFIG_NROS_RMW_ZENOH=y\n# CONFIG_NROS_ZENOH_LINK_SERIAL is not set\n\
+             CONFIG_NROS_LOCATOR=\"tcp/10.0.2.2:7447\"\n",
         )
         .unwrap();
         std::fs::write(
@@ -2292,7 +2289,7 @@ mod tests {
         // A build that baked another port: the router goes where the image dials.
         std::fs::write(
             dir.join("zephyr/.config"),
-            "CONFIG_NROS_RMW_ZENOH=y\nCONFIG_NROS_ZENOH_LOCATOR=\"tcp/127.0.0.1:9100\"\n",
+            "CONFIG_NROS_RMW_ZENOH=y\nCONFIG_NROS_LOCATOR=\"tcp/127.0.0.1:9100\"\n",
         )
         .unwrap();
         let baked = ImageTables {
@@ -2343,10 +2340,10 @@ mod tests {
             p.provenance["link"].clone()
         };
 
-        std::fs::write(&file, "CONFIG_NROS_ZENOH_LOCATOR=\"tcp/127.0.0.1:9100\"\n").unwrap();
+        std::fs::write(&file, "CONFIG_NROS_LOCATOR=\"tcp/127.0.0.1:9100\"\n").unwrap();
         assert_eq!(
             link_why(),
-            format!("board (CONFIG_NROS_ZENOH_LOCATOR in {})", file.display())
+            format!("board (CONFIG_NROS_LOCATOR in {})", file.display())
         );
 
         std::fs::write(

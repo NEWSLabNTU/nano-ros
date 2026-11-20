@@ -344,7 +344,7 @@ build-fixture-extras:
     # Phase 177.38 — bake this platform's Cyclone role-set onto a distinct ROS
     # domain so its fixtures never collide with other Cyclone fixtures on the
     # derived RTPS ports. talker+listener share (they communicate). freertos=60.
-    export NROS_DOMAIN_ID=60
+    export NROS_ENTRY_DOMAIN_ID=60
     # Cyclone descriptor codegen needs a host `idlc` (find_program, Phase 186.3);
     # skip the cyclonedds fixtures gracefully when it's absent rather than failing
     # the whole fixture build — mirrors threadx-linux. The zenoh c/cpp/rust

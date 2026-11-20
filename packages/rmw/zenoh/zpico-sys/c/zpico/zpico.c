@@ -1761,7 +1761,7 @@ static void sample_handler(z_loaned_sample_t* sample, void* arg) {
 
 #if defined(__ZEPHYR__)
     /* phase-478 D4 — offer the sample's timestamp to the platform's epoch.
-     * A no-op unless the image enables CONFIG_NROS_EPOCH_FROM_ZENOH, which is
+     * A no-op unless the image enables CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH, which is
      * decided in the platform port: this file sees no CONFIG_* (zpico-sys's
      * build script forwards none), so it calls unconditionally. A strong
      * reference, like the `nros_platform_task_attr_init` calls below: the

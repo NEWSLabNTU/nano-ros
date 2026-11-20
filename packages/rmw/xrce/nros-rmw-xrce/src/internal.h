@@ -164,7 +164,7 @@ static inline void nros_xrce_free(void* ptr) {
  * node's declared parameters outgrows the 1,024-byte default (25 integers with
  * 35-byte names is 2,411 B; measured dropped on main, with the drop logged as
  * InboxOverflow). XRCE_PARAM_REQUEST_BYTES is that request's size: STATED as
- * NROS_PARAM_SERVICE_INBOX_BYTES (the backend-neutral knob nros-node checks), or
+ * NROS_PARAMS_SERVICE_INBOX_BYTES (the backend-neutral knob nros-node checks), or
  * DERIVED by the cargo lane from the declaration. It only RAISES the default —
  * never below the old floor, which also serves the user services. A STATED
  * buffer below it is refused just after this block.
@@ -208,7 +208,7 @@ static inline void nros_xrce_free(void* ptr) {
 #if XRCE_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
 // issue 1722.
 #error                                                                                             \
-    "NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's params:). That request would be dropped on arrival. Raise it, or leave it unset to derive."
+    "NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow (NROS_PARAMS_SERVICE_INBOX_BYTES, or derived from the contract's params:). That request would be dropped on arrival. Raise it, or leave it unset to derive."
 #endif
 /* No split: no builtin slot exists, so this names nothing; it keeps the
  * fragment-window check below one spelling for both shapes. */
@@ -1434,7 +1434,7 @@ int xrce_nros_udp_set_rx_notify(xrce_session_state_t* st, void (*cb)(void* ctx),
 
 /* Phase 115.K.2.5.1.5-serial — POSIX serial transport via custom
  * transport. Opens a tty/pty `path`, configures termios (raw mode,
- * 8N1, baud from `XRCE_SERIAL_BAUD` env or 115200), and registers
+ * 8N1, baud from `NROS_XRCE_SERIAL_BAUD` env or 115200), and registers
  * read/write trampolines. framing=true (HDLC). */
 rmw_ret_t xrce_posix_serial_init(xrce_session_state_t* st, const char* path);
 

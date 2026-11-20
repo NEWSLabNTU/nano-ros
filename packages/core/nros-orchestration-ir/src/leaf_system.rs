@@ -132,7 +132,7 @@ pub fn link_kind_of_locator(locator: &str) -> Option<&'static str> {
 
 /// Whether a link kind is a byte stream with no IP stack under it (`serial`,
 /// and the `custom` transport nano-ros frames over one, XRCE's UART link): an
-/// image on one builds without the IP link set (`ZPICO_NO_SMOLTCP`,
+/// image on one builds without the IP link set (`NROS_ZENOH_NO_SMOLTCP`,
 /// `NROS_LINK_IP=0`) and with the board's serial driver.
 #[must_use]
 pub fn is_byte_stream_link(kind: Option<&str>) -> bool {

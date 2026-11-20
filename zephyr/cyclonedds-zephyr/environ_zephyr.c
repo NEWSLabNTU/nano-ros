@@ -25,7 +25,7 @@
  * built with its configuration COMPILED IN, so there is nothing for a runtime
  * `setenv` to influence — `nros` bakes the locator, domain and node name at
  * build time precisely because the guest has no populated environment
- * (`option_env!("NROS_LOCATOR")` and friends in the board crates).
+ * (`option_env!("NROS_ENTRY_LOCATOR")` and friends in the board crates).
  *
  * So `getenv` reports NOT_FOUND and the mutators report OK without storing.
  * OK, not an error: cyclone calls `ddsrt_setenv` on paths that must not fail

@@ -172,7 +172,7 @@ impl Config {
     /// two plans now sit three lines apart with the runner each one matches
     /// written down.
     ///
-    /// `NROS_LOCATOR` / `NROS_DOMAIN_ID` at BUILD time override the locator and
+    /// `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` at BUILD time override the locator and
     /// domain (bare-metal has no host `getenv`, so these are baked, not read).
     #[cfg(feature = "ethernet")]
     pub fn qemu_slirp() -> Self {
@@ -185,8 +185,8 @@ impl Config {
             uart_base: cmsdk_uart::UART0_BASE,
             #[cfg(feature = "serial")]
             baudrate: 115200,
-            zenoh_locator: option_env!("NROS_LOCATOR").unwrap_or("tcp/10.0.2.2:7450"),
-            domain_id: match option_env!("NROS_DOMAIN_ID") {
+            zenoh_locator: option_env!("NROS_ENTRY_LOCATOR").unwrap_or("tcp/10.0.2.2:7450"),
+            domain_id: match option_env!("NROS_ENTRY_DOMAIN_ID") {
                 Some(s) => parse_u32(s).unwrap_or_default(),
                 None => 0,
             },
@@ -365,12 +365,12 @@ impl Config {
         }
 
         // Phase 177.38 — build-time ROS-domain override for per-fixture
-        // isolation. `NROS_DOMAIN_ID` set at build time bakes a distinct domain
+        // isolation. `NROS_ENTRY_DOMAIN_ID` set at build time bakes a distinct domain
         // into this fixture without editing config.toml (the example default
         // stays clean). Cyclone derives RTPS ports from the domain, so
         // build-fixtures gives each communicating role-set its own domain and
         // concurrent fixtures don't collide. Empty/unset keeps the config value.
-        if let Some(d) = option_env!("NROS_DOMAIN_ID").and_then(parse_u32) {
+        if let Some(d) = option_env!("NROS_ENTRY_DOMAIN_ID").and_then(parse_u32) {
             config.domain_id = d;
         }
 

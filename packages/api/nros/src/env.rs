@@ -739,14 +739,46 @@ mod tests {
         assert_eq!(err, BootConfigError::DomainIdParse);
     }
 
+    /// The retired name of `replacement` in [`RETIRED_ENV_VARS`] (the table is
+    /// sorted by the replacing row's name, so a position names nothing).
+    fn alias_of(replacement: &str) -> &'static str {
+        RETIRED_ENV_VARS
+            .iter()
+            .find(|(_, r)| *r == replacement)
+            .map(|(a, _)| *a)
+            .expect("a retired alias of the replacement")
+    }
+
+    /// RFC-0140 D4 (phase-581 W6) -- EVERY `run:` retirement refuses the boot,
+    /// naming its replacement: generated from the registry's table, so a new
+    /// retirement (`XRCE_SERIAL_BAUD`, the Cyclone test controls) is a new case.
+    #[test]
+    fn every_retired_run_time_name_is_refused_naming_its_replacement() {
+        let _l = env_lock();
+        let _guards: alloc::vec::Vec<_> = RETIRED_ENV_VARS
+            .iter()
+            .map(|&(a, _)| EnvGuard::unset(a))
+            .collect();
+        assert!(RETIRED_ENV_VARS.len() >= 5, "{RETIRED_ENV_VARS:?}");
+        for &(name, replacement) in RETIRED_ENV_VARS {
+            let _set = EnvGuard::set(name, "1");
+            let err = match try_resolve_hosted(BootConfig::default()) {
+                Err(e) => e,
+                Ok(_) => panic!("{name} set: expected RetiredEnvVar"),
+            };
+            assert_eq!(err, BootConfigError::RetiredEnvVar { name, replacement });
+            assert!(alloc::format!("{err}").contains(replacement), "{err}");
+        }
+    }
+
     /// phase-484 W8c — a retired alias REFUSES, naming its replacement, and
     /// does so even beside a canonical value (half-migrated env is still a
     /// mistake somebody should hear about).
     #[test]
     fn retired_zenoh_locator_is_refused_naming_nros_locator() {
         let _l = env_lock();
-        let (locator_alias, _) = RETIRED_ENV_VARS[0];
-        let (mode_alias, _) = RETIRED_ENV_VARS[1];
+        let locator_alias = alias_of("NROS_LOCATOR");
+        let mode_alias = alias_of("NROS_SESSION_MODE");
         let _a = EnvGuard::set(locator_alias, "tcp/legacy:7447");
         let _b = EnvGuard::unset("NROS_LOCATOR");
         let _c = EnvGuard::unset(mode_alias);
@@ -771,8 +803,8 @@ mod tests {
     #[test]
     fn retired_zenoh_mode_is_refused_naming_nros_session_mode() {
         let _l = env_lock();
-        let (locator_alias, _) = RETIRED_ENV_VARS[0];
-        let (mode_alias, _) = RETIRED_ENV_VARS[1];
+        let locator_alias = alias_of("NROS_LOCATOR");
+        let mode_alias = alias_of("NROS_SESSION_MODE");
         let _a = EnvGuard::unset(locator_alias);
         let _b = EnvGuard::set(mode_alias, "peer");
         let err = match try_resolve_hosted(BootConfig::default()) {
@@ -793,8 +825,8 @@ mod tests {
     #[test]
     fn canonical_nros_locator_resolves_when_no_retired_alias_set() {
         let _l = env_lock();
-        let _a = EnvGuard::unset(RETIRED_ENV_VARS[0].0);
-        let _b = EnvGuard::unset(RETIRED_ENV_VARS[1].0);
+        let _a = EnvGuard::unset(alias_of("NROS_LOCATOR"));
+        let _b = EnvGuard::unset(alias_of("NROS_SESSION_MODE"));
         let _c = EnvGuard::set("NROS_LOCATOR", "tcp/canonical:7447");
         let cfg = try_resolve_hosted(BootConfig::default()).expect("canonical resolves");
         assert_eq!(cfg.locator, "tcp/canonical:7447");

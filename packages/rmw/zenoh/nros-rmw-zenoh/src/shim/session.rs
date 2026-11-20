@@ -652,7 +652,7 @@ impl ZenohSession {
                 nros_log::get_logger("nros_rmw_zenoh"),
                 "peer mode unsupported: no multicast transport/scouting in this build, \
                  and not every listen/connect endpoint is on a point-to-point link (ivc/). \
-                 Use client mode with a router, or ZPICO_MULTICAST_TRANSPORT=1."
+                 Use client mode with a router, or NROS_ZENOH_MULTICAST_TRANSPORT=1."
             );
             return Err(TransportError::Unsupported);
         }

@@ -2570,16 +2570,16 @@ mod applicability_tests {
             .unwrap_or_else(|e| panic!("{}: {e}", kconfig.display()));
         let default: u32 = text
             .lines()
-            .skip_while(|l| l.trim() != "config NROS_ZEPHYR_LEVEL_WORKER_FRAME")
+            .skip_while(|l| l.trim() != "config NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES")
             .find_map(|l| l.trim().strip_prefix("default "))
-            .expect("NROS_ZEPHYR_LEVEL_WORKER_FRAME states a default")
+            .expect("NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES states a default")
             .trim()
             .parse()
             .expect("a number");
         assert_eq!(
             level_worker_frame_bytes("zephyr", LevelRunner::C),
             Some(default),
-            "zephyr: CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME's default"
+            "zephyr: CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES's default"
         );
     }
 }

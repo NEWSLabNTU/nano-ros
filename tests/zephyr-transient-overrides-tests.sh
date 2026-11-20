@@ -20,7 +20,8 @@
 #   E  REACH: the hook harvests through the function and reads no
 #      `$CACHE{NROS_OVERRIDE_*}` itself
 #   G  every retired Kconfig symbol and -DNROS_OVERRIDE_<ID> is refused
-#      naming its replacement and, for a unit change, the factor (phase-581 W5)
+#      naming its replacement and, for a unit change, the factor (phase-581 W5;
+#      W6 adds the hand-written symbols and the locator statement's)
 #   F  the fixture runner's override listing (`fixtures-manifest.py
 #      west-overrides`) runs: it crashed with an `UnboundLocalError` from
 #      2865cc77c5, and the runner read it through a process substitution, so
@@ -127,7 +128,7 @@ printf '%s\n' \
     > "$WORK/g/CMakeLists.txt"
 gout="$(cmake -S "$WORK/g" -B "$WORK/gb" "-DMODULE=$MODULE" 2>&1)"
 read -r nk no <<< "$(printf '%s\n' "$gout" | sed -n 's/.*PROBE_COUNTS //p')"
-nk_seen="$(printf '%s\n' "$gout" | grep -c 'PROBE_RETIRED .*retired.conf: CONFIG_.* is retired: set CONFIG_NROS_' || true)"
+nk_seen="$(printf '%s\n' "$gout" | grep -c 'PROBE_RETIRED .*retired.conf: CONFIG_.* is retired: ' || true)"
 no_seen="$(printf '%s\n' "$gout" | grep -c 'PROBE_RETIRED *-DNROS_OVERRIDE_.* is retired: pass -DNROS_OVERRIDE_' || true)"
 if [ -z "$nk" ] || [ "$nk" -lt 1 ] || [ "$nk_seen" != "$nk" ]; then
     fail "G: $nk_seen of ${nk:-?} retired Kconfig symbols were refused naming their replacement"
@@ -138,6 +139,15 @@ fi
 printf '%s\n' "$gout" > "$WORK/g.log"
 nros_grep_q 'CONFIG_NROS_EXECUTOR_BACKING_U64S is retired: .*(the value x 8' "$WORK/g.log" ||
     fail "G: a unit change (backing_u64s, x 8) does not name its factor"
+# phase-581 W6 -- a hand-written symbol names its replacement, a statement's
+# symbol names both the guest symbol and the system.toml key, and a manual
+# retirement says what to do instead.
+nros_grep_q 'CONFIG_NROS_CYCLONE_CONFIG_XML is retired: set CONFIG_NROS_CYCLONEDDS_CONFIG_XML' "$WORK/g.log" ||
+    fail "G: CONFIG_NROS_CYCLONE_CONFIG_XML does not name CONFIG_NROS_CYCLONEDDS_CONFIG_XML"
+nros_grep_q 'CONFIG_NROS_ZENOH_LOCATOR is retired: set CONFIG_NROS_LOCATOR .*`locator`' "$WORK/g.log" ||
+    fail "G: CONFIG_NROS_ZENOH_LOCATOR does not name CONFIG_NROS_LOCATOR and the locator statement"
+nros_grep_q 'CONFIG_NROS_TRANSPORT_SERIAL is retired: .*CONFIG_NROS_ZENOH_LINK_SERIAL' "$WORK/g.log" ||
+    fail "G: CONFIG_NROS_TRANSPORT_SERIAL does not say what to set instead"
 
 if [ "$FAILURES" -ne 0 ]; then
     echo "zephyr-transient-overrides: $FAILURES failure(s)" >&2

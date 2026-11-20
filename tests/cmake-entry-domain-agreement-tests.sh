@@ -71,7 +71,7 @@ project(nros_entry_domain_agreement_test NONE)
 include("$ENV{NROS_TEST_MODULE}")
 set(CONFIG_NROS_DOMAIN_ID "$ENV{NROS_TEST_KCONFIG}")
 if(DEFINED ENV{NROS_TEST_CYCLONE})
-    set(CONFIG_NROS_CYCLONE_DOMAIN_ID "$ENV{NROS_TEST_CYCLONE}")
+    set(CONFIG_NROS_CYCLONEDDS_DOMAIN_ID "$ENV{NROS_TEST_CYCLONE}")
 endif()
 set(SNIPPET "nros-zenoh;island-ethernet")
 string(REPLACE ":" ";" merge_config_files "$ENV{NROS_TEST_FRAGMENTS}")
@@ -173,14 +173,14 @@ nros_grep_q "domain 0 agrees -- CONFIG_NROS_DOMAIN_ID from the Kconfig default" 
 
 # ---------------------------------------------------------------------------
 # Issue 1610 -- Cyclone's own knob. Until this, only `nros_system_generate`
-# compared `CONFIG_NROS_CYCLONE_DOMAIN_ID`; the entry road reached the shared
+# compared `CONFIG_NROS_CYCLONEDDS_DOMAIN_ID`; the entry road reached the shared
 # helper, which had no such line, so a Cyclone image whose DDS domain was
 # pinned apart from everything else configured CLEAN on this road. F is that
 # case and fails against the pre-1610 helper -- it is the regression test, not
 # a description of one.
 # The Cyclone symbol, spelled once -- the sibling test's idiom, and the reason
 # `check-cyclone-domain-not-pinned` does not read an ASSERTION as a pin.
-CYC=CONFIG_NROS_CYCLONE_DOMAIN_ID
+CYC=CONFIG_NROS_CYCLONEDDS_DOMAIN_ID
 log_info "F. Cyclone pinned to 2, everything else on 10, refuses on the ENTRY road"
 printf 'CONFIG_NET_L2_ETHERNET=y\nCONFIG_NROS_DOMAIN_ID=10\n' > "$SNIP/ethernet.conf"
 OUT="$(NROS_TEST_CYCLONE=2 run 10 10 "$SNIP/ethernet.conf")"

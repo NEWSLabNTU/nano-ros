@@ -128,7 +128,7 @@ service could send:
 | --- | --- | --- | --- |
 | `USER_SERVICE_INBOX` | your services | depth × (slot + 12 B) | `NROS_SERVICE_INBOX_BYTES`, `NROS_SERVICE_INBOX_DEPTH` |
 | `ACTION_INBOX` | the four queryables of each action server | depth × (slot + 12 B) | `NROS_ACTION_INBOX_BYTES`, `NROS_ACTION_INBOX_DEPTH` |
-| `BUILTIN_INBOX` | the runtime's own parameter and lifecycle services | depth × (slot + 12 B) | `NROS_PARAM_SERVICE_INBOX_BYTES`, `NROS_PARAM_SERVICE_INBOX_DEPTH` |
+| `BUILTIN_INBOX` | the runtime's own parameter and lifecycle services | depth × (slot + 12 B) | `NROS_PARAMS_SERVICE_INBOX_BYTES`, `NROS_PARAMS_SERVICE_INBOX_DEPTH` |
 
 The 12 B is a ring entry's length, sequence and overflow flag. Each table
 holds one ring per queryable of its family, for every session, and the

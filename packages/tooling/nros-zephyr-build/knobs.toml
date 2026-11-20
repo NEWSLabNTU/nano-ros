@@ -238,7 +238,7 @@ exactly 8 x this many bytes, on every target.
 and the arena (and the parameter store, when the image builds one).
 
 A STATED number covers the executor's tables only: when the image builds
-a parameter store (NROS_CAPABILITY_PARAM_SERVICES or NROS_PARAM_STORE),
+a parameter store (NROS_CAPABILITY_PARAM_SERVICES or NROS_PARAMS_STORE),
 the store's words are carved from the same static and added ON TOP, so
 the reservation is then 8 x (this + the store). Deriving is the right
 answer for an image that does not care which budget the bytes come out
@@ -497,7 +497,7 @@ parameter services share (nros-node build.rs PARAM_SERVICE_BUFFER_SIZE).
 -1 DERIVES it: when the contract's `params:` declare
 every node's parameters, nros-node sizes the buffer for the largest
 message those names and types can produce at the store's capacities
-(CONFIG_NROS_MAX_STRING_VALUE_LEN, CONFIG_NROS_MAX_ARRAY_LEN,
+(CONFIG_NROS_MAX_STRING_VALUE_LEN, CONFIG_NROS_PARAMS_MAX_ARRAY_LEN,
 CONFIG_NROS_MAX_BYTE_ARRAY_LEN, CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN).
 Without a declaration the crate default of 4096 stands. Stating a
 number here WINS; a request or reply past it is dropped and logged
@@ -568,46 +568,6 @@ COUPLED TO THE ARENA: the arena is max_cbs * (3 * this + 512) + 2048, so
 raising this raises the arena. An image that also PINS
 NROS_EXECUTOR_ARENA_SIZE must move the two together; leaving both to
 derive is the shape that cannot disagree.
-'''
-
-# ---------------------------------------------------------------------------
-# Statements (RFC-0140 D1): the system.toml selections. `carrier = true` says
-# the build carries it as NROS_ENTRY_<KEY>; `zephyr = true` that the Zephyr
-# module consumes it itself as CONFIG_NROS_<KEY> (a different symbol today
-# stays in `transitional` until phase-581 W6).
-
-[[knob]]
-key = "graph.max_entities"
-scope = "image"
-class = "public"
-type = "int"
-prompt = "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
-kconfig_if = "NROS_RMW_ZENOH"
-kconfig_attrs = [
-    "default 0",
-]
-help = '''
-A DECLARED CAPABILITY, not a derivation. The graph cache holds one
-liveliness keyexpr for every entity of every node on the domain —
-remote nodes included — so nothing about this image can answer it.
-What an operator does know is roughly how many nodes and endpoints
-share the domain, and this takes that count.
-
-The bytes follow from a measurement, not a model: a ROS 2 liveliness
-keyexpr runs ~140 bytes and the cache stores them NUL-separated with
-no index, so one entity costs 141 bytes. Upstream measured a host
-running one stock talker plus the ROS 2 daemon carrying 222 tokens.
-
-0 means "I am stating the bytes instead" — NROS_GRAPH_CACHE_SIZE
-outranks this and keeps its own default, so nothing that already sets
-it changes.
-
-UNDER-STATING IS NOT A SMALLER CACHE. Overflow is counted, never
-truncated, and a non-zero dropped count makes service_is_ready answer
-"cannot say", which every caller reads as keep waiting; the node and
-topic list verbs discard the count entirely and simply under-report.
-Being generous costs .bss; being short costs a hang and a wrong graph
-answer.
 '''
 
 [[knob]]
@@ -730,78 +690,6 @@ cargo features.
 '''
 
 [[knob]]
-key = "params.max_array_len"
-transitional = { id = "MAX_ARRAY_LEN", kconfig = "NROS_MAX_ARRAY_LEN" }
-scope = "image"
-class = "public"
-ladder = true
-type = "int"
-prompt = "Array parameter capacity in elements (-1 = derive)"
-kconfig_attrs = [
-    "default -1",
-]
-help = '''
-Elements a `bool_array`, `integer_array` or `double_array` parameter
-can hold (nros-params build.rs). A `string_array` has its own element
-bound, MAX_STRING_ARRAY_LEN.
-
--1 DERIVES 0 when the contract's `params:` declare none of those
-types. When one is declared, state a number here; the build refuses,
-naming the parameter and this knob, if nothing does. Without a
-declaration the crate default of 32 stands.
-'''
-
-[[knob]]
-key = "params.max_parameters"
-transitional = { id = "MAX_PARAMETERS", kconfig = "NROS_MAX_PARAMETERS" }
-scope = "image"
-class = "public"
-ladder = true
-type = "int"
-prompt = "Maximum declared parameters per image (-1 = derive)"
-kconfig_attrs = [
-    "default -1",
-]
-help = '''
-Static parameter-store pool size (nros-params build.rs). A node
-declaring more parameters than this is refused at boot: the runtime
-logs the node, the parameter and this knob, and the declaration
-fails (C++ stops the boot with Full, -6). The Autoware trajectory follower
-declares ~150.
-
--1 DERIVES it from the contract's `params:`: every
-declared parameter plus one `use_sim_time` per node, which nano-ros
-declares on every node. An image whose contract declares no
-parameters (or declares them on only some nodes) falls through to the
-crate default of 32. Stating a number here WINS.
-'''
-
-[[knob]]
-key = "params.max_string_array_len"
-transitional = { id = "MAX_STRING_ARRAY_LEN", kconfig = "NROS_MAX_STRING_ARRAY_LEN" }
-scope = "image"
-class = "public"
-ladder = true
-type = "int"
-prompt = "String-array parameter capacity in elements (-1 = derive)"
-kconfig_attrs = [
-    "default -1",
-]
-help = '''
-Elements a `string_array` parameter can hold (nros-params build.rs);
-each element is bounded by MAX_STRING_VALUE_LEN. A string array is
-the largest value a slot can hold (elements x string length), and
-every slot is as large as the largest value, so this bound is kept
-apart from MAX_ARRAY_LEN: an image with a `string` and a
-`double_array` but no `string_array` pays for neither product.
-
--1 DERIVES 0 when the contract's `params:` declare no `string_array`.
-When one is declared, state a number here; the build refuses, naming
-the parameter and this knob, if nothing does. Without a declaration
-the crate default of 32 stands.
-'''
-
-[[knob]]
 key = "memory.app_stack_bytes"
 scope = "board"
 class = "public"
@@ -839,7 +727,7 @@ type = "int"
 prompt = "Application heap arena size (bytes)"
 kconfig_attrs = [
     "default 1048576 if NROS_RMW_CYCLONEDDS",
-    "default 196608 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE || NROS_CAPABILITY_LIFECYCLE",
+    "default 196608 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAMS_STORE || NROS_CAPABILITY_LIFECYCLE",
     "default 131072 if RUST",
     "default 65536",
 ]
@@ -851,7 +739,7 @@ nros heap arena, with the defaults below. ThreadX's byte pool is its
 own knob, threadx.byte_pool_bytes.
 
 A PARAM_SERVICES image, one whose launch seeds a parameter
-(NROS_PARAM_STORE), and a LIFECYCLE one get 192 KiB: those capabilities
+(NROS_PARAMS_STORE), and a LIFECYCLE one get 192 KiB: those capabilities
 allocate their services' buffers from this arena, and nothing sized it
 from the declaration, so such an image LINKED and then halted at boot.
 
@@ -943,6 +831,98 @@ retired = [
     { spelling = "env:NROS_SMOLTCP_BUFFER_SIZE" },
 ]
 ladder = true
+
+[[knob]]
+key = "net.connect_timeout_ms"
+scope = "board"
+class = "public"
+retired = [
+    { spelling = "env:ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS" },
+    { spelling = "env:NROS_SMOLTCP_CONNECT_TIMEOUT_MS" },
+]
+ladder = true
+
+[[knob]]
+key = "net.max_sockets"
+scope = "board"
+class = "public"
+retired = [
+    { spelling = "env:ZPICO_SMOLTCP_MAX_SOCKETS" },
+    { spelling = "env:NROS_SMOLTCP_MAX_SOCKETS" },
+]
+ladder = true
+
+[[knob]]
+key = "net.max_udp_sockets"
+scope = "board"
+class = "public"
+retired = [
+    { spelling = "env:ZPICO_SMOLTCP_MAX_UDP_SOCKETS" },
+    { spelling = "env:NROS_SMOLTCP_MAX_UDP_SOCKETS" },
+]
+ladder = true
+
+[[knob]]
+key = "net.socket_timeout_ms"
+scope = "board"
+class = "public"
+retired = [
+    { spelling = "env:ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS" },
+    { spelling = "env:NROS_SMOLTCP_SOCKET_TIMEOUT_MS" },
+]
+ladder = true
+
+[[knob]]
+key = "params.events_depth"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "toml:params.param_events_depth" },
+    { spelling = "env:NROS_PARAM_EVENTS_DEPTH" },
+    { spelling = "kconfig:CONFIG_NROS_PARAM_EVENTS_DEPTH" },
+    { spelling = "cmake:NROS_OVERRIDE_PARAM_EVENTS_DEPTH" },
+]
+ladder = true
+type = "int"
+prompt = "/parameter_events publisher history depth"
+kconfig_attrs = [
+    "default 1",
+    "range 1 1000",
+]
+help = '''
+History depth of each node's /parameter_events publisher, read by
+nros-params build.rs. Upstream's
+parameter_events profile is KEEP_LAST(1000); a reliable DDS writer
+reserves that history, so an RTOS image defaults to 1. Depth is not a
+QoS matching criterion, so a subscriber with upstream's profile still
+matches.
+'''
+
+[[knob]]
+key = "params.max_array_len"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "env:NROS_MAX_ARRAY_LEN" },
+    { spelling = "kconfig:CONFIG_NROS_MAX_ARRAY_LEN" },
+    { spelling = "cmake:NROS_OVERRIDE_MAX_ARRAY_LEN" },
+]
+ladder = true
+type = "int"
+prompt = "Array parameter capacity in elements (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Elements a `bool_array`, `integer_array` or `double_array` parameter
+can hold (nros-params build.rs). A `string_array` has its own element
+bound, MAX_STRING_ARRAY_LEN.
+
+-1 DERIVES 0 when the contract's `params:` declare none of those
+types. When one is declared, state a number here; the build refuses,
+naming the parameter and this knob, if nothing does. Without a
+declaration the crate default of 32 stands.
+'''
 
 [[knob]]
 key = "params.max_byte_array_bytes"
@@ -1057,6 +1037,64 @@ the crate default of 64 stands.
 '''
 
 [[knob]]
+key = "params.max_parameters"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "env:NROS_MAX_PARAMETERS" },
+    { spelling = "kconfig:CONFIG_NROS_MAX_PARAMETERS" },
+    { spelling = "cmake:NROS_OVERRIDE_MAX_PARAMETERS" },
+]
+ladder = true
+type = "int"
+prompt = "Maximum declared parameters per image (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Static parameter-store pool size (nros-params build.rs). A node
+declaring more parameters than this is refused at boot: the runtime
+logs the node, the parameter and this knob, and the declaration
+fails (C++ stops the boot with Full, -6). The Autoware trajectory follower
+declares ~150.
+
+-1 DERIVES it from the contract's `params:`: every
+declared parameter plus one `use_sim_time` per node, which nano-ros
+declares on every node. An image whose contract declares no
+parameters (or declares them on only some nodes) falls through to the
+crate default of 32. Stating a number here WINS.
+'''
+
+[[knob]]
+key = "params.max_string_array_len"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "env:NROS_MAX_STRING_ARRAY_LEN" },
+    { spelling = "kconfig:CONFIG_NROS_MAX_STRING_ARRAY_LEN" },
+    { spelling = "cmake:NROS_OVERRIDE_MAX_STRING_ARRAY_LEN" },
+]
+ladder = true
+type = "int"
+prompt = "String-array parameter capacity in elements (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Elements a `string_array` parameter can hold (nros-params build.rs);
+each element is bounded by MAX_STRING_VALUE_LEN. A string array is
+the largest value a slot can hold (elements x string length), and
+every slot is as large as the largest value, so this bound is kept
+apart from MAX_ARRAY_LEN: an image with a `string` and a
+`double_array` but no `string_array` pays for neither product.
+
+-1 DERIVES 0 when the contract's `params:` declare no `string_array`.
+When one is declared, state a number here; the build refuses, naming
+the parameter and this knob, if nothing does. Without a declaration
+the crate default of 32 stands.
+'''
+
+[[knob]]
 key = "params.max_string_value_bytes"
 scope = "image"
 class = "public"
@@ -1088,30 +1126,15 @@ declaration the crate default of 256 stands.
 '''
 
 [[knob]]
-key = "params.param_events_depth"
-transitional = { id = "PARAM_EVENTS_DEPTH", kconfig = "NROS_PARAM_EVENTS_DEPTH" }
+key = "params.service_inbox_bytes"
 scope = "image"
 class = "public"
-ladder = true
-type = "int"
-prompt = "/parameter_events publisher history depth"
-kconfig_attrs = [
-    "default 1",
-    "range 1 1000",
+retired = [
+    { spelling = "toml:param.service_inbox_bytes" },
+    { spelling = "env:NROS_PARAM_SERVICE_INBOX_BYTES" },
+    { spelling = "kconfig:CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES" },
+    { spelling = "cmake:NROS_OVERRIDE_PARAM_SERVICE_INBOX_BYTES" },
 ]
-help = '''
-History depth of each node's /parameter_events publisher, read by
-nros-params build.rs. Upstream's
-parameter_events profile is KEEP_LAST(1000); a reliable DDS writer
-reserves that history, so an RTOS image defaults to 1. Depth is not a
-QoS matching criterion, so a subscriber with upstream's profile still
-matches.
-'''
-
-[[knob]]
-key = "param.service_inbox_bytes"
-scope = "image"
-class = "public"
 type = "int"
 prompt = "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
 kconfig_attrs = [
@@ -1137,18 +1160,24 @@ sentinel, and the readers took it literally. On XRCE the same number
 is XRCE_PARAM_REQUEST_BYTES, which raises
 NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE to fit it.
 
-Not under NROS_RMW_ZENOH, unlike PARAM_SERVICE_INBOX_DEPTH (whose ring
+Not under NROS_RMW_ZENOH, unlike PARAMS_SERVICE_INBOX_DEPTH (whose ring
 only a caller-inbox backend allocates): nros-node and the XRCE backend
 read this size too, so an XRCE image must be able to state it. Under
 the zenoh `if` it was undeclared there, while XRCE's own refusal told
 the user to set it.
-Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
+Maps to NROS_PARAMS_SERVICE_INBOX_BYTES.
 '''
 
 [[knob]]
-key = "param.service_inbox_depth"
+key = "params.service_inbox_depth"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:param.service_inbox_depth" },
+    { spelling = "env:NROS_PARAM_SERVICE_INBOX_DEPTH" },
+    { spelling = "kconfig:CONFIG_NROS_PARAM_SERVICE_INBOX_DEPTH" },
+    { spelling = "cmake:NROS_OVERRIDE_PARAM_SERVICE_INBOX_DEPTH" },
+]
 type = "int"
 prompt = "Parameter/lifecycle service inbox ring depth"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1165,7 +1194,7 @@ call, and a node's six services are polled serially in one spin. Two
 clients hitting the SAME service of the SAME node inside one spin
 period is the only case depth 1 loses, and the loser sees a timeout and
 retries. Raise it to 2 for an image that serves a parameter dashboard.
-Must be >= 1. Maps to NROS_PARAM_SERVICE_INBOX_DEPTH.
+Must be >= 1. Maps to NROS_PARAMS_SERVICE_INBOX_DEPTH.
 '''
 
 [[knob]]
@@ -1393,38 +1422,6 @@ retired = [
 ladder = true
 
 [[knob]]
-key = "net.connect_timeout_ms"
-transitional = { id = "SMOLTCP_CONNECT_TIMEOUT_MS", kconfig = "NROS_SMOLTCP_CONNECT_TIMEOUT_MS" }
-scope = "board"
-class = "public"
-retired = [{ spelling = "env:ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS" }]
-ladder = true
-
-[[knob]]
-key = "net.max_sockets"
-transitional = { id = "SMOLTCP_MAX_SOCKETS", kconfig = "NROS_SMOLTCP_MAX_SOCKETS" }
-scope = "board"
-class = "public"
-retired = [{ spelling = "env:ZPICO_SMOLTCP_MAX_SOCKETS" }]
-ladder = true
-
-[[knob]]
-key = "net.max_udp_sockets"
-transitional = { id = "SMOLTCP_MAX_UDP_SOCKETS", kconfig = "NROS_SMOLTCP_MAX_UDP_SOCKETS" }
-scope = "board"
-class = "public"
-retired = [{ spelling = "env:ZPICO_SMOLTCP_MAX_UDP_SOCKETS" }]
-ladder = true
-
-[[knob]]
-key = "net.socket_timeout_ms"
-transitional = { id = "SMOLTCP_SOCKET_TIMEOUT_MS", kconfig = "NROS_SMOLTCP_SOCKET_TIMEOUT_MS" }
-scope = "board"
-class = "public"
-retired = [{ spelling = "env:ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS" }]
-ladder = true
-
-[[knob]]
 key = "subscriber.buffer_bytes"
 scope = "image"
 class = "public"
@@ -1466,21 +1463,34 @@ types. Deriving over the bounded subset would publish a maximum a real
 sample can exceed, which is a SILENT drop on the C++ arena path.
 '''
 
+# ---------------------------------------------------------------------------
+# Statements (RFC-0140 D1): the system.toml selections. `carrier = true` says
+# the build carries it as NROS_ENTRY_<KEY>; `zephyr = true` that the Zephyr
+# module consumes it itself as CONFIG_NROS_<KEY>. A statement's own name never
+# carries it at build time (RFC-0140 D3 N5): `NROS_DOMAIN_ID` is refused at
+# build, and `NROS_LOCATOR` / `NROS_NODE_NAME` are run-time variables only
+# (their `[[env]]` rows), so a build that finds them in its shell prints a
+# note instead (phase-581 W6).
+
 [[statement]]
 key = "domain_id"
 carrier = true
 zephyr = true
+retired = [
+    { spelling = "env:NROS_DOMAIN_ID", instead = "state `domain_id` under `[system]` (or `[image.<id>]`) in system.toml (it reaches the build as NROS_ENTRY_DOMAIN_ID), and ROS_DOMAIN_ID overrides it at run time on a target with a process environment" },
+]
 help = "[system] / [image.<id>] domain_id. Overridden at run time by ROS_DOMAIN_ID."
 
 [[statement]]
 key = "locator"
 carrier = true
 zephyr = true
-transitional = { kconfig = "NROS_ZENOH_LOCATOR" }
+retired = [{ spelling = "kconfig:CONFIG_NROS_ZENOH_LOCATOR" }]
 help = "[system] / [image.<id>] locator: where the image connects. Overridden at run time by NROS_LOCATOR."
 
 [[statement]]
 key = "node_name"
+carrier = true
 help = "The launch-declared node name, baked in the boot blob. Overridden at run time by NROS_NODE_NAME."
 
 [[statement]]
@@ -1725,3 +1735,66 @@ foreign = "rust"
 disposition = "respect"
 parse = "str"
 help = "The log level of the linux board's stdout sink, Rust road only."
+
+# ---------------------------------------------------------------------------
+# Hand-written `zephyr/Kconfig` symbols that replaced others (RFC-0140 Appendix
+# A.2, phase-581 W6). Each holds the `kconfig:` spellings it retired, which the
+# module hook refuses in a conf file or a -DCONFIG_ entry, in a system.toml
+# project and in a guest, naming `symbol`. `env` is the build variable the
+# module forwards the symbol's value as, when that is not `NROS_` plus the
+# symbol (the Rust lane reads the symbol from $DOTCONFIG under it). Phase-581
+# W9 folds these symbols into knob rows. Sorted by symbol.
+
+[[kconfig]]
+symbol = "CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER_BYTES"
+retired = [{ spelling = "kconfig:CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER" }]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_CYCLONEDDS_CONFIG_XML"
+retired = [{ spelling = "kconfig:CONFIG_NROS_CYCLONE_CONFIG_XML" }]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_CYCLONEDDS_DOMAIN_ID"
+retired = [{ spelling = "kconfig:CONFIG_NROS_CYCLONE_DOMAIN_ID" }]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_PARAMS_STORE"
+env = "NROS_PARAM_STORE"
+retired = [{ spelling = "kconfig:CONFIG_NROS_PARAM_STORE" }]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_ZENOH_LINK_SERIAL"
+retired = [
+    { spelling = "kconfig:CONFIG_NROS_TRANSPORT_SERIAL", instead = "it only selected the zenoh serial link: state the image's transport as serial in system.toml (`[image.<id>] transport`), or set CONFIG_NROS_ZENOH_LINK_SERIAL=y in a guest's conf" },
+]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH"
+retired = [{ spelling = "kconfig:CONFIG_NROS_EPOCH_FROM_ZENOH" }]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_ZENOH_WALL_CLOCK_EPOCH_INTERVAL_MS"
+retired = [{ spelling = "kconfig:CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS" }]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_ZEPHYR_EDMA_WARM_RESET_QUIESCE"
+retired = [{ spelling = "kconfig:CONFIG_NROS_EDMA_WARM_RESET_QUIESCE" }]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES"
+retired = [{ spelling = "kconfig:CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME" }]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES"
+# CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE was this symbol's deprecated alias (phase
+# 536, "kept for one release"); Appendix A.2 listed it for a `_BYTES` rename,
+# but a renamed deprecated alias would be a new name nothing uses, so it is
+# retired naming the symbol it was an alias of.
+retired = [
+    { spelling = "kconfig:CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE" },
+]
+
+[[kconfig]]
+symbol = "CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES"
+retired = [{ spelling = "kconfig:CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE" }]

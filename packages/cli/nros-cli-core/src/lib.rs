@@ -240,6 +240,19 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
     }
 }
 
+/// A statement's retired build variable set in the shell, refused naming the
+/// statement (`nros_zephyr_build::retired_statement_env_set`).
+fn refuse_retired_statement_env(env: &dyn Fn(&str) -> Option<String>) -> eyre::Result<()> {
+    let set = nros_zephyr_build::retired_statement_env_set(env);
+    if set.is_empty() {
+        return Ok(());
+    }
+    Err(eyre::eyre!(
+        "a retired build variable is set in this shell:\n  {}",
+        set.join("\n  ")
+    ))
+}
+
 fn cmd_name(cmd: &cmd::Cmd) -> &'static str {
     match cmd {
         // phase-530 W1 — `sync` lowers to `configure` before this is asked
@@ -306,6 +319,14 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
     orchestration::rust_toolchain::expose_offline_flag(offline_flag(&cmd));
     if let Err(msg) = stale_guard::refuse_if_stale(cmd_name(&cmd)) {
         return Err(eyre::eyre!("{msg}"));
+    }
+    // phase-581 W6 (RFC-0140 D4) -- `nros build` / `nros configure` refuse a
+    // statement's retired build variable in their shell (`NROS_DOMAIN_ID`)
+    // before anything runs, so the refusal reaches the user whole instead of
+    // as a build script's exit status deep in a probe or a cargo run (the
+    // build scripts refuse it too, for a build `nros` did not start).
+    if matches!(cmd, cmd::Cmd::Build(_) | cmd::Cmd::Configure(_)) {
+        refuse_retired_statement_env(&|k| std::env::var(k).ok())?;
     }
     match cmd {
         cmd::Cmd::Build(args) => cmd::build::run(args),
@@ -425,5 +446,24 @@ mod offline_flag_tests {
             let without: Vec<&str> = argv.iter().copied().filter(|a| *a != "--offline").collect();
             assert!(!offline_flag(&parse(&without)), "{without:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod retired_statement_env_tests {
+    /// phase-581 W6 -- `NROS_DOMAIN_ID` in the shell stops `nros build` naming
+    /// `[system] domain_id`; unset (or empty) it does not.
+    #[test]
+    fn an_exported_domain_id_is_refused_naming_the_statement() {
+        let set = |k: &str| (k == "NROS_DOMAIN_ID").then(|| "7".to_string());
+        let e = super::refuse_retired_statement_env(&set)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("NROS_DOMAIN_ID") && e.contains("`[system]`"),
+            "{e}"
+        );
+        assert!(super::refuse_retired_statement_env(&|_| None).is_ok());
+        assert!(super::refuse_retired_statement_env(&|_| Some(String::new())).is_ok());
     }
 }

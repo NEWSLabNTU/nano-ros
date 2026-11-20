@@ -64,17 +64,14 @@ config NROS_LOG_MAX_LEVEL
 config NROS_LOG_ROSOUT_RECORDS
     int "nros-log /rosout queue depth"
 
-config NROS_MAX_ARRAY_LEN
-    int "Array parameter capacity in elements (-1 = derive)"
-
-config NROS_MAX_PARAMETERS
-    int "Maximum declared parameters per image (-1 = derive)"
-
-config NROS_MAX_STRING_ARRAY_LEN
-    int "String-array parameter capacity in elements (-1 = derive)"
-
 config NROS_MEMORY_HEAP_BYTES
     int "Application heap arena size (bytes)"
+
+config NROS_PARAMS_EVENTS_DEPTH
+    int "/parameter_events publisher history depth"
+
+config NROS_PARAMS_MAX_ARRAY_LEN
+    int "Array parameter capacity in elements (-1 = derive)"
 
 config NROS_PARAMS_MAX_BYTE_ARRAY_BYTES
     int "Byte-array parameter capacity in bytes (-1 = derive)"
@@ -88,13 +85,16 @@ config NROS_PARAMS_MAX_DESCRIPTION_BYTES
 config NROS_PARAMS_MAX_NAME_BYTES
     int "Longest parameter name in bytes (-1 = derive)"
 
+config NROS_PARAMS_MAX_PARAMETERS
+    int "Maximum declared parameters per image (-1 = derive)"
+
+config NROS_PARAMS_MAX_STRING_ARRAY_LEN
+    int "String-array parameter capacity in elements (-1 = derive)"
+
 config NROS_PARAMS_MAX_STRING_VALUE_BYTES
     int "String parameter capacity in bytes (-1 = derive)"
 
-config NROS_PARAM_EVENTS_DEPTH
-    int "/parameter_events publisher history depth"
-
-config NROS_PARAM_SERVICE_INBOX_BYTES
+config NROS_PARAMS_SERVICE_INBOX_BYTES
     int "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
 
 config NROS_PUBSUB_QOS_DEPTH
@@ -148,10 +148,7 @@ config NROS_ACTION_INBOX_BYTES
 config NROS_ACTION_INBOX_DEPTH
     int "Action inbox ring depth"
 
-config NROS_GRAPH_MAX_ENTITIES
-    int "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
-
-config NROS_PARAM_SERVICE_INBOX_DEPTH
+config NROS_PARAMS_SERVICE_INBOX_DEPTH
     int "Parameter/lifecycle service inbox ring depth"
 
 config NROS_RMW_LOCAL_QUERYABLE
@@ -183,6 +180,9 @@ config NROS_ZENOH_GRAPH_CACHE_BYTES
 
 config NROS_ZENOH_GRAPH_DISCOVERY
     bool "Keep a graph cache (liveliness subscriber on the whole domain)"
+
+config NROS_ZENOH_GRAPH_MAX_ENTITIES
+    int "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
 
 config NROS_MAX_LARGE_SUBSCRIBERS
     int "Subscribers served from the large payload class (-1 = derive)"

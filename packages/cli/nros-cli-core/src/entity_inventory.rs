@@ -3186,7 +3186,7 @@ pub enum ParamCapacity {
 pub struct ParamStoreSizing {
     /// Parameters the contract declares, across every node.
     pub declared: usize,
-    /// `NROS_MAX_PARAMETERS` -- the store's CAPACITY: every node's declared
+    /// `NROS_PARAMS_MAX_PARAMETERS` -- the store's CAPACITY: every node's declared
     /// names plus [`SEEDED_PARAMETER`], counted once per node even when the
     /// contract also names it (the seed steps aside for an application's own
     /// declaration and the two share a slot).
@@ -3201,9 +3201,9 @@ pub struct ParamStoreSizing {
     pub max_param_name_len: usize,
     /// `NROS_PARAMS_MAX_STRING_VALUE_BYTES` -- `string` and `string_array`.
     pub string_value_len: ParamCapacity,
-    /// `NROS_MAX_ARRAY_LEN` -- `bool_array`, `integer_array`, `double_array`.
+    /// `NROS_PARAMS_MAX_ARRAY_LEN` -- `bool_array`, `integer_array`, `double_array`.
     pub array_len: ParamCapacity,
-    /// `NROS_MAX_STRING_ARRAY_LEN` -- `string_array`'s element count, its own
+    /// `NROS_PARAMS_MAX_STRING_ARRAY_LEN` -- `string_array`'s element count, its own
     /// bound (issue 2647) so a `string` beside a `double_array` does not size
     /// every slot for their product.
     pub string_array_len: ParamCapacity,

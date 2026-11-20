@@ -454,7 +454,7 @@ impl ZephyrBoard {
     /// boot level, `sched_tasks[0]`, runs on this thread), a `SchedTaskMemory`
     /// static sized from that sched task's declared `stack_bytes`, or
     /// `SchedTaskMemoryRaw::NONE` for a sched task that declared none (it keeps
-    /// the pool slot, CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE). Refused unless
+    /// the pool slot, CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES). Refused unless
     /// empty or exactly one row per spawned level.
     ///
     /// `sched_task_backing` is still checked against the table so an entry

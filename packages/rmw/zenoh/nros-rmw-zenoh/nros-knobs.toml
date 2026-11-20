@@ -61,6 +61,17 @@ retired = [
 ladder = true
 
 [[knob]]
+key = "zenoh.debug"
+scope = "image"
+class = "internal"
+retired = [{ spelling = "env:NROS_ZPICO_DEBUG" }]
+help = '''
+1 (or true) compiles the vendored zenoh-pico C with DWARF (-g), whatever
+the cargo profile says: a debugging session's tool, never a default, read
+by nros-zpico-build when it builds the C shim.
+'''
+
+[[knob]]
 key = "zenoh.frag_max_bytes"
 scope = "board"
 class = "public"
@@ -160,9 +171,9 @@ compiles the cache out. On a 256 KiB part it is a quarter of SRAM.
 
 Nothing about this image can derive it: the cache holds the
 whole DOMAIN's liveliness tokens, remote ones included. What can follow
-the target is a STATED count: NROS_GRAPH_MAX_ENTITIES (141 bytes an
+the target is a STATED count: NROS_ZENOH_GRAPH_MAX_ENTITIES (141 bytes an
 entity), set by the image or by a small board in its descriptor's
-`[knobs.graph] max_entities`. 8192 still holds
+`[knobs.zenoh] graph_max_entities`. 8192 still holds
 ~58 tokens. Overflow is counted and reported by zpico_graph_cache_copy,
 never silently truncated, so a value that is too small shows up as a
 drop count rather than as a wrong answer.
@@ -213,6 +224,46 @@ burst overran the receive ring and stopped the read task; over TCP
 serial or CAN link the cache costs the link and buys nothing an image
 that makes no graph query of its own can use. An image that also
 compiles an IP link keeps the old default.
+'''
+
+[[knob]]
+key = "zenoh.graph_max_entities"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "toml:graph.max_entities" },
+    { spelling = "env:NROS_GRAPH_MAX_ENTITIES" },
+    { spelling = "kconfig:CONFIG_NROS_GRAPH_MAX_ENTITIES" },
+    { spelling = "cmake:NROS_OVERRIDE_GRAPH_MAX_ENTITIES" },
+]
+type = "int"
+prompt = "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 0",
+]
+help = '''
+A DECLARED CAPABILITY, not a derivation. The graph cache holds one
+liveliness keyexpr for every entity of every node on the domain —
+remote nodes included — so nothing about this image can answer it.
+What an operator does know is roughly how many nodes and endpoints
+share the domain, and this takes that count.
+
+The bytes follow from a measurement, not a model: a ROS 2 liveliness
+keyexpr runs ~140 bytes and the cache stores them NUL-separated with
+no index, so one entity costs 141 bytes. Upstream measured a host
+running one stock talker plus the ROS 2 daemon carrying 222 tokens.
+
+0 means "I am stating the bytes instead" — NROS_GRAPH_CACHE_SIZE
+outranks this and keeps its own default, so nothing that already sets
+it changes.
+
+UNDER-STATING IS NOT A SMALLER CACHE. Overflow is counted, never
+truncated, and a non-zero dropped count makes service_is_ready answer
+"cannot say", which every caller reads as keep waiting; the node and
+topic list verbs discard the count entirely and simply under-report.
+Being generous costs .bss; being short costs a hang and a wrong graph
+answer.
 '''
 
 [[knob]]
@@ -433,6 +484,32 @@ key = "zenoh.max_tl_publishers"
 scope = "image"
 class = "public"
 retired = [{ spelling = "env:ZPICO_MAX_TL_PUBLISHERS" }]
+
+[[knob]]
+key = "zenoh.multicast_transport"
+scope = "image"
+class = "public"
+retired = [{ spelling = "env:ZPICO_MULTICAST_TRANSPORT" }]
+help = '''
+1 compiles zenoh-pico's multicast transport, scouting and multicast
+declarations in, so a session opened in peer mode (NROS_SESSION_MODE=peer)
+needs no router. Off by default for size; a peer-mode session on a build
+without it is refused at open, naming this knob. Read by nros-zpico-build,
+which emits the C defines and the Rust ZPICO_PEER_MODE_SUPPORTED const from
+the one value. State it as `[image.<id>.knobs.zenoh] multicast_transport = true`.
+'''
+
+[[knob]]
+key = "zenoh.no_smoltcp"
+scope = "image"
+class = "carrier"
+carries = "the image's serial transport statement"
+retired = [{ spelling = "env:ZPICO_NO_SMOLTCP" }]
+help = '''
+Set by `nros` when an image states `transport = "serial"`: nros-zpico-build
+then compiles no smoltcp glue into the zenoh shim, so a serial-only image
+links no IP stack. Not a setting: state the transport instead.
+'''
 
 [[knob]]
 key = "zenoh.publisher_tx_buffer_bytes"

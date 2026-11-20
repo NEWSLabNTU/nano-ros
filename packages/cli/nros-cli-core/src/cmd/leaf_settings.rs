@@ -433,7 +433,7 @@ fn is_path_value(value: &str) -> bool {
 /// `[image.<id>] transport = "serial"` is a link-set choice, and two build
 /// scripts already ask for it in their own spelling:
 ///
-/// * `ZPICO_NO_SMOLTCP=1` — `nros-zpico-build`'s runner skips the smoltcp glue
+/// * `NROS_ZENOH_NO_SMOLTCP=1` — `nros-zpico-build`'s runner skips the smoltcp glue
 ///   and defines `ZPICO_SERIAL` instead; without it a bare-metal serial link
 ///   does not resolve (`smoltcp_init` / `smoltcp_cleanup`).
 /// * `NROS_LINK_IP=0` — `nros-zpico-build` and `nros-rmw-xrce-cffi` drop the
@@ -530,7 +530,7 @@ pub(crate) fn transport_implications_of(
     if !nros_orchestration_ir::leaf_system::is_byte_stream_link(transport) {
         return;
     }
-    env.insert("ZPICO_NO_SMOLTCP".to_string(), "1".to_string());
+    env.insert("NROS_ZENOH_NO_SMOLTCP".to_string(), "1".to_string());
     env.insert("NROS_LINK_IP".to_string(), "0".to_string());
 }
 
@@ -969,9 +969,14 @@ fn knob_env_row(
 /// Every key that names a retired spelling is listed, so one edit fixes them
 /// all. A key the registry does not hold is carried as written.
 pub fn refuse_retired_env_keys(env: &BTreeMap<String, String>) -> Result<()> {
+    // phase-581 W6 -- and a statement's retired build variable
+    // (`NROS_DOMAIN_ID`), refused naming `[system] domain_id`.
     let refusals: Vec<String> = env
         .keys()
-        .filter_map(|k| nros_zephyr_build::retired_spelling_refusal(k))
+        .filter_map(|k| {
+            nros_zephyr_build::retired_spelling_refusal(k)
+                .or_else(|| nros_zephyr_build::retired_statement_env_refusal(k))
+        })
         .collect();
     if refusals.is_empty() {
         return Ok(());
@@ -2172,7 +2177,7 @@ mod tests {
     fn a_serial_transport_implies_the_two_link_knobs() {
         let mut env = BTreeMap::new();
         transport_implications(&decl(Some("serial"), &[]), &mut env).unwrap();
-        assert_eq!(env["ZPICO_NO_SMOLTCP"], "1");
+        assert_eq!(env["NROS_ZENOH_NO_SMOLTCP"], "1");
         assert_eq!(env["NROS_LINK_IP"], "0");
     }
 
@@ -2187,7 +2192,10 @@ mod tests {
             env.insert(k.clone(), v.clone());
         }
         assert_eq!(env["NROS_LINK_IP"], "1", "the image's own row wins");
-        assert_eq!(env["ZPICO_NO_SMOLTCP"], "1", "the other half still applies");
+        assert_eq!(
+            env["NROS_ZENOH_NO_SMOLTCP"], "1",
+            "the other half still applies"
+        );
     }
 
     /// Absent or IP-bearing transport implies nothing — a leaf that says

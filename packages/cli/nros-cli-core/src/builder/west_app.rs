@@ -197,7 +197,7 @@ pub const CAPABILITY_KCONFIG: &[(&str, &str)] = &[
     // phase-556 W11 -- `use_sim_time` (the `/clock` time source), a stock
     // node interface too.
     ("sim_time", "CONFIG_NROS_CAPABILITY_SIM_TIME"),
-    (PARAM_STORE_AXIS, "CONFIG_NROS_PARAM_STORE"),
+    (PARAM_STORE_AXIS, "CONFIG_NROS_PARAMS_STORE"),
 ];
 
 /// Issue 1706 -- a launch `<param>` seeds the parameter store through the same
@@ -235,7 +235,7 @@ pub fn capability_kconfig_cmake(capabilities: &[String]) -> String {
     );
     for (axis, sym) in CAPABILITY_KCONFIG {
         // phase-461 W6 -- the `params` axis states the store the way a launch
-        // seed implies it: `CONFIG_NROS_PARAM_STORE`, never the services.
+        // seed implies it: `CONFIG_NROS_PARAMS_STORE`, never the services.
         let on = capabilities
             .iter()
             .any(|c| c == axis || (*axis == PARAM_STORE_AXIS && c == "params"));
@@ -1270,7 +1270,7 @@ mod tests {
             ..Default::default()
         });
         assert!(
-            s.contains("set(CONFIG_NROS_PARAM_STORE y CACHE STRING"),
+            s.contains("set(CONFIG_NROS_PARAMS_STORE y CACHE STRING"),
             "{s}"
         );
         assert!(
@@ -1295,7 +1295,7 @@ mod tests {
         cpp.capabilities = seeded;
         for s in [render_cmakelists(&rust), render_cmakelists(&cpp)] {
             let at = s
-                .find("set(CONFIG_NROS_PARAM_STORE y CACHE STRING")
+                .find("set(CONFIG_NROS_PARAMS_STORE y CACHE STRING")
                 .unwrap_or_else(|| panic!("seed not carried:\n{s}"));
             assert!(at < s.find("find_package(Zephyr REQUIRED").unwrap(), "{s}");
             // The SERVICES axis is untouched: a seed implies the store only.
@@ -1309,7 +1309,7 @@ mod tests {
             ..Default::default()
         });
         assert!(
-            bare.contains("set(CONFIG_NROS_PARAM_STORE n CACHE STRING"),
+            bare.contains("set(CONFIG_NROS_PARAMS_STORE n CACHE STRING"),
             "{bare}"
         );
     }

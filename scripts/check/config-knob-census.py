@@ -84,7 +84,7 @@ KNOB_CLASS = {
     # how many entities share the domain, and the bytes follow from the measured
     # ~141 per keyexpr. Same category — nothing derives it, because the peer
     # graph is not a property of this image.
-    "NROS_GRAPH_MAX_ENTITIES": (
+    "NROS_ZENOH_GRAPH_MAX_ENTITIES": (
         "sizing",
         "domain entity budget; sizes ZPICO_GRAPH_CACHE_SIZE, which still "
         "outranks it when someone names the bytes directly",
@@ -185,8 +185,8 @@ KNOB_CLASS = {
     # DERIVED -- `request_max()` over the contract's declared parameters, the
     # three REQUEST fields only -- and a stated size that is short fails the
     # build. The depth is a policy default like its two siblings above.
-    "NROS_PARAM_SERVICE_INBOX_BYTES": ("derived", "parameter/lifecycle inbox slot; the largest request the declared param shape can produce (phase-461 W2/W2b)"),
-    "NROS_PARAM_SERVICE_INBOX_DEPTH": ("sizing", "parameter/lifecycle inbox ring depth; 1, the sequential-client default"),
+    "NROS_PARAMS_SERVICE_INBOX_BYTES": ("derived", "parameter/lifecycle inbox slot; the largest request the declared param shape can produce (phase-461 W2/W2b)"),
+    "NROS_PARAMS_SERVICE_INBOX_DEPTH": ("sizing", "parameter/lifecycle inbox ring depth; 1, the sequential-client default"),
     # --- phase-392 W6: the executor backing static ---
     # NOT a ladder candidate, and the DECISION is the interesting part. A rung
     # gives a global a per-platform default, which is exactly wrong here: the
@@ -240,7 +240,7 @@ KNOB_CLASS = {
     "NROS_TEST_1659_ROOT": ("infra", "test hook (issue 1659)"),
     "NROS_TEST_1659_WANT": ("infra", "test hook (issue 1659)"),
     "NROS_TEST_PROBE_ENV_DIR": ("infra", "test hook for the setup probe"),
-    "ZPICO_MULTICAST_TRANSPORT": ("infra", "link toggle: compiles in multicast transport + scouting"),
+    "NROS_ZENOH_MULTICAST_TRANSPORT": ("infra", "link toggle: compiles in multicast transport + scouting"),
     "NROS_ALLOW_UNRESOLVED_DEPS": ("infra", "policy flag"),
     # phase-422 W8 — its own flag, deliberately NOT reusing the one above.
     # A wrong-role dep RESOLVES; we decline it. Overloading the
@@ -405,8 +405,8 @@ KNOB_CLASS = {
     "NROS_PICOLIBC_SYSROOT": ("infra", "path"),
     "NROS_RISCV64_PREFIX": ("infra", "toolchain prefix"),
     "NROS_SIZES_PROBE_TARGET_DIR": ("infra", "path"),
-    "NROS_ZPICO_DEBUG": ("infra", "debug flag"),
-    "ZPICO_NO_SMOLTCP": ("infra", "link toggle"),
+    "NROS_ZENOH_DEBUG": ("infra", "debug flag"),
+    "NROS_ZENOH_NO_SMOLTCP": ("infra", "link toggle"),
     "ZPICO_PLATFORMS_TOML": ("infra", "the ladder's own platform file pointer"),
     # --- found once the scan followed the `build-helpers` feature ---
     "NROS_CYCLONEDDS_MAX_TYPES": (
@@ -525,7 +525,7 @@ KNOB_CLASS = {
     # hits are usage records (phase-358 records `=8` as what recovered #271's
     # overflow; the dependency-weight audit names the RMW cap as a knob cmake
     # never resolves). Both are arguments FOR a board rung, the same shape the
-    # ASI consumer's `NROS_MAX_PARAMETERS=256` had.
+    # ASI consumer's `NROS_PARAMS_MAX_PARAMETERS=256` had.
     # A RUNTIME trace toggle, not a build-time size — presence-tested with
     # `var_os` in `cffi/src/lib.rs`, never parsed. It became visible to this
     # census only when `nros-rmw-cffi` gained a `build-helpers` dependency and
@@ -767,6 +767,10 @@ def kconfig_symbols():
 # and a callee in neither is a FAILURE: the same "a new knob forces a decision"
 # rule this file already applies to knobs, applied to the idioms that read them.
 READ_CALLEES = {
+    # phase-581 W6. `nros-zpico-build::env_refusing_retired`: `env::var` after
+    # refusing a set retired spelling of the row (the renamed `ZPICO_*` build
+    # variables).
+    "env_refusing_retired",
     # phase-581 W3. Rung 1 for an out-of-tree package's knob, whose retired
     # spellings come from the merged catalog (`nros_zephyr_build`): refuses a
     # set retired spelling, then reads the canonical one.
@@ -826,6 +830,10 @@ READ_CALLEES = {
 # Not reads. Named rather than ignored by default, so the failure below stays
 # meaningful.
 NON_READ_CALLEES = {
+    # phase-581 W6 -- the refusal sentence of a statement's retired build
+    # variable (NROS_DOMAIN_ID); it reads nothing (`refuse_retired_statement_env`
+    # reads, through the registry's list).
+    "retired_statement_env_refusal",
     # phase-581 W5 -- formats the refusal of a FreeRTOS size that is not whole
     # KiB, naming the knob; it reads nothing.
     "not_whole_kib",

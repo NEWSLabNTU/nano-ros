@@ -1068,6 +1068,15 @@ Also in the registry:
 | `CONFIG_NROS_ZENOH_LOCATOR` | `CONFIG_NROS_LOCATOR` | K (the `locator` statement's symbol: D1 derives `CONFIG_NROS_<KEY>`; the old symbol is retired as a `kconfig:` spelling of the statement in the rename stage; found by the W4 lint, ruled 2026-11-20) |
 | `CONFIG_NROS_TRANSPORT_SERIAL` | retired: `[image.<id>] transport = "serial"` in a managed project, `CONFIG_NROS_ZENOH_LINK_SERIAL` in a guest | it only `select`s the zenoh serial link; transport is an image statement (RFC-0098) |
 
+As implemented (phase-581 W6): the twelve renamed or retired hand symbols
+carry their old spellings on a `[[kconfig]]` row in core's `knobs.toml` (the
+symbol that replaced them, with `env` naming the build variable the module
+forwards it as where that differs, `NROS_PARAM_STORE`), until W9 folds them
+into knob rows. `CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE` was already the
+deprecated alias of `CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE`, so W6 retires
+it naming `CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES` instead of renaming it
+to a `_BYTES` alias nothing would use (awaiting a ruling).
+
 ### A.3 Run-time variables (3 renamed, 6 retired)
 
 | Old | New | Why |
@@ -1087,6 +1096,14 @@ Also in the registry:
 | `NROS_DOMAIN_ID` (build) | `NROS_ENTRY_DOMAIN_ID` (refused at build, naming `[system] domain_id`) | N5; RFC-0103 section 3 already lists it as a retired input |
 | `NROS_LOCATOR` (build, `option_env!` in `Context::baked` and the `mps2-an385` and `nuttx-qemu` board configs) | `NROS_ENTRY_LOCATOR`; `NROS_LOCATOR` stays the run-time variable | N5 |
 | `NROS_NODE_NAME` (build, `nros-board-mps2-an385/src/rtic.rs`) | `NROS_ENTRY_NODE_NAME`; `NROS_NODE_NAME` stays the run-time variable | N5 |
+
+As implemented (phase-581 W6): the build-time refusal of `NROS_DOMAIN_ID` is
+an `env:` retired entry on the `domain_id` statement, checked by `nros-node`'s
+build script (every image builds it) and by `cmake/NanoRosKnobEnv.cmake`; the
+note for `NROS_LOCATOR` and `NROS_NODE_NAME` is printed from the same place
+(`nros_zephyr_build::refuse_retired_statement_env`). The CMake road's
+`-DNROS_DOMAIN_ID` cache variable is that road's command-line channel (D10)
+and is not an environment read, so it keeps its name.
 
 ### A.5 The demand symbols (6; staged after a census)
 

@@ -442,7 +442,7 @@ endfunction()
 #
 # Native is exempt: the host board resolves its locator at run time
 # (`$NROS_LOCATOR`), so its `run_components` takes no locator at all. Zephyr is
-# exempt: its locator threads through `CONFIG_NROS_ZENOH_LOCATOR`, which is
+# exempt: its locator threads through `CONFIG_NROS_LOCATOR`, which is
 # exactly the `#ifndef` default the header picks up.
 # ---------------------------------------------------------------------------
 function(_nros_node_register_bake_locator _target)

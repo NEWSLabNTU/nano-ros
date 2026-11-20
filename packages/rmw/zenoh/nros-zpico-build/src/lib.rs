@@ -128,7 +128,7 @@ pub const MULTICAST_TRANSPORT: bool = false;
 /// `nano2nano` spawns PREBUILT fixture binaries, which `build-test-fixtures`
 /// produces without this flag, so exercising peer mode end to end needs a
 /// fixture VARIANT rather than an env on the test crate.
-pub const MULTICAST_TRANSPORT_ENV: &str = "ZPICO_MULTICAST_TRANSPORT";
+pub const MULTICAST_TRANSPORT_ENV: &str = "NROS_ZENOH_MULTICAST_TRANSPORT";
 
 /// Whether THIS build compiles in multicast transport + scouting.
 ///
@@ -139,10 +139,27 @@ pub const MULTICAST_TRANSPORT_ENV: &str = "ZPICO_MULTICAST_TRANSPORT";
 /// point of that single read and it survives becoming configurable only because
 /// there is still exactly ONE reader of the value.
 pub fn multicast_transport_enabled() -> bool {
-    match std::env::var(MULTICAST_TRANSPORT_ENV) {
+    match env_refusing_retired(MULTICAST_TRANSPORT_ENV) {
         Ok(v) => !matches!(v.trim(), "" | "0" | "false" | "FALSE" | "off" | "OFF"),
         Err(_) => MULTICAST_TRANSPORT,
     }
+}
+
+// RFC-0140 D4, phase-581 W6: the renamed `ZPICO_*` build variables.
+/// A build variable that is a registry row, read as `std::env::var` reads it,
+/// after refusing any RETIRED spelling of it that is set (the old `ZPICO_*`
+/// names), and watching every spelling so a set retired one re-runs the build
+/// script and is refused.
+///
+/// # Panics
+///
+/// When a retired spelling of `name` is set, naming the canonical one.
+pub fn env_refusing_retired(name: &str) -> Result<String, std::env::VarError> {
+    for s in nros_zephyr_build::spellings(name) {
+        println!("cargo:rerun-if-env-changed={s}");
+    }
+    let _ = nros_zephyr_build::read_spelled(name, &|k| std::env::var(k).ok());
+    std::env::var(name)
 }
 
 /// The `0`/`1` spelling of [`multicast_transport_enabled`] for a C `#define`.

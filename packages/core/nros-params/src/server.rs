@@ -346,7 +346,7 @@ impl core::fmt::Debug for ParameterTable<'_> {
 /// Backing storage a caller places, then lends to a [`ParameterServer`].
 ///
 /// `N` defaults to [`MAX_PARAMETERS`], the build-time knob
-/// (`NROS_MAX_PARAMETERS` / `CONFIG_NROS_MAX_PARAMETERS`). It is a DEFAULT,
+/// (`NROS_PARAMS_MAX_PARAMETERS` / `CONFIG_NROS_PARAMS_MAX_PARAMETERS`). It is a DEFAULT,
 /// not a cap — `ParameterStorage::<8>::new()` and `ParameterStorage::<256>`
 /// are equally valid, and the server takes its capacity from whatever table it
 /// is handed.
@@ -435,7 +435,7 @@ impl<const N: usize> ParameterStorage<N> {
     /// `Box::new(ParameterStorage::new())` builds all of it on the caller's
     /// stack first. Initialising through the allocation bounds the largest
     /// stack temporary at one `Option<ParameterEntry>`, so the
-    /// `NROS_MAX_PARAMETERS` knob no longer decides whether boot survives.
+    /// `NROS_PARAMS_MAX_PARAMETERS` knob no longer decides whether boot survives.
     ///
     /// # Safety
     ///

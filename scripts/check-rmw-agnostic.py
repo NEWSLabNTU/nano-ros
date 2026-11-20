@@ -21,7 +21,7 @@ issue, named in `BASELINE`'s header comment — not silently out of scope.
 The canonical backend names, IMPORTED from `check-entry-rmw-vocabulary`'s
 `cmake_known()` (each in-tree backend's first `<nano_ros_provides kind="rmw"/>`
 announcement): a gate against second spellings must not carry one. A name
-matches as a token PART — `nros_rmw_zenoh`, `CONFIG_NROS_ZENOH_LOCATOR`,
+matches as a token PART — `nros_rmw_zenoh`, `CONFIG_NROS_ZENOH_LINK_SERIAL`,
 `rmw-cyclonedds` — but not inside another word (`uxrce_dds_client` is PX4's
 client, not our backend).
 
@@ -97,6 +97,15 @@ EXEMPT = {
     # would turn a loud stop back into a silently ignored setting.
     ("packages/api/nros/src/retired_env.rs", "zenoh"):
         "the refusal table for RETIRED env spellings (phase-484 W8c, RFC-0071 D10)",
+    # phase-581 W6 (RFC-0140 Appendix A.3): the table is GENERATED from every
+    # `run:` retirement of the merged registry, packages' rows included, so the
+    # renamed Cyclone test controls and XRCE serial baud are refused by name at
+    # boot. A generated table, not hand-written core code reading a backend's
+    # name (RFC-0140 D2); phase-581 W10 moves package rows to their own tables.
+    ("packages/api/nros/src/retired_env.rs", "cyclonedds"):
+        "the generated refusal table for RETIRED run-time spellings (phase-581 W6)",
+    ("packages/api/nros/src/retired_env.rs", "xrce"):
+        "the generated refusal table for RETIRED run-time spellings (phase-581 W6)",
 }
 
 # path -> (offending code lines, OPEN issue, what it is). A RATCHET: a count
@@ -348,7 +357,7 @@ def self_test(rx: re.Pattern) -> list[str]:
         ("packages/api/nros-c/cmake/X.cmake", 'if(RMW STREQUAL "zenoh")  # xrce too\n', 1),
         ("packages/api/nros-c/cmake/X.cmake", 'option(E "CRC — zenoh only" OFF)\n', 0),
         ("packages/api/nros-c/Cargo.toml", 'rmw-zenoh = ["dep:nros-rmw-zenoh"]\n# rmw-xrce\n', 1),
-        ("packages/api/nros-c/include/nros/x.h", "#ifdef CONFIG_NROS_ZENOH_LOCATOR\n", 1),
+        ("packages/api/nros-c/include/nros/x.h", "#ifdef CONFIG_NROS_ZENOH_LINK_SERIAL\n", 1),
         ("packages/api/nros/x.py", 'B = ("zenoh", "xrce")\n"""a zenoh docstring"""\n', 1),
     ]
     for path, text, want in cases:

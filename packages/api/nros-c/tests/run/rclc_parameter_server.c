@@ -370,8 +370,8 @@ int main(void) {
           g_full_line);
     CHECK(strstr(g_full_line, "max_parameters") != NULL &&
               strstr(g_full_line, "[knobs.params]") != NULL &&
-              strstr(g_full_line, "NROS_MAX_PARAMETERS") != NULL &&
-              strstr(g_full_line, "CONFIG_NROS_MAX_PARAMETERS") != NULL,
+              strstr(g_full_line, "NROS_PARAMS_MAX_PARAMETERS") != NULL &&
+              strstr(g_full_line, "CONFIG_NROS_PARAMS_MAX_PARAMETERS") != NULL,
           "the line does not name the knob in every spelling: %s", g_full_line);
 
     if (g_failures != 0) {

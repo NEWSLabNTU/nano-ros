@@ -141,7 +141,7 @@ function(nros_check_domain_agreement)
     if(NOT "${_D_SYSTEM_DOMAIN}" STREQUAL "" AND NOT _D_SYSTEM_DOMAIN EQUAL _k)
         set(_agree FALSE)
     endif()
-    # Cyclone reads its OWN knob, `CONFIG_NROS_CYCLONE_DOMAIN_ID`, which defaults
+    # Cyclone reads its OWN knob, `CONFIG_NROS_CYCLONEDDS_DOMAIN_ID`, which defaults
     # to `CONFIG_NROS_DOMAIN_ID` -- and a literal pinned in a conf is the
     # phase-180 split-brain that ran every Cyclone image on domain 0. Until this
     # moved here only `nros_system_generate` compared it, so the ENTRY road
@@ -149,14 +149,14 @@ function(nros_check_domain_agreement)
     # unseen: one comparison, delivered to one of the two roads that need it
     # (issue 1610).
     set(_cyc "unset")
-    if(DEFINED CONFIG_NROS_CYCLONE_DOMAIN_ID)
-        set(_cyc "${CONFIG_NROS_CYCLONE_DOMAIN_ID}")
+    if(DEFINED CONFIG_NROS_CYCLONEDDS_DOMAIN_ID)
+        set(_cyc "${CONFIG_NROS_CYCLONEDDS_DOMAIN_ID}")
         if(NOT _cyc EQUAL _k)
             set(_agree FALSE)
         endif()
     endif()
     set(_cyclone_line
-        "\n  CONFIG_NROS_CYCLONE_DOMAIN_ID = ${_cyc}  (Cyclone's own knob; defaults to CONFIG_NROS_DOMAIN_ID)")
+        "\n  CONFIG_NROS_CYCLONEDDS_DOMAIN_ID = ${_cyc}  (Cyclone's own knob; defaults to CONFIG_NROS_DOMAIN_ID)")
 
     set(_snippet_lines "")
     set(_other_lines "")
@@ -220,5 +220,5 @@ function(nros_check_domain_agreement)
     endif()
     message(STATUS
         "${_D_CONTEXT}: domain ${_k} agrees -- CONFIG_NROS_DOMAIN_ID from "
-        "${_src_label}; ${_sys_word} (CONFIG_NROS_CYCLONE_DOMAIN_ID=${_cyc})")
+        "${_src_label}; ${_sys_word} (CONFIG_NROS_CYCLONEDDS_DOMAIN_ID=${_cyc})")
 endfunction()

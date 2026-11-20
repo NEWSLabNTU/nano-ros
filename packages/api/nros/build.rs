@@ -59,16 +59,16 @@ fn main() {
     refuse_size_markers_outside_the_probe();
 
     // phase-427 W9 — `Context::baked()` (`src/init.rs`) reads
-    // `option_env!("NROS_LOCATOR")` / `option_env!("NROS_DOMAIN_ID")` in THIS
+    // `option_env!("NROS_ENTRY_LOCATOR")` / `option_env!("NROS_ENTRY_DOMAIN_ID")` in THIS
     // crate, so this crate's build has to carry them. A leaf's `cargo:rustc-env`
     // never reaches a dependency's compilation (the reason the leaf bakes for
     // itself), and on Zephyr the values come from Kconfig, not the process
     // environment; the same helper the leaves call re-exports
-    // `CONFIG_NROS_ZENOH_LOCATOR` / `CONFIG_NROS_DOMAIN_ID` from `$DOTCONFIG`
+    // `CONFIG_NROS_LOCATOR` / `CONFIG_NROS_DOMAIN_ID` from `$DOTCONFIG`
     // — the issue-0460 channel the knobs below already rely on. Off Zephyr it
     // is a no-op beyond the `rerun-if-env-changed` lines, which is what makes
     // a process-environment bake (the FreeRTOS / ThreadX fixture lanes export
-    // `NROS_DOMAIN_ID`) re-compile this crate rather than reuse a stale object.
+    // `NROS_ENTRY_DOMAIN_ID`) re-compile this crate rather than reuse a stale object.
     nros_zephyr_build::bake_nros_config();
 
     // Issue 2051 -- the session properties a bringup's RMW file lowers to

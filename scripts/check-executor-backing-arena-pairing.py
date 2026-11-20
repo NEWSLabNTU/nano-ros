@@ -325,11 +325,11 @@ NOT_SIZING = {
     "NROS_TRACE_TIMER_EVERY": "a callback-trace sampling ratio, no size (phase-474 I3)",
     "NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES": "emitted as a const, not in the arena sum",
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "sizes the Executor HEADER, not the backing",
-    "NROS_PARAM_SERVICE_INBOX_BYTES":
+    "NROS_PARAMS_SERVICE_INBOX_BYTES":
         "phase-461 W2: the parameter family's INBOX ring, a `static` beside the "
         "parameter services (`PARAM_INBOX`), not a term of the arena sum -- the "
         "arena holds callback slots and RX buffers and no service inbox",
-    "NROS_PARAM_SERVICE_INBOX_DEPTH": "the same ring's depth; see the pair above",
+    "NROS_PARAMS_SERVICE_INBOX_DEPTH": "the same ring's depth; see the pair above",
     "NROS_RMW_LOCAL_QUERYABLE":
         "issue 1549: a 0/1 feature flag the boot record reports; it compiles "
         "zenoh-pico's same-session query path in or out and sizes nothing here",

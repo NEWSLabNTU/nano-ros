@@ -23,7 +23,7 @@
 //
 // **Idempotent.** If the runtime supplies a name that already
 // starts with `rt/`, `rq/`, `rr/`, or `rs/` we don't double-prefix.
-// **Opt-out.** Setting `NROS_RMW_CYCLONEDDS_SKIP_PREFIX=1` in the
+// **Opt-out.** Setting `NROS_CYCLONEDDS_SKIP_PREFIX=1` in the
 // environment disables prefixing entirely — for raw-DDS deployments
 // that already manage their own naming (e.g. autoware-safety-island
 // uses unprefixed custom IDLs).
@@ -42,7 +42,7 @@ namespace nros_rmw_cyclonedds {
 namespace topic_prefix {
 
 inline bool skip_via_env() {
-    const char *env = env_lookup("NROS_RMW_CYCLONEDDS_SKIP_PREFIX");
+    const char *env = env_lookup("NROS_CYCLONEDDS_SKIP_PREFIX");
     return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 

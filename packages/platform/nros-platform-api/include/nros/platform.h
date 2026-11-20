@@ -866,7 +866,7 @@ void nros_platform_register_log_writer(
  * Runtime locator override.
  *
  * Returns a middleware locator to use INSTEAD of the build-time-baked default
- * (`CONFIG_NROS_ZENOH_LOCATOR` / `option_env!("NROS_LOCATOR")`), or NULL to keep
+ * (`CONFIG_NROS_LOCATOR` / `option_env!("NROS_ENTRY_LOCATOR")`), or NULL to keep
  * the bake. Only the native_sim/native_posix platform impl returns non-NULL
  * (from `-testargs --nros-locator=<loc>`); every real-embedded impl returns
  * NULL. Entry points (Rust `zephyr_component_main!`, the C/C++ entries) prefer

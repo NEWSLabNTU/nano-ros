@@ -74,7 +74,7 @@ typedef struct {
  * The locator and domain are the ROLES
  * `entry_config.h` resolves (`NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`),
  * which each backend's Zephyr module maps its own Kconfig onto. This header
- * names no backend; it read `CONFIG_NROS_ZENOH_LOCATOR` here, so an XRCE or
+ * names no backend; it read `CONFIG_NROS_LOCATOR` here, so an XRCE or
  * Cyclone image's `.transport.locator` was always "". */
 #include <autoconf.h>
 #include <rclc/detail/entry_config.h>

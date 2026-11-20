@@ -240,8 +240,8 @@ pub enum InboxSpec {
     /// `NROS_ACTION_INBOX_BYTES` x `NROS_ACTION_INBOX_DEPTH` per queryable.
     Action,
     /// The shim's builtin table -- the six ROS parameter services of a node
-    /// and the five REP-2002 lifecycle ones -- `NROS_PARAM_SERVICE_INBOX_BYTES`
-    /// x `NROS_PARAM_SERVICE_INBOX_DEPTH` per queryable (phase-461 W2b).
+    /// and the five REP-2002 lifecycle ones -- `NROS_PARAMS_SERVICE_INBOX_BYTES`
+    /// x `NROS_PARAMS_SERVICE_INBOX_DEPTH` per queryable (phase-461 W2b).
     Builtin,
     /// The caller's own ring, over storage it sized for its family.
     Caller(&'static InboxRing),
@@ -255,8 +255,8 @@ impl InboxSpec {
             InboxSpec::UserService => ("NROS_SERVICE_INBOX_DEPTH", "NROS_SERVICE_INBOX_BYTES"),
             InboxSpec::Action => ("NROS_ACTION_INBOX_DEPTH", "NROS_ACTION_INBOX_BYTES"),
             InboxSpec::Builtin => (
-                "NROS_PARAM_SERVICE_INBOX_DEPTH",
-                "NROS_PARAM_SERVICE_INBOX_BYTES",
+                "NROS_PARAMS_SERVICE_INBOX_DEPTH",
+                "NROS_PARAMS_SERVICE_INBOX_BYTES",
             ),
             InboxSpec::Caller(_) => (
                 "the depth of the caller's own ring",
@@ -628,7 +628,7 @@ static ACTION_INBOX: [InboxStorage<ACTION_INBOX_BYTES, ACTION_INBOX_DEPTH>; ACTI
     [const { InboxStorage::new() }; ACTION_INBOX_COUNT];
 
 /// phase-461 W2b -- the builtin family's rings,
-/// `NROS_PARAM_SERVICE_INBOX_BYTES` x `NROS_PARAM_SERVICE_INBOX_DEPTH` each.
+/// `NROS_PARAMS_SERVICE_INBOX_BYTES` x `NROS_PARAMS_SERVICE_INBOX_DEPTH` each.
 ///
 /// ONE table for the parameter and the lifecycle services, because their
 /// geometry is equal: both carry `rcl_interfaces` requests bounded by the

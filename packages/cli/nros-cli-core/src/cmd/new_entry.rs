@@ -617,7 +617,7 @@ CONFIG_NROS_XRCE_AGENT_PORT=2018
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=16
 "#
         .to_string(),
-        // issue 0974 — do NOT emit `CONFIG_NROS_CYCLONE_DOMAIN_ID` here.
+        // issue 0974 — do NOT emit `CONFIG_NROS_CYCLONEDDS_DOMAIN_ID` here.
         // Its Kconfig default is `NROS_DOMAIN_ID`, which is what keeps the two
         // knobs from splitting; pinning a literal is what phase-180 did, and it
         // silently ran every cyclone image on domain 0 while the generic knob
@@ -628,7 +628,7 @@ CONFIG_MAX_PTHREAD_MUTEX_COUNT=16
         // See phase-405 W3.
         "cyclonedds" => r#"# Cyclone DDS backend.
 CONFIG_NROS_RMW_CYCLONEDDS=y
-# No CONFIG_NROS_CYCLONE_DOMAIN_ID here on purpose. It defaults
+# No CONFIG_NROS_CYCLONEDDS_DOMAIN_ID here on purpose. It defaults
 # to NROS_DOMAIN_ID so the two knobs cannot split-brain; pinning it to a literal
 # silently runs the image on that domain whatever NROS_DOMAIN_ID says.
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=64

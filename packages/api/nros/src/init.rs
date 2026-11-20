@@ -13,8 +13,8 @@
 //!   through the one hosted resolver, `crate::env::try_resolve_hosted`. A
 //!   launcher projects per-node values into that environment before exec.
 //! * **Freestanding** (no `env`): there is no process and no environment; the
-//!   same values are BAKED at compile time — `option_env!("NROS_LOCATOR")` and
-//!   `option_env!("NROS_DOMAIN_ID")`, exported into this crate's build by
+//!   same values are BAKED at compile time — `option_env!("NROS_ENTRY_LOCATOR")` and
+//!   `option_env!("NROS_ENTRY_DOMAIN_ID")`, exported into this crate's build by
 //!   `nros_zephyr_build::bake_nros_config()` from Kconfig (`build.rs`), or
 //!   present in the process environment of the build for the other RTOS lanes
 //!   (the board crates read the same two names the same way). The semantics
@@ -86,7 +86,7 @@ use nros_rmw::SessionMode;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InitError {
     /// A launch-derived env var (`ROS_DOMAIN_ID`, etc.) failed to parse —
-    /// or, freestanding, the baked `NROS_DOMAIN_ID` is not a decimal integer.
+    /// or, freestanding, the baked `NROS_ENTRY_DOMAIN_ID` is not a decimal integer.
     EnvParseFailed,
     /// A domain id — from the environment, the bake, or an
     /// [`InitOptions::with_domain_id`] override — exceeds
@@ -176,11 +176,11 @@ impl core::error::Error for InitError {}
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone)]
 pub struct Context {
-    /// ROS 2 domain ID (`ROS_DOMAIN_ID`, default 0; baked `NROS_DOMAIN_ID`
+    /// ROS 2 domain ID (`ROS_DOMAIN_ID`, default 0; baked `NROS_ENTRY_DOMAIN_ID`
     /// freestanding).
     pub domain_id: u32,
     /// Middleware locator (`NROS_LOCATOR`; baked
-    /// `NROS_LOCATOR` freestanding). Empty means ABSENT: `nros` is
+    /// `NROS_ENTRY_LOCATOR` freestanding). Empty means ABSENT: `nros` is
     /// RMW-agnostic, so the linked backend substitutes its own default.
     pub locator: alloc::string::String,
     /// Session mode (`NROS_SESSION_MODE`, default `Client`).
@@ -243,7 +243,7 @@ pub enum ContextSource {
     /// [`Context::from_env`] on a hosted build.
     Env,
     /// phase-427 W9 — built from the constants baked into this crate at
-    /// compile time (`NROS_LOCATOR`, `NROS_DOMAIN_ID`) by [`Context::baked`],
+    /// compile time (`NROS_ENTRY_LOCATOR`, `NROS_ENTRY_DOMAIN_ID`) by [`Context::baked`],
     /// which is what [`Context::default_from_env`] / [`Context::from_env`]
     /// resolve to on a freestanding build. The entry macros
     /// (`nros::main!`'s Zephyr arm, `nros::zephyr_component_main!`) produce
@@ -333,7 +333,7 @@ impl Context {
     /// `Context` is a plain value with nothing to hide, `u32` is the width
     /// every producer and consumer of a domain in this tree speaks
     /// (`BoardConfig::domain_id`, `ExecutorConfig::domain_id`,
-    /// `NodeHandle::domain_id`, the `NROS_DOMAIN_ID` bake), and fields and
+    /// `NodeHandle::domain_id`, the `NROS_ENTRY_DOMAIN_ID` bake), and fields and
     /// methods are in different namespaces in Rust, so the two coexist. The
     /// widening is lossless on every target here — `usize` is at least 32
     /// bits on all of them, down to `thumbv7m-none-eabi`.
@@ -451,16 +451,16 @@ impl Context {
     /// The freestanding constructor: the constants baked into
     /// this crate at compile time.
     ///
-    /// * `NROS_LOCATOR` — the middleware locator. Unset or empty ⇒ empty ⇒
+    /// * `NROS_ENTRY_LOCATOR` — the middleware locator. Unset or empty ⇒ empty ⇒
     ///   the linked backend's own default (for zenoh-pico that is
     ///   multicast scouting, which native_sim NSOS cannot satisfy — hence the
     ///   bake).
-    /// * `NROS_DOMAIN_ID` — the domain. Unset ⇒ 0; non-numeric ⇒
+    /// * `NROS_ENTRY_DOMAIN_ID` — the domain. Unset ⇒ 0; non-numeric ⇒
     ///   [`InitError::EnvParseFailed`]; above `DOMAIN_ID_MAX` ⇒
     ///   [`InitError::DomainIdOutOfRange`].
     ///
     /// Both names reach this crate's build the same way they reach the board
-    /// crates: on Zephyr, `build.rs` re-exports `CONFIG_NROS_ZENOH_LOCATOR` /
+    /// crates: on Zephyr, `build.rs` re-exports `CONFIG_NROS_LOCATOR` /
     /// `CONFIG_NROS_DOMAIN_ID` from `$DOTCONFIG` (`nros_zephyr_build::
     /// bake_nros_config`, the `$DOTCONFIG` channel); on the other RTOS lanes the
     /// fixture build exports them into the process environment. This is the
@@ -476,7 +476,10 @@ impl Context {
     /// hosted process rarely wants; [`Context::default_from_env`] is the
     /// constructor that picks the right source for the build.
     pub fn baked() -> Result<Context, InitError> {
-        Self::from_baked(option_env!("NROS_LOCATOR"), option_env!("NROS_DOMAIN_ID"))
+        Self::from_baked(
+            option_env!("NROS_ENTRY_LOCATOR"),
+            option_env!("NROS_ENTRY_DOMAIN_ID"),
+        )
     }
 
     /// The parse behind [`Context::baked`], with the two constants injected
@@ -526,7 +529,7 @@ impl Context {
     ///
     /// With an RMW file the file is the wiring, and every other road bakes no
     /// locator beside it (`nros::main!`, the C/C++ boot blob). A Zephyr image
-    /// still bakes its Kconfig locator (`CONFIG_NROS_ZENOH_LOCATOR`, default
+    /// still bakes its Kconfig locator (`CONFIG_NROS_LOCATOR`, default
     /// `tcp/127.0.0.1:7447`), and the zenoh shim dials a supplied locator
     /// BEFORE the file's `connect` list: a router on that port would win, and
     /// the file's would be a fallback. Called before
@@ -1433,7 +1436,7 @@ mod baked_tests {
         match Context::baked() {
             Ok(ctx) => assert_eq!(ctx.source, ContextSource::Baked),
             Err(e) => panic!(
-                "NROS_DOMAIN_ID was baked into this test build with a value the constructor refuses: {e:?}"
+                "NROS_ENTRY_DOMAIN_ID was baked into this test build with a value the constructor refuses: {e:?}"
             ),
         }
     }

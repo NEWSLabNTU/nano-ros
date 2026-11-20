@@ -198,7 +198,7 @@ keys (table above).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `CONFIG_NROS_ZENOH_LOCATOR` | string | `"tcp/127.0.0.1:7447"` | Router address |
+| `CONFIG_NROS_LOCATOR` | string | `"tcp/127.0.0.1:7447"` | Router address |
 | `CONFIG_NROS_ZENOH_MULTI_THREAD` | bool | y | Zenoh-pico multithreading |
 | `CONFIG_NROS_ZENOH_PUBLICATION` | bool | y | Publication support |
 | `CONFIG_NROS_ZENOH_SUBSCRIPTION` | bool | y | Subscription support |

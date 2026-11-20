@@ -242,7 +242,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
 /// `run_app_thread(Config::default())` boot ran every image with the same
 /// MAC/IP/domain (identity collapse), and the domain never matched the
 /// fixture bake. The fix made `Config::default()` apply the build-env
-/// identity (~~`NROS_APP_NET_{IP,MAC}_LAST`~~, `NROS_DOMAIN_ID` — set
+/// identity (~~`NROS_APP_NET_{IP,MAC}_LAST`~~, `NROS_ENTRY_DOMAIN_ID` — set
 /// per-example by ~~`nros_threadx_rv64_rust_cyclone_app`~~), so the pair booted as
 /// 10.0.2.40/:56 (talker) + 10.0.2.41/:57 (listener) on the fixture domain.
 ///

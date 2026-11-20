@@ -138,7 +138,7 @@ pub const DEFAULT_ROUTER_PORT: u16 = 7447;
 ///   (linux, freertos-posix, threadx-linux's NSOS), and loopback is the one
 ///   address it reaches without root-provisioned interfaces.
 /// - `stack = "os"` with no `kernel_config` (every Zephyr board): `None`. The
-///   RTOS's own configuration owns the default (`CONFIG_NROS_ZENOH_LOCATOR`,
+///   RTOS's own configuration owns the default (`CONFIG_NROS_LOCATOR`,
 ///   which a board package's `prj.conf` may set), and nothing here reads it.
 /// - otherwise: `tcp/<the board's resolved gateway>:7447` ([`resolve`]): QEMU's
 ///   `10.0.2.2` for `network = "qemu"`, the kernel's `CONFIG_NETINIT_DRIPADDR`

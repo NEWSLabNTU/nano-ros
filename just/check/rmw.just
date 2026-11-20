@@ -49,7 +49,7 @@ cyclone-backend-sources:
 backend-dispatch-declared:
     @python3 scripts/check/check-backend-dispatch-declared.py
 
-# issue 0974 — `CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults to `NROS_DOMAIN_ID` so
+# issue 0974 — `CONFIG_NROS_CYCLONEDDS_DOMAIN_ID` defaults to `NROS_DOMAIN_ID` so
 # the two knobs cannot split; pinning a literal breaks that link silently, which
 # is phase-180's split-brain (issue 0161). Both `nros new`'s template and the
 # Zephyr getting-started page were emitting the pin, so every generated

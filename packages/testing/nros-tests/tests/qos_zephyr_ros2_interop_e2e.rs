@@ -38,7 +38,7 @@ use std::{
 
 /// The router port baked into the qos zephyr entry — the allocator's
 /// (zephyr, rust, qos) number, matching the west lane's
-/// `-DCONFIG_NROS_ZENOH_LOCATOR` bake.
+/// `-DCONFIG_NROS_LOCATOR` bake.
 const QOS_ZEPHYR_ENTRY_PORT: u16 = port_of(PlatformId::ZephyrNativeSim, Lang::Rust, Workload::Qos);
 
 #[test]

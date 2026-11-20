@@ -597,13 +597,13 @@ if (NROS_CYC_COMPOSE_DOMAIN || user_config[0] != '\0') {
     // Cyclone's own config loader.
     //
     // Issue 0367 — beside the env var sits the Kconfig knob: a non-empty
-    // CONFIG_NROS_CYCLONE_CONFIG_XML (declared in zephyr/Kconfig since
+    // CONFIG_NROS_CYCLONEDDS_CONFIG_XML (declared in zephyr/Kconfig since
     // phase 117, consumed nowhere until then) is the compile-time override
     // for targets where no environment exists. Kconfig strings can't carry
     // escaped double quotes comfortably — use single-quoted XML attributes
     // (Address='127.0.0.1') in the blob.
-#if defined(CONFIG_NROS_CYCLONE_CONFIG_XML)
-    constexpr const char* kKconfigCycloneConfig = CONFIG_NROS_CYCLONE_CONFIG_XML;
+#if defined(CONFIG_NROS_CYCLONEDDS_CONFIG_XML)
+    constexpr const char* kKconfigCycloneConfig = CONFIG_NROS_CYCLONEDDS_CONFIG_XML;
 #else
     constexpr const char* kKconfigCycloneConfig = "";
 #endif

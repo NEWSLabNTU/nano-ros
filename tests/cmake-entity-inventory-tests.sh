@@ -745,12 +745,12 @@ if [ "$RC" -ne 0 ] || ! nros_grep_q "PASSED" <<<"$OUT"; then
     fail "param: nros_refuse_refused_param_declaration refused a DECLARED store -- $OUT"
 fi
 ZEPHYR_CARGO="$PROJECT_ROOT/zephyr/cmake/nros_cargo_build.cmake"
-ORDER="$(awk '/nros_refuse_refused_param_declaration\(/{seen=1} /_nros_resolve_derivable_knob\(NROS_MAX_PARAMETERS/{print (seen?"ok":"late"); exit}' \
+ORDER="$(awk '/nros_refuse_refused_param_declaration\(/{seen=1} /_nros_resolve_derivable_knob\(NROS_PARAMS_MAX_PARAMETERS/{print (seen?"ok":"late"); exit}' \
     "$ZEPHYR_CARGO")"
 check
 if [ "$ORDER" != ok ]; then
     fail "param: the Zephyr parameter ladder does not run nros_refuse_refused_param_declaration \
-before NROS_MAX_PARAMETERS -- a refusal there falls to the crate defaults (phase-460 W2)"
+before NROS_PARAMS_MAX_PARAMETERS -- a refusal there falls to the crate defaults (phase-460 W2)"
 fi
 
 OUT="$(facts_env 'set(NROS_ENTITY_INVENTORY_STATUS "refused")')"

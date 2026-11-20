@@ -8,7 +8,7 @@
 /// What the builtin family's slot is, and where the number came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuiltinSlot {
-    /// A rung stated `NROS_PARAM_SERVICE_INBOX_BYTES`. nros-node const-asserts
+    /// A rung stated `NROS_PARAMS_SERVICE_INBOX_BYTES`. nros-node const-asserts
     /// the same statement against the request it prices.
     Stated(usize),
     /// The contract's declared parameters bound it (`param_request_max_from`).
@@ -54,7 +54,7 @@ pub fn user_slot_without_builtin_table(
 
 /// The builtin (parameter + lifecycle) family's slot.
 ///
-/// * `stated` -- `NROS_PARAM_SERVICE_INBOX_BYTES` from a rung, if any;
+/// * `stated` -- `NROS_PARAMS_SERVICE_INBOX_BYTES` from a rung, if any;
 /// * `shape` -- the descriptor's `[params] service_shape` token, if stated;
 /// * `user_slot` -- the user-service slot this image resolved;
 /// * `floor` -- the slot the single shared table always had (1,024 B).
@@ -95,8 +95,8 @@ pub fn builtin_slot(
              Falling back would guess, and the guess was measured wrong: 25 declared \
              parameters, one a string, and a 25-name `set_parameters` was DROPPED by a \
              {floor}-byte slot with no reply while nros-node had priced it.\n\
-             State NROS_PARAM_SERVICE_INBOX_BYTES (environment, Kconfig \
-             CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, or the board's executor rung). \
+             State NROS_PARAMS_SERVICE_INBOX_BYTES (environment, Kconfig \
+             CONFIG_NROS_PARAMS_SERVICE_INBOX_BYTES, or the board's executor rung). \
              nros-node checks the statement against the request it prices from the same \
              declaration and the store's caps, and refuses the build if it is short."
         )),

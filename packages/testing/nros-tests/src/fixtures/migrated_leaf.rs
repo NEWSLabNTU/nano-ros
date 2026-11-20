@@ -285,7 +285,12 @@ mod tests {
         vec![
             row("t", "zenoh", "linux", ""),
             row("t-tls", "zenoh", "linux_tls", ""),
-            row("t-peer", "zenoh", "linux", "ZPICO_MULTICAST_TRANSPORT=1"),
+            row(
+                "t-peer",
+                "zenoh",
+                "linux",
+                "NROS_ZENOH_MULTICAST_TRANSPORT=1",
+            ),
             row("t-xrce", "xrce", "linux_xrce", ""),
         ]
     }
@@ -314,7 +319,7 @@ mod tests {
 
     #[test]
     fn env_and_image_variants_select_exactly() {
-        let env = [("ZPICO_MULTICAST_TRANSPORT", "1")];
+        let env = [("NROS_ZENOH_MULTICAST_TRANSPORT", "1")];
         assert_eq!(
             pick("zenoh", LeafVariant::Env(&env), &[]).unwrap(),
             "t-peer"

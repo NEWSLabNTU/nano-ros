@@ -200,7 +200,7 @@ uint64_t env_u64(const char* name, uint64_t fallback) {
 }
 
 // Default Cyclone service request/reply match timing (ms). Tunable at runtime
-// via NROS_CYCLONE_MATCH_TIMEOUT_MS without recompiling.
+// via NROS_CYCLONEDDS_MATCH_TIMEOUT_MS without recompiling.
 constexpr uint64_t kDefaultMatchTimeoutMs = 5000;
 
 // Selected by CAPABILITY, not by platform name. The constraint is that the
@@ -1111,7 +1111,7 @@ rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
     // Without this the server hangs the full timeout and the stock
     // `ros2 service call` gives up (117.12.B.1).
     const uint64_t deadline =
-        platform_now_ms() + env_u64("NROS_CYCLONE_MATCH_TIMEOUT_MS", kDefaultMatchTimeoutMs);
+        platform_now_ms() + env_u64("NROS_CYCLONEDDS_MATCH_TIMEOUT_MS", kDefaultMatchTimeoutMs);
     const uint64_t grace_until = platform_now_ms() + 750;
     bool ready = false;
     while (platform_now_ms() < deadline) {

@@ -30,7 +30,7 @@
 # How many `[[baseline]]` entries the file holds (below). The baseline only
 # shrinks: lower this with every entry a rename removes, and never raise it to
 # admit a new name, which is renamed instead.
-baseline_entries = 45
+baseline_entries = 12
 
 # --- N4's vocabulary -----------------------------------------------------------
 
@@ -248,66 +248,6 @@ expect = []
 # not list.
 
 [[baseline]]
-subject = "net.connect_timeout_ms"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "net.max_sockets"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "net.max_udp_sockets"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "net.socket_timeout_ms"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "param.service_inbox_bytes"
-kind = "knob"
-rules = ["N3"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "param.service_inbox_depth"
-kind = "knob"
-rules = ["N3"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "params.max_array_len"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "params.max_parameters"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "params.max_string_array_len"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "params.param_events_depth"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
 subject = "zenoh.max_large_subscribers"
 kind = "knob"
 rules = ["N2"]
@@ -342,110 +282,6 @@ subject = "zenoh.max_subscribers"
 kind = "knob"
 rules = ["N2"]
 appendix = "A.5"
-
-[[baseline]]
-subject = "locator"
-kind = "statement"
-rules = ["N2"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "NROS_CYCLONE_MATCH_TIMEOUT_MS"
-kind = "env"
-rules = ["N2"]
-appendix = "A.3"
-
-[[baseline]]
-subject = "NROS_RMW_CYCLONEDDS_SKIP_PREFIX"
-kind = "env"
-rules = ["N2"]
-appendix = "A.3"
-
-[[baseline]]
-subject = "XRCE_SERIAL_BAUD"
-kind = "env"
-rules = ["N2", "N6"]
-appendix = "A.3"
-
-[[baseline]]
-subject = "CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER"
-kind = "kconfig"
-rules = ["N4"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_CYCLONE_CONFIG_XML"
-kind = "kconfig"
-rules = ["N3"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_CYCLONE_DOMAIN_ID"
-kind = "kconfig"
-rules = ["N3"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_EDMA_WARM_RESET_QUIESCE"
-kind = "kconfig"
-rules = ["N3"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_EPOCH_FROM_ZENOH"
-kind = "kconfig"
-rules = ["N3"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS"
-kind = "kconfig"
-rules = ["N3"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_PARAM_STORE"
-kind = "kconfig"
-rules = ["N3"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_TRANSPORT_SERIAL"
-kind = "kconfig"
-rules = ["N3"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME"
-kind = "kconfig"
-rules = ["N4"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE"
-kind = "kconfig"
-rules = ["N4"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE"
-kind = "kconfig"
-rules = ["N4"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE"
-kind = "kconfig"
-rules = ["N4"]
-appendix = "A.2"
-
-[[baseline]]
-subject = "graph.max_entities"
-kind = "knob"
-rules = ["N3"]
-appendix = "A.1"
-probe = "row"
-why = "read only by the zenoh backend (W0), so its owner is zenoh: a judgement about readers the lint cannot make"
 
 [[baseline]]
 subject = "ZENOH_LISTEN"
@@ -488,45 +324,3 @@ kind = "read"
 rules = ["N6"]
 appendix = "A.3"
 why = "a variable nano-ros invented in zenoh's prefix, still read by the zenoh shim; retired for ZENOH_CONFIG_OVERRIDE"
-
-[[baseline]]
-subject = "NROS_DOMAIN_ID"
-kind = "build-read"
-rules = ["N5"]
-appendix = "A.4"
-why = "a build read of the statement's run-time spelling; the carrier is NROS_ENTRY_DOMAIN_ID"
-
-[[baseline]]
-subject = "NROS_LOCATOR"
-kind = "build-read"
-rules = ["N5"]
-appendix = "A.4"
-why = "a build read of the run-time variable; the carrier is NROS_ENTRY_LOCATOR"
-
-[[baseline]]
-subject = "NROS_NODE_NAME"
-kind = "build-read"
-rules = ["N5"]
-appendix = "A.4"
-why = "a build read of the run-time variable; the carrier is NROS_ENTRY_NODE_NAME"
-
-[[baseline]]
-subject = "NROS_ZPICO_DEBUG"
-kind = "build-read"
-rules = ["N3"]
-appendix = "A.4"
-why = "a build carrier outside the registry under `zpico`, no owner word; becomes NROS_ZENOH_DEBUG"
-
-[[baseline]]
-subject = "ZPICO_MULTICAST_TRANSPORT"
-kind = "build-read"
-rules = ["N3", "N6"]
-appendix = "A.4"
-why = "a build carrier outside the registry with no NROS_ prefix; becomes the knob zenoh.multicast_transport"
-
-[[baseline]]
-subject = "ZPICO_NO_SMOLTCP"
-kind = "build-read"
-rules = ["N3", "N6"]
-appendix = "A.4"
-why = "a build carrier outside the registry with no NROS_ prefix; becomes NROS_ZENOH_NO_SMOLTCP"

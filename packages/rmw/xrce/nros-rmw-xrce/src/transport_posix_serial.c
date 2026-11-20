@@ -165,9 +165,9 @@ rmw_ret_t xrce_posix_serial_init(xrce_session_state_t *st,
     tio.c_cc[VMIN] = 0;
     tio.c_cc[VTIME] = 0;
 
-    /* Baud rate. Env override XRCE_SERIAL_BAUD; default 115200. */
+    /* Baud rate. Env override NROS_XRCE_SERIAL_BAUD; default 115200. */
     long baud = 115200;
-    const char *baud_env = getenv("XRCE_SERIAL_BAUD");
+    const char *baud_env = getenv("NROS_XRCE_SERIAL_BAUD");
     if (baud_env != NULL && baud_env[0] != '\0') {
         char *end = NULL;
         long parsed = strtol(baud_env, &end, 10);

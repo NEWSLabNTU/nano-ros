@@ -1020,7 +1020,7 @@ fn report_parameter_store_refused() {
         );
         nros_log::log_error!(
             logger,
-            "open it with ExecutorSizing::params > 0 (NROS_PARAM_STORE=1, NROS_MAX_PARAMETERS)"
+            "open it with ExecutorSizing::params > 0 (NROS_PARAM_STORE=1, NROS_PARAMS_MAX_PARAMETERS)"
         );
     }
     #[cfg(feature = "alloc")]
@@ -16639,7 +16639,7 @@ impl<'s> Executor<'s> {
     /// call (see `ParamState::event_publisher`), typed
     /// `rcl_interfaces/msg/ParameterEvent`, RELIABLE + VOLATILE as upstream's
     /// `parameter_events` profile. Its depth is upstream's 1000 on a hosted
-    /// build and `NROS_PARAM_EVENTS_DEPTH` (default 1) otherwise, because a
+    /// build and `NROS_PARAMS_EVENTS_DEPTH` (default 1) otherwise, because a
     /// reliable DDS writer's history is memory the RMW reserves; depth is not
     /// a matching criterion, so an upstream subscriber still matches.
     /// Idempotent.

@@ -127,15 +127,15 @@ in an `[image.<id>] env` row, it stops the build with an error naming the
 | `NROS_ZENOH_PUBLISHER_TX_BUFFER_BYTES`   | Per-publisher TX arena for the zero-copy loan path; costs `NROS_ZENOH_MAX_PUBLISHERS` x this. | `1024` | nros-rmw-zenoh |
 | `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS`      | How many `large`-class blocks this image reserves. **`0` is legal**: an image whose subscribed types all fit `NROS_SUBSCRIBER_BUFFER_BYTES` declares 0 and stops paying `RING_DEPTH x LARGE_SIZE` — 65,536 B at the defaults — for a class it never routes into. A hint no class can hold then fails `create_subscription` rather than dropping every sample. **DERIVED, on both lanes** — a Zephyr image gets it from Kconfig's `-1` sentinel, and a cargo image gets it from the build settings `nros build` generates under `build/`, joined over the types the image's components subscribe to. Setting it here still wins. | `2` | nros-rmw-zenoh |
 | `NROS_ZENOH_SERVICE_BUFFER_BYTES`        | Per-service-server static buffer in zenoh shim         | `1024`           | nros-rmw-zenoh |
-| `NROS_PARAM_SERVICE_INBOX_BYTES`   | Bytes one request slot holds in the inbox ring of a ROS parameter service queryable (six per node) or a REP-2002 lifecycle one (five per node) -- the BUILTIN family, which the zenoh shim selects by service name. **DERIVED**: with nothing stated, the contract's declared parameters bound it, as the largest request a `set_parameters` over the worst-declared node can produce (672 B on the Autoware Safety Island, against the transport's 1,024). A contract declaring a string- or array-valued parameter needs the parameter store's capacities to price, which the RMW cannot see, so the shim abstains there and the user-service slot stands. Setting it here still wins. | derived, else `NROS_SERVICE_INBOX_BYTES` | nros-rmw-zenoh |
-| `NROS_PARAM_SERVICE_INBOX_DEPTH`   | Requests one parameter or lifecycle service queryable holds before the newest is dropped. One, because this traffic is one request and one reply from a client that waits (`ros2 param`, rclcpp's `SyncParametersClient`) and a node's services are polled serially in one spin. Raise it to 2 for an image serving a parameter dashboard. Must be >= 1. | `1` | nros-rmw-zenoh |
+| `NROS_PARAMS_SERVICE_INBOX_BYTES`   | Bytes one request slot holds in the inbox ring of a ROS parameter service queryable (six per node) or a REP-2002 lifecycle one (five per node) -- the BUILTIN family, which the zenoh shim selects by service name. **DERIVED**: with nothing stated, the contract's declared parameters bound it, as the largest request a `set_parameters` over the worst-declared node can produce (672 B on the Autoware Safety Island, against the transport's 1,024). A contract declaring a string- or array-valued parameter needs the parameter store's capacities to price, which the RMW cannot see, so the shim abstains there and the user-service slot stands. Setting it here still wins. | derived, else `NROS_SERVICE_INBOX_BYTES` | nros-rmw-zenoh |
+| `NROS_PARAMS_SERVICE_INBOX_DEPTH`   | Requests one parameter or lifecycle service queryable holds before the newest is dropped. One, because this traffic is one request and one reply from a client that waits (`ros2 param`, rclcpp's `SyncParametersClient`) and a node's services are polled serially in one spin. Raise it to 2 for an image serving a parameter dashboard. Must be >= 1. | `1` | nros-rmw-zenoh |
 | `NROS_ZENOH_GET_REPLY_BUFFER_BYTES`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
 | `NROS_ZENOH_GET_POLL_INTERVAL_MS`       | Single-threaded polling interval in `zenoh_shim_get()` | `10`             | zpico-sys      |
-| `NROS_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp); brokered default. (`ZPICO_SMOLTCP_MAX_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
-| `NROS_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp); 1 by default, 4 with the `nros-smoltcp/rtps` feature. (`ZPICO_SMOLTCP_MAX_UDP_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
+| `NROS_NET_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp); brokered default. (`ZPICO_SMOLTCP_MAX_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
+| `NROS_NET_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp); 1 by default, 4 with the `nros-smoltcp/rtps` feature. (`ZPICO_SMOLTCP_MAX_UDP_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
 | `NROS_NET_BUFFER_BYTES`        | Per-socket staging buffer (smoltcp). (`ZPICO_SMOLTCP_BUFFER_SIZE` is retired.)                          | `2048`           | nros-smoltcp  |
-| `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp). (`ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` is retired.)                      | `30000`          | nros-smoltcp  |
-| `NROS_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp). (`ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS` is retired.)                       | `10000`          | nros-smoltcp  |
+| `NROS_NET_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp). (`ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` is retired.)                      | `30000`          | nros-smoltcp  |
+| `NROS_NET_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp). (`ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS` is retired.)                       | `10000`          | nros-smoltcp  |
 
 ### Zenoh-pico transmit path
 
@@ -274,7 +274,7 @@ environment; a value you export wins.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `NROS_LINK_IP` | on | `0` on a serial-only image drops zenoh-pico's TCP and UDP link code and, with `--gc-sections`, the smoltcp platform code |
-| `ZPICO_NO_SMOLTCP` | off | `1` skips the smoltcp glue on bare metal |
+| `NROS_ZENOH_NO_SMOLTCP` | off | `1` skips the smoltcp glue on bare metal |
 | `NROS_HEAP_SIZE` | per platform crate | bare-metal static heap, in bytes; see [Build outputs](build-outputs.md#measured-footprint) |
 
 ### Logging
@@ -298,11 +298,11 @@ on an image, or `CONFIG_<knob>` on Zephyr.
 | `NROS_EXECUTOR_ARENA_BYTES`      | Executor arena size in bytes (compile-time fixed array size)                             | `4096`  | nros-node   |
 | `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` | Default subscription/service buffer size (bytes)                                         | `1024`  | nros-node   |
 | `NROS_MAX_CONCURRENT_GOALS`     | Max concurrent goals per action server (compile-time constant, not env-var configurable) | `4`     | nros-c      |
-| `NROS_MAX_PARAMETERS`           | Max parameters in parameter server                                                       | `32`    | nros-params |
+| `NROS_PARAMS_MAX_PARAMETERS`           | Max parameters in parameter server                                                       | `32`    | nros-params |
 | `NROS_PARAMS_MAX_NAME_BYTES`       | Max parameter name length                                                                | `64`    | nros-params |
 | `NROS_PARAMS_MAX_STRING_VALUE_BYTES`     | Max string parameter value length                                                        | `256`   | nros-params |
-| `NROS_MAX_ARRAY_LEN`            | Max bool, integer or double array parameter length                                       | `32`    | nros-params |
-| `NROS_MAX_STRING_ARRAY_LEN`     | Max string-array parameter length, in elements                                           | `32`    | nros-params |
+| `NROS_PARAMS_MAX_ARRAY_LEN`            | Max bool, integer or double array parameter length                                       | `32`    | nros-params |
+| `NROS_PARAMS_MAX_STRING_ARRAY_LEN`     | Max string-array parameter length, in elements                                           | `32`    | nros-params |
 | `NROS_PARAMS_MAX_BYTE_ARRAY_BYTES`       | Max byte array parameter length                                                          | `256`   | nros-params |
 | `NROS_PARAMS_MAX_DESCRIPTION_BYTES` | Max parameter description length; longer is truncated and logged, 0 = none (max 256). Unset, a workspace image whose every node was probed by `nros configure` gets the longest description its code sets (at least 16) | `256`   | nros-params |
 

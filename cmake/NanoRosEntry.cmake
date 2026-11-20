@@ -1253,7 +1253,7 @@ function(nano_ros_entry)
        AND _nra_board_active)
         # (1) locator — baked earlier (BEFORE the link pass, for the NuttX configure-time
         # COMPILE_DEFINITIONS ferry). `_nra_locator` is in scope here. Zephyr is EXEMPT (its
-        # locator threads via the `CONFIG_NROS_ZENOH_LOCATOR` Kconfig), so the earlier block left
+        # locator threads via the `CONFIG_NROS_LOCATOR` Kconfig), so the earlier block left
         # `_nra_locator` empty for it; the FreeRTOS `NROS_APP_CONFIG` TU below is board-startup-only
         # and likewise skipped on Zephyr.
         if(NOT _nra_is_zephyr)

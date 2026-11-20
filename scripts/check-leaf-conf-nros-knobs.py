@@ -18,7 +18,7 @@ templates):
   api       the language API (`choice NROS_API`'s members) — derived from the
             package (`Cargo.toml` is Rust; a `CMakeLists.txt` package's entry is
             the TYPED C++ carrier), so there is nothing to write: delete it;
-  endpoint  `CONFIG_NROS_ZENOH_LOCATOR` / `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` —
+  endpoint  `CONFIG_NROS_LOCATOR` / `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` —
             write the image's `locator = "…"`;
   knob      every other `CONFIG_NROS_<X>` the module's Kconfig defines. A
             REGISTRY knob is written `[image.<id>.knobs.<group>] <name>` (its
@@ -66,7 +66,7 @@ KCONFIG = os.path.join("zephyr", "Kconfig")
 # Generated from the knob registry (`knobs.toml`, phase-484 W5a).
 PAIRS_SRC = os.path.join("packages", "tooling", "nros-zephyr-build", "src", "knob_registry.rs")
 # The renderer's endpoint symbols (`leaf_kconfig::render`, from `locator`).
-ENDPOINT = ("CONFIG_NROS_ZENOH_LOCATOR", "CONFIG_NROS_XRCE_AGENT_ADDR",
+ENDPOINT = ("CONFIG_NROS_LOCATOR", "CONFIG_NROS_XRCE_AGENT_ADDR",
             "CONFIG_NROS_XRCE_AGENT_PORT")
 RMW_WORD = {
     "CONFIG_NROS_RMW_ZENOH": "zenoh",
@@ -164,7 +164,7 @@ def classify(sym: str, value: str, model, pairs, keys=None):
     if sym in ENDPOINT:
         v = value.strip().strip('"')
         spell = {
-            "CONFIG_NROS_ZENOH_LOCATOR": f'locator = "{v}"',
+            "CONFIG_NROS_LOCATOR": f'locator = "{v}"',
             "CONFIG_NROS_XRCE_AGENT_ADDR": f'locator = "udp/{v}:<port>"',
             "CONFIG_NROS_XRCE_AGENT_PORT": f'locator = "udp/<host>:{v}"',
         }[sym]

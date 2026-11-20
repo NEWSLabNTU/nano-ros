@@ -34,7 +34,7 @@
 
 extern void __stdout_hook_install(int (*hook)(int c));
 
-#define NROS_LINE_CAP CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER
+#define NROS_LINE_CAP CONFIG_NROS_CONSOLE_WHOLE_LINES_BUFFER_BYTES
 
 /* One line per thread. The +1 is the terminator printk's "%s" needs: under
  * CONFIG_LOG_PRINTK the string is copied into the log message, so it must end

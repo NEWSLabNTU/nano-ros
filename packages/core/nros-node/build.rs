@@ -365,6 +365,13 @@ fn type_bound(bounds: &[(String, usize)], ty: &str) -> Option<usize> {
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
+    // phase-581 W6 (RFC-0140 D4, Appendix A.4) -- a statement's own name never
+    // carries it at build time: an exported NROS_DOMAIN_ID stops the build
+    // naming `[system] domain_id`, and NROS_LOCATOR / NROS_NODE_NAME (run-time
+    // variables) earn a note. Here because every image, Rust, C or C++, builds
+    // this crate.
+    nros_zephyr_build::refuse_retired_statement_env();
+
     // phase-454 W4 (RFC-0100 D4) -- the ONE artifact this build's target facts
     // come from. Read by PATH, with a `rerun-if-changed` edge on its CONTENT.
     // `None` when nobody ran `nros sync` for this image, which leaves every
@@ -569,12 +576,12 @@ fn main() {
     // REFUSED rather than taken: it was this knob's derive sentinel until
     // issue 1485, so a 0 in a board file means somebody asked for the
     // derivation, and taking it as a size is a slot nothing fits in.
-    let param_inbox_bytes = match env_usize("NROS_PARAM_SERVICE_INBOX_BYTES", usize::MAX) {
+    let param_inbox_bytes = match env_usize("NROS_PARAMS_SERVICE_INBOX_BYTES", usize::MAX) {
         usize::MAX => "None".to_string(),
         0 => panic!("{PARAM_INBOX_ZERO_REFUSAL}"),
         n => format!("Some({n})"),
     };
-    let param_inbox_depth = env_usize("NROS_PARAM_SERVICE_INBOX_DEPTH", 1);
+    let param_inbox_depth = env_usize("NROS_PARAMS_SERVICE_INBOX_DEPTH", 1);
     // phase-454 W10 — the per-endpoint declared depths, for the REGISTRATION
     // check. Same carrier `subs_arena` sizes from, different guard: see
     // `declared_qos_rows`.
@@ -1339,13 +1346,13 @@ fn main() {
          pub const DECLARED_PARAM_SERVICE_SHAPES: Option<&[[usize; 9]]> = {param_svc_shapes};\n\
          \n\
          /// The parameter-service INBOX slot size a rung \
-         STATED (NROS_PARAM_SERVICE_INBOX_BYTES), or `None` when nobody stated \
+         STATED (NROS_PARAMS_SERVICE_INBOX_BYTES), or `None` when nobody stated \
          one. A stated size wins over the size derived from the contract's \
          declared parameters (never 0, which is refused).\n\
          pub const PARAM_SERVICE_INBOX_BYTES: Option<usize> = {param_inbox_bytes};\n\
          \n\
          /// Requests one parameter-service queryable holds \
-         before the newest is dropped (NROS_PARAM_SERVICE_INBOX_DEPTH, \
+         before the newest is dropped (NROS_PARAMS_SERVICE_INBOX_DEPTH, \
          default 1). The parameter clients are sequential; 4 is the action \
          path's depth and this family used to pay it.\n\
          pub const PARAM_SERVICE_INBOX_DEPTH: usize = {param_inbox_depth};\n\
@@ -1822,16 +1829,16 @@ fn env_opt_usize_laddered(name: &str) -> Option<usize> {
 ///
 /// The front-end keeps winning. Migrating a knob into the ladder must not take
 /// an operator's override away, which is half of this wave's own gate.
-/// issue 1485 -- the refusal for a STATED `NROS_PARAM_SERVICE_INBOX_BYTES=0`.
+/// issue 1485 -- the refusal for a STATED `NROS_PARAMS_SERVICE_INBOX_BYTES=0`.
 ///
 /// RFC-0065 D2: refuse, and name the remedy. `nros-rmw-zenoh/build.rs` reads
 /// the same knob and refuses the same value with the same words, so a board
 /// that states 0 is told one thing whichever build script runs first.
-const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAM_SERVICE_INBOX_BYTES=0: 0 is not a size; -1 derives.\n  \
+const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAMS_SERVICE_INBOX_BYTES=0: 0 is not a size; -1 derives.\n  \
      It is the bytes ONE request slot of the parameter/lifecycle inbox holds, \
      and a 0-byte slot drops every request. 0 was once this knob's derive sentinel, \
      which is why a 0 may still be written somewhere.\n  \
-     Delete the line (on Zephyr, CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, whose \
+     Delete the line (on Zephyr, CONFIG_NROS_PARAMS_SERVICE_INBOX_BYTES, whose \
      default -1 derives the size from the contract's declared parameters), \
      or state the size you mean.";
 

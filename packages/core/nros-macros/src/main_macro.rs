@@ -2715,7 +2715,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // so a workspace Zephyr entry ran domain 0 whatever Kconfig
                 // said. Kconfig reaches `nros`'s own build through
                 // `nros_zephyr_build::bake_nros_config()` in its `build.rs`
-                // (`CONFIG_NROS_ZENOH_LOCATOR` / `CONFIG_NROS_DOMAIN_ID`), the
+                // (`CONFIG_NROS_LOCATOR` / `CONFIG_NROS_DOMAIN_ID`), the
                 // same channel the entry's `build.rs` uses for itself, so
                 // Kconfig stays the single source of truth for both languages.
                 //

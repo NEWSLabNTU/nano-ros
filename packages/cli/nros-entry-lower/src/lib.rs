@@ -231,7 +231,7 @@ impl BoardFamily {
                 // `stack_bytes`; the fixed pool slot ignored it. The runner
                 // boots `sched_tasks[0]` (Zephyr is lower-number-wins and the table
                 // is descending, issue 0251). 0 = the header's default,
-                // CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, which keeps that knob's
+                // CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES, which keeps that knob's
                 // meaning for a sched task that declares nothing.
                 sched_task_memory: Some(SchedTaskMemory {
                     header: "rclc/detail/sched_task_memory_zephyr.h",
@@ -424,7 +424,7 @@ pub struct SchedTaskMemory {
     /// is reserved. The port's floor is applied on top by the header's macro
     /// (issue 0667: a task size is a floor the port raises). `0` hands the
     /// choice to the header, which names the board's own knob (Zephyr:
-    /// CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE).
+    /// CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES).
     pub default_stack_bytes: u64,
     /// phase-509 P9 (RFC-0108 D3) -- a spawned level that declares no
     /// `stack_bytes` gets a stack DERIVED from its members (the header's

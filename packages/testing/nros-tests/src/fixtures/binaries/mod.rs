@@ -7148,7 +7148,7 @@ fn linux_rust_pubsub_configured(
 
 /// The peer-mode talker — issue 0711.
 ///
-/// `ZPICO_MULTICAST_TRANSPORT=1` compiles the multicast transport + scouting
+/// `NROS_ZENOH_MULTICAST_TRANSPORT=1` compiles the multicast transport + scouting
 /// that issue 0682 turned off for size, so `ZPICO_PEER_MODE_SUPPORTED` is true
 /// and the session layer stops refusing peer mode up front. The default native
 /// talker is built WITHOUT it, which is why `test_peer_mode_communication`
@@ -7165,7 +7165,7 @@ pub fn build_native_talker_peer() -> TestResult<&'static Path> {
             // phase-531 W6 — the talker is a one-node workspace; its peer row
             // is the `linux` image built with this env.
             migrated_talker(crate::fixtures::migrated_leaf::LeafVariant::Env(&[(
-                "ZPICO_MULTICAST_TRANSPORT",
+                "NROS_ZENOH_MULTICAST_TRANSPORT",
                 "1",
             )]))
         })

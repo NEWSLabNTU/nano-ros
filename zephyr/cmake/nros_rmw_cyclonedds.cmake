@@ -7,8 +7,8 @@ function(nros_zephyr_configure_rmw_cyclonedds)
 # `NROS_ENTRY_DOMAIN_ID` role `entry_config.h` reads. It defaults to
 # `NROS_DOMAIN_ID`, so this is the same value unless an image sets it apart on
 # purpose (issue 0161's split-brain rule stays in `NanoRosDomainAgreement`).
-if(DEFINED CONFIG_NROS_CYCLONE_DOMAIN_ID)
-    zephyr_compile_definitions("NROS_ENTRY_DOMAIN_ID=${CONFIG_NROS_CYCLONE_DOMAIN_ID}")
+if(DEFINED CONFIG_NROS_CYCLONEDDS_DOMAIN_ID)
+    zephyr_compile_definitions("NROS_ENTRY_DOMAIN_ID=${CONFIG_NROS_CYCLONEDDS_DOMAIN_ID}")
 endif()
 
 # -------------------------------------------------------------------------
@@ -468,7 +468,7 @@ zephyr_include_directories(
 # Flips the auto-register hook in packages/api/nros-cpp/include/rclcpp/node.hpp
 # which calls nros_rmw_cyclonedds_register() inside nros::init().
 #
-# phase-484 W4 — no `NROS_CYCLONE_DOMAIN_ID=` define: nothing compiled reads it
+# phase-484 W4 — no `NROS_CYCLONEDDS_DOMAIN_ID=` define: nothing compiled reads it
 # (the domain reaches C through `NROS_ENTRY_DOMAIN_ID`, entry_config.h), and a
 # define nobody reads is a second statement of the domain waiting to disagree.
 zephyr_compile_definitions(

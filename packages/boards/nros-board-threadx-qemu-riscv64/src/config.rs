@@ -42,7 +42,7 @@ impl Default for Config {
         // `run_app_thread` with NO deploy overlay, so this domain drives the
         // Executor/Cyclone participant. The NetX wire identity (IP/MAC) and the
         // locator on that path come from the image itself (`image_config()` in
-        // lib.rs, issue 1557), not from these defaults. `NROS_DOMAIN_ID` is set
+        // lib.rs, issue 1557), not from these defaults. `NROS_ENTRY_DOMAIN_ID` is set
         // per-build by `nros_threadx_rv64_rust_app` (corrosion env), matching
         // the leaf image's `domain_id` the C fixtures bake (issue 1946).
         //
@@ -50,7 +50,7 @@ impl Default for Config {
         // moving to `BaseConfig`: it is expanded where it is written, and the
         // shared crate is built once for every board — reading the bake there
         // would leak one fixture's domain into all of them.
-        let domain_id = option_env!("NROS_DOMAIN_ID")
+        let domain_id = option_env!("NROS_ENTRY_DOMAIN_ID")
             .and_then(parse_u32)
             .unwrap_or(0);
         Self {
@@ -148,12 +148,12 @@ impl Config {
             .apply_direct(&parse_direct_toml(toml, |_, _, _| {}));
 
         // Phase 177.38 — build-time ROS-domain override for per-fixture
-        // isolation. `NROS_DOMAIN_ID` set at build time bakes a distinct domain
+        // isolation. `NROS_ENTRY_DOMAIN_ID` set at build time bakes a distinct domain
         // into this fixture without editing the toml (the example default stays
         // clean). Cyclone derives RTPS ports from the domain, so build-fixtures
         // gives each communicating role-set its own domain and concurrent
         // fixtures don't collide. Empty/unset keeps the config value.
-        if let Some(d) = option_env!("NROS_DOMAIN_ID").and_then(parse_u32) {
+        if let Some(d) = option_env!("NROS_ENTRY_DOMAIN_ID").and_then(parse_u32) {
             config.base.domain_id = d;
         }
 

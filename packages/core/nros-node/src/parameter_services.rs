@@ -94,7 +94,7 @@ pub type ValueConversionError = RmwParameterConversionError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RmwParameterConversionError {
     /// The value exceeds this node's compile-time capacity
-    /// (`NROS_PARAMS_MAX_STRING_VALUE_BYTES`, `NROS_MAX_ARRAY_LEN`, …).
+    /// (`NROS_PARAMS_MAX_STRING_VALUE_BYTES`, `NROS_PARAMS_MAX_ARRAY_LEN`, …).
     CapacityExceeded,
     /// `type_` is not a known rcl_interfaces `ParameterType` code.
     UnknownType(u8),
@@ -1995,7 +1995,7 @@ impl ParameterServiceServers {
                 Some(len) => nros_log::log_error!(
                     nros_log::get_logger("nros"),
                     "param service {}/{}: a {} B request dropped by the TRANSPORT inbox (not \
-                     the {} B executor buffer). NROS_PARAM_SERVICE_INBOX_BYTES; zenoh also \
+                     the {} B executor buffer). NROS_PARAMS_SERVICE_INBOX_BYTES; zenoh also \
                      NROS_SERVICE_INBOX_BYTES, xrce NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES; \
                      or declare `params:`",
                     fqn,
@@ -2006,7 +2006,7 @@ impl ParameterServiceServers {
                 None => nros_log::log_error!(
                     nros_log::get_logger("nros"),
                     "param service {}/{}: request dropped by the TRANSPORT inbox (not the {} \
-                     B executor buffer). NROS_PARAM_SERVICE_INBOX_BYTES; zenoh also \
+                     B executor buffer). NROS_PARAMS_SERVICE_INBOX_BYTES; zenoh also \
                      NROS_SERVICE_INBOX_BYTES, xrce NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES; or \
                      declare `params:`",
                     fqn,
@@ -2355,7 +2355,7 @@ mod tests {
             set.reported,
             inbox | buffer,
             "MessageTooLarge is the transport's inbox (the line naming \
-             NROS_PARAM_SERVICE_INBOX_BYTES), BufferTooSmall is the executor's \
+             NROS_PARAMS_SERVICE_INBOX_BYTES), BufferTooSmall is the executor's \
              buffer (the line naming NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES)"
         );
     }
@@ -4392,7 +4392,7 @@ mod tests {
     /// phase-461 W2 / issue 1352 -- the island's shapes, priced.
     ///
     /// The issue and `nxp-deployment.md` section 8 carry 2,408 B for
-    /// `set_parameters`, read off `NROS_MAX_PARAMETERS` = 25. That is the
+    /// `set_parameters`, read off `NROS_PARAMS_MAX_PARAMETERS` = 25. That is the
     /// STORE's capacity across all four nodes (21 declared plus one
     /// `use_sim_time` each), not any node's shape, and each request addresses
     /// ONE node's six services. The worst island node declares 8; its worst
@@ -4448,10 +4448,10 @@ mod tests {
     ///
     /// ```text
     /// NROS_DECLARED_PARAM_SERVICE_SHAPE=8:170:1:17:0:0:0:0:0 \
-    ///   NROS_PARAM_SERVICE_INBOX_BYTES=672 cargo build -p nros-node   # builds
+    ///   NROS_PARAMS_SERVICE_INBOX_BYTES=672 cargo build -p nros-node   # builds
     /// NROS_DECLARED_PARAM_SERVICE_SHAPE=8:170:1:17:0:0:0:0:0 \
-    ///   NROS_PARAM_SERVICE_INBOX_BYTES=668 cargo build -p nros-node   # refuses,
-    ///   naming NROS_PARAM_SERVICE_INBOX_BYTES
+    ///   NROS_PARAMS_SERVICE_INBOX_BYTES=668 cargo build -p nros-node   # refuses,
+    ///   naming NROS_PARAMS_SERVICE_INBOX_BYTES
     /// ```
     #[test]
     fn the_resolved_inbox_geometry_holds_its_own_bound() {

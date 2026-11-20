@@ -233,7 +233,7 @@ int main(void)
     nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS);
 
     rclcpp::Result ret =
-        rclcpp::init_in(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID);
+        rclcpp::init_in(CONFIG_NROS_LOCATOR, CONFIG_NROS_DOMAIN_ID);
     if (!ret.ok()) return 1;
 
     rclcpp::Node node;

@@ -12,11 +12,11 @@
 //! ```
 //!
 //! What it bakes (known-issue #17): `nros::main!`'s Zephyr branch and
-//! `nros::zephyr_component_main!` read `option_env!("NROS_LOCATOR")` /
-//! `option_env!("NROS_DOMAIN_ID")` at compile time; without a baked value the
+//! `nros::zephyr_component_main!` read `option_env!("NROS_ENTRY_LOCATOR")` /
+//! `option_env!("NROS_ENTRY_DOMAIN_ID")` at compile time; without a baked value the
 //! locator falls back to EMPTY → zenoh-pico multicast scouting, which
 //! native_sim NSOS can never satisfy (no `connect()` is ever issued). The C
-//! API path consumes `CONFIG_NROS_ZENOH_LOCATOR` from Kconfig directly; this
+//! API path consumes `CONFIG_NROS_LOCATOR` from Kconfig directly; this
 //! helper re-exports the same Kconfig values so Kconfig stays the single
 //! source of truth for BOTH languages. (`DOTCONFIG` — the generated
 //! `.config` path — is exported by the Zephyr build system.)
@@ -35,11 +35,11 @@ use std::{env, fs};
 
 /// Bake the nros Kconfig values into `rustc-env` directives:
 ///
-/// - `CONFIG_NROS_ZENOH_LOCATOR` → `NROS_LOCATOR` (quoted string, phase-225)
-/// - `CONFIG_NROS_DOMAIN_ID` → `NROS_DOMAIN_ID` (integer, issue 0161)
+/// - `CONFIG_NROS_LOCATOR` → `NROS_ENTRY_LOCATOR` (quoted string, phase-225)
+/// - `CONFIG_NROS_DOMAIN_ID` → `NROS_ENTRY_DOMAIN_ID` (integer, issue 0161)
 /// - issue 0163 — when `CONFIG_NROS_RMW_XRCE=y`, synthesize the `host:port`
 ///   agent locator from `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` (defaults
-///   `127.0.0.1:2018`) into the SAME `NROS_LOCATOR` env (mutually exclusive
+///   `127.0.0.1:2018`) into the SAME `NROS_ENTRY_LOCATOR` env (mutually exclusive
 ///   with the zenoh bake — an image selects exactly one RMW). Self-gated, so
 ///   zenoh-only images (and workspace entries) are unaffected.
 ///
@@ -47,8 +47,8 @@ use std::{env, fs};
 /// Kconfigs are absent/empty — a host `cargo check` of a leaf stays quiet.
 pub fn bake_nros_config() {
     println!("cargo:rerun-if-env-changed=DOTCONFIG");
-    println!("cargo:rerun-if-env-changed=NROS_LOCATOR");
-    println!("cargo:rerun-if-env-changed=NROS_DOMAIN_ID");
+    println!("cargo:rerun-if-env-changed=NROS_ENTRY_LOCATOR");
+    println!("cargo:rerun-if-env-changed=NROS_ENTRY_DOMAIN_ID");
     let Some(body) = env::var("DOTCONFIG").ok().and_then(|p| {
         println!("cargo:rerun-if-changed={p}");
         fs::read_to_string(&p).ok()
@@ -64,13 +64,13 @@ pub fn bake_nros_config() {
 /// directive lines. Split out so tests assert emission without a cargo run.
 fn bake_directives(dotconfig: &str) -> Vec<String> {
     let mut out = Vec::new();
-    if let Some(val) = kconfig_str(dotconfig, "CONFIG_NROS_ZENOH_LOCATOR") {
-        out.push(format!("cargo:rustc-env=NROS_LOCATOR={val}"));
+    if let Some(val) = kconfig_str(dotconfig, "CONFIG_NROS_LOCATOR") {
+        out.push(format!("cargo:rustc-env=NROS_ENTRY_LOCATOR={val}"));
     }
     if let Some(val) = kconfig_raw(dotconfig, "CONFIG_NROS_DOMAIN_ID") {
-        out.push(format!("cargo:rustc-env=NROS_DOMAIN_ID={val}"));
+        out.push(format!("cargo:rustc-env=NROS_ENTRY_DOMAIN_ID={val}"));
     }
-    // Issue 0163 — the XRCE path has no CONFIG_NROS_ZENOH_LOCATOR; its agent
+    // Issue 0163 — the XRCE path has no CONFIG_NROS_LOCATOR; its agent
     // endpoint lives in CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}. Synthesize the
     // `host:port` locator the xrce session parser expects.
     if kconfig_raw(dotconfig, "CONFIG_NROS_RMW_XRCE").as_deref() == Some("y") {
@@ -78,7 +78,7 @@ fn bake_directives(dotconfig: &str) -> Vec<String> {
             .unwrap_or_else(|| "127.0.0.1".to_string());
         let port = kconfig_raw(dotconfig, "CONFIG_NROS_XRCE_AGENT_PORT")
             .unwrap_or_else(|| "2018".to_string());
-        out.push(format!("cargo:rustc-env=NROS_LOCATOR={addr}:{port}"));
+        out.push(format!("cargo:rustc-env=NROS_ENTRY_LOCATOR={addr}:{port}"));
     }
     out
 }
@@ -321,6 +321,20 @@ pub struct StatementRow {
     pub retired_spellings: &'static [RetiredSpelling],
 }
 
+/// A hand-written `zephyr/Kconfig` symbol that replaced others (RFC-0140
+/// Appendix A.2, phase-581 W6): the `kconfig:` spellings it retired, and the
+/// build variable the module forwards it as when that is not `NROS_` plus the
+/// symbol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HandKconfigRow {
+    /// The live symbol, with `CONFIG_`.
+    pub symbol: &'static str,
+    /// The build variable the Zephyr module forwards the value as, when it is
+    /// not `NROS_` plus the symbol's name (`NROS_PARAM_STORE`).
+    pub env: Option<&'static str>,
+    pub retired_spellings: &'static [RetiredSpelling],
+}
+
 /// What a running process does with a set variable (RFC-0140 D9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvDisposition {
@@ -387,7 +401,7 @@ pub use knob_registry::{
 // Generated beside it: the statement and env rows (phase-581 W1).
 #[rustfmt::skip]
 mod config_rows;
-pub use config_rows::{ENV_ROWS, STATEMENTS};
+pub use config_rows::{ENV_ROWS, HAND_KCONFIG, STATEMENTS};
 // Generated beside them: core's owner words and the in-tree packages' rows
 // (phase-581 W2).
 #[rustfmt::skip]
@@ -775,6 +789,92 @@ pub fn refuse_retired_knobs() {
     assert!(set.is_empty(), "nros-zephyr-build: {}", set.join("\n  "));
 }
 
+/// RFC-0140 D4 (phase-581 W6) -- the refusal a statement's RETIRED build
+/// variable earns (`NROS_DOMAIN_ID`, refused naming `[system] domain_id`), or
+/// `None` when `name` is no statement's retired `env:` spelling.
+#[must_use]
+pub fn retired_statement_env_refusal(name: &str) -> Option<String> {
+    STATEMENTS.iter().find_map(|st| {
+        st.retired_spellings
+            .iter()
+            .find(|e| e.road == RetiredRoad::Env && e.spelling == name)
+            .map(|e| match e.instead {
+                Some(what) => format!("{name} is retired at build time: {what}"),
+                None => format!(
+                    "{name} is retired at build time: state `{}` in system.toml",
+                    st.key
+                ),
+            })
+    })
+}
+
+/// Every statement's retired build variable that is set, as its refusal,
+/// read through `env`. An empty value counts as unset, as for a knob.
+#[must_use]
+pub fn retired_statement_env_set(env: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
+    STATEMENTS
+        .iter()
+        .flat_map(|st| st.retired_spellings.iter())
+        .filter(|e| e.road == RetiredRoad::Env)
+        .filter(|e| env(e.spelling).is_some_and(|v| !v.trim().is_empty()))
+        .filter_map(|e| retired_statement_env_refusal(e.spelling))
+        .collect()
+}
+
+/// The run-time names a build used to read as well (RFC-0140 D4, Appendix
+/// A.4): each is the `[[env]]` override of the statement named beside it,
+/// whose build carrier is now `NROS_ENTRY_<KEY>`. A build that finds one in
+/// its shell is not refused (a developer exports it to RUN a hosted image);
+/// it prints [`run_time_name_note`] instead.
+pub const RUN_TIME_ONLY_NAMES: &[(&str, &str)] =
+    &[("NROS_LOCATOR", "locator"), ("NROS_NODE_NAME", "node_name")];
+
+/// The note a build prints for a [`RUN_TIME_ONLY_NAMES`] entry set in its
+/// shell, or `None` when `name` is not one.
+#[must_use]
+pub fn run_time_name_note(name: &str, value: &str) -> Option<String> {
+    let (_, key) = RUN_TIME_ONLY_NAMES.iter().find(|(n, _)| *n == name)?;
+    let carrier = STATEMENTS
+        .iter()
+        .find(|s| s.key == *key)
+        .and_then(|s| s.carrier)
+        .unwrap_or("its NROS_ENTRY_ carrier");
+    Some(format!(
+        "{name}={value} is set in this build's shell. The build does not read it: it is \
+         read when a hosted image RUNS. To bake a value, state `{key}` in system.toml \
+         (carried to the build as {carrier})."
+    ))
+}
+
+/// For a build script: refuse every statement's retired build variable that is
+/// set ([`retired_statement_env_set`]), and print a `cargo:warning` note for
+/// each [`RUN_TIME_ONLY_NAMES`] entry that is. Watches every name it asks
+/// about, so setting one re-runs the script.
+///
+/// # Panics
+///
+/// When a statement's retired build variable is set.
+pub fn refuse_retired_statement_env() {
+    let watched = STATEMENTS
+        .iter()
+        .flat_map(|st| st.retired_spellings.iter())
+        .filter(|e| e.road == RetiredRoad::Env)
+        .map(|e| e.spelling)
+        .chain(RUN_TIME_ONLY_NAMES.iter().map(|(n, _)| *n));
+    for name in watched {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
+    for (name, _) in RUN_TIME_ONLY_NAMES {
+        if let Some(v) = env::var(name).ok().filter(|v| !v.trim().is_empty())
+            && let Some(note) = run_time_name_note(name, &v)
+        {
+            println!("cargo:warning=note: {note}");
+        }
+    }
+    let set = retired_statement_env_set(&|k| env::var(k).ok());
+    assert!(set.is_empty(), "nros-zephyr-build: {}", set.join("\n  "));
+}
+
 /// [`read_spelled_from`]'s value alone, for a reader that injects its env
 /// accessor (the ladder does, so its tests need no process environment).
 #[must_use]
@@ -818,6 +918,11 @@ pub fn read_spelled_from(
 /// lookup for a knob with no Kconfig side is a miss and not an error.
 #[must_use]
 pub fn kconfig_key_for(env_name: &str) -> String {
+    // phase-581 W6 -- a hand-written symbol forwarded under another name
+    // (CONFIG_NROS_PARAMS_STORE as NROS_PARAM_STORE).
+    if let Some(h) = HAND_KCONFIG.iter().find(|h| h.env == Some(env_name)) {
+        return h.symbol.to_string();
+    }
     match knob_row(env_name) {
         Some(row) => row.kconfig.to_string(),
         // phase-581 W3 — an out-of-tree package's knob: its row in the catalog.
@@ -1399,7 +1504,7 @@ mod tests {
     /// absence is then indistinguishable from the issue-1490 defect the table
     /// exists to prevent — "this reader tabulates, so a knob with no row is
     /// read env-only". Nine of the twenty-five rows the two old per-crate
-    /// tables carried were exactly that, and the two `NROS_PARAM_SERVICE_INBOX_*`
+    /// tables carried were exactly that, and the two `NROS_PARAMS_SERVICE_INBOX_*`
     /// knobs 1490 measured as LIVE splits were among the names that shape
     /// affects.
     /// phase-484 W8 — a retired spelling is refused naming its replacement,
@@ -1552,13 +1657,13 @@ mod tests {
     #[test]
     fn zenoh_locator_and_domain_bake() {
         let cfg = "CONFIG_NROS_RMW_ZENOH=y\n\
-                   CONFIG_NROS_ZENOH_LOCATOR=\"tcp/127.0.0.1:7456\"\n\
+                   CONFIG_NROS_LOCATOR=\"tcp/127.0.0.1:7456\"\n\
                    CONFIG_NROS_DOMAIN_ID=42\n";
         assert_eq!(
             bake_directives(cfg),
             vec![
-                "cargo:rustc-env=NROS_LOCATOR=tcp/127.0.0.1:7456".to_string(),
-                "cargo:rustc-env=NROS_DOMAIN_ID=42".to_string(),
+                "cargo:rustc-env=NROS_ENTRY_LOCATOR=tcp/127.0.0.1:7456".to_string(),
+                "cargo:rustc-env=NROS_ENTRY_DOMAIN_ID=42".to_string(),
             ]
         );
     }
@@ -1566,9 +1671,9 @@ mod tests {
     #[test]
     fn unset_and_empty_are_no_ops() {
         assert!(bake_directives("").is_empty());
-        assert!(bake_directives("CONFIG_NROS_ZENOH_LOCATOR=\"\"\n").is_empty());
+        assert!(bake_directives("CONFIG_NROS_LOCATOR=\"\"\n").is_empty());
         // A different key sharing the prefix must not match.
-        assert!(bake_directives("CONFIG_NROS_ZENOH_LOCATOR_EXTRA=\"x\"\n").is_empty());
+        assert!(bake_directives("CONFIG_NROS_LOCATOR_EXTRA=\"x\"\n").is_empty());
     }
 
     #[test]
@@ -1578,7 +1683,7 @@ mod tests {
                    CONFIG_NROS_XRCE_AGENT_PORT=8888\n";
         assert_eq!(
             bake_directives(cfg),
-            vec!["cargo:rustc-env=NROS_LOCATOR=192.0.2.7:8888".to_string()]
+            vec!["cargo:rustc-env=NROS_ENTRY_LOCATOR=192.0.2.7:8888".to_string()]
         );
     }
 
@@ -1586,7 +1691,7 @@ mod tests {
     fn xrce_synthesis_defaults() {
         assert_eq!(
             bake_directives("CONFIG_NROS_RMW_XRCE=y\n"),
-            vec!["cargo:rustc-env=NROS_LOCATOR=127.0.0.1:2018".to_string()]
+            vec!["cargo:rustc-env=NROS_ENTRY_LOCATOR=127.0.0.1:2018".to_string()]
         );
     }
 
@@ -1612,8 +1717,86 @@ mod tests {
                 .collect();
             assert_eq!(env, row.legacy, "knob {}", row.id);
         }
-        // 32 retired by phase-484 W8, 33 by phase-581 W5's renames.
-        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 65);
+        // 32 retired by phase-484 W8, 33 by phase-581 W5's renames, 14 by W6's.
+        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 79);
+    }
+
+    /// RFC-0140 D4 (phase-581 W6) -- EVERY statement's retired build variable is
+    /// refused naming the statement, generated from the registry; and the two
+    /// run-time names a build used to read earn a note naming the statement and
+    /// its NROS_ENTRY_ carrier, never a refusal.
+    #[test]
+    fn every_retired_statement_variable_is_refused_naming_the_statement() {
+        let mut cases = 0;
+        for st in STATEMENTS {
+            for e in st.retired_spellings {
+                match e.road {
+                    RetiredRoad::Env => {
+                        let why = retired_statement_env_refusal(e.spelling).expect("refused");
+                        assert!(why.contains(&format!("`{}`", st.key)), "{why}");
+                        let set = |k: &str| (k == e.spelling).then(|| "5".to_string());
+                        assert_eq!(retired_statement_env_set(&set), vec![why]);
+                        cases += 1;
+                    }
+                    // The module hook's: case G of
+                    // `tests/zephyr-transient-overrides-tests.sh`.
+                    RetiredRoad::Kconfig => {}
+                    other => panic!("statement {}: no {other:?} retirement expected", st.key),
+                }
+            }
+        }
+        assert!(cases >= 1, "{cases} generated cases");
+        let why = retired_statement_env_refusal("NROS_DOMAIN_ID").unwrap(); // retired spelling
+        assert!(
+            why.contains("[system]") && why.contains("NROS_ENTRY_DOMAIN_ID"),
+            "{why}"
+        );
+        assert!(retired_statement_env_set(&|_| Some(" ".to_string())).is_empty());
+        for (name, key) in RUN_TIME_ONLY_NAMES {
+            assert!(
+                retired_statement_env_refusal(name).is_none(),
+                "{name} is not refused"
+            );
+            let note = run_time_name_note(name, "x").expect("a note");
+            let carrier = STATEMENTS
+                .iter()
+                .find(|s| s.key == *key)
+                .unwrap()
+                .carrier
+                .unwrap();
+            assert!(
+                note.contains(&format!("`{key}`")) && note.contains(carrier),
+                "{note}"
+            );
+        }
+        assert_eq!(
+            STATEMENTS
+                .iter()
+                .find(|s| s.key == "locator")
+                .unwrap()
+                .kconfig,
+            Some("CONFIG_NROS_LOCATOR")
+        );
+    }
+
+    /// phase-581 W6 -- a hand-written Kconfig symbol forwarded under another
+    /// build name is read under its NEW symbol by the Rust lane's ladder.
+    #[test]
+    fn a_hand_symbol_forwarded_under_another_name_reads_its_new_symbol() {
+        assert_eq!(
+            kconfig_key_for("NROS_PARAM_STORE"),
+            "CONFIG_NROS_PARAMS_STORE"
+        );
+        for h in HAND_KCONFIG {
+            assert!(!h.retired_spellings.is_empty(), "{}", h.symbol);
+            assert!(
+                h.retired_spellings
+                    .iter()
+                    .all(|e| e.road == RetiredRoad::Kconfig),
+                "{}",
+                h.symbol
+            );
+        }
     }
 
     /// RFC-0140 G5 (phase-581 W5) -- EVERY retired `env:` and `toml:` spelling

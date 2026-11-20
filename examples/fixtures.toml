@@ -316,7 +316,7 @@ target_dir = "target-fixtures-cyclonedds"
 # phase-535 W6 (RFC-0122 D2) — the `peer-mode` configuration of the linux
 # listener, from the `examples/linux/rust/listener` variant row. Its talker is
 # the witness's peer row (`examples/linux/rust/talker`). Own target dir:
-# `ZPICO_MULTICAST_TRANSPORT` rebuilds zpico-sys, and an env is not part of
+# `NROS_ZENOH_MULTICAST_TRANSPORT` rebuilds zpico-sys, and an env is not part of
 # cargo's unit hash. `matrix::Config::PeerMode` cell; `tests/nano2nano.rs`
 # runs it.
 [[workspace_fixture]]
@@ -605,7 +605,7 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx"
 target = "armv7a-nuttx-eabihf"
 skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8230", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8230", NROS_ENTRY_DOMAIN_ID = "0" }
 
 # phase-281 W3-nuttx (RFC-0015 Model 1) — the 2-sched-task RT-sched-tasks Rust NuttX (QEMU
 # arm-virt) Entry (`realtime-rust/src/nuttx_entry`): `system.toml` declares two
@@ -615,7 +615,7 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "cor
 # high) publishes `/ctrl`, telem (100 ms, low) publishes `/telem`. Built by the
 # cargo lane at the `release` profile (177.8.c CGU-miscompile dodge); the connect
 # locator (`tcp/10.0.2.2:8291`, dialed through the QEMU slirp gateway) is baked via
-# the per-row `NROS_LOCATOR`. `skip_probe` — the stale probe cannot replicate the
+# the per-row `NROS_ENTRY_LOCATOR`. `skip_probe` — the stale probe cannot replicate the
 # nightly + build-std + NUTTX_DIR recipe env. Consumed by
 # tests/realtime_sched_tasks_rust_nuttx_e2e.rs. Closes the LAST matrix cell (rust×nuttx).
 # phase-285 W5 (RFC-0015 Model 1, issue #165) — the rv-virt (riscv32) sibling of the
@@ -640,7 +640,7 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx-riscv"
 target = "riscv32imac-unknown-nuttx-elf"
 skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8691", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8691", NROS_ENTRY_DOMAIN_ID = "0" }
 
 [[workspace_fixture]]
 id = "workspace-rust-nuttx-realtime"
@@ -654,7 +654,7 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx"
 target = "armv7a-nuttx-eabihf"
 skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8291", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8291", NROS_ENTRY_DOMAIN_ID = "0" }
 
 # phase-297 W5 (RFC-0053) — the 2-sched-task RT-sched-tasks Rust ThreadX-Linux Entry
 # (`realtime-rust/src/threadx_entry`): the model's
@@ -665,7 +665,7 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "cor
 # sockets — no QEMU, dials loopback directly (no slirp). Locator port 9091 =
 # `alloc::port_of(ThreadxLinux, Rust, RealtimeSchedTasks)` (phase-295 W4 SSoT),
 # stated as the bringup's `[image.threadx] locator` — the threadx-linux board
-# reads no `NROS_LOCATOR`, so the `env` here used to carry one that reached
+# reads no `NROS_ENTRY_LOCATOR`, so the `env` here used to carry one that reached
 # nothing (issue 1581; `check-image-locator-bake`).
 # Built by the cargo lane (`workspace-fixtures-build.sh threadx-linux rust`;
 # needs THREADX_DIR from activate.sh). Consumed by
@@ -680,7 +680,7 @@ bringup = "src/demo_bringup"
 image = "threadx"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/threadx-linux"
-env = { NROS_DOMAIN_ID = "0" }
+env = { NROS_ENTRY_DOMAIN_ID = "0" }
 
 # phase-481 W4 (RFC-0098 D12) — two native images on ONE coordinate, one of
 # them configured (`[image.warn] env`). `warn` builds into its own configure,
@@ -3026,7 +3026,7 @@ node_features = ["link-tls"]
 
 # Peer-mode variant (isolated target dir) — issue 0711.
 #
-# `ZPICO_MULTICAST_TRANSPORT=1` compiles the multicast transport, scouting and
+# `NROS_ZENOH_MULTICAST_TRANSPORT=1` compiles the multicast transport, scouting and
 # multicast declarations that issue 0682 turned OFF by default for size. The
 # default native pair therefore REFUSES peer mode up front, which is why
 # `nano2nano::test_peer_mode_communication` could only ever skip.
@@ -3045,7 +3045,7 @@ rmw = "zenoh"
 bringup = "src/native_talker_bringup"
 target_dir = "target-fixtures-peer"
 image = "linux"
-env = { ZPICO_MULTICAST_TRANSPORT = "1" }
+env = { NROS_ZENOH_MULTICAST_TRANSPORT = "1" }
 
 # E2E-safety talker (phase-277 W3.a — was the talker `safety-e2e` feature
 # build in target-safety/; now a dedicated fixture bin with the safety
@@ -4254,7 +4254,7 @@ rmw = "zenoh"
 dir = "examples/linux/c/custom-transport-loopback"
 bringup = "src/native_c_custom_transport_loopback_bringup"
 image = "linux"
-build_subdir = "build/posix-zenoh-linux-cfg86d9ba717d-native_c_custom_transport_loopback_bringup/cmake"
+build_subdir = "build/posix-zenoh-linux-cfg57d11bd991-native_c_custom_transport_loopback_bringup/cmake"
 
 [[workspace_fixture]]
 id = "linux-c-zenoh-logging"

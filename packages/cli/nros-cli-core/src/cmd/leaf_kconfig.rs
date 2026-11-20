@@ -13,7 +13,7 @@
 //! |---|---|
 //! | `CONFIG_NROS_RMW_<X>=y` | the image's `rmw` |
 //! | `CONFIG_NROS_{C,CPP,RUST}_API=y` | the package's language |
-//! | `CONFIG_NROS_ZENOH_LOCATOR` / `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` | the image's `locator` |
+//! | `CONFIG_NROS_LOCATOR` / `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` | the image's `locator` |
 //! | `CONFIG_NROS_DOMAIN_ID` | the image's `domain_id` (else `[defaults]`, else `[system]`) |
 //! | one row per `[image.<id>] env` row whose Kconfig symbol EXISTS and is not a registry knob | the image's `env` (and what its `transport` implies) |
 //!
@@ -455,15 +455,15 @@ pub fn render_over(
         && !out
             .lines
             .iter()
-            .any(|l| l.symbol == "CONFIG_NROS_PARAM_STORE")
-        && syms.get("NROS_PARAM_STORE").is_some()
+            .any(|l| l.symbol == "CONFIG_NROS_PARAMS_STORE")
+        && syms.get("NROS_PARAMS_STORE").is_some()
         && let Some(dir) = leaf.origin_path().parent()
         && let Some(n) = crate::leaf_entity_env::census_parameter_count(dir)
         && n > 0
     {
         push(
             &mut out,
-            "NROS_PARAM_STORE",
+            "NROS_PARAMS_STORE",
             "y".to_string(),
             format!("its census records {n} parameter(s)"),
         )?;
@@ -483,7 +483,7 @@ pub fn render_over(
             )?;
         } else {
             out.cargo_rows
-                .insert("NROS_DOMAIN_ID".to_string(), domain.to_string());
+                .insert("NROS_ENTRY_DOMAIN_ID".to_string(), domain.to_string());
         }
     }
 
@@ -505,7 +505,7 @@ pub fn render_over(
             Some("NROS_RMW_ZENOH") => {
                 push(
                     &mut out,
-                    "NROS_ZENOH_LOCATOR",
+                    "NROS_LOCATOR",
                     kconfig_value(SymType::String, locator)?,
                     from,
                 )?;
@@ -806,7 +806,7 @@ config NROS_MAX_QUERYABLES
     int \"q\"
 config NROS_ZENOH_TX_BATCH
     bool \"batch\"
-config NROS_ZENOH_LOCATOR
+config NROS_LOCATOR
     string \"loc\"
 endif # NROS_RMW_ZENOH
 if NROS_RMW_XRCE
@@ -888,7 +888,7 @@ endif # NROS
             "NROS_C_API",
             "NROS_CPP_API",
             "NROS_RUST_API",
-            "NROS_ZENOH_LOCATOR",
+            "NROS_LOCATOR",
             "NROS_XRCE_AGENT_ADDR",
             "NROS_XRCE_AGENT_PORT",
         ] {
@@ -1071,7 +1071,7 @@ endif # NROS
         let m = rows(&r);
         assert_eq!(m["CONFIG_NROS_RMW_ZENOH"], "y");
         assert_eq!(m["CONFIG_NROS_C_API"], "y");
-        assert_eq!(m["CONFIG_NROS_ZENOH_LOCATOR"], "\"tcp/10.0.2.2:7447\"");
+        assert_eq!(m["CONFIG_NROS_LOCATOR"], "\"tcp/10.0.2.2:7447\"");
         // phase-484 W5b — registry knobs leave the fragment for the defaults file.
         let k = knob_rows(&r);
         assert!(!m.contains_key("CONFIG_NROS_EXECUTOR_MAX_CBS"), "{m:?}");
@@ -1186,7 +1186,7 @@ endif # NROS
         assert_eq!(m["CONFIG_NROS_RMW_XRCE"], "y");
         assert_eq!(m["CONFIG_NROS_XRCE_AGENT_ADDR"], "\"192.0.2.7\"");
         assert_eq!(m["CONFIG_NROS_XRCE_AGENT_PORT"], "8888");
-        assert!(!m.contains_key("CONFIG_NROS_ZENOH_LOCATOR"));
+        assert!(!m.contains_key("CONFIG_NROS_LOCATOR"));
         assert!(
             !m.keys().any(|k| k.ends_with("_API")),
             "no language, no row"
@@ -1227,8 +1227,13 @@ endif # NROS
              [image.zephyr]\nboard = \"zephyr\"\nenv = { NROS_DOMAIN_ID = \"9\" }\n",
             &[],
         );
+        // phase-581 W6 -- `NROS_DOMAIN_ID` is no build variable any more: an
+        // `[image] env` row naming it is refused, naming the statement.
         let e = render(&twice, None, &syms, &BTreeMap::new()).unwrap_err();
-        assert!(e.contains("say it once"), "{e}");
+        assert!(
+            e.contains("NROS_DOMAIN_ID is retired at build time") && e.contains("`domain_id`"),
+            "{e}"
+        );
     }
 
     /// The refusals name the row: a value the symbol's type cannot hold, a

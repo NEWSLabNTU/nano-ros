@@ -77,7 +77,7 @@ pub fn lower_file(path: &std::path::Path) -> Result<Vec<Property>, String> {
 /// `mask` and `tx_id` / `rx_id` stay: they are wiring, and differ per image on
 /// one bus.
 ///
-/// The Zephyr Kconfig road (`CONFIG_NROS_ZENOH_LOCATOR`) never reaches this
+/// The Zephyr Kconfig road (`CONFIG_NROS_LOCATOR`) never reaches this
 /// crate, so `zephyr/cmake/nros_rmw_zenoh.cmake` carries the same pattern;
 /// change both together.
 pub const DEVICE_FACT_KEYS: &[(&str, &[&str])] = &[

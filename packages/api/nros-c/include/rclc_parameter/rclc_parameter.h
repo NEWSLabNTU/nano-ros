@@ -11,12 +11,12 @@
  * What differs from upstream rclc, and why:
  *
  *  - Nothing here allocates. The store is the executor's, sized at build time
- *    (`NROS_MAX_PARAMETERS`); `max_params` is a per-node quota inside it.
+ *    (`NROS_PARAMS_MAX_PARAMETERS`); `max_params` is a per-node quota inside it.
  *    A declaration (`rclc_add_parameter`, `rclc_parameter_declare_*`) the
  *    image-wide store has no slot for returns `RCLC_RET_FULL` and logs a line
  *    naming the node, the parameter, the capacity and the knob that sizes it
- *    (`max_parameters` under `[knobs.params]`, `NROS_MAX_PARAMETERS`,
- *    `CONFIG_NROS_MAX_PARAMETERS`). One past the node's `max_params`, or a name
+ *    (`max_parameters` under `[knobs.params]`, `NROS_PARAMS_MAX_PARAMETERS`,
+ *    `CONFIG_NROS_PARAMS_MAX_PARAMETERS`). One past the node's `max_params`, or a name
  *    already holding another type, returns `RCL_RET_ERROR` as rclc's does, and
  *    is logged too. Check the return: the parameter was not declared, so a
  *    launch value for it is not applied.
@@ -250,7 +250,7 @@ NROS_PUBLIC rcl_ret_t rclc_parameter_get_string(rclc_parameter_server_t* paramet
                                                 const char* parameter_name, char* output,
                                                 size_t capacity);
 
-/* Arrays, bounded by NROS_MAX_ARRAY_LEN (bytes: NROS_PARAMS_MAX_BYTE_ARRAY_BYTES). A get
+/* Arrays, bounded by NROS_PARAMS_MAX_ARRAY_LEN (bytes: NROS_PARAMS_MAX_BYTE_ARRAY_BYTES). A get
  * writes the stored length to `*out_len` and returns `RCLC_RET_FULL` without
  * copying when it exceeds `capacity`. */
 #define NROS__RCLC_ARRAY(NAME, T)                                                                  \
@@ -269,7 +269,7 @@ NROS__RCLC_ARRAY(double, double)
 NROS__RCLC_ARRAY(byte, uint8_t)
 #undef NROS__RCLC_ARRAY
 
-/* String arrays: `data` is `len` C strings (at most NROS_MAX_STRING_ARRAY_LEN of
+/* String arrays: `data` is `len` C strings (at most NROS_PARAMS_MAX_STRING_ARRAY_LEN of
  * them), each at most NROS_PARAMS_MAX_STRING_VALUE_BYTES bytes. A get copies into
  * `capacity` rows of `stride` bytes, each NUL-terminated, writes the stored
  * length to `*out_len`, and returns `RCLC_RET_FULL` without copying when the

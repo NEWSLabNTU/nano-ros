@@ -15,7 +15,7 @@ source ./activate.sh
 cd zephyr-workspace
 APP=/abs/path/to/packages/testing/nros-bench/stress-zenoh-zephyr
 CONF='prj.conf'   # NSOS: -S nros-nsos below (issue 2157)
-LOC='-DCONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:17866"'
+LOC='-DCONFIG_NROS_LOCATOR="tcp/127.0.0.1:17866"'
 
 west build -b native_sim/native/64 -S nros-nsos -d build-stress-zenoh       -p always $APP -- -DCONF_FILE="$CONF" $LOC
 west build -b native_sim/native/64 -S nros-nsos -d build-stress-zenoh-batch -p always $APP -- -DCONF_FILE="$CONF" $LOC -DCONFIG_NROS_ZENOH_TX_BATCH=y

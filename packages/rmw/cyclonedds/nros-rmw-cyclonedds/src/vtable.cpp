@@ -307,7 +307,7 @@ static rmw_ret_t cyclone_subscription_get_actual_qos(const rmw_subscription_t* s
  *
  *   * `AVOID_ROS_NAMESPACE_CONVENTIONS` — there is NO read site. Topic-name
  *     mangling on this backend is decided by the environment
- *     (`NROS_RMW_CYCLONEDDS_SKIP_PREFIX`), not by the profile, so a caller
+ *     (`NROS_CYCLONEDDS_SKIP_PREFIX`), not by the profile, so a caller
  *     setting the flag was admitted by the union and then ignored. Refusing it
  *     is the honest answer until the flag reaches `topic_prefix.hpp`.
  *   * `LIVELINESS_MANUAL_BY_NODE` — `make_dds_qos` folds it onto

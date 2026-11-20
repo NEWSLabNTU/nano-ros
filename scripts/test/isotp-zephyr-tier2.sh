@@ -8,7 +8,7 @@
 # cmake/zephyr/posix-sysconf-minimal-libc.conf and
 # cmake/zephyr/native-sim-can-host.conf, plus
 # -DDTC_OVERLAY_FILE=cmake/zephyr/native-sim-can-host.overlay and
-# CONFIG_NROS_ZENOH_LOCATOR="isotp/can#tx_id=0x200;rx_id=0x201".
+# CONFIG_NROS_LOCATOR="isotp/can#tx_id=0x200;rx_id=0x201".
 #
 # The locator address is the ZEPHYR DEVICE name from the devicetree ("can"),
 # NOT the host interface -- the overlay is what maps that device onto vcan0.

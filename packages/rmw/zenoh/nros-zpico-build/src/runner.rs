@@ -1491,7 +1491,7 @@ const GRAPH_KEYEXPR_BYTES: usize = 141;
 ///
 /// What was still wrong is that the only way to state it was in BYTES, which is
 /// not the thing an operator knows. They know roughly how many nodes and
-/// endpoints share the domain. `NROS_GRAPH_MAX_ENTITIES` takes that count and
+/// endpoints share the domain. `NROS_ZENOH_GRAPH_MAX_ENTITIES` takes that count and
 /// does the arithmetic; `ZPICO_GRAPH_CACHE_SIZE` still wins when someone wants
 /// to name the bytes directly, so nothing that set it changes.
 ///
@@ -1525,7 +1525,7 @@ fn graph_cache_bytes_for(entities: usize) -> usize {
 fn resolve_graph_cache_size() -> usize {
     // Through `env_usize`, not a bare `env::var`: that helper is what consults
     // `$DOTCONFIG` for this knob's Kconfig symbol, so a Zephyr image gets
-    // `CONFIG_NROS_GRAPH_MAX_ENTITIES` for free. Reading the environment
+    // `CONFIG_NROS_ZENOH_GRAPH_MAX_ENTITIES` for free. Reading the environment
     // directly would have given the knob a Kconfig entry that reaches the C
     // lane and not this one — issue 0460's shape, and the exact defect this
     // phase keeps finding.
@@ -1533,7 +1533,7 @@ fn resolve_graph_cache_size() -> usize {
     // 0 is the "not stated" spelling, matching the Kconfig default: a domain
     // with zero entities does not exist (this image's own are on it), so the
     // value is free to mean absence.
-    let from_entities = match env_usize("NROS_GRAPH_MAX_ENTITIES", 0) {
+    let from_entities = match env_usize("NROS_ZENOH_GRAPH_MAX_ENTITIES", 0) {
         0 => None,
         n => Some(graph_cache_bytes_for(n)),
     };
@@ -3175,7 +3175,7 @@ fn use_system_zenoh_pico() -> PathBuf {
 
 /// Build the C shim library
 ///
-/// issue 0899 / 0902 — opt-in DWARF for the vendored C, `NROS_ZPICO_DEBUG=1`.
+/// issue 0899 / 0902 — opt-in DWARF for the vendored C, `NROS_ZENOH_DEBUG=1`.
 ///
 /// cc-rs takes `-g` from cargo's `DEBUG`, which comes from the profile — and the
 /// C/C++ example path builds through corrosion, which pins its own profile, so
@@ -3188,9 +3188,8 @@ fn use_system_zenoh_pico() -> PathBuf {
 /// debugging session's tool, and turning it on by default would put DWARF for a
 /// vendored library into every embedded image that links it.
 fn zpico_debug_requested() -> bool {
-    println!("cargo:rerun-if-env-changed=NROS_ZPICO_DEBUG");
     matches!(
-        std::env::var("NROS_ZPICO_DEBUG").as_deref(),
+        crate::env_refusing_retired("NROS_ZENOH_DEBUG").as_deref(),
         Ok("1") | Ok("true")
     )
 }
@@ -3257,7 +3256,7 @@ fn build_c_shim(
 
         // Platform defines — link features from Cargo features.
         //
-        // Phase 132 — `ZPICO_NO_SMOLTCP=1` lets a consumer (the
+        // Phase 132 — `NROS_ZENOH_NO_SMOLTCP=1` lets a consumer (the
         // serial-only board crate, an XRCE-over-UART firmware, …)
         // opt out of compiling the smoltcp glue into `zpico.c`.
         // Phase 128 retired the per-transport Cargo features that
@@ -3266,8 +3265,7 @@ fn build_c_shim(
         // hardcodes tcp/udp = true. Serial-only firmware links
         // against `ZPICO_SERIAL` instead and never provides the
         // `smoltcp_init` / `smoltcp_cleanup` symbols.
-        let opt_out_smoltcp = env::var("ZPICO_NO_SMOLTCP").is_ok();
-        println!("cargo:rerun-if-env-changed=ZPICO_NO_SMOLTCP");
+        let opt_out_smoltcp = crate::env_refusing_retired("NROS_ZENOH_NO_SMOLTCP").is_ok();
         let has_network = (link.tcp || link.udp_unicast || link.udp_multicast) && !opt_out_smoltcp;
         if has_network {
             build.define("ZPICO_SMOLTCP", None);
@@ -3482,7 +3480,7 @@ fn build_zenoh_pico_unified(
     //
     // #189 — the Phase-132 serial-only opt-out, restored post-manifest-
     // migration. Phase 136.4 moved the bare-metal compile from
-    // `build_c_shim` (which honored `ZPICO_NO_SMOLTCP`) into this manifest
+    // `build_c_shim` (which honored `NROS_ZENOH_NO_SMOLTCP`) into this manifest
     // path, whose `[platform.bare-metal] defines` hardcode `ZPICO_SMOLTCP`
     // — so every serial-only firmware compiled the smoltcp spin branch,
     // whose clock (`smoltcp_clock_now_ms`) is frozen without a smoltcp
@@ -3491,8 +3489,7 @@ fn build_zenoh_pico_unified(
     // requested 10 ms per spin, so timers never came due (serial pubsub
     // published 0 forever). With the opt-out set and a serial-only link
     // set, swap in `ZPICO_SERIAL` — the branch built for exactly this.
-    let opt_out_smoltcp = env::var("ZPICO_NO_SMOLTCP").is_ok();
-    println!("cargo:rerun-if-env-changed=ZPICO_NO_SMOLTCP");
+    let opt_out_smoltcp = crate::env_refusing_retired("NROS_ZENOH_NO_SMOLTCP").is_ok();
     let serial_only = link.serial && !(link.tcp || link.udp_unicast || link.udp_multicast);
     for define in &plat.defines {
         if define == "ZPICO_SMOLTCP" && opt_out_smoltcp && serial_only {

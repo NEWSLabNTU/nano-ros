@@ -221,7 +221,7 @@ fn init_with_config(config: Config, deploy: Option<&DeployOverlay>) -> (RticBoot
     }
 
     // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config`
-    // when a deploy overlay is present; fall back to `option_env!("NROS_NODE_NAME")`
+    // when a deploy overlay is present; fall back to `option_env!("NROS_ENTRY_NODE_NAME")`
     // (compile-time override, mirrors `nros-board-embassy-stm32f4::init_hardware`)
     // and finally to the board-historical default so undeployed firmware keeps
     // its prior identity.
@@ -229,7 +229,7 @@ fn init_with_config(config: Config, deploy: Option<&DeployOverlay>) -> (RticBoot
         .and_then(|d| d.boot_config)
         .map(::nros::BootConfig::from_baked)
         .and_then(|b| b.node_name)
-        .or(option_env!("NROS_NODE_NAME"))
+        .or(option_env!("NROS_ENTRY_NODE_NAME"))
         .unwrap_or("nros-rtic-mps2");
 
     let (producer, consumer) = take_dispatch_queue()

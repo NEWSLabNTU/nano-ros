@@ -858,7 +858,7 @@ impl BuildRungs {
             max_byte_array_bytes: b.max_byte_array_bytes.or(plat.max_byte_array_bytes),
             max_description_bytes: b.max_description_bytes.or(plat.max_description_bytes),
             max_constraints_bytes: b.max_constraints_bytes.or(plat.max_constraints_bytes),
-            param_events_depth: b.param_events_depth.or(plat.param_events_depth),
+            events_depth: b.events_depth.or(plat.events_depth),
         }
     }
 
@@ -1176,7 +1176,7 @@ pub fn executor_rung_opt(knob: &str) -> Option<usize> {
 ///
 /// Five bounds on what a parameter server can hold. They vary by BOARD in
 /// practice and the tree records a case: phase-292's ASI consumer needed
-/// `NROS_MAX_PARAMETERS=256` and set it in a `build.sh`, which is a board fact
+/// `NROS_PARAMS_MAX_PARAMETERS=256` and set it in a `build.sh`, which is a board fact
 /// living in a shell script because there was nowhere to declare it.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1214,7 +1214,7 @@ pub struct ParamKnobs {
     /// and nothing in the contract says how many events a node emits. The
     /// default is upstream's 1000 on a hosted build and 1 otherwise.
     #[serde(default)]
-    pub param_events_depth: Option<usize>,
+    pub events_depth: Option<usize>,
 }
 
 /// phase-400 W6 — the RMW static-pool tenant.
@@ -1489,7 +1489,7 @@ pub const PARAM_KNOBS: &[&str] = &[
     "max_byte_array_bytes",
     "max_description_bytes",
     "max_constraints_bytes",
-    "param_events_depth",
+    "events_depth",
 ];
 
 /// The canonical env spelling of a parameter knob, from the knob registry.
@@ -2617,7 +2617,7 @@ impl PlatformsTree {
                 (&mut out.max_byte_array_bytes, p.max_byte_array_bytes),
                 (&mut out.max_description_bytes, p.max_description_bytes),
                 (&mut out.max_constraints_bytes, p.max_constraints_bytes),
-                (&mut out.param_events_depth, p.param_events_depth),
+                (&mut out.events_depth, p.events_depth),
             ] {
                 if src.is_some() {
                     *dst = src;
@@ -3134,7 +3134,7 @@ impl PlatformsTree {
             "max_byte_array_bytes" => k.max_byte_array_bytes,
             "max_description_bytes" => k.max_description_bytes,
             "max_constraints_bytes" => k.max_constraints_bytes,
-            "param_events_depth" => k.param_events_depth,
+            "events_depth" => k.events_depth,
             _ => None,
         };
         let mut out = Vec::new();

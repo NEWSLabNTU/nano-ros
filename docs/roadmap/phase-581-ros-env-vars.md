@@ -172,7 +172,7 @@ board and RMW packages are self-contained.
 
 ### W6 - Renames, batch 2: owners, hand Kconfig, run-time and carriers
 
-- **Status:** OPEN
+- **Status:** OPEN (the `nros fix` table test, which runs when phase-578 W4 lands)
 - The Appendix A.1 rows whose only reason is P or K (the `params` family,
   the smoltcp rows to `net.*`, `zenoh.*` owner words); the 13 hand Kconfig
   symbols of A.2 (`CONFIG_NROS_ZENOH_LOCATOR` among them, retired as a

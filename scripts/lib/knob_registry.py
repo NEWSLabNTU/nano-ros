@@ -60,8 +60,9 @@ DISPOSITIONS = ("respect", "ignore", "refuse", "listed")
 FOREIGN_CORE = ("ros2", "rcutils", "rust")
 PARSES = ("str", "int", "bool")
 
-# Owner words of core rows the naming rule renames (W5/W6). Only shrinks.
-OWNERS_PENDING_RENAME = {"param"}
+# Owner words of core rows the naming rule renames (W5/W6). Only shrinks; empty
+# since phase-581 W6 renamed `param.*` to `params.*`.
+OWNERS_PENDING_RENAME: set = set()
 
 # RFC-0140 D2: a package declares its rows in `nros-knobs.toml` beside its
 # descriptor; the descriptor says which kind of package it is. The in-tree
@@ -88,6 +89,7 @@ KNOB_FIELDS = {"key", "transitional", "ladder", "retired", "instead", "only_on",
 STATEMENT_FIELDS = {"key", "carrier", "zephyr", "transitional", "retired", "help"}
 ENV_FIELDS = {"key", "name", "foreign", "pattern", "disposition", "stated", "parse",
               "instead", "refuse_if", "transitional", "retired", "help"}
+KCONFIG_FIELDS = {"symbol", "env", "retired", "help"}
 DERIVED_SPELLINGS = ("id", "toml", "kconfig")
 
 
@@ -414,7 +416,40 @@ def _parse_file(doc, where_file, owners, file_owner, errors):
     names = [e["name"] for e in envs]
     if names != sorted(names):
         errors.append(f"env rows must be sorted by variable name{tag} (a merge then conflicts on one row)")
-    return knobs, statements, envs
+
+    # `[[kconfig]]` (phase-581 W6): a hand-written `zephyr/Kconfig` symbol that
+    # replaced others, holding their `kconfig:` retired spellings (RFC-0140 D4:
+    # a retired spelling lives on what replaced it). Until phase-581 W9 folds
+    # the hand symbols into knob rows, this is the row that replaced them.
+    hand = []
+    for i, r in enumerate(doc.get("kconfig", [])):
+        where = f"kconfig #{i + 1} ({r.get('symbol', '?')})"
+        bad = set(r) - KCONFIG_FIELDS
+        if bad:
+            errors.append(f"{where}: unknown field(s) {sorted(bad)}")
+        sym = r.get("symbol", "")
+        if not re.match(r"^CONFIG_NROS_[A-Z0-9_]+$", sym):
+            errors.append(f"{where}: `symbol` is a CONFIG_NROS_* Kconfig symbol")
+            continue
+        env = r.get("env")
+        if env is not None and not re.match(r"^NROS_[A-Z0-9_]+$", env):
+            errors.append(f"{where}: `env` is the NROS_* build variable the module forwards it as")
+        entries = _retired_entries(r.get("retired"), where, False, errors)
+        if not entries:
+            errors.append(f"{where}: a `[[kconfig]]` row exists to hold `retired` spellings")
+        for e in entries:
+            if e["road"] != "kconfig":
+                errors.append(f"{where}: `{e['road']}:{e['name']}`: a hand Kconfig symbol retires "
+                              "only `kconfig:` spellings")
+            if e["factor"] != 1:
+                errors.append(f"{where}: `{e['name']}`: a hand Kconfig rename carries no factor")
+        hand.append({"symbol": sym, "env": env, "help": r.get("help"), "retired_entries": entries})
+    syms = [h["symbol"] for h in hand]
+    if syms != sorted(syms) or len(set(syms)) != len(syms):
+        errors.append("kconfig rows must be sorted by symbol, each symbol once")
+    if hand and not is_core:
+        errors.append(f"`[[kconfig]]` rows are core's{tag}")
+    return knobs, statements, envs, hand
 
 
 def parse(text: str | None = None, path: Path = SRC, packages=None):
@@ -428,7 +463,7 @@ def parse(text: str | None = None, path: Path = SRC, packages=None):
     if packages is None:
         packages, perr = in_tree_packages()
         errors += perr
-    extra = set(doc) - {"owner", "owners", "knob", "statement", "env"}
+    extra = set(doc) - {"owner", "owners", "knob", "statement", "env", "kconfig"}
     if extra:
         errors.append(f"unknown top-level key(s) {sorted(extra)}")
     owner = doc.get("owner")
@@ -442,7 +477,7 @@ def parse(text: str | None = None, path: Path = SRC, packages=None):
         if not WORD.match(w) or not isinstance(d, str) or not d.strip():
             errors.append(f"[owners] `{w}`: a lower-case word with a one-line description")
 
-    knobs, statements, envs = _parse_file(doc, _rel(path), owners, None, errors)
+    knobs, statements, envs, hand = _parse_file(doc, _rel(path), owners, None, errors)
 
     # Rule C1: one owner word, one package. C2: no package takes a core word.
     by_owner = {}
@@ -467,7 +502,7 @@ def parse(text: str | None = None, path: Path = SRC, packages=None):
             errors.append(f"{rel}: `owner = \"{pdoc.get('owner')}\"`, but the package's derived "
                           f"owner word is `{p['owner']}` (RFC-0140 D2: stated so the file reads on "
                           "its own, checked so it cannot drift)")
-        k, _, e = _parse_file(pdoc, rel, owners, p["owner"], errors)
+        k, _, e, _ = _parse_file(pdoc, rel, owners, p["owner"], errors)
         knobs += k
         envs += e
     knobs.sort(key=lambda r: r["id"])
@@ -485,9 +520,9 @@ def parse(text: str | None = None, path: Path = SRC, packages=None):
             errors.append(f"{where}: `stated = \"{stated}\"` is neither a statement key nor a knob "
                           "key (RFC-0140 D8)")
 
-    errors += spelling_collisions(knobs, statements, envs)
+    errors += spelling_collisions(knobs, statements, envs, hand)
     reg = {"owner": owner, "owners": owners, "packages": packages, "knob": knobs,
-           "statement": statements, "env": envs}
+           "statement": statements, "env": envs, "kconfig": hand}
     return reg, errors
 
 
@@ -499,7 +534,8 @@ def _label(kind, n, name, file):
 def spellings(reg_or_parts):
     """[(spelling, row label)] of every spelled name: the live ones of each row
     and every retired one (RFC-0140 D1 one namespace, D2 rule C3)."""
-    knobs, statements, envs = reg_or_parts
+    knobs, statements, envs, *rest = reg_or_parts
+    hand = rest[0] if rest else []
     out = []
     for i, k in enumerate(knobs):
         label = _label("knob", i + 1, k["key"], k.get("file"))
@@ -519,12 +555,16 @@ def spellings(reg_or_parts):
         label = _label("env", i + 1, e["name"], e.get("file"))
         out.append((e["name"], label))
         out += [(x["name"], label) for x in e["retired_entries"]]
+    for i, h in enumerate(hand):
+        label = f"kconfig #{i + 1} {h['symbol']}"
+        out.append((h["symbol"], label))
+        out += [(x["name"], label) for x in h["retired_entries"]]
     return out
 
 
-def spelling_collisions(knobs, statements, envs):
+def spelling_collisions(knobs, statements, envs, hand=()):
     seen, errors = {}, []
-    for s, label in spellings((knobs, statements, envs)):
+    for s, label in spellings((knobs, statements, envs, list(hand))):
         if s in seen and seen[s] != label:
             errors.append(f"`{s}` is spelled by both {seen[s]} and {label} (one spelling, one row)")
         seen.setdefault(s, label)
@@ -563,5 +603,5 @@ def file_knob_rows(path: Path, text: str | None = None):
     owner = doc.get("owner")
     file_owner = None if owner == "core" else owner
     owners = doc.get("owners", {}) if file_owner is None else {}
-    knobs, _, _ = _parse_file(doc, _rel(path), owners, file_owner, [])
+    knobs, _, _, _ = _parse_file(doc, _rel(path), owners, file_owner, [])
     return knobs

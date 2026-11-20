@@ -42,8 +42,8 @@
 /* ---- NROS_ENTRY_LOCATOR / NROS_ENTRY_DOMAIN_ID — the transport ROLES ----
  *
  * This header names no backend. It
- * used to read `CONFIG_NROS_ZENOH_LOCATOR`, synthesise XRCE's `addr:port` from
- * `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` and prefer `CONFIG_NROS_CYCLONE_DOMAIN_ID`
+ * used to read `CONFIG_NROS_LOCATOR`, synthesise XRCE's `addr:port` from
+ * `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` and prefer `CONFIG_NROS_CYCLONEDDS_DOMAIN_ID`
  * under `NROS_RMW_CYCLONEDDS` — three backends' spellings in an API header, so
  * a fourth backend had nowhere to put its own.
  *

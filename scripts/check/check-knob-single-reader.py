@@ -123,17 +123,17 @@ OWNERS: dict[str, str | tuple[str, ...]] = {
     # the resolver IS the owner. `nros-zpico-build` re-read the tx trio for its
     # no-platform case until W8 replaced that with `tx_env_only`.
     # The parameter tenant (phase-400 W6).
-    "NROS_MAX_PARAMETERS": "packages/core/nros-params/build.rs",
+    "NROS_PARAMS_MAX_PARAMETERS": "packages/core/nros-params/build.rs",
     "NROS_PARAMS_MAX_NAME_BYTES": "packages/core/nros-params/build.rs",
     "NROS_PARAMS_MAX_STRING_VALUE_BYTES": "packages/core/nros-params/build.rs",
-    "NROS_MAX_ARRAY_LEN": "packages/core/nros-params/build.rs",
-    "NROS_MAX_STRING_ARRAY_LEN": "packages/core/nros-params/build.rs",
+    "NROS_PARAMS_MAX_ARRAY_LEN": "packages/core/nros-params/build.rs",
+    "NROS_PARAMS_MAX_STRING_ARRAY_LEN": "packages/core/nros-params/build.rs",
     "NROS_PARAMS_MAX_BYTE_ARRAY_BYTES": "packages/core/nros-params/build.rs",
     "NROS_PARAMS_MAX_DESCRIPTION_BYTES": "packages/core/nros-params/build.rs",
     # phase-417 W4.a -- the descriptor's OTHER free text. Its own capacity,
     # default 0, so no image pays for a field it never sets.
     "NROS_PARAMS_MAX_CONSTRAINTS_BYTES": "packages/core/nros-params/build.rs",
-    "NROS_PARAM_EVENTS_DEPTH": "packages/core/nros-params/build.rs",
+    "NROS_PARAMS_EVENTS_DEPTH": "packages/core/nros-params/build.rs",
     # phase-479 W5 (RFC-0102 D5) -- the logging tenant. The deprecated
     # `dynamic-loggers-<N>` features are read in the SAME script, never a
     # second one, so a feature can disagree with the knob only as a build error.
@@ -157,11 +157,11 @@ OWNERS: dict[str, str | tuple[str, ...]] = {
     "NROS_RMW_SUBSCRIBER_SLOT_BYTES": "packages/rmw/cffi/build.rs",
     # The smoltcp net tenant (phase-400 W6). The driver reads the ladder from
     # the LEAF crate; it cannot see `nros-board-common` without a cycle.
-    "NROS_SMOLTCP_MAX_SOCKETS": "packages/drivers/net/nros-smoltcp/build.rs",
-    "NROS_SMOLTCP_MAX_UDP_SOCKETS": "packages/drivers/net/nros-smoltcp/build.rs",
+    "NROS_NET_MAX_SOCKETS": "packages/drivers/net/nros-smoltcp/build.rs",
+    "NROS_NET_MAX_UDP_SOCKETS": "packages/drivers/net/nros-smoltcp/build.rs",
     "NROS_NET_BUFFER_BYTES": "packages/drivers/net/nros-smoltcp/build.rs",
-    "NROS_SMOLTCP_CONNECT_TIMEOUT_MS": "packages/drivers/net/nros-smoltcp/build.rs",
-    "NROS_SMOLTCP_SOCKET_TIMEOUT_MS": "packages/drivers/net/nros-smoltcp/build.rs",
+    "NROS_NET_CONNECT_TIMEOUT_MS": "packages/drivers/net/nros-smoltcp/build.rs",
+    "NROS_NET_SOCKET_TIMEOUT_MS": "packages/drivers/net/nros-smoltcp/build.rs",
     # The component-runtime tenant (phase-400 W6). phase-391 emits the consts
     # from these; the ladder decides their values.
     "NROS_RUNTIME_MAX_COMPONENTS": "packages/api/nros/build.rs",

@@ -53,7 +53,7 @@ def package_subjects(path: Path):
     doc = kr.read(path)
     owner = doc.get("owner")
     errors = []
-    knobs, _, envs = kr._parse_file(doc, kr._rel(path), {}, owner, errors)
+    knobs, _, envs, _ = kr._parse_file(doc, kr._rel(path), {}, owner, errors)
     if errors:
         raise ValueError(f"{kr._rel(path)}: " + "; ".join(errors))
     subs = [cn._knob_subject(k, kr._rel(path)) for k in knobs]

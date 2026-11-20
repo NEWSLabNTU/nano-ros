@@ -158,10 +158,10 @@ int main() {
           "the latched text names `max_parameters`");
     check(what != nullptr && std::strstr(what, "[knobs.params]") != nullptr,
           "the latched text names `[knobs.params]`");
-    check(what != nullptr && std::strstr(what, "NROS_MAX_PARAMETERS") != nullptr,
-          "the latched text names NROS_MAX_PARAMETERS");
-    check(what != nullptr && std::strstr(what, "CONFIG_NROS_MAX_PARAMETERS") != nullptr,
-          "the latched text names CONFIG_NROS_MAX_PARAMETERS");
+    check(what != nullptr && std::strstr(what, "NROS_PARAMS_MAX_PARAMETERS") != nullptr,
+          "the latched text names NROS_PARAMS_MAX_PARAMETERS");
+    check(what != nullptr && std::strstr(what, "CONFIG_NROS_PARAMS_MAX_PARAMETERS") != nullptr,
+          "the latched text names CONFIG_NROS_PARAMS_MAX_PARAMETERS");
     check(got == 7, "the refused declaration still returns so the constructor can finish");
     check(!node.has_parameter(name), "the refused parameter is not declared");
 
@@ -172,7 +172,7 @@ int main() {
     check(std::strstr(g_full_line, " slots, all nodes)") != nullptr,
           "the line states the capacity");
     check(std::strstr(g_full_line, "max_parameters") != nullptr, "the line names the knob");
-    check(std::strstr(g_full_line, "NROS_MAX_PARAMETERS") != nullptr,
+    check(std::strstr(g_full_line, "NROS_PARAMS_MAX_PARAMETERS") != nullptr,
           "the line names the env spelling");
     check(std::strstr(g_full_line, "`params:`") != nullptr,
           "the line says the contract's `params:` derives the size");

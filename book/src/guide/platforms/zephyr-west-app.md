@@ -444,7 +444,7 @@ CONFIG_NROS=y
 CONFIG_NROS_CPP_API=y
 CONFIG_STD_CPP17=y
 CONFIG_NROS_RMW_ZENOH=y
-CONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:7447"
+CONFIG_NROS_LOCATOR="tcp/127.0.0.1:7447"
 CONFIG_NROS_DOMAIN_ID=0
 ```
 
@@ -454,7 +454,7 @@ CONFIG_NROS_DOMAIN_ID=0
 | `CONFIG_NROS_CPP_API=y` | The library the generated entry point links. The entry point is C++, so a C node sets it too. |
 | `CONFIG_STD_CPP17=y` | The C++ standard the entry point compiles with. |
 | `CONFIG_NROS_RMW_ZENOH=y` | The middleware: `_ZENOH`, `_XRCE` or `_CYCLONEDDS`. |
-| `CONFIG_NROS_ZENOH_LOCATOR` | Where the router is. The default, `tcp/127.0.0.1:7447`, suits `native_sim`. |
+| `CONFIG_NROS_LOCATOR` | Where the router is. The default, `tcp/127.0.0.1:7447`, suits `native_sim`. |
 | `CONFIG_NROS_DOMAIN_ID` | The ROS 2 domain, matching your peers' `ROS_DOMAIN_ID`. |
 
 `CONFIG_NROS_C_API` is for an application that calls the C API from its own
@@ -602,8 +602,8 @@ mkdir -p apps/my_app/boards
 ```text probe=54 track=installed variant=west-app-flash file=apps/my_app/boards/nucleo_f767zi.conf
 # zenoh over USART3, the ST-LINK USB serial port; no IP stack
 CONFIG_NETWORKING=n
-CONFIG_NROS_TRANSPORT_SERIAL=y
-CONFIG_NROS_ZENOH_LOCATOR="serial/serial@40004800#baudrate=115200"
+CONFIG_NROS_ZENOH_LINK_SERIAL=y
+CONFIG_NROS_LOCATOR="serial/serial@40004800#baudrate=115200"
 CONFIG_SERIAL=y
 CONFIG_UART_INTERRUPT_DRIVEN=y
 CONFIG_RING_BUFFER=y
@@ -645,7 +645,7 @@ and probe are Zephyr's and your bench's.
 its twin. The tracks that replay this page boot `build-board/zephyr/zephyr.elf`
 in the board's Renode twin instead, with USART3 on a host serial port. For the
 board's ethernet, keep `CONFIG_NETWORKING=y` with its ethernet driver and an
-address, and set `CONFIG_NROS_ZENOH_LOCATOR` to the router's TCP address.
+address, and set `CONFIG_NROS_LOCATOR` to the router's TCP address.
 
 ## If it doesn't work
 

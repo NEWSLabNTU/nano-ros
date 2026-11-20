@@ -27,7 +27,6 @@ pub const CORE_OWNERS: &[&str] = &[
     "memory",
     "monitor",
     "net",
-    "param",
     "params",
     "profile",
     "pubsub",
@@ -44,7 +43,6 @@ pub const CORE_OWNERS: &[&str] = &[
 /// The words in CORE_OWNERS only until a rename retires them (they hold rows
 /// today, and are no owner word under RFC-0140 D3 N3), sorted.
 pub const RETIRING_OWNERS: &[&str] = &[
-    "param",
 ];
 
 /// Every resource location's variable, the `env` of a row of
@@ -83,8 +81,8 @@ pub const IN_TREE_PACKAGES: &[InTreePackage] = &[
         ],
         env: &[
             "CYCLONEDDS_URI",
-            "NROS_CYCLONE_MATCH_TIMEOUT_MS",
-            "NROS_RMW_CYCLONEDDS_SKIP_PREFIX",
+            "NROS_CYCLONEDDS_MATCH_TIMEOUT_MS",
+            "NROS_CYCLONEDDS_SKIP_PREFIX",
         ],
     },
     InTreePackage {
@@ -125,7 +123,7 @@ pub const IN_TREE_PACKAGES: &[InTreePackage] = &[
             "xrce.transport_mtu",
         ],
         env: &[
-            "XRCE_SERIAL_BAUD",
+            "NROS_XRCE_SERIAL_BAUD",
         ],
     },
     InTreePackage {
@@ -137,11 +135,13 @@ pub const IN_TREE_PACKAGES: &[InTreePackage] = &[
             "zenoh.batch_unicast_bytes",
             "zenoh.connect_forever",
             "zenoh.connect_timeout_ms",
+            "zenoh.debug",
             "zenoh.frag_max_bytes",
             "zenoh.get_poll_interval_ms",
             "zenoh.get_reply_buffer_bytes",
             "zenoh.graph_cache_bytes",
             "zenoh.graph_discovery",
+            "zenoh.graph_max_entities",
             "zenoh.keyexpr_string_bytes",
             "zenoh.lease_priority",
             "zenoh.max_large_subscribers",
@@ -152,6 +152,8 @@ pub const IN_TREE_PACKAGES: &[InTreePackage] = &[
             "zenoh.max_sessions",
             "zenoh.max_subscribers",
             "zenoh.max_tl_publishers",
+            "zenoh.multicast_transport",
+            "zenoh.no_smoltcp",
             "zenoh.publisher_tx_buffer_bytes",
             "zenoh.read_priority",
             "zenoh.rx_task_budget_frames",

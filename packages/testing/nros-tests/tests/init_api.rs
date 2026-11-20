@@ -117,7 +117,11 @@ fn nros_init_refuses_retired_locator_alias() {
     let _g = env_lock().lock().unwrap();
     let _g1 = EnvGuard::unset("ROS_DOMAIN_ID");
     let _g2 = EnvGuard::unset("NROS_LOCATOR");
-    let retired = nros::RETIRED_ENV_VARS[0].0;
+    let retired = nros::RETIRED_ENV_VARS
+        .iter()
+        .find(|(_, r)| *r == "NROS_LOCATOR")
+        .map(|(a, _)| *a)
+        .expect("the locator's retired alias");
     let _g3 = EnvGuard::set(retired, "tcp/127.0.0.1:7447");
     let err = nros::init().expect_err("a set retired alias must refuse");
     assert_eq!(

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`CONFIG_NROS_CYCLONE_DOMAIN_ID` must never be pinned to a literal.
+"""`CONFIG_NROS_CYCLONEDDS_DOMAIN_ID` must never be pinned to a literal.
 
 Issue 0974. The knob exists so a Cyclone image can run on a domain of its own,
 and its Kconfig carries `default NROS_DOMAIN_ID` precisely so that it TRACKS the
@@ -7,7 +7,7 @@ generic knob unless someone deliberately separates them. Writing a literal into
 a `prj.conf` breaks that link silently:
 
     CONFIG_NROS_DOMAIN_ID=5          # what the user set
-    CONFIG_NROS_CYCLONE_DOMAIN_ID=0  # what the image actually uses
+    CONFIG_NROS_CYCLONEDDS_DOMAIN_ID=0  # what the image actually uses
 
 Nothing reports an error, because the domain is just the first element of every
 discovery key — the peer simply never appears. That is phase-180's split-brain
@@ -16,7 +16,7 @@ ever since.
 
 A rule that lives only in a document gets re-broken by tooling that nobody
 re-reads. Both `nros new`'s cyclonedds template and the Zephyr getting-started
-page emitted `CONFIG_NROS_CYCLONE_DOMAIN_ID=0`, so every generated cyclonedds
+page emitted `CONFIG_NROS_CYCLONEDDS_DOMAIN_ID=0`, so every generated cyclonedds
 project started split-brained and the book taught the pattern.
 
 ## What is allowed
@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PATTERN = re.compile(r"CONFIG_NROS_CYCLONE_DOMAIN_ID\s*=\s*\d")
+PATTERN = re.compile(r"CONFIG_NROS_CYCLONEDDS_DOMAIN_ID\s*=\s*\d")
 MARKER = "nros-allow-cyclone-domain-pin"
 
 # Paths that may legitimately contain the string.
@@ -66,7 +66,7 @@ def main() -> int:
             text = p.read_text(encoding="utf-8", errors="replace")
         except (OSError, IsADirectoryError):
             continue
-        if "CONFIG_NROS_CYCLONE_DOMAIN_ID" not in text:
+        if "CONFIG_NROS_CYCLONEDDS_DOMAIN_ID" not in text:
             continue
         lines = text.splitlines()
         for i, line in enumerate(lines, start=1):
@@ -85,7 +85,7 @@ def main() -> int:
     for rel, i, line in bad:
         print(f"  {rel}:{i}: {line}")
     print(
-        "\n`CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults to `NROS_DOMAIN_ID` in\n"
+        "\n`CONFIG_NROS_CYCLONEDDS_DOMAIN_ID` defaults to `NROS_DOMAIN_ID` in\n"
         "`zephyr/Kconfig` so the two cannot split. Pinning a literal breaks that\n"
         "link SILENTLY — the image runs on the pinned domain while the generic\n"
         "knob says otherwise, and discovery simply never matches because the\n"
@@ -105,10 +105,10 @@ def self_test() -> int:
             ok = False
             print(f"  self-test FAIL {name}: {got!r} != {want!r}")
 
-    expect("matches a pin", bool(PATTERN.search("CONFIG_NROS_CYCLONE_DOMAIN_ID=0")), True)
-    expect("matches spaced", bool(PATTERN.search("CONFIG_NROS_CYCLONE_DOMAIN_ID = 12")), True)
-    expect("ignores a mention", bool(PATTERN.search("see CONFIG_NROS_CYCLONE_DOMAIN_ID for why")), False)
-    expect("ignores the Kconfig decl", bool(PATTERN.search("config NROS_CYCLONE_DOMAIN_ID")), False)
+    expect("matches a pin", bool(PATTERN.search("CONFIG_NROS_CYCLONEDDS_DOMAIN_ID=0")), True)
+    expect("matches spaced", bool(PATTERN.search("CONFIG_NROS_CYCLONEDDS_DOMAIN_ID = 12")), True)
+    expect("ignores a mention", bool(PATTERN.search("see CONFIG_NROS_CYCLONEDDS_DOMAIN_ID for why")), False)
+    expect("ignores the Kconfig decl", bool(PATTERN.search("config NROS_CYCLONEDDS_DOMAIN_ID")), False)
     expect("docs allowed", allowed("docs/issues/archived/0161-zephyr-cyclonedds-nextest-group-serialized.md"), True)
     expect("kconfig allowed", allowed("zephyr/Kconfig"), True)
     expect("cli template NOT allowed",
