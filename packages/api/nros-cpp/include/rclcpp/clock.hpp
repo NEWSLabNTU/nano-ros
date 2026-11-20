@@ -115,7 +115,7 @@ class Clock {
     /// publishing. While `synced` is false the wall clock reads 0, so a
     /// `header.stamp` from it is ROS's "unset" time. A nano-ros addition:
     /// rclcpp has no equivalent.
-    static nros_wall_clock_state_t wall_clock_state() { return ::nros_wall_clock_state(); }
+    static nros_wall_clock_state_t wall_clock_state() { return ::rclc_wall_clock_state(); }
 
     /// Whether the clock initialised. False for a clock built with an invalid
     /// type; the same predicate as `Node::is_valid()` / `Timer::is_valid()`.

@@ -4260,7 +4260,7 @@ NROS_PUBLIC int rclc_time_compare(struct rclc_time_t a, struct rclc_time_t b);
  *
  * The type is declared in `rclc/detail/wall_clock_state.h`.
  */
-NROS_PUBLIC nros_wall_clock_state_t nros_wall_clock_state(void);
+NROS_PUBLIC nros_wall_clock_state_t rclc_wall_clock_state(void);
 
 /**
  * rcl's `rcl_set_error_state(error_string, file, line_number)`: record an

@@ -32,7 +32,7 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     Zephyr's per-port store retired onto it. Gate `check clock-epoch-store`.
   - **W1b:** the state query: `nros_platform_wall_clock_state()`, a
     platform-ABI symbol every port DEFINES (no default, so a missing port is a
-    link error), and its faces `nros_wall_clock_state()` (C),
+    link error), and its faces `rclc_wall_clock_state()` (C),
     `rclcpp::Clock::wall_clock_state()` (C++) and
     `nros_core::wall_clock_state()` (Rust). The store keeps which source
     installed the offset and counts source changes. The `unstamped` default
@@ -51,7 +51,7 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   - the `[knobs.clock]` group: `source` (one, or an ordered fallback),
     `fallback_settle_ms`, `upgrade`, `sntp_attempts`, `epoch_failure`
     (default `unstamped`);
-  - the state query `nros_wall_clock_state()` in C, C++ and Rust;
+  - the state query `rclc_wall_clock_state()` in C, C++ and Rust;
   - the board descriptor's default;
   - `bool nros_board_wall_clock_ns(uint64_t *)`, referenced only with
     `source = "board"`, and with NO default compiled then;

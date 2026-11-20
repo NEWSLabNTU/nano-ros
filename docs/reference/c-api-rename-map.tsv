@@ -1006,5 +1006,4 @@ nros_view_bytes_t	rclc_view_bytes_t	ours	ours-only
 nros_view_str_t	rclc_view_str_t	ours	ours-only
 nros_wake_state_get_zero_initialized	rclc_wake_state_get_zero_initialized	ours	ours-only
 nros_wake_state_t	rclc_wake_state_t	ours	ours-only
-nros_wall_clock_state	rclc_wall_clock_state	ours	ours-only
 nros_wall_clock_state_t	nros_wall_clock_state_t	seam	declared by a port seam or the C++ FFI
