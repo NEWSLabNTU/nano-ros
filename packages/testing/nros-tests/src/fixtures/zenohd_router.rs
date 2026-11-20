@@ -2,7 +2,10 @@
 //!
 //! Provides automatic startup and cleanup of the zenoh router daemon.
 
-use crate::{TestError, TestResult, process::graceful_kill_process_group};
+use crate::{
+    TestError, TestResult,
+    process::{graceful_kill_process_group, kill_process_group},
+};
 use std::{
     io::Read,
     net::TcpStream,
@@ -812,7 +815,17 @@ impl ZenohRouter {
         graceful_kill_process_group(&mut self.handle);
     }
 
-    /// Start the router again after [`stop`](Self::stop): same port, same
+    // Issue 2779.
+    /// [`stop`](Self::stop) with no grace: SIGKILL at once, so the router
+    /// sends no zenoh CLOSE and a client learns of it only from its TCP
+    /// connection ending. A graceful stop (SIGTERM first) may CLOSE the
+    /// sessions, which takes a different path in the client.
+    pub fn kill_hard(&mut self) {
+        kill_process_group(&mut self.handle);
+    }
+
+    /// Start the router again after [`stop`](Self::stop) or
+    /// [`kill_hard`](Self::kill_hard): same port, same
     /// config overrides, so a session that dialled it can reopen. Refused for
     /// the serial and TLS routers.
     pub fn restart(&mut self) -> TestResult<()> {

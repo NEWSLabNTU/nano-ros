@@ -1213,10 +1213,13 @@ fn test_zephyr_listener_reopens_after_its_router_restarts() {
          cannot be judged.\nZephyr output:\n{before}"
     );
 
-    // The outage: the router goes away without a zenoh CLOSE reaching the
-    // listener's session, stays down past a few talker periods, and comes back
-    // on the same port.
-    router.stop();
+    // The outage: the router is KILLED (SIGKILL, no grace), so no zenoh CLOSE
+    // reaches the listener's session and only its TCP connection ending says
+    // the router is gone. A graceful stop let the router CLOSE the session,
+    // and the cell then passed on the unfixed tcp_zephyr.c too (the negative
+    // control on newslab-241). It stays down past a few talker periods and
+    // comes back on the same port.
+    router.kill_hard();
     std::thread::sleep(Duration::from_secs(3));
     let at_outage = count_zephyr_received(
         &zephyr.wait_for_pattern("\u{0}never printed\u{0}", Duration::from_millis(100)),
