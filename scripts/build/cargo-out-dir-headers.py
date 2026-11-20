@@ -135,8 +135,14 @@ def copy_headers(out_dir: str, dest: str, extra: dict | None = None) -> list:
                     continue
         except OSError:
             pass
-        with open(d, "wb") as fd:
+        # Atomic: write a sibling, then rename over the target. Several gates
+        # place into one dir (the `cpp-*` split, issue 2683), and one may be
+        # compiling against a header while another rewrites it; a reader
+        # sees the old file or the new one, never a truncated one.
+        tmp = f"{d}.tmp.{os.getpid()}"
+        with open(tmp, "wb") as fd:
             fd.write(want)
+        os.replace(tmp, d)
         copied.append(rel)
     return copied
 

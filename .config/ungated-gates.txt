@@ -52,7 +52,13 @@ c
 # every entry point calls its hook, seven mutations red -- is the script the
 # recipe runs first; the cargo half is what keeps it off the fast line.
 census-hooks-complete
-cpp
+# cpp-clippy / cpp-headers / cpp-runtime / cpp-runtime-scoped are the one
+# `cpp` gate this list held, split in four for the build tier's per-test
+# timeout (issue 2683): the same coverage in the same lane, not new gates.
+cpp-clippy
+cpp-headers
+cpp-runtime
+cpp-runtime-scoped
 nros-log-riscv32
 staticlib-symbols
 test-targets

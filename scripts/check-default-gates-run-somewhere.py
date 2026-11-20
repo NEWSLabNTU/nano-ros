@@ -154,6 +154,7 @@ EXEMPT_NO_PLACEMENT: "dict[str, tuple]" = {
     "fast-parallel": ("lane", "lane verb: the fast tier, parallel spelling"),
     "fast-serial": ("lane", "lane verb: the fast tier, serial spelling"),
     "workspace": ("lane", "aggregate: depends on `workspace-fmt` and names where its jobs went"),
+    "cpp": ("lane", "aggregate (issue 2683): `cpp-fmt` and the four C++ build gates, each its own gate test"),
     "action-client-arena-budget": ("caller", "reads built images; `build-test-fixtures` runs it",
                                    "justfile", "just check action-client-arena-budget"),
     "archive-lang-items": ("caller", "needs a built CMake link line; `build-test-fixtures` runs it",

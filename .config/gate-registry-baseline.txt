@@ -78,12 +78,15 @@ config-knob-census
 config-surface
 core-crates-are-no-std
 core-only-predicate
-cpp
 cpp-capability-layout
+cpp-clippy
 cpp-ffi-error-mapping
 cpp-fmt
 cpp-freestanding-includes
+cpp-headers
 cpp-no-std-stdio
+cpp-runtime
+cpp-runtime-scoped
 cross-toolchain-provenance
 crt-free-runtime-symbols
 cxx-compat-shim-coverage

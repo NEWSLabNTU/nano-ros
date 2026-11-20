@@ -403,6 +403,15 @@ For the dev-host reds, once a red run is sampled: split the suite or make it fas
    the first thing to establish. If none does, they run as parallel sub-gates
    with stated weights instead of one serial chain under one timeout.
    Caching the stub builds would help warm runs only.
+   **Done (2026-11-20):** established that no step needs another's output
+   beyond the head build (placed headers, the shipped-feature archive) and the
+   stub backend object. Two shell variables crossed groups and moved.
+   `check::cpp` is now four build gates, `cpp-runtime`, `cpp-runtime-scoped`,
+   `cpp-headers` and `cpp-clippy`, each its own gate test with its own
+   timeout and its own probe dir; `just check cpp` runs all four. Header
+   placement writes atomically now, since several gates place into one dir.
+   Weights stay unstated until a run's shard logs measure them (a missing row
+   gets the median).
 5. **Not the wrapper.** The A/B above rules it out. The host-side cache state
    (full at its limit, slow writes, a busy disk) is host configuration and
    goes to the host's owner.
