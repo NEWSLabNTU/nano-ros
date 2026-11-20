@@ -11942,10 +11942,10 @@ mod pin_report_tests {
             "a written pin is reported"
         );
 
-        let already = PinOutcome::Already(Pin {
-            path: PathBuf::from("/w/my-robot/nros-toolchain.toml"),
-            version: "0.5.0-nros1".to_string(),
-        });
+        let already = PinOutcome::Already(Pin::release(
+            PathBuf::from("/w/my-robot/nros-toolchain.toml"),
+            "0.5.0-nros1",
+        ));
         assert!(
             report_pin_outcome(&already)
                 .expect("a pinned project builds")

@@ -1,12 +1,14 @@
 ---
 id: 2645
 title: "`nros-toolchain.toml` can only pin a release, so a consumer tracking main vendors nano-ros and sets NROS_SKIP_STALE_CHECK"
-status: open
+status: resolved
 type: enhancement
 severity: medium
 area: [cli, toolchain]
 related: [rfc-0097, rfc-0014, phase-478]
 found: 2026-11-16
+resolved: 2026-11-20
+resolved_in: "the change that archived it"
 ---
 
 **Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md) I26.**
@@ -43,7 +45,7 @@ protects every other build is switched off for this one.
 - **B. The guard was reported to misfire on a consumer's configure.** Not
   reproduced; see B below.
 
-## Design (proposed, beside the release pin) — AWAITING THE USER
+## Design (beside the release pin)
 
 A new user-facing schema for `nros-toolchain.toml` (RFC-0097 D7), so it is
 the user's decision: nothing below is built until they approve it. Part B is
@@ -145,6 +147,37 @@ gitlinks out of sync with their recorded pins (`micro-cdr`, `nuttx`,
 `nuttx-apps`); on a clean submodule `build.sh` sets the skip itself. So B is
 open only as a question for the island's script, not as a nano-ros defect:
 with A, the island drops both its CLI build and the skip.
+
+## Resolution (2026-11-20)
+
+Part A is built in the launcher crate (`packages/cli/nros-launcher`):
+
+- `pin.rs` reads `version`, `git` + `rev`, or `path`, exactly one form, and
+  refuses a branch, tag or short sha with the full-sha rule. A git pin's
+  store version is `git-<rev>`, so the release lookup (`candidate_bins`,
+  `installed_bin`) constructs its path unchanged. A path pin resolves to
+  `<checkout>/packages/cli/target/release/nros`.
+- `git_pin.rs` installs a git pin atomically, as designed: fetch the one
+  commit into `toolchains/.git-<rev>.partial-<pid>/`, run its
+  `scripts/bootstrap.sh --no-prompt` with every `PATH` entry that holds an
+  `nros` removed (the front door is a no-op when one is on `PATH`), check
+  `nros source-stamp`, link `bin/nros`, rename. No cargo is a refusal that
+  names rustup. Dead partials are reaped by pid.
+- `dispatch::fetch` takes the pin's form: release through `install.sh`
+  (unchanged), git through `git_pin::install`, path as a refusal naming the
+  checkout's `bootstrap.sh`.
+- `launch::installed_versions` skips `git-*` and `.git-*`, so a commit is
+  never the unpinned default. `store::load_pin_file` adds the `git-<rev>`
+  rule, so `toolchain gc` and `remove` keep a pinned commit. `nros doctor`
+  names the remedy per form.
+- Tests: `nros-launcher/tests/git_and_path_pins.rs` (schema, resolution,
+  install against a local repository with a stub `bootstrap.sh`, failure
+  cleanup, reaping) and a store test for the reclaim rule.
+
+The store toolchain is a clean clone of the commit, so its stale guard
+checks a tree nothing writes into: the guard stays on and passes.
+`nros pin --rev` / `--path` are not built: `nros pin <version>` still moves
+a release pin, and a commit pin is edited by hand.
 
 ## Acceptance
 

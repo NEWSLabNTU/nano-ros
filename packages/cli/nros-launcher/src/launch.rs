@@ -109,6 +109,9 @@ pub enum Plan {
         version: String,
         pin_path: PathBuf,
         looked_in: Vec<PathBuf>,
+        /// The pin's form: it decides how the toolchain is obtained
+        /// ([`dispatch::fetch`]).
+        source: pin::PinSource,
     },
     /// The store holds no toolchain at all, and no pin named one.
     ///
@@ -144,16 +147,17 @@ pub fn resolve(ctx: &Context) -> eyre::Result<Plan> {
         return Ok(Plan::InCheckout { root });
     }
     if let Some(p) = pin::find_and_load(&ctx.cwd)? {
-        return Ok(match pin::installed_bin(&ctx.store, &p.version) {
+        return Ok(match p.installed_bin(&ctx.store) {
             Some(bin) => Plan::Exec {
                 version: p.version,
                 bin,
                 source: Source::Pin(p.path),
             },
             None => Plan::Missing {
-                looked_in: pin::candidate_bins(&ctx.store, &p.version),
+                looked_in: p.candidate_bins(&ctx.store),
                 version: p.version,
                 pin_path: p.path,
+                source: p.source,
             },
         });
     }
@@ -209,6 +213,13 @@ pub fn installed_versions(store: &Path) -> Vec<String> {
             let Ok(name) = e.file_name().into_string() else {
                 continue;
             };
+            // Issue 2645: a git pin's `git-<rev>` (and its `.git-*.partial-*`
+            // build) is not a release. Only a pin may select one; as the
+            // unpinned default it would win every natural sort (text sorts
+            // above numbers) and silently run some commit nobody chose.
+            if name.starts_with('.') || name.starts_with("git-") {
+                continue;
+            }
             if !e.path().join("bin").join("nros").is_file() {
                 continue;
             }

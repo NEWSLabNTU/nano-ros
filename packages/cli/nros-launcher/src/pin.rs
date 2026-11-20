@@ -78,19 +78,119 @@ struct PinFile {
     toolchain: ToolchainTable,
 }
 
+/// One key per pin form, and exactly one form is set (issue 2645). `git` and
+/// `rev` are cargo's spelling of a git dependency, so a reader who knows
+/// `{ git = "<url>", rev = "<sha>" }` reads this without a manual.
+///
+/// Unknown keys stay ignored, as they were when `version` was the only key, so
+/// a pin that carried an extra key keeps reading the same.
 #[derive(Debug, Deserialize)]
 struct ToolchainTable {
-    version: String,
+    version: Option<String>,
+    git: Option<String>,
+    rev: Option<String>,
+    path: Option<String>,
+}
+
+/// Which nano-ros a pin names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PinSource {
+    /// `version = "<store version>"` -- a release, fetched by `install.sh`.
+    Release,
+    /// `git = "<url>"` + `rev = "<40-hex sha>"` -- one commit, fetched and
+    /// built from source into the store at `toolchains/git-<rev>/`.
+    Git { url: String, rev: String },
+    /// `path = "<dir>"` -- a nano-ros checkout, absolute after loading; its
+    /// own `scripts/bootstrap.sh`-built CLI runs.
+    Path(PathBuf),
 }
 
 /// A pin that was found and read.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pin {
-    /// The file it came from — printed in every message, because "which pin"
+    /// The file it came from -- printed in every message, because "which pin"
     /// is the first question when two projects disagree.
     pub path: PathBuf,
-    /// The store version it names.
+    /// The store version it names: the release for [`PinSource::Release`],
+    /// `git-<rev>` (its store directory) for [`PinSource::Git`], and
+    /// `path:<dir>` for [`PinSource::Path`], which has no store entry.
     pub version: String,
+    /// Which form the pin was written in.
+    pub source: PinSource,
+}
+
+impl Pin {
+    /// A release pin, the form every pin had before issue 2645.
+    #[must_use]
+    pub fn release(path: PathBuf, version: impl Into<String>) -> Self {
+        Self {
+            path,
+            version: version.into(),
+            source: PinSource::Release,
+        }
+    }
+
+    /// Where this pin's binary would live, CONSTRUCTED and never searched
+    /// for. A release or git pin names a store directory; a path pin names
+    /// its checkout's own build.
+    #[must_use]
+    pub fn candidate_bins(&self, store: &Path) -> Vec<PathBuf> {
+        match &self.source {
+            PinSource::Path(dir) => vec![checkout_cli_bin(dir)],
+            PinSource::Release | PinSource::Git { .. } => candidate_bins(store, &self.version),
+        }
+    }
+
+    /// The first of [`Pin::candidate_bins`] that is there.
+    #[must_use]
+    pub fn installed_bin(&self, store: &Path) -> Option<PathBuf> {
+        self.candidate_bins(store).into_iter().find(|p| p.is_file())
+    }
+
+    /// How the pin reads on one line: `nano-ros 0.6.0-nros11`,
+    /// `nano-ros git 09219edc75 (<url>)`, `nano-ros checkout <dir>`.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match &self.source {
+            PinSource::Release => format!("nano-ros {}", self.version),
+            PinSource::Git { url, rev } => format!("nano-ros git {} ({url})", &rev[..10]),
+            PinSource::Path(dir) => format!("nano-ros checkout {}", dir.display()),
+        }
+    }
+}
+
+/// The store directory name of a git pin: `git-<rev>`. One spelling, shared
+/// by the resolver, the installer and the reclaim guard.
+#[must_use]
+pub fn git_store_name(rev: &str) -> String {
+    format!("git-{rev}")
+}
+
+/// The CLI a checkout's `scripts/bootstrap.sh` (and `just setup-cli`) builds.
+#[must_use]
+pub fn checkout_cli_bin(checkout: &Path) -> PathBuf {
+    checkout.join("packages/cli/target/release/nros")
+}
+
+/// A `rev` must be a full 40-hex commit. A branch, a tag or a short sha is
+/// not a pin: each can name a different commit tomorrow (a branch moves, a
+/// tag can be re-pointed, a short sha can become ambiguous).
+fn check_rev(rev: &str, path: &Path) -> Result<String> {
+    if rev.len() == 40 && rev.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Ok(rev.to_ascii_lowercase());
+    }
+    let what = if rev.bytes().all(|b| b.is_ascii_hexdigit()) {
+        format!("a {}-character sha", rev.len())
+    } else {
+        "a branch or tag name".to_string()
+    };
+    bail!(
+        "{} pins `rev = \"{rev}\"`, which looks like {what}. A `rev` must be the \
+         full 40-hex commit: a branch moves, a tag can be re-pointed and a short \
+         sha can become ambiguous, so none of them names one commit. Resolve it \
+         with `git rev-parse <name>^{{commit}}` and pin that.",
+        path.display()
+    )
 }
 
 /// The nearest `nros-toolchain.toml` at or above `start`.
@@ -121,22 +221,83 @@ pub fn load(path: &Path) -> Result<Pin> {
         .wrap_err_with(|| format!("read the toolchain pin {}", path.display()))?;
     let parsed: PinFile = toml::from_str(&raw).wrap_err_with(|| {
         format!(
-            "parse the toolchain pin {} — it must carry\n\n    [toolchain]\n    version = \"<store version>\"\n",
+            "parse the toolchain pin {} -- it must carry a `[toolchain]` table with \
+             exactly one of\n\n    version = \"<store version>\"\n    \
+             git = \"<url>\" and rev = \"<40-hex commit>\"\n    path = \"<nano-ros checkout>\"\n",
             path.display()
         )
     })?;
-    let version = parsed.toolchain.version.trim().to_string();
-    if version.is_empty() {
+    let t = parsed.toolchain;
+    let nonempty = |v: Option<String>| v.map(|s| s.trim().to_string());
+    let (version, git, rev, dir) = (
+        nonempty(t.version),
+        nonempty(t.git),
+        nonempty(t.rev),
+        nonempty(t.path),
+    );
+    let forms = [version.is_some(), git.is_some(), dir.is_some()]
+        .iter()
+        .filter(|b| **b)
+        .count();
+    if forms > 1 {
         bail!(
-            "{} names an empty `[toolchain] version`. A pin with no version is \
-             not a floating project, it is an unreadable one — delete the file \
-             to float, or name a version.",
+            "{} sets more than one of `version`, `git` and `path` in `[toolchain]`. \
+             A pin names one nano-ros: keep exactly one.",
             path.display()
         );
     }
+    if rev.is_some() && git.is_none() {
+        bail!(
+            "{} sets `rev` without `git`. `rev` names a commit OF a repository, as in \
+             a cargo git dependency: write the repository URL as `git = \"<url>\"` \
+             beside it.",
+            path.display()
+        );
+    }
+    let (version, source) = if let Some(url) = git {
+        let Some(rev) = rev else {
+            bail!(
+                "{} sets `git` without `rev`. A git pin names one commit: add \
+                 `rev = \"<40-hex commit>\"`.",
+                path.display()
+            );
+        };
+        if url.is_empty() {
+            bail!("{} names an empty `git` URL.", path.display());
+        }
+        let rev = check_rev(&rev, path)?;
+        (git_store_name(&rev), PinSource::Git { url, rev })
+    } else if let Some(dir) = dir {
+        // Relative to the directory that holds the pin file, as a cargo `path`
+        // dependency is relative to its `Cargo.toml`; absolute as written.
+        let base = path.parent().unwrap_or(Path::new("."));
+        let joined = base.join(&dir);
+        let abs = std::fs::canonicalize(&joined).unwrap_or(joined);
+        if !crate::checkout::is_monorepo_root(&abs) {
+            bail!(
+                "{} pins `path = \"{dir}\"`, and {} is not a nano-ros checkout (no {}). \
+                 A path pin names the root of a nano-ros clone.",
+                path.display(),
+                abs.display(),
+                crate::checkout::MONOREPO_MARKER
+            );
+        }
+        (format!("path:{}", abs.display()), PinSource::Path(abs))
+    } else {
+        match version {
+            Some(v) if !v.is_empty() => (v, PinSource::Release),
+            _ => bail!(
+                "{} names no toolchain in `[toolchain]` (an empty `version`, or no key \
+                 at all). A pin with no version is not a floating project, it is an \
+                 unreadable one -- delete the file to float, or name a version.",
+                path.display()
+            ),
+        }
+    };
     Ok(Pin {
         path: path.to_path_buf(),
         version,
+        source,
     })
 }
 

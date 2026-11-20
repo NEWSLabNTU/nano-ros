@@ -661,12 +661,14 @@ pyo3-ffi.
 
 ### I26 -- a toolchain pin can name a commit or a checkout
 
-**Status: OPEN.** [Issue 2645](../issues/2645-toolchain-pin-cannot-name-a-commit.md)
+**Status: DONE in nano-ros (2026-11-20); the island's switch is its own.**
+[Issue 2645](../issues/archived/2645-toolchain-pin-cannot-name-a-commit.md)
 (GitHub #4006). `nros-toolchain.toml` pins a release only, so the island,
 which tracks main, vendors nano-ros, builds the CLI itself and sets
 `NROS_SKIP_STALE_CHECK=1` because `nros configure` stales the checkout it
-runs from. Design (awaiting review): `git = "<url>"` with `rev = "<sha>"`
-(cargo's spelling) and `path` beside `version`, exactly one form set. The
+runs from. Built: `git = "<url>"` with `rev = "<sha>"` (cargo's spelling)
+and `path` beside `version`, exactly one form set; a git pin is fetched and
+built into `toolchains/git-<rev>/` on first use. The
 reported stale-guard misfire did not reproduce (2645 part B): the island's
 own script turned the guard off over a submodule its nested gitlinks made
 read as dirty, so there is no nano-ros guard defect to fix, and with a commit
@@ -931,7 +933,7 @@ Filed from the Autoware Safety Island's phase-15 P3 on nano-ros 5b9e8844a4.
 - [issue 2639](../issues/archived/2639-list-parameters-silently-caps-at-64.md) (resolved): `ros2 param list` and `ros2 param dump` showed 64 of the controller's 149 parameters and said nothing (I22).
 - [issue 2638](../issues/archived/2638-launch-list-param-flattened-to-string.md) (resolved): a list parameter from a `<param from>` file reached the node as one comma-joined string (I20).
 - [issue 2640](../issues/archived/2640-metadata-probe-no-launch-values.md) (resolved): the C/C++ metadata probe constructed a node with no launch values and a default-size store, so a node declaring parameters without defaults could not be probed; the probe now seeds the launch values ([phase-566](phase-566-probe-launch-seeds.md)).
-- [issue 2645](../issues/2645-toolchain-pin-cannot-name-a-commit.md) (GitHub #4006): `nros-toolchain.toml` cannot pin a commit, so a consumer on main vendors nano-ros and sets `NROS_SKIP_STALE_CHECK` (I26).
+- [issue 2645](../issues/archived/2645-toolchain-pin-cannot-name-a-commit.md) (GitHub #4006, resolved): `nros-toolchain.toml` could not pin a commit, so a consumer on main vendors nano-ros and sets `NROS_SKIP_STALE_CHECK` (I26).
 - [issue 2646](../issues/archived/2646-sdk-eigen-for-arm-none-eabi.md) (GitHub #4013, wontfix): no SDK Eigen for cross builds; Eigen 3.4's psincos fails on newlib's `int32_t = long`; users bring their own (I27).
 
 ## Issues homed here (2026-11-15)
