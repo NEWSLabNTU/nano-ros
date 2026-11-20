@@ -1055,6 +1055,48 @@ fn freertos_level_budget_overrun_is_throttled_by_the_executor() {
     );
 }
 
+/// The C runner lowers a FreeRTOS level's budget the same way the Rust
+/// runner does (phase-575 W5).
+///
+/// `freertos_run_sched_tasks.c` serves every C and C++ FreeRTOS entry. The
+/// `realtime-c` bringup declares `[tasks.high.freertos]` 5 ms per 10 ms. The
+/// assertions, from the guest console:
+///
+/// - the runner lowered the budget onto the `high` level's own sched context
+///   and the executor enforces it (`enforced by the EXECUTOR`);
+/// - the budgeted level still dispatches (`[ctrl] tick=` after the report);
+/// - the boot level, the session owner, was never budgeted.
+///
+/// The executor's throttling itself is the Rust arm's assertion above; the C
+/// ctrl tick stays inside its budget.
+#[test]
+fn freertos_c_runner_lowers_the_level_budget() {
+    if !nros_tests::lane_scope::admits(MP::FreertosMps2) {
+        return;
+    }
+    let entry = build_freertos_workspace_c_realtime_entry()
+        .map(|p| p.to_path_buf())
+        .require("freertos-mps2 c realtime");
+    let port = port_of(MP::FreertosMps2, ML::C, MW::RealtimeSchedTasks);
+    let _router = ZenohRouter::start_on("0.0.0.0", port)
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+    let groups: Vec<Vec<String>> = vec![
+        vec!["nros: level budget sched_task=`high` 5000us/10000us enforced by the EXECUTOR".into()],
+        vec!["[ctrl] tick=".into()],
+    ];
+    let mut q = QemuProcess::start_mps2_an385_networked(&entry)
+        .unwrap_or_else(|e| panic!("[freertos-mps2 c] boot QEMU: {e}"));
+    let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+    q.kill();
+    let log = log.unwrap_or_else(|e| {
+        panic!("[freertos-mps2 c] the C runner did not lower the level's budget: {e}")
+    });
+    assert!(
+        !log.contains("level budget sched_task=`low`"),
+        "[freertos-mps2 c] the session-owning boot level was budgeted:\n{log}"
+    );
+}
+
 /// Issue 2018 -- a NuttX level that overruns its declared budget is throttled
 /// by the KERNEL, and only by the kernel.
 ///
