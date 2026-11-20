@@ -11,7 +11,7 @@ name = "nros-launcher"
 #
 # `scripts/check-version-lockstep.sh` reads `[workspace.package].version` from
 # the two workspace roots and is unaffected by a member that opts out.
-version = "0.1.0"
+version = "0.2.0"
 publish = false
 authors.workspace = true
 edition.workspace = true

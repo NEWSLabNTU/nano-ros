@@ -21,7 +21,7 @@
 //!
 //! ```console
 //! $ nros --version
-//! nros-launcher 0.1.0
+//! nros-launcher 0.2.0
 //! nros 0.5.0
 //! ```
 //!
