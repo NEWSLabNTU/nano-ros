@@ -1682,6 +1682,9 @@ cpp: cpp-fmt cpp-runtime cpp-runtime-scoped cpp-headers cpp-clippy
 cpp-runtime:
     #!/usr/bin/env bash
     set -e
+    # Writes only into the dir it creates, so a fresh tree holds (read from
+    # the recipe, not the disk).
+    python3 scripts/lib/cpp_gate_own_dirs.py cpp-runtime
     source scripts/build/cargo.sh
     # issue 1354 — this lane's own Cargo target dir. See the `c` lane above for
     # the measurement; this is the lane the race was found on, failing with
@@ -2322,12 +2325,12 @@ cpp-runtime:
             -Ipackages/core/nros-rmw-abi/include \
             -Ipackages/platform/nros-platform-api/include \
             -Ipackages/api/nros-c/tests/run \
-            -o "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi" \
+            -o "$gen/nros-cpp-tests-runtime/poll_take_message_info_runtime_$_ptmi" \
             packages/api/nros-cpp/tests/compile/poll_take_message_info_runtime.cpp \
             "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
             "$nros_cpp_lib" -lpthread -ldl -lm; \
-        "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi"; \
-        "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi" no-info; \
+        "$gen/nros-cpp-tests-runtime/poll_take_message_info_runtime_$_ptmi"; \
+        "$gen/nros-cpp-tests-runtime/poll_take_message_info_runtime_$_ptmi" no-info; \
     done
     # issue 2717 -- ...and WITHOUT the hosted surface the `const M&` +
     # MessageInfo shape is TAKEN: the callable lives in the arena, as the
@@ -2472,11 +2475,11 @@ cpp-runtime:
             -Ipackages/core/nros-rmw-abi/include \
             -Ipackages/platform/nros-platform-api/include \
             -Ipackages/api/nros-c/tests/run \
-            -o "$gen/nros-cpp-tests/$_tu" \
+            -o "$gen/nros-cpp-tests-runtime/$_tu" \
             "packages/api/nros-cpp/tests/compile/$_tu.cpp" \
             "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
             "$nros_cpp_lib" -lpthread -ldl -lm
-        "$gen/nros-cpp-tests/$_tu"
+        "$gen/nros-cpp-tests-runtime/$_tu"
     done
     # issue 2014 -- the POLLING action client decodes a get_result reply's
     # fields from byte 8 (`[encap][status][pad -> 8][fields]`), the offset every
@@ -2559,18 +2562,18 @@ cpp-runtime:
     _rx=packages/api/nros-cpp/tests/compile/rclcpp-examples
     echo "  - stock rclcpp examples: edit counts, compile + link + boot on the stub backend (phase-488)"
     python3 "$_rx/edit_count.py" --check
-    mkdir -p "$gen/nros-cpp-tests/rclcpp-examples"
+    mkdir -p "$gen/nros-cpp-tests-runtime/rclcpp-examples"
     c++ -std=c++17 -c \
         -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests/rclcpp-examples/stub_backend_registration.o" \
+        -o "$gen/nros-cpp-tests-runtime/rclcpp-examples/stub_backend_registration.o" \
         "$_rx/stub_backend_registration.cpp"
     _rx_n=0
     for _src in "$_rx"/ported/*.cpp; do
         _ex="$(basename "$_src" .cpp)"
-        _bin="$gen/nros-cpp-tests/rclcpp-examples/$_ex"
+        _bin="$gen/nros-cpp-tests-runtime/rclcpp-examples/$_ex"
         c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
@@ -2579,7 +2582,7 @@ cpp-runtime:
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             -o "$_bin" "$_src" \
-            "$gen/nros-cpp-tests/rclcpp-examples/stub_backend_registration.o" \
+            "$gen/nros-cpp-tests-runtime/rclcpp-examples/stub_backend_registration.o" \
             "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
             "$nros_cpp_lib" -lpthread -ldl -lm
         _rx_n=$((_rx_n + 1))
@@ -2588,7 +2591,7 @@ cpp-runtime:
     # Boot all of them, judged by one script with its own negative control.
     _rx_names=()
     for _src in "$_rx"/ported/*.cpp; do _rx_names+=("$(basename "$_src" .cpp)"); done
-    scripts/check-rclcpp-examples-boot.sh "$gen/nros-cpp-tests/rclcpp-examples" "${_rx_names[@]}"
+    scripts/check-rclcpp-examples-boot.sh "$gen/nros-cpp-tests-runtime/rclcpp-examples" "${_rx_names[@]}"
     # phase-488 W3 -- the hosted surface a stock ROS 2 package spells, found by
     # porting Autoware's `autoware_external_cmd_selector`: grouped four-argument
     # subscriptions, a stateful `std::bind` / capturing-lambda service handler
@@ -2621,10 +2624,10 @@ cpp-runtime:
         "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests-runtime"/service_request_header_runtime
     cmake -DPLUGIN=demo::Selector -DEXECUTABLE=selector \
-        -DOUT="$gen/nros-cpp-tests/selector_component_main.cpp" -P cmake/NanoRosComponentMain.cmake
+        -DOUT="$gen/nros-cpp-tests-runtime/selector_component_main.cpp" -P cmake/NanoRosComponentMain.cmake
     c++ "${_ps_flags[@]}" -DNROS_PORT_SURFACE_COMPONENT_ONLY=1 \
         -o "$gen/nros-cpp-tests-runtime"/selector_component \
-        "$gen/nros-cpp-tests/selector_component_main.cpp" "$_ps" \
+        "$gen/nros-cpp-tests-runtime/selector_component_main.cpp" "$_ps" \
         "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
     # issue 2053 -- `diagnostic_updater`'s task classes. A RUN: a
     # `FrequencyStatus` ticked by a timer reports OK inside its band and WARN
@@ -2775,6 +2778,9 @@ cpp-runtime:
 cpp-runtime-scoped:
     #!/usr/bin/env bash
     set -e
+    # Writes only into the dir it creates, so a fresh tree holds (read from
+    # the recipe, not the disk).
+    python3 scripts/lib/cpp_gate_own_dirs.py cpp-runtime-scoped
     # The shared head of the four `cpp-*` gates; its rationale is
     # written once, in `cpp-runtime`.
     source scripts/build/cargo.sh
@@ -3103,6 +3109,9 @@ cpp-runtime-scoped:
 cpp-headers:
     #!/usr/bin/env bash
     set -e
+    # Writes only into the dir it creates, so a fresh tree holds (read from
+    # the recipe, not the disk).
+    python3 scripts/lib/cpp_gate_own_dirs.py cpp-headers
     # The shared head of the four `cpp-*` gates; its rationale is
     # written once, in `cpp-runtime`.
     source scripts/build/cargo.sh
@@ -3588,7 +3597,7 @@ cpp-headers:
     echo "  - runtime refusals reach nros_log: FREESTANDING object (-nostdinc++)"
     source scripts/lib/grep-q.sh
     for _refusal in "1:failed create (abort_failed_create)" "2:--ros-args (apply_ros_args)"; do
-        _obj="$gen/nros-cpp-tests/refusal_reaches_nros_log_${_refusal%%:*}.o"
+        _obj="$gen/nros-cpp-tests-headers/refusal_reaches_nros_log_${_refusal%%:*}.o"
         c++ -c -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
             -nostdinc++ -isystem "$_threadx_shim" \
             -DREFUSAL="${_refusal%%:*}" \
@@ -4153,6 +4162,9 @@ cpp-headers:
 cpp-clippy:
     #!/usr/bin/env bash
     set -e
+    # Writes only into the dir it creates, so a fresh tree holds (read from
+    # the recipe, not the disk).
+    python3 scripts/lib/cpp_gate_own_dirs.py cpp-clippy
     # The shared head of the four `cpp-*` gates; its rationale is
     # written once, in `cpp-runtime`.
     source scripts/build/cargo.sh
