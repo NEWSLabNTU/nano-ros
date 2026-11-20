@@ -205,15 +205,25 @@ Acceptance:
 
 ### W5 — the shared frame, and existing verbs adopt it
 
-- **Status:** OPEN (W5a on its branch; W5b and W5c open)
+- **Status:** OPEN (W5a in review; W5b on its branch, waiting for W5a;
+  W5c open)
 - **W5a, the frame:** `cmd::frame` renders a `list` table, a `show`'s
   fields and Book line, the `--json` document, and the unknown-name refusal
   with the nearest names. The Book URL is the CLI workspace's
   `documentation` field, which `build.rs` compiles in, and a test checks
   `book/book.toml`'s new `site-url` against it. `rmw` and `knob` adopt it.
-- **W5b, open:** `board list` (board keys, the crate as a column) and
-  `board show` rendering every table of the descriptor from the schema's
-  field documentation.
+- **W5b, the board verbs:** `board list` lists board keys, with the
+  package (the nearest directory holding a `Cargo.toml` or `package.xml`),
+  platform, status and cadence; `board show` adds every table of the
+  board's `nros-board.toml`, walked as written, so a new section prints with
+  no CLI edit (a fixture test). Both take `--json` (`nros.board.list.v1`,
+  `nros.board.show.v1`).
+- **Finding:** RFC-0133 D2 labels each descriptor field "from the descriptor
+  schema's own field documentation", but no such schema exists: the fields
+  are documented only in `board_descriptor.rs` doc comments, written for
+  contributors and not readable at run time. `board show` prints the keys as
+  the file writes them, the user spelling. Labels wait on a user-facing
+  descriptor schema, which needs its own item.
 - **W5c, open:** `interface`, `toolchain list` and `nros list` adopt the
   frame and gain `--json`; a contract test per schema.
 

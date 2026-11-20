@@ -1196,8 +1196,8 @@ Inspect supported boards
 Usage: nros board <COMMAND>
 
 Commands:
-  list  List every board crate, with its support status and cadence
-  show  Print a board's support evidence: status, where it runs, cadence, breadth and the book chapters that run it
+  list  List every board key, with its crate, platform, support status and cadence
+  show  Show one board: its support evidence and every table of its descriptor
   info  Print a board's resolved descriptor as JSON
   new   Scaffold a new board package
   help  Print this message or the help of the given subcommand(s)
@@ -1210,12 +1210,13 @@ Options:
 #### `nros board list`
 
 ```text
-List every board crate, with its support status and cadence
+List every board key, with its crate, platform, support status and cadence
 
 Usage: nros board list [OPTIONS]
 
 Options:
       --workspace <WORKSPACE>  nano-ros SDK root holding the board catalog. Default: `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros` binary's own SDK root (the installed track needs no flag)
+      --json                   Print one JSON object instead of a table
   -h, --help                   Print help
   -V, --version                Print version
 ```
@@ -1223,7 +1224,7 @@ Options:
 #### `nros board show`
 
 ```text
-Print a board's support evidence: status, where it runs, cadence, breadth and the book chapters that run it
+Show one board: its support evidence and every table of its descriptor
 
 Usage: nros board show [OPTIONS] <NAME>
 
@@ -1232,6 +1233,7 @@ Arguments:
 
 Options:
       --workspace <WORKSPACE>  nano-ros SDK root holding the board catalog. Default: `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros` binary's own SDK root
+      --json                   Print one JSON object instead of text
   -h, --help                   Print help
   -V, --version                Print version
 ```
