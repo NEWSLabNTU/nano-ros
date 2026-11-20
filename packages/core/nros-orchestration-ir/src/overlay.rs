@@ -104,10 +104,12 @@ impl Overlay {
     /// applies to it.
     pub fn features_for_image(&self, id: &str) -> Vec<String> {
         let image: &[String] = self.images.get(id).map_or(&[], Vec::as_slice);
+        // The per-image map already carries the entry's default (issue 2772).
         let switch = crate::node_interfaces::resolve(
             self.image_node_interfaces.get(id).copied(),
             None,
             self.node_interfaces,
+            None,
         );
         crate::node_interfaces::image_features(&self.features, image, switch)
     }
@@ -209,7 +211,24 @@ impl Overlay {
             for (id, block) in tbl {
                 let own = crate::node_interfaces::from_table(Some(block), &format!("[image.{id}]"))
                     .map_err(at)?;
-                if let Some(sw) = crate::node_interfaces::resolve(own, defaults_switch, None) {
+                // Issue 2772 -- the entry's own default applies only where no
+                // table states a switch; `[system]` is held apart (it is
+                // `node_interfaces` above), so it is consulted here, not
+                // passed.
+                let framework = block
+                    .get("framework")
+                    .or_else(|| doc.get("image_defaults").and_then(|d| d.get("framework")))
+                    .and_then(|f| f.as_str())
+                    .filter(|_| node_interfaces.is_none());
+                let declared: Vec<String> = features
+                    .iter()
+                    .cloned()
+                    .chain(defaults.iter().cloned())
+                    .chain(list_at(Some(block), &format!("[image.{id}]"))?)
+                    .collect();
+                let entry = crate::node_interfaces::entry_default(framework, &declared);
+                if let Some(sw) = crate::node_interfaces::resolve(own, defaults_switch, None, entry)
+                {
                     image_node_interfaces.insert(id.clone(), sw);
                 }
                 let mut add = defaults.clone();
@@ -913,6 +932,34 @@ mod tests {
         assert!(off.features_for_image("a").is_empty());
         let back = Overlay::parse(&off.render(), Path::new("nros.toml")).unwrap();
         assert!(back.features_for_image("a").is_empty());
+    }
+
+    /// Issue 2772 -- an RTIC image, whose entry registers none of the
+    /// runtime's node services, gets no stock set unless a table states one,
+    /// and the overlay file carries that to the macro. A `[system]` switch
+    /// still applies to it.
+    #[test]
+    fn an_rtic_image_gets_no_stock_set_unless_one_is_stated() {
+        let ov = o("[system]\nname = \"t\"\n[image.a]\nboard = \"linux\"\n\
+                    [image.r]\nboard = \"x\"\nframework = \"rtic\"\n");
+        assert_eq!(
+            ov.features_for_image("a"),
+            vec!["param_services", "rosout", "sim_time"]
+        );
+        assert!(ov.features_for_image("r").is_empty());
+        let back = Overlay::parse(&ov.render(), Path::new("nros.toml")).unwrap();
+        assert!(back.features_for_image("r").is_empty());
+        let via_defaults = o(
+            "[system]\nname = \"t\"\n[image_defaults]\nframework = \"rtic\"\n\
+                              [image.r]\nboard = \"x\"\n",
+        );
+        assert!(via_defaults.features_for_image("r").is_empty());
+        let stated = o("[system]\nname = \"t\"\nnode_interfaces = \"stock\"\n\
+                        [image.r]\nboard = \"x\"\nframework = \"rtic\"\n");
+        assert_eq!(
+            stated.features_for_image("r"),
+            vec!["param_services", "rosout", "sim_time"]
+        );
     }
 
     /// (b) `stock` yields the stock set, at every level it can be stated.

@@ -1635,6 +1635,20 @@ impl SystemToml {
             img.as_ref().and_then(|i| i.node_interfaces),
             None,
             self.system.node_interfaces,
+            // Issue 2772 -- with no table stating a switch, the entry decides.
+            nros_orchestration_ir::node_interfaces::entry_default(
+                img.as_ref().and_then(|i| i.framework.as_deref()),
+                &self
+                    .system
+                    .features
+                    .iter()
+                    .chain(
+                        img.as_ref()
+                            .map(|i| i.features.as_slice())
+                            .unwrap_or_default(),
+                    )
+                    .collect::<Vec<_>>(),
+            ),
         );
         // Issue 2700 -- composed by the ONE function every road shares; the
         // result is already through the switch, and applying the same switch

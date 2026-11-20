@@ -1662,17 +1662,20 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         && (param_services_enabled || param_store_enabled || lifecycle_machines > 0)
     {
         // Issue 1766 -- a declaration the entry would drop in silence. The
-        // stock node interfaces every image gets by default land here too,
-        // so RTIC images opt out until issue 2559.
+        // stock node interfaces reach here only when a table STATES them:
+        // the default for an RTIC image is none (issue 2772,
+        // `nros_orchestration_ir::FRAMEWORKS_WITHOUT_NODE_SERVICES`), until
+        // issue 2559 gives the entry the services.
         return Err(syn::Error::new(
             Span::call_site(),
             format!(
                 "nros::main!: this system declares {} but the {} framework entry does not \
                  register the runtime's parameter or lifecycle services, so the declaration \
-                 would be dropped in silence. Set `node_interfaces = \"none\"` on the \
-                 image (every image gets the parameter services and `/rosout` unless it \
-                 opts out), remove the axis from `[system] features`, or deploy on a \
-                 board whose entry runs the OwnedSpin or Zephyr shape.",
+                 would be dropped in silence. An RTIC image gets the parameter services \
+                 only where a table states them: remove `node_interfaces = \"stock\"` \
+                 or set `node_interfaces = \"none\"` on the image, remove the axis from \
+                 `[system] features`, or deploy on a board whose entry runs the \
+                 OwnedSpin or Zephyr shape.",
                 match (
                     param_services_enabled || param_store_enabled,
                     lifecycle_machines > 0,
@@ -7984,6 +7987,23 @@ mod launch_axis_tests {
         assert!(safe.param_services);
         assert!(safe.axes.iter().any(|a| a.declared == "safety"));
         assert!(caps(None).axes.iter().all(|a| a.declared != "safety"));
+    }
+
+    /// Issue 2772 -- the frameworks this macro refuses the node services on
+    /// are exactly the ones whose image gets none by default, so the default
+    /// never lands on a refusal.
+    #[test]
+    fn the_refused_frameworks_are_the_ones_defaulting_to_no_node_services() {
+        for name in nros_orchestration_ir::FRAMEWORKS {
+            let Some(shape) = framework_from_name(name) else {
+                continue;
+            };
+            assert_eq!(
+                shape == Framework::Rtic,
+                nros_orchestration_ir::framework_without_node_services(name).is_some(),
+                "{name}"
+            );
+        }
     }
 
     /// phase-556 W13 -- a model declaring nothing gets the stock node

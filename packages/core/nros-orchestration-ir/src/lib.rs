@@ -184,6 +184,30 @@ pub const CPP_ONLY_FRAMEWORKS: &[(&str, &str)] = &[(
      `nros::main!` has no PX4 shape",
 )];
 
+/// Frameworks in [`FRAMEWORKS`] whose entry registers none of the runtime's
+/// parameter or lifecycle services, each with the reason. An image booting one
+/// of them cannot serve the stock node interfaces, so it does not get them by
+/// default ([`node_interfaces::entry_default`]); stating them is still refused
+/// by `nros::main!`, never dropped. Everything else in [`FRAMEWORKS`], and every
+/// entry shape in [`ENTRY_SHAPES`], registers them.
+// Issue 2772: the stock default reached an RTIC image that had not opted out,
+// and its own refusal then stopped the build.
+// user-surface: table
+pub const FRAMEWORKS_WITHOUT_NODE_SERVICES: &[(&str, &str)] = &[(
+    "rtic",
+    "the RTIC entry splices the nodes into a framework `#[init]` and emits neither \
+     the parameter nor the lifecycle services",
+)];
+
+/// Why an image booting `name` cannot serve the runtime's parameter or
+/// lifecycle services, if it cannot.
+pub fn framework_without_node_services(name: &str) -> Option<&'static str> {
+    FRAMEWORKS_WITHOUT_NODE_SERVICES
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, r)| *r)
+}
+
 /// Why `nros::main!` refuses `name`, if it is a C++-only framework.
 pub fn cpp_only_framework_reason(name: &str) -> Option<&'static str> {
     CPP_ONLY_FRAMEWORKS
