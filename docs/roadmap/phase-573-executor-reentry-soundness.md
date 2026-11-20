@@ -140,7 +140,8 @@ Acceptance:
 - A mutation of each half fails its test.
 
 The use-after-free itself showed only under AddressSanitizer, which no lane
-runs: [issue 2728](../issues/2728-no-lane-runs-addresssanitizer.md).
+ran then: [issue 2728](../issues/archived/2728-no-lane-runs-addresssanitizer.md)
+(`just check asan-executor-wake` runs it daily now).
 
 ### W4 — The multi-level and RTIC case
 
@@ -216,7 +217,10 @@ an exact one.
 
 ### W5e — A lane runs AddressSanitizer
 
-- **Status:** OPEN — [issue 2728](../issues/2728-no-lane-runs-addresssanitizer.md)
+- **Status:** OPEN — the executor harness and the 2727 guard-condition
+  test run under ASan daily (`just check asan-executor-wake`, host-tests.yml
+  job `asan`; [issue 2728](../issues/archived/2728-no-lane-runs-addresssanitizer.md)).
+  The C run probes are not built with ASan yet.
 
 W5a's use-after-free showed only under AddressSanitizer, which no lane runs.
 A lane that builds the C run probes and the executor harness with ASan makes

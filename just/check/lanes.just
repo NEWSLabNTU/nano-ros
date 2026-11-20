@@ -4425,6 +4425,69 @@ miri-executor-reentry:
             exit 1 ;;
     esac
 
+# Issue 2728 -- the executor's FFI wake paths under AddressSanitizer. A
+# soundness test whose failure is a read of freed memory, with no assertion on
+# the result, passes in an ordinary run: the freed bytes still hold the old
+# values. Issue 2727 was one: a guard condition triggered after its executor
+# dropped passed a freed `WakeCtx` to the wake callback.
+#
+# Two runs. `nros-node --lib` with `rmw-cffi`: the executor's wake,
+# guard-condition and entity-wake unit tests, where C callbacks hold raw
+# context pointers. And `guard_condition_outlives_executor`, the one test that
+# drives a REAL `Executor::drop` over a backend that keeps the wake callback;
+# the lib tests have no such backend, so they cannot reach 2727's read.
+#
+# Measured (2026-11-20, 48 cores, no compiler cache): 7 s and 29 s cold,
+# 2.5 GB. The negative control: with the handle's `Arc` ownership of its wake
+# state given up (2727's old shape) and only `trigger` after the drop, this
+# reports `heap-use-after-free` in `nros_rmw_runtime_wake_cb`'s read, while the
+# plain run's verdict depends on what reuses the freed block.
+#
+# `--target <host>`: build scripts and proc macros stay uninstrumented. Its own
+# target dir (build-root kind `asan`), so no instrumented artifact reaches
+# another build. `detect_leaks=0`, as Miri's `-Zmiri-ignore-leaks`: tests leak
+# on purpose (`Box::leak` for a `'static` scheduler or ladder, 20 objects).
+#
+# EXEMPT because it needs the pinned nightly (`-Zsanitizer`), which the
+# merge-gating images do not carry; host-tests.yml's daily `asan` job installs
+# it and runs this by name.
+[metadata("tier", "exempt", "needs the pinned nightly for -Zsanitizer=address; host-tests.yml's daily `asan` job installs it and runs this by name (issue 2728)")]
+asan-executor-wake:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! cargo +{{NIGHTLY}} --version >/dev/null 2>&1; then
+        echo "asan-executor-wake: the pinned nightly {{NIGHTLY}} is not installed." >&2
+        echo "  rustup toolchain install {{NIGHTLY}} --profile minimal" >&2
+        exit 1
+    fi
+    source scripts/build/build-root.sh
+    host="$(rustc +{{NIGHTLY}} -vV | sed -n 's/^host: //p')"
+    CARGO_TARGET_DIR="$(nros_build_dir "$NROS_KIND_ASAN")"
+    export CARGO_TARGET_DIR
+    export RUSTFLAGS="-Zsanitizer=address"
+    export ASAN_OPTIONS="detect_leaks=0"
+    run() {
+        local what="$1"
+        shift
+        local rc=0 out
+        out="$(cargo +{{NIGHTLY}} test --target "$host" "$@" 2>&1)" || rc=$?
+        printf '%s\n' "$out"
+        [ "$rc" -eq 0 ] || exit "$rc"
+        # A filter or a `cfg` that hides every test exits 0.
+        case "$out" in
+            *"test result: ok."*) ;;
+            *) echo "asan-executor-wake: $what ran no test." >&2; exit 1 ;;
+        esac
+        case "$out" in
+            *"test result: ok. 0 passed;"*)
+                echo "asan-executor-wake: $what ran no test -- renamed, or its cfg is off." >&2
+                exit 1 ;;
+        esac
+    }
+    run "nros-node --lib" -p nros-node --lib --features alloc,rmw-cffi
+    run "guard_condition_outlives_executor" -p nros-tests --features trigger-test \
+        --test guard_condition_outlives_executor
+
 [group('uses:root-target')]
 [metadata("tier", "build")]
 [group('cpu:2')]

@@ -189,6 +189,9 @@ export NROS_KIND_FAILED_RUN_LOGS="failed-run-logs"
 # Issue 0787 — host build dirs for the two C backends that had no lane.
 export NROS_KIND_XRCE_CHECK="xrce-check"
 export NROS_KIND_UORB_CHECK="uorb-check"
+# Issue 2728 — the AddressSanitizer build: instrumented artifacts never share a
+# target dir with an uninstrumented build.
+export NROS_KIND_ASAN="asan"
 
 # nros_build_dir <kind> [<coordinate>...]
 # RFC-0070 R2 — `<root>/<kind>/<coordinate>`, the ONE naming shape.

@@ -14,6 +14,8 @@
 #                   `SYS_NICE`, the only lane that claims `rt-sched`.
 #   - miri        : `just check miri-executor-reentry` (phase-573 W2) — callback
 #                   re-entry under Miri with Tree Borrows.
+#   - asan        : `just check asan-executor-wake` (issue 2728) — the
+#                   executor's FFI wake paths under AddressSanitizer.
 #   - census      : the periodic lane census (phase-475 W5), was lane-census.yml.
 #   - checkout-track / installed-track / image-track : the book's setup flow
 #                   executed (issue 1107, phase-551), was probe.yml.
@@ -401,6 +403,53 @@ jobs:
         run: |
           source ./activate.sh
           just check miri-executor-reentry
+
+  # Issue 2728 — the executor's FFI wake paths under AddressSanitizer, the
+  # check that turns a read of freed memory into a red when the test asserts
+  # nothing about the bytes it read (issue 2727's shape). `tier exempt` for the
+  # same reason as `miri`: `-Zsanitizer` needs the pinned nightly, which the
+  # merge-gating images do not carry. Its guard-condition test links the zenoh
+  # backend, so the job provisions the Linux scope's sources first. Measured
+  # locally: 44 s cold.
+  asan:
+    name: executor wake paths under AddressSanitizer
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    concurrency:
+      group: host-tests-asan-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Build the in-tree nros CLI
+        uses: ./.github/actions/setup-nros-cli
+
+      - name: Provision the Linux scope
+        run: |
+          source ./activate.sh
+          just setup linux
+
+      - name: Install the pinned nightly
+        run: |
+          chan="$(awk '/^channel/ {gsub(/"/,"",$3); print $3; exit}' tools/rust-toolchain.toml)"
+          rustup toolchain install "$chan" --profile minimal
+
+      - name: just check asan-executor-wake
+        run: |
+          source ./activate.sh
+          just check asan-executor-wake
 
   # ===== the build tier (was gate.yml's `check-build`, cron 02:00; phase-559 W7) =====
   #
