@@ -21,6 +21,8 @@
 #      system.toml spelling.
 #   G. the Cyclone descriptor cap's module provides the same reader, on a
 #      configure that included nothing else.
+#   H. a byte count that is not whole KiB is refused naming the nearest
+#      valid values.
 #
 # Usage: ./tests/cmake-image-knob-readers-tests.sh
 # Exit:  0 all assertions held; 1 otherwise.
@@ -107,6 +109,14 @@ if [ "$RC" -eq 0 ] || ! nros_grep_q 'app_stack_bytes' "$TEST_TMPDIR/f.log"; then
     tail -8 "$TEST_TMPDIR/f.log" >&2
 fi
 
+# H. a byte count that is not whole KiB is refused naming the nearest valid
+#    values (phase-581 W5).
+stack "$TEST_TMPDIR/h.log" -DNROS_MEMORY_APP_STACK_BYTES=20000
+if [ "$RC" -eq 0 ] || ! nros_grep_q 'are 19456 or 20480' "$TEST_TMPDIR/h.log"; then
+    fail "H: 20000 bytes was not refused naming 19456 or 20480 (rc=$RC)"
+    tail -8 "$TEST_TMPDIR/h.log" >&2
+fi
+
 printf '%s\n' \
     'cmake_minimum_required(VERSION 3.22)' \
     'include("${NROS_REPO_DIR}/packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsDescriptorCap.cmake")' \
@@ -129,5 +139,5 @@ if [ "$FAILURES" -ne 0 ]; then
     log_error "cmake-image-knob-readers: $FAILURES failure(s)"
     exit 1
 fi
-log_success "cmake-image-knob-readers: A-G (issue 2496)"
+log_success "cmake-image-knob-readers: A-H (issue 2496)"
 exit 0

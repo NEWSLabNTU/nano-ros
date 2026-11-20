@@ -24,7 +24,7 @@
 #   serial    ZENOH_MAX_LARGE_SUBSCRIBERS = 0           (89.5 % RAM used)
 #   ethernet  ZENOH_MAX_LARGE_SUBSCRIBERS = 0,
 #             ZENOH_MAX_SUBSCRIBERS = 1,
-#             ZENOH_SERVICE_BUFFER_SIZE = 1024,
+#             ZENOH_SERVICE_BUFFER_BYTES = 1024,
 #             ZEPHYR_HEAP_SIZE = 32768                  (98.2 % RAM used)
 #
 # Only the first is a board fact, so only it is in `[knobs]`: every image on

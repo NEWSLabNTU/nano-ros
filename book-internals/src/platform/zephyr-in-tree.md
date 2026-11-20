@@ -213,7 +213,7 @@ keys (table above).
 | `CONFIG_NROS_SUBSCRIBER_BUFFER_BYTES` | int | -1 (derive) | Per-subscriber buffer, small payload class |
 | `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` | int | -1 (derive) | Blocks in the large payload class |
 | `CONFIG_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES` | int | -1 (derive) | Per-sample capacity of the large class |
-| `CONFIG_NROS_SERVICE_BUFFER_SIZE` | int | 1024 | Per-service buffer |
+| `CONFIG_NROS_ZENOH_SERVICE_BUFFER_BYTES` | int | 1024 | Per-service buffer |
 
 #### `-1` means "derive it from the message bounds"
 
