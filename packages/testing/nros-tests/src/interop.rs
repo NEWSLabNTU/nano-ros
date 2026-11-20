@@ -871,6 +871,9 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("pubsub_freertos_an536_cyclone_ros2_interop_e2e",
        "nros_freertos_an536_cyclone_listener_keeps_receiving_a_fragmented_sample",
        "freertos-an536-pubsub-cpp-cyclone-r2n"),
+    co("pubsub_freertos_an536_cyclone_ros2_interop_e2e",
+       "nros_freertos_an536_cyclone_listener_keeps_up_with_a_line_rate_burst",
+       "freertos-an536-pubsub-cpp-cyclone-r2n"),
 
     // ── params_per_node_interop — issue 1268 gave it a second cell ──────
     // Three zenoh cases (issue 2023 added the `/parameter_events` one) and one Cyclone case. Before the Cyclone cell existed this
