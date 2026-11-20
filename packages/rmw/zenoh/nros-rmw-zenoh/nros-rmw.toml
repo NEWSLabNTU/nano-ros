@@ -33,12 +33,38 @@ cpp_define = "NROS_RMW_ZENOH_CFFI"
 [rmw.host]
 peer = "zenoh-router"
 
-# Issue 2372 -- the nano-ros Zephyr module backend this one is built over (one
-# of zenoh | xrce | cyclonedds): the `choice NROS_RMW_BACKEND` member a Zephyr
-# image selects. It decides what the module compiles; an out-of-tree backend
-# names the member it builds over, never itself.
+# Issue 2372 -- the nano-ros Zephyr module backend this one is built over: the
+# `choice NROS_RMW_BACKEND` member a Zephyr image selects. It decides what the
+# module compiles. An in-tree backend names itself, which makes it a member of
+# the choice; an out-of-tree one names the member it builds over, or states
+# `module = "zephyr"` when it is its own Zephyr module (phase-581 W8).
 [rmw.zephyr]
 module_backend = "zenoh"
+
+# phase-581 W8 (RFC-0140 D6) -- this backend's member of the module's RMW
+# choice, rendered into zephyr/Kconfig by scripts/gen-rmw-choice.py
+# (`just check rmw-choice`): its prompt, its attribute lines verbatim, its help.
+[rmw.zephyr.kconfig]
+prompt = "zenoh-pico"
+attrs = [
+  # Issue 2105 -- zenoh-pico 1.10's executor thread runs the lease and
+  # keep-alive between socket receives, so a receive must time out. Zephyr
+  # implements SO_RCVTIMEO only under this symbol and otherwise ignores it.
+  "select NET_CONTEXT_RCVTIMEO if NETWORKING && NET_SOCKETS",
+]
+help = """
+Use zenoh-pico as the RMW transport backend.
+Connects to a zenoh router for ROS 2 interop via rmw_zenoh.
+"""
+
+# phase-581 W8 -- and its member of the NuttX RMW choice
+# (integrations/nuttx/Kconfig), rendered by the same script.
+[rmw.nuttx.kconfig]
+prompt = "Zenoh (zenoh-pico)"
+help = """
+Embedded zenoh client; full ROS 2 graph support, low
+footprint. Recommended default for most NuttX boards.
+"""
 
 # How this backend reaches a consumer's link. Pure Rust: an rlib bundled into
 # the C/C++ umbrella, nothing extra on the link line.

@@ -72,15 +72,22 @@ fn setup() {
 /// The fixture's TRACKED files, copied to `<repo>/tmp/<unique>/out-of-tree-rmw`
 /// so the copy starts as a fresh clone would (no `build/`, no `generated/`).
 fn scratch_copy() -> PathBuf {
+    scratch_copy_of(FIXTURE, "src/acme_rmw/nros-rmw.toml")
+}
+
+/// [`scratch_copy`] for any fixture workspace, `marker` a tracked file it must
+/// hold.
+fn scratch_copy_of(fixture: &str, marker: &str) -> PathBuf {
     let root = repo_root();
+    let name = Path::new(fixture).file_name().unwrap().to_str().unwrap();
     let dest = root
         .join("tmp")
         .join(format!(
-            "out-of-tree-rmw-{}-{}",
+            "{name}-{}-{}",
             std::process::id(),
             common::unique_stamp()
         ))
-        .join("out-of-tree-rmw");
+        .join(name);
     // The copy holds an rmw provider (`acme`), and the tests that scan this
     // whole checkout from disk (`cargo-nano-ros`'s
     // `every_announced_backend_resolves_through_the_scan`) would find it beside
@@ -90,16 +97,14 @@ fn scratch_copy() -> PathBuf {
     // root this test's build scans from — untouched.
     fs::create_dir_all(dest.parent().unwrap()).unwrap();
     fs::write(dest.parent().unwrap().join("COLCON_IGNORE"), "").unwrap();
-    let files = common::tracked_files(&root, FIXTURE);
+    let files = common::tracked_files(&root, fixture);
     assert!(
-        files
-            .iter()
-            .any(|f| f.ends_with("src/acme_rmw/nros-rmw.toml")),
-        "{FIXTURE} is tracked and holds the acme provider"
+        files.iter().any(|f| f.ends_with(marker)),
+        "{fixture} is tracked and holds {marker}"
     );
     for f in files {
         let rel = f
-            .strip_prefix(root.join(FIXTURE))
+            .strip_prefix(root.join(fixture))
             .expect("under the fixture");
         let to = dest.join(rel);
         fs::create_dir_all(to.parent().unwrap()).unwrap();
@@ -437,6 +442,61 @@ fn nros_build_generates_a_west_application_over_a_workspace_rmw_provider() {
     assert!(
         kpkg.contains("config NROS_ACME_POOL_SLOTS\n    int\n    default 4\n    default 2\n"),
         "the image's acme knob is a Kconfig default:\n{kpkg}"
+    );
+
+    let _ = fs::remove_dir_all(ws.parent().unwrap());
+}
+
+/// phase-581 W8 (RFC-0140 D6) — an RMW package that is its OWN Zephyr module
+/// (`fixtures/zephyr-module-rmw`, `[rmw.zephyr] module = "zephyr"`): the
+/// module hook's render selects the package's own member of the module's RMW
+/// choice, `NROS_RMW_STUB`, never a module backend, and `Kconfig.packages`
+/// adds that member to `choice NROS_RMW_BACKEND`. With no edit outside the
+/// fixture. The configure that adds the module and runs its CMake is measured
+/// on Zephyr 3.7 in `docs/roadmap/data/phase-581-w8-measure.md`.
+#[test]
+fn an_rmw_package_that_is_its_own_zephyr_module_joins_the_choice() {
+    setup();
+    let ws = scratch_copy_of(
+        "packages/testing/nros-tests/fixtures/zephyr-module-rmw",
+        "src/stub_rmw/zephyr/module.yml",
+    );
+    nros_cli_core::cmd::configure::ensure_current(&ws, &[], false, false, "build", None)
+        .unwrap_or_else(|e| panic!("the implicit configure of a `stub` image: {e:?}"));
+    let frag = ws.join("build/kconfig-zephyr.conf");
+    let defaults = ws.join("build/kconfig-zephyr-defaults.conf");
+    let env = ws.join("build/kconfig-zephyr-env.toml");
+    let packages = ws.join("build/Kconfig.packages");
+    nros(&[
+        "dev",
+        "image",
+        "leaf-system",
+        ws.join("src/demo_bringup").to_str().unwrap(),
+        "--nano-ros-path",
+        repo_root().to_str().unwrap(),
+        "--image",
+        "zephyr",
+        "--language",
+        "rust",
+        "--kconfig-out",
+        frag.to_str().unwrap(),
+        "--kconfig-defaults-out",
+        defaults.to_str().unwrap(),
+        "--kconfig-packages-out",
+        packages.to_str().unwrap(),
+        "--image-env-out",
+        env.to_str().unwrap(),
+    ])
+    .unwrap_or_else(|e| panic!("the module hook's Kconfig render refused `stub`: {e}"));
+    let fragment = fs::read_to_string(&frag).unwrap();
+    assert!(
+        fragment.contains("CONFIG_NROS_RMW_STUB=y") && !fragment.contains("CONFIG_NROS_RMW_ZENOH"),
+        "a `stub` image selects its own member:\n{fragment}"
+    );
+    let kpkg = fs::read_to_string(&packages).unwrap();
+    assert!(
+        kpkg.contains("choice NROS_RMW_BACKEND\n\nconfig NROS_RMW_STUB\n    bool"),
+        "Kconfig.packages adds the member to the module's RMW choice:\n{kpkg}"
     );
 
     let _ = fs::remove_dir_all(ws.parent().unwrap());

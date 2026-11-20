@@ -1,0 +1,29 @@
+# The `stub` backend's descriptor (RFC-0071 D1/D7). A third party writes this
+# file; the nano-ros toolchain lowers it. The names come from `package.xml`.
+[rmw]
+cpp_define = "NROS_RMW_STUB"
+
+# A stub carries nothing off the target, so nothing runs on the host side.
+[rmw.host]
+peer = "none"
+
+# phase-581 W8 (RFC-0140 D6) -- this backend is its own Zephyr module: `zephyr/`
+# beside this file holds its `module.yml`. The nano-ros module hook adds the
+# package directory to ZEPHYR_EXTRA_MODULES, and `Kconfig.packages` adds
+# `NROS_RMW_STUB` to the module's `choice NROS_RMW_BACKEND`, which the image's
+# `rmw = "stub"` selects. No edit outside this package.
+[rmw.zephyr]
+module = "zephyr"
+
+# RFC-0071 D11/D15 -- the image links this crate itself and registers the
+# backend as `stub_rmw::register()`.
+[rmw.provides.cargo]
+crate = "stub-rmw"
+register = "register"
+
+[rmw.provides.cargo.platform_features]
+platform-zephyr = "platform-zephyr"
+
+[rmw.link]
+rlib_dep = "stub-rmw"
+needs_cxx_linker = false
