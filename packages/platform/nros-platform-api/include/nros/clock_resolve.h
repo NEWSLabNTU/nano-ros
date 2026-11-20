@@ -1,4 +1,4 @@
-/* Boot-time resolution of the image's wall-clock source (RFC-0141 D1, D4).
+/* Boot-time resolution of the image's wall-clock source.
  *
  * An image declares one source, or an ordered fallback, in `[knobs.clock]`:
  *

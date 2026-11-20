@@ -47,7 +47,7 @@ extern "C" {
 /* No source: the store's "none latched" value for `latched`. */
 #define NROS_CLOCK_SOURCE_NONE 0xFFu
 
-/* `upgrade` (RFC-0141 D1 rule 2): whether a source earlier in the declared
+/* `upgrade`: whether a source earlier in the declared
  * list may take over after boot. */
 #define NROS_CLOCK_UPGRADE_NEVER 0u
 #define NROS_CLOCK_UPGRADE_MONOTONIC 1u
@@ -231,7 +231,7 @@ static inline nros_wall_clock_state_t nros_clock_epoch_state(uint8_t configured)
  *
  * With upgrade = monotonic the reading is FLOORED at the last one returned:
  * a source that takes over while behind the old one holds the clock still
- * until it catches up, instead of stepping a stamp back (RFC-0141 D1 rule 2).
+ * until it catches up, instead of stepping a stamp back.
  * That floor is what keeps a consumer from seeing a stamp from an earlier
  * epoch after a later one when the source changes mid-run. */
 static inline uint64_t nros_clock_epoch_us(void) {
