@@ -22,9 +22,9 @@
 
 #![no_std]
 
-// `smoltcp_clock_now_ms` (referenced by `nros-smoltcp::bridge`) is
-// provided by `zpico-sys`'s `platform_aliases.c`, which forwards to
-// `nros_platform_time_now_ns` — the canonical platform C ABI.
+// `smoltcp_clock_now_ms` (referenced by `zpico.c`) is provided by
+// `zpico-sys`'s `platform_aliases.c`, which forwards to
+// `nros_platform_clock_ns` — the canonical platform C ABI's monotonic clock.
 // Phase 129 retired the per-board override.
 
 // Application modules

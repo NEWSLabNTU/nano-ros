@@ -584,12 +584,16 @@ struct EventReg {
 /// Phase 129.C.3.a — call the canonical `nros_platform_*` C
 /// symbol directly instead of routing through `ConcretePlatform`.
 /// Drops this crate's `nros-platform/platform-<rtos>` forward.
+///
+/// The MONOTONIC clock: every reader here measures a duration (deadline QoS,
+/// publish and match timing). Issue 2760: it read the wall clock, which is 0
+/// on a port without one and steps when the host's clock is set.
 fn now_ms() -> u64 {
     unsafe extern "C" {
-        fn nros_platform_time_now_ns() -> u64;
+        fn nros_platform_clock_ns() -> u64;
     }
-    // Issue 0532 item 5 — the ABI is nanoseconds now; this caller wants ms.
-    unsafe { nros_platform_time_now_ns() / 1_000_000 }
+    // The ABI is nanoseconds; this caller wants ms.
+    unsafe { nros_platform_clock_ns() / 1_000_000 }
 }
 
 impl ZenohPublisher {

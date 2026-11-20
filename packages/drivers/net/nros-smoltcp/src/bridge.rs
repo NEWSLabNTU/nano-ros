@@ -602,7 +602,12 @@ unsafe extern "C" {
     /// routed through `smoltcp_clock_now_ms`, which `zpico-sys`'s
     /// `platform_aliases.c` still provides for the C-side `zpico.c`
     /// callers but DDS-only builds drop along with zpico-sys).
-    fn nros_platform_time_now_ns() -> u64;
+    ///
+    /// The MONOTONIC clock: smoltcp's `Instant` times retransmits, ARP and
+    /// TCP timers, which are durations. It read the wall clock until issue
+    /// 2760, so on a port with no wall clock (0) every timer stood still, and
+    /// on one whose wall clock was stepped every deadline moved with it.
+    fn nros_platform_clock_ns() -> u64;
 }
 
 // ============================================================================
@@ -723,9 +728,9 @@ impl SmoltcpBridge {
         BRIDGE_POLL_CALLS.fetch_add(1, Ordering::Relaxed);
 
         let timestamp =
-            // Issue 0532 item 5 — the wall-clock ABI is ns; smoltcp wants ms.
+            // The monotonic ABI is ns; smoltcp wants ms.
             smoltcp::time::Instant::from_millis(
-                unsafe { nros_platform_time_now_ns() / 1_000_000 } as i64,
+                unsafe { nros_platform_clock_ns() / 1_000_000 } as i64,
             );
 
         // Phase 71.26 — drain any multicast joins queued by
@@ -1188,7 +1193,7 @@ impl SmoltcpBridge {
 
     /// Get current clock in milliseconds (delegates to platform).
     pub fn clock_now_ms() -> u64 {
-        unsafe { nros_platform_time_now_ns() / 1_000_000 }
+        unsafe { nros_platform_clock_ns() / 1_000_000 }
     }
 
     /// Trigger a poll via the registered callback.
