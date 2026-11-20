@@ -10,7 +10,7 @@ found: 2026-11-17
 ---
 
 **Home: [phase-573](../roadmap/phase-573-executor-reentry-soundness.md).** Found while
-scoping [phase-572](../roadmap/phase-572-rust-component-graph-query.md), which
+scoping [phase-572](../roadmap/archived/phase-572-rust-component-graph-query.md), which
 keeps the graph queries out of a Rust callback for this reason and waits on it.
 
 ## What

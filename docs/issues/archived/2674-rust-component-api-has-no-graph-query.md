@@ -1,7 +1,9 @@
 ---
 id: 2674
 title: "A Rust component cannot query the ROS graph: the C and C++ component surfaces can, and only the imperative Rust Executor has the queries"
-status: open
+status: resolved
+resolved: 2026-11-21
+resolved_in: "3e37927b51"
 type: limitation
 severity: low
 area: [api, rust, graph]
@@ -9,7 +11,7 @@ related: [issue-2360, issue-2658, issue-0791, phase-379, phase-381, phase-572]
 found: 2026-11-17
 ---
 
-**Home: [phase-572](../roadmap/phase-572-rust-component-graph-query.md).** The
+**Home: [phase-572](../../roadmap/archived/phase-572-rust-component-graph-query.md).** The
 API-parity work it extends was phase-379 (archived), beside phase-381, which
 added the graph queries.
 
@@ -69,3 +71,29 @@ needs.
   names its call or a stated reason.
 - Issue 2360's Rust graph-query measurement is taken on the nucleo twin, or
   that issue says why it is not needed.
+
+## Resolution (2026-11-21)
+
+Fixed by `3e37927b51` (phase-572 W2 and W3). The Rust row of the table above
+now reads:
+
+| language | surface | graph query there |
+| --- | --- | --- |
+| Rust | `NodeContext` in `register()`, `TickCtx` in `tick()` | `ctx.get_topic_names_and_types(visit)` and the other thirteen, on both contexts |
+
+`CallbackCtx` carries none, by phase-572 W1's ruling: a callback runs inside
+the pass, and giving it the session would alias the executor (issue 2675). A
+component that wants an answer from a callback marks it due and asks in its
+`tick()`.
+
+Acceptance, item by item:
+- **A Rust component sees a peer's topic.** `tests/graph_query_parity.rs`
+  runs a Rust, a C and a C++ component in one image beside a zenoh talker. All
+  three give one answer, `/chatter` included, with its type in its ROS form
+  since issue 2775. The query is from `tick()`, not a callback, per the ruling
+  above.
+- **Every query has a row.** The fourteen queries are one set on both Rust
+  contexts (`graph_query_forwarders!`), and each has an api-parity ledger row.
+- **The nucleo measurement.** Taken (phase-572 W4, recorded in issue 2360): a
+  Rust component that runs the graph queries on every tick peaks at 28,340 B of
+  main, the same as the stock talker, inside the 32 KiB a Rust entry gets.

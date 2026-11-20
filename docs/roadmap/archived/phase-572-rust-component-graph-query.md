@@ -1,9 +1,9 @@
 # Phase 572 — a Rust component can query the ROS graph
 
-**Status (2026-11-21). OPEN: W1, W2 and W3 are done (`3e37927b51`); W4 is
-open. W2's soundness conditions still hold while
-[phase-573](phase-573-executor-reentry-soundness.md) W3/W4 are open.** Tracks
-[issue 2674](../issues/2674-rust-component-api-has-no-graph-query.md). Implements
+**Status (2026-11-21). COMPLETE: W1 to W4 are done. W2's soundness
+conditions still hold while
+[phase-573](../phase-573-executor-reentry-soundness.md) W3/W4 are open.** Tracks
+[issue 2674](../../issues/archived/2674-rust-component-api-has-no-graph-query.md). Implements
 no new RFC. It closes a language-parity gap in the surface RFC-0089 adopted.
 Owner: nros 243 (W2 onward, released by nros 133 on 2026-11-20).
 
@@ -112,7 +112,7 @@ ROS form.
 
 ### W4 — The Rust graph-query stack measurement (issue 2360)
 
-- **Status:** OPEN (W2 landed)
+- **Status:** DONE (2026-11-21, measured; recorded in issue 2360)
 
 Once W2 lands, take issue 2360's missing measurement: the main-thread peak, on
 the nucleo-f767zi Renode twin, of a Rust Zephyr image whose component queries
@@ -120,3 +120,9 @@ the graph.
 
 Acceptance: the peak is recorded in issue 2360, and fits the 32 KiB main a
 Rust entry gets, or a frame fix lands with it.
+
+Measured: 28,340 B, the same as the stock talker re-measured that day, with
+4,428 B to spare. No frame fix is needed. The queries run from `tick()`, after
+registration, whose chain is deeper. Recorded in issue 2360, which this closes.
+Turning on graph discovery for the measurement found issue 2783: the stock
+Rust template's main stack leaves no RAM for discovery on this board.

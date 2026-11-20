@@ -1,7 +1,9 @@
 ---
 id: 2360
 title: "A Rust Zephyr entry's registration frames are deep enough that 32 KiB of main stack does not hold an action server (measured: 63,776 B)"
-status: open
+status: resolved
+resolved: 2026-11-21
+resolved_in: "the change that archives this issue"
 type: tech-debt
 severity: medium
 area: [zephyr, rust, executor]
@@ -9,9 +11,9 @@ related: [2359, 2658, 2674, phase-548, phase-557, phase-572]
 found: 2026-11-07
 ---
 
-**Home:** [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md), which derives
+**Home:** [phase-557](../../roadmap/phase-557-stack-floor-measured-frames.md), which derives
 stack floors from measured frames. Rehomed 2026-11-15 from
-[phase-548](../roadmap/archived/phase-548-three-languages-every-board.md) (archived).
+[phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md) (archived).
 
 Found while fixing issue 2359.
 
@@ -213,3 +215,30 @@ Two items remain, and neither is a fix this issue can make alone:
 2. **Lowering the floor, or stating it per entity kind,** belongs to the
    stack-floor redesign that is waiting on the user (phase-557 "Not in this
    phase"; issue 2400). Until it is decided, the 32 KiB floor stands.
+
+## Resolution (2026-11-21)
+
+Item 1 above is measured (phase-572 W4), now that a Rust component can query
+the graph (issue 2674, `3e37927b51`). Same twin, same method as the table above:
+the stack-floor lane's `twin.conf` (`CONFIG_INIT_STACKS`, the thread analyzer,
+64 KiB main), 75 s, 14 analyzer rounds, every round equal.
+
+| image (Rust, zenoh, nucleo-f767zi twin) | main peak |
+| --- | ---: |
+| stock talker template, re-measured the same day | 28,340 B |
+| same, with a component that runs `get_topic_names_and_types`, `get_publisher_names_and_types_by_node` and `get_node_names` on every tick | 28,340 B |
+
+The graph image fits the 32 KiB a Rust entry gets, with 4,428 B to spare. The
+queries add nothing to the peak: they run from `tick()`, after registration,
+and registration's chain is deeper than theirs. No frame fix is needed. (The
+talker's peak moved from 27,248 B to 28,340 B since the table above; the
+graph queries are not the cause, because the stock image moved with it.)
+
+Item 2, lowering the floor or stating it per entity kind, is
+[issue 2400](../2400-stack-floor-from-measured-frames.md)'s, under phase-557. It
+is not this issue's to make. Nothing of this issue's own is left, so it closes.
+
+Found on the way and filed separately:
+[issue 2783](../2783-graph-discovery-overflows-rust-template-ram.md). Turning on
+graph discovery in the stock Rust template on this board fails to link, because
+the template's 75,536 B main leaves 552 B of RAM and discovery costs 8,232 B.
