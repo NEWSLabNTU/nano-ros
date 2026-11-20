@@ -104,9 +104,11 @@ fn the_c_cpp_and_rust_component_surfaces_answer_one_graph_alike(
         1,
         "the talker is seen once: {c}"
     );
+    // Issue 2775: the ROS form, as `ros2 topic list -t` gives it, never the
+    // `std_msgs::msg::dds_::String_` the wire carries.
     assert!(
-        !c.ends_with("chatter_type="),
-        "`/chatter`'s type is seen: {c}"
+        c.ends_with("chatter_type=std_msgs/msg/String"),
+        "`/chatter`'s type is seen in its ROS form: {c}"
     );
     for lang in ["cpp", "rust"] {
         assert_eq!(&got[lang], c, "{lang} answers what C answers:\n{text}");
