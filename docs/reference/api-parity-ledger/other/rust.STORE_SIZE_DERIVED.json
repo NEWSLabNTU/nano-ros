@@ -1,0 +1,6 @@
+{
+  "key": "rust:STORE_SIZE_DERIVED",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "The second line of a full parameter store's report: when the build derives the store's size instead of taking a stated one. Same reason as `rust:STORE_SIZE_KNOB`: the store is sized at build time, which ROS 2 has no counterpart for. Exported from the `nros` facade for the C API's refusals. Issue 2768."
+}

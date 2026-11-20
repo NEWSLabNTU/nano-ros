@@ -1,0 +1,6 @@
+{
+  "key": "rust:STORE_SIZE_KNOB",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "The text naming the knob that sizes the parameter store, in every spelling a user writes. The store is a fixed-capacity table sized at build time, which ROS 2's growable store has no counterpart for, so a full store is a refusal whose remedy is a build setting. Exported from the `nros` facade so the C API's refusals (raised outside the executor) name the knob in the same words as the executor's. Issue 2768."
+}
