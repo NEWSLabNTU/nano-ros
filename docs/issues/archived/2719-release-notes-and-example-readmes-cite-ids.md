@@ -1,7 +1,8 @@
 ---
 id: 2719
 title: "Changelog fragments and example READMEs cite phase, issue and RFC ids"
-status: open
+status: resolved
+resolved: 2026-11-21
 type: limitation
 area: [docs, release]
 severity: low
@@ -45,3 +46,24 @@ reference rendered), stripped the 150, and added
    replace an id with what changed and why; do not just delete it. A
    README replaces an id with the fact it stood for, or moves contributor
    material out of the README.
+
+## Resolution (2026-11-21)
+
+Plan item 3 is done: the ratchet holds no file. The sweep found the gate's
+reach narrower than its rule in two places, and both are closed:
+
+- `USER_TEXT_FILE` matched `examples/.+/README`, which needs a directory below
+  `examples/`, so `examples/README.md` itself (72 rendered ids) was never
+  read. Its contributor material (the tree's history, the layout classes,
+  how the matrix is tested, the gaps behind the empty cells) moved to the
+  Internals book as `testing/example-tree-layout.md`, where its ids belong;
+  what stays is copy-out text with the facts stated.
+- `CHANGELOG.md`, the release history the fragments render into, was not
+  read either (68 ids, two internal project names). Each id is replaced by
+  the fact it stood for.
+
+The pattern now reads `examples/README.md` and `CHANGELOG.md`, and the
+self-test asserts both are in scope, so a narrower pattern fails it. The
+per-release pages under `book/src/migrating/releases/` are user-book pages,
+already read by the book scope, and held no id.
+
