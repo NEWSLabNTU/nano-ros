@@ -68,6 +68,15 @@ tree in everything but comments, the prototype and that unreached define.
 The island's 0003 (an out-of-tree tracing backend) is not part of this issue:
 nothing in nano-ros needs it, and its exit plan retires it on 4.x.
 
+Measured on host 241 (2026-11-20), on copies of the 3.7 and 4.4 store
+workspaces: each line's patch set exits 0 and again on a re-run; Zephyr's
+`samples/subsys/tracing` (`prj_native_ctf.conf`, native_sim/native/64) with
+one injected `sys_trace_app_marker(7, 42)` builds and runs, and `channel0_0`
+holds the payload `07000000 2a000000` after id byte `0x70` (3.7) and after
+`00 f0`, i.e. 0xF000 as a little-endian u16 (4.4). Not yet run: a nano-ros
+sched-task image with CTF on (the shim's weak call end to end), and 3.7's
+`thread_priority_set` events.
+
 ## Acceptance
 
 - A Zephyr image with CTF tracing on and callback tracing enabled, built on a
