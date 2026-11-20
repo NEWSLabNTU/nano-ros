@@ -288,7 +288,13 @@ impl PriorityPlan {
             "freertos" => PriorityPlan {
                 direction: Direction::BiggerIsUrgent,
                 range: band(1, 7),
-                reserved: reserved("transport", 4, 4),
+                // `reserved.foreign`: lwIP's tcpip_thread and the kernel's
+                // timer service task, measured by the boot task census.
+                reserved: {
+                    let mut m = reserved("transport", 4, 4);
+                    m.insert("foreign".to_string(), band(4, 4));
+                    m
+                },
                 app: band(1, 3),
                 source: "packages/platform/nros-platform-freertos/nros-platform.toml".into(),
                 max_levels: None,

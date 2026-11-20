@@ -655,6 +655,12 @@ fn level_of_index(all: &[SchedTaskSpec<'_>], index: usize) -> u8 {
     ::nros::sched_task_level_by(all.len(), index, false, |i| all[i].priority).unwrap_or(0)
 }
 
+unsafe extern "C" {
+    /// Print every task the kernel holds with its priority, once the image is
+    /// up (`c/freertos_task_glue.c`).
+    fn nros_board_freertos_report_task_census();
+}
+
 /// issue #144 — chained level spawn for FreeRTOS. `remaining.split_first()`
 /// is the next sched task to bring up and the tail it carries; empty → `Ok`.
 /// Spawns exactly ONE FreeRTOS task for `remaining[0]`, handing it
@@ -686,6 +692,9 @@ where
     E: core::fmt::Debug,
 {
     let Some((sched_task, rest)) = remaining.split_first() else {
+        // The chain's end: every level is up, so the image's task set is
+        // complete. Print it for the priority plan (`task census`).
+        unsafe { nros_board_freertos_report_task_census() };
         return Ok(());
     };
     // SAFETY: `remaining` is a sub-slice of `all` (see above).

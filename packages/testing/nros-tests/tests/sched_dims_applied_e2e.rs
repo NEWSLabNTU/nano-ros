@@ -53,10 +53,10 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
-        build_native_workspace_rust_realtime_entry, build_nuttx_workspace_cpp_realtime_entry,
-        build_nuttx_workspace_rust_realtime_entry, build_threadx_workspace_rust_realtime_entry,
-        build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_c_realtime_entry_smp,
-        build_zephyr_workspace_cpp_realtime_entry,
+        build_freertos_workspace_rust_realtime_entry, build_native_workspace_rust_realtime_entry,
+        build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
+        build_threadx_workspace_rust_realtime_entry, build_zephyr_workspace_c_realtime_entry,
+        build_zephyr_workspace_c_realtime_entry_smp, build_zephyr_workspace_cpp_realtime_entry,
         build_zephyr_workspace_rust_realtime_derived_entry,
         build_zephyr_workspace_rust_realtime_entry,
     },
@@ -1052,5 +1052,149 @@ fn nuttx_level_budget_overrun_is_throttled_by_the_kernel() {
              (two enforcers):\n{log}",
             lang.as_str()
         );
+    }
+}
+
+/// Every FreeRTOS task's priority, as the image's boot census states it
+/// (`nros: task census name=`<name>` prio=<n>`), in boot order.
+fn freertos_task_census(log: &str) -> Vec<(String, u32)> {
+    log.lines()
+        .filter_map(|l| {
+            let rest = l.split("nros: task census name=`").nth(1)?;
+            let (name, tail) = rest.split_once("` prio=")?;
+            let prio = tail.trim().parse().ok()?;
+            Some((name.to_string(), prio))
+        })
+        .collect()
+}
+
+/// The FreeRTOS realtime images print a task census once every level is up,
+/// and every task in it is placed by the FreeRTOS priority plan.
+///
+/// FreeRTOS has no procfs, so the image states its own tasks; this is the
+/// measurement behind the plan's `reserved.foreign` band. Every task's
+/// priority falls in a band of the plan (the kernel's IDLE task at 0 aside),
+/// and the two tasks nano-ros does not create, lwIP's `tcpip_thread` and the
+/// kernel's timer service task, fall in `reserved.foreign`. Before the band,
+/// the timer service task sat at 2, inside the application pool.
+#[test]
+fn freertos_task_census_is_placed_by_the_priority_plan() {
+    if !nros_tests::lane_scope::admits(MP::FreertosMps2) {
+        return;
+    }
+    type Resolve = fn() -> TestResult<PathBuf>;
+    let cells: [(ML, Resolve, &str); 2] = [
+        (
+            ML::Rust,
+            || build_freertos_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
+            "rust",
+        ),
+        (
+            ML::C,
+            || build_freertos_workspace_c_realtime_entry().map(|p| p.to_path_buf()),
+            "c",
+        ),
+    ];
+    let plan = FreertosPlan::load();
+    for (lang, resolve, tag) in cells {
+        let entry = resolve().require(&format!("freertos-mps2 {tag} realtime"));
+        let port = port_of(MP::FreertosMps2, lang, MW::RealtimeSchedTasks);
+        let _router = ZenohRouter::start_on("0.0.0.0", port)
+            .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+        let groups: Vec<Vec<String>> = vec![vec!["nros: task census done tasks=".into()]];
+        let mut q = QemuProcess::start_mps2_an385_networked(&entry)
+            .unwrap_or_else(|e| panic!("[freertos-mps2 {tag}] boot QEMU: {e}"));
+        let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+        q.kill();
+        let log = log.unwrap_or_else(|e| panic!("[freertos-mps2 {tag}] no task census: {e}"));
+        let census = freertos_task_census(&log);
+        eprintln!("[freertos-mps2 {tag}] census: {census:?}");
+        assert!(
+            !census.is_empty(),
+            "[freertos-mps2 {tag}] empty census:\n{log}"
+        );
+        let mut undeclared = Vec::new();
+        for (name, prio) in &census {
+            // The kernel's idle task sits at 0, below every plan's range.
+            if name == "IDLE" {
+                assert_eq!(*prio, 0, "[freertos-mps2 {tag}] IDLE is not at 0");
+                continue;
+            }
+            let in_band = plan
+                .bands
+                .iter()
+                .any(|(_, (lo, hi))| lo <= prio && prio <= hi);
+            if !in_band {
+                undeclared.push((name.clone(), *prio));
+            }
+        }
+        assert!(
+            undeclared.is_empty(),
+            "[freertos-mps2 {tag}] task(s) at a priority no band of the plan holds \
+             ({}): {undeclared:?}",
+            plan.source
+        );
+        // The tasks nano-ros does not create sit in the measured foreign band,
+        // never in the pool an application level is allocated from.
+        let (flo, fhi) = plan.band("reserved.foreign");
+        for foreign in ["tcpip_thread", "Tmr Svc"] {
+            let prio = census
+                .iter()
+                .find(|(n, _)| n == foreign)
+                .map(|(_, p)| *p)
+                .unwrap_or_else(|| panic!("[freertos-mps2 {tag}] no `{foreign}` in {census:?}"));
+            assert!(
+                flo <= prio && prio <= fhi,
+                "[freertos-mps2 {tag}] `{foreign}` at {prio} is outside reserved.foreign \
+                 [{flo}, {fhi}] ({})",
+                plan.source
+            );
+        }
+    }
+}
+
+/// The FreeRTOS platform's priority plan, read from its descriptor: every
+/// `reserved.*` and `pool.*` band by its key.
+struct FreertosPlan {
+    source: &'static str,
+    bands: Vec<(String, (u32, u32))>,
+}
+
+impl FreertosPlan {
+    fn load() -> Self {
+        let source = "packages/platform/nros-platform-freertos/nros-platform.toml";
+        let text = std::fs::read_to_string(nros_tests::project_root().join(source))
+            .unwrap_or_else(|e| panic!("read {source}: {e}"));
+        let doc: toml::Table = text
+            .parse()
+            .unwrap_or_else(|e| panic!("parse {source}: {e}"));
+        let plan = doc
+            .get("priority_plan")
+            .and_then(|v| v.as_table())
+            .unwrap_or_else(|| panic!("{source}: no [priority_plan]"));
+        let mut bands = Vec::new();
+        for group in ["reserved", "pool"] {
+            let Some(t) = plan.get(group).and_then(|v| v.as_table()) else {
+                continue;
+            };
+            for (k, v) in t {
+                let pair = v
+                    .as_array()
+                    .filter(|a| a.len() == 2)
+                    .and_then(|a| Some((a[0].as_integer()? as u32, a[1].as_integer()? as u32)));
+                if let Some(p) = pair {
+                    bands.push((format!("{group}.{k}"), p));
+                }
+            }
+        }
+        Self { source, bands }
+    }
+
+    fn band(&self, key: &str) -> (u32, u32) {
+        self.bands
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, b)| *b)
+            .unwrap_or_else(|| panic!("{}: no `{key}` band", self.source))
     }
 }

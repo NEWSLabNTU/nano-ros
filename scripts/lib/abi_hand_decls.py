@@ -122,6 +122,10 @@ SURFACES = {
             "nros_board_log_write_stderr": (
                 "nros-board-threadx-linux's own console shim, board-local"
             ),
+            "nros_board_freertos_report_task_census": (
+                "FreeRTOS board boot task census (c/freertos_task_glue.c), "
+                "board-local (no ABI header)"
+            ),
             "nros_board_freertos_run_init_array": (
                 "FreeRTOS board ctor runner, board-local (no ABI header)"
             ),

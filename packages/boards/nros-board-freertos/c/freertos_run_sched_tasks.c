@@ -124,6 +124,8 @@ extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
  * Every FreeRTOS board compiles exactly one board TU, so each supplies one
  * STRONG definition — no weak fallback, and no board `#ifdef` here. */
 extern void nros_board_freertos_console_write(const char* s);
+/* Every task with its priority, once the image is up (freertos_task_glue.c). */
+extern void nros_board_freertos_report_task_census(void);
 
 /* phase-436 C1 — install FreeRTOS's park on `executor`, if this build has a
  * wake object to park on.
@@ -1131,6 +1133,9 @@ static int freertos_spawn_next_level(void* scheduler, const nros_sched_task_spec
                                      size_t n_remaining,
                                      const nros_sched_task_memory_t* task_memory) {
     if (n_remaining == 0u) {
+        /* The chain's end: every level is up, so the image's task set is
+         * complete. Print it for the priority plan (`task census`). */
+        nros_board_freertos_report_task_census();
         return 0;
     }
     const nros_sched_task_spec_t* t = &remaining[0];

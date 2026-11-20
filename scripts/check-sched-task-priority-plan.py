@@ -96,6 +96,32 @@ def cross_reference(plans, errors):
                 f"priority_plan range tops out at {plan['range'][1]} but "
                 f"configMAX_PRIORITIES = {defs[0].value} allows at most {top}")
 
+    # The foreign band is a MEASURED statement (the boot task census), and the
+    # two tasks it holds take their priority from these macros. A macro that
+    # moves out of the band makes the plan false with nothing at run time to
+    # say so, so the gate compares them. Absent or unparsable is an error.
+    lo, hi = plan["reserved"].get("foreign", (None, None))
+    lwip = ROOT / "packages/boards/nros-board-freertos/config/lwipopts.h"
+    for src, macro, who in (
+        (hdr, "configTIMER_TASK_PRIORITY", "the kernel's timer service task"),
+        (lwip, "TCPIP_THREAD_PRIO", "lwIP's tcpip_thread"),
+    ):
+        found = [d for d in per_item.c_defines(src.read_text(encoding="utf-8"))
+                 if d.name == macro and not d.conditional]
+        if len(found) != 1 or not (found[0].value or "").isdigit():
+            errors.append(
+                f"{src.relative_to(ROOT)}: expected exactly one unconditional "
+                f"numeric `#define {macro}`, found "
+                f"{[(d.line, d.value) for d in found] or 'none'}")
+            continue
+        v = int(found[0].value)
+        if lo is None or not (lo <= v <= hi):
+            errors.append(
+                f"{macro} = {v} ({src.relative_to(ROOT)}) puts {who} outside "
+                f"the freertos priority plan's reserved.foreign = [{lo}, {hi}]: "
+                "a task nano-ros does not create sits where the plan cannot "
+                "see it, and can share a priority with an application level")
+
 
 def main():
     plans = load_plans()

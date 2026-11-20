@@ -14,6 +14,7 @@
  * lwIP also compile `network_glue.c`.
  */
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "FreeRTOS.h"
@@ -112,4 +113,60 @@ void nros_freertos_set_current_task_priority(uint32_t priority)
 uintptr_t nros_freertos_current_task_id(void)
 {
     return (uintptr_t)xTaskGetCurrentTaskHandle();
+}
+
+/*
+ * The task census: every task the kernel holds, with its priority, printed
+ * once when the image is fully up (after the last level's setup). A priority
+ * plan reserves bands for threads nano-ros does not create (lwIP's
+ * `tcpip_thread`, the kernel's timer service task); FreeRTOS has no procfs to
+ * read them from, so the image says what is there and a test classifies each
+ * task against the plan. One line per task:
+ *
+ *   nros: task census name=`<name>` prio=<n>
+ *
+ * then `nros: task census done tasks=<n>`. Without the kernel's trace
+ * facility it says so instead, and the plan's foreign band stays unmeasured.
+ */
+extern void nros_board_freertos_console_write(const char* s);
+extern void* nros_platform_alloc(size_t size);
+extern void nros_platform_dealloc(void* ptr);
+
+static const char* census_dec(uint32_t v, char* buf, size_t len) {
+    size_t i = len - 1u;
+    buf[i] = '\0';
+    do {
+        buf[--i] = (char)('0' + (v % 10u));
+        v /= 10u;
+    } while (v != 0u && i > 0u);
+    return &buf[i];
+}
+
+void nros_board_freertos_report_task_census(void) {
+#if defined(configUSE_TRACE_FACILITY) && configUSE_TRACE_FACILITY
+    char nb[12];
+    /* Room for tasks created between the count and the read. */
+    UBaseType_t cap = uxTaskGetNumberOfTasks() + 4u;
+    TaskStatus_t* st = (TaskStatus_t*)nros_platform_alloc(cap * sizeof(TaskStatus_t));
+    if (st == NULL) {
+        nros_board_freertos_console_write("nros: task census unavailable: no heap for it\n");
+        return;
+    }
+    UBaseType_t n = uxTaskGetSystemState(st, cap, NULL);
+    for (UBaseType_t i = 0; i < n; ++i) {
+        nros_board_freertos_console_write("nros: task census name=`");
+        nros_board_freertos_console_write(st[i].pcTaskName != NULL ? st[i].pcTaskName : "?");
+        nros_board_freertos_console_write("` prio=");
+        nros_board_freertos_console_write(
+            census_dec((uint32_t)st[i].uxBasePriority, nb, sizeof(nb)));
+        nros_board_freertos_console_write("\n");
+    }
+    nros_board_freertos_console_write("nros: task census done tasks=");
+    nros_board_freertos_console_write(census_dec((uint32_t)n, nb, sizeof(nb)));
+    nros_board_freertos_console_write("\n");
+    nros_platform_dealloc(st);
+#else
+    nros_board_freertos_console_write(
+        "nros: task census unavailable: configUSE_TRACE_FACILITY is 0\n");
+#endif
 }

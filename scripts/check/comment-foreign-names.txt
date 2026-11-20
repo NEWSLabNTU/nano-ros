@@ -121,7 +121,6 @@ MEMP_NETDB
 memp_free
 sys_arch_netconn_sem_get
 tcpip_msg
-tcpip_thread
 
 # ESP-IDF and esp-rs
 esp_log_write
