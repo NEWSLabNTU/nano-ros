@@ -370,7 +370,13 @@ because its image is the binary that gets flashed.
   more than one marked, are refused.
 - The census builds a host image with the `mock` backend, so a consumer whose
   only `PLATFORM_*` dependency was its CAN chain can set `[census] on_missing`
-  back to `error`.
+  back to `error`. A C/C++ census host build is one C link with one Rust runtime archive
+  in it, so the Rust mock cannot be a second; it links the mock's C twin
+  (`nros-can-mock/c/census_mock.c`: `open` succeeds and ignores the device,
+  `send` applies the header's frame check and drops the frame, `recv` has
+  nothing queued), from `cmake/NanoRosCanImage.cmake` under
+  `NROS_LEAF_CENSUS_HOST`, as an archive pulled only by an entry that calls
+  the driver (2026-11-21).
 
 ## Alternatives considered
 

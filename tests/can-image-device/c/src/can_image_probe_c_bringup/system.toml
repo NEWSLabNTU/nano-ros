@@ -25,3 +25,13 @@ device = "vcan7"
 [image.linux_vcan0.can]
 device = "vcan0"
 
+
+# The same probe on a FreeRTOS kernel that runs as a Linux process: a host
+# stack too, so the device goes to the SocketCAN backend. Its build takes the
+# entry's host census first (a cross board), and that census build links the
+# CAN mock (RFC-0132 D6), so a CAN-calling entry gets through it.
+[image.freertos_posix_vcan0]
+board = "freertos-posix"
+
+[image.freertos_posix_vcan0.can]
+device = "vcan0"

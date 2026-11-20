@@ -48,6 +48,7 @@ GUARD_SITES = [
     "packages/drivers/can/nros-can-mock/src/imp.rs",
     "packages/boards/nros-board-linux/c/can_socketcan.c",
     "packages/platform/nros-platform-zephyr/src/can.c",
+    "packages/drivers/can/nros-can-mock/c/census_mock.c",
 ]
 
 # RFC-0132 D2a -- every in-tree CAN backend must guard the CAN handle ITSELF:
@@ -57,6 +58,7 @@ CAN_BACKEND_SITES = [
     "packages/drivers/can/nros-can-mock/src/imp.rs",
     "packages/boards/nros-board-linux/c/can_socketcan.c",
     "packages/platform/nros-platform-zephyr/src/can.c",
+    "packages/drivers/can/nros-can-mock/c/census_mock.c",
 ]
 
 # The CAN mock's guard, which the self-test removes to prove the gate notices.

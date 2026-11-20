@@ -289,6 +289,18 @@ and each states its acceptance before it lands.
   `open` with "not supported", naming the board; the `s32z270-freertos` image
   builds with the RTD backend; ASI's host census image builds with the mock
   and ASI sets `[census] on_missing = "error"`; the follow-up issue exists.
+  *The census mock (RFC-0132 D6), DONE 2026-11-21:* a C/C++ census host
+  build links the mock's C twin (`nros-can-mock/c/census_mock.c`, with the
+  device store), from `nros_entry_can_image` under `NROS_LEAF_CENSUS_HOST`,
+  so a CAN-calling entry on a cross board gets through its host census. The
+  freertos-posix C probe that stopped at `undefined reference to
+  nros_platform_can_open` now builds with the census ON
+  (`scripts/test/can-image-device.sh`: the census run opens the mock, the
+  image then sends on vcan0); `just check can-census-mock` holds the link and
+  the mock's codes, with a negative control. ASI's side (its `platform_can.h`
+  chain and `on_missing = "error"`) is ASI's. Deferred, not part of this
+  item: the RTD strong symbols (blocked on the vendor licence: no host here
+  has the drivers) and the `"board"` stack's hand-off of the `[canN]` name.
 
 The five open questions of the first draft are resolved in RFC-0132 itself
 (send completion, polled receive, consumer backends through the `board` hook,
