@@ -454,6 +454,46 @@ function(nros_stack_floor_zephyr_cargo_env _out)
     set(${_out} "CARGO_TARGET_${_t}_RUSTFLAGS=-Csave-temps" "RUSTC_WRAPPER=" PARENT_SCOPE)
 endfunction()
 
+# The C half of the same lanes (phase-557 W9a, issue 2460): cc-rs builds C
+# inside cargo (zpico-sys's zenoh-pico and `platform_aliases.c`), and those
+# objects need `.su` frames like every other C in the link closure, stated by
+# the compiler that built them rather than hand-read off one board's
+# prologues. cc-rs reads the target-scoped `CFLAGS_<triple>` before a bare
+# `CFLAGS`, and `nros_cross_cc_env` already sets that one (`--sysroot`), so
+# the flags are JOINED into it in `<list_var>`: a second `CFLAGS_<triple>=`
+# row on a `cmake -E env` line would replace the first. Call it on the list
+# that holds `nros_cross_cc_env`'s rows. Nothing changes when the stack floor
+# does not apply (native_sim, NROS_STACK_FLOOR=OFF).
+function(nros_stack_floor_zephyr_cc_env _list_var)
+    _nros_stack_floor_zephyr_applies(_on)
+    if(NOT _on OR NOT NROS_RUST_TARGET)
+        return()
+    endif()
+    set(_flags "-fstack-usage")
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        string(APPEND _flags " -fcallgraph-info=su")
+    endif()
+    string(REPLACE "-" "_" _t "${NROS_RUST_TARGET}")
+    set(_env "${${_list_var}}")
+    foreach(_var IN ITEMS "CFLAGS_${_t}" "CXXFLAGS_${_t}")
+        set(_out "")
+        set(_done FALSE)
+        foreach(_e IN LISTS _env)
+            if(_e MATCHES "^${_var}=(.*)$")
+                string(STRIP "${CMAKE_MATCH_1} ${_flags}" _v)
+                set(_e "${_var}=${_v}")
+                set(_done TRUE)
+            endif()
+            list(APPEND _out "${_e}")
+        endforeach()
+        if(NOT _done)
+            list(APPEND _out "${_var}=${_flags}")
+        endif()
+        set(_env "${_out}")
+    endforeach()
+    set(${_list_var} "${_env}" PARENT_SCOPE)
+endfunction()
+
 # The image half: `-fstack-usage` on every Zephyr library and the app, and the
 # walk as a post-build command of `zephyr_final`.
 #

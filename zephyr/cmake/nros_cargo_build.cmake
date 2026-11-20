@@ -2586,6 +2586,8 @@ function(nros_cargo_build)
     nros_resolve_board_facts()
     # Issue 2400 W4 -- the stack-floor measurement rows the Rust lane carries too.
     nros_stack_floor_zephyr_cargo_env(_nros_stack_floor_env)
+    # Phase-557 W9a -- and `.su` frames for the C cc-rs builds on this lane.
+    nros_stack_floor_zephyr_cc_env(_cc_env)
     set(_nros_facts_env "")
     foreach(_fact IN LISTS NROS_BOARD_FACTS_ENV)
         list(APPEND _nros_facts_env "${_fact}")

@@ -1102,6 +1102,22 @@ build where that number was read.
   five `kind = "frame"` rows retire. Acceptance: issue 2460's four
   mps2-an385 Zephyr leaves walk with no `z_*` in the refusal; the nucleo rows
   walk within their recorded band on thumbv7em, where the hand rows were right.
+  - **Status: DONE (2026-11-21).** `nros_stack_floor_zephyr_cc_env`
+    (`cmake/NanoRosStackFloor.cmake`) joins `-fstack-usage` (and, on GCC,
+    `-fcallgraph-info=su`) into the target-scoped `CFLAGS_<triple>` /
+    `CXXFLAGS_<triple>` rows `nros_cross_cc_env` already writes, on BOTH
+    Zephyr cargo lanes (zephyr-lang-rust's, through `NROS_BOARD_FACTS_ENV`,
+    and the C lane's `nros_cargo_build`). The five `z_*` frame rows are
+    gone. Measured on the same builds with the change toggled (cc-rs `.su`
+    hidden and the old table restored): nucleo `talker/c` walks 109,136 B
+    against 109,132 B (+4 B, the real frames against the hand rows),
+    `talker/rust` 69,616 B both ways. Rebuilt `cpp-port-minimal-publisher`
+    on mps2-an385 (thumbv7m): no `z_*` in the refusal; what remains is
+    libgcc's `__aeabi_dadd`/`dsub`/`l2d`, compiler_builtins' `mem*` and one
+    C++ FFI function, which is W9b's. The drift run also found two reds
+    already on main, both from phase-556 W13 and neither from this item:
+    the nucleo `action-server/rust` image no longer fits RAM (handed to its
+    owner), and `talker/rust` reaches libgcc's f64 helpers (W9b).
 - **W9b — The builtins table.** The key, the recipe, the refusal, and rows
   for each pinned toolchain the `[[observed]]` rows use. Acceptance: issue
   2460's leaves print an UNMEASURED floor (walk + margin) instead of a

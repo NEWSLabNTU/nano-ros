@@ -233,40 +233,11 @@ kind = "external"
 name = "__aeabi_read_tp"
 reason = "hand assembly (TLS pointer read), a leaf"
 
-[[policy]]
-kind = "frame"
-name = "z_malloc"
-bytes = 0
-target = "thumbv7em-none-eabi"
-reason = "tail call (b.w) in zpico-sys platform_aliases.c, read off the prologue; the cc build gets no -fstack-usage under Zephyr"
-
-[[policy]]
-kind = "frame"
-name = "z_free"
-bytes = 0
-target = "thumbv7em-none-eabi"
-reason = "tail call (b.w), as z_malloc"
-
-[[policy]]
-kind = "frame"
-name = "z_random_fill"
-bytes = 0
-target = "thumbv7em-none-eabi"
-reason = "tail call (b.w), as z_malloc"
-
-[[policy]]
-kind = "frame"
-name = "z_sleep_us"
-bytes = 8
-target = "thumbv7em-none-eabi"
-reason = "push {r3, lr}, read off the prologue, as z_malloc"
-
-[[policy]]
-kind = "frame"
-name = "z_sleep_ms"
-bytes = 8
-target = "thumbv7em-none-eabi"
-reason = "push {r3, lr}, read off the prologue, as z_malloc"
+# The five `platform_aliases.c` frames (`z_malloc`, `z_free`, `z_random_fill`,
+# `z_sleep_us`, `z_sleep_ms`) were hand-read rows here, keyed by target. They
+# retired in phase-557 W9a: the Zephyr lanes now build cc-rs C with
+# `-fstack-usage`, so the compiler that built each object states its frame.
+# A hand-read frame is a fact about one set of flags, not a target (issue 2460).
 
 # The cargo road (issue 2400 W5) links newlib's `libc.a` through the board
 # crate (`rustc-link-lib=static=c`), so its members are walked; newlib is

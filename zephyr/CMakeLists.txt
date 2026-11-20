@@ -420,6 +420,9 @@ list(APPEND _nros_rust_lane_env ${_nros_cross_cc})
 include("${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosStackFloor.cmake")
 nros_stack_floor_zephyr_cargo_env(_nros_stack_floor_env)
 list(APPEND _nros_rust_lane_env ${_nros_stack_floor_env})
+# Phase-557 W9a -- and `.su` frames for the C that cc-rs builds, joined into
+# the `CFLAGS_<triple>` row `nros_cross_cc_env` wrote above.
+nros_stack_floor_zephyr_cc_env(_nros_rust_lane_env)
 # Issue 2546 -- and the PINNED Rust toolchain, when nothing chose one for this
 # app. A project `nros new` writes lives outside this checkout, with no
 # `rust-toolchain.toml` above it, so this lane's rustup answered with the
