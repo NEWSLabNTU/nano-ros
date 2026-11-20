@@ -8397,6 +8397,56 @@ pub unsafe extern "C" fn nros_cpp_sched_context_defer_budget_to_kernel(
     }
 }
 
+/// Refill sched context `sc_id`'s budget from a platform timer at
+/// the end of each period, instead of at the next spin pass that notices the
+/// period passed (`Executor::arm_sporadic_refill_with`). `create` is the
+/// port's `nros_platform_timer_create_periodic` and `destroy` its
+/// `nros_platform_timer_destroy`; the executor keeps the timer and destroys
+/// it before the budget state its callback points at.
+///
+/// `NROS_CPP_RET_OK` when the timer is armed; `NROS_CPP_RET_UNSUPPORTED`
+/// when `create` made none (the context keeps the polled refill);
+/// `NROS_CPP_RET_INVALID_ARGUMENT` when `sc_id` is not a context with both a
+/// budget and a period, or a function is null.
+///
+/// # Safety
+/// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL;
+/// `create` and `destroy` follow the platform ABI's timer contract.
+#[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_sched_context_arm_refill(
+    scheduler: *mut c_void,
+    sc_id: u8,
+    create: Option<
+        unsafe extern "C" fn(
+            period_us: u32,
+            callback: Option<unsafe extern "C" fn(*mut c_void)>,
+            user_data: *mut c_void,
+        ) -> *mut c_void,
+    >,
+    destroy: Option<extern "C" fn(*mut c_void)>,
+) -> nros_cpp_ret_t {
+    let (Some(create), Some(destroy)) = (create, destroy) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some((head, _)) = (unsafe { scheduler_parts(scheduler) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: as `nros_cpp_level_open`.
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(head.owner) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    match cpp.executor.arm_sporadic_refill_with(
+        nros_node::executor::sched_context::SchedContextId(sc_id),
+        create,
+        destroy,
+    ) {
+        Ok(true) => NROS_CPP_RET_OK,
+        Ok(false) => NROS_CPP_RET_UNSUPPORTED,
+        Err(_) => NROS_CPP_RET_INVALID_ARGUMENT,
+    }
+}
+
 /// One pass of level `level`'s worker over the core's
 /// executor: it parks (its wake object, the lock released) for at most
 /// `timeout_ms` or until its next timer or an arrival in its band, then runs

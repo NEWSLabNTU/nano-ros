@@ -1,0 +1,1 @@
+On FreeRTOS, a level that declares a `budget` and `period` now gets its budget back from a software timer at the end of each period, rather than at the next spin pass that notices the period ended. Both the Rust and the C/C++ runners arm the timer, and the boot console says so for each budgeted level.

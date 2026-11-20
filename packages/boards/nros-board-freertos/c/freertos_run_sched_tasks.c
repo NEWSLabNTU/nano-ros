@@ -1014,6 +1014,16 @@ extern int nros_cpp_level_set_sched_policy(void* scheduler, const char* class_, 
                                            uint64_t budget_us, uint64_t deadline_us,
                                            const char* deadline_policy,
                                            uint8_t kernel_enforces_budget, uint8_t* out_sc_id);
+extern int nros_cpp_sched_context_arm_refill(void* scheduler, uint8_t sc_id,
+                                             void* (*create)(uint32_t period_us,
+                                                             void (*callback)(void*),
+                                                             void* user_data),
+                                             void (*destroy)(void*));
+/* The port's software timer (FreeRTOS `xTimerCreate`), which refills a
+ * level's budget. Declared in <nros/platform_timer.h>. */
+extern void* nros_platform_timer_create_periodic(uint32_t period_us, void (*callback)(void*),
+                                                 void* user_data);
+extern void nros_platform_timer_destroy(void* handle);
 /* The port's recursive mutex: a FreeRTOS recursive mutex
  * (`xSemaphoreCreateRecursiveMutex`), which inherits priority. One pointer. */
 extern int8_t nros_platform_mutex_rec_init(void* m);
@@ -1098,6 +1108,21 @@ static void freertos_level_sched_policy(void* scheduler, const nros_sched_task_s
         nros_board_freertos_console_write("us/");
         nros_board_freertos_console_write(freertos_u32_dec((uint32_t)period_us, nb, sizeof(nb)));
         nros_board_freertos_console_write("us enforced by the EXECUTOR\n");
+        /* Refill the budget from a software timer at the end of each
+         * period, instead of at the next spin pass that notices it. */
+        int arm = nros_cpp_sched_context_arm_refill(
+            scheduler, sc, nros_platform_timer_create_periodic, nros_platform_timer_destroy);
+        nros_board_freertos_console_write("nros: level budget sched_task=`");
+        nros_board_freertos_console_write((t->name != NULL) ? t->name : "?");
+        if (arm == 0) {
+            nros_board_freertos_console_write("` refilled by a timer every ");
+            nros_board_freertos_console_write(
+                freertos_u32_dec((uint32_t)period_us, nb, sizeof(nb)));
+            nros_board_freertos_console_write("us\n");
+        } else {
+            nros_board_freertos_console_write(
+                "` has no refill timer: refilled when a spin pass sees its period end\n");
+        }
     }
 }
 

@@ -34,7 +34,7 @@ nros                               135  35     6      31      0
 nros-baremetal-common               24   0     0      21      0
 nros-board-cffi                      3   0     0       6      0
 nros-board-fixture-r5f-freertos      1   0     0       1      0
-nros-board-freertos                 65   1     1      20      0
+nros-board-freertos                 66   1     1      20      0
 nros-board-freertos-posix            4   0     0       1      0
 nros-board-linux                    23   0     0       7      0
 nros-board-mps2-an385               50  11     1      24      0
@@ -54,10 +54,10 @@ nros-cli                             1   0     0       0      0
 nros-cli-core                       34   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                          1156  48     0     436      0
+nros-cpp                          1158  48     0     439      0
 nros-log                            24   0     7       1      0
 nros-macros                         24   0     1       3      0
-nros-node                          863  284    39     191      0
+nros-node                          867  284    39     193      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0

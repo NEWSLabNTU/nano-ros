@@ -6110,6 +6110,110 @@ impl<'s> Executor<'s> {
         Ok(state)
     }
 
+    /// Arm a platform refill timer for a Sporadic SC, so its budget is
+    /// refilled when each period ends rather than at the next spin pass
+    /// that notices the period has passed.
+    ///
+    /// The state the timer refills is created here, first, because the
+    /// timer's callback argument must point at it:
+    /// [`register_sporadic_timer`](Self::register_sporadic_timer) wants the
+    /// timer before it creates the state, so no caller could have handed it
+    /// one. `create` receives the SC's period in microseconds, the refill
+    /// callback ([`atomic_sporadic_refill_thunk`]) and the state's address,
+    /// and returns the platform's timer, or `None` when it has none.
+    ///
+    /// - `Ok(Some(state))`: the timer is armed. From now on the SC's
+    ///   dispatch gate reads `state`, which the timer refills to the full
+    ///   budget every period and each dispatch charges.
+    /// - `Ok(None)`: the platform made no timer. Nothing changed, and the
+    ///   SC keeps the polled refill.
+    /// - `Err(InvalidSchedContextBinding)`: `sc_id` is not a Sporadic SC
+    ///   with both a budget and a period. `create` was not called.
+    ///
+    /// The executor keeps the state alive while the timer exists, and on
+    /// drop destroys the timer before it releases the state.
+    ///
+    /// [`atomic_sporadic_refill_thunk`]: super::sched_context::atomic_sporadic_refill_thunk
+    #[cfg(feature = "alloc")]
+    pub fn arm_sporadic_refill<F>(
+        &mut self,
+        sc_id: super::sched_context::SchedContextId,
+        create: F,
+    ) -> Result<
+        Option<portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>>,
+        NodeError,
+    >
+    where
+        F: FnOnce(
+            u32,
+            extern "C" fn(*mut core::ffi::c_void),
+            *mut core::ffi::c_void,
+        ) -> Option<OpaqueTimerHandle>,
+    {
+        let i = sc_id.0 as usize;
+        let sc = self
+            .sched_contexts
+            .get(i)
+            .and_then(|s| s.as_ref())
+            .ok_or(NodeError::InvalidSchedContextBinding)?;
+        if !matches!(sc.class, super::sched_context::SchedClass::Sporadic) {
+            return Err(NodeError::InvalidSchedContextBinding);
+        }
+        let (Some(budget), Some(period)) = (sc.budget_us.get(), sc.period_us.get()) else {
+            return Err(NodeError::InvalidSchedContextBinding);
+        };
+        let state = portable_atomic_util::Arc::new(super::sched_context::AtomicSporadicState::new(
+            budget.get(),
+            period.get(),
+        ));
+        let user_data = portable_atomic_util::Arc::as_ptr(&state) as *mut core::ffi::c_void;
+        let Some(timer) = create(
+            period.get(),
+            super::sched_context::atomic_sporadic_refill_thunk,
+            user_data,
+        ) else {
+            return Ok(None);
+        };
+        // A slot that already held a timer: destroy it before its state.
+        if let Some((old_state, old_timer)) = self.sporadic_atomic_states[i].take() {
+            drop(old_timer);
+            drop(old_state);
+        }
+        self.sporadic_atomic_states[i] = Some((portable_atomic_util::Arc::clone(&state), timer));
+        Ok(Some(state))
+    }
+
+    /// [`arm_sporadic_refill`](Self::arm_sporadic_refill) over the
+    /// platform ABI's own timer functions, which is how a board's runner
+    /// (Rust or C) reaches its port's timer: `create` is the port's
+    /// `nros_platform_timer_create_periodic` and `destroy` calls its
+    /// `nros_platform_timer_destroy`. A null handle from `create` means the
+    /// port made no timer.
+    ///
+    /// `Ok(true)` when the timer is armed, `Ok(false)` when the port made
+    /// none (the SC keeps the polled refill), and the same `Err` as
+    /// `arm_sporadic_refill`.
+    #[cfg(feature = "alloc")]
+    pub fn arm_sporadic_refill_with(
+        &mut self,
+        sc_id: super::sched_context::SchedContextId,
+        create: PlatformTimerCreateFn,
+        destroy: extern "C" fn(*mut core::ffi::c_void),
+    ) -> Result<bool, NodeError> {
+        let armed = self.arm_sporadic_refill(sc_id, |period_us, refill, user_data| {
+            // SAFETY: `user_data` is the state the executor keeps alive until
+            // it has destroyed the timer (`arm_sporadic_refill`'s contract).
+            let handle = unsafe { create(period_us, Some(refill), user_data) };
+            if handle.is_null() {
+                None
+            } else {
+                // SAFETY: a live timer handle `destroy` knows how to free.
+                Some(unsafe { OpaqueTimerHandle::new(handle, destroy) })
+            }
+        })?;
+        Ok(armed.is_some())
+    }
+
     /// Inspect a registered scheduling context.
     pub fn sched_context(
         &self,
@@ -17919,6 +18023,16 @@ impl<'s> Executor<'s> {
     }
 }
 
+/// A platform port's `nros_platform_timer_create_periodic`: a timer that
+/// calls `callback(user_data)` every `period_us`, or null when the port has
+/// none. The signature the platform ABI's generated bindings declare.
+#[cfg(feature = "alloc")]
+pub type PlatformTimerCreateFn = unsafe extern "C" fn(
+    period_us: u32,
+    callback: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+    user_data: *mut core::ffi::c_void,
+) -> *mut core::ffi::c_void;
+
 /// Opaque per-platform timer handle. Stores the
 /// raw platform handle (a boxed POSIX `timer_t`, FreeRTOS `TimerHandle_t`,
 /// etc.) plus a destroy thunk so the
@@ -18118,6 +18232,16 @@ impl<'s> Drop for Executor<'s> {
         // After a normal `close()` both tables are already empty and these two
         // calls are a pair of `None` scans.
         self.run_shutdown_hooks(super::types::ShutdownPhase::Pre);
+        // Refill timers. Each pair lives in storage the executor borrows and
+        // never drops, so this is the only place a timer is destroyed. The
+        // timer goes first, because its callback points at the state.
+        #[cfg(feature = "alloc")]
+        for slot in self.sporadic_atomic_states.iter_mut() {
+            if let Some((state, timer)) = slot.take() {
+                drop(timer);
+                drop(state);
+            }
+        }
         // Phase 258 (Track 2, 2a) — release executor-owned component cells
         // first (before the arena entries), so a component's `drop`
         // trampoline can still touch its own (cell-owned) state. Each slot

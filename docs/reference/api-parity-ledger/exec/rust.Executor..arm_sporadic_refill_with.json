@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::arm_sporadic_refill_with",
+  "verdict": "extension",
+  "why": "see `rust:Executor::arm_sporadic_refill`; the same method over the platform ABI's C timer functions, which is how a board's runner reaches its port's timer."
+}

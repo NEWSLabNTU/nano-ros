@@ -21048,3 +21048,135 @@ mod reentry_action_server {
         }
     }
 }
+
+/// `arm_sporadic_refill` creates the state first and hands
+/// its address to the platform's timer, which refills the budget.
+#[test]
+fn arm_sporadic_refill_hands_the_timer_the_state_it_refills() {
+    use crate::executor::{
+        sched_context::{OptUs, SchedClass, SchedContext},
+        spin::OpaqueTimerHandle,
+    };
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let sc_id = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Sporadic,
+            budget_us: OptUs::from_us(5_000),
+            period_us: OptUs::from_us(10_000),
+            ..Default::default()
+        })
+        .unwrap();
+    extern "C" fn noop_destroy(_h: *mut core::ffi::c_void) {}
+    let mut seen = None;
+    let state = executor
+        .arm_sporadic_refill(sc_id, |period, refill, user_data| {
+            seen = Some((period, refill, user_data));
+            Some(unsafe { OpaqueTimerHandle::new(core::ptr::null_mut(), noop_destroy) })
+        })
+        .unwrap()
+        .expect("the timer was made, so the refill is armed");
+    let (period, refill, user_data) = seen.expect("the platform was asked for a timer");
+    assert_eq!(period, 10_000, "the timer runs at the SC's period");
+    assert_eq!(
+        user_data as *const _,
+        portable_atomic_util::Arc::as_ptr(&state) as *const core::ffi::c_void,
+        "the timer's argument is the state the executor reads"
+    );
+    state.consume(5_000);
+    assert!(!state.has_budget());
+    refill(user_data);
+    assert_eq!(
+        state
+            .budget_remaining_us
+            .load(portable_atomic::Ordering::Acquire),
+        5_000,
+        "one timer tick refills the whole budget"
+    );
+}
+
+/// A platform with no timer leaves the SC on the polled refill, and an SC
+/// that is not Sporadic is refused before the platform is asked.
+#[test]
+fn arm_sporadic_refill_without_a_timer_or_a_budget_arms_nothing() {
+    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let sporadic = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Sporadic,
+            budget_us: OptUs::from_us(5_000),
+            period_us: OptUs::from_us(10_000),
+            ..Default::default()
+        })
+        .unwrap();
+    let armed = executor
+        .arm_sporadic_refill(sporadic, |_, _, _| None)
+        .unwrap();
+    assert!(armed.is_none(), "no timer, nothing armed");
+    assert!(executor.sporadic_atomic_states[sporadic.0 as usize].is_none());
+
+    let fifo = executor
+        .create_sched_context(SchedContext::new_fifo())
+        .unwrap();
+    let mut asked = false;
+    let r = executor.arm_sporadic_refill(fifo, |_, _, _| {
+        asked = true;
+        None
+    });
+    assert!(matches!(r, Err(NodeError::InvalidSchedContextBinding)));
+    assert!(!asked, "a non-Sporadic SC never reaches the platform");
+}
+
+/// The executor destroys a refill timer before it releases the state the
+/// timer's callback points at. The pair lives in storage the executor
+/// borrows and does not drop, so without its own teardown the timer was
+/// never destroyed at all.
+#[test]
+fn a_refill_timer_is_destroyed_before_its_state() {
+    use crate::executor::{
+        sched_context::{AtomicSporadicState, OptUs, SchedClass, SchedContext},
+        spin::OpaqueTimerHandle,
+    };
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicU8, Ordering},
+    };
+    static WEAK: Mutex<Option<portable_atomic_util::Weak<AtomicSporadicState>>> = Mutex::new(None);
+    // 0: not destroyed, 1: destroyed with the state alive, 2: after it.
+    static AT_DESTROY: AtomicU8 = AtomicU8::new(0);
+    extern "C" fn destroy(_h: *mut core::ffi::c_void) {
+        let alive = WEAK
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|w| w.upgrade().is_some());
+        AT_DESTROY.store(if alive { 1 } else { 2 }, Ordering::SeqCst);
+    }
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let sc_id = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Sporadic,
+            budget_us: OptUs::from_us(5_000),
+            period_us: OptUs::from_us(10_000),
+            ..Default::default()
+        })
+        .unwrap();
+    let state = executor
+        .arm_sporadic_refill(sc_id, |_, _, _| {
+            // Non-null, so the handle's drop runs `destroy`.
+            Some(unsafe { OpaqueTimerHandle::new(core::ptr::dangling_mut(), destroy) })
+        })
+        .unwrap()
+        .unwrap();
+    *WEAK.lock().unwrap() = Some(portable_atomic_util::Arc::downgrade(&state));
+    drop(state);
+    drop(executor);
+    assert_eq!(
+        AT_DESTROY.load(Ordering::SeqCst),
+        1,
+        "the executor's drop must destroy the timer while its state is alive \
+         (0: never destroyed, 2: destroyed after the state was released)"
+    );
+}

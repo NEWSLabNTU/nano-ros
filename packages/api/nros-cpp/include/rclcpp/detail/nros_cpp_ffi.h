@@ -3454,6 +3454,30 @@ nros_cpp_ret_t nros_cpp_level_set_sched_policy(void *scheduler,
 nros_cpp_ret_t nros_cpp_sched_context_defer_budget_to_kernel(void *scheduler, uint8_t sc_id);
 
 /**
+ * Refill sched context `sc_id`'s budget from a platform timer at
+ * the end of each period, instead of at the next spin pass that notices the
+ * period passed (`Executor::arm_sporadic_refill_with`). `create` is the
+ * port's `nros_platform_timer_create_periodic` and `destroy` its
+ * `nros_platform_timer_destroy`; the executor keeps the timer and destroys
+ * it before the budget state its callback points at.
+ *
+ * `NROS_CPP_RET_OK` when the timer is armed; `NROS_CPP_RET_UNSUPPORTED`
+ * when `create` made none (the context keeps the polled refill);
+ * `NROS_CPP_RET_INVALID_ARGUMENT` when `sc_id` is not a context with both a
+ * budget and a period, or a function is null.
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL;
+ * `create` and `destroy` follow the platform ABI's timer contract.
+ */
+nros_cpp_ret_t nros_cpp_sched_context_arm_refill(void *scheduler,
+                                                 uint8_t sc_id,
+                                                 void *(*create)(uint32_t period_us,
+                                                                 void (*callback)(void*),
+                                                                 void *user_data),
+                                                 void (*destroy)(void*));
+
+/**
  * One pass of level `level`'s worker over the core's
  * executor: it parks (its wake object, the lock released) for at most
  * `timeout_ms` or until its next timer or an arrival in its band, then runs

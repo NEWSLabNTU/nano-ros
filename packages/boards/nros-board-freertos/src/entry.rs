@@ -842,11 +842,49 @@ fn apply_level_policy<B: BoardPrint>(
         sched_task.deadline_policy,
         false,
     );
-    if let (Some(_), Some(b), Some(p)) = (sc, budget_us, period_us) {
+    if let (Some(sc), Some(b), Some(p)) = (sc, budget_us, period_us) {
         B::println(format_args!(
             "nros: level budget sched_task=`{}` {}us/{}us enforced by the EXECUTOR",
             sched_task.name, b, p
         ));
+        arm_level_refill::<B>(crt, sc, sched_task.name, p);
+    }
+}
+
+/// `nros_platform_timer_destroy` as the safe C callback the executor's
+/// timer handle takes.
+extern "C" fn destroy_refill_timer(handle: *mut c_void) {
+    // SAFETY: `handle` came from `nros_platform_timer_create_periodic`.
+    unsafe { ::nros_platform_cffi::nros_platform_timer_destroy(handle) };
+}
+
+/// Refill a budgeted level from a FreeRTOS software timer at the end of each
+/// period, instead of at the next spin pass that notices the period passed.
+/// Without a timer the level keeps that polled refill.
+fn arm_level_refill<B: BoardPrint>(
+    crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
+    sc: ::nros::SchedContextId,
+    name: &str,
+    period_us: u64,
+) {
+    match crt.executor_mut().arm_sporadic_refill_with(
+        sc,
+        ::nros_platform_cffi::nros_platform_timer_create_periodic,
+        destroy_refill_timer,
+    ) {
+        Ok(true) => B::println(format_args!(
+            "nros: level budget sched_task=`{}` refilled by a timer every {}us",
+            name, period_us
+        )),
+        Ok(false) => B::println(format_args!(
+            "nros: level budget sched_task=`{}` has no refill timer: refilled when a spin \
+             pass sees its period end",
+            name
+        )),
+        Err(e) => B::println(format_args!(
+            "nros: level budget sched_task=`{}` refill timer refused ({:?})",
+            name, e
+        )),
     }
 }
 

@@ -230,6 +230,8 @@ pub use spin::{
     MAX_WAKE_SOURCES, NextDeadlineFn, PARK_EXPIRED, PARK_SIGNALLED, PARK_YIELDED, ParkUntilFn,
     RemapRefused, WakeHookFn, WakeSourceId,
 };
+#[cfg(all(any(has_rmw, test), feature = "alloc"))]
+pub use spin::{OpaqueTimerHandle, PlatformTimerCreateFn};
 #[cfg(any(has_rmw, test))]
 pub use storage::{
     ExecutorInlineStorage, ExecutorSizing, INLINE_BACKING_U64S, INLINE_SIZING, RegionUnit,

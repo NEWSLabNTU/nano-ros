@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::arm_sporadic_refill",
+  "verdict": "extension",
+  "why": "arms a platform timer that refills a Sporadic scheduling context's budget at the end of each period. Scheduling contexts and budget servers are a nano-ros extension with no rclrs counterpart: rclrs runs on a host OS and has no budgeted callbacks to refill. The sibling of `rust:Executor::register_sporadic_timer`, which takes the timer before the budget state exists; this one creates the state first, because the timer's callback argument must point at it."
+}

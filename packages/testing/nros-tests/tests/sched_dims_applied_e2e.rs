@@ -1004,6 +1004,8 @@ fn dotconfig_has_line(dotconfig: &Path, line: &str) -> bool {
 ///   (`enforced by the EXECUTOR`);
 /// - the overrun happened (tick 25) and the executor reported it and
 ///   throttled the context until its refill (`sporadic budget overrun`);
+/// - a FreeRTOS software timer refills the budget at the end of each period
+///   (`refilled by a timer`);
 /// - the level kept dispatching afterwards (the SECOND overrun, tick 75), so
 ///   the throttle released at the refill instead of starving the level;
 /// - the boot level, the session owner, was never budgeted;
@@ -1025,6 +1027,7 @@ fn freertos_level_budget_overrun_is_throttled_by_the_executor() {
         .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
     let groups: Vec<Vec<String>> = vec![
         vec!["nros: level budget sched_task=`high` 5000us/10000us enforced by the EXECUTOR".into()],
+        vec!["nros: level budget sched_task=`high` refilled by a timer every 10000us".into()],
         vec!["on_ctrl: overran the level budget at tick 25 (".into()],
         vec!["sporadic budget overrun sched context".into()],
         vec!["on_ctrl: overran the level budget at tick 75 (".into()],
@@ -1064,6 +1067,7 @@ fn freertos_level_budget_overrun_is_throttled_by_the_executor() {
 ///
 /// - the runner lowered the budget onto the `high` level's own sched context
 ///   and the executor enforces it (`enforced by the EXECUTOR`);
+/// - a FreeRTOS software timer refills it each period (`refilled by a timer`);
 /// - the budgeted level still dispatches (`[ctrl] tick=` after the report);
 /// - the boot level, the session owner, was never budgeted.
 ///
@@ -1082,6 +1086,7 @@ fn freertos_c_runner_lowers_the_level_budget() {
         .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
     let groups: Vec<Vec<String>> = vec![
         vec!["nros: level budget sched_task=`high` 5000us/10000us enforced by the EXECUTOR".into()],
+        vec!["nros: level budget sched_task=`high` refilled by a timer every 10000us".into()],
         vec!["[ctrl] tick=".into()],
     ];
     let mut q = QemuProcess::start_mps2_an385_networked(&entry)
