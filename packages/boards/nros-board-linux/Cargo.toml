@@ -42,6 +42,8 @@ host-only-reason = "the Linux host board"
 # `__FORCE_LINK_CFFI` anchor that keeps `libnros_platform_posix.a` in the link).
 # This is the board-driven platform-selection point, mirroring C5a's RMW gate:
 # the umbrella `nros` dep below stays platform-agnostic (no `platform-posix`).
+# RFC-0132 D4 -- the `can` row of the image's network, decoded at boot.
+nros-board-common = { version = "0.6.0", path = "../nros-board-common", default-features = false }
 nros-platform = { version = "0.6.0", path = "../../platform/nros-platform", default-features = false, features = ["platform-posix"] }
 # issue 0710 — the platform-ABI log sink moved to `nros_platform_cffi::log`, so
 # the boot funnel that installs it names the crate that owns the ABI. The

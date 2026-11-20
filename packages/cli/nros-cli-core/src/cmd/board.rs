@@ -553,6 +553,15 @@ fn net(args: NetArgs) -> Result<()> {
         ResolvedNet::platform_default(),
     )
     .map_err(|e| eyre!("{}: {e}", dir.join("nros-board.toml").display()))?;
+    // RFC-0132 D4 (phase-560 W9.e) -- the image's CAN frame device, decoded
+    // from the same text by the same codec the board crates use at boot, for
+    // the cmake road's hand-off (`nros_image_can_device`).
+    let can_device = match args.image_net.as_deref().filter(|t| !t.is_empty()) {
+        Some(t) => nros_board_common::can_image::device(t)
+            .map_err(|e| eyre!("--image-net: {e}"))?
+            .map(str::to_string),
+        None => None,
+    };
     let n = match args.image_net.as_deref().filter(|t| !t.is_empty()) {
         Some(t) => match nros_board_common::image_net::primary(t) {
             Ok(Some(i)) => n.with_interface(&i),
@@ -590,6 +599,11 @@ fn net(args: NetArgs) -> Result<()> {
             println!(
                 "set(NROS_BOARD_NET_DEFAULT_LOCATOR \"{}\")",
                 locator.unwrap_or_default()
+            );
+            // RFC-0132 D4 -- "" when the image names no device (or the mock).
+            println!(
+                "set(NROS_BOARD_NET_CAN_DEVICE \"{}\")",
+                can_device.unwrap_or_default()
             );
         }
         "toml" => {

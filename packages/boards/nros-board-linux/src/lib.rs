@@ -420,10 +420,32 @@ impl BoardEntry for LinuxBoard {
 /// under the environment, after warning where the environment overrides what
 /// `system.toml` stated (issue 2714's user ruling: on a host the environment
 /// wins, and says so). One function, so neither funnel can skip the warning.
+/// It also hands the image's CAN frame device to the backend (RFC-0132 D4)
+/// before the executor opens, for the same reason: both funnels pass here.
 fn resolve_hosted_boot(deploy: &nros_platform::DeployOverlay) -> ::nros::ExecutorConfig<'static> {
+    hand_off_can_device(deploy);
     let baked = hosted_baked_rung(deploy);
     ::nros::env::warn_env_overrides_statement(&baked);
     ::nros::env::resolve_hosted(baked)
+}
+
+/// RFC-0132 D4 (phase-560 W9.e) -- the image's CAN frame device, from the
+/// `can` row of its baked network text to the store the `socketcan` backend's
+/// `open(NULL)` reads (`nros-board-common/c/nros_board_can_image.c`, compiled
+/// into this board's `nros_can_socketcan` archive). No row: nothing is stored,
+/// and `open(NULL)` reports no device.
+fn hand_off_can_device(deploy: &nros_platform::DeployOverlay) {
+    unsafe extern "C" {
+        fn nros_board_can_set_image_device(name: *const core::ffi::c_char, len: usize) -> i8;
+    }
+    if let Some(dev) = nros_board_common::can_image::boot_device(deploy.net) {
+        // SAFETY: `dev` is `dev.len()` readable bytes; the store copies them.
+        let rc = unsafe { nros_board_can_set_image_device(dev.as_ptr().cast(), dev.len()) };
+        assert!(
+            rc == 0,
+            "NROS_IMAGE_NET: CAN device `{dev}` does not fit the board's store"
+        );
+    }
 }
 
 /// The BAKED rung this board hands `resolve_hosted` — the launch-declared

@@ -1,0 +1,26 @@
+# RFC-0132 / phase-560 W9.e -- the CAN frame device, named once in the image,
+# must reach the backend's `open(NULL)` on the cmake road.
+#
+# `linux` names `vcan7`, a device no host has: the probe must report that
+# device (and ENODEV), never a default. `linux_vcan0` names the test bus, so
+# the same `open(NULL)` sends a frame `candump` reads.
+
+[system]
+name = "can_image_probe_c"
+rmw = "zenoh"
+domain_id = 0
+default_images = ["linux"]
+
+[image_defaults]
+board = "linux"
+entry = "can_image_probe_c"
+
+[image.linux]
+
+[image.linux.can]
+device = "vcan7"
+
+[image.linux_vcan0]
+
+[image.linux_vcan0.can]
+device = "vcan0"

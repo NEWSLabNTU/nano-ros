@@ -37,6 +37,8 @@
 
 #include <nros/platform_can.h>
 
+#include "nros_board_can_image.h"
+
 /* "NCSC": an open socketcan handle. A zeroed handle is closed. */
 #define SOCKETCAN_OPEN_MAGIC 0x4e435343u
 
@@ -124,11 +126,14 @@ int8_t nros_platform_can_open(nros_platform_can_t* can, const char* device, uint
     if (can == NULL) {
         return NROS_PLATFORM_CAN_EINVAL;
     }
-    /* The image's device (`open(NULL)`) reaches this backend with the
-     * `[image.<id>.can] device` carrier (RFC-0132 D4, phase-560 W9.d/e). Until
-     * then only a named device can be opened here. */
+    /* The image's device (`open(NULL)`): `[image.<id>.can] device`, which the
+     * board handed to the store at boot (RFC-0132 D4). An image that names none
+     * has no default device. */
     if (device == NULL) {
-        return NROS_PLATFORM_CAN_ENODEV;
+        device = nros_board_can_image_device();
+        if (device == NULL) {
+            return NROS_PLATFORM_CAN_ENODEV;
+        }
     }
     name_len = strlen(device);
     if (name_len == 0u || name_len >= sizeof(ifr.ifr_name)) {

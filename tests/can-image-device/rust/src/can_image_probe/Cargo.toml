@@ -1,0 +1,26 @@
+[package]
+name = "can_image_probe"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# RFC-0132 / phase-560 W9.e -- the cargo road's CAN device delivery probe. A
+# component, so `nros build` generates the entry that boots it; the board
+# hands the image's `[image.<id>.can] device` to the backend at boot, and the
+# component's `open(NULL)` must reach it.
+[lib]
+name = "can_image_probe"
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
+# The `Can` wrapper over `<nros/platform_can.h>`; the linux board links the
+# `socketcan` backend that defines it.
+nros-platform-cffi = { version = "*", features = ["can"] }
+# The board whose `socketcan` backend and device store the probe calls. A
+# component names no board as a rule; this one is a linux-only test fixture,
+# and the metadata harness (which links the component with no entry) needs
+# the definitions too.
+nros-board-linux = { version = "*", default-features = false }

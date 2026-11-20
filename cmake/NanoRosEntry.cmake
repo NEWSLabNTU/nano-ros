@@ -79,6 +79,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwUserConfig.cmake")  # phase-206 W2
 # system.toml vs the snippet). Functions only, include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDomainAgreement.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageRmw.cmake")  # issue 2093
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCanImage.cmake")  # RFC-0132 D4
 
 # --------------------------------------------------------------------------
 # Platform-link wrappers (phase-287 W6). Defined HERE (not NanoRosBootstrap):
@@ -1186,6 +1187,20 @@ function(nano_ros_entry)
         if(NOT "${_nra_domain}" STREQUAL "")
             target_compile_definitions(${_NRA_NAME} PRIVATE NROS_ENTRY_DOMAIN_STATED)
         endif()
+        # RFC-0132 D4 (phase-560 W9.e) -- the image's CAN frame device, handed
+        # to the `socketcan` backend's `open(NULL)`. The image's own network
+        # shadows the configure's in this scope, as on the block above.
+        if(_NRA_IMAGE_NET)
+            set(NROS_IMAGE_NET "${_NRA_IMAGE_NET}")
+        endif()
+        set(_nra_can_board "${NROS_BOARD}")
+        if(_nra_can_board STREQUAL "")
+            set(_nra_can_board "${_NRA_BOARD}")
+        endif()
+        if(_nra_can_board STREQUAL "")
+            set(_nra_can_board "linux")
+        endif()
+        nros_entry_can_image(${_NRA_NAME} "${_nra_can_board}")
     endif()
 
     # Issue 1050 defect (3) — bake the RMW SELECTOR, and do it OUTSIDE the block

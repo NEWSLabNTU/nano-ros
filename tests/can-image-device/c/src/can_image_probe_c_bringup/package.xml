@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>can_image_probe_c_bringup</name>
+  <version>0.1.0</version>
+  <description>RFC-0132 W9.e probe images (cmake road): the CAN frame device in system.toml.</description>
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>can_image_probe_c</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

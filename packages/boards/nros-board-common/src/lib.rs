@@ -60,6 +60,11 @@ pub use base_config::{
 // dep-free, because a board decodes at boot.
 pub mod image_net;
 
+// RFC-0132 D4 (phase-560 W9.e) -- the board's half of the CAN frame device's
+// delivery: decode the `can` row of the image's network at boot and hand the
+// device to the backend's `open(NULL)` (`c/nros_board_can_image.c`).
+pub mod can_image;
+
 // phase-337 W5.d — the FreeRTOS family's scheduling defaults, shared by the
 // runtime `Config` and the `build.rs` `NROS_APP_CONFIG` emitter so the two
 // cannot drift (they had, by 128 KiB of app stack). `no_std`, dep-free.

@@ -253,6 +253,7 @@ examples/workspaces/**/config/*.record.json
 # build artifacts (one per Node pkg, `<pkg>/metadata/<component>.json`), derived
 # from the pkg's own `Component::register` — never hand-edited, never committed.
 examples/**/metadata/*.json
+tests/can-image-device/**/metadata/*.json
 # Same artifact, same writer, other tree: the test bins and benches under
 # packages/testing/ are node packages too, so `nros metadata --build` drops
 # sidecars beside them. Nothing there is tracked, and a phase-337 wave hit one
