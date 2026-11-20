@@ -2138,7 +2138,8 @@ pub fn write_for_leaf(
     // road reads, this feature is the leaf's own choice. No model leaves it
     // `None`, and the field ABSENT.
     let manifest = crate::leaf_entity_env::manifest_infra(leaf);
-    let infra = leaf_store_infra(model.as_ref(), manifest.0);
+    let compiled_param_services = leaf_compiles_param_services(leaf, &img.package);
+    let infra = leaf_store_infra(model.as_ref(), compiled_param_services);
     // phase-486 -- the families the image's queryable table is sized for: the
     // model UNIONED with the manifest, the carrier's own rule, NOT the store
     // view above.
@@ -2240,6 +2241,23 @@ pub fn write_for_leaf(
 /// Issue 1706 -- the cargo leaf's [`InfraServices`] for `[params] store`: the
 /// model's, with the `param_services` axis kept only where the leaf's own
 /// `nros` dependency compiles the services in. See [`write_for_leaf`].
+/// Does the cargo leaf's build compile the parameter services in?
+///
+/// The leaf's own manifest naming `param-services` on its `nros` dependency,
+/// or -- issue 2777 -- the leaf depending on its generated selection package
+/// (`<pkg>_nros_selection`, RFC-0098 D6). A MIGRATED leaf names no `nros`
+/// features of its own: the selection package carries them, and its `nros`
+/// features are the image's EFFECTIVE axes (`backend_link::capability_features`
+/// over the composed features), so for it "compiled in" is exactly "the axis
+/// is on". Read from the manifest alone, the stock `param_services` every image
+/// gets by default never implied a store: the descriptor said
+/// `store = "none"`, nros-params carved nothing, and the runtime asked the heap
+/// for the full 32-slot store (283,392 B), which the ThreadX-linux pool refused.
+fn leaf_compiles_param_services(leaf: &std::path::Path, package: &str) -> bool {
+    crate::leaf_entity_env::manifest_infra(leaf).0
+        || crate::cmd::leaf_settings::depends_on_selection(leaf, package)
+}
+
 fn leaf_store_infra(
     model: Option<&nros_orchestration_ir::overlay::LoadedModel>,
     manifest_param_services: bool,
@@ -5697,6 +5715,30 @@ execution:
         let seeded = store_model("", "rate: 5");
         assert_eq!(store(&seeded, false), Some(ParamStore::LaunchSeed));
         assert!(leaf_store_infra(None, true).is_none());
+    }
+
+    /// Issue 2777 -- a migrated leaf (it depends on its generated selection
+    /// package) compiles the services whenever the axis is on, so the store
+    /// view keeps the axis; an unmigrated leaf still needs the feature named.
+    #[test]
+    fn a_migrated_leaf_compiles_the_services_its_axes_turn_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |body: &str| std::fs::write(dir.path().join("Cargo.toml"), body).unwrap();
+        write(
+            "[package]\nname = \"lst\"\n[dependencies]\n\
+             lst_nros_selection = { path = \"build/nros/selection\" }\n\
+             nros = { version = \"*\", features = [\"alloc\"] }\n",
+        );
+        assert!(leaf_compiles_param_services(dir.path(), "lst"));
+        write(
+            "[package]\nname = \"lst\"\n[dependencies]\nnros = { version = \"*\", features = [\"alloc\"] }\n",
+        );
+        assert!(!leaf_compiles_param_services(dir.path(), "lst"));
+        write(
+            "[package]\nname = \"lst\"\n[dependencies]\n\
+             nros = { version = \"*\", features = [\"param-services\"] }\n",
+        );
+        assert!(leaf_compiles_param_services(dir.path(), "lst"));
     }
 
     /// An unwired model-road image: the case [`Wiring::Unwired`] exists for.
