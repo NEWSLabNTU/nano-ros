@@ -81,9 +81,13 @@ build verb, `make`, the way Zephyr owns `west build`:
 
 1. Provision the board, then stage the integration shell into your apps
    tree once: `"$(nros locate nano-ros)/scripts/nuttx/stage-external-apps.sh" "$NUTTX_APPS_DIR"`.
-   It writes `external/Make.defs` and `Kconfig`, and links the shell in as
-   `external/nano-ros`. Remove `$NUTTX_APPS_DIR/Kconfig` so NuttX rediscovers
-   `apps/external/Kconfig`.
+   It writes `external/Make.defs`, `Kconfig` and `Makefile`, and links the
+   shell in as `external/nano-ros`. Remove `$NUTTX_APPS_DIR/Kconfig` so NuttX
+   rediscovers `apps/external/Kconfig`. Run the same command again after you
+   update nano-ros. The `Makefile` is what lets `make clean` and
+   `make distclean` clean the external apps; in a tree staged without it,
+   the build after a `make distclean` fails to link, and every build prints a
+   line naming this command.
 2. Bring the symbols nano-ros needs into your configuration. Stock
    `qemu-armv7a/nsh` has no `CONFIG_NET`, no virtio-net and no `TLS_NELEM`.
    With no configuration of your own, configure from the board's config,

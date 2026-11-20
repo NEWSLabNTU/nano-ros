@@ -76,6 +76,12 @@ mkdir -p "$EXT"
 # wildcard glob (Make supports it natively).
 install -m 0644 "$INTEGRATION/external-Make.defs.in" "$EXT/Make.defs"
 
+# Issue 2781 — and a Makefile, which is the only thing that makes the apps
+# tree's `make clean` / `make distclean` come into apps/external (it cleans
+# `$(APPDIR)/*/Makefile` directories). Without it no external app is cleaned,
+# and a rebuild after `make distclean` links without their objects.
+install -m 0644 "$INTEGRATION/external-Makefile.in" "$EXT/Makefile"
+
 # Integration shell.
 ln -sfn "$INTEGRATION" "$EXT/nano-ros"
 
