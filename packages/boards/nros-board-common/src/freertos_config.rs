@@ -357,12 +357,26 @@ const fn parse_decimal(s: &str) -> u32 {
 /// rounding would build a heap of a size nobody stated.
 #[must_use]
 pub fn kib_of_heap_bytes(bytes: usize) -> usize {
-    assert!(
-        bytes % 1024 == 0,
-        "NROS_MEMORY_HEAP_BYTES={bytes} is not a whole number of KiB: the FreeRTOS heap \
-         is configured in KiB, so state a multiple of 1024"
-    );
+    if let Some((below, above)) = nearest_whole_kib(bytes) {
+        panic!(
+            "NROS_MEMORY_HEAP_BYTES={bytes} is not a whole number of KiB: the FreeRTOS heap \
+             is configured in KiB, so state a multiple of 1024 (the nearest are {below} or \
+             {above}; 0 means none below)"
+        );
+    }
     bytes / 1024
+}
+
+/// The nearest whole-KiB sizes below and above `bytes` (`below` may be 0),
+/// or `None` when `bytes` is already whole KiB: what a FreeRTOS size refusal
+/// names.
+#[must_use]
+pub const fn nearest_whole_kib(bytes: usize) -> Option<(usize, usize)> {
+    if bytes % 1024 == 0 {
+        return None;
+    }
+    let below = bytes / 1024 * 1024;
+    Some((below, below + 1024))
 }
 
 #[cfg(test)]
@@ -547,6 +561,20 @@ mod tests {
             default_bytes, C_CARRIER_APP_STACK_BYTES,
             "the C/C++ carrier's app stack moved; the DDS heap default must follow it"
         );
+    }
+
+    #[test]
+    fn a_size_that_is_not_whole_kib_names_the_nearest_valid_ones() {
+        assert_eq!(nearest_whole_kib(65536), None);
+        assert_eq!(nearest_whole_kib(65_000), Some((64512, 65536)));
+        assert_eq!(nearest_whole_kib(100), Some((0, 1024)));
+        assert_eq!(kib_of_heap_bytes(65536), 64);
+    }
+
+    #[test]
+    #[should_panic(expected = "the nearest are 64512 or 65536")]
+    fn a_heap_that_is_not_whole_kib_is_refused_naming_the_nearest() {
+        let _ = kib_of_heap_bytes(65_000);
     }
 
     #[test]
