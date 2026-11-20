@@ -59,6 +59,16 @@ arch-profile-resolution:
 clock-epoch-store:
     @bash tests/clock-epoch-store-tests.sh
 
+# RFC-0132 D3 (phase-560 W9.f) -- the CAN frame driver's `board` backend
+# defaults: a board-stack board with no strong `nros_platform_can_*` fails at
+# `open` with "not supported" naming the board, a strong definition in another
+# object wins, and only board-stack boards compile the defaults. Compiles two
+# small C programs with the host compiler; ~1 s.
+[private]
+[group('needs:cc')]
+can-board-defaults:
+    @bash tests/can-board-defaults-tests.sh
+
 # RFC-0135 D2 (phase-577 W8) -- a board's CMake module has ONE lookup,
 # `nros_board_module_path()` (cmake/NanoRosBoardModule.cmake), so a board
 # package outside nano-ros can ship its own and `nros build` can name it

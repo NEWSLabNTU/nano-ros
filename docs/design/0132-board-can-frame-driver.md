@@ -427,6 +427,14 @@ because its image is the binary that gets flashed.
 
 ## Changelog
 
+- 2026-11-20 -- W9.f, first part: the `board` backend's weak fail-loud
+  defaults (`nros-board-common/c/nros_board_can_unsupported.c`), compiled by
+  `s32z270-freertos` through a TU that names the board. They are an OBJECT of
+  the app on both roads, never an archive member: a weak definition in an
+  object stops the linker searching archives for the symbol, so a board's or
+  consumer's strong driver must be an object of the image too (the rule
+  `nros_board_register_netif`'s overrides already follow). Open question 4's
+  follow-up is issue 2769.
 - 2026-11-20 -- W9.e landed: the device reaches `open(NULL)` on the cargo and
   cmake roads. The board hands it to a store apart from the backends
   (`nros-board-common/c/nros_board_can_image.c`), so a board that hands a
