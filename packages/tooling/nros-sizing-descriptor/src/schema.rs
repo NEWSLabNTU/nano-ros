@@ -1391,7 +1391,7 @@ impl Params {
         fact(&self.declared, "declared", &self.refused)
     }
 
-    /// `NROS_MAX_PARAMETERS` — the store's CAPACITY: every node's declared
+    /// `NROS_PARAMS_MAX_PARAMETERS` — the store's CAPACITY: every node's declared
     /// names plus the seeded `use_sim_time`, counted once per node even when
     /// the contract also names it (the seed steps aside for an application's
     /// own declaration and the two share a slot).

@@ -533,7 +533,7 @@ pub const IP_LINK_FEATURE: &str = "ethernet";
 /// * `transport = "serial"`, on a board that declares `serial`: the IP link
 ///   feature leaves the list and `serial` joins it — the same "a serial image
 ///   has no IP link" rule `leaf_settings::transport_implications_of` applies
-///   to the build-script knobs (`ZPICO_NO_SMOLTCP`, `NROS_LINK_IP`).
+///   to the build-script knobs (`NROS_ZENOH_NO_SMOLTCP`, `NROS_LINK_IP`).
 /// * `rmw = "xrce"` over that serial link, on a board that declares
 ///   `xrce-transport`: that feature too. Over an IP link the XRCE client
 ///   dials the agent itself and needs no board transport.

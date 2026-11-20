@@ -140,7 +140,7 @@ _LANE_SYMBOL = re.compile(r"\b(UCLIENT_[A-Z0-9_]+|XRCE_(?:MAX|MIN|BUFFER|STREAM|
 _FORWARDED = re.compile(r"_nros_resolve(?:_derivable)?_knob\(\s*(NROS_XRCE_[A-Z0-9_]+)")
 # issue 1722 — ANY forwarded `NROS_*` knob, for the other direction only ("is
 # this binding wired?"). The manifest may bind a backend-neutral knob
-# (`NROS_PARAM_SERVICE_INBOX_BYTES`, which nros-node owns and cmake forwards),
+# (`NROS_PARAMS_SERVICE_INBOX_BYTES`, which nros-node owns and cmake forwards),
 # and reading only `NROS_XRCE_*` reported that forwarded knob as unwired. The
 # reverse check ("is every forwarded XRCE knob bound?") stays XRCE-scoped: the
 # file forwards dozens of knobs that are none of this backend's business.

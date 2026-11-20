@@ -537,7 +537,7 @@ const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
 /// services, and 24 x 4 x 1,024 B is most of an image that is over RAM.
 ///
 /// Sized by the same ladder as its sibling, one rung shallower in the message:
-/// a rung that STATES `NROS_PARAM_SERVICE_INBOX_BYTES` wins; otherwise the
+/// a rung that STATES `NROS_PARAMS_SERVICE_INBOX_BYTES` wins; otherwise the
 /// contract's declared parameters bound it, through
 /// `ParamServiceBound::request_max` rather than `total` (an inbox holds
 /// REQUESTS; the replies go out through the buffer pair); and with no
@@ -576,7 +576,7 @@ pub const fn param_service_inbox_derived() -> bool {
 pub const PARAM_INBOX_SLOT_BYTES: usize = param_service_inbox_bytes();
 
 /// Requests one parameter-service queryable holds before the newest is
-/// dropped (`NROS_PARAM_SERVICE_INBOX_DEPTH`, default 1).
+/// dropped (`NROS_PARAMS_SERVICE_INBOX_DEPTH`, default 1).
 ///
 /// One, because parameter traffic is one request and one reply from a client
 /// that waits: `ros2 param` and rclcpp's `SyncParametersClient` send and block,
@@ -596,13 +596,13 @@ pub const PARAM_INBOX_DEPTH: usize = crate::config::PARAM_SERVICE_INBOX_DEPTH;
 /// phase-461 W2 -- the gate.
 ///
 /// When the size is derived this is `x >= x` and the compiler folds it away.
-/// When a rung STATES `NROS_PARAM_SERVICE_INBOX_BYTES` and the contract
+/// When a rung STATES `NROS_PARAMS_SERVICE_INBOX_BYTES` and the contract
 /// declares its parameters, a short statement fails the BUILD here rather than
 /// dropping a well-formed request at run time -- which is what the flat 1,024 B
 /// slot did, silently, and is the whole of issue 1352's second half.
 const _: () = assert!(
     inbox_fits(PARAM_INBOX_SLOT_BYTES, DECLARED_WORST_PARAM_REQUEST),
-    "NROS_PARAM_SERVICE_INBOX_BYTES is smaller than the largest parameter request the \
+    "NROS_PARAMS_SERVICE_INBOX_BYTES is smaller than the largest parameter request the \
      contract's declared parameters can produce (a set_parameters naming every parameter \
      of the worst-declared node). Raise it, or drop the override and let it derive."
 );

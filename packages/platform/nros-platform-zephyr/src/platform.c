@@ -1176,8 +1176,8 @@ int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime_ms) 
  * and mutexes/condvars above no longer go down with it. */
 #if defined(CONFIG_DYNAMIC_THREAD) && defined(CONFIG_THREAD_STACK_INFO)
 
-/* phase-412 — this read ~~`NROS_ZEPHYR_TASK_STACK_SIZE`~~, a spelling nothing
- * defines: CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE reaches C as
+/* phase-412 — this read `NROS_ZEPHYR_TASK_STACK_SIZE`, a spelling nothing
+ * defined: CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES reaches C as
  * NROS_ZEPHYR_STACK_SIZE (zephyr/CMakeLists.txt), which is what the shim's task
  * pool reads. So the Kconfig knob that documents itself as "the stack given to
  * every task nano-ros creates on Zephyr" never reached this path. Read the
@@ -1666,7 +1666,7 @@ void nros_platform_log_flush(void) {
  * native_sim test parallelism: the test harness starts a per-test zenohd on an
  * ephemeral port and launches the image with `-testargs --nros-locator=<loc>`.
  * Reading that here (preferred over the build-time-baked
- * `CONFIG_NROS_ZENOH_LOCATOR`) gives every test a distinct router port, so the
+ * `CONFIG_NROS_LOCATOR`) gives every test a distinct router port, so the
  * zenoh e2e lanes stop serializing on one shared baked port.
  *
  * Why `-testargs`: native_sim's own option parser ABORTS on an unregistered

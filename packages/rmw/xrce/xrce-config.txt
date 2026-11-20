@@ -277,4 +277,4 @@ define  XRCE_STREAM_HISTORY        NROS_XRCE_STREAM_HISTORY        4
 # XRCE_SERVICE_REQUEST_BUFFER_SIZE to it and refuses a STATED request buffer
 # below it, so a declared `set_parameters` can never be dropped by a buffer the
 # build already knew was short.
-define  XRCE_PARAM_REQUEST_BYTES   NROS_PARAM_SERVICE_INBOX_BYTES  1
+define  XRCE_PARAM_REQUEST_BYTES   NROS_PARAMS_SERVICE_INBOX_BYTES  1

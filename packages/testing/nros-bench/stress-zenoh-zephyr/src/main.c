@@ -72,8 +72,8 @@ static void build_payload(uint32_t seq) {
 }
 
 int main(void) {
-    printk("stress-zenoh-zephyr: locator=%s count=%d size=%d\n", CONFIG_NROS_ZENOH_LOCATOR,
-           STRESS_COUNT, STRESS_SIZE);
+    printk("stress-zenoh-zephyr: locator=%s count=%d size=%d\n", CONFIG_NROS_LOCATOR, STRESS_COUNT,
+           STRESS_SIZE);
 
     /* phase-328 (issue 0348) — the zpico C API is handle-passing; acquire one
      * pool slot for this single-session stress image. */
@@ -86,7 +86,7 @@ int main(void) {
     /* Session open with retry: the router may come up after the image. */
     int32_t rc = -1;
     for (int attempt = 0; attempt < 40; attempt++) {
-        rc = zpico_init(s, CONFIG_NROS_ZENOH_LOCATOR);
+        rc = zpico_init(s, CONFIG_NROS_LOCATOR);
         if (rc == 0) {
             rc = zpico_open(s);
             if (rc == 0) {

@@ -31,7 +31,7 @@ fn main() {
     }
 
     // issue 0682 — the peer-mode build input (`just test-zpico-peer`).
-    println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_MULTICAST_TRANSPORT");
     println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_SERVICE_BUFFER_BYTES");
     // phase-461 W1 - the per-family service inboxes (`Knob::stated` prints
@@ -49,8 +49,8 @@ fn main() {
     // REP-2002 lifecycle services). The pair is spelled as phase-461 W2
     // forwards it, so one Kconfig symbol feeds both readers rather than the
     // two families acquiring two names for one geometry.
-    println!("cargo:rerun-if-env-changed=NROS_PARAM_SERVICE_INBOX_BYTES");
-    println!("cargo:rerun-if-env-changed=NROS_PARAM_SERVICE_INBOX_DEPTH");
+    println!("cargo:rerun-if-env-changed=NROS_PARAMS_SERVICE_INBOX_BYTES");
+    println!("cargo:rerun-if-env-changed=NROS_PARAMS_SERVICE_INBOX_DEPTH");
     // The builtin partition is drawn from the sizing descriptor (whose content
     // edge `load_for_build_script` places) or, on the Zephyr resolver road,
     // from the carrier below. Issue 1649 retired the
@@ -180,7 +180,7 @@ fn main() {
     // number.
     //
     // The SLOT is the ladder its siblings use: a stated
-    // `NROS_PARAM_SERVICE_INBOX_BYTES` wins, otherwise the contract's declared
+    // `NROS_PARAMS_SERVICE_INBOX_BYTES` wins, otherwise the contract's declared
     // parameters bound it (the descriptor's `[params]` service shape, through
     // `builtin_slot`; ~~`declared_param_request_max`~~ before), otherwise the
     // user-service slot stands, which is today's behaviour.
@@ -208,7 +208,7 @@ fn main() {
     // `set_parameters` was dropped by a 1,024 B slot with no reply.
     // `builtin_slot` holds the rule: declared-and-unpriceable REFUSES, naming
     // the knob nros-node checks; undeclared keeps the pre-W3 floor.
-    let stated_param_inbox = match env_usize("NROS_PARAM_SERVICE_INBOX_BYTES", usize::MAX) {
+    let stated_param_inbox = match env_usize("NROS_PARAMS_SERVICE_INBOX_BYTES", usize::MAX) {
         usize::MAX => None,
         0 => panic!("{PARAM_INBOX_ZERO_REFUSAL}"),
         n => Some(n),
@@ -236,7 +236,7 @@ fn main() {
         }
         BuiltinSlot::Refused(why) => panic!("\n\n{why}\n"),
     };
-    let builtin_inbox_depth: usize = env_usize_min("NROS_PARAM_SERVICE_INBOX_DEPTH", 1, 1);
+    let builtin_inbox_depth: usize = env_usize_min("NROS_PARAMS_SERVICE_INBOX_DEPTH", 1, 1);
     // phase-400 W6 — the `[knobs.zenoh.limits]` rungs. `None` when no lane named
     // a platform, and the builtins below then stand.
     let rungs = nros_platform_config::platform_config::BuildRungs::from_build_env();
@@ -442,7 +442,7 @@ fn main() {
     // builtin TABLE exists, and it exists only when the application's own
     // queryable count is known (`BUILTIN_INBOX_PER_SESSION`, which abstains to
     // zero otherwise). Measured: a contract declaring 25 parameters, the
-    // components declaring no entities, `NROS_PARAM_SERVICE_INBOX_BYTES=4096`
+    // components declaring no entities, `NROS_PARAMS_SERVICE_INBOX_BYTES=4096`
     // stated -- `BUILTIN_INBOX_BYTES` was 4096 and the parameter services
     // still landed in 1,024 B user-service rings and dropped the request.
     // With no builtin table the user-service rings ARE the parameter family's
@@ -512,12 +512,12 @@ fn main() {
              /// queryables then draw user-service rings, which is the single-table behaviour).\n\
              pub const ACTION_INBOX_QUERYABLES: usize = {action_inbox_queryables};\n\
              /// The builtin family's slot size: the ROS parameter services\n\
-             /// and the REP-2002 lifecycle services (set via NROS_PARAM_SERVICE_INBOX_BYTES;\n\
+             /// and the REP-2002 lifecycle services (set via NROS_PARAMS_SERVICE_INBOX_BYTES;\n\
              /// default is the largest request the contract's declared parameters can\n\
              /// produce, else the user-service slot).\n\
              pub const BUILTIN_INBOX_BYTES: usize = {builtin_inbox_bytes};\n\
              /// The builtin family's ring depth (set via\n\
-             /// NROS_PARAM_SERVICE_INBOX_DEPTH, default 1: these clients are sequential).\n\
+             /// NROS_PARAMS_SERVICE_INBOX_DEPTH, default 1: these clients are sequential).\n\
              pub const BUILTIN_INBOX_DEPTH: usize = {builtin_inbox_depth};\n\
              /// Queryables this image's own DECLARATION attributes to the\n\
              /// application, per session. `None` when nothing declared them, which\n\
@@ -1137,15 +1137,15 @@ fn env_usize_min(name: &str, default: usize, min: usize) -> usize {
     v
 }
 
-/// issue 1485 -- the refusal for a STATED `NROS_PARAM_SERVICE_INBOX_BYTES=0`,
+/// issue 1485 -- the refusal for a STATED `NROS_PARAMS_SERVICE_INBOX_BYTES=0`,
 /// word for word the one `nros-node/build.rs` raises for the same knob (RFC-0065
 /// D2: refuse, and name the remedy), so a board that states 0 is told one thing
 /// whichever build script runs first.
-const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAM_SERVICE_INBOX_BYTES=0: 0 is not a size; -1 derives.\n  \
+const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAMS_SERVICE_INBOX_BYTES=0: 0 is not a size; -1 derives.\n  \
      It is the bytes ONE request slot of the parameter/lifecycle inbox holds, \
      and a 0-byte slot drops every request. 0 was once this knob's derive sentinel, \
      which is why a 0 may still be written somewhere.\n  \
-     Delete the line (on Zephyr, CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, whose \
+     Delete the line (on Zephyr, CONFIG_NROS_PARAMS_SERVICE_INBOX_BYTES, whose \
      default -1 derives the size from the contract's declared parameters), \
      or state the size you mean.";
 

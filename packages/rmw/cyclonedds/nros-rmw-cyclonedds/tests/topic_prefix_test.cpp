@@ -3,7 +3,7 @@
 // Verifies the four cases that matter for stock-RMW interop:
 //   1. plain name + prefix → "<prefix>/<name>"
 //   2. already-prefixed input → unchanged (idempotent)
-//   3. NROS_RMW_CYCLONEDDS_SKIP_PREFIX=1 in env → unchanged
+//   3. NROS_CYCLONEDDS_SKIP_PREFIX=1 in env → unchanged
 //   4. overflow → returns false
 
 #include <cstdio>
@@ -61,16 +61,16 @@ int main() {
     EXPECT_STR(buf, "rq/already");
 
     // Case 3: env-opt-out.
-    EXPECT(setenv("NROS_RMW_CYCLONEDDS_SKIP_PREFIX", "1", 1) == 0, "setenv");
+    EXPECT(setenv("NROS_CYCLONEDDS_SKIP_PREFIX", "1", 1) == 0, "setenv");
     EXPECT(apply("chatter", "rt", buf, sizeof(buf)), "apply with skip env");
     EXPECT_STR(buf, "chatter");
-    EXPECT(unsetenv("NROS_RMW_CYCLONEDDS_SKIP_PREFIX") == 0, "unsetenv");
+    EXPECT(unsetenv("NROS_CYCLONEDDS_SKIP_PREFIX") == 0, "unsetenv");
 
     // Case 3b: env=0 doesn't skip.
-    EXPECT(setenv("NROS_RMW_CYCLONEDDS_SKIP_PREFIX", "0", 1) == 0, "setenv 0");
+    EXPECT(setenv("NROS_CYCLONEDDS_SKIP_PREFIX", "0", 1) == 0, "setenv 0");
     EXPECT(apply("chatter", "rt", buf, sizeof(buf)), "env=0 doesn't skip");
     EXPECT_STR(buf, "rt/chatter");
-    EXPECT(unsetenv("NROS_RMW_CYCLONEDDS_SKIP_PREFIX") == 0, "unsetenv");
+    EXPECT(unsetenv("NROS_CYCLONEDDS_SKIP_PREFIX") == 0, "unsetenv");
 
     // Case 4: overflow.
     char tiny[4];

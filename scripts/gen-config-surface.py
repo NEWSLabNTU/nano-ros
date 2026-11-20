@@ -88,8 +88,8 @@ FACTS = [
     {
         "fact": "ROS domain id",
         "ssot": "`[system].domain_id` in `system.toml`",
-        "carriers": ["CONFIG_NROS_DOMAIN_ID", "CONFIG_NROS_CYCLONE_DOMAIN_ID"],
-        "note": "`CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults FROM `NROS_DOMAIN_ID` — "
+        "carriers": ["CONFIG_NROS_DOMAIN_ID", "CONFIG_NROS_CYCLONEDDS_DOMAIN_ID"],
+        "note": "`CONFIG_NROS_CYCLONEDDS_DOMAIN_ID` defaults FROM `NROS_DOMAIN_ID` — "
                 "the one derivation edge in this cluster. Do not pin it to a literal: "
                 "a Cyclone DDS image would then run on that domain whatever `domain_id` says.",
     },
@@ -97,7 +97,7 @@ FACTS = [
         "fact": "Router / agent endpoint",
         "ssot": "`[system].locator` in `system.toml`",
         "carriers": [
-            "CONFIG_NROS_ZENOH_LOCATOR", "CONFIG_NROS_XRCE_AGENT_ADDR",
+            "CONFIG_NROS_LOCATOR", "CONFIG_NROS_XRCE_AGENT_ADDR",
             "CONFIG_NROS_XRCE_AGENT_PORT",
         ],
         "note": "Zephyr is exempt from the cmake precedence chain by design "
@@ -116,15 +116,15 @@ FACTS = [
             "CONFIG_NROS_EXECUTOR_ACTION_CLIENTS",
             "CONFIG_NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES",
             "CONFIG_NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES",
-            "CONFIG_NROS_MAX_PARAMETERS",
+            "CONFIG_NROS_PARAMS_MAX_PARAMETERS",
             "CONFIG_NROS_PARAMS_MAX_NAME_BYTES",
             "CONFIG_NROS_PARAMS_MAX_STRING_VALUE_BYTES",
-            "CONFIG_NROS_MAX_ARRAY_LEN",
-            "CONFIG_NROS_MAX_STRING_ARRAY_LEN",
+            "CONFIG_NROS_PARAMS_MAX_ARRAY_LEN",
+            "CONFIG_NROS_PARAMS_MAX_STRING_ARRAY_LEN",
             "CONFIG_NROS_PARAMS_MAX_BYTE_ARRAY_BYTES",
             "CONFIG_NROS_PARAMS_MAX_DESCRIPTION_BYTES",
             "CONFIG_NROS_PARAMS_MAX_CONSTRAINTS_BYTES",
-            "CONFIG_NROS_PARAM_EVENTS_DEPTH",
+            "CONFIG_NROS_PARAMS_EVENTS_DEPTH",
         ],
         "note": "On Zephyr the Kconfig spelling IS how a user sets these — it is "
                 "a carrier only in the sense that the env var is what the build "
@@ -222,8 +222,9 @@ def kconfig_internal_refs(symbols):
 
     The tree-wide grep deliberately skips Kconfig (else every declaration would
     count as its own reader), and that hid a real consumer class.
-    `NROS_TRANSPORT_SERIAL` looked dead with zero readers; it carries
-    `select NROS_ZENOH_LINK_SERIAL`, so setting it turns the serial link on.
+    The retired `NROS_TRANSPORT_SERIAL` looked dead with zero readers; it
+    carried `select NROS_ZENOH_LINK_SERIAL`, so setting it turned the serial
+    link on.
     That IS its effect — Kconfig is the consumer, and a rule that cannot see
     `select` will keep proposing live symbols for deletion.
     """
@@ -239,9 +240,10 @@ def kconfig_internal_refs(symbols):
             for name in re.findall(r"\bNROS_\w+", ref.group(1)):
                 refs.add("CONFIG_" + name)
             # …and a symbol that SELECTS or IMPLIES another has its effect that
-            # way, even though nothing reads it. `NROS_TRANSPORT_SERIAL` is the
-            # case: it selects `NROS_ZENOH_LINK_SERIAL`, which is exactly what
-            # turning it on is for. Reading only the referenced side would keep
+            # way, even though nothing reads it. The retired
+            # `NROS_TRANSPORT_SERIAL` was the case: it selected
+            # `NROS_ZENOH_LINK_SERIAL`, which was exactly what turning it on was
+            # for. Reading only the referenced side would keep
             # proposing it for deletion.
             if cur and re.match(r"^\s*(?:select|imply)\s", line):
                 refs.add(cur)

@@ -325,7 +325,7 @@ max-threads = 9
 # talker+listener / server+client pair shares one domain and unrelated sets
 # differ. Cyclone derives its RTPS ports from the domain (7400 + 250*domain),
 # so concurrent tests no longer collide on the old domain-0 ports (issue 0161
-# history: the phase-180 CONFIG_NROS_CYCLONE_DOMAIN_ID split-brain pinned
+# history: the phase-180 CONFIG_NROS_CYCLONEDDS_DOMAIN_ID split-brain pinned
 # everything back to 0; the knob now defaults to NROS_DOMAIN_ID).
 # Parallel-safe; capped at 4 to bound host load (each native_sim Cyclone
 # process carries discovery threads). Compile-time (Kconfig) — no runtime
@@ -544,7 +544,7 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 
 # phase-441 W1 — issue-#141-shaped RESOURCE, on the Cortex-M board: one baked
 # image serves two tests. `build-cortex-m-c-talker-zenoh` bakes
-# `CONFIG_NROS_ZENOH_LOCATOR="tcp/10.0.2.2:10700"`, and BOTH
+# `CONFIG_NROS_LOCATOR="tcp/10.0.2.2:10700"`, and BOTH
 # `zephyr_cortex_m_qemu::zephyr_cortex_m_c_zenoh_pubsub_e2e` (the baked
 # `matrix::CELLS` cell) and `pubsub_zephyr_cortex_m_ros2_interop_e2e` (the
 # live-peer `interop::CELLS` cell) start a router on that port. That is not a

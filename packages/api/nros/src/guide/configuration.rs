@@ -60,7 +60,7 @@
 //!
 //! | Variable | Description | Default |
 //! |----------|-------------|---------|
-//! | `NROS_MAX_PARAMETERS` | Max parameters in parameter server | 32 |
+//! | `NROS_PARAMS_MAX_PARAMETERS` | Max parameters in parameter server | 32 |
 //!
 //! Example — increase zenoh defrag to 128 KB for large point clouds:
 //!

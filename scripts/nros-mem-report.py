@@ -340,7 +340,7 @@ STORAGE_ROLES = [
     ),
     # The Zephyr platform's task-stack pool (zenoh-pico's executor thread and
     # tx-flush task, RFC-0110 D2): CONFIG_NROS_ZEPHYR_TASK_SLOTS stacks of
-    # CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE, priced from the image's .config.
+    # CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES, priced from the image's .config.
     (
         "platform task stacks",
         r"nros_thread_stacks",
@@ -870,12 +870,12 @@ def price_by_macro(key, measured, sizes):
 
 # Issue 2040 -- the Zephyr platform's task-stack pool. The shim defines
 # `nros_thread_stacks` as NROS_ZEPHYR_MAX_THREADS (CONFIG_NROS_ZEPHYR_TASK_SLOTS)
-# stacks of NROS_ZEPHYR_STACK_SIZE (CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE, 0 =
+# stacks of NROS_ZEPHYR_STACK_SIZE (CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES, 0 =
 # CONFIG_MAIN_STACK_SIZE); `K_THREAD_STACK_ARRAY_DEFINE` pads each to the
 # architecture's stack alignment and guard, so a slot is never LESS than asked.
 TASK_STACK_KCONFIG = (
     "CONFIG_NROS_ZEPHYR_TASK_SLOTS",
-    "CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE",
+    "CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES",
     "CONFIG_MAIN_STACK_SIZE",
 )
 
@@ -1652,7 +1652,7 @@ def selftest_level_image():
     syms = [make_symbol(b, "b", raw, name) for raw, name, b, _o in rows]
     sizes = {"NROS_CPP_LEVELS_BACKING_SIZE": 40644, "NROS_CPP_SCHEDULER_BACKING_SIZE_0": 232,
              "NROS_CPP_EXECUTOR_STORAGE_SIZE": 2788}
-    kconfig = {"CONFIG_NROS_ZEPHYR_TASK_SLOTS": 4, "CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE": 0,
+    kconfig = {"CONFIG_NROS_ZEPHYR_TASK_SLOTS": 4, "CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES": 0,
                "CONFIG_MAIN_STACK_SIZE": 5120}
     res = analyse_symbols("synthetic", syms, {}, {}, sizes=(sizes, ["h"], None),
                           task_kconfig=kconfig)
@@ -1678,9 +1678,9 @@ def selftest_level_image():
     assert price_by_macro("__nros_sched_tasks", 96, sizes) is None
     assert price_task_stacks(20481, kconfig).startswith("MISMATCH"), "not whole slots"
     assert price_task_stacks(4 * 4096, kconfig).startswith("MISMATCH"), "slot below the ask"
-    assert price_task_stacks(4 * 8192, dict(kconfig, CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE=8192)
+    assert price_task_stacks(4 * 8192, dict(kconfig, CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES=8192)
                              ).startswith("4 x 8,192 (CONFIG_NROS_ZEPHYR_TASK_SLOTS = 4, "
-                                          "CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE = 8,192")
+                                          "CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES = 8,192")
     assert price_task_stacks(20480, None).startswith("measured; no .config")
 
 
@@ -1913,8 +1913,8 @@ PRIORITY_RECORD = "nros_priority_plan.json"
 # The worker frame is the C level runner's measured setup peak (issue 2065,
 # the S32K344 island); the selftest reads both back from zephyr/Kconfig.
 LEVEL_KCONFIG_DEFAULTS = {
-    "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE": 16384,
-    "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME": 13312,
+    "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES": 16384,
+    "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES": 13312,
 }
 _KCONFIG_INT = re.compile(r"^(CONFIG_[A-Z0-9_]+)=([0-9]+)\s*$", re.M)
 _LEVEL_SYM = re.compile(
@@ -1958,9 +1958,9 @@ def level_knobs(family, kconfig):
         dname, dval, fname, fval = LEVEL_HEADER_DEFAULTS[family]
         return dval, fval, f"<rclc/detail/sched_task_memory_{family}.h> defaults ({dname}, {fname})"
     return (
-        kconfig["CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE"],
-        kconfig["CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME"],
-        "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME",
+        kconfig["CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES"],
+        kconfig["CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES"],
+        "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES, CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES",
     )
 
 

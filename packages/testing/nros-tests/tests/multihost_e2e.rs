@@ -37,7 +37,7 @@
 //!
 //! Isolation (phase-295 W4): the zephyr cell's `port` is the ONE
 //! allocator's `Multihost` number (`nros_tests::alloc::port_of`) — the
-//! SAME formula the west lane bakes into `CONFIG_NROS_ZENOH_LOCATOR`
+//! SAME formula the west lane bakes into `CONFIG_NROS_LOCATOR`
 //! (`scripts/build/zephyr-fixture-leaves.sh`). `None` = native ephemeral
 //! isolation.
 //!
@@ -312,7 +312,7 @@ fn run_cell(pcell: &MCell) {
     let robot2 = (cell.robot2)().require(&format!("{platform} {lang} robot2 entry"));
 
     // Router: ephemeral on native; otherwise the EXACT port the west-lane
-    // fixture's CONFIG_NROS_ZENOH_LOCATOR was baked with.
+    // fixture's CONFIG_NROS_LOCATOR was baked with.
     let router = match cell.port {
         None => ZenohRouter::start_unique()
             .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}")),

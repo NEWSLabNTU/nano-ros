@@ -206,13 +206,13 @@ Both tables are checked when `system.toml` is read, and `nros flash` and
    environment variables, and a value you export wins over the generated one:
 
    ```bash
-   NROS_LINK_IP=0 ZPICO_NO_SMOLTCP=1 \
-   NROS_SMOLTCP_MAX_SOCKETS=1 NROS_SMOLTCP_MAX_UDP_SOCKETS=1 \
+   NROS_LINK_IP=0 NROS_ZENOH_NO_SMOLTCP=1 \
+   NROS_NET_MAX_SOCKETS=1 NROS_NET_MAX_UDP_SOCKETS=1 \
        nros build mps2-an385-baremetal
    ```
 
    `NROS_LINK_IP=0` drops zenoh-pico's TCP and UDP links on a serial-only
-   image, and `ZPICO_NO_SMOLTCP=1` skips the smoltcp glue on bare metal. A
+   image, and `NROS_ZENOH_NO_SMOLTCP=1` skips the smoltcp glue on bare metal. A
    knob you always want for a board belongs in that board's descriptor
    `[knobs]`, not on every command line.
 

@@ -78,7 +78,7 @@ printf '%s\n' \
     'echo "NROS_LEAF_DOMAIN_ID=2"' \
     'if [ -n "$env_out" ]; then' \
     '  mkdir -p "$(dirname "$env_out")"' \
-    '  printf "[env]\nNROS_MAX_PARAMETERS = \"164\"\n" > "$env_out"' \
+    '  printf "[env]\nNROS_PARAMS_MAX_PARAMETERS = \"164\"\n" > "$env_out"' \
     '  echo "NROS_LEAF_IMAGE_ENV=$env_out"' \
     'fi' > "$STANDIN"
 chmod +x "$STANDIN"

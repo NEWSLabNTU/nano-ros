@@ -663,7 +663,7 @@ fn run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> 
 pub const PROBE_EXECUTOR_MAX_CBS: usize = 64;
 
 /// Issue 2640 -- the probe's parameter-store slots (`params.max_parameters`,
-/// `NROS_MAX_PARAMETERS`).
+/// `NROS_PARAMS_MAX_PARAMETERS`).
 ///
 /// The probe runs a component's constructor to see what it declares, so the
 /// store must not be what stops it. At the build default (32) a component
@@ -682,7 +682,7 @@ pub const PROBE_MAX_PARAMETERS: usize = 1024;
 /// and is probed again rather than trusted.
 pub fn probe_knob_key() -> String {
     format!(
-        "NROS_EXECUTOR_MAX_CBS={PROBE_EXECUTOR_MAX_CBS},NROS_MAX_PARAMETERS={PROBE_MAX_PARAMETERS}"
+        "NROS_EXECUTOR_MAX_CBS={PROBE_EXECUTOR_MAX_CBS},NROS_PARAMS_MAX_PARAMETERS={PROBE_MAX_PARAMETERS}"
     )
 }
 
@@ -939,7 +939,10 @@ fn pin_probe_env(cmd: &mut Command, nano_ros: &Path) {
     cmd.env("NROS_WORKSPACE", nano_ros);
     cmd.env("NROS_EXECUTOR_MAX_CBS", PROBE_EXECUTOR_MAX_CBS.to_string());
     // Issue 2640 -- and the parameter store's slots, for the same reason.
-    cmd.env("NROS_MAX_PARAMETERS", PROBE_MAX_PARAMETERS.to_string());
+    cmd.env(
+        "NROS_PARAMS_MAX_PARAMETERS",
+        PROBE_MAX_PARAMETERS.to_string(),
+    );
     if let Ok(exe) = std::env::current_exe() {
         cmd.env("NROS_CLI", exe);
     }
@@ -1366,11 +1369,11 @@ mod tests {
     fn the_probe_parameter_store_never_fills() {
         let mut cmd = Command::new("cmake");
         // The caller's environment does not shrink it.
-        cmd.env("NROS_MAX_PARAMETERS", "32");
+        cmd.env("NROS_PARAMS_MAX_PARAMETERS", "32");
         pin_probe_env(&mut cmd, Path::new("/nano-ros"));
         let slots = cmd
             .get_envs()
-            .find(|(k, _)| *k == "NROS_MAX_PARAMETERS")
+            .find(|(k, _)| *k == "NROS_PARAMS_MAX_PARAMETERS")
             .and_then(|(_, v)| v)
             .and_then(|v| v.to_str())
             .and_then(|v| v.parse::<usize>().ok());
@@ -1378,7 +1381,9 @@ mod tests {
         // The island's controller: 149 declarations, plus `use_sim_time` and
         // its launch seeds, with room for a component several times its size.
         const { assert!(PROBE_MAX_PARAMETERS >= 4 * 164) };
-        assert!(probe_knob_key().contains(&format!("NROS_MAX_PARAMETERS={PROBE_MAX_PARAMETERS}")));
+        assert!(probe_knob_key().contains(&format!(
+            "NROS_PARAMS_MAX_PARAMETERS={PROBE_MAX_PARAMETERS}"
+        )));
     }
 
     fn opts() -> CmakeProbeOptions {

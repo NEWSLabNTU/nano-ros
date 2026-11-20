@@ -310,7 +310,7 @@ run's.
 | `check-workflow-doctor-after-setup.py` · workflow-doctor-after-setup/composite-action | `.github/actions/setup-nros-cli/action.yml` += run: bash scripts/ci/runner-doctor.sh | 0 | **HOLE** (W1, #1617) |
 | `check-workflow-doctor-after-setup.py` · workflow-doctor-after-setup/workflow | new `.github/workflows/rerun-probe.yml` | 1 | control: fails ✓ |
 | `check-test-scripts-have-callers.py` · test-scripts-have-callers/comment-only | new `tests/rerun-orphan-tests.sh`; `just/check/cmake.just` += # see tests/rerun-orphan-tests.sh | 1 | clean (fails) |
-| `check-cyclone-domain-not-pinned.py` · cyclone-domain-not-pinned/example-conf | `examples/zephyr/c/talker/prj-cyclonedds.conf` += CONFIG_NROS_CYCLONE_DOMAIN_ID=0 | 1 | clean (fails) |
+| `check-cyclone-domain-not-pinned.py` · cyclone-domain-not-pinned/example-conf | `examples/zephyr/c/talker/prj-cyclonedds.conf` += CONFIG_NROS_CYCLONEDDS_DOMAIN_ID=0 | 1 | clean (fails) |
 | `check-core-crates-are-no-std.py` · core-crates-are-no-std/block-comment | `packages/core/nros-core/src/lib.rs`: /* | 0 | **HOLE** (W3, #1617) |
 | `check-manifests-parse.py` · manifests-parse/nested-leaf | new `examples/rerun-bad/Cargo.toml` | 1 | clean (fails) |
 | `check-no-tracked-models.sh` · no-tracked-models/system_model | new `examples/rerun-ws/build/nros/models/demo/system_model.yaml` | 1 | clean (fails) |

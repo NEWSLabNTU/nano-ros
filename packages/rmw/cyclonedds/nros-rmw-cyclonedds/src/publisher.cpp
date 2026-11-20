@@ -150,7 +150,7 @@ rmw_ret_t publisher_create(const rmw_node_t* node, const rmw_message_type_suppor
 
     // Phase 117.X.2: prepend `rt/` so we match `rmw_cyclonedds_cpp`'s
     // wire-level topic naming. Idempotent + env-opt-out via
-    // NROS_RMW_CYCLONEDDS_SKIP_PREFIX=1.
+    // NROS_CYCLONEDDS_SKIP_PREFIX=1.
     char prefixed[256];
     if (!topic_prefix::apply(topic_name, "rt", prefixed, sizeof(prefixed))) {
         delete state;

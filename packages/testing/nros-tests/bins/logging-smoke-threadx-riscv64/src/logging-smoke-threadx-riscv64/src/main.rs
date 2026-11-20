@@ -58,7 +58,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
 // Network config lives in a sibling `config.toml`, compile-baked here
 // (RFC-0004: config in a file, not hardcoded in code). `from_toml` applies the
-// build-time `NROS_DOMAIN_ID` override for per-fixture domain isolation.
+// build-time `NROS_ENTRY_DOMAIN_ID` override for per-fixture domain isolation.
 const CONFIG: &str = include_str!("../config.toml");
 
 #[unsafe(no_mangle)]

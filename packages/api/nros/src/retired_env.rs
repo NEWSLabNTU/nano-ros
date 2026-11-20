@@ -18,6 +18,15 @@
 
 /// `(retired, replacement)` pairs, in the order the readers check them.
 pub const RETIRED_ENV_VARS: &[(&str, &str)] = &[
+    (
+        "NROS_CYCLONE_MATCH_TIMEOUT_MS",
+        "NROS_CYCLONEDDS_MATCH_TIMEOUT_MS",
+    ),
+    (
+        "NROS_RMW_CYCLONEDDS_SKIP_PREFIX",
+        "NROS_CYCLONEDDS_SKIP_PREFIX",
+    ),
     ("ZENOH_LOCATOR", "NROS_LOCATOR"),
     ("ZENOH_MODE", "NROS_SESSION_MODE"),
+    ("XRCE_SERIAL_BAUD", "NROS_XRCE_SERIAL_BAUD"),
 ];

@@ -582,7 +582,7 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     fi
 
     [ -z "$xrce_agent_port" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_XRCE_AGENT_PORT=$xrce_agent_port"
-    [ -z "$zenoh_locator" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$zenoh_locator\""
+    [ -z "$zenoh_locator" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_LOCATOR=\"$zenoh_locator\""
     [ -z "$dds_domain" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_DOMAIN_ID=$dds_domain"
     [ -z "$conf_files" ] || extra_cmake_defs="$extra_cmake_defs -DCONF_FILE=$conf_files"
     # phase-481 W3 — a single-package leaf builds ONE of its `system.toml`

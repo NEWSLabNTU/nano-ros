@@ -156,7 +156,7 @@ struct rmw_request_id_t;
 // the executor's store (`rclcpp/node_parameters.hpp`), so there is no per-node
 // arena left for a number to bound.
 //
-// The image's one parameter arena is now `NROS_MAX_PARAMETERS` on
+// The image's one parameter arena is now `NROS_PARAMS_MAX_PARAMETERS` on
 // `nros-params` (default 32, a build knob), and it is shared across every node
 // on the executor rather than multiplied by the node count. Do not reintroduce
 // a per-facade capacity: a second number is how a second store starts.
@@ -673,7 +673,7 @@ constexpr int32_t PARAM_VALUE_TYPE_MISMATCH = -447;
 // This used to be a silent `return default_value`.
 constexpr const char* PARAM_STORE_FULL_WHAT =
     "declare_parameter: parameter store full; raise `max_parameters` under [knobs.params] "
-    "(NROS_MAX_PARAMETERS / CONFIG_NROS_MAX_PARAMETERS)";
+    "(NROS_PARAMS_MAX_PARAMETERS / CONFIG_NROS_PARAMS_MAX_PARAMETERS)";
 
 /// The `set_error` text for any other refusal of a declaration.
 constexpr const char* PARAM_DECLARE_REFUSED_WHAT =

@@ -158,7 +158,7 @@ class = "config"
 config = "Multisession"
 reason = "a zenoh-pico session pool larger than 1: two sessions in one process"
 
-[knob.ZPICO_MULTICAST_TRANSPORT]
+[knob.NROS_ZENOH_MULTICAST_TRANSPORT]
 class = "config"
 config = "PeerMode"
 reason = "`1` compiles zenoh-pico's multicast transport and scouting (issue 0711), so a peer-mode session needs no router — same messages, no router"

@@ -8,7 +8,7 @@
 /// the Zephyr typed Entry carrier (the shared entry pack) calls;
 /// the carrier runs it on the real executor (ZephyrBoard::run_components) — no
 /// hand-written `main`. Booting needs a zenoh router at
-/// CONFIG_NROS_ZENOH_LOCATOR (e.g.
+/// CONFIG_NROS_LOCATOR (e.g.
 /// `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false'
 /// ros2 run rmw_zenoh_cpp rmw_zenohd`).
 

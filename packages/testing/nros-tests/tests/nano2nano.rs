@@ -143,7 +143,7 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
 /// peer mode up front, so this test could only ever SKIP — and it spawns
 /// PREBUILT binaries, so no env exported around the test crate could change
 /// what they were compiled with. Hence a fixture variant carrying
-/// `ZPICO_MULTICAST_TRANSPORT=1`, in its own artifact root.
+/// `NROS_ZENOH_MULTICAST_TRANSPORT=1`, in its own artifact root.
 ///
 /// # Why `ZENOH_LISTEN` and not a multicast locator
 ///
@@ -204,7 +204,7 @@ fn test_peer_mode_communication() -> nros_tests::TestResult<()> {
     assert!(
         !startup.contains(nros_tests::output::ZENOH_PEER_MODE_UNSUPPORTED_MARKER),
         "the peer fixture was built WITHOUT multicast transport — the row's \
-         `ZPICO_MULTICAST_TRANSPORT=1` did not reach the build, so this pair \
+         `NROS_ZENOH_MULTICAST_TRANSPORT=1` did not reach the build, so this pair \
          cannot answer the question it exists for. Output:\n{startup}"
     );
     assert!(

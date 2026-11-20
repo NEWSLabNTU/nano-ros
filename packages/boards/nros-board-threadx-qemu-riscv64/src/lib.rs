@@ -296,7 +296,7 @@ where
 ///
 /// A NULL locator means the image baked none; [`Config::default`]'s then
 /// stands. The domain is not in the C struct's contract here and keeps the
-/// `NROS_DOMAIN_ID` bake `Config::default` reads.
+/// `NROS_ENTRY_DOMAIN_ID` bake `Config::default` reads.
 fn image_config() -> Config {
     unsafe extern "C" {
         fn nros_rv64_image_identity(

@@ -13576,7 +13576,7 @@ mod per_image_configure_tests {
                 None
             )
             .unwrap()
-            .get("ZPICO_NO_SMOLTCP")
+            .get("NROS_ZENOH_NO_SMOLTCP")
             .map(String::as_str),
             Some("1")
         );

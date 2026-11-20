@@ -204,7 +204,7 @@ parameter (6 per node) and lifecycle (5) services, which no
 `[[endpoint]]` row itemises, have slots of their own: the cargo lane
 derives NROS_XRCE_BUILTIN_SERVICE_SERVERS beside the server total, and
 those slots take NROS_XRCE_BUFFER_SIZE raised to the parameter
-family's largest request (NROS_PARAM_SERVICE_INBOX_BYTES, or derived
+family's largest request (NROS_PARAMS_SERVICE_INBOX_BYTES, or derived
 from the contract's `params:`). The derivation abstains,
 and says so, when a server row is unpriced or the rows do not account
 for every application server, and when NROS_XRCE_MAX_SERVICE_SERVERS
@@ -340,7 +340,7 @@ would be 4096 — 2 x 4096 x 16 = 131,072 bytes of stream buffer, twice the whol
 
 [[env]]
 key = "xrce.serial_baud"
-transitional = { name = "XRCE_SERIAL_BAUD" }
+retired = [{ spelling = "run:XRCE_SERIAL_BAUD" }]
 disposition = "listed"
 parse = "int"
 help = "The XRCE serial transport's baud rate."

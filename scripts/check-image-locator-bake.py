@@ -10,9 +10,9 @@ its connect locator from one of two carriers:
     A board applies it only if its crates SAY so — `BaseConfig::apply_overlay`
     or a read of `deploy.locator` — and the gate VERIFIES that too (issue
     1836: the NuttX board never did, and rule 1 counted the carrier anyway).
-  * the row's `env = { NROS_LOCATOR = … }`, compiled in through
-    `option_env!("NROS_LOCATOR")` — but only by a board crate that SAYS
-    `option_env!("NROS_LOCATOR")`. On any other board the value reaches nothing.
+  * the row's `env = { NROS_ENTRY_LOCATOR = … }`, compiled in through
+    `option_env!("NROS_ENTRY_LOCATOR")` — but only by a board crate that SAYS
+    `option_env!("NROS_ENTRY_LOCATOR")`. On any other board the value reaches nothing.
 
 When neither reaches the board, the image dials the board's compiled-in default
 (`tcp/192.0.3.1:7447` on threadx-linux; the board's own gateway, `10.0.2.2`, on
@@ -22,7 +22,7 @@ ConnectionFailed` before any code under test runs. That is issue 1581: phase-383
 W9 / W10.a deleted the hand-written entry packages whose
 `[package.metadata.nros.deploy.<board>] locator` carried the value, and four
 images silently fell back to the default — one of them while its row kept an
-`NROS_LOCATOR` env that looked like a bake and was dead on that board.
+`NROS_ENTRY_LOCATOR` env that looked like a bake and was dead on that board.
 
 THE RULES, per in-scope row (a cargo `workspace_fixture` row with an `image`,
 not linux — the host reads its locator from the runtime env — and not a west or
@@ -30,7 +30,7 @@ cmake build, which carry `west_zenoh_locator` / `NROS_ENTRY_LOCATOR` and are
 policed by `check-entry-locator-ssot`):
 
   1. at least one carrier the board reads states a locator;
-  2. a row `NROS_LOCATOR` on a board that does not read it is REFUSED — dead
+  2. a row `NROS_ENTRY_LOCATOR` on a board that does not read it is REFUSED — dead
      config that reads as a bake is how 1581 hid;
   3. when both carriers state one they must agree;
   4. and they must not state the SAME one (phase-484 W4e): the board applies
@@ -54,7 +54,7 @@ dial no router on purpose are listed in `NO_ROUTER` with why.
 "Which boards read the env" is a CLAIM in `READS_ENV`, and the gate VERIFIES it
 against the board crates' sources in both directions, so the table cannot drift
 toward OK: a board listed as reading it whose crates never say
-`option_env!("NROS_LOCATOR")` fails, and so does one listed as not reading it
+`option_env!("NROS_ENTRY_LOCATOR")` fails, and so does one listed as not reading it
 whose crates do. A platform the table does not classify fails, so a new board
 family is ruled on rather than waved through.
 
@@ -98,12 +98,12 @@ from pathlib import Path  # noqa: E402
 from check_just_sources import just_sources  # noqa: E402
 from image_locator import leaf_image_id, stated_locator  # noqa: E402
 MANIFEST = "examples/fixtures.toml"
-ENV_READ = re.compile(r'option_env!\(\s*"NROS_LOCATOR"\s*\)')
+ENV_READ = re.compile(r'option_env!\(\s*"NROS_ENTRY_LOCATOR"\s*\)')
 # issue 1836 — what "this board applies the image's `system.toml` locator" looks
 # like in source: the shared merge, or a direct read of the overlay's field.
 OVERLAY_APPLY = re.compile(r'\.apply_overlay\(|\b(?:deploy|overlay)\.locator\b')
 
-# platform token -> (reads NROS_LOCATOR at build time?, board crates that decide it)
+# platform token -> (reads NROS_ENTRY_LOCATOR at build time?, board crates that decide it)
 READS_ENV = {
     "freertos": (
         False,
@@ -267,8 +267,8 @@ def verify_table(table, root):
         actual = crates_say(crates, root, ENV_READ)
         if actual != claim:
             problems.append(
-                f"READS_ENV[{platform!r}] claims reads-NROS_LOCATOR={claim}, but {crates} "
-                f"{'DO' if actual else 'do NOT'} say option_env!(\"NROS_LOCATOR\") — fix the "
+                f"READS_ENV[{platform!r}] claims reads-NROS_ENTRY_LOCATOR={claim}, but {crates} "
+                f"{'DO' if actual else 'do NOT'} say option_env!(\"NROS_ENTRY_LOCATOR\") — fix the "
                 f"table, it is what rule 2 trusts"
             )
     return problems
@@ -300,7 +300,7 @@ def check_rows(rows, table, locate):
         if platform not in table:
             problems.append(
                 f"{rid}: platform `{platform}` is not classified in READS_ENV — rule on whether "
-                f"its board reads `NROS_LOCATOR` before adding a cargo image row for it"
+                f"its board reads `NROS_ENTRY_LOCATOR` before adding a cargo image row for it"
             )
             continue
         reads_env = table[platform][0]
@@ -308,7 +308,7 @@ def check_rows(rows, table, locate):
         if err:
             problems.append(f"{rid}: {os.path.relpath(path, ROOT)}: {err}")
             continue
-        env = (row.get("env") or {}).get("NROS_LOCATOR")
+        env = (row.get("env") or {}).get("NROS_ENTRY_LOCATOR")
         rid = rid if rid != "?" else row.get("dir", "?")
         audit.append(f"{rid:48} {platform:14} image={stated} env={env}")
         if env is not None and env == stated:
@@ -317,14 +317,14 @@ def check_rows(rows, table, locate):
             # (`BootConfig::over_board_defaults`), so an equal row value is a
             # second home that can only drift.
             problems.append(
-                f"{rid}: `env.NROS_LOCATOR = {env!r}` restates `[image.{row['image']}] locator` "
+                f"{rid}: `env.NROS_ENTRY_LOCATOR = {env!r}` restates `[image.{row['image']}] locator` "
                 f"in {os.path.relpath(path, ROOT)} — drop it from the row"
             )
             continue
         if env is not None and not reads_env:
             problems.append(
-                f"{rid}: `env.NROS_LOCATOR = {env!r}` reaches nothing — the `{platform}` board "
-                f"reads no `NROS_LOCATOR`. State it as `[image.{row['image']}] locator` in "
+                f"{rid}: `env.NROS_ENTRY_LOCATOR = {env!r}` reaches nothing — the `{platform}` board "
+                f"reads no `NROS_ENTRY_LOCATOR`. State it as `[image.{row['image']}] locator` in "
                 f"{os.path.relpath(path, ROOT)} and drop it from the row"
             )
             continue
@@ -341,7 +341,7 @@ def check_rows(rows, table, locate):
         if stated is not None and env is not None and stated != env:
             problems.append(
                 f"{rid}: two carriers disagree — `[image.{row['image']}] locator = {stated!r}` "
-                f"vs row `NROS_LOCATOR = {env!r}`. Keep one"
+                f"vs row `NROS_ENTRY_LOCATOR = {env!r}`. Keep one"
             )
     return problems, audit
 
@@ -407,11 +407,11 @@ def self_test():
     cases = [
         ("no carrier (the 1581 shape)", base, None, 1),
         ("stated in the image", base, "tcp/a:1", 0),
-        ("dead env on a board that ignores it", dict(base, env={"NROS_LOCATOR": "tcp/a:1"}), None, 1),
-        ("dead env even beside a stated image", dict(base, env={"NROS_LOCATOR": "tcp/a:1"}), "tcp/a:1", 1),
-        ("env on a board that reads it", dict(base, platform="envbrd", env={"NROS_LOCATOR": "tcp/a:1"}), None, 0),
-        ("carriers disagree", dict(base, platform="envbrd", env={"NROS_LOCATOR": "tcp/a:1"}), "tcp/a:2", 1),
-        ("carriers restate one fact", dict(base, platform="envbrd", env={"NROS_LOCATOR": "tcp/a:1"}), "tcp/a:1", 1),
+        ("dead env on a board that ignores it", dict(base, env={"NROS_ENTRY_LOCATOR": "tcp/a:1"}), None, 1),
+        ("dead env even beside a stated image", dict(base, env={"NROS_ENTRY_LOCATOR": "tcp/a:1"}), "tcp/a:1", 1),
+        ("env on a board that reads it", dict(base, platform="envbrd", env={"NROS_ENTRY_LOCATOR": "tcp/a:1"}), None, 0),
+        ("carriers disagree", dict(base, platform="envbrd", env={"NROS_ENTRY_LOCATOR": "tcp/a:1"}), "tcp/a:2", 1),
+        ("carriers restate one fact", dict(base, platform="envbrd", env={"NROS_ENTRY_LOCATOR": "tcp/a:1"}), "tcp/a:1", 1),
         ("no router, on purpose", dict(base, dir=next(iter(NO_ROUTER))), None, 0),
         ("unclassified platform", dict(base, platform="newos"), "tcp/a:1", 1),
         ("cmake row out of scope", dict(base, cmake_defs={}), None, 0),

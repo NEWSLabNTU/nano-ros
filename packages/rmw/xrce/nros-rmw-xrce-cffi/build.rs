@@ -1036,7 +1036,7 @@ const ENV_SUBSCRIBER_BUFFER: &str = "NROS_XRCE_SUBSCRIBER_BUFFER_BYTES";
 const ENV_SUBSCRIBER_RING_DEPTH: &str = "NROS_XRCE_SUBSCRIBER_RING_DEPTH";
 // Issue 1722 — bound to `XRCE_PARAM_REQUEST_BYTES` by `xrce-config.txt`. The
 // backend-neutral knob, not an XRCE one: nros-node checks a statement of it.
-const ENV_PARAM_REQUEST: &str = "NROS_PARAM_SERVICE_INBOX_BYTES";
+const ENV_PARAM_REQUEST: &str = "NROS_PARAMS_SERVICE_INBOX_BYTES";
 // Issue 1743 — the service-server slot count. The two facts that complete it
 // with the runtime's own parameter and lifecycle servers are the descriptor's.
 const ENV_SERVICE_SERVERS: &str = "NROS_XRCE_MAX_SERVICE_SERVERS";
@@ -1087,7 +1087,7 @@ impl XrceDemand {
         Self::derive_stated(desc, false)
     }
 
-    /// [`Self::derive`], told whether `NROS_PARAM_SERVICE_INBOX_BYTES` was stated (issue 1722).
+    /// [`Self::derive`], told whether `NROS_PARAMS_SERVICE_INBOX_BYTES` was stated (issue 1722).
     fn derive_stated(desc: Option<&SizingDescriptor>, param_inbox_stated: bool) -> Self {
         let mut d = Self::default();
         // No descriptor: nobody ran `nros sync` for this image. Every number
@@ -1170,7 +1170,7 @@ impl XrceDemand {
     ///
     /// A declaration this crate cannot price (a string or array parameter: its
     /// size depends on the store's caps, which only nros-params knows) REFUSES
-    /// the build unless `NROS_PARAM_SERVICE_INBOX_BYTES` states the size — the
+    /// the build unless `NROS_PARAMS_SERVICE_INBOX_BYTES` states the size — the
     /// same refusal and the same knob as zenoh's (issue 1352), because guessing
     /// is exactly how the measured request was dropped. No declaration at all
     /// derives nothing: the default stands, as before, and the build says so.
@@ -1587,8 +1587,8 @@ fn param_request_verdict(shape: &str) -> Option<usize> {
              Keeping the default would guess, and the guess was measured wrong: a \
              25-parameter `set_parameters` was dropped by the 1,024-byte buffer \
 .\n\
-             State NROS_PARAM_SERVICE_INBOX_BYTES (environment, Kconfig \
-             CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, or the board's executor rung). \
+             State NROS_PARAMS_SERVICE_INBOX_BYTES (environment, Kconfig \
+             CONFIG_NROS_PARAMS_SERVICE_INBOX_BYTES, or the board's executor rung). \
              nros-node checks the statement against the request it prices from the same \
              declaration and the store's caps, and this backend sizes its request \
              buffer from it.\n"
@@ -1859,7 +1859,7 @@ fn xrce_demand_selftest() {
         Some(2564),
         "the measured image: 25 named integers + 2, ~2.4 KB set_parameters"
     );
-    // ...a statement of NROS_PARAM_SERVICE_INBOX_BYTES leaves it to the statement...
+    // ...a statement of NROS_PARAMS_SERVICE_INBOX_BYTES leaves it to the statement...
     assert_eq!(
         XrceDemand::derive_stated(Some(&d12), true).for_knob(ENV_PARAM_REQUEST),
         None
@@ -1873,7 +1873,7 @@ fn xrce_demand_selftest() {
     let refused = std::panic::catch_unwind(|| param_request_verdict("25:875:0:0:1:0:0:0:0"));
     let why = refused.expect_err("a string parameter must refuse, not guess");
     let why = why.downcast_ref::<String>().cloned().unwrap_or_default();
-    assert!(why.contains("NROS_PARAM_SERVICE_INBOX_BYTES"), "{why}");
+    assert!(why.contains("NROS_PARAMS_SERVICE_INBOX_BYTES"), "{why}");
     assert_eq!(
         param_request_verdict("not:a:token"),
         None,
