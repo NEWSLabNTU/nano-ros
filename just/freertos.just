@@ -231,6 +231,11 @@ build-fixtures-posix:
         exit 0
     fi
     bash scripts/build/workspace-fixtures-build.sh freertos-posix
+    # Issue 2761 -- the board's single-node C++ row: an unmodified ROS 2 program
+    # (`ROS2_MAIN`) whose entry includes no board entry header. A LINK check:
+    # this host board links without `--gc-sections`, so a runner that reaches
+    # an optional hook by a plain `extern` fails here, not on a device.
+    bash scripts/build/fixtures-build.sh freertos-posix cpp
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
 [group("full-matrix")]

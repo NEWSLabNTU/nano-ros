@@ -282,6 +282,16 @@ single-rust-staticlib:
 weak-symbols:
     @bash scripts/check-weak-symbols.sh
 
+# Issue 2761 (after 1459) -- an optional board hook (a `void(void)` whose weak
+# default body a public header emits) is never a plain `extern` in a runner.
+# The body exists only where the header is included, so a plain reference
+# fails the link of an image whose entry does not include it. Every runner
+# goes through `nros_board_optional_hook.h`. Buildless, ~0.1 s; self-tests its
+# patterns on each run.
+[private]
+board-hook-weak-ref:
+    @python3 scripts/check/check-board-hook-weak-ref.py
+
 # Phase 247 W1 (issue 0050) — image-level weak-symbol gate: assert each
 # override-default weak symbol is STRONG-overridden in the final linked images
 # (firmware ELFs / executables), not silently left weak. Needs prebuilt
