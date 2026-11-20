@@ -644,6 +644,16 @@ int8_t _z_tcp_accept(const void *sock_in, void *sock_out) {
 void _z_tcp_close(void *sock) {
     nros_platform_tcp_close(sock);
 }
+/* Issue 2779 -- a port's end-of-stream reaches zenoh-pico as its own read
+ * result, `_Z_LINK_READ_EOF` (zenoh-pico's `link/transport/tcp.h`), which the
+ * link records and the read task closes the session on. The two constants are
+ * one value, so the result passes through unchanged. */
+_Static_assert(NROS_PLATFORM_NET_SOCKET_EOF == SIZE_MAX - 1,
+               "NROS_PLATFORM_NET_SOCKET_EOF must equal zenoh-pico's _Z_LINK_READ_EOF");
+#ifdef _Z_LINK_READ_EOF
+_Static_assert(NROS_PLATFORM_NET_SOCKET_EOF == _Z_LINK_READ_EOF,
+               "NROS_PLATFORM_NET_SOCKET_EOF must equal zenoh-pico's _Z_LINK_READ_EOF");
+#endif
 size_t _z_tcp_read(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
     return nros_platform_tcp_read(&sock, buf, len);
 }

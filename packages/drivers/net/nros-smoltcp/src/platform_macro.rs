@@ -220,6 +220,15 @@ macro_rules! __define_smoltcp_platform_impl {
                         }
                     }
 
+                    // Issue 2779 -- the peer closed and every byte it sent has
+                    // been read: end-of-stream, which zenoh-pico closes the
+                    // session on. Before this it read as an error, which the
+                    // read task treats as "nothing yet", so the session never
+                    // reopened.
+                    if SmoltcpBridge::tcp_peer_closed(handle) {
+                        return $crate::NET_SOCKET_EOF;
+                    }
+
                     if !SmoltcpBridge::tcp_is_connected(handle) {
                         return usize::MAX;
                     }
@@ -257,6 +266,9 @@ macro_rules! __define_smoltcp_platform_impl {
                             }
                         }
 
+                        if !progressed && SmoltcpBridge::tcp_peer_closed(handle) {
+                            return $crate::NET_SOCKET_EOF;
+                        }
                         if !SmoltcpBridge::tcp_is_connected(handle) {
                             return usize::MAX;
                         }

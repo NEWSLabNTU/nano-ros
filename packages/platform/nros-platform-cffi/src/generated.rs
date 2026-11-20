@@ -413,7 +413,7 @@ unsafe extern "C" {
     pub fn nros_platform_tcp_close(sock: *mut core::ffi::c_void);
 }
 unsafe extern "C" {
-    #[doc = " Read up to `len` bytes. Returns bytes received, or\n  `NROS_PLATFORM_NET_SOCKET_ERROR` on error."]
+    #[doc = " Read up to `len` bytes. Returns bytes received (0: nothing yet),\n  `NROS_PLATFORM_NET_SOCKET_EOF` when the peer closed the stream, or\n  `NROS_PLATFORM_NET_SOCKET_ERROR` on error."]
     pub fn nros_platform_tcp_read(
         sock: *const core::ffi::c_void,
         buf: *mut u8,
@@ -421,7 +421,7 @@ unsafe extern "C" {
     ) -> usize;
 }
 unsafe extern "C" {
-    #[doc = " Read exactly `len` bytes. Returns `len` on success, or\n  `NROS_PLATFORM_NET_SOCKET_ERROR` on error."]
+    #[doc = " Read exactly `len` bytes. Returns `len` on success,\n  `NROS_PLATFORM_NET_SOCKET_EOF` when the peer closed the stream first, or\n  `NROS_PLATFORM_NET_SOCKET_ERROR` on error."]
     pub fn nros_platform_tcp_read_exact(
         sock: *const core::ffi::c_void,
         buf: *mut u8,
