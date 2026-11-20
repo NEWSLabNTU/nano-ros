@@ -87,6 +87,8 @@ fn a_small_stack_thread_logs_every_record_through_the_pool() {
         "a stack overflowed:\n{out}"
     );
     let used = stack_used(&out).unwrap_or_else(|| panic!("no `stack used` figure:\n{out}"));
+    // The figure, on a pass too, so a run records how close it came.
+    eprintln!("log-sink pool: used={used} budget={BUDGET}");
     assert!(
         used <= BUDGET,
         "logging cost the thread {used} bytes of stack, over the {BUDGET}-byte budget:\n{out}"
@@ -106,6 +108,7 @@ fn the_negative_control_spends_more_than_the_budget() {
     );
     let used = stack_used(&out)
         .unwrap_or_else(|| panic!("the control printed no `stack used` figure:\n{out}"));
+    eprintln!("log-sink caller-stack control: used={used} budget={BUDGET}");
     assert!(
         used > BUDGET,
         "the caller-stack sink used {used} bytes, within the {BUDGET}-byte budget, so this \
