@@ -1033,6 +1033,28 @@ px4-thread-stacks:
 retired-platform-clock-symbols:
     @python3 scripts/check-retired-platform-clock-symbols.py
 
+# Issue 2760 -- a duration never reads the WALL clock. Elapsed time, timeouts
+# and deadlines read `nros_platform_clock_ns`; the wall clock is 0 on a port
+# without one and steps when the host's clock is set. Seven readers timed
+# durations on it (smoltcp, zpico, the zenoh shim's deadline QoS), and two
+# boards returned uptime as wall time to keep them moving. Every file that
+# reads the wall clock is named with why; a new one fails until it is.
+# Buildless.
+wall-clock-readers:
+    @python3 scripts/check-wall-clock-readers.py
+
+# Issue 2760 -- the two bare-metal Rust ports with no RTC answer 0 from the
+# wall clock, as every port without one does; they used to answer UPTIME, a
+# stamp that looks real and is not. Both crates sit outside the host workspace
+# (their own lock and target dir), so no other lane runs their host tests.
+# stm32f4's advances its uptime counter first, so an uptime answer fails it.
+[metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default", "two small cargo test builds, each a parallel build; knee not measured")]
+bare-metal-wall-clock:
+    cargo test -q --manifest-path packages/platform/nros-platform-stm32f4/Cargo.toml --lib wall_clock
+    cargo test -q --manifest-path packages/platform/nros-platform-mps2-an385/Cargo.toml --lib wall_clock
+
 # Issue 1717 — an allocator never waits. ThreadX's `nros_platform_alloc` passed
 # `TX_WAIT_FOREVER` to `tx_byte_allocate`, so an exhausted pool SUSPENDED the
 # executor instead of returning NULL and every fallible-allocation path
