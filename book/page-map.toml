@@ -704,6 +704,13 @@ was = ["operate/simulated-time.md"]
 note = "Use simulated time (W8): one how-to; its timers in language tabs"
 
 [[page]]
+book = "user"
+path = "guide/deploy/run-managed-nodes.md"
+action = "new phase-554"
+batch = "p554-w8"
+note = "Run managed nodes (W8): lifecycle as built; W6, W7 and W9 extend it"
+
+[[page]]
 old = "user-guide/troubleshooting.md"
 book = "user"
 path = "guide/deploy/troubleshoot.md"

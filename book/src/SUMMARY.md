@@ -89,6 +89,7 @@
   - [Deploy to production](./guide/deploy/deploy-to-production.md)
   - [Log and observe a board](./guide/deploy/log-and-observe.md)
   - [Use simulated time](./guide/deploy/use-simulated-time.md)
+  - [Run managed nodes](./guide/deploy/run-managed-nodes.md)
   - [Troubleshoot](./guide/deploy/troubleshoot.md)
 - [Port from ROS 2]()
   - [Port a C++ node](./guide/port/port-a-cpp-node.md)
