@@ -1,0 +1,1 @@
+On FreeRTOS, a Rust image now reports a missed deadline when its launch contract asks for a report (`miss.action: continue` on the node path), judged against the level's `[tasks.<level>.freertos] deadline`. The `realtime-rust` example shows it: a 6 ms deadline on its `high` level, and a contract that reports the misses of its 8 ms overrun.
