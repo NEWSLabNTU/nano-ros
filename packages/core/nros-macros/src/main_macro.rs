@@ -1883,6 +1883,16 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                  carry the `param-services` feature — the parameter services would be \
                  silently dropped. Add it to this pkg's nros dependency features."
             );
+            // Issue 2777 -- and the build must carve the store the services
+            // write into. Zero means no road told `nros-params` this image has
+            // one, and the runtime would ask the heap for the whole
+            // crate-default store in one allocation. Refused here, naming the
+            // knob, rather than at boot.
+            const _: () = ::core::assert!(
+                ::nros::__macro_support::PARAM_STORE_CARVED_SLOTS > 0,
+                "{}",
+                ::nros::__macro_support::PARAM_STORE_NOT_CARVED
+            );
             // issue 0460 — see the lifecycle twin above.
             runtime.apply_param_services().map_err(|reason| {
                 ::nros::__macro_support::nros_platform::RuntimeError::Capability {
@@ -7725,6 +7735,13 @@ mod leaf_axis_tests {
             out.contains("PARAM_SERVICES_ENABLED"),
             "no feature assert:\n{out}"
         );
+        // Issue 2777 -- and the store the services write into is carved.
+        assert!(
+            out.contains("PARAM_STORE_CARVED_SLOTS") && out.contains("PARAM_STORE_NOT_CARVED"),
+            "no carve assert:\n{out}"
+        );
+        let none = expand("", "linux", "node_interfaces = \"none\"").unwrap();
+        assert!(!none.contains("PARAM_STORE_CARVED_SLOTS"), "{none}");
     }
 
     /// phase-461 W6 -- `params` builds the store and registers nothing; with

@@ -130,3 +130,18 @@ pub const STORE_SIZE_DERIVED: &str = store_size_derived!();
 /// [`STORE_SIZE_KNOB`] and [`STORE_SIZE_DERIVED`] as one text, for a report
 /// with no record limit (an error's `Display`).
 pub const STORE_SIZE_REMEDY: &str = concat!(store_size_knob!(), " ", store_size_derived!());
+
+/// The build-time refusal of an image that serves the parameter services
+/// while its build carves no store ([`IMPLIED_STORE_SLOTS`] is 0), which the
+/// `nros::main!` expansion const-asserts. It ends in [`STORE_SIZE_REMEDY`], so
+/// the build and every runtime report name the knob in the same words.
+// Issue 2777: such a build used to ask the heap for the whole crate-default
+// store in one allocation at boot.
+pub const STORE_NOT_CARVED: &str = concat!(
+    "this image serves the parameter services, but its build sets aside no parameter \
+     store, so the store would be one heap allocation at boot sized by the crate \
+     default. ",
+    store_size_knob!(),
+    " ",
+    store_size_derived!()
+);
