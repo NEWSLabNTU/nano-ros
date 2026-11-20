@@ -24,3 +24,4 @@ device = "vcan7"
 
 [image.linux_vcan0.can]
 device = "vcan0"
+
