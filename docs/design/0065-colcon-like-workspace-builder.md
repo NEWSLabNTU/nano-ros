@@ -1120,6 +1120,15 @@ rejected here, because neither has a derivation to perform.
 
 ## Changelog
 
+- **2026-11-20** — A generated CMake root adds only its bringup's closure
+  (issue 2754, [phase-583 W0](../roadmap/phase-583-owned-entry-executables.md)).
+  That is the bringup package, the packages its configure's images reach (launch
+  nodes, owned entries, `[[component]]` rows) and their workspace `<depend>`s,
+  transitively. It used to add every workspace package except framework entries
+  and other boards' entries, so another bringup's package was configured too, and
+  could fail this build. A kept package that uses a left-out one without
+  declaring it is refused with the `<depend>` to add.
+
 - **2026-11-14** — D3 rewritten as one current table (phase-555 W3): the cmake
   road covers every board, bare metal included (RFC-0130), west applications are
   generated per image (RFC-0085 D4), and the copy-out ruling is stated once (plain

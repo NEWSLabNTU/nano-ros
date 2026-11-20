@@ -1,7 +1,9 @@
 ---
 id: 2754
 title: "A workspace CMake root adds every package, so an owned-entry image also builds another bringup's node packages and their component executables"
-status: open
+status: resolved
+resolved: 2026-11-20
+resolved_in: "the change that archives this issue"
 type: limitation
 severity: medium
 area: [cli, cmake, build]
@@ -57,3 +59,26 @@ A root built for one bringup's images adds that bringup's closure: the
 packages its components and owned entries depend on, transitively (the
 closure the west road already uses, `package_closure`), not the whole
 workspace.
+
+## Resolution (2026-11-20)
+
+Option A of the design note, approved by the user: every generated CMake root
+adds its bringup's closure only. That is the bringup, the packages its
+configure's images reach (launch nodes, owned entries, `[[component]]` rows),
+and their workspace `<depend>`s, transitively. The contract is in
+[phase-583 W0](../../roadmap/phase-583-owned-entry-executables.md) and RFC-0065's
+changelog.
+
+`cmake_root_excluded` now also leaves out every package outside
+`bringup_closure_dirs`. A kept package that uses a left-out one (through
+`find_package` or a `<pkg>::` target) without `<depend>`ing on it is refused,
+naming the line to add.
+
+Measured on `examples/workspaces/cpp`: `pubsub_bringup:linux_talker`'s root
+used to add all nine node packages. It now adds `listener_pkg` and
+`talker_pkg`.
+
+Tests (`cmd::build` and `builder::cmake_root`):
+- this issue's shape, with two bringups' owned entries. Mutation: dropping
+  the exclusion turns it red;
+- the refusal and the non-matches it must ignore.

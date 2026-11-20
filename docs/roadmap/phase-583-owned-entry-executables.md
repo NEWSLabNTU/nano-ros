@@ -1,7 +1,7 @@
 # Phase 583 — An owned entry with several executables
 
-**Status (2026-11-20). OPEN: design accepted (user ruling 2026-11-20); no
-item started. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
+**Status (2026-11-20). OPEN: design accepted (user ruling 2026-11-20); W0
+in progress. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
 - an owned entry may build several executables, chosen at run time as in
   ROS (`nros run <image> --exec <name>`, or the bringup's launch `exec`);
 - on RTOS, each executable is its own firmware, one carrier per
@@ -23,6 +23,52 @@ in the order below.
   needs its own package and bringup.
 
 ## Work items
+
+### W0 — A build root adds only its bringup's closure (issue 2754)
+
+- **Status:** OPEN
+- **Progress:** code and unit tests are in this item's PR; the fixture-row
+  acceptance below has not run yet. It is a bug, so it comes before W1
+  (user ruling 2026-11-20, option A of the design note).
+- **Contract.** The generated CMake root for one bringup's images adds:
+  - the bringup package;
+  - the packages each image on that configure reaches: its launch plan's
+    nodes, and its owned entry (`[image.<id>] entry`);
+  - the bringup's `[[component]]` rows;
+  - every workspace package those `<depend>` on, transitively.
+
+  Nothing else. This is colcon's `--packages-up-to`, applied by default, and
+  the closure the west road already built (`package_closure`, issue 2594).
+  Another bringup's node packages and owned entries are never configured, so
+  they cannot fail this build or add executables to it. A root for a
+  workspace with no bringup still adds every package.
+- **Every road.** The cmake root was the only road that added the whole
+  workspace:
+  - a west application already adds its launch closure;
+  - a cargo entry reaches `src/*` only through its path dependencies.
+
+  Both are unchanged.
+- **A missing `<depend>` fails by name.** A kept package whose
+  `CMakeLists.txt` uses a left-out workspace package (`find_package(<pkg>` or
+  a `<pkg>::` target) is refused before the configure. The error names the
+  package, the file, and the `<depend>` line to add to its `package.xml`.
+  Interface packages are never subdirectories, so leaving one out changes
+  nothing.
+- **Where:** `cmd::build::bringup_closure_dirs`, read by
+  `cmake_root_excluded` (the one exclusion the root's SUBDIRS and the
+  stage-3.5 seed both use); `builder::cmake_root::refuse_undeclared_workspace_uses`.
+- **Not changed:** the C/C++ metadata probe stays one host project per
+  workspace. Whether it trips on another bringup's package was not measured
+  here.
+- **Acceptance:**
+  - unit tests: the issue's shape (two bringups with owned entries, a shared
+    support package, a support package only the other entry uses), with a
+    mutation check; the refusal and its non-matches;
+  - `examples/workspaces/cpp`: `pubsub_bringup`'s root adds `listener_pkg`
+    and `talker_pkg`, where it used to add all nine node packages;
+  - every fixture row of the eight multi-bringup workspaces builds and passes:
+    `examples/workspaces/{c,cpp,rust,realtime-c,realtime-rust}` and the
+    fixtures `connect_facts_ws`, `n9_workspace`, `n_board_agnostic_run_plan`.
 
 ### W1 — One carrier per `EXECUTABLE`
 
