@@ -296,11 +296,12 @@ impl nros_platform_api::PlatformRandom for Mps2An385Platform {
 impl nros_platform_api::PlatformTime for Mps2An385Platform {
     #[inline]
     fn time_now_ns() -> u64 {
-        // No RTC on this board: the monotonic millisecond counter is all there
-        // is, so this reports uptime on the wall-clock symbol rather than a
-        // real Unix time — exactly what the three retired methods derived
-        // from, minus the seconds/remainder split that could tear.
-        clock::clock_ms() * 1_000_000
+        // No RTC on this board, so no wall clock: 0, which the ABI defines as
+        // "no wall clock" and every stamp reads as ROS's "unset" time. It
+        // used to return uptime, a stamp that looks real and is not; the
+        // smoltcp timers that relied on it read the monotonic clock now
+        // (issue 2760).
+        0
     }
 }
 
@@ -502,5 +503,24 @@ impl nros_platform_api::PlatformThreading for Mps2An385Platform {
     }
     fn wake_storage_align() -> usize {
         wake::storage_align()
+    }
+}
+
+/// Issue 2760: no RTC, so no wall clock. This board's uptime is a hardware
+/// timer a host test cannot read, so the test asks only that the wall clock
+/// needs none: a `time_now_ns` that answered uptime (as it did) reads the
+/// timer's MMIO register and cannot pass here.
+#[cfg(test)]
+mod wall_clock_tests {
+    use nros_platform_api::PlatformTime;
+
+    /// The heap's boot-report hook, defined by nros-node in an image; a host
+    /// test links no image, so it gets this no-op instead.
+    #[unsafe(no_mangle)]
+    extern "C" fn nros_boot_report_note_heap_alloc_failed(_size: usize) {}
+
+    #[test]
+    fn the_wall_clock_reads_zero() {
+        assert_eq!(<super::Mps2An385Platform as PlatformTime>::time_now_ns(), 0);
     }
 }
