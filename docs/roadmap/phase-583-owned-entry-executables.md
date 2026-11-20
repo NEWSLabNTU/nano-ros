@@ -66,9 +66,32 @@ in the order below.
     mutation check; the refusal and its non-matches;
   - `examples/workspaces/cpp`: `pubsub_bringup`'s root adds `listener_pkg`
     and `talker_pkg`, where it used to add all nine node packages;
-  - every fixture row of the eight multi-bringup workspaces builds and passes:
-    `examples/workspaces/{c,cpp,rust,realtime-c,realtime-rust}` and the
-    fixtures `connect_facts_ws`, `n9_workspace`, `n_board_agnostic_run_plan`.
+  - the fixture rows of the eight multi-bringup workspaces, split by the
+    driver each image's plan takes (`nros image-facts <bringup>:<image>`,
+    measured 2026-11-20; manager ruling the same day narrowed the run to the
+    cmake rows):
+
+    | workspace | cmake | cargo | west |
+    |---|---|---|---|
+    | `examples/workspaces/c` | 68 | 0 | 19 |
+    | `examples/workspaces/cpp` | 70 | 0 | 20 |
+    | `examples/workspaces/rust` | 0 | 66 | 20 |
+    | `examples/workspaces/realtime-c` | 4 | 0 | 2 |
+    | `examples/workspaces/realtime-rust` | 0 | 6 | 2 |
+    | `fixtures/connect_facts_ws` | 4 | 2 | 0 |
+
+    `n9_workspace` (`cargo-check`) and `board_agnostic_run_plan`
+    (`cargo-build`) are compile checks on the cargo road.
+    - The 146 cmake rows build and their tests pass: **not run yet**.
+    - The 137 cargo and west rows are untouched by construction:
+      `bringup_closure_dirs` runs only when the plan's driver is cmake, so
+      their roots, entries and builds are byte-for-byte what they were.
+- **The C/C++ metadata probe has the same shape (found under this item).**
+  One host project probes every C/C++ component declared in the workspace.
+  A workspace sync covers every image, so a failed probe is judged
+  workspace-wide: under `NROS_PROBE_FAILURE=refuse`, `nros build` of one
+  bringup's image fails on another bringup's component. The fix is open,
+  pending a design ruling (scope the verdict or the membership).
 
 ### W1 — One carrier per `EXECUTABLE`
 
