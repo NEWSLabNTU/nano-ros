@@ -641,7 +641,7 @@ pub extern "C" fn rclc_time_compare(a: rclc_time_t, b: rclc_time_t) -> c_int {
 ///
 /// The type is declared in `rclc/detail/wall_clock_state.h`.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_wall_clock_state() -> nros_platform_cffi::nros_wall_clock_state_t {
+pub extern "C" fn rclc_wall_clock_state() -> nros_platform_cffi::nros_wall_clock_state_t {
     // SAFETY: no arguments; every port defines the symbol (no default), and
     // the struct is the generated binding of the platform header's.
     unsafe { nros_platform_cffi::nros_platform_wall_clock_state() }
@@ -663,7 +663,7 @@ mod tests {
     /// have to invent this one exactly.
     #[test]
     fn wall_clock_state_is_the_posix_ports() {
-        let st = nros_wall_clock_state();
+        let st = rclc_wall_clock_state();
         assert!(st.synced, "CLOCK_REALTIME answers on a host");
         assert_eq!(st.source, 0, "NROS_WALL_CLOCK_SOURCE_PLATFORM");
         assert_eq!(st.steps, 0);

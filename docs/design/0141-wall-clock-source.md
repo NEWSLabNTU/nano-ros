@@ -204,13 +204,29 @@ the stamps mean right now: whether the wall clock is synced, which source
 answered, and how many steps D1 rule 2 has taken. In C:
 
 ```c
-typedef struct {
+typedef struct nros_wall_clock_state_t {
     bool     synced;
-    uint8_t  source;   /* the knob's value: board, sntp, zenoh-hlc, platform */
+    uint8_t  source;   /* NROS_WALL_CLOCK_SOURCE_{PLATFORM,SNTP,ZENOH_HLC,BOARD} */
     uint32_t steps;    /* source changes since boot (D1 rule 2) */
 } nros_wall_clock_state_t;
-nros_wall_clock_state_t nros_wall_clock_state(void);
+nros_wall_clock_state_t rclc_wall_clock_state(void);
 ```
+
+Amended 2026-11-20 (phase-582 W1b), with the manager's ruling:
+- **Where it lives.** The state is a platform-ABI symbol,
+  `nros_platform_wall_clock_state()`, declared in `nros/platform.h` beside
+  `nros_platform_time_now_ns`. Every port DEFINES it, with no default, so a
+  port that does not is a link error. A calibrating port answers from D3's
+  store, which also records the installing source and counts source changes.
+- **The faces.** C: `rclc_wall_clock_state()`. The first draft wrote
+  `nros_wall_clock_state()`, and the public C surface's standing rule (gate
+  `c-api-nros-names`) gives every new name its `rclc_` spelling. C++:
+  `rclcpp::Clock::wall_clock_state()`, static, because it is the image's wall
+  clock, not one clock's. Rust: `nros_core::wall_clock_state()`, `None` when
+  no port is linked.
+- **The `halt` policy lands with D1's resolution (phase-582 W1c)**, since
+  "the end of boot" is that resolution's end and `epoch_failure` is its knob.
+  The `unstamped` default needs no code: an unsynced clock reads 0.
 
 An application that must not publish unstamped data asks it before
 publishing. A board hook no longer decides by calling `exit`.

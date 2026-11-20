@@ -3,7 +3,7 @@
  * @brief `nros_wall_clock_state_t`, what the wall-clock stamps mean right
  *        now, and its `NROS_WALL_CLOCK_SOURCE_*` values.
  *
- * Returned by `nros_wall_clock_state()`. Defined under
+ * Returned by `rclc_wall_clock_state()`. Defined under
  * `NROS_WALL_CLOCK_STATE_T_DEFINED`, the same guard the platform
  * header wraps its copy in, so whichever is included first defines it and
  * the other is a no-op. The two copies are one struct, member for member.
