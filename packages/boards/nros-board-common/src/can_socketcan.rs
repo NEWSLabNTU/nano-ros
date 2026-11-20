@@ -24,7 +24,8 @@ pub fn socketcan_source() -> PathBuf {
     nros_build_paths::repo_root().join("packages/boards/nros-board-linux/c/can_socketcan.c")
 }
 
-/// The image-device store (`nros_board_can_image.c`, RFC-0132 D4): the board
+// RFC-0132 D4.
+/// The image-device store (`nros_board_can_image.c`): the board
 /// hands the image's device to it at boot, and the backend's `open(NULL)`
 /// reads it. Its own object in the archive, so the board's reference pulls in
 /// the store and no backend.

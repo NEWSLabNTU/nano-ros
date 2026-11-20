@@ -2,3 +2,4 @@
 /generated/
 /nros-sdk.lock
 /.cargo/
+/src/*/generated/
