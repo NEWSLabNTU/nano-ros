@@ -66,3 +66,43 @@ A walk whose floor for these two images is within the lane's margin of the
 measured peak, or a stated reason why the gap is the price of soundness. The
 two images are the test: they are reproducible from the steps above, and the
 twin measures them in under two minutes each.
+
+## Two narrowings, measured before building either (2026-11-20)
+
+Two narrowings were proposed that do not need the parked binding work of
+[issue 2550](2550-stack-walk-order-dependent-under-cycles.md):
+
+- **(a) thread entries.** A function whose address is handed to a thread
+  spawn runs on its own stack, so drop it as an indirect callee and walk it
+  as its own root, against that thread's declared stack.
+- **(b) device-API slots.** Bind a Zephyr `api->fn` call only to the
+  functions stored in initializers of that API struct type, not to every
+  function of the same signature.
+
+Each was priced first, as an upper bound: the recorded walk command of
+`talker/c/zenoh@nucleo-f767zi-zephyr` (the drift build at `0bb5478c70`)
+replayed with `--cut` at the frames each narrowing would remove. A cut keeps
+the frame but stops the walk beneath it, so it removes at least as much as
+the narrowing would. The row's measured main peak is 12,844 B.
+
+| cuts | walk | path |
+|---|---:|---:|
+| none | 112,556 B | 448 frames |
+| (a): every thread entry and ISR on the path (`zephyr_thread_wrapper`, `z_thread_entry`, `*_task_fn`, `work_queue_main`, the executor and scheduler trampolines, `*_isr*`) | 100,820 B | 388 |
+| (a), plus (b) on the driver and fd APIs (`uart_*`, `gpio_*`, `console_*`, `zvfs_*`, `stm32_*`, `clock_control*`, `eventfd*`), plus every callback-signature hop (`*_trampoline`, `*_cb`, `sample_handler`, `queryable_callback`, the `_elem_free`/`_elem_clear`/`_elem_copy` container callbacks) | 53,396 B | 167 |
+
+The last row is generous: it cuts callbacks a real narrowing would keep,
+because some of them do run on main. Even so, it leaves the walk 4.2x the
+peak. Its worst path is still made of hops bound by signature: logger
+dispatch into the action executor, an action server's goal status into
+publisher event slots, `z_timer_expiration_handler`, the serial read path,
+and session teardown through `rc` deleters and arena drops. No thread runs
+that path.
+
+**So neither narrowing is built.** (a) alone moves the floor by about 10 %.
+(a) and (b) together, at their most optimistic, cannot bring it within the
+lane's margin of the peak. What closes this issue is binding an indirect call
+to the targets that can actually reach that site, not to every function of
+its type: step 2 of issue 2550 (field- and parameter-sensitive binding,
+stopped at its first checkpoint, phase-557 W7f). That work stays parked, and
+this issue waits on it.
