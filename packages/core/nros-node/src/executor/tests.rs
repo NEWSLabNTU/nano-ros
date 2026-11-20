@@ -5709,22 +5709,23 @@ fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
     // re-raising on a counted loss: a failed allocation reports again, and
     // the boot record keeps only the FIRST failure, so a repeat changes
     // nothing it asserts.
-    let exec = core::cell::RefCell::new(&mut executor);
-    let delivered = emit_until_delivered(
-        || {
-            let _ = exec
-                .borrow_mut()
-                .arena_alloc_with_trailing::<u8>(capacity + 1);
-        },
-        || {
-            CAPTURED
-                .lock()
-                .unwrap()
-                .iter()
-                .any(|m| m.contains("arena exhausted"))
-        },
-    );
-    drop(exec);
+    let delivered = {
+        let exec = core::cell::RefCell::new(&mut executor);
+        emit_until_delivered(
+            || {
+                let _ = exec
+                    .borrow_mut()
+                    .arena_alloc_with_trailing::<u8>(capacity + 1);
+            },
+            || {
+                CAPTURED
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|m| m.contains("arena exhausted"))
+            },
+        )
+    };
     let records = CAPTURED.lock().unwrap().clone();
     assert!(
         delivered,
