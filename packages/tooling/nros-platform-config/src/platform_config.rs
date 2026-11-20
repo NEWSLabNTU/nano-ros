@@ -5071,8 +5071,7 @@ mod tests {
         );
         let tmp = write_tree(&[("p", "[knobs.zenoh.tx]\nbatch = true\n")]);
         let e = PlatformsTree::load(tmp.path())
-            .err()
-            .expect("a platform file with a retired key is refused")
+            .expect_err("a platform file with a retired key is refused")
             .to_string();
         assert!(e.contains("write `[knobs.zenoh] tx_batch`"), "{e}");
     }
