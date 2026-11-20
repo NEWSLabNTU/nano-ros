@@ -46,7 +46,7 @@ the generated `nros_cpp_config_generated.h` header at build time.
 | `NROS_ZENOH_BATCH_UNICAST_BYTES` | Max unicast batch | 65536 | 1024 |
 | `NROS_ZENOH_BATCH_MULTICAST_BYTES` | Max multicast batch | 8192 | 1024 |
 | `NROS_SUBSCRIBER_BUFFER_BYTES` | Per-subscriber buffer in zenoh shim | 1024 | 1024 |
-| `NROS_ZENOH_SERVICE_BUFFER_SIZE` | Per-service-server buffer in zenoh shim | 1024 | 1024 |
+| `NROS_ZENOH_SERVICE_BUFFER_BYTES` | Per-service-server buffer in zenoh shim | 1024 | 1024 |
 
 ### XRCE-DDS Backend (XRCE_*)
 

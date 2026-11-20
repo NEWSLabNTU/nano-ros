@@ -41,7 +41,7 @@ take effect.
 | `NROS_ZENOH_BATCH_UNICAST_BYTES` | Max unicast batch before fragmentation | 65536 | 1024 |
 | `NROS_ZENOH_BATCH_MULTICAST_BYTES` | Max multicast batch size | 8192 | 1024 |
 | `NROS_SUBSCRIBER_BUFFER_BYTES` | Per-subscriber buffer in zenoh shim | 1024 | 1024 |
-| `NROS_ZENOH_SERVICE_BUFFER_SIZE` | Per-service-server buffer in zenoh shim | 1024 | 1024 |
+| `NROS_ZENOH_SERVICE_BUFFER_BYTES` | Per-service-server buffer in zenoh shim | 1024 | 1024 |
 
 ### XRCE-DDS Backend (XRCE_*)
 
