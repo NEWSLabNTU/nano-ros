@@ -104,7 +104,7 @@ mod tests {
         .unwrap();
         let text = system(&td);
         assert!(
-            text.contains("[image.talker.knobs.zenoh]\nmax_queryables = 4"),
+            text.contains("[image.talker.knobs.entity]\nmax_queryables = 4"),
             "{text}"
         );
         crate::fix::preflight(td.path()).unwrap();

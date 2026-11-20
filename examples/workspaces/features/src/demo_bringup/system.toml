@@ -396,7 +396,7 @@ locator = "tcp/127.0.0.1:7463"
 [image.zephyr_rust_lifecycle.knobs.executor]
 max_cbs = 16
 
-[image.zephyr_rust_lifecycle.knobs.zenoh]
+[image.zephyr_rust_lifecycle.knobs.entity]
 max_queryables = 16
 # issue 0460 / phase-481 W3 -- every image here registers six parameter + five
 # lifecycle services: 11 executor slots and 11 queryables on top of its own
@@ -431,7 +431,7 @@ locator = "tcp/127.0.0.1:7461"
 [image.zephyr_rust_params.knobs.executor]
 max_cbs = 16
 
-[image.zephyr_rust_params.knobs.zenoh]
+[image.zephyr_rust_params.knobs.entity]
 max_queryables = 16
 # issue 0460 / phase-481 W3 -- every image here registers six parameter + five
 # lifecycle services: 11 executor slots and 11 queryables on top of its own
@@ -485,7 +485,7 @@ launch = "cpp_params.launch.xml"
 [image.zephyr_cpp_params.knobs.executor]
 max_cbs = 16
 
-[image.zephyr_cpp_params.knobs.zenoh]
+[image.zephyr_cpp_params.knobs.entity]
 max_queryables = 16
 
 # The launch file seeds four lists (`config/cpp_params.param.yaml`: doubles,

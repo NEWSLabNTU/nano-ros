@@ -15,7 +15,7 @@
 #
 # It surfaced as three `workspaces/features` entries dying after "Network
 # ready" with a bare `Transport(ServiceServerCreationFailed)`:
-# `CONFIG_NROS_MAX_QUERYABLES=16` reached the cmake-compiled shim TU and not
+# `CONFIG_NROS_ENTITY_MAX_QUERYABLES=16` reached the cmake-compiled shim TU and not
 # the cargo-compiled one, which kept the default of 8 while the entries
 # registered eleven capability services.
 #
@@ -36,9 +36,12 @@
 #    nothing about the knob NOBODY named. The 47 forwarded knobs live in a
 #    cmake file no Rust code reads, so only a gate can compare the two lists.
 #
-# 2. **The pairing.** `Knob` derives `CONFIG_<env name>` and consults
-#    `KCONFIG_PAIRS` where the two vocabularies differ
-#    (`ZPICO_SUBSCRIBER_RING_DEPTH` <-> `CONFIG_NROS_ZENOH_SUBSCRIBER_RING_DEPTH`).
+# 2. **The pairing.** `Knob` derives `CONFIG_<env name>`. It used to consult
+#    `KCONFIG_PAIRS` where the two vocabularies differed
+#    (`ZPICO_SUBSCRIBER_RING_DEPTH` <-> `CONFIG_NROS_ZENOH_SUBSCRIBER_RING_DEPTH`);
+#    phase-581 W7 deleted the last per-row override and the table with it, so
+#    an absent table reads as "every symbol derived", and the harvest below
+#    still holds each cmake call to that.
 #    Which of those is right for a given knob is the PRODUCER's decision, and
 #    the producer writes it down: most `_nros_resolve_knob()` calls pass a
 #    literal `"${CONFIG_<SYM>}"`. So the pairing is HARVESTED from cmake and
@@ -205,26 +208,21 @@ NO_RUST_READER=(
     # `XRCE_TRANSPORT_MTU_DEFAULT` const. C-lane only today.
     XRCE_TRANSPORT_MTU
 
-    # issue 1505 — these four are a RESOLUTION name, never a delivery name, and
-    # the distinction is the whole reason they read as unread. cmake resolves
-    # each into `NROS_RESOLVED_NROS_MAX_<X>` and then re-exports that value
-    # under the `NROS_ZENOH_` spelling (`ZPICO_` until phase-484 W5a), which IS
-    # what the Rust lane reads and IS
-    # checked by this gate under that name. Re-export lines measured
-    # 2026-09-28 in `zephyr/cmake/nros_cargo_build.cmake`:
-    #
-    #   735  ZPICO_MAX_PUBLISHERS      815  ZPICO_MAX_LIVELINESS
-    #   739  ZPICO_MAX_QUERYABLES           ZPICO_MAX_SUBSCRIBERS
-    #
-    # Exempting the `NROS_` spelling is therefore not a hole: the value it
-    # carries is gated one name over. Were the re-export to disappear, the
-    # `ZPICO_` name would leave the forwarded set and take its own coverage
-    # check with it — which is the failure this list cannot catch, and is why
-    # each entry names the line rather than asserting the shape.
-    NROS_MAX_LIVELINESS
-    NROS_MAX_PUBLISHERS
-    NROS_MAX_QUERYABLES
-    NROS_MAX_SUBSCRIBERS
+    # phase-581 W7 (RFC-0140 D3) -- the six entity DEMAND rows. cmake
+    # resolves each and derives the zenoh pool from it (`NROS_ZENOH_MAX_<X>`,
+    # through the floor for the four C arrays), and the pool IS what the C
+    # lane forwards and this gate checks under that name. The Rust lane reads
+    # the demand too, but not by name: `Knob::from_demand` reads the pool
+    # carrier row's `carries` (`nros_zephyr_build`), which is how a Zephyr Rust
+    # image (no forwarded environment) sizes a pool from a stated
+    # `CONFIG_NROS_ENTITY_MAX_<X>`. Until W7 these were `NROS_MAX_<X>`, exempt
+    # here as a resolution name only (issue 1505).
+    NROS_ENTITY_MAX_LARGE_SUBSCRIBERS
+    NROS_ENTITY_MAX_LIVELINESS
+    NROS_ENTITY_MAX_PENDING_GETS
+    NROS_ENTITY_MAX_PUBLISHERS
+    NROS_ENTITY_MAX_QUERYABLES
+    NROS_ENTITY_MAX_SUBSCRIBERS
 
     # issue 1407 — a PATH, not a tuning knob, and its readers do not spell it:
     # every descriptor consumer reaches it through
@@ -586,11 +584,11 @@ if [ "$fail" != 0 ]; then
     echo "" >&2
     echo "  A Zephyr RUST image inherits none of cmake's set(ENV{...}) knob" >&2
     echo "  exports (issue 0460). Resolve the knob with" >&2
-    echo "  nros_zephyr_build::knob(\"<ENV NAME>\"), and give it a" >&2
-    echo "  KCONFIG_PAIRS row only if its Kconfig symbol is not CONFIG_<ENV NAME>." >&2
+    echo "  nros_zephyr_build::knob(\"<ENV NAME>\"); its Kconfig symbol is" >&2
+    echo "  CONFIG_<ENV NAME>, its registry row's (phase-581 W7)." >&2
     exit 1
 fi
 
 pairings_checked="$(declared_pairings < "$CMAKE" | wc -l)"
 echo "kconfig-knob-forwarding OK — $checked forwarded knob(s) each read by the Rust" \
-     "lane, $pairings_checked cmake-declared pairing(s) matched against KCONFIG_PAIRS."
+     "lane, $pairings_checked cmake-declared pairing(s) matched against the registry."

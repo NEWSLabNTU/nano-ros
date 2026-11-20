@@ -5629,16 +5629,18 @@ mod board_registry_knob_tests {
     /// platform files' plain parse still refuses a board-only key.
     #[test]
     fn a_board_states_any_registry_knob() {
-        let text = "[zenoh]\nmax_large_subscribers = 0\nmax_subscribers = 1\n\
-                    tx_batch = true\n[memory]\nheap_bytes = 32768\n\
+        // phase-581 W7 -- the zenoh pools are carriers of the entity demand,
+        // so a board states the demand (`[entity]`), never the pool.
+        let text = "[entity]\nmax_large_subscribers = 0\nmax_subscribers = 1\n\
+                    [zenoh]\ntx_batch = true\n[memory]\nheap_bytes = 32768\n\
                     [executor]\nmax_cbs = 4\n";
         let t: toml::Table = text.parse().unwrap();
         let k = Knobs::from_board_table(t).expect("board knobs");
         assert_eq!(
-            k.registry["zenoh.max_large_subscribers"].as_integer(),
+            k.registry["entity.max_large_subscribers"].as_integer(),
             Some(0)
         );
-        assert_eq!(k.registry["zenoh.max_subscribers"].as_integer(), Some(1));
+        assert_eq!(k.registry["entity.max_subscribers"].as_integer(), Some(1));
         assert_eq!(k.registry["memory.heap_bytes"].as_integer(), Some(32768));
         assert_eq!(k.zenoh.tx.batch, Some(true));
         assert_eq!(k.executor.max_cbs, Some(4));
@@ -5653,20 +5655,20 @@ mod board_registry_knob_tests {
             "{e}"
         );
 
-        let plat: Result<Knobs, _> = toml::from_str("[zenoh]\nmax_subscribers = 1\n");
+        let plat: Result<Knobs, _> = toml::from_str("[entity]\nmax_subscribers = 1\n");
         assert!(
             plat.is_err(),
             "a platform file cannot state a board-only knob"
         );
 
         let file = BoardKnobsFile::parse_for_board(
-            "[[board]]\nnames = [\"b\"]\n\n[knobs.zenoh]\nmax_queryables = 1\n",
+            "[[board]]\nnames = [\"b\"]\n\n[knobs.entity]\nmax_queryables = 1\n",
             None,
             "b.toml",
         )
         .expect("the build-script reader takes it too");
         assert_eq!(
-            file.knobs.registry["zenoh.max_queryables"].as_integer(),
+            file.knobs.registry["entity.max_queryables"].as_integer(),
             Some(1)
         );
     }
