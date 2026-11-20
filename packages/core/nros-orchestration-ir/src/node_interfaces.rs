@@ -125,14 +125,41 @@ pub fn image_features<S: AsRef<str>, T: AsRef<str>>(
     effective_features(&declared, switch)
 }
 
+/// The switch an image's ENTRY implies when no table states one: `None` for
+/// an entry framework that registers none of the runtime's node services
+/// ([`crate::FRAMEWORKS_WITHOUT_NODE_SERVICES`]), so the stock set is not added
+/// to an image that cannot serve it. Otherwise no switch, and
+/// [`DEFAULT_NODE_INTERFACES`] applies.
+///
+/// `declared` is the image's declared list (system plus image). If it names a
+/// stock axis itself, the entry implies nothing: `None` would remove that
+/// declaration in silence, where the default keeps it for `nros::main!` to
+/// refuse by name. `framework` is the image's STATED `framework` (over
+/// `[image_defaults]`); an image that states none boots its board's first
+/// framework, and every board's first one serves them.
+// Issue 2772: derived from the entry's capability, so a new RTIC image needs
+// no hand-written opt-out to build.
+pub fn entry_default<S: AsRef<str>>(
+    framework: Option<&str>,
+    declared: &[S],
+) -> Option<NodeInterfaces> {
+    let declares_stock = declared.iter().any(|f| STOCK.contains(&f.as_ref()));
+    framework
+        .and_then(crate::framework_without_node_services)
+        .filter(|_| !declares_stock)
+        .map(|_| NodeInterfaces::None)
+}
+
 /// The switch that applies: the most specific table that states one --
-/// `[image.<id>]`, then `[image_defaults]`, then `[system]`.
+/// `[image.<id>]`, then `[image_defaults]`, then `[system]` -- and, when none
+/// does, what the image's entry implies (`entry`, from [`entry_default`]).
 pub fn resolve(
     image: Option<NodeInterfaces>,
     image_defaults: Option<NodeInterfaces>,
     system: Option<NodeInterfaces>,
+    entry: Option<NodeInterfaces>,
 ) -> Option<NodeInterfaces> {
-    image.or(image_defaults).or(system)
+    image.or(image_defaults).or(system).or(entry)
 }
 
 /// Read the switch from one parsed `system.toml` table (`[system]`,
@@ -244,10 +271,13 @@ mod tests {
     #[test]
     fn the_most_specific_table_wins() {
         use NodeInterfaces::{None as Off, Stock};
-        assert_eq!(resolve(Some(Off), Some(Stock), Some(Stock)), Some(Off));
-        assert_eq!(resolve(None, Some(Off), Some(Stock)), Some(Off));
-        assert_eq!(resolve(None, None, Some(Stock)), Some(Stock));
-        assert_eq!(resolve(None, None, None), None);
+        assert_eq!(
+            resolve(Some(Off), Some(Stock), Some(Stock), None),
+            Some(Off)
+        );
+        assert_eq!(resolve(None, Some(Off), Some(Stock), None), Some(Off));
+        assert_eq!(resolve(None, None, Some(Stock), None), Some(Stock));
+        assert_eq!(resolve(None, None, None, None), None);
     }
 
     #[test]
@@ -263,5 +293,36 @@ mod tests {
             Some(NodeInterfaces::Stock)
         );
         assert_eq!(from_table(None, "[system]").unwrap(), None);
+    }
+
+    /// Issue 2772 -- an entry that registers none of the runtime's node
+    /// services gets no stock set by default, so an RTIC image builds without a
+    /// hand-written opt-out; any table that states a switch still wins, and a
+    /// stated `stock` reaches `nros::main!`'s refusal.
+    #[test]
+    fn an_entry_without_node_services_defaults_to_none() {
+        use NodeInterfaces::{None as Off, Stock};
+        let none: [&str; 0] = [];
+        assert_eq!(entry_default(Some("rtic"), &none), Some(Off));
+        assert_eq!(entry_default(Some("rtic"), &["lifecycle"]), Some(Off));
+        // A stated stock axis is kept for the macro to refuse by name.
+        assert_eq!(entry_default(Some("rtic"), &["param_services"]), None);
+        assert_eq!(entry_default(Some("owned-spin"), &none), None);
+        assert_eq!(entry_default(None, &none), None);
+        for name in crate::FRAMEWORKS {
+            let lacks = crate::framework_without_node_services(name).is_some();
+            assert_eq!(entry_default(Some(name), &none).is_some(), lacks, "{name}");
+        }
+        for (name, _) in crate::FRAMEWORKS_WITHOUT_NODE_SERVICES {
+            assert!(
+                crate::FRAMEWORKS.contains(name),
+                "{name} is not a framework"
+            );
+        }
+        let rtic = entry_default(Some("rtic"), &none);
+        assert_eq!(resolve(None, None, None, rtic), Some(Off));
+        assert_eq!(resolve(None, None, Some(Stock), rtic), Some(Stock));
+        assert_eq!(resolve(Some(Stock), None, None, rtic), Some(Stock));
+        assert!(effective_features(&none, resolve(None, None, None, rtic)).is_empty());
     }
 }

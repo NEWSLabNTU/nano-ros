@@ -1146,10 +1146,17 @@ fn image_system(
     ros_args.extend(string_list(image, path, &at, "ros_args")?);
     let mut params_files = string_list(defaults, path, "image_defaults", "params_files")?;
     params_files.extend(string_list(image, path, &at, "params_files")?);
+    let declared_features = features_key(system, path)?;
+    // Issue 2700 -- what THIS image adds (`[image_defaults]` then
+    // `[image.<id>]`), composed with the system list by the one function every
+    // road shares, so the leaf's build and its pools read the same list.
+    let mut image_features = string_list(defaults, path, "image_defaults", "features")?;
+    image_features.extend(string_list(image, path, &at, "features")?);
     // phase-556 W13 -- the node-interface switch, most specific table wins, and
-    // the effective list every leaf consumer reads.
+    // the effective list every leaf consumer reads. Issue 2772 -- with no
+    // table stating one, the image's entry framework decides.
     let node_interfaces = {
-        use crate::node_interfaces::{from_table, resolve};
+        use crate::node_interfaces::{entry_default, from_table, resolve};
         let ni = |t: Option<&toml::Value>, what: &str| {
             from_table(t, what).map_err(|e| format!("{}: {e}", path.display()))
         };
@@ -1157,18 +1164,18 @@ fn image_system(
             .get("image")
             .and_then(|t| t.as_table())
             .and_then(|t| t.get(id));
+        let declared: Vec<&str> = declared_features
+            .iter()
+            .chain(image_features.iter())
+            .map(String::as_str)
+            .collect();
         resolve(
             ni(image_v, &format!("[{at}]"))?,
             ni(doc.get("image_defaults"), "[image_defaults]")?,
             ni(doc.get("system"), "[system]")?,
+            entry_default(framework.as_deref(), &declared),
         )
     };
-    let declared_features = features_key(system, path)?;
-    // Issue 2700 -- what THIS image adds (`[image_defaults]` then
-    // `[image.<id>]`), composed with the system list by the one function every
-    // road shares, so the leaf's build and its pools read the same list.
-    let mut image_features = string_list(defaults, path, "image_defaults", "features")?;
-    image_features.extend(string_list(image, path, &at, "features")?);
     let features = crate::node_interfaces::image_features(
         &declared_features,
         &image_features,
@@ -1532,6 +1539,10 @@ locator = "tcp/10.0.2.2:9800"
         let none = "[system]\nname = \"t\"\n\n[image.x]\nboard = \"linux\"\n";
         let n = leaf(&[("system.toml", none)]);
         assert_eq!(read_image(n.path(), "x").unwrap().unwrap().framework, None);
+        // Issue 2772 -- the RTIC entry registers no node services, so its
+        // image gets no stock set by default; the plain one does.
+        assert!(r.features.is_empty(), "{:?}", r.features);
+        assert!(p.features.iter().any(|f| f == "param_services"));
     }
 
     /// phase-481 W3 — `conf` names the image's framework fragments:
