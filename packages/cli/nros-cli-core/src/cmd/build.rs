@@ -1321,16 +1321,26 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // `<depend>`s. Computed once here, read by every exclusion below.
         let root_closure = if driver == Driver::CMake && !bringup.is_empty() {
             let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
-            Some(
-                bringup_closure_dirs(
-                    &root,
-                    &found,
-                    &bringup_dir,
-                    &coordinate_members(&bringup, &coord),
-                    stale,
-                )
-                .map_err(|e| eyre::eyre!("`{image_id}`: {e}"))?,
-            )
+            match bringup_closure_dirs(
+                &root,
+                &found,
+                &bringup_dir,
+                &coordinate_members(&bringup, &coord),
+                stale,
+            ) {
+                Ok(kept) => Some(kept),
+                // A plan made before any sync (no model yet) keeps the root
+                // unscoped, as every root was before: wider, never a wrong
+                // image. `nros build` resolves the models in its implicit
+                // configure first, so a real build is scoped.
+                Err(why) => {
+                    eprintln!(
+                        "nros build:   `{image_id}`: the root adds every workspace package \
+                         ({why})"
+                    );
+                    None
+                }
+            }
         } else {
             None
         };
@@ -6508,9 +6518,9 @@ fn cmake_root_excluded(
 /// bringup (a header only its own images provide) cannot fail this one.
 ///
 /// An owned-entry image with no `launch` of its own contributes its launch
-/// closure only when the bringup's default launch resolves; one that names a
-/// launch, and every generated-entry image, must resolve, and the reason is
-/// returned when it does not.
+/// closure only when the bringup's default launch resolves. When one that
+/// names a launch, or any generated-entry image, does not resolve, the reason
+/// is returned and the caller leaves the root unscoped.
 fn bringup_closure_dirs(
     root: &Path,
     found: &crate::builder::discover::Discovered,
@@ -6537,10 +6547,7 @@ fn bringup_closure_dirs(
         match image_launch_node_dirs(root, bd, img, stale) {
             Ok(dirs) => kept.extend(dirs),
             Err(e) if owned.is_none() || img.launch.is_some() => {
-                return Err(format!(
-                    "cannot tell which packages image `{id}` builds, so its root cannot \
-                     be scoped to its bringup: {e}"
-                ));
+                return Err(format!("image `{id}`'s launch does not resolve yet: {e}"));
             }
             Err(_) => {}
         }

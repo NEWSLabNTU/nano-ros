@@ -41,7 +41,10 @@ in the order below.
   the closure the west road already built (`package_closure`, issue 2594).
   Another bringup's node packages and owned entries are never configured, so
   they cannot fail this build or add executables to it. A root for a
-  workspace with no bringup still adds every package.
+  workspace with no bringup still adds every package. So does a plan made
+  before any sync, when an image's launch has no model yet. It is wider,
+  never a wrong image, and it says so. `nros build` resolves the models in
+  its implicit configure first, so a real build is scoped.
 - **Every road.** The cmake root was the only road that added the whole
   workspace:
   - a west application already adds its launch closure;
