@@ -27,7 +27,7 @@ Related: [issue 2402](../issues/archived/2402-rmw-vtable-slot-binding-stack-walk
 (the allowance exists because a static walk cannot bind a vtable call to its
 slot), [issue 2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md)
 (the deferred bitcode store),
-[issue 2460](../issues/2460-stack-floor-mps2-zephyr-walk-refused.md),
+[issue 2460](../issues/archived/2460-stack-floor-mps2-zephyr-walk-refused.md),
 [issue 2496](../issues/archived/2496-freertos-cmake-app-stack-no-system-toml.md), and the
 resolved [2506](../issues/archived/2506-stack-floor-walk-machine-outliner.md),
 [2461](../issues/archived/2461-stack-floor-freertos-stated-key.md),
@@ -1123,6 +1123,37 @@ build where that number was read.
   2460's leaves print an UNMEASURED floor (walk + margin) instead of a
   refusal; a build with one flag changed (frame pointer) refuses, naming the
   key.
+  - **Status: DONE (2026-11-21).** As built:
+    - **The key is the archive's content hash**, not a version string plus
+      flags: it is the identity of exactly what the link loaded, so a
+      different GCC, multilib or build is a different key by construction.
+      The three pinned archives (Zephyr SDK 0.16.8 `thumb/v7e-m/nofp` and
+      `thumb/v7-m/nofp` libgcc, arm-none-eabi-gcc 13.2 `thumb/v7-m/nofp`)
+      have rows; the 13.2 libgcc hashes the same in all three store copies.
+    - **The recipe** is `just zephyr stack-builtins <archive>`
+      (`scripts/lib/stack_builtins.py`): Thumb prologue decoding, the SUM of
+      a body's stack decrements (an upper bound), plus the deepest chain of
+      calls inside the archive, with jump-connected bodies (shared float
+      tails, fall-through) one component. 202 of each libgcc's 235
+      non-fixed-point functions are measured; the other 33 record why (a
+      call through a register, or out to `abort`). GCC's fixed-point runtime
+      (about 1,000 functions) is skipped, and a walk that reaches one says
+      so. `__aeabi_cdcmple` measures 12 B, the hand-read row it replaces.
+    - **The refusal** names, per function, the archive that defines it, its
+      hash and the recipe. The "one flag changed" case is that refusal: a
+      table without the link's archive refuses `talker/rust`'s
+      `__aeabi_dadd`, naming `thumb/v7e-m/nofp/libgcc.a` and its hash.
+    - **`kind = "frame"` rows are refused** by `--validate-table`; none is
+      left.
+    - Two more frame sources issue 2460's leaves needed: the Zephyr C++ FFI
+      image staticlib now gets the stack-floor cargo rows (its bitcode was
+      missing), and `compiler_builtins`' `#[naked]` routines that the link
+      PLACED from the image's staticlib take their frames from those linked
+      objects, by the same decoder.
+    - Acceptance: `cpp-port-minimal-publisher` on mps2-an385 prints the
+      UNMEASURED floor (170,284 B + margin). nucleo `talker/rust` walks again
+      (69,648 B; re-recorded, the reach the stock node interfaces added);
+      `talker/c` stays within its band.
 - **W9c — The band.** Checkpoint 1 (below), then N, `min`/`max` in the
   report, the environment key on each row, and `walk_floor` folded into the
   band max. Acceptance: the measured table and the chosen N; every
@@ -1175,7 +1206,7 @@ Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when
 | [#2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md) | DEFERRED by ruling. Measuring floors every build bypasses sccache for the measured crates; a bitcode store keyed by crate output would remove the cost. |
 | [#2658](../issues/2658-stack-floor-walk-over-estimates-graph-and-param-images.md) | The walk refuses an image that queries the graph or declares a parameter: 122,120 B against a measured 12,844 B (C), 76,816 B against 27,388 B (Rust), on the Renode Nucleo twin. |
 | [#2653](../issues/2653-cmake-c-stack-walk-untyped-sites.md) | The FreeRTOS C tutorial's walk types 73 of 242 indirect C sites (W7d's typing, on the cmake road); the 169 left keep its walk at twice the stack it ships, so its row is a `[[drift]]` row (phase-567 W5a). |
-| [#2460](../issues/2460-stack-floor-mps2-zephyr-walk-refused.md) | The mps2-an385 Zephyr walk is refused: hand-read frames are right for one set of flags, and builtins have no frame. W9a and W9b. |
+| [#2460](../issues/archived/2460-stack-floor-mps2-zephyr-walk-refused.md) | The mps2-an385 Zephyr walk is refused: hand-read frames are right for one set of flags, and builtins have no frame. W9a and W9b. |
 | [#2550](../issues/2550-stack-walk-order-dependent-under-cycles.md) | The walk's depth depends on callee order under the large SCC. W9c measures the band and W9d gates on its top. |
 | [#2688](../issues/2688-stack-floor-drift-host-repro.md) | One tree walks differently in CI and on a host. W9c records the environment with each row. |
 | [#2693](../issues/2693-stack-floor-check-off-on-tiarmclang.md) | The check is OFF for TI Arm Clang images. W9e; its home stays phase-575 W3. |

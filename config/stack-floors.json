@@ -44,7 +44,7 @@
     {
       "image": "talker/rust/zenoh@nucleo-f767zi-zephyr",
       "issue": "2402",
-      "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 6 rounds, LTO build; static from rust_main; static re-walked under the pinned toolchain (issue 2546); static re-walked 2026-11-15 by the drift check, callee order masking the project name (phase-557 W8); static re-walked 2026-11-15 with the walk's callee order read from inlined v0 back-references, which no longer move with the checkout path (phase-557 W8 follow-up)",
+      "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 6 rounds, LTO build; static from rust_main; static re-walked under the pinned toolchain (issue 2546); static re-walked 2026-11-15 by the drift check, callee order masking the project name (phase-557 W8); static re-walked 2026-11-15 with the walk's callee order read from inlined v0 back-references, which no longer move with the checkout path (phase-557 W8 follow-up); static re-walked 2026-11-21 when the libgcc builtins table let the walk finish (phase-557 W9b): since phase-556 W13 every image serves the stock node interfaces, so the walk reaches nros_params' f64 range check, whose libgcc __aeabi_dadd/__aeabi_dsub (12 B) and __aeabi_l2d (24 B) had no frame in any input and refused it; the deepest path now runs through Executor::reconcile_parameter_services into the parameter-events publisher, real reach the stock set added, while the f64 helpers sit off it (66,568 to 69,648 B; walk_floor 67,320 B, below the new static, retired)",
       "peak": 28888,
       "rmw": "zenoh",
       "role": "OPEN",
@@ -56,10 +56,8 @@
         "NROS_MAX_QUERYABLES": 0,
         "NROS_MAX_SUBSCRIBERS": 0
       },
-      "static": 66568,
-      "target": "thumbv7em-none-eabi",
-      "walk_floor": 67320,
-      "walk_floor_reason": "walked 67,320 B as project `drift_talker_rust` before the walk's callee order masked the project's name (issue 2550), 2026-11-15"
+      "static": 69648,
+      "target": "thumbv7em-none-eabi"
     },
     {
       "image": "qemu_bsp_talker_bringup@mps2-an385-baremetal",
@@ -154,13 +152,6 @@
       "kind": "cut",
       "match": "__assert_func",
       "reason": "a failed C assert prints and aborts; the path diverges, as the Rust panic path",
-      "target": "thumbv7m-none-eabi"
-    },
-    {
-      "bytes": 12,
-      "kind": "frame",
-      "name": "__aeabi_cdcmple",
-      "reason": "libgcc _arm_cmpdf2.o, hand assembly with no CFI: push {r0, lr} (8) and its bl to __nedf2 (str r12, [sp, #-4]!: 4), read off the disassembly; the call is section-internal, so no relocation names it",
       "target": "thumbv7m-none-eabi"
     }
   ],
