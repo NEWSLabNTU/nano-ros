@@ -123,12 +123,3 @@ c-image-one-cargo-run
 # board is in nano-ros and in its tests, and the fixture board here stands in
 # for a user's out-of-tree one.
 tiarmclang-image
-# bare-metal-wall-clock (issue 2760) runs the host tests of the two bare-metal
-# Rust ports, mps2-an385 and stm32f4: their wall clock reads 0 with no RTC.
-# Both crates sit OUTSIDE the host workspace (their own lock and target dir),
-# so `test-unit` does not reach them, and a cargo build cannot sit on the
-# buildless fast line. A pristine worktree passes it, because cargo builds what
-# it tests; that is the build tier's definition here, not an artifact need.
-# The fast gate `wall-clock-readers` keeps durations off the wall clock on
-# every pull request; this one keeps the two boards from answering uptime.
-bare-metal-wall-clock
