@@ -66,12 +66,25 @@ Two things the run found, both kept:
   any new board, DTS, SoC or snippet root). Cost: one more `zephyr_module.py`
   run per configure, only for an image whose RMW brings a module.
 
-Zephyr 4.4: NOT MEASURED. The box's CMake finds Python 3.10.12 and Zephyr
-4.4's `python.cmake` requires 3.12, so a 4.4 configure stops before any module
-code (`Could NOT find Python3: Found unsuitable version "3.10.12"`). The 4.4
-`zephyr_module.cmake` was read: the `zephyr_module.py` call, the outputs and
-the order (list, ext-root hooks, then the module loop) are the same as 3.7's,
-so the same hook applies; W0's M5 measured the choice-member shape on 4.4.
+Zephyr 4.4.0: measured on a second host (Zephyr 4.4 workspace with a
+Python 3.12 venv; the box's Python 3.10 cannot configure 4.4), same commit,
+same command, on a copy of the fixture's tracked files:
+
+| check | 4.4 result |
+| --- | --- |
+| `nros build` | exit 0; `zephyr.exe` linked (3,211,064 B, ninja 156/156) |
+| configure log | both lines above present, word for word |
+| `zephyr_modules.txt` | 8 modules (the 4.4 allowlist: lang-rust, cmsis, cmsis_6, mbedtls, mcuboot, picolibc, nros, stub_rmw), with `"stub_rmw":"<copy>/src/stub_rmw":"<copy>/src/stub_rmw/zephyr"` |
+| `Kconfig/Kconfig.modules` | line 41 `osource "<copy>/src/stub_rmw/zephyr/Kconfig"`, after nano-ros's at line 35 |
+| `zephyr/.config` | `CONFIG_NROS_RMW_STUB=y`, ZENOH and XRCE not set, `CONFIG_STUB_RMW_TRANSPORT=y`, `CONFIG_ZEPHYR_STUB_RMW_MODULE=y`, `CONFIG_HEAP_MEM_POOL_SIZE=8192` |
+| `stub_transport.c.obj` | present (3,392 B) |
+| conf refusal (`-DEXTRA_CONF_FILE=` a conf holding `CONFIG_NROS_RMW_ZENOH=y`) | exit 1, the same message as section 2, naming the conf file and line |
+| command-line refusal (`-DCONFIG_NROS_RMW_ZENOH=y`) | exit 1, the same message, naming the command line |
+
+The host's 4.4 workspace first needed nano-ros's own 4.4 patch set applied
+(`patches/4.4.sh`), which is workspace setup, not this work. Two warnings
+seen, neither from W8: the project is unpinned, and an unused
+`nros_zephyr_record_reserved_task` in `nros_platform_zephyr_shims.c` on 4.4.
 
 ## 2. The refusal of another member in a conf
 
