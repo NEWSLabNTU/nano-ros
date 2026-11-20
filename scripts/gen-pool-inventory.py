@@ -223,7 +223,7 @@ KNOB_UNWRAP_OR_CONST = re.compile(
 # transport), so a single number here would be a claim this file cannot make.
 #
 # A front-end a platform may lack answers `Option`, so its arm is
-# `=> Some("NROS_...")` (`memory_env_key_for`, issue 2400 W5b).
+# `=> Some("NROS_...")` (~~`memory_env_key_for`~~, issue 2400 W5b; deleted by phase-581 W5).
 LADDER_ENV_KEY = re.compile(r'=>\s*(?:Some\(\s*)?"([A-Z][A-Z0-9_]+)"\s*\)?\s*,')
 
 # ---------------------------------------------------------------------------
@@ -463,7 +463,14 @@ def fold_ladder_registry(knobs):
     with open(path, encoding="utf8") as fh:
         lines = fh.read().splitlines()
     for r in rows:
-        if not r.get("toml"):
+        # A carrier of a ladder knob (phase-581 W5: `threadx.byte_pool_bytes`
+        # carries `memory.heap_bytes`) has no `toml` key, but its build script
+        # reads it through the registry name, so it is listed too.
+        carries = r.get("carries", "")
+        ladder_carrier = r.get("class") == "carrier" and any(
+            o.get("key") == carries and o.get("toml") for o in rows
+        )
+        if not r.get("toml") and not ladder_carrier:
             continue
         canon = "NROS_" + r["id"]
         for old in r.get("legacy", []):
@@ -960,7 +967,7 @@ def self_test():
         "knob   uxr  UCLIENT_UDP_TRANSPORT_MTU NROS_XRCE_TRANSPORT_MTU 4096 128\n"
         "knob   uxr  UCLIENT_TCP_TRANSPORT_MTU NROS_XRCE_TRANSPORT_MTU 4096 128\n"
         "flag   uxr  UCLIENT_PROFILE_UDP posix_ip\n"
-        "define XRCE_BUFFER_SIZE  NROS_XRCE_BUFFER_SIZE  64\n"
+        "define XRCE_BUFFER_SIZE  NROS_XRCE_BUFFER_BYTES  64\n"
         "define XRCE_MAX_SUBSCRIBERS NROS_XRCE_MAX_SUBSCRIBERS 0\n"
         "define XRCE_UNGUARDED    NROS_XRCE_UNGUARDED    1\n"
         "define XRCE_SUB_ALIAS    NROS_XRCE_SUB_ALIAS    1\n"
@@ -976,7 +983,7 @@ def self_test():
         "#ifndef XRCE_DANGLING\n#define XRCE_DANGLING XRCE_UNGUARDED\n#endif\n"
     )
     xk = xrce_knobs(man, hdr, "M")
-    assert xk["NROS_XRCE_BUFFER_SIZE"][0] == 1024, (
+    assert xk["NROS_XRCE_BUFFER_BYTES"][0] == 1024, (
         "a `define` row's default is internal.h's `#ifndef`, not the manifest's "
         "MINIMUM column — reading column 4 would publish 64 for a 1024-byte buffer"
     )
@@ -1006,17 +1013,17 @@ def self_test():
     )
 
     # THE CROSSED WIRE. Shape stays perfectly valid: same record types, same
-    # columns, same macros, same envs. `NROS_XRCE_BUFFER_SIZE` is simply bound
+    # columns, same macros, same envs. `NROS_XRCE_BUFFER_BYTES` is simply bound
     # to the other macro, and the published default must move with it — a check
     # that only rejects malformed rows would pass this, which is the hole every
     # gate written in this area this week had.
     crossed = man.replace(
-        "define XRCE_BUFFER_SIZE  NROS_XRCE_BUFFER_SIZE  64",
-        "define XRCE_MAX_SERVICE_SERVERS NROS_XRCE_BUFFER_SIZE 64",
+        "define XRCE_BUFFER_SIZE  NROS_XRCE_BUFFER_BYTES  64",
+        "define XRCE_MAX_SERVICE_SERVERS NROS_XRCE_BUFFER_BYTES 64",
     )
     xc = xrce_knobs(crossed, hdr + "#ifndef XRCE_MAX_SERVICE_SERVERS\n"
                     "#define XRCE_MAX_SERVICE_SERVERS 4\n#endif\n", "M")
-    assert xc["NROS_XRCE_BUFFER_SIZE"][0] == 4, (
+    assert xc["NROS_XRCE_BUFFER_BYTES"][0] == 4, (
         "the default must follow the MACRO the row binds; reporting 1024 here "
         "would mean the pairing is by env name and a rewire is invisible"
     )

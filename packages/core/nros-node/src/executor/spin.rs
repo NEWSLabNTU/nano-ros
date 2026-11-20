@@ -1254,7 +1254,7 @@ mod group_filter_tests {
 /// [`spin_once()`](Self::spin_once). No heap allocation is needed.
 ///
 /// The sizes are set via `NROS_EXECUTOR_MAX_CBS` (default 4) and
-/// `NROS_EXECUTOR_ARENA_SIZE` (default 4096) environment variables at build time.
+/// `NROS_EXECUTOR_ARENA_BYTES` (default 4096) environment variables at build time.
 ///
 /// Phase 124.B.2 — opaque context handed to the runtime wake
 /// callback. Backends store the raw pointer + invoke the callback;
@@ -16250,7 +16250,7 @@ impl<'s> Executor<'s> {
         nros_log::log_error!(
             nros_log::get_logger("nros"),
             "node \"{}\": parameter \"{}\" not declared: the parameter store ({} slots, \
-             not full) refused it. Is the name over NROS_MAX_PARAM_NAME_LEN?",
+             not full) refused it. Is the name over NROS_PARAMS_MAX_NAME_BYTES?",
             fqn.as_str(),
             name,
             capacity
@@ -16351,7 +16351,7 @@ impl<'s> Executor<'s> {
     }
 
     /// phase-446 F2 -- log each parameter whose description did not fit
-    /// `NROS_MAX_PARAM_DESCRIPTION_LEN`, once, naming the knob.
+    /// `NROS_PARAMS_MAX_DESCRIPTION_BYTES`, once, naming the knob.
     ///
     /// `nros-params` has no logger, so it truncates, records the truncation on
     /// the stored descriptor, and hands it over here. Asked on every spin
@@ -16788,7 +16788,7 @@ impl<'s> Executor<'s> {
             nros_log::get_logger("nros"),
             "{} /parameter_events message(s) were not published: the change log \
              (PARAMETER_EVENT_LOG_LEN) filled between two flushes, an event did not fit the \
-             parameter-service reply buffer (NROS_PARAM_SERVICE_BUFFER_SIZE) and was refused \
+             parameter-service reply buffer (NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES) and was refused \
              rather than truncated, or the publish failed. The parameters themselves changed.",
             lost
         );

@@ -1226,7 +1226,7 @@ static void nros_freertos_report_exhaustion(size_t request, size_t free_bytes) {
     at = nros_freertos_append(msg, at, cap, " of ");
     at = nros_freertos_append_dec(msg, at, cap, (size_t) configTOTAL_HEAP_SIZE);
     // issue 1706
-    at = nros_freertos_append(msg, at, cap, " bytes -- raise NROS_FREERTOS_HEAP_KB");
+    at = nros_freertos_append(msg, at, cap, " bytes -- raise NROS_MEMORY_HEAP_BYTES");
     /* Severity 4 = error, the level `nros_log` gives its own error lines. */
     writer(4, kName, sizeof(kName) - 1, msg, at);
 }

@@ -744,22 +744,22 @@ pub const DERIVED_MONITOR_ENV_KEYS: &[&str] = &[
 /// size says, and naming a size for a class that does not exist would be
 /// inventing a number. Same rule as `_nros_bounds_publish_payload_classes`.
 pub const DERIVED_PAYLOAD_ENV_KEYS: &[&str] = &[
-    "NROS_SUBSCRIBER_BUFFER_SIZE",
+    "NROS_SUBSCRIBER_BUFFER_BYTES",
     "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",
-    "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",
+    "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES",
 ];
 
 /// Issue 1233 — the CLOSURE-basis key, which is a THIRD group for a third
 /// reason.
 ///
 /// [`DERIVED_PAYLOAD_ENV_KEYS`] is derived over what the leaf SUBSCRIBES to;
-/// this one may not be. `NROS_SUBSCRIPTION_BUFFER_SIZE` is one global `RX_BUF`
+/// this one may not be. `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` is one global `RX_BUF`
 /// for every entity and is also `DEFAULT_TX_BUF`, so a type the leaf only
 /// PUBLISHES still has to fit — the same rule `NanoRosMessageBounds.cmake`
 /// states at the derivation ("BASIS `closure`, always. Narrowing this one is
 /// the under-derivation."). It therefore refuses on inputs the payload join
 /// accepts, and would be unreadable inside either list above.
-pub const DERIVED_CLOSURE_ENV_KEYS: &[&str] = &["NROS_SUBSCRIPTION_BUFFER_SIZE"];
+pub const DERIVED_CLOSURE_ENV_KEYS: &[&str] = &["NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES"];
 
 /// `ZPICO_MAX_QUERYABLES` is never stated here as a COUNT: the consumer
 /// derives it from the FACTS this road carries (RFC-0098 D7, phase-445 W1).
@@ -915,13 +915,13 @@ pub fn render_env_sidecar(
             // block is sized to hold what that split called small.
             if p.small_max > 0 {
                 s.push_str(&format!(
-                    "NROS_SUBSCRIBER_BUFFER_SIZE = \"{}\"\n",
+                    "NROS_SUBSCRIBER_BUFFER_BYTES = \"{}\"\n",
                     p.small_max
                 ));
             }
             if p.large_count > 0 && p.large_max > 0 {
                 s.push_str(&format!(
-                    "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE = \"{}\"\n",
+                    "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES = \"{}\"\n",
                     p.large_max
                 ));
             }
@@ -948,7 +948,9 @@ pub fn render_env_sidecar(
                  # so a type this leaf only PUBLISHES still has to fit. It also feeds\n\
                  # `nros-node`'s arena model, so the arena moves with it.\n",
             );
-            s.push_str(&format!("NROS_SUBSCRIPTION_BUFFER_SIZE = \"{rx}\"\n"));
+            s.push_str(&format!(
+                "NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES = \"{rx}\"\n"
+            ));
         }
         crate::leaf_take_buffer::TakeBuffer::Refused { reason } => {
             s.push_str(
@@ -1184,11 +1186,11 @@ pub fn leaf_env(leaf: &Path, image: Option<&str>, who: &str) -> LeafEnv {
                 // naming it to a leaf none of whose images is zenoh points at a
                 // knob nothing in that image reads. The refusal itself still
                 // applies: the small class is also the executor's receive
-                // region (`NROS_SUBSCRIBER_BUFFER_SIZE`), on every backend.
+                // region (`NROS_SUBSCRIBER_BUFFER_BYTES`), on every backend.
                 let kept = if leaf_reports_zenoh_knob(leaf) {
                     "`LARGE_PAYLOADS`"
                 } else {
-                    "`NROS_SUBSCRIBER_BUFFER_SIZE`"
+                    "`NROS_SUBSCRIBER_BUFFER_BYTES`"
                 };
                 crate::build_notes::detail(format!(
                     // issue 1125.
@@ -1397,7 +1399,7 @@ mod tests {
 
     /// The take buffer these tests are not about. A REFUSAL rather than a
     /// derived number: it leaves the rendered `[env]` with no
-    /// `NROS_SUBSCRIPTION_BUFFER_SIZE` row, so a test asserting on the budget
+    /// `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` row, so a test asserting on the budget
     /// keys sees exactly what it saw before issue 1233.
     fn refused_take() -> crate::leaf_take_buffer::TakeBuffer {
         crate::leaf_take_buffer::TakeBuffer::Refused {
@@ -2017,8 +2019,8 @@ nros = { version = "*", features = ["alloc", "param-services"] }
             "the derived zero must be STATED, not left to the crate default:\n{out}"
         );
         for k in [
-            "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",
-            "NROS_SUBSCRIBER_BUFFER_SIZE",
+            "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES",
+            "NROS_SUBSCRIBER_BUFFER_BYTES",
         ] {
             assert!(
                 !out.lines().any(|l| l.starts_with(k)),
@@ -2057,11 +2059,11 @@ nros = { version = "*", features = ["alloc", "param-services"] }
             "{out}"
         );
         assert!(
-            out.contains("NROS_ZENOH_SUBSCRIBER_LARGE_SIZE = \"40000\""),
+            out.contains("NROS_ZENOH_SUBSCRIBER_LARGE_BYTES = \"40000\""),
             "{out}"
         );
         assert!(
-            out.contains("NROS_SUBSCRIBER_BUFFER_SIZE = \"1500\""),
+            out.contains("NROS_SUBSCRIBER_BUFFER_BYTES = \"1500\""),
             "{out}"
         );
     }

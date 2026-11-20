@@ -47,7 +47,7 @@ static SAMPLES_DROPPED_TOO_SMALL: portable_atomic::AtomicU32 = portable_atomic::
 ///
 /// **What this can and cannot say.** The BUFFER capacity is known here and is
 /// the actionable half: it names the knob to raise
-/// (`NROS_SUBSCRIPTION_BUFFER_SIZE`). The SAMPLE size is known when the backend
+/// (`NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`). The SAMPLE size is known when the backend
 /// knows it -- issue 1612 made a too-small `take` carry the size the sample
 /// needed in the span's `len` (`rmw_entity.h`), which reaches this layer as
 /// [`SubscriberTrait::refused_sample_len`] -- and printed as `?` when it does
@@ -85,7 +85,7 @@ fn note_sample_dropped_too_small(err: &TransportError, buf_len: usize, needed: O
     // issue 1425
     crate::cpp_diag!(
         "C++ take DROPPED ({err:?}): {needed}-byte sample, {buf_len}-byte \
-         buffer; ACKed then discarded. Raise NROS_SUBSCRIPTION_BUFFER_SIZE to \
+         buffer; ACKed then discarded. Raise NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES to \
          SERIALIZED_SIZE_MAX. {total} dropped so far."
     );
 }
@@ -2019,7 +2019,7 @@ mod tests {
             "the line was truncated -- it no longer fits nros_log's buffer: {line}"
         );
         assert!(
-            line.contains("NROS_SUBSCRIPTION_BUFFER_SIZE"),
+            line.contains("NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES"),
             "the line does not name the knob to raise: {line}"
         );
         assert!(

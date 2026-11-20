@@ -10,10 +10,10 @@
 config NROS_EXECUTOR_ACTION_CLIENTS
     int "Callback slots to budget at ActionClient size (-1 = derive)"
 
-config NROS_EXECUTOR_ARENA_SIZE
+config NROS_EXECUTOR_ARENA_BYTES
     int "Executor arena size in bytes (0 = derive)"
 
-config NROS_EXECUTOR_BACKING_U64S
+config NROS_EXECUTOR_BACKING_BYTES
     int "Executor backing reservation in 64-bit words (-1 = derive, 0 = none)"
 
 config NROS_EXECUTOR_EXTRA_SESSIONS
@@ -40,10 +40,16 @@ config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
 config NROS_EXECUTOR_MAX_VIOLATIONS
     int "Contract-violation ring depth per executor"
 
+config NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES
+    int "Parameter service request/reply buffer size (bytes) (-1 = derive)"
+
 config NROS_EXECUTOR_RUNTIME_REMAPS
     int "Runtime remap-table slots per executor (-1 = derive)"
 
-config NROS_LOG_BUFFER_SIZE
+config NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES
+    int "Per-subscription receive buffer size in bytes (-1 = derive)"
+
+config NROS_LOG_BUFFER_BYTES
     int "nros-log per-call formatting buffer (bytes)"
 
 config NROS_LOG_DYNAMIC_LOGGERS
@@ -61,32 +67,32 @@ config NROS_LOG_ROSOUT_RECORDS
 config NROS_MAX_ARRAY_LEN
     int "Array parameter capacity in elements (-1 = derive)"
 
-config NROS_MAX_BYTE_ARRAY_LEN
-    int "Byte-array parameter capacity in bytes (-1 = derive)"
-
 config NROS_MAX_PARAMETERS
     int "Maximum declared parameters per image (-1 = derive)"
-
-config NROS_MAX_PARAM_CONSTRAINTS_LEN
-    int "Parameter additional_constraints capacity in bytes"
-
-config NROS_MAX_PARAM_DESCRIPTION_LEN
-    int "Parameter description capacity in bytes"
-
-config NROS_MAX_PARAM_NAME_LEN
-    int "Longest parameter name in bytes (-1 = derive)"
 
 config NROS_MAX_STRING_ARRAY_LEN
     int "String-array parameter capacity in elements (-1 = derive)"
 
-config NROS_MAX_STRING_VALUE_LEN
+config NROS_MEMORY_HEAP_BYTES
+    int "Application heap arena size (bytes)"
+
+config NROS_PARAMS_MAX_BYTE_ARRAY_BYTES
+    int "Byte-array parameter capacity in bytes (-1 = derive)"
+
+config NROS_PARAMS_MAX_CONSTRAINTS_BYTES
+    int "Parameter additional_constraints capacity in bytes"
+
+config NROS_PARAMS_MAX_DESCRIPTION_BYTES
+    int "Parameter description capacity in bytes"
+
+config NROS_PARAMS_MAX_NAME_BYTES
+    int "Longest parameter name in bytes (-1 = derive)"
+
+config NROS_PARAMS_MAX_STRING_VALUE_BYTES
     int "String parameter capacity in bytes (-1 = derive)"
 
 config NROS_PARAM_EVENTS_DEPTH
     int "/parameter_events publisher history depth"
-
-config NROS_PARAM_SERVICE_BUFFER_SIZE
-    int "Parameter service request/reply buffer size (bytes) (-1 = derive)"
 
 config NROS_PARAM_SERVICE_INBOX_BYTES
     int "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
@@ -97,15 +103,9 @@ config NROS_PUBSUB_QOS_DEPTH
 config NROS_RMW_SUBSCRIBER_SLOTS
     int "Static subscription-handle slots (no_std targets) (-1 = derive)"
 
-config NROS_SUBSCRIPTION_BUFFER_SIZE
-    int "Per-subscription receive buffer size in bytes (-1 = derive)"
-
-config NROS_ZEPHYR_HEAP_SIZE
-    int "Application heap arena size (bytes)"
-
 if NROS_RMW_XRCE
 
-config NROS_XRCE_BUFFER_SIZE
+config NROS_XRCE_BUFFER_BYTES
     int "Per-slot static buffer size"
 
 config NROS_XRCE_CUSTOM_TRANSPORT_MTU
@@ -120,16 +120,16 @@ config NROS_XRCE_MAX_SERVICE_SERVERS
 config NROS_XRCE_MAX_SUBSCRIBERS
     int "Maximum concurrent subscribers"
 
-config NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE
+config NROS_XRCE_SERVICE_REPLY_BUFFER_BYTES
     int "Service-client reply slot size"
 
-config NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE
+config NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES
     int "Service-server request ring entry size"
 
 config NROS_XRCE_STREAM_HISTORY
     int "Reliable stream history depth"
 
-config NROS_XRCE_SUBSCRIBER_BUFFER_SIZE
+config NROS_XRCE_SUBSCRIBER_BUFFER_BYTES
     int "Subscriber ring entry size"
 
 config NROS_XRCE_SUBSCRIBER_RING_DEPTH
@@ -163,22 +163,22 @@ config NROS_SERVICE_INBOX_BYTES
 config NROS_SERVICE_INBOX_DEPTH
     int "Service inbox ring depth"
 
-config NROS_SUBSCRIBER_BUFFER_SIZE
+config NROS_SUBSCRIBER_BUFFER_BYTES
     int "Per-subscriber static buffer size (-1 = derive)"
 
-config NROS_BATCH_UNICAST_SIZE
+config NROS_ZENOH_BATCH_UNICAST_BYTES
     int "Maximum unicast batch size"
 
-config NROS_FRAG_MAX_SIZE
+config NROS_ZENOH_FRAG_MAX_BYTES
     int "Maximum reassembled message size"
 
-config NROS_GET_POLL_INTERVAL_MS
+config NROS_ZENOH_GET_POLL_INTERVAL_MS
     int "Get poll interval (ms)"
 
-config NROS_GET_REPLY_BUF_SIZE
+config NROS_ZENOH_GET_REPLY_BUFFER_BYTES
     int "Get reply buffer size"
 
-config NROS_GRAPH_CACHE_SIZE
+config NROS_ZENOH_GRAPH_CACHE_BYTES
     int "Graph liveliness cache size"
 
 config NROS_ZENOH_GRAPH_DISCOVERY
@@ -217,10 +217,10 @@ config NROS_SERVICE_BUFFER_SIZE
 config NROS_ZENOH_SOCKET_TIMEOUT_MS
     int "zenoh-pico socket recv timeout (ms)"
 
-config NROS_SUBSCRIBER_LARGE_SIZE
+config NROS_ZENOH_SUBSCRIBER_LARGE_BYTES
     int "Large-class payload buffer size (-1 = derive)"
 
-config NROS_SUBSCRIBER_RING_DEPTH
+config NROS_ZENOH_SUBSCRIBER_RING_DEPTH
     int "Receive ring depth per subscriber"
 
 config NROS_ZENOH_TX_BATCH

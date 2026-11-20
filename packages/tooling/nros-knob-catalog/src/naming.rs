@@ -373,12 +373,21 @@ pub fn violations(s: &Subject, ctx: &Context, data: &Data) -> Vec<(&'static str,
         .collect()
 }
 
+/// Whether the rule judges `r`'s names. A `class = "retired"` row names a
+/// knob that no longer exists: its key is kept only as the error table
+/// (RFC-0140 D4), so it is no live name and is not judged (its spellings stay
+/// reserved through N7).
+#[must_use]
+pub fn judged(r: &Row) -> bool {
+    r.meta.class.as_deref() != Some("retired")
+}
+
 /// Every violation of `rows` the baseline does not hold, as one message line
 /// each (`<row>: <rule> - <why>`).
 pub fn unheld<'a>(rows: impl IntoIterator<Item = &'a Row>, ctx: &Context) -> Vec<String> {
     let data = Data::get();
     let mut out = Vec::new();
-    for r in rows {
+    for r in rows.into_iter().filter(|r| judged(r)) {
         let s = Subject::of_row(r);
         for (rule, why) in violations(&s, ctx, data) {
             if !data.holds(&s.kind, &s.subject, rule) {

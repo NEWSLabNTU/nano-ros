@@ -747,7 +747,7 @@ impl ZenohPublisher {
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_zenoh"),
                 "qos: TRANSIENT_LOCAL cache keyexpr does not fit \
-                 NROS_KEYEXPR_STRING_SIZE={}. The cache key is the topic key plus 47 \
+                 NROS_ZENOH_KEYEXPR_STRING_BYTES={}. The cache key is the topic key plus 47 \
                  bytes; raise the knob. topic '{}'",
                 KEYEXPR_STRING_SIZE,
                 topic_key

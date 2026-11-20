@@ -531,7 +531,7 @@ fn main() {
     // retired. A refused or absent fact (some type in the closure carried no
     // bound) leaves the crate default; a stated rung still wins.
     let rx_buf_size = env_usize_described(
-        "NROS_SUBSCRIPTION_BUFFER_SIZE",
+        "NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES",
         described_closure_bound(sizing.as_ref()),
         1024,
     );
@@ -541,7 +541,7 @@ fn main() {
     // against nros-params' resolved capacities -- and with no declaration the
     // 4096 default stands. Probed with a sentinel no rung can produce, as
     // `env_usize_described` does, so the ladder keeps ONE implementation.
-    let param_svc_probe = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", usize::MAX);
+    let param_svc_probe = env_usize("NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES", usize::MAX);
     let param_svc_stated = param_svc_probe != usize::MAX;
     let param_svc_buf = if param_svc_stated {
         param_svc_probe
@@ -760,7 +760,7 @@ fn main() {
     // `executor::backing` for where that backing lives on each entry path.
     //
     // Too small fails at REGISTRATION (`NodeError::BufferTooSmall`), not at
-    // link — same caveat `NROS_EXECUTOR_ARENA_SIZE` carries, and the reason
+    // link — same caveat `NROS_EXECUTOR_ARENA_BYTES` carries, and the reason
     // `Executor::arena_used()` plus the first-spin advisory landed first.
     // issue 1199 — same road. Zero is the point here rather than a hazard: a
     // pub/sub-only image takes 74,240 bytes of arena down to 16,384, and the
@@ -806,7 +806,7 @@ fn main() {
     // the real backend handle sizes, which a build script cannot.
     //
     // Embedded targets that never instantiate an `ActionClient` can
-    // override the derived size with `NROS_EXECUTOR_ARENA_SIZE`.
+    // override the derived size with `NROS_EXECUTOR_ARENA_BYTES`.
     //
     // Phase 214.C.4 — magic-number breakdown for `4480` and friends:
     //   ACTION_CLIENT_SERVICE_BUF   = 4096  // pending_request blocking-fallback buf
@@ -887,7 +887,7 @@ fn main() {
     // phase-403 step 3 -- a SUBSCRIPTION's arena buffer is sized by what it
     // RECEIVES, which is not the knob this term used.
     //
-    // `NROS_SUBSCRIPTION_BUFFER_SIZE` is also `DEFAULT_TX_BUF` and every raw
+    // `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` is also `DEFAULT_TX_BUF` and every raw
     // entity's default buffer, so it is derived over the whole LINKED closure
     // -- a type this image only publishes still has to fit. The arena's
     // receive region is not that: `register_subscription_buffered_*` sizes it
@@ -903,7 +903,7 @@ fn main() {
     // is larger and therefore the safe direction.
     //
     // WIRED since phase-403's own step: `nros_cargo_build.cmake` resolves
-    // `NROS_SUBSCRIBER_BUFFER_SIZE` -- the backend-agnostic spelling, which is
+    // `NROS_SUBSCRIBER_BUFFER_BYTES` -- the backend-agnostic spelling, which is
     // also what the Kconfig symbol has always been called -- so this reads the
     // receive class and not the closure. (This comment said "NOT WIRED YET" and
     // named ~~`ZPICO_SUBSCRIBER_BUFFER_SIZE`~~ for two phases after the rename;
@@ -915,7 +915,7 @@ fn main() {
     // and a tight one for exactly one; `subs_arena` prices each subscription at
     // its own type's bound and reaches this only for a type the bound table
     // does not carry.
-    let rx_recv_size = env_usize("NROS_SUBSCRIBER_BUFFER_SIZE", rx_buf_size);
+    let rx_recv_size = env_usize("NROS_SUBSCRIBER_BUFFER_BYTES", rx_buf_size);
     // phase-454 W5 -- the per-endpoint rows, on ONE road. `None` when this
     // image has no descriptor, or when its table cannot be attributed endpoint
     // by endpoint; both keep the env carriers below, unchanged.
@@ -934,7 +934,7 @@ fn main() {
     //
     // It is the DEFAULT depth, not a bound over every depth, so a subscription
     // built with an explicit `QoS(N > 10)` still out-runs it and still needs
-    // `NROS_EXECUTOR_ARENA_SIZE`. Carrying the declared depths here instead is
+    // `NROS_EXECUTOR_ARENA_BYTES`. Carrying the declared depths here instead is
     // phase-403 step 2's remaining wiring: `NROS_ENTITY_DECLARED_DEPTHS` and
     // `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` reach cmake and stop there, so this
     // lane has nothing better to read yet. Budgeting the default is not a guess
@@ -1118,7 +1118,7 @@ fn main() {
     // the floor is policy, not need. It is emitted as `arena_model::REQUIRED`
     // and held against the arena every arm actually carries by
     // `executor::arena_oracle`, at compile time, so a stated
-    // `NROS_EXECUTOR_ARENA_SIZE` below it is a build error naming both numbers
+    // `NROS_EXECUTOR_ARENA_BYTES` below it is a build error naming both numbers
     // instead of `NodeError::BufferTooSmall` at the first registration that
     // does not fit.
     // Issue 1970 -- the arithmetic as a function of the counts and the rows, so
@@ -1216,7 +1216,7 @@ fn main() {
             + ARENA_BASE_OVERHEAD,
     );
     // `0` is the Kconfig SENTINEL for "derive it" (zephyr/Kconfig:
-    // NROS_EXECUTOR_ARENA_SIZE, "0 = derive"), and it has to be honoured HERE,
+    // NROS_EXECUTOR_ARENA_BYTES, "0 = derive"), and it has to be honoured HERE,
     // where the value is consumed.
     //
     // `nros_cargo_build.cmake` already knows the sentinel and deliberately does
@@ -1230,7 +1230,7 @@ fn main() {
     // default: the FIRST node registers, the second fails
     // `NodeError::BufferTooSmall`, and the entry panics. Kconfig's own help
     // predicted the shape — "too small fails at runtime, not at link".
-    let arena_size = match env_usize("NROS_EXECUTOR_ARENA_SIZE", derived_arena) {
+    let arena_size = match env_usize("NROS_EXECUTOR_ARENA_BYTES", derived_arena) {
         0 => derived_arena,
         n => n,
     };
@@ -1264,7 +1264,7 @@ fn main() {
                     nros_sizing_descriptor::Image::node_count,
                 ),
             ),
-            ("NROS_EXECUTOR_ARENA_SIZE", Some(derived_arena)),
+            ("NROS_EXECUTOR_ARENA_BYTES", Some(derived_arena)),
         ],
     );
     let sched_task_sizings_src = sched_task_sizings_literal(&sched_task_sizings);
@@ -1318,16 +1318,16 @@ fn main() {
          pub const ARENA_ACTION_CLIENTS: usize = {action_clients};\n\
          \n\
          /// Default subscription receive buffer size in bytes \
-         (set via NROS_SUBSCRIPTION_BUFFER_SIZE, default 1024).\n\
+         (set via NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES, default 1024).\n\
          pub const DEFAULT_RX_BUF_SIZE: usize = {rx_buf_size};\n\
          \n\
          /// Parameter service request/reply buffer size in bytes \
-         (set via NROS_PARAM_SERVICE_BUFFER_SIZE, default 4096). This is \
+         (set via NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES, default 4096). This is \
          the FALLBACK -- the buffer is `param_service_buffer_bytes()`, \
          which derives it from the contract when nothing states it.\n\
          pub const PARAM_SERVICE_BUFFER_SIZE: usize = {param_svc_buf};\n\
          \n\
-         /// Whether a rung STATED NROS_PARAM_SERVICE_BUFFER_SIZE \
+         /// Whether a rung STATED NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES \
          (env, Kconfig, the board). A stated size wins over a derived one.\n\
          pub const PARAM_SERVICE_BUFFER_STATED: bool = {param_svc_stated};\n\
          \n\
@@ -1580,7 +1580,7 @@ fn emit_executor_backing(out_dir: &str) {
     // but the image's author can measure it — see phase-392 W6.
     //
     // Issue 1171 -- `zephyr/Kconfig` now declares
-    // `CONFIG_NROS_EXECUTOR_BACKING_U64S`, so a Zephyr image can STATE the
+    // `CONFIG_NROS_EXECUTOR_BACKING_BYTES`, so a Zephyr image can STATE the
     // reservation and lower `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` by exactly
     // `8 * words`, which is a pairing that cannot drift when an executor knob
     // moves and is the same on every board. `-1` is the tree's DERIVE sentinel
@@ -1594,13 +1594,24 @@ fn emit_executor_backing(out_dir: &str) {
     //
     // phase-448 W5 / issue 1145 -- the ports with NO Kconfig (NuttX, ThreadX,
     // ESP32) reach the same statement through the RFC-0049 ladder instead, as
-    // `[knobs.executor] backing_u64s`. That rung matters because the
+    // `[knobs.executor] backing_bytes`. That rung matters because the
     // SUBTRAHEND has to come from the same place: on ThreadX the byte pool is
     // declared in C compiled by the board crate's own build script, and that
     // script resolves this same rung and subtracts `8 *` it. One statement, two
     // readers -- two statements of one number is the drift that issue 1171 is
     // about, and it is not fixable by a gate on a number nobody can recompute.
-    let words = env_opt_usize_laddered("NROS_EXECUTOR_BACKING_U64S");
+    // phase-581 W5 (RFC-0140 D3 N4) -- the knob is BYTES (`executor.backing_bytes`,
+    // it was `backing_u64s`, a count of 8-byte words); the static is a `u64`
+    // array, so it is converted here, the one place that sizes it, and a size
+    // that is not a whole number of words is refused rather than rounded.
+    let words = env_opt_usize_laddered("NROS_EXECUTOR_BACKING_BYTES").map(|bytes| {
+        assert!(
+            bytes % 8 == 0,
+            "NROS_EXECUTOR_BACKING_BYTES={bytes} is not a multiple of 8: the executor \
+             backing is reserved in 8-byte words, so state a multiple of 8 (or -1 to derive)"
+        );
+        bytes / 8
+    });
     println!("cargo:rustc-check-cfg=cfg(nros_executor_backing_static)");
     if words == Some(0) {
         // No item at all, and no cfg: `backing::take` is then a `None` stub and
@@ -1609,7 +1620,7 @@ fn emit_executor_backing(out_dir: &str) {
         // The emitted comment's rule is phase-392 W6's.
         std::fs::write(
             Path::new(out_dir).join("nros_executor_backing.rs"),
-            "// NROS_EXECUTOR_BACKING_U64S=0 -- no static reservation; the alloc\n\
+            "// NROS_EXECUTOR_BACKING_BYTES=0 -- no static reservation; the alloc\n\
              // convenience constructors leak from the heap.\n",
         )
         .unwrap();
@@ -1840,7 +1851,7 @@ fn env_usize(name: &str, default: usize) -> usize {
 /// knob with no executor tenant answers `None` without loading a platform
 /// tree. For a knob that has one the tree is loaded whatever the higher rungs
 /// say — which costs nothing per build, because the `OnceLock` is shared and
-/// `NROS_EXECUTOR_BACKING_U64S` forces the load in every nros-node build
+/// `NROS_EXECUTOR_BACKING_BYTES` forces the load in every nros-node build
 /// anyway; and where it does change something, it is phase-468 W1's refusal
 /// of an unanswered `NROS_PLATFORM_NAME` firing rather than being skipped.
 fn descriptor_rung(name: &str) -> Option<usize> {

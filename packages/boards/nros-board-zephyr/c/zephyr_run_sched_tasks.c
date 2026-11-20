@@ -767,7 +767,7 @@ int32_t nros_board_zephyr_run_sched_tasks_ns(const char* locator, uint8_t domain
     if (storage == NULL) {
         printk("nros: zephyr run_sched_tasks: %u sched tasks x %u bytes of executor storage do not fit "
                "the platform heap; regenerate the entry (nros_board_zephyr_run_sched_tasks_in "
-               "takes them as a static) or raise CONFIG_NROS_ZEPHYR_HEAP_SIZE\n",
+               "takes them as a static) or raise CONFIG_NROS_MEMORY_HEAP_BYTES\n",
                (unsigned)n_sched_tasks, (unsigned)stride);
         return -1; /* NROS_CPP_RET_ERROR */
     }

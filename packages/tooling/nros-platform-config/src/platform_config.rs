@@ -16,10 +16,10 @@
 //! threads = true
 //! per_fd_tx_ceiling = true
 //!
-//! [knobs.zenoh.tx]            # policy defaults (typed, deny_unknown_fields)
-//! batch = true
-//! split_lock = true
-//! flush_ms = 50
+//! [knobs.zenoh]               # policy defaults (typed, deny_unknown_fields)
+//! tx_batch = true
+//! tx_split_lock = true
+//! tx_batch_flush_ms = 50
 //!
 //! [arch.cortex-m3]            # reusable compiler-flag profiles; may be
 //! # ...                       # duplicated across files if byte-identical
@@ -111,7 +111,7 @@ pub struct PlatformConfigFile {
     /// compile.
     #[serde(default)]
     pub priority_plan: Option<toml::Value>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "Knobs::deserialize_platform")]
     pub knobs: Knobs,
     /// phase-349 W2b — which `[arch.*]` profiles apply to a C build on this
     /// platform, in order (the first whose `target_match` admits the target
@@ -207,13 +207,16 @@ pub struct Knobs {
     /// phase-400 W6 — the XRCE transport tenant. See [`XrceKnobs`].
     #[serde(default)]
     pub xrce: XrceKnobs,
+    /// phase-581 W5 — the core service tenant. See [`ServiceKnobs`].
+    #[serde(default)]
+    pub service: ServiceKnobs,
     /// Any other key is a backend name. Empty for every in-tree file today,
     /// which is the point: a third-party RMW fills it without nano-ros
     /// learning its name.
     #[serde(flatten, default)]
     pub backends: BTreeMap<String, BackendKnobs>,
     /// Issue 2194 — EVERY registry knob a BOARD states, keyed by the row's
-    /// `image_key` (`zenoh.max_subscribers`, `zephyr.heap_size`,
+    /// `image_key` (`zenoh.max_subscribers`, `memory.heap_bytes`,
     /// `executor.max_cbs`) — the spelling an image uses in
     /// `[image.<id>.knobs.<group>]`.
     ///
@@ -246,6 +249,23 @@ fn get_path(t: &toml::Table, path: &[&str], leaf: &str) -> Option<toml::Value> {
     }
 }
 
+/// RFC-0140 D4 (phase-581 W5) -- a `[knobs]` table that states a RETIRED key
+/// (`[knobs.zenoh.wire] frag_max_size`) is refused naming the key to write
+/// instead and, for a unit change, the factor. Without this the typed parse
+/// would refuse it as an unknown field, naming nothing to write.
+fn retired_knob_keys(table: &toml::Table) -> Result<(), String> {
+    let refusals = nros_zephyr_build::retired_toml_refusals("knobs", &|key: &str| {
+        let mut path: Vec<&str> = key.split('.').collect();
+        let leaf = path.pop().unwrap_or(key);
+        get_path(table, &path, leaf).is_some_and(|v| !v.is_table())
+    });
+    if refusals.is_empty() {
+        Ok(())
+    } else {
+        Err(refusals.join("\n"))
+    }
+}
+
 /// Remove and return `<path>.<leaf>` from `t`, if every step is a table.
 fn take_path(t: &mut toml::Table, path: &[&str], leaf: &str) -> Option<toml::Value> {
     match path.split_first() {
@@ -258,7 +278,7 @@ fn take_path(t: &mut toml::Table, path: &[&str], leaf: &str) -> Option<toml::Val
 }
 
 /// Drop the sub-tables along `path` that [`Knobs::from_board_table`] emptied,
-/// deepest first, so a group that held only registry knobs (`[knobs.zephyr]`)
+/// deepest first, so a group that held only registry knobs (`[knobs.zenoh]`)
 /// does not parse as a backend's table. A table that was empty as written is
 /// left alone.
 fn prune_emptied(t: &mut toml::Table, path: &[&str]) {
@@ -316,8 +336,22 @@ impl Knobs {
         Self::deserialize_board(d).map(Some)
     }
 
+    /// A PLATFORM file's `[knobs]`: the typed tenants only (a board-only key
+    /// is refused as an unknown field), after the retired keys are refused
+    /// by name ([`retired_knob_keys`]).
+    ///
+    /// Use as `#[serde(deserialize_with = "Knobs::deserialize_platform")]`.
+    pub fn deserialize_platform<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let table = toml::Table::deserialize(d)?;
+        retired_knob_keys(&table).map_err(serde::de::Error::custom)?;
+        toml::Value::Table(table)
+            .try_into()
+            .map_err(serde::de::Error::custom)
+    }
+
     /// [`Self::deserialize_board`] over a table already parsed.
     pub fn from_board_table(mut table: toml::Table) -> Result<Self, String> {
+        retired_knob_keys(&table)?;
         let mut registry = BTreeMap::new();
         let mut emptied: Vec<Vec<&str>> = Vec::new();
         for row in nros_zephyr_build::KNOBS
@@ -409,10 +443,10 @@ pub const EXECUTOR_KNOBS: &[&str] = &[
     "max_nodes",
     "max_shutdown_cbs",
     "action_clients",
-    "arena_size",
-    "subscription_buffer_size",
-    "param_service_buffer_size",
-    "backing_u64s",
+    "arena_bytes",
+    "subscription_buffer_bytes",
+    "param_service_buffer_bytes",
+    "backing_bytes",
 ];
 
 /// The platform and board rungs a BUILD SCRIPT can reach, resolved once.
@@ -791,12 +825,14 @@ impl BuildRungs {
             max_nodes: b.max_nodes.or(plat.max_nodes),
             max_shutdown_cbs: b.max_shutdown_cbs.or(plat.max_shutdown_cbs),
             action_clients: b.action_clients.or(plat.action_clients),
-            arena_size: b.arena_size.or(plat.arena_size),
-            subscription_buffer_size: b.subscription_buffer_size.or(plat.subscription_buffer_size),
-            param_service_buffer_size: b
-                .param_service_buffer_size
-                .or(plat.param_service_buffer_size),
-            backing_u64s: b.backing_u64s.or(plat.backing_u64s),
+            arena_bytes: b.arena_bytes.or(plat.arena_bytes),
+            subscription_buffer_bytes: b
+                .subscription_buffer_bytes
+                .or(plat.subscription_buffer_bytes),
+            param_service_buffer_bytes: b
+                .param_service_buffer_bytes
+                .or(plat.param_service_buffer_bytes),
+            backing_bytes: b.backing_bytes.or(plat.backing_bytes),
         }
     }
 
@@ -815,17 +851,13 @@ impl BuildRungs {
             .unwrap_or_default();
         ParamKnobs {
             max_parameters: b.max_parameters.or(plat.max_parameters),
-            max_param_name_len: b.max_param_name_len.or(plat.max_param_name_len),
-            max_string_value_len: b.max_string_value_len.or(plat.max_string_value_len),
+            max_name_bytes: b.max_name_bytes.or(plat.max_name_bytes),
+            max_string_value_bytes: b.max_string_value_bytes.or(plat.max_string_value_bytes),
             max_array_len: b.max_array_len.or(plat.max_array_len),
             max_string_array_len: b.max_string_array_len.or(plat.max_string_array_len),
-            max_byte_array_len: b.max_byte_array_len.or(plat.max_byte_array_len),
-            max_param_description_len: b
-                .max_param_description_len
-                .or(plat.max_param_description_len),
-            max_param_constraints_len: b
-                .max_param_constraints_len
-                .or(plat.max_param_constraints_len),
+            max_byte_array_bytes: b.max_byte_array_bytes.or(plat.max_byte_array_bytes),
+            max_description_bytes: b.max_description_bytes.or(plat.max_description_bytes),
+            max_constraints_bytes: b.max_constraints_bytes.or(plat.max_constraints_bytes),
             param_events_depth: b.param_events_depth.or(plat.param_events_depth),
         }
     }
@@ -855,11 +887,24 @@ impl BuildRungs {
             .map(|f| f.knobs.zenoh.limits.clone())
             .unwrap_or_default();
         ZenohLimitKnobs {
-            keyexpr_string_size: b.keyexpr_string_size.or(plat.keyexpr_string_size),
-            service_timeout_ms: b.service_timeout_ms.or(plat.service_timeout_ms),
+            keyexpr_string_bytes: b.keyexpr_string_bytes.or(plat.keyexpr_string_bytes),
             subscriber_ring_depth: b.subscriber_ring_depth.or(plat.subscriber_ring_depth),
             connect_timeout_ms: b.connect_timeout_ms.or(plat.connect_timeout_ms),
             connect_forever: b.connect_forever.or(plat.connect_forever),
+        }
+    }
+
+    /// The `[knobs.service]` RUNGS for this build. See [`Self::rmw_rungs`].
+    pub fn service_rungs(&self) -> ServiceKnobs {
+        let plat = self.tree.platform_service_rungs(&self.platform);
+        let plat = self.require_rungs("service", plat);
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.service.clone())
+            .unwrap_or_default();
+        ServiceKnobs {
+            timeout_ms: b.timeout_ms.or(plat.timeout_ms),
         }
     }
 
@@ -874,10 +919,10 @@ impl BuildRungs {
             .map(|f| f.knobs.zenoh.wire.clone())
             .unwrap_or_default();
         WireKnobs {
-            batch_unicast_size: b.batch_unicast_size.or(plat.batch_unicast_size),
-            batch_multicast_size: b.batch_multicast_size.or(plat.batch_multicast_size),
-            frag_max_size: b.frag_max_size.or(plat.frag_max_size),
-            get_reply_buf_size: b.get_reply_buf_size.or(plat.get_reply_buf_size),
+            batch_unicast_bytes: b.batch_unicast_bytes.or(plat.batch_unicast_bytes),
+            batch_multicast_bytes: b.batch_multicast_bytes.or(plat.batch_multicast_bytes),
+            frag_max_bytes: b.frag_max_bytes.or(plat.frag_max_bytes),
+            get_reply_buffer_bytes: b.get_reply_buffer_bytes.or(plat.get_reply_buffer_bytes),
             get_poll_interval_ms: b.get_poll_interval_ms.or(plat.get_poll_interval_ms),
             rx_task_budget_frames: b.rx_task_budget_frames.or(plat.rx_task_budget_frames),
             rx_task_budget_rest_us: b.rx_task_budget_rest_us.or(plat.rx_task_budget_rest_us),
@@ -899,7 +944,6 @@ impl BuildRungs {
             component_slot_bytes: b.component_slot_bytes.or(plat.component_slot_bytes),
             max_class_instances: b.max_class_instances.or(plat.max_class_instances),
             max_cell_entities: b.max_cell_entities.or(plat.max_cell_entities),
-            let_buffer_size: b.let_buffer_size.or(plat.let_buffer_size),
         }
     }
 
@@ -944,7 +988,7 @@ impl BuildRungs {
         NetKnobs {
             max_sockets: b.max_sockets.or(plat.max_sockets),
             max_udp_sockets: b.max_udp_sockets.or(plat.max_udp_sockets),
-            buffer_size: b.buffer_size.or(plat.buffer_size),
+            buffer_bytes: b.buffer_bytes.or(plat.buffer_bytes),
             connect_timeout_ms: b.connect_timeout_ms.or(plat.connect_timeout_ms),
             socket_timeout_ms: b.socket_timeout_ms.or(plat.socket_timeout_ms),
         }
@@ -980,7 +1024,7 @@ impl BuildRungs {
     /// not have — so `nros-platform/build.rs` had to pick ONE of them, wrote
     /// `memory_value(..).unwrap_or_else(|| knob_usize(..))`, and on every build
     /// where a platform name is exported the ~~`knob_usize`~~ arm is unreachable:
-    /// `CONFIG_NROS_ZEPHYR_HEAP_SIZE` reached the C lane and not the Rust one,
+    /// `CONFIG_NROS_MEMORY_HEAP_BYTES` reached the C lane and not the Rust one,
     /// which is issue 0460 in the knob whose whole job is the Zephyr heap.
     ///
     /// Same shape as [`Self::executor_rungs`], and for the reason its doc
@@ -1044,7 +1088,7 @@ pub fn registry_env(group: &str, knob: &str) -> Option<&'static str> {
 /// Rung 1 for one knob: its value under its CANONICAL registry spelling.
 ///
 /// Every env read in this file goes through here, so a RETIRED spelling
-/// (`ZPICO_FRAG_MAX_SIZE` for `NROS_ZENOH_FRAG_MAX_SIZE`) that is set stops
+/// (`ZPICO_FRAG_MAX_SIZE` for `NROS_ZENOH_FRAG_MAX_BYTES`) that is set stops
 /// the build naming the canonical one (phase-484 W8) — a reader that asked
 /// only the canonical name would drop it silently instead.
 #[must_use]
@@ -1062,9 +1106,17 @@ pub fn watch_knob_env(key: &str) {
 }
 
 /// The canonical env spelling of a zenoh tx lever (`batch`, `split_lock`,
-/// `flush_ms`) — `[knobs.zenoh.tx]`'s registry rows.
+/// `flush_ms`) — the registry rows `zenoh.tx_batch`, `zenoh.tx_split_lock` and
+/// `zenoh.tx_batch_flush_ms` (`[knobs.zenoh.tx]` until phase-581 W5 flattened
+/// it: RFC-0140 D3 N1).
 pub fn tx_env_key(knob: &str) -> &'static str {
-    registry_env("zenoh.tx", knob).unwrap_or_else(|| panic!("unknown zenoh tx knob `{knob}`"))
+    let key = match knob {
+        "batch" => "tx_batch",
+        "split_lock" => "tx_split_lock",
+        "flush_ms" => "tx_batch_flush_ms",
+        other => panic!("unknown zenoh tx knob `{other}`"),
+    };
+    registry_env("zenoh", key).unwrap_or_else(|| panic!("unknown zenoh tx knob `{knob}`"))
 }
 
 /// The canonical env spelling of an executor knob, from the knob registry
@@ -1092,7 +1144,7 @@ pub fn executor_env_only(knob: &str, default: usize) -> usize {
 ///
 /// For a build script that has to act on a knob it does not OWN. The ThreadX
 /// board crate is the case: `nros-node` sizes `EXECUTOR_BACKING` from
-/// `backing_u64s`, and the byte pool in `threadx_hooks.c` has to subtract
+/// `backing_bytes`, and the byte pool in `threadx_hooks.c` has to subtract
 /// exactly `8 *` the same number. Two readers of one rung cannot disagree; two
 /// STATEMENTS of one number can, which is the drift issue 1171 had to gate
 /// against on Zephyr.
@@ -1132,9 +1184,9 @@ pub struct ParamKnobs {
     #[serde(default)]
     pub max_parameters: Option<usize>,
     #[serde(default)]
-    pub max_param_name_len: Option<usize>,
+    pub max_name_bytes: Option<usize>,
     #[serde(default)]
-    pub max_string_value_len: Option<usize>,
+    pub max_string_value_bytes: Option<usize>,
     #[serde(default)]
     pub max_array_len: Option<usize>,
     /// Issue 2647 -- a `string_array`'s element count, apart from
@@ -1143,12 +1195,12 @@ pub struct ParamKnobs {
     #[serde(default)]
     pub max_string_array_len: Option<usize>,
     #[serde(default)]
-    pub max_byte_array_len: Option<usize>,
+    pub max_byte_array_bytes: Option<usize>,
     /// phase-446 F2 -- a parameter DESCRIPTION's capacity. A board fact: the
     /// contract declares no descriptions, so nothing derives it, and 0 means
     /// "no descriptions".
     #[serde(default)]
-    pub max_param_description_len: Option<usize>,
+    pub max_description_bytes: Option<usize>,
     /// phase-417 W4.a -- a parameter's `additional_constraints` capacity, the
     /// descriptor's other free text. The same kind of board fact as the
     /// description and for the same reason, but its DEFAULT is 0: the field is
@@ -1156,7 +1208,7 @@ pub struct ParamKnobs {
     /// reply's derived bound prices capacity rather than use -- an image that
     /// never sets it must not pay for it.
     #[serde(default)]
-    pub max_param_constraints_len: Option<usize>,
+    pub max_constraints_bytes: Option<usize>,
     /// phase-491 W3 -- the history depth of each node's `/parameter_events`
     /// publisher. A board fact: a reliable DDS writer reserves that history,
     /// and nothing in the contract says how many events a node emits. The
@@ -1225,7 +1277,7 @@ pub struct NetKnobs {
     #[serde(default)]
     pub max_udp_sockets: Option<usize>,
     #[serde(default)]
-    pub buffer_size: Option<usize>,
+    pub buffer_bytes: Option<usize>,
     #[serde(default)]
     pub connect_timeout_ms: Option<usize>,
     #[serde(default)]
@@ -1254,11 +1306,6 @@ pub struct RuntimeKnobs {
     pub max_class_instances: Option<usize>,
     #[serde(default)]
     pub max_cell_entities: Option<usize>,
-    /// The logical-execution-time staging buffer, read by
-    /// `nros-build-helpers`'s C emitter. Grouped here because LET is an
-    /// execution-model buffer, not a wire or transport size.
-    #[serde(default)]
-    pub let_buffer_size: Option<usize>,
 }
 
 /// Every runtime knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -1267,7 +1314,6 @@ pub const RUNTIME_KNOBS: &[&str] = &[
     "component_slot_bytes",
     "max_class_instances",
     "max_cell_entities",
-    "let_buffer_size",
 ];
 
 /// The canonical env spelling of a runtime knob, from the knob registry.
@@ -1295,7 +1341,7 @@ pub fn runtime_env_key(knob: &str) -> &'static str {
 ///   which is how Kconfig states it). A BOUND, not the runtime threshold:
 ///   `set_level` still moves each logger's VALUE beneath it (rcutils has the
 ///   same pair — `RCUTILS_LOG_MIN_SEVERITY` and `set_logger_level`).
-/// * `buffer_size` — bytes of the per-call Rust formatting buffer, and of the
+/// * `buffer_bytes` — bytes of the per-call Rust formatting buffer, and of the
 ///   message each early-record / `/rosout` slot holds. (The C printf front-end
 ///   keeps its own 256-byte frame — see `nros-log/build.rs`.)
 /// * `early_records` — records held before `init` installs the sinks. `0`
@@ -1309,7 +1355,7 @@ pub struct LogKnobs {
     #[serde(default, deserialize_with = "de_log_level")]
     pub max_level: Option<usize>,
     #[serde(default)]
-    pub buffer_size: Option<usize>,
+    pub buffer_bytes: Option<usize>,
     #[serde(default)]
     pub early_records: Option<usize>,
     #[serde(default)]
@@ -1323,7 +1369,7 @@ impl LogKnobs {
         Self {
             dynamic_loggers: self.dynamic_loggers.or(lower.dynamic_loggers),
             max_level: self.max_level.or(lower.max_level),
-            buffer_size: self.buffer_size.or(lower.buffer_size),
+            buffer_bytes: self.buffer_bytes.or(lower.buffer_bytes),
             early_records: self.early_records.or(lower.early_records),
             rosout_records: self.rosout_records.or(lower.rosout_records),
         }
@@ -1335,7 +1381,7 @@ impl LogKnobs {
         match knob {
             "dynamic_loggers" => self.dynamic_loggers,
             "max_level" => self.max_level,
-            "buffer_size" => self.buffer_size,
+            "buffer_bytes" => self.buffer_bytes,
             "early_records" => self.early_records,
             "rosout_records" => self.rosout_records,
             _ => None,
@@ -1394,7 +1440,7 @@ where
 pub const LOG_KNOBS: &[&str] = &[
     "dynamic_loggers",
     "max_level",
-    "buffer_size",
+    "buffer_bytes",
     "early_records",
     "rosout_records",
 ];
@@ -1408,7 +1454,7 @@ pub fn log_env_key(knob: &str) -> &'static str {
 pub const NET_KNOBS: &[&str] = &[
     "max_sockets",
     "max_udp_sockets",
-    "buffer_size",
+    "buffer_bytes",
     "connect_timeout_ms",
     "socket_timeout_ms",
 ];
@@ -1436,13 +1482,13 @@ pub fn rmw_env_key(knob: &str) -> &'static str {
 /// Every parameter knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
 pub const PARAM_KNOBS: &[&str] = &[
     "max_parameters",
-    "max_param_name_len",
-    "max_string_value_len",
+    "max_name_bytes",
+    "max_string_value_bytes",
     "max_array_len",
     "max_string_array_len",
-    "max_byte_array_len",
-    "max_param_description_len",
-    "max_param_constraints_len",
+    "max_byte_array_bytes",
+    "max_description_bytes",
+    "max_constraints_bytes",
     "param_events_depth",
 ];
 
@@ -1509,9 +1555,9 @@ pub struct ExecutorKnobs {
     pub max_nodes: Option<usize>,
     pub max_shutdown_cbs: Option<usize>,
     pub action_clients: Option<usize>,
-    pub arena_size: Option<usize>,
-    pub subscription_buffer_size: Option<usize>,
-    pub param_service_buffer_size: Option<usize>,
+    pub arena_bytes: Option<usize>,
+    pub subscription_buffer_bytes: Option<usize>,
+    pub param_service_buffer_bytes: Option<usize>,
     /// phase-448 W5 / issue 1145 — the words this board's images RESERVE for
     /// `nros_node::executor::backing::EXECUTOR_BACKING`.
     ///
@@ -1527,7 +1573,7 @@ pub struct ExecutorKnobs {
     /// direction: an image that does not state its backing reserves the bytes
     /// twice, which wastes RAM rather than failing an allocation.
     #[serde(default)]
-    pub backing_u64s: Option<usize>,
+    pub backing_bytes: Option<usize>,
 }
 
 impl ExecutorKnobs {
@@ -1545,10 +1591,10 @@ impl ExecutorKnobs {
             "max_nodes" => self.max_nodes,
             "max_shutdown_cbs" => self.max_shutdown_cbs,
             "action_clients" => self.action_clients,
-            "arena_size" => self.arena_size,
-            "subscription_buffer_size" => self.subscription_buffer_size,
-            "param_service_buffer_size" => self.param_service_buffer_size,
-            "backing_u64s" => self.backing_u64s,
+            "arena_bytes" => self.arena_bytes,
+            "subscription_buffer_bytes" => self.subscription_buffer_bytes,
+            "param_service_buffer_bytes" => self.param_service_buffer_bytes,
+            "backing_bytes" => self.backing_bytes,
             _ => None,
         }
     }
@@ -1561,11 +1607,12 @@ impl ExecutorKnobs {
 /// what makes them the ladder's business rather than phase-392's or
 /// phase-403's.
 ///
-/// **Stored in BYTES, always.** Their env front-ends disagree about units —
-/// `NROS_FREERTOS_HEAP_KB` and `NROS_FREERTOS_APP_STACK_KB` are KiB,
-/// `NROS_ZEPHYR_HEAP_SIZE` is bytes — and a table where "heap" means one thing
-/// on one platform and another elsewhere is a unit bug waiting to be written.
-/// The front-ends keep their spellings and convert; the ladder has one unit.
+/// **Stored in BYTES, always**, and spelled so on every road since phase-581
+/// W5: `NROS_MEMORY_HEAP_BYTES` and `NROS_MEMORY_APP_STACK_BYTES` (the
+/// per-platform KiB spellings they replaced are retired). A table where "heap"
+/// means one thing on one platform and another elsewhere is a unit bug waiting
+/// to be written; each platform's build converts at the one place it writes
+/// its RTOS configuration.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryKnobs {
@@ -1580,54 +1627,18 @@ pub struct MemoryKnobs {
 /// Every memory knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
 pub const MEMORY_KNOBS: &[&str] = &["heap_bytes", "app_stack_bytes"];
 
-/// The names of the FreeRTOS platform, as `packages/platform/nros-platform-freertos/nros-platform.toml`
-/// lists them. `memory_front_ends_match_the_platform_files` holds the two equal.
-const FREERTOS_NAMES: &[&str] = &["freertos", "freertos-lwip"];
-/// The names of the ThreadX platform (`packages/platform/nros-platform-threadx/nros-platform.toml`).
-const THREADX_NAMES: &[&str] = &["threadx", "threadx-linux", "threadx-riscv64"];
-
-/// The env front-end for a memory knob ON A GIVEN PLATFORM, or `None` when
-/// that platform has no env spelling for it.
+/// The ONE env spelling of a memory knob, `NROS_MEMORY_<NAME>`, in bytes, on
+/// every platform (phase-581 W5, RFC-0140 Appendix A.1 reason F).
 ///
-/// The same knob has different front-end spellings per platform — a heap is
-/// `NROS_FREERTOS_HEAP_KB` on FreeRTOS and `NROS_ZEPHYR_HEAP_SIZE` on Zephyr —
-/// because those names predate the ladder and migrating a knob must not change
-/// how anyone sets it. The RUNG is one knob; only its front-end differs, so
-/// this is where the difference lives rather than in two knob names.
-///
-/// Every platform has its own arm and there is NO default arm (issue 2400
-/// W5b): this used to answer `NROS_FREERTOS_APP_STACK_KB` and
-/// `NROS_FREERTOS_HEAP_KB` for every platform it did not name, so a FreeRTOS
-/// variable left in the environment silently sized a ThreadX image's stack. A
-/// platform with no spelling answers `None`: the ladder then reads no env rung
-/// for it, and `nros config explain` says so.
-///
-/// Without the per-platform spelling, `nros config explain --platform zephyr`
-/// would print the FreeRTOS variable beside the Zephyr heap — telling a reader
-/// to set something that does nothing, in the report whose whole job is to say
-/// where a value came from.
-pub fn memory_env_key_for(platform: &str, knob: &str) -> Option<&'static str> {
-    if !MEMORY_KNOBS.contains(&knob) {
-        panic!("unknown memory knob `{knob}`");
-    }
-    let freertos = FREERTOS_NAMES.contains(&platform);
-    let threadx = THREADX_NAMES.contains(&platform);
-    match knob {
-        "heap_bytes" if platform == "zephyr" => Some("NROS_ZEPHYR_HEAP_SIZE"),
-        "heap_bytes" if freertos => Some("NROS_FREERTOS_HEAP_KB"),
-        "app_stack_bytes" if freertos => Some("NROS_FREERTOS_APP_STACK_KB"),
-        "app_stack_bytes" if threadx => Some("NROS_THREADX_APP_STACK_KB"),
-        // Issue 2624 — ThreadX's heap is its byte pool: the whole allocator.
-        "heap_bytes" if threadx => Some("NROS_THREADX_BYTE_POOL_KB"),
-        _ => None,
-    }
-}
-
-/// Whether a memory knob's front-end is KiB on this platform. The unit travels
-/// with the SPELLING, not with the knob: `NROS_FREERTOS_HEAP_KB` is KiB and
-/// `NROS_ZEPHYR_HEAP_SIZE` is bytes, for the same `heap_bytes` rung.
-pub fn memory_env_is_kib_for(platform: &str, knob: &str) -> bool {
-    memory_env_key_for(platform, knob).is_some_and(|k| k.ends_with("_KB"))
+/// It replaced ~~`memory_env_key_for`~~, which mapped the two memory knobs to four
+/// per-platform spellings in two units (`NROS_FREERTOS_HEAP_KB`,
+/// `NROS_ZEPHYR_HEAP_SIZE`, ...). Those are retired spellings of the
+/// registry's `memory.heap_bytes` and `memory.app_stack_bytes` rows now,
+/// refused when set; each platform's build converts the bytes to its RTOS's
+/// unit where it writes that configuration. ThreadX's byte pool is its own
+/// knob (`threadx.byte_pool_bytes`), not this heap.
+pub fn memory_env_key(knob: &str) -> &'static str {
+    registry_env("memory", knob).unwrap_or_else(|| panic!("unknown memory knob `{knob}`"))
 }
 
 /// The board > platform > builtin pick, then the env front-end, for one
@@ -1679,10 +1690,13 @@ pub struct ResolvedUsize {
     pub env_key: Option<&'static str>,
 }
 
+/// `[knobs.zenoh]`. One flat table since phase-581 W5 (RFC-0140 D3 N1: a key
+/// is two segments, so `[knobs.zenoh.tx]`, `.wire` and `.limits` are gone);
+/// the three groups below are how the code reads it, filled from
+/// [`ZenohKnobsToml`].
 #[derive(Debug, Default, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(from = "ZenohKnobsToml")]
 pub struct ZenohKnobs {
-    #[serde(default)]
     pub tx: TxKnobs,
     /// phase-400 W6 — the WIRE sizes: batch buffers, the fragmentation
     /// ceiling, the get-reply staging block and its poll interval.
@@ -1692,11 +1706,92 @@ pub struct ZenohKnobs {
     /// that phase is deciding whether they stop being globals at all, and a
     /// per-platform rung would answer it the wrong way. These five are sizes of
     /// the wire itself, which no campaign derives.
-    #[serde(default)]
     pub wire: WireKnobs,
     /// phase-400 W6 — zenoh runtime limits. See [`ZenohLimitKnobs`].
-    #[serde(default)]
     pub limits: ZenohLimitKnobs,
+}
+
+/// The `[knobs.zenoh]` table as written: every typed zenoh knob by its
+/// registry key (`zenoh.<name>`). Unknown keys are refused, as each of the
+/// three sub-tables refused them before.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ZenohKnobsToml {
+    #[serde(default)]
+    tx_batch: Option<bool>,
+    #[serde(default)]
+    tx_split_lock: Option<bool>,
+    #[serde(default)]
+    tx_batch_flush_ms: Option<u64>,
+    #[serde(default)]
+    batch_unicast_bytes: Option<usize>,
+    #[serde(default)]
+    batch_multicast_bytes: Option<usize>,
+    #[serde(default)]
+    frag_max_bytes: Option<usize>,
+    #[serde(default)]
+    get_reply_buffer_bytes: Option<usize>,
+    #[serde(default)]
+    get_poll_interval_ms: Option<usize>,
+    #[serde(default)]
+    rx_task_budget_frames: Option<usize>,
+    #[serde(default)]
+    rx_task_budget_rest_us: Option<usize>,
+    #[serde(default)]
+    keyexpr_string_bytes: Option<usize>,
+    #[serde(default)]
+    subscriber_ring_depth: Option<usize>,
+    #[serde(default)]
+    connect_timeout_ms: Option<usize>,
+    #[serde(default)]
+    connect_forever: Option<bool>,
+}
+
+impl From<ZenohKnobsToml> for ZenohKnobs {
+    fn from(z: ZenohKnobsToml) -> Self {
+        ZenohKnobs {
+            tx: TxKnobs {
+                batch: z.tx_batch,
+                split_lock: z.tx_split_lock,
+                flush_ms: z.tx_batch_flush_ms,
+            },
+            wire: WireKnobs {
+                batch_unicast_bytes: z.batch_unicast_bytes,
+                batch_multicast_bytes: z.batch_multicast_bytes,
+                frag_max_bytes: z.frag_max_bytes,
+                get_reply_buffer_bytes: z.get_reply_buffer_bytes,
+                get_poll_interval_ms: z.get_poll_interval_ms,
+                rx_task_budget_frames: z.rx_task_budget_frames,
+                rx_task_budget_rest_us: z.rx_task_budget_rest_us,
+            },
+            limits: ZenohLimitKnobs {
+                keyexpr_string_bytes: z.keyexpr_string_bytes,
+                subscriber_ring_depth: z.subscriber_ring_depth,
+                connect_timeout_ms: z.connect_timeout_ms,
+                connect_forever: z.connect_forever,
+            },
+        }
+    }
+}
+
+/// `[knobs.service]` — the core service tenant (phase-581 W5 moved its one
+/// knob here from `[knobs.zenoh.limits]`: `nros-c` reads it too, so it is a
+/// core row, RFC-0140 D3 N3).
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceKnobs {
+    /// The default service-client RPC timeout, in milliseconds. See
+    /// [`resolve_service_timeout_ms`].
+    #[serde(default)]
+    pub timeout_ms: Option<usize>,
+}
+
+/// Every service knob, in a stable order.
+pub const SERVICE_KNOBS: &[&str] = &["timeout_ms"];
+
+/// The canonical env spelling of a service knob, from the knob registry.
+pub fn service_env_key(knob: &str) -> &'static str {
+    registry_env("service", knob).unwrap_or_else(|| panic!("unknown service knob `{knob}`"))
 }
 
 /// phase-400 W6 — the zenoh WIRE sizes, read by `nros-zpico-build`.
@@ -1704,13 +1799,13 @@ pub struct ZenohKnobs {
 #[serde(deny_unknown_fields)]
 pub struct WireKnobs {
     #[serde(default)]
-    pub batch_unicast_size: Option<usize>,
+    pub batch_unicast_bytes: Option<usize>,
     #[serde(default)]
-    pub batch_multicast_size: Option<usize>,
+    pub batch_multicast_bytes: Option<usize>,
     #[serde(default)]
-    pub frag_max_size: Option<usize>,
+    pub frag_max_bytes: Option<usize>,
     #[serde(default)]
-    pub get_reply_buf_size: Option<usize>,
+    pub get_reply_buffer_bytes: Option<usize>,
     #[serde(default)]
     pub get_poll_interval_ms: Option<usize>,
     /// RFC-0074 / phase-462 W6a — the read task's frame budget. Unlike the
@@ -1754,9 +1849,7 @@ pub fn xrce_env_key(knob: &str) -> &'static str {
 #[serde(deny_unknown_fields)]
 pub struct ZenohLimitKnobs {
     #[serde(default)]
-    pub keyexpr_string_size: Option<usize>,
-    #[serde(default)]
-    pub service_timeout_ms: Option<usize>,
+    pub keyexpr_string_bytes: Option<usize>,
     #[serde(default)]
     pub subscriber_ring_depth: Option<usize>,
     /// Issue 2207 — how long a client session open keeps trying to reach its
@@ -1772,8 +1865,7 @@ pub struct ZenohLimitKnobs {
 
 /// Every zenoh limit knob, in a stable order.
 pub const ZENOH_LIMIT_KNOBS: &[&str] = &[
-    "keyexpr_string_size",
-    "service_timeout_ms",
+    "keyexpr_string_bytes",
     "subscriber_ring_depth",
     "connect_timeout_ms",
     "connect_forever",
@@ -1822,29 +1914,28 @@ pub const BUILTIN_SERVICE_TIMEOUT_MS: usize = 30_000;
 /// Two artifacts embed this value: `nros-rmw-zenoh`'s Rust const and
 /// `nros-c`'s config header. Each build script used to read the env itself,
 /// with its own copy of the 30 000 literal, and neither passed the
-/// `[knobs.zenoh.limits] service_timeout_ms` rung, so a descriptor stating it
-/// parsed and changed nothing. Both now call this, so they take the same
-/// answer from the same rungs. `limits` is
-/// [`BuildRungs::zenoh_limit_rungs`], or the default when no lane named a
-/// platform.
-pub fn resolve_service_timeout_ms(limits: &ZenohLimitKnobs) -> usize {
+/// `[knobs.service] timeout_ms` rung (`[knobs.zenoh.limits] service_timeout_ms`
+/// before phase-581 W5), so a descriptor stating it parsed and changed
+/// nothing. Both now call this, so they take the same answer from the same
+/// rungs. `service` is [`BuildRungs::service_rungs`], or the default when no
+/// lane named a platform.
+pub fn resolve_service_timeout_ms(service: &ServiceKnobs) -> usize {
     nros_zephyr_build::knob("NROS_SERVICE_TIMEOUT_MS")
-        .rung(limits.service_timeout_ms)
+        .rung(service.timeout_ms)
         .resolve(BUILTIN_SERVICE_TIMEOUT_MS)
 }
 
 /// The canonical env spelling of a zenoh limit knob, from the knob registry.
 pub fn zenoh_limit_env_key(knob: &str) -> &'static str {
-    registry_env("zenoh.limits", knob)
-        .unwrap_or_else(|| panic!("unknown zenoh limit knob `{knob}`"))
+    registry_env("zenoh", knob).unwrap_or_else(|| panic!("unknown zenoh limit knob `{knob}`"))
 }
 
 /// Every wire knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
 pub const WIRE_KNOBS: &[&str] = &[
-    "batch_unicast_size",
-    "batch_multicast_size",
-    "frag_max_size",
-    "get_reply_buf_size",
+    "batch_unicast_bytes",
+    "batch_multicast_bytes",
+    "frag_max_bytes",
+    "get_reply_buffer_bytes",
     "get_poll_interval_ms",
     "rx_task_budget_frames",
     "rx_task_budget_rest_us",
@@ -1853,7 +1944,7 @@ pub const WIRE_KNOBS: &[&str] = &[
 /// The canonical env spelling of a wire knob (`NROS_ZENOH_*`), from the knob
 /// registry. The `ZPICO_*` names are its retired rows, refused when set.
 pub fn wire_env_key(knob: &str) -> &'static str {
-    registry_env("zenoh.wire", knob).unwrap_or_else(|| panic!("unknown wire knob `{knob}`"))
+    registry_env("zenoh", knob).unwrap_or_else(|| panic!("unknown wire knob `{knob}`"))
 }
 
 /// The phase-282 TX levers. All optional — `None` means "defer to the
@@ -2422,8 +2513,9 @@ impl PlatformsTree {
     ///
     /// `env` is an accessor (injected for tests): `env(name)` returns the
     /// raw env value if SET (tri-state front-end — a set `"0"` overrides
-    /// an on-default). The env rung is the knob registry's `<backend>.tx.*`
-    /// rows; a backend the registry has no row for has no env rung.
+    /// an on-default). The env rung is the knob registry's `zenoh.tx_*` rows
+    /// for zenoh, `<backend>.tx.*` for another; a backend the registry has no
+    /// row for has no env rung.
     ///
     /// Issue 1300 — `backend` is a parameter: this read `[knobs.zenoh.tx]`
     /// whatever the caller was asking about.
@@ -2436,7 +2528,17 @@ impl PlatformsTree {
     ) -> Result<ResolvedTxKnobs, ConfigError> {
         let plat = self.platform_tx_knobs(platform, backend)?;
         let group = format!("{backend}.tx");
-        let env_of = |knob: &str| registry_env(&group, knob).and_then(|key| knob_env(env, key));
+        // Zenoh's rows are `zenoh.tx_<lever>` since phase-581 W5 (two
+        // segments); another backend's registry rows, if any, keep the
+        // generic `<backend>.tx.<lever>` shape this schema reads.
+        let env_of = |knob: &str| {
+            let key = if backend == LEGACY_TX_BACKEND {
+                Some(tx_env_key(knob))
+            } else {
+                registry_env(&group, knob)
+            };
+            key.and_then(|key| knob_env(env, key))
+        };
 
         fn rung<T: Copy>(builtin: T, plat: Option<T>, board: Option<T>) -> (T, KnobSource) {
             match (board, plat) {
@@ -2508,19 +2610,13 @@ impl PlatformsTree {
             let p = &file.knobs.params;
             for (dst, src) in [
                 (&mut out.max_parameters, p.max_parameters),
-                (&mut out.max_param_name_len, p.max_param_name_len),
-                (&mut out.max_string_value_len, p.max_string_value_len),
+                (&mut out.max_name_bytes, p.max_name_bytes),
+                (&mut out.max_string_value_bytes, p.max_string_value_bytes),
                 (&mut out.max_array_len, p.max_array_len),
                 (&mut out.max_string_array_len, p.max_string_array_len),
-                (&mut out.max_byte_array_len, p.max_byte_array_len),
-                (
-                    &mut out.max_param_description_len,
-                    p.max_param_description_len,
-                ),
-                (
-                    &mut out.max_param_constraints_len,
-                    p.max_param_constraints_len,
-                ),
+                (&mut out.max_byte_array_bytes, p.max_byte_array_bytes),
+                (&mut out.max_description_bytes, p.max_description_bytes),
+                (&mut out.max_constraints_bytes, p.max_constraints_bytes),
                 (&mut out.param_events_depth, p.param_events_depth),
             ] {
                 if src.is_some() {
@@ -2560,7 +2656,7 @@ impl PlatformsTree {
             for (dst, src) in [
                 (&mut out.max_sockets, n.max_sockets),
                 (&mut out.max_udp_sockets, n.max_udp_sockets),
-                (&mut out.buffer_size, n.buffer_size),
+                (&mut out.buffer_bytes, n.buffer_bytes),
                 (&mut out.connect_timeout_ms, n.connect_timeout_ms),
                 (&mut out.socket_timeout_ms, n.socket_timeout_ms),
             ] {
@@ -2582,7 +2678,6 @@ impl PlatformsTree {
                 (&mut out.component_slot_bytes, r.component_slot_bytes),
                 (&mut out.max_class_instances, r.max_class_instances),
                 (&mut out.max_cell_entities, r.max_cell_entities),
-                (&mut out.let_buffer_size, r.let_buffer_size),
             ] {
                 if src.is_some() {
                     *dst = src;
@@ -2607,10 +2702,10 @@ impl PlatformsTree {
         for file in chain.iter().rev() {
             let w = &file.knobs.zenoh.wire;
             for (dst, src) in [
-                (&mut out.batch_unicast_size, w.batch_unicast_size),
-                (&mut out.batch_multicast_size, w.batch_multicast_size),
-                (&mut out.frag_max_size, w.frag_max_size),
-                (&mut out.get_reply_buf_size, w.get_reply_buf_size),
+                (&mut out.batch_unicast_bytes, w.batch_unicast_bytes),
+                (&mut out.batch_multicast_bytes, w.batch_multicast_bytes),
+                (&mut out.frag_max_bytes, w.frag_max_bytes),
+                (&mut out.get_reply_buffer_bytes, w.get_reply_buffer_bytes),
                 (&mut out.get_poll_interval_ms, w.get_poll_interval_ms),
                 (&mut out.rx_task_budget_frames, w.rx_task_budget_frames),
                 (&mut out.rx_task_budget_rest_us, w.rx_task_budget_rest_us),
@@ -2638,10 +2733,10 @@ impl PlatformsTree {
     ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
         let plat = self.platform_wire_knobs(platform)?;
         let pick = |k: &WireKnobs, name: &str| match name {
-            "batch_unicast_size" => k.batch_unicast_size,
-            "batch_multicast_size" => k.batch_multicast_size,
-            "frag_max_size" => k.frag_max_size,
-            "get_reply_buf_size" => k.get_reply_buf_size,
+            "batch_unicast_bytes" => k.batch_unicast_bytes,
+            "batch_multicast_bytes" => k.batch_multicast_bytes,
+            "frag_max_bytes" => k.frag_max_bytes,
+            "get_reply_buffer_bytes" => k.get_reply_buffer_bytes,
             "get_poll_interval_ms" => k.get_poll_interval_ms,
             "rx_task_budget_frames" => k.rx_task_budget_frames,
             "rx_task_budget_rest_us" => k.rx_task_budget_rest_us,
@@ -2702,8 +2797,7 @@ impl PlatformsTree {
         for file in chain.iter().rev() {
             let z = &file.knobs.zenoh.limits;
             for (dst, src) in [
-                (&mut out.keyexpr_string_size, z.keyexpr_string_size),
-                (&mut out.service_timeout_ms, z.service_timeout_ms),
+                (&mut out.keyexpr_string_bytes, z.keyexpr_string_bytes),
                 (&mut out.subscriber_ring_depth, z.subscriber_ring_depth),
                 (&mut out.connect_timeout_ms, z.connect_timeout_ms),
             ] {
@@ -2724,6 +2818,43 @@ impl PlatformsTree {
         platform: &str,
     ) -> Result<ZenohLimitKnobs, ConfigError> {
         self.platform_zenoh_limit_knobs(platform)
+    }
+
+    /// The `[knobs.service]` rungs for a platform, inherits chain applied.
+    pub fn platform_service_rungs(&self, platform: &str) -> Result<ServiceKnobs, ConfigError> {
+        let chain = self.chain(platform)?;
+        let mut out = ServiceKnobs::default();
+        for file in chain.iter().rev() {
+            if file.knobs.service.timeout_ms.is_some() {
+                out.timeout_ms = file.knobs.service.timeout_ms;
+            }
+        }
+        Ok(out)
+    }
+
+    /// Resolve the service tenant over the RFC-0049 ladder, with the rung
+    /// that set each value, for `nros config explain`. `timeout_ms`'s builtin
+    /// is [`BUILTIN_SERVICE_TIMEOUT_MS`]; `defaults` are the caller's, as for
+    /// every other tenant.
+    pub fn resolve_service(
+        &self,
+        platform: &str,
+        board: Option<&ServiceKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_service_rungs(platform)?;
+        let pick = |k: &ServiceKnobs, name: &str| match name {
+            "timeout_ms" => k.timeout_ms,
+            _ => None,
+        };
+        Ok(resolve_usize_tenant(
+            defaults,
+            |name| board.and_then(|b| pick(b, name)),
+            |name| pick(&plat, name),
+            env,
+            service_env_key,
+        ))
     }
 
     /// Issue 2013 — resolve the XRCE tenant over the RFC-0049 ladder, with
@@ -2766,8 +2897,7 @@ impl PlatformsTree {
     ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
         let plat = self.platform_zenoh_limit_knobs(platform)?;
         let pick = |k: &ZenohLimitKnobs, name: &str| match name {
-            "keyexpr_string_size" => k.keyexpr_string_size,
-            "service_timeout_ms" => k.service_timeout_ms,
+            "keyexpr_string_bytes" => k.keyexpr_string_bytes,
             "subscriber_ring_depth" => k.subscriber_ring_depth,
             "connect_timeout_ms" => k.connect_timeout_ms,
             "connect_forever" => k.connect_forever.map(usize::from),
@@ -2806,7 +2936,6 @@ impl PlatformsTree {
             "component_slot_bytes" => k.component_slot_bytes,
             "max_class_instances" => k.max_class_instances,
             "max_cell_entities" => k.max_cell_entities,
-            "let_buffer_size" => k.let_buffer_size,
             _ => None,
         };
         let mut out = Vec::new();
@@ -2900,7 +3029,7 @@ impl PlatformsTree {
         let pick = |k: &NetKnobs, name: &str| match name {
             "max_sockets" => k.max_sockets,
             "max_udp_sockets" => k.max_udp_sockets,
-            "buffer_size" => k.buffer_size,
+            "buffer_bytes" => k.buffer_bytes,
             "connect_timeout_ms" => k.connect_timeout_ms,
             "socket_timeout_ms" => k.socket_timeout_ms,
             _ => None,
@@ -2998,13 +3127,13 @@ impl PlatformsTree {
         let plat = self.platform_param_knobs(platform)?;
         let pick = |k: &ParamKnobs, name: &str| match name {
             "max_parameters" => k.max_parameters,
-            "max_param_name_len" => k.max_param_name_len,
-            "max_string_value_len" => k.max_string_value_len,
+            "max_name_bytes" => k.max_name_bytes,
+            "max_string_value_bytes" => k.max_string_value_bytes,
             "max_array_len" => k.max_array_len,
             "max_string_array_len" => k.max_string_array_len,
-            "max_byte_array_len" => k.max_byte_array_len,
-            "max_param_description_len" => k.max_param_description_len,
-            "max_param_constraints_len" => k.max_param_constraints_len,
+            "max_byte_array_bytes" => k.max_byte_array_bytes,
+            "max_description_bytes" => k.max_description_bytes,
+            "max_constraints_bytes" => k.max_constraints_bytes,
             "param_events_depth" => k.param_events_depth,
             _ => None,
         };
@@ -3091,7 +3220,9 @@ impl PlatformsTree {
     /// keeps earning its keep; it just no longer stands in for an absent file.
     pub fn resolve_memory_from(
         &self,
-        platform: &str,
+        // One spelling on every platform since phase-581 W5; kept so a caller
+        // names the platform it resolves for, as every other tenant does.
+        _platform: &str,
         plat: &MemoryKnobs,
         board: Option<&MemoryKnobs>,
         env: &dyn Fn(&str) -> Option<String>,
@@ -3110,19 +3241,13 @@ impl PlatformsTree {
                     (None, Some(v)) => (v, KnobSource::Platform),
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
-            let env_key = memory_env_key_for(platform, name);
-            if let Some(key) = env_key
-                && let Some(raw) = knob_env(env, key)
+            let key = memory_env_key(name);
+            let env_key = Some(key);
+            if let Some(raw) = knob_env(env, key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {
-                // The front-ends disagree about units and the ladder does not:
-                // a KiB spelling is multiplied here, once, beside the table
-                // that records which spelling each knob has.
-                value = if memory_env_is_kib_for(platform, name) {
-                    n * 1024
-                } else {
-                    n
-                };
+                // One spelling, in bytes, like the ladder (phase-581 W5).
+                value = n;
                 source = KnobSource::Env;
             }
             out.push((
@@ -3204,9 +3329,9 @@ impl PlatformsTree {
                 max_nodes,
                 max_shutdown_cbs,
                 action_clients,
-                arena_size,
-                subscription_buffer_size,
-                param_service_buffer_size
+                arena_bytes,
+                subscription_buffer_bytes,
+                param_service_buffer_bytes
             );
         }
         Ok(k)
@@ -3897,6 +4022,7 @@ pub fn retired_board_knobs_refusal() -> String {
     nros_zephyr_build::RETIRED_TEMPLATE
         .replace("{legacy}", "`[board.knobs]`")
         .replace("{env}", "a top-level `[knobs]`")
+        .replace("{scale}", "")
 }
 
 #[cfg(test)]
@@ -4410,13 +4536,13 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("posix")).unwrap();
         std::fs::write(
             dir.path().join("posix/nros-platform.toml"),
-            "[knobs.zenoh.wire]\nfrag_max_size = 777\nget_reply_buf_size = 1234\n",
+            "[knobs.zenoh]\nfrag_max_bytes = 777\nget_reply_buffer_bytes = 1234\n",
         )
         .unwrap();
         let tree = PlatformsTree::load_search_path(&[dir.path().to_path_buf()]).expect("tree");
         let defaults = [
-            ("frag_max_size", 2048usize),
-            ("get_reply_buf_size", 4096),
+            ("frag_max_bytes", 2048usize),
+            ("get_reply_buffer_bytes", 4096),
             ("get_poll_interval_ms", 10),
         ];
 
@@ -4425,8 +4551,8 @@ mod tests {
             .resolve_wire("posix", None, &|_| None, &defaults)
             .expect("resolve");
         let by = |n: &str| got.iter().find(|(k, _)| *k == n).unwrap().1.clone();
-        assert_eq!(by("frag_max_size").value, 777);
-        assert_eq!(by("frag_max_size").source, KnobSource::Platform);
+        assert_eq!(by("frag_max_bytes").value, 777);
+        assert_eq!(by("frag_max_bytes").source, KnobSource::Platform);
         // a knob the platform does not name keeps the CALLER's builtin, which is
         // the whole reason `defaults` is a parameter: it is computed per
         // transport, not a constant.
@@ -4435,13 +4561,13 @@ mod tests {
 
         // board outranks platform
         let board = WireKnobs {
-            frag_max_size: Some(99),
+            frag_max_bytes: Some(99),
             ..Default::default()
         };
         let got = tree
             .resolve_wire("posix", Some(&board), &|_| None, &defaults)
             .expect("resolve");
-        let hit = got.iter().find(|(k, _)| *k == "frag_max_size").unwrap();
+        let hit = got.iter().find(|(k, _)| *k == "frag_max_bytes").unwrap();
         assert_eq!(hit.1.value, 99);
         assert_eq!(hit.1.source, KnobSource::Board);
 
@@ -4450,11 +4576,11 @@ mod tests {
             .resolve_wire(
                 "posix",
                 Some(&board),
-                &|k| (k == "NROS_ZENOH_FRAG_MAX_SIZE").then(|| "555".to_string()),
+                &|k| (k == "NROS_ZENOH_FRAG_MAX_BYTES").then(|| "555".to_string()),
                 &defaults,
             )
             .expect("resolve");
-        let hit = got.iter().find(|(k, _)| *k == "frag_max_size").unwrap();
+        let hit = got.iter().find(|(k, _)| *k == "frag_max_bytes").unwrap();
         assert_eq!(hit.1.value, 555);
         assert_eq!(hit.1.source, KnobSource::Env);
     }
@@ -4477,8 +4603,9 @@ mod tests {
             ("rmw", RMW_KNOBS, rmw_env_key),
             ("params", PARAM_KNOBS, param_env_key),
             ("xrce", XRCE_KNOBS, xrce_env_key),
-            ("zenoh.limits", ZENOH_LIMIT_KNOBS, zenoh_limit_env_key),
-            ("zenoh.wire", WIRE_KNOBS, wire_env_key),
+            ("zenoh", ZENOH_LIMIT_KNOBS, zenoh_limit_env_key),
+            ("zenoh", WIRE_KNOBS, wire_env_key),
+            ("service", SERVICE_KNOBS, service_env_key),
         ];
         for (group, knobs, env_key) in tenants {
             for knob in *knobs {
@@ -4498,13 +4625,13 @@ mod tests {
     fn a_knob_is_read_under_its_canonical_spelling_only() {
         let tmp = write_tree(&[("posix", "")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let defaults = [("frag_max_size", 2048usize)];
-        assert_eq!(wire_env_key("frag_max_size"), "NROS_ZENOH_FRAG_MAX_SIZE");
+        let defaults = [("frag_max_bytes", 2048usize)];
+        assert_eq!(wire_env_key("frag_max_bytes"), "NROS_ZENOH_FRAG_MAX_BYTES");
         let value = |env: &dyn Fn(&str) -> Option<String>| {
             let got = tree.resolve_wire("posix", None, env, &defaults).unwrap();
             (got[0].1.value, got[0].1.source)
         };
-        let canonical = |k: &str| (k == "NROS_ZENOH_FRAG_MAX_SIZE").then(|| "321".to_string());
+        let canonical = |k: &str| (k == "NROS_ZENOH_FRAG_MAX_BYTES").then(|| "321".to_string());
         assert_eq!(value(&canonical), (321, KnobSource::Env));
         let tx = tx_env_only(&|k| (k == "NROS_ZENOH_TX_BATCH").then(|| "1".to_string()));
         assert!(tx.batch.value);
@@ -4516,17 +4643,17 @@ mod tests {
 
     #[test]
     #[should_panic(
-        expected = "ZPICO_FRAG_MAX_SIZE is a retired spelling of NROS_ZENOH_FRAG_MAX_SIZE"
+        expected = "ZPICO_FRAG_MAX_SIZE is a retired spelling of NROS_ZENOH_FRAG_MAX_BYTES"
     )]
     fn a_retired_spelling_stops_the_build() {
         let tmp = write_tree(&[("posix", "")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let env = |k: &str| match k {
-            "NROS_ZENOH_FRAG_MAX_SIZE" => Some("1".to_string()),
+            "NROS_ZENOH_FRAG_MAX_BYTES" => Some("1".to_string()),
             "ZPICO_FRAG_MAX_SIZE" => Some("1".to_string()), // retired spelling: refusal case
             _ => None,
         };
-        let _ = tree.resolve_wire("posix", None, &env, &[("frag_max_size", 8usize)]);
+        let _ = tree.resolve_wire("posix", None, &env, &[("frag_max_bytes", 8usize)]);
     }
 
     /// An absent descriptor is `UnknownPlatform`; a BROKEN one is not.
@@ -4672,14 +4799,13 @@ mod tests {
     fn service_timeout_takes_the_limits_rung_over_the_builtin() {
         // Both readers ignored this rung before issue 2007, so a descriptor
         // stating it parsed and changed nothing.
-        let none = ZenohLimitKnobs::default();
+        let none = ServiceKnobs::default();
         assert_eq!(
             resolve_service_timeout_ms(&none),
             BUILTIN_SERVICE_TIMEOUT_MS
         );
-        let stated = ZenohLimitKnobs {
-            service_timeout_ms: Some(5_000),
-            ..ZenohLimitKnobs::default()
+        let stated = ServiceKnobs {
+            timeout_ms: Some(5_000),
         };
         assert_eq!(resolve_service_timeout_ms(&stated), 5_000);
     }
@@ -4711,7 +4837,7 @@ mod tests {
 
     #[test]
     fn a_board_states_connect_forever_over_its_platform() {
-        let tmp = write_tree(&[("p", "[knobs.zenoh.limits]\nconnect_timeout_ms = 500\n")]);
+        let tmp = write_tree(&[("p", "[knobs.zenoh]\nconnect_timeout_ms = 500\n")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let plat = tree.platform_zenoh_limit_rungs("p").unwrap();
         assert_eq!(resolve_zenoh_connect_timeout_ms(&plat), 500);
@@ -4733,7 +4859,7 @@ mod tests {
         let tmp = write_tree(&[(
             "p",
             "[knobs.xrce]\nstream_history = 4\n\
-             [knobs.zenoh.limits]\nservice_timeout_ms = 5000\n",
+             [knobs.service]\ntimeout_ms = 5000\n",
         )]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let find = |r: &[(&str, ResolvedUsize)], n: &str| {
@@ -4753,16 +4879,21 @@ mod tests {
         assert_eq!(find(&r, "stream_history"), (4, KnobSource::Platform));
         assert_eq!(find(&r, "custom_transport_mtu"), (512, KnobSource::Board));
 
-        let limit_defaults: &[(&str, usize)] = &[
-            ("keyexpr_string_size", 256),
-            ("service_timeout_ms", BUILTIN_SERVICE_TIMEOUT_MS),
-        ];
-        let env = |k: &str| (k == "NROS_KEYEXPR_STRING_SIZE").then(|| "128".to_string());
+        let limit_defaults: &[(&str, usize)] = &[("keyexpr_string_bytes", 256)];
+        let env = |k: &str| (k == "NROS_ZENOH_KEYEXPR_STRING_BYTES").then(|| "128".to_string());
         let r = tree
             .resolve_zenoh_limits("p", None, &env, limit_defaults)
             .unwrap();
-        assert_eq!(find(&r, "service_timeout_ms"), (5000, KnobSource::Platform));
-        assert_eq!(find(&r, "keyexpr_string_size"), (128, KnobSource::Env));
+        assert_eq!(find(&r, "keyexpr_string_bytes"), (128, KnobSource::Env));
+        let r = tree
+            .resolve_service(
+                "p",
+                None,
+                &no_env,
+                &[("timeout_ms", BUILTIN_SERVICE_TIMEOUT_MS)],
+            )
+            .unwrap();
+        assert_eq!(find(&r, "timeout_ms"), (5000, KnobSource::Platform));
     }
 
     // ---- issue 2006 — the retired transport tenant ----
@@ -4838,7 +4969,7 @@ mod tests {
     #[test]
     fn a_backend_without_a_table_does_not_inherit_the_legacy_one() {
         // Issue 1300 — `tx_for` handed `[knobs.zenoh.tx]` to every backend.
-        let tmp = write_tree(&[("p", "[knobs.zenoh.tx]\nbatch = true\n")]);
+        let tmp = write_tree(&[("p", "[knobs.zenoh]\ntx_batch = true\n")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let other = tree.resolve_tx("xrce", "p", None, &no_env).unwrap();
         assert_eq!(other.batch.source, KnobSource::Builtin);
@@ -4873,7 +5004,7 @@ mod tests {
     fn legacy_zenoh_knobs_still_parse() {
         // The seven in-tree files must not change. Byte-identity of behaviour
         // is the acceptance rule phase-290 W2.c set for this schema.
-        let tmp = write_tree(&[("p", "[knobs.zenoh.tx]\nbatch = true\n")]);
+        let tmp = write_tree(&[("p", "[knobs.zenoh]\ntx_batch = true\n")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let tx = tree
             .resolve_tx(LEGACY_TX_BACKEND, "p", None, &no_env)
@@ -4920,96 +5051,58 @@ mod tests {
             .expect("every [port.*] row names a platform on the search path");
     }
 
-    /// issue 2400 W5b — a FreeRTOS variable left in the environment must not
-    /// size another platform's stack or heap. `memory_env_key_for` used to
-    /// answer the FreeRTOS spellings for every platform it did not name.
+    /// RFC-0140 D4 (phase-581 W5) — a board's or platform's `[knobs]` that
+    /// states a retired key is refused naming the key to write instead and,
+    /// for a unit change, the factor, on both parsers.
     #[test]
-    fn a_freertos_variable_sizes_no_other_platform() {
-        let tree = PlatformsTree::default();
-        let env = |k: &str| match k {
-            "NROS_FREERTOS_APP_STACK_KB" => Some("16".to_string()),
-            "NROS_FREERTOS_HEAP_KB" => Some("8".to_string()),
-            _ => None,
-        };
-        let defaults = [("heap_bytes", 4096), ("app_stack_bytes", 65536)];
-        for platform in [
-            "threadx-riscv64",
-            "threadx-linux",
-            "bare-metal",
-            "zephyr",
-            "nuttx",
-            "posix",
-        ] {
-            for (name, r) in
-                tree.resolve_memory_from(platform, &MemoryKnobs::default(), None, &env, &defaults)
-            {
-                assert_eq!(
-                    r.source,
-                    KnobSource::Builtin,
-                    "{platform} {name} read {:?}",
-                    r.env_key
-                );
-                assert!(
-                    !r.env_key.is_some_and(|k| k.starts_with("NROS_FREERTOS_")),
-                    "{platform} {name} names {:?}",
-                    r.env_key
-                );
-            }
-        }
-        // FreeRTOS itself still reads them, in KiB.
-        let r =
-            tree.resolve_memory_from("freertos", &MemoryKnobs::default(), None, &env, &defaults);
-        assert_eq!(r[1].1.value, 16 * 1024);
-        assert_eq!(r[1].1.source, KnobSource::Env);
-        // ThreadX has its own spelling, also KiB.
-        let tx = |k: &str| (k == "NROS_THREADX_APP_STACK_KB").then(|| "40".to_string());
-        let r = tree.resolve_memory_from(
-            "threadx-riscv64",
-            &MemoryKnobs::default(),
-            None,
-            &tx,
-            &defaults,
+    fn a_retired_knob_key_is_refused_naming_its_replacement() {
+        let board: toml::Table = "[zenoh.wire]\nfrag_max_size = 4096\n[freertos]\nheap_kb = 64\n"
+            .parse()
+            .unwrap();
+        let e = Knobs::from_board_table(board).expect_err("a retired key is refused");
+        assert!(
+            e.contains("`[knobs.zenoh.wire] frag_max_size` is retired: write `[knobs.zenoh] frag_max_bytes`"),
+            "{e}"
         );
-        assert_eq!(r[1].1.value, 40 * 1024);
-        assert_eq!(r[1].1.env_key, Some("NROS_THREADX_APP_STACK_KB"));
-        // ThreadX sizes its byte pool, which is its heap (issue 2624).
-        assert_eq!(
-            memory_env_key_for("threadx-riscv64", "heap_bytes"),
-            Some("NROS_THREADX_BYTE_POOL_KB")
+        assert!(
+            e.contains("`[knobs.freertos] heap_kb` is retired: write `[knobs.memory] heap_bytes`")
+                && e.contains("x 1024"),
+            "{e}"
         );
-        // No platform answers a heap spelling it does not size.
-        assert_eq!(memory_env_key_for("nuttx", "heap_bytes"), None);
+        let tmp = write_tree(&[("p", "[knobs.zenoh.tx]\nbatch = true\n")]);
+        let e = PlatformsTree::load(tmp.path())
+            .err()
+            .expect("a platform file with a retired key is refused")
+            .to_string();
+        assert!(e.contains("write `[knobs.zenoh] tx_batch`"), "{e}");
     }
 
-    /// The name lists `memory_env_key_for` matches on are the platform files'
-    /// own `names`, so a new alias cannot fall off its arm unnoticed.
+    /// phase-581 W5 — one memory spelling, in bytes, on every platform; the
+    /// retired per-platform spellings are refused, never read.
     #[test]
-    fn memory_front_ends_match_the_platform_files() {
-        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .unwrap()
-            .to_path_buf();
-        let path = PlatformsTree::default_search_path(&repo, None);
-        if !path.iter().any(|p| p.is_dir()) {
-            return; // out-of-tree consumer; nothing to check
+    fn the_memory_knobs_have_one_spelling_in_bytes() {
+        let tree = PlatformsTree::default();
+        let defaults = [("heap_bytes", 4096), ("app_stack_bytes", 65536)];
+        let env = |k: &str| match k {
+            "NROS_MEMORY_APP_STACK_BYTES" => Some("40960".to_string()),
+            _ => None,
+        };
+        for platform in ["freertos", "threadx-riscv64", "zephyr"] {
+            let r =
+                tree.resolve_memory_from(platform, &MemoryKnobs::default(), None, &env, &defaults);
+            assert_eq!(r[1].1.value, 40960, "{platform}");
+            assert_eq!(r[1].1.source, KnobSource::Env);
+            assert_eq!(r[1].1.env_key, Some("NROS_MEMORY_APP_STACK_BYTES"));
+            assert_eq!(r[0].1.env_key, Some("NROS_MEMORY_HEAP_BYTES"));
         }
-        let tree =
-            PlatformsTree::load_search_path(&path).expect("the real platform search path loads");
-        for (canonical, list) in [("freertos", FREERTOS_NAMES), ("threadx", THREADX_NAMES)] {
-            let f = tree
-                .files
-                .values()
-                .find(|f| f.names.first().map(String::as_str) == Some(canonical))
-                .unwrap_or_else(|| panic!("no platform file is canonically `{canonical}`"));
-            let mut have: Vec<&str> = f.names.iter().map(String::as_str).collect();
-            let mut want = list.to_vec();
-            have.sort_unstable();
-            want.sort_unstable();
-            assert_eq!(
-                have, want,
-                "`{canonical}`'s names moved; update its memory arm"
-            );
+        for retired in [
+            "NROS_FREERTOS_APP_STACK_KB", // retired spelling
+            "NROS_THREADX_APP_STACK_KB",  // retired spelling
+            "NROS_FREERTOS_HEAP_KB",      // retired spelling
+            "NROS_ZEPHYR_HEAP_SIZE",      // retired spelling
+        ] {
+            let row = nros_zephyr_build::knob_row(retired).expect("a retired spelling's row");
+            assert!(row.env.starts_with("NROS_MEMORY_"), "{retired}");
         }
     }
 
@@ -5211,7 +5304,7 @@ mod tests {
     fn ladder_platform_board_env_order() {
         let tmp = write_tree(&[(
             "zephyr",
-            "[capabilities]\nthreads = true\n[knobs.zenoh.tx]\nbatch = true\nflush_ms = 40\n",
+            "[capabilities]\nthreads = true\n[knobs.zenoh]\ntx_batch = true\ntx_batch_flush_ms = 40\n",
         )]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
 
@@ -5249,7 +5342,7 @@ mod tests {
     fn explicit_env_zero_overrides_on_default() {
         let tmp = write_tree(&[(
             "zephyr",
-            "[knobs.zenoh.tx]\nbatch = true\nsplit_lock = true\n",
+            "[knobs.zenoh]\ntx_batch = true\ntx_split_lock = true\n",
         )]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let env = |k: &str| (k == "NROS_ZENOH_TX_BATCH").then(|| "0".to_string());
@@ -5269,11 +5362,11 @@ mod tests {
         let tmp = write_tree(&[
             (
                 "generic",
-                "[capabilities]\nthreads = true\n[knobs.zenoh.tx]\nflush_ms = 30\n",
+                "[capabilities]\nthreads = true\n[knobs.zenoh]\ntx_batch_flush_ms = 30\n",
             ),
             (
                 "child",
-                "inherits = \"generic\"\n[knobs.zenoh.tx]\nflush_ms = 60\n",
+                "inherits = \"generic\"\n[knobs.zenoh]\ntx_batch_flush_ms = 60\n",
             ),
         ]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
@@ -5287,7 +5380,7 @@ mod tests {
 
     #[test]
     fn unknown_knob_key_fails_loud() {
-        let tmp = write_tree(&[("zephyr", "[knobs.zenoh.tx]\nbatchh = true\n")]);
+        let tmp = write_tree(&[("zephyr", "[knobs.zenoh]\ntx_batchh = true\n")]);
         let err = PlatformsTree::load(tmp.path()).unwrap_err();
         assert!(format!("{err}").contains("batchh"), "{err}");
     }
@@ -5296,7 +5389,7 @@ mod tests {
     fn capability_check_downgrades_split_without_threads() {
         let tmp = write_tree(&[(
             "bare-metal",
-            "[knobs.zenoh.tx]\nbatch = true\nsplit_lock = true\n",
+            "[knobs.zenoh]\ntx_batch = true\ntx_split_lock = true\n",
         )]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let mut tx = tree
@@ -5480,7 +5573,7 @@ mod board_registry_knob_tests {
     #[test]
     fn a_board_states_any_registry_knob() {
         let text = "[zenoh]\nmax_large_subscribers = 0\nmax_subscribers = 1\n\
-                    [zenoh.tx]\nbatch = true\n[zephyr]\nheap_size = 32768\n\
+                    tx_batch = true\n[memory]\nheap_bytes = 32768\n\
                     [executor]\nmax_cbs = 4\n";
         let t: toml::Table = text.parse().unwrap();
         let k = Knobs::from_board_table(t).expect("board knobs");
@@ -5489,10 +5582,10 @@ mod board_registry_knob_tests {
             Some(0)
         );
         assert_eq!(k.registry["zenoh.max_subscribers"].as_integer(), Some(1));
-        assert_eq!(k.registry["zephyr.heap_size"].as_integer(), Some(32768));
+        assert_eq!(k.registry["memory.heap_bytes"].as_integer(), Some(32768));
         assert_eq!(k.zenoh.tx.batch, Some(true));
         assert_eq!(k.executor.max_cbs, Some(4));
-        assert_eq!(k.registry["zenoh.tx.batch"].as_bool(), Some(true));
+        assert_eq!(k.registry["zenoh.tx_batch"].as_bool(), Some(true));
         assert_eq!(k.registry["executor.max_cbs"].as_integer(), Some(4));
         assert!(k.backends.is_empty(), "an emptied group is not a backend");
 
@@ -5503,7 +5596,7 @@ mod board_registry_knob_tests {
             "{e}"
         );
 
-        let plat: Result<Knobs, _> = toml::from_str("[zephyr]\nheap_size = 1\n");
+        let plat: Result<Knobs, _> = toml::from_str("[zenoh]\nmax_subscribers = 1\n");
         assert!(
             plat.is_err(),
             "a platform file cannot state a board-only knob"

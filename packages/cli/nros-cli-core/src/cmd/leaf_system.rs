@@ -147,7 +147,7 @@ pub struct LeafSystemArgs {
 
     /// A transient knob value for this build only, `ID=VALUE`.
     ///
-    /// `ID` is the registry id: `EXECUTOR_ARENA_SIZE=32`. The Zephyr module hook
+    /// `ID` is the registry id: `EXECUTOR_ARENA_BYTES=32`. The Zephyr module hook
     /// passes one per `-DNROS_OVERRIDE_<ID>=<VALUE>` on the configure line;
     /// it replaces the image's own value in `--kconfig-defaults-out`, marked as
     /// an override. Repeatable.

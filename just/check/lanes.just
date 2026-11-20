@@ -1270,7 +1270,7 @@ c: c-fmt c-link-smoke
     # copy, which was also why this used `CARGO_TARGET_DIR` and not
     # `--target-dir`; the archive path below still reads it.)
     #
-    # `NROS_MAX_PARAM_CONSTRAINTS_LEN=256` because the descriptor's
+    # `NROS_PARAMS_MAX_CONSTRAINTS_BYTES=256` because the descriptor's
     # `additional_constraints` capacity DEFAULTS TO 0, and stating it here is
     # the only in-tree exercise of the knob's own ladder.
     #
@@ -1285,7 +1285,7 @@ c: c-fmt c-link-smoke
     # its derived output dir, and the mirrored header beside it is from this
     # same build.
     param_dir="$PWD/target/nros-c-param-services"
-    NROS_MAX_PARAM_CONSTRAINTS_LEN=256 CARGO_TARGET_DIR="$param_dir" \
+    NROS_PARAMS_MAX_CONSTRAINTS_BYTES=256 CARGO_TARGET_DIR="$param_dir" \
         nros_cargo_placed "$param_dir/placed" nros-c -- build -p nros-c --no-default-features \
         --features "{{C_API_SHIPPED_FEATURES}},param-services,sim-time" --quiet
     mkdir -p tmp
@@ -4604,7 +4604,7 @@ node-std-tests:
     while IFS=$'\t' read -r target words confs; do
         [ -n "$target" ] || continue
         backing_check() {
-            env "${unset_args[@]}" NROS_EXECUTOR_BACKING_U64S="$1" \
+            env "${unset_args[@]}" NROS_EXECUTOR_BACKING_BYTES="$(( $1 * 8 ))" \
                 cargo check -p nros-node --lib --target "$target" \
                 --no-default-features --features alloc,rmw-cffi --quiet 2>&1
         }
@@ -4612,7 +4612,7 @@ node-std-tests:
             *",$target,"*) ;;
             *)
                 rc=0; out="$(backing_check 1)" || rc=$?
-                if [ "$rc" -eq 0 ] || [[ "$out" != *"NROS_EXECUTOR_BACKING_U64S is below"* ]]; then
+                if [ "$rc" -eq 0 ] || [[ "$out" != *"NROS_EXECUTOR_BACKING_BYTES is below"* ]]; then
                     printf '%s\n' "$out"
                     printf '%s\n' \
                         "node-std-tests: NEGATIVE CONTROL failed on $target — a backing of 1 word" \
@@ -4625,7 +4625,7 @@ node-std-tests:
         if [ "$rc" -ne 0 ]; then
             printf '%s\n' "$out"
             printf '%s\n' \
-                "node-std-tests: CONFIG_NROS_EXECUTOR_BACKING_U64S=$words is refused by nros-node" \
+                "node-std-tests: CONFIG_NROS_EXECUTOR_BACKING_BYTES=$(( words * 8 )) is refused by nros-node" \
                 "  compiled for $target, the target of: $confs" \
                 "  The image will not compile. Restate the backing at or above the executor's" \
                 "  default for that target and re-pair the arena (issue 1284)." >&2
@@ -4673,14 +4673,14 @@ node-std-tests:
         NROS_ENTITY_COUNT_ACTION_SERVER=0 NROS_ENTITY_COUNT_SERVICE_CLIENT=0
         NROS_ENTITY_COUNT_GUARD_CONDITION=0)
     rc=0
-    out="$(env "${oracle_env[@]}" NROS_EXECUTOR_ARENA_SIZE=8192 \
+    out="$(env "${oracle_env[@]}" NROS_EXECUTOR_ARENA_BYTES=8192 \
         cargo check -p nros-node --quiet 2>&1)" || rc=$?
     if [ "$rc" -eq 0 ]; then
         printf '%s\n' "node-std-tests: the arena oracle did NOT fire on a stated" \
             "  8192-byte arena under a declared model. It is inert." >&2
         exit 1
     fi
-    for want in "NROS_EXECUTOR_ARENA_SIZE" "= 8192 B" "modelled at " "B short"; do
+    for want in "NROS_EXECUTOR_ARENA_BYTES" "= 8192 B" "modelled at " "B short"; do
         case "$out" in
             *"$want"*) ;;
             *) printf '%s\n' "$out" \
@@ -4711,10 +4711,10 @@ node-std-tests:
     #                    and priced a receive region at nothing.
     arena_model_of() {
         local rc=0 out=""
-        out="$(env "${oracle_env[@]}" "$@" NROS_SUBSCRIBER_BUFFER_SIZE=880 \
+        out="$(env "${oracle_env[@]}" "$@" NROS_SUBSCRIBER_BUFFER_BYTES=880 \
             NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION=0 \
             NROS_ENTITY_DECLARED_DEPTHS="$island_depths" \
-            NROS_EXECUTOR_ARENA_SIZE=8192 \
+            NROS_EXECUTOR_ARENA_BYTES=8192 \
             cargo check -p nros-node --quiet 2>&1)" || rc=$?
         if [ "$rc" -eq 0 ]; then
             printf '%s\n' \

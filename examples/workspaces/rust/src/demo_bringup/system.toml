@@ -197,8 +197,8 @@ board = "zephyr"
 os_config = ["prj-zenoh.conf"]
 locator = "tcp/10.0.2.2:7430"
 
-[image.zephyr.knobs.zephyr]
-heap_size = 262144
+[image.zephyr.knobs.memory]
+heap_bytes = 262144
 # issue 1324 / phase-481 W3 -- the nano-ros platform heap (zenoh-pico and the
 # Rust global allocator both allocate from it). 256 KiB on native_sim (host
 # RAM); every e2e run scores it against the image's MEASURED heap peak, so an
@@ -215,8 +215,8 @@ launch = "multihost.launch.xml"
 args = { host = "robot1" }
 locator = "tcp/10.0.2.2:7469"
 
-[image.zephyr_robot1.knobs.zephyr]
-heap_size = 262144
+[image.zephyr_robot1.knobs.memory]
+heap_bytes = 262144
 # issue 1324 / phase-481 W3 -- the nano-ros platform heap (zenoh-pico and the
 # Rust global allocator both allocate from it). 256 KiB on native_sim (host
 # RAM); every e2e run scores it against the image's MEASURED heap peak, so an

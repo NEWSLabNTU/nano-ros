@@ -58,8 +58,8 @@ fn main() {
         32,
     );
     let max_param_name_len = knob(
-        "NROS_MAX_PARAM_NAME_LEN",
-        rungs.max_param_name_len,
+        "NROS_PARAMS_MAX_NAME_BYTES",
+        rungs.max_name_bytes,
         contract(params.map(|p| p.max_param_name_len()), None),
         64,
     );
@@ -71,9 +71,9 @@ fn main() {
     // was. What the descriptor DOES carry is the NEED -- who declared a type
     // that uses the capacity -- which is the half the contract owns.
     let max_string_value_len = capacity(
-        "NROS_MAX_STRING_VALUE_LEN",
-        "max_string_value_len",
-        rungs.max_string_value_len,
+        "NROS_PARAMS_MAX_STRING_VALUE_BYTES",
+        "max_string_value_bytes",
+        rungs.max_string_value_bytes,
         declared("NROS_DECLARED_MAX_STRING_VALUE_LEN"),
         need(params.map(|p| p.needs_max_string_value_len())),
         256,
@@ -100,9 +100,9 @@ fn main() {
         32,
     );
     let max_byte_array_len = capacity(
-        "NROS_MAX_BYTE_ARRAY_LEN",
-        "max_byte_array_len",
-        rungs.max_byte_array_len,
+        "NROS_PARAMS_MAX_BYTE_ARRAY_BYTES",
+        "max_byte_array_bytes",
+        rungs.max_byte_array_bytes,
         declared("NROS_DECLARED_MAX_BYTE_ARRAY_LEN"),
         need(params.map(|p| p.needs_max_byte_array_len())),
         256,
@@ -123,8 +123,8 @@ fn main() {
     // longest one seen (floored, never 0). Below every stated rung, like the
     // contract's facts; refused or absent, the default stands.
     let max_param_description_len = knob(
-        "NROS_MAX_PARAM_DESCRIPTION_LEN",
-        rungs.max_param_description_len,
+        "NROS_PARAMS_MAX_DESCRIPTION_BYTES",
+        rungs.max_description_bytes,
         contract(params.map(|p| p.max_param_description_len()), None),
         256,
     );
@@ -135,7 +135,7 @@ fn main() {
     // `rclc_add_parameter_description` takes as its fourth argument.
     //
     // ITS OWN CAPACITY, DEFAULT 0, and the default is the decision. Sharing
-    // `NROS_MAX_PARAM_DESCRIPTION_LEN` was the first shape and it was wrong in
+    // `NROS_PARAMS_MAX_DESCRIPTION_BYTES` was the first shape and it was wrong in
     // a way only the derived service buffer showed: the describe reply's bound
     // is a worst case over CAPACITY, not over use, so every image would have
     // paid 256 bytes per parameter for a field it never sets -- 2,048 bytes on
@@ -149,8 +149,8 @@ fn main() {
     // silence, so an image that states nothing and passes constraints anyway
     // gets a log line rather than a mystery.
     let max_param_constraints_len = knob(
-        "NROS_MAX_PARAM_CONSTRAINTS_LEN",
-        rungs.max_param_constraints_len,
+        "NROS_PARAMS_MAX_CONSTRAINTS_BYTES",
+        rungs.max_constraints_bytes,
         None,
         0,
     );
@@ -200,11 +200,11 @@ fn main() {
          pub const MAX_PARAMETERS: usize = {max_parameters};\n\
          \n\
          /// Maximum length for parameter names \
-         (set via NROS_MAX_PARAM_NAME_LEN, default 64).\n\
+         (set via NROS_PARAMS_MAX_NAME_BYTES, default 64).\n\
          pub const MAX_PARAM_NAME_LEN: usize = {max_param_name_len};\n\
          \n\
          /// Maximum length for parameter string values \
-         (set via NROS_MAX_STRING_VALUE_LEN, default 256).\n\
+         (set via NROS_PARAMS_MAX_STRING_VALUE_BYTES, default 256).\n\
          pub const MAX_STRING_VALUE_LEN: usize = {max_string_value_len};\n\
          \n\
          /// Maximum length for array parameters \
@@ -217,16 +217,16 @@ fn main() {
          pub const MAX_STRING_ARRAY_LEN: usize = {max_string_array_len};\n\
          \n\
          /// Maximum length for byte array parameters \
-         (set via NROS_MAX_BYTE_ARRAY_LEN, default 256).\n\
+         (set via NROS_PARAMS_MAX_BYTE_ARRAY_BYTES, default 256).\n\
          pub const MAX_BYTE_ARRAY_LEN: usize = {max_byte_array_len};\n\
          \n\
          /// Maximum length for a parameter description, in bytes \
-         (set via NROS_MAX_PARAM_DESCRIPTION_LEN, default 256; 0 = no \
+         (set via NROS_PARAMS_MAX_DESCRIPTION_BYTES, default 256; 0 = no \
          descriptions).\n\
          pub const MAX_PARAM_DESCRIPTION_LEN: usize = {max_param_description_len};\n\
          \n\
          /// Maximum length for a parameter's `additional_constraints`, in \
-         bytes (set via NROS_MAX_PARAM_CONSTRAINTS_LEN, default 0 = no \
+         bytes (set via NROS_PARAMS_MAX_CONSTRAINTS_BYTES, default 0 = no \
          constraint text).\n\
          pub const MAX_PARAM_CONSTRAINTS_LEN: usize = {max_param_constraints_len};\n\
          \n\

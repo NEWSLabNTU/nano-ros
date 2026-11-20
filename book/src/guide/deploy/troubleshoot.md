@@ -138,7 +138,7 @@ each: zenoh's defragmentation and batch sizes, XRCE's transport MTU, and the
 entity's own receive buffer.
 
 **Fix:** raise the transport limit for the image, for example
-`NROS_ZENOH_FRAG_MAX_SIZE` or `XRCE_TRANSPORT_MTU`, from the
+`NROS_ZENOH_FRAG_MAX_BYTES` or `XRCE_TRANSPORT_MTU`, from the
 [buffer tuning tables](../../reference/environment-variables.md#buffer-tuning),
 and size the entity's buffer in code:
 

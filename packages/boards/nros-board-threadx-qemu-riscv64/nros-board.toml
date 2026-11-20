@@ -123,7 +123,7 @@ toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"
 # measured with this backing already in `.bss`
 # (`nros_board_common::threadx_pool`), so it holds no backing and nothing gives
 # it back. This rung now sizes the static alone; the pool is
-# `[knobs.memory] heap_bytes` (`NROS_THREADX_BYTE_POOL_KB`).
+# `threadx.byte_pool_bytes` (`NROS_THREADX_BYTE_POOL_BYTES`).
 #
 # 11,071 since phase-476 W0 (2026-10-05): one 4-byte lifetime tag per callback
 # slot joined the backing, 4 slots x 4 B = 16 B = 2 words. `node-std-tests`
@@ -141,5 +141,7 @@ toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"
 # level a `hazard-level-runtime` report names (`Violation::level`, a `&str`),
 # which grows the violation ring by 8 words (`executor_backing_claims`
 # measured 11,084 on the 64-bit host).
+# The knob is in BYTES since the 0.7 rename (`backing_u64s` was words):
+# 11,084 words x 8 = 88,672.
 [knobs.executor]
-backing_u64s = 11084
+backing_bytes = 88672

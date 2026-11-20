@@ -147,7 +147,7 @@ board and RMW packages are self-contained.
 
 ### W5 - Renames, batch 1: structure and units (registry rows)
 
-- **Status:** OPEN
+- **Status:** OPEN (`nros fix` does not exist, so its table-driven test over the retired entries cannot run; `just ci gate` not run, by instruction (`just check fast` green). Done: the 41 S/U/F rows renamed and `runtime.let_buffer_size` retired (it sized nothing), the four memory carriers folded into `memory.heap_bytes` / `memory.app_stack_bytes` in bytes, `memory_env_key_for` deleted, `threadx.byte_pool_bytes` (x 1024, derived default unchanged); every old spelling refused on env, toml, kconfig and cmake naming the new key and the factor, with generated cases in `nros-zephyr-build` and `tests/zephyr-transient-overrides-tests.sh` case G; baseline 88 -> 46; Zephyr, FreeRTOS and ThreadX images identical before and after in `.config` values and pool sizes, [measured](data/phase-581-w5-measure.md))
 - The Appendix A.1 rows whose reasons are S, U or F: the 15 three-segment
   keys flattened (`zenoh.wire.*`, `zenoh.limits.*`, `zenoh.tx.*`), the `_size`
   / `_len` / `_buf_size` / `_kb` / `_u64s` rows to `_bytes`, and the four

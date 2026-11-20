@@ -764,7 +764,7 @@ pub fn app_rung(
                     rows.insert(env, v);
                 }
                 Some(Err(pe)) => errors.push(pe),
-                None => errors.push(e),
+                None => errors.push(package_retired_key(pkg, &table, key).unwrap_or(e)),
             },
         }
     }
@@ -827,6 +827,30 @@ pub fn refuse_off_platform_knobs<'a>(
     }
 }
 
+/// RFC-0140 D4 -- an out-of-tree package's RETIRED `toml:` key, refused like
+/// a compiled one ([`nros_zephyr_build::retired_toml_refusal`]), from the
+/// merged catalog of this run.
+fn package_retired_key(
+    pkg: Option<&crate::knob_catalog::Catalog>,
+    table: &str,
+    key: &str,
+) -> Option<String> {
+    let (row, entry) = pkg?.retired_spelling(nros_zephyr_build::RetiredRoad::Toml, key)?;
+    let (og, on) = key.rsplit_once('.').unwrap_or(("", key));
+    if let Some(instead) = &entry.instead {
+        return Some(format!("`[{table}.{og}] {on}` is retired: {instead}"));
+    }
+    let (ng, nn) = row.name.rsplit_once('.').unwrap_or(("", &row.name));
+    let scale = match (&entry.from_unit, entry.factor) {
+        (_, 1) => String::new(),
+        (Some(unit), f) => format!(" (the value x {f}: {key} was in {unit})"),
+        (None, f) => format!(" (the value x {f})"),
+    };
+    Some(format!(
+        "`[{table}.{og}] {on}` is retired: write `[{table}.{ng}] {nn}` instead{scale}"
+    ))
+}
+
 /// An out-of-tree package's knob (RFC-0140 D5): the row of the catalog of
 /// configure wrote (`pkg`, the caller's) whose key is `key`, rendered to its env
 /// spelling the way [`knob_env_row`] renders a compiled one. `None` when no
@@ -876,6 +900,11 @@ fn knob_env_row(
 ) -> std::result::Result<(&'static nros_zephyr_build::KnobRow, String), String> {
     use nros_orchestration_ir::leaf_system::KnobValue;
     let (group, name) = key.rsplit_once('.').unwrap_or(("", key));
+    // RFC-0140 D4 (phase-581 W5) -- a renamed key is refused naming the key
+    // to write instead and, for a unit change, the factor.
+    if let Some(refusal) = nros_zephyr_build::retired_toml_refusal(table, key) {
+        return Err(refusal);
+    }
     let Some(row) = nros_zephyr_build::knob_by_image_key(key) else {
         let hint = nros_zephyr_build::KNOBS
             .iter()
@@ -1815,7 +1844,7 @@ mod tests {
             "{e}"
         );
         assert!(refuse_off_platform_knobs("t", keys.iter(), "zephyr").is_ok());
-        let ordinary = ["freertos.app_stack_kb".to_string()];
+        let ordinary = ["memory.app_stack_bytes".to_string()];
         assert!(refuse_off_platform_knobs("t", ordinary.iter(), "posix").is_ok());
     }
 
@@ -1893,16 +1922,16 @@ mod tests {
         let from_knobs = app_rung(
             None,
             &knobs(&[
-                ("zephyr.heap_size", Int(98304)),
+                ("memory.heap_bytes", Int(98304)),
                 ("executor.max_cbs", Int(16)),
                 ("log.max_level", Str("warn".into())),
-                ("zenoh.tx.batch", Bool(true)),
+                ("zenoh.tx_batch", Bool(true)),
                 // A derived count's zero is a stated answer, not "unset"
                 // (issue 1033); it renders like any other value.
                 ("xrce.max_subscribers", Int(0)),
                 ("zenoh.socket_timeout_ms", Int(5)),
                 // The derive sentinel is a stated value too: -1 renders as -1.
-                ("xrce.subscriber_buffer_size", Int(-1)),
+                ("xrce.subscriber_buffer_bytes", Int(-1)),
                 ("xrce.subscriber_ring_depth", Int(1)),
                 ("xrce.transport_mtu", Int(512)),
             ]),
@@ -1912,13 +1941,13 @@ mod tests {
         // The rows the retired `[image.<id>] env` spelling of these knobs
         // stated, before W8 refused it.
         let from_env = env_rows(&[
-            ("NROS_ZEPHYR_HEAP_SIZE", "98304"),
+            ("NROS_MEMORY_HEAP_BYTES", "98304"),
             ("NROS_EXECUTOR_MAX_CBS", "16"),
             ("NROS_LOG_MAX_LEVEL", "warn"),
             ("NROS_ZENOH_TX_BATCH", "1"),
             ("NROS_XRCE_MAX_SUBSCRIBERS", "0"),
             ("NROS_ZENOH_SOCKET_TIMEOUT_MS", "5"),
-            ("NROS_XRCE_SUBSCRIBER_BUFFER_SIZE", "-1"),
+            ("NROS_XRCE_SUBSCRIBER_BUFFER_BYTES", "-1"),
             ("NROS_XRCE_SUBSCRIBER_RING_DEPTH", "1"),
             ("NROS_XRCE_TRANSPORT_MTU", "512"),
             ("NROS_BOOT_REPORT", "1"),
@@ -1941,21 +1970,39 @@ mod tests {
         );
         let e = refused("zenoh.max_queryable", Int(1));
         assert!(e.contains("names no knob"), "{e}");
-        let e = refused("executor.heap_size", Int(1));
+        let e = refused("executor.heap_bytes", Int(1));
         assert!(
-            e.contains("did you mean `[image.talker.knobs.zephyr] heap_size`"),
+            e.contains("did you mean `[image.talker.knobs.memory] heap_bytes`"),
             "{e}"
         );
         let e = refused("log.max_level", Int(7));
         assert!(e.contains("NROS_LOG_MAX_LEVEL is in 0..=6"), "{e}");
         let e = refused("log.max_level", Str("loud".into()));
         assert!(e.contains("an integer or one of trace/"), "{e}");
-        let e = refused("zephyr.heap_size", Str("98304".into()));
+        let e = refused("memory.heap_bytes", Str("98304".into()));
         assert!(e.contains("is an integer"), "{e}");
-        let e = refused("zephyr.heap_size", Bool(true));
+        let e = refused("memory.heap_bytes", Bool(true));
         assert!(e.contains("is an integer"), "{e}");
         let e = refused("zenoh.graph_discovery", Int(1));
         assert!(e.contains("is a bool"), "{e}");
+        // RFC-0140 D4 (phase-581 W5) -- a renamed key names its new one, and a
+        // unit change its factor.
+        let e = refused("zenoh.limits.connect_forever", Bool(true));
+        assert!(
+            e.contains(
+                "`[image.talker.knobs.zenoh.limits] connect_forever` is retired: write \
+                        `[image.talker.knobs.zenoh] connect_forever`"
+            ),
+            "{e}"
+        );
+        let e = refused("freertos.app_stack_kb", Int(64));
+        assert!(
+            e.contains("write `[image.talker.knobs.memory] app_stack_bytes`")
+                && e.contains("x 1024"),
+            "{e}"
+        );
+        let e = refused("runtime.let_buffer_size", Int(512));
+        assert!(e.contains("sized nothing"), "{e}");
     }
 
     /// A registry knob has ONE spelling, `[image.<id>.knobs]`: an env row naming
@@ -1966,24 +2013,24 @@ mod tests {
         let e = app_rung(
             Some("talker"),
             &BTreeMap::new(),
-            &env_rows(&[("NROS_ZEPHYR_HEAP_SIZE", "2")]),
+            &env_rows(&[("NROS_MEMORY_HEAP_BYTES", "2")]),
         )
         .unwrap_err()
         .to_string();
         assert!(
-            e.contains("[image.talker] env NROS_ZEPHYR_HEAP_SIZE")
-                && e.contains("[image.talker.knobs.zephyr] heap_size"),
+            e.contains("[image.talker] env NROS_MEMORY_HEAP_BYTES")
+                && e.contains("[image.talker.knobs.memory] heap_bytes"),
             "{e}"
         );
         // Stated both ways is the same refusal.
         let e = app_rung(
             Some("talker"),
-            &knobs(&[("zephyr.heap_size", leaf_system::KnobValue::Int(1))]),
-            &env_rows(&[("NROS_ZEPHYR_HEAP_SIZE", "2")]),
+            &knobs(&[("memory.heap_bytes", leaf_system::KnobValue::Int(1))]),
+            &env_rows(&[("NROS_MEMORY_HEAP_BYTES", "2")]),
         )
         .unwrap_err()
         .to_string();
-        assert!(e.contains("[image.talker.knobs.zephyr] heap_size"), "{e}");
+        assert!(e.contains("[image.talker.knobs.memory] heap_bytes"), "{e}");
         // The Kconfig spelling a west build renders an env row to is the same
         // knob too (`NROS_MAX_PUBLISHERS` is `CONFIG_NROS_MAX_PUBLISHERS`),
         // and the error quotes the row as written.
@@ -3187,10 +3234,18 @@ pub(crate) mod board_rung_tests {
             ("NROS_ZENOH_MAX_SUBSCRIBERS", "1"),
             ("NROS_ZENOH_SERVICE_BUFFER_SIZE", "1024"),
             ("NROS_ZENOH_MAX_QUERYABLES", "1"),
-            ("NROS_ZEPHYR_HEAP_SIZE", "32768"),
         ] {
             assert_eq!(rows.get(k).map(String::as_str), Some(v), "{k} in {rows:?}");
         }
+        // The heap is a typed tenant (`[knobs.memory] heap_bytes`) since
+        // phase-581 W5: the cargo and cmake roads reach it through
+        // NROS_BOARD_TOML, so only the Zephyr road carries it as a row.
+        let heap = (carries == BoardRungCarries::Every).then_some("32768");
+        assert_eq!(
+            rows.get("NROS_MEMORY_HEAP_BYTES").map(String::as_str),
+            heap,
+            "NROS_MEMORY_HEAP_BYTES in {rows:?}"
+        );
         rows
     }
 
@@ -3208,16 +3263,18 @@ pub(crate) mod board_rung_tests {
     fn the_rung_carries_what_the_road_cannot_otherwise_reach() {
         let (_td, p) = knobs_file(
             "[knobs.zenoh]\nmax_subscribers = 2\n[knobs.executor]\nmax_cbs = 4\n\
-             [knobs.zephyr]\nheap_size = 4096\n",
+             [knobs.memory]\nheap_bytes = 4096\n",
         );
         let only = board_rung_from_file(&p, "b", BoardRungCarries::BoardOnly).unwrap();
         assert_eq!(only["NROS_ZENOH_MAX_SUBSCRIBERS"].0, "2");
-        assert_eq!(only["NROS_ZEPHYR_HEAP_SIZE"].0, "4096");
-        assert!(
-            !only.contains_key("NROS_EXECUTOR_MAX_CBS"),
-            "a typed tenant's key rides NROS_BOARD_TOML: {only:?}"
-        );
+        for typed in ["NROS_EXECUTOR_MAX_CBS", "NROS_MEMORY_HEAP_BYTES"] {
+            assert!(
+                !only.contains_key(typed),
+                "a typed tenant's key rides NROS_BOARD_TOML: {only:?}"
+            );
+        }
         let every = board_rung_from_file(&p, "b", BoardRungCarries::Every).unwrap();
+        assert_eq!(every["NROS_MEMORY_HEAP_BYTES"].0, "4096");
         assert_eq!(
             every["NROS_EXECUTOR_MAX_CBS"],
             ("4".into(), "executor.max_cbs".into())
@@ -3240,8 +3297,8 @@ pub(crate) mod board_rung_tests {
                 ("1".to_string(), "zenoh.max_subscribers".to_string()),
             ),
             (
-                "NROS_ZEPHYR_HEAP_SIZE".to_string(),
-                ("32768".to_string(), "zephyr.heap_size".to_string()),
+                "NROS_MEMORY_HEAP_BYTES".to_string(),
+                ("32768".to_string(), "memory.heap_bytes".to_string()),
             ),
         ]
         .into();
@@ -3257,7 +3314,7 @@ pub(crate) mod board_rung_tests {
         let rows = image_layers_over(&decl, &board, None).unwrap();
         assert_eq!(rows["NROS_ZENOH_MAX_SUBSCRIBERS"], "3", "the image wins");
         assert_eq!(
-            rows["NROS_ZEPHYR_HEAP_SIZE"], "32768",
+            rows["NROS_MEMORY_HEAP_BYTES"], "32768",
             "the board fills the rest"
         );
 
@@ -3265,7 +3322,7 @@ pub(crate) mod board_rung_tests {
             toml::from_str("board = \"b\"\n[knobs.zenoh]\nmax_subscribers = 3\n").unwrap();
         let rows = image_block_layers_over(Some("t"), &image, &board, None).unwrap();
         assert_eq!(rows["NROS_ZENOH_MAX_SUBSCRIBERS"], "3");
-        assert_eq!(rows["NROS_ZEPHYR_HEAP_SIZE"], "32768");
+        assert_eq!(rows["NROS_MEMORY_HEAP_BYTES"], "32768");
     }
 
     /// Both cargo roads (the leaf's settings file and the workspace's

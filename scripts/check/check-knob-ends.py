@@ -167,7 +167,7 @@ def xrce_manifest_readers(text: str) -> set[str]:
     two build lanes even though neither spells it.
 
     Before this arm the XRCE knobs were credited by ACCIDENT — the reader the
-    gate found for `NROS_XRCE_BUFFER_SIZE` was its own name inside an error
+    gate found for `NROS_XRCE_BUFFER_BYTES` was its own name inside an error
     STRING in `session.c`, which is precisely the mention-is-not-a-read shape
     this file's header says the first version of the method got wrong. Editing
     that diagnostic's wording was enough to make a live knob read as dead.
@@ -290,7 +290,7 @@ def registry_spellings() -> list[set[str]]:
     """Every registry row's env spellings, canonical and legacy (phase-484 W5a).
 
     A row is ONE knob: `nros_zephyr_build::knob()` reads all of its spellings,
-    so a reader that names `"ZPICO_FRAG_MAX_SIZE"` reads `NROS_ZENOH_FRAG_MAX_SIZE`
+    so a reader that names `"ZPICO_FRAG_MAX_SIZE"` reads `NROS_ZENOH_FRAG_MAX_BYTES`
     too, and a document claiming the canonical name has that reader."""
     import knob_registry  # scripts/lib: the one reader of the registry
 
@@ -416,10 +416,10 @@ def self_test() -> None:
         "value  ucdr CONFIG_MACHINE_ENDIANNESS 1\n"
         "knob   uxr  UCLIENT_UDP_TRANSPORT_MTU NROS_XRCE_TRANSPORT_MTU 4096 128\n"
         "flag   uxr  UCLIENT_PROFILE_UDP posix_ip\n"
-        "define XRCE_BUFFER_SIZE NROS_XRCE_BUFFER_SIZE 64\n"
+        "define XRCE_BUFFER_SIZE NROS_XRCE_BUFFER_BYTES 64\n"
     )
     got = readers_in(XRCE_CONFIG_MANIFEST, man, callees)
-    assert got == {"NROS_XRCE_TRANSPORT_MTU", "NROS_XRCE_BUFFER_SIZE"}, (
+    assert got == {"NROS_XRCE_TRANSPORT_MTU", "NROS_XRCE_BUFFER_BYTES"}, (
         f"selftest: xrce manifest reads {sorted(got)}"
     )
 

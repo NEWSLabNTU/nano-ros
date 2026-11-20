@@ -9,33 +9,27 @@
 owner = "zenoh"
 
 [[knob]]
-key = "zenoh.limits.keyexpr_string_size"
-transitional = { id = "KEYEXPR_STRING_SIZE", kconfig = "NROS_KEYEXPR_STRING_SIZE" }
-scope = "image"
-class = "public"
-ladder = true
-
-[[knob]]
-key = "zenoh.limits.service_timeout_ms"
-transitional = { id = "SERVICE_TIMEOUT_MS", kconfig = "NROS_SERVICE_TIMEOUT_MS" }
-scope = "image"
-class = "public"
-ladder = true
-
-[[knob]]
-key = "zenoh.wire.batch_multicast_size"
-transitional = { id = "ZENOH_BATCH_MULTICAST_SIZE", kconfig = "NROS_ZENOH_BATCH_MULTICAST_SIZE" }
+key = "zenoh.batch_multicast_bytes"
 scope = "board"
 class = "public"
-retired = [{ spelling = "env:ZPICO_BATCH_MULTICAST_SIZE" }]
+retired = [
+    { spelling = "env:ZPICO_BATCH_MULTICAST_SIZE" },
+    { spelling = "toml:zenoh.wire.batch_multicast_size" },
+    { spelling = "env:NROS_ZENOH_BATCH_MULTICAST_SIZE" },
+]
 ladder = true
 
 [[knob]]
-key = "zenoh.wire.batch_unicast_size"
-transitional = { id = "ZENOH_BATCH_UNICAST_SIZE", kconfig = "NROS_BATCH_UNICAST_SIZE" }
+key = "zenoh.batch_unicast_bytes"
 scope = "board"
 class = "public"
-retired = [{ spelling = "env:ZPICO_BATCH_UNICAST_SIZE" }]
+retired = [
+    { spelling = "env:ZPICO_BATCH_UNICAST_SIZE" },
+    { spelling = "toml:zenoh.wire.batch_unicast_size" },
+    { spelling = "env:NROS_ZENOH_BATCH_UNICAST_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_BATCH_UNICAST_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_BATCH_UNICAST_SIZE" },
+]
 ladder = true
 type = "int"
 prompt = "Maximum unicast batch size"
@@ -49,25 +43,34 @@ Maps to ZPICO_BATCH_UNICAST_SIZE.
 '''
 
 [[knob]]
-key = "zenoh.limits.connect_forever"
-transitional = { id = "ZENOH_CONNECT_FOREVER", kconfig = "NROS_ZENOH_CONNECT_FOREVER" }
+key = "zenoh.connect_forever"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:zenoh.limits.connect_forever" },
+]
 ladder = true
 
 [[knob]]
-key = "zenoh.limits.connect_timeout_ms"
-transitional = { id = "ZENOH_CONNECT_TIMEOUT_MS", kconfig = "NROS_ZENOH_CONNECT_TIMEOUT_MS" }
+key = "zenoh.connect_timeout_ms"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:zenoh.limits.connect_timeout_ms" },
+]
 ladder = true
 
 [[knob]]
-key = "zenoh.wire.frag_max_size"
-transitional = { id = "ZENOH_FRAG_MAX_SIZE", kconfig = "NROS_FRAG_MAX_SIZE" }
+key = "zenoh.frag_max_bytes"
 scope = "board"
 class = "public"
-retired = [{ spelling = "env:ZPICO_FRAG_MAX_SIZE" }]
+retired = [
+    { spelling = "env:ZPICO_FRAG_MAX_SIZE" },
+    { spelling = "toml:zenoh.wire.frag_max_size" },
+    { spelling = "env:NROS_ZENOH_FRAG_MAX_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_FRAG_MAX_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_FRAG_MAX_SIZE" },
+]
 ladder = true
 type = "int"
 prompt = "Maximum reassembled message size"
@@ -81,11 +84,14 @@ Maps to ZPICO_FRAG_MAX_SIZE.
 '''
 
 [[knob]]
-key = "zenoh.wire.get_poll_interval_ms"
-transitional = { id = "ZENOH_GET_POLL_INTERVAL_MS", kconfig = "NROS_GET_POLL_INTERVAL_MS" }
+key = "zenoh.get_poll_interval_ms"
 scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_GET_POLL_INTERVAL_MS" }]
+retired = [
+    { spelling = "env:ZPICO_GET_POLL_INTERVAL_MS" },
+    { spelling = "toml:zenoh.wire.get_poll_interval_ms" },
+    { spelling = "kconfig:CONFIG_NROS_GET_POLL_INTERVAL_MS" },
+]
 ladder = true
 type = "int"
 prompt = "Get poll interval (ms)"
@@ -99,11 +105,16 @@ Maps to ZPICO_GET_POLL_INTERVAL_MS.
 '''
 
 [[knob]]
-key = "zenoh.wire.get_reply_buf_size"
-transitional = { id = "ZENOH_GET_REPLY_BUF_SIZE", kconfig = "NROS_GET_REPLY_BUF_SIZE" }
+key = "zenoh.get_reply_buffer_bytes"
 scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_GET_REPLY_BUF_SIZE" }]
+retired = [
+    { spelling = "env:ZPICO_GET_REPLY_BUF_SIZE" },
+    { spelling = "toml:zenoh.wire.get_reply_buf_size" },
+    { spelling = "env:NROS_ZENOH_GET_REPLY_BUF_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_GET_REPLY_BUF_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_GET_REPLY_BUF_SIZE" },
+]
 ladder = true
 type = "int"
 prompt = "Get reply buffer size"
@@ -117,11 +128,16 @@ Maps to ZPICO_GET_REPLY_BUF_SIZE.
 '''
 
 [[knob]]
-key = "zenoh.graph_cache_size"
-transitional = { kconfig = "NROS_GRAPH_CACHE_SIZE" }
+key = "zenoh.graph_cache_bytes"
 scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_GRAPH_CACHE_SIZE" }]
+retired = [
+    { spelling = "env:ZPICO_GRAPH_CACHE_SIZE" },
+    { spelling = "toml:zenoh.graph_cache_size" },
+    { spelling = "env:NROS_ZENOH_GRAPH_CACHE_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_GRAPH_CACHE_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_GRAPH_CACHE_SIZE" },
+]
 type = "int"
 prompt = "Graph liveliness cache size"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -198,6 +214,16 @@ serial or CAN link the cache costs the link and buys nothing an image
 that makes no graph query of its own can use. An image that also
 compiles an IP link keeps the old default.
 '''
+
+[[knob]]
+key = "zenoh.keyexpr_string_bytes"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "toml:zenoh.limits.keyexpr_string_size" },
+    { spelling = "env:NROS_KEYEXPR_STRING_SIZE" },
+]
+ladder = true
 
 [[knob]]
 key = "zenoh.lease_priority"
@@ -409,10 +435,14 @@ class = "public"
 retired = [{ spelling = "env:ZPICO_MAX_TL_PUBLISHERS" }]
 
 [[knob]]
-key = "zenoh.publisher_tx_buffer_size"
+key = "zenoh.publisher_tx_buffer_bytes"
 scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_PUBLISHER_TX_BUFFER_SIZE" }]
+retired = [
+    { spelling = "env:ZPICO_PUBLISHER_TX_BUFFER_SIZE" },
+    { spelling = "toml:zenoh.publisher_tx_buffer_size" },
+    { spelling = "env:NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE" },
+]
 
 [[knob]]
 key = "zenoh.read_priority"
@@ -459,10 +489,12 @@ modes with real cost.
 '''
 
 [[knob]]
-key = "zenoh.wire.rx_task_budget_frames"
-transitional = { id = "ZENOH_RX_TASK_BUDGET_FRAMES", kconfig = "NROS_ZENOH_RX_TASK_BUDGET_FRAMES" }
+key = "zenoh.rx_task_budget_frames"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:zenoh.wire.rx_task_budget_frames" },
+]
 ladder = true
 type = "int"
 prompt = "zenoh read task frame budget (-1 = derive, else unbounded)"
@@ -490,10 +522,12 @@ sched_task's slack. Maps to Z_RX_TASK_BUDGET_FRAMES.
 '''
 
 [[knob]]
-key = "zenoh.wire.rx_task_budget_rest_us"
-transitional = { id = "ZENOH_RX_TASK_BUDGET_REST_US", kconfig = "NROS_ZENOH_RX_TASK_BUDGET_REST_US" }
+key = "zenoh.rx_task_budget_rest_us"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:zenoh.wire.rx_task_budget_rest_us" },
+]
 ladder = true
 type = "int"
 prompt = "zenoh read task rest after a full budget (us, -1 = derive)"
@@ -563,11 +597,16 @@ read-task wakeups.
 '''
 
 [[knob]]
-key = "zenoh.subscriber_large_size"
-transitional = { kconfig = "NROS_SUBSCRIBER_LARGE_SIZE" }
+key = "zenoh.subscriber_large_bytes"
 scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_SUBSCRIBER_LARGE_SIZE" }]
+retired = [
+    { spelling = "env:ZPICO_SUBSCRIBER_LARGE_SIZE" },
+    { spelling = "toml:zenoh.subscriber_large_size" },
+    { spelling = "env:NROS_ZENOH_SUBSCRIBER_LARGE_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_SUBSCRIBER_LARGE_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_SUBSCRIBER_LARGE_SIZE" },
+]
 type = "int"
 prompt = "Large-class payload buffer size (-1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -588,11 +627,24 @@ The crate default then applies and costs nothing.
 '''
 
 [[knob]]
-key = "zenoh.limits.subscriber_ring_depth"
-transitional = { id = "ZENOH_SUBSCRIBER_RING_DEPTH", kconfig = "NROS_SUBSCRIBER_RING_DEPTH" }
+key = "zenoh.subscriber_large_threshold_bytes"
 scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_SUBSCRIBER_RING_DEPTH" }]
+retired = [
+    { spelling = "env:ZPICO_SUBSCRIBER_SIZE_THRESHOLD" },
+    { spelling = "toml:zenoh.subscriber_size_threshold" },
+    { spelling = "env:NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD" },
+]
+
+[[knob]]
+key = "zenoh.subscriber_ring_depth"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "env:ZPICO_SUBSCRIBER_RING_DEPTH" },
+    { spelling = "toml:zenoh.limits.subscriber_ring_depth" },
+    { spelling = "kconfig:CONFIG_NROS_SUBSCRIBER_RING_DEPTH" },
+]
 ladder = true
 type = "int"
 prompt = "Receive ring depth per subscriber"
@@ -610,12 +662,6 @@ Maps to ZPICO_SUBSCRIBER_RING_DEPTH.
 '''
 
 [[knob]]
-key = "zenoh.subscriber_size_threshold"
-scope = "image"
-class = "public"
-retired = [{ spelling = "env:ZPICO_SUBSCRIBER_SIZE_THRESHOLD" }]
-
-[[knob]]
 key = "zenoh.tl_retain_bytes"
 scope = "image"
 class = "public"
@@ -628,16 +674,19 @@ class = "public"
 retired = [{ spelling = "env:ZPICO_TL_RETAIN_DEPTH" }]
 
 [[knob]]
-key = "zenoh.tx.batch"
+key = "zenoh.tx_batch"
 scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_TX_BATCH" }]
+retired = [
+    { spelling = "env:ZPICO_TX_BATCH" },
+    { spelling = "toml:zenoh.tx.batch" },
+]
 ladder = true
 type = "bool"
 prompt = "zenoh-pico tx batching (one send per executor spin)"
 kconfig_if = "NROS_RMW_ZENOH"
 kconfig_attrs = [
-    "# DERIVED from nros-platform-zephyr [knobs.zenoh.tx].batch —",
+    "# DERIVED from nros-platform-zephyr [knobs.zenoh] tx_batch —",
     "# re-render with `scripts/check-zephyr-knob-agreement.py --write`.",
     "default y",
 ]
@@ -653,22 +702,24 @@ platform with the per-fd tx ceiling, where it measured 15-20x streaming.
 Requires the zenoh-pico fork's fix that makes declarations bypass the
 batch (otherwise a server's readiness banner outruns its still-batched
 queryable declares and immediately-fired queries miss). This default
-MUST mirror config/zephyr/nros-platform.toml [knobs.zenoh.tx] — the
+MUST mirror config/zephyr/nros-platform.toml [knobs.zenoh] tx_* — the
 kconfig_platform_default_drift test asserts the mirror.
 '''
 
 [[knob]]
-key = "zenoh.tx.flush_ms"
-transitional = { id = "ZENOH_TX_BATCH_FLUSH_MS", kconfig = "NROS_ZENOH_TX_BATCH_FLUSH_MS" }
+key = "zenoh.tx_batch_flush_ms"
 scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_TX_BATCH_FLUSH_MS" }]
+retired = [
+    { spelling = "env:ZPICO_TX_BATCH_FLUSH_MS" },
+    { spelling = "toml:zenoh.tx.flush_ms" },
+]
 ladder = true
 type = "int"
 prompt = "zenoh-pico tx batch flush cadence (ms)"
 kconfig_if = "NROS_RMW_ZENOH"
 kconfig_attrs = [
-    "# DERIVED from nros-platform-zephyr [knobs.zenoh.tx].flush_ms —",
+    "# DERIVED from nros-platform-zephyr [knobs.zenoh] tx_batch_flush_ms —",
     "# re-render with `scripts/check-zephyr-knob-agreement.py --write`.",
     "default 50",
     "depends on NROS_ZENOH_TX_BATCH",
@@ -683,16 +734,19 @@ Forwards to zpico.c's ZPICO_TX_BATCH_FLUSH_MS.
 '''
 
 [[knob]]
-key = "zenoh.tx.split_lock"
+key = "zenoh.tx_split_lock"
 scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_TX_SPLIT_LOCK" }]
+retired = [
+    { spelling = "env:ZPICO_TX_SPLIT_LOCK" },
+    { spelling = "toml:zenoh.tx.split_lock" },
+]
 ladder = true
 type = "bool"
 prompt = "zenoh-pico split tx locking (append while sending)"
 kconfig_if = "NROS_RMW_ZENOH"
 kconfig_attrs = [
-    "# DERIVED from nros-platform-zephyr [knobs.zenoh.tx].split_lock —",
+    "# DERIVED from nros-platform-zephyr [knobs.zenoh] tx_split_lock —",
     "# re-render with `scripts/check-zephyr-knob-agreement.py --write`.",
     "default y",
     "depends on NROS_ZENOH_TX_BATCH",

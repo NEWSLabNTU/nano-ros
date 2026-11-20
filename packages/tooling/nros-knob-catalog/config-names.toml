@@ -30,7 +30,7 @@
 # How many `[[baseline]]` entries the file holds (below). The baseline only
 # shrinks: lower this with every entry a rename removes, and never raise it to
 # admit a new name, which is renamed instead.
-baseline_entries = 88
+baseline_entries = 46
 
 # --- N4's vocabulary -----------------------------------------------------------
 
@@ -248,54 +248,6 @@ expect = []
 # not list.
 
 [[baseline]]
-subject = "executor.arena_size"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "executor.backing_u64s"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "executor.param_service_buffer_size"
-kind = "knob"
-rules = ["N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "executor.subscription_buffer_size"
-kind = "knob"
-rules = ["N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "freertos.app_stack_kb"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "freertos.heap_kb"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "log.buffer_size"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "net.buffer_size"
-kind = "knob"
-rules = ["N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
 subject = "net.connect_timeout_ms"
 kind = "knob"
 rules = ["N2"]
@@ -338,30 +290,6 @@ rules = ["N2"]
 appendix = "A.1"
 
 [[baseline]]
-subject = "params.max_byte_array_len"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "params.max_param_constraints_len"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "params.max_param_description_len"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "params.max_param_name_len"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
 subject = "params.max_parameters"
 kind = "knob"
 rules = ["N2"]
@@ -374,105 +302,9 @@ rules = ["N2"]
 appendix = "A.1"
 
 [[baseline]]
-subject = "params.max_string_value_len"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
 subject = "params.param_events_depth"
 kind = "knob"
 rules = ["N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "runtime.let_buffer_size"
-kind = "knob"
-rules = ["N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "subscriber.buffer_size"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "threadx.app_stack_kb"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "threadx.byte_pool_kb"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "xrce.buffer_size"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "xrce.builtin_service_request_buffer_size"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "xrce.service_reply_buffer_size"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "xrce.service_request_buffer_size"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "xrce.subscriber_buffer_size"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.graph_cache_size"
-kind = "knob"
-rules = ["N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.limits.connect_forever"
-kind = "knob"
-rules = ["N1", "N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.limits.connect_timeout_ms"
-kind = "knob"
-rules = ["N1", "N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.limits.keyexpr_string_size"
-kind = "knob"
-rules = ["N1", "N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.limits.service_timeout_ms"
-kind = "knob"
-rules = ["N1", "N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.limits.subscriber_ring_depth"
-kind = "knob"
-rules = ["N1", "N2"]
 appendix = "A.1"
 
 [[baseline]]
@@ -512,93 +344,9 @@ rules = ["N2"]
 appendix = "A.5"
 
 [[baseline]]
-subject = "zenoh.publisher_tx_buffer_size"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
 subject = "zenoh.service_buffer_size"
 kind = "knob"
 rules = ["N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.subscriber_large_size"
-kind = "knob"
-rules = ["N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.subscriber_size_threshold"
-kind = "knob"
-rules = ["N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.tx.batch"
-kind = "knob"
-rules = ["N1"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.tx.flush_ms"
-kind = "knob"
-rules = ["N1", "N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.tx.split_lock"
-kind = "knob"
-rules = ["N1"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.wire.batch_multicast_size"
-kind = "knob"
-rules = ["N1", "N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.wire.batch_unicast_size"
-kind = "knob"
-rules = ["N1", "N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.wire.frag_max_size"
-kind = "knob"
-rules = ["N1", "N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.wire.get_poll_interval_ms"
-kind = "knob"
-rules = ["N1", "N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.wire.get_reply_buf_size"
-kind = "knob"
-rules = ["N1", "N2", "N4"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.wire.rx_task_budget_frames"
-kind = "knob"
-rules = ["N1", "N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zenoh.wire.rx_task_budget_rest_us"
-kind = "knob"
-rules = ["N1", "N2"]
-appendix = "A.1"
-
-[[baseline]]
-subject = "zephyr.heap_size"
-kind = "knob"
-rules = ["N4"]
 appendix = "A.1"
 
 [[baseline]]

@@ -1,7 +1,7 @@
 # Issue 1370 -- a RECORDED allocation trace, kept as a fixture for tests/heap_replay.rs.
 #
 # Image:    examples/zephyr/c/talker, zenoh, native_sim/native/64 (Zephyr 3.7),
-#           CONFIG_NROS_ZEPHYR_HEAP_SIZE=65536 (the shipped default), built 2026-10-02.
+#           CONFIG_NROS_MEMORY_HEAP_BYTES=65536 (the shipped default), built 2026-10-02.
 # Run:      ~45 s under gdb against rmw_zenohd, publishing to a C listener that
 #           received every sample: boot, session open, steady state.
 # Recorder: scripts/heap-trace/gdb_heap_trace.py (breakpoints on the rlsf arena

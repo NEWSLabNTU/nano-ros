@@ -2173,12 +2173,12 @@ domain_id = 4
     #[test]
     fn an_image_states_its_own_build_knobs() {
         let with_env = format!(
-            "{SYSTEM}\nenv = {{ NROS_XRCE_BUFFER_SIZE = \"256\", \
+            "{SYSTEM}\nenv = {{ NROS_XRCE_BUFFER_BYTES = \"256\", \
              NROS_XRCE_CUSTOM_TRANSPORT_MTU = \"512\" }}\n"
         );
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &with_env)]);
         let l = read(d.path()).unwrap().unwrap();
-        assert_eq!(l.env["NROS_XRCE_BUFFER_SIZE"], "256");
+        assert_eq!(l.env["NROS_XRCE_BUFFER_BYTES"], "256");
         assert_eq!(l.env["NROS_XRCE_CUSTOM_TRANSPORT_MTU"], "512");
         // A leaf that states none has an empty table, never an absent one.
         let plain = leaf(&[("Cargo.toml", CARGO), ("system.toml", SYSTEM)]);

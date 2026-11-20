@@ -273,7 +273,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
             role: "OPEN",
             root: "~app_task_entry_",
             bytes: app_stack,
-            knob: "NROS_THREADX_APP_STACK_KB={kb}",
+            knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
         }],
     );
     glue.file(manifest_dir.join("c/syscalls.c"));
@@ -587,20 +587,22 @@ const nros_app_config_t NROS_APP_CONFIG = {
 pub const APP_STACK_BYTES: u32 = 512 * 1024;
 
 /// The app-thread stack for this build: the `[knobs.memory] app_stack_bytes`
-/// rung of the board-configuration ladder, under its ThreadX env front-end
-/// `NROS_THREADX_APP_STACK_KB` (KiB). Emits the `rerun-if-env-changed` lines.
+/// rung of the board-configuration ladder, under its env front-end
+/// `NROS_MEMORY_APP_STACK_BYTES` (bytes). Emits the `rerun-if-env-changed` lines.
 pub fn app_stack_bytes_from_build_env() -> u32 {
-    crate::platform_config::watch_knob_env("NROS_THREADX_APP_STACK_KB");
+    crate::platform_config::watch_knob_env("NROS_MEMORY_APP_STACK_BYTES");
     match crate::platform_config::BuildRungs::from_build_env() {
         Some(rungs) => rungs.memory_value("app_stack_bytes", APP_STACK_BYTES as usize) as u32,
         // A bare `cargo build` names no platform: the env rung alone, as the
         // ladder reads it.
         None => {
-            crate::platform_config::knob_env(&|k| env::var(k).ok(), "NROS_THREADX_APP_STACK_KB")
+            crate::platform_config::knob_env(&|k| env::var(k).ok(), "NROS_MEMORY_APP_STACK_BYTES")
                 .map(|v| {
                     v.trim().parse::<u32>().unwrap_or_else(|_| {
-                        panic!("NROS_THREADX_APP_STACK_KB must be a decimal KiB count, got `{v}`")
-                    }) * 1024
+                        panic!(
+                            "NROS_MEMORY_APP_STACK_BYTES must be a decimal byte count, got `{v}`"
+                        )
+                    })
                 })
                 .unwrap_or(APP_STACK_BYTES)
         }

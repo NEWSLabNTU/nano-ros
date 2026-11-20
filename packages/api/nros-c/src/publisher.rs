@@ -582,7 +582,7 @@ pub unsafe extern "C" fn rclc_publish_serialized(
 ///   256-byte class when it fits;
 /// * otherwise, or when the sample does not fit the smaller class (a caller
 ///   that pointed a string at a buffer larger than `__Storage` sizes), the
-///   image's message buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`, the bound
+///   image's message buffer size (`NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`, the bound
 ///   the image derives over every type it carries).
 ///
 /// No heap, ever: nothing here, in the serialiser or in the

@@ -35,7 +35,7 @@ use crate::constants::NROS_MAX_CONCURRENT_GOALS;
 
 /// The concrete nros-node executor type used by the C API.
 ///
-/// Sizes are configured via `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE`
+/// Sizes are configured via `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_BYTES`
 /// environment variables at build time (matching nros-node's build.rs).
 // phase-271 — the executor borrows its per-entry storage (`Executor<'static>`);
 // the C API keeps it heap-free by carving that backing from the SAME pinned
@@ -64,7 +64,7 @@ const _: () = assert!(
      `std` in the probe, where one fat pointer of difference made the number 16 \
      bytes short. Check the forwarded set \
      (`nros_sizes_build::resolved_features_for`) before touching any knob. \
-     NROS_EXECUTOR_ARENA_SIZE / NROS_EXECUTOR_MAX_CBS move BOTH sides equally \
+     NROS_EXECUTOR_ARENA_BYTES / NROS_EXECUTOR_MAX_CBS move BOTH sides equally \
      and cannot close a feature-set gap."
 );
 
@@ -483,7 +483,7 @@ pub enum rclc_executor_state_t {
 ///
 /// The internal executor is stored inline in `_opaque` — no heap
 /// allocation is needed. The storage size is computed at build time
-/// from `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE`.
+/// from `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_BYTES`.
 #[repr(C)]
 pub struct rclc_executor_t {
     /// Current state
@@ -5628,7 +5628,7 @@ pub unsafe extern "C" fn rclc_executor_get_arena_used(executor: *const rclc_exec
     get_executor(&mut *executor.cast_mut()).arena_used()
 }
 
-/// Total bytes of arena this executor was given (`NROS_EXECUTOR_ARENA_SIZE`
+/// Total bytes of arena this executor was given (`NROS_EXECUTOR_ARENA_BYTES`
 /// as carved from its inline backing). 0 for NULL or an executor that is not
 /// initialised.
 ///

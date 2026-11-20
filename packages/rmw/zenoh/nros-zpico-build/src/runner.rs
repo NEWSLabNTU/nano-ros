@@ -1542,7 +1542,7 @@ fn resolve_graph_cache_size() -> usize {
     // number and one that does not falls through to the literal in `zpico.c`.
     // The two must agree or the same source compiles to two sizes.
     env_usize(
-        "NROS_ZENOH_GRAPH_CACHE_SIZE",
+        "NROS_ZENOH_GRAPH_CACHE_BYTES",
         from_entities.unwrap_or(65536),
     )
 }
@@ -2092,10 +2092,10 @@ pub fn run() {
         // `Builtin` reaches `RxTaskBudget::from_knobs`).
         const RX_TASK_BUDGET_REST_US_BUILTIN: usize = 1000;
         let wire_defaults: [(&'static str, usize); 7] = [
-            ("batch_unicast_size", buf_config.batch_unicast_size),
-            ("batch_multicast_size", buf_config.batch_multicast_size),
-            ("frag_max_size", buf_config.frag_max_size),
-            ("get_reply_buf_size", shim_config.get_reply_buf_size),
+            ("batch_unicast_bytes", buf_config.batch_unicast_size),
+            ("batch_multicast_bytes", buf_config.batch_multicast_size),
+            ("frag_max_bytes", buf_config.frag_max_size),
+            ("get_reply_buffer_bytes", shim_config.get_reply_buf_size),
             ("get_poll_interval_ms", shim_config.get_poll_interval_ms),
             ("rx_task_budget_frames", 0),
             ("rx_task_budget_rest_us", RX_TASK_BUDGET_REST_US_BUILTIN),
@@ -2152,10 +2152,10 @@ pub fn run() {
                     rx_budget_rest_us_stated = r.source != platform_config::KnobSource::Builtin;
                     rx_budget_rest_us = r.value;
                 }
-                "batch_unicast_size" => buf_config.batch_unicast_size = r.value,
-                "batch_multicast_size" => buf_config.batch_multicast_size = r.value,
-                "frag_max_size" => buf_config.frag_max_size = r.value,
-                "get_reply_buf_size" => shim_config.get_reply_buf_size = r.value,
+                "batch_unicast_bytes" => buf_config.batch_unicast_size = r.value,
+                "batch_multicast_bytes" => buf_config.batch_multicast_size = r.value,
+                "frag_max_bytes" => buf_config.frag_max_size = r.value,
+                "get_reply_buffer_bytes" => shim_config.get_reply_buf_size = r.value,
                 "get_poll_interval_ms" => shim_config.get_poll_interval_ms = r.value,
                 other => unreachable!("unknown wire knob `{other}`"),
             }

@@ -33,7 +33,7 @@ pub struct ShimConfig {
     /// holds (`ZPICO_GRAPH_CACHE_SIZE`, default 65536).
     ///
     /// It reached the C compile on the ZEPHYR CMAKE lane only
-    /// (`nros_rmw_zenoh.cmake` passes `CONFIG_NROS_GRAPH_CACHE_SIZE` straight
+    /// (`nros_rmw_zenoh.cmake` passes `CONFIG_NROS_ZENOH_GRAPH_CACHE_BYTES` straight
     /// through), so every build that compiles `zpico.c` through cargo — every
     /// FreeRTOS, ThreadX, NuttX, posix and bare-metal image, and the Zephyr
     /// RUST lane — took the 65,536-byte default with no way to state another.

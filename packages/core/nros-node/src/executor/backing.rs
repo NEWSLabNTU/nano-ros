@@ -43,7 +43,7 @@
 //! bytes twice.
 //!
 //! That pairing is per-image and only the image's author can measure it, so the
-//! opt-out is a knob rather than a guess: `NROS_EXECUTOR_BACKING_U64S=0` emits
+//! opt-out is a knob rather than a guess: `NROS_EXECUTOR_BACKING_BYTES=0` emits
 //! no static at all and restores the leak. A non-zero value overrides the
 //! reservation's SIZE, which is also how a fat entry — one declaring
 //! `max_callbacks` above `NROS_EXECUTOR_MAX_CBS` — keeps a static instead of
@@ -51,7 +51,7 @@
 //!
 //! **The Zephyr `CONFIG_` spelling IS wired** (this paragraph said
 //! the opposite until it was). `zephyr/Kconfig` declares
-//! `NROS_EXECUTOR_BACKING_U64S` with the tree's `-1` DERIVE sentinel as its
+//! `NROS_EXECUTOR_BACKING_BYTES` with the tree's `-1` DERIVE sentinel as its
 //! default, and `nros-node`'s build script reaches it through the same env →
 //! `$DOTCONFIG` reader every other executor knob uses. `-1` does
 //! not parse as a `usize`, which is exactly how every other `-1 = derive` knob
@@ -89,7 +89,7 @@
 //! their literal defaults. This one is a SUM — the executor's carved tables plus
 //! the arena, laid out with alignment padding between them — and its largest
 //! term, `ARENA_SIZE`, is itself derived
-//! (`env_usize("NROS_EXECUTOR_ARENA_SIZE", derived_arena)` in
+//! (`env_usize("NROS_EXECUTOR_ARENA_BYTES", derived_arena)` in
 //! `nros-node/build.rs`), so the inventory would record it as a computed default
 //! even if the sum were expressible. A formula that is right for one build and
 //! wrong for the rest is the drift class this tree gates against, so this
@@ -124,7 +124,7 @@ use super::storage::ExecutorSizing;
 /// [`SchedTaskExecutorBacking`] instead, each slot this many words.
 ///
 /// Named by the GENERATED file when nothing overrides the size, so it is unused
-/// under `NROS_EXECUTOR_BACKING_U64S=0` (no static) and under an explicit
+/// under `NROS_EXECUTOR_BACKING_BYTES=0` (no static) and under an explicit
 /// override (a literal). Kept rather than `cfg`'d: it is what the override is
 /// judged against, and a constant that disappears with its consumer cannot be
 /// compared to anything.
@@ -134,7 +134,7 @@ pub const EXECUTOR_BACKING_DEFAULT_U64S: usize = ExecutorSizing::DEFAULT.u64_len
 /// The words the DEFAULT backing spends on the carved
 /// parameter store: zero unless the build implies a store
 /// (`nros_params::IMPLIED_STORE_SLOTS`). A STATED reservation
-/// (`NROS_EXECUTOR_BACKING_U64S`, a board's `backing_u64s`) covers the
+/// (`NROS_EXECUTOR_BACKING_BYTES`, a board's `backing_bytes`) covers the
 /// executor's tables and gets this added on top -- see `nros-node/build.rs`'s
 /// `emit_executor_backing` for why the statement does not absorb it.
 #[allow(dead_code)]
@@ -149,7 +149,7 @@ pub const PARAMETER_STORE_U64S: usize = ExecutorSizing::DEFAULT.u64_len()
 // `#[unsafe(link_section = …)]` on it are emitted by `build.rs`: `link_section`
 // takes a string LITERAL and the section name is a build-time input, and the
 // size may be overridden or the whole item suppressed. The file is EMPTY when
-// `NROS_EXECUTOR_BACKING_U64S=0`, which is why the include is unconditional
+// `NROS_EXECUTOR_BACKING_BYTES=0`, which is why the include is unconditional
 // while everything that reads it is `cfg`-gated.
 include!(concat!(env!("OUT_DIR"), "/nros_executor_backing.rs"));
 
@@ -157,7 +157,7 @@ include!(concat!(env!("OUT_DIR"), "/nros_executor_backing.rs"));
 /// passes, or it is dead weight every image carries and no executor ever uses.
 ///
 /// A `const` assertion rather than a test, deliberately: the only way to make it
-/// false is to set `NROS_EXECUTOR_BACKING_U64S` too low, and the person doing
+/// false is to set `NROS_EXECUTOR_BACKING_BYTES` too low, and the person doing
 /// that wants to hear about it from the build they just ran, not from a test
 /// suite they may not run at all. `0` is the documented opt-out and is not
 /// reached here — it emits no static, so this whole arm is `cfg`'d away.
@@ -173,7 +173,7 @@ include!(concat!(env!("OUT_DIR"), "/nros_executor_backing.rs"));
 #[cfg(nros_executor_backing_static)]
 const _: () = assert!(
     EXECUTOR_BACKING_U64S >= EXECUTOR_BACKING_DEFAULT_U64S,
-    "NROS_EXECUTOR_BACKING_U64S is below the default executor sizing, so the \
+    "NROS_EXECUTOR_BACKING_BYTES is below the default executor sizing, so the \
      reservation can never be taken and is pure dead weight; use 0 to decline \
      the static entirely"
 );
@@ -193,7 +193,7 @@ static TAKEN: AtomicBool = AtomicBool::new(false);
 /// `None` means "use the heap", and every path to it is legitimate rather than
 /// degraded — it is the caller's behaviour from before this module existed:
 ///
-/// * the reservation is switched off (`NROS_EXECUTOR_BACKING_U64S=0`);
+/// * the reservation is switched off (`NROS_EXECUTOR_BACKING_BYTES=0`);
 /// * another executor already took it (a second `Executor::open` in one
 ///   process — a sched-task boot's spawned sched tasks no longer come here, they take
 ///   the entry's [`SchedTaskExecutorBacking`], issue 1571);
@@ -853,7 +853,7 @@ mod tests {
     fn the_opt_out_removes_the_reservation_entirely() {
         assert!(
             take(1).is_none(),
-            "NROS_EXECUTOR_BACKING_U64S=0 must hand out nothing"
+            "NROS_EXECUTOR_BACKING_BYTES=0 must hand out nothing"
         );
     }
 

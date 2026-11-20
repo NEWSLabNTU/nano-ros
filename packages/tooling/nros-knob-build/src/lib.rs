@@ -104,6 +104,7 @@ fn resolve(
                     nros_zephyr_build::RETIRED_TEMPLATE
                         .replace("{legacy}", &e.spelling)
                         .replace("{env}", &canonical)
+                        .replace("{scale}", &scale_of(e))
                 );
             }
         }
@@ -225,6 +226,18 @@ fn parse_int(x: &str) -> Option<i64> {
     match x.strip_prefix("0x").or_else(|| x.strip_prefix("0X")) {
         Some(h) => i64::from_str_radix(h, 16).ok(),
         None => x.parse().ok(),
+    }
+}
+
+/// What a unit change asks of the value, in the registry's words
+/// (`nros_zephyr_build::scale_text`, for a package's row).
+fn scale_of(e: &nros_knob_catalog::RetiredEntry) -> String {
+    if e.factor == 1 {
+        return String::new();
+    }
+    match &e.from_unit {
+        Some(unit) => format!(" (the value x {}: {} was in {unit})", e.factor, e.spelling),
+        None => format!(" (the value x {})", e.factor),
     }
 }
 

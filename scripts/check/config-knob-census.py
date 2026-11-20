@@ -71,7 +71,7 @@ LADDER_FLOOR = 42
 KNOB_CLASS = {
     # --- ladder (phase-400 W6) ---
     # --- derived: the message type should size these ---
-    "NROS_SUBSCRIPTION_BUFFER_SIZE": (
+    "NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES": (
         "derived",
         "the runtime-owned take buffer. phase-403 makes it per-type; it is in "
         "the ladder today as the fallback for a type with no bound",
@@ -89,7 +89,7 @@ KNOB_CLASS = {
         "domain entity budget; sizes ZPICO_GRAPH_CACHE_SIZE, which still "
         "outranks it when someone names the bytes directly",
     ),
-    "NROS_ZENOH_GRAPH_CACHE_SIZE": (
+    "NROS_ZENOH_GRAPH_CACHE_BYTES": (
         "sizing",
         "per-session graph cache bytes; sized by the PEER graph, so it is "
         "stated rather than derived",
@@ -118,9 +118,9 @@ KNOB_CLASS = {
         "max_subscription_depth (issue 1655), a statement outranks it",
     ),
     "ZPICO_SUBSCRIBER_BUFFER_SIZE": ("derived", "SMALL_PAYLOADS class (phase-403)"),
-    "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE": ("derived", "LARGE_PAYLOADS class (phase-403)"),
-    "NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
-    "NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE": ("derived", "TX half of the same split"),
+    "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES": ("derived", "LARGE_PAYLOADS class (phase-403)"),
+    "NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
+    "NROS_ZENOH_PUBLISHER_TX_BUFFER_BYTES": ("derived", "TX half of the same split"),
     # phase-455 W5 / issue 1341 — the transient-local retention pool. Both are
     # DERIVED and neither is a ladder candidate, for the reason
     # ZPICO_MAX_LARGE_SUBSCRIBERS is not one: the answer is a property of what
@@ -158,12 +158,12 @@ KNOB_CLASS = {
     "NROS_XRCE_MAX_SERVICE_SERVERS": ("derived", "service-server slot count; NROS_DERIVED_MAX_QUERYABLES from the entity inventory (issue 1033)"),
     "NROS_XRCE_MAX_SERVICE_CLIENTS": ("derived", "service-client slot count; the sizing descriptor's declared clients plus three per action client (phase-400 W6)"),
     "NROS_XRCE_SUBSCRIBER_RING_DEPTH": ("sizing", "samples per subscriber slot; a burst policy, not derivable"),
-    "NROS_XRCE_BUFFER_SIZE": ("sizing", "the default of the three per-family receive sizes"),
-    "NROS_XRCE_SUBSCRIBER_BUFFER_SIZE": ("derived", "subscriber ring entry; the largest declared subscription wire bound (phase-403 W8)"),
-    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE": ("derived", "application service-server request entry; the declared servers' largest request, beside the builtin split (issue 1808)"),
-    "NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE": ("derived", "service-client reply slot; the declared clients' largest `reply_bound_bytes` (issue 1808)"),
+    "NROS_XRCE_BUFFER_BYTES": ("sizing", "the default of the three per-family receive sizes"),
+    "NROS_XRCE_SUBSCRIBER_BUFFER_BYTES": ("derived", "subscriber ring entry; the largest declared subscription wire bound (phase-403 W8)"),
+    "NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES": ("derived", "application service-server request entry; the declared servers' largest request, beside the builtin split (issue 1808)"),
+    "NROS_XRCE_SERVICE_REPLY_BUFFER_BYTES": ("derived", "service-client reply slot; the declared clients' largest `reply_bound_bytes` (issue 1808)"),
     "NROS_XRCE_BUILTIN_SERVICE_SERVERS": ("derived", "the parameter / lifecycle share of the service-server slots; the runtime's servers, beside the total (issue 1808)"),
-    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE": ("derived", "builtin-family request entry; XRCE_BUFFER_SIZE raised to the parameter family's priced request, so lifecycle's unbounded ChangeState keeps the floor (issue 1808)"),
+    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_BYTES": ("derived", "builtin-family request entry; XRCE_BUFFER_SIZE raised to the parameter family's priced request, so lifecycle's unbounded ChangeState keeps the floor (issue 1808)"),
     "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
     "NROS_ZENOH_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # phase-461 W1 / issue 1352 -- the service inbox per FAMILY. The two slot
@@ -195,7 +195,7 @@ KNOB_CLASS = {
     # 1145). It is also not `derived` — nothing is computing it, and claiming a
     # campaign owns it would overstate the backlog. It is the escape hatch on a
     # placement decision, so: infra.
-    "NROS_EXECUTOR_BACKING_U64S": (
+    "NROS_EXECUTOR_BACKING_BYTES": (
         "infra",
         "opt-out/size override for the `.bss` executor backing (phase-392 W6). "
         "Per-image, not per-platform: the RTOS half of the move is lowering "
@@ -496,7 +496,7 @@ KNOB_CLASS = {
     # types this image subscribes to, which phase-403 W8 computes exactly. Read
     # here so the arena stops billing a subscription at the CLOSURE buffer,
     # which is also DEFAULT_TX_BUF and therefore larger.
-    "NROS_SUBSCRIBER_BUFFER_SIZE": ("derived", "receive payload class"),
+    "NROS_SUBSCRIBER_BUFFER_BYTES": ("derived", "receive payload class"),
     # issue 1255 -- the per-type table the class above is the MAXIMUM over. It
     # is infra for the same reason the depth table is: it carries a fact the
     # message-bound inventory already derived into the arena derivation, and
@@ -598,7 +598,7 @@ def _struct_fields(src, struct):
 #
 # Deliberately NOT the whole classification. "the ladder maps this env name" and
 # "this knob is migrated" are different facts, and conflating them would hide
-# remaining work: `NROS_SUBSCRIPTION_BUFFER_SIZE` is mapped and NOT migrated,
+# remaining work: `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` is mapped and NOT migrated,
 # because a build script still reads its env directly, and deriving its class
 # from the mapping alone would silently move it out of the "still to migrate"
 # count. (`NROS_SERVICE_TIMEOUT_MS` was the other case until issue 2007 gave
@@ -606,7 +606,7 @@ def _struct_fields(src, struct):
 # shrinks as they land, and is the only hand-kept part left.
 LADDER_MAPPED_NOT_MIGRATED = {
     # Mapped, but `nros-node`'s build script still reads the env directly.
-    "NROS_SUBSCRIPTION_BUFFER_SIZE",
+    "NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES",
 }
 
 
@@ -632,8 +632,15 @@ def registry_spellings(ladder_only=False):
     no longer spells them and its match arms cannot be the evidence.
     """
     out = set()
-    for r in _registry_rows():
-        if ladder_only and not r.get("toml"):
+    rows = list(_registry_rows())
+    ladder = {r["key"] for r in rows if r.get("toml")}
+    for r in rows:
+        # A carrier of a ladder row is a rung of it (phase-581 W5:
+        # `threadx.byte_pool_bytes` carries `memory.heap_bytes`).
+        on_ladder = r.get("toml") or (
+            r.get("class") == "carrier" and r.get("carries") in ladder
+        )
+        if ladder_only and not on_ladder:
             continue
         out.add("NROS_" + r["id"])
         out.update(r.get("legacy", []))
@@ -657,7 +664,7 @@ def ladder_env_keys():
     out = set()
     for pat in (
         # `=> Some("...")`: a per-platform front-end that may have none
-        # (`memory_env_key_for`, issue 2400 W5b).
+        # (~~`memory_env_key_for`~~, issue 2400 W5b; deleted by phase-581 W5).
         r'=>\s*(?:Some\(\s*)?"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
         r'\benv\(\s*"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
         r'\bflag\(\s*"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
@@ -687,6 +694,7 @@ def ladder_knobs():
         "WireKnobs",
         "XrceKnobs",
         "ZenohLimitKnobs",
+        "ServiceKnobs",
     ):
         fields = _struct_fields(src, struct)
         if fields:
@@ -707,9 +715,10 @@ EXPLAIN_PREFIX = {
     "NetKnobs": "net.",
     "RuntimeKnobs": "runtime.",
     "LogKnobs": "log.",
-    "WireKnobs": "zenoh.wire.",
+    "WireKnobs": "zenoh.",
     "XrceKnobs": "xrce.",
-    "ZenohLimitKnobs": "zenoh.limits.",
+    "ZenohLimitKnobs": "zenoh.",
+    "ServiceKnobs": "service.",
 }
 
 EXPLAIN_SRC = "packages/cli/nros-cli-core/src/cmd/config.rs"
@@ -774,7 +783,7 @@ READ_CALLEES = {
     "env_usize_rung",
     # phase-448 W5. `env_opt_usize` with the board/platform rungs spliced in
     # below Kconfig. Option rather than a default, for
-    # `NROS_EXECUTOR_BACKING_U64S`: its "default" is a const only the TARGET
+    # `NROS_EXECUTOR_BACKING_BYTES`: its "default" is a const only the TARGET
     # compiler can evaluate, so absence has to stay absence — a sentinel would
     # then have to be told apart from a stated `0`, which is that knob's
     # documented opt-out.

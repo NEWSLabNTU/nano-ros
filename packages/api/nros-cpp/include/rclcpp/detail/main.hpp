@@ -607,7 +607,7 @@ class ZephyrBoard {
     /// 8-byte aligned; block `i` is sched task `i`'s executor. The generated entry
     /// passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE`
     /// and its own sched task count, so the storage is linker-placed `.bss` rather
-    /// than `n_sched_tasks` heap blocks out of `CONFIG_NROS_ZEPHYR_HEAP_SIZE`. See
+    /// than `n_sched_tasks` heap blocks out of `CONFIG_NROS_MEMORY_HEAP_BYTES`. See
     /// `nros_board_zephyr_run_sched_tasks_in` in `<rclc/detail/main.h>`.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
                                    const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,

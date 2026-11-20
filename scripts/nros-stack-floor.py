@@ -2755,10 +2755,13 @@ def apply_policy(args: argparse.Namespace, doc: dict) -> None:
 
 def knob_text(knob: str, floor: int) -> str:
     """`--stack-knob` names what raises the stack, with `{bytes}` / `{kb}`
-    standing for the floor in that knob's unit (`{kb}` rounds up)."""
+    standing for the floor in that knob's unit (`{kb}` rounds up), and
+    `{bytes_kib}` for the floor in bytes rounded up to a whole KiB (a byte knob
+    whose platform configures the stack in KiB, phase-581 W5)."""
     if "{" not in knob:
         return f"{knob} >= {floor}"
-    return knob.format(bytes=floor, kb=-(-floor // 1024))
+    kb = -(-floor // 1024)
+    return knob.format(bytes=floor, kb=kb, bytes_kib=kb * 1024)
 
 
 _KNOB_SET = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=([0-9]+)$")
@@ -3608,7 +3611,10 @@ def self_test() -> int:
     rc, lines, _ = check_stacks({"OPEN": {"floor": 100, "measured": True}}, {"OPEN": 65536}, "K")
     check("check: a stack at or above the floor passes", rc == 0 and "holds" in lines[0])
     check("knob template in the knob's unit",
-          knob_text("NROS_FREERTOS_APP_STACK_KB={kb}", 15216) == "NROS_FREERTOS_APP_STACK_KB=15")
+          knob_text("S_KB={kb}", 15216) == "S_KB=15")
+    check("knob template in bytes rounded up to whole KiB",
+          knob_text("NROS_MEMORY_APP_STACK_BYTES={bytes_kib}", 15216)
+          == "NROS_MEMORY_APP_STACK_BYTES=15360")
     # link map
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -3738,7 +3744,7 @@ def self_test() -> int:
         Path(d, "a").mkdir(); Path(d, "b").mkdir()
         Path(d, "b", STATED_FILE).write_text(json.dumps({"schema": 1, "stacks": [
             {"role": "OPEN", "root": "~app_task_entry_", "bytes": 16384,
-             "knob": "NROS_FREERTOS_APP_STACK_KB={kb}"}]}))
+             "knob": "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}"}]}))
         msgs = [json.dumps({"reason": "build-script-executed", "package_id": "p#1",
                             "out_dir": str(Path(d, x))}) for x in ("a", "b")]
         rows, files = stated_by_build(msgs)
@@ -3746,7 +3752,7 @@ def self_test() -> int:
         apply_stated(ns, rows)
         check("stated stack: the one file a build script wrote",
               ns.role == ["OPEN=~app_task_entry_"] and ns.check_stack == ["OPEN=16384"]
-              and ns.stack_knob == "NROS_FREERTOS_APP_STACK_KB={kb}")
+              and ns.stack_knob == "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}")
         check("stated stack: none written means not stated", stated_by_build(msgs[:1]) == ([], []))
         Path(d, "a", STATED_FILE).write_text("{}")
         check("stated stack: two files are reported, not chosen between",

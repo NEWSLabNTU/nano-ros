@@ -23,16 +23,16 @@
 # the RFC-0043 C++ components register in their constructors at runtime. So:
 #
 #   DERIVABLE HERE -- a question about sizes:
-#     NROS_SUBSCRIBER_BUFFER_SIZE     the small payload class
+#     NROS_SUBSCRIBER_BUFFER_BYTES     the small payload class
 #     NROS_SUBSCRIBER_LARGE_SIZE      the large payload class
 #     NROS_MAX_LARGE_SUBSCRIBERS      how many SUBSCRIPTIONS receive a type over the
 #                                     small ceiling -- needs the entity join below;
 #                                     on the closure alone only `0` (issue 2201)
-#     NROS_SUBSCRIPTION_BUFFER_SIZE   the take buffer for a caller with no type
+#     NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES   the take buffer for a caller with no type
 #
 #   NOT DERIVABLE HERE -- a question about entity COUNTS, which needs a second
 #   source (an entity inventory), not this one:
-#     NROS_EXECUTOR_MAX_CBS, NROS_EXECUTOR_ARENA_SIZE,
+#     NROS_EXECUTOR_MAX_CBS, NROS_EXECUTOR_ARENA_BYTES,
 #     NROS_MAX_SUBSCRIBERS, NROS_MAX_PUBLISHERS
 #
 #   A package's TYPE count is not an image's ENTITY count. Deriving those from
@@ -63,7 +63,7 @@
 # So this reader derives on TWO bases and says which it used for what.
 #
 #   BASIS `subscribed` -- the THREE PAYLOAD-CLASS knobs
-#     NROS_SUBSCRIBER_BUFFER_SIZE, NROS_SUBSCRIBER_LARGE_SIZE,
+#     NROS_SUBSCRIBER_BUFFER_BYTES, NROS_SUBSCRIBER_LARGE_SIZE,
 #     NROS_MAX_LARGE_SUBSCRIBERS
 #   These size the backend's two topic payload pools. Those pools are reached
 #   through exactly one allocation -- `alloc_payload_block(rx_buffer_hint)` in
@@ -73,7 +73,7 @@
 #   The join is this file's `ENTITY_INVENTORY` argument.
 #
 #   BASIS `closure` -- the take buffer
-#     NROS_SUBSCRIPTION_BUFFER_SIZE
+#     NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES
 #   This one is NOT subscription-only, whatever its name says, and narrowing it
 #   to the subscribed set would size a buffer too small. `nros-node/build.rs`
 #   turns it into `DEFAULT_RX_BUF_SIZE`, which is the DEFAULT const generic for
@@ -723,7 +723,7 @@ function(nros_derive_message_bound_knobs)
         # Issue 0963 — the take buffer refuses, and the PAYLOAD CLASSES need
         # not. They are two different facts:
         #
-        #   * `NROS_SUBSCRIPTION_BUFFER_SIZE` is one global size for every
+        #   * `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` is one global size for every
         #     entity, and `DEFAULT_TX_BUF` aliases it, so a type the image only
         #     PUBLISHES must still fit. That is a fact about the whole linked
         #     closure, and an open type in the closure genuinely poisons it.
@@ -781,7 +781,7 @@ function(nros_derive_message_bound_knobs)
             if(_pc_reports)
                 message(STATUS
                     "nros: the payload classes (NROS_MAX_LARGE_SUBSCRIBERS, "
-                    "NROS_SUBSCRIBER_LARGE_SIZE, NROS_SUBSCRIBER_BUFFER_SIZE) "
+                    "NROS_SUBSCRIBER_LARGE_SIZE, NROS_SUBSCRIBER_BUFFER_BYTES) "
                     "keep their configured values because this image declares no "
                     "entities. Declare them (`system.toml` `[[component]] "
                     "entities`, or the bringup's launch contract) and they derive "
@@ -829,13 +829,13 @@ function(nros_derive_message_bound_knobs)
             "${_pkg_count} interface packages (all bounded)")
         message(STATUS
             "nros:   largest type ${_max_type} at ${_max_rx} B -> "
-            "NROS_SUBSCRIPTION_BUFFER_SIZE (basis: the whole closure -- this "
+            "NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES (basis: the whole closure -- this "
             "knob is also DEFAULT_TX_BUF and every raw entity's default "
             "buffer, so a type this image only publishes still has to fit)")
         if(NOT _payload_status STREQUAL "derived")
             message(WARNING
                 "nros: the three PAYLOAD-CLASS knobs are REFUSED -- "
-                "NROS_SUBSCRIBER_BUFFER_SIZE, NROS_SUBSCRIBER_LARGE_SIZE and "
+                "NROS_SUBSCRIBER_BUFFER_BYTES, NROS_SUBSCRIBER_LARGE_SIZE and "
                 "NROS_MAX_LARGE_SUBSCRIBERS keep their configured values.\n"
                 "  ${_payload_why}\n"
                 "  They are NOT falling back to the closure: this image states "
@@ -845,7 +845,7 @@ function(nros_derive_message_bound_knobs)
             if(_sub_small GREATER 0)
                 message(STATUS
                     "nros:   small payload class ${_sub_small} B -> "
-                    "NROS_SUBSCRIBER_BUFFER_SIZE")
+                    "NROS_SUBSCRIBER_BUFFER_BYTES")
             endif()
             if(DEFINED NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
                 message(STATUS
@@ -1270,7 +1270,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
     string(APPEND _c "# what nobody stated.\n")
     string(APPEND _c "#\n")
     string(APPEND _c "# There are TWO BASES here and the file says which each number used.\n")
-    string(APPEND _c "# NROS_SUBSCRIPTION_BUFFER_SIZE is always derived over the LINKED closure:\n")
+    string(APPEND _c "# NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES is always derived over the LINKED closure:\n")
     string(APPEND _c "# it is also DEFAULT_TX_BUF and the default buffer of every raw service,\n")
     string(APPEND _c "# client and action entity, so a type this image only PUBLISHES still has\n")
     string(APPEND _c "# to fit and narrowing it would size a buffer too small. The three payload\n")
@@ -1281,7 +1281,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
     string(APPEND _c "# runtime's M::MAX_SERIALIZED_SIZE_XCDR* uses. NOT the C++ pack's\n")
     string(APPEND _c "# SERIALIZED_SIZE_MAX, which is an estimate.\n")
     string(APPEND _c "#\n")
-    string(APPEND _c "# small/large class split: ${_ceiling} B (policy -- NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD)\n")
+    string(APPEND _c "# small/large class split: ${_ceiling} B (policy -- NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES)\n")
     string(APPEND _c "\n")
     string(APPEND _c "set(NROS_MESSAGE_BOUNDS_STATUS \"${_status}\")\n")
     if(_status STREQUAL "refused")
@@ -1303,7 +1303,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
             string(APPEND _c
                 "# The TAKE BUFFER is refused: an unbounded type in the linked closure\n"
                 "# could be published through it (DEFAULT_TX_BUF aliases it), so\n"
-                "# NROS_SUBSCRIPTION_BUFFER_SIZE keeps its configured value.\n"
+                "# NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES keeps its configured value.\n"
                 "#\n"
                 "# The PAYLOAD CLASSES below are derived anyway: they size the staging\n"
                 "# pools for what this image RECEIVES, every subscribed type IS bounded,\n"
@@ -1347,7 +1347,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
             string(REPLACE "\n" "\\n" _pr "${_pr}")
             string(APPEND _c "set(NROS_MESSAGE_BOUNDS_PAYLOAD_REASON \"${_pr}\")\n")
             string(APPEND _c
-                "# NROS_SUBSCRIBER_BUFFER_SIZE, NROS_SUBSCRIBER_LARGE_SIZE and\n"
+                "# NROS_SUBSCRIBER_BUFFER_BYTES, NROS_SUBSCRIBER_LARGE_SIZE and\n"
                 "# NROS_MAX_LARGE_SUBSCRIBERS are NOT derived and do NOT fall back to the\n"
                 "# closure. This image states what it receives, so the classes come from\n"
                 "# that or from nowhere; each keeps its configured value.\n")
@@ -1380,7 +1380,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
                 string(APPEND _c
                     "# Nothing this image receives fits under the ${_ceiling} B split, so the small\n"
                     "# class size is not derivable from that set -- but the class is still used,\n"
-                    "# by any caller that states no hint. NROS_SUBSCRIBER_BUFFER_SIZE keeps its\n"
+                    "# by any caller that states no hint. NROS_SUBSCRIBER_BUFFER_BYTES keeps its\n"
                     "# configured value.\n")
             endif()
             string(APPEND _c

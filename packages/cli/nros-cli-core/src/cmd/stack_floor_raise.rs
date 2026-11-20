@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn a_report_lists_its_raises_and_an_old_report_none() {
         let text = r#"{"schema":1,"raise":[{"role":"OPEN","stack":65536,"floor":70000,
-            "knob":"NROS_FREERTOS_APP_STACK_KB=69","name":"NROS_FREERTOS_APP_STACK_KB","value":69}]}"#;
+            "knob":"NROS_MEMORY_APP_STACK_BYTES=70656","name":"NROS_MEMORY_APP_STACK_BYTES","value":70656}]}"#;
         let r = parse_raises(text).unwrap();
         assert_eq!(
             r,
@@ -312,8 +312,8 @@ mod tests {
                 role: "OPEN".into(),
                 stack: 65536,
                 floor: 70000,
-                name: "NROS_FREERTOS_APP_STACK_KB".into(),
-                value: 69,
+                name: "NROS_MEMORY_APP_STACK_BYTES".into(),
+                value: 70656,
             }]
         );
         // A report from before W2b has no `raise` field: nothing to raise.
@@ -327,23 +327,23 @@ mod tests {
             role: "OPEN".into(),
             stack: 8192,
             floor: 15216,
-            name: "NROS_FREERTOS_APP_STACK_KB".into(),
-            value: 15,
+            name: "NROS_MEMORY_APP_STACK_BYTES".into(),
+            value: 15360,
         };
         let cargo = raised_message("b:mps2-an385-freertos", Driver::Cargo, &r);
         assert!(
-            cargo.contains("app task stack raised to NROS_FREERTOS_APP_STACK_KB=15"),
+            cargo.contains("app task stack raised to NROS_MEMORY_APP_STACK_BYTES=15360"),
             "{cargo}"
         );
         assert!(
-            cargo.contains("[image.mps2-an385-freertos.knobs.freertos]\n    app_stack_kb = 15"),
+            cargo.contains("[image.mps2-an385-freertos.knobs.memory]\n    app_stack_bytes = 15360"),
             "{cargo}"
         );
         // The cmake road carries the knob too now, so it gets the same line.
         let cmake = raised_message("b:mps2-an385-freertos", Driver::CMake, &r);
         assert!(
-            cmake.contains("[image.mps2-an385-freertos.knobs.freertos]\n    app_stack_kb = 15")
-                && !cmake.contains("-DNROS_FREERTOS_APP_STACK_KB"),
+            cmake.contains("[image.mps2-an385-freertos.knobs.memory]\n    app_stack_bytes = 15360")
+                && !cmake.contains("-DNROS_MEMORY_APP_STACK_BYTES"),
             "{cmake}"
         );
         // A user reads this: no issue, phase or RFC id in it, on either road.
@@ -385,16 +385,16 @@ mod tests {
             name: name.into(),
             value,
         };
-        let h = Handoff::new("cargo", ["build"]).with_env("NROS_FREERTOS_APP_STACK_KB", "16");
-        let h = with_knobs(&h, &[r("NROS_FREERTOS_APP_STACK_KB", 26)]);
+        let h = Handoff::new("cargo", ["build"]).with_env("NROS_MEMORY_APP_STACK_BYTES", "16384");
+        let h = with_knobs(&h, &[r("NROS_MEMORY_APP_STACK_BYTES", 26624)]);
         let got: Vec<_> = h
             .env
             .iter()
-            .filter(|(k, _)| k == "NROS_FREERTOS_APP_STACK_KB")
+            .filter(|(k, _)| k == "NROS_MEMORY_APP_STACK_BYTES")
             .collect();
         assert_eq!(
             got,
-            vec![&("NROS_FREERTOS_APP_STACK_KB".into(), "26".into())]
+            vec![&("NROS_MEMORY_APP_STACK_BYTES".into(), "26624".into())]
         );
     }
 

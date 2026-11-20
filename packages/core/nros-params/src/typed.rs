@@ -164,7 +164,7 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     /// `ParameterBuilder::constraints`, and rclc's fourth argument to
     /// `rclc_add_parameter_description`.
     ///
-    /// Text longer than `NROS_MAX_PARAM_CONSTRAINTS_LEN` — whose default is
+    /// Text longer than `NROS_PARAMS_MAX_CONSTRAINTS_BYTES` — whose default is
     /// **0**, so an image pays for this field only when it asks for it — is
     /// truncated at a character boundary and REPORTED once through
     /// [`ParameterServer::take_truncated_descriptions`](crate::ParameterServerOps::take_truncated_descriptions), never dropped in
@@ -770,7 +770,7 @@ mod tests {
     /// verb, and a text that does not fit the (default 0) capacity is
     /// REPORTED rather than dropped in silence.
     // The comparison and the `min` below read as "always true" to clippy on a
-    // build that leaves `NROS_MAX_PARAM_CONSTRAINTS_LEN` at its default of 0 --
+    // build that leaves `NROS_PARAMS_MAX_CONSTRAINTS_BYTES` at its default of 0 --
     // and that is the point: the constant is a KNOB, the test is written
     // against it so it holds at 0, at 64 and at 256, and a version specialised
     // to whichever value this build resolved would read as coverage on the

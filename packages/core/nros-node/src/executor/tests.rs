@@ -678,7 +678,7 @@ fn executor_with_arena(session: MockSession, arena: usize) -> Executor<'static> 
 ///
 /// The issue was analysis-only: *"Not reproduced as a failing image … An image
 /// that declares its entities, subscribes from RUST on zenoh, and sets
-/// `NROS_SUBSCRIBER_BUFFER_SIZE` below `NROS_SUBSCRIPTION_BUFFER_SIZE` is the
+/// `NROS_SUBSCRIBER_BUFFER_BYTES` below `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` is the
 /// shape that would show it, as `NodeError::BufferTooSmall` at a registration
 /// the arena oracle passed."* This is that shape, with the two build-time
 /// numbers stated as arenas so the whole thing fits in one process.
@@ -4481,7 +4481,7 @@ fn use_sim_time_declared_with_a_descriptor_attaches_the_clock_source() {
     assert!(crate::time_source::is_active());
 }
 
-/// phase-446 F2 -- a description longer than `NROS_MAX_PARAM_DESCRIPTION_LEN`
+/// phase-446 F2 -- a description longer than `NROS_PARAMS_MAX_DESCRIPTION_BYTES`
 /// is stored truncated and reported by the NEXT spin, once.
 ///
 /// The log line itself goes to `nros_log`; what this pins is the handover the
@@ -5716,7 +5716,7 @@ fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
             )
         });
     assert!(
-        exhausted.contains("NROS_EXECUTOR_ARENA_SIZE"),
+        exhausted.contains("NROS_EXECUTOR_ARENA_BYTES"),
         "the exhaustion line must name the knob, not just say it failed: \
          {exhausted}"
     );
@@ -5866,7 +5866,7 @@ fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
     // to have been for this allocation to fit, and it is the whole reason the
     // shortfall is stored rather than recomputed.
     let want = alloc::format!(
-        "set NROS_EXECUTOR_ARENA_SIZE >= {}",
+        "set NROS_EXECUTOR_ARENA_BYTES >= {}",
         capacity as u64 + u64::from(snap.failed_alloc_shortfall)
     );
     assert!(

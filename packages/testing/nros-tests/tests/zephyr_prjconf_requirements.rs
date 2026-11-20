@@ -49,7 +49,7 @@ const REQUIREMENTS: &[Backend] = &[
         // (`_Z_ERR_SYSTEM_GENERIC`) at session open. Needs ~8+; examples use 32/16.
         // phase-391 W3 — HEAP_MEM_POOL_SIZE is deliberately NOT required any
         // more: zenoh-pico's z_malloc funnels into the rlsf arena in
-        // nros-platform's zephyr_heap (NROS_ZEPHYR_HEAP_SIZE), not k_malloc,
+        // nros-platform's zephyr_heap (NROS_MEMORY_HEAP_BYTES), not k_malloc,
         // and the converted confs set the kernel pool to 0 so it shrinks to
         // Zephyr's own ADD_SIZE floor. Requiring pool > 0 here would force
         // every image to carry BOTH heaps — the exact state W3 removed.

@@ -203,10 +203,10 @@ are prefixed with the enum name (`prefix_with_name = true`) to avoid C++ name co
     (`nros_node::executor::backing::EXECUTOR_BACKING`, phase-392 W6) — not the task stack.
   - `APP_TASK_STACK` was deleted in phase-76. The live knob is `app_stack_bytes`
     (`nros_board_common::freertos_config::DEFAULT_APP_STACK_BYTES`, **131072** = 128 KiB
-    since issue 1146; it was 393216), overridable with `NROS_FREERTOS_APP_STACK_KB`.
+    since issue 1146; it was 393216), overridable with `NROS_MEMORY_APP_STACK_BYTES` (bytes).
     No file in the tree sets that override. The C/C++ carrier's own mirror in
     `cmake/templates/freertos_app_config.c.in` is still 524288, and that file says why.
-  - No example pins `NROS_EXECUTOR_ARENA_SIZE=8192`; that was pre-phase-271 prose.
+  - No example pins `NROS_EXECUTOR_ARENA_BYTES=8192`; that was pre-phase-271 prose.
 
   **And the SYMPTOM this entry is named for is not the one you will see** (issue 1146,
   measured). "Invalid mbox" is a possible landing, not the landing: an `action-server`

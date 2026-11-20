@@ -1547,7 +1547,7 @@ unsafe fn copy_array_out<T: Copy>(
 // caller-owned `char*` of stated capacity. The scalars are out-params, each
 // NULLable. There is no descriptor STRUCT: one would either carry pointers
 // into the store (a borrow a C++ caller cannot honour) or an inline buffer,
-// which would put `NROS_MAX_PARAM_DESCRIPTION_LEN` into the ABI and make a
+// which would put `NROS_PARAMS_MAX_DESCRIPTION_BYTES` into the ABI and make a
 // build knob a layout — and `check-cpp-capability-layout`'s rule is that a
 // probe may gate a METHOD, never a `sizeof`.
 //
@@ -2230,8 +2230,8 @@ fn with_param_write<R>(
 /// The stack buffer the trampoline NUL-terminates a name or a string value
 /// into.
 ///
-/// The store's own bounds are `NROS_MAX_PARAM_NAME_LEN` (64) and
-/// `NROS_MAX_STRING_VALUE_LEN` (256) and this crate cannot see either, so this
+/// The store's own bounds are `NROS_PARAMS_MAX_NAME_BYTES` (64) and
+/// `NROS_PARAMS_MAX_STRING_VALUE_BYTES` (256) and this crate cannot see either, so this
 /// is the one number that covers both. It sizes two LOCALS in one function and
 /// no member anywhere, so it cannot move a layout — the same reasoning
 /// `NROS_NODE_PARAM_STRING_BUF` carries one header over. A longer name or

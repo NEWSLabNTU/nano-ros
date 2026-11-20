@@ -1064,7 +1064,7 @@ endif # NROS
              [image.zephyr]\nboard = \"zephyr\"\nlocator = \"tcp/10.0.2.2:7447\"\n\
              env = { NROS_LINK_IP = \"0\" }\n\
              knobs = { executor = { max_cbs = 13 }, zenoh = { max_queryables = 9, \
-             tx = { batch = true } } }\n",
+             tx_batch = true } }\n",
             &[],
         );
         let r = render(&l, Some(Language::C), &syms, &BTreeMap::new()).unwrap();

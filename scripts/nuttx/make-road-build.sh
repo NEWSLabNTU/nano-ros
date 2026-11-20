@@ -300,10 +300,10 @@ fi
 
 # Editing a knob row in the app's system.toml reaches the archive on the next
 # make, with no clean.
-printf '\n[image.qemu-armv7a-nuttx.knobs.zenoh.wire]\nbatch_unicast_size = 2048\n' >> "$bringup_toml"
+printf '\n[image.qemu-armv7a-nuttx.knobs.zenoh]\nbatch_unicast_bytes = 2048\n' >> "$bringup_toml"
 sleep 1
 run_make "project, knob edited" "$work/make-project-knob.log"
-if ! nros_grep_q -F 'NROS_ZENOH_BATCH_UNICAST_SIZE = "2048"' "$make_dir/nros-image-env.toml"; then
+if ! nros_grep_q -F 'NROS_ZENOH_BATCH_UNICAST_BYTES = "2048"' "$make_dir/nros-image-env.toml"; then
     echo "make-road-build [$id]: the edited knob row is not in $make_dir/nros-image-env.toml" >&2
     exit 1
 fi

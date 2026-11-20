@@ -7877,7 +7877,7 @@ fn hand_written_image_args(app: &Path, bringup_dir: &Path, image_id: &str) -> Ve
 /// producer for two answers a C/C++ west image's configure composes:
 ///
 /// * the MESSAGE BOUNDS. The module's reader found a placeholder, so every
-///   message-bound knob (`NROS_SUBSCRIBER_BUFFER_SIZE`,
+///   message-bound knob (`NROS_SUBSCRIBER_BUFFER_BYTES`,
 ///   `NROS_SUBSCRIBED_TYPE_BOUNDS`, ...) fell to its crate default. The seed
 ///   [`crate::message_bound_knobs::write_west_seed`] writes for a C/C++ image
 ///   is composed here too, over the workspace's `generated/` bound tables (the

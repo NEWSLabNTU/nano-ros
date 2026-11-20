@@ -267,7 +267,7 @@ built_artifacts() {
 #
 # The static is matched by its MANGLED path (`7backing16EXECUTOR_BACKING`,
 # in both the v0 and the legacy scheme), never by the bare word. A Zephyr
-# image also carries `CONFIG_NROS_EXECUTOR_BACKING_U64S`, an absolute Kconfig
+# image also carries `CONFIG_NROS_EXECUTOR_BACKING_BYTES`, an absolute Kconfig
 # symbol, and a bare match would fail every one of them.
 executor_backing_leak() {
     local syms
@@ -353,7 +353,7 @@ executor_backing_self_test() {
     local c_storage='20001590 b __nros_executor_storage'
     local cpp_storage='20001590 V _ZN6rclcpp4Node19GlobalStorageHolderILi0EE7storageE'
     local static='20002000 b _RNvNtNtCs7HKF7r5WETc_9nros_node8executor7backing16EXECUTOR_BACKING.llvm.17170519844929639434'
-    local kconfig='ffffffff A CONFIG_NROS_EXECUTOR_BACKING_U64S'
+    local kconfig='ffffffff A CONFIG_NROS_EXECUTOR_BACKING_BYTES'
     expect_leak() {
         rc=0
         executor_backing_leak <<<"$2" >/dev/null || rc=$?

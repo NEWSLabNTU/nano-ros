@@ -149,7 +149,7 @@ const fn cdr_string(cap: usize) -> usize {
 /// `DEFAULT_RX_BUF_SIZE`; it does not — 820 < 1024, so today's default would
 /// have worked and the test that asserted otherwise failed. What makes the
 /// default wrong here is that it is not a constant: `DEFAULT_RX_BUF_SIZE` is
-/// whatever the image declared through `NROS_SUBSCRIPTION_BUFFER_SIZE`
+/// whatever the image declared through `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`
 /// (`nros-node/build.rs`), i.e. a bound over the types THAT image's
 /// endpoints carry. An image whose own topics are 128-byte structs may
 /// legitimately declare 256, and `/rosout` — which no launch file declares —

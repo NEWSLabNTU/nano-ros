@@ -10,15 +10,15 @@ layer to be delivered intact:
 
 | Layer | Env var | Posix default |
 |-------|---------|---------------|
-| Defragmentation | `NROS_ZENOH_FRAG_MAX_SIZE` | 65536 |
-| Batch size | `NROS_ZENOH_BATCH_UNICAST_SIZE` | 65536 |
-| Shim buffer | `NROS_SUBSCRIBER_BUFFER_SIZE` | 1024 |
+| Defragmentation | `NROS_ZENOH_FRAG_MAX_BYTES` | 65536 |
+| Batch size | `NROS_ZENOH_BATCH_UNICAST_BYTES` | 65536 |
+| Shim buffer | `NROS_SUBSCRIBER_BUFFER_BYTES` | 1024 |
 
 For large messages, increase the transport limits (set before building)
-and the receive class, `NROS_SUBSCRIBER_BUFFER_SIZE`:
+and the receive class, `NROS_SUBSCRIBER_BUFFER_BYTES`:
 
 ```bash
-NROS_ZENOH_FRAG_MAX_SIZE=131072 NROS_SUBSCRIBER_BUFFER_SIZE=8192 cmake --build build
+NROS_ZENOH_FRAG_MAX_BYTES=131072 NROS_SUBSCRIBER_BUFFER_BYTES=8192 cmake --build build
 ```
 
 After changing any buffer variable, clean the build cache:

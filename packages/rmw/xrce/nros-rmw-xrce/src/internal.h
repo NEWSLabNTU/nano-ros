@@ -149,7 +149,7 @@ static inline void nros_xrce_free(void* ptr) {
  * `XRCE_BUFFER_SIZE` stays as the DEFAULT of all three rather than being
  * deleted, for two reasons that are both about not moving bytes nobody asked to
  * move: an image that states nothing derives byte-identically to before this
- * wave, and `NROS_XRCE_BUFFER_SIZE` remains the one lever that raises every
+ * wave, and `NROS_XRCE_BUFFER_BYTES` remains the one lever that raises every
  * receive buffer at once (`large_msg.rs` is built on exactly that, and the
  * backend's own MESSAGE_TOO_LARGE diagnostic names it).
  *
@@ -192,7 +192,7 @@ static inline void nros_xrce_free(void* ptr) {
 #if XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
 // issues 1722, 1808.
 #error                                                                                             \
-    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow. That request would be dropped on arrival. Raise it, or leave it unset to derive."
+    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_BYTES is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow. That request would be dropped on arrival. Raise it, or leave it unset to derive."
 #endif
 #ifndef XRCE_SERVICE_REQUEST_BUFFER_SIZE
 #define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_BUFFER_SIZE
@@ -208,7 +208,7 @@ static inline void nros_xrce_free(void* ptr) {
 #if XRCE_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
 // issue 1722.
 #error                                                                                             \
-    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's params:). That request would be dropped on arrival. Raise it, or leave it unset to derive."
+    "NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's params:). That request would be dropped on arrival. Raise it, or leave it unset to derive."
 #endif
 /* No split: no builtin slot exists, so this names nothing; it keeps the
  * fragment-window check below one spelling for both shapes. */

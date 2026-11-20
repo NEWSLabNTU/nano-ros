@@ -165,6 +165,55 @@ function(_nros_image_consume_overrides ids_var)
     set(${ids_var} "${_ids}" PARENT_SCOPE)
 endfunction()
 
+# _nros_image_kconfig_refuse_retired(<overrides> <files>) -- RFC-0140 D4,
+# phase-581 W5. A RETIRED Kconfig symbol (a conf line in <files>, or a
+# `-DCONFIG_<symbol>` / Zephyr's `CLI_CONFIG_<symbol>` cache entry) and a
+# retired `-DNROS_OVERRIDE_<ID>` (<overrides> holds this configure's IDs) are
+# refused naming the new spelling and, for a unit change, the factor -- in a
+# project with a system.toml and in a guest without one. Without this a guest
+# met Zephyr's own undefined-symbol error, which names no replacement (W0's M6).
+function(_nros_image_kconfig_refuse_retired overrides files)
+    _nros_image_kconfig_retired_findings(_found "${overrides}" "${files}")
+    if(NOT _found STREQUAL "")
+        message(FATAL_ERROR "nano-ros: a retired nano-ros setting is set:${_found}")
+    endif()
+endfunction()
+
+# _nros_image_kconfig_retired_findings(<out> <overrides> <files>) -- the
+# refusals above as text, one `\n  `-led line each, "" for none; a function of
+# its own so `tests/zephyr-transient-overrides-tests.sh` checks every retired
+# spelling in one probe.
+function(_nros_image_kconfig_retired_findings out overrides files)
+    set(_found "")
+    foreach(_id IN LISTS overrides)
+        if("NROS_OVERRIDE_${_id}" IN_LIST NROS_KNOB_RETIRED_OVERRIDES)
+            string(APPEND _found "\n  ${NROS_KNOB_RETIRED_OVERRIDE_MSG_NROS_OVERRIDE_${_id}}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES files)
+    foreach(_f IN LISTS files)
+        if(NOT EXISTS "${_f}" OR IS_DIRECTORY "${_f}")
+            continue()
+        endif()
+        file(STRINGS "${_f}" _lines REGEX "^[ \t]*CONFIG_[A-Za-z0-9_]+[ \t]*=")
+        foreach(_l IN LISTS _lines)
+            if(_l MATCHES "^[ \t]*CONFIG_([A-Za-z0-9_]+)[ \t]*=")
+                if("${CMAKE_MATCH_1}" IN_LIST NROS_KNOB_RETIRED_KCONFIG)
+                    string(APPEND _found
+                        "\n  ${_f}: ${NROS_KNOB_RETIRED_KCONFIG_MSG_${CMAKE_MATCH_1}}")
+                endif()
+            endif()
+        endforeach()
+    endforeach()
+    foreach(_sym IN LISTS NROS_KNOB_RETIRED_KCONFIG)
+        if(DEFINED CACHE{CONFIG_${_sym}} OR DEFINED CACHE{CLI_CONFIG_${_sym}})
+            string(APPEND _found
+                "\n  -DCONFIG_${_sym}: ${NROS_KNOB_RETIRED_KCONFIG_MSG_${_sym}}")
+        endif()
+    endforeach()
+    set(${out} "${_found}" PARENT_SCOPE)
+endfunction()
+
 function(nros_image_kconfig_hook)
     # Issue 2189 -- what this hook rendered, for `nros_system_generate()`: it
     # runs later, knows the bringup and the image its bake resolves, and is the
@@ -201,6 +250,17 @@ function(nros_image_kconfig_hook)
     # passes. This hook runs once per configure (modules.cmake), so nothing
     # later in the same configure reads the cache entry.
     _nros_image_consume_overrides(_overrides)
+    # RFC-0140 D4 -- a retired symbol or override, before anything renders.
+    _nros_image_kconfig_named_confs(_retired_scan)
+    if(DEFINED APPLICATION_CONFIG_DIR AND NOT APPLICATION_CONFIG_DIR STREQUAL "")
+        list(APPEND _retired_scan "${APPLICATION_CONFIG_DIR}/prj.conf")
+    else()
+        list(APPEND _retired_scan "${APPLICATION_SOURCE_DIR}/prj.conf")
+    endif()
+    if(DEFINED CACHE{EXTRA_CONF_FILE})
+        list(APPEND _retired_scan $CACHE{EXTRA_CONF_FILE})
+    endif()
+    _nros_image_kconfig_refuse_retired("${_overrides}" "${_retired_scan}")
 
     # Drop an earlier rendering of ours from the cache value, whatever happens
     # below. A path that no longer exists would otherwise fail Kconfig.

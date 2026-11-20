@@ -34,7 +34,7 @@ pub const MAX_SOCKETS: usize = 4;
 
 // Phase 214.H.2 — `SOCKET_BUFFER_SIZE = 2048` is the SSoT in
 // `nros-smoltcp` (build.rs-emitted, env-tunable via
-// `NROS_SMOLTCP_BUFFER_SIZE`). The reference bridge consumes the
+// `NROS_NET_BUFFER_BYTES`). The reference bridge consumes the
 // same SSoT so the two smoltcp-backed transport surfaces stay in
 // lock-step on the rx/tx buffer footprint.
 use nros_smoltcp::SOCKET_BUFFER_SIZE;

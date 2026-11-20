@@ -66,8 +66,8 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   `"parameter_constraints_max_len": N` -- the longest parameter
 ///   `description` and `additional_constraints` the code set while the probe
 ///   watched, in bytes, before any truncation; `0` for one it never set. They
-///   size `NROS_MAX_PARAM_DESCRIPTION_LEN` and
-///   `NROS_MAX_PARAM_CONSTRAINTS_LEN` respectively. **An absent key means
+///   size `NROS_PARAMS_MAX_DESCRIPTION_BYTES` and
+///   `NROS_PARAMS_MAX_CONSTRAINTS_BYTES` respectively. **An absent key means
 ///   nobody watched**, never `0`: a producer that cannot observe prose leaves
 ///   both out, and a consumer must refuse to derive either knob from that
 ///   sidecar rather than read it as "no text".

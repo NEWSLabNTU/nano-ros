@@ -41,9 +41,9 @@ pub type ReceiveNeed<'a> = Option<(usize, &'a str)>;
 #[must_use]
 pub fn receive_ceiling(frag_max_size: usize, batch_unicast_size: usize) -> (usize, &'static str) {
     if batch_unicast_size > frag_max_size {
-        (batch_unicast_size, "NROS_ZENOH_BATCH_UNICAST_SIZE")
+        (batch_unicast_size, "NROS_ZENOH_BATCH_UNICAST_BYTES")
     } else {
-        (frag_max_size, "NROS_ZENOH_FRAG_MAX_SIZE")
+        (frag_max_size, "NROS_ZENOH_FRAG_MAX_BYTES")
     }
 }
 
@@ -57,8 +57,8 @@ pub fn receive_need<'a>(
     subscriber_buffer_size: Option<usize>,
 ) -> ReceiveNeed<'a> {
     match (max_large_subscribers, subscriber_large_size) {
-        (Some(n), Some(size)) if n > 0 => Some((size, "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE")),
-        _ => subscriber_buffer_size.map(|size| (size, "NROS_SUBSCRIBER_BUFFER_SIZE")),
+        (Some(n), Some(size)) if n > 0 => Some((size, "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES")),
+        _ => subscriber_buffer_size.map(|size| (size, "NROS_SUBSCRIBER_BUFFER_BYTES")),
     }
 }
 
@@ -79,18 +79,18 @@ pub fn receive_ceiling_refusal(
         // issue 1368.
         "this image is built to receive a sample zenoh-pico cannot deliver.\n  \
          largest receivable sample     = {need} ({need_knob})\n  \
-         NROS_ZENOH_FRAG_MAX_SIZE      = {frag_max_size}\n  \
-         NROS_ZENOH_BATCH_UNICAST_SIZE = {batch_unicast_size}\n  \
+         NROS_ZENOH_FRAG_MAX_BYTES      = {frag_max_size}\n  \
+         NROS_ZENOH_BATCH_UNICAST_BYTES = {batch_unicast_size}\n  \
          receive ceiling               = {ceiling} ({ceiling_knob})\n\n\
-         A fragmented sample that reassembles past NROS_ZENOH_FRAG_MAX_SIZE is dropped \
+         A fragmented sample that reassembles past NROS_ZENOH_FRAG_MAX_BYTES is dropped \
          inside the transport: it reaches no callback and raises no error, so the \
          subscription looks like one that never fires. The ceiling above is the LARGER \
          of the two, because a frame that fits one unicast batch whole is never \
          defragmented.\n\n\
-         Raise NROS_ZENOH_FRAG_MAX_SIZE to at least {need} (the board's \
-         `[knobs.zenoh.wire] frag_max_size`, or the env knob). If {need_knob} \
+         Raise NROS_ZENOH_FRAG_MAX_BYTES to at least {need} (the board's \
+         `[knobs.zenoh] frag_max_bytes`, or the env knob). If {need_knob} \
          OVER-states what this image receives, state that class yourself instead \
-         (NROS_SUBSCRIBER_BUFFER_SIZE / NROS_ZENOH_SUBSCRIBER_LARGE_SIZE): a stated \
+         (NROS_SUBSCRIBER_BUFFER_BYTES / NROS_ZENOH_SUBSCRIBER_LARGE_BYTES): a stated \
          value wins over the derivation."
     ))
 }
@@ -104,10 +104,10 @@ mod tests {
         let need = receive_need(Some(0), None, Some(1496));
         let msg = receive_ceiling_refusal(need, 1400, 1024).expect("1496 > 1400");
         assert!(
-            msg.contains("= 1496 (NROS_SUBSCRIBER_BUFFER_SIZE)"),
+            msg.contains("= 1496 (NROS_SUBSCRIBER_BUFFER_BYTES)"),
             "{msg}"
         );
-        assert!(msg.contains("= 1400 (NROS_ZENOH_FRAG_MAX_SIZE)"), "{msg}");
+        assert!(msg.contains("= 1400 (NROS_ZENOH_FRAG_MAX_BYTES)"), "{msg}");
     }
 
     #[test]
@@ -119,11 +119,11 @@ mod tests {
     #[test]
     fn the_large_class_binds_when_the_image_routes_into_it() {
         let need = receive_need(Some(2), Some(16384), Some(1024));
-        assert_eq!(need, Some((16384, "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE")));
+        assert_eq!(need, Some((16384, "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES")));
         assert!(receive_ceiling_refusal(need, 2048, 1024).is_some());
         // Zero large blocks: the large class is not a receive path.
         let need = receive_need(Some(0), Some(16384), Some(1024));
-        assert_eq!(need, Some((1024, "NROS_SUBSCRIBER_BUFFER_SIZE")));
+        assert_eq!(need, Some((1024, "NROS_SUBSCRIBER_BUFFER_BYTES")));
         assert_eq!(receive_ceiling_refusal(need, 2048, 1024), None);
     }
 
@@ -132,7 +132,7 @@ mod tests {
         let need = receive_need(None, None, Some(1400));
         assert_eq!(
             receive_ceiling(1024, 1500),
-            (1500, "NROS_ZENOH_BATCH_UNICAST_SIZE")
+            (1500, "NROS_ZENOH_BATCH_UNICAST_BYTES")
         );
         assert_eq!(receive_ceiling_refusal(need, 1024, 1500), None);
     }

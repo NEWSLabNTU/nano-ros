@@ -179,7 +179,7 @@ nros_assert_sdk_not_foreign("${NROS_REPO_DIR}" "${ZEPHYR_SDK_INSTALL_DIR}")
 
 # issue 1324 — ONE heap. `nros-platform[platform-zephyr]` installs the image's
 # `#[global_allocator]` over `nros_platform_alloc` (the rlsf arena sized by
-# CONFIG_NROS_ZEPHYR_HEAP_SIZE), which is the heap the boot record measures and
+# CONFIG_NROS_MEMORY_HEAP_BYTES), which is the heap the boot record measures and
 # the native_sim heap gate scores. zephyr-lang-rust's CONFIG_RUST_ALLOC installs a
 # second one over libc `malloc` -- picolibc's arena, or the HOST heap on an
 # EXTERNAL_LIBC (XRCE) native_sim image -- and two `#[global_allocator]`s do not
@@ -190,7 +190,7 @@ if(CONFIG_RUST_ALLOC)
         "nros: CONFIG_RUST_ALLOC=y installs zephyr-lang-rust's libc-malloc allocator, "
         "a second heap beside nano-ros's.\n"
         "A Zephyr image's Rust `alloc` already goes through nros_platform_alloc, sized by "
-        "CONFIG_NROS_ZEPHYR_HEAP_SIZE (issue 1324). Remove CONFIG_RUST_ALLOC=y from the "
+        "CONFIG_NROS_MEMORY_HEAP_BYTES (issue 1324). Remove CONFIG_RUST_ALLOC=y from the "
         "application's .conf; the `log` facade is bridged by the nros entry macros, so "
         "nothing else needs it.")
 endif()

@@ -74,7 +74,7 @@
 
 /// Stack buffer for reading a string parameter back across the FFI.
 ///
-/// The store's own bound is `NROS_MAX_STRING_VALUE_LEN` (`nros-params`,
+/// The store's own bound is `NROS_PARAMS_MAX_STRING_VALUE_BYTES` (`nros-params`,
 /// default 256) and C++ cannot see it, so this is the C++ side's matching
 /// number. A stored value longer than this comes back TRUNCATED with
 /// `ErrorCode::Full` rather than silently short. It sizes a LOCAL only — no
@@ -646,7 +646,7 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name,
 // Forwarders onto the same one store. TEXT crosses the FFI as a borrowed
 // `const char*` in and a caller-owned `char*` out; there is no descriptor
 // STRUCT, because one would either carry a pointer into the store or an inline
-// buffer, and the second would make `NROS_MAX_PARAM_DESCRIPTION_LEN` a layout
+// buffer, and the second would make `NROS_PARAMS_MAX_DESCRIPTION_BYTES` a layout
 // (`check-cpp-capability-layout`: a probe may gate a METHOD, never a `sizeof`).
 // Nothing below declares a member of anything.
 

@@ -401,7 +401,7 @@ impl Endpoint {
     /// | `unbounded` | `closure_buffer_bytes` |
     ///
     /// `closure_buffer_bytes` is the consumer's `RX_BUF` — `DEFAULT_RX_BUF_SIZE`
-    /// in the executor, `NROS_SUBSCRIPTION_BUFFER_SIZE` on the wire. It is not a
+    /// in the executor, `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` on the wire. It is not a
     /// descriptor fact and cannot be: it is derived over the whole LINK CLOSURE
     /// by the lane that builds the image, and a type this image only publishes
     /// still has to fit it. So the caller supplies it.
@@ -1407,7 +1407,7 @@ impl Params {
         fact(&self.max_parameters, "max_parameters", &self.refused)
     }
 
-    /// `NROS_MAX_PARAM_DESCRIPTION_LEN` — the room each store slot keeps for
+    /// `NROS_PARAMS_MAX_DESCRIPTION_BYTES` — the room each store slot keeps for
     /// a descriptor's `description`, in BYTES (issue 2650).
     ///
     /// Not a contract fact: a `params:` row states a type and no prose. It
@@ -1427,7 +1427,7 @@ impl Params {
         )
     }
 
-    /// `NROS_MAX_PARAM_NAME_LEN` — the longest declared name, in BYTES.
+    /// `NROS_PARAMS_MAX_NAME_BYTES` — the longest declared name, in BYTES.
     pub fn max_param_name_len(&self) -> Fact<usize> {
         fact(
             &self.max_param_name_len,

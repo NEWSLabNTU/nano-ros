@@ -1169,7 +1169,7 @@ pub trait DeclarativeNode {
             assert!(
                 nros_node::rmw_type_registry::subscription_buffer_ok::<M>(),
                 "this message type's maximum serialized size exceeds \
-                 NROS_SUBSCRIPTION_BUFFER_SIZE — every sample would be received, \
+                 NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES — every sample would be received, \
                  ACKed and then DROPPED. Raise the knob to at least the type's \
                  bound (`<M as nros_serdes::schema::Message>::MAX_SERIALIZED_SIZE_XCDR2`)."
             )

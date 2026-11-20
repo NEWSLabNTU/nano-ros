@@ -415,7 +415,7 @@ pub fn knob_row(name: &str) -> Option<&'static KnobRow> {
         .find(|r| r.env == name || r.legacy.contains(&name))
 }
 
-/// The registry row whose `[knobs]` key is `key` (`"zenoh.wire.frag_max_size"`).
+/// The registry row whose `[knobs]` key is `key` (`"zenoh.frag_max_bytes"`).
 ///
 /// How the platform/board ladder (`nros-platform-config`) finds the env
 /// spelling for a field it holds: the row is the one owner of that pairing,
@@ -426,7 +426,7 @@ pub fn knob_by_toml(key: &str) -> Option<&'static KnobRow> {
 }
 
 /// The registry row a project states as `[image.<id>.knobs.<group>] <name>`,
-/// by its dotted key (`"zephyr.heap_size"`, `"zenoh.tx.batch"`; phase-484 W8).
+/// by its dotted key (`"memory.heap_bytes"`, `"zenoh.tx_batch"`; phase-484 W8).
 #[must_use]
 pub fn knob_by_image_key(key: &str) -> Option<&'static KnobRow> {
     KNOBS.iter().find(|r| r.image_key == key)
@@ -440,7 +440,7 @@ pub fn public_knobs() -> impl Iterator<Item = &'static KnobRow> {
 
 impl KnobRow {
     /// `(group, name)` of [`Self::image_key`]: everything before the last `.`,
-    /// and the last segment (`("zenoh.tx", "batch")`).
+    /// and the last segment (`("zenoh", "tx_batch")`).
     #[must_use]
     pub fn image_group_name(&self) -> (&'static str, &'static str) {
         self.image_key
@@ -631,6 +631,7 @@ fn read_catalog_spelled(
                 RETIRED_TEMPLATE
                     .replace("{legacy}", s)
                     .replace("{env}", name)
+                    .replace("{scale}", "")
             );
         }
     }
@@ -659,10 +660,84 @@ pub fn retired_spelling_refusal(spelled: &str) -> Option<String> {
         );
     }
     (row.env != spelled).then(|| {
+        let entry = row
+            .retired_spellings
+            .iter()
+            .find(|s| s.road == RetiredRoad::Env && s.spelling == spelled);
         RETIRED_TEMPLATE
             .replace("{legacy}", spelled)
             .replace("{env}", row.env)
+            .replace("{scale}", &entry.map(scale_text).unwrap_or_default())
     })
+}
+
+/// RFC-0140 D4 -- what a unit change asks of the value, for a refusal: empty
+/// for a pure rename, else ` (the value x 1024: <old> was in KiB)`.
+#[must_use]
+pub fn scale_text(entry: &RetiredSpelling) -> String {
+    if entry.factor == 1 {
+        return String::new();
+    }
+    match entry.from_unit {
+        Some(unit) => format!(
+            " (the value x {}: {} was in {unit})",
+            entry.factor, entry.spelling
+        ),
+        None => format!(" (the value x {})", entry.factor),
+    }
+}
+
+/// The row and entry that retired `spelling` on `road` (RFC-0140 D4), over the
+/// compiled table: core's rows and the in-tree packages'. A `kconfig:`
+/// spelling is matched with or without its `CONFIG_` prefix. An out-of-tree
+/// package's retirements are the merged catalog's
+/// (`nros_knob_catalog::Catalog::retired_spelling`).
+#[must_use]
+pub fn retired_knob_spelling(
+    road: RetiredRoad,
+    spelling: &str,
+) -> Option<(&'static KnobRow, &'static RetiredSpelling)> {
+    let want = |s: &str| {
+        s == spelling
+            || (road == RetiredRoad::Kconfig && s.strip_prefix("CONFIG_") == Some(spelling))
+    };
+    KNOBS.iter().find_map(|r| {
+        r.retired_spellings
+            .iter()
+            .find(|e| e.road == road && want(e.spelling))
+            .map(|e| (r, e))
+    })
+}
+
+/// The refusal a RETIRED `toml:` spelling earns under `table`
+/// (`image.<id>.knobs`, a board's or platform's `knobs`), or `None` when `key`
+/// (`zenoh.wire.frag_max_size`, retired) is not one. Names the key to write instead
+/// and, for a unit change, the factor (RFC-0140 D4, phase-581 W5).
+#[must_use]
+pub fn retired_toml_refusal(table: &str, key: &str) -> Option<String> {
+    let (row, entry) = retired_knob_spelling(RetiredRoad::Toml, key)?;
+    let (og, on) = key.rsplit_once('.').unwrap_or(("", key));
+    if let Some(reason) = row.retired.or(entry.instead) {
+        return Some(format!("`[{table}.{og}] {on}` is retired: {reason}"));
+    }
+    let (ng, nn) = row.image_group_name();
+    Some(format!(
+        "`[{table}.{og}] {on}` is retired: write `[{table}.{ng}] {nn}` instead{}",
+        scale_text(entry)
+    ))
+}
+
+/// Every retired `toml:` spelling present in a `[knobs]`-shaped table (its
+/// keys are `<group>[.<sub>].<name>`), as [`retired_toml_refusal`]'s
+/// sentences. `has(path)` answers whether the dotted path is set.
+#[must_use]
+pub fn retired_toml_refusals(table: &str, has: &dyn Fn(&str) -> bool) -> Vec<String> {
+    KNOBS
+        .iter()
+        .flat_map(|r| r.retired_spellings.iter())
+        .filter(|e| e.road == RetiredRoad::Toml && has(e.spelling))
+        .filter_map(|e| retired_toml_refusal(table, e.spelling))
+        .collect()
 }
 
 /// Every RETIRED knob that is set, as its refusal sentence, read through `env`.
@@ -1086,7 +1161,7 @@ mod tests {
             d[0].when
                 .is_some_and(|w| w.contains("!NROS_ZENOH_RAWETH_TRANSPORT"))
         );
-        let hs = knob_row("NROS_ZEPHYR_HEAP_SIZE").unwrap();
+        let hs = knob_row("NROS_MEMORY_HEAP_BYTES").unwrap();
         let KnobDefault::Kconfig(d) = hs.default else {
             panic!("heap: {:?}", hs.default)
         };
@@ -1116,14 +1191,14 @@ mod tests {
                 );
             }
         }
-        let heap = knob_by_image_key("zephyr.heap_size").expect("mechanical key");
-        assert_eq!(heap.env, "NROS_ZEPHYR_HEAP_SIZE");
-        let batch = knob_by_image_key("zenoh.tx.batch").expect("the board's key");
-        assert_eq!(batch.image_group_name(), ("zenoh.tx", "batch"));
+        let heap = knob_by_image_key("memory.heap_bytes").expect("mechanical key");
+        assert_eq!(heap.env, "NROS_MEMORY_HEAP_BYTES");
+        let batch = knob_by_image_key("zenoh.tx_batch").expect("the board's key");
+        assert_eq!(batch.image_group_name(), ("zenoh", "tx_batch"));
         let w = heap.image_env_refusal("talker");
         assert!(
-            w.contains("[image.talker] env NROS_ZEPHYR_HEAP_SIZE")
-                && w.contains("[image.talker.knobs.zephyr] heap_size"),
+            w.contains("[image.talker] env NROS_MEMORY_HEAP_BYTES")
+                && w.contains("[image.talker.knobs.memory] heap_bytes"),
             "{w}"
         );
         let level = knob_row("NROS_LOG_MAX_LEVEL").unwrap();
@@ -1197,7 +1272,7 @@ mod tests {
         let laddered = dir.join(".config-ladder");
         let mut f = std::fs::File::create(&laddered).unwrap();
         // The TABULATING shape: the two names are different words.
-        writeln!(f, "CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7").unwrap();
+        writeln!(f, "CONFIG_NROS_ZENOH_SUBSCRIBER_RING_DEPTH=7").unwrap();
         // The DERIVED shape: `CONFIG_` + the env name.
         writeln!(f, "CONFIG_NROS_EXECUTOR_MAX_CBS=11").unwrap();
         drop(f);
@@ -1333,19 +1408,19 @@ mod tests {
     fn a_retired_spelling_names_its_replacement() {
         let n = retired_spelling_refusal("ZPICO_FRAG_MAX_SIZE").expect("a retired spelling");
         assert!(
-            n.starts_with("ZPICO_FRAG_MAX_SIZE is a retired spelling of NROS_ZENOH_FRAG_MAX_SIZE"),
+            n.starts_with("ZPICO_FRAG_MAX_SIZE is a retired spelling of NROS_ZENOH_FRAG_MAX_BYTES"),
             "{n}"
         );
-        assert!(n.contains("set NROS_ZENOH_FRAG_MAX_SIZE instead"), "{n}");
+        assert!(n.contains("set NROS_ZENOH_FRAG_MAX_BYTES instead"), "{n}");
         assert!(!n.contains('{'), "every placeholder substituted: {n}");
-        assert_eq!(retired_spelling_refusal("NROS_ZENOH_FRAG_MAX_SIZE"), None);
+        assert_eq!(retired_spelling_refusal("NROS_ZENOH_FRAG_MAX_BYTES"), None);
         assert_eq!(retired_spelling_refusal("NROS_NOT_A_KNOB"), None);
         // The injected-accessor reader refuses too, and only for a SET value.
         let set = |k: &str| (k == "ZPICO_FRAG_MAX_SIZE").then(|| "512".to_string()); // retired spelling
-        let refused = std::panic::catch_unwind(|| read_spelled("NROS_ZENOH_FRAG_MAX_SIZE", &set));
+        let refused = std::panic::catch_unwind(|| read_spelled("NROS_ZENOH_FRAG_MAX_BYTES", &set));
         assert!(refused.is_err(), "a set retired spelling must refuse");
         let empty = |k: &str| (k == "ZPICO_FRAG_MAX_SIZE").then(String::new); // retired, but empty
-        assert_eq!(read_spelled("NROS_ZENOH_FRAG_MAX_SIZE", &empty), None);
+        assert_eq!(read_spelled("NROS_ZENOH_FRAG_MAX_BYTES", &empty), None);
     }
 
     /// RFC-0110 D2 — a RETIRED knob refuses EVERY spelling, the canonical one
@@ -1442,7 +1517,7 @@ mod tests {
     /// The tree's `-1` DERIVE sentinel reads as NO VALUE here.
     ///
     /// Every `-1 = derive` Kconfig knob (`NROS_EXECUTOR_MAX_CBS`,
-    /// `NROS_SUBSCRIPTION_BUFFER_SIZE`, `NROS_EXECUTOR_BACKING_U64S`, …) reaches
+    /// `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`, `NROS_EXECUTOR_BACKING_BYTES`, …) reaches
     /// its reading build script through this function, and each depends on the
     /// sentinel falling through to the crate's own default rather than being
     /// taken as a size. Nothing said so, because the behaviour comes from
@@ -1451,11 +1526,11 @@ mod tests {
     /// every one of those knobs a value of `-1 as usize`. Issues 0940 / 1171.
     #[test]
     fn the_derive_sentinel_is_not_a_size() {
-        let cfg = "CONFIG_NROS_EXECUTOR_BACKING_U64S=-1\n\
+        let cfg = "CONFIG_NROS_EXECUTOR_BACKING_BYTES=-1\n\
                    CONFIG_NROS_EXECUTOR_MAX_CBS=-1\n\
                    CONFIG_NROS_EXECUTOR_MAX_SC=8\n";
         assert_eq!(
-            kconfig_usize(cfg, "CONFIG_NROS_EXECUTOR_BACKING_U64S"),
+            kconfig_usize(cfg, "CONFIG_NROS_EXECUTOR_BACKING_BYTES"),
             None
         );
         assert_eq!(kconfig_usize(cfg, "CONFIG_NROS_EXECUTOR_MAX_CBS"), None);
@@ -1467,8 +1542,8 @@ mod tests {
         // image's types all fit the small class" for the payload trio.
         assert_eq!(
             kconfig_usize(
-                "CONFIG_NROS_EXECUTOR_BACKING_U64S=0\n",
-                "CONFIG_NROS_EXECUTOR_BACKING_U64S"
+                "CONFIG_NROS_EXECUTOR_BACKING_BYTES=0\n",
+                "CONFIG_NROS_EXECUTOR_BACKING_BYTES"
             ),
             Some(0)
         );
@@ -1537,7 +1612,63 @@ mod tests {
                 .collect();
             assert_eq!(env, row.legacy, "knob {}", row.id);
         }
-        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 32);
+        // 32 retired by phase-484 W8, 32 by phase-581 W5's renames.
+        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 64);
+    }
+
+    /// RFC-0140 G5 (phase-581 W5) -- EVERY retired `env:` and `toml:` spelling
+    /// is refused naming what to write instead and, for a unit change, the
+    /// factor. Generated from the registry, so a new retirement is a new case.
+    /// (`kconfig:` and `cmake:` are the module hook's: case G of
+    /// `tests/zephyr-transient-overrides-tests.sh`.)
+    #[test]
+    fn every_retired_spelling_is_refused_naming_its_replacement() {
+        let mut cases = 0;
+        for row in KNOBS {
+            for e in row.retired_spellings {
+                let factor = format!("the value x {}", e.factor);
+                match e.road {
+                    RetiredRoad::Env => {
+                        let why = retired_spelling_refusal(e.spelling).expect("refused");
+                        match row.retired {
+                            Some(reason) => assert!(why.contains(reason), "{why}"),
+                            None => assert!(why.contains(row.env), "{why}"),
+                        }
+                        assert_eq!(e.factor == 1, !why.contains(&factor), "{why}");
+                    }
+                    RetiredRoad::Toml => {
+                        let why =
+                            retired_toml_refusal("image.t.knobs", e.spelling).expect("refused");
+                        match row.retired {
+                            Some(reason) => assert!(why.contains(reason), "{why}"),
+                            None => {
+                                let (g, n) = row.image_group_name();
+                                assert!(
+                                    why.contains(&format!("`[image.t.knobs.{g}] {n}`")),
+                                    "{why}"
+                                );
+                            }
+                        }
+                        assert_eq!(e.factor == 1, !why.contains(&factor), "{why}");
+                    }
+                    RetiredRoad::Kconfig | RetiredRoad::Cmake | RetiredRoad::Run => continue,
+                }
+                cases += 1;
+            }
+        }
+        assert!(cases >= 70, "{cases} generated cases");
+        // The four memory carriers fold into one key each, in bytes.
+        let why = retired_spelling_refusal("NROS_FREERTOS_HEAP_KB").unwrap(); // retired spelling
+        assert!(
+            why.contains("NROS_MEMORY_HEAP_BYTES") && why.contains("x 1024") && why.contains("KiB"),
+            "{why}"
+        );
+        let why = retired_toml_refusal("knobs", "zenoh.wire.frag_max_size").unwrap();
+        assert_eq!(
+            why,
+            "`[knobs.zenoh.wire] frag_max_size` is retired: write `[knobs.zenoh] frag_max_bytes` \
+             instead"
+        );
     }
 
     #[test]

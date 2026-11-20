@@ -2,7 +2,7 @@
 //!
 //! # What was missing
 //!
-//! `NROS_SUBSCRIPTION_BUFFER_SIZE` sizes `RX_BUF`, which is a const generic on
+//! `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` sizes `RX_BUF`, which is a const generic on
 //! every entity and is also `DEFAULT_TX_BUF`. It is derived in
 //! `cmake/NanoRosMessageBounds.cmake` and travelled the RESOLVER road only, so
 //! a cargo leaf took the 1024-byte crate default for a number its own

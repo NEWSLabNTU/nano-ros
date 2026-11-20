@@ -420,7 +420,7 @@ pub fn compose_for(
         return Some(write_output(
             "refused",
             "this image is a Rust application: the take buffer \
-             (NROS_SUBSCRIPTION_BUFFER_SIZE) is sized over the linked closure, which \
+             (NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES) is sized over the linked closure, which \
              its package.xml is not known to state in full, so it keeps its crate \
              default.",
             ceiling,
@@ -598,7 +598,9 @@ fn write_output(
     c.push_str("# what nobody stated.\n");
     c.push_str("#\n");
     c.push_str("# There are TWO BASES here and the file says which each number used.\n");
-    c.push_str("# NROS_SUBSCRIPTION_BUFFER_SIZE is always derived over the LINKED closure:\n");
+    c.push_str(
+        "# NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES is always derived over the LINKED closure:\n",
+    );
     c.push_str("# it is also DEFAULT_TX_BUF and the default buffer of every raw service,\n");
     c.push_str("# client and action entity, so a type this image only PUBLISHES still has\n");
     c.push_str("# to fit and narrowing it would size a buffer too small. The three payload\n");
@@ -610,7 +612,7 @@ fn write_output(
     c.push_str("# SERIALIZED_SIZE_MAX, which is an estimate.\n");
     c.push_str("#\n");
     c.push_str(&format!(
-        "# small/large class split: {ceiling} B (policy -- NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD)\n"
+        "# small/large class split: {ceiling} B (policy -- NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES)\n"
     ));
     c.push('\n');
     c.push_str(&format!("set(NROS_MESSAGE_BOUNDS_STATUS \"{status}\")\n"));
@@ -644,7 +646,7 @@ fn write_output(
             c.push_str(
                 "# The TAKE BUFFER is refused: an unbounded type in the linked closure\n\
                  # could be published through it (DEFAULT_TX_BUF aliases it), so\n\
-                 # NROS_SUBSCRIPTION_BUFFER_SIZE keeps its configured value.\n\
+                 # NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES keeps its configured value.\n\
                  #\n\
                  # The PAYLOAD CLASSES below are derived anyway: they size the staging\n\
                  # pools for what this image RECEIVES, every subscribed type IS bounded,\n\
@@ -699,7 +701,7 @@ fn write_output(
             escape(&p.payload_reason)
         ));
         c.push_str(
-            "# NROS_SUBSCRIBER_BUFFER_SIZE, NROS_SUBSCRIBER_LARGE_SIZE and\n\
+            "# NROS_SUBSCRIBER_BUFFER_BYTES, NROS_SUBSCRIBER_LARGE_SIZE and\n\
              # NROS_MAX_LARGE_SUBSCRIBERS are NOT derived and do NOT fall back to the\n\
              # closure. This image states what it receives, so the classes come from\n\
              # that or from nowhere; each keeps its configured value.\n",
@@ -732,7 +734,7 @@ fn write_output(
             c.push_str(&format!(
                 "# Nothing this image receives fits under the {ceiling} B split, so the small\n\
                  # class size is not derivable from that set -- but the class is still used,\n\
-                 # by any caller that states no hint. NROS_SUBSCRIBER_BUFFER_SIZE keeps its\n\
+                 # by any caller that states no hint. NROS_SUBSCRIBER_BUFFER_BYTES keeps its\n\
                  # configured value.\n"
             ));
         }
@@ -1250,7 +1252,7 @@ mod tests {
     /// prices can miss a type the image receives. On that road only the
     /// SUBSCRIBED basis may tighten a knob: a closure-basis answer derives
     /// nothing (crate defaults kept), and the closure-derived take buffer
-    /// (`NROS_SUBSCRIPTION_BUFFER_SIZE`) is never published.
+    /// (`NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`) is never published.
     #[test]
     fn rust_west_seed_refuses_the_closure_basis() {
         let tables = [BoundTable {

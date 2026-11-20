@@ -32,7 +32,7 @@ flake-quarantine:
 mem-report:
     @python3 scripts/nros-mem-report.py --selftest
 
-# phase-460 W5 / issue 1424 -- CONFIG_NROS_ZEPHYR_HEAP_SIZE must be gated
+# phase-460 W5 / issue 1424 -- CONFIG_NROS_MEMORY_HEAP_BYTES must be gated
 # against a MEASUREMENT, not against a guess.
 #
 # The island carries 94208 bytes, annotated in its own `.conf` as a guess, and

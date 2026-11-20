@@ -191,51 +191,62 @@ function(_nros_freertos_entry_network out_var board_hint)
 endfunction()
 
 # The FreeRTOS carrier's `@NROS_ENTRY_APP_STACK_BYTES@`, for the same two
-# callers. 64 KiB unless the configure sets `NROS_FREERTOS_APP_STACK_KB`, the
+# callers. 64 KiB unless the configure sets `NROS_MEMORY_APP_STACK_BYTES`, the
 # cmake spelling of the cargo road's knob of the same name (issue 2070: this
 # was a literal, so an image that needed more had no way to say so, and a
 # ported node declaring parameters overflowed it into the kernel's globals).
+# The knob is bytes (`memory.app_stack_bytes`, phase-581 W5); the heap raise
+# below is in KiB, so a stated size must be whole KiB.
 function(_nros_freertos_entry_app_stack out_var)
-    set(_kb 64)
+    set(_bytes 65536)
     # Issue 2496 -- a `-D` wins; otherwise the environment, then the image's
-    # `[image.<id>.knobs.freertos] app_stack_kb` (`nros_image_env_value`), the
+    # `[image.<id>.knobs.memory] app_stack_bytes` (`nros_image_env_value`), the
     # same order the cargo road's `[env]` row gets. Before this the image's
     # value reached only the cargo commands, so the C carrier kept 64 KiB.
-    if(DEFINED NROS_FREERTOS_APP_STACK_KB AND NOT "${NROS_FREERTOS_APP_STACK_KB}" STREQUAL "")
-        set(_stated "${NROS_FREERTOS_APP_STACK_KB}")
+    if(DEFINED NROS_MEMORY_APP_STACK_BYTES AND NOT "${NROS_MEMORY_APP_STACK_BYTES}" STREQUAL "")
+        set(_stated "${NROS_MEMORY_APP_STACK_BYTES}")
     else()
-        nros_image_env_value(_stated NROS_FREERTOS_APP_STACK_KB)
+        nros_image_env_value(_stated NROS_MEMORY_APP_STACK_BYTES)
     endif()
     if(NOT "${_stated}" STREQUAL "")
-        if(NOT _stated MATCHES "^[0-9]+$" OR _stated EQUAL 0)
-            message(FATAL_ERROR
-                "nano-ros: the FreeRTOS app stack '${_stated}' (NROS_FREERTOS_APP_STACK_KB, "
-                "or `app_stack_kb` under the image's [image.<id>.knobs.freertos]) is not a "
-                "positive whole number of KiB.")
+        set(_whole_kib FALSE)
+        if(_stated MATCHES "^[0-9]+$" AND NOT _stated EQUAL 0)
+            math(EXPR _rem "${_stated} % 1024")
+            if(_rem EQUAL 0)
+                set(_whole_kib TRUE)
+            endif()
         endif()
-        set(_kb "${_stated}")
+        if(NOT _whole_kib)
+            message(FATAL_ERROR
+                "nano-ros: the FreeRTOS app stack '${_stated}' (NROS_MEMORY_APP_STACK_BYTES, "
+                "or `app_stack_bytes` under the image's [image.<id>.knobs.memory]) is not a "
+                "positive whole number of KiB, in bytes (a multiple of 1024).")
+        endif()
+        set(_bytes "${_stated}")
     endif()
     # Issue 2400 W2b — an image with `[image.<id>] stack_floor = "raise"` is
     # rebuilt by `nros build` once with its measured floor, handed over in the
     # ENVIRONMENT (`NROS_STACK_FLOOR_RAISE=NAME=VALUE[;...]`) and never in the
     # cache: the raise is derived again by every build from that build's own
-    # walk, so `system.toml` stays the whole statement. It only raises.
-    _nros_stack_floor_raise_value(NROS_FREERTOS_APP_STACK_KB _raised)
-    if(NOT _raised STREQUAL "" AND _raised GREATER _kb)
-        math(EXPR _delta "${_raised} - ${_kb}")
-        message(STATUS "nano-ros: app stack raised from ${_kb} to ${_raised} KiB, the "
+    # walk, so `system.toml` stays the whole statement. It only raises. The
+    # floor arrives in bytes rounded up to whole KiB (`{bytes_kib}`).
+    _nros_stack_floor_raise_value(NROS_MEMORY_APP_STACK_BYTES _raised)
+    if(NOT _raised STREQUAL "" AND _raised GREATER _bytes)
+        math(EXPR _delta "(${_raised} - ${_bytes}) / 1024")
+        math(EXPR _from_kb "${_bytes} / 1024")
+        math(EXPR _to_kb "${_raised} / 1024")
+        message(STATUS "nano-ros: app stack raised from ${_from_kb} to ${_to_kb} KiB, the "
             "image's measured stack floor (`stack_floor = \"raise\"`)")
         # heap_4 hands out the task stack, so the heap grows by what the stack
-        # did; an explicit NROS_FREERTOS_HEAP_KB is a size someone chose and
+        # did; an explicit NROS_MEMORY_HEAP_BYTES is a size someone chose and
         # is left alone (FreeRTOSConfig.h).
         get_property(_done GLOBAL PROPERTY _NROS_FREERTOS_HEAP_RAISE_KB)
         if(NOT _done AND COMMAND nros_freertos_config_define AND TARGET freertos_config)
             nros_freertos_config_define("NROS_FREERTOS_HEAP_RAISE_KB=${_delta}")
             set_property(GLOBAL PROPERTY _NROS_FREERTOS_HEAP_RAISE_KB "${_delta}")
         endif()
-        set(_kb "${_raised}")
+        set(_bytes "${_raised}")
     endif()
-    math(EXPR _bytes "${_kb} * 1024")
     set(${out_var} "${_bytes}" PARENT_SCOPE)
 endfunction()
 

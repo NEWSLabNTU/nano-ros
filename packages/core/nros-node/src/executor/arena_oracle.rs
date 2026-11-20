@@ -5,7 +5,7 @@
 //! declared depths) and emits the result as [`arena_model::REQUIRED`] beside
 //! the arena it derives from it (`cargo:arena_size`). Before this module that
 //! requirement stopped at the derivation. An image that STATED
-//! `NROS_EXECUTOR_ARENA_SIZE` below it built, linked, flashed and then died at
+//! `NROS_EXECUTOR_ARENA_BYTES` below it built, linked, flashed and then died at
 //! the first registration that did not fit, with `NodeError::BufferTooSmall` —
 //! on a board whose only diagnostic channel may be a RAM record read back with
 //! a debugger.
@@ -72,13 +72,13 @@ use crate::config::arena_model;
 /// Here rather than beside `ExecutorSizing` because `storage` is compiled only
 /// with an RMW seam, and this must fire in every build of the crate.
 ///
-/// It can fire only when `NROS_EXECUTOR_ARENA_SIZE` is STATED: a derived arena
+/// It can fire only when `NROS_EXECUTOR_ARENA_BYTES` is STATED: a derived arena
 /// is the model (unfloored since issue 1971; only an undeclared image's
 /// worst-case budget is floored).
 const _: () = assert_covers(
     crate::config::ARENA_SIZE,
     arena_model::REQUIRED,
-    "NROS_EXECUTOR_ARENA_SIZE (Zephyr: CONFIG_NROS_EXECUTOR_ARENA_SIZE)",
+    "NROS_EXECUTOR_ARENA_BYTES (Zephyr: CONFIG_NROS_EXECUTOR_ARENA_BYTES)",
     Remedy::Knob,
 );
 

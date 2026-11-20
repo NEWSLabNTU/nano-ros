@@ -115,7 +115,7 @@ pub use types::{
 /// The knob that sizes the parameter store, in every spelling a user writes.
 ///
 /// One of the two lines a refused declaration's report adds, each short enough
-/// for one log record (128 bytes is the smallest `NROS_LOG_BUFFER_SIZE`), so a
+/// for one log record (128 bytes is the smallest `NROS_LOG_BUFFER_BYTES`), so a
 /// small board does not cut the knob's name off.
 // GitHub #4018. One text, so the Rust, C and C++ reports name the knob one way.
 pub const STORE_SIZE_KNOB: &str = store_size_knob!();

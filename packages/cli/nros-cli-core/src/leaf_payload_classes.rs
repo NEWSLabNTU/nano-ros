@@ -33,7 +33,7 @@
 //! # Why all three knobs move together
 //!
 //! The runtime routes on `min(ZPICO_SUBSCRIBER_SIZE_THRESHOLD,
-//! NROS_SUBSCRIBER_BUFFER_SIZE)` (`SMALL_CLASS_CEILING` in
+//! NROS_SUBSCRIBER_BUFFER_BYTES)` (`SMALL_CLASS_CEILING` in
 //! `shim/subscriber.rs`, issue 0841), NOT on the threshold alone. Publishing
 //! the large COUNT while leaving the small BLOCK at its 1024-byte default would
 //! classify a 1,500-byte subscribed type "small" here and route it LARGE at

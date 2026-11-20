@@ -47,10 +47,10 @@
 //! [`ring_bytes`] of `.bss` plus 26 bytes of counters, and **nothing at all**
 //! in an image that does not enable the `rosout` feature — the module is
 //! `cfg`'d out whole. The cost moves with TWO knobs (`NROS_LOG_ROSOUT_RECORDS`,
-//! `NROS_LOG_BUFFER_SIZE` — once feature families), so here it is
+//! `NROS_LOG_BUFFER_BYTES` — once feature families), so here it is
 //! MEASURED rather than described — one build per row, 2026-09-29:
 //!
-//! | `NROS_LOG_ROSOUT_RECORDS` | `NROS_LOG_BUFFER_SIZE` | per slot | ring |
+//! | `NROS_LOG_ROSOUT_RECORDS` | `NROS_LOG_BUFFER_BYTES` | per slot | ring |
 //! | --- | --- | --- | --- |
 //! | 8 | 128 | 232 B | 1 856 B |
 //! | 8 | 256 | 360 B | 2 880 B |
@@ -67,7 +67,7 @@
 //! `NROS_LOG_EARLY_RECORDS`: a 64 KB MCU and a Linux host do not want the same
 //! number. Note the right-hand column against a Zephyr image's 16 KB picolibc
 //! arena — the default is a third of it, and `NROS_LOG_ROSOUT_RECORDS=8` +
-//! `NROS_LOG_BUFFER_SIZE=128` is the build that fits.
+//! `NROS_LOG_BUFFER_BYTES=128` is the build that fits.
 
 use core::cell::UnsafeCell;
 
@@ -301,7 +301,7 @@ pub fn suppressed() -> usize {
 /// scales.
 ///
 /// Derived rather than documented, because it moves with TWO knobs
-/// — `NROS_LOG_ROSOUT_RECORDS` picks the depth and `NROS_LOG_BUFFER_SIZE` the per-record
+/// — `NROS_LOG_ROSOUT_RECORDS` picks the depth and `NROS_LOG_BUFFER_BYTES` the per-record
 /// message capacity — so any figure written in prose is right for one build.
 /// Measured on the shipped defaults (depth 16, buffer 256): **5 760
 /// bytes** (360 B per slot), plus 26 bytes of counters and flags.

@@ -62,7 +62,7 @@ pub(crate) const WIRE_STRING_CAP: usize = 256;
 // instead, where the cap is known: this is the one crate that knows it.
 const _: () = assert!(
     nros_params::MAX_PARAM_DESCRIPTION_LEN <= WIRE_STRING_CAP,
-    "NROS_MAX_PARAM_DESCRIPTION_LEN is larger than the 256-byte string an \
+    "NROS_PARAMS_MAX_DESCRIPTION_BYTES is larger than the 256-byte string an \
      rcl_interfaces ParameterDescriptor carries, so the extra bytes could never \
      reach `ros2 param describe`. State 256 or less."
 );
@@ -113,7 +113,7 @@ pub const UNDECLARED_REASON: &str =
 /// Issue 1270 / phase-446 F3 -- how many bytes EACH half of the shared buffer
 /// pair holds.
 ///
-/// A size a rung STATES wins: `NROS_PARAM_SERVICE_BUFFER_SIZE` in the
+/// A size a rung STATES wins: `NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES` in the
 /// environment, in Kconfig, or in the board's executor rung. Otherwise, when
 /// the contract declares every node's parameters, it is the largest message
 /// those declarations can put through one of the six services
@@ -631,7 +631,7 @@ const DECLARED_WORST_PARAM_REQUEST: usize = match crate::config::DECLARED_PARAM_
 const _: () = assert!(
     inbox_fits(PARAM_SERVICE_BUFFER_SIZE, DECLARED_WORST_PARAM_REQUEST)
         || !crate::config::PARAM_SERVICE_BUFFER_STATED,
-    "NROS_PARAM_SERVICE_BUFFER_SIZE is smaller than the largest parameter request the \
+    "NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES is smaller than the largest parameter request the \
      contract's declared parameters can produce. Raise it, or drop the override and let \
      the build derive it from the contract."
 );

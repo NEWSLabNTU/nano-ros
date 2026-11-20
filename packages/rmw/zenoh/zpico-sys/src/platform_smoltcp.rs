@@ -141,7 +141,7 @@ struct SocketEntry {
 
 // Phase 214.H.2 — `SOCKET_BUFFER_SIZE = 2048` is the SSoT in
 // `nros-smoltcp` (build.rs-emitted, env-tunable via
-// `NROS_SMOLTCP_BUFFER_SIZE`). This shim consumes it directly so the
+// `NROS_NET_BUFFER_BYTES`). This shim consumes it directly so the
 // two smoltcp-backed transport surfaces (`nros-smoltcp` driver +
 // `zpico-sys` platform shim) stay in lock-step on the rx/tx buffer
 // footprint.

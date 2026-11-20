@@ -383,7 +383,7 @@ impl EntityKind {
 
     /// Does an entity of this kind draw from the backend's TOPIC PAYLOAD
     /// pools -- the two statically sized classes
-    /// `NROS_SUBSCRIBER_BUFFER_SIZE` / `NROS_SUBSCRIBER_LARGE_SIZE` size?
+    /// `NROS_SUBSCRIBER_BUFFER_BYTES` / `NROS_SUBSCRIBER_LARGE_SIZE` size?
     ///
     /// Only a subscription, and that is MEASURED rather than assumed: in
     /// `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs` the pools
@@ -950,7 +950,7 @@ pub struct EntityInventory {
 }
 
 /// Issue 2650 -- what an inventory knows about the parameter descriptions its
-/// code sets, the one input `NROS_MAX_PARAM_DESCRIPTION_LEN` is derived from.
+/// code sets, the one input `NROS_PARAMS_MAX_DESCRIPTION_BYTES` is derived from.
 ///
 /// A contract's `params:` rows state a type and no prose, so only the metadata
 /// probe can answer, and only when it watched EVERY launched node: a node the
@@ -3197,9 +3197,9 @@ pub struct ParamStoreSizing {
     /// the other is the longest single name. `nros_params::MAX_PARAMETERS`
     /// carries the canonical statement (issue 1450).
     pub max_parameters: usize,
-    /// `NROS_MAX_PARAM_NAME_LEN` -- the longest of those names, in bytes.
+    /// `NROS_PARAMS_MAX_NAME_BYTES` -- the longest of those names, in bytes.
     pub max_param_name_len: usize,
-    /// `NROS_MAX_STRING_VALUE_LEN` -- `string` and `string_array`.
+    /// `NROS_PARAMS_MAX_STRING_VALUE_BYTES` -- `string` and `string_array`.
     pub string_value_len: ParamCapacity,
     /// `NROS_MAX_ARRAY_LEN` -- `bool_array`, `integer_array`, `double_array`.
     pub array_len: ParamCapacity,
@@ -3207,7 +3207,7 @@ pub struct ParamStoreSizing {
     /// bound (issue 2647) so a `string` beside a `double_array` does not size
     /// every slot for their product.
     pub string_array_len: ParamCapacity,
-    /// `NROS_MAX_BYTE_ARRAY_LEN` -- `byte_array`.
+    /// `NROS_PARAMS_MAX_BYTE_ARRAY_BYTES` -- `byte_array`.
     pub byte_array_len: ParamCapacity,
 }
 
@@ -6556,7 +6556,7 @@ impl EntityInventory {
             "the types SUBSCRIPTIONS receive. These and only these allocate from the\n\
              # backend's two topic payload classes (one `alloc_payload_block` call site,\n\
              # reached only from `declare_subscriber`), so they are the join key for\n\
-             # NROS_SUBSCRIBER_BUFFER_SIZE / _LARGE_SIZE / NROS_MAX_LARGE_SUBSCRIBERS.\n\
+             # NROS_SUBSCRIBER_BUFFER_BYTES / _LARGE_SIZE / NROS_MAX_LARGE_SUBSCRIBERS.\n\
              # The count is per ENTITY, not per type: two subscriptions on one large type\n\
              # need two blocks.",
             &self.subscribed_types(),
@@ -7014,8 +7014,15 @@ fn render_param_store(p: &ParamDeclarations) -> String {
                 s.push_str(&format!("set(NROS_DERIVED_{knob} 0)\n"));
             }
             ParamCapacity::NeededBy(d) => {
+                // The carrier keeps its suffix; the knob a board states is
+                // the registry's (renamed to bytes by phase-581 W5).
+                let stated = match knob {
+                    "MAX_STRING_VALUE_LEN" => "PARAMS_MAX_STRING_VALUE_BYTES",
+                    "MAX_BYTE_ARRAY_LEN" => "PARAMS_MAX_BYTE_ARRAY_BYTES",
+                    other => other,
+                };
                 s.push_str(&format!(
-                    "# NROS_{knob}: `{}` on {} is declared `{}`, so the board states it.\n",
+                    "# NROS_{stated}: `{}` on {} is declared `{}`, so the board states it.\n",
                     d.name,
                     d.node,
                     d.ty.as_str()

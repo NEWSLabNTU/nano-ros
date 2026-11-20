@@ -541,7 +541,7 @@ fn naming_every_baseline_row_entry_is_a_live_violation() {
     let ctx = naming::Context::of(cat.rows(), cat.owners.keys().cloned());
     let data = naming::Data::get();
     let mut found = BTreeMap::new();
-    for r in cat.rows() {
+    for r in cat.rows().iter().filter(|r| naming::judged(r)) {
         let s = naming::Subject::of_row(r);
         let rules: std::collections::BTreeSet<String> = naming::violations(&s, &ctx, data)
             .into_iter()

@@ -259,8 +259,8 @@ fn every_log_knob_is_read_back_from_the_image_env() {
         ),
         (
             "buffer",
-            "NROS_LOG_BUFFER_SIZE",
-            stated("NROS_LOG_BUFFER_SIZE").parse().expect("a count"),
+            "NROS_LOG_BUFFER_BYTES",
+            stated("NROS_LOG_BUFFER_BYTES").parse().expect("a count"),
             256,
         ),
         (

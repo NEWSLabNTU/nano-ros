@@ -253,7 +253,7 @@ endfunction()
 #     executor: a subscriber, a callback slot, an arena entry and a token.
 #
 # Two exclusions this comment used to list are GONE (issue 1233): both
-# `NROS_EXECUTOR_MAX_NODES` and `NROS_SUBSCRIPTION_BUFFER_SIZE` now travel all
+# `NROS_EXECUTOR_MAX_NODES` and `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` now travel all
 # three roads. Phase-412 withheld the node table on the ground that
 # under-counting HALTS the board -- but the ceiling failure is a named
 # `NodeError::NodeTableFull`, which is a property of the FAILURE and not of the

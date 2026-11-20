@@ -3286,7 +3286,7 @@ dir = "packages/testing/nros-bench/large-msg-xrce"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-bench/stress-zenoh"
-env = { NROS_SUBSCRIBER_BUFFER_SIZE = "8192" }
+env = { NROS_SUBSCRIBER_BUFFER_BYTES = "8192" }
 
 # phase-384 W2 — large-ring variant of stress-xrce. The XRCE receive ring entry
 # is a fixed `uint8_t data[XRCE_BUFFER_SIZE]`, so a subscription's own RX_BUF
@@ -3296,7 +3296,7 @@ env = { NROS_SUBSCRIBER_BUFFER_SIZE = "8192" }
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-bench/stress-xrce"
-env = { NROS_XRCE_BUFFER_SIZE = "8192" }
+env = { NROS_XRCE_BUFFER_BYTES = "8192" }
 
 # ===========================================================================
 # baremetal — Rust (cortex-m3; cross target via each example's
@@ -6986,7 +6986,7 @@ skip_probe = true
 #
 # phase-484 W5b — the arena size is a KNOB, prompt-less in a project with a
 # `system.toml`, so the overlay can no longer set it: it rides the transient
-# channel instead (`-DNROS_OVERRIDE_EXECUTOR_ARENA_SIZE=32`, `west_overrides`).
+# channel instead (`-DNROS_OVERRIDE_EXECUTOR_ARENA_BYTES=32`, `west_overrides`).
 # The talker's first registration claims 48 B, so 32 B is short by 16.
 [[workspace_fixture]]
 id = "zephyr-cortex-m-c-boot-report-zenoh"
@@ -7002,7 +7002,7 @@ west_build_name = "build-cortex-m-c-boot-report-zenoh"
 west_id = "zephyr/mps2/an385/c/boot-report-arena-exhausted/zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10787"
 # Issue 2362 -- PARKED. On this road the image's entities are DECLARED, so
-# phase-412's compile-time arena oracle refuses `EXECUTOR_ARENA_SIZE = "32"`
+# phase-412's compile-time arena oracle refuses `EXECUTOR_ARENA_BYTES = "32"`
 # (2112 B modelled). The row builds with the derived arena and its test is
 # `#[ignore]`d until the issue decides what the cell becomes.
 skip_probe = true

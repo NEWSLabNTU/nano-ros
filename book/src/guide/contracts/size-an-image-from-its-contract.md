@@ -117,14 +117,14 @@ hand is an override, not a requirement.
 | `NROS_ZENOH_MAX_QUERYABLES` | the declared service servers, plus the parameter and lifecycle services the image's nodes register; with no readable declaration it stays at its undeclared budget (8 embedded, 32 hosted) |
 | `NROS_ZENOH_MAX_LIVELINESS` | one per node name plus the session's own, one per publisher, subscriber, service server and client, and the parameter and lifecycle families' entities |
 | `NROS_EXECUTOR_MAX_CBS`, `NROS_EXECUTOR_ACTION_CLIENTS`, `NROS_RMW_SUBSCRIBER_SLOTS` | the declared entity inventory |
-| `NROS_SUBSCRIBER_BUFFER_SIZE` | the largest *small*-class message type the image subscribes to |
-| `NROS_ZENOH_SUBSCRIBER_LARGE_SIZE` | the largest *large*-class type; stated only when the large count is non-zero |
+| `NROS_SUBSCRIBER_BUFFER_BYTES` | the largest *small*-class message type the image subscribes to |
+| `NROS_ZENOH_SUBSCRIBER_LARGE_BYTES` | the largest *large*-class type; stated only when the large count is non-zero |
 | `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS` | how many subscribed types fall in the large class. Zero is an answer, not a floor: the pool becomes zero bytes |
-| `NROS_SUBSCRIPTION_BUFFER_SIZE` | the executor's take buffer, from the same message bounds |
-| `NROS_EXECUTOR_ARENA_SIZE` | the same inventory, in the executor's own build; the variable is the override |
+| `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` | the executor's take buffer, from the same message bounds |
+| `NROS_EXECUTOR_ARENA_BYTES` | the same inventory, in the executor's own build; the variable is the override |
 
-The transport's wire buffers (`NROS_ZENOH_FRAG_MAX_SIZE`, the batch sizes,
-`NROS_ZENOH_SERVICE_BUFFER_SIZE`, `NROS_ZENOH_GET_REPLY_BUF_SIZE`,
+The transport's wire buffers (`NROS_ZENOH_FRAG_MAX_BYTES`, the batch sizes,
+`NROS_ZENOH_SERVICE_BUFFER_SIZE`, `NROS_ZENOH_GET_REPLY_BUFFER_BYTES`,
 `NROS_ZENOH_MAX_PENDING_GETS`), the smoltcp socket pools and the parameter
 store limits are not derived: they are yours. They are covered in
 [Tune throughput and latency](../rmw/tune-throughput-and-latency.md#transport-buffers-and-limits).
@@ -137,8 +137,8 @@ own default applies only when nothing is stated and nothing can be derived.
 ## If it doesn't work
 
 - **The derived buffer size is larger than any message you send.** The
-  message-bound sizes (`NROS_SUBSCRIBER_BUFFER_SIZE`, the large class,
-  `NROS_SUBSCRIPTION_BUFFER_SIZE`) come from every type in the interface
+  message-bound sizes (`NROS_SUBSCRIBER_BUFFER_BYTES`, the large class,
+  `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`) come from every type in the interface
   closure the image links, not only the types it subscribes to, so they are an
   upper bound: never too small, sometimes larger than you need. The build names
   the type that set the size. When that type is not one of yours, state your

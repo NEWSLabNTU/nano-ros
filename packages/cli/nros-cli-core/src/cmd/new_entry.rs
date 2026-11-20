@@ -567,7 +567,7 @@ CONFIG_NROS=y
 # Rust application support (zephyr-lang-rust).
 CONFIG_RUST=y
 # No CONFIG_RUST_ALLOC: Rust `alloc` goes through nros_platform_alloc, the same
-# heap zenoh-pico uses, sized by CONFIG_NROS_ZEPHYR_HEAP_SIZE. The
+# heap zenoh-pico uses, sized by CONFIG_NROS_MEMORY_HEAP_BYTES. The
 # nros module refuses CONFIG_RUST_ALLOC=y, which would add a second heap.
 
 # CONFIG_MAIN_STACK_SIZE: the nano-ros module decides it per image (32 KiB for

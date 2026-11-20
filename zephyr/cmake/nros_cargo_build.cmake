@@ -259,7 +259,7 @@ endfunction()
 #   4. the crate's own default                -- nobody; the knob stays unset
 #
 # A derived value is therefore a DEFAULT and never an override. Rung 4 is
-# "leave it unresolved", the same tri-state `NROS_EXECUTOR_ARENA_SIZE` already
+# "leave it unresolved", the same tri-state `NROS_EXECUTOR_ARENA_BYTES` already
 # uses: an unforwarded knob reaches no cargo environment, the reading build
 # script falls through to its own literal, and nothing has to restate that
 # literal here where it would drift.
@@ -1175,8 +1175,8 @@ function(nros_resolve_knobs)
             "${NROS_RESOLVED_NROS_MAX_LIVELINESS}" ZPICO_MAX_LIVELINESS)
         _nros_resolve_knob(NROS_ZENOH_MAX_LIVELINESS "${_nros_zpico_lvl}")
         _nros_resolve_knob(NROS_ZENOH_MAX_PENDING_GETS "${CONFIG_NROS_MAX_PENDING_GETS}")
-        _nros_resolve_knob(NROS_ZENOH_GET_REPLY_BUF_SIZE "${CONFIG_NROS_GET_REPLY_BUF_SIZE}")
-        _nros_resolve_knob(NROS_ZENOH_GET_POLL_INTERVAL_MS "${CONFIG_NROS_GET_POLL_INTERVAL_MS}")
+        _nros_resolve_knob(NROS_ZENOH_GET_REPLY_BUFFER_BYTES "${CONFIG_NROS_ZENOH_GET_REPLY_BUFFER_BYTES}")
+        _nros_resolve_knob(NROS_ZENOH_GET_POLL_INTERVAL_MS "${CONFIG_NROS_ZENOH_GET_POLL_INTERVAL_MS}")
         # RFC-0074 / phase-462 W6a/W6b -- the read task's frame budget, on the
         # derivable ladder: a stated env / Kconfig value wins, else the pair
         # the entity inventory derived from the contract's declared subscriber
@@ -1191,8 +1191,8 @@ function(nros_resolve_knobs)
         _nros_resolve_derivable_knob(NROS_ZENOH_RX_TASK_BUDGET_REST_US
             "${CONFIG_NROS_ZENOH_RX_TASK_BUDGET_REST_US}" NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US
             "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-        _nros_resolve_knob(NROS_ZENOH_FRAG_MAX_SIZE "${CONFIG_NROS_FRAG_MAX_SIZE}")
-        _nros_resolve_knob(NROS_ZENOH_BATCH_UNICAST_SIZE "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
+        _nros_resolve_knob(NROS_ZENOH_FRAG_MAX_BYTES "${CONFIG_NROS_ZENOH_FRAG_MAX_BYTES}")
+        _nros_resolve_knob(NROS_ZENOH_BATCH_UNICAST_BYTES "${CONFIG_NROS_ZENOH_BATCH_UNICAST_BYTES}")
 
         # phase-290 (RFC-0049) — tx knob trio, tri-state: always resolved to
         # (0|1) so the cargo-built zpico config header agrees with the zephyr
@@ -1282,8 +1282,8 @@ function(nros_resolve_knobs)
         # The concept is not zenoh's: it is the largest bound among the types
         # this IMAGE subscribes to. zenoh sizes a payload pool from it and the
         # executor sizes its receive regions from it; both consume one fact.
-        _nros_resolve_derivable_knob(NROS_SUBSCRIBER_BUFFER_SIZE
-            "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}"
+        _nros_resolve_derivable_knob(NROS_SUBSCRIBER_BUFFER_BYTES
+            "${CONFIG_NROS_SUBSCRIBER_BUFFER_BYTES}"
             NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
         _nros_resolve_knob(NROS_ZENOH_SERVICE_BUFFER_SIZE
             "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
@@ -1325,7 +1325,7 @@ function(nros_resolve_knobs)
         # image, and the same tree rebuilt by a bare `ninja` silently got crate
         # defaults. Same class as issue 0316 / #0749.
         _nros_resolve_knob(NROS_ZENOH_SUBSCRIBER_RING_DEPTH
-            "${CONFIG_NROS_SUBSCRIBER_RING_DEPTH}")
+            "${CONFIG_NROS_ZENOH_SUBSCRIBER_RING_DEPTH}")
         # The two W6 named by name: "numbers a human produced by reading
         # generated headers with their eyes". Both derivable, and the count is
         # the one that has an answer of ZERO -- W4 made that legal precisely so
@@ -1334,8 +1334,8 @@ function(nros_resolve_knobs)
         _nros_resolve_derivable_knob(NROS_ZENOH_MAX_LARGE_SUBSCRIBERS
             "${CONFIG_NROS_MAX_LARGE_SUBSCRIBERS}"
             NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
-        _nros_resolve_derivable_knob(NROS_ZENOH_SUBSCRIBER_LARGE_SIZE
-            "${CONFIG_NROS_SUBSCRIBER_LARGE_SIZE}"
+        _nros_resolve_derivable_knob(NROS_ZENOH_SUBSCRIBER_LARGE_BYTES
+            "${CONFIG_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES}"
             NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)
 
         # issue 1368 -- the reassembly ceiling was compared to nothing.
@@ -1387,24 +1387,24 @@ function(nros_resolve_knobs)
         set(_nros_rx_need_knob "")
         if(DEFINED NROS_RESOLVED_NROS_ZENOH_MAX_LARGE_SUBSCRIBERS
            AND NROS_RESOLVED_NROS_ZENOH_MAX_LARGE_SUBSCRIBERS GREATER 0
-           AND DEFINED NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE
-           AND NOT "${NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE}" STREQUAL "")
+           AND DEFINED NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES
+           AND NOT "${NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES}" STREQUAL "")
             # The image routes into the large class, so the large class is the
             # largest thing it can receive.
-            set(_nros_rx_need "${NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE}")
-            set(_nros_rx_need_knob "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE")
-        elseif(DEFINED NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE
-               AND NOT "${NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE}" STREQUAL "")
-            set(_nros_rx_need "${NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE}")
-            set(_nros_rx_need_knob "NROS_SUBSCRIBER_BUFFER_SIZE")
+            set(_nros_rx_need "${NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES}")
+            set(_nros_rx_need_knob "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES")
+        elseif(DEFINED NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_BYTES
+               AND NOT "${NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_BYTES}" STREQUAL "")
+            set(_nros_rx_need "${NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_BYTES}")
+            set(_nros_rx_need_knob "NROS_SUBSCRIBER_BUFFER_BYTES")
         endif()
 
         if(NOT "${_nros_rx_need}" STREQUAL "")
-            set(_nros_rx_ceiling "${NROS_RESOLVED_NROS_ZENOH_FRAG_MAX_SIZE}")
-            set(_nros_rx_ceiling_knob "NROS_ZENOH_FRAG_MAX_SIZE")
-            if(NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_SIZE GREATER _nros_rx_ceiling)
-                set(_nros_rx_ceiling "${NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_SIZE}")
-                set(_nros_rx_ceiling_knob "NROS_ZENOH_BATCH_UNICAST_SIZE")
+            set(_nros_rx_ceiling "${NROS_RESOLVED_NROS_ZENOH_FRAG_MAX_BYTES}")
+            set(_nros_rx_ceiling_knob "NROS_ZENOH_FRAG_MAX_BYTES")
+            if(NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_BYTES GREATER _nros_rx_ceiling)
+                set(_nros_rx_ceiling "${NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_BYTES}")
+                set(_nros_rx_ceiling_knob "NROS_ZENOH_BATCH_UNICAST_BYTES")
             endif()
             if(_nros_rx_need GREATER _nros_rx_ceiling)
                 message(FATAL_ERROR
@@ -1412,29 +1412,29 @@ function(nros_resolve_knobs)
                     "cannot deliver.\n"
                     "  largest receivable sample     = ${_nros_rx_need}"
                     " (${_nros_rx_need_knob})\n"
-                    "  NROS_ZENOH_FRAG_MAX_SIZE      ="
-                    " ${NROS_RESOLVED_NROS_ZENOH_FRAG_MAX_SIZE}\n"
-                    "  NROS_ZENOH_BATCH_UNICAST_SIZE ="
-                    " ${NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_SIZE}\n"
+                    "  NROS_ZENOH_FRAG_MAX_BYTES      ="
+                    " ${NROS_RESOLVED_NROS_ZENOH_FRAG_MAX_BYTES}\n"
+                    "  NROS_ZENOH_BATCH_UNICAST_BYTES ="
+                    " ${NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_BYTES}\n"
                     "  receive ceiling              = ${_nros_rx_ceiling}"
                     " (${_nros_rx_ceiling_knob})\n"
                     "\n"
                     "A fragmented sample that reassembles past "
-                    "NROS_ZENOH_FRAG_MAX_SIZE is dropped inside the transport: it "
+                    "NROS_ZENOH_FRAG_MAX_BYTES is dropped inside the transport: it "
                     "reaches no callback and raises no error, so the "
                     "subscription looks like one that never fires. The "
                     "ceiling above is the LARGER of the two, because a frame "
                     "that fits one unicast batch whole is never "
                     "defragmented.\n"
                     "\n"
-                    "Set CONFIG_NROS_FRAG_MAX_SIZE to at least "
-                    "${_nros_rx_need} (or export NROS_ZENOH_FRAG_MAX_SIZE, which "
+                    "Set CONFIG_NROS_ZENOH_FRAG_MAX_BYTES to at least "
+                    "${_nros_rx_need} (or export NROS_ZENOH_FRAG_MAX_BYTES, which "
                     "wins over Kconfig). If ${_nros_rx_need_knob} OVER-states "
                     "what this image actually receives -- it is derived over "
                     "the linked interface closure when no entity inventory "
                     "narrows it to the subscribed set -- state the class "
-                    "yourself instead: CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE and "
-                    "CONFIG_NROS_SUBSCRIBER_LARGE_SIZE. A stated value wins "
+                    "yourself instead: CONFIG_NROS_SUBSCRIBER_BUFFER_BYTES and "
+                    "CONFIG_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES. A stated value wins "
                     "over the derivation.")
             endif()
         endif()
@@ -1454,14 +1454,14 @@ function(nros_resolve_knobs)
     # is absent, so forwarding a literal 0 would hand it a zero-byte arena
     # rather than the derivation. Resolve it only when someone actually chose
     # a value -- Kconfig non-zero, or an explicit environment override.
-    if(DEFINED ENV{NROS_EXECUTOR_ARENA_SIZE}
-       OR NOT "${CONFIG_NROS_EXECUTOR_ARENA_SIZE}" STREQUAL "0")
-        _nros_resolve_knob(NROS_EXECUTOR_ARENA_SIZE
-            "${CONFIG_NROS_EXECUTOR_ARENA_SIZE}")
+    if(DEFINED ENV{NROS_EXECUTOR_ARENA_BYTES}
+       OR NOT "${CONFIG_NROS_EXECUTOR_ARENA_BYTES}" STREQUAL "0")
+        _nros_resolve_knob(NROS_EXECUTOR_ARENA_BYTES
+            "${CONFIG_NROS_EXECUTOR_ARENA_BYTES}")
     endif()
 
     # Application heap arena (phase-391 W3). `nros-platform`'s zephyr_heap
-    # reads NROS_ZEPHYR_HEAP_SIZE via `option_env!`, but nothing forwarded it
+    # reads NROS_MEMORY_HEAP_BYTES via `option_env!`, but nothing forwarded it
     # into the cargo environment, so the knob was documented and unreachable
     # from a Zephyr build: exporting it had no effect and the arena stayed at
     # its 64 KiB default.
@@ -1471,14 +1471,14 @@ function(nros_resolve_knobs)
     # governs application allocation. A consumer needing more than 64 KiB has
     # no working way to ask for it, and starvation presents as a silent hang
     # rather than an error. See NEWSLabNTU/nano-ros#41.
-    _nros_resolve_knob(NROS_ZEPHYR_HEAP_SIZE "${CONFIG_NROS_ZEPHYR_HEAP_SIZE}")
+    _nros_resolve_knob(NROS_MEMORY_HEAP_BYTES "${CONFIG_NROS_MEMORY_HEAP_BYTES}")
 
     # phase-8 — the two arenas are coupled, and nothing used to check it.
     #
     # On this path the EXECUTOR arena is a single heap allocation out of the
     # PLATFORM arena, plus a fixed overhead, so the sizes are not independent:
     #
-    #     NROS_EXECUTOR_ARENA_SIZE + overhead  <=  NROS_ZEPHYR_HEAP_SIZE
+    #     NROS_EXECUTOR_ARENA_BYTES + overhead  <=  NROS_MEMORY_HEAP_BYTES
     #
     # Violate it and the image does not fail at link, does not fault, and does
     # not log. It stops mid-boot on a NULL from an allocation that could never
@@ -1489,27 +1489,27 @@ function(nros_resolve_knobs)
     #
     # Both values are known here, so this is a build error rather than a runtime
     # hang. The overhead is EMPIRICAL, not derived: two builds differing only in
-    # NROS_EXECUTOR_ARENA_SIZE (458752 -> 100000) moved the failing request by
+    # NROS_EXECUTOR_ARENA_BYTES (458752 -> 100000) moved the failing request by
     # exactly that delta, leaving a constant 18352. Treat it as a floor, not a
     # formula -- which is why this adds margin instead of comparing bare sizes.
-    if(DEFINED NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE
-       AND NOT "${NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE}" STREQUAL ""
-       AND NOT "${NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE}" STREQUAL "0")
+    if(DEFINED NROS_RESOLVED_NROS_EXECUTOR_ARENA_BYTES
+       AND NOT "${NROS_RESOLVED_NROS_EXECUTOR_ARENA_BYTES}" STREQUAL ""
+       AND NOT "${NROS_RESOLVED_NROS_EXECUTOR_ARENA_BYTES}" STREQUAL "0")
         set(_nros_arena_overhead 24576)   # 18352 measured, rounded up to 24 KiB
         math(EXPR _nros_arena_need
-             "${NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE} + ${_nros_arena_overhead}")
-        if(_nros_arena_need GREATER "${NROS_RESOLVED_NROS_ZEPHYR_HEAP_SIZE}")
+             "${NROS_RESOLVED_NROS_EXECUTOR_ARENA_BYTES} + ${_nros_arena_overhead}")
+        if(_nros_arena_need GREATER "${NROS_RESOLVED_NROS_MEMORY_HEAP_BYTES}")
             message(FATAL_ERROR
                 "nros: the executor arena cannot fit in the platform heap.\n"
-                "  NROS_EXECUTOR_ARENA_SIZE = ${NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE}\n"
-                "  NROS_ZEPHYR_HEAP_SIZE    = ${NROS_RESOLVED_NROS_ZEPHYR_HEAP_SIZE}\n"
+                "  NROS_EXECUTOR_ARENA_BYTES = ${NROS_RESOLVED_NROS_EXECUTOR_ARENA_BYTES}\n"
+                "  NROS_MEMORY_HEAP_BYTES    = ${NROS_RESOLVED_NROS_MEMORY_HEAP_BYTES}\n"
                 "  needed (arena + ~${_nros_arena_overhead} overhead) = ${_nros_arena_need}\n"
                 "\n"
                 "The executor arena is ONE heap allocation out of the platform "
                 "arena. Built as configured, this image would stop mid-boot on a "
-                "NULL with no fault and no log. Raise CONFIG_NROS_ZEPHYR_HEAP_SIZE "
-                "(or the NROS_ZEPHYR_HEAP_SIZE environment override) to at least "
-                "${_nros_arena_need}, or lower NROS_EXECUTOR_ARENA_SIZE.")
+                "NULL with no fault and no log. Raise CONFIG_NROS_MEMORY_HEAP_BYTES "
+                "(or the NROS_MEMORY_HEAP_BYTES environment override) to at least "
+                "${_nros_arena_need}, or lower NROS_EXECUTOR_ARENA_BYTES.")
         endif()
     endif()
 
@@ -1609,7 +1609,7 @@ function(nros_resolve_knobs)
         # knob reachable without moving any image.
         _nros_resolve_knob(NROS_XRCE_SUBSCRIBER_RING_DEPTH
             "${CONFIG_NROS_XRCE_SUBSCRIBER_RING_DEPTH}")
-        _nros_resolve_knob(NROS_XRCE_BUFFER_SIZE "${CONFIG_NROS_XRCE_BUFFER_SIZE}")
+        _nros_resolve_knob(NROS_XRCE_BUFFER_BYTES "${CONFIG_NROS_XRCE_BUFFER_BYTES}")
         _nros_resolve_knob(NROS_XRCE_STREAM_HISTORY
             "${CONFIG_NROS_XRCE_STREAM_HISTORY}")
         # phase-454 W6.b — the three per-family receive buffers. Each defaults
@@ -1637,18 +1637,18 @@ function(nros_resolve_knobs)
         # by matching `_nros_resolve*_knob(NROS_XRCE_...`, so a loop variable
         # would leave all three reading as unforwarded — a gate blind in the
         # safe-looking direction.
-        _nros_resolve_derivable_knob(NROS_XRCE_SUBSCRIBER_BUFFER_SIZE
-            "${CONFIG_NROS_XRCE_SUBSCRIBER_BUFFER_SIZE}"
+        _nros_resolve_derivable_knob(NROS_XRCE_SUBSCRIBER_BUFFER_BYTES
+            "${CONFIG_NROS_XRCE_SUBSCRIBER_BUFFER_BYTES}"
             _NROS_XRCE_FAMILY_DERIVED_BY_BUILD_SCRIPT
             "the sizing descriptor, which only the cargo lane reads"
             "${CMAKE_BINARY_DIR}/nros/sizing")
-        _nros_resolve_derivable_knob(NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE
-            "${CONFIG_NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE}"
+        _nros_resolve_derivable_knob(NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES
+            "${CONFIG_NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES}"
             _NROS_XRCE_FAMILY_DERIVED_BY_BUILD_SCRIPT
             "the sizing descriptor, which only the cargo lane reads"
             "${CMAKE_BINARY_DIR}/nros/sizing")
-        _nros_resolve_derivable_knob(NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE
-            "${CONFIG_NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE}"
+        _nros_resolve_derivable_knob(NROS_XRCE_SERVICE_REPLY_BUFFER_BYTES
+            "${CONFIG_NROS_XRCE_SERVICE_REPLY_BUFFER_BYTES}"
             _NROS_XRCE_FAMILY_DERIVED_BY_BUILD_SCRIPT
             "the sizing descriptor, which only the cargo lane reads"
             "${CMAKE_BINARY_DIR}/nros/sizing")
@@ -1675,7 +1675,7 @@ function(nros_resolve_knobs)
     # Issue 0316's fix listed ONE of nros-node's six build.rs knobs; the other
     # five stayed unreachable on Zephyr (the curated cargo environment drops
     # any knob not resolved here, and shell exports do not survive it), so a
-    # consumer exporting NROS_SUBSCRIPTION_BUFFER_SIZE=16384 silently built
+    # consumer exporting NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES=16384 silently built
     # 1024-byte subscription buffers — every serialized sample above that is
     # dropped, and the C++ arena dispatch path drops it silently. Resolve the
     # whole class (nros-node + nros-params sizing knobs) in one place.
@@ -1688,10 +1688,10 @@ function(nros_resolve_knobs)
     # not. Note the arena scales with it -- and by the QoS DEPTH as well, issue
     # 1190: `max_cbs * ((depth + 1) * (rx_buf + 8) + 1024) + 2048` for a pub/sub
     # image, where the ROS default depth is 10 -- so an image that also PINS
-    # `NROS_EXECUTOR_ARENA_SIZE` must move the two together, which is an
+    # `NROS_EXECUTOR_ARENA_BYTES` must move the two together, which is an
     # argument for pinning neither.
-    _nros_resolve_derivable_knob(NROS_SUBSCRIPTION_BUFFER_SIZE
-        "${CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE}"
+    _nros_resolve_derivable_knob(NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES
+        "${CONFIG_NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES}"
         NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE)
     # phase-412 W2 / issue 1198 -- NROS_EXECUTOR_MAX_SC is resolved ABOVE, with
     # the other derivable knobs, and the `_nros_resolve_knob(NROS_EXECUTOR_MAX_SC
@@ -1729,15 +1729,15 @@ function(nros_resolve_knobs)
     # as before, and the `-1` sentinel forwards nothing: nros-node's build
     # script then derives it from the declaration shape below, or keeps its
     # default when there is none.
-    if(NOT "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}"
-       OR (DEFINED ENV{NROS_PARAM_SERVICE_BUFFER_SIZE}
-           AND NOT "$ENV{NROS_PARAM_SERVICE_BUFFER_SIZE}" STREQUAL ""))
-        _nros_resolve_knob(NROS_PARAM_SERVICE_BUFFER_SIZE
-            "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}")
+    if(NOT "${CONFIG_NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}"
+       OR (DEFINED ENV{NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES}
+           AND NOT "$ENV{NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES}" STREQUAL ""))
+        _nros_resolve_knob(NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES
+            "${CONFIG_NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES}")
     else()
         # History: phase-446 F3.
         message(STATUS
-            "nros: NROS_PARAM_SERVICE_BUFFER_SIZE not stated -- nros-node derives "
+            "nros: NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES not stated -- nros-node derives "
             "it from the contract's params, or keeps its default")
     endif()
     # phase-446 W4 -- the PARAMETER STORE, on the derivable ladder. The entity
@@ -1759,11 +1759,11 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_MAX_PARAMETERS
         "${CONFIG_NROS_MAX_PARAMETERS}" NROS_DERIVED_MAX_PARAMETERS
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-    _nros_resolve_derivable_knob(NROS_MAX_PARAM_NAME_LEN
-        "${CONFIG_NROS_MAX_PARAM_NAME_LEN}" NROS_DERIVED_MAX_PARAM_NAME_LEN
+    _nros_resolve_derivable_knob(NROS_PARAMS_MAX_NAME_BYTES
+        "${CONFIG_NROS_PARAMS_MAX_NAME_BYTES}" NROS_DERIVED_MAX_PARAM_NAME_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-    _nros_resolve_derivable_knob(NROS_MAX_STRING_VALUE_LEN
-        "${CONFIG_NROS_MAX_STRING_VALUE_LEN}" NROS_DERIVED_MAX_STRING_VALUE_LEN
+    _nros_resolve_derivable_knob(NROS_PARAMS_MAX_STRING_VALUE_BYTES
+        "${CONFIG_NROS_PARAMS_MAX_STRING_VALUE_BYTES}" NROS_DERIVED_MAX_STRING_VALUE_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     _nros_resolve_derivable_knob(NROS_MAX_ARRAY_LEN
         "${CONFIG_NROS_MAX_ARRAY_LEN}" NROS_DERIVED_MAX_ARRAY_LEN
@@ -1771,8 +1771,8 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_MAX_STRING_ARRAY_LEN
         "${CONFIG_NROS_MAX_STRING_ARRAY_LEN}" NROS_DERIVED_MAX_STRING_ARRAY_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-    _nros_resolve_derivable_knob(NROS_MAX_BYTE_ARRAY_LEN
-        "${CONFIG_NROS_MAX_BYTE_ARRAY_LEN}" NROS_DERIVED_MAX_BYTE_ARRAY_LEN
+    _nros_resolve_derivable_knob(NROS_PARAMS_MAX_BYTE_ARRAY_BYTES
+        "${CONFIG_NROS_PARAMS_MAX_BYTE_ARRAY_BYTES}" NROS_DERIVED_MAX_BYTE_ARRAY_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     # A capacity a declared type DOES use gets no derived number -- it is a
     # board fact -- so the inventory names the parameter instead. That NEED
@@ -1803,14 +1803,14 @@ function(nros_resolve_knobs)
     _nros_resolve_knob(NROS_PARAM_STORE "${_nros_store_seed}")
     # phase-446 F2 -- a description's capacity. NOT derivable (the contract
     # declares no descriptions), so it rides the plain ladder like
-    # NROS_PARAM_SERVICE_BUFFER_SIZE: Kconfig states it, the environment wins.
-    _nros_resolve_knob(NROS_MAX_PARAM_DESCRIPTION_LEN
-        "${CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN}")
+    # NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES: Kconfig states it, the environment wins.
+    _nros_resolve_knob(NROS_PARAMS_MAX_DESCRIPTION_BYTES
+        "${CONFIG_NROS_PARAMS_MAX_DESCRIPTION_BYTES}")
     # phase-417 W4.a -- the descriptor's OTHER free text, its own knob and the
     # same ladder. Default 0; see the Kconfig help for why it is not the
     # description's knob.
-    _nros_resolve_knob(NROS_MAX_PARAM_CONSTRAINTS_LEN
-        "${CONFIG_NROS_MAX_PARAM_CONSTRAINTS_LEN}")
+    _nros_resolve_knob(NROS_PARAMS_MAX_CONSTRAINTS_BYTES
+        "${CONFIG_NROS_PARAMS_MAX_CONSTRAINTS_BYTES}")
     # phase-491 W3 -- the /parameter_events publisher's history depth.
     _nros_resolve_knob(NROS_PARAM_EVENTS_DEPTH
         "${CONFIG_NROS_PARAM_EVENTS_DEPTH}")
@@ -1821,7 +1821,7 @@ function(nros_resolve_knobs)
         "${CONFIG_NROS_LOG_DYNAMIC_LOGGERS}")
     # issue 1037 -- the rest of the logging tenant, on the same plain ladder.
     _nros_resolve_knob(NROS_LOG_MAX_LEVEL "${CONFIG_NROS_LOG_MAX_LEVEL}")
-    _nros_resolve_knob(NROS_LOG_BUFFER_SIZE "${CONFIG_NROS_LOG_BUFFER_SIZE}")
+    _nros_resolve_knob(NROS_LOG_BUFFER_BYTES "${CONFIG_NROS_LOG_BUFFER_BYTES}")
     _nros_resolve_knob(NROS_LOG_EARLY_RECORDS "${CONFIG_NROS_LOG_EARLY_RECORDS}")
     _nros_resolve_knob(NROS_LOG_ROSOUT_RECORDS
         "${CONFIG_NROS_LOG_ROSOUT_RECORDS}")
@@ -1834,7 +1834,7 @@ function(nros_resolve_knobs)
     # environment wins, nros-rmw-zenoh's build script reads them. The parameter
     # family's pair lands with its reader in nros-node (W2).
     # phase-461 W3 -- the two BYTES rows carry the `-1` DERIVE sentinel, and the
-    # guard is the one `NROS_PARAM_SERVICE_BUFFER_SIZE` already uses below: a
+    # guard is the one `NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES` already uses below: a
     # STATED size is forwarded as before, and the sentinel forwards NOTHING, so
     # `nros-rmw-zenoh`'s build script runs its own ladder --
     # `NROS_DECLARED_*_INBOX_BYTES` (this image's declared request types,

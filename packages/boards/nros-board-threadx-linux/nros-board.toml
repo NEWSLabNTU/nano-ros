@@ -110,7 +110,7 @@ pool.app = [15, 31]
 # measured with this backing already in `.bss`
 # (`nros_board_common::threadx_pool`), so it holds no backing and nothing gives
 # it back. This rung now sizes the static alone; the pool is
-# `[knobs.memory] heap_bytes` (`NROS_THREADX_BYTE_POOL_KB`).
+# `threadx.byte_pool_bytes` (`NROS_THREADX_BYTE_POOL_BYTES`).
 #
 # THE NUMBER, and why it is NOT the per-role measurement (issue 1388).
 #
@@ -159,8 +159,10 @@ pool.app = [15, 31]
 # level a `hazard-level-runtime` report names (`Violation::level`, a `&str`),
 # which grows the violation ring by 8 words (`executor_backing_claims`
 # measured 11,084 on the 64-bit host).
+# The knob is in BYTES since the 0.7 rename (`backing_u64s` was words):
+# 11,084 words x 8 = 88,672.
 [knobs.executor]
-backing_u64s = 11084
+backing_bytes = 88672
 
 # phase-479 W5 (RFC-0102 D5) — the runtime-logger arenas. MEASURED as a host board: no
 # `target` is stated (`toolchain = "stable"` builds for the host triple) —

@@ -135,14 +135,14 @@ DERIVED_PAIRS = {
     # NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_BUFFER_SIZE, which no pairing here names,
     # so a derived 880 delivered as 1496 for four consecutive island builds and
     # nothing said so -- over-sized, therefore silent.
-    "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": ("NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE",),
+    "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": ("NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_BYTES",),
     # phase-412 #7 -- the TAKE buffer, resolver road only, unnamed here until
     # now. NOT the same knob as SUBSCRIBER_BUFFER_SIZE above: that one sizes the
     # backend's staging pool over the SUBSCRIBED set, this one sizes the
     # runtime-owned take buffer (`RX_BUF`, which `DEFAULT_TX_BUF` aliases) over
     # the linked CLOSURE. Two names one edit apart, two derivations, two bases.
     "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE": (
-        "NROS_RESOLVED_NROS_SUBSCRIPTION_BUFFER_SIZE",
+        "NROS_RESOLVED_NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES",
     ),
     # issue 1255 -- the PER-TYPE table the two sizes above are maxima over. A
     # third BASIS, not a third spelling of either: the executor arena allocates
@@ -167,16 +167,16 @@ DERIVED_PAIRS = {
     # `LARGE_PAYLOADS` in an image that subscribes to nothing (issue 1125,
     # measured).
     "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS": ("NROS_RESOLVED_NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",),
-    "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE": ("NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",),
+    "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE": ("NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES",),
     # phase-446 W4 -- the parameter store, from the contract's `params:`. The
     # three capacities are commonly derived as ZERO, and a zero that fails to
     # arrive is the 8.9 KiB-per-slot store the phase exists to remove.
     "NROS_DERIVED_MAX_PARAMETERS": ("NROS_RESOLVED_NROS_MAX_PARAMETERS",),
-    "NROS_DERIVED_MAX_PARAM_NAME_LEN": ("NROS_RESOLVED_NROS_MAX_PARAM_NAME_LEN",),
-    "NROS_DERIVED_MAX_STRING_VALUE_LEN": ("NROS_RESOLVED_NROS_MAX_STRING_VALUE_LEN",),
+    "NROS_DERIVED_MAX_PARAM_NAME_LEN": ("NROS_RESOLVED_NROS_PARAMS_MAX_NAME_BYTES",),
+    "NROS_DERIVED_MAX_STRING_VALUE_LEN": ("NROS_RESOLVED_NROS_PARAMS_MAX_STRING_VALUE_BYTES",),
     "NROS_DERIVED_MAX_ARRAY_LEN": ("NROS_RESOLVED_NROS_MAX_ARRAY_LEN",),
     "NROS_DERIVED_MAX_STRING_ARRAY_LEN": ("NROS_RESOLVED_NROS_MAX_STRING_ARRAY_LEN",),
-    "NROS_DERIVED_MAX_BYTE_ARRAY_LEN": ("NROS_RESOLVED_NROS_MAX_BYTE_ARRAY_LEN",),
+    "NROS_DERIVED_MAX_BYTE_ARRAY_LEN": ("NROS_RESOLVED_NROS_PARAMS_MAX_BYTE_ARRAY_BYTES",),
     # The transient-local retention pool's SLOT SIZE from the message-bound
     # inventory; undelivered, it falls to a flat 1024 B. Its SLOT COUNT
     # (NROS_DERIVED_TL_PUBLISHERS) used to be forwarded here too, under the
@@ -196,7 +196,7 @@ DERIVED_PAIRS = {
 # backend; an UNGUARDED knob is not, and its absence is failure 4.
 #
 # Before phase-412 #7 the gate demanded every mapped knob be present, which made
-# `NROS_SUBSCRIBER_BUFFER_SIZE` -- zenoh-guarded since issue 1125 -- a standing
+# `NROS_SUBSCRIBER_BUFFER_BYTES` -- zenoh-guarded since issue 1125 -- a standing
 # false positive on any XRCE build dir. Nobody had hit it because nobody had
 # pointed the gate at one.
 GUARD_MARKER = "CONFIG_NROS_RMW_"

@@ -230,7 +230,7 @@ a zenoh file that also states a `locator` is refused. The flat
 The same shape as a board descriptor's `[knobs.<group>]`. The key is the knob
 registry row's board key where it has one (`executor.max_cbs`); otherwise the
 `NROS_*` name without `NROS_`, split at the first `_`
-(`NROS_ZEPHYR_HEAP_SIZE` is `zephyr.heap_size`). An unknown key, a wrong type
+(`NROS_EXECUTOR_MAX_SC` is `executor.max_sc`). An unknown key, a wrong type
 or an out-of-range value stops `nros build`, naming the key. The image rung
 sits above the board and below an exported variable.
 

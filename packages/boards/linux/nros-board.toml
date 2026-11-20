@@ -119,7 +119,7 @@ reserved.foreign = []
 # transport and its timers on separate threads that all log, so contention is
 # the ordinary case here, not the exception: `nros-node`'s lib tests lost 16
 # records at once under load at depth 4. Each slot is a full record (a
-# `NROS_LOG_BUFFER_SIZE` message, a 48-byte name, about 370 bytes at the
+# `NROS_LOG_BUFFER_BYTES` message, a 48-byte name, about 370 bytes at the
 # builtin 256), so 32 costs about 12 KB of `.bss`.
 # `[image.<id>] env = { NROS_LOG_EARLY_RECORDS = "<n>" }` overrides it per image.
 [knobs.log]

@@ -212,7 +212,7 @@ srand(seed);
 
 **Cause**: The application task's frame is dominated by zenoh-pico's internal stack buffers (transport TX/RX, peer structures) and by the Rust frames of the executor-open chain — `Executor::open_in` builds an `Executor` in its own frame and returns it by value. The total exceeds a small task stack.
 
-> **Corrected 2026-09-06 (phase-392 W6).** This paragraph used to say the cause was `Executor`'s inline `arena: [MaybeUninit<u8>; ARENA_SIZE]`, and that service/action examples pin `NROS_EXECUTOR_ARENA_SIZE` to 4096/8192. **Neither is true and neither has been since phase-271 (issue 0110).** The arena is a slice borrowed from caller-supplied backing, which on FreeRTOS is a named `.bss` static; no example in the tree sets `NROS_EXECUTOR_ARENA_SIZE`. Raising the arena knob will not change this symptom.
+> **Corrected 2026-09-06 (phase-392 W6).** This paragraph used to say the cause was `Executor`'s inline `arena: [MaybeUninit<u8>; ARENA_SIZE]`, and that service/action examples pin `NROS_EXECUTOR_ARENA_BYTES` to 4096/8192. **Neither is true and neither has been since phase-271 (issue 0110).** The arena is a slice borrowed from caller-supplied backing, which on FreeRTOS is a named `.bss` static; no example in the tree sets `NROS_EXECUTOR_ARENA_BYTES`. Raising the arena knob will not change this symptom.
 
 When the stack overflows, it corrupts adjacent memory including lwIP's global `tcpip_mbox` variable (declared in `tcpip.c`). Any subsequent call to `tcpip_input()`, `tcpip_callback()`, or `sys_mbox_trypost()` triggers the "Invalid mbox" assertion, which enters an infinite `for(;;){}` loop.
 
@@ -221,10 +221,10 @@ When the stack overflows, it corrupts adjacent memory including lwIP's global `t
 **Fix**: Raise the application task's stack — but **read the number off the image first, do not guess it**. Every FreeRTOS Rust image prints, at the end of its register pass (the deepest point bring-up reaches):
 
 ```
-nros: app task stack peak 36160 of 131072 bytes (94912 free) — raise with NROS_FREERTOS_APP_STACK_KB / `[node.rt] app_stack_bytes`
+nros: app task stack peak 36160 of 131072 bytes (94912 free) — raise with NROS_MEMORY_APP_STACK_BYTES / `[node.rt] app_stack_bytes`
 ```
 
-The knob is `app_stack_bytes` (`nros_board_common::freertos_config`), default **131072** (128 KiB); override it at build time with `NROS_FREERTOS_APP_STACK_KB=<kib>`, or per sched task with `[node.rt] app_stack_bytes`.
+The knob is `app_stack_bytes` (`nros_board_common::freertos_config`), default **131072** (128 KiB); override it at build time with `NROS_MEMORY_APP_STACK_BYTES=<bytes>`, or per sched task with `[node.rt] app_stack_bytes`.
 
 > **Corrected 2026-09-07 (issue 1146).** This step used to read *"set `APP_TASK_STACK` to 16384 words (64 KB)"*, then (phase-392 W6) *"the default is 393216"*. `APP_TASK_STACK` was **deleted in phase-76**; the 384 KiB that replaced it was never derived from anything. It is 128 KiB now, from `uxTaskGetStackHighWaterMark` on 8 in-tree images whose worst peak is 36 152 bytes — the table is on `freertos_config::app_stack_bytes`. The C/C++ carrier's mirror in `cmake/templates/freertos_app_config.c.in` is still 524288, and that file says why (its C++ half cannot be built — issue 1187).
 

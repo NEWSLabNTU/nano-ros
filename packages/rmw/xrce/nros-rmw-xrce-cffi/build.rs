@@ -1032,7 +1032,7 @@ const RELIABLE_CONTROL_HISTORY: usize = 4;
 const RELIABLE_STREAM_SAVING_BYTES: usize = 2 * (16 - RELIABLE_CONTROL_HISTORY) * 4096;
 
 const ENV_STREAM_HISTORY: &str = "NROS_XRCE_STREAM_HISTORY";
-const ENV_SUBSCRIBER_BUFFER: &str = "NROS_XRCE_SUBSCRIBER_BUFFER_SIZE";
+const ENV_SUBSCRIBER_BUFFER: &str = "NROS_XRCE_SUBSCRIBER_BUFFER_BYTES";
 const ENV_SUBSCRIBER_RING_DEPTH: &str = "NROS_XRCE_SUBSCRIBER_RING_DEPTH";
 // Issue 1722 — bound to `XRCE_PARAM_REQUEST_BYTES` by `xrce-config.txt`. The
 // backend-neutral knob, not an XRCE one: nros-node checks a statement of it.
@@ -1046,11 +1046,11 @@ const HEADER_SERVICE_SERVERS: usize = 4;
 // phase-400 W6 — the service-client slot count, the last of issue 1033's three.
 const ENV_SERVICE_CLIENTS: &str = "NROS_XRCE_MAX_SERVICE_CLIENTS";
 // Issue 1808 — the bytes one service-client reply slot holds.
-const ENV_SERVICE_REPLY: &str = "NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE";
+const ENV_SERVICE_REPLY: &str = "NROS_XRCE_SERVICE_REPLY_BUFFER_BYTES";
 // Issue 1808 — the builtin family's share of the service-server slots, and the
 // bytes one application-family request slot holds once the two are split.
 const ENV_BUILTIN_SERVERS: &str = "NROS_XRCE_BUILTIN_SERVICE_SERVERS";
-const ENV_SERVICE_REQUEST: &str = "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE";
+const ENV_SERVICE_REQUEST: &str = "NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES";
 
 /// Rung 3.5 of the ladder in `packages/rmw/xrce/xrce-config.txt`.
 ///
@@ -1581,7 +1581,7 @@ fn param_request_verdict(shape: &str) -> Option<usize> {
             "\n\nnros-rmw-xrce: the contract declares this image's parameters \
              (`[params] service_shape` = `{shape}`), and at least one is a string or an \
              array. Such a request's size depends on the parameter store's caps \
-             (NROS_MAX_STRING_VALUE_LEN and the array caps), which only nros-params \
+             (NROS_PARAMS_MAX_STRING_VALUE_BYTES and the array caps), which only nros-params \
              resolves, so this crate cannot size the service request buffer a \
              `set_parameters` lands in.\n\
              Keeping the default would guess, and the guess was measured wrong: a \

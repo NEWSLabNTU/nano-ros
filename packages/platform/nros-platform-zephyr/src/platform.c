@@ -373,8 +373,8 @@ void* nros_platform_alloc(size_t size) {
                fragmented ? "the bytes are free and no hole the size-class search "
                             "reaches holds the request (the largest may still exceed it: "
                             "TLSF skips the request's own class) -- a larger "
-                            "CONFIG_NROS_ZEPHYR_HEAP_SIZE only postpones this"
-                          : "raise CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE "
+                            "CONFIG_NROS_MEMORY_HEAP_BYTES only postpones this"
+                          : "raise CONFIG_NROS_MEMORY_HEAP_BYTES / NROS_MEMORY_HEAP_BYTES "
                             "only once you know what asked");
         nros_zephyr_heap_exhaustion_is_fatal(size, capacity);
     }
@@ -404,17 +404,17 @@ void nros_platform_dealloc(void* ptr) {
  * These report the arena the application ACTUALLY allocates from: the rlsf
  * heap in nros-platform's `zephyr_heap`, which `nros_platform_alloc` above
  * calls into and which therefore backs both zenoh-pico's `z_malloc` and
- * `__rust_alloc`. Its size is CONFIG_NROS_ZEPHYR_HEAP_SIZE.
+ * `__rust_alloc`. Its size is CONFIG_NROS_MEMORY_HEAP_BYTES.
  *
  * They used to answer from Zephyr's kernel heap `_system_heap`, sized by
  * CONFIG_HEAP_MEM_POOL_SIZE. That was right when phase-230 wrote it and wrong
  * from phase-391 W3 onward, which moved the funnel off the kernel heap --
- * `zephyr/Kconfig` says so under NROS_ZEPHYR_HEAP_SIZE ("CONFIG_HEAP_MEM_POOL_SIZE
+ * `zephyr/Kconfig` says so under NROS_MEMORY_HEAP_BYTES ("CONFIG_HEAP_MEM_POOL_SIZE
  * does NOT govern application allocation any more; this does"), while this file
  * kept measuring the heap that no longer governs anything.
  *
  * The cost of that was not a wrong number, it was NO number: the one figure
- * that could size NROS_ZEPHYR_HEAP_SIZE reported a different arena, so the knob
+ * that could size NROS_MEMORY_HEAP_BYTES reported a different arena, so the knob
  * could only ever be guessed. The island carries 94,208 bytes chosen that way.
  *
  * `peak`, not `used`, is what the knob wants -- `used` sampled at an arbitrary
@@ -441,7 +441,7 @@ size_t nros_platform_heap_total_bytes(void) {
     return nros_zephyr_heap_capacity();
 }
 
-/* High-water mark, for sizing CONFIG_NROS_ZEPHYR_HEAP_SIZE from a measurement
+/* High-water mark, for sizing CONFIG_NROS_MEMORY_HEAP_BYTES from a measurement
  * rather than from a round number.
  *
  * NOT added to `nros/platform.h`: that header is the cross-port ABI, and every

@@ -788,7 +788,7 @@ mod tests {
     /// A conditional default is shown whole, never as one value.
     #[test]
     fn conditional_default_is_shown_whole() {
-        let i = item(find("zephyr.heap_size").unwrap(), None);
+        let i = item(find("memory.heap_bytes").unwrap(), None);
         let text = render_show(&i);
         for v in [
             "1048576 if the image uses Cyclone DDS",
@@ -825,7 +825,7 @@ mod tests {
 
     #[test]
     fn carrier_points_at_what_it_carries() {
-        let i = item(find("freertos.heap_kb").unwrap(), None);
+        let i = item(find("threadx.byte_pool_bytes").unwrap(), None);
         assert_eq!(i.class, "carrier");
         assert!(i.surface.is_none());
         assert!(

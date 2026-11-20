@@ -32,7 +32,7 @@ fn main() {
 
     // issue 0682 — the peer-mode build input (`just test-zpico-peer`).
     println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
-    println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_SIZE");
+    println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_SERVICE_BUFFER_SIZE");
     // phase-461 W1 - the per-family service inboxes (`Knob::stated` prints
     // this line too; stating it here keeps the watch list in one place with
@@ -60,10 +60,10 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_CONNECT_TIMEOUT_MS");
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_CONNECT_FOREVER");
-    println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_KEYEXPR_STRING_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_RING_DEPTH");
-    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_LARGE_SIZE");
-    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_LARGE_BYTES");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_MAX_LARGE_SUBSCRIBERS");
     // issue 1122 — WATCH what we READ. Consuming a declared fact without
     // declaring it is what let the queryable tables go stale (the note on
@@ -72,7 +72,7 @@ fn main() {
     // else forces a rebuild, and the sizing then reads as applied while being
     // stale.
     println!("cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_NODES");
-    println!("cargo:rerun-if-env-changed=NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_PUBLISHER_TX_BUFFER_BYTES");
     // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool.
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_MAX_TL_PUBLISHERS");
     // (The retention pool's DECLARED demand used to arrive as the
@@ -86,7 +86,7 @@ fn main() {
     // reads it off the descriptor now (`transient_local_retain_demand`).
 
     // Phase 214.C.3 — default coordinated with
-    // `packages/core/nros-node/build.rs::NROS_SUBSCRIPTION_BUFFER_SIZE`
+    // `packages/core/nros-node/build.rs::NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`
     // (also 1024). If you change one, change the other — they share the
     // wire-format expectation. Both can be overridden independently via
     // their respective env vars.
@@ -101,10 +101,10 @@ fn main() {
     // below); the carrier is the fallback for a road that names no descriptor
     // (a multi-entry cmake configure, a Zephyr west entry -- issue 1407) or one
     // whose rows cannot be the whole subscribed set.
-    let size_threshold: usize = env_usize("NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD", 2048);
+    let size_threshold: usize = env_usize("NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES", 2048);
     let described_classes = described_payload_classes(sizing.as_ref(), size_threshold);
     let sub_size: usize = env_usize_rung(
-        "NROS_SUBSCRIBER_BUFFER_SIZE",
+        "NROS_SUBSCRIBER_BUFFER_BYTES",
         // Published only when something received fits under the ceiling, the
         // derivation's own rule: 0 means "no small answer". The descriptor is
         // the only source since the declared carrier retired (issue 1649).
@@ -239,19 +239,29 @@ fn main() {
     let builtin_inbox_depth: usize = env_usize_min("NROS_PARAM_SERVICE_INBOX_DEPTH", 1, 1);
     // phase-400 W6 — the `[knobs.zenoh.limits]` rungs. `None` when no lane named
     // a platform, and the builtins below then stand.
-    let limits = nros_platform_config::platform_config::BuildRungs::from_build_env()
+    let rungs = nros_platform_config::platform_config::BuildRungs::from_build_env();
+    let limits = rungs
+        .as_ref()
         .map(|r| r.zenoh_limit_rungs())
         .unwrap_or_default();
     // issue 2007 — resolved in `nros-platform-config`, the one place the C
     // emitter in `nros-build-helpers` also asks, so the Rust const and the C
     // define cannot disagree. The 30 s default's rationale lives there too.
-    let service_timeout_ms =
-        nros_platform_config::platform_config::resolve_service_timeout_ms(&limits);
+    // A core knob, `[knobs.service] timeout_ms` (phase-581 W5).
+    let service_timeout_ms = nros_platform_config::platform_config::resolve_service_timeout_ms(
+        &rungs
+            .as_ref()
+            .map(|r| r.service_rungs())
+            .unwrap_or_default(),
+    );
     // issue 2207 — the client connect budget, in zenoh-pico's units.
     let connect_timeout_ms =
         nros_platform_config::platform_config::resolve_zenoh_connect_timeout_ms(&limits);
-    let keyexpr_string_size: usize =
-        env_usize_rung("NROS_KEYEXPR_STRING_SIZE", limits.keyexpr_string_size, 256);
+    let keyexpr_string_size: usize = env_usize_rung(
+        "NROS_ZENOH_KEYEXPR_STRING_BYTES",
+        limits.keyexpr_string_bytes,
+        256,
+    );
     // Phase 124.D.3.c — SPSC ring depth per subscriber. Default 4
     // keeps the static-RAM bump small (4 × SUBSCRIBER_BUFFER_SIZE
     // per subscriber); raise for burst-heavy topics. Must be ≥ 1.
@@ -284,7 +294,7 @@ fn main() {
     // number, which is the rule `_nros_bounds_publish_payload_classes` states
     // and `DERIVED_PAYLOAD_ENV_KEYS` repeats for the leaf road.
     let large_size: usize = env_usize_rung(
-        "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",
+        "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES",
         described_classes.and_then(|c| (c.large_count > 0).then_some(c.large_max)),
         16384,
     );
@@ -343,10 +353,10 @@ fn main() {
             nros_zephyr_build::knob("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS")
                 .rung(described_classes.map(|c| c.large_count))
                 .stated(),
-            nros_zephyr_build::knob("NROS_ZENOH_SUBSCRIBER_LARGE_SIZE")
+            nros_zephyr_build::knob("NROS_ZENOH_SUBSCRIBER_LARGE_BYTES")
                 .rung(described_classes.and_then(|c| (c.large_count > 0).then_some(c.large_max)))
                 .stated(),
-            nros_zephyr_build::knob("NROS_SUBSCRIBER_BUFFER_SIZE")
+            nros_zephyr_build::knob("NROS_SUBSCRIBER_BUFFER_BYTES")
                 .rung(described_classes.and_then(|c| (c.small_max > 0).then_some(c.small_max)))
                 .stated(),
         );
@@ -386,10 +396,10 @@ fn main() {
     // (`SlotLending`). This was a bare `const` in `shim/publisher.rs`, so its
     // 1 KiB ceiling was neither raisable by a consumer nor visible to
     // `scripts/gen-pool-inventory.py`. It is the publisher-side twin of
-    // `NROS_SUBSCRIBER_BUFFER_SIZE` and shares its default. The arena is
+    // `NROS_SUBSCRIBER_BUFFER_BYTES` and shares its default. The arena is
     // per-publisher, so the cost is `ZPICO_MAX_PUBLISHERS` × this — priced in
     // the inventory via the `nros-pool:` annotation beside `LendArena`.
-    let publisher_tx_size: usize = env_usize("NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE", 1024);
+    let publisher_tx_size: usize = env_usize("NROS_ZENOH_PUBLISHER_TX_BUFFER_BYTES", 1024);
     // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool, one slot
     // per TL publisher. See `transient_local_publisher_demand` for what the
     // descriptor can and cannot answer, and why an image that declares nothing
@@ -479,7 +489,7 @@ fn main() {
     std::fs::write(
         &path,
         format!(
-            "/// Subscriber buffer size (set via NROS_SUBSCRIBER_BUFFER_SIZE, default 1024).\n\
+            "/// Subscriber buffer size (set via NROS_SUBSCRIBER_BUFFER_BYTES, default 1024).\n\
              pub const SUBSCRIBER_BUFFER_SIZE: usize = {sub_size};\n\
              /// The one-release alias of `SERVICE_INBOX_BYTES` (set via\n\
              /// NROS_ZENOH_SERVICE_BUFFER_SIZE; default is the largest declared service/action\n\
@@ -522,7 +532,7 @@ fn main() {
              /// NROS_ZENOH_CONNECT_TIMEOUT_MS / NROS_ZENOH_CONNECT_FOREVER, default 0).\n\
              pub const CONNECT_TIMEOUT_MS: i32 = {connect_timeout_ms};\n\
              /// Maximum key expression string size for topic/service names\n\
-             /// (set via NROS_KEYEXPR_STRING_SIZE, default 256).\n\
+             /// (set via NROS_ZENOH_KEYEXPR_STRING_BYTES, default 256).\n\
              pub const KEYEXPR_STRING_SIZE: usize = {keyexpr_string_size};\n\
              /// Key expression buffer size (KEYEXPR_STRING_SIZE + 1 for null terminator).\n\
              pub const KEYEXPR_BUFFER_SIZE: usize = {keyexpr_buf_size};\n\
@@ -531,10 +541,10 @@ fn main() {
              /// default is the largest declared subscription depth, else 4).\n\
              pub const SUBSCRIBER_RING_DEPTH: usize = {ring_depth};\n\
              /// The `large` size-class slot size\n\
-             /// (set via NROS_ZENOH_SUBSCRIBER_LARGE_SIZE, default 16384).\n\
+             /// (set via NROS_ZENOH_SUBSCRIBER_LARGE_BYTES, default 16384).\n\
              pub const SUBSCRIBER_LARGE_SIZE: usize = {large_size};\n\
              /// An rx_buffer_hint above this routes to the `large` class\n\
-             /// (set via NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD, default 2048).\n\
+             /// (set via NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES, default 2048).\n\
              pub const SUBSCRIBER_SIZE_THRESHOLD: usize = {size_threshold};\n\
              /// Maximum concurrent `large`-class subscribers\n\
              /// (set via NROS_ZENOH_MAX_LARGE_SUBSCRIBERS, default 2).\n\
@@ -544,7 +554,7 @@ fn main() {
              /// at most that many graph nodes.\n\
              pub const MAX_PER_NODE_LIVELINESS: usize = {max_nodes};\n\
              /// Per-publisher TX arena capacity for the zero-copy\n\
-             /// loan path (set via NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE, default 1024).\n\
+             /// loan path (set via NROS_ZENOH_PUBLISHER_TX_BUFFER_BYTES, default 1024).\n\
              pub const PUBLISHER_TX_BUFFER_SIZE: usize = {publisher_tx_size};\n\
              /// How many TRANSIENT_LOCAL publishers this image can\n\
              /// serve at once (set via NROS_ZENOH_MAX_TL_PUBLISHERS; default is the\n\
@@ -987,7 +997,7 @@ const TL_PUBLISHERS_DEFAULT: usize = 2;
 
 /// Bytes one retained transient-local sample may hold.
 ///
-/// Shares `NROS_SUBSCRIBER_BUFFER_SIZE`'s 1024 for the same reason the
+/// Shares `NROS_SUBSCRIBER_BUFFER_BYTES`'s 1024 for the same reason the
 /// publisher TX arena does (issue 0813): it is the other side of the same wire
 /// expectation. A sample that does not fit is NOT retained and says so once,
 /// naming `ZPICO_TL_RETAIN_BYTES` — silently retaining a truncated sample would

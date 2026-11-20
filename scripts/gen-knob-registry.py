@@ -101,10 +101,10 @@ KCONFIG_TYPES = {"bool", "int", "hex", "string"}
 # is what that deprecation promised.
 # The text names the release, never the design ids (RFC-0103 D2b, phase-484
 # W8): it is a user's build error.
-RETIRED = (
-    "{legacy} is a retired spelling of {env} (retired after release 0.5.0-nros2 "
-    "deprecated it) -- set {env} instead"
-)
+# Since phase-581 W5 (RFC-0140 D4) it also says, for a unit change, what to
+# multiply by (`{scale}`, empty for a pure rename): the renamed spellings are
+# retired with no deprecation release, so the release no longer appears.
+RETIRED = "{legacy} is a retired spelling of {env}{scale} -- set {env} instead"
 # The error an `[image.<id>] env` row earns when its key is a registry knob
 # (phase-484 W8, RFC-0103 D6): the knob's one spelling is
 # `[image.<id>.knobs.<group>] <name>`. Release 0.6.0 warned with these words
@@ -163,19 +163,19 @@ DERIVED_FIELDS = ("default", "values", "surface")
 NO_DEFAULT = {
     "CYCLONEDDS_MAX_DESCRIPTOR_TYPES", "CYCLONEDDS_MAX_FIELDS", "CYCLONEDDS_MAX_KINDS",
     "CYCLONEDDS_MAX_NESTED_DEPTH", "CYCLONEDDS_MAX_TYPES",
-    "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE", "XRCE_BUILTIN_SERVICE_SERVERS",
-    "ZENOH_MAX_SESSIONS", "ZENOH_MAX_TL_PUBLISHERS", "ZENOH_PUBLISHER_TX_BUFFER_SIZE",
-    "ZENOH_SUBSCRIBER_SIZE_THRESHOLD", "ZENOH_TL_RETAIN_BYTES", "ZENOH_TL_RETAIN_DEPTH",
+    "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_BYTES", "XRCE_BUILTIN_SERVICE_SERVERS",
+    "ZENOH_MAX_SESSIONS", "ZENOH_MAX_TL_PUBLISHERS", "ZENOH_PUBLISHER_TX_BUFFER_BYTES",
+    "ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES", "ZENOH_TL_RETAIN_BYTES", "ZENOH_TL_RETAIN_DEPTH",
     # The board's FreeRTOSConfig.h states this default, per board.
     "FREERTOS_TASK_STACK_GUARD",
 }
 NO_HELP = (NO_DEFAULT - {"FREERTOS_TASK_STACK_GUARD"}) | {
-    "KEYEXPR_STRING_SIZE", "LET_BUFFER_SIZE", "RMW_MAX_BACKENDS", "RMW_MAX_NODES",
+    "ZENOH_KEYEXPR_STRING_BYTES", "RMW_MAX_BACKENDS", "RMW_MAX_NODES",
     "RMW_MESSAGE_INFO_SLOTS", "RMW_SUBSCRIBER_SLOT_BYTES", "RUNTIME_COMPONENT_SLOT_BYTES",
     "RUNTIME_MAX_CELL_ENTITIES", "RUNTIME_MAX_CLASS_INSTANCES", "RUNTIME_MAX_COMPONENTS",
-    "SERVICE_TIMEOUT_MS", "SMOLTCP_BUFFER_SIZE", "SMOLTCP_CONNECT_TIMEOUT_MS",
+    "SERVICE_TIMEOUT_MS", "NET_BUFFER_BYTES", "SMOLTCP_CONNECT_TIMEOUT_MS",
     "SMOLTCP_MAX_SOCKETS", "SMOLTCP_MAX_UDP_SOCKETS", "SMOLTCP_SOCKET_TIMEOUT_MS",
-    "ZENOH_BATCH_MULTICAST_SIZE", "ZENOH_CONNECT_FOREVER", "ZENOH_CONNECT_TIMEOUT_MS",
+    "ZENOH_BATCH_MULTICAST_BYTES", "ZENOH_CONNECT_FOREVER", "ZENOH_CONNECT_TIMEOUT_MS",
 }
 
 
@@ -707,8 +707,63 @@ def render_cmake(rows):
         out.append(f'set(NROS_KNOB_LEGACY_{env} "{";".join(legacy)}")')
         for l in legacy:
             out.append(f"set(NROS_KNOB_CANONICAL_{l} {env})")
+            scale = scale_text(entry_of(r, "env", l))
+            if scale:
+                out.append(f'set(NROS_KNOB_RETIRED_SCALE_{l} "{scale}")')
+    out.append("")
+    # phase-581 W5 (RFC-0140 D4) -- the `kconfig:` and `cmake:` retirements: a
+    # Zephyr conf line or a `-DNROS_OVERRIDE_<ID>` under an old name is refused
+    # by the module hook, naming the new spelling and, for a unit change, the
+    # factor.
+    kconf, overrides = [], []
+    for r in rows:
+        for e in r.get("retired_entries", []):
+            if e["road"] == "kconfig":
+                sym = e["name"].removeprefix("CONFIG_")
+                kconf.append((sym, retired_kconfig_message(r, e)))
+            elif e["road"] == "cmake":
+                overrides.append((e["name"], retired_override_message(r, e)))
+    out.append("# Retired Kconfig symbols (without CONFIG_) and retired -D overrides, each")
+    out.append("# with the sentence its refusal prints.")
+    out.append('set(NROS_KNOB_RETIRED_KCONFIG "' + ";".join(s for s, _ in kconf) + '")')
+    for s, m in kconf:
+        out.append(f'set(NROS_KNOB_RETIRED_KCONFIG_MSG_{s} "{m}")')
+    out.append('set(NROS_KNOB_RETIRED_OVERRIDES "' + ";".join(s for s, _ in overrides) + '")')
+    for s, m in overrides:
+        out.append(f'set(NROS_KNOB_RETIRED_OVERRIDE_MSG_{s} "{m}")')
     out.append("")
     return "\n".join(out)
+
+
+def entry_of(r, road, name):
+    """The row's retired entry for `<road>:<name>`, or None."""
+    for e in r.get("retired_entries", []):
+        if e["road"] == road and e["name"] == name:
+            return e
+    return None
+
+
+def scale_text(e):
+    """The Rust `nros_zephyr_build::scale_text`, for the cmake lanes: empty for
+    a pure rename, else ` (the value x <f>: <old> was in <unit>)`."""
+    if e is None or e.get("factor", 1) == 1:
+        return ""
+    if e.get("from_unit"):
+        return f" (the value x {e['factor']}: {e['name']} was in {e['from_unit']})"
+    return f" (the value x {e['factor']})"
+
+
+def retired_kconfig_message(r, e):
+    old = "CONFIG_" + e["name"].removeprefix("CONFIG_")
+    if r.get("retired") or e.get("instead"):
+        return f"{old} is retired: {r.get('retired') or e['instead']}"
+    table, _, name = image_key(r).rpartition(".")
+    return (f"{old} is retired: set CONFIG_{kconfig_symbol(r)} in a guest's conf, or "
+            f"[image.<id>.knobs.{table}] {name} in a system.toml project{scale_text(e)}")
+
+
+def retired_override_message(r, e):
+    return (f"-D{e['name']} is retired: pass -DNROS_OVERRIDE_{r['id']}{scale_text(e)}")
 
 
 def kconfig_symbol(r):

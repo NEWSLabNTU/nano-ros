@@ -425,7 +425,7 @@ fn zephyr_cortex_m_c_boot_report_names_arena_exhaustion() {
         .unwrap_or_else(|| panic!("the decode names no arena capacity.\nDecode:\n{verdict}"));
     let short = number_after("short by")
         .unwrap_or_else(|| panic!("the decode names no shortfall.\nDecode:\n{verdict}"));
-    let knob = number_after("set NROS_EXECUTOR_ARENA_SIZE >=")
+    let knob = number_after("set NROS_EXECUTOR_ARENA_BYTES >=")
         .unwrap_or_else(|| panic!("the decode names no knob value.\nDecode:\n{verdict}"));
     assert!(
         claim > capacity,

@@ -88,7 +88,7 @@
  * WHO GETS WHICH NUMBER — three roads, decided by WHERE the RMW is known.
  *
  * 1. CARGO road, `rmw-zenoh` on: the board build.rs passes
- *    `-DNROS_FREERTOS_HEAP_KB` from the measured derivation
+ *    `-DNROS_FREERTOS_HEAP_KB` (this header's KiB) from the measured derivation
  *    `nros_board_common::freertos_config::default_heap_bytes`. Nothing below
  *    applies (an explicit size is never adjusted).
  * 2. CMAKE road (every C/C++ image: the kernel is `freertos_kernel`, which never
@@ -131,8 +131,9 @@
  *    0x300000). `nano_ros_entry` defines `NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB`
  *    from the generated entry's own declarations.
  *
- * Override per image with `NROS_FREERTOS_HEAP_KB` (cargo: the build env, which
- * build.rs forwards; cmake: a compile definition). It is a size someone chose
+ * Override per image with `memory.heap_bytes` (`NROS_MEMORY_HEAP_BYTES`, in
+ * bytes; the board build converts it to the KiB this header's
+ * NROS_FREERTOS_HEAP_KB takes; cmake: a compile definition of that macro). It is a size someone chose
  * and is never adjusted by either rule above. */
 #ifndef NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB
 #define NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB     0
@@ -140,7 +141,7 @@
 /* Issue 2400 W2b -- an image that opted in to a stack raise (`stack_floor =
  * "raise"`) and was rebuilt at its measured floor: heap_4 hands out the task
  * stack, so the DEFAULT heap grows by what the stack did. An explicit
- * NROS_FREERTOS_HEAP_KB is a size someone chose and is not adjusted. */
+ * heap (`memory.heap_bytes`) is a size someone chose and is not adjusted. */
 #ifndef NROS_FREERTOS_HEAP_RAISE_KB
 #define NROS_FREERTOS_HEAP_RAISE_KB                   0
 #endif

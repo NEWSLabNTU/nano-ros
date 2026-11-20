@@ -921,7 +921,7 @@ function(nano_ros_entry)
     # bytes with a 3 MiB `ucHeap` beside two 256 KiB `__nros_sched_task_stack_*`.
     # The sidecar states the moved total; the kernel's DEFAULT heap subtracts
     # it (`FreeRTOSConfig.h`), so the move is a move and not a second
-    # reservation. An explicit `NROS_FREERTOS_HEAP_KB` is a size someone chose
+    # reservation. An explicit `NROS_MEMORY_HEAP_BYTES` is a size someone chose
     # and is left alone. On `freertos_config`, because every TU that includes
     # `FreeRTOSConfig.h` must agree on `configTOTAL_HEAP_SIZE` (issue 1197).
     if(TARGET ${_NRA_NAME} AND TARGET freertos_config)

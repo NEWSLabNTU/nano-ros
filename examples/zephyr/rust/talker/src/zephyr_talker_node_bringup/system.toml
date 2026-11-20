@@ -97,5 +97,5 @@ board = "zephyr"
 rmw = "zenoh"
 os_config = ["prj-zenoh.conf", "prj-zenoh-native-sim.conf"]
 
-[image.zephyr_connect_budget.knobs.zenoh.limits]
+[image.zephyr_connect_budget.knobs.zenoh]
 connect_timeout_ms = 3000

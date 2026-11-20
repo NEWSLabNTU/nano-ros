@@ -800,7 +800,7 @@ c-knob-guard-order:
 # stale in silence. It was already wrong on the second board that conf builds
 # for, whose derived size is 88,328.
 #
-# `CONFIG_NROS_EXECUTOR_BACKING_U64S` lets the image STATE the reservation, so
+# `CONFIG_NROS_EXECUTOR_BACKING_BYTES` lets the image STATE the reservation, so
 # it is `8 * words` on every target and the crate refuses to compile below what
 # the executor needs. This gate is the other half: a conf that states it must
 # record the arena it lowered FROM and hold to `arena + 8 * words == base`.

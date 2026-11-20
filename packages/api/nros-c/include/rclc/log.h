@@ -183,7 +183,7 @@ void rclc_log_emit_at(rclc_logger_t logger, rcl_log_severity_t severity, const c
 
 /** Stack buffer the located printf-style entry point below renders into.
  *
- * NOT the `NROS_LOG_BUFFER_SIZE` knob: `c-stubs/log_fmt.c`
+ * NOT the `NROS_LOG_BUFFER_BYTES` knob: `c-stubs/log_fmt.c`
  * renders into this from a header with no per-build value to read, so its
  * frame stays 256. The knob sizes nros-log's Rust formatter and
  * the slots that store records, so a C record is bounded by the smaller of

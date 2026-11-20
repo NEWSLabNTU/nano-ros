@@ -10,7 +10,7 @@
 #   NROS_THREADX_POOL_DDS         1 for a DDS backend: the larger measured
 #                                 working set (the cargo road's rule: anything
 #                                 but zenoh)
-#   NROS_THREADX_BYTE_POOL_BYTES  only when stated: a `-DNROS_THREADX_BYTE_POOL_KB`,
+#   NROS_THREADX_BYTE_POOL_BYTES  only when stated: a `-DNROS_THREADX_BYTE_POOL_BYTES`,
 #                                 else the environment or the image's
 #                                 `[image.<id>.knobs]` row (`nros_image_env_value`).
 #                                 Unstated, the C file derives it.
@@ -28,18 +28,17 @@ function(nros_threadx_byte_pool_defines _out _app_stack)
     if(NOT _rmw STREQUAL "" AND NOT _rmw STREQUAL "zenoh")
         list(APPEND _defs "NROS_THREADX_POOL_DDS=1")
     endif()
-    if(DEFINED NROS_THREADX_BYTE_POOL_KB AND NOT "${NROS_THREADX_BYTE_POOL_KB}" STREQUAL "")
-        set(_kb "${NROS_THREADX_BYTE_POOL_KB}")
+    if(DEFINED NROS_THREADX_BYTE_POOL_BYTES AND NOT "${NROS_THREADX_BYTE_POOL_BYTES}" STREQUAL "")
+        set(_bytes "${NROS_THREADX_BYTE_POOL_BYTES}")
     else()
-        nros_image_env_value(_kb NROS_THREADX_BYTE_POOL_KB)
+        nros_image_env_value(_bytes NROS_THREADX_BYTE_POOL_BYTES)
     endif()
-    if(NOT "${_kb}" STREQUAL "")
-        if(NOT _kb MATCHES "^[0-9]+$")
+    if(NOT "${_bytes}" STREQUAL "")
+        if(NOT _bytes MATCHES "^[0-9]+$")
             message(FATAL_ERROR
-                "nano-ros: NROS_THREADX_BYTE_POOL_KB='${_kb}': expected a decimal KiB "
-                "count for the ThreadX byte pool (`[knobs.memory] heap_bytes`)")
+                "nano-ros: NROS_THREADX_BYTE_POOL_BYTES='${_bytes}': expected a decimal byte "
+                "count for the ThreadX byte pool (`[image.<id>.knobs.threadx] byte_pool_bytes`)")
         endif()
-        math(EXPR _bytes "${_kb} * 1024")
         list(APPEND _defs "NROS_THREADX_BYTE_POOL_BYTES=${_bytes}")
     endif()
     set(${_out} "${_defs}" PARENT_SCOPE)

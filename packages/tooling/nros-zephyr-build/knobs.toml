@@ -172,9 +172,15 @@ read the advisory, then set this.
 '''
 
 [[knob]]
-key = "executor.arena_size"
+key = "executor.arena_bytes"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:executor.arena_size" },
+    { spelling = "env:NROS_EXECUTOR_ARENA_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_EXECUTOR_ARENA_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_EXECUTOR_ARENA_SIZE" },
+]
 ladder = true
 type = "int"
 prompt = "Executor arena size in bytes (0 = derive)"
@@ -207,9 +213,15 @@ registration that does not fit, not at link.
 '''
 
 [[knob]]
-key = "executor.backing_u64s"
+key = "executor.backing_bytes"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:executor.backing_u64s", factor = 8, from_unit = "8-byte words" },
+    { spelling = "env:NROS_EXECUTOR_BACKING_U64S", factor = 8, from_unit = "8-byte words" },
+    { spelling = "kconfig:CONFIG_NROS_EXECUTOR_BACKING_U64S", factor = 8, from_unit = "8-byte words" },
+    { spelling = "cmake:NROS_OVERRIDE_EXECUTOR_BACKING_U64S", factor = 8, from_unit = "8-byte words" },
+]
 ladder = true
 type = "int"
 prompt = "Executor backing reservation in 64-bit words (-1 = derive, 0 = none)"
@@ -463,6 +475,36 @@ the record. Raise it only when a burst must be kept whole.
 '''
 
 [[knob]]
+key = "executor.param_service_buffer_bytes"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "toml:executor.param_service_buffer_size" },
+    { spelling = "env:NROS_PARAM_SERVICE_BUFFER_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_PARAM_SERVICE_BUFFER_SIZE" },
+]
+ladder = true
+type = "int"
+prompt = "Parameter service request/reply buffer size (bytes) (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Each half of the one request/reply buffer pair an executor's
+parameter services share (nros-node build.rs PARAM_SERVICE_BUFFER_SIZE).
+
+-1 DERIVES it: when the contract's `params:` declare
+every node's parameters, nros-node sizes the buffer for the largest
+message those names and types can produce at the store's capacities
+(CONFIG_NROS_MAX_STRING_VALUE_LEN, CONFIG_NROS_MAX_ARRAY_LEN,
+CONFIG_NROS_MAX_BYTE_ARRAY_LEN, CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN).
+Without a declaration the crate default of 4096 stands. Stating a
+number here WINS; a request or reply past it is dropped and logged
+once per service.
+'''
+
+[[knob]]
 key = "executor.runtime_remaps"
 scope = "image"
 class = "public"
@@ -485,6 +527,54 @@ costs 404 bytes on a 32-bit target, per executor (per sched_task). At 0,
 declare_remap is refused by name (RemapRefused::NoRuntimeTable,
 NROS_CPP_RET_FULL); state a count here to restore runtime slots.
 '''
+
+[[knob]]
+key = "executor.subscription_buffer_bytes"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "toml:executor.subscription_buffer_size" },
+    { spelling = "env:NROS_SUBSCRIPTION_BUFFER_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_SUBSCRIPTION_BUFFER_SIZE" },
+]
+ladder = true
+type = "int"
+prompt = "Per-subscription receive buffer size in bytes (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Serialized-sample capacity of every executor arena subscription
+(nros-node build.rs DEFAULT_RX_BUF_SIZE). A sample larger than this
+is dropped at take with BUFFER_TOO_SMALL — for the C++ arena
+dispatch path that drop is silent, so an undersized buffer looks
+like a subscription that never fires. Size it to the largest
+serialized message the image subscribes to (e.g. an Autoware
+/planning trajectory runs 9-14 KiB). The executor arena is derived
+from this value times the callback-slot count — raise it
+deliberately.
+
+-1 means DERIVE it from this image's message-bound inventory: the
+largest derived bound in the LINKED interface closure, which is an UPPER
+BOUND on what the image needs and never an under-estimate. "Size it to
+the largest serialized message the image subscribes to" is exactly the
+instruction nobody could follow by hand -- for example, a board conf can
+reason its way to ~718 B for nav_msgs/Odometry and write 512, where the
+derived bound is 880. Any value other than -1 is yours and WINS; the
+crate default when nothing is stated and nothing is derivable is 1024.
+
+COUPLED TO THE ARENA: the arena is max_cbs * (3 * this + 512) + 2048, so
+raising this raises the arena. An image that also PINS
+NROS_EXECUTOR_ARENA_SIZE must move the two together; leaving both to
+derive is the shape that cannot disagree.
+'''
+
+# ---------------------------------------------------------------------------
+# Statements (RFC-0140 D1): the system.toml selections. `carrier = true` says
+# the build carries it as NROS_ENTRY_<KEY>; `zephyr = true` that the Zephyr
+# module consumes it itself as CONFIG_NROS_<KEY> (a different symbol today
+# stays in `transitional` until phase-581 W6).
 
 [[knob]]
 key = "graph.max_entities"
@@ -521,16 +611,15 @@ answer.
 '''
 
 [[knob]]
-key = "runtime.let_buffer_size"
-transitional = { id = "LET_BUFFER_SIZE", kconfig = "NROS_LET_BUFFER_SIZE" }
+key = "log.buffer_bytes"
 scope = "image"
 class = "public"
-ladder = true
-
-[[knob]]
-key = "log.buffer_size"
-scope = "image"
-class = "public"
+retired = [
+    { spelling = "toml:log.buffer_size" },
+    { spelling = "env:NROS_LOG_BUFFER_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_LOG_BUFFER_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_LOG_BUFFER_SIZE" },
+]
 ladder = true
 type = "int"
 prompt = "nros-log per-call formatting buffer (bytes)"
@@ -663,26 +752,6 @@ declaration the crate default of 32 stands.
 '''
 
 [[knob]]
-key = "params.max_byte_array_len"
-transitional = { id = "MAX_BYTE_ARRAY_LEN", kconfig = "NROS_MAX_BYTE_ARRAY_LEN" }
-scope = "image"
-class = "public"
-ladder = true
-type = "int"
-prompt = "Byte-array parameter capacity in bytes (-1 = derive)"
-kconfig_attrs = [
-    "default -1",
-]
-help = '''
-Bytes a `byte_array` parameter can hold (nros-params build.rs).
-
--1 DERIVES 0 when the contract's `params:` declare no byte_array.
-When one is declared, state a number here; the build refuses, naming
-the parameter and this knob, if nothing does. Without a declaration
-the crate default of 256 stands.
-'''
-
-[[knob]]
 key = "params.max_parameters"
 transitional = { id = "MAX_PARAMETERS", kconfig = "NROS_MAX_PARAMETERS" }
 scope = "image"
@@ -705,78 +774,6 @@ declared parameter plus one `use_sim_time` per node, which nano-ros
 declares on every node. An image whose contract declares no
 parameters (or declares them on only some nodes) falls through to the
 crate default of 32. Stating a number here WINS.
-'''
-
-[[knob]]
-key = "params.max_param_constraints_len"
-transitional = { id = "MAX_PARAM_CONSTRAINTS_LEN", kconfig = "NROS_MAX_PARAM_CONSTRAINTS_LEN" }
-scope = "image"
-class = "public"
-ladder = true
-type = "int"
-prompt = "Parameter additional_constraints capacity in bytes"
-kconfig_attrs = [
-    "default 0",
-    "range 0 256",
-]
-help = '''
-Longest `additional_constraints` a parameter's descriptor can hold
-(nros-params build.rs) -- the free text `ros2 param describe` prints
-and rclc's rclc_add_parameter_description takes as its fourth
-argument. Paid once per store slot whatever the slot holds.
-
-A board fact, never derived, exactly like
-NROS_MAX_PARAM_DESCRIPTION_LEN beside it. It has its OWN knob rather
-than sharing that one, and the DEFAULT IS 0: the describe reply's
-derived buffer prices CAPACITY, not use, so sharing would have cost
-every image 256 bytes per parameter for a field it never sets -- 2,048
-bytes on an eight-parameter image, taking its reply past
-the 4,096 fallback. State a number here to use the field. Longer text
-is truncated at a character boundary and logged once per parameter,
-naming this knob.
-'''
-
-[[knob]]
-key = "params.max_param_description_len"
-transitional = { id = "MAX_PARAM_DESCRIPTION_LEN", kconfig = "NROS_MAX_PARAM_DESCRIPTION_LEN" }
-scope = "image"
-class = "public"
-ladder = true
-type = "int"
-prompt = "Parameter description capacity in bytes"
-kconfig_attrs = [
-    "default 256",
-    "range 0 256",
-]
-help = '''
-Longest DESCRIPTION a parameter's descriptor can hold
-(nros-params build.rs). Paid once per store slot whatever the slot
-holds, like the other per-slot limits.
-
-A board fact, never derived: the contract states a
-parameter's name and type, not its description. 0 is a real choice
-meaning "no descriptions". A longer description is truncated at a
-character boundary and logged once per parameter, naming this knob.
-256 is the most an rcl_interfaces describe reply carries.
-'''
-
-[[knob]]
-key = "params.max_param_name_len"
-transitional = { id = "MAX_PARAM_NAME_LEN", kconfig = "NROS_MAX_PARAM_NAME_LEN" }
-scope = "image"
-class = "public"
-ladder = true
-type = "int"
-prompt = "Longest parameter name in bytes (-1 = derive)"
-kconfig_attrs = [
-    "default -1",
-]
-help = '''
-Per-slot name capacity of the parameter store (nros-params build.rs).
-
--1 DERIVES it from the contract's `params:` -- the longest declared
-name, and never shorter than `use_sim_time`. Without a declaration
-the crate default of 64 stands.
 '''
 
 [[knob]]
@@ -805,10 +802,270 @@ the crate default of 32 stands.
 '''
 
 [[knob]]
-key = "params.max_string_value_len"
-transitional = { id = "MAX_STRING_VALUE_LEN", kconfig = "NROS_MAX_STRING_VALUE_LEN" }
+key = "memory.app_stack_bytes"
+scope = "board"
+class = "public"
+retired = [
+    { spelling = "toml:freertos.app_stack_kb", factor = 1024, from_unit = "KiB" },
+    { spelling = "env:NROS_FREERTOS_APP_STACK_KB", factor = 1024, from_unit = "KiB" },
+    { spelling = "toml:threadx.app_stack_kb", factor = 1024, from_unit = "KiB" },
+    { spelling = "env:NROS_THREADX_APP_STACK_KB", factor = 1024, from_unit = "KiB" },
+]
+ladder = true
+help = '''
+Bytes of the application task's stack: the task that runs registration,
+Executor::open and the spin loop. One knob on every platform that sizes
+it (FreeRTOS, ThreadX); each platform's build converts it to the unit its
+RTOS configuration takes, in the one place that writes that
+configuration. Unset, the board's own default applies (FreeRTOS: 128 KiB
+on the cargo road, 64 KiB on the cmake road; ThreadX rv-virt: 512 KiB),
+raised to the measured stack floor where the build walks one.
+'''
+
+[[knob]]
+key = "memory.heap_bytes"
+scope = "board"
+class = "public"
+retired = [
+    { spelling = "toml:zephyr.heap_size" },
+    { spelling = "env:NROS_ZEPHYR_HEAP_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_ZEPHYR_HEAP_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_ZEPHYR_HEAP_SIZE" },
+    { spelling = "toml:freertos.heap_kb", factor = 1024, from_unit = "KiB" },
+    { spelling = "env:NROS_FREERTOS_HEAP_KB", factor = 1024, from_unit = "KiB" },
+]
+ladder = true
+type = "int"
+prompt = "Application heap arena size (bytes)"
+kconfig_attrs = [
+    "default 1048576 if NROS_RMW_CYCLONEDDS",
+    "default 196608 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE || NROS_CAPABILITY_LIFECYCLE",
+    "default 131072 if RUST",
+    "default 65536",
+]
+help = '''
+Bytes of the application heap. On FreeRTOS it is heap_4's arena
+(configTOTAL_HEAP_SIZE; the board build converts it to the KiB its
+FreeRTOSConfig.h takes, and derives it when unset). On Zephyr it is the
+nros heap arena, with the defaults below. ThreadX's byte pool is its
+own knob, threadx.byte_pool_bytes.
+
+A PARAM_SERVICES image, one whose launch seeds a parameter
+(NROS_PARAM_STORE), and a LIFECYCLE one get 192 KiB: those capabilities
+allocate their services' buffers from this arena, and nothing sized it
+from the declaration, so such an image LINKED and then halted at boot.
+
+The PARAMETER STORE is NOT in this arena any more. Those two symbols are
+exactly what makes nros-params carve the store out of the executor's
+.bss backing (nros_params::IMPLIED_STORE_SLOTS), so the store's ~8.5 KiB
+a slot -- 285,696 bytes at the default 32 slots, the `HEAP EXHAUSTED
+(TOO SMALL): request 285696` such an image used to halt with -- moved to
+the linker and out of this default. It was 512 KiB for param_services
+until 2026-10-09; MEASURED after the move, zephyr_cpp_params (both axes)
+boots at 192 KiB, prints `parameter store: 32 slots (285696 B) carved
+from the executor backing` and reads its launch-seeded 250 back. A store
+only application code reaches is invisible to the build, stays on this
+heap, and is refused at run time with its size.
+
+MEASURED on native_sim/native/64 (boot record, live router,
+`read-boot-report.py --heap-headroom`), on features' images that
+declare BOTH axes: zephyr_cpp_params peaks at 111,360 without the store
+(46,848 with param_services alone, so lifecycle costs ~64.5 KiB --
+five services, each owning a 2 x 4,096-byte buffer pair); the Rust
+params image at 114,144 without it, and the lifecycle and qos images'
+peaks less the store at 113,904 and 120,896.
+Worst + the 24,576-byte floor is 145,472, hence 192 KiB for either axis
+now that the store is carved.
+
+A CYCLONE image gets 1 MiB: ddsrt's whole heap lands here
+since the Zephyr road compiles the platform funnel (heap/nros/heap.c),
+where it used to be picolibc's 16 MiB arena. MEASURED on
+native_sim/native/64, c/talker cyclonedds: 840 nros_platform_alloc calls
+and a 153,072-byte peak by the first dds_write (gdb); 1 MiB is ~6.8x
+that, for discovery and samples in flight a peerless run does not reach.
+A Rust Cyclone image's Rust allocations share it.
+
+A RUST application gets twice the default: its Rust
+`alloc` goes through this arena too -- it used to land in a second,
+unpriced heap (zephyr-lang-rust's CONFIG_RUST_ALLOC over libc malloc).
+MEASURED one-heap peaks on native_sim/native/64 (boot record, 10 s
+against a live peer): rust/talker xrce 46,256; rust/listener zenoh
+42,304; rust/action-server zenoh 58,288 -- which leaves 7,760 bytes of
+a 64 KiB arena and is refused by `read-boot-report.py --heap-headroom`.
+128 KiB keeps the 24,576-byte floor over the worst of them.
+
+A C or C++ zenoh image keeps 64 KiB. MEASURED peaks (boot
+record, 20-40 s against a live peer, Zephyr 3.7): talker 13,472 on
+mps2_an385 (C and C++), 11,664 on nucleo_f767zi (serial, Renode twin),
+16,544 on native_sim/native/64; and on native_sim, listener 15,984,
+service server 16,816, service client 20,496, action server 33,648,
+action client 33,568 (C and C++ alike). The action images set the
+default: 33,648 + the 24,576-byte floor is 58,224. A C image that
+declares no action could take 48 KiB; nothing in Kconfig knows what an
+image declares, so that image states it.
+
+Size of the rlsf arena in nros-platform's zephyr_heap, which backs
+BOTH z_malloc and __rust_alloc since the allocation funnel moved off
+Zephyr's kernel heap.
+
+CONFIG_HEAP_MEM_POOL_SIZE does NOT govern application allocation any
+more; this does. An application that outgrows the arena does not
+fault or log -- it stops, so size this to what the application
+actually needs rather than leaving the default in place and
+inferring from a hang.
+
+An NROS_MEMORY_HEAP_BYTES environment variable overrides this value.
+
+The boot record's capacity word reads this value + 512: zpico-alloc
+carves an 8 x 64 B slab beside the arena, so a
+configured 102400 reads 102912. Size from a dump with
+`read-boot-report.py --heap-headroom`, which judges the RUNNING peak
+(as of the dump) against a 24,576-byte floor and names the knob
+(peak + floor - 512); take the dump after the host graph has joined,
+not at boot.
+
+PERMANENTLY OPERATOR-STATED beyond those defaults. The
+arena's peak is a RUNTIME property: it moves with what the peers send
+(discovery, the graph, samples in flight), which nothing in the image
+declares, so no build can derive it. The defaults above are floors per
+declared capability; the measured peak, read off the boot record by
+`read-boot-report.py --heap-headroom`, is how an image is sized past
+them, and it names the value to state.
+'''
+
+[[knob]]
+key = "net.buffer_bytes"
+scope = "board"
+class = "public"
+retired = [
+    { spelling = "env:ZPICO_SMOLTCP_BUFFER_SIZE" },
+    { spelling = "toml:net.buffer_size" },
+    { spelling = "env:NROS_SMOLTCP_BUFFER_SIZE" },
+]
+ladder = true
+
+[[knob]]
+key = "params.max_byte_array_bytes"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:params.max_byte_array_len" },
+    { spelling = "env:NROS_MAX_BYTE_ARRAY_LEN" },
+    { spelling = "kconfig:CONFIG_NROS_MAX_BYTE_ARRAY_LEN" },
+    { spelling = "cmake:NROS_OVERRIDE_MAX_BYTE_ARRAY_LEN" },
+]
+ladder = true
+type = "int"
+prompt = "Byte-array parameter capacity in bytes (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Bytes a `byte_array` parameter can hold (nros-params build.rs).
+
+-1 DERIVES 0 when the contract's `params:` declare no byte_array.
+When one is declared, state a number here; the build refuses, naming
+the parameter and this knob, if nothing does. Without a declaration
+the crate default of 256 stands.
+'''
+
+[[knob]]
+key = "params.max_constraints_bytes"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "toml:params.max_param_constraints_len" },
+    { spelling = "env:NROS_MAX_PARAM_CONSTRAINTS_LEN" },
+    { spelling = "kconfig:CONFIG_NROS_MAX_PARAM_CONSTRAINTS_LEN" },
+    { spelling = "cmake:NROS_OVERRIDE_MAX_PARAM_CONSTRAINTS_LEN" },
+]
+ladder = true
+type = "int"
+prompt = "Parameter additional_constraints capacity in bytes"
+kconfig_attrs = [
+    "default 0",
+    "range 0 256",
+]
+help = '''
+Longest `additional_constraints` a parameter's descriptor can hold
+(nros-params build.rs) -- the free text `ros2 param describe` prints
+and rclc's rclc_add_parameter_description takes as its fourth
+argument. Paid once per store slot whatever the slot holds.
+
+A board fact, never derived, exactly like
+NROS_MAX_PARAM_DESCRIPTION_LEN beside it. It has its OWN knob rather
+than sharing that one, and the DEFAULT IS 0: the describe reply's
+derived buffer prices CAPACITY, not use, so sharing would have cost
+every image 256 bytes per parameter for a field it never sets -- 2,048
+bytes on an eight-parameter image, taking its reply past
+the 4,096 fallback. State a number here to use the field. Longer text
+is truncated at a character boundary and logged once per parameter,
+naming this knob.
+'''
+
+[[knob]]
+key = "params.max_description_bytes"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "toml:params.max_param_description_len" },
+    { spelling = "env:NROS_MAX_PARAM_DESCRIPTION_LEN" },
+    { spelling = "kconfig:CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN" },
+    { spelling = "cmake:NROS_OVERRIDE_MAX_PARAM_DESCRIPTION_LEN" },
+]
+ladder = true
+type = "int"
+prompt = "Parameter description capacity in bytes"
+kconfig_attrs = [
+    "default 256",
+    "range 0 256",
+]
+help = '''
+Longest DESCRIPTION a parameter's descriptor can hold
+(nros-params build.rs). Paid once per store slot whatever the slot
+holds, like the other per-slot limits.
+
+A board fact, never derived: the contract states a
+parameter's name and type, not its description. 0 is a real choice
+meaning "no descriptions". A longer description is truncated at a
+character boundary and logged once per parameter, naming this knob.
+256 is the most an rcl_interfaces describe reply carries.
+'''
+
+[[knob]]
+key = "params.max_name_bytes"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "toml:params.max_param_name_len" },
+    { spelling = "env:NROS_MAX_PARAM_NAME_LEN" },
+    { spelling = "kconfig:CONFIG_NROS_MAX_PARAM_NAME_LEN" },
+    { spelling = "cmake:NROS_OVERRIDE_MAX_PARAM_NAME_LEN" },
+]
+ladder = true
+type = "int"
+prompt = "Longest parameter name in bytes (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Per-slot name capacity of the parameter store (nros-params build.rs).
+
+-1 DERIVES it from the contract's `params:` -- the longest declared
+name, and never shorter than `use_sim_time`. Without a declaration
+the crate default of 64 stands.
+'''
+
+[[knob]]
+key = "params.max_string_value_bytes"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "toml:params.max_string_value_len" },
+    { spelling = "env:NROS_MAX_STRING_VALUE_LEN" },
+    { spelling = "kconfig:CONFIG_NROS_MAX_STRING_VALUE_LEN" },
+    { spelling = "cmake:NROS_OVERRIDE_MAX_STRING_VALUE_LEN" },
+]
 ladder = true
 type = "int"
 prompt = "String parameter capacity in bytes (-1 = derive)"
@@ -849,31 +1106,6 @@ parameter_events profile is KEEP_LAST(1000); a reliable DDS writer
 reserves that history, so an RTOS image defaults to 1. Depth is not a
 QoS matching criterion, so a subscriber with upstream's profile still
 matches.
-'''
-
-[[knob]]
-key = "executor.param_service_buffer_size"
-transitional = { id = "PARAM_SERVICE_BUFFER_SIZE", kconfig = "NROS_PARAM_SERVICE_BUFFER_SIZE" }
-scope = "image"
-class = "public"
-ladder = true
-type = "int"
-prompt = "Parameter service request/reply buffer size (bytes) (-1 = derive)"
-kconfig_attrs = [
-    "default -1",
-]
-help = '''
-Each half of the one request/reply buffer pair an executor's
-parameter services share (nros-node build.rs PARAM_SERVICE_BUFFER_SIZE).
-
--1 DERIVES it: when the contract's `params:` declare
-every node's parameters, nros-node sizes the buffer for the largest
-message those names and types can produce at the store's capacities
-(CONFIG_NROS_MAX_STRING_VALUE_LEN, CONFIG_NROS_MAX_ARRAY_LEN,
-CONFIG_NROS_MAX_BYTE_ARRAY_LEN, CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN).
-Without a declaration the crate default of 4096 stands. Stating a
-number here WINS; a request or reply past it is dropped and logged
-once per service.
 '''
 
 [[knob]]
@@ -1070,6 +1302,19 @@ class = "public"
 ladder = true
 
 [[knob]]
+key = "runtime.let_buffer_size"
+scope = "image"
+class = "retired"
+retired = [
+    { spelling = "env:NROS_LET_BUFFER_SIZE" },
+    { spelling = "toml:runtime.let_buffer_size" },
+]
+# phase-581 W0: the constant it baked into nros-c (`LET_BUFFER_SIZE`) had no
+# reader, so the knob changed nothing; retired with no replacement (RFC-0140
+# Appendix A.1). The row stays as the error table.
+instead = "it sized nothing (no code read the value) -- remove it"
+
+[[knob]]
 key = "runtime.max_cell_entities"
 scope = "image"
 class = "public"
@@ -1139,11 +1384,12 @@ NROS_SERVICE_INBOX_DEPTH.
 '''
 
 [[knob]]
-key = "net.buffer_size"
-transitional = { id = "SMOLTCP_BUFFER_SIZE", kconfig = "NROS_SMOLTCP_BUFFER_SIZE" }
-scope = "board"
+key = "service.timeout_ms"
+scope = "image"
 class = "public"
-retired = [{ spelling = "env:ZPICO_SMOLTCP_BUFFER_SIZE" }]
+retired = [
+    { spelling = "toml:zenoh.limits.service_timeout_ms" },
+]
 ladder = true
 
 [[knob]]
@@ -1179,9 +1425,15 @@ retired = [{ spelling = "env:ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS" }]
 ladder = true
 
 [[knob]]
-key = "subscriber.buffer_size"
+key = "subscriber.buffer_bytes"
 scope = "image"
 class = "public"
+retired = [
+    { spelling = "toml:subscriber.buffer_size" },
+    { spelling = "env:NROS_SUBSCRIBER_BUFFER_SIZE" },
+    { spelling = "kconfig:CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE" },
+    { spelling = "cmake:NROS_OVERRIDE_SUBSCRIBER_BUFFER_SIZE" },
+]
 type = "int"
 prompt = "Per-subscriber static buffer size (-1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
@@ -1213,49 +1465,6 @@ the crate default (1024) applies -- the configure says so and names the
 types. Deriving over the bounded subset would publish a maximum a real
 sample can exceed, which is a SILENT drop on the C++ arena path.
 '''
-
-[[knob]]
-key = "executor.subscription_buffer_size"
-transitional = { id = "SUBSCRIPTION_BUFFER_SIZE", kconfig = "NROS_SUBSCRIPTION_BUFFER_SIZE" }
-scope = "image"
-class = "public"
-ladder = true
-type = "int"
-prompt = "Per-subscription receive buffer size in bytes (-1 = derive)"
-kconfig_attrs = [
-    "default -1",
-]
-help = '''
-Serialized-sample capacity of every executor arena subscription
-(nros-node build.rs DEFAULT_RX_BUF_SIZE). A sample larger than this
-is dropped at take with BUFFER_TOO_SMALL — for the C++ arena
-dispatch path that drop is silent, so an undersized buffer looks
-like a subscription that never fires. Size it to the largest
-serialized message the image subscribes to (e.g. an Autoware
-/planning trajectory runs 9-14 KiB). The executor arena is derived
-from this value times the callback-slot count — raise it
-deliberately.
-
--1 means DERIVE it from this image's message-bound inventory: the
-largest derived bound in the LINKED interface closure, which is an UPPER
-BOUND on what the image needs and never an under-estimate. "Size it to
-the largest serialized message the image subscribes to" is exactly the
-instruction nobody could follow by hand -- for example, a board conf can
-reason its way to ~718 B for nav_msgs/Odometry and write 512, where the
-derived bound is 880. Any value other than -1 is yours and WINS; the
-crate default when nothing is stated and nothing is derivable is 1024.
-
-COUPLED TO THE ARENA: the arena is max_cbs * (3 * this + 512) + 2048, so
-raising this raises the arena. An image that also PINS
-NROS_EXECUTOR_ARENA_SIZE must move the two together; leaving both to
-derive is the shape that cannot disagree.
-'''
-
-# ---------------------------------------------------------------------------
-# Statements (RFC-0140 D1): the system.toml selections. `carrier = true` says
-# the build carries it as NROS_ENTRY_<KEY>; `zephyr = true` that the Zephyr
-# module consumes it itself as CONFIG_NROS_<KEY> (a different symbol today
-# stays in `transitional` until phase-581 W6).
 
 [[statement]]
 key = "domain_id"

@@ -86,7 +86,7 @@ os_config = ["prj-zenoh.conf"]
 # console-less, with an executor arena too small for its first entity, so the
 # boot report in RAM is the only witness. The overlay is the TEST's and lives
 # beside it; the arena size is a knob, passed by the fixture row
-# (`-DNROS_OVERRIDE_EXECUTOR_ARENA_SIZE=32`).
+# (`-DNROS_OVERRIDE_EXECUTOR_ARENA_BYTES=32`).
 [image.mps2_boot_report]
 board = "mps2-an385-zephyr"
 rmw = "zenoh"

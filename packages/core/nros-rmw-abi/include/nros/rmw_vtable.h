@@ -779,7 +779,7 @@ typedef struct nros_rmw_vtable_t {
      *  which described a design this tree does not have.
      *  There is no per-publisher buffer and none of it is in `.bss`:
      *  `EmbeddedPublisher::publish` serialises into a per-CALL STACK
-     *  array of `DEFAULT_TX_BUF` (= `NROS_SUBSCRIPTION_BUFFER_SIZE`,
+     *  array of `DEFAULT_TX_BUF` (= `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`,
      *  1024 by default), and the runtime's own NULL-slot fallback
      *  stages into a 4 KiB stack array and refuses anything larger.
      *  The saving is real and it is STACK — which on an MCU with

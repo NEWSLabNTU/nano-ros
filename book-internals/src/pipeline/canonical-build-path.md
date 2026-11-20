@@ -266,7 +266,7 @@ they are **not interchangeable**:
   `CONFIG_{env_name}`. A knob such a reader names is a knob it resolves, so
   "does the file mention it" is a sound test.
 * **TABULATING** — an authored table, needed where the two vocabularies differ
-  (`NROS_ZENOH_SUBSCRIBER_RING_DEPTH` ↔ `CONFIG_NROS_SUBSCRIBER_RING_DEPTH`). Here a
+  (`NROS_ZENOH_SUBSCRIBER_RING_DEPTH` ↔ `CONFIG_NROS_ZENOH_SUBSCRIBER_RING_DEPTH`). Here a
   mention proves **nothing**: three knobs were mentioned with no table row and
   silently compiled crate defaults (issue 1490).
 
@@ -285,7 +285,7 @@ the same value" are one observation. Use a **non-default probe**:
 
 ```
 # append to the leaf's prj.conf, rebuild, read the generated const, then REVERT
-CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7
+CONFIG_NROS_ZENOH_SUBSCRIBER_RING_DEPTH=7
 ```
 
 That is how issue 1490 was found and how its fix was accepted (`4` → `7`).

@@ -89,7 +89,7 @@ pub fn builtin_slot(
             "nros-rmw-zenoh: the contract declares this image's parameters (`[params] \
              service_shape` = `{raw}`), and at least one is a string or an array. The size \
              of such a request depends on the parameter store's caps \
-             (NROS_MAX_STRING_VALUE_LEN and the array caps), which only nros-params \
+             (NROS_PARAMS_MAX_STRING_VALUE_BYTES and the array caps), which only nros-params \
              resolves, so this crate cannot price the inbox slot a `set_parameters` lands \
              in.\n\
              Falling back would guess, and the guess was measured wrong: 25 declared \

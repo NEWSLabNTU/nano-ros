@@ -131,7 +131,7 @@ and printed by `nros config explain`:
 | Knob                       | Key               | Builtin | Range       | What |
 |----------------------------|-------------------|---------|-------------|------|
 | `NROS_LOG_MAX_LEVEL`       | `max_level`       | `trace` | trace…fatal, off (0–6) | compile-time ceiling |
-| `NROS_LOG_BUFFER_SIZE`     | `buffer_size`     | 256     | 128–4096    | per-call formatting buffer (stack) |
+| `NROS_LOG_BUFFER_BYTES`     | `buffer_size`     | 256     | 128–4096    | per-call formatting buffer (stack) |
 | `NROS_LOG_EARLY_RECORDS`   | `early_records`   | 4       | 0–256       | records held before `init` (0 = drop, counted) |
 | `NROS_LOG_ROSOUT_RECORDS`  | `rosout_records`  | 16      | 1–1024      | `/rosout` queue depth (`rosout` feature) |
 | `NROS_LOG_DYNAMIC_LOGGERS` | `dynamic_loggers` | 16 (Linux hosts 32) | 0–1024 | runtime-logger arena (0 = lookup only) |

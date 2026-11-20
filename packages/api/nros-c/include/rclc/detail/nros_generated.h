@@ -1480,7 +1480,7 @@ typedef bool (*rclc_executor_trigger_t)(const struct rclc_executor_trigger_handl
  *
  * The internal executor is stored inline in `_opaque` — no heap
  * allocation is needed. The storage size is computed at build time
- * from `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE`.
+ * from `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_BYTES`.
  */
 typedef struct rclc_executor_t {
   /**
@@ -7281,7 +7281,7 @@ NROS_PUBLIC int rclc_executor_get_handle_count(const struct rclc_executor_t *exe
 NROS_PUBLIC size_t rclc_executor_get_arena_used(const struct rclc_executor_t *executor);
 
 /**
- * Total bytes of arena this executor was given (`NROS_EXECUTOR_ARENA_SIZE`
+ * Total bytes of arena this executor was given (`NROS_EXECUTOR_ARENA_BYTES`
  * as carved from its inline backing). 0 for NULL or an executor that is not
  * initialised.
  *
@@ -8562,7 +8562,7 @@ rcl_ret_t rclc_publish_serialized(const struct rcl_publisher_t *publisher,
  *   256-byte class when it fits;
  * * otherwise, or when the sample does not fit the smaller class (a caller
  *   that pointed a string at a buffer larger than `__Storage` sizes), the
- *   image's message buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`, the bound
+ *   image's message buffer size (`NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`, the bound
  *   the image derives over every type it carries).
  *
  * No heap, ever: nothing here, in the serialiser or in the

@@ -335,7 +335,7 @@ fn write_transition_event(
 /// Derived from the message rather than inherited from
 /// `DEFAULT_RX_BUF_SIZE`, for the reason [`crate::rosout::TX_BUF`] gives: that
 /// default is whatever the IMAGE declared through
-/// `NROS_SUBSCRIPTION_BUFFER_SIZE`, a bound over the types that image's own
+/// `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`, a bound over the types that image's own
 /// endpoints carry, and `~/transition_event` is not one of them.
 ///
 /// The three nested labels are `&'static str`s out of [`state_wire`] and

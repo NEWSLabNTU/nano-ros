@@ -252,7 +252,7 @@ unsafe extern "C" {
 //
 // and here is what those DO NOT establish, which is most of the question:
 //
-//   * They were taken with `backing_u64s = 0` — the executor backing declined
+//   * They were taken with `backing_bytes = 0` — the executor backing declined
 //     and therefore drawn FROM this pool — because the board's stated 4,494 is
 //     below the default sizing and no ThreadX image compiles with it (issue
 //     1388). A build with the static taken would move those bytes out.
@@ -324,7 +324,7 @@ where
     // issue 1145: the pool base a board raises from this line.
     B::println(format_args!(
         "nros: byte pool peak {} of {} bytes ({} free) \
-         — its size is `[knobs.memory] heap_bytes` (NROS_THREADX_BYTE_POOL_KB)",
+         — its size is `[image.<id>.knobs.threadx] byte_pool_bytes` (NROS_THREADX_BYTE_POOL_BYTES)",
         total.saturating_sub(free),
         total,
         free

@@ -120,7 +120,7 @@ pub const VERSION: u32 = 11;
 /// one. Measured on the Autoware Safety Island under QEMU: zenoh-pico's
 /// `_z_slist_new` asked the platform heap for 236 bytes, the console printed
 /// `HEAP EXHAUSTED`, and the decoded record told the reader to raise
-/// `NROS_EXECUTOR_ARENA_SIZE` for an arena that was 28% used.
+/// `NROS_EXECUTOR_ARENA_BYTES` for an arena that was 28% used.
 ///
 /// Append only; `the_alloc_arena_codes_match_the_record` states the numbers
 /// `read-boot-report.py`'s `ALLOC_ARENA_*` constants restate.
@@ -129,11 +129,11 @@ pub const VERSION: u32 = 11;
 pub enum AllocArena {
     /// No allocation has failed, or the image predates the field.
     None = 0,
-    /// The executor arena (`NROS_EXECUTOR_ARENA_SIZE`), claimed by entity
+    /// The executor arena (`NROS_EXECUTOR_ARENA_BYTES`), claimed by entity
     /// registration.
     ExecutorArena = 1,
     /// The platform heap `nros_platform_alloc` hands out of
-    /// (`CONFIG_NROS_ZEPHYR_HEAP_SIZE` on Zephyr).
+    /// (`CONFIG_NROS_MEMORY_HEAP_BYTES` on Zephyr).
     PlatformHeap = 2,
 }
 
@@ -310,7 +310,7 @@ mod enabled {
         /// Bytes the allocation that FAILED asked for, or 0 if none has.
         failed_alloc_size: AtomicU32,
         /// Bytes by which that allocation overran the arena. This is the
-        /// number to add to `NROS_EXECUTOR_ARENA_SIZE`, which is why it is
+        /// number to add to `NROS_EXECUTOR_ARENA_BYTES`, which is why it is
         /// stored rather than left to be recomputed from the two above.
         ///
         /// For a PLATFORM HEAP failure it is the request itself (see
@@ -350,7 +350,7 @@ mod enabled {
         err_backend_len: AtomicU32,
 
         // The platform heap -- the arena `nros_platform_alloc` hands out of,
-        // which on Zephyr is CONFIG_NROS_ZEPHYR_HEAP_SIZE. Appended by
+        // which on Zephyr is CONFIG_NROS_MEMORY_HEAP_BYTES. Appended by
         // phase-460 W5; see "Adding a field" above for why the two words are
         // at the END.
         /// High-water mark of the platform heap, in bytes, or 0 if this image
@@ -362,7 +362,7 @@ mod enabled {
         /// (`nros_zephyr_heap_peak`) has existed and been compiled into every
         /// Zephyr image since phase-412, and nothing read it off a board with
         /// no console, so the one knob it could have sized
-        /// (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`) was set by hand and annotated as a
+        /// (`CONFIG_NROS_MEMORY_HEAP_BYTES`) was set by hand and annotated as a
         /// guess.
         ///
         /// MONOTONIC here as well as at the source, so a later sample of a
@@ -394,7 +394,7 @@ mod enabled {
         /// a field on the arena's entry structs, which are sized by knob at
         /// build time, so it would move every image's executor footprint to buy
         /// a diagnostic. Non-zero here means "read the log lines, or raise
-        /// `NROS_SUBSCRIPTION_BUFFER_SIZE` and see whether it goes to zero".
+        /// `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` and see whether it goes to zero".
         samples_dropped_too_small: AtomicU32,
 
         /// `Z_FEATURE_LOCAL_QUERYABLE` as this image was compiled, and who
@@ -1197,7 +1197,7 @@ mod tests {
     }
 
     /// Issue 1573 -- a PLATFORM HEAP failure is recorded as one, so the decoder
-    /// can name `CONFIG_NROS_ZEPHYR_HEAP_SIZE` rather than the executor arena.
+    /// can name `CONFIG_NROS_MEMORY_HEAP_BYTES` rather than the executor arena.
     ///
     /// On a record of its own: the image's static is first-writer-wins and
     /// [`the_first_alloc_failure_wins`] writes it, so a read-back there would

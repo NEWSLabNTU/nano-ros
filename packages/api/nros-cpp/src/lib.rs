@@ -1206,7 +1206,7 @@ const _: () = assert!(
      `std` in the probe, where one fat pointer of difference made the number 16 \
      bytes short. Check the forwarded set \
      (`nros_sizes_build::resolved_features_for`) before touching any knob. \
-     NROS_EXECUTOR_ARENA_SIZE / NROS_EXECUTOR_MAX_CBS move BOTH sides equally \
+     NROS_EXECUTOR_ARENA_BYTES / NROS_EXECUTOR_MAX_CBS move BOTH sides equally \
      and cannot close a feature-set gap."
 );
 

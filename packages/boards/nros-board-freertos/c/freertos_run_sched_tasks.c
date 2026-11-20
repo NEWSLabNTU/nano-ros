@@ -703,7 +703,7 @@ int32_t nros_board_freertos_run_sched_tasks_ns(const char* locator, uint8_t doma
         nros_board_freertos_console_write(
             "nros: freertos run_sched_tasks: the sched tasks' executor storage does not fit heap_4; "
             "regenerate the entry (nros_board_freertos_run_sched_tasks_in takes it as a static) "
-            "or raise NROS_FREERTOS_HEAP_KB\n");
+            "or raise NROS_MEMORY_HEAP_BYTES\n");
         return -1; /* NROS_CPP_RET_ERROR */
     }
     int32_t rc = nros_board_freertos_run_sched_tasks_in(locator, domain_id, session_name, node_namespace,

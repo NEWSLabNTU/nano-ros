@@ -153,21 +153,26 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build, app_stack_bytes: usize) {
     );
 }
 
+// RFC-0140 Appendix A.1, phase-581 W5 (the pool is its own knob).
 // Issue 2624.
 /// Size the byte pool `threadx_hooks.c` reserves.
 ///
-/// `[knobs.memory] heap_bytes` (env `NROS_THREADX_BYTE_POOL_KB`) when stated;
-/// else [`crate::threadx_pool::default_byte_pool_bytes`]: the app stack plus
+/// `threadx.byte_pool_bytes` (env `NROS_THREADX_BYTE_POOL_BYTES`) when stated,
+/// else a board's or platform's `[knobs.memory] heap_bytes` rung; else
+/// [`crate::threadx_pool::default_byte_pool_bytes`]: the app stack plus
 /// the RMW's measured working set. The RMW is this board crate's own feature:
 /// with no `rmw-zenoh` the image runs a DDS backend, which takes the larger
 /// working set (Cyclone's; XRCE's is unmeasured and smaller).
+///
+/// The pool is its own knob, not `memory.heap_bytes`: it is the port's whole
+/// allocator, not the heap alone.
 ///
 /// A stated pool below the app stack plus the measured working set is refused
 /// here, naming the knob, and the C file's `_Static_assert` refuses it again
 /// on a road that skips this (cmake). Returns the pool's size.
 pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize {
     use crate::threadx_pool::{PoolRmw, default_byte_pool_bytes, least_byte_pool_bytes};
-    const POOL_ENV: &str = "NROS_THREADX_BYTE_POOL_KB";
+    const POOL_ENV: &str = "NROS_THREADX_BYTE_POOL_BYTES";
     let rmw = if std::env::var_os("CARGO_FEATURE_RMW_ZENOH").is_some() {
         PoolRmw::Zenoh
     } else {
@@ -175,16 +180,17 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
     };
     let derived = default_byte_pool_bytes(app_stack_bytes, rmw);
     crate::platform_config::watch_knob_env(POOL_ENV);
-    let pool = match crate::platform_config::BuildRungs::from_build_env() {
-        Some(rungs) => rungs.memory_value("heap_bytes", derived),
-        // A bare `cargo build` names no platform: the env rung alone.
-        None => crate::platform_config::knob_env(&|k| std::env::var(k).ok(), POOL_ENV)
-            .map(|v| {
-                v.trim()
-                    .parse::<usize>()
-                    .unwrap_or_else(|_| panic!("{POOL_ENV} must be a decimal KiB count, got `{v}`"))
-                    * 1024
-            })
+    let stated = crate::platform_config::knob_env(&|k| std::env::var(k).ok(), POOL_ENV).map(|v| {
+        v.trim()
+            .parse::<usize>()
+            .unwrap_or_else(|_| panic!("{POOL_ENV} must be a decimal byte count, got `{v}`"))
+    });
+    let pool = match stated {
+        Some(bytes) => bytes,
+        // The board's or platform's `[knobs.memory] heap_bytes` rung; a bare
+        // `cargo build` names no platform and has none.
+        None => crate::platform_config::BuildRungs::from_build_env()
+            .and_then(|rungs| rungs.memory_rungs().heap_bytes)
             .unwrap_or(derived),
     };
     let least = least_byte_pool_bytes(app_stack_bytes, rmw);
@@ -192,8 +198,8 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
         panic!(
             "the ThreadX byte pool is {pool} bytes, below the {least} this image needs \
              (its {app_stack_bytes}-byte app stack plus the {rmw:?} working set measured \
-             on this port). Raise `[knobs.memory] heap_bytes` ({POOL_ENV}) to at least {} KiB.",
-            least.div_ceil(1024)
+             on this port). Raise `[image.<id>.knobs.threadx] byte_pool_bytes` ({POOL_ENV}) \
+             to at least {least}."
         );
     }
     if rmw == PoolRmw::Cyclone {

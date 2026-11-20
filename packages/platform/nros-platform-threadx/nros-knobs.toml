@@ -8,16 +8,15 @@
 
 owner = "threadx"
 
-[[knob]]
-key = "threadx.app_stack_kb"
-scope = "board"
-class = "carrier"
-carries = "memory.app_stack_bytes"
-
-# Issue 2624 -- the ThreadX byte pool (the port's whole allocator), in KiB.
+# Issue 2624 -- the ThreadX byte pool (the port's whole allocator), in bytes.
 # Unset, the board build derives it: app stack + the RMW's measured working set.
+# A board's `[knobs.memory] heap_bytes` states it too (the ladder's rung).
 [[knob]]
-key = "threadx.byte_pool_kb"
+key = "threadx.byte_pool_bytes"
 scope = "board"
 class = "carrier"
 carries = "memory.heap_bytes"
+retired = [
+    { spelling = "toml:threadx.byte_pool_kb", factor = 1024, from_unit = "KiB" },
+    { spelling = "env:NROS_THREADX_BYTE_POOL_KB", factor = 1024, from_unit = "KiB" },
+]

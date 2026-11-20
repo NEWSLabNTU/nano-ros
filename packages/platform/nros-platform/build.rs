@@ -1,7 +1,7 @@
 // Copyright (c) 2026, NEWSLab NTU.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Resolve `NROS_ZEPHYR_HEAP_SIZE` for `src/zephyr_heap.rs`.
+//! Resolve `NROS_MEMORY_HEAP_BYTES` for `src/zephyr_heap.rs`.
 //!
 //! The arena size used to be read straight from the environment with
 //! `option_env!`. That has two defects this build script exists to fix, and
@@ -45,7 +45,7 @@ fn main() {
     // reader could reach crates `nros-board-common` cannot.
     //
     // The `memory` tenant already mapped this knob — `("zephyr", "heap_bytes")
-    // => "NROS_ZEPHYR_HEAP_SIZE"` — so the ladder modelled it while the only
+    // => "NROS_MEMORY_HEAP_BYTES"` — so the ladder modelled it while the only
     // reader could not consult it.
     //
     // issue 1504 / phase-468 W4 — this used to read
@@ -54,7 +54,7 @@ fn main() {
     // Kconfig via `$DOTCONFIG`, then the platform/board rung". It does not:
     // `memory()` has NO Kconfig rung and never had one. So on every build that
     // exports `NROS_PLATFORM_NAME` — which is every build the nros road drives
-    // — the ~~`knob_usize`~~ arm was unreachable and `CONFIG_NROS_ZEPHYR_HEAP_SIZE`
+    // — the ~~`knob_usize`~~ arm was unreachable and `CONFIG_NROS_MEMORY_HEAP_BYTES`
     // reached the C lane and not this one. Issue 0460, in the knob that sizes
     // the Zephyr heap.
     //
@@ -63,13 +63,13 @@ fn main() {
     // platform/board rung below it, and `DEFAULT_HEAP_SIZE` is the builtin.
     let rung = nros_platform_config::platform_config::BuildRungs::from_build_env()
         .and_then(|r| r.memory_rungs().heap_bytes);
-    let size = nros_zephyr_build::knob("NROS_ZEPHYR_HEAP_SIZE")
+    let size = nros_zephyr_build::knob("NROS_MEMORY_HEAP_BYTES")
         .rung(rung)
         .resolve(DEFAULT_HEAP_SIZE);
 
     // `zephyr_heap.rs` keeps its `option_env!` read; this simply makes the
     // value it sees the RESOLVED one rather than whatever happened to be in
     // the ambient environment.
-    println!("cargo:rustc-env=NROS_ZEPHYR_HEAP_SIZE={size}");
-    println!("cargo:rerun-if-env-changed=NROS_ZEPHYR_HEAP_SIZE");
+    println!("cargo:rustc-env=NROS_MEMORY_HEAP_BYTES={size}");
+    println!("cargo:rerun-if-env-changed=NROS_MEMORY_HEAP_BYTES");
 }

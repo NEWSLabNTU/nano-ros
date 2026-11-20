@@ -214,7 +214,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `issue-index-ratchet-down` | the frozen digest ratchet is forced down (W9) | delete one digest (count 326 < 327) | 0 | the same deletion plus one appended digest (net 327, a regrowth into the freed slot) | 1 | **HOLE** → the COUNT fixed here; the swap itself (net 327) still passed rc 0 until the block CONTENT was frozen by sha256 (issue 1739 follow-up) |
 | `just-recipe-paths` | a recipe's literal in-repo paths exist | bash scripts/no-such-audit.sh in just/check/docs.just | 1 | — | — | **CLEAN** |
 | `just-recipe-refs` | every just <recipe> in a recipe body exists | just zz-audit-missing in just/check/docs.just | 1 | — | — | **CLEAN** |
-| `kconfig-knob-forwarding` | each forwarded knob is read from the RIGHT Kconfig symbol | ZPICO_GET_REPLY_BUF_SIZE resolved from CONFIG_NROS_GET_POLL_INTERVAL_MS | 1 | — | — | **CLEAN** |
+| `kconfig-knob-forwarding` | each forwarded knob is read from the RIGHT Kconfig symbol | ZPICO_GET_REPLY_BUF_SIZE resolved from CONFIG_NROS_ZENOH_GET_POLL_INTERVAL_MS | 1 | — | — | **CLEAN** |
 | `kconfig-overridden-values` | a leaf Kconfig value a later fragment overrides is refused (ratchet) | zephyr c/talker prj.conf sets CONFIG_HEAP_MEM_POOL_SIZE (mps2-an385.conf overrides) | 1 | — | — | **CLEAN** |
 | `knob-delivery` | (lane half) DERIVED_PAIRS names every resolver call site | a new _nros_resolve_derivable_knob(NROS_AUDIT_KNOB …) call site in nros_cargo_build.cmake | 1 | — | — | **CLEAN** |
 | `knob-ends` | rule 1: a claimed knob is read somewhere | fixtures.toml row env claims NROS_AUDIT_DEAD_KNOB nothing reads | 1 | — | — | **CLEAN** |

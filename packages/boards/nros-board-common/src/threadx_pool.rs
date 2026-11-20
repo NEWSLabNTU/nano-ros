@@ -160,7 +160,7 @@ mod tests {
             .find(|l| l.trim_start().starts_with("#define BYTE_POOL_SIZE"))
             .expect("threadx_hooks.c defines BYTE_POOL_SIZE");
         assert!(pool.contains("NROS_THREADX_BYTE_POOL_BYTES"), "{pool}");
-        assert!(!pool.contains("NROS_EXECUTOR_BACKING_U64S"), "{pool}");
+        assert!(!pool.contains("NROS_EXECUTOR_BACKING_BYTES"), "{pool}");
     }
 
     #[test]

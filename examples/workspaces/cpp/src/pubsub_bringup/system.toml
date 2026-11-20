@@ -155,8 +155,8 @@ max_subscribers = 1
 max_service_servers = 0
 max_service_clients = 0
 
-[image.zephyr_listener_xrce.knobs.zephyr]
-heap_size = 98304
+[image.zephyr_listener_xrce.knobs.memory]
+heap_bytes = 98304
 
 [image.zephyr_listener_cyclonedds]
 board = "zephyr"
