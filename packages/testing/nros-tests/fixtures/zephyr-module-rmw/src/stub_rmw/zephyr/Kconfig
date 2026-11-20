@@ -1,0 +1,20 @@
+# The `stub` RMW package's own Kconfig (phase-581 W8). Its member of the
+# nano-ros module's `choice NROS_RMW_BACKEND`, NROS_RMW_STUB, is added by the
+# module hook (`<build>/nros/Kconfig.packages`); this file holds what the
+# package's own module builds when that member is selected.
+
+config STUB_RMW_TRANSPORT
+    bool
+    default y
+    depends on NROS_RMW_STUB
+    help
+      The stub RMW transport, compiled by this module when the image's
+      `rmw` is `stub`.
+
+# The nano-ros module sizes Zephyr's kernel heap per member of its RMW choice
+# (`configdefault HEAP_MEM_POOL_SIZE` under `if NROS_RMW_ZENOH`, ...), so a
+# member from another module states its own: native_sim's NSOS socket driver
+# allocates from it and refuses to compile at 0. Zephyr's drivers peak at a few
+# hundred bytes there (zephyr/Kconfig's note, measured for zenoh).
+configdefault HEAP_MEM_POOL_SIZE
+    default 8192 if NROS_RMW_STUB

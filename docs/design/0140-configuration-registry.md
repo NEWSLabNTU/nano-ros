@@ -495,7 +495,7 @@ every rename in Appendix A gets an automatic edit with no hand-written case.
 | the four committed views | per-build views (D5) |
 | `platform_config.rs` typed tenants | the generic `Knobs::registry` map (issue 2194's), keyed by row and validated against the merged catalog, becomes the only parsed shape for platform and board files too. In-tree rows get generated typed accessors, so build scripts keep a typed read. An unknown key is refused against the catalog, which keeps RFC-0049's "unknown keys fail loud" (`deny_unknown_fields` is what cannot see a package's rows) |
 | `knob_road_coverage.tsv` | not needed for package rows (D5) |
-| `zephyr/Kconfig`'s `choice NROS_RMW_BACKEND` and `ZEPHYR_MODULE_BACKENDS` | generated from the descriptors, below |
+| `zephyr/Kconfig`'s `choice NROS_RMW_BACKEND` and `ZEPHYR_MODULE_BACKENDS` | generated from the descriptors, below (phase-581 W8) |
 | a platform's `[arch.*]` | RFC-0135 D4 (not this RFC) |
 
 **An image states a package's knob** exactly as a core one:
@@ -970,6 +970,25 @@ reopened Q1 with a wider scope; this revision answers Q1.
   image's `.config` gains a symbol. The baseline shrinks 12 -> 6; the six
   left are A.3's invented `ZENOH_*` variables, which W13 retires, so it is
   not yet empty.
+- 2026-11-20: **phase-581 W8.** D6's open RMW set, as implemented.
+  `[rmw.zephyr] module` names the package directory holding its
+  `module.yml`, which must be a relative directory named `zephyr` (Zephyr
+  finds a module's `module.yml` at `<root>/zephyr/`, so the module root is its
+  parent); a descriptor stating it beside `module_backend` is refused. The
+  member set is derived from the scan (`RmwIndex::zephyr_module_backends`):
+  the in-tree descriptors whose `module_backend` names themselves plus every
+  backend with a `module`, so `module_backend` may name a module-providing
+  member too, and that member's module is the one added. The hook cannot
+  add a module by setting `ZEPHYR_EXTRA_MODULES`: it runs inside
+  `zephyr_module.cmake`, after `zephyr_module.py` has listed the modules, so
+  it re-runs `zephyr_module.py` with the root added and re-reads its outputs
+  (a module that declares its own `module_ext_root` is refused that way).
+  The in-tree members of both choices are rendered from a `[rmw.<os>.kconfig]`
+  table in each descriptor (`prompt`, `attrs`, `help`), by
+  `scripts/gen-rmw-choice.py`, held current by `just check rmw-choice`; the
+  descriptor parser skips TOML multi-line strings so a help text cannot read
+  as a key. Measured on Zephyr 3.7 only
+  ([data](../roadmap/data/phase-581-w8-measure.md)).
 
 ## Appendix A - Settings that break the rule on `origin/main` (88)
 
