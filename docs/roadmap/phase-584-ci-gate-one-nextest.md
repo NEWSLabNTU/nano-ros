@@ -74,7 +74,10 @@ Approved by the user on 2026-11-20 as sent; recorded in RFC-0131 D2 and D3.
 ### W2 — The `ci` lane
 
 - **Owner:** nros 142.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-21, the W2 PR). `_gate-inner` runs `just check lane ci` for a full diff;
+  the `steps=(…)` array is gone. `check-gate-lists.py --lane-steps <lane>`
+  lists the `just` addresses a lane runs, from the harness's own listing, and
+  the two checkers that walked the array read it instead (see W6).
 - `[lane.ci]` in `.config/gate-lanes.toml`: tiers `fast`, `build`, `gate`; the
   claims of `dev`; `local = "just ci gate"`.
 - `just ci gate` runs `just check lane ci` for a full diff, and `check fast`
@@ -130,6 +133,12 @@ Approved by the user on 2026-11-20 as sent; recorded in RFC-0131 D2 and D3.
   its recipe deleted) is still caught.
 - **Acceptance:** negative controls: move a `gate` recipe back to `exempt`,
   and drop a precondition from the lane; each makes its check red.
+- **Done in W2, because removing the array broke them:**
+  `check-default-gates-run-somewhere` (R4) and `check-lane-contracts`' walk of
+  `ci::gate` read `--lane-steps ci`. Measured: with that listing emptied, R4's
+  self-test is red ("the `just ci gate` step list did not parse") and
+  `check-lane-contracts` is red ("examined 0 test target(s)"). Left for W6:
+  `check-lane-step-duplicates` on `[lane.ci]`, and the two negative controls.
 
 ## Phase acceptance
 

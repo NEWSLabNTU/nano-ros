@@ -33,13 +33,20 @@ def unverified(name: str, reason: str) -> int:
     return 0 if r.returncode == 0 else 1
 
 
+# phase-584 W2 -- the self-test is hermetic. A gate the nextest harness runs
+# inherits its NROS_GATE_SKIP_ROOT, and inside a lane run in ANOTHER checkout
+# (`pristine-checkout`) that reads as nested, which waives strict mode: the
+# strict cases below then passed a missing precondition.
+_INHERITED = ("NROS_CHECK_SKIP_STRICT", "NROS_GATE_SKIP_ROOT")
+
+
 def self_test() -> None:
+    base = {k: v for k, v in os.environ.items() if k not in _INHERITED}
     r = subprocess.run(["bash", "-c", f'. "{LIB}" && nros_check_unverified_self_test'],
-                       cwd=REPO, capture_output=True, text=True,
-                       env={k: v for k, v in os.environ.items() if k != "NROS_CHECK_SKIP_STRICT"})
+                       cwd=REPO, capture_output=True, text=True, env=base)
     if r.returncode != 0:
         raise SystemExit(f"check_skip self-test FAILED: {r.stderr.strip()}")
-    env = dict(os.environ, NROS_CHECK_SKIP_STRICT="1")
+    env = dict(base, NROS_CHECK_SKIP_STRICT="1")
     r = subprocess.run(
         ["bash", "-c", f'. "{LIB}" && nros_check_unverified "$0" "$1"', "x", "probe"],
         cwd=REPO, env=env, capture_output=True, text=True)
@@ -47,16 +54,18 @@ def self_test() -> None:
         raise SystemExit("check_skip self-test FAILED: strict mode passed")
     # The PYTHON entry point too, not only the shell function it wraps: the
     # 2026-10-07 re-audit short-circuited `unverified()` and nothing noticed.
-    saved = os.environ.get("NROS_CHECK_SKIP_STRICT")
+    saved = {k: os.environ.get(k) for k in _INHERITED}
+    os.environ.pop("NROS_GATE_SKIP_ROOT", None)
     os.environ["NROS_CHECK_SKIP_STRICT"] = "1"
     try:
         if unverified("check-skip-selftest", "probe") != 1:
             raise SystemExit("check_skip self-test FAILED: unverified() passed under strict mode")
     finally:
-        if saved is None:
-            del os.environ["NROS_CHECK_SKIP_STRICT"]
-        else:
-            os.environ["NROS_CHECK_SKIP_STRICT"] = saved
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 if __name__ == "__main__":

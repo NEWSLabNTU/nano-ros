@@ -149,6 +149,12 @@ nros_check_unverified() {
 # path; it writes to a scratch ledger, never the lane's.
 nros_check_unverified_self_test() (
     local scratch
+    # phase-584 W2 -- hermetic: a gate the nextest harness runs inherits its
+    # NROS_GATE_SKIP_ROOT, and one that runs a lane in ANOTHER checkout
+    # (`pristine-checkout`) then reads as nested, which waives strict mode, so
+    # the strict case below passed a missing precondition. The cases that test
+    # nesting set the root themselves.
+    unset NROS_GATE_SKIP_ROOT
     scratch="$(mktemp -d)"
     _nros_check_skip_file() { printf '%s/checks.skipped' "$scratch"; }
     NROS_CHECK_SKIP_STRICT= nros_check_unverified selftest-gate "probe" >/dev/null || { rm -rf "$scratch"; echo "nros_check_unverified SELFTEST FAILED: non-strict returned non-zero" >&2; exit 1; }
