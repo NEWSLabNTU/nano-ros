@@ -78,6 +78,11 @@ void     nros_platform_random_fill(void *buf, size_t len)       { (void) buf; (v
 /* ---- Time ---- */
 
 uint64_t nros_platform_time_now_ns(void)                        { bump(NROS_STUB_TIME); return 0; }
+nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
+    nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
+    bump(NROS_STUB_TIME);
+    return st;
+}
 
 /* ---- Task ---- */
 

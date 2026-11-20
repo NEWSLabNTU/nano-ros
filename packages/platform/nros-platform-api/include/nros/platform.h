@@ -388,6 +388,42 @@ void     nros_platform_random_fill(void *buf, size_t len);
  *  remainder by 1000000000. */
 uint64_t nros_platform_time_now_ns(void);
 
+/* The state type and its values. Under the guard nros-c's public copy
+ * (`rclc/detail/wall_clock_state.h`) shares, so a TU including both gets one
+ * definition. The two copies are one struct, member for member. */
+#ifndef NROS_DEFINED_nros_wall_clock_state_t
+#define NROS_DEFINED_nros_wall_clock_state_t
+/** Which source answers the wall clock (`nros_wall_clock_state_t::source`). */
+#define NROS_WALL_CLOCK_SOURCE_PLATFORM 0u  /**< the port's own clock */
+#define NROS_WALL_CLOCK_SOURCE_SNTP 1u      /**< an SNTP exchange set the offset */
+#define NROS_WALL_CLOCK_SOURCE_ZENOH_HLC 2u /**< zenoh HLC timestamps set it */
+#define NROS_WALL_CLOCK_SOURCE_BOARD 3u     /**< the board's clock hook */
+
+/** What the wall-clock stamps mean right now. */
+typedef struct nros_wall_clock_state_t {
+    /** `true`: `nros_platform_time_now_ns` answers real UNIX time. `false`:
+     *  it answers 0, and every `header.stamp` is ROS's "unset" time. */
+    bool synced;
+    /** The source answering, or that will answer once it syncs: one of
+     *  `NROS_WALL_CLOCK_SOURCE_*`. */
+    uint8_t source;
+    /** How many times the answering source has CHANGED since boot. 0 for an
+     *  image whose stamps all come from one clock. */
+    uint32_t steps;
+} nros_wall_clock_state_t;
+#endif
+
+/** The wall clock's state, for an application that must not publish
+ *  unstamped data: ask before publishing, rather than a board hook deciding
+ *  by exiting.
+ *
+ *  Every port DEFINES this; there is no default, so a port that does not is
+ *  a link error naming the symbol, never a silent answer. A port with no
+ *  real-time clock answers `{ false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0 }`,
+ *  matching its 0 from `nros_platform_time_now_ns`. A port that calibrates
+ *  through `<nros/clock_epoch.h>` answers from that store. */
+nros_wall_clock_state_t nros_platform_wall_clock_state(void);
+
 /* ~~`nros_platform_time_now_ms`~~,
  * ~~`nros_platform_time_since_epoch_secs`~~ and
  * ~~`nros_platform_time_since_epoch_nanos`~~ are RETIRED, the same way

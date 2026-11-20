@@ -303,6 +303,13 @@ impl nros_platform_api::PlatformTime for Mps2An385Platform {
         // (issue 2760).
         0
     }
+
+    /// Unsynced: what `time_now_ns` answers is uptime, not UNIX time, so no
+    /// stamp from it is a wall-clock reading.
+    #[inline]
+    fn wall_clock_state() -> nros_platform_api::WallClockState {
+        nros_platform_api::WallClockState::UNSYNCED_PLATFORM
+    }
 }
 
 // ============================================================================

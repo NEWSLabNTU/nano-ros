@@ -614,6 +614,12 @@ void nros_platform_random_fill(void *buf, size_t len) {
 /* No real-time clock on this port: 0 means "no wall clock", per the ABI. */
 uint64_t nros_platform_time_now_ns(void)              { return 0; }
 
+/* ...and the state says so: unsynced, the port's own clock, never stepped. */
+nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
+    nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
+    return st;
+}
+
 /* ---- Tasks ----
  *
  * Storage is a caller-allocated `nros_threadx_task_t` — the size to allocate

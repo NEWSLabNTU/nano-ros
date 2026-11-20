@@ -453,6 +453,51 @@ pub trait PlatformTime {
     /// Wall-clock nanoseconds since the Unix epoch, or 0 if this platform has
     /// no real-time clock.
     fn time_now_ns() -> u64;
+
+    /// What [`PlatformTime::time_now_ns`] means right now, the C ABI's
+    /// `nros_platform_wall_clock_state`. REQUIRED, with no default: a port
+    /// that cannot say must not be answered for.
+    fn wall_clock_state() -> WallClockState;
+}
+
+/// `nros_wall_clock_state_t`: whether the wall clock is synced, which source
+/// answers (`WALL_CLOCK_SOURCE_*`), and how many times that source changed
+/// since boot.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WallClockState {
+    /// `true`: [`PlatformTime::time_now_ns`] answers real UNIX time.
+    pub synced: bool,
+    /// One of `WALL_CLOCK_SOURCE_*`.
+    pub source: u8,
+    /// Source changes since boot.
+    pub steps: u32,
+}
+
+// Layout of the C struct `{ bool; uint8_t; uint32_t; }`.
+const _: () = {
+    assert!(core::mem::size_of::<WallClockState>() == 8);
+    assert!(core::mem::offset_of!(WallClockState, source) == 1);
+    assert!(core::mem::offset_of!(WallClockState, steps) == 4);
+};
+
+/// `NROS_WALL_CLOCK_SOURCE_PLATFORM`: the port's own clock.
+pub const WALL_CLOCK_SOURCE_PLATFORM: u8 = 0;
+/// `NROS_WALL_CLOCK_SOURCE_SNTP`.
+pub const WALL_CLOCK_SOURCE_SNTP: u8 = 1;
+/// `NROS_WALL_CLOCK_SOURCE_ZENOH_HLC`.
+pub const WALL_CLOCK_SOURCE_ZENOH_HLC: u8 = 2;
+/// `NROS_WALL_CLOCK_SOURCE_BOARD`.
+pub const WALL_CLOCK_SOURCE_BOARD: u8 = 3;
+
+impl WallClockState {
+    /// The answer of a port with no wall clock: unsynced, its own clock,
+    /// never stepped.
+    pub const UNSYNCED_PLATFORM: Self = Self {
+        synced: false,
+        source: WALL_CLOCK_SOURCE_PLATFORM,
+        steps: 0,
+    };
 }
 
 // ============================================================================

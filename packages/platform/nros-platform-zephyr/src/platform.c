@@ -111,9 +111,29 @@ uint64_t nros_platform_clock_resolution_ns(void) {
 uint64_t nros_platform_epoch_us(void) {
     return nros_clock_epoch_us(); /* 0 before the first install: no wall clock */
 }
+
+/* The source this image waits on before its first install. SNTP is asked at
+ * boot; with both compiled in it is the one named, and an HLC install that
+ * lands instead is reported as that source. */
+#ifdef CONFIG_SNTP
+#define NROS_ZEPHYR_EPOCH_SOURCE NROS_WALL_CLOCK_SOURCE_SNTP
+#else
+#define NROS_ZEPHYR_EPOCH_SOURCE NROS_WALL_CLOCK_SOURCE_ZENOH_HLC
+#endif
+
+nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
+    return nros_clock_epoch_state(NROS_ZEPHYR_EPOCH_SOURCE);
+}
 #else /* neither source */
 uint64_t nros_platform_epoch_us(void) {
     return 0;
+}
+
+/* No source compiled in: the wall clock is the port's, and this port has
+ * none, so it answers 0 and says so. */
+nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
+    nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
+    return st;
 }
 #endif
 
@@ -136,7 +156,7 @@ int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms) {
     uint64_t frac_us = ((uint64_t)ts.fraction * 1000000ULL) >> 32;
     uint64_t now_us = ts.seconds * 1000000ULL + frac_us;
     uint64_t mono_us = nros_platform_clock_ns() / 1000ULL;
-    nros_clock_set_epoch_offset_us(now_us - mono_us);
+    nros_clock_set_epoch_offset_us(now_us - mono_us, NROS_WALL_CLOCK_SOURCE_SNTP);
     return 0;
 }
 #endif /* CONFIG_SNTP */
@@ -176,7 +196,7 @@ void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64) {
     }
     uint64_t offset = peer_us - mono_us;
     if (nros_clock_epoch_offset_us() == 0ULL) {
-        nros_clock_set_epoch_offset_us(offset);
+        nros_clock_set_epoch_offset_us(offset, NROS_WALL_CLOCK_SOURCE_ZENOH_HLC);
         window_start_us = mono_us;
         window_max = 0;
         printk("nros: wall-clock epoch acquired from zenoh sample timestamps\n");
@@ -186,7 +206,7 @@ void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64) {
         window_max = offset;
     }
     if (mono_us - window_start_us >= (uint64_t)CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS * 1000ULL) {
-        nros_clock_set_epoch_offset_us(window_max);
+        nros_clock_set_epoch_offset_us(window_max, NROS_WALL_CLOCK_SOURCE_ZENOH_HLC);
         window_start_us = mono_us;
         window_max = 0;
     }

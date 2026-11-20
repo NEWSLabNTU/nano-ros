@@ -329,6 +329,16 @@ impl nros_platform_api::PlatformTime for CffiPlatform {
     fn time_now_ns() -> u64 {
         unsafe { nros_platform_time_now_ns() }
     }
+
+    #[inline]
+    fn wall_clock_state() -> nros_platform_api::WallClockState {
+        let st = unsafe { nros_platform_wall_clock_state() };
+        nros_platform_api::WallClockState {
+            synced: st.synced,
+            source: st.source,
+            steps: st.steps,
+        }
+    }
 }
 
 impl nros_platform_api::PlatformThreading for CffiPlatform {
@@ -795,6 +805,10 @@ macro_rules! nros_platform_export_time {
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_time_now_ns() -> u64 {
             <$ty as ::nros_platform_api::PlatformTime>::time_now_ns()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wall_clock_state() -> ::nros_platform_api::WallClockState {
+            <$ty as ::nros_platform_api::PlatformTime>::wall_clock_state()
         }
     };
 }
@@ -1621,6 +1635,9 @@ mod test_self_export {
     impl PlatformTime for TestPlatform {
         fn time_now_ns() -> u64 {
             0
+        }
+        fn wall_clock_state() -> nros_platform_api::WallClockState {
+            nros_platform_api::WallClockState::UNSYNCED_PLATFORM
         }
     }
     impl PlatformThreading for TestPlatform {
