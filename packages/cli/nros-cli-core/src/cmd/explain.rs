@@ -27,7 +27,8 @@ pub struct Args {
     /// A diagnostic code (`NROS-NNNN`) or a plan path (an nros-plan.json)
     #[arg(
         value_name = "CODE_OR_PLAN",
-        default_value = "build/nros/nros-plan.json"
+        default_value = "build/nros/nros-plan.json",
+        add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::codes)
     )]
     pub plan: PathBuf,
 }

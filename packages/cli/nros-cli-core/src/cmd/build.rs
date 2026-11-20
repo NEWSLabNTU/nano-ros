@@ -182,7 +182,7 @@ pub struct Args {
     /// It is a command-line spelling of that key for one build, not a new
     /// kind of profile.
     // RFC-0117 D7 (phase-568 W2b). Built-in profiles only.
-    #[arg(long, value_name = "NAME", require_equals = true)]
+    #[arg(long, value_name = "NAME", require_equals = true, add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::profiles))]
     pub profile: Option<String>,
 
     /// Run at most N jobs at once, in total. Default: the number of CPUs.
