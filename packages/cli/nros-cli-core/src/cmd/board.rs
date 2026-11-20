@@ -1,10 +1,11 @@
 //! `nros board` — board crate introspection.
 //!
-//! * `list` — Phase 111.A.8: enumerate every `nros-board-*` crate under
-//!   `<workspace>/packages/boards/`, with its support status and cadence from
-//!   the board support registry (phase-522 W5).
-//! * `show <name>` — phase-522 W5: a board's evidence-page facts (status,
-//!   where it runs, cadence, breadth, book chapters).
+//! * `list` — every board key in the catalog, with its crate, platform, and
+//!   the support status and cadence of the board support registry (phase-522
+//!   W5); `--json` (phase-569 W5b).
+//! * `show <name>` — a board's evidence (status, where it runs, cadence,
+//!   breadth) and every table of its `nros-board.toml` as written, then its
+//!   Book line; `--json` (phase-569 W5b).
 //! * `info <name>` — Phase 215.C.3: print the side-by-side `Cargo.toml` +
 //!   `board.cmake` views of a board crate's manifest, optionally erroring
 //!   when the two faces drift (the Phase 215.F audit hook).
@@ -24,10 +25,11 @@ use crate::orchestration::{
 
 #[derive(Debug, Subcommand)]
 pub enum Args {
-    /// List every board crate, with its support status and cadence
+    /// List every board key, with its crate, platform, support status and
+    /// cadence
     List(ListArgs),
-    /// Print a board's support evidence: status, where it runs, cadence,
-    /// breadth and the book chapters that run it.
+    /// Show one board: its support evidence and every table of its
+    /// descriptor
     // RFC-0114.
     Show(ShowArgs),
     /// Print a board's resolved descriptor as JSON.
@@ -87,6 +89,9 @@ pub struct ListArgs {
     /// binary's own SDK root (the installed track needs no flag).
     #[arg(long)]
     pub workspace: Option<PathBuf>,
+    /// Print one JSON object instead of a table
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -101,6 +106,9 @@ pub struct ShowArgs {
     /// binary's own SDK root.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
+    /// Print one JSON object instead of text
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -147,98 +155,141 @@ pub fn run(args: Args) -> Result<()> {
     }
 }
 
+/// The `--json` schema names (RFC-0133 D1). Adding a key keeps the version;
+/// removing or renaming one is a new version.
+pub const LIST_SCHEMA: &str = "nros.board.list.v1";
+pub const SHOW_SCHEMA: &str = "nros.board.show.v1";
+
+/// The page that lists every board; a `show` links the board's own section of
+/// the support levels page when the registry names one.
+pub const BOOK_PAGE: &str = "reference/supported-boards.html";
+
+/// One board key, as `list` reports it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BoardItem {
+    /// The key a project writes as `board = "…"`.
+    pub key: String,
+    /// The descriptor's other names.
+    pub aliases: Vec<String>,
+    /// The board package (crate) the descriptor lives in.
+    #[serde(rename = "crate")]
+    pub krate: String,
+    /// The platform the board builds for, as the descriptor names it.
+    pub platform: String,
+    /// The support status word of each registry row for it, today.
+    pub status: Vec<String>,
+    /// The cadence of each registry row for it.
+    pub cadence: Vec<String>,
+}
+
+/// The board package a descriptor lives in: the nearest directory at or
+/// above its `nros-board.toml`, inside the checkout, that holds a
+/// `Cargo.toml` or a `package.xml` (a conf bundle sits under its family
+/// crate); else the
+/// descriptor's `board_crate`; else `-`.
+fn crate_of(d: &BoardDescriptor, root: &Path) -> String {
+    let found = board_projection::descriptor_dir(d, root).and_then(|dir| {
+        dir.ancestors()
+            .take_while(|a| *a != root && !a.join(".git").exists())
+            .find(|a| a.join("Cargo.toml").is_file() || a.join("package.xml").is_file())
+            .and_then(|a| a.file_name())
+            .and_then(|n| n.to_str())
+            .map(str::to_string)
+    });
+    found
+        .or_else(|| d.board_crate.clone())
+        .unwrap_or_else(|| "-".into())
+}
+
+fn platform_of(d: &BoardDescriptor) -> String {
+    d.platform_name
+        .clone()
+        .unwrap_or_else(|| d.platform.kebab().to_string())
+}
+
+/// The registry rows that speak for a board key: those that answer to it,
+/// else those of its package.
+fn rows_for<'a>(
+    status: &'a crate::cmd::board_support::Status,
+    key: &str,
+    krate: &str,
+) -> Vec<&'a crate::cmd::board_support::Row> {
+    let named = status.rows_named(key);
+    if named.is_empty() {
+        status.rows_for_crate(krate)
+    } else {
+        named
+    }
+}
+
+/// Every board key in the catalog under `root`, sorted.
+pub fn board_items(
+    catalog: &BoardCatalog,
+    root: &Path,
+    status: &crate::cmd::board_support::Status,
+    today: &str,
+) -> Vec<BoardItem> {
+    let mut items: Vec<BoardItem> = catalog
+        .descriptors()
+        .iter()
+        .filter_map(|d| {
+            let (key, aliases) = d.names.split_first()?;
+            let krate = crate_of(d, root);
+            let rows = rows_for(status, key, &krate);
+            Some(BoardItem {
+                key: key.clone(),
+                aliases: aliases.to_vec(),
+                platform: platform_of(d),
+                status: rows.iter().map(|r| r.status_on(today)).collect(),
+                cadence: rows.iter().map(|r| r.cadence_text()).collect(),
+                krate,
+            })
+        })
+        .collect();
+    items.sort_by(|a, b| a.key.cmp(&b.key));
+    items.dedup_by(|a, b| a.key == b.key);
+    items
+}
+
+/// The `list` table.
+pub fn render_list(items: &[BoardItem]) -> String {
+    let mut t = crate::cmd::frame::Table::new(
+        &["BOARD", "CRATE", "PLATFORM", "STATUS", "CADENCE"],
+        "No boards found.",
+    );
+    let words = |v: &[String]| {
+        if v.is_empty() {
+            "-".to_string()
+        } else {
+            v.join("; ")
+        }
+    };
+    for i in items {
+        t.row(vec![
+            i.key.clone(),
+            i.krate.clone(),
+            i.platform.clone(),
+            words(&i.status),
+            words(&i.cadence),
+        ]);
+    }
+    t.footer("`nros board show <board>` shows one board: its support evidence and its descriptor.");
+    t.render()
+}
+
 fn list(args: ListArgs) -> Result<()> {
     let root = catalog_root(args.workspace)?;
-    let boards_dir = root.join("packages").join("boards");
-    if !boards_dir.is_dir() {
-        return Err(eyre!(
-            "no `packages/boards/` directory under {}",
-            root.display()
-        ));
-    }
-
-    let mut entries: Vec<BoardEntry> = Vec::new();
-    for entry in fs::read_dir(&boards_dir)
-        .wrap_err_with(|| format!("failed to read {}", boards_dir.display()))?
-    {
-        let entry = entry?;
-        let path = entry.path();
-        let cargo_toml = path.join("Cargo.toml");
-        if !cargo_toml.is_file() {
-            continue;
-        }
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !name.starts_with("nros-board-") {
-            continue;
-        }
-        match read_board(&cargo_toml) {
-            Ok(b) => entries.push(b),
-            Err(e) => eprintln!("warning: skipping {}: {e}", name),
-        }
-    }
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
-
-    if entries.is_empty() {
-        println!("No board crates found under {}", boards_dir.display());
-        return Ok(());
-    }
-
-    // phase-522 W5 — the status word and cadence of every row the crate
-    // carries, read from the registry this root ships; one crate may serve
-    // several witnesses (`nros-board-zephyr`: native_sim and the FVP).
+    let catalog = BoardCatalog::load(&root).map_err(|e| eyre!("load board catalog: {e}"))?;
+    // phase-522 W5 — the status word and cadence of every row, read from the
+    // registry this root ships.
     let status = crate::cmd::board_support::Status::load(&root)?;
-    let (notes, other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
+    let (notes, _other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
     let today = crate::cmd::board_support::today();
-    let column = |status: &crate::cmd::board_support::Status, name: &str| -> (String, String) {
-        let rows = status.rows_for_crate(name);
-        if rows.is_empty() {
-            return ("(no registry row)".into(), "-".into());
-        }
-        let words: Vec<String> = rows
-            .iter()
-            .map(|r| match &r.matrix_platform {
-                Some(p) if rows.len() > 1 => format!("{}: {}", p, r.status_on(&today)),
-                _ => r.status_on(&today),
-            })
-            .collect();
-        let cadences: Vec<String> = rows.iter().map(|r| r.cadence_text()).collect();
-        (words.join("; "), cadences.join("; "))
-    };
-    let cols: Vec<(String, String)> = entries.iter().map(|e| column(&status, &e.name)).collect();
-
-    let name_w = entries
-        .iter()
-        .map(|e| e.name.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
-    let st_w = cols.iter().map(|c| c.0.len()).max().unwrap_or(6).max(6);
-    let ca_w = cols.iter().map(|c| c.1.len()).max().unwrap_or(7).max(7);
-    println!(
-        "{:<name_w$}  {:<st_w$}  {:<ca_w$}  description",
-        "name", "status", "cadence"
-    );
-    println!(
-        "{}  {}  {}  {}",
-        "-".repeat(name_w),
-        "-".repeat(st_w),
-        "-".repeat(ca_w),
-        "-".repeat(40)
-    );
-    for (b, (st, ca)) in entries.iter().zip(&cols) {
-        println!(
-            "{:<name_w$}  {st:<st_w$}  {ca:<ca_w$}  {}",
-            b.name, b.description
-        );
-        if let Some(other) = &other {
-            let (ost, _) = column(other, &b.name);
-            if &ost != st {
-                println!("{:<name_w$}  ({} in {})", "", ost, other.path.display());
-            }
-        }
+    let items = board_items(&catalog, &root, &status, &today);
+    if args.json {
+        return crate::cmd::frame::print_json(LIST_SCHEMA, "items", &items, &[]);
     }
+    print!("{}", render_list(&items));
     for n in notes {
         println!("{n}");
     }
@@ -257,97 +308,225 @@ fn own_sdk_root() -> Option<PathBuf> {
     })
 }
 
-/// `nros board show <name>` — a board's evidence-page facts.
+/// One registry row, as `show` reports it.
+#[derive(Debug, Clone, Serialize)]
+pub struct SupportItem {
+    pub key: String,
+    pub status: String,
+    pub runs_on: String,
+    pub cadence: String,
+    pub breadth: String,
+    /// The Book page with the board's evidence.
+    pub book: Option<String>,
+}
+
+/// One board, as `show` reports it.
+#[derive(Debug, Clone, Serialize)]
+pub struct BoardShow {
+    pub key: String,
+    pub aliases: Vec<String>,
+    #[serde(rename = "crate")]
+    pub krate: Option<String>,
+    pub platform: Option<String>,
+    /// The descriptor file, and every table in it as written.
+    pub descriptor: Option<PathBuf>,
+    pub tables: Option<serde_json::Value>,
+    pub support: Vec<SupportItem>,
+}
+
+/// The Book page of a registry row's evidence (`book/src/x.md#y` →
+/// `x.html#y`).
+fn evidence_page(page: &str) -> String {
+    let p = page.trim_start_matches("book/src/");
+    match p.split_once('#') {
+        Some((f, frag)) => format!("{}#{frag}", f.replace(".md", ".html")),
+        None => p.replace(".md", ".html"),
+    }
+}
+
+/// The descriptor's tables as text: each table under its `[path]` header,
+/// its keys as the file writes them. A table a new design adds is printed
+/// like any other, with no edit here. A multi-line string prints as its line
+/// count.
+pub fn render_tables(v: &toml::Value) -> String {
+    fn scalar(v: &toml::Value) -> String {
+        match v {
+            toml::Value::String(s) if s.contains('\n') => {
+                format!("({} lines)", s.lines().count())
+            }
+            other => other.to_string(),
+        }
+    }
+    /// `header` is how the table is opened: `[path]`, or `[[path]]` for an
+    /// element of an array of tables (whose sub-tables are still `[path.k]`).
+    fn walk(path: &str, header: &str, t: &toml::value::Table, out: &mut String) {
+        let plain: Vec<(&String, &toml::Value)> =
+            t.iter().filter(|(_, v)| !is_table_like(v)).collect();
+        if !plain.is_empty() && !path.is_empty() {
+            out.push_str(&format!("  {header}\n"));
+            let w = plain
+                .iter()
+                .map(|(k, _)| k.chars().count())
+                .max()
+                .unwrap_or(0);
+            for (k, v) in plain {
+                out.push_str(&format!("    {k:<w$} = {}\n", scalar(v)));
+            }
+        }
+        for (k, v) in t {
+            let p = if path.is_empty() {
+                k.clone()
+            } else {
+                format!("{path}.{k}")
+            };
+            match v {
+                toml::Value::Table(sub) => walk(&p, &format!("[{p}]"), sub, out),
+                toml::Value::Array(a) if a.iter().all(|x| x.is_table()) && !a.is_empty() => {
+                    for x in a {
+                        if let toml::Value::Table(sub) = x {
+                            walk(&p, &format!("[[{p}]]"), sub, out);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    fn is_table_like(v: &toml::Value) -> bool {
+        match v {
+            toml::Value::Table(_) => true,
+            toml::Value::Array(a) => !a.is_empty() && a.iter().all(|x| x.is_table()),
+            _ => false,
+        }
+    }
+    let mut out = String::new();
+    if let toml::Value::Table(t) = v {
+        walk("", "", t, &mut out);
+    }
+    out
+}
+
+/// The `show` text.
+pub fn render_show(b: &BoardShow) -> String {
+    let mut out = crate::cmd::frame::show_head(&b.key, "");
+    let mut f = crate::cmd::frame::Fields::new();
+    if !b.aliases.is_empty() {
+        f.field("also named", b.aliases.join(", "));
+    }
+    f.field("selected by", format!("board = \"{}\"", b.key));
+    if let Some(k) = &b.krate {
+        f.field("crate", k.clone());
+    }
+    if let Some(p) = &b.platform {
+        f.field("platform", p.clone());
+    }
+    for s in &b.support {
+        f.field("support", format!("{} ({})", s.status, s.key))
+            .field("runs on", s.runs_on.clone())
+            .field("cadence", s.cadence.clone())
+            .field("breadth", s.breadth.clone());
+    }
+    out.push_str(&f.render());
+    if let (Some(path), Some(tables)) = (&b.descriptor, &b.tables)
+        && let Ok(v) = serde_json::from_value::<toml::Value>(tables.clone())
+    {
+        out.push_str(&format!("\n  Descriptor ({}):\n", path.display()));
+        out.push_str(&render_tables(&v));
+    }
+    // A row's evidence page only when one row speaks for the board: a crate
+    // with several rows has one section per row, not one for this key.
+    let page = match b.support.as_slice() {
+        [one] => one.book.clone(),
+        _ => None,
+    }
+    .unwrap_or_else(|| BOOK_PAGE.to_string());
+    out.push_str(&crate::cmd::frame::book_line(&page));
+    out
+}
+
+/// `nros board show <name>` — a board's support evidence and its descriptor.
 fn show(args: ShowArgs) -> Result<()> {
     let root = catalog_root(args.workspace)?;
     let status = crate::cmd::board_support::Status::load(&root)?;
     let runs = crate::cmd::board_support::LaneRuns::load(&root);
-    let (notes, other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
+    let (notes, _other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
+    let catalog = BoardCatalog::load(&root).map_err(|e| eyre!("load board catalog: {e}"))?;
+    let desc = catalog
+        .descriptors()
+        .iter()
+        .find(|d| d.answers_to(&args.name));
+    let krate = desc.map(|d| crate_of(d, &root));
     let mut rows = status.rows_named(&args.name);
-    if rows.is_empty() {
-        // A board KEY names a descriptor; its directory is the registry's crate.
-        if let Ok((_, dir)) = resolve(&root, &args.name)
-            && let Some(krate) = dir.file_name().and_then(|n| n.to_str())
-        {
-            rows = status.rows_for_crate(krate);
-        }
+    if rows.is_empty()
+        && let Some(k) = &krate
+    {
+        rows = status.rows_for_crate(k);
     }
-    if rows.is_empty() {
-        return Err(eyre!(
-            "no board support registry row answers to `{}` (read {}). `nros board list` names every board.",
-            args.name,
-            status.path.display()
+    if desc.is_none() && rows.is_empty() {
+        let known: Vec<&str> = catalog
+            .descriptors()
+            .iter()
+            .flat_map(|d| d.names.iter().map(String::as_str))
+            .chain(status.rows.iter().map(|r| r.key.as_str()))
+            .collect();
+        return Err(crate::cmd::frame::unknown(
+            "board",
+            &args.name,
+            known,
+            "nros board list",
         ));
     }
     let today = crate::cmd::board_support::today();
-    for (i, r) in rows.iter().enumerate() {
-        if i > 0 {
-            println!();
-        }
-        println!("{}", r.key);
-        println!("  status     {}", r.status_on(&today));
-        if let Some(other) = &other
-            && let Some(o) = other.rows.iter().find(|o| o.key == r.key)
-            && o.status_on(&today) != r.status_on(&today)
-        {
-            println!(
-                "             ({} in {})",
-                o.status_on(&today),
-                other.path.display()
-            );
-        }
-        println!("  runs on    {}", r.runs_on());
-        println!("  cadence    {}", r.cadence_text());
-        if let Some(t) = r.last_run_text(runs.as_ref()) {
-            println!("  last run   {t}");
-        }
-        if let Some(d) = &r.stale_from {
-            println!(
-                "  stale from {d} (a manual boot older than the registry's limit reads Builds)"
-            );
-        }
-        println!("  breadth    {}", r.breadth);
-        if let Some(x) = &r.external {
-            println!("  package    {} (in {x}, outside this tree)", r.krate);
-        }
-        for (label, v) in [("run", &r.book_run), ("flash", &r.book_flash)] {
-            if let Some(v) = v {
-                println!("  book {label:<5} book/src/{v}");
+    let support = rows
+        .iter()
+        .map(|r| {
+            let mut cadence = r.cadence_text();
+            if let Some(t) = r.last_run_text(runs.as_ref()) {
+                cadence = format!("{cadence}; last run {t}");
             }
+            SupportItem {
+                key: r.key.clone(),
+                status: r.status_on(&today),
+                runs_on: r.runs_on(),
+                cadence,
+                breadth: r.breadth.clone(),
+                book: r.page.as_deref().map(evidence_page),
+            }
+        })
+        .collect();
+    let path = desc.and_then(|d| {
+        board_projection::descriptor_dir(d, &root).map(|dir| dir.join("nros-board.toml"))
+    });
+    let tables = match &path {
+        Some(p) => {
+            let text = fs::read_to_string(p).wrap_err_with(|| format!("read {}", p.display()))?;
+            let v: toml::Value =
+                toml::from_str(&text).wrap_err_with(|| format!("parse {}", p.display()))?;
+            Some(serde_json::to_value(v)?)
         }
-        if let Some(p) = &r.page {
-            println!("  evidence   {p}");
-        }
+        None => None,
+    };
+    let (key, aliases) = match desc.and_then(|d| d.names.split_first()) {
+        Some((k, a)) => (k.clone(), a.to_vec()),
+        None => (args.name.clone(), Vec::new()),
+    };
+    let item = BoardShow {
+        key,
+        aliases,
+        krate: krate.or_else(|| rows.first().map(|r| r.krate.clone())),
+        platform: desc.map(platform_of),
+        descriptor: path,
+        tables,
+        support,
+    };
+    if args.json {
+        return crate::cmd::frame::print_json(SHOW_SCHEMA, "item", &item, &[]);
     }
+    print!("{}", render_show(&item));
     for n in notes {
         println!("{n}");
     }
     Ok(())
-}
-
-struct BoardEntry {
-    name: String,
-    description: String,
-}
-
-fn read_board(cargo_toml: &Path) -> Result<BoardEntry> {
-    let raw = fs::read_to_string(cargo_toml)?;
-    let doc: toml_edit::DocumentMut = raw.parse()?;
-    let pkg = doc
-        .get("package")
-        .and_then(|p| p.as_table())
-        .ok_or_else(|| eyre!("no [package] table in {}", cargo_toml.display()))?;
-    let name = pkg
-        .get("name")
-        .and_then(|n| n.as_str())
-        .ok_or_else(|| eyre!("no [package].name in {}", cargo_toml.display()))?
-        .to_string();
-    let description = pkg
-        .get("description")
-        .and_then(|d| d.as_str())
-        .unwrap_or("")
-        .to_string();
-    Ok(BoardEntry { name, description })
 }
 
 // -----------------------------------------------------------------------
@@ -882,6 +1061,106 @@ mod catalog_root_tests {
         assert!(
             err.contains("--workspace") && err.contains("own SDK root"),
             "{err}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod view_tests {
+    /// RFC-0133 D2: a section a new design adds is printed with no CLI edit.
+    #[test]
+    fn board_show_prints_every_descriptor_table_as_written() {
+        let v: toml::Value = toml::from_str(
+            r#"
+names = ["my-board", "mb"]
+platform = "zephyr"
+[board.can]
+bitrate = 500000
+driver = "mcan"
+[board.run.fvp]
+cores = 2
+[[board.flash.region]]
+name = "boot"
+[board.entry]
+signature = """
+#[unsafe(no_mangle)]
+fn main() -> ! {"""
+"#,
+        )
+        .unwrap();
+        let text = super::render_tables(&v);
+        for want in [
+            "  [board.can]\n    bitrate = 500000\n    driver  = \"mcan\"\n",
+            "  [board.run.fvp]\n    cores = 2\n",
+            "  [[board.flash.region]]\n    name = \"boot\"\n",
+            "    signature = (2 lines)\n",
+        ] {
+            assert!(text.contains(want), "missing {want:?} in\n{text}");
+        }
+    }
+
+    #[test]
+    fn evidence_page_is_a_book_url_path() {
+        assert_eq!(
+            super::evidence_page("book/src/reference/board-support-levels.md#fvp"),
+            "reference/board-support-levels.html#fvp"
+        );
+    }
+
+    /// RFC-0133 D1: renaming a key or the schema name is a new version.
+    #[test]
+    fn board_json_schemas_are_pinned() {
+        assert_eq!(super::LIST_SCHEMA, "nros.board.list.v1");
+        assert_eq!(super::SHOW_SCHEMA, "nros.board.show.v1");
+        let keys = |v: serde_json::Value| {
+            let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+            k.sort_unstable();
+            k
+        };
+        let item = super::BoardItem {
+            key: "k".into(),
+            aliases: vec![],
+            krate: "c".into(),
+            platform: "p".into(),
+            status: vec![],
+            cadence: vec![],
+        };
+        assert_eq!(
+            keys(serde_json::to_value(&item).unwrap()),
+            ["aliases", "cadence", "crate", "key", "platform", "status"]
+        );
+        let show = super::BoardShow {
+            key: "k".into(),
+            aliases: vec![],
+            krate: None,
+            platform: None,
+            descriptor: None,
+            tables: None,
+            support: vec![super::SupportItem {
+                key: "c@p".into(),
+                status: "Runs".into(),
+                runs_on: "qemu".into(),
+                cadence: "daily".into(),
+                breadth: "b".into(),
+                book: None,
+            }],
+        };
+        let v = serde_json::to_value(&show).unwrap();
+        assert_eq!(
+            keys(v.clone()),
+            [
+                "aliases",
+                "crate",
+                "descriptor",
+                "key",
+                "platform",
+                "support",
+                "tables"
+            ]
+        );
+        assert_eq!(
+            keys(v["support"][0].clone()),
+            ["book", "breadth", "cadence", "key", "runs_on", "status"]
         );
     }
 }
