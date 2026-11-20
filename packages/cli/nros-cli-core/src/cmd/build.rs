@@ -1315,6 +1315,26 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             }
         }
 
+        // Issue 2754 (phase-583 W0) -- a cmake root adds only its bringup's
+        // closure: the packages its configure's images reach (launch plans,
+        // owned entries, `[[component]]` rows) and their workspace
+        // `<depend>`s. Computed once here, read by every exclusion below.
+        let root_closure = if driver == Driver::CMake && !bringup.is_empty() {
+            let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
+            Some(
+                bringup_closure_dirs(
+                    &root,
+                    &found,
+                    &bringup_dir,
+                    &coordinate_members(&bringup, &coord),
+                    stale,
+                )
+                .map_err(|e| eyre::eyre!("`{image_id}`: {e}"))?,
+            )
+        } else {
+            None
+        };
+
         // ---- stage 3.5 — the RESOLVE phase (RFC-0094 D1, phase-439 W2) ---
         //
         // ONE PLACE DECIDES A KNOB, every other place reads it. Between "is the
@@ -1356,6 +1376,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         &board,
                         &platform,
                         &bringup_dirs,
+                        root_closure.as_ref(),
                     ),
                     &bringup_dir,
                 )
@@ -1368,8 +1389,16 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
         // The packages a cmake coordinate's generated root `add_subdirectory()`s
         // leave out: framework entries, and entries claimed by another board.
-        let cmake_excluded =
-            || cmake_root_excluded(&found, &framework_entries, &board, &platform, &bringup_dirs);
+        let cmake_excluded = || {
+            cmake_root_excluded(
+                &found,
+                &framework_entries,
+                &board,
+                &platform,
+                &bringup_dirs,
+                root_closure.as_ref(),
+            )
+        };
         // phase-530 W3 (RFC-0120 D6 case 3) — a cmake image is configured with
         // every image on its coordinate, so the configure is handed the UNION's
         // resolve, never this image's alone.
@@ -2286,7 +2315,17 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &board,
                     &platform,
                     &bringup_dirs,
+                    root_closure.as_ref(),
                 );
+                // Issue 2754 -- a kept package that uses a left-out one without
+                // `<depend>`ing on it is refused here, naming the line to add,
+                // rather than failing in the host configure on a missing target.
+                if let Some(kept) = &root_closure {
+                    crate::builder::cmake_root::refuse_undeclared_workspace_uses(
+                        &found, kept, &bringup,
+                    )
+                    .map_err(|e| eyre::eyre!("`{image_id}`: {e}"))?;
+                }
                 let cargo_nodes = crate::builder::cmake_root::root_cargo_nodes(
                     &found,
                     &root_excluded,
@@ -6425,15 +6464,17 @@ fn entry_deploy_tokens(dir: &std::path::Path, bringup_dirs: &[PathBuf]) -> Vec<S
 }
 
 /// The package dirs the generated cmake root leaves out: the framework's
-/// entries and every entry for another board. ONE spelling, for the root's
-/// SUBDIRS and for the packages stage 3.5 composes the image's seed over
-/// (`cmake_root::root_subdir_names`, phase-530 W5).
+/// entries, every entry for another board, and (issue 2754) every package
+/// outside `closure`, the bringup's ([`bringup_closure_dirs`]). ONE spelling,
+/// for the root's SUBDIRS and for the packages stage 3.5 composes the image's
+/// seed over (`cmake_root::root_subdir_names`, phase-530 W5).
 fn cmake_root_excluded(
     found: &crate::builder::discover::Discovered,
     framework_entries: &std::collections::BTreeSet<PathBuf>,
     board: &str,
     platform: &str,
     bringup_dirs: &[PathBuf],
+    closure: Option<&std::collections::BTreeSet<PathBuf>>,
 ) -> std::collections::BTreeSet<PathBuf> {
     let mut e = framework_entries.clone();
     e.extend(entries_for_other_boards(
@@ -6442,7 +6483,89 @@ fn cmake_root_excluded(
         platform,
         bringup_dirs,
     ));
+    if let Some(kept) = closure {
+        e.extend(
+            found
+                .packages
+                .iter()
+                .filter(|p| !kept.contains(&p.dir))
+                .map(|p| p.dir.clone()),
+        );
+    }
     e
+}
+
+/// Issue 2754 -- the workspace packages a cmake root for one bringup's images
+/// adds: the bringup package itself, the packages each image of the
+/// configure reaches (its launch plan's nodes, its owned entry
+/// `[image.<id>] entry`), the bringup's `[[component]]` rows, and every
+/// workspace package those `<depend>` on, transitively ([`package_closure`],
+/// the closure the west road already builds). It is colcon's
+/// `--packages-up-to`, applied by default.
+///
+/// Another bringup's node packages and owned entries are outside it, so they
+/// are never configured: a package that fails to compile outside its own
+/// bringup (a header only its own images provide) cannot fail this one.
+///
+/// An owned-entry image with no `launch` of its own contributes its launch
+/// closure only when the bringup's default launch resolves; one that names a
+/// launch, and every generated-entry image, must resolve, and the reason is
+/// returned when it does not.
+fn bringup_closure_dirs(
+    root: &Path,
+    found: &crate::builder::discover::Discovered,
+    bringup_dir: &Path,
+    members: &[CoordinateMember],
+    stale: StaleModel,
+) -> Result<std::collections::BTreeSet<PathBuf>, String> {
+    let mut kept: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
+    kept.insert(bringup_dir.to_path_buf());
+    let name_of = |dir: &Path| {
+        found
+            .packages
+            .iter()
+            .find(|p| p.dir == dir)
+            .map(|p| p.name.clone())
+    };
+    let mut seeds: Vec<String> = name_of(bringup_dir).into_iter().collect();
+    for (_, bd, id, img) in members {
+        let owned = owned_entry_dir(root, id, img).map_err(|e| e.to_string())?;
+        if let Some(dir) = &owned {
+            kept.insert(dir.clone());
+            seeds.extend(name_of(dir));
+        }
+        match image_launch_node_dirs(root, bd, img, stale) {
+            Ok(dirs) => kept.extend(dirs),
+            Err(e) if owned.is_none() || img.launch.is_some() => {
+                return Err(format!(
+                    "cannot tell which packages image `{id}` builds, so its root cannot \
+                     be scoped to its bringup: {e}"
+                ));
+            }
+            Err(_) => {}
+        }
+    }
+    // The Rust node packages the root registers by derivation.
+    for n in crate::builder::cmake_root::root_cargo_nodes(found, &Default::default(), bringup_dir)
+        .unwrap_or_default()
+    {
+        kept.insert(n.dir);
+        seeds.push(n.package);
+    }
+    for (_, dir) in package_closure(root, seeds.iter().map(String::as_str))? {
+        kept.insert(dir);
+    }
+    // `package_closure` keys by name and re-discovers; keep its answer in the
+    // spelling `found` uses, so the exclusion compares like with like.
+    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let kept_canon: std::collections::BTreeSet<PathBuf> = kept.iter().map(|p| canon(p)).collect();
+    Ok(found
+        .packages
+        .iter()
+        .filter(|p| kept_canon.contains(&canon(&p.dir)))
+        .map(|p| p.dir.clone())
+        .chain(std::iter::once(bringup_dir.to_path_buf()))
+        .collect())
 }
 
 /// Entry packages that belong to a DIFFERENT board than the one being built.
@@ -13868,7 +13991,10 @@ mod workspace_edition_tests {
 
 #[cfg(test)]
 mod package_closure_tests {
-    use super::package_closure;
+    use super::{
+        CoordinateMember, StaleModel, bringup_closure_dirs, cmake_root_excluded, package_closure,
+    };
+    use crate::orchestration::image::ImageBlock;
     use std::path::Path;
 
     fn pkg(root: &Path, name: &str, depends: &[&str], files: &[(&str, &str)]) {
@@ -13937,6 +14063,65 @@ mod package_closure_tests {
         for (n, d) in &got {
             assert_eq!(d, &root.join("src").join(n));
         }
+    }
+
+    /// Issue 2754 -- the shape it was measured on: two bringups, each with an
+    /// owned-entry image and no launch. A root for one bringup's images keeps
+    /// that bringup, its entry and what the entry `<depend>`s on, and leaves
+    /// out the other bringup, its entry and that entry's own support package.
+    /// A package both entries depend on stays.
+    #[test]
+    fn a_bringups_root_keeps_its_own_closure_and_leaves_the_other_bringups_out() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        let cmake = [("CMakeLists.txt", "")];
+        pkg(root, "test_bringup", &[], &[("system.toml", "")]);
+        pkg(root, "ctrl_bringup", &[], &[("system.toml", "")]);
+        pkg(root, "unit_test", &["shared_lib"], &cmake);
+        pkg(root, "controller", &["shared_lib", "ctrl_support"], &cmake);
+        pkg(root, "shared_lib", &[], &cmake);
+        pkg(root, "ctrl_support", &[], &cmake);
+        let found = crate::builder::discover::discover(root, &[]).expect("discover");
+        let bringup = root.join("src/test_bringup");
+        let members: Vec<CoordinateMember> = vec![(
+            "test_bringup".into(),
+            bringup.clone(),
+            "posix".into(),
+            ImageBlock {
+                entry: Some("unit_test".into()),
+                board: Some("freertos-posix".into()),
+                ..Default::default()
+            },
+        )];
+        let kept = bringup_closure_dirs(root, &found, &bringup, &members, StaleModel::Refuse)
+            .expect("closure");
+        let mut names: Vec<String> = kept
+            .iter()
+            .map(|d| d.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["shared_lib", "test_bringup", "unit_test"]);
+
+        // The exclusion the root and the seed read leaves the rest out.
+        let excluded = cmake_root_excluded(
+            &found,
+            &Default::default(),
+            "freertos-posix",
+            "freertos",
+            &[bringup.clone(), root.join("src/ctrl_bringup")],
+            Some(&kept),
+        );
+        for other in ["ctrl_bringup", "controller", "ctrl_support"] {
+            assert!(
+                excluded.contains(&root.join("src").join(other)),
+                "{other} is left out: {excluded:?}"
+            );
+        }
+        // No closure (a workspace with no bringup) leaves nothing out.
+        assert!(
+            cmake_root_excluded(&found, &Default::default(), "linux", "posix", &[], None)
+                .is_empty()
+        );
     }
 }
 

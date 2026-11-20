@@ -325,6 +325,99 @@ pub fn root_cargo_nodes(
     )
 }
 
+/// Issue 2754 -- refuse a kept package that USES a workspace CMake package the
+/// root leaves out, naming the `<depend>` to add.
+///
+/// A root adds its bringup's closure only (`cmd::build::bringup_closure_dirs`),
+/// so a dependency a package uses but never declares in its `package.xml`
+/// drops out. Building the whole workspace hid that. Without this check the
+/// host configure fails on a missing package or target, naming neither the
+/// package.xml nor the line.
+///
+/// A use is `find_package(<pkg>` or a `<pkg>::` target in the kept package's
+/// own `CMakeLists.txt`, comments stripped. Interface packages are never
+/// subdirectories (they resolve through `NROS_INTERFACE_SEARCH_PATH`), so
+/// leaving one out changes nothing and none is named here.
+///
+/// # Errors
+/// Every such use, one line each, with the fix.
+pub fn refuse_undeclared_workspace_uses(
+    discovered: &Discovered,
+    kept: &BTreeSet<PathBuf>,
+    bringup: &str,
+) -> Result<(), String> {
+    let left_out: Vec<&str> = discovered
+        .packages
+        .iter()
+        .filter(|p| !kept.contains(&p.dir) && crate::routing::cmake_node(p))
+        .map(|p| p.name.as_str())
+        .collect();
+    if left_out.is_empty() {
+        return Ok(());
+    }
+    let mut found = Vec::new();
+    for pkg in discovered.packages.iter().filter(|p| kept.contains(&p.dir)) {
+        let file = pkg.dir.join("CMakeLists.txt");
+        let Ok(text) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let code: String = text
+            .lines()
+            .map(|l| l.split('#').next().unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for other in &left_out {
+            if *other == pkg.name {
+                continue;
+            }
+            if uses_package(&code, other) {
+                found.push(format!(
+                    "  `{}` uses `{other}` ({}) but its package.xml does not depend on it; \
+                     add `<depend>{other}</depend>` to {}",
+                    pkg.name,
+                    file.display(),
+                    pkg.dir.join("package.xml").display()
+                ));
+            }
+        }
+    }
+    if found.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "the build for bringup `{bringup}` adds only the packages its images reach through \
+         `<depend>`, and these packages use one it leaves out:\n{}",
+        found.join("\n")
+    ))
+}
+
+/// Whether CMake `code` (comments stripped) names package `name` as
+/// `find_package(<name>` or as a `<name>::` target.
+fn uses_package(code: &str, name: &str) -> bool {
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+    let after_ok = |rest: &str| rest.chars().next().is_none_or(|c| !ident(c));
+    let mut i = 0;
+    while let Some(off) = code[i..].find("find_package(") {
+        let rest = code[i + off + "find_package(".len()..].trim_start();
+        if let Some(tail) = rest.strip_prefix(name)
+            && after_ok(tail)
+        {
+            return true;
+        }
+        i += off + 1;
+    }
+    let target = format!("{name}::");
+    let mut i = 0;
+    while let Some(off) = code[i..].find(&target) {
+        let at = i + off;
+        if code[..at].chars().next_back().is_none_or(|c| !ident(c)) {
+            return true;
+        }
+        i = at + 1;
+    }
+    false
+}
+
 /// Render the root `CMakeLists.txt` written to `manifest_dir`.
 pub fn render(
     discovered: &Discovered,
@@ -1044,6 +1137,51 @@ mod tests {
         let d = discovered(vec![pkg(root, "a_pkg", true)]);
         let body = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
         assert!(!body.contains("CMAKE_TOOLCHAIN_FILE"), "{body}");
+    }
+
+    /// Issue 2754 -- a kept package using a left-out one it never `<depend>`s
+    /// on is refused, naming the package.xml line; a comment mentioning it,
+    /// or a name that only shares a prefix, is not a use.
+    #[test]
+    fn a_kept_package_using_a_left_out_one_is_refused_with_the_depend_to_add() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let user = pkg(root, "user_pkg", true);
+        std::fs::write(
+            user.dir.join("CMakeLists.txt"),
+            "find_package( support_lib REQUIRED)\ntarget_link_libraries(x support_lib::core)\n",
+        )
+        .unwrap();
+        let quiet = pkg(root, "quiet_pkg", true);
+        std::fs::write(
+            quiet.dir.join("CMakeLists.txt"),
+            "# find_package(support_lib)\nfind_package(support_lib_extra)\n",
+        )
+        .unwrap();
+        let support = pkg(root, "support_lib", true);
+        let kept: BTreeSet<PathBuf> = [user.dir.clone(), quiet.dir.clone()].into_iter().collect();
+        let d = discovered(vec![user, quiet, support]);
+        let e = refuse_undeclared_workspace_uses(&d, &kept, "demo_bringup").unwrap_err();
+        assert!(e.contains("`user_pkg` uses `support_lib`"), "{e}");
+        assert!(e.contains("add `<depend>support_lib</depend>`"), "{e}");
+        assert!(!e.contains("quiet_pkg"), "{e}");
+        assert_eq!(e.matches("uses `").count(), 1, "{e}");
+        // Everything kept: nothing is refused.
+        let all: BTreeSet<PathBuf> = d.packages.iter().map(|p| p.dir.clone()).collect();
+        refuse_undeclared_workspace_uses(&d, &all, "demo_bringup").unwrap();
+    }
+
+    #[test]
+    fn a_namespaced_target_alone_is_a_use() {
+        assert!(uses_package(
+            "target_link_libraries(a lib_x::lib_x)",
+            "lib_x"
+        ));
+        assert!(!uses_package(
+            "target_link_libraries(a my_lib_x::y)",
+            "lib_x"
+        ));
+        assert!(!uses_package("find_package(lib_xy)", "lib_x"));
     }
 
     #[test]
