@@ -190,7 +190,7 @@ board and RMW packages are self-contained.
 
 ### W7 - Renames, batch 3: the demand and pool split
 
-- **Status:** OPEN (the `nros fix` table test, which runs when phase-578 W4 lands)
+- **Status:** OPEN (the `nros fix` table test, which runs when phase-578 W4 lands; and one Zephyr Rust image's pool sizes measured, since a Rust image now reads the derived demand cmake forwards rather than the descriptor or the default of 8)
 - **Result:** the six `entity.max_*` core rows and the zenoh pools as
   carriers with no Kconfig symbol; `transitional` and `KCONFIG_PAIRS`
   deleted; a stated demand reaches its pool through the floor (the module,
