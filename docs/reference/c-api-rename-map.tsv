@@ -268,6 +268,7 @@ NROS_QOS_RELIABILITY_UNKNOWN	RCLC_QOS_RELIABILITY_UNKNOWN	ours	API constant with
 NROS_QOS_SENSOR_DATA	RCLC_QOS_SENSOR_DATA	ours	API constant with no upstream spelling
 NROS_QOS_SERVICES	RCLC_QOS_SERVICES	ours	API constant with no upstream spelling
 NROS_RCLC_DETAIL_UUID_H	NROS_RCLC_DETAIL_UUID_H	build	build or configuration fact
+NROS_RCLC_DETAIL_WALL_CLOCK_STATE_H	NROS_RCLC_DETAIL_WALL_CLOCK_STATE_H	build	build or configuration fact
 NROS_RCLC_MESSAGE_INFO_H	NROS_RCLC_MESSAGE_INFO_H	build	build or configuration fact
 NROS_RCLC_REQUEST_ID_H	NROS_RCLC_REQUEST_ID_H	build	build or configuration fact
 NROS_RCL_COMPAT_H	NROS_RCL_COMPAT_H	build	build or configuration fact
@@ -414,6 +415,11 @@ NROS_UPSTREAM_PATH_RCL_WAIT_H	NROS_UPSTREAM_PATH_RCL_WAIT_H	build	build or confi
 NROS_USING_DLL	NROS_USING_DLL	build	build or configuration fact
 NROS_VIEW_H	NROS_VIEW_H	build	build or configuration fact
 NROS_VISIBILITY_H	NROS_VISIBILITY_H	build	build or configuration fact
+NROS_WALL_CLOCK_SOURCE_BOARD	NROS_WALL_CLOCK_SOURCE_BOARD	seam	declared by a port seam or the C++ FFI
+NROS_WALL_CLOCK_SOURCE_PLATFORM	NROS_WALL_CLOCK_SOURCE_PLATFORM	seam	declared by a port seam or the C++ FFI
+NROS_WALL_CLOCK_SOURCE_SNTP	NROS_WALL_CLOCK_SOURCE_SNTP	seam	declared by a port seam or the C++ FFI
+NROS_WALL_CLOCK_SOURCE_ZENOH_HLC	NROS_WALL_CLOCK_SOURCE_ZENOH_HLC	seam	declared by a port seam or the C++ FFI
+NROS_WALL_CLOCK_STATE_T_DEFINED	NROS_WALL_CLOCK_STATE_T_DEFINED	seam	declared by a port seam or the C++ FFI
 NROS_WARN_UNUSED	NROS_WARN_UNUSED	build	build or configuration fact
 NROS__BUILDLESS_ASSERT	NROS__BUILDLESS_ASSERT	build	build or configuration fact
 NROS__LE_VIEW_COMMON	NROS__LE_VIEW_COMMON	build	build or configuration fact
@@ -1000,3 +1006,5 @@ nros_view_bytes_t	rclc_view_bytes_t	ours	ours-only
 nros_view_str_t	rclc_view_str_t	ours	ours-only
 nros_wake_state_get_zero_initialized	rclc_wake_state_get_zero_initialized	ours	ours-only
 nros_wake_state_t	rclc_wake_state_t	ours	ours-only
+nros_wall_clock_state	rclc_wall_clock_state	ours	ours-only
+nros_wall_clock_state_t	nros_wall_clock_state_t	seam	declared by a port seam or the C++ FFI

@@ -97,6 +97,12 @@ EXEMPT = {
     # would turn a loud stop back into a silently ignored setting.
     ("packages/api/nros/src/retired_env.rs", "zenoh"):
         "the refusal table for RETIRED env spellings (phase-484 W8c, RFC-0071 D10)",
+    # RFC-0141 D1: `zenoh-hlc` is a WALL-CLOCK SOURCE an image selects (the
+    # zenoh session's HLC timestamps calibrate the offset), reported back by
+    # the state query's `NROS_WALL_CLOCK_SOURCE_ZENOH_HLC`. It names which
+    # clock answers, not which RMW carries anything.
+    ("packages/api/nros-c/include/rclc/detail/wall_clock_state.h", "zenoh"):
+        "wall-clock source axis (RFC-0141 D1), not the RMW axis",
 }
 
 # path -> (offending code lines, OPEN issue, what it is). A RATCHET: a count
