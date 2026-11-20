@@ -101,7 +101,7 @@ libstdc++.
 
 The router address is baked into the image, because a microcontroller has no
 environment variables to read it from. On FreeRTOS that is the
-`NROS_ENTRY_LOCATOR` cache variable; on Zephyr it is `CONFIG_NROS_ZENOH_LOCATOR`.
+`NROS_ENTRY_LOCATOR` cache variable; on Zephyr it is `CONFIG_NROS_LOCATOR`.
 Under QEMU's user networking the host is `192.0.3.1` on FreeRTOS and `10.0.2.2`
 on Zephyr.
 

@@ -172,8 +172,8 @@ impl NodeDeclError {
             Self::ParameterRejected => {
                 "the parameter store refused the declaration (the store is full, or it \
                  rejected the value). A full store is sized by `max_parameters` under \
-                 `[knobs.params]` in system.toml, NROS_MAX_PARAMETERS or \
-                 CONFIG_NROS_MAX_PARAMETERS; left unstated, declaring every node's \
+                 `[knobs.params]` in system.toml, NROS_PARAMS_MAX_PARAMETERS or \
+                 CONFIG_NROS_PARAMS_MAX_PARAMETERS; left unstated, declaring every node's \
                  parameters under `params:` in the contract derives it"
             }
             Self::ExecutorFull => {

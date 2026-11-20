@@ -5,7 +5,7 @@
 # `zephyr/cmake/nros_system_generate.cmake`: the system's domain
 # (`system.toml`'s `domain_id`, baked by `nros dev codegen system` as
 # `#define NROS_SYSTEM_DOMAIN_ID <n>u`) and the image's domain
-# (`CONFIG_NROS_DOMAIN_ID`, and `CONFIG_NROS_CYCLONE_DOMAIN_ID` when Cyclone
+# (`CONFIG_NROS_DOMAIN_ID`, and `CONFIG_NROS_CYCLONEDDS_DOMAIN_ID` when Cyclone
 # is the backend) agree, or the configure stops naming all three.
 #
 # Sibling of `tests/cmake-entity-inventory-tests.sh` and shaped like it.
@@ -87,7 +87,7 @@ fi
 init_test_tmpdir "nros-domain-agreement"
 
 # The Cyclone symbol, spelled once (see case C in the header).
-CYC=CONFIG_NROS_CYCLONE_DOMAIN_ID
+CYC=CONFIG_NROS_CYCLONEDDS_DOMAIN_ID
 trap 'cleanup_test_tmpdir' EXIT
 
 # ---------------------------------------------------------------------------
@@ -203,7 +203,7 @@ if ! nros_grep_q "CONFIG_NROS_DOMAIN_ID = 2" <<<"$OUT"; then
     fail "A: the refusal does not name the Kconfig value -- $OUT"
 fi
 check
-if ! nros_grep_q "CONFIG_NROS_CYCLONE_DOMAIN_ID = unset" <<<"$OUT"; then
+if ! nros_grep_q "CONFIG_NROS_CYCLONEDDS_DOMAIN_ID = unset" <<<"$OUT"; then
     fail "A: the refusal does not say Cyclone's symbol was not in scope -- $OUT"
 fi
 check

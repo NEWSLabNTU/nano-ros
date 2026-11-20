@@ -137,7 +137,7 @@ impl RouterMode {
 }
 
 /// The port zenoh clients dial when nothing states a locator: the default of
-/// a host image and of Zephyr `native_sim` (`CONFIG_NROS_ZENOH_LOCATOR`), and
+/// a host image and of Zephyr `native_sim` (`CONFIG_NROS_LOCATOR`), and
 /// the port `rmw_zenoh_cpp` uses.
 pub const ZENOH_DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
 

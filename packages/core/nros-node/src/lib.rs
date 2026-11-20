@@ -360,7 +360,7 @@ const _: () = assert!(
     nros_params::IMPLIED_STORE_SLOTS > 0,
     "`param-store` without `alloc` needs the parameter store carved from the executor \
      backing, and this build carves none: set NROS_PARAM_STORE=1 (sized by \
-     NROS_MAX_PARAMETERS), or declare `params:` in the contract / `param_services` in the \
+     NROS_PARAMS_MAX_PARAMETERS), or declare `params:` in the contract / `param_services` in the \
      bringup, or add \"alloc\" to this crate's features"
 );
 #[cfg(all(feature = "profile-mode", not(feature = "alloc")))]

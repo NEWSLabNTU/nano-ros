@@ -16868,7 +16868,7 @@ impl<'s> Executor<'s> {
     /// 2493, as stock), typed
     /// `rcl_interfaces/msg/ParameterEvent`, RELIABLE + VOLATILE as upstream's
     /// `parameter_events` profile. Its depth is upstream's 1000 on a hosted
-    /// build and `NROS_PARAM_EVENTS_DEPTH` (default 1) otherwise, because a
+    /// build and `NROS_PARAMS_EVENTS_DEPTH` (default 1) otherwise, because a
     /// reliable DDS writer's history is memory the RMW reserves; depth is not
     /// a matching criterion, so an upstream subscriber still matches.
     /// Idempotent.

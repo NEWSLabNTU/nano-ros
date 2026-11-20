@@ -10,7 +10,7 @@
  * it declared: a sched task declaring more ran undersized behind a printk.
  *
  * A sched task that declares nothing (`bytes` 0) gets the board default,
- * CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE — the same number the pool slot used, so
+ * CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES — the same number the pool slot used, so
  * the knob keeps its meaning for undeclared sched tasks. `K_THREAD_STACK_DEFINE`
  * applies the architecture's alignment, guard and reserved area; the row
  * carries `K_THREAD_STACK_SIZEOF`, the size the thread can use.
@@ -26,8 +26,8 @@
 
 #include <rclc/detail/main.h>
 
-#ifdef CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE
-#define NROS_SCHED_TASK_STACK_DEFAULT_ CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE
+#ifdef CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES
+#define NROS_SCHED_TASK_STACK_DEFAULT_ CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES
 #else
 #define NROS_SCHED_TASK_STACK_DEFAULT_ 16384
 #endif
@@ -40,7 +40,7 @@
  * states none, plus the worker's own frame (the spin loop, spin_once and the
  * transport drive under it). Never the platform's thread default. The
  * per-callback default is the level knob minus the frame, so a level whose
- * members state nothing gets exactly CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, the
+ * members state nothing gets exactly CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES, the
  * stack every sched task got before. A generated entry passes a spawned level that
  * declares no `stack_bytes` as `NROS_LEVEL_STACK_BYTES(member)`, and the cost
  * report (`scripts/nros-mem-report.py --levels`) checks the static against the
@@ -51,9 +51,9 @@
  * pass and is that stack's peak on every port measured. We measured
  * the C runner on Zephyr (the S32K344 island: setup peak 12,464 B, steady
  * 6,920 B), so the default is 13,312 B; a board whose members register more
- * measures its own and sets CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME. */
-#ifdef CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME
-#define NROS_LEVEL_WORKER_FRAME_ CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME
+ * measures its own and sets CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES. */
+#ifdef CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES
+#define NROS_LEVEL_WORKER_FRAME_ CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES
 #else
 #define NROS_LEVEL_WORKER_FRAME_ 13312
 #endif
@@ -63,8 +63,8 @@
     (((member) > 0u ? (member) : NROS_LEVEL_CALLBACK_STACK_DEFAULT_) + NROS_LEVEL_WORKER_FRAME_)
 BUILD_ASSERT(
     NROS_LEVEL_WORKER_FRAME_ < NROS_SCHED_TASK_STACK_DEFAULT_,
-    "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME must stay below "
-    "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE: their difference is the per-callback default");
+    "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES must stay below "
+    "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_BYTES: their difference is the per-callback default");
 
 /* A declared level stack follows the same placement rule as the
  * shim's pool (`nros_sched_task_stacks`): CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM

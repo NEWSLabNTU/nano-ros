@@ -1277,7 +1277,10 @@ mod tests {
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
         let layers = crate::cmd::leaf_settings::image_layers(&leaf, None).unwrap();
-        assert_eq!(layers["ZPICO_NO_SMOLTCP"], "1", "the serial implication");
+        assert_eq!(
+            layers["NROS_ZENOH_NO_SMOLTCP"], "1",
+            "the serial implication"
+        );
         assert_eq!(
             layers["NROS_LINK_IP"], "1",
             "the image outranks its implication"

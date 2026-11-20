@@ -64,7 +64,7 @@ fn a_declared_string_parameter_refuses_rather_than_guessing() {
     else {
         panic!("a string parameter must refuse, not guess");
     };
-    assert!(why.contains("NROS_PARAM_SERVICE_INBOX_BYTES"), "{why}");
+    assert!(why.contains("NROS_PARAMS_SERVICE_INBOX_BYTES"), "{why}");
     assert!(
         why.contains("was DROPPED") && !why.contains("issue "),
         "{why}"

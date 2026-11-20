@@ -16,7 +16,7 @@ fn main() {
     // client needs **1 TCP + ≤1 UDP** (scouting), so the default is 1/1 — no
     // hand-set env per example, and the unused-slot static buffers
     // (`SOCKET_BUFFER_SIZE` × 2 per extra slot ≈ 16 KB BSS for the old 4/4)
-    // never materialise. An explicit `NROS_SMOLTCP_MAX_*` env still overrides.
+    // never materialise. An explicit `NROS_NET_MAX_*` env still overrides.
     //
     // The RTPS escape hatch is the `rtps` cargo feature: a board that grows a
     // bare-metal DDS path enables `nros-smoltcp/rtps` and the UDP default jumps
@@ -42,28 +42,28 @@ fn main() {
         .map(|r| r.net_rungs())
         .unwrap_or_default();
 
-    let max_sockets = nros_zephyr_build::knob("NROS_SMOLTCP_MAX_SOCKETS")
+    let max_sockets = nros_zephyr_build::knob("NROS_NET_MAX_SOCKETS")
         .rung(rungs.max_sockets)
         .resolve(1);
     // The builtin here is FEATURE-derived, and a rung outranks it: a board that
     // names the knob has said something specific, while `rtps` is a default good
     // enough for a board that has not.
-    let max_udp_sockets = nros_zephyr_build::knob("NROS_SMOLTCP_MAX_UDP_SOCKETS")
+    let max_udp_sockets = nros_zephyr_build::knob("NROS_NET_MAX_UDP_SOCKETS")
         .rung(rungs.max_udp_sockets)
         .resolve(if rtps { 4 } else { 1 });
     let buffer_size = nros_zephyr_build::knob("NROS_NET_BUFFER_BYTES")
         .rung(rungs.buffer_bytes)
         .resolve(2048);
-    let connect_timeout_ms = nros_zephyr_build::knob("NROS_SMOLTCP_CONNECT_TIMEOUT_MS")
+    let connect_timeout_ms = nros_zephyr_build::knob("NROS_NET_CONNECT_TIMEOUT_MS")
         .rung(rungs.connect_timeout_ms)
         .resolve(30_000);
-    let socket_timeout_ms = nros_zephyr_build::knob("NROS_SMOLTCP_SOCKET_TIMEOUT_MS")
+    let socket_timeout_ms = nros_zephyr_build::knob("NROS_NET_SOCKET_TIMEOUT_MS")
         .rung(rungs.socket_timeout_ms)
         .resolve(10_000);
 
     if max_sockets > 4 {
         panic!(
-            "NROS_SMOLTCP_MAX_SOCKETS={max_sockets} exceeds 4. \
+            "NROS_NET_MAX_SOCKETS={max_sockets} exceeds 4. \
              Increasing beyond 4 requires adding static TCP buffer \
              declarations in nros-smoltcp/src/lib.rs."
         );
@@ -71,7 +71,7 @@ fn main() {
 
     if max_udp_sockets > 4 {
         panic!(
-            "NROS_SMOLTCP_MAX_UDP_SOCKETS={max_udp_sockets} exceeds 4. \
+            "NROS_NET_MAX_UDP_SOCKETS={max_udp_sockets} exceeds 4. \
              Increasing beyond 4 requires adding static UDP buffer \
              declarations in nros-smoltcp/src/lib.rs."
         );
@@ -79,11 +79,11 @@ fn main() {
 
     let contents = format!(
         "/// Maximum number of concurrent TCP sockets \
-         (NROS_SMOLTCP_MAX_SOCKETS; backend-derived default 1 — brokered).\n\
+         (NROS_NET_MAX_SOCKETS; backend-derived default 1 — brokered).\n\
          pub const MAX_SOCKETS: usize = {max_sockets};\n\
          \n\
          /// Maximum number of concurrent UDP sockets \
-         (NROS_SMOLTCP_MAX_UDP_SOCKETS; default 1 brokered / 4 with the `rtps` feature).\n\
+         (NROS_NET_MAX_UDP_SOCKETS; default 1 brokered / 4 with the `rtps` feature).\n\
          pub const MAX_UDP_SOCKETS: usize = {max_udp_sockets};\n\
          \n\
          /// Per-socket staging buffer size in bytes \
@@ -91,11 +91,11 @@ fn main() {
          pub const SOCKET_BUFFER_SIZE: usize = {buffer_size};\n\
          \n\
          /// Timeout for TCP connect in milliseconds \
-         (set via NROS_SMOLTCP_CONNECT_TIMEOUT_MS, default 30000).\n\
+         (set via NROS_NET_CONNECT_TIMEOUT_MS, default 30000).\n\
          pub const CONNECT_TIMEOUT_MS: u64 = {connect_timeout_ms};\n\
          \n\
          /// Timeout for TCP read/write operations in milliseconds \
-         (set via NROS_SMOLTCP_SOCKET_TIMEOUT_MS, default 10000).\n\
+         (set via NROS_NET_SOCKET_TIMEOUT_MS, default 10000).\n\
          pub const SOCKET_TIMEOUT_MS: u64 = {socket_timeout_ms};\n"
     );
 

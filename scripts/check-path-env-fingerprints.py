@@ -235,6 +235,14 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
         ("packages/core/nros-node/build.rs", "in_place_dispatch_trusted", "key"):
             "closure called with two `DEP_NROS_RMW_*_DISPATCH` literals — cargo "
             "`links` metadata flags (\"1\"), not locations",
+        ("packages/rmw/zenoh/nros-zpico-build/src/lib.rs", "env_refusing_retired", "s"):
+            "every spelling of one registry row (`nros_zephyr_build::spellings`); its callers "
+            "pass `NROS_ZENOH_MULTICAST_TRANSPORT`, `NROS_ZENOH_DEBUG` and "
+            "`NROS_ZENOH_NO_SMOLTCP`, flags, never locations (phase-581 W6)",
+        ("packages/tooling/nros-zephyr-build/src/lib.rs", "refuse_retired_statement_env", "name"):
+            "a statement's retired build variable (`NROS_DOMAIN_ID`) and the run-time "
+            "`NROS_LOCATOR` / `NROS_NODE_NAME`, watched to refuse or note them, never read "
+            "as a location (phase-581 W6)",
         ("packages/core/nros-node/build.rs", "env_opt_string", "name"):
             "count-knob reader; callers pass `NROS_DECLARED_*` / `NROS_MAX_*` count names",
         ("packages/rmw/zenoh/nros-zpico-build/src/runner.rs", "build_zenoh_pico_unified", "env_var"):
