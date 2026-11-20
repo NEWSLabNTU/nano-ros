@@ -1,0 +1,47 @@
+# Node interface contract for system.launch.xml.
+#
+# One statement: what the executor does when `control_node`'s 10 ms tick
+# runs past its deadline. A deadline policy reaches a sched task only from
+# here (`miss.action` on a node path), never from `system.toml`; the
+# resolver lowers it onto the sched task the path's callback group runs on
+# (`ctrl` -> `high`), and the executor reacts on whichever platform also
+# declares a `deadline` for that level.
+#
+# `continue` is the report-only action: the miss is logged as a
+# `deadline-miss-runtime` contract violation and the level keeps running.
+# The deadline itself is per platform (`[tasks.high.freertos] deadline`,
+# `[tasks.high.zephyr] deadline`); a platform that declares none never
+# judges a miss.
+#
+# A contract is a statement about the whole node, so it also lists every
+# entity the code creates (the census check refuses a partial one): each
+# node's publisher and timer. `nodes:` keys are LOCAL endpoint names.
+
+version: 1
+
+nodes:
+  control_node:
+    pub:
+      ctrl: { qos: { depth: 10 } }
+    paths:
+      on_ctrl:
+        trigger: { timer: { rate: 100Hz } }
+        output: [ctrl]
+        miss:
+          action: continue
+
+  telem_node:
+    pub:
+      telem: { qos: { depth: 10 } }
+    paths:
+      on_telem:
+        trigger: { timer: { rate: 10Hz } }
+        output: [telem]
+
+topics:
+  /ctrl:
+    type: std_msgs/msg/Int32
+    pub: [control_node/ctrl]
+  /telem:
+    type: std_msgs/msg/Int32
+    pub: [telem_node/telem]

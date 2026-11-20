@@ -103,6 +103,15 @@ priority = 15
 # or refilled by it (issue 0623, measured again in 0736); a sched task that needs
 # the other side must SAY so with `above = "transport"` on the sched task.
 priority = 3
+# FREERTOS-SCOPED sporadic budget (both fields required). FreeRTOS has no
+# kernel budget server, so the executor enforces it: a level that spends its
+# 5 ms is skipped until its 10 ms period refills it (phase-575 W5).
+budget = "5000us"
+period = "10000us"
+# FREERTOS-SCOPED deadline, below the 8 ms overrun `ctrl_pkg` runs one tick
+# in fifty on this board. What a miss does is the contract's word
+# (`launch/system.contract.yaml`, `miss.action: continue` = report).
+deadline = "6000us"
 
 [tasks.low]
 spin_period = "10000us"

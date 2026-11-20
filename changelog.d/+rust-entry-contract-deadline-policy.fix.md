@@ -1,0 +1,1 @@
+A Rust entry now honours the deadline policy its launch contract states (`miss.action` on a node path: `continue`, `skip_next` or `abort`). Before, `nros::main!` built its sched task table without the contract, so every Rust image baked no deadline policy and ignored each deadline miss. C and C++ entries were not affected.

@@ -62,6 +62,12 @@ deadline = "10000us"
 # or refilled by it (issue 0623, measured again in 0736); a sched task that needs
 # the other side must SAY so with `above = "transport"` on the sched task.
 priority = 3
+# FREERTOS-SCOPED sporadic budget (both fields required). FreeRTOS has no
+# kernel budget server, so the executor enforces it, lowered by the C runner
+# (`freertos_run_sched_tasks.c`). The ctrl tick stays well inside it; the
+# Rust arm of this bringup is the one that overruns.
+budget = "5000us"
+period = "10000us"
 
 [tasks.high.nuttx]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the

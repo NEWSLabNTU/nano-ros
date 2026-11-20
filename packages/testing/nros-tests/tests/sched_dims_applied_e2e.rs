@@ -53,10 +53,10 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
-        build_native_workspace_rust_realtime_entry, build_nuttx_workspace_cpp_realtime_entry,
-        build_nuttx_workspace_rust_realtime_entry, build_threadx_workspace_rust_realtime_entry,
-        build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_c_realtime_entry_smp,
-        build_zephyr_workspace_cpp_realtime_entry,
+        build_freertos_workspace_rust_realtime_entry, build_native_workspace_rust_realtime_entry,
+        build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
+        build_threadx_workspace_rust_realtime_entry, build_zephyr_workspace_c_realtime_entry,
+        build_zephyr_workspace_c_realtime_entry_smp, build_zephyr_workspace_cpp_realtime_entry,
         build_zephyr_workspace_rust_realtime_derived_entry,
         build_zephyr_workspace_rust_realtime_entry,
     },
@@ -70,9 +70,9 @@ use nros_tests::{
         LINUX_CORE_PIN_FALLBACK_MARKER, LINUX_CORE_PIN_MARKER, NUTTX_CORE_PIN_FALLBACK_MARKER,
         NUTTX_CORE_PIN_MARKER, NUTTX_SCHED_TASK_PRIORITY_FAILED_MARKER,
         NUTTX_SCHED_TASK_PRIORITY_MARKER, NUTTX_SPORADIC_FALLBACK_MARKER, NUTTX_SPORADIC_MARKER,
-        THREADX_CORE_PIN_FALLBACK_MARKER, THREADX_CORE_PIN_MARKER, THREADX_PREEMPT_MARKER,
-        THREADX_TIME_SLICE_MARKER, ZEPHYR_CORE_PIN_FALLBACK_MARKER, ZEPHYR_CORE_PIN_MARKER,
-        ZEPHYR_CORE_PIN_OBSERVED_CPU1, ZEPHYR_EDF_DEADLINE_MARKER,
+        RULE_DEADLINE_MISS_RUNTIME, THREADX_CORE_PIN_FALLBACK_MARKER, THREADX_CORE_PIN_MARKER,
+        THREADX_PREEMPT_MARKER, THREADX_TIME_SLICE_MARKER, ZEPHYR_CORE_PIN_FALLBACK_MARKER,
+        ZEPHYR_CORE_PIN_MARKER, ZEPHYR_CORE_PIN_OBSERVED_CPU1, ZEPHYR_EDF_DEADLINE_MARKER,
         ZEPHYR_SCHED_TASK_MEETS_TRANSPORT_MARKER, ZEPHYR_SCHED_TASK_NOT_CHECKED_MARKER,
         sched_task_dispatch_marker, zephyr_multi_sched_task_entry_up_line,
     },
@@ -989,6 +989,112 @@ fn dotconfig_has_line(dotconfig: &Path, line: &str) -> bool {
     std::fs::read_to_string(dotconfig)
         .map(|text| text.lines().any(|l| l.trim() == line))
         .unwrap_or(false)
+}
+
+/// A FreeRTOS level that overruns its declared budget is throttled by the
+/// EXECUTOR (phase-575 W5).
+///
+/// FreeRTOS has no kernel budget server, so the runner lowers the level's
+/// `[tasks.high.freertos]` budget (5 ms per 10 ms) onto the level's own sched
+/// context and the executor enforces it. The Rust `ws-realtime` image's `high`
+/// member runs one tick in fifty for 8 ms on this board. The assertions, from
+/// the guest console:
+///
+/// - the runner lowered the budget and the executor enforces it
+///   (`enforced by the EXECUTOR`);
+/// - the overrun happened (tick 25) and the executor reported it and
+///   throttled the context until its refill (`sporadic budget overrun`);
+/// - the level kept dispatching afterwards (the SECOND overrun, tick 75), so
+///   the throttle released at the refill instead of starving the level;
+/// - the boot level, the session owner, was never budgeted;
+/// - the overrunning tick also missed the level's 6 ms
+///   `[tasks.high.freertos]` deadline, and the executor reported it as a
+///   `deadline-miss-runtime` violation against that 6 ms -- the action the
+///   bringup's contract states (`miss.action: continue`), which reaches the
+///   level only through the launch contract.
+#[test]
+fn freertos_level_budget_overrun_is_throttled_by_the_executor() {
+    if !nros_tests::lane_scope::admits(MP::FreertosMps2) {
+        return;
+    }
+    let entry = build_freertos_workspace_rust_realtime_entry()
+        .map(|p| p.to_path_buf())
+        .require("freertos-mps2 rust realtime");
+    let port = port_of(MP::FreertosMps2, ML::Rust, MW::RealtimeSchedTasks);
+    let _router = ZenohRouter::start_on("0.0.0.0", port)
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+    let groups: Vec<Vec<String>> = vec![
+        vec!["nros: level budget sched_task=`high` 5000us/10000us enforced by the EXECUTOR".into()],
+        vec!["on_ctrl: overran the level budget at tick 25 (".into()],
+        vec!["sporadic budget overrun sched context".into()],
+        vec!["on_ctrl: overran the level budget at tick 75 (".into()],
+        vec![format!(
+            "{RULE_DEADLINE_MISS_RUNTIME} sched-context measured="
+        )],
+    ];
+    let mut q = QemuProcess::start_mps2_an385_networked(&entry)
+        .unwrap_or_else(|e| panic!("[freertos-mps2 rust] boot QEMU: {e}"));
+    let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+    q.kill();
+    let log = log.unwrap_or_else(|e| {
+        panic!("[freertos-mps2 rust] the overrunning level was not shown throttled by the executor: {e}")
+    });
+    assert!(
+        !log.contains("level budget sched_task=`low`"),
+        "[freertos-mps2 rust] the session-owning boot level was budgeted:\n{log}"
+    );
+    let miss = format!("{RULE_DEADLINE_MISS_RUNTIME} sched-context measured=");
+    let judged_against_6ms = log
+        .lines()
+        .filter(|l| l.contains(&miss))
+        .all(|l| l.trim_end().ends_with("declared=6000"));
+    assert!(
+        judged_against_6ms,
+        "[freertos-mps2 rust] a deadline miss was judged against something other than the \
+         level's 6 ms freertos deadline:\n{log}"
+    );
+}
+
+/// The C runner lowers a FreeRTOS level's budget the same way the Rust
+/// runner does (phase-575 W5).
+///
+/// `freertos_run_sched_tasks.c` serves every C and C++ FreeRTOS entry. The
+/// `realtime-c` bringup declares `[tasks.high.freertos]` 5 ms per 10 ms. The
+/// assertions, from the guest console:
+///
+/// - the runner lowered the budget onto the `high` level's own sched context
+///   and the executor enforces it (`enforced by the EXECUTOR`);
+/// - the budgeted level still dispatches (`[ctrl] tick=` after the report);
+/// - the boot level, the session owner, was never budgeted.
+///
+/// The executor's throttling itself is the Rust arm's assertion above; the C
+/// ctrl tick stays inside its budget.
+#[test]
+fn freertos_c_runner_lowers_the_level_budget() {
+    if !nros_tests::lane_scope::admits(MP::FreertosMps2) {
+        return;
+    }
+    let entry = build_freertos_workspace_c_realtime_entry()
+        .map(|p| p.to_path_buf())
+        .require("freertos-mps2 c realtime");
+    let port = port_of(MP::FreertosMps2, ML::C, MW::RealtimeSchedTasks);
+    let _router = ZenohRouter::start_on("0.0.0.0", port)
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+    let groups: Vec<Vec<String>> = vec![
+        vec!["nros: level budget sched_task=`high` 5000us/10000us enforced by the EXECUTOR".into()],
+        vec!["[ctrl] tick=".into()],
+    ];
+    let mut q = QemuProcess::start_mps2_an385_networked(&entry)
+        .unwrap_or_else(|e| panic!("[freertos-mps2 c] boot QEMU: {e}"));
+    let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+    q.kill();
+    let log = log.unwrap_or_else(|e| {
+        panic!("[freertos-mps2 c] the C runner did not lower the level's budget: {e}")
+    });
+    assert!(
+        !log.contains("level budget sched_task=`low`"),
+        "[freertos-mps2 c] the session-owning boot level was budgeted:\n{log}"
+    );
 }
 
 /// Issue 2018 -- a NuttX level that overruns its declared budget is throttled

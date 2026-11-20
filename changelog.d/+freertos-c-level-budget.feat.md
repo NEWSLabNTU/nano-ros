@@ -1,0 +1,1 @@
+A C or C++ FreeRTOS entry now enforces the `budget` and `period` a level declares under `[tasks.<level>.freertos]`, and runs the deadline policy its contract states, as a Rust entry does. FreeRTOS has no kernel budget server, so the executor throttles a level that spends its budget until its period refills it. The session-owning boot level is never budgeted.

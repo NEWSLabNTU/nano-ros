@@ -256,8 +256,8 @@ phase-576.
 
 ### W5 — budget enforcement and deadline monitors on FreeRTOS
 
-- **Status:** OPEN
-- **Owner:** nros 142, after its RTIC-priorities work item
+- **Status:** OPEN (steps 1 to 3 in review, 2026-11-20)
+- **Owner:** nros 241 (moved from nros 142 by the manager, 2026-11-19)
 
 Enforce the `budget_us` a FreeRTOS sched task already carries: a sporadic
 server, on the pattern of the bare-metal `sporadic_timer.rs`, with the
@@ -267,6 +267,45 @@ declared `deadline_policy`.
 Acceptance: on the FreeRTOS QEMU board, an injected overrun is throttled at
 its budget and logged, a deadline miss runs its policy, and the other sched
 tasks keep their deadlines.
+
+Steps:
+
+1. **The budget, on the Rust level runner.** FreeRTOS has no kernel budget
+   server, so the level runner lowers each spawned level's budget, period,
+   deadline and deadline policy onto the level's own sched context and the
+   executor enforces the budget (the NuttX runner's `apply_level_policy`,
+   with no kernel half). The session-owning boot level is never budgeted.
+   The executor now reports each overrun when it happens (`sporadic budget
+   overrun`), not only through its 200-opportunity throttle window, which
+   one overrun never closes. The Rust `realtime-rust` image declares
+   `[tasks.high.freertos]` 5 ms per 10 ms and overruns one tick in fifty for
+   8 ms; `freertos_level_budget_overrun_is_throttled_by_the_executor` reads
+   the console.
+2. **The deadline policy.** A deadline policy reaches a sched task only from
+   the launch contract (`miss.action` on a node path). The `realtime-rust`
+   bringup gains `launch/system.contract.yaml`: `miss.action: continue`
+   (report) on `control_node`'s `on_ctrl` path, plus the publisher and timer
+   rows the census check requires of any contract. `[tasks.high.freertos]`
+   gains a 6 ms `deadline`, below the 8 ms overrun. The same test now also
+   reads a `deadline-miss-runtime` violation judged against 6000 us.
+   Building it found that no Rust entry applied the contract at all:
+   `nros::main!` built its sched task table without the lowering, so every
+   Rust image baked no deadline policy. One helper now lowers the contract
+   for all three roads that build that table (a separate fix, ahead of this
+   step).
+3. **The C runner.** `freertos_run_sched_tasks.c` carried the four fields and
+   consumed none of them. Its levels runner (every generated C and C++
+   FreeRTOS entry) now lowers each spawned level's class, budget, period,
+   deadline and deadline policy through `nros_cpp_level_set_sched_policy`,
+   with no kernel half, and prints the same `enforced by the EXECUTOR` line.
+   The boot level gets its class and deadline, never a budget. The
+   `realtime-c` bringup declares `[tasks.high.freertos]` 5 ms per 10 ms;
+   `freertos_c_runner_lowers_the_level_budget` reads the console. The older
+   one-executor-per-task runner (`run_sched_tasks_memory_in`, which no
+   generated entry calls) is unchanged.
+4. **A refill timer.** Refill is polled at the next spin today. A FreeRTOS
+   software timer behind `PlatformTimer::create_periodic` would refill on
+   time, on the pattern of the bare-metal `sporadic_timer.rs`.
 
 ### W6 — a time source hook for timestamps
 

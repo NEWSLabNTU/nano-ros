@@ -56,7 +56,11 @@ impl ExecutableNode for Control {
             // 8 ms, past the budget, so the kernel demotes the level to its
             // floor priority and the runner reports it ("throttled by the
             // KERNEL"); the e2e reads that line.
-            #[cfg(target_os = "nuttx")]
+            //
+            // FreeRTOS (the only bare-metal Arm image of this workspace,
+            // mps2-an385) declares the same budget in `[tasks.high.freertos]`,
+            // and there the executor throttles the level (phase-575 W5).
+            #[cfg(any(target_os = "nuttx", all(target_os = "none", target_arch = "arm")))]
             if *state % 50 == 25 {
                 let t0 = nros::time::now_us();
                 while nros::time::now_us().saturating_sub(t0) < 8000 {
