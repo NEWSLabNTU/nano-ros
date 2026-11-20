@@ -22,6 +22,7 @@ pub mod check_workspace;
 pub mod codegen;
 pub mod codegen_cyclonedds_descriptors;
 pub mod codegen_system;
+pub mod complete;
 pub mod completions;
 pub mod config;
 /// phase-530 W1 — `nros configure` (RFC-0120 D2).

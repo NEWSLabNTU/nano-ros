@@ -60,6 +60,7 @@ pub struct ListArgs {
 #[derive(Debug, ClapArgs)]
 pub struct ShowArgs {
     /// The knob, as `nros knob list` names it (e.g. `net.max_sockets`)
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::knobs))]
     pub name: String,
     /// Print one JSON object instead of text
     #[arg(long)]

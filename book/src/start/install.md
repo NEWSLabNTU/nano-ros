@@ -217,6 +217,28 @@ pinned `nros-toolchain.toml`), it writes the project's lock beside them
 instead, and that is the one to commit. The nearest project up the path wins.
 To move a version a project's lock records, run `nros update`.
 
+### 5. Turn on completion
+
+With completion on, `<Tab>` completes `nros` verbs and flags, and the names
+they take: `nros board show <Tab>` lists the board keys, and `nros rmw show
+<Tab>` the RMWs. Ask `nros` for the line your shell needs:
+
+```sh probe=27 track=installed
+nros completions
+```
+
+It prints the line, and the file to add it to:
+
+```text
+# Turn on `nros` completion: add this line to ~/.bashrc
+source <(COMPLETE=bash nros)
+```
+
+Add that line to the file it names, then open a new terminal. The line is for
+the shell `$SHELL` names; for another, name it: `nros completions zsh`,
+`fish` or `powershell`. In zsh, the line goes after `compinit`. The installer
+and the first `nros setup` print the same line.
+
 ## If it doesn't work
 
 - **`nros: command not found`.** This shell does not have `~/.nros/bin` on its

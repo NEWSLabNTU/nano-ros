@@ -24,7 +24,8 @@ release = ["nros-cli-core/release"]
 
 [dependencies]
 clap = { workspace = true }
-clap_complete = "4.5"
+# phase-569 W4: exact pin, because `unstable-dynamic` may change in a patch.
+clap_complete = { version = "=4.6.3", features = ["unstable-dynamic"] }
 eyre = "0.6"
 nros-cli-core = { path = "../nros-cli-core" }
 

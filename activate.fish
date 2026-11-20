@@ -203,6 +203,12 @@ end
 
 set -e _nros_root
 
+# phase-569 W4 — `<Tab>` completes `nros` verbs and names (boards, RMWs, knobs)
+# in an interactive fish; the activate.sh twin does it for bash and zsh.
+if status is-interactive; and command -q nros
+    COMPLETE=fish nros 2>/dev/null | source
+end
+
 # Zephyr's `west` is NOT put on PATH here — see the activate.sh twin. It is
 # resolved on demand by `nros_zephyr_activate` (scripts/build/zephyr-python.sh).
 #

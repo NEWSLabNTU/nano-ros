@@ -503,6 +503,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "660c0520455b1013b9bcb0393d5f643d7e4454fb69c915b8d6d2aa0e9a45acc3"
 dependencies = [
  "clap",
+ "clap_lex",
+ "is_executable",
+ "shlex 1.3.0",
 ]
 
 [[package]]
@@ -1488,6 +1491,15 @@ dependencies = [
  "unicode-width",
  "unit-prefix",
  "web-time",
+]
+
+[[package]]
+name = "is_executable"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baabb8b4867b26294d818bf3f651a454b6901431711abb96e296245888d6e8c4"
+dependencies = [
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

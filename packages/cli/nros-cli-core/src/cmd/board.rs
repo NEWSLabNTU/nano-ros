@@ -56,6 +56,7 @@ pub enum Args {
 #[derive(Debug, ClapArgs)]
 pub struct NetArgs {
     /// Board key.
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::boards))]
     pub name: String,
     /// nano-ros SDK root holding the board catalog. Default: a checkout
     /// enclosing cwd, then this `nros` binary's own SDK root.
@@ -93,6 +94,7 @@ pub struct ShowArgs {
     /// Board: a board key (`mps2-an385-freertos`), a package
     /// (`nros-board-zephyr`), a registry key (`nros-board-zephyr@Fvp`) or an
     /// evidence page name (`fvp`).
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::boards))]
     pub name: String,
     /// nano-ros SDK root holding the board catalog. Default:
     /// `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros`
@@ -110,6 +112,7 @@ pub struct InfoArgs {
     /// (`packages/boards/nros-board-<family>/boards/<name>/`) — e.g.
     /// `fvp-aemv8r-smp` is `nros-board-zephyr/boards/fvp-aemv8r-smp/`.
     // Conf bundles resolve since phase-337 W9.a.
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::boards))]
     pub name: String,
     /// nano-ros SDK root holding the board catalog. Default:
     /// `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros`
@@ -121,6 +124,7 @@ pub struct InfoArgs {
 #[derive(Debug, ClapArgs)]
 pub struct CmakeVarsArgs {
     /// Board key, as `nano_ros_use_board(<key>)` spells it.
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::boards))]
     pub name: String,
     /// nano-ros SDK root holding the board catalog. Default: a checkout
     /// enclosing cwd, then this `nros` binary's own SDK root.

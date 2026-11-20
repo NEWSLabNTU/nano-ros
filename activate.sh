@@ -457,5 +457,22 @@ fi
 # shellcheck disable=SC1091
 . "$_nros_root/scripts/sdk-env.sh"
 
+# phase-569 W4 — `<Tab>` completes `nros` verbs and names (boards, RMWs,
+# knobs) in an interactive bash or zsh. The glue asks `nros` itself on each
+# `<Tab>`; `nros completions` prints the same line for a startup file. zsh
+# needs its completion system loaded (`compinit`) first; without it nothing
+# is registered.
+case $- in
+    *i*)
+        if command -v nros >/dev/null 2>&1; then
+            if [ -n "${BASH_VERSION:-}" ]; then
+                eval "$(COMPLETE=bash nros 2>/dev/null)"
+            elif [ -n "${ZSH_VERSION:-}" ] && command -v compdef >/dev/null 2>&1; then
+                eval "$(COMPLETE=zsh nros 2>/dev/null)"
+            fi
+        fi
+        ;;
+esac
+
 unset _nros_root
 unset -f _nros_dir_has_gcc _nros_store_tool_bin _nros_sdk_store 2>/dev/null || true

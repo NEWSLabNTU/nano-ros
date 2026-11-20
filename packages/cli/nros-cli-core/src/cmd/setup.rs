@@ -667,6 +667,48 @@ fn shallow_override(args: &Args) -> Option<bool> {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    // phase-569 W4 — after the first `nros setup` that provisions something,
+    // the line that turns on completion, once. A run that only reads (a
+    // list, a check, a dry run, `--offline-dirs`) does not count.
+    let provisions = args.command.is_some()
+        || !(args.check
+            || args.dry_run
+            || matches!(
+                route(&args),
+                Ok(Route::OfflineDirs | Route::List | Route::Licenses) | Err(_)
+            ));
+    run_setup(args)?;
+    if provisions {
+        let marker = crate::orchestration::store::root().join("state/completion-tip-shown");
+        if let Some(tip) = completion_tip(&marker, std::env::var("SHELL").ok().as_deref()) {
+            eprint!("{tip}");
+        }
+    }
+    Ok(())
+}
+
+/// The completion tip, the first time it is asked for: the registration line
+/// for `shell` (`$SHELL`), or the verb that prints it when the shell is not
+/// one `nros` completes in. `None` once `marker` exists; asking writes it.
+fn completion_tip(marker: &std::path::Path, shell: Option<&str>) -> Option<String> {
+    if marker.exists() {
+        return None;
+    }
+    if let Some(dir) = marker.parent() {
+        std::fs::create_dir_all(dir).ok()?;
+    }
+    std::fs::write(marker, "").ok()?;
+    let base = shell.and_then(|s| s.rsplit('/').next()).unwrap_or("");
+    let body = match crate::cmd::complete::render(base) {
+        Ok(text) => text,
+        Err(_) => {
+            "# Turn on `nros` completion: `nros completions <shell>` prints the line\n".into()
+        }
+    };
+    Some(format!("\n{body}"))
+}
+
+fn run_setup(args: Args) -> Result<()> {
     if let Some(command) = args.command {
         return match command {
             SetupCommand::Board(b) => run_board(b),
@@ -4673,6 +4715,22 @@ fn compose_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_completion_tip_is_shown_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("state/completion-tip-shown");
+        let first = completion_tip(&marker, Some("/bin/bash")).unwrap();
+        assert!(first.contains("source <(COMPLETE=bash nros)"), "{first}");
+        assert_eq!(completion_tip(&marker, Some("/bin/bash")), None);
+    }
+
+    #[test]
+    fn an_unknown_shell_gets_the_verb_that_prints_the_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let tip = completion_tip(&dir.path().join("m"), Some("/bin/tcsh")).unwrap();
+        assert!(tip.contains("nros completions <shell>"), "{tip}");
+    }
 
     /// phase-523 W4 — `nros doctor --report` lists a board's toolchain from the
     /// SAME plan `nros setup` resolves: the RMW an image names chooses its host
