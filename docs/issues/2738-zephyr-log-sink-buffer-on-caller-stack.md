@@ -145,6 +145,66 @@ line:
 
 Send both logs, labelled by line, to nros 139.
 
+### Result (2026-11-20, host 241, `native_sim/native/64`): a `strlen` copy, on both lines
+
+```
+== 3.7 (v3.7.2)
+*** Booting Zephyr OS build v3.7.2 ***
+<inf> probe: probe: deferred=1
+--- 1 messages dropped ---
+<inf> probe: B[OK]
+<inf> probe: probe: done
+
+== 4.4 (v4.4.0)
+*** Booting Zephyr OS build v4.4.0 ***
+<inf> probe: probe: deferred=1
+--- 1 messages dropped ---
+<inf> probe: B[OK]
+<inf> probe: probe: done
+```
+
+All three preconditions are present, and neither line prints an `A` line.
+Deferred logging copies a RW `%.*s` argument by `strlen` and ignores the
+precision. Fix direction 1 would read past nros_log's slice, so it is out.
+Direction 2 it is.
+
+## Design: direction 2, a sink-owned buffer pool
+
+- **The pool.** `CONFIG_NROS_LOG_SINK_BUFFERS` buffers of
+  `NROS_PLATFORM_LOG_BUFSZ` bytes each, in `.bss`, owned by the sink. A slot
+  is claimed with a compare-and-swap on one atomic bitmap, with no lock, so
+  the claim is safe from an ISR and across CPUs. The sink formats into the
+  slot, calls `LOG_*("%s", slot)` and releases the slot when `LOG_*`
+  returns. In deferred mode Zephyr has copied the NUL-terminated string by
+  then (the probe shows it copies); in immediate mode the backend has
+  already printed it. So a slot is held only for one format and one log call.
+- **The fallback.** When every slot is claimed, the record is formatted into
+  a small stack buffer (`NROS_PLATFORM_LOG_FALLBACK_SZ`, 160 bytes), truncated
+  and marked as truncated. A counter records each fallback, and the sink says
+  once that the pool ran dry, naming the knob. The fallback costs a stack 160
+  bytes, not 1280, and it never drops a record.
+- **Default count.** `2 * CONFIG_MP_MAX_NUM_CPUS`: one thread-context
+  record and one ISR-context record in flight per CPU. That is 2 x 2 x 1280
+  = 5 KiB of `.bss` on a two-CPU image, moved there from the stack of
+  whichever thread logged.
+- **Not changed.** In `CONFIG_LOG_MODE_IMMEDIATE` Zephyr's own log core and
+  backend still run on the caller's stack. That cost belongs to Zephyr, not
+  to this buffer, and the gate cell below runs deferred.
+
+### Sizing plan (measured on a host with Zephyr headroom)
+
+1. **Exhaustion.** On `qemu_cortex_a53/smp` (2 CPUs), K threads (K = 1, 2,
+   4, 8) each log 200 records back to back, plus a timer ISR that logs every
+   1 ms. Read the fallback counter with N = 2, 4 and 8. The default stands if
+   N = 4 shows no fallback at K = 4.
+2. **Stack.** For a logging thread, record `k_thread_stack_space_get` on
+   main's sink and on the pool. The expected drop is about 1280 bytes.
+3. **RAM.** `just mem-report` on the same image, before and after. The
+   `.bss` delta should be N x 1280.
+4. **The gate cell (done-when).** A thread with a 1536-byte stack logs 50
+   records in deferred mode. On the pool every record reaches the console.
+   On main's sink the thread overflows (the negative control).
+
 ## Done when
 
 A Zephyr SMP image (`qemu_cortex_a53/smp`) with a thread on a small stack
