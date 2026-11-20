@@ -238,8 +238,9 @@ board and RMW packages are self-contained.
   the configure printing `stub_rmw: the stub RMW package's own Zephyr module
   CMake runs (CONFIG_NROS_RMW_STUB=y, ...)`; both refusals fired; acme over
   zenoh built (159 s). Data:
-  [`data/phase-581-w8-measure.md`](data/phase-581-w8-measure.md). Not
-  measured: Zephyr 4.4 (the box's Python is 3.10, 4.4 needs 3.12); the stub
+  [`data/phase-581-w8-measure.md`](data/phase-581-w8-measure.md). Zephyr
+  4.4 measured the same on a second host (build green, module added, both
+  refusals). Not measured: the stub
   image is configure and build only, with no fixture row or run test (its
   transport carries nothing).
 - `[rmw.zephyr] module = "<dir>"` in the descriptor; the hook adds the
