@@ -261,7 +261,9 @@ board and RMW packages are self-contained.
   tenant structs of `platform_config.rs` are replaced by generated accessors
   over `Knobs::registry`; `Knobs::backends` is deleted; the 22 unregistered
   build-script names and the classified cmake entries become rows or
-  exemptions. Gate `hand-kept-config-lists` (RFC-0140 G4).
+  exemptions. Gate `hand-kept-config-lists` (RFC-0140 G4). The native_sim
+  kernel heap default becomes independent of the RMW member, so an RMW that
+  is its own Zephyr module (W8) needs no heap `configdefault` of its own.
 - **Acceptance:** the gate's self-test plants a hand `config NROS_X` outside
   the block and a new typed field and names both; `zephyr/Kconfig` outside
   the generated blocks holds only the exempted entries; `nros knob list`
