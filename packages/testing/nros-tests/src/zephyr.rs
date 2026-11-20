@@ -1200,7 +1200,7 @@ fn core_crate_is_watched(crate_name: &str, lang_api_crate: Option<&str>) -> bool
 /// cargo staticlib's `.d`. Measured on `build-ws-rs-qos-entry-zenoh`: that `.d`
 /// lists 529 deps and the only `.conf` among them is the GENERATED
 /// `<build_root>/zephyr/.conf` — the leaf's own `prj.conf`, the file an author
-/// edits, appears ZERO times. So raising `CONFIG_NROS_MAX_QUERYABLES` left every
+/// edits, appears ZERO times. So raising `CONFIG_NROS_ENTITY_MAX_QUERYABLES` left every
 /// image "fresh" with the old value compiled in, and the qos and lifecycle cells
 /// failed with product-level assertions that sent two sessions (0460, then this
 /// one) looking at the product instead of the image.

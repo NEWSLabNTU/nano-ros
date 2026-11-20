@@ -19,11 +19,10 @@ Every script that needs the rows asks this module; none parses the file itself.
 
 A knob row AUTHORS one name, `key` (`<owner>.<name>`), and every other spelling
 derives from it: id `<KEY>` (dots to `_`, upper case), env `NROS_<id>`, Kconfig
-`CONFIG_NROS_<id>`, TOML `key`. A row never states `id`, `toml` or `kconfig`.
-Today's spellings that the naming rule would rename stay in the row's
-`transitional` table until phases W5 to W7 rename them and empty it; a
-transitional value equal to the derived one is refused, so the column cannot
-outlive its rename. `ladder = true` says the platform/board ladder
+`CONFIG_NROS_<id>`, TOML `key`. A row never states `id`, `toml` or `kconfig`,
+and no row carries a per-row override of a derived spelling: the
+`transitional` column that held today's spellings while phase-581 W5 to W7
+renamed them is gone (a row that still states one is refused). `ladder = true` says the platform/board ladder
 (`nros-platform-config`'s `Knobs`) has a typed tenant at `key`.
 
 `retired` holds every spelling a row replaced, tagged by road (`toml:`, `env:`,
@@ -34,8 +33,7 @@ mechanical rename: new = old x factor, factor absent = 1) or
 do instead in its own `instead`, and every entry on it is manual.
 
 `knob_rows()` returns the knob rows NORMALISED to the shape the generated views
-and the older gates read: `id`, `toml` (ladder rows), `kconfig` (only where it
-differs from `NROS_<id>`), `legacy` (the `env:` retired spellings) and
+and the older gates read: `id`, `toml` (ladder rows), `legacy` (the `env:` retired spellings) and
 `retired` (the reason, on a retired row), plus `key` and `retired_entries`.
 """
 
@@ -83,12 +81,12 @@ SPELLING = {
     "run": re.compile(r"^[A-Z][A-Z0-9_]*$"),
 }
 
-KNOB_FIELDS = {"key", "transitional", "ladder", "retired", "instead", "only_on", "only_on_why",
+KNOB_FIELDS = {"key", "ladder", "retired", "instead", "only_on", "only_on_why",
                "type", "prompt", "kconfig_if", "kconfig_attrs", "help", "names",
                "scope", "class", "carries"}
-STATEMENT_FIELDS = {"key", "carrier", "zephyr", "transitional", "retired", "help"}
+STATEMENT_FIELDS = {"key", "carrier", "zephyr", "retired", "help"}
 ENV_FIELDS = {"key", "name", "foreign", "pattern", "disposition", "stated", "parse",
-              "instead", "refuse_if", "transitional", "retired", "help"}
+              "instead", "refuse_if", "retired", "help"}
 KCONFIG_FIELDS = {"symbol", "env", "retired", "help"}
 DERIVED_SPELLINGS = ("id", "toml", "kconfig")
 
@@ -146,20 +144,13 @@ def _retired_entries(raw, where, row_is_retired, errors):
     return out
 
 
-def _transitional(row, allowed, derived, where, errors):
-    t = row.get("transitional")
-    if t is None:
-        return {}
-    if not isinstance(t, dict) or not t:
-        errors.append(f"{where}: `transitional` is a table of today's spellings")
-        return {}
-    extra = set(t) - set(allowed)
-    if extra:
-        errors.append(f"{where}: `transitional` holds only {sorted(allowed)}, not {sorted(extra)}")
-    for k, v in t.items():
-        if k in derived and v == derived[k]:
-            errors.append(f"{where}: transitional `{k} = \"{v}\"` is what `key` derives -- delete it")
-    return t
+def _no_transitional(row, where, errors):
+    """phase-581 W7: the per-row override column is gone. Every spelling is
+    the one `key` derives (RFC-0140 D3 N2); a renamed one is a `retired`
+    entry."""
+    if "transitional" in row:
+        errors.append(f"{where}: `transitional` was deleted (phase-581 W7): every spelling "
+                      "derives from `key`, and an old one is a `retired` entry")
 
 
 def _owner_problem(key, owners, where, file_owner=None):
@@ -259,11 +250,11 @@ def _parse_file(doc, where_file, owners, file_owner, errors):
         bad = set(r) - KNOB_FIELDS
         for f in DERIVED_SPELLINGS:
             if f in r:
-                errors.append(f"{where}: `{f}` is derived from `key`, never stated -- a spelling "
-                              "that differs today goes in `transitional`")
+                errors.append(f"{where}: `{f}` is derived from `key`, never stated -- an old "
+                              "spelling is a `retired` entry")
         if "legacy" in r:
             errors.append(f"{where}: `legacy` became `retired = [{{ spelling = \"env:<name>\" }}]`")
-        bad -= set(DERIVED_SPELLINGS) | {"legacy"}
+        bad -= set(DERIVED_SPELLINGS) | {"legacy", "transitional"}
         if bad:
             errors.append(f"{where}: unknown field(s) {sorted(bad)}")
         key = r.get("key", "")
@@ -275,15 +266,8 @@ def _parse_file(doc, where_file, owners, file_owner, errors):
             errors.append(p)
         if "ladder" in r and r["ladder"] is not True:
             errors.append(f"{where}: `ladder` is written only as `ladder = true`")
-        did = derive_id(key)
-        t = _transitional(r, ("id", "kconfig"), {"id": did}, where, errors)
-        ident = t.get("id", did)
-        if "kconfig" in t and t["kconfig"] == "NROS_" + did:
-            errors.append(f"{where}: transitional `kconfig = \"{t['kconfig']}\"` is what `key` derives -- delete it")
-        if ident != did and "kconfig" not in t:
-            errors.append(f"{where}: transitional `id` without `kconfig`: today's symbol is "
-                          f"NROS_{ident}, so state it (`kconfig = \"NROS_{ident}\"`)")
-        kconfig = t.get("kconfig", "NROS_" + did)
+        _no_transitional(r, where, errors)
+        ident = derive_id(key)
         is_retired = r.get("class") == "retired"
         entries = _retired_entries(r.get("retired"), where, is_retired, errors)
         instead = r.get("instead")
@@ -294,12 +278,10 @@ def _parse_file(doc, where_file, owners, file_owner, errors):
                 if e["instead"] is None:
                     e["instead"] = instead
         n = {k: v for k, v in r.items()
-             if k not in ("key", "transitional", "ladder", "retired", "instead")}
+             if k not in ("key", "ladder", "retired", "instead")}
         n["id"] = ident
         if r.get("ladder"):
             n["toml"] = key
-        if kconfig != "NROS_" + ident:
-            n["kconfig"] = kconfig
         legacy = [e["name"] for e in entries if e["road"] == "env"]
         if legacy:
             n["legacy"] = legacy
@@ -326,13 +308,11 @@ def _parse_file(doc, where_file, owners, file_owner, errors):
         for f in ("carrier", "zephyr"):
             if f in r and r[f] is not True:
                 errors.append(f"{where}: `{f}` is written only as `{f} = true`")
-        t = _transitional(r, ("kconfig",), {"kconfig": "NROS_" + key.upper()}, where, errors)
-        if t and not r.get("zephyr"):
-            errors.append(f"{where}: a transitional `kconfig` needs `zephyr = true`")
+        _no_transitional(r, where, errors)
         statements.append({
             "key": key,
             "carrier": ("NROS_ENTRY_" + key.upper()) if r.get("carrier") else None,
-            "kconfig": ("CONFIG_" + t.get("kconfig", "NROS_" + key.upper())) if r.get("zephyr") else None,
+            "kconfig": ("CONFIG_NROS_" + key.upper()) if r.get("zephyr") else None,
             "help": r.get("help"),
             "retired_entries": _retired_entries(r.get("retired"), where, False, errors),
         })
@@ -377,13 +357,11 @@ def _parse_file(doc, where_file, owners, file_owner, errors):
             else:
                 errors.append(f"{where}: `key` is a statement key or `<owner>.<name>`")
                 continue
-            derived = "NROS_" + derive_id(key)
-            t = _transitional(r, ("name",), {"name": derived}, where, errors)
-            name = t.get("name", derived)
+            _no_transitional(r, where, errors)
+            name = "NROS_" + derive_id(key)
         else:
             name = r["name"]
-            if r.get("transitional"):
-                errors.append(f"{where}: only a `key` row has a transitional `name`")
+            _no_transitional(r, where, errors)
             if foreign is None and not r.get("pattern"):
                 errors.append(f"{where}: a `name` row is foreign (`foreign = ...`) or patterned "
                               "(`pattern = true`); a nano-ros variable states `key`")
@@ -540,7 +518,7 @@ def spellings(reg_or_parts):
     for i, k in enumerate(knobs):
         label = _label("knob", i + 1, k["key"], k.get("file"))
         out.append(("NROS_" + k["id"], label))
-        out.append(("CONFIG_" + k.get("kconfig", "NROS_" + k["id"]), label))
+        out.append(("CONFIG_NROS_" + k["id"], label))
         out.append((k["key"], label))
         out += [(e["name"], label) for e in k["retired_entries"]]
     for i, s in enumerate(statements):

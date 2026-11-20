@@ -52,7 +52,7 @@ overridden or a second source that can disagree with the first.
 | `locator = "tcp/…"` (zenoh) | `CONFIG_NROS_LOCATOR` |
 | `locator = "udp/<host>:<port>"` (XRCE) | `CONFIG_NROS_XRCE_AGENT_ADDR` and `_PORT` |
 | `domain_id = 7` | `CONFIG_NROS_DOMAIN_ID` |
-| `[image.<id>.knobs.zenoh] max_queryables = 12` | `CONFIG_NROS_MAX_QUERYABLES=12` |
+| `[image.<id>.knobs.entity] max_queryables = 12` | `CONFIG_NROS_ENTITY_MAX_QUERYABLES=12` |
 | `env = { NROS_ZEPHYR_TASK_STACK_BYTES = "16384" }` | `CONFIG_NROS_ZEPHYR_TASK_STACK_BYTES=16384` |
 | `os_config = ["prj-xrce.conf"]` | that fragment, ahead of your own `EXTRA_CONF_FILE` |
 

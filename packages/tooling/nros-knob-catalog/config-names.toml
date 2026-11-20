@@ -30,7 +30,7 @@
 # How many `[[baseline]]` entries the file holds (below). The baseline only
 # shrinks: lower this with every entry a rename removes, and never raise it to
 # admit a new name, which is renamed instead.
-baseline_entries = 12
+baseline_entries = 6
 
 # --- N4's vocabulary -----------------------------------------------------------
 
@@ -246,42 +246,6 @@ expect = []
 #                   `env!`, `rerun-if-env-changed=`, cmake `$ENV{}`)
 # `appendix = "missed"` is a violation the lint finds that Appendix A does
 # not list.
-
-[[baseline]]
-subject = "zenoh.max_large_subscribers"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.5"
-
-[[baseline]]
-subject = "zenoh.max_liveliness"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.5"
-
-[[baseline]]
-subject = "zenoh.max_pending_gets"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.5"
-
-[[baseline]]
-subject = "zenoh.max_publishers"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.5"
-
-[[baseline]]
-subject = "zenoh.max_queryables"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.5"
-
-[[baseline]]
-subject = "zenoh.max_subscribers"
-kind = "knob"
-rules = ["N2"]
-appendix = "A.5"
 
 [[baseline]]
 subject = "ZENOH_LISTEN"

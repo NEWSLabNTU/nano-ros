@@ -286,13 +286,13 @@ FACT_DISPOSITION = {
     "NROS_DERIVED_MAX_SUBSCRIBERS": {
         # TWO resolved knobs from one fact -- the zenoh session pool and the
         # XRCE one. See `DERIVED_PAIRS` in check-knob-delivery.py.
-        "resolver": ("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS",
+        "resolver": ("NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS",
                      "NROS_RESOLVED_NROS_XRCE_MAX_SUBSCRIBERS"),
         "sidecar": ("NROS_ZENOH_MAX_SUBSCRIBERS",),
         "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     "NROS_DERIVED_MAX_PUBLISHERS": {
-        "resolver": ("NROS_RESOLVED_NROS_MAX_PUBLISHERS",),
+        "resolver": ("NROS_RESOLVED_NROS_ENTITY_MAX_PUBLISHERS",),
         "sidecar": ("NROS_ZENOH_MAX_PUBLISHERS",),
         "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
@@ -306,7 +306,7 @@ FACT_DISPOSITION = {
     # and client), so the demand is the inventory's own count; the C define
     # `ZPICO_MAX_LIVELINESS` is floored from the resolved value.
     "NROS_DERIVED_MAX_LIVELINESS": {
-        "resolver": ("NROS_RESOLVED_NROS_MAX_LIVELINESS",),
+        "resolver": ("NROS_RESOLVED_NROS_ENTITY_MAX_LIVELINESS",),
         "sidecar": NotCarried(
             _LEAF, _LIVELINESS_NEEDS_INFRA_COUNT,
             "a session token is declared per parameter and lifecycle service "
@@ -336,7 +336,7 @@ FACT_DISPOSITION = {
         "declared": _RETIRED_CELLS,
     },
     "NROS_DERIVED_MAX_QUERYABLES": {
-        "resolver": ("NROS_RESOLVED_NROS_MAX_QUERYABLES",
+        "resolver": ("NROS_RESOLVED_NROS_ENTITY_MAX_QUERYABLES",
                      "NROS_RESOLVED_NROS_XRCE_MAX_SERVICE_SERVERS"),
         "sidecar": NotCarried(
             _LEAF, _QUERYABLES_NOT_DERIVED,
@@ -407,7 +407,7 @@ FACT_DISPOSITION = {
         "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS": {
-        "resolver": ("NROS_RESOLVED_NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",),
+        "resolver": ("NROS_RESOLVED_NROS_ENTITY_MAX_LARGE_SUBSCRIBERS",),
         "sidecar": ("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",),
         "declared": _RETIRED_PAYLOAD,
     },

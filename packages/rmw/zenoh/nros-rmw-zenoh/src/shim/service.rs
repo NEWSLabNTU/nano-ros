@@ -1175,7 +1175,7 @@ impl ZenohServiceServer {
                  not too small; the declaration is incomplete. Declare the service \
                  server in the launch file (an action server declares three)."
             } else {
-                "zenoh queryable table exhausted — raise CONFIG_NROS_MAX_QUERYABLES \
+                "zenoh queryable table exhausted — raise CONFIG_NROS_ENTITY_MAX_QUERYABLES \
                  (env NROS_ZENOH_MAX_QUERYABLES). A service server IS a queryable, and the \
                  ROS parameter and REP-2002 lifecycle services claim theirs before an \
                  entry's own callbacks."

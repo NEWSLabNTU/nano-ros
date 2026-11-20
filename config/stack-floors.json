@@ -29,12 +29,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 2,
+        "NROS_ENTITY_MAX_QUERYABLES": 4,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 0,
         "NROS_EXECUTOR_ACTION_CLIENTS": 1,
         "NROS_EXECUTOR_MAX_CBS": 1,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 2,
-        "NROS_MAX_QUERYABLES": 4,
-        "NROS_MAX_SUBSCRIBERS": 0
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 69264,
       "target": "thumbv7em-none-eabi",
@@ -49,12 +49,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 1,
+        "NROS_ENTITY_MAX_QUERYABLES": 0,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 0,
         "NROS_EXECUTOR_ACTION_CLIENTS": 0,
         "NROS_EXECUTOR_MAX_CBS": 1,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 1,
-        "NROS_MAX_QUERYABLES": 0,
-        "NROS_MAX_SUBSCRIBERS": 0
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 66568,
       "target": "thumbv7em-none-eabi",
@@ -69,12 +69,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 1,
+        "NROS_ENTITY_MAX_QUERYABLES": 0,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 0,
         "NROS_EXECUTOR_ACTION_CLIENTS": 0,
         "NROS_EXECUTOR_MAX_CBS": 1,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 1,
-        "NROS_MAX_QUERYABLES": 0,
-        "NROS_MAX_SUBSCRIBERS": 0
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 98612,
       "target": "thumbv7m-none-eabi"
@@ -87,12 +87,12 @@
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 1,
+        "NROS_ENTITY_MAX_QUERYABLES": 0,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 0,
         "NROS_EXECUTOR_ACTION_CLIENTS": 0,
         "NROS_EXECUTOR_MAX_CBS": 1,
-        "NROS_EXECUTOR_MAX_NODES": 1,
-        "NROS_MAX_PUBLISHERS": 1,
-        "NROS_MAX_QUERYABLES": 0,
-        "NROS_MAX_SUBSCRIBERS": 0
+        "NROS_EXECUTOR_MAX_NODES": 1
       },
       "static": 107652,
       "target": "thumbv7em-none-eabi"

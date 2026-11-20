@@ -114,7 +114,7 @@ pub struct LeafSystemArgs {
     ///
     /// The fragment holds the RMW choice, the package's language API, the
     /// deploy endpoint from `locator`, and every `[image.<id>] env` row whose
-    /// Kconfig symbol (through `nros_zephyr_build::KCONFIG_PAIRS`) exists in
+    /// Kconfig symbol (through `nros_zephyr_build::kconfig_key_for`) exists in
     /// the module's `zephyr/Kconfig`. Printed as `NROS_LEAF_KCONFIG`.
     ///
     /// With it, `--image-env-out` carries only the rows NO Kconfig symbol
@@ -1116,7 +1116,7 @@ mod tests {
             let td = leaf_dir(&format!(
                 "[image.t]\nboard = \"{board}\"\nrmw = \"zenoh\"\n{}",
                 if image_knob {
-                    "\n[image.t.knobs.zenoh]\nmax_subscribers = 3\n"
+                    "\n[image.t.knobs.entity]\nmax_subscribers = 3\n"
                 } else {
                     ""
                 }
@@ -1133,7 +1133,7 @@ mod tests {
             let text = std::fs::read_to_string(&defaults).unwrap();
             for (env, value) in board_rung_tests::expected(BoardRungCarries::Every) {
                 let row = nros_zephyr_build::knob_row(&env).unwrap();
-                let want = if image_knob && env == "NROS_ZENOH_MAX_SUBSCRIBERS" {
+                let want = if image_knob && env == "NROS_ENTITY_MAX_SUBSCRIBERS" {
                     "3".to_string()
                 } else {
                     value
@@ -1155,7 +1155,9 @@ mod tests {
             let doc: toml::Table = std::fs::read_to_string(&env_file).unwrap().parse().unwrap();
             let rows = doc["env"].as_table().unwrap();
             for (env, value) in board_rung_tests::expected(BoardRungCarries::BoardOnly) {
-                let want = if image_knob && env == "NROS_ZENOH_MAX_SUBSCRIBERS" {
+                let want = if image_knob
+                    && (env == "NROS_ENTITY_MAX_SUBSCRIBERS" || env == "NROS_ZENOH_MAX_SUBSCRIBERS")
+                {
                     "3".to_string()
                 } else {
                     value
@@ -1344,16 +1346,18 @@ mod tests {
             .expect_err("an env row naming a registry knob must refuse")
             .to_string();
         assert!(
-            err.contains("[image.linux.knobs.zenoh] max_queryables"),
+            err.contains("[image.linux.knobs.entity] max_queryables"),
             "{err}"
         );
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
              [image.linux]\nboard = \"linux\"\n\
-             knobs = { zenoh = { max_queryables = 4 } }\n",
+             knobs = { entity = { max_queryables = 4 } }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
         let layers = crate::cmd::leaf_settings::image_layers(&leaf, None).unwrap();
+        assert_eq!(layers["NROS_ENTITY_MAX_QUERYABLES"], "4");
+        // phase-581 W7 -- carried to the zenoh pool it sizes.
         assert_eq!(layers["NROS_ZENOH_MAX_QUERYABLES"], "4");
     }
 

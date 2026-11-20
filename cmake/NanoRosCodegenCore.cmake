@@ -609,7 +609,7 @@ endfunction()
 #
 # A type with no bound sets NO `_TX`/`_RX` at all, so a consumer either reads a
 # number codegen DERIVED or reads nothing — never a substituted default. That is
-# the whole point: `NROS_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE`
+# the whole point: `NROS_ENTITY_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE`
 # were numbers a human produced by reading generated headers by eye.
 #
 # `include()` it at the scope you want the variables in — a CMake function scope
@@ -1467,7 +1467,7 @@ function(nros_find_interfaces)
     #
     #    This is the reader the inventory never had. Before it, the numbers were
     #    exported over three transports and every consumer downstream invented a
-    #    substitute: `NROS_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE`
+    #    substitute: `NROS_ENTITY_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE`
     #    were read off generated C++ headers BY EYE -- headers that state an
     #    ESTIMATE, not a bound (W6).
     #

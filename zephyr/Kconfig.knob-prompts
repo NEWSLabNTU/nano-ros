@@ -148,6 +148,24 @@ config NROS_ACTION_INBOX_BYTES
 config NROS_ACTION_INBOX_DEPTH
     int "Action inbox ring depth"
 
+config NROS_ENTITY_MAX_LARGE_SUBSCRIBERS
+    int "Subscribers served from the large payload class (-1 = derive)"
+
+config NROS_ENTITY_MAX_LIVELINESS
+    int "Maximum concurrent liveliness tokens (-1 = derive)"
+
+config NROS_ENTITY_MAX_PENDING_GETS
+    int "Maximum concurrent pending get operations"
+
+config NROS_ENTITY_MAX_PUBLISHERS
+    int "Maximum concurrent publishers (-1 = derive)"
+
+config NROS_ENTITY_MAX_QUERYABLES
+    int "Maximum concurrent queryables (-1 = derive)"
+
+config NROS_ENTITY_MAX_SUBSCRIBERS
+    int "Maximum concurrent subscribers (-1 = derive)"
+
 config NROS_PARAMS_SERVICE_INBOX_DEPTH
     int "Parameter/lifecycle service inbox ring depth"
 
@@ -183,24 +201,6 @@ config NROS_ZENOH_GRAPH_DISCOVERY
 
 config NROS_ZENOH_GRAPH_MAX_ENTITIES
     int "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
-
-config NROS_MAX_LARGE_SUBSCRIBERS
-    int "Subscribers served from the large payload class (-1 = derive)"
-
-config NROS_MAX_LIVELINESS
-    int "Maximum concurrent liveliness tokens (-1 = derive)"
-
-config NROS_MAX_PENDING_GETS
-    int "Maximum concurrent pending get operations"
-
-config NROS_MAX_PUBLISHERS
-    int "Maximum concurrent publishers (-1 = derive)"
-
-config NROS_MAX_QUERYABLES
-    int "Maximum concurrent queryables (-1 = derive)"
-
-config NROS_MAX_SUBSCRIBERS
-    int "Maximum concurrent subscribers (-1 = derive)"
 
 config NROS_ZENOH_READ_PRIORITY
     int "zenoh-pico read task priority (normalised band, 0-255)"

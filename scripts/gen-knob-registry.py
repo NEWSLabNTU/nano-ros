@@ -19,11 +19,11 @@ Output: packages/tooling/nros-zephyr-build/src/knob_registry.rs
         zephyr/Kconfig.knob-prompts       (a guest's prompts, phase-484 W5b)
 
 The schema is RFC-0140 D1-D4 (phase-581 W1): a knob row authors `key`, and
-`id`, `toml` and `kconfig` are derived from it (today's spellings that differ
-sit in `transitional`); `retired` lists every replaced spelling by road. The
-registry module normalises each knob row to the shape the renders below read
-(`id`, `legacy`, `kconfig`, `toml`, `retired` reason), so the views are what
-they were before the schema moved.
+`id`, `toml` and `kconfig` are derived from it, with no per-row override (the
+`transitional` column that carried today's spellings through the renames of
+phase-581 W5 to W7 is deleted); `retired` lists every replaced spelling by
+road. The registry module normalises each knob row to the shape the renders
+below read (`id`, `legacy`, `toml`, `retired` reason).
 
 `nros-zephyr-build` is dependency-free on purpose (every build script that reads
 a knob reaches it), so it cannot parse TOML at build time; the table is
@@ -34,7 +34,7 @@ equal. Every spelling of a knob derives from its (normalised) row:
            `legacy`) is RETIRED (phase-484 W8): set, it stops the build naming
            `NROS_<id>`. The list stays as that error table for good: an
            unlisted old name would be ignored.
-  Kconfig  `CONFIG_<kconfig>`, default `CONFIG_NROS_<id>`
+  Kconfig  `CONFIG_NROS_<id>`, always (phase-581 W7 deleted the override)
   TOML     `[knobs.<key>]` on a `ladder = true` row, where a typed tenant of the
            ladder reads it. A board's `[knobs]` takes every row by its image
            key; a row without `ladder` is carried in the image's rows (issue
@@ -56,10 +56,10 @@ too) for a guest, which adds each prompt back under the same `if`/`depends on`.
 file equal to the render, and refuses a registry symbol defined anywhere else
 in `zephyr/Kconfig`.
 
-`KCONFIG_PAIRS` is emitted for every CANONICAL spelling whose Kconfig symbol is
-not `CONFIG_<spelling>` — the shape `kconfig_key_for` and its harvesting gate
-(`check-kconfig-knob-forwarding`) already read. A retired spelling has no pair:
-nothing reads one any more (phase-484 W8).
+`KCONFIG_PAIRS`, the list of canonical spellings whose Kconfig symbol was not
+`CONFIG_<spelling>`, is no longer emitted: phase-581 W7 split the last six
+(the entity demand from the zenoh pools), so every knob's symbol is its env
+spelling with `CONFIG_` in front.
 
 A row with `class = "retired"` and `instead = "<reason>"` is a knob that no longer EXISTS, not one that
 was renamed (RFC-0110 D2 retired the zenoh lease-task priority when zenoh-pico
@@ -402,11 +402,10 @@ def render(rows):
         "/// Every build-time knob, one row each (RFC-0103 D2b).",
         "pub const KNOBS: &[KnobRow] = &[",
     ]
-    pairs = []
     for r in rows:
         ident = r["id"]
         env = "NROS_" + ident
-        kconfig = "CONFIG_" + r.get("kconfig", env)
+        kconfig = "CONFIG_" + env
         legacy = r.get("legacy", [])
         toml = r.get("toml")
         out.append("    KnobRow {")
@@ -428,15 +427,6 @@ def render(rows):
         out += render_catalog(r)
         out += render_retired_spellings(r.get("retired_entries", []), "        ")
         out.append("    },")
-        if kconfig != "CONFIG_" + env and not r.get("retired"):
-            pairs.append((env, kconfig))
-    out.append("];")
-    out.append("")
-    out.append("/// The canonical env spellings whose Kconfig symbol is not `CONFIG_<spelling>`,")
-    out.append("/// derived from [`KNOBS`]. Read through [`crate::kconfig_key_for`].")
-    out.append("pub const KCONFIG_PAIRS: &[(&str, &str)] = &[")
-    for s, k in sorted(pairs):
-        out.append(f"    ({q(s)}, {q(k)}),")
     out.append("];")
     out.append("")
     out.append("/// The knobs the Zephyr module defines as Kconfig symbols (rows with a `type`),")
@@ -829,7 +819,7 @@ def retired_override_message(r, e):
 
 
 def kconfig_symbol(r):
-    return r.get("kconfig", "NROS_" + r["id"])
+    return "NROS_" + r["id"]
 
 
 def depends_on(r):
@@ -977,7 +967,7 @@ def self_test():
     import tempfile
     bad = HDR + (
         '[[knob]]\nkey = "b.x"\nretired = [{ spelling = "env:ZPICO_A" }]\n\n'
-        '[[knob]]\nkey = "a.x"\ntransitional = { kconfig = "NROS_A_X" }\n'
+        '[[knob]]\nkey = "a.x"\ntransitional = { kconfig = "NROS_X" }\n'
         'retired = [{ spelling = "env:ZPICO_A" }]\ntoml = "x"\n'
     )
     with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as fh:
@@ -985,7 +975,7 @@ def self_test():
     _, errs = load(Path(fh.name))
     Path(fh.name).unlink()
     text = "\n".join(errs)
-    for want in ("spelled by both", "is what `key` derives -- delete it",
+    for want in ("spelled by both", "`transitional` was deleted",
                  "`toml` is derived from `key`, never stated", "sorted by id"):
         assert want in text, f"selftest: no `{want}` error in {errs!r}"
     # phase-581 W1 (RFC-0140 D4/D8) -- the retired entries, the env rows and
@@ -1002,10 +992,10 @@ def self_test():
                              '[[env]]\nname = "ROS_DOMAIN_ID"\nforeign = "ros2"\n'
                              'disposition = "respect"\nstated = "domian_id"\n\n'
                              '[[env]]\nkey = "a.x"\ndisposition = "respect"\n'
-                             'transitional = { name = "NROS_A_X" }\n')
+                             'transitional = { name = "NROS_A_Y" }\n')
     text = "\n".join(errs)
     for want in ("`stated = \"domian_id\"` is neither a statement key nor a knob key",
-                 "transitional `name = \"NROS_A_X\"` is what `key` derives", "sorted by variable name"):
+                 "`transitional` was deleted", "sorted by variable name"):
         assert want in text, f"selftest: no `{want}` error in {errs!r}"
     _, errs = load_from_text(HDR + '[[knob]]\nkey = "nowhere.x"\nscope = "image"\nclass = "internal"\n')
     assert any("owner word `nowhere` is not in [owners]" in e for e in errs), errs
@@ -1031,37 +1021,36 @@ def self_test():
     assert image_key({"id": "ZEPHYR_HEAP_SIZE"}) == "zephyr.heap_size"
     assert image_key({"id": "MAX_ARRAY_LEN", "toml": "params.max_array_len"}) == "params.max_array_len"
     _, errs = load_from_text(HDR +
-        '[[knob]]\nkey = "zenoh.x"\ntransitional = { id = "A_B", kconfig = "NROS_A_B" }\nladder = true\n\n'
+        '[[knob]]\nkey = "zenoh.x"\nladder = true\n\n'
         '[[knob]]\nkey = "zenoh.x"\ntype = "bool"\nnames = ["off"]\n')
     text = "\n".join(errs)
     assert "`zenoh.x` is spelled by both knob #1 zenoh.x and knob #2 zenoh.x" in text, errs
-    assert "image key `zenoh.x` is already A_B" in text, errs
+    assert "image key `zenoh.x` is already ZENOH_X" in text, errs
     assert "`names` is a non-empty list" in text, errs
     rs = render([{"id": "LOG_X", "type": "int", "kconfig_attrs": ["range 0 6", "default 0"], "names": ["off"]}])
     assert 'image_key: "log.x",\n        ty: Some("int"),\n        range: Some((0, 6)),\n        names: &["off"],' in rs, rs
-    rendered = render([{"id": "ZENOH_X", "legacy": ["ZPICO_X"], "kconfig": "NROS_X"}, {"id": "Y"}])
-    assert '("NROS_ZENOH_X", "CONFIG_NROS_X")' in rendered
-    assert '("ZPICO_X"' not in rendered, "selftest: a retired spelling got a Kconfig pair"
-    assert '"NROS_Y"' in rendered and '("NROS_Y"' not in rendered, "selftest: a derived pair was emitted"
+    rendered = render([{"id": "ZENOH_X", "legacy": ["ZPICO_X"]}, {"id": "Y"}])
+    assert 'kconfig: "CONFIG_NROS_ZENOH_X",' in rendered, rendered
+    assert "KCONFIG_PAIRS" not in rendered, "selftest: the deleted pairing view came back"
     kc_rows = [
         {"id": "Z", "type": "int", "prompt": "z", "kconfig_attrs": ["default 4"], "help": "a\n\nb"},
-        {"id": "ZENOH_X", "kconfig": "NROS_X", "type": "bool", "prompt": "x",
+        {"id": "ZENOH_X", "type": "bool", "prompt": "x",
          "kconfig_if": "NROS_RMW_ZENOH", "kconfig_attrs": ["depends on NROS_Q", "default y"]},
         {"id": "Y"},
     ]
     sec = render_kconfig_section(kc_rows)
     assert "# prompt: z\nconfig NROS_Z\n    int\n    default 4\n    help\n      a\n\n      b\n" in sec, sec
-    assert ("if NROS_RMW_ZENOH\n\n# prompt: x\nconfig NROS_X\n    bool\n    depends on NROS_Q\n"
+    assert ("if NROS_RMW_ZENOH\n\n# prompt: x\nconfig NROS_ZENOH_X\n    bool\n    depends on NROS_Q\n"
             "    default y\n\nendif # NROS_RMW_ZENOH") in sec, sec
     assert f'osource "{KCONFIG_GENERATED}"' in sec, "selftest: the section sources no generated file"
     assert sec.index("osource") < sec.index("\nconfig "), "selftest: the generated file must parse FIRST"
     assert '    int "' not in sec and '    bool "' not in sec, "selftest: a knob kept its prompt"
     pr = render_prompts(kc_rows)
     assert 'config NROS_Z\n    int "z"\n' in pr, pr
-    assert 'if NROS_RMW_ZENOH\n\nconfig NROS_X\n    bool "x"\n    depends on NROS_Q\n\nendif' in pr, pr
+    assert 'if NROS_RMW_ZENOH\n\nconfig NROS_ZENOH_X\n    bool "x"\n    depends on NROS_Q\n\nendif' in pr, pr
     assert "default" not in pr and "NROS_Y" not in pr, pr
     rs = render(kc_rows)
-    assert 'symbol: "NROS_X",\n        id: "ZENOH_X",\n        ty: "bool",\n        kconfig_if: Some("NROS_RMW_ZENOH"),\n        depends: &["NROS_Q"],' in rs, rs
+    assert 'symbol: "NROS_ZENOH_X",\n        id: "ZENOH_X",\n        ty: "bool",\n        kconfig_if: Some("NROS_RMW_ZENOH"),\n        depends: &["NROS_Q"],' in rs, rs
     assert 'id: "Y",\n        ty' not in rs, "selftest: an untyped row reached KCONFIG_KNOBS"
     assert "NROS_Y" not in sec, "selftest: a row with no `type` was rendered"
     good = "menuconfig NROS\nif NROS\n" + sec + "\nendif\n"

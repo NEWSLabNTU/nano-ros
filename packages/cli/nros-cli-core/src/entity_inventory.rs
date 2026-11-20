@@ -2114,7 +2114,7 @@ pub struct DerivedEntityKnobs {
     /// it is the number a human counts, and because the gap between the two is
     /// the finding.
     pub entity_total: usize,
-    /// `NROS_MAX_SUBSCRIBERS` / `NROS_RMW_SUBSCRIBER_SLOTS` -- session
+    /// `NROS_ENTITY_MAX_SUBSCRIBERS` / `NROS_RMW_SUBSCRIBER_SLOTS` -- session
     /// subscriber slots. Declared subscriptions PLUS the feedback subscription
     /// each action client opens.
     ///
@@ -2124,7 +2124,7 @@ pub struct DerivedEntityKnobs {
     /// its own `graph_cache.sub` field and liveliness tokens in
     /// `liveliness[ZPICO_MAX_LIVELINESS]`. So there is no shim addend.
     pub max_subscribers: usize,
-    /// `NROS_MAX_PUBLISHERS` -- declared publishers plus the feedback and
+    /// `NROS_ENTITY_MAX_PUBLISHERS` -- declared publishers plus the feedback and
     /// status topics each action server publishes.
     ///
     /// INCLUDES the lifecycle family's `~/transition_event` when the bringup
@@ -2135,7 +2135,7 @@ pub struct DerivedEntityKnobs {
     /// declaration. VOLATILE, so it is a term HERE and in
     /// [`Self::max_liveliness`] and in nothing else.
     pub max_publishers: usize,
-    /// `NROS_MAX_QUERYABLES` -- a service server IS a queryable, and an action
+    /// `NROS_ENTITY_MAX_QUERYABLES` -- a service server IS a queryable, and an action
     /// server is [`ACTION_SERVER_QUERYABLES`] of them.
     ///
     /// INCLUDES the runtime's parameter and lifecycle service families when
@@ -2167,7 +2167,7 @@ pub struct DerivedEntityKnobs {
     /// same argument that let `MAX_CBS` derive, where the shortfall surfaces as
     /// `ExecutorFull` naming the knob. An image that bridges states this knob.
     pub max_nodes: usize,
-    /// `NROS_MAX_LIVELINESS` / `ZPICO_MAX_LIVELINESS` (phase-412 W2) -- every
+    /// `NROS_ENTITY_MAX_LIVELINESS` / `ZPICO_MAX_LIVELINESS` (phase-412 W2) -- every
     /// liveliness token THIS session declares. Not the peer graph: a remote
     /// node's token lives in the graph cache, and the cache's own liveliness
     /// SUBSCRIBER takes no slot in this array.
@@ -2512,7 +2512,7 @@ impl Derivation {
 /// Which types an image RECEIVES, and how many entities receive each.
 ///
 /// The count is per ENTITY and not per type, because the consumer that needs
-/// it counts blocks: `NROS_MAX_LARGE_SUBSCRIBERS` is how many large payload
+/// it counts blocks: `NROS_ENTITY_MAX_LARGE_SUBSCRIBERS` is how many large payload
 /// BLOCKS the backend reserves, and two subscriptions on one large type need
 /// two. Deduplicating to a type set would under-reserve by exactly the
 /// duplicates.
@@ -6556,7 +6556,7 @@ impl EntityInventory {
             "the types SUBSCRIPTIONS receive. These and only these allocate from the\n\
              # backend's two topic payload classes (one `alloc_payload_block` call site,\n\
              # reached only from `declare_subscriber`), so they are the join key for\n\
-             # NROS_SUBSCRIBER_BUFFER_BYTES / _LARGE_SIZE / NROS_MAX_LARGE_SUBSCRIBERS.\n\
+             # NROS_SUBSCRIBER_BUFFER_BYTES / _LARGE_SIZE / NROS_ENTITY_MAX_LARGE_SUBSCRIBERS.\n\
              # The count is per ENTITY, not per type: two subscriptions on one large type\n\
              # need two blocks.",
             &self.subscribed_types(),

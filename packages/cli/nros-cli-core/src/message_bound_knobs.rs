@@ -702,7 +702,7 @@ fn write_output(
         ));
         c.push_str(
             "# NROS_SUBSCRIBER_BUFFER_BYTES, NROS_SUBSCRIBER_LARGE_SIZE and\n\
-             # NROS_MAX_LARGE_SUBSCRIBERS are NOT derived and do NOT fall back to the\n\
+             # NROS_ENTITY_MAX_LARGE_SUBSCRIBERS are NOT derived and do NOT fall back to the\n\
              # closure. This image states what it receives, so the classes come from\n\
              # that or from nowhere; each keeps its configured value.\n",
         );
@@ -746,7 +746,7 @@ fn write_output(
             c.push_str(&format!("set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS {v})\n"));
         } else {
             c.push_str(
-                "# NROS_MAX_LARGE_SUBSCRIBERS is NOT derived: it counts\n\
+                "# NROS_ENTITY_MAX_LARGE_SUBSCRIBERS is NOT derived: it counts\n\
                  # SUBSCRIPTIONS, and the closure names only the types above. It keeps\n\
                  # its configured value until this image declares what it receives.\n",
             );
@@ -1188,7 +1188,7 @@ mod tests {
                 "a type count was published as a subscription count:\n{out}"
             );
             assert!(
-                out.contains("NROS_MAX_LARGE_SUBSCRIBERS is NOT derived"),
+                out.contains("NROS_ENTITY_MAX_LARGE_SUBSCRIBERS is NOT derived"),
                 "{out}"
             );
             assert!(

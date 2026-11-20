@@ -791,7 +791,7 @@ impl ZenohPublisher {
                     // before the reason and the knob were reached. Cause first
                     // now; the topic is the part that may truncate.
                     "qos: TRANSIENT_LOCAL cache queryable refused ({:?}); if Full raise \
-                     NROS_ZENOH_MAX_QUERYABLES (Zephyr: CONFIG_NROS_MAX_QUERYABLES) — a TL \
+                     NROS_ZENOH_MAX_QUERYABLES (Zephyr: CONFIG_NROS_ENTITY_MAX_QUERYABLES) — a TL \
                      publisher is a queryable on top of every service server, and an \
                      action server has one for /status. topic '{}'",
                     e,

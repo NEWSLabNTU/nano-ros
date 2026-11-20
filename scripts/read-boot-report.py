@@ -898,12 +898,12 @@ def report_alloc(rec: dict[str, int]) -> int:
         print(
             f"  A subscription asked for {rec['rx_hint']} bytes and the largest class\n"
             f"  is {rec['largest_payload_class']}. Raise NROS_SUBSCRIBER_LARGE_SIZE and give the\n"
-            "  image large slots (NROS_MAX_LARGE_SUBSCRIBERS), or lower the type's bound."
+            "  image large slots (NROS_ENTITY_MAX_LARGE_SUBSCRIBERS), or lower the type's bound."
         )
     elif r == 2:
         print(
             f"  {rec['large_taken']} large blocks were taken and MAX_LARGE_SUBSCRIBERS is\n"
-            f"  {rec['max_large_subscribers']}. Raise NROS_MAX_LARGE_SUBSCRIBERS."
+            f"  {rec['max_large_subscribers']}. Raise NROS_ENTITY_MAX_LARGE_SUBSCRIBERS."
         )
     elif r == 4:
         print(

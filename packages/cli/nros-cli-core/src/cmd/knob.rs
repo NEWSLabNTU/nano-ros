@@ -483,8 +483,8 @@ fn note(r: &KnobRow) -> Option<String> {
 
 /// `text` with each knob's env, retired or Kconfig spelling replaced by the
 /// name a project states it by (`NROS_NET_MAX_SOCKETS` and
-/// `CONFIG_NROS_MAX_PUBLISHERS` become `net.max_sockets` and
-/// `zenoh.max_publishers`). The registry's help was written for menuconfig,
+/// `CONFIG_NROS_ENTITY_MAX_PUBLISHERS` become `net.max_sockets` and
+/// `entity.max_publishers`). The registry's help was written for menuconfig,
 /// where those are the names; here the project's name is.
 pub fn user_words(text: &str) -> String {
     let mut out = String::with_capacity(text.len());

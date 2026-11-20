@@ -237,7 +237,7 @@ def violations(s: dict, ctx: dict, rules: dict):
 
 def _knob_subject(k, where):
     did = k["id"]
-    sp = [("toml", k["key"]), ("env", "NROS_" + did), ("kconfig", "CONFIG_" + k.get("kconfig", "NROS_" + did))]
+    sp = [("toml", k["key"]), ("env", "NROS_" + did), ("kconfig", "CONFIG_NROS_" + did)]
     if "type" in k:
         sp.append(("cmake", "NROS_OVERRIDE_" + did))
     return {"kind": "knob", "subject": k["key"], "key": k["key"], "spellings": sp,

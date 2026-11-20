@@ -1107,8 +1107,13 @@ fn parse_rows(doc: &toml::Table, owner: &str, origin: &Origin, file: &Path) -> R
             let t = t
                 .as_table()
                 .ok_or_else(|| where_(&format!("a `{kind}` row is a table")))?;
-            let trans = t.get("transitional").and_then(toml::Value::as_table);
-            let tstr = |k: &str| trans.and_then(|tt| tt.get(k)).and_then(toml::Value::as_str);
+            // phase-581 W7 -- no row overrides a derived spelling any more.
+            if t.contains_key("transitional") {
+                return Err(where_(
+                    "`transitional` was deleted: every spelling derives from `key`, and an \
+                     old one is a `retired` entry (RFC-0140 D3/D4)",
+                ));
+            }
             let s = |k: &str| t.get(k).and_then(toml::Value::as_str).map(str::to_string);
             let mut retired = parse_retired(t.get("retired"), &where_)?;
             // A retired knob's entries all refuse with the row's reason.
@@ -1129,15 +1134,11 @@ fn parse_rows(doc: &toml::Table, owner: &str, origin: &Origin, file: &Path) -> R
                          package declares only its own rows"
                     )));
                 }
-                let derived = derive_id(key);
-                let id = tstr("id").unwrap_or(&derived).to_string();
-                let kconfig = tstr("kconfig")
-                    .map(str::to_string)
-                    .unwrap_or_else(|| format!("NROS_{derived}"));
+                let id = derive_id(key);
                 let mut spellings = vec![
                     (RetiredRoad::Toml, key.to_string()),
                     (RetiredRoad::Env, format!("NROS_{id}")),
-                    (RetiredRoad::Kconfig, format!("CONFIG_{kconfig}")),
+                    (RetiredRoad::Kconfig, format!("CONFIG_NROS_{id}")),
                 ];
                 if t.contains_key("type") {
                     spellings.push((RetiredRoad::Cmake, format!("NROS_OVERRIDE_{id}")));
@@ -1184,12 +1185,7 @@ fn parse_rows(doc: &toml::Table, owner: &str, origin: &Origin, file: &Path) -> R
                                  `{owner}`; a package declares only its own rows"
                             )));
                         }
-                        (
-                            tstr("name")
-                                .map(str::to_string)
-                                .unwrap_or_else(|| format!("NROS_{}", derive_id(key))),
-                            Some(key.to_string()),
-                        )
+                        (format!("NROS_{}", derive_id(key)), Some(key.to_string()))
                     }
                     (None, Some(n)) => {
                         let n = n.as_str().ok_or_else(|| where_("`name` is a string"))?;

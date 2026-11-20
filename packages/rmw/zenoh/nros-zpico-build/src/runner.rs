@@ -447,8 +447,8 @@ fn queryable_floor_from(
 /// certain one, and refusing a build over a guess is the defect this wave
 /// exists to remove.
 ///
-/// This is issue 0460 caught one stage earlier. `CONFIG_NROS_MAX_QUERYABLES`
-/// defaults to 8 in `zephyr/Kconfig`, and an entry enabling both service
+/// This is issue 0460 caught one stage earlier. The queryable table
+/// defaulted to 8 on Zephyr, and an entry enabling both service
 /// families needs eleven: that image used to build cleanly and die at boot with
 /// a bare `ServiceServerCreationFailed`.
 fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
@@ -471,8 +471,9 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
              cache queryable to serve it to a late joiner, and an action server has \
              one for its `/status` whether or not anything declared it. Counting \
              service servers alone comes up short by exactly that.\n  \
-             On Zephyr this knob is CONFIG_NROS_MAX_QUERYABLES, whose Kconfig default \
-             is 8; raise it, or stop declaring the services the image does not have.",
+             The table is derived from the demand: raise \
+             `[image.<id>.knobs.entity] max_queryables` (CONFIG_NROS_ENTITY_MAX_QUERYABLES \
+             on Zephyr), or stop declaring the services the image does not have.",
             sizing.floor,
             sizing.param_nodes,
             PARAM_SERVICE_QUERYABLES * sizing.param_nodes,
@@ -952,7 +953,7 @@ mod queryable_default_tests {
     /// it: a three-node image on the Zephyr Kconfig default of 8 fails the
     /// BUILD, and the message names the knob.
     #[test]
-    #[should_panic(expected = "CONFIG_NROS_MAX_QUERYABLES")]
+    #[should_panic(expected = "CONFIG_NROS_ENTITY_MAX_QUERYABLES")]
     fn a_three_node_image_on_the_default_table_is_refused_at_build_time() {
         check_queryable_override(8, &sizing_for(None, Some("param"), Some("3")));
     }
@@ -981,7 +982,7 @@ mod queryable_default_tests {
     #[test]
     #[should_panic(expected = "below this image's DERIVED floor")]
     fn an_override_under_the_derived_floor_is_refused() {
-        // zephyr/Kconfig's `default 8` for CONFIG_NROS_MAX_QUERYABLES against
+        // zephyr/Kconfig's `default 8` for CONFIG_NROS_ENTITY_MAX_QUERYABLES against
         // an entry carrying both service families: issue 0460's build, caught
         // at build time instead of at boot.
         check_queryable_override(8, &sizing(None, Some("param+lifecycle")));
@@ -1577,12 +1578,39 @@ fn resolve_graph_discovery(link: &LinkFeatures) -> bool {
 ///
 /// phase-468 W4 — this used to consult a `KCONFIG_KNOBS` table held by THIS
 /// crate and fall back to an env-only read for a knob with no row, which is
-/// issue 1490's trap: a knob the file mentions, resolving nothing. The pairing
-/// belongs to the knob, so it lives in `nros_zephyr_build::KCONFIG_PAIRS`, and
-/// a knob with no Kconfig symbol at all (`ZPICO_MAX_SESSIONS`,
-/// `ZPICO_BATCH_MULTICAST_SIZE`) simply misses a derived key nothing declares.
+/// issue 1490's trap: a knob the file mentions, resolving nothing. The Kconfig
+/// symbol belongs to the knob's row, and a knob with no Kconfig symbol at all
+/// (`ZPICO_MAX_SESSIONS`, `ZPICO_BATCH_MULTICAST_SIZE`) simply misses a
+/// derived key nothing declares.
+///
+/// phase-581 W7 (RFC-0140 D3) -- the zenoh pools are CARRIERS of the entity
+/// demand (`entity.max_*`) and have no Kconfig symbol, so each reads the
+/// stated demand below its own forwarded value ([`pool_floor`]).
 fn env_usize(name: &str, default: usize) -> usize {
-    nros_zephyr_build::knob(name).resolve(default)
+    let knob = nros_zephyr_build::knob(name);
+    match pool_floor(name) {
+        Some(floor) => knob.from_demand(floor).resolve(default),
+        None => knob.resolve(default),
+    }
+}
+
+/// The minimum of a zenoh pool this crate sizes from the entity demand, or
+/// `None` for a knob that is no pool carrier.
+///
+/// The FLOOR belongs to the pool, never to the shared derivation (issues
+/// 1015/1033): these four size fixed C arrays in `zpico.c`, where zero is not a
+/// smaller pool but a `#error`, so a demand of 0 is a pool of 1. The pending
+/// gets table is never derived; a stated 0 reaches `zpico.c`'s own
+/// `#if ZPICO_MAX_PENDING_GETS < 1` refusal unchanged.
+fn pool_floor(name: &str) -> Option<usize> {
+    match name {
+        "NROS_ZENOH_MAX_PUBLISHERS"
+        | "NROS_ZENOH_MAX_SUBSCRIBERS"
+        | "NROS_ZENOH_MAX_QUERYABLES"
+        | "NROS_ZENOH_MAX_LIVELINESS" => Some(1),
+        "NROS_ZENOH_MAX_PENDING_GETS" => Some(0),
+        _ => None,
+    }
 }
 
 /// phase-349 W2b — the zenoh backend descriptor that holds zenoh-pico's

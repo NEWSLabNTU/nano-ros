@@ -350,7 +350,7 @@ KNOB_CLASS = {
     # phase-426 W3 — the same shape a third time: the ROS parameter services are
     # registered once PER NODE, so the model's node count is a term in the
     # queryable pool. A COUNT the resolver passes down, never something a user
-    # tunes; `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_MAX_QUERYABLES` is the knob
+    # tunes; `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_ENTITY_MAX_QUERYABLES` is the knob
     # and still outranks it (it is the checked OVERRIDE this bounds from below).
     "NROS_DECLARED_NODES": ("infra", "a COUNT the resolver passes down, not a knob"),
     # issue 1378 — the same shape a FOURTH time, into the same pool. A
@@ -359,7 +359,7 @@ KNOB_CLASS = {
     # four slots and not three. A COUNT the declaration passes down — the
     # DESCRIPTOR answers this on the cargo-leaf road (phase-455 W5) and this
     # carries it on the roads that name none to cargo (issue 1407) — never something a
-    # user tunes. `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_MAX_QUERYABLES` is the
+    # user tunes. `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_ENTITY_MAX_QUERYABLES` is the
     # knob and still outranks it, bounded from below by this term.
     # issue 1649 -- the retention slot, the payload trio and two parameter
     # counts (issues 1498 / 1122 / 1199 / phase-446) retired from the DECLARED
@@ -785,6 +785,10 @@ READ_CALLEES = {
     # phase-400 W6. `env_usize` with a ladder rung between the env and the
     # builtin.
     "env_usize_rung",
+    # phase-581 W7. `nros-rmw-zenoh`'s knob for `env_usize_rung`: the
+    # large-class pool reads its entity demand (`Knob::from_demand`), every
+    # other name is read as itself.
+    "large_pool",
     # phase-448 W5. `env_opt_usize` with the board/platform rungs spliced in
     # below Kconfig. Option rather than a default, for
     # `NROS_EXECUTOR_BACKING_BYTES`: its "default" is a const only the TARGET

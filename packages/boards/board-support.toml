@@ -500,9 +500,9 @@ maintainers = ["jerry73204"]
 #   Was: ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr
 #   3.7. Renode twin booted the C talker over serial (USART3, the ST-LINK VCP)
 #   and ethernet (phase-524 W1). Its RAM budget, `max_large_subscribers = 0`, is
-#   the descriptor's `[knobs.zenoh]`, which every image inherits (issue 2194);
+#   the descriptor's `[knobs.entity]`, which every image inherits (issue 2194);
 #   the ethernet image's extra knobs are its own (see the descriptor header).
-notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Its Renode twin boots the C talker over serial (USART3, the ST-LINK VCP) and over ethernet. Its RAM budget, `max_large_subscribers = 0`, is the board descriptor's `[knobs.zenoh]`, which every image inherits; the ethernet image adds its own knobs (see the descriptor header)."
+notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Its Renode twin boots the C talker over serial (USART3, the ST-LINK VCP) and over ethernet. Its RAM budget, `max_large_subscribers = 0`, is the board descriptor's `[knobs.entity]`, which every image inherits; the ethernet image adds its own knobs (see the descriptor header)."
 
 # phase-524 W3 (RFC-0115 D3/D4) -- the Raspberry Pi Pico W, with NO TWIN
 # since 2026-11-06 (RFC-0115 Amendment 1, issue 2283: a twin must be free and

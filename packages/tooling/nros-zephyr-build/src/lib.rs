@@ -93,7 +93,7 @@ fn bake_directives(dotconfig: &str) -> Vec<String> {
 /// That replaced a hand table of env↔Kconfig pairs, which phase-468 W4 had
 /// already reduced from two tables to one (issue 1233: one Kconfig symbol
 /// sized two crates differently because each read its own pairing). What it
-/// could not say is that `ZPICO_MAX_PUBLISHERS`, `CONFIG_NROS_MAX_PUBLISHERS`
+/// could not say is that `ZPICO_MAX_PUBLISHERS`, ~~`CONFIG_NROS_MAX_PUBLISHERS`~~
 /// and the platform-config key are ONE knob — so each reader spelled the name
 /// it knew, and a knob had as many names as it had readers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,10 +106,12 @@ pub struct KnobRow {
     /// [`Self::env`]. Kept for good as the error table: an unlisted old name
     /// would be ignored, not refused.
     pub legacy: &'static [&'static str],
-    /// The Kconfig symbol the `$DOTCONFIG` rung reads. Defaults to
-    /// `CONFIG_NROS_<id>`; the zenoh pools read the RMW-agnostic demand symbol
-    /// (`ZENOH_MAX_PUBLISHERS` reads `CONFIG_NROS_MAX_PUBLISHERS`), which is
-    /// why the id is not the Kconfig stem (RFC-0103 D2b).
+    /// The Kconfig symbol the `$DOTCONFIG` rung reads: always
+    /// `CONFIG_NROS_<id>`. Until phase-581 W7 the zenoh pools read the
+    /// RMW-agnostic demand symbol (`ZENOH_MAX_PUBLISHERS` read
+    /// ~~`CONFIG_NROS_MAX_PUBLISHERS`~~); the demand is its own row now
+    /// (`entity.max_publishers`, `CONFIG_NROS_ENTITY_MAX_PUBLISHERS`) and the
+    /// pool a carrier with no symbol, read through [`Knob::from_demand`].
     pub kconfig: &'static str,
     /// `<group>.<name>` under `[knobs]`, where the platform/board ladder has one.
     pub toml: Option<&'static str>,
@@ -231,7 +233,7 @@ pub enum KnobValues {
 /// leaking into an image whose RMW leaves the symbol undefined (D2b's M2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KconfigKnob {
-    /// The symbol WITHOUT `CONFIG_` (`NROS_MAX_PUBLISHERS`).
+    /// The symbol WITHOUT `CONFIG_` (`NROS_ENTITY_MAX_PUBLISHERS`).
     pub symbol: &'static str,
     /// The registry id of the row that defines it; `-DNROS_OVERRIDE_<id>`.
     pub id: &'static str,
@@ -395,8 +397,7 @@ pub struct InTreePackage {
 #[rustfmt::skip]
 mod knob_registry;
 pub use knob_registry::{
-    IMAGE_ENV_RETIRED_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_KNOB_TEMPLATE,
-    RETIRED_TEMPLATE,
+    IMAGE_ENV_RETIRED_TEMPLATE, KCONFIG_KNOBS, KNOBS, RETIRED_KNOB_TEMPLATE, RETIRED_TEMPLATE,
 };
 // Generated beside it: the statement and env rows (phase-581 W1).
 #[rustfmt::skip]
@@ -727,8 +728,18 @@ pub fn retired_knob_spelling(
 /// (`image.<id>.knobs`, a board's or platform's `knobs`), or `None` when `key`
 /// (`zenoh.wire.frag_max_size`, retired) is not one. Names the key to write instead
 /// and, for a unit change, the factor (RFC-0140 D4, phase-581 W5).
+///
+/// phase-581 W7 -- also refused: the key of a POOL CARRIER ([`carried_knob`]),
+/// which `nros` derives from the demand row it carries and nobody states
+/// (`[image.<id>.knobs.zenoh] max_publishers` names
+/// `[image.<id>.knobs.entity] max_publishers`). Its spelling is the pool's
+/// live key, so it is no `toml:` retirement (RFC-0140 N7 keeps a live
+/// spelling off the retired list); the refusal is the carrier's own.
 #[must_use]
 pub fn retired_toml_refusal(table: &str, key: &str) -> Option<String> {
+    if let Some(refusal) = carrier_toml_refusal(table, key) {
+        return Some(refusal);
+    }
     let (row, entry) = retired_knob_spelling(RetiredRoad::Toml, key)?;
     let (og, on) = key.rsplit_once('.').unwrap_or(("", key));
     if let Some(reason) = row.retired.or(entry.instead) {
@@ -742,16 +753,48 @@ pub fn retired_toml_refusal(table: &str, key: &str) -> Option<String> {
 }
 
 /// Every retired `toml:` spelling present in a `[knobs]`-shaped table (its
-/// keys are `<group>[.<sub>].<name>`), as [`retired_toml_refusal`]'s
-/// sentences. `has(path)` answers whether the dotted path is set.
+/// keys are `<group>[.<sub>].<name>`), and every pool carrier's key, as
+/// [`retired_toml_refusal`]'s sentences. `has(path)` answers whether the
+/// dotted path is set.
 #[must_use]
 pub fn retired_toml_refusals(table: &str, has: &dyn Fn(&str) -> bool) -> Vec<String> {
+    let carriers = KNOBS
+        .iter()
+        .filter(|r| carried_knob(r).is_some() && has(r.image_key))
+        .filter_map(|r| carrier_toml_refusal(table, r.image_key));
     KNOBS
         .iter()
         .flat_map(|r| r.retired_spellings.iter())
         .filter(|e| e.road == RetiredRoad::Toml && has(e.spelling))
         .filter_map(|e| retired_toml_refusal(table, e.spelling))
+        .chain(carriers)
         .collect()
+}
+
+/// phase-581 W7 (RFC-0140 D3) -- the knob a POOL CARRIER is derived from: a
+/// `class = "carrier"` row with no Kconfig symbol whose `carries` names
+/// another row's id (the zenoh pools carry `entity.max_*`). `None` for every
+/// other row, including a carrier of a fact no row holds.
+#[must_use]
+pub fn carried_knob(row: &KnobRow) -> Option<&'static KnobRow> {
+    if row.class != KnobClass::Carrier || row.ty.is_some() {
+        return None;
+    }
+    let id = row.carries?;
+    KNOBS.iter().find(|r| r.id == id)
+}
+
+/// The refusal a pool carrier's key earns in a `[knobs]` table, or `None`
+/// when `key` is no carrier's.
+fn carrier_toml_refusal(table: &str, key: &str) -> Option<String> {
+    let row = knob_by_image_key(key)?;
+    let demand = carried_knob(row)?;
+    let (og, on) = row.image_group_name();
+    let (ng, nn) = demand.image_group_name();
+    Some(format!(
+        "`[{table}.{og}] {on}` is not a setting: nros derives it from \
+         `[{table}.{ng}] {nn}` (the demand), so write that instead"
+    ))
 }
 
 /// Every RETIRED knob that is set, as its refusal sentence, read through `env`.
@@ -976,6 +1019,7 @@ pub struct Knob<'a> {
     env_name: &'a str,
     rung: Option<usize>,
     strict_env: bool,
+    demand_floor: Option<usize>,
 }
 
 /// THE resolution function: a knob named by its ENV front-end.
@@ -995,6 +1039,7 @@ pub fn knob(env_name: &str) -> Knob<'_> {
         env_name,
         rung: None,
         strict_env: false,
+        demand_floor: None,
     }
 }
 
@@ -1023,6 +1068,41 @@ impl<'a> Knob<'a> {
         self
     }
 
+    /// phase-581 W7 (RFC-0140 D3) -- this knob is a pool CARRIER of a demand
+    /// row (`class = "carrier"`, `carries = "<demand id>"`: the zenoh pools
+    /// carry `entity.max_*`), so a STATED demand answers when nothing set the
+    /// pool itself, raised to `floor`.
+    ///
+    /// The rungs, highest first: the pool's own environment (what a producer
+    /// derived and forwarded -- cmake's resolved pool on the Zephyr C lane,
+    /// the CLI's carried row on the cargo road); the demand as stated, by its
+    /// environment or its `.config` symbol (the Zephyr Rust lane, which
+    /// inherits no environment); then the rest of the ladder. `floor` is the
+    /// POOL's minimum (1 for a fixed C array, where zero is a `#error`, issue
+    /// 1015; 0 where zero is an answer, issue 1033) and is applied here, at
+    /// the consumer, never in the shared derivation.
+    ///
+    /// # Panics
+    ///
+    /// When the row carries no knob: a call site that names a carrier wrongly
+    /// is a bug in this tree, not a configuration.
+    #[must_use]
+    pub fn from_demand(mut self, floor: usize) -> Self {
+        self.demand_floor = Some(floor);
+        self
+    }
+
+    /// The demand env spelling a pool carrier reads ([`Self::from_demand`]).
+    fn demand_env(&self) -> String {
+        let row = knob_row(self.env_name)
+            .unwrap_or_else(|| panic!("nros-zephyr-build: {} is no registry row", self.env_name));
+        let id = row
+            .carries
+            .filter(|c| knob_row(&format!("NROS_{c}")).is_some())
+            .unwrap_or_else(|| panic!("nros-zephyr-build: {} carries no knob row", self.env_name));
+        format!("NROS_{id}")
+    }
+
     /// The Kconfig symbol this knob resolves from.
     #[must_use]
     pub fn kconfig_key(&self) -> String {
@@ -1044,6 +1124,11 @@ impl<'a> Knob<'a> {
                 }
                 Err(_) => {}
             }
+        }
+        if let Some(floor) = self.demand_floor
+            && let Some(d) = knob(&self.demand_env()).stated()
+        {
+            return Some(d.max(floor));
         }
         self.kconfig_rung().or(self.rung)
     }
@@ -1376,8 +1461,12 @@ mod tests {
         //    observation.
         let laddered = dir.join(".config-ladder");
         let mut f = std::fs::File::create(&laddered).unwrap();
-        // The TABULATING shape: the two names are different words.
+        // The registry's own symbol for a knob row.
         writeln!(f, "CONFIG_NROS_ZENOH_SUBSCRIBER_RING_DEPTH=7").unwrap();
+        // phase-581 W7 -- a stated DEMAND of zero, and one left to derive.
+        writeln!(f, "CONFIG_NROS_ENTITY_MAX_PUBLISHERS=0").unwrap();
+        writeln!(f, "CONFIG_NROS_ENTITY_MAX_SUBSCRIBERS=-1").unwrap();
+        writeln!(f, "CONFIG_NROS_ENTITY_MAX_LARGE_SUBSCRIBERS=0").unwrap();
         // The DERIVED shape: `CONFIG_` + the env name.
         writeln!(f, "CONFIG_NROS_EXECUTOR_MAX_CBS=11").unwrap();
         drop(f);
@@ -1397,6 +1486,12 @@ mod tests {
                 "ZPICO_SUBSCRIBER_RING_DEPTH", // retired spelling: cleared for the refusal case
                 "NROS_EXECUTOR_MAX_CBS",
                 "NROS_EXECUTOR_MAX_SC",
+                "NROS_ZENOH_MAX_PUBLISHERS",
+                "NROS_ZENOH_MAX_SUBSCRIBERS",
+                "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",
+                "NROS_ENTITY_MAX_PUBLISHERS",
+                "NROS_ENTITY_MAX_SUBSCRIBERS",
+                "NROS_ENTITY_MAX_LARGE_SUBSCRIBERS",
             ] {
                 env::remove_var(k);
             }
@@ -1405,8 +1500,36 @@ mod tests {
         assert_eq!(
             knob("NROS_ZENOH_SUBSCRIBER_RING_DEPTH").resolve(4),
             7,
-            "a tabulated knob must resolve through its KCONFIG_PAIRS row"
+            "a knob row must resolve through its own Kconfig symbol"
         );
+        // phase-581 W7 -- a pool carrier reads the stated demand, floored at
+        // the POOL (issue 1015: a demand of 0 publishers is a pool of 1); a
+        // `-1` demand states nothing; a pool whose zero is an answer keeps it.
+        assert_eq!(
+            knob("NROS_ZENOH_MAX_PUBLISHERS").from_demand(1).resolve(8),
+            1,
+            "a stated demand of 0 must become a C-array pool of 1"
+        );
+        assert_eq!(
+            knob("NROS_ZENOH_MAX_SUBSCRIBERS")
+                .from_demand(1)
+                .rung(Some(3))
+                .resolve(8),
+            3,
+            "a `-1` demand states nothing, so the ladder reads on"
+        );
+        assert_eq!(
+            knob("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS")
+                .from_demand(0)
+                .resolve(2),
+            0,
+            "a pool whose zero is an answer must keep it"
+        );
+        // The pool's own environment (what a producer forwarded) outranks the
+        // demand: `stated()` reads it first, ahead of `from_demand`'s rung.
+        // Not asserted here, because setting it is one more `unsafe` env site
+        // the census counts (issue 1221); `nros-zpico-build`'s Zephyr C lane
+        // is where it is exercised, with cmake's resolved pool forwarded.
         assert_eq!(
             knob("NROS_EXECUTOR_MAX_CBS").resolve(4),
             11,
@@ -1562,39 +1685,14 @@ mod tests {
         assert!(kconfig_knob(row.kconfig).is_none());
     }
 
+    /// Every knob's Kconfig symbol is its env spelling with `CONFIG_` in
+    /// front: phase-581 W7 deleted the per-row override, so there is no
+    /// pairing table left to consult.
     #[test]
-    fn every_pairing_row_earns_its_place() {
-        for (env_name, kconfig) in KCONFIG_PAIRS {
-            assert_ne!(
-                *kconfig,
-                format!("CONFIG_{env_name}"),
-                "{env_name}: this row is what `kconfig_key_for` already derives — delete it"
-            );
-            assert!(
-                kconfig.starts_with("CONFIG_"),
-                "{env_name}: `{kconfig}` is not a Kconfig symbol"
-            );
-        }
-        for (i, (env_name, _)) in KCONFIG_PAIRS.iter().enumerate() {
-            assert!(
-                !KCONFIG_PAIRS[..i].iter().any(|(e, _)| e == env_name),
-                "{env_name}: two rows, so which Kconfig symbol a reader gets \
-                 depends on table order"
-            );
-        }
-    }
-
-    /// `KCONFIG_PAIRS` is a VIEW of the registry, never a second list: every
-    /// row is a spelling of a registry knob and names that knob's symbol.
-    #[test]
-    fn the_pairs_are_the_registry_s() {
-        for (env_name, kconfig) in KCONFIG_PAIRS {
-            let row = knob_row(env_name)
-                .unwrap_or_else(|| panic!("{env_name}: a pair with no registry row"));
-            assert_eq!(row.kconfig, *kconfig, "{env_name}");
-        }
+    fn every_symbol_is_derived() {
         for row in KNOBS {
             assert_eq!(row.env, format!("NROS_{}", row.id), "{}", row.id);
+            assert_eq!(row.kconfig, format!("CONFIG_{}", row.env), "{}", row.id);
             for s in std::iter::once(row.env).chain(row.legacy.iter().copied()) {
                 assert_eq!(kconfig_key_for(s), row.kconfig, "{s}");
             }
@@ -1602,16 +1700,17 @@ mod tests {
     }
 
     #[test]
-    fn a_key_is_paired_or_derived() {
+    fn a_key_is_derived() {
+        // A retired spelling reads its row's symbol. The zenoh pool has no
+        // symbol of its own any more (phase-581 W7), so this is a miss in any
+        // `.config`; the pool reads the demand through `Knob::from_demand`.
         assert_eq!(
             kconfig_key_for("ZPICO_MAX_QUERYABLES"),
-            "CONFIG_NROS_MAX_QUERYABLES"
+            "CONFIG_NROS_ZENOH_MAX_QUERYABLES"
         );
-        // The canonical spelling of the same knob reads the same symbol: the
-        // zenoh pool is floored from the RMW-agnostic demand (RFC-0103 D2b).
         assert_eq!(
-            kconfig_key_for("NROS_ZENOH_MAX_QUERYABLES"),
-            "CONFIG_NROS_MAX_QUERYABLES"
+            kconfig_key_for("NROS_ENTITY_MAX_QUERYABLES"),
+            "CONFIG_NROS_ENTITY_MAX_QUERYABLES"
         );
         assert_eq!(
             kconfig_key_for("NROS_EXECUTOR_MAX_CBS"),
@@ -1717,8 +1816,9 @@ mod tests {
                 .collect();
             assert_eq!(env, row.legacy, "knob {}", row.id);
         }
-        // 32 retired by phase-484 W8, 33 by phase-581 W5's renames, 14 by W6's.
-        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 79);
+        // 32 retired by phase-484 W8, 33 by phase-581 W5's renames, 14 by W6's,
+        // 6 by W7's (the `NROS_MAX_<X>` demand carriers).
+        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 85);
     }
 
     /// RFC-0140 D4 (phase-581 W6) -- EVERY statement's retired build variable is

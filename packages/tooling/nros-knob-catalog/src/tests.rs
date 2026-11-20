@@ -585,11 +585,6 @@ fn naming_a_package_breaking_the_rule_fails_to_load_naming_row_and_rule() {
             "[[knob]]\nkey = \"acme.deep.name\"\n",
         ),
         (
-            "N2",
-            "knob `acme.symbol`",
-            "[[knob]]\nkey = \"acme.symbol\"\ntransitional = { id = \"ACME_SYM\" }\n",
-        ),
-        (
             "N4",
             "knob `acme.ring_size`",
             "[[knob]]\nkey = \"acme.ring_size\"\n",
@@ -625,6 +620,13 @@ fn naming_a_package_breaking_the_rule_fails_to_load_naming_row_and_rule() {
             "{rule} on {row}: {msg}"
         );
     }
+    // N2 cannot be broken by a package row any more: every spelling derives
+    // from `key`, and the column that could override one is refused
+    // (phase-581 W7).
+    let msg = naming_refusal(
+        "owner = \"acme\"\n\n[[knob]]\nkey = \"acme.symbol\"\ntransitional = { id = \"ACME_SYM\" }\n",
+    );
+    assert!(msg.contains("`transitional` was deleted"), "{msg}");
     // A package's build script refuses the same, without the scan.
     let tmp = tempfile::tempdir().unwrap();
     let text = "owner = \"acme\"\n[[knob]]\nkey = \"acme.heap_kb\"\n";

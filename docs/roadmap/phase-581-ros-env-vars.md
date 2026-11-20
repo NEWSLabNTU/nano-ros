@@ -190,7 +190,15 @@ board and RMW packages are self-contained.
 
 ### W7 - Renames, batch 3: the demand and pool split
 
-- **Status:** OPEN (after W0's census)
+- **Status:** OPEN (the `nros fix` table test, which runs when phase-578 W4 lands)
+- **Result:** the six `entity.max_*` core rows and the zenoh pools as
+  carriers with no Kconfig symbol; `transitional` and `KCONFIG_PAIRS`
+  deleted; a stated demand reaches its pool through the floor (the module,
+  the CLI's carried row, `Knob::from_demand`); stating a pool's key is
+  refused naming the demand. The config-names baseline shrinks 12 -> 6, not
+  to empty: the six left are A.3's invented `ZENOH_*` variables, retired by
+  W13, so the file stays until then. Data:
+  [`data/phase-581-w7-measure.md`](data/phase-581-w7-measure.md).
 - The six demand facts become core `entity.max_*` rows
   (`CONFIG_NROS_ENTITY_MAX_*`, `NROS_ENTITY_MAX_*`), replacing
   `CONFIG_NROS_MAX_*` and the `NROS_MAX_*` cmake carriers; the zenoh pools

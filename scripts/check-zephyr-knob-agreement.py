@@ -123,14 +123,14 @@ def rewrite_registry_default(text, symbol, value):
     RFC-0140 D2) with the row defining `symbol` given `default <value>`.
 
     The row is found by its Kconfig symbol, which the registry module derives
-    (`key`, or a `transitional` kconfig); its first `"default <x>"` attribute
+    from `key` (`CONFIG_NROS_<KEY>`); its first `"default <x>"` attribute
     line moves and nothing else does. Returns the text unchanged when no
     row/default matches."""
     rows = knob_registry.file_knob_rows(None, text=text)
     parts = re.split(r"(?m)^(?=\[\[knob\]\]\s*$)", text)
     knob_parts = [i for i, part in enumerate(parts) if part.startswith("[[knob]]")]
     for i, row in zip(knob_parts, rows):
-        if row.get("kconfig", "NROS_" + row["id"]) != symbol:
+        if "NROS_" + row["id"] != symbol:
             continue
         parts[i] = re.sub(r'"default [^"\s]+"', f'"default {value}"', parts[i], count=1)
         return "".join(parts)

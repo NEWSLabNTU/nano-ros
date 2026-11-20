@@ -69,9 +69,9 @@ C_DEFINE_KNOBS = {
 # ONE FACT, SEVERAL KNOBS (phase-412 #7). This map used to be 1:1, and the
 # resolver road is not: `nros_resolve_knobs()` calls
 # `_nros_resolve_derivable_knob` THIRTEEN times over ELEVEN facts.
-# `NROS_DERIVED_MAX_SUBSCRIBERS` feeds both `NROS_MAX_SUBSCRIBERS` and the XRCE
+# `NROS_DERIVED_MAX_SUBSCRIBERS` feeds both `NROS_ENTITY_MAX_SUBSCRIBERS` and the XRCE
 # backend's `NROS_XRCE_MAX_SUBSCRIBERS`; `NROS_DERIVED_MAX_QUERYABLES` feeds
-# both `NROS_MAX_QUERYABLES` and `NROS_XRCE_MAX_SERVICE_SERVERS`. A 1:1 map can
+# both `NROS_ENTITY_MAX_QUERYABLES` and `NROS_XRCE_MAX_SERVICE_SERVERS`. A 1:1 map can
 # name only one of each pair, so a value that ARRIVED at the zenoh slot and was
 # dropped at the XRCE one read GREEN -- the gate reported on the half it could
 # see, which is the same shape as the one-fragment bug `read_fragment` records
@@ -85,12 +85,12 @@ C_DEFINE_KNOBS = {
 # directions, on every run.
 DERIVED_PAIRS = {
     "NROS_DERIVED_MAX_SUBSCRIBERS": (
-        "NROS_RESOLVED_NROS_MAX_SUBSCRIBERS",
+        "NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS",
         "NROS_RESOLVED_NROS_XRCE_MAX_SUBSCRIBERS",
     ),
-    "NROS_DERIVED_MAX_PUBLISHERS": ("NROS_RESOLVED_NROS_MAX_PUBLISHERS",),
+    "NROS_DERIVED_MAX_PUBLISHERS": ("NROS_RESOLVED_NROS_ENTITY_MAX_PUBLISHERS",),
     "NROS_DERIVED_MAX_QUERYABLES": (
-        "NROS_RESOLVED_NROS_MAX_QUERYABLES",
+        "NROS_RESOLVED_NROS_ENTITY_MAX_QUERYABLES",
         # issue 1033 -- the XRCE service-server pool answers the SAME question
         # the zenoh queryable table asks, so it takes the same fact rather than
         # the raw CONFIG_.
@@ -130,7 +130,7 @@ DERIVED_PAIRS = {
     ),
     # phase-412 W2 -- the liveliness pool, whose C define (ZPICO_MAX_LIVELINESS,
     # above) is floored from this resolved value.
-    "NROS_DERIVED_MAX_LIVELINESS": ("NROS_RESOLVED_NROS_MAX_LIVELINESS",),
+    "NROS_DERIVED_MAX_LIVELINESS": ("NROS_RESOLVED_NROS_ENTITY_MAX_LIVELINESS",),
     # This pair is why the gate exists in the form it does. It used to land in
     # NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_BUFFER_SIZE, which no pairing here names,
     # so a derived 880 delivered as 1496 for four consecutive island builds and
@@ -166,7 +166,7 @@ DERIVED_PAIRS = {
     # commonly ZERO, and a zero that fails to arrive is 131,072 bytes of
     # `LARGE_PAYLOADS` in an image that subscribes to nothing (issue 1125,
     # measured).
-    "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS": ("NROS_RESOLVED_NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",),
+    "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS": ("NROS_RESOLVED_NROS_ENTITY_MAX_LARGE_SUBSCRIBERS",),
     "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE": ("NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES",),
     # phase-446 W4 -- the parameter store, from the contract's `params:`. The
     # three capacities are commonly derived as ZERO, and a zero that fails to
@@ -430,7 +430,7 @@ def check(build_dir, road=None):
                 # reports a stated value above or below the derivation). This
                 # gate asks only whether the RESOLVED value arrived; a stated
                 # rung re-judged here refused NXP's island for
-                # CONFIG_NROS_MAX_PUBLISHERS=13 over a derived 11, a value
+                # CONFIG_NROS_ENTITY_MAX_PUBLISHERS=13 over a derived 11, a value
                 # configure had accepted as over-provisioned. A mismatch is a
                 # carry fault only when the resolver says it took the
                 # derivation (`derived`), or says nothing.
@@ -512,7 +512,7 @@ def self_test(quiet=False):
         with open(os.path.join(tmp, "build.ninja"), "w") as fh:
             fh.write(ninja)
 
-    CLEAN_CACHE = ("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=10\n"
+    CLEAN_CACHE = ("NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=10\n"
                    "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=10\n")
     CLEAN_FRAG = "set(NROS_DERIVED_MAX_SUBSCRIBERS 10)\n"
     CLEAN_NINJA = "cc -DZPICO_MAX_SUBSCRIBERS=10 -c x.c\n"
@@ -522,7 +522,7 @@ def self_test(quiet=False):
     # is what makes "absent" clean for it and a finding for the unguarded knob.
     ROAD = {
         "NROS_DERIVED_MAX_SUBSCRIBERS": {
-            "NROS_RESOLVED_NROS_MAX_SUBSCRIBERS": None,
+            "NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS": None,
             "NROS_RESOLVED_NROS_XRCE_MAX_SUBSCRIBERS": "CONFIG_NROS_RMW_XRCE",
         },
     }
@@ -549,7 +549,7 @@ def self_test(quiet=False):
           "cc -DZPICO_MAX_SUBSCRIBERS=10 -c x.c\ncc -DZPICO_MAX_SUBSCRIBERS=8 -c y.c\n"), 1,
          "one knob, two values"),
         # the derivation carried through wrongly
-        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=4\n"
+        (("NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=4\n"
           "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=4\n",
           CLEAN_FRAG, "cc -DZPICO_MAX_SUBSCRIBERS=4 -c x.c\n"), 1,
          "resolver did not carry the derived value"),
@@ -578,7 +578,7 @@ def self_test(quiet=False):
          "a derived feature flag delivered to the compile"),
         # ...and overridden from the environment: rung 1 beats rung 3, the
         # triage lever, not a dropped derivation.
-        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=10\n"
+        (("NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=10\n"
           "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=10\n"
           "NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=0\n"
           "NROS_KNOB_SOURCE_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=environment\n",
@@ -588,32 +588,32 @@ def self_test(quiet=False):
         # Issue 2618 -- a Kconfig-STATED value that differs from the
         # derivation is a person's number winning. Configure compares it to
         # the derivation and says so; this gate asks only whether it ARRIVED.
-        # NXP's island: CONFIG_NROS_MAX_PUBLISHERS=13 over a derived 11.
-        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=13\n"
+        # NXP's island: CONFIG_NROS_ENTITY_MAX_PUBLISHERS=13 over a derived 11.
+        (("NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=13\n"
           "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=13\n"
-          "NROS_KNOB_SOURCE_NROS_MAX_SUBSCRIBERS:INTERNAL=kconfig\n",
+          "NROS_KNOB_SOURCE_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=kconfig\n",
           "set(NROS_DERIVED_MAX_SUBSCRIBERS 11)\n",
           "cc -DZPICO_MAX_SUBSCRIBERS=13 -c x.c\n"), 0,
          "a Kconfig-stated value over the derivation is configure's call"),
         # ...but a stated value that did NOT reach the compile is still this
         # gate's finding: the question is arrival, whatever the rung.
-        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=13\n"
+        (("NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=13\n"
           "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=13\n"
-          "NROS_KNOB_SOURCE_NROS_MAX_SUBSCRIBERS:INTERNAL=kconfig\n",
+          "NROS_KNOB_SOURCE_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=kconfig\n",
           "set(NROS_DERIVED_MAX_SUBSCRIBERS 11)\n",
           "cc -DZPICO_MAX_SUBSCRIBERS=11 -c x.c\n"), 1,
          "a stated value the compiler never saw is still reported"),
         # ...and the sentinel recorded as `kconfig` is the double-resolve
         # bug, never a statement.
-        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=%s\n"
+        (("NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=%s\n"
           "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=10\n"
-          "NROS_KNOB_SOURCE_NROS_MAX_SUBSCRIBERS:INTERNAL=kconfig\n" % DERIVE_SENTINEL,
+          "NROS_KNOB_SOURCE_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=kconfig\n" % DERIVE_SENTINEL,
           CLEAN_FRAG, CLEAN_NINJA), 1,
          "the derive sentinel resolved as kconfig is still reported"),
         # ...and a derived value that disagrees is a carry fault.
-        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=8\n"
+        (("NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=8\n"
           "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=8\n"
-          "NROS_KNOB_SOURCE_NROS_MAX_SUBSCRIBERS:INTERNAL=derived\n",
+          "NROS_KNOB_SOURCE_NROS_ENTITY_MAX_SUBSCRIBERS:INTERNAL=derived\n",
           CLEAN_FRAG, "cc -DZPICO_MAX_SUBSCRIBERS=8 -c x.c\n"), 1,
          "a derived-rung mismatch is still reported"),
         # Issue 2618 -- the same list in two separators is one value: the
@@ -674,8 +674,8 @@ def self_test(quiet=False):
         '        "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}" NROS_DERIVED_MAX_SUBSCRIBERS\n'
         '        "entity inventory" "x.cmake")\n'
         'endif()\n'
-        '_nros_resolve_derivable_knob(NROS_MAX_SUBSCRIBERS\n'
-        '    "${CONFIG_NROS_MAX_SUBSCRIBERS}" NROS_DERIVED_MAX_SUBSCRIBERS\n'
+        '_nros_resolve_derivable_knob(NROS_ENTITY_MAX_SUBSCRIBERS\n'
+        '    "${CONFIG_NROS_ENTITY_MAX_SUBSCRIBERS}" NROS_DERIVED_MAX_SUBSCRIBERS\n'
         '    "entity inventory" "x.cmake")\n')
     if harvested != ROAD:
         print("  self-test FAIL: the resolver harvester -- got %r" % (harvested,))

@@ -39,20 +39,20 @@ board = "linux"
 # entities a later feature adds.
 [image.freertos]
 board = "mps2-an385-freertos"
-knobs.zenoh.max_publishers = 6
-knobs.zenoh.max_subscribers = 6
+knobs.entity.max_publishers = 6
+knobs.entity.max_subscribers = 6
 
 # The same raise on the Zephyr road, where it is rendered into Kconfig (a
 # generated image refuses the knob in a .conf fragment: system.toml is its one
-# source). The island's case was CONFIG_NROS_MAX_PUBLISHERS=13 over a derived
+# source). The island's case was CONFIG_NROS_ENTITY_MAX_PUBLISHERS=13 over a derived
 # 11, refused after link (issue 2618). The daily Zephyr lane builds this image
 # and checks its knob delivery; the merge queue checks the committed snapshot
 # of that build dir (tests/fixtures/knob-delivery/island-shaped-zephyr).
 [image.zephyr]
 board = "zephyr"
 os_config = ["zephyr/prj-posix.conf"]
-knobs.zenoh.max_publishers = 6
-knobs.zenoh.max_subscribers = 6
+knobs.entity.max_publishers = 6
+knobs.entity.max_subscribers = 6
 
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"

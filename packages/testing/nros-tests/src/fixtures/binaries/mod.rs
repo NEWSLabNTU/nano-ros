@@ -2582,7 +2582,7 @@ pub(crate) fn require_prebuilt_binary_fresh_zephyr(
     // board overlays, `CMakeLists.txt`, `src/`, plus the shared core and RMW
     // crates. Half 1 sees none of them: measured on `build-ws-rs-qos-entry-zenoh`,
     // the leaf's `prj.conf` appears ZERO times in the `.d`, whose only `.conf` is
-    // the build's own GENERATED one. That is how a `CONFIG_NROS_MAX_QUERYABLES`
+    // the build's own GENERATED one. That is how a `CONFIG_NROS_ENTITY_MAX_QUERYABLES`
     // bump left every image "fresh" with the old value compiled in, and the qos
     // and lifecycle cells failed with product-level assertions that sent two
     // sessions looking at the product instead of the image (0460, then 0466).

@@ -24,9 +24,9 @@ templates):
             REGISTRY knob is written `[image.<id>.knobs.<group>] <name>` (its
             `image_key`, read from the generated registry, never restated; an
             env row naming one is refused since phase-484 W8); any other
-            symbol is what an `[image.<id>] env` row renders to: through
-            `nros_zephyr_build::KCONFIG_PAIRS` when the two names are different
-            words, else `NROS_<X>`.
+            symbol is what an `[image.<id>] env` row renders to, `NROS_<X>`
+            (phase-581 W7 deleted the last per-row Kconfig override, so the
+            two names are always one word).
 
 `CONFIG_NROS=y` (enabling the module) is Zephyr's own switch and stays. So do
 the shared board fragments under `cmake/zephyr/` — the BOARD layer, not a leaf
@@ -108,25 +108,6 @@ def kconfig_model(text: str):
             elif choice == "NROS_API":
                 api.add(sym)
     return defined, rmw, api
-
-
-def kconfig_pairs(text: str) -> dict:
-    """{CONFIG symbol: env name} for every `KCONFIG_PAIRS` row — scoped to the
-    const, so a tuple in a doc comment or test is not read as a row."""
-    m = re.search(r"const KCONFIG_PAIRS[^=]*=\s*&\[(.*?)\];", text, re.S)
-    if not m:
-        raise SystemExit(f"check-leaf-conf-nros-knobs: no KCONFIG_PAIRS in {PAIRS_SRC}")
-    body = re.sub(r"//[^\n]*", "", m.group(1))
-    rows = re.findall(r'"([A-Z0-9_]+)"\s*,\s*"(CONFIG_[A-Z0-9_]+)"', body)
-    if not rows:
-        raise SystemExit("check-leaf-conf-nros-knobs: KCONFIG_PAIRS harvested empty")
-    # A symbol can now have several spellings (the registry's canonical
-    # `NROS_*` and its deprecated `ZPICO_*`); name the canonical one.
-    out = {}
-    for env, sym in rows:
-        if sym not in out or env.startswith("NROS_"):
-            out[sym] = env
-    return out
 
 
 def knob_keys(text: str) -> dict:
@@ -295,7 +276,7 @@ def model_and_pairs(root=ROOT):
     keys = knob_keys(reg)
     if not keys:
         raise SystemExit("check-leaf-conf-nros-knobs: KNOBS harvested empty")
-    return model, kconfig_pairs(reg), keys
+    return model, {}, keys
 
 
 def selftest(verbose=False) -> int:
@@ -312,18 +293,14 @@ def selftest(verbose=False) -> int:
     kc = ("menuconfig NROS\n bool \"n\"\nif NROS\nchoice NROS_API\nconfig NROS_C_API\n bool \"c\"\n"
           "config NROS_CPP_API\n bool \"cpp\"\nendchoice\nchoice NROS_RMW_BACKEND\n"
           "config NROS_RMW_ZENOH\n bool \"z\"\nconfig NROS_RMW_XRCE\n bool \"x\"\nendchoice\n"
-          "config NROS_EXECUTOR_MAX_CBS\n int \"c\"\nconfig NROS_MAX_QUERYABLES\n int \"q\"\n"
+          "config NROS_EXECUTOR_MAX_CBS\n int \"c\"\nconfig NROS_ENTITY_MAX_QUERYABLES\n int \"q\"\n"
           "config NROS_XRCE_AGENT_PORT\n int \"p\"\nendif\n")
     model = kconfig_model(kc)
-    pairs = kconfig_pairs('pub const KCONFIG_PAIRS: &[(&str, &str)] = &[\n'
-                          '    // a comment ("NOT_A", "CONFIG_ROW")\n'
-                          '    ("NROS_ZENOH_MAX_QUERYABLES", "CONFIG_NROS_MAX_QUERYABLES"),\n];\n')
-    chk("KCONFIG_PAIRS harvest is scoped and skips comments",
-        pairs == {"CONFIG_NROS_MAX_QUERYABLES": "NROS_ZENOH_MAX_QUERYABLES"})
+    pairs = {}
     files = {
         "examples/a/prj.conf": ("CONFIG_NROS=y\nCONFIG_NROS_RMW_XRCE=y\nCONFIG_NET_TCP=y\n"
                                 "# CONFIG_NROS_C_API=y\nCONFIG_NROS_C_API=y\n"
-                                "CONFIG_NROS_EXECUTOR_MAX_CBS=9\nCONFIG_NROS_MAX_QUERYABLES=4\n"
+                                "CONFIG_NROS_EXECUTOR_MAX_CBS=9\nCONFIG_NROS_ENTITY_MAX_QUERYABLES=4\n"
                                 "CONFIG_NROS_XRCE_AGENT_PORT=2018\nCONFIG_NROS_UNDEFINED=1\n"),
         "examples/b/prj.conf": "CONFIG_NROS=y\nCONFIG_NET_TCP=y\n",
     }
@@ -338,8 +315,8 @@ def selftest(verbose=False) -> int:
     chk("the language API is refused", any(f[2] == "CONFIG_NROS_C_API" and f[4] == "api" for f in found))
     chk("a registry knob names its knobs key, not an env row",
         ("CONFIG_NROS_EXECUTOR_MAX_CBS", "knob", "[image.<id>.knobs.executor] max_cbs = 9") in kinds)
-    chk("a non-registry KCONFIG_PAIRS symbol names the PAIRED env word",
-        ("CONFIG_NROS_MAX_QUERYABLES", "knob", 'env = { NROS_ZENOH_MAX_QUERYABLES = "4" }') in kinds)
+    chk("a non-registry symbol names its own env word",
+        ("CONFIG_NROS_ENTITY_MAX_QUERYABLES", "knob", 'env = { NROS_ENTITY_MAX_QUERYABLES = "4" }') in kinds)
     chk("the endpoint names `locator`", any(f[4] == "endpoint" for f in found))
     chk("CONFIG_NROS, a Zephyr symbol, a comment and an undefined symbol pass",
         len(found) == 5 and not any(f[0] == "examples/b/prj.conf" for f in found))

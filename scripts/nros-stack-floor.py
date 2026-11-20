@@ -2384,8 +2384,8 @@ POLICY_KINDS = ("cut", "external", "frame")
 # The image SHAPE an allowance was measured on: the derived entity counts the
 # build already carries (issue 2400, ruled 2026-11-12). An image whose counts
 # differ from its row's is not the image that was measured, and is warned.
-SHAPE_KNOBS = ("NROS_EXECUTOR_MAX_NODES", "NROS_MAX_PUBLISHERS", "NROS_MAX_SUBSCRIBERS",
-               "NROS_MAX_QUERYABLES", "NROS_EXECUTOR_MAX_CBS", "NROS_EXECUTOR_ACTION_CLIENTS")
+SHAPE_KNOBS = ("NROS_EXECUTOR_MAX_NODES", "NROS_ENTITY_MAX_PUBLISHERS", "NROS_ENTITY_MAX_SUBSCRIBERS",
+               "NROS_ENTITY_MAX_QUERYABLES", "NROS_EXECUTOR_MAX_CBS", "NROS_EXECUTOR_ACTION_CLIENTS")
 # `<template>/<lang>/<rmw>@<board>`: the key `nros new` stamps (the CLI's
 # `stack_floor_template_key`, the one spelling). Any other key is a
 # `<bringup>@<board>`.
@@ -3497,13 +3497,13 @@ def self_test() -> int:
           "allowance": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
                          "bytes": 0, "issue": "2402", "reason": "r",
                          "measured": {"peak": 1, "static": 1, "method": "m", "issue": "2402"},
-                         "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
+                         "shape": {"NROS_ENTITY_MAX_PUBLISHERS": 1}}]}
     check("bind: an allowance under a bind rmw is refused",
           any("[[observed]]" in p for p in validate_table(vt, set())))
     vo = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "indirect": {"zenoh": {"mode": "bind"}},
           "observed": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
                         "peak": 100, "static": 150, "method": "m", "issue": "2402",
-                        "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
+                        "shape": {"NROS_ENTITY_MAX_PUBLISHERS": 1}}]}
     check("bind: a complete observed row validates", validate_table(vo, set()) == [])
     vo["observed"][0]["static"] = 90
     check("bind: an observed row whose static is below its peak is refused",
@@ -3828,7 +3828,7 @@ def self_test() -> int:
                            "measured": {"peak": 11696, "static": 24312, "method": "twin",
                                         "issue": "2400"}}]}
     for row in good["allowance"]:
-        row["shape"] = {"NROS_MAX_PUBLISHERS": 1, "NROS_EXECUTOR_MAX_NODES": 1}
+        row["shape"] = {"NROS_ENTITY_MAX_PUBLISHERS": 1, "NROS_EXECUTOR_MAX_NODES": 1}
     check("a valid table passes (a negative allowance included)",
           validate_table(good, {"2360", "2402", "2400"}) == [])
     bad = json.loads(json.dumps(good))
@@ -3859,10 +3859,10 @@ def self_test() -> int:
           any("shape.NROS_MAX_WIDGETS" in p for p in validate_table(bad, set())))
     row = good["allowance"][0]
     check("shape: equal counts are no difference",
-          shape_differences(row, {"NROS_MAX_PUBLISHERS": 1, "NROS_EXECUTOR_MAX_NODES": 1}) == [])
+          shape_differences(row, {"NROS_ENTITY_MAX_PUBLISHERS": 1, "NROS_EXECUTOR_MAX_NODES": 1}) == [])
     check("shape: a count that differs is named",
-          shape_differences(row, {"NROS_MAX_PUBLISHERS": 2})
-          == ["NROS_MAX_PUBLISHERS measured 1, this image 2"])
+          shape_differences(row, {"NROS_ENTITY_MAX_PUBLISHERS": 2})
+          == ["NROS_ENTITY_MAX_PUBLISHERS measured 1, this image 2"])
     check("shape: a count the build did not state is not compared",
           shape_differences(row, {}) == [])
     import tempfile

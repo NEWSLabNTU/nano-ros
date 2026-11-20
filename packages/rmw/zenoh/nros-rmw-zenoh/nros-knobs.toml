@@ -288,158 +288,72 @@ instead = "zenoh-pico 1.10 runs the lease and keep-alive on its executor thread,
 
 [[knob]]
 key = "zenoh.max_large_subscribers"
-transitional = { kconfig = "NROS_MAX_LARGE_SUBSCRIBERS" }
 scope = "image"
-class = "public"
+class = "carrier"
+carries = "ENTITY_MAX_LARGE_SUBSCRIBERS"
 retired = [{ spelling = "env:ZPICO_MAX_LARGE_SUBSCRIBERS" }]
-type = "int"
-prompt = "Subscribers served from the large payload class (-1 = derive)"
-kconfig_if = "NROS_RMW_ZENOH"
-kconfig_attrs = [
-    "default -1",
-]
 help = '''
-Subscribers whose rx_buffer_hint exceeds SUBSCRIBER_SIZE_THRESHOLD and
-are therefore served from LARGE_PAYLOADS. Bounded separately from
-ZPICO_MAX_SUBSCRIBERS so raising SUBSCRIBER_LARGE_SIZE for one
-image-scale topic does not multiply across every subscriber.
-Maps to ZPICO_MAX_LARGE_SUBSCRIBERS.
-
--1 means DERIVE it: how many types in the linked interface closure
-exceed the class split. Do not count it by reading generated C++
-headers BY EYE: they state an ESTIMATE and not a bound, and a count
-made that way can give 2 where the derived answer is 0.
-
-0 is a legal, meaningful value and NOT the same as -1: it claims that
-every type this image receives fits the small class, and the large pool
-becomes zero bytes instead of RING_DEPTH x LARGE_SIZE. A hint no class
-can hold is then refused at create_subscription rather than served a
-block too small for it.
-
-Derived counts TYPES, not subscriptions -- an upper bound, since the
-closure is what is linked, not what is subscribed. See
-NROS_SUBSCRIBER_BUFFER_SIZE for the rest of that caveat.
+The zenoh shim's large subscribers pool (the C macro
+ZPICO_MAX_LARGE_SUBSCRIBERS). Not a setting: it is derived from the
+demand, entity.max_large_subscribers, as is. State
+`[image.<id>.knobs.entity] max_large_subscribers` instead.
 '''
 
 [[knob]]
 key = "zenoh.max_liveliness"
-transitional = { kconfig = "NROS_MAX_LIVELINESS" }
 scope = "image"
-class = "public"
+class = "carrier"
+carries = "ENTITY_MAX_LIVELINESS"
 retired = [{ spelling = "env:ZPICO_MAX_LIVELINESS" }]
-type = "int"
-prompt = "Maximum concurrent liveliness tokens (-1 = derive)"
-kconfig_if = "NROS_RMW_ZENOH"
-kconfig_attrs = [
-    "default -1",
-]
 help = '''
-Maximum number of concurrent liveliness tokens in the shim layer.
-Maps to ZPICO_MAX_LIVELINESS.
-
-`-1` DERIVES this from the image's entity inventory,
-on the same ladder as NROS_MAX_QUERYABLES. Stating a number here WINS.
-
-Every token is declared by THIS session, never by a peer: one for the
-session's own node, one per node name, and one per publisher,
-subscriber, service server and service client (three per action
-client, which the derivation multiplies). The graph cache's own
-subscriber takes no slot. An image with no inventory (nothing
-declared) keeps the zpico default of 16.
-
-Short is not a boot failure: the entity works and is invisible to
-`ros2 node list`, and the shim logs the exhaustion naming this knob.
-An image that BRIDGES (runtime-named nodes, declared nowhere) must
-state it.
+The zenoh shim's liveliness pool (the C macro ZPICO_MAX_LIVELINESS). Not a
+setting: it is derived from the demand, entity.max_liveliness,
+floored at 1 because it sizes a fixed C array, where zero is not a smaller
+pool (the floor is applied by each producer of this variable, never in the
+shared derivation).
+State `[image.<id>.knobs.entity] max_liveliness` instead.
 '''
 
 [[knob]]
 key = "zenoh.max_pending_gets"
-transitional = { kconfig = "NROS_MAX_PENDING_GETS" }
 scope = "image"
-class = "public"
+class = "carrier"
+carries = "ENTITY_MAX_PENDING_GETS"
 retired = [{ spelling = "env:ZPICO_MAX_PENDING_GETS" }]
-type = "int"
-prompt = "Maximum concurrent pending get operations"
-kconfig_if = "NROS_RMW_ZENOH"
-kconfig_attrs = [
-    "default 4",
-]
 help = '''
-Maximum number of concurrent pending get (service call) operations.
-Maps to ZPICO_MAX_PENDING_GETS.
+The zenoh shim's pending gets pool (the C macro ZPICO_MAX_PENDING_GETS).
+Not a setting: it is derived from the demand, entity.max_pending_gets,
+as is. State `[image.<id>.knobs.entity] max_pending_gets` instead.
 '''
 
 [[knob]]
 key = "zenoh.max_publishers"
-transitional = { kconfig = "NROS_MAX_PUBLISHERS" }
 scope = "image"
-class = "public"
+class = "carrier"
+carries = "ENTITY_MAX_PUBLISHERS"
 retired = [{ spelling = "env:ZPICO_MAX_PUBLISHERS" }]
-type = "int"
-prompt = "Maximum concurrent publishers (-1 = derive)"
-kconfig_if = "NROS_RMW_ZENOH"
-kconfig_attrs = [
-    "default -1",
-]
 help = '''
-Maximum number of concurrent zenoh publishers in the shim layer.
-Maps to ZPICO_MAX_PUBLISHERS.
-
-`-1` DERIVES this from the image's entity inventory
-(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
-and suppresses the derivation, which is a fine thing to do deliberately
-and a silent cost otherwise.
-
-The derived value counts what the SESSION opens, which is not what the
-author declares: a declared action server is one entity that costs three
-queryables and two publishers, and an action client one subscription.
-Those multipliers live beside the calls that decide them.
-
-NOT counted, because a feature enables them and the inventory cannot see
-it: the parameter (6) and lifecycle (5) service families. An image
-carrying either must state this knob.
+The zenoh shim's publishers pool (the C macro ZPICO_MAX_PUBLISHERS). Not a
+setting: it is derived from the demand, entity.max_publishers,
+floored at 1 because it sizes a fixed C array, where zero is not a smaller
+pool (the floor is applied by each producer of this variable, never in the
+shared derivation).
+State `[image.<id>.knobs.entity] max_publishers` instead.
 '''
 
 [[knob]]
 key = "zenoh.max_queryables"
-transitional = { kconfig = "NROS_MAX_QUERYABLES" }
 scope = "image"
-class = "public"
+class = "carrier"
+carries = "ENTITY_MAX_QUERYABLES"
 retired = [{ spelling = "env:ZPICO_MAX_QUERYABLES" }]
-type = "int"
-prompt = "Maximum concurrent queryables (-1 = derive)"
-kconfig_if = "NROS_RMW_ZENOH"
-kconfig_attrs = [
-    "default -1",
-]
 help = '''
-Maximum number of concurrent zenoh queryables (service servers) in the shim.
-Maps to ZPICO_MAX_QUERYABLES.
-
-`-1` DERIVES this from the image's entity inventory
-(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
-and suppresses the derivation, which is a fine thing to do deliberately
-and a silent cost otherwise.
-
-The derived value counts what the SESSION opens, which is not what the
-author declares: a declared action server is one entity that costs three
-queryables and two publishers, and an action client one subscription.
-Those multipliers live beside the calls that decide them.
-
-NOT counted, because a feature enables them and the inventory cannot see
-it: the parameter (6) and lifecycle (5) service families. An image
-carrying either must state this knob.
-
-The PARAMETER family is per NODE. `ros2 param list`
-enumerates an image's nodes, so one set of six services is registered
-under each node's own fully-qualified name: an N-node image carrying
-`[param_services]` claims 6*N slots before the application declares
-anything, plus 5 for the lifecycle family, which is still one set on the
-executor. A value below that DERIVED floor is refused at BUILD time by
-`nros-zpico-build` and the refusal names this knob -- it used to be a
-runtime `ServiceServerCreationFailed` with no explanation.
-Two nodes already need 12, which is over the historical default of 8.
+The zenoh shim's queryables pool (the C macro ZPICO_MAX_QUERYABLES). Not a
+setting: it is derived from the demand, entity.max_queryables,
+floored at 1 because it sizes a fixed C array, where zero is not a smaller
+pool (the floor is applied by each producer of this variable, never in the
+shared derivation).
+State `[image.<id>.knobs.entity] max_queryables` instead.
 '''
 
 [[knob]]
@@ -450,33 +364,17 @@ retired = [{ spelling = "env:ZPICO_MAX_SESSIONS" }]
 
 [[knob]]
 key = "zenoh.max_subscribers"
-transitional = { kconfig = "NROS_MAX_SUBSCRIBERS" }
 scope = "image"
-class = "public"
+class = "carrier"
+carries = "ENTITY_MAX_SUBSCRIBERS"
 retired = [{ spelling = "env:ZPICO_MAX_SUBSCRIBERS" }]
-type = "int"
-prompt = "Maximum concurrent subscribers (-1 = derive)"
-kconfig_if = "NROS_RMW_ZENOH"
-kconfig_attrs = [
-    "default -1",
-]
 help = '''
-Maximum number of concurrent zenoh subscribers in the shim layer.
-Maps to ZPICO_MAX_SUBSCRIBERS.
-
-`-1` DERIVES this from the image's entity inventory
-(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
-and suppresses the derivation, which is a fine thing to do deliberately
-and a silent cost otherwise.
-
-The derived value counts what the SESSION opens, which is not what the
-author declares: a declared action server is one entity that costs three
-queryables and two publishers, and an action client one subscription.
-Those multipliers live beside the calls that decide them.
-
-NOT counted, because a feature enables them and the inventory cannot see
-it: the parameter (6) and lifecycle (5) service families. An image
-carrying either must state this knob.
+The zenoh shim's subscribers pool (the C macro ZPICO_MAX_SUBSCRIBERS). Not a
+setting: it is derived from the demand, entity.max_subscribers,
+floored at 1 because it sizes a fixed C array, where zero is not a smaller
+pool (the floor is applied by each producer of this variable, never in the
+shared derivation).
+State `[image.<id>.knobs.entity] max_subscribers` instead.
 '''
 
 [[knob]]

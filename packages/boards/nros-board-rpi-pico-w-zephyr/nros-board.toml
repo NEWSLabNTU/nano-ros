@@ -33,7 +33,7 @@
 # here pays for the same budget. Two of them cap what an image may declare:
 # `max_subscribers = 1` and `max_queryables = 1` (one service server, and a
 # node with parameter or lifecycle services claims more). An image that needs
-# more states the knob itself, in `[image.<id>.knobs.zenoh]`, and that wins
+# more states the knob itself, in `[image.<id>.knobs.entity]`, and that wins
 # (RFC-0049).
 #
 # The 32 KiB heap is the Nucleo ethernet image's number: below the C talker's
@@ -117,11 +117,13 @@ zephyr_line = "3.7"
 rust_targets = ["thumbv6m-none-eabi"]
 
 # The board's RAM budget (issue 2194; the header above has the numbers).
-[knobs.zenoh]
+[knobs.entity]
 max_large_subscribers = 0
 max_subscribers = 1
-service_buffer_bytes = 1024
 max_queryables = 1
+
+[knobs.zenoh]
+service_buffer_bytes = 1024
 
 [knobs.memory]
 heap_bytes = 32768

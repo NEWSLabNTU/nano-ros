@@ -685,7 +685,7 @@ function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
         # Someone stated a number. It wins over the derivation, in both
         # directions: that is what "a derived value is a DEFAULT" means. But
         # not in silence any more (phase-478 D2, landed with phase-474 I5):
-        # the island's CONFIG_NROS_MAX_LIVELINESS=32 went 26 short of the
+        # the island's stated liveliness demand of 32 went 26 short of the
         # derivation the day `params:` was declared, and nothing said so.
         _nros_compare_stated_to_derived(${env_name} "${kconfig_value}"
             "Kconfig (CONFIG_${env_name} in a .conf fragment or -D)"
@@ -811,32 +811,37 @@ function(nros_resolve_knobs)
     # has exactly ONE caller, and the graph cache and liveliness tokens have
     # their own storage rather than sharing the subscriber pool -- so there is
     # no shim addend to carry here.
-    # Written out rather than looped: the knob is NROS_MAX_SUBSCRIBERS and the
-    # derived variable is NROS_DERIVED_MAX_SUBSCRIBERS, so a loop that builds
-    # `NROS_DERIVED_${_pool}` produces NROS_DERIVED_NROS_MAX_SUBSCRIBERS, which
-    # names nothing. It resolves EMPTY rather than failing, the empty reaches
+    # phase-581 W7 (RFC-0140 D3) -- these are the entity DEMAND rows
+    # (`entity.max_*`, CONFIG_NROS_ENTITY_MAX_*); the zenoh pools below are
+    # carriers derived from them through the floor, with no Kconfig symbol.
+    #
+    # Written out rather than looped: the knob is NROS_ENTITY_MAX_SUBSCRIBERS
+    # and the derived variable is NROS_DERIVED_MAX_SUBSCRIBERS, so a loop that
+    # builds `NROS_DERIVED_${_pool}` produces
+    # NROS_DERIVED_NROS_ENTITY_MAX_SUBSCRIBERS, which names nothing. It
+    # resolves EMPTY rather than failing, the empty reaches
     # zpico.c, and the diagnostic is
     #     error: flexible array member not at end of struct
     # on a struct nobody edited. Spelling both names in full is the point.
-    _nros_resolve_derivable_knob(NROS_MAX_SUBSCRIBERS
-        "${CONFIG_NROS_MAX_SUBSCRIBERS}" NROS_DERIVED_MAX_SUBSCRIBERS
+    _nros_resolve_derivable_knob(NROS_ENTITY_MAX_SUBSCRIBERS
+        "${CONFIG_NROS_ENTITY_MAX_SUBSCRIBERS}" NROS_DERIVED_MAX_SUBSCRIBERS
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     _nros_resolve_derivable_knob(NROS_RMW_SUBSCRIBER_SLOTS
         "${CONFIG_NROS_RMW_SUBSCRIBER_SLOTS}" NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-    _nros_resolve_derivable_knob(NROS_MAX_PUBLISHERS
-        "${CONFIG_NROS_MAX_PUBLISHERS}" NROS_DERIVED_MAX_PUBLISHERS
+    _nros_resolve_derivable_knob(NROS_ENTITY_MAX_PUBLISHERS
+        "${CONFIG_NROS_ENTITY_MAX_PUBLISHERS}" NROS_DERIVED_MAX_PUBLISHERS
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-    _nros_resolve_derivable_knob(NROS_MAX_QUERYABLES
-        "${CONFIG_NROS_MAX_QUERYABLES}" NROS_DERIVED_MAX_QUERYABLES
+    _nros_resolve_derivable_knob(NROS_ENTITY_MAX_QUERYABLES
+        "${CONFIG_NROS_ENTITY_MAX_QUERYABLES}" NROS_DERIVED_MAX_QUERYABLES
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     # phase-412 W2 -- the LIVELINESS pool: every token this session declares,
     # which the inventory already counts (the session pools above plus node
     # names and service clients). Resolved beside its siblings rather than in
     # the zenoh block below so a non-zenoh image still resolves what the
     # fragment derived, which is what `check-knob-delivery` compares.
-    _nros_resolve_derivable_knob(NROS_MAX_LIVELINESS
-        "${CONFIG_NROS_MAX_LIVELINESS}" NROS_DERIVED_MAX_LIVELINESS
+    _nros_resolve_derivable_knob(NROS_ENTITY_MAX_LIVELINESS
+        "${CONFIG_NROS_ENTITY_MAX_LIVELINESS}" NROS_DERIVED_MAX_LIVELINESS
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     # phase-412 -- the POSIX mutex pool bounds the subscriber count, and nothing
     # said so until an island image spent days failing at the eleventh
@@ -1071,11 +1076,11 @@ function(nros_resolve_knobs)
         # derived numbers reach the XRCE pools where 0 is legal and load-bearing
         # (issue 1033). See `_nros_c_array_pool_floor` above.
         _nros_c_array_pool_floor(_nros_zpico_pubs
-            "${NROS_RESOLVED_NROS_MAX_PUBLISHERS}" ZPICO_MAX_PUBLISHERS)
+            "${NROS_RESOLVED_NROS_ENTITY_MAX_PUBLISHERS}" ZPICO_MAX_PUBLISHERS)
         _nros_c_array_pool_floor(_nros_zpico_subs
-            "${NROS_RESOLVED_NROS_MAX_SUBSCRIBERS}" ZPICO_MAX_SUBSCRIBERS)
+            "${NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS}" ZPICO_MAX_SUBSCRIBERS)
         _nros_c_array_pool_floor(_nros_zpico_qrys
-            "${NROS_RESOLVED_NROS_MAX_QUERYABLES}" ZPICO_MAX_QUERYABLES)
+            "${NROS_RESOLVED_NROS_ENTITY_MAX_QUERYABLES}" ZPICO_MAX_QUERYABLES)
         _nros_resolve_knob(NROS_ZENOH_MAX_PUBLISHERS "${_nros_zpico_pubs}")
         _nros_resolve_knob(NROS_ZENOH_MAX_SUBSCRIBERS "${_nros_zpico_subs}")
         _nros_resolve_knob(NROS_ZENOH_MAX_QUERYABLES "${_nros_zpico_qrys}")
@@ -1172,9 +1177,14 @@ function(nros_resolve_knobs)
         # derived demand is never below 1 (the session's own node token), but
         # the floor is the rule, not an inference from today's formula.
         _nros_c_array_pool_floor(_nros_zpico_lvl
-            "${NROS_RESOLVED_NROS_MAX_LIVELINESS}" ZPICO_MAX_LIVELINESS)
+            "${NROS_RESOLVED_NROS_ENTITY_MAX_LIVELINESS}" ZPICO_MAX_LIVELINESS)
         _nros_resolve_knob(NROS_ZENOH_MAX_LIVELINESS "${_nros_zpico_lvl}")
-        _nros_resolve_knob(NROS_ZENOH_MAX_PENDING_GETS "${CONFIG_NROS_MAX_PENDING_GETS}")
+        # phase-581 W7 -- the demand, then the pool it carries to, as is: the
+        # table is never derived, and a stated 0 reaches zpico.c's own
+        # `#if ZPICO_MAX_PENDING_GETS < 1` refusal.
+        _nros_resolve_knob(NROS_ENTITY_MAX_PENDING_GETS "${CONFIG_NROS_ENTITY_MAX_PENDING_GETS}")
+        _nros_resolve_knob(NROS_ZENOH_MAX_PENDING_GETS
+            "${NROS_RESOLVED_NROS_ENTITY_MAX_PENDING_GETS}")
         _nros_resolve_knob(NROS_ZENOH_GET_REPLY_BUFFER_BYTES "${CONFIG_NROS_ZENOH_GET_REPLY_BUFFER_BYTES}")
         _nros_resolve_knob(NROS_ZENOH_GET_POLL_INTERVAL_MS "${CONFIG_NROS_ZENOH_GET_POLL_INTERVAL_MS}")
         # RFC-0074 / phase-462 W6a/W6b -- the read task's frame budget, on the
@@ -1331,9 +1341,16 @@ function(nros_resolve_knobs)
         # the one that has an answer of ZERO -- W4 made that legal precisely so
         # an image whose types all fit the small class stops reserving
         # RING_DEPTH x LARGE_SIZE for a class it never routes into.
-        _nros_resolve_derivable_knob(NROS_ZENOH_MAX_LARGE_SUBSCRIBERS
-            "${CONFIG_NROS_MAX_LARGE_SUBSCRIBERS}"
+        # phase-581 W7 -- the demand, then the pool it carries to, unfloored:
+        # zero large blocks is an answer here.
+        _nros_resolve_derivable_knob(NROS_ENTITY_MAX_LARGE_SUBSCRIBERS
+            "${CONFIG_NROS_ENTITY_MAX_LARGE_SUBSCRIBERS}"
             NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
+        if(DEFINED NROS_RESOLVED_NROS_ENTITY_MAX_LARGE_SUBSCRIBERS)
+            _nros_resolve_knob(NROS_ZENOH_MAX_LARGE_SUBSCRIBERS
+                "${NROS_RESOLVED_NROS_ENTITY_MAX_LARGE_SUBSCRIBERS}"
+                "${NROS_KNOB_SOURCE_NROS_ENTITY_MAX_LARGE_SUBSCRIBERS}")
+        endif()
         _nros_resolve_derivable_knob(NROS_ZENOH_SUBSCRIBER_LARGE_BYTES
             "${CONFIG_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES}"
             NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)

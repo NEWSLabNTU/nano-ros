@@ -2384,6 +2384,157 @@ config NROS_ACTION_INBOX_DEPTH
       NROS_ACTION_INBOX_DEPTH.
 
 
+# prompt: Subscribers served from the large payload class (-1 = derive)
+config NROS_ENTITY_MAX_LARGE_SUBSCRIBERS
+    int
+    default -1
+    help
+      Subscribers whose rx_buffer_hint exceeds SUBSCRIBER_SIZE_THRESHOLD and
+      are therefore served from LARGE_PAYLOADS. Bounded separately from
+      entity.max_subscribers so raising SUBSCRIBER_LARGE_SIZE for one
+      image-scale topic does not multiply across every subscriber. This is the
+      DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_large_subscribers
+      (NROS_ZENOH_MAX_LARGE_SUBSCRIBERS, the C macro
+      ZPICO_MAX_LARGE_SUBSCRIBERS), is derived from it.
+
+      -1 means DERIVE it: how many types in the linked interface closure
+      exceed the class split. Do not count it by reading generated C++
+      headers BY EYE: they state an ESTIMATE and not a bound, and a count
+      made that way can give 2 where the derived answer is 0.
+
+      0 is a legal, meaningful value and NOT the same as -1: it claims that
+      every type this image receives fits the small class, and the large pool
+      becomes zero bytes instead of RING_DEPTH x LARGE_SIZE. A hint no class
+      can hold is then refused at create_subscription rather than served a
+      block too small for it.
+
+      Derived counts TYPES, not subscriptions -- an upper bound, since the
+      closure is what is linked, not what is subscribed. See
+      NROS_SUBSCRIBER_BUFFER_BYTES for the rest of that caveat.
+
+
+# prompt: Maximum concurrent liveliness tokens (-1 = derive)
+config NROS_ENTITY_MAX_LIVELINESS
+    int
+    default -1
+    help
+      Maximum number of liveliness tokens this image declares at once.
+      This is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_liveliness
+      (NROS_ZENOH_MAX_LIVELINESS, the C macro ZPICO_MAX_LIVELINESS), is derived
+      from it, floored at 1.
+
+      `-1` DERIVES this from the image's entity inventory,
+      on the same ladder as NROS_ENTITY_MAX_QUERYABLES. Stating a number here WINS.
+
+      Every token is declared by THIS session, never by a peer: one for the
+      session's own node, one per node name, and one per publisher,
+      subscriber, service server and service client (three per action
+      client, which the derivation multiplies). The graph cache's own
+      subscriber takes no slot. An image with no inventory (nothing
+      declared) keeps the zpico default of 16.
+
+      Short is not a boot failure: the entity works and is invisible to
+      `ros2 node list`, and the shim logs the exhaustion naming this knob.
+      An image that BRIDGES (runtime-named nodes, declared nowhere) must
+      state it.
+
+
+# prompt: Maximum concurrent pending get operations
+config NROS_ENTITY_MAX_PENDING_GETS
+    int
+    default 4
+    help
+      Maximum number of concurrent pending get (service call) operations. This
+      is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_pending_gets
+      (NROS_ZENOH_MAX_PENDING_GETS, the C macro ZPICO_MAX_PENDING_GETS), is
+      derived from it.
+
+
+# prompt: Maximum concurrent publishers (-1 = derive)
+config NROS_ENTITY_MAX_PUBLISHERS
+    int
+    default -1
+    help
+      Maximum number of publishers this image opens at once.
+      This is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_publishers
+      (NROS_ZENOH_MAX_PUBLISHERS, the C macro ZPICO_MAX_PUBLISHERS), is derived
+      from it, floored at 1.
+
+      `-1` DERIVES this from the image's entity inventory
+      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+      and suppresses the derivation, which is a fine thing to do deliberately
+      and a silent cost otherwise.
+
+      The derived value counts what the SESSION opens, which is not what the
+      author declares: a declared action server is one entity that costs three
+      queryables and two publishers, and an action client one subscription.
+      Those multipliers live beside the calls that decide them.
+
+      NOT counted, because a feature enables them and the inventory cannot see
+      it: the parameter (6) and lifecycle (5) service families. An image
+      carrying either must state this knob.
+
+
+# prompt: Maximum concurrent queryables (-1 = derive)
+config NROS_ENTITY_MAX_QUERYABLES
+    int
+    default -1
+    help
+      Maximum number of queryables (service servers) this image opens at once.
+      This is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_queryables
+      (NROS_ZENOH_MAX_QUERYABLES, the C macro ZPICO_MAX_QUERYABLES), is derived
+      from it, floored at 1.
+
+      `-1` DERIVES this from the image's entity inventory
+      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+      and suppresses the derivation, which is a fine thing to do deliberately
+      and a silent cost otherwise.
+
+      The derived value counts what the SESSION opens, which is not what the
+      author declares: a declared action server is one entity that costs three
+      queryables and two publishers, and an action client one subscription.
+      Those multipliers live beside the calls that decide them.
+
+      NOT counted, because a feature enables them and the inventory cannot see
+      it: the parameter (6) and lifecycle (5) service families. An image
+      carrying either must state this knob.
+
+      The PARAMETER family is per NODE. `ros2 param list`
+      enumerates an image's nodes, so one set of six services is registered
+      under each node's own fully-qualified name: an N-node image carrying
+      `[param_services]` claims 6*N slots before the application declares
+      anything, plus 5 for the lifecycle family, which is still one set on the
+      executor. A value below that DERIVED floor is refused at BUILD time by
+      `nros-zpico-build` and the refusal names this knob -- it used to be a
+      runtime `ServiceServerCreationFailed` with no explanation.
+      Two nodes already need 12, which is over the historical default of 8.
+
+
+# prompt: Maximum concurrent subscribers (-1 = derive)
+config NROS_ENTITY_MAX_SUBSCRIBERS
+    int
+    default -1
+    help
+      Maximum number of subscriptions this image opens at once.
+      This is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_subscribers
+      (NROS_ZENOH_MAX_SUBSCRIBERS, the C macro ZPICO_MAX_SUBSCRIBERS), is derived
+      from it, floored at 1.
+
+      `-1` DERIVES this from the image's entity inventory
+      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+      and suppresses the derivation, which is a fine thing to do deliberately
+      and a silent cost otherwise.
+
+      The derived value counts what the SESSION opens, which is not what the
+      author declares: a declared action server is one entity that costs three
+      queryables and two publishers, and an action client one subscription.
+      Those multipliers live beside the calls that decide them.
+
+      NOT counted, because a feature enables them and the inventory cannot see
+      it: the parameter (6) and lifecycle (5) service families. An image
+      carrying either must state this knob.
+
+
 # prompt: Parameter/lifecycle service inbox ring depth
 config NROS_PARAMS_SERVICE_INBOX_DEPTH
     int
@@ -2631,145 +2782,6 @@ config NROS_ZENOH_GRAPH_MAX_ENTITIES
       topic list verbs discard the count entirely and simply under-report.
       Being generous costs .bss; being short costs a hang and a wrong graph
       answer.
-
-
-# prompt: Subscribers served from the large payload class (-1 = derive)
-config NROS_MAX_LARGE_SUBSCRIBERS
-    int
-    default -1
-    help
-      Subscribers whose rx_buffer_hint exceeds SUBSCRIBER_SIZE_THRESHOLD and
-      are therefore served from LARGE_PAYLOADS. Bounded separately from
-      ZPICO_MAX_SUBSCRIBERS so raising SUBSCRIBER_LARGE_SIZE for one
-      image-scale topic does not multiply across every subscriber.
-      Maps to ZPICO_MAX_LARGE_SUBSCRIBERS.
-
-      -1 means DERIVE it: how many types in the linked interface closure
-      exceed the class split. Do not count it by reading generated C++
-      headers BY EYE: they state an ESTIMATE and not a bound, and a count
-      made that way can give 2 where the derived answer is 0.
-
-      0 is a legal, meaningful value and NOT the same as -1: it claims that
-      every type this image receives fits the small class, and the large pool
-      becomes zero bytes instead of RING_DEPTH x LARGE_SIZE. A hint no class
-      can hold is then refused at create_subscription rather than served a
-      block too small for it.
-
-      Derived counts TYPES, not subscriptions -- an upper bound, since the
-      closure is what is linked, not what is subscribed. See
-      NROS_SUBSCRIBER_BUFFER_SIZE for the rest of that caveat.
-
-
-# prompt: Maximum concurrent liveliness tokens (-1 = derive)
-config NROS_MAX_LIVELINESS
-    int
-    default -1
-    help
-      Maximum number of concurrent liveliness tokens in the shim layer.
-      Maps to ZPICO_MAX_LIVELINESS.
-
-      `-1` DERIVES this from the image's entity inventory,
-      on the same ladder as NROS_MAX_QUERYABLES. Stating a number here WINS.
-
-      Every token is declared by THIS session, never by a peer: one for the
-      session's own node, one per node name, and one per publisher,
-      subscriber, service server and service client (three per action
-      client, which the derivation multiplies). The graph cache's own
-      subscriber takes no slot. An image with no inventory (nothing
-      declared) keeps the zpico default of 16.
-
-      Short is not a boot failure: the entity works and is invisible to
-      `ros2 node list`, and the shim logs the exhaustion naming this knob.
-      An image that BRIDGES (runtime-named nodes, declared nowhere) must
-      state it.
-
-
-# prompt: Maximum concurrent pending get operations
-config NROS_MAX_PENDING_GETS
-    int
-    default 4
-    help
-      Maximum number of concurrent pending get (service call) operations.
-      Maps to ZPICO_MAX_PENDING_GETS.
-
-
-# prompt: Maximum concurrent publishers (-1 = derive)
-config NROS_MAX_PUBLISHERS
-    int
-    default -1
-    help
-      Maximum number of concurrent zenoh publishers in the shim layer.
-      Maps to ZPICO_MAX_PUBLISHERS.
-
-      `-1` DERIVES this from the image's entity inventory
-      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
-      and suppresses the derivation, which is a fine thing to do deliberately
-      and a silent cost otherwise.
-
-      The derived value counts what the SESSION opens, which is not what the
-      author declares: a declared action server is one entity that costs three
-      queryables and two publishers, and an action client one subscription.
-      Those multipliers live beside the calls that decide them.
-
-      NOT counted, because a feature enables them and the inventory cannot see
-      it: the parameter (6) and lifecycle (5) service families. An image
-      carrying either must state this knob.
-
-
-# prompt: Maximum concurrent queryables (-1 = derive)
-config NROS_MAX_QUERYABLES
-    int
-    default -1
-    help
-      Maximum number of concurrent zenoh queryables (service servers) in the shim.
-      Maps to ZPICO_MAX_QUERYABLES.
-
-      `-1` DERIVES this from the image's entity inventory
-      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
-      and suppresses the derivation, which is a fine thing to do deliberately
-      and a silent cost otherwise.
-
-      The derived value counts what the SESSION opens, which is not what the
-      author declares: a declared action server is one entity that costs three
-      queryables and two publishers, and an action client one subscription.
-      Those multipliers live beside the calls that decide them.
-
-      NOT counted, because a feature enables them and the inventory cannot see
-      it: the parameter (6) and lifecycle (5) service families. An image
-      carrying either must state this knob.
-
-      The PARAMETER family is per NODE. `ros2 param list`
-      enumerates an image's nodes, so one set of six services is registered
-      under each node's own fully-qualified name: an N-node image carrying
-      `[param_services]` claims 6*N slots before the application declares
-      anything, plus 5 for the lifecycle family, which is still one set on the
-      executor. A value below that DERIVED floor is refused at BUILD time by
-      `nros-zpico-build` and the refusal names this knob -- it used to be a
-      runtime `ServiceServerCreationFailed` with no explanation.
-      Two nodes already need 12, which is over the historical default of 8.
-
-
-# prompt: Maximum concurrent subscribers (-1 = derive)
-config NROS_MAX_SUBSCRIBERS
-    int
-    default -1
-    help
-      Maximum number of concurrent zenoh subscribers in the shim layer.
-      Maps to ZPICO_MAX_SUBSCRIBERS.
-
-      `-1` DERIVES this from the image's entity inventory
-      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
-      and suppresses the derivation, which is a fine thing to do deliberately
-      and a silent cost otherwise.
-
-      The derived value counts what the SESSION opens, which is not what the
-      author declares: a declared action server is one entity that costs three
-      queryables and two publishers, and an action client one subscription.
-      Those multipliers live beside the calls that decide them.
-
-      NOT counted, because a feature enables them and the inventory cannot see
-      it: the parameter (6) and lifecycle (5) service families. An image
-      carrying either must state this knob.
 
 
 # prompt: zenoh-pico read task priority (normalised band, 0-255)

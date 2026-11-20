@@ -26,7 +26,7 @@
 //! prompt-less choice aborts configure on 3.7 and 4.4 (D2b's M1).
 //!
 //! The env↔Kconfig pairing is `nros_zephyr_build::kconfig_key_for` — the
-//! `KCONFIG_PAIRS` table the build scripts' own ladder reads — never a second
+//! registry row's symbol the build scripts' own ladder reads — never a second
 //! table here. Which symbols exist, and their types, is read from the module's
 //! own `zephyr/Kconfig`, because Zephyr REFUSES a fragment that assigns an
 //! undefined symbol (`warn_assign_undef`, a warning turned error) and a value
@@ -536,6 +536,13 @@ pub fn render_over(
     for (key, value) in
         crate::cmd::leaf_settings::image_layers_over(leaf, board, pkg).map_err(|e| e.to_string())?
     {
+        // phase-581 W7 (RFC-0140 D3) -- a zenoh pool the CLI carried from a
+        // stated demand. On this road the demand is the Kconfig symbol and the
+        // module derives the pool from it (`nros_cargo_build.cmake`, through
+        // the same floor), so the carried row would be a second statement.
+        if crate::cmd::leaf_settings::is_carried_pool(&key) {
+            continue;
+        }
         let symbol = nros_zephyr_build::kconfig_key_for(&key);
         let Some(sym) = syms.get(&symbol) else {
             out.cargo_rows.insert(key, value);
@@ -614,8 +621,9 @@ pub fn render_over(
 }
 
 /// The Kconfig knob an override id names: the row that defines the symbol, or
-/// any registry row reading it (`ZENOH_MAX_PUBLISHERS` sets
-/// `CONFIG_NROS_MAX_PUBLISHERS`, as its env spelling does).
+/// any registry row reading it (since phase-581 W7 every row's symbol is its
+/// own, so the two are one row; a retired `-DNROS_OVERRIDE_<ID>` is refused by
+/// the module hook before this is asked).
 fn override_knob(id: &str) -> Option<&'static nros_zephyr_build::KconfigKnob> {
     nros_zephyr_build::kconfig_knob_by_id(id).or_else(|| {
         let row = nros_zephyr_build::knob_row(&format!("NROS_{id}"))?;
@@ -802,7 +810,7 @@ config NROS_DOMAIN_ID
 config NROS_LOG_MAX_LEVEL
     int \"ceiling\"
 if NROS_RMW_ZENOH
-config NROS_MAX_QUERYABLES
+config NROS_ENTITY_MAX_QUERYABLES
     int \"q\"
 config NROS_ZENOH_TX_BATCH
     bool \"batch\"
@@ -860,7 +868,7 @@ endif # NROS
         );
         assert_eq!(s.get("NROS_RMW_XRCE").unwrap().ty, SymType::Bool);
         assert_eq!(s.get("NROS_SOME_HEX").unwrap().ty, SymType::Hex);
-        let q = s.get("NROS_MAX_QUERYABLES").unwrap();
+        let q = s.get("NROS_ENTITY_MAX_QUERYABLES").unwrap();
         assert_eq!(q.rmw_guard.as_deref(), Some("NROS_RMW_ZENOH"));
         assert_eq!(
             s.get("NROS_XRCE_AGENT_PORT").unwrap().rmw_guard.as_deref(),
@@ -871,9 +879,8 @@ endif # NROS
         assert!(s.get("NROS_NOPE").is_none());
     }
 
-    /// The real module Kconfig parses, and every `KCONFIG_PAIRS` row whose
-    /// symbol it defines is found — the renderer reads the same file Zephyr
-    /// does.
+    /// The real module Kconfig parses, and the registry symbols the renderer
+    /// names are found — the renderer reads the same file Zephyr does.
     #[test]
     fn the_module_kconfig_defines_the_symbols_the_renderer_names() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -895,16 +902,18 @@ endif # NROS
             assert!(s.get(sym).is_some(), "{sym} missing from zephyr/Kconfig");
         }
         assert_eq!(
-            s.get(&nros_zephyr_build::kconfig_key_for("ZPICO_MAX_QUERYABLES"))
-                .unwrap()
-                .rmw_guard
-                .as_deref(),
+            s.get(&nros_zephyr_build::kconfig_key_for(
+                "NROS_ENTITY_MAX_QUERYABLES"
+            ))
+            .unwrap()
+            .rmw_guard
+            .as_deref(),
             Some("NROS_RMW_ZENOH")
         );
         assert_eq!(
             s.get("NROS_EXECUTOR_MAX_CBS").unwrap().ty,
             SymType::Int,
-            "a derived-identical knob resolves without a KCONFIG_PAIRS row"
+            "every registry knob's symbol is CONFIG_ + its env spelling"
         );
     }
 
@@ -1063,8 +1072,8 @@ endif # NROS
             "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n\
              [image.zephyr]\nboard = \"zephyr\"\nlocator = \"tcp/10.0.2.2:7447\"\n\
              env = { NROS_LINK_IP = \"0\" }\n\
-             knobs = { executor = { max_cbs = 13 }, zenoh = { max_queryables = 9, \
-             tx_batch = true } }\n",
+             knobs = { executor = { max_cbs = 13 }, entity = { max_queryables = 9 }, \
+             zenoh = { tx_batch = true } }\n",
             &[],
         );
         let r = render(&l, Some(Language::C), &syms, &BTreeMap::new()).unwrap();
@@ -1077,8 +1086,8 @@ endif # NROS
         assert!(!m.contains_key("CONFIG_NROS_EXECUTOR_MAX_CBS"), "{m:?}");
         assert_eq!(k["CONFIG_NROS_EXECUTOR_MAX_CBS"], "13");
         assert_eq!(
-            k["CONFIG_NROS_MAX_QUERYABLES"], "9",
-            "through KCONFIG_PAIRS"
+            k["CONFIG_NROS_ENTITY_MAX_QUERYABLES"], "9",
+            "the demand is a Kconfig knob"
         );
         assert_eq!(k["CONFIG_NROS_ZENOH_TX_BATCH"], "y", "a bool takes y/n");
         assert!(!m.contains_key("CONFIG_NROS_LINK_IP"));
@@ -1106,7 +1115,7 @@ endif # NROS
         let zenoh = &d[d.find("if NROS_RMW_ZENOH\n").expect("an RMW_ZENOH block")..];
         let zenoh = &zenoh[..zenoh.find("endif # NROS_RMW_ZENOH").unwrap()];
         assert!(
-            zenoh.contains("config NROS_MAX_QUERYABLES\n    int\n    default 9\n"),
+            zenoh.contains("config NROS_ENTITY_MAX_QUERYABLES\n    int\n    default 9\n"),
             "{d}"
         );
         assert!(
@@ -1148,14 +1157,14 @@ endif # NROS
             &l,
             None,
             &syms,
-            &o(&[("EXECUTOR_MAX_CBS", "21"), ("ZENOH_MAX_QUERYABLES", "3")]),
+            &o(&[("EXECUTOR_MAX_CBS", "21"), ("ENTITY_MAX_QUERYABLES", "3")]),
         )
         .unwrap();
         let k = knob_rows(&r);
         assert_eq!(k["CONFIG_NROS_EXECUTOR_MAX_CBS"], "21", "the override wins");
         assert_eq!(
-            k["CONFIG_NROS_MAX_QUERYABLES"], "3",
-            "the id names its row, the symbol its kconfig column"
+            k["CONFIG_NROS_ENTITY_MAX_QUERYABLES"], "3",
+            "the id names its row and its symbol"
         );
         let d = defaults_text(&l, &r);
         assert!(
@@ -1170,7 +1179,7 @@ endif # NROS
             "[system]\nname = \"t\"\nrmw = \"xrce\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
             &[],
         );
-        let e = render(&x, None, &syms, &o(&[("ZENOH_MAX_QUERYABLES", "3")])).unwrap_err();
+        let e = render(&x, None, &syms, &o(&[("ENTITY_MAX_QUERYABLES", "3")])).unwrap_err();
         assert!(e.contains("if NROS_RMW_ZENOH"), "{e}");
     }
 
@@ -1254,7 +1263,7 @@ endif # NROS
 
         let (_d, l) = leaf(
             "[system]\nname = \"t\"\nrmw = \"xrce\"\n\n[image.zephyr]\nboard = \"zephyr\"\n\
-             knobs = { zenoh = { max_queryables = 4 } }\n",
+             knobs = { entity = { max_queryables = 4 } }\n",
             &[],
         );
         let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();

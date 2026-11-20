@@ -145,8 +145,8 @@ def self_test():
         build = os.path.join(tmp, "build")
         os.makedirs(os.path.join(build, "nros"))
         with open(os.path.join(build, "CMakeCache.txt"), "w") as fh:
-            fh.write("CMAKE_X:STRING=1\nNROS_RESOLVED_NROS_MAX_PUBLISHERS:STRING=6\n"
-                     "NROS_KNOB_SOURCE_NROS_MAX_PUBLISHERS:STRING=kconfig\n")
+            fh.write("CMAKE_X:STRING=1\nNROS_RESOLVED_NROS_ENTITY_MAX_PUBLISHERS:STRING=6\n"
+                     "NROS_KNOB_SOURCE_NROS_ENTITY_MAX_PUBLISHERS:STRING=kconfig\n")
         with open(os.path.join(build, "nros", "entity_inventory.cmake"), "w") as fh:
             fh.write("# x\nset(NROS_DERIVED_MAX_PUBLISHERS 3)\nset(OTHER 1)\n")
         with open(os.path.join(build, "build.ninja"), "w") as fh:
@@ -173,7 +173,7 @@ def self_test():
             print("self-test: check-knob-delivery reads the snapshot differently")
             failures += 1
         with open(os.path.join(build, "CMakeCache.txt"), "a") as fh:
-            fh.write("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:STRING=6\n")
+            fh.write("NROS_RESOLVED_NROS_ENTITY_MAX_SUBSCRIBERS:STRING=6\n")
         if diff(build, fix) == 0:
             print("self-test: a stale snapshot was not reported")
             failures += 1

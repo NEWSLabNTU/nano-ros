@@ -132,5 +132,5 @@ zephyr_line = "3.7"
 rust_targets = ["thumbv7em-none-eabi"]
 
 # The board's RAM budget (issue 2194; the header above says why only this one).
-[knobs.zenoh]
+[knobs.entity]
 max_large_subscribers = 0

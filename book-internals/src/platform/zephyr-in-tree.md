@@ -205,13 +205,13 @@ keys (table above).
 | `CONFIG_NROS_ZENOH_QUERY` | bool | y | Service client support |
 | `CONFIG_NROS_ZENOH_QUERYABLE` | bool | y | Service server support |
 | `CONFIG_NROS_ZENOH_LINK_TCP` | bool | y | TCP transport link |
-| `CONFIG_NROS_MAX_PUBLISHERS` | int | 8 | Max concurrent publishers |
-| `CONFIG_NROS_MAX_SUBSCRIBERS` | int | 8 | Max concurrent subscribers |
-| `CONFIG_NROS_MAX_QUERYABLES` | int | -1 (derive) | Max concurrent queryables (service servers). the `param_services` capability costs 6 **per node**, `[lifecycle]` 5 once — a value below that floor fails the build, naming this knob (phase-426 W3) |
+| `CONFIG_NROS_ENTITY_MAX_PUBLISHERS` | int | 8 | Max concurrent publishers |
+| `CONFIG_NROS_ENTITY_MAX_SUBSCRIBERS` | int | 8 | Max concurrent subscribers |
+| `CONFIG_NROS_ENTITY_MAX_QUERYABLES` | int | -1 (derive) | Max concurrent queryables (service servers). the `param_services` capability costs 6 **per node**, `[lifecycle]` 5 once — a value below that floor fails the build, naming this knob (phase-426 W3) |
 | `CONFIG_NROS_ZENOH_FRAG_MAX_BYTES` | int | 2048 | Max reassembled message size |
 | `CONFIG_NROS_ZENOH_BATCH_UNICAST_BYTES` | int | 1024 | Max unicast batch size |
 | `CONFIG_NROS_SUBSCRIBER_BUFFER_BYTES` | int | -1 (derive) | Per-subscriber buffer, small payload class |
-| `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` | int | -1 (derive) | Blocks in the large payload class |
+| `CONFIG_NROS_ENTITY_MAX_LARGE_SUBSCRIBERS` | int | -1 (derive) | Blocks in the large payload class |
 | `CONFIG_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES` | int | -1 (derive) | Per-sample capacity of the large class |
 | `CONFIG_NROS_ZENOH_SERVICE_BUFFER_BYTES` | int | 1024 | Per-service buffer |
 
@@ -228,7 +228,7 @@ build composes those, and the configure prints what it concluded:
 ```
 -- nros: message-bound sizing DERIVED from 84 types in 11 interface packages (all bounded)
 -- nros:   largest type std_msgs/msg/Float64MultiArray at 1496 B -> NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES
--- nros:   0 types over the 2048 B ceiling -> NROS_MAX_LARGE_SUBSCRIBERS
+-- nros:   0 types over the 2048 B ceiling -> NROS_ENTITY_MAX_LARGE_SUBSCRIBERS
 ```
 
 Three things to know before you rely on it:

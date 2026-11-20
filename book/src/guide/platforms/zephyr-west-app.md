@@ -614,7 +614,7 @@ CONFIG_TEST_RANDOM_GENERATOR=y
 
 # 384 KiB of RAM
 CONFIG_HEAP_MEM_POOL_SIZE=16384
-CONFIG_NROS_MAX_LARGE_SUBSCRIBERS=0
+CONFIG_NROS_ENTITY_MAX_LARGE_SUBSCRIBERS=0
 ```
 
 ```text probe=54 track=installed variant=west-app-flash file=apps/my_app/boards/nucleo_f767zi.overlay

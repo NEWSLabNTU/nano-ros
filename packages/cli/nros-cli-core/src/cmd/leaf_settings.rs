@@ -564,6 +564,8 @@ pub fn image_layers_over(
         .collect();
     transport_implications(decl, &mut env)?;
     env.extend(leaf_app_rung(decl, pkg)?);
+    // phase-581 W7 -- a demand the BOARD states reaches its pool too.
+    carry_demand_to_pools(&mut env);
     if let Some(v) = baked_ros_args(decl)? {
         env.insert(BAKED_ROS_ARGS_ENV.to_string(), v);
     }
@@ -665,6 +667,25 @@ pub fn board_rung_from_file(
             path.display(),
             errors.join("\n  ")
         ));
+    }
+    // phase-581 W7 -- a demand the board states reaches its zenoh pool on the
+    // cargo and cmake roads (the Zephyr road derives the pool in the module).
+    if carries == BoardRungCarries::BoardOnly {
+        let mut flat: BTreeMap<String, String> = rows
+            .iter()
+            .map(|(k, (v, _))| (k.clone(), v.clone()))
+            .collect();
+        carry_demand_to_pools(&mut flat);
+        for (k, v) in flat {
+            if let std::collections::btree_map::Entry::Vacant(e) = rows.entry(k) {
+                let from = DEMAND_POOLS
+                    .iter()
+                    .find(|(_, pool, _)| *pool == e.key())
+                    .and_then(|(d, _, _)| nros_zephyr_build::knob_row(d))
+                    .map_or_else(String::new, |r| r.image_key.to_string());
+                e.insert((v, from));
+            }
+        }
     }
     Ok(rows)
 }
@@ -781,19 +802,89 @@ pub fn app_rung(
         return Err(eyre!("{}", refused.join("\n")));
     }
     rows.extend(env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    carry_demand_to_pools(&mut rows);
     Ok(rows)
 }
 
+/// phase-581 W7 (RFC-0140 D3) -- the zenoh pools a stated entity DEMAND
+/// carries to: (demand env, pool env, whether the pool sizes a fixed C array
+/// and is therefore floored). A test holds it equal to the registry's carrier
+/// rows ([`nros_zephyr_build::carried_knob`]).
+const DEMAND_POOLS: &[(&str, &str, bool)] = &[
+    (
+        "NROS_ENTITY_MAX_LARGE_SUBSCRIBERS",
+        "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",
+        false,
+    ),
+    (
+        "NROS_ENTITY_MAX_LIVELINESS",
+        "NROS_ZENOH_MAX_LIVELINESS",
+        true,
+    ),
+    (
+        "NROS_ENTITY_MAX_PENDING_GETS",
+        "NROS_ZENOH_MAX_PENDING_GETS",
+        false,
+    ),
+    (
+        "NROS_ENTITY_MAX_PUBLISHERS",
+        "NROS_ZENOH_MAX_PUBLISHERS",
+        true,
+    ),
+    (
+        "NROS_ENTITY_MAX_QUERYABLES",
+        "NROS_ZENOH_MAX_QUERYABLES",
+        true,
+    ),
+    (
+        "NROS_ENTITY_MAX_SUBSCRIBERS",
+        "NROS_ZENOH_MAX_SUBSCRIBERS",
+        true,
+    ),
+];
+
+/// Whether `key` is a zenoh pool a stated demand is carried to.
+#[must_use]
+pub fn is_carried_pool(key: &str) -> bool {
+    DEMAND_POOLS.iter().any(|(_, pool, _)| *pool == key)
+}
+
+/// phase-581 W7 (RFC-0140 D3) -- a STATED entity demand (`[knobs.entity]
+/// max_publishers`) reaches the zenoh pool it sizes: the pool row is a
+/// carrier nobody states, written here from the demand, floored at the pool
+/// where it is a fixed C array (issue 1015: a demand of 0 publishers is a
+/// pool of 1; the floor is the pool's, never the shared derivation's, issue
+/// 1033). It REPLACES a derived pool row (the cargo leaf's sidecar), so a
+/// number a person stated beats one derived for them, as before the split.
+///
+/// A demand of `-1` (DERIVE) states nothing and carries nothing. On the
+/// Zephyr road the demand is the Kconfig symbol and the module derives the
+/// pool itself; the renderer drops these rows ([`is_carried_pool`]).
+pub fn carry_demand_to_pools(rows: &mut BTreeMap<String, String>) {
+    for (demand, pool, floored) in DEMAND_POOLS {
+        let Some(v) = rows
+            .get(*demand)
+            .and_then(|v| v.trim().parse::<usize>().ok())
+        else {
+            continue;
+        };
+        let v = if *floored {
+            crate::entity_inventory::c_array_pool_floor(v)
+        } else {
+            v
+        };
+        rows.insert((*pool).to_string(), v.to_string());
+    }
+}
+
 /// The registry knob an `[image.<id>] env` row's KEY names: its canonical env
-/// spelling, or the Kconfig symbol a west build renders the row to
-/// (`NROS_MAX_PUBLISHERS` -> `CONFIG_NROS_MAX_PUBLISHERS`, the zenoh pool's
-/// symbol). `None` for an application's own variable. A retired spelling is
-/// refused before this is asked.
+/// spelling (every row's Kconfig symbol is `CONFIG_<that>` since phase-581
+/// W7). A pool CARRIER's spelling names the demand it carries, which is what
+/// a project states. `None` for an application's own variable. A retired
+/// spelling is refused before this is asked.
 pub fn registry_knob_of_env_row(key: &str) -> Option<&'static nros_zephyr_build::KnobRow> {
-    let symbol = format!("CONFIG_{key}");
-    nros_zephyr_build::KNOBS
-        .iter()
-        .find(|r| r.env == key || r.kconfig == symbol)
+    let row = nros_zephyr_build::KNOBS.iter().find(|r| r.env == key)?;
+    Some(nros_zephyr_build::carried_knob(row).unwrap_or(row))
 }
 
 /// Phase-568 W2c — a knob that means something on ONE platform only
@@ -1017,6 +1108,7 @@ pub fn image_block_layers_over(
     transport_implications_of(image.link_kind(), &mut env);
     link_build_implications(image.locator.as_deref(), &mut env);
     env.extend(app_rung(image_id, &image.knobs.0, &image.env, pkg)?);
+    carry_demand_to_pools(&mut env);
     Ok(env)
 }
 
@@ -2036,26 +2128,87 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(e.contains("[image.talker.knobs.memory] heap_bytes"), "{e}");
-        // The Kconfig spelling a west build renders an env row to is the same
-        // knob too (`NROS_MAX_PUBLISHERS` is `CONFIG_NROS_MAX_PUBLISHERS`),
-        // and the error quotes the row as written.
+        // A pool carrier's spelling names the demand a project states
+        // (phase-581 W7), and the error quotes the row as written.
         let e = app_rung(
             None,
             &BTreeMap::new(),
-            &env_rows(&[("NROS_MAX_PUBLISHERS", "2")]),
+            &env_rows(&[("NROS_ZENOH_MAX_PUBLISHERS", "2")]),
         )
         .unwrap_err()
         .to_string();
         assert!(
-            e.contains("[image.<id>] env NROS_MAX_PUBLISHERS")
-                && e.contains("knobs.zenoh] max_publishers"),
+            e.contains("[image.<id>] env NROS_ZENOH_MAX_PUBLISHERS")
+                && e.contains("knobs.entity] max_publishers"),
             "{e}"
         );
         assert_eq!(
-            registry_knob_of_env_row("NROS_MAX_PUBLISHERS").map(|r| r.env),
-            Some("NROS_ZENOH_MAX_PUBLISHERS")
+            registry_knob_of_env_row("NROS_ZENOH_MAX_PUBLISHERS").map(|r| r.env),
+            Some("NROS_ENTITY_MAX_PUBLISHERS")
         );
+        // The old demand carrier is retired, naming its replacement.
+        let e = app_rung(
+            None,
+            &BTreeMap::new(),
+            &env_rows(&[("NROS_MAX_PUBLISHERS", "2")]), // retired spelling: the refusal case
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("NROS_ENTITY_MAX_PUBLISHERS"), "{e}");
         assert!(registry_knob_of_env_row("NROS_BOOT_REPORT").is_none());
+    }
+
+    /// phase-581 W7 -- the demand-to-pool table is the registry's carrier
+    /// rows, and a stated demand reaches its pool floored at the POOL.
+    #[test]
+    fn a_stated_demand_is_carried_to_its_pool() {
+        let carriers: Vec<(String, String)> = nros_zephyr_build::KNOBS
+            .iter()
+            .filter_map(|r| {
+                nros_zephyr_build::carried_knob(r).map(|d| (d.env.to_string(), r.env.to_string()))
+            })
+            .collect();
+        let table: Vec<(String, String)> = DEMAND_POOLS
+            .iter()
+            .map(|(d, p, _)| (d.to_string(), p.to_string()))
+            .collect();
+        assert_eq!(carriers, table);
+        let rows = app_rung(
+            Some("t"),
+            &knobs(&[
+                ("entity.max_publishers", leaf_system::KnobValue::Int(0)),
+                (
+                    "entity.max_large_subscribers",
+                    leaf_system::KnobValue::Int(0),
+                ),
+                ("entity.max_subscribers", leaf_system::KnobValue::Int(-1)),
+            ]),
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        assert_eq!(rows["NROS_ENTITY_MAX_PUBLISHERS"], "0");
+        assert_eq!(rows["NROS_ZENOH_MAX_PUBLISHERS"], "1", "issue 1015's floor");
+        assert_eq!(
+            rows["NROS_ZENOH_MAX_LARGE_SUBSCRIBERS"], "0",
+            "zero is an answer"
+        );
+        assert!(
+            !rows.contains_key("NROS_ZENOH_MAX_SUBSCRIBERS"),
+            "a `-1` demand states nothing"
+        );
+        // The pool itself is not a setting.
+        let e = app_rung(
+            Some("t"),
+            &knobs(&[("zenoh.max_publishers", leaf_system::KnobValue::Int(6))]),
+            &BTreeMap::new(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("[image.t.knobs.zenoh] max_publishers` is not a setting")
+                && e.contains("[image.t.knobs.entity] max_publishers"),
+            "{e}"
+        );
     }
 
     /// An env row that is NOT a registry knob is an app's own variable: carried
@@ -3238,12 +3391,23 @@ pub(crate) mod board_rung_tests {
             .map(|(k, (v, _))| (k, v))
             .collect();
         for (k, v) in [
-            ("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS", "0"),
-            ("NROS_ZENOH_MAX_SUBSCRIBERS", "1"),
+            ("NROS_ENTITY_MAX_LARGE_SUBSCRIBERS", "0"),
+            ("NROS_ENTITY_MAX_SUBSCRIBERS", "1"),
             ("NROS_ZENOH_SERVICE_BUFFER_BYTES", "1024"),
-            ("NROS_ZENOH_MAX_QUERYABLES", "1"),
+            ("NROS_ENTITY_MAX_QUERYABLES", "1"),
         ] {
             assert_eq!(rows.get(k).map(String::as_str), Some(v), "{k} in {rows:?}");
+        }
+        // phase-581 W7 -- off Zephyr the demand also reaches its zenoh pool;
+        // on Zephyr the module derives the pool from the Kconfig demand.
+        let pools = [
+            ("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS", "0"),
+            ("NROS_ZENOH_MAX_SUBSCRIBERS", "1"),
+            ("NROS_ZENOH_MAX_QUERYABLES", "1"),
+        ];
+        for (k, v) in pools {
+            let want = (carries == BoardRungCarries::BoardOnly).then_some(v);
+            assert_eq!(rows.get(k).map(String::as_str), want, "{k} in {rows:?}");
         }
         // The heap is a typed tenant (`[knobs.memory] heap_bytes`) since
         // phase-581 W5: the cargo and cmake roads reach it through
@@ -3270,11 +3434,15 @@ pub(crate) mod board_rung_tests {
     #[test]
     fn the_rung_carries_what_the_road_cannot_otherwise_reach() {
         let (_td, p) = knobs_file(
-            "[knobs.zenoh]\nmax_subscribers = 2\n[knobs.executor]\nmax_cbs = 4\n\
+            "[knobs.entity]\nmax_subscribers = 2\n[knobs.executor]\nmax_cbs = 4\n\
              [knobs.memory]\nheap_bytes = 4096\n",
         );
         let only = board_rung_from_file(&p, "b", BoardRungCarries::BoardOnly).unwrap();
-        assert_eq!(only["NROS_ZENOH_MAX_SUBSCRIBERS"].0, "2");
+        assert_eq!(only["NROS_ENTITY_MAX_SUBSCRIBERS"].0, "2");
+        assert_eq!(
+            only["NROS_ZENOH_MAX_SUBSCRIBERS"].0, "2",
+            "carried to its pool"
+        );
         for typed in ["NROS_EXECUTOR_MAX_CBS", "NROS_MEMORY_HEAP_BYTES"] {
             assert!(
                 !only.contains_key(typed),
@@ -3288,11 +3456,11 @@ pub(crate) mod board_rung_tests {
             ("4".into(), "executor.max_cbs".into())
         );
 
-        let (_td, bad) = knobs_file("[knobs.zenoh]\nmax_subscribers = \"many\"\n");
+        let (_td, bad) = knobs_file("[knobs.entity]\nmax_subscribers = \"many\"\n");
         let e = board_rung_from_file(&bad, "b", BoardRungCarries::Every)
             .unwrap_err()
             .to_string();
-        assert!(e.contains("[knobs.zenoh] max_subscribers"), "{e}");
+        assert!(e.contains("[knobs.entity] max_subscribers"), "{e}");
     }
 
     /// RFC-0049: the image's own knob outranks the board's, key by key, on
@@ -3301,8 +3469,8 @@ pub(crate) mod board_rung_tests {
     fn the_image_outranks_its_board() {
         let board: BoardRung = [
             (
-                "NROS_ZENOH_MAX_SUBSCRIBERS".to_string(),
-                ("1".to_string(), "zenoh.max_subscribers".to_string()),
+                "NROS_ENTITY_MAX_SUBSCRIBERS".to_string(),
+                ("1".to_string(), "entity.max_subscribers".to_string()),
             ),
             (
                 "NROS_MEMORY_HEAP_BYTES".to_string(),
@@ -3315,19 +3483,23 @@ pub(crate) mod board_rung_tests {
         std::fs::write(
             td.path().join("system.toml"),
             "[system]\nname = \"t\"\n\n[image.t]\nboard = \"b\"\n\n\
-             [image.t.knobs.zenoh]\nmax_subscribers = 3\n",
+             [image.t.knobs.entity]\nmax_subscribers = 3\n",
         )
         .unwrap();
         let decl = leaf_system::read(td.path()).unwrap().unwrap();
         let rows = image_layers_over(&decl, &board, None).unwrap();
-        assert_eq!(rows["NROS_ZENOH_MAX_SUBSCRIBERS"], "3", "the image wins");
+        assert_eq!(rows["NROS_ENTITY_MAX_SUBSCRIBERS"], "3", "the image wins");
+        assert_eq!(
+            rows["NROS_ZENOH_MAX_SUBSCRIBERS"], "3",
+            "and reaches its pool"
+        );
         assert_eq!(
             rows["NROS_MEMORY_HEAP_BYTES"], "32768",
             "the board fills the rest"
         );
 
         let image: crate::orchestration::image::ImageBlock =
-            toml::from_str("board = \"b\"\n[knobs.zenoh]\nmax_subscribers = 3\n").unwrap();
+            toml::from_str("board = \"b\"\n[knobs.entity]\nmax_subscribers = 3\n").unwrap();
         let rows = image_block_layers_over(Some("t"), &image, &board, None).unwrap();
         assert_eq!(rows["NROS_ZENOH_MAX_SUBSCRIBERS"], "3");
         assert_eq!(rows["NROS_MEMORY_HEAP_BYTES"], "32768");

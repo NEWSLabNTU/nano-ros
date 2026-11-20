@@ -21,10 +21,10 @@
 #            the platform/board ladder (nros-platform-config `Knobs`, via
 #            NROS_BOARD_TOML) reads it there too; a row without it reaches the
 #            build in the image's rows (issue 2194).
-# A row never states `id`, `toml` or `kconfig` (the generator refuses one).
-# Where a spelling in use TODAY is not the derived one, the row carries it in
-# `transitional = { id = ..., kconfig = ... }` until phases W5 to W7 rename it;
-# a transitional value equal to the derived one is refused.
+# A row never states `id`, `toml` or `kconfig` (the generator refuses one),
+# and no row overrides a derived spelling: the `transitional` column that held
+# today's spellings through the renames of phase-581 W5 to W7 is deleted, and
+# an old spelling is a `retired` entry.
 #
 # `retired` lists every spelling a row replaced, by road (`toml:`, `env:`,
 # `kconfig:`, `cmake:`, `run:`), kept for good: an unlisted old name would be
@@ -134,6 +134,223 @@ Requests one action server queryable holds before the newest is
 dropped: the family depth 4 was designed for, and the twin of the C
 shim's ZPICO_MAX_PENDING_REPLIES (both 4). Must be >= 1. Maps to
 NROS_ACTION_INBOX_DEPTH.
+'''
+
+[[knob]]
+key = "entity.max_large_subscribers"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "kconfig:CONFIG_NROS_MAX_LARGE_SUBSCRIBERS" },
+    { spelling = "env:NROS_MAX_LARGE_SUBSCRIBERS" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_MAX_LARGE_SUBSCRIBERS" },
+]
+type = "int"
+prompt = "Subscribers served from the large payload class (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Subscribers whose rx_buffer_hint exceeds SUBSCRIBER_SIZE_THRESHOLD and
+are therefore served from LARGE_PAYLOADS. Bounded separately from
+entity.max_subscribers so raising SUBSCRIBER_LARGE_SIZE for one
+image-scale topic does not multiply across every subscriber. This is the
+DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_large_subscribers
+(NROS_ZENOH_MAX_LARGE_SUBSCRIBERS, the C macro
+ZPICO_MAX_LARGE_SUBSCRIBERS), is derived from it.
+
+-1 means DERIVE it: how many types in the linked interface closure
+exceed the class split. Do not count it by reading generated C++
+headers BY EYE: they state an ESTIMATE and not a bound, and a count
+made that way can give 2 where the derived answer is 0.
+
+0 is a legal, meaningful value and NOT the same as -1: it claims that
+every type this image receives fits the small class, and the large pool
+becomes zero bytes instead of RING_DEPTH x LARGE_SIZE. A hint no class
+can hold is then refused at create_subscription rather than served a
+block too small for it.
+
+Derived counts TYPES, not subscriptions -- an upper bound, since the
+closure is what is linked, not what is subscribed. See
+NROS_SUBSCRIBER_BUFFER_BYTES for the rest of that caveat.
+'''
+
+[[knob]]
+key = "entity.max_liveliness"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "kconfig:CONFIG_NROS_MAX_LIVELINESS" },
+    { spelling = "env:NROS_MAX_LIVELINESS" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_MAX_LIVELINESS" },
+]
+type = "int"
+prompt = "Maximum concurrent liveliness tokens (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of liveliness tokens this image declares at once.
+This is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_liveliness
+(NROS_ZENOH_MAX_LIVELINESS, the C macro ZPICO_MAX_LIVELINESS), is derived
+from it, floored at 1.
+
+`-1` DERIVES this from the image's entity inventory,
+on the same ladder as NROS_ENTITY_MAX_QUERYABLES. Stating a number here WINS.
+
+Every token is declared by THIS session, never by a peer: one for the
+session's own node, one per node name, and one per publisher,
+subscriber, service server and service client (three per action
+client, which the derivation multiplies). The graph cache's own
+subscriber takes no slot. An image with no inventory (nothing
+declared) keeps the zpico default of 16.
+
+Short is not a boot failure: the entity works and is invisible to
+`ros2 node list`, and the shim logs the exhaustion naming this knob.
+An image that BRIDGES (runtime-named nodes, declared nowhere) must
+state it.
+'''
+
+[[knob]]
+key = "entity.max_pending_gets"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "kconfig:CONFIG_NROS_MAX_PENDING_GETS" },
+    { spelling = "env:NROS_MAX_PENDING_GETS" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_MAX_PENDING_GETS" },
+]
+type = "int"
+prompt = "Maximum concurrent pending get operations"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 4",
+]
+help = '''
+Maximum number of concurrent pending get (service call) operations. This
+is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_pending_gets
+(NROS_ZENOH_MAX_PENDING_GETS, the C macro ZPICO_MAX_PENDING_GETS), is
+derived from it.
+'''
+
+[[knob]]
+key = "entity.max_publishers"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "kconfig:CONFIG_NROS_MAX_PUBLISHERS" },
+    { spelling = "env:NROS_MAX_PUBLISHERS" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_MAX_PUBLISHERS" },
+]
+type = "int"
+prompt = "Maximum concurrent publishers (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of publishers this image opens at once.
+This is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_publishers
+(NROS_ZENOH_MAX_PUBLISHERS, the C macro ZPICO_MAX_PUBLISHERS), is derived
+from it, floored at 1.
+
+`-1` DERIVES this from the image's entity inventory
+(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+and suppresses the derivation, which is a fine thing to do deliberately
+and a silent cost otherwise.
+
+The derived value counts what the SESSION opens, which is not what the
+author declares: a declared action server is one entity that costs three
+queryables and two publishers, and an action client one subscription.
+Those multipliers live beside the calls that decide them.
+
+NOT counted, because a feature enables them and the inventory cannot see
+it: the parameter (6) and lifecycle (5) service families. An image
+carrying either must state this knob.
+'''
+
+[[knob]]
+key = "entity.max_queryables"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "kconfig:CONFIG_NROS_MAX_QUERYABLES" },
+    { spelling = "env:NROS_MAX_QUERYABLES" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_MAX_QUERYABLES" },
+]
+type = "int"
+prompt = "Maximum concurrent queryables (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of queryables (service servers) this image opens at once.
+This is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_queryables
+(NROS_ZENOH_MAX_QUERYABLES, the C macro ZPICO_MAX_QUERYABLES), is derived
+from it, floored at 1.
+
+`-1` DERIVES this from the image's entity inventory
+(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+and suppresses the derivation, which is a fine thing to do deliberately
+and a silent cost otherwise.
+
+The derived value counts what the SESSION opens, which is not what the
+author declares: a declared action server is one entity that costs three
+queryables and two publishers, and an action client one subscription.
+Those multipliers live beside the calls that decide them.
+
+NOT counted, because a feature enables them and the inventory cannot see
+it: the parameter (6) and lifecycle (5) service families. An image
+carrying either must state this knob.
+
+The PARAMETER family is per NODE. `ros2 param list`
+enumerates an image's nodes, so one set of six services is registered
+under each node's own fully-qualified name: an N-node image carrying
+`[param_services]` claims 6*N slots before the application declares
+anything, plus 5 for the lifecycle family, which is still one set on the
+executor. A value below that DERIVED floor is refused at BUILD time by
+`nros-zpico-build` and the refusal names this knob -- it used to be a
+runtime `ServiceServerCreationFailed` with no explanation.
+Two nodes already need 12, which is over the historical default of 8.
+'''
+
+[[knob]]
+key = "entity.max_subscribers"
+scope = "image"
+class = "public"
+retired = [
+    { spelling = "kconfig:CONFIG_NROS_MAX_SUBSCRIBERS" },
+    { spelling = "env:NROS_MAX_SUBSCRIBERS" },
+    { spelling = "cmake:NROS_OVERRIDE_ZENOH_MAX_SUBSCRIBERS" },
+]
+type = "int"
+prompt = "Maximum concurrent subscribers (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of subscriptions this image opens at once.
+This is the DEMAND (RMW-agnostic). The zenoh pool, zenoh.max_subscribers
+(NROS_ZENOH_MAX_SUBSCRIBERS, the C macro ZPICO_MAX_SUBSCRIBERS), is derived
+from it, floored at 1.
+
+`-1` DERIVES this from the image's entity inventory
+(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+and suppresses the derivation, which is a fine thing to do deliberately
+and a silent cost otherwise.
+
+The derived value counts what the SESSION opens, which is not what the
+author declares: a declared action server is one entity that costs three
+queryables and two publishers, and an action client one subscription.
+Those multipliers live beside the calls that decide them.
+
+NOT counted, because a feature enables them and the inventory cannot see
+it: the parameter (6) and lifecycle (5) service families. An image
+carrying either must state this knob.
 '''
 
 [[knob]]

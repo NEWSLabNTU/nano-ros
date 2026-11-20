@@ -494,7 +494,7 @@ function(nros_stack_floor_zephyr_check)
     # shape its row was measured on (a mismatch is a loud warning).
     set(_shape "")
     foreach(_fact IN LISTS NROS_BOARD_FACTS_ENV)
-        if(_fact MATCHES "^(NROS_EXECUTOR_MAX_NODES|NROS_MAX_PUBLISHERS|NROS_MAX_SUBSCRIBERS|NROS_MAX_QUERYABLES|NROS_EXECUTOR_MAX_CBS|NROS_EXECUTOR_ACTION_CLIENTS)=(-?[0-9]+)$")
+        if(_fact MATCHES "^(NROS_EXECUTOR_MAX_NODES|NROS_ENTITY_MAX_PUBLISHERS|NROS_ENTITY_MAX_SUBSCRIBERS|NROS_ENTITY_MAX_QUERYABLES|NROS_EXECUTOR_MAX_CBS|NROS_EXECUTOR_ACTION_CLIENTS)=(-?[0-9]+)$")
             list(APPEND _shape "${CMAKE_MATCH_1}=${CMAKE_MATCH_2}")
         endif()
     endforeach()
