@@ -44,17 +44,36 @@ fn parse(argv: &[&str]) -> Cmd {
 /// environment (Ruling R45): the interface search path is an argument and the
 /// held marker is handed to the one child that needs it.
 fn nros(argv: &[&str]) -> Result<(), String> {
-    nros_cli_core::run(parse(argv)).map_err(|e| format!("{e:?}"))
+    nros_cli_core::run(parse(&offline(argv))).map_err(|e| format!("{e:?}"))
 }
 
 /// `nros configure <argv>` through the verb's own entry, for its outcome.
 fn configure_outcome(argv: &[&str]) -> configure::Outcome {
     let mut full = vec!["configure"];
     full.extend_from_slice(argv);
-    let Cmd::Configure(args) = parse(&full) else {
+    configure_outcome_as(&offline(&full))
+}
+
+fn configure_outcome_as(full: &[&str]) -> configure::Outcome {
+    let Cmd::Configure(args) = parse(full) else {
         panic!("`nros configure` did not parse to Cmd::Configure");
     };
     configure::configure(args).unwrap_or_else(|e| panic!("configure failed: {e:?}"))
+}
+
+/// Issue 2683 -- `argv` with `--offline` after a verb that resolves the
+/// leaf's lock (`configure`, its `sync` alias, `build`). Seeding a leaf's lock
+/// ends in `cargo update --workspace`, which refreshes the crates.io index and
+/// fetches the git dependencies: measured 11.5 s of a 16 s test, and the part
+/// a loaded host or a slow network stretches toward the gate's timeout.
+/// Nothing here tests the network, so [`setup`] resolves online ONCE per
+/// process and every verb after that reads the cache it filled.
+fn offline<'a>(argv: &[&'a str]) -> Vec<&'a str> {
+    let mut out = argv.to_vec();
+    if matches!(argv.first(), Some(&("configure" | "sync" | "build"))) {
+        out.insert(1, "--offline");
+    }
+    out
 }
 
 fn repo_root() -> PathBuf {
@@ -67,6 +86,13 @@ fn repo_root() -> PathBuf {
 
 /// Process-wide setup every test needs, once.
 fn setup() {
+    setup_env();
+    warm_the_cargo_cache();
+}
+
+/// [`setup`] without the cache warm-up, for a child process whose parent
+/// warmed the cache before spawning it.
+fn setup_env() {
     common::isolate_model_discovery();
     let resolver = common::pinned_launch_resolver();
     // SAFETY: the same values every time, set before any verb in this test
@@ -77,6 +103,19 @@ fn setup() {
         std::env::set_var("NROS_LAUNCH_RESOLVE", &resolver);
         std::env::set_var("NROS_SKIP_STALE_CHECK", "1");
     }
+}
+
+/// One ONLINE configure of the scratch leaf, before any test's `--offline`
+/// verb ([`offline`]): it fills cargo's registry index and git checkouts with
+/// what the leaf's lock resolves to. Once per process; the threads that arrive
+/// while it runs wait for it.
+fn warm_the_cargo_cache() {
+    static WARM: std::sync::Once = std::sync::Once::new();
+    WARM.call_once(|| {
+        let leaf = scratch_leaf("warm");
+        configure_outcome_as(&["configure", leaf.to_str().unwrap()]);
+        cleanup(&leaf);
+    });
 }
 
 /// The TRACKED files of `src` (repo-relative), copied to `<tmp>/<tag>/<name>`.
@@ -313,6 +352,8 @@ const CHILD_MARK: &str = "CONFIGURE-CHILD up_to_date=";
 /// re-run on [`configure_child`] alone, with its own environment.
 #[test]
 fn second_concurrent_configure_finds_stamp_current() {
+    // The children configure `--offline`, from the cache this warms.
+    setup();
     let leaf = scratch_leaf("concurrent");
     let children: Vec<std::process::Child> = (0..2)
         .map(|_| {
@@ -358,8 +399,12 @@ fn second_concurrent_configure_finds_stamp_current() {
 #[test]
 #[ignore = "a child process of second_concurrent_configure_finds_stamp_current"]
 fn configure_child() {
-    setup();
     let own = std::env::var_os(CHILD_LEAF).is_none();
+    if own {
+        setup();
+    } else {
+        setup_env();
+    }
     let leaf = match std::env::var_os(CHILD_LEAF) {
         Some(l) => PathBuf::from(l),
         None => scratch_leaf("child"),
