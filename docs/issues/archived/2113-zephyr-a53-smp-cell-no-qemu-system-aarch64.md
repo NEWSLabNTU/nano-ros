@@ -1,15 +1,17 @@
 ---
 id: 2113
 title: "The Zephyr C core-pin placement cell boots `qemu-system-aarch64`, which the runner does not have, and fails with a bare ENOENT"
-status: open
+status: resolved
 type: bug
 area: [ci, testing, zephyr, qemu]
 severity: medium
 found: 2026-10-27
+resolved: 2026-11-21
+resolved_in: \"accepted by merge-runtime run 44768834808 (runner newslab-server-241)"
 related: [1991, 0750, 0930, phase-513, phase-466]
 ---
 
-**Home:** [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
+**Home:** [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
 — W5. The a53 SMP cell is the one realtime cell a scheduled lane reaches and cannot boot.
 
 ## Measured
@@ -191,3 +193,21 @@ Next step: rebuild and redeploy the runner image (`runner-container.sh
 nightly, follows from the next run after that.
 
 **Suggested owner: the runner operator** (image rebuild).
+
+## Accepted, 2026-11-21
+
+`merge-runtime.yml` run 44768834808 (lane `merge`, main at `b13a5d4b18`), zephyr
+shard (job 136400725703, runner `nano-ros-runner-newslab-server-241`), from its
+`merge-runtime-merge-zephyr-junit`: `sched_dims_applied` PASS, and its output
+reads
+
+```
+sched-dim arm: [zephyr c CorePinPlacement] ACCEPT
+sched_dims: 6 cell(s) executed (6 passed, 0 failed), 11 out of lane, 0 skipped
+```
+
+So `CorePinPlacement/zephyr/c` booted `qemu-system-aarch64` (the runner image's
+6.2.0, with the NIC option ROMs issue 2592 added) and observed the pin. The
+acceptance named a pairwise nightly; the merge lane selects the same cell at
+the same coordinate, and this is the first lane run to reach it since the
+image gained the ROMs.

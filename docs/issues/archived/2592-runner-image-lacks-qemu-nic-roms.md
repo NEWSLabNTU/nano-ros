@@ -1,11 +1,13 @@
 ---
 id: 2592
 title: "The self-hosted runner image has qemu-system-aarch64 without its NIC option ROMs, so the Zephyr a53 core-pin cell exits at QEMU startup"
-status: open
+status: resolved
 type: bug
 area: [ci, zephyr]
 severity: medium
 found: 2026-11-15
+resolved: 2026-11-21
+resolved_in: \"accepted by merge-runtime run 44768834808 (runner newslab-server-241)"
 related: [issue-2113, issue-1457, issue-1482]
 ---
 
@@ -62,3 +64,15 @@ operator), a `merge-runtime.yml` `lane=merge` dispatch reports
 The `check` still asks only for the binary, so a missing ROM still reads as
 provisioned. No `check` form in the index probes a data file outside an SDK
 tree. Adding one is a separate change.
+
+## Accepted, 2026-11-21
+
+`merge-runtime.yml` run 44768834808 (lane `merge`, main at `b13a5d4b18`), zephyr
+shard on runner `nano-ros-runner-newslab-server-241`: `sched_dims_applied`
+reports `[zephyr c CorePinPlacement] ACCEPT`, so `qemu-system-aarch64` found
+`efi-e1000.rom` and the image booted with its e1000 NIC.
+
+The acceptance's second clause, "its zephyr shard has no real failures", is
+not met by this run, and not because of this issue: the shard has three real
+failures, each a Zephyr image that boots and then stalls, all regressions since
+2cfe9f0094 and filed as issue 2780. None involves the a53 board or a NIC ROM.
