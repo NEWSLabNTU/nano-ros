@@ -102,7 +102,12 @@ if ros_prefix="$(nros_ros_fastdds_prefix)"; then
         git clone --depth 1 --branch "$agent_ref"             https://github.com/eProsima/Micro-XRCE-DDS-Agent "$src"         || { echo "clone failed (offline?) — falling back to the bundled agent" >&2; src=""; }
     fi
     if [ -n "$src" ] && [ -f "$src/CMakeLists.txt" ]; then
-        cmake -S "$src" -B "$PAIRED_DIR/build" -DCMAKE_BUILD_TYPE=Release             -DUAGENT_BUILD_EXECUTABLE=ON             -DUAGENT_USE_SYSTEM_FASTDDS=ON -DUAGENT_USE_SYSTEM_FASTCDR=ON             -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=$logger_profile             -DUAGENT_SOCKETCAN_PROFILE=OFF >/dev/null
+        # The prefix is named to cmake, because detection read it from
+        # AMENT_PREFIX_PATH and cmake does not: without a sourced setup.bash
+        # (which also sets CMAKE_PREFIX_PATH) `find_package(fastcdr)` finds
+        # nothing, though the libraries the branch was chosen for are there.
+        cmake -S "$src" -B "$PAIRED_DIR/build" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$ros_prefix"             -DUAGENT_BUILD_EXECUTABLE=ON             -DUAGENT_USE_SYSTEM_FASTDDS=ON -DUAGENT_USE_SYSTEM_FASTCDR=ON             -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=$logger_profile             -DUAGENT_SOCKETCAN_PROFILE=OFF >/dev/null
         cmake --build "$PAIRED_DIR/build" --parallel "$(nproc 2>/dev/null || echo 4)"
         # Wrapper (not a copy): the binary links the ROS install's libs; keep
         # them reachable even when the caller forgot to source the env.
