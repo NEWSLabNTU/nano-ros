@@ -1,0 +1,1 @@
+On Zephyr, the stack-floor check now reads the frames of the C that cargo build scripts compile (zenoh-pico and its platform glue) from the compiler that built them. It used to take five of them from values read off one Cortex-M7 build, which made the walk refuse on Cortex-M3 boards and could under-count under other compile flags.

@@ -151,41 +151,6 @@
       "reason": "hand assembly (TLS pointer read), a leaf"
     },
     {
-      "bytes": 0,
-      "kind": "frame",
-      "name": "z_malloc",
-      "reason": "tail call (b.w) in zpico-sys platform_aliases.c, read off the prologue; the cc build gets no -fstack-usage under Zephyr",
-      "target": "thumbv7em-none-eabi"
-    },
-    {
-      "bytes": 0,
-      "kind": "frame",
-      "name": "z_free",
-      "reason": "tail call (b.w), as z_malloc",
-      "target": "thumbv7em-none-eabi"
-    },
-    {
-      "bytes": 0,
-      "kind": "frame",
-      "name": "z_random_fill",
-      "reason": "tail call (b.w), as z_malloc",
-      "target": "thumbv7em-none-eabi"
-    },
-    {
-      "bytes": 8,
-      "kind": "frame",
-      "name": "z_sleep_us",
-      "reason": "push {r3, lr}, read off the prologue, as z_malloc",
-      "target": "thumbv7em-none-eabi"
-    },
-    {
-      "bytes": 8,
-      "kind": "frame",
-      "name": "z_sleep_ms",
-      "reason": "push {r3, lr}, read off the prologue, as z_malloc",
-      "target": "thumbv7em-none-eabi"
-    },
-    {
       "kind": "cut",
       "match": "__assert_func",
       "reason": "a failed C assert prints and aborts; the path diverges, as the Rust panic path",

@@ -87,3 +87,24 @@ This makes the first fix direction the only sound one: give the `zpico-sys` cc b
 retire the five hand rows. The builtins need their own answer: either frames from
 the linked image's `.debug_frame`, as the walk already does for 178 functions, or a
 `compiler_builtins` from the provisioned toolchain.
+
+## 2026-11-21: the five `z_*` frames come from the compiler (phase-557 W9a)
+
+The Zephyr cargo lanes now compile cc-rs C with `-fstack-usage` whenever the stack
+floor is on, so `platform_aliases.c`'s frames are read per build and the five hand
+rows are retired. Rebuilt `cpp-port-minimal-publisher` on mps2-an385 from the
+branch: no `z_*` function is in the refusal any more. What is left is
+
+```
+__aeabi_dadd, __aeabi_dsub, __aeabi_l2d, __aeabi_memclr, __aeabi_memclr4,
+__aeabi_memclr8, __aeabi_memcpy, __aeabi_memcpy4, __aeabi_memcpy8, __aeabi_memmove,
+__aeabi_memmove4, __aeabi_memmove8, __aeabi_memset, memcmp, memcpy, memmove, memset,
+nros_cpp_publish_std_msgs_msg_string, strlen
+```
+
+The first three are libgcc's hand-written float routines, which carry no CFI. The rest
+come from the C++ FFI image staticlib, which the Zephyr road builds with no
+`-Csave-temps`, so neither its own functions nor the `compiler_builtins` that
+`-Zbuild-std` compiles into it have bitcode to read. Both are phase-557 W9b, which
+closes this issue.
+
