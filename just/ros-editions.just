@@ -4,6 +4,11 @@
 # OTHER editions inside per-edition docker images (built locally on demand).
 # Opt-in — never part of `just ci`. See the `ros-editions-ci` composite (W6).
 
+# Run every recipe from the repo root, as every other module does: `ci` sources
+# `scripts/build/cargo.sh` and runs `cargo test -p nros-tests` by relative path,
+# and from `just/` neither resolves (issue 2558).
+set working-directory := '..'
+
 _DOCKER_DIR := justfile_directory() / "docker" / "ros-editions"
 _FIX := justfile_directory() / "packages" / "testing" / "nros-tests" / "bins" / "ros-edition-pose-pub"
 

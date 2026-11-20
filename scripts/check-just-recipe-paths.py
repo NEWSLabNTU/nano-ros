@@ -39,6 +39,17 @@ Inside recipe bodies only (never comments), for LITERAL paths only:
 3. `cmake -S <dir>` — `<dir>/CMakeLists.txt` must exist (an explicit `-S`
    replaces the working directory, so rule 2 does not apply to that call).
 4. Every `scripts/…` or `tests/…` `.sh`/`.py` a body names must exist.
+5. Every `mod` source file runs its recipes FROM THE REPO ROOT: it declares
+   `set working-directory` naming the root (`'..'` for `just/<x>.just`), or it
+   has an entry in `MODULE_CWD_EXEMPT` saying why not.
+
+Rule 5 is what rules 1-4 stand on. They resolve every literal against the repo
+root, and `just` runs a module's recipes from the MODULE FILE's directory unless
+the module says otherwise. Sixteen of seventeen modules said so; the
+seventeenth, `just/ros-editions.just`, did not, so its `ci` recipe died at
+`source scripts/build/cargo.sh` from `just/` on every host while this gate
+called that path present (issue 2558). The setting is not inherited: an
+`import`ed file takes its importer's, so only a module's ROOT file is checked.
 
 Recipe bodies come in two shapes and the difference is load-bearing: WITHOUT a
 `#!` shebang, `just` runs each line in its own shell, so a bare `cd` line is
@@ -77,7 +88,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from check_just_sources import just_sources  # noqa: E402 — phase-472 W2
+from check_just_sources import just_modules, just_sources  # noqa: E402 — phase-472 W2
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -120,6 +131,52 @@ SCRIPT_REF = re.compile(
 
 # Anything that makes a token's value unknowable before the recipe runs.
 DYNAMIC = ("{{", "$", "*", "?", "`")
+
+# Rule 5. `set working-directory := '<dir>'` at column 0 of a module's file.
+WORKING_DIRECTORY = re.compile(
+    r"""^set[ \t]+working-directory[ \t]*:=[ \t]*(['"])([^'"]*)\1""", re.MULTILINE
+)
+
+# Modules that legitimately run somewhere other than the repo root:
+# {repo-relative module file: why}. Empty: every module runs from the root.
+# An entry needs a reason a reader can check. Rules 1-4 still read that
+# module's literals as root-relative, so its paths need their own care.
+MODULE_CWD_EXEMPT = {}
+
+
+def module_cwd_findings(repo, exempt=None):
+    """Rule 5: [(path, lineno, "module-cwd", detail, line)], one per module
+    whose recipes would not run from the repo root."""
+    exempt = MODULE_CWD_EXEMPT if exempt is None else exempt
+    root = Path(repo).resolve()
+    findings = []
+    for module, files in just_modules(str(repo)).items():
+        if not module or not files:
+            continue  # the root namespace already runs at the root
+        path = Path(files[0])
+        rel = path.resolve().relative_to(root).as_posix()
+        if rel in exempt:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        m = WORKING_DIRECTORY.search(text)
+        want = Path(*([".."] * len(Path(rel).parent.parts))).as_posix()
+        if m is None:
+            findings.append((
+                path, 1, "module-cwd",
+                f"`mod {module}` runs its recipes from {Path(rel).parent.as_posix()}/, "
+                f"not the repo root (no `set working-directory := '{want}'`)",
+                f"mod {module}",
+            ))
+            continue
+        if (path.parent / m.group(2)).resolve() != root:
+            lineno = text.count("\n", 0, m.start()) + 1
+            findings.append((
+                path, lineno, "module-cwd",
+                f"`mod {module}` sets working-directory {m.group(2)!r}, which is "
+                f"not the repo root (want {want!r})",
+                m.group(0),
+            ))
+    return findings
 
 
 def just_files(repo):
@@ -307,7 +364,7 @@ def scan(repo):
                 findings.append(
                     (path, lineno, kind, f"{target} has no {want}", text)
                 )
-    return findings
+    return findings + module_cwd_findings(repo)
 
 
 # --------------------------------------------------------------------------
@@ -558,6 +615,44 @@ def selftest(verbose=False):
         chk("a dangling path in `just/check/*.just` is read",
             any("no-such-w2.sh" in line for _p, _l, _k, _d, line in scan(root)))
 
+    # Rule 5 (issue 2558): a module that does not run from the repo root.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "just" / "sub").mkdir(parents=True)
+        (root / "justfile").write_text(
+            "mod bare 'just/bare.just'\n"
+            "mod good 'just/good.just'\n"
+            "mod wrong 'just/wrong.just'\n"
+            "mod deep 'just/sub/deep.just'\n"
+            "mod excused 'just/excused.just'\n"
+        )
+        (root / "just" / "bare.just").write_text(
+            "import 'part.just'\nr:\n    true\n")
+        # An imported file never carries the setting: it takes its importer's.
+        (root / "just" / "part.just").write_text("p:\n    true\n")
+        (root / "just" / "good.just").write_text(
+            "set working-directory := '..'\nr:\n    true\n")
+        (root / "just" / "wrong.just").write_text(
+            "# set working-directory := '..'  (a comment is not a setting)\n"
+            "set working-directory := '.'\nr:\n    true\n")
+        (root / "just" / "sub" / "deep.just").write_text(
+            "set working-directory := '../..'\nr:\n    true\n")
+        (root / "just" / "excused.just").write_text("r:\n    true\n")
+        found = module_cwd_findings(root, exempt={"just/excused.just": "test"})
+        names = sorted(line for _p, _l, _k, _d, line in found)
+        chk("a module with no `set working-directory` is flagged",
+            "mod bare" in names)
+        chk("a module whose working-directory is not the root is flagged",
+            any("'.'" in n for n in names))
+        chk("`'..'` from just/ and `'../..'` from just/sub/ both read as the root",
+            not any(n in ("mod good", "mod deep") for n in names))
+        chk("an exempt module is not flagged", "mod excused" not in names)
+        chk("an imported file is not a module of its own",
+            not any("part" in n for n in names))
+        chk(f"rule 5 finds EXACTLY 2 here (got {len(found)})", len(found) == 2)
+        chk("without the exemption the bare module is flagged too",
+            len(module_cwd_findings(root, exempt={})) == 3)
+
     if verbose:
         print(f"\n{ok} passed, {fail} failed")
     if fail:
@@ -591,7 +686,7 @@ def main():
         print(
             f"check-just-recipe-paths: OK ({total} recipe(s) in {len(corpus)} "
             "justfile(s); every literal in-repo path exists and carries its "
-            "tool's manifest)"
+            "tool's manifest, and every module runs from the repo root)"
         )
         return 0
 
