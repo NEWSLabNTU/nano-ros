@@ -200,7 +200,7 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
         crate::executor::rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return crate::executor::handles_full(executor, "rclc_node_create_guard_condition");
     }
 
     let node_id = nros_node::executor::NodeId::from_raw(node_ref.node_id);
@@ -322,7 +322,7 @@ pub unsafe extern "C" fn rclc_node_get_graph_guard_condition(
         crate::executor::rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return crate::executor::handles_full(executor, "rclc_node_get_graph_guard_condition");
     }
 
     let node_id = nros_node::executor::NodeId::from_raw(node_ref.node_id);

@@ -1194,6 +1194,10 @@ pub struct ProbeRow {
     /// `None` when the key is absent, which means the probe did NOT watch
     /// (a sidecar from before schema v6), never "no description".
     pub description_max_len: Option<usize>,
+    /// Issue 2768 -- every parameter the component's code DECLARED while the
+    /// probe watched, as `(name, type)`, in sidecar order. Reads are left out:
+    /// a read claims no store slot.
+    pub parameters: Vec<(String, ros_launch_manifest_model::ParamType)>,
 }
 
 /// The workspace's FRESH probe sidecars, one row each, under the freshness rule
@@ -1310,9 +1314,15 @@ pub fn probe_rows_and_stale(ws_root: &Path, nano_ros: Option<&Path>) -> Result<P
                 let description_max_len = doc
                     .parameter_description_max_len
                     .and_then(|n| usize::try_from(n).ok());
+                let parameters = doc
+                    .parameters
+                    .iter()
+                    .filter_map(|p| p.declared_type().map(|t| (p.name.clone(), t)))
+                    .collect();
                 rows.push(ProbeRow {
                     executable,
                     description_max_len,
+                    parameters,
                     entities: ComponentEntities {
                         pkg,
                         class: component.clone(),

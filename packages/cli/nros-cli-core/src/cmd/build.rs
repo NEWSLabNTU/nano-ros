@@ -7611,7 +7611,14 @@ fn resolve_image(
         // declared".
         .map_err(NotDerived::Failed)?
         .map(|mut inv| {
-            inv.set_param_declarations(params.clone());
+            // Issue 2768 -- floored by the code's declarations the probe
+            // recorded, which this composition carries.
+            inv.set_param_declarations(
+                crate::entity_inventory::ParamDeclarations::from_model_with(
+                    &model,
+                    inv.recorded_params(),
+                ),
+            );
             // phase-462 W6c -- the board's per-frame receive cost, so the
             // read-task budget `resolved.toml` publishes and the descriptor the
             // cargo road writes from this composition derive with the same

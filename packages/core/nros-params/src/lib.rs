@@ -62,8 +62,8 @@ macro_rules! store_size_knob {
 }
 macro_rules! store_size_derived {
     () => {
-        "Or state none: the build derives it when every node declares its parameters under \
-         `params:` in its contract."
+        "Or state none: the build derives it from what each node declares, in its code or \
+         under `params:` in its contract."
     };
 }
 

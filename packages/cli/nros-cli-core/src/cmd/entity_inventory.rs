@@ -475,9 +475,10 @@ fn with_model(
     // phase-446 W4 -- the contract's `params:` size the parameter store.
     // Attached whether or not the model describes wiring: the two answers are
     // independent, and a model with no topics can still declare parameters.
-    inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
-        model,
-    ));
+    // Issue 2768 -- floored by the code's declarations the probe recorded.
+    let params =
+        crate::entity_inventory::ParamDeclarations::from_model_with(model, inv.recorded_params());
+    inv.set_param_declarations(params);
     Ok((inv, wired))
 }
 
@@ -770,16 +771,18 @@ pub(crate) fn fold_models_for_shared_runtime(
     let images: Vec<_> = models
         .iter()
         .map(|(src, model)| {
-            Ok((
+            let inv = crate::orchestration::metadata_refresh::contract_inventory_reported(
                 src.clone(),
-                crate::orchestration::metadata_refresh::contract_inventory_reported(
-                    src.clone(),
-                    model,
-                    workspace,
-                    "nros: entity inventory",
-                )?,
-                crate::entity_inventory::ParamDeclarations::from_model(model),
-            ))
+                model,
+                workspace,
+                "nros: entity inventory",
+            )?;
+            // Issue 2768 -- each image floored by its own probe record.
+            let params = crate::entity_inventory::ParamDeclarations::from_model_with(
+                model,
+                inv.as_ref().and_then(|i| i.recorded_params()),
+            );
+            Ok((src.clone(), inv, params))
         })
         .collect::<Result<_>>()?;
     // Issue 1701 -- every model's frame (what its launch tree starts), so an

@@ -364,10 +364,15 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     // AFTER the merge, which is the order `cmd::entity_inventory::run` uses:
     // the declarations exist only in the model, so attaching them to the merged
     // result is the one placement that cannot depend on which side won.
+    //
+    // Issue 2768 -- floored by what the probe recorded of the code's own
+    // declarations, which the composition above carries.
     .map(|mut inv| {
-        inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
+        let params = crate::entity_inventory::ParamDeclarations::from_model_with(
             &model,
-        ));
+            inv.recorded_params(),
+        );
+        inv.set_param_declarations(params);
         inv
     });
     let Some(inventory) = inventory else {

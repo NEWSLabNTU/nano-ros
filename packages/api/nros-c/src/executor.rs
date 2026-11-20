@@ -163,6 +163,25 @@ impl core::ops::DerefMut for CExecRef<'_> {
     }
 }
 
+/// Issue 2768 -- an executor at its `max_handles` refuses the next add, and
+/// SAYS so. Each of these was a bare `RCLC_RET_FULL`, which a component's
+/// configure passes up as the image's exit status with nothing printed.
+pub(crate) fn handles_full(executor: &rclc_executor_t, what: &str) -> rcl_ret_t {
+    nros_log::log_error!(
+        nros_log::get_logger("nros-c"),
+        "{}: the executor is full ({} of max_handles = {}); the handle was not added.",
+        what,
+        executor.handle_count,
+        executor.max_handles
+    );
+    nros_log::log_error!(
+        nros_log::get_logger("nros-c"),
+        "max_handles is rclc_executor_init's number_of_handles, at most NROS_EXECUTOR_MAX_CBS ({}).",
+        NROS_EXECUTOR_MAX_HANDLES
+    );
+    RCLC_RET_FULL
+}
+
 /// The executor's `CExecutor`, as the untyped pointer entities store
 /// (`get_executor_from_ptr`). Always the one in `_opaque`; `_host` names the
 /// same place when a host owns it (phase-492 W4).
@@ -2232,7 +2251,7 @@ unsafe fn register_subscription_entry(
     );
 
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return handles_full(executor, "rclc_executor_add_subscription");
     }
 
     // issue 1437 — taken BEFORE `get_executor` borrows `executor` mutably,
@@ -2779,7 +2798,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return handles_full(executor, "rclc_executor_add_subscription_raw_with_info");
     }
 
     let (Ok(topic_str), Ok(type_str), Ok(type_hash_str)) = (
@@ -3211,7 +3230,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
     );
 
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return handles_full(executor, "rclc_executor_add_subscription_in_group");
     }
 
     {
@@ -3922,7 +3941,7 @@ unsafe fn add_service_raw(
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return handles_full(executor, "rclc_executor_add_service");
     }
 
     {
@@ -4112,7 +4131,7 @@ unsafe fn attach_client_with(
     );
 
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return handles_full(executor, "rclc_executor_add_client");
     }
 
     {
@@ -4252,7 +4271,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_server(
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return handles_full(executor, "rclc_executor_attach_action_server");
     }
 
     {
@@ -4406,7 +4425,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
     );
 
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return handles_full(executor, "rclc_executor_attach_action_client");
     }
 
     {

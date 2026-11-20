@@ -564,10 +564,33 @@ mod imp {
         // Creates the store if this is its first use, and sets the node's
         // undeclared-set policy.
         exec.allow_undeclared_parameters_on(id, opts.allow_undeclared_parameters);
+        // Issue 2768 -- both refusals are reported here. Each was a bare
+        // `RCLC_RET_FULL`, which a component's configure passes up as the
+        // image's exit status: a node asking for 41 slots against the default
+        // 32 ended its image with exit 250 and nothing on the console.
+        let logger = nros_log::get_logger("nros-c");
         let Some(capacity) = exec.params().map(|p| p.capacity()) else {
+            nros_log::log_error!(
+                logger,
+                "node {}/{}: parameter server not started: this image has no parameter store.",
+                node.get_namespace_str().trim_end_matches('/'),
+                node.get_name_str()
+            );
+            nros_log::log_error!(logger, "{}", nros::STORE_SIZE_KNOB);
             return RCLC_RET_FULL;
         };
         if opts.max_params > capacity {
+            nros_log::log_error!(
+                logger,
+                "node {}/{}: parameter server not started: it asks for max_params = {}, and \
+                 the image's parameter store holds {} (all nodes).",
+                node.get_namespace_str().trim_end_matches('/'),
+                node.get_name_str(),
+                opts.max_params,
+                capacity
+            );
+            nros_log::log_error!(logger, "{}", nros::STORE_SIZE_KNOB);
+            nros_log::log_error!(logger, "{}", nros::STORE_SIZE_DERIVED);
             return RCLC_RET_FULL;
         }
         // rclc's set service deletes on NOT_SET; rclcpp's refuses.

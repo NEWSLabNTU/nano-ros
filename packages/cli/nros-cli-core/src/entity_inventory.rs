@@ -947,7 +947,17 @@ pub struct EntityInventory {
     unresolved_bridges: Vec<String>,
     /// Issue 2650 -- what the probe saw of the code's parameter descriptions.
     param_prose: ParamProse,
+    /// Issue 2768 -- the parameters each launched node's code DECLARED while
+    /// the probe watched, keyed by node FQN. `Some` only when every node the
+    /// launch tree starts has exactly one fresh sidecar, so a count over it is
+    /// a count over the whole image. See [`Self::recorded_params`].
+    recorded_params: Option<RecordedParams>,
 }
+
+/// Issue 2768 -- per launched node FQN, the `(name, type)` of each parameter
+/// its code declared, as the metadata probe recorded it.
+pub type RecordedParams =
+    std::collections::BTreeMap<String, Vec<(String, ros_launch_manifest_model::ParamType)>>;
 
 /// Issue 2650 -- what an inventory knows about the parameter descriptions its
 /// code sets, the one input `NROS_MAX_PARAM_DESCRIPTION_LEN` is derived from.
@@ -3363,16 +3373,58 @@ impl ParamDeclarations {
     }
 
     /// Read `contracts.node_params` against the nodes the model runs.
+    ///
+    /// The contract alone. A road that knows the workspace calls
+    /// [`Self::from_model_with`] with the probe's record instead.
     pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Self {
-        let declared = &model.contracts.node_params;
-        if declared.is_empty() {
+        Self::from_model_with(model, None)
+    }
+
+    /// [`Self::from_model`], floored by what the code declares.
+    ///
+    /// Issue 2768 -- the store is image-wide and every declaration takes a
+    /// slot, so a count never comes in under what the launched nodes' code
+    /// declares: `recorded` (each node's declarations, from the metadata
+    /// probe, [`EntityInventory::recorded_params`]) adds every name the
+    /// contract does not state, and states the nodes the contract is silent
+    /// on. Where both name a parameter, the contract's type stands. The rule
+    /// is issue 1694's for entity counts, applied to the parameter store: a
+    /// two-node image whose C node declared 41 parameters, with no `params:`
+    /// in any contract, kept the default store, and its configure refused
+    /// with exit 250 and nothing on the console.
+    pub fn from_model_with(
+        model: &ros_launch_manifest_model::SystemModel,
+        recorded: Option<&RecordedParams>,
+    ) -> Self {
+        use ros_launch_manifest_model::ParamType;
+        let mut declared: std::collections::BTreeMap<
+            &String,
+            std::collections::BTreeMap<&String, ParamType>,
+        > = std::collections::BTreeMap::new();
+        if let Some(rec) = recorded {
+            for (node, ps) in rec {
+                let row = declared.entry(node).or_default();
+                for (name, ty) in ps {
+                    row.insert(name, *ty);
+                }
+            }
+        }
+        for (node, ps) in &model.contracts.node_params {
+            let row = declared.entry(node).or_default();
+            for (name, c) in ps {
+                row.insert(name, c.ty);
+            }
+        }
+        // Nobody said anything: the contract states no `params:` and the code
+        // was not seen to declare one.
+        if model.contracts.node_params.is_empty() && declared.values().all(|ps| ps.is_empty()) {
             return ParamDeclarations::Absent;
         }
         let mut nodes: std::collections::BTreeSet<&String> = model.structure.nodes.keys().collect();
-        nodes.extend(declared.keys());
+        nodes.extend(declared.keys().copied());
         let silent: Vec<&str> = nodes
             .iter()
-            .filter(|n| !declared.contains_key(n.as_str()))
+            .filter(|n| !declared.contains_key(*n))
             .map(|n| n.as_str())
             .collect();
         if !silent.is_empty() {
@@ -3392,10 +3444,10 @@ impl ParamDeclarations {
         let params = declared
             .iter()
             .flat_map(|(node, ps)| {
-                ps.iter().map(move |(name, c)| DeclaredParam {
-                    node: node.clone(),
-                    name: name.clone(),
-                    ty: c.ty,
+                ps.iter().map(move |(name, ty)| DeclaredParam {
+                    node: (*node).clone(),
+                    name: (*name).clone(),
+                    ty: *ty,
                 })
             })
             .collect();
@@ -3533,6 +3585,7 @@ impl EntityInventory {
             bridge_backends: std::collections::BTreeSet::new(),
             unresolved_bridges: Vec::new(),
             param_prose: ParamProse::NotConsulted,
+            recorded_params: None,
         }
     }
 
@@ -3609,6 +3662,14 @@ impl EntityInventory {
     /// Issue 2650 -- see [`ParamProse`].
     pub fn param_prose(&self) -> &ParamProse {
         &self.param_prose
+    }
+
+    /// Issue 2768 -- what the probe recorded of every launched node's declared
+    /// parameters, or `None` when some launched node has no single fresh
+    /// sidecar. [`ParamDeclarations::from_model_with`] takes it, so a store is
+    /// never sized below what the code declares.
+    pub fn recorded_params(&self) -> Option<&RecordedParams> {
+        self.recorded_params.as_ref()
     }
 
     /// Issue 1198 -- state the authored sched task count for an inventory whose
@@ -4271,6 +4332,8 @@ impl EntityInventory {
                 description_max_len: 0,
             }
         };
+        let mut recorded: Option<RecordedParams> =
+            (!model.structure.nodes.is_empty()).then(RecordedParams::new);
         for (fqn, node) in &model.structure.nodes {
             let component = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
             let found: Vec<&crate::orchestration::metadata_refresh::ProbeRow> = probe
@@ -4301,6 +4364,15 @@ impl EntityInventory {
                 }
             };
             prose = prose.fold(&seen);
+            // Issue 2768 -- all or nothing, like the prose: one node with no
+            // single sidecar leaves the image's parameters unrecorded.
+            recorded = match (recorded, found.as_slice()) {
+                (Some(mut all), [one]) => {
+                    all.insert(fqn.clone(), one.parameters.clone());
+                    Some(all)
+                }
+                _ => None,
+            };
             let (class, declaration) = match found.as_slice() {
                 [one] => (one.entities.class.clone(), one.entities.declaration.clone()),
                 _ => (String::new(), Declaration::Absent),
@@ -4313,6 +4385,7 @@ impl EntityInventory {
             });
         }
         inv.param_prose = prose;
+        inv.recorded_params = recorded;
         inv
     }
 
@@ -4345,6 +4418,7 @@ impl EntityInventory {
         let mut inv = Self::new(source);
         inv.apply_frame(&ImageFrame::from_model(model));
         inv.param_prose = recorded.param_prose.clone();
+        inv.recorded_params = recorded.recorded_params.clone();
         for c in recorded.components {
             inv.insert(c);
         }
@@ -4733,6 +4807,11 @@ impl EntityInventory {
         out.stated_by = self.stated_by.max(model.stated_by);
         // Issue 2650 -- the probe side's watch, folded with the other side's.
         out.param_prose = self.param_prose.fold(&model.param_prose);
+        // Issue 2768 -- the probe side's record; only one side carries one.
+        out.recorded_params = self
+            .recorded_params
+            .clone()
+            .or_else(|| model.recorded_params.clone());
         // Issue 2076 -- a bridge either side declared, once by name.
         out.bridges = union_bridges(&self.bridges, &model.bridges);
         out.bridge_backends = self
@@ -6975,7 +7054,7 @@ fn render_declared_qos(q: &DeclaredQos) -> String {
 fn render_param_store(p: &ParamDeclarations) -> String {
     let mut s = String::from(
         // History: phase-446 W4.
-        "# The PARAMETER STORE, sized from the contract's `params:`.\n\
+        "# The PARAMETER STORE, sized from the contract's `params:` and what the code declares.\n\
          # Every slot is as large as the largest value the limits allow, so a\n\
          # capacity no declared type uses is 0, and a capacity one does use comes\n\
          # from the BOARD -- a contract states names and types, never sizes.\n\
@@ -9768,7 +9847,7 @@ execution:
 #[cfg(test)]
 mod from_model_tests {
     use super::*;
-    use ros_launch_manifest_model::SystemModel;
+    use ros_launch_manifest_model::{ParamType, SystemModel};
 
     /// phase-412 -- the island's own resolved model, cut down to the shape that
     /// matters: two nodes, three topics, one of them internal.
@@ -9806,6 +9885,94 @@ mod from_model_tests {
             }
         }
         model_from_yaml(&y)
+    }
+
+    fn recorded(rows: &[(&str, &[(&str, ParamType)])]) -> RecordedParams {
+        rows.iter()
+            .map(|(node, ps)| {
+                (
+                    (*node).to_string(),
+                    ps.iter().map(|(n, t)| ((*n).to_string(), *t)).collect(),
+                )
+            })
+            .collect()
+    }
+
+    /// Issue 2768 -- THE CASE: no contract states `params:`, and the code of
+    /// one node declares 41. The store is sized from what the code declares,
+    /// not left at its default for configure to overflow.
+    #[test]
+    fn the_codes_recorded_declarations_size_a_store_no_contract_states() {
+        let model = param_model(&["/seeds_c", "/seeds_cpp"], &[]);
+        let gains: Vec<String> = (0..40).map(|i| format!("gain_{i:02}")).collect();
+        let mut c: Vec<(&str, ParamType)> = vec![("ctrl_period_ms", ParamType::Integer)];
+        c.extend(gains.iter().map(|g| (g.as_str(), ParamType::Integer)));
+        let rec = recorded(&[
+            ("/seeds_c", &c),
+            ("/seeds_cpp", &[("ctrl_period_ms", ParamType::Integer)]),
+        ]);
+        assert_eq!(
+            ParamDeclarations::from_model(&model),
+            ParamDeclarations::Absent
+        );
+        let floored = ParamDeclarations::from_model_with(&model, Some(&rec));
+        let z = floored
+            .sizing()
+            .expect("the recorded declarations size the store");
+        assert_eq!(z.declared, 42);
+        // Every declared name plus each node's seeded `use_sim_time`.
+        assert_eq!(z.max_parameters, 44);
+    }
+
+    /// Issue 2768 -- the contract and the record UNION by name; where both
+    /// name a parameter the contract's type stands, and a node the contract
+    /// is silent on is stated by the record instead of refusing.
+    #[test]
+    fn the_record_adds_what_the_contract_omits_and_the_contract_keeps_its_types() {
+        let model = param_model(&["/a", "/b"], &[("/a", &[("x", "string")])]);
+        assert!(matches!(
+            ParamDeclarations::from_model(&model),
+            ParamDeclarations::Refused { .. }
+        ));
+        let rec = recorded(&[
+            ("/a", &[("x", ParamType::Integer), ("y", ParamType::Bool)]),
+            ("/b", &[("z", ParamType::Double)]),
+        ]);
+        let ParamDeclarations::Declared { nodes, params } =
+            ParamDeclarations::from_model_with(&model, Some(&rec))
+        else {
+            panic!("a record covering every node states the store");
+        };
+        assert_eq!(nodes, vec!["/a".to_string(), "/b".to_string()]);
+        let got: Vec<(&str, &str, ParamType)> = params
+            .iter()
+            .map(|p| (p.node.as_str(), p.name.as_str(), p.ty))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("/a", "x", ParamType::String),
+                ("/a", "y", ParamType::Bool),
+                ("/b", "z", ParamType::Double),
+            ]
+        );
+    }
+
+    /// Issue 2768 -- no record changes nothing, and a record of no
+    /// declarations with no contract is still nobody saying anything.
+    #[test]
+    fn no_record_or_an_empty_one_leaves_the_contracts_answer() {
+        let model = param_model(&["/a"], &[("/a", &[("x", "integer")])]);
+        assert_eq!(
+            ParamDeclarations::from_model_with(&model, None),
+            ParamDeclarations::from_model(&model)
+        );
+        let silent = param_model(&["/a", "/b"], &[]);
+        let empty = recorded(&[("/a", &[]), ("/b", &[])]);
+        assert_eq!(
+            ParamDeclarations::from_model_with(&silent, Some(&empty)),
+            ParamDeclarations::Absent
+        );
     }
 
     /// The downstream island in the shape phase-446 W4 was measured on: four
@@ -13074,6 +13241,7 @@ contracts:
         ProbeRow {
             executable: Some(exec.into()),
             description_max_len: None,
+            parameters: Vec::new(),
             entities: ComponentEntities {
                 pkg: pkg.into(),
                 component: exec.into(),
@@ -13081,6 +13249,31 @@ contracts:
                 declaration: Declaration::Stated(rows),
             },
         }
+    }
+
+    /// Issue 2768 -- the record of declared parameters is kept per launched
+    /// node, and only when EVERY launched node has its sidecar: one missing
+    /// node and a count over the rest would be a count over part of the image.
+    #[test]
+    fn the_parameter_record_covers_every_launched_node_or_none() {
+        use ros_launch_manifest_model::ParamType;
+        let model = partial_model("");
+        let mut talker = probe("talker_pkg", "talker", vec![]);
+        talker.parameters = vec![("rate_hz".into(), ParamType::Integer)];
+        let listener = probe("listener_pkg", "listener", vec![]);
+
+        let both = EntityInventory::recorded_for_launch(&model, &[talker.clone(), listener]);
+        let rec = both
+            .recorded_params()
+            .expect("every launched node has a sidecar");
+        assert_eq!(
+            rec["/talker"],
+            vec![("rate_hz".to_string(), ParamType::Integer)]
+        );
+        assert!(rec["/listener"].is_empty());
+
+        let one = EntityInventory::recorded_for_launch(&model, &[talker]);
+        assert_eq!(one.recorded_params(), None);
     }
 
     /// What the probe sidecars of the stock workspace record: the talker's
