@@ -123,6 +123,12 @@ ZERO_LEGAL = {
         "`just check rmw-xrce` builds and passes the CTest harness at 0, and the "
         "features params_xrce image (derived 11) passes its e2e."
     ),
+    "CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS": (
+        "issue 2738 — 0 selects the caller-stack format buffer, the sink's "
+        "behaviour before the pool: the pool array is declared only under "
+        "`#if CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS > 0`. The gate cell's "
+        "negative-control image builds exactly that (legacy-sink.conf)."
+    ),
 }
 
 # Arrays sized by a build knob that nobody has ruled on. NOT a pass: an honest

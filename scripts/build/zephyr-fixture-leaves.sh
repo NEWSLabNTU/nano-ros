@@ -302,6 +302,19 @@ emit_record() {
 #
 # What stays here is VOCABULARY, not arithmetic: which matrix workload a west
 # role is an image of. A role this does not name has no allocator cell.
+# The west leaves that open NO session, so no router, Agent or domain
+# isolates them and they state none: an image of no allocator cell that is
+# still a complete fixture. Named, not inferred: a new leaf that forgot its
+# isolation values must still fail.
+#   logging-smoke                 nros-log severities to the console
+#   log-sink-small-stack(-legacy) a small-stack thread logs (issue 2738)
+nros_leaf_opens_no_session() {
+    case "$1" in
+        logging-smoke | log-sink-small-stack | log-sink-small-stack-legacy) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 workload_for_role() {
     case "$1" in
         talker|listener) printf '%s\n' Pubsub ;;
@@ -551,7 +564,7 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
                 exit 2
             fi
         fi
-    elif [ "$role" != "logging-smoke" ]; then
+    elif ! nros_leaf_opens_no_session "$role"; then
         # The six role leaves take the allocator's values whole.
         if [ -z "$iso_key" ]; then
             echo "zephyr-fixture-leaves: row $id: role '$role' is the image of no allocator cell, and the row states no isolation values" >&2
