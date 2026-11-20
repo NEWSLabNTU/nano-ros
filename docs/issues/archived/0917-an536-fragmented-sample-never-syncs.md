@@ -2,13 +2,15 @@
 id: 917
 title: "The emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst,
   and a 5 ms RX poll drains it far too late"
-status: open
+status: resolved
 type: bug
 area: rmw, platform
 related: [issue-0836, issue-0889, issue-0749, phase-441, phase-512]
+resolved: 2026-11-20
+resolved_in: "the change that archives this issue"
 ---
 
-**Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** (H3) — re-homed 2026-10-23 from phase-441, archived that day. Its in-tree witness passed over slirp under `-icount` (phase-441 W6, 2026-10-20), so what is left is the tap-fed, free-running path.
+**Home: [phase-512](../../roadmap/phase-512-on-hardware-measurements.md)** (H3) — re-homed 2026-10-23 from phase-441, archived that day. Its in-tree witness passed over slirp under `-icount` (phase-441 W6, 2026-10-20), so what is left is the tap-fed, free-running path.
 
 ## Symptom
 
@@ -579,3 +581,104 @@ at all. That differs from the 2026-10-30 measurement above (659 of 665 and 692
 of 713 on the same cell after the drain-loop fix), so the cell no longer
 supports "delivered in tree" as a steady result. It was not reproduced solo
 on a workstation.
+
+
+## Resolution (2026-11-20): measured on a 100 Mbps wire, no root
+
+The tap + `tc` route this issue asked for was never needed. A userspace wire
+does the same job, and the in-tree witness is the cell
+`nros_freertos_an536_cyclone_listener_keeps_up_with_a_line_rate_burst`.
+
+### Why plain QEMU could never show the defect
+
+The pinned QEMU's LAN9118 model **back-pressures** a full RX FIFO. Since the
+fork commit "a full RX fifo is back-pressure, not an error" (2026-08-28),
+`can_receive` refuses a frame and the backend stops reading. Nothing is
+dropped, so a 5 ms poll costs latency and never a frame, over slirp, a tap or
+a socket. The part drops the frame instead. Pacing alone cannot fix that. A
+lane that tests the drain has to put the drop back too.
+
+### The lane
+
+`nros_tests::wire::WireLink`. The guest NIC is a QEMU `-netdev dgram` on an
+`AF_UNIX` socket. The wire's far end is a second `dgram` netdev on a hub with
+`-netdev user`, so the host peer still uses slirp's `hostfwd`. Each direction
+sends frames back to back at 100 Mbps: preamble/SFD, FCS and IFG counted, with
+the 60-byte minimum. Host to guest, the wire drops a frame that falls due
+while QEMU has left an earlier frame unread for more than 100 us, which is the
+part's overflow. "Unread" is `SIOCOUTQ` on the wire's socket. Free-running
+QEMU, stock FIFO, the stock pinned QEMU 11.0.0-nros8.
+
+The lane holds about 9 full frames: the model's 7 FIFO frames (with its
+1536-byte headroom rule), plus 1 held in QEMU's net queue, plus 1 unread in
+the socket. The part holds about 6. So the lane is about three frames KINDER
+than silicon, never harsher, and an N-frame sample here stresses the drain the
+way an (N-3)-frame sample does on the part. The host Cyclone sends a sample as
+one UDP datagram of `DATA_FRAG`s, IP-fragmented, so the 10 576-byte sample is
+8 frames and a 16 000-byte sample is 11.
+
+Two harness traps were measured and removed before the numbers below:
+
+- A relay that busy-waits on the same CPU as QEMU's main thread delays QEMU's
+  own socket reads by milliseconds, and that reads as NIC overflow. In-tree,
+  the wire sleeps in `ppoll`. The prototype relay was pinned away from QEMU.
+- `zsh` runs `&` jobs at nice +5 (`BG_NICE`). At nice 5 every
+  interrupt-driven arm lost 3-4 % of frames and delivered 73-84 % of the
+  11-frame samples, where at nice 0 it delivered 98-99 %. The polled drain
+  fails at both. The cell's bar (50 %) sits below the nice-5 figure.
+
+### Measured (free-running, 6 runs per arm, 40 s at 10 Hz, nice 0)
+
+Host publisher: rclpy, one node, `/bulk` at 10 Hz plus three small topics at
+40 Hz that the listener also subscribes. Delivered = samples whole at the
+callback / samples sent:
+
+| sample | frames | 5 ms poll, sleep first (pre-7cb213c43a) | main (IRQ, drain first) | this fix |
+| --- | --- | --- | --- | --- |
+| 10 576 B | 8 | 383, 388, 388, 395, 395, 383 of 398 | 388-395 of 395-399 | 389-396 of 395-398 |
+| 16 000 B | 11 | **42, 42, 52, 46, 58, 58** of 395-399 | 391-396 of 395-399 | 394-397 of 395-398 |
+
+Frames dropped at the NIC on the 11-frame arm: poll 24-26 %, main 0.2-0.6 %,
+this fix 0.0-0.3 %.
+
+- **The defect is reproduced and the fix holds on the 11-frame arm.** That
+  arm is the lane's equivalent of an 8-fragment burst on the part. A polled
+  drain loses the tail of nearly every burst, and a reliable reader then
+  delivers 11-15 % of the samples. The interrupt-driven drain delivers 98-99 %.
+  The negative control is the old poll on the same lane: the lane can fail,
+  and it fails exactly the arm the budget says it should.
+- **On the 8-frame arm the lane cannot tell them apart.** 8 frames fit in its
+  9-frame buffer, so even the polled drain delivers 96-99 %. That is the
+  lane's extra slack, not evidence about the part.
+- **Not bimodal at nice 0.** Each arm's six runs sit in a narrow band. At
+  nice 5 the interrupt-driven arms moved down together (73-84 %), which is
+  the host scheduler, not the guest.
+- An unpaced wire with the same drop rule loses nothing with the fixed
+  drain. The guest drains faster than the relay forwards, so "unpaced" is not
+  a useful control here. The old poll on the paced wire is the control.
+
+### What this change adds on top of 7cb213c43a / de7de3d0bc
+
+- **A lost-interrupt race on re-arm.** The model sets `RSFL` once per received
+  frame (a latch, not a level). Re-arming cleared it and then unmasked, so a
+  frame landing between the drain's last "empty" read and that clear lost its
+  only interrupt and waited the 5 ms ceiling. `lan9118_lwip_rx_irq_rearm` now
+  reads the FIFO after unmasking, and the drain loop drains again at once on
+  the first backlog. Only a second backlog in a row waits one tick. Effect on
+  this lane: frame drops 0.2-0.6 % to 0.0-0.3 %; delivery was already at the
+  ceiling.
+- **mps2-an385-freertos** drives RX from the LAN9118 interrupt (NVIC IRQ 13).
+  It shares the driver and the drain loop, and until now it only polled.
+- **`LINK_STATS`**: the driver counts recv/xmit/drop/memerr/lenerr/err, and it
+  adds the part's own `RX_DROP` counter (clear-on-read; QEMU reads 0) to
+  `link.drop`.
+
+### Left open, elsewhere
+
+- The 2026-11-11 intermittent red of the slirp fragmented cell is NOT this
+  mechanism. Over slirp the model back-pressures, so the NIC cannot lose a
+  fragment there. It needs its own issue.
+- Freshness above lwIP (the island's "stale at 0 % loss" residual, "What to
+  do" item 5) stays with issue 0889.
+- The real board is still the final word on the part's ~6-frame FIFO.
+  Phase-512 H3 is answered by the wire lane and no longer needs root.

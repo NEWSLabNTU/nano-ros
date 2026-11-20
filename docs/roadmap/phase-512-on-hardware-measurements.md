@@ -52,7 +52,7 @@ not eight separate runs:
 | A | MR-CANHUBK344 (S32K344), SWD probe, serial link to a router | H6, H7, H8, H9 | done 2026-10-26 |
 | B | S32Z270 silicon | H1 | no board |
 | C | a bare-metal Cortex-M board: MPS2-AN385 or STM32F4-Discovery | H2, H4 | no board; H2 also needs a board crate that registers smoltcp's deadline source |
-| D | a host with root, tap-fed QEMU | H3 | no runner with root |
+| D | ~~a host with root, tap-fed QEMU~~ a userspace 100 Mbps wire, no root | H3 | done 2026-11-20 |
 | E | Jetson AGX Orin devkit | H5 | closed 2026-11-01: Orin SPE not supported |
 
 Batch A runs in this order, one flash per image: H7's two console-less talker
@@ -115,7 +115,7 @@ The report line fires on the first one, so the run answers within seconds.
 ### H3 — an 8-fragment RTPS burst on a free-running, tap-fed QEMU
 
 From [phase-441](archived/phase-441-rmw-on-target-verification.md) W6, for
-[issue 0917](../issues/0917-an536-fragmented-sample-never-syncs.md).
+[issue 0917](../issues/archived/0917-an536-fragmented-sample-never-syncs.md).
 
 This is the one item here that is not silicon. It is a host setup no lane
 provides. Phase-441 W6's fragmented leg passed in tree on 2026-10-20 on the
@@ -129,6 +129,16 @@ tap. That path needs root on the host, and no runner has it.
 keeps receiving whole 8-fragment samples for 45 s (then 0917 closes as not
 reproduced) or drops them (then that run is 0917's first in-tree
 reproduction, with the RX FIFO depth and the drain interval recorded).
+
+**Done 2026-11-20, without root.** QEMU's LAN9118 model back-pressures a full
+FIFO instead of dropping, so a tap would not have shown the defect either.
+`nros_tests::wire::WireLink` paces frames at 100 Mbps and drops a frame the
+NIC is refusing. That lane buffers about 9 full frames where the part buffers
+about 6. On it, an 11-frame sample (the lane's equivalent of the part's
+8-fragment burst) reached the listener 11-15 % of the time with a 5 ms polled
+drain and 98-99 % with the interrupt-driven drain, over 6 free-running runs
+each. Cell: `nros_freertos_an536_cyclone_listener_keeps_up_with_a_line_rate_burst`.
+Issue 0917 is resolved; its archived text has the table.
 
 ### H4 — Cortex-M3 P99 wake latency on silicon
 

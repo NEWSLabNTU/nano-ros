@@ -430,13 +430,15 @@ void nros_board_poll_netif(void) {
     lan9118_lwip_poll(&lan9118_netif);
     /* Re-arm once the FIFO is empty. Doing it here rather than in the ISR is
      * what makes the mask safe: the line stays masked for exactly as long as
-     * there is work, so a burst cannot re-enter the handler per frame. */
-    if (!lan9118_lwip_rx_pending(&lan9118_netif)) {
-        lan9118_lwip_rx_irq_enable(&lan9118_netif);
-    } else {
-        /* The drain stopped at its budget with frames still queued. The line
-         * stays masked, so no interrupt will come: tell the drain loop to come
-         * back in one tick rather than after the full poll interval. */
+     * there is work, so a burst cannot re-enter the handler per frame.
+     *
+     * Either way frames can still be waiting with no interrupt coming: the
+     * drain stopped at its budget (the line stays masked), or a frame landed
+     * while re-arming and the re-arm cleared its status bit (see
+     * lan9118_lwip_rx_irq_rearm). Tell the drain loop to come straight back
+     * rather than after the full poll interval. */
+    if (lan9118_lwip_rx_pending(&lan9118_netif) ||
+        lan9118_lwip_rx_irq_rearm(&lan9118_netif)) {
         nros_freertos_net_rx_backlog();
     }
 }
