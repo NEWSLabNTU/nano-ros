@@ -1,12 +1,14 @@
 ---
 id: 2777
 title: "A threadx_linux image that outlasts a late router then exits: the stock parameter services ask for 283,392 bytes in one allocation (a regression from 6229085857)"
-status: open
+status: resolved
 type: bug
 area: [threadx, zenoh, ci]
 severity: high
 found: 2026-11-21
-related: [2207, 2760, 2624, 2706, 2780]
+resolved: 2026-11-21
+resolved_in: "fix(issue 2777): a migrated cargo leaf's stock parameter services imply a store"
+related: [2207, 2760, 2624, 2706, 2780, phase-556, issue-2772]
 ---
 
 ## What fails
@@ -77,3 +79,24 @@ pools derived from measured working sets) may have tightened.
 
 The fix is with the nros 175 session. Closes when the test passes again on
 the merge lane.
+
+## Fix (2026-11-21, nros 175)
+
+The sizing descriptor of `examples/threadx-linux/rust/listener` said
+`[params] store = "none"` beside `infra_families = "param+rosout+clock"`. The
+cargo-leaf store view keeps the `param_services` axis only where the build
+compiles the services in, and it looked for the `param-services` feature in
+the leaf's own Cargo.toml. A migrated leaf names none: its generated selection
+package carries the `nros` features, and those are the image's effective axes.
+So `nros-params` carved no store (`IMPLIED_STORE_SLOTS = 0`), and the runtime
+asked the heap for the crate default.
+
+- `sizing_descriptor::leaf_compiles_param_services` counts a leaf that depends
+  on its selection package. The descriptor now states
+  `store = "param_services"`, and 8 slots are carved.
+- `nros::main!` const-asserts that an image serving the parameter services
+  carves a store, naming the knob, so a road that loses the fact fails at
+  build instead of at boot (phase-556 W13 refinement).
+
+`rtos_e2e test_rtos_session_open_outlasts_a_late_router` (ThreadxLinux)
+passes 3/3.
