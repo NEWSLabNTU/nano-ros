@@ -635,6 +635,122 @@ impl FrameSink for RecordSink<'_> {
     }
 }
 
+/// The fourteen graph queries as inherent methods of a component context,
+/// each forwarded to `self.$graph()`: a method yielding
+/// `Result<&mut dyn GraphQuery, NodeError>`. One spelling for `TickCtx` and
+/// `NodeContext`, so the two surfaces cannot drift apart.
+macro_rules! graph_query_forwarders {
+    ($graph:ident) => {
+        /// Every node on the graph: `visit(name, namespace)`, stop on `false`.
+        /// What has been DISCOVERED, never blocking: empty means "not seen
+        /// yet".
+        pub fn get_node_names(
+            &mut self,
+            visit: &mut dyn FnMut(&str, &str) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?.get_node_names(visit)
+        }
+        /// Every node with its enclave: `visit(name, namespace, enclave)`.
+        pub fn get_node_names_with_enclaves(
+            &mut self,
+            visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?.get_node_names_with_enclaves(visit)
+        }
+        /// Every topic with its types: `visit(topic, types)` once per topic.
+        pub fn get_topic_names_and_types(
+            &mut self,
+            visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?.get_topic_names_and_types(visit)
+        }
+        /// Every service with its types: `visit(service, types)`.
+        pub fn get_service_names_and_types(
+            &mut self,
+            visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?.get_service_names_and_types(visit)
+        }
+        /// The graph's publisher count on `topic_name` (not this node's).
+        pub fn count_publishers(&mut self, topic_name: &str) -> Result<usize, crate::NodeError> {
+            self.$graph()?.count_publishers(topic_name)
+        }
+        /// The graph's subscription count on `topic_name`.
+        pub fn count_subscriptions(&mut self, topic_name: &str) -> Result<usize, crate::NodeError> {
+            self.$graph()?.count_subscriptions(topic_name)
+        }
+        /// The graph's client count on `service_name`.
+        pub fn count_clients(&mut self, service_name: &str) -> Result<usize, crate::NodeError> {
+            self.$graph()?.count_clients(service_name)
+        }
+        /// The graph's server count on `service_name`.
+        pub fn count_services(&mut self, service_name: &str) -> Result<usize, crate::NodeError> {
+            self.$graph()?.count_services(service_name)
+        }
+        /// The topics a node publishes: `visit(topic, types)`.
+        pub fn get_publisher_names_and_types_by_node(
+            &mut self,
+            node_name: &str,
+            node_namespace: &str,
+            visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?
+                .get_publisher_names_and_types_by_node(node_name, node_namespace, visit)
+        }
+        /// The topics a node subscribes to: `visit(topic, types)`.
+        pub fn get_subscription_names_and_types_by_node(
+            &mut self,
+            node_name: &str,
+            node_namespace: &str,
+            visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?.get_subscription_names_and_types_by_node(
+                node_name,
+                node_namespace,
+                visit,
+            )
+        }
+        /// The services a node serves: `visit(service, types)`.
+        pub fn get_service_names_and_types_by_node(
+            &mut self,
+            node_name: &str,
+            node_namespace: &str,
+            visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?
+                .get_service_names_and_types_by_node(node_name, node_namespace, visit)
+        }
+        /// The services a node is a client of: `visit(service, types)`.
+        pub fn get_client_names_and_types_by_node(
+            &mut self,
+            node_name: &str,
+            node_namespace: &str,
+            visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?
+                .get_client_names_and_types_by_node(node_name, node_namespace, visit)
+        }
+        /// The publishers on `topic_name`, one visit each.
+        pub fn get_publishers_info_by_topic(
+            &mut self,
+            topic_name: &str,
+            visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?
+                .get_publishers_info_by_topic(topic_name, visit)
+        }
+        /// The subscriptions on `topic_name`, one visit each.
+        pub fn get_subscriptions_info_by_topic(
+            &mut self,
+            topic_name: &str,
+            visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+        ) -> Result<(), crate::NodeError> {
+            self.$graph()?
+                .get_subscriptions_info_by_topic(topic_name, visit)
+        }
+    };
+}
+
 /// Node declaration context — what a component's
 /// [`register`](Component::register) receives.
 ///
@@ -852,6 +968,19 @@ impl<'a> NodeContext<'a> {
             id,
         }
     }
+}
+
+/// phase-572 W2 -- the graph queries at registration. The context holds the
+/// executor for the whole of `register()`, so each query is that executor's
+/// own call. At boot the graph is mostly not discovered yet: an early answer
+/// is partial, never an error.
+#[cfg(feature = "rmw-cffi")]
+impl NodeContext<'_> {
+    fn graph_query(&mut self) -> Result<&mut dyn GraphQuery, crate::NodeError> {
+        Ok(&mut *self.executor)
+    }
+
+    graph_query_forwarders!(graph_query);
 }
 
 #[cfg(feature = "rmw-cffi")]
@@ -2641,6 +2770,189 @@ pub trait ClientDispatch {
     }
 }
 
+// phase-572 W2.
+/// The ROS graph queries a component context forwards: the
+/// fourteen the executor's [`Node`](crate::Node) has, which are rclrs's names,
+/// with the executor's visitor signatures. Object-safe, so a context holds it
+/// as `&mut dyn GraphQuery`.
+///
+/// Every answer is what has been DISCOVERED and never blocks: an empty visit
+/// or a low count is "not seen yet", never proof of absence, and
+/// `Err(Transport(Unsupported))` from a backend with no graph is a different
+/// answer from empty.
+///
+/// An implementor reaches the executor's session for the length of ONE call
+/// and keeps nothing: no session pointer outlives the query.
+pub trait GraphQuery {
+    /// `visit(name, namespace)` per node on the graph.
+    fn get_node_names(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str) -> bool,
+    ) -> Result<(), crate::NodeError>;
+    /// `visit(name, namespace, enclave)`; `enclave` is `None` where the
+    /// backend does not track one.
+    fn get_node_names_with_enclaves(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+    ) -> Result<(), crate::NodeError>;
+    /// `visit(topic, types)` once per distinct topic.
+    fn get_topic_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError>;
+    /// `visit(service, types)` once per distinct service.
+    fn get_service_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError>;
+    /// Publishers visible on `topic_name`.
+    fn count_publishers(&mut self, topic_name: &str) -> Result<usize, crate::NodeError>;
+    /// Subscriptions visible on `topic_name`.
+    fn count_subscriptions(&mut self, topic_name: &str) -> Result<usize, crate::NodeError>;
+    /// Clients visible on `service_name`.
+    fn count_clients(&mut self, service_name: &str) -> Result<usize, crate::NodeError>;
+    /// Servers visible on `service_name`.
+    fn count_services(&mut self, service_name: &str) -> Result<usize, crate::NodeError>;
+    /// The topics node `node_name` in `node_namespace` publishes.
+    fn get_publisher_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError>;
+    /// The topics node `node_name` in `node_namespace` subscribes to.
+    fn get_subscription_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError>;
+    /// The services node `node_name` in `node_namespace` serves.
+    fn get_service_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError>;
+    /// The services node `node_name` in `node_namespace` is a client of.
+    fn get_client_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError>;
+    /// The publishers on `topic_name`, one visit each.
+    fn get_publishers_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), crate::NodeError>;
+    /// The subscriptions on `topic_name`, one visit each.
+    fn get_subscriptions_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), crate::NodeError>;
+}
+
+/// The executor answers each query with its own graph method: the same
+/// session path its [`Node`](crate::Node) uses, never a second implementation.
+#[cfg(feature = "rmw-cffi")]
+impl GraphQuery for crate::Executor<'_> {
+    fn get_node_names(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_node_names(self, &mut |name, ns, _enclave| visit(name, ns))
+    }
+    fn get_node_names_with_enclaves(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_node_names(self, visit)
+    }
+    fn get_topic_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_topic_names_and_types(self, visit)
+    }
+    fn get_service_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_service_names_and_types(self, visit)
+    }
+    fn count_publishers(&mut self, topic_name: &str) -> Result<usize, crate::NodeError> {
+        crate::Executor::count_publishers(self, topic_name)
+    }
+    fn count_subscriptions(&mut self, topic_name: &str) -> Result<usize, crate::NodeError> {
+        crate::Executor::count_subscribers(self, topic_name)
+    }
+    fn count_clients(&mut self, service_name: &str) -> Result<usize, crate::NodeError> {
+        crate::Executor::count_clients(self, service_name)
+    }
+    fn count_services(&mut self, service_name: &str) -> Result<usize, crate::NodeError> {
+        crate::Executor::count_services(self, service_name)
+    }
+    fn get_publisher_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_publisher_names_and_types_by_node(
+            self,
+            node_name,
+            node_namespace,
+            visit,
+        )
+    }
+    fn get_subscription_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_subscription_names_and_types_by_node(
+            self,
+            node_name,
+            node_namespace,
+            visit,
+        )
+    }
+    fn get_service_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_service_names_and_types_by_node(self, node_name, node_namespace, visit)
+    }
+    fn get_client_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_client_names_and_types_by_node(self, node_name, node_namespace, visit)
+    }
+    fn get_publishers_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_publishers_info_by_topic(self, topic_name, visit)
+    }
+    fn get_subscriptions_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        crate::Executor::get_subscriptions_info_by_topic(self, topic_name, visit)
+    }
+}
+
 /// Context handed to [`ExecutableNode::tick`] (W.5.6 + M-F.4): the per-spin
 /// hook that runs *between* callback dispatch, where the executor is free.
 /// Exposes the immediate publish path (like `CallbackCtx`) plus executor-backed
@@ -2664,6 +2976,10 @@ pub struct TickCtx<'a> {
     /// a multi-node executor came to read the primary's values.
     #[cfg(feature = "param-store")]
     param_node: nros_params::NodeKey,
+    /// phase-572 W2 -- the graph queries, threaded by the tick driver
+    /// (`set_graph`). `None` until then, and each query then answers
+    /// `NotInitialized`.
+    graph: Option<&'a mut dyn GraphQuery>,
 }
 
 impl<'a> TickCtx<'a> {
@@ -2685,8 +3001,24 @@ impl<'a> TickCtx<'a> {
             // first node and what a single-node image means.
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
+            graph: None,
         }
     }
+
+    /// Thread the graph queries in: the tick driver's own [`GraphQuery`],
+    /// which reaches the executor for the length of each call.
+    pub fn set_graph(&mut self, graph: &'a mut dyn GraphQuery) {
+        self.graph = Some(graph);
+    }
+
+    fn graph_query(&mut self) -> Result<&mut dyn GraphQuery, crate::NodeError> {
+        match self.graph.as_deref_mut() {
+            Some(g) => Ok(g),
+            None => Err(crate::NodeError::NotInitialized),
+        }
+    }
+
+    graph_query_forwarders!(graph_query);
 
     /// Thread the executor's volatile parameter store in (the tick
     /// driver holds the executor directly). No-op-equivalent when `None`.

@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery",
+  "verdict": "extension",
+  "why": "the seam a component context's graph queries go through (phase-572 W2): `TickCtx` holds the tick driver's implementor, which reborrows the executor for one call at a time, and `NodeContext` forwards to the executor it holds. In the doc-hidden `nros::__macro` beside `ClientDispatch` and `ActionExecutor`: generated runtimes and board entry glue implement it, a node author calls the context's methods. rclrs has no counterpart because its graph queries live on `Node`, which a component here never holds."
+}

@@ -20259,6 +20259,78 @@ mod reentry {
         // SAFETY: `p` came from `Box::into_raw` and is not used again.
         drop(unsafe { Box::from_raw(p) });
     }
+
+    private_test_clock!(reentry_graph_clock);
+
+    static GRAPH_TICKS: AtomicU32 = AtomicU32::new(0);
+    static GRAPH_ANSWERS: AtomicU32 = AtomicU32::new(0);
+    static GRAPH_TIMER_RUNS: AtomicU32 = AtomicU32::new(0);
+
+    /// The tick a Rust component's `TickCtx` graph query reaches (phase-572
+    /// W2): through the raw executor pointer the pass hands it, one reborrow
+    /// per query, the executor's own graph method inside it, and no session
+    /// pointer kept past the call.
+    unsafe extern "C" fn graph_query_tick(
+        _state: *mut core::ffi::c_void,
+        exec_ctx: *mut core::ffi::c_void,
+    ) {
+        GRAPH_TICKS.fetch_add(1, Ordering::SeqCst);
+        let p = exec_ctx as *mut Executor<'static>;
+        // SAFETY: the pass hands the tick the live executor and holds no
+        // reference across it (phase-573 W2); each query is its own reborrow.
+        let topics = unsafe { &mut *p }.get_topic_names_and_types(&mut |_, _| true);
+        let count = unsafe { &mut *p }.count_publishers("/chatter");
+        let nodes = unsafe { &mut *p }.get_node_names(&mut |_, _, _| true);
+        // A mock session has no graph: each query reaches it and is told so.
+        for unsupported in [topics.err(), count.err(), nodes.err()] {
+            if matches!(
+                unsupported,
+                Some(NodeError::Transport(TransportError::Unsupported))
+            ) {
+                GRAPH_ANSWERS.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+
+    unsafe extern "C" fn graph_query_drop(_state: *mut core::ffi::c_void) {}
+
+    /// phase-572 W2 -- an enrolled component tick that queries the graph
+    /// through the raw executor pointer during a pass, beside a timer that
+    /// fires in the same pass. The shape `TickCtx`'s graph queries take.
+    #[test]
+    fn a_component_tick_that_queries_the_graph_reenters_soundly() {
+        reentry_graph_clock::claim_at_us(0);
+        let mut boxed = Box::new(executor_with_clock_fn(
+            MockSession::new(),
+            reentry_graph_clock::now_us,
+        ));
+        boxed
+            .register_timer(TimerDuration::from_millis(10), || {
+                GRAPH_TIMER_RUNS.fetch_add(1, Ordering::SeqCst);
+            })
+            .unwrap();
+        // SAFETY: the tick carries no state, and its drop is a no-op.
+        unsafe {
+            boxed
+                .enroll_component(core::ptr::null_mut(), graph_query_tick, graph_query_drop)
+                .unwrap()
+        };
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+
+        reentry_graph_clock::set_us(10_000);
+        // SAFETY: `p` is the only path to the executor.
+        unsafe { spin_through_the_raw_entry(p) };
+        assert_eq!(GRAPH_TIMER_RUNS.load(Ordering::SeqCst), 1, "the timer ran");
+        assert!(GRAPH_TICKS.load(Ordering::SeqCst) >= 1, "the tick ran");
+        assert_eq!(
+            GRAPH_ANSWERS.load(Ordering::SeqCst),
+            3 * GRAPH_TICKS.load(Ordering::SeqCst),
+            "every query reached the session"
+        );
+
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
 }
 
 // RFC-0128 D8 (phase-554 W3 slice B) -- an executor-level publisher that

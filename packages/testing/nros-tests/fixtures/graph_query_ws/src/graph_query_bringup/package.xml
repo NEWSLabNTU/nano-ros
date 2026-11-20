@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>graph_query_bringup</name>
+  <version>0.1.0</version>
+  <description>One image launching a C, a C++ and a Rust graph-query probe.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>gq_c_pkg</exec_depend>
+  <exec_depend>gq_cpp_pkg</exec_depend>
+  <exec_depend>gq_rust_pkg</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

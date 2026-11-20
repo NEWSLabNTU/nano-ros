@@ -1,0 +1,20 @@
+[package]
+name = "gq_rust_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The Rust half of the graph-query parity probe."
+
+[lib]
+path = "src/lib.rs"
+# Bundled into the workspace runtime staticlib, never a standalone one.
+crate-type = ["rlib"]
+
+[package.metadata.nros.node]
+class = "gq_rust_pkg::Probe"
+name = "gq_rust"
+
+[dependencies]
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
+
+[workspace]

@@ -1,0 +1,26 @@
+# Each probe asks the graph how many publishers `/chatter` has and which type
+# it carries, through its own language's surface, and prints the answer once.
+
+[system]
+name = "graph_query"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "gq_c_pkg"
+class = "gq_c_pkg::Probe"
+name = "gq_c"
+
+[[component]]
+pkg = "gq_cpp_pkg"
+class = "gq_cpp_pkg::Probe"
+name = "gq_cpp"
+
+[[component]]
+pkg = "gq_rust_pkg"
+class = "gq_rust_pkg::Probe"
+name = "gq_rust"
+
+[image.linux]
+board = "linux"

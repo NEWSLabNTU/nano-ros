@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery::count_clients",
+  "verdict": "extension",
+  "why": "the `GraphQuery` seam's `count_clients`, which `TickCtx::count_clients` and `NodeContext::count_clients` forward to (phase-572 W2). Same name and visitor signature as rclrs's `Node::count_clients`; the seam sits in the doc-hidden `nros::__macro`, see `rust:GraphQuery`."
+}

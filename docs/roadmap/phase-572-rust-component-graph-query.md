@@ -1,10 +1,11 @@
 # Phase 572 — a Rust component can query the ROS graph
 
-**Status (2026-11-17). OPEN: W1 is done; W2–W4 wait on
-[phase-573](phase-573-executor-reentry-soundness.md).** Tracks
+**Status (2026-11-20). OPEN: W1 is done; W2 and W3 are open (no longer
+waiting on [phase-573](phase-573-executor-reentry-soundness.md), see W2); W4
+waits on W2.** Tracks
 [issue 2674](../issues/2674-rust-component-api-has-no-graph-query.md). Implements
 no new RFC. It closes a language-parity gap in the surface RFC-0089 adopted.
-Owner: nros 133.
+Owner: nros 243 (W2 onward, released by nros 133 on 2026-11-20).
 
 ## Why
 
@@ -53,19 +54,48 @@ Decided 2026-11-17:
 
 ### W2 — The queries on the Rust component surface
 
-- **Status:** BLOCKED (on phase-573, issue 2675)
+- **Status:** OPEN (unblocked 2026-11-20 by phase-573's author)
 
 Implement W1's shape. The dispatch site already holds the executor, so each
 method forwards to it.
+
+**Not blocked on phase-573 (ruling of 2026-11-20, nros 133).** The
+`TickCtx` / `NodeContext` path is sound today. The owned runtime calls
+`run_ticks()` after `spin_once` returns, so no executor `&mut` is live across a
+tick, and each tick reborrows the executor per call the way the action and
+client dispatch do. On the install path, `component_tick_trampoline` runs
+inside the pass, which 573 W2 made re-derive after every callback and every
+tick. None of 573's open items (W2b's `*_try_process`, W5d, W5e) touch a tick.
+The block applied to a `CallbackCtx` variant, which W1 ruled out. Two
+conditions keep it so while 573 W3/W4 are open:
+- **No session pointer outlives a query.** Never `Executor::session_ptr()` held
+  past the call (the temporary-reborrow class 573 W3 fixes): each query
+  reborrows the executor and calls its graph method inside that one reborrow,
+  and nothing caches a session pointer in the context or the dispatch struct.
+- **W4 is inherited, not added.** A band-level tick reborrowing the executor
+  while another level runs is the exposure the existing action and client
+  tick ops already have; the graph queries take 573 W4's status with them.
+
+Shape as built: a `GraphQuery` trait (the fourteen, executor visitor
+signatures) in the doc-hidden `nros::__macro`, answered by the executor's own
+graph methods; `TickCtx` holds the tick driver's `RuntimeGraph`, which carries
+only the executor's raw pointer and reborrows it inside each call;
+`NodeContext` forwards to the executor it holds. One macro writes the fourteen
+methods on both contexts.
 
 Acceptance:
 - a Rust component calls each query and gets the executor's answer;
 - a component that never calls a query costs nothing it did not cost before
   (the image's size, measured before and after).
+- a Miri case in `nros-node`'s `executor::tests::reentry` (run by
+  `just check miri-executor-reentry`): an enrolled tick queries the graph
+  through the raw executor pointer during a pass. Its negative control, a
+  session pointer taken before the pass and reborrowed inside it, is reported
+  by Miri as undefined behaviour.
 
 ### W3 — One graph, three languages
 
-- **Status:** BLOCKED (on W2)
+- **Status:** OPEN (built with W2)
 
 A test per language (Rust, C, C++), each a component on native Linux over
 zenoh, with the same peer on the graph.

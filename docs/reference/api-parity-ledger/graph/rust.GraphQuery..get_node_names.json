@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery::get_node_names",
+  "verdict": "extension",
+  "why": "the `GraphQuery` seam's `get_node_names`, which `TickCtx::get_node_names` and `NodeContext::get_node_names` forward to (phase-572 W2). Same name and visitor signature as rclrs's `Node::get_node_names`; the seam sits in the doc-hidden `nros::__macro`, see `rust:GraphQuery`."
+}

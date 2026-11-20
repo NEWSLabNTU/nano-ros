@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery::count_services",
+  "verdict": "extension",
+  "why": "the `GraphQuery` seam's `count_services`, which `TickCtx::count_services` and `NodeContext::count_services` forward to (phase-572 W2). Same name and visitor signature as rclrs's `Node::count_services`; the seam sits in the doc-hidden `nros::__macro`, see `rust:GraphQuery`."
+}

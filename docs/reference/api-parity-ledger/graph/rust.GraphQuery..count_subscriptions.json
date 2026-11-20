@@ -1,0 +1,5 @@
+{
+  "key": "rust:GraphQuery::count_subscriptions",
+  "verdict": "extension",
+  "why": "the `GraphQuery` seam's `count_subscriptions`, which `TickCtx::count_subscriptions` and `NodeContext::count_subscriptions` forward to (phase-572 W2). Same name and visitor signature as rclrs's `Node::count_subscriptions`; the seam sits in the doc-hidden `nros::__macro`, see `rust:GraphQuery`."
+}

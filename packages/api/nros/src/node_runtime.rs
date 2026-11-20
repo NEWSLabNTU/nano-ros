@@ -1443,7 +1443,9 @@ fn tick_one_cell(cell: &dyn CellView, exec_ptr: *mut Executor<'static>) {
         services: &service_clients,
         actions: &action_clients,
     };
+    let mut graph = RuntimeGraph { executor: exec_ptr };
     let mut ctx = TickCtx::new(&resolver, &mut actions, &mut clients);
+    ctx.set_graph(&mut graph);
     // W4c — `tick` reads `ctx.parameter::<T>(name)` from the store via the cell pointer
     // (the store is a separate `Box<ParamState>` allocation, so this does NOT alias the
     // `&mut Executor<'static>` the action/client tick calls reborrow through `exec_ptr`).
@@ -2646,6 +2648,145 @@ unsafe extern "C" fn action_accepted_trampoline(
         return;
     };
     dispatch_into_cell(actx.cell.view(), cb_id, &[]);
+}
+
+/// phase-572 W2 -- the tick's graph queries. Holds the executor's raw
+/// pointer and nothing else: each query reborrows `&mut Executor` for that one
+/// call and runs the executor's own graph method inside it, the way
+/// `RuntimeActions` and `RuntimeClientDispatch` do. No session pointer is
+/// taken or kept, so nothing outlives the call (phase-573's ruling on this
+/// path: the tick runs between callback dispatch, where the executor is free).
+struct RuntimeGraph {
+    executor: *mut Executor<'static>,
+}
+
+impl RuntimeGraph {
+    /// The executor, for the length of the caller's one query.
+    fn executor(&mut self) -> &mut Executor<'static> {
+        // SAFETY: see the type's doc -- the tick driver hands a live executor
+        // that nothing else references during the tick, and the borrow ends
+        // with the query that asked for it.
+        unsafe { &mut *self.executor }
+    }
+}
+
+impl crate::node::GraphQuery for RuntimeGraph {
+    fn get_node_names(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_node_names(executor, visit)
+    }
+    fn get_node_names_with_enclaves(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_node_names_with_enclaves(executor, visit)
+    }
+    fn get_topic_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_topic_names_and_types(executor, visit)
+    }
+    fn get_service_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_service_names_and_types(executor, visit)
+    }
+    fn count_publishers(&mut self, topic_name: &str) -> Result<usize, crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::count_publishers(executor, topic_name)
+    }
+    fn count_subscriptions(&mut self, topic_name: &str) -> Result<usize, crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::count_subscriptions(executor, topic_name)
+    }
+    fn count_clients(&mut self, service_name: &str) -> Result<usize, crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::count_clients(executor, service_name)
+    }
+    fn count_services(&mut self, service_name: &str) -> Result<usize, crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::count_services(executor, service_name)
+    }
+    fn get_publisher_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_publisher_names_and_types_by_node(
+            executor,
+            node_name,
+            node_namespace,
+            visit,
+        )
+    }
+    fn get_subscription_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_subscription_names_and_types_by_node(
+            executor,
+            node_name,
+            node_namespace,
+            visit,
+        )
+    }
+    fn get_service_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_service_names_and_types_by_node(
+            executor,
+            node_name,
+            node_namespace,
+            visit,
+        )
+    }
+    fn get_client_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_client_names_and_types_by_node(
+            executor,
+            node_name,
+            node_namespace,
+            visit,
+        )
+    }
+    fn get_publishers_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_publishers_info_by_topic(executor, topic_name, visit)
+    }
+    fn get_subscriptions_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), crate::NodeError> {
+        let executor = self.executor();
+        crate::node::GraphQuery::get_subscriptions_info_by_topic(executor, topic_name, visit)
+    }
 }
 
 /// Tick-side service/action CLIENT dispatch — the single-node runtime's own
