@@ -431,3 +431,82 @@ fn a_build_script_reads_its_own_file_without_the_scan() {
         "{msg}"
     );
 }
+
+const ACME_CHOICE: &str = "owner = \"acme\"\n\n\
+    [[knob]]\nkey = \"acme.mode\"\nscope = \"image\"\nclass = \"public\"\n\
+    type = \"enum_list\"\nvalues = [\"fast\", \"safe-io\"]\n\
+    member_kconfig = { safe-io = { depends = [\"NETWORKING\"], select = [\"SNTP\"] } }\n\
+    prompt = \"Acme mode\"\nkconfig_attrs = ['default \"fast\"']\n";
+
+/// A package's CHOICE knob (`enum` / `enum_list`): it parses, renders its
+/// Kconfig string with the member bool (defaulted on when the stated value
+/// names the member), gives the cmake road its choice tables, and survives the
+/// catalog.toml round trip.
+#[test]
+fn a_package_choice_knob_renders_and_round_trips() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_rows(tmp.path(), ACME_CHOICE);
+    let cat = Catalog::build(&[provider(tmp.path(), "acme_rmw")], &read).unwrap();
+    let row = cat.rows().iter().find(|r| r.name == "acme.mode").unwrap();
+    assert!(row.meta.is_choice());
+    assert_eq!(row.meta.values, ["fast", "safe-io"]);
+
+    let stated = BTreeMap::from([("NROS_ACME_MODE".to_string(), "\"safe-io,fast\"".to_string())]);
+    let k = kconfig_packages(&cat, &["acme"], &stated);
+    assert!(k.contains("config NROS_ACME_MODE\n    string\n"), "{k}");
+    assert!(
+        k.contains(
+            "config NROS_ACME_MODE_HAS_SAFE_IO\n    bool\n    default y\n    depends on \
+             NETWORKING\n    select SNTP\n"
+        ),
+        "{k}"
+    );
+    let off = kconfig_packages(&cat, &["acme"], &BTreeMap::new());
+    assert!(
+        !off.contains("default y"),
+        "no stated member, no default: {off}"
+    );
+
+    let cm = registry_cmake(&cat);
+    for want in [
+        "list(APPEND NROS_KNOB_CHOICE_IDS ACME_MODE)",
+        "set(NROS_KNOB_CHOICE_KIND_ACME_MODE enum_list)",
+        "set(NROS_KNOB_CHOICES_ACME_MODE \"fast;safe-io\")",
+        "set(NROS_KNOB_KEY_ACME_MODE acme.mode)",
+        "set(NROS_KNOB_MEMBER_SYMBOLS_ACME_MODE \"safe-io=NROS_ACME_MODE_HAS_SAFE_IO\")",
+    ] {
+        assert!(cm.contains(want), "no `{want}` in:\n{cm}");
+    }
+
+    let parsed = Catalog::parse_toml(&cat.render_toml()).unwrap();
+    assert_eq!(kconfig_packages(&parsed, &["acme"], &stated), k);
+    assert_eq!(registry_cmake(&parsed), cm);
+}
+
+/// The choice fields' NEGATIVE controls: members missing, repeated or not
+/// words, `values` on a row that is no choice row, and a member bool for a
+/// value that is not a member.
+#[test]
+fn a_malformed_package_choice_knob_is_refused() {
+    let base = "owner = \"acme\"\n\n[[knob]]\nkey = \"acme.mode\"\n";
+    for (extra, want) in [
+        ("type = \"enum\"\n", "states its members"),
+        (
+            "type = \"enum\"\nvalues = [\"a\", \"a\"]\n",
+            "more than once",
+        ),
+        ("type = \"enum\"\nvalues = [\"A b\"]\n", "lower-case words"),
+        ("type = \"int\"\nvalues = [\"a\"]\n", "authored only on"),
+        (
+            "type = \"enum\"\nvalues = [\"a\"]\nmember_kconfig = { q = { select = [\"X\"] } }\n",
+            "names no member",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        write_rows(tmp.path(), &format!("{base}{extra}"));
+        let msg = Catalog::build(&[provider(tmp.path(), "acme_rmw")], &read)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains(want), "`{extra}`: no `{want}` in {msg}");
+    }
+}

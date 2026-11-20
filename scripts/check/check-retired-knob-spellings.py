@@ -138,9 +138,12 @@ def retired_names(registry_text: str | None = None) -> dict[str, str]:
 def retired_kconfig_names(registry_text: str | None = None) -> dict[str, str]:
     """retired `kconfig:` spelling (`CONFIG_X`) -> what to do instead, from the
     registry: the entry's `instead`, or the row's live Kconfig symbol."""
-    text = registry_text if registry_text is not None else REGISTRY.read_text()
+    # The real registry merges every in-tree package file; a self-test's text
+    # is one synthetic core file, so it parses that alone.
+    rows = (knob_registry.knob_rows() if registry_text is None
+            else knob_registry.knob_rows(text=registry_text, packages=[]))
     out = {}
-    for row in knob_registry.knob_rows(text=text):
+    for row in rows:
         for e in row["retired_entries"]:
             if e["road"] != "kconfig":
                 continue
