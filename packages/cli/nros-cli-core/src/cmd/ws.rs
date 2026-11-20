@@ -554,7 +554,7 @@ pub struct SyncArgs {
     /// edition; without this flag the leaf's own rule applies (one image, or
     /// `[system] default_images`).
     // Issue 1305.
-    #[arg(long, value_name = "ID")]
+    #[arg(long, value_name = "ID", add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::images))]
     pub image: Option<String>,
 
     /// Don't write — just print what would happen.

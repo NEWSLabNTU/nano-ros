@@ -27,7 +27,11 @@ use std::io;
     propagate_version = true,
     // `--codegen-version` is answerable with no subcommand, so the subcommand
     // stops being clap-required; this keeps bare `nros` printing help.
-    arg_required_else_help = true
+    arg_required_else_help = true,
+    // phase-569 W4b — `nros <Tab>` offers the workspace's extension verbs too.
+    add = clap_complete::engine::SubcommandCandidates::new(
+        nros_cli_core::cmd::complete::extension_verbs
+    )
 )]
 struct Cli {
     /// Print the codegen version this binary emits, and exit.

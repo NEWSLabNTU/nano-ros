@@ -36,6 +36,7 @@ use crate::builder::{
 pub struct Args {
     /// Image(s) to build — `linux`, or `<bringup>:linux` when two bringups
     /// declare the same id. Empty uses `[system] default_images`.
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::images))]
     pub images: Vec<String>,
 
     /// Workspace root. Defaults to the current directory.
@@ -73,7 +74,7 @@ pub struct Args {
     /// or none is refused, listing them — the image id stays the unit. Not
     /// with image arguments or `--all`.
     // phase-517 W6. The image id staying the unit is RFC-0065.
-    #[arg(long, value_name = "BOARD")]
+    #[arg(long, value_name = "BOARD", add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::boards))]
     pub board: Option<String>,
 
     /// Print the stages and the command that would run, then stop.
@@ -460,7 +461,7 @@ pub struct SelectionArgs {
     /// error, not a warning, and a selection that leaves out a package a
     /// selected one depends on is refused, since there is no install prefix
     /// for it to come from. That holds for every selection flag.
-    #[arg(long, value_name = "PKG", num_args = 1..)]
+    #[arg(long, value_name = "PKG", num_args = 1.., add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::packages))]
     pub packages_select: Vec<String>,
 
     /// These packages and everything they depend on, transitively.
@@ -468,7 +469,7 @@ pub struct SelectionArgs {
     /// The selection flags compose as an INTERSECTION, which is colcon's
     /// composition too: each deselects independently, so adding one can only
     /// ever narrow the set.
-    #[arg(long, value_name = "PKG", num_args = 1..)]
+    #[arg(long, value_name = "PKG", num_args = 1.., add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::packages))]
     pub packages_up_to: Vec<String>,
 
     /// These packages and everything that depends on them, transitively.
@@ -478,11 +479,11 @@ pub struct SelectionArgs {
     /// dependencies. A cargo member with no `package.xml` is refused here: its
     /// dependents name it only in their `Cargo.toml`, which the selection does
     /// not read.
-    #[arg(long, value_name = "PKG", num_args = 1..)]
+    #[arg(long, value_name = "PKG", num_args = 1.., add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::packages))]
     pub packages_above: Vec<String>,
 
     /// Leave these packages out.
-    #[arg(long, value_name = "PKG", num_args = 1..)]
+    #[arg(long, value_name = "PKG", num_args = 1.., add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::packages))]
     pub packages_skip: Vec<String>,
 
     /// `--base-paths`.

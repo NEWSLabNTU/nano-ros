@@ -26,22 +26,148 @@ pub fn boards() -> Vec<CompletionCandidate> {
     sorted(names.map(CompletionCandidate::new))
 }
 
-/// RMW names and their aliases, as `rmw = "…"` takes them.
+/// RMW names and their aliases, as `rmw = "…"` takes them: the SDK root's
+/// backends, plus a workspace's own providers from the completion cache. The
+/// SDK root alone is never a workspace scan; the workspace's providers would
+/// be, so they come from the cache.
 pub fn rmws() -> Vec<CompletionCandidate> {
-    let Ok(cwd) = std::env::current_dir() else {
-        return Vec::new();
-    };
-    let Ok(index) = rmw_index::for_dir(&cwd) else {
-        return Vec::new();
-    };
+    let mut out: Vec<CompletionCandidate> = cached()
+        .map(|c| c.rmws.into_iter().map(CompletionCandidate::new).collect())
+        .unwrap_or_default();
+    let sdk = std::env::current_dir()
+        .ok()
+        .and_then(|cwd| crate::orchestration::nano_ros_root::resolve(None, &cwd))
+        .and_then(|root| rmw_index::for_sdk_root_path(&root).ok());
+    if let Some(index) = sdk {
+        out.extend(
+            index_names(&index)
+                .into_iter()
+                .map(CompletionCandidate::new),
+        );
+    }
+    sorted(out)
+}
+
+/// Every name an RMW index resolves: each backend's canonical name and aliases.
+pub(crate) fn index_names(index: &rmw_index::RmwIndex) -> Vec<String> {
     let mut out = Vec::new();
     for name in index.known() {
         match index.resolve(&name) {
-            Ok(r) => out.extend(r.names.iter().cloned().map(CompletionCandidate::new)),
-            Err(_) => out.push(CompletionCandidate::new(name)),
+            Ok(r) => out.extend(r.names.iter().cloned()),
+            Err(_) => out.push(name),
         }
     }
-    sorted(out)
+    out
+}
+
+/// The workspace's images, as `nros build <image>` names them, from the
+/// completion cache. No cache, no names.
+pub fn images() -> Vec<CompletionCandidate> {
+    sorted(
+        cached()
+            .map(|c| c.images)
+            .unwrap_or_default()
+            .into_iter()
+            .map(CompletionCandidate::new),
+    )
+}
+
+/// The extension verbs the workspace's packages announce (`nros <verb>`),
+/// from the completion cache, beside the built-in verbs clap offers.
+pub fn extension_verbs() -> Vec<CompletionCandidate> {
+    sorted(
+        cached()
+            .map(|c| c.commands)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(verb, summary)| CompletionCandidate::new(verb).help(Some(summary.into()))),
+    )
+}
+
+/// The workspace's packages, from the completion cache. No cache, no names.
+pub fn packages() -> Vec<CompletionCandidate> {
+    sorted(
+        cached()
+            .map(|c| c.packages)
+            .unwrap_or_default()
+            .into_iter()
+            .map(CompletionCandidate::new),
+    )
+}
+
+// ---- the completion cache --------------------------------------------------
+//
+// The names a workspace scan finds (images, packages, its own RMW providers),
+// written by `nros configure` and `nros build` from the scans they already
+// run, and read only by completion. It records the search path it was built
+// for, the key the provider index uses: a cache for another search path is
+// WRONG, not stale, and offers nothing. Within one search path, stale entries
+// are expected; a package added since the last configure is offered after the
+// next one.
+
+/// The cache's schema; a cache with another is not read.
+pub const CACHE_SCHEMA: u32 = 1;
+
+/// `build/nros/complete.json`.
+#[derive(Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Cache {
+    pub schema: u32,
+    /// The provider search path the names were found on, in order.
+    pub search_path: Vec<String>,
+    pub images: Vec<String>,
+    pub packages: Vec<String>,
+    /// The workspace's own RMW names (the SDK root's are not cached).
+    pub rmws: Vec<String>,
+    /// The top-level extension verbs the workspace's packages announce, each
+    /// with its summary.
+    #[serde(default)]
+    pub commands: Vec<(String, String)>,
+}
+
+/// Where `workspace`'s completion cache lives.
+pub fn cache_path(workspace: &std::path::Path) -> std::path::PathBuf {
+    workspace.join("build/nros/complete.json")
+}
+
+/// The search-path key for `workspace`: the provider index's search path.
+pub fn search_key(workspace: &std::path::Path) -> Result<Vec<String>> {
+    Ok(crate::cmd::ws::rmw_search_path_for(workspace, &[])?
+        .paths()
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect())
+}
+
+/// Write `workspace`'s cache, atomically: a completion reading it while a
+/// configure rewrites it sees the old cache or the new one, never a torn one.
+pub fn write_cache(workspace: &std::path::Path, cache: &Cache) -> Result<()> {
+    let path = cache_path(workspace);
+    let dir = path
+        .parent()
+        .ok_or_else(|| eyre!("{} has no parent", path.display()))?;
+    std::fs::create_dir_all(dir)?;
+    crate::atomic_file::atomic_write(&path, &serde_json::to_string_pretty(cache)?)?;
+    Ok(())
+}
+
+/// The cache, if `bytes` is one this build reads and its key is `key`.
+fn accept(bytes: &[u8], key: &[String]) -> Option<Cache> {
+    let cache: Cache = serde_json::from_slice(bytes).ok()?;
+    (cache.schema == CACHE_SCHEMA && cache.search_path == key).then_some(cache)
+}
+
+/// The cache of the workspace the current directory is in, when it was built
+/// for that workspace's search path.
+fn cached() -> Option<Cache> {
+    cached_in(&std::env::current_dir().ok()?)
+}
+
+/// [`cached`] for the workspace `dir` is in.
+fn cached_in(dir: &std::path::Path) -> Option<Cache> {
+    let ws = crate::cmd::image_facts::workspace_root_from(dir)
+        .or_else(|| dir.join("system.toml").is_file().then(|| dir.to_path_buf()))?;
+    let bytes = std::fs::read(cache_path(&ws)).ok()?;
+    accept(&bytes, &search_key(&ws).ok()?)
 }
 
 /// Public knob names, as `[image.<id>.knobs]` keys them, each with its prompt.
@@ -157,5 +283,66 @@ mod tests {
             "# Turn on `nros` completion: add this line to ~/.bashrc\n\
              source <(COMPLETE=bash nros)\n"
         );
+    }
+
+    #[test]
+    fn a_cache_for_another_search_path_offers_nothing() {
+        let c = Cache {
+            schema: CACHE_SCHEMA,
+            search_path: vec!["/sdk".into(), "/ws/src".into()],
+            images: vec!["linux".into()],
+            ..Cache::default()
+        };
+        let bytes = serde_json::to_vec(&c).unwrap();
+        assert_eq!(accept(&bytes, &["/sdk".into(), "/ws/src".into()]), Some(c));
+        assert_eq!(accept(&bytes, &["/sdk".into(), "/other/src".into()]), None);
+    }
+
+    #[test]
+    fn a_cache_of_another_schema_is_not_read() {
+        let c = Cache {
+            schema: CACHE_SCHEMA + 1,
+            ..Cache::default()
+        };
+        assert_eq!(accept(&serde_json::to_vec(&c).unwrap(), &[]), None);
+        assert_eq!(accept(b"not json", &[]), None);
+    }
+
+    #[test]
+    fn write_cache_round_trips() {
+        let ws = tempfile::tempdir().unwrap();
+        let c = Cache {
+            schema: CACHE_SCHEMA,
+            search_path: vec!["/k".into()],
+            packages: vec!["talker".into()],
+            ..Cache::default()
+        };
+        write_cache(ws.path(), &c).unwrap();
+        let bytes = std::fs::read(cache_path(ws.path())).unwrap();
+        assert_eq!(accept(&bytes, &["/k".into()]), Some(c));
+    }
+
+    #[test]
+    fn a_leaf_reads_the_cache_its_configure_wrote_and_not_a_foreign_one() {
+        let leaf = tempfile::tempdir().unwrap();
+        std::fs::write(
+            leaf.path().join("system.toml"),
+            "[image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        let mut c = Cache {
+            schema: CACHE_SCHEMA,
+            search_path: search_key(leaf.path()).unwrap(),
+            images: vec!["linux".into()],
+            ..Cache::default()
+        };
+        write_cache(leaf.path(), &c).unwrap();
+        assert_eq!(
+            cached_in(leaf.path()).map(|c| c.images),
+            Some(vec!["linux".into()])
+        );
+        c.search_path.push("/another/root".into());
+        write_cache(leaf.path(), &c).unwrap();
+        assert_eq!(cached_in(leaf.path()), None);
     }
 }

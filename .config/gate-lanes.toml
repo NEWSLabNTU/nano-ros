@@ -29,6 +29,8 @@ fsp = "the NVIDIA Orin SPE FSP tree (NV_SPE_FSP_DIR)"
 build-tree = "artifacts a fixture or image build produced"
 arm-gcc = "the pinned arm-none-eabi-gcc dist ([tool.arm-none-eabi-gcc], nros setup --tool arm-none-eabi-gcc)"
 tiarmclang = "a TI Arm Clang install named by TI_ARM_CLANG_ROOT ([gated.ti-arm-clang]: licence-gated, never fetched)"
+zsh = "zsh on PATH (ci/docker/apt-packages.txt), for the completion glue gate"
+fish = "fish on PATH (ci/docker/apt-packages.txt), for the completion glue gate"
 
 # Shared resources a gate USES, with how many gates may hold one at once
 # (`[group('uses:<res>')]` on the recipe; phase-543 W4). Each becomes a nextest
@@ -52,7 +54,8 @@ scratch-tree = { scratch-gib = 5, cpus = 8 }
 [lane.fast]
 # `check / fast` on the hosted runner: the ci-base image provides these.
 tiers = ["fast"]
-claims = ["cli", "cmake", "cc", "arm-gcc-any", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree"]
+# phase-569 W4b: zsh and fish come from the shared apt list.
+claims = ["cli", "cmake", "cc", "arm-gcc-any", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree", "zsh", "fish"]
 
 [lane.build]
 # The hosted runner's other jobs: `check / build tier` shards (gate.yml), which
@@ -148,6 +151,8 @@ zephyr = { remedy = "just zephyr setup" }
 west = { remedy = "just zephyr setup" }
 fsp = { remedy = "provision NV_SPE_FSP_DIR (not on any runner)" }
 build-tree = { remedy = "just build-test-fixtures" }
+zsh = { remedy = "install zsh (apt install zsh; the CI images carry it)" }
+fish = { remedy = "install fish (apt install fish; the CI images carry it)" }
 
 # What the `submodules` claim provisions: the submodules the gate tiers read,
 # and WHICH gates read each (phase-565 W1; until then the separate list
