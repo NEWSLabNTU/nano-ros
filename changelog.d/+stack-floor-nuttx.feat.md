@@ -1,0 +1,1 @@
+On NuttX, `nros build` now checks a Rust image's stack: the walked floor is compared with the stack the image runs on, the kernel's `CONFIG_INIT_STACKSIZE` (the init task). NuttX images were reported as not checked before.

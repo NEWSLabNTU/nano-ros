@@ -203,3 +203,76 @@ pub fn require_cpu_flags(nuttx_dir: &Path) -> Vec<String> {
         )
     })
 }
+
+/// The init task's stack, in bytes, of the kernel this build links: its
+/// `CONFIG_INIT_STACKSIZE`, read from the configured kernel's own
+/// `include/nuttx/config.h` (the export's, or the tree's).
+///
+/// NuttX starts the image as its init task
+/// (`CONFIG_INIT_ENTRYPOINT`), so registration, `Executor::open` and the spin
+/// loop all run on this stack, and this is the number `nros build`'s floor
+/// check compares the walk with. It is read off the kernel rather than the
+/// board's defconfig, because a user's kernel tree may set its own value.
+/// `None` when the kernel is not configured yet. The header is watched either
+/// way, so it appearing reruns the caller.
+pub fn init_stack_bytes(nuttx_dir: &Path) -> Option<u32> {
+    let header = include_root(nuttx_dir).join("nuttx").join("config.h");
+    println!("cargo:rerun-if-changed={}", header.display());
+    parse_init_stack_bytes(&std::fs::read_to_string(&header).ok()?)
+}
+
+// phase-557 W5b.
+/// Write `nros-stack-stated.json` for an image NuttX starts as its init task:
+/// role `OPEN`, rooted at `nros_nuttx_entry`, sized by the
+/// linked kernel's [`init_stack_bytes`]. The init task runs board bringup and
+/// then the image's `main` (registration, `Executor::open`, the spin loop). A
+/// sched task (`[tasks.*.nuttx]`) is a pthread with its own stack, another
+/// role, as on FreeRTOS. A kernel not configured yet states nothing, so the
+/// image is reported as not checked, never as a pass.
+pub fn emit_init_stack_stated() {
+    let Some(bytes) = init_stack_bytes(&nros_build_paths::nuttx_dir()) else {
+        return;
+    };
+    let out_dir =
+        PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is set for a build script"));
+    crate::stack_stated::emit(
+        &out_dir,
+        &[crate::stack_stated::Stated {
+            role: "OPEN",
+            root: "nros_nuttx_entry",
+            bytes,
+            knob: "CONFIG_INIT_STACKSIZE={bytes} in the NuttX kernel's configuration",
+        }],
+    );
+}
+
+/// [`init_stack_bytes`]'s parse: the value of `#define CONFIG_INIT_STACKSIZE`.
+fn parse_init_stack_bytes(config_h: &str) -> Option<u32> {
+    config_h.lines().find_map(|l| {
+        let mut w = l.split_whitespace();
+        (w.next()? == "#define" && w.next()? == "CONFIG_INIT_STACKSIZE")
+            .then(|| w.next()?.parse().ok())
+            .flatten()
+    })
+}
+
+#[cfg(test)]
+mod init_stack_tests {
+    use super::parse_init_stack_bytes;
+
+    #[test]
+    fn the_init_stack_is_read_from_the_kernels_config_header() {
+        let h = "#define CONFIG_ARCH \"arm\"\n#define CONFIG_INIT_STACKSIZE 524288\n\
+                 #define CONFIG_INIT_STACKSIZE_EXTRA 1\n";
+        assert_eq!(parse_init_stack_bytes(h), Some(524_288));
+    }
+
+    #[test]
+    fn a_kernel_with_no_init_stack_states_none() {
+        assert_eq!(
+            parse_init_stack_bytes("#define CONFIG_INIT_STACKSIZE_EXTRA 4\n"),
+            None
+        );
+        assert_eq!(parse_init_stack_bytes(""), None);
+    }
+}
