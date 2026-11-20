@@ -157,6 +157,6 @@ With a 4 KB ring the detached write is mostly a copy into the ring, so there
 was little for split lock to take off the publishers' path anyway. The cost
 is the use count's two lock round trips: +14 µs on an uncontended publish.
 
-That hold is now [issue 2614](../2614-zpico-fragment-train-holds-tx-mutex.md).
+That hold is now [issue 2614](2614-zpico-fragment-train-holds-tx-mutex.md).
 The run logs are on the board owner's host, at
 `/mnt/mx500/aeon/worktrees/k3937-logs`.
