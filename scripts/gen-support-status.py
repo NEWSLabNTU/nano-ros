@@ -261,7 +261,7 @@ def render():
         "| Edition | Feature / flag | Status | Notes |",
         "|---|---|---|---|",
         "| Humble | `ros-humble` (default) | Supported | `TypeHashNotSupported` key expressions, XCDR1. Ubuntu 22.04 only; ships `ros-humble-rmw-zenoh-cpp`. |",
-        "| Jazzy | `ros-jazzy` | Codegen-checked | RIHS01; Ubuntu 24.04; ships `ros-jazzy-rmw-zenoh-cpp`. Generated code is checked against committed golden files; interop with a Jazzy peer is not yet run by any CI job, so it is not claimed. A default Jazzy peer encodes XCDR1/FINAL, which nano-ros speaks; per-type XCDR2 (`@appendable`) is not enabled. |",
+        "| Jazzy | `ros-jazzy` | Supported | RIHS01; Ubuntu 24.04; ships `ros-jazzy-rmw-zenoh-cpp`. Interop with a Jazzy peer runs weekly in `weekly.yml` job `ros-editions` (publish/subscribe, services and actions, both directions, over Cyclone DDS, XRCE and zenoh); generated code is also checked against committed golden files. A default Jazzy peer encodes XCDR1/FINAL, which nano-ros speaks; per-type XCDR2 (`@appendable`) is not enabled. |",
         "",
         "Pick the edition of the ROS system you interop with — mismatched",
         "editions discover nothing (different key expressions).",

@@ -9,6 +9,7 @@
 # with three Monday crons: probe-platforms.yml (09:00), next-stable.yml
 # (04:17), and nightly.yml's `zenoh-probe` (09:00, the only weekly cron in a
 # daily file). The Verus proofs joined as the fourth lane (issue 2499).
+# The multi-edition ROS harness joined as the fifth (issue 2558).
 #
 # Each lane keeps its own jobs, so a red still names which lane broke.
 # Dispatch runs ONE lane (`lane:`) or all of them; `candidate:` is
@@ -29,7 +30,7 @@ on:
       lane:
         description: "Which weekly lane to run"
         type: choice
-        options: [all, probe-platforms, zenoh-probe, next-stable, verify-verus]
+        options: [all, probe-platforms, zenoh-probe, next-stable, verify-verus, ros-editions]
         default: all
       candidate:
         description: "next-stable: toolchain to try against the pin (stable, beta, 1.100.0, ...)"
@@ -332,3 +333,106 @@ jobs:
         run: |
           source ./activate.sh
           just verify-verus
+
+  # ===== ros-editions =====
+  #
+  # The multi-edition interop harness (RFC-0058), issue 2558: `just ros_editions
+  # ci <distro>` for Humble and Jazzy. No job ran it, so the support table's
+  # Jazzy interop claim had nothing behind it. Advisory: it gates nothing.
+  #
+  # HOSTED, not self-hosted (user ruling 2026-11-20): the harness runs
+  # `docker run --network host -v <host path>:...` against each edition's image,
+  # and the self-hosted runners refuse a job the docker socket by design
+  # (scripts/ci/runner-container.sh). Bare VM, not a container job, for the
+  # same two reasons: `--network host` must be the network the host-side nodes
+  # use, and a `-v` source path must exist on the docker host.
+  #
+  # The host side is a ROS humble install: every edition's fixtures are built
+  # on the host and read its ament prefix, and the edition under test runs in
+  # its container; the XRCE Agent runs on the host, from the `nros setup`
+  # store. Packages come from the index (`ros-interface-packages`,
+  # `ros-rmw-zenoh-cpp`), the repository from `scripts/sdk/ros2-apt-source.sh`.
+  #
+  # Measured on a 48-core host (2026-11-20): jazzy 652 s, humble ~600 s, about
+  # 16 GB of build output each. 240 min until a hosted run is measured.
+  ros-editions:
+    if: ${{ github.event_name == 'schedule' || inputs.lane == 'all' || inputs.lane == 'ros-editions' }}
+    name: ros-editions ${{ matrix.distro }} (advisory — gates nothing)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [humble, jazzy]
+    concurrency:
+      group: weekly-ros-editions-${{ matrix.distro }}-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim host disk
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+              /usr/share/dotnet /usr/local/.ghcup 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
+      - name: Install just (if absent)
+        run: |
+          set -euo pipefail
+          if ! command -v just >/dev/null 2>&1; then
+            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Install ROS 2 humble (the host side)
+        timeout-minutes: 20
+        env:
+          ROS_DISTRO: humble
+        run: |
+          set -euo pipefail
+          sudo bash scripts/sdk/ros2-apt-source.sh
+          if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt \
+                  ros-base ros-interface-packages ros-rmw-zenoh-cpp clang libclang-dev)"; then
+            echo "::error::prereq-packages.py could not resolve the ROS packages from nros-sdk-index.toml"
+            exit 1
+          fi
+          sudo apt-get update -q
+          # shellcheck disable=SC2086  # a word list, one package per word
+          sudo apt-get install -y -q --no-install-recommends $pkgs
+
+      - name: Build the in-tree nros CLI
+        uses: ./.github/actions/setup-nros-cli
+
+      # What the `linux` board needs for each RMW the lane builds: the RMW
+      # sources (store-first, RFC-0103 D5), the Cyclone install, the rosidl
+      # source, and the XRCE Agent, which the XRCE lane spawns on the HOST
+      # (`ros_env::host_xrce_agent_bin`). Not the build lane's provisioner:
+      # that fetches history this lane does not read, and calls the CLI
+      # before this job has built it.
+      - name: nros setup linux, per RMW
+        timeout-minutes: 45
+        run: |
+          set -eo pipefail
+          source ./activate.sh
+          for rmw in zenoh xrce cyclonedds; do
+            nros setup linux --rmw "$rmw"
+          done
+
+      - name: just ros_editions ci ${{ matrix.distro }}
+        env:
+          DISTRO: ${{ matrix.distro }}
+        run: |
+          set -eo pipefail
+          # activate.sh sources /opt/ros/humble (the one spelling).
+          source ./activate.sh
+          just ros_editions ci "$DISTRO"
+
+      - name: Disk after the lane
+        if: always()
+        run: df -h /
