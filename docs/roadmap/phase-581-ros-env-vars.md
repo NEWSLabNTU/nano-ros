@@ -245,7 +245,10 @@ board and RMW packages are self-contained.
   table and every `run:` retired spelling, the C ABI and `<nros/env.h>`;
   package rows from `$OUT_DIR/nros_knobs.rs`. `nros::env` keeps its ladder and
   `report`; issue 2714's two functions become per-row calls with unchanged
-  output. Compiled for Linux and NuttX (Decision 9).
+  output. Compiled for Linux and NuttX (Decision 9). The package `run:`
+  retirements W6 left in core's generated `retired_env.rs` (cyclonedds and
+  xrce spellings) move to each package's own table, and the
+  `check-rmw-agnostic` exemptions W6 added for them are deleted.
 - **Acceptance:** issue 2714's `host_connect_facts` test passes unchanged; a
   unit test resolves one row twice in one process and sees one warning; a
   freestanding build of `<nros/env.h>` returns NULL without linking `getenv`;
