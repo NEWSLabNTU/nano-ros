@@ -1,23 +1,27 @@
 /*
  * Issue 2738 -- a thread on a small stack logs through nros_log.
  *
- * The thread logs RECORDS records and reports its stack's unused bytes. With
- * the sink's buffer pool (the default) every record reaches the console and
- * the thread finishes. With the old caller-stack buffer (`legacy-sink.conf`)
- * it overflows: the stack sentinel raises a fatal error and "thread done"
- * never prints. The harness reads the markers below.
+ * The thread logs RECORDS records and reports how many bytes of its stack it
+ * used. Its stack is large enough that neither sink overflows it, so the
+ * number is a measurement rather than a crash: the harness holds the pool
+ * image to a budget a small thread can afford, and checks that the old
+ * caller-stack buffer (`legacy-sink.conf`) exceeds it.
+ *
+ * An overflow is not the verdict because it is not reliably detected: the old
+ * sink's buffer is written from its low end, past the sentinel word, so it
+ * corrupts whatever lies below the stack and the thread often finishes.
  */
 
 #include <zephyr/kernel.h>
 
 #include <rclc/log.h>
 
-#define SMALL_STACK 2048
+#define THREAD_STACK 8192
 #define RECORDS 50
 
 uint32_t nros_zephyr_log_sink_fallbacks(void);
 
-K_THREAD_STACK_DEFINE(small_stack, SMALL_STACK);
+K_THREAD_STACK_DEFINE(small_stack, THREAD_STACK);
 static struct k_thread small_thread;
 
 static void small_entry(void* a, void* b, void* c) {
@@ -28,13 +32,17 @@ static void small_entry(void* a, void* b, void* c) {
     for (int i = 0; i < RECORDS; i++) {
         RCLC_LOG_INFO(logger, "small-stack record %d", i);
     }
+    /* stack_info.size is the region k_thread_stack_space_get scans, so the
+     * subtraction is in its units (THREAD_STACK_INFO). */
     size_t unused = 0;
     (void)k_thread_stack_space_get(k_current_get(), &unused);
-    printk("log-sink-small-stack: thread done, stack unused %u of %u\n", (unsigned)unused,
-           (unsigned)SMALL_STACK);
+    size_t size = k_current_get()->stack_info.size;
+    printk("log-sink-small-stack: thread done, stack used %u of %u\n", (unsigned)(size - unused),
+           (unsigned)size);
 }
 
 int main(void) {
+    printk("log-sink-small-stack: boot\n");
     rclc_log_init();
     printk("log-sink-small-stack: start, sink buffers %d, cpus %d\n",
            CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS, CONFIG_MP_MAX_NUM_CPUS);
