@@ -30,10 +30,21 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 - Landed in four PRs, in order:
   - **W1a:** the one offset store, `nros/clock_epoch.h` (RFC-0141 D3), and
     Zephyr's per-port store retired onto it. Gate `check clock-epoch-store`.
-  - **W1b:** `nros_wall_clock_state()` in C, C++ and Rust, and the D4 policy
-    (`unstamped` by default, `halt` opt-in).
+  - **W1b:** the state query: `nros_platform_wall_clock_state()`, a
+    platform-ABI symbol every port DEFINES (no default, so a missing port is a
+    link error), and its faces `nros_wall_clock_state()` (C),
+    `rclcpp::Clock::wall_clock_state()` (C++) and
+    `nros_core::wall_clock_state()` (Rust). The store keeps which source
+    installed the offset and counts source changes. The `unstamped` default
+    holds already (an unsynced clock reads 0, and the query says so).
+    Re-split 2026-11-20 (manager ruling): the `halt` policy moved to W1c,
+    because it needs W1c's `epoch_failure` knob and its end-of-boot
+    resolution point.
   - **W1c:** `[knobs.clock]`: one source or an ordered fallback, boot-time
     resolution and latch, the opt-in monotonic upgrade, and a test per source.
+    Also D4's `epoch_failure`: at the end of resolution, `unstamped` (the
+    default) logs once and runs on; `halt` stops the image with one message
+    naming the source(s). The halt test lands here.
   - **W1d:** the board hook, its link rule and the selection-named TU, and
     the linux stub-board stamp test in Rust, C and C++.
 - RFC-0141 D1–D4:
