@@ -4,7 +4,7 @@
  *        now, and its `NROS_WALL_CLOCK_SOURCE_*` values.
  *
  * Returned by `nros_wall_clock_state()`. Defined under
- * `NROS_DEFINED_nros_wall_clock_state_t`, the same guard the platform
+ * `NROS_WALL_CLOCK_STATE_T_DEFINED`, the same guard the platform
  * header wraps its copy in, so whichever is included first defines it and
  * the other is a no-op. The two copies are one struct, member for member.
  */
@@ -15,8 +15,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifndef NROS_DEFINED_nros_wall_clock_state_t
-#define NROS_DEFINED_nros_wall_clock_state_t
+#ifndef NROS_WALL_CLOCK_STATE_T_DEFINED
+#define NROS_WALL_CLOCK_STATE_T_DEFINED
 /** Which source answers the wall clock (`nros_wall_clock_state_t::source`). */
 #define NROS_WALL_CLOCK_SOURCE_PLATFORM 0u  /**< the port's own clock */
 #define NROS_WALL_CLOCK_SOURCE_SNTP 1u      /**< an SNTP exchange set the offset */

@@ -391,8 +391,8 @@ uint64_t nros_platform_time_now_ns(void);
 /* The state type and its values. Under the guard nros-c's public copy
  * (`rclc/detail/wall_clock_state.h`) shares, so a TU including both gets one
  * definition. The two copies are one struct, member for member. */
-#ifndef NROS_DEFINED_nros_wall_clock_state_t
-#define NROS_DEFINED_nros_wall_clock_state_t
+#ifndef NROS_WALL_CLOCK_STATE_T_DEFINED
+#define NROS_WALL_CLOCK_STATE_T_DEFINED
 /** Which source answers the wall clock (`nros_wall_clock_state_t::source`). */
 #define NROS_WALL_CLOCK_SOURCE_PLATFORM 0u  /**< the port's own clock */
 #define NROS_WALL_CLOCK_SOURCE_SNTP 1u      /**< an SNTP exchange set the offset */
