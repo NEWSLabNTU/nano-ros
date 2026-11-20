@@ -402,6 +402,45 @@ jobs:
           source ./activate.sh
           just check miri-executor-reentry
 
+  # phase-573 W5e (issue 2728) — a use-after-free that only AddressSanitizer
+  # sees: a read of freed memory with no assertion on its result passes every
+  # other lane. `-Zsanitizer` needs the pinned nightly, which no merge-gating
+  # lane builds with, so the gate is `tier exempt` and runs here, daily.
+  asan:
+    name: executor wake path under AddressSanitizer
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    concurrency:
+      group: host-tests-asan-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Install the pinned nightly
+        run: |
+          chan="$(awk '/^channel/ {gsub(/"/,"",$3); print $3; exit}' tools/rust-toolchain.toml)"
+          rustup toolchain install "$chan" --profile minimal
+
+      # `trigger-test` links the zenoh backend, whose C sources are a
+      # submodule; the test itself opens no session (a stub backend).
+      - name: just check address-sanitizer
+        run: |
+          git submodule update --init --depth 1 packages/rmw/zenoh/zpico-sys/zenoh-pico
+          source ./activate.sh
+          just check address-sanitizer
+
   # ===== the build tier (was gate.yml's `check-build`, cron 02:00; phase-559 W7) =====
   #
   # `just check build` (the full compile tier), `just check no-std` and `just

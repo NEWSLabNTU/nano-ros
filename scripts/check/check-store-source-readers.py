@@ -92,6 +92,7 @@ ALLOWED = {
     # last rung), they do not read a tree.
     ".github/workflows/live-peer.yml": "submodule init list",
     ".github/workflows/gate.yml": "submodule init list (the check job's source gates)",
+    ".github/workflows/host-tests.yml": "submodule init list (the asan job's zenoh backend)",
     ".config/gate-lanes.toml": "submodule init list ([[provision.submodule]], phase-565 W1)",
     # Developer tools that read the checkout on purpose (they audit the
     # vendored sources a contributor edits, not what a build consumes).
