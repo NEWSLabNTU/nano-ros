@@ -2187,6 +2187,29 @@ config NROS_ZEPHYR_HEAP_SIZE
       them, and it names the value to state.
 
 
+# prompt: Log sink buffers (records formatted at once)
+config NROS_ZEPHYR_LOG_SINK_BUFFERS
+    int
+    range 0 32
+    default 4 if SMP
+    default 2
+    help
+      How many nros_log records the Zephyr log sink can format at the same
+      time. Each buffer is 1280 bytes of .bss, owned by the sink and claimed with
+      one atomic bit, so a thread or an ISR on any CPU can take one without a
+      lock. A buffer is held for one format and one LOG_* call.
+
+      The default is two per CPU (4 on an SMP image, 2 otherwise): one record from
+      a thread and one from an interrupt in flight on each CPU. When every buffer
+      is in use, a record is formatted into a 160-byte stack buffer instead,
+      truncated and marked "...", and the sink says once that the pool ran dry.
+      A record is never dropped for want of a buffer.
+
+      0 formats every record in a 1280-byte buffer on the stack of the thread that
+      logged, as the sink did before this knob. A thread whose stack is sized for
+      its own work (1-2 KiB) then overflows the first time it logs.
+
+
 if NROS_RMW_XRCE
 
 # prompt: Per-slot static buffer size

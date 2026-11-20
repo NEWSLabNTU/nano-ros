@@ -131,6 +131,9 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
 config NROS_ZEPHYR_HEAP_SIZE
     int "Application heap arena size (bytes)"
 
+config NROS_ZEPHYR_LOG_SINK_BUFFERS
+    int "Log sink buffers (records formatted at once)"
+
 if NROS_RMW_XRCE
 
 config NROS_XRCE_BUFFER_SIZE
