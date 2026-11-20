@@ -7,7 +7,7 @@ use std::{env, path::Path};
 
 /// Parameter-store slots carved for an image that builds a store but whose
 /// parameter count nobody stated or declared: one `use_sim_time` per node and
-/// room for a few application parameters. State `NROS_MAX_PARAMETERS`
+/// room for a few application parameters. State `NROS_PARAMS_MAX_PARAMETERS`
 /// (`[image.<id>.knobs.params] max_parameters`) or declare the contract's
 /// `params:` for more.
 const STOCK_STORE_SLOTS: usize = 8;
@@ -191,9 +191,9 @@ fn main() {
     // is as large as its `StringArray` variant), so 32 of them put 285,696 B
     // into the .bss of a talker that declares no parameter, and a 512 KiB
     // board overflowed. A declaration past the carve stops the boot, naming
-    // NROS_MAX_PARAMETERS.
+    // NROS_PARAMS_MAX_PARAMETERS.
     let implied_store_slots = if store_implied(params) {
-        stated("NROS_MAX_PARAMETERS", rungs.max_parameters)
+        stated("NROS_PARAMS_MAX_PARAMETERS", rungs.max_parameters)
             .or(contract(params.map(|p| p.max_parameters()), None))
             .unwrap_or(STOCK_STORE_SLOTS.min(max_parameters))
     } else {

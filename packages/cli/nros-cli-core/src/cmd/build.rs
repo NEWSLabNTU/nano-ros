@@ -8524,12 +8524,12 @@ const STRING_VALUE_BOUND: ParamBound = ParamBound {
     comment: "the longest string value, in bytes",
 };
 const ARRAY_BOUND: ParamBound = ParamBound {
-    knob: "NROS_MAX_ARRAY_LEN",
+    knob: "NROS_PARAMS_MAX_ARRAY_LEN",
     default: 32,
     comment: "the longest bool, integer or double array",
 };
 const STRING_ARRAY_BOUND: ParamBound = ParamBound {
-    knob: "NROS_MAX_STRING_ARRAY_LEN",
+    knob: "NROS_PARAMS_MAX_STRING_ARRAY_LEN",
     default: 32,
     comment: "the longest string array",
 };
@@ -8539,7 +8539,7 @@ const BYTE_ARRAY_BOUND: ParamBound = ParamBound {
     comment: "the longest byte array, in bytes",
 };
 const PARAM_INBOX_BOUND: ParamBound = ParamBound {
-    knob: "NROS_PARAM_SERVICE_INBOX_BYTES",
+    knob: "NROS_PARAMS_SERVICE_INBOX_BYTES",
     default: 0,
     comment: "the largest parameter request at the bounds above",
 };
