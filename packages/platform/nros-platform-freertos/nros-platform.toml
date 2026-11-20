@@ -75,6 +75,16 @@ direction = "bigger-is-urgent"
 range = [1, 7]
 reserved.transport = [4, 4]
 pool.app = [1, 3]
+# The tasks nano-ros does not create, MEASURED by the boot task census
+# (`nros: task census name=... prio=...`, read by the e2e
+# `freertos_task_census_is_placed_by_the_priority_plan` on the mps2-an385
+# realtime images, Rust and C): lwIP's `tcpip_thread` (TCPIP_THREAD_PRIO) and
+# the kernel's timer service task (configTIMER_TASK_PRIORITY), both 4. The
+# kernel's IDLE task is 0, below `range`. The band shares 4 with the transport:
+# all three are system tasks the application depends on, so no sched task may
+# sit at or above them unless it says so. check-sched-task-priority-plan holds
+# both macros to this band.
+reserved.foreign = [4, 4]
 
 # phase-400 W3 / RFC-0086 — software-stack FACTS. A transport that needs a
 # capability this platform declares `false` fails at config time; a capability

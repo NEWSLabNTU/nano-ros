@@ -175,7 +175,14 @@
 
 /* ---- Timers ---- */
 #define configUSE_TIMERS                        1
-#define configTIMER_TASK_PRIORITY               2
+/* The kernel's timer service task (`Tmr Svc`), which runs the software
+ * timers that refill a level's budget. It is a FOREIGN task to the priority
+ * plan (`reserved.foreign` in nros-platform-freertos/nros-platform.toml), so
+ * it sits in that band, beside lwIP's tcpip_thread, and never in `pool.app`
+ * [1, 3]: at 2 it shared a priority with an application level, so a level at
+ * 3 starved it and a level at 2 round-robined with it. The boot task census
+ * measures this; check-sched-task-priority-plan holds it to the band. */
+#define configTIMER_TASK_PRIORITY               4
 #define configTIMER_QUEUE_LENGTH                10
 #define configTIMER_TASK_STACK_DEPTH            (configMINIMAL_STACK_SIZE * 2)
 
