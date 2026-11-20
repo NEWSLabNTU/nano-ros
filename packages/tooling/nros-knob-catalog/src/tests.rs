@@ -266,6 +266,7 @@ fn a_package_row_joins_the_catalog_and_its_retired_spellings() {
     std::fs::write(
         tmp.path().join(PACKAGE_FILE),
         "owner = \"acme\"\n\n[[knob]]\nkey = \"acme.frame_bytes\"\ntype = \"int\"\n\
+         kconfig_attrs = [\"default 64\"]\n\
          retired = [{ spelling = \"env:NROS_ACME_FRAME_KB\", factor = 1024, from_unit = \"KiB\" }]\n\n\
          [[env]]\nkey = \"acme.trace\"\n",
     )
@@ -508,5 +509,35 @@ fn a_malformed_package_choice_knob_is_refused() {
             .unwrap_err()
             .to_string();
         assert!(msg.contains(want), "`{extra}`: no `{want}` in {msg}");
+    }
+}
+
+/// An int / hex package knob with no unconditional default is refused: it
+/// would render EMPTY into Kconfig.packages and break configs.c in every
+/// Zephyr image linking the package.
+#[test]
+fn a_package_number_knob_without_a_default_is_refused() {
+    let base = "owner = \"acme\"\n\n[[knob]]\nkey = \"acme.n\"\n";
+    for (extra, refused) in [
+        ("type = \"int\"\n", true),
+        (
+            "type = \"hex\"\nkconfig_attrs = [\"default 0x1 if Q\"]\n",
+            true,
+        ),
+        (
+            "type = \"int\"\nkconfig_attrs = [\"range 0 9\", \"default 4\"]\n",
+            false,
+        ),
+        ("type = \"string\"\n", false),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        write_rows(tmp.path(), &format!("{base}{extra}"));
+        let r = Catalog::build(&[provider(tmp.path(), "acme_rmw")], &read);
+        match (refused, r) {
+            (true, Err(e)) => assert!(e.to_string().contains("no unconditional `default`"), "{e}"),
+            (false, Ok(_)) => {}
+            (true, Ok(_)) => panic!("`{extra}` was not refused"),
+            (false, Err(e)) => panic!("`{extra}` was refused: {e}"),
+        }
     }
 }

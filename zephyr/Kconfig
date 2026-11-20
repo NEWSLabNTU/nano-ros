@@ -3040,6 +3040,7 @@ endif # NROS_RMW_ZENOH
 
 config NROS_EPOCH_FROM_ZENOH_INTERVAL_MS
     int "Retired -- setting it stops the configure"
+    default -1
     help
       CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS is retired: set [image.<id>.knobs.clock] hlc_interval_ms instead (CONFIG_NROS_CLOCK_HLC_INTERVAL_MS where a conf file states it)
 

@@ -1302,6 +1302,22 @@ fn parse_rows(doc: &toml::Table, owner: &str, origin: &Origin, file: &Path) -> R
                 let (values, member_kconfig) =
                     parse_choice(t, t.get("type").and_then(toml::Value::as_str), key)
                         .map_err(|e| where_(&e))?;
+                // An int / hex knob with no unconditional default renders EMPTY
+                // into Kconfig.packages, and Zephyr's configs.c then fails to
+                // assemble in every image that links the package.
+                if matches!(
+                    t.get("type").and_then(toml::Value::as_str),
+                    Some("int" | "hex")
+                ) && !kconfig_attrs
+                    .iter()
+                    .any(|a| a.starts_with("default ") && !a.contains(" if "))
+                {
+                    return Err(where_(&format!(
+                        "knob `{key}` is an int/hex knob with no unconditional `default` in its \
+                         kconfig_attrs; Kconfig would emit it empty, which breaks every Zephyr \
+                         image that links this package"
+                    )));
+                }
                 Row {
                     kind: RowKind::Knob,
                     name: key.to_string(),
