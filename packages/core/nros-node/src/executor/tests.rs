@@ -5704,7 +5704,32 @@ fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
     );
 
     // ---- channel 1: the log line, for an image that HAS a sink ------------
+    // Issue 2778 -- the line can be held for another thread's delivery, or
+    // lost to the hold queue (issue 2000), when it is read. Wait for it,
+    // re-raising on a counted loss: a failed allocation reports again, and
+    // the boot record keeps only the FIRST failure, so a repeat changes
+    // nothing it asserts.
+    let exec = core::cell::RefCell::new(&mut executor);
+    let delivered = emit_until_delivered(
+        || {
+            let _ = exec
+                .borrow_mut()
+                .arena_alloc_with_trailing::<u8>(capacity + 1);
+        },
+        || {
+            CAPTURED
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|m| m.contains("arena exhausted"))
+        },
+    );
+    drop(exec);
     let records = CAPTURED.lock().unwrap().clone();
+    assert!(
+        delivered,
+        "the arena-exhausted report reached no sink: {records:?}"
+    );
     let exhausted = records
         .iter()
         .find(|m| m.contains("arena exhausted"))
@@ -14899,11 +14924,28 @@ fn a_declaration_past_the_stock_carve_is_refused_naming_the_knob() {
         "declaration {} is past the {slots}-slot stock carve",
         slots + 1
     );
-    assert!(
-        executor.report_parameter_refused(node, name),
-        "the refusal is reported as a FULL store"
+    // Issue 2778 -- the race its sibling above was fixed for (issue 2000):
+    // delivery is not synchronous in this binary, so the FULL line can still
+    // be parked, or lost to the hold queue, when SEEN is read. It failed a
+    // loaded `ci gate` that way. Wait for all three records, re-raising on a
+    // counted loss; the report is safe to repeat.
+    let reported = core::cell::Cell::new(true);
+    let delivered = emit_until_delivered(
+        || reported.set(reported.get() & executor.report_parameter_refused(node, name)),
+        || {
+            let s = SEEN.lock().unwrap();
+            s.iter()
+                .any(|m| m.contains("parameter store is full") && m.contains(name))
+                && s.iter().any(|m| m == nros_params::STORE_SIZE_KNOB)
+                && s.iter().any(|m| m == nros_params::STORE_SIZE_DERIVED)
+        },
     );
+    assert!(reported.get(), "the refusal is reported as a FULL store");
     let seen = SEEN.lock().unwrap().clone();
+    assert!(
+        delivered,
+        "the FULL line and both knob lines reach the sink; saw {seen:?}"
+    );
     let first = seen
         .iter()
         .find(|m| m.contains("parameter store is full"))

@@ -4137,6 +4137,17 @@ mod node_logger_name_tests {
 
         nros_log::log_info!(talker_logger, "{}", MARKER);
         nros_log::log_info!(listener_logger, "{}", MARKER);
+        // Issue 2778 -- a record raised while another test's thread holds
+        // nros-log's dispatch guard is held and delivered later (issue 2000),
+        // so drive delivery, boundedly, before counting. Not re-raised: this
+        // test counts its records, and a re-raise would add one.
+        for _ in 0..1_000_000 {
+            if SEEN_N.load(Ordering::SeqCst) >= 2 {
+                break;
+            }
+            nros_log::flush();
+            core::hint::spin_loop();
+        }
 
         assert_eq!(
             SEEN_N.load(Ordering::SeqCst),
