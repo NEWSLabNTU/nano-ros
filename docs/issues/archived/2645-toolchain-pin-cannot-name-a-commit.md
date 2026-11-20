@@ -11,7 +11,7 @@ resolved: 2026-11-20
 resolved_in: "the change that archived it"
 ---
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md) I26.**
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md) I26.**
 GitHub [#4006](https://github.com/NEWSLabNTU/nano-ros/issues/4006).
 
 **Priority: normal (user ruling, 2026-11-16, superseding the "low" set

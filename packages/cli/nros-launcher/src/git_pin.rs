@@ -285,8 +285,9 @@ fn build(dir: &Path, url: &str, rev: &str, build_path: &std::ffi::OsStr) -> Resu
     )?;
     let bin_dir = dir.join("bin");
     std::fs::create_dir_all(&bin_dir)?;
+    // `bin/` sits in the tree's root, so the CLI is one level up from it.
     link(
-        Path::new("../packages/cli/target/release/nros"),
+        &pin::checkout_cli_bin(Path::new("..")),
         &bin_dir.join("nros"),
     )?;
     Ok(())
