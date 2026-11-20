@@ -98,15 +98,52 @@ the plan states `reserved.foreign = [0, 0]` for the timer thread.
 Both are read by `nuttx_thread_census_is_placed_by_the_priority_plan` and
 `threadx_thread_census_is_placed_by_the_priority_plan`.
 
+## The remaining boards: measured (2026-11-21)
+
+Single-executor images reach the census through an optional board hook,
+`nros_board_report_task_census`, which `nros_rtos_run_components.c` calls once
+setup succeeds; the FreeRTOS and ThreadX boards define it.
+
+**FreeRTOS POSIX simulator** (`nros-board-freertos-posix`), C and C++ images:
+
+| Task | Priority before | Priority now |
+| --- | ---: | ---: |
+| zenoh-pico's read task (`""`) | 5 | 4 |
+| `Tmr Svc` | 9 | 4 |
+| `app` | 3 | 3 |
+| `heap_peak` | 1 | 1 |
+| `IDLE` | 0 | 0 |
+
+The board's `configMAX_PRIORITIES` was 10, not the platform plan's 8. So
+zenoh-pico's default read priority (`configMAX_PRIORITIES / 2`) landed at 5,
+and `configTIMER_TASK_PRIORITY` (`configMAX_PRIORITIES - 1`) at 9; neither is
+where the plan puts them. The board now uses 8 and a timer priority of 4, as
+the hardware boards do. `check-sched-task-priority-plan` holds the board's
+`configMAX_PRIORITIES - 1` to the plan's `range` top and its
+`configTIMER_TASK_PRIORITY` to the foreign band.
+
+**ThreadX riscv64 QEMU** (`nros-board-threadx-qemu-riscv64`), C image:
+
+| Thread | Priority | Created by |
+| --- | ---: | --- |
+| `System Timer Thread` | 0 | the kernel |
+| `nros_ip` | 1 | NetX Duo (`IP_THREAD_PRIORITY`) |
+| `BSD thread task` | 2 | NetX Duo BSD sockets (`BSD_THREAD_PRIORITY`) |
+| `nros_app` | 15 | nano-ros |
+
+Both NetX threads sat outside the ThreadX plan's `reserved.foreign = [0, 0]`.
+The band is `[0, 2]` now, and the gate holds both board macros to it.
+
+**NuttX rv-virt** realtime images: the kernel's high-priority work queue sits
+at **224**, the Kconfig default, where qemu-armv7a's sits at 192. The band is
+`[100, 224]` now.
+
+Tests: `freertos_posix_task_census_is_placed_by_the_priority_plan`,
+`threadx_riscv64_thread_census_is_placed_by_the_priority_plan` and
+`nuttx_riscv_thread_census_is_placed_by_the_priority_plan`.
+
 ## Still open
 
-- The FreeRTOS POSIX simulator board's own `FreeRTOSConfig.h` sets
-  `configTIMER_TASK_PRIORITY` to `configMAX_PRIORITIES - 1`, and nothing has
-  measured it.
-- `nros-board-threadx-qemu-riscv64` creates a NetX Duo IP thread
-  (`nx_ip_create`) that the threadx-linux image does not have; the shared
-  ThreadX plan has not been measured on it.
-- The NuttX riscv realtime images use the same plan and were not booted here.
 - Linux's `reserved.foreign = []` is still checked only by a probe no test or
   gate runs.
 

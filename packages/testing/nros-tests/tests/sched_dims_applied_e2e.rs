@@ -52,10 +52,13 @@ use nros_tests::{
     alloc::port_of,
     fixtures::{
         ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
-        build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
-        build_freertos_workspace_rust_realtime_entry, build_native_workspace_rust_realtime_entry,
-        build_nuttx_workspace_c_realtime_entry, build_nuttx_workspace_cpp_realtime_entry,
-        build_nuttx_workspace_rust_realtime_entry, build_threadx_workspace_rust_realtime_entry,
+        build_freertos_posix_workspace_c_zenoh_entry, build_freertos_workspace_c_realtime_entry,
+        build_freertos_workspace_cpp_realtime_entry, build_freertos_workspace_rust_realtime_entry,
+        build_native_workspace_rust_realtime_entry, build_nuttx_riscv_workspace_c_realtime_entry,
+        build_nuttx_riscv_workspace_cpp_realtime_entry,
+        build_nuttx_riscv_workspace_rust_realtime_entry, build_nuttx_workspace_c_realtime_entry,
+        build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
+        build_threadx_riscv64_workspace_c_entry, build_threadx_workspace_rust_realtime_entry,
         build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_c_realtime_entry_smp,
         build_zephyr_workspace_cpp_realtime_entry,
         build_zephyr_workspace_rust_realtime_derived_entry,
@@ -1148,6 +1151,115 @@ fn threadx_thread_census_is_placed_by_the_priority_plan() {
     );
 }
 
+/// Classify a census against a plan: every task falls in a band of it (the
+/// kernel idle task named `idle` aside, which must be at 0), and each task in
+/// `foreign` falls in `reserved.foreign`.
+fn assert_census_placed(
+    tag: &str,
+    census: &[(String, u32)],
+    plan: &PlanBands,
+    idle: &str,
+    foreign: &[&str],
+) {
+    assert!(!census.is_empty(), "[{tag}] empty census");
+    let mut undeclared = Vec::new();
+    for (name, prio) in census {
+        if name == idle {
+            assert_eq!(*prio, 0, "[{tag}] `{idle}` is not at 0");
+            continue;
+        }
+        if !plan
+            .bands
+            .iter()
+            .any(|(_, (lo, hi))| lo <= prio && prio <= hi)
+        {
+            undeclared.push((name.clone(), *prio));
+        }
+    }
+    assert!(
+        undeclared.is_empty(),
+        "[{tag}] task(s) at a priority no band of the plan holds ({}): {undeclared:?}",
+        plan.source
+    );
+    let (flo, fhi) = plan.band("reserved.foreign");
+    for f in foreign {
+        let prio = census
+            .iter()
+            .find(|(n, _)| n == f)
+            .map(|(_, p)| *p)
+            .unwrap_or_else(|| panic!("[{tag}] no `{f}` in {census:?}"));
+        assert!(
+            flo <= prio && prio <= fhi,
+            "[{tag}] `{f}` at {prio} is outside reserved.foreign [{flo}, {fhi}] ({})",
+            plan.source
+        );
+    }
+}
+
+/// The FreeRTOS POSIX simulator board shares the FreeRTOS platform's plan.
+/// Its single-executor image prints the census once setup returns (the
+/// runner's optional board hook). Before this board took 8 priorities, it ran
+/// zenoh-pico's read task at 5 and the timer task at 9, neither where the
+/// plan puts them.
+#[test]
+fn freertos_posix_task_census_is_placed_by_the_priority_plan() {
+    if !nros_tests::lane_scope::admits(MP::FreertosPosix) {
+        return;
+    }
+    let entry = build_freertos_posix_workspace_c_zenoh_entry()
+        .map(|p| p.to_path_buf())
+        .require("freertos-posix c zenoh entry");
+    let port = port_of(MP::FreertosPosix, ML::C, MW::EntryPubsub);
+    let _router = ZenohRouter::start_on("127.0.0.1", port)
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+    let mut g = ManagedProcess::spawn_image(Command::new(&entry), "posix-census")
+        .unwrap_or_else(|e| panic!("[freertos-posix c] spawn entry: {e}"));
+    let log = g.wait_for_output_pattern("nros: task census done tasks=", Duration::from_secs(60));
+    g.kill();
+    let log = log.unwrap_or_else(|e| panic!("[freertos-posix c] no census: {e}"));
+    let census = task_census(&log);
+    eprintln!("[freertos-posix c] census: {census:?}");
+    assert_census_placed(
+        "freertos-posix c",
+        &census,
+        &PlanBands::freertos(),
+        "IDLE",
+        &["Tmr Svc"],
+    );
+}
+
+/// The ThreadX riscv64 QEMU board shares the ThreadX platform's plan, and is
+/// the board that runs NetX Duo: its IP and BSD socket threads, and the
+/// kernel's timer thread, sit in `reserved.foreign`.
+#[test]
+fn threadx_riscv64_thread_census_is_placed_by_the_priority_plan() {
+    if !nros_tests::lane_scope::admits(MP::ThreadxRiscv64) {
+        return;
+    }
+    let entry = build_threadx_riscv64_workspace_c_entry()
+        .map(|p| p.to_path_buf())
+        .require("threadx-riscv64 c entry");
+    let port = port_of(MP::ThreadxRiscv64, ML::C, MW::EntryPubsub);
+    let _router = ZenohRouter::start_on("0.0.0.0", port)
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+    let groups: Vec<Vec<String>> = vec![vec!["nros: task census done tasks=".into()]];
+    let mut q = QemuProcess::start_riscv64_virt(&entry, 0)
+        .unwrap_or_else(|e| panic!("[threadx-riscv64 c] boot QEMU: {e}"));
+    let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+    q.kill();
+    let log = log.unwrap_or_else(|e| panic!("[threadx-riscv64 c] no census: {e}"));
+    let census = task_census(&log);
+    eprintln!("[threadx-riscv64 c] census: {census:?}");
+    let plan = PlanBands::board("packages/boards/nros-board-threadx-linux/nros-board.toml");
+    assert_census_placed(
+        "threadx-riscv64 c",
+        &census,
+        &plan,
+        "",
+        &["System Timer Thread", "nros_ip", "BSD thread task"],
+    );
+}
+
 /// The NuttX realtime images print a thread census once every level is up,
 /// and every thread in it is placed by the board's priority plan.
 #[test]
@@ -1231,6 +1343,49 @@ fn nuttx_thread_census_is_placed_by_the_priority_plan() {
                 );
             }
         }
+    }
+}
+
+/// The NuttX riscv realtime images share the NuttX board's plan.
+#[test]
+fn nuttx_riscv_thread_census_is_placed_by_the_priority_plan() {
+    if !nros_tests::lane_scope::admits(MP::NuttxRiscv) {
+        return;
+    }
+    type Resolve = fn() -> TestResult<PathBuf>;
+    let cells: [(ML, Resolve, &str); 3] = [
+        (
+            ML::Rust,
+            || build_nuttx_riscv_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
+            "rust",
+        ),
+        (
+            ML::Cpp,
+            || build_nuttx_riscv_workspace_cpp_realtime_entry().map(|p| p.to_path_buf()),
+            "cpp",
+        ),
+        (
+            ML::C,
+            || build_nuttx_riscv_workspace_c_realtime_entry().map(|p| p.to_path_buf()),
+            "c",
+        ),
+    ];
+    let plan = PlanBands::board("packages/boards/nros-board-nuttx-qemu/nros-board.toml");
+    for (lang, resolve, tag) in cells {
+        let tag = format!("nuttx-riscv {tag}");
+        let entry = resolve().require(&format!("{tag} realtime"));
+        let port = port_of(MP::NuttxRiscv, lang, MW::RealtimeSchedTasks);
+        let _router = ZenohRouter::start_on("0.0.0.0", port)
+            .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+        let groups: Vec<Vec<String>> = vec![vec!["nros: task census done tasks=".into()]];
+        let mut q = QemuProcess::start_nuttx_riscv(&entry, true)
+            .unwrap_or_else(|e| panic!("[{tag}] boot QEMU: {e}"));
+        let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+        q.kill();
+        let log = log.unwrap_or_else(|e| panic!("[{tag}] no thread census: {e}"));
+        let census = task_census(&log);
+        eprintln!("[{tag}] census: {census:?}");
+        assert_census_placed(&tag, &census, &plan, "Idle_Task", &["lpwork", "hpwork"]);
     }
 }
 

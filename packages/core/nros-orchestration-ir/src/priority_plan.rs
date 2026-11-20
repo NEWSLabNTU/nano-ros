@@ -303,13 +303,14 @@ impl PriorityPlan {
             "threadx" => PriorityPlan {
                 direction: Direction::SmallerIsUrgent,
                 range: band(0, 31),
-                // `reserved.foreign`: the kernel's timer thread, measured by
-                // the boot thread census. The pool stops at 30: 31 is the
+                // `reserved.foreign`: the kernel's timer thread (0) and, on
+                // the riscv64 board, NetX Duo's IP (1) and BSD (2) threads,
+                // measured by the boot thread census. The pool stops at 30: 31 is the
                 // nsos-netx receive notifier, which blocks in a host `poll()`
                 // and so starves any thread at its priority.
                 reserved: {
                     let mut m = reserved("transport", 14, 14);
-                    m.insert("foreign".to_string(), band(0, 0));
+                    m.insert("foreign".to_string(), band(0, 2));
                     m
                 },
                 app: band(15, 30),
@@ -321,10 +322,11 @@ impl PriorityPlan {
                 direction: Direction::BiggerIsUrgent,
                 range: band(1, 255),
                 // `reserved.foreign`: the kernel's work queues (lpwork 100,
-                // hpwork 192), measured by the boot thread census.
+                // hpwork 192 on qemu-armv7a, 224 on rv-virt), measured by
+                // the boot thread census.
                 reserved: {
                     let mut m = reserved("transport", 100, 100);
-                    m.insert("foreign".to_string(), band(100, 192));
+                    m.insert("foreign".to_string(), band(100, 224));
                     m
                 },
                 app: band(1, 99),
