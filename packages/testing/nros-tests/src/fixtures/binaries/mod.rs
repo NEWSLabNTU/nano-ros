@@ -7031,6 +7031,45 @@ pub fn build_logging_smoke_nuttx_qemu_arm() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Issue 2738 -- the small-stack logging image on `qemu_cortex_a53/smp`, with
+/// the log sink's buffer pool (the default). Built by the zephyr west lane
+/// into `<build-root>/build-log-sink-small-stack-smp/`; consumed by
+/// `tests/log_sink_small_stack.rs`.
+static LOG_SINK_SMALL_STACK_SMP: OnceCell<PathBuf> = OnceCell::new();
+
+pub fn build_log_sink_small_stack_smp() -> TestResult<&'static Path> {
+    LOG_SINK_SMALL_STACK_SMP
+        .get_or_try_init(|| {
+            let binary =
+                zephyr_build_root().join("build-log-sink-small-stack-smp/zephyr/zephyr.elf");
+            crate::fixtures::lane::require_west_leaf_in_lane(
+                "build-log-sink-small-stack-smp",
+                "packages/testing/nros-tests/bins/log-sink-small-stack-zephyr-smp",
+            )?;
+            require_prebuilt_binary_fresh(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Issue 2738 -- the same image built with the OLD caller-stack sink buffer
+/// (`legacy-sink.conf`, `CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS=0`): the negative
+/// control, which must overflow.
+static LOG_SINK_SMALL_STACK_LEGACY_SMP: OnceCell<PathBuf> = OnceCell::new();
+
+pub fn build_log_sink_small_stack_legacy_smp() -> TestResult<&'static Path> {
+    LOG_SINK_SMALL_STACK_LEGACY_SMP
+        .get_or_try_init(|| {
+            let binary =
+                zephyr_build_root().join("build-log-sink-small-stack-legacy-smp/zephyr/zephyr.elf");
+            crate::fixtures::lane::require_west_leaf_in_lane(
+                "build-log-sink-small-stack-legacy-smp",
+                "packages/testing/nros-tests/bins/log-sink-small-stack-zephyr-smp",
+            )?;
+            require_prebuilt_binary_fresh(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the Phase 88.15.e `logging-smoke-zephyr-native-sim`
 /// fixture binary (Zephyr `native_sim/native/64` running as a Linux
 /// process).

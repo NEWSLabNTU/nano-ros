@@ -6781,6 +6781,33 @@ west_role = "logging-smoke"
 west_build_name = "build-logging-smoke"
 west_id = "zephyr/native_sim/native/64/logging-smoke"
 
+# issue 2738 — a thread on a small stack logs through nros_log on a Zephyr
+# SMP image (qemu_cortex_a53/smp). The pool row is the fix; the legacy row
+# builds the same image with the old caller-stack sink buffer and is the
+# negative control, which must overflow. Consumed by
+# tests/log_sink_small_stack.rs. No network: the image opens no session.
+[[fixture]]
+platform = "zephyr"
+lang = "c"
+builder = "west"
+dir = "packages/testing/nros-tests/bins/log-sink-small-stack-zephyr-smp"
+board = "qemu_cortex_a53/qemu_cortex_a53/smp"
+west_role = "log-sink-small-stack"
+west_build_name = "build-log-sink-small-stack-smp"
+west_id = "zephyr/qemu_cortex_a53/smp/log-sink-small-stack"
+conf_files = ["prj.conf"]
+
+[[fixture]]
+platform = "zephyr"
+lang = "c"
+builder = "west"
+dir = "packages/testing/nros-tests/bins/log-sink-small-stack-zephyr-smp"
+board = "qemu_cortex_a53/qemu_cortex_a53/smp"
+west_role = "log-sink-small-stack-legacy"
+west_build_name = "build-log-sink-small-stack-legacy-smp"
+west_id = "zephyr/qemu_cortex_a53/smp/log-sink-small-stack-legacy"
+conf_files = ["prj.conf", "legacy-sink.conf"]
+
 # issue 2706 — a Zephyr interrupt (a k_timer expiry, in the system clock's
 # interrupt handler) wakes a parked executor through
 # `GuardCondition::trigger_from_isr`. The image's owned entry boots its own
