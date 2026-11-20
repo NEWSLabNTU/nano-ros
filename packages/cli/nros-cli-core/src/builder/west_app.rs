@@ -600,10 +600,13 @@ fn is_cargo_node(dir: &Path) -> bool {
 
 /// Derive the C/C++ west-application facts for one image.
 ///
-/// `nodes` is the launch file's node packages, in the order the emitter should
-/// `add_subdirectory` them — which is to say SORTED, so the file is
-/// byte-identical across machines (W3.c) and the build order comes from each
-/// package's own `<depend>` tags rather than from this list.
+/// `nodes` is the launch closure in BUILD order (`package_closure`: every
+/// package after the workspace packages it `<depend>`s on, ties by name), and
+/// the subdirs are emitted in that order, unsorted. The order is
+/// deterministic, so the file is still byte-identical across machines (W3.c).
+/// Sorting by name here was issue 2756: a package whose standalone fallback
+/// `add_subdirectory()`s its dependency ran before the dependency's own line,
+/// and the second add of the same target failed the configure.
 ///
 /// **What this deliberately does NOT emit: a `nano_ros_use_board(...)`
 /// preamble** (the retired `fvp_entry`'s). That stated the board inside the
@@ -669,7 +672,6 @@ pub fn resolve_cmake(
             lang = "cpp";
         }
     }
-    subdirs.sort();
     rust_node_dirs.sort();
     zephyr_modules.sort();
 
@@ -2014,11 +2016,13 @@ mod tests {
         );
     }
 
-    /// The subdir list is SORTED and RELATIVE, so the file is byte-identical
-    /// across machines (phase-383 W3.c). Build ORDER comes from each package's
-    /// own `<depend>` tags, never from this list.
+    /// The subdir list keeps the closure's BUILD order and is RELATIVE. The
+    /// order is the caller's (`package_closure`, deterministic), so the file
+    /// is still byte-identical across machines (phase-383 W3.c); re-sorting it
+    /// by name put a dependent's `add_subdirectory` before its dependency's
+    /// (issue 2756). Given in non-name order, it comes back unchanged.
     #[test]
-    fn the_subdir_list_is_sorted_and_relative() {
+    fn the_subdir_list_keeps_the_closure_order_and_is_relative() {
         let td = tempfile::tempdir().unwrap();
         let nodes = cmake_workspace(
             td.path(),
@@ -2030,15 +2034,19 @@ mod tests {
             subdirs,
             &[
                 (
-                    "../../../src/listener_pkg".to_string(),
-                    "listener_pkg".to_string()
-                ),
-                (
                     "../../../src/talker_pkg".to_string(),
                     "talker_pkg".to_string()
                 ),
+                (
+                    "../../../src/listener_pkg".to_string(),
+                    "listener_pkg".to_string()
+                ),
             ]
         );
+        let body = render_cmakelists(&app);
+        let t = body.find("src/talker_pkg").expect("talker added");
+        let l = body.find("src/listener_pkg").expect("listener added");
+        assert!(t < l, "emitted in the given order: {body}");
         let s = render_cmakelists(&app);
         assert!(
             !s.contains(td.path().to_str().unwrap()),
