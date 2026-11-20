@@ -194,10 +194,18 @@ without building.
     a PR of their own. W4b opens only after the images are rebuilt with
     them (user-approved 2026-11-21), so lane fast never runs the gate on an
     image without the shells.
-- **W4c, open:** completers for interface types, profiles, toolchains and
-  diagnostic codes. Interface types need the interface listing in the cache,
-  and reaching `cmd::interface` from configure would put that leaf verb in
-  the planning set, so the listing has to move first.
+- **W4c, profiles, codes and toolchains:** done locally (2026-11-21),
+  stacked on W4b. All three come from compiled-in tables or one directory
+  listing:
+  - `nros build --profile=` offers the cargo profiles a CMake build type maps
+    to and the four CMake spellings. A test holds that `nros build` accepts
+    each one offered.
+  - `nros explain` offers every live `NROS-NNNN` code with its title (not
+    the retired ones).
+  - `nros toolchain uninstall` offers the installed `toolchains/<version>`.
+- **W4d, open:** interface types. They need the interface listing in the
+  cache, and reaching `cmd::interface` (a leaf verb) from configure would put
+  it in the planning set. The listing has to move out of the verb first.
 
 Enable clap_complete's `unstable-dynamic`, pinned to an exact version.
 `CompleteEnv::with_factory(Cli::command).complete()` goes in `main` after the
