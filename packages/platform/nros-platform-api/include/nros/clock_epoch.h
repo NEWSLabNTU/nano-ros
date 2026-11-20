@@ -15,7 +15,8 @@
  *   - ONE storage object, defined weak here so every including translation
  *     unit names the same object and the linker keeps one (GNU ld and TI's
  *     tiarmlnk both merge weak data definitions);
- *   - ONE setter, `nros_clock_set_epoch_offset_us`, and one reader;
+ *   - ONE setter, `nros_clock_set_epoch_offset_us`, one reader, and the
+ *     state the port reports (`nros_clock_epoch_state`);
  *   - both under the platform's critical section
  *     (`nros_platform_critical_section_acquire`, which every port defines),
  *     so a 64-bit value cannot tear on a 32-bit target, and an SMP image is
@@ -43,24 +44,52 @@ extern "C" {
 #endif
 
 /* The store. Weak: each including TU emits this definition, and the link
- * keeps exactly one. Never read or written except through the two functions
- * below. */
-__attribute__((weak)) uint64_t nros_clock_epoch_offset_us_store;
+ * keeps exactly one. Never read or written except through the functions
+ * below. Beside the offset it keeps WHICH source installed it and how many
+ * times that source has changed, the facts `nros_platform_wall_clock_state`
+ * reports. */
+typedef struct {
+    uint64_t offset_us; /* 0: not acquired */
+    uint8_t source;     /* NROS_WALL_CLOCK_SOURCE_* of the last install */
+    uint32_t steps;     /* installs whose source differed from the one before */
+} nros_clock_epoch_store_t;
+__attribute__((weak)) nros_clock_epoch_store_t nros_clock_epoch_store;
 
 /* The one setter. `offset_us` is UNIX time in microseconds minus
- * `nros_platform_clock_ns() / 1000` at the instant of the reading. */
-static inline void nros_clock_set_epoch_offset_us(uint64_t offset_us) {
+ * `nros_platform_clock_ns() / 1000` at the instant of the reading, and
+ * `source` (`NROS_WALL_CLOCK_SOURCE_*`) is who read it. A re-install by the
+ * same source (an HLC window, an SNTP re-sync) is not a step; an install by a
+ * DIFFERENT source after one has answered is, and is counted. */
+static inline void nros_clock_set_epoch_offset_us(uint64_t offset_us, uint8_t source) {
     uint32_t token = nros_platform_critical_section_acquire();
-    nros_clock_epoch_offset_us_store = offset_us;
+    if (nros_clock_epoch_store.offset_us != 0ULL && nros_clock_epoch_store.source != source) {
+        nros_clock_epoch_store.steps++;
+    }
+    nros_clock_epoch_store.offset_us = offset_us;
+    nros_clock_epoch_store.source = source;
     nros_platform_critical_section_release(token);
 }
 
 /* The one reader: the installed offset, or 0 when none has been. */
 static inline uint64_t nros_clock_epoch_offset_us(void) {
     uint32_t token = nros_platform_critical_section_acquire();
-    uint64_t offset_us = nros_clock_epoch_offset_us_store;
+    uint64_t offset_us = nros_clock_epoch_store.offset_us;
     nros_platform_critical_section_release(token);
     return offset_us;
+}
+
+/* The state a calibrating port answers `nros_platform_wall_clock_state`
+ * with, read in one critical section so the three fields agree. Before the
+ * first install it is unsynced and names `configured`, the source the port
+ * is waiting on (`NROS_WALL_CLOCK_SOURCE_*`). */
+static inline nros_wall_clock_state_t nros_clock_epoch_state(uint8_t configured) {
+    nros_wall_clock_state_t st;
+    uint32_t token = nros_platform_critical_section_acquire();
+    st.synced = nros_clock_epoch_store.offset_us != 0ULL;
+    st.source = st.synced ? nros_clock_epoch_store.source : configured;
+    st.steps = nros_clock_epoch_store.steps;
+    nros_platform_critical_section_release(token);
+    return st;
 }
 
 /* UNIX time in microseconds from the installed offset, or 0 ("no wall

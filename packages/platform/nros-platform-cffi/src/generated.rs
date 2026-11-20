@@ -20,6 +20,17 @@ pub type nros_platform_log_flush_fn_t = ::core::option::Option<unsafe extern "C"
 #[doc = " @file platform_timer.h\n @brief Canonical C ABI for the nros platform timer surface.\n\n Companion to `<nros/platform.h>`; sits beside the core 39-symbol\n ABI as the platform-timer interface. Carved into a\n separate header because bare-metal / single-shot consumers can\n omit timer support without losing the canonical platform symbols.\n\n # Handle model\n\n  Platform timer handles are opaque `void *`. The implementation\n  allocates whatever it needs to track the underlying primitive\n  (`TimerHandle_t` on FreeRTOS, `TX_TIMER *` on ThreadX, `timer_t`\n  on POSIX, `*mut k_timer` on Zephyr); the runtime never inspects\n  the bytes pointed at.\n\n # Return-value conventions\n\n  - `create_periodic` / `create_oneshot` return non-NULL on success\n    and `NULL` on failure (analogous to libc `malloc`).\n  - `cancel` returns 1 when the cancellation prevented the callback\n    from firing, 0 if the callback already fired (or the timer was\n    already cancelled or destroyed), -1 on unrecoverable error.\n  - `destroy` is best-effort; idempotent on already-destroyed handles.\n\n # Threading / context\n\n  Callbacks are invoked from a platform-defined timer context — a\n  direct ISR on Zephyr / bare-metal, deferred to the FreeRTOS timer\n  task on FreeRTOS, a real-time signal on POSIX. Callback bodies\n  must be short, must not call back into nros_platform_* heap or\n  blocking primitives, and must use atomic operations for shared\n  state. `user_data` must outlive the timer handle."]
 pub type nros_platform_timer_callback_t =
     ::core::option::Option<unsafe extern "C" fn(user_data: *mut core::ffi::c_void)>;
+#[doc = " What the wall-clock stamps mean right now."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_wall_clock_state_t {
+    #[doc = " `true`: `nros_platform_time_now_ns` answers real UNIX time. `false`:\n  it answers 0, and every `header.stamp` is ROS's \"unset\" time."]
+    pub synced: bool,
+    #[doc = " The source answering, or that will answer once it syncs: one of\n  `NROS_WALL_CLOCK_SOURCE_*`."]
+    pub source: u8,
+    #[doc = " How many times the answering source has CHANGED since boot. 0 for an\n  image whose stamps all come from one clock."]
+    pub steps: u32,
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct nros_platform_task_attr_t {
@@ -174,6 +185,10 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[doc = " Wall-clock nanoseconds since the Unix epoch, or `0` if the platform has\n  no real-time clock.\n\n  ONE symbol for one fact, mirroring `nros_platform_clock_ns` for the\n  monotonic clock. It replaced `time_now_ms` + `time_since_epoch_secs` +\n  `time_since_epoch_nanos`.\n\n  Why the split had to go, beyond tidiness: the ABI spent ONE INSTANT over\n  two symbols, and each call sampled the clock separately (the POSIX port\n  issued its own `clock_gettime` in each). A second boundary landing between\n  the two reads paired the OLD second with the NEW sub-second remainder — a\n  timestamp that jumped a full second BACKWARDS, rarely and silently. Both\n  `nros-core` and `nros-node` carried a bounded re-read loop to paper over\n  it; a single read cannot tear, so those loops are gone.\n\n  `u64` ns spans ~584 years from 1970, so it also retires the `uint32_t`\n  seconds field, which overflowed in 2106.\n\n  Ports convert from whatever they have — a port with only seconds returns\n  `secs * 1000000000ULL`, and one with no RTC returns 0. Callers wanting\n  milliseconds divide by 1000000; wanting a `(secs, nanos)` pair, divide and\n  remainder by 1000000000."]
     pub fn nros_platform_time_now_ns() -> u64;
+}
+unsafe extern "C" {
+    #[doc = " The wall clock's state, for an application that must not publish\n  unstamped data: ask before publishing, rather than a board hook deciding\n  by exiting.\n\n  Every port DEFINES this; there is no default, so a port that does not is\n  a link error naming the symbol, never a silent answer. A port with no\n  real-time clock answers `{ false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0 }`,\n  matching its 0 from `nros_platform_time_now_ns`. A port that calibrates\n  through `<nros/clock_epoch.h>` answers from that store."]
+    pub fn nros_platform_wall_clock_state() -> nros_wall_clock_state_t;
 }
 unsafe extern "C" {
     #[doc = " Fill `attr` with the defaults — equivalent to passing `NULL` to\n  `task_init`.\n\n  Callers use this rather than a designated initialiser so that a field added\n  to the struct later stays source-compatible for out-of-tree ports."]

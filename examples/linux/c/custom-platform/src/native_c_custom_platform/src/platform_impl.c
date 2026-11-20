@@ -241,6 +241,17 @@ uint64_t nros_platform_time_now_ns(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
+/* What the wall clock above means. This board's is the host's
+ * CLOCK_REALTIME, so it is synced whenever that answers. A board with no
+ * RTC returns { false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0 } here, beside its
+ * 0 from nros_platform_time_now_ns. */
+nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
+    struct timespec ts;
+    nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
+    st.synced = clock_gettime(CLOCK_REALTIME, &ts) == 0;
+    return st;
+}
+
 /* ============================================================================
  * Tasks
  *

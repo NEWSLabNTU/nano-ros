@@ -203,6 +203,15 @@ uint64_t nros_platform_time_now_ns(void) {
     return (uint64_t) ts.tv_sec * 1000000000ULL + (uint64_t) ts.tv_nsec;
 }
 
+/* The port's clock is `CLOCK_REALTIME`, which the host keeps; it answers
+ * whenever `clock_gettime` does, so the state is the same probe. */
+nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
+    struct timespec ts;
+    nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
+    st.synced = clock_gettime(CLOCK_REALTIME, &ts) == 0;
+    return st;
+}
+
 /* ---- Tasks ----
  *
  * Task storage is `pthread_t`. Caller allocates `sizeof(pthread_t)`
