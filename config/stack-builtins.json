@@ -1,6 +1,7 @@
 {
   "archive": [
     {
+      "code_sha256": "17f9fa62f42bd1ecd051e98358857fe27bfed224a93bec7975350c0ec0023540",
       "frames": {
         "_Unwind_Complete": 0,
         "_Unwind_DeleteException": 0,
@@ -208,7 +209,6 @@
       "measured": "2026-11-21",
       "method": "thumb prologue sum, plus the deepest in-archive callee chain",
       "path": "arm-none-eabi-gcc/13.2-nros5/lib/gcc/arm-none-eabi/13.2.1/thumb/v7-m/nofp/libgcc.a",
-      "sha256": "c6a3bf92ab683da0010b90c1553a9a781fa5e34ac26d2e5af24c530ba0bd9471",
       "toolchain": "arm-none-eabi-gcc (Arm GNU Toolchain 13.2.rel1 (Build arm-13.7)) 13.2.1 20231009 thumb/v7-m/nofp",
       "unmeasured": {
         "_Unwind_Backtrace": "calls through a register (`blx r5`)",
@@ -247,6 +247,7 @@
       }
     },
     {
+      "code_sha256": "382728fa0c52d31816e4022c3ff9682c668dd69a9e5bc0c5c22d77fd71d94701",
       "frames": {
         "_Unwind_Complete": 0,
         "_Unwind_DeleteException": 0,
@@ -453,9 +454,8 @@
       },
       "measured": "2026-11-21",
       "method": "thumb prologue sum, plus the deepest in-archive callee chain",
-      "path": "zephyr-sdk/0.16.8/zephyr-sdk-0.16.8/arm-zephyr-eabi/lib/gcc/arm-zephyr-eabi/12.2.0/thumb/v7-m/nofp/libgcc.a",
-      "sha256": "506f1bc61483c34b37cd217a33c36d069815957c8814f3b699d958e22c5d4212",
-      "toolchain": "arm-zephyr-eabi-gcc (Zephyr SDK 0.16.8) 12.2.0 thumb/v7-m/nofp",
+      "path": "zephyr-sdk/0.16.9/zephyr-sdk-0.16.9/arm-zephyr-eabi/lib/gcc/arm-zephyr-eabi/12.2.0/thumb/v7-m/nofp/libgcc.a",
+      "toolchain": "arm-zephyr-eabi-gcc (Zephyr SDK 0.16.9) 12.2.0 thumb/v7-m/nofp",
       "unmeasured": {
         "_Unwind_Backtrace": "calls through a register (`blx r6`)",
         "_Unwind_ForcedUnwind": "calls through a register (`blx r3`)",
@@ -493,6 +493,7 @@
       }
     },
     {
+      "code_sha256": "c1c5dd488d3965de4264d51ffe8179af14cf960603fbaff713f74f474f81ba2b",
       "frames": {
         "_Unwind_Complete": 0,
         "_Unwind_DeleteException": 0,
@@ -699,9 +700,8 @@
       },
       "measured": "2026-11-21",
       "method": "thumb prologue sum, plus the deepest in-archive callee chain",
-      "path": "zephyr-sdk/0.16.8/zephyr-sdk-0.16.8/arm-zephyr-eabi/lib/gcc/arm-zephyr-eabi/12.2.0/thumb/v7e-m/nofp/libgcc.a",
-      "sha256": "48a9a5904117259af5a193639e30b2bef6f5d8e1eb415507e6a8d50db2b46f20",
-      "toolchain": "arm-zephyr-eabi-gcc (Zephyr SDK 0.16.8) 12.2.0 thumb/v7e-m/nofp",
+      "path": "zephyr-sdk/0.16.9/zephyr-sdk-0.16.9/arm-zephyr-eabi/lib/gcc/arm-zephyr-eabi/12.2.0/thumb/v7e-m/nofp/libgcc.a",
+      "toolchain": "arm-zephyr-eabi-gcc (Zephyr SDK 0.16.9) 12.2.0 thumb/v7e-m/nofp",
       "unmeasured": {
         "_Unwind_Backtrace": "calls through a register (`blx r6`)",
         "_Unwind_ForcedUnwind": "calls through a register (`blx r3`)",
@@ -739,5 +739,5 @@
       }
     }
   ],
-  "schema": 1
+  "schema": 2
 }

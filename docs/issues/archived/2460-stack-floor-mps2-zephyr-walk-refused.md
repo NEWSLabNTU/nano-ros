@@ -120,8 +120,8 @@ measured, and none is typed by hand:
 - **libgcc's hand-written routines (W9b).** `__aeabi_dadd`, `__aeabi_dsub`, `__aeabi_l2d` and
   the rest carry no CFI. `just zephyr stack-builtins <archive>` measures every function of a
   toolchain archive from its own objects (Thumb prologue decoding, plus the deepest chain of
-  calls inside the archive) into `config/stack-builtins.toml`, keyed by the archive's content
-  hash. The walk reads the rows of exactly the archives its link map names. An archive with no
+  calls inside the archive) into `config/stack-builtins.toml`, keyed by the archive's code (its
+  executable and relocation sections, the same on every host). The walk reads the rows of exactly the archives its link map names. An archive with no
   row is a refusal naming it and the recipe, never a near key's numbers.
 - **The C++ FFI image (W9b).** Zephyr's `_nros_zephyr_cpp_ffi_image` lost the stack-floor
   cargo rows (`nros_resolve_board_facts()` re-reads the board facts alone), so the image

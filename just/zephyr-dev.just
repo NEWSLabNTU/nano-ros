@@ -698,7 +698,7 @@ stack-floor-drift *ARGS:
 
 # phase-557 W9b -- measure a toolchain archive's builtins (libgcc.a, a
 # compiler_builtins rlib) into config/stack-builtins.toml, keyed by the
-# archive's content hash, and rewrite its json twin. A walk that reaches a
+# archive's code key, and rewrite its json twin. A walk that reaches a
 # builtin with no frame names the archive and this recipe; nothing in that
 # table is typed by hand. ARGS: --toolchain "<compiler --version line>".
 # Measure a toolchain archive's builtin stack frames into config/stack-builtins.toml.

@@ -1,0 +1,1 @@
+The stack-floor check's table of toolchain builtin frames is keyed by each archive's code rather than its file bytes, so it applies on every host. On an aarch64 host the same toolchain library has different bytes and identical code, and the table's own validation failed there.
