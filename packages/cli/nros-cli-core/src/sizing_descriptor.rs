@@ -2113,7 +2113,14 @@ pub fn write_for_leaf(
     // found any endpoints. A leaf may declare parameters and create nothing
     // else; the endpoint table being empty says nothing about the store.
     let model = crate::leaf_entity_env::leaf_model(leaf, Some(img.image_id.as_str()));
-    let params = model.as_ref().map(|m| ParamDeclarations::from_model(m));
+    // Issue 2768 -- floored by the leaf's probe record of what the code
+    // declares, as every model road is.
+    let params = model.as_ref().map(|m| {
+        ParamDeclarations::from_model_with(
+            m,
+            crate::leaf_entity_env::recorded_params_for_leaf(leaf, m).as_ref(),
+        )
+    });
     // Issue 1706 -- what the leaf declares about the parameter store, for
     // `[params] store`: the model's launch seeds, and the `param_services` axis
     // only where it is BOTH declared (`[system] features`) and compiled in (the
@@ -2980,9 +2987,10 @@ fn compose_wired<'i>(
         host_build: img.host_build,
         heap_budget_bytes: img.heap_budget_bytes,
         // phase-454 (issue 1408) — and this road needs no horizon for them.
-        // `[params]` is derived from the contract ALONE, which is the one
-        // inventory a model-only producer has, so it states exactly what the
-        // leaf road states. It rides on the inventory here rather than beside
+        // `[params]` is derived from the contract, floored by the probe's
+        // record of what the code declares when the composition carried one
+        // (issue 2768), so it states what the leaf road states for the same
+        // declarations. It rides on the inventory here rather than beside
         // it because this road's inventory was composed from the same model
         // (`resolve_image` / `write_from_model` both attach it) — see
         // `DescriptorInputs::params` for why the leaf road cannot do that.
@@ -5023,6 +5031,7 @@ mod tests {
         let row = crate::orchestration::metadata_refresh::ProbeRow {
             executable: Some("talker".into()),
             description_max_len: None,
+            parameters: Vec::new(),
             entities: crate::entity_inventory::ComponentEntities {
                 pkg: "talker_pkg".into(),
                 component: "talker".into(),
@@ -5061,6 +5070,7 @@ mod tests {
             &[crate::orchestration::metadata_refresh::ProbeRow {
                 executable: Some("talker".into()),
                 description_max_len: None,
+                parameters: Vec::new(),
                 entities: crate::entity_inventory::ComponentEntities {
                     pkg: "talker_pkg".into(),
                     component: "talker".into(),

@@ -1549,6 +1549,10 @@ pub use nros_params::{
     ParameterStorage, ParameterTable, ParameterType, ParameterValue, ParameterVariant, Parameters,
     ReadOnlyParameter,
 };
+// Issue 2768 -- the two lines every full-store report ends with, so a refusal
+// raised outside the executor (the C server's `max_params` check) names the
+// knob in the same words as `Executor::report_parameter_refused`.
+pub use nros_params::{STORE_SIZE_DERIVED, STORE_SIZE_KNOB};
 // The wire-side half: why an `rcl_interfaces` parameter value could not be
 // turned into a native one. The `~/set_parameters` handler already puts
 // `reason()` into the `SetParametersResult`; without the type a user could read

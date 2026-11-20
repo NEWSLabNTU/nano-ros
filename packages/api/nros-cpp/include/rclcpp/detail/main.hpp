@@ -186,6 +186,18 @@ inline int32_t component_spin_loop() {
     return 0;
 }
 
+/// A component's setup failed, and the image is about to exit
+/// with its code. Said once here, whatever refused, because a component's
+/// `configure` may pass up a code its own callee never reported: the C
+/// parameter server's `max_params` check did exactly that, and the image ended
+/// with exit 250 and nothing on the console.
+inline void report_setup_failed(int32_t rc) {
+    RCLCPP_ERROR(::rclcpp::get_logger("nros"),
+                 "component setup failed with code %d; the image stops before spinning. The "
+                 "error lines above, if any, name the cause.",
+                 static_cast<int>(rc));
+}
+
 } // namespace detail
 
 // The weak `nros_board_network_wait()` network-readiness hook
@@ -311,11 +323,13 @@ class LinuxBoard {
         // reading "census missing" (a warning); kept, the CLI marks it
         // incomplete and every check against it refuses.
         if (census) {
+            if (rc != 0) detail::report_setup_failed(rc);
             int32_t cr = ::nros_cpp_census_finish(sn);
             (void)rclcpp::shutdown();
             return rc != 0 ? rc : cr;
         }
         if (rc != 0) {
+            detail::report_setup_failed(rc);
             (void)rclcpp::shutdown();
             return rc;
         }
@@ -527,6 +541,7 @@ class ZephyrBoard {
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
+            detail::report_setup_failed(rc);
             (void)rclcpp::shutdown();
             return rc;
         }
@@ -737,6 +752,7 @@ class NuttxBoard {
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
+            detail::report_setup_failed(rc);
             (void)rclcpp::shutdown();
             return rc;
         }
@@ -914,6 +930,7 @@ class ThreadxBoard {
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
+            detail::report_setup_failed(rc);
             (void)rclcpp::shutdown();
             return rc;
         }
@@ -1005,6 +1022,7 @@ class FreertosBoard {
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
+            detail::report_setup_failed(rc);
             (void)rclcpp::shutdown();
             return rc;
         }

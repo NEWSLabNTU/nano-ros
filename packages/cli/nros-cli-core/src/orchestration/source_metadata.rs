@@ -375,6 +375,45 @@ pub struct SourceParameter {
     pub source: SourceLocation,
 }
 
+impl SourceParameter {
+    /// The contract type this declaration claims a store slot as, or `None`
+    /// for a READ ([`Self::read`]), which claims none.
+    ///
+    /// The declared `type` when the sidecar states one, else the default's
+    /// shape (a v1 sidecar). A `not_set` declaration still takes a slot; it
+    /// holds no value the probe could price, so it is counted as a scalar,
+    /// which asks the board for no string or array capacity.
+    // Issue 2768.
+    pub fn declared_type(&self) -> Option<ros_launch_manifest_model::ParamType> {
+        use ros_launch_manifest_model::ParamType as T;
+        if self.read {
+            return None;
+        }
+        Some(match self.parameter_type {
+            Some(SourceParameterType::Bool) => T::Bool,
+            Some(SourceParameterType::Integer) => T::Integer,
+            Some(SourceParameterType::Double) => T::Double,
+            Some(SourceParameterType::String) => T::String,
+            Some(SourceParameterType::ByteArray) => T::ByteArray,
+            Some(SourceParameterType::BoolArray) => T::BoolArray,
+            Some(SourceParameterType::IntegerArray) => T::IntegerArray,
+            Some(SourceParameterType::DoubleArray) => T::DoubleArray,
+            Some(SourceParameterType::StringArray) => T::StringArray,
+            Some(SourceParameterType::NotSet) => T::Bool,
+            None => match &self.default {
+                ParameterValue::Bool(_) => T::Bool,
+                ParameterValue::Integer(_) => T::Integer,
+                ParameterValue::Float(_) => T::Double,
+                ParameterValue::String(_) => T::String,
+                ParameterValue::BoolArray(_) => T::BoolArray,
+                ParameterValue::IntegerArray(_) => T::IntegerArray,
+                ParameterValue::FloatArray(_) => T::DoubleArray,
+                ParameterValue::StringArray(_) => T::StringArray,
+            },
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceMetadataTrace {

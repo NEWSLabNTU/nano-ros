@@ -99,6 +99,8 @@ static bool on_change(const Parameter* old_param, const Parameter* new_param, vo
  * from the first "parameter store is full" one on and joined by a space. */
 static char g_full_line[1024];
 static int g_records_kept;
+static char g_init_line[1024];
+static int g_init_knob_next;
 
 static void capture_sink(void* user, rcl_log_severity_t severity, const char* logger,
                          size_t logger_len, const char* message, size_t message_len,
@@ -111,13 +113,26 @@ static void capture_sink(void* user, rcl_log_severity_t severity, const char* lo
     (void)file_len;
     (void)line;
     (void)ts;
-    if (g_records_kept >= 3) {
-        return;
-    }
     char buf[256];
     size_t n = message_len < sizeof(buf) - 1 ? message_len : sizeof(buf) - 1;
     memcpy(buf, message, n);
     buf[n] = '\0';
+    /* Issue 2768 -- the init refusal for a `max_params` over the store, and
+     * the knob line after it. */
+    if (g_init_line[0] == '\0' && strstr(buf, "parameter server not started") != NULL) {
+        snprintf(g_init_line, sizeof(g_init_line), "%s", buf);
+        g_init_knob_next = 1;
+        return;
+    }
+    if (g_init_knob_next) {
+        g_init_knob_next = 0;
+        size_t have = strlen(g_init_line);
+        snprintf(g_init_line + have, sizeof(g_init_line) - have, " %s", buf);
+        return;
+    }
+    if (g_records_kept >= 3) {
+        return;
+    }
     if (g_records_kept == 0 && strstr(buf, "parameter store is full") == NULL) {
         return;
     }
@@ -339,14 +354,32 @@ int main(void) {
     CHECK(rclc_executor_node_init(&executor, &filler, "filler", NULL) == RCL_RET_OK,
           "filler node init");
     rclc_parameter_options_t whole = opts;
-    size_t capacity = 0;
-    for (size_t want = 4096; want > 0 && capacity == 0; --want) {
-        whole.max_params = want;
+    /* The largest `max_params` init accepts, by bisection: every refusal is
+     * reported (issue 2768), so a linear walk down from 4096 logs thousands. */
+    size_t lo = 0, hi = 4096;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo + 1) / 2;
+        whole.max_params = mid;
         if (rclc_parameter_server_init_with_option(&ps4, &filler, &whole) == RCL_RET_OK) {
-            capacity = want;
+            lo = mid;
+            CHECK(rclc_parameter_server_fini(&ps4, &filler) == RCL_RET_OK, "fini the probe");
+        } else {
+            hi = mid - 1;
         }
     }
+    size_t capacity = lo;
     CHECK(capacity > 0, "no max_params fit the store");
+    whole.max_params = capacity;
+    CHECK(rclc_parameter_server_init_with_option(&ps4, &filler, &whole) == RCL_RET_OK,
+          "init at the store's capacity");
+    /* Issue 2768 -- a `max_params` over the store was refused out loud, naming
+     * the node, both numbers and the knob. */
+    CHECK(strstr(g_init_line, "/filler") != NULL, "the init refusal names no node: %s",
+          g_init_line);
+    CHECK(strstr(g_init_line, "holds") != NULL && strstr(g_init_line, "max_params = ") != NULL,
+          "the init refusal states no counts: %s", g_init_line);
+    CHECK(strstr(g_init_line, "NROS_MAX_PARAMETERS") != NULL,
+          "the init refusal does not name the knob: %s", g_init_line);
     rcl_ret_t refused = RCL_RET_OK;
     size_t filled = 0;
     char pname[32];

@@ -654,6 +654,80 @@ pub fn inventory_for_leaf(leaf: &Path) -> Result<(EntityInventory, Vec<String>)>
     Ok((inv, unprobeable))
 }
 
+/// Issue 2768 -- what the leaf's probe sidecars record of each launched
+/// node's declared parameters, for [`ParamDeclarations::from_model_with`]:
+/// the cargo leaf road's half of the floor every model road applies.
+///
+/// Read from the same `metadata/` directories [`inventory_for_leaf`] reads.
+/// A node is matched to the sidecar whose `package` and `executable` are the
+/// node's `pkg` and `exec`; a model starting ONE node, over a leaf with ONE
+/// sidecar, is that sidecar's (a synthesised leaf launch names the leaf, not
+/// the component). All or nothing: any node with no single sidecar is `None`,
+/// so a count over the record is a count over the whole image.
+///
+/// [`ParamDeclarations::from_model_with`]: crate::entity_inventory::ParamDeclarations::from_model_with
+pub fn recorded_params_for_leaf(
+    leaf: &Path,
+    model: &ros_launch_manifest_model::SystemModel,
+) -> Option<crate::entity_inventory::RecordedParams> {
+    use crate::orchestration::source_metadata::SourceMetadata;
+    let mut dirs = vec![leaf.join("metadata")];
+    dirs.extend(
+        crate::orchestration::workspace::root_path_dep_packages(leaf)
+            .into_iter()
+            .map(|p| p.join("metadata")),
+    );
+    let mut docs: Vec<SourceMetadata> = Vec::new();
+    for d in &dirs {
+        let Ok(rd) = std::fs::read_dir(d) else {
+            continue;
+        };
+        let mut paths: Vec<_> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+        paths.sort();
+        for p in paths {
+            if p.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let doc = std::fs::read_to_string(&p)
+                .ok()
+                .and_then(|t| serde_json::from_str::<SourceMetadata>(&t).ok())?;
+            docs.push(doc);
+        }
+    }
+    let declared = |doc: &SourceMetadata| -> Vec<(String, ros_launch_manifest_model::ParamType)> {
+        doc.parameters
+            .iter()
+            .filter_map(|p| p.declared_type().map(|t| (p.name.clone(), t)))
+            .collect()
+    };
+    if model.structure.nodes.is_empty() || docs.is_empty() {
+        return None;
+    }
+    let mut out = crate::entity_inventory::RecordedParams::new();
+    if let ([(fqn, _)], [doc]) = (
+        model.structure.nodes.iter().collect::<Vec<_>>().as_slice(),
+        docs.as_slice(),
+    ) {
+        out.insert((*fqn).clone(), declared(doc));
+        return Some(out);
+    }
+    for (fqn, node) in &model.structure.nodes {
+        let found: Vec<&SourceMetadata> = docs
+            .iter()
+            .filter(|d| {
+                node.pkg.as_deref() == Some(d.package.as_str())
+                    && node.exec.is_some()
+                    && node.exec == d.executable
+            })
+            .collect();
+        let [one] = found.as_slice() else {
+            return None;
+        };
+        out.insert(fqn.clone(), declared(one));
+    }
+    Some(out)
+}
+
 /// The leaf directory's own name, used as pkg/component when a declaration
 /// stands in for a probe that never ran and there is no probed name to use.
 fn leaf_name(leaf: &Path) -> String {
@@ -1345,6 +1419,60 @@ fn system_reports_backend_knob(
 mod tests {
     use super::*;
     use crate::entity_inventory::Derivation;
+
+    /// Issue 2768 -- the cargo leaf road reads what its sidecars record of
+    /// the code's declarations: a read is not a declaration, a node is matched
+    /// by its `pkg` + `exec`, and one node with no sidecar records nothing.
+    #[test]
+    fn a_leafs_sidecars_record_each_nodes_declared_parameters() {
+        use ros_launch_manifest_model::ParamType;
+        let leaf = tempfile::tempdir().unwrap();
+        let md = leaf.path().join("metadata");
+        std::fs::create_dir_all(&md).unwrap();
+        let sidecar = |component: &str, params: &str| {
+            format!(
+                r#"{{"version": 4, "package": "demo_pkg", "component": "{component}",
+                    "language": "rust", "executable": "{component}", "exported_symbol": null,
+                    "nodes": [], "callbacks": [], "parameters": [{params}],
+                    "trace": {{"generator": "t", "package_manifest": "package.xml",
+                               "source_artifacts": []}}}}"#
+            )
+        };
+        let p = |name: &str, ty: &str, read: bool| {
+            format!(
+                r#"{{"node": "n", "name": "{name}", "type": "{ty}", "default": 0,
+                    "read_only": false, "read": {read},
+                    "source": {{"artifact": "src/lib.rs", "line": null, "column": null}}}}"#
+            )
+        };
+        std::fs::write(
+            md.join("a.json"),
+            sidecar(
+                "a",
+                &[p("gain", "integer", false), p("seen", "integer", true)].join(","),
+            ),
+        )
+        .unwrap();
+        std::fs::write(md.join("b.json"), sidecar("b", &p("rate", "double", false))).unwrap();
+        let model = |nodes: &str| -> ros_launch_manifest_model::SystemModel {
+            serde_yaml_ng::from_str(&format!(
+                "meta: {{ version: 1 }}\nstructure:\n  nodes:\n{nodes}"
+            ))
+            .unwrap()
+        };
+        let node = |n: &str| {
+            format!(
+                "    /{n}: {{ scope: s.launch.xml, pkg: demo_pkg, exec: {n}, node_name: {n} }}\n"
+            )
+        };
+        let both = model(&(node("a") + &node("b")));
+        let rec = recorded_params_for_leaf(leaf.path(), &both).expect("both nodes recorded");
+        assert_eq!(rec["/a"], vec![("gain".to_string(), ParamType::Integer)]);
+        assert_eq!(rec["/b"], vec![("rate".to_string(), ParamType::Double)]);
+
+        let with_c = model(&(node("a") + &node("b") + &node("c")));
+        assert_eq!(recorded_params_for_leaf(leaf.path(), &with_c), None);
+    }
 
     /// Issue 2093 -- a zenoh-only knob is reported to a leaf only when one of
     /// its images IS zenoh. Each row is (system.toml, expected).
