@@ -1,7 +1,9 @@
 ---
 id: 2768
 title: "An image whose code declares more parameters than its contract states keeps the default parameter store, and its configure fails with exit 250 and nothing on the console"
-status: open
+status: resolved
+resolved: 2026-11-21
+resolved_in: "9fecdfd146"
 type: bug
 severity: high
 area: [cli, params, sizing, c-api]
@@ -73,3 +75,18 @@ Two defects, one silent and one undersized.
   attributed to the launched node. The store is image-wide, so the total is
   right; only the per-node seeded `use_sim_time` count can come in low by the
   extra nodes.
+
+## Resolution (2026-11-21)
+
+Fixed by `9fecdfd146`, as described under Fix. The `workspace-probe-seeds`
+fixture row, the one that exited 250, passes 3 of 3 on `main`. Issue 2782
+reported the same defect from another image and was closed as its duplicate.
+
+The "Not covered" item stays as stated: the store is image-wide, so the total
+is right, and only a per-node seeded count can read low.
+
+One consequence is user-visible, and the changelog states it as breaking: a
+string or array parameter declared only in code now needs its length stated
+(`NROS_MAX_STRING_VALUE_LEN`, `NROS_MAX_ARRAY_LEN`,
+`NROS_MAX_STRING_ARRAY_LEN`, `NROS_MAX_BYTE_ARRAY_LEN`), as one declared in
+the contract already did. A consumer project met it on a pin bump.
