@@ -303,8 +303,6 @@ launch = "cpp_params.launch.xml"
 max_string_value_bytes = 16
 max_array_len = 4
 max_string_array_len = 4
-
-[image.linux_cpp_params.knobs.param]
 service_inbox_bytes = 4096
 
 [image.linux_cpp_qos_listener]
@@ -483,6 +481,4 @@ max_queryables = 16
 max_string_value_bytes = 16
 max_array_len = 4
 max_string_array_len = 4
-
-[image.zephyr_cpp_params.knobs.param]
 service_inbox_bytes = 4096
