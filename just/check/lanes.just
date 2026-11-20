@@ -4425,6 +4425,49 @@ miri-executor-reentry:
             exit 1 ;;
     esac
 
+# phase-573 W5e (issue 2728) -- a use-after-free that only AddressSanitizer
+# sees. A read of freed memory with no assertion on the result passes every
+# other lane: the freed bytes still hold the old value. The executor's C wake
+# path is that shape -- a callback handed a raw context pointer -- and a
+# guard condition triggered after its executor dropped did exactly that read
+# until the handle owned its wake state.
+#
+# Two scopes, both instrumented, neither needing a router or a fixture:
+# - the guard-condition lifetime test over a stub cffi backend, the shape that
+#   was red (a probe of the old handle reads freed memory in the wake callback);
+# - nros-node's own lib tests with `rmw-cffi`: the executor's FFI wake,
+#   guard-condition and entity-wake paths, where C callbacks hold raw context
+#   pointers. `--target <host>` keeps build scripts and proc macros
+# uninstrumented, and the target dir is its own so instrumented objects never
+# mix with a gate's. `detect_leaks=0`: the executor backings are leaked on
+# purpose, so LeakSanitizer would report the design, not a defect.
+#
+# EXEMPT because `-Zsanitizer` needs the pinned NIGHTLY, which no merge-gating
+# lane builds with; host-tests.yml's daily `asan` job runs this by name.
+[metadata("tier", "exempt", "needs the pinned nightly for `-Zsanitizer=address`; host-tests.yml's daily `asan` job runs this by name (phase-573 W5e)")]
+address-sanitizer:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    host="$(rustc +{{NIGHTLY}} -vV | awk '/^host:/ {print $2}')"
+    asan() {
+        local what="$1"; shift
+        local rc=0 out
+        out="$(RUSTFLAGS="-Zsanitizer=address" ASAN_OPTIONS="detect_leaks=0" \
+            CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/asan" \
+            cargo +{{NIGHTLY}} test --target "$host" "$@" 2>&1)" || rc=$?
+        printf '%s\n' "$out"
+        [ "$rc" -eq 0 ] || { echo "address-sanitizer: $what is red." >&2; exit "$rc"; }
+        # A filter or cfg that leaves nothing to run exits 0; count the passes.
+        case "$out" in
+            *"test result: ok. 0 passed;"*|*"running 0 tests"*)
+                echo "address-sanitizer: $what ran no test -- renamed, or its cfg is off." >&2
+                exit 1 ;;
+        esac
+    }
+    asan "the guard-condition lifetime test" \
+        -p nros-tests --features trigger-test --test guard_condition_outlives_executor
+    asan "nros-node's lib tests" -p nros-node --lib --features alloc,rmw-cffi
+
 [group('uses:root-target')]
 [metadata("tier", "build")]
 [group('cpu:2')]

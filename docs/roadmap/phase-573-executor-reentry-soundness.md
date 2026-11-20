@@ -1,6 +1,6 @@
 # Phase 573 — a callback that calls back into its executor is sound
 
-**Status (2026-11-19). OPEN: W1, W2, W5a, W5b and W5c are done; W2b, W3, W4, W5d and W5e are open.** Fixes
+**Status (2026-11-20). OPEN: W1, W2, W5a, W5b, W5c and W5e are done; W2b, W3, W4 and W5d are open.** Fixes
 [issue 2675](../issues/2675-callback-reentry-aliases-executor.md) by amending
 [RFC-0108](../design/0108-executor-preemption-levels.md) ("Re-entry from a
 callback"). Ahead of [phase-572](phase-572-rust-component-graph-query.md),
@@ -140,7 +140,7 @@ Acceptance:
 - A mutation of each half fails its test.
 
 The use-after-free itself showed only under AddressSanitizer, which no lane
-runs: [issue 2728](../issues/2728-no-lane-runs-addresssanitizer.md).
+runs: [issue 2728](../issues/archived/2728-no-lane-runs-addresssanitizer.md).
 
 ### W4 — The multi-level and RTIC case
 
@@ -216,8 +216,17 @@ an exact one.
 
 ### W5e — A lane runs AddressSanitizer
 
-- **Status:** OPEN — [issue 2728](../issues/2728-no-lane-runs-addresssanitizer.md)
+- **Status:** DONE (2026-11-20) — [issue 2728](../issues/archived/2728-no-lane-runs-addresssanitizer.md)
 
 W5a's use-after-free showed only under AddressSanitizer, which no lane runs.
 A lane that builds the C run probes and the executor harness with ASan makes
 that class visible without a hand-run.
+
+Done as `just check address-sanitizer`, run daily by host-tests.yml's `asan`
+job:
+- the guard-condition lifetime test;
+- nros-node's lib tests with `rmw-cffi`.
+
+Red at the commit before W5a's fix, with a probe of the old shape: a
+heap-use-after-free in the wake callback. Green on main. It costs 28 s from
+an empty target dir. The measurements are in the issue.
