@@ -372,7 +372,7 @@ pub fn kib_of_heap_bytes(bytes: usize) -> usize {
 /// names.
 #[must_use]
 pub const fn nearest_whole_kib(bytes: usize) -> Option<(usize, usize)> {
-    if bytes % 1024 == 0 {
+    if bytes.is_multiple_of(1024) {
         return None;
     }
     let below = bytes / 1024 * 1024;
