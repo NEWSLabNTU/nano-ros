@@ -33,12 +33,77 @@ cpp_define = "NROS_RMW_CYCLONEDDS"
 [rmw.host]
 peer = "none"
 
-# Issue 2372 -- the nano-ros Zephyr module backend this one is built over (one
-# of zenoh | xrce | cyclonedds): the `choice NROS_RMW_BACKEND` member a Zephyr
-# image selects. It decides what the module compiles; an out-of-tree backend
-# names the member it builds over, never itself.
+# Issue 2372 -- the nano-ros Zephyr module backend this one is built over: the
+# `choice NROS_RMW_BACKEND` member a Zephyr image selects. It decides what the
+# module compiles. An in-tree backend names itself, which makes it a member of
+# the choice; an out-of-tree one names the member it builds over, or states
+# `module = "zephyr"` when it is its own Zephyr module (phase-581 W8).
 [rmw.zephyr]
 module_backend = "cyclonedds"
+
+# phase-581 W8 (RFC-0140 D6) -- this backend's member of the module's RMW
+# choice, rendered into zephyr/Kconfig by scripts/gen-rmw-choice.py
+# (`just check rmw-choice`): its prompt, its attribute lines verbatim, its help.
+[rmw.zephyr.kconfig]
+prompt = "Cyclone DDS (nros-rmw-cyclonedds)"
+attrs = [
+  "depends on NET_SOCKETS && POSIX_API && CPP",
+  # Phase 11W -- universal Cyclone-DDS-on-Zephyr runtime requirements (formerly
+  # duplicated in every cyclonedds prj-cyclonedds.conf):
+  #   THREAD_LOCAL_STORAGE -- Cyclone's `ddsrt_thread_local tsd_thread_state`
+  #     needs real per-thread `__thread` storage.
+  #   THREAD_CUSTOM_DATA -- the cyclonedds-zephyr-threads patch uses
+  #     k_thread_custom_data in place of pthread TLS for ddsrt cleanup.
+  #   DYNAMIC_THREAD(+ALLOC) -- Cyclone's worker threads (gc/recv/lease/tev)
+  #     are pthread_create'd with no explicit stack attr; Zephyr needs the
+  #     dynamic-thread stack pool or pthread_create returns EINVAL.
+  #     THREAD_STACK_INFO + THREAD_MONITOR are DYNAMIC_THREAD's own
+  #     dependencies.
+  # (NET_TCP -- the sockwaitset self-pipe needs it, but selecting it here forms
+  #  a Kconfig dependency loop through NET_SOCKETS, so it stays in the example
+  #  overlay.) Int knobs (pthread pool sizes, malloc arena, stack size), NET_TCP,
+  # and the native_sim-only NSOS socket offload stay in the example overlays.
+  # `imply` (not `select`): set most of these on by default but respect each
+  # symbol's own dependencies (e.g. THREAD_LOCAL_STORAGE needs
+  # ARCH_HAS_THREAD_LOCAL_STORAGE) and avoid select dependency loops.
+  # THREAD_CUSTOM_DATA has no extra deps and is required at link time by the
+  # CycloneDDS Zephyr thread shim, so select it directly.
+  "imply THREAD_LOCAL_STORAGE",
+  "select THREAD_CUSTOM_DATA",
+  "imply THREAD_STACK_INFO",
+  "imply THREAD_MONITOR",
+  "imply DYNAMIC_THREAD",
+  "imply DYNAMIC_THREAD_ALLOC",
+]
+help = """
+Use Cyclone DDS (pinned to 0.10.5, matches ros-humble-cyclonedds)
+as the RMW transport backend. Wire-compatible with stock
+rmw_cyclonedds_cpp on the ROS 2 Humble peer side.
+
+Implementation lives at packages/rmw/cyclonedds/nros-rmw-cyclonedds/ as a
+standalone C++ project; the Zephyr module compiles the pinned
+Cyclone DDS submodule plus the nros-rmw-cyclonedds register
+glue into the app library. The register entry point
+(`nros_rmw_cyclonedds_register`) is declared with C linkage
+in `nros_rmw_cyclonedds.h`, so both the C API
+(CONFIG_NROS_C_API=y) and C++ API (CONFIG_NROS_CPP_API=y) can
+call it via the Phase 160.A strong-stub emission.
+
+Phase 117 -- see docs/roadmap/phase-117-cyclonedds-rmw.md.
+Phase 168.X gap 2.B dropped the NROS_CPP_API requirement so
+C-API examples can also pick this backend through
+`prj-cyclonedds.conf` overlays.
+"""
+
+# phase-581 W8 -- and its member of the NuttX RMW choice
+# (integrations/nuttx/Kconfig), rendered by the same script.
+[rmw.nuttx.kconfig]
+prompt = "Cyclone DDS"
+help = """
+Eclipse Cyclone DDS via the rmw_cyclonedds_cpp bridge.
+Largest footprint; pick only if Cyclone-specific QoS knobs
+matter to you.
+"""
 
 # NOT special — just the only backend that fills the cargo-consumer x
 # cmake-provider cell (RFC-0071 D7). Its register symbol is C++, so there is no

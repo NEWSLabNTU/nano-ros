@@ -884,7 +884,11 @@ module_backend = "zenoh"   # or "xrce", or "cyclonedds"
 
 The vocabulary is CLOSED (`ZEPHYR_MODULE_BACKENDS` in `rmw_descriptor.rs`)
 because the module's choice is: it is the module's members, not a list of
-RMWs. As with D17, a backend never names itself here; it names the member it
+RMWs. (Amended by RFC-0140 D6, phase-581 W8: the set is no longer a literal.
+It is derived from the provider scan, `RmwIndex::zephyr_module_backends`: the
+in-tree backends whose `module_backend` names themselves plus every backend
+that is its own Zephyr module, `[rmw.zephyr] module`. The unit test below
+compares that derived list with the members rendered into `zephyr/Kconfig`.) As with D17, a backend never names itself here; it names the member it
 needs.
 
 **Rulings.**

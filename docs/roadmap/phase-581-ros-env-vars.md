@@ -214,7 +214,30 @@ board and RMW packages are self-contained.
 
 ### W8 - The open RMW set
 
-- **Status:** OPEN (after W0's M5)
+- **Status:** DONE (2026-11-20)
+- **Result:** `[rmw.zephyr] module = "zephyr"` names the package directory
+  holding its `module.yml` (refused with `module_backend` beside it, or when
+  not a relative `zephyr` directory, or with no `module.yml`). The member set
+  is derived (`RmwIndex::zephyr_module_backends`): in-tree descriptors whose
+  `module_backend` names themselves, plus every scanned backend with a
+  `module`; `ZEPHYR_MODULE_BACKENDS` is deleted and `module_backend` may name
+  any member of the scan. The module hook re-runs Zephyr's own
+  `zephyr_module.py` with the root added (it runs after module discovery, so
+  setting `ZEPHYR_EXTRA_MODULES` there would be read by nothing),
+  `Kconfig.packages` adds `NROS_RMW_<TOKEN>` to the choice, and the hook
+  refuses a conf file or `-DCONFIG_*` that selects another member. The three
+  in-tree members of the Zephyr and NuttX choices are rendered from
+  `[rmw.<os>.kconfig]` in each descriptor by `scripts/gen-rmw-choice.py`
+  (`just check rmw-choice`, five negative controls); the members are now in
+  name order. Measured on Zephyr 3.7 `native_sim/native/64`: the
+  `zephyr-module-rmw` fixture configured and built with no edit outside it,
+  the configure printing `stub_rmw: the stub RMW package's own Zephyr module
+  CMake runs (CONFIG_NROS_RMW_STUB=y, ...)`; both refusals fired; acme over
+  zenoh built (159 s). Data:
+  [`data/phase-581-w8-measure.md`](data/phase-581-w8-measure.md). Not
+  measured: Zephyr 4.4 (the box's Python is 3.10, 4.4 needs 3.12); the stub
+  image is configure and build only, with no fixture row or run test (its
+  transport carries nothing).
 - `[rmw.zephyr] module = "<dir>"` in the descriptor; the hook adds the
   directory to `ZEPHYR_EXTRA_MODULES`; `Kconfig.packages` adds
   `NROS_RMW_<OWNER>` to the choice (W0's M5: green on 3.7 and 4.4); the

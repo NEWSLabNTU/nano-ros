@@ -95,6 +95,7 @@ stm32f4-rs-polling-example           5   0     0       1      0
 stm32f4-rs-rtic-example              5   0     0       1      0
 stm32f4-rs-smoltcp                   4   0     0       0      0
 stm32f4-usart                       18   5     0       0      0
+stub-rmw                             1   0     0       1      0
 zpico-alloc                         14   1     1       0      0
 zpico-link-ivc                       7   0     0       8      0
 zpico-link-rpmsg                    24   1     3      17      0

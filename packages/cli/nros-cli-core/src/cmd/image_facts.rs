@@ -218,13 +218,14 @@ pub fn run(args: Args) -> Result<()> {
     // `zenoh`. Unresolvable or unstated: not emitted, and the check compares
     // the name as before (the Kconfig render has already refused such an
     // image on the west road).
+    // phase-581 W8 -- the member the image selects (`zephyr_member_of`): a
+    // backend that is its own Zephyr module is its own member.
     let module_backend = plan.rmw.as_deref().and_then(|r| {
         crate::orchestration::rmw_index::for_workspace(&root)
             .ok()?
-            .resolve(r)
+            .zephyr_member_of(r)
             .ok()
-            .map(|x| x.descriptor.zephyr_module_backend.clone())
-            .filter(|b| !b.is_empty())
+            .map(|m| m.name)
     });
     if args.cmake {
         print!("{}", as_cmake(plan, &root, module_backend.as_deref()));

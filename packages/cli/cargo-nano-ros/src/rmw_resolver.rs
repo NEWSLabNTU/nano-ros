@@ -307,6 +307,20 @@ pub fn resolve_rmw_in(scan: &ScanResult, declared: &str) -> Result<ResolvedRmwIn
         )));
     }
 
+    // phase-581 W8 (RFC-0140 D6) -- a backend that is its own Zephyr module
+    // names the directory holding its `module.yml`; a missing one would only
+    // surface as Zephyr's own "not a module" error, naming no descriptor.
+    if !d.zephyr_module.is_empty() {
+        let dir = pkg.dir.join(&d.zephyr_module);
+        if !dir.join("module.yml").is_file() && !dir.join("module.yaml").is_file() {
+            return Err(fail(format!(
+                "{origin}: [rmw.zephyr].module = {:?}, but {} holds no `module.yml`",
+                d.zephyr_module,
+                dir.display()
+            )));
+        }
+    }
+
     // The cmake project directory is descriptor-relative, so a provider may put
     // its `CMakeLists.txt` in a subdirectory. Normalised here rather than in
     // cmake: a `dir` of `"."` must come back as the package dir itself, not as
@@ -408,7 +422,45 @@ pub fn known_rmw_in(scan: &ScanResult) -> Vec<String> {
     names
 }
 
+/// One member of the nano-ros Zephyr module's `choice NROS_RMW_BACKEND`
+/// (phase-581 W8, RFC-0140 D6 amending RFC-0071 D18).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZephyrMember {
+    /// The backend's canonical name.
+    pub name: String,
+    /// `NROS_RMW_<TOKEN>`.
+    pub symbol: String,
+    /// The Zephyr module root to add to `ZEPHYR_EXTRA_MODULES` (the parent of
+    /// the descriptor's `[rmw.zephyr] module` directory), for a backend that
+    /// is its own module; `None` for a member the nano-ros module builds.
+    pub module_root: Option<PathBuf>,
+}
+
 impl ResolvedRmwIn {
+    /// This backend as a member of the module's RMW choice, or `None` when it
+    /// is not one: a member is a backend whose `[rmw.zephyr] module_backend`
+    /// names itself (the nano-ros module builds it, so its member is in
+    /// `zephyr/Kconfig`) or that is its own Zephyr module (`[rmw.zephyr]
+    /// module`, whose member `Kconfig.packages` adds).
+    #[must_use]
+    pub fn zephyr_member(&self) -> Option<ZephyrMember> {
+        let d = &self.descriptor;
+        let module_root = if d.zephyr_module.is_empty() {
+            None
+        } else {
+            let dir = self.package_dir.join(&d.zephyr_module);
+            Some(dir.parent().map_or_else(|| dir.clone(), Path::to_path_buf))
+        };
+        if module_root.is_none() && d.zephyr_module_backend != self.declared {
+            return None;
+        }
+        Some(ZephyrMember {
+            name: self.declared.clone(),
+            symbol: crate::rmw_descriptor::zephyr_member_symbol(&self.declared),
+            module_root,
+        })
+    }
+
     /// Does this backend's descriptor declare `capability` (`[rmw.capabilities]`)?
     ///
     /// phase-545 W1 (RFC-0071 D14) — this was ~~`backend_declares_capability`~~
@@ -536,6 +588,69 @@ impl RmwIndex {
             .collect()
     }
 
+    /// The members of the Zephyr module's RMW choice this scan can select,
+    /// sorted (phase-581 W8, RFC-0140 D6): the backends the nano-ros module
+    /// builds (an in-tree descriptor's `module_backend` names itself) plus
+    /// every scanned backend that is its own Zephyr module. This replaced the
+    /// literal ~~`ZEPHYR_MODULE_BACKENDS`~~ of RFC-0071 D18; the unit test
+    /// `the_derived_members_are_the_rendered_choice` holds the first half
+    /// equal to `zephyr/Kconfig`'s choice. A backend whose descriptor cannot
+    /// be read is left out.
+    #[must_use]
+    pub fn zephyr_module_backends(&self) -> Vec<String> {
+        self.zephyr_members().into_iter().map(|m| m.name).collect()
+    }
+
+    /// [`Self::zephyr_module_backends`] with each member's symbol and module.
+    #[must_use]
+    pub fn zephyr_members(&self) -> Vec<ZephyrMember> {
+        self.known()
+            .into_iter()
+            .filter_map(|n| self.resolve(&n).ok().and_then(|r| r.zephyr_member()))
+            .collect()
+    }
+
+    /// The choice member a Zephyr image whose backend is `rmw` selects: the
+    /// backend itself when it is a member, else the member its
+    /// `[rmw.zephyr] module_backend` names.
+    ///
+    /// # Errors
+    ///
+    /// `rmw` does not resolve, states no Zephyr build, or names a
+    /// `module_backend` that is not a member of this scan's choice.
+    pub fn zephyr_member_of(&self, rmw: &str) -> Result<ZephyrMember, String> {
+        let resolved = self.resolve(rmw).map_err(|e| e.to_string())?;
+        if let Some(m) = resolved.zephyr_member() {
+            return Ok(m);
+        }
+        let members = self.zephyr_module_backends();
+        let stated = resolved.descriptor.zephyr_module_backend.as_str();
+        if stated.is_empty() {
+            return Err(format!(
+                "`rmw = \"{rmw}\"` has no Zephyr build -- the `nros-rmw.toml` in {} \
+                 states no `[rmw.zephyr]`. Add `[rmw.zephyr]` with \
+                 `module_backend = \"<one of {}>\"`, naming the nano-ros Zephyr module \
+                 backend it is built over, or `module = \"zephyr\"` when the package \
+                 is its own Zephyr module (a `zephyr/module.yml` beside the descriptor)",
+                resolved.package_dir.display(),
+                members.join(" | ")
+            ));
+        }
+        let member = members
+            .iter()
+            .find(|m| m.as_str() == stated)
+            .and_then(|m| self.resolve(m).ok())
+            .and_then(|r| r.zephyr_member());
+        member.ok_or_else(|| {
+            format!(
+                "`rmw = \"{rmw}\"`: [rmw.zephyr] module_backend = \"{stated}\" (in {}) is \
+                 not a member of the Zephyr module's RMW choice -- the members are {}",
+                resolved.package_dir.join("nros-rmw.toml").display(),
+                members.join(" | ")
+            )
+        })
+    }
+
     /// The scan this index answers from.
     #[must_use]
     pub fn scan(&self) -> &ScanResult {
@@ -634,6 +749,33 @@ pub mod test_support {
         std::fs::write(dir.join("src/lib.rs"), "pub fn register() {}\n").expect("acme lib.rs");
     }
 
+    /// Write an out-of-tree rmw provider `stub` into `dir` that is its own
+    /// Zephyr module (phase-581 W8): `[rmw.zephyr] module = "zephyr"` and a
+    /// `zephyr/module.yml` beside the descriptor.
+    pub fn write_zephyr_module_provider(dir: &Path) {
+        std::fs::create_dir_all(dir.join("zephyr")).expect("stub dir");
+        std::fs::write(
+            dir.join("package.xml"),
+            "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>stub_rmw</name>\n  \
+             <version>0.0.0</version>\n  <export>\n    \
+             <nano_ros_provides kind=\"rmw\" name=\"stub\"/>\n  </export>\n</package>\n",
+        )
+        .expect("stub package.xml");
+        std::fs::write(
+            dir.join("nros-rmw.toml"),
+            "[rmw]\ncpp_define = \"NROS_RMW_STUB\"\n\n[rmw.host]\npeer = \"none\"\n\n\
+             [rmw.provides.cargo]\ncrate = \"stub-rmw\"\n\n\
+             [rmw.link]\nrlib_dep = \"stub-rmw\"\n\n\
+             [rmw.zephyr]\nmodule = \"zephyr\"\n",
+        )
+        .expect("stub nros-rmw.toml");
+        std::fs::write(
+            dir.join("zephyr/module.yml"),
+            "name: stub_rmw\nbuild:\n  cmake: zephyr\n  kconfig: zephyr/Kconfig\n",
+        )
+        .expect("stub module.yml");
+    }
+
     /// This checkout's root.
     #[must_use]
     pub fn checkout() -> PathBuf {
@@ -663,6 +805,82 @@ pub mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-581 W8 (RFC-0140 D6) -- the module's RMW choice members are
+    /// derived: the in-tree backends whose `module_backend` names themselves
+    /// (the same set the baked table states), plus a scanned backend that is
+    /// its own Zephyr module, with the module root the hook adds.
+    #[test]
+    fn the_zephyr_members_are_derived_from_the_scan() {
+        let in_tree = test_support::in_tree_index();
+        let mut baked: Vec<&str> = RMW_ROWS
+            .iter()
+            .filter(|r| r.zephyr_module_backend == r.declared)
+            .map(|r| r.declared)
+            .collect();
+        baked.sort_unstable();
+        assert_eq!(in_tree.zephyr_module_backends(), baked);
+        assert_eq!(baked, ["cyclonedds", "xrce", "zenoh"]);
+
+        let ws = tempfile::tempdir().unwrap();
+        let stub = ws.path().join("src/stub_rmw");
+        test_support::write_zephyr_module_provider(&stub);
+        let roots = vec![
+            test_support::checkout().join("packages/rmw"),
+            ws.path().to_path_buf(),
+        ];
+        let idx = RmwIndex::new(crate::provider_scan::scan_roots(&roots).unwrap(), roots);
+        assert_eq!(
+            idx.zephyr_module_backends(),
+            ["cyclonedds", "stub", "xrce", "zenoh"]
+        );
+        let m = idx.zephyr_member_of("stub").unwrap();
+        assert_eq!(m.symbol, "NROS_RMW_STUB");
+        assert_eq!(m.module_root.as_deref(), Some(stub.as_path()));
+        let z = idx.zephyr_member_of("zenoh").unwrap();
+        assert_eq!((z.symbol.as_str(), z.module_root), ("NROS_RMW_ZENOH", None));
+        // uorb states no Zephyr build.
+        let e = idx.zephyr_member_of("uorb").unwrap_err();
+        assert!(e.contains("module_backend") && e.contains("stub"), "{e}");
+
+        // A module directory with no module.yml is refused at resolution.
+        std::fs::remove_file(stub.join("zephyr/module.yml")).unwrap();
+        let roots = vec![ws.path().to_path_buf()];
+        let idx = RmwIndex::new(crate::provider_scan::scan_roots(&roots).unwrap(), roots);
+        let e = idx.resolve("stub").unwrap_err().to_string();
+        assert!(e.contains("holds no `module.yml`"), "{e}");
+    }
+
+    /// A backend built over a member that is its own Zephyr module selects
+    /// that member, module and all; one naming a non-member is refused.
+    #[test]
+    fn a_module_backend_names_a_member_of_the_scan() {
+        let ws = tempfile::tempdir().unwrap();
+        test_support::write_zephyr_module_provider(&ws.path().join("src/stub_rmw"));
+        let acme = ws.path().join("src/acme_rmw");
+        test_support::write_acme_provider(&acme);
+        let d = acme.join("nros-rmw.toml");
+        let raw = std::fs::read_to_string(&d).unwrap();
+        std::fs::write(
+            &d,
+            format!("{raw}\n[rmw.zephyr]\nmodule_backend = \"stub\"\n"),
+        )
+        .unwrap();
+        let roots = vec![ws.path().to_path_buf()];
+        let idx = RmwIndex::new(crate::provider_scan::scan_roots(&roots).unwrap(), roots);
+        let m = idx.zephyr_member_of("acme").unwrap();
+        assert_eq!(m.name, "stub");
+        assert!(m.module_root.is_some());
+        std::fs::write(
+            &d,
+            format!("{raw}\n[rmw.zephyr]\nmodule_backend = \"nope\"\n"),
+        )
+        .unwrap();
+        let roots = vec![ws.path().to_path_buf()];
+        let idx = RmwIndex::new(crate::provider_scan::scan_roots(&roots).unwrap(), roots);
+        let e = idx.zephyr_member_of("acme").unwrap_err();
+        assert!(e.contains("\"nope\"") && e.contains("not a member"), "{e}");
+    }
 
     #[test]
     fn zenoh_lowers_to_each_language() {

@@ -66,14 +66,29 @@ pub const CONFIG_FORMATS: &[&str] = &["verbatim-xml", "session-json5"];
 ///   or never leaves the target (uORB).
 pub const HOST_PEERS: &[&str] = &["zenoh-router", "xrce-agent", "none"];
 
-/// `[rmw.zephyr].module_backend` values (issue 2372): which of the nano-ros
-/// Zephyr module's own backend builds a backend is built over. Closed, because
-/// the module's `choice NROS_RMW_BACKEND` is: a Zephyr image always selects
+/// `[rmw.zephyr].module_backend` (issue 2372) names a member of the nano-ros
+/// Zephyr module's `choice NROS_RMW_BACKEND`: a Zephyr image always selects
 /// one member, and that member decides what the module compiles (zenoh-pico,
 /// the XRCE client, the Cyclone C++ library) and which Kconfig knobs exist. A
 /// backend names the member it needs, never itself, so an out-of-tree backend
 /// that delegates to zenoh states `zenoh` and gets zenoh-pico's Zephyr port.
-pub const ZEPHYR_MODULE_BACKENDS: &[&str] = &["zenoh", "xrce", "cyclonedds"];
+///
+/// The set is no longer a literal here (phase-581 W8, RFC-0140 D6 amending
+/// RFC-0071 D18): it is the in-tree members (an in-tree descriptor whose
+/// `module_backend` names itself) plus
+/// every scanned backend that is its own Zephyr module (`[rmw.zephyr] module`,
+/// `RmwIndex::zephyr_module_backends`). The parser checks only the word's
+/// shape; which words exist is a question about a scan.
+///
+/// The Kconfig symbol of a member, `NROS_RMW_<TOKEN>`, from the canonical name
+/// the way `derived_descriptor::c_define_token` derives it.
+#[must_use]
+pub fn zephyr_member_symbol(canonical: &str) -> String {
+    format!(
+        "NROS_RMW_{}",
+        crate::derived_descriptor::c_define_token(canonical)
+    )
+}
 
 /// What a backend's `nros-rmw.toml` says.
 ///
@@ -174,11 +189,21 @@ pub struct RmwDescriptor {
     /// `nros run --router auto` refuses an image whose backend leaves it out
     /// rather than start nothing silently (issue 2381).
     pub host_peer: String,
-    /// `[rmw.zephyr].module_backend` -- one of [`ZEPHYR_MODULE_BACKENDS`], or
-    /// empty when the descriptor does not say. Empty means the backend has no
-    /// Zephyr build: a Zephyr image naming it is refused at configure, naming
-    /// the line to add, rather than built over a module default (issue 2372).
+    /// `[rmw.zephyr].module_backend` -- a member of the module's RMW choice
+    /// (see [`zephyr_member_symbol`]), or empty when the descriptor does not
+    /// say. Empty, with no [`Self::zephyr_module`] either, means the backend
+    /// has no Zephyr build: a Zephyr image naming it is refused at configure,
+    /// naming the line to add, rather than built over a module default (issue
+    /// 2372).
     pub zephyr_module_backend: String,
+    /// `[rmw.zephyr].module` (phase-581 W8, RFC-0140 D6) -- the directory,
+    /// relative to the descriptor, that holds this backend's own Zephyr
+    /// `module.yml`. Zephyr finds a module's `module.yml` at
+    /// `<module root>/zephyr/`, so the directory is named `zephyr` and its
+    /// parent is the module root the hook adds to `ZEPHYR_EXTRA_MODULES`. Such
+    /// a backend is a member of the choice itself, `NROS_RMW_<TOKEN>`. Empty:
+    /// the backend brings no Zephyr module.
+    pub zephyr_module: String,
 
     // ---- restatements of derivable facts (RFC-0087 D4) --------------------
     /// `[rmw].names`, if the descriptor still restates the announcements.
@@ -209,7 +234,20 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
     let mut section = String::new();
     let mut cargo_crate = String::new();
 
+    // phase-581 W8 -- the inside of a TOML multi-line string (`help = """`, the
+    // Kconfig member definitions `scripts/gen-rmw-choice.py` reads) is text,
+    // never a key or a table header, so it is skipped whole.
+    let mut in_multiline = false;
     for raw in text.lines() {
+        let quotes = raw.matches("\"\"\"").count();
+        if in_multiline {
+            in_multiline = quotes % 2 == 0;
+            continue;
+        }
+        if quotes % 2 == 1 {
+            in_multiline = true;
+            continue;
+        }
         let line = raw.split('#').next().unwrap_or("").trim();
         if line.is_empty() {
             continue;
@@ -297,6 +335,7 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw.config", "retired") => d.config_retired = scalar(),
             ("rmw.host", "peer") => d.host_peer = scalar(),
             ("rmw.zephyr", "module_backend") => d.zephyr_module_backend = scalar(),
+            ("rmw.zephyr", "module") => d.zephyr_module = scalar(),
             _ => {}
         }
     }
@@ -317,14 +356,44 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
         ));
     }
     if !d.zephyr_module_backend.is_empty()
-        && !ZEPHYR_MODULE_BACKENDS.contains(&d.zephyr_module_backend.as_str())
+        && !d
+            .zephyr_module_backend
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
     {
         return Err(format!(
-            "{origin}: [rmw.zephyr].module_backend = {:?} -- one of {} (the \
-             nano-ros Zephyr module backend this backend is built over)",
-            d.zephyr_module_backend,
-            ZEPHYR_MODULE_BACKENDS.join(" | ")
+            "{origin}: [rmw.zephyr].module_backend = {:?} -- the canonical name of \
+             a member of the nano-ros Zephyr module's RMW choice (an in-tree \
+             backend, or one that is its own Zephyr module)",
+            d.zephyr_module_backend
         ));
+    }
+    if !d.zephyr_module.is_empty() {
+        if !d.zephyr_module_backend.is_empty() {
+            // A Zephyr image selects ONE member of the choice: its own, or the
+            // one it is built over. Both cannot be selected.
+            return Err(format!(
+                "{origin}: [rmw.zephyr] states both `module` and `module_backend` -- \
+                 a backend that is its own Zephyr module is its own member of the \
+                 RMW choice; one built over another member names that member. \
+                 Keep one"
+            ));
+        }
+        let rel = std::path::Path::new(&d.zephyr_module);
+        if rel.is_absolute()
+            || rel
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            || rel.file_name().and_then(|f| f.to_str()) != Some("zephyr")
+        {
+            return Err(format!(
+                "{origin}: [rmw.zephyr].module = {:?} -- the directory in this \
+                 package that holds its Zephyr `module.yml`, relative and inside \
+                 the package, and named `zephyr` (Zephyr looks for \
+                 `<module root>/zephyr/module.yml`)",
+                d.zephyr_module
+            ));
+        }
     }
     if !d.link_strategy.is_empty() && !LINK_STRATEGIES.contains(&d.link_strategy.as_str()) {
         return Err(format!(
@@ -523,11 +592,13 @@ mod tests {
         );
     }
 
-    // Issue 2372 -- the Zephyr module backend is a declared fact, one of a
-    // closed set; left out, the backend has no Zephyr build.
+    // Issue 2372 -- the Zephyr module backend is a declared fact; left out,
+    // the backend has no Zephyr build. phase-581 W8 -- which words exist is a
+    // scan's question (`RmwIndex::zephyr_module_backends`), so the parser
+    // checks the word's shape only.
     #[test]
     fn the_zephyr_module_backend_is_read_and_checked() {
-        for b in ZEPHYR_MODULE_BACKENDS {
+        for b in ["zenoh", "xrce", "cyclonedds", "acme"] {
             let d = parse_rmw_descriptor(
                 &format!(
                     "[rmw]\ncpp_define = \"X\"\n[rmw.zephyr]\nmodule_backend = \"{b}\"\n\
@@ -536,7 +607,7 @@ mod tests {
                 "acme",
             )
             .unwrap();
-            assert_eq!(d.zephyr_module_backend, *b);
+            assert_eq!(d.zephyr_module_backend, b);
         }
         let d = parse_rmw_descriptor(
             "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n",
@@ -544,16 +615,63 @@ mod tests {
         )
         .unwrap();
         assert_eq!(d.zephyr_module_backend, "");
+        assert_eq!(d.zephyr_module, "");
         let err = parse_rmw_descriptor(
-            "[rmw]\ncpp_define = \"X\"\n[rmw.zephyr]\nmodule_backend = \"acme\"\n\
-             [rmw.link]\nrlib_dep = \"a\"\n",
+            "[rmw]\ncpp_define = \"X\"\n[rmw.zephyr]\nmodule_backend = \"Zenoh Pico\"\n",
             "acme",
         )
         .unwrap_err();
+        assert!(err.contains("\"Zenoh Pico\""), "{err}");
+    }
+
+    // phase-581 W8 (RFC-0140 D6) -- a backend that is its own Zephyr module
+    // names the directory holding its `module.yml`; it cannot also be built
+    // over another member, and the directory is a relative `zephyr`.
+    #[test]
+    fn a_backend_names_its_own_zephyr_module() {
+        let d = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n\
+             [rmw.zephyr]\nmodule = \"zephyr\"\n",
+            "stub",
+        )
+        .unwrap();
+        assert_eq!(d.zephyr_module, "zephyr");
+        assert_eq!(d.zephyr_module_backend, "");
+        let both = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.zephyr]\nmodule = \"zephyr\"\n\
+             module_backend = \"zenoh\"\n",
+            "stub",
+        )
+        .unwrap_err();
         assert!(
-            err.contains("\"acme\"") && err.contains("zenoh | xrce"),
-            "{err}"
+            both.contains("both `module` and `module_backend`"),
+            "{both}"
         );
+        for bad in ["/abs/zephyr", "../zephyr", "zephyr-module"] {
+            let e = parse_rmw_descriptor(
+                &format!("[rmw]\ncpp_define = \"X\"\n[rmw.zephyr]\nmodule = \"{bad}\"\n"),
+                "stub",
+            )
+            .unwrap_err();
+            assert!(e.contains("named `zephyr`"), "{bad}: {e}");
+        }
+        assert_eq!(zephyr_member_symbol("cyclonedds"), "NROS_RMW_CYCLONEDDS");
+    }
+
+    // phase-581 W8 -- the inside of a multi-line string is text: a help line
+    // that looks like a table header or a key changes nothing.
+    #[test]
+    fn a_multiline_string_is_skipped() {
+        let d = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n\
+             [rmw.zephyr]\nmodule_backend = \"zenoh\"\n\
+             [rmw.zephyr.kconfig]\nhelp = \"\"\"\n[rmw.host]\npeer = \"bogus\"\n\"\"\"\n\
+             [rmw.host]\npeer = \"none\"\n",
+            "x",
+        )
+        .unwrap();
+        assert_eq!(d.host_peer, "none");
+        assert_eq!(d.zephyr_module_backend, "zenoh");
     }
 
     #[test]

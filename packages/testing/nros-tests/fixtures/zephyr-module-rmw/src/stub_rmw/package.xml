@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>stub_rmw</name>
+  <version>0.0.0</version>
+  <description>
+    An out-of-tree RMW provider that is its own Zephyr module (RFC-0140 D6,
+    phase-581 W8). It announces `rmw stub` below; its `nros-rmw.toml` states
+    `[rmw.zephyr] module = "zephyr"`, and `zephyr/` holds the module. Nothing in
+    the nano-ros tree names it.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="rmw" name="stub"/>
+  </export>
+</package>

@@ -1,0 +1,22 @@
+# phase-581 W8 (RFC-0140 D6) -- the open RMW set's acceptance image. `stub` is
+# provided by `src/stub_rmw` in this workspace and by nothing in the nano-ros
+# tree, and it is its own Zephyr module: the nano-ros module hook adds
+# `src/stub_rmw` to the build's modules and `NROS_RMW_STUB` to the module's RMW
+# choice, with no edit outside this fixture.
+
+[system]
+name = "zephyr_module_rmw"
+rmw = "stub"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+# The board id is `zephyr` (its `[board.zephyr] west_board` is
+# `native_sim/native/64`).
+[image.zephyr]
+board = "zephyr"
+rmw = "stub"

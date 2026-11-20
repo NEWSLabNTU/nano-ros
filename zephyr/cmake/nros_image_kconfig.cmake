@@ -472,6 +472,14 @@ function(nros_image_kconfig_hook)
     # Issue 2200 -- the rows, read by one function the gate can call
     # (`check cmake-cli-rows`), since a configure that drops one says nothing.
     _nros_image_kconfig_leaf_rows("${_out}" "${_dir}" "${_image}" "${_west_board}")
+    # phase-581 W8 (RFC-0140 D6) -- an RMW that is its own Zephyr module joins
+    # the build here, before Kconfig and the module loop read the list.
+    if(NOT _zephyr_module STREQUAL "")
+        _nros_image_kconfig_add_module("${_zephyr_module}" "${_image}")
+        foreach(_v IN LISTS _nros_module_vars)
+            set(${_v} "${${_v}}" PARENT_SCOPE)
+        endforeach()
+    endif()
     # Ruling R34 (issue 2087's rule on this road) -- the image's declared
     # `ros_edition` is the edition this application builds: every generator
     # and the runtime crate resolve `NROS_ROS_EDITION`
@@ -538,6 +546,10 @@ function(nros_image_kconfig_hook)
         endif()
     endif()
     _nros_image_kconfig_refuse_conf_knobs("${_scan}" "${_dir}/system.toml" "${_image}")
+    if(NOT _rmw_member STREQUAL "")
+        _nros_image_kconfig_refuse_rmw_member("${_rmw_member}" "${_rmw_members}"
+            "${_scan}" "${_dir}/system.toml" "${_image}")
+    endif()
     set(_inserted "")
     foreach(_c IN LISTS _image_conf)
         if(NOT _c IN_LIST _named AND NOT _c IN_LIST _user)
@@ -686,6 +698,9 @@ function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
     set(_board_snippets "")
     set(_board_overlays "")
     set(_ros_edition "")
+    set(_zephyr_module "")
+    set(_rmw_member "")
+    set(_rmw_members "")
     # Line by line, never through a cmake list: NROS_LEAF_CONF and
     # NROS_LEAF_SNIPPET are `;`-joined, and the list spelling cut each at its
     # first `;`, so a board `prj.conf` cost the leaf its `os_config`.
@@ -705,6 +720,13 @@ function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
             set(_board_overlays "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_ROS_EDITION=(.*)$")
             set(_ros_edition "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_ZEPHYR_MODULE=(.*)$")
+            # phase-581 W8 -- the image's RMW is its own Zephyr module.
+            set(_zephyr_module "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_ZEPHYR_RMW_MEMBER=(.*)$")
+            set(_rmw_member "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_ZEPHYR_RMW_MEMBERS=(.*)$")
+            set(_rmw_members "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_BOARD_NOT_APPLIED=(.+)$")
             message(STATUS
                 "nano-ros: image `${_image}` names a board package for "
@@ -744,7 +766,150 @@ function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
     set(_board_snippets "${_board_snippets}" PARENT_SCOPE)
     set(_board_overlays "${_board_overlays}" PARENT_SCOPE)
     set(_ros_edition "${_ros_edition}" PARENT_SCOPE)
+    set(_zephyr_module "${_zephyr_module}" PARENT_SCOPE)
+    set(_rmw_member "${_rmw_member}" PARENT_SCOPE)
+    set(_rmw_members "${_rmw_members}" PARENT_SCOPE)
     set(_keys "${_keys}" PARENT_SCOPE)
+endfunction()
+
+# _nros_image_kconfig_add_module(<module root> <image>) -- phase-581 W8
+# (RFC-0140 D6). The image's RMW is a backend that is its own Zephyr module
+# (`[rmw.zephyr] module` in its nros-rmw.toml), so that module joins this
+# build: no line in the leaf, no `-DZEPHYR_EXTRA_MODULES` from the caller.
+#
+# This hook runs INSIDE `zephyr_module.cmake`, after `zephyr_module.py` has
+# listed the modules and before the loop that reads its output
+# (`zephyr_modules_txt`) into `ZEPHYR_<NAME>_MODULE_DIR`/`_CMAKE_DIR`; Kconfig
+# and the module subdirectories come later still. So adding the root to
+# `ZEPHYR_EXTRA_MODULES` here would be read by nothing. Instead the hook runs
+# Zephyr's own `zephyr_module.py` again, with the same arguments plus this root
+# in `--extra-modules`, which rewrites `Kconfig.modules`, `zephyr_modules.txt`
+# and `zephyr_settings.txt` exactly as a `-DZEPHYR_EXTRA_MODULES` would have,
+# and re-reads the module list and any NEW setting value (a board, DTS, SoC or
+# snippet root the module brings) for the caller. Measured on 3.7 and 4.4
+# (phase-581 W8, docs/roadmap/data/phase-581-w8-measure.md): the module's
+# CMake runs and its Kconfig is sourced. A module root that is already in the
+# list (a west project, or the caller's own `-DZEPHYR_EXTRA_MODULES`) is left
+# alone. A module that declares its own `module_ext_root` is refused: the
+# loop that includes the ext roots' `modules/modules.cmake` is already running.
+#
+# A MACRO, so the values land in the hook function's scope; the hook forwards
+# every name in `_nros_module_vars` to its caller (the application scope).
+macro(_nros_image_kconfig_add_module _am_root _am_image)
+    set(_nros_module_vars "")
+    get_filename_component(_am_real "${_am_root}" REALPATH)
+    set(_am_have FALSE)
+    foreach(_am_m IN LISTS zephyr_modules_txt)
+        if(_am_m MATCHES "^\".*\":\"(.*)\":\".*\"$")
+            get_filename_component(_am_p "${CMAKE_MATCH_1}" REALPATH)
+            if(_am_p STREQUAL _am_real)
+                set(_am_have TRUE)
+            endif()
+        endif()
+    endforeach()
+    if(_am_have)
+        message(STATUS "nano-ros: image `${_am_image}`'s RMW module ${_am_root} is already "
+            "in this build's module list")
+    elseif(NOT DEFINED kconfig_modules_file OR NOT DEFINED cmake_modules_file)
+        message(FATAL_ERROR
+            "nano-ros: image `${_am_image}`'s RMW is its own Zephyr module (${_am_root}), "
+            "but this hook is not running inside Zephyr's module discovery, so it cannot "
+            "add it. Pass -DZEPHYR_EXTRA_MODULES=${_am_root}")
+    else()
+        execute_process(
+            COMMAND ${PYTHON_EXECUTABLE} ${ZEPHYR_BASE}/scripts/zephyr_module.py
+                    --zephyr-base=${ZEPHYR_BASE}
+                    ${ZEPHYR_MODULES_ARG}
+                    --extra-modules ${EXTRA_ZEPHYR_MODULES} ${_am_root}
+                    --kconfig-out ${kconfig_modules_file}
+                    --cmake-out ${cmake_modules_file}
+                    --sysbuild-kconfig-out ${kconfig_sysbuild_file}
+                    --sysbuild-cmake-out ${cmake_sysbuild_file}
+                    --settings-out ${zephyr_settings_file}
+            WORKING_DIRECTORY ${ZEPHYR_BASE}
+            ERROR_VARIABLE _am_err RESULT_VARIABLE _am_rc)
+        if(NOT _am_rc EQUAL 0)
+            message(FATAL_ERROR
+                "nano-ros: image `${_am_image}`: Zephyr could not take ${_am_root} as a "
+                "module (the RMW package's `[rmw.zephyr] module`):\n${_am_err}")
+        endif()
+        file(STRINGS ${cmake_modules_file} zephyr_modules_txt ENCODING UTF-8)
+        set(ZEPHYR_MODULE_NAMES "")
+        foreach(_am_m IN LISTS zephyr_modules_txt)
+            string(REGEX REPLACE "\"(.*)\":\".*\":\".*\"" "\\1" _am_name "${_am_m}")
+            list(APPEND ZEPHYR_MODULE_NAMES ${_am_name})
+        endforeach()
+        list(APPEND _nros_module_vars zephyr_modules_txt ZEPHYR_MODULE_NAMES)
+        if(EXISTS ${zephyr_settings_file})
+            file(STRINGS ${zephyr_settings_file} _am_settings ENCODING UTF-8 REGEX "^[^#]")
+            foreach(_am_s IN LISTS _am_settings)
+                string(REGEX REPLACE "\"(.*)\":\".*\"" "\\1" _am_key "${_am_s}")
+                string(REGEX REPLACE "\".*\":\"(.*)\"" "\\1" _am_value "${_am_s}")
+                if(NOT "${_am_value}" IN_LIST ${_am_key})
+                    if(_am_key STREQUAL "MODULE_EXT_ROOT")
+                        message(FATAL_ERROR
+                            "nano-ros: image `${_am_image}`: the RMW module ${_am_root} "
+                            "declares a `module_ext_root` (${_am_value}), which a module "
+                            "added by the nano-ros hook cannot have: Zephyr is already "
+                            "including the ext roots. Pass it with "
+                            "-DZEPHYR_EXTRA_MODULES=${_am_root} instead")
+                    endif()
+                    list(APPEND ${_am_key} "${_am_value}")
+                    list(APPEND _nros_module_vars ${_am_key})
+                endif()
+            endforeach()
+        endif()
+        list(REMOVE_DUPLICATES _nros_module_vars)
+        # History: phase-581 W8.
+        message(STATUS "nano-ros: image `${_am_image}`'s RMW is its own Zephyr module -> "
+            "${_am_root} added to this build's modules")
+    endif()
+endmacro()
+
+# _nros_image_kconfig_refuse_rmw_member(<member> <members> <files> <system.toml> <image>)
+# -- phase-581 W8 (RFC-0140 D6). The image's `rmw` selects <member> of
+# `choice NROS_RMW_BACKEND` through the rendered fragment, which merges last; a
+# conf file (or a `-DCONFIG_*`) assigning ANOTHER member is overridden with no
+# word, because Kconfig takes the last assignment of a choice silently (W0's
+# M5, measured on 3.7 and 4.4). Refused instead, naming the file, the line and
+# where the RMW is chosen. <members> are the `NROS_RMW_*` choice members the
+# CLI's provider scan knows (`;`-list); any other `CONFIG_NROS_RMW_*` symbol is
+# not a member and is not read here.
+function(_nros_image_kconfig_refuse_rmw_member member members files sys image)
+    set(_found "")
+    list(REMOVE_DUPLICATES files)
+    foreach(_f IN LISTS files)
+        if(NOT EXISTS "${_f}" OR IS_DIRECTORY "${_f}")
+            continue()
+        endif()
+        file(STRINGS "${_f}" _lines REGEX "^[ \t]*CONFIG_NROS_RMW_[A-Z0-9_]+[ \t]*=[ \t]*y")
+        foreach(_l IN LISTS _lines)
+            if(_l MATCHES "^[ \t]*CONFIG_(NROS_RMW_[A-Z0-9_]+)[ \t]*=")
+                set(_sym "${CMAKE_MATCH_1}")
+                if("${_sym}" IN_LIST members AND NOT _sym STREQUAL member)
+                    string(APPEND _found "\n  ${_f}: `${_l}`")
+                endif()
+            endif()
+        endforeach()
+    endforeach()
+    foreach(_sym IN LISTS members)
+        if(_sym STREQUAL member)
+            continue()
+        endif()
+        foreach(_c CONFIG_${_sym} CLI_CONFIG_${_sym})
+            if(DEFINED CACHE{${_c}} AND "$CACHE{${_c}}" MATCHES "^[yY]")
+                string(APPEND _found "\n  -D${_c}=$CACHE{${_c}} on the command line")
+            endif()
+        endforeach()
+    endforeach()
+    if(NOT _found STREQUAL "")
+        # History: phase-581 W8.
+        message(FATAL_ERROR
+            "nano-ros: image `${image}` selects ${member} (its `rmw` in ${sys}), and a "
+            "conf assigns another member of the RMW choice:${_found}\n"
+            "Kconfig would keep whichever came last with no warning. The image's `rmw` "
+            "chooses the backend: delete the line, or change `rmw` in system.toml.")
+    endif()
 endfunction()
 
 # phase-484 W5b -- refuse a registry knob assigned in any of `files` (a project

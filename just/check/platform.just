@@ -559,6 +559,19 @@ retired-knob-spellings:
 zephyr-kconfig-knobs:
     @python3 scripts/gen-knob-registry.py --check-kconfig
 
+# phase-581 W8 (RFC-0140 D6, amending RFC-0071 D18) — the in-tree members of
+# the Zephyr module's `choice NROS_RMW_BACKEND` and of the NuttX RMW choice are
+# RENDERED from each backend's `nros-rmw.toml` (`[rmw.<os>.kconfig]`), so a
+# member has one definition, beside the rest of what the backend declares. This
+# holds the committed blocks equal to the render, refuses a member defined
+# outside its block and a choice `default` naming no member. Buildless; its
+# five negative controls run on every call. `leaf_kconfig`'s unit test
+# `the_derived_members_are_the_rendered_choice` holds the members the scan
+# derives equal to the Zephyr block.
+[private]
+rmw-choice:
+    @python3 scripts/gen-rmw-choice.py --check
+
 [group("checks")]
 kconfig-overridden-values:
     @python3 scripts/check-kconfig-overridden-values.py

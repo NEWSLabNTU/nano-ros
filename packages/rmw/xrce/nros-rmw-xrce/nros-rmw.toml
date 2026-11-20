@@ -33,12 +33,54 @@ cpp_define = "NROS_RMW_XRCE_CFFI"
 [rmw.host]
 peer = "xrce-agent"
 
-# Issue 2372 -- the nano-ros Zephyr module backend this one is built over (one
-# of zenoh | xrce | cyclonedds): the `choice NROS_RMW_BACKEND` member a Zephyr
-# image selects. It decides what the module compiles; an out-of-tree backend
-# names the member it builds over, never itself.
+# Issue 2372 -- the nano-ros Zephyr module backend this one is built over: the
+# `choice NROS_RMW_BACKEND` member a Zephyr image selects. It decides what the
+# module compiles. An in-tree backend names itself, which makes it a member of
+# the choice; an out-of-tree one names the member it builds over, or states
+# `module = "zephyr"` when it is its own Zephyr module (phase-581 W8).
 [rmw.zephyr]
 module_backend = "xrce"
+
+# phase-581 W8 (RFC-0140 D6) -- this backend's member of the module's RMW
+# choice, rendered into zephyr/Kconfig by scripts/gen-rmw-choice.py
+# (`just check rmw-choice`): its prompt, its attribute lines verbatim, its help.
+[rmw.zephyr.kconfig]
+prompt = "XRCE-DDS"
+attrs = [
+  "depends on NET_SOCKETS",
+  # phase-521 W4 (RFC-0113 D4): the executor parks on the session's socket
+  # beside an eventfd its wake object carries, so an arrival ends the park and
+  # the sched task never blocks inside the transport's receive. Without
+  # eventfds the session reports no handle and the sched task keeps the old
+  # wait. One eventfd per executor that parks on a socket
+  # (CONFIG_ZVFS_EVENTFD_MAX, default 1); a further sched task falls back the
+  # same way. ZVFS is implied too: ZVFS_EVENTFD sits inside `if ZVFS`, and on
+  # the 3.7 line nothing else turns ZVFS on in a sockets-only image (`EVENTFD`,
+  # the POSIX option that selects both, is refused for native_sim).
+  "imply ZVFS",
+  "imply ZVFS_EVENTFD",
+  # Issue 2105's rule, for XRCE (phase-521 W7): each session-create and request
+  # attempt is a receive bounded by `SO_RCVTIMEO`, which Zephyr's in-kernel
+  # sockets honour only under this symbol and otherwise ignore. Without it the
+  # first CREATE_CLIENT's receive never returns, so an image on a board with
+  # Zephyr's own IP stack (mps2/an385) sent one packet and hung before its first
+  # entity. native_sim never showed it: NSOS offloads the socket to the host,
+  # which implements the timeout itself.
+  "select NET_CONTEXT_RCVTIMEO if NETWORKING",
+]
+help = """
+Use Micro-XRCE-DDS as the RMW transport backend.
+Connects to a Micro-XRCE-DDS Agent over UDP sockets.
+"""
+
+# phase-581 W8 -- and its member of the NuttX RMW choice
+# (integrations/nuttx/Kconfig), rendered by the same script.
+[rmw.nuttx.kconfig]
+prompt = "XRCE-DDS (micro-XRCE-DDS-Client)"
+help = """
+Lightweight XRCE-DDS client; needs a Micro-XRCE-DDS Agent
+bridge on the host side.
+"""
 
 # The backend's own sources are C (`publisher.c`, `service.c`) built by CMake;
 # the rlib bundled into the umbrella is the cffi shim crate beside it. Both

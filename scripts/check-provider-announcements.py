@@ -257,6 +257,14 @@ REACH_EXEMPT = (
         "run it through the provider scan, which is the check its announcement gets",
         None,
     ),
+    (
+        "packages/testing/nros-tests/fixtures/zephyr-module-rmw/*",
+        "RFC-0140 D6's out-of-tree `stub` provider, a backend that is its own "
+        "Zephyr module: it stands for a THIRD PARTY's backend, so no in-tree "
+        "family reaches it by design; `out_of_tree_rmw_build` resolves it "
+        "through the provider scan, which is the check its announcement gets",
+        None,
+    ),
 )
 
 # SELF-TEST ONLY, prepended to [`REACH_EXEMPT`] for the duration of the control
@@ -527,6 +535,13 @@ def self_test(quiet=False):
             os.path.join(
                 tmp,
                 "packages/testing/nros-tests/fixtures/out-of-tree-rmw/src/x/nros-rmw.toml",
+            ),
+            "[rmw]\n",
+        )
+        _write(
+            os.path.join(
+                tmp,
+                "packages/testing/nros-tests/fixtures/zephyr-module-rmw/src/x/nros-rmw.toml",
             ),
             "[rmw]\n",
         )

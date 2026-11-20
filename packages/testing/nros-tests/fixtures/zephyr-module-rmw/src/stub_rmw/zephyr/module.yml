@@ -1,0 +1,8 @@
+# The `stub` RMW package's own Zephyr module (phase-581 W8). The module root is
+# the package directory; `[rmw.zephyr] module = "zephyr"` in nros-rmw.toml names
+# this directory, and the nano-ros module hook adds its parent to
+# ZEPHYR_EXTRA_MODULES for an image whose `rmw` is `stub`.
+name: stub_rmw
+build:
+  cmake: zephyr
+  kconfig: zephyr/Kconfig

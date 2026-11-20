@@ -749,6 +749,34 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                     resolved.package_dir.join("nros-rmw.toml").display()
                 );
             }
+            // phase-581 W8 (RFC-0140 D6) -- the choice member this image
+            // selects, and, for a backend that is its own Zephyr module, the
+            // module root the hook adds to ZEPHYR_EXTRA_MODULES. Every member
+            // this scan knows, so the hook can refuse a conf file that selects
+            // another one (Kconfig takes the last assignment silently).
+            let member = leaf
+                .rmw
+                .as_deref()
+                .and_then(|rmw| rmws.zephyr_member_of(rmw).ok());
+            if let Some(m) = &member {
+                println!("NROS_LEAF_ZEPHYR_RMW_MEMBER={}", m.symbol);
+                if let Some(root) = &m.module_root {
+                    println!("NROS_LEAF_ZEPHYR_MODULE={}", root.display());
+                    println!(
+                        "NROS_LEAF_KCONFIG_INPUT={}",
+                        root.join("zephyr/module.yml").display()
+                    );
+                }
+            }
+            let members: Vec<String> = rmws
+                .zephyr_members()
+                .into_iter()
+                .map(|m| m.symbol)
+                .collect();
+            println!(
+                "NROS_LEAF_ZEPHYR_RMW_MEMBERS={}",
+                cmake_list_row("NROS_LEAF_ZEPHYR_RMW_MEMBERS", &members).map_err(|e| eyre!(e))?
+            );
             let text = crate::cmd::leaf_kconfig::fragment_text(&leaf, &r);
             let written = crate::cmd::leaf_kconfig::write_fragment(out, text.as_deref())?;
             if let Some(d) = &args.kconfig_defaults_out {
@@ -761,8 +789,9 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                     .clone()
                     .unwrap_or_else(crate::knob_catalog::Catalog::core);
                 let owners: Vec<&str> = linked.iter().map(String::as_str).collect();
-                let body = crate::cmd::leaf_kconfig::packages_text(&leaf, &cat, &owners)
-                    .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
+                let body =
+                    crate::cmd::leaf_kconfig::packages_text(&leaf, &cat, &owners, member.as_ref())
+                        .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
                 crate::cmd::leaf_kconfig::write_fragment(p, Some(&body))?;
                 println!("NROS_LEAF_KCONFIG_PACKAGES={}", p.display());
             }
