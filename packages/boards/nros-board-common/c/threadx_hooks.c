@@ -68,9 +68,9 @@ _Static_assert(sizeof(ULONG) == 4,
 /* phase-448 W5 / issue 1145 paired this pool with the executor's backing:
  * phase-392 W6 moved the backing out of the pool into the `.bss` static
  * `nros_node::executor::backing::EXECUTOR_BACKING`, and a fixed 4 MiB pool then
- * reserved those bytes twice, so the stated `backing_u64s` was subtracted from
+ * reserved those bytes twice, so the stated `backing_bytes` was subtracted from
  * it. Issue 2624 sizes the pool from peaks MEASURED with the backing already in
- * `.bss`, so there is nothing to give back and `backing_u64s` no longer reaches
+ * `.bss`, so there is nothing to give back and `backing_bytes` no longer reaches
  * this file; it still sizes the static itself, in `nros-node`. */
 /* The byte pool's size, DERIVED (issue 2624).
  *
@@ -97,7 +97,7 @@ _Static_assert(sizeof(ULONG) == 4,
  *
  * A sched task's stack is NOT in the default: no compile of this file sees
  * how many sched tasks the image declares. An image that has them states the
- * pool (`[knobs.memory] byte_pool_bytes`); one that does not is refused at
+ * pool (`[knobs.threadx] byte_pool_bytes`); one that does not is refused at
  * boot, naming the knob, before any task runs. */
 #ifndef NROS_THREADX_APP_STACK_BYTES
 #define NROS_THREADX_APP_STACK_BYTES (64u * 1024u)
@@ -120,8 +120,9 @@ _Static_assert(sizeof(ULONG) == 4,
 #define NROS_THREADX_MEASURED_WORKING_SET_BYTES NROS_THREADX_ZENOH_MEASURED_WORKING_SET_BYTES
 #endif
 
-/* `[knobs.memory] byte_pool_bytes` (env `NROS_THREADX_BYTE_POOL_KB`) when the
- * board or image states it, handed in as `-DNROS_THREADX_BYTE_POOL_BYTES`. */
+/* `threadx.byte_pool_bytes` (env `NROS_THREADX_BYTE_POOL_BYTES`), or a board's
+ * `[knobs.memory] heap_bytes`, when the board or image states it, handed in as
+ * `-DNROS_THREADX_BYTE_POOL_BYTES`. */
 #ifndef NROS_THREADX_BYTE_POOL_BYTES
 #define NROS_THREADX_BYTE_POOL_BYTES (NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_WORKING_SET_BYTES)
 #endif
@@ -129,8 +130,8 @@ _Static_assert(sizeof(ULONG) == 4,
 _Static_assert(NROS_THREADX_BYTE_POOL_BYTES >=
                    NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_MEASURED_WORKING_SET_BYTES,
                "the ThreadX byte pool is below the app thread's stack plus this RMW's "
-               "measured working set. Raise `[knobs.memory] byte_pool_bytes` "
-               "(NROS_THREADX_BYTE_POOL_KB).");
+               "measured working set. Raise `[image.<id>.knobs.threadx] byte_pool_bytes` "
+               "(NROS_THREADX_BYTE_POOL_BYTES).");
 
 #define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES)
 
@@ -239,7 +240,7 @@ static void nros_tx_pool_refuse(const char* what, ULONG requested) {
     nros_tx_log_ulong(available);
     nros_board_log(" free of ");
     nros_tx_log_ulong((ULONG)BYTE_POOL_SIZE);
-    nros_board_log(". Raise `[knobs.memory] heap_bytes` (NROS_THREADX_BYTE_POOL_KB) "
+    nros_board_log(". Raise `[image.<id>.knobs.threadx] byte_pool_bytes` (NROS_THREADX_BYTE_POOL_BYTES) "
                    "by at least the shortfall; an image's sched tasks are not in "
                    "the derived default.\n");
     nros_board_app_returned(1);

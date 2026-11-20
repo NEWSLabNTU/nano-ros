@@ -2859,7 +2859,7 @@ fn box_handle<T>(kind: &str, value: T) -> Result<*mut c_void, T> {
                 nros_log::get_logger("nros_rmw_cffi"),
                 "heap exhausted: could not allocate {} bytes for a {} handle; \
                  the {} is NOT created (NROS_RMW_RET_BAD_ALLOC). Raise the \
-                 platform heap (Zephyr: CONFIG_NROS_ZEPHYR_HEAP_SIZE)",
+                 platform heap (Zephyr: CONFIG_NROS_MEMORY_HEAP_BYTES)",
                 core::mem::size_of::<T>(),
                 kind,
                 kind

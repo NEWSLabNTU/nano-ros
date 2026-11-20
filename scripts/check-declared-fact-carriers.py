@@ -397,13 +397,13 @@ FACT_DISPOSITION = {
     },
     # ---- the message-bound inventory's sizes -----------------------------
     "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": {
-        "resolver": ("NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE",),
-        "sidecar": ("NROS_SUBSCRIBER_BUFFER_SIZE",),
+        "resolver": ("NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_BYTES",),
+        "sidecar": ("NROS_SUBSCRIBER_BUFFER_BYTES",),
         "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE": {
-        "resolver": ("NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",),
-        "sidecar": ("NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",),
+        "resolver": ("NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_BYTES",),
+        "sidecar": ("NROS_ZENOH_SUBSCRIBER_LARGE_BYTES",),
         "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS": {
@@ -412,8 +412,8 @@ FACT_DISPOSITION = {
         "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE": {
-        "resolver": ("NROS_RESOLVED_NROS_SUBSCRIPTION_BUFFER_SIZE",),
-        "sidecar": ("NROS_SUBSCRIPTION_BUFFER_SIZE",),
+        "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES",),
+        "sidecar": ("NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES",),
         "declared": _RETIRED_TAKE_BUFFER,
     },
     # issue 1255 -- the PER-TYPE bound table, for the one consumer that
@@ -566,13 +566,15 @@ def _carried(entry, road):
 # Carried by the resolver and the declared road; the leaf road reads no
 # SystemModel, so it has nothing to carry (the reason is quoted from
 # `cmake/NanoRosEntityFacts.cmake`, where the decision lives).
+# The resolver delivers to the knob's registry name (renamed to `_BYTES` by
+# phase-581 W5); the DECLARED carrier keeps the fact's own suffix.
 for _fact, _knob in (
     ("NROS_DERIVED_MAX_PARAMETERS", "NROS_MAX_PARAMETERS"),
-    ("NROS_DERIVED_MAX_PARAM_NAME_LEN", "NROS_MAX_PARAM_NAME_LEN"),
-    ("NROS_DERIVED_MAX_STRING_VALUE_LEN", "NROS_MAX_STRING_VALUE_LEN"),
+    ("NROS_DERIVED_MAX_PARAM_NAME_LEN", "NROS_PARAMS_MAX_NAME_BYTES"),
+    ("NROS_DERIVED_MAX_STRING_VALUE_LEN", "NROS_PARAMS_MAX_STRING_VALUE_BYTES"),
     ("NROS_DERIVED_MAX_ARRAY_LEN", "NROS_MAX_ARRAY_LEN"),
     ("NROS_DERIVED_MAX_STRING_ARRAY_LEN", "NROS_MAX_STRING_ARRAY_LEN"),
-    ("NROS_DERIVED_MAX_BYTE_ARRAY_LEN", "NROS_MAX_BYTE_ARRAY_LEN"),
+    ("NROS_DERIVED_MAX_BYTE_ARRAY_LEN", "NROS_PARAMS_MAX_BYTE_ARRAY_BYTES"),
 ):
     FACT_DISPOSITION[_fact] = {
         "resolver": ("NROS_RESOLVED_" + _knob,),
@@ -583,8 +585,8 @@ for _fact, _knob in (
             "SystemModel, so it has no parameter declaration to forward"),
         "declared": (
             _RETIRED_PARAM_COUNTS
-            if _knob in ("NROS_MAX_PARAMETERS", "NROS_MAX_PARAM_NAME_LEN")
-            else ("NROS_DECLARED_" + _knob[len("NROS_"):],)
+            if _knob in ("NROS_MAX_PARAMETERS", "NROS_PARAMS_MAX_NAME_BYTES")
+            else ("NROS_DECLARED_" + _fact[len("NROS_DERIVED_"):],)
         ),
     }
 

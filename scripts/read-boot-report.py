@@ -21,7 +21,7 @@ steps can be scripted without anyone copying a hex number by hand:
 
 `--heap-headroom <dump>` is the GATE half (phase-460 W5, issue 1424): it needs
 no ELF, reads the two heap words out of the dump, and exits non-zero when the
-image had less headroom than `CONFIG_NROS_ZEPHYR_HEAP_SIZE` was supposed to
+image had less headroom than `CONFIG_NROS_MEMORY_HEAP_BYTES` was supposed to
 buy -- or when the peak is 0, which means nothing measured it. `just check
 heap-headroom` runs it, and `NROS_HEAP_HEADROOM_DUMP=<dump>` points that recipe
 at a real board dump.
@@ -47,7 +47,7 @@ MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
 KNOWN_VERSION = 11
 
-# The headroom `CONFIG_NROS_ZEPHYR_HEAP_SIZE` must keep above the measured
+# The headroom `CONFIG_NROS_MEMORY_HEAP_BYTES` must keep above the measured
 # peak, in bytes.
 #
 # The SAME 24576 as the configure-time gate in
@@ -60,7 +60,7 @@ KNOWN_VERSION = 11
 # number moves, it moves in both files and the island re-measures.
 HEAP_HEADROOM_FLOOR = 24576
 
-# What the heap's CAPACITY word adds to `CONFIG_NROS_ZEPHYR_HEAP_SIZE`:
+# What the heap's CAPACITY word adds to `CONFIG_NROS_MEMORY_HEAP_BYTES`:
 # zpico-alloc's slab region, 8 slots of 64 B, carved beside the rlsf arena
 # (`FreeListHeap::capacity()` is `N + SLAB_REGION_SIZE`). So a configured
 # 102,400 reads 102,912 (phase-474 I5), and the knob that keeps the floor is
@@ -134,7 +134,7 @@ FIELDS = (
 # decoder read every failure as the arena's. The island's QEMU boot printed
 # `nros: HEAP EXHAUSTED: request 236 bytes, arena 94720 bytes` (zenoh-pico's
 # `_z_slist_new`) and the decode said ARENA EXHAUSTED, raise
-# NROS_EXECUTOR_ARENA_SIZE -- for an executor arena that was 28% used.
+# NROS_EXECUTOR_ARENA_BYTES -- for an executor arena that was 28% used.
 ALLOC_ARENA_NONE = 0
 ALLOC_ARENA_EXECUTOR = 1
 ALLOC_ARENA_PLATFORM_HEAP = 2
@@ -439,7 +439,7 @@ def which_peak(rec: dict[str, int]) -> list[str]:
 
 
 def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
-    """Verdict on `CONFIG_NROS_ZEPHYR_HEAP_SIZE` against the measured peak.
+    """Verdict on `CONFIG_NROS_MEMORY_HEAP_BYTES` against the measured peak.
 
     Returns (passed, lines). Issue 1424: the knob is the largest RAM item the
     map attributes to anything tunable, it was chosen rather than measured, and
@@ -500,7 +500,7 @@ def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
             "  a larger sample, a reconnect, a service reply.",
             *which,
             "",
-            f"  set CONFIG_NROS_ZEPHYR_HEAP_SIZE >= {knob_min}",
+            f"  set CONFIG_NROS_MEMORY_HEAP_BYTES >= {knob_min}",
             f"  (the capacity word reads the knob + {ZEPHYR_HEAP_SLAB_BYTES} B of slab)",
             "",
             "  and record THIS DUMP beside it in the board `.conf`, as a",
@@ -513,7 +513,7 @@ def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
         f"(peak {peak} of {cap}, floor {HEAP_HEADROOM_FLOOR}).",
         *which,
         "",
-        f"  CONFIG_NROS_ZEPHYR_HEAP_SIZE could go as low as "
+        f"  CONFIG_NROS_MEMORY_HEAP_BYTES could go as low as "
         f"{knob_min} on this",
         "  evidence. Lowering it is a measurement on one run of one image:",
         "  record the dump beside the knob so the next reader can see what it",
@@ -559,11 +559,11 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
     )
     print()
     print("compiled in (compare against what the build believed it delivered):")
-    print(f"  NROS_EXECUTOR_ARENA_SIZE      {rec['arena_size']}")
+    print(f"  NROS_EXECUTOR_ARENA_BYTES      {rec['arena_size']}")
     print(f"  NROS_EXECUTOR_MAX_CBS         {rec['max_cbs']}")
     print(f"  NROS_EXECUTOR_MAX_SC          {rec['max_sc']}")
     print(f"  NROS_EXECUTOR_MAX_NODES       {rec['max_nodes']}")
-    print(f"  NROS_SUBSCRIPTION_BUFFER_SIZE {rec['default_rx_buf_size']}")
+    print(f"  NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES {rec['default_rx_buf_size']}")
     lq, lq_src = knob_word(rec["rmw_local_queryable"])
     print(f"  Z_FEATURE_LOCAL_QUERYABLE     {lq}   ({lq_src})")
     print()
@@ -585,7 +585,7 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
 
     # The platform heap, which is a DIFFERENT arena from the executor's above:
     # the rlsf heap `nros_platform_alloc` hands out of, sized by
-    # CONFIG_NROS_ZEPHYR_HEAP_SIZE. Issue 1424 -- this is the figure that knob
+    # CONFIG_NROS_MEMORY_HEAP_BYTES. Issue 1424 -- this is the figure that knob
     # was never set from.
     peak, hcap = rec["heap_peak_bytes"], rec["heap_capacity_bytes"]
     print(f"  platform heap PEAK            {peak} bytes", end="")
@@ -597,7 +597,7 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
     if first:
         print(f"  platform heap PEAK at FirstSpin {first} bytes   (+{peak - first} since)")
     print(
-        f"  platform heap capacity        {hcap} bytes   (NROS_ZEPHYR_HEAP_SIZE "
+        f"  platform heap capacity        {hcap} bytes   (NROS_MEMORY_HEAP_BYTES "
         f"+ {ZEPHYR_HEAP_SLAB_BYTES} B slab)"
     )
     print(f"  samples dropped (too small)   {rec['samples_dropped_too_small']}")
@@ -639,13 +639,13 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
             f"{rec['failed_alloc_size']} bytes.\n"
             "\n"
             "  This is NOT the executor arena above, and raising\n"
-            "  NROS_EXECUTOR_ARENA_SIZE will not fix it. The platform heap is the\n"
+            "  NROS_EXECUTOR_ARENA_BYTES will not fix it. The platform heap is the\n"
             "  one `nros_platform_alloc` hands out of -- the RMW session, zenoh-pico's\n"
             "  lists and buffers, reply slots -- and its capacity here is\n"
             f"  {heap_at}.\n"
             "\n"
-            f"  raise CONFIG_NROS_ZEPHYR_HEAP_SIZE{floor}\n"
-            "  (NROS_ZEPHYR_HEAP_SIZE; the heap is fragmented by the time it\n"
+            f"  raise CONFIG_NROS_MEMORY_HEAP_BYTES{floor}\n"
+            "  (NROS_MEMORY_HEAP_BYTES; the heap is fragmented by the time it\n"
             "  refuses, so the request is a floor on the increase, not its size).\n"
             "  Then size it from the measured peak: `--heap-headroom` on a dump\n"
             "  of a boot that got through.\n"
@@ -673,8 +673,8 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
             f"ARENA EXHAUSTED: an allocation of {rec['failed_alloc_size']} bytes did not fit,\n"
             f"short by {rec['failed_alloc_shortfall']} bytes.\n"
             "\n"
-            f"  set NROS_EXECUTOR_ARENA_SIZE >= {cap + rec['failed_alloc_shortfall']}\n"
-            "  (Zephyr: CONFIG_NROS_EXECUTOR_ARENA_SIZE)\n"
+            f"  set NROS_EXECUTOR_ARENA_BYTES >= {cap + rec['failed_alloc_shortfall']}\n"
+            "  (Zephyr: CONFIG_NROS_EXECUTOR_ARENA_BYTES)\n"
             "\n"
             "  or, if a subscription was created deeper than the QoS depth the\n"
             "  arena was budgeted for, raise NROS_PUBSUB_QOS_DEPTH instead\n"
@@ -699,9 +699,9 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
             "  scored as one -- the image is running; it is a QoS fact, and the\n"
             "  application simply never saw those messages.\n"
             "\n"
-            f"  raise NROS_SUBSCRIPTION_BUFFER_SIZE (compiled in here as\n"
+            f"  raise NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES (compiled in here as\n"
             f"  {rec['default_rx_buf_size']}), or on Zephyr\n"
-            "  CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE, to the type's\n"
+            "  CONFIG_NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES, to the type's\n"
             "  SERIALIZED_SIZE_MAX. The console lines name the buffer size; the\n"
             "  SAMPLE size is not in this record because the RMW ABI does not\n"
             "  report it (issue 0757)."
@@ -818,7 +818,7 @@ def report_alloc(rec: dict[str, int]) -> int:
         pct = f"   ({100.0 * hp / hc:.1f}% of the arena)" if hp else ""
         print(f"  platform heap used              {rec['heap_used']}")
         print(f"  platform heap PEAK              {hp}{pct}")
-        print(f"  platform heap capacity          {hc}   (NROS_ZEPHYR_HEAP_SIZE)")
+        print(f"  platform heap capacity          {hc}   (NROS_MEMORY_HEAP_BYTES)")
         if hp > hc:
             print(
                 "  DO NOT SIZE A KNOB FROM THIS. A peak above capacity is impossible\n"
@@ -830,7 +830,7 @@ def report_alloc(rec: dict[str, int]) -> int:
             )
         elif hp:
             print(
-                f"  -> size NROS_ZEPHYR_HEAP_SIZE from {hp}, not from a round number.\n"
+                f"  -> size NROS_MEMORY_HEAP_BYTES from {hp}, not from a round number.\n"
                 "     This is the peak at the LAST subscription, so add the headroom\n"
                 "     the application's own later allocations need."
             )
@@ -852,7 +852,7 @@ def report_alloc(rec: dict[str, int]) -> int:
             "  TRUNCATED: the keyexpr filled its buffer exactly. `to_key_wildcard`\n"
             "  discards the overflow, so this is a silently shortened key, and the\n"
             "  length guard cannot see it -- a truncated string always fits.\n"
-            "  Raise NROS_KEYEXPR_STRING_SIZE (note: currently fails to compile,\n"
+            "  Raise NROS_ZENOH_KEYEXPR_STRING_BYTES (note: currently fails to compile,\n"
             "  service.rs hardcodes 257)."
         )
     zx = rec["zpico_exit"]
@@ -1011,7 +1011,7 @@ def self_test_alloc_verdicts() -> bool:
 
     The heap case is the island's QEMU record in shape: 236 bytes refused by a
     94,720-byte platform heap while the executor arena was barely a quarter
-    used. The decoder must say HEAP and name CONFIG_NROS_ZEPHYR_HEAP_SIZE, and
+    used. The decoder must say HEAP and name CONFIG_NROS_MEMORY_HEAP_BYTES, and
     must NOT tell the reader to grow the arena.
     """
     ok = True
@@ -1034,8 +1034,8 @@ def self_test_alloc_verdicts() -> bool:
                 "failed_alloc_shortfall": 236,
                 "failed_alloc_arena": ALLOC_ARENA_PLATFORM_HEAP,
             },
-            ("HEAP EXHAUSTED", "CONFIG_NROS_ZEPHYR_HEAP_SIZE >= 94956"),
-            ("ARENA EXHAUSTED", "set NROS_EXECUTOR_ARENA_SIZE"),
+            ("HEAP EXHAUSTED", "CONFIG_NROS_MEMORY_HEAP_BYTES >= 94956"),
+            ("ARENA EXHAUSTED", "set NROS_EXECUTOR_ARENA_BYTES"),
         ),
         (
             "executor arena failure",
@@ -1047,8 +1047,8 @@ def self_test_alloc_verdicts() -> bool:
                 "failed_alloc_shortfall": 152,
                 "failed_alloc_arena": ALLOC_ARENA_EXECUTOR,
             },
-            ("ARENA EXHAUSTED", "set NROS_EXECUTOR_ARENA_SIZE >= 16536"),
-            ("HEAP EXHAUSTED", "raise CONFIG_NROS_ZEPHYR_HEAP_SIZE"),
+            ("ARENA EXHAUSTED", "set NROS_EXECUTOR_ARENA_BYTES >= 16536"),
+            ("HEAP EXHAUSTED", "raise CONFIG_NROS_MEMORY_HEAP_BYTES"),
         ),
         (
             "unknown allocator",

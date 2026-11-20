@@ -261,7 +261,7 @@ overflows. An exact search that would tighten it is not done yet.
 An image template whose real peak has been observed on a run is measured.
 For a measured image, a stack below the floor fails the build, and the
 message names the setting to raise and the value that clears it:
-`NROS_BAREMETAL_STACK_KB` on bare metal, `NROS_FREERTOS_APP_STACK_KB` on
+`NROS_BAREMETAL_STACK_KB` on bare metal, `NROS_MEMORY_APP_STACK_BYTES` on
 FreeRTOS, `CONFIG_MAIN_STACK_SIZE` in a Zephyr image's `os_config`. Raise it
 to that value and build again. `nros new` writes a stack that holds the floor
 into the projects it scaffolds. A FreeRTOS image can instead state

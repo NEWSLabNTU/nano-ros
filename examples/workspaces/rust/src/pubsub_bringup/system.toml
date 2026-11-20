@@ -84,7 +84,7 @@ locator = "custom://uart"
 [image.baremetal_talker_xrce_serial.knobs.xrce]
 # MTU matches the serial transport's; the default is 4096.
 custom_transport_mtu = 512
-buffer_size = 256
+buffer_bytes = 256
 max_subscribers = 1
 # No `max_service_servers`: the cargo road derives it from the sizing
 # descriptor (the application's servers plus the six parameter services

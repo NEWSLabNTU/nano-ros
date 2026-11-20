@@ -21,16 +21,15 @@ take effect.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `NROS_EXECUTOR_MAX_CBS` | Max executor callback slots (shared with Rust API) | `4` |
-| `NROS_SUBSCRIPTION_BUFFER_SIZE` | Per-entity receive buffer size (shared with Rust API) | `1024` |
-| `NROS_LET_BUFFER_SIZE` | Buffer size for LET semantics per handle | `512` |
+| `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` | Per-entity receive buffer size (shared with Rust API) | `1024` |
 | `NROS_MAX_CONCURRENT_GOALS` | Max concurrent goals per action server | `4` |
 | `NROS_MAX_PARAMETERS` | Max parameters in parameter server | `32` |
-| `NROS_MAX_PARAM_NAME_LEN` | Max parameter name length | `64` |
-| `NROS_MAX_STRING_VALUE_LEN` | Max string parameter value length | `256` |
+| `NROS_PARAMS_MAX_NAME_BYTES` | Max parameter name length | `64` |
+| `NROS_PARAMS_MAX_STRING_VALUE_BYTES` | Max string parameter value length | `256` |
 | `NROS_MAX_ARRAY_LEN` | Max bool/integer/double array parameter length | `32` |
 | `NROS_MAX_STRING_ARRAY_LEN` | Max string-array parameter length, in elements | `32` |
-| `NROS_MAX_BYTE_ARRAY_LEN` | Max byte array parameter length | `256` |
-| `NROS_MAX_PARAM_DESCRIPTION_LEN` | Max parameter description length (0 = none) | `256` |
+| `NROS_PARAMS_MAX_BYTE_ARRAY_BYTES` | Max byte array parameter length | `256` |
+| `NROS_PARAMS_MAX_DESCRIPTION_BYTES` | Max parameter description length (0 = none) | `256` |
 
 ## Transport Buffer Tuning
 
@@ -38,10 +37,10 @@ take effect.
 
 | Variable | Description | Posix | Embedded |
 |----------|-------------|-------|----------|
-| `NROS_ZENOH_FRAG_MAX_SIZE` | Max reassembled message size | 65536 | 2048 |
-| `NROS_ZENOH_BATCH_UNICAST_SIZE` | Max unicast batch before fragmentation | 65536 | 1024 |
-| `NROS_ZENOH_BATCH_MULTICAST_SIZE` | Max multicast batch size | 8192 | 1024 |
-| `NROS_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber buffer in zenoh shim | 1024 | 1024 |
+| `NROS_ZENOH_FRAG_MAX_BYTES` | Max reassembled message size | 65536 | 2048 |
+| `NROS_ZENOH_BATCH_UNICAST_BYTES` | Max unicast batch before fragmentation | 65536 | 1024 |
+| `NROS_ZENOH_BATCH_MULTICAST_BYTES` | Max multicast batch size | 8192 | 1024 |
+| `NROS_SUBSCRIBER_BUFFER_BYTES` | Per-subscriber buffer in zenoh shim | 1024 | 1024 |
 | `NROS_ZENOH_SERVICE_BUFFER_SIZE` | Per-service-server buffer in zenoh shim | 1024 | 1024 |
 
 ### XRCE-DDS Backend (XRCE_*)
@@ -57,7 +56,7 @@ take effect.
 Increase zenoh defrag to 128 KB for large point clouds:
 
 ```bash
-NROS_ZENOH_FRAG_MAX_SIZE=131072 cmake --build build
+NROS_ZENOH_FRAG_MAX_BYTES=131072 cmake --build build
 ```
 
 After changing any `ZPICO_*` or `XRCE_*` variable, clean the transport

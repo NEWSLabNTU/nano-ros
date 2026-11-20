@@ -119,7 +119,7 @@ fn first_spin_reports_an_over_provisioned_arena(zenohd_unique: ZenohRouter) {
     // knob it names has existed all along and went unset because nothing
     // computed a value for it (issues 0271/0739).
     assert!(
-        advisory.contains("NROS_EXECUTOR_ARENA_SIZE="),
+        advisory.contains("NROS_EXECUTOR_ARENA_BYTES="),
         "the advisory must name the value to set, not just report the waste: \
          {advisory}"
     );

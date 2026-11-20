@@ -89,11 +89,11 @@ void xrce_report_session_alloc_failed(size_t bytes) {
     // RFC-0100
     xrce_log_error("xrce_session_state_t (%lu bytes) did not fit. Its size is decided "
                    "at BUILD time by NROS_XRCE_MAX_SUBSCRIBERS x "
-                   "NROS_XRCE_SUBSCRIBER_RING_DEPTH x NROS_XRCE_SUBSCRIBER_BUFFER_SIZE, "
+                   "NROS_XRCE_SUBSCRIBER_RING_DEPTH x NROS_XRCE_SUBSCRIBER_BUFFER_BYTES, "
                    "plus the service server/client slots and two reliable stream buffers "
                    "of NROS_XRCE_TRANSPORT_MTU x NROS_XRCE_STREAM_HISTORY each; it is ONE "
                    "allocation, so a heap larger than the shortfall does not help. Lower a "
-                   "cap or raise the platform heap (CONFIG_NROS_ZEPHYR_HEAP_SIZE on Zephyr). "
+                   "cap or raise the platform heap (CONFIG_NROS_MEMORY_HEAP_BYTES on Zephyr). "
                    "Declaring this image's endpoints lets the build derive most of these.",
                    (unsigned long)bytes);
 }

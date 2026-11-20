@@ -789,15 +789,15 @@ mod tests {
     /// env spelling states.
     #[test]
     fn workspace_image_knobs_merge_and_render_like_env_rows() {
-        let base = parse("[knobs.executor]\nmax_cbs = 8\n[knobs.zephyr]\nheap_size = 1\n");
+        let base = parse("[knobs.executor]\nmax_cbs = 8\n[knobs.memory]\nheap_bytes = 1\n");
         let specific =
-            parse("[knobs.zephyr]\nheap_size = 262144\n[knobs.zenoh.tx]\nbatch = true\n");
+            parse("[knobs.memory]\nheap_bytes = 262144\n[knobs.zenoh]\ntx_batch = true\n");
         let merged = specific.with_base(&base);
         let rows = crate::cmd::leaf_settings::image_block_layers(None, &merged, None).unwrap();
         // The rows the retired env spelling of these knobs stated.
         let env: std::collections::BTreeMap<String, String> = [
             ("NROS_EXECUTOR_MAX_CBS", "8"),
-            ("NROS_ZEPHYR_HEAP_SIZE", "262144"),
+            ("NROS_MEMORY_HEAP_BYTES", "262144"),
             ("NROS_ZENOH_TX_BATCH", "1"),
         ]
         .into_iter()

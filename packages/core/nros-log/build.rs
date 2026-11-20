@@ -7,7 +7,7 @@
 //! | --------------------------- | ------- | ----------------------------------------------- |
 //! | `NROS_LOG_DYNAMIC_LOGGERS`  | 16      | runtime-logger arenas (phase-479 W5)            |
 //! | `NROS_LOG_MAX_LEVEL`        | `trace` | the compile-time severity CEILING (issue 1037)  |
-//! | `NROS_LOG_BUFFER_SIZE`      | 256     | the per-call formatting buffer (issue 1037)     |
+//! | `NROS_LOG_BUFFER_BYTES`      | 256     | the per-call formatting buffer (issue 1037)     |
 //! | `NROS_LOG_EARLY_RECORDS`    | 4       | records held for delivery (issues 1037, 2000)   |
 //! | `NROS_LOG_ROSOUT_RECORDS`   | 16      | the `/rosout` queue depth (issue 1037)          |
 //!
@@ -71,7 +71,7 @@
 //! the C printf front-ends' own stack frame (`NROS_LOG_FMT_BUFFER_SIZE` in
 //! `<rclc/log.h>`, 256): it is compiled in the CALLER's translation unit from a
 //! header that has no per-build value to read. A C record is therefore bounded
-//! by `min(255, NROS_LOG_BUFFER_SIZE)` — the Rust side clips it where it is
+//! by `min(255, NROS_LOG_BUFFER_BYTES)` — the Rust side clips it where it is
 //! stored or rendered.
 //!
 //! [`Logger::is_enabled`]: https://docs.rs/nros-log
@@ -98,8 +98,8 @@ fn main() {
     );
     let buffer_size = family(
         &BUFFER_SIZE,
-        nros_zephyr_build::knob("NROS_LOG_BUFFER_SIZE")
-            .rung(rungs.buffer_size)
+        nros_zephyr_build::knob("NROS_LOG_BUFFER_BYTES")
+            .rung(rungs.buffer_bytes)
             .strict_env()
             .stated(),
     );
@@ -152,7 +152,7 @@ fn main() {
          /// `NROS_LOG_MAX_LEVEL`: the compile-time ceiling, as an index into \
          trace..fatal, off ({name}).\n\
          pub(crate) const MAX_LEVEL: u8 = {max_level};\n\
-         /// `NROS_LOG_BUFFER_SIZE`: bytes of the per-call formatting buffer.\n\
+         /// `NROS_LOG_BUFFER_BYTES`: bytes of the per-call formatting buffer.\n\
          pub(crate) const BUFFER_SIZE: usize = {buffer_size};\n\
          /// `NROS_LOG_EARLY_RECORDS`: records held for delivery (0 = none).\n\
          pub(crate) const EARLY_RECORDS: usize = {early_records};\n\
@@ -193,8 +193,8 @@ const DYNAMIC_LOGGERS: Family = Family {
 /// Below 128 a C++ runtime refusal (`RUNTIME_REFUSAL_MAX` = 160 with its
 /// prefix, `log.hpp`) stops fitting; the old family's floor was 128 too.
 const BUFFER_SIZE: Family = Family {
-    knob: "NROS_LOG_BUFFER_SIZE",
-    toml_key: "buffer_size",
+    knob: "NROS_LOG_BUFFER_BYTES",
+    toml_key: "buffer_bytes",
     builtin: 256,
     range: (128, 4096),
     features: &[

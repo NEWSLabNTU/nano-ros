@@ -103,7 +103,7 @@ mod rmw_sizes {
     // Phase 122.3.c.3 — L1 polling-mode Raw* handles. Defaults to
     // `DEFAULT_RX_BUF_SIZE` on each const-generic slot, which is
     // exactly the value `nros-c::config::MESSAGE_BUFFER_SIZE` resolves
-    // to (both derive from `NROS_SUBSCRIPTION_BUFFER_SIZE` via
+    // to (both derive from `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES` via
     // `nros-node`'s build.rs). nros-c's build.rs reads these probe
     // values and emits the matching `*_OPAQUE_U64S` macros into the
     // per-build variant header so C struct `_opaque` storage agrees

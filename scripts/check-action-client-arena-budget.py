@@ -562,7 +562,7 @@ def knob_of(config_paths):
         return None, f"generated configs disagree on ARENA_ACTION_CLIENTS ({vals})"
     action_clients, max_cbs = next(iter(seen))
     # ARENA_SIZE may legitimately VARY inside one profile dir where a leaf sets
-    # `NROS_EXECUTOR_ARENA_SIZE` explicitly (the esp32 fixtures do: 16,384
+    # `NROS_EXECUTOR_ARENA_BYTES` explicitly (the esp32 fixtures do: 16,384
     # beside 74,240) while the derivation input is the same. That is not a
     # disagreement about the KNOB, so it does not block the verdict — it is
     # reported as a range.
@@ -718,7 +718,7 @@ def main(argv=None, _self_test=True):
         print(
             "\n  The arena budgets 0 slots at ActionClient size and the image "
             "links one.\n"
-            "  Raise NROS_EXECUTOR_ACTION_CLIENTS (or NROS_EXECUTOR_ARENA_SIZE) "
+            "  Raise NROS_EXECUTOR_ACTION_CLIENTS (or NROS_EXECUTOR_ARENA_BYTES) "
             "for these\n  images, or stop linking the action client. Issue 0900."
         )
         return 1

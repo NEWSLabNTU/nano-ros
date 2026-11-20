@@ -61,7 +61,7 @@ impl Default for Config {
         // cannot disagree about what the override means.
         let sched = FreertosScheduling {
             app_stack_bytes: freertos_config::app_stack_bytes(option_env!(
-                "NROS_FREERTOS_APP_STACK_KB"
+                "NROS_MEMORY_APP_STACK_BYTES"
             )),
             ..FreertosScheduling::default()
         };

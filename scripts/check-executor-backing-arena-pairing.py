@@ -19,13 +19,13 @@ OTHER board the same conf builds for: the derived size is 87,256 B on
 mps2_an385 and 88,328 B on native_sim/native/64, so the second board kept
 double-reserving 1,072 bytes.
 
-THE MECHANISM this gate backs. `CONFIG_NROS_EXECUTOR_BACKING_U64S` (zephyr/
+THE MECHANISM this gate backs. `CONFIG_NROS_EXECUTOR_BACKING_BYTES` (zephyr/
 Kconfig) lets the image STATE the reservation instead of measuring it. The
 reservation is then exactly `8 * words` bytes on every target, `nros-node`
 refuses to compile if that is below what the executor needs, and the arena's
 lowering is arithmetic anyone can check — which is what this does.
 
-THE RULE. A `.conf` that states `CONFIG_NROS_EXECUTOR_BACKING_U64S=<words>`
+THE RULE. A `.conf` that states `CONFIG_NROS_EXECUTOR_BACKING_BYTES=<words>`
 with `words > 0` must also
 
   * set `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`, and
@@ -40,7 +40,7 @@ answer in the file: the pre-W6 number is gone the moment it is edited, and a
 reviewer cannot tell a paired arena from an arbitrary one. It is checked both
 ways — a marker with no pairing is as broken as a pairing with no marker.
 
-The gate also refuses a `CONFIG_NROS_EXECUTOR_BACKING_U64S` line in a conf when
+The gate also refuses a `CONFIG_NROS_EXECUTOR_BACKING_BYTES` line in a conf when
 `zephyr/Kconfig` does not declare that symbol. Kconfig silently ignores an
 assignment to an undeclared symbol, so such a line reads as a decision and
 reaches nothing — issue 0460's failure mode, one layer up.
@@ -59,7 +59,7 @@ default in `just check node-std-tests` (pull_request AND merge_group):
     `words` with `ExecutorSizing::DEFAULT.u64_len()` as compiled on the host,
     naming the conf and both numbers;
   * every other board — the recipe compiles `nros-node` for that board's own
-    target with `NROS_EXECUTOR_BACKING_U64S=<words>`, so the crate's const
+    target with `NROS_EXECUTOR_BACKING_BYTES=<words>`, so the crate's const
     assertion rules on it at the board's pointer width.
 
 This file owns the conf side of both: which confs claim, for which boards, and
@@ -85,13 +85,13 @@ The ThreadX arm has no arithmetic since issue 2624: the byte pool is DERIVED
 from peaks measured with the executor's backing already in `.bss`, so it
 holds no backing and nothing is subtracted from it. What it checks is that
 inversion, in both directions: the pool is the derived figure (named, and
-forwarded by the board build), and it does NOT subtract `backing_u64s`,
+forwarded by the board build), and it does NOT subtract `backing_bytes`,
 which would leave a measured pool short by the backing.
 
 NOT IN SCOPE: the spawned sched_tasks' backing (issue 1571). A sched-task Rust entry's
 `SchedTaskExecutorBacking` static is sized by TYPE (`EXECUTOR_BACKING_DEFAULT_U64S`
 words a slot, one slot per spawned sched_task) and is emitted by `nros::main!`, not
-stated by `CONFIG_NROS_EXECUTOR_BACKING_U64S` — so a conf's stated words, and
+stated by `CONFIG_NROS_EXECUTOR_BACKING_BYTES` — so a conf's stated words, and
 therefore this gate's `arena + 8 * words == base`, are unchanged by it. It is a
 move out of the allocator arena like the boot reservation; no in-tree conf
 lowers an arena for it, and one that does is not checkable here because there
@@ -100,7 +100,7 @@ is no stated number to add up.
 ZEPHYR'S ARENA HALF IS RETIRED (issue 1611). Everything above about
 `arena + 8 * words == base` was true while a Zephyr Rust image's `alloc` went
 to picolibc `malloc`. Issue 1324 moved it onto the nros heap
-(`CONFIG_NROS_ZEPHYR_HEAP_SIZE`, an rlsf arena in `nros-platform`), so the libc
+(`CONFIG_NROS_MEMORY_HEAP_BYTES`, an rlsf arena in `nros-platform`), so the libc
 arena holds no Rust allocation to give back: measured on native_sim
 rust/talker with gdb on Zephyr's common-libc `malloc`, zero calls in a 6 s
 publishing run, and the image's only static caller is NSOS `getaddrinfo`'s
@@ -110,7 +110,7 @@ backing is a `.bss` static and never comes out of it, and its size is scored
 against a MEASURED boot peak by issue 1424's gate. So the zephyr port is
 recorded `none`, and the only conf rule left is that the retired marker
 `# nros-arena-base:` must not come back -- it would assert a pairing nothing
-honours. A stated `CONFIG_NROS_EXECUTOR_BACKING_U64S` is still a CLAIM and the
+honours. A stated `CONFIG_NROS_EXECUTOR_BACKING_BYTES` is still a CLAIM and the
 claim half below still checks it.
 
 Usage:
@@ -127,9 +127,9 @@ try:
 except ModuleNotFoundError:  # python < 3.11
     import tomli as tomllib
 
-BACKING_KEY = "CONFIG_NROS_EXECUTOR_BACKING_U64S"
+BACKING_KEY = "CONFIG_NROS_EXECUTOR_BACKING_BYTES"
 # The same claim as BACKING_KEY, spelled for a port with no Kconfig (issue 1388).
-BOARD_BACKING_KEY = "[knobs.executor] backing_u64s"
+BOARD_BACKING_KEY = "[knobs.executor] backing_bytes"
 ARENA_KEY = "CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE"
 BASE_MARKER = "nros-arena-base"
 
@@ -149,7 +149,7 @@ BASE_RE = re.compile(rf"#\s*{BASE_MARKER}\s*:\s*(\d+)")
 # board states it once; `nros-node/build.rs` sizes `EXECUTOR_BACKING` from it
 # and the port's allocator declaration subtracts `8 *` it. There is deliberately
 # no second place to write the subtrahend.
-RUNG_KEY = "backing_u64s"
+RUNG_KEY = "backing_bytes"
 RUNG_RE = re.compile(rf"^\s*{RUNG_KEY}\s*=\s*(\d+)\s*$", re.M)
 
 # Where each port's allocator reservation is declared, and the token that proves
@@ -165,7 +165,7 @@ PORTS = {
     "zephyr": {
         "kind": "none",
         "why": (
-            "Rust allocates from the nros heap (CONFIG_NROS_ZEPHYR_HEAP_SIZE, "
+            "Rust allocates from the nros heap (CONFIG_NROS_MEMORY_HEAP_BYTES, "
             "issue 1324), which the `.bss` backing never came out of and whose "
             "size issue 1424 scores against a measured peak; picolibc's arena "
             "holds no Rust allocation (issue 1611, measured: zero `malloc` "
@@ -177,8 +177,8 @@ PORTS = {
     # phase-448 W5, MEASURED 2026-09-12 on `examples/qemu-armv7a-nuttx/rust/
     # talker` (armv7a-nuttx-eabihf), by building it twice:
     #
-    #   NROS_EXECUTOR_BACKING_U64S unset:  EXECUTOR_BACKING 87,496   heap 131,616,768
-    #   NROS_EXECUTOR_BACKING_U64S=0:      EXECUTOR_BACKING      0   heap 131,702,784
+    #   NROS_EXECUTOR_BACKING_BYTES unset:  EXECUTOR_BACKING 87,496   heap 131,616,768
+    #   NROS_EXECUTOR_BACKING_BYTES=0:      EXECUTOR_BACKING      0   heap 131,702,784
     #
     # NuttX's flat-build heap is `CONFIG_RAM_END - g_idle_topstack`
     # (`arch/arm/src/common/arm_allocateheap.c:112`, and the RISC-V twin at
@@ -273,7 +273,7 @@ THREADX_POOL_C = "packages/boards/nros-board-common/c/threadx_hooks.c"
 THREADX_FORWARDER = "packages/boards/nros-board-common/src/threadx_sources.rs"
 THREADX_POOL_TOKEN = "NROS_THREADX_BYTE_POOL_BYTES"
 THREADX_FORWARD_TOKEN = "define_byte_pool"
-THREADX_KNOB_TOKEN = "NROS_EXECUTOR_BACKING_U64S"
+THREADX_KNOB_TOKEN = "NROS_EXECUTOR_BACKING_BYTES"
 
 # --- issue 1284: the claim half -------------------------------------------
 #
@@ -289,10 +289,10 @@ SIZING_KNOBS = {
     "NROS_EXECUTOR_MAX_CBS": "`cbs`, and every per-slot arena term",
     "NROS_EXECUTOR_MAX_SC": "`sc`",
     "NROS_EXECUTOR_MAX_NODES": "`nodes`",
-    "NROS_EXECUTOR_ARENA_SIZE": "`arena`, directly",
+    "NROS_EXECUTOR_ARENA_BYTES": "`arena`, directly",
     "NROS_EXECUTOR_ACTION_CLIENTS": "the arena's action-client term",
-    "NROS_SUBSCRIPTION_BUFFER_SIZE": "the arena's rx-buffer terms",
-    "NROS_SUBSCRIBER_BUFFER_SIZE": "the arena's pub/sub region",
+    "NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES": "the arena's rx-buffer terms",
+    "NROS_SUBSCRIBER_BUFFER_BYTES": "the arena's pub/sub region",
     "NROS_PUBSUB_QOS_DEPTH": "the arena's pub/sub region depth (issue 1190)",
     "NROS_ENTITY_COUNT_SUBSCRIPTION": "the per-kind arena sum (phase-403)",
     "NROS_ENTITY_COUNT_TIMER": "the per-kind arena sum",
@@ -314,7 +314,7 @@ NOT_SIZING = {
     # table), not carved from the backing, so they move no backing word.
     "NROS_EXECUTOR_MAX_MONITORS": "inline in the Executor value, not the backing",
     "NROS_EXECUTOR_MAX_AGE_MONITORS": "inline in the Executor value, not the backing",
-    "NROS_EXECUTOR_BACKING_U64S": "the claim itself",
+    "NROS_EXECUTOR_BACKING_BYTES": "the claim itself",
     "NROS_EXECUTOR_BACKING_SECTION": "placement only, not size",
     "NROS_BOOT_REPORT": "a cfg, no size",
     "NROS_ARENA_EXHAUSTION_IS_FATAL": "a cfg, no size (issue 1036)",
@@ -323,7 +323,7 @@ NOT_SIZING = {
     "NROS_MONITOR_ARM_GRACE_MS": "a time, no size (phase-474 I2)",
     "NROS_TRACE_TAKES": "a callback-trace switch, no size (phase-474 I3)",
     "NROS_TRACE_TIMER_EVERY": "a callback-trace sampling ratio, no size (phase-474 I3)",
-    "NROS_PARAM_SERVICE_BUFFER_SIZE": "emitted as a const, not in the arena sum",
+    "NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES": "emitted as a const, not in the arena sum",
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "sizes the Executor HEADER, not the backing",
     "NROS_PARAM_SERVICE_INBOX_BYTES":
         "phase-461 W2: the parameter family's INBOX ring, a `static` beside the "
@@ -440,7 +440,7 @@ def check_board_rung(rel, text):
     """-> complaints for one `nros-board.toml`.
 
     The rung half of the pairing (phase-448 W5). A board may state
-    `[knobs.executor] backing_u64s` only where something SUBTRACTS it:
+    `[knobs.executor] backing_bytes` only where something SUBTRACTS it:
     a statement that reaches no subtraction reserves the backing and gives
     nothing back, which is a bigger image than not stating it at all -- and it
     fails silently, because `nros-node` honours the statement either way.
@@ -530,7 +530,7 @@ SIZING_SELF_TESTS = [
     # (name, fragment body, expected number of sizing assignments)
     ("a sizing knob", "CONFIG_NROS_EXECUTOR_MAX_CBS=8\n", 1),
     ("the arena knob, even as the derive sentinel",
-     "CONFIG_NROS_EXECUTOR_ARENA_SIZE=0\n", 1),
+     "CONFIG_NROS_EXECUTOR_ARENA_BYTES=0\n", 1),
     ("the claim itself is not a sizing knob", f"{BACKING_KEY}=11069\n", 0),
     ("a commented-out knob", "# CONFIG_NROS_EXECUTOR_MAX_SC=16\n", 0),
     ("a prefix is not the knob", "CONFIG_NROS_EXECUTOR_MAX_CBS_EXTRA=1\n", 0),
@@ -566,7 +566,7 @@ THREADX_SITE_SELF_TESTS = [
      "#define BYTE_POOL_SIZE (4*1024*1024)\n",
      "define_byte_pool(build, app_stack_bytes);\n", 1),
     ("subtracts the backing again",
-     "#define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES - 8*(NROS_EXECUTOR_BACKING_U64S))\n",
+     "#define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES - 8*(NROS_EXECUTOR_BACKING_BYTES))\n",
      "define_byte_pool(build, app_stack_bytes);\n", 1),
     ("the forwarder dropped it",
      "#define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES)\n",
@@ -715,7 +715,7 @@ def claims(repo, stating):
 
 
 def board_toml_claims(repo):
-    """-> (claims, refusals) for `[knobs.executor] backing_u64s` claims.
+    """-> (claims, refusals) for `[knobs.executor] backing_bytes` claims.
 
     Same shape as a conf claim — (source, words, board, width, cross) — so the
     consumers need no second code path.
@@ -745,9 +745,11 @@ def board_toml_claims(repo):
             if not isinstance(board, dict):
                 continue
             knobs = top if isinstance(top, dict) else {}
-            words = knobs.get("executor", {}).get("backing_u64s")
-            if not isinstance(words, int) or words <= 0:
+            stated = knobs.get("executor", {}).get("backing_bytes")
+            if not isinstance(stated, int) or stated <= 0:
                 continue  # absent derives, 0 declines — neither is a claim
+            # The knob is BYTES (phase-581 W5); a claim is compared in words.
+            words = stated // 8
             if rel not in BOARD_TOML_TARGETS:
                 refused.append((rel, (
                     f"states {BOARD_BACKING_KEY}={words} and has no entry in "
@@ -768,9 +770,9 @@ def claim_half(repo, confs):
         path = repo / rel
         if not path.is_file():
             continue
-        words = last_int(BACKING_RE, path.read_text(errors="replace"))
-        if words is not None and words > 0:
-            stating[rel] = words
+        stated = last_int(BACKING_RE, path.read_text(errors="replace"))
+        if stated is not None and stated > 0:
+            stating[rel] = stated // 8  # bytes (phase-581 W5) -> words
     build_rs = (repo / "packages/core/nros-node/build.rs").read_text(errors="replace")
     complaints = classify(set(NAME_LITERAL_RE.findall(build_rs)))
     got, refused = claims(repo, stating)
@@ -827,7 +829,7 @@ def main():
 
     kconfig = (repo / "zephyr" / "Kconfig").read_text(errors="replace")
     declared = re.search(
-        r"^config\s+NROS_EXECUTOR_BACKING_U64S\s*$", kconfig, re.M
+        r"^config\s+NROS_EXECUTOR_BACKING_BYTES\s*$", kconfig, re.M
     ) is not None
 
     failures, paired = [], 0

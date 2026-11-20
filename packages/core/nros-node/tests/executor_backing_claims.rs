@@ -2,7 +2,7 @@
 //! measured, in a lane that gates merges.
 //!
 //! A Zephyr image that lowers `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` states the
-//! reservation it pays for, `CONFIG_NROS_EXECUTOR_BACKING_U64S=<words>` (issues
+//! reservation it pays for, `CONFIG_NROS_EXECUTOR_BACKING_BYTES=<8 x words>` (issues
 //! 1145/1171; that arena pairing is retired on Zephyr by issue 1611, and the
 //! claims left are ThreadX's rung). Whether `words` is ENOUGH is
 //! `executor::backing`'s const assertion, a compile error, and no merge-gating
@@ -64,9 +64,9 @@ fn resolved_here(knob: &str) -> Option<usize> {
         "NROS_EXECUTOR_MAX_CBS" => Some(config::MAX_CBS),
         "NROS_EXECUTOR_MAX_SC" => Some(config::MAX_SC),
         "NROS_EXECUTOR_MAX_NODES" => Some(config::MAX_NODES),
-        "NROS_EXECUTOR_ARENA_SIZE" => Some(config::ARENA_SIZE),
+        "NROS_EXECUTOR_ARENA_BYTES" => Some(config::ARENA_SIZE),
         "NROS_EXECUTOR_ACTION_CLIENTS" => Some(config::ARENA_ACTION_CLIENTS),
-        "NROS_SUBSCRIPTION_BUFFER_SIZE" => Some(config::DEFAULT_RX_BUF_SIZE),
+        "NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES" => Some(config::DEFAULT_RX_BUF_SIZE),
         "NROS_PUBSUB_QOS_DEPTH" => Some(config::arena_model::BUDGETED_QOS_DEPTH as usize),
         // phase-474 I1 -- the carved violation ring's depth.
         "NROS_EXECUTOR_MAX_VIOLATIONS" => Some(config::MAX_VIOLATIONS),
@@ -78,9 +78,9 @@ fn resolved_here(knob: &str) -> Option<usize> {
 
 /// A Kconfig default `build.rs` does not take literally: a negative value does
 /// not parse as `usize` and falls through to the next rung (`-1 = derive`), and
-/// `NROS_EXECUTOR_ARENA_SIZE=0` is that knob's own derive sentinel.
+/// `NROS_EXECUTOR_ARENA_BYTES=0` is that knob's own derive sentinel.
 fn is_derive_sentinel(knob: &str, default: i64) -> bool {
-    default < 0 || (knob == "NROS_EXECUTOR_ARENA_SIZE" && default == 0)
+    default < 0 || (knob == "NROS_EXECUTOR_ARENA_BYTES" && default == 0)
 }
 
 #[test]
@@ -163,24 +163,26 @@ fn every_stated_executor_backing_meets_the_measured_default() {
                         let is_board_toml = conf.ends_with("nros-board.toml");
                         let (key, remedy) = if is_board_toml {
                             (
-                                "[knobs.executor] backing_u64s".to_string(),
+                                "[knobs.executor] backing_bytes".to_string(),
                                 format!(
-                                    "Restate it as {default}; the pool subtracts the same \
-                                     rung, so there is nothing else to edit."
+                                    "Restate it as {}; the pool subtracts the same \
+                                     rung, so there is nothing else to edit.",
+                                    default * 8
                                 ),
                             )
                         } else {
                             (
-                                format!("CONFIG_NROS_EXECUTOR_BACKING_U64S={words}"),
+                                format!("CONFIG_NROS_EXECUTOR_BACKING_BYTES={}", words * 8),
                                 format!(
-                                    "Restate it as {default}, or delete the line to \
+                                    "Restate it as {}, or delete the line to \
                                      take the derived default (issue 1611: no arena \
-                                     is paired with it on Zephyr any more)."
+                                     is paired with it on Zephyr any more).",
+                                    default * 8
                                 ),
                             )
                         };
                         let key = if is_board_toml {
-                            format!("{key} = {words}")
+                            format!("{key} = {}", words * 8)
                         } else {
                             key
                         };

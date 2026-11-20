@@ -64,7 +64,7 @@ void rclc_log_emit_fmt(rclc_logger_t logger,
     if (logger == NULL || fmt == NULL) {
         return;
     }
-    /* 256 bytes, the builtin of nros-log's `NROS_LOG_BUFFER_SIZE` knob.
+    /* 256 bytes, the builtin of nros-log's `NROS_LOG_BUFFER_BYTES` knob.
      * Overflow truncates + appends "..." in-place. */
     char buf[256];
     va_list args;

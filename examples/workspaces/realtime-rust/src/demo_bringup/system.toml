@@ -222,8 +222,8 @@ locator = "tcp/10.0.2.2:7471"
 [image.zephyr.knobs.zenoh]
 socket_timeout_ms = 5
 
-[image.zephyr.knobs.zephyr]
-heap_size = 262144
+[image.zephyr.knobs.memory]
+heap_bytes = 262144
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

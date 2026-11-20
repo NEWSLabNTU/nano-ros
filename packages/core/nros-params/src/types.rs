@@ -590,7 +590,7 @@ pub struct ParameterDescriptor {
     pub param_type: ParameterType,
     /// Human-readable description.
     ///
-    /// Its own capacity, `NROS_MAX_PARAM_DESCRIPTION_LEN`. It
+    /// Its own capacity, `NROS_PARAMS_MAX_DESCRIPTION_BYTES`. It
     /// used to share `MAX_STRING_VALUE_LEN`, which the contract derives to 0
     /// for an image with no string parameter, so such an image could carry no
     /// description at all. Write it with [`Self::set_description`], which
@@ -599,7 +599,7 @@ pub struct ParameterDescriptor {
     /// Free-text extra constraints — `rcl_interfaces/msg/ParameterDescriptor`'s
     /// `additional_constraints`, which `ros2 param describe` prints.
     ///
-    /// Its own capacity, `NROS_MAX_PARAM_CONSTRAINTS_LEN`,
+    /// Its own capacity, `NROS_PARAMS_MAX_CONSTRAINTS_BYTES`,
     /// **default 0**. Sharing the description's knob was the first shape and
     /// the derived service buffer measured it wrong: the describe reply's
     /// bound is a worst case over CAPACITY, not over use, so every image would
@@ -609,7 +609,7 @@ pub struct ParameterDescriptor {
     /// with [`Self::set_additional_constraints`], which truncates at a
     /// character boundary and records the truncation under its own flag, so a
     /// value that does not fit is reported, naming this field and
-    /// `NROS_MAX_PARAM_CONSTRAINTS_LEN`, rather than dropped in silence.
+    /// `NROS_PARAMS_MAX_CONSTRAINTS_BYTES`, rather than dropped in silence.
     pub additional_constraints: String<MAX_PARAM_CONSTRAINTS_LEN>,
     /// Whether the parameter is read-only
     pub read_only: bool,
@@ -618,14 +618,14 @@ pub struct ParameterDescriptor {
     /// Range constraints
     pub range: ParameterRange,
     /// phase-446 F2 -- the description given was longer than
-    /// `NROS_MAX_PARAM_DESCRIPTION_LEN` and `description` holds a prefix of it.
+    /// `NROS_PARAMS_MAX_DESCRIPTION_BYTES` and `description` holds a prefix of it.
     /// Read by [`ParameterServer::take_truncated_descriptions`](crate::ParameterServerOps::take_truncated_descriptions), which reports
     /// each one once and clears it.
     ///
     /// [`ParameterServer::take_truncated_descriptions`]: crate::ParameterServerOps::take_truncated_descriptions
     description_truncated: bool,
     /// Issue 2686 -- the same for `additional_constraints`, which has its own
-    /// knob (`NROS_MAX_PARAM_CONSTRAINTS_LEN`). A separate flag, so the
+    /// knob (`NROS_PARAMS_MAX_CONSTRAINTS_BYTES`). A separate flag, so the
     /// report names the field that was cut and the knob that sizes it.
     constraints_truncated: bool,
 }
@@ -635,9 +635,9 @@ pub struct ParameterDescriptor {
 /// own knob, and a truncation report names both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DescriptorText {
-    /// `description`, sized by `NROS_MAX_PARAM_DESCRIPTION_LEN`.
+    /// `description`, sized by `NROS_PARAMS_MAX_DESCRIPTION_BYTES`.
     Description,
-    /// `additional_constraints`, sized by `NROS_MAX_PARAM_CONSTRAINTS_LEN`.
+    /// `additional_constraints`, sized by `NROS_PARAMS_MAX_CONSTRAINTS_BYTES`.
     Constraints,
 }
 
@@ -653,8 +653,8 @@ impl DescriptorText {
     /// The knob that sizes this field.
     pub const fn knob(self) -> &'static str {
         match self {
-            Self::Description => "NROS_MAX_PARAM_DESCRIPTION_LEN",
-            Self::Constraints => "NROS_MAX_PARAM_CONSTRAINTS_LEN",
+            Self::Description => "NROS_PARAMS_MAX_DESCRIPTION_BYTES",
+            Self::Constraints => "NROS_PARAMS_MAX_CONSTRAINTS_BYTES",
         }
     }
 
@@ -705,7 +705,7 @@ impl ParameterDescriptor {
     }
 
     /// Set the description. A description longer than
-    /// `NROS_MAX_PARAM_DESCRIPTION_LEN` is truncated at a character boundary
+    /// `NROS_PARAMS_MAX_DESCRIPTION_BYTES` is truncated at a character boundary
     /// and recorded (see [`Self::set_description`]).
     pub fn with_description(mut self, desc: &str) -> Self {
         self.set_description(desc);
@@ -713,7 +713,7 @@ impl ParameterDescriptor {
     }
 
     /// Set the description, truncating at a character
-    /// boundary when it is longer than `NROS_MAX_PARAM_DESCRIPTION_LEN`.
+    /// boundary when it is longer than `NROS_PARAMS_MAX_DESCRIPTION_BYTES`.
     /// Returns whether it was truncated; the descriptor also remembers it, so
     /// the executor can report it once the parameter is declared.
     pub fn set_description(&mut self, desc: &str) -> bool {
@@ -765,7 +765,7 @@ impl ParameterDescriptor {
         );
         // Its own flag (issue 2686): the constraints text has its own knob,
         // so a cut here is reported as the constraints field's, naming
-        // `NROS_MAX_PARAM_CONSTRAINTS_LEN`, and leaves an intact description
+        // `NROS_PARAMS_MAX_CONSTRAINTS_BYTES`, and leaves an intact description
         // unreported.
         self.constraints_truncated = fit_description(&mut self.additional_constraints, text);
         self.constraints_truncated
@@ -1686,7 +1686,7 @@ mod issue_0323_tests {
         assert!(d.constraints_truncated());
         let cut: heapless::Vec<DescriptorText, 2> = d.truncated_texts().collect();
         assert_eq!(cut.as_slice(), &[DescriptorText::Constraints]);
-        assert_eq!(cut[0].knob(), "NROS_MAX_PARAM_CONSTRAINTS_LEN");
+        assert_eq!(cut[0].knob(), "NROS_PARAMS_MAX_CONSTRAINTS_BYTES");
         assert_eq!(cut[0].field(), "additional_constraints");
         assert_eq!(cut[0].capacity(), MAX_PARAM_CONSTRAINTS_LEN);
         // Both cut: both reported, each under its own knob.
@@ -1696,6 +1696,6 @@ mod issue_0323_tests {
             both.as_slice(),
             &[DescriptorText::Description, DescriptorText::Constraints]
         );
-        assert_eq!(both[0].knob(), "NROS_MAX_PARAM_DESCRIPTION_LEN");
+        assert_eq!(both[0].knob(), "NROS_PARAMS_MAX_DESCRIPTION_BYTES");
     }
 }
