@@ -1,12 +1,14 @@
 ---
 id: 2782
 title: "A C component's 41 declared parameters are refused by the image's 8-slot parameter store, and the refusal prints nothing: the image exits -6"
-status: open
+status: wontfix
 type: bug
 area: [params, c-api, testing]
 severity: high
 found: 2026-11-21
-related: [2780, 2777, 2640]
+resolved: 2026-11-21
+resolved_in: "duplicate of issue 2768, fixed by 9fecdfd146"
+related: [2768, 2780, 2777, 2640]
 ---
 
 ## What fails
@@ -66,3 +68,15 @@ work.
 The probe-seeds row registers its nodes again on the merge lane, its store
 sized from the declared parameter count, and a declaration past the store's
 capacity on every road prints the parameter, the capacity and the knob.
+
+## Duplicate of issue 2768, already fixed (2026-11-21)
+
+Issue 2768 is the same defect, filed first, and `9fecdfd146` ("the store is
+sized from what the code declares, and a full one says so") fixed both halves:
+the size and the silent refusal. It landed on main after `008eee9312`, the
+commit this issue was measured at, so the measurement here was of a tree
+without the fix.
+
+Re-measured on newslab-118 at a main that contains `9fecdfd146`, fresh
+fixture, with the same repro: 3 of 3 pass, 0.83-0.86 s each. The nros 175
+session also reports that the descriptor states `max_parameters = 84`.

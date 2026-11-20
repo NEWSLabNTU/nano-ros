@@ -77,7 +77,9 @@ zephyr shard's junit, which is why this issue first called it a Zephyr image.
 It reproduces 3 of 3 solo: its C component's 41 declared parameters are
 refused by an 8-slot parameter store, and the image exits `-6` with nothing
 printed. That is a different class from a stalled Zephyr boot, so it is
-tracked on its own as issue 2782 and leaves this issue.
+tracked on its own as issue 2782 and leaves this issue. Issue 2782 turned out
+to duplicate issue 2768, already fixed by `9fecdfd146`; the cell passes again at a
+main that contains it.
 
 ### 3. `realtime_sched_tasks` (`zephyr/cpp-derived`, `zephyr/cpp-levels`): not yet re-run
 
@@ -89,4 +91,4 @@ whether they are load against their tick windows or real.
 ## Closes when
 
 Item 3 is either shown to pass solo (and recorded as load-sensitive) or
-fixed. Item 2 closes with issue 2782.
+fixed. Item 2 is closed (issue 2768).
