@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Clock::wall_clock_state",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "static `rclcpp::Clock::wall_clock_state()`: the image's wall-clock state (synced, source, steps since boot; RFC-0141 D4), the C++ face of `c:wall_clock_state`. Static because it describes the one wall clock every `RCL_SYSTEM_TIME` reading comes from, not one Clock. rclcpp has no equivalent: upstream's system clock is the host's, always set."
+}

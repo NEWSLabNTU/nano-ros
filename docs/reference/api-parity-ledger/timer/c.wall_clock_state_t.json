@@ -1,0 +1,6 @@
+{
+  "key": "c:wall_clock_state_t",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the struct `c:wall_clock_state` returns, `{ bool synced; uint8_t source; uint32_t steps; }` (RFC-0141 D4). Declared in `rclc/detail/wall_clock_state.h` under the guard the platform header's copy shares, so a translation unit including both gets one definition. rcl has no equivalent."
+}
