@@ -43,8 +43,8 @@ NROS_TRACE_TIMER_EVERY | not-a-size | | a ratio: one timer tick in N keeps its c
 NROS_SERVICE_INBOX_BYTES | pool | nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | slot bytes of each user-service inbox ring (`InboxStorage` element); its default is DERIVED from the declared request types, so no static figure exists either
 NROS_SERVICE_INBOX_DEPTH | pool | nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | ring depth of each user-service inbox (`InboxStorage` element)
 NROS_ZENOH_SERVICE_BUFFER_BYTES | pool | nros_rmw_zenoh::shim::service::SERVICE_BUFFERS | payload bytes inside each `ServiceBuffer` struct; also the default for the two inbox slot sizes above
-NROS_PARAM_SERVICE_INBOX_BYTES | pool | nros_node::parameter_services::PARAM_INBOX | slot bytes of the parameter-service inbox ring (`CallerInboxStorage` element)
-NROS_PARAM_SERVICE_INBOX_DEPTH | pool | nros_node::parameter_services::PARAM_INBOX | ring depth of the parameter-service inbox (`CallerInboxStorage` element)
+NROS_PARAMS_SERVICE_INBOX_BYTES | pool | nros_node::parameter_services::PARAM_INBOX | slot bytes of the parameter-service inbox ring (`CallerInboxStorage` element)
+NROS_PARAMS_SERVICE_INBOX_DEPTH | pool | nros_node::parameter_services::PARAM_INBOX | ring depth of the parameter-service inbox (`CallerInboxStorage` element)
 NROS_RMW_MAX_BACKENDS | pool | nros_rmw_cffi::REGISTRY | backend slots in the RMW registry; the element is a `BackendSlot` struct
 NROS_RMW_MAX_NODES | pool | nros_rmw_cffi::NODE_TABLE | node slots in the RMW node table; the element is a `NodeSlot` struct
 NROS_RMW_MESSAGE_INFO_SLOTS | pool | nros_rmw_cffi::MESSAGE_INFO_TABLE | message-info slots; the `MessageInfoSlot` element gains fields under `alloc` + `safety-e2e`, so a constant would be right for one build (issue 0739)
@@ -58,8 +58,8 @@ NROS_ZENOH_GRAPH_CACHE_BYTES | pool | g_sessions | the graph cache's byte buffer
 NROS_ZENOH_MAX_TL_PUBLISHERS | pool | nros_rmw_zenoh::shim::publisher::transient_local::TL_SLOTS | retention slots for TRANSIENT_LOCAL publishers; the element is a `RetainSlot` struct and the count is derived per image
 NROS_ZENOH_TL_RETAIN_BYTES | pool | nros_rmw_zenoh::shim::publisher::transient_local::TL_SLOTS | bytes retained inside each `RetainSlot`
 NROS_ZENOH_TL_RETAIN_DEPTH | pool | nros_rmw_zenoh::shim::publisher::transient_local::TL_SLOTS | samples each `RetainSlot` retains (issue 1709): multiplies the slot's retained bytes and attachment, derived per image from the deepest declared transient-local KEEP_LAST
-NROS_SMOLTCP_MAX_SOCKETS | pool | nros_smoltcp::bridge::SOCKET_RX_BUFFERS,nros_smoltcp::bridge::SOCKET_TX_BUFFERS,nros_smoltcp::bridge::SOCKET_TABLE | TCP socket count; the byte buffers carry `nros-pool:` formulas, the socket table's element is a struct
-NROS_SMOLTCP_MAX_UDP_SOCKETS | pool | nros_smoltcp::bridge::UDP_SOCKET_RX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_TX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_TABLE | UDP socket count; byte buffers formula-priced, the table's element is a struct
+NROS_NET_MAX_SOCKETS | pool | nros_smoltcp::bridge::SOCKET_RX_BUFFERS,nros_smoltcp::bridge::SOCKET_TX_BUFFERS,nros_smoltcp::bridge::SOCKET_TABLE | TCP socket count; the byte buffers carry `nros-pool:` formulas, the socket table's element is a struct
+NROS_NET_MAX_UDP_SOCKETS | pool | nros_smoltcp::bridge::UDP_SOCKET_RX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_TX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_TABLE | UDP socket count; byte buffers formula-priced, the table's element is a struct
 NROS_NET_BUFFER_BYTES | pool | nros_smoltcp::bridge::SOCKET_RX_BUFFERS,nros_smoltcp::bridge::SOCKET_TX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_RX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_TX_BUFFERS | per-socket buffer bytes; formula-priced, but the default is computed per platform
 NROS_MEMORY_HEAP_BYTES | heap | nros_platform::zephyr_heap::HEAP,ucHeap | the platform heap: on Zephyr the rlsf arena both zenoh-pico's `z_malloc` and Rust's allocator draw from, on FreeRTOS heap_4's `ucHeap[configTOTAL_HEAP_SIZE]`; the symbol IS the region, measured per image
 NROS_MEMORY_APP_STACK_BYTES | stack | | the application task's stack, which FreeRTOS allocates out of `ucHeap` and ThreadX out of its byte pool — inside that heap's or pool's figure, never a symbol of its own
@@ -73,16 +73,16 @@ NROS_LOG_EARLY_RECORDS | pool | nros_log::early::SLOTS | records held before `in
 NROS_LOG_ROSOUT_RECORDS | pool | nros_log::rosout::SLOTS | the `/rosout` queue (issue 1037), linked only with `nros-node/rosout`: each slot holds a message of `NROS_LOG_BUFFER_BYTES` bytes plus a logger name
 NROS_LOG_BUFFER_BYTES | stack | | the per-call Rust `FormatBuffer` is a stack frame in the logging caller (issue 1037); it is also the message element of `nros_log::early::SLOTS` and `nros_log::rosout::SLOTS`
 NROS_LOG_MAX_LEVEL | not-a-size | | the compile-time severity CEILING (issue 1037): a threshold, not a count; a lower ceiling can only REMOVE code (Rust call sites below it fold away), never add storage
-NROS_MAX_PARAMETERS | executor | | slots of the parameter store. CARVED into the executor's storage when the build implies a store (`NROS_PARAM_STORE` / `NROS_CAPABILITY_PARAM_SERVICES` / a contract `params:`, phase-382 W3'), so `mem-report`'s `[executor storage]` prices it; otherwise boxed on the heap once per executor that declares (issue 0756)
-NROS_PARAM_STORE | executor | | a switch: the image builds a parameter store, so the executor's storage carves `NROS_MAX_PARAMETERS` slots of it (phase-382 W3'); off, the store costs the backing nothing
+NROS_PARAMS_MAX_PARAMETERS | executor | | slots of the parameter store. CARVED into the executor's storage when the build implies a store (`NROS_PARAM_STORE` / `NROS_CAPABILITY_PARAM_SERVICES` / a contract `params:`, phase-382 W3'), so `mem-report`'s `[executor storage]` prices it; otherwise boxed on the heap once per executor that declares (issue 0756)
+NROS_PARAM_STORE | executor | | a switch: the image builds a parameter store, so the executor's storage carves `NROS_PARAMS_MAX_PARAMETERS` slots of it (phase-382 W3'); off, the store costs the backing nothing
 NROS_CAPABILITY_PARAM_SERVICES | executor | | a switch: the bringup declares `param_services` (Zephyr Kconfig); like `NROS_PARAM_STORE` it makes the executor's storage carve the parameter store (phase-382 W3'); whether the six services' sets and request/reply pair are carved too is the `param-services` cargo feature
-NROS_PARAMS_MAX_NAME_BYTES | element | | bounds a parameter NAME inside every parameter-store slot (executor storage or heap, see `NROS_MAX_PARAMETERS`)
+NROS_PARAMS_MAX_NAME_BYTES | element | | bounds a parameter NAME inside every parameter-store slot (executor storage or heap, see `NROS_PARAMS_MAX_PARAMETERS`)
 NROS_PARAMS_MAX_DESCRIPTION_BYTES | element | | bounds a parameter descriptor's description inside every `ParameterStorage` slot
-NROS_PARAM_EVENTS_DEPTH | not-a-size | | a QoS history depth handed to the RMW when the `/parameter_events` publisher is created; what it costs is the backend's (a reliable DDS writer's history), not a nano-ros pool
+NROS_PARAMS_EVENTS_DEPTH | not-a-size | | a QoS history depth handed to the RMW when the `/parameter_events` publisher is created; what it costs is the backend's (a reliable DDS writer's history), not a nano-ros pool
 NROS_PARAMS_MAX_CONSTRAINTS_BYTES | element | | bounds a parameter descriptor's constraints text inside every `ParameterStorage` slot
 NROS_PARAMS_MAX_STRING_VALUE_BYTES | element | | bounds a string parameter VALUE — `ParameterValue` is sized by its largest variant, so this is paid by every slot
-NROS_MAX_ARRAY_LEN | element | | bounds an array parameter value; paid by every `ParameterValue`, i.e. every slot
-NROS_MAX_STRING_ARRAY_LEN | element | | bounds a string-array parameter value (elements; each a MAX_STRING_VALUE_LEN string); paid by every `ParameterValue`, i.e. every slot
+NROS_PARAMS_MAX_ARRAY_LEN | element | | bounds an array parameter value; paid by every `ParameterValue`, i.e. every slot
+NROS_PARAMS_MAX_STRING_ARRAY_LEN | element | | bounds a string-array parameter value (elements; each a MAX_STRING_VALUE_LEN string); paid by every `ParameterValue`, i.e. every slot
 NROS_PARAMS_MAX_BYTE_ARRAY_BYTES | element | | bounds a byte-array parameter value; paid by every `ParameterValue`, i.e. every slot
 NROS_EXECUTOR_ARENA_BYTES | executor | | the executor arena itself; the backing is `EXECUTOR_BACKING` (Rust) or the entry's `__nros_executor_storage` / sched_task table (C/C++)
 NROS_EXECUTOR_BACKING_BYTES | executor | | STATES the boot executor's backing size in words; `EXECUTOR_BACKING` is exactly 8x this
@@ -104,7 +104,7 @@ NROS_RUNTIME_MAX_CLASS_INSTANCES | component | | instances one component class's
 NROS_RUNTIME_MAX_CELL_ENTITIES | component | | entity-registry slots per component cell
 NROS_ZENOH_KEYEXPR_STRING_BYTES | element | | the key-expression buffer inside each subscriber/service shim entry; lands in `SUBSCRIBER_BUFFERS`/`SERVICE_BUFFERS`
 NROS_ZENOH_PUBLISHER_TX_BUFFER_BYTES | element | | each publisher's zero-copy lend arena (`ZENOH_TX_BUF`), inside the publisher entry wherever that is stored
-NROS_GRAPH_MAX_ENTITIES | input | | the entity count `ZPICO_GRAPH_CACHE_SIZE` is derived from; storage is that knob's
+NROS_ZENOH_GRAPH_MAX_ENTITIES | input | | the entity count `ZPICO_GRAPH_CACHE_SIZE` is derived from; storage is that knob's
 NROS_XRCE_MAX_SUBSCRIBERS | heap | | subscriber slots inside `xrce_session_state_t`, which the XRCE backend allocates from the platform heap (`nros_xrce_calloc`) when a session opens — no named static, so `mem-report` cannot see it
 NROS_XRCE_MAX_SERVICE_SERVERS | heap | | service-server slots inside `xrce_session_state_t`
 NROS_XRCE_MAX_SERVICE_CLIENTS | heap | | service-client slots inside `xrce_session_state_t`
@@ -123,8 +123,8 @@ NROS_ZENOH_GRAPH_DISCOVERY | not-a-size | | switches the graph cache on; its byt
 NROS_SERVICE_TIMEOUT_MS | not-a-size | | milliseconds
 NROS_ZENOH_CONNECT_TIMEOUT_MS | not-a-size | | milliseconds (issue 2207)
 NROS_ZENOH_CONNECT_FOREVER | not-a-size | | a switch (issue 2207)
-NROS_SMOLTCP_CONNECT_TIMEOUT_MS | not-a-size | | milliseconds
-NROS_SMOLTCP_SOCKET_TIMEOUT_MS | not-a-size | | milliseconds
+NROS_NET_CONNECT_TIMEOUT_MS | not-a-size | | milliseconds
+NROS_NET_SOCKET_TIMEOUT_MS | not-a-size | | milliseconds
 NROS_ZENOH_GET_POLL_INTERVAL_MS | not-a-size | | milliseconds
 NROS_ZENOH_RX_TASK_BUDGET_FRAMES | not-a-size | | a frame COUNT the read task processes before it rests (RFC-0074); sizes no storage
 NROS_ZENOH_RX_TASK_BUDGET_REST_US | not-a-size | | microseconds

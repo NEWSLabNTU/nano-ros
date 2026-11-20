@@ -210,7 +210,7 @@ config NROS_TRACE_TIMER_EVERY
 # Cyclone DDS tuning
 # =============================================================================
 
-config NROS_ZEPHYR_TASK_STACK_SIZE
+config NROS_ZEPHYR_TASK_STACK_BYTES
     int "nano-ros Zephyr task stack size (bytes)"
     range 1024 1048576
     default 16384
@@ -255,7 +255,7 @@ config NROS_ZEPHYR_TASK_STACK_SIZE
 
 if NROS_RMW_CYCLONEDDS
 
-config NROS_CYCLONE_DOMAIN_ID
+config NROS_CYCLONEDDS_DOMAIN_ID
     int "DDS domain ID"
     default NROS_DOMAIN_ID
     range 0 232
@@ -267,7 +267,7 @@ config NROS_CYCLONE_DOMAIN_ID
       driver baked per-role-set NROS_DOMAIN_ID values); set it explicitly
       only when the DDS domain must intentionally differ from the ROS one.
 
-config NROS_CYCLONE_CONFIG_XML
+config NROS_CYCLONEDDS_CONFIG_XML
     string "Cyclone raw config XML (empty = default)"
     default ""
     help
@@ -328,10 +328,8 @@ config NROS_ZENOH_MULTI_THREAD
       executor thread, `zpico_exec`, runs the read path, the lease, the
       keep-alive, a reconnect and every zenoh callback, beside the tx-flush
       task `zpico_flush` (NROS_ZENOH_TX_BATCH). Before it, `zpico_read` and
-      `zpico_lease` were two tasks. Required for non-blocking operation, and
-      required on Zephyr: an image that turns it off is refused at configure
-      time, because a single-thread session states no readiness form and no
-      executor could open over it. Maps to Z_FEATURE_MULTI_THREAD.
+      `zpico_lease` were two tasks. Required for non-blocking operation.
+      Maps to Z_FEATURE_MULTI_THREAD.
 
 config NROS_CONSOLE_WHOLE_LINES
     bool "Send each C stdout line to printk whole, so cores never split a line"
@@ -360,7 +358,7 @@ config NROS_CONSOLE_WHOLE_LINES
       uniprocessor image can still split a line when a thread is preempted
       mid-line, but that was not observed, so it is off there.
 
-config NROS_CONSOLE_WHOLE_LINES_BUFFER
+config NROS_CONSOLE_WHOLE_LINES_BUFFER_BYTES
     int "Per-thread line buffer for NROS_CONSOLE_WHOLE_LINES (bytes)"
     depends on NROS_CONSOLE_WHOLE_LINES
     range 16 1024
@@ -369,7 +367,7 @@ config NROS_CONSOLE_WHOLE_LINES_BUFFER
       Thread-local storage, so every thread pays it. A longer line is sent in
       pieces, each still whole.
 
-config NROS_EDMA_WARM_RESET_QUIESCE
+config NROS_ZEPHYR_EDMA_WARM_RESET_QUIESCE
     bool "Quiesce eDMA v3 channels a warm reset left running"
     depends on DMA_MCUX_EDMA_V3
     default y
@@ -492,7 +490,7 @@ config NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM
     help
       Put the sched_task/level thread stacks in DTCM, beside the task stacks: the
       shim's pool (`nros_sched_task_stacks`, NROS_ZEPHYR_MAX_SCHED_TASKS slots of
-      NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, used by a level whose entry declares no
+      NROS_ZEPHYR_SCHED_TASK_STACK_BYTES, used by a level whose entry declares no
       stack, as every Rust `nros::main!` derived level does) and a generated
       C/C++ entry's per-level `K_THREAD_STACK_DEFINE` statics
       (<rclc/detail/sched_task_memory_zephyr.h>).
@@ -524,7 +522,7 @@ config NROS_ZEPHYR_TASK_SLOTS
       consuming new ones. `nros_zephyr_task_create` prints
       "OUT OF THREAD SLOTS" and returns -1 when none is free, and the usual
       loser is the read task (no rx, then session expiry). Total cost is
-      NROS_ZEPHYR_TASK_SLOTS x NROS_ZEPHYR_TASK_STACK_SIZE.
+      NROS_ZEPHYR_TASK_SLOTS x NROS_ZEPHYR_TASK_STACK_BYTES.
 
       DERIVED on a zenoh image (issue 1808) from the transport's own tasks:
       a zenoh session runs ONE executor thread (RFC-0110 D2: the read path,
@@ -558,7 +556,7 @@ config NROS_ZEPHYR_MAX_SCHED_TASKS
       `[tasks.*]` threads `nros_zephyr_sched_task_create` can spawn from its
       static pool. A sched_task past the pool fails to spawn and the image logs
       "pool exhausted? CONFIG_NROS_ZEPHYR_MAX_SCHED_TASKS". Total cost is
-      NROS_ZEPHYR_MAX_SCHED_TASKS x NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, paid only by an
+      NROS_ZEPHYR_MAX_SCHED_TASKS x NROS_ZEPHYR_SCHED_TASK_STACK_BYTES, paid only by an
       image that declares a sched_task: --gc-sections drops the pool from every
       tierless image (issue 1131 measured 87 of 91 images carrying none).
 
@@ -567,19 +565,8 @@ config NROS_ZEPHYR_MAX_SCHED_TASKS
       producer at all, so the diagnostic named a knob nobody could set
       (phase-412).
 
-config NROS_ZEPHYR_TIER_STACK_SIZE
-    int "DEPRECATED: renamed NROS_ZEPHYR_SCHED_TASK_STACK_SIZE (0 = unset)"
-    default 0
-    range 0 16777216
-    help
-      Deprecated (phase 536): the old name of
-      NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, kept for one release. A non-zero
-      value is the new symbol's default, and the configure warns when a
-      .conf file sets it. State NROS_ZEPHYR_SCHED_TASK_STACK_SIZE instead.
-
-config NROS_ZEPHYR_SCHED_TASK_STACK_SIZE
+config NROS_ZEPHYR_SCHED_TASK_STACK_BYTES
     int "nano-ros Zephyr level thread stack size when no member states one (bytes)"
-    default NROS_ZEPHYR_TIER_STACK_SIZE if NROS_ZEPHYR_TIER_STACK_SIZE != 0
     default 16384
     range 512 16777216
     help
@@ -587,14 +574,14 @@ config NROS_ZEPHYR_SCHED_TASK_STACK_SIZE
       of its members states a stack and the sched_task declares no `stack_bytes`
       (phase-509 P9, RFC-0108 D3). A level's stack is derived from its
       members: the largest member's stack plus the worker's own frame
-      (NROS_ZEPHYR_LEVEL_WORKER_FRAME). A member that states nothing takes
+      (NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES). A member that states nothing takes
       the per-callback default, which is this value minus the worker frame,
       so an image whose members state nothing keeps exactly this stack per
       level. The entry declares each stack as a static
       (sched_task_memory_zephyr.h); the shim's fixed pool slots of this size
       serve only an entry generated before issue 1232.
 
-config NROS_ZEPHYR_LEVEL_WORKER_FRAME
+config NROS_ZEPHYR_LEVEL_WORKER_FRAME_BYTES
     int "nano-ros level worker frame (bytes)"
     default 13312
     range 0 1048576
@@ -622,7 +609,7 @@ config NROS_ZEPHYR_LEVEL_WORKER_FRAME
       (issue 2065, mps2/an385 under QEMU, setup peak 50,968 B debug,
       47,456 B release; steady 5,952 B / 5,816 B).
 
-      It must stay below NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, whose difference
+      It must stay below NROS_ZEPHYR_SCHED_TASK_STACK_BYTES, whose difference
       with it is the per-callback default.
 
 config NROS_EXECUTOR_MAX_LEVELS
@@ -1024,7 +1011,7 @@ config NROS_ZENOH_RAWETH_TRANSPORT
 # Zenoh Platform Configuration
 # =============================================================================
 
-config NROS_ZENOH_LOCATOR
+config NROS_LOCATOR
     string "Zenoh router locator"
     default "tcp/127.0.0.1:7447"
     help
@@ -1051,17 +1038,11 @@ config NROS_ZENOH_LOCATOR
       Safe to move because a fixture that needs an isolated router ALLOCATES
       one and passes it explicitly (`west_zenoh_locator`, or the role-leaf
       formula in `scripts/build/zephyr-fixture-leaves.sh` -> a
-      `-DCONFIG_NROS_ZENOH_LOCATOR` define), so this default is what a USER
+      `-DCONFIG_NROS_LOCATOR` define), so this default is what a USER
       gets, not what the matrix runs on. Measured over the built tree when
       this changed: of 35 zephyr images carrying a locator, 34 set their own
       and 1 (`build-logging-smoke`, which publishes nothing) rode the
       default. No fixture claims 7447.
-
-config NROS_TRANSPORT_SERIAL
-    bool "Enable serial/UART transport"
-    select NROS_ZENOH_LINK_SERIAL
-    help
-      Enable serial/UART transport for zenoh-pico.
 
 endif # NROS_RMW_ZENOH
 
@@ -1260,7 +1241,7 @@ config NROS_CAPABILITY_SIM_TIME
       cargo feature: every node serving parameters then declares
       `use_sim_time`, and setting it true subscribes `/clock`.
 
-config NROS_PARAM_STORE
+config NROS_PARAMS_STORE
     bool "The image's launch file seeds a parameter"
     help
       Set by `nros build` when a node in the image's launch file carries a
@@ -1517,7 +1498,7 @@ config NROS_EXECUTOR_BACKING_BYTES
       and the arena (and the parameter store, when the image builds one).
 
       A STATED number covers the executor's tables only: when the image builds
-      a parameter store (NROS_CAPABILITY_PARAM_SERVICES or NROS_PARAM_STORE),
+      a parameter store (NROS_CAPABILITY_PARAM_SERVICES or NROS_PARAMS_STORE),
       the store's words are carved from the same static and added ON TOP, so
       the reservation is then 8 x (this + the store). Deriving is the right
       answer for an image that does not care which budget the bytes come out
@@ -1720,7 +1701,7 @@ config NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES
       -1 DERIVES it: when the contract's `params:` declare
       every node's parameters, nros-node sizes the buffer for the largest
       message those names and types can produce at the store's capacities
-      (CONFIG_NROS_MAX_STRING_VALUE_LEN, CONFIG_NROS_MAX_ARRAY_LEN,
+      (CONFIG_NROS_MAX_STRING_VALUE_LEN, CONFIG_NROS_PARAMS_MAX_ARRAY_LEN,
       CONFIG_NROS_MAX_BYTE_ARRAY_LEN, CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN).
       Without a declaration the crate default of 4096 stands. Stating a
       number here WINS; a request or reply past it is dropped and logged
@@ -1861,63 +1842,12 @@ config NROS_LOG_ROSOUT_RECORDS
       cargo features.
 
 
-# prompt: Array parameter capacity in elements (-1 = derive)
-config NROS_MAX_ARRAY_LEN
-    int
-    default -1
-    help
-      Elements a `bool_array`, `integer_array` or `double_array` parameter
-      can hold (nros-params build.rs). A `string_array` has its own element
-      bound, MAX_STRING_ARRAY_LEN.
-
-      -1 DERIVES 0 when the contract's `params:` declare none of those
-      types. When one is declared, state a number here; the build refuses,
-      naming the parameter and this knob, if nothing does. Without a
-      declaration the crate default of 32 stands.
-
-
-# prompt: Maximum declared parameters per image (-1 = derive)
-config NROS_MAX_PARAMETERS
-    int
-    default -1
-    help
-      Static parameter-store pool size (nros-params build.rs). A node
-      declaring more parameters than this is refused at boot: the runtime
-      logs the node, the parameter and this knob, and the declaration
-      fails (C++ stops the boot with Full, -6). The Autoware trajectory follower
-      declares ~150.
-
-      -1 DERIVES it from the contract's `params:`: every
-      declared parameter plus one `use_sim_time` per node, which nano-ros
-      declares on every node. An image whose contract declares no
-      parameters (or declares them on only some nodes) falls through to the
-      crate default of 32. Stating a number here WINS.
-
-
-# prompt: String-array parameter capacity in elements (-1 = derive)
-config NROS_MAX_STRING_ARRAY_LEN
-    int
-    default -1
-    help
-      Elements a `string_array` parameter can hold (nros-params build.rs);
-      each element is bounded by MAX_STRING_VALUE_LEN. A string array is
-      the largest value a slot can hold (elements x string length), and
-      every slot is as large as the largest value, so this bound is kept
-      apart from MAX_ARRAY_LEN: an image with a `string` and a
-      `double_array` but no `string_array` pays for neither product.
-
-      -1 DERIVES 0 when the contract's `params:` declare no `string_array`.
-      When one is declared, state a number here; the build refuses, naming
-      the parameter and this knob, if nothing does. Without a declaration
-      the crate default of 32 stands.
-
-
 # prompt: Application heap arena size (bytes)
 config NROS_MEMORY_HEAP_BYTES
     int
     default 1048576 if NROS_RMW_CYCLONEDDS
     default 196608 if NROS_CAPABILITY_LIFECYCLE
-    default 114688 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE
+    default 114688 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAMS_STORE
     default 131072 if RUST
     default 65536
     help
@@ -1928,7 +1858,7 @@ config NROS_MEMORY_HEAP_BYTES
       own knob, threadx.byte_pool_bytes.
 
       A PARAM_SERVICES image, one whose launch seeds a parameter
-      (NROS_PARAM_STORE), and a LIFECYCLE one get 192 KiB: those capabilities
+      (NROS_PARAMS_STORE), and a LIFECYCLE one get 192 KiB: those capabilities
       allocate their services' buffers from this arena, and nothing sized it
       from the declaration, so such an image LINKED and then halted at boot.
 
@@ -2028,6 +1958,35 @@ config NROS_MEMORY_HEAP_BYTES
       them, and it names the value to state.
 
 
+# prompt: /parameter_events publisher history depth
+config NROS_PARAMS_EVENTS_DEPTH
+    int
+    default 1
+    range 1 1000
+    help
+      History depth of each node's /parameter_events publisher, read by
+      nros-params build.rs. Upstream's
+      parameter_events profile is KEEP_LAST(1000); a reliable DDS writer
+      reserves that history, so an RTOS image defaults to 1. Depth is not a
+      QoS matching criterion, so a subscriber with upstream's profile still
+      matches.
+
+
+# prompt: Array parameter capacity in elements (-1 = derive)
+config NROS_PARAMS_MAX_ARRAY_LEN
+    int
+    default -1
+    help
+      Elements a `bool_array`, `integer_array` or `double_array` parameter
+      can hold (nros-params build.rs). A `string_array` has its own element
+      bound, MAX_STRING_ARRAY_LEN.
+
+      -1 DERIVES 0 when the contract's `params:` declare none of those
+      types. When one is declared, state a number here; the build refuses,
+      naming the parameter and this knob, if nothing does. Without a
+      declaration the crate default of 32 stands.
+
+
 # prompt: Byte-array parameter capacity in bytes (-1 = derive)
 config NROS_PARAMS_MAX_BYTE_ARRAY_BYTES
     int
@@ -2092,6 +2051,42 @@ config NROS_PARAMS_MAX_NAME_BYTES
       the crate default of 64 stands.
 
 
+# prompt: Maximum declared parameters per image (-1 = derive)
+config NROS_PARAMS_MAX_PARAMETERS
+    int
+    default -1
+    help
+      Static parameter-store pool size (nros-params build.rs). A node
+      declaring more parameters than this is refused at boot: the runtime
+      logs the node, the parameter and this knob, and the declaration
+      fails (C++ stops the boot with Full, -6). The Autoware trajectory follower
+      declares ~150.
+
+      -1 DERIVES it from the contract's `params:`: every
+      declared parameter plus one `use_sim_time` per node, which nano-ros
+      declares on every node. An image whose contract declares no
+      parameters (or declares them on only some nodes) falls through to the
+      crate default of 32. Stating a number here WINS.
+
+
+# prompt: String-array parameter capacity in elements (-1 = derive)
+config NROS_PARAMS_MAX_STRING_ARRAY_LEN
+    int
+    default -1
+    help
+      Elements a `string_array` parameter can hold (nros-params build.rs);
+      each element is bounded by MAX_STRING_VALUE_LEN. A string array is
+      the largest value a slot can hold (elements x string length), and
+      every slot is as large as the largest value, so this bound is kept
+      apart from MAX_ARRAY_LEN: an image with a `string` and a
+      `double_array` but no `string_array` pays for neither product.
+
+      -1 DERIVES 0 when the contract's `params:` declare no `string_array`.
+      When one is declared, state a number here; the build refuses, naming
+      the parameter and this knob, if nothing does. Without a declaration
+      the crate default of 32 stands.
+
+
 # prompt: String parameter capacity in bytes (-1 = derive)
 config NROS_PARAMS_MAX_STRING_VALUE_BYTES
     int
@@ -2111,22 +2106,8 @@ config NROS_PARAMS_MAX_STRING_VALUE_BYTES
       declaration the crate default of 256 stands.
 
 
-# prompt: /parameter_events publisher history depth
-config NROS_PARAM_EVENTS_DEPTH
-    int
-    default 1
-    range 1 1000
-    help
-      History depth of each node's /parameter_events publisher, read by
-      nros-params build.rs. Upstream's
-      parameter_events profile is KEEP_LAST(1000); a reliable DDS writer
-      reserves that history, so an RTOS image defaults to 1. Depth is not a
-      QoS matching criterion, so a subscriber with upstream's profile still
-      matches.
-
-
 # prompt: Parameter/lifecycle service inbox slot size (bytes, -1 = derive)
-config NROS_PARAM_SERVICE_INBOX_BYTES
+config NROS_PARAMS_SERVICE_INBOX_BYTES
     int
     default -1
     help
@@ -2149,12 +2130,12 @@ config NROS_PARAM_SERVICE_INBOX_BYTES
       is XRCE_PARAM_REQUEST_BYTES, which raises
       NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE to fit it.
 
-      Not under NROS_RMW_ZENOH, unlike PARAM_SERVICE_INBOX_DEPTH (whose ring
+      Not under NROS_RMW_ZENOH, unlike PARAMS_SERVICE_INBOX_DEPTH (whose ring
       only a caller-inbox backend allocates): nros-node and the XRCE backend
       read this size too, so an XRCE image must be able to state it. Under
       the zenoh `if` it was undeclared there, while XRCE's own refusal told
       the user to set it.
-      Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
+      Maps to NROS_PARAMS_SERVICE_INBOX_BYTES.
 
 
 # prompt: QoS history depth the arena budgets per subscription
@@ -2381,7 +2362,7 @@ config NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES
       `[[endpoint]]` row itemises, have slots of their own: the cargo lane
       derives NROS_XRCE_BUILTIN_SERVICE_SERVERS beside the server total, and
       those slots take NROS_XRCE_BUFFER_SIZE raised to the parameter
-      family's largest request (NROS_PARAM_SERVICE_INBOX_BYTES, or derived
+      family's largest request (NROS_PARAMS_SERVICE_INBOX_BYTES, or derived
       from the contract's `params:`). The derivation abstains,
       and says so, when a server row is unpriced or the rows do not account
       for every application server, and when NROS_XRCE_MAX_SERVICE_SERVERS
@@ -2515,36 +2496,8 @@ config NROS_ACTION_INBOX_DEPTH
       NROS_ACTION_INBOX_DEPTH.
 
 
-# prompt: Entities you expect on this ROS 2 domain (0 = state the bytes instead)
-config NROS_GRAPH_MAX_ENTITIES
-    int
-    default 0
-    help
-      A DECLARED CAPABILITY, not a derivation. The graph cache holds one
-      liveliness keyexpr for every entity of every node on the domain —
-      remote nodes included — so nothing about this image can answer it.
-      What an operator does know is roughly how many nodes and endpoints
-      share the domain, and this takes that count.
-
-      The bytes follow from a measurement, not a model: a ROS 2 liveliness
-      keyexpr runs ~140 bytes and the cache stores them NUL-separated with
-      no index, so one entity costs 141 bytes. Upstream measured a host
-      running one stock talker plus the ROS 2 daemon carrying 222 tokens.
-
-      0 means "I am stating the bytes instead" — NROS_GRAPH_CACHE_SIZE
-      outranks this and keeps its own default, so nothing that already sets
-      it changes.
-
-      UNDER-STATING IS NOT A SMALLER CACHE. Overflow is counted, never
-      truncated, and a non-zero dropped count makes service_is_ready answer
-      "cannot say", which every caller reads as keep waiting; the node and
-      topic list verbs discard the count entirely and simply under-report.
-      Being generous costs .bss; being short costs a hang and a wrong graph
-      answer.
-
-
 # prompt: Parameter/lifecycle service inbox ring depth
-config NROS_PARAM_SERVICE_INBOX_DEPTH
+config NROS_PARAMS_SERVICE_INBOX_DEPTH
     int
     default 1
     help
@@ -2557,7 +2510,7 @@ config NROS_PARAM_SERVICE_INBOX_DEPTH
       clients hitting the SAME service of the SAME node inside one spin
       period is the only case depth 1 loses, and the loser sees a timeout and
       retries. Raise it to 2 for an image that serves a parameter dashboard.
-      Must be >= 1. Maps to NROS_PARAM_SERVICE_INBOX_DEPTH.
+      Must be >= 1. Maps to NROS_PARAMS_SERVICE_INBOX_DEPTH.
 
 
 # prompt: Same-session query delivery (-1 = derive, 0 = off, 1 = on)
@@ -2716,9 +2669,9 @@ config NROS_ZENOH_GRAPH_CACHE_BYTES
 
       Nothing about this image can derive it: the cache holds the
       whole DOMAIN's liveliness tokens, remote ones included. What can follow
-      the target is a STATED count: NROS_GRAPH_MAX_ENTITIES (141 bytes an
+      the target is a STATED count: NROS_ZENOH_GRAPH_MAX_ENTITIES (141 bytes an
       entity), set by the image or by a small board in its descriptor's
-      `[knobs.graph] max_entities`. 8192 still holds
+      `[knobs.zenoh] graph_max_entities`. 8192 still holds
       ~58 tokens. Overflow is counted and reported by zpico_graph_cache_copy,
       never silently truncated, so a value that is too small shows up as a
       drop count rather than as a wrong answer.
@@ -2769,6 +2722,34 @@ config NROS_ZENOH_GRAPH_DISCOVERY
       serial or CAN link the cache costs the link and buys nothing an image
       that makes no graph query of its own can use. An image that also
       compiles an IP link keeps the old default.
+
+
+# prompt: Entities you expect on this ROS 2 domain (0 = state the bytes instead)
+config NROS_ZENOH_GRAPH_MAX_ENTITIES
+    int
+    default 0
+    help
+      A DECLARED CAPABILITY, not a derivation. The graph cache holds one
+      liveliness keyexpr for every entity of every node on the domain —
+      remote nodes included — so nothing about this image can answer it.
+      What an operator does know is roughly how many nodes and endpoints
+      share the domain, and this takes that count.
+
+      The bytes follow from a measurement, not a model: a ROS 2 liveliness
+      keyexpr runs ~140 bytes and the cache stores them NUL-separated with
+      no index, so one entity costs 141 bytes. Upstream measured a host
+      running one stock talker plus the ROS 2 daemon carrying 222 tokens.
+
+      0 means "I am stating the bytes instead" — NROS_GRAPH_CACHE_SIZE
+      outranks this and keeps its own default, so nothing that already sets
+      it changes.
+
+      UNDER-STATING IS NOT A SMALLER CACHE. Overflow is counted, never
+      truncated, and a non-zero dropped count makes service_is_ready answer
+      "cannot say", which every caller reads as keep waiting; the node and
+      topic list verbs discard the count entirely and simply under-report.
+      Being generous costs .bss; being short costs a hang and a wrong graph
+      answer.
 
 
 # prompt: Subscribers served from the large payload class (-1 = derive)
@@ -3172,6 +3153,18 @@ config NROS_ZEPHYR_HEAP_SIZE
     help
       CONFIG_NROS_ZEPHYR_HEAP_SIZE is retired: set [image.<id>.knobs.memory] heap_bytes instead (CONFIG_NROS_MEMORY_HEAP_BYTES where a conf file states it)
 
+config NROS_PARAM_EVENTS_DEPTH
+    int "Retired -- setting it stops the configure"
+    default -1
+    help
+      CONFIG_NROS_PARAM_EVENTS_DEPTH is retired: set [image.<id>.knobs.params] events_depth instead (CONFIG_NROS_PARAMS_EVENTS_DEPTH where a conf file states it)
+
+config NROS_MAX_ARRAY_LEN
+    int "Retired -- setting it stops the configure"
+    default -1
+    help
+      CONFIG_NROS_MAX_ARRAY_LEN is retired: set [image.<id>.knobs.params] max_array_len instead (CONFIG_NROS_PARAMS_MAX_ARRAY_LEN where a conf file states it)
+
 config NROS_MAX_BYTE_ARRAY_LEN
     int "Retired -- setting it stops the configure"
     default -1
@@ -3196,11 +3189,35 @@ config NROS_MAX_PARAM_NAME_LEN
     help
       CONFIG_NROS_MAX_PARAM_NAME_LEN is retired: set [image.<id>.knobs.params] max_name_bytes instead (CONFIG_NROS_PARAMS_MAX_NAME_BYTES where a conf file states it)
 
+config NROS_MAX_PARAMETERS
+    int "Retired -- setting it stops the configure"
+    default -1
+    help
+      CONFIG_NROS_MAX_PARAMETERS is retired: set [image.<id>.knobs.params] max_parameters instead (CONFIG_NROS_PARAMS_MAX_PARAMETERS where a conf file states it)
+
+config NROS_MAX_STRING_ARRAY_LEN
+    int "Retired -- setting it stops the configure"
+    default -1
+    help
+      CONFIG_NROS_MAX_STRING_ARRAY_LEN is retired: set [image.<id>.knobs.params] max_string_array_len instead (CONFIG_NROS_PARAMS_MAX_STRING_ARRAY_LEN where a conf file states it)
+
 config NROS_MAX_STRING_VALUE_LEN
     int "Retired -- setting it stops the configure"
     default -1
     help
       CONFIG_NROS_MAX_STRING_VALUE_LEN is retired: set [image.<id>.knobs.params] max_string_value_bytes instead (CONFIG_NROS_PARAMS_MAX_STRING_VALUE_BYTES where a conf file states it)
+
+config NROS_PARAM_SERVICE_INBOX_BYTES
+    int "Retired -- setting it stops the configure"
+    default -1
+    help
+      CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES is retired: set [image.<id>.knobs.params] service_inbox_bytes instead (CONFIG_NROS_PARAMS_SERVICE_INBOX_BYTES where a conf file states it)
+
+config NROS_PARAM_SERVICE_INBOX_DEPTH
+    int "Retired -- setting it stops the configure"
+    default -1
+    help
+      CONFIG_NROS_PARAM_SERVICE_INBOX_DEPTH is retired: set [image.<id>.knobs.params] service_inbox_depth instead (CONFIG_NROS_PARAMS_SERVICE_INBOX_DEPTH where a conf file states it)
 
 config NROS_SUBSCRIBER_BUFFER_SIZE
     int "Retired -- setting it stops the configure"
@@ -3261,6 +3278,12 @@ config NROS_GRAPH_CACHE_SIZE
     default -1
     help
       CONFIG_NROS_GRAPH_CACHE_SIZE is retired: set [image.<id>.knobs.zenoh] graph_cache_bytes instead (CONFIG_NROS_ZENOH_GRAPH_CACHE_BYTES where a conf file states it)
+
+config NROS_GRAPH_MAX_ENTITIES
+    int "Retired -- setting it stops the configure"
+    default -1
+    help
+      CONFIG_NROS_GRAPH_MAX_ENTITIES is retired: set [image.<id>.knobs.zenoh] graph_max_entities instead (CONFIG_NROS_ZENOH_GRAPH_MAX_ENTITIES where a conf file states it)
 
 config NROS_SERVICE_BUFFER_SIZE
     int "Retired -- setting it stops the configure"
@@ -3327,7 +3350,7 @@ configdefault MAIN_STACK_SIZE
 
 # Issue 2365 -- the task pool used to inherit main's 512 KiB here; stated so a
 # Cyclone image is unchanged by the knob's own 16 KiB default.
-configdefault NROS_ZEPHYR_TASK_STACK_SIZE
+configdefault NROS_ZEPHYR_TASK_STACK_BYTES
     default 524288
 
 configdefault HEAP_MEM_POOL_SIZE

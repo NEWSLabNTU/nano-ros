@@ -328,7 +328,7 @@ def cmake_files():
 #     synthesised XRCE `host:port`, else `""`);
 #   * `<rclc/detail/app_main.h>` — the C sibling — defined both as `""` and `0` with
 #     no derivation at all, so a TU that saw only the C header dialled nothing
-#     on a board whose locator comes from `CONFIG_NROS_ZENOH_LOCATOR`;
+#     on a board whose locator comes from `CONFIG_NROS_LOCATOR`;
 #   * a third `#ifndef` further down `main.hpp` for the locator-less NuttX
 #     overload, unreachable because the ladder above it had always already
 #     defined the macro — it promised `""` and delivered whatever the first

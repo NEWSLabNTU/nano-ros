@@ -585,7 +585,7 @@ where
     //
     // Locator/domain are the BOARD's connect facts, handed in by the board
     // overlay (`nros-board-nuttx-qemu`): its `[board.net]` default, under a
-    // build-time `NROS_LOCATOR` / `NROS_DOMAIN_ID`, under the image's own
+    // build-time `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`, under the image's own
     // `system.toml` (`DeployOverlay`, through `BaseConfig::apply_overlay` —
     // the merge every other embedded board already makes). Never the runtime
     // env: the QEMU guest has none, so `from_env()` would fall back to
@@ -617,7 +617,7 @@ where
     //   * `rmw` now reaches the resolver from the bake, as it already did on
     //     every other board (issue 1050 defect (3) missed this spelling for
     //     the same reason 1434 did).
-    //   * an out-of-range baked `NROS_DOMAIN_ID` is now a loud resolver error
+    //   * an out-of-range baked `NROS_ENTRY_DOMAIN_ID` is now a loud resolver error
     //     instead of a domain the DDS layer rejects later — `resolve` applies
     //     `DOMAIN_ID_MAX` for every caller, and this one was outside it.
     //

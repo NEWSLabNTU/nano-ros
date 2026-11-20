@@ -5,7 +5,7 @@
 // themselves, and the rule for COMBINING the three places it can come from.
 //
 // Three sources exist: the baked baseline below, the compile-time Kconfig blob
-// (`CONFIG_NROS_CYCLONE_CONFIG_XML`), and the caller's `CYCLONEDDS_URI`. Until
+// (`CONFIG_NROS_CYCLONEDDS_CONFIG_XML`), and the caller's `CYCLONEDDS_URI`. Until
 // this phase `session.cpp` SELECTED one of them with a three-way ternary, so a
 // user who set either override silently lost the entire baseline — the
 // `<Threads>` stack sizes, the `<Sizing>` receive buffers, the
@@ -57,7 +57,7 @@
 // every OTHER Zephyr board (the FVP AEMv8-R image, any real board) ran Cyclone
 // on its desktop defaults: a 1 MiB `Sizing/ReceiveBufferSize`, per-socket
 // receive threads, and — because no domain was composed — a
-// `CONFIG_NROS_CYCLONE_CONFIG_XML` that reached nothing. Since issue 1633 ddsrt
+// `CONFIG_NROS_CYCLONEDDS_CONFIG_XML` that reached nothing. Since issue 1633 ddsrt
 // allocates from the nros heap (`CONFIG_NROS_MEMORY_HEAP_BYTES`, 1 MiB with
 // Cyclone), so the receive buffer alone (1,048,576 + the 48-byte ~~`nn_rbuf`~~
 // header = the measured 1,048,624-byte request) no longer fit, and the FVP

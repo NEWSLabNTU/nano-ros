@@ -291,12 +291,12 @@ impl Config {
         config.base.apply_direct(&d);
 
         // Phase 177.38 — build-time ROS-domain override for per-fixture
-        // isolation. `NROS_DOMAIN_ID` set at build time bakes a distinct domain
+        // isolation. `NROS_ENTRY_DOMAIN_ID` set at build time bakes a distinct domain
         // into this fixture without editing config.toml (the example default
         // stays clean). Cyclone derives RTPS ports from the domain, so
         // build-fixtures gives each communicating role-set its own domain and
         // concurrent fixtures don't collide. Empty/unset keeps the config value.
-        if let Some(d) = option_env!("NROS_DOMAIN_ID").and_then(parse_u32) {
+        if let Some(d) = option_env!("NROS_ENTRY_DOMAIN_ID").and_then(parse_u32) {
             config.base.domain_id = d;
         }
 

@@ -119,7 +119,7 @@
  *
  * Static-pool parameter table backing the `~/get_parameters`,
  * `~/set_parameters`, etc. services. Parameter sizes are bounded by
- * `NROS_MAX_PARAMETERS` and friends — see @ref configuration.
+ * `NROS_PARAMS_MAX_PARAMETERS` and friends — see @ref configuration.
  *
  * @see @ref grp_service for the underlying RPC machinery
  */

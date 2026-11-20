@@ -2689,11 +2689,11 @@ mod tests {
     /// half-copied weight matrix.
     ///
     /// The bound is ASKED FOR rather than named: `MAX_ARRAY_LEN` is a build
-    /// knob (`NROS_MAX_ARRAY_LEN`) and `nros-node` does not re-export it, so a
+    /// knob (`NROS_PARAMS_MAX_ARRAY_LEN`) and `nros-node` does not re-export it, so a
     /// test that spelled a number would be asserting this build's knob rather
     /// than the property.
     #[test]
-    // 4096 elements so the probe outruns any configured `NROS_MAX_ARRAY_LEN`;
+    // 4096 elements so the probe outruns any configured `NROS_PARAMS_MAX_ARRAY_LEN`;
     // a test thread's stack holds the 32 KiB arrays comfortably.
     #[allow(clippy::large_stack_arrays)]
     fn an_array_longer_than_the_store_is_refused() {

@@ -18,7 +18,7 @@ namespace nros_rmw_cyclonedds {
 /// Read an environment variable, or `nullptr` where there is no environment.
 ///
 /// The three env lookups in this backend (`CYCLONEDDS_URI`,
-/// `NROS_RMW_CYCLONEDDS_SKIP_PREFIX`, and `service.cpp`'s `env_u64`) all wrote
+/// `NROS_CYCLONEDDS_SKIP_PREFIX`, and `service.cpp`'s `env_u64`) all wrote
 /// `std::getenv`, which does not compile on the arm-none-eabi cross: that build
 /// passes `-ffreestanding`, so `__STDC_HOSTED__` is 0 and newlib's
 /// `<stdlib.h>` declares no `getenv` in either namespace.

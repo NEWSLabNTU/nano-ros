@@ -161,7 +161,7 @@ Connects to a zenoh router. Requires POSIX API for zenoh-pico threads.
 ```ini
 CONFIG_NROS=y
 # CONFIG_NROS_RMW_ZENOH=y  # default, can be omitted
-CONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:7447"
+CONFIG_NROS_LOCATOR="tcp/127.0.0.1:7447"
 CONFIG_POSIX_API=y
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=32
 CONFIG_MAX_PTHREAD_COND_COUNT=16
@@ -232,7 +232,7 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `CONFIG_NROS_ZENOH_LOCATOR` | string | `"tcp/127.0.0.1:7447"` | Router address |
+| `CONFIG_NROS_LOCATOR` | string | `"tcp/127.0.0.1:7447"` | Router address |
 | `CONFIG_NROS_ZENOH_MULTI_THREAD` | bool | y | Zenoh-pico multithreading |
 | `CONFIG_NROS_ZENOH_PUBLICATION` | bool | y | Publication support |
 | `CONFIG_NROS_ZENOH_SUBSCRIPTION` | bool | y | Subscription support |

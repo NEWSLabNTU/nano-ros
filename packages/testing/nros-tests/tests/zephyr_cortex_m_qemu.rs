@@ -141,7 +141,7 @@ fn run_pubsub_cell(lang: &str, matrix_lang: Lang, wait_marker: &str, budget: Dur
     // Bind 0.0.0.0, not loopback: the guest reaches the host through SLIRP's
     // 10.0.2.2 gateway, and a loopback-only listener leaves those SYNs
     // unreachable. The image has the matching locator baked in at build time
-    // (`CONFIG_NROS_ZENOH_LOCATOR`), because a Cortex-M image has no env to read
+    // (`CONFIG_NROS_LOCATOR`), because a Cortex-M image has no env to read
     // one from — so this port and the fixture's must agree, and both derive from
     // `port_of`.
     let port = port_of(PlatformId::ZephyrQemuCortexM, matrix_lang, Workload::Pubsub);

@@ -45,7 +45,7 @@
 //! number (`nros_tests::alloc::port_of`) — the SAME formula the fixture
 //! bakers use (`examples/fixtures.toml` `NROS_ENTRY_LOCATOR` cmake_defs,
 //! the Cargo deploy metadata, and the west lane
-//! `scripts/build/zephyr-fixture-leaves.sh` `-DCONFIG_NROS_ZENOH_LOCATOR`
+//! `scripts/build/zephyr-fixture-leaves.sh` `-DCONFIG_NROS_LOCATOR`
 //! bakes), so the router the test starts and the locator the image dials
 //! can never disagree by hand.
 //!
