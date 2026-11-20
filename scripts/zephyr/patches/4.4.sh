@@ -50,6 +50,13 @@ bash ./scripts/zephyr/pthread-mutex-unlock-patch-4.4.sh "$WORKSPACE"
 # eDMA's __aligned(32) TCD pool in DTCM can land 8-aligned and the first DMA
 # transfer asserts in EDMA_TcdSetTransferConfig.
 bash ./scripts/zephyr/tcm-section-align-patch-4.4.sh "$WORKSPACE"
+# Issue 2766 -- the CTF `app_marker` event nano-ros's Zephyr trace sink
+# forwards to. 4.4 ids are 16-bit and 0x70 is taken
+# (gpio_port_set_bits_raw_exit), so this line's id sits far above upstream's
+# sequential range: a pin move that grows the table does not reach it. The
+# priority-change event needs no patch here; 4.4 carries upstream's mapping.
+echo "[zephyr setup] 4.4 line: applying CTF app_marker patch (idempotent)..."
+bash ./scripts/zephyr/ctf-app-marker-patch.sh "$WORKSPACE" 0xF000
 # Issue 2187 — the zephyr-lang-rust gpio pair (issue 0432) is NOT a 3.7-only
 # patch: 4.4's pin (a763400) still emits a one-cell `GpioPin::new` call for
 # mps2/an385's `#gpio-cells = <1>` controller, so every Rust mps2 image failed

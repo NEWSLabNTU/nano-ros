@@ -217,13 +217,14 @@ void nros_zephyr_epoch_acquire_configured(void) {
  * WHY THE DECISION LIVES IN C, same reason as
  * `nros_zephyr_epoch_acquire_configured` above. Two facts force it:
  *
- *  1. `sys_trace_app_marker` is an OUT-OF-TREE Zephyr patch carried by the
- *     consumer, not by nano-ros (`patches/zephyr/0002-ctf-app-marker-event.patch`
- *     in autoware-safety-island; absent from `zephyr/patches/` here). If any
- *     nano-ros crate or TU named the symbol unconditionally, every Zephyr image
- *     built WITHOUT that patch would fail to link. Naming it only inside this
- *     `#ifdef`, in a TU the module already compiles, keeps an unpatched image
- *     linking against an empty function.
+ *  1. `sys_trace_app_marker` is not stock Zephyr. nano-ros's patch set adds
+ *     it (`scripts/zephyr/ctf-app-marker-patch.sh`, run by
+ *     `scripts/zephyr/patches/<line>.sh`, issue 2766), but a workspace that
+ *     never ran the set, or lost it to a `west update`, does not have it. If
+ *     any nano-ros crate or TU named the symbol unconditionally, such an image
+ *     would fail to link. Naming it only inside this `#ifdef`, in a TU the
+ *     module already compiles, keeps an unpatched image linking against an
+ *     empty function.
  *  2. The symbol exists only under `CONFIG_TRACING_CTF`, and Kconfig knobs
  *     reach the Zephyr C lane and NOT the cargo one (issue 0460) — so no Rust
  *     arm can hold this `#ifdef` without a build-script knob read.
