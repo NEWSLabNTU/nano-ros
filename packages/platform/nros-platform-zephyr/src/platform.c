@@ -1683,6 +1683,17 @@ static atomic_t nros_log_pool_claimed;
 static atomic_t nros_log_pool_fallbacks;
 static atomic_t nros_log_pool_reported;
 
+/* Callers inside the sink right now. The default of ONE buffer rests on an
+ * assumption this file does not own: `nros_log` holds one process-wide guard
+ * across every `sink.log()` (its dispatch guard), so through `nros_log` the
+ * sink is never entered twice at once and one buffer always suffices. If that
+ * guard ever stops serialising delivery, every concurrent record would take
+ * the truncating fallback. In a release image the once-only warning below
+ * says so; with CONFIG_ASSERT the first such entry fails here, naming the
+ * assumption. Entries up to the configured count are legal (an image that
+ * calls the sink directly from several contexts raises the count). */
+static atomic_t nros_log_sink_inside;
+
 static int nros_log_pool_claim(void) {
     for (int i = 0; i < CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS; i++) {
         if (!atomic_test_and_set_bit(&nros_log_pool_claimed, i)) {
@@ -1710,12 +1721,20 @@ void nros_platform_log_write(uint8_t severity, const uint8_t* name_ptr, uintptr_
         return;
     }
 #if CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS > 0
+    atomic_val_t inside = atomic_inc(&nros_log_sink_inside);
+    __ASSERT(inside < CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS,
+             "nros: %ld callers inside the log sink at once, more than its %d buffer(s); "
+             "nros_log no longer delivers one record at a time, so raise "
+             "CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS",
+             (long)inside + 1, CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS);
+    (void)inside;
     int slot = nros_log_pool_claim();
     if (slot >= 0) {
         (void)nros_platform_log_format(nros_log_pool[slot], NROS_PLATFORM_LOG_BUFSZ, name_ptr,
                                        name_len, msg_ptr, msg_len);
         nros_platform_log_emit(severity, nros_log_pool[slot]);
         atomic_clear_bit(&nros_log_pool_claimed, slot);
+        atomic_dec(&nros_log_sink_inside);
         return;
     }
     /* Every buffer is in use: format into a small one here, truncated and
@@ -1732,6 +1751,7 @@ void nros_platform_log_write(uint8_t severity, const uint8_t* name_ptr, uintptr_
         memcpy(&small[sizeof(small) - 4], "...", 4);
     }
     nros_platform_log_emit(severity, small);
+    atomic_dec(&nros_log_sink_inside);
 #else
     char buf[NROS_PLATFORM_LOG_BUFSZ];
     (void)nros_platform_log_format(buf, sizeof(buf), name_ptr, name_len, msg_ptr, msg_len);
