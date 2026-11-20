@@ -235,7 +235,7 @@ fn a_path_pin_resolves_to_the_checkouts_own_build() {
 // ---------------------------------------------------------------------------
 
 fn git(dir: &Path, args: &[&str]) -> String {
-    let out = Command::new("git")
+    let out = nros_build_paths::git_env::nros_git_command("git")
         .arg("-C")
         .arg(dir)
         .args(args)
