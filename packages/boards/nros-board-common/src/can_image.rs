@@ -1,4 +1,6 @@
-//! RFC-0132 D4 (phase-560 W9.e) -- the image's CAN frame device, from the
+// RFC-0132 D4 (phase-560 W9.e).
+
+//! The image's CAN frame device, from the
 //! `can` row of its `NROS_IMAGE_NET` text to the backend's `open(NULL)`.
 //!
 //! The device is named once per board stack (`[image.<id>.can] device` on a

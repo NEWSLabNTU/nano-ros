@@ -134,6 +134,11 @@ SURFACES = {
                 "FreeRTOS board boot task census (c/freertos_task_glue.c), "
                 "board-local (no ABI header)"
             ),
+            "nros_board_can_set_image_device": (
+                "the image's CAN frame device store (RFC-0132 D4, "
+                "nros-board-common/c/nros_board_can_image.h), board-internal: "
+                "the Linux-process boards hand the device to it at boot"
+            ),
             "nros_board_freertos_run_init_array": (
                 "FreeRTOS board ctor runner, board-local (no ABI header)"
             ),

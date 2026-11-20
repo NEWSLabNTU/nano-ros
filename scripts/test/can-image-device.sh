@@ -24,7 +24,7 @@
 # west road needs no probe here: its device is the devicetree's
 # (`nros,can`, else `zephyr,canbus`), opened by `scripts/test/can-frame-zephyr.sh`.
 #
-# Needs: `nros` (just setup-cli), the interface, `candump` (can-utils), and the
+# Needs: this checkout's `nros` (just setup-cli), the interface, `candump` (can-utils), and the
 # ROS zenoh router. A missing precondition is a REPORTED skip
 # (`nros_check_unverified`), never a pass; under NROS_CHECK_SKIP_STRICT=1 it
 # fails. Nothing is created on the host.
@@ -34,6 +34,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 # shellcheck source=../build/check-skip.sh
 source scripts/build/check-skip.sh
+# shellcheck source=../build/cargo.sh
+source scripts/build/cargo.sh
 # shellcheck source=../lib/deadline.sh
 . scripts/lib/deadline.sh
 # shellcheck source=../lib/grep-q.sh
@@ -52,8 +54,8 @@ is_up() {
     (( flags & 0x1 ))
 }
 
-if ! command -v nros >/dev/null 2>&1; then
-    nros_check_unverified "$NAME" "no nros on PATH (just setup-cli, then source ./activate.sh)" || exit 1
+if ! NROS="$(nros_cli_bin --checkout-only)"; then
+    nros_check_unverified "$NAME" "this checkout's nros CLI is not built (just setup-cli)" || exit 1
     exit 0
 fi
 if ! command -v candump >/dev/null 2>&1; then
@@ -91,7 +93,7 @@ fi
 
 build() { # <road> <image> -> prints the executable
     local road="$1" image="$2" bin
-    if ! (cd "$WORK/$road" && "${NROS_DEADLINE[@]}" 1800 nros build "$image") \
+    if ! (cd "$WORK/$road" && "${NROS_DEADLINE[@]}" 1800 "$NROS" build "$image") \
         >"$OUT/build-$road-$image.log" 2>&1; then
         tail -30 "$OUT/build-$road-$image.log" >&2
         echo "[$NAME] FAIL: $road road: nros build $image" >&2
