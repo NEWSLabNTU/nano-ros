@@ -96,7 +96,6 @@ portENTER_CRITICAL
 prvIsFreeRTOSThread
 pvPortRealloc
 pxPortInitialiseStack
-taskYIELD
 traceFREE
 traceMALLOC
 ucQueueType
@@ -584,3 +583,7 @@ st_info
 # ros2cli (the ros2 command-line tool)
 DirectNode
 NodeStrategy
+
+# Linux kernel / libc (Unix socket ioctls and fields)
+SIOCOUTQ
+sun_path
