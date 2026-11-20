@@ -7,6 +7,7 @@
 # Regenerate ONLY for a deliberate retirement, and say which gate went:
 #   python3 scripts/check/check-gate-lists.py --write-baseline
 abi-bindings
+abi-enum-width
 absolute-paths
 activate-shells
 api-parity-ledger

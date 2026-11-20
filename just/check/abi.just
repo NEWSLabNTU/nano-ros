@@ -85,6 +85,15 @@ ddsrt-funnel-producers:
 cpp-ffi-error-mapping:
     @python3 scripts/check-cpp-ffi-error-mapping.py
 
+# Issue 2758 — every enum in a header bindgen reads (parsed from
+# gen-abi-bindings.sh, never listed) carries a 0x7fffffff width pin and a
+# `sizeof == sizeof(int)` static assert. The Rust side is host bindgen output
+# (`c_uint`); unpinned, the C enum is 1 byte on arm-none-eabi. Buildless;
+# self-tests on every run.
+[private]
+abi-enum-width:
+    @python3 scripts/check/check-abi-enum-width.py
+
 # Issue 0160 — hand-mirrored FFI structs (component.h vs cbindgen's
 # nros_cpp_ffi.h) must not drift on append (the #131 stale-mirror ABI class).
 [private]

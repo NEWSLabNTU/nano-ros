@@ -25,17 +25,17 @@
 
 #include <stddef.h>
 
-/* The #238 core: the event-kind enum is an UNFIXED C enum. This TU is
- * compiled HOST-side (int-enum ABI, no `-fshort-enums`), so it is
- * int-sized here — 4 bytes. It is passed by value into
- * `subscription_event_init` / `publisher_event_init` and out
- * through `rmw_status_event_callback_t`. The Rust mirror MUST be
- * `#[repr(C)]` (tracks the C ABI per-target), never a fixed
- * `#[repr(u8)]`/`#[repr(i32)]`. On ARM EABI the same enum is 1 byte on
- * BOTH sides — that target is not checked here (the Rust
- * ~~`abi_layout`~~ block gated its width pin to non-ARM too). */
+/* The #238 core, re-stated by issue 2758: the Rust side of every rmw ABI
+ * enum is bindgen's host answer, `c_uint` (4 bytes), committed and compiled
+ * for every target. An UNFIXED C enum is 1 byte on arm-none-eabi (AAPCS
+ * variable-size enums), so each enum in the headers now carries a
+ * `*_FORCE_INT_WIDTH_ = 0x7fffffff` pin and asserts its own int width in the
+ * header (`NROS_RMW_ASSERT_ENUM_INT_WIDTH`), which every ARM TU that includes
+ * it checks. This TU is compiled host-side, so the line below proves only the
+ * host half; the in-header assert is the one that covers a target, and
+ * `just check abi-enum-width` holds every ABI enum to having one. */
 _Static_assert(sizeof(rmw_event_type_t) == 4,
-               "rmw_event_type_t must be C-int-sized host-side (issue #238)");
+               "rmw_event_type_t must be C-int-sized (issues #238, 2758)");
 
 /* QoS mirror — the by-value struct crossing the create_* slots. Must
  * match the Rust side's `size_of::<NrosRmwQos>() == 24`.
