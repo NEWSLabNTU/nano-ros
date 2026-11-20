@@ -1171,6 +1171,84 @@ fn test_native_to_zephyr_e2e() {
     }
 }
 
+// Issue 2779 -- the Zephyr twin of `interop_e2e`'s reopen phase (issue 2774).
+/// A Zephyr listener whose router dies and comes back on the same port reopens
+/// its session and receives again, without being restarted.
+///
+/// Zephyr reads TCP through zenoh-pico's `tcp_zephyr.c`. Before the fix a
+/// router that went away without zenoh's CLOSE left that read returning 0
+/// ("nothing yet") forever, so the session never closed and never reopened:
+/// samples stopped at the outage and did not resume. The native talker on the
+/// same router reopens through `tcp_posix.c`, so a sample after the restart can
+/// only reach the listener over a session it reopened.
+#[test]
+fn test_zephyr_listener_reopens_after_its_router_restarts() {
+    require_zephyr();
+
+    let mut router = nros_tests::fixtures::or_unmet(ZenohRouter::start_unique());
+    let locator = router.locator();
+
+    let talker_path = build_native_talker().require("native-rs-talker");
+    let zephyr_binary = resolve_example(Lang::Rust, "listener", Rmw::Zenoh);
+
+    let mut zephyr =
+        ZephyrProcess::start_with_locator(&zephyr_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr listener");
+    let _ = zephyr.wait_for_pattern(NODE_READY_MARKER, Duration::from_secs(30));
+
+    use nros_tests::process::ManagedProcess;
+    use std::process::Command;
+    let mut talker_cmd = Command::new(talker_path);
+    talker_cmd
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client")
+        .env("RUST_LOG", "info");
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    let before = zephyr.wait_for_pattern(output::LISTENER_LOG_PREFIX, Duration::from_secs(40));
+    assert!(
+        count_zephyr_received(&before) >= 1,
+        "the Zephyr listener received nothing before the outage, so the reopen \
+         cannot be judged.\nZephyr output:\n{before}"
+    );
+
+    // The outage: the router goes away without a zenoh CLOSE reaching the
+    // listener's session, stays down past a few talker periods, and comes back
+    // on the same port.
+    router.stop();
+    std::thread::sleep(Duration::from_secs(3));
+    let at_outage = count_zephyr_received(
+        &zephyr.wait_for_pattern("\u{0}never printed\u{0}", Duration::from_millis(100)),
+    );
+    std::thread::sleep(Duration::from_secs(2));
+    router.restart().expect("restart the router on its port");
+
+    // Reopen: zenoh-pico retries the session about once a second; the talker
+    // publishes once a second. 60 s covers both on a loaded native_sim host.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut after = String::new();
+    while Instant::now() < deadline {
+        after = zephyr.wait_for_pattern("\u{0}never printed\u{0}", Duration::from_millis(500));
+        if count_zephyr_received(&after) > at_outage {
+            break;
+        }
+    }
+    let talker_output = talker.collect_until("\u{0}never printed\u{0}", Duration::from_secs(1));
+    zephyr.kill();
+    drop(talker);
+    drop(router);
+
+    let resumed = count_zephyr_received(&after);
+    assert!(
+        resumed > at_outage,
+        "the Zephyr listener received {at_outage} sample(s) up to the outage and none \
+         in the 60 s after its router came back: its session did not reopen. A read \
+         that hands the router's close up as 0 polls the dead socket forever \
+         (issue 2779).\nZephyr output:\n{after}\nNative talker output:\n{talker_output}"
+    );
+}
+
 /// Test: Bidirectional Native ↔ Zephyr communication
 ///
 /// Tests that communication works in both directions simultaneously:
