@@ -23,6 +23,18 @@
 activate-shells:
     @bash scripts/check-activate-shells.sh
 
+# phase-569 W4b (RFC-0133 D7) — `<Tab>` completes `nros` names through the
+# real zsh and fish glue: board keys and RMW names, each shell sourcing what
+# `COMPLETE=<shell> nros` prints. bash is `nros-cli`'s `completion_glue` test.
+# A lane without zsh or fish does not claim them, so this runs where both are
+# installed (the CI image's shared apt list carries them).
+[private]
+[group('needs:cli')]
+[group('needs:zsh')]
+[group('needs:fish')]
+completion-glue:
+    @bash scripts/check/check-completion-glue.sh
+
 # zenoh-pico's `config.h` is BOTH a cmake-generated artifact (configure_file
 # writes it into the SOURCE tree) and a committed, hand-maintained file that is
 # the only config nano-ros reads. Being both is how it drifted three ways at

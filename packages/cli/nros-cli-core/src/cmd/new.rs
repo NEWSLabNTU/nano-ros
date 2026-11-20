@@ -114,7 +114,7 @@ pub struct Args {
     /// default).
     // phase-569 W1 (RFC-0133 D2) — checked against the RMW index in `run`,
     // the list the build resolves `rmw = "…"` against, not a list here.
-    #[arg(long)]
+    #[arg(long, add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::rmws))]
     pub rmw: Option<String>,
 
     /// ROS edition (drives the `ros-<edition>` cargo feature). Defaults to the
@@ -267,7 +267,7 @@ pub struct Args {
     /// instead, a project defaults to the platform's own board from the board
     /// catalog (`freertos` -> `mps2-an385-freertos`) and refuses, naming the
     /// candidates, when the platform has several (`threadx`).
-    #[arg(long)]
+    #[arg(long, add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::boards))]
     pub board: Option<String>,
 
     /// Deploy mode: pick the bringup package whose `system.toml` to edit

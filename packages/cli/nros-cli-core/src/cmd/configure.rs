@@ -529,7 +529,85 @@ fn configure_project(
         }
     }
     out.sync_passes = ws::sync_runs() - syncs_before;
+    // phase-569 W4b (RFC-0133 D7) — the names completion offers for this
+    // project. Best effort: completion without a cache offers no workspace
+    // names, which is never worth failing a configure for.
+    if let Err(e) = write_completion_cache(project) {
+        eprintln!("nros {verb}: note: completion cache not written: {e:#}");
+    }
     Ok(out)
+}
+
+/// A leaf's `[image.<id>]` ids, as its `system.toml` declares them.
+fn leaf_image_ids(project: &Path) -> Vec<String> {
+    nros_system_include::read_to_string(project.join("system.toml"))
+        .ok()
+        .and_then(|t| t.parse::<toml::Table>().ok())
+        .and_then(|t| t.get("image")?.as_table().cloned())
+        .map(|t| t.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// The names a user types for a workspace's images: the bare id where one
+/// bringup declares it, `<bringup>:<id>` where two do (`nros build` takes
+/// both, and needs the qualified one only then).
+fn user_image_names(qualified: &[String]) -> Vec<String> {
+    let id = |q: &str| q.rsplit_once(':').map_or(q, |(_, i)| i).to_string();
+    let mut seen = std::collections::BTreeMap::<String, usize>::new();
+    for q in qualified {
+        *seen.entry(id(q)).or_default() += 1;
+    }
+    qualified
+        .iter()
+        .map(|q| if seen[&id(q)] == 1 { id(q) } else { q.clone() })
+        .collect()
+}
+
+/// `build/nros/complete.json`: the project's images, packages and own RMW
+/// providers, keyed by its provider search path. The RMW index is the one
+/// this configure already built (memoised); the package walk is the one
+/// `nros build` runs to plan.
+fn write_completion_cache(project: &Path) -> Result<()> {
+    use crate::cmd::complete::{CACHE_SCHEMA, Cache, index_names, search_key, write_cache};
+    let images = if is_leaf(project) {
+        leaf_image_ids(project)
+    } else {
+        user_image_names(&build::workspace_images(project)?)
+    };
+    let members = crate::builder::discover::cargo_members_or_walk(project);
+    let packages = crate::builder::discover::discover(project, &members)
+        .map(|d| d.packages.into_iter().map(|p| p.name).collect())
+        .unwrap_or_default();
+    let workspace_rmws = crate::orchestration::rmw_index::for_workspace(project)
+        .map(|i| index_names(&i))
+        .unwrap_or_default();
+    let sdk_rmws: std::collections::BTreeSet<String> =
+        crate::orchestration::nano_ros_root::resolve(None, project)
+            .and_then(|r| crate::orchestration::rmw_index::for_sdk_root_path(&r).ok())
+            .map(|i| index_names(&i).into_iter().collect())
+            .unwrap_or_default();
+    // `nros router`, not `nros dev fixture-hello`: completion offers the
+    // verbs that sit beside the built-in ones.
+    let commands = crate::cmd::extension::discover(project)
+        .0
+        .into_iter()
+        .filter_map(|l| {
+            let verb = l.spelling.strip_prefix("nros ")?;
+            (!verb.contains(' ')).then(|| (verb.to_string(), l.summary))
+        })
+        .collect();
+    let cache = Cache {
+        schema: CACHE_SCHEMA,
+        commands,
+        search_path: search_key(project)?,
+        images,
+        packages,
+        rmws: workspace_rmws
+            .into_iter()
+            .filter(|n| !sdk_rmws.contains(n))
+            .collect(),
+    };
+    write_cache(project, &cache)
 }
 
 /// RFC-0120 D2 (Ruling R32) — the environment travels with the stamp. What
@@ -1073,5 +1151,30 @@ mod tests {
             PreflightRefusal(vec![m.clone()]).to_string(),
             crate::builder::preflight::report(&[m])
         );
+    }
+}
+
+#[cfg(test)]
+mod completion_cache_tests {
+    use super::*;
+
+    #[test]
+    fn an_image_id_one_bringup_declares_is_offered_bare() {
+        let q = ["a_bringup:linux", "a_bringup:zephyr", "b_bringup:zephyr"].map(String::from);
+        assert_eq!(
+            user_image_names(&q),
+            ["linux", "a_bringup:zephyr", "b_bringup:zephyr"]
+        );
+    }
+
+    #[test]
+    fn a_leaf_offers_every_image_its_system_toml_declares() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("system.toml"),
+            "[image.linux]\nboard = \"linux\"\n[image.linux_xrce]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        assert_eq!(leaf_image_ids(dir.path()), ["linux", "linux_xrce"]);
     }
 }

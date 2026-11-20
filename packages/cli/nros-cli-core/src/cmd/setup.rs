@@ -39,6 +39,7 @@ pub struct Args {
 
     /// Board to set up (resolves its toolchain/SDK package set from the index
     /// `[board.*]` table).
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::boards))]
     pub board: Option<String>,
 
     /// List every package in the index + its version.
@@ -110,7 +111,7 @@ pub struct Args {
     /// Orthogonal to the board: `zenoh` | `xrce` | `cyclonedds`. Defaults to
     /// `zenoh`. Resolves `board.packages ∪ rmw.packages`.
     // Phase 191.6.a.
-    #[arg(long)]
+    #[arg(long, add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::rmws))]
     pub rmw: Option<String>,
 
     /// Resolve + print the plan without fetching/building anything.

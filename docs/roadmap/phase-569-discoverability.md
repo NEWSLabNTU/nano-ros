@@ -159,16 +159,45 @@ without building.
       the board keys and `zenoh`. They have no test yet: no gate lane claims
       zsh or fish, so a test needing them needs a capability first (see W4b).
     - One completion took about 7 ms with a checkout `nros`.
-- **W4b, open:**
-  - the completion cache `build/nros/complete.json`, which `nros build` and
-    `nros configure` write, with its schema version and search path;
-  - the workspace names it serves (packages, images);
-  - completers for platforms, interface types, templates, codes and
-    toolchains;
-  - `SubcommandCandidates` for extension verbs;
-  - the timing and `strace` acceptance;
-  - the zsh and fish glue tests, which need a `zsh`/`fish` gate capability
-    that a lane claims.
+- **W4b, the completion cache, workspace names and acceptance:** done
+  locally (2026-11-21); it opens as a PR after W4a merges.
+  - `nros configure` and `nros build` write `build/nros/complete.json` at
+    the end of `configure_project`. It holds the schema version, the
+    provider search path (`ws::rmw_search_path_for`, the RMW index's key),
+    the images as a user types them (bare where one bringup declares the id),
+    the packages, the workspace's own RMW providers, and its top-level
+    extension verbs. Writing it never fails a configure.
+  - Completers read it only after checking the schema and the search path:
+    a cache built for another search path offers nothing. With no cache,
+    workspace names are not offered.
+  - The RMW completer no longer builds the workspace's index (a scan). It
+    offers the SDK root's backends plus the cached providers.
+  - Images complete on `nros build`, `run`, `flash`, `image-facts` and
+    `configure --image`; packages on the four `--packages-*` selections;
+    boards on `nros setup <board>`, `new --board`, `build --board` and
+    `doctor --board`; RMWs on `setup --rmw`, `new --rmw` and `plan --rmw`.
+    Extension verbs complete at `nros <Tab>` (`SubcommandCandidates`).
+  - **Acceptance:**
+    - `every_completer_answers_within_the_budget` runs seven completions
+      through the binary and holds each under 100 ms. It runs warm: dropping
+      the page cache needs root, so "cold" was not measured.
+    - `strace -f` of five completers on newslab-server139 showed one execve
+      (the binary itself), no connect and no file opened for writing.
+    - Unit tests cover the cache round trip, the search-path and schema
+      refusals, a leaf reading its own cache and not a foreign one, and the
+      image names.
+  - **zsh and fish:** `just check completion-glue` (needs `cli`, `zsh`,
+    `fish`) drives both shells' real glue for board keys and RMW names, with
+    a negative control on every run. `zsh` and `fish` are new capabilities,
+    claimed by `lane.fast`. The shells reach the CI images through
+    `ci/docker/apt-packages.txt` (hand-written, COPYed by every CI image) in
+    a PR of their own. W4b opens only after the images are rebuilt with
+    them (user-approved 2026-11-21), so lane fast never runs the gate on an
+    image without the shells.
+- **W4c, open:** completers for interface types, profiles, toolchains and
+  diagnostic codes. Interface types need the interface listing in the cache,
+  and reaching `cmd::interface` from configure would put that leaf verb in
+  the planning set, so the listing has to move first.
 
 Enable clap_complete's `unstable-dynamic`, pinned to an exact version.
 `CompleteEnv::with_factory(Cli::command).complete()` goes in `main` after the

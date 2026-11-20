@@ -58,6 +58,7 @@ use eyre::{Result, bail};
 pub struct Args {
     /// Image to resolve — `zephyr`, or `<bringup>:<image>` when two bringups
     /// declare the same id.
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::images))]
     pub image: Option<String>,
 
     /// Workspace root. Defaults to the current directory.

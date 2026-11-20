@@ -34,7 +34,7 @@ pub struct Args {
     /// `board.cmake` `NROS_BOARD_GATED_PKGS` is the SSoT;
     /// `nros-sdk-index.toml` `[board.<name>].packages` mirrors it.
     // Phase 217.B.2.
-    #[arg(long)]
+    #[arg(long, add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::boards))]
     pub board: Option<String>,
 
     /// Path to the nano-ros workspace root (auto-detected if omitted)

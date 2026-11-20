@@ -983,6 +983,7 @@ fn finish(
 pub struct Args {
     /// The image to run (`<image>` or `<bringup>:<image>`), as `nros build`
     /// names it. Omitted: the workspace's one image.
+    #[arg(add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::images))]
     pub image: Option<String>,
     /// Workspace root (auto-detected from cwd if omitted).
     #[arg(long)]

@@ -221,6 +221,8 @@ PROBES = {
     "build-tree": probe_build_tree,
     "arm-gcc": probe_arm_gcc,
     "tiarmclang": probe_tiarmclang,
+    "zsh": lambda: on_path("zsh"),
+    "fish": lambda: on_path("fish"),
 }
 
 

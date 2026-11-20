@@ -59,7 +59,7 @@ pub struct Args {
     /// `plan.build.rmw` regardless of `system.toml` / the `[build].rmw`
     /// overlay.
     // Phase 255 Wave 4.
-    #[arg(long = "rmw")]
+    #[arg(long = "rmw", add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::rmws))]
     pub rmw: Option<String>,
 
     /// Select the `[image.<id>]` the planner resolves per-target values
