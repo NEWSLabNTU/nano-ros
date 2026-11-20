@@ -30,11 +30,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | | |
 | --- | --- |
 | Upstream base | `1.10.1` (merge base [e1ab223a28aa](https://github.com/eclipse-zenoh/zenoh-pico/commit/e1ab223a28aaebb5dec1e70d98eab152332f777a)) |
-| Commits on top | 96 |
+| Commits on top | 97 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 127, +11147/−275 |
+| Files changed | 127, +11738/−296 |
 
-**Pinned commit:** `a10194cd68693f29361071879498133330b97452`
+**Pinned commit:** `d7d0094c38c2c98723c8286eb090935438a66693`
 
 ### Commits on top of upstream
 
@@ -136,12 +136,13 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [e27088048b](https://github.com/jerry73204/zenoh-pico/commit/e27088048b1159ae7bae91760166fd1b7918b12e) | feat(nano-ros): an RPMsg link, sharing one framing with IVC |
 | [26041f73d2](https://github.com/jerry73204/zenoh-pico/commit/26041f73d22025354c1a158b2a977d5dac393e25) | fix(nano-ros): a framed link's read waits, so the thread reading it does not spin |
 | [a10194cd68](https://github.com/jerry73204/zenoh-pico/commit/a10194cd68693f29361071879498133330b97452) | fix(nano-ros): a custom link reads through its own read again |
+| [d7d0094c38](https://github.com/jerry73204/zenoh-pico/commit/d7d0094c38c2c98723c8286eb090935438a66693) | fix: under split lock, no send waits for the link holding the tx mutex |
 
 Reproduce:
 
 ```bash
 base=1.10.1
-head=jerry73204:zenoh-pico:a10194cd68693f29361071879498133330b97452
+head=jerry73204:zenoh-pico:d7d0094c38c2c98723c8286eb090935438a66693
 gh api "repos/eclipse-zenoh/zenoh-pico/compare/$base...$head" --jq '.ahead_by'
 ```
 

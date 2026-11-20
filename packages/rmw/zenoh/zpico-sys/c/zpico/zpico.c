@@ -1003,7 +1003,11 @@ static void _zpico_report_link_tx_failures(struct zpico_session* s) {
 static void* _zpico_tx_flush_task_fn(void* arg) {
     struct zpico_session* s = (struct zpico_session*)arg;
     while (s->tx_flush_run) {
-        zp_batch_flush(z_session_loan(&s->session));
+        /* Issue 2614 -- the try flush: a busy link (a fragment train, a
+         * parked batch draining) is left to finish, not waited for while
+         * holding the transport's tx mutex, which stalled every publisher
+         * for the rest of that write. The batch goes on the next pass. */
+        zp_batch_flush_try(z_session_loan(&s->session));
         _zpico_report_link_tx_failures(s);
         z_sleep_ms(ZPICO_TX_BATCH_FLUSH_MS);
     }
