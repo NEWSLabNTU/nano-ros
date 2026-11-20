@@ -947,6 +947,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             args,
             nano_ros_root.as_deref(),
             selected_host_tools,
+            stale,
         );
     }
 
@@ -5106,12 +5107,52 @@ fn is_bringup_dir(dir: &std::path::Path) -> bool {
 /// * an interface package is not built on its own: its bindings are generated
 ///   into the packages that use it (`nros sync`, and the Find-stub on the cmake
 ///   side), which is why the hand-written roots never built it either.
+/// Package mode's leaf arm: a workspace member that is a single-package leaf
+/// (RFC-0098 D3, `leaf_settings::leaf_package`) with an image to build, planned
+/// by the leaf road exactly as `nros build` run in its directory plans it.
+/// `None` for any other member, and for a leaf that declares no image.
+///
+/// The workspace's selection flags already chose this package, so the leaf
+/// planner gets none of them (they name workspace packages, and it refuses any
+/// name but its own), nor `--build-base`: a leaf builds into its own
+/// `build/<image>/`.
+fn plan_leaf_member(
+    pkg: &cargo_nano_ros::provider_scan::WorkspacePackage,
+    args: &Args,
+    nano_ros_root: Option<&std::path::Path>,
+    stale: StaleModel,
+) -> Result<Option<Vec<ResolvedBuild>>> {
+    let Some(nros_root) = nano_ros_root else {
+        return Ok(None);
+    };
+    if crate::cmd::leaf_settings::leaf_package(&pkg.dir).is_none() {
+        return Ok(None);
+    }
+    let Some(img) = crate::cmd::leaf_settings::resolve_image(&pkg.dir, nros_root, None)? else {
+        return Ok(None);
+    };
+    let mut leaf_args = args.clone();
+    leaf_args.images.clear();
+    leaf_args.selection = SelectionArgs::default();
+    leaf_args.build_base = None;
+    leaf_args.workspace = Some(pkg.dir.clone());
+    plan_leaf_image(
+        &leaf_args,
+        &pkg.dir,
+        nros_root,
+        Planning::Generate,
+        img,
+        stale,
+    )
+}
+
 fn plan_packages(
     root: &std::path::Path,
     found: &crate::builder::discover::Discovered,
     args: &Args,
     nano_ros_root: Option<&std::path::Path>,
     has_host_tools: bool,
+    stale: StaleModel,
 ) -> Result<Vec<ResolvedBuild>> {
     let mut out = Vec::new();
     // colcon's `--build-base`, relative to the workspace as colcon's is to the
@@ -5197,6 +5238,16 @@ fn plan_packages(
                 Handoff::new("cmake", vec!["--build".to_string(), format!("{rel}/cmake")])
                     .in_dir(root),
             )
+        } else if let Some(plans) = plan_leaf_member(pkg, args, nano_ros_root, stale)? {
+            // Issue 2777 -- a member that is a single-package leaf (its own
+            // `system.toml` declares an image) is built as `nros build` in its
+            // directory builds it. The plain cargo arm below hands cargo no
+            // generated settings, so the leaf's sizing descriptor and board
+            // facts never reached its crates: its build carved no parameter
+            // store, and the stock parameter services then failed
+            // `nros::main!`'s carve assert.
+            out.extend(plans);
+            continue;
         } else if routing.cargo_member {
             let target_dir = build_dir.join("target").display().to_string();
             let mut a = vec!["build".to_string(), "--target-dir".to_string(), target_dir];
