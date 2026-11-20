@@ -1165,6 +1165,15 @@ function(nano_ros_entry)
             nros_locator_c_define(_nra_net_def NROS_IMAGE_NET "${_nra_image_net}")
             target_compile_definitions(${_NRA_NAME} PRIVATE "${_nra_net_def}")
         endif()
+        # RFC-0132 D4 -- the image's CAN frame device, on a host-stack board
+        # (`freertos-posix`, `threadx-linux`); a no-op on any other stack.
+        set(_nra_can_board "${NROS_BOARD}")
+        if(_nra_can_board STREQUAL "")
+            set(_nra_can_board "${_NRA_BOARD}")
+        endif()
+        if(NOT _nra_can_board STREQUAL "")
+            nros_entry_can_image(${_NRA_NAME} "${_nra_can_board}")
+        endif()
         _nros_entry_bake_domain()
     endif()
 

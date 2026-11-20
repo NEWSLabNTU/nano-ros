@@ -248,13 +248,17 @@ and each states its acceptance before it lands.
   names only a CAN device, and `nros-board-linux`, `nros-board-freertos-posix`
   and `nros-board-threadx-linux` decode the `can` row at boot
   (`nros_board_common::can_image::boot_device`) on every entry funnel. Cmake
-  road: `nano_ros_entry` on `linux` asks the CLI for the device
+  road: `nano_ros_entry` asks the CLI for the device and the board's stack
   (`nros dev board net --format cmake` prints `NROS_BOARD_NET_CAN_DEVICE`,
-  the same codec), links `nros_can_socketcan` and compiles a per-entry
-  constructor that stores it (`cmake/NanoRosCanImage.cmake`). Not covered:
-  a C entry on `freertos-posix` or `threadx-linux` (their cmake road links
-  no CAN backend yet), and the `board` stack's hand-off, which W9.f's hook
-  reads.
+  the same codec, and `NROS_BOARD_NET_STACK`); on a `"host"` stack it links
+  `nros_can_socketcan` and compiles a per-entry constructor that stores the
+  device (`cmake/NanoRosCanImage.cmake`). Checked on `linux` by the script,
+  and on `freertos-posix` by hand (the same probe as a FreeRTOS app task
+  sent its frame on vcan0, configured with `NROS_LEAF_CENSUS_TAKE=OFF`): a
+  plain `nros build` of a CAN-calling C entry on `freertos-posix` or
+  `threadx-linux` stops at its host census, whose build links no CAN
+  backend. That census backend (the mock, RFC-0132 D6) and the `board`
+  stack's hand-off are W9.f.
   *Accepted when:* a non-default probe (`[image.<id>.can] device = "vcan7"`)
   reaches `open(NULL)` on the cargo road and on the cmake road (an image built
   each way reports the device it opened), and a `native_sim` image whose

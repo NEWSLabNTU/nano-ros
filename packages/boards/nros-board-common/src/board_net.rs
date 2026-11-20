@@ -160,6 +160,29 @@ pub fn default_locator(descriptor: &Path, board: Option<&str>) -> Result<Option<
     default_locator_over(descriptor, board, &net)
 }
 
+// RFC-0132 D4.
+/// The board's `[board.net] stack` (`"host"`, `"os"`, `"board"`), or `None`
+/// when the descriptor states none. It decides which CAN frame backend the
+/// image's device goes to: `socketcan` on a host stack.
+///
+/// # Errors
+///
+/// An unreadable descriptor, or a `stack` outside the vocabulary.
+pub fn stack(descriptor: &Path, board: Option<&str>) -> Result<Option<&'static str>, String> {
+    if !descriptor.is_file() {
+        return Ok(None);
+    }
+    let file = BoardKnobsFile::load_for_board(descriptor, board).map_err(|e| e.to_string())?;
+    let Some(n) = file.board_net(board)? else {
+        return Ok(None);
+    };
+    Ok(n.stack_owner()?.map(|o| match o {
+        StackOwner::Host => "host",
+        StackOwner::Os => "os",
+        StackOwner::Board => "board",
+    }))
+}
+
 /// [`default_locator`] over a network already resolved for the image, whose
 /// own interface may state a gateway of its own (`--image-net`):
 /// the gateway form reads `net`, not the board's bare default.

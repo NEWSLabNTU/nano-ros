@@ -213,7 +213,7 @@ The resolved device rides `NROS_IMAGE_NET` as a `can` row and is written to
 `build/nros/net/<image>.toml` under `[can]`. The application opens it with
 `nros_platform_can_open(&can, NULL, want_fd)`: on a host board the board
 hands the device to the SocketCAN backend at boot (a Rust entry), or a
-generated constructor does before `main` (a C or C++ entry on `linux`). A
+generated constructor does before `main` (a C or C++ entry). A
 second device is opened by its name instead of `NULL`.
 
 ## The middleware's own file

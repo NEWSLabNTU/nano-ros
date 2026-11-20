@@ -1,7 +1,8 @@
 # cmake/NanoRosCanImage.cmake
 #
 # RFC-0132 D4 (phase-560 W9.e) -- the cmake road's half of the CAN frame
-# device's delivery, for a C or C++ entry on a Linux-process host board.
+# device's delivery, for a C or C++ entry on a host-stack board (`linux`,
+# `freertos-posix`, `threadx-linux`: Linux processes, so SocketCAN).
 #
 #   nros_entry_can_image(<target> <board>)
 #
@@ -50,8 +51,10 @@ function(nros_entry_can_image target board)
     if("${_net}" STREQUAL "")
         return()
     endif()
-    nros_board_net_c("${board}" _unused CAN_DEVICE_VAR _dev)
-    if("${_dev}" STREQUAL "")
+    nros_board_net_c("${board}" _unused CAN_DEVICE_VAR _dev STACK_VAR _stack)
+    # A device rides only a host-stack board's text (`nros configure` refuses
+    # it elsewhere); a "board" stack's `[canN]` name is the board package's.
+    if("${_dev}" STREQUAL "" OR NOT _stack STREQUAL "host")
         return()
     endif()
     get_property(_langs GLOBAL PROPERTY ENABLED_LANGUAGES)

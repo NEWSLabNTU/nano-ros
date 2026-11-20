@@ -605,6 +605,14 @@ fn net(args: NetArgs) -> Result<()> {
                 "set(NROS_BOARD_NET_CAN_DEVICE \"{}\")",
                 can_device.unwrap_or_default()
             );
+            // RFC-0132 D4 -- the board's stack, which picks the backend the
+            // device goes to (`socketcan` on "host").
+            let stack = nros_board_common::board_net::stack(&desc, Some(&args.name))
+                .map_err(|e| eyre!("{}: {e}", desc.display()))?;
+            println!(
+                "set(NROS_BOARD_NET_STACK \"{}\")",
+                stack.unwrap_or_default()
+            );
         }
         "toml" => {
             let dotted = |o: &[u8]| o.iter().map(u8::to_string).collect::<Vec<_>>().join(".");
