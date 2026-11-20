@@ -1653,11 +1653,33 @@ cpp-heap-free-image-link:
 # W4d deleted it — RFC-0071 D9, the API crates name no backend — so it lints the
 # `rmw-cffi` surface now; its target dir keeps its `-zenoh` name, whose
 # `.gitignore` row `check-scoped-target-dirs-ignored` holds.)
+#
+# Issue 2683 -- SPLIT into four build gates, each its own gate test with its
+# own timeout: one test of ~2,450 lines (a head cargo build, three more
+# cargo builds, two clippy builds and ~100 compile-and-run probes) was the
+# test the build tier's 2400 s ceiling killed whenever the host was starved
+# of I/O. The steps were measured for what they share: every one needs the
+# head build's placed headers; the runtime probes also its archive and the
+# stub backend; the scoped probes their own feature-shape builds. Nothing
+# else crosses a group (two variables did: `nros_cpp_lib` moved into the
+# shared head, `_cyc_features` into `cpp-clippy`). Each gate repeats the head
+# build, a no-op after the first (cargo's lock serialises the rest), and
+# writes its probes into its own `nros-cpp-tests-<gate>` dir.
+#
+# `just check cpp` still runs everything, in order.
+[private]
+[metadata("tier", "exempt", "lane verb: cpp-fmt and the four C++ build gates, each its own gate test")]
+cpp: cpp-fmt cpp-runtime cpp-runtime-scoped cpp-headers cpp-clippy
+    @echo "All C++ checks passed!"
+
+# The C++ runtime probes on the shipped-feature archive and the stub RMW
+# backend: create/abort, logging, executors, clocks, clients, actions,
+# components, the stock rclcpp examples. Split out of `cpp` (issue 2683).
 [private]
 [metadata("tier", "build")]
 [group('cpu:2')]
 [metadata("cpu-basis", "default")]
-cpp: cpp-fmt
+cpp-runtime:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -1697,8 +1719,6 @@ cpp: cpp-fmt
     placed="$gen/placed"
     cgen="$(nros_locate_artifact c-include --placed-dir "$placed")"
     cppgen="$(nros_locate_artifact cpp-include --placed-dir "$placed")"
-    echo "Checking C++ headers (build + syntax + clippy)..."
-    echo "  - freestanding syntax (c++14)"
     # The C++ headers include nros-c's `<rclc/types.h>`, so the syntax probe
     # needs nros-c on the include path too.
     # The per-variant `<rclcpp/detail/nros_cpp_config_generated.h>` (defining
@@ -1715,6 +1735,11 @@ cpp: cpp-fmt
     # from a `cc` line that says nothing about cargo. Diagnosing that cost four
     # wrong hypotheses; the build's own error names the cause in one line.
     nros_cargo_placed "$placed" nros-cpp nros-c -- build -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
+    # above, so `target/debug/` IS its derived output dir.
+    nros_cpp_lib="$gen/debug/libnros_cpp.a"
+    mkdir -p "$gen/nros-cpp-tests-runtime"
+    echo "Checking C++ runtime probes..."
     # phase-428 W5 finding 9 — a failed `rclcpp::Node::create_*` must ABORT,
     # not hand back a shared_ptr to a dead entity. RUNTIME, and forking,
     # because the defect was that nothing happened: a compile probe cannot tell
@@ -1736,7 +1761,6 @@ cpp: cpp-fmt
     # the header is placed from this build, so that reason is gone; linking an
     # archive here is now possible and not yet done.
     echo "  - a failed create aborts (runtime, c++14)"
-    mkdir -p "$gen/nros-cpp-tests"
     c++ -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
@@ -1744,9 +1768,9 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         -Wl,--unresolved-symbols=ignore-all \
-        -o "$gen/nros-cpp-tests"/failed_create_aborts \
+        -o "$gen/nros-cpp-tests-runtime"/failed_create_aborts \
         packages/api/nros-cpp/tests/compile/failed_create_aborts.cpp
-    "$gen/nros-cpp-tests"/failed_create_aborts
+    "$gen/nros-cpp-tests-runtime"/failed_create_aborts
     # phase-488 — upstream's shared_ptr service handler, lent from the dispatch
     # frame: the handler's answer reaches the reply, and KEEPING a pointer past
     # the call aborts naming why. Same header-only link shape as above.
@@ -1762,9 +1786,9 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         -Wl,--unresolved-symbols=ignore-all \
-        -o "$gen/nros-cpp-tests"/service_shared_ptr_handler_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/service_shared_ptr_handler_runtime \
         packages/api/nros-cpp/tests/compile/service_shared_ptr_handler_runtime.cpp
-    "$gen/nros-cpp-tests"/service_shared_ptr_handler_runtime
+    "$gen/nros-cpp-tests-runtime"/service_shared_ptr_handler_runtime
     # issue 1995 — upstream's pointer-shaped SUBSCRIPTION callbacks
     # (`M::UniquePtr`, `M::SharedPtr`, `M::ConstSharedPtr`, `std::bind` over a
     # ConstSharedPtr member): each classifies, sees the delivered message, and a
@@ -1782,9 +1806,9 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         -Wl,--unresolved-symbols=ignore-all \
-        -o "$gen/nros-cpp-tests"/subscription_pointer_callback_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/subscription_pointer_callback_runtime \
         packages/api/nros-cpp/tests/compile/subscription_pointer_callback_runtime.cpp
-    "$gen/nros-cpp-tests"/subscription_pointer_callback_runtime
+    "$gen/nros-cpp-tests-runtime"/subscription_pointer_callback_runtime
     # ...and WITHOUT the hosted surface they are refused, naming `const M&`:
     # no allocator on the delivery path. Grepped, because an include typo also
     # fails to compile.
@@ -1828,9 +1852,9 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         -Wl,--unresolved-symbols=ignore-all \
-        -o "$gen/nros-cpp-tests"/declared_callback_groups \
+        -o "$gen/nros-cpp-tests-runtime"/declared_callback_groups \
         packages/api/nros-cpp/tests/compile/declared_callback_groups.cpp
-    "$gen/nros-cpp-tests"/declared_callback_groups
+    "$gen/nros-cpp-tests-runtime"/declared_callback_groups
     # phase-417 stage 3 — `Publisher::publish` must refuse an UNINITIALISED
     # publisher. RUNTIME for the same reason as the probe above: the defect was
     # that nothing stopped, and `-fsyntax-only` is green either way. It asserts
@@ -1858,9 +1882,9 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         -Wl,--unresolved-symbols=ignore-all \
-        -o "$gen/nros-cpp-tests"/publisher_publish_guards_initialized \
+        -o "$gen/nros-cpp-tests-runtime"/publisher_publish_guards_initialized \
         packages/api/nros-cpp/tests/compile/publisher_publish_guards_initialized.cpp
-    "$gen/nros-cpp-tests"/publisher_publish_guards_initialized
+    "$gen/nros-cpp-tests-runtime"/publisher_publish_guards_initialized
     # phase-467 Row 11, C++ half — `rclcpp::init(argc, argv)` and
     # `rclcpp::init_in(argc, argv)` honour `--ros-args`. RUNTIME, and
     # with the five FFI entry points stubbed in the TU (same reason as the probe
@@ -1880,9 +1904,9 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         -Wl,--unresolved-symbols=ignore-all \
-        -o "$gen/nros-cpp-tests"/init_honours_ros_args \
+        -o "$gen/nros-cpp-tests-runtime"/init_honours_ros_args \
         packages/api/nros-cpp/tests/compile/init_honours_ros_args.cpp
-    "$gen/nros-cpp-tests"/init_honours_ros_args
+    "$gen/nros-cpp-tests-runtime"/init_honours_ros_args
     # phase-417 stage 3 — the loudness a RUN is the only witness for: issue 1019
     # (the `RCLCPP_*` family reaching `nros_log` at the RIGHT SEVERITY, carrying
     # its message and its logger name) and the VALUE half of
@@ -1900,19 +1924,16 @@ cpp: cpp-fmt
         exit 1; \
     }
     echo "  - RCLCPP_* reach nros_log at the right severity; spin_once(-1) is refused (runtime)"
-    # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
-    # at the top of this recipe, so `target/debug/` IS its derived output dir.
-    nros_cpp_lib="$gen/debug/libnros_cpp.a"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
-        -o "$gen/nros-cpp-tests"/ros2_loudness_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/ros2_loudness_runtime \
         packages/api/nros-cpp/tests/compile/ros2_loudness_runtime.cpp \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/ros2_loudness_runtime
+    "$gen/nros-cpp-tests-runtime"/ros2_loudness_runtime
     # phase-476 W4 — the `RCLCPP_*_STREAM` family on EVERY target: a fixed-size
     # formatter, one implementation. Built WITH and WITHOUT `NROS_CPP_STD` and
     # both runs assert the same builtin text; the hosted run also checks it
@@ -1931,10 +1952,10 @@ cpp: cpp-fmt
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
-            -o "$gen/nros-cpp-tests"/log_stream_runtime \
+            -o "$gen/nros-cpp-tests-runtime"/log_stream_runtime \
             packages/api/nros-cpp/tests/compile/log_stream_runtime.cpp \
             "$nros_cpp_lib" -lpthread -ldl -lm
-        "$gen/nros-cpp-tests"/log_stream_runtime
+        "$gen/nros-cpp-tests-runtime"/log_stream_runtime
     done
     # GitHub #4010 -- `RCLCPP_*_THROTTLE` on the clock ARGUMENT (a simulated
     # clock the test drives, a real steady clock, a ROS clock on system time),
@@ -1954,10 +1975,10 @@ cpp: cpp-fmt
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
-            -o "$gen/nros-cpp-tests"/log_conditional_runtime \
+            -o "$gen/nros-cpp-tests-runtime"/log_conditional_runtime \
             packages/api/nros-cpp/tests/compile/log_conditional_runtime.cpp \
             "$nros_cpp_lib" -lpthread -ldl -lm
-        "$gen/nros-cpp-tests"/log_conditional_runtime
+        "$gen/nros-cpp-tests-runtime"/log_conditional_runtime
     done
     # phase-417 W4.c/W4.d — the two behaviours a C++ `static_assert` cannot
     # reach. Both link `libnros_cpp.a` AND the shared C stub RMW backend
@@ -1983,7 +2004,7 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
-        -o "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        -o "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         packages/api/nros-c/tests/run/stub_rmw_backend.c
     # W4.c — `cancel()` ends a real spin and the SESSION SURVIVES. The shape
     # probe (`executor_cancel.cpp`) cannot tell that apart from a loop that
@@ -2001,11 +2022,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/executor_cancel_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/executor_cancel_runtime \
         packages/api/nros-cpp/tests/compile/executor_cancel_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/executor_cancel_runtime
+    "$gen/nros-cpp-tests-runtime"/executor_cancel_runtime
     # phase-515 P1/P2 -- rclcpp's executor members with upstream's signatures
     # on an explicit executor: spin_until_future_complete returns SUCCESS
     # without burning its timeout and TIMEOUT no earlier than the budget;
@@ -2021,11 +2042,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/executor_node_members_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/executor_node_members_runtime \
         packages/api/nros-cpp/tests/compile/executor_node_members_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/executor_node_members_runtime
+    "$gen/nros-cpp-tests-runtime"/executor_node_members_runtime
     # phase-515 P5 -- rclcpp::Clock::sleep_until / sleep_for drive the executor
     # (callbacks run during the wait), hold a LOWER bound on a steady sleep, and
     # wake a ROS-time clock when SIMULATED time arrives.
@@ -2042,19 +2063,19 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/clock_sleep_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/clock_sleep_runtime \
         packages/api/nros-cpp/tests/compile/clock_sleep_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         -Wl,--gc-sections \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/clock_sleep_runtime
+    "$gen/nros-cpp-tests-runtime"/clock_sleep_runtime
     # Issue 2623 -- the API anchors keep the surface in the ARCHIVE, never in the
     # image. This program calls `rcl_clock_init`, a C-API function the C++ FFI
     # never references, so it is the case the anchors exist for: linked with
     # `--gc-sections`, it must still find it. And it calls no action API, so
     # `nros_cpp_action_server_init_polling` must be gone: a `#[used]` anchor
     # (SHF_GNU_RETAIN) kept it, with the rest of the C and C++ API, in every image.
-    clock_syms="$(nm "$gen/nros-cpp-tests"/clock_sleep_runtime)"
+    clock_syms="$(nm "$gen/nros-cpp-tests-runtime"/clock_sleep_runtime)"
     _rc=0; nros_grep_q ' T rcl_clock_init$' <<<"$clock_syms" || _rc=$?
     if [ "$_rc" -ne 0 ]; then \
         echo "ERROR: clock_sleep_runtime links no rcl_clock_init (grep rc $_rc) -- a C++ program lost a C-API function the C++ FFI never calls (issue 2623)." >&2; \
@@ -2083,11 +2104,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/generic_pubsub_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/generic_pubsub_runtime \
         packages/api/nros-cpp/tests/compile/generic_pubsub_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/generic_pubsub_runtime
+    "$gen/nros-cpp-tests-runtime"/generic_pubsub_runtime
     # W4.d — two nodes in one image under DISTINCT logger names, independent
     # thresholds through `rclcpp::Logger::set_level`, and ONE resolve-or-create
     # helper behind both the node accessor and the named lookup. The C twin is
@@ -2104,11 +2125,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/logger_names_and_levels_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/logger_names_and_levels_runtime \
         packages/api/nros-cpp/tests/compile/logger_names_and_levels_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/logger_names_and_levels_runtime
+    "$gen/nros-cpp-tests-runtime"/logger_names_and_levels_runtime
     # issue 1975 -- the four accessors Jazzy's rclcpp added. A RUN because each
     # would compile as an inert stub (a `clock_type` nothing reads, a timer
     # `get_clock` answering the node's clock); the question is what a created
@@ -2122,11 +2143,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/jazzy_small_accessors_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/jazzy_small_accessors_runtime \
         packages/api/nros-cpp/tests/compile/jazzy_small_accessors_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/jazzy_small_accessors_runtime
+    "$gen/nros-cpp-tests-runtime"/jazzy_small_accessors_runtime
     # issue 1974 -- Jazzy's TimerInfo callback and autostart flag. A RUN because
     # both compile as inert stubs (a zero-filled info, an `autostart` nobody
     # reads); the ROS-clock half asserts equalities on the time this test wrote,
@@ -2140,11 +2161,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/timer_call_info_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/timer_call_info_runtime \
         packages/api/nros-cpp/tests/compile/timer_call_info_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/timer_call_info_runtime
+    "$gen/nros-cpp-tests-runtime"/timer_call_info_runtime
     # issue 1996 -- upstream's service-client FUTURE shape on the poll client:
     # `async_send_request(shared_ptr)`, `get()` -> `shared_ptr<Response>`,
     # `wait_for(duration)` -> `std::future_status`, `remove_pending_request`.
@@ -2163,11 +2184,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/client_future_shape_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/client_future_shape_runtime \
         packages/api/nros-cpp/tests/compile/client_future_shape_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/client_future_shape_runtime
+    "$gen/nros-cpp-tests-runtime"/client_future_shape_runtime
     # issue 2009 -- the poll client's futures are keyed by their request's
     # SEQUENCE ID: replies staged out of order each reach their own future, a
     # reply after remove_pending_request (or a destroyed future) is dropped, the
@@ -2186,11 +2207,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/client_seq_correlation_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/client_seq_correlation_runtime \
         packages/api/nros-cpp/tests/compile/client_seq_correlation_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/client_seq_correlation_runtime
+    "$gen/nros-cpp-tests-runtime"/client_seq_correlation_runtime
     # issue 2148 -- PollClient::take_response(response, request_header): the
     # next reply with the rmw_request_id_t the backend's take_response_with_info
     # reported (sequence number always, GUID when reported, zero otherwise).
@@ -2207,11 +2228,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/client_take_response_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/client_take_response_runtime \
         packages/api/nros-cpp/tests/compile/client_take_response_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/client_take_response_runtime
+    "$gen/nros-cpp-tests-runtime"/client_take_response_runtime
     # issue 2037 -- upstream's FutureAndRequestId on what async_send_request
     # returns: .future / .request_id (structured bindings too), the id is the
     # one the reply is matched on, remove_pending_request by id or wrapper, and
@@ -2229,11 +2250,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/client_future_and_request_id_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/client_future_and_request_id_runtime \
         packages/api/nros-cpp/tests/compile/client_future_and_request_id_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/client_future_and_request_id_runtime
+    "$gen/nros-cpp-tests-runtime"/client_future_and_request_id_runtime
     # issue 2055 -- the client most rclcpp components write: a member
     # Client<S>::SharedPtr holding create_client<S>(name), and
     # async_send_request(request, callback) whose callback runs from the
@@ -2252,11 +2273,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/client_per_request_callback_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/client_per_request_callback_runtime \
         packages/api/nros-cpp/tests/compile/client_per_request_callback_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/client_per_request_callback_runtime
+    "$gen/nros-cpp-tests-runtime"/client_per_request_callback_runtime
     # issue 2036 -- rclcpp::MessageInfo: the four upstream two-argument
     # subscription shapes ((const M&|shared_ptr<const M>|shared_ptr<M>|
     # unique_ptr<M>, const MessageInfo&)) each get the message AND what the
@@ -2277,11 +2298,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/subscription_message_info_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/subscription_message_info_runtime \
         packages/api/nros-cpp/tests/compile/subscription_message_info_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/subscription_message_info_runtime
+    "$gen/nros-cpp-tests-runtime"/subscription_message_info_runtime
     # issue 2074 -- the POLLING take with metadata, `PollSubscription<M>::take(M&,
     # MessageInfo&)`: plain data, so built hosted AND freestanding, and each run
     # twice -- with the stub's `take_with_info` slot and without it, where
@@ -2303,7 +2324,7 @@ cpp: cpp-fmt
             -Ipackages/api/nros-c/tests/run \
             -o "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi" \
             packages/api/nros-cpp/tests/compile/poll_take_message_info_runtime.cpp \
-            "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+            "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
             "$nros_cpp_lib" -lpthread -ldl -lm; \
         "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi"; \
         "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi" no-info; \
@@ -2333,12 +2354,12 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/subscription_message_info_freestanding_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/subscription_message_info_freestanding_runtime \
         packages/api/nros-cpp/tests/compile/subscription_message_info_freestanding_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/subscription_message_info_freestanding_runtime
-    "$gen/nros-cpp-tests"/subscription_message_info_freestanding_runtime no-info
+    "$gen/nros-cpp-tests-runtime"/subscription_message_info_freestanding_runtime
+    "$gen/nros-cpp-tests-runtime"/subscription_message_info_freestanding_runtime no-info
     # issue 2015 -- upstream rclcpp_action spellings as HOSTED drop-ins:
     # create_server / create_client over the node interfaces, std::bind-ed
     # goal-handle callbacks, ServerGoalHandle's get_goal / publish_feedback /
@@ -2358,11 +2379,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/action_upstream_dropins_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/action_upstream_dropins_runtime \
         packages/api/nros-cpp/tests/compile/action_upstream_dropins_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/action_upstream_dropins_runtime
+    "$gen/nros-cpp-tests-runtime"/action_upstream_dropins_runtime
     # ...and WITHOUT the hosted surface each of those shapes is REFUSED, naming
     # the goal-id-keyed form. One probe per spelling; grepped for both the
     # refusal and its issue, because an include typo also fails to compile.
@@ -2410,11 +2431,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/action_future_keying_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/action_future_keying_runtime \
         packages/api/nros-cpp/tests/compile/action_future_keying_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/action_future_keying_runtime
+    "$gen/nros-cpp-tests-runtime"/action_future_keying_runtime
     # issue 2027 -- the rest of upstream's goal-handle API and the goal-slot
     # leak: async_get_result / async_cancel_goal (+ cancel_all / cancel_before)
     # return std::shared_futures that spin_until_future_complete + get()
@@ -2453,7 +2474,7 @@ cpp: cpp-fmt
             -Ipackages/api/nros-c/tests/run \
             -o "$gen/nros-cpp-tests/$_tu" \
             "packages/api/nros-cpp/tests/compile/$_tu.cpp" \
-            "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+            "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
             "$nros_cpp_lib" -lpthread -ldl -lm
         "$gen/nros-cpp-tests/$_tu"
     done
@@ -2474,11 +2495,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/polling_action_result_offset_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/polling_action_result_offset_runtime \
         packages/api/nros-cpp/tests/compile/polling_action_result_offset_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/polling_action_result_offset_runtime
+    "$gen/nros-cpp-tests-runtime"/polling_action_result_offset_runtime
     # ...and WITHOUT the hosted surface `Future::get()` is refused, naming
     # `try_take` (no `<memory>`, no allocator). Grepped for both, because an
     # include typo also fails to compile.
@@ -2559,7 +2580,7 @@ cpp: cpp-fmt
             -Ipackages/platform/nros-platform-api/include \
             -o "$_bin" "$_src" \
             "$gen/nros-cpp-tests/rclcpp-examples/stub_backend_registration.o" \
-            "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+            "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
             "$nros_cpp_lib" -lpthread -ldl -lm
         _rx_n=$((_rx_n + 1))
     done
@@ -2585,9 +2606,9 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include -Ipackages/platform/nros-platform-api/include
         -Ipackages/api/nros-c/tests/run -Ipackages/api/nros-diagnostic-updater/include
         -Ipackages/api/nros-cpp/tests/compile/port-surface-msgs)
-    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests"/ament_port_surface_runtime "$_ps" \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/ament_port_surface_runtime
+    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests-runtime"/ament_port_surface_runtime "$_ps" \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests-runtime"/ament_port_surface_runtime
     # issue 2081 -- the three-argument handler's request header carries the
     # request id the backend's take_request_with_info slot reported (a frame-
     # lent function pointer and an arena-captured lambda), zero when none.
@@ -2596,15 +2617,15 @@ cpp: cpp-fmt
     _rh=packages/api/nros-cpp/tests/compile/service_request_header_runtime.cpp
     test -f "$_rh" || { echo "ERROR: $_rh is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - rclcpp's three-argument service handler gets the request id (runtime, issue 2081)"
-    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests"/service_request_header_runtime "$_rh" \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/service_request_header_runtime
+    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests-runtime"/service_request_header_runtime "$_rh" \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests-runtime"/service_request_header_runtime
     cmake -DPLUGIN=demo::Selector -DEXECUTABLE=selector \
         -DOUT="$gen/nros-cpp-tests/selector_component_main.cpp" -P cmake/NanoRosComponentMain.cmake
     c++ "${_ps_flags[@]}" -DNROS_PORT_SURFACE_COMPONENT_ONLY=1 \
-        -o "$gen/nros-cpp-tests"/selector_component \
+        -o "$gen/nros-cpp-tests-runtime"/selector_component \
         "$gen/nros-cpp-tests/selector_component_main.cpp" "$_ps" \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
     # issue 2053 -- `diagnostic_updater`'s task classes. A RUN: a
     # `FrequencyStatus` ticked by a timer reports OK inside its band and WARN
     # on either side of it, a `TimeStampStatus` judges a stale stamp, and
@@ -2614,9 +2635,9 @@ cpp: cpp-fmt
     _dt=packages/api/nros-cpp/tests/compile/diagnostic_tasks_runtime.cpp
     test -f "$_dt" || { echo "ERROR: $_dt is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - diagnostic_updater's FrequencyStatus / TimeStampStatus / Heartbeat report upstream's levels (runtime, issue 2053)"
-    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests"/diagnostic_tasks_runtime "$_dt" \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/diagnostic_tasks_runtime
+    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests-runtime"/diagnostic_tasks_runtime "$_dt" \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests-runtime"/diagnostic_tasks_runtime
     # issue 2054 -- upstream's `rmw_qos_profile_t` on the std surface: named,
     # copied from a constant, edited field by field, turned into a `QoS` and
     # read back. Every value claim is a static_assert, so compiling is the check.
@@ -2642,11 +2663,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/node_launch_identity_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/node_launch_identity_runtime \
         packages/api/nros-cpp/tests/compile/node_launch_identity_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/node_launch_identity_runtime
+    "$gen/nros-cpp-tests-runtime"/node_launch_identity_runtime
     # issue 1854 -- the same shape's QoS override TABLE. The component creates
     # its entities in its constructor, so the entry has no gap to call
     # `set_qos_overrides` in; the table rides on the handle instead, and must
@@ -2661,11 +2682,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/node_qos_overrides_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/node_qos_overrides_runtime \
         packages/api/nros-cpp/tests/compile/node_qos_overrides_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/node_qos_overrides_runtime
+    "$gen/nros-cpp-tests-runtime"/node_qos_overrides_runtime
     # issue 1473 — "the caller named no namespace" has ONE meaning across the
     # two C++ node-create entry points, and it is not "the root". A RUN on an
     # executor opened at a NON-ROOT namespace, because on a root executor
@@ -2680,11 +2701,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/node_unset_namespace_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/node_unset_namespace_runtime \
         packages/api/nros-cpp/tests/compile/node_unset_namespace_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/node_unset_namespace_runtime
+    "$gen/nros-cpp-tests-runtime"/node_unset_namespace_runtime
     # phase-476 W0 — destroying a C++ node releases the arena entries it
     # registered, and only those. A capture in the arena usually holds the
     # node's `this`, so an entry that outlived its node dispatched into freed
@@ -2698,11 +2719,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/node_destroy_releases_entries_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/node_destroy_releases_entries_runtime \
         packages/api/nros-cpp/tests/compile/node_destroy_releases_entries_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/node_destroy_releases_entries_runtime
+    "$gen/nros-cpp-tests-runtime"/node_destroy_releases_entries_runtime
     # issue 1993 — the five Tier-1 C++ status-event setters register through
     # nros-c's slot table with their deadline, fire the user callback with the
     # entity's storage (the NEW storage after a move), refuse without backend
@@ -2716,11 +2737,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/status_event_setters_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/status_event_setters_runtime \
         packages/api/nros-cpp/tests/compile/status_event_setters_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/status_event_setters_runtime
+    "$gen/nros-cpp-tests-runtime"/status_event_setters_runtime
     # issue 2123 — `nros_cpp_init_multi` hands EACH session its own RMW
     # properties (`NrosCppSessionSpec::properties`, a bridged domain's file
     # lowered on the host), read back from the stub's per-session record:
@@ -2737,11 +2758,55 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/init_multi_session_properties_runtime \
+        -o "$gen/nros-cpp-tests-runtime"/init_multi_session_properties_runtime \
         packages/api/nros-cpp/tests/compile/init_multi_session_properties_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/init_multi_session_properties_runtime
+    "$gen/nros-cpp-tests-runtime"/init_multi_session_properties_runtime
+    echo "cpp-runtime: OK"
+
+# The C++ probes that need their own feature-shape archive (`bridge`,
+# `trace-callbacks`, `param-services`), with the runtime probes that sit
+# among them and the timer-arena probe. Split out of `cpp` (issue 2683).
+[private]
+[metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
+cpp-runtime-scoped:
+    #!/usr/bin/env bash
+    set -e
+    # The shared head of the four `cpp-*` gates; its rationale is
+    # written once, in `cpp-runtime`.
+    source scripts/build/cargo.sh
+    gen_cyclone_embedded="$(nros_scoped_target_dir check-cpp-cyclone-embedded)"
+    gen_clippy_zenoh="$(nros_scoped_target_dir check-cpp-clippy-zenoh)"
+    pe_dir="$(nros_scoped_target_dir check-cpp-param-services)"
+    br_dir="$(nros_scoped_target_dir check-cpp-bridge)"
+    trc_dir="$(nros_scoped_target_dir check-cpp-trace)"
+    gen="$(nros_scoped_target_dir check-cpp)"
+    export CARGO_TARGET_DIR="$gen"
+    placed="$gen/placed"
+    cgen="$(nros_locate_artifact c-include --placed-dir "$placed")"
+    cppgen="$(nros_locate_artifact cpp-include --placed-dir "$placed")"
+    nros_cargo_placed "$placed" nros-cpp nros-c -- build -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
+    # above, so `target/debug/` IS its derived output dir.
+    nros_cpp_lib="$gen/debug/libnros_cpp.a"
+    mkdir -p "$gen/nros-cpp-tests-runtime-scoped"
+    echo "Checking C++ runtime probes on their own feature shapes..."
+    # The stub RMW backend the runtime probes link, compiled HERE: each `cpp-*`
+    # gate owns its own test dir, so none reads an object another is writing.
+    test -f packages/api/nros-c/tests/run/stub_rmw_backend.c || { \
+        echo "ERROR: stub_rmw_backend.c is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE -c \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c
     # issue 2123 -- the C reader of the same rows: `rclc_init_multi`, which
     # lives in `nros-bridge` and reaches a C or C++ binary only through
     # `nros-cpp`'s `bridge` feature, so it needs its own archive shape in its
@@ -2767,11 +2832,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/rclc_init_multi_session_properties_runtime \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/rclc_init_multi_session_properties_runtime \
         packages/api/nros-cpp/tests/compile/rclc_init_multi_session_properties_runtime.c \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o \
         "$br_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/rclc_init_multi_session_properties_runtime
+    "$gen/nros-cpp-tests-runtime-scoped"/rclc_init_multi_session_properties_runtime
     # issue 2641 -- rclcpp::trace_marker reaches the sink the C seam installed,
     # and an executor id (16-27) is refused. Its own archive shape
     # (`trace-callbacks`), in its own target dir, as the bridge build above.
@@ -2792,10 +2857,10 @@ cpp: cpp-fmt
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
-        -o "$gen/nros-cpp-tests"/trace_marker_runtime \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/trace_marker_runtime \
         packages/api/nros-cpp/tests/compile/trace_marker_runtime.cpp \
         "$trc_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/trace_marker_runtime
+    "$gen/nros-cpp-tests-runtime-scoped"/trace_marker_runtime
     # issue 2023 — a served C++ node PUBLISHES `/parameter_events`: the
     # start-up event, then one frame per set / declare / undeclare, each naming
     # the node's FQN, read back from the stub's last published payload. Needs a
@@ -2828,11 +2893,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/parameter_events_runtime \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/parameter_events_runtime \
         packages/api/nros-cpp/tests/compile/parameter_events_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o \
         "$pe_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/parameter_events_runtime
+    "$gen/nros-cpp-tests-runtime-scoped"/parameter_events_runtime
     # issue 2056 -- upstream's value-object parameter surface on the one store:
     # declare through `ParameterValue` (vectors and a descriptor MESSAGE
     # included), read back a `Parameter`, and a `std::vector<Parameter>` on-set
@@ -2856,11 +2921,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/parameter_value_runtime \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/parameter_value_runtime \
         packages/api/nros-cpp/tests/compile/parameter_value_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o \
         "$pe_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/parameter_value_runtime
+    "$gen/nros-cpp-tests-runtime-scoped"/parameter_value_runtime
     # GitHub #4018 -- a declaration past the store's capacity latches the
     # node's error (NROS_CPP_RET_FULL) and logs the node, the parameter, the
     # capacity and the knob, where it used to return the code default in
@@ -2876,10 +2941,10 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/param_store_full_runtime "$_psf" \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/param_store_full_runtime "$_psf" \
+        "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o \
         "$pe_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/param_store_full_runtime
+    "$gen/nros-cpp-tests-runtime-scoped"/param_store_full_runtime
     # phase-488 -- a generated message has rosidl's `operator==`: the committed
     # C++ golden of the corpus's every-field-shape message, compiled -Werror and
     # run. Negative control, measured: the FixedString overload of
@@ -2893,9 +2958,9 @@ cpp: cpp-fmt
         -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/configured \
         -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
-        -o "$gen/nros-cpp-tests"/message_equality_runtime "$_me" \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/message_equality_runtime
+        -o "$gen/nros-cpp-tests-runtime-scoped"/message_equality_runtime "$_me" \
+        "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests-runtime-scoped"/message_equality_runtime
     # phase-488 -- the ament verbs define NROS_AMENT_START_PARAMETER_SERVICES
     # when the runtime carries `param_services`, and the node constructor then
     # serves the parameters, as upstream's does. The port-surface TU again, on
@@ -2910,10 +2975,10 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run -Ipackages/api/nros-diagnostic-updater/include \
         -Ipackages/api/nros-cpp/tests/compile/port-surface-msgs \
-        -o "$gen/nros-cpp-tests"/ament_port_surface_param_services \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/ament_port_surface_param_services \
         packages/api/nros-cpp/tests/compile/ament_port_surface_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$pe_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/ament_port_surface_param_services
+        "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o "$pe_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests-runtime-scoped"/ament_port_surface_param_services
     # issue 2035 -- NodeOptions().start_parameter_event_publisher(false) turns
     # ONE node's /parameter_events off (Executor::disable_parameter_events_on,
     # the switch C's notify_changed_over_dds reaches): its set publishes
@@ -2933,11 +2998,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/node_options_param_events_runtime \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/node_options_param_events_runtime \
         packages/api/nros-cpp/tests/compile/node_options_param_events_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o \
         "$pe_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/node_options_param_events_runtime
+    "$gen/nros-cpp-tests-runtime-scoped"/node_options_param_events_runtime
     # issue 2024 -- rclcpp::ParameterEventHandler, the subscribing half: per-
     # parameter callbacks (this node, a relative and an absolute node name; not
     # another node, not a deletion), an event callback decoded into the type it
@@ -2958,11 +3023,11 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/parameter_event_handler_runtime \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/parameter_event_handler_runtime \
         packages/api/nros-cpp/tests/compile/parameter_event_handler_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/parameter_event_handler_runtime
+    "$gen/nros-cpp-tests-runtime-scoped"/parameter_event_handler_runtime
     # issue 2080 -- the static get_parameter(s)_from_event helpers, templates
     # over the caller's generated rcl_interfaces::msg::ParameterEvent (here a
     # codegen-shaped declaration, inline and heap string fields). Negative
@@ -2980,10 +3045,10 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
-        -o "$gen/nros-cpp-tests"/parameter_event_from_event_runtime \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/parameter_event_from_event_runtime \
         packages/api/nros-cpp/tests/compile/parameter_event_from_event_runtime.cpp \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/parameter_event_from_event_runtime
+    "$gen/nros-cpp-tests-runtime-scoped"/parameter_event_from_event_runtime
     # ...and refused without the hosted surface, naming what works there.
     # shellcheck source=scripts/lib/grep-q.sh
     source scripts/lib/grep-q.sh
@@ -3021,55 +3086,42 @@ cpp: cpp-fmt
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
         -Ipackages/api/nros-c/tests/run \
-        -o "$gen/nros-cpp-tests"/arena_capture_lifetime_runtime \
+        -o "$gen/nros-cpp-tests-runtime-scoped"/arena_capture_lifetime_runtime \
         packages/api/nros-cpp/tests/compile/arena_capture_lifetime_runtime.cpp \
-        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$gen/nros-cpp-tests-runtime-scoped"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
-    "$gen/nros-cpp-tests"/arena_capture_lifetime_runtime
-    # issue 0730 — the (zephyr-embedded × C++ × cyclonedds) coordinate is a
-    # pairwise-class gap no runtime tier covers (cyclone fixtures run on
-    # native_sim, which appends `,std`), and it failed E0599 at COMPILE time:
-    # the cyclone branch was the one bare-`rmw-cffi` composition, so
-    # `TransportError::BackendDynamic` (alloc-gated) vanished under the
-    # exhaustive mapper. Check that exact composition on an embedded target.
-    # The feature string is READ FROM the zephyr module's cyclone branch, so
-    # this gate follows the lane instead of being a second spelling of it.
-    if grep -qx aarch64-unknown-none <<<"$(rustup target list --installed)"; then
-        _cyc_features="$(sed -n '/CONFIG_NROS_RMW_CYCLONEDDS/,/endif()/ s/.*set(_nros_cpp_features "\([^"]*\)").*/\1/p' zephyr/CMakeLists.txt | head -1)"
-        if [ -z "$_cyc_features" ]; then
-            echo "check-cpp: could not extract the cyclone _nros_cpp_features line from zephyr/CMakeLists.txt" >&2
-            exit 1
-        fi
-        # issue 1547 — the module spells the edition as `${_nros_edition_feature}`,
-        # resolved by cmake from `cmake/NanoRosRosEdition.cmake`. This reads the
-        # TEXT, so expand it the way a default configure does: from that file's
-        # one default, not a literal here. Any other `${…}` left over is a
-        # string this extraction cannot evaluate, and cargo would reject it as
-        # an unknown feature — say so here instead.
-        _cyc_edition="$(sed -n 's/^set(NROS_DEFAULT_ROS_EDITION "\([a-z]*\)".*/\1/p' cmake/NanoRosRosEdition.cmake)"
-        if [ -z "$_cyc_edition" ]; then
-            echo "check-cpp: could not read NROS_DEFAULT_ROS_EDITION from cmake/NanoRosRosEdition.cmake" >&2
-            exit 1
-        fi
-        _cyc_features="${_cyc_features//'${_nros_edition_feature}'/ros-$_cyc_edition}"
-        case "$_cyc_features" in
-            *'${'*)
-                echo "check-cpp: unexpanded cmake variable in the extracted cyclone features: $_cyc_features" >&2
-                exit 1 ;;
-        esac
-        echo "  - embedded cyclone coordinate (issue 0730): ${_cyc_features},panic-platform @ aarch64-unknown-none"
-        # issue 1354 — its own dir, same reason as the zenoh clippy below: a
-        # different feature set writes a different config header.
-        # Issue 2722 -- clippy, not check: same compile, and this set is
-        # read from zephyr/CMakeLists.txt at run time, so the derived lint
-        # lane (built-feature-sets-clippy) cannot spell it.
-        CARGO_TARGET_DIR="$gen_cyclone_embedded" \
-            cargo clippy -p nros-cpp --no-default-features \
-            --features "${_cyc_features},panic-platform" \
-            --target aarch64-unknown-none --quiet -- -D warnings
-    else
-        echo "  - embedded cyclone coordinate (issue 0730): SKIP — aarch64-unknown-none not installed"
-    fi
+    "$gen/nros-cpp-tests-runtime-scoped"/arena_capture_lifetime_runtime
+    echo "cpp-runtime-scoped: OK"
+
+# The C++ header probes: freestanding syntax over every public header,
+# typed-API instantiations, the refusal probes (expected failures), and the
+# HeapSequence lifetime probe. Split out of `cpp` (issue 2683).
+[private]
+[metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
+cpp-headers:
+    #!/usr/bin/env bash
+    set -e
+    # The shared head of the four `cpp-*` gates; its rationale is
+    # written once, in `cpp-runtime`.
+    source scripts/build/cargo.sh
+    gen_cyclone_embedded="$(nros_scoped_target_dir check-cpp-cyclone-embedded)"
+    gen_clippy_zenoh="$(nros_scoped_target_dir check-cpp-clippy-zenoh)"
+    pe_dir="$(nros_scoped_target_dir check-cpp-param-services)"
+    br_dir="$(nros_scoped_target_dir check-cpp-bridge)"
+    trc_dir="$(nros_scoped_target_dir check-cpp-trace)"
+    gen="$(nros_scoped_target_dir check-cpp)"
+    export CARGO_TARGET_DIR="$gen"
+    placed="$gen/placed"
+    cgen="$(nros_locate_artifact c-include --placed-dir "$placed")"
+    cppgen="$(nros_locate_artifact cpp-include --placed-dir "$placed")"
+    nros_cargo_placed "$placed" nros-cpp nros-c -- build -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
+    # above, so `target/debug/` IS its derived output dir.
+    nros_cpp_lib="$gen/debug/libnros_cpp.a"
+    mkdir -p "$gen/nros-cpp-tests-headers"
+    echo "Checking C++ headers (syntax + instantiation + refusals)..."
     for hdr in $(git ls-files 'packages/api/nros-cpp/include/*.hpp'); do
         # issue #52 — `main.hpp` is the HOSTED entry runtime (LinuxBoard / NuttX):
         # its rtos_e2e readiness/sample banners call `::std::printf`, which
@@ -3537,7 +3589,6 @@ cpp: cpp-fmt
     source scripts/lib/grep-q.sh
     for _refusal in "1:failed create (abort_failed_create)" "2:--ros-args (apply_ros_args)"; do
         _obj="$gen/nros-cpp-tests/refusal_reaches_nros_log_${_refusal%%:*}.o"
-        mkdir -p "$gen/nros-cpp-tests"
         c++ -c -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
             -nostdinc++ -isystem "$_threadx_shim" \
             -DREFUSAL="${_refusal%%:*}" \
@@ -4084,13 +4135,87 @@ cpp: cpp-fmt
     # across dtor / move-assign / clear / reserve-relocation of a two-level
     # heap element shape).
     echo "  - HeapSequence element-lifetime runtime probe (c++14)"
-    mkdir -p "$gen/nros-cpp-tests"
     c++ -std=c++14 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/platform/nros-platform-api/include \
-        -o "$gen/nros-cpp-tests"/heap_sequence_lifetime \
+        -o "$gen/nros-cpp-tests-headers"/heap_sequence_lifetime \
         packages/api/nros-cpp/tests/compile/heap_sequence_lifetime.cpp
-    "$gen/nros-cpp-tests"/heap_sequence_lifetime
+    "$gen/nros-cpp-tests-headers"/heap_sequence_lifetime
+    echo "cpp-headers: OK"
+
+# nros-cpp clippy: the embedded cyclone coordinate (issue 0730) and the
+# zenoh-cffi + posix + humble set, each in its own target dir (issue 1354).
+# Split out of `cpp` (issue 2683).
+[private]
+[metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
+cpp-clippy:
+    #!/usr/bin/env bash
+    set -e
+    # The shared head of the four `cpp-*` gates; its rationale is
+    # written once, in `cpp-runtime`.
+    source scripts/build/cargo.sh
+    gen_cyclone_embedded="$(nros_scoped_target_dir check-cpp-cyclone-embedded)"
+    gen_clippy_zenoh="$(nros_scoped_target_dir check-cpp-clippy-zenoh)"
+    pe_dir="$(nros_scoped_target_dir check-cpp-param-services)"
+    br_dir="$(nros_scoped_target_dir check-cpp-bridge)"
+    trc_dir="$(nros_scoped_target_dir check-cpp-trace)"
+    gen="$(nros_scoped_target_dir check-cpp)"
+    export CARGO_TARGET_DIR="$gen"
+    placed="$gen/placed"
+    cgen="$(nros_locate_artifact c-include --placed-dir "$placed")"
+    cppgen="$(nros_locate_artifact cpp-include --placed-dir "$placed")"
+    nros_cargo_placed "$placed" nros-cpp nros-c -- build -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
+    # above, so `target/debug/` IS its derived output dir.
+    nros_cpp_lib="$gen/debug/libnros_cpp.a"
+    mkdir -p "$gen/nros-cpp-tests-clippy"
+    echo "Checking nros-cpp clippy..."
+    # issue 0730 — the (zephyr-embedded × C++ × cyclonedds) coordinate is a
+    # pairwise-class gap no runtime tier covers (cyclone fixtures run on
+    # native_sim, which appends `,std`), and it failed E0599 at COMPILE time:
+    # the cyclone branch was the one bare-`rmw-cffi` composition, so
+    # `TransportError::BackendDynamic` (alloc-gated) vanished under the
+    # exhaustive mapper. Check that exact composition on an embedded target.
+    # The feature string is READ FROM the zephyr module's cyclone branch, so
+    # this gate follows the lane instead of being a second spelling of it.
+    if grep -qx aarch64-unknown-none <<<"$(rustup target list --installed)"; then
+        _cyc_features="$(sed -n '/CONFIG_NROS_RMW_CYCLONEDDS/,/endif()/ s/.*set(_nros_cpp_features "\([^"]*\)").*/\1/p' zephyr/CMakeLists.txt | head -1)"
+        if [ -z "$_cyc_features" ]; then
+            echo "check-cpp: could not extract the cyclone _nros_cpp_features line from zephyr/CMakeLists.txt" >&2
+            exit 1
+        fi
+        # issue 1547 — the module spells the edition as `${_nros_edition_feature}`,
+        # resolved by cmake from `cmake/NanoRosRosEdition.cmake`. This reads the
+        # TEXT, so expand it the way a default configure does: from that file's
+        # one default, not a literal here. Any other `${…}` left over is a
+        # string this extraction cannot evaluate, and cargo would reject it as
+        # an unknown feature — say so here instead.
+        _cyc_edition="$(sed -n 's/^set(NROS_DEFAULT_ROS_EDITION "\([a-z]*\)".*/\1/p' cmake/NanoRosRosEdition.cmake)"
+        if [ -z "$_cyc_edition" ]; then
+            echo "check-cpp: could not read NROS_DEFAULT_ROS_EDITION from cmake/NanoRosRosEdition.cmake" >&2
+            exit 1
+        fi
+        _cyc_features="${_cyc_features//'${_nros_edition_feature}'/ros-$_cyc_edition}"
+        case "$_cyc_features" in
+            *'${'*)
+                echo "check-cpp: unexpanded cmake variable in the extracted cyclone features: $_cyc_features" >&2
+                exit 1 ;;
+        esac
+        echo "  - embedded cyclone coordinate (issue 0730): ${_cyc_features},panic-platform @ aarch64-unknown-none"
+        # issue 1354 — its own dir, same reason as the zenoh clippy below: a
+        # different feature set writes a different config header.
+        # Issue 2722 -- clippy, not check: same compile, and this set is
+        # read from zephyr/CMakeLists.txt at run time, so the derived lint
+        # lane (built-feature-sets-clippy) cannot spell it.
+        CARGO_TARGET_DIR="$gen_cyclone_embedded" \
+            cargo clippy -p nros-cpp --no-default-features \
+            --features "${_cyc_features},panic-platform" \
+            --target aarch64-unknown-none --quiet -- -D warnings
+    else
+        echo "  - embedded cyclone coordinate (issue 0730): SKIP — aarch64-unknown-none not installed"
+    fi
     echo "  - nros-cpp clippy (zenoh-cffi + posix + humble)"
     # issue 1354 — a DIFFERENT feature set, so a different target dir.
     #
@@ -4107,7 +4232,7 @@ cpp: cpp-fmt
     # race rather than as a lane that overwrites its own input.
     CARGO_TARGET_DIR="$gen_clippy_zenoh" \
         cargo clippy --quiet -p nros-cpp --no-default-features --features "alloc,env,log,panic-platform,rmw-cffi,platform-posix,ros-humble"
-    echo "All C++ checks passed!"
+    echo "cpp-clippy: OK"
 
 # `decoupling` is REWRITTEN, not retired (phase-444 W4.b, issue 1219, which
 # asked for one or the other). Phase 104.A.4's guard asserted that `nros` +
