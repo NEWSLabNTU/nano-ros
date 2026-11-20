@@ -1,12 +1,14 @@
 ---
 id: 2502
 title: "The Zephyr template copy-out job nearly doubled (19.5 → 37 min) in a week, and its step log no longer shows per-project time"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [ci, build, templates]
 related: [2219, rfc-0122, phase-559]
 found: 2026-11-13
+resolved: 2026-11-20
+resolved_in: "docs(issue 2502): the copy-out slowdown is the census pre-pass, priced and accepted"
 ---
 
 **Found by** the 2026-11-13 move of `check / template-copy-out [zephyr]` off
@@ -91,3 +93,43 @@ The runner's self-test covers it, with the times normalised, since
 Items 2 and 3 are still open: pricing the census pre-pass, and the CLI
 cache in that job. Both need a measurement on a CI run of the job, which
 the per-unit times now give. Suggested owner: phase-559.
+
+## Items 2 and 3 priced (2026-11-20, host 118 and nightly 44678975217)
+
+**Item 3, the CLI step: answered.** In the latest green nightly (job
+136097524198, a hosted ubuntu-22.04 runner) the binary cache hit
+(`Cache hit for: nros-cli-bin-Linux-...`) and the step took 116 s, against the
+6.6 min this issue measured. No change needed.
+
+**Item 2, the census pre-pass: it is the step change.** One copied-out project
+(`cpp-port-minimal-publisher/zephyr`), timed line by line on host 118 (48
+cores, idle):
+
+| phase | time |
+| --- | --- |
+| `nros configure` (the census: a host build of the program and its run) | 23 s, of which 20 s is the host cargo build of the Rust runtime |
+| `nros build` (west configure + the Zephyr image) | 61 s |
+
+So the census is about 27 % of a project alone. The nightly runs the five
+projects one at a time on 4 vCPUs (`nros_gate_unit_jobs` gives `nproc/8`, at
+least 1), about 200 s each, 986 s for the step; on host 118 the five run side
+by side in 119 s.
+
+**Sharing a build cache does not help.** All five projects, local, twice:
+per-project caches (the default) 119 s, one shared cache
+(`NROS_KEEP_CACHES=1`) 118 s, every project OK both times. That agrees with
+issue 2100's measurement in `copy_cache_vars`: the image crates land in
+per-leaf hashed folders, so a shared cache serves nothing.
+
+**What is left is a decision, not a defect.** The census is part of the road a
+user's copy takes (`nros configure` runs it for a standalone leaf), so a
+copy-out check without it would prove less than the user runs. The job is
+daily, off the merge path, at 29 min. Options: keep it as it is (the cost is
+the census, and the census is what users run), or run the projects in
+parallel on a bigger runner.
+
+## Resolution (2026-11-20)
+
+Understood and accepted, no code change. The slowdown is the census pre-pass,
+which is part of what a user's copy runs and so part of what this check
+proves. The job is daily and off the merge path, at 29 min.
