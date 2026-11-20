@@ -32,6 +32,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "../../nros-board-common/c/nros_board_optional_hook.h" /* issue 2761 */
+
 /* --- Zephyr k_thread sched task shim (zephyr/nros_platform_zephyr_shims.c) ---
  *
  * `nros_zephyr_sched_task_create`: spawn one sched task on a static pool thread
@@ -297,7 +299,9 @@ extern uint64_t nros_platform_clock_ns(void);
  * override on boards that must block for DHCP / link-up. On the canonical
  * Zephyr path (CONFIG_NET_CONFIG_AUTO_INIT) this is a no-op — the kernel
  * brings up networking before main() runs. */
-extern void nros_board_network_wait(void);
+/* Declared in nros_board_optional_hook.h as a WEAK reference, and called
+ * through NROS_BOARD_CALL_OPTIONAL_HOOK: a plain `extern` here failed the link of
+ * any image with no TU including <rclc/detail/main.h> (issue 2761). */
 
 /* RFC-0034 — the sole sanctioned allocation seam (wraps the Zephyr heap); a
  * single counter sees all traffic. Direct k_malloc/k_free are forbidden. */
@@ -939,7 +943,7 @@ static int32_t zephyr_run_sched_tasks(const char* locator, uint8_t domain_id, co
 
     /* Weak network-readiness gate (no-op on the canonical Zephyr
      * auto-init path; a board/app may provide a strong override). */
-    nros_board_network_wait();
+    NROS_BOARD_CALL_OPTIONAL_HOOK(nros_board_network_wait);
 
     /* issue 0758 W4 — acquire the wall-clock epoch HERE, in the one window
      * where both halves of the ordering hold: the network is up (the gate

@@ -42,6 +42,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../../nros-board-common/c/nros_board_optional_hook.h" /* issue 2761 */
+
 /* --- nros-cpp C FFI forward declarations ---
  *
  * These symbols are defined in nros-cpp (Rust) and linked into the final image.
@@ -79,7 +81,9 @@ extern uint64_t nros_platform_clock_ns(void);
  * override on boards that must block for link-up. On the canonical NuttX path
  * the board FFI `main` already brought up eth0 before app_main (phase-280), so
  * this is a no-op — the kernel-side network config runs before the app entry. */
-extern void nros_board_network_wait(void);
+/* Declared in nros_board_optional_hook.h as a WEAK reference, and called
+ * through NROS_BOARD_CALL_OPTIONAL_HOOK: a plain `extern` here failed the link of
+ * any image with no TU including <rclc/detail/main.h> (issue 2761). */
 
 /* RFC-0034 — the sole sanctioned allocation seam (wraps the NuttX heap); a
  * single counter sees all traffic. Direct malloc/free are forbidden. */
@@ -772,7 +776,7 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
     /* Weak network-readiness gate (no-op on the canonical NuttX path — eth0 is
      * already up from the board FFI main; a board/app may provide a strong
      * override). */
-    nros_board_network_wait();
+    NROS_BOARD_CALL_OPTIONAL_HOOK(nros_board_network_wait);
 
     /* --- Open the primary (owning) executor on the boot thread --- */
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
@@ -1247,7 +1251,7 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
         }
     }
 
-    nros_board_network_wait();
+    NROS_BOARD_CALL_OPTIONAL_HOOK(nros_board_network_wait);
 
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;

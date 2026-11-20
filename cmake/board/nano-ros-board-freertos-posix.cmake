@@ -59,8 +59,10 @@ set(_NROS_BOARDS_COMMON_C_DIR
 # FreeRTOS rather than about lwIP is shared rather than copied.
 #
 # `freertos_run_sched_tasks.c` carries over unchanged — it is FreeRTOS plus nros-cpp
-# FFI and knows nothing about the chip; the unused function is dropped by
-# --gc-sections for single-sched-task apps.
+# FFI and knows nothing about the chip. This host link does NOT use
+# --gc-sections, so the runner's object stays in every image, unused
+# functions included: every reference in it must resolve whatever the entry
+# is (issue 2761 -- optional hooks go through nros_board_optional_hook.h).
 set(_NROS_BOARD_STARTUP_C
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_task_glue.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_sched_tasks.c"

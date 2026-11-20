@@ -4407,6 +4407,19 @@ rmw = "zenoh"
 dir = "examples/templates/cpp-port-minimal-publisher/mps2-an385-freertos"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8098" }
 
+# Issue 2761 -- the same unmodified tutorial on the FreeRTOS POSIX simulator, a
+# LINK check. The image's only source includes `<rclcpp/rclcpp.hpp>` and no
+# board entry header, so no TU emits `<rclc/detail/main.h>`'s weak hook
+# defaults; the board runner, linked whole on this host board, must still
+# resolve. A plain `extern` of an optional hook fails this row at link.
+[[fixture]]
+id = "freertos-posix-cpp-port-minimal-publisher"
+platform = "freertos-posix"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/templates/cpp-port-minimal-publisher/freertos-posix"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "freertos-posix", NROS_DEPLOY = "freertos-posix", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7447" }
+
 # phase-482 W3 — the other two port templates on FreeRTOS, each the template's
 # unmodified `src/` built by the sub-project beside it. Ports 8088 / 8089 =
 # `alloc::port_of(FreertosMps2, Cpp, PortSmoke / PortMonitor)`; consumed by

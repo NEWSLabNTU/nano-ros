@@ -22,6 +22,8 @@
 
 #include "nros_freertos_task_create.h" /* issue 2632 */
 
+#include "../../nros-board-common/c/nros_board_optional_hook.h" /* issue 2761 */
+
 /* Issue 2017 (RFC-0108 D6) -- the build said this is a level image; a board
  * FreeRTOSConfig.h that ignores the input would still slice. */
 #if defined(NROS_FREERTOS_LEVEL_IMAGE) && NROS_FREERTOS_LEVEL_IMAGE && \
@@ -83,7 +85,9 @@ extern uint64_t nros_platform_clock_ns(void);
  * override on boards that need an extra poll-wait after network bring-up. On
  * MPS2-AN385 the startup.c already waits 2 s and polls lwIP, so this is
  * usually a no-op. */
-extern void nros_board_network_wait(void);
+/* Declared in nros_board_optional_hook.h as a WEAK reference, and called
+ * through NROS_BOARD_CALL_OPTIONAL_HOOK: a plain `extern` here failed the link of
+ * any image with no TU including <rclc/detail/main.h> (issue 2761). */
 
 /* RFC-0034 — the sole sanctioned allocation seam (wraps the FreeRTOS heap); a
  * single counter sees all traffic. Direct pvPortMalloc/vPortFree are forbidden
@@ -837,7 +841,7 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
 
     /* Belt-and-suspenders network wait (startup.c already brought the network
      * up; this calls the weak no-op on MPS2-AN385 or a board's strong override). */
-    nros_board_network_wait();
+    NROS_BOARD_CALL_OPTIONAL_HOOK(nros_board_network_wait);
 
     /* --- Open the primary (owning) executor on the boot task --- */
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
@@ -1242,7 +1246,7 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
         }
     }
 
-    nros_board_network_wait();
+    NROS_BOARD_CALL_OPTIONAL_HOOK(nros_board_network_wait);
 
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;

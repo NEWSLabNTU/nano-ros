@@ -99,34 +99,14 @@ extern _Bool nros_cpp_context_is_live(const void* storage);
 
 /* Weak no-op in <rclc/detail/main.h>; a board with a slower link overrides it.
  *
- * Declared as a WEAK REFERENCE here, and called only when something defines
- * it. This TU is compiled into EVERY ThreadX image through the board's
- * `THREADX_STARTUP_SOURCE` (issue 1286), including plain C examples that have
- * no entry and never include `<rclc/detail/main.h>` — so nothing in them emits the
- * weak default, and a plain `extern` is an undefined reference. That was
- * survivable only where the board links with `--gc-sections` and discards
- * this unreferenced function whole: `rv-virt-threadx` does, `threadx-linux`
- * does not, and every `threadx_linux` C example failed to link from the day
- * 1286 landed (`undefined reference to nros_board_network_wait`).
- *
- * A weak reference resolves to the header's weak default, or to a board's
- * strong override, whenever either is linked — which is every image that
- * actually calls this runner, since its entry includes `<rclc/detail/main.h>`. When
- * neither is, the default would have been a no-op anyway, so skipping the
- * call is the same behaviour. It is a reference, not a definition: `main.h`
- * keeps the one body, which is the rule its comment argues for. */
-#if defined(__GNUC__) || defined(__clang__)
-extern void nros_board_network_wait(void) __attribute__((weak));
-#define NROS_RUN_NETWORK_WAIT()                                                                    \
-    do {                                                                                           \
-        if (nros_board_network_wait) {                                                             \
-            nros_board_network_wait();                                                             \
-        }                                                                                          \
-    } while (0)
-#else
-extern void nros_board_network_wait(void);
-#define NROS_RUN_NETWORK_WAIT() nros_board_network_wait()
-#endif
+ * Declared in nros_board_optional_hook.h as a WEAK REFERENCE, and called only
+ * when something defines it. This TU is compiled into EVERY ThreadX image
+ * through the board's `THREADX_STARTUP_SOURCE` (issue 1286), including plain C
+ * examples that have no entry and never include `<rclc/detail/main.h>`, so a
+ * plain `extern` was an undefined reference wherever the board links without
+ * `--gc-sections` (`threadx-linux`, issue 1459). The header carries the reason
+ * and is the one spelling every board runner uses (issue 2761). */
+#include "nros_board_optional_hook.h"
 
 /* phase-436 — the port's microsecond park, installed on this entry's executor
  * as the sched task runners install it on theirs. The C runner's copy of
@@ -344,7 +324,7 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
         return NROS_RUN_COMPONENTS_RET_INVALID_ARGUMENT;
     }
 
-    NROS_RUN_NETWORK_WAIT();
+    NROS_BOARD_CALL_OPTIONAL_HOOK(nros_board_network_wait);
 #ifdef __ZEPHYR__
     /* issue 0758 -- the epoch, in the window the sched-task entries use: network
      * up, no component constructed. The C++ `ZephyrBoard::run_components`
