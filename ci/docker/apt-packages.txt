@@ -83,3 +83,9 @@ python3-tomli
 # the package it silently skips codegen and cargo then fails `no matching
 # package named example_interfaces`. Issue #59.
 ros-humble-example-interfaces
+
+# zsh and fish, for a gate that drives `nros`'s shell-completion glue in both
+# shells (bash is already in the base image). Added before any lane claims
+# them, so the images carry them first.
+zsh
+fish
