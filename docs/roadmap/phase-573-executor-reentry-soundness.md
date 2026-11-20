@@ -3,7 +3,7 @@
 **Status (2026-11-20). OPEN: W1, W2, W5a, W5b, W5c and W5e are done; W2b, W3, W4 and W5d are open.** Fixes
 [issue 2675](../issues/2675-callback-reentry-aliases-executor.md) by amending
 [RFC-0108](../design/0108-executor-preemption-levels.md) ("Re-entry from a
-callback"). Ahead of [phase-572](phase-572-rust-component-graph-query.md),
+callback"). Ahead of [phase-572](archived/phase-572-rust-component-graph-query.md),
 whose W2 waits on it. Owner: nros 133.
 
 ## Why
