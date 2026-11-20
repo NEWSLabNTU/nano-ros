@@ -140,3 +140,4 @@ NROS_MULTIGOAL_SOAK_MS | test-only | | `action-client-multigoal` test binary
 ROSOUT_PROBE_PERIOD_MS | test-only | | `rosout-talker` test binary
 NROS_RT_SCHED_CPU | test-only | | `rt_sched_levels_e2e`: the CPU its pinned runs use (default 0)
 ROSOUT_PROBE_RECORDS | test-only | | `rosout-talker` test binary
+NROS_CLOCK_SOURCE | not-a-size | | a choice: which wall-clock source(s) the image resolves at boot (phase-582 W1c); nros-platform's build script reads it only to refuse a source the port cannot resolve

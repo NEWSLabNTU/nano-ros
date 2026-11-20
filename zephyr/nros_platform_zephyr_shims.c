@@ -177,34 +177,72 @@ int8_t nros_zephyr_exec_unlock(void* m) {
     return k_mutex_unlock((struct k_mutex*)m) == 0 ? 0 : -1;
 }
 
-/* issue 0758 W4 — acquire the wall-clock epoch, if this image asked for one.
+/* issue 0758 W4, RFC-0141 D1/D4 — resolve the image's wall-clock source.
  *
  * WHY THE DECISION LIVES IN C. Zephyr has TWO sched task arms — `zephyr_run_sched_tasks.c`
- * for C/C++ and `entry_sched_tasks.rs` for Rust — and they must not drift. Putting
- * `#ifdef CONFIG_NROS_SNTP_EPOCH` in each would guarantee they eventually do,
- * and the Rust one CANNOT hold that ifdef anyway: Kconfig knobs reach the
- * Zephyr C lane and not the cargo lane (issue 0460), so `entry_sched_tasks.rs` has no
- * way to see the symbol without a build-script knob read.
+ * for C/C++ and `entry_sched_tasks.rs` for Rust — and they must not drift. The
+ * Rust one cannot read Kconfig (issue 0460), so both arms call this
+ * unconditionally and the C side decides.
  *
- * So both arms call this unconditionally and the C side decides. An image
- * without the knob gets an empty function the linker keeps or drops; nothing
- * upstream has to know.
+ * What it decides is `[knobs.clock]`: `source` (one, or an ordered fallback),
+ * `fallback_settle_ms`, `upgrade`, `epoch_failure`, and SNTP's server,
+ * timeout and attempts. `nros/clock_resolve.h` holds the policy, the same on
+ * every port; this function supplies how each source is tried on Zephyr:
+ *   - `platform`: Zephyr has no wall clock of its own, so it answers "none",
+ *     which as a declared fallback is the image's knowing choice;
+ *   - `sntp`: up to `sntp_attempts` exchanges with the server;
+ *   - `zenoh-hlc`: wait up to the settle time for the first timestamped
+ *     sample (`nros_zephyr_epoch_observe_ntp64`, on the session's read task);
+ *   - `board`: not before the board hook lands, so never answers here.
  *
- * Non-fatal by construction: a time server that is down leaves
- * `nros_platform_epoch_us()` answering 0, callers keep stamping boot-relative
- * time knowingly, and the image boots. Refusing to start a control island
- * because NTP is unreachable would be the wrong trade. */
-void nros_zephyr_epoch_acquire_configured(void) {
-#ifdef CONFIG_NROS_SNTP_EPOCH
-    extern int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms);
-    int rc = nros_platform_epoch_acquire_sntp(CONFIG_NROS_SNTP_SERVER, CONFIG_NROS_SNTP_TIMEOUT_MS);
-    if (rc == 0) {
-        printk("nros: wall-clock epoch acquired from %s\n", CONFIG_NROS_SNTP_SERVER);
-    } else {
-        printk("nros: SNTP epoch unavailable from %s (rc=%d) — stamps stay boot-relative\n",
-               CONFIG_NROS_SNTP_SERVER, rc);
-    }
+ * With the default (`source = platform`, `epoch_failure = unstamped`) this
+ * latches "none" and boot continues, every stamp reading 0, which is what an
+ * image with no source has always done. */
+#include <nros/clock_resolve.h>
+
+#ifdef CONFIG_SNTP
+extern int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms);
 #endif
+
+static bool nros_zephyr_clock_try(uint8_t source, uint32_t settle_ms, void *ctx) {
+    (void)ctx;
+    switch (source) {
+    case NROS_WALL_CLOCK_SOURCE_PLATFORM:
+        return true;
+    case NROS_WALL_CLOCK_SOURCE_SNTP:
+#ifdef CONFIG_SNTP
+        for (uint32_t i = 0; i < (uint32_t)CONFIG_NROS_CLOCK_SNTP_ATTEMPTS; i++) {
+            int rc = nros_platform_epoch_acquire_sntp(CONFIG_NROS_SNTP_SERVER,
+                                                      CONFIG_NROS_SNTP_TIMEOUT_MS);
+            if (rc == 0) {
+                return true;
+            }
+            printk("nros: SNTP attempt %u of %u to %s failed (rc=%d)\n", (unsigned)(i + 1u),
+                   (unsigned)CONFIG_NROS_CLOCK_SNTP_ATTEMPTS, CONFIG_NROS_SNTP_SERVER, rc);
+        }
+#endif
+        return false;
+    case NROS_WALL_CLOCK_SOURCE_ZENOH_HLC:
+        return nros_clock_wait_synced(settle_ms);
+    default:
+        return false;
+    }
+}
+
+static void nros_zephyr_clock_report(const char *msg, size_t len, void *ctx) {
+    (void)ctx;
+    printk("%.*s\n", (int)len, msg);
+}
+
+void nros_zephyr_epoch_acquire_configured(void) {
+    uint8_t sources[NROS_CLOCK_MAX_SOURCES];
+    nros_clock_policy_t policy;
+    policy.sources = sources;
+    policy.n_sources = nros_clock_parse_sources(CONFIG_NROS_CLOCK_SOURCE, sources);
+    policy.settle_ms = (uint32_t)CONFIG_NROS_CLOCK_FALLBACK_SETTLE_MS;
+    policy.upgrade = nros_clock_parse_upgrade(CONFIG_NROS_CLOCK_UPGRADE);
+    policy.epoch_failure = nros_clock_parse_epoch_failure(CONFIG_NROS_CLOCK_EPOCH_FAILURE);
+    (void)nros_clock_resolve(&policy, nros_zephyr_clock_try, nros_zephyr_clock_report, NULL);
 }
 
 /* phase-8 W4 — callback-tracing sink for the Zephyr CTF backend.

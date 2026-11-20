@@ -57,6 +57,15 @@ table of C macro NAMES a build script hands the C compiler
 (`nros-zpico-build`'s `ZpicoConfig::defines`), which no line-local rule can
 tell from an env read and which RFC-0103 keeps on purpose.
 
+  Kconfig  the KCONFIG road (a `kconfig:` retired spelling, `CONFIG_X`): the
+           same rule on that road -- a conf file that ASSIGNS it
+           (`CONFIG_X=`, in `*.conf` / `*defconfig`), a Kconfig file that
+           REFERENCES it (`depends on X`, `select X`, `if X`, a default's
+           condition), and C/C++, cmake or Rust CODE that reads it (the token
+           outside a comment). The module keeps the symbol defined only to
+           refuse an assignment at configure, so a reader of it reads a symbol
+           nothing can turn on, and silently compiles its feature out.
+
 Buildless, tracked files only; self-tests every shape (both directions) on
 each run. Sweep command:
 
@@ -124,6 +133,104 @@ def retired_names(registry_text: str | None = None) -> dict[str, str]:
         for old in row.get("legacy", []):
             out[old] = canonical
     return out
+
+
+def retired_kconfig_names(registry_text: str | None = None) -> dict[str, str]:
+    """retired `kconfig:` spelling (`CONFIG_X`) -> what to do instead, from the
+    registry: the entry's `instead`, or the row's live Kconfig symbol."""
+    text = registry_text if registry_text is not None else REGISTRY.read_text()
+    out = {}
+    for row in knob_registry.knob_rows(text=text):
+        for e in row["retired_entries"]:
+            if e["road"] != "kconfig":
+                continue
+            out[e["name"]] = e["instead"] or (
+                "CONFIG_" + row.get("kconfig", "NROS_" + row["id"])
+                + f" ({row['key']} in system.toml)")
+    return out
+
+
+def kconfig_kind_of(rel: str) -> str | None:
+    """Which Kconfig-road rule a file is read by, or None."""
+    base = os.path.basename(rel)
+    if base.endswith(".conf") or base.endswith("defconfig"):
+        return "conf"
+    if base.startswith("Kconfig"):
+        return "kconfig"
+    if rel.endswith((".c", ".h", ".cc", ".cpp", ".hpp")):
+        return "c"
+    if rel.endswith(".cmake") or base == "CMakeLists.txt":
+        return "cmake"
+    if rel.endswith(".rs"):
+        return "rust"
+    return None
+
+
+def scan_kconfig(text: str, kind: str, names) -> list[tuple[int, str]]:
+    """(line number, line) for every Kconfig-road use of a retired `CONFIG_X`
+    in `text` (see the module doc). A line that says "retired" is exempt."""
+    syms = [n[len("CONFIG_"):] for n in names]
+    alt = "|".join(sorted(map(re.escape, syms), key=len, reverse=True))
+    full = re.compile(rf"(?<![A-Za-z0-9_])CONFIG_(?:{alt})(?![A-Za-z0-9_])")
+    bare = re.compile(rf"(?<![A-Za-z0-9_])(?:{alt})(?![A-Za-z0-9_])")
+    assign = re.compile(rf"^\s*CONFIG_(?:{alt})\s*=")
+    ref = re.compile(r"^\s*(?:depends\s+on|select|imply|if|visible\s+if|default\b.*\bif)\b")
+    hits = []
+    in_block = False
+    for i, raw in enumerate(text.splitlines(), 1):
+        if "retired" in raw.lower():
+            continue
+        line = raw
+        if kind == "c":
+            if not in_block and re.match(r"^\s*\*(?!/)", line):
+                continue  # a block comment's continuation line
+            if in_block:
+                if "*/" not in line:
+                    continue
+                line = line.split("*/", 1)[1]
+                in_block = False
+            line = re.sub(r"/\*.*?\*/", "", line)
+            if "/*" in line:
+                line, in_block = line.split("/*", 1)[0], True
+            line = line.split("//", 1)[0]
+            found = bool(full.search(line))
+        elif kind == "rust":
+            found = bool(full.search(line.split("//", 1)[0]))
+        elif kind == "cmake":
+            found = bool(full.search(line.split("#", 1)[0]))
+        elif kind == "conf":
+            found = bool(assign.search(line))
+        else:  # kconfig
+            code = line.split("#", 1)[0]
+            found = bool(ref.search(code) and bare.search(code))
+        if found:
+            hits.append((i, raw))
+    return hits
+
+
+# (kind, text, should it be a finding) for `scan_kconfig`, over CONFIG_NROS_OLD.
+KCONFIG_TESTS = [
+    ("conf", "CONFIG_NROS_OLD=y\n", True),
+    ("conf", "# CONFIG_NROS_OLD is not set\n", False),
+    ("conf", "CONFIG_NROS_OLDER=y\n", False),
+    ("kconfig", "config FOO\n    depends on NROS_OLD\n", True),
+    ("kconfig", "    select NROS_OLD\n", True),
+    ("kconfig", "    default y if NROS_OLD\n", True),
+    ("kconfig", "config NROS_OLD\n", False),
+    ("kconfig", "      help text naming NROS_OLD\n", False),
+    ("c", "#ifdef CONFIG_NROS_OLD\n", True),
+    ("c", "#if defined(CONFIG_SNTP) || defined(CONFIG_NROS_OLD)\n", True),
+    ("c", "x = CONFIG_NROS_OLD * 1000;\n", True),
+    ("c", " * the samples (CONFIG_NROS_OLD, below)\n", False),
+    ("c", "/* CONFIG_NROS_OLD */ int x;\n", False),
+    ("c", "/*\n CONFIG_NROS_OLD\n */\n", False),
+    ("c", "int x; // CONFIG_NROS_OLD\n", False),
+    ("c", "#ifdef CONFIG_NROS_OLD /* retired: refusal case */\n", False),
+    ("cmake", "if(CONFIG_NROS_OLD)\n", True),
+    ("cmake", "# CONFIG_NROS_OLD\n", False),
+    ("rust", "if zephyr::kconfig::CONFIG_NROS_OLD {}\n", True),
+    ("rust", "/// CONFIG_NROS_OLD\n", False),
+]
 
 
 def compile_rules(names):
@@ -436,6 +543,11 @@ def self_test() -> int:
         if got != want:
             bad += 1
             print(f"  self-test: {'missed' if want else 'false hit on'} (rust prose): {text!r}")
+    for kind, text, want in KCONFIG_TESTS:
+        got = bool(scan_kconfig(text, kind, ["CONFIG_NROS_OLD"]))
+        if got != want:
+            bad += 1
+            print(f"  self-test: {'missed' if want else 'false hit on'} (kconfig road, {kind}): {text!r}")
     for text, want in C_PROSE_TESTS:
         got = bool(scan_rust_prose(text, ["ZPICO_X", "ZPICO_SMOLTCP_Y"], lang="c"))
         if got != want:
@@ -453,6 +565,12 @@ def self_test() -> int:
     if set(table) != {"NROS_X_G", "ZPICO_G"} or "NROS_X_G" in table.values():
         bad += 1
         print(f"  self-test: a retired knob's spellings gave {table!r}")
+    table = retired_kconfig_names(hdr + '[[knob]]\nkey = "x.y"\nscope = "image"\nclass = "internal"\n'
+                                  'retired = [{ spelling = "kconfig:CONFIG_NROS_OLD" },'
+                                  ' { spelling = "kconfig:CONFIG_NROS_GONE", type = "bool", instead = "set x.y" }]\n')
+    if table != {"CONFIG_NROS_OLD": "CONFIG_NROS_X_Y (x.y in system.toml)", "CONFIG_NROS_GONE": "set x.y"}:
+        bad += 1
+        print(f"  self-test: the Kconfig road's registry parse gave {table!r}")
     return bad
 
 
@@ -499,6 +617,36 @@ def main() -> int:
         for i, line in sorted(set(hits)):
             old = word.search(line).group(0)
             findings.append(f"  {rel}:{i}: {line.strip()[:110]}\n      -> {old} is retired; use {names[old]}")
+    # The Kconfig road: a retired `kconfig:` spelling assigned, referenced or read.
+    kc_names = retired_kconfig_names()
+    kc_word = re.compile("|".join(re.escape(n[len("CONFIG_"):]) for n in sorted(
+        kc_names, key=len, reverse=True))) if kc_names else None
+    kc_findings = []
+    for rel in tracked() if kc_names else []:
+        if rel in ALLOWED or rel in HISTORY_FILES or rel.startswith(HISTORY_PREFIXES):
+            continue
+        kind = kconfig_kind_of(rel)
+        if kind is None:
+            continue
+        try:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
+            continue
+        if not kc_word.search(text):
+            continue
+        for i, line in scan_kconfig(text, kind, list(kc_names)):
+            sym = "CONFIG_" + kc_word.search(line).group(0)
+            kc_findings.append(f"  {rel}:{i}: {line.strip()[:110]}\n      -> {sym} is retired: "
+                               f"{kc_names.get(sym, '')}")
+    if kc_findings:
+        print("check-retired-knob-spellings: FAILED — a retired Kconfig spelling is assigned,")
+        print("referenced or read:\n")
+        print("\n".join(kc_findings))
+        print("\nThe module keeps a retired Kconfig symbol defined only so that setting it stops"
+              "\nthe configure; nothing turns it on, so a reader of it compiles its feature out."
+              "\nRead the knob that replaced it.\n")
+        if not findings:
+            return 1
     if findings:
         print("check-retired-knob-spellings: FAILED — a retired knob spelling is used as an")
         print("environment name (phase-484 W8, RFC-0103 D2b):\n")
@@ -512,8 +660,9 @@ def main() -> int:
         )
         return 1
     print(f"check-retired-knob-spellings: OK — {len(names)} retired spelling(s), no env reader,"
-          f" writer or message advising one in {scanned} tracked file(s)"
-          f" (self-test: {len(SELF_TESTS) + len(PROSE_TESTS) + len(C_PROSE_TESTS)} cases)")
+          f" writer or message advising one in {scanned} tracked file(s);"
+          f" {len(kc_names)} retired Kconfig spelling(s), none assigned, referenced or read"
+          f" (self-test: {len(SELF_TESTS) + len(PROSE_TESTS) + len(C_PROSE_TESTS) + len(KCONFIG_TESTS)} cases)")
     return 0
 
 

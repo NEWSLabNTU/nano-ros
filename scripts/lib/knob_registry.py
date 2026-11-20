@@ -33,6 +33,23 @@ mechanical rename: new = old x factor, factor absent = 1) or
 `factor` on one entry is refused. A row with `class = "retired"` names what to
 do instead in its own `instead`, and every entry on it is manual.
 
+A row of `type = "enum"` or `type = "enum_list"` (a CHOICE row) states its
+allowed members in `values = [...]`: non-empty, distinct, each a lower-case
+word (`-` allowed). An `enum` value is one member; an `enum_list` value is an
+ordered, non-empty list of distinct members. Every road spells it ONE way: env
+and cmake carry it comma-joined (`sntp,platform`), Kconfig as a `string`
+(`kconfig_type`). `choice_problem` is the one test of a value. A choice row may
+also name `member_kconfig = { <member> = { depends = [...], select = [...] } }`:
+for each such member the module defines a derived bool,
+`member_symbol(row, member)` (`NROS_<id>_HAS_<MEMBER>`), which is `y` exactly
+when the value names that member, and which `select`s what the member needs.
+`values` on any other row is refused: there it is derived, never authored.
+
+A `kconfig:` retired spelling may state the `type` the symbol had (`bool`,
+`int`, `hex`, `string`); a mechanical rename takes its row's Kconfig type. The
+module keeps such a symbol DEFINED, with a prompt, only so that an assignment
+of it reaches the configure and is refused there by name.
+
 `knob_rows()` returns the knob rows NORMALISED to the shape the generated views
 and the older gates read: `id`, `toml` (ladder rows), `kconfig` (only where it
 differs from `NROS_<id>`), `legacy` (the `env:` retired spellings) and
@@ -59,6 +76,9 @@ DISPOSITIONS = ("respect", "ignore", "refuse", "listed")
 # variable (`ZENOH_*`, `CYCLONEDDS_URI`) is its package's, `foreign = "<owner>"`.
 FOREIGN_CORE = ("ros2", "rcutils", "rust")
 PARSES = ("str", "int", "bool")
+KCONFIG_TYPES = ("bool", "int", "hex", "string")
+CHOICE_TYPES = ("enum", "enum_list")
+MEMBER = re.compile(r"^[a-z][a-z0-9-]*$")
 
 # Owner words of core rows the naming rule renames (W5/W6). Only shrinks.
 OWNERS_PENDING_RENAME = {"param"}
@@ -84,7 +104,7 @@ SPELLING = {
 
 KNOB_FIELDS = {"key", "transitional", "ladder", "retired", "instead", "only_on", "only_on_why",
                "type", "prompt", "kconfig_if", "kconfig_attrs", "help", "names",
-               "scope", "class", "carries"}
+               "scope", "class", "carries", "values", "member_kconfig"}
 STATEMENT_FIELDS = {"key", "carrier", "zephyr", "transitional", "retired", "help"}
 ENV_FIELDS = {"key", "name", "foreign", "pattern", "disposition", "stated", "parse",
               "instead", "refuse_if", "transitional", "retired", "help"}
@@ -115,7 +135,7 @@ def _retired_entries(raw, where, row_is_retired, errors):
         if not isinstance(e, dict) or "spelling" not in e:
             errors.append(f"{where}: a retired entry is {{ spelling = \"<road>:<name>\", ... }}, not `{e!r}`")
             continue
-        extra = set(e) - {"spelling", "factor", "from_unit", "instead"}
+        extra = set(e) - {"spelling", "factor", "from_unit", "instead", "type"}
         if extra:
             errors.append(f"{where}: retired entry {e['spelling']!r}: unknown field(s) {sorted(extra)}")
         road, sep, name = str(e["spelling"]).partition(":")
@@ -139,8 +159,12 @@ def _retired_entries(raw, where, row_is_retired, errors):
         instead = e.get("instead")
         if instead is not None and (not isinstance(instead, str) or not instead.strip()):
             errors.append(f"{where}: `{e['spelling']}`: `instead` is non-empty text")
+        ty = e.get("type")
+        if ty is not None and (road != "kconfig" or ty not in KCONFIG_TYPES):
+            errors.append(f"{where}: `{e['spelling']}`: `type` is the Kconfig type a retired "
+                          f"`kconfig:` spelling had, one of {list(KCONFIG_TYPES)}")
         out.append({"road": road, "name": name, "factor": factor if factor is not None else 1,
-                    "from_unit": e.get("from_unit"), "instead": instead})
+                    "from_unit": e.get("from_unit"), "instead": instead, "type": ty})
     return out
 
 
@@ -158,6 +182,94 @@ def _transitional(row, allowed, derived, where, errors):
         if k in derived and v == derived[k]:
             errors.append(f"{where}: transitional `{k} = \"{v}\"` is what `key` derives -- delete it")
     return t
+
+
+def _choice_fields(r, where, errors):
+    """(`values` list, `member_kconfig` dict) of a choice row, validated, or
+    (None, None) for any other row (whose `values`/`member_kconfig` is refused)."""
+    if r.get("type") not in CHOICE_TYPES:
+        for f in ("values", "member_kconfig"):
+            if f in r:
+                errors.append(f"{where}: `{f}` is authored only on a `type = \"enum\"` or "
+                              "`\"enum_list\"` row; elsewhere the values are derived")
+        return None, None
+    values = r.get("values")
+    if not isinstance(values, list) or not values:
+        errors.append(f"{where}: a `{r['type']}` row states its members, `values = [\"a\", ...]`, "
+                      "non-empty")
+        return [], {}
+    bad = [v for v in values if not isinstance(v, str) or not MEMBER.match(v)]
+    if bad:
+        errors.append(f"{where}: `values` members are lower-case words (`-` allowed), not {bad!r}")
+    dup = sorted({v for v in values if values.count(v) > 1}, key=str)
+    if dup:
+        errors.append(f"{where}: `values` lists {dup!r} more than once (members are distinct)")
+    members = r.get("member_kconfig", {})
+    if not isinstance(members, dict):
+        errors.append(f"{where}: `member_kconfig` is a table keyed by member")
+        members = {}
+    for m, spec in members.items():
+        if m not in values:
+            errors.append(f"{where}: `member_kconfig.{m}` names no member of `values`")
+        if not isinstance(spec, dict) or set(spec) - {"depends", "select"}:
+            errors.append(f"{where}: `member_kconfig.{m}` is {{ depends = [...], select = [...] }}")
+            continue
+        for f in ("depends", "select"):
+            v = spec.get(f, [])
+            if not isinstance(v, list) or not all(isinstance(x, str) and x.strip() for x in v):
+                errors.append(f"{where}: `member_kconfig.{m}.{f}` is a list of Kconfig expressions")
+        if not all(SYMBOL.match(x) for x in spec.get("select", []) if isinstance(x, str)):
+            errors.append(f"{where}: `member_kconfig.{m}.select` names Kconfig symbols")
+    return [v for v in values if isinstance(v, str)], {
+        m: {"depends": list(s.get("depends", [])), "select": list(s.get("select", []))}
+        for m, s in members.items() if isinstance(s, dict)}
+
+
+def kconfig_type(row) -> str | None:
+    """The Kconfig type a row's symbol is defined with: a choice row is a
+    `string` (its one Kconfig spelling), every other row its `type`."""
+    ty = row.get("type")
+    return "string" if ty in CHOICE_TYPES else ty
+
+
+def member_symbol(row, member: str) -> str:
+    """The derived bool a choice row's `member_kconfig` member defines, WITHOUT
+    `CONFIG_`: `NROS_<id>_HAS_<MEMBER>` (`-` read as `_`)."""
+    base = row.get("kconfig", "NROS_" + row["id"])
+    return f"{base}_HAS_{member.upper().replace('-', '_')}"
+
+
+def choice_problem(row, value: str) -> str | None:
+    """Why `value` (as env/cmake spell it: one member, or members comma-joined)
+    is not a value of the choice row `row`, or None. A Kconfig value may still
+    carry its quotes; they are not part of the value."""
+    v = value.strip()
+    if len(v) >= 2 and v[0] == v[-1] == '"':
+        v = v[1:-1]
+    allowed = row["choices"]
+    if row.get("type") == "enum":
+        if v not in allowed:
+            return "not one of the members" if v else "empty"
+        return None
+    items = [x.strip() for x in v.split(",")]
+    if v.strip() == "" or any(x == "" for x in items):
+        return "an empty member" if v.strip() else "empty"
+    unknown = [x for x in items if x not in allowed]
+    if unknown:
+        return f"`{unknown[0]}` is not a member"
+    dup = [x for i, x in enumerate(items) if x in items[:i]]
+    if dup:
+        return f"`{dup[0]}` is listed twice"
+    return None
+
+
+def choice_want(row) -> str:
+    """What a choice row takes, in user words."""
+    members = ", ".join(row["choices"])
+    if row.get("type") == "enum":
+        return f"one of: {members}"
+    return (f"an ordered list of distinct members, comma-separated, at least one, of: "
+            f"{members}")
 
 
 def _owner_problem(key, owners, where, file_owner=None):
@@ -291,8 +403,13 @@ def _parse_file(doc, where_file, owners, file_owner, errors):
             for e in entries:
                 if e["instead"] is None:
                     e["instead"] = instead
+        choices, members = _choice_fields(r, where, errors)
         n = {k: v for k, v in r.items()
-             if k not in ("key", "transitional", "ladder", "retired", "instead")}
+             if k not in ("key", "transitional", "ladder", "retired", "instead", "values",
+                          "member_kconfig")}
+        if choices is not None:
+            n["choices"] = choices
+            n["member_kconfig"] = members
         n["id"] = ident
         if r.get("ladder"):
             n["toml"] = key
@@ -506,6 +623,7 @@ def spellings(reg_or_parts):
         out.append(("NROS_" + k["id"], label))
         out.append(("CONFIG_" + k.get("kconfig", "NROS_" + k["id"]), label))
         out.append((k["key"], label))
+        out += [("CONFIG_" + member_symbol(k, m), label) for m in k.get("member_kconfig") or {}]
         out += [(e["name"], label) for e in k["retired_entries"]]
     for i, s in enumerate(statements):
         label = f"statement #{i + 1} {s['key']}"

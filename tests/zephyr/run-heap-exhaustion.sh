@@ -68,6 +68,14 @@ common_cflags() {
     printf '%s\n' \
         -std=c11 -Wall -Wextra -Werror -D_GNU_SOURCE \
         -DCONFIG_NROS_BOOT_REPORT \
+        -DCONFIG_NROS_CLOCK_SOURCE='"platform"' \
+        -DCONFIG_NROS_CLOCK_UPGRADE='"never"' \
+        -DCONFIG_NROS_CLOCK_EPOCH_FAILURE='"unstamped"' \
+        -DCONFIG_NROS_CLOCK_FALLBACK_SETTLE_MS=10000 \
+        -DCONFIG_NROS_CLOCK_SNTP_ATTEMPTS=3 \
+        -DCONFIG_NROS_CLOCK_HLC_INTERVAL_MS=1000 \
+        -DCONFIG_NROS_SNTP_SERVER='"10.0.2.2"' \
+        -DCONFIG_NROS_SNTP_TIMEOUT_MS=3000 \
         "-I${STUBS}" \
         "-I${ABI}"
 }

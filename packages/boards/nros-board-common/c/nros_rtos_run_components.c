@@ -329,7 +329,7 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
     /* issue 0758 -- the epoch, in the window the sched-task entries use: network
      * up, no component constructed. The C++ `ZephyrBoard::run_components`
      * makes the same call; neither made it before, so an image entering here
-     * with CONFIG_NROS_SNTP_EPOCH stamped boot-relative time. */
+     * naming sntp in `clock.source` stamped boot-relative time. */
     nros_zephyr_epoch_acquire_configured();
 #endif
 

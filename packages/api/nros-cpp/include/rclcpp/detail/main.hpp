@@ -483,7 +483,7 @@ class LinuxBoard {
 extern "C" const char* nros_runtime_locator_override(void);
 
 #ifdef __ZEPHYR__
-// Acquire the wall-clock epoch (CONFIG_NROS_SNTP_EPOCH) between
+// Acquire the wall-clock epoch (`[knobs.clock] source`) between
 // network-up and the first component. Defined in the Zephyr module's
 // `nros_platform_zephyr_shims.c`, which decides whether the image asked for
 // one; unconditional here for the reason it is unconditional in the sched-task
@@ -520,7 +520,7 @@ class ZephyrBoard {
         nros_board_network_wait();
 #ifdef __ZEPHYR__
         // The single-executor entry never made this call, so an
-        // image built with CONFIG_NROS_SNTP_EPOCH through the generated C++
+        // image whose `clock.source` names sntp, built through the generated C++
         // `run_components` entry booted with no epoch and stamped boot-relative
         // time: only the SCHED-TASK entries acquired one. Same window as there:
         // network up, no component constructed, nothing stamped yet.

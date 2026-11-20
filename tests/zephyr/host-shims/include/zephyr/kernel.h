@@ -18,7 +18,7 @@
  * blocks exist. `tests/zephyr/run-thread-slots.sh` defines CONFIG_PTHREAD and
  * CONFIG_MAIN_STACK_SIZE and leaves CONFIG_NET_SOCKETS, CONFIG_SMP,
  * CONFIG_SCHED_CPU_MASK, CONFIG_SCHED_DEADLINE, CONFIG_TRACING_CTF and
- * CONFIG_NROS_SNTP_EPOCH unset, so the socket, SMP, cpu-pin, EDF and tracing
+ * no SNTP in `clock.source`, so the socket, SMP, cpu-pin, EDF and tracing
  * arms are preprocessed away and need nothing here.
  */
 #ifndef NROS_HOST_SHIMS_ZEPHYR_KERNEL_H

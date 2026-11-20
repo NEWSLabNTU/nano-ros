@@ -260,6 +260,10 @@ KNOB_CLASS = {
         "infra",
         "phase-474 I2 arming deadline; a time, not a size",
     ),
+    "NROS_CLOCK_SOURCE": (
+        "infra",
+        "phase-582 W1c wall-clock source list; a choice of words, not a size",
+    ),
     "NROS_TRACE_TAKES": (
         "infra",
         "phase-474 I3 take-event toggle for the callback trace; a bool, so it has no rung",

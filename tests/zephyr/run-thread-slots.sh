@@ -73,13 +73,22 @@ STACK_BYTES=262144
 # read-back POSIX priority to k_thread units with it.
 # CONFIG_PTHREAD is the gate on the whole thread-pool block. Everything left
 # unset here -- CONFIG_NET_SOCKETS, CONFIG_SMP, CONFIG_SCHED_CPU_MASK,
-# CONFIG_SCHED_DEADLINE, CONFIG_TRACING_CTF, CONFIG_NROS_SNTP_EPOCH -- removes
+# CONFIG_SCHED_DEADLINE, CONFIG_TRACING_CTF, CONFIG_SNTP -- removes
 # an arm of the shims the stub tree would otherwise have to model.
 common_cflags() {
     local pool="$1"
     printf '%s\n' \
         -std=c11 -Wall -Wextra -D_GNU_SOURCE \
         -DCONFIG_PTHREAD \
+        -DCONFIG_NROS_CLOCK_SOURCE='"platform"' \
+        -DCONFIG_NROS_CLOCK_UPGRADE='"never"' \
+        -DCONFIG_NROS_CLOCK_EPOCH_FAILURE='"unstamped"' \
+        -DCONFIG_NROS_CLOCK_FALLBACK_SETTLE_MS=10000 \
+        -DCONFIG_NROS_CLOCK_SNTP_ATTEMPTS=3 \
+        -DCONFIG_NROS_CLOCK_HLC_INTERVAL_MS=1000 \
+        -DCONFIG_NROS_SNTP_SERVER='"10.0.2.2"' \
+        -DCONFIG_NROS_SNTP_TIMEOUT_MS=3000 \
+        -Ipackages/platform/nros-platform-api/include \
         -DCONFIG_NUM_PREEMPT_PRIORITIES=15 \
         "-DCONFIG_MAIN_STACK_SIZE=${STACK_BYTES}" \
         "-DNROS_ZEPHYR_STACK_SIZE=${STACK_BYTES}" \
@@ -112,7 +121,7 @@ build() {
     mapfile -t cflags < <(common_cflags "$pool")
     local obj="${bin}.shims.o"
     cc "${cflags[@]}" "$@" -c "$SHIMS" -o "$obj"
-    cc "${cflags[@]}" "$TEST_SRC" "${EXTRA_TUS[@]}" "$obj" -o "$bin" -lpthread
+    cc "${cflags[@]}" "$TEST_SRC" "${EXTRA_TUS[@]}" tests/zephyr/host-shims/platform_clock_stubs.c "$obj" -o "$bin" -lpthread
 }
 
 echo "=== phase-460 W6 -- Zephyr stack-slot release, host build ==="

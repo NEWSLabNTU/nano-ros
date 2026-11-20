@@ -13,6 +13,7 @@ pub const CORE_OWNERS: &[&str] = &[
     "bridge",
     "capability",
     "census",
+    "clock",
     "console",
     "declared",
     "entity",

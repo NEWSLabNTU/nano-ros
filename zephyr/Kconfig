@@ -139,89 +139,12 @@ config NROS_RMW_CYCLONEDDS
 endchoice
 
 # =============================================================================
-# Wall-clock epoch (issue 0758)
+# Wall-clock epoch
 # =============================================================================
-
-config NROS_SNTP_EPOCH
-    bool "Acquire a wall-clock epoch over SNTP at boot"
-    depends on NETWORKING
-    select SNTP
-    select DNS_RESOLVER
-    help
-      Acquire an absolute UNIX epoch once at boot, after the network is up,
-      so `nros_platform_epoch_us()` can answer and messages carry stamps a
-      peer will accept.
-
-      Without this the platform answers 0, which nano-ros defines as "this
-      image has no wall clock" — callers then stamp boot-relative time
-      KNOWINGLY rather than publishing a confidently wrong absolute one.
-      That is a safe default, not a broken one, and it is why this is opt-in.
-
-      Why you would turn it on: a peer that validates stamps rejects
-      boot-relative ones. The case this exists for is an embedded island
-      whose control commands Autoware's vehicle_cmd_gate refused as stale,
-      so autonomous mode could never actuate.
-
-      One acquisition, no continuous discipline. The reading is converted to
-      a fixed offset against the monotonic clock, so later reads cost no
-      network traffic and cannot fail; the clock jumps exactly once, when
-      the offset is installed.
-
-config NROS_SNTP_SERVER
-    string "SNTP server (host or IP)"
-    depends on NROS_SNTP_EPOCH
-    default "10.0.2.2"
-    help
-      Server to query at boot. The default is the QEMU/slirp host address,
-      which is what an emulated board reaches a host-side time source on —
-      the same address the baked zenoh locators use.
-
-      This is a BOARD/DEPLOY fact, not application configuration: it belongs
-      to where the image runs, so it rides the same rung as the locator
-      rather than a consumer #define.
-
-config NROS_SNTP_TIMEOUT_MS
-    int "SNTP timeout (ms)"
-    depends on NROS_SNTP_EPOCH
-    default 3000
-    range 100 60000
-    help
-      How long to wait for the reply before giving up. On timeout the
-      platform keeps answering 0 and boot continues — an image that cannot
-      reach a time source still runs, it just cannot stamp absolute time.
-
-config NROS_EPOCH_FROM_ZENOH
-    bool "Take the wall-clock epoch from zenoh sample timestamps"
-    depends on NROS_RMW_ZENOH
-    help
-      For a board whose only link to the host is the zenoh session itself —
-      zenoh over a UART, no IP stack, so SNTP cannot reach it (phase-478 D4).
-
-      rmw_zenoh's router config enables timestamping, so every sample a ROS 2
-      host sends carries the publishing host's wall clock (or the router's).
-      With this on, the first timestamped sample the image RECEIVES installs
-      the epoch, and the offset is re-installed every
-      NROS_EPOCH_FROM_ZENOH_INTERVAL_MS from the least-delayed sample of the
-      window. Until a sample arrives the platform answers 0, exactly as it
-      does with no epoch source.
-
-      Error: low by the one-way latency of the least-delayed sample in a
-      window — a frame's time on the wire at the link's baud rate, plus the
-      router. An image that never receives a sample never acquires an epoch.
-
-      Can be combined with NROS_SNTP_EPOCH: SNTP installs at boot, and the
-      samples keep it current afterwards.
-
-config NROS_EPOCH_FROM_ZENOH_INTERVAL_MS
-    int "Re-install the zenoh-sample epoch every (ms)"
-    depends on NROS_EPOCH_FROM_ZENOH
-    default 1000
-    range 10 3600000
-    help
-      Window over which the least-delayed sample is kept before its offset
-      replaces the installed one. Shorter tracks a drifting tick (a
-      simulator that fast-forwards idle time, issue 0758) more closely;
-      longer is more likely to contain one low-latency sample.
+#
+# Its knobs (clock.source, clock.*, sntp.*) are defined in the generated
+# `knob registry` section near the end of this file, rendered from
+# packages/tooling/nros-zephyr-build/knobs.toml.
 
 # =============================================================================
 # Callback-level tracing (phase-8)
@@ -1417,6 +1340,81 @@ osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.pthread-pools"
 #     -DCONFIG_* work as before.
 osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml"
 
+# prompt: What boot does when no wall-clock source answers
+config NROS_CLOCK_EPOCH_FAILURE
+    string
+    default "unstamped"
+    help
+      What the image does when every source in clock.source has been tried and
+      none answered. `unstamped` boots on: the platform reports no wall clock and
+      messages carry boot-relative stamps, knowingly. `halt` stops at boot, for an
+      image whose peers refuse a stamp that is not absolute.
+
+
+# prompt: How long boot waits for each wall-clock source (ms)
+config NROS_CLOCK_FALLBACK_SETTLE_MS
+    int
+    default 10000
+    range 0 600000
+    help
+      How long boot waits for each source in clock.source to answer before
+      trying the next one. 0 tries each once without waiting.
+
+
+# prompt: Re-take the epoch from zenoh sample timestamps every (ms)
+config NROS_CLOCK_HLC_INTERVAL_MS
+    int
+    default 1000
+    range 10 3600000
+    help
+      For the zenoh-hlc source: the window over which the least-delayed
+      timestamped sample is kept before its offset replaces the installed one.
+      Shorter tracks a drifting tick more closely; longer is more likely to hold
+      one low-latency sample.
+
+
+# prompt: SNTP queries per boot before the source gives up
+config NROS_CLOCK_SNTP_ATTEMPTS
+    int
+    default 3
+    range 1 100
+    help
+      For the sntp source: how many queries boot sends, each waiting up to
+      sntp.timeout_ms, before the source counts as not answering.
+
+
+# prompt: Wall-clock source, or an ordered fallback list
+config NROS_CLOCK_SOURCE
+    string
+    default "platform"
+    help
+      Where the image takes its wall-clock epoch from: one source, or an ordered
+      fallback tried at boot, comma-separated (sntp,platform). The first source
+      that answers is latched.
+
+        platform   the platform's own clock (an RTC, or a host's clock)
+        sntp       an SNTP query to sntp.server
+        zenoh-hlc  the timestamps on zenoh samples the image receives
+        board      a source the board package provides
+
+
+# derived: y exactly when clock.source names `sntp`
+config NROS_CLOCK_SOURCE_HAS_SNTP
+    bool
+    depends on NETWORKING
+    select SNTP
+    select DNS_RESOLVER
+
+# prompt: Whether a better source may replace the latched one later
+config NROS_CLOCK_UPGRADE
+    string
+    default "never"
+    help
+      `never` keeps the source boot latched. `monotonic` lets a source earlier in
+      clock.source that answers later replace it, provided the wall clock does
+      not step backwards.
+
+
 # prompt: Callback slots to budget at ActionClient size (-1 = derive)
 config NROS_EXECUTOR_ACTION_CLIENTS
     int
@@ -2033,6 +2031,25 @@ config NROS_RMW_SUBSCRIBER_SLOTS
       NOT counted, because a feature enables them and the inventory cannot see
       it: the parameter (6) and lifecycle (5) service families. An image
       carrying either must state this knob.
+
+
+# prompt: SNTP server (host or IP)
+config NROS_SNTP_SERVER
+    string
+    default "10.0.2.2"
+    help
+      The server the sntp clock source queries. The default is the QEMU/slirp
+      host address, where an emulated board reaches a host-side time source.
+
+
+# prompt: SNTP reply timeout (ms)
+config NROS_SNTP_TIMEOUT_MS
+    int
+    default 3000
+    range 100 60000
+    help
+      How long one SNTP query waits for its reply. clock.sntp_attempts says how
+      many queries boot sends.
 
 
 # prompt: Per-subscription receive buffer size in bytes (-1 = derive)
@@ -3015,6 +3032,26 @@ config NROS_ZENOH_TX_SPLIT_LOCK
 
 
 endif # NROS_RMW_ZENOH
+
+# RETIRED Kconfig spellings. Each is defined, WITH a prompt, only so that a
+# conf file still assigning it reaches the configure, which stops naming
+# what replaced it (`_nros_refuse_retired_kconfig`). Undefined, it would
+# fail Kconfig's undefined-symbol check without that word.
+
+config NROS_EPOCH_FROM_ZENOH_INTERVAL_MS
+    int "Retired -- setting it stops the configure"
+    help
+      CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS is retired: set [image.<id>.knobs.clock] hlc_interval_ms instead (CONFIG_NROS_CLOCK_HLC_INTERVAL_MS where a conf file states it)
+
+config NROS_SNTP_EPOCH
+    bool "Retired -- setting it stops the configure"
+    help
+      CONFIG_NROS_SNTP_EPOCH is retired: set clock.source to a list naming sntp, for example sntp,platform
+
+config NROS_EPOCH_FROM_ZENOH
+    bool "Retired -- setting it stops the configure"
+    help
+      CONFIG_NROS_EPOCH_FROM_ZENOH is retired: set clock.source to a list naming zenoh-hlc, for example zenoh-hlc,platform
 
 # <<< knob registry <<<
 

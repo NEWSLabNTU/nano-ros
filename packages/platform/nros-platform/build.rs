@@ -1,7 +1,8 @@
 // Copyright (c) 2026, NEWSLab NTU.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Resolve `NROS_ZEPHYR_HEAP_SIZE` for `src/zephyr_heap.rs`.
+//! Resolve `NROS_ZEPHYR_HEAP_SIZE` for `src/zephyr_heap.rs`, and refuse a
+//! `clock.source` this crate's port cannot resolve.
 //!
 //! The arena size used to be read straight from the environment with
 //! `option_env!`. That has two defects this build script exists to fix, and
@@ -72,4 +73,57 @@ fn main() {
     // the ambient environment.
     println!("cargo:rustc-env=NROS_ZEPHYR_HEAP_SIZE={size}");
     println!("cargo:rerun-if-env-changed=NROS_ZEPHYR_HEAP_SIZE");
+
+    refuse_unsupported_clock_source();
+}
+
+/// RFC-0141 D1 — the wall-clock sources a port can resolve, refused at build
+/// time when the image names one its port cannot. Every image compiles this
+/// crate with exactly one `platform-*` feature on, on every road (cargo,
+/// cmake, west), so this is the one place that knows both the port and the
+/// image's `clock.source`. Without it a POSIX image naming `sntp` would build
+/// and silently read `CLOCK_REALTIME`.
+fn refuse_unsupported_clock_source() {
+    // Zephyr calibrates (SNTP, the zenoh HLC); every other port answers from
+    // its own clock or has none. `board` waits on the board clock hook.
+    let ports: &[(&str, &str, &[&str])] = &[
+        (
+            "PLATFORM_ZEPHYR",
+            "zephyr",
+            &["platform", "sntp", "zenoh-hlc"],
+        ),
+        ("PLATFORM_POSIX", "posix", &["platform"]),
+        ("PLATFORM_FREERTOS", "freertos", &["platform"]),
+        ("PLATFORM_THREADX", "threadx", &["platform"]),
+        ("PLATFORM_NUTTX", "nuttx", &["platform"]),
+        ("PLATFORM_MPS2_AN385", "mps2-an385", &["platform"]),
+        ("PLATFORM_STM32F4", "stm32f4", &["platform"]),
+    ];
+    let Some((_, port, supported)) = ports
+        .iter()
+        .find(|(feature, _, _)| std::env::var_os(format!("CARGO_FEATURE_{feature}")).is_some())
+    else {
+        return; // no port selected (a host test, `platform-cffi` alone)
+    };
+    let Some(value) = nros_zephyr_build::knob("NROS_CLOCK_SOURCE").stated_choice() else {
+        return; // the default, `platform`, which every port has
+    };
+    let refused: Vec<&str> = value
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !supported.contains(s))
+        .collect();
+    if !refused.is_empty() {
+        let why = if refused.contains(&"board") {
+            " (`board` needs the board wall-clock hook, which no port supplies yet)"
+        } else {
+            ""
+        };
+        panic!(
+            "nros-platform: `[knobs.clock] source = \"{value}\"` names {}, which the {port} \
+             port cannot resolve{why}. The {port} port resolves: {}.",
+            refused.join(", "),
+            supported.join(", ")
+        );
+    }
 }
