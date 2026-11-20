@@ -912,7 +912,10 @@ mod tests {
             tmp.path(),
             "owner = \"acme\"\n\n[[knob]]\nkey = \"zenoh.max_sessions_mine\"\n",
         );
-        let msg = format!("{:#}", Catalog::build(&[p.clone()]).unwrap_err());
+        let msg = format!(
+            "{:#}",
+            Catalog::build(std::slice::from_ref(&p)).unwrap_err()
+        );
         assert!(
             msg.contains(
                 "key `zenoh.max_sessions_mine` is not under this package's owner word `acme`"
@@ -920,7 +923,10 @@ mod tests {
             "{msg}"
         );
         write_rows(tmp.path(), "owner = \"acme\"\n\n[[env]]\nkey = \"log.x\"\n");
-        let msg = format!("{:#}", Catalog::build(&[p.clone()]).unwrap_err());
+        let msg = format!(
+            "{:#}",
+            Catalog::build(std::slice::from_ref(&p)).unwrap_err()
+        );
         assert!(msg.contains("key `log.x` is not under"), "{msg}");
         // The `owner` line is checked against the derived word.
         write_rows(tmp.path(), "owner = \"zenoh\"\n");
