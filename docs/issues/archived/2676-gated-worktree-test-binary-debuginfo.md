@@ -1,15 +1,17 @@
 ---
 id: 2676
 title: "One cold `just ci gate` grows a worktree to 185 GB; test binaries with full debuginfo are about 50 GB of it"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [ci, build, testing]
 related: [phase-559]
 found: 2026-11-17
+resolved: 2026-11-21
+resolved_in: "measured under the bar: a full green cold gate on host 241 peaked at 94 G"
 ---
 
-**Home: [phase-559](../roadmap/phase-559-ci-workflow-organization.md).** Found
+**Home: [phase-559](../../roadmap/phase-559-ci-workflow-organization.md).** Found
 on host 175 on 2026-11-17, when two gates in a row stopped on `No space left
 on device`. Earlier notes put a gated worktree at about 80 GB.
 
@@ -125,3 +127,39 @@ numbers measured once from DWARF by hand.
 
 A cold `just ci gate` stays under 100 GB at its peak, measured the same way,
 or this issue records why a larger figure is the floor.
+
+## Under the bar, measured 2026-11-20
+
+The same method (a `du` sampler on a cold `just ci gate` worktree, every
+60 s), run by the 241 session on two gates at main after the line-tables lever
+(above) and probe-root sharing (`corrosion-cargo` 26 G -> about 3 G) landed:
+
+| gate | outcome | peak |
+| --- | --- | --- |
+| #4442 | stopped at `check::build` (two load timeouts) | 83 G, at the end of `check::build` |
+| #4449 (d813777258) | **green, all 11 steps** | **94 G**, at the end of the gate (93 G at 18:20) |
+
+The green run was sampled from 17:48, after the gate had started; a gate only
+grows (nothing is removed before the end), so the last sample is the peak.
+
+Where the 94 G sits:
+
+| directory | size |
+| --- | --- |
+| `build/` | 28 G: `sizes-probe` 14 G, `example-lint` 7.0 G, `corrosion-cargo` 2.9 G, `metadata-probe` 2.5 G, `compile-check-fixtures` 1.3 G |
+| `target/` | 25 G: `debug` 17 G, `nros-relwithdebinfo` 7.5 G |
+| `packages/cli` | 14 G |
+| `examples/` | 12 G: `workspaces` 8.3 G, `threadx-linux` 1.4 G |
+| `target-built-feature-sets` and four other check target dirs | 7.1 G together |
+| `tmp` | 0.9 G |
+
+`build/sizes-probe` holds 60 keys under one rustc (six about 500 MB, about
+eight about 300 MB, the rest smaller). The test binaries are 403 executables
+in `target/debug/deps` (15 G) and 141 in `packages/cli/target/debug/deps`
+(11 G).
+
+So the "Done when" holds: a cold `just ci gate` peaks under 100 GB. The margin
+is narrow (6 G). If it is crossed again, the two largest levers left are
+those, and neither was needed to close this: the sizes-probe keys (14 G,
+whose key folds in every `NROS_*` variable on purpose, issue 0446), and the
+26 G of test binaries (fewer binaries per crate, `tests/it/main.rs`).
