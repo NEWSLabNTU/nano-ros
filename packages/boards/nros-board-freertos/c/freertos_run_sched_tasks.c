@@ -1010,6 +1010,10 @@ extern int nros_cpp_init_levels(const char* locator, uint8_t domain_id, const ch
 extern int nros_cpp_executor_set_lock(void* executor, int8_t (*lock)(void*),
                                       int8_t (*unlock)(void*), void* ctx);
 extern int nros_cpp_executor_set_thread_id(void* executor, uintptr_t (*thread_id)(void));
+extern int nros_cpp_level_set_sched_policy(void* scheduler, const char* class_, uint64_t period_us,
+                                           uint64_t budget_us, uint64_t deadline_us,
+                                           const char* deadline_policy,
+                                           uint8_t kernel_enforces_budget, uint8_t* out_sc_id);
 /* The port's recursive mutex: a FreeRTOS recursive mutex
  * (`xSemaphoreCreateRecursiveMutex`), which inherits priority. One pointer. */
 extern int8_t nros_platform_mutex_rec_init(void* m);
@@ -1063,6 +1067,40 @@ static void freertos_fail_boot(const char* name, const char* what, int rc) {
     }
 }
 
+/* The registering level's own sched context, lowered from its row: the
+ * class, the deadline and the deadline policy, plus the budget and period
+ * when `budget` is set. FreeRTOS has no kernel budget server, so the
+ * executor is the one enforcer: a level that spends its budget is skipped
+ * until the period refills it, and a callback that runs past its deadline
+ * runs the declared deadline policy. The boot level owns the session, so it
+ * gets its class and deadline but is never budgeted. Call after the level
+ * opened and before its setup. */
+static void freertos_level_sched_policy(void* scheduler, const nros_sched_task_spec_t* t,
+                                        int budget) {
+    uint8_t sc = 0;
+    uint64_t period_us = budget ? t->period_us : 0u;
+    uint64_t budget_us = budget ? t->budget_us : 0u;
+    int rc = nros_cpp_level_set_sched_policy(scheduler, t->sched_task_class, period_us, budget_us,
+                                             t->deadline_us, t->deadline_policy, 0u, &sc);
+    char nb[12];
+    if (rc != 0) {
+        nros_board_freertos_console_write("nros: level `");
+        nros_board_freertos_console_write((t->name != NULL) ? t->name : "?");
+        nros_board_freertos_console_write(
+            "` sched context not created: it runs on the default, unbudgeted\n");
+        return;
+    }
+    if (sc != 0u && budget_us != 0u && period_us != 0u) {
+        nros_board_freertos_console_write("nros: level budget sched_task=`");
+        nros_board_freertos_console_write((t->name != NULL) ? t->name : "?");
+        nros_board_freertos_console_write("` ");
+        nros_board_freertos_console_write(freertos_u32_dec((uint32_t)budget_us, nb, sizeof(nb)));
+        nros_board_freertos_console_write("us/");
+        nros_board_freertos_console_write(freertos_u32_dec((uint32_t)period_us, nb, sizeof(nb)));
+        nros_board_freertos_console_write("us enforced by the EXECUTOR\n");
+    }
+}
+
 /* One spawned level's worker. Lives for the firmware lifetime. */
 typedef struct {
     void* scheduler;
@@ -1077,6 +1115,8 @@ typedef struct {
     const nros_sched_task_spec_t* rest;
     size_t n_rest;
     const nros_sched_task_memory_t* rest_task_memory;
+    /* The level's own row, for its sched policy. */
+    const nros_sched_task_spec_t* spec;
 } nros_freertos_level_ctx_t;
 
 static int freertos_spawn_next_level(void* scheduler, const nros_sched_task_spec_t* remaining,
@@ -1095,6 +1135,7 @@ static void freertos_level_task(void* arg) {
     if (rc != 0 || owner == NULL) {
         freertos_fail_boot(ctx->name, "did not open", rc);
     }
+    freertos_level_sched_policy(ctx->scheduler, ctx->spec, 1);
     /* Gate this level's registrations to its sched task's callback groups (the
      * gate applies at registration, so each level sets it before its setup). */
     if (ctx->n_groups > 0 && ctx->groups != NULL) {
@@ -1151,6 +1192,7 @@ static int freertos_spawn_next_level(void* scheduler, const nros_sched_task_spec
     ctx->rest = remaining + 1;
     ctx->n_rest = n_remaining - 1u;
     ctx->rest_task_memory = (task_memory != NULL) ? task_memory + 1 : NULL;
+    ctx->spec = t;
 
     UBaseType_t prio = (t->priority > 0)
                            ? (UBaseType_t)(t->priority < (int64_t)(configMAX_PRIORITIES)
@@ -1304,6 +1346,7 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
         freertos_fail_boot(boot->name, "was not seated", -1);
     }
     freertos_install_park(boot_storage, boot->name);
+    freertos_level_sched_policy(scheduler, boot, 0);
     if (boot->setup != NULL) {
         rc = boot->setup(boot_storage);
         if (rc != 0) {

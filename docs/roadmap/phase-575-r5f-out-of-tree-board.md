@@ -256,7 +256,7 @@ phase-576.
 
 ### W5 — budget enforcement and deadline monitors on FreeRTOS
 
-- **Status:** OPEN (steps 1 and 2 in review, 2026-11-20)
+- **Status:** OPEN (steps 1 to 3 in review, 2026-11-20)
 - **Owner:** nros 241 (moved from nros 142 by the manager, 2026-11-19)
 
 Enforce the `budget_us` a FreeRTOS sched task already carries: a sporadic
@@ -293,8 +293,16 @@ Steps:
    Rust image baked no deadline policy. One helper now lowers the contract
    for all three roads that build that table (a separate fix, ahead of this
    step).
-3. **The C runner.** `freertos_run_sched_tasks.c` carries the four fields and
-   consumes none of them; it lowers them the same way.
+3. **The C runner.** `freertos_run_sched_tasks.c` carried the four fields and
+   consumed none of them. Its levels runner (every generated C and C++
+   FreeRTOS entry) now lowers each spawned level's class, budget, period,
+   deadline and deadline policy through `nros_cpp_level_set_sched_policy`,
+   with no kernel half, and prints the same `enforced by the EXECUTOR` line.
+   The boot level gets its class and deadline, never a budget. The
+   `realtime-c` bringup declares `[tasks.high.freertos]` 5 ms per 10 ms;
+   `freertos_c_runner_lowers_the_level_budget` reads the console. The older
+   one-executor-per-task runner (`run_sched_tasks_memory_in`, which no
+   generated entry calls) is unchanged.
 4. **A refill timer.** Refill is polled at the next spin today. A FreeRTOS
    software timer behind `PlatformTimer::create_periodic` would refill on
    time, on the pattern of the bare-metal `sporadic_timer.rs`.
