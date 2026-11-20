@@ -75,13 +75,17 @@ fn a_package_row_under_another_owner_is_refused() {
         tmp.path(),
         "owner = \"acme\"\n\n[[knob]]\nkey = \"zenoh.max_sessions_mine\"\n",
     );
-    let msg = Catalog::build(std::slice::from_ref(&p), &read).unwrap_err().to_string();
+    let msg = Catalog::build(std::slice::from_ref(&p), &read)
+        .unwrap_err()
+        .to_string();
     assert!(
         msg.contains("key `zenoh.max_sessions_mine` is not under this package's owner word `acme`"),
         "{msg}"
     );
     write_rows(tmp.path(), "owner = \"acme\"\n\n[[env]]\nkey = \"log.x\"\n");
-    let msg = Catalog::build(std::slice::from_ref(&p), &read).unwrap_err().to_string();
+    let msg = Catalog::build(std::slice::from_ref(&p), &read)
+        .unwrap_err()
+        .to_string();
     assert!(msg.contains("key `log.x` is not under"), "{msg}");
     // The `owner` line is checked against the derived word.
     write_rows(tmp.path(), "owner = \"zenoh\"\n");
