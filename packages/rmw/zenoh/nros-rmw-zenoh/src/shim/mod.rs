@@ -930,6 +930,41 @@ impl Ros2Liveliness {
         out
     }
 
+    /// A liveliness token's type back to its ROS name: the inverse of
+    /// [`crate::keyexpr::DdsTypeName`] (`std_msgs::msg::dds_::String_` ->
+    /// `std_msgs/msg/String`), which is how `rmw_zenoh_cpp`'s graph and
+    /// `ros2 topic list -t` spell it.
+    ///
+    /// Anything not exactly `<pkg>::<kind>::dds_::<Name>_` passes through
+    /// unchanged. `None` when the ROS form does not fit `N`: the caller then
+    /// reports the wire form, never a truncated name, which would be a
+    /// different and plausible type.
+    // Issue 2775.
+    pub fn demangle_type_name<const N: usize>(dds: &str) -> Option<heapless::String<N>> {
+        let mut out = heapless::String::new();
+        let mut parts = dds.split("::");
+        let ros = match (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        ) {
+            (Some(pkg), Some(kind), Some("dds_"), Some(name), None)
+                if !pkg.is_empty() && !kind.is_empty() && name.len() > 1 && name.ends_with('_') =>
+            {
+                let name = &name[..name.len() - 1];
+                out.push_str(pkg)
+                    .and_then(|()| out.push('/'))
+                    .and_then(|()| out.push_str(kind))
+                    .and_then(|()| out.push('/'))
+                    .and_then(|()| out.push_str(name))
+            }
+            _ => out.push_str(dds),
+        };
+        ros.ok().map(|()| out)
+    }
+
     /// Parse a `@ros2_lv` liveliness keyexpr.
     ///
     /// ```text
@@ -1308,13 +1343,14 @@ mod tests {
         ]);
         assert_eq!(out.len(), 2, "one entry per DISTINCT name: {out:?}");
         assert_eq!(out[0].0, "/chatter", "ascending by name");
+        // Issue 2775 -- types in their ROS form, as names are.
         assert_eq!(
             out[0].1.as_slice(),
-            [name(s), name(i)],
+            [name("std_msgs/msg/String"), name("std_msgs/msg/Int32")],
             "distinct, first-seen order"
         );
         assert_eq!(out[1].0, "/tf");
-        assert_eq!(out[1].1.as_slice(), [name(tf)]);
+        assert_eq!(out[1].1.as_slice(), [name("tf2_msgs/msg/TFMessage")]);
     }
 
     /// Issue 2360 — the grouping keeps no table of names already seen, so it
@@ -1462,6 +1498,45 @@ mod tests {
         assert!(
             !keyexpr_matches(wildcard.as_str(), node.as_str()),
             "a 13-chunk wildcard must not match a 9-chunk node token"
+        );
+    }
+
+    /// Issue 2775 -- a token's type comes back in its ROS form, and the two
+    /// directions are one format: every ROS type `DdsTypeName` puts on the
+    /// wire demangles to itself, the action sub-types (already ending in `_`)
+    /// included.
+    #[test]
+    fn a_token_type_demangles_to_its_ros_form() {
+        for ros in [
+            "std_msgs/msg/String",
+            "example_interfaces/srv/AddTwoInts",
+            "example_interfaces/action/Fibonacci_SendGoal",
+            "rcl_interfaces/msg/ParameterEvent",
+        ] {
+            let mut wire = heapless::String::<64>::new();
+            core::fmt::write(
+                &mut wire,
+                format_args!("{}", crate::keyexpr::DdsTypeName(ros)),
+            )
+            .expect("fits");
+            let back = Ros2Liveliness::demangle_type_name::<64>(wire.as_str()).expect("fits");
+            assert_eq!(back.as_str(), ros, "via {wire}");
+        }
+        // Not the mangled shape: passed through, never guessed at.
+        for other in [
+            "std_msgs/msg/String",
+            "a::b",
+            "a::b::c::d_",
+            "a::b::dds_::_",
+            "",
+        ] {
+            let got = Ros2Liveliness::demangle_type_name::<64>(other).expect("fits");
+            assert_eq!(got.as_str(), other);
+        }
+        // A ROS form longer than the buffer is refused, not cut.
+        assert_eq!(
+            Ros2Liveliness::demangle_type_name::<8>("std_msgs::msg::dds_::String_"),
+            None
         );
     }
 

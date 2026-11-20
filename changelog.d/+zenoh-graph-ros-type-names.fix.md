@@ -1,0 +1,1 @@
+On zenoh, the graph queries now report a type in its ROS form (`std_msgs/msg/String`), as ROS 2 and `ros2 topic list -t` do. They used to report the wire form (`std_msgs::msg::dds_::String_`) from every language surface.
