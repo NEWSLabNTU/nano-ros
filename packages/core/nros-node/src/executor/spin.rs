@@ -1018,10 +1018,9 @@ fn report_parameter_store_refused() {
             logger,
             "every parameter declaration on this executor is refused"
         );
-        nros_log::log_error!(
-            logger,
-            "open it with ExecutorSizing::params > 0 (NROS_PARAM_STORE=1, NROS_MAX_PARAMETERS)"
-        );
+        // Issue 2777 -- the knob in the one spelling every report uses.
+        nros_log::log_error!(logger, "{}", nros_params::STORE_SIZE_KNOB);
+        nros_log::log_error!(logger, "{}", nros_params::STORE_SIZE_DERIVED);
     }
     #[cfg(feature = "alloc")]
     report_parameter_heap_store_refused();
@@ -1052,14 +1051,9 @@ fn report_parameter_heap_store_refused() {
     // phase-382 W3' -- the remedy that takes the store OUT of the heap comes
     // first: a build that knows the image builds a store carves it from the
     // executor backing instead (`nros_params::IMPLIED_STORE_SLOTS`).
-    nros_log::log_error!(
-        logger,
-        "declare the parameters in the contract (params:) or state NROS_PARAM_STORE=1"
-    );
-    nros_log::log_error!(
-        logger,
-        "and the store is carved from the executor backing; or raise the image heap"
-    );
+    // Issue 2777 -- the knob in the one spelling every report uses.
+    nros_log::log_error!(logger, "{}", nros_params::STORE_SIZE_KNOB);
+    nros_log::log_error!(logger, "{}", nros_params::STORE_SIZE_DERIVED);
 }
 
 /// `text` typed as `declared`'s type — phase-482 W5. `None` when it does not
