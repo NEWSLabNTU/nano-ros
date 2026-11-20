@@ -446,7 +446,9 @@ fn flood_count(router: &ZenohRouter, note: &str) -> usize {
            built with graph discovery off declares no liveliness subscriber, so \
            the router sends it no graph (W1); discovery on and a VOLATILE \
            subscription are the negative controls; issue 2366: a latched publisher \
-           that appears after the subscription is read exactly once",
+           that appears after the subscription, and a value changed while the \
+           subscription's session was away (issue 2774: its router died), are each \
+           read exactly once",
 })]
 fn interop(#[case] cell: Cell) {
     // Issue 0352 / phase-324 W4.d — per-case binding: the coordinate this case
@@ -1058,12 +1060,82 @@ fn interop(#[case] cell: Cell) {
                  started at {published_from} ms, so it did not come from that publisher:\n{out}",
                 got[0].1
             );
-            // The session re-open half of issue 2366 is measured by hand (two
-            // routers, the subscription's router stopped while the value
-            // changes: 0 of 3 before the fix, 3 of 3 after) and is not a phase
-            // here yet: every router stop this harness can make leaves a
-            // zenoh-pico client reading end-of-stream without reopening
-            // (issue 2774), so the phase would measure that instead.
+            // 5. A session re-open (issue 2366's second case). The publisher is
+            //    on router A and the subscription on router B, which bridges to
+            //    A. B goes down, the publisher changes the value (A is up: the
+            //    publish is real and reaches nobody), and B comes back. The new
+            //    value can reach the subscription only through a history query
+            //    sent after its session reopened; the value it already read must
+            //    not come back. B is stopped the way a router dies, so the
+            //    subscription's link ends without zenoh's CLOSE -- which until
+            //    issue 2774 left the client reading end-of-stream forever,
+            //    never reopening.
+            const REOPEN_TOPIC: &str = "/latched_across_reopen";
+            let mut router_b = ZenohRouter::start_unique_with_overrides(
+                &[format!("connect/endpoints=[\"{locator}\"]")],
+                "warn",
+            )
+            .unwrap_or_else(|e| unmet!("the second zenohd failed to start: {e}"));
+            let locator_b = router_b.locator();
+            let mut reopen_publisher = probe(
+                &locator,
+                "constrained-link-probe: publisher on router A",
+                &[
+                    ("CLP_TOPIC", REOPEN_TOPIC),
+                    ("CLP_ROLE", "publish"),
+                    ("CLP_VALUE", "1"),
+                    ("CLP_VALUE2", "2"),
+                    ("CLP_VALUE2_AFTER_MS", "9000"),
+                    ("CLP_WINDOW_MS", "45000"),
+                ],
+            );
+            let first = reopen_publisher
+                .wait_for_output_pattern(output::CLP_PUBLISHED_PREFIX, Duration::from_secs(20))
+                .unwrap_or_else(|e| panic!("the publisher on router A never published: {e}"));
+            let mut sub = probe(
+                &locator_b,
+                "constrained-link-probe: subscription on router B",
+                &[("CLP_TOPIC", REOPEN_TOPIC), ("CLP_WINDOW_MS", "30000")],
+            );
+            let before = sub
+                .wait_for_output_pattern(
+                    &format!("{}1 ", output::CLP_RECEIVED_AT_PREFIX),
+                    Duration::from_secs(20),
+                )
+                .unwrap_or_else(|e| {
+                    panic!("the subscription on router B never read the first value: {e}")
+                });
+            router_b.stop();
+            let second = reopen_publisher
+                .wait_for_output_pattern(output::CLP_PUBLISHED_PREFIX, Duration::from_secs(20))
+                .unwrap_or_else(|e| {
+                    panic!("the publisher never published its second value: {first}{e}")
+                });
+            let reopened_from = unix_ms();
+            router_b
+                .restart()
+                .unwrap_or_else(|e| panic!("router B did not come back: {e}"));
+            let out = format!(
+                "{before}{}",
+                sub.collect_until(output::CLP_DONE_MARKER, Duration::from_secs(45))
+            );
+            sub.kill();
+            reopen_publisher.kill();
+            let got = received_at(&out);
+            assert_eq!(
+                got.iter().map(|g| g.0).collect::<Vec<_>>(),
+                vec![1, 2],
+                "issues 2366/2774: across a session re-open a TRANSIENT_LOCAL subscription \
+                 did not read the value published while it was away, exactly once ({}). \
+                 Publisher: {first}{second}\nSubscription:\n{out}",
+                cell.note
+            );
+            assert!(
+                got[1].1 >= reopened_from,
+                "issues 2366/2774: the second value was received at {} ms, before router B \
+                 came back at {reopened_from} ms, so it did not cross the re-open:\n{out}",
+                got[1].1
+            );
         }
         Scenario::ZenohServiceResponseHeaderCpp => {
             let bin = build_cmake_leaf_rmw(

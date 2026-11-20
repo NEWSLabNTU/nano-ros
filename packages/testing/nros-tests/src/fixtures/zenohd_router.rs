@@ -432,6 +432,60 @@ pub struct ZenohRouter {
     /// Issue 0470 — held for the router's lifetime so no other fixture is
     /// handed this port. `None` when the caller named the port itself.
     _lease: Option<crate::port_lease::PortLease>,
+    /// How to start this router again, for [`restart`](Self::restart).
+    /// `None` for the serial and TLS routers, which do not support it.
+    respawn: Option<Respawn>,
+}
+
+// Issue 2774.
+/// What [`ZenohRouter::restart`] needs to start the same router again.
+struct Respawn {
+    overrides: Vec<String>,
+    locator: String,
+    log_filter: Option<String>,
+}
+
+/// Spawn `zenohd` with `overrides` and wait until it accepts on `locator`.
+/// `append_log` keeps a restarted router's log in the same file.
+fn spawn_router(
+    overrides: &[String],
+    locator: &str,
+    port: u16,
+    log_filter: Option<&str>,
+    append_log: bool,
+) -> TestResult<(Child, String)> {
+    let mut cmd = router_command(overrides)?;
+    // Diagnostic log capture per port — opt-in, unified dir. Enabled by
+    // ZENOHD_LOG=trace|debug (also sets RUST_LOG level), by a caller-named
+    // filter, or by NROS_TEST_LOGS; the file lands in test-logs/fixtures/
+    // (see fixtures::fixture_log_path). Defaults to null sinks so a normal
+    // run leaves nothing behind.
+    let zenohd_log = resolve_router_log_filter(log_filter);
+    if zenohd_log.is_some() || crate::fixtures::fixture_logs_enabled() {
+        let log_path = crate::fixtures::fixture_log_path(&format!("zenohd-{port}"));
+        let log = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(append_log)
+            .truncate(!append_log)
+            .open(&log_path)
+            .map_err(TestError::ProcessStart)?;
+        let log_stdout = log.try_clone().map_err(TestError::ProcessStart)?;
+        cmd.env("RUST_LOG", zenohd_log.as_deref().unwrap_or("info"))
+            .stdout(Stdio::from(log_stdout))
+            .stderr(Stdio::from(log));
+    } else {
+        cmd.stdout(Stdio::null()).stderr(Stdio::piped());
+    }
+    #[cfg(unix)]
+    crate::process::set_new_process_group(&mut cmd);
+    let launch = describe_router(&cmd);
+    let mut handle = cmd.spawn()?;
+
+    // Wait for zenohd to be ready (TCP port accepting connections)
+    // 10s allows for slow startup under concurrent test load
+    wait_for_router_ready(&mut handle, locator, port)?;
+    Ok((handle, launch))
 }
 
 impl ZenohRouter {
@@ -545,31 +599,7 @@ impl ZenohRouter {
             .join(",");
         let mut overrides = vec![format!("listen/endpoints=[{endpoints}]")];
         overrides.extend_from_slice(extra);
-        let mut cmd = router_command(&overrides)?;
-        // Diagnostic log capture per port — opt-in, unified dir. Enabled by
-        // ZENOHD_LOG=trace|debug (also sets RUST_LOG level), by a caller-named
-        // filter, or by NROS_TEST_LOGS; the file lands in test-logs/fixtures/
-        // (see fixtures::fixture_log_path). Defaults to null sinks so a normal
-        // run leaves nothing behind.
-        let zenohd_log = resolve_router_log_filter(log_filter);
-        if zenohd_log.is_some() || crate::fixtures::fixture_logs_enabled() {
-            let log_path = crate::fixtures::fixture_log_path(&format!("zenohd-{port}"));
-            let log = std::fs::File::create(&log_path).map_err(TestError::ProcessStart)?;
-            let log_stdout = log.try_clone().map_err(TestError::ProcessStart)?;
-            cmd.env("RUST_LOG", zenohd_log.as_deref().unwrap_or("info"))
-                .stdout(Stdio::from(log_stdout))
-                .stderr(Stdio::from(log));
-        } else {
-            cmd.stdout(Stdio::null()).stderr(Stdio::piped());
-        }
-        #[cfg(unix)]
-        crate::process::set_new_process_group(&mut cmd);
-        let launch = describe_router(&cmd);
-        let mut handle = cmd.spawn()?;
-
-        // Wait for zenohd to be ready (TCP port accepting connections)
-        // 10s allows for slow startup under concurrent test load
-        wait_for_router_ready(&mut handle, &locator, port)?;
+        let (handle, launch) = spawn_router(&overrides, &locator, port, log_filter, false)?;
 
         Ok(Self {
             handle,
@@ -577,6 +607,11 @@ impl ZenohRouter {
             tls: false,
             launch,
             _lease: lease,
+            respawn: Some(Respawn {
+                overrides,
+                locator,
+                log_filter: log_filter.map(str::to_owned),
+            }),
         })
     }
 
@@ -639,6 +674,7 @@ impl ZenohRouter {
             tls: false,
             launch,
             _lease: None,
+            respawn: None,
         })
     }
 
@@ -711,6 +747,7 @@ impl ZenohRouter {
             tls: true,
             launch,
             _lease: lease,
+            respawn: None,
         })
     }
 
@@ -767,6 +804,35 @@ impl ZenohRouter {
     }
 
     /// Check if the router is still running
+    // Issue 2774.
+    /// Stop this router, keeping its port lease, so every session that
+    /// dialled it loses its link. [`restart`](Self::restart) brings it back on
+    /// the same port with the same config.
+    pub fn stop(&mut self) {
+        graceful_kill_process_group(&mut self.handle);
+    }
+
+    /// Start the router again after [`stop`](Self::stop): same port, same
+    /// config overrides, so a session that dialled it can reopen. Refused for
+    /// the serial and TLS routers.
+    pub fn restart(&mut self) -> TestResult<()> {
+        let Some(r) = self.respawn.as_ref() else {
+            return Err(TestError::ProcessFailed(
+                "this router kind cannot be restarted".to_string(),
+            ));
+        };
+        let (handle, launch) = spawn_router(
+            &r.overrides,
+            &r.locator,
+            self.port,
+            r.log_filter.as_deref(),
+            true,
+        )?;
+        self.handle = handle;
+        self.launch = launch;
+        Ok(())
+    }
+
     pub fn is_running(&mut self) -> bool {
         matches!(self.handle.try_wait(), Ok(None))
     }

@@ -139,9 +139,9 @@ Measured after the fix:
   exactly one delivery and that it arrived after the publisher started; 3 of 3
   green.
 
-## Not covered
+## Not covered, then covered
 
-The re-open case is not a cell phase. Every router stop the test harness makes
-leaves a zenoh-pico client reading end-of-stream forever without reopening
-(issue 2774, pre-existing: the unfixed build does the same), so the phase would
-measure that. It belongs to 2774's fix.
+The re-open case first shipped without a cell phase: every router stop the
+test harness made left a zenoh-pico client reading end-of-stream forever
+(issue 2774). With 2774 fixed, `interop_e2e::interop::case_13` phase 5 asserts
+it.
