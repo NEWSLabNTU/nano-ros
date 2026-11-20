@@ -616,6 +616,12 @@ Progress (2026-11-18, the refusal the default needs):
   checked on each side.
 - Gap, named: a node a component opens on another RMW in its own code is
   invisible to the model, so it is neither refused nor guessed at (issue 2708).
+- Fallout, issue 2772: the default answered for every image alike. An RTIC
+  image, whose entry cannot serve the parameter services, was refused at
+  build (tier 2's `baremetal_levels_rtic_entry`); the default is now derived
+  from the entry framework (`FRAMEWORKS_WITHOUT_NODE_SERVICES`). A
+  Nucleo-F767ZI Rust image no longer fits its 384 KiB SRAM, which is still
+  open there.
 
 ### W14 — One `/parameter_events` writer per executor
 
