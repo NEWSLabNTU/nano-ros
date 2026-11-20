@@ -88,7 +88,21 @@ reserved.transport = [14, 14]
 # LARGER on this kernel. The direction flip is the trap issue 0623 is about:
 # the same "below the transport" rule reads as `<= 3` on FreeRTOS and `>= 15`
 # here.
-pool.app = [15, 31]
+#
+# The pool stops at 30. 31 (TX_MAX_PRIORITIES - 1) is the nsos-netx receive
+# notifier (`nsos-rx-notify`, packages/drivers/net/nsos-netx/src/
+# nsos_rx_notify.c), which sits at the bottom on purpose: it blocks in a host
+# `poll()`, and the ThreadX scheduler counts a thread blocked in a host call as
+# running, so it starves every thread at or below its priority. A level at 31
+# would never run. Measured by the boot thread census.
+pool.app = [15, 30]
+# The threads nano-ros does not create, MEASURED by the boot thread census
+# (`nros: task census name=... prio=...`, read by the e2e
+# `threadx_thread_census_is_placed_by_the_priority_plan` on the realtime
+# image): the kernel's timer thread, `System Timer Thread`, at 0
+# (TX_TIMER_THREAD_PRIORITY's port default; config/tx_user.h does not set it).
+# The image creates no NetX Duo IP thread: networking is host sockets.
+reserved.foreign = [0, 0]
 
 # phase-448 W5 / issue 1145 — the executor backing, reserved ONCE.
 #

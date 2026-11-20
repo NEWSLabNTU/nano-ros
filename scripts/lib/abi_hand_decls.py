@@ -122,6 +122,14 @@ SURFACES = {
             "nros_board_log_write_stderr": (
                 "nros-board-threadx-linux's own console shim, board-local"
             ),
+            "nros_board_nuttx_report_task_census": (
+                "NuttX board boot thread census (nros-board-nuttx-qemu/c/"
+                "nuttx_run_sched_tasks.c), board-local (no ABI header)"
+            ),
+            "nros_board_threadx_report_task_census": (
+                "ThreadX board boot thread census (nros-board-common/c/threadx_hooks.c), "
+                "board-local (no ABI header)"
+            ),
             "nros_board_freertos_report_task_census": (
                 "FreeRTOS board boot task census (c/freertos_task_glue.c), "
                 "board-local (no ABI header)"

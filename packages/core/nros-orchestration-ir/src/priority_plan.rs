@@ -303,8 +303,16 @@ impl PriorityPlan {
             "threadx" => PriorityPlan {
                 direction: Direction::SmallerIsUrgent,
                 range: band(0, 31),
-                reserved: reserved("transport", 14, 14),
-                app: band(15, 31),
+                // `reserved.foreign`: the kernel's timer thread, measured by
+                // the boot thread census. The pool stops at 30: 31 is the
+                // nsos-netx receive notifier, which blocks in a host `poll()`
+                // and so starves any thread at its priority.
+                reserved: {
+                    let mut m = reserved("transport", 14, 14);
+                    m.insert("foreign".to_string(), band(0, 0));
+                    m
+                },
+                app: band(15, 30),
                 source: "packages/boards/nros-board-threadx-linux/nros-board.toml".into(),
                 max_levels: None,
             },
@@ -312,7 +320,13 @@ impl PriorityPlan {
             "nuttx" => PriorityPlan {
                 direction: Direction::BiggerIsUrgent,
                 range: band(1, 255),
-                reserved: reserved("transport", 100, 100),
+                // `reserved.foreign`: the kernel's work queues (lpwork 100,
+                // hpwork 192), measured by the boot thread census.
+                reserved: {
+                    let mut m = reserved("transport", 100, 100);
+                    m.insert("foreign".to_string(), band(100, 192));
+                    m
+                },
                 app: band(1, 99),
                 source: "packages/boards/nros-board-nuttx-qemu/nros-board.toml".into(),
                 max_levels: None,
@@ -687,7 +701,8 @@ mod tests {
 
         let threadx = PriorityPlan::for_target("threadx");
         assert_eq!(threadx.nth_app_priority(0), Some(15));
-        assert_eq!(threadx.least_urgent_app_priority(), Some(31));
+        // 31 is the nsos-netx receive notifier's, below the pool.
+        assert_eq!(threadx.least_urgent_app_priority(), Some(30));
 
         // A key with no RTOS family gets no plan and no pool to allocate from.
         assert_eq!(PriorityPlan::for_target("").app.width(), 1);

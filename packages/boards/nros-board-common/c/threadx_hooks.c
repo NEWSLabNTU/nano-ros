@@ -729,3 +729,75 @@ void nros_threadx_free(void* ptr) {
         tx_byte_release(ptr);
     }
 }
+
+/*
+ * The thread census: every thread the kernel holds, with its priority,
+ * printed once when the image is fully up (after the last level's setup). A
+ * priority plan reserves bands for threads nano-ros does not create (the
+ * kernel's timer thread, a NetX Duo IP thread); ThreadX has no procfs to read
+ * them from, so the image says what is there and a test classifies each
+ * thread against the plan. One line per thread, each written in ONE
+ * `nros_board_log` call (a board may end every call with a line break):
+ *
+ *   nros: task census name=`<name>` prio=<n>
+ *
+ * then `nros: task census done tasks=<n>`. The priority is ThreadX's own
+ * (0 is the most urgent), the unit the plan is written in.
+ */
+static size_t census_put(char* line, size_t n, size_t cap, const char* s) {
+    while (s != NULL && *s != '\0' && n + 1u < cap) {
+        line[n++] = *s++;
+    }
+    return n;
+}
+
+static size_t census_put_u(char* line, size_t n, size_t cap, unsigned long v) {
+    char digits[24];
+    size_t k = 0;
+    do {
+        digits[k++] = (char)('0' + (v % 10u));
+        v /= 10u;
+    } while (v != 0u && k < sizeof(digits));
+    while (k > 0u && n + 1u < cap) {
+        line[n++] = digits[--k];
+    }
+    return n;
+}
+
+/* The kernel's created-thread list (tx_thread.h, which this file does not
+ * include). */
+extern TX_THREAD* _tx_thread_created_ptr;
+extern ULONG _tx_thread_created_count;
+
+void nros_board_threadx_report_task_census(void) {
+    char line[96];
+    size_t n;
+    unsigned long count = 0;
+    TX_INTERRUPT_SAVE_AREA
+    TX_DISABLE
+    TX_THREAD* first = _tx_thread_created_ptr;
+    ULONG total = _tx_thread_created_count;
+    TX_RESTORE
+    TX_THREAD* t = first;
+    for (ULONG i = 0; t != TX_NULL && i < total; ++i) {
+        CHAR* name = TX_NULL;
+        UINT prio = 0;
+        if (tx_thread_info_get(t, &name, TX_NULL, TX_NULL, &prio, TX_NULL, TX_NULL, TX_NULL,
+                               TX_NULL) == TX_SUCCESS) {
+            n = census_put(line, 0, sizeof(line), "nros: task census name=`");
+            n = census_put(line, n, sizeof(line), (name != TX_NULL) ? (const char*)name : "?");
+            n = census_put(line, n, sizeof(line), "` prio=");
+            n = census_put_u(line, n, sizeof(line), (unsigned long)prio);
+            n = census_put(line, n, sizeof(line), "\n");
+            line[n] = '\0';
+            nros_board_log(line);
+            ++count;
+        }
+        t = t->tx_thread_created_next;
+    }
+    n = census_put(line, 0, sizeof(line), "nros: task census done tasks=");
+    n = census_put_u(line, n, sizeof(line), count);
+    n = census_put(line, n, sizeof(line), "\n");
+    line[n] = '\0';
+    nros_board_log(line);
+}

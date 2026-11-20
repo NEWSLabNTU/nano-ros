@@ -54,9 +54,10 @@ use nros_tests::{
         ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
         build_freertos_workspace_rust_realtime_entry, build_native_workspace_rust_realtime_entry,
-        build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
-        build_threadx_workspace_rust_realtime_entry, build_zephyr_workspace_c_realtime_entry,
-        build_zephyr_workspace_c_realtime_entry_smp, build_zephyr_workspace_cpp_realtime_entry,
+        build_nuttx_workspace_c_realtime_entry, build_nuttx_workspace_cpp_realtime_entry,
+        build_nuttx_workspace_rust_realtime_entry, build_threadx_workspace_rust_realtime_entry,
+        build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_c_realtime_entry_smp,
+        build_zephyr_workspace_cpp_realtime_entry,
         build_zephyr_workspace_rust_realtime_derived_entry,
         build_zephyr_workspace_rust_realtime_entry,
     },
@@ -1068,6 +1069,171 @@ fn freertos_task_census(log: &str) -> Vec<(String, u32)> {
         .collect()
 }
 
+/// Every task's priority, as an image's boot census states it
+/// (`nros: task census name=`<name>` prio=<n>`), in boot order.
+fn task_census(log: &str) -> Vec<(String, u32)> {
+    freertos_task_census(log)
+}
+
+/// The ThreadX-linux realtime image prints a thread census once every level
+/// is up, and every thread in it is placed by the board's priority plan.
+#[test]
+fn threadx_thread_census_is_placed_by_the_priority_plan() {
+    if !nros_tests::lane_scope::admits(MP::ThreadxLinux) {
+        return;
+    }
+    let entry = build_threadx_workspace_rust_realtime_entry()
+        .map(|p| p.to_path_buf())
+        .require("threadx-linux rust realtime");
+    let plan = PlanBands::board("packages/boards/nros-board-threadx-linux/nros-board.toml");
+    let port = port_of(MP::ThreadxLinux, ML::Rust, MW::RealtimeSchedTasks);
+    let _router = ZenohRouter::start_on("127.0.0.1", port)
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+    let mut cmd = Command::new(&entry);
+    cmd.env("RUST_LOG", "info");
+    let mut g = ManagedProcess::spawn_image(cmd, "threadx-census")
+        .unwrap_or_else(|e| panic!("[threadx-linux rust] spawn entry: {e}"));
+    let log = g.wait_for_output_pattern("nros: task census done tasks=", Duration::from_secs(60));
+    g.kill();
+    let log = log.unwrap_or_else(|e| panic!("[threadx-linux rust] no thread census: {e}"));
+    let census = task_census(&log);
+    eprintln!("[threadx-linux rust] census: {census:?}");
+    assert!(
+        !census.is_empty(),
+        "[threadx-linux rust] empty census:\n{log}"
+    );
+    let prio_of = |name: &str| {
+        census
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, p)| *p)
+            .unwrap_or_else(|| panic!("[threadx-linux rust] no `{name}` in {census:?}"))
+    };
+    let (app_lo, app_hi) = plan.band("pool.app");
+    // The nsos-netx receive notifier blocks in a host `poll()`, which starves
+    // every thread at or below its priority, so it sits below the pool.
+    let notifier = prio_of("nsos-rx-notify");
+    assert!(
+        notifier > app_hi,
+        "[threadx-linux rust] `nsos-rx-notify` at {notifier} is inside pool.app \
+         [{app_lo}, {app_hi}]: a level there would never run ({})",
+        plan.source
+    );
+    let mut undeclared = Vec::new();
+    for (name, prio) in &census {
+        if name == "nsos-rx-notify" {
+            continue;
+        }
+        if !plan
+            .bands
+            .iter()
+            .any(|(_, (lo, hi))| lo <= prio && prio <= hi)
+        {
+            undeclared.push((name.clone(), *prio));
+        }
+    }
+    assert!(
+        undeclared.is_empty(),
+        "[threadx-linux rust] thread(s) at a priority no band of the plan holds ({}): \
+         {undeclared:?}",
+        plan.source
+    );
+    let (flo, fhi) = plan.band("reserved.foreign");
+    let timer = prio_of("System Timer Thread");
+    assert!(
+        flo <= timer && timer <= fhi,
+        "[threadx-linux rust] the kernel's timer thread at {timer} is outside \
+         reserved.foreign [{flo}, {fhi}] ({})",
+        plan.source
+    );
+}
+
+/// The NuttX realtime images print a thread census once every level is up,
+/// and every thread in it is placed by the board's priority plan.
+#[test]
+fn nuttx_thread_census_is_placed_by_the_priority_plan() {
+    if !nros_tests::lane_scope::admits(MP::NuttxArm) {
+        return;
+    }
+    type Resolve = fn() -> TestResult<PathBuf>;
+    let cells: [(ML, Resolve, &str); 3] = [
+        (
+            ML::Rust,
+            || build_nuttx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
+            "rust",
+        ),
+        (
+            ML::Cpp,
+            || build_nuttx_workspace_cpp_realtime_entry().map(|p| p.to_path_buf()),
+            "cpp",
+        ),
+        (
+            ML::C,
+            || build_nuttx_workspace_c_realtime_entry().map(|p| p.to_path_buf()),
+            "c",
+        ),
+    ];
+    let plan = PlanBands::board("packages/boards/nros-board-nuttx-qemu/nros-board.toml");
+    for (lang, resolve, tag) in cells {
+        let entry = resolve().require(&format!("nuttx-arm {tag} realtime"));
+        let port = port_of(MP::NuttxArm, lang, MW::RealtimeSchedTasks);
+        let _router = ZenohRouter::start_on("0.0.0.0", port)
+            .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+        let groups: Vec<Vec<String>> = vec![vec!["nros: task census done tasks=".into()]];
+        let mut q = QemuProcess::start_nuttx_virt(&entry, true)
+            .unwrap_or_else(|e| panic!("[nuttx-arm {tag}] boot QEMU: {e}"));
+        let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+        q.kill();
+        let log = log.unwrap_or_else(|e| panic!("[nuttx-arm {tag}] no thread census: {e}"));
+        let census = task_census(&log);
+        eprintln!("[nuttx-arm {tag}] census: {census:?}");
+        assert!(!census.is_empty(), "[nuttx-arm {tag}] empty census:\n{log}");
+        let mut undeclared = Vec::new();
+        for (name, prio) in &census {
+            // The kernel's idle task sits at 0, below the plan's range.
+            if name == "Idle_Task" {
+                assert_eq!(*prio, 0, "[nuttx-arm {tag}] Idle_Task is not at 0");
+                continue;
+            }
+            if !plan
+                .bands
+                .iter()
+                .any(|(_, (lo, hi))| lo <= prio && prio <= hi)
+            {
+                undeclared.push((name.clone(), *prio));
+            }
+        }
+        assert!(
+            undeclared.is_empty(),
+            "[nuttx-arm {tag}] thread(s) at a priority no band of the plan holds ({}): \
+             {undeclared:?}",
+            plan.source
+        );
+        // The kernel's work queues sit in the measured foreign band, never in
+        // the pool a level is allocated from.
+        let (flo, fhi) = plan.band("reserved.foreign");
+        for foreign in ["lpwork", "hpwork"] {
+            let prios: Vec<u32> = census
+                .iter()
+                .filter(|(n, _)| n == foreign)
+                .map(|(_, p)| *p)
+                .collect();
+            assert!(
+                !prios.is_empty(),
+                "[nuttx-arm {tag}] no `{foreign}` in {census:?}"
+            );
+            for prio in prios {
+                assert!(
+                    flo <= prio && prio <= fhi,
+                    "[nuttx-arm {tag}] `{foreign}` at {prio} is outside reserved.foreign \
+                     [{flo}, {fhi}] ({})",
+                    plan.source
+                );
+            }
+        }
+    }
+}
+
 /// The FreeRTOS realtime images print a task census once every level is up,
 /// and every task in it is placed by the FreeRTOS priority plan.
 ///
@@ -1095,7 +1261,7 @@ fn freertos_task_census_is_placed_by_the_priority_plan() {
             "c",
         ),
     ];
-    let plan = FreertosPlan::load();
+    let plan = PlanBands::freertos();
     for (lang, resolve, tag) in cells {
         let entry = resolve().require(&format!("freertos-mps2 {tag} realtime"));
         let port = port_of(MP::FreertosMps2, lang, MW::RealtimeSchedTasks);
@@ -1153,25 +1319,45 @@ fn freertos_task_census_is_placed_by_the_priority_plan() {
     }
 }
 
-/// The FreeRTOS platform's priority plan, read from its descriptor: every
-/// `reserved.*` and `pool.*` band by its key.
-struct FreertosPlan {
+/// A port's priority plan, read from its descriptor: every `reserved.*` and
+/// `pool.*` band by its key.
+struct PlanBands {
     source: &'static str,
     bands: Vec<(String, (u32, u32))>,
 }
 
-impl FreertosPlan {
-    fn load() -> Self {
-        let source = "packages/platform/nros-platform-freertos/nros-platform.toml";
+impl PlanBands {
+    /// The FreeRTOS platform's plan (`[priority_plan]`).
+    fn freertos() -> Self {
+        Self::load(
+            "packages/platform/nros-platform-freertos/nros-platform.toml",
+            &["priority_plan"],
+        )
+    }
+
+    /// A board's own plan (`[board.priority_plan]`).
+    fn board(source: &'static str) -> Self {
+        Self::load(source, &["board", "priority_plan"])
+    }
+
+    fn load(source: &'static str, path: &[&str]) -> Self {
         let text = std::fs::read_to_string(nros_tests::project_root().join(source))
             .unwrap_or_else(|e| panic!("read {source}: {e}"));
         let doc: toml::Table = text
             .parse()
             .unwrap_or_else(|e| panic!("parse {source}: {e}"));
-        let plan = doc
-            .get("priority_plan")
-            .and_then(|v| v.as_table())
-            .unwrap_or_else(|| panic!("{source}: no [priority_plan]"));
+        let mut plan = &doc;
+        for key in path {
+            // A board descriptor is `[[board]]`, an array of tables, and
+            // `[board.priority_plan]` belongs to its (one) element.
+            plan = plan
+                .get(*key)
+                .and_then(|v| match v {
+                    toml::Value::Array(a) => a.last().and_then(|e| e.as_table()),
+                    other => other.as_table(),
+                })
+                .unwrap_or_else(|| panic!("{source}: no [{}]", path.join(".")));
+        }
         let mut bands = Vec::new();
         for group in ["reserved", "pool"] {
             let Some(t) = plan.get(group).and_then(|v| v.as_table()) else {
