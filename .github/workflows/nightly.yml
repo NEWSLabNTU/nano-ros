@@ -63,6 +63,9 @@ permissions:
   packages: read
 
 env:
+  # RFC-0114 D13.1 (phase-585 W2) -- where each test's evidence ledger goes;
+  # the junit upload carries it to the `board-results` job.
+  NROS_TEST_EVIDENCE_DIR: ${{ github.workspace }}/target/nros-evidence
   # Zephyr jobs build only the zenoh examples — skip the heavy Micro-XRCE-DDS
   # Agent (Fast-DDS superbuild) `just setup zephyr` builds for XRCE runtime tests.
   NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
@@ -582,6 +585,7 @@ jobs:
             target/nextest/*/junit-real.xml
             ${{ env.CARGO_TARGET_DIR }}/nextest/*/junit.xml
             ${{ env.CARGO_TARGET_DIR }}/nextest/*/junit-real.xml
+            target/nros-evidence/*.jsonl
           if-no-files-found: ignore
           retention-days: 7
 
@@ -700,6 +704,7 @@ jobs:
           path: |
             target/nextest/*/junit.xml
             ${{ env.CARGO_TARGET_DIR }}/nextest/*/junit.xml
+            target/nros-evidence/*.jsonl
           if-no-files-found: ignore
           retention-days: 7
 
@@ -1641,3 +1646,51 @@ jobs:
           name: nuttx-make-road-${{ matrix.config }}-log
           path: build/nuttx-make-road/${{ matrix.config }}/make.log
           if-no-files-found: ignore
+
+  # RFC-0114 D13.3 (phase-585 W2) -- this run's results per registry board:
+  # the board jobs' junit joined with the evidence ledger their tests wrote
+  # (`NROS_TEST_EVIDENCE_DIR`), each job classified by its failing step. A
+  # SEPARATE job, in no required check, and never `continue-on-error`: a
+  # collector that fails says so here, rather than reading green while broken.
+  board-results:
+    name: board results
+    needs: [platform, px4-sitl]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/ci
+            scripts/lib
+            packages/boards/board-support-status.json
+            packages/testing/nros-tests/src/matrix.rs
+          sparse-checkout-cone-mode: false
+      - name: Download the board jobs' junit and evidence ledgers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nightly-*-junit
+          path: board-artifacts
+      - name: Read this run's jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run view "${{ github.run_id }}" --repo "${{ github.repository }}" --json jobs > jobs.json
+      - name: Collect the board results
+        run: |
+          python3 scripts/ci/board-results.py --jobs jobs.json --artifacts board-artifacts \
+            --out board-results.json --summary "$GITHUB_STEP_SUMMARY" \
+            --run-meta workflow=nightly.yml event="${{ github.event_name }}" \
+              run="${{ github.run_id }}" sha="${{ github.sha }}" date="$(date -u +%F)" \
+              url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Upload board-results.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: board-results
+          path: board-results.json
+          if-no-files-found: error
+          retention-days: 90

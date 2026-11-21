@@ -436,3 +436,50 @@ jobs:
       - name: Disk after the lane
         if: always()
         run: df -h /
+
+  # RFC-0114 D13.3 (phase-585 W2) -- this run's results per registry board:
+  # the board jobs' junit joined with the evidence ledger their tests wrote
+  # (`NROS_TEST_EVIDENCE_DIR`), each job classified by its failing step. A
+  # SEPARATE job, in no required check, and never `continue-on-error`: a
+  # collector that fails says so here, rather than reading green while broken.
+  board-results:
+    name: board results
+    needs: [chapter]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/ci
+            scripts/lib
+            packages/boards/board-support-status.json
+            packages/testing/nros-tests/src/matrix.rs
+          sparse-checkout-cone-mode: false
+      # The probe tracks run the book's blocks, not nextest: no junit and no
+      # ledger, so each track's outcome is its job's, classified by step.
+      - name: No junit on this workflow
+        run: mkdir -p board-artifacts
+      - name: Read this run's jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run view "${{ github.run_id }}" --repo "${{ github.repository }}" --json jobs > jobs.json
+      - name: Collect the board results
+        run: |
+          python3 scripts/ci/board-results.py --jobs jobs.json --artifacts board-artifacts \
+            --out board-results.json --summary "$GITHUB_STEP_SUMMARY" \
+            --run-meta workflow=weekly.yml event="${{ github.event_name }}" \
+              run="${{ github.run_id }}" sha="${{ github.sha }}" date="$(date -u +%F)" \
+              url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Upload board-results.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: board-results
+          path: board-results.json
+          if-no-files-found: error
+          retention-days: 90
