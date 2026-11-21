@@ -107,6 +107,7 @@ dependencies = [
  "nros-build-paths",
  "nros-cc-flags",
  "nros-platform-config",
+ "nros-sizing-descriptor",
  "serde",
  "toml",
 ]

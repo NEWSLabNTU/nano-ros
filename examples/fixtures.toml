@@ -4148,6 +4148,37 @@ image = "rv-virt-threadx"
 target_dir = "target"
 target = "riscv64gc-unknown-none-elf"
 
+# Issue 2812 -- FIVE parameter-serving nodes on rv-virt-threadx, the image the
+# byte pool's flat working set (measured on one node) never priced: six
+# servers per node, each with a buffer pair on the pool that also hands out the
+# task stacks. Built by id with the other threadx-riscv64 workspace rows.
+# Port = `alloc::port_of(ThreadxRiscv64, Rust, Params) + 1`. Consumed by
+# tests/param_service_heap.rs.
+[[workspace_fixture]]
+id = "threadx-riscv64-param-five-node"
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/param-five-node"
+bringup = "src/param_five_node_bringup"
+image = "rv-virt-threadx"
+target_dir = "target-threadx"
+target = "riscv64gc-unknown-none-elf"
+
+# Issue 2812 -- the same five nodes on mps2-an385-freertos: heap_4's default
+# was measured on one-node images too. Port = `alloc::port_of(FreertosMps2,
+# Rust, Params) + 1`. Consumed by tests/param_service_heap.rs.
+[[workspace_fixture]]
+id = "freertos-param-five-node"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/param-five-node"
+bringup = "src/param_five_node_bringup"
+image = "mps2-an385-freertos"
+target_dir = "target-freertos"
+target = "thumbv7m-none-eabi"
+
 # ===========================================================================
 # C/C++ cells (cmake) + esp32 (+nightly) + zephyr (west) + threadx-linux
 # host bins / variants — ROLLOUT PENDING (see phase doc 181.4.h/i, 181.5).

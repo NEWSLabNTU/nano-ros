@@ -78,6 +78,10 @@ pub mod arch_flags;
 /// without a new dependency edge in every leaf's `Cargo.lock`.
 #[cfg(feature = "build-helpers")]
 pub use nros_build_paths;
+// Issue 2812 -- the service families' per-node heap term, for the board
+// build scripts (FreeRTOS heap, ThreadX byte pool).
+#[cfg(feature = "build-helpers")]
+pub use nros_sizing_descriptor::service_heap;
 /// Shared `build.rs` helpers for the FreeRTOS + lwIP family.
 #[cfg(feature = "build-helpers")]
 pub mod freertos_build;

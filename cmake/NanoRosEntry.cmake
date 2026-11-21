@@ -73,6 +73,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSupportLibrary.cmake")
 # CACHE INTERNAL precisely so they survive being included from inside a function
 # frame, which is how the node-register side reaches it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryLocator.cmake")
+# Issue 2812 -- the RTOS heaps' per-node service term (`nano_ros_entry`).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRtosServiceHeap.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPlatformFamily.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwUserConfig.cmake")  # phase-206 W2
 # Issue 1550 -- the domain agreement on this road (Kconfig vs the entry's
@@ -950,6 +952,13 @@ function(nano_ros_entry)
             endif()
         endif()
     endif()
+
+    # Issue 2812 -- the FreeRTOS heap and the ThreadX byte pool were measured
+    # on one-node images; each further parameter-serving node and lifecycle
+    # machine this image's inventory counts adds its servers' buffer pairs.
+    # Nothing is defined for a one-node image, which compiles as before.
+    nros_entity_inventory_knobs_file(_nra_service_heap_fragment)
+    nros_rtos_service_heap_apply(${_NRA_NAME} "${_nra_service_heap_fragment}")
 
     # Issue 2017 (RFC-0108 D6) -- a sched-task entry is a LEVEL image, and its
     # kernel must not time-slice a level against an equal-priority task in the

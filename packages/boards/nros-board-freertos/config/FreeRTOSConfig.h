@@ -154,13 +154,27 @@
 #ifndef NROS_FREERTOS_HEAP_RAISE_KB
 #define NROS_FREERTOS_HEAP_RAISE_KB                   0
 #endif
+/* Issue 2812 -- the two measured defaults below price ONE node. Each further
+ * node serving the parameter services, and each further lifecycle state
+ * machine, puts its servers' request/reply buffer pairs on heap_4.
+ * `nano_ros_entry` states what they add, from the image's entity inventory
+ * (`cmake/NanoRosServiceHeap.cmake`, the formula the cargo road shares); 0 is
+ * the one-node image, whose heap is unchanged. An explicit
+ * NROS_FREERTOS_HEAP_KB is a size someone chose and is not adjusted. */
+#ifndef NROS_FREERTOS_SERVICE_HEAP_EXTRA_KB
+#define NROS_FREERTOS_SERVICE_HEAP_EXTRA_KB           0
+#endif
 #define NROS_FREERTOS_DDS_HEAP_KB 640
 #define NROS_FREERTOS_ZENOH_HEAP_KB 512
 #ifndef NROS_FREERTOS_HEAP_KB
 #if defined(NROS_FREERTOS_HEAP_DEFAULT_DDS) && NROS_FREERTOS_HEAP_DEFAULT_DDS
-#define NROS_FREERTOS_HEAP_KB                   ((NROS_FREERTOS_DDS_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
+#define NROS_FREERTOS_HEAP_KB                                                                      \
+    ((NROS_FREERTOS_DDS_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB) +                                 \
+     (NROS_FREERTOS_SERVICE_HEAP_EXTRA_KB))
 #elif defined(NROS_FREERTOS_HEAP_DEFAULT_ZENOH) && NROS_FREERTOS_HEAP_DEFAULT_ZENOH
-#define NROS_FREERTOS_HEAP_KB                   ((NROS_FREERTOS_ZENOH_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
+#define NROS_FREERTOS_HEAP_KB                                                                      \
+    ((NROS_FREERTOS_ZENOH_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB) +                               \
+     (NROS_FREERTOS_SERVICE_HEAP_EXTRA_KB))
 #else
 #define NROS_FREERTOS_HEAP_KB                   (3072 - (NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
 #endif

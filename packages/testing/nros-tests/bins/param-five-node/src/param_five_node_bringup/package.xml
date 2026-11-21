@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>param_five_node_bringup</name>
+  <version>0.1.0</version>
+  <description>What the five param_five_node_* packages run on: the board, the RMW and the image, in system.toml.</description>
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>param_five_node_a</exec_depend>
+  <exec_depend>param_five_node_b</exec_depend>
+  <exec_depend>param_five_node_c</exec_depend>
+  <exec_depend>param_five_node_d</exec_depend>
+  <exec_depend>param_five_node_e</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

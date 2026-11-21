@@ -1,0 +1,34 @@
+# Issue 2812 -- FIVE nodes that each serve the parameter services, built for
+# two RTOS images: rv-virt-threadx (the byte pool) and mps2-an385-freertos
+# (heap_4). Each port's allocator default was measured on one-node images, so
+# these exercise the per-node term. The one-node ThreadX sibling is
+# `bins/param-store-threadx-riscv64`.
+#
+# Consumed by tests/param_service_heap.rs.
+[package]
+name = "param_five_node_d"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Issue 2812 — node `param_d` of the five-node parameter images"
+
+[lib]
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+# `param-services`: a declared parameter is what builds the store.
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros", "param-services"] }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
+log = "0.4"
+
+# Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
+# builds for the host as well and `nros configure` can PROBE what it creates
+# (issues 1265, 1603) — the shape of `examples/rv-virt-threadx/rust/talker`.
+[target.'cfg(target_os = "none")'.dependencies]
+nros-platform = { version = "*", default-features = false, features = ["global-allocator", "critical-section"] }
+
+[package.metadata.ament]
+build_depend = ["std_msgs"]
+exec_depend = ["std_msgs"]

@@ -6517,7 +6517,9 @@ impl EntityInventory {
                 // from: each such node owns its own request/reply buffer pair
                 // per service, so a heap sized for one node runs dry at boot on
                 // four. Not a knob (no `NROS_DERIVED_` prefix): it reaches no
-                // compiler, only `_nros_zephyr_heap_floor`.
+                // compiler, only the configure-time heap derivations that read
+                // this fragment (`nros_rtos_service_heap_apply` for FreeRTOS and
+                // ThreadX, and Zephyr's heap floor).
                 s.push_str(&format!(
                     "set(NROS_ENTITY_PARAM_SERVICE_NODES {})\n",
                     k.param_service_nodes

@@ -1,0 +1,48 @@
+# Issue 2812 -- the five nodes' declarations, so the parameter store is
+# carved from the executor backing as on the one-node sibling, and what is left
+# on the byte pool is the parameter SERVICES' cost: six servers per node.
+version: 1
+
+nodes:
+  param_a:
+    pub:
+      chatter: {}
+    params:
+      start_value: { type: integer }
+  param_b:
+    pub:
+      chatter_b: {}
+    params:
+      start_value: { type: integer }
+  param_c:
+    pub:
+      chatter_c: {}
+    params:
+      start_value: { type: integer }
+  param_d:
+    pub:
+      chatter_d: {}
+    params:
+      start_value: { type: integer }
+  param_e:
+    pub:
+      chatter_e: {}
+    params:
+      start_value: { type: integer }
+
+topics:
+  /chatter:
+    type: std_msgs/msg/String
+    pub: [param_a/chatter]
+  /chatter_b:
+    type: std_msgs/msg/String
+    pub: [param_b/chatter_b]
+  /chatter_c:
+    type: std_msgs/msg/String
+    pub: [param_c/chatter_c]
+  /chatter_d:
+    type: std_msgs/msg/String
+    pub: [param_d/chatter_d]
+  /chatter_e:
+    type: std_msgs/msg/String
+    pub: [param_e/chatter_e]

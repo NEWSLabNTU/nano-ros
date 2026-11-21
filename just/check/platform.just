@@ -1449,3 +1449,15 @@ nuttx-libc-retired:
 [metadata("tier", "exempt", "resolves the NuttX workspace entries a NuttX fixture build generates; `just nuttx build-fixtures` runs it after building them")]
 nuttx-libc-graph:
     @python3 scripts/check/check-nuttx-libc-retired.py --graph
+
+# The FreeRTOS heap and the ThreadX byte pool grow with the nodes that serve
+# the parameter services and the lifecycle machines (issue 2812): both
+# defaults were measured on one node, and each further node puts its servers'
+# buffer pairs on the allocator. Refuses a board build (cargo road) or
+# `nano_ros_entry` (cmake road) that stops adding the term, and C defaults that
+# stop carrying it. Its selftest runs the real cmake function in script mode,
+# first included inside a function frame: no fragment or one node adds nothing,
+# more nodes add 12 buffers each, more machines 10. Buildless, ~1 s.
+[group('needs:cmake')]
+rtos-service-heap:
+    @bash scripts/check/check-rtos-service-heap.sh

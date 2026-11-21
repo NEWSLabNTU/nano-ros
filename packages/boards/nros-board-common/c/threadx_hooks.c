@@ -120,17 +120,32 @@ _Static_assert(sizeof(ULONG) == 4,
 #define NROS_THREADX_MEASURED_WORKING_SET_BYTES NROS_THREADX_ZENOH_MEASURED_WORKING_SET_BYTES
 #endif
 
+/* Issue 2812 -- the working sets were measured on one-node images. Each
+ * further node serving the parameter services, and each further lifecycle
+ * state machine, puts its servers' request/reply buffer pairs on this pool.
+ * The build that knows the image's nodes states the bytes they add
+ * (`nros_sizing_descriptor::service_heap` on the cargo road,
+ * `cmake/NanoRosServiceHeap.cmake` on the cmake road); 0, the one-node
+ * image, leaves the pool as it was. */
+#ifndef NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES
+#define NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES 0u
+#endif
+
 /* `threadx.byte_pool_bytes` (env `NROS_THREADX_BYTE_POOL_BYTES`), or a board's
  * `[knobs.memory] heap_bytes`, when the board or image states it, handed in as
  * `-DNROS_THREADX_BYTE_POOL_BYTES`. */
 #ifndef NROS_THREADX_BYTE_POOL_BYTES
-#define NROS_THREADX_BYTE_POOL_BYTES (NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_WORKING_SET_BYTES)
+#define NROS_THREADX_BYTE_POOL_BYTES                                                               \
+    (NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_WORKING_SET_BYTES +                               \
+     NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES)
 #endif
 
-_Static_assert(NROS_THREADX_BYTE_POOL_BYTES >=
-                   NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_MEASURED_WORKING_SET_BYTES,
+_Static_assert(NROS_THREADX_BYTE_POOL_BYTES >= NROS_THREADX_APP_STACK_BYTES +
+                                                   NROS_THREADX_MEASURED_WORKING_SET_BYTES +
+                                                   NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES,
                "the ThreadX byte pool is below the app thread's stack plus this RMW's "
-               "measured working set. Raise `[image.<id>.knobs.threadx] byte_pool_bytes` "
+               "measured working set and the buffer pairs of its further parameter-serving "
+               "nodes. Raise `[image.<id>.knobs.threadx] byte_pool_bytes` "
                "(NROS_THREADX_BYTE_POOL_BYTES).");
 
 #define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES)

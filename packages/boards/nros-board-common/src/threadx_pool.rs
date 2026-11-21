@@ -48,6 +48,18 @@ pub const CYCLONE_WORST_PEAK_BYTES: usize = 1_317_840;
 /// 1.49x the measured 793,552.
 pub const CYCLONE_WORKING_SET_BYTES: usize = 1_179_648;
 
+// Issue 2812.
+/// What one more PARAMETER-serving node costs the pool beyond its
+/// six servers' buffer pairs (`nros_sizing_descriptor::service_heap`).
+/// Every working set above was measured on a one-node image, so each further
+/// node adds its buffer pairs plus this.
+pub const PARAM_NODE_REMAINDER_BYTES: usize = 0;
+
+// Issue 2812.
+/// The same for one more LIFECYCLE state machine, beyond its
+/// five servers' buffer pairs.
+pub const LIFECYCLE_MACHINE_REMAINDER_BYTES: usize = 0;
+
 /// Which working set an image's pool carries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PoolRmw {
@@ -169,5 +181,25 @@ mod tests {
         assert_eq!(default_byte_pool_bytes(app, PoolRmw::Zenoh), 851_968);
         assert_eq!(default_byte_pool_bytes(app, PoolRmw::Cyclone), 1_703_936);
         assert!(default_byte_pool_bytes(app, PoolRmw::Cyclone) < 4 * 1024 * 1024);
+    }
+
+    /// `cmake/NanoRosRtosServiceHeap.cmake` prices the cmake road with these
+    /// remainders; issue 2812.
+    #[test]
+    #[cfg(feature = "build-helpers")]
+    fn the_cmake_road_states_these_remainders() {
+        let cmake = include_str!("../../../../cmake/NanoRosRtosServiceHeap.cmake");
+        let cmake_set = |name: &str| -> usize {
+            crate::service_heap::cmake_cache_value(cmake, name)
+                .unwrap_or_else(|| panic!("NanoRosRtosServiceHeap.cmake sets no `{name}`"))
+        };
+        assert_eq!(
+            cmake_set("NROS_THREADX_PARAM_NODE_REMAINDER"),
+            PARAM_NODE_REMAINDER_BYTES
+        );
+        assert_eq!(
+            cmake_set("NROS_THREADX_LIFECYCLE_MACHINE_REMAINDER"),
+            LIFECYCLE_MACHINE_REMAINDER_BYTES
+        );
     }
 }

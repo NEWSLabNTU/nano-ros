@@ -154,7 +154,7 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build, app_stack_bytes: usize) {
 }
 
 // RFC-0140 Appendix A.1, phase-581 W5 (the pool is its own knob).
-// Issue 2624.
+// Issues 2624, 2812.
 /// Size the byte pool `threadx_hooks.c` reserves.
 ///
 /// `threadx.byte_pool_bytes` (env `NROS_THREADX_BYTE_POOL_BYTES`) when stated,
@@ -168,6 +168,11 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build, app_stack_bytes: usize) {
 /// The pool is its own knob, not `memory.heap_bytes`: it is the port's whole
 /// allocator, not the heap alone.
 ///
+/// The derived pool and the least a stated one may be both grow by
+/// [`service_heap_extra_bytes`]: the working sets were measured on one
+/// node, and every further parameter-serving node or lifecycle machine puts
+/// its servers' buffer pairs on this pool.
+///
 /// A stated pool below the app stack plus the measured working set is refused
 /// here, naming the knob, and the C file's `_Static_assert` refuses it again
 /// on a road that skips this (cmake). Returns the pool's size.
@@ -179,7 +184,8 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
     } else {
         PoolRmw::Cyclone
     };
-    let derived = default_byte_pool_bytes(app_stack_bytes, rmw);
+    let extra = service_heap_extra_bytes();
+    let derived = default_byte_pool_bytes(app_stack_bytes, rmw) + extra;
     crate::platform_config::watch_knob_env(POOL_ENV);
     let stated = crate::platform_config::knob_env(&|k| std::env::var(k).ok(), POOL_ENV).map(|v| {
         v.trim()
@@ -197,13 +203,14 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
             None => derived,
         },
     };
-    let least = least_byte_pool_bytes(app_stack_bytes, rmw);
+    let least = least_byte_pool_bytes(app_stack_bytes, rmw) + extra;
     if pool < least {
         panic!(
             "the ThreadX byte pool is {pool} bytes, below the {least} this image needs \
-             (its {app_stack_bytes}-byte app stack plus the {rmw:?} working set measured \
-             on this port). Raise `[image.<id>.knobs.threadx] byte_pool_bytes` ({POOL_ENV}) \
-             to at least {least}."
+             (its {app_stack_bytes}-byte app stack, the {rmw:?} working set measured \
+             on this port, and {extra} bytes for its further parameter-serving nodes and \
+             lifecycle machines). Raise `[image.<id>.knobs.threadx] byte_pool_bytes` \
+             ({POOL_ENV}) to at least {least}."
         );
     }
     if rmw == PoolRmw::Cyclone {
@@ -214,7 +221,28 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
         app_stack_bytes.to_string().as_str(),
     );
     build.define("NROS_THREADX_BYTE_POOL_BYTES", pool.to_string().as_str());
+    // Issue 2812 -- so the C file's floor counts the same further nodes.
+    if extra > 0 {
+        build.define(
+            "NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES",
+            extra.to_string().as_str(),
+        );
+    }
     pool
+}
+
+// Issue 2812.
+/// The pool this image needs beyond its one-node measurement:
+/// its further parameter-serving nodes and lifecycle machines, priced by the
+/// formula the cmake road shares (`nros_sizing_descriptor::service_heap`) with
+/// this port's measured remainders. No descriptor, or one node and one
+/// machine, is 0, so such an image's pool is unchanged.
+pub fn service_heap_extra_bytes() -> usize {
+    use crate::threadx_pool::{LIFECYCLE_MACHINE_REMAINDER_BYTES, PARAM_NODE_REMAINDER_BYTES};
+    crate::service_heap::extra_bytes_from_build_env(
+        PARAM_NODE_REMAINDER_BYTES,
+        LIFECYCLE_MACHINE_REMAINDER_BYTES,
+    )
 }
 
 pub fn add_nros_platform_threadx_build(build: &mut cc::Build) {

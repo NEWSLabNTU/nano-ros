@@ -833,6 +833,12 @@ NON_READ_CALLEES = {
     # phase-581 W5 -- formats the refusal of a FreeRTOS size that is not whole
     # KiB, naming the knob; it reads nothing.
     "not_whole_kib",
+    # issue 2812. The drift tests' closure over
+    # `nros_sizing_descriptor::service_heap::cmake_cache_value`: it reads the
+    # integer a cmake FILE's `set(<name> ...)` gives a constant, from an
+    # `include_str!`, so the Rust twin cannot drift from the cmake one. The
+    # names are cmake cache constants, not knobs, and no environment is read.
+    "cmake_set",
     # phase-468 W4 -- maps an env NAME to its Kconfig symbol. It touches no
     # environment; `knob()` (already a read above) is what resolves through it.
     "kconfig_key_for",
