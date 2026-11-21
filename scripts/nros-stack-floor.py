@@ -59,6 +59,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from build_walk import build_files  # noqa: E402  the one walk of build output
 import stack_builtins  # noqa: E402  phase-557 W9b: a toolchain archive's measured frames
+import site_channels  # noqa: E402  phase-557 W7f: which functions a call site can hold
 
 # ---------------------------------------------------------------------------
 # The graph and the walk (pure; the self-test drives these directly)
@@ -3276,6 +3277,17 @@ def run(args: argparse.Namespace) -> int:
             else:
                 c_mods = [(parse_ir_sites(t), ir_direct_calls(t)) for t in texts]
                 print(f"nros-stack-floor: bind: C call-site types from {note}", file=sys.stderr)
+        dump = os.environ.get("NROS_STACK_DUMP_IR")
+        if dump:
+            # Phase-557 W7f.0: the exact IR this bind reads, for the site
+            # classifier to be measured against offline.
+            dd = Path(dump)
+            dd.mkdir(parents=True, exist_ok=True)
+            for i, t in enumerate(rtexts):
+                (dd / f"rust-{i:03d}.ll").write_text(t)
+            for i, t in enumerate(texts if c_mods is not None else []):
+                (dd / f"c-{i:03d}.ll").write_text(t)
+            print(f"nros-stack-floor: bind: IR written to {dd}", file=sys.stderr)
         declared_c = {fn for fn, n in g.indirect_sites.items() if n
                       and any(fn in m[0] for m in mods) and fn not in rust_defined}
         if declared_c:
@@ -3482,6 +3494,10 @@ def self_test() -> int:
     # issue 2514 -- which linked members are the toolchain's C runtime
     for name, ok in stack_builtins.runtime_member_checks():
         check(name, ok)
+    # phase-557 W7f.0 -- the site classifier's channel rules
+    bad_ch = site_channels.self_test()
+    check("site channels: every channel rule holds"
+          + (f" (failed: {'; '.join(bad_ch)})" if bad_ch else ""), not bad_ch)
     # ...a compiler_builtins frame goes only to what the link placed from it
     mp = ("Discarded input sections\n"
           " .text.__aeabi_dadd\n"
@@ -4461,6 +4477,31 @@ def self_test() -> int:
     return 1 if fails else 0
 
 
+def classify_sites(ir_dir: Path, nested: bool) -> int:
+    """`--classify-sites`: the W7f trusted-share report for one dumped image."""
+    rust = [p.read_text() for p in sorted(ir_dir.glob("rust-*.ll"))]
+    c = [p.read_text() for p in sorted(ir_dir.glob("c-*.ll"))]
+    if not rust and not c:
+        print(f"nros-stack-floor: {ir_dir} holds no rust-*.ll or c-*.ll (dump them with "
+              "NROS_STACK_DUMP_IR during a bind build)", file=sys.stderr)
+        return 2
+    out = site_channels.classify(rust, c, nested=nested)
+    cs, rs = out["c"], out["rust"]
+
+    def pct(a: int, b: int) -> str:
+        return f"{a}/{b} ({100 * a / b:.1f} %)" if b else "no sites"
+
+    print(f"{ir_dir}: {len(rust)} Rust and {len(c)} C module(s)")
+    print(f"  C sites trusted:                   {pct(cs['trusted'], cs['sites'])}")
+    print(f"  Rust sites trusted (not a vtable): {pct(rs['trusted'], rs['sites'])}; "
+          f"{rs['vtable']} at a vtable slot (bound by W7)")
+    print(f"  a trusted site's targets: median {out['median']}, max {out['max']}")
+    print("  misses:")
+    for k, v in sorted(out["misses"].items(), key=lambda kv: -kv[1]):
+        print(f"    {v:5d}  {k}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("inputs", nargs="*",
@@ -4566,11 +4607,20 @@ def main() -> int:
     ap.add_argument("--name-token", action="append", default=[],
                     help="the project's own name (repeat): masked out of the walk's callee "
                          "order, so a project's name never moves its walk")
+    ap.add_argument("--classify-sites", metavar="IR_DIR",
+                    help="phase-557 W7f: classify every indirect call site of the IR a bind "
+                         "wrote to IR_DIR (NROS_STACK_DUMP_IR=IR_DIR during the build): the "
+                         "share bound through a trusted channel, and where the rest go")
+    ap.add_argument("--nested", action="store_true",
+                    help="with --classify-sites: read constant initializers nested in "
+                         "another constant (W7f.1)")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     NAME_TOKENS[:] = [t for t in args.name_token if t]
     if args.self_test:
         return self_test()
+    if args.classify_sites:
+        return classify_sites(Path(args.classify_sites), args.nested)
     if args.sync_json:
         toml_path = Path(args.sync_json)
         json_twin(toml_path).write_text(render_json_twin(load_toml(toml_path)), encoding="utf-8")
