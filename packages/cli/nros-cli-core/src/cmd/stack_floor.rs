@@ -447,8 +447,17 @@ pub fn check(qualified: &str, step: &StackFloorStep) -> Result<()> {
     let cargo_json = c.dir.join("cargo-messages.json");
     std::fs::write(&cargo_json, &out.stdout)
         .wrap_err_with(|| format!("writing {}", cargo_json.display()))?;
-    let st = std::process::Command::new("python3")
-        .args(walker_args(c, &cargo_json))
+    let mut walker = std::process::Command::new("python3");
+    walker.args(walker_args(c, &cargo_json));
+    // The build's jobserver (`share_jobserver`): the walker runs its callee
+    // orders in parallel on its tokens, never beside them (issue 2414).
+    for (k, v) in &c.rerun.jobserver {
+        match v {
+            Some(v) => walker.env(k, v),
+            None => walker.env_remove(k),
+        };
+    }
+    let st = walker
         .status()
         .wrap_err("running python3 for the stack-floor walk")?;
     if !st.success() {

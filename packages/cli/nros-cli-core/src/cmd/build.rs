@@ -4480,6 +4480,11 @@ fn share_jobserver(plans: &mut [ResolvedBuild], env: &crate::builder::jobserver:
         for h in steps {
             h.jobserver = env.clone();
         }
+        // The stack-floor walk runs its callee orders on this pool too, so a
+        // build's walks never add their width to the build's (issue 2414).
+        if let Some(crate::cmd::stack_floor::StackFloorStep::Check(c)) = &mut p.stack_floor {
+            c.rerun.jobserver = env.clone();
+        }
     }
 }
 
