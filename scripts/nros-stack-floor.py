@@ -2814,6 +2814,41 @@ def floor_formula(static_bytes: int, allowance: int, margin_pct: int) -> int:
     return -(-raw // 8) * 8
 
 
+_TEMPLATE_KEY = re.compile(r"^(?P<t>[a-z0-9_-]+)/(?P<lang>[a-z]+)/(?P<rmw>[a-z0-9_-]+)@(?P<board>\S+)$")
+
+
+def board_floor(doc: dict, board: str, image: str | None = None) -> dict:
+    """The main stack an UNMEASURED Rust Zephyr image on `board` is held to
+    (phase-557 W10, user ruling 2026-11-21): the largest `peak` over the
+    board's `[[observed]]` OPEN rows keyed by a Rust TEMPLATE key, plus
+    `margin_pct`, rounded up to 8. A board with no such row gets
+    `fallback_rust_main_stack`. An image with an OPEN row of its own is
+    measured, and its own walk check holds it instead (`basis` "own-row",
+    `floor` None).
+
+    Returns {"board", "floor", "basis": "rows"|"fallback"|"own-row",
+    "rows": [keys], "peak", "margin_pct", "fallback"}."""
+    margin = int(doc["margin_pct"])
+    fallback = doc.get("fallback_rust_main_stack")
+    out = {"board": board, "margin_pct": margin, "fallback": fallback,
+           "rows": [], "peak": None}
+    own = [r for r in doc.get("observed", []) + doc.get("allowance", [])
+           if image and r.get("image") == image and r.get("role") == "OPEN"]
+    if own:
+        return {**out, "floor": None, "basis": "own-row", "rows": [image]}
+    rows = []
+    for r in doc.get("observed", []):
+        m = _TEMPLATE_KEY.match(str(r.get("image", "")))
+        if (m and m["lang"] == "rust" and m["board"] == board and r.get("role") == "OPEN"
+                and isinstance(r.get("peak"), int)):
+            rows.append(r)
+    if not rows:
+        return {**out, "floor": fallback, "basis": "fallback"}
+    peak = max(r["peak"] for r in rows)
+    return {**out, "floor": floor_formula(peak, 0, margin), "basis": "rows",
+            "rows": sorted(r["image"] for r in rows), "peak": peak}
+
+
 def load_toml(path: Path) -> dict:
     """The AUTHORED table. Only the maintainer side reads it (--validate-table,
     --sync-json): a build reads the JSON twin, because a build runs on the
@@ -2951,6 +2986,11 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
     if isinstance(dr, bool) or not isinstance(dr, int) or dr < 0:
         problems.append("`drift_rise_pct` (a non-negative integer percent: the drift "
                         "check's tolerance, which `nros new`'s stamp carries) is missing")
+    fb = doc.get("fallback_rust_main_stack")
+    if isinstance(fb, bool) or not isinstance(fb, int) or fb <= 0 or fb % 8:
+        problems.append("`fallback_rust_main_stack` (the main stack, a positive multiple of "
+                        "8, an unmeasured Rust Zephyr image gets on a board with no "
+                        "measured template row) is missing")
     for i, row in enumerate(doc.get("policy", [])):
         where = f"[[policy]] #{i + 1}"
         kind = row.get("kind")
@@ -3727,6 +3767,31 @@ def self_test() -> int:
     bad_ch = site_channels.self_test()
     check("site channels: every channel rule holds"
           + (f" (failed: {'; '.join(bad_ch)})" if bad_ch else ""), not bad_ch)
+    # phase-557 W10 -- the per-board floor of an unmeasured Rust Zephyr image
+    bf_doc = {"margin_pct": 10, "fallback_rust_main_stack": 32768, "observed": [
+        {"image": "talker/rust/zenoh@b", "role": "OPEN", "peak": 28888},
+        {"image": "action-server/rust/zenoh@b", "role": "OPEN", "peak": 30256},
+        {"image": "talker/c/zenoh@b", "role": "OPEN", "peak": 90000},
+        {"image": "fc_bringup@b", "role": "OPEN", "peak": 90000},
+        {"image": "talker/rust/zenoh@b", "role": "SPIN", "peak": 90000},
+        {"image": "talker/rust/zenoh@other", "role": "OPEN", "peak": 90000}]}
+    bf = board_floor(bf_doc, "b")
+    check("board floor: the largest Rust template OPEN peak on the board, plus the margin, "
+          "ceil8 (C, bringup, SPIN and other-board rows ignored)",
+          bf["basis"] == "rows" and bf["peak"] == 30256 and bf["floor"] == 33288
+          and bf["rows"] == ["action-server/rust/zenoh@b", "talker/rust/zenoh@b"])
+    nb = board_floor(bf_doc, "no-rows")
+    check("board floor: a board with no row gets the fallback, and says so",
+          nb["basis"] == "fallback" and nb["floor"] == 32768 and nb["rows"] == [])
+    ob = board_floor(bf_doc, "b", image="talker/rust/zenoh@b")
+    check("board floor: an image with its own OPEN row is exempt (its walk check holds it)",
+          ob["basis"] == "own-row" and ob["floor"] is None)
+    ub = board_floor(bf_doc, "b", image="my_robot_bringup@b")
+    check("board floor: an unmeasured image on a measured board gets the board's floor",
+          ub["basis"] == "rows" and ub["floor"] == 33288)
+    check("table: a missing fallback_rust_main_stack is a problem",
+          any("fallback_rust_main_stack" in x for x in validate_table(
+              {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2}, set())))
     # ...a compiler_builtins frame goes only to what the link placed from it
     mp = ("Discarded input sections\n"
           " .text.__aeabi_dadd\n"
@@ -4086,14 +4151,14 @@ def self_test() -> int:
           {"r1", "w1", "r2", "w2"} <= gu.edges.get("slot0", set()))
 
     # issue 2402 — under `bind` a measured peak is an [[observed]] row, never an allowance.
-    vt = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "indirect": {"zenoh": {"mode": "bind"}},
+    vt = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "indirect": {"zenoh": {"mode": "bind"}},
           "allowance": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
                          "bytes": 0, "issue": "2402", "reason": "r",
                          "measured": {"peak": 1, "static": 1, "method": "m", "issue": "2402"},
                          "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
     check("bind: an allowance under a bind rmw is refused",
           any("[[observed]]" in p for p in validate_table(vt, set())))
-    vo = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "indirect": {"zenoh": {"mode": "bind"}},
+    vo = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "indirect": {"zenoh": {"mode": "bind"}},
           "observed": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
                         "peak": 100, "static": 150, "method": "m", "issue": "2402",
                         "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
@@ -4115,7 +4180,7 @@ def self_test() -> int:
           any("must be an integer above" in p for p in validate_table(vo, set())))
 
     # A [[drift]] row: the walk alone, held by the drift check, enforced nowhere.
-    vd = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2,
+    vd = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768,
           "drift": [{"image": "c@d", "rmw": "zenoh", "target": "t", "role": "OPEN",
                      "static": 130, "method": "m", "issue": "2653"}]}
     check("drift: a complete row validates", validate_table(vd, set()) == [])
@@ -4404,7 +4469,7 @@ def self_test() -> int:
     check("no allowance: static + margin", floor_formula(3592, 0, 0) == 3592)
     check("a negative allowance lowers the floor", floor_formula(24312, -12616, 10) == 12872)
     check("the floor never goes below zero", floor_formula(100, -500, 10) == 0)
-    good = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2,
+    good = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768,
             "policy": [{"kind": "cut", "match": "panicking", "reason": "diverges"},
                        {"kind": "external", "match": "3mem6memcpy", "reason": "leaf"}],
             "allowance": [{"image": "img", "rmw": "zenoh", "target": "t", "role": "OPEN",
@@ -5015,6 +5080,9 @@ def main() -> int:
                          "nested constant initializers, a zero memset as a null write and "
                          "the closed-world guards; 2: W7f.2, a coerced whole-T copy through "
                          "a by-value argument or a return)")
+    ap.add_argument("--board-floor", metavar="BOARD",
+                    help="print, as JSON, the main stack an unmeasured Rust Zephyr image on "
+                         "BOARD is held to (read from --table, the JSON twin by default)")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     NAME_TOKENS[:] = [t for t in args.name_token if t]
@@ -5026,6 +5094,11 @@ def main() -> int:
         toml_path = Path(args.sync_json)
         json_twin(toml_path).write_text(render_json_twin(load_toml(toml_path)), encoding="utf-8")
         print(f"wrote {json_twin(toml_path)}")
+        return 0
+    if args.board_floor is not None:
+        table = Path(args.table) if args.table else Path(__file__).resolve().parent.parent \
+            / "config" / "stack-floors.json"
+        print(json.dumps(board_floor(load_table(table), args.board_floor, args.image or None)))
         return 0
     if args.measure_builtins:
         return measure_builtins(args)

@@ -19,8 +19,9 @@ Rulings in force (issue 2400 "Rulings"):
 - Nothing lowers a stack. Raising one automatically is opt-in (W2b).
 - Allowances are per image key and may be negative. The key is (c): `nros new`
   stamps `[image.<id>] stack_floor_image = "<template>/<lang>/<rmw>@<board>"`.
-- The 32 KiB `NROS_RUST_MAIN_STACK_FLOOR` stays until measured rows cover the
-  boards.
+- The 32 KiB `NROS_RUST_MAIN_STACK_FLOOR` is RETIRED (W10, ruled
+  2026-11-21): an unmeasured Rust Zephyr image is held to its board's measured
+  floor, or the table's `fallback_rust_main_stack` on a board with no row.
 - No message a user can see names an issue, phase or RFC id.
 
 Related: [issue 2402](../issues/archived/2402-rmw-vtable-slot-binding-stack-walk.md)
@@ -1413,6 +1414,136 @@ does not link. Placement does not change the code the walk reads.
   the only thing that bounds the worst order (issue 2550 step 3), and it
   needs a small SCC first, which is W7f's binding (step 2). So the next item
   is W7f's reopening conditions, then the search.
+
+### W10 — An unmeasured Rust Zephyr image gets its board's measured floor, not a literal
+
+- **Status:** OPEN
+
+**Ruling (user, 2026-11-21).** An unmeasured Rust Zephyr image gets a
+PER-BOARD MEASURED floor: the largest measured template peak on that board,
+plus a margin. A board with no twin keeps a fallback. This retires the 32 KiB
+`NROS_RUST_MAIN_STACK_FLOOR` literal as a number anyone states (issue 2400
+"What is left").
+
+**Why the literal is the problem.** The walk check refuses only an image
+whose key has a measured row (ruling (A)). An image a user wrote or edited
+has none, so `zephyr/CMakeLists.txt`'s 32,768 B is all that keeps it off
+issue 2359's silent overflow, and that number was one image's peak (28,280 B)
+plus headroom, on one board. The board's own measured rows are a better
+answer, and they are already in the table.
+
+**Design.**
+
+- **Which rows feed it.** Every `[[observed]]` row that is:
+  - role `OPEN` (the main thread, which a Rust entry registers on);
+  - keyed by a `nros new` TEMPLATE key `<template>/rust/<rmw>@<board>`,
+    for any template and any RMW. A bringup key is one image, not
+    what a user starts from, so it is not a measure of the board.
+
+  The board's floor uses each row's `peak` (the twin's analyzer reading),
+  never its `static`: the walk over-asks 3-10x (issue 2658), and the peak is
+  what the image ran. Today:
+
+  | board | template rows | largest peak | per-board floor |
+  | --- | --- | ---: | ---: |
+  | nucleo-f767zi-zephyr | talker, action-server (Renode) | 30,256 B | 33,288 B |
+  | mps2-an385-zephyr | none yet (QEMU twin, this item) | — | fallback |
+
+- **The margin.** The table's `margin_pct` (10), the same number the walk
+  floor uses, rounded up to 8 bytes the same way:
+  `ceil8(max_peak * (100 + margin_pct) / 100)`. One number, already gated.
+  A user's image may go deeper than any template, which is the margin's
+  job, and the margin is no stronger than it is for a measured image.
+- **The fallback.** A board with no template row gets
+  `fallback_rust_main_stack`, a new key in `config/stack-floors.toml`
+  (32,768, today's value, with its basis: issue 2359's measurement). The
+  configure prints a WARNING naming the fallback and why: "no measured
+  Rust template row for board `<b>`, so the fallback 32768 B applies". The
+  refusal's text names which basis it used, the board's rows or the
+  fallback, never a bare number.
+- **An image with its own row** keeps its own measured check (W4), and the
+  per-board floor does not apply to it. Its own peak is a better measure
+  than the board's worst template, and applying both would refuse a
+  measured talker (28,888 B) below the action server's 33,288 B.
+- **Where it is computed.** One producer, `nros-stack-floor.py
+  --board-floor <board>` over the JSON twin, which the cmake road
+  (`cmake/NanoRosStackFloor.cmake`, configure time, beside the key it
+  already resolves) and the gate both call. Neither holds a number.
+  `zephyr/CMakeLists.txt`'s literal and its `NROS_RUST_MAIN_STACK_FLOOR`
+  cache override go. An image that measured its own peak has a row (above),
+  which replaces the override.
+- **The default main stack moves with it.** The module's Kconfig
+  `configdefault MAIN_STACK_SIZE ... default 32768 if NROS_RUST_API` is
+  BELOW nucleo's 33,288 B. Left alone, every unmeasured Rust nucleo image
+  would be refused at its own default. So a board whose derived floor is
+  above the module default states its floor in its `prj.conf`, and
+  `check-zephyr-rust-main-stack` holds each Rust-capable board's effective
+  main stack (its `prj.conf`, else the module default) to that board's
+  derived floor instead of to the literal. Raising the module default
+  instead would give every board the worst board's stack.
+- **Rows that move it.** A new template row, or a re-measured peak, moves
+  a board's floor, and so its `prj.conf`'s stated stack. The gate catches a
+  `prj.conf` left below, in the same pull request.
+
+**Work.**
+
+- **W10a — The QEMU twin.** DONE (2026-11-21). Measured with `--measure`,
+  twice each, the same peak both times:
+
+  | image | peak | static | rounds per run |
+  | --- | ---: | ---: | ---: |
+  | `talker/rust/zenoh@mps2-an385-zephyr` | 29,016 B | 74,220 B | 6,587 / 6,682 |
+  | `action-server/rust/zenoh@mps2-an385-zephyr` | 30,328 B | 117,828 B | 1,367 / 1,373 |
+
+  Icount skips idle virtual time, so a 75 s run covers hours of analyzer
+  rounds. With the rows in, the normal lane (`--only`) builds each image as
+  measured and verifies it: the walk is as recorded, and the static covers
+  the run. One fix was needed on the way. The twin's 64 KiB conf went BELOW
+  the board's own 131,072 B, so a measured image was refused at its floor.
+  That is issue 2790's class, reached through the board instead of the
+  stamp, and the twin now never lowers the image's stack.
+
+  `stack-floor-twin.py` boots a board whose
+  `[board.run] emulator` is `qemu:<machine>` under `-icount` (the board's
+  `nros_tests::qemu` facts), and reads the analyzer from its UART, as it
+  does from Renode's. Then `talker/rust/zenoh` and
+  `action-server/rust/zenoh` rows for `mps2-an385-zephyr`. Acceptance: two
+  runs read the same peak (icount makes it deterministic), and the rows land
+  with their method.
+- **W10b — The derivation.** DONE (2026-11-21). `--board-floor BOARD
+  [--image KEY]` prints the floor, its basis (`rows`, `fallback` or
+  `own-row`) and the rows it read. Both `nros_stack_floor_zephyr_rust_main`
+  (the configure refusal that replaced the literal; it WARNS on a fallback
+  board) and `check-zephyr-rust-main-stack` call it, so the number has one
+  spelling. A negative control holds: with nucleo's line removed, the gate
+  refuses it. Today: nucleo 33,288 B and mps2 33,368 B from rows; the
+  others 32,768 B from the fallback. Its self-tests: (max over the
+  feeding rows only; margin; fallback; a bringup row and a C row ignored),
+  `fallback_rust_main_stack` in the table, and the cmake road AND
+  `check-zephyr-rust-main-stack` reading it. The gate calls `--board-floor`
+  itself, so the number has one spelling. The literal goes.
+- **W10c — The boards.** DONE (2026-11-21), and NOT through `prj.conf`. A
+  board conf is one number for every language, so a stated 33,288 B reaches
+  the C image too (issue 2365, which removed exactly that). Instead, the
+  module's Kconfig has a RUST-ONLY line per board, in both RMW blocks:
+  `default 33288 if NROS_RUST_API && !ARCH_POSIX && BOARD_NUCLEO_F767ZI`.
+  The gate reads each board's line (by its hwmv2 symbol, from
+  `west_board`) and holds it to `--board-floor`; `nros new`'s default
+  derivation reads it the same way. Measured on Zephyr 3.7, unmeasured
+  nucleo images, merged `.config`: Rust 33,288, C 16,384.
+  `check-kconfig-overridden-values` is green, and no tracked conf sets
+  `CONFIG_MAIN_STACK_SIZE` after it. (Superseded plan text follows.)
+  Each Rust-capable board's `prj.conf` states the
+  derived floor where it is above the module default (nucleo: 33,288 B
+  against 32,768 B, ruled 2026-11-21: per board, never a raised module
+  default). pico-w and s32z270 (no twin) take the fallback, and so does
+  fvp-aemv8r-smp while how FVP boards fit the board-support model awaits a
+  user decision.
+
+Acceptance: an unmeasured Rust image on nucleo is refused below 33,288 B,
+naming the board's rows. On pico-w it is refused below 32,768 B, naming the
+fallback, with a warning. A measured talker is not refused by the board
+floor. `git grep NROS_RUST_MAIN_STACK_FLOOR` finds no number.
 
 ## Issues homed here (2026-11-15)
 

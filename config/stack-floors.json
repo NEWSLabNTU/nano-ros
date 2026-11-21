@@ -11,6 +11,7 @@
     }
   ],
   "drift_rise_pct": 2,
+  "fallback_rust_main_stack": 32768,
   "indirect": {
     "default": {
       "mode": "allowance:0"
@@ -58,6 +59,42 @@
       },
       "static": 69648,
       "target": "thumbv7em-none-eabi"
+    },
+    {
+      "image": "action-server/rust/zenoh@mps2-an385-zephyr",
+      "issue": "2400",
+      "method": "QEMU mps2-an385 twin under icount (CONFIG_QEMU_ICOUNT=y, Zephyr's run line, shift 7), thread analyzer main-thread peak over 1,367 and 1,373 rounds in 75 s, measured twice with the same peak, 2026-11-21 (phase-557 W10a); static from rust_main",
+      "peak": 30328,
+      "rmw": "zenoh",
+      "role": "OPEN",
+      "shape": {
+        "NROS_EXECUTOR_ACTION_CLIENTS": 1,
+        "NROS_EXECUTOR_MAX_CBS": 2,
+        "NROS_EXECUTOR_MAX_NODES": 1,
+        "NROS_MAX_PUBLISHERS": 4,
+        "NROS_MAX_QUERYABLES": 10,
+        "NROS_MAX_SUBSCRIBERS": 1
+      },
+      "static": 117828,
+      "target": "thumbv7m-none-eabi"
+    },
+    {
+      "image": "talker/rust/zenoh@mps2-an385-zephyr",
+      "issue": "2400",
+      "method": "QEMU mps2-an385 twin under icount (CONFIG_QEMU_ICOUNT=y, Zephyr's run line, shift 7), thread analyzer main-thread peak over 6,587 and 6,682 rounds in 75 s, measured twice with the same peak, 2026-11-21 (phase-557 W10a); static from rust_main",
+      "peak": 29016,
+      "rmw": "zenoh",
+      "role": "OPEN",
+      "shape": {
+        "NROS_EXECUTOR_ACTION_CLIENTS": 0,
+        "NROS_EXECUTOR_MAX_CBS": 2,
+        "NROS_EXECUTOR_MAX_NODES": 1,
+        "NROS_MAX_PUBLISHERS": 3,
+        "NROS_MAX_QUERYABLES": 6,
+        "NROS_MAX_SUBSCRIBERS": 1
+      },
+      "static": 74220,
+      "target": "thumbv7m-none-eabi"
     },
     {
       "image": "qemu_bsp_talker_bringup@mps2-an385-baremetal",

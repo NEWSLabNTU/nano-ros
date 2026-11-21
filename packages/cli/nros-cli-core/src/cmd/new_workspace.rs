@@ -365,6 +365,29 @@ pub fn zephyr_main_stack_default(root: &Path, board: &str, rust: bool, rmw: &str
         return stated;
     }
     let kconfig = std::fs::read_to_string(root.join("zephyr/Kconfig")).ok()?;
+    // A board's Rust-only line (`... && BOARD_<SYM>`, phase-557 W10) applies to
+    // this board only: its Zephyr symbol is its `west_board` up to the first
+    // `/`, upper-cased (hwmv2).
+    let board_cond = std::fs::read_to_string(pkg.join("nros-board.toml"))
+        .ok()
+        .and_then(|t| {
+            t.lines().find_map(|l| {
+                let v = l.trim().strip_prefix("west_board")?.trim_start();
+                let v = v.strip_prefix('=')?.trim().trim_matches('"');
+                let name = v.split(['/', '@']).next()?;
+                let sym: String = name
+                    .chars()
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() {
+                            c.to_ascii_uppercase()
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect();
+                Some(format!("NROS_RUST_API && !ARCH_POSIX && BOARD_{sym}"))
+            })
+        });
     let open = format!("if NROS_RMW_{}", rmw.to_ascii_uppercase());
     let close = format!("endif # NROS_RMW_{}", rmw.to_ascii_uppercase());
     // the module opens one `if NROS_RMW_<RMW>` block several times; the
@@ -378,6 +401,9 @@ pub fn zephyr_main_stack_default(root: &Path, board: &str, rust: bool, rmw: &str
             in_block = false;
         } else if in_block && line == "configdefault MAIN_STACK_SIZE" {
             for d in lines.by_ref() {
+                if d.starts_with('#') {
+                    continue;
+                }
                 let rest = d.strip_prefix("default ")?;
                 let (value, cond) = match rest.split_once(" if ") {
                     Some((v, c)) => (v, Some(c.trim())),
@@ -389,6 +415,9 @@ pub fn zephyr_main_stack_default(root: &Path, board: &str, rust: bool, rmw: &str
                     // a row names a cross board, never ARCH_POSIX
                     Some("NROS_RUST_API && !ARCH_POSIX") if rust => return Some(value),
                     Some("NROS_RUST_API && !ARCH_POSIX") => {}
+                    Some(c) if rust && board_cond.as_deref() == Some(c) => return Some(value),
+                    // another board's Rust-only line
+                    Some(c) if c.starts_with("NROS_RUST_API && !ARCH_POSIX && BOARD_") => {}
                     Some(_) => return None,
                 }
             }
@@ -1062,10 +1091,19 @@ mod tests {
     fn the_zephyr_main_stack_default_is_the_modules_kconfig() {
         let r = repo_root();
         let b = "nucleo-f767zi-zephyr";
-        assert_eq!(zephyr_main_stack_default(&r, b, true, "zenoh"), Some(32768));
+        // phase-557 W10: nucleo's measured Rust floor is above the generic
+        // Rust default, so the module states a Rust-only line for it...
+        assert_eq!(zephyr_main_stack_default(&r, b, true, "zenoh"), Some(33288));
+        assert_eq!(zephyr_main_stack_default(&r, b, true, "xrce"), Some(33288));
+        // ...which never reaches its C image...
         assert_eq!(
             zephyr_main_stack_default(&r, b, false, "zenoh"),
             Some(16384)
+        );
+        // ...nor another board's Rust image.
+        assert_eq!(
+            zephyr_main_stack_default(&r, "rpi-pico-w-zephyr", true, "zenoh"),
+            Some(32768)
         );
         // a board that states its own wins
         assert_eq!(
