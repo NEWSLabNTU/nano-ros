@@ -1,7 +1,7 @@
 ---
 id: 2790
 title: "The stock Rust talker template for nucleo-f767zi no longer links: its stack floor rose to 78,152 B and the image overflows RAM by 2,112 B"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [stack-floor, zephyr, templates]
@@ -9,8 +9,8 @@ related: [issue-2783, issue-2400, issue-2658]
 found: 2026-11-22
 ---
 
-**Home:** [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md),
-the stack-floor redesign that [issue 2400](2400-stack-floor-from-measured-frames.md)
+**Home:** [phase-557](../../roadmap/phase-557-stack-floor-measured-frames.md),
+the stack-floor redesign that [issue 2400](../2400-stack-floor-from-measured-frames.md)
 tracks (nros 133).
 
 ## What happens
@@ -55,3 +55,38 @@ For the floor redesign, not this issue alone: the floor of an image whose peak
 is measured should not exceed what its board can hold. Until then, the
 template's `stack.conf` could cap at a value that links, with the measured
 peak as its evidence.
+
+## Resolution (2026-11-22)
+
+The floor stays as the walk derives it: a measured image whose stated stack is
+below its walk's floor is refused at build (issue 2400 ruling (A)), so a
+`stack.conf` capped below the floor would fail at build instead of at link.
+The image was given RAM instead.
+
+- **The board's transport task stacks moved to DTCM.** The link map of the
+  failing image showed `nros_thread_stacks` (the transport's read and lease
+  task stacks) at 32,896 B in sram0, and the part's 128 KiB DTCM at 0 B used.
+  `nros-board-nucleo-f767zi-zephyr`'s `prj.conf` now sets
+  `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM=y`, for every image on the board. The
+  main stack is the kernel's and stays in sram0; no heap moved.
+- **The sched-task pool stays in sram0**
+  (`CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM=n`). In DTCM, Zephyr's
+  `KEEP` output section keeps an unused pool whole (65,792 B), where sram0
+  lets `--gc-sections` drop it: issue 2793.
+- **The twin lane never lowers a template's stack.** `twin.conf`'s main
+  stack is the larger of 64 KiB and the template's `stack.conf`, so the lane
+  builds the image whose row it calibrates.
+
+Measured on the same `nros new` image, Zephyr 3.7:
+
+| | before | after |
+| --- | --- | --- |
+| link | RAM overflowed by 2,112 B | links |
+| sram0 used | over 393,216 B | 362,432 B (92.17 %), 30,784 B free |
+| DTCM used | 0 B | 32,896 B (25.10 %) |
+| walk check | (no link) | OK, stack 78,152 B |
+| Renode twin | refused (64 KiB below the floor) | boots and runs; main peak 28,340 B, inside the walk |
+
+The 30,784 B now free also covers issue 2783's 8,232 B for graph discovery.
+The floor's 2.7x over-statement itself stays with the redesign (issue 2400,
+phase-557 W9c).
