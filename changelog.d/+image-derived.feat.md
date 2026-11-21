@@ -1,0 +1,1 @@
+`nros image show <image> --derived` prints what the last `nros configure` derived for the image: its target, entity and type counts, each with the reason recorded for it, read from the image's sizing descriptor. A value the build could not derive says why. With no descriptor yet, or a plan older than its inputs, the command names `nros configure` and builds nothing.

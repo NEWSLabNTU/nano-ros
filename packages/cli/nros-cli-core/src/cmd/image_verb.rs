@@ -7,9 +7,11 @@
 //! packages it builds) through `plan_query`, which writes nothing. With
 //! `--nodes` / `--topics` it prints what the image's plan will create: the
 //! nodes, and the topics, services and actions, read from the model the last
-//! `nros configure` resolved, never resolving one itself. `check --no-alloc`
-//! reads the image `nros build` made and reports every allocation symbol it
-//! links ([`crate::alloc_scan`], issue 2667).
+//! `nros configure` resolved, never resolving one itself. With `--derived`
+//! (W3) it prints what that configure derived, from the image's sizing
+//! descriptor: each value, with the reason recorded for it. `check
+//! --no-alloc` reads the image `nros build` made and reports every allocation
+//! symbol it links ([`crate::alloc_scan`], issue 2667).
 
 use std::path::{Path, PathBuf};
 
@@ -108,6 +110,10 @@ pub struct ShowArgs {
     /// Print the topics, services and actions the image's plan will create.
     #[arg(long)]
     pub topics: bool,
+    /// Print what the build derived for the image: its target, entity and
+    /// type counts, each with the reason recorded for it.
+    #[arg(long)]
+    pub derived: bool,
 }
 
 /// One image as its bringup declares it.
@@ -150,7 +156,32 @@ pub struct ImageShow {
     /// With `--topics`: the topics, services and actions the plan creates.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub planned_endpoints: Option<Vec<PlannedEndpoint>>,
+    /// With `--derived`: what the last `nros configure` derived.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derived: Option<Derived>,
 }
+
+/// What the build derived for an image, read from its sizing descriptor.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Derived {
+    /// The descriptor it was read from.
+    pub descriptor: PathBuf,
+    pub values: Vec<DerivedValue>,
+}
+
+/// One derived value and the reason for it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DerivedValue {
+    /// `target`, `image` or `types`.
+    pub section: String,
+    pub name: String,
+    /// `None` when the build did not derive it.
+    pub value: Option<usize>,
+    pub reason: String,
+}
+
+/// The reason column until a producer records one (phase-570).
+pub const NO_REASON: &str = "(no reason recorded)";
 
 /// One node an image's plan starts.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -305,7 +336,13 @@ fn show(args: ShowArgs) -> Result<()> {
     } else {
         None
     };
+    let derived = if args.derived {
+        Some(derived_of(&declared, plan.sizing_descriptor.as_deref())?)
+    } else {
+        None
+    };
     let item = ImageShow {
+        derived,
         planned_nodes: model.as_ref().filter(|_| args.nodes).map(planned_nodes),
         planned_endpoints: model
             .as_ref()
@@ -556,10 +593,7 @@ fn planned_model(d: &ImageItem) -> Result<ros_launch_manifest_model::SystemModel
              image's launch file starts",
             d.name
         ),
-        Err(r) => bail!(
-            "image `{}`: {r}\n  Run `nros configure` to plan it again",
-            d.name
-        ),
+        Err(r) => bail!("image `{}`: {}", d.name, with_configure(&r.to_string())),
     };
     let raw = std::fs::read_to_string(&path)
         .map_err(|e| eyre::eyre!("reading {}: {e}", path.display()))?;
@@ -669,6 +703,99 @@ pub fn render_planned_endpoints(eps: &[PlannedEndpoint]) -> String {
     t.render()
 }
 
+/// What the last `nros configure` derived for the image, from its sizing
+/// descriptor. Never configures: a missing or stale descriptor names `nros
+/// configure` instead.
+fn derived_of(d: &ImageItem, descriptor: Option<&Path>) -> Result<Derived> {
+    let Some(path) = descriptor else {
+        bail!(
+            "image `{}` is built by a road that writes no sizing descriptor, so there is no \
+             derived configuration to print",
+            d.name
+        );
+    };
+    if !path.is_file() {
+        bail!(
+            "image `{}` has no derived configuration yet. Run `nros configure` first: it \
+             writes {}",
+            d.name,
+            path.display()
+        );
+    }
+    // The descriptor is derived from the image's plan, so it is as fresh as
+    // the plan: the gate refuses a plan older than its inputs. (Not the
+    // descriptor's own mtime: it is written only when it changes.) An owned
+    // entry with no launch has no plan.
+    if d.launch.is_some() || d.entry.is_none() {
+        use nros_orchestration_ir::model_location::launch_to_model_rel;
+        let rel = launch_to_model_rel(&d.bringup_dir, d.launch.as_deref(), &d.launch_args)
+            .map_err(|e| eyre::eyre!("image `{}`: {e}", d.name))?;
+        match crate::model_gate::open(&d.bringup_dir, &rel) {
+            Ok(_) => {}
+            Err(r) => bail!("image `{}`: {}", d.name, with_configure(&r.to_string())),
+        }
+    }
+    let desc =
+        nros_sizing_descriptor::read(path).map_err(|e| eyre::eyre!("image `{}`: {e}", d.name))?;
+    Ok(Derived {
+        descriptor: path.to_path_buf(),
+        values: derived_values(&desc),
+    })
+}
+
+/// The gate's refusal, with the remedy added unless it already names one.
+fn with_configure(refusal: &str) -> String {
+    if refusal.contains("nros configure") {
+        refusal.to_string()
+    } else {
+        format!("{refusal}\n  Run `nros configure` to plan it again")
+    }
+}
+
+/// The descriptor's derived counts, each with its reason.
+pub fn derived_values(desc: &nros_sizing_descriptor::SizingDescriptor) -> Vec<DerivedValue> {
+    use nros_sizing_descriptor::Fact;
+    crate::cmd::sizing_descriptor::derived_facts(desc)
+        .into_iter()
+        .map(|(section, name, f)| {
+            let (value, reason) = match f {
+                Fact::Stated(v) => (Some(v), NO_REASON.to_string()),
+                Fact::Refused(why) => (None, format!("not derived: {why}")),
+                Fact::Absent => (None, "not derived: nothing states it".to_string()),
+            };
+            DerivedValue {
+                section: section.to_string(),
+                name: name.to_string(),
+                value,
+                reason,
+            }
+        })
+        .collect()
+}
+
+pub fn render_derived(d: &Derived) -> String {
+    let mut t = Table::new(
+        &["DERIVED", "VALUE", "REASON"],
+        "The descriptor states no derived value.",
+    );
+    for v in &d.values {
+        t.row(vec![
+            format!("{}.{}", v.section, v.name),
+            v.value.map_or_else(|| "-".to_string(), |n| n.to_string()),
+            // A refusal can run to a list; the table keeps its first line
+            // and `--json` the whole of it.
+            v.reason
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .trim_end()
+                .to_string(),
+        ]);
+    }
+    t.footer(&format!("Read from {}.", d.descriptor.display()));
+    t.render()
+}
+
 pub fn render_show(i: &ImageShow) -> String {
     let d = &i.declared;
     let mut out = frame::show_head(
@@ -698,6 +825,10 @@ pub fn render_show(i: &ImageShow) -> String {
     if let Some(e) = &i.planned_endpoints {
         out.push('\n');
         out.push_str(&render_planned_endpoints(e));
+    }
+    if let Some(d) = &i.derived {
+        out.push('\n');
+        out.push_str(&render_derived(d));
     }
     out.push_str(&frame::book_line(BOOK_PAGE));
     out
@@ -771,6 +902,46 @@ mod tests {
             e.contains("runs its own entry package `talker_entry`"),
             "{e}"
         );
+    }
+
+    /// phase-569 W3 — a stated value carries the reason column's placeholder
+    /// until phase-570 records one; an unstated one says it was not derived.
+    #[test]
+    fn a_derived_value_shows_its_reason_or_that_it_was_not_derived() {
+        let desc = nros_sizing_descriptor::parse(
+            "schema_version = 3\n\n[meta]\nentry = \"e\"\nstatus = \"derived\"\nbasis = \
+             \"contract\"\n\n[image]\nnode_count = 2\n",
+            Path::new("e.toml"),
+        )
+        .unwrap();
+        let values = derived_values(&desc);
+        let nodes = values.iter().find(|v| v.name == "node_count").unwrap();
+        assert_eq!((nodes.section.as_str(), nodes.value), ("image", Some(2)));
+        assert_eq!(nodes.reason, NO_REASON);
+        let heap = values
+            .iter()
+            .find(|v| v.name == "heap_budget_bytes")
+            .unwrap();
+        assert_eq!(heap.value, None);
+        assert!(heap.reason.starts_with("not derived"), "{}", heap.reason);
+        let text = render_derived(&Derived {
+            descriptor: "/ws/build/x/nros/sizing/e.toml".into(),
+            values,
+        });
+        assert!(text.contains("image.node_count"), "{text}");
+        assert!(text.contains("/ws/build/x/nros/sizing/e.toml"), "{text}");
+    }
+
+    /// phase-569 W3 — no descriptor yet names `nros configure` and builds
+    /// nothing; a road that writes none says so.
+    #[test]
+    fn an_image_with_no_derived_configuration_names_nros_configure() {
+        let i = item("linux", "linux", "b");
+        let missing = std::env::temp_dir().join("nros-w3-no-such/nros/sizing/linux.toml");
+        let e = derived_of(&i, Some(&missing)).unwrap_err().to_string();
+        assert!(e.contains("nros configure"), "{e}");
+        let e = derived_of(&i, None).unwrap_err().to_string();
+        assert!(e.contains("writes no sizing descriptor"), "{e}");
     }
 
     #[test]

@@ -747,6 +747,7 @@ mod tests {
             }),
             descriptor: None,
             run_tables: Default::default(),
+            sizing_descriptor: None,
             package_depends: None,
         };
         arm(std::slice::from_mut(&mut p), Some(&root), None, &|_| None);
@@ -805,6 +806,7 @@ mod tests {
             }),
             descriptor: None,
             run_tables: Default::default(),
+            sizing_descriptor: None,
             package_depends: None,
         };
         let mut v = vec![

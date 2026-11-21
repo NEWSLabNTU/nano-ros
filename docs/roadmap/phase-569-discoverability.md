@@ -113,7 +113,28 @@ them).
 
 ### W3 — derived config
 
-- **Status:** OPEN
+- **Status:** OPEN (done locally 2026-11-21, on W7c part 1; opens after W7a
+  merges)
+- **Done:**
+  - Each plan records where its image's sizing descriptor lands
+    (`ResolvedBuild::sizing_descriptor`), from one function
+    (`sizing_descriptor_at`) that takes each road's writer directory:
+    - cargo: the generated entry dir, with the image id;
+    - Zephyr Rust: the resolve dir, with the image id;
+    - Zephyr C/C++ and cmake: the CMake binary dir, with the entry target;
+    - the leaf roads: their own rule.
+    A query plans no resolve dir or output, so for those it calls the rules
+    that spell them.
+  - `--derived` prints a DERIVED / VALUE / REASON table. A stated value reads
+    "(no reason recorded)", and one the producer refused reads "not derived:
+    <its refusal>".
+  - The list of values is `sizing_descriptor::derived_facts`, which
+    `nros dev image sizing-descriptor`'s summary now prints from too.
+  - A missing descriptor names `nros configure`. Freshness is the plan's:
+    the model gate refuses a model older than its inputs. The descriptor's own
+    mtime is not used, because it is written only when it changes.
+- **Not in the descriptor yet:** stack and enabled features. The table shows
+  what the descriptor states (target, entity and type counts).
 
 `nros image show <image> --derived` prints, from
 `build/nros/sizing/<entry>.toml`, the pools, heap, stack and features the
