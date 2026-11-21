@@ -65,6 +65,7 @@ Run on a target:
 
 Workspace:
   list         List the workspace's packages: kind, name and directory per row
+  image        List the workspace's images, or show one: what it declares and what the build resolves for it
   graph        Print the workspace's packages in dependency order, each with the workspace packages it depends on
 
 Interfaces:
@@ -1022,6 +1023,54 @@ Options:
 
   -V, --version
           Print version
+```
+
+### `nros image`
+
+```text
+List the workspace's images, or show one: what it declares and what the build resolves for it
+
+Usage: nros image <COMMAND>
+
+Commands:
+  list  List the workspace's images, as its bringups declare them
+  show  Show one image: what it declares, and what the build resolves for it
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros image list`
+
+```text
+List the workspace's images, as its bringups declare them
+
+Usage: nros image list [OPTIONS]
+
+Options:
+      --workspace <WORKSPACE>  Workspace root. Default: the workspace the current directory is in
+      --json                   Print one JSON object instead of text
+  -h, --help                   Print help
+  -V, --version                Print version
+```
+
+#### `nros image show`
+
+```text
+Show one image: what it declares, and what the build resolves for it
+
+Usage: nros image show [OPTIONS] <IMAGE>
+
+Arguments:
+  <IMAGE>  The image, as `nros build` names it (`linux`, or `<bringup>:linux` when two bringups declare the same id)
+
+Options:
+      --workspace <WORKSPACE>  Workspace root. Default: the workspace the current directory is in
+      --json                   Print one JSON object instead of text
+  -h, --help                   Print help
+  -V, --version                Print version
 ```
 
 ### `nros graph`
