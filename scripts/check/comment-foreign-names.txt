@@ -130,8 +130,6 @@ tcpip_msg
 # ESP-IDF and esp-rs
 esp_log_write
 esp_system_abort
-heap_caps_malloc
-heap_caps_realloc
 portMUX_TYPE
 
 # ThreadX and NetX Duo
@@ -142,7 +140,6 @@ TX_EXECUTION_PROFILE_ENABLE
 TX_MEMSET
 TX_USER_FILE
 _tx_byte_allocate
-_tx_byte_release
 _tx_execution_
 _tx_execution_thread_enter
 _tx_linux_mutex
@@ -180,7 +177,6 @@ posix_to_zephyr_priority
 stdinout_fd_op_vtable
 stdinout_write_vmeth
 sys_heap
-sys_heap_
 uart_poll_in
 warn_assign_undef
 z_impl_k_thread_stack_space_get
@@ -195,7 +191,11 @@ _eronly
 builtin_for_index
 builtin_isavail
 clean_context
+kmm_calloc
+kmm_free
 kmm_malloc
+kmm_memalign
+kmm_realloc
 nsh_main
 sporadic_alloc_repl
 task_create
@@ -444,7 +444,6 @@ Stdout
 UnitDependencyInfoChanged
 align8
 alloc::alloc::handle_alloc_error
-alloc_error_handler
 alloc_error_hook
 c_variadic
 clippy::cast_slice_different_sizes

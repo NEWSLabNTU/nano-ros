@@ -9,6 +9,10 @@ found: 2026-11-17
 related: [phase-569, rfc-0133, issue-0816, issue-2646]
 ---
 
+**Status (2026-11-21):** phase-569 W7b adds the verb, `nros image check
+--no-alloc`, with the reader in Rust and the L3 lane calling it. Open for the
+acceptance's probed step on the own-library page's Eigen talker.
+
 **Home:** [phase-569](../roadmap/phase-569-discoverability.md) W7 (an image
 noun's checks), under [RFC-0133](../design/0133-discoverability.md). It is a
 discoverability gap: the check exists, and a user cannot reach it from `nros`.

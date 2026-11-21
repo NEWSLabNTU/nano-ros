@@ -944,35 +944,19 @@ fn finish(
                     .insert("zephyr_base".into(), base.display().to_string());
                 prov.set("args.zephyr_base", BUILD);
             }
-            // A host image on a west build is native_sim's `zephyr.exe`.
-            let z = dir.join("zephyr");
-            let elf = if plan.target.host {
-                z.join("zephyr.exe")
-            } else {
-                z.join("zephyr.elf")
-            };
-            plan.artifacts.insert("elf".into(), elf);
         }
         Some(BuildOutput::CMake { build_dir, .. }) => {
             plan.build_dir = Some(build_dir.clone());
-            // A named owned entry's program is read back from CMake; when it
-            // cannot be, say why rather than run a plan with no `elf`.
-            let resolved = i
-                .output
-                .map(|o| o.resolve_artifact_for(i.exec))
-                .transpose()
-                .map_err(|e| ResolveError::Unresolved(format!("image `{}`: {e}", i.image)))?
-                .flatten();
-            if let Some(a) = resolved {
-                plan.artifacts.insert("elf".into(), a);
-            }
         }
-        Some(o) => {
-            if let Some(a) = o.artifact() {
-                plan.artifacts.insert("elf".into(), a);
-            }
-        }
-        None => {}
+        _ => {}
+    }
+    // A named owned entry's program is read back from CMake; when it cannot
+    // be, say why rather than run a plan with no `elf`.
+    if let Some(o) = i.output
+        && let Some(elf) = build_elf(o, plan.target.host, i.exec)
+            .map_err(|e| ResolveError::Unresolved(format!("image `{}`: {e}", i.image)))?
+    {
+        plan.artifacts.insert("elf".into(), elf);
     }
     plan.validate()
         .map_err(|e| ResolveError::Unresolved(e.to_string()))
@@ -1482,6 +1466,37 @@ pub fn attach_tools(
             .insert(format!("tools.{}", line.exe), METHOD.to_string());
     }
     notes
+}
+
+/// The program an image's build produces, from the build's own output: the
+/// planner's values, never a second derivation. `host` is the board's `[board.run]
+/// host`: a host image on a west build is native_sim's `zephyr.exe`. `nros run`
+/// hands it to the runner as `elf`, and `nros image check` reads it. `exec`
+/// picks the program when a named owned entry builds several (phase-583 W2).
+///
+/// # Errors
+///
+/// A CMake build's named owned entry whose program CMake cannot name, or an
+/// `exec` naming none of its programs.
+pub fn build_elf(
+    output: &BuildOutput,
+    host: bool,
+    exec: Option<&str>,
+) -> Result<Option<PathBuf>, String> {
+    match output {
+        BuildOutput::West {
+            build_dir: Some(dir),
+        } => {
+            let z = dir.join("zephyr");
+            Ok(Some(if host {
+                z.join("zephyr.exe")
+            } else {
+                z.join("zephyr.elf")
+            }))
+        }
+        BuildOutput::CMake { .. } => output.resolve_artifact_for(exec),
+        o => Ok(o.artifact()),
+    }
 }
 
 /// The `elf` artifact of a plan, when it has one.

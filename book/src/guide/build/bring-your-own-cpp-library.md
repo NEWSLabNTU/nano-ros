@@ -288,9 +288,9 @@ reads only the `[image_defaults.build]` one.
 > `std::string` allocates through `operator new`, from the package's own
 > code rather than through the platform's allocator. An image with a package
 > that calls `nano_ros_hosted_cxx()` cannot claim to be free of allocation:
-> [the project's allocation check](https://github.com/NEWSLabNTU/nano-ros/blob/main/scripts/check-no-alloc-image.py)
-> reports `operator new` in its `cxx-operator-new` family. Fixed-size Eigen
-> types, as in the talker above, keep their storage inline.
+> `nros image check <image> --no-alloc` reads the built image and reports
+> `operator new` in its `cxx-operator-new` family. Fixed-size Eigen types, as
+> in the talker above, keep their storage inline.
 
 The FreeRTOS toolchain still compiles with `-fno-exceptions` and `-fno-rtti`,
 so a library that throws must be built with its no-exceptions option.

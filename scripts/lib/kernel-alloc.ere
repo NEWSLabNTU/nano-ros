@@ -1,0 +1,1 @@
+\b(k_(heap_)?(aligned_)?(malloc|calloc|realloc|alloc|free)|sys_heap_(aligned_)?(alloc|realloc|free)|pvPort(Malloc|Calloc)(Stack)?|vPortFree(Stack)?|_?txe?_byte_(allocate|release)|kmm_(malloc|calloc|realloc|zalloc|memalign|free)|heap_caps_(aligned_)?(malloc|calloc|realloc|free|alloc)(_prefer)?)\b

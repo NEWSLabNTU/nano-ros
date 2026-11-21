@@ -1086,9 +1086,10 @@ List the workspace's images, or show one: what it declares and what the build re
 Usage: nros image <COMMAND>
 
 Commands:
-  list  List the workspace's images, as its bringups declare them
-  show  Show one image: what it declares, and what the build resolves for it
-  help  Print this message or the help of the given subcommand(s)
+  list   List the workspace's images, as its bringups declare them
+  show   Show one image: what it declares, and what the build resolves for it
+  check  Check a built image. `--no-alloc` reports every allocation symbol it links, and exits 1 when there is one
+  help   Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
@@ -1124,6 +1125,52 @@ Options:
       --json                   Print one JSON object instead of text
   -h, --help                   Print help
   -V, --version                Print version
+```
+
+#### `nros image check`
+
+```text
+Check a built image. `--no-alloc` reports every allocation symbol it links, and exits 1 when there is one
+
+Usage: nros image check [OPTIONS] --no-alloc [IMAGE]
+
+Arguments:
+  [IMAGE]
+          The image, as `nros build` names it. Default: the workspace's only image
+
+Options:
+      --no-alloc
+          Report every allocation symbol the image links, by family: the C heap, the Rust allocator, C++ `operator new`, an RTOS heap
+
+      --tier <TIER>
+          What the image is held to
+
+          Possible values:
+          - heap-free: No allocation symbol at all, defined or referenced
+          - unified:   Allocation only through the platform's allocator. Reads the build's objects, since a linked image no longer says who called `malloc`
+          
+          [default: heap-free]
+
+      --elf <PATH>
+          Read this linked image instead of the one `nros build` made. May be given more than once
+
+      --objects <PATH>
+          With `--tier unified`: the objects, archives or build directories to read. Default: the image's build directory
+
+      --allow <SYMBOL=REASON>
+          Permit one symbol, with the reason: `--allow 'malloc=<why>'`
+
+      --workspace <WORKSPACE>
+          Workspace root. Default: the workspace the current directory is in
+
+      --json
+          Print one JSON object instead of text
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
 ```
 
 ### `nros graph`

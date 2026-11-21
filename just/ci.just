@@ -350,7 +350,9 @@ l3:
     # the book's no-alloc sentences are held to THIS image by
     # `check-no-alloc-image.py --claims`, which reads the path below from this
     # recipe — move it and the claims gate fails), and links with NO allocation symbol at all
-    # (no `#[global_allocator]`, no `malloc`, no `nros_platform_alloc`). Three
+    # (no `#[global_allocator]`, no `malloc`, no `nros_platform_alloc`). The
+    # check is the user's own verb, `nros image check --no-alloc` (issue 2667),
+    # with the image named by path: one reader, never a second spelling. Three
     # earlier probes passed this gate vacuously at `symbols read: 1`; this one
     # reads the full symbol table of a linked image (~460). The build doubles
     # as issue 0843's tripwire: the leaf compiles `nros` WITHOUT the `alloc`
@@ -358,7 +360,7 @@ l3:
     echo "== L3 — heap-free tier: link gate on the no-alloc image =="
     (cd packages/testing/nros-tests/bins/heap-free-poc-mps2 \
         && cargo build $(nros_cargo_profile_arg_string))
-    python3 scripts/check-no-alloc-image.py --tier heap-free \
+    "$(nros_cli_bin --checkout-only)" image check --no-alloc --tier heap-free --elf \
         "packages/testing/nros-tests/bins/heap-free-poc-mps2/target/thumbv7m-none-eabi/$(nros_cargo_target_profile_dir)/heap-free-poc-mps2"
     # Issue 2131 — and its C++ twin. `heap-free-cpp-poc-mps2` builds nros-cpp
     # and nros-c WITHOUT `alloc` (parameter store carved, `NROS_PARAM_STORE`),
@@ -370,7 +372,7 @@ l3:
     echo "== L3 — heap-free tier: link gate on the no-alloc C++ image =="
     (cd packages/testing/nros-tests/bins/heap-free-cpp-poc-mps2 \
         && cargo build $(nros_cargo_profile_arg_string))
-    python3 scripts/check-no-alloc-image.py --tier heap-free \
+    "$(nros_cli_bin --checkout-only)" image check --no-alloc --tier heap-free --elf \
         "packages/testing/nros-tests/bins/heap-free-cpp-poc-mps2/target/thumbv7m-none-eabi/$(nros_cargo_target_profile_dir)/heap-free-cpp-poc-mps2"
     echo "L3 passed — $checked cross ELF(s) checked without booting anything, and both heap-free images (Rust, C++) link clean."
 

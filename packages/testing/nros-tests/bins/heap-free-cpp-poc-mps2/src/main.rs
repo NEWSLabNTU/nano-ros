@@ -6,7 +6,7 @@
 //! `#[no_mangle]` ABI pulled into the link by `FORCE_LINK_ANCHOR`, and a C++
 //! program (`src/poc.cpp`) that opens the executor, creates a node, declares,
 //! sets and reads a parameter, makes a timer and spins. The gate
-//! (`scripts/check-no-alloc-image.py --tier heap-free`) reads the linked ELF:
+//! (`nros image check --no-alloc --tier heap-free`) reads the linked ELF:
 //! no `#[global_allocator]`, no `__rust_alloc`, no `malloc`, no
 //! `nros_platform_alloc`.
 //!

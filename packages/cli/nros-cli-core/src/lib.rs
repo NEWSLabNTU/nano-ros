@@ -5,6 +5,8 @@
 //! that library is renamed or split.
 
 pub mod abi_guard;
+/// issue 2667 — does a built image link an allocator (`nros image check --no-alloc`).
+pub mod alloc_scan;
 pub mod process_env;
 
 /// phase-527 W3 (RFC-0119 D5) — the runner and command contract, re-exported

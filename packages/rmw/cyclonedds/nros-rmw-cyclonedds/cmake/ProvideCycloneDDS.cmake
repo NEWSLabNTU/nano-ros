@@ -206,7 +206,7 @@ macro(nros_provide_cyclonedds)
             # platform to funnel into. Both outcomes print, because a silently
             # disabled funnel and an enabled one look identical from the recipe.
             #
-            # The `unified`-tier gate (`scripts/check-no-alloc-image.py`) is what
+            # The `unified`-tier gate (`nros image check --no-alloc`) is what
             # makes "off" safe to allow: it measures the linked ELF, so an image
             # that was supposed to funnel and did not is caught there rather
             # than trusted here.

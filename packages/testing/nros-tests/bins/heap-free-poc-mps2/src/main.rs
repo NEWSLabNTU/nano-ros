@@ -5,7 +5,7 @@
 //! `install_node_typed_in` seam over a per-class `ComponentSlotStorage` — and
 //! links with **no allocation symbol at all**: no `#[global_allocator]`, no
 //! `__rust_alloc` shim, no `malloc`, no `nros_platform_alloc`. The W1 gate
-//! (`scripts/check-no-alloc-image.py --tier heap-free`) asserts that on the
+//! (`nros image check --no-alloc --tier heap-free`) asserts that on the
 //! built ELF; three earlier probes passed it vacuously at `symbols read: 1`
 //! because they only NAMED types — this image is the non-vacuous replacement.
 //!

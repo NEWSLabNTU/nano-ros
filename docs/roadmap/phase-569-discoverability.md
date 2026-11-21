@@ -361,11 +361,32 @@ and sees it listed, with no CLI edit.
     ends with a Book line, and an unknown name is refused with the nearest
     ones.
   - `image` joins the Workspace group of `nros --help`.
-- **W7b, open:** issue 2667's `nros image check <image> --no-alloc`. The
-  reader is `scripts/check-no-alloc-image.py`, 1,117 lines of Python using
-  `nm`, and a release ships no `scripts/`. So the reader moves into Rust, and
-  the L3 lane's `--tier heap-free` run calls the verb, keeping one
-  implementation.
+- **W7b, `nros image check --no-alloc` (issue 2667), done locally
+  2026-11-21, its own PR:**
+  - The reader is Rust, `nros-cli-core/src/alloc_scan.rs`: the four
+    families, the whole-name rule, the funnel and the platform-object
+    allowances of the old `scripts/check-no-alloc-image.py`. It reads the
+    symbol table itself with `object` (already in the lock), ELF and
+    archive members alike, so no `nm` is needed. Mangled names are read
+    through to their last segment (Itanium, Rust legacy and v0), as `nm -C`
+    did.
+  - The kernel-allocator naming scheme lives there once
+    (`KERNEL_ALLOC_SCHEME`). `check-no-direct-kernel-alloc.sh` reads its
+    `grep -E` form from `scripts/lib/kernel-alloc.ere`, generated from it
+    and held equal by a test (`NROS_UPDATE_GOLDEN=1` regenerates).
+    `scripts/lib/kernel_alloc.py` is gone.
+  - `nros image check [<image>] --no-alloc [--tier heap-free|unified]
+    [--elf <path>…] [--objects <path>…] [--allow 'SYM=<why>'] [--json]`
+    reads the image `nros run` would run (`run_plan::select_target`, and
+    `run_plan::build_elf`, now shared with `nros run`'s `elf`). Exit 1 on a
+    finding, 2 when it cannot check (`nros.image.check.v1`).
+  - The L3 lane's two heap-free runs call the verb with `--elf`. The
+    Python script keeps only `--claims`, the Book roster, which reads the
+    lane's new spelling, and refuses an image argument by naming the verb.
+  - Parity, against the old script on the same files: the heap-free Rust
+    and C++ images clean, and the `nros` binary's 16 findings the same 16.
+  - Left for issue 2667: its acceptance's probed Book step on the Eigen
+    talker. The own-library page names the verb in prose for now.
 - **W7c, open:** `--nodes` / `--topics` from the plan, and the Tutorial
   probe step that compares them with `ros2 node list` / `ros2 topic list`.
 

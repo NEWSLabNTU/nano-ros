@@ -147,7 +147,7 @@ panic = "own"
 # IMAGE: `packages/testing/nros-tests/bins/heap-free-poc-mps2` already builds
 # on this silicon with `nros-platform-mps2-an385`'s `default-features = false`,
 # dropping the arena and the four libc symbols, and
-# `check-no-alloc-image --tier heap-free` gates it. That is an image dropping a
+# `nros image check --no-alloc` gates it. That is an image dropping a
 # capability the board offers, which is not the same statement as the board not
 # having one.
 [board.capabilities]
