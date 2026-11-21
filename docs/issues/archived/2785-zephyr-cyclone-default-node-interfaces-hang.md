@@ -11,7 +11,7 @@ resolved: 2026-11-21
 resolved_in: "fix(zephyr): refuse a socket service stack too small for its poll array"
 ---
 
-**Home: [phase-556](../roadmap/phase-556-ros2-compat-audit.md) W13**, which made the
+**Home: [phase-556](../../roadmap/phase-556-ros2-compat-audit.md) W13**, which made the
 stock node interfaces every image's default (6229085857).
 
 ## What happens
