@@ -1218,12 +1218,34 @@ build where that number was read.
   image.
 
 **Checkpoint 1 (W9c), before any code.** For each `[[observed]]` row: the
-walk at 8 and at 64 orders, at main and at five unrelated merged PRs (none
-touching `packages/`, `cmake/` or the table), on the CI image. The output is
-a table of max per tree per N, and the spread across trees at each N. Stop
-and report if 64 orders leaves a spread over 2 %. That would mean the band
-is not converging, and a gate cannot be built on it until the SCC is cut
-(W7f's reopening conditions).
+walk at 8 and at 64 orders on several trees that differ from main only in
+code the image links. The output is a table of max per tree per N, and the
+spread across trees at each N. Stop and report if 64 orders leaves a spread
+over 2 %. That would mean the band is not converging, and a gate cannot be
+built on it until the SCC is cut (W7f's reopening conditions).
+
+- **Corrected 2026-11-21, before measuring.** The first wording asked for
+  five merged PRs "none touching `packages/`, `cmake/` or the table". Such a
+  tree leaves every walk input byte-identical, so the walk is
+  deterministically main's and the spread is 0 by construction: it would
+  pass and measure nothing. The band exists because unrelated CODE moves
+  names and so callee order (issues 2550, 2688).
+- **The trees.** No commit has landed since the walk's inputs last changed,
+  and an older tree predates them (W9a, W9b), which changes inputs and not
+  only code. So each tree is main with ONE commit REVERTED, and the walk
+  inputs stay main's: the walker, `config/stack-*`,
+  `cmake/NanoRosStackFloor.cmake`, the CLI's `stack_floor.rs` and the
+  Zephyr FFI hook.
+- **The pick is mechanical.** The last five commits on main that change a
+  `.rs`, `.c` or `.h` under `packages/{core,api,rmw,platform,boards,drivers}`
+  outside `tests/`, touch none of those inputs, and revert cleanly. "Touches
+  `packages/`" alone picked CLI and docs churn that cannot move an image.
+- **One build per tree and row.** The walker's `NROS_STACK_WALK_ORDERS=64`
+  and `NROS_STACK_WALK_PER_ORDER=1` print every order's depth, so one walk
+  gives the max at 8 (orders 0-7) and at 64. Each image's ELF hash is
+  recorded, so the table says how many trees changed the image at all.
+- **The environment is this host's.** The host-vs-CI split (issue 2688) is
+  the toolchain-identity measurement below, not this one.
 
 ## Issues homed here (2026-11-15)
 

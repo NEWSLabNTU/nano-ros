@@ -142,7 +142,9 @@ def expand_roots(g: Graph, roots: str) -> list[str]:
 _CRATE_HASH = re.compile(r"Cs[0-9A-Za-z]{4,}_|17h[0-9a-f]{16}E")
 # The edge orders a walk is taken in; the reported depth is the deepest. See
 # `worst_path` for why the order matters (issue 2550).
-WALK_ORDERS = tuple(range(8))
+# `NROS_STACK_WALK_ORDERS` overrides how many (phase-557 W9c measures the band
+# at 8 and 64); `NROS_STACK_WALK_PER_ORDER=1` prints each order's depth.
+WALK_ORDERS = tuple(range(int(os.environ.get("NROS_STACK_WALK_ORDERS") or 8)))
 
 
 # The project's own name, as `--name-token` states it (the workspace's
@@ -474,11 +476,16 @@ def walk_deepest(g: Graph, root: str, **kw) -> Path_:
     """`worst_path` in every one of `WALK_ORDERS`, the deepest answer. Same
     graph, same bytes: each order is fixed. A refusal in any order refuses."""
     best: Path_ | None = None
+    depths: list[int] = []
     for o in WALK_ORDERS:
         p = worst_path(g, root, order=o, **kw)
+        depths.append(p.depth)
         if best is None or p.depth > best.depth:
             best = p
     assert best is not None
+    if os.environ.get("NROS_STACK_WALK_PER_ORDER") == "1":
+        print(f"nros-stack-floor: per-order depths from `{root}`: "
+              + ",".join(map(str, depths)), file=sys.stderr)
     return best
 
 
