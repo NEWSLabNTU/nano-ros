@@ -1,7 +1,9 @@
 ---
 id: 2697
 title: "A provisioned Zephyr workspace can sit at a different revision from the pin, and nothing says so"
-status: open
+status: resolved
+resolved: 2026-11-21
+resolved_in: "#4418"
 type: bug
 severity: medium
 area: [zephyr, build, testing]
@@ -139,3 +141,29 @@ Measured on host 139: both lines' workspaces at their pins (3.7 at v3.7.2, 4.4
 at v4.4.0), 18 pinned projects checked. On host 175, whose 3.7 workspace was
 at v3.7.0, it should name `zephyr` behind `v3.7.2` with the re-sync remedy;
 that host's run, and its XRCE C++ cells on v3.7.2, are still to come.
+
+## Resolution (2026-11-21)
+
+The check landed in #4418 and is run by `_require-owned-provisioned-roots`,
+`just doctor`, the gate-lane preflight for `zephyr`/`west` lanes, and
+`just check zephyr-pin-drift`. Both halves of "Done when" were observed on
+host 175, the host where the drift was found:
+
+- Drifted, before that host's workspace was re-synced, from host 175's report:
+  "Before the re-sync, my older branch's check reported zephyr at v3.7.0
+  against the v3.7.2 pin."
+- Matching, after the re-sync, at origin/main 7660227bcf:
+  `git describe --tags` gives v3.7.2 (3.7) and v4.4.0 (4.4);
+  `scripts/check-zephyr-pin-drift.py` exits 0, "OK -- 2 provisioned
+  workspace(s), 12 pinned project(s), each at this checkout's pin and carrying
+  its patch set"; `just doctor`'s drift row reads the same `[OK]`. It also
+  printed `NOT VERIFIED: 4.4: zephyr's imports -- the pinned zephyr commit is
+  not fetched`, the shallow-history outcome the script reports rather than
+  passing.
+
+The self-test (behind, unfetched, ahead, work-tree edit, import outside the
+allowlist, every failure naming its remedy) runs on every invocation.
+
+Not covered here: whether the XRCE C++ cells that first exposed this pass on
+host 175's v3.7.2 tree. That is a property of those cells, not of this check.
+
