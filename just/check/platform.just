@@ -139,6 +139,20 @@ clock-board-freertos:
 board-module-path:
     @bash scripts/check/check-board-module-path.sh
 
+# A knob's environment rung is read once, at host configure, and baked into the
+# build; cmake has no dependency edge on an environment variable. So a knob
+# exported, changed or unset after a Zephyr build dir was configured used to be
+# dropped silently (issue 2810). The configure now records each read and an
+# always-run step refuses the build when the live environment disagrees. Refuses
+# a bare `$ENV{}` read of a resolved knob (it bypasses the record) and a Zephyr
+# module that stops installing the check; its selftest drives the real helper
+# through cmake + ninja: moved, unset and newly exported knobs refuse, an
+# unrelated variable and a re-configured dir pass, a no-change build re-runs
+# only the check. Buildless, ~2 s.
+[group('needs:cmake')]
+knob-env-refusal:
+    @bash scripts/check/check-knob-env-refusal.sh
+
 # RFC-0135 D2 (phase-577 W8) -- a board KEY reaches its family through ONE
 # CLI function, `orchestration::board_key::board_family`: nano-ros's
 # compiled-in table first, then the board catalog, so a board package outside
