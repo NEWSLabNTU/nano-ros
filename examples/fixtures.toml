@@ -5439,7 +5439,25 @@ dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
 output = ".verdict"
 
 [[compile_check_fixture]]
-id = "cmake_carrier_second_registration_refused"
+id = "cmake_carrier_two_executables_build"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_carrier_duplicate_executable_refused"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_carrier_zephyr_second_registration_refused"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_carrier_other_package_program"
 builder = "cmake-configure-verdict"
 dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
 output = ".verdict"

@@ -1,7 +1,7 @@
 # Phase 583 — An owned entry with several executables
 
 **Status (2026-11-21). OPEN: design accepted (user ruling 2026-11-20); W0
-done (`a49a3dcf82`). Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
+done (`a49a3dcf82`); W1 done. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
 - an owned entry may build several executables, chosen at run time as in
   ROS (`nros run <image> --exec <name>`, or the bringup's launch `exec`);
 - on RTOS, each executable is its own firmware, one carrier per
@@ -103,7 +103,7 @@ in the order below.
 
 ### W1 — One carrier per `EXECUTABLE`
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-21, the change that marks this)
 - **What:**
   - Every single-node carrier (NuttX, ThreadX, FreeRTOS, native typed) is
     built per registration. The target is `<pkg>__<exe>`, the `OUTPUT_NAME`
@@ -130,6 +130,28 @@ in the order below.
   - every migrated fixture row resolves;
   - issue 2744's verdict tests change to the new rule (a second DEPLOY
     registration builds; the Zephyr one is refused).
+- **Done (2026-11-21).** Carriers are `<pkg>__<exe>` with `OUTPUT_NAME`
+  `<exe>` and the entry TU in `nros-entry/<exe>/`, on all four roads. NuttX,
+  whose ELF comes from a cargo link rather than CMake's, takes the name through
+  `nros_nuttx_build_example(OUTPUT_NAME)`. `_nros_carrier_claim` refuses the
+  same `EXECUTABLE` twice (with a DEPLOY) and any second Zephyr registration.
+  A package's own program of the same name still turns the carrier off, but
+  only a program in THIS package's directory, since target names are global.
+  Measured:
+  - the scratch rv-virt-threadx package with two registrations builds two
+    firmware images, `c_typed_carrier` and `c_typed_carrier_b`; each holds only
+    its own component, and each boots under QEMU and publishes its own line;
+  - two packages that both register `EXECUTABLE talker` (native, TYPED) build
+    `pkg/talker_pkg/talker` and `pkg/listener_pkg/talker`;
+  - the fixture migration was 2 rows, not about 50: generated-entry rows
+    resolve the entry's own binary, and native carriers in generated workspaces
+    are by-products no test loads. The NuttX and ThreadX typed-carrier rows
+    move to `pkg/<pkg>/c_typed_carrier`; both build and both QEMU tests pass,
+    as do `workspace-c-native` and `workspace-mixed-native`;
+  - issue 2744's verdict cases became five, and all 11 tests in
+    `cmake_node_register_misuse` pass.
+- **For W2:** `nros run`'s refusal of an entry with several executables lists
+  the CMake TARGET names (`<pkg>__<exe>`); it should list the program names.
 
 ### W2 — `nros run --exec` and the launch's `exec`
 
