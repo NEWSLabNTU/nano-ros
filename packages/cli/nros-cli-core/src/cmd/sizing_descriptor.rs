@@ -1254,43 +1254,28 @@ pub(crate) fn is_cargo_leaf(dir: &std::path::Path) -> bool {
         .any(|l| l.trim_start().starts_with("[package]"))
 }
 
-/// The human report. One line per fact, and a refusal prints its reason.
-fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
-    use std::fmt::Write as _;
-    let mut s = String::new();
-    let _ = writeln!(
-        s,
-        "entry {} -- status {}, basis {} (schema {})",
-        desc.meta.entry,
-        desc.meta.status.tag(),
-        desc.meta.basis.tag(),
-        desc.schema_version
-    );
-    if !desc.meta.composed_entries().is_empty() {
-        let _ = writeln!(
-            s,
-            // RFC-0100 D12.
-            "  composed entries (a shared runtime): {}",
-            desc.meta.composed_entries().join(", ")
-        );
-    }
-    let _ = writeln!(
-        s,
-        "  undeclared endpoints: {}",
-        desc.meta.undeclared_endpoints()
-    );
-    let _ = writeln!(s, "  target:");
-    let _ = writeln!(s, "    pointer_bytes     {}", desc.target.pointer_bytes());
-    let _ = writeln!(s, "    max_align         {}", desc.target.max_align());
-    let _ = writeln!(
-        s,
-        "    heap_budget_bytes {}",
-        desc.target.heap_budget_bytes()
-    );
-    let _ = writeln!(s, "  image:");
-    let _ = writeln!(s, "    node_count        {}", desc.image.node_count());
-    let _ = writeln!(s, "    backend_count     {}", desc.image.backend_count());
-    let _ = writeln!(s, "    subscriber_count  {}", desc.image.subscriber_count());
+/// phase-569 W3 — every derived count the descriptor states, by section, in
+/// the order the human summary prints them. `nros image show --derived` and
+/// [`summary`] both read this list, so a fact added here appears in both.
+pub(crate) fn derived_facts(
+    desc: &nros_sizing_descriptor::SizingDescriptor,
+) -> Vec<(
+    &'static str,
+    &'static str,
+    nros_sizing_descriptor::Fact<usize>,
+)> {
+    let mut v = vec![
+        ("target", "pointer_bytes", desc.target.pointer_bytes()),
+        ("target", "max_align", desc.target.max_align()),
+        (
+            "target",
+            "heap_budget_bytes",
+            desc.target.heap_budget_bytes(),
+        ),
+        ("image", "node_count", desc.image.node_count()),
+        ("image", "backend_count", desc.image.backend_count()),
+        ("image", "subscriber_count", desc.image.subscriber_count()),
+    ];
     // Issue 1577 — what the executor arena's per-kind model sums.
     for (name, f) in [
         ("subscription_entities", desc.image.subscription_entities()),
@@ -1339,18 +1324,65 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
             desc.image.entity_liveliness_tokens(),
         ),
     ] {
-        let _ = writeln!(s, "    {name:<23} {f}");
+        v.push(("image", name, f));
     }
-    let _ = writeln!(s, "  types:");
-    let _ = writeln!(s, "    distinct_count    {}", desc.types.distinct_count());
-    let _ = writeln!(s, "    max_fields        {}", desc.types.max_fields());
-    let _ = writeln!(s, "    max_kinds         {}", desc.types.max_kinds());
-    let _ = writeln!(s, "    max_nested_depth  {}", desc.types.max_nested_depth());
+    v.extend([
+        ("types", "distinct_count", desc.types.distinct_count()),
+        ("types", "max_fields", desc.types.max_fields()),
+        ("types", "max_kinds", desc.types.max_kinds()),
+        ("types", "max_nested_depth", desc.types.max_nested_depth()),
+        (
+            "types",
+            "max_wire_bound_bytes",
+            desc.types.max_wire_bound_bytes(),
+        ),
+    ]);
+    v
+}
+
+/// The human report. One line per fact, and a refusal prints its reason.
+fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::new();
     let _ = writeln!(
         s,
-        "    max_wire_bound_bytes {}",
-        desc.types.max_wire_bound_bytes()
+        "entry {} -- status {}, basis {} (schema {})",
+        desc.meta.entry,
+        desc.meta.status.tag(),
+        desc.meta.basis.tag(),
+        desc.schema_version
     );
+    if !desc.meta.composed_entries().is_empty() {
+        let _ = writeln!(
+            s,
+            // RFC-0100 D12.
+            "  composed entries (a shared runtime): {}",
+            desc.meta.composed_entries().join(", ")
+        );
+    }
+    let _ = writeln!(
+        s,
+        "  undeclared endpoints: {}",
+        desc.meta.undeclared_endpoints()
+    );
+    // The target, image and types facts, from the one list `nros image show
+    // --derived` also prints (phase-569 W3). The first three image counts
+    // keep the narrower column they always had.
+    let mut section = "";
+    let mut in_section = 0;
+    for (sec, name, f) in derived_facts(desc) {
+        if sec != section {
+            let _ = writeln!(s, "  {sec}:");
+            section = sec;
+            in_section = 0;
+        }
+        if sec == "image" && in_section >= 3 {
+            let _ = writeln!(s, "    {name:<23} {f}");
+        } else {
+            let _ = writeln!(s, "    {name:<17} {f}");
+        }
+        in_section += 1;
+    }
     let _ = writeln!(s, "  endpoints: {}", desc.endpoints.len());
     for ep in &desc.endpoints {
         let _ = writeln!(s, "    {} {} [{}]", ep.kind.tag(), ep.topic, ep.type_name);

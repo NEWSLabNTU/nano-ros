@@ -678,6 +678,11 @@ pub struct ResolvedBuild {
     /// named here must finish first, and a failed one skips this plan under
     /// `--continue-on-error`. `None` for an image, whose unit is the image.
     pub package_depends: Option<Vec<String>>,
+    /// phase-569 W3 — where this image's sizing descriptor lands
+    /// (`<build_dir>/nros/sizing/<entry>.toml`), from the same directory and
+    /// entry each road's writer is handed. `nros image show --derived` reads
+    /// it. `None` where the road writes none, or the plan cannot name it.
+    pub sizing_descriptor: Option<PathBuf>,
 }
 
 /// What a plan is FOR — issue 1716.
@@ -1264,6 +1269,19 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // application and sizing descriptor, and the retirement of a stale
         // generated root (4).
         if planning != Planning::Generate {
+            let query_sizing = sizing_descriptor_at(&SizingAt {
+                driver,
+                root: &root,
+                platform: &platform,
+                image: &image,
+                bringup: &bringup,
+                bringup_dir: &bringup_dir,
+                image_id: &image_id,
+                entry: &want_entry,
+                rust_only: !image_has_non_rust(&image, &bringup_dir),
+                resolved_dir: None,
+                output: None,
+            });
             out.push(ResolvedBuild {
                 kernel: None,
                 configure: None,
@@ -1295,6 +1313,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 output: None,
                 descriptor: None,
                 run_tables: Default::default(),
+                sizing_descriptor: query_sizing,
                 package_depends: None,
             });
             continue;
@@ -3306,7 +3325,21 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?,
             _ => None,
         };
+        let sizing_descriptor = sizing_descriptor_at(&SizingAt {
+            driver,
+            root: &root,
+            platform: &platform,
+            image: &image,
+            bringup: &bringup,
+            bringup_dir: &bringup_dir,
+            image_id: &image_id,
+            entry: &want_entry,
+            rust_only: !image_has_non_rust(&image, &bringup_dir),
+            resolved_dir: resolved_dir.as_deref(),
+            output: output.as_ref(),
+        });
         out.push(ResolvedBuild {
+            sizing_descriptor,
             kernel: nuttx_kernel,
             configure: cmake_configure.or(cargo_prepare),
             entry_root,
@@ -3642,6 +3675,10 @@ fn plan_leaf_image(
             output: None,
             descriptor: None,
             run_tables: Default::default(),
+            sizing_descriptor: Some(crate::sizing_descriptor::descriptor_path_for_leaf(
+                &img.leaf,
+                &img.image_id,
+            )),
             package_depends: None,
         }]));
     }
@@ -3776,6 +3813,10 @@ fn plan_leaf_image(
         output: Some(output),
         descriptor: Some(descriptor.clone()),
         run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&img.decl, image_net.as_ref()),
+        sizing_descriptor: Some(crate::sizing_descriptor::descriptor_path_for_leaf(
+            &img.leaf,
+            &img.image_id,
+        )),
         package_depends: None,
     }]))
 }
@@ -3948,6 +3989,9 @@ fn plan_single_package_cmake(
         &args.native_args,
     );
     a.extend(args.native_args.iter().cloned());
+    // phase-569 W3 — `${CMAKE_PROJECT_NAME}` names the descriptor
+    // (NanoRosLeafEntityFacts.cmake), which a leaf's package name is.
+    let sizing_descriptor = nros_sizing_descriptor::descriptor_path(&output_dir, &package);
     Ok(Some(vec![ResolvedBuild {
         qualified: qual,
         board,
@@ -3981,6 +4025,7 @@ fn plan_single_package_cmake(
         }),
         descriptor: Some(descriptor.clone()),
         run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&decl, image_net.as_ref()),
+        sizing_descriptor: Some(sizing_descriptor),
         package_depends: None,
     }]))
 }
@@ -5572,6 +5617,7 @@ fn plan_packages(
             output: None,
             descriptor: None,
             run_tables: Default::default(),
+            sizing_descriptor: None,
             package_depends: Some(pkg.depends.iter().cloned().collect()),
         });
     }
@@ -5871,6 +5917,7 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
             run_tables: Default::default(),
             // Only the host tools it depends on order it; an image never
             // waits on a host tool to build, it waits on it to RUN.
+            sizing_descriptor: None,
             package_depends: Some(
                 pkg.depends
                     .iter()
@@ -9600,6 +9647,73 @@ pub(crate) fn remap_workspace_config(ws: &Path) -> String {
     )
 }
 
+/// phase-569 W3 — what [`sizing_descriptor_at`] needs to name an image's
+/// descriptor.
+struct SizingAt<'a> {
+    driver: Driver,
+    root: &'a Path,
+    platform: &'a str,
+    image: &'a crate::orchestration::image::ImageBlock,
+    bringup: &'a str,
+    bringup_dir: &'a Path,
+    image_id: &'a str,
+    /// The entry package (`nano_ros_entry()`'s target name).
+    entry: &'a str,
+    /// A Zephyr image with only Rust components (the zephyr-lang-rust lane).
+    rust_only: bool,
+    /// The resolve dir stage 3.5 wrote, when it ran.
+    resolved_dir: Option<&'a Path>,
+    /// The planned output, when the plan got that far.
+    output: Option<&'a crate::cmd::build_next::BuildOutput>,
+}
+
+/// phase-569 W3 — where an image's sizing descriptor lands, from the directory
+/// each road's writer is handed: the generated entry dir (cargo,
+/// [`write_image_descriptor`]), the resolve dir (a Zephyr Rust image), or the
+/// CMake binary dir with the entry target's name (cmake and Zephyr C/C++,
+/// `nano_ros_entry()`). A query has written neither the resolve dir nor an
+/// output, so those come from the rules that spell them.
+fn sizing_descriptor_at(a: &SizingAt<'_>) -> Option<PathBuf> {
+    let (dir, entry) = match a.driver {
+        Driver::Cargo => (
+            generated_entry_dir(a.root, a.platform, a.image, a.image_id),
+            a.image_id,
+        ),
+        Driver::West if a.rust_only => (
+            a.resolved_dir.map_or_else(
+                || {
+                    a.root
+                        .join("build")
+                        .join(crate::resolve::dir_name_for(a.bringup, a.image_id))
+                },
+                Path::to_path_buf,
+            ),
+            a.image_id,
+        ),
+        Driver::West => (
+            match a.output {
+                Some(crate::cmd::build_next::BuildOutput::West { build_dir }) => {
+                    build_dir.clone()?
+                }
+                _ => west_build_dir(a.root, a.platform, a.image, a.bringup, a.image_id),
+            },
+            a.entry,
+        ),
+        Driver::CMake => (
+            a.root.join(cmake_build_dir_for(
+                a.driver,
+                a.platform,
+                a.image,
+                a.bringup,
+                a.image_id,
+                a.bringup_dir,
+            )?),
+            a.entry,
+        ),
+    };
+    Some(nros_sizing_descriptor::descriptor_path(&dir, entry))
+}
+
 fn generated_entry_dir(
     root: &Path,
     platform: &str,
@@ -12975,6 +13089,7 @@ mod multi_image_drive_tests {
             output: None,
             descriptor: None,
             run_tables: Default::default(),
+            sizing_descriptor: None,
             package_depends: None,
         }
     }

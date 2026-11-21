@@ -898,6 +898,7 @@ mod tests {
             output: Some(output),
             descriptor: None,
             run_tables: Default::default(),
+            sizing_descriptor: None,
             package_depends: None,
         }
     }
