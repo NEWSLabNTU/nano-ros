@@ -654,5 +654,5 @@ output, checked by a test.
 
 ## Issues homed here (2026-11-21)
 
-- [issue 2785](../issues/2785-zephyr-cyclone-default-node-interfaces-hang.md): a Zephyr Cyclone image with the stock node interfaces boots and then emits no nros log record; with `node_interfaces = "none"` it runs (W13).
+- [issue 2785](../issues/archived/2785-zephyr-cyclone-default-node-interfaces-hang.md): a Zephyr Cyclone image with the stock node interfaces boots and then emits no nros log record; with `node_interfaces = "none"` it runs (W13).
 - [issue 2786](../issues/archived/2786-conf-fragment-registry-knob-silently-overridden.md): a conf fragment setting `CONFIG_NROS_CAPABILITY_ROSOUT=n` is silently overridden to `y` instead of refused (W13).
