@@ -219,6 +219,17 @@ TARGET_DECL = re.compile(
     r"^\s*(?:project|add_executable|add_library|nros_\w*_app|nano_ros_entry)\s*\(\s*([A-Za-z0-9_]+)",
     re.MULTILINE,
 )
+# phase-583 W1 (RFC-0071 D20): a registered component's carrier is named for
+# its EXECUTABLE (`OUTPUT_NAME`), so a registration produces that name, not its
+# package's.
+REGISTERED_EXE = re.compile(
+    r"nros_components_register_node\s*\([^)]*?\bEXECUTABLE\s+([A-Za-z0-9_]+)",
+    re.DOTALL,
+)
+
+
+def _declared(text: str) -> set[str]:
+    return set(TARGET_DECL.findall(text)) | set(REGISTERED_EXE.findall(text))
 
 
 def targets_of(leaf: Path) -> set[str]:
@@ -231,12 +242,12 @@ def targets_of(leaf: Path) -> set[str]:
     """
     cml = leaf / "CMakeLists.txt"
     if cml.is_file():
-        return set(TARGET_DECL.findall(cml.read_text()))
+        return _declared(cml.read_text())
     if not (leaf / ".colcon_workspace").is_file():
         return set()
     found: set[str] = set()
     for pkg_cml in sorted((leaf / "src").glob("*/CMakeLists.txt")):
-        found |= set(TARGET_DECL.findall(pkg_cml.read_text()))
+        found |= _declared(pkg_cml.read_text())
     return found
 
 
@@ -267,6 +278,13 @@ def self_test() -> None:
         assert targets_of(ws) == set(), "no .colcon_workspace marker, no targets"
         (ws / ".colcon_workspace").write_text("")
         assert targets_of(ws) == {"c_talker"}, targets_of(ws)
+        # A registered component produces its EXECUTABLE (phase-583 W1).
+        (ws / "src" / "carrier").mkdir(parents=True)
+        (ws / "src" / "carrier" / "CMakeLists.txt").write_text(
+            "project(carrier_pkg C)\n"
+            "nros_components_register_node(lib\n    PLUGIN carrier_pkg::T\n"
+            "    EXECUTABLE c_carrier\n    TYPED\n    DEPLOY threadx)\n")
+        assert "c_carrier" in targets_of(ws), targets_of(ws)
 
 
 def main() -> int:

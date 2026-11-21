@@ -571,6 +571,9 @@ function(_nros_node_register_carrier_image _target _pkg_sym _panic)
     # surface's `add_executable` wrapper should route.
     set(_NROS_IN_IMAGE_ADD_EXECUTABLE TRUE)
     add_executable(${_target} ${ARGN})
+    # phase-583 W1 -- the artifact is the program's name, `<exe>`; the target
+    # carries the package prefix only to stay unique across packages.
+    set_target_properties(${_target} PROPERTIES OUTPUT_NAME "${_NRC_NAME}")
     nros_apply_panic_policy("${_panic}"
         "nano_ros_node_register(${_target}) carrier [${NROS_PLATFORM}]")
     target_include_directories(${_target} PRIVATE
@@ -591,44 +594,73 @@ function(_nros_node_register_carrier_image _target _pkg_sym _panic)
     endif()
 endfunction()
 
-# issue 2744 -- `_nros_carrier_claim(<var> <road> <carrier-target>)`: the ONE
-# rule for a registration that would build a package's single-node carrier
-# image (NuttX, ThreadX, FreeRTOS, native, Zephyr). Each road builds ONE
-# carrier per package, so a second registration on the same road used to be
-# skipped by a `NOT TARGET` guard: its library was built and linked into
-# nothing, and the image shipped with the first component only. It is now a
-# configure error naming both, when the registration names a DEPLOY (the
-# package IS an image). A carrier target that exists for another reason
-# (the package's own `add_executable(<project>)`) still turns the carrier off.
-# `<var>` names the caller's "this registration builds the carrier" flag; it
-# comes back TRUE only for the registration that builds it.
+# `_nros_carrier_claim(<var> <road> <carrier-target>)`: the ONE rule for a
+# registration that would build a single-node carrier image (NuttX, ThreadX,
+# FreeRTOS, native, Zephyr). `<var>` names the caller's "this registration
+# builds the carrier" flag; it comes back TRUE only when it builds one.
+#
+# phase-583 W1 (RFC-0071 D20): one carrier per EXECUTABLE, so a package may
+# register several components and each builds its own firmware, named for its
+# EXECUTABLE. What is refused:
+#   - the same EXECUTABLE registered twice in one package, when the
+#     registration names a DEPLOY: two components cannot both be one program;
+#   - on Zephyr, any second registration: a west build is ONE image, so a
+#     second program has nowhere to go (issue 2746).
+# A registration with no DEPLOY is a workspace member's component, which a
+# generated entry composes from its library; a duplicate one is skipped, which
+# loses nothing. A package's own program of the same name (`add_executable(
+# <exe>)`) turns the carrier off, as a target of the package's name used to.
 function(_nros_carrier_claim _var _road _target)
     if(NOT ${_var})
         return()
     endif()
-    get_property(_prev DIRECTORY PROPERTY _NROS_CARRIER_CLAIM)
-    # A registration with no DEPLOY is a workspace member's component, which a
-    # generated entry composes from its library; its carrier is a byproduct,
-    # and skipping a second one loses nothing.
-    if(_prev AND NOT _NRC_DEPLOY)
-        set(${_var} FALSE PARENT_SCOPE)
+    if(_road STREQUAL "zephyr")
+        get_property(_prev DIRECTORY PROPERTY _NROS_CARRIER_CLAIM)
+        if(_prev AND NOT _NRC_DEPLOY)
+            set(${_var} FALSE PARENT_SCOPE)
+            return()
+        endif()
+        if(_prev)
+            message(FATAL_ERROR
+                "nano_ros_node_register: package `${PROJECT_NAME}` registers a second "
+                "component for Zephyr (`${_NRC_NAME}`, class `${_NRC_CLASS}`) after ${_prev}. "
+                "A Zephyr build makes ONE program per package, so the second would have "
+                "no image to go in. Split the package: put each program in its own "
+                "package, or compose the components in a bringup whose image uses a "
+                "generated entry. Building several programs from one Zephyr package, "
+                "each as its own image, is planned.")
+        endif()
+        if(TARGET ${_target})
+            set(${_var} FALSE PARENT_SCOPE)
+            return()
+        endif()
+        set_property(DIRECTORY PROPERTY _NROS_CARRIER_CLAIM
+            "`${_NRC_NAME}` (class `${_NRC_CLASS}`)")
         return()
-    endif()
-    if(_prev)
-        message(FATAL_ERROR
-            "nano_ros_node_register: package `${PROJECT_NAME}` registers a second "
-            "component for its ${_road} image (`${_NRC_NAME}`, class `${_NRC_CLASS}`) "
-            "after ${_prev}. A ${_road} package builds ONE firmware image holding one "
-            "component, so the second would be left out of it. Put each component in "
-            "its own package, or compose them in a bringup whose image uses a "
-            "generated entry.")
     endif()
     if(TARGET ${_target})
-        set(${_var} FALSE PARENT_SCOPE)
-        return()
+        if(NOT _NRC_DEPLOY)
+            set(${_var} FALSE PARENT_SCOPE)
+            return()
+        endif()
+        get_property(_prev DIRECTORY PROPERTY _NROS_CARRIER_CLAIM_${_NRC_NAME})
+        message(FATAL_ERROR
+            "nano_ros_node_register: package `${PROJECT_NAME}` registers EXECUTABLE "
+            "`${_NRC_NAME}` twice for its ${_road} image: class `${_NRC_CLASS}` after "
+            "${_prev}. Each EXECUTABLE is one program. Give each component its own "
+            "EXECUTABLE name.")
     endif()
-    set_property(DIRECTORY PROPERTY _NROS_CARRIER_CLAIM
-        "`${_NRC_NAME}` (class `${_NRC_CLASS}`)")
+    # Only THIS package's own program: target names are global, and another
+    # package's `talker` says nothing about this one.
+    if(TARGET ${_NRC_NAME})
+        get_target_property(_own_dir ${_NRC_NAME} SOURCE_DIR)
+        if(_own_dir STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+            set(${_var} FALSE PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+    set_property(DIRECTORY PROPERTY _NROS_CARRIER_CLAIM_${_NRC_NAME}
+        "class `${_NRC_CLASS}`")
 endfunction()
 
 function(nano_ros_node_register)
@@ -638,6 +670,13 @@ function(nano_ros_node_register)
     # recipes pass `threadx_riscv64` / `nuttx_armv7a` / `freertos_armcm3`, and
     # a raw `STREQUAL "threadx"` never fired on any lane-built leaf.
     nros_platform_family(_nrc_family "${NROS_PLATFORM}")
+    # phase-583 W1 (RFC-0071 D20) -- one carrier per EXECUTABLE, as
+    # `rclcpp_components_register_node` makes one executable per node. The
+    # target is `<pkg>__<exe>` because CMake target names are global and two
+    # packages may both register a `talker`; its OUTPUT_NAME is `<exe>`
+    # (`_nros_node_register_carrier_image`), and its entry TU lives in
+    # `nros-entry/<exe>/`.
+    set(_nrc_target "${PROJECT_NAME}__${_NRC_NAME}")
 
     # Issue 1017 — the entry's session name is DERIVED here, once, from the
     # node's own name, and every entry shape below reads it.
@@ -1077,13 +1116,14 @@ function(nano_ros_node_register)
 
     # Phase 238 — NuttX bootable-ELF carrier. The Component lib above is
     # build-coverage only; the rtos_e2e harness + `build_nuttx_cpp_*`
-    # resolvers need a bootable kernel ELF at `build-zenoh/<PROJECT_NAME>`.
+    # resolvers need a bootable kernel ELF named for the registration's
+    # EXECUTABLE (phase-583 W1).
     # When this Node pkg deploys to nuttx AND the NuttX platform/board
     # overlay is active (`nros_platform_link_app` defined), synthesise a
-    # single-node entry TU + a carrier `add_executable(<PROJECT_NAME> …)`
+    # single-node entry TU + a carrier `add_executable(<pkg>__<exe> …)`
     # and delegate to `nros_platform_link_app` (→ `nros_board_link_app` →
     # `nros_nuttx_build_example`), which drives the cargo `nros-nuttx-ffi`
-    # kernel link and copies the ELF to `build-zenoh/<PROJECT_NAME>`.
+    # kernel link and copies the ELF to `<build>/<exe>`.
     #
     # Scope: pub/sub (talker/listener), C AND C++ (238.C). The generated
     # entry is ALWAYS C++ (it drives the header-only C++ EntryNodeRuntime);
@@ -1102,7 +1142,7 @@ function(nano_ros_node_register)
        AND COMMAND nros_platform_link_app)
         set(_nrc_carrier TRUE)
     endif()
-    _nros_carrier_claim(_nrc_carrier "nuttx" "${PROJECT_NAME}")
+    _nros_carrier_claim(_nrc_carrier "nuttx" "${_nrc_target}")
     if(_nrc_carrier)
         nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
@@ -1121,7 +1161,7 @@ function(nano_ros_node_register)
         # a second producer.
         _nros_resolve_entry_locator(node-register
             "${_nrc_family}" "${NROS_BOARD}" NROS_ENTRY_LOCATOR)
-        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
+        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry/${_NRC_NAME}")
         set(_entry_src "${_entry_dir}/main.cpp")
         # Phase 240.3 (RFC-0043) — TYPED routes the carrier to the real
         # executor via the component object (`NuttxBoard::run_components`
@@ -1158,17 +1198,17 @@ function(nano_ros_node_register)
                 "carrier.")
         endif()
 
-        # Carrier executable named after the pkg so the ELF lands at
-        # `build-zenoh/${PROJECT_NAME}`. SOURCES = entry (main.cpp, picked
+        # Carrier executable `<pkg>__<exe>`, whose ELF lands at `<build>/<exe>`
+        # (phase-583 W1). SOURCES = entry (main.cpp, picked
         # up as MAIN_SOURCE by nros_board_link_app's `/main\.cpp$` match) +
         # the Component class source(s) (compiled as APP_EXTRA_SOURCES).
-        _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
-        _nros_node_register_bake_locator(${PROJECT_NAME})
+        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
+        _nros_node_register_bake_locator(${_nrc_target})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <rclc/detail/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
-        _nros_node_register_config_header_deps(${PROJECT_NAME})
-        nros_platform_link_app(${PROJECT_NAME})
+        _nros_node_register_config_header_deps(${_nrc_target})
+        nros_platform_link_app(${_nrc_target})
     endif()
 
     # Phase 246 (RFC-0043) — ThreadX typed-entry carrier. Mirrors the NuttX
@@ -1191,7 +1231,7 @@ function(nano_ros_node_register)
        AND _NRC_DEPLOY)
         set(_nrc_carrier TRUE)
     endif()
-    _nros_carrier_claim(_nrc_carrier "threadx" "${PROJECT_NAME}")
+    _nros_carrier_claim(_nrc_carrier "threadx" "${_nrc_target}")
     if(_nrc_carrier)
         if(NOT _NRC_TYPED)
             # History: RFC-0043.
@@ -1215,7 +1255,7 @@ function(nano_ros_node_register)
             "${_nrc_family}" "${NROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         _nros_rtos_entry_family(threadx)
-        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
+        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry/${_NRC_NAME}")
         set(_entry_src "${_entry_dir}/main.cpp")
         if(_nrc_lang STREQUAL "CPP")
             set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
@@ -1225,12 +1265,12 @@ function(nano_ros_node_register)
             _nros_node_register_entry_tu(threadx c "${_entry_src}")
         endif()
 
-        _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
-        _nros_node_register_bake_locator(${PROJECT_NAME})
+        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
+        _nros_node_register_bake_locator(${_nrc_target})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <rclc/detail/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
-        _nros_node_register_config_header_deps(${PROJECT_NAME})
+        _nros_node_register_config_header_deps(${_nrc_target})
         # Issue 0090 — `add_dependencies` (above) orders the TARGET but does not stop
         # a TU compiling before the per-build header is mirrored on the threadx link
         # path, so it reads the in-tree stub (`*_OPAQUE_U64S undeclared`) — exactly
@@ -1241,9 +1281,9 @@ function(nano_ros_node_register)
         # build provides (harmless extra edge).
         if(_NRC_SOURCES)
             # issue 0740 — local stamp, not the cross-directory mirror path.
-            nros_config_header_object_depends(${PROJECT_NAME} ${_NRC_SOURCES})
+            nros_config_header_object_depends(${_nrc_target} ${_NRC_SOURCES})
         endif()
-        nros_platform_link_app(${PROJECT_NAME})
+        nros_platform_link_app(${_nrc_target})
     endif()
 
     # Phase 240.6 (RFC-0043) — FreeRTOS typed-entry carrier. Mirrors the NuttX /
@@ -1273,7 +1313,7 @@ function(nano_ros_node_register)
        AND _NRC_DEPLOY)
         set(_nrc_carrier TRUE)
     endif()
-    _nros_carrier_claim(_nrc_carrier "freertos" "${PROJECT_NAME}")
+    _nros_carrier_claim(_nrc_carrier "freertos" "${_nrc_target}")
     if(_nrc_carrier)
         if(NOT _NRC_TYPED)
             # History: RFC-0043.
@@ -1302,7 +1342,7 @@ function(nano_ros_node_register)
             "${_nrc_family}" "${NROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         _nros_rtos_entry_family(freertos)
-        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
+        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry/${_NRC_NAME}")
         set(_entry_src "${_entry_dir}/main.cpp")
         if(_nrc_lang STREQUAL "CPP")
             set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
@@ -1327,14 +1367,14 @@ function(nano_ros_node_register)
             "${_NROS_NODE_REGISTER_DIR}/templates/freertos_app_config.c.in"
             "${_appcfg_src}" @ONLY)
 
-        _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
+        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
         # issue 2400 W2 -- CHECK the stack just baked against the measured floor.
-        nros_stack_floor_freertos_check(${PROJECT_NAME} "${NROS_ENTRY_APP_STACK_BYTES}" "")
-        _nros_node_register_bake_locator(${PROJECT_NAME})
+        nros_stack_floor_freertos_check(${_nrc_target} "${NROS_ENTRY_APP_STACK_BYTES}" "")
+        _nros_node_register_bake_locator(${_nrc_target})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <rclc/detail/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
-        _nros_node_register_config_header_deps(${PROJECT_NAME})
+        _nros_node_register_config_header_deps(${_nrc_target})
         # Issue 0090 — `add_dependencies` (above) orders the TARGET but does not stop
         # a TU compiling before the per-build header is mirrored on the freertos link
         # path, so it reads the in-tree stub (`*_OPAQUE_U64S undeclared`) — exactly the
@@ -1348,9 +1388,9 @@ function(nano_ros_node_register)
         # compiles the same file. C carrier reads the C header; C++ reads both — list
         # whichever the build provides (harmless extra edge).
         # issue 0740 — local stamp, not the cross-directory mirror path.
-        nros_config_header_object_depends(${PROJECT_NAME}
+        nros_config_header_object_depends(${_nrc_target}
             "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
-        nros_platform_link_app(${PROJECT_NAME})
+        nros_platform_link_app(${_nrc_target})
     endif()
 
     # Phase 244.C4 (RFC-0043) — native (host) typed-entry carrier. Mirrors
@@ -1375,12 +1415,12 @@ function(nano_ros_node_register)
        AND COMMAND nros_platform_link_app)
         set(_nrc_carrier TRUE)
     endif()
-    _nros_carrier_claim(_nrc_carrier "native" "${PROJECT_NAME}")
+    _nros_carrier_claim(_nrc_carrier "native" "${_nrc_target}")
     if(_nrc_carrier)
         nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
-        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
+        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry/${_NRC_NAME}")
         set(_entry_src "${_entry_dir}/main.cpp")
         # phase-432 W2.6 — the 244.C4 workspace-subdir bug that made this branch
         # reach for `CMAKE_CURRENT_FUNCTION_LIST_DIR` (an empty
@@ -1395,12 +1435,12 @@ function(nano_ros_node_register)
             _nros_node_register_entry_tu("${NROS_HOST_DEPLOY}" c "${_entry_src}")
         endif()
 
-        _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
+        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <rclc/detail/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
-        _nros_node_register_config_header_deps(${PROJECT_NAME})
-        nros_platform_link_app(${PROJECT_NAME})
+        _nros_node_register_config_header_deps(${_nrc_target})
+        nros_platform_link_app(${_nrc_target})
     endif()
 
     # Phase 240.8 (RFC-0043) — Zephyr typed-entry carrier. Unlike NuttX (a
