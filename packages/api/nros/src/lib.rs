@@ -228,6 +228,10 @@ pub mod env;
 /// for both Linux runners. Linux only, as [`mod@env`] is.
 #[cfg(target_os = "linux")]
 pub mod task_census;
+/// Where a hosted POSIX runner places zenoh-pico's transport tasks, one
+/// decision for both Linux runners.
+#[cfg(unix)]
+pub mod transport_band;
 
 /// The retired env aliases the hosted reader refuses.
 pub mod retired_env;

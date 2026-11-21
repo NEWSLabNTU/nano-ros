@@ -1,0 +1,5 @@
+{
+  "key": "rust:TRANSPORT_BAND_FLOOR",
+  "verdict": "extension",
+  "why": "`nros::transport_band::TRANSPORT_BAND_FLOOR`, unix targets: the floor of the Linux priority plan's `reserved.transport` band, where both Linux runners place the transport tasks. Cross-checked against `packages/boards/linux/nros-board.toml` by `check-sched-task-priority-plan`. rclrs has no counterpart: it does not allocate priorities."
+}

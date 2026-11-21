@@ -54,6 +54,15 @@ pub fn run() {
         "nros_cpp_weak_stubs",
         true,
     );
+    // The native runners' weak reference to zenoh-pico's task config, so they
+    // place the transport without naming a backend nros-cpp cannot see.
+    compile_c_stub(
+        &manifest_dir,
+        "c-stubs/native_transport_task_config.c",
+        None,
+        "nros_cpp_native_transport",
+        false,
+    );
 
     println!("cargo:rerun-if-changed=src/");
     println!("cargo:rerun-if-changed=cbindgen.toml");

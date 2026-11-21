@@ -9187,6 +9187,9 @@ pub unsafe extern "C" fn nros_board_native_run_sched_tasks_in(
 
     // Block 0 of the caller's storage is the boot sched task's executor.
     let sptr = storage as *mut c_void;
+    // The transport's band, before the open creates its tasks.
+    #[cfg(target_os = "linux")]
+    native_place_transport(sched_task_slice);
     // Issue 2714 -- the environment wins over the stated values, and says so.
     unsafe { warn_env_overrides_stated(locator, domain_id) };
     let rc = unsafe {
@@ -9722,6 +9725,26 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
     core::ptr::null_mut()
 }
 
+/// Place zenoh-pico's transport tasks in the Linux plan's transport band,
+/// above every sched task, BEFORE the session opens: the same decision the
+/// Rust board makes (`nros::transport_band`), reached through a weak
+/// reference because this crate cannot see which backend the image links.
+/// Without it the levels run `SCHED_FIFO` over a `SCHED_OTHER` transport and
+/// preempt the link they publish over.
+#[cfg(all(feature = "rmw-cffi", feature = "env", target_os = "linux"))]
+fn native_place_transport(sched_tasks: &[NativeSchedTaskSpecC]) {
+    unsafe extern "C" {
+        fn nros_cpp_native_set_transport_priority(priority: u32) -> i32;
+    }
+    let max = sched_tasks.iter().map(|t| t.priority).max().unwrap_or(0);
+    ::nros::transport_band::place(
+        max,
+        // SAFETY: a plain C call; NULL-checks its weak reference itself.
+        |p| unsafe { nros_cpp_native_set_transport_priority(p) } != 0,
+        |line| crate::cpp_info!("{line}"),
+    );
+}
+
 /// The native LEVEL
 /// runner a generated hosted entry calls (`LinuxBoard::run_levels`): each
 /// row of `sched_tasks` is one level, placed by its urgency among the rows (POSIX
@@ -9831,6 +9854,9 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
 
     // The core's one executor.
     let sptr = executor_storage;
+    // The transport's band, before the open creates its tasks.
+    #[cfg(target_os = "linux")]
+    native_place_transport(sched_task_slice);
     // Issue 2714 -- the environment wins over the stated values, and says so.
     unsafe { warn_env_overrides_stated(locator, domain_id) };
     let rc = unsafe {

@@ -802,32 +802,24 @@ impl LinuxBoard {
         // place — so skipping it is the correct behaviour, not a degradation.
         #[cfg(all(unix, feature = "rmw-zenoh"))]
         {
-            // RFC-0079 — the RESERVED band's floor, not `max_sched_task + 1`.
-            //
-            // Deriving it from the sched tasks was circular: a reserved band defined
-            // by the sched tasks it is meant to sit above moves whenever they do, and
-            // cannot be checked statically because nothing knows it until the
-            // entry runs. Every other port states a fixed band (FreeRTOS 4,
-            // NuttX 100, ThreadX 14) with the pool below it; POSIX now does
-            // too — `[board.priority_plan]` in packages/boards/linux, reserved
-            // 90..99, pool 1..89, cross-checked against this constant by
-            // `check-sched-task-priority-plan` so the two cannot drift.
-            const TRANSPORT_BAND_FLOOR: u32 = 90;
+            // RFC-0079 — the RESERVED band's floor, not `max_sched_task + 1`:
+            // a band defined by the sched tasks it sits above moves whenever
+            // they do. The floor and the decision live in
+            // `nros::transport_band`, shared with the C/C++ runner.
             let max_sched_task = sched_tasks.iter().map(|t| t.priority).max().unwrap_or(0);
-            if max_sched_task > 0 {
-                let transport = TRANSPORT_BAND_FLOOR;
-                unsafe extern "C" {
-                    fn zpico_set_task_config(read_priority: u32, read_stack_bytes: u32);
-                }
-                // 0 stack bytes = "leave the port's default alone" — this
-                // states a PRIORITY, not a stack size.
-                unsafe { zpico_set_task_config(transport, 0) };
-                <Self as BoardPrint>::println(format_args!(
-                    "nros: transport tasks at SCHED_FIFO {} (reserved band floor; most \
-                     urgent sched task is {})",
-                    transport, max_sched_task
-                ));
-            }
+            ::nros::transport_band::place(
+                max_sched_task,
+                |transport| {
+                    unsafe extern "C" {
+                        fn zpico_set_task_config(read_priority: u32, read_stack_bytes: u32);
+                    }
+                    // 0 stack bytes = "leave the port's default alone" — this
+                    // states a PRIORITY, not a stack size.
+                    unsafe { zpico_set_task_config(transport, 0) };
+                    true
+                },
+                <Self as BoardPrint>::println,
+            );
         }
 
         // Open the one session on the boot task; it owns the session for

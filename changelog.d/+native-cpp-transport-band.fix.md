@@ -1,0 +1,1 @@
+C and C++ Linux images whose levels run under SCHED_FIFO now place zenoh-pico's transport tasks above every level, as Rust images already did. Before, the transport stayed on the default policy, so every real-time level preempted the network link it published over. Images built for another RMW are unaffected.
