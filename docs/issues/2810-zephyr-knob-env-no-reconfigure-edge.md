@@ -122,17 +122,73 @@ State the knob through a rung that is a file the build already watches:
 re-configures. To force one leaf down the west path without wiping it, move its
 `.nros-zephyr-fixture.sig` aside.
 
-## Fix directions (no ruling yet)
+## Fix directions
 
 1. Fold the resolved environment rungs into whatever decides "re-configure":
-   the fixture signature, and `nros build`'s own west driver. The registry
-   already lists every canonical and retired spelling, so the set is derivable,
-   not authored.
-2. A build-time check that compares the live environment against
-   `NROS_KNOB_SOURCE_*` / `NROS_RESOLVED_*` and refuses (naming the knob and the
-   re-configure command) instead of building with the stale value.
+   the fixture signature, and `nros build`'s own west driver.
+2. A build-time check that compares the live environment against what the
+   configure read, and refuses (naming the knob and the re-configure command)
+   instead of building with the stale value.
 3. Retire the environment rung for build sizing in favour of the image rung.
-   That is the larger change, and it is a design question for RFC-0103.
 
-Option 2 is the smallest change that turns the silent case into a loud one on
-every road; option 1 alone covers only the roads that compute a signature.
+## Ruling (2026-11-21)
+
+The maintainer ruled for option 2, in the one `_nros_knob_env` helper, plus
+moving the 2 bare `$ENV{}` sites onto it. There is no automatic re-configure, and
+the environment rung stays. Requirements:
+
+- The always-run step compares only registry knob names, so it cannot refuse
+  on unrelated environment.
+- The refusal names the knob, its cached value and source, the live value, and
+  the exact `cmake <build-dir>` command.
+- A negative control: configure, change the environment, build, and it must
+  refuse; re-configure and it passes.
+- A build with nothing changed stays a no-op apart from the check itself.
+
+## Fix
+
+- `_nros_knob_env` records the FIRST read of each knob. Only the first, because
+  `nros_set_cargo_env_from_kconfig` publishes every resolved knob back into the
+  configure's own environment, so later reads see the configure's answer.
+- `nros_knob_env_check_target` (`cmake/NanoRosKnobEnv.cmake`) defers writing
+  `<build>/nros/knob-env-at-configure.cmake` to the end of the configure. It
+  rewrites the file only when its content changes.
+- The same function defines the always-run `nros_knob_env_check` target. It runs
+  `cmake/NanoRosKnobEnvCheck.cmake` and has no outputs, so nothing depends on it
+  by file.
+- `zephyr/CMakeLists.txt` installs it right after `nros_resolve_knobs()`. Each
+  `nros_cargo_build()` cargo step is ordered after it, so a refused build stops
+  before compiling. The Rust lane gets it through `ALL`.
+- The `NROS_RMW_LOCAL_QUERYABLE` and `NROS_PARAM_SERVICE_BUFFER_SIZE` guards
+  read through the helper.
+
+Only names the helper read are compared, and it is only called with registry
+knobs, so an unrelated variable cannot trip it.
+
+Neither `nros build` nor the Zephyr fixture road sets a registry knob in the
+environment of the native build: the CLI's handoff env is `ZEPHYR_*`, the entity
+record and the toolchain variables, and no Zephyr fixture row has an `env`
+table. So a build that `nros build` or the fixture road configured and built in
+one go never refuses.
+
+Gate: `just check knob-env-refusal`. Rule 1 refuses a bare `$ENV{}` read of
+any of the 88 resolved knobs under `cmake/` or `zephyr/`; rule 2 refuses a
+Zephyr module that stops installing the check. Rule 3, the selftest, drives the
+real helper through cmake + ninja:
+- a knob changed, unset, or exported after the configure refuses, with every
+  field named, and the refused build regenerates nothing;
+- an unrelated variable passes, and so does a re-configured dir;
+- a second build with nothing changed runs only the check.
+
+Mutation-tested:
+- restoring a bare read, removing the install, a check that never refuses, and
+  a record that keeps the last read each turn it red;
+- giving the check a byproduct nothing depends on stays green, an equivalent
+  mutant.
+
+Still open after this fix:
+
+- The plain cmake road. `cmake/NanoRosSharedCargoDir.cmake` also records its
+  reads there, but no check is installed. Its env reaches cargo at build time,
+  and the shared cargo dir key is its only configure-time use.
+- The non-knob reads listed under Reach.
