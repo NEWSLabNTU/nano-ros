@@ -27,7 +27,7 @@ use std::{
 pub const FVP_BIN: &str = "FVP_BaseR_AEMv8R";
 
 /// Where Arm publishes the FVPs.
-pub const FVP_DOWNLOAD_URL: &str = "https://developer.arm.com/downloads/-/arm-ecosystem-fvps";
+pub const FVP_DOWNLOAD_URL: &str = "https://developer.arm.com/Tools%20and%20Software/Fixed%20Virtual%20Platforms/Arm%20Architecture%20FVPs";
 
 /// Which setting located the model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

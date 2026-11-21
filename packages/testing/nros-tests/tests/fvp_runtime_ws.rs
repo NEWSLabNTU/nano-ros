@@ -78,7 +78,7 @@ fn fvp_ws_entry_two_sched_task_publishes() {
     if resolve_fvp_dir(&root).is_none() {
         unmet!(
             "ARM FVP not resolvable — the FVP is user-provided: install the AEMv8-R \
-             FVP from Arm (https://developer.arm.com/downloads/-/arm-ecosystem-fvps), \
+             FVP from Arm (https://developer.arm.com/Tools%20and%20Software/Fixed%20Virtual%20Platforms/Arm%20Architecture%20FVPs), \
              then set ARMFVP_BIN_PATH (or ARM_FVP_DIR); the model needs libatomic1"
         );
     }

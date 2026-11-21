@@ -43,7 +43,7 @@ just setup zephyr --target=mips-zephyr-elf
 The FVP is a free download from ARM (registration required, EULA-
 gated; nano-ros cannot redistribute it).
 
-1. Register at <https://developer.arm.com/downloads/-/arm-ecosystem-fvps>.
+1. Register at <https://developer.arm.com/Tools%20and%20Software/Fixed%20Virtual%20Platforms/Arm%20Architecture%20FVPs>.
 2. Download "Armv8-R AEM FVP" (`AEMv8R_base_pkg_*.tgz`).
 3. Extract into `~/opt/arm/fvp/` (or any path on `$PATH`):
 
