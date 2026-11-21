@@ -47,6 +47,7 @@
 - packages/cli/nros-cli-core/src/cmd/completions.rs
 - packages/cli/nros-cli-core/src/cmd/config.rs
 - packages/cli/nros-cli-core/src/cmd/doctor.rs
+- packages/cli/nros-cli-core/src/cmd/doctor_west_pin.rs
 - packages/cli/nros-cli-core/src/cmd/explain.rs
 - packages/cli/nros-cli-core/src/cmd/flash.rs
 - packages/cli/nros-cli-core/src/cmd/graph.rs

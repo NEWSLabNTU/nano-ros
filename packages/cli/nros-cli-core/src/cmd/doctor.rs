@@ -227,6 +227,14 @@ fn install_report(store: &Path, exe: &Path, cwd: &Path) -> (Vec<String>, usize) 
                 .to_string(),
         ),
         Ok(Some(p)) => {
+            // Issue 2771 -- a Zephyr consumer names nano-ros a second time, as
+            // its west manifest's `nano-ros` project; say when the two differ.
+            if let Some(v) =
+                super::doctor_west_pin::check(&p, cwd, &super::doctor_west_pin::git_head)
+            {
+                problems += usize::from(v.problem);
+                lines.push(v.line);
+            }
             let running = pin::running_version(exe).map(|(v, _)| v);
             if let Some(bin) = p.installed_bin(store) {
                 lines.push(format!(
@@ -1410,6 +1418,41 @@ mod install_report_tests {
             "the report must name the binary the pin resolves to:\n{}",
             lines.join("\n")
         );
+    }
+
+    /// Issue 2771: in a project whose `west.yml` fetches a different nano-ros
+    /// than its toolchain pin names, the install report says so and counts it.
+    /// The unit cases are `doctor_west_pin`'s; this one pins that the report
+    /// asks at all.
+    #[test]
+    fn a_west_module_disagreeing_with_the_pin_is_counted_in_the_report() {
+        assert_dispatch_env_clean();
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("store");
+        let exe = install_toolchain(&store, "0.7.9");
+        let cwd = project(tmp.path(), "proj", None);
+        let rev = "09219edc75a1b2c3d4e5f60718293a4b5c6d7e8f";
+        std::fs::write(
+            cwd.join(pin::FILE_NAME),
+            format!(
+                "[toolchain]\ngit = \"https://example.invalid/nano-ros.git\"\nrev = \"{rev}\"\n"
+            ),
+        )
+        .unwrap();
+        let (_, before) = install_report(&store, &exe, &cwd);
+        std::fs::write(
+            cwd.join("west.yml"),
+            "manifest:\n  projects:\n    - name: nano-ros\n      revision: 1111111111\n",
+        )
+        .unwrap();
+        let (lines, after) = install_report(&store, &exe, &cwd);
+        let text = lines.join("\n");
+        assert_eq!(
+            after,
+            before + 1,
+            "the disagreement must count once:\n{text}"
+        );
+        assert!(text.contains("[!!] west pin"), "{text}");
     }
 
     /// An empty store is a legitimate state — a contributor building the
