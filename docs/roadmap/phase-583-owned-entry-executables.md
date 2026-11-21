@@ -1,7 +1,7 @@
 # Phase 583 — An owned entry with several executables
 
 **Status (2026-11-21). OPEN: design accepted (user ruling 2026-11-20); W0
-done (`a49a3dcf82`); W1 and W2 done. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
+done (`a49a3dcf82`); W1, W2 and W3 done. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
 - an owned entry may build several executables, chosen at run time as in
   ROS (`nros run <image> --exec <name>`, or the bringup's launch `exec`);
 - on RTOS, each executable is its own firmware, one carrier per
@@ -187,7 +187,7 @@ in the order below.
 
 ### W3 — An owned-entry bringup may carry a launch file
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-22, the change that marks this)
 - **What:** D19's "no launch needed" becomes "no launch needed for one
   program". The configure and the fixture manifest accept a launch file in an
   owned-entry bringup whose nodes name the entry package, and use it only to
@@ -196,6 +196,18 @@ in the order below.
   - an owned-entry bringup with a launch file naming one of two programs
     configures and runs that one;
   - one naming a foreign package is refused.
+- **Done (2026-11-22).** When every image of a configure builds an owned
+  entry, the configure reads the bringup's resolved launch
+  (`build::launched_nodes`). When every node it starts names an owned entry
+  package, the launch only chooses the program: the root still takes
+  `NO_PLAN`, as with no launch at all. A node from any other package is refused
+  at configure, naming it and the owned entries. W2's `launch_exec` reads the
+  same nodes. Measured: the new `linux-c-zenoh-two-programs-launch` row
+  (`<node pkg="two_programs" exec="prog_b">`) configures, and `nros run` with no
+  flag resolves `prog_b` (`tests/owned_entry_run_verb.rs`, 6/6 with W2's
+  cases). The foreign-package refusal, the no-model case and the
+  two-programs-in-one-launch case are unit tests (`owned_entry_launch_tests`),
+  because a refusal at configure has no fixture row to record it.
 
 ### W4 — Per-executable stack-floor and sizing facts
 

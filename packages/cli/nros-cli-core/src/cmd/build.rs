@@ -2285,10 +2285,26 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // without `param_services`, which `nano_ros_workspace`
                 // refuses), and adds NO_PLAN, which skips the metadata step:
                 // the owned entries' own `main`s are the whole program.
-                let plans_nothing = cmake_entries.is_empty()
-                    && !bringup_dir.join("launch").is_dir()
-                    && !nros_orchestration_ir::model_location::generated_launch_dir(&bringup_dir)
+                let has_launch = bringup_dir.join("launch").is_dir()
+                    || nros_orchestration_ir::model_location::generated_launch_dir(&bringup_dir)
                         .is_some_and(|d| d.is_dir());
+                // phase-583 W3 (RFC-0071 D20) -- an owned-entry bringup MAY carry
+                // a launch file, to choose which of an entry's programs runs.
+                // When every node it starts is an owned entry's program there is
+                // still nothing to plan; a node from another package is refused.
+                let launch_chooses_only = cmake_entries.is_empty()
+                    && has_launch
+                    && launch_only_chooses_programs(
+                        &bringup,
+                        &bringup_dir,
+                        &image,
+                        &coordinate_members(&bringup, &coord)
+                            .into_iter()
+                            .filter_map(|(_, _, _, img)| img.entry.clone())
+                            .collect(),
+                    )?;
+                let plans_nothing =
+                    cmake_entries.is_empty() && (!has_launch || launch_chooses_only);
                 // RFC-0071 D19 — the identity the OWNED images of this
                 // configure state (their packages are subdirectories, so no
                 // per-entry call carries it), by the resolver a generated
@@ -8945,15 +8961,13 @@ fn names_west_build_dir(west_extra: &[String]) -> bool {
 /// A named entry that is no package under `src/` is an error naming the image:
 /// falling back to a generated entry would build a different program than the
 /// one the image names.
-/// phase-583 W2 (RFC-0071 D20) -- the program the bringup's launch file names
-/// for the owned entry `entry`: the `exec` of its nodes whose `pkg` is the
-/// entry, when they agree on one. `None` with no resolved model, no such node,
-/// or nodes naming different programs (then the run must say which).
-pub(crate) fn launch_exec_for(
+/// phase-583 W2/W3 (RFC-0071 D20) -- the `(pkg, exec)` of every node the
+/// bringup's launch file starts for `image`, read from its resolved
+/// SystemModel. `None` when there is no resolved model to read.
+pub(crate) fn launched_nodes(
     bringup_dir: &Path,
     image: &crate::orchestration::image::ImageBlock,
-    entry: &str,
-) -> Option<String> {
+) -> Option<Vec<(Option<String>, Option<String>)>> {
     use crate::orchestration::model_location;
     let args: Vec<(String, String)> = image
         .args
@@ -8965,17 +8979,81 @@ pub(crate) fn launch_exec_for(
     let raw =
         std::fs::read_to_string(model_location::resolve_model_path(bringup_dir, &rel)).ok()?;
     let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw).ok()?;
-    let execs: std::collections::BTreeSet<&str> = model
-        .structure
-        .nodes
-        .values()
-        .filter(|n| n.pkg.as_deref() == Some(entry))
-        .filter_map(|n| n.exec.as_deref())
+    Some(
+        model
+            .structure
+            .nodes
+            .values()
+            .map(|n| (n.pkg.clone(), n.exec.clone()))
+            .collect(),
+    )
+}
+
+/// phase-583 W2 (RFC-0071 D20) -- the program the bringup's launch file names
+/// for the owned entry `entry`: the `exec` of its nodes whose `pkg` is the
+/// entry, when they agree on one. `None` with no resolved model, no such node,
+/// or nodes naming different programs (then the run must say which).
+pub(crate) fn launch_exec_for(
+    bringup_dir: &Path,
+    image: &crate::orchestration::image::ImageBlock,
+    entry: &str,
+) -> Option<String> {
+    let nodes = launched_nodes(bringup_dir, image)?;
+    let execs: std::collections::BTreeSet<&str> = nodes
+        .iter()
+        .filter(|(pkg, _)| pkg.as_deref() == Some(entry))
+        .filter_map(|(_, exec)| exec.as_deref())
         .collect();
     match execs.len() {
         1 => execs.into_iter().next().map(str::to_string),
         _ => None,
     }
+}
+
+/// phase-583 W3 (RFC-0071 D20) -- a bringup whose images all build OWNED
+/// entries may carry a launch file, but only to choose which of an entry's
+/// programs runs. `Ok(true)` when it has one and every node it starts is an
+/// owned entry's program (so the configure has nothing to plan); `Ok(false)`
+/// when there is no resolved launch to read. A node from any other package is
+/// refused: nothing in such a configure would build or start it.
+fn launch_only_chooses_programs(
+    bringup: &str,
+    bringup_dir: &Path,
+    image: &crate::orchestration::image::ImageBlock,
+    owned_entries: &std::collections::BTreeSet<String>,
+) -> Result<bool> {
+    let Some(nodes) = launched_nodes(bringup_dir, image) else {
+        return Ok(false);
+    };
+    let foreign: std::collections::BTreeSet<String> = nodes
+        .iter()
+        .filter_map(|(pkg, _)| pkg.clone())
+        .filter(|p| !owned_entries.contains(p))
+        .collect();
+    if !foreign.is_empty() {
+        eyre::bail!(
+            "bringup `{bringup}`: its images all run an owned entry ({}), so its launch file \
+             can only choose which of their programs runs, but it starts nodes from {}. Name \
+             only {} in its `<node pkg=…>`, or give those nodes an image of their own whose \
+             entry is generated.",
+            owned_entries
+                .iter()
+                .map(|e| format!("`{e}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            foreign
+                .iter()
+                .map(|e| format!("`{e}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            if owned_entries.len() == 1 {
+                "that package"
+            } else {
+                "those packages"
+            },
+        );
+    }
+    Ok(true)
 }
 
 pub(crate) fn owned_entry_dir(
@@ -14602,5 +14680,89 @@ mod remap_workspace_tests {
         assert_eq!(key, "target.'cfg(all())'.rustflags");
         let parsed: toml::Value = toml::from_str(&format!("x = {value}")).unwrap();
         assert_eq!(parsed["x"].as_array().map(Vec::len), Some(1));
+    }
+}
+
+/// phase-583 W3 (RFC-0071 D20) -- an owned-entry bringup's launch file only
+/// chooses which program runs.
+#[cfg(test)]
+mod owned_entry_launch_tests {
+    use super::*;
+
+    /// A bringup at `<root>/src/demo_bringup` whose resolved model starts the
+    /// given `(pkg, exec)` nodes.
+    fn bringup_with(root: &Path, nodes: &[(&str, &str)]) -> PathBuf {
+        let bringup = root.join("src").join("demo_bringup");
+        std::fs::create_dir_all(bringup.join("launch")).unwrap();
+        std::fs::write(bringup.join("system.toml"), "").unwrap();
+        let mut m = String::from("meta: { version: 1 }\nstructure:\n  nodes:\n");
+        for (i, (pkg, exec)) in nodes.iter().enumerate() {
+            m.push_str(&format!(
+                "    /n{i}:\n      scope: root\n      pkg: {pkg}\n      exec: {exec}\n"
+            ));
+        }
+        let models = root.join("build/nros/models/demo_bringup");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::write(models.join("system_model.yaml"), m).unwrap();
+        bringup
+    }
+
+    fn owned(names: &[&str]) -> std::collections::BTreeSet<String> {
+        names.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn a_launch_naming_only_owned_entries_chooses_and_plans_nothing() {
+        let t = tempfile::tempdir().unwrap();
+        let b = bringup_with(t.path(), &[("two_programs", "prog_b")]);
+        let img = crate::orchestration::image::ImageBlock::default();
+        assert!(
+            launch_only_chooses_programs("demo_bringup", &b, &img, &owned(&["two_programs"]))
+                .unwrap()
+        );
+        assert_eq!(
+            launch_exec_for(&b, &img, "two_programs").as_deref(),
+            Some("prog_b")
+        );
+    }
+
+    #[test]
+    fn a_launch_naming_a_foreign_package_is_refused() {
+        let t = tempfile::tempdir().unwrap();
+        let b = bringup_with(
+            t.path(),
+            &[("two_programs", "prog_a"), ("talker_pkg", "talker")],
+        );
+        let img = crate::orchestration::image::ImageBlock::default();
+        let e = launch_only_chooses_programs("demo_bringup", &b, &img, &owned(&["two_programs"]))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("`talker_pkg`") && e.contains("`two_programs`") && e.contains("choose"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn no_resolved_model_reads_as_no_launch() {
+        let t = tempfile::tempdir().unwrap();
+        let img = crate::orchestration::image::ImageBlock::default();
+        assert!(
+            !launch_only_chooses_programs("demo_bringup", t.path(), &img, &owned(&["x"])).unwrap()
+        );
+        assert_eq!(launch_exec_for(t.path(), &img, "x"), None);
+    }
+
+    /// Two nodes of the entry naming different programs leave the choice to
+    /// the run (`--exec`), which lists them.
+    #[test]
+    fn two_launch_programs_leave_the_choice_to_the_run() {
+        let t = tempfile::tempdir().unwrap();
+        let b = bringup_with(
+            t.path(),
+            &[("two_programs", "prog_a"), ("two_programs", "prog_b")],
+        );
+        let img = crate::orchestration::image::ImageBlock::default();
+        assert_eq!(launch_exec_for(&b, &img, "two_programs"), None);
     }
 }
