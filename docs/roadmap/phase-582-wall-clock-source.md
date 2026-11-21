@@ -58,10 +58,16 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     the doc says so. The shape refinements are recorded in RFC-0141 D1.
     W1c-2 as built: the clock gate (both runners, one primitive in
     `zephyr/nros_platform_zephyr_shims.c`), the single-executor entries
-    resolving after registration, `Executor::restart_timing` (and
+    resolving after registration (C, C++, and both Rust ones, `nros::main!`'s
+    generated entry and `zephyr_component_main!`, which never resolved at
+    all before), `Executor::restart_timing` (and
     `nros_cpp_executor_restart_timing`) when the gate opens, and zpico's pump
-    in ZPICO_DRIVE_CALLER builds. The native_sim cells (an IP image whose
-    `zenoh-hlc` source hears a host publisher; a serial one) run on host 241.
+    in ZPICO_DRIVE_CALLER builds. The native_sim cells are the configured
+    `(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example)` cells `+ [ClockHlc]` and
+    `+ [ClockSntp]`, answered by `tests/zephyr_clock_resolve.rs`. A booting
+    serial (ZPICO_DRIVE_CALLER) cell that proves the pump is the open
+    acceptance item, filed as its own issue; this PR carries the link witness
+    only.
   - **W1d:** the board hook, its link rule and the selection-named TU, and
     the linux stub-board stamp test in Rust, C and C++.
 - RFC-0141 D1–D4:

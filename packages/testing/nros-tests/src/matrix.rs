@@ -735,6 +735,16 @@ pub enum Config {
     /// `NROS_TRACE_CALLBACKS`): the executor's callback markers reach the CTF
     /// stream as `app_marker` events. Same sched tasks, traced (issue 2766).
     Ctf,
+    /// The image takes its wall clock from a zenoh-hlc timestamp on a sample
+    /// it receives, else falls back to the platform after the settle time
+    /// (`[knobs.clock] source = "zenoh-hlc,platform"`). Same pair, the clock
+    /// resolved before the first spin (phase-582 W1c-2).
+    ClockHlc,
+    /// The image takes its wall clock from an SNTP server that never answers,
+    /// then the platform (`source = "sntp,platform"`): boot waits out the
+    /// attempts before the first spin, and the timers must not replay that
+    /// wait (phase-582 W1c-2).
+    ClockSntp,
 }
 
 impl Config {
@@ -748,6 +758,8 @@ impl Config {
             Config::Rtic => "rtic",
             Config::PeerMode => "peer-mode",
             Config::Ctf => "ctf",
+            Config::ClockHlc => "clock-hlc",
+            Config::ClockSntp => "clock-sntp",
         }
     }
 }
@@ -1030,6 +1042,10 @@ pub enum Consumer {
     /// `tests/zephyr_ctf_markers.rs` -- a traced native_sim sched-task image's
     /// CTF stream holds the callback markers (issue 2766).
     ZephyrCtfMarkers,
+    /// `tests/zephyr_clock_resolve.rs` -- the native_sim pair's wall-clock
+    /// configurations: resolved after registration, before the first spin,
+    /// and owed to no timer (phase-582 W1c-2).
+    ZephyrClockResolve,
 }
 
 impl Consumer {
@@ -1076,6 +1092,7 @@ impl Consumer {
         Consumer::Nano2nano,
         Consumer::ZephyrConnectBudget,
         Consumer::ZephyrCtfMarkers,
+        Consumer::ZephyrClockResolve,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -1122,6 +1139,7 @@ impl Consumer {
             Consumer::Nano2nano => "nano2nano",
             Consumer::ZephyrConnectBudget => "zephyr_connect_budget",
             Consumer::ZephyrCtfMarkers => "zephyr_ctf_markers",
+            Consumer::ZephyrClockResolve => "zephyr_clock_resolve",
         }
     }
 }
@@ -1595,6 +1613,9 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             (P::QemuBaremetal, [Config::Serial] | [Config::Rtic]) => Some(Emulator),
             (P::Linux, [Config::PeerMode]) => Some(Nano2nano),
             (P::ZephyrNativeSim, [Config::Ctf]) => Some(ZephyrCtfMarkers),
+            (P::ZephyrNativeSim, [Config::ClockHlc] | [Config::ClockSntp]) => {
+                Some(ZephyrClockResolve)
+            }
             _ => None,
         };
     }

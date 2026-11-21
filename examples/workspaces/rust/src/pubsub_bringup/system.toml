@@ -188,6 +188,24 @@ launch = "talker.launch.xml"
 os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7400"
 
+# The wall-clock cells' timer witness: the talker with an SNTP source whose
+# server never answers (TEST-NET-1, RFC 5737), so boot waits 2 x 1500 ms
+# before the platform fallback. Its 1 s publish timer must not replay that
+# wait once spinning starts.
+[image.zephyr_talker_clock_sntp]
+board = "zephyr"
+launch = "talker.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/127.0.0.1:7400"
+
+[image.zephyr_talker_clock_sntp.knobs.clock]
+source = "sntp,platform"
+sntp_attempts = 2
+
+[image.zephyr_talker_clock_sntp.knobs.sntp]
+server = "192.0.2.1"
+timeout_ms = 1500
+
 [image.zephyr_talker_xrce]
 board = "zephyr"
 launch = "talker.launch.xml"
@@ -205,6 +223,20 @@ board = "zephyr"
 launch = "listener.launch.xml"
 os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7400"
+
+# The wall-clock cells (`tests/zephyr_clock_resolve.rs`). The listener waits
+# for a zenoh-hlc timestamp on its subscription, else falls back to the
+# platform after 4 s; with a native talker behind the router it latches the
+# HLC (the router stamps an unstamped sample), with none it falls back.
+[image.zephyr_listener_clock_hlc]
+board = "zephyr"
+launch = "listener.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/127.0.0.1:7400"
+
+[image.zephyr_listener_clock_hlc.knobs.clock]
+source = "zenoh-hlc,platform"
+fallback_settle_ms = 4000
 
 [image.zephyr_listener_xrce]
 board = "zephyr"
