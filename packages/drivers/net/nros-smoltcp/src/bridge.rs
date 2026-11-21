@@ -798,7 +798,15 @@ impl SmoltcpBridge {
                             entry.connected = true;
                         }
                         TcpState::SynSent | TcpState::SynReceived => {}
-                        _ => {}
+                        // Issue 2779 -- the socket still holds the slot's
+                        // PREVIOUS connection: `tcp_close` frees the slot and
+                        // leaves the smoltcp socket where it was (CloseWait
+                        // after the peer's FIN, TimeWait, ...). Dialling only
+                        // from Closed left a reopen on such a slot sending no
+                        // SYN at all, so a client whose router restarted never
+                        // reconnected. Abort it (Closed at once, an RST to the
+                        // old peer); the next poll dials.
+                        _ => socket.abort(),
                     }
                 }
 
@@ -900,8 +908,11 @@ impl SmoltcpBridge {
                     _ => {}
                 }
                 // The peer's FIN is in and everything before it is staged:
-                // nothing more will arrive (issue 2779).
-                if state == TcpState::CloseWait && !socket.may_recv() {
+                // nothing more will arrive (issue 2779). Only for a connection
+                // this entry made: a reopened slot whose socket still holds
+                // the previous connection's CloseWait is not at end-of-stream,
+                // it has not connected yet.
+                if state == TcpState::CloseWait && !socket.may_recv() && entry.connected {
                     entry.peer_closed = true;
                 }
             }
