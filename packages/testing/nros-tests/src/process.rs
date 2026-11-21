@@ -784,6 +784,42 @@ pub(crate) fn pattern_line_ready(
     first.elapsed() >= MATCH_LINE_GRACE
 }
 
+/// Issue 2816 — where a satisfied wait stops CONSUMING the output it read.
+///
+/// A wait reads the child in chunks and stops at the first chunk after which
+/// `done` holds. Whatever that chunk carried past the line that satisfied it
+/// belongs to the NEXT wait, so a process that prints two markers in one write
+/// is waited on twice successfully instead of once and then never. Before
+/// this, every wait read into a local buffer, and the next wait started from
+/// the pipe: `out_of_tree_rmw_e2e` waited for the publish marker, the pool
+/// marker printed 4 µs later sat in the same read, and the second wait timed
+/// out on a tier-2 runner while passing solo.
+///
+/// Returns the length of the shortest prefix of `output` ending at a line
+/// boundary that `done` accepts, or `output.len()` when no shorter one does
+/// (the satisfying line is still open, or `done` is true only of the whole).
+/// `done` must be monotone in the prefix — true of a prefix implies true of
+/// every longer one — which `contains`, a count of at-least, and an "every
+/// group appeared" are. The search is a binary search over line ends.
+pub(crate) fn satisfied_prefix_len(output: &str, done: impl Fn(&str) -> bool) -> usize {
+    let ends: Vec<usize> = output
+        .match_indices('\n')
+        .map(|(i, _)| i + 1)
+        .filter(|&e| e < output.len())
+        .collect();
+    let first = ends.partition_point(|&e| !done(&output[..e]));
+    ends.get(first).copied().unwrap_or(output.len())
+}
+
+/// Issue 2816 — move what a satisfied wait read past `cut` out of its
+/// output and into `carry`, for the next wait on the same process. Each byte
+/// is returned by exactly ONE wait: a caller that concatenates or counts
+/// across successive waits (`port_templates_e2e`, `qos_event_interop`,
+/// `realtime_sched_tasks_e2e` do) sees every line once.
+pub(crate) fn keep_tail(carry: &mut String, output: &mut String, cut: usize) {
+    *carry = output.split_off(cut);
+}
+
 /// Managed process with automatic cleanup
 ///
 /// Wraps a child process and ensures it is killed on drop.
@@ -807,6 +843,10 @@ pub struct ManagedProcess {
     /// Boxed: a `Command` is large, and `ManagedProcess` sits beside small
     /// variants in callers' enums (`clippy::large_enum_variant`).
     _run: Option<Box<crate::run::HostRun>>,
+    /// Issue 2816 — output a satisfied wait read past its match, replayed at
+    /// the start of every later read of this process. Every reader below
+    /// starts from it, so none can read the pipe past it.
+    carry: String,
 }
 
 impl ManagedProcess {
@@ -914,6 +954,7 @@ impl ManagedProcess {
             name,
             cmdline,
             _run: None,
+            carry: String::new(),
         })
     }
 
@@ -965,7 +1006,7 @@ impl ManagedProcess {
         use std::os::unix::io::AsRawFd;
 
         let start = std::time::Instant::now();
-        let mut output = String::new();
+        let mut output = std::mem::take(&mut self.carry);
 
         let mut stdout = self
             .handle
@@ -1099,7 +1140,7 @@ impl ManagedProcess {
         use std::os::unix::io::AsRawFd;
 
         let start = std::time::Instant::now();
-        let mut output = String::new();
+        let mut output = std::mem::take(&mut self.carry);
 
         let mut stdout = self.handle.stdout.take();
         let mut stderr = self.handle.stderr.take();
@@ -1142,6 +1183,7 @@ impl ManagedProcess {
                 // testing, not by assuming, so a future edit cannot silently
                 // make this lie.
                 let matched = output.contains(pattern);
+                self.carry_past_match(&mut output, pattern, &seen_open);
                 return (output, matched);
             }
 
@@ -1194,6 +1236,7 @@ impl ManagedProcess {
                     // Put handles back for further use
                     self.handle.stdout = stdout;
                     self.handle.stderr = stderr;
+                    self.carry_past_match(&mut output, pattern, &seen_open);
                     return (output, true);
                 }
             }
@@ -1236,7 +1279,33 @@ impl ManagedProcess {
         // (issue 0471 named only the timeout one): a process that died without
         // ever printing the marker also reported success.
         let matched = output.contains(pattern);
+        self.carry_past_match(&mut output, pattern, &seen_open);
         (output, matched)
+    }
+
+    /// Issue 2816 — after a pattern wait: the output past the first line that
+    /// holds `pattern` is the next wait's, and leaves this one's. Nothing is kept when the pattern is
+    /// absent, or when its line was ever seen OPEN (`seen_open`): a line split
+    /// across reads may have the other stream's newline inside it, and a cut
+    /// there would hand this wait half its line (issue 2286).
+    fn carry_past_match(
+        &mut self,
+        output: &mut String,
+        pattern: &str,
+        seen_open: &std::cell::Cell<Option<std::time::Instant>>,
+    ) {
+        if seen_open.get().is_some() || !output.contains(pattern) {
+            return;
+        }
+        let cut = satisfied_prefix_len(output, |p| p.contains(pattern));
+        keep_tail(&mut self.carry, output, cut);
+    }
+
+    /// Issue 2816 — after a count wait: the output past the line holding the
+    /// `expected`-th occurrence is the next wait's.
+    fn carry_past_count(&mut self, output: &mut String, pattern: &str, expected: usize) {
+        let cut = satisfied_prefix_len(output, |p| p.matches(pattern).count() >= expected);
+        keep_tail(&mut self.carry, output, cut);
     }
 
     /// Collect output, stopping early once `pattern` appears — the LENIENT wait.
@@ -1330,7 +1399,7 @@ impl ManagedProcess {
         use std::os::unix::io::AsRawFd;
 
         let start = std::time::Instant::now();
-        let mut output = String::new();
+        let mut output = std::mem::take(&mut self.carry);
         let mut stdout = self.handle.stdout.take();
         let mut stderr = self.handle.stderr.take();
         let mut buf = [0u8; 4096];
@@ -1357,6 +1426,7 @@ impl ManagedProcess {
             if output.matches(pattern).count() >= expected {
                 self.handle.stdout = stdout;
                 self.handle.stderr = stderr;
+                self.carry_past_count(&mut output, pattern, expected);
                 return Ok(output);
             }
 
@@ -1395,6 +1465,7 @@ impl ManagedProcess {
                 self.handle.stdout = stdout;
                 self.handle.stderr = stderr;
                 return if output.matches(pattern).count() >= expected {
+                    self.carry_past_count(&mut output, pattern, expected);
                     Ok(output)
                 } else {
                     Err(TestError::ProcessFailed(format!(
@@ -1471,7 +1542,7 @@ impl ManagedProcess {
         use std::os::unix::io::AsRawFd;
 
         let start = std::time::Instant::now();
-        let mut output = String::new();
+        let mut output = std::mem::take(&mut self.carry);
 
         // Take both stdout and stderr
         let mut stdout = self.handle.stdout.take();
@@ -2115,6 +2186,123 @@ mod tests {
         assert!(!match_line_complete("a\nResult: [1, 2", "Result:"));
         assert!(match_line_complete("x DONE\n", "DONE\n"));
         assert!(!match_line_complete("", "Result:"));
+    }
+
+    /// Spawn a shell running `script` verbatim, kept alive afterwards.
+    fn scripted(script: &str) -> ManagedProcess {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c").arg(format!("{script}; sleep 30"));
+        ManagedProcess::spawn_command(cmd, "2816-carry").expect("spawn sh")
+    }
+
+    /// Issue 2816, the reported shape: two markers in ONE write. The first
+    /// wait's read holds both, so before the carry the second wait started
+    /// from an empty pipe and timed out (the negative control: this test
+    /// fails on the pre-2816 reader).
+    #[test]
+    fn a_second_wait_sees_a_marker_the_first_wait_read() {
+        let mut p = scripted("printf 'acme: publishing\\nacme: pool_slots = 4\\n'");
+        p.wait_for_output_pattern("acme: publishing", Duration::from_secs(5))
+            .expect("first marker");
+        let second = p.wait_for_output_pattern("acme: pool_slots = 4", Duration::from_secs(2));
+        p.kill();
+        assert!(
+            second.is_ok(),
+            "the second marker was read and dropped: {second:?}"
+        );
+    }
+
+    /// A marker split across two writes still matches, and the line after it
+    /// is still the next wait's.
+    #[test]
+    fn a_marker_split_across_two_writes_matches_and_keeps_the_next_line() {
+        let mut p = scripted("printf 'MAR'; sleep 0.3; printf 'KER one\\nNEXT two\\n'");
+        let first = p
+            .wait_for_output_pattern("MARKER one", Duration::from_secs(5))
+            .expect("split marker");
+        assert!(first.contains("MARKER one\n"), "{first:?}");
+        let second = p.wait_for_output_pattern("NEXT two", Duration::from_secs(2));
+        p.kill();
+        assert!(
+            second.is_ok(),
+            "the line after a split marker was dropped: {second:?}"
+        );
+    }
+
+    /// The count wait consumes through the line of its `expected`-th match
+    /// and no further, and a carried line is replayed exactly once.
+    #[test]
+    fn a_count_wait_leaves_the_rest_for_the_next_wait() {
+        let mut p = scripted("printf 'tick\\ntick\\ntick\\ndone\\n'");
+        p.wait_for_output_count("tick", 2, Duration::from_secs(5))
+            .expect("two ticks");
+        let rest = p
+            .wait_for_output_pattern("done", Duration::from_secs(2))
+            .expect("the tail after the count reached the next wait");
+        p.kill();
+        assert_eq!(rest.matches("tick").count(), 1, "replayed: {rest:?}");
+        assert!(!p.carry.contains("done"), "consumed twice: {:?}", p.carry);
+    }
+
+    /// Issue 2816's reach: every reader of a child's pipes in the two process
+    /// types starts from the carry. A reader that starts from an empty buffer
+    /// reads the pipe PAST output an earlier wait already holds, which is the
+    /// defect, so the spelling is refused here rather than reviewed.
+    #[test]
+    fn every_reader_starts_from_the_carry() {
+        for (file, src) in [
+            ("process.rs", include_str!("process.rs")),
+            ("qemu.rs", include_str!("qemu.rs")),
+        ] {
+            let owner = if file == "qemu.rs" {
+                "impl QemuProcess {"
+            } else {
+                "impl ManagedProcess {"
+            };
+            let start = src.find(owner).expect("the impl");
+            let body = &src[start..];
+            let end = body.find("\n}\n").expect("the impl's end");
+            let fresh = concat!("let mut output = ", "String::new();");
+            assert!(
+                !body[..end].contains(fresh),
+                "{file}: a reader starts from an empty buffer; start it from \
+                 `std::mem::take(&mut self.carry)` (issue 2816)"
+            );
+        }
+    }
+
+    /// Each line is returned by exactly one wait: concatenating successive
+    /// waits' outputs reproduces what the process printed, no line twice.
+    #[test]
+    fn successive_waits_return_each_line_once() {
+        let mut p = scripted("printf 'one\\ntwo\\nthree\\nfour\\n'");
+        let mut seen = p
+            .wait_for_output_pattern("one", Duration::from_secs(5))
+            .expect("one");
+        seen.push_str(
+            &p.wait_for_output_count("t", 2, Duration::from_secs(2))
+                .expect("two t"),
+        );
+        seen.push_str(&p.collect_until("four", Duration::from_secs(2)));
+        p.kill();
+        assert_eq!(seen, "one\ntwo\nthree\nfour\n");
+    }
+
+    #[test]
+    fn satisfied_prefix_len_stops_at_the_satisfying_line() {
+        let out = "a\nMARK x\nb\nc";
+        assert_eq!(
+            satisfied_prefix_len(out, |p| p.contains("MARK")),
+            "a\nMARK x\n".len()
+        );
+        // Satisfied only by the whole (open last line): nothing is kept.
+        assert_eq!(satisfied_prefix_len(out, |p| p.contains("c")), out.len());
+        assert_eq!(satisfied_prefix_len("", |_| true), 0);
+        let ticks = "t\nt\nt\n";
+        assert_eq!(
+            satisfied_prefix_len(ticks, |p| p.matches('t').count() >= 2),
+            4
+        );
     }
 
     /// The lenient counterpart keeps the old behavior under an honest name:
