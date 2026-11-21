@@ -1,15 +1,17 @@
 ---
 id: 2822
 title: "cmake: the CAN backend archive is linked before component archives, so a component calling <nros/platform_can.h> fails to link"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [cmake, build, boards]
 related: [phase-560, issue-2787, issue-2788, issue-2273]
 found: 2026-11-22
+resolved: 2026-11-22
+resolved_in: "fix(cmake, issue 2822): every CAN backend archive follows the archives that call the driver"
 ---
 
-**Home: [phase-560](../roadmap/phase-560-contract-revision-follow.md) W9**, beside
+**Home: [phase-560](../../roadmap/phase-560-contract-revision-follow.md) W9**, beside
 the census CAN mock (issues 2787/2788, PR #4577).
 
 ## What happens
@@ -70,3 +72,24 @@ reaches, as W2 does for the kernel.
 A component archive reached through an INTERFACE wrapper, that alone calls the
 driver, links against the census mock (census entry and probe roads) and the
 socketcan backend; rows in `just check can-census-mock` that fail on main.
+
+## Resolved, 2026-11-22
+
+`cmake/NanoRosCanImage.cmake` links every CAN backend through one helper,
+`_nros_can_link_backend(<target> <backend>)`: the census mock
+(`nros_link_can_census_mock`, so the census entry and the metadata probe) and
+`nros_can_socketcan` (`nros_entry_can_image`'s device branch). Beside the
+direct link, it defers to the end of the target's directory a walk of the
+target's link closure (static archives and INTERFACE wrappers, ALIAS resolved,
+imported targets skipped) and appends `$<LINK_ONLY:<backend>>` to each
+archive's INTERFACE_LINK_LIBRARIES. phase-544 W2's pattern: CMake places an
+archive's dependencies after it. Deferred, so an archive linked after
+`nano_ros_entry` or after the probe's call is covered too; `LINK_ONLY`, so no
+dependent's include path changes. The fail-loud defaults (issue 2788) are an
+object of the entry and needed nothing.
+
+Held by `just check can-census-mock` rows D (census entry), E (metadata probe
+road) and F (socketcan backend): the driver is called only from a component
+archive behind an INTERFACE wrapper and from an archive linked after the hook.
+All three fail on the parent commit with `undefined reference to
+nros_platform_can_open`.
