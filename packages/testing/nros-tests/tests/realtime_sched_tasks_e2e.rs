@@ -543,8 +543,46 @@ impl Guest {
 ///
 /// Best-effort by construction — a wedged guest returns what it buffered, and
 /// an empty string is itself the diagnosis.
+/// Issue 2780 -- echo a PASSING Zephyr row's heap peak.
+///
+/// The image prints its own `nros: heap peak` line, but on a pass this harness
+/// keeps the guest console to itself, and the line is the measurement every
+/// heap default is sized from. So each Zephyr row says it on stderr whether it
+/// passes or not. `console` is what the row already read; when the line is not
+/// in it yet, the guest gets up to 3 s more to print it. Never a verdict: an
+/// image without the line says so here and the row stands on its own proof.
+fn echo_heap_peak(platform: &str, lang: &str, guest: &mut ZephyrProcess, console: &str) {
+    use nros_tests::output::ZEPHYR_HEAP_PEAK;
+    let last = |text: &str| {
+        text.lines()
+            .rfind(|l| l.contains(ZEPHYR_HEAP_PEAK))
+            .map(str::to_string)
+    };
+    let line = last(console)
+        .or_else(|| last(&guest.wait_for_pattern(ZEPHYR_HEAP_PEAK, Duration::from_secs(3))));
+    match line {
+        Some(l) => eprintln!("[{platform} {lang}] {}", l.trim()),
+        None => eprintln!("[{platform} {lang}] no `{ZEPHYR_HEAP_PEAK}` line within 3 s"),
+    }
+}
+
 fn guest_console(guest: &mut Guest) -> String {
-    console_excerpt(&guest.drain(Duration::from_secs(3)))
+    let console = guest.drain(Duration::from_secs(3));
+    // Issue 2780 -- an excerpt can elide the heap peak line, so a Zephyr
+    // guest's is echoed from the whole drain (see `echo_heap_peak`).
+    if matches!(guest, Guest::Zephyr(_)) {
+        let line = console
+            .lines()
+            .rfind(|l| l.contains(nros_tests::output::ZEPHYR_HEAP_PEAK));
+        match line {
+            Some(l) => eprintln!("[zephyr] {}", l.trim()),
+            None => eprintln!(
+                "[zephyr] no `{}` line in the drained console",
+                nros_tests::output::ZEPHYR_HEAP_PEAK
+            ),
+        }
+    }
+    console_excerpt(&console)
 }
 
 /// Excerpt a guest console: the first [`HEAD`] lines, then the last [`TAIL`].
@@ -957,6 +995,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         // Cold boot, then four complete runs of the 5 Hz level: enough pairs
         // for every ordering to have occurred.
         let console = guest.wait_for_pattern("[lazy] end=4", anchor_timeout(cell.boot));
+        echo_heap_peak(platform, lang, &mut guest, &console);
         guest.kill();
         let verdict = (|| {
             if !console.contains("nros: scheduler core=0 levels=3") {
@@ -1029,6 +1068,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         // The first node carries the cold-boot budget (session open + zenoh
         // handshake); the rest only need their own period.
         let mut timeout = anchor_timeout(cell.boot);
+        let mut seen = String::new();
         for node in nodes {
             let marker = format!("{}1", nros_tests::output::sched_task_tick_marker(node));
             let console = guest.wait_for_pattern(&marker, timeout);
@@ -1043,8 +1083,10 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                     console_excerpt(&console)
                 );
             }
+            seen.push_str(&console);
             timeout = Duration::from_secs(30);
         }
+        echo_heap_peak(platform, lang, &mut guest, &seen);
         guest.kill();
         return;
     }

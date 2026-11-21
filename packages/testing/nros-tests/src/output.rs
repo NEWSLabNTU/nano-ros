@@ -404,6 +404,12 @@ pub const KERNEL_TIME_SLICING_OFF: &str = "nros: kernel time slicing OFF";
 /// See [`KERNEL_TIME_SLICING_PREFIX`].
 pub const KERNEL_TIME_SLICING_ON: &str = "nros: kernel time slicing ON";
 
+/// Issue 2780 -- a Zephyr image prints its platform heap's high-water mark,
+/// `nros: heap peak <peak> of <arena> bytes (...)`, once it has held and again
+/// whenever it rises, so the LAST such line is the image's peak. Every heap
+/// default is sized from these lines.
+pub const ZEPHYR_HEAP_PEAK: &str = "nros: heap peak ";
+
 /// The tutorial talker's payload prefix (`"Hello World:"`, the `data` of
 /// every `std_msgs/String` it publishes). A peer that sees the payload rather
 /// than the talker's log — `ros2 topic echo` prints `data: Hello World: N` —
