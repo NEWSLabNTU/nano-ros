@@ -11,7 +11,7 @@ resolved: 2026-11-21
 resolved_in: "fix(zephyr): refuse a conf fragment that sets a node-interface capability"
 ---
 
-**Home: [phase-556](../roadmap/phase-556-ros2-compat-audit.md) W13.**
+**Home: [phase-556](../../roadmap/phase-556-ros2-compat-audit.md) W13.**
 
 ## What happens
 
