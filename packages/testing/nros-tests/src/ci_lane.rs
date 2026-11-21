@@ -37,7 +37,7 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 28 | 13 | 23 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 28 | 12 | 21 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 14 | 12 | 21 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 50 | 42 | 75 % |
 //! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 46 | 9 | 16 % |
@@ -74,12 +74,14 @@
 //!
 //! Re-measured 2026-11-21 (issue 2766, CTF markers): `Config::Ctf` joined with
 //! the Zephyr native_sim C zenoh RealtimeSchedTasks Workspace cell. Unlike the
-//! configurations before it, its only cell is at a coordinate tier 1 did not
+//! configurations before it, its only cell is at a coordinate tier 1 does not
 //! hold (`zephyr,c,zenoh`; only the C sched task runner installs the trace
-//! sink, so no Rust cell can answer it): tier 1 kept 28 cells and went 12 -> 13
-//! coordinates, so its fixture build gains that coordinate. Nightly went 49 ->
-//! 50 cells (platform x config) over the same 42; tier 2 and merge did not
-//! move. Tier 3 went 277 -> 278 over the same 56.
+//! sink, so no Rust cell can answer it), and tier 1's 1-wise config requirement
+//! took it: 12 -> 13 coordinates, a Zephyr C fixture family in the host-only
+//! tier. So `Config::Ctf` is out of tier 1's pool ([`TIER1_EXCLUDED_CONFIGS`]),
+//! and tier 1 stays 28 cells over 12. Nightly went 49 -> 50 cells
+//! (platform x config) over the same 42; tier 2 and merge did not move. Tier 3
+//! went 277 -> 278 over the same 56.
 //!
 //! Re-measured 2026-11-11 (issue 2304): the C parameters example's Cyclone
 //! cell (Linux, C, Cyclonedds, Params, Example) joined at an existing
@@ -307,7 +309,7 @@
 
 use crate::{
     lane_scope::Capability,
-    matrix::{Cell, PlatformId},
+    matrix::{Cell, Config, PlatformId},
 };
 
 /// Every Runtime cell the tiers select over — baked cells (`matrix::CELLS`) AND
@@ -672,6 +674,18 @@ fn is_host_witness_board(p: PlatformId) -> bool {
     )
 }
 
+/// Configurations tier 1 does not cover. Tier 1 is the host-only tier that
+/// builds native fixtures, and its 1-wise config requirement would otherwise
+/// pick a configuration's only cell whatever its coordinate. `Ctf`'s only cell
+/// is a Zephyr C image (only the C sched task runner installs the trace sink),
+/// which would add `zephyr,c,zenoh` to tier 1's fixture build (issue 2766). It
+/// stays in the nightly cover (platform x config) and in tier 3.
+pub const TIER1_EXCLUDED_CONFIGS: &[Config] = &[Config::Ctf];
+
+fn is_tier1_excluded_config(c: &Cell) -> bool {
+    c.config.iter().any(|k| TIER1_EXCLUDED_CONFIGS.contains(k))
+}
+
 fn pool(lane: CiLane) -> Vec<&'static Cell> {
     match lane {
         // phase-395 W19 — the tier-1 PLATFORMS, not just the host.
@@ -683,7 +697,7 @@ fn pool(lane: CiLane) -> Vec<&'static Cell> {
         // platforms, this pool named one, and `lane-filter.sh linux` excluded
         // the other two outright.
         CiLane::Tier1 => all_runtime_cells()
-            .filter(|c| is_host_witness_board(c.platform))
+            .filter(|c| is_host_witness_board(c.platform) && !is_tier1_excluded_config(c))
             .collect(),
         // RFC-0122 D8 — the behaviour pairs (zenoh, three languages) on each
         // host witness board. `Example` is the pair cell's kind (RFC-0122 D4); the
@@ -1376,6 +1390,24 @@ _tier-build:
         }
     }
 
+    /// Issue 2766 -- a configuration tier 1 excludes reaches no tier-1 cell,
+    /// and the nightly cover still runs it.
+    #[test]
+    fn tier1_excluded_configs_run_nightly_and_not_in_tier1() {
+        for k in TIER1_EXCLUDED_CONFIGS {
+            assert!(
+                !cells(CiLane::Tier1).iter().any(|c| c.config.contains(k)),
+                "tier 1 selected a {k:?} cell"
+            );
+            assert!(
+                cells(CiLane::Tier2Nightly)
+                    .iter()
+                    .any(|c| c.config.contains(k)),
+                "no nightly cell runs {k:?}"
+            );
+        }
+    }
+
     #[test]
     fn documented_lane_table_is_live() {
         let total_coords = {
@@ -1397,7 +1429,7 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 28, 13),
+            (CiLane::Tier1, 28, 12),
             (CiLane::Tier2, 14, 12),
             (CiLane::Tier2Nightly, 50, 42),
             (CiLane::Merge, 46, 9),
