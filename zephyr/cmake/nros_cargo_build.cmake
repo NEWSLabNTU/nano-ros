@@ -1349,8 +1349,10 @@ function(nros_resolve_knobs)
         # default, 0, stated here and recorded as `default`. The two arms are
         # exclusive (check-knob-resolved-once): the first is exactly the case
         # `_nros_resolve_derivable_knob` would leave unresolved.
+        # Through the one environment reader (issue 2810), not a bare $ENV{}.
+        _nros_knob_env(NROS_RMW_LOCAL_QUERYABLE _nros_lq_env)
         if("${CONFIG_NROS_RMW_LOCAL_QUERYABLE}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}"
-           AND "$ENV{NROS_RMW_LOCAL_QUERYABLE}" STREQUAL ""
+           AND _nros_lq_env STREQUAL ""
            AND "${NROS_DERIVED_RMW_LOCAL_QUERYABLE}" STREQUAL "")
             message(STATUS
                 "nros: NROS_RMW_LOCAL_QUERYABLE=0, zenoh-pico's default -- no "
@@ -1772,9 +1774,10 @@ function(nros_resolve_knobs)
     # as before, and the `-1` sentinel forwards nothing: nros-node's build
     # script then derives it from the declaration shape below, or keeps its
     # default when there is none.
+    # Through the one environment reader (issue 2810), not a bare $ENV{}.
+    _nros_knob_env(NROS_PARAM_SERVICE_BUFFER_SIZE _nros_psb_env)
     if(NOT "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}"
-       OR (DEFINED ENV{NROS_PARAM_SERVICE_BUFFER_SIZE}
-           AND NOT "$ENV{NROS_PARAM_SERVICE_BUFFER_SIZE}" STREQUAL ""))
+       OR NOT _nros_psb_env STREQUAL "")
         _nros_resolve_knob(NROS_PARAM_SERVICE_BUFFER_SIZE
             "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}")
     else()
@@ -2651,4 +2654,9 @@ function(nros_cargo_build)
         IMPORTED_LOCATION ${LIB_PATH}
     )
     add_dependencies(${_target_name} ${_target_name}_build)
+    # Issue 2810 -- order cargo after the knob environment check, so a refused
+    # build stops before compiling with the configure's stale values.
+    if(TARGET nros_knob_env_check)
+        add_dependencies(${_target_name}_build nros_knob_env_check)
+    endif()
 endfunction()
