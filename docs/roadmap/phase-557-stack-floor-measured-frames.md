@@ -848,6 +848,25 @@ the measurement.
 
   Then re-measure the share and the SCC before any solver work.
 
+**Checkpoint 2's bar, set 2026-11-22 BEFORE measuring.** Written here first,
+so the result cannot move it. The measurement mode binds each RESOLVED site
+(W7f.0-W7f.2's classifier, `--level 2`) to its channel's set and leaves
+every other site at today's binding. It changes no shipped floor.
+
+- **Images:** the nucleo C talker and the nucleo Rust talker (the mps2
+  bare-metal image has no C IR until W7f.3).
+- **Size:** the largest strongly connected component reachable from the
+  root, after the binding, is at most **300 functions** on each image
+  (against 962 / 970 / 2,037 on direct plus type binding, issue 2550).
+- **Search cost:** the exact search (the deepest SIMPLE path from the root,
+  exhaustive inside each SCC) finishes within **10^7 node expansions and
+  120 s** on this host, on each image. Both are reported, measured, before
+  and after the binding.
+- **Verdict:** either bound failing on either image STOPS W7f before any
+  solver work. W7f.3 is then not built, and the floors stay the accepted
+  heuristic, the deepest of 8 fixed orders. Passing both on both images
+  reopens the solver item, with W7f.3 for the bare-metal image.
+
 **Acceptance.**
 
 - Every site is either bound through a trusted channel or keeps today's
