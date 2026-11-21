@@ -88,6 +88,7 @@ DISPATCHERS = {"lib.rs", "cmd/mod.rs", "cmd/dev.rs"}
 # leaf list). Each is checked: reached by anything but a dispatcher, the
 # generator fails.
 LEAF_VERBS = {
+    "cmd/code_verb.rs",
     "cmd/completions.rs",
     "cmd/config.rs",
     "cmd/doctor.rs",
@@ -100,6 +101,7 @@ LEAF_VERBS = {
     "cmd/probe_boot_rows.rs",
     "cmd/reserved.rs",
     "cmd/sdk_front.rs",
+    "cmd/template_verb.rs",
     "cmd/update.rs",
     "cmd/user.rs",
 }

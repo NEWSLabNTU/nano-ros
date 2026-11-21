@@ -21,6 +21,7 @@ pub mod build;
 pub mod build_next;
 pub mod check;
 pub mod check_workspace;
+pub mod code_verb;
 pub mod codegen;
 pub mod codegen_cyclonedds_descriptors;
 pub mod codegen_system;
@@ -85,6 +86,7 @@ pub mod stack_floor;
 pub mod stack_floor_raise;
 pub mod store;
 pub mod system_toml_expand;
+pub mod template_verb;
 /// phase-440 W6 — `nros toolchain uninstall` (RFC-0095 D11).
 pub mod toolchain;
 pub mod update;
@@ -397,6 +399,15 @@ pub enum Cmd {
     /// the values it takes and its default
     #[command(subcommand)]
     Knob(knob::Args),
+
+    /// List the diagnostic codes a refusal prints, or show one: what it
+    /// reports and how to fix it
+    #[command(subcommand)]
+    Code(code_verb::Args),
+
+    /// List the node roles `nros new --template` scaffolds, or show one
+    #[command(subcommand)]
+    Template(template_verb::Args),
 
     /// Workspace-level message-package utilities: env, list, status, clean, doctor.
     // Phase 210.B.3 + 210.D.1. `sync` was promoted to the top-level `nros

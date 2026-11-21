@@ -274,7 +274,25 @@ descriptor with a new section is printed by `board show`.
 
 ### W6 — `platform`, `template`, `code`, `runner` lists
 
-- **Status:** OPEN
+- **Status:** OPEN (W6a done locally 2026-11-21, on top of W5a; W6b open)
+- **W6a, `nros code` and `nros template`:**
+  - `nros code list [--all] [--json]` / `show <code> [--json]` read the
+    compiled-in code table (`nros.code.list.v1`, `nros.code.show.v1`).
+    `show` prints the explanation `nros explain <code>` does, which stays,
+    and links the code's own section of the Book's code page (mdBook's slug
+    of its `## NROS-NNNN: <title>` heading; a test reads that heading).
+  - `nros template list` / `show <role>` read `node_role::Role::ALL`: role,
+    interface package, summary, the component's node name and the three
+    languages (`nros.template.list.v1`, `nros.template.show.v1`).
+  - Both are leaf verbs of the planning set. The tests hold each list equal
+    to its table, so a row added to the table is listed with no CLI edit; a
+    compiled-in table takes no fixture row at test time, so that stands in
+    for the acceptance's "adds a fixture item".
+- **W6b, open:** `nros platform list` / `show` over `PlatformsTree` (with
+  `nros new --platform` reading the same list), and `nros runner list` /
+  `show` over `extension::discover`. `nros profile list` / `show` is with
+  W8: the top-level `nros profile` is the hidden plumbing cmake and bash
+  call (`args`, `dir`, `env`), and W8 moves it to `nros dev profile` first.
 
 - `nros platform list` / `show` read `PlatformsTree`, with its boards and
   RMWs; `nros new --platform` reads the same list.
