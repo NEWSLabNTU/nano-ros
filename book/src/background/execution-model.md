@@ -172,6 +172,15 @@ it prints the refusal once, with the `setcap` command that fixes it, and
 every level runs at the default policy. That image has levels but no
 preemption between them.
 
+Linux measures a `SCHED_DEADLINE` budget as an amount of work, not as CPU
+time. The kernel charges a running level for its time scaled by how fast the
+CPU is clocked against its maximum. So on a CPU running below full speed,
+which is common under the `powersave` governor, a 2 ms budget lasts longer
+than 2 ms. On one measured host it lasted a median 1.15 times as long, and up
+to about 5 times. The closer the level's CPUs run to their maximum frequency,
+for example under the `performance` governor, the closer the budget comes to
+CPU time.
+
 ## The RTOS underneath
 
 Each level is an ordinary RTOS thread, and the RTOS schedules it. All of the

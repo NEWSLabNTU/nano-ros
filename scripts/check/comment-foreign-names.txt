@@ -265,13 +265,13 @@ AF_UNIX
 EM_RISCV
 ERESTARTSYS
 ETXTBSY
-HRTICK_DL
 INADDR_NONE
 INT64_MIN
 INT_MAX
 LD_PRELOAD
 O_EXCL
 PTHREAD_PRIO_NONE
+SCHED_FLAG_RECLAIM
 SHLVL
 SIOCGIFFLAGS
 SIOCSIFDSTADDR
@@ -285,6 +285,7 @@ _reclaim_reent
 _strtol_r
 _unlink_r
 _write_r
+arch_scale_freq_capacity
 eventfd_write
 io_destroy
 lldiv_t
@@ -294,7 +295,9 @@ pthread_mutex
 pthread_setaffinity
 ptrace_scope
 register_fini
+scaling_cur_freq
 timer_getoverrun
+update_curr_dl_se
 
 # C and C++ toolchains
 NOLOAD
