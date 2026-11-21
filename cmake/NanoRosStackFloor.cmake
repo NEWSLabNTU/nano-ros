@@ -33,22 +33,48 @@ include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPlatformFamily.cmake")
 
+# ONE off switch, one vocabulary, read the same way on every road: the cargo
+# road reads `NROS_STACK_FLOOR` from the environment, and so does this file
+# (issue 2803). Before, this road read only the CACHE variable, so
+# `NROS_STACK_FLOOR=OFF nros build` still walked a cmake or west image while
+# its configure line said the spelling skips it, and the cargo road's `ON` was
+# a configure error here.
+#
+#   on:  ON  CHECK  1  TRUE  YES          off: OFF  0  FALSE  NO   (any case)
+#
+# An explicit `-DNROS_STACK_FLOOR=` wins. The environment wins otherwise, and
+# keeps winning on a reconfigure: the value it last set is remembered, so a
+# later change (or unset) of the variable is seen, and a `-D` value never is
+# overwritten.
 set(NROS_STACK_FLOOR "CHECK" CACHE STRING
-    "Stack-floor check on the image's stated stack: CHECK (default) or OFF (issue 2400)")
-set_property(CACHE NROS_STACK_FLOOR PROPERTY STRINGS CHECK OFF)
+    "Stack-floor check on the image's stated stack: ON/CHECK (default) or OFF; also read from the environment")
+set_property(CACHE NROS_STACK_FLOOR PROPERTY STRINGS ON CHECK OFF)
+if("${NROS_STACK_FLOOR}" STREQUAL "${_NROS_STACK_FLOOR_FROM_ENV}"
+   OR ("${NROS_STACK_FLOOR}" STREQUAL "CHECK" AND "${_NROS_STACK_FLOOR_FROM_ENV}" STREQUAL ""))
+    # the cache holds the default or what the environment set last: the
+    # environment decides now
+    if(DEFINED ENV{NROS_STACK_FLOOR} AND NOT "$ENV{NROS_STACK_FLOOR}" STREQUAL "")
+        set(NROS_STACK_FLOOR "$ENV{NROS_STACK_FLOOR}" CACHE STRING "" FORCE)
+        set(_NROS_STACK_FLOOR_FROM_ENV "$ENV{NROS_STACK_FLOOR}" CACHE INTERNAL "")
+    elseif(NOT "${_NROS_STACK_FLOOR_FROM_ENV}" STREQUAL "")
+        set(NROS_STACK_FLOOR "CHECK" CACHE STRING "" FORCE)
+        set(_NROS_STACK_FLOOR_FROM_ENV "" CACHE INTERNAL "")
+    endif()
+endif()
 
 set(_NROS_STACK_FLOOR_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "")
 
 function(_nros_stack_floor_enabled _out)
     string(TOUPPER "${NROS_STACK_FLOOR}" _mode)
-    if(_mode STREQUAL "OFF")
+    if(_mode MATCHES "^(OFF|0|FALSE|NO)$")
         set(${_out} FALSE PARENT_SCOPE)
-    elseif(_mode STREQUAL "CHECK")
+    elseif(_mode MATCHES "^(ON|CHECK|1|TRUE|YES)$")
         set(${_out} TRUE PARENT_SCOPE)
     else()
         # issue 2400 W2b.
-        message(FATAL_ERROR "nano-ros: NROS_STACK_FLOOR='${NROS_STACK_FLOOR}' -- expected CHECK "
-            "or OFF. Raising a stack to the floor is opt-in and not built yet.")
+        message(FATAL_ERROR "nano-ros: NROS_STACK_FLOOR='${NROS_STACK_FLOOR}' -- expected ON "
+            "(or CHECK, 1, TRUE, YES) or OFF (or 0, FALSE, NO). Raising a stack to the floor "
+            "is opt-in and not built yet.")
     endif()
 endfunction()
 

@@ -59,6 +59,12 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
+# 2803 -- filed on branch `feat/stack-floor-parallel-orders` (issue 2414's
+#         fix, gated on the self-hosted runner), whose commit adds
+#         `docs/issues/2803-*.md`; this
+#         branch fixes it. REMOVE BOTH 2803 ROWS when that branch merges.
+cmake/NanoRosStackFloor.cmake:2803
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
+packages/cli/nros-cli-core/src/cmd/stack_floor.rs:2803
 scripts/build/rustdoc-set.sh:1110

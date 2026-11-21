@@ -107,13 +107,28 @@ fn profile_strip_env(profile_dir: &str) -> String {
 
 /// `NROS_STACK_FLOOR=OFF` (or `0`, `FALSE`, `NO`) turns the walk off, as on
 /// the cmake road's `-DNROS_STACK_FLOOR=OFF`.
+/// The one vocabulary of `NROS_STACK_FLOOR`, which `cmake/NanoRosStackFloor.cmake`
+/// reads with the same two lists (issue 2803).
+pub const SWITCH_ON: &[&str] = &["ON", "CHECK", "1", "TRUE", "YES"];
+pub const SWITCH_OFF: &[&str] = &["OFF", "0", "FALSE", "NO"];
+
 fn disabled(value: Option<&str>) -> bool {
-    value.is_some_and(|v| {
-        matches!(
-            v.to_ascii_uppercase().as_str(),
-            "OFF" | "0" | "FALSE" | "NO"
-        )
-    })
+    let Some(v) = value.map(str::to_ascii_uppercase) else {
+        return false;
+    };
+    if SWITCH_OFF.contains(&v.as_str()) {
+        return true;
+    }
+    if !v.is_empty() && !SWITCH_ON.contains(&v.as_str()) {
+        // walked, the safe direction; the cmake road refuses the same value
+        eprintln!(
+            "nros build: NROS_STACK_FLOOR={v} is neither ON ({}) nor OFF ({}); the stack \
+             floor is checked",
+            SWITCH_ON.join(", "),
+            SWITCH_OFF.join(", ")
+        );
+    }
+    false
 }
 
 /// cargo's environment spelling of a target triple (`thumbv7m-none-eabi` ->
@@ -691,6 +706,91 @@ mod tests {
         }
         assert!(!disabled(None));
         assert!(!disabled(Some("ON")));
+        // issue 2803 -- the cmake road's spelling is an on spelling here too
+        assert!(!disabled(Some("CHECK")));
+    }
+
+    fn nros_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
+    }
+
+    /// Issue 2803 -- the cmake road reads the SAME two lists: its matcher's
+    /// alternations are exactly [`SWITCH_ON`] and [`SWITCH_OFF`].
+    #[test]
+    fn the_cmake_road_reads_the_same_vocabulary() {
+        let text =
+            std::fs::read_to_string(nros_root().join("cmake/NanoRosStackFloor.cmake")).unwrap();
+        let alt = |head: &str| -> Vec<String> {
+            let i = text
+                .find(head)
+                .unwrap_or_else(|| panic!("no `{head}` in the module"));
+            let rest = &text[i + head.len()..];
+            rest[..rest.find(')').unwrap()]
+                .split('|')
+                .map(str::to_string)
+                .collect()
+        };
+        assert_eq!(alt(r#"_mode MATCHES "^("#), SWITCH_OFF);
+        assert_eq!(alt(r#"elseif(_mode MATCHES "^("#), SWITCH_ON);
+    }
+
+    /// Issue 2803 -- configured for real: the environment turns the cmake
+    /// road off, `-D` beats it, and a reconfigure sees the environment move.
+    #[test]
+    fn the_cmake_road_reads_the_environment_and_a_d_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let module = nros_root().join("cmake/NanoRosStackFloor.cmake");
+        std::fs::write(
+            dir.path().join("CMakeLists.txt"),
+            format!(
+                "cmake_minimum_required(VERSION 3.20)\nproject(t NONE)\n\
+                 include(\"{}\")\n_nros_stack_floor_enabled(on)\n\
+                 message(STATUS \"SF=${{on}}\")\n",
+                module.display()
+            ),
+        )
+        .unwrap();
+        let build = dir.path().join("b");
+        let configure = |env: Option<&str>, d: Option<&str>| -> String {
+            let mut c = std::process::Command::new("cmake");
+            c.arg("-S").arg(dir.path()).arg("-B").arg(&build);
+            if let Some(d) = d {
+                c.arg(format!("-DNROS_STACK_FLOOR={d}"));
+            }
+            match env {
+                Some(v) => c.env("NROS_STACK_FLOOR", v),
+                None => c.env_remove("NROS_STACK_FLOOR"),
+            };
+            let out = c
+                .output()
+                .expect("cmake is a precondition of the cli-tests lane");
+            let log = String::from_utf8_lossy(&out.stdout).to_string()
+                + &String::from_utf8_lossy(&out.stderr);
+            assert!(out.status.success(), "{log}");
+            log.lines()
+                .find_map(|l| l.strip_prefix("-- SF="))
+                .unwrap_or_else(|| panic!("no SF line in {log}"))
+                .to_string()
+        };
+        assert_eq!(configure(None, None), "TRUE", "the default checks");
+        assert_eq!(
+            configure(Some("OFF"), None),
+            "FALSE",
+            "the environment's OFF"
+        );
+        assert_eq!(
+            configure(Some("ON"), None),
+            "TRUE",
+            "the cargo road's ON, seen on reconfigure"
+        );
+        assert_eq!(configure(Some("off"), None), "FALSE");
+        assert_eq!(configure(None, None), "TRUE", "the environment unset again");
+        assert_eq!(
+            configure(Some("ON"), Some("OFF")),
+            "FALSE",
+            "a -D beats the environment"
+        );
+        assert_eq!(configure(Some("ON"), None), "FALSE", "and keeps beating it");
     }
 
     #[test]
