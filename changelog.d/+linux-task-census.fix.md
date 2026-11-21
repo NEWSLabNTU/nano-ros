@@ -1,0 +1,1 @@
+Linux images now print the boot task census (every thread with its scheduling policy and real-time priority) once every level is up, as the RTOS images do, so a test checks the Linux priority plan against a running image. The development probe that reads the same `/proc` fields read the wrong two, so it saw every thread as non-real-time; it reads the right ones now.

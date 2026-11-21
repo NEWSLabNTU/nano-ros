@@ -1123,6 +1123,10 @@ impl LinuxBoard {
                 <Self as BoardPrint>::println(format_args!(
                     "nros: multi-level run — {n} level(s) over one executor"
                 ));
+                // Every level is up and has adopted its priority, and the
+                // transport tasks were created at session open.
+                #[cfg(target_os = "linux")]
+                ::nros::task_census::report(<Self as BoardPrint>::println);
                 // phase-521 W6 -- as the levels: park until the next deadline
                 // or an arrival. A termination signal posts the executor's
                 // wake object, which ends this park.

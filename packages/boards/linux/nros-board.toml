@@ -88,18 +88,21 @@ pool.app = [1, 89]
 # RFC-0079's `reserved.foreign` — threads nano-ros does not create — is EMPTY
 # here, and that is a measured claim rather than an omission.
 #
-# `scripts/dev/priority-thread-probe.py <pid>` enumerates a live image's
-# threads out of `/proc/<pid>/task/*/stat` and classifies each against this
-# plan. On the native realtime entry it finds four, all ours: the boot sched task on
-# the main thread, `nros-sched-task-high`, and zenoh-pico's read and lease tasks.
-# Nothing else in the process holds a real-time priority, so there is no
-# foreign band to reserve.
+# Measured by the boot thread census (`nros::task_census`, `/proc/self/task`),
+# which both Linux runners print once every level is up, and read by
+# `linux_thread_census_is_placed_by_the_priority_plan` and
+# `linux_rust_thread_census_is_placed_by_the_priority_plan`
+# (rt_sched_levels_e2e.rs, with CAP_SYS_NICE granted). On the realtime-rust
+# image it finds three threads, all ours and all SCHED_FIFO: the boot level on
+# the main thread at 10, a level (`nros-sched-task`) at 80, and zenoh-pico's
+# transport at 90. Nothing else in the process holds a real-time priority, so
+# there is no foreign band to reserve. `scripts/dev/priority-thread-probe.py
+# <pid>` reads the same fields from outside a process.
 #
 # The distinction matters because on the RTOS ports there ARE foreign
-# occupants (lwIP's `tcpip_thread`, NuttX work queues) whose positions those
-# plans can only assert. LINUX is the one port where the claim is checkable
-# today, and this is it checked — the probe reads `/proc/<pid>/task/*/stat`,
-# which is Linux, not POSIX, so a macOS or BSD host could not run it either.
+# occupants (lwIP's `tcpip_thread`, NuttX work queues), which their own
+# censuses measure. `/proc` is Linux, not POSIX, so a macOS or BSD host could
+# not run this one either.
 reserved.foreign = []
 
 # phase-479 W5 (RFC-0102 D5) — the runtime-logger arenas. MEASURED as a host board: no

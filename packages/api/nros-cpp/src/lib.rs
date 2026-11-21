@@ -10010,6 +10010,10 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
         }
     }
     crate::cpp_info!("nros: multi-level run — {n_sched_tasks} level(s) over one executor");
+    // Every level is up and has adopted its priority; the transport tasks
+    // were created at session open. One reader, shared with the Rust board.
+    #[cfg(target_os = "linux")]
+    ::nros::task_census::report(|line| crate::cpp_info!("{line}"));
 
     // The adopted level's loop, bounded as the sched task runner's.
     let bound_ms: u64 = entry_spin_ms();
