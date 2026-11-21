@@ -750,6 +750,22 @@ zephyr-conf-capability-refusal:
     fi
     ./tests/zephyr-conf-capability-refusal-tests.sh
 
+# issue 2785 -- Zephyr puts the socket service thread's poll array (one
+# k_poll_event per poll entry) on that thread's stack; a stack too small for it
+# overflowed into .bss with no message. The module refuses that configure. A
+# probe project that includes the module file.
+[group('needs:cmake')]
+zephyr-socket-service-stack:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-socket-service-stack "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/zephyr-socket-service-stack-tests.sh
+
 # zenoh's POSIX mutex/cond pools are DERIVED: the module's pre-Kconfig hook
 # writes their Kconfig defaults from the counts `nros configure` resolved
 # (zephyr/cmake/nros_zpico_pthread_pools.cmake), and the build's refusal takes
