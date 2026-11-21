@@ -1,0 +1,21 @@
+# Issue 2702 verdict fixture: two C images on ONE cmake coordinate (both
+# `linux`), one of which states its own `node_interfaces`. The shared
+# configure builds one runtime with the `[system]` features, so the image's
+# own choice is not carried, and the build must refuse it rather than ignore it.
+[system]
+name = "image_features_probe"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "probe_pkg"
+class = "probe_pkg::Probe"
+name = "probe"
+
+[image.plain]
+board = "linux"
+
+[image.slim]
+board = "linux"
+node_interfaces = "none"
