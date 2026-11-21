@@ -230,6 +230,31 @@ static void *nros_posix_task_trampoline(void *raw) {
     return raw;
 }
 
+#if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 12))
+#if !defined(__USE_GNU)
+extern int pthread_setname_np(pthread_t thread, const char *name);
+#endif
+/* See the naming note in `nros_platform_task_init`. */
+static void nros_posix_name_thread(pthread_t t, const char *name) {
+    if (name == NULL || name[0] == '\0') {
+        return;
+    }
+    char comm[16];
+    size_t n = strlen(name);
+    if (n > sizeof(comm) - 1) {
+        n = sizeof(comm) - 1;
+    }
+    memcpy(comm, name, n);
+    comm[n] = '\0';
+    (void) pthread_setname_np(t, comm);
+}
+#else
+static void nros_posix_name_thread(pthread_t t, const char *name) {
+    (void) t;
+    (void) name; /* no portable way to name a thread */
+}
+#endif
+
 void nros_platform_task_attr_init(nros_platform_task_attr_t *attr) {
     if (attr == NULL) {
         return;
@@ -468,21 +493,23 @@ int8_t nros_platform_task_init(void *task, void *attr,
         }
     }
 
-    /* Naming is best-effort: it reaches crash dumps and `ps`, and a kernel that
-     * declines must not fail the spawn.
+    /* Naming is best-effort: it reaches crash dumps, `ps -L`, `top -H`, gdb's
+     * `info threads` and the boot thread census, and a kernel that declines
+     * must not fail the spawn.
      *
-     * Gated on `_GNU_SOURCE` rather than on the OS: `pthread_setname_np` is an
-     * extension, and this file deliberately compiles under `_POSIX_C_SOURCE`
-     * + `_DEFAULT_SOURCE`, which do not declare it. Testing the OS instead
-     * would compile to an implicit declaration — which is an ERROR here, not a
-     * warning — on exactly the platforms it was meant to help. */
-#ifdef _GNU_SOURCE
-    if (a != NULL && a->name != NULL) {
-        (void) pthread_setname_np(*t, a->name);
-    }
-#else
-    (void) 0; /* naming unavailable under this feature-test level */
-#endif
+     * glibc only, and keyed on the C LIBRARY, not the OS, as `sem_clockwait`
+     * below is: `pthread_setname_np` is a glibc extension (since 2.12) that its
+     * header declares only under `_GNU_SOURCE`, which this file deliberately
+     * does not define, so the prototype is supplied when the header withheld
+     * it. Gating on `_GNU_SOURCE` itself, as this did before, compiled the call
+     * out of every build in the tree, because none defines it. musl, NuttX and
+     * the BSDs keep their own spellings or none, and spawn unnamed, as before.
+     *
+     * The kernel keeps 15 bytes of name plus the NUL (`TASK_COMM_LEN`), and
+     * glibc REFUSES a longer one with ERANGE rather than cutting it, so a long
+     * name would leave the thread unnamed. It is cut here instead: callers
+     * should put what tells two threads apart first. */
+    nros_posix_name_thread(*t, a != NULL ? a->name : NULL);
 
     /* Reference the trampoline so the compiler doesn't strip it; a
      * future signature change (e.g. argument repacking) will route
@@ -775,7 +802,8 @@ static void nros_posix_wake_pipe_byte(nros_wake_t *wp) {
  * clock the executor's arithmetic never sees. `sem_clockwait` takes the clock
  * explicitly; it is POSIX.1-2024, NuttX has it, and glibc has had it since
  * 2.30 — but glibc declares it only under `_GNU_SOURCE`, which this file
- * deliberately does not define (see the `pthread_setname_np` note below), so
+ * deliberately does not define (the `pthread_setname_np` note in
+ * `nros_platform_task_init` is the same case), so
  * the prototype is supplied here when the header withheld it.
  *
  * Anything else (musl today) keeps `sem_timedwait` on a REALTIME deadline

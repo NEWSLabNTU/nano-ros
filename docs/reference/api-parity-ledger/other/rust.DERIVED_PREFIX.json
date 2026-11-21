@@ -1,0 +1,5 @@
+{
+  "key": "rust:DERIVED_PREFIX",
+  "verdict": "extension",
+  "why": "`nros::thread_name::DERIVED_PREFIX` (`packages/api/nros/src/thread_name.rs`): the `derived-` prefix the priority derivation gives every sched task it synthesises, which `nros::thread_name::label` drops from a thread name. rclrs has no counterpart: it derives no priority levels."
+}

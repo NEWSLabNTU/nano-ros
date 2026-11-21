@@ -1,0 +1,5 @@
+{
+  "key": "rust:label",
+  "verdict": "extension",
+  "why": "`nros::thread_name::label` (`packages/api/nros/src/thread_name.rs`): the part of a sched task's name its thread is labelled with, the name less the priority derivation's `derived-` prefix. Every runner that spawns a sched task names its thread `nros-<label>`, so what tells two levels apart fits the 15 bytes Linux keeps of a thread name. rclrs has no counterpart: it spawns no threads of its own for priority levels."
+}
