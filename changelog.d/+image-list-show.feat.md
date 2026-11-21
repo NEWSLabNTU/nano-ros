@@ -1,0 +1,1 @@
+`nros image list` lists a workspace's images with the bringup, board, RMW and launch file each declares, and `nros image show <image>` adds what the build resolves for it: platform, entry package, profile and capabilities. Both take `--json`.

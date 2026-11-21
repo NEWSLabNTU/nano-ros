@@ -260,7 +260,27 @@ and sees it listed, with no CLI edit.
 
 ### W7 — images, and what an image will create
 
-- **Status:** OPEN
+- **Status:** OPEN (W7a done locally 2026-11-21, on top of W5a; W7b and
+  W7c open)
+- **W7a, `nros image list` / `show`:**
+  - `list` reads each bringup's `[image.*]` declarations (discover,
+    `collect_images`, `all_images`) and never plans, so it works before
+    anything is configured. Columns: image (bare, or `<bringup>:<id>` when
+    two bringups declare the id), bringup, board, RMW, launch file.
+  - `show <image>` adds what `plan_query` resolves, writing nothing:
+    platform, entry package, profile, capabilities, and the packages the
+    image builds when the plan states them.
+  - Both take `--json` (`nros.image.list.v1`, `nros.image.show.v1`). `show`
+    ends with a Book line, and an unknown name is refused with the nearest
+    ones.
+  - `image` joins the Workspace group of `nros --help`.
+- **W7b, open:** issue 2667's `nros image check <image> --no-alloc`. The
+  reader is `scripts/check-no-alloc-image.py`, 1,117 lines of Python using
+  `nm`, and a release ships no `scripts/`. So the reader moves into Rust, and
+  the L3 lane's `--tier heap-free` run calls the verb, keeping one
+  implementation.
+- **W7c, open:** `--nodes` / `--topics` from the plan, and the Tutorial
+  probe step that compares them with `ros2 node list` / `ros2 topic list`.
 
 `nros image list` prints the workspace's images and bringups (board, RMW,
 launch file). `nros image show <image>` adds its packages and, with

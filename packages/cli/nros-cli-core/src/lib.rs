@@ -393,6 +393,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Board(args) => cmd::board::run(args),
         cmd::Cmd::Rmw(args) => cmd::rmw::run(args),
         cmd::Cmd::Knob(args) => cmd::knob::run(args),
+        cmd::Cmd::Image(args) => cmd::image_verb::run(args),
         cmd::Cmd::Ws(args) => cmd::ws::run(args),
         cmd::Cmd::Dev(a) => cmd::dev::run_unlowered(a),
         cmd::Cmd::Version => cmd::version::run(),

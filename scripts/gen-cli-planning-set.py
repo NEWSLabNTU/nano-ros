@@ -94,6 +94,7 @@ LEAF_VERBS = {
     "cmd/explain.rs",
     "cmd/flash.rs",
     "cmd/graph.rs",
+    "cmd/image_verb.rs",
     "cmd/interface.rs",
     "cmd/knob.rs",
     "cmd/monitor.rs",
