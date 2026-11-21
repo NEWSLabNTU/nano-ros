@@ -43,7 +43,6 @@ manifest:
           - picolibc
           # Crypto
           - mbedtls
-          - tinycrypt
           # HALs — see `[zephyr_module.*]` for who needs each, and for the
           # five that used to sit here. phase-447 F1 / issues 1275, 1282.
           # None is left: `hal_espressif` went with issue 1282's decision that

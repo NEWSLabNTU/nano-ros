@@ -1645,7 +1645,12 @@ lines = ["3.7", "4.4"]
 why = "Zephyr's crypto fallback; pulled by the same net/TLS Kconfig closure"
 needed_by = ["native_sim", "mps2_an385"]
 approx_mb = 1
-lines = ["3.7", "4.4"]
+# 3.7 only: upstream Zephyr dropped the tinycrypt project from its west.yml
+# before v4.4.0 (`west list` in a v4.4.0 workspace has no such project, and
+# `west update tinycrypt` refuses it as unknown). Listing it on 4.4 made the
+# workspace-module preflight refuse every native_sim/mps2_an385 build on that
+# line for a module no 4.4 workspace can ever hold.
+lines = ["3.7"]
 
 [zephyr_module.mcuboot]
 # Its consumer is SYSBUILD, not a `#include` — which is why a grep for
