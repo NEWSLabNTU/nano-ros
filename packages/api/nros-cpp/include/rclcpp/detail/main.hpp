@@ -483,12 +483,12 @@ class LinuxBoard {
 extern "C" const char* nros_runtime_locator_override(void);
 
 #ifdef __ZEPHYR__
-// Acquire the wall-clock epoch (`[knobs.clock] source`) between
-// network-up and the first component. Defined in the Zephyr module's
-// `nros_platform_zephyr_shims.c`, which decides whether the image asked for
-// one; unconditional here for the reason it is unconditional in the sched-task
+// Resolve the wall-clock source (`[knobs.clock]`) after the components have
+// registered and before the first spin. Defined in the Zephyr module's
+// `nros_platform_zephyr_shims.c`, which decides what the image asked for;
+// unconditional here for the reason it is unconditional in the sched-task
 // entries (`zephyr_run_sched_tasks.c`, `entry_sched_tasks.rs`).
-extern "C" void nros_zephyr_epoch_acquire_configured(void);
+extern "C" void nros_clock_resolve_configured(void);
 #endif
 
 class ZephyrBoard {
@@ -518,14 +518,6 @@ class ZephyrBoard {
     static int32_t run_components(const char* locator, const char* session_name,
                                   const char* node_namespace, Setup&& setup) {
         nros_board_network_wait();
-#ifdef __ZEPHYR__
-        // The single-executor entry never made this call, so an
-        // image whose `clock.source` names sntp, built through the generated C++
-        // `run_components` entry booted with no epoch and stamped boot-relative
-        // time: only the SCHED-TASK entries acquired one. Same window as there:
-        // network up, no component constructed, nothing stamped yet.
-        nros_zephyr_epoch_acquire_configured();
-#endif
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
         // native_sim test parallelism: a per-test
@@ -545,6 +537,14 @@ class ZephyrBoard {
             (void)rclcpp::shutdown();
             return rc;
         }
+#ifdef __ZEPHYR__
+        // Every component has registered and nothing has spun, so nothing is
+        // stamped yet and a zenoh-hlc source has every subscription to hear
+        // on. The executor's timing then restarts, so the time the resolution
+        // took is owed to no timer.
+        nros_clock_resolve_configured();
+        (void)nros_cpp_executor_restart_timing(::rclcpp::global_handle());
+#endif
         int32_t sc = detail::component_spin_loop();
         (void)rclcpp::shutdown();
         return sc;

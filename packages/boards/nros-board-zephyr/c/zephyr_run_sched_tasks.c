@@ -56,7 +56,20 @@
  * the posix arch (native_sim) does not provide it at all. */
 extern uint32_t nros_zephyr_current_cpu(void);
 /* issue 0758 W4 — see zephyr/nros_platform_zephyr_shims.c. */
-extern void nros_zephyr_epoch_acquire_configured(void);
+/* RFC-0141 D1 — the clock gate (zephyr/nros_platform_zephyr_shims.c), shared
+ * with the Rust runner: no level spins before the wall clock resolves. */
+extern void nros_clock_gate_arm(uint32_t n_levels);
+extern void nros_clock_gate_setup_done(uint32_t level);
+extern int32_t nros_clock_gate_resolve(uint32_t setup_budget_ms);
+extern void nros_clock_gate_open_all(void);
+extern void nros_clock_gate_wait_open(void);
+extern int nros_cpp_executor_restart_timing(void* executor);
+
+/* The SETUP bound of the clock gate, per level: a level that has not finished
+ * registering by then fails the boot, naming it. Generous on purpose; a level's
+ * setup is entity declares, never a wait on a peer. The wall-clock resolution
+ * that follows is bounded separately, by the sources' own settle times. */
+#define NROS_CLOCK_GATE_SETUP_BUDGET_MS 30000u
 
 /* phase-8 W4 — callback tracing. The shim is an unconditional symbol whose
  * body is `#ifdef CONFIG_TRACING_CTF`; the setter is an unconditional export
@@ -547,6 +560,11 @@ static void* zephyr_sched_task(void* arg) {
     (void)zephyr_spawn_next_sched_task(ctx->scheduler, ctx->rest, ctx->n_rest, ctx->rest_storage,
                                  ctx->storage_stride, ctx->rest_task_memory, ctx->rest_backings);
 
+    /* RFC-0141 D1 — registered: hold at the first spin until boot has resolved
+     * the wall clock and restarted the executor's timing. */
+    nros_clock_gate_setup_done((uint32_t)ctx->level);
+    nros_clock_gate_wait_open();
+
     /* The worker's loop: each pass parks on the level's own wake object (the
      * lock released) until its band's next timer, an arrival in its band, or
      * the period, then runs its band's ready callbacks. */
@@ -945,19 +963,14 @@ static int32_t zephyr_run_sched_tasks(const char* locator, uint8_t domain_id, co
      * auto-init path; a board/app may provide a strong override). */
     NROS_BOARD_CALL_OPTIONAL_HOOK(nros_board_network_wait);
 
-    /* issue 0758 W4 — acquire the wall-clock epoch HERE, in the one window
-     * where both halves of the ordering hold: the network is up (the gate
-     * above just returned) and no component has constructed yet, so nothing
-     * has stamped a message. Acquiring earlier cannot reach a server;
-     * acquiring later means the first stamps carry boot-relative time and a
-     * validating peer rejects exactly the messages a system emits at startup.
-     *
-     * Unconditional on purpose — the shim decides. The Rust sched task arm
-     * (`entry_sched_tasks.rs`) makes the same call at the same point, and it cannot
-     * hold the `[knobs.clock]` decision because Kconfig knobs do not reach
-     * the cargo lane (issue 0460). One decision in C is the only shape in which
-     * the two arms cannot drift. */
-    nros_zephyr_epoch_acquire_configured();
+    /* RFC-0141 D1 — arm the clock gate before any setup. The wall clock is
+     * resolved after EVERY level has registered and before ANY spins (see
+     * the resolve below): nothing has stamped a message, and every level's
+     * subscriptions exist for a zenoh-hlc source to hear. The Rust sched task
+     * arm (`entry_sched_tasks.rs`) calls the same gate at the same points;
+     * the decision about sources lives in C because Kconfig knobs do not reach
+     * the cargo lane (issue 0460). */
+    nros_clock_gate_arm((uint32_t)n_sched_tasks);
 
     /* phase-8 W4 — install the CTF sink BEFORE the executor is opened, so the
      * registration events emitted as callbacks are added are not lost. A sink
@@ -1097,6 +1110,32 @@ static int32_t zephyr_run_sched_tasks(const char* locator, uint8_t domain_id, co
         nros_cpp_fini(boot_storage);
         return -1;
     }
+
+    /* RFC-0141 D1 — every level registers, THEN the clock resolves, THEN any
+     * level spins. A level that never finishes registering fails the boot by
+     * name (the setup bound); the resolution itself never does, its outcome is
+     * `epoch_failure`'s. The executor's timing restarts before the gate opens,
+     * so the wait is owed to no timer: a CatchUp timer would replay it and a
+     * Skip timer would count it as overruns. */
+    nros_clock_gate_setup_done((uint32_t)zephyr_sched_task_level(boot));
+    {
+        int32_t stuck = nros_clock_gate_resolve(NROS_CLOCK_GATE_SETUP_BUDGET_MS);
+        if (stuck >= 0) {
+            const char* sn2 = "?";
+            for (size_t i = 0; i < n_sched_tasks; i++) {
+                if ((int32_t)zephyr_sched_task_level(&sched_tasks[i]) == stuck &&
+                    sched_tasks[i].name != NULL) {
+                    sn2 = sched_tasks[i].name;
+                }
+            }
+            printk("nros: level %d (`%s`) did not finish its setup within %u ms: failing the "
+                   "boot\n",
+                   (int)stuck, sn2, (unsigned)NROS_CLOCK_GATE_SETUP_BUDGET_MS);
+            nros_zephyr_fail_boot();
+        }
+    }
+    (void)nros_cpp_executor_restart_timing(boot_storage);
+    nros_clock_gate_open_all();
 
     /* The boot thread runs sched_tasks[0] itself — adopt its declared RAW priority
      * (the spawned sched tasks already got theirs at k_thread_create; without this
