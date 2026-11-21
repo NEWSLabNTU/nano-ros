@@ -515,6 +515,7 @@ mod tests {
         std::fs::write(root.join("scripts/nros-stack-floor.py"), "").unwrap();
         std::fs::write(root.join("config/stack-floors.json"), "{}").unwrap();
         let mut p = ResolvedBuild {
+            launch_exec: None,
             qualified: "demo:b".into(),
             board: "b".into(),
             platform: "freertos".into(),
@@ -575,6 +576,7 @@ mod tests {
         std::fs::write(root.join("scripts/nros-stack-floor.py"), "").unwrap();
         std::fs::write(root.join("config/stack-floors.json"), "{}").unwrap();
         let image = |platform: &str| ResolvedBuild {
+            launch_exec: None,
             qualified: "demo:b".into(),
             board: "b".into(),
             platform: platform.into(),

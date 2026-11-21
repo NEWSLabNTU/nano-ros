@@ -322,6 +322,7 @@ mod tests {
 
     fn plan_with(capabilities: &[&str]) -> crate::cmd::build::ResolvedBuild {
         crate::cmd::build::ResolvedBuild {
+            launch_exec: None,
             qualified: "demo_bringup:zephyr".to_string(),
             board: "zephyr".to_string(),
             platform: "zephyr".to_string(),

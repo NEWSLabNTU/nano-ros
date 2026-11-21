@@ -238,6 +238,8 @@ fn plans(args: &Args) -> (RunPlan, Option<String>) {
             tables: &one.run_tables,
             bench: &bench,
             invocation: &invocation,
+            // phase-583 W2 -- the launch's choice of program, as `nros run`'s.
+            exec: one.launch_exec.as_deref(),
         },
     )
     .unwrap_or_else(|e| unresolved(&e.to_string()));

@@ -4162,6 +4162,19 @@ bringup = "src/native_c_talker_bringup"
 image = "linux"
 build_subdir = "build/posix-zenoh-linux-native_c_talker_bringup/cmake"
 
+# phase-583 W2 (RFC-0071 D20) -- an owned entry that builds TWO programs.
+# `tests/owned_entry_run_verb.rs` resolves each with `nros run --exec`, and
+# checks that naming none is refused, listing both.
+[[workspace_fixture]]
+id = "linux-c-zenoh-two-programs"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/two_programs_ws"
+bringup = "src/two_programs_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-two_programs_bringup/cmake"
+
 [[workspace_fixture]]
 id = "linux-c-xrce-talker"
 platform = "linux"
