@@ -11,6 +11,7 @@ use clap::Subcommand;
 
 pub mod bench;
 pub mod board;
+pub mod board_evidence;
 pub mod board_facts;
 pub mod board_new;
 pub mod board_support;
