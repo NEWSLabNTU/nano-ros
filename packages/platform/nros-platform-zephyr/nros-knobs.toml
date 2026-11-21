@@ -56,6 +56,13 @@ lifecycle gets 112 KiB: the 64 KiB default plus the 46,848-byte
 param_services peak above. Since the stock node interfaces are on in
 every image, 192 KiB there put 128 KiB of unused heap on every
 C/C++ zenoh image, and a nucleo_f767zi serial talker no longer fit.
+That 46,848 is the ONE-NODE case: zephyr_cpp_params serves the
+parameter services on one node. The cost is per NODE, since each of a
+node's six parameter services owns a 2 x PARAM_SERVICE_BUFFER_SIZE
+buffer pair. So an image serving them on several nodes does not fit
+112 KiB: the four-node derived-sched-tasks image ran it dry at boot.
+Until the floor is derived from the image's node count,
+a multi-node C or C++ image states its measured heap.
 
 A CYCLONE image gets 1 MiB: ddsrt's whole heap lands here
 since the Zephyr road compiles the platform funnel (heap/nros/heap.c),
