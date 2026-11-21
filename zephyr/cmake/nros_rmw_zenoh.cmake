@@ -278,6 +278,21 @@ function(_nros_configure_zenoh_feature config)
     endif()
 endfunction()
 
+# A single-thread zenoh-pico build reads the link only inside a spin, and on
+# Zephyr nothing wakes the executor's park when a frame arrives (no board here
+# states a receive-interrupt wake, and zsock has no arrival callback). Its
+# session therefore states no readiness form, and the runtime refuses to open
+# an executor over it, so the image would build and then panic at boot. Refuse
+# it here instead, while the cause can still be named.
+if(NOT CONFIG_NROS_ZENOH_MULTI_THREAD)
+    message(FATAL_ERROR
+        "CONFIG_NROS_ZENOH_MULTI_THREAD=n is not supported on Zephyr. A "
+        "single-thread zenoh session reads its link only inside a spin, and "
+        "nothing on Zephyr wakes the executor when a frame arrives, so the "
+        "session states no readiness form and the executor refuses to open "
+        "over it at boot. Leave CONFIG_NROS_ZENOH_MULTI_THREAD on (the "
+        "default).")
+endif()
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_MULTI_THREAD)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_PUBLICATION)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_SUBSCRIPTION)

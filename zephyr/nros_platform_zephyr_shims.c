@@ -204,25 +204,15 @@ int8_t nros_zephyr_exec_unlock(void* m) {
 extern int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms);
 #endif
 
-/* The pump zenoh-pico hands over when its executor runs only inside a spin
- * (ZPICO_DRIVE_CALLER, `zpico_clock_pump`): NULL in a build with its own read
- * thread, or with no zenoh at all. */
-static void (*nros_clock_pump)(void);
-
-void nros_clock_set_pump(void (*pump)(void)) {
-    nros_clock_pump = pump;
-}
-
 /* zenoh-hlc: wait up to `settle_ms` for the first timestamped sample to
- * install the offset. With a pump, drive the link between checks, because no
- * level spins yet; without one the session's read thread delivers it. */
+ * install the offset. The session's read thread delivers it: no level spins
+ * yet, and every Zephyr zenoh image has that thread, because a single-thread
+ * zenoh build is refused at configure time (`zephyr/cmake/nros_rmw_zenoh.cmake`):
+ * its session could state no readiness form, so no executor could open over it. */
 static bool nros_zephyr_clock_wait_hlc(uint32_t settle_ms) {
     const uint64_t start_ns = nros_platform_clock_ns();
     const uint64_t budget_ns = (uint64_t)settle_ms * 1000000ULL;
     for (;;) {
-        if (nros_clock_pump != NULL) {
-            nros_clock_pump();
-        }
         if (nros_clock_epoch_offset_us() != 0ULL) {
             return true;
         }
