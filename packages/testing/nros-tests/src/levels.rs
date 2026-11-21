@@ -145,20 +145,16 @@ pub fn load_ticks(console: &str, node: &str) -> Vec<LoadTick> {
         .collect()
 }
 
-/// phase-162 W1 -- did the kernel throttle a level burning `cpu_us` per
-/// release under a `budget_us` per `period_us` reservation? A throttled burn
-/// cannot finish in less than `cpu_us / budget_us` periods, less one, of wall
-/// time, and it waits off the CPU for a refill. Judged on every release after
-/// the first, whose reservation may start mid-period.
+/// phase-162 W1 -- did the kernel throttle a level burning more CPU per
+/// release than its `budget_us` per `period_us` reservation? A throttled
+/// release waits off the CPU for a refill, the rest of a period; a release the
+/// kernel never throttles never leaves the CPU. Every release after the first
+/// (whose reservation may start mid-period) must wait for at least a quarter
+/// of a refill.
 ///
-/// Issue 2066 -- the wall time is judged on the MEAN over the releases, not on
-/// each one. The kernel enforces a SCHED_DEADLINE budget at the scheduler tick
-/// unless `HRTICK_DL` is on (it is off by default), so one slot can overrun to
-/// the next tick. On a HZ=250 host with `CAP_SYS_NICE`, releases of 10 ms at
-/// 2 ms per 10 ms took 14, 22, 30 or 40 ms (mean 26-32 ms over seven runs):
-/// one in seven runs had a 14 ms release, every release was off the CPU for at
-/// least 3.9 ms. Each release must still wait off the CPU for a quarter of a
-/// refill: an unthrottled burn never leaves it.
+/// Nothing here judges wall time. Issue 2066 judged its MEAN; issue 2797
+/// retired that, because no wall-time floor holds once the clock decides how
+/// many refills a burn needs ([`deadline_burn_margin`]).
 pub fn throttle_verdict(ticks: &[LoadTick], budget_us: u64, period_us: u64) -> Result<(), String> {
     let judged: Vec<&LoadTick> = ticks.iter().skip(1).collect();
     if judged.len() < 3 {
@@ -168,27 +164,69 @@ pub fn throttle_verdict(ticks: &[LoadTick], budget_us: u64, period_us: u64) -> R
         ));
     }
     let wait_us = period_us - budget_us;
-    for t in &judged {
-        if t.max_gap_us < wait_us / 4 {
-            return Err(format!(
-                "release {} was never off the CPU for a quarter of a replenishment \
-                 wait (longest {} us, wait {} us): it did not throttle",
-                t.tick, t.max_gap_us, wait_us
-            ));
-        }
-    }
-    let cpu_us = judged.iter().map(|t| t.cpu_us).sum::<u64>() / judged.len() as u64;
-    let wall_us = judged.iter().map(|t| t.wall_us).sum::<u64>() / judged.len() as u64;
-    let periods = cpu_us.div_ceil(budget_us).saturating_sub(1);
-    if wall_us < periods * period_us / 2 {
+    let free: Vec<&&LoadTick> = judged
+        .iter()
+        .filter(|t| t.max_gap_us < wait_us / 4)
+        .collect();
+    if let Some(first) = free.first() {
         return Err(format!(
-            "releases burned {cpu_us} us of CPU in a mean {wall_us} us of wall time; \
-             under {budget_us} us per {period_us} us the kernel allows no less than \
-             ~{} us: it did not throttle",
-            periods * period_us
+            "{} of {} releases were never off the CPU for a quarter of a replenishment \
+             wait ({} us), e.g. release {} (longest {} us): it did not throttle",
+            free.len(),
+            judged.len(),
+            wait_us,
+            first.tick,
+            first.max_gap_us
         ));
     }
     Ok(())
+}
+
+/// Issue 2797 -- can a burn of `burn_us` escape a `budget_us` reservation on a
+/// CPU whose clock ranges from `min_khz` to `max_khz`?
+///
+/// Linux charges a SCHED_DEADLINE budget as WORK, not CPU time: without
+/// `SCHED_FLAG_RECLAIM`, `update_curr_dl_se` scales every slice it charges by
+/// `arch_scale_freq_capacity`, the CPU's current clock against its maximum. So
+/// a burn is charged at least `burn_us * min_khz / max_khz`. A release reaches
+/// at most two budgets without waiting: what is left of the current one, plus
+/// one immediate refill when its deadline has already passed (the kernel's
+/// "lagging" replenishment). A burn charged more than that throttles at any
+/// clock; one charged less can run through on a clocked-down CPU.
+///
+/// Measured on a 24-CPU host (0.8 to 6.8 GHz, the `powersave` governor) with a
+/// 10 ms burn against 2 ms per 10 ms, reading the thread's own
+/// `se.sum_exec_runtime`, `dl.runtime`, `dl.deadline` and its CPU's
+/// `scaling_cur_freq` around each release. Over 224 releases, the 52 that never
+/// left the CPU ran at a median 2.27 GHz and were charged a median 0.26 of their
+/// CPU time. The ones that throttled ran at 4.70 GHz and were charged 0.71. The
+/// lowest charge was 0.13, the hardware's own floor (0.118).
+///
+/// `Err` names the burn the host needs; `min_khz == 0` (no cpufreq: no
+/// frequency invariance either) is a clock that never moves.
+pub fn deadline_burn_margin(
+    burn_us: u64,
+    budget_us: u64,
+    min_khz: u64,
+    max_khz: u64,
+) -> Result<(), String> {
+    let (min_khz, max_khz) = if min_khz == 0 || max_khz == 0 {
+        (1, 1)
+    } else {
+        (min_khz, max_khz)
+    };
+    // burn * min / max > 2 * budget, without the division.
+    if burn_us * min_khz > 2 * budget_us * max_khz {
+        Ok(())
+    } else {
+        Err(format!(
+            "a {burn_us} us burn is charged as little as {} us of a {budget_us} us budget \
+             on a CPU clocked from {min_khz} to {max_khz} kHz, which two budgets cover, so \
+             the kernel may never throttle it: the burn must exceed {} us",
+            burn_us * min_khz / max_khz,
+            2 * budget_us * max_khz / min_khz
+        ))
+    }
 }
 
 /// How many times the one-level negative control's miss RATE the S1 run may
@@ -334,6 +372,21 @@ mod tests {
     }
 
     #[test]
+    fn a_burn_must_outrun_two_budgets_at_the_lowest_clock() {
+        // The measured host: 0.8 to 6.8 GHz. 10 ms escapes a 2 ms budget (it
+        // is charged as little as 1.18 ms), 80 ms cannot (9.4 ms).
+        let err = deadline_burn_margin(10_000, 2_000, 800_000, 6_800_000).unwrap_err();
+        assert!(err.contains("must exceed 34000 us"), "{err}");
+        assert_eq!(
+            deadline_burn_margin(80_000, 2_000, 800_000, 6_800_000),
+            Ok(())
+        );
+        // No cpufreq: a fixed clock, so anything past two budgets throttles.
+        assert_eq!(deadline_burn_margin(4_001, 2_000, 0, 0), Ok(()));
+        assert!(deadline_burn_margin(4_000, 2_000, 0, 0).is_err());
+    }
+
+    #[test]
     fn the_throttle_verdict_tells_a_throttled_burn_from_a_free_one() {
         // 10 ms of CPU at 2 ms per 10 ms: four refills, ~40 ms of wall time,
         // and 8 ms waits between budgets.
@@ -349,9 +402,24 @@ mod tests {
         // Long enough, but never off the CPU for a refill wait.
         let preempted: Vec<LoadTick> = (0..5).map(|i| tick(i, 41_000, 600)).collect();
         assert!(throttle_verdict(&preempted, 2_000, 10_000).is_err());
-        assert!(throttle_verdict(&throttled[..2], 2_000, 10_000).is_err());
+        // Issue 2797 -- one free release in thirty is a release that did not
+        // throttle: the burn is sized so that none can (`deadline_burn_margin`).
+        let one_free: Vec<LoadTick> = (0..30)
+            .map(|i| {
+                if i == 13 {
+                    tick(i, 11_000, 1_000)
+                } else {
+                    tick(i, 35_000, 8_000)
+                }
+            })
+            .collect();
+        assert!(
+            throttle_verdict(&one_free, 2_000, 10_000)
+                .unwrap_err()
+                .contains("1 of 29 releases")
+        );
         // Issue 2066 -- a tick-enforced kernel (HZ=250): one release in ten
-        // overruns to 14 ms, the mean holds.
+        // overruns to 14 ms.
         let ticked: Vec<LoadTick> = (0..10)
             .map(|i| {
                 if i == 6 {
@@ -362,12 +430,9 @@ mod tests {
             })
             .collect();
         assert_eq!(throttle_verdict(&ticked, 2_000, 10_000), Ok(()));
-        // Off the CPU now and then, but too briefly on the whole.
-        let mostly_free: Vec<LoadTick> = (0..10).map(|i| tick(i, 14_000, 3_900)).collect();
-        assert!(
-            throttle_verdict(&mostly_free, 2_000, 10_000)
-                .unwrap_err()
-                .contains("mean")
-        );
+        // Issue 2797 -- one refill per release: a throttle, however short the
+        // wall time.
+        let one_refill: Vec<LoadTick> = (0..10).map(|i| tick(i, 14_000, 3_900)).collect();
+        assert_eq!(throttle_verdict(&one_refill, 2_000, 10_000), Ok(()));
     }
 }
