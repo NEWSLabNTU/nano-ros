@@ -56,9 +56,10 @@ if [ -z "$zephyr_base" ] || [ ! -f "$zephyr_base/west.yml" ]; then
     exit 1
 fi
 
-# `<name>\t<url>\t<revision>` from the Zephyr tree's own manifest: the
+# `<name> <url> <revision>` from the Zephyr tree's own manifest: the
 # project's remote url-base (or the manifest default) + `repo-path` or name.
-read -r name url rev < <(python3 - "$zephyr_base/west.yml" "$module" <<'PY'
+# A command substitution, so the reader's exit status is the assignment's.
+project="$(python3 - "$zephyr_base/west.yml" "$module" <<'PY'
 import sys
 try:
     import yaml
@@ -80,10 +81,11 @@ for p in doc.get("projects", []):
 else:
     sys.exit(f"fetch-job-module: {want} is not a project of {sys.argv[1]}")
 PY
-)
+)" || exit 1
+read -r name url rev <<< "$project"
 [ -n "${rev:-}" ] || exit 1
 
-if [ -d "$dest/.git" ] && [ "$(git -C "$dest" rev-parse HEAD 2>/dev/null)" = "$rev" ]; then
+if [ -e "$dest/.git" ] && [ "$(git -C "$dest" rev-parse HEAD 2>/dev/null)" = "$rev" ]; then
     echo "fetch-job-module: $name already at $rev in $dest" >&2
     printf '%s\n' "$dest"
     exit 0
@@ -96,11 +98,12 @@ git -C "$dest" init -q
 git -C "$dest" remote add origin "$url"
 excludes="${SPARSE_EXCLUDES[$name]:-}"
 if [ -n "$excludes" ]; then
+    patterns=('/*')
+    for d in $excludes; do patterns+=("!/$d/"); done
+    # `init --no-cone` first: git before 2.35 reads a `set --no-cone` flag
+    # as one more pattern.
     git -C "$dest" sparse-checkout init --no-cone
-    {
-        echo '/*'
-        for d in $excludes; do echo "!/$d/"; done
-    } > "$dest/.git/info/sparse-checkout"
+    git -C "$dest" sparse-checkout set "${patterns[@]}"
 fi
 git -C "$dest" fetch -q --depth 1 --filter=blob:none origin "$rev"
 git -C "$dest" -c advice.detachedHead=false checkout -q FETCH_HEAD
