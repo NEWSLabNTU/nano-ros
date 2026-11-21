@@ -340,6 +340,10 @@ pub struct QemuProcess {
     cmdline: String,
     /// The plan directory, which must outlive the process.
     _run: Box<crate::run::HostRun>,
+    /// Issue 2816 — output a satisfied wait read past what satisfied it,
+    /// replayed at the start of every later read of this guest
+    /// ([`crate::process::satisfied_prefix_len`]).
+    carry: String,
 }
 
 /// Render a spawned command as a line a human can paste into a shell.
@@ -401,6 +405,7 @@ impl QemuProcess {
             handle,
             cmdline: run.image_line.clone(),
             _run: Box::new(run),
+            carry: String::new(),
         })
     }
 
@@ -608,7 +613,7 @@ impl QemuProcess {
     /// The combined stdout/stderr output
     pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
         let start = Instant::now();
-        let mut output = String::new();
+        let mut output = std::mem::take(&mut self.carry);
 
         // Phase 88.16.A — drain stderr alongside stdout so logging
         // records (which route through `hstderr()` on bare-metal
@@ -818,7 +823,7 @@ impl QemuProcess {
         timeout: Duration,
     ) -> TestResult<String> {
         let start = Instant::now();
-        let mut output = String::new();
+        let mut output = std::mem::take(&mut self.carry);
 
         let mut stdout = self
             .handle
@@ -864,6 +869,8 @@ impl QemuProcess {
                         // / `kill` calls see them.
                         self.handle.stdout = Some(stdout);
                         self.handle.stderr = stderr;
+                        let cut = crate::process::satisfied_prefix_len(&output, &done);
+                        crate::process::keep_tail(&mut self.carry, &mut output, cut);
                         return Ok(output);
                     }
                     if !progressed {
@@ -882,7 +889,7 @@ impl QemuProcess {
     /// its deadline, so a test that needs to read between two phases of a
     /// running guest reads with this.
     pub fn read_pending(&mut self) -> String {
-        let mut output = String::new();
+        let mut output = std::mem::take(&mut self.carry);
         let mut buffer = [0u8; 4096];
         if let Some(mut stdout) = self.handle.stdout.take() {
             #[cfg(unix)]
