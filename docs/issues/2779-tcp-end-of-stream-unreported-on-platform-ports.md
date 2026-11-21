@@ -115,3 +115,44 @@ Measured so far: the POSIX port's `c_port_posix_net` test (data, then EOF,
 from `read` and `read_exact`), and a FreeRTOS fixture build that recompiles
 `tcp_lwip.c`. The two-router re-open ("How to confirm each port") is not yet
 run on any of these targets. The closing condition is unchanged.
+
+## Measured per target, 2026-11-21 (still open: threadx-linux)
+
+The two-router reopen, as a cell on each target:
+
+1. Wait for one sample.
+2. SIGKILL the router, so no zenoh CLOSE reaches the clients.
+3. Keep it down 5 s, then restart it on the same port.
+4. Wait up to 60 s for a sample.
+
+The sequence is `nros_tests::router_outage`. The cells are
+`zephyr::test_zephyr_listener_reopens_after_its_router_restarts`,
+`rtos_e2e::test_rtos_listener_reopens_after_its_router_restarts` (FreeRTOS,
+threadx-linux) and
+`emulator::test_qemu_bsp_listener_reopens_after_its_router_restarts` (bare
+metal). Each negative control rebuilt the image without that target's half of
+the fix; its TCP read was checked in the binary with objdump.
+
+| target | with the fix | without it | reopen after restart |
+| --- | --- | --- | --- |
+| Zephyr native_sim (`tcp_zephyr.c`) | pass (newslab 241) | fail, zenoh-pico at `e0b8077c` | 12.4 s cell |
+| FreeRTOS QEMU (`tcp_lwip.c`) | 6 of 6 | 0 of 3, `tcp_lwip.c` at `e0b8077c` | 0.8 to 2.1 s |
+| bare metal (`nros-smoltcp`) | 5 of 5 | 0 of 3, before the stale-socket fix below | 1.8 to 1.9 s |
+| threadx-linux (`nros_platform_tcp_read`) | **4 of 5** | 0 of 3, `net.c` before the fix | 1.8 s |
+
+**Bare metal needed a second fix.** With the end-of-stream read in place,
+zenoh-pico closed the session and reopened, but no SYN reached the router. The
+router's `zenoh_transport=debug` log showed no client connect in the 60 s.
+`SmoltcpBridge::tcp_close` freed the slot and left its smoltcp socket in
+CloseWait. The reopen got the same slot, and the bridge dialled only from
+Closed. It now aborts a socket still holding the slot's previous connection
+before it dials.
+
+**threadx-linux is not counted as passing.** In the red run the talker, not the
+listener, exits with status 1 and no message at the outage. That is issue 2799,
+a separate defect; it also happens in every unfixed run. This issue closes when
+the threadx-linux cell passes 10 of 10 with 2799 fixed.
+
+The `just` fixture path served stale ThreadX images after a C-port edit (issue
+2798, fixed in #4525). Every row above was built either outside the rustc
+wrapper or with that fix in place.
