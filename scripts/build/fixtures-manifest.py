@@ -568,8 +568,7 @@ def west_compile_check_rmw(entry):
         bringup, _, image = nros_image.partition(":")
         sys_toml = SCRIPT_ROOT / entry.get("dir", "") / "src" / bringup / "system.toml"
         if sys_toml.is_file():
-            with open(sys_toml, "rb") as f:
-                doc = tomllib.load(f)
+            doc = _system_toml.load(sys_toml)
             for table in (
                 (doc.get("image") or {}).get(image) or {},
                 doc.get("image_defaults") or {},
