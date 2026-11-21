@@ -341,6 +341,13 @@ in the order below.
   - RFC-0071 D20's status line moves to Implemented.
 - **Acceptance:** `just book` builds, and `just probe` blocks (where a
   chapter has them) run.
+- **Draft (2026-11-22, local until W3 lands).** "Port a C++ node" gains
+  "Several programs in one package": each `nano_ros_add_executable` is a
+  program, `nros run --exec`, the launch's `exec`, the foreign-package
+  refusal, one firmware per program on a board, and the two limits (Zephyr's
+  one program per package; a census-sized board refusing several until the
+  census fold lands). `just book` builds. RFC-0071 D20's status line moves to
+  Implemented only after W4 and the census fold.
 
 ## Not in this phase
 

@@ -196,6 +196,45 @@ ament_target_dependencies(minimal_publisher rclcpp)
 ament_auto_package()
 ```
 
+## Several programs in one package
+
+An ament package often builds more than one executable, and a ported one
+keeps them. Each `nano_ros_add_executable` (or `ament_auto_add_executable`)
+is its own program:
+
+```cmake
+nano_ros_add_executable(talker src/talker.cpp ROS2_MAIN)
+nano_ros_add_executable(listener src/listener.cpp ROS2_MAIN)
+```
+
+`nros build` builds them all. As with `ros2 run <pkg> <exec>`, you choose
+which one runs when you run the image:
+`nros run my_bringup:linux --exec listener`. With several programs and no `--exec`, `nros run` refuses and lists them. A
+bringup can also choose the program in its launch file, by naming the
+package and the executable:
+
+```xml
+<launch>
+  <node pkg="my_pkg" exec="listener" name="listener"/>
+</launch>
+```
+
+`nros run` then takes that program with no `--exec`. Every node in such a
+launch file must name one of the image's own packages: nothing else in that
+bringup is built, so a node from any other package is refused.
+
+On a board, each program is its own firmware, and each links its own copy of
+the kernel and the network stack, so two programs cost two images' flash.
+Two limits apply for now:
+
+- **Zephyr** builds one program per package, because a west build is one
+  Zephyr image. A second program fails to link (`multiple definition of
+  'main'`); give it a package of its own.
+- **A board sized by a census of its program** (a cross board, for a package
+  whose bringup declares no components) refuses a package with several
+  programs, because one census counts one program. Build one program per
+  package there.
+
 ## What still needs an edit
 
 - **Exceptions.** Guard a `throw` with `#if defined(__cpp_exceptions)` and
