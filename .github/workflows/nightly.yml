@@ -63,9 +63,6 @@ permissions:
   packages: read
 
 env:
-  # RFC-0114 D13.1 (phase-585 W2) -- where each test's evidence ledger goes;
-  # the junit upload carries it to the `board-results` job.
-  NROS_TEST_EVIDENCE_DIR: ${{ github.workspace }}/target/nros-evidence
   # Zephyr jobs build only the zenoh examples — skip the heavy Micro-XRCE-DDS
   # Agent (Fast-DDS superbuild) `just setup zephyr` builds for XRCE runtime tests.
   NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
@@ -364,6 +361,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # RFC-0114 D13.1 (phase-585 W2) -- where this job's tests write their
+      # evidence ledger. From `$GITHUB_WORKSPACE` in the shell, because the job
+      # runs in a container and `${{ github.workspace }}` is the HOST path.
+      - name: Point the evidence ledger at the uploaded tree
+        run: echo "NROS_TEST_EVIDENCE_DIR=$GITHUB_WORKSPACE/target/nros-evidence" >> "$GITHUB_ENV"
+
       # RESTORE here, SAVE right after "Build nros CLI from
       # packages/cli/ (Phase 218)" below — deliberately split.
       # `actions/cache` saves in a POST step, at job end; that step's
@@ -639,6 +642,12 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+
+      # RFC-0114 D13.1 (phase-585 W2) -- where this job's tests write their
+      # evidence ledger. From `$GITHUB_WORKSPACE` in the shell, because the job
+      # runs in a container and `${{ github.workspace }}` is the HOST path.
+      - name: Point the evidence ledger at the uploaded tree
+        run: echo "NROS_TEST_EVIDENCE_DIR=$GITHUB_WORKSPACE/target/nros-evidence" >> "$GITHUB_ENV"
 
       - name: Restore CLI build cache (Phase 218)
         id: cli-cache
