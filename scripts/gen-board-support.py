@@ -177,18 +177,20 @@ class Registry:
                                        board_registry.DEFAULT_STALE_DAYS)
         data = json.dumps([self.doc, self.cells_doc, self.twins], sort_keys=True).encode()
         self.digest = hashlib.sha256(data).hexdigest()[:16]
-        fixtures = (root / FIXTURES).read_text()
-        self.fixture_boards = set(re.findall(r'NROS_BOARD\s*=\s*"([^"]+)"', fixtures))
+        self.fixture_boards = board_registry.fixture_nros_boards((root / FIXTURES).read_text())
+        # Issue 2811 -- the west board ids Zephyr fixtures build.
+        self.fixture_west_boards = board_registry.fixture_west_boards(
+            board_registry.load(root / FIXTURES))
+        self.built_platforms = {c["at"][0] for c in self.cells
+                                if c["status"].startswith(("Runtime", "BuildOnly"))}
 
     def cells_for(self, plat: str) -> list[dict]:
         return [c for c in self.cells if c["at"][0] == plat]
 
     def built(self, row: dict) -> bool:
-        plat = row.get("matrix_platform")
-        if plat and any(c["status"].startswith(("Runtime", "BuildOnly"))
-                        for c in self.cells_for(plat)):
-            return True
-        return (shared_board_key(row) or board_registry.board_name(row)) in self.fixture_boards
+        return board_registry.row_built(
+            row, built_platforms=self.built_platforms, nros_boards=self.fixture_boards,
+            west_boards=self.fixture_west_boards, shared=_SHARED, index=self.index)
 
     # No clock for the COMMITTED views: a tracked file must not change on a day
     # nobody edited anything, or the gate turns red for every pull request on

@@ -104,6 +104,18 @@ rmw = "cyclonedds"
 board = "mps3-an536-freertos"
 rmw = "cyclonedds"
 
+# Issue 2811 -- the S32Z270 RTU0 Cortex-R52 on Zephyr, link only: no emulator
+# models the SoC. The same C++ Cyclone talker + listener as the FreeRTOS
+# S32Z270 image above, on the board's Zephyr descriptor. Built by the
+# `west_s32z270_rtu0_zephyr` compile-check row, whose job fetches `hal_nxp`.
+# `prj.conf` is listed although Zephyr reads it as CONF_FILE, for the reason
+# realtime-cpp's `[image.fvp]` states: it must land AFTER the board package's
+# `CONFIG_RUST=y`.
+[image.s32z270_rtu0]
+board = "s32z270-rtu0-zephyr"
+rmw = "cyclonedds"
+os_config = ["prj.conf", "prj-cyclonedds.conf"]
+
 [image.linux]
 board = "linux"
 # The entry this replaces carried `PANIC platform`; none of its siblings did.

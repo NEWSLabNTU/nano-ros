@@ -21,6 +21,7 @@ the profile is added by the caller; word-split <cargo-args> into an argv array.
 """
 
 import argparse
+import os
 import functools
 import re
 import subprocess
@@ -195,6 +196,42 @@ def load_compile_check_fixtures(path):
         return tomllib.load(f).get("compile_check_fixture", [])
 
 
+# Issue 2811 -- a `west-*` row may need a Zephyr module that the west
+# allowlist deliberately leaves out (`[zephyr_module.<name>] lines = []` in
+# nros-sdk-index.toml: `hal_nxp` is 1.3 GB, and no fresh workspace pays for
+# it). The row says so with `zephyr_modules = ["<name>", ...]`, and a run
+# SUPPLIES each one as `<name>=<dir>` in NROS_ZEPHYR_JOB_MODULES: the job that
+# fetches it (`just zephyr build-module-fixtures`). Until a run supplies all of
+# them the row is in no lane, the build's or the staleness probe's, the way a
+# row is in no lane whose platform the lane does not hold: one rule, read by
+# every listing, so build and probe cannot disagree.
+JOB_MODULES_ENV = "NROS_ZEPHYR_JOB_MODULES"
+
+
+def job_modules():
+    """`{name: dir}` from NROS_ZEPHYR_JOB_MODULES (`name=dir` words)."""
+    out = {}
+    for word in os.environ.get(JOB_MODULES_ENV, "").split():
+        name, sep, d = word.partition("=")
+        if sep and name and d:
+            out[name] = d
+    return out
+
+
+def compile_check_modules_supplied(entry):
+    """Does this run supply every module the row's `zephyr_modules` names?"""
+    have = job_modules()
+    return all(m in have for m in entry.get("zephyr_modules", []))
+
+
+@functools.lru_cache(maxsize=None)
+def _index_zephyr_modules():
+    """`{name: lines}` of `[zephyr_module.*]` in nros-sdk-index.toml."""
+    with open(SCRIPT_ROOT / "nros-sdk-index.toml", "rb") as f:
+        mods = tomllib.load(f).get("zephyr_module", {})
+    return {n: list(m.get("lines", [])) for n, m in mods.items()}
+
+
 # phase-350 W5 (issue 0539) — a fixture id names BEHAVIOUR, not the work item
 # that introduced it.
 #
@@ -307,6 +344,31 @@ def validate_compile_check_fixture(entry):
                 f"platform {entry['platform']!r} is no fixture row's platform "
                 f"(known: {', '.join(sorted(known))})",
             )
+
+    # Issue 2811 -- `zephyr_modules` names modules a JOB fetches, so each must
+    # be one the index declares and the allowlist leaves out (`lines = []`);
+    # a module the workspace already fetches needs no job.
+    if "zephyr_modules" in entry:
+        mods = entry["zephyr_modules"]
+        if builder not in WEST_COMPILE_CHECK_BUILDERS:
+            _fail(entry, f"`zephyr_modules` is for a west row, not builder {builder!r}")
+        if not isinstance(mods, list) or not mods:
+            _fail(entry, "`zephyr_modules` must be a non-empty list of module names")
+        index = _index_zephyr_modules()
+        for m in mods:
+            if m not in index:
+                _fail(
+                    entry,
+                    f"`zephyr_modules` names {m!r}, which nros-sdk-index.toml "
+                    "declares no `[zephyr_module.*]` for",
+                )
+            if index[m]:
+                _fail(
+                    entry,
+                    f"`zephyr_modules` names {m!r}, which the west allowlist "
+                    f"already fetches (lines = {index[m]}); only a module it "
+                    "leaves out needs a job to fetch it",
+                )
 
     if builder == "cross-build" and not entry.get("target"):
         _fail(entry, "missing required key 'target' for builder 'cross-build'")
@@ -498,6 +560,23 @@ def west_compile_check_rmw(entry):
             defs[key.split(":")[0]] = val
     if defs.get("NROS_RMW"):
         return defs["NROS_RMW"].lower()
+    # Issue 2811 -- a `west_nros_image` row is configured by `nros build`,
+    # which renders the IMAGE's rmw (`[image.<id>] rmw`, else
+    # `[image_defaults]`, else `[system]`) into Kconfig.
+    nros_image = entry.get("west_nros_image", "")
+    if nros_image:
+        bringup, _, image = nros_image.partition(":")
+        sys_toml = SCRIPT_ROOT / entry.get("dir", "") / "src" / bringup / "system.toml"
+        if sys_toml.is_file():
+            with open(sys_toml, "rb") as f:
+                doc = tomllib.load(f)
+            for table in (
+                (doc.get("image") or {}).get(image) or {},
+                doc.get("image_defaults") or {},
+                doc.get("system") or {},
+            ):
+                if table.get("rmw"):
+                    return table["rmw"].lower()
     cmakelists = app / "CMakeLists.txt"
     if cmakelists.is_file():
         for line in cmakelists.read_text(encoding="utf-8").splitlines():
@@ -520,12 +599,13 @@ def west_compile_check_rmw(entry):
 
 def compile_check_record(entry):
     """One \x1f-separated record: id, builder, dir, pkg, manifest_dir, target,
-    profiles, output, west_subdir, west_board, west_extra, west_nros_image.
+    profiles, output, west_subdir, west_board, west_extra, west_nros_image,
+    zephyr_modules.
 
     Empty field = absent; the script defaults them. The three `west_*` tail
-    fields after `output` are phase-350 W2's, `west_nros_image` issue 2436's;
-    every other reader takes the first eight positionally and is unaffected
-    by a longer record."""
+    fields after `output` are phase-350 W2's, `west_nros_image` issue 2436's,
+    `zephyr_modules` (comma-joined names) issue 2811's; every other reader
+    takes the first eight positionally and is unaffected by a longer record."""
     return SEP.join(
         (
             entry.get("id", ""),
@@ -540,6 +620,7 @@ def compile_check_record(entry):
             entry.get("west_board", ""),
             entry.get("west_extra", ""),
             entry.get("west_nros_image", ""),
+            ",".join(entry.get("zephyr_modules", [])),
         )
     )
 
@@ -2120,6 +2201,8 @@ def main():
             # phase-319 W2 — the compile-check lane's inventory.
             "list-compile-checks",
             "compile-check-platforms",
+            # Issue 2811 -- the rows that need job-fetched Zephyr modules.
+            "compile-check-modules",
             "validate-compile-checks",
             # Issue 0406 — classify one id across ALL row kinds, so a builder
             # that matched nothing can say WHY instead of exiting 0 silently.
@@ -2489,6 +2572,7 @@ def main():
                 not e.get("skip_build")
                 and e.get("dir")
                 and compile_check_in_coords(e, lane)
+                and compile_check_modules_supplied(e)
             ):
                 dirs.add(e["dir"].rstrip("/"))
         for d in sorted(dirs):
@@ -2597,6 +2681,15 @@ def main():
                 )
         return
 
+    if a.command == "compile-check-modules":
+        # Issue 2811 -- `<id>\t<name>[,<name>...]` per compile-check row that
+        # names `zephyr_modules`: the rows a module job builds, and what it
+        # must fetch for each. Every such row, whatever this run supplies.
+        for e in load_compile_check_fixtures(a.manifest):
+            if e.get("zephyr_modules"):
+                sys.stdout.write(f"{e['id']}\t{','.join(e['zephyr_modules'])}\n")
+        return
+
     if a.command == "compile-check-platforms":
         # Issue 2548 — `<id>\t<platform>` per compile-check row, by
         # `compile_check_platform`. The test resolver reads this instead of
@@ -2617,6 +2710,10 @@ def main():
             # that backend (`west_compile_check_rmw`); a non-west row has no
             # RMW to match and is never selected by it.
             if a.rmw and west_compile_check_rmw(e) != a.rmw:
+                continue
+            # Issue 2811 -- a row whose job modules this run does not supply
+            # is in no lane (`compile_check_modules_supplied`).
+            if a.command == "list-compile-checks" and not compile_check_modules_supplied(e):
                 continue
             # Issue 2510 — a row stating a platform is built only by a lane
             # that holds that platform. A row stating none stays in every lane.

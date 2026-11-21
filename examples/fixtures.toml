@@ -8613,6 +8613,25 @@ west_board = "native_sim/native/64"
 west_nros_image = "demo_bringup:zephyr"
 output = "build.ninja"
 
+# Issue 2811 -- the S32Z270 RTU0 Cortex-R52 on Zephyr (`s32z270-rtu0-zephyr`,
+# west board `s32z2xxdc2@D/s32z270/rtu0`), linked: the board row's "Builds"
+# evidence (`board_registry.row_built` matches this `west_board` to the
+# descriptor's). No emulator models the SoC, so a link is the whole promise:
+# the C++ Cyclone talker + listener image cross-links for the R52 from a clean
+# checkout. The SoC's devicetree and drivers are in `hal_nxp`, which the west
+# allowlist leaves out (1.3 GB), so the row is built only by the job that
+# fetches it, `just zephyr build-module-fixtures` (the gate's
+# `zephyr-module-fixtures` job), and is in no other lane.
+[[compile_check_fixture]]
+id = "west_s32z270_rtu0_zephyr"
+builder = "west-build"
+dir = "examples/workspaces/cpp"
+west_subdir = "src/demo_bringup"
+west_board = "s32z2xxdc2@D/s32z270/rtu0"
+west_nros_image = "demo_bringup:s32z270_rtu0"
+zephyr_modules = ["hal_nxp"]
+output = "zephyr/zephyr.elf"
+
 [[compile_check_fixture]]
 id = "zephyr_self_pkg_rust"
 builder = "west-configure"

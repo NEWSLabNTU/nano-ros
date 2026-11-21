@@ -121,9 +121,6 @@ def platform_variants(text):
     return set(re.findall(r'PlatformId::(\w+)\s*=>', body))
 
 
-def fixture_boards(text):
-    """Board names a fixture row builds with (`NROS_BOARD = "..."`)."""
-    return set(re.findall(r'NROS_BOARD\s*=\s*"([^"]+)"', text))
 
 
 def probe_tracks():
@@ -156,19 +153,26 @@ def link_check_examples(text):
     return set(re.findall(r'(?:cd|link_check_build) (examples/[\w./-]+)', body.group(0)))
 
 
-def row_built(row, built_plats, fx_boards):
-    plat = row.get("matrix_platform")
-    return bool(plat and plat in built_plats) or \
-        board_registry.board_name(row) in fx_boards
+def built_of(doc, matrix_txt, fixtures_txt):
+    """`row -> bool`: `board_registry.row_built`, the derivation the generated
+    views use (issue 2811 made it one function; this script had its own copy,
+    which ignored a shared package's board key and read the S32Z270 RTD row
+    as built from its FreeRTOS sibling's fixture)."""
+    rows = doc.get("board", [])
+    kw = dict(built_platforms=build_platforms(matrix_txt),
+              nros_boards=board_registry.fixture_nros_boards(fixtures_txt),
+              west_boards=board_registry.fixture_west_boards(board_registry.tomllib.loads(fixtures_txt)),
+              shared=board_registry.shared_crates(rows),
+              index=board_registry.descriptor_index(ROOT))
+    return lambda r: board_registry.row_built(r, **kw)
 
 
 def levels(doc, matrix_txt, fixtures_txt):
     """{row key: maintainer level or None} for every row, on no clock."""
-    built_plats = build_platforms(matrix_txt)
-    fx = fixture_boards(fixtures_txt)
+    built = built_of(doc, matrix_txt, fixtures_txt)
     stale = doc.get("manual_stale_days", board_registry.DEFAULT_STALE_DAYS)
     return {row_key(r): level_of(board_registry.status_word(
-        r, row_built(r, built_plats, fx), stale_days=stale)) for r in doc.get("board", [])}
+        r, built(r), stale_days=stale)) for r in doc.get("board", [])}
 
 
 TODAY = None  # `--today YYYY-MM-DD` (RFC-0114 evaluation step 5)
@@ -176,12 +180,11 @@ TODAY = None  # `--today YYYY-MM-DD` (RFC-0114 evaluation step 5)
 
 def print_status(doc, matrix_txt, fixtures_txt):
     """`crate@platform<TAB>status word<TAB>breadth`, one row per registry row."""
-    built_plats = build_platforms(matrix_txt)
-    fx = fixture_boards(fixtures_txt)
+    built = built_of(doc, matrix_txt, fixtures_txt)
     stale = doc.get("manual_stale_days", board_registry.DEFAULT_STALE_DAYS)
     for row in doc.get("board", []):
         word = board_registry.status_word(
-            row, row_built(row, built_plats, fx), stale_days=stale,
+            row, built(row), stale_days=stale,
             today=TODAY or datetime.date.today())
         print(f"{row_key(row)}\t{word}\t{row.get('breadth', '-')}")
     return 0

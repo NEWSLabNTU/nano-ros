@@ -73,7 +73,7 @@ build-fixtures:
     fi
     workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up — run \`just zephyr setup\`"
+        nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up, run \`just zephyr setup\`"
     fi
     # Phase 180.B — examples read the ROS interface package dirs from env
     # (no more hardcoded /opt/ros/humble/share/* PKG_DIR). Default to the
@@ -625,3 +625,52 @@ build-fixtures:
         exit "$west_rc"
     fi
     echo "Zephyr test fixtures built successfully."
+
+# Issue 2811 -- build the west compile-check rows that need a Zephyr module the
+# west allowlist leaves out (`zephyr_modules = [...]` in examples/fixtures.toml;
+# `[zephyr_module.<name>] lines = []` in nros-sdk-index.toml). The row
+# `west_s32z270_rtu0_zephyr` needs `hal_nxp` (1.3 GB in a workspace), which is
+# why no fresh workspace fetches it. This recipe fetches each module THE ROWS
+# name, at the revision this Zephyr tree pins, into this checkout's own build
+# root (`scripts/zephyr/fetch-job-module.sh`: shallow and sparse, ~60 MB for
+# hal_nxp), names it to the rows' configure, and builds them through
+# `west-fixtures.sh`, the west lane's builder. The store workspace is never
+# touched. On CI the whole tree is the job's, so the module is the job's too.
+#
+#   just zephyr build-module-fixtures                 # every such row
+#   just zephyr build-module-fixtures west_s32z270_rtu0_zephyr
+[group("full-matrix")]
+build-module-fixtures id="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _require-owned-provisioned-roots
+    source scripts/build/lane-skip.sh
+    nros_lane_platform zephyr
+    source scripts/build/zephyr-python.sh
+    nros_zephyr_activate
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up, run \`just zephyr setup\`"
+    fi
+    rows="$(python3 scripts/build/fixtures-manifest.py compile-check-modules)"
+    if [ -n "{{id}}" ]; then
+        rows="$(awk -F'\t' -v id="{{id}}" '$1 == id' <<< "$rows")"
+        [ -n "$rows" ] || { echo "build-module-fixtures: no compile-check row \`{{id}}\` names zephyr_modules" >&2; exit 1; }
+    fi
+    [ -n "$rows" ] || { echo "build-module-fixtures: no compile-check row names zephyr_modules"; exit 0; }
+    mod_root="$(bash scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)/job-modules"
+    ids=()
+    supplied=""
+    while IFS=$'\t' read -r id mods; do
+        ids+=("$id")
+        for m in ${mods//,/ }; do
+            case " $supplied " in *" $m="*) continue ;; esac
+            dir="$(bash scripts/zephyr/fetch-job-module.sh "$m" "$mod_root/$m" --zephyr-base "$workspace/zephyr")"
+            supplied+="${supplied:+ }$m=$(realpath "$dir")"
+        done
+    done <<< "$rows"
+    filter="^($(IFS='|'; echo "${ids[*]}"))$"
+    echo "build-module-fixtures: rows ${ids[*]}; modules $supplied"
+    export ZEPHYR_BASE="$workspace/zephyr"
+    NROS_ZEPHYR_JOB_MODULES="$supplied" NROS_ZEPHYR_FIXTURE_FILTER="$filter" \
+        bash scripts/build/west-fixtures.sh
