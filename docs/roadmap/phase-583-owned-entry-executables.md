@@ -222,6 +222,68 @@ in the order below.
   - An entry with one executable keeps today's key.
 - **Acceptance:** measured on the two-program RTOS package, two reports and
   two descriptors, each naming its own program.
+- **Design (draft, 2026-11-22; not started, pending file ownership with
+  nros 133 (stack floor: the stock-template RAM fix and phase-557 W9c) and nros 175 (sizing
+  descriptor)).** What exists, and what breaks with two programs:
+  - **Stack floor.** `nros_stack_floor_check(<exe>)` writes ONE
+    `nros/stack-floor/{check.cmake,report.json}` per build dir, keyed by
+    `_nros_stack_floor_image_key`: the stated `stack_floor_image`, else
+    `<bringup or entry>@<board>`. Two checked programs in one configure
+    overwrite each other's report and share one allowance row, and the twin and
+    drift lanes glob for exactly one report.
+  - **Sizing descriptor.** One `nros/sizing/<entry>.toml` per entry, composed
+    from the entry's census (issue 2433). The census runs THE program; with
+    two, it has no answer for which.
+- **Proposed rule:** one key per program when, and only when, the configure
+  checks more than one program from the same entry. An entry with one program
+  keeps today's key and paths byte for byte, so no row, lane or fixture moves.
+  - The key is `<entry>/<exe>@<board>`, decided in `_nros_stack_floor_image_key`
+    (still the one place). A stated `stack_floor_image` names one program, so
+    with several programs it is refused, naming the programs, rather than
+    applied to all of them.
+  - The paths are `nros/stack-floor/<exe>/{check.cmake,report.json}`. "Several"
+    is known only once every program has been seen, so the decision is a
+    `cmake_language(DEFER ...)` at the end of the top directory, which reads a
+    global property listing the checked programs per entry; until then each
+    check records itself and writes nothing.
+  - `config/stack-floors.toml` rows take the per-program key verbatim. The
+    walk's key parser (`scripts/nros-stack-floor.py`) and the lanes
+    (`stack-floor-twin.py`, `stack-floor-drift.py`) accept a `/<exe>` segment
+    and glob `nros/stack-floor/**/report.json`.
+  - The sizing descriptor goes to `nros/sizing/<entry>/<exe>.toml`, from that
+    program's census, which needs the census to run each program (issue 2433's
+    runner takes the program; W2's `entry_executable(…, exec)` names it).
+    `nros run --exec` / the launch's `exec` pick which descriptor an image's
+    consumers read, by the same choice as its `elf`.
+- **Agreed with the owners (2026-11-22).**
+  - **Key grammar (nros 133).** Three key shapes, told apart by their number of
+    slashes: a template key `<template>/<lang>/<rmw>@<board>` (two), a bringup
+    key `<bringup>@<board>` (none), and the new owned-entry program key
+    `<entry>/<exe>@<board>` (one). An exe name is `[A-Za-z0-9_-]+`: rlm's exe
+    names, never `/` or `@`. There is ONE grammar function, in
+    `scripts/nros-stack-floor.py`; the twin lane imports it rather than keeping
+    `parse_key`, and `stack-floor-drift.py` uses it too. Its Rust twin sits
+    beside the CLI's `stack_floor_template_key`, with no third regex.
+    `--validate-table` refuses a key that parses as none of the three. A
+    self-test holds that today's `[[observed]]` keys parse unchanged.
+  - **Descriptor path (nros 175).** Computed ONLY in `nros_sizing_descriptor`:
+    `descriptor_path_for(build, entry, Some(exe))` gives
+    `<build>/nros/sizing/<entry>/<exe>.toml`, and `None` gives today's
+    `<entry>.toml` byte for byte; no reader or cmake joins it by hand. Each
+    program's cargo build gets its OWN `NROS_SIZING_DESCRIPTOR`, since
+    nros-params reads that variable and a shared value would size every
+    program's store from one program.
+  - **Order.** 133's stock-template RAM fix (`stack-floor-twin.py`) lands first; W4
+    then rebases onto it. `cmake/NanoRosStackFloor.cmake`, `stack_floor.rs` and
+    `stack_floor_raise.rs` are free. In `nros-stack-floor.py`, W4 changes key
+    parsing only and 133's W9c band work changes other functions; whoever lands
+    second rebases. 175's fix-param-store-carve touches only `write_for_leaf` in
+    `sizing_descriptor.rs`, so the two do not collide.
+  - **One path rule, every reader (nros 133's review).** The report path is
+    decided once, beside the key, and every reader resolves it through that:
+    the CLI's `stack_floor_raise` (which reads `nros/stack-floor/report.json`
+    today), the twin and drift lanes, and the build's own re-walk. None of them
+    spells `<exe>/` itself.
 
 ### W5 — Book and docs
 
