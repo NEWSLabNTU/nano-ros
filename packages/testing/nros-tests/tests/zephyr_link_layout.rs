@@ -191,8 +191,8 @@ fn sched_task_stack_pool_follows_stacks_in_dtcm() {
             &elf,
             &elf_path,
             array,
-            "the fixture no longer spawns both levels (an unused stack is dropped by \
-             --gc-sections) or no longer opens a transport task",
+            "the fixture no longer spawns both levels and a task on the task pool (an \
+             unused stack is dropped by --gc-sections)",
         );
     }
 }
