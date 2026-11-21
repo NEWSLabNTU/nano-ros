@@ -378,7 +378,7 @@ int main(void) {
           g_init_line);
     CHECK(strstr(g_init_line, "holds") != NULL && strstr(g_init_line, "max_params = ") != NULL,
           "the init refusal states no counts: %s", g_init_line);
-    CHECK(strstr(g_init_line, "NROS_MAX_PARAMETERS") != NULL,
+    CHECK(strstr(g_init_line, "NROS_PARAMS_MAX_PARAMETERS") != NULL,
           "the init refusal does not name the knob: %s", g_init_line);
     rcl_ret_t refused = RCL_RET_OK;
     size_t filled = 0;

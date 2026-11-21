@@ -56,7 +56,7 @@ extern crate alloc;
 
 macro_rules! store_size_knob {
     () => {
-        "Raise `max_parameters` under [knobs.params] in system.toml, NROS_PARAMS_MAX_PARAMETERS or \
+        "Raise [knobs.params] max_parameters in system.toml, NROS_PARAMS_MAX_PARAMETERS or \
          CONFIG_NROS_PARAMS_MAX_PARAMETERS."
     };
 }
