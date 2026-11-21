@@ -109,13 +109,26 @@ def shell_definitions():
 KCONFIG_SYMBOL_RE = re.compile(r"^\s*(?:menu)?config\s+([A-Z0-9_]+)", re.M)
 
 
+# A RETIRED spelling the knob registry keeps defined, with this prompt, only so
+# that an assignment of it is refused at the configure by name
+# (scripts/gen-knob-registry.py, `retired_kconfig`). Such a definition does not
+# make the symbol live: it is history, and a comment may strike it.
+KCONFIG_RETIRED_RE = re.compile(
+    r'^\s*config\s+([A-Z0-9_]+)\s*\n\s*\w+\s+"Retired -- setting it stops the configure"', re.M)
+
+
+def live_kconfig_symbols(text):
+    """The symbols `text` defines, less the retired spellings kept to refuse."""
+    return set(KCONFIG_SYMBOL_RE.findall(text)) - set(KCONFIG_RETIRED_RE.findall(text))
+
+
 def kconfig_symbols():
     files = subprocess.run(["git", "-C", ROOT, "ls-files", "--", "*Kconfig*"],
                            capture_output=True, text=True, check=True).stdout.split()
     out = set()
     for rel in files:
         with open(os.path.join(ROOT, rel), errors="ignore") as fh:
-            out.update(KCONFIG_SYMBOL_RE.findall(fh.read()))
+            out.update(live_kconfig_symbols(fh.read()))
     return out
 
 
@@ -265,6 +278,11 @@ def self_test():
     expect("placeholder", "// each `Node::create_X<T>` and `foo_pkg`\n", 0)
     expect("string literal is not a comment", 'let s = "// `gone_fn`";\n', 0)
     expect("literal does not open a comment", 'let g = "/**"; let h = `gone_fn`;\n', 0)
+    kc = ('config NROS_LIVE\n    int\n\nconfig NROS_OLD\n'
+          '    int "Retired -- setting it stops the configure"\n    default -1\n')
+    if live_kconfig_symbols(kc) != {"NROS_LIVE"}:
+        failures.append("retired Kconfig spelling: got %r want {'NROS_LIVE'}"
+                        % sorted(live_kconfig_symbols(kc)))
     lines = [ln for ln, *_ in comment_names("fn a() {}\n\n/* x\n   `gone_fn` */\n")]
     if lines != [4]:
         failures.append("line numbers: got %r want [4]" % lines)
