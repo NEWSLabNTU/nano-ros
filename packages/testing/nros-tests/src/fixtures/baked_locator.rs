@@ -14,7 +14,8 @@
 //!
 //! 1. the bringup's `system.toml` — `[image.<id>] locator` over
 //!    `[image_defaults]` over `[system]` (`nros_orchestration_ir::leaf_system`);
-//! 2. the row's `env.NROS_LOCATOR` (boards that `option_env!` it);
+//! 2. the row's `env.NROS_ENTRY_LOCATOR` (boards that `option_env!` it; the
+//!    build reads no `NROS_LOCATOR` since phase-581 W6);
 //! 3. the row's `cmake_defs.NROS_ENTRY_LOCATOR` (cmake lanes);
 //! 4. the row's `west_zenoh_locator` (Zephyr west lanes).
 //!
@@ -122,7 +123,7 @@ pub fn baked_locator_in(root: &Path, fixture_id: &str) -> Result<String, String>
             }
         }
     }
-    str_at(&row, &["env", "NROS_LOCATOR"])
+    str_at(&row, &["env", "NROS_ENTRY_LOCATOR"])
         .or_else(|| str_at(&row, &["cmake_defs", "NROS_ENTRY_LOCATOR"]))
         .or_else(|| str_at(&row, &["west_zenoh_locator"]))
         .map(str::to_owned)
@@ -240,7 +241,7 @@ mod tests {
             dir.join("examples/fixtures.toml"),
             "[[workspace_fixture]]\nid = \"r\"\ndir = \"ws\"\nbringup = \"src/b\"\nimage = \"x\"\n\
              [[workspace_fixture]]\nid = \"e\"\ndir = \"ws\"\nbringup = \"src/b\"\nimage = \"x\"\n\
-             env = { NROS_LOCATOR = \"tcp/h:12\" }\n",
+             env = { NROS_ENTRY_LOCATOR = \"tcp/h:12\" }\n",
         )
         .unwrap();
         std::fs::write(bringup.join("system.toml"), "[image.x]\nboard = \"b\"\n").unwrap();
