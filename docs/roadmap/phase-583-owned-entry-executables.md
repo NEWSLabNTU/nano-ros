@@ -1,7 +1,7 @@
 # Phase 583 — An owned entry with several executables
 
-**Status (2026-11-21). OPEN: design accepted (user ruling 2026-11-20); W0
-done (`a49a3dcf82`); W1, W2 and W3 done. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
+**Status (2026-11-22). COMPLETE: design accepted (user ruling 2026-11-20); W0
+done (`a49a3dcf82`); W1–W5 and the census fold done. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
 - an owned entry may build several executables, chosen at run time as in
   ROS (`nros run <image> --exec <name>`, or the bringup's launch `exec`);
 - on RTOS, each executable is its own firmware, one carrier per
@@ -213,7 +213,7 @@ in the order below.
 
 ### W4 — Per-executable stack-floor and sizing facts
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-22, #4580; the census fold, #4585)
 - **What:**
   - On the cmake road, an owned entry with several executables writes one
     stack-floor report and one sizing descriptor per executable, keyed
@@ -352,7 +352,7 @@ in the order below.
 
 ### W5 — Book and docs
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-22, the change that marks this)
 - **What:**
   - The book's `nros run` chapter: `--exec`, and the launch `exec`.
   - The RTOS platform chapters: one firmware per executable, and what each
@@ -360,6 +360,18 @@ in the order below.
   - RFC-0071 D20's status line moves to Implemented.
 - **Acceptance:** `just book` builds, and `just probe` blocks (where a
   chapter has them) run.
+- **Landed.** "Port a C++ node" gains "Several programs in one package":
+  - each `nano_ros_add_executable` is a program;
+  - `nros run --exec` and the launch's `exec`, with the foreign-package
+    refusal;
+  - one firmware per program on a board, and its cost;
+  - a census-sized board sized for the larger program;
+  - Zephyr's one program per package.
+
+  The CLI reference's `nros run --exec` is generated from `--help`. The
+  per-board cost and the Zephyr limit are the same on every RTOS, so they are
+  stated once in that section, not repeated in each platform chapter. RFC-0071 D20's
+  status line reads Implemented.
 
 ## Not in this phase
 
