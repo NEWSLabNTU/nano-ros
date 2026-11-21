@@ -633,6 +633,7 @@ mod tests {
                 tables: &tables,
                 bench: &bench,
                 invocation: &inv,
+                exec: None,
             },
         )
         .unwrap();

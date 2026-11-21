@@ -596,6 +596,10 @@ pub struct ResolvedBuild {
     pub rmw: Option<String>,
     /// The entry package this image builds, when one was resolved.
     pub entry_package: Option<String>,
+    /// phase-583 W2 -- the program the bringup's launch file names for this
+    /// image's owned entry (`<node pkg="<entry>" exec="...">`), when it names
+    /// exactly one; `nros run` takes it when no `--exec` is given.
+    pub launch_exec: Option<String>,
     /// The rustc target triple the board pins, if any.
     pub target: Option<String>,
     /// The cargo profile the image declares, if any.
@@ -1270,6 +1274,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 handoff: None,
                 rmw: image.rmw.clone(),
                 entry_package: Some(want_entry.clone()),
+                launch_exec: None,
                 target: descriptor.target.clone(),
                 profile: image.profile.clone(),
                 record: Default::default(),
@@ -3190,6 +3195,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             // only what its own block spelled.
             rmw: image.rmw.clone(),
             entry_package: Some(want_entry.clone()),
+            launch_exec: image
+                .entry
+                .as_deref()
+                .and_then(|e| launch_exec_for(&bringup_dir, &image, e)),
             target: descriptor.target.clone(),
             profile: image.profile.clone(),
             record: crate::orchestration::project_lock::BuildRecord {
@@ -3485,6 +3494,7 @@ fn plan_leaf_image(
             handoff: None,
             rmw: img.decl.rmw.clone(),
             entry_package: Some(img.package.clone()),
+            launch_exec: None,
             target: img.target.clone(),
             profile: None,
             cmake_build_dir: None,
@@ -3610,6 +3620,7 @@ fn plan_leaf_image(
         )),
         rmw: img.decl.rmw.clone(),
         entry_package: Some(img.package.clone()),
+        launch_exec: None,
         target: img.target.clone(),
         profile: None,
         cmake_build_dir: None,
@@ -3814,6 +3825,7 @@ fn plan_single_package_cmake(
         ),
         rmw: decl.rmw.clone(),
         entry_package: Some(package),
+        launch_exec: None,
         target: descriptor.target.clone(),
         profile: None,
         cmake_build_dir: Some(build_dir),
@@ -5270,6 +5282,7 @@ fn plan_packages(
             handoff: Some(handoff),
             rmw: None,
             entry_package: None,
+            launch_exec: None,
             target: None,
             profile: None,
             cmake_build_dir: None,
@@ -5363,6 +5376,7 @@ fn image_runner_names(images: &[ResolvedBuild]) -> BTreeMap<String, BTreeSet<Str
                 tables: &p.run_tables,
                 bench: &bench,
                 invocation: &invocation,
+                exec: None,
             };
             if let Ok(plan) = run_plan::resolve(verb, inputs) {
                 out.entry(bringup.to_string())
@@ -5565,6 +5579,7 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
             handoff: Some(b.handoff),
             rmw: None,
             entry_package: None,
+            launch_exec: None,
             target: Some(triple.clone()),
             profile: Some(crate::builder::host_tool::PROFILE.to_string()),
             cmake_build_dir: None,
@@ -9009,6 +9024,39 @@ fn names_west_build_dir(west_extra: &[String]) -> bool {
 /// A named entry that is no package under `src/` is an error naming the image:
 /// falling back to a generated entry would build a different program than the
 /// one the image names.
+/// phase-583 W2 (RFC-0071 D20) -- the program the bringup's launch file names
+/// for the owned entry `entry`: the `exec` of its nodes whose `pkg` is the
+/// entry, when they agree on one. `None` with no resolved model, no such node,
+/// or nodes naming different programs (then the run must say which).
+pub(crate) fn launch_exec_for(
+    bringup_dir: &Path,
+    image: &crate::orchestration::image::ImageBlock,
+    entry: &str,
+) -> Option<String> {
+    use crate::orchestration::model_location;
+    let args: Vec<(String, String)> = image
+        .args
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let rel =
+        model_location::launch_to_model_rel(bringup_dir, image.launch.as_deref(), &args).ok()?;
+    let raw =
+        std::fs::read_to_string(model_location::resolve_model_path(bringup_dir, &rel)).ok()?;
+    let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw).ok()?;
+    let execs: std::collections::BTreeSet<&str> = model
+        .structure
+        .nodes
+        .values()
+        .filter(|n| n.pkg.as_deref() == Some(entry))
+        .filter_map(|n| n.exec.as_deref())
+        .collect();
+    match execs.len() {
+        1 => execs.into_iter().next().map(str::to_string),
+        _ => None,
+    }
+}
+
 pub(crate) fn owned_entry_dir(
     root: &Path,
     image_id: &str,
@@ -11823,6 +11871,7 @@ mod multi_image_drive_tests {
             handoff: Some(hand),
             rmw: None,
             entry_package: None,
+            launch_exec: None,
             target: None,
             profile: None,
             cmake_build_dir: None,

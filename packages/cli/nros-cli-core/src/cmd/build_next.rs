@@ -80,13 +80,25 @@ impl BuildOutput {
     /// A named owned entry with no file-API reply, or with no executable or
     /// several.
     pub fn resolve_artifact(&self) -> Result<Option<PathBuf>, String> {
+        self.resolve_artifact_for(None)
+    }
+
+    /// [`Self::resolve_artifact`] for the program `exec` names, when a named
+    /// owned entry builds several (phase-583 W2, RFC-0071 D20). `exec` is
+    /// ignored by every other output: each of those names its one artifact.
+    ///
+    /// # Errors
+    /// As [`Self::resolve_artifact`], and an `exec` naming none of the
+    /// entry's programs.
+    pub fn resolve_artifact_for(&self, exec: Option<&str>) -> Result<Option<PathBuf>, String> {
         if let BuildOutput::CMake {
             build_dir,
             executable: None,
             owned_entry: Some(entry),
         } = self
         {
-            return crate::builder::cmake_file_api::entry_executable(build_dir, entry).map(Some);
+            return crate::builder::cmake_file_api::entry_executable(build_dir, entry, exec)
+                .map(Some);
         }
         Ok(self.planned_artifact())
     }
@@ -350,7 +362,33 @@ pub fn next_steps(
         see_chapter(&mut out, "this build road records no artifact location");
         return out;
     };
-    out.artifact = output.artifact();
+    // phase-583 W2 -- an owned entry with several programs: the launch's
+    // choice when it names one, else one run line per program.
+    out.artifact = output
+        .resolve_artifact_for(p.launch_exec.as_deref())
+        .ok()
+        .flatten();
+    if out.artifact.is_none()
+        && let BuildOutput::CMake {
+            build_dir,
+            executable: None,
+            owned_entry: Some(entry),
+        } = output
+        && let Ok(found) = crate::builder::cmake_file_api::executables_under(build_dir, entry)
+        && found.len() > 1
+    {
+        for e in found {
+            out.commands.push((
+                format!("run `{}`", e.program),
+                format!(
+                    "nros run {} --exec {}",
+                    shell_word(&p.qualified),
+                    shell_word(&e.program)
+                ),
+            ));
+        }
+        return out;
+    }
     // Printing a command needs no device on this machine's bus.
     let bench = Bench::default();
     let invocation = Invocation::default();
@@ -365,6 +403,7 @@ pub fn next_steps(
                 tables: &p.run_tables,
                 bench: &bench,
                 invocation: &invocation,
+                exec: p.launch_exec.as_deref(),
             },
         )
     };
@@ -783,6 +822,7 @@ mod tests {
 
     fn plan(board: &str, driver: Driver, output: BuildOutput) -> ResolvedBuild {
         ResolvedBuild {
+            launch_exec: None,
             qualified: format!("demo:{board}"),
             board: board.to_string(),
             platform: String::new(),
@@ -1496,6 +1536,7 @@ mod tests {
                             tables: &crate::cmd::run_plan::ImageTables::default(),
                             bench: &crate::cmd::run_plan::Bench::default(),
                             invocation: &crate::cmd::run_plan::Invocation::default(),
+                            exec: None,
                         },
                     )
                     .unwrap_or_else(|e| {

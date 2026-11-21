@@ -1,7 +1,7 @@
 # Phase 583 — An owned entry with several executables
 
 **Status (2026-11-21). OPEN: design accepted (user ruling 2026-11-20); W0
-done (`a49a3dcf82`); W1 done. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
+done (`a49a3dcf82`); W1 and W2 done. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
 - an owned entry may build several executables, chosen at run time as in
   ROS (`nros run <image> --exec <name>`, or the bringup's launch `exec`);
 - on RTOS, each executable is its own firmware, one carrier per
@@ -155,7 +155,7 @@ in the order below.
 
 ### W2 — `nros run --exec` and the launch's `exec`
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-21, the change that marks this)
 - **What:**
   - `cmake_file_api::entry_executable` takes the chosen exec.
   - `nros run` gains `--exec <name>`.
@@ -168,6 +168,22 @@ in the order below.
   - an `owned_entry_run_verb` case per choice (flag, launch, the one
     default);
   - the refusal names the executables and the flag.
+- **Done (2026-11-21).** `cmake_file_api::entry_executable` takes the chosen
+  program and matches it by PROGRAM name, the artifact's `OUTPUT_NAME`, never
+  the CMake target (`<pkg>__<exe>` since W1). `nros run --exec <name>` chooses
+  one. `ResolvedBuild::launch_exec` carries the bringup launch's `exec` for the
+  entry package, and `nros run`, `nros flash` and `nros monitor` take it when
+  no flag is given. The refusal for several programs lists them and names both
+  ways to choose. `nros build`'s next steps print `nros run <image> --exec
+  <prog>` once per program. Measured on the new `linux-c-zenoh-two-programs`
+  row (`fixtures/two_programs_ws`, one owned entry building `prog_a` and
+  `prog_b`): the refusal and both `--exec` choices, beside the existing
+  one-program case, all in `tests/owned_entry_run_verb.rs`.
+- **The launch case is W3's first acceptance item, the same check.** An
+  owned-entry bringup's launch file still fails configure today: its node goes
+  through component planning, which asks for probe metadata a plain program
+  has none of (`missing-source-metadata ... two_programs/prog_b`). W3 makes the
+  configure accept it, and adds that launch-choice case to this test file.
 
 ### W3 — An owned-entry bringup may carry a launch file
 
