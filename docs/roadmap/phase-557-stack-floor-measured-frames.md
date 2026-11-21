@@ -1425,11 +1425,15 @@ answer, and they are already in the table.
   with their method.
 - **W10b — The derivation.** `--board-floor`, its self-tests (max over the
   feeding rows only; margin; fallback; a bringup row and a C row ignored),
-  `fallback_rust_main_stack` in the table, and the cmake road and the gate
-  reading it. The literal goes.
+  `fallback_rust_main_stack` in the table, and the cmake road AND
+  `check-zephyr-rust-main-stack` reading it. The gate calls `--board-floor`
+  itself, so the number has one spelling. The literal goes.
 - **W10c — The boards.** Each Rust-capable board's `prj.conf` states the
-  derived floor where it is above the module default. pico-w and s32z270
-  (no twin) and fvp-aemv8r-smp (out by policy for now) take the fallback.
+  derived floor where it is above the module default (nucleo: 33,288 B
+  against 32,768 B, ruled 2026-11-21: per board, never a raised module
+  default). pico-w and s32z270 (no twin) take the fallback, and so does
+  fvp-aemv8r-smp while how FVP boards fit the board-support model awaits a
+  user decision.
 
 Acceptance: an unmeasured Rust image on nucleo is refused below 33,288 B,
 naming the board's rows. On pico-w it is refused below 32,768 B, naming the
