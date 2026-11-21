@@ -204,10 +204,12 @@ in the order below.
   at configure, naming it and the owned entries. W2's `launch_exec` reads the
   same nodes. Measured: the new `linux-c-zenoh-two-programs-launch` row
   (`<node pkg="two_programs" exec="prog_b">`) configures, and `nros run` with no
-  flag resolves `prog_b` (`tests/owned_entry_run_verb.rs`, 6/6 with W2's
-  cases). The foreign-package refusal, the no-model case and the
-  two-programs-in-one-launch case are unit tests (`owned_entry_launch_tests`),
-  because a refusal at configure has no fixture row to record it.
+  flag resolves `prog_b` (`tests/owned_entry_run_verb.rs`, 7/7 with W2's
+  cases). The foreign-package refusal is an end-to-end verdict: the
+  `owned_entry_foreign_launch_refused` row (builder `fixture-script`) runs
+  `nros build` at build time and records its exit and stderr, since the refusal
+  is the CLI's, before cmake. The no-model and two-programs-in-one-launch cases
+  are unit tests (`owned_entry_launch_tests`).
 
 ### W4 — Per-executable stack-floor and sizing facts
 

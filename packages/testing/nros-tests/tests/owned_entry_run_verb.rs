@@ -228,3 +228,27 @@ fn the_launch_file_chooses_one_of_two_programs() {
         "the launch file's `exec=\"prog_b\"` chooses `prog_b`"
     );
 }
+
+/// phase-583 W3 -- an owned-entry bringup whose launch also starts a node from
+/// another package is refused at configure, naming that package and the owned
+/// entry. Recorded at build time by the `owned_entry_foreign_launch_refused`
+/// row: the refusal is the `nros` CLI's, before any cmake.
+#[test]
+fn a_launch_node_from_another_package_is_refused_at_configure() {
+    require_linux_lane();
+    let stamp = nros_tests::fixtures::require_compile_check("owned_entry_foreign_launch_refused")
+        .require("owned_entry_foreign_launch_refused");
+    let dir = stamp.parent().expect("the row dir");
+    let exit = std::fs::read_to_string(dir.join("exit")).expect("the recorded exit");
+    let err = std::fs::read_to_string(dir.join("stderr")).expect("the recorded stderr");
+    assert_ne!(
+        exit.trim(),
+        "0",
+        "the configure must refuse; it exited 0:\n{err}"
+    );
+    let err = err.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        err.contains("`other_pkg`") && err.contains("`two_programs`") && err.contains("choose"),
+        "the refusal must name the foreign package and the owned entry:\n{err}"
+    );
+}

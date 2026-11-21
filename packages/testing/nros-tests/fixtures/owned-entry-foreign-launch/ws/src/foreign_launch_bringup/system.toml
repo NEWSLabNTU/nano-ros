@@ -1,0 +1,11 @@
+# phase-583 W2 fixture: the same owned entry, with a launch file that names
+# the program to run (`exec="prog_b"`).
+[system]
+name = "foreign_launch"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[image.linux]
+board = "linux"
+entry = "two_programs"

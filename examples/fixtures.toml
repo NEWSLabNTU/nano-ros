@@ -5555,6 +5555,16 @@ output = ".compile-ok"
 # no fixture lane runs, so `just test linux` claimed the test and its build could
 # not satisfy it. `<dir>/build.sh` builds the one target in the row's own CMake
 # tree and copies the binary into the row dir.
+# phase-583 W3 -- the `nros` CLI's configure VERDICT for an owned-entry
+# bringup whose launch also starts a node from another package. The refusal
+# comes before cmake runs, so this script records it at build time.
+[[compile_check_fixture]]
+id = "owned_entry_foreign_launch_refused"
+builder = "fixture-script"
+dir = "packages/testing/nros-tests/fixtures/owned-entry-foreign-launch"
+platform = "linux"
+output = ".compile-ok"
+
 [[compile_check_fixture]]
 id = "cyclone_slirp_guest"
 builder = "fixture-script"
