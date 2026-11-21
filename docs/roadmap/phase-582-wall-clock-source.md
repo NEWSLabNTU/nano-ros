@@ -61,13 +61,15 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     resolving after registration (C, C++, and both Rust ones, `nros::main!`'s
     generated entry and `zephyr_component_main!`, which never resolved at
     all before), `Executor::restart_timing` (and
-    `nros_cpp_executor_restart_timing`) when the gate opens, and zpico's pump
-    in ZPICO_DRIVE_CALLER builds. The native_sim cells are the configured
-    `(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example)` cells `+ [ClockHlc]` and
-    `+ [ClockSntp]`, answered by `tests/zephyr_clock_resolve.rs`. A booting
-    serial (ZPICO_DRIVE_CALLER) cell that proves the pump is the open
-    acceptance item, issue 2791; this PR carries the link witness
-    only.
+    `nros_cpp_executor_restart_timing`) when the gate opens. The native_sim
+    cells are the configured `(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example)`
+    cells `+ [ClockHlc]` and `+ [ClockSntp]`, answered by
+    `tests/zephyr_clock_resolve.rs`. W1c-2 also shipped a pump for
+    ZPICO_DRIVE_CALLER builds, which issue 2791 found unreachable: the Zephyr
+    port defines no `ZPICO_SERIAL`, so a serial image keeps its read thread,
+    and a single-thread build boots into an executor refusal (no readiness
+    form). The pump is deleted, and `CONFIG_NROS_ZENOH_MULTI_THREAD=n` is
+    refused at configure time with that reason.
   - **W1d:** the board hook, its link rule and the selection-named TU, and
     the linux stub-board stamp test in Rust, C and C++.
 - RFC-0141 D1–D4:

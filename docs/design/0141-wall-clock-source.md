@@ -175,17 +175,22 @@ inside the user's 2026-11-19 rulings, which the user may overturn):
   alive during the wait.
 - **Hearing a zenoh-hlc sample before the first spin.** The sample's timestamp
   is offered from zenoh-pico's sample handler, inside zenoh-pico's own
-  executor. In a build with a zenoh-pico read thread (IP: Zephyr, POSIX,
-  NuttX, FreeRTOS) that thread delivers it while the levels wait. In a build
-  whose zenoh-pico executor runs only inside a spin (serial, smoltcp, any
-  single-thread build), boot drives it with a bounded pump,
-  `zpico_spin_once(s, 0)` per open session, while it waits for the sample.
-  Every zenoh-pico handler only buffers: the sample, queryable and reply
-  handlers copy into their slot and wake its waiter, and the graph-change
-  edge levels a guard condition. User callbacks run only from the executor's
-  dispatch, so the pump runs none. A sample that arrives during the wait is
-  dispatched on the first spin; a full KEEP_LAST ring drops its oldest,
-  counted as an eviction and never reported as an error at boot.
+  executor. In a build with a zenoh-pico read thread that thread delivers it
+  while the levels wait, and on Zephyr every zenoh image has one: the port
+  defines no `ZPICO_SERIAL`, so serial images keep the thread too, and a
+  single-thread zenoh build (`CONFIG_NROS_ZENOH_MULTI_THREAD=n`) is refused
+  at configure time, because its session states no readiness form and the
+  executor refuses to open over it at boot. Every zenoh-pico handler only
+  buffers: the sample, queryable and reply handlers copy into their slot and
+  wake its waiter, and the graph-change edge levels a guard condition. A
+  sample that arrives during the wait is dispatched on the first spin; a
+  full KEEP_LAST ring drops its oldest, counted as an eviction and never
+  reported as an error at boot. *(Amended 2026-11-21: this said a
+  caller-driven build gets a bounded pump, `zpico_spin_once(s, 0)` per open
+  session, during the wait. One was built for Zephyr and deleted unreached:
+  no Zephyr image that the runtime accepts is caller-driven. A port that
+  wires the clock gate over a caller-driven zenoh build has to drive the
+  link during the wait the same way.)*
 - **The mid-run switch and stale stamps.** The risk this section opens with,
   a consumer rejecting a stamp from an earlier epoch after a later one, is
   answered by the `upgrade = "monotonic"` floor: the store keeps the last
