@@ -29,6 +29,15 @@ use std::{collections::BTreeSet, fs};
 /// is the failure mode, not a tidy-up.
 const BINS_ALLOWLIST: &[(&str, &str)] = &[
     (
+        "owned-census-local-msgs",
+        "issue 2805: a workspace whose owned entry's census is taken by `just \
+         check owned-census-local-msgs` (scripts/check-owned-census-local-msgs.sh, \
+         a build-tier gate that gate.yml also runs in the merge group). The \
+         artifact is the census JSON the take writes, read by that script; no \
+         test resolves a built program as a fixture, so a `fixtures.toml` row \
+         would have no consumer.",
+    ),
+    (
         "ros-edition-pose-pub",
         "RFC-0058 ROS-edition axis: built per distro by `just ros_editions \
          build-fixture` into build/ros-editions/pose-pub-<distro>, which is a \
