@@ -1,0 +1,1 @@
+The stack-floor check runs its search orders in parallel on the build's own job pool, so a walked build is much faster: the riscv64 ThreadX bin's walk dropped from about 45 s to 8 s. The floor it states is unchanged.

@@ -472,13 +472,100 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
     return p
 
 
+_JOBSERVER_FIFO = re.compile(r"--jobserver-auth=fifo:(\S+)")
+
+
+def jobserver_fifo(env=os.environ) -> str | None:
+    """The FIFO of the shared jobserver token pool this process runs under
+    (`scripts/build/jobserver-pool.sh`, make 4.4's `--jobserver-auth=fifo:`),
+    if any. Issue 2414: the walk's orders draw on it, so concurrent walks never
+    oversubscribe the host."""
+    for k in ("MAKEFLAGS", "CARGO_MAKEFLAGS"):
+        m = _JOBSERVER_FIFO.search(env.get(k, ""))
+        if m and os.path.exists(m.group(1)):
+            return m.group(1)
+    return None
+
+
+class _Tokens:
+    """Up to `want` jobserver tokens, taken without blocking (a process holds
+    one implicitly, so a pool with none free walks serially), and given back
+    on exit, whatever happens."""
+
+    def __init__(self, fifo: str | None, want: int):
+        self.fd: int | None = None
+        self.held = b""
+        if fifo is None or want <= 0:
+            return
+        try:
+            self.fd = os.open(fifo, os.O_RDWR | os.O_NONBLOCK)
+        except OSError:
+            self.fd = None
+            return
+        while len(self.held) < want:
+            try:
+                b = os.read(self.fd, 1)
+            except BlockingIOError:
+                break
+            if not b:
+                break
+            self.held += b
+
+    def __enter__(self):
+        return len(self.held)
+
+    def __exit__(self, *exc):
+        if self.fd is not None:
+            if self.held:
+                os.write(self.fd, self.held)
+            os.close(self.fd)
+        return False
+
+
+_PAR: dict = {}
+
+
+def _walk_one_order(o: int):
+    try:
+        return ("ok", worst_path(_PAR["g"], _PAR["root"], order=o, **_PAR["kw"]))
+    except WalkRefused as e:
+        return ("refused", str(e))
+
+
+def walk_orders(g: Graph, root: str, orders, **kw) -> list[Path_]:
+    """`worst_path` for each order, IN ORDER. In parallel when the token pool
+    grants more than this process's own token, else serially; the results
+    (and the first refusal) are the same either way."""
+    orders = list(orders)
+    fifo = None if os.environ.get("NROS_STACK_WALK_PARALLEL") == "0" else jobserver_fifo()
+    with _Tokens(fifo, len(orders) - 1) as extra:
+        print(f"nros-stack-floor: {len(orders)} walk order(s) from `{root}` on {1 + extra} "
+              f"job token(s){'' if fifo else ' (no jobserver: serial)'}", file=sys.stderr)
+        if extra == 0:
+            return [worst_path(g, root, order=o, **kw) for o in orders]
+        import multiprocessing
+        _PAR.update(g=g, root=root, kw=kw)
+        try:
+            with multiprocessing.get_context("fork").Pool(1 + extra) as pool:
+                got = pool.map(_walk_one_order, orders, chunksize=1)
+        finally:
+            _PAR.clear()
+    out: list[Path_] = []
+    for kind, v in got:
+        if kind == "refused":
+            raise WalkRefused(v)
+        out.append(v)
+    return out
+
+
 def walk_deepest(g: Graph, root: str, **kw) -> Path_:
     """`worst_path` in every one of `WALK_ORDERS`, the deepest answer. Same
-    graph, same bytes: each order is fixed. A refusal in any order refuses."""
+    graph, same bytes: each order is fixed. A refusal in any order refuses.
+    The orders run in parallel on the jobserver token pool when one is
+    there (`walk_orders`); the answer does not depend on it."""
     best: Path_ | None = None
     depths: list[int] = []
-    for o in WALK_ORDERS:
-        p = worst_path(g, root, order=o, **kw)
+    for p in walk_orders(g, root, WALK_ORDERS, **kw):
         depths.append(p.depth)
         if best is None or p.depth > best.depth:
             best = p
@@ -3716,6 +3803,51 @@ def self_test() -> int:
     dd = walk_deepest(gc2, "R", indirect_charge=None, recursion_allowance=0).depth
     check("walk: a cycle's cache under-states the sorted order; the deepest order finds R-Q-N-M",
           d0 == 112 and dd == 121)
+    # issue 2414 -- the orders run in parallel on the jobserver token pool;
+    # the answer, each order's chain, and the tokens all come back the same
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as td:
+        fifo = os.path.join(td, "jobserver")
+        os.mkfifo(fifo)
+        hold = os.open(fifo, os.O_RDWR | os.O_NONBLOCK)  # keeps the FIFO open
+        os.write(hold, b"+++")
+        saved = {k: os.environ.get(k) for k in ("MAKEFLAGS", "NROS_STACK_WALK_PARALLEL")}
+        try:
+            os.environ["MAKEFLAGS"] = f" -j4 --jobserver-auth=fifo:{fifo}"
+            os.environ.pop("NROS_STACK_WALK_PARALLEL", None)
+            check("jobserver: the FIFO is read from MAKEFLAGS", jobserver_fifo() == fifo)
+            kw = dict(indirect_charge=None, recursion_allowance=0)
+            par = walk_orders(gc2, "R", WALK_ORDERS, **kw)
+            os.environ["NROS_STACK_WALK_PARALLEL"] = "0"
+            ser = walk_orders(gc2, "R", WALK_ORDERS, **kw)
+            check("parallel orders: every order's depth and chain equal the serial run's",
+                  [(p.depth, p.chain) for p in par] == [(p.depth, p.chain) for p in ser])
+            back = b""
+            while True:
+                try:
+                    c = os.read(hold, 16)
+                except BlockingIOError:
+                    break
+                if not c:
+                    break
+                back += c
+            check("parallel orders: every token taken is given back", back == b"+++")
+            os.environ.pop("NROS_STACK_WALK_PARALLEL", None)
+            os.write(hold, b"+++")
+            gref = Graph(frames={"R": 1}, edges={"R": {"X"}}, functions={"R", "X"})
+            try:
+                walk_orders(gref, "R", WALK_ORDERS, **kw)
+                refused_par = False
+            except WalkRefused:
+                refused_par = True
+            check("parallel orders: a refusal in a worker still refuses", refused_par)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            os.close(hold)
     ha = Graph(frames={"r": 1, "_RNvCsAAAAAAA_1x1a": 5, "_RNvCsAAAAAAA_1x1b": 7},
                edges={"r": {"_RNvCsAAAAAAA_1x1a", "_RNvCsAAAAAAA_1x1b"}},
                functions={"r", "_RNvCsAAAAAAA_1x1a", "_RNvCsAAAAAAA_1x1b"})
