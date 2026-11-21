@@ -296,6 +296,25 @@ in the order below.
     changes the census file layout and four of its readers (freshness, digest,
     the completeness check, the configure's existence check), so it is its own
     PR after the W chain, with its own gate and review.
+  - **Fold plan (its own PR, after the W chain).**
+    1. *Take.* One program keeps `owned/<bringup>/<image>.census.json`. Several
+       write `owned/<bringup>/<image>/<exe>.census.json` each (own digest, own
+       freshness), and the take records the program list it ran in
+       `owned/<bringup>/<image>.programs`, so the fast path knows the set before
+       any host build; it is fresh only when the list exists and every listed
+       census is. A stale `<image>.census.json` is removed.
+    2. *Compose.* `owned_declaration` reads the list: one program is today's
+       path; several build one inventory per program and fold them with
+       `EntityInventory::shared_runtime_over` (D12: per-kind max, the
+       parameter-declaration union, the per-endpoint QoS refusal).
+    3. *Configure.* `nros_record_owned_entity_facts` asks for the program list
+       instead of testing one census file, and puts every program's digest in
+       `CMAKE_CONFIGURE_DEPENDS`.
+    4. *Lift the guard.* The census's several-programs refusal goes.
+    5. *Tests.* Unit: a store plus no store folds to a store; disagreeing QoS
+       between two programs is refused; the larger count per kind wins.
+       Acceptance: a cross-board fixture whose second program declares one more
+       service than its first, built and run with the second program.
   - **The defect this fixes.** An owned entry's census today runs ONE program,
     the one the host build states in `nros/census-program.txt`. A cross-board
     entry with two programs is therefore sized from one program's census, and
