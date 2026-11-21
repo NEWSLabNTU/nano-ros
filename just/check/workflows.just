@@ -879,10 +879,15 @@ queue-timeout-selftest:
 # FAILED`. The fix reads the step runner's per-step markers, through ONE parser
 # (`scripts/lib/lane_step_markers.py`) that `nightly-triage.py` shares, so its
 # selftest runs here too: the same mislabel there was `just ci matrix-nightly`.
+#
+# RFC-0114 D13 (phase-585 W2) -- and the per-board collector, which imports
+# that classifier: a set-up failure must stay a no-verdict per board too, and a
+# coordinate no registry row carries must be refused.
 [group("main")]
 lane-stage-reporting:
     @python3 scripts/ci/lane-stage.py --selftest
     @python3 scripts/ci/nightly-triage.py --selftest
+    @python3 scripts/ci/board-results.py --check
 
 # issue 0933 — a CI step that invokes `just`/`nros`/`west` must source the repo
 # environment: `activate.sh` puts the in-tree CLI and toolchains on PATH and
