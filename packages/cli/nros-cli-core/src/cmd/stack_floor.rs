@@ -37,6 +37,17 @@ use crate::{
 /// The file a board's build script writes; `nros_board_common::stack_stated::FILE`.
 pub const STATED_FILE: &str = "nros-stack-stated.json";
 
+/// Platforms whose threads do not run on a stack the build sizes, each with
+/// the reason its images are reported as not checked. ThreadX's Linux port
+/// creates every thread with `pthread_create(.., NULL, ..)`, so the thread
+/// runs on the host's default pthread stack and the stack handed to
+/// `tx_thread_create` is never used: a walk checked against it would pass
+/// for a stack nothing runs on.
+const UNCHECKABLE_PLATFORMS: &[(&str, &str)] = &[(
+    "threadx-linux",
+    "the Linux port runs each thread on a host pthread stack, which the build does not size",
+)];
+
 /// Platforms whose boards state a stack on the cargo road. A platform joins
 /// when its board build scripts call `nros_board_common::stack_stated::emit`;
 /// until then its images are reported as not checked, and pay nothing.
@@ -270,6 +281,13 @@ fn plan_one(
 ) -> Option<StackFloorStep> {
     if p.driver != Driver::Cargo {
         return None;
+    }
+    if let Some(why) = UNCHECKABLE_PLATFORMS
+        .iter()
+        .find(|(plat, _)| *plat == p.platform)
+        .map(|(_, why)| why)
+    {
+        return Some(StackFloorStep::NotChecked((*why).into()));
     }
     let Some(BuildOutput::Cargo {
         target_dir,
@@ -603,7 +621,12 @@ mod tests {
             run_tables: Default::default(),
             package_depends: None,
         };
-        let mut v = vec![image("bare-metal"), image("threadx"), image("nuttx")];
+        let mut v = vec![
+            image("bare-metal"),
+            image("threadx"),
+            image("nuttx"),
+            image("threadx-linux"),
+        ];
         arm(&mut v, Some(&root), None, &|_| None);
         let _ = std::fs::remove_dir_all(&root);
         assert!(
@@ -621,6 +644,13 @@ mod tests {
             matches!(v[2].stack_floor, Some(StackFloorStep::Check(_))),
             "{:?}",
             v[2].stack_floor
+        );
+        // ThreadX on Linux runs its threads on host pthread stacks.
+        assert!(
+            matches!(&v[3].stack_floor, Some(StackFloorStep::NotChecked(w))
+                if w.contains("host pthread stack")),
+            "{:?}",
+            v[3].stack_floor
         );
     }
 
