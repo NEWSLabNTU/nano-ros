@@ -7828,6 +7828,36 @@ west_build_name = "build-ws-rust-talker-cyclonedds"
 west_id = "zephyr/native_sim/native/64/workspace-rust-talker-cyclonedds"
 skip_probe = true
 
+# phase-582 W1c-2 -- the native_sim pair's wall-clock configurations, the
+# `(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example)` cell + `[ClockHlc]` and +
+# `[ClockSntp]`. `tests/zephyr_clock_resolve.rs` boots each with its own
+# locator (`-testargs --nros-locator=`), so the baked one is never dialled.
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-listener-clock-hlc"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener_clock_hlc"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-listener-clock-hlc-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-listener-clock-hlc-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-talker-clock-sntp"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker_clock_sntp"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-talker-clock-sntp-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-talker-clock-sntp-zenoh"
+skip_probe = true
+
 [[workspace_fixture]]
 id = "workspace-rust-zephyr-listener"
 platform = "zephyr"

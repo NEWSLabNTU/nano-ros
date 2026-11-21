@@ -271,7 +271,13 @@ void nros_clock_resolve_configured(void) {
     policy.settle_ms = (uint32_t)CONFIG_NROS_CLOCK_FALLBACK_SETTLE_MS;
     policy.upgrade = nros_clock_parse_upgrade(CONFIG_NROS_CLOCK_UPGRADE);
     policy.epoch_failure = nros_clock_parse_epoch_failure(CONFIG_NROS_CLOCK_EPOCH_FAILURE);
+    const uint64_t start_ns = nros_platform_clock_ns();
     (void)nros_clock_resolve(&policy, nros_zephyr_clock_try, nros_zephyr_clock_report, NULL);
+    /* What the boot paid for it, on the image's own clock: the whole of a
+     * source's settle time when it never answered, so an operator sizing
+     * clock.fallback_settle_ms reads the cost rather than guessing it. */
+    printk("nros: clock resolution took %u ms\n",
+           (unsigned)((nros_platform_clock_ns() - start_ns) / 1000000ULL));
 }
 
 /* RFC-0141 D1 — the clock gate: nothing stamps before the wall clock resolves.
@@ -315,7 +321,7 @@ void nros_clock_gate_setup_done(uint32_t level) {
 
 /* Boot: wait for every level's setup (up to `setup_budget_ms` per level), then
  * resolve the clock. Returns -1 once resolved; the caller restarts its
- * executor's timing and then calls `nros_clock_gate_open`, so no level spins
+ * executor's timing and then calls `nros_clock_gate_open_all`, so no level spins
  * against timers that still owe the wait. When a level never
  * finished registering it returns that level instead, and does NOT resolve or
  * open: the caller fails the boot naming it. That is the SETUP bound; the
