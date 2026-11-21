@@ -148,7 +148,7 @@ each is named beside it.
 | Dev-tier verb | What it does | What the user book says instead |
 |---|---|---|
 | `nros dev sdk root [--explain]` | print the SDK root this `nros` resolves (section above) | `nros locate nano-ros`, the same ladder; a raw `cmake` can also use `nros setup presets` + `cmake --preset <board>` |
-| `nros dev sdk path <tool> [--require]` | print a store tool's prefix (`qemu`, `zephyr-sdk`, `arm-fvp`) | `nros locate tool qemu-system-<arch>` for QEMU; the store path `~/.nros/sdk/<tool>/<version>` for the rest |
+| `nros dev sdk path <tool> [--require]` | print a store tool's prefix (`qemu`, `zephyr-sdk`, `renode`) | `nros locate tool qemu-system-<arch>` for QEMU; the store path `~/.nros/sdk/<tool>/<version>` for the rest |
 | `nros dev sdk manifest` (old `nros toolchain manifest`) | read, or with `--write` stamp, the `share/nros/manifest.toml` a release declares; the release workflow calls it | nothing: a release-pipeline verb |
 | `nros dev codegen rust` | Rust bindings only, no side effects (section above) | `nros interface generate rust`, or `nros sync` |
 | `nros dev rmw session-properties <bringup> --domain <name> --symbol <ident> --out <header>` | lower a bridge's session config file to a C/C++ header without CMake | the CMake road only |

@@ -152,7 +152,8 @@ cross-check (it delegates part of its report to `just doctor`, so it
 needs `just` on PATH). The `just zephyr run-fvp-ws-entry` /
 `run-fvp-board-import` recipes do the equivalent inline via
 `scripts/zephyr/resolve-fvp-bin.sh`. When the binary can't be found, a
-recipe you NAMED fails with the remedy (`nros setup --tool arm-fvp`); reached
+recipe you NAMED fails with the remedy (the FVP is user-provided: install it
+from Arm, then set `ARMFVP_BIN_PATH` or `ARM_FVP_DIR`); reached
 through a fixture fan-out it skips and is reported, like every platform lane.
 
 Build: `just zephyr build-fvp-all` runs the FVP build lanes.

@@ -22,8 +22,8 @@
 //! Preconditions (each an `nros_tests::unmet!` red, issue 1758; NEVER a
 //! bare `eprintln!`+`return`, which would report a false PASS):
 //!   1. ARM FVP not resolvable via `scripts/zephyr/resolve-fvp-bin.sh`
-//!      (`[tool.arm-fvp]`, a public download, in
-//!      `nros-sdk-index.toml`).
+//!      (the FVP is user-provided, issue 2802: installed from Arm and
+//!      found through ARMFVP_BIN_PATH / ARM_FVP_DIR / PATH).
 //!   2. `west` not on PATH (Zephyr SDK absent).
 //!   3. Zephyr workspace not set up.
 //!   4. The fixture ELF missing — hint at `build-fvp-board-import`.
@@ -81,8 +81,9 @@ fn fvp_board_import_fixture_boots() {
     // 1. FVP installed?
     if resolve_fvp_dir(&root).is_none() {
         unmet!(
-            "ARM FVP not resolvable — run `nros setup --tool arm-fvp` (a public \
-             download, x86_64 Linux only), or set ARMFVP_BIN_PATH / ARM_FVP_DIR"
+            "ARM FVP not resolvable — the FVP is user-provided: install the AEMv8-R \
+             FVP from Arm (https://developer.arm.com/downloads/-/arm-ecosystem-fvps), \
+             then set ARMFVP_BIN_PATH (or ARM_FVP_DIR); the model needs libatomic1"
         );
     }
 

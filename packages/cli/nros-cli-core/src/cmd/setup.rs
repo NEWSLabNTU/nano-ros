@@ -937,6 +937,13 @@ fn provision_boards(
     // targets and which this command could not name, let alone price.
     for (b, _) in boards {
         report_zephyr_modules(index, b);
+        // Issue 2802 -- the Arm FVP is user-provided and no index package, so
+        // a board that runs on it says so here instead of installing it.
+        if crate::cmd::arm_fvp::board_runs_on_fvp(index_path.parent(), b) {
+            let found = crate::cmd::arm_fvp::locate(&crate::cmd::arm_fvp::FvpEnv::from_process());
+            eprintln!("nros setup: {b} runs on the Arm FVP, which is user-provided");
+            eprintln!("  {}", crate::cmd::arm_fvp::status_line(&found));
+        }
     }
 
     let root = store_root();
@@ -1432,15 +1439,8 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
         }
     }
 
-    // (a2) The board's index tools — for the FVP board, the simulator itself.
-    //
-    // This step did not exist while the FVP was `[gated.arm-fvp]`: a gated
-    // entry is declared and never fetched, so `nros setup board
-    // fvp-aemv8r-smp` provisioned a Zephyr tree for a board whose model the
-    // user still had to install by hand. The model turned out not to be gated
-    // (a public Arm CDN permalink with a pinned digest — measured 2026-09-06,
-    // and the same URL `autoware-safety-island` downloads in CI), so the step
-    // that was impossible is now just a step.
+    // (a2) The board's index tools (`[board.provisioning] tools`), installed
+    //      through the index. A tool with no dist for this host warns.
     if !meta.tools.is_empty() {
         let tools_index_path = if args.index.is_absolute() {
             args.index.clone()
@@ -1460,11 +1460,11 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
                 .wrap_err_with(|| format!("load SDK index from {}", tools_index_path.display()))?;
             let names: Vec<&str> = meta.tools.iter().map(String::as_str).collect();
             // A tool with no dist for this host is a WARNING, not a failure:
-            // the Arm FVP is x86_64-Linux-only, and an aarch64 developer can
-            // still provision the rest of the tree and build the image — they
-            // just cannot run it here. Failing would deny them the build too.
-            // The plan collects per tool, so one that cannot install does not
-            // stop the others, and the error names each.
+            // a developer on another host can still provision the rest of the
+            // tree and build the image -- they just cannot run it here.
+            // Failing would deny them the build too. The plan collects per
+            // tool, so one that cannot install does not stop the others, and
+            // the error names each.
             if let Err(e) = Jobs::from_env(None)
                 .and_then(|jobs| install_tools(&index, &names, None, false, false, jobs))
             {
@@ -1472,6 +1472,17 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
                 eprintln!("      The board's other provisioning steps continue.");
             }
         }
+    }
+
+    // (a3) Issue 2802 -- a board that runs on the Arm FVP. The model is
+    //      USER-PROVIDED: nano-ros does not download or distribute it. Say
+    //      so, and say whether it is found and through which setting. This
+    //      step never fails and never downloads: a consumer's bootstrap runs
+    //      this command on hosts with and without the model.
+    if crate::cmd::arm_fvp::descriptor_runs_on_fvp(board) {
+        let found = crate::cmd::arm_fvp::locate(&crate::cmd::arm_fvp::FvpEnv::from_process());
+        eprintln!("  (a3) Arm FVP: user-provided (nano-ros does not install it)");
+        eprintln!("      {}", crate::cmd::arm_fvp::status_line(&found));
     }
 
     // (b) Apply the zephyr-line patch set to the CONSUMER's tree. The patch

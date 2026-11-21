@@ -918,12 +918,11 @@ pub struct BoardProvisioning {
     pub rmw_source: Option<String>,
     /// `nros-sdk-index.toml` packages this board needs, by index name.
     ///
-    /// Named `gated` until 2026-09-06, when the one entry using it turned out
-    /// not to be gated at all: the Arm FVP is a public CDN permalink with a
-    /// pinned digest, and calling it licence-walled meant `nros setup board`
-    /// declared it and refused to fetch it. A field named for a POLICY invites
-    /// that mistake; this one names the index, and whether an entry can be
+    /// Named `gated` until 2026-09-06. A field named for a POLICY invites
+    /// mistakes; this one names the index, and whether an entry can be
     /// fetched is the index's own business (`[tool.*]` can, `[gated.*]` cannot).
+    /// No in-tree board lists one since issue 2802: its one user, the Arm FVP,
+    /// is user-provided and no index package.
     ///
     /// `gated` stays as a serde alias: an out-of-tree board descriptor is a
     /// user's file.

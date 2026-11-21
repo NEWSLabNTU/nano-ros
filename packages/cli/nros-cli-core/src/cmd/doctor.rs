@@ -329,15 +329,16 @@ pub fn run(args: Args) -> Result<()> {
         None => None,
     };
 
-    // Phase 187.7 — license-gated SDK presence (NVIDIA SPE, ARM FVP, …): never
+    // Phase 187.7 — license-gated SDK presence (NVIDIA SPE, NXP RTD, …): never
     // fetched, only instructed. Read before `args.workspace` is moved below.
     // Phase 217.B.2 — when `--board <name>` is set, filter to that board's
     // `packages` so unrelated gates don't show up.
-    let gate_problems = check_license_gates(
-        args.workspace.as_deref(),
-        args.board.as_deref(),
-        &crate::orchestration::store::root(),
-    )?;
+    let gate_problems = check_license_gates(args.workspace.as_deref(), args.board.as_deref())?;
+
+    // Issue 2802 -- the Arm FVP is user-provided: report whether it is found
+    // and through which setting. Never counted, so a missing model does not
+    // fail the doctor.
+    report_arm_fvp(args.workspace.as_deref(), args.board.as_deref());
 
     // issue 2716 -- the store against every `[tool.*]` pin. Warns, never
     // counts: a stale or missing tool is reported with its setup command and
@@ -860,30 +861,17 @@ fn resolve_config(explicit: Option<&Path>) -> Option<PathBuf> {
 }
 
 /// Phase 187.7 — license-gate presence check. For each `[gated.*]` SDK in the
-/// index (NVIDIA SPE, ARM FVP, …), report whether its env var resolves to an
+/// index (NVIDIA SPE, NXP RTD, …), report whether its env var resolves to an
 /// existing directory. These are NEVER fetched or built — only instructed. An
 /// unset env is informational (the user simply isn't targeting that board); an
 /// env that's set but points nowhere is a misconfiguration (counted). No index
 /// nearby ⇒ skip silently.
 ///
 /// Phase 217.B.2 — when `board` is `Some(name)`, only `[gated.*]` entries
-/// listed in `[board.<name>].packages` are checked. Also special-cases
-/// `arm-fvp`: presence is determined by locating the `FVP_BaseR_AEMv8R`
-/// binary (via `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`, PATH, or the
-/// `~/.nros/sdks/arm-fvp/current/` symlink the installer drops). A miss is
-/// a WARN with a one-liner pointing at `scripts/installers/arm-fvp-installer.sh`
-/// plus the Arm EULA URL — NOT counted as a problem (gated tool, never
-/// hard-fails the doctor run).
-///
-/// `store` is the store root the FVP installer landing is probed under, a
-/// PARAMETER for the reason `install_report` gives: a test that moved `$HOME`
-/// to point it elsewhere raced every other test in the binary that resolves
-/// the store (issue 1915).
-fn check_license_gates(
-    workspace: Option<&Path>,
-    board: Option<&str>,
-    store: &Path,
-) -> Result<usize> {
+/// listed in `[board.<name>].packages` are checked. The Arm FVP is not here:
+/// it is neither gated nor an index package, but user-provided (issue 2802),
+/// and [`report_arm_fvp`] reports it.
+fn check_license_gates(workspace: Option<&Path>, board: Option<&str>) -> Result<usize> {
     let Some(index_path) = crate::cmd::setup::locate_index(workspace) else {
         return Ok(0);
     };
@@ -906,20 +894,6 @@ fn check_license_gates(
     eprintln!("nros doctor: license-gated SDKs ({})", index_path.display());
     let mut problems = 0usize;
 
-    // The Arm FVP is NOT license-gated and stopped being `[gated.arm-fvp]` on
-    // 2026-09-06 (a public CDN permalink with a pinned digest — measured, not
-    // assumed). It is still reported HERE, because this is where a user looks
-    // for "do I have the simulator", and because its discovery is special
-    // whatever section it lives in: Zephyr's `armfvp.cmake` does
-    // `find_program(... PATHS ENV ARMFVP_BIN_PATH)`, so the question is about a
-    // BINARY on a path, not an env var pointing at an install root.
-    if index.tool.contains_key("arm-fvp")
-        && board_filter
-            .as_ref()
-            .is_none_or(|allow| allow.iter().any(|p| p == "arm-fvp"))
-    {
-        check_arm_fvp(&index.tool["arm-fvp"].version, store);
-    }
     for (name, g) in &index.gated {
         if let Some(allow) = &board_filter
             && !allow.iter().any(|p| p == name)
@@ -959,94 +933,21 @@ fn check_license_gates(
     Ok(problems)
 }
 
-/// Phase 217.B.2 — ARM FVP binary discovery. Mirrors
-/// `scripts/zephyr/resolve-fvp-bin.sh`: `ARMFVP_BIN_PATH/<bin>` →
-/// `ARM_FVP_DIR/models/Linux64_GCC-*/<bin>` → `command -v <bin>` →
-/// `~/.nros/sdks/arm-fvp/current/<bin>` (installer landing). Prints PASS /
-/// WARN to stderr but never increments the problem counter — gated tool, so
-/// a missing FVP must not fail an unrelated `nros doctor` run.
-fn check_arm_fvp(version: &str, store: &Path) {
-    const BIN: &str = "FVP_BaseR_AEMv8R";
-    // Under the store root, so a `$NROS_HOME` store (a distrobox) is the one
-    // probed — the literal `$HOME/.nros` here ignored it (RFC-0103 D6).
-    let landing = store.join("sdks/arm-fvp/current");
-
-    // 1. ARMFVP_BIN_PATH (Zephyr canonical).
-    if let Some(v) = std::env::var_os("ARMFVP_BIN_PATH") {
-        let dir = PathBuf::from(&v);
-        if dir.join(BIN).is_file() {
-            eprintln!(
-                "  [OK] arm-fvp {}: $ARMFVP_BIN_PATH = {}",
-                version,
-                dir.display()
-            );
-            return;
-        }
-    }
-    // 2. ARM_FVP_DIR — sdk-index env. Look for `models/Linux64_GCC-*/<BIN>`
-    //    OR `<BIN>` directly under the root.
-    if let Some(v) = std::env::var_os("ARM_FVP_DIR") {
-        let root = PathBuf::from(&v);
-        if let Some(hit) = find_fvp_under(&root, BIN) {
-            eprintln!(
-                "  [OK] arm-fvp {version}: $ARM_FVP_DIR = {} (binary at {})",
-                root.display(),
-                hit.display()
-            );
-            return;
-        }
-    }
-    // 3. PATH fallback.
-    if which(BIN).is_ok() {
-        eprintln!("  [OK] arm-fvp {}: {BIN} on PATH", version);
+/// Issue 2802 -- the Arm FVP is user-provided. Report whether it is found,
+/// and through which setting (`ARMFVP_BIN_PATH`, `ARM_FVP_DIR` or `PATH`),
+/// via [`crate::cmd::arm_fvp`], the Rust twin of
+/// `scripts/zephyr/resolve-fvp-bin.sh`. With `--board`, only for a board whose
+/// `[board.run] emulator` is an FVP. Prints to stderr and never counts a
+/// problem: a missing simulator must not fail an unrelated doctor run.
+fn report_arm_fvp(workspace: Option<&Path>, board: Option<&str>) {
+    if let Some(name) = board
+        && !crate::cmd::arm_fvp::board_runs_on_fvp(workspace, name)
+    {
         return;
     }
-    // 4. Installer landing symlink.
-    if !landing.as_os_str().is_empty() && landing.join(BIN).is_file() {
-        eprintln!(
-            "  [OK] arm-fvp {}: {} (installer landing)",
-            version,
-            landing.display()
-        );
-        return;
-    }
-    // Miss — WARN only (gated, never a hard fail).
-    eprintln!(
-        "  [WARN] arm-fvp {version}: {BIN} not found — run `nros setup --tool \
-         arm-fvp` (x86_64 Linux only), or point $ARMFVP_BIN_PATH / $ARM_FVP_DIR \
-         at an install you already have.\n\
-         \x20        This used to say \"never auto-fetched\"; it is fetched now — \
-         the model is a public Arm CDN permalink with a pinned digest, not a \
-         licence wall."
-    );
-}
-
-/// Scan a small set of common Arm-ships layouts for `bin` under `root`.
-/// Mirrors `scripts/zephyr/resolve-fvp-bin.sh` step 2. Returns the absolute
-/// path on first hit. Cheap glob — `read_dir` only, no recursive `find`.
-fn find_fvp_under(root: &Path, bin: &str) -> Option<PathBuf> {
-    let direct = root.join(bin);
-    if direct.is_file() {
-        return Some(direct);
-    }
-    for sub in ["models", "Base_RevC_AEMv8R_pkg/models"] {
-        let models = root.join(sub);
-        if let Ok(rd) = std::fs::read_dir(&models) {
-            for ent in rd.flatten() {
-                let p = ent.path().join(bin);
-                if p.is_file() {
-                    return Some(p);
-                }
-            }
-        }
-    }
-    for sub in ["bin", "Base_RevC_AEMv8R_pkg/bin"] {
-        let cand = root.join(sub).join(bin);
-        if cand.is_file() {
-            return Some(cand);
-        }
-    }
-    None
+    let found = crate::cmd::arm_fvp::locate(&crate::cmd::arm_fvp::FvpEnv::from_process());
+    eprintln!("nros doctor: Arm FVP (user-provided)");
+    eprintln!("  {}", crate::cmd::arm_fvp::status_line(&found));
 }
 
 /// Report each `[image.<id>]` and `[host.<name>]` block in the bringup
@@ -1608,81 +1509,47 @@ mod tests {
 
         // Unset ⇒ informational, not a problem.
         unsafe { std::env::remove_var(env) };
-        assert_eq!(
-            check_license_gates(Some(&ws), None, &ws.join("store")).unwrap(),
-            0
-        );
+        assert_eq!(check_license_gates(Some(&ws), None).unwrap(), 0);
         // Set to a non-existent dir ⇒ misconfigured ⇒ 1 problem.
         unsafe { std::env::set_var(env, ws.join("nope")) };
-        assert_eq!(
-            check_license_gates(Some(&ws), None, &ws.join("store")).unwrap(),
-            1
-        );
+        assert_eq!(check_license_gates(Some(&ws), None).unwrap(), 1);
         // Set to an existing dir ⇒ OK.
         unsafe { std::env::set_var(env, &ws) };
-        assert_eq!(
-            check_license_gates(Some(&ws), None, &ws.join("store")).unwrap(),
-            0
-        );
+        assert_eq!(check_license_gates(Some(&ws), None).unwrap(), 0);
 
         unsafe { std::env::remove_var(env) };
         std::fs::remove_dir_all(&ws).ok();
     }
 
     /// Phase 217.B.2 — `--board <name>` restricts the gated check to that
-    /// board's package set. A board listing `arm-fvp` triggers the FVP path
-    /// (binary discovery); a missing FVP is WARN-only (problems == 0).
+    /// board's package set: a misconfigured gate the board does not list is
+    /// not counted. (This test used `[gated.arm-fvp]` as the board's package;
+    /// the FVP is user-provided since issue 2802 and is no index package.)
     #[test]
-    fn license_gate_board_filter_arm_fvp_warns_only() {
-        let ws = crate::test_support::scratch_dir("gate_fvp");
+    fn license_gate_board_filter_skips_unlisted_gates() {
+        let ws = crate::test_support::scratch_dir("gate_board");
         std::fs::create_dir_all(&ws).unwrap();
         std::fs::write(
             ws.join("nros-sdk-index.toml"),
-            "[gated.arm-fvp]\n\
-             version=\"11.24\"\n\
-             env=\"NROS_TEST_ARMFVP_DIR\"\n\
-             installer=\"arm-fvp-installer\"\n\
-             [gated.nv-spe-fsp]\n\
+            "[gated.nv-spe-fsp]\n\
              version=\"36.3\"\n\
-             env=\"NROS_TEST_NVSPE_DIR\"\n\
+             env=\"NROS_TEST_NVSPE_DIR_BOARD\"\n\
              installer=\"x\"\n\
-             [board.fvp-test]\n\
-             packages=[\"arm-fvp\"]\n",
+             [board.other-test]\n\
+             packages=[]\n",
         )
         .unwrap();
-
-        // Issue 1915 — NOT `HOME`. This test used to point `$HOME` at a temp
-        // dir so the FVP probe would find no installer landing. `$HOME` is
-        // process-global and the store root derives from it, so every test in
-        // this binary that resolves the store raced it — measured on the tier-2
-        // runner, where `board_facts`' two `locate` calls straddled the change
-        // and resolved one FreeRTOS kernel two ways. The landing is now probed
-        // under a store root the test passes in.
-        let envs = [
-            "NROS_TEST_ARMFVP_DIR",
-            "NROS_TEST_NVSPE_DIR",
-            "ARMFVP_BIN_PATH",
-        ];
-        let saved: Vec<_> = envs.iter().map(|e| (*e, std::env::var_os(e))).collect();
-        for e in &envs {
-            unsafe { std::env::remove_var(e) };
-        }
-
-        // Misconfigured NVSPE env ⇒ would be 1 problem WITHOUT the filter —
-        // with `--board fvp-test`, only arm-fvp is checked, so it must be 0.
-        unsafe { std::env::set_var("NROS_TEST_NVSPE_DIR", ws.join("nope")) };
-        let problems = check_license_gates(Some(&ws), Some("fvp-test"), &ws.join("store")).unwrap();
+        let env = "NROS_TEST_NVSPE_DIR_BOARD";
+        // Misconfigured ⇒ 1 problem WITHOUT the filter, 0 with a board that
+        // does not list the gate.
+        unsafe { std::env::set_var(env, ws.join("nope")) };
+        assert_eq!(check_license_gates(Some(&ws), None).unwrap(), 1);
         assert_eq!(
-            problems, 0,
-            "board filter must skip non-arm-fvp gates and WARN (not FAIL) on missing FVP"
+            check_license_gates(Some(&ws), Some("other-test")).unwrap(),
+            0,
+            "board filter must skip gates the board does not list"
         );
-
-        for (e, v) in saved {
-            match v {
-                Some(v) => unsafe { std::env::set_var(e, v) },
-                None => unsafe { std::env::remove_var(e) },
-            }
-        }
+        unsafe { std::env::remove_var(env) };
         std::fs::remove_dir_all(&ws).ok();
     }
 }

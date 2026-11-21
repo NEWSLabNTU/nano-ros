@@ -49,10 +49,9 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 
 ### ARM FVP (`FVP_BaseR_AEMv8R`)
 
-Not license-gated: `nros setup --tool arm-fvp` fetches the model from a pinned
-Arm CDN permalink (`[tool.arm-fvp]` in `nros-sdk-index.toml`, digest-checked) into
-the SDK store. Arm publishes it for **x86_64 Linux only**. You need none of the
-variables below unless you installed a model yourself. See the
+User-provided: nano-ros does not download or distribute the model. Install the
+AEMv8-R FVP from Arm (**x86_64 Linux only**), install its runtime dependency
+`libatomic1`, then set one of the variables below. See the
 [ARM FVP getting-started chapter](../internals/platform/arm-fvp.html) for the
 end-to-end build+run walk-through.
 
@@ -61,13 +60,12 @@ end-to-end build+run walk-through.
 | `ARMFVP_BIN_PATH` | Directory containing `FVP_BaseR_AEMv8R` (Zephyr-canonical, highest priority).        | (unset) |
 | `ARM_FVP_DIR`     | Install root; resolver scans `models/Linux64_GCC-*/` underneath.                     | (unset) |
 
-The model is found in this order: `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`,
-`FVP_BaseR_AEMv8R` on `PATH`, then the store copy that
-`nros setup --tool arm-fvp` installs. Set `ARMFVP_BIN_PATH` at BUILD time as
-well as run time, because Zephyr's `armfvp.cmake` caches the location at
-configure. For a model you downloaded by hand, set `ARM_FVP_DIR` to the
-extraction root. `nros doctor --board fvp-aemv8r-smp` reports whether the
-model resolves.
+The model is found in this order: `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`, then
+`FVP_BaseR_AEMv8R` on `PATH`. Set `ARMFVP_BIN_PATH` at BUILD time as well as
+run time, because Zephyr's `armfvp.cmake` caches the location at configure: a
+build directory configured before the model was found caches `ARMFVP-NOTFOUND`
+and must be re-configured. `nros doctor` reports whether the model resolves
+and through which variable.
 
 Changing how the FVP is resolved or run in the tree: see
 [Internals → Zephyr in-tree examples](../internals/platform/zephyr-in-tree.html#arm-fvp-resolution).

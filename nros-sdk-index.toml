@@ -1271,37 +1271,13 @@ ref = "0844b63c99736a98e7573ab9052575a52cc7416e"
 
 # --- Arm Fast Models AEMv8-R FVP -------------------------------------------
 #
-# NOT license-gated, and it was modelled as `[gated.arm-fvp]` until 2026-09-06
-# on the assumption that it is. Measured against Arm's own CDN permalink:
-# HTTP 200, 68,450,956 bytes, no authentication, and the digest below reproduces
-# byte-for-byte. `autoware-safety-island` has been downloading it in CI from
-# this exact URL all along -- so the "declared, never downloaded" treatment cost
-# every nano-ros user a manual install for a file we could always have fetched,
-# and left our `[gated]` version reading 11.24 while the pin anyone actually
-# used was 11.31.
-#
-# x86_64 Linux ONLY. Arm publishes no other host build of this model, and the
-# index already models that correctly: a host with no matching `dist` and no
-# `source` recipe is told so by name rather than left to fail in the unpack.
-[tool.arm-fvp]
-version = "11.31.28"
-need = "opt-in"
-upstream = "FM-11.31"
-# `--strip-components=1`: the tarball is rooted at `FVP_Base_AEMv8R_11.31_28/`
-# with `bin/FVP_BaseR_AEMv8R` beneath it, so the default prefix-rooted unpack
-# would bury the binary one level down and every resolver would miss it.
-# Verified by listing the archive, not assumed from the name.
-dist.linux-x86_64 = { url = "https://developer.arm.com/-/cdn-downloads/permalink/FVPs-Architecture/FM-11.31/FVP_Base_AEMv8R_11.31_28_Linux_x86.tar.gz", sha256 = "627500afdb115701b412b85520e5c0e370b7f7e3f425f7ae4b1e8b14cbd4441a", install = "tar -xzf {archive} -C {prefix} --strip-components=1", floor = { glibc = "2.17", glibcxx = "3.4.26" } }
-# phase-477 — `--version` RUNS the model and prints `Fast Models [11.31.28 …]`
-# (measured on the installed 11.31.28), so a broken unpack or a missing
-# runtime library fails here instead of at the first `west build -t run`.
-# `libatomic.so.1` is a DT_NEEDED of `bin/libarmctmodel.so`,
-# `bin/libscxframework.so`, `bin/newt.so` and the trace plugins (readelf on
-# the installed 11.31.28) — `check-dist-runtime-deps` caught it undeclared.
-system = ["libatomic1"]
-smoke = [
-    { run = "bin/FVP_BaseR_AEMv8R --version", expect = "Fast Models" },
-]
+# USER-PROVIDED (issue 2802). nano-ros does not provision or distribute the
+# FVP: there is no `[tool.arm-fvp]` row and `fvp-aemv8r-smp` lists no package
+# for it. The user installs the AEMv8-R FVP from Arm and points nano-ros at it
+# with ARMFVP_BIN_PATH (or ARM_FVP_DIR, or PATH);
+# `scripts/zephyr/resolve-fvp-bin.sh` and `nros doctor` resolve it in that
+# order. The model's own runtime dependency, libatomic.so.1, stays declared as
+# `[prereq.libatomic1]` so `nros doctor` / `nros setup --system` can name it.
 
 # Renode, the emulator twin of the Nucleo-F767ZI (phase-524 W2, RFC-0115 D4).
 # phase-524 W1 booted the Zephyr C talker for `nucleo_f767zi` in it and heard
@@ -1309,7 +1285,7 @@ smoke = [
 # switch (`docs/roadmap/data/phase-524-w1-renode-nucleo.log`), with exactly
 # this archive.
 #
-# UPSTREAM URLs, the `[tool.arm-fvp]` / `[tool.ninja]` shape: Renode publishes
+# UPSTREAM URLs, the `[tool.ninja]` shape: Renode publishes
 # a self-contained "portable" build (a .NET apphost with the runtime bundled
 # beside it), we apply nothing to it, so a repack would be a release asset per
 # host that adds nothing. sha256s are upstream's, from the release's own
@@ -1552,7 +1528,8 @@ packages = ["threadx", "threadx-netxduo"]
 [board.fvp-aemv8r-smp]
 arch = "aarch64"
 platform = "bare-metal"
-packages = ["arm-fvp"]
+# No packages: the FVP model is user-provided (issue 2802); see "Arm Fast
+# Models AEMv8-R FVP" above.
 
 [board.zephyr]
 platform = "zephyr"
@@ -2913,7 +2890,7 @@ check = { cmd = "openocd", version = { min = "0.12" } }
 
 [prereq.libatomic1]
 role = "infra"
-why = "runtime dep of the arm-fvp dist (FVP model libraries; check-dist-runtime-deps)"
+why = "runtime dep of the user-provided Arm FVP model (its libraries link libatomic.so.1; issue 2802)"
 apt = ["libatomic1"]
 dnf = ["libatomic"]
 pacman = ["gcc-libs"]

@@ -372,7 +372,7 @@ by `just check board-registry`.)*
   Cyclone runs on it: phase-298 booted the two-sched-task workspace Entry on
   `FVP_BaseR_AEMv8R`, brought up ethernet and published `/ctrl` + `/telem`. But
   no CI lane boots it (cost and x86_64-only hosting, not a licence — the model
-  is a pinned public download, `nros setup --tool arm-fvp`); the runtime gate is
+  is user-provided, installed from Arm); the runtime gate is
   maintainer-run via `just zephyr verify-fvp-runtime`, re-verified passing
   2026-10-05 (phase-477).
 - **`nros-board-s32z270dc2-r52` — scaffold.** Config and skeleton only, zero
@@ -380,7 +380,7 @@ by `just check board-registry`.)*
   it without reading issue tracking first.
 - Zephyr Cortex-A / Cortex-R targets still need the `aarch64-zephyr-elf`
   toolchain in the Zephyr SDK install, and hardware or the Arm FVP
-  (`nros setup --tool arm-fvp`) for any runtime claim.
+  (user-provided, installed from Arm) for any runtime claim.
 
 See `docs/roadmap/phase-117-cyclonedds-rmw.md` for the per-item
 breakdown.

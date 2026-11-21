@@ -60,10 +60,10 @@ Semicolon-separated list of license-gated package names from
 - Format: a CMake list (semicolon-separated). Empty list = no gated
   deps.
 - Valid values: any key under `[gated.*]` in `nros-sdk-index.toml`
-  (e.g. `arm-fvp`, `nv-spe-fsp`).
+  (e.g. `ti-arm-clang`, `nxp-rtd-s32ze`).
 - Consumed by: `nros doctor --board <name>` (Phase 215.C.3 / 215.F.2)
   — for each name in the list, check the matching `env` var
-  (e.g. `arm-fvp` → `ARM_FVP_DIR`) is set + the install layout looks
+  (e.g. `ti-arm-clang` → `TI_ARM_CLANG_ROOT`) is set + the install layout looks
   right. Hard failure if missing, with installer hint from the index.
 
 ### `NROS_BOARD_DEFAULT_RMW`

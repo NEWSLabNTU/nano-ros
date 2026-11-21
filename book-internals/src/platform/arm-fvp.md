@@ -54,65 +54,64 @@ and provisions via a remote API; local FVP loads a raw ELF via
 
 - A working Zephyr 3.7 workspace — run `nros setup zephyr` once if
   you haven't (see the [Zephyr starter](../../../book/src/guide/platforms/zephyr.md)).
-- The Arm `Base_RevC AEMv8R` Fast Models binary. **nano-ros fetches it:**
+- The Arm `Base_RevC AEMv8R` Fast Models binary, `FVP_BaseR_AEMv8R`.
+  **It is user-provided:** nano-ros does not download, install or distribute
+  it, and `nros setup` has no tool for it. **x86_64 Linux only** -- Arm
+  publishes no other host build of this model. On another architecture you
+  can still build the image; you cannot run it here.
 
-  ```sh
-  nros setup --tool arm-fvp
-  ```
+### Install the FVP
 
-  `nros setup board fvp-aemv8r-smp` does it as one of its steps, so most
-  people never run the line above directly. It is a pinned Arm CDN permalink
-  with a checked SHA256 (`[tool.arm-fvp]` in `nros-sdk-index.toml`), installed
-  to `~/.nros/sdk/arm-fvp/<version>`.
+1. Download the AEMv8-R FVP (`FVP_Base_AEMv8R`, Linux x86_64) from Arm's
+   [Arm Ecosystem FVPs page](https://developer.arm.com/downloads/-/arm-ecosystem-fvps).
+2. Unpack it wherever you keep tools, for example:
 
-  **x86_64 Linux only** — Arm publishes no other host build of this model. On
-  another architecture you can still build the image; you cannot run it here.
+   ```bash
+   mkdir -p ~/opt/fvp-aemv8r
+   tar -xzf FVP_Base_AEMv8R_*_Linux_x86.tar.gz -C ~/opt/fvp-aemv8r --strip-components=1
+   ```
 
-  > Until 2026-09-06 this page said the model was license-gated and that
-  > fetching it was your responsibility. It is not: the permalink answers 200
-  > with no authentication, which is how `autoware-safety-island` had been
-  > downloading it in CI the whole time. The mistaken policy cost every reader
-  > of this page a manual install.
+3. Install its runtime dependency. The model's libraries link
+   `libatomic.so.1` (Debian/Ubuntu `libatomic1`, Fedora `libatomic`, Arch
+   `gcc-libs`); `nros setup --system` names it for your package manager.
+4. Point nano-ros at it, in your shell rc:
 
-After installing, export one of the discovery env vars:
+   ```bash
+   # Preferred -- Zephyr's canonical name: the directory holding the binary.
+   export ARMFVP_BIN_PATH=~/opt/fvp-aemv8r/bin
 
-```bash
-# Preferred — Zephyr's canonical name; takes highest priority.
-export ARMFVP_BIN_PATH=/opt/Arm/FastModels/Base_RevC_AEMv8R/models/Linux64_GCC-9.3
+   # Alternative -- the install root; the resolver looks at the root and
+   # under `models/Linux64_GCC-*/` and `bin/`.
+   export ARM_FVP_DIR=~/opt/fvp-aemv8r
+   ```
 
-# Alternative — directory layout from the gated installer; the
-# resolver scans `models/Linux64_GCC-*/` underneath it.
-export ARM_FVP_DIR=/opt/Arm/FastModels/Base_RevC_AEMv8R
-```
+   If neither is set, `FVP_BaseR_AEMv8R` is found on `PATH`. The order is
+   `ARMFVP_BIN_PATH`, then `ARM_FVP_DIR`, then `PATH`; a setting that is set
+   but does not hold the binary is reported, not skipped.
+5. Check it: `FVP_BaseR_AEMv8R --version` prints `Fast Models [...]`.
 
-If neither is set, `FVP_BaseR_AEMv8R` is discovered via `PATH` as
-a last-ditch fallback.
+`nros setup board fvp-aemv8r-smp` (and `nros setup fvp-aemv8r-smp`) does not
+install the model either: it says the model is user-provided and reports
+whether it is found, and through which setting. It succeeds either way, so a
+bootstrap that runs it on a host without the model keeps working.
 
-### Installer surface
+### Configure-cache trap
 
-For a model you extracted yourself, rather than the one `nros setup --tool
-arm-fvp` fetched, run the discovery script:
-
-```bash
-ARM_FVP_DIR=/path/to/extracted/fvp \
-    scripts/installers/arm-fvp-installer.sh
-```
-
-The installer locates `FVP_BaseR_AEMv8R` under `$ARM_FVP_DIR`,
-symlinks the containing directory to
-`~/.nros/sdks/arm-fvp/current/` (atomic via `ln -sfn`), and
-prints the `export ARMFVP_BIN_PATH=…` line for your shell rc.
-Run `scripts/installers/arm-fvp-installer.sh --print-env` later
-to re-emit the export. It downloads nothing: `nros setup --tool arm-fvp`
-is the fetch.
+Zephyr's `cmake/emu/armfvp.cmake` looks the model up once, at **configure**,
+and caches the answer. A build directory configured before the FVP was
+installed, or before `ARMFVP_BIN_PATH` was set, caches `ARMFVP-NOTFOUND`, and
+`west build -t run` then fails with
+`/bin/sh: 1: ARMFVP-NOTFOUND: not found` even though the model is now there.
+Re-configure that build directory: delete it, or rerun the configure
+(`nros build demo_bringup:fvp -- --pristine`, or `west build -p always ...`).
 
 ### Doctor check
 
-nano-ros checks that the model resolves via `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`,
-`PATH`, or the SDK store (where `nros setup --tool arm-fvp` installs it), and warns — never
-hard-fails — when it can't. A warning rather than an error because a
-contributor who is not working on the FVP should not be blocked by its absence;
-`nros setup --tool arm-fvp` is the fix when they are.
+`nros doctor` reports whether the model is found, and through which setting
+(`ARMFVP_BIN_PATH`, `ARM_FVP_DIR` or `PATH`). A miss is a warning naming the
+install steps above, never a failure: a contributor who is not working on the
+FVP should not be blocked by its absence. `nros doctor --board fvp-aemv8r-smp`
+reports the same line.
 
 > Changing this in the tree: see [Internals → per-platform lanes](platform-lanes.md#arm-fvp).
 
@@ -137,16 +136,14 @@ need no sourced shell:
 
 ```bash
 nros setup zephyr --rmw cyclonedds     # the Zephyr workspace + SDK
-nros setup fvp-aemv8r-smp              # the model (x86_64 Linux only)
+# the FVP itself: user-provided, see "Install the FVP" above
 source /opt/ros/humble/setup.bash
 nros build demo_bringup:fvp
 ```
 
-The model must be resolvable when the build **configures**: Zephyr caches the
-`FVP_BaseR_AEMv8R` path then, so an image configured before the model was
-installed (or before `ARMFVP_BIN_PATH` was set) has to be reconfigured
-(`nros build demo_bringup:fvp -- --pristine`). `nros build` says so in the note
-it prints after the build.
+The model must be resolvable when the build **configures** (see the
+[configure-cache trap](#configure-cache-trap)). `nros build` says so in the
+note it prints after the build.
 
 ## Run on the FVP
 
@@ -160,9 +157,8 @@ west build -d build/zephyr-cyclonedds/demo_bringup__fvp_west -t run
 
 > **Not replayed.** No probe track builds or boots the FVP image yet, so this line is unmeasured on the installed track ([tracking issue](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
-The model is a free download, **not licence-gated** (see
-[Prereqs](#prereqs)); what keeps it off a CI lane is cost and its x86_64-only
-host build. It runs until you stop it (Ctrl-C).
+The model is user-provided (see [Install the FVP](#install-the-fvp)); what
+keeps it off a CI lane is cost and its x86_64-only host build. It runs until you stop it (Ctrl-C).
 
 ## Expected output
 
