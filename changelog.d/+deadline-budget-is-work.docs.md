@@ -1,0 +1,1 @@
+The execution-model chapter now explains that Linux charges a `SCHED_DEADLINE` level budget as an amount of work, not as CPU time. On a CPU clocked below its maximum, for example under the `powersave` governor, a level therefore gets more CPU time per period than its budget states.

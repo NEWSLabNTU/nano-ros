@@ -1,12 +1,15 @@
 <?xml version="1.0"?>
 <!-- phase-162 W1 - one level that runs past its kernel budget: `load_capped`
-     burns 10 ms of CPU per release on the authored `capped` sched task (2 ms per
-     10 ms, SCHED_DEADLINE). `load_boot` is on the lower `background` sched task, so
+     burns 80 ms of CPU per release on the authored `capped` sched task (2 ms per
+     10 ms, SCHED_DEADLINE). 80 ms, not 10: Linux charges the budget as work at
+     the CPU's maximum clock, so on a CPU clocked down to an eighth of it a 10 ms
+     burn costs barely 1.2 ms and is never throttled, while 80 ms still costs
+     more than the two budgets a release can reach without waiting. `load_boot` is on the lower `background` sched task, so
      it is the boot level that owns the session; the kernel reservation goes
      only on a spawned level (issue 2018). -->
 <launch>
     <node pkg="load_pkg" exec="load" name="load_capped">
-        <param name="burn_us" value="10000"/>
+        <param name="burn_us" value="80000"/>
     </node>
     <node pkg="load_pkg" exec="load" name="load_boot">
         <param name="burn_us" value="100"/>

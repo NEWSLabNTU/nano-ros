@@ -39,8 +39,8 @@ use nros_tests::{
     },
     lane_scope::require_rt_sched_claimed,
     levels::{
-        attitude_run, kernel_is_preempt_rt, level_order_verdict, load_ticks, s1_verdict,
-        throttle_verdict,
+        attitude_run, deadline_burn_margin, kernel_is_preempt_rt, level_order_verdict, load_ticks,
+        s1_verdict, throttle_verdict,
     },
 };
 use std::{path::Path, process::Command, time::Duration};
@@ -239,8 +239,11 @@ fn linux_levels_preempt_in_rank_order_on_one_cpu() {
 
 /// W1 -- a spawned level past its SCHED_DEADLINE budget is throttled by the
 /// KERNEL: the runner hands the budget to the kernel (one enforcer per level,
-/// issue 2018), and each 10 ms burn against 2 ms per 10 ms takes several
-/// periods of wall time, most of it off the CPU waiting for a refill.
+/// issue 2018), and every 80 ms burn against 2 ms per 10 ms waits off the CPU
+/// for refills. The burn is that long because the kernel charges a budget as
+/// work at the CPU's maximum clock, so a shorter one can run through on a
+/// clocked-down CPU; [`deadline_burn_margin`] checks the host's own clock
+/// range admits the burn before the verdict is read (issue 2797).
 #[test]
 fn linux_level_budget_overrun_is_throttled_by_the_kernel() {
     require_rt_sched_claimed();
@@ -248,7 +251,7 @@ fn linux_level_budget_overrun_is_throttled_by_the_kernel() {
         .require("native levels-cpp budget entry");
     let entry =
         build_native_workspace_cpp_levels_budget_entry().require("native levels-cpp budget entry");
-    let console = run_levels_image(entry, 3_000, false, "levels-budget-entry");
+    let console = run_levels_image(entry, 6_000, false, "levels-budget-entry");
     require_kernel_accepted(&console, entry);
     if let Some(l) = console
         .lines()
@@ -269,6 +272,18 @@ fn linux_level_budget_overrun_is_throttled_by_the_kernel() {
             console.contains(marker),
             "`{marker}` absent: the kernel does not hold the level's budget\n\
              --- console ---\n{console}"
+        );
+    }
+    let burn_us: u64 = console
+        .lines()
+        .find_map(|l| l.strip_prefix("[load_capped] burn_us="))
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or_else(|| panic!("load_capped printed no burn_us\n--- console ---\n{console}"));
+    let (min_khz, max_khz) = cpu_clock_range_khz();
+    if let Err(e) = deadline_burn_margin(burn_us, CAPPED_BUDGET_US, min_khz, max_khz) {
+        nros_tests::unmet!(
+            "this host's clock range cannot show a throttle with this image: {e}. Raise \
+             `burn_us` in levels-cpp's budget.launch.xml"
         );
     }
     let ticks = load_ticks(&console, "load_capped");
@@ -420,6 +435,45 @@ fn assert_linux_census_placed(tag: &str, entry: &Path, label: &str) {
         "[{tag}] no thread runs SCHED_FIFO, so the census measured the default policy: \
          {census:?}"
     );
+}
+
+/// The lowest `cpuinfo_min_freq` and the highest `cpuinfo_max_freq` over the
+/// host's CPUs, in kHz: the widest range the kernel's frequency-invariant
+/// budget charge can span on any CPU the level migrates to. `(0, 0)` when the
+/// host has no cpufreq.
+fn cpu_clock_range_khz() -> (u64, u64) {
+    let read = |cpu: &Path, f: &str| -> Option<u64> {
+        std::fs::read_to_string(cpu.join("cpufreq").join(f))
+            .ok()?
+            .trim()
+            .parse()
+            .ok()
+    };
+    let mut range: Option<(u64, u64)> = None;
+    let cpus = std::fs::read_dir("/sys/devices/system/cpu")
+        .into_iter()
+        .flatten();
+    for cpu in cpus.flatten() {
+        let name = cpu.file_name();
+        let name = name.to_string_lossy();
+        if !name
+            .strip_prefix("cpu")
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        {
+            continue;
+        }
+        let path = cpu.path();
+        if let (Some(lo), Some(hi)) = (
+            read(&path, "cpuinfo_min_freq"),
+            read(&path, "cpuinfo_max_freq"),
+        ) {
+            range = Some(match range {
+                Some((l, h)) => (l.min(lo), h.max(hi)),
+                None => (lo, hi),
+            });
+        }
+    }
+    range.unwrap_or((0, 0))
 }
 
 /// `[board.priority_plan]`'s `reserved.*` and `pool.*` bands, by name.
