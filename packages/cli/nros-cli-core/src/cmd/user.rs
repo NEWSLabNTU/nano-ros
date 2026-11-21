@@ -39,7 +39,7 @@ pub const GROUPS: &[(&str, &[&str])] = &[
         "Run on a target",
         &["run", "flash", "monitor", "bench", "debug"],
     ),
-    ("Workspace", &["list", "graph"]),
+    ("Workspace", &["list", "image", "graph"]),
     ("Interfaces", &["interface"]),
     (
         "Inspect",

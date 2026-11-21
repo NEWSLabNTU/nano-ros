@@ -25,6 +25,7 @@ user generate
 user generate-px4-msgs
 user generate-rust
 user graph
+user image
 user image-facts
 user init
 user interface

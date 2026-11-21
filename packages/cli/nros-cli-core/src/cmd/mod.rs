@@ -46,6 +46,7 @@ pub mod generate;
 pub mod graph;
 pub mod image_entity_facts;
 pub mod image_facts;
+pub mod image_verb;
 pub mod init;
 pub mod interface;
 pub mod knob;
@@ -420,6 +421,11 @@ pub enum Cmd {
     /// List the node roles `nros new --template` scaffolds, or show one
     #[command(subcommand)]
     Template(template_verb::Args),
+
+    /// List the workspace's images, or show one: what it declares and what
+    /// the build resolves for it
+    #[command(subcommand)]
+    Image(image_verb::Args),
 
     /// Workspace-level message-package utilities: env, list, status, clean, doctor.
     // Phase 210.B.3 + 210.D.1. `sync` was promoted to the top-level `nros
