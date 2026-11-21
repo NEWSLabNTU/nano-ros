@@ -1369,7 +1369,11 @@ function(nano_ros_node_register)
 
         _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
         # issue 2400 W2 -- CHECK the stack just baked against the measured floor.
-        nros_stack_floor_freertos_check(${_nrc_target} "${NROS_ENTRY_APP_STACK_BYTES}" "")
+        # phase-583 W4 -- keyed by the PACKAGE (`<pkg>@<board>`, as before the
+        # carrier became one per executable), or `<pkg>/<exe>@<board>` once the
+        # package checks several programs.
+        nros_stack_floor_freertos_check(${_nrc_target} "${NROS_ENTRY_APP_STACK_BYTES}" ""
+            ENTRY "${PROJECT_NAME}" PROGRAM "${_NRC_NAME}")
         _nros_node_register_bake_locator(${_nrc_target})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <rclc/detail/nros_config_generated.h>); order them after the header
