@@ -398,6 +398,30 @@ comment = '''
 at = ["ZephyrNativeSim", "Rust", "Zenoh", "ConnectBudget", "Example"]
 status = 'Runtime'
 
+
+[[cell]]
+comment = '''
+// phase-582 W1c-2 -- the native_sim Rust pair with a zenoh-hlc wall clock:
+// the listener resolves it after registering and before its first spin,
+// latching the HLC when a talker publishes through the router and falling
+// back to the platform after the settle time when none does. The
+// `zephyr_listener_clock_hlc` image of the Rust workspace's pubsub bringup;
+// `tests/zephyr_clock_resolve.rs` runs it.
+'''
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::ClockHlc]'
+
+[[cell]]
+comment = '''
+// phase-582 W1c-2 -- the same pair's talker with an SNTP server that never
+// answers: boot waits out the attempts, and its publish timer must start
+// counting when the wait ends, not replay it. The `zephyr_talker_clock_sntp`
+// image; `tests/zephyr_clock_resolve.rs` runs it.
+'''
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::ClockSntp]'
 [[cell]]
 at = ["ZephyrNativeSim", "C", "Zenoh", "Action", "Example"]
 status = 'Runtime'

@@ -157,6 +157,18 @@ const CELLS_GENERATED: &[Cell] = &[
     // qemu_cortex_a53 one the issue was seen on, and its sockets are the
     // host's, so the test can stand up the silent peer itself.
     cell(ZephyrNativeSim, Rust, Zenoh, ConnectBudget, Example, Runtime),
+    // phase-582 W1c-2 -- the native_sim Rust pair with a zenoh-hlc wall clock:
+    // the listener resolves it after registering and before its first spin,
+    // latching the HLC when a talker publishes through the router and falling
+    // back to the platform after the settle time when none does. The
+    // `zephyr_listener_clock_hlc` image of the Rust workspace's pubsub bringup;
+    // `tests/zephyr_clock_resolve.rs` runs it.
+    cell(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockHlc]),
+    // phase-582 W1c-2 -- the same pair's talker with an SNTP server that never
+    // answers: boot waits out the attempts, and its publish timer must start
+    // counting when the wait ends, not replay it. The `zephyr_talker_clock_sntp`
+    // image; `tests/zephyr_clock_resolve.rs` runs it.
+    cell(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockSntp]),
     cell(ZephyrNativeSim, C, Zenoh, Action, Example, Runtime),
     cell(ZephyrNativeSim, Cpp, Zenoh, Action, Example, Runtime),
     cell(ZephyrNativeSim, Rust, Cyclonedds, Pubsub, Example, Runtime),

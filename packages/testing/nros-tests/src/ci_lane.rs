@@ -37,11 +37,11 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 28 | 12 | 21 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 14 | 12 | 21 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 50 | 42 | 75 % |
-//! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 46 | 9 | 16 % |
-//! | tier 3 | everything | 278 | 56 | 100 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 30 | 12 | 21 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 16 | 13 | 23 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 52 | 42 | 75 % |
+//! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 48 | 9 | 16 % |
+//! | tier 3 | everything | 280 | 56 | 100 % |
 //!
 //! Added 2026-11-12 (phase-535 W8, RFC-0122 D8): the merge lane. It is not
 //! a rung of the ladder below: it is the set a per-merge cadence on the host
@@ -49,6 +49,13 @@
 //! board per shard by the dispatch-only `merge-runtime.yml`. The same day's
 //! ruling set those boards to `daily` (RFC-0122 D9), so the lane is how that
 //! cadence gets re-measured.
+//!
+//! Re-measured 2026-11-21 (phase-582 W1c-2): `Config::ClockHlc` and
+//! `Config::ClockSntp` joined with two Zephyr native_sim Rust zenoh Pubsub
+//! cells at an existing coordinate. Two new config values are two more 1-wise
+//! requirements: tier 1 went 28 -> 30 cells, tier 2 14 -> 15, nightly 49 -> 51
+//! (platform x config) and merge 46 -> 48 (zenoh Example cells on native_sim),
+//! all over the same coordinates. Tier 3 went 277 -> 279 over the same 56.
 //!
 //! Re-measured 2026-11-19 (phase-556 W2): two `ros2` CLI parity interop cells
 //! joined, the C and C++ parameter examples (Linux, C or C++, zenoh, Params),
@@ -1429,10 +1436,10 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 28, 12),
-            (CiLane::Tier2, 14, 12),
-            (CiLane::Tier2Nightly, 50, 42),
-            (CiLane::Merge, 46, 9),
+            (CiLane::Tier1, 30, 12),
+            (CiLane::Tier2, 16, 13),
+            (CiLane::Tier2Nightly, 52, 42),
+            (CiLane::Merge, 48, 9),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -1454,8 +1461,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 278,
-            "the table's tier-3 cell count (278) is stale; recomputed {total_cells}"
+            total_cells, 280,
+            "the table's tier-3 cell count (280) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,
