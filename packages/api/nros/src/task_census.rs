@@ -8,7 +8,7 @@
 //! ```
 //!
 //! Read from `/proc/self/task/<tid>/{comm,stat}`, through the C library and
-//! not `std`, for the reason [`crate::env`] gives: the edge is "a C library is
+//! not `std`, for the reason [`mod@crate::env`] gives: the edge is "a C library is
 //! linked", which on this tree is `target_os = "linux"`. ONE reader serves both
 //! Linux runners, the Rust board's (`nros-board-linux`) and the C/C++ one
 //! (`nros-cpp`), which do not share a board crate.
@@ -119,7 +119,7 @@ fn policy_name(policy: u32) -> &'static str {
 
 /// Print the census through `println`, one call per line, ending with the
 /// `done` line. A thread that exits between the listing and the read is
-/// skipped; past [`MAX_THREADS`] the rest are not reported.
+/// skipped; past `MAX_THREADS` (64) the rest are not reported.
 pub fn report(mut println: impl FnMut(fmt::Arguments<'_>)) {
     let mut tids = [0u32; MAX_THREADS];
     let mut n = 0usize;

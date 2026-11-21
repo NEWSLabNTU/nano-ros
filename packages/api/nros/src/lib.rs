@@ -225,7 +225,7 @@ pub mod init;
 pub mod env;
 
 /// The boot task census of a Linux process (`/proc/self/task`), one reader
-/// for both Linux runners. Linux only, as [`env`] is.
+/// for both Linux runners. Linux only, as [`mod@env`] is.
 #[cfg(target_os = "linux")]
 pub mod task_census;
 
