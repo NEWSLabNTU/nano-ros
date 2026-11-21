@@ -365,8 +365,14 @@ function(nros_board_link_app target)
     # program's sources, not the target (phase-499 W5).
     nros_target_ferried_compile_definitions(${target} _compile_defs)
 
+    # phase-583 W1 -- a carrier's ELF is named for its program (`<exe>`).
+    get_target_property(_out_name ${target} OUTPUT_NAME)
+    if(NOT _out_name)
+        set(_out_name "${target}")
+    endif()
     nros_nuttx_build_example(
         NAME            "${target}"
+        OUTPUT_NAME     "${_out_name}"
         MAIN_SOURCE     "${_main_src}"
         FFI_CRATE_DIR   "${NUTTX_FFI_CRATE_DIR}"
         TARGET_TRIPLE   "armv7a-nuttx-eabihf"

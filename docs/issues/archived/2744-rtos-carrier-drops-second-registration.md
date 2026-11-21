@@ -60,3 +60,11 @@ Building one carrier image per `EXECUTABLE`, so that a package can hold
 several programs, is the RFC-0071 D19 amendment ruled on 2026-11-20 and is
 tracked by its phase doc. This issue closes the silent drop, which ships a
 wrong image in the meantime.
+
+## Superseded rule (2026-11-21)
+
+Phase-583 W1 replaced this issue's refusal with RFC-0071 D20's rule: one
+carrier per `EXECUTABLE`. A second registration under a different
+`EXECUTABLE` now builds its own firmware, named for that executable;
+the same `EXECUTABLE` twice is refused, and Zephyr still refuses any second
+registration. Nothing is dropped silently either way.

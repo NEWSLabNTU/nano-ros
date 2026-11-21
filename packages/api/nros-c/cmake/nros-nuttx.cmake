@@ -183,10 +183,16 @@ endfunction()
 function(nros_nuttx_build_example)
     cmake_parse_arguments(_NNBE
         ""
-        "NAME;MAIN_SOURCE;FFI_CRATE_DIR;TARGET_TRIPLE"
+        "NAME;OUTPUT_NAME;MAIN_SOURCE;FFI_CRATE_DIR;TARGET_TRIPLE"
         "INCLUDE_DIRS;SOURCES;SOURCE_PKGS;INTERFACE_SOURCES;COMPILE_DEFS;LINK_INTERFACES"
         ${ARGN})
 
+    # phase-583 W1 -- the ELF's file name. A carrier's target is `<pkg>__<exe>`
+    # and its program is `<exe>`; NAME stays the target (it keys the custom
+    # targets and side files, which must be unique across packages).
+    if(NOT _NNBE_OUTPUT_NAME)
+        set(_NNBE_OUTPUT_NAME "${_NNBE_NAME}")
+    endif()
     foreach(_req NAME MAIN_SOURCE FFI_CRATE_DIR TARGET_TRIPLE)
         if(NOT _NNBE_${_req})
             message(FATAL_ERROR
@@ -722,7 +728,7 @@ function(nros_nuttx_build_example)
     add_custom_command(
         TARGET ${_NNBE_NAME}_build POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
-            "${_output_binary}" "${CMAKE_CURRENT_BINARY_DIR}/${_NNBE_NAME}"
-        BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/${_NNBE_NAME}"
-        COMMENT "Copying ${_NNBE_NAME} to build directory")
+            "${_output_binary}" "${CMAKE_CURRENT_BINARY_DIR}/${_NNBE_OUTPUT_NAME}"
+        BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/${_NNBE_OUTPUT_NAME}"
+        COMMENT "Copying ${_NNBE_OUTPUT_NAME} to build directory")
 endfunction()

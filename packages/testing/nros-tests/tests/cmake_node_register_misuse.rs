@@ -125,32 +125,88 @@ fn a_call_without_entities_never_reaches_the_tombstone() -> TestResult<()> {
     Ok(())
 }
 
-/// Issue 2744 -- a package builds ONE carrier image per road. A second
-/// registration that names a DEPLOY (the package IS an image) used to be
-/// skipped by a `NOT TARGET` guard: built into a library nothing linked, while
-/// the image shipped with the first component only. It is refused, naming both.
+/// phase-583 W1 (RFC-0071 D20) -- one carrier per EXECUTABLE. A package that
+/// registers two components under two EXECUTABLE names builds two carriers;
+/// neither is refused. Issue 2744 refused the second, because each road used to
+/// build one carrier per package.
 #[test]
-fn a_second_carrier_registration_is_refused() -> TestResult<()> {
-    let out = outcome("cmake_carrier_second_registration_refused")?;
+fn two_executables_in_one_package_each_claim_a_carrier() -> TestResult<()> {
+    let out = outcome("cmake_carrier_two_executables_build")?;
+    assert!(
+        out.success() && out.stdout.contains("both executables claimed a carrier"),
+        "two EXECUTABLE names must each build a carrier:\n{}\n{}",
+        out.stdout,
+        out.stderr
+    );
+    Ok(())
+}
+
+/// phase-583 W1 -- each EXECUTABLE is one program. Two components registered
+/// under the same EXECUTABLE, with a DEPLOY, are refused, naming both, rather
+/// than one of them being built into nothing.
+#[test]
+fn a_duplicate_executable_is_refused() -> TestResult<()> {
+    let out = outcome("cmake_carrier_duplicate_executable_refused")?;
     assert!(
         !out.success(),
-        "expected the configure to fail on a second carrier registration:\n{}",
+        "expected the configure to fail on a duplicate EXECUTABLE:\n{}",
         out.stderr
     );
     // CMake re-wraps a message at its own width.
     let err = out.stderr.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(
+        err.contains("`talker` twice")
+            && err.contains("`carrier_pkg::First`")
+            && err.contains("`carrier_pkg::Second`")
+            && err.contains("its own EXECUTABLE"),
+        "expected the refusal to name the EXECUTABLE and both classes, got:\n{}",
+        out.stderr
+    );
+    Ok(())
+}
+
+/// phase-583 W1 -- Zephyr builds ONE program per package (one west image), so
+/// a second registration there is still refused, saying to split the package
+/// and that several programs per Zephyr package are planned.
+#[test]
+fn a_second_zephyr_registration_is_refused() -> TestResult<()> {
+    let out = outcome("cmake_carrier_zephyr_second_registration_refused")?;
+    assert!(
+        !out.success(),
+        "expected the configure to fail on a second Zephyr registration:\n{}",
+        out.stderr
+    );
+    let err = out.stderr.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
         err.contains("`second_exe`")
             && err.contains("`first_exe`")
-            && err.contains("ONE firmware image"),
-        "expected the refusal to name both registrations, got:\n{}",
+            && err.contains("ONE program per package")
+            && err.contains("Split the package")
+            && err.contains("planned"),
+        "expected the refusal to name both and say to split the package, got:\n{}",
+        out.stderr
+    );
+    Ok(())
+}
+
+/// phase-583 W1 -- target names are global. A program called `talker` in
+/// ANOTHER package must not switch this package's `talker` carrier off; only
+/// the package's own program of that name does.
+#[test]
+fn another_packages_program_does_not_switch_a_carrier_off() -> TestResult<()> {
+    let out = outcome("cmake_carrier_other_package_program")?;
+    assert!(
+        out.success() && out.stdout.contains("carrier is claimed beside"),
+        "another package's `talker` switched this carrier off:\n{}\n{}",
+        out.stdout,
         out.stderr
     );
     Ok(())
 }
 
 /// Issue 2744 -- the negative control: a workspace member's second component
-/// (no DEPLOY) is composed by a generated entry, so it is not refused.
+/// under the same EXECUTABLE (no DEPLOY) is composed by a generated entry, so
+/// it builds no second carrier and is not refused.
 #[test]
 fn a_second_member_registration_without_deploy_is_not_refused() -> TestResult<()> {
     let out = outcome("cmake_carrier_member_without_deploy")?;
