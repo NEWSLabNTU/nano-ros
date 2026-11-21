@@ -2694,7 +2694,11 @@ def main():
         # `compile_check_platform`. The test resolver reads this instead of
         # re-deriving the rule, so there is one computation, as `coords` is
         # for a fixture row's coordinate.
+        # Issue 2811 -- a row whose job modules this run does not supply is
+        # in no lane, so the run side reads it in none either.
         for e in load_compile_check_fixtures(a.manifest):
+            if not compile_check_modules_supplied(e):
+                continue
             sys.stdout.write(f"{e['id']}\t{compile_check_platform(e)}\n")
         return
 
