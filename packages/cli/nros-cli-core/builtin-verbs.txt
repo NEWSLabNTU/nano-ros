@@ -8,6 +8,7 @@ user board
 user build
 user check
 user clean
+user code
 user codegen
 user codegen-fingerprint
 user codegen-system
@@ -38,9 +39,11 @@ user new
 user pin
 user plan
 user planning-stamp
+user platform
 user profile
 user rmw
 user run
+user runner
 user sdk-front
 user sdk-path
 user sdk-root
@@ -49,6 +52,7 @@ user source-stamp
 user store
 user sync
 user system-toml-expand
+user template
 user toolchain
 user update
 user version

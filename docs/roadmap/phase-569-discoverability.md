@@ -274,7 +274,8 @@ descriptor with a new section is printed by `board show`.
 
 ### W6 — `platform`, `template`, `code`, `runner` lists
 
-- **Status:** OPEN (W6a done locally 2026-11-21, on top of W5a; W6b open)
+- **Status:** OPEN (W6a and W6b done locally 2026-11-21, on top of W5a;
+  `profile` is with W8)
 - **W6a, `nros code` and `nros template`:**
   - `nros code list [--all] [--json]` / `show <code> [--json]` read the
     compiled-in code table (`nros.code.list.v1`, `nros.code.show.v1`).
@@ -288,11 +289,32 @@ descriptor with a new section is printed by `board show`.
     to its table, so a row added to the table is listed with no CLI edit; a
     compiled-in table takes no fixture row at test time, so that stands in
     for the acceptance's "adds a fixture item".
-- **W6b, open:** `nros platform list` / `show` over `PlatformsTree` (with
-  `nros new --platform` reading the same list), and `nros runner list` /
-  `show` over `extension::discover`. `nros profile list` / `show` is with
-  W8: the top-level `nros profile` is the hidden plumbing cmake and bash
-  call (`args`, `dir`, `env`), and W8 moves it to `nros dev profile` first.
+- **W6b, `nros platform` and `nros runner`:**
+  - `nros platform list` / `show <platform>` read `PlatformsTree` over the
+    default search path (`$NROS_PLATFORMS_DIR` first): name, aliases,
+    `inherits`, capabilities and arch profiles, the catalog boards whose
+    platform resolves there, and the RMWs `nros rmw list` verifies on one of
+    those boards (`nros.platform.list.v1`, `nros.platform.show.v1`).
+  - `nros new --platform` keeps its own words (`linux`, `baremetal`): they
+    name what the scaffold emits, not a descriptor. Each platform row shows
+    the word that scaffolds on it, derived from `PlatformKind` (its
+    descriptor name and its `cmake_deploy` word), and a test holds every
+    offered word to a listed platform. So the two lists cannot drift, with no
+    second table.
+  - `nros runner list` / `show <name>` list the runners (a new
+    `extension::discover_runners`, resolving each name as `nros run` does)
+    and the extension commands (`extension::discover`), with the
+    `[image.<id>.run|flash] method` line that selects each runner
+    (`nros.runner.list.v1`, `nros.runner.show.v1`). Runner descriptions are
+    not printed: they are contributor notes.
+  - Acceptance: a test adds a platform on the search path, and another
+    copies the fixture runner and command packages into a workspace; each
+    sees its item listed.
+  - `PlatformsTree::declared_names` is new: the aliases a descriptor
+    declares.
+- `nros profile list` / `show` is with W8: the top-level `nros profile` is
+  the hidden plumbing cmake and bash call (`args`, `dir`, `env`), and W8
+  moves it to `nros dev profile` first.
 
 - `nros platform list` / `show` read `PlatformsTree`, with its boards and
   RMWs; `nros new --platform` reads the same list.

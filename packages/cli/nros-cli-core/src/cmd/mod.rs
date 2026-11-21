@@ -69,12 +69,14 @@ pub mod new_system;
 pub mod new_workspace;
 pub mod pin;
 pub mod plan;
+pub mod platform_verb;
 pub mod prepare;
 pub mod profile;
 pub mod reserved;
 pub mod rmw;
 pub mod run_exec;
 pub mod run_plan;
+pub mod runner_verb;
 pub mod scaffold_deploy;
 pub mod sdk_front;
 pub mod sdk_path;
@@ -404,6 +406,16 @@ pub enum Cmd {
     /// reports and how to fix it
     #[command(subcommand)]
     Code(code_verb::Args),
+
+    /// List the platforms boards build on, or show one: its boards and
+    /// capabilities
+    #[command(subcommand)]
+    Platform(platform_verb::Args),
+
+    /// List the runners and extension commands this workspace reaches, or
+    /// show one
+    #[command(subcommand)]
+    Runner(runner_verb::Args),
 
     /// List the node roles `nros new --template` scaffolds, or show one
     #[command(subcommand)]

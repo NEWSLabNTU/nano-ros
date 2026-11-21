@@ -424,7 +424,7 @@ fn package_flags_given(args: &Args) -> Vec<&'static str> {
 }
 
 /// The `--platform` choices offered (and listed by `--help`).
-const OFFERED_PLATFORMS: [&str; 6] = [
+pub(crate) const OFFERED_PLATFORMS: [&str; 6] = [
     "linux",
     "freertos",
     "nuttx",

@@ -2192,6 +2192,15 @@ impl PlatformsTree {
         self.files.keys().map(String::as_str)
     }
 
+    /// The names a platform's descriptor declares (`names`), canonical first,
+    /// as written. Empty when it declares none or no platform answers to
+    /// `name`.
+    pub fn declared_names(&self, name: &str) -> &[String] {
+        self.files
+            .get(self.resolve_alias(name))
+            .map_or(&[], |f| f.names.as_slice())
+    }
+
     /// The merged `[arch.*]` table.
     pub fn arch_table(&self) -> &BTreeMap<String, ArchEntry> {
         &self.arch
