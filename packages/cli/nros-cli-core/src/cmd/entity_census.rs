@@ -1718,12 +1718,13 @@ pub(crate) fn take_leaf_census_with(
             ),
             explicit,
             run_failure: &|| census_run_failure(&leaf, explicit),
-            several_programs: None,
+            per_program: None,
         },
         timeout_secs,
         build_step,
         host,
     )
+    .map(|_| ())
 }
 
 /// Issue 2433 -- where the census of an OWNED entry's image lives: under the
@@ -1798,7 +1799,32 @@ pub(crate) fn take_owned_census(
     // the freshness check and the rebuild, as `take --leaf`'s does.
     let _census_lock = crate::file_lock::lock_exclusive_path(&out.with_extension("lock"))?;
     let q = format!("{bringup}:{image}");
-    if let Freshness::Fresh = census_freshness(&out, pkg) {
+    // phase-583 -- an entry whose last take ran several programs is fresh
+    // when every one of their censuses is current and complete.
+    if let Some(programs) = owned_programs(root, bringup, image) {
+        let each: Vec<PathBuf> = programs
+            .iter()
+            .map(|exe| owned_program_census_path(root, bringup, image, exe))
+            .collect();
+        let all_fresh = each.iter().all(|c| {
+            matches!(census_freshness(c, pkg), Freshness::Fresh)
+                && std::fs::read_to_string(c)
+                    .ok()
+                    .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+                    .is_some_and(|v| incomplete_reason(&v).is_none())
+        });
+        if all_fresh {
+            for c in &each {
+                write_census_digest(c)?;
+            }
+            crate::build_notes::detail_out(format!(
+                "entity-census take {q}: fresh -> {} programs ({})",
+                programs.len(),
+                programs.join(", ")
+            ));
+            return Ok(());
+        }
+    } else if let Freshness::Fresh = census_freshness(&out, pkg) {
         let complete = std::fs::read_to_string(&out)
             .ok()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
@@ -1820,7 +1846,7 @@ pub(crate) fn take_owned_census(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    census_host_program(
+    let ran = census_host_program(
         &HostProgram {
             src: pkg,
             build: root
@@ -1837,7 +1863,7 @@ pub(crate) fn take_owned_census(
             ),
             // issue 2433: owned entries on a cross board are census-sized.
             explicit: " (an owned entry on a cross board)",
-            several_programs: Some(&|programs| several_programs_refusal(&q, &pkg_name, programs)),
+            per_program: Some(&|exe| owned_program_census_path(root, bringup, image, exe)),
             run_failure: &|| {
                 format!(
                     "`{q}`: the census RUN of the owned entry `{pkg_name}`'s host build failed \
@@ -1850,28 +1876,40 @@ pub(crate) fn take_owned_census(
         timeout_secs,
         build_step,
         host,
-    )
+    )?;
+    record_owned_programs(root, bringup, image, &out, ran.as_deref())
 }
 
-/// phase-583 W4 -- an owned entry whose host build states several
-/// programs. Its pools are compile-time sizes in the one runtime every program
-/// links, so a census of one program would size the others from it: refused
-/// until the programs' censuses are folded.
-fn several_programs_refusal(q: &str, pkg_name: &str, programs: &[String]) -> String {
-    format!(
-        "`{q}` builds the owned entry `{pkg_name}` for a cross board, where its pools are sized \
-         by a census of the program, and `{pkg_name}` builds {n} programs ({list}). Every \
-         program links one runtime whose pool sizes are fixed at build time, and a census \
-         counts one program, so the others would run on pools sized for it. Sizing several \
-         programs of one owned entry is not supported yet: build one program per package on a \
-         cross board, or give each program its own package.",
-        n = programs.len(),
-        list = programs
-            .iter()
-            .map(|p| format!("`{p}`"))
-            .collect::<Vec<_>>()
-            .join(", "),
-    )
+/// phase-583 -- after a take, record which programs it ran: several get the
+/// program list and lose any one-program census left from before; one program
+/// loses any list left from before. So the readers never see both shapes.
+fn record_owned_programs(
+    root: &Path,
+    bringup: &str,
+    image: &str,
+    single: &Path,
+    ran: Option<&[String]>,
+) -> Result<()> {
+    let list = owned_programs_path(root, bringup, image);
+    match ran {
+        Some(programs) => {
+            crate::atomic_file::atomic_write(&list, &format!("{}\n", programs.join("\n")))
+                .map_err(|e| eyre::eyre!("cannot write `{}`: {e}", list.display()))?;
+            for stale in [single.to_path_buf(), census_digest_path(single)] {
+                if stale.is_file() {
+                    std::fs::remove_file(&stale)
+                        .wrap_err_with(|| format!("remove `{}`", stale.display()))?;
+                }
+            }
+        }
+        None => {
+            if list.is_file() {
+                std::fs::remove_file(&list)
+                    .wrap_err_with(|| format!("remove `{}`", list.display()))?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// What a census of a hand-written program needs to know about it: a
@@ -1892,14 +1930,12 @@ pub(crate) struct HostProgram<'a> {
     pub explicit: &'a str,
     /// What a failed census RUN is told, on top of the run's own error.
     pub run_failure: &'a dyn Fn() -> String,
-    /// phase-583 W4 -- what a host build that states SEVERAL
-    /// programs is told, when one census cannot size them all. `None` keeps
-    /// the leaf road's rule (`named`, then the manifest's one executable).
-    pub several_programs: Option<&'a SeveralProgramsRefusal<'a>>,
+    /// phase-583 (RFC-0071 D20) -- where the census of each program goes when
+    /// the host build states SEVERAL: every program is run, into its own file.
+    /// `None` keeps the leaf road's rule (`named`, then the manifest's one
+    /// executable).
+    pub per_program: Option<&'a dyn Fn(&str) -> PathBuf>,
 }
-
-/// What a host build that states several programs is told (`HostProgram::several_programs`).
-pub(crate) type SeveralProgramsRefusal<'a> = dyn Fn(&[String]) -> String + 'a;
 
 /// phase-583 W4 -- the programs the host census build states,
 /// when it states more than one. A census runs one program, so an owned entry
@@ -1918,7 +1954,7 @@ pub(crate) fn census_host_program(
     timeout_secs: u64,
     build_step: bool,
     host: &HostSteps<'_>,
-) -> Result<()> {
+) -> Result<Option<Vec<String>>> {
     let src = p.src;
     let build = &p.build;
     let root = crate::orchestration::nano_ros_root::resolve(None, src)
@@ -1987,10 +2023,28 @@ pub(crate) fn census_host_program(
     if !status.success() {
         return Err(refused("the build", status));
     }
-    if let Some(refuse) = p.several_programs
+    if let Some(path_of) = p.per_program
         && let Some(programs) = several_census_programs(build)
     {
-        bail!("{}", refuse(&programs));
+        let (exes, _) = read_census_program(build)?;
+        for (exe, bin) in exes {
+            let out = path_of(&exe);
+            if let Some(dir) = out.parent() {
+                std::fs::create_dir_all(dir)
+                    .wrap_err_with(|| format!("create `{}`", dir.display()))?;
+            }
+            run_census(RunArgs {
+                entry: exe,
+                workspace: Some(src.to_path_buf()),
+                build_dir: build.clone(),
+                binary: Some(bin),
+                model: None,
+                out: Some(out),
+                timeout_secs,
+            })
+            .wrap_err_with(p.run_failure)?;
+        }
+        return Ok(Some(programs));
     }
     let bin = match &p.named {
         Ok(exe) => build.join(exe),
@@ -2022,6 +2076,7 @@ pub(crate) fn census_host_program(
         timeout_secs,
     })
     .wrap_err_with(p.run_failure)
+    .map(|()| None)
 }
 
 /// Issue 2418 -- what a leaf census whose RUN failed is told, on top of the
@@ -3753,11 +3808,11 @@ mod tests {
         );
     }
 
-    /// phase-583 W4 -- an owned entry's host build that states
-    /// several programs is refused, naming them, never sized from the first
-    /// `nano_ros_add_executable`; one program is no refusal.
+    /// phase-583 -- the host build's manifest says when an owned entry builds
+    /// several programs (each then gets a census of its own); one program is
+    /// today's path.
     #[test]
-    fn an_owned_entry_with_several_programs_is_refused_not_sized_from_one() {
+    fn the_manifest_says_when_an_owned_entry_builds_several_programs() {
         let td = tempfile::tempdir().unwrap();
         let build = td.path().join("census-host");
         std::fs::create_dir_all(build.join("nros")).unwrap();
@@ -3779,12 +3834,6 @@ executable=prog_b=/b/b
         .unwrap();
         let programs = several_census_programs(&build).expect("two programs");
         assert_eq!(programs, ["prog_a", "prog_b"]);
-        let e = several_programs_refusal("br:img", "two_programs", &programs);
-        assert!(
-            e.contains("`two_programs` builds 2 programs (`prog_a`, `prog_b`)")
-                && e.contains("one program per package"),
-            "{e}"
-        );
         assert!(several_census_programs(&td.path().join("absent")).is_none());
     }
 
