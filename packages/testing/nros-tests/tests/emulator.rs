@@ -412,6 +412,68 @@ fn test_qemu_bsp_pubsub_e2e() {
     assert!(received > 0, "BSP listener received 0 messages");
 }
 
+/// Issue 2779 — a bare-metal listener whose router is KILLED and restarted on
+/// the same port reopens its session and hears the talker again.
+///
+/// Bare metal reads TCP through nros-smoltcp's `PlatformTcp::read`, which has
+/// to see the peer's FIN in the socket state (smoltcp reports no 0-byte read).
+/// A read that hands the router's close up as 0 polls the dead socket forever
+/// and the session never reopens. The sequence and why the router is killed
+/// rather than stopped: `nros_tests::router_outage`. Both nodes are the
+/// bare-metal pair images of `test_qemu_bsp_pubsub_e2e`, on that cell's port.
+#[test]
+fn test_qemu_bsp_listener_reopens_after_its_router_restarts() {
+    require_arm_toolchain();
+    require_qemu();
+    require_zenoh_pico_arm();
+
+    use nros_tests::fixtures::workspace_image::{PairRole, resolve_coord_cached};
+    let pair = |role: PairRole| {
+        resolve_coord_cached(PlatformId::QemuBaremetal, Lang::Rust, Rmw::Zenoh, role)
+            .require(role.token())
+    };
+    let port = nros_tests::alloc::port_of(PlatformId::QemuBaremetal, Lang::Rust, Workload::Pubsub);
+    let talker_bin = pair(PairRole::Talker);
+    let listener_bin = pair(PairRole::Listener);
+
+    let mut zenohd = or_unmet(ZenohRouter::start_slirp(port));
+    let mut listener =
+        QemuProcess::start_mps2_an385_networked(listener_bin).expect("Failed to start listener");
+    std::thread::sleep(Duration::from_secs(5));
+    let mut talker =
+        QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker");
+
+    let marker = nros_tests::output::LISTENER_LOG_PREFIX;
+    let reopen = nros_tests::router_outage::listener_across_a_hard_router_restart(
+        &mut zenohd,
+        &mut listener,
+        marker,
+    )
+    .unwrap_or_else(|e| panic!("bare-metal reopen: restart the router on its port: {e}"));
+    let talker_out = talker.read_pending();
+    talker.kill();
+    listener.kill();
+
+    eprintln!("[bare-metal reopen] {}", reopen.summary(marker));
+    assert!(
+        reopen.heard_before(marker) >= 1,
+        "bare-metal reopen: the listener heard nothing before the outage, so the reopen \
+         cannot be judged.\n{}\nTalker output:\n{talker_out}",
+        reopen.transcript(),
+    );
+    assert!(
+        reopen.heard_after(marker) >= 1,
+        "bare-metal reopen: the listener heard {} sample(s) before its router was killed \
+         and none in the {:?} after it came back on port {port}: the pair did not \
+         reconnect. A TCP read that hands the router's close up as 0 polls the dead socket \
+         forever (issue 2779).\nRouter: {}\n{}\nTalker output:\n{talker_out}",
+        reopen.heard_before(marker),
+        reopen.waited,
+        zenohd.launch_line(),
+        reopen.transcript(),
+    );
+}
+
 /// Issue 1512 — the C and C++ API on bare metal, end to end: every
 /// `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cell. The action pairs joined
 /// with issue 1797 (a burst of batches desynchronised the smoltcp read).

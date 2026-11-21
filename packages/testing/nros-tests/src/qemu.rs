@@ -877,6 +877,28 @@ impl QemuProcess {
         Ok(output)
     }
 
+    /// Whatever the guest has printed since the last read, without waiting
+    /// and without stopping it. Every `collect_until*` wait stops the guest at
+    /// its deadline, so a test that needs to read between two phases of a
+    /// running guest reads with this.
+    pub fn read_pending(&mut self) -> String {
+        let mut output = String::new();
+        let mut buffer = [0u8; 4096];
+        if let Some(mut stdout) = self.handle.stdout.take() {
+            #[cfg(unix)]
+            set_nonblocking(&stdout);
+            while drain_into(&mut stdout, &mut buffer, &mut output) {}
+            self.handle.stdout = Some(stdout);
+        }
+        if let Some(mut stderr) = self.handle.stderr.take() {
+            #[cfg(unix)]
+            set_nonblocking(&stderr);
+            while drain_into(&mut stderr, &mut buffer, &mut output) {}
+            self.handle.stderr = Some(stderr);
+        }
+        output
+    }
+
     /// Kill the QEMU process: the groups under `nros run`, then the verb
     /// ([`crate::run::stop`]).
     pub fn kill(&mut self) {
