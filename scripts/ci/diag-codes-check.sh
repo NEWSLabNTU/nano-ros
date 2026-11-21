@@ -153,6 +153,17 @@ NROS-0005 E live" "$main_lock" "-" >/dev/null \
     printf '%s\nNROS-0004 D live\nNROS-0005 E live\n' "$main_lock" >"$tmp/work/$LOCK_REL"
     rc=0; (cd "$tmp/work" && check origin) >/dev/null 2>&1 || rc=$?
     [ "$rc" -eq 1 ] || { echo "self-test: end to end, an unclaimed code passed" >&2; return 1; }
+    # a LOCAL repository holding a stale subset of the claims (only 0003)
+    # stands in for its origin, which holds 0004 too: the claims are read from
+    # that origin, so 0004 is claimed and the push passes.
+    git clone -q "$tmp/remote.git" "$tmp/stale"
+    git -C "$tmp/stale" fetch -q origin "+$REF_NS/0003:$REF_NS/0003"
+    git -C "$tmp/work" remote set-url origin "$tmp/stale"
+    printf '%s\nNROS-0004 D live\n' "$main_lock" >"$tmp/work/$LOCK_REL"
+    rc=0; out="$(cd "$tmp/work" && check origin 2>&1)" || rc=$?
+    [ "$rc" -eq 0 ] \
+        || { echo "self-test: a local remote's stale claims refused a claimed code: $out" >&2; return 1; }
+    git -C "$tmp/work" remote set-url origin "$tmp/remote.git"
     # a remote that holds no claim at all (a local stand-in) cannot judge (b):
     # not verified, through. The clash check (a) still runs against main.
     git init -q --bare "$tmp/standin.git"
@@ -166,7 +177,7 @@ NROS-0005 E live" "$main_lock" "-" >/dev/null \
     rc=0; out="$(cd "$tmp/work" && check origin 2>&1)" || rc=$?
     [ "$rc" -eq 0 ] && [[ "$out" == *"NOT VERIFIED"* ]] \
         || { echo "self-test: unreachable remote gave rc=$rc: $out" >&2; return 1; }
-    echo "diag-codes-check: self-test OK (clash, unclaimed, founding, claimed, stand-in, unreachable)"
+    echo "diag-codes-check: self-test OK (clash, unclaimed, founding, claimed, stale local remote, stand-in, unreachable)"
 }
 
 # check <remote|""> — the real check, in the current directory's repository.
@@ -187,7 +198,21 @@ check() {
         echo "diag-codes-check: NOT VERIFIED (a): no local origin/main to compare with (git fetch origin)" >&2
     fi
     if [ -n "$remote" ]; then
-        if listing="$(GIT_TERMINAL_PROMPT=0 git ls-remote "$remote" "$REF_NS/*" 2>/dev/null)"; then
+        # Claims are made on the remote everyone pushes to, never on a local
+        # repository. When the push goes to one that is a local repository (a
+        # clone of a checkout, as `check-hook-repo-side-effects` builds),
+        # whatever claim refs it happens to hold are a stale SUBSET: a code
+        # claimed since its last fetch read as unclaimed and refused a valid
+        # push. So a local repository is asked for ITS origin, one hop, and
+        # the claims are read there. A bare scratch remote has no origin and
+        # is asked itself.
+        local claim_remote="$remote" url up
+        url="$(git remote get-url "$remote" 2>/dev/null || printf '%s' "$remote")"
+        if [ -d "$url" ] && up="$(git -C "$url" remote get-url origin 2>/dev/null)" \
+            && [ -n "$up" ]; then
+            claim_remote="$up"
+        fi
+        if listing="$(GIT_TERMINAL_PROMPT=0 git ls-remote "$claim_remote" "$REF_NS/*" 2>/dev/null)"; then
             if [ -z "$listing" ]; then
                 # A remote holding no claim at all is not the remote claims
                 # are made on (origin holds every one since NROS-0001): a
