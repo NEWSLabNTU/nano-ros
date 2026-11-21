@@ -48,14 +48,14 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     # descriptor codegen (ROS msg2idl needs catkin_pkg/rosidl_adapter from the
     # system ROS python 3.10, not the venv 3.12). west passes WEST_PYTHON to
     # cmake so find_package(Python3>=3.12) is still satisfied.
-    venvbin="{{ZEPHYR_VENV_BIN}}"
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    # Issue 2821 — the line's interpreter comes from the one resolver, which
+    # reads the floor from this workspace's own tree; it used to be a just
+    # variable keyed on the version string.
     source scripts/build/zephyr-python.sh
-    nros_zephyr_activate
+    zpy="$(nros_zephyr_python "$workspace")"
     west_cmd=(west)
-    if [ -n "$venvbin" ]; then
-        west_cmd=("$(realpath "$venvbin")/python" -m west)
-    fi
+    [ -z "$zpy" ] || west_cmd=("$zpy" -m west)
     # issues #87 + 0698 — host gcc toolchain for native_sim on ANY line
     # (board-keyed, not version-keyed); real boards name `zephyr` rather than
     # leaving the variant unset, which is what CMake 4 rejects. Shared rule:
@@ -93,7 +93,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         target="$(basename "${bringups[0]}"):$image"
         echo "Zephyr {{NROS_ZEPHYR_VERSION}}: nros build $target (zephyr/{{example}}) -> $bd"
         path="$PATH"
-        [ -z "$venvbin" ] || path="$(realpath "$venvbin"):$PATH"
+        [ -z "$zpy" ] || path="$(dirname "$zpy"):$PATH"
         (cd "$workspace" && PATH="$path" "$codegen_tool" build "$target" --workspace "$src" -- -d "$bd")
         echo "Built: $bd/zephyr/zephyr.elf"
         exit 0
@@ -342,13 +342,18 @@ build-c-port:
     export PATH="${sdk_tool_prefix:+$sdk_tool_prefix:}$PATH"
     source "$WORKSPACE/env.sh"
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    # Issue 2821 — west runs UNDER the line's interpreter (it passes its own
+    # sys.executable to cmake as WEST_PYTHON), resolved against this line's
+    # floor; a bare `west` here configured 4.4 under the system 3.10.
     source scripts/build/zephyr-python.sh
-    nros_zephyr_activate
+    zpy="$(nros_zephyr_python "$WORKSPACE")"
+    west_cmd=(west)
+    [ -z "$zpy" ] || west_cmd=("$zpy" -m west)
     # issue 0698 — native_sim builds with the host toolchain, named rather than
     # left unset (CMake 4 refuses Zephyr 3.7's unquoted expansion of it).
     source scripts/build/zephyr-toolchain.sh
     export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant native_sim/native/64)"
-    west build -b native_sim/native/64 \
+    "${west_cmd[@]}" build -b native_sim/native/64 \
         -d tests/zephyr-c-smoke/build tests/zephyr-c-smoke \
         -- -DMAKE="$make_bin"
 

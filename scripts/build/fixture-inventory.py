@@ -465,7 +465,7 @@ def prerequisite_rows():
             "dir": "just/zephyr-setup.just",
             "build_root": "$ZEPHYR_WORKSPACE",
             "scheduler": "just zephyr setup",
-            "shared_mutation": "$ZEPHYR_WORKSPACE; $ZEPHYR_VENV_BIN",
+            "shared_mutation": "$ZEPHYR_WORKSPACE (and the venv it carries for its line)",
             "notes": "west, Zephyr workspace, venv/toolchain env, and optional line-specific setup",
         },
         {

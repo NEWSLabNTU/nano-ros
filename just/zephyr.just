@@ -30,12 +30,6 @@ ZEPHYR_MANIFEST := if NROS_ZEPHYR_VERSION == "4.4" { "west-4.4.yml" } else { "we
 # or not one is provisioned, and the default is where it will install.
 ZEPHYR_WORKSPACE := shell("scripts/lib/zephyr-workspace.sh --version $1 resolve-or-default", NROS_ZEPHYR_VERSION)
 
-# Python 3.12 venv bin for the 4.4 line (Task 2b). 4.4's
-# find_package(Python3) requires >=3.12; the venv provisions it without
-# sudo. Recipes that invoke `west` on the 4.4 line prepend this to PATH
-# so bare `west` resolves to the venv's (3.12) one. Empty on 3.7.
-ZEPHYR_VENV_BIN := if NROS_ZEPHYR_VERSION == "4.4" { ZEPHYR_WORKSPACE / ".venv312/bin" } else { "" }
-
 # Install the Zephyr workspace at $repo/zephyr-workspace/ (large download).
 # Idempotent: skips if the workspace already exists.
 # Set $NROS_ZEPHYR_WORKSPACE to install elsewhere.

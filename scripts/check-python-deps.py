@@ -188,18 +188,17 @@ ZEPHYR_GROUPS = {"west", "zephyr-build", "zephyr-size-report"}
 def default_python(groups):
     """The interpreter the requested lane would actually use, when none is named.
 
-    Must match `nros_zephyr_python` in scripts/build/zephyr-python.sh — a
-    checker that answers for a DIFFERENT interpreter than the lane uses reports
-    problems the build does not have, which is how a check earns being ignored.
-    Two spellings of one candidate order, the way the riscv64 resolver carries
-    three (shell/cmake/rust); keep them in step.
+    For a Zephyr group this ASKS `nros_zephyr_python` in
+    scripts/build/zephyr-python.sh rather than re-spelling its candidate order:
+    a checker that answers for a DIFFERENT interpreter than the lane uses
+    reports problems the build does not have, which is how a check earns being
+    ignored. The two spellings drifted once already (issue 2821): the shell side
+    learnt the line's Python floor and the workspace venv, and a copy here would
+    have kept answering for the 4.4 line with the system 3.10.
 
-        NROS_PYTHON            the one knob
-        scripts/zephyr/.venv   the conventional in-repo venv, used only when it
-                               can actually import west — never on presence,
-                               because a venv copied between hosts passes `-x`
-                               and still cannot import its own packages
-        this interpreter       whatever is running us
+        NROS_PYTHON            the one knob (the shell resolver honours it too)
+        nros_zephyr_python     Zephyr groups: the selected line's interpreter
+        this interpreter       everything else, or nothing usable resolved
     """
     named = os.environ.get("NROS_PYTHON")
     if named:
@@ -207,16 +206,18 @@ def default_python(groups):
     if not (set(groups) & ZEPHYR_GROUPS):
         return sys.executable
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    venv = os.path.join(repo, "scripts", "zephyr", ".venv", "bin", "python3")
-    if os.access(venv, os.X_OK):
-        try:
-            if subprocess.run(
-                [venv, "-c", "import west"], capture_output=True, timeout=60
-            ).returncode == 0:
-                return venv
-        except (OSError, subprocess.SubprocessError):
-            pass
-    return sys.executable
+    helper = os.path.join(repo, "scripts", "build", "zephyr-python.sh")
+    try:
+        res = subprocess.run(
+            ["bash", "-c", 'source "$1" && nros_zephyr_python', "_", helper],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return sys.executable
+    resolved = res.stdout.strip()
+    return resolved if res.returncode == 0 and resolved else sys.executable
 
 
 def probe(python, modules):

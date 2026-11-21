@@ -34,7 +34,10 @@ set -euo pipefail
 WS="${1:?usage: provision-py312-venv.sh <workspace-dir> [--create]}"
 CREATE=0
 [ "${2:-}" = "--create" ] && CREATE=1
-VENV="$WS/.venv312"
+# The venv's name has one spelling (issue 2821); the resolver reads it too.
+# shellcheck source=scripts/build/zephyr-python.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)/scripts/build/zephyr-python.sh"
+VENV="$(nros_zephyr_workspace_venv "$WS")"
 PY="$VENV/bin/python"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 
