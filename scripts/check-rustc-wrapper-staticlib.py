@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""A `staticlib` never comes out of the sccache cache — issue 1646.
+"""A `staticlib` never comes out of the sccache cache — issue 1646 — and
+neither does a crate that bundles a native static library — issue 2798.
 
 sccache keys a rustc call on its sources, its direct `--extern` rlibs and its
 `-l static=` libs. A staticlib bundles its TRANSITIVE closure, including the
@@ -8,8 +9,13 @@ through `-L dependency=`, which sccache does not hash. So after a C edit in
 `zpico-sys`'s build script, `libnros_cpp.a` came back from the cache holding
 the OLD object while cargo reported the unit rebuilt.
 
-`scripts/bin/rustc-wrapper/sccache` (the shim) runs a staticlib-emitting rustc
-call directly and hands everything else to the real sccache. This gate holds
+Issue 2798 is the same miss one crate type down: a build script's
+`-l static=NAME` (no `-bundle`) copies `libNAME.a` into the crate's rlib, and a
+C edit that rebuilds the archive moves nothing sccache keys on, so a hit served
+`nros-board-threadx`'s rlib with the pre-edit platform port inside.
+
+`scripts/bin/rustc-wrapper/sccache` (the shim) runs a staticlib-emitting or
+native-bundling rustc call directly and hands everything else to the real sccache. This gate holds
 the two halves of that:
 
 1. THE SHIM ROUTES CORRECTLY — driven, not read: a fake `sccache` and a fake
@@ -103,6 +109,16 @@ def self_test() -> list[str]:
         (["RUSTC", "--crate-type", "lib", "-C", "save-temps"], True, "direct"),
         (["RUSTC", "--crate-type", "lib", "-Csave-temps"], True, "direct"),
         (["RUSTC", "--crate-type", "lib", "-C", "opt-level=3", "--crate-name", "save-temps"], True, "sccache"),
+        # Issue 2798: a crate that bundles a native static lib into its rlib.
+        (["RUSTC", "--crate-type", "lib", "-l", "static=zpico_platform_aliases"], True, "direct"),
+        (["RUSTC", "--crate-type", "lib", "-l", "static:+whole-archive=nros_platform_threadx"], True, "direct"),
+        (["RUSTC", "--crate-type", "lib", "-lstatic:+verbatim=libfoo.a"], True, "direct"),
+        # ... but not one whose archive goes to the final link instead, nor a
+        # dylib, nor a plain rlib with only search paths.
+        (["RUSTC", "--crate-type", "lib", "-l", "static:-bundle,+whole-archive=nros_platform_nuttx"], True, "sccache"),
+        (["RUSTC", "--crate-type", "lib", "-l", "static:+whole-archive,-bundle=nros_rmw_cyclonedds"], True, "sccache"),
+        (["RUSTC", "--crate-type", "lib", "-l", "dylib=ssl", "-L", "native=/x"], True, "sccache"),
+        (["RUSTC", "--crate-type", "lib", "-L", "native=/x", "--crate-name", "static"], True, "sccache"),
         # cc-rs: the wrapper prefixed to the C compiler.
         (["cc", "-c", "x.c"], True, "sccache"),
         # No sccache anywhere: uncached, never a failure (issue 0874).
@@ -175,8 +191,8 @@ def main() -> int:
         for b in bad:
             print(f"  - {b}", file=sys.stderr)
         return 1
-    print("check-rustc-wrapper-staticlib: OK — the shim runs every staticlib uncached and "
-          "every producer names it")
+    print("check-rustc-wrapper-staticlib: OK — the shim runs every staticlib and every "
+          "native-bundling crate uncached, and every producer names it")
     return 0
 
 
