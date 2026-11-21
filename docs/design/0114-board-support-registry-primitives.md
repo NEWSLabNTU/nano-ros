@@ -318,11 +318,12 @@ readers, no tier number to decode.
   the matrix is still one declaration, now generated from the board registry
   plus the family tables rather than typed in Rust.
 
-## Amendment 2026-11-22 (Draft): D13 — a board's status is what ran, collected automatically
+## Amendment 2026-11-22: D13 — a board's status is what ran, collected automatically
 
-> **Draft, for user decisions** (relayed by the nros 241 manager). Design
-> only; [phase-585](../roadmap/phase-585-board-status-from-ci-outcomes.md)
-> carries the work items once the questions below are ruled.
+> **Ruled 2026-11-22 (user, relayed by the nros 241 manager): all four
+> decisions as recommended; Stable once merged.**
+> [phase-585](../roadmap/phase-585-board-status-from-ci-outcomes.md) carries
+> the work items.
 
 **The goal (user):** no manual maintenance of board status. A test's board
 is collected automatically from what the test already resolves, the status
@@ -599,16 +600,17 @@ from the same records.
   shows nothing, and the book has no JavaScript; not recommended.
 - **Committing results.** Serialises the merge queue (issues 0883/0884).
 
-### Decisions for the user
+### Decisions (ruled 2026-11-22, user)
 
-1. D13.4: retire the typed `runs`, `cadence` and `last_run` for observed
-   ones (recommended), or keep them as checked expectations.
-2. D13.5: degrade the word after the window (recommended), and the window
-   (three cadence periods proposed).
-3. D13.6: where `report` records live: (A) a `board-evidence` branch
-   (recommended), (B) release assets, (C) a data repository.
-4. D13.7: the book rendered at deploy plus a published `board-status.json`
-   (recommended), and N for the run marks (six proposed, as above).
+1. D13.4: the typed `runs`, `cadence` and `last_run` are RETIRED and
+   observed from evidence. Identity, `infra` and witness/inherits stay typed.
+2. D13.5: the word degrades after three cadence periods with no `passed`,
+   into "Failing since <date>" or "Not run since <date>"; a single red does
+   not degrade it.
+3. D13.6: `report` records go on the `board-evidence` orphan branch, through
+   `nros board report --submit`.
+4. D13.7: the book is rendered at deploy, with a published
+   `board-status.json`, and N = 6 run marks.
 
 ## Evaluation and decision steps
 
@@ -694,7 +696,9 @@ The rulings:
   user requirements: no manual maintenance (evidence collected from what a
   test resolves; cadence, runs, last_run and breadth observed), and the
   reporting surfaces as a deliverable (job summary, results file, book,
-  CLI).
+  CLI). The user ruled all four decisions as recommended (retire the typed
+  evidence fields; degrade after three cadence periods; `board-evidence`
+  branch; deploy-time render with a published JSON, N = 6).
 
 - 2026-11-17 — the three open questions (issue 2536), ruled by the user,
   accepting the board-support decision brief as written:

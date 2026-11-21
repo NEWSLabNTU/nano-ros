@@ -1,8 +1,8 @@
 # Phase 585 — A board's status reports what its CI lane said
 
-**Status (2026-11-22). DRAFT: design only, awaiting the user's decisions on
-[RFC-0114 D13](../design/0114-board-support-registry-primitives.md#amendment-2026-11-22-draft-d13--a-boards-status-is-what-ran-collected-automatically).
-No item is started. Owner: nros 243.** Implements RFC-0114 D13, whose goal
+**Status (2026-11-22). OPEN: design ruled by the user (all four
+[RFC-0114 D13](../design/0114-board-support-registry-primitives.md#amendment-2026-11-22-d13--a-boards-status-is-what-ran-collected-automatically)
+decisions as recommended); no item started. Owner: nros 243.** Implements RFC-0114 D13, whose goal
 is the user's: no manual maintenance of board status.
 - a test's board is collected from the coordinate it resolves, with no
   annotation, into one results file per run;
@@ -19,12 +19,12 @@ is the user's: no manual maintenance of board status.
 - `check-board-registry` and `check-cadence-jobs` hold that a lane exists,
   so both were green.
 
-## Decisions it waits on
+## Decisions (ruled 2026-11-22, user)
 
-The four in RFC-0114 D13's "Decisions for the user": retiring the typed
-evidence fields, degrading the word (and the window), where manual reports
-live, and the deploy-time render (and N). The items assume the
-recommendations; a different ruling changes W3, W5 and W6 only.
+All four of RFC-0114 D13's, as recommended: the typed `runs`, `cadence` and
+`last_run` are retired for observed ones; the word degrades after three
+cadence periods; manual reports go on the `board-evidence` orphan branch;
+the book is rendered at deploy with a published `board-status.json`, N = 6.
 
 ## Work items
 
