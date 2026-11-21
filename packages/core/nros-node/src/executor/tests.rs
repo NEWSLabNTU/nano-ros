@@ -21245,3 +21245,50 @@ mod reentry_action_server {
         }
     }
 }
+
+private_test_clock!(restart_timing_clock);
+
+/// `restart_timing` starts the executor's timing at the call: a wait between
+/// setup and the first spin (the boot-time wall-clock resolution) is NOT owed
+/// to the timers. Negative control first, on the same executor shape: without
+/// the restart, the first spin after a 1 s wait fires a 100 ms CatchUp timer
+/// for that backlog. With it, the first spin fires nothing, and the timer then
+/// fires exactly when one period has passed SINCE the restart, so the clock
+/// still advances the timer (a frozen clock would fail the last assertion).
+#[test]
+fn restart_timing_drops_the_wait_before_the_first_spin() {
+    use core::sync::atomic::{AtomicU32, Ordering};
+    restart_timing_clock::claim_at_us(10_000_000);
+    let run = |restart: bool| -> (u32, u32, u32) {
+        let mut executor: Executor =
+            executor_with_clock_fn(MockSession::new(), restart_timing_clock::now_us);
+        let fired = std::sync::Arc::new(AtomicU32::new(0));
+        let f = fired.clone();
+        executor
+            .register_timer(TimerDuration::from_millis(100), move || {
+                f.fetch_add(1, Ordering::SeqCst);
+            })
+            .unwrap();
+        restart_timing_clock::advance_ms(1_000); // the boot-time wait
+        if restart {
+            executor.restart_timing();
+        }
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        let first = fired.load(Ordering::SeqCst);
+        restart_timing_clock::advance_ms(50);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        let half = fired.load(Ordering::SeqCst);
+        restart_timing_clock::advance_ms(50);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        (first, half, fired.load(Ordering::SeqCst))
+    };
+    let (first, _, _) = run(false);
+    assert!(
+        first >= 1,
+        "control: without a restart the wait is owed, fired {first}"
+    );
+    let (first, half, full) = run(true);
+    assert_eq!(first, 0, "after a restart the first spin owes nothing");
+    assert_eq!(half, 0, "half a period after the restart: not yet");
+    assert_eq!(full, 1, "one period after the restart: exactly once");
+}
