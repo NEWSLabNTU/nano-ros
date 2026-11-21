@@ -29,6 +29,7 @@ pub mod config;
 pub mod configure;
 pub mod dev;
 pub mod doctor;
+pub mod doctor_west_pin;
 pub mod emit_package_xml;
 pub mod entity_census;
 pub mod entity_inventory;
