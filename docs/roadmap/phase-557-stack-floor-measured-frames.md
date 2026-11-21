@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
 **Status (2026-11-22). OPEN: W1, W2, W2b, W3, W4, W5, W6, W7 and W8 are
-done; W7f is dropped at its first checkpoint; W3b, W5b and W9 are open.** This phase tracks the implementation of
+done, and so is W5b; W7f is dropped at its checkpoints; W3b and W9 are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -337,8 +337,10 @@ variants of each unit. So the walk's flags do not thrash a shared dir.
 
 ### W5b — The other cargo-road platforms state a stack
 
-- **Status:** OPEN. Bare metal is DONE (2026-11-14, #3757); NuttX is DONE
-  (2026-11-21); ThreadX is open (issue 2514). ThreadX on Linux is reported
+- **Status:** DONE (2026-11-22). Every cargo-road platform now has a checked
+  floor or a stated reason it has none. Bare metal is DONE (2026-11-14,
+  #3757); NuttX is DONE (2026-11-21); ThreadX on riscv64 walks (2026-11-21, PR
+  #4531, for issue 2514). ThreadX on Linux is reported
   not checked, with its reason (2026-11-22): the port runs each thread on a
   host pthread stack the build does not size
   ([issue 2800](../issues/2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
