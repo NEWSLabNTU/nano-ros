@@ -24,11 +24,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from priority_plan import load_plans
 
-# `man 5 proc`, /proc/[pid]/stat: 1-indexed field 41 is rt_priority and 42 is
-# policy. Both sit AFTER comm, which may itself contain spaces and brackets —
-# so the tail is split from the last ')' rather than by naive whitespace.
-RT_PRIORITY_FIELD = 41
-POLICY_FIELD = 42
+# `man 5 proc`, /proc/[pid]/stat: 1-indexed field 40 is rt_priority and 41 is
+# policy (39 is the CPU last run on). Both sit AFTER comm, which may itself
+# contain spaces and brackets — so the tail is split from the last ')' rather
+# than by naive whitespace. These read 41 and 42 until 2026-11-21, i.e. the
+# policy as the priority and `delayacct_blkio_ticks` (0) as the policy, so
+# every thread classified as SCHED_OTHER and no real-time thread was ever seen.
+RT_PRIORITY_FIELD = 40
+POLICY_FIELD = 41
 POLICIES = {0: "OTHER", 1: "FIFO", 2: "RR", 3: "BATCH", 5: "IDLE", 6: "DEADLINE"}
 
 

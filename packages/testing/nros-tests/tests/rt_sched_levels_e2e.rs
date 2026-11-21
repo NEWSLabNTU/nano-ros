@@ -34,7 +34,8 @@ use nros_tests::{
         ManagedProcess, RequireFixture, ZenohRouter,
         build_native_workspace_cpp_levels_budget_entry, build_native_workspace_cpp_levels_entry,
         build_native_workspace_cpp_levels_s1_entry,
-        build_native_workspace_cpp_levels_s1_flat_entry, lane::require_workspace_in_lane,
+        build_native_workspace_cpp_levels_s1_flat_entry,
+        build_native_workspace_rust_realtime_entry, lane::require_workspace_in_lane,
     },
     lane_scope::require_rt_sched_claimed,
     levels::{
@@ -323,4 +324,139 @@ fn s1_critical_loop_meets_every_deadline_on_its_own_level() {
         "the telemetry level never ran, so nothing competed for the CPU\n\
          --- console ---\n{console}"
     );
+}
+
+/// The Linux priority plan (`packages/boards/linux/nros-board.toml`) states
+/// `reserved.foreign = []`: no thread nano-ros does not create holds a
+/// real-time priority. Each Linux runner prints its boot thread census
+/// (`/proc/self/task`, `nros::task_census`) once every level is up, and here
+/// every thread on a real-time policy is one nano-ros created and sits in the
+/// plan's transport band or its app pool. Same census, same plan check, as the
+/// RTOS ports' `*_census_is_placed_by_the_priority_plan` tests.
+///
+/// The C/C++ runner (`nros-cpp`): the levels-cpp image.
+#[test]
+fn linux_thread_census_is_placed_by_the_priority_plan() {
+    require_rt_sched_claimed();
+    require_workspace_in_lane("workspace-cpp-native-levels")
+        .require("native levels-cpp workspace entry");
+    let entry = build_native_workspace_cpp_levels_entry().require("native levels-cpp entry");
+    assert_linux_census_placed("linux levels-cpp", entry, "census-cpp");
+}
+
+/// The Rust runner (`nros-board-linux`): the realtime-rust image.
+#[test]
+fn linux_rust_thread_census_is_placed_by_the_priority_plan() {
+    require_rt_sched_claimed();
+    require_workspace_in_lane("workspace-rust-native-realtime")
+        .require("native realtime-rust workspace entry");
+    let entry = build_native_workspace_rust_realtime_entry().require("native realtime-rust entry");
+    assert_linux_census_placed("linux realtime-rust", entry, "census-rust");
+}
+
+fn assert_linux_census_placed(tag: &str, entry: &Path, label: &str) {
+    let console = run_levels_image(entry, 4_000, false, label);
+    require_kernel_accepted(&console, entry);
+    fail_on_boot_failure(&console);
+    assert!(
+        console.contains("nros: task census done tasks="),
+        "[{tag}] no thread census\n--- console ---\n{console}"
+    );
+    let census: Vec<(String, u32, String)> = console
+        .lines()
+        .filter_map(|l| {
+            let rest = l.split("nros: task census name=`").nth(1)?;
+            let (name, tail) = rest.split_once("` prio=")?;
+            let (prio, policy) = tail.trim().split_once(" policy=")?;
+            Some((name.to_string(), prio.parse().ok()?, policy.to_string()))
+        })
+        .collect();
+    eprintln!("[{tag}] census: {census:?}");
+    assert!(
+        !census.is_empty(),
+        "[{tag}] empty census\n--- console ---\n{console}"
+    );
+
+    let plan = linux_plan();
+    let bands = |prio: u32| -> Vec<&str> {
+        plan.iter()
+            .filter(|(_, (lo, hi))| (*lo..=*hi).contains(&prio))
+            .map(|(name, _)| name.as_str())
+            .collect()
+    };
+    // The main thread (the first, named for the binary) runs the boot level.
+    // The Rust runner names its other levels `nros-sched-task-<name>`; the
+    // C/C++ runner names none, so they keep the binary's name. zenoh-pico's
+    // tasks are unnamed too.
+    let main_thread = census[0].0.clone();
+    let ours = |name: &str| name == main_thread || name.starts_with("nros-sched-task");
+    let mut bad = Vec::new();
+    for (name, prio, policy) in &census {
+        if !matches!(policy.as_str(), "FIFO" | "RR") {
+            continue;
+        }
+        let in_bands = bands(*prio);
+        if !ours(name) {
+            bad.push(format!(
+                "`{name}` ({policy} {prio}) is not a thread nano-ros creates"
+            ));
+        } else if in_bands.is_empty() {
+            bad.push(format!(
+                "`{name}` ({policy} {prio}) is in no band of the plan"
+            ));
+        } else if in_bands.contains(&"reserved.foreign") {
+            bad.push(format!(
+                "`{name}` ({policy} {prio}) sits in the foreign band"
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "[{tag}] the census breaks the Linux priority plan:\n  {}\ncensus: {census:?}",
+        bad.join("\n  ")
+    );
+    assert!(
+        census.iter().any(|(_, _, p)| p == "FIFO"),
+        "[{tag}] no thread runs SCHED_FIFO, so the census measured the default policy: \
+         {census:?}"
+    );
+}
+
+/// `[board.priority_plan]`'s `reserved.*` and `pool.*` bands, by name.
+fn linux_plan() -> Vec<(String, (u32, u32))> {
+    let source = "packages/boards/linux/nros-board.toml";
+    let text = std::fs::read_to_string(nros_tests::project_root().join(source))
+        .unwrap_or_else(|e| panic!("read {source}: {e}"));
+    let doc: toml::Table = text
+        .parse()
+        .unwrap_or_else(|e| panic!("parse {source}: {e}"));
+    let plan = doc
+        .get("board")
+        .and_then(|v| match v {
+            toml::Value::Array(a) => a.last().and_then(|e| e.as_table()),
+            other => other.as_table(),
+        })
+        .and_then(|b| b.get("priority_plan"))
+        .and_then(|p| p.as_table())
+        .unwrap_or_else(|| panic!("{source}: no [board.priority_plan]"));
+    let mut bands = Vec::new();
+    for group in ["reserved", "pool"] {
+        let Some(t) = plan.get(group).and_then(|v| v.as_table()) else {
+            continue;
+        };
+        for (name, v) in t {
+            let pair = v.as_array().map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_integer())
+                    .map(|x| x as u32)
+                    .collect::<Vec<_>>()
+            });
+            match pair.as_deref() {
+                Some([lo, hi]) => bands.push((format!("{group}.{name}"), (*lo, *hi))),
+                Some([]) => {} // a stated empty band holds nothing
+                other => panic!("{source}: {group}.{name} is not [lo, hi]: {other:?}"),
+            }
+        }
+    }
+    bands
 }

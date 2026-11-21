@@ -224,6 +224,11 @@ pub mod init;
 #[cfg(target_os = "linux")]
 pub mod env;
 
+/// The boot task census of a Linux process (`/proc/self/task`), one reader
+/// for both Linux runners. Linux only, as [`env`] is.
+#[cfg(target_os = "linux")]
+pub mod task_census;
+
 /// The retired env aliases the hosted reader refuses.
 pub mod retired_env;
 pub use retired_env::RETIRED_ENV_VARS;
