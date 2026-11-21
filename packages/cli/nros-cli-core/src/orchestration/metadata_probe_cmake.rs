@@ -214,6 +214,11 @@ pub fn render_probe_cmakelists(comps: &[CmakeProbeOptions]) -> String {
                 "target_link_libraries({t} PRIVATE {lib})\n",
                 "target_link_libraries({t} PRIVATE NanoRos::NanoRosCpp)\n",
                 "nano_ros_link_rmw({t})\n",
+                // Issue 2787 (RFC-0132 D6), kept out of the generated file.
+                "# The census's CAN mock: a node that calls the platform CAN\n",
+                "# driver links and opens it here as it does in the census. An\n",
+                "# archive, so a node that never calls it links none.\n",
+                "nros_link_can_census_mock({t})\n",
             ),
             t = c.probe_target(),
             lib = c.library_target,
@@ -1427,6 +1432,27 @@ mod tests {
         );
         // Linking the component lib is what brings its own header's include dir.
         assert!(txt.contains("PRIVATE talker_lib"), "{txt}");
+    }
+
+    /// Issue 2787 -- every probe executable links the census's CAN mock, so a
+    /// node that calls `nros_platform_can_*` links and is constructed here as
+    /// it is in the census, instead of failing on `undefined reference to
+    /// nros_platform_can_close`. Every probe, after find_package (the function
+    /// is nano-ros's).
+    #[test]
+    fn every_probe_links_the_can_census_mock() {
+        let mut b = opts();
+        b.component = "listener".into();
+        let txt = render_probe_cmakelists(&[opts(), b]);
+        let find = txt
+            .find("find_package(nano_ros REQUIRED)")
+            .expect("find_package(nano_ros)");
+        for t in ["probe_talker_pkg__talker", "probe_talker_pkg__listener"] {
+            let at = txt
+                .find(&format!("nros_link_can_census_mock({t})"))
+                .unwrap_or_else(|| panic!("{t} must link the CAN mock:\n{txt}"));
+            assert!(at > find, "after find_package(nano_ros):\n{txt}");
+        }
     }
 
     /// issue 1469 - every package in the probe emits into ONE codegen dir, so a

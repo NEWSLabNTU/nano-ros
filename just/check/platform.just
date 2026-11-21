@@ -59,12 +59,15 @@ arch-profile-resolution:
 clock-epoch-store:
     @bash tests/clock-epoch-store-tests.sh
 
-# RFC-0132 D3 (phase-560 W9.f) -- the CAN frame driver's `board` backend
-# defaults: a board-stack board with no strong `nros_platform_can_*` fails at
-# `open` with "not supported" naming the board, a strong definition in another
-# object wins, and only board-stack boards compile the defaults. Compiles two
-# small C programs with the host compiler; ~1 s.
+# RFC-0132 D3 (phase-560 W9.f, issue 2788) -- the CAN frame driver's weak
+# fail-loud defaults on every board with no CAN backend: an entry on
+# mps3-an536-freertos that calls the driver links and fails at `open` with
+# "not supported" naming the board, a strong definition in another object
+# wins, a host-stack board gets no defaults (negative control), and every
+# in-tree board that is neither host nor Zephyr is covered on both roads.
+# Three tiny cmake projects with the host compiler; seconds.
 [private]
+[group('needs:cmake')]
 [group('needs:cc')]
 can-board-defaults:
     @bash tests/can-board-defaults-tests.sh

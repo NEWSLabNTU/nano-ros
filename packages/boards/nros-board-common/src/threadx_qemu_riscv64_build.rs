@@ -267,6 +267,9 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     let app_stack = app_stack_bytes_from_build_env();
     crate::threadx_sources::add_threadx_hooks_source(&mut glue, app_stack as usize);
     glue.file(manifest_dir.join("c/board_threadx_qemu_riscv64.c"));
+    // RFC-0132 D3 (issue 2788) -- no CAN frame backend on this board: the weak
+    // fail-loud defaults, named by its board key.
+    crate::can_unsupported::add_defaults(&mut glue, "rv-virt-threadx");
     crate::stack_stated::emit(
         &out_dir,
         &[crate::stack_stated::Stated {

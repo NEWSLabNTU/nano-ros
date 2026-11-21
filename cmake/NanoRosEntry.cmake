@@ -1173,6 +1173,8 @@ function(nano_ros_entry)
         endif()
         if(NOT _nra_can_board STREQUAL "")
             nros_entry_can_image(${_NRA_NAME} "${_nra_can_board}")
+            # Issue 2788 -- a board with no CAN backend: the fail-loud defaults.
+            nros_entry_can_defaults(${_NRA_NAME} "${_nra_can_board}")
         endif()
         _nros_entry_bake_domain()
     endif()

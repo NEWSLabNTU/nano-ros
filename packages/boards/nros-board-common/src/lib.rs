@@ -111,6 +111,11 @@ pub mod board_net;
 /// The one SocketCAN CAN-frame backend source, for every Linux-process board.
 #[cfg(feature = "build-helpers")]
 pub mod can_socketcan;
+// RFC-0132 D3, issue 2788.
+/// The CAN frame driver's weak fail-loud defaults, for a board with no CAN
+/// backend.
+#[cfg(feature = "build-helpers")]
+pub mod can_unsupported;
 /// One `nros_platform_*` provider per linked graph.
 #[cfg(feature = "build-helpers")]
 pub mod platform_port;
