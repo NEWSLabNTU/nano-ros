@@ -338,7 +338,7 @@ impl Knobs {
 
     /// A PLATFORM file's `[knobs]`: the typed tenants only (a board-only key
     /// is refused as an unknown field), after the retired keys are refused
-    /// by name ([`retired_knob_keys`]).
+    /// by name (`retired_knob_keys`).
     ///
     /// Use as `#[serde(deserialize_with = "Knobs::deserialize_platform")]`.
     pub fn deserialize_platform<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
@@ -1693,7 +1693,7 @@ pub struct ResolvedUsize {
 /// `[knobs.zenoh]`. One flat table since phase-581 W5 (RFC-0140 D3 N1: a key
 /// is two segments, so `[knobs.zenoh.tx]`, `.wire` and `.limits` are gone);
 /// the three groups below are how the code reads it, filled from
-/// [`ZenohKnobsToml`].
+/// `ZenohKnobsToml`.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(from = "ZenohKnobsToml")]
 pub struct ZenohKnobs {
