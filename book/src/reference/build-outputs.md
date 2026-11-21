@@ -69,7 +69,8 @@ nros build: next for `c_talker_node_bringup:linux`:
 
 What the `run:` (or `flash`) line is depends on the board: the binary for a
 host board, the board's QEMU runner with the provisioned `qemu-system-*` for an
-emulated one, `west build -d <dir> -t run` / `west flash -d <dir>` for Zephyr.
+emulated one, `nros run <image>` / `nros flash <image>` for Zephyr, followed by
+the same through `west`.
 `--dry-run` and `--check` build nothing, so they print no such block.
 
 One path the build *also* prints is easy to mistake for the binary:
@@ -188,15 +189,22 @@ Which of `.exe` and `.bin` appears is Zephyr's choice, not nano-ros's: a
 `native_sim` build produces `zephyr.exe`, a Cortex-M build produces
 `zephyr.bin`.
 
-**Next step — Zephyr's own verbs**, against the image's build directory
-(`nros build` prints whichever the board supports):
+**Next step.** `nros build` prints whichever of these the board supports.
+`nros run` and `nros flash` work from the image's workspace as printed.
+Zephyr's own verbs do the same against the image's build directory, but `west
+build` and `west flash` are commands of the Zephyr west workspace: outside it
+`west` refuses them (`unknown command "build"`) unless `ZEPHYR_BASE` names that
+workspace's `zephyr/`, so `nros build` prints them with the `ZEPHYR_BASE` it
+found.
 
 ```bash
-# native_sim and emulated boards
-west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run
+# emulated boards
+nros run demo_bringup:zephyr
+ZEPHYR_BASE=~/.nros/workspaces/zephyr/3.7/zephyr west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run
 # hardware: the board's flash runner
-west flash -d build/zephyr-zenoh/demo_bringup__zephyr_west
-# native_sim: the same as -t run
+nros flash demo_bringup:zephyr
+ZEPHYR_BASE=~/.nros/workspaces/zephyr/3.7/zephyr west flash -d build/zephyr-zenoh/demo_bringup__zephyr_west
+# native_sim: the executable itself
 ./build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe
 ```
 

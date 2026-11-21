@@ -4130,7 +4130,12 @@ fn print_next_steps(args: &Args, plans: &[ResolvedBuild]) {
         let Some(d) = &p.descriptor else {
             continue;
         };
-        let steps = crate::cmd::build_next::next_steps(p, d, &qemu);
+        // Issue 2809 — the Zephyr tree this build used, which a printed west
+        // line needs outside the west workspace. Only a Zephyr board asks.
+        let zbase = (d.platform == crate::orchestration::board_descriptor::PlatformKind::Zephyr)
+            .then(|| zephyr_base(&root, args.zephyr_workspace.as_deref()))
+            .flatten();
+        let steps = crate::cmd::build_next::next_steps(p, d, &qemu, zbase.as_deref());
         print!("{}", crate::cmd::build_next::render(&p.qualified, &steps));
     }
 }
