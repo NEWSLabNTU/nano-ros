@@ -357,13 +357,15 @@ pub fn west_build_name(zephyr_exe: &Path) -> Option<&str> {
 /// always a missing-or-stale message — which reads character-for-character like
 /// a cell that ran and failed. The floor is `check-west-leaf-vocabulary.py`.
 pub fn require_west_leaf_in_lane(build_name: &str, label: &str) -> TestResult<()> {
-    if run_coords().is_none() {
+    if run_coords().is_none() && !super::evidence::enabled() {
         return Ok(());
     }
     let Some(leaf) = west_leaves().iter().find(|l| l.build_name == build_name) else {
         return Ok(());
     };
-    require_coord_in_lane(&leaf.coord, label)
+    // The evidence is recorded by the coordinate check below (RFC-0114 D13.1),
+    // as a west leaf, named by its build dir.
+    require_coord_evidenced_in_lane(&leaf.coord, label, build_name, "west_leaf", run_coords())
 }
 
 /// Parse a lane-coords file body. Same format and same refusals as
@@ -596,12 +598,25 @@ pub fn require_coord_in_lane_within(
     label: &str,
     coords: Option<&BTreeSet<Coord>>,
 ) -> TestResult<()> {
-    let Some(coords) = coords else {
-        return Ok(());
-    };
-    if let Some(reason) = skip_reason_for_coord(coord, label, coords) {
+    require_coord_evidenced_in_lane(coord, label, label, "coord", coords)
+}
+
+/// [`require_coord_in_lane_within`], recording the resolution as evidence of
+/// its board (RFC-0114 D13.1) once the lane has not skipped it: `id` names what
+/// was resolved and `kind` how.
+fn require_coord_evidenced_in_lane(
+    coord: &Coord,
+    label: &str,
+    id: &str,
+    kind: &str,
+    coords: Option<&BTreeSet<Coord>>,
+) -> TestResult<()> {
+    if let Some(coords) = coords
+        && let Some(reason) = skip_reason_for_coord(coord, label, coords)
+    {
         crate::lane_skip!("{reason}");
     }
+    super::evidence::record_coord_if_enabled(id, kind, coord);
     Ok(())
 }
 
@@ -630,6 +645,8 @@ pub fn require_row_in_lane_within(
                 && r.serves.iter().any(|c| sel.contains(c))
         });
         if served {
+            // A peer row run for a cell it serves is evidence too.
+            super::evidence::record_coord_if_enabled(dir, "served_peer", coord);
             return Ok(());
         }
     }

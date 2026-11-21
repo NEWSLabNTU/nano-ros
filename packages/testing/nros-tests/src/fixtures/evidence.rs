@@ -30,11 +30,25 @@ pub fn enabled() -> bool {
 /// ledger that cannot be written is reported on stderr, and the collector
 /// then sees no record for the test, which it reports as missing evidence.
 pub fn record(row: &Row) {
+    record_coord(&row.id, &row.kind, &row.coord);
+}
+
+/// [`record_coord`] when a ledger is wanted, a no-op otherwise.
+pub fn record_coord_if_enabled(id: &str, kind: &str, coord: &super::lane::Coord) {
+    if enabled() {
+        record_coord(id, kind, coord);
+    }
+}
+
+/// [`record`] for a resolution that knows its coordinate but no manifest row:
+/// a Zephyr west leaf (by build-dir name), a row-keyed group resolver, the PX4
+/// companion. `id` names what was resolved, `kind` how.
+pub fn record_coord(id: &str, kind: &str, coord: &super::lane::Coord) {
     let Some(dir) = std::env::var_os(EVIDENCE_DIR_ENV).filter(|d| !d.is_empty()) else {
         return;
     };
     let dir = std::path::PathBuf::from(dir);
-    if let Err(e) = write_line(&dir, &line(row)) {
+    if let Err(e) = write_line(&dir, &line_for(id, kind, coord)) {
         eprintln!(
             "nros-tests: cannot write the evidence ledger in {}: {e}",
             dir.display()
@@ -44,12 +58,16 @@ pub fn record(row: &Row) {
 
 /// The ledger line for `row`, for the running test.
 pub fn line(row: &Row) -> String {
-    let (platform, lang, rmw) = &row.coord;
+    line_for(&row.id, &row.kind, &row.coord)
+}
+
+fn line_for(id: &str, kind: &str, coord: &super::lane::Coord) -> String {
+    let (platform, lang, rmw) = coord;
     serde_json::json!({
         "test": std::thread::current().name().unwrap_or("unknown"),
         "binary": binary(),
-        "row": row.id,
-        "kind": row.kind,
+        "row": id,
+        "kind": kind,
         "platform": platform,
         "lang": lang,
         "rmw": rmw,
