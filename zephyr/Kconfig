@@ -328,8 +328,10 @@ config NROS_ZENOH_MULTI_THREAD
       executor thread, `zpico_exec`, runs the read path, the lease, the
       keep-alive, a reconnect and every zenoh callback, beside the tx-flush
       task `zpico_flush` (NROS_ZENOH_TX_BATCH). Before it, `zpico_read` and
-      `zpico_lease` were two tasks. Required for non-blocking operation.
-      Maps to Z_FEATURE_MULTI_THREAD.
+      `zpico_lease` were two tasks. Required for non-blocking operation, and
+      required on Zephyr: an image that turns it off is refused at configure
+      time, because a single-thread session states no readiness form and no
+      executor could open over it. Maps to Z_FEATURE_MULTI_THREAD.
 
 config NROS_CONSOLE_WHOLE_LINES
     bool "Send each C stdout line to printk whole, so cores never split a line"
