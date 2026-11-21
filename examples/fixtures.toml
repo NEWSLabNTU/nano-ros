@@ -5470,6 +5470,24 @@ dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
 output = ".verdict"
 
 [[compile_check_fixture]]
+id = "stack_floor_one_program_keeps_entry_key"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "stack_floor_two_programs_keyed_per_program"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "stack_floor_stated_key_with_two_programs_refused"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
 id = "cmake_carrier_duplicate_executable_refused"
 builder = "cmake-configure-verdict"
 dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"

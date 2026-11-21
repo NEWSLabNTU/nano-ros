@@ -251,3 +251,57 @@ fn a_named_board_outranks_the_census_leaf_board() -> TestResult<()> {
     );
     Ok(())
 }
+
+/// phase-583 W4 (RFC-0071 D20) -- an owned entry that checks ONE program keeps
+/// the entry's stack-floor key `<pkg>@<board>` and the build dir's one report.
+#[test]
+fn one_checked_program_keeps_the_entry_stack_floor_key() -> TestResult<()> {
+    let out = outcome("stack_floor_one_program_keeps_entry_key")?;
+    assert!(
+        out.success()
+            && out.stdout.contains("VERDICT: key=carrier_pkg@b1")
+            && out
+                .stdout
+                .contains("VERDICT: report=nros/stack-floor/report.json"),
+        "one program must keep the entry's key and report:\n{}\n{}",
+        out.stdout,
+        out.stderr
+    );
+    Ok(())
+}
+
+/// phase-583 W4 -- an owned entry that checks two programs keys each program
+/// `<pkg>/<exe>@<board>`, reporting to `nros/stack-floor/<exe>/report.json`.
+#[test]
+fn two_checked_programs_are_keyed_per_program() -> TestResult<()> {
+    let out = outcome("stack_floor_two_programs_keyed_per_program")?;
+    for x in ["prog_a", "prog_b"] {
+        let want =
+            format!("VERDICT: {x} key=carrier_pkg/{x}@b1 report=nros/stack-floor/{x}/report.json");
+        assert!(
+            out.success() && out.stdout.contains(&want),
+            "expected `{want}`:\n{}\n{}",
+            out.stdout,
+            out.stderr
+        );
+    }
+    Ok(())
+}
+
+/// phase-583 W4 -- a stated `stack_floor_image` cannot name two programs'
+/// floors, so it is refused, naming both programs and what to remove.
+#[test]
+fn a_stated_stack_floor_key_with_two_programs_is_refused() -> TestResult<()> {
+    let out = outcome("stack_floor_stated_key_with_two_programs_refused")?;
+    assert!(
+        !out.success(),
+        "a stated key must be refused for two programs:\n{}",
+        out.stdout
+    );
+    let err = out.stderr.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        err.contains("prog_a, prog_b") && err.contains("Remove `stack_floor_image`"),
+        "{err}"
+    );
+    Ok(())
+}
