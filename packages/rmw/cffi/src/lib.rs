@@ -2840,13 +2840,60 @@ fn report_qos_downgrade(kind: &str, name: &str, requested: &NrosRmwQos, granted:
         );
     }
     if requested.depth != granted.depth && granted.depth != 0 {
-        nros_log::log_warn!(
-            nros_log::get_logger("nros_rmw_cffi"),
-            "{kind} `{name}`: asked for history depth {} and the backend granted {}.",
-            requested.depth,
-            granted.depth
-        );
+        // Issue 2815 -- ONE warning per distinct (requested, granted) depth
+        // pair, the rest at debug. A depth clamp is the backend's fixed
+        // ceiling, so every endpoint asking the same depth gets the same
+        // answer: an image serving the parameter services asks 1000 for each
+        // of their twelve endpoints and zenoh-pico grants 4, which was twelve
+        // identical warnings in the first 80 ms of boot -- the burst a
+        // Nucleo-F767ZI faulted inside. Reliability and durability above stay
+        // per entity: they are what silences a pair, and they are rare.
+        if first_depth_downgrade(requested.depth, granted.depth) {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros_rmw_cffi"),
+                "{kind} `{name}`: asked for history depth {} and the backend granted {}. \
+                 Further endpoints granted the same are logged at debug.",
+                requested.depth,
+                granted.depth
+            );
+        } else {
+            nros_log::log_debug!(
+                nros_log::get_logger("nros_rmw_cffi"),
+                "{kind} `{name}`: asked for history depth {} and the backend granted {}.",
+                requested.depth,
+                granted.depth
+            );
+        }
     }
+}
+
+/// Issue 2815 -- whether this (requested, granted) depth pair is the first of
+/// its kind since the last DIFFERENT pair, i.e. whether it earns a warning.
+///
+/// One word holds the last pair warned about. Load and store only, no
+/// read-modify-write, because thumbv6m has no atomic compare-and-swap; two
+/// threads racing on a new pair can each warn once, which is harmless. A
+/// workload alternating between two pairs warns on every change, which is
+/// what it should do: a new pair is new information.
+#[cfg(feature = "alloc")]
+fn first_depth_downgrade(requested: u16, granted: u16) -> bool {
+    static LAST_WARNED: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+    first_depth_downgrade_in(&LAST_WARNED, requested, granted)
+}
+
+/// [`first_depth_downgrade`] over a caller's word, so a test owns its own.
+#[cfg(feature = "alloc")]
+fn first_depth_downgrade_in(
+    last: &core::sync::atomic::AtomicU32,
+    requested: u16,
+    granted: u16,
+) -> bool {
+    let key = (u32::from(requested) << 16) | u32::from(granted);
+    if last.load(Ordering::Relaxed) == key {
+        return false;
+    }
+    last.store(key, Ordering::Relaxed);
+    true
 }
 
 /// The C-ABI spelling of [`QoSProfile::QOS_PROFILE_UNKNOWN`] — every policy an
@@ -6363,6 +6410,27 @@ pub unsafe extern "C" fn rmw_compare_gids_equal(
 mod tests {
     use super::*;
     use nros_rmw::{Rmw, RmwConfig, Session, SessionMode, TopicInfo};
+
+    /// Issue 2815 -- one warning per distinct depth downgrade, not one per
+    /// endpoint: twelve parameter-service endpoints asking 1000 and granted 4
+    /// warn once, and a different pair warns again.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn a_repeated_depth_downgrade_warns_once() {
+        let last = core::sync::atomic::AtomicU32::new(0);
+        assert!(first_depth_downgrade_in(&last, 1000, 4));
+        for _ in 0..11 {
+            assert!(!first_depth_downgrade_in(&last, 1000, 4));
+        }
+        assert!(
+            first_depth_downgrade_in(&last, 10, 4),
+            "a new pair is new information"
+        );
+        assert!(
+            first_depth_downgrade_in(&last, 1000, 4),
+            "and so is the old one again"
+        );
+    }
 
     // Stub backend state. Statically allocated; the vtable's
     // `backend_data` round-trips a `&'static mut StubBackend`.
