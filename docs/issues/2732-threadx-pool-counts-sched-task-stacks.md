@@ -5,7 +5,7 @@ status: open
 type: enhancement
 severity: low
 area: [build, memory, threadx]
-related: [2624]
+related: [2624, 2800]
 found: 2026-11-20
 ---
 
@@ -92,3 +92,10 @@ stack nor whether it is spawned. So there are three parts:
   - Acceptance: realtime-rust's `[image.threadx]` (one spawned 64 KiB task)
     derives a pool 64 KiB larger than today, and still boots. A test image
     whose tasks overflow today's default boots at the derived one.
+
+**Host boards (issue 2800).** On threadx-linux every ThreadX thread runs on
+a host pthread stack, so its pool-allocated stacks are dead weight there
+([issue 2800](2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
+Part (c) has to decide whether that board's derivation counts sched-task
+stacks at all, or keeps the target's terms so host and target derive the
+same pool.
