@@ -1,7 +1,7 @@
 ---
 id: 2688
 title: "The FreeRTOS C stack-floor drift row walks 4.8 KiB deeper on a dev host than in CI, so a local drift run cannot predict the queue's"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [tooling, stack-floor, freertos]
@@ -64,3 +64,34 @@ table say which input differs: a frame from a `.su` file (compiler or flags),
 a function present in one image only (sysroot or link set), or an indirect
 binding (the type-bound fold). Until then, a local drift verdict on this row
 is not evidence about CI's.
+
+## Resolution (2026-11-22)
+
+**It no longer reproduces, and its cause can no longer pass silently.**
+
+- **Measured at the same commit, it matches to the byte.** CI's last drift
+  run (2026-11-20, `b28c0fbaca`) walked the FreeRTOS C row at 112,064 B and
+  the nucleo C row at 112,184 B. This dev host, at the same commit, walked
+  112,064 B and 112,184 B.
+- **The cause was the toolchain, not the code.** When this was filed, the
+  host's store GCC was `13.2-nros1`, older than CI's. Both now resolve the
+  pinned `13.2-nros5`. Phase-557 W9c's checkpoint also showed that the walk
+  no longer moves with unrelated code (0.00 % across six trees), so a host
+  and CI on the same toolchain cannot disagree for that reason either.
+- **The check now names a toolchain mismatch.** `stack-floor-drift.py`
+  reads each image's `CMakeCache.txt` and compares what the build resolved
+  with the tree's pins:
+  - the C compiler's store version, against `nros-sdk-index.toml`;
+  - the Zephyr SDK's store version, against the same index;
+  - the Zephyr tree's tag, against its west manifest.
+
+  A mismatch makes the row NOT VERIFIED (the skip ledger), naming what was
+  found and what is pinned, and the walk's verdict is withheld, PASS or
+  FAIL. A walk under another toolchain says nothing about the row. Every row
+  also prints the toolchain it was walked under.
+- **This host is an instance.** Its shared Zephyr 3.7 workspace is at
+  v3.7.0, where `west.yml` pins v3.7.2. Zephyr's own `SDK_VERSION` follows
+  the tree, so its builds take SDK 0.16.8 where the index pins 0.16.9. The
+  nucleo C row reads NOT VERIFIED here, naming both. The walk happened to
+  agree with CI's this time (the two SDKs' libgcc have the same code), but
+  that is not something a check can assume.
