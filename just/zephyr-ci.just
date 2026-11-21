@@ -107,10 +107,10 @@ build-fixtures:
     # so only 4.4). It is now set per-leaf in zephyr-fixture-run-one.sh, keyed
     # on the native_sim BOARD, so 3.7's native_sim subset is SDK-free too while
     # real embedded boards stay SDK-gated.
-    venvbin="{{ZEPHYR_VENV_BIN}}"
-    if [ -n "$venvbin" ]; then
-        export PATH="$(realpath "$venvbin"):$PATH"
-    fi
+    # Issue 2821 — the 4.4 venv used to be prepended here from a just variable
+    # keyed on the version string. `nros_zephyr_activate` above now resolves
+    # the line's interpreter against the floor its own tree states, so it
+    # already put the 4.4 venv first.
     if [ "{{NROS_ZEPHYR_VERSION}}" != "4.4" ]; then
     # Apply Cortex-A9 patches (idempotent; required for the
     # build-dds-a9-{talker,listener} entries below).

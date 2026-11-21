@@ -573,6 +573,16 @@ report-interlock-coverage:
 zephyr-sync-workspace-manifest:
     @bash tests/zephyr-sync-workspace-manifest-tests.sh
 
+# issue 2821 — the Zephyr interpreter resolver holds each line to the Python
+# floor its own tree states (`PYTHON_MINIMUM_REQUIRED`), prefers the
+# workspace's venv, and resolves to nothing when no candidate meets the floor
+# (the negative control). Interpreters are wrappers with a stub `west`, tmpdir,
+# <1 s.
+[private]
+[group('units')]
+zephyr-python-floor:
+    @bash tests/zephyr-python-floor-tests.sh
+
 # issue 1964 — the pre-push hook keeps `just check fast`'s full output and
 # per-gate verdicts in a per-user state dir, outside every checkout, so a red
 # survives the terminal and `git worktree remove`. Exercises the helper (status

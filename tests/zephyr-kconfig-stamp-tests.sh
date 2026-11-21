@@ -80,12 +80,16 @@ for _t in cmake ninja; do
         exit 1
     fi
 done
-# west's interpreter for the line, when the store has one.
-for _v in "$ZEPHYR_WS/.venv312/bin" "$ZEPHYR_WS/.venv/bin" \
-          "$HOME/.nros/workspaces/zephyr/4.4/.venv312/bin"; do
-    [ -x "$_v/python" ] && PATH="$_v:$PATH" && break
-done
-PY="$(command -v python3)"
+# west's interpreter for this workspace's line, from the one resolver (issue
+# 2821): it reads the floor from the workspace's own tree.
+# shellcheck source=scripts/build/zephyr-python.sh
+source "$PROJECT_ROOT/scripts/build/zephyr-python.sh"
+PY="$(nros_zephyr_python "$ZEPHYR_WS")"
+if [ -z "$PY" ]; then
+    fail "no interpreter imports west at Python >= $(nros_zephyr_python_floor "$ZEPHYR_WS") for $ZEPHYR_WS -- this test cannot report a verdict without one"
+    exit 1
+fi
+PATH="$(dirname "$PY"):$PATH"
 export ZEPHYR_BASE="$ZEPHYR_WS/zephyr"
 # The toolchain variant every Zephyr recipe exports (scripts/build/
 # zephyr-toolchain.sh): Zephyr 3.7's FindZephyr-sdk.cmake cannot even parse

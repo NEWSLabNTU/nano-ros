@@ -98,8 +98,10 @@ Each line's patch sequence lives in `scripts/zephyr/patches/<line>.sh`
    and a *specific* `zephyr-lang-rust` revision (not `main` — that drifts; see
    phase 199.2).
 3. **Wire the selector.** Add the `NROS_ZEPHYR_VERSION == "<line>"` arms in
-   `just/zephyr.just` (the `ZEPHYR_MANIFEST` / `ZEPHYR_WORKSPACE` /
-   `ZEPHYR_VENV_BIN` selectors).
+   `just/zephyr.just` (the `ZEPHYR_MANIFEST` / `ZEPHYR_WORKSPACE`
+   selectors). The line's Python needs no arm: `scripts/build/zephyr-python.sh`
+   reads the floor from the new tree's own `cmake/modules/python.cmake`, and
+   takes the workspace's venv when one is there.
 4. **Drop a patch set.** Add `scripts/zephyr/patches/<line>.sh` — re-anchor only
    the native_sim / NSOS / CycloneDDS patches still un-upstreamed for that line
    (each idempotent; `cd`s to repo root; takes the workspace arg). **No edit to

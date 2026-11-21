@@ -79,12 +79,17 @@ if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
     exit 1
 fi
 
-venvbin="$workspace/.venv312/bin"
-if [ ! -x "$venvbin/python" ]; then
-    echo "FAIL: 4.4 Python 3.12 venv missing at $venvbin/python"
-    echo "  run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup"
+# Issue 2821 — the line's interpreter from the one resolver, held to the floor
+# this workspace's own tree states, never a venv path joined here.
+source "$NROS_ROOT/scripts/build/zephyr-python.sh"
+zpy="$(nros_zephyr_python "$workspace")"
+if [ -z "$zpy" ]; then
+    echo "FAIL: no interpreter for the Zephyr $ZEPHYR_LINE line: none of the candidates imports west at Python >= $(nros_zephyr_python_floor "$workspace")"
+    echo "  checked: $(nros_zephyr_workspace_venv "$workspace")/bin/python3, scripts/zephyr/.venv, python3 on PATH"
+    echo "  run: NROS_ZEPHYR_VERSION=$ZEPHYR_LINE just zephyr setup"
     exit 1
 fi
+venvbin="$(dirname "$zpy")"
 
 # Source example inside the repo tree.
 src="$NROS_ROOT/examples/zephyr/$EXAMPLE"
@@ -175,7 +180,7 @@ if [ -f "$copied/.colcon_workspace" ]; then
 else
 (
     cd "$workspace"
-    "$(realpath "$venvbin")/python" -m west build \
+    "$zpy" -m west build \
         -b "$BOARD" -d "$bd" -p auto "$copied" -- \
         -DCONF_FILE="$conf" \
         -DNROS_IMAGE="zephyr_$RMW" \
