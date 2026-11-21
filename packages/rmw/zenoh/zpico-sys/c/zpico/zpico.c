@@ -206,6 +206,10 @@ extern uint64_t smoltcp_clock_now_ms(void);
 extern void nros_smoltcp_idle_until_ms(uint64_t deadline_ms);
 #endif
 
+#if defined(__ZEPHYR__) && defined(ZPICO_DRIVE_CALLER)
+static void zpico_clock_pump(void); // RFC-0141 D1, defined beside zpico_spin_once
+#endif
+
 // ============================================================================
 // Internal Data Structures
 // ============================================================================
@@ -2768,6 +2772,15 @@ int32_t zpico_open(zpico_session_t* session) {
 #endif
     s->link_tx_failures_seen = zp_session_link_tx_failures(z_session_loan(&s->session));
     s->session_open = true;
+#if defined(__ZEPHYR__) && defined(ZPICO_DRIVE_CALLER)
+    /* RFC-0141 D1 — hand the clock gate a pump (see `zpico_clock_pump`). A
+     * strong reference: the Zephyr module's shims, which define it, are linked
+     * into every Zephyr image beside this shim. */
+    {
+        extern void nros_clock_set_pump(void (*pump)(void));
+        nros_clock_set_pump(zpico_clock_pump);
+    }
+#endif
     return ZPICO_OK;
 }
 
@@ -3875,6 +3888,32 @@ static void _zpico_run_executor(struct zpico_session* s) {
 // Polling Implementation (zpico_poll — deleted in Phase 77.20; use
 // zpico_spin_once() instead, which adds keep-alive handling)
 // ============================================================================
+
+int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms);
+
+#if defined(__ZEPHYR__) && defined(ZPICO_DRIVE_CALLER)
+/* RFC-0141 D1 — the clock gate's pump, for a build whose zenoh-pico executor
+ * runs only inside `zpico_spin_once` (ZPICO_DRIVE_CALLER: serial, and any
+ * single-thread build). While boot waits for a `zenoh-hlc` wall-clock source no
+ * level is spinning yet, so without this nothing would read the link: no
+ * timestamped sample could arrive, and the session's lease would go unserved.
+ *
+ * It drives each open session ONCE, through `zpico_spin_once(s, 0)`, which
+ * runs zenoh-pico's I/O and handlers and nothing above them. Every handler
+ * only buffers: the sample, queryable and reply handlers copy into their slot
+ * and wake its waiter, and the graph-change edge levels a guard condition.
+ * User callbacks run from the executor's dispatch, which has not started, so a
+ * sample that arrives here is dispatched on the first spin like any other (a
+ * full KEEP_LAST ring drops its oldest, which counts as an eviction, never an
+ * error). A ZPICO_DRIVE_THREAD build has its own read thread and needs none. */
+static void zpico_clock_pump(void) {
+    for (int i = 0; i < ZPICO_MAX_SESSIONS; i++) {
+        if (g_session_inuse[i] && g_sessions[i].session_open) {
+            (void)zpico_spin_once((zpico_session_t*)&g_sessions[i], 0);
+        }
+    }
+}
+#endif
 
 int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     struct zpico_session* s = (struct zpico_session*)session;
