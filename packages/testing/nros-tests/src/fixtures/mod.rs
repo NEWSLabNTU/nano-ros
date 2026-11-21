@@ -9,6 +9,7 @@
 pub mod baked_locator;
 mod binaries;
 pub mod cache_key;
+pub mod evidence;
 pub mod groups;
 pub mod lane;
 pub mod migrated_leaf;

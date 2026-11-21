@@ -851,22 +851,33 @@ pub fn skip_reason_for_platforms(
 /// check — when the run is not narrowed, or the path attributes to no row, or
 /// the row is in lane.
 pub fn require_in_lane(binary_path: &Path) -> TestResult<()> {
-    let Some(coords) = run_coords() else {
-        return Ok(());
-    };
-    if let Some(reason) = skip_reason_for_path(binary_path, coords) {
+    if let Some(coords) = run_coords()
+        && let Some(reason) = skip_reason_for_path(binary_path, coords)
+    {
         crate::lane_skip!("{reason}");
+    }
+    // RFC-0114 D13.1 -- the row this test resolved, as evidence of its board.
+    if super::evidence::enabled()
+        && let Some(row) =
+            attribute_path(binary_path).or_else(|| attribute_group_binary(binary_path))
+    {
+        super::evidence::record(row);
     }
     Ok(())
 }
 
 /// [`require_in_lane`] for a `[[workspace_fixture]]`, attributed by `id`.
 pub fn require_workspace_in_lane(fixture_id: &str) -> TestResult<()> {
-    let Some(coords) = run_coords() else {
-        return Ok(());
-    };
-    if let Some(reason) = skip_reason_for_workspace_id(fixture_id, coords) {
+    if let Some(coords) = run_coords()
+        && let Some(reason) = skip_reason_for_workspace_id(fixture_id, coords)
+    {
         crate::lane_skip!("{reason}");
+    }
+    // RFC-0114 D13.1 -- the row this test resolved, as evidence of its board.
+    if super::evidence::enabled()
+        && let Some(row) = attribute_workspace_id(fixture_id)
+    {
+        super::evidence::record(row);
     }
     Ok(())
 }
