@@ -1,12 +1,14 @@
 ---
 id: 2617
 title: "The RTOS priority plans state no reserved.foreign band, so foreign threads such as lwIP's tcpip_thread sit nowhere a plan can check"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: [platform, freertos, nuttx, threadx]
 found: 2026-11-15
-related: [0506, 0623, 0736, phase-555]
+resolved: 2026-11-21
+resolved_in: "fix(#2617): the Linux runners print the boot thread census, and a test checks the plan"
+related: [0506, 0623, 0736, 2773, 2792, phase-555]
 ---
 
 **Owner:** unassigned. **Home:** RFC-0079 "Open questions" (`reserved.foreign`
@@ -142,10 +144,26 @@ Tests: `freertos_posix_task_census_is_placed_by_the_priority_plan`,
 `threadx_riscv64_thread_census_is_placed_by_the_priority_plan` and
 `nuttx_riscv_thread_census_is_placed_by_the_priority_plan`.
 
-## Still open
+## Linux: measured (2026-11-21)
 
-- Linux's `reserved.foreign = []` is still checked only by a probe no test or
-  gate runs.
+Both Linux runners now print the same census once every level is up
+(`nros::task_census`, reading `/proc/self/task` through libc), and
+`linux_thread_census_is_placed_by_the_priority_plan` (levels-cpp) and
+`linux_rust_thread_census_is_placed_by_the_priority_plan` (realtime-rust), in
+`rt_sched_levels_e2e.rs`, read it with `CAP_SYS_NICE` granted.
+
+The `= []` had rested on `scripts/dev/priority-thread-probe.py`, which read
+`/proc/<pid>/stat` fields 41 and 42. `rt_priority` is 40 and the policy 41, so
+the probe classified every thread as SCHED_OTHER and could never have seen a
+real-time one. It reads 40 and 41 now.
+
+Measured on realtime-rust: the boot level on the main thread at FIFO 10, a
+level at FIFO 80, zenoh-pico's transport at FIFO 90. No thread nano-ros does
+not create holds a real-time priority, so `reserved.foreign = []` stands.
+
+The levels-cpp census found a separate defect: the C/C++ runner never places
+the transport in its band, so it stays on SCHED_OTHER under SCHED_FIFO
+levels. That is issue 2792.
 
 ## What closes it
 

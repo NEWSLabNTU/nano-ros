@@ -754,7 +754,7 @@ play_launch schedules processes from outside. Same target, different problem
   `tcpip_thread` and NuttX's work queues are real foreign occupants whose
   positions those plans can only ASSERT. Each needs its own enumerator —
   procfs does not exist there — and until one lands those bands are claims.
-  Filed as [issue 2617](../issues/2617-rtos-foreign-band-unenumerated.md).
+  Filed as [issue 2617](../issues/archived/2617-rtos-foreign-band-unenumerated.md).
 
   Worth noting the probe also reads correctly on an unprivileged host, where
   every thread is `SCHED_OTHER` and therefore in no band by construction. That
@@ -811,7 +811,7 @@ blocked and POSIX n/a.
   a status change. Brief item W1.
 - **Stable (2026-11-15, ruling A1(a)).** The four open questions are filed:
   RTOS foreign-band enumerators
-  ([issue 2617](../issues/2617-rtos-foreign-band-unenumerated.md)), per-port
+  ([issue 2617](../issues/archived/2617-rtos-foreign-band-unenumerated.md)), per-port
   profile overrides ([issue 2619](../issues/2619-priority-profile-per-port-override.md)),
   headroom policy ([issue 2620](../issues/2620-priority-headroom-policy.md))
   and bootstrapping, no image declaring a WCET

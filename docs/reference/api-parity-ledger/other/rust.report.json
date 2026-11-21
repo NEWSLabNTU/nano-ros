@@ -1,0 +1,5 @@
+{
+  "key": "rust:report",
+  "verdict": "extension",
+  "why": "`nros::task_census::report` (`packages/api/nros/src/task_census.rs`), Linux targets only: the boot task census of the calling process, every thread of `/proc/self/task` with its scheduling policy and real-time priority, printed through a caller-supplied line sink. Both Linux runners call it once every level is up (`nros-board-linux`'s `run_sched_tasks` and `nros-cpp`'s native levels runner), so a test can check the board's priority plan against a running image, as the RTOS runners' censuses are checked. It reads through the C library, not `std`, for the reason `nros::env` does. rclrs has no counterpart: it does not allocate priorities or state a priority plan."
+}
