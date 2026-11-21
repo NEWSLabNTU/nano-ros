@@ -26,6 +26,22 @@ All four of RFC-0114 D13's, as recommended: the typed `runs`, `cadence` and
 cadence periods; manual reports go on the `board-evidence` orphan branch;
 the book is rendered at deploy with a published `board-status.json`, N = 6.
 
+## Zephyr runtime coverage (ruled 2026-11-22, user)
+
+W2b measured where Zephyr's scheduled runtime evidence comes from. The
+nightly's Zephyr jobs only build; `merge-runtime.yml` is dispatch-only; tier 2
+(`run-matrix.yml`) would run Zephyr cells but stopped in its build on each of
+the five scheduled runs to 2026-11-20; the one scheduled Zephyr runtime is
+`live-peer.yml`'s board-zephyr runner (two interop rows). So the registry's
+"Verified on host (daily)" for ZephyrNativeSim was not backed by its matrix
+cells running.
+
+**Ruling: fix tier 2 first, with no dedicated Zephyr nightly job.** Tier 2's
+Zephyr cells become the evidence once its build is green; its build red is
+nros 175's parameter-store / `MAX_CBS` work. Until then, the Zephyr rows read
+"Not run since <date>" under D13.5, and that is the CORRECT reading, not a
+defect of this phase: the derivation is reporting what ran.
+
 ## Work items
 
 Each item is one PR, claimed with `just claim phase-585-wN` before it starts,
@@ -116,6 +132,16 @@ in the order below.
 - **Acceptance:** each check has a negative control (a fixture platform with
   no row, a row with no cell, an attribution path that writes no line, a
   marker on a starter), and the tree passes.
+
+### W8 — `host-tests` keeps its junit and ledger
+
+- **Status:** OPEN (approved 2026-11-22, after W2)
+- **What:** `host-tests.yml` uploads no junit today, so the Linux cells it
+  runs on its schedule carry no evidence. Upload its junit with the evidence
+  ledger (from `$GITHUB_WORKSPACE`, as W2 does, since its jobs run in
+  containers) and add its `board-results` job.
+- **Acceptance:** a scheduled `host-tests` run's summary lists the Linux row
+  with the cells it ran.
 
 ## Not in this phase
 
