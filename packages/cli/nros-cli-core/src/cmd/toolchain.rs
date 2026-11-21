@@ -137,7 +137,11 @@ pub struct UninstallArgs {
     // the whole suite passed while `nros toolchain uninstall 0.6.2` could not
     // run at all; `nros-cli/tests/store_verbs.rs` executes the real binary for
     // exactly that reason. `value_name` keeps the help reading `<VERSION>`.
-    #[arg(id = "toolchain-version", value_name = "VERSION")]
+    #[arg(
+        id = "toolchain-version",
+        value_name = "VERSION",
+        add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::toolchains)
+    )]
     pub version: String,
 
     /// An extra file whose contents pin versions. Repeatable.

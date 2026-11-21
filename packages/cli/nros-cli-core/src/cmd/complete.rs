@@ -179,6 +179,42 @@ pub fn knobs() -> Vec<CompletionCandidate> {
     }))
 }
 
+/// The profiles `nros build --profile=` and `[image.<id>] profile` take: each
+/// cargo profile a CMake build type maps to, then the CMake spellings.
+pub fn profiles() -> Vec<CompletionCandidate> {
+    let cargo = nros_cargo_profile::BUILD_TYPE_MAP.iter().map(|(t, p)| {
+        CompletionCandidate::new(*p).help(Some(format!("cargo profile (CMake: {t})").into()))
+    });
+    let cmake = ["Debug", "Release", "RelWithDebInfo", "MinSizeRel"]
+        .map(|t| CompletionCandidate::new(t).help(Some("CMake build type".into())));
+    sorted(cargo.chain(cmake))
+}
+
+/// The toolchain versions installed in the store (`toolchains/<version>`),
+/// a directory listing and nothing more.
+pub fn toolchains() -> Vec<CompletionCandidate> {
+    use crate::orchestration::store;
+    let Ok(dir) = std::fs::read_dir(store::toolchains_dir(&store::root())) else {
+        return Vec::new();
+    };
+    sorted(dir.flatten().filter(|e| e.path().is_dir()).filter_map(|e| {
+        e.file_name()
+            .to_str()
+            .map(|n| CompletionCandidate::new(n.to_string()))
+    }))
+}
+
+/// Every live diagnostic code (`NROS-NNNN`), each with its one-line title.
+/// A retired code has no title and is not offered.
+pub fn codes() -> Vec<CompletionCandidate> {
+    sorted(
+        nros_diagnostic_codes::ALL
+            .iter()
+            .filter(|e| !e.title.is_empty())
+            .map(|e| CompletionCandidate::new(e.code).help(Some(e.title.into()))),
+    )
+}
+
 // The registration of dynamic completion. Here rather than in the
 // `completions` verb so `nros setup` can print it without reaching that verb.
 
@@ -344,5 +380,26 @@ mod tests {
         c.search_path.push("/another/root".into());
         write_cache(leaf.path(), &c).unwrap();
         assert_eq!(cached_in(leaf.path()), None);
+    }
+
+    #[test]
+    fn profiles_offer_both_vocabularies_build_accepts() {
+        for p in values(&profiles()) {
+            assert!(
+                nros_cargo_profile::cmake_build_type(&p).is_some(),
+                "`{p}` is offered but `nros build --profile` refuses it"
+            );
+        }
+        assert!(values(&profiles()).iter().any(|p| p == "release"));
+    }
+
+    #[test]
+    fn codes_offer_every_live_code_and_no_retired_one() {
+        let c = values(&codes());
+        let live = nros_diagnostic_codes::ALL
+            .iter()
+            .filter(|e| !e.title.is_empty());
+        assert_eq!(c.len(), live.count());
+        assert!(c.iter().all(|v| v.starts_with("NROS-")));
     }
 }
