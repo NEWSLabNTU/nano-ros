@@ -9,6 +9,7 @@
 
 use clap::Subcommand;
 
+pub mod arm_fvp;
 pub mod bench;
 pub mod board;
 pub mod board_facts;

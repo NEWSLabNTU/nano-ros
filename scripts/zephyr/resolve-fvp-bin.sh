@@ -8,23 +8,17 @@
 #
 # Resolution order (first hit wins):
 #   1. `ARMFVP_BIN_PATH` (Zephyr's canonical env; honoured verbatim).
-#   2. `ARM_FVP_DIR/models/Linux64_GCC-*` (the layout `nros-sdk-index.toml`
-#      `[gated.arm-fvp]` describes — `ARM_FVP_DIR` points at the install
-#      root the user accepted the Arm license for).
-#   3. The nano-ros SDK store — `nros dev sdk path arm-fvp`. Since 2026-09-06 the
-#      model is a normal `[tool.arm-fvp]` the provisioner FETCHES (it is a
-#      public Arm CDN permalink with a pinned digest, not a login wall), so
-#      `nros setup --tool arm-fvp` is now the answer to "I do not have it".
-#   4. `dirname $(command -v FVP_BaseR_AEMv8R)` — PATH fallback.
+#   2. `ARM_FVP_DIR` -- an Arm FVP install root; the binary is looked for at
+#      the root and under `models/Linux64_GCC-*` and `bin/`.
+#   3. `dirname $(command -v FVP_BaseR_AEMv8R)` -- PATH fallback.
 #
 # Prints the absolute directory containing the FVP binary on stdout, or
 # exits non-zero with a clear hint on stderr (callers can capture stdout
 # and bail on non-zero).
 #
-# This script never downloads; `nros setup --tool arm-fvp` does. Keeping the
-# fetch out of the resolver is deliberate: a resolver is called from build
-# recipes and test probes, and one that can spend 68 MB of network is a
-# resolver nobody can call in a loop.
+# The FVP is USER-PROVIDED (issue 2802): nano-ros does not download,
+# install or distribute it. The user installs the AEMv8-R FVP from Arm and
+# points one of the settings above at it. This script never downloads.
 
 set -euo pipefail
 
@@ -49,7 +43,7 @@ if [ -n "${ARMFVP_BIN_PATH:-}" ]; then
     exit 1
 fi
 
-# 2. ARM_FVP_DIR — sdk-index gated entry.
+# 2. ARM_FVP_DIR -- a user-provided Arm FVP install root.
 if [ -n "${ARM_FVP_DIR:-}" ]; then
     if [ ! -d "$ARM_FVP_DIR" ]; then
         echo "resolve-fvp-bin: ARM_FVP_DIR=$ARM_FVP_DIR is not a directory" >&2
@@ -74,24 +68,6 @@ if cmd_path=$(command -v "$BIN_NAME" 2>/dev/null); then
     exit 0
 fi
 
-# 3. The SDK store. `nros dev sdk path` prints the prefix for an installed tool and
-#    exits non-zero when it is absent, so a missing store is silent here rather
-#    than an error the caller has to distinguish from "no FVP anywhere".
-# Issue 1880 — the ONE CLI ladder (`nros_cli_bin`), not PATH.
-# shellcheck source=../build/cargo.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../build/cargo.sh"
-if _fvp_cli="$(nros_cli_bin 2>/dev/null)"; then
-    # `nros dev sdk path` finds `nros-sdk-index.toml` from its working directory,
-    # so ask from this checkout's root: a caller elsewhere (a cargo test runs
-    # in its crate dir) got "no FVP found" over an installed model (phase-511).
-    _fvp_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-    if _store="$(cd "$_fvp_root" && "$_fvp_cli" dev sdk path arm-fvp 2>/dev/null)" && [ -n "$_store" ]; then
-        if emit_dir "$_store/bin" 2>/dev/null || emit_dir "$_store" 2>/dev/null; then
-            exit 0
-        fi
-    fi
-fi
-
 # Nothing worked — emit setup hint.
 cat >&2 <<EOF
 resolve-fvp-bin: no $BIN_NAME found.
@@ -101,14 +77,12 @@ Set one of:
   ARM_FVP_DIR     Arm FVP install root (\$ARM_FVP_DIR/models/Linux64_GCC-*/$BIN_NAME).
   PATH             Add the directory containing $BIN_NAME.
 
-Or let nano-ros fetch it (x86_64 Linux only — Arm publishes no other host
-build of this model):
+nano-ros does not download or distribute the FVP. Install the AEMv8-R FVP
+(FVP_Base_AEMv8R, x86_64 Linux) from Arm:
 
-  nros setup --tool arm-fvp
+  https://developer.arm.com/downloads/-/arm-ecosystem-fvps
 
-It is a public Arm CDN permalink with a pinned digest, modelled as
-\`[tool.arm-fvp]\` in nros-sdk-index.toml. It was treated as license-gated
-until 2026-09-06, which cost every user a manual install for a file we
-could always have downloaded.
+then export ARMFVP_BIN_PATH=<install>/bin (or ARM_FVP_DIR=<install>).
+The model needs libatomic.so.1 at runtime (Debian/Ubuntu: libatomic1).
 EOF
 exit 1

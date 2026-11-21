@@ -17,7 +17,7 @@ is wrong.
 
   * INSTALLERS legitimately write the store (`scripts/zenohd/build.sh`,
     `scripts/xrce-agent/build.sh`) — they are the producer.
-  * `.nros/sdks/arm-fvp` is a DIFFERENT tree (`sdks`, not `sdk`).
+  * `.nros/sdks/<name>` is a DIFFERENT tree (`sdks`, not `sdk`).
   * the defect is a consumer ENUMERATING versions and picking one — a glob or
     `ls` over `<store>/<tool>/*` followed by "newest", "last", or "sorted".
 

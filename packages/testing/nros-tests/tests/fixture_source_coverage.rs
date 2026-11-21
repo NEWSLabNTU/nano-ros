@@ -204,7 +204,7 @@ const NON_MANIFEST_BUILD_ROOTS: &[(&str, &str)] = &[
     ),
     (
         "just/zephyr-setup.just",
-        "FVP: the Arm model is license-gated ([gated.arm-fvp]), so nano-ros \
+        "FVP: the Arm model is user-provided (issue 2802), so nano-ros \
          never downloads it and no lane can build these. phase-350 W3 / \
          issue 0537 decides whether the two runnerless artifacts survive.",
     ),

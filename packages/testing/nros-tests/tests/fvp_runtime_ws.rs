@@ -5,8 +5,8 @@
 //! `ZephyrBoard::run_sched_tasks` — two tiers over one shared Cyclone DDS session).
 //!
 //! This is the maintainer pre-release gate (`just zephyr verify-fvp-runtime`
-//! builds + runs it): no CI runner provisions the ARM FVP (`nros setup --tool
-//! arm-fvp`, a public download since 2026-09-06), so no scheduled lane
+//! builds + runs it): no CI runner provisions the ARM FVP (user-provided,
+//! issue 2802: installed from Arm, found through ARMFVP_BIN_PATH), so no scheduled lane
 //! selects it (`test-all` excludes it by scope), it fails (`unmet!`) on a
 //! host without the model, and a maintainer runs it before an ASI pin bump
 //! or release. It replaces the retired false-green legacy talker
@@ -77,8 +77,9 @@ fn fvp_ws_entry_two_sched_task_publishes() {
     // 1. FVP installed?
     if resolve_fvp_dir(&root).is_none() {
         unmet!(
-            "ARM FVP not resolvable — run `nros setup --tool arm-fvp` (a public \
-             download, x86_64 Linux only), or set ARMFVP_BIN_PATH / ARM_FVP_DIR"
+            "ARM FVP not resolvable — the FVP is user-provided: install the AEMv8-R \
+             FVP from Arm (https://developer.arm.com/downloads/-/arm-ecosystem-fvps), \
+             then set ARMFVP_BIN_PATH (or ARM_FVP_DIR); the model needs libatomic1"
         );
     }
 

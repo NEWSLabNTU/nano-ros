@@ -296,17 +296,15 @@ exercised in CI by `just zephyr ci-both` and `just zephyr check-copy-out`.
 ## ARM FVP resolution
 
 `scripts/zephyr/resolve-fvp-bin.sh` resolves the `FVP_BaseR_AEMv8R` model, in
-order: `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`, `FVP_BaseR_AEMv8R` on `PATH`, then the
-store copy (`nros dev sdk path arm-fvp`). The `just zephyr run-fvp-*` /
+order: `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`, then `FVP_BaseR_AEMv8R` on `PATH`. The
+model is user-provided: nano-ros does not download or store it. The `just zephyr run-fvp-*` /
 `verify-fvp-runtime` recipes export the result as `ARMFVP_BIN_PATH` at BUILD
 time as well as run time, because Zephyr's `armfvp.cmake` caches the location
 at configure. When nothing resolves, a recipe you NAMED fails with the remedy
-(`nros setup --tool arm-fvp`); reached through a fixture fan-out it skips and
-is reported.
-
-For a model downloaded by hand, `scripts/installers/arm-fvp-installer.sh`
-(with `ARM_FVP_DIR` set to the extraction root) symlinks it to
-`~/.nros/sdks/arm-fvp/current/` and prints the `export ARMFVP_BIN_PATH=…` line.
+(install the AEMv8-R FVP from Arm, then set `ARMFVP_BIN_PATH` or
+`ARM_FVP_DIR`); reached through a fixture fan-out it skips and is reported.
+`nros doctor` reports the same lookup through its Rust twin,
+`nros-cli-core/src/cmd/arm_fvp.rs`.
 The user-facing variables are in the user book's
 [Environment Variables](../../reference/environment-variables.html#arm-fvp-fvp_baser_aemv8r).
 

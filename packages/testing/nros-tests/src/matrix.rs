@@ -93,7 +93,7 @@ pub enum PlatformId {
     ThreadxRiscv64,
     /// Bare-metal RTIC on QEMU MPS2-AN385.
     QemuBaremetal,
-    /// ARM FVP Base_RevC AEMv8-R (`[tool.arm-fvp]`, x86_64 Linux only).
+    /// ARM FVP Base_RevC AEMv8-R (user-provided, issue 2802; x86_64 Linux only).
     Fvp,
     /// PX4-SITL host (the uORB middleware). Issue 0341 — expressible so the
     /// uORB axis has a home. Its cells are [`Tier::Gated`]: the hosted

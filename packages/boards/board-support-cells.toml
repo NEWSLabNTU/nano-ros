@@ -1020,10 +1020,9 @@ comment = '''
 // always skipped, so four walls "shipped invisible and were found by the ASI
 // consumer". A gap reads as a gap; an overclaim reads as confidence.
 //
-// Since 2026-09-06 the model is a pinned public download
-// (`[tool.arm-fvp]`, `nros setup --tool arm-fvp`, x86_64 Linux only), so
-// what keeps it off CI is that no runner provisions it, not a license
-// (phase-511 corrected this note and the reasons below).
+// The model is user-provided (issue 2802; x86_64 Linux only): the user
+// installs it from Arm and sets ARMFVP_BIN_PATH. What keeps it off CI is that
+// no runner provisions it, not a license (phase-511 corrected this note).
 //
 // The example cells have no runtime test at all: phase-298 W4 retired the
 // legacy talker tests, whose images have no ethernet device and so could
@@ -1052,7 +1051,7 @@ comment = '''
 at = ["Fvp", "Cpp", "Cyclonedds", "RealtimeSchedTasks", "Workspace"]
 status = '''
 Gated("`just zephyr verify-fvp-runtime` — no CI runner provisions the FVP model \
-                (`nros setup --tool arm-fvp`, x86_64 Linux only)")'''
+                (user-provided: install it from Arm, set ARMFVP_BIN_PATH; x86_64 Linux only)")'''
 
 [[cell]]
 comment = '''

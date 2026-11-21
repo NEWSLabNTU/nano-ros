@@ -69,15 +69,10 @@ zephyr_line = "3.7"
 # this list being non-empty rather than restated.
 rust_targets = ["aarch64-unknown-none"]
 rmw_source = "cyclonedds-src"
-# The Arm FVP. `[tool.arm-fvp]` in `nros-sdk-index.toml` carries the pinned CDN
-# URL and digest, so `nros setup board fvp-aemv8r-smp` FETCHES it.
-#
-# It was `gated = ["arm-fvp"]` until 2026-09-06, on the belief that the model is
-# licence-walled. Measured against Arm's own permalink: HTTP 200, 68 MB, no
-# authentication — the same URL `autoware-safety-island` has downloaded in CI
-# all along. The belief cost every user a manual install for a file we could
-# always have fetched.
-tools = ["arm-fvp"]
+# No `tools`: the Arm FVP is USER-PROVIDED (issue 2802). nano-ros does not
+# download or distribute it; `nros setup board fvp-aemv8r-smp` says so and
+# reports whether ARMFVP_BIN_PATH / ARM_FVP_DIR / PATH finds the model
+# (`[board.run] emulator` above is what marks this board as an FVP one).
 
 [board.capabilities]
 heap = true

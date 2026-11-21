@@ -409,8 +409,9 @@ pub fn next_steps(
                     out.commands
                         .push(("run on the FVP".into(), west_run.clone()));
                     out.notes.push(
-                        "the FVP model must be resolvable when the build CONFIGURES (Zephyr \
-                         caches it): `nros setup board fvp-aemv8r-smp`, or ARMFVP_BIN_PATH — see \
+                        "the FVP model is user-provided and must be resolvable when the build \
+                         CONFIGURES (Zephyr caches it): install it from Arm, set ARMFVP_BIN_PATH \
+                         (or ARM_FVP_DIR), and re-configure a build dir configured before -- see \
                          book-internals/src/platform/arm-fvp.md"
                             .into(),
                     );
