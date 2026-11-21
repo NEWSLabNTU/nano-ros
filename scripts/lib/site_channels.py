@@ -102,12 +102,14 @@ class Module:
     named: dict[str, str]
     globals_: list[tuple[str, str]]  # (name, "type initializer")
     text_lines: list[str]
+    externs: dict[str, str] = field(default_factory=dict)  # name -> type
 
 
 def parse_module(text: str, lang: str) -> Module:
     funcs: dict[str, Func] = {}
     named: dict[str, str] = {}
     globals_: list[tuple[str, str]] = []
+    externs: dict[str, str] = {}
     lines = text.splitlines()
     cur: Func | None = None
     for line in lines:
@@ -118,7 +120,10 @@ def parse_module(text: str, lang: str) -> Module:
                 continue
             g = _GLOBAL.match(line)
             if g:
-                globals_.append((_name(g.group(1)), g.group(2)))
+                if re.search(r'=\s*(?:[\w()]+\s+)*?external\b', line):
+                    externs[_name(g.group(1))] = g.group(2).split(",")[0].strip()
+                else:
+                    globals_.append((_name(g.group(1)), g.group(2)))
                 continue
             d = _DEFINE.match(line)
             if d:
@@ -140,7 +145,7 @@ def parse_module(text: str, lang: str) -> Module:
             if i and re.match(r'^[\w.$-]+:', line):
                 f.entry_end = i
                 break
-    return Module(lang, funcs, named, globals_, lines)
+    return Module(lang, funcs, named, globals_, lines, externs)
 
 
 # ------------------------------------------------------------------ channels
@@ -175,13 +180,20 @@ class Analysis:
         self.sites: list[Site] = []
         self.escaped: set[str] = set()
         self.direct_callers: dict[str, list[tuple[Func, list[str]]]] = {}
+        self._memdst: set[tuple[str, int]] = set()
         self._index()
         for m in modules:
             for f in m.funcs.values():
                 self._scan(m, f)
             if m.lang == "c":
                 self._initializers(m)
+        self.boundary = level >= 1
+        if self.boundary:
+            self._unseen_writers()
         self._params()
+
+    def _level1(self) -> bool:
+        return getattr(self, "nested", False)
 
     def chan(self, k: Key) -> Channel:
         return self.ch.setdefault(k, Channel())
@@ -296,6 +308,16 @@ class Analysis:
             a = _ASSIGN.match(line)
             body = a.group(2) if a else line.strip()
             c = _CALL.search(body)
+            if c and " asm " in body and m.lang == "c" and self._level1():
+                # inline asm with a pointer operand into a T can write T.
+                ops = re.search(r'asm\s+(?:sideeffect\s+)?(?:alignstack\s+)?"[^"]*",\s*"[^"]*"\((.*)\)',
+                                body)
+                for a in _split_top(ops.group(1)) if ops else []:
+                    v = a.split()[-1] if a.split() else ""
+                    t = self._struct_at(m, f, v) if v.startswith(("%", "@")) else None
+                    fk = self.field_of(m, f, v) if v.startswith("%") else None
+                    for tt in {t, fk[1] if fk else None} - {None}:
+                        self._opaque.setdefault(tt, []).append(f"an inline asm operand ({f.name})")
             if c and " asm " not in body:
                 parts = _call_parts(c.group(1))
                 if parts and parts[0].startswith("%"):
@@ -393,6 +415,18 @@ class Analysis:
         dst = parts[1][0]
         t = self._struct_at(m, f, dst)
         if t is None:
+            # An untyped destination. When it is the function's own parameter
+            # (directly or through its -O0 alloca), what the callers pass
+            # there is written opaquely (a registration through memcpy).
+            if self._level1():
+                p = self.strip(f, dst)
+                pd = f.defs.get(p, "")
+                lm = _LOAD_PTR.match(pd)
+                if lm:
+                    q = self._alloca_param(f, lm.group(1))
+                    p = q if q is not None else p
+                if p in f.params:
+                    self._memdst.add((f.name, f.params.index(p)))
             return
         if "memcpy" in parts[0] or "memmove" in parts[0]:
             src = parts[1][1] if len(parts[1]) > 1 else ""
@@ -497,6 +531,99 @@ class Analysis:
 
     # -- solving -----------------------------------------------------------
 
+    # -- writers the IR cannot see (W7f.1) ---------------------------------
+
+    def _unseen_writers(self) -> None:
+        """A struct type of an external global that NO module defines is
+        written by code the walk has no IR for (an assembly object, a
+        linker-provided table): untrusted."""
+        defined = {n for m in self.mods for n, _ in m.globals_}
+        for m in self.mods:
+            if m.lang != "c":
+                continue
+            for n, t in m.externs.items():
+                if n in defined:
+                    continue
+                inner = re.match(r'^\[\d+ x (%struct\.[\w.$-]+)\]$', t)
+                t = inner.group(1) if inner else t
+                if t.startswith("%struct."):
+                    self._opaque.setdefault(t, []).append(f"@{n}, which no IR defines")
+
+    def _cross_boundary(self) -> set[str]:
+        """Struct types a pointer reaching across Rust<->C can point into,
+        transitively, from the C side: Rust may write their fields, and its
+        byte-offset GEPs cannot be attributed to (T, F)."""
+        cmods = [m for m in self.mods if m.lang == "c"]
+        rmods = [m for m in self.mods if m.lang == "rust"]
+        cdef = {n: (m, f) for m in cmods for n, f in m.funcs.items()}
+        rdef = {n for m in rmods for n in m.funcs}
+        rust_refs: set[str] = set()
+        for m in rmods:
+            for line in m.text_lines:
+                rust_refs.update(_name(r) for r in _FNREF.findall(line))
+        work: list[tuple[str, str]] = []  # (C function, exposed value)
+        seen: set[tuple[str, str]] = set()
+        types: set[str] = set()
+        self.ffi_fns: set[str] = set()
+        for n, (m, f) in cdef.items():
+            if n in rust_refs:  # Rust calls it or takes its address
+                self.ffi_fns.add(n)
+                work += [(n, p) for p in f.params]
+            for line in f.lines:
+                c = _CALL.search(line)
+                parts = _call_parts(c.group(1)) if c else None
+                if parts and parts[0].startswith("@") and _name(parts[0]) in rdef:
+                    self.ffi_fns.add(_name(parts[0]))
+                    work += [(n, v) for v in parts[1] if v.startswith("%")]
+                    a = _ASSIGN.match(line)
+                    if a:
+                        work.append((n, a.group(1)))
+                r = re.match(r'^\s*ret\s+ptr\s+(%[\w.$-]+)', line)
+                if r and n in rust_refs:
+                    work.append((n, r.group(1)))
+        for m in cmods:  # a global both sides name
+            for g, init in m.globals_:
+                if g in rust_refs:
+                    t = init.split(None, 1)[0]
+                    inner = re.match(r'^\[\d+ x (%struct\.[\w.$-]+)\]$', t)
+                    t = inner.group(1) if inner else t
+                    if t.startswith("%struct."):
+                        types |= self.contained(t)
+        while work:
+            fn, v = work.pop()
+            if (fn, v) in seen or fn not in cdef:
+                continue
+            seen.add((fn, v))
+            m, f = cdef[fn]
+            t = self._struct_at(m, f, v)
+            if t:
+                types |= self.contained(t)
+            for line in f.lines:
+                if v not in _VAL.findall(line):
+                    continue
+                a = _ASSIGN.match(line)
+                body = a.group(2) if a else line.strip()
+                g = _STRUCT_GEP.match(body)
+                if g and g.group(2) == v and g.group(1).startswith("%struct."):
+                    types |= self.contained(g.group(1))
+                st = _STORE.match(line)
+                if st and st.group(2) == v and f.defs.get(st.group(3), "").startswith("alloca"):
+                    work.append((fn, st.group(3)))  # loads of this slot are exposed too
+                    continue
+                c = _CALL.search(body)
+                parts = _call_parts(c.group(1)) if c else None
+                if parts and v in parts[1] and parts[0].startswith("@"):
+                    callee = _name(parts[0])
+                    if callee in cdef:
+                        cp = cdef[callee][1].params
+                        i = parts[1].index(v)
+                        if i < len(cp):
+                            work.append((callee, cp[i]))
+                    continue
+                if a and (body.startswith(("getelementptr", "load", "bitcast", "phi", "select"))):
+                    work.append((fn, a.group(1)))
+        return types
+
     def contained(self, t: str, seen: set[str] | None = None) -> set[str]:
         """`t` and every struct type nested in it, through arrays: an opaque
         write onto a T writes every struct it contains."""
@@ -512,6 +639,19 @@ class Analysis:
     def solve(self) -> dict[Key, tuple[bool, set[str], list[str]]]:
         """Each channel's (trusted, functions, why untrusted), to a fixed
         point: a channel linked to an untrusted one is untrusted."""
+        if getattr(self, "boundary", False):
+            for t in self._cross_boundary():
+                self._opaque.setdefault(t, []).append("reachable across Rust<->C")
+            for fn_name, p in self._memdst:
+                for caller, args, m in self.direct_callers.get(fn_name, []):
+                    if p < len(args):
+                        t = self._struct_at(m, caller, args[p])
+                        if t:
+                            self._opaque.setdefault(t, []).append(
+                                f"written by {fn_name}'s untyped mem op ({caller.name})")
+            for k, ch in self.ch.items():
+                if k[0] == "param" and k[1] in self.ffi_fns:
+                    ch.untrusted.append(f"{k[1]} is called across Rust<->C")
         for t, why in self._opaque.items():
             hit = self.contained(t)
             for k in self.ch:
@@ -566,8 +706,14 @@ def classify(rust_texts: list[str], c_texts: list[str], level: int = 0) -> dict:
             trusted, fns, bad = sol.get(s.key, (True, set(), []))
             if trusted and fns:
                 lang["trusted"] += 1
+                lang["resolved"] = lang.get("resolved", 0) + 1
                 out["sizes"].append(len(fns))
                 continue
+            if trusted:
+                # trusted with no store found: it calls nothing, so it is
+                # resolved too (closed world: the untrusting rules above
+                # stand for every writer the IR cannot see).
+                lang["resolved"] = lang.get("resolved", 0) + 1
             what = s.key[1] if s.key[0] == "field" else f"param of {s.key[1]}"
             why = (f"trusted, no store found: {what}" if trusted
                    else f"untrusted: {what}: {bad[0] if bad else '?'}")
@@ -608,9 +754,8 @@ define void @h2(ptr %x) {
 }
 """
     r = classify([], [c])
-    check("a field holds its constant initializer and its store", r["c"] == {"sites": 1,
-                                                                             "trusted": 1}
-          and r["max"] == 2)
+    check("a field holds its constant initializer and its store",
+          (r["c"]["sites"], r["c"]["trusted"]) == (1, 1) and r["max"] == 2)
     bad_store = c.replace("store ptr @h2, ptr %f", "%q = inttoptr i32 4 to ptr\n"
                                                     "  store ptr %q, ptr %f")
     r = classify([], [bad_store])
@@ -660,8 +805,8 @@ define void @e1(ptr %x) {
 }
 """
     r = classify([], [p])
-    check("an -O0 parameter alloca is the parameter channel", r["c"] == {"sites": 1,
-                                                                         "trusted": 1})
+    check("an -O0 parameter alloca is the parameter channel",
+          (r["c"]["sites"], r["c"]["trusted"]) == (1, 1))
     two = p.replace("  %c = load", "  store ptr null, ptr %cb.addr\n  %c = load")
     r = classify([], [two])
     check("an alloca stored twice is untrusted", r["c"]["trusted"] == 0)
@@ -688,7 +833,25 @@ define void @v(ptr %o) {
 """
     r = classify([rust], [])
     check("a Rust SSA parameter is the parameter channel; a vtable load is left to W7",
-          r["rust"] == {"sites": 1, "trusted": 1, "vtable": 1})
+          (r["rust"]["sites"], r["rust"]["trusted"], r["rust"]["vtable"]) == (1, 1, 1))
+    ffi_r = "define void @rs(ptr %p) {\n  call void @use(ptr %p)\n  ret void\n}\n"
+    check("a struct reached from a C function Rust calls is untrusted at level 1",
+          classify([ffi_r], [c], level=1)["c"]["trusted"] == 0
+          and classify([ffi_r], [c], level=0)["c"]["trusted"] == 1)
+    ext = "@ext_tab = external global %struct.T\n" + c
+    check("a struct type of an external global no IR defines is untrusted at level 1",
+          classify([], [ext], level=1)["c"]["trusted"] == 0)
+    asm = c.replace("store ptr @h2, ptr %f", "store ptr @h2, ptr %f\n"
+                    "  call void asm sideeffect \"\", \"r\"(ptr %t)")
+    check("an inline asm pointer operand into a T untrusts it at level 1",
+          classify([], [asm.replace("%t)", "%f)")], level=1)["c"]["trusted"] == 0)
+    reg = c + ("define void @reg(ptr %d, ptr %s) {\n"
+               "  call void @llvm.memcpy.p0.p0.i32(ptr %d, ptr %s, i32 8, i1 false)\n"
+               "  ret void\n}\n"
+               "define void @caller(ptr %x) {\n  %a = alloca %struct.T\n"
+               "  call void @reg(ptr %a, ptr %x)\n  ret void\n}\n")
+    check("a T passed to a function that memcpys into its parameter is untrusted at level 1",
+          classify([], [reg], level=1)["c"]["trusted"] == 0)
     nested_c = """%struct.A = type { ptr }
 %struct.D = type { i32, %struct.A }
 @d = constant %struct.D { i32 1, %struct.A { ptr @h1 } }
