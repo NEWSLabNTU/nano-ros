@@ -670,6 +670,21 @@ build-module-fixtures id="":
         done
     done <<< "$rows"
     filter="^($(IFS='|'; echo "${ids[*]}"))$"
+    # The rows build with `nros build --offline`, whose configure probes the
+    # workspace's source metadata with an offline cargo. Configure each row's
+    # workspace ONLINE first, as the workspace fixture lane does, so the probe
+    # finds its git dependencies (a tagged `ros-launch-manifest-model`) in the
+    # cargo cache. Measured on the first CI run: offline, every probe failed
+    # on `refs/remotes/origin/tags/v0.3.27 not found`.
+    source scripts/build/cargo.sh
+    cli="$(nros_cli_bin --checkout-only)"
+    for id in "${ids[@]}"; do
+        dir="$(NROS_ZEPHYR_JOB_MODULES="$supplied" python3 scripts/build/fixtures-manifest.py \
+            list-compile-checks --id "$id" | cut -d$'\x1f' -f3)"
+        [ -n "$dir" ] || { echo "build-module-fixtures: no dir for $id" >&2; exit 1; }
+        echo "build-module-fixtures: nros configure $dir"
+        (cd "$dir" && "$cli" configure)
+    done
     echo "build-module-fixtures: rows ${ids[*]}; modules $supplied"
     export ZEPHYR_BASE="$workspace/zephyr"
     NROS_ZEPHYR_JOB_MODULES="$supplied" NROS_ZEPHYR_FIXTURE_FILTER="$filter" \
