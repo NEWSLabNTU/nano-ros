@@ -84,11 +84,17 @@ def run(stdin: str, gen, root: Path, on: datetime.date) -> tuple[str, list[str]]
 
 
 def self_test() -> None:
-    """Negative controls on the real registry: the FVP row (last booted
-    2026-09-06, 120 stale days) must render as Boots before its stale date and
-    as Builds after it, and a book with no board-support page must pass through."""
+    """Negative controls on the real registry: the FVP row (a manual row) must
+    render as Boots on its `last_run` and as Builds once it is stale, and a book
+    with no board-support page must pass through. The dates are read from the
+    row, so renewing its evidence does not break this test."""
     gen = load_generator()
     page = "reference/board-support-levels.md"
+    reg = gen.Registry(ROOT)
+    fvp_row = next(r for r in reg.rows
+                   if "fvp-aemv8r-smp" in r.get("board_keys", []))
+    last_run = datetime.date.fromisoformat(fvp_row["last_run"])
+    stale_on = gen.board_registry.stale_from(fvp_row, reg.stale_days)
     committed = (ROOT / BOOK_SRC / page).read_text()
 
     def book(shape: str) -> str:
@@ -97,15 +103,14 @@ def self_test() -> None:
         return json.dumps([{"root": "."}, {shape: [chapter]}])
 
     for shape in ("sections", "items"):
-        out, changed = run(book(shape), gen, ROOT, datetime.date(2026, 11, 1))
+        out, changed = run(book(shape), gen, ROOT, last_run)
         assert not changed, f"{shape}: a fresh row must render as committed"
-        out, changed = run(book(shape), gen, ROOT, datetime.date(2027, 2, 1))
+        out, changed = run(book(shape), gen, ROOT, stale_on)
         assert changed == [page], f"{shape}: a stale FVP row was not re-rendered"
         content = json.loads(out)[shape][0]["Chapter"]["content"]
-        # The FVP's section, up to the next board's: other manual rows on
-        # the page are not stale yet and keep their word.
+        # The FVP's section, up to the next board's.
         fvp = content.split('<a id="fvp"></a>', 1)[1].split('<a id="', 1)[0]
-        assert "Builds (last booted 2026-09-06)" in fvp, fvp
+        assert f"Builds (last booted {last_run.isoformat()})" in fvp, fvp
         assert "Boots, manual" not in fvp, "the stale word survived"
     other = json.dumps([{}, {"items": [{"Chapter": {"name": "y", "content": "z",
                                                     "path": "intro.md"}}]}])

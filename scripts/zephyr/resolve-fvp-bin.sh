@@ -80,7 +80,7 @@ Set one of:
 nano-ros does not download or distribute the FVP. Install the AEMv8-R FVP
 (FVP_Base_AEMv8R, x86_64 Linux) from Arm:
 
-  https://developer.arm.com/downloads/-/arm-ecosystem-fvps
+  https://developer.arm.com/Tools%20and%20Software/Fixed%20Virtual%20Platforms/Arm%20Architecture%20FVPs
 
 then export ARMFVP_BIN_PATH=<install>/bin (or ARM_FVP_DIR=<install>).
 The model needs libatomic.so.1 at runtime (Debian/Ubuntu: libatomic1).

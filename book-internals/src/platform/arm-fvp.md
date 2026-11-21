@@ -63,7 +63,17 @@ and provisions via a remote API; local FVP loads a raw ELF via
 ### Install the FVP
 
 1. Download the AEMv8-R FVP (`FVP_Base_AEMv8R`, Linux x86_64) from Arm's
-   [Arm Ecosystem FVPs page](https://developer.arm.com/downloads/-/arm-ecosystem-fvps).
+   [Arm Architecture FVPs page](https://developer.arm.com/Tools%20and%20Software/Fixed%20Virtual%20Platforms/Arm%20Architecture%20FVPs).
+   It is an architecture model, so Arm's *Ecosystem* FVPs page (Corstone and
+   the reference designs) does not list it. Each release also has a direct
+   link; FM 11.31, for example:
+
+   ```bash
+   curl -LO https://developer.arm.com/-/cdn-downloads/permalink/FVPs-Architecture/FM-11.31/FVP_Base_AEMv8R_11.31_28_Linux_x86.tar.gz
+   ```
+
+   The archive is a plain tarball with no installer; its license terms are in
+   `license_terms/` of the unpacked tree.
 2. Unpack it wherever you keep tools, for example:
 
    ```bash
@@ -73,7 +83,9 @@ and provisions via a remote API; local FVP loads a raw ELF via
 
 3. Install its runtime dependency. The model's libraries link
    `libatomic.so.1` (Debian/Ubuntu `libatomic1`, Fedora `libatomic`, Arch
-   `gcc-libs`); `nros setup --system` names it for your package manager.
+   `gcc-libs`). `nros setup --system` lists it among the OS packages to
+   install only while it is missing, and `nros doctor`'s FVP line does not
+   probe it; to check by hand, `ldconfig -p | grep libatomic.so.1`.
 4. Point nano-ros at it, in your shell rc:
 
    ```bash
@@ -88,12 +100,24 @@ and provisions via a remote API; local FVP loads a raw ELF via
    If neither is set, `FVP_BaseR_AEMv8R` is found on `PATH`. The order is
    `ARMFVP_BIN_PATH`, then `ARM_FVP_DIR`, then `PATH`; a setting that is set
    but does not hold the binary is reported, not skipped.
-5. Check it: `FVP_BaseR_AEMv8R --version` prints `Fast Models [...]`.
+5. Check it: `"$ARMFVP_BIN_PATH"/FVP_BaseR_AEMv8R --version` prints
+   `Fast Models [...]` (or plain `FVP_BaseR_AEMv8R --version` if you put it
+   on `PATH`; `ARMFVP_BIN_PATH` does not put it there).
 
-`nros setup board fvp-aemv8r-smp` (and `nros setup fvp-aemv8r-smp`) does not
-install the model either: it says the model is user-provided and reports
-whether it is found, and through which setting. It succeeds either way, so a
-bootstrap that runs it on a host without the model keeps working.
+Neither board setup command installs the model. Both say it is user-provided
+and report whether it is found, and through which setting, and both succeed
+either way, so a bootstrap that runs them on a host without the model keeps
+working:
+
+```bash
+# The board's store packages (Rust target, RMW sources). It plans the board's
+# default RMW, zenoh; add `--rmw cyclonedds` for the Cyclone DDS image below.
+nros setup fvp-aemv8r-smp
+
+# The consumer Zephyr tree: patches the named west workspace for the board.
+# `--zephyr-workspace` is required.
+nros setup board fvp-aemv8r-smp --zephyr-workspace ~/.nros/workspaces/zephyr/3.7
+```
 
 ### Configure-cache trap
 
@@ -147,11 +171,22 @@ note it prints after the build.
 
 ## Run on the FVP
 
-`nros build` ends by printing Zephyr's run target for the image's build
-directory; it invokes `FVP_BaseR_AEMv8R` with the board's cluster and UART
-settings and pipes the UARTs to your terminal:
+From the image's workspace, `nros run` builds the image if it needs to and
+runs Zephyr's FVP target, which invokes `FVP_BaseR_AEMv8R` with the board's
+cluster and UART settings and pipes the UARTs to your terminal:
 
 ```bash
+nros run demo_bringup:fvp
+```
+
+`nros build` also prints that target as a `west build ... -t run` line. West
+runs it only inside a west workspace, so from the image's workspace it fails
+with `west: unknown command "build"`
+([issue 2809](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2809-west-run-line-outside-topdir.md)).
+Point west at your Zephyr workspace first:
+
+```bash
+export ZEPHYR_BASE=~/.nros/workspaces/zephyr/3.7/zephyr
 west build -d build/zephyr-cyclonedds/demo_bringup__fvp_west -t run
 ```
 
@@ -162,31 +197,31 @@ keeps it off a CI lane is cost and its x86_64-only host build. It runs until you
 
 ## Expected output
 
-The Zephyr 3.7 boot banner appears on UART0 first, followed by
-the talker. The exact line counts depend on `CONFIG_BOOT_BANNER`
-and your locator config, but the markers to look for are:
+The UARTs print the FVP's banner, then the Zephyr boot banner and the
+image's two sched tasks: `ctrl_node` publishes `std_msgs/Int32` on `/ctrl`
+every 10 ms and `telem_node` on `/telem` every 100 ms, over Cyclone DDS. What
+a maintainer saw on 2026-11-21 (FM 11.31.28), trimmed:
 
 ```text
-*** Booting Zephyr OS build v3.7.0 ***
-[00:00:00.xxx,000] <inf> nros: session up (domain 0)
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
+[2/4] FVP_BaseR_AEMv8R: 11.31.28
+*** Booting Zephyr OS build v3.7.2 ***
+Secondary CPU core 1 (MPID:0x0) is up
 ...
+<inf> cyclonedds: session_create: dds_create_participant returned ...
+nros: scheduler core=0 levels=2 backing=232
+[ctrl] tick=0
+[ctrl] tick=1
+...
+[telem] tick=0
 ```
 
-For the cpp/cyclonedds recipe, the same banner is followed by
-Cyclone DDS reader-match logs and `std_msgs/String` publish lines.
-Verify ROS 2 interop by running a sibling listener in another
-terminal:
+The lines of the two sched tasks interleave, and log lines from the cores
+can split one another. Stop the model with Ctrl-C (`Simulation stopped by
+user`).
 
-```bash
-# stock ROS 2 — reads the FVP's Cyclone DDS publisher
-ros2 topic echo /chatter std_msgs/msg/String
-```
-
-The same `std_msgs/String` payload (`Hello World: N`) + byte-equal
-CDR framing must appear on both sides — that's the stock-RMW
-interop contract (byte-compatible with `rmw_cyclonedds_cpp`).
+A stock ROS 2 peer on the host (`ros2 topic echo /ctrl std_msgs/msg/Int32`)
+would read the publisher through the model's ethernet; that interop is not
+measured on this board, so treat it as unverified.
 
 ## Cross-references
 

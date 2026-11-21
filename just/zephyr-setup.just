@@ -470,7 +470,7 @@ run-fvp-ws-entry:
     # `os.execvpe('west', ['west','build','-t','run'])`. Two of those four steps
     # are below; the other two were the verb's whole reason to exist.
     if ! _fvp_bin="$(bash scripts/zephyr/resolve-fvp-bin.sh 2>/dev/null)"; then
-        nros_lane_skip "ARM FVP model not resolvable — the FVP is user-provided: install the AEMv8-R FVP from Arm (https://developer.arm.com/downloads/-/arm-ecosystem-fvps), then set ARMFVP_BIN_PATH (or ARM_FVP_DIR); the model needs libatomic1"
+        nros_lane_skip "ARM FVP model not resolvable — the FVP is user-provided: install the AEMv8-R FVP from Arm (https://developer.arm.com/Tools%20and%20Software/Fixed%20Virtual%20Platforms/Arm%20Architecture%20FVPs), then set ARMFVP_BIN_PATH (or ARM_FVP_DIR); the model needs libatomic1"
     fi
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh
@@ -696,7 +696,7 @@ run-fvp-board-import:
     # `os.execvpe('west', ['west','build','-t','run'])`. Two of those four steps
     # are below; the other two were the verb's whole reason to exist.
     if ! _fvp_bin="$(bash scripts/zephyr/resolve-fvp-bin.sh 2>/dev/null)"; then
-        nros_lane_skip "ARM FVP model not resolvable — the FVP is user-provided: install the AEMv8-R FVP from Arm (https://developer.arm.com/downloads/-/arm-ecosystem-fvps), then set ARMFVP_BIN_PATH (or ARM_FVP_DIR); the model needs libatomic1"
+        nros_lane_skip "ARM FVP model not resolvable — the FVP is user-provided: install the AEMv8-R FVP from Arm (https://developer.arm.com/Tools%20and%20Software/Fixed%20Virtual%20Platforms/Arm%20Architecture%20FVPs), then set ARMFVP_BIN_PATH (or ARM_FVP_DIR); the model needs libatomic1"
     fi
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh

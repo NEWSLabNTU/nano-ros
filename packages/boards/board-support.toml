@@ -386,7 +386,7 @@ real_hardware = false
 # book-internals/src/platform/arm-fvp.md (phase-537 W1).
 runs = "emulator"
 cadence = "manual"
-last_run = "2026-09-06"
+last_run = "2026-11-21"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = []
 # Maintainer evidence (moved out of `notes`, which renders on the user
@@ -395,7 +395,9 @@ maintainers = []
 #   `cadence = "manual"`, which is what exempts this row from the Runtime-cell
 #   requirement. The model is user-provided (issue 2802): the user installs
 #   it from Arm and sets ARMFVP_BIN_PATH. The board-import fixture was verified
-#   booting on it (`nros: smoke ok`) on 2026-09-06. What keeps CI out is cost
+#   booting on it (`nros: smoke ok`) on 2026-09-06. Renewed 2026-11-21 on
+#   FM 11.31.28 found through ARMFVP_BIN_PATH: `just zephyr verify-fvp-runtime`
+#   passed `fvp_runtime_ws` (2/2) and `fvp_smoke` (1/1). What keeps CI out is cost
 #   and x86_64-only hosting. Kept in-tree: it is the ASI reference
 #   consumer's target (phase-292), a real downstream user the CI evidence cannot
 #   see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-
