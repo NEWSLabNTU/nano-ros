@@ -294,6 +294,59 @@ function(_nros_stack_floor_apply_closures)
             endif()
         endforeach()
     endforeach()
+    _nros_stack_floor_decide_program_keys()
+endfunction()
+
+# phase-583 W4 (RFC-0071 D20) -- an owned entry's carriers, one per program
+# (`nros_stack_floor_check(... ENTRY <pkg> PROGRAM <exe>)`), keep the entry's
+# key `<pkg>@<board>` and the build dir's one report while the entry checks one
+# program. With several, each program is `<pkg>/<exe>@<board>` and reports to
+# `nros/stack-floor/<exe>/report.json`: the rule `report_path` in
+# scripts/nros-stack-floor.py (and the CLI's `stack_floor_report_path`) spells,
+# so every reader finds it. "Several" is known only here, at the end of the top
+# directory, and a POST_BUILD cannot be attached from here to a target in a
+# subdirectory (measured, CMake 3.22), so the check's command reads its key and
+# report through `$<TARGET_PROPERTY:...>`, which evaluates after this runs.
+function(_nros_stack_floor_decide_program_keys)
+    get_property(_programs GLOBAL PROPERTY NROS_STACK_FLOOR_PROGRAM_IMAGES)
+    set(_entries "")
+    foreach(_t IN LISTS _programs)
+        get_target_property(_e ${_t} NROS_STACK_FLOOR_ENTRY)
+        list(APPEND _entries "${_e}")
+        list(APPEND _of_${_e} "${_t}")
+    endforeach()
+    list(REMOVE_DUPLICATES _entries)
+    foreach(_e IN LISTS _entries)
+        list(LENGTH _of_${_e} _n)
+        if(_n LESS 2)
+            continue()
+        endif()
+        set(_names "")
+        foreach(_t IN LISTS _of_${_e})
+            get_target_property(_x ${_t} NROS_STACK_FLOOR_PROGRAM)
+            list(APPEND _names "${_x}")
+        endforeach()
+        list(JOIN _names ", " _names)
+        foreach(_t IN LISTS _of_${_e})
+            get_target_property(_stated ${_t} NROS_STACK_FLOOR_STATED)
+            if(NOT "${_stated}" STREQUAL "")
+                message(FATAL_ERROR
+                    "nano-ros: `${_e}` builds several programs (${_names}), so one "
+                    "`stack_floor_image = \"${_stated}\"` cannot name all of their stack "
+                    "floors. Remove `stack_floor_image` from the image in `system.toml`: "
+                    "each program is then checked as `${_e}/<program>@<board>`.")
+            endif()
+            get_target_property(_x ${_t} NROS_STACK_FLOOR_PROGRAM)
+            get_target_property(_board ${_t} NROS_STACK_FLOOR_BOARD)
+            set(_dir "${CMAKE_BINARY_DIR}/nros/stack-floor/${_x}")
+            file(MAKE_DIRECTORY "${_dir}")
+            set_target_properties(${_t} PROPERTIES
+                NROS_STACK_FLOOR_KEY "${_e}/${_x}@${_board}"
+                NROS_STACK_FLOOR_REPORT "${_dir}/report.json")
+            message(STATUS "nano-ros: stack floor of ${_t} checked at build as "
+                "${_e}/${_x}@${_board} (one of ${_e}'s programs: ${_names})")
+        endforeach()
+    endforeach()
 endfunction()
 
 # The walker's command line, shared by every road that CHECKs.
@@ -306,7 +359,7 @@ endfunction()
 # input states one for (a prebuilt toolchain library: libgcc, compiler_builtins
 # shipped without bitcode). The cargo road passes it too (`--cfi-elf`).
 function(_nros_stack_floor_command _out)
-    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR;ELF" "LINK_DIRS;BITCODE;SHAPE" ${ARGN})
+    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR;ELF;REPORT" "LINK_DIRS;BITCODE;SHAPE" ${ARGN})
     # The rustup llvm-tools ship no llvm-cxxfilt, so name the cross
     # toolchain's own demangler (`arm-none-eabi-g++` -> `arm-none-eabi-c++filt`)
     # when it sits beside the compiler; the walker falls back to the host's.
@@ -350,7 +403,10 @@ function(_nros_stack_floor_command _out)
     endforeach()
     # report.json: what this build measured, for the twin lane
     # (scripts/stack-floor-twin.py), which compares a twin's peak with it.
-    list(APPEND _cmd --sysroot --llc-cache "${_C_DIR}/llc" --report "${_C_DIR}/report.json"
+    if(NOT _C_REPORT)
+        set(_C_REPORT "${_C_DIR}/report.json")
+    endif()
+    list(APPEND _cmd --sysroot --llc-cache "${_C_DIR}/llc" --report "${_C_REPORT}"
         ${_cxxfilt_arg})
     set(${_out} "${_cmd}" PARENT_SCOPE)
 endfunction()
@@ -360,9 +416,14 @@ endfunction()
 #
 #   nros_stack_floor_check(<exe> ROOT <fn> STACK <bytes> KNOB <text>
 #                          BOARD <board> TARGET <triple> RMW <rmw>
-#                          PROFILE <cargo profile> [BRINGUP <dir>])
+#                          PROFILE <cargo profile> [BRINGUP <dir>]
+#                          [ENTRY <package> PROGRAM <exe name>])
+#
+# ENTRY/PROGRAM name an owned entry's carrier (phase-583 W4): the key is the
+# entry's, or the program's once the entry checks several
+# (`_nros_stack_floor_decide_program_keys`).
 function(nros_stack_floor_check _exe)
-    cmake_parse_arguments(_SF "" "ROOT;STACK;KNOB;BOARD;TARGET;RMW;PROFILE;BRINGUP" "" ${ARGN})
+    cmake_parse_arguments(_SF "" "ROOT;STACK;KNOB;BOARD;TARGET;RMW;PROFILE;BRINGUP;ENTRY;PROGRAM" "" ${ARGN})
     _nros_stack_floor_enabled(_on)
     if(NOT _on)
         return()
@@ -395,10 +456,33 @@ function(nros_stack_floor_check _exe)
     # raise reach this configure from `nros build` as -D values it passes on
     # every configure, empty included, so neither outlives an edit to
     # system.toml (issue 2461; issue 2400 W2b).
-    _nros_stack_floor_image_key(_key "${_exe}" "${_SF_BRINGUP}" "${_SF_BOARD}"
+    set(_name "${_exe}")
+    if(_SF_ENTRY)
+        set(_name "${_SF_ENTRY}")
+    endif()
+    _nros_stack_floor_image_key(_key "${_name}" "${_SF_BRINGUP}" "${_SF_BOARD}"
         "${NROS_IMAGE_STACK_FLOOR_IMAGE}")
+    # The key and report as target properties, read by the command through
+    # generator expressions: a program of an entry that checks several gets its
+    # own at the end of the configure.
+    set_target_properties(${_exe} PROPERTIES
+        NROS_STACK_FLOOR_KEY "${_key}"
+        NROS_STACK_FLOOR_REPORT "${_dir}/report.json")
+    if(_SF_ENTRY)
+        if("${_SF_PROGRAM}" STREQUAL "")
+            message(FATAL_ERROR "nros_stack_floor_check(${_exe}): ENTRY needs PROGRAM")
+        endif()
+        set_target_properties(${_exe} PROPERTIES
+            NROS_STACK_FLOOR_ENTRY "${_SF_ENTRY}"
+            NROS_STACK_FLOOR_PROGRAM "${_SF_PROGRAM}"
+            NROS_STACK_FLOOR_BOARD "${_SF_BOARD}"
+            NROS_STACK_FLOOR_STATED "${NROS_IMAGE_STACK_FLOOR_IMAGE}")
+        set_property(GLOBAL APPEND PROPERTY NROS_STACK_FLOOR_PROGRAM_IMAGES "${_exe}")
+    endif()
     get_target_property(_bindir ${_exe} BINARY_DIR)
-    _nros_stack_floor_command(_cmd KEY "${_key}" ROOT "${_SF_ROOT}" STACK "${_SF_STACK}"
+    _nros_stack_floor_command(_cmd KEY "$<TARGET_PROPERTY:${_exe},NROS_STACK_FLOOR_KEY>"
+        REPORT "$<TARGET_PROPERTY:${_exe},NROS_STACK_FLOOR_REPORT>"
+        ROOT "${_SF_ROOT}" STACK "${_SF_STACK}"
         KNOB "${_SF_KNOB}" TARGET "${_SF_TARGET}" RMW "${_SF_RMW}" MAP "${_map}" DIR "${_dir}"
         ELF "$<TARGET_FILE:${_exe}>"
         LINK_DIRS "${_bindir}" "${CMAKE_BINARY_DIR}"
@@ -411,7 +495,7 @@ function(nros_stack_floor_check _exe)
     endif()
     add_custom_command(TARGET ${_exe} POST_BUILD
         COMMAND ${_cmd}
-        COMMENT "nano-ros: stack floor of ${_key}"
+        COMMENT "nano-ros: stack floor of ${_exe}"
         VERBATIM)
     message(STATUS "nano-ros: stack floor of ${_exe} checked at build as ${_key} "
         "(OPEN from ${_SF_ROOT} against ${_SF_STACK} B; NROS_STACK_FLOOR=OFF skips)")
@@ -421,7 +505,14 @@ endfunction()
 # runs registration, Executor::open and the spin loop on `.app_stack_bytes`.
 # Both carrier producers (`nano_ros_add_entry`, `nano_ros_node_register`'s
 # carrier image) call this with the value they baked into the config TU.
+#   nros_stack_floor_freertos_check(<exe> <stack bytes> <bringup dir>
+#                                   [ENTRY <package> PROGRAM <exe name>])
 function(nros_stack_floor_freertos_check _exe _stack_bytes _bringup_dir)
+    cmake_parse_arguments(_FC "" "ENTRY;PROGRAM" "" ${ARGN})
+    set(_program_args "")
+    if(_FC_ENTRY)
+        set(_program_args ENTRY "${_FC_ENTRY}" PROGRAM "${_FC_PROGRAM}")
+    endif()
     _nros_resolve_rust_target(_triple)
     set(_board "${NROS_BOARD}")
     if(_board STREQUAL "")
@@ -435,7 +526,8 @@ function(nros_stack_floor_freertos_check _exe _stack_bytes _bringup_dir)
         TARGET  "${_triple}"
         RMW     "${NROS_RMW}"
         PROFILE "${NROS_CARGO_PROFILE_DIR}"
-        BRINGUP "${_bringup_dir}")
+        BRINGUP "${_bringup_dir}"
+        ${_program_args})
 endfunction()
 
 # --- Zephyr (issue 2400 W4) -------------------------------------------------
