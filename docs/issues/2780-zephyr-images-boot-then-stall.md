@@ -81,12 +81,65 @@ tracked on its own as issue 2782 and leaves this issue. Issue 2782 turned out
 to duplicate issue 2768, already fixed by `9fecdfd146`; the cell passes again at a
 main that contains it.
 
-### 3. `realtime_sched_tasks` (`zephyr/cpp-derived`, `zephyr/cpp-levels`): not yet re-run
+### 3. `realtime_sched_tasks` (`zephyr/cpp-derived`, `zephyr/cpp-levels`): real, the platform heap runs out
 
-These need Zephyr native_sim images (`workspace-zephyr-cpp-derived-sched-tasks`,
-`workspace-zephyr-cpp-levels`). newslab-118's shared Zephyr workspace is behind
-its pins, so they are to be run solo on newslab-241. Until then it is open
-whether they are load against their tick windows or real.
+Both rows reproduce 3 of 3 solo on newslab-241 at main `3b6959ca7f`, in 21 s,
+2 s and 2 s. Neither is a scheduling defect: each image panics on the Zephyr
+platform heap within half a second of boot, before its sched tasks have run
+long enough to judge.
+
+| row | last lines before the panic |
+| --- | --- |
+| `zephyr/cpp-derived` | `scheduler core=0 levels=2 backing=232`; `parameter store: 8 slots (70848 B) + state and services (36480 B) carved from the executor backing`; the stock parameter services of 4 nodes |
+| `zephyr/cpp-levels` | `levels=3 backing=336`; `parameter store: 6 slots (2160 B) + state and services (15544 B)`; `sched task entered`; `sched task stack sched_task=derived-middle bytes=16384`; `priority set sched_task=derived-lazy prio=7` |
+
+Both end the same way:
+
+    HEAP EXHAUSTED (TOO SMALL): request 96 bytes, arena 115200 bytes, free 48 bytes, largest free block 48 bytes
+    PANIC platform heap exhausted @ packages/platform/nros-platform-zephyr/src/platform.c:1736
+
+So the 114,688 B `CONFIG_NROS_ZEPHYR_HEAP_SIZE` arena (115,200 with the
+slab beside it) no longer fits these two multi-node C++ images.
+`CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL=y` in both.
+
+**The allocation that tips it.** Fresh rebuilds at `3b6959ca7f`
+reproduce the same callers, `0x428269` (derived) and `0x428895` (levels). Both
+resolve to `_z_write_filter_create` (`zenoh-pico/src/net/filtering.c:242`),
+zenoh-pico's 96-byte per-publisher write-filter context. That is only the
+allocation that comes LAST. The heap is already full of the stock interfaces'
+endpoints.
+
+**Why the heap is too small: two commits in the window.**
+
+1. `6229085857` (every image serves the stock node interfaces) put
+   `param_services` on every node of every image.
+2. `57c19cd7df` (2026-11-16) then lowered a C/C++ image's `param_services`
+   heap from 192 KiB to 112 KiB: "the 64 KiB default plus the 46,848-byte
+   param_services peak". That peak was measured on `zephyr_cpp_params`, a
+   ONE-node image.
+
+The parameter services cost is per NODE. Each of a node's six services owns a
+request/reply buffer pair of `PARAM_SERVICE_BUFFER_SIZE` (4,096 by default).
+`cpp-derived` serves them on four nodes. A fixed per-image Kconfig default
+cannot price a per-node cost, and the arm's own help says so ("nothing in
+Kconfig knows what an image declares").
+
+The parameter store is not the consumer: both images carve it, and its
+services' state, from the executor backing (nros 175 confirms its carve branch
+does not touch this road).
+
+### The fix, as ruled (user ruling 2026-11-21, relayed by the manager)
+
+- **Class fix (b).** The `param_services` heap floor scales with what the
+  image DECLARES. The floor is a base plus `nodes_serving_param_services` x a
+  per-node cost MEASURED from two boot-record peaks, one 1-node image and one
+  4-node image. It is delivered as a derived rung of `NROS_ZEPHYR_HEAP_SIZE`
+  from the model's node count, through the existing knob ladder, not a second
+  carrier. The runtime peak above that floor stays operator-stated.
+- **Stopgap (a), until (b) lands.** The two failing images state a measured
+  heap: their boot-record peak + the 24,576-byte floor.
+- The flat 112 KiB arm from `57c19cd7df` is the 1-node case of (b), and its
+  text is to say so.
 
 ## Closes when
 
