@@ -241,15 +241,21 @@ in the order below.
     (still the one place). A stated `stack_floor_image` names one program, so
     with several programs it is refused, naming the programs, rather than
     applied to all of them.
-  - The paths are `nros/stack-floor/<exe>/{check.cmake,report.json}`. "Several"
-    is known only once every program has been seen, so the decision is a
-    `cmake_language(DEFER ...)` at the end of the top directory, which reads a
-    global property listing the checked programs per entry; until then each
-    check records itself and writes nothing.
+  - The paths are `nros/stack-floor/<exe>/{check.cmake,report.json}`.
+    "Several" is known only once every program has been seen. Measured on
+    CMake 3.22, the minimum: neither a DEFER at the end of the top directory
+    (`TARGET 'prog' was not created in this directory`) nor a DEFER scheduled
+    into the program's directory (`may not be scheduled in directory`) can
+    attach a POST_BUILD to a program in a subdirectory, which is where an owned
+    entry's programs live. So each check emits its POST_BUILD at once, and only
+    the report PATH is decided late. The top-directory DEFER writes a layout
+    file from a global property listing the checked programs per entry (a file
+    write is allowed there). Each check's driver reads that file at build time,
+    through the path rule below.
   - `config/stack-floors.toml` rows take the per-program key verbatim. The
     walk's key parser (`scripts/nros-stack-floor.py`) and the lanes
-    (`stack-floor-twin.py`, `stack-floor-drift.py`) accept a `/<exe>` segment
-    and glob `nros/stack-floor/**/report.json`.
+    (`stack-floor-twin.py`, `stack-floor-drift.py`) accept a `/<exe>` segment.
+    The lanes do not glob for reports (see the path rule below).
   - The sizing descriptor goes to `nros/sizing/<entry>/<exe>.toml`, from that
     program's census, which needs the census to run each program (issue 2433's
     runner takes the program; W2's `entry_executable(…, exec)` names it).
@@ -265,7 +271,10 @@ in the order below.
     `parse_key`, and `stack-floor-drift.py` uses it too. Its Rust twin sits
     beside the CLI's `stack_floor_template_key`, with no third regex.
     `--validate-table` refuses a key that parses as none of the three. A
-    self-test holds that today's `[[observed]]` keys parse unchanged.
+    self-test holds that today's `[[observed]]` keys parse unchanged. The
+    parser is `parse_image_key(key) -> (shape, parts)`, beside `parse_key`'s
+    callers rather than inside a walk function, so W9c's band edits and W4's
+    key edits stay in separate functions.
   - **Descriptor path (nros 175).** Computed ONLY in `nros_sizing_descriptor`:
     `descriptor_path_for(build, entry, Some(exe))` gives
     `<build>/nros/sizing/<entry>/<exe>.toml`, and `None` gives today's
@@ -279,11 +288,22 @@ in the order below.
     parsing only and 133's W9c band work changes other functions; whoever lands
     second rebases. 175's fix-param-store-carve touches only `write_for_leaf` in
     `sizing_descriptor.rs`, so the two do not collide.
-  - **One path rule, every reader (nros 133's review).** The report path is
-    decided once, beside the key, and every reader resolves it through that:
-    the CLI's `stack_floor_raise` (which reads `nros/stack-floor/report.json`
-    today), the twin and drift lanes, and the build's own re-walk. None of them
-    spells `<exe>/` itself.
+  - **One path rule, every reader (nros 133's review).**
+    `report_path(build_dir, key)`, in the same grammar module, is the only
+    spelling of where a key's report lives. The CLI's `stack_floor_raise` (which
+    reads `nros/stack-floor/report.json` today), the twin and drift lanes, and
+    the build's own re-walk all call it. None of them spells `<exe>/` or globs,
+    so drift's `pick_report` and the twin's glob go too, and a report at the
+    wrong path reads as missing, not as found.
+  - **Drift's build route for the new key (nros 133's review).** A template
+    key builds through `nros new`, and a bringup key through `bringup_rows`
+    over `examples/fixtures.toml`. An `<entry>/<exe>@<board>` row builds
+    through the `[[workspace_fixture]]` row whose image names `entry = <entry>`
+    on `<board>`. One configure builds every program of the entry, so no `exe`
+    field is needed: the walk of `<exe>` is found by `report_path`. Until that
+    route lands with W4, `--validate-table` refuses the one-slash shape in
+    `[[observed]]`, so the nightly drift step never meets a row it cannot
+    build.
 
 ### W5 — Book and docs
 
