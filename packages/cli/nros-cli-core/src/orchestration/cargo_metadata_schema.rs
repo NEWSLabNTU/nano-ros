@@ -557,6 +557,17 @@ pub struct SystemToml {
     /// [`Self::image_ros_edition`] for the edition, issue 1305).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_defaults: Option<ImageBlock>,
+    /// `[image_alternatives]` -- `<group> = ["<image>", ...]` (RFC-0136 D1):
+    /// images that are ONE host built different ways and never run together.
+    /// Two images of one group may share a static address and a MAC on a
+    /// network ([`crate::orchestration::image_net::check_collisions`]);
+    /// nothing else may. Exclusivity is declared here, never inferred.
+    ///
+    /// A top-level table and not a per-image key, so it cannot be folded over
+    /// `[image_defaults]` and one line states the whole set. Checked by
+    /// [`Self::validate_image_alternatives`].
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub image_alternatives: BTreeMap<String, Vec<String>>,
     /// `[network.<name>]` — RETIRED (RFC-0109 D6, phase-514 W4): a network is
     /// a layer-1 fact and lives in the board network file an image's
     /// `os_config` names. Present only so the schema refuses it BY NAME.
@@ -1517,6 +1528,52 @@ impl SystemToml {
         super::image::select_default_images(&self.image, &self.system.default_images).map(|_| ())
     }
 
+    /// RFC-0136 D2 -- `[image_alternatives]` names only declared images, each
+    /// group lists two or more distinct images, and no image is in two groups
+    /// (so "in one group" is an equivalence and the collision check never
+    /// reasons about overlapping sets).
+    pub fn validate_image_alternatives(&self) -> Result<(), String> {
+        let mut group_of: BTreeMap<&str, &str> = BTreeMap::new();
+        for (group, members) in &self.image_alternatives {
+            if members.len() < 2 {
+                return Err(format!(
+                    "[image_alternatives] `{group}` lists {} image(s); a group needs two or more",
+                    members.len()
+                ));
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            for id in members {
+                if !self.image.contains_key(id) {
+                    return Err(format!(
+                        "[image_alternatives] `{group}` names image `{id}`, which no \
+                         `[image.{id}]` declares"
+                    ));
+                }
+                if !seen.insert(id.as_str()) {
+                    return Err(format!(
+                        "[image_alternatives] `{group}` lists image `{id}` twice"
+                    ));
+                }
+                if let Some(first) = group_of.insert(id, group) {
+                    return Err(format!(
+                        "image `{id}` is in two `[image_alternatives]` groups, `{first}` and \
+                         `{group}`; an image has one set of alternatives -- merge the groups"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// RFC-0136 D3 -- each grouped image's `[image_alternatives]` group.
+    #[must_use]
+    pub fn image_alternative_groups(&self) -> crate::orchestration::image_net::ImageAlternatives {
+        self.image_alternatives
+            .iter()
+            .flat_map(|(g, ids)| ids.iter().map(move |id| (id.clone(), g.clone())))
+            .collect()
+    }
+
     /// Issue 0951 — `[system].default_target` is set but no longer consulted.
     ///
     /// A key that silently stopped working is worse than one that was deleted,
@@ -2215,6 +2272,54 @@ mod tests {
     }
 
     use super::*;
+
+    /// RFC-0136 D2 -- `[image_alternatives]` validation, each refusal with its
+    /// exact text; a valid table yields one group per member.
+    #[test]
+    fn image_alternatives_are_validated_with_exact_refusals() {
+        let sys = |table: &str| {
+            toml::from_str::<SystemToml>(&format!(
+                "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+                 [image.a]\nboard = \"x\"\n[image.b]\nboard = \"x\"\n\
+                 [image.c]\nboard = \"x\"\n\n[image_alternatives]\n{table}"
+            ))
+            .unwrap()
+        };
+        let ok = sys("g = [\"a\", \"b\"]\n");
+        ok.validate_image_alternatives().unwrap();
+        let groups = ok.image_alternative_groups();
+        assert_eq!(groups.get("a").map(String::as_str), Some("g"));
+        assert_eq!(groups.get("b").map(String::as_str), Some("g"));
+        assert!(!groups.contains_key("c"));
+
+        let err = |table: &str| sys(table).validate_image_alternatives().unwrap_err();
+        assert_eq!(
+            err("g = [\"a\", \"zz\"]\n"),
+            "[image_alternatives] `g` names image `zz`, which no `[image.zz]` declares"
+        );
+        assert_eq!(
+            err("g1 = [\"a\", \"b\"]\ng2 = [\"a\", \"c\"]\n"),
+            "image `a` is in two `[image_alternatives]` groups, `g1` and `g2`; an image has \
+             one set of alternatives -- merge the groups"
+        );
+        assert_eq!(
+            err("g = [\"a\"]\n"),
+            "[image_alternatives] `g` lists 1 image(s); a group needs two or more"
+        );
+        assert_eq!(
+            err("g = []\n"),
+            "[image_alternatives] `g` lists 0 image(s); a group needs two or more"
+        );
+        assert_eq!(
+            err("g = [\"a\", \"b\", \"a\"]\n"),
+            "[image_alternatives] `g` lists image `a` twice"
+        );
+        // Absent: nothing to check.
+        toml::from_str::<SystemToml>("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n")
+            .unwrap()
+            .validate_image_alternatives()
+            .unwrap();
+    }
 
     /// phase-304 W2 — `[system].ros_edition` resolves to a `RosEdition`; absent
     /// ⇒ humble; an unknown string is a HARD error (typo guard).

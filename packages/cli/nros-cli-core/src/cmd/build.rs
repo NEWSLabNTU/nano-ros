@@ -1135,6 +1135,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             // RFC-0103 D10b (phase-497 W1) — the address against its network.
             sys.validate_image_networks()
                 .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+            // RFC-0136 D2 -- the alternatives groups, before the collision
+            // check below trusts them.
+            sys.validate_image_alternatives()
+                .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
         }
         let board = image.board.clone().unwrap_or_default();
         // RFC-0103 D10 (phase-497 W2) — this image's network, resolved by the

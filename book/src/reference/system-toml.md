@@ -70,6 +70,24 @@ Retired and refused by name: `ip`, `gateway`, `netmask`, `transport`,
 `[system] default_images = ["<id>", …]` is what a bare `nros build` builds.
 Without it, a workspace with more than one image lists them and stops.
 
+## Images that never run together: `[image_alternatives]`
+
+```toml
+[image_alternatives]
+fvp-tap = ["fvp-tap", "fvp-tap-stats", "fvp-tap-trace", "fvp-tap-trace-ring"]
+```
+
+Each key names a group; its value lists two or more images that are one host
+built different ways, of which only one is ever booted. Two images of one group
+may state the same static address and the same `mac` on a network; any other
+two images may not (see "Board network file" below). Membership is symmetric:
+no member is the base. Building several members is fine; building is not
+running. Nothing infers a group from image names, boards or `os_config` lists.
+
+Refused, at parse: a member no `[image.<id>]` declares, an image in two groups
+(merge them), a group of fewer than two images, and an image listed twice in
+one group. A single-package leaf builds one image and refuses the table.
+
 ## Sharing a fragment between bringups: `include`
 
 A workspace with several bringups can state what they share once, in a
@@ -132,7 +150,8 @@ takes `10.0.2.15`. The resolved answer is written to
 
 Refused, naming the image: an address outside its subnet or equal to the
 gateway; a network no file defines; two images with one static address or MAC
-on a network other than `qemu`; two files defining one network differently; a
+on a network other than `qemu`, unless both are in one `[image_alternatives]`
+group; two files defining one network differently; a
 board network file on a board whose network belongs to the host OS (`linux`,
 `freertos-posix`, `threadx-linux`) or that declares no interfaces; an image on
 a network other than `qemu` with no `locator`, when its RMW's descriptor states

@@ -42,7 +42,9 @@
 //! Across images, [`check_collisions`] refuses two equal static addresses or
 //! two equal MACs on one SHARED network, naming both images. QEMU's SLIRP
 //! network is not shared: every `-nic user` makes a private copy per VM, so two
-//! images on `qemu` never meet.
+//! images on `qemu` never meet. Two images of one `[image_alternatives]` group
+//! (RFC-0136) are one host built different ways and never run together, so
+//! they may share an address and a MAC; that is only ever declared.
 
 use std::{
     collections::BTreeMap,
@@ -555,38 +557,74 @@ pub fn resolve_can(
 
 /// Refuse two equal static addresses, or two equal MACs, on one SHARED
 /// network (D10b), naming both images. `images` is `(image id, its net)`.
-pub fn check_collisions(images: &[(&str, &ImageNet)]) -> Result<(), String> {
+pub fn check_collisions(
+    images: &[(&str, &ImageNet)],
+    alternatives: &ImageAlternatives,
+) -> Result<(), String> {
+    // Each key keeps its FIRST holder; a later image with the key passes only
+    // when it and the first holder are in one group (RFC-0136 D3). Every
+    // holder is compared with the first, so a set sharing one key passes
+    // exactly when all of it is one group.
     let mut addrs: BTreeMap<(&str, [u8; 4]), (&str, &str)> = BTreeMap::new();
     let mut macs: BTreeMap<(&str, [u8; 6]), (&str, &str)> = BTreeMap::new();
     let dotted = |o: [u8; 4]| format!("{}.{}.{}.{}", o[0], o[1], o[2], o[3]);
+    let group = |id: &str| alternatives.get(id).map(String::as_str);
+    let alternates = |a: &str, b: &str| group(a).is_some() && group(a) == group(b);
+    let way_out = |a: &str, b: &str| match (group(a), group(b)) {
+        (Some(ga), Some(gb)) => format!(
+            "; `{a}` and `{b}` are in different `[image_alternatives]` groups (`{ga}`, `{gb}`)"
+        ),
+        _ => ", or, if the two never run together, list both in one \
+              `[image_alternatives]` group"
+            .to_string(),
+    };
     for (image, net) in images {
         for i in net.interfaces.iter().filter(|i| !i.per_image) {
-            if let Address::Static(ip) = i.address
-                && let Some((other, oif)) = addrs.insert((&i.network, ip), (image, &i.name))
-            {
-                return Err(format!(
-                    "images `{other}` ({oif}) and `{image}` ({}) both take {} on network {:?} \
-                     — two hosts on one network cannot share an address; change one `host` / \
-                     `address`",
-                    i.name,
-                    dotted(ip),
-                    i.network
-                ));
+            if let Address::Static(ip) = i.address {
+                match addrs.get(&(i.network.as_str(), ip)) {
+                    Some(&(other, oif)) if !alternates(other, image) => {
+                        return Err(format!(
+                            "images `{other}` ({oif}) and `{image}` ({}) both take {} on network \
+                             {:?} -- two hosts on one network cannot share an address; change \
+                             one `host` / `address`{}",
+                            i.name,
+                            dotted(ip),
+                            i.network,
+                            way_out(other, image)
+                        ));
+                    }
+                    Some(_) => {}
+                    None => {
+                        addrs.insert((&i.network, ip), (image, &i.name));
+                    }
+                }
             }
-            if let Some((other, oif)) = macs.insert((&i.network, i.mac), (image, &i.name)) {
-                return Err(format!(
-                    "images `{other}` ({oif}) and `{image}` ({}) both use MAC {} on network {:?} \
-                     — a switch or DHCP server keys on it; change one image's `mac` (or drop \
-                     both and let them be derived)",
-                    i.name,
-                    text::format_mac(i.mac),
-                    i.network
-                ));
+            match macs.get(&(i.network.as_str(), i.mac)) {
+                Some(&(other, oif)) if !alternates(other, image) => {
+                    return Err(format!(
+                        "images `{other}` ({oif}) and `{image}` ({}) both use MAC {} on network {:?} \
+                         -- a switch or DHCP server keys on it; change one image's `mac` (or drop \
+                         both and let them be derived){}",
+                        i.name,
+                        text::format_mac(i.mac),
+                        i.network,
+                        way_out(other, image)
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    macs.insert((&i.network, i.mac), (image, &i.name));
+                }
             }
         }
     }
     Ok(())
 }
+
+/// RFC-0136 D3 -- image id -> its `[image_alternatives]` group
+/// ([`super::cargo_metadata_schema::SystemToml::image_alternative_groups`]).
+/// An image in no group is absent.
+pub type ImageAlternatives = BTreeMap<String, String>;
 
 /// Resolve every image of a workspace bringup's `system.toml`, then refuse a
 /// collision across them. `board_of(image id)` answers the image's board's
@@ -607,6 +645,8 @@ pub fn resolve_system(
     // One network has one subnet across the project, whichever image's file
     // states it.
     let mut networks = BTreeMap::new();
+    // RFC-0136 D2 -- the groups the collision check trusts are valid ones.
+    sys.validate_image_alternatives()?;
     for (id, img) in sys.resolved_images() {
         let files = img.os_config_files();
         let states_can = !img.can.is_empty() || !img.can_tables.is_empty();
@@ -670,7 +710,7 @@ pub fn resolve_system(
         }
     }
     let pairs: Vec<(&str, &ImageNet)> = out.iter().map(|(k, v)| (k.as_str(), v)).collect();
-    check_collisions(&pairs)?;
+    check_collisions(&pairs, &sys.image_alternative_groups())?;
     Ok(out)
 }
 
@@ -1077,7 +1117,11 @@ mod tests {
             !t.interfaces[0].per_image,
             "a physical/bridge network is shared"
         );
-        check_collisions(&[("talker", &t), ("listener", &l)]).unwrap();
+        check_collisions(
+            &[("talker", &t), ("listener", &l)],
+            &ImageAlternatives::new(),
+        )
+        .unwrap();
         // A physical-only network: the launcher refuses an emulated image.
         let t_text = t.text();
         let ti = nros_board_common::image_net::primary(&t_text)
@@ -1109,7 +1153,11 @@ mod tests {
 
         let dup = src.replace("host = 11", "host = 10");
         let l2 = run(&dup, "listener", &board, router).unwrap().unwrap();
-        let e = check_collisions(&[("talker", &t), ("listener", &l2)]).unwrap_err();
+        let e = check_collisions(
+            &[("talker", &t), ("listener", &l2)],
+            &ImageAlternatives::new(),
+        )
+        .unwrap_err();
         assert!(
             e.contains("`talker`") && e.contains("`listener`") && e.contains("192.0.3.10"),
             "{e}"
@@ -1120,9 +1168,123 @@ mod tests {
             .replace("host = 11\n", "host = 11\nmac = \"02:00:00:00:00:07\"\n");
         let t3 = run(&mac, "talker", &board, router).unwrap().unwrap();
         let l3 = run(&mac, "listener", &board, router).unwrap().unwrap();
-        let e = check_collisions(&[("talker", &t3), ("listener", &l3)]).unwrap_err();
+        let e = check_collisions(
+            &[("talker", &t3), ("listener", &l3)],
+            &ImageAlternatives::new(),
+        )
+        .unwrap_err();
         assert!(
             e.contains("MAC 02:00:00:00:00:07") && e.contains("`talker`"),
+            "{e}"
+        );
+    }
+
+    /// RFC-0136 D5 -- two images resolved on network `tap` at `.2`, each with
+    /// the stated MAC `mac` (or a derived one when empty).
+    fn tap_pair(ids: &[&str], mac: &str) -> Vec<ImageNet> {
+        let mut src = String::from(
+            "[network.tap]\nsubnet = \"192.168.10.0/24\"\ngateway = \"192.168.10.1\"\n",
+        );
+        for (n, id) in ids.iter().enumerate() {
+            // Distinct hosts when a MAC is the subject, so only the MAC meets.
+            let host = if mac.is_empty() { 2 } else { 10 + n };
+            let mac = if mac.is_empty() {
+                String::new()
+            } else {
+                format!("mac = \"{mac}\"\n")
+            };
+            src.push_str(&format!(
+                "[image.{id}.net.eth0]\nnetwork = \"tap\"\nhost = {host}\n{mac}"
+            ));
+        }
+        ids.iter()
+            .map(|id| {
+                run(&src, id, &qemu_board(), Some("tcp/192.168.10.1:7447"))
+                    .unwrap()
+                    .unwrap()
+            })
+            .collect()
+    }
+
+    fn groups(rows: &[(&str, &str)]) -> ImageAlternatives {
+        rows.iter()
+            .map(|(id, g)| ((*id).to_string(), (*g).to_string()))
+            .collect()
+    }
+
+    /// RFC-0136 D3/D5 -- one group may share an address; the same pair with
+    /// no group is refused with the `[image_alternatives]` hint; two groups
+    /// are refused naming both groups.
+    #[test]
+    fn one_alternatives_group_may_share_an_address_and_nothing_else_may() {
+        let n = tap_pair(&["fvp-tap", "fvp-tap-stats"], "");
+        let pair = [("fvp-tap", &n[0]), ("fvp-tap-stats", &n[1])];
+        let one = groups(&[("fvp-tap", "fvp-tap"), ("fvp-tap-stats", "fvp-tap")]);
+        check_collisions(&pair, &one).unwrap();
+
+        let e = check_collisions(&pair, &ImageAlternatives::new()).unwrap_err();
+        assert!(
+            e.contains("images `fvp-tap` (eth0) and `fvp-tap-stats` (eth0) both take 192.168.10.2")
+                && e.contains("list both in one `[image_alternatives]` group"),
+            "{e}"
+        );
+        // One grouped, one not: still the "list both" hint.
+        let e = check_collisions(&pair, &groups(&[("fvp-tap", "g")])).unwrap_err();
+        assert!(
+            e.contains("list both in one `[image_alternatives]` group"),
+            "{e}"
+        );
+
+        let two = groups(&[("fvp-tap", "g1"), ("fvp-tap-stats", "g2")]);
+        let e = check_collisions(&pair, &two).unwrap_err();
+        assert!(
+            e.contains("are in different `[image_alternatives]` groups (`g1`, `g2`)"),
+            "{e}"
+        );
+    }
+
+    /// RFC-0136 D5 -- three images on one address, two grouped and the third
+    /// not: refused naming the ungrouped one, in every insertion order.
+    #[test]
+    fn an_ungrouped_third_image_on_a_grouped_address_is_refused_in_any_order() {
+        let n = tap_pair(&["a", "b", "robot"], "");
+        let alts = groups(&[("a", "g"), ("b", "g")]);
+        let orders: [[usize; 3]; 6] = [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ];
+        let ids = ["a", "b", "robot"];
+        for o in orders {
+            let images: Vec<(&str, &ImageNet)> = o.iter().map(|&k| (ids[k], &n[k])).collect();
+            let e = check_collisions(&images, &alts).unwrap_err();
+            assert!(
+                e.contains("`robot`") && e.contains("192.168.10.2"),
+                "{o:?}: {e}"
+            );
+        }
+        check_collisions(&[("a", &n[0]), ("b", &n[1])], &alts).unwrap();
+    }
+
+    /// RFC-0136 D3/D5 -- a shared stated MAC inside a group passes; across
+    /// groups it is refused.
+    #[test]
+    fn a_shared_stated_mac_passes_in_a_group_and_is_refused_across_groups() {
+        let n = tap_pair(&["a", "b"], "02:00:00:00:00:02");
+        let pair = [("a", &n[0]), ("b", &n[1])];
+        check_collisions(&pair, &groups(&[("a", "g"), ("b", "g")])).unwrap();
+        let e = check_collisions(&pair, &groups(&[("a", "g1"), ("b", "g2")])).unwrap_err();
+        assert!(
+            e.contains("MAC 02:00:00:00:00:02")
+                && e.contains("different `[image_alternatives]` groups (`g1`, `g2`)"),
+            "{e}"
+        );
+        let e = check_collisions(&pair, &ImageAlternatives::new()).unwrap_err();
+        assert!(
+            e.contains("list both in one `[image_alternatives]` group"),
             "{e}"
         );
     }
@@ -1133,7 +1295,7 @@ mod tests {
         let a = run(src, "a", &qemu_board(), None).unwrap().unwrap();
         let b = run(src, "b", &qemu_board(), None).unwrap().unwrap();
         assert_eq!(a.interfaces[0].address, b.interfaces[0].address);
-        check_collisions(&[("a", &a), ("b", &b)]).unwrap();
+        check_collisions(&[("a", &a), ("b", &b)], &ImageAlternatives::new()).unwrap();
     }
 
     /// W4 — a board with two interfaces states both, and an image addresses
@@ -1675,5 +1837,77 @@ mod tests {
         let sys = system("[image.bad]\nboard = \"linux\"\nos_config = [\"can-net.toml\"]\n");
         let e = resolve_system(&sys, board, |_| None).unwrap_err();
         assert!(e.contains("[image.bad.can] device"), "{e}");
+    }
+
+    /// RFC-0136 D5 -- the motivating bringup: one FVP host built four ways,
+    /// every variant naming one board network file at 192.168.10.2. Without
+    /// the group the bringup is refused; with it every variant resolves at the
+    /// address; a fifth image outside the group on that address is refused.
+    #[test]
+    fn four_tap_variants_of_one_host_resolve_through_one_alternatives_group() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("net-fvp-tap.toml"),
+            "[eth0]\nnetwork = \"tap\"\naddress = \"192.168.10.2\"\n\n\
+             [network.tap]\nsubnet = \"192.168.10.0/24\"\ngateway = \"192.168.10.1\"\n",
+        )
+        .unwrap();
+        let variants = [
+            "fvp-tap",
+            "fvp-tap-stats",
+            "fvp-tap-trace",
+            "fvp-tap-trace-ring",
+        ];
+        let system = |extra: &str| {
+            let mut src = String::from(
+                "[system]\nname = \"s\"\nrmw = \"cyclonedds\"\ndomain_id = 2\n\
+                 locator = \"tcp/192.168.10.1:7447\"\n\n",
+            );
+            for v in variants {
+                src.push_str(&format!(
+                    "[image.{v}]\nboard = \"fvp-aemv8r-smp\"\nos_config = [\"net-fvp-tap.toml\"]\n\
+                     run.nic = {{ tap = \"tap0\" }}\n\n"
+                ));
+            }
+            src.push_str(extra);
+            let mut sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+                toml::from_str(&src).unwrap();
+            sys.fold_os_config(dir.path()).unwrap();
+            sys.validate_image_networks().unwrap();
+            sys
+        };
+        let board = |_: &str| -> Result<BoardFacts, String> {
+            Ok(tracked_board(
+                "nros-board-zephyr/boards/fvp-aemv8r-smp",
+                "fvp-aemv8r-smp",
+            ))
+        };
+        let e = resolve_system(&system(""), board, |_| None).unwrap_err();
+        assert!(
+            e.contains("both take 192.168.10.2 on network \"tap\"")
+                && e.contains("`[image_alternatives]`"),
+            "{e}"
+        );
+
+        let group = "[image_alternatives]\nfvp-tap = [\"fvp-tap\", \"fvp-tap-stats\", \
+                     \"fvp-tap-trace\", \"fvp-tap-trace-ring\"]\n\n";
+        let all = resolve_system(&system(group), board, |_| None).unwrap();
+        for v in variants {
+            let eth0 = &all[v].interfaces[0];
+            assert_eq!(eth0.address, Address::Static([192, 168, 10, 2]), "{v}");
+            assert_eq!(eth0.attach, NetAttach::Tap("tap0".into()), "{v}");
+        }
+
+        let robot = format!(
+            "{group}[image.robot]\nboard = \"fvp-aemv8r-smp\"\nos_config = [\"net-fvp-tap.toml\"]\n\
+             run.nic = {{ tap = \"tap1\" }}\n"
+        );
+        let e = resolve_system(&system(&robot), board, |_| None).unwrap_err();
+        assert!(e.contains("`robot`") && e.contains("192.168.10.2"), "{e}");
+
+        // D2 -- an invalid group is refused before the check trusts it.
+        let bad = "[image_alternatives]\nfvp-tap = [\"fvp-tap\"]\n";
+        let e = resolve_system(&system(bad), board, |_| None).unwrap_err();
+        assert!(e.contains("a group needs two or more"), "{e}");
     }
 }

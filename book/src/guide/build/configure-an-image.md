@@ -127,6 +127,19 @@ the network, and you set the address in its own configuration.
    `nros run` passes the `-nic` value to QEMU. An image on a network other
    than `qemu` with no `nic` is physical only.
 
+5. Variants of one host may share its address. A bringup that builds one
+   controller several ways (plain, with runtime statistics, with a trace) on
+   one network boots only one of them at a time, so each variant can name the
+   same board network file. Say so, or the build refuses the shared address:
+
+   ```toml
+   [image_alternatives]
+   fvp-tap = ["fvp-tap", "fvp-tap-stats", "fvp-tap-trace", "fvp-tap-trace-ring"]
+   ```
+
+   Only images of one group may share; any other image on that address is
+   still refused. See [system.toml keys](../../reference/system-toml.md).
+
 ### The middleware's own file
 
 How a session finds its peers is the middleware's own configuration, in its
