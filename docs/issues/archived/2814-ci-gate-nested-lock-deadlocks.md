@@ -1,12 +1,14 @@
 ---
 id: 2814
 title: "`just ci gate` run under a holder of the host gate lock waits on its own parent until the wall limit, then reports a timeout with nothing run"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci, tooling]
 related: [2602, 2733]
 found: 2026-11-22
+resolved: 2026-11-22
+resolved_in: "fix(ci, issue 2814): a gate under its own ancestor's gate lock refuses at once"
 ---
 
 ## What happens
@@ -60,3 +62,28 @@ Acceptance: `bash scripts/ci/gate-host-lock.sh bash scripts/ci/gate-host-lock.sh
 finishes in seconds and does not reach the wall limit. Under option 1 it
 fails, naming the ancestor. The check goes in the lock script's own tests,
 using the `_NROS_GATE_LOCK_TEST_*` limits.
+
+## Resolved, 2026-11-22
+
+The preferred direction: refuse, naming the holder, and keep every limit.
+
+Before it waits, `scripts/ci/gate-host-lock.sh` reads the holder's `pid=` line
+from the lock file. It then walks its own parent chain through `/proc/<pid>/stat`
+(field 4, read after the last `)`, so a command name with spaces cannot shift
+it). If the holder is an ancestor, the script exits 1 at once with:
+
+    ci gate: NOT RUN — this host's gate lock is held by pid <p>, an ANCESTOR of
+    this process: a gate inside a gate's lock would wait on itself until the
+    waiter cap (<cap> s). Run the inner command without the lock wrapper; the
+    outer holder already serialises the host.
+
+An unrelated holder is still waited for, exactly as before.
+
+Acceptance: `gate-host-lock.sh gate-host-lock.sh true` with
+`_NROS_GATE_LOCK_TEST_WAIT_S=120` refuses in 0.04 s, naming the ancestor.
+
+`tests/gate-host-lock-tests.sh` case 16 asserts it, bounded at half the
+120 s cap. Mutation-tested: with the check disabled, the case goes red after
+121 s, which is this bug's wait. Case 2 is the negative control: an unrelated
+holder is still waited for.
+
