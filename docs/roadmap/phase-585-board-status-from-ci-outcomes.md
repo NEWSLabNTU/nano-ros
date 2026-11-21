@@ -84,6 +84,14 @@ in the order below.
   and `check-board-registry` refuses them.
 - **Acceptance:** both readers pass the fixture; the registry has no typed
   evidence field; with no records every view says "not recorded".
+- **Progress (2026-11-22).** The derivation and its shared fixture are in
+  (`board_registry.status_from_evidence`,
+  `scripts/lib/testdata/board-status-cases.json`, 14 cases, run by the
+  registry's self-test in `check-board-tiers.py`; a window mutation fails the
+  weekly case). **Retiring `runs`, `cadence` and `last_run` moves to land WITH
+  W4**: the committed pages are rendered from the typed fields today, and with
+  them gone and no deploy-time render yet, every committed status would read
+  "not recorded". The Rust reader of the fixture lands with W5.
 
 ### W4 — The book, rendered at deploy
 

@@ -174,6 +174,95 @@ def status_word(row: dict, built: bool, stale_days: int = DEFAULT_STALE_DAYS,
     return f"Verified {where} ({cadence})"
 
 
+# RFC-0114 D13.5 (phase-585 W3) -- a status word derived from what RAN.
+DEFAULT_OUTCOME_WINDOW = 3
+# A lane's cadence is its workflow's, and only on the event that IS the cadence:
+# a manual dispatch proves a run, not a schedule.
+CADENCE_OF = {("weekly.yml", "schedule"): "weekly",
+              ("queue.yml", "merge_group"): "merge",
+              ("merge-runtime.yml", "merge_group"): "merge"}
+PERIOD_DAYS = {"merge": 1, "daily": 1, "weekly": 7}
+STATUS_CASES = Path(__file__).with_name("testdata") / "board-status-cases.json"
+
+
+def run_cadence(run: dict) -> str | None:
+    """The cadence a run's result evidences: `merge`, `weekly`, `daily` (any
+    other scheduled lane), `manual` (a maintainer's report), or None (a
+    dispatched run)."""
+    if run.get("source") == "report":
+        return "manual"
+    key = (run.get("workflow"), run.get("event"))
+    if key in CADENCE_OF:
+        return CADENCE_OF[key]
+    return "daily" if run.get("event") == "schedule" else None
+
+
+def status_from_evidence(row: dict, built: bool, history: list[dict],
+                         today: datetime.date, window: int = DEFAULT_OUTCOME_WINDOW,
+                         stale_days: int = DEFAULT_STALE_DAYS) -> str:
+    """D13.5's word for one board from its results `history` (one entry per run
+    that reported the board, newest first: `date`, `workflow`, `event`,
+    `outcome`, and for a maintainer's report `source = "report"` and `runner`).
+    No typed `runs`, `cadence` or `last_run` is read: where it ran is the
+    descriptor's emulator (or the report's runner), how often is which lane
+    delivered a pass, and when is the evidence's date.
+
+    - **Verified … (cadence)**: a `passed` from a scheduled lane within
+      `window` periods of its cadence;
+    - **Failing since D**: otherwise, if the newest verdict is `failed`, D the
+      first `failed` of that streak of verdicts;
+    - **Not run since D**: otherwise, D the newest `passed` (any source);
+    - a maintainer report alone: **Boots[, on hardware], manual (D)**, or
+      **Builds (last booted D)** past `stale_days`;
+    - no runtime evidence: **Builds** / **Not supported**, as D10.
+    """
+    if row.get("infra") is True:
+        return "Infrastructure"
+    day = lambda r: datetime.date.fromisoformat(r["date"])  # noqa: E731
+    scheduled = [r for r in history if run_cadence(r) in ("merge", "daily", "weekly")]
+    where = "in emulator" if row.get("emulator") else "on host"
+    # The most frequent cadence whose pass is fresh wins: merge, then daily.
+    for cad in ("merge", "daily", "weekly"):
+        fresh = [r for r in scheduled if run_cadence(r) == cad and r["outcome"] == "passed"
+                 and (today - day(r)).days < window * PERIOD_DAYS[cad]]
+        if fresh:
+            return f"Verified {where} ({cad})"
+    verdicts = [r for r in scheduled if r["outcome"] in ("passed", "failed")]
+    if verdicts and verdicts[0]["outcome"] == "failed":
+        streak = []
+        for r in verdicts:
+            if r["outcome"] != "failed":
+                break
+            streak.append(r)
+        return f"Failing since {streak[-1]['date']}"
+    reports = [r for r in history if r.get("source") == "report" and r["outcome"] == "passed"]
+    passes = [r for r in history if r["outcome"] == "passed" and run_cadence(r) != "manual"]
+    if passes:
+        return f"Not run since {passes[0]['date']}"
+    if reports:
+        r = reports[0]
+        if (today - day(r)).days > stale_days:
+            return f"Builds (last booted {r['date']})"
+        if r.get("runner") == "hardware":
+            return f"Boots on hardware, manual ({r['date']})"
+        return f"Boots, manual ({r['date']})"
+    return "Builds" if built else "Not supported"
+
+
+def status_case_failures(path: Path = STATUS_CASES) -> list[str]:
+    """Every case of the shared fixture whose derived word is not its `want`."""
+    import json
+    doc = json.loads(path.read_text())
+    today = datetime.date.fromisoformat(doc["today"])
+    out = []
+    for c in doc["cases"]:
+        got = status_from_evidence(c["row"], c["built"], c["history"], today,
+                                   window=doc["outcome_window"])
+        if got != c["want"]:
+            out.append(f"{c['name']}: got {got!r}, want {c['want']!r}")
+    return out
+
+
 def shape_errors(row: dict, platforms: set[str]) -> list[str]:
     """Field presence and value rules of D10/D11, independent of evidence."""
     where = row_name(row)
@@ -465,6 +554,8 @@ def runs_descriptor_errors(rows: list[dict], index: dict) -> list[str]:
 
 def self_test() -> None:
     """Negative controls: each rule fires on a row built to break it."""
+    bad = status_case_failures()
+    assert not bad, "board-status-cases.json:\n  " + "\n  ".join(bad)
     today = datetime.date(2026, 11, 1)
     plats = {"Linux", "ZephyrQemuCortexM", "Fvp"}
     ok = {"crate": "b", "matrix_platform": "Linux", "runs": "host",
