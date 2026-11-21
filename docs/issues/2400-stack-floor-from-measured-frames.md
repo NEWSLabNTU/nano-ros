@@ -590,3 +590,30 @@ lives:
 Whether floors stay per image or move to per-layer declarations is the open
 design question with the user, and issues 2653 and 2658 are its measured
 inputs.
+
+### Update (2026-11-21)
+
+- **W8 is done**, on the 2026-11-20 nightly (all five drift rows walked,
+  0 failed).
+- **W5b:** ThreadX on riscv64 walks (issue 2514). ThreadX on Linux is
+  reported not checked, with its reason: the port runs each thread on a host
+  pthread stack ([issue 2800](2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
+- **The 32 KiB literal: ruled.** An unmeasured Rust Zephyr image gets a
+  PER-BOARD MEASURED floor: the largest measured template peak on its board,
+  plus the table's margin. A board with no twin keeps a fallback, named in
+  the warning. Design and work: phase-557 W10.
+
+**Which Zephyr boards can measure a row (survey, 2026-11-21, read-only).**
+The twin lane (`scripts/stack-floor-twin.py`) ran Renode only, so only
+nucleo-f767zi had rows.
+
+| board | emulator | can it measure a row? | what it lacks |
+| --- | --- | --- | --- |
+| nucleo-f767zi-zephyr | Renode | yes, two rows today | — |
+| mps2-an385-zephyr | QEMU (`qemu:mps2-an385`), already booted by the test harness | yes | a QEMU backend in the twin lane, under icount (phase-557 W10a). It is the gate emulator, with no hardware twin by design. |
+| fvp-aemv8r-smp | Arm FVP | held | waits on a user decision about how FVP boards fit the board-support model. It would also need an AArch64 prologue decoder (the builtins decoder reads Thumb and RISC-V) and an FVP backend in the twin lane. |
+| rpi-pico-w-zephyr | none | no | Renode 1.17 has no RP2040 model, and Wokwi was ruled out (RFC-0115 Amendment 1). Only a bench run on silicon could give a row. |
+| s32z270-rtu0-zephyr | none | no | Renode has the Cortex-R52 CPU but no S32Z board and no LINFlexD UART model (this board's console). A twin means writing both. |
+
+So pico-w and s32z270 take the fallback floor, and so does fvp-aemv8r-smp
+until its decision.
