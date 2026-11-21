@@ -1,0 +1,56 @@
+# Issue 2812 fixture: five parameter-serving nodes, one package each (`../param_five_node_{a,b,c,d}`). Consumed by tests/param_service_heap.rs.
+
+[system]
+name = "param_five_node_threadx"
+rmw = "zenoh"
+domain_id = 0
+# The node turns on `nros/param-services`; a workspace image sizes the six
+# parameter servers from this declaration.
+features = ["param_services"]
+
+[[component]]
+pkg = "param_five_node_a"
+class = "param_five_node_a::ParamA"
+name = "param_a"
+
+[[component]]
+pkg = "param_five_node_b"
+class = "param_five_node_b::ParamB"
+name = "param_b"
+
+[[component]]
+pkg = "param_five_node_c"
+class = "param_five_node_c::ParamC"
+name = "param_c"
+
+[[component]]
+pkg = "param_five_node_d"
+class = "param_five_node_d::ParamD"
+name = "param_d"
+
+[[component]]
+pkg = "param_five_node_e"
+class = "param_five_node_e::ParamE"
+name = "param_e"
+
+# ThreadX on the QEMU RISC-V virt machine, slirp networking (the host is
+# 10.0.2.2). The port is this fixture's own:
+# `nros_tests::alloc::port_of(ThreadxRiscv64, Rust, Params) + 1` (9471): the
+# next slot after the one-node sibling's, so the two can run side by side.
+[image.rv-virt-threadx]
+board = "rv-virt-threadx"
+# The platform's panic handler, so the generated entry does not also link
+# the board's crate-root panic provider (RFC-0077, issue 1305).
+panic = "platform"
+locator = "tcp/10.0.2.2:9471"
+os_config = ["board-net.toml"]
+
+# FreeRTOS on QEMU MPS2-AN385, slirp networking. The port is
+# `nros_tests::alloc::port_of(FreertosMps2, Rust, Params) + 1` (7871), the
+# FreeRTOS twin of the slot above.
+[image.mps2-an385-freertos]
+board = "mps2-an385-freertos"
+# As every in-tree FreeRTOS image states it.
+panic = "own"
+locator = "tcp/10.0.2.2:7871"
+os_config = ["board-net.toml"]

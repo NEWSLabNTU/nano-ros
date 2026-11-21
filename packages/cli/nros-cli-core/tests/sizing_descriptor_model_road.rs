@@ -545,6 +545,12 @@ fn an_unwired_image_states_the_retired_carriers_facts_as_the_wired_road_does() {
         Some(&families)
     );
     assert_eq!(wired.desc.image.infra_families().stated(), Some(&families));
+    // Issue 2812 -- and the parameter-serving nodes the RTOS heaps' per-node
+    // term prices, the same on both roads.
+    assert_eq!(
+        with_tables.desc.image.param_service_nodes().stated(),
+        wired.desc.image.param_service_nodes().stated()
+    );
     // The fixture's closure carries unbounded types, so both roads REFUSE the
     // maximum (the carrier's `derived` guard would not have fired either) --
     // what this asserts is that the unwired road reaches the SAME rule over the

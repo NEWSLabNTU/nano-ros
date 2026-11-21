@@ -242,6 +242,18 @@ pub const DEFAULT_HEAP_SPARE_EXECUTOR_BYTES: usize = 131_072;
 /// rather than of a language lane. 65,536 is 1.43x the worse of the two.
 pub const DEFAULT_HEAP_WORKING_SET_BYTES: usize = 65_536;
 
+// Issue 2812.
+/// What one more PARAMETER-serving node costs heap_4 beyond its
+/// six servers' buffer pairs (`nros_sizing_descriptor::service_heap`). The
+/// working set above was measured on one-node images, so each further node
+/// adds its buffer pairs plus this.
+pub const PARAM_NODE_REMAINDER_BYTES: usize = 0;
+
+// Issue 2812.
+/// The same for one more LIFECYCLE state machine, beyond its
+/// five servers' buffer pairs.
+pub const LIFECYCLE_MACHINE_REMAINDER_BYTES: usize = 0;
+
 /// The FreeRTOS heap default for a zenoh image, in BYTES.
 ///
 /// ```text
@@ -583,5 +595,25 @@ mod tests {
         // app task starves, and lwIP never drains the LAN9118 RX FIFO.
         let sched = FreertosScheduling::default();
         assert!(sched.poll_priority > sched.app_priority);
+    }
+
+    /// `cmake/NanoRosRtosServiceHeap.cmake` prices the cmake road with these
+    /// remainders; issue 2812.
+    #[test]
+    #[cfg(feature = "build-helpers")]
+    fn the_cmake_road_states_these_remainders() {
+        let cmake = include_str!("../../../../cmake/NanoRosRtosServiceHeap.cmake");
+        let cmake_set = |name: &str| -> usize {
+            crate::service_heap::cmake_cache_value(cmake, name)
+                .unwrap_or_else(|| panic!("NanoRosRtosServiceHeap.cmake sets no `{name}`"))
+        };
+        assert_eq!(
+            cmake_set("NROS_FREERTOS_PARAM_NODE_REMAINDER"),
+            PARAM_NODE_REMAINDER_BYTES
+        );
+        assert_eq!(
+            cmake_set("NROS_FREERTOS_LIFECYCLE_MACHINE_REMAINDER"),
+            LIFECYCLE_MACHINE_REMAINDER_BYTES
+        );
     }
 }

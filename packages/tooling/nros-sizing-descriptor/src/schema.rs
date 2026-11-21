@@ -673,6 +673,7 @@ pub struct Image {
     entity_liveliness_tokens: Option<usize>,
     model_nodes: Option<usize>,
     lifecycle_nodes: Option<usize>,
+    param_service_nodes: Option<usize>,
     infra_families: Option<InfraFamilies>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
@@ -703,6 +704,7 @@ impl Image {
         "entity_liveliness_tokens",
         "model_nodes",
         "lifecycle_nodes",
+        "param_service_nodes",
         "infra_families",
     ];
 
@@ -963,6 +965,21 @@ impl Image {
         fact(&self.lifecycle_nodes, "lifecycle_nodes", &self.refused)
     }
 
+    /// Issue 2812 -- how many nodes serve the six PARAMETER services: every
+    /// node of an image that declares the family (the CLI's
+    /// `InfraServices::param_nodes`, the count the queryable pool is sized
+    /// over). Each such node's servers own a request/reply buffer pair on the
+    /// platform heap, so a port whose heap was measured on one node adds a
+    /// per-node term from this. Absent when the family is off or nothing was
+    /// counted, which every consumer reads as no per-node term.
+    pub fn param_service_nodes(&self) -> Fact<usize> {
+        fact(
+            &self.param_service_nodes,
+            "param_service_nodes",
+            &self.refused,
+        )
+    }
+
     /// Which of the runtime's own service families the image builds (see
     /// [`InfraFamilies`]). The ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier's
     /// descriptor home: a MODEL fact (the bringup's `features`, plus, on a
@@ -1082,6 +1099,10 @@ impl Image {
         self.lifecycle_nodes = v;
         self
     }
+    pub fn set_param_service_nodes(&mut self, v: Option<usize>) -> &mut Self {
+        self.param_service_nodes = v;
+        self
+    }
     pub fn set_infra_families(&mut self, v: Option<InfraFamilies>) -> &mut Self {
         self.infra_families = v;
         self
@@ -1125,6 +1146,7 @@ impl Image {
             "entity_liveliness_tokens" => self.entity_liveliness_tokens?.to_string(),
             "model_nodes" => self.model_nodes?.to_string(),
             "lifecycle_nodes" => self.lifecycle_nodes?.to_string(),
+            "param_service_nodes" => self.param_service_nodes?.to_string(),
             "infra_families" => quoted(self.infra_families?.tag()),
             _ => return None,
         })
@@ -1189,6 +1211,7 @@ impl Image {
                 ),
                 ("model_nodes", self.model_nodes.is_some()),
                 ("lifecycle_nodes", self.lifecycle_nodes.is_some()),
+                ("param_service_nodes", self.param_service_nodes.is_some()),
                 ("infra_families", self.infra_families.is_some()),
             ],
         )

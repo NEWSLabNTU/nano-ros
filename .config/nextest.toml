@@ -702,6 +702,15 @@ slow-timeout = { period = "150s", terminate-after = 2 }
 filter = "binary(param_store_carve)"
 slow-timeout = { period = "120s", terminate-after = 2 }
 
+# issue 2812 — the five-node parameter images (rv-virt-threadx and
+# mps2-an385-freertos), each on its own allocator port (`port_of(_, Rust,
+# Params) + 1` = 9471 / 7871), so no group serialization with the one-node
+# images; the same budget: a cold QEMU boot, zenoh discovery, 3 deliveries and
+# the allocator-peak read-back.
+[[profile.default.overrides]]
+filter = "binary(param_service_heap)"
+slow-timeout = { period = "120s", terminate-after = 2 }
+
 # issue 1795 — the RTOS typed-carrier boots: one rv-virt-threadx and one NuttX
 # arm-virt guest, each on its own allocator port (`port_of(_, C, TypedCarrier)` =
 # 9581 / 8381), so no group serialization; the budget is a cold QEMU boot + a

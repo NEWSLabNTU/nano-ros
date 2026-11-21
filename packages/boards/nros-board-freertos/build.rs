@@ -200,8 +200,18 @@ fn main() {
     // `check-knob-single-reader` refuses one. An image that raises its stack
     // therefore raises the heap that hands it out, through one parse.
     let app_stack_bytes = nros_board_common::freertos_build::app_stack_bytes_from_build_env();
-    let zenoh_default_kb = (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok())
-        .then(|| nros_board_common::freertos_config::default_heap_bytes(app_stack_bytes) / 1024);
+    // Issue 2812 -- plus the further parameter-serving nodes and lifecycle
+    // machines the sizing descriptor counts: `default_heap_bytes` was measured
+    // on one-node images, and each further node puts six servers' buffer pairs
+    // on this heap. One node (or no descriptor) adds nothing.
+    let zenoh_default_kb = (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then(|| {
+        use nros_board_common::freertos_config as fc;
+        let extra = nros_board_common::service_heap::extra_bytes_from_build_env(
+            fc::PARAM_NODE_REMAINDER_BYTES,
+            fc::LIFECYCLE_MACHINE_REMAINDER_BYTES,
+        );
+        (fc::default_heap_bytes(app_stack_bytes) + extra) / 1024
+    });
     let heap_kb = match nros_board_common::platform_config::BuildRungs::from_build_env() {
         Some(rungs) => {
             // No lane default means "leave FreeRTOSConfig.h's default alone",

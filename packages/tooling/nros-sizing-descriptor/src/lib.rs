@@ -67,6 +67,9 @@ pub mod receive_ceiling;
 pub use param_request::param_request_max_from;
 mod render;
 mod schema;
+// Issue 2812 — the service families' per-node heap term, shared by every
+// port whose heap was measured on one node.
+pub mod service_heap;
 pub mod vocabulary;
 
 use std::path::{Path, PathBuf};

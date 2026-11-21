@@ -1548,6 +1548,16 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
     // over, per machine. Zero is absent: every consumer then prices one
     // machine when the family is on, the pre-2553 answer.
     img.set_lifecycle_nodes(inputs.infra.map(|i| i.managed_nodes).filter(|&n| n > 0));
+    // Issue 2812 -- the nodes serving the parameter services, from the same
+    // `InfraServices::param_nodes` the queryable pool multiplies by (the
+    // derivation's own count when there is one, else the model's nodes). A
+    // port whose heap was measured on one node adds a term per further node.
+    // Zero is absent: no per-node term.
+    let param_nodes = match inputs.inventory.map(EntityInventory::derive) {
+        Some(Derivation::Derived(k)) => Some(k.param_service_nodes),
+        _ => inputs.infra.map(|i| i.param_nodes(0)),
+    };
+    img.set_param_service_nodes(param_nodes.filter(|&n| n > 0));
     // phase-486 -- the families travel with it, as their two carriers did.
     img.set_infra_families(inputs.infra_families);
     img
@@ -2901,6 +2911,10 @@ fn compose_unwired(
     // Issue 2553 -- and the managed-node count, as in `image_facts`.
     desc.image
         .set_lifecycle_nodes(Some(infra.managed_nodes).filter(|&n| n > 0));
+    // Issue 2812 -- and the parameter-serving nodes, as in `image_facts`.
+    desc.image.set_param_service_nodes(
+        Some(infra.param_nodes(model_nodes.unwrap_or(0))).filter(|&n| n > 0),
+    );
     // phase-486 -- the families wherever the node count is stated: the two
     // carriers always travelled together. (An empty model therefore states
     // neither and keeps no file; its carrier said `none`, which no consumer can
@@ -6000,6 +6014,10 @@ execution:
         );
         assert_eq!(a.desc.image.model_nodes().stated(), Some(&2));
         assert_eq!(b.desc.image.model_nodes().stated(), Some(&2));
+        // Issue 2812 -- the parameter-serving nodes the per-node heap term
+        // prices: both of `a`'s nodes serve the family, `b` serves none.
+        assert_eq!(a.desc.image.param_service_nodes().stated(), Some(&2));
+        assert_eq!(b.desc.image.param_service_nodes().tag(), "absent");
     }
 
     /// phase-534 W3 (acceptance) -- a model saved before rlm v0.3.9 (schema

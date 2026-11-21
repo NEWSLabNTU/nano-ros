@@ -350,6 +350,26 @@ pub const PARAM_TALKER_READY_MARKER: &str = "Publishing Int32 messages";
 /// heap road instead.
 pub const PARAM_STORE_CARVED_MARKER: &str = "carved from the executor backing";
 
+/// Issue 2812 — the ThreadX board's byte-pool peak line
+/// (`nros: byte pool peak N of M bytes (F free) ...`,
+/// `nros-board-threadx/src/entry.rs`), the measurement the pool's working sets
+/// and per-node term are taken from.
+pub const THREADX_BYTE_POOL_PEAK_MARKER: &str = "nros: byte pool peak";
+
+/// Issue 2812 — the FreeRTOS board's heap_4 peak line
+/// (`nros: heap peak N of M bytes (F free) ...`, `freertos_c_entry.c`).
+pub const FREERTOS_HEAP_PEAK_MARKER: &str = "nros: heap peak";
+
+/// Issue 2812 — the ThreadX board's refusal when its byte pool cannot hold an
+/// allocation at boot (`threadx_hooks.c`'s `nros_tx_pool_refuse`).
+pub const THREADX_BYTE_POOL_REFUSED_MARKER: &str = "FATAL: the ThreadX byte pool cannot hold";
+
+/// Issue 2812 — an RMW entity handle the platform heap could not hold
+/// (`nros-rmw-cffi`'s adapter: `heap exhausted: could not allocate N bytes for
+/// a <kind> handle`). The entity is NOT created and the image keeps running, so
+/// a delivery check alone passes over it.
+pub const RMW_HANDLE_HEAP_EXHAUSTED_MARKER: &str = "heap exhausted: could not allocate";
+
 /// Issue 1706 — the executor's named refusal when the HEAP road could not hold
 /// the store (`parameter store refused: needs N bytes in one allocation …`).
 pub const PARAM_STORE_REFUSED_MARKER: &str = "parameter store refused";

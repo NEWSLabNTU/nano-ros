@@ -1453,6 +1453,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
             "`nros run` resolves and runs a named owned entry's own executable (RFC-0071 D19)",
         ),
     ),
+    (
+        "param_service_heap",
+        NonCell::Probe(
+            "the RTOS allocators' per-node service term: five parameter-serving nodes fit the derived ThreadX byte pool and FreeRTOS heap with bytes left free (issue 2812)",
+        ),
+    ),
     ("pkg_index", NonCell::CompileCheck),
     ("platform", NonCell::Static),
     ("platform_header_compile", NonCell::CompileCheck),

@@ -267,6 +267,7 @@ dependencies = [
  "nros-cc-flags",
  "nros-platform",
  "nros-platform-config",
+ "nros-sizing-descriptor",
  "serde",
  "toml",
 ]

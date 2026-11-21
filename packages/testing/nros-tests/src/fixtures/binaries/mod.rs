@@ -6941,6 +6941,43 @@ pub fn build_param_store_threadx_riscv64() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the issue-2812 `param-five-node` fixture binary.
+static PARAM_FIVE_NODE_THREADX_RISCV64_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt issue-2812 rv-virt-threadx image with FIVE
+/// parameter-serving nodes: workspace row `threadx-riscv64-param-five-node`,
+/// the generated entry of the bringup's `[image.rv-virt-threadx]`, built with
+/// the other threadx-riscv64 workspace rows.
+pub fn build_param_five_node_threadx_riscv64() -> TestResult<&'static Path> {
+    PARAM_FIVE_NODE_THREADX_RISCV64_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_cross_entry(
+                "threadx-riscv64-param-five-node",
+                "riscv64gc-unknown-none-elf",
+                "rv_virt_threadx_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Cached path to the issue-2812 `param-five-node` FreeRTOS image.
+static PARAM_FIVE_NODE_FREERTOS_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt issue-2812 mps2-an385-freertos image with FIVE
+/// parameter-serving nodes: workspace row `freertos-param-five-node`, the
+/// generated entry of the bringup's `[image.mps2-an385-freertos]`.
+pub fn build_param_five_node_freertos() -> TestResult<&'static Path> {
+    PARAM_FIVE_NODE_FREERTOS_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_cross_entry(
+                "freertos-param-five-node",
+                "thumbv7m-none-eabi",
+                "mps2_an385_freertos_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the issue-1706 `param-store-nuttx-qemu-arm` fixture binary.
 static PARAM_STORE_NUTTX_QEMU_ARM_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
