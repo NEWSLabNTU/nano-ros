@@ -361,8 +361,7 @@ and sees it listed, with no CLI edit.
     ends with a Book line, and an unknown name is refused with the nearest
     ones.
   - `image` joins the Workspace group of `nros --help`.
-- **W7b, `nros image check --no-alloc` (issue 2667), done locally
-  2026-11-21, its own PR:**
+- **W7b, `nros image check --no-alloc` (issue 2667), done 2026-11-22:**
   - The reader is Rust, `nros-cli-core/src/alloc_scan.rs`: the four
     families, the whole-name rule, the funnel and the platform-object
     allowances of the old `scripts/check-no-alloc-image.py`. It reads the
@@ -387,8 +386,24 @@ and sees it listed, with no CLI edit.
     and C++ images clean, and the `nros` binary's 16 findings the same 16.
   - Left for issue 2667: its acceptance's probed Book step on the Eigen
     talker. The own-library page names the verb in prose for now.
-- **W7c, open:** `--nodes` / `--topics` from the plan, and the Tutorial
-  probe step that compares them with `ros2 node list` / `ros2 topic list`.
+- **W7c, open (part 1 done locally 2026-11-21):**
+  - `nros image show <image> --nodes` prints the nodes the plan starts
+    (PLANNED NODE, PACKAGE, RUNS), and `--topics` the topics, services and
+    actions with the nodes on each side, from the model the last `nros
+    configure` resolved, read through `model_gate::open`, which resolves
+    nothing. No model names `nros configure`; a stale one gives the gate's
+    refusal and the same remedy; an image that runs its own entry package
+    says no launch file plans it. `--json` adds `planned_nodes` /
+    `planned_endpoints` to `nros.image.show.v1`.
+  - Measured on a copy of `examples/linux/rust/talker`, configured: `/talker`
+    is listed, and `--topics` finds none, because the model carries wiring
+    only where a contract declares it.
+  - Part 2: `--topics` from the image's sizing descriptor, whose
+    `[[endpoint]]` rows the configure probe records (the talker's
+    `/chatter` is there). Locating that file for an image is W3's lookup
+    (`image show --derived` reads the same file), so part 2 lands with or
+    after W3, without a second path rule. Then the Tutorial probe step
+    against `ros2 node list` / `ros2 topic list`.
 
 `nros image list` prints the workspace's images and bringups (board, RMW,
 launch file). `nros image show <image>` adds its packages and, with

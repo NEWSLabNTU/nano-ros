@@ -1123,6 +1123,8 @@ Arguments:
 Options:
       --workspace <WORKSPACE>  Workspace root. Default: the workspace the current directory is in
       --json                   Print one JSON object instead of text
+      --nodes                  Print the nodes the image's plan will start
+      --topics                 Print the topics, services and actions the image's plan will create
   -h, --help                   Print help
   -V, --version                Print version
 ```

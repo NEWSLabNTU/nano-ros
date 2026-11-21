@@ -4,9 +4,12 @@
 //! RMW and launch file, read from each `system.toml` and never planned, so it
 //! is cheap and works before anything is configured. `show` adds what the
 //! build resolves for one image (its platform, entry package, profile and the
-//! packages it builds) through `plan_query`, which writes nothing. `check
-//! --no-alloc` reads the image `nros build` made and reports every allocation
-//! symbol it links ([`crate::alloc_scan`], issue 2667).
+//! packages it builds) through `plan_query`, which writes nothing. With
+//! `--nodes` / `--topics` it prints what the image's plan will create: the
+//! nodes, and the topics, services and actions, read from the model the last
+//! `nros configure` resolved, never resolving one itself. `check --no-alloc`
+//! reads the image `nros build` made and reports every allocation symbol it
+//! links ([`crate::alloc_scan`], issue 2667).
 
 use std::path::{Path, PathBuf};
 
@@ -99,6 +102,12 @@ pub struct ShowArgs {
     /// Print one JSON object instead of text.
     #[arg(long)]
     pub json: bool,
+    /// Print the nodes the image's plan will start.
+    #[arg(long)]
+    pub nodes: bool,
+    /// Print the topics, services and actions the image's plan will create.
+    #[arg(long)]
+    pub topics: bool,
 }
 
 /// One image as its bringup declares it.
@@ -112,6 +121,16 @@ pub struct ImageItem {
     pub board: Option<String>,
     pub rmw: Option<String>,
     pub launch: Option<String>,
+    /// The bringup package's directory.
+    #[serde(skip)]
+    pub bringup_dir: PathBuf,
+    /// The entry package the image runs instead of a launch file, when it
+    /// names one.
+    #[serde(skip)]
+    pub entry: Option<String>,
+    /// The launch arguments `[image.<id>] args` binds.
+    #[serde(skip)]
+    pub launch_args: Vec<(String, String)>,
 }
 
 /// One image with what the build resolves for it.
@@ -125,6 +144,36 @@ pub struct ImageShow {
     pub capabilities: Vec<String>,
     /// The workspace packages this image builds, when the plan states them.
     pub packages: Option<Vec<String>>,
+    /// With `--nodes`: the nodes the plan starts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub planned_nodes: Option<Vec<PlannedNode>>,
+    /// With `--topics`: the topics, services and actions the plan creates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub planned_endpoints: Option<Vec<PlannedEndpoint>>,
+}
+
+/// One node an image's plan starts.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PlannedNode {
+    /// Its name in the plan (the ROS name when the launch file gives one).
+    pub name: String,
+    pub package: Option<String>,
+    /// The executable, or the component plugin and its container.
+    pub runs: String,
+}
+
+/// One topic, service or action an image's plan creates.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PlannedEndpoint {
+    /// `topic`, `service` or `action`.
+    pub kind: &'static str,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: String,
+    /// Publishers, servers: the nodes on the providing side.
+    pub providers: Vec<String>,
+    /// Subscribers, clients: the nodes on the using side.
+    pub users: Vec<String>,
 }
 
 pub fn run(args: Args) -> Result<()> {
@@ -167,7 +216,7 @@ pub fn items(root: &Path) -> Result<Vec<ImageItem>> {
     }
     let mut out: Vec<ImageItem> = all
         .iter()
-        .map(|(bringup, _, id, block)| ImageItem {
+        .map(|(bringup, dir, id, block)| ImageItem {
             name: if count[id.as_str()] == 1 {
                 id.clone()
             } else {
@@ -178,6 +227,13 @@ pub fn items(root: &Path) -> Result<Vec<ImageItem>> {
             board: block.board.clone(),
             rmw: block.rmw.clone(),
             launch: block.launch.clone(),
+            bringup_dir: dir.clone(),
+            entry: block.entry.clone(),
+            launch_args: block
+                .args
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         })
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -244,7 +300,17 @@ fn plan_of(
 fn show(args: ShowArgs) -> Result<()> {
     let root = root(args.workspace)?;
     let (declared, plan) = plan_of(&root, Some(&args.image))?;
+    let model = if args.nodes || args.topics {
+        Some(planned_model(&declared)?)
+    } else {
+        None
+    };
     let item = ImageShow {
+        planned_nodes: model.as_ref().filter(|_| args.nodes).map(planned_nodes),
+        planned_endpoints: model
+            .as_ref()
+            .filter(|_| args.topics)
+            .map(planned_endpoints),
         declared,
         platform: plan.platform,
         entry_package: plan.entry_package,
@@ -470,6 +536,139 @@ pub fn render_list(items: &[ImageItem]) -> String {
     t.render()
 }
 
+/// The model the last `nros configure` resolved for the image, through the
+/// gate every reader uses: resolved for nothing here, and refused when stale.
+fn planned_model(d: &ImageItem) -> Result<ros_launch_manifest_model::SystemModel> {
+    use nros_orchestration_ir::model_location::launch_to_model_rel;
+    if let (Some(entry), None) = (&d.entry, &d.launch) {
+        bail!(
+            "image `{}` runs its own entry package `{entry}`, which starts its nodes \
+             itself: no launch file plans them, so there is no plan to print",
+            d.name
+        );
+    }
+    let rel = launch_to_model_rel(&d.bringup_dir, d.launch.as_deref(), &d.launch_args)
+        .map_err(|e| eyre::eyre!("image `{}`: {e}", d.name))?;
+    let path = match crate::model_gate::open(&d.bringup_dir, &rel) {
+        Ok(Some(p)) => p,
+        Ok(None) => bail!(
+            "image `{}` has no plan yet. Run `nros configure` first: it resolves what the \
+             image's launch file starts",
+            d.name
+        ),
+        Err(r) => bail!(
+            "image `{}`: {r}\n  Run `nros configure` to plan it again",
+            d.name
+        ),
+    };
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| eyre::eyre!("reading {}: {e}", path.display()))?;
+    ros_launch_manifest_model::SystemModel::from_yaml_str(&raw)
+        .map_err(|e| eyre::eyre!("reading {}: {e}", path.display()))
+}
+
+/// The nodes a model starts, in launch order.
+pub fn planned_nodes(m: &ros_launch_manifest_model::SystemModel) -> Vec<PlannedNode> {
+    m.structure
+        .nodes
+        .iter()
+        .map(|(name, n)| PlannedNode {
+            name: name.clone(),
+            package: n.pkg.clone(),
+            runs: match (&n.exec, &n.plugin, &n.container) {
+                (Some(e), _, _) => e.clone(),
+                (None, Some(p), Some(c)) => format!("{p} in {c}"),
+                (None, Some(p), None) => p.clone(),
+                (None, None, _) => String::new(),
+            },
+        })
+        .collect()
+}
+
+/// The node an endpoint ref (`<node>/<endpoint>`) belongs to.
+fn endpoint_node(r: &str) -> String {
+    r.rsplit_once('/')
+        .map_or(r, |(n, _)| if n.is_empty() { r } else { n })
+        .to_string()
+}
+
+fn nodes_of(refs: &[String]) -> Vec<String> {
+    let mut v: Vec<String> = refs.iter().map(|r| endpoint_node(r)).collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// The topics, then services, then actions a model creates, each sorted.
+pub fn planned_endpoints(m: &ros_launch_manifest_model::SystemModel) -> Vec<PlannedEndpoint> {
+    let st = &m.structure;
+    let topics = st.topics.iter().map(|(name, w)| PlannedEndpoint {
+        kind: "topic",
+        name: name.clone(),
+        ty: w.msg_type.clone(),
+        providers: nodes_of(&w.publishers),
+        users: nodes_of(&w.subscribers),
+    });
+    let wired = |kind: &'static str,
+                 map: &std::collections::BTreeMap<
+        String,
+        ros_launch_manifest_model::ServiceWiring,
+    >| {
+        map.iter()
+            .map(|(name, w)| PlannedEndpoint {
+                kind,
+                name: name.clone(),
+                ty: w.srv_type.clone(),
+                providers: nodes_of(&w.server),
+                users: nodes_of(&w.client),
+            })
+            .collect::<Vec<_>>()
+    };
+    topics
+        .chain(wired("service", &st.services))
+        .chain(wired("action", &st.actions))
+        .collect()
+}
+
+fn joined(v: &[String]) -> String {
+    if v.is_empty() {
+        "-".to_string()
+    } else {
+        v.join(", ")
+    }
+}
+
+pub fn render_planned_nodes(nodes: &[PlannedNode]) -> String {
+    let mut t = Table::new(
+        &["PLANNED NODE", "PACKAGE", "RUNS"],
+        "The plan starts no node.",
+    );
+    for n in nodes {
+        t.row(vec![n.name.clone(), dash(&n.package), n.runs.clone()]);
+    }
+    t.render()
+}
+
+pub fn render_planned_endpoints(eps: &[PlannedEndpoint]) -> String {
+    if eps.is_empty() {
+        return "The plan records no topic, service or action: the image's launch names its \
+                nodes, not what they wire.\n"
+            .to_string();
+    }
+    let mut t = Table::new(&["PLANNED", "KIND", "TYPE", "FROM", "TO"], "");
+    for e in eps {
+        t.row(vec![
+            e.name.clone(),
+            e.kind.to_string(),
+            e.ty.clone(),
+            joined(&e.providers),
+            joined(&e.users),
+        ]);
+    }
+    t.footer("FROM is the publisher or server side, TO the subscriber or client side.");
+    t.render()
+}
+
 pub fn render_show(i: &ImageShow) -> String {
     let d = &i.declared;
     let mut out = frame::show_head(
@@ -492,6 +691,14 @@ pub fn render_show(i: &ImageShow) -> String {
                 .unwrap_or_default(),
         );
     out.push_str(&f.render());
+    if let Some(n) = &i.planned_nodes {
+        out.push('\n');
+        out.push_str(&render_planned_nodes(n));
+    }
+    if let Some(e) = &i.planned_endpoints {
+        out.push('\n');
+        out.push_str(&render_planned_endpoints(e));
+    }
     out.push_str(&frame::book_line(BOOK_PAGE));
     out
 }
@@ -508,7 +715,62 @@ mod tests {
             board: Some("linux".into()),
             rmw: None,
             launch: Some("system.launch.xml".into()),
+            bringup_dir: PathBuf::new(),
+            entry: None,
+            launch_args: Vec::new(),
         }
+    }
+
+    fn model() -> ros_launch_manifest_model::SystemModel {
+        ros_launch_manifest_model::SystemModel::from_yaml_str(
+            "meta:\n  version: 1\nstructure:\n  nodes:\n    /talker:\n      scope: system.launch.xml\n      \
+             pkg: demo_nodes\n      exec: talker\n      node_name: talker\n    /listener:\n      \
+             scope: system.launch.xml\n      pkg: demo_nodes\n      exec: listener\n      \
+             node_name: listener\n  topics:\n    /chatter:\n      type: std_msgs/msg/String\n      \
+             pub:\n      - /talker/chatter\n      sub:\n      - /listener/chatter\n",
+        )
+        .expect("fixture model parses")
+    }
+
+    #[test]
+    fn the_planned_nodes_are_the_model_s_in_launch_order() {
+        let nodes = planned_nodes(&model());
+        assert_eq!(
+            nodes.iter().map(|n| n.name.as_str()).collect::<Vec<_>>(),
+            ["/talker", "/listener"]
+        );
+        assert_eq!(nodes[0].runs, "talker");
+        let text = render_planned_nodes(&nodes);
+        assert!(text.starts_with("PLANNED NODE"), "{text}");
+    }
+
+    #[test]
+    fn a_planned_topic_names_the_nodes_on_each_side() {
+        let eps = planned_endpoints(&model());
+        assert_eq!(eps.len(), 1);
+        assert_eq!(eps[0].kind, "topic");
+        assert_eq!(eps[0].ty, "std_msgs/msg/String");
+        assert_eq!(eps[0].providers, ["/talker"]);
+        assert_eq!(eps[0].users, ["/listener"]);
+        assert!(render_planned_endpoints(&eps).contains("/chatter"));
+        assert!(render_planned_endpoints(&[]).contains("no topic"));
+    }
+
+    #[test]
+    fn an_image_with_no_plan_names_nros_configure() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("system.toml"), "").unwrap();
+        let mut i = item("linux", "linux", "demo_bringup");
+        i.bringup_dir = tmp.path().to_path_buf();
+        let e = planned_model(&i).unwrap_err().to_string();
+        assert!(e.contains("nros configure"), "{e}");
+        i.entry = Some("talker_entry".into());
+        i.launch = None;
+        let e = planned_model(&i).unwrap_err().to_string();
+        assert!(
+            e.contains("runs its own entry package `talker_entry`"),
+            "{e}"
+        );
     }
 
     #[test]
