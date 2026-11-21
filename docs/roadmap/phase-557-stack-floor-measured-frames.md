@@ -867,6 +867,34 @@ every other site at today's binding. It changes no shipped floor.
   heuristic, the deepest of 8 fixed orders. Passing both on both images
   reopens the solver item, with W7f.3 for the bare-metal image.
 
+**Checkpoint 2 result (2026-11-22): STOP.** Both bounds fail on both images.
+
+| image (root) | largest reachable SCC: today | with resolved sites bound | bar | exact search |
+| --- | ---: | ---: | ---: | --- |
+| nucleo C talker (`main`) | 2,255 | 2,155 | 300 | budget out at 10^7 expansions, before and after (8.8 / 9.6 s) |
+| nucleo Rust talker (`rust_main`) | 1,093 | 994 | 300 | budget out at 10^7 expansions, before and after (12.8 / 10.3 s) |
+
+- **What was bound.** Every RESOLVED site (W7f.0-W7f.2's classifier at
+  level 2) was bound to its channel's set, an empty set included. A caller
+  keeps today's edges if ANY of its sites is unresolved, so the bound graph
+  is never looser than today's. That re-bound 102 of the 724 callers with
+  indirect sites on the C talker, and 93 of 400 on the Rust talker.
+- **Why it falls short.** The share is 67-71 % of C sites (W7f.2), but the
+  roughly 30 % left keep their coarse type binding. Since one unresolved
+  site keeps its whole caller's edges, the cycle stays at about 2,000
+  functions. Shrinking it 7x would take more than the channel rules can
+  read: the unresolved sites are loads from memory the rules do not place,
+  phi/select merges, structs reachable across Rust<->C, and copies from
+  untyped memory.
+- **Verdict, as set before the run.** W7f stops here. W7f.3 is not built,
+  and the floors stay the accepted heuristic, the deepest of 8 fixed orders.
+  Read them as what they are: lower bounds on the worst order, held safe by
+  the measured peaks.
+- **What is kept.** The classifier (`--classify-sites`, `--level 0-2`) and
+  the exact search with its budget (`NROS_STACK_W7F_CHECKPOINT`). Both are
+  self-tested in the walker's `--self-test`, so a later reopening
+  re-measures in one run.
+
 **Acceptance.**
 
 - Every site is either bound through a trusted channel or keeps today's

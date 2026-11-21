@@ -184,7 +184,7 @@ class Analysis:
         self.ch: dict[Key, Channel] = {}
         self.sites: list[Site] = []
         self.escaped: set[str] = set()
-        self.direct_callers: dict[str, list[tuple[Func, list[str]]]] = {}
+        self.direct_callers: dict[str, list[tuple[Func, list[str], Module]]] = {}
         self._memdst: set[tuple[str, int]] = set()
         self._index()
         for m in modules:
@@ -826,6 +826,29 @@ def classify(rust_texts: list[str], c_texts: list[str], level: int = 0) -> dict:
     out["median"] = statistics.median(sz) if sz else 0
     out["max"] = max(sz) if sz else 0
     del out["sizes"]
+    return out
+
+
+def resolved_sets(rust_texts: list[str], c_texts: list[str], level: int = 2
+                  ) -> dict[str, list[set[str] | None]]:
+    """Per caller, each indirect site's targets when the site is RESOLVED
+    (its channel's set, possibly empty), or None when it keeps the walk's
+    binding (untrusted, a channel the rules do not read, or a vtable slot,
+    which W7 binds). For Checkpoint 2's measurement only."""
+    Analysis._opaque = {}
+    Analysis._seen_params = set()
+    mods = [parse_module(t, "rust") for t in rust_texts] + \
+           [parse_module(t, "c") for t in c_texts]
+    an = Analysis(mods, level=level)
+    sol = an.solve()
+    out: dict[str, list[set[str] | None]] = {}
+    for st in an.sites:
+        val: set[str] | None = None
+        if not st.vtable and st.key is not None:
+            trusted, fns, _ = sol.get(st.key, (True, set(), []))
+            if trusted:
+                val = set(fns)
+        out.setdefault(st.caller, []).append(val)
     return out
 
 
