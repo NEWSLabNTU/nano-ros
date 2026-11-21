@@ -337,7 +337,10 @@ variants of each unit. So the walk's flags do not thrash a shared dir.
 ### W5b — The other cargo-road platforms state a stack
 
 - **Status:** OPEN. Bare metal is DONE (2026-11-14, #3757); NuttX is DONE
-  (2026-11-21); ThreadX is open (issue 2514).
+  (2026-11-21); ThreadX is open (issue 2514). ThreadX on Linux is reported
+  not checked, with its reason (2026-11-22): the port runs each thread on a
+  host pthread stack the build does not size
+  ([issue 2800](../issues/2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
 
 On the cargo road, ThreadX, NuttX and bare metal stated no stack, so W5
 reports their images as not checked. Each joins when its board build script
