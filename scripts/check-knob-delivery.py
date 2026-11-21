@@ -99,6 +99,9 @@ DERIVED_PAIRS = {
     "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS": ("NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS",),
     "NROS_DERIVED_EXECUTOR_MAX_CBS": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_CBS",),
     "NROS_DERIVED_EXECUTOR_MAX_NODES": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",),
+    # Issue 2780 -- the platform heap's parameter-service floor, priced in
+    # zephyr/cmake/nros_heap_floor.cmake from the inventory's node count.
+    "NROS_DERIVED_MEMORY_HEAP_BYTES": ("NROS_RESOLVED_NROS_MEMORY_HEAP_BYTES",),
     # issue 1198 -- the executor's OTHER fixed table, derivable since
     # phase-448 W6. It sat on a plain `_nros_resolve_knob` with a Kconfig
     # default of 8, so every Zephyr image carried 8 scheduling-context slots

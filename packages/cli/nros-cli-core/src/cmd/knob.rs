@@ -595,15 +595,15 @@ pub fn condition_text(cond: &str) -> &str {
 
 const CONDITIONS: &[(&str, &str)] = &[
     ("NROS_RMW_CYCLONEDDS", "the image uses Cyclone DDS"),
-    ("NROS_CAPABILITY_LIFECYCLE", "the image has lifecycle nodes"),
     (
-        "RUST && (NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAMS_STORE)",
-        "the image has Rust code and parameter services or a parameter store",
+        "NROS_CAPABILITY_LIFECYCLE",
+        "the image has lifecycle nodes (-1: derived from its state machines and nodes)",
     ),
     (
-        "NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAMS_STORE",
-        "the image has parameter services or a parameter store",
+        "NROS_CAPABILITY_PARAM_SERVICES",
+        "the image has parameter services (-1: derived from the nodes serving them)",
     ),
+    ("NROS_PARAMS_STORE", "the image seeds a parameter store"),
     ("RUST", "the image has Rust code"),
     ("MP_MAX_NUM_CPUS >= 8", "the image runs on 8 or more CPUs"),
     ("MP_MAX_NUM_CPUS >= 4", "the image runs on 4 or more CPUs"),
