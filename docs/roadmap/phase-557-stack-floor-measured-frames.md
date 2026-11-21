@@ -1319,5 +1319,5 @@ Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when
 | [#2653](../issues/2653-cmake-c-stack-walk-untyped-sites.md) | The FreeRTOS C tutorial's walk types 73 of 242 indirect C sites (W7d's typing, on the cmake road); the 169 left keep its walk at twice the stack it ships, so its row is a `[[drift]]` row (phase-567 W5a). |
 | [#2460](../issues/archived/2460-stack-floor-mps2-zephyr-walk-refused.md) | The mps2-an385 Zephyr walk is refused: hand-read frames are right for one set of flags, and builtins have no frame. W9a and W9b. |
 | [#2550](../issues/2550-stack-walk-order-dependent-under-cycles.md) | The walk's depth depends on callee order under the large SCC. W9c measures the band and W9d gates on its top. |
-| [#2688](../issues/2688-stack-floor-drift-host-repro.md) | One tree walks differently in CI and on a host. W9c records the environment with each row. |
+| [#2688](../issues/archived/2688-stack-floor-drift-host-repro.md) | One tree walks differently in CI and on a host. W9c records the environment with each row. |
 | [#2693](../issues/2693-stack-floor-check-off-on-tiarmclang.md) | The check is OFF for TI Arm Clang images. W9e; its home stays phase-575 W3. |
