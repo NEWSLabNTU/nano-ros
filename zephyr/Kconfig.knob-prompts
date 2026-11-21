@@ -129,7 +129,7 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
     int "Per-subscription receive buffer size in bytes (-1 = derive)"
 
 config NROS_ZEPHYR_HEAP_SIZE
-    int "Application heap arena size (bytes)"
+    int "Application heap arena size (bytes, -1 = derive)"
 
 if NROS_RMW_XRCE
 

@@ -2163,6 +2163,10 @@ pub struct DerivedEntityKnobs {
     /// Issue 1270 -- how many nodes carry the six parameter services; zero
     /// when the bringup does not declare `param_services`.
     pub param_service_nodes: usize,
+    /// Issue 2780 -- the REP-2002 state machines the image registers
+    /// ([`InfraServices::lifecycle_machines`]), each with five servers that own
+    /// a buffer pair on the platform heap. Zero when lifecycle is off.
+    pub lifecycle_machines: usize,
     /// `NROS_EXECUTOR_MAX_NODES` -- one node per declared component.
     ///
     /// A `ComponentNode` constructor is one `Node::create` is one node NAME,
@@ -2454,6 +2458,7 @@ impl DerivedEntityKnobs {
             max_queryables: m(|k| k.max_queryables),
             infra_queryables: m(|k| k.infra_queryables),
             param_service_nodes: m(|k| k.param_service_nodes),
+            lifecycle_machines: m(|k| k.lifecycle_machines),
             max_nodes: m(|k| k.max_nodes),
             max_liveliness: m(|k| k.max_liveliness),
             entity_liveliness_tokens: m(|k| k.entity_liveliness_tokens),
@@ -5204,6 +5209,7 @@ impl EntityInventory {
             + infra_publishers
             + contract_reporters;
         let param_service_nodes = self.infra.param_nodes(components);
+        let lifecycle_machines = self.infra.lifecycle_machines();
         // Issue 1378 -- plus one cache queryable per TRANSIENT_LOCAL publisher.
         // Such a publisher retains its last sample and declares a queryable on
         // `<keyexpr>/@adv/pub/<zid>/<eid>/_` so a late joiner's history query
@@ -5364,6 +5370,7 @@ impl EntityInventory {
             max_queryables,
             infra_queryables,
             param_service_nodes,
+            lifecycle_machines,
             max_nodes,
             max_liveliness,
             entity_liveliness_tokens,
@@ -6504,6 +6511,22 @@ impl EntityInventory {
                 s.push_str(&format!(
                     "set(NROS_ENTITY_APP_QUERYABLES {})\n",
                     k.max_queryables - k.infra_queryables
+                ));
+                // Issue 2780 -- the nodes serving the six parameter services,
+                // as the count the Zephyr configure prices the platform heap
+                // from: each such node owns its own request/reply buffer pair
+                // per service, so a heap sized for one node runs dry at boot on
+                // four. Not a knob (no `NROS_DERIVED_` prefix): it reaches no
+                // compiler, only `_nros_zephyr_heap_floor`.
+                s.push_str(&format!(
+                    "set(NROS_ENTITY_PARAM_SERVICE_NODES {})\n",
+                    k.param_service_nodes
+                ));
+                // ... and the lifecycle state machines, priced the same way: five
+                // servers each, on the same buffer size.
+                s.push_str(&format!(
+                    "set(NROS_ENTITY_LIFECYCLE_MACHINES {})\n",
+                    k.lifecycle_machines
                 ));
                 // The transient-local retention pool, from the SAME number the
                 // table above counted one cache queryable per. Issue 1572: a
@@ -9676,6 +9699,10 @@ execution:
         };
         let feature = derive(&infra_model("lifecycle"));
         let none = derive(&infra_model(""));
+        // Issue 2780 -- the machine count the Zephyr heap floor prices: one
+        // machine for the feature switch, none without it.
+        assert_eq!(feature.lifecycle_machines, 1);
+        assert_eq!(none.lifecycle_machines, 0);
 
         for autostart in [
             ros_launch_manifest_model::Autostart::Active,
@@ -9807,6 +9834,12 @@ execution:
         assert!(
             cmake.contains("set(NROS_ENTITY_APP_QUERYABLES 2)\n"),
             "the application's share is published: {cmake}"
+        );
+        // Issue 2780 -- and the node count the Zephyr heap floor is priced
+        // from: two nodes carry the six servers each (the twelve above).
+        assert!(
+            cmake.contains("set(NROS_ENTITY_PARAM_SERVICE_NODES 2)\n"),
+            "the parameter-service node count is published: {cmake}"
         );
     }
 
@@ -13098,6 +13131,7 @@ mod shared_runtime_tests {
             max_queryables: 0,
             infra_queryables: 0,
             param_service_nodes: 0,
+            lifecycle_machines: 0,
             max_nodes: 0,
             max_liveliness: 0,
             entity_liveliness_tokens: 0,
