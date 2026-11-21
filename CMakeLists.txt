@@ -206,6 +206,14 @@ if(NOT NROS_BOARD AND NOT DEFINED NROS_LEAF_SYSTEM
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosLeafEntityFacts.cmake")
     nros_record_leaf_entity_facts("${CMAKE_SOURCE_DIR}")
 endif()
+# phase-583 (RFC-0071 D20) -- a HOST census build states every program it
+# builds (`nros/census-program.txt`), whether or not the project has a
+# `system.toml`: an owned entry's package has none, and its census must know
+# when it builds several programs, or it would size them all from the first.
+if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosLeafEntityFacts.cmake")
+    _nros_census_program_arm()
+endif()
 if(NOT NROS_PLATFORM MATCHES "^nuttx")
     # Phase 241.D3-rev — single-runtime model: the umbrella FFI staticlib
     # (`libnros_cpp.a`, for C and C++ alike since phase-578 W8: nros-c is an

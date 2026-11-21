@@ -1816,6 +1816,7 @@ dependencies = [
  "nros-rosgraph-msgs",
  "nros-serdes",
  "nros-serdes-packed",
+ "nros-sizing-descriptor",
  "nros-std-msgs",
  "nvidia-ivc",
  "once_cell",
