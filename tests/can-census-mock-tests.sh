@@ -22,6 +22,17 @@
 #      outside a census build, links the same mock through
 #      `nros_link_can_census_mock` (the call every probe executable the CLI
 #      renders makes) and runs against it as A does
+#   D  issue 2822: the driver is called ONLY from a component archive the
+#      entry reaches through a `<pkg>_<exec>_component` INTERFACE wrapper,
+#      linked before `nros_entry_can_image` as the entry's sidecar does, and
+#      from a second archive linked after it. Linking the mock to the entry
+#      alone put it on the link line before both archives, so ld dropped it:
+#      `libcomp_lib.a(comp.c.o): undefined reference to nros_platform_can_open`
+#   E  the same component layout through `nros_link_can_census_mock` (the
+#      metadata probe's road), outside a census build
+#   F  the same layout with the `socketcan` backend (`nros_can_socketcan`, an
+#      image that names a device): the component archives link against it.
+#      Link only; the device's own road is `just check can-image-device`
 #
 # A configure + build of one C file, seconds. PRECONDITIONS ARE HARD FAILURES
 # (issue 1758): no cmake or no cc, no verdict.
@@ -136,6 +147,87 @@ if [ "$rc" -eq 0 ]; then
     ok "the CLI's probe project links it into every probe executable"
 else
     fail "$probe_rs renders no nros_link_can_census_mock call"
+fi
+
+# D/E -- issue 2822. The driver calls live in a component archive only; the
+# entry's own source calls the component.
+mkdir -p "$T/comp"
+sed 's/^int main(void) {$/int comp_run(void) {/' "$T/src/main.c" >"$T/comp/comp.c"
+cat >"$T/comp/late.c" <<'C'
+#include <nros/platform_can.h>
+void late_close(void) {
+    static nros_platform_can_t can;
+    nros_platform_can_close(&can);
+}
+C
+cat >"$T/comp/main.c" <<'C'
+int comp_run(void);
+void late_close(void);
+int main(void) {
+    late_close();
+    return comp_run();
+}
+C
+comp_cmake() {
+    # $1: the CAN hook to call between the two links.
+    cat <<CMAKE
+cmake_minimum_required(VERSION 3.22)
+project(can_component_probe C)
+include("$ROOT/cmake/NanoRosCanImage.cmake")
+add_library(comp_lib STATIC comp.c)
+target_include_directories(comp_lib PRIVATE "$ROOT/packages/platform/nros-platform-api/include")
+add_library(comp_pkg_comp_component INTERFACE)
+target_link_libraries(comp_pkg_comp_component INTERFACE comp_lib)
+add_library(late_lib STATIC late.c)
+target_include_directories(late_lib PRIVATE "$ROOT/packages/platform/nros-platform-api/include")
+add_executable(probe main.c)
+target_link_libraries(probe PRIVATE comp_pkg_comp_component)
+$1
+target_link_libraries(probe PRIVATE late_lib)
+CMAKE
+}
+comp_case() {
+    # $1: row, $2: build dir, $3: hook, $4: census env (1 or empty).
+    local row="$1" dir="$2" hook="$3" census="$4" src="$T/comp-$1"
+    mkdir -p "$src"
+    cp "$T/comp/comp.c" "$T/comp/late.c" "$T/comp/main.c" "$src/"
+    comp_cmake "$hook" >"$src/CMakeLists.txt"
+    local ok_cfg=0
+    if [ -n "$census" ]; then
+        NROS_LEAF_CENSUS_HOST=1 cmake -S "$src" -B "$dir" >"$dir.log" 2>&1 || ok_cfg=1
+    else
+        env -u NROS_LEAF_CENSUS_HOST cmake -S "$src" -B "$dir" >"$dir.log" 2>&1 || ok_cfg=1
+    fi
+    if [ "$ok_cfg" -eq 0 ] && cmake --build "$dir" >>"$dir.log" 2>&1; then
+        out="$("$dir/probe")"
+        if nros_grep_q "^open=0 send=0 fd=-3 recv=-4 open_fd=0 fd_send=0 store=empty\$" <<<"$out"; then
+            ok "$row: the component archives link and run against the mock ($out)"
+        else
+            fail "$row: unexpected mock behaviour: $out"
+        fi
+    else
+        fail "$row: the component archives do not link the mock: $(grep -m3 -E 'undefined reference|Error' "$dir.log")"
+    fi
+}
+
+echo "D  census host build: the driver called only from component archives"
+comp_case D "$T/d" "nros_entry_can_image(probe linux)" 1
+
+echo "E  metadata probe road: the driver called only from component archives"
+comp_case E "$T/e" "nros_link_can_census_mock(probe)" ""
+
+echo "F  socketcan backend: the driver called only from component archives"
+mkdir -p "$T/comp-F"
+cp "$T/comp/comp.c" "$T/comp/late.c" "$T/comp/main.c" "$T/comp-F/"
+# The device hook needs the CLI's codec; the placement under test is the
+# backend link, so drive it directly as `nros_entry_can_image` does.
+comp_cmake "_nros_can_socketcan_library()
+_nros_can_link_backend(probe nros_can_socketcan)" >"$T/comp-F/CMakeLists.txt"
+if env -u NROS_LEAF_CENSUS_HOST cmake -S "$T/comp-F" -B "$T/f" >"$T/f.log" 2>&1 \
+    && cmake --build "$T/f" >>"$T/f.log" 2>&1; then
+    ok "F: the component archives link against the socketcan backend"
+else
+    fail "F: the component archives do not link the socketcan backend: $(grep -m3 -E 'undefined reference|Error' "$T/f.log")"
 fi
 
 if [ "$FAILURES" -ne 0 ]; then

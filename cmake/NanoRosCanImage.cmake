@@ -43,6 +43,10 @@
 # Links the census mock into a host target that is not an entry: the
 # metadata probe's one-node executables (issue 2787), which construct the same
 # node the census counts and so call the same driver.
+#
+# Every CAN backend archive (the census mock, `nros_can_socketcan`) also goes
+# on the link interface of each static archive the target reaches, so ld meets
+# it AFTER the archive that calls the driver (issue 2822, below).
 
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardNet.cmake")
@@ -84,6 +88,98 @@ function(_nros_can_census_mock_library)
     set_target_properties(nros_can_census_mock PROPERTIES LINKER_LANGUAGE C)
 endfunction()
 
+# Issue 2822 -- the backend archive must follow, on the link line, every
+# archive that calls the driver. Linking it to the target alone does not do
+# that: a component arrives through its `<pkg>_<exec>_component` INTERFACE
+# wrapper (NanoRosEntry.cmake, the Phase 219.J sidecar), and CMake emits the
+# target's direct archive (the backend) BEFORE the wrapper's closure, so ld's
+# single pass had dropped the backend by the time it met the component:
+# `libcontroller_lib.a(controller_node.cpp.o): undefined reference to
+# nros_platform_can_open` in the safety island's census host build. With the
+# socketcan backend the same order is worse than a failed link: the driver
+# then resolves to the board staticlib's own copy, whose device store the
+# image's hand-off TU never filled.
+#
+# The fix is phase-544 W2's (issue 2273, `libkernel.a`): the edge is a property
+# of each archive, so the backend goes on each archive's
+# INTERFACE_LINK_LIBRARIES and CMake places it after the archive. As
+# `$<LINK_ONLY:...>`, so only the link line changes, never a dependent's
+# include path. Deferred to the end of the target's directory, so an archive
+# linked after `nano_ros_entry` (or after `nros_link_can_census_mock`) is
+# covered too. Imported archives are left alone, as W2 does.
+function(_nros_can_backend_closure item backend out_visited out_archives)
+    set(_visited ${${out_visited}})
+    set(_archives ${${out_archives}})
+    string(REGEX REPLACE "^\\$<LINK_ONLY:(.*)>$" "\\1" item "${item}")
+    if(NOT TARGET "${item}")
+        return()
+    endif()
+    get_target_property(_aliased "${item}" ALIASED_TARGET)
+    if(_aliased)
+        set(item "${_aliased}")
+    endif()
+    if(item STREQUAL backend OR item IN_LIST _visited)
+        return()
+    endif()
+    list(APPEND _visited "${item}")
+    get_target_property(_imported "${item}" IMPORTED)
+    get_target_property(_type "${item}" TYPE)
+    if(_imported)
+        set(${out_visited} "${_visited}" PARENT_SCOPE)
+        return()
+    endif()
+    set(_deps "")
+    if(_type STREQUAL "STATIC_LIBRARY")
+        list(APPEND _archives "${item}")
+        get_target_property(_deps "${item}" INTERFACE_LINK_LIBRARIES)
+    elseif(_type STREQUAL "INTERFACE_LIBRARY")
+        get_target_property(_deps "${item}" INTERFACE_LINK_LIBRARIES)
+    endif()
+    if(_deps)
+        foreach(_d IN LISTS _deps)
+            _nros_can_backend_closure("${_d}" "${backend}" _visited _archives)
+        endforeach()
+    endif()
+    set(${out_visited} "${_visited}" PARENT_SCOPE)
+    set(${out_archives} "${_archives}" PARENT_SCOPE)
+endfunction()
+
+function(_nros_can_backend_after_archives target backend)
+    get_target_property(_links ${target} LINK_LIBRARIES)
+    if(NOT _links)
+        return()
+    endif()
+    set(_visited "")
+    set(_archives "")
+    foreach(_l IN LISTS _links)
+        _nros_can_backend_closure("${_l}" "${backend}" _visited _archives)
+    endforeach()
+    foreach(_a IN LISTS _archives)
+        get_target_property(_iface ${_a} INTERFACE_LINK_LIBRARIES)
+        if(NOT _iface OR NOT "$<LINK_ONLY:${backend}>" IN_LIST _iface)
+            # The property, not `target_link_libraries(... INTERFACE ...)`: a
+            # stock package that linked its archive with the PLAIN signature
+            # refuses a keyword call (phase-544 W2).
+            set_property(TARGET ${_a} APPEND PROPERTY
+                INTERFACE_LINK_LIBRARIES "$<LINK_ONLY:${backend}>")
+        endif()
+    endforeach()
+endfunction()
+
+# Link <backend> into <target> and queue issue 2822's placement once per pair.
+function(_nros_can_link_backend target backend)
+    target_link_libraries(${target} PRIVATE ${backend})
+    get_target_property(_queued ${target} _NROS_CAN_BACKEND_PLACED)
+    if(_queued AND backend IN_LIST _queued)
+        return()
+    endif()
+    set_property(TARGET ${target} APPEND PROPERTY _NROS_CAN_BACKEND_PLACED ${backend})
+    # A deferred call expands its arguments when it RUNS, in the directory's
+    # scope, where this function's variables are gone: bake the values in.
+    cmake_language(EVAL CODE
+        "cmake_language(DEFER CALL _nros_can_backend_after_archives [[${target}]] [[${backend}]])")
+endfunction()
+
 # RFC-0132 D6 -- the mock, for a host target that calls the driver and never
 # reaches a bus: an entry of a census host build, or a metadata probe
 # (issue 2787). An archive, so a target that never calls the driver links none
@@ -94,7 +190,7 @@ function(nros_link_can_census_mock target)
         enable_language(C)
     endif()
     _nros_can_census_mock_library()
-    target_link_libraries(${target} PRIVATE nros_can_census_mock)
+    _nros_can_link_backend(${target} nros_can_census_mock)
 endfunction()
 
 # RFC-0132 D3 (issue 2788) -- the weak fail-loud defaults, as a per-entry TU
@@ -194,5 +290,5 @@ function(nros_entry_can_image target board)
         file(WRITE "${_tu}" "${_content}")
     endif()
     target_sources(${target} PRIVATE "${_tu}")
-    target_link_libraries(${target} PRIVATE nros_can_socketcan)
+    _nros_can_link_backend(${target} nros_can_socketcan)
 endfunction()
