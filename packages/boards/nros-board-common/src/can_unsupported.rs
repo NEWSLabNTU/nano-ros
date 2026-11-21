@@ -4,8 +4,9 @@
 //! for a board with no CAN backend of its own, on the cargo road.
 //!
 //! The source is ONE file, `c/nros_board_can_unsupported.c`. A board build
-//! script that compiles board glue adds it with [`add_defaults`], which writes
-//! a one-line TU naming the board into `OUT_DIR`, so `open` reports
+//! script that compiles board glue adds it with
+//! [`add_defaults`](crate::can_unsupported::add_defaults), which writes a
+//! one-line TU naming the board into `OUT_DIR`, so `open` reports
 //! `NROS_PLATFORM_CAN_ENOTSUP` and prints a line naming the board. The cmake
 //! road compiles the same file into every entry
 //! (`cmake/NanoRosCanImage.cmake`, `nros_entry_can_defaults`).
