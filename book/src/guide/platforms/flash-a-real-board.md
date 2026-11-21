@@ -156,7 +156,7 @@ printed with the board vendor's own tool:
 
 | Platform | The artifact | A flashing tool |
 | --- | --- | --- |
-| Zephyr | the west build directory `nros build` printed | `west flash -d <dir>`, with the runner your board's definition declares |
+| Zephyr | the west build directory `nros build` printed | `west flash -d <dir>`, with the runner your board's definition declares, run inside the Zephyr west workspace or with `ZEPHYR_BASE` set to its `zephyr/` |
 | Bare-metal or FreeRTOS on Cortex-M | the ELF | `probe-rs run --chip <chip> <elf>`, or OpenOCD's `program <elf> verify reset exit` |
 | NuttX | `nuttx`, `nuttx.bin` or `nuttx.hex` from your board's `BOARD_CONFIG` | the tool NuttX's page for your board names |
 
