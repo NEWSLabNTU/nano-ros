@@ -374,6 +374,11 @@ set(NROS_ZEPHYR_DIR ${CMAKE_CURRENT_LIST_DIR})
 # resolution, both consumers (issue 0316).
 nros_resolve_knobs()
 
+# Issue 2810 -- the knobs above read their environment rung once, here, and the
+# build keeps that answer. This always-run step refuses a build whose live
+# environment has moved since, naming the knob and the re-configure command.
+nros_knob_env_check_target(_nros_knob_env_check)
+
 # Issue 1662 -- the RUST lane's carrier, published where that lane can READ it.
 #
 # zephyr-lang-rust's `rust_cargo_application()` runs in the APPLICATION's
