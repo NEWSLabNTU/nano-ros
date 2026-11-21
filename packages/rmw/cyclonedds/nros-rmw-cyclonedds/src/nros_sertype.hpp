@@ -67,9 +67,21 @@ namespace nros_rmw_cyclonedds {
 /// trivially default-constructible on top of trivially copyable, which is what
 /// `sertype_zero_samples` / `sertype_realloc_samples` rely on when they `memset`
 /// and `dds_realloc` this as raw storage.
+///
+/// **An optional INSERTED segment** (`insert`, `insert_size`, `insert_at`): the
+/// serdata is `data[0, insert_at)`, then `insert`, then `data[insert_at, size)`.
+/// A service request or reply is the caller's CDR with the 16-byte request
+/// header after its 4-byte encapsulation, and this lets `from_sample` assemble
+/// that inside the serdata it allocates anyway, instead of the caller building
+/// the whole wire in a 64 KiB stack local first (on a 64 KiB FreeRTOS app task,
+/// one such frame overflowed it). `NrosCdrBlob{data, len}` leaves all three
+/// zero: no insert, so publish is unchanged.
 struct NrosCdrBlob {
     const uint8_t* data;
     size_t size;
+    const uint8_t* insert;
+    size_t insert_size;
+    size_t insert_at;
 };
 
 /// Build a sertype for @p desc's type name, to be handed to

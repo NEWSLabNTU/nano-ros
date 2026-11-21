@@ -220,10 +220,24 @@ struct ddsi_serdata* serdata_from_sample(const struct ddsi_sertype* type,
     if (blob == nullptr || blob->data == nullptr || blob->size == 0) {
         return nullptr;
     }
-    if (!serdata_alloc(d.get(), blob->size)) {
+    // The inserted segment (nros_sertype.hpp): absent unless both its bytes and
+    // its length are given, and its position must lie inside the span.
+    const bool inserts = blob->insert != nullptr && blob->insert_size != 0;
+    if (inserts && blob->insert_at > blob->size) {
         return nullptr;
     }
-    std::memcpy(d->data, blob->data, blob->size);
+    const size_t total = blob->size + (inserts ? blob->insert_size : 0);
+    if (!serdata_alloc(d.get(), total)) {
+        return nullptr;
+    }
+    if (!inserts) {
+        std::memcpy(d->data, blob->data, blob->size);
+        return d.release();
+    }
+    std::memcpy(d->data, blob->data, blob->insert_at);
+    std::memcpy(d->data + blob->insert_at, blob->insert, blob->insert_size);
+    std::memcpy(d->data + blob->insert_at + blob->insert_size, blob->data + blob->insert_at,
+                blob->size - blob->insert_at);
     return d.release();
 }
 
@@ -259,6 +273,9 @@ bool serdata_to_sample(const struct ddsi_serdata* dcmn, void* sample, void** /*b
     }
     blob->data = d->data;
     blob->size = d->size;
+    blob->insert = nullptr;
+    blob->insert_size = 0;
+    blob->insert_at = 0;
     return true;
 }
 
@@ -286,8 +303,7 @@ bool serdata_untyped_to_sample(const struct ddsi_sertype* /*type*/,
     // leaving the caller's memory untouched and indeterminate.
     auto* blob = static_cast<NrosCdrBlob*>(sample);
     if (blob != nullptr) {
-        blob->data = nullptr;
-        blob->size = 0;
+        *blob = NrosCdrBlob{};
     }
     return true;
 }

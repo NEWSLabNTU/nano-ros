@@ -58,7 +58,7 @@
 // the round trip stayed correct: nano-ros already emits the fixed `octet[16]`,
 // so there was nothing left to correct.
 //
-// What remains here is the RECEIVE side — `take_typed_wire` still reads a typed
+// What remains here is the RECEIVE side — ~~`take_typed_wire`~~ still read a typed
 // sample, and the three receive adapters are still in place. Issue 0969 argues a
 // `dds_takecdr` rewrite removes the need for those rather than correcting them,
 // which is the same finding one direction over. That is the remaining step

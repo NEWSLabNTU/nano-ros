@@ -9,7 +9,7 @@
 //
 // So this measures the codec DIRECTLY: no session, no network, no reader, no
 // poll. One prepared wire buffer, decoded and re-encoded in a tight loop, which
-// is exactly the work `take_typed_wire` and `write_typed` used to do per message
+// is exactly the work ~~`take_typed_wire`~~ and `write_typed` used to do per message
 // and no longer do. The NEW path's equivalent — `ddsi_serdata_to_ser`, a memcpy
 // — is timed beside it as the baseline the round trip is being compared against.
 //
@@ -118,7 +118,7 @@ int main() {
         std::chrono::duration<double, std::nano>(t1 - t0).count() / static_cast<double>(iters);
 
     // ---- the OLD path's per-message work: decode to a typed sample, then
-    // re-encode it. This is the pair `take_typed_wire` ran on every reply.
+    // re-encode it. This is the pair ~~`take_typed_wire`~~ ran on every reply.
     void* sample = ddsrt_calloc(1, desc->m_size);
     if (sample == nullptr) { std::fprintf(stderr, "calloc failed\n"); return 1; }
 
