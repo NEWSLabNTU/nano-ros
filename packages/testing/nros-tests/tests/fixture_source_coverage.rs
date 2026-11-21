@@ -48,7 +48,7 @@ const BINS_ALLOWLIST: &[(&str, &str)] = &[
         "heap-free-poc-mps2",
         "phase-391 W1/W4 (issues 0816/0843) heap-free tier: built by `just ci \
          l3` (just/ci.just, the `cargo build` in the bins dir) and immediately \
-         interrogated by `scripts/check-no-alloc-image.py --tier heap-free`. \
+         interrogated by `nros image check --no-alloc --tier heap-free`. \
          `_matrix-build` IS `l3`, so `queue.yml` runs this on every \
          merge_group. A `fixtures.toml` row is the wrong arm: the artifact is \
          a cross-linked thumbv7m ELF with no runtime, consumed by a symbol-\
@@ -60,7 +60,7 @@ const BINS_ALLOWLIST: &[(&str, &str)] = &[
         "heap-free-cpp-poc-mps2",
         "issue 2131, the C++ twin of `heap-free-poc-mps2`: built by `just ci \
          l3` right after it, by the same `cargo build` in the bins dir, and \
-         interrogated by `scripts/check-no-alloc-image.py --tier heap-free`. \
+         interrogated by `nros image check --no-alloc --tier heap-free`. \
          Not a `fixtures.toml` row for the same reason: a cross-linked \
          thumbv7m ELF with no runtime coordinate, consumed by a symbol-table \
          checker inside the lane that builds it.",

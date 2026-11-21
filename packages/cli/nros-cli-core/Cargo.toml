@@ -149,6 +149,11 @@ rosidl-parser = { path = "../rosidl-parser" }
 walkdir = "2.0"
 quick-xml = "0.41"
 
+# issue 2667 — `nros image check --no-alloc` reads an image's symbol table
+# (ELF, archives and their members) itself, so no `nm` is needed. Already in
+# the lock through `ar_archive_writer`.
+object = { version = "0.32", default-features = false, features = ["read", "std"] }
+
 # Phase 212.M-F.20 — `synthesize_workspace_ament_prefix` lays down a
 # throwaway ament prefix (TempDir) from the pkg-index so the launch parser's
 # `$(find-pkg-share <pkg>)` resolves in-tree, never-installed workspace pkgs.

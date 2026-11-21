@@ -29,16 +29,21 @@ set -euo pipefail
 # Word-boundaried so the short names (`k_malloc`/`k_free`) don't substring-
 # match `task_free` / `zsock_freeaddrinfo` etc.
 # issue 1616 (W7): the symbol population is each kernel's allocator NAMING
-# SCHEME, shared with check-no-alloc-image.py (scripts/lib/kernel_alloc.py).
-# The authored list here knew `k_malloc` and not `k_calloc`/`k_realloc`.
-SYMBOLS="$(python3 "$(dirname "${BASH_SOURCE[0]}")/lib/kernel_alloc.py" --ere)"
+# SCHEME, not an authored list (the one here knew `k_malloc` and not
+# `k_calloc`/`k_realloc`). The scheme lives once, in Rust
+# (`nros-cli-core/src/alloc_scan.rs`, `KERNEL_ALLOC_SCHEME`), which `nros image
+# check --no-alloc` reads too; this file is its `grep -E` form, generated from
+# it and held equal by that module's tests (issue 2667).
+SYMBOLS="$(cat "$(dirname "${BASH_SOURCE[0]}")/lib/kernel-alloc.ere")"
 
 # Roots to scan (nros-owned C + Rust).
 ROOTS='packages'
 
 # Paths that are allowed to reference the symbols (regex, matched against
 # the repo-relative path).
-ALLOW_RE='(packages/platform/nros-platform-[^/]+/|config/[^/]+/)'
+# `alloc_scan.rs` is where the naming scheme itself lives (and its tests'
+# sample names): it names the allocators to find them, it calls none.
+ALLOW_RE='(packages/platform/nros-platform-[^/]+/|config/[^/]+/|packages/cli/nros-cli-core/src/alloc_scan\.rs$)'
 
 # Vendored opaque-struct task/net carve-outs (RFC-0034). ThreadX exposes a
 # SINGLE allocation primitive (`tx_byte_allocate`/`tx_byte_release`) used for

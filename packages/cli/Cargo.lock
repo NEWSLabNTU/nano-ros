@@ -870,6 +870,7 @@ dependencies = [
  "nros-system-include",
  "nros-zenoh-session-config",
  "nros-zephyr-build",
+ "object",
  "pathdiff",
  "quick-xml",
  "regex",

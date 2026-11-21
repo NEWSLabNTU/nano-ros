@@ -32,7 +32,7 @@ park-race-probe = []
 # phase-391 W5-endgame (issues 0816/0843) — the HEAP libc shims
 # (`malloc`/`free`/`realloc`/`calloc`, src/libc_stubs.rs) get their own gate so
 # a heap-free-tier image can drop the symbols entirely: the W1 link gate
-# (`check-no-alloc-image --tier heap-free`) counts a DEFINED `malloc` as an
+# (`nros image check --no-alloc`) counts a DEFINED `malloc` as an
 # allocation surface whether or not anything calls it. Default-on — every
 # existing consumer (zenoh's Z_MALLOC route, XRCE's wrapper) keeps them.
 libc-heap = []
