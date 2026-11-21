@@ -156,6 +156,30 @@ on the nucleo images, about 0 % on the mps2 bare-metal image, which has no
 C IR). It reopens when nested initializers, a return-value channel and C IR
 for cc-rs builds are in place; phase-557 W7f records the numbers.
 
+## Measured: more orders only raise the max (2026-11-22)
+
+Phase-557 W9c Checkpoint 1 walked four `[[observed]]` rows at 64 callee
+orders on six trees.
+
+- **Unrelated code does not move the walk.** All six trees gave
+  byte-identical depths in every order, including one whose revert changed
+  both nucleo images' code. So the order dependence is no longer a function
+  of names or the checkout.
+- **The number of orders does.** From 8 to 64 orders the max rose 1.7 to
+  6.1 %:
+  - Rust talker, nucleo: 68,560 to 72,764 B.
+  - C talker, nucleo: 108,792 to 112,612 B.
+  - Bare-metal bringup, mps2: 156,128 to 158,708 B.
+  - C talker, FreeRTOS mps2: 118,048 to 120,816 B.
+- **It has not converged.** Three of the four rows find their deepest order
+  after order 39 of 64, and one row's 64 orders range by 30-50 % from min to
+  max. The phase doc has the running max per row.
+
+So a floor, the deepest of a fixed set of orders, is a LOWER bound on the
+worst order, and no N makes it the answer. N stays 8 (a deeper bound that is
+still not sound is not worth the RAM). Step 3, the exact search, is what this
+issue needs.
+
 ## Acceptance
 
 The walk reports the deepest simple path from its root, or it refuses.
