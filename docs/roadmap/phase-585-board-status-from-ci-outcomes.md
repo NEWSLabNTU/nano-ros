@@ -2,7 +2,7 @@
 
 **Status (2026-11-22). OPEN: design ruled by the user (all four
 [RFC-0114 D13](../design/0114-board-support-registry-primitives.md#amendment-2026-11-22-d13--a-boards-status-is-what-ran-collected-automatically)
-decisions as recommended); no item started. Owner: nros 243.** Implements RFC-0114 D13, whose goal
+decisions as recommended); W1, W2 done, W3/W5 in progress. Owner: nros 243.** Implements RFC-0114 D13, whose goal
 is the user's: no manual maintenance of board status.
 - a test's board is collected from the coordinate it resolves, with no
   annotation, into one results file per run;
@@ -49,7 +49,7 @@ in the order below.
 
 ### W1 — The evidence ledger, from the resolver
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-22, #4536)
 - **What:** every `fixtures::lane` attribution entry point (`attribute_path`,
   `attribute_workspace_id`, and the interop `assert_test_bound`) appends one
   JSONL line (test name, row, coordinate) to `$NROS_TEST_EVIDENCE_DIR` when
@@ -57,10 +57,15 @@ in the order below.
 - **Acceptance:** a self-test runs each entry point under a temp ledger and
   finds exactly one line each; a real `cargo nextest` of one emulator test
   writes its coordinate.
+- **Landed.** `nros_tests::fixtures::evidence` writes one line per resolution
+  from the shared lane chokepoints (path, workspace id) AND the coordinate sink
+  every other resolver reaches (Zephyr west leaves, row-keyed group rows, the
+  PX4 companion, a peer row run for a cell it serves).
+
 
 ### W2 — The collector, the results file and the job summary
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-22, #4537)
 - **What:** `scripts/ci/board-results.py` joins the junit with the ledgers,
   maps each coordinate to its registry row (refusing one with none), adds the
   job-level no-verdict signal (nightly-triage's step classifier, moved to
@@ -72,6 +77,13 @@ in the order below.
 - **Acceptance:** the self-test over recorded inputs (a pass, a failed cell,
   a set-up failure, a cancelled job, an unmapped coordinate, `Linux`
   evidenced by another job); one real nightly's summary shows every board.
+- **Landed.** `scripts/ci/board-results.py` (self-test and `--check` in
+  `check lane-stage-reporting`) runs as a separate, non-required
+  `board-results` job on `nightly.yml`, `weekly.yml` and `live-peer.yml`.
+  `merge-runtime.yml` is out until a week of clean nights; `host-tests.yml`
+  is W8. Each board job sets the ledger from `$GITHUB_WORKSPACE` (its
+  container's path), not `github.workspace` (the host's).
+
 
 ### W3 — The derivation, and the typed fields retired
 
@@ -91,7 +103,7 @@ in the order below.
   weekly case). **Retiring `runs`, `cadence` and `last_run` moves to land WITH
   W4**: the committed pages are rendered from the typed fields today, and with
   them gone and no deploy-time render yet, every committed status would read
-  "not recorded". The Rust reader of the fixture lands with W5.
+  "not recorded". The Rust reader of the fixture landed in #4546.
 
 ### W4 — The book, rendered at deploy
 
