@@ -54,15 +54,59 @@ carrier, here it is the freshness edge.
 A Kconfig `.config` reading the default is expected either way. The env rung
 never writes Kconfig; it overrides only what the resolver hands on.
 
-## Reach (not yet swept)
+## Reach (swept 2026-11-21, by reading)
 
-`_nros_knob_env` / `_nros_resolve_knob` are shared by `cmake/NanoRosKnobRegistry.cmake`,
-`cmake/NanoRosSharedCargoDir.cmake`, `zephyr/cmake/nros_image_kconfig.cmake` and
-`zephyr/cmake/nros_rmw_zenoh.cmake`. A plain `$ENV{NROS_*}` read appears 33 times
-across 17 files under `cmake/` and `zephyr/cmake/`. Each configure-time read has
-the same missing edge unless something else re-runs the configure. Which of
-those reads are knobs (rung 1) and which are tool locations is the first step of
-the sweep.
+Sweep:
+
+```
+git grep -n '\$ENV{NROS_' -- 'cmake/*.cmake' 'zephyr/cmake/*.cmake'
+git grep -n '^[[:space:]]*_nros_\(resolve_knob\|resolve_derivable_knob\|knob_env\)(' -- cmake zephyr/cmake
+```
+
+**Registry knobs: one funnel.** Every configure-time read of a registry knob's
+environment rung goes through `_nros_knob_env` (`cmake/NanoRosKnobEnv.cmake:207`):
+
+| Site | Calls |
+| --- | --- |
+| `zephyr/cmake/nros_cargo_build.cmake` `_nros_resolve_knob(` | 63 |
+| same file, `_nros_resolve_derivable_knob(` (calls the two above) | 32 |
+| same file, direct `_nros_knob_env(` | 3 |
+| `cmake/NanoRosSharedCargoDir.cmake:158`, "road 2" of the shared cargo dir KEY | 1 |
+
+Two more sites read a knob's env with a bare `$ENV{}`, as a GUARD around a
+resolve: `NROS_RMW_LOCAL_QUERYABLE` (`nros_cargo_build.cmake:1353`) and
+`NROS_PARAM_SERVICE_BUFFER_SIZE` (`:1777`). They bypass the helper's
+retired-spelling refusal, and they belong in it.
+
+So the Zephyr fix is ONE helper, not ~100 sites. Anything that records or checks
+the environment rung belongs in `_nros_knob_env`; the two bare guards move onto
+it. The shared cargo dir key has the same lag: a changed knob env leaves the
+cached key.
+
+**The plain cmake road has no ladder of its own.** Outside `zephyr/cmake`,
+nothing resolves a registry knob at configure. The env reaches cargo at BUILD
+time, where the 16 `build.rs` that watch knob env (63
+`rerun-if-env-changed`) catch a change. This comes from reading, not from a
+measurement.
+
+**Not knobs, same missing edge (out of this issue's fix).** These configure-time
+reads change what is built, yet are tool, path or handshake variables rather
+than ladder rungs:
+
+- `NROS_INTERFACE_SEARCH_PATH`: 6 reads, in `NanoRosBundledInterfaces`,
+  `NanoRosCodegenCore`, `NanoRosGenerateInterfaces` and `_NrosFindRosMsgPackage`.
+- `NROS_CARGO_PROFILE` (`NanoRosCargoProfile.cmake:66`).
+- `NROS_PLATFORM_CFFI_INCLUDE`, baked into the cargo command
+  (`nros_cargo_build.cmake:2619`).
+- `NROS_STACK_FLOOR_RAISE` (`NanoRosBoardNet.cmake:257`).
+
+`NROS_STACK_FLOOR_RAISE` and `NROS_RESOLVED_ENTITY_RECORD_SHA256` are handed in
+by `nros build` for the configure it runs, so they are handshakes, not operator
+overrides.
+
+Location and mode switches change no image content: `NROS_CLI`, `NROS_HOME`,
+`NROS_GEN_CACHE_DIR`, `NROS_VERBOSE`, `NROS_LEAF_CENSUS_HOST` (7 reads) and
+`NROS_ALLOW_UNSYNCED_MODEL`.
 
 ## How to tell, on a build dir
 
