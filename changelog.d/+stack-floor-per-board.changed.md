@@ -1,0 +1,1 @@
+A Rust Zephyr image with no measured row is now held at configure to its board's measured main-stack floor: the largest Rust template peak measured on that board plus a margin, instead of a fixed 32 KiB. On a board with no measured row the 32 KiB fallback applies, and the configure warns which basis it used. The Nucleo-F767ZI's default Rust main stack is 33,288 bytes.

@@ -3186,11 +3186,16 @@ if NROS_RMW_ZENOH
 
 # Issue 2365 -- main's stack is decided per IMAGE here, by its language: a Rust
 # entry registers its nodes on main and peaked at 28,280 B (issue 2359,
-# thumbv7em; NROS_RUST_MAIN_STACK_FLOOR in zephyr/CMakeLists.txt refuses less
-# off ARCH_POSIX), while the C and C++ entries fit 16 KiB. A board conf can
+# thumbv7em; the configure refuses less than the board's measured floor off
+# ARCH_POSIX, phase-557 W10), while the C and C++ entries fit 16 KiB. A board conf can
 # only state one number for every image, which is how 2359's raise reached the
 # C talker; boards and leaves no longer state it.
 configdefault MAIN_STACK_SIZE
+    # A board whose measured Rust template peaks put its floor above the
+    # generic Rust default states its own, Rust-only (phase-557 W10;
+    # `nros-stack-floor.py --board-floor <board>`, which
+    # check-zephyr-rust-main-stack holds this line to).
+    default 33288 if NROS_RUST_API && !ARCH_POSIX && BOARD_NUCLEO_F767ZI
     default 32768 if NROS_RUST_API && !ARCH_POSIX
     default 16384
 
@@ -3243,6 +3248,11 @@ if NROS_RMW_XRCE
 # XRCE snippet used to assign 16384, and a snippet merges after the board, so
 # it also beat a board that raised main for a Rust entry.
 configdefault MAIN_STACK_SIZE
+    # A board whose measured Rust template peaks put its floor above the
+    # generic Rust default states its own, Rust-only (phase-557 W10;
+    # `nros-stack-floor.py --board-floor <board>`, which
+    # check-zephyr-rust-main-stack holds this line to).
+    default 33288 if NROS_RUST_API && !ARCH_POSIX && BOARD_NUCLEO_F767ZI
     default 32768 if NROS_RUST_API && !ARCH_POSIX
     default 16384
 

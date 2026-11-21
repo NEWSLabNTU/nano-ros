@@ -11,6 +11,7 @@
     }
   ],
   "drift_rise_pct": 2,
+  "fallback_rust_main_stack": 32768,
   "indirect": {
     "default": {
       "mode": "allowance:0"

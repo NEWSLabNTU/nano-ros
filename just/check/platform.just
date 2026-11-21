@@ -644,8 +644,9 @@ nsos-single-source:
 
 # issue 2359 -- a Rust entry registers its nodes on Zephyr's main thread, and a
 # Rust talker peaked at 28,280 bytes there: every Rust-capable, non-native_sim
-# Zephyr board package must give main at least the module's
-# NROS_RUST_MAIN_STACK_FLOOR, or the overflow halts the image silently.
+# Zephyr board package must give main at least its board's measured floor
+# (`nros-stack-floor.py --board-floor`, phase-557 W10), or the overflow halts
+# the image silently.
 [group("checks")]
 zephyr-rust-main-stack:
     @python3 scripts/check-zephyr-rust-main-stack.py
