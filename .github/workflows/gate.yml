@@ -183,6 +183,7 @@ jobs:
       scaffold: ${{ steps.f.outputs.scaffold }}
       colcon: ${{ steps.f.outputs.colcon }}
       sdk_index: ${{ steps.f.outputs.sdk_index }}
+      zephyr_module_fixtures: ${{ steps.f.outputs.zephyr_module_fixtures }}
       # phase-395 — does this pull request touch anything `check` verifies?
       # A docs-only change does not, and paying ~5 min of CLI build and source
       # provisioning to lint markdown is not sane.
@@ -222,6 +223,21 @@ jobs:
               - 'scripts/sdk/verify-index.py'
               - 'scripts/sdk/check-qemu-configure.sh'
               - 'ci/nano-ros-sdk/scripts/build-qemu.sh'
+            # Issue 2811 -- what the job-module west rows build from: the
+            # S32Z270 RTU0 board, its image, the module fetch, the west
+            # fixture builder, the nros Zephyr module and this lane itself.
+            zephyr_module_fixtures:
+              - 'packages/boards/nros-board-zephyr/boards/s32z270-rtu0-zephyr/**'
+              - 'examples/workspaces/cpp/**'
+              - 'examples/fixtures.toml'
+              - 'scripts/zephyr/fetch-job-module.sh'
+              - 'scripts/build/west-fixtures.sh'
+              - 'scripts/build/fixtures-manifest.py'
+              - 'just/zephyr-ci.just'
+              - 'zephyr/**'
+              - 'nros-sdk-index.toml'
+              - 'west.yml'
+              - '.github/workflows/gate.yml'
 
       # phase-489 W11. `main` is rebase-merged, so the commit a push brings is
       # the commit the merge queue's gate already ran on. Measured 2026-11-14
@@ -2987,6 +3003,70 @@ jobs:
           source ./activate.sh
           just colcon-parity
 
+  # ----- zephyr module fixtures (issue 2811) -----
+  # The west compile-check rows that need a Zephyr module the west allowlist
+  # leaves out (`zephyr_modules` in examples/fixtures.toml): today the S32Z270
+  # RTU0 Cortex-R52 image, whose SoC is in `hal_nxp`. The job fetches the
+  # module for itself (shallow and sparse, ~150 MB, into the checkout's build
+  # root), so no workspace pays the 1.3 GB a `west update` of it would, and
+  # links the image: the board row's "Builds" evidence. Path-gated like the
+  # other narrow lanes; `workflow_dispatch` runs it whatever changed.
+  zephyr-module-fixtures:
+    name: zephyr 3.7 / module fixtures (s32z270-rtu0, hal_nxp)
+    needs: changes
+    if: ${{ needs.changes.outputs.zephyr_module_fixtures == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    # A cold `just setup zephyr` plus one Cyclone C++ link; the nightly Zephyr
+    # legs it mirrors take up to 32 min.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r9
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      NROS_ZEPHYR_VERSION: "3.7"
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Build nros CLI from packages/cli/
+        uses: ./.github/actions/setup-nros-cli
+
+      # The image registered the SDK CMake package as root; the container runs
+      # with HOME=/github/home, so register it for this HOME.
+      - name: Register the baked Zephyr SDK for this HOME
+        run: nros-zephyr-sdks-register
+
+      # Issue 0078 -- the same headroom reclaim the nightly Zephyr legs run
+      # before `just setup zephyr`.
+      - name: Reclaim disk before Zephyr setup
+        run: |
+          echo "before:"; df -h / | tail -1
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
+          rm -rf "$HOME/.cache/pip" 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
+      - name: Unblock rustup clippy-preview conflict
+        run: ./scripts/ci/rustup-restore-clippy.sh
+
+      - name: Set up the Zephyr 3.7 workspace
+        run: |
+          source ./activate.sh
+          just setup zephyr --skip-sdk
+
+      - name: just zephyr build-module-fixtures
+        run: |
+          source ./activate.sh
+          just zephyr build-module-fixtures
+
   # ----- sdk-index gate (verify prebuilt assets resolve + hash) -----
   sdk-index:
     name: verify nros-sdk-index assets
@@ -3154,6 +3234,7 @@ jobs:
       - scaffold-journey
       - colcon-parity
       - sdk-index
+      - zephyr-module-fixtures
     runs-on: ubuntu-latest
     # Longest successful run measured 2026-11-12: 0 min (n=40). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
@@ -3242,7 +3323,8 @@ jobs:
           for pair in \
             "scaffold-journey:${{ needs.scaffold-journey.result }}" \
             "colcon-parity:${{ needs.colcon-parity.result }}" \
-            "sdk-index:${{ needs.sdk-index.result }}"; do
+            "sdk-index:${{ needs.sdk-index.result }}" \
+            "zephyr-module-fixtures:${{ needs.zephyr-module-fixtures.result }}"; do
             name="${pair%%:*}"; res="${pair#*:}"
             case "$res" in
               success) echo "  ok       $name" ;;

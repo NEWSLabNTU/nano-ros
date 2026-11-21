@@ -196,10 +196,15 @@ fn is_devicetree(p: &Path) -> bool {
 ///
 /// Zephyr board strings carry slashes (`native_sim/native/64`), which cannot be
 /// one directory component. `_` is the separator Zephyr's own per-board files
-/// already use (`boards/native_sim_native_64.conf`).
+/// already use (`boards/native_sim_native_64.conf`). A board revision
+/// (`s32z2xxdc2@D/s32z270/rtu0`) is not part of it, by the same rule as the
+/// per-board file stem (`board_projection::flatten_board_id`, issue 2631):
+/// keeping the `@D` named a directory no image author would write, so the
+/// image's `boards/s32z2xxdc2_s32z270_rtu0/` fragments were never found
+/// (issue 2811).
 #[must_use]
 pub fn sanitize_board(board: &str) -> String {
-    board.replace('/', "_")
+    crate::orchestration::board_projection::flatten_board_id(board)
 }
 
 /// The `-D` that names THIS checkout as the image's `nros` module — issue 1867.
@@ -785,6 +790,11 @@ mod tests {
             "native_sim_native_64"
         );
         assert_eq!(sanitize_board("mps2-an385-freertos"), "mps2-an385-freertos");
+        // Issue 2811 -- the revision drops out, as in the file stem.
+        assert_eq!(
+            sanitize_board("s32z2xxdc2@D/s32z270/rtu0"),
+            "s32z2xxdc2_s32z270_rtu0"
+        );
     }
 
     #[test]
