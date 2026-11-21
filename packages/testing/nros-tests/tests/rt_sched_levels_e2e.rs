@@ -387,11 +387,12 @@ fn assert_linux_census_placed(tag: &str, entry: &Path, label: &str) {
             .collect()
     };
     // The main thread (the first, named for the binary) runs the boot level.
-    // The Rust runner names its other levels `nros-sched-task-<name>`; the
-    // C/C++ runner names none, so they keep the binary's name. zenoh-pico's
-    // tasks are unnamed too.
+    // Both runners name every other level `nros-<name>`, cut at the kernel's
+    // 15 bytes: the Rust one through `std::thread::Builder`, the C/C++ one
+    // through the POSIX port. zenoh-pico's tasks are unnamed, so they keep the
+    // binary's name.
     let main_thread = census[0].0.clone();
-    let ours = |name: &str| name == main_thread || name.starts_with("nros-sched-task");
+    let ours = |name: &str| name == main_thread || name.starts_with("nros-");
     let mut bad = Vec::new();
     for (name, prio, policy) in &census {
         if !matches!(policy.as_str(), "FIFO" | "RR") {
@@ -443,6 +444,18 @@ fn assert_linux_census_placed(tag: &str, entry: &Path, label: &str) {
         }),
         "[{tag}] no SCHED_FIFO thread in reserved.transport {transport:?}: the transport \
          runs below the levels (most urgent level {max_level:?}). census: {census:?}"
+    );
+    // A level off the main thread carries its own name. Without this, a runner
+    // whose threads stay unnamed passes the ownership check above as "the
+    // binary's name", which is how the C/C++ levels went unnamed unnoticed.
+    // Only threads BELOW the transport band count: the transport tasks are
+    // named too, and must not stand in for a level.
+    assert!(
+        census.iter().any(|(name, prio, p)| {
+            p == "FIFO" && *prio < transport.0 && name.starts_with("nros-")
+        }),
+        "[{tag}] no SCHED_FIFO level is named `nros-<level>`, so `ps -L`, gdb and this \
+         census cannot tell the levels apart: {census:?}"
     );
 }
 

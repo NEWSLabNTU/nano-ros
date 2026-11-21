@@ -94,7 +94,7 @@ pool.app = [1, 89]
 # `linux_rust_thread_census_is_placed_by_the_priority_plan`
 # (rt_sched_levels_e2e.rs, with CAP_SYS_NICE granted). On the realtime-rust
 # image it finds three threads, all ours and all SCHED_FIFO: the boot level on
-# the main thread at 10, a level (`nros-sched-task`) at 80, and zenoh-pico's
+# the main thread at 10, a level (`nros-high`) at 80, and zenoh-pico's
 # transport at 90. Nothing else in the process holds a real-time priority, so
 # there is no foreign band to reserve. `scripts/dev/priority-thread-probe.py
 # <pid>` reads the same fields from outside a process.

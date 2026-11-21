@@ -235,6 +235,8 @@ pub mod transport_band;
 
 /// The retired env aliases the hosted reader refuses.
 pub mod retired_env;
+/// What a sched task's thread is called (`nros-<label>`).
+pub mod thread_name;
 pub use retired_env::RETIRED_ENV_VARS;
 
 #[cfg(feature = "env")]

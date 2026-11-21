@@ -1,15 +1,17 @@
 ---
 id: 2796
 title: "The POSIX port never names a thread it spawns, because its pthread_setname_np call is behind _GNU_SOURCE and no build defines it"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [linux, posix, platform, scheduling]
 found: 2026-11-21
+resolved: 2026-11-21
+resolved_in: "fix(#2796): the POSIX port names the threads it spawns, and the runners name their levels to fit"
 related: [2617, 2792]
 ---
 
-**Owner:** unassigned.
+**Owner:** unassigned (resolved).
 
 ## What happens
 
@@ -47,3 +49,26 @@ ours instead of matching a level by name.
   `sem_clockwait`), or call `prctl(PR_SET_NAME)` from the trampoline. The name
   is cut at 15 bytes either way.
 - The census test then identifies the C/C++ levels by name.
+
+## Resolved (2026-11-21)
+
+- The port names its threads on glibc, keyed on the C library as
+  `sem_clockwait` is: the prototype is supplied when the header withholds it.
+  The name is cut at 15 bytes in the port, because glibc REFUSES a longer one
+  with ERANGE instead of cutting it, which would have left every long-named
+  thread unnamed even with the call compiled in. musl, NuttX and the BSDs still
+  spawn unnamed, as before.
+- The cut made the old prefixes useless: `nros-sched-task-` is 16 bytes and
+  `nros-level-` 11, so the level's own name was lost or cut to four letters.
+  Every runner (both C/C++ spawns and the Rust board) now names a level
+  `nros-<label>`, where the label (`nros::thread_name::label`) is the sched
+  task's name less the derivation's `derived-` prefix, which every derived
+  level carries. The levels-cpp census now reads `nros-urgent` and
+  `nros-middle`, where it read `nros-derived-ur` and `nros-derived-mi` with
+  the prefix kept. That also helps FreeRTOS, whose default
+  `configMAX_TASK_NAME_LEN` is 16.
+- The census test identifies a level by that name, and fails when no
+  SCHED_FIFO level carries one.
+
+zenoh-pico's transport tasks are still unnamed: they are spawned by
+zenoh-pico's own POSIX system layer, not through the port.

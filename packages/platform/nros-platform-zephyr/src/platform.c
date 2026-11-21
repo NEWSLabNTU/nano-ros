@@ -772,7 +772,7 @@ int8_t nros_platform_task_init(void* task, void* attr, void* (*entry)(void*), vo
      * This is issue 0852 one field over. The ABI defines `name` as "Task name
      * for the kernel's own tables and crash dumps", every caller already
      * supplies one -- `PlatformTask::spawn_with` fills `attr.name`, and the
-     * C++ sched task spawn builds "nros-sched-task-<sched task>" for it -- and the FreeRTOS port
+     * C++ sched task spawn builds "nros-<sched task>" for it -- and the FreeRTOS port
      * passes it straight to `xTaskCreate`. Only this port dropped it, and
      * Zephyr is not a kernel with no name concept: CONFIG_THREAD_NAME and
      * `k_thread_name_set` have been there all along.

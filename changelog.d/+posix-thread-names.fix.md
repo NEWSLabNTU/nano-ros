@@ -1,0 +1,1 @@
+On Linux, the threads nano-ros spawns now carry their names in `ps -L`, `top -H` and gdb. Each level's thread is named `nros-<level>`. The C and C++ runners used to leave every level with the binary's name, and the Rust runner's long prefix pushed the level name out of the 15 bytes the kernel keeps.
