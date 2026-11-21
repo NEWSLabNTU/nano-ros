@@ -47,6 +47,7 @@ Usage: nros [OPTIONS] [COMMAND]
 
 Start:
   new          Scaffold a new nano-ros package (`--template`: talker, listener, server, client, action-server, action-client), workspace, image or component
+  template     List the node roles `nros new --template` scaffolds, or show one
   setup        Resolve + fetch a board's toolchain/SDK packages
 
 Build:
@@ -75,6 +76,7 @@ Inspect:
   board        Inspect supported boards
   rmw          List the RMW backends, or show one: its host side and its boards
   knob         List the knobs a project can state, or show one: where to state it, the values it takes and its default
+  code         List the diagnostic codes a refusal prints, or show one: what it reports and how to fix it
   config       Inspect or validate the current project's resolved configuration
   plan         Resolve launch files, manifests, and metadata into nros-plan.json
   check        Check a runner, command or board package, a plan, a system.toml or a workspace
@@ -266,6 +268,52 @@ Options:
 
   -V, --version
           Print version
+```
+
+### `nros template`
+
+```text
+List the node roles `nros new --template` scaffolds, or show one
+
+Usage: nros template <COMMAND>
+
+Commands:
+  list  List the node roles `nros new --template` scaffolds
+  show  Show one role: what it does, its interface and its languages
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros template list`
+
+```text
+List the node roles `nros new --template` scaffolds
+
+Usage: nros template list [OPTIONS]
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros template show`
+
+```text
+Show one role: what it does, its interface and its languages
+
+Usage: nros template show [OPTIONS] <ROLE>
+
+Arguments:
+  <ROLE>  The role, as `nros new --template` takes it (`talker`)
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### `nros setup`
@@ -1394,6 +1442,53 @@ Options:
       --out <FILE>         Write here instead of stdout
   -h, --help               Print help
   -V, --version            Print version
+```
+
+### `nros code`
+
+```text
+List the diagnostic codes a refusal prints, or show one: what it reports and how to fix it
+
+Usage: nros code <COMMAND>
+
+Commands:
+  list  List every diagnostic code with what it reports
+  show  Show one code: what it reports, where it is raised, and how to fix it
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros code list`
+
+```text
+List every diagnostic code with what it reports
+
+Usage: nros code list [OPTIONS]
+
+Options:
+      --all      List retired codes too
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros code show`
+
+```text
+Show one code: what it reports, where it is raised, and how to fix it
+
+Usage: nros code show [OPTIONS] <CODE>
+
+Arguments:
+  <CODE>  The code, as a refusal prints it (`NROS-0001`)
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### `nros config`

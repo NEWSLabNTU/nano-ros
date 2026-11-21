@@ -1,0 +1,1 @@
+`nros code list` and `nros code show <code>` list the diagnostic codes a refusal prints and explain one, linking its section of the Book. `nros template list` and `nros template show <role>` list the node roles `nros new --template` scaffolds. All four take `--json`; `nros explain <code>` keeps working.

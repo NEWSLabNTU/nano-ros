@@ -30,7 +30,7 @@ pub const ALIASES: &[(&str, &str)] = &[
 /// The groups `nros --help` shows, in RFC-0117 D2's order. Every visible
 /// top-level verb is in exactly one group; a test holds that.
 pub const GROUPS: &[(&str, &[&str])] = &[
-    ("Start", &["new", "setup"]),
+    ("Start", &["new", "template", "setup"]),
     (
         "Build",
         &["build", "configure", "fix", "clean", "materialize"],
@@ -44,7 +44,7 @@ pub const GROUPS: &[(&str, &[&str])] = &[
     (
         "Inspect",
         &[
-            "doctor", "board", "rmw", "knob", "config", "plan", "check", "explain",
+            "doctor", "board", "rmw", "knob", "code", "config", "plan", "check", "explain",
         ],
     ),
     ("Toolchain", &["toolchain", "pin", "update", "locate"]),
