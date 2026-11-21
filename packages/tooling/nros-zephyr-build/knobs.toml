@@ -906,8 +906,9 @@ type = "int"
 prompt = "Application heap arena size (bytes)"
 kconfig_attrs = [
     "default 1048576 if NROS_RMW_CYCLONEDDS",
-    "default 196608 if NROS_CAPABILITY_LIFECYCLE",
-    "default 114688 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAMS_STORE",
+    "default -1 if NROS_CAPABILITY_LIFECYCLE",
+    "default -1 if NROS_CAPABILITY_PARAM_SERVICES",
+    "default 114688 if NROS_PARAMS_STORE",
     "default 131072 if RUST",
     "default 65536",
 ]
@@ -960,8 +961,19 @@ parameter services on one node. The cost is per NODE, since each of a
 node's six parameter services owns a 2 x PARAM_SERVICE_BUFFER_SIZE
 buffer pair. So an image serving them on several nodes does not fit
 112 KiB: the four-node derived-sched-tasks image ran it dry at boot.
-Until the floor is derived from the image's node count,
-a multi-node C or C++ image states its measured heap.
+The same holds for the 192 KiB lifecycle arm: a lifecycle state
+machine owns five such pairs. So on Zephyr the param_services and
+lifecycle arms are the -1 derive sentinel. The configure starts from
+the arm the image had (112 KiB for param_services, 192 KiB for
+lifecycle) and adds (nodes - 1) x (12 x PARAM_SERVICE_BUFFER_SIZE) and
+(machines - 1) x (10 x PARAM_SERVICE_BUFFER_SIZE), each plus a measured
+remainder, from the counts in the image's entity inventory
+(zephyr/cmake/nros_heap_floor.cmake). One node and one machine derive
+exactly the arm; with no inventory to count from, the image keeps the
+arm. A value stated here, in the environment, or in the image's
+`[image.<id>.knobs.memory] heap_bytes` still wins, and one below the
+derived floor is warned about at configure. An image that only seeds a
+store, without the services, keeps its flat arm.
 
 A CYCLONE image gets 1 MiB: ddsrt's whole heap lands here
 since the Zephyr road compiles the platform funnel (heap/nros/heap.c),

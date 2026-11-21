@@ -165,6 +165,19 @@ board-module-path:
 knob-env-refusal:
     @bash scripts/check/check-knob-env-refusal.sh
 
+# A C/C++ Zephyr image's platform heap scales with the nodes that serve the
+# parameter services (issue 2780): each such node owns six request/reply
+# buffer pairs there, and the flat 112 KiB arm was priced on one node. Refuses
+# a Kconfig arm that is no longer the derive sentinel, a resolver that stops
+# pricing from `_nros_zephyr_heap_floor` or loses the one-node fallback,
+# and a CLI that stops publishing NROS_ENTITY_PARAM_SERVICE_NODES. Its selftest
+# runs the real floor function in script mode: no count or zero nodes derive
+# nothing, one node derives exactly 112 KiB, more nodes add 12 buffers each.
+# Buildless, ~1 s.
+[group('needs:cmake')]
+zephyr-heap-param-floor:
+    @bash scripts/check/check-zephyr-heap-param-floor.sh
+
 # RFC-0135 D2 (phase-577 W8) -- a board KEY reaches its family through ONE
 # CLI function, `orchestration::board_key::board_family`: nano-ros's
 # compiled-in table first, then the board catalog, so a board package outside

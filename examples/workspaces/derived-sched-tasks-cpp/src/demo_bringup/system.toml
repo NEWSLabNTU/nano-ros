@@ -59,12 +59,3 @@ panic = "platform"
 # is the image's (RFC-0098 D10), rendered into Kconfig by the module.
 [image.zephyr.knobs.zenoh]
 socket_timeout_ms = 5
-
-# Issue 2780 stopgap: this image serves the parameter services on every
-# node, and each node's six services own their own buffer pair, so the
-# 112 KiB one-node arm runs dry at boot. 327680 is MEASURED to pass on
-# native_sim/native/64 (2026-11-21); it is generous, and gives way to
-# the boot peak + 24,576 once measured, then to a floor derived from
-# the node count.
-[image.zephyr.knobs.memory]
-heap_bytes = 327680

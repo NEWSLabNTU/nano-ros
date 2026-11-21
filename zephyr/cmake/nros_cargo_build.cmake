@@ -43,6 +43,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/nros_zpico_pthread_pools.cmake")
 # canonical spelling, refusing a retired one. FILE scope, same reason as its
 # neighbours.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobEnv.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/nros_heap_floor.cmake")
 # Issue 1407 -- `nros_sizing_descriptor_west_fragment`, the one path both the
 # entry (writer) and `_nros_load_west_sizing_descriptor` (reader) name. FILE
 # scope, same reason as the three above.
@@ -1516,7 +1517,44 @@ function(nros_resolve_knobs)
     # governs application allocation. A consumer needing more than 64 KiB has
     # no working way to ask for it, and starvation presents as a silent hang
     # rather than an error. See NEWSLabNTU/nano-ros#41.
-    _nros_resolve_knob(NROS_MEMORY_HEAP_BYTES "${CONFIG_NROS_MEMORY_HEAP_BYTES}")
+    #
+    # Issue 2780 -- and its parameter-service floor is DERIVED. Kconfig states
+    # the `-1` sentinel for a C/C++ param_services image, and the floor scales
+    # with the nodes that serve the services (zephyr/cmake/nros_heap_floor.cmake).
+    # The env and a stated value still win, through the derivable ladder; with
+    # no inventory to derive from, the image keeps the one-node 112 KiB it had,
+    # never the 64 KiB crate default.
+    set(_nros_heap_buf "")
+    if(NOT "${CONFIG_NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")
+        set(_nros_heap_buf "${CONFIG_NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES}")
+    endif()
+    _nros_knob_env(NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES _nros_heap_buf_env)
+    if(NOT _nros_heap_buf_env STREQUAL "")
+        set(_nros_heap_buf "${_nros_heap_buf_env}")
+    endif()
+    _nros_zephyr_heap_class_base("${CONFIG_NROS_CAPABILITY_LIFECYCLE}"
+        "${CONFIG_NROS_CAPABILITY_PARAM_SERVICES}" _nros_heap_base)
+    _nros_zephyr_heap_floor("${_nros_heap_base}" "${_nros_heap_buf}"
+        NROS_DERIVED_MEMORY_HEAP_BYTES NROS_COMPOSITION_MEMORY_HEAP_BYTES)
+    if("${CONFIG_NROS_MEMORY_HEAP_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}"
+       AND "${NROS_DERIVED_MEMORY_HEAP_BYTES}" STREQUAL "")
+        if("${_nros_heap_base}" STREQUAL "")
+            message(FATAL_ERROR
+                "nros: CONFIG_NROS_MEMORY_HEAP_BYTES is the derive sentinel (-1), but "
+                "the image carries neither the parameter services nor lifecycle, "
+                "the only families it is derived for. State a size.")
+        endif()
+        message(STATUS
+            "nros: NROS_MEMORY_HEAP_BYTES=${_nros_heap_base}, the one-node floor of "
+            "this image's class -- the image declares no node count to derive it "
+            "from (entity inventory: ${NROS_ENTITY_INVENTORY_STATUS})")
+        _nros_resolve_knob(NROS_MEMORY_HEAP_BYTES "${_nros_heap_base}" default)
+    else()
+        nros_entity_inventory_knobs_file(_nros_heap_reason)
+        _nros_resolve_derivable_knob(NROS_MEMORY_HEAP_BYTES "${CONFIG_NROS_MEMORY_HEAP_BYTES}"
+            NROS_DERIVED_MEMORY_HEAP_BYTES "parameter-service and lifecycle node counts"
+            "${_nros_heap_reason}")
+    endif()
 
     # phase-8 — the two arenas are coupled, and nothing used to check it.
     #
@@ -1970,7 +2008,11 @@ endfunction()
 function(nros_derived_knob_env out_var)
     set(_env "")
     foreach(_knob IN LISTS NROS_RESOLVED_KNOBS)
-        if(NOT "${NROS_KNOB_SOURCE_${_knob}}" STREQUAL "derived")
+        # Issue 2780 -- and `default`: a value THIS configure decided (rung 4)
+        # is no more readable from `$DOTCONFIG` than a derived one, since the
+        # symbol there is still the `-1` sentinel.
+        if(NOT "${NROS_KNOB_SOURCE_${_knob}}" STREQUAL "derived"
+           AND NOT "${NROS_KNOB_SOURCE_${_knob}}" STREQUAL "default")
             continue()
         endif()
         set(_value "${NROS_RESOLVED_${_knob}}")
