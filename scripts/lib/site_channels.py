@@ -852,6 +852,31 @@ def resolved_sets(rust_texts: list[str], c_texts: list[str], level: int = 2
     return out
 
 
+def site_reasons(rust_texts: list[str], c_texts: list[str], level: int = 2
+                 ) -> dict[str, list[str]]:
+    """Per caller, why each indirect site is or is not resolved (issue 2658:
+    which unresolved sites make the walk's deepest path)."""
+    Analysis._opaque = {}
+    Analysis._seen_params = set()
+    mods = [parse_module(t, "rust") for t in rust_texts] + \
+           [parse_module(t, "c") for t in c_texts]
+    an = Analysis(mods, level=level)
+    sol = an.solve()
+    out: dict[str, list[str]] = {}
+    for st in an.sites:
+        if st.vtable:
+            why = "vtable slot (W7)"
+        elif st.key is None:
+            why = f"unresolved: {st.why}"
+        else:
+            trusted, fns, bad = sol.get(st.key, (True, set(), []))
+            what = st.key[1] if st.key[0] == "field" else f"param of {st.key[1]}"
+            why = (f"resolved: {what}" if trusted
+                   else f"unresolved: {what}: {(bad or ['?'])[0].split(' (')[0]}")
+        out.setdefault(st.caller, []).append(why)
+    return out
+
+
 def self_test() -> list[str]:
     bad: list[str] = []
 

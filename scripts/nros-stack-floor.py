@@ -3313,6 +3313,9 @@ def run(args: argparse.Namespace) -> int:
             if best is None or p.depth > best.depth:
                 best, best_root = p, root
             if os.environ.get("NROS_STACK_W7F_CHECKPOINT") and _W7F:
+                _W7F["walk_kw"] = dict(indirect_charge=charge,
+                                       recursion_allowance=args.recursion_allowance,
+                                       externals=externals, cuts=cuts)
                 w7f_checkpoint(g, root, p.depth, Path(os.environ["NROS_STACK_W7F_CHECKPOINT"]))
         if best is not None:
             allowance, measured_by = 0, None
@@ -4445,6 +4448,12 @@ def self_test() -> int:
     return 1 if fails else 0
 
 
+def site_reasons_cached() -> dict[str, list[str]]:
+    if "reasons" not in _W7F:
+        _W7F["reasons"] = site_channels.site_reasons(_W7F["rust"], _W7F["c"], level=2)
+    return _W7F["reasons"]
+
+
 def w7f_checkpoint(g: Graph, root: str, heuristic: int, out: Path) -> None:
     """Checkpoint 2: the reachable SCC and the exact search's cost, on
     today's bound graph and on the graph with every RESOLVED site bound to
@@ -4460,14 +4469,40 @@ def w7f_checkpoint(g: Graph, root: str, heuristic: int, out: Path) -> None:
         new[caller] = set(pre.get(caller, set())).union(*sites)
         rebound += 1
     budget, seconds = 10**7, 120.0
-    res = {"root": root, "heuristic_depth": heuristic, "callers_rebound": rebound,
+    # Issue 2658: the floor the walk would state on the re-bound graph (the
+    # same 8-order heuristic), not only the SCC.
+    import copy
+    g2 = copy.copy(g)
+    g2.edges = new
+    try:
+        rebound_depth: int | None = walk_deepest(g2, root, **_W7F.get("walk_kw", {})).depth
+    except WalkRefused:
+        rebound_depth = None
+    # Issue 2658: what the re-bound walk's deepest path is made of: each hop
+    # that is not a direct edge is an indirect site the binding kept.
+    hops: list[dict] = []
+    try:
+        chain = walk_deepest(g2, root, **_W7F.get("walk_kw", {})).chain
+    except WalkRefused:
+        chain = []
+    reasons = site_reasons_cached()
+    for a_, b_ in zip(chain, chain[1:]):
+        if b_ in pre.get(a_, set()):
+            continue
+        hops.append({"from": a_, "to": b_, "frame": g.frames.get(b_, 0),
+                     "why": sorted(set(r for r in reasons.get(a_, ["no IR site (machine)"])
+                                       if not r.startswith("resolved")))})
+    res = {"root": root, "heuristic_depth": heuristic, "rebound_heuristic_depth": rebound_depth,
+           "path_len": len(chain), "indirect_hops": hops,
+           "callers_rebound": rebound,
            "callers_with_sites": len(sets),
            "before": exact_walk.deepest_simple(g.edges, g.frames, root, budget, seconds),
            "after": exact_walk.deepest_simple(new, g.frames, root, budget, seconds)}
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("a") as fh:
         fh.write(json.dumps(res) + "\n")
-    print(f"nros-stack-floor: W7f checkpoint 2 from `{root}`: SCC {res['before']['largest_scc']} -> "
+    print(f"nros-stack-floor: W7f checkpoint 2 from `{root}`: walk {heuristic} -> {rebound_depth}; "
+          f"SCC {res['before']['largest_scc']} -> "
           f"{res['after']['largest_scc']}; exact search {res['before']['expansions']} -> "
           f"{res['after']['expansions']} expansions "
           f"({'done' if res['after']['finished'] else 'budget out'}), written to {out}",

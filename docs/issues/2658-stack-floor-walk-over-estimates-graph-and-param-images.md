@@ -106,3 +106,39 @@ to the targets that can actually reach that site, not to every function of
 its type: step 2 of issue 2550 (field- and parameter-sensitive binding,
 stopped at its first checkpoint, phase-557 W7f). That work stays parked, and
 this issue waits on it.
+
+## The existing classifier, measured against it (2026-11-22)
+
+Phase-557 W7f built the field- and parameter-sensitive classifier this issue
+waited on (W7f.0-W7f.2, `--classify-sites`). Its Checkpoint 2 stopped W7f,
+because the SCC stays at about 2,000 functions. The question here is
+narrower: does binding the sites it DOES resolve move the floor these images
+are refused on? Measured with `NROS_STACK_W7F_CHECKPOINT`: the same 8-order
+walk, on the graph with every resolved site bound to its channel's set.
+
+| image | walk today | walk, resolved sites bound | measured main peak |
+| --- | ---: | ---: | ---: |
+| stock `talker/c/zenoh@nucleo-f767zi-zephyr` | 108,800 B | 100,448 B (-7.7 %) | 11,876 B |
+| stock `talker/rust/zenoh@nucleo-f767zi-zephyr` | 68,568 B | 65,868 B (-3.9 %) | 28,340 B |
+
+So it does not close this issue. The two images above are those templates
+plus a graph query or two parameters, and they are refused for the same
+inflation.
+
+**What the remaining path is made of.** The C talker's re-bound deepest path
+is 378 frames. Each of its 154 indirect hops is attributed to why its call
+site stayed bound:
+
+| hops | frame bytes | why the site stays bound |
+| ---: | ---: | --- |
+| 99 | 32,608 | a Rust `dyn` call, bound by vtable slot (W7) to every function at that slot in any vtable |
+| 16 | 744 | a machine-level site with no IR |
+| 31 | about 2,700 | C sites the classifier cannot resolve (`_z_link_t` and `_z_transport_multicast_t` reachable across Rust<->C, loads the rules do not place, casts, phi) |
+| 4 | 32 | resolved, still on the path |
+
+The C image's floor is mostly made by the RUST runtime it links (`nros-c`
+is Rust): trait-object dispatch, bound by slot to every implementation in
+the image. The C classifier does not reach those sites. Closing this issue
+needs Rust-side points-to, knowing which concrete vtable reaches each `dyn`
+call. That is the class of work issue 2550 parks, so this issue stays
+waiting on it, and W7f's measurement tools re-measure it in one run.
