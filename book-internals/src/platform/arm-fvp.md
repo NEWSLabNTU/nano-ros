@@ -180,10 +180,10 @@ nros run demo_bringup:fvp
 ```
 
 `nros build` also prints that target as a `west build ... -t run` line. West
-runs it only inside a west workspace, so from the image's workspace it fails
-with `west: unknown command "build"`
-([issue 2809](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2809-west-run-line-outside-topdir.md)).
-Point west at your Zephyr workspace first:
+runs it only inside a west workspace or with `ZEPHYR_BASE` set, so `nros build`
+prefixes the line with the `ZEPHYR_BASE` of the Zephyr workspace it found
+([issue 2809](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2809-west-run-line-outside-topdir.md)).
+To run it by hand, point west at your Zephyr workspace:
 
 ```bash
 export ZEPHYR_BASE=~/.nros/workspaces/zephyr/3.7/zephyr

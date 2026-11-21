@@ -1,12 +1,14 @@
 ---
 id: 2809
 title: "The `west build -d <dir> -t run` line `nros build` prints fails outside a west workspace"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [cli, zephyr]
 related: [issue-2808, issue-2176]
 found: 2026-11-21
+resolved: 2026-11-22
+resolved_in: "fix(cli): `nros build`'s west run/flash lines work where printed (issue 2809)"
 ---
 
 ## What
@@ -49,3 +51,18 @@ Print the line so it runs where the user is: prefix it with the
 `nros run <image>` first and the west line as the manual alternative. The
 internals FVP page now names `nros run` and the `ZEPHYR_BASE` workaround
 (issue 2808).
+
+## Resolved, 2026-11-22
+
+`nros build` now prints `nros run <image>` (or `nros flash <image>`) first,
+since it works as printed, and the west line after it as the manual
+alternative, prefixed with `ZEPHYR_BASE=<tree>/zephyr`. The tree is the one
+the build itself resolved (`--zephyr-workspace`, `$ZEPHYR_BASE`,
+`$NROS_ZEPHYR_WORKSPACE`, then the store workspace). When no tree was found,
+the west line stays bare and a note says what it needs. Every west board
+shares the change (`next_steps` in `cmd/build_next.rs`), so the emulator and
+flash lines are covered as well as the FVP one. A Zephyr board with no
+`[board.run]` keeps only the west line, because `nros run` cannot run it.
+
+Held by the `build_next` tests: the `ZEPHYR_BASE` prefix on a found tree, the
+bare line plus note with none, and the `nros run` / `nros flash` lines first.
