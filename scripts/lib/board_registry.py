@@ -126,6 +126,71 @@ def board_name(row: dict) -> str:
     return crate[len("nros-board-"):] if crate.startswith("nros-board-") else crate
 
 
+def shared_crates(rows: list[dict]) -> set[str]:
+    """The packages that carry more than one registry row."""
+    crates = [r.get("crate") for r in rows]
+    return {c for c in crates if crates.count(c) > 1}
+
+
+def row_board_key(row: dict, shared: set[str]) -> str:
+    """The board name a fixture's `NROS_BOARD` must use to count for this row:
+    the first board key of a row with no matrix platform in a package that
+    carries several rows (the S32Z270 RTD variant, Zephyr's S32Z270 board),
+    else the package's board name."""
+    if not row.get("matrix_platform") and row.get("crate") in shared:
+        keys = row.get("board_keys") or []
+        if keys:
+            return keys[0]
+    return board_name(row)
+
+
+def fixture_nros_boards(fixtures_text: str) -> set[str]:
+    """Board names a fixture row builds with (`NROS_BOARD = "..."`)."""
+    return set(re.findall(r'NROS_BOARD\s*=\s*"([^"]+)"', fixtures_text))
+
+
+def fixture_west_boards(fixtures: dict) -> set[str]:
+    """West board ids some fixture row builds an IMAGE for (issue 2811).
+
+    A Zephyr fixture names its board the way `west build -b` does: `board` on a
+    `[[fixture]]` / `[[workspace_fixture]]` west row, `west_board` on a
+    `west-build` compile-check row. A `west-configure` row stops before the
+    link, so it is no build evidence; a `skip_build` row is never built.
+    """
+    out = set()
+    for table in ("fixture", "workspace_fixture"):
+        for r in fixtures.get(table, []):
+            if r.get("board") and not r.get("skip_build"):
+                out.add(r["board"])
+    for r in fixtures.get("compile_check_fixture", []):
+        if r.get("builder") == "west-build" and r.get("west_board") and not r.get("skip_build"):
+            out.add(r["west_board"])
+    return out
+
+
+def row_built(row: dict, *, built_platforms: set[str], nros_boards: set[str],
+              west_boards: set[str], shared: set[str], index: dict) -> bool:
+    """Has the row any build evidence? The ONE derivation every view uses.
+
+    * a Runtime or BuildOnly cell on its matrix platform (`built_platforms`);
+    * a fixture row whose `NROS_BOARD` names its board (`row_board_key`);
+    * a Zephyr fixture row whose west board id is the `[board.zephyr]
+      west_board` of the row's descriptor (issue 2811): a west row builds
+      through `-b <west id>` and reads no `NROS_BOARD`, so that id is the
+      fact. It is keyed per descriptor, not per package, because one package
+      (`nros-board-zephyr`) holds several Zephyr boards.
+    """
+    plat = row.get("matrix_platform")
+    if plat and plat in built_platforms:
+        return True
+    if row_board_key(row, shared) in nros_boards:
+        return True
+    key = row_descriptor(row, index)
+    entry = index["entries"].get(key) if key else None
+    west = ((entry or {}).get("zephyr") or {}).get("west_board")
+    return bool(west and west in west_boards)
+
+
 def is_stale(row: dict, stale_days: int, today: datetime.date) -> bool:
     if row.get("cadence") != "manual" or not row.get("last_run"):
         return False
@@ -634,6 +699,39 @@ def self_test() -> None:
     assert status_word(none, True) == "Builds"
     assert status_word(none, False) == "Not supported"
     assert status_word({"crate": "i", "infra": True}, False) == "Infrastructure"
+
+    # Issue 2811 -- `row_built`, the one build-evidence derivation.
+    z_index = {"by_name": {"s32z-z": ("z/a.toml", 0), "fvp-z": ("z/b.toml", 0)},
+               "by_dir": {}, "entries": {
+                   ("z/a.toml", 0): {"names": ["s32z-z"],
+                                     "zephyr": {"west_board": "s32z@D/s32z/rtu0"}},
+                   ("z/b.toml", 0): {"names": ["fvp-z"],
+                                     "zephyr": {"west_board": "fvp/aemv8r/smp"}}}}
+    z_rows = [{"crate": "nros-board-z", "matrix_platform": "ZNative"},
+              {"crate": "nros-board-z", "board_keys": ["s32z-z"], "runs": "none"},
+              {"crate": "nros-board-z", "board_keys": ["fvp-z"], "runs": "none"}]
+    z_shared = shared_crates(z_rows)
+    assert z_shared == {"nros-board-z"}
+    west_fx = {"compile_check_fixture": [
+        {"id": "a", "builder": "west-build", "west_board": "s32z@D/s32z/rtu0"},
+        {"id": "b", "builder": "west-configure", "west_board": "fvp/aemv8r/smp"}]}
+    z_west = fixture_west_boards(west_fx)
+    assert z_west == {"s32z@D/s32z/rtu0"}, "a configure-only row is no build evidence"
+
+    def z_built(row, nros=frozenset(), west=frozenset()):
+        return row_built(row, built_platforms=set(), nros_boards=set(nros),
+                         west_boards=set(west), shared=z_shared, index=z_index)
+    assert z_built(z_rows[1], west=z_west), \
+        "a west row building the descriptor's west_board builds the row"
+    assert not z_built(z_rows[2], west=z_west), \
+        "a sibling descriptor's west board builds only that sibling"
+    assert not z_built(z_rows[1]), "no fixture, no build evidence"
+    assert z_built(z_rows[1], nros={"s32z-z"}), "NROS_BOARD of the row's own key counts"
+    assert not z_built(z_rows[1], nros={"z"}), \
+        "a keyed row of a shared package is not built by the package name"
+    assert fixture_west_boards({"workspace_fixture": [
+        {"board": "s32z@D/s32z/rtu0", "skip_build": True}]}) == set(), \
+        "a skip_build row builds nothing"
 
     # phase-528 W2 — descriptor-derived `emulator`, each refusal planted.
     index = {"by_name": {"q": ("d/q.toml", 0), "r": ("d/r.toml", 0)},

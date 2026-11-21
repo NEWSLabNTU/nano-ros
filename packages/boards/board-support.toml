@@ -410,8 +410,11 @@ notes = "Runtime is run by a maintainer, hence `cadence = \"manual\"`. The model
 
 # issue 2631 -- the NXP S32Z270 RTU0 Cortex-R52 on Zephyr, a descriptor
 # directory in this crate (boards/s32z270-rtu0-zephyr/). No emulator models the
-# SoC, no CI lane builds it and no hardware run is recorded here, so the row
-# claims no run and no matrix_platform.
+# SoC and no hardware run is recorded here, so the row claims no run and no
+# matrix_platform. Issue 2811: it reads "Builds" from the
+# `west_s32z270_rtu0_zephyr` compile-check row, whose `west_board` is this
+# descriptor's (`board_registry.row_built`). The gate's
+# `zephyr-module-fixtures` job links it, fetching `hal_nxp` for that job only.
 [[board]]
 crate = "nros-board-zephyr"
 board_keys = ["s32z270-rtu0-zephyr"]
@@ -420,7 +423,7 @@ runs = "none"
 hardware = "s32z270"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
-notes = "S32Z270 RTU0 Cortex-R52 (board revision D) on Zephyr, with Zephyr's NXP NETC ethernet driver. No emulator models the SoC, no CI lane builds it and no hardware run is recorded."
+notes = "S32Z270 RTU0 Cortex-R52 (board revision D) on Zephyr, with Zephyr's NXP NETC ethernet driver. The C++ Cyclone image links in CI (`just zephyr build-module-fixtures`, which fetches `hal_nxp` for that job only). No emulator models the SoC and no hardware run is recorded."
 
 # phase-522 W1 (RFC-0114 migration table) — the S32K344 safety island. A board
 # nano-ros has measured booting on silicon, declared nowhere until now: the
