@@ -264,22 +264,11 @@ impl ZephyrProcess {
         Self::start_inner(binary, platform, &[], None)
     }
 
-    /// [`ZephyrProcess::start_with_locator`], with `dir` as the image's working
-    /// directory, for an image that writes files relative to it: the posix
-    /// tracing backend writes its CTF stream to `channel0_0` there (issue
-    /// 2766). native_sim only, like the locator override.
-    pub fn start_with_locator_in_dir(
-        binary: &Path,
-        platform: ZephyrPlatform,
-        locator: &str,
-        dir: &Path,
-    ) -> TestResult<Self> {
-        Self::start_inner(
-            binary,
-            platform,
-            &[format!("--nros-locator={locator}")],
-            Some(dir),
-        )
+    /// [`ZephyrProcess::start`], with `dir` as the image's working directory,
+    /// for an image that writes files relative to it: the posix tracing
+    /// backend writes its CTF stream to `channel0_0` there (issue 2766).
+    pub fn start_in_dir(binary: &Path, platform: ZephyrPlatform, dir: &Path) -> TestResult<Self> {
+        Self::start_inner(binary, platform, &[], Some(dir))
     }
 
     /// #166 / phase-286 W1 — start a native_sim image with a per-test router
