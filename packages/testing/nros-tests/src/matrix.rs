@@ -1404,6 +1404,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     ("output_marker_gate", NonCell::Static),
     (
+        "owned_entry_census_fold",
+        NonCell::Probe(
+            "an owned entry with two programs on a cross board is sized for the larger program, from both programs' censuses (RFC-0071 D20, RFC-0100 D12)",
+        ),
+    ),
+    (
         "owned_entry_run_verb",
         NonCell::Probe(
             "`nros run` resolves and runs a named owned entry's own executable (RFC-0071 D19)",

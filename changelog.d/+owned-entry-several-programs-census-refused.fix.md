@@ -1,1 +1,0 @@
-An owned entry package that builds several programs, on a cross board where its pools are sized by a census of the program, is now refused with the programs named, instead of being sized from the first program alone and running the others on pools too small for them.

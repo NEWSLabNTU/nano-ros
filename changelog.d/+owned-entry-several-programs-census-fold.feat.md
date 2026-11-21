@@ -1,0 +1,1 @@
+An owned entry package that builds several programs can now run on a cross board, where its pools are sized by a census of the program: every program is counted, and the image is sized for the largest of them, so no program runs on pools sized for another.

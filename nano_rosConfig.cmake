@@ -180,6 +180,14 @@ if(NROS_LEAF_SYSTEM)
     include("${NROS_REPO_DIR}/cmake/NanoRosLeafEntityFacts.cmake")
     nros_record_leaf_entity_facts("${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
+# phase-583 (RFC-0071 D20) -- a HOST census build states every program it
+# builds (`nros/census-program.txt`), whether or not the project has a
+# `system.toml`: an owned entry's package has none, and its census must know
+# when it builds several programs, or it would size them all from the first.
+if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
+    include("${NROS_REPO_DIR}/cmake/NanoRosLeafEntityFacts.cmake")
+    _nros_census_program_arm()
+endif()
 if(NROS_EXPORT_FOUND)
     # The leaf's values go into the CACHE, not directory scope. The imported
     # root CMakeLists declares `NROS_PLATFORM`/`NROS_RMW` with cached

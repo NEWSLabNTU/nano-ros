@@ -628,6 +628,9 @@ required-features = ["phase216-substrate"]
 workspace = true
 
 [dev-dependencies]
+# phase-583 -- the census-fold test reads a built sizing descriptor through its
+# one reader, never by hand.
+nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }
 # Phase 380 W2 — the size-bound property test walks the REAL schemas of every
 # committed generated message, so it needs the whole set. Dev-deps: a test
 # crate depending on generated crates is not a cycle (they depend on
