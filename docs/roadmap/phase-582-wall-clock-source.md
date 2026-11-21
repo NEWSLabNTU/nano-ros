@@ -56,6 +56,12 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     dispatching; if zenoh-pico surfaces it only through a dispatched
     callback, the wait gets a bounded pump that runs no user callbacks, and
     the doc says so. The shape refinements are recorded in RFC-0141 D1.
+    W1c-2 as built: the clock gate (both runners, one primitive in
+    `zephyr/nros_platform_zephyr_shims.c`), the single-executor entries
+    resolving after registration, `Executor::restart_timing` (and
+    `nros_cpp_executor_restart_timing`) when the gate opens, and zpico's pump
+    in ZPICO_DRIVE_CALLER builds. The native_sim cells (an IP image whose
+    `zenoh-hlc` source hears a host publisher; a serial one) run on host 241.
   - **W1d:** the board hook, its link rule and the selection-named TU, and
     the linux stub-board stamp test in Rust, C and C++.
 - RFC-0141 D1–D4:
