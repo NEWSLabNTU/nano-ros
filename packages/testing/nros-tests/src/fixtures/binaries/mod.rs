@@ -6479,6 +6479,19 @@ pub fn build_zephyr_workspace_c_realtime_entry() -> TestResult<PathBuf> {
     )
 }
 
+/// Issue 2766 — the `workspace-zephyr-c-realtime-ctf` row: the realtime-c
+/// sched-task image with Zephyr CTF tracing and callback tracing on
+/// (`demo_bringup:zephyr_ctf`). Built by the west lane into
+/// `<zephyr-build-root>/build-ws-c-realtime-ctf-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/zephyr_ctf_markers.rs`.
+pub fn build_zephyr_workspace_c_realtime_ctf_entry() -> TestResult<PathBuf> {
+    let binary_path = zephyr_build_root().join("build-ws-c-realtime-ctf-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-c", "c"),
+    )
+}
+
 /// issue 0260 / phase-356 W3 — the SMP realtime entry.
 ///
 /// `zephyr.elf`, not `zephyr.exe`: this is a real aarch64 image for

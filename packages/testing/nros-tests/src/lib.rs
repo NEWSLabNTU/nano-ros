@@ -21,6 +21,7 @@ pub mod alloc;
 // Issue 1692 — run a prebuilt entry as a census producer (`$NROS_CENSUS_OUT`).
 pub mod census;
 pub mod checker;
+pub mod ctf;
 pub mod dds_isolation;
 // Issue 2122 -- in-process ELF section + symbol table reader.
 pub mod elf;

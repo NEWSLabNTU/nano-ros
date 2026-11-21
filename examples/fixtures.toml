@@ -7691,6 +7691,28 @@ west_id = "zephyr/native_sim/native/64/workspace-realtime-entry-c"
 west_zenoh_locator = "tcp/127.0.0.1:7591"
 skip_probe = true
 
+# Issue 2766 -- the (ZephyrNativeSim, C, Zenoh, RealtimeSchedTasks, Workspace)
+# cell + `[Ctf]`: the row above's sched-task image with Zephyr CTF tracing and
+# callback tracing on (`[image.zephyr_ctf]`). `tests/zephyr_ctf_markers.rs`
+# boots it with its own router locator (`-testargs --nros-locator=`) and its own
+# working directory, where the posix backend writes `channel0_0`, and decodes
+# that stream against the TSDL metadata of the Zephyr tree that built it. The
+# workspace must carry nano-ros's Zephyr patch set (`app_marker`), which
+# `nros setup` applies.
+[[workspace_fixture]]
+id = "workspace-zephyr-c-realtime-ctf"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-c"
+bringup = "src/demo_bringup"
+image = "zephyr_ctf"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-realtime-ctf-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-realtime-ctf-entry-c"
+west_zenoh_locator = "tcp/127.0.0.1:7591"
+skip_probe = true
+
 # issue 0260 / phase-356 W3 — the SMP row: the only place in the tree where a
 # core-pin dim is PROVEN rather than merely accepted.
 #
