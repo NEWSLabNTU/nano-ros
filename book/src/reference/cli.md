@@ -74,7 +74,9 @@ Interfaces:
 Inspect:
   doctor       Health-check the workspace (SDK paths, toolchains, env)
   board        Inspect supported boards
+  platform     List the platforms boards build on, or show one: its boards and capabilities
   rmw          List the RMW backends, or show one: its host side and its boards
+  runner       List the runners and extension commands this workspace reaches, or show one
   knob         List the knobs a project can state, or show one: where to state it, the values it takes and its default
   code         List the diagnostic codes a refusal prints, or show one: what it reports and how to fix it
   config       Inspect or validate the current project's resolved configuration
@@ -1330,6 +1332,52 @@ Options:
   -V, --version                    Print version
 ```
 
+### `nros platform`
+
+```text
+List the platforms boards build on, or show one: its boards and capabilities
+
+Usage: nros platform <COMMAND>
+
+Commands:
+  list  List the platforms on the descriptor search path
+  show  Show one platform: its names, parent, boards and capabilities
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros platform list`
+
+```text
+List the platforms on the descriptor search path
+
+Usage: nros platform list [OPTIONS]
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros platform show`
+
+```text
+Show one platform: its names, parent, boards and capabilities
+
+Usage: nros platform show [OPTIONS] <PLATFORM>
+
+Arguments:
+  <PLATFORM>  The platform, by its name or an alias (`freertos`, `bare-metal`)
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
 ### `nros rmw`
 
 ```text
@@ -1376,6 +1424,52 @@ Options:
       --workspace <DIR>  Workspace whose own RMW providers are searched too
   -h, --help             Print help
   -V, --version          Print version
+```
+
+### `nros runner`
+
+```text
+List the runners and extension commands this workspace reaches, or show one
+
+Usage: nros runner <COMMAND>
+
+Commands:
+  list  List the runners and extension commands this workspace reaches
+  show  Show one runner or extension command: its package, verbs and needs
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros runner list`
+
+```text
+List the runners and extension commands this workspace reaches
+
+Usage: nros runner list [OPTIONS]
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros runner show`
+
+```text
+Show one runner or extension command: its package, verbs and needs
+
+Usage: nros runner show [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  A runner (`qemu`), or a command as it is typed (`router`)
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### `nros knob`

@@ -410,6 +410,63 @@ pub fn discover(ws: &Path) -> (Vec<Listed>, Vec<String>) {
     (listed, refused)
 }
 
+/// One runner as `nros runner list` lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedRunner {
+    /// The name `[image.<id>] runner` and `--runner` take.
+    pub name: String,
+    /// The providing package.
+    pub package: String,
+    /// The package directory.
+    pub dir: PathBuf,
+    /// The verbs it implements (`run`, `flash`, `console`).
+    pub verbs: Vec<&'static str>,
+    /// The plan placeholders it consumes (`elf`, …).
+    pub needs: Vec<String>,
+    /// The executable's name.
+    pub bin: String,
+    /// The package it replaces, when an override applies.
+    pub overrides: Option<String>,
+}
+
+/// Every runner the workspace `ws` can reach, and every one refused, by
+/// name. Each name resolves the way `nros run` and `nros flash` resolve it,
+/// over the same search path and override policy as [`discover`].
+#[must_use]
+pub fn discover_runners(ws: &Path) -> (Vec<ListedRunner>, Vec<String>) {
+    let Ok((scan, policy)) = scan_and_policy(ws) else {
+        return (Vec::new(), Vec::new());
+    };
+    let mut names: Vec<&str> = scan
+        .providers
+        .iter()
+        .flat_map(|p| p.provides.iter())
+        .filter(|v| v.kind == cargo_nano_ros::package_xml::RUNNER_KIND)
+        .map(|v| v.name.as_str())
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    let (mut listed, mut refused) = (Vec::new(), Vec::new());
+    for name in names {
+        match cargo_nano_ros::extension_descriptor::resolve_runner_with(&scan, name, &policy) {
+            // An alias resolves to the runner its package names first, which
+            // is listed under that name.
+            Ok(r) if r.name != name => {}
+            Ok(r) => listed.push(ListedRunner {
+                verbs: r.descriptor.verbs.iter().map(|v| v.as_str()).collect(),
+                needs: r.descriptor.needs.clone(),
+                overrides: r.overrides.map(|o| o.shadowed_package),
+                name: r.name,
+                package: r.package,
+                dir: r.dir,
+                bin: r.bin,
+            }),
+            Err(e) => refused.push(format!("runner `{name}`: {e}")),
+        }
+    }
+    (listed, refused)
+}
+
 /// `nros help --all`'s extension section; empty when there is none.
 #[must_use]
 pub fn render_listing(listed: &[Listed]) -> String {

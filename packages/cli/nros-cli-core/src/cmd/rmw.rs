@@ -138,7 +138,7 @@ pub fn find<'a>(items: &'a [RmwItem], name: &str) -> Result<&'a RmwItem> {
 }
 
 /// Every backend the index knows, sorted by name.
-fn collect(workspace: Option<PathBuf>) -> Result<Vec<RmwItem>> {
+pub(crate) fn collect(workspace: Option<PathBuf>) -> Result<Vec<RmwItem>> {
     let cwd = std::env::current_dir()?;
     let index = match &workspace {
         Some(ws) => rmw_index::for_workspace(ws)?,
