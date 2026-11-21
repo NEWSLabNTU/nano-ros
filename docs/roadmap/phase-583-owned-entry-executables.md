@@ -278,16 +278,36 @@ in the order below.
   - **Descriptor path (nros 175).** Computed ONLY in `nros_sizing_descriptor`:
     `descriptor_path_for(build, entry, Some(exe))` gives
     `<build>/nros/sizing/<entry>/<exe>.toml`, and `None` gives today's
-    `<entry>.toml` byte for byte; no reader or cmake joins it by hand. Each
-    program's cargo build gets its OWN `NROS_SIZING_DESCRIPTOR`, since
-    nros-params reads that variable and a shared value would size every
-    program's store from one program.
+    `<entry>.toml` byte for byte; no reader or cmake joins it by hand.
+  - **Correction (2026-11-22, read from the code; pending nros 175).** There is
+    no per-program cargo build to give its own `NROS_SIZING_DESCRIPTOR`: every
+    program of a configure links ONE runtime staticlib, and
+    `nros_sizing_descriptor_cargo_env` names exactly one file for that build.
+    Several entries sharing a runtime already have a rule (RFC-0100 D12): the
+    runtime's own descriptor, `nros/sizing/runtime/shared.toml`, folded from
+    each entry's. Several programs of one entry take the same rule: each
+    program's census writes `<entry>/<exe>.toml`, these are the fold's inputs,
+    and cargo is named the runtime descriptor. So no program's store is sized
+    from another program alone, which was the concern behind the per-program
+    variable.
+  - **The defect this fixes.** An owned entry's census today runs ONE program,
+    the one the host build states in `nros/census-program.txt`. A cross-board
+    entry with two programs is therefore sized from one program's census, and
+    the other may need more.
   - **Order.** 133's stock-template RAM fix (`stack-floor-twin.py`) lands first; W4
     then rebases onto it. `cmake/NanoRosStackFloor.cmake`, `stack_floor.rs` and
     `stack_floor_raise.rs` are free. In `nros-stack-floor.py`, W4 changes key
     parsing only and 133's W9c band work changes other functions; whoever lands
     second rebases. 175's fix-param-store-carve touches only `write_for_leaf` in
     `sizing_descriptor.rs`, so the two do not collide.
+  - **Follow-up: drift still globs (2026-11-22).** `report_path` spells the
+    cmake road's location only, and drift also reads cargo- and west-road
+    reports, so retiring its glob needs a per-road rule, from the build dir
+    `nros run --dry-run --json` states. It lands with drift's build route for
+    program keys. Until then `--validate-table` refuses program keys in
+    drift-read rows, so the glob never meets a per-program report, and
+    `pick_report` matches on the report's own `image`, so it cannot take one
+    program's report for another.
   - **One path rule, every reader (nros 133's review).**
     `report_path(build_dir, key)`, in the same grammar module, is the only
     spelling of where a key's report lives. The CLI's `stack_floor_raise` (which
