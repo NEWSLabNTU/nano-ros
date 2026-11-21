@@ -1211,6 +1211,10 @@ pub const CONTRACT_VIOLATION_PREFIX: &str = "contract violation #";
 /// before arming suppressed`), from `nros-node/src/executor/spin.rs`.
 pub const MONITORS_ARMED_SUPPRESSED_MARKER: &str = "before arming suppressed";
 
+/// Printed by the Zephyr shim's trampoline as a spawned sched task's thread
+/// starts (`nros_zephyr_sched_task_trampoline`).
+pub const ZEPHYR_SCHED_TASK_ENTERED_MARKER: &str = "[nros] sched task entered";
+
 /// Emitted by `nros-board-zephyr`'s `run_sched_tasks` when a real-time sched task's
 /// kernel EDF deadline is applied (phase-296 W5.5). MIRRORS the literal
 /// `::log::info!` prefix in `nros-board-zephyr/src/entry_sched_tasks.rs`

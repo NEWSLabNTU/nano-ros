@@ -163,6 +163,11 @@ class = "config"
 config = "PeerMode"
 reason = "`1` compiles zenoh-pico's multicast transport and scouting (issue 0711), so a peer-mode session needs no router — same messages, no router"
 
+[knob.NROS_TRACE_CALLBACKS]
+class = "config"
+config = "Ctf"
+reason = "`1` with Zephyr's CTF tracing on: the executor emits callback register / start / end markers, which reach the CTF stream as `app_marker` events — same sched tasks, traced"
+
 [knob.NROS_LINK_IP]
 class = "config"
 config = "Serial"
