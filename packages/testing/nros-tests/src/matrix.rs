@@ -1186,6 +1186,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("c_mixed_workspace", NonCell::CompileCheck),
     ("c_rosidl_refusals", NonCell::CompileCheck),
     (
+        "carrier_usage_reqs",
+        NonCell::Probe(
+            "a TYPED component's native carrier links its library and takes the library's usage requirements (issue 2817)",
+        ),
+    ),
+    (
         "c_xrce_api",
         NonCell::Secondary(
             "Linux/C/Xrce/Pubsub/Example — answered by linux_example_pubsub_e2e; this one exercises the C XRCE API surface",

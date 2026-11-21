@@ -1,0 +1,16 @@
+# Issue 2817 fixture: one image on the linux board, launching the one
+# component. Building it also builds the component's native carrier.
+
+[system]
+name = "carrier_usage_reqs"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "cur_pkg"
+class = "cur_pkg::Probe"
+name = "cur_probe"
+
+[image.linux]
+board = "linux"

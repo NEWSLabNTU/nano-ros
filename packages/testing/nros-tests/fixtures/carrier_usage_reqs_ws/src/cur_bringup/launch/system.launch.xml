@@ -1,0 +1,3 @@
+<launch>
+  <node pkg="cur_pkg" exec="cur_probe" name="cur_probe"/>
+</launch>

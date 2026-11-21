@@ -582,6 +582,14 @@ function(_nros_node_register_carrier_image _target _pkg_sym _panic)
     # NROS_PKG_NAME reaches the class TU through nros_board_link_app's
     # COMPILE_DEFINITIONS → APP_COMPILE_DEFS forwarding (Phase 238).
     target_compile_definitions(${_target} PRIVATE NROS_PKG_NAME=${_pkg_sym})
+    # issue 2817 -- an EXISTING_TARGET registration's carrier links the
+    # library rather than recompiling its sources (the caller passes none), so
+    # the entry TU sees every PUBLIC / INTERFACE usage requirement the library
+    # has, as the Zephyr carrier's `app` does. On NuttX the board link finds the
+    # library on LINK_LIBRARIES and recompiles its SOURCES for the target.
+    if(_NRC_EXISTING_TARGET)
+        target_link_libraries(${_target} PRIVATE ${_NRC_EXISTING_TARGET})
+    endif()
     if(TARGET NanoRos::NanoRosCpp)
         target_link_libraries(${_target} PRIVATE NanoRos::NanoRosCpp)
     elseif(TARGET NanoRos::NanoRos)
@@ -933,6 +941,19 @@ function(nano_ros_node_register)
         endif()
         set(_lib "${_NRC_EXISTING_TARGET}")
     endif()
+    # issue 2817 -- what a carrier image below compiles besides its own entry
+    # TU(s). A fused registration owns its SOURCES, so its carrier compiles
+    # them. An EXISTING_TARGET registration does not: the library is already
+    # built, with whatever include directories, definitions and links its
+    # package states (before or after this call), so the carrier LINKS it
+    # (`_nros_node_register_carrier_image`) and compiles nothing of it.
+    # Compiling `${_NRC_SOURCES}` too would define every symbol twice, and
+    # compile them blind to the library's usage requirements.
+    if(_NRC_EXISTING_TARGET)
+        set(_nrc_carrier_srcs "")
+    else()
+        set(_nrc_carrier_srcs ${_NRC_SOURCES})
+    endif()
     if(NOT TARGET ${_lib})
         # Phase 212.M.5.a.1 — package symbol used by C/C++ macros and
         # mirrored by Rust `nros::node!()`.
@@ -1201,8 +1222,10 @@ function(nano_ros_node_register)
         # Carrier executable `<pkg>__<exe>`, whose ELF lands at `<build>/<exe>`
         # (phase-583 W1). SOURCES = entry (main.cpp, picked
         # up as MAIN_SOURCE by nros_board_link_app's `/main\.cpp$` match) +
-        # the Component class source(s) (compiled as APP_EXTRA_SOURCES).
-        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
+        # the Component class source(s) (compiled as APP_EXTRA_SOURCES) of a
+        # fused registration; an EXISTING_TARGET library's reach the cargo
+        # build through LINK_LIBRARIES instead (issue 2817).
+        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_nrc_carrier_srcs})
         _nros_node_register_bake_locator(${_nrc_target})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <rclc/detail/nros_config_generated.h>); order them after the header
@@ -1265,7 +1288,7 @@ function(nano_ros_node_register)
             _nros_node_register_entry_tu(threadx c "${_entry_src}")
         endif()
 
-        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
+        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_nrc_carrier_srcs})
         _nros_node_register_bake_locator(${_nrc_target})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <rclc/detail/nros_config_generated.h>); order them after the header
@@ -1367,7 +1390,7 @@ function(nano_ros_node_register)
             "${_NROS_NODE_REGISTER_DIR}/templates/freertos_app_config.c.in"
             "${_appcfg_src}" @ONLY)
 
-        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
+        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" "${_appcfg_src}" ${_nrc_carrier_srcs})
         # issue 2400 W2 -- CHECK the stack just baked against the measured floor.
         # phase-583 W4 -- keyed by the PACKAGE (`<pkg>@<board>`, as before the
         # carrier became one per executable), or `<pkg>/<exe>@<board>` once the
@@ -1439,7 +1462,7 @@ function(nano_ros_node_register)
             _nros_node_register_entry_tu("${NROS_HOST_DEPLOY}" c "${_entry_src}")
         endif()
 
-        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
+        _nros_node_register_carrier_image(${_nrc_target} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_nrc_carrier_srcs})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <rclc/detail/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.

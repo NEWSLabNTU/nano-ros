@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>cur_pkg</name>
+  <version>0.1.0</version>
+  <description>A C++ component whose library has include directories and links beyond its own include/ and src/.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>
