@@ -4792,6 +4792,18 @@ bringup = "src/threadx_c_talker_bringup"
 image = "threadx-linux"
 build_subdir = "build/threadx-linux-zenoh-threadx_c_talker_bringup/cmake"
 
+# phase-583 -- one owned entry with TWO programs on a cross board: each
+# program's census is taken and folded, so the image is sized for the larger.
+[[workspace_fixture]]
+id = "threadx-linux-c-zenoh-owned-two-programs"
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/owned_two_programs_threadx"
+bringup = "src/two_prog_bringup"
+image = "threadx-linux"
+build_subdir = "build/threadx-linux-zenoh-two_prog_bringup/cmake"
+
 [[workspace_fixture]]
 id = "threadx-linux-cpp-zenoh-talker"
 platform = "threadx-linux"

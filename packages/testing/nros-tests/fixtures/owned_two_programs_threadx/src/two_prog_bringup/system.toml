@@ -1,0 +1,14 @@
+# phase-583 census-fold fixture: an owned entry with two programs on a cross
+# board, sized by a census of each program, folded (RFC-0100 D12).
+[system]
+name = "two_prog"
+rmw = "zenoh"
+domain_id = 0
+
+[image.threadx-linux]
+board = "threadx-linux"
+entry = "two_prog"
+locator = "tcp/127.0.0.1:9100"
+
+[board_config."threadx-linux"]
+netstack = "netxduo"
