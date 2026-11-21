@@ -45,6 +45,7 @@
 - packages/cli/nros-cli-core/src/builder/dist.rs
 - packages/cli/nros-cli-core/src/builder/knob_roads.rs
 - packages/cli/nros-cli-core/src/cmd/board_evidence.rs
+- packages/cli/nros-cli-core/src/cmd/code_verb.rs
 - packages/cli/nros-cli-core/src/cmd/completions.rs
 - packages/cli/nros-cli-core/src/cmd/config.rs
 - packages/cli/nros-cli-core/src/cmd/doctor.rs
@@ -55,10 +56,13 @@
 - packages/cli/nros-cli-core/src/cmd/interface.rs
 - packages/cli/nros-cli-core/src/cmd/knob.rs
 - packages/cli/nros-cli-core/src/cmd/monitor.rs
+- packages/cli/nros-cli-core/src/cmd/platform_verb.rs
 - packages/cli/nros-cli-core/src/cmd/prepare.rs
 - packages/cli/nros-cli-core/src/cmd/probe_boot_rows.rs
 - packages/cli/nros-cli-core/src/cmd/reserved.rs
+- packages/cli/nros-cli-core/src/cmd/runner_verb.rs
 - packages/cli/nros-cli-core/src/cmd/sdk_front.rs
+- packages/cli/nros-cli-core/src/cmd/template_verb.rs
 - packages/cli/nros-cli-core/src/cmd/update.rs
 - packages/cli/nros-cli-core/src/cmd/user.rs
 - packages/cli/nros-cli-core/src/codegen/entry/emit/tests_c.rs
