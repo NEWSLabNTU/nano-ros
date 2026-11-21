@@ -19,8 +19,9 @@ Rulings in force (issue 2400 "Rulings"):
 - Nothing lowers a stack. Raising one automatically is opt-in (W2b).
 - Allowances are per image key and may be negative. The key is (c): `nros new`
   stamps `[image.<id>] stack_floor_image = "<template>/<lang>/<rmw>@<board>"`.
-- The 32 KiB `NROS_RUST_MAIN_STACK_FLOOR` stays until measured rows cover the
-  boards.
+- The 32 KiB `NROS_RUST_MAIN_STACK_FLOOR` is RETIRED (W10, ruled
+  2026-11-21): an unmeasured Rust Zephyr image is held to its board's measured
+  floor, or the table's `fallback_rust_main_stack` on a board with no row.
 - No message a user can see names an issue, phase or RFC id.
 
 Related: [issue 2402](../issues/archived/2402-rmw-vtable-slot-binding-stack-walk.md)
@@ -1509,12 +1510,30 @@ answer, and they are already in the table.
   `action-server/rust/zenoh` rows for `mps2-an385-zephyr`. Acceptance: two
   runs read the same peak (icount makes it deterministic), and the rows land
   with their method.
-- **W10b — The derivation.** `--board-floor`, its self-tests (max over the
+- **W10b — The derivation.** DONE (2026-11-21). `--board-floor BOARD
+  [--image KEY]` prints the floor, its basis (`rows`, `fallback` or
+  `own-row`) and the rows it read. Both `nros_stack_floor_zephyr_rust_main`
+  (the configure refusal that replaced the literal; it WARNS on a fallback
+  board) and `check-zephyr-rust-main-stack` call it, so the number has one
+  spelling. A negative control holds: with nucleo's line removed, the gate
+  refuses it. Today: nucleo 33,288 B and mps2 33,368 B from rows; the
+  others 32,768 B from the fallback. Its self-tests: (max over the
   feeding rows only; margin; fallback; a bringup row and a C row ignored),
   `fallback_rust_main_stack` in the table, and the cmake road AND
   `check-zephyr-rust-main-stack` reading it. The gate calls `--board-floor`
   itself, so the number has one spelling. The literal goes.
-- **W10c — The boards.** Each Rust-capable board's `prj.conf` states the
+- **W10c — The boards.** DONE (2026-11-21), and NOT through `prj.conf`. A
+  board conf is one number for every language, so a stated 33,288 B reaches
+  the C image too (issue 2365, which removed exactly that). Instead, the
+  module's Kconfig has a RUST-ONLY line per board, in both RMW blocks:
+  `default 33288 if NROS_RUST_API && !ARCH_POSIX && BOARD_NUCLEO_F767ZI`.
+  The gate reads each board's line (by its hwmv2 symbol, from
+  `west_board`) and holds it to `--board-floor`; `nros new`'s default
+  derivation reads it the same way. Measured on Zephyr 3.7, unmeasured
+  nucleo images, merged `.config`: Rust 33,288, C 16,384.
+  `check-kconfig-overridden-values` is green, and no tracked conf sets
+  `CONFIG_MAIN_STACK_SIZE` after it. (Superseded plan text follows.)
+  Each Rust-capable board's `prj.conf` states the
   derived floor where it is above the module default (nucleo: 33,288 B
   against 32,768 B, ruled 2026-11-21: per board, never a raised module
   default). pico-w and s32z270 (no twin) take the fallback, and so does

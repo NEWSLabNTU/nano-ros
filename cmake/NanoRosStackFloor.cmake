@@ -446,10 +446,88 @@ endfunction()
 #
 # run after `zephyr_final` links, on its own `zephyr.map`. Not on native_sim
 # (CONFIG_ARCH_POSIX): a Zephyr thread there runs on a host pthread's stack,
-# and MAIN_STACK_SIZE bounds nothing the frames use. The configure-time
-# `NROS_RUST_MAIN_STACK_FLOOR` (issue 2359) stays: an UNMEASURED image is
-# never refused here (ruling (A)), and that floor is what keeps an unmeasured
-# Rust image off the silent overflow until rows cover the boards.
+# and MAIN_STACK_SIZE bounds nothing the frames use. An UNMEASURED image is
+# never refused here (ruling (A)); `nros_stack_floor_zephyr_rust_main` above
+# keeps an unmeasured Rust image off the silent overflow at configure, against
+# its board's measured floor (phase-557 W10, which retired issue 2359's 32 KiB
+# literal).
+
+# The main stack an UNMEASURED Rust Zephyr image needs, at configure (phase-557
+# W10, user ruling 2026-11-21). It replaces issue 2359's 32 KiB literal: a Rust
+# entry registers its nodes on the main thread, an overflow corrupts the idle
+# thread's stack and halts the image with no message, and the walk check
+# (below) refuses only an image with a measured row. So an image with no row is
+# held to its BOARD's measured floor: the largest Rust template peak measured on
+# that board plus the table's margin, or the table's fallback on a board with no
+# measured row. One producer, `nros-stack-floor.py --board-floor`, which
+# `check-zephyr-rust-main-stack` reads too. Not on native_sim
+# (CONFIG_ARCH_POSIX): a thread there runs on a host pthread's stack.
+#
+#   nros_stack_floor_zephyr_rust_main(BOARD <nros board> [BRINGUP <dir>])
+function(nros_stack_floor_zephyr_rust_main)
+    cmake_parse_arguments(_R "" "BOARD;BRINGUP" "" ${ARGN})
+    if(CONFIG_ARCH_POSIX OR NOT DEFINED CONFIG_MAIN_STACK_SIZE)
+        return()
+    endif()
+    set(NROS_IMAGE_STACK_FLOOR_IMAGE "")
+    get_property(_facts GLOBAL PROPERTY NROS_IMAGE_FACTS_FILE)
+    if(_facts AND EXISTS "${_facts}")
+        include("${_facts}")
+    endif()
+    _nros_stack_floor_image_key(_key zephyr "${_R_BRINGUP}" "${_R_BOARD}"
+        "${NROS_IMAGE_STACK_FLOOR_IMAGE}")
+    set(_py "${Python3_EXECUTABLE}")
+    if(NOT _py)
+        set(_py "${PYTHON_EXECUTABLE}")
+    endif()
+    execute_process(
+        COMMAND "${_py}" "${_NROS_STACK_FLOOR_DIR}/../scripts/nros-stack-floor.py"
+            --board-floor "${_R_BOARD}" --image "${_key}"
+            --table "${_NROS_STACK_FLOOR_DIR}/../config/stack-floors.json"
+        OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "nros: could not read the main-stack floor of a Rust image on "
+            "board `${_R_BOARD}` (scripts/nros-stack-floor.py --board-floor exited ${_rc}):\n"
+            "${_err}")
+    endif()
+    string(JSON _basis GET "${_out}" basis)
+    if(_basis STREQUAL "own-row")
+        message(STATUS "nano-ros: main stack of `${_key}` is held by its own measured row")
+        return()
+    endif()
+    string(JSON _floor GET "${_out}" floor)
+    if(_basis STREQUAL "fallback")
+        string(CONCAT _why "board `${_R_BOARD}` has no measured Rust template row, so "
+            "the fallback ${_floor} B applies (`fallback_rust_main_stack` in "
+            "config/stack-floors.toml)")
+        message(WARNING "nros: the main stack of this unmeasured Rust image is checked "
+            "against a fallback: ${_why}.")
+    else()
+        string(JSON _peak GET "${_out}" peak)
+        string(JSON _margin GET "${_out}" margin_pct)
+        string(JSON _n LENGTH "${_out}" rows)
+        set(_rows "")
+        math(EXPR _last "${_n} - 1")
+        foreach(_i RANGE ${_last})
+            string(JSON _r GET "${_out}" rows ${_i})
+            list(APPEND _rows "${_r}")
+        endforeach()
+        list(JOIN _rows ", " _rows)
+        string(CONCAT _why "the largest Rust template peak measured on board `${_R_BOARD}`, "
+            "${_peak} B (${_rows}), plus ${_margin} %")
+    endif()
+    if(CONFIG_MAIN_STACK_SIZE LESS _floor)
+        message(FATAL_ERROR
+            "nros: CONFIG_MAIN_STACK_SIZE=${CONFIG_MAIN_STACK_SIZE} is below the ${_floor} "
+            "bytes a Rust nano-ros image needs on this board: ${_why}. A Rust entry "
+            "registers its nodes on the main thread, and an overflow corrupts the idle "
+            "thread's stack and halts the image with no message. Set "
+            "CONFIG_MAIN_STACK_SIZE=${_floor} or more in the board's or the image's conf. "
+            "An image whose own peak was measured has a row in config/stack-floors.toml, "
+            "and its own measured floor holds it instead.")
+    endif()
+endfunction()
 
 function(_nros_stack_floor_zephyr_applies _out)
     _nros_stack_floor_enabled(_on)

@@ -32,6 +32,12 @@ margin_pct = 10
 # recorded max PLUS this percent, then the margin, so every rise the check
 # tolerates still fits a fresh project. Both sides read this one key.
 drift_rise_pct = 2
+# The main stack an UNMEASURED Rust Zephyr image is held to on a board with
+# no measured Rust template row (user ruling 2026-11-21, phase-557 W10). A
+# board with rows is held to its largest template peak plus `margin_pct`
+# instead (`nros-stack-floor.py --board-floor`). Basis: a `nros new` Rust
+# talker on nucleo-f767zi peaked at 28,280 B (issue 2359), plus headroom.
+fallback_rust_main_stack = 32768
 # Counted once: Zephyr's timer `elapsed` <-> `sys_clock_elapsed`, and
 # `Arc<ComponentCell>` drop reaching a ctx drop that drops an Arc.
 recursion_allowance = 0
