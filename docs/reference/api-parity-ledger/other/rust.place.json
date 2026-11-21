@@ -1,0 +1,5 @@
+{
+  "key": "rust:place",
+  "verdict": "extension",
+  "why": "`nros::transport_band::place` (`packages/api/nros/src/transport_band.rs`), unix targets: the one decision both Linux runners make before the session opens, placing zenoh-pico's transport tasks at the floor of the board's `reserved.transport` band when any sched task runs real-time, so a SCHED_FIFO level never preempts the link it publishes over. The caller supplies the call that applies it (the Rust board names `zpico_set_task_config` directly; the C/C++ runners reach it through a weak reference, since they cannot see which backend is linked). rclrs has no counterpart: it does not allocate priorities or state a priority plan."
+}
