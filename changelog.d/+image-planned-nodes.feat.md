@@ -1,0 +1,1 @@
+`nros image show <image> --nodes` prints the nodes the image's plan starts, and `--topics` the topics, services and actions it wires, from what the last `nros configure` resolved. An image with no plan yet names `nros configure`.
