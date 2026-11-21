@@ -301,6 +301,12 @@ and each states its acceptance before it lands.
   chain and `on_missing = "error"`) is ASI's. Deferred, not part of this
   item: the RTD strong symbols (blocked on the vendor licence: no host here
   has the drivers) and the `"board"` stack's hand-off of the `[canN]` name.
+  *Issues 2787 and 2788, 2026-11-22:* the metadata probe links the same mock
+  (`nros_link_can_census_mock`), and the defaults are compiled for every
+  board that is neither host nor Zephyr, not only `s32z270-freertos`
+  (`nros_entry_can_defaults` on the cmake road, the FreeRTOS and ThreadX
+  RISC-V glue runners on the cargo road); `just check can-board-defaults`
+  covers mps3-an536-freertos.
 
 The five open questions of the first draft are resolved in RFC-0132 itself
 (send completion, polled receive, consumer backends through the `board` hook,
@@ -319,8 +325,8 @@ sharing with the link, one default device); none is left to this phase.
 
 ## Issues homed here (2026-11-21)
 
-- [issue 2787](../issues/2787-metadata-probe-lacks-census-can-mock.md): the metadata probe links a node without the census CAN mock, so a node that calls the CAN driver cannot be probed (W9).
-- [issue 2788](../issues/2788-an536-freertos-no-can-fail-loud-defaults.md): mps3-an536-freertos does not compile the fail-loud CAN defaults, so an image that calls the driver does not link (W9.f).
+- [issue 2787](../issues/archived/2787-metadata-probe-lacks-census-can-mock.md): the metadata probe links a node without the census CAN mock, so a node that calls the CAN driver cannot be probed (W9). Resolved: every probe executable links the mock (`nros_link_can_census_mock`).
+- [issue 2788](../issues/archived/2788-an536-freertos-no-can-fail-loud-defaults.md): mps3-an536-freertos does not compile the fail-loud CAN defaults, so an image that calls the driver does not link (W9.f). Resolved: every board that is neither host nor Zephyr compiles them (`nros_entry_can_defaults`, `can_unsupported::add_defaults`).
 
 ## Issues homed here (2026-11-15)
 

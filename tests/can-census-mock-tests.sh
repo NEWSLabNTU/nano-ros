@@ -18,6 +18,10 @@
 #   B  NEGATIVE CONTROL: the same project outside a census build, with no
 #      image device, links no CAN backend (the link fails), so A's backend is
 #      the census mock and nothing else
+#   C  the metadata probe (issue 2787): a host target that is not an entry,
+#      outside a census build, links the same mock through
+#      `nros_link_can_census_mock` (the call every probe executable the CLI
+#      renders makes) and runs against it as A does
 #
 # A configure + build of one C file, seconds. PRECONDITIONS ARE HARD FAILURES
 # (issue 1758): no cmake or no cc, no verdict.
@@ -101,6 +105,37 @@ if env -u NROS_LEAF_CENSUS_HOST cmake -S "$T/src" -B "$T/b" >"$T/b.log" 2>&1 \
     fi
 else
     fail "the control linked or did not configure: $(tail -5 "$T/b.log")"
+fi
+
+echo "C  the metadata probe links the CAN mock outside a census build"
+mkdir -p "$T/probe"
+cp "$T/src/main.c" "$T/probe/main.c"
+cat >"$T/probe/CMakeLists.txt" <<CMAKE
+cmake_minimum_required(VERSION 3.22)
+project(can_metadata_probe C)
+include("$ROOT/cmake/NanoRosCanImage.cmake")
+add_executable(probe main.c)
+target_include_directories(probe PRIVATE "$ROOT/packages/platform/nros-platform-api/include")
+nros_link_can_census_mock(probe)
+CMAKE
+if env -u NROS_LEAF_CENSUS_HOST cmake -S "$T/probe" -B "$T/c" >"$T/c.log" 2>&1 \
+    && cmake --build "$T/c" >>"$T/c.log" 2>&1; then
+    out="$("$T/c/probe")"
+    if nros_grep_q "^open=0 send=0 fd=-3 recv=-4 open_fd=0 fd_send=0 store=empty\$" <<<"$out"; then
+        ok "the probe links and runs against the mock ($out)"
+    else
+        fail "unexpected mock behaviour in the probe: $out"
+    fi
+else
+    fail "the probe does not link the mock: $(tail -5 "$T/c.log")"
+fi
+probe_rs="packages/cli/nros-cli-core/src/orchestration/metadata_probe_cmake.rs"
+rc=0
+nros_grep_q '"nros_link_can_census_mock({t})' "$probe_rs" || rc=$?
+if [ "$rc" -eq 0 ]; then
+    ok "the CLI's probe project links it into every probe executable"
+else
+    fail "$probe_rs renders no nros_link_can_census_mock call"
 fi
 
 if [ "$FAILURES" -ne 0 ]; then

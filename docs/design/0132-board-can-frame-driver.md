@@ -433,6 +433,18 @@ because its image is the binary that gets flashed.
 
 ## Changelog
 
+- 2026-11-22 -- issues 2787 and 2788. The weak fail-loud defaults are no
+  longer one board's opt-in: `nano_ros_entry` compiles them into every entry
+  on a board whose stack is not "host" (`nros_entry_can_defaults`, a
+  per-entry TU naming the board, an object of the image), and the FreeRTOS
+  and ThreadX RISC-V glue runners compile them on the cargo road
+  (`nros_board_common::can_unsupported`). Every board that is neither host
+  nor Zephyr had the gap (mps2-an385 in both forms, mps3-an536,
+  rv-virt-threadx, NuttX); a host stack's SocketCAN and Zephyr's backend are
+  never shadowed. `s32z270-freertos`'s own TU is removed. D6's mock is
+  exported as `nros_link_can_census_mock(<target>)` and the metadata probe
+  links it into every probe executable, so a node that calls the driver is
+  probed as the census builds it.
 - 2026-11-20 -- W9.f, first part: the `board` backend's weak fail-loud
   defaults (`nros-board-common/c/nros_board_can_unsupported.c`), compiled by
   `s32z270-freertos` through a TU that names the board. They are an OBJECT of

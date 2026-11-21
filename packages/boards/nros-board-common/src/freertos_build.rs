@@ -516,6 +516,16 @@ pub fn run_overlay(overlay: &Overlay<'_>) {
     for rel in overlay.board_c_files {
         glue.file(env.manifest_dir.join(rel));
     }
+    // RFC-0132 D3 (issue 2788) -- no FreeRTOS `"board"`-stack board has a CAN
+    // frame backend in nano-ros, so every one compiles the weak fail-loud
+    // defaults, named after the board (the crate name less `nros-board-`).
+    crate::can_unsupported::add_defaults(
+        &mut glue,
+        overlay
+            .crate_name
+            .strip_prefix("nros-board-")
+            .unwrap_or(overlay.crate_name),
+    );
 
     let sched = FreertosScheduling {
         app_stack_bytes: app_stack_bytes_from_build_env(),

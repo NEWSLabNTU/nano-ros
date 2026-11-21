@@ -681,7 +681,8 @@ hand-written-image-facts:
 # the CAN frame driver needs a backend there: `nros_entry_can_image` links the
 # mock's C twin into every census host build. A tiny project drives it: the
 # entry links and runs against the mock under `NROS_LEAF_CENSUS_HOST`, and
-# (negative control) links no backend outside a census build with no device.
+# (negative control) links no backend outside a census build with no device;
+# and the metadata probe links the same mock (issue 2787).
 # Configure + build of one C file; seconds.
 [group('needs:cmake')]
 [group('needs:cc')]

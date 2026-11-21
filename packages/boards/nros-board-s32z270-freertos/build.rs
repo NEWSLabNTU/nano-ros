@@ -19,21 +19,15 @@
 //! path, the only spelling a port with no upstream enum has
 //! (with the Thumb-resume CPSR patch applied — see phase-372).
 
-use nros_board_common::freertos_build::{Overlay, OverlayEnv, run_overlay};
+use nros_board_common::freertos_build::{Overlay, run_overlay};
 
-// RFC-0132 D3 -- `c/can_unsupported.c` (the CAN frame driver's weak
-// fail-loud defaults) includes `<nros/platform_can.h>`.
-fn platform_api_include(_env: &OverlayEnv, glue: &mut cc::Build) {
-    glue.include(nros_build_paths::nros_platform_cffi_include());
-}
-
+// RFC-0132 D3 -- the CAN frame driver's weak fail-loud defaults are compiled
+// by `run_overlay` for every FreeRTOS board (issue 2788), this one included.
 fn main() {
-    let mut overlay = Overlay::new(
+    run_overlay(&Overlay::new(
         "nros-board-s32z270-freertos",
         "s32z270_rtu.ld",
         "GCC_ARM_CRX_NOGIC",
-        &["c/board_s32z270.c", "c/can_unsupported.c"],
-    );
-    overlay.configure_glue = Some(&platform_api_include);
-    run_overlay(&overlay);
+        &["c/board_s32z270.c"],
+    ));
 }
