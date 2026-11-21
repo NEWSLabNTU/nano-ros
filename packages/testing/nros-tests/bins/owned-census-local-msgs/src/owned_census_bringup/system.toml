@@ -1,0 +1,13 @@
+# Issue 2805 -- a cross image whose program is an OWNED entry (RFC-0071 D19),
+# sized by the census of that entry (issue 2433). The entry depends on the
+# workspace's own message package, so its host census build has to generate
+# it. No `[census]` table: a census that cannot be taken refuses.
+[system]
+name = "owned_census"
+rmw = "zenoh"
+domain_id = 0
+
+[image.threadx-linux]
+board = "threadx-linux"
+entry = "owned_census_talker"
+locator = "tcp/127.0.0.1:9100"

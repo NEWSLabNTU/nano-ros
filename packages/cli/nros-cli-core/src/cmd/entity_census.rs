@@ -1549,6 +1549,30 @@ fn write_zephyr_census_stub(build: &Path) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Issue 2805 -- the workspace's OWN interface packages, for the host census
+/// build of a program inside a workspace (an owned entry, issue 2433).
+///
+/// The cross build configures the workspace's generated root, which puts
+/// `<ws>/src` on `NROS_INTERFACE_SEARCH_PATH`
+/// (`cmake_root::interface_search_path_cmake`). The census build configures
+/// the program's package ALONE, so without this a `<depend>` on a workspace
+/// message package (one that is not in the ament install) generated nothing
+/// and the program's first `#include` of it failed. The same layering as the
+/// generated root: the workspace's `src/` first, then the caller's exported
+/// value. A program outside any workspace (a standalone leaf) gets nothing.
+fn census_interface_search_arg(src: &Path) -> Option<String> {
+    let ws = crate::cmd::image_facts::workspace_root_from(src)?;
+    let ws_src = crate::cmd::ws::interface_search_root(&ws).ok()?;
+    let mut search = ws_src.display().to_string();
+    if let Some(user) = crate::cmd::configure::user_interface_search_path()
+        && !user.is_empty()
+    {
+        search.push(';');
+        search.push_str(&user.to_string_lossy());
+    }
+    Some(format!("-DNROS_INTERFACE_SEARCH_PATH={search}"))
+}
+
 /// Issue 1556 item 4 -- `take --leaf`: the census of a standalone C/C++ leaf.
 ///
 /// The SAME `src/` the cross image compiles, configured for the HOST board
@@ -1857,6 +1881,7 @@ pub(crate) fn census_host_program(
         // issue 2043) names the SDK root this way instead.
         .arg(format!("-DNROS_REPO_DIR={}", root.display()))
         .arg("-DNROS_LEAF_BOARD=linux")
+        .args(census_interface_search_arg(src))
         // phase-478 I24 -- this `nros` is the codegen tool, whatever the
         // census build dir cached.
         .args(crate::builder::codegen_tool_arg())
@@ -3255,6 +3280,104 @@ mod tests {
                 assert!(gone.iter().any(|g| g == var), "{var} not removed: {gone:?}");
             }
         }
+    }
+
+    /// The `-DNROS_INTERFACE_SEARCH_PATH=` the host census configure ran with,
+    /// when the host steps record every command they are handed.
+    fn census_search_arg(cmds: &[Vec<String>]) -> Option<String> {
+        cmds.first()?
+            .iter()
+            .find_map(|a| a.strip_prefix("-DNROS_INTERFACE_SEARCH_PATH="))
+            .map(str::to_string)
+    }
+
+    /// Issue 2805 -- the host census build of an OWNED entry configures the
+    /// entry's package alone, so the workspace's own message packages are on
+    /// its interface search path only if the census build puts them there, as
+    /// the cross build's generated root does. Without it a `<depend>` on one
+    /// generated nothing and the entry failed to compile.
+    #[test]
+    fn an_owned_census_build_searches_the_workspaces_own_interfaces() {
+        use std::os::unix::process::ExitStatusExt;
+        let td = tempfile::tempdir().unwrap();
+        let ws = td.path().canonicalize().unwrap();
+        let pkg_xml = |name: &str, body: &str| {
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>{name}</name>\n  \
+                 <version>0.1.0</version>\n{body}</package>\n"
+            )
+        };
+        let write = |rel: &str, text: &str| {
+            let p = ws.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        };
+        write("src/local_msgs/package.xml", &pkg_xml("local_msgs", ""));
+        write("src/local_msgs/msg/Tally.msg", "int32 count\n");
+        write(
+            "src/tests/entry/package.xml",
+            &pkg_xml("entry", "  <depend>local_msgs</depend>\n"),
+        );
+        write(
+            "src/tests/entry/CMakeLists.txt",
+            "project(entry C)\nnano_ros_add_executable(entry main.c)\n",
+        );
+        write("src/bringup/package.xml", &pkg_xml("bringup", ""));
+        write(
+            "src/bringup/system.toml",
+            "[system]\nname = \"b\"\n\n[image.tx]\nboard = \"threadx-linux\"\nentry = \"entry\"\n",
+        );
+        let cmds = std::cell::RefCell::new(Vec::new());
+        let host = HostSteps {
+            missing: &|_, _| Vec::new(),
+            run: &|cmd| {
+                cmds.borrow_mut().push(
+                    cmd.get_args()
+                        .map(|a| a.to_string_lossy().into_owned())
+                        .collect::<Vec<_>>(),
+                );
+                Ok(std::process::ExitStatus::from_raw(1 << 8))
+            },
+        };
+        let pkg = ws.join("src/tests/entry");
+        let _ = take_owned_census(&ws, &pkg, "b", "tx", 5, false, &host);
+        let cmds = cmds.into_inner();
+        let search = census_search_arg(&cmds)
+            .unwrap_or_else(|| panic!("the configure names no interface search path: {cmds:?}"));
+        let first = search.split(';').next().unwrap_or_default();
+        assert_eq!(
+            Path::new(first),
+            ws.join("src"),
+            "the workspace's `src/` leads the search path: {search}"
+        );
+    }
+
+    /// Issue 2805 -- a program outside any workspace (a standalone leaf) has
+    /// no workspace `src/` to add, so the census build adds none.
+    #[test]
+    fn a_standalone_leaf_census_build_adds_no_workspace_search_path() {
+        use std::os::unix::process::ExitStatusExt;
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(
+            td.path(),
+            "[[component]]\npkg = \"x\"\nclass = \"x::T\"\nname = \"t\"\n",
+        );
+        let cmds = std::cell::RefCell::new(Vec::new());
+        let host = HostSteps {
+            missing: &|_, _| Vec::new(),
+            run: &|cmd| {
+                cmds.borrow_mut().push(
+                    cmd.get_args()
+                        .map(|a| a.to_string_lossy().into_owned())
+                        .collect::<Vec<_>>(),
+                );
+                Ok(std::process::ExitStatus::from_raw(1 << 8))
+            },
+        };
+        let _ = take_leaf_census_with(td.path(), None, 5, false, &host);
+        let cmds = cmds.into_inner();
+        assert!(!cmds.is_empty(), "the host configure ran");
+        assert_eq!(census_search_arg(&cmds), None, "{cmds:?}");
     }
 
     /// Fix round 2 -- a COMPONENT-LESS leaf has no `[[component]]` to write

@@ -410,6 +410,18 @@ shared-build-dir:
 ament-census-sizing:
     @bash scripts/check-ament-census-sizing.sh
 
+# Issue 2805 -- the census of an OWNED entry on a cross board is taken when the
+# entry depends on its workspace's own message package. The census is a host
+# build of the entry's package alone, which has to generate that package; this
+# takes it for `bins/owned-census-local-msgs` and fails if the take refuses or
+# the census misses the entry's publisher. It builds the entry for the host, so
+# it is a BUILD-tier gate.
+[metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
+owned-census-local-msgs:
+    @bash scripts/check-owned-census-local-msgs.sh
+
 # phase-403 W9 (issue 0965) -- the READER for the ENTITY inventory, the second
 # source `NanoRosMessageBounds.cmake` says by name that it needs.
 #
