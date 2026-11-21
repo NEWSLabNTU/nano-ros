@@ -686,11 +686,15 @@ static is the new walk's; each nucleo image fits its RAM.
 
 ### W7f — Field- and parameter-sensitive binding (issue 2550 step 3)
 
-- **Status:** OPEN (reopened 2026-11-22), staged as W7f.0-W7f.3 and Checkpoint 2
-  (see the work-item list below). It was DROPPED (2026-11-16): stopped at checkpoint 1, before any solver
-  work, because under half of the indirect sites bind through a trusted
-  channel (see "Checkpoint 1" below). It reopens only when the three
-  conditions listed there hold. The floors stay the accepted heuristic.
+- **Status:** DROPPED (2026-11-22), at Checkpoint 2 (see "Checkpoint 2
+  result" below). It was first DROPPED (2026-11-16) at checkpoint 1, before
+  any solver work, because under half of the indirect sites bound through a
+  trusted channel. It reopened on 2026-11-22 as W7f.0-W7f.3 and
+  Checkpoint 2. W7f.0-W7f.2 raised the resolved share to 67-71 % of C
+  sites, but binding them leaves the reachable SCC at about 2,000
+  functions, so no exact search is affordable. The classifier and the
+  measurement mode stay in the tree; the floors stay the accepted
+  heuristic.
 
 **Why.** Typing every call site does not break the walk's cycle: the bound
 graph's SCC stays at 962 / 970 / 2,037 functions against 24 on direct edges
@@ -1252,25 +1256,44 @@ build where that number was read.
     the SDK; the FreeRTOS row, on the pinned GCC, was verified.
 - **W7f — reopened (2026-11-22), in this order.** Each step re-measures and
   can stop with nothing shipped worse (W7f's fallback rule).
-  - **W7f.0 — The site classifier, kept.** Checkpoint 1's prototype was
+  - **W7f.0 — The site classifier, kept.** DONE (2026-11-22):
+    `--classify-sites`, self-tested. On the C talker (C sites):
+
+    | | Checkpoint 1 (2026-11-16) | W7f.0 |
+    | --- | ---: | ---: |
+    | trusted | 138/332 | 113/336 |
+    | no store found | 109 | 107 |
+    | untrusted | 77 | 116 |
+
+    The difference is the memset/memcpy rule: W7f.0 counts an untyped mem
+    op into a T as an untrusted write, which the prototype did not.
+    Checkpoint 1's prototype was
     deleted, so its 37-43 % cannot be re-measured. Rebuild it as a
     self-tested pass of the walker (`--classify-sites`): the trusted share
     per image, and the misses broken down as Checkpoint 1's were.
     Acceptance: it reproduces Checkpoint 1's table on today's images, with
     any difference explained.
-  - **W7f.1 — Reopening condition 1.** The field channel reads nested
+  - **W7f.1 — Reopening condition 1.** DONE (2026-11-22), `--level 1`,
+    with the closed-world guards (Rust<->C reach, unseen externs, inline
+    asm, untyped registration): resolved 62.8 % (C talker) and 66.6 %
+    (Rust talker). The field channel reads nested
     constant initializers (Zephyr's device-API tables, `init_entry`: 109 of
     the C talker's misses). Acceptance: the share re-measured, and the
     stores found per struct.
-  - **W7f.2 — Reopening condition 2.** A return-value channel, so a whole T
+  - **W7f.2 — Reopening condition 2.** DONE (2026-11-22), `--level 2`:
+    resolved 67.3 % and 70.7 %. A return-value channel, so a whole T
     returned through ABI coercion (a `[2 x i32]` store onto the struct)
     stays trusted: zenoh-pico's `_z_delete_context_t` and
     `subscriber_entry_t`, 46 sites. Acceptance: the share re-measured.
-  - **W7f.3 — Reopening condition 3, independent of .1 and .2.** C IR for
+  - **W7f.3 — Reopening condition 3, independent of .1 and .2.** DROPPED
+    (2026-11-22) by Checkpoint 2's verdict, not built. C IR for
     cc-rs builds, so a bare-metal image's C is typed at all (cc-rs writes no
     compile database). Acceptance: the mps2 bare-metal image's C sites are
     classified.
-  - **Checkpoint 2.** The share, AND the reachable SCC with the binding, on
+  - **Checkpoint 2.** DONE (2026-11-22): STOP. The SCC goes 2,255 -> 2,155
+    (C talker) and 1,093 -> 994 (Rust talker), against a bar of 300; the
+    exact search runs out of its 10^7-expansion budget before and after.
+    The 8-order walk on the re-bound graph moves 7.7 % and 3.9 %. What it measured: the share, AND the reachable SCC with the binding, on
     the same images. Stop and report before any solver if the SCC is not
     small enough for an exact search under a budget (the threshold is set at
     that checkpoint).
