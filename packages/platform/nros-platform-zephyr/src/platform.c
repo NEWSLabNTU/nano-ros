@@ -473,6 +473,61 @@ size_t nros_zephyr_platform_heap_peak_bytes(void) {
     return nros_zephyr_heap_peak();
 }
 
+/* Issue 2780 -- every image PRINTS its own heap peak, as the FreeRTOS images
+ * print `nros: heap peak` and the ThreadX ones `nros: byte pool peak`, so the
+ * number a heap default is sized from is read off the image's own output
+ * instead of off a debugger attached to it. A native_sim test image lives one
+ * or two seconds, too short for an outside sampler to find, which is how the
+ * per-node heap cost went unmeasured.
+ *
+ * The arena tracks its exact high-water mark (`nros_zephyr_heap_peak`, the rlsf
+ * arena in nros-platform's zephyr_heap.rs), so nothing is sampled; the work item
+ * only decides WHEN to print. It looks every HEAP_PEAK_PERIOD_MS on the system
+ * work queue and prints once the peak has held HEAP_PEAK_STABLE_LOOKS looks
+ * (the session up, the first traffic through), then again each time it rises
+ * after that, so the LAST such line an image prints is its peak. After the
+ * first line it looks once a second (HEAP_PEAK_SETTLED_MS) rather than ten
+ * times, so a long-running realtime image carries one short work item a second,
+ * not ten. A board that exhausts the heap says so on its own path, before this
+ * ever fires. */
+#include <zephyr/init.h>
+
+extern size_t nros_zephyr_heap_capacity(void);
+
+#define HEAP_PEAK_PERIOD_MS 100
+#define HEAP_PEAK_STABLE_LOOKS 5
+#define HEAP_PEAK_SETTLED_MS 1000
+
+static struct k_work_delayable s_heap_peak_work;
+static size_t s_heap_peak_seen;
+static size_t s_heap_peak_printed;
+static unsigned s_heap_peak_stable;
+
+static void nros_zephyr_heap_peak_look(struct k_work* work) {
+    (void)work;
+    const size_t peak = nros_zephyr_heap_peak();
+    if (peak != s_heap_peak_seen) {
+        s_heap_peak_seen = peak;
+        s_heap_peak_stable = 0;
+    } else if (peak != s_heap_peak_printed && ++s_heap_peak_stable >= HEAP_PEAK_STABLE_LOOKS) {
+        const size_t capacity = nros_zephyr_heap_capacity();
+        printk("nros: heap peak %zu of %zu bytes (%zu free at the peak) "
+               "- raise with [image.<id>.knobs.zephyr] heap_size\n",
+               peak, capacity, capacity > peak ? capacity - peak : 0);
+        s_heap_peak_printed = peak;
+    }
+    k_work_schedule(&s_heap_peak_work,
+                    K_MSEC(s_heap_peak_printed == 0 ? HEAP_PEAK_PERIOD_MS : HEAP_PEAK_SETTLED_MS));
+}
+
+static int nros_zephyr_heap_peak_reporter_init(void) {
+    k_work_init_delayable(&s_heap_peak_work, nros_zephyr_heap_peak_look);
+    k_work_schedule(&s_heap_peak_work, K_MSEC(HEAP_PEAK_PERIOD_MS));
+    return 0;
+}
+
+SYS_INIT(nros_zephyr_heap_peak_reporter_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+
 /* ---- Sleep ---- */
 
 void nros_platform_sleep_us(size_t us) {

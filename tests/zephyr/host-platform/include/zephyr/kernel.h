@@ -114,6 +114,35 @@ static inline uint32_t sys_clock_hw_cycles_per_sec(void) {
 
 #define CONFIG_SYS_CLOCK_TICKS_PER_SEC 1000
 
+/* ---- delayed work (issue 2780) -------------------------------------------
+ *
+ * `platform.c`'s heap-peak reporter is a delayed work item started from
+ * SYS_INIT. The allocator path never schedules it, and this tree registers no
+ * SYS_INIT (see <zephyr/init.h>), so both entry points abort if reached. */
+
+struct k_work {
+    int unused;
+};
+
+struct k_work_delayable {
+    struct k_work work;
+};
+
+typedef void (*k_work_handler_t)(struct k_work* work);
+
+static inline void k_work_init_delayable(struct k_work_delayable* dwork, k_work_handler_t handler) {
+    (void)dwork;
+    (void)handler;
+    NROS_HOST_PLATFORM_UNREACHABLE("k_work_init_delayable");
+}
+
+static inline int k_work_schedule(struct k_work_delayable* dwork, k_timeout_t delay) {
+    (void)dwork;
+    (void)delay;
+    NROS_HOST_PLATFORM_UNREACHABLE("k_work_schedule");
+    return 0;
+}
+
 static inline int32_t k_usleep(int32_t us) {
     (void)us;
     NROS_HOST_PLATFORM_UNREACHABLE("k_usleep");
