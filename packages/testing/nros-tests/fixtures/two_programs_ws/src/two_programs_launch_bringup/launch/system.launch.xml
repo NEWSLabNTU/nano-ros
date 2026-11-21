@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<!-- phase-583 W2 fixture: names which of the entry's two programs runs. -->
+<launch>
+  <node pkg="two_programs" exec="prog_b" name="talker"/>
+</launch>

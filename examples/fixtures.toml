@@ -4175,6 +4175,18 @@ bringup = "src/two_programs_bringup"
 image = "linux"
 build_subdir = "build/posix-zenoh-linux-two_programs_bringup/cmake"
 
+# phase-583 W3 -- the same owned entry, in a bringup whose launch file names
+# the program (`exec="prog_b"`): the run takes it with no `--exec`.
+[[workspace_fixture]]
+id = "linux-c-zenoh-two-programs-launch"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/two_programs_ws"
+bringup = "src/two_programs_launch_bringup"
+image = "linux_launch"
+build_subdir = "build/posix-zenoh-linux-two_programs_launch_bringup/cmake"
+
 [[workspace_fixture]]
 id = "linux-c-xrce-talker"
 platform = "linux"

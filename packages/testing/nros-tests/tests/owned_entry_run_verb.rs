@@ -126,9 +126,20 @@ fn dry_run_two_programs(extra: &[&str]) -> std::process::Output {
         .expect("spawning `nros run --dry-run`")
 }
 
+/// `program`, as the two-program workspace's image `image` built it.
+fn two_programs_binary(image: &str, program: &str, row: &str) -> PathBuf {
+    nros_tests::fixtures::migrated_leaf_binary_named(
+        TWO_PROGRAMS_DIR,
+        Rmw::Zenoh,
+        nros_tests::fixtures::migrated_leaf::LeafVariant::Image(image),
+        program,
+    )
+    .unwrap_or_else(|| panic!("{TWO_PROGRAMS_DIR} is no migrated workspace leaf"))
+    .require(row)
+}
+
 fn require_two_programs(program: &str) -> PathBuf {
-    nros_tests::fixtures::build_cmake_leaf_rmw(TWO_PROGRAMS_DIR, program, Rmw::Zenoh)
-        .require("linux-c-zenoh-two-programs")
+    two_programs_binary("linux", program, "linux-c-zenoh-two-programs")
 }
 
 /// Naming no program, when the entry builds two, is refused: the run must not
@@ -173,5 +184,47 @@ fn exec_chooses_one_of_two_programs(#[case] program: &str) {
         PathBuf::from(elf).canonicalize().ok(),
         exe.canonicalize().ok(),
         "`--exec {program}` resolves that program"
+    );
+}
+
+/// phase-583 W3 -- an owned-entry bringup's launch file chooses the program:
+/// `<node pkg="two_programs" exec="prog_b">`, so the run takes `prog_b` with
+/// no `--exec`.
+#[test]
+fn the_launch_file_chooses_one_of_two_programs() {
+    require_linux_lane();
+    let exe = two_programs_binary(
+        "linux_launch",
+        "prog_b",
+        "linux-c-zenoh-two-programs-launch",
+    );
+    let nros = run::nros_cli_path().expect("the `nros` CLI");
+    let out = Command::new(nros)
+        .args([
+            "run",
+            "two_programs_launch_bringup:linux_launch",
+            "--dry-run",
+            "--json",
+        ])
+        .arg("--workspace")
+        .arg(nros_tests::project_root().join(TWO_PROGRAMS_DIR))
+        .arg("--nano-ros-path")
+        .arg(nros_tests::project_root())
+        .output()
+        .expect("spawning `nros run --dry-run`");
+    assert!(
+        out.status.success(),
+        "`nros run two_programs_launch_bringup:linux_launch --dry-run` failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let plan: serde_json::Value = serde_json::from_slice(&out.stdout).expect("a JSON plan");
+    let elf = plan
+        .pointer("/artifacts/elf")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_else(|| panic!("the plan names no `elf`:\n{plan:#}"));
+    assert_eq!(
+        PathBuf::from(elf).canonicalize().ok(),
+        exe.canonicalize().ok(),
+        "the launch file's `exec=\"prog_b\"` chooses `prog_b`"
     );
 }
