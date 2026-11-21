@@ -66,7 +66,7 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     `(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example)` cells `+ [ClockHlc]` and
     `+ [ClockSntp]`, answered by `tests/zephyr_clock_resolve.rs`. A booting
     serial (ZPICO_DRIVE_CALLER) cell that proves the pump is the open
-    acceptance item, filed as its own issue; this PR carries the link witness
+    acceptance item, issue 2791; this PR carries the link witness
     only.
   - **W1d:** the board hook, its link rule and the selection-named TU, and
     the linux stub-board stamp test in Rust, C and C++.
