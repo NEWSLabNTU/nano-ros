@@ -538,7 +538,113 @@ def _walk_one_order(o: int):
         return ("refused", str(e))
 
 
+# Issue 2414 (2) -- a walk already done is not done again. The key holds every
+# input that can move the answer; a stale entry would state a WRONG floor,
+# the unsafe direction. Set by `main` (the table, flags and toolchain), so a
+# self-test or an import never writes the user's cache unless it asks to.
+_WALK_CACHE_CTX: dict = {}
+# Arguments that name WHERE inputs and outputs are, not what the walk is: the
+# inputs' content is in the graph, and the table's bytes are keyed apart.
+WALK_CACHE_PATH_ARGS = frozenset({
+    "inputs", "link_map", "link_dir", "cfi_elf", "report", "llc_cache", "su",
+    "bitcode_dir", "stated_by_build", "table", "llvm_bin", "cxxfilt",
+    "compile_commands", "cargo_messages", "builtins",
+})
+WALK_CACHE_MAX = 512     # entries; pruned down to WALK_CACHE_KEEP by last use
+WALK_CACHE_KEEP = 384
+
+
+def walk_cache_dir() -> Path | None:
+    if os.environ.get("NROS_STACK_WALK_CACHE") == "0" or not _WALK_CACHE_CTX:
+        return None
+    d = os.environ.get("NROS_STACK_WALK_CACHE_DIR")
+    if d:
+        return Path(d)
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base) / "nros-stack-floor" / "walks"
+
+
+def _code_identity() -> str:
+    """The walker's own source and every `scripts/lib` module it loaded (the
+    site classifier, the builtins decoder, ...): a change to any can move a
+    walk."""
+    lib = Path(__file__).resolve().parent / "lib"
+    files = {Path(__file__).resolve()}
+    for m in list(sys.modules.values()):
+        f = getattr(m, "__file__", None)
+        if f and Path(f).resolve().parent == lib:
+            files.add(Path(f).resolve())
+    h = hashlib.sha256()
+    for f in sorted(files):
+        h.update(f.name.encode() + b"\0" + f.read_bytes())
+    return h.hexdigest()
+
+
+def walk_cache_key(g: Graph, root: str, orders, kw: dict) -> str:
+    def srt(x):
+        return sorted(x)
+    graph = {
+        "frames": sorted(g.frames.items()),
+        "edges": sorted((k, srt(v)) for k, v in g.edges.items()),
+        "indirect_sites": sorted(g.indirect_sites.items()),
+        "address_taken": srt(g.address_taken),
+        "code_taken": srt(g.code_taken),
+        "c_taken": srt(g.c_taken),
+        "functions": srt(g.functions),
+        "alias_groups": sorted(srt(a) for a in g.alias_groups),
+        "su_signatures": sorted(g.su_signatures.items()),
+        "locals": sorted(g.locals.items()),
+    }
+    walk = {
+        "root": root,
+        "orders": list(orders),
+        "indirect_charge": kw.get("indirect_charge"),
+        "recursion_allowance": kw.get("recursion_allowance"),
+        "externals": srt(kw.get("externals") or ()),
+        "cuts": list(kw.get("cuts") or ()),
+        "name_tokens": list(NAME_TOKENS),
+    }
+    doc = {"v": 1, "graph": graph, "walk": walk, "ctx": _WALK_CACHE_CTX,
+           "code": _code_identity()}
+    return hashlib.sha256(json.dumps(doc, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _cache_prune(d: Path) -> None:
+    entries = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime)
+    if len(entries) > WALK_CACHE_MAX:
+        for p in entries[:len(entries) - WALK_CACHE_KEEP]:
+            p.unlink(missing_ok=True)
+
+
 def walk_orders(g: Graph, root: str, orders, **kw) -> list[Path_]:
+    """`walk_orders_uncached`, answered from the walk cache when this exact
+    walk was done before (issue 2414)."""
+    d = walk_cache_dir()
+    if d is None:
+        return walk_orders_uncached(g, root, orders, **kw)
+    key = walk_cache_key(g, root, orders, kw)
+    f = d / f"{key}.json"
+    try:
+        rows = json.loads(f.read_text())
+        os.utime(f)
+        print(f"nros-stack-floor: walk from `{root}` answered from the walk cache "
+              f"({f})", file=sys.stderr)
+        return [Path_(depth=r[0], chain=r[1], indirect=r[2]) for r in rows]
+    except (OSError, ValueError, TypeError, IndexError):
+        pass
+    out = walk_orders_uncached(g, root, orders, **kw)  # a refusal is never cached
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_suffix(f".tmp{os.getpid()}")
+        tmp.write_text(json.dumps([[p.depth, p.chain, p.indirect] for p in out]))
+        tmp.replace(f)
+        _cache_prune(d)
+    except OSError:
+        pass
+    return out
+
+
+def walk_orders_uncached(g: Graph, root: str, orders, **kw) -> list[Path_]:
     """`worst_path` for each order, IN ORDER. In parallel when the token pool
     grants more than this process's own token, else serially; the results
     (and the first refusal) are the same either way."""
@@ -3250,6 +3356,24 @@ def run(args: argparse.Namespace) -> int:
     if args.margin is None:
         args.margin = 0
     readobj = llvm_tool("llvm-readobj", args.llvm_bin)
+    # Issue 2414 (2) -- what the walk cache keys on besides the graph: the
+    # table's bytes, the walk's flags (not its paths: a rebuild in another dir
+    # walks the same graph), and the toolchain that produced the frames.
+    try:
+        llc_id = subprocess.run([llvm_tool("llc", args.llvm_bin), "--version"],
+                                capture_output=True, text=True).stdout.strip()
+    except (OSError, SystemExit):
+        llc_id = "?"
+    _WALK_CACHE_CTX.clear()
+    _WALK_CACHE_CTX.update({
+        "table": hashlib.sha256(Path(args.table).read_bytes()).hexdigest()
+                 if args.table and Path(args.table).is_file() else None,
+        # EVERY argument but the ones that only name where things are: an
+        # argument this list does not know is keyed, so the cache misses
+        # rather than answering for a walk it did not do.
+        "flags": {k: v for k, v in sorted(vars(args).items()) if k not in WALK_CACHE_PATH_ARGS},
+        "toolchain": {"llc": llc_id, "target": args.target},
+    })
     objdump = llvm_tool("llvm-objdump", args.llvm_bin)
     g = Graph()
     externals_unlinked: set[str] = set()
@@ -3875,6 +3999,70 @@ def self_test() -> int:
             except WalkRefused:
                 refused_par = True
             check("parallel orders: a refusal in a worker still refuses", refused_par)
+            # issue 2414 (2) -- the walk cache: a hit answers the same walk, and
+            # every input that can move it misses (negative controls)
+            os.environ["NROS_STACK_WALK_PARALLEL"] = "0"
+            cdir = os.path.join(td, "walks")
+            saved_ctx = dict(_WALK_CACHE_CTX)
+            saved_dir = os.environ.get("NROS_STACK_WALK_CACHE_DIR")
+            try:
+                os.environ["NROS_STACK_WALK_CACHE_DIR"] = cdir
+                _WALK_CACHE_CTX.clear()
+                _WALK_CACHE_CTX.update({"table": "t1", "flags": {}, "toolchain": {"llc": "x"}})
+                first = walk_orders(gc2, "R", WALK_ORDERS, **kw)
+                n1 = len(os.listdir(cdir))
+                again = walk_orders(gc2, "R", WALK_ORDERS, **kw)
+                check("walk cache: a second identical walk is a hit with the same answer",
+                      n1 == 1 and len(os.listdir(cdir)) == 1
+                      and [(p.depth, p.chain, p.indirect) for p in again]
+                      == [(p.depth, p.chain, p.indirect) for p in first])
+                import copy as _cp
+                gm = _cp.deepcopy(gc2)
+                gm.frames["M"] += 8  # ONE frame changed
+                moved = walk_orders(gm, "R", WALK_ORDERS, **kw)
+                check("walk cache: one changed frame MISSES, and walks the new graph",
+                      len(os.listdir(cdir)) == 2
+                      and max(p.depth for p in moved) == max(p.depth for p in first) + 8)
+                base = walk_cache_key(gc2, "R", WALK_ORDERS, kw)
+                ge = _cp.deepcopy(gc2)
+                ge.edges["S"] = {"M"}
+                _WALK_CACHE_CTX["table"] = "t2"
+                k_table = walk_cache_key(gc2, "R", WALK_ORDERS, kw)
+                _WALK_CACHE_CTX["table"] = "t1"
+                _WALK_CACHE_CTX["toolchain"] = {"llc": "y"}
+                k_tc = walk_cache_key(gc2, "R", WALK_ORDERS, kw)
+                _WALK_CACHE_CTX["toolchain"] = {"llc": "x"}
+                _WALK_CACHE_CTX["flags"] = {"indirect": "bind"}
+                k_fl = walk_cache_key(gc2, "R", WALK_ORDERS, kw)
+                _WALK_CACHE_CTX["flags"] = {}
+                check("walk cache: an edge, the table, the toolchain, the flags and the order "
+                      "count each move the key",
+                      len({base, walk_cache_key(ge, "R", WALK_ORDERS, kw), k_table, k_tc, k_fl,
+                           walk_cache_key(gc2, "R", WALK_ORDERS[:4], kw)}) == 6)
+                check("walk cache: it holds every field of a path",
+                      [f.name for f in __import__("dataclasses").fields(Path_)]
+                      == ["depth", "chain", "indirect"])
+                pd = Path(td, "prune")
+                pd.mkdir()
+                for i in range(WALK_CACHE_MAX + 10):
+                    q = pd / f"{i:04d}.json"
+                    q.write_text("[]")
+                    os.utime(q, (i, i))
+                _cache_prune(pd)
+                left = sorted(x.name for x in pd.glob("*.json"))
+                check("walk cache: past its bound it keeps only the most recently used",
+                      len(left) == WALK_CACHE_KEEP
+                      and left[0] == f"{WALK_CACHE_MAX + 10 - WALK_CACHE_KEEP:04d}.json")
+                os.environ["NROS_STACK_WALK_CACHE"] = "0"
+                check("walk cache: NROS_STACK_WALK_CACHE=0 turns it off", walk_cache_dir() is None)
+                os.environ.pop("NROS_STACK_WALK_CACHE", None)
+            finally:
+                _WALK_CACHE_CTX.clear()
+                _WALK_CACHE_CTX.update(saved_ctx)
+                if saved_dir is None:
+                    os.environ.pop("NROS_STACK_WALK_CACHE_DIR", None)
+                else:
+                    os.environ["NROS_STACK_WALK_CACHE_DIR"] = saved_dir
         finally:
             for k, v in saved.items():
                 if v is None:
