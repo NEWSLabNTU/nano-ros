@@ -2371,3 +2371,33 @@ pub const ENV_OVERRIDES_LOCATOR: &str = "overrides system.toml's locator=";
 /// `GRAPH_QUERY lang=<c|cpp|rust> nodes=<n> topics=<n> services=<n>
 /// chatter_publishers=<n> chatter_type=<type>`.
 pub const GRAPH_QUERY_MARKER: &str = "GRAPH_QUERY lang=";
+
+/// The Zephyr wall-clock resolver's verdict when a source answered:
+/// `nros: wall clock from <source>` (`nros/clock_resolve.h`).
+pub const CLOCK_FROM_PREFIX: &str = "nros: wall clock from ";
+
+/// The Zephyr wall-clock resolver's verdict when no source answered:
+/// `nros: no wall-clock source answered (<sources>); ...`.
+pub const CLOCK_NONE_PREFIX: &str = "nros: no wall-clock source answered (";
+
+/// What the boot paid for the resolution, on the image's own clock:
+/// `nros: clock resolution took <n> ms` (`zephyr/nros_platform_zephyr_shims.c`).
+pub const CLOCK_RESOLUTION_TOOK_PREFIX: &str = "nros: clock resolution took ";
+
+/// The milliseconds a [`CLOCK_RESOLUTION_TOOK_PREFIX`] line reports, or `None`
+/// when the output holds no such line.
+pub fn clock_resolution_ms(output: &str) -> Option<u64> {
+    output.lines().find_map(|l| {
+        let rest = &l[l.find(CLOCK_RESOLUTION_TOOK_PREFIX)? + CLOCK_RESOLUTION_TOOK_PREFIX.len()..];
+        rest.split_whitespace().next()?.parse().ok()
+    })
+}
+
+/// The source a [`CLOCK_FROM_PREFIX`] line names, or `None` when the output
+/// holds no such line.
+pub fn clock_latched_source(output: &str) -> Option<&str> {
+    output.lines().find_map(|l| {
+        let rest = &l[l.find(CLOCK_FROM_PREFIX)? + CLOCK_FROM_PREFIX.len()..];
+        rest.split_whitespace().next()
+    })
+}

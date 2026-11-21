@@ -1539,6 +1539,10 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
             .min(u32::MAX as u128) as u32
     }
 
+    fn restart_timing(&mut self) {
+        self.executor.restart_timing();
+    }
+
     fn executor_handle(&mut self) -> *mut core::ffi::c_void {
         // Phase 258 (Track 2, 2a) — hand the owned-spin entry a raw pointer to
         // the executor this runtime owns, so a Node pkg's `register(runtime)`
