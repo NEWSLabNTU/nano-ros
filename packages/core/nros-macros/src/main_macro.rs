@@ -1868,6 +1868,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         }
     };
 
+    // Issue 2777 -- the road that carries the store's size, as one command a
+    // reader can paste: a leaf's own image when the macro knows it, else the
+    // CLI. Printed beside the shared refusal text when the carve check fails.
+    let carve_road_hint = match leaf_decl.as_ref().and_then(|l| l.image.as_deref()) {
+        Some(id) => format!(
+            "Build it with `nros build`, or with cargo after `nros configure`: \
+             `cargo build --config build/{id}/nros-cargo.toml`."
+        ),
+        None => {
+            "Build it with `nros build`, which carries the store's size to this crate.".to_string()
+        }
+    };
     let param_services_call: proc_macro2::TokenStream = if param_services_enabled {
         quote! {
             // phase-314 — the system DECLARED `[param_services]`, so the entry
@@ -1892,6 +1904,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 ::nros::__macro_support::PARAM_STORE_CARVED_SLOTS > 0,
                 "{}",
                 ::nros::__macro_support::PARAM_STORE_NOT_CARVED
+            );
+            const _: () = ::core::assert!(
+                ::nros::__macro_support::PARAM_STORE_CARVED_SLOTS > 0,
+                #carve_road_hint
             );
             // issue 0460 — see the lifecycle twin above.
             runtime.apply_param_services().map_err(|reason| {
@@ -7739,6 +7755,11 @@ mod leaf_axis_tests {
         assert!(
             out.contains("PARAM_STORE_CARVED_SLOTS") && out.contains("PARAM_STORE_NOT_CARVED"),
             "no carve assert:\n{out}"
+        );
+        // ... and it names the command for this leaf's image.
+        assert!(
+            out.contains("nros-cargo.toml") || out.contains("nros build"),
+            "no road hint:\n{out}"
         );
         let none = expand("", "linux", "node_interfaces = \"none\"").unwrap();
         assert!(!none.contains("PARAM_STORE_CARVED_SLOTS"), "{none}");

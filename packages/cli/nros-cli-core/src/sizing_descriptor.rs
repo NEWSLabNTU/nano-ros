@@ -2147,7 +2147,7 @@ pub fn write_for_leaf(
     // `None`, and the field ABSENT.
     let manifest = crate::leaf_entity_env::manifest_infra(leaf);
     let compiled_param_services = leaf_compiles_param_services(leaf, &img.package);
-    let infra = leaf_store_infra(model.as_ref(), compiled_param_services);
+    let infra = leaf_store_infra(model.as_ref(), &img.decl.features, compiled_param_services);
     // phase-486 -- the families the image's queryable table is sized for: the
     // model UNIONED with the manifest, the carrier's own rule, NOT the store
     // view above.
@@ -2266,15 +2266,27 @@ fn leaf_compiles_param_services(leaf: &std::path::Path, package: &str) -> bool {
         || crate::cmd::leaf_settings::depends_on_selection(leaf, package)
 }
 
+/// The store view of a cargo leaf: its model's families, or -- a leaf with no
+/// model (no `[[component]]` rows, so no launch to resolve: a self-bringup
+/// `nros::main!()`) -- the features its `system.toml` composes for the image
+/// (`LeafSystem::features`, through the node-interface switch), which are
+/// what `nros::main!` itself wires the services from. Either way the
+/// `param_services` axis counts only where the build compiles them in.
+// Issue 2777: such a leaf's descriptor stated no store at all, so a plain
+// `cargo build --config build/<image>/nros-cargo.toml` of it carved none
+// while its entry served the stock parameter services.
 fn leaf_store_infra(
     model: Option<&nros_orchestration_ir::overlay::LoadedModel>,
+    leaf_features: &[String],
     manifest_param_services: bool,
 ) -> Option<InfraServices> {
-    model.map(|m| {
-        let mut i = InfraServices::from_model(m);
-        i.param_services &= manifest_param_services;
-        i
-    })
+    let mut i = match model {
+        Some(m) => InfraServices::from_model(m),
+        None if leaf_features.is_empty() => return None,
+        None => InfraServices::from_features(leaf_features, 0),
+    };
+    i.param_services &= manifest_param_services;
+    Some(i)
 }
 
 // --- the model road: the second producer (phase-454 W14) ---------------------
@@ -5741,7 +5753,7 @@ execution:
         let store = |m: &nros_orchestration_ir::overlay::LoadedModel, feature: bool| {
             let d = build(&DescriptorInputs {
                 params: Some(&ParamDeclarations::from_model(m)),
-                infra: leaf_store_infra(Some(m), feature),
+                infra: leaf_store_infra(Some(m), &[], feature),
                 ..base(&inventory(vec![]))
             });
             d.params.store().stated().copied()
@@ -5750,7 +5762,18 @@ execution:
         assert_eq!(store(&axis, false), Some(ParamStore::None));
         let seeded = store_model("", "rate: 5");
         assert_eq!(store(&seeded, false), Some(ParamStore::LaunchSeed));
-        assert!(leaf_store_infra(None, true).is_none());
+        assert!(leaf_store_infra(None, &[], true).is_none());
+        // Issue 2777 -- a model-less leaf answers from its composed features.
+        let stock: Vec<String> = ["param_services", "rosout", "sim_time"]
+            .map(String::from)
+            .to_vec();
+        let i = leaf_store_infra(None, &stock, true).expect("a store view");
+        assert!(i.param_services);
+        assert!(
+            !leaf_store_infra(None, &stock, false)
+                .unwrap()
+                .param_services
+        );
     }
 
     /// Issue 2777 -- a migrated leaf (it depends on its generated selection
