@@ -333,6 +333,8 @@ fn s1_critical_loop_meets_every_deadline_on_its_own_level() {
 /// every thread on a real-time policy is one nano-ros created and sits in the
 /// plan's transport band or its app pool. Same census, same plan check, as the
 /// RTOS ports' `*_census_is_placed_by_the_priority_plan` tests.
+/// And the transport band is occupied: zenoh-pico's tasks run SCHED_FIFO
+/// above every level, placed by `nros::transport_band` in both runners.
 ///
 /// The C/C++ runner (`nros-cpp`): the levels-cpp image.
 #[test]
@@ -419,6 +421,28 @@ fn assert_linux_census_placed(tag: &str, entry: &Path, label: &str) {
         census.iter().any(|(_, _, p)| p == "FIFO"),
         "[{tag}] no thread runs SCHED_FIFO, so the census measured the default policy: \
          {census:?}"
+    );
+    // The transport sits ABOVE every level, in the plan's transport band. A
+    // transport left on SCHED_OTHER is preempted by every SCHED_FIFO level,
+    // always, and every check above passes for it: a SCHED_OTHER thread is
+    // outside every band by construction. So the band must be OCCUPIED, on a
+    // real-time policy, by a thread nano-ros created.
+    let transport = plan
+        .iter()
+        .find(|(name, _)| name == "reserved.transport")
+        .map(|(_, band)| *band)
+        .unwrap_or_else(|| panic!("the Linux plan states no reserved.transport band"));
+    let max_level = census
+        .iter()
+        .filter(|(_, prio, p)| matches!(p.as_str(), "FIFO" | "RR") && *prio < transport.0)
+        .map(|(_, prio, _)| *prio)
+        .max();
+    assert!(
+        census.iter().any(|(name, prio, p)| {
+            p == "FIFO" && (transport.0..=transport.1).contains(prio) && ours(name)
+        }),
+        "[{tag}] no SCHED_FIFO thread in reserved.transport {transport:?}: the transport \
+         runs below the levels (most urgent level {max_level:?}). census: {census:?}"
     );
 }
 

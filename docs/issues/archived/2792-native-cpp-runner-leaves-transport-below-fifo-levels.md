@@ -1,12 +1,14 @@
 ---
 id: 2792
 title: "The C/C++ native levels runner never places zenoh-pico's transport tasks in the Linux transport band, so they stay on SCHED_OTHER under SCHED_FIFO levels"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [linux, cpp, scheduling, zenoh]
 found: 2026-11-21
-related: [0765, 2617]
+resolved: 2026-11-21
+resolved_in: "fix(#2792): the C/C++ native runners place the transport in the Linux transport band"
+related: [0765, 2617, 2796, 2797]
 ---
 
 **Owner:** unassigned.
@@ -65,3 +67,26 @@ to be occupied.
 - It names its level threads (`nros-sched-task-<name>`, as the Rust runner
   does), so the census can tell them apart.
 - The census test then also requires a thread in `reserved.transport`.
+
+## Resolved (2026-11-21)
+
+The band floor and the decision moved to `nros::transport_band::place`, which
+both Linux runners call before the session opens: the Rust board with its
+feature-gated direct call, and both C/C++ native runners (`run_levels_in` and
+`run_sched_tasks_in`) through
+`packages/api/nros-cpp/c-stubs/native_transport_task_config.c`, a WEAK
+reference to `zpico_set_task_config`. That reference resolves when the zenoh
+backend is linked (zpico.c is whole-archived with it) and is NULL otherwise,
+where the image has no transport to place. `check-sched-task-priority-plan`
+now reads the floor from `nros::transport_band`.
+
+The levels-cpp census after the change prints
+`nros: transport tasks at SCHED_FIFO 90 (reserved band floor; most urgent sched task is 80)`,
+and both census tests now also require a `SCHED_FIFO` thread in
+`reserved.transport`. Both pass.
+
+Not closed here: naming the level threads. The POSIX port never names any
+thread it spawns, in either language, so this is the port's defect rather than
+the runner's; filed as issue 2796. The census test does not need the names,
+because it requires the transport band to be OCCUPIED, not a thread called the
+transport.

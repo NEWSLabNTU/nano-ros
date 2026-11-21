@@ -58,13 +58,13 @@ def cross_reference(plans, errors):
                 f"{key} = {v} in {cfg.relative_to(ROOT)} — the plan does not "
                 "describe the port it belongs to")
 
-    # POSIX: the board hardcodes the band FLOOR it places the transport at, and
-    # the plan states the band. Two spellings of one fact unless something
+    # POSIX: both Linux runners place the transport at one band FLOOR
+    # (`nros::transport_band`), and the plan states the band. Two spellings of one fact unless something
     # compares them — the failure this whole gate exists to prevent, one level
     # up (issue 0765).
     posix_plan = plans.get("posix")
     if posix_plan is not None:
-        src = ROOT / "packages/boards/nros-board-linux/src/lib.rs"
+        src = ROOT / "packages/api/nros/src/transport_band.rs"
         text = src.read_text(encoding="utf-8")
         m = re.search(r"const TRANSPORT_BAND_FLOOR: u32 = (\d+);", text)
         lo, hi = posix_plan["reserved"].get("transport", (None, None))
