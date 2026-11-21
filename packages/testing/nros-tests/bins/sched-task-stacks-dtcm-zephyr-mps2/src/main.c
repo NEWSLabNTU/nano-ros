@@ -7,6 +7,10 @@
  * A second level runs on a DECLARED stack, spelled the way a generated C/C++
  * entry spells it (`NROS_SCHED_TASK_MEMORY_DEFINE`,
  * <rclc/detail/sched_task_memory_zephyr.h>), which must follow the same rule.
+ * A third thread runs on the task pool (`nros_zephyr_task_create`, the call a
+ * transport's read task reaches), which is what keeps `nros_thread_stacks` in
+ * the link: this image opens no session, so before issue 2793 the array was
+ * there only because the region's KEEP output section held every DTCM input.
  * Each level reports whether its stack lies in the devicetree's DTCM region,
  * so a QEMU boot of the image shows the placement at run time as well; the
  * test reads it from the ELF.
@@ -14,6 +18,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
+
+#include <pthread.h>
 
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
@@ -24,6 +30,7 @@
 extern int nros_zephyr_sched_task_create_static(void* (*entry)(void*), void* arg, int32_t priority,
                                                const char* name, void* stack, size_t stack_size,
                                                void* thread, uint32_t core_plus1, int* pin_rc);
+extern int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg);
 extern int nros_zephyr_sched_task_create(void* (*entry)(void*), void* arg, int32_t priority,
                                         const char* name, size_t stack_bytes,
                                         uint32_t core_plus1, int* pin_rc);
@@ -53,5 +60,8 @@ int main(void) {
     rc = nros_zephyr_sched_task_create_static(level, (void*)"declared", 6, "declared", mem.stack,
                                              mem.stack_bytes, mem.tcb, 0u, &pin_rc);
     printk("sched-task-stacks-dtcm: declared spawn rc=%d\n", rc);
+    static pthread_t task;
+    rc = nros_zephyr_task_create(&task, level, (void*)"task");
+    printk("sched-task-stacks-dtcm: task spawn rc=%d\n", rc);
     return 0;
 }
