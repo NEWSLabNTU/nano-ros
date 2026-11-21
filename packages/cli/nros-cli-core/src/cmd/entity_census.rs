@@ -1854,8 +1854,11 @@ pub(crate) struct HostProgram<'a> {
     /// phase-583 W4 -- what a host build that states SEVERAL
     /// programs is told, when one census cannot size them all. `None` keeps
     /// the leaf road's rule (`named`, then the manifest's one executable).
-    pub several_programs: Option<&'a dyn Fn(&[String]) -> String>,
+    pub several_programs: Option<&'a SeveralProgramsRefusal<'a>>,
 }
+
+/// What a host build that states several programs is told (`HostProgram::several_programs`).
+pub(crate) type SeveralProgramsRefusal<'a> = dyn Fn(&[String]) -> String + 'a;
 
 /// phase-583 W4 -- the programs the host census build states,
 /// when it states more than one. A census runs one program, so an owned entry
