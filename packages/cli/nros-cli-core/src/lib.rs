@@ -397,6 +397,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Platform(args) => cmd::platform_verb::run(args),
         cmd::Cmd::Runner(args) => cmd::runner_verb::run(args),
         cmd::Cmd::Template(args) => cmd::template_verb::run(args),
+        cmd::Cmd::Image(args) => cmd::image_verb::run(args),
         cmd::Cmd::Ws(args) => cmd::ws::run(args),
         cmd::Cmd::Dev(a) => cmd::dev::run_unlowered(a),
         cmd::Cmd::Version => cmd::version::run(),
