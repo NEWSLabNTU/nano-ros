@@ -733,6 +733,23 @@ zephyr-transient-overrides:
     fi
     ./tests/zephyr-transient-overrides-tests.sh
 
+# issue 2786 -- a conf fragment that sets a node-interface capability symbol
+# (CONFIG_NROS_CAPABILITY_{PARAM_SERVICES,ROSOUT,SIM_TIME}) is refused, naming
+# `node_interfaces`: the build sets those symbols after every conf file, so the
+# fragment's value was dropped without a word. A probe project that includes
+# the module file.
+[group('needs:cmake')]
+zephyr-conf-capability-refusal:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-conf-capability-refusal "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/zephyr-conf-capability-refusal-tests.sh
+
 # zenoh's POSIX mutex/cond pools are DERIVED: the module's pre-Kconfig hook
 # writes their Kconfig defaults from the counts `nros configure` resolved
 # (zephyr/cmake/nros_zpico_pthread_pools.cmake), and the build's refusal takes
