@@ -171,7 +171,6 @@ SB_CONFIG_BOOTLOADER_MCUBOOT
 _system_heap
 arch_proc_id
 cpu_mask_mod
-hal_nxp
 log_msg_runtime_create
 net_config
 net_if_ipv4_select_src_iface

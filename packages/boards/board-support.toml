@@ -421,7 +421,7 @@ runs = "none"
 hardware = "s32z270"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
-notes = "S32Z270 RTU0 Cortex-R52 (board revision D) on Zephyr, with Zephyr's NXP NETC ethernet driver. The C++ Cyclone image links in CI (`just zephyr build-module-fixtures`, which fetches `hal_nxp` for that job only). No emulator models the SoC and no hardware run is recorded."
+notes = "S32Z270 RTU0 Cortex-R52 (board revision D) on Zephyr, with Zephyr's NXP NETC ethernet driver. A C++ Cyclone image for it links in CI, in a job that fetches `hal_nxp` for itself. No emulator models the SoC and no hardware run is recorded."
 
 # phase-522 W1 (RFC-0114 migration table) — the S32K344 safety island. A board
 # nano-ros has measured booting on silicon, declared nowhere until now: the
