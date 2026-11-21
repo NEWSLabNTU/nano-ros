@@ -18,7 +18,7 @@
 //! ## Why the symbol is unconditional and the body is not
 //!
 //! The same idiom the Zephyr platform shims use
-//! (cf. `nros_zephyr_epoch_acquire_configured`): an unconditional symbol with
+//! (cf. `nros_clock_resolve_configured`): an unconditional symbol with
 //! a gated body. The C caller then needs no `#ifdef` and no Kconfig knob has
 //! to reach the cargo lane — an image built without `trace-callbacks` still
 //! links, and the call is simply a no-op.

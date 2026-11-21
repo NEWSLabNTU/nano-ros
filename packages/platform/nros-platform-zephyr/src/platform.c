@@ -83,7 +83,7 @@ uint64_t nros_platform_clock_resolution_ns(void) {
  *
  * Which of them the image uses, in what order, and what happens when none
  * answers is decided once at boot by `nros/clock_resolve.h` (RFC-0141 D1/D4),
- * called from `nros_zephyr_epoch_acquire_configured`.
+ * called from `nros_clock_resolve_configured` (zephyr/nros_platform_zephyr_shims.c).
  *
  * WHY AN OFFSET AND NOT A QUERY PER CALL. `epoch_us` is on the message-stamp
  * path, so a network round trip per call is not an option. We take a reading,
