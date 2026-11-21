@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>owned_census_talker</name>
+  <version>0.1.0</version>
+  <description>An owned entry on a cross board whose one publisher carries a workspace-local message (issue 2805).</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>owned_census_msgs</depend>
+
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

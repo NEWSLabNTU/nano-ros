@@ -1,0 +1,2 @@
+# This directory is a workspace ROOT (pkg-index marker #2). Without it the
+# package walk falls through to `.git/` and indexes the whole repository.

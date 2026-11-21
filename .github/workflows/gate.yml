@@ -2257,6 +2257,17 @@ jobs:
           source ./activate.sh
           just check ament-census-sizing
 
+      # Issue 2805 — the census of an owned entry whose publisher carries a
+      # workspace-local message: one host build of the entry, so the same
+      # cost class as the census above, on shard 2 (the shortest). Its own
+      # `run:` block, so a red copy-out cannot hide its verdict.
+      - name: just check owned-census-local-msgs (owned-entry census, workspace messages)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() && matrix.shard == 2 }}
+        timeout-minutes: 15
+        run: |
+          source ./activate.sh
+          just check owned-census-local-msgs
+
       - name: Disk report (after template-copy-out) — issue 1353
         if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && always() }}
         run: scripts/ci/disk-report.sh "after just check template-copy-out"

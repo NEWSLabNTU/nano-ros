@@ -1,11 +1,13 @@
 ---
 id: 2805
 title: "The host census build of an owned entry does not generate the workspace's own interface packages"
-status: open
+status: resolved
 type: bug
 area: [cli, census, codegen]
 severity: medium
 found: 2026-11-21
+resolved: 2026-11-21
+resolved_in: "the host census build puts the workspace's src/ first on NROS_INTERFACE_SEARCH_PATH"
 related: [2433, 1556]
 ---
 
@@ -68,3 +70,32 @@ on the RMW would be counted on the zenoh arm; the consumer's
   exported value after it, the generated root's layering.
 - A gate takes the census of an owned entry on a cross board whose publisher
   carries a workspace-local message, and fails on the pre-fix tree.
+
+## Resolution
+
+`census_host_program` now adds `-DNROS_INTERFACE_SEARCH_PATH=<ws>/src[;<caller's>]`
+to the host configure, through `census_interface_search_arg`. The workspace is
+the one `image_facts::workspace_root_from` finds (an ancestor whose `src/`
+holds a bringup), so a standalone leaf outside any workspace gets nothing new;
+its `src/` is `ws::interface_search_root`'s, the root the cross configure uses.
+The caller's exported value follows the workspace's, as in the generated root.
+
+Tests:
+
+- `just check owned-census-local-msgs` (build tier,
+  `scripts/check-owned-census-local-msgs.sh`) takes the census of
+  `packages/testing/nros-tests/bins/owned-census-local-msgs`: an owned C entry
+  on threadx-linux whose publisher carries the workspace-local
+  `owned_census_msgs/msg/Tally`, declared only in its `package.xml`, in a
+  bringup that refuses a missing census. On the pre-fix CLI the take refuses
+  with `fatal error: owned_census_msgs.h: No such file or directory`; with the
+  fix the census records the `/tally` publisher of that type.
+- Unit tests `an_owned_census_build_searches_the_workspaces_own_interfaces`
+  and `a_standalone_leaf_census_build_adds_no_workspace_search_path`
+  (`entity_census.rs`).
+
+Consumer: on the safety island's `actuation_module`, with this CLI,
+`entity-census take` of `unit_test_bringup:freertos-posix` records
+`asi_unit_test` (1 node, 1 sub, 1 pub, 1 timer, 2 parameters) and
+`dds_loopback_test_bringup:freertos-posix` records `asi_dds_loopback_test`
+(1 node, 1 sub, 1 pub); neither warns.
