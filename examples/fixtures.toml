@@ -744,6 +744,21 @@ image = "linux"
 codegen_out = "build-workspace-codegen/graph_query_bringup"
 build_subdir = "build/posix-zenoh-linux-graph_query_bringup/cmake"
 
+# Issue 2817 -- a TYPED component whose library has a PUBLIC include directory
+# outside `<pkg>/include` and a PUBLIC link. Building the linux image also
+# builds the component's native carrier (`<pkg>__<exe>`, program `cur_probe`), which links the
+# library. Consumed by tests/carrier_usage_reqs.rs.
+[[workspace_fixture]]
+id = "workspace-carrier-usage-reqs"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/carrier_usage_reqs_ws"
+bringup = "src/cur_bringup"
+image = "linux"
+codegen_out = "build-workspace-codegen/cur_bringup"
+build_subdir = "build/posix-zenoh-linux-cur_bringup/cmake"
+
 # RFC-0071 D16 step 2 (phase-545 W3, issue 2295) — an RMW backend nano-ros does
 # not know about. The image declares `rmw = "acme"`, provided by the fixture's
 # own `src/acme_rmw` (nothing under `packages/` outside the fixture names it),
