@@ -3,67 +3,308 @@
   "today": "2026-11-22",
   "outcome_window": 3,
   "cases": [
-    {"name": "a fresh nightly pass is verified daily",
-     "row": {"emulator": null}, "built": true,
-     "history": [{"date": "2026-11-22", "workflow": "nightly.yml", "event": "schedule", "outcome": "passed"}],
-     "want": "Verified on host (daily)"},
-    {"name": "an emulator board says so",
-     "row": {"emulator": "qemu:mps2-an385"}, "built": true,
-     "history": [{"date": "2026-11-21", "workflow": "nightly.yml", "event": "schedule", "outcome": "passed"}],
-     "want": "Verified in emulator (daily)"},
-    {"name": "one red inside the window does not degrade",
-     "row": {"emulator": null}, "built": true,
-     "history": [
-       {"date": "2026-11-22", "workflow": "nightly.yml", "event": "schedule", "outcome": "failed"},
-       {"date": "2026-11-21", "workflow": "nightly.yml", "event": "schedule", "outcome": "passed"}],
-     "want": "Verified on host (daily)"},
-    {"name": "no pass within the window and a red verdict reads failing since the streak start",
-     "row": {"emulator": null}, "built": true,
-     "history": [
-       {"date": "2026-11-22", "workflow": "nightly.yml", "event": "schedule", "outcome": "failed"},
-       {"date": "2026-11-21", "workflow": "nightly.yml", "event": "schedule", "outcome": "no-verdict"},
-       {"date": "2026-11-20", "workflow": "nightly.yml", "event": "schedule", "outcome": "failed"},
-       {"date": "2026-11-18", "workflow": "nightly.yml", "event": "schedule", "outcome": "passed"}],
-     "want": "Failing since 2026-11-20"},
-    {"name": "only no-verdict since the last pass reads not run since that pass",
-     "row": {"emulator": null}, "built": true,
-     "history": [
-       {"date": "2026-11-22", "workflow": "nightly.yml", "event": "schedule", "outcome": "no-verdict"},
-       {"date": "2026-11-21", "workflow": "nightly.yml", "event": "schedule", "outcome": "not-run"},
-       {"date": "2026-11-15", "workflow": "nightly.yml", "event": "schedule", "outcome": "passed"}],
-     "want": "Not run since 2026-11-15"},
-    {"name": "a weekly pass is verified weekly for three weeks",
-     "row": {"emulator": null}, "built": true,
-     "history": [{"date": "2026-11-05", "workflow": "weekly.yml", "event": "schedule", "outcome": "passed"}],
-     "want": "Verified on host (weekly)"},
-    {"name": "a pass on another scheduled lane counts as daily",
-     "row": {"emulator": null}, "built": true,
-     "history": [{"date": "2026-11-22", "workflow": "live-peer.yml", "event": "schedule", "outcome": "passed"}],
-     "want": "Verified on host (daily)"},
-    {"name": "a manual dispatch run is not a cadence",
-     "row": {"emulator": null}, "built": true,
-     "history": [{"date": "2026-11-22", "workflow": "nightly.yml", "event": "workflow_dispatch", "outcome": "passed"}],
-     "want": "Not run since 2026-11-22"},
-    {"name": "a maintainer report is a manual boot",
-     "row": {"emulator": null}, "built": true,
-     "history": [{"date": "2026-11-10", "source": "report", "runner": "host", "outcome": "passed"}],
-     "want": "Boots, manual (2026-11-10)"},
-    {"name": "a hardware report says so",
-     "row": {"emulator": null}, "built": true,
-     "history": [{"date": "2026-11-10", "source": "report", "runner": "hardware", "outcome": "passed"}],
-     "want": "Boots on hardware, manual (2026-11-10)"},
-    {"name": "a stale report degrades to builds",
-     "row": {"emulator": null}, "built": true,
-     "history": [{"date": "2026-06-01", "source": "report", "runner": "host", "outcome": "passed"}],
-     "want": "Builds (last booted 2026-06-01)"},
-    {"name": "no evidence and a build cell builds",
-     "row": {"emulator": null}, "built": true, "history": [],
-     "want": "Builds"},
-    {"name": "no evidence and no build cell is not supported",
-     "row": {"emulator": null}, "built": false, "history": [],
-     "want": "Not supported"},
-    {"name": "infrastructure stays infrastructure",
-     "row": {"infra": true}, "built": false, "history": [],
-     "want": "Infrastructure"}
+    {
+      "name": "a fresh nightly pass is verified daily",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-22",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Verified on host (daily)"
+    },
+    {
+      "name": "an emulator board says so",
+      "row": {
+        "emulator": "qemu:mps2-an385"
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-21",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Verified in emulator (daily)"
+    },
+    {
+      "name": "one red inside the window does not degrade",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-22",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "failed"
+        },
+        {
+          "date": "2026-11-21",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Verified on host (daily)"
+    },
+    {
+      "name": "no pass within the window and a red verdict reads failing since the streak start",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-22",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "failed"
+        },
+        {
+          "date": "2026-11-21",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "no-verdict"
+        },
+        {
+          "date": "2026-11-20",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "failed"
+        },
+        {
+          "date": "2026-11-18",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Failing since 2026-11-20"
+    },
+    {
+      "name": "only no-verdict since the last pass reads not run since that pass",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-22",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "no-verdict"
+        },
+        {
+          "date": "2026-11-21",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "not-run"
+        },
+        {
+          "date": "2026-11-15",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Not run since 2026-11-15"
+    },
+    {
+      "name": "a weekly pass is verified weekly for three weeks",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-05",
+          "workflow": "weekly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Verified on host (weekly)"
+    },
+    {
+      "name": "a weekly pass 20 days old is still inside three weeks",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-02",
+          "workflow": "weekly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Verified on host (weekly)"
+    },
+    {
+      "name": "a weekly pass exactly three weeks old has expired",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-01",
+          "workflow": "weekly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Not run since 2026-11-01"
+    },
+    {
+      "name": "a daily pass two days old is still inside three days",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-20",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Verified on host (daily)"
+    },
+    {
+      "name": "a daily pass exactly three days old has expired",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-19",
+          "workflow": "nightly.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Not run since 2026-11-19"
+    },
+    {
+      "name": "a pass on another scheduled lane counts as daily",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-22",
+          "workflow": "live-peer.yml",
+          "event": "schedule",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Verified on host (daily)"
+    },
+    {
+      "name": "a manual dispatch run is not a cadence",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-22",
+          "workflow": "nightly.yml",
+          "event": "workflow_dispatch",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Not run since 2026-11-22"
+    },
+    {
+      "name": "a maintainer report is a manual boot",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-10",
+          "source": "report",
+          "runner": "host",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Boots, manual (2026-11-10)"
+    },
+    {
+      "name": "a hardware report says so",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-11-10",
+          "source": "report",
+          "runner": "hardware",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Boots on hardware, manual (2026-11-10)"
+    },
+    {
+      "name": "a stale report degrades to builds",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [
+        {
+          "date": "2026-06-01",
+          "source": "report",
+          "runner": "host",
+          "outcome": "passed"
+        }
+      ],
+      "want": "Builds (last booted 2026-06-01)"
+    },
+    {
+      "name": "no evidence and a build cell builds",
+      "row": {
+        "emulator": null
+      },
+      "built": true,
+      "history": [],
+      "want": "Builds"
+    },
+    {
+      "name": "no evidence and no build cell is not supported",
+      "row": {
+        "emulator": null
+      },
+      "built": false,
+      "history": [],
+      "want": "Not supported"
+    },
+    {
+      "name": "infrastructure stays infrastructure",
+      "row": {
+        "infra": true
+      },
+      "built": false,
+      "history": [],
+      "want": "Infrastructure"
+    }
   ]
 }
