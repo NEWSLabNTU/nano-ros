@@ -1,0 +1,1 @@
+A bringup whose image runs an owned entry package may now carry a launch file, to choose which of that package's programs runs: `<node pkg="<entry package>" exec="<program>">`. A launch node from any other package is refused at configure, because nothing in such a bringup builds or starts it.
