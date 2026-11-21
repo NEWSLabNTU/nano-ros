@@ -204,6 +204,35 @@ int8_t nros_zephyr_exec_unlock(void* m) {
 extern int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms);
 #endif
 
+/* The pump zenoh-pico hands over when its executor runs only inside a spin
+ * (ZPICO_DRIVE_CALLER, `zpico_clock_pump`): NULL in a build with its own read
+ * thread, or with no zenoh at all. */
+static void (*nros_clock_pump)(void);
+
+void nros_clock_set_pump(void (*pump)(void)) {
+    nros_clock_pump = pump;
+}
+
+/* zenoh-hlc: wait up to `settle_ms` for the first timestamped sample to
+ * install the offset. With a pump, drive the link between checks, because no
+ * level spins yet; without one the session's read thread delivers it. */
+static bool nros_zephyr_clock_wait_hlc(uint32_t settle_ms) {
+    const uint64_t start_ns = nros_platform_clock_ns();
+    const uint64_t budget_ns = (uint64_t)settle_ms * 1000000ULL;
+    for (;;) {
+        if (nros_clock_pump != NULL) {
+            nros_clock_pump();
+        }
+        if (nros_clock_epoch_offset_us() != 0ULL) {
+            return true;
+        }
+        if (nros_platform_clock_ns() - start_ns >= budget_ns) {
+            return false;
+        }
+        nros_platform_sleep_ms(10);
+    }
+}
+
 static bool nros_zephyr_clock_try(uint8_t source, uint32_t settle_ms, void *ctx) {
     (void)ctx;
     switch (source) {
@@ -223,7 +252,7 @@ static bool nros_zephyr_clock_try(uint8_t source, uint32_t settle_ms, void *ctx)
 #endif
         return false;
     case NROS_WALL_CLOCK_SOURCE_ZENOH_HLC:
-        return nros_clock_wait_synced(settle_ms);
+        return nros_zephyr_clock_wait_hlc(settle_ms);
     default:
         return false;
     }
@@ -234,7 +263,7 @@ static void nros_zephyr_clock_report(const char *msg, size_t len, void *ctx) {
     printk("%.*s\n", (int)len, msg);
 }
 
-void nros_zephyr_epoch_acquire_configured(void) {
+void nros_clock_resolve_configured(void) {
     uint8_t sources[NROS_CLOCK_MAX_SOURCES];
     nros_clock_policy_t policy;
     policy.sources = sources;
@@ -245,6 +274,86 @@ void nros_zephyr_epoch_acquire_configured(void) {
     (void)nros_clock_resolve(&policy, nros_zephyr_clock_try, nros_zephyr_clock_report, NULL);
 }
 
+/* RFC-0141 D1 — the clock gate: nothing stamps before the wall clock resolves.
+ *
+ * A sched-task image sets up in a CHAIN (issue #144): boot sets up, spawns the
+ * next level, which sets up, spawns the next, and so on. Without a gate every
+ * level began spinning, and so stamping, as soon as its own setup finished,
+ * while later levels were still registering and before anything had resolved
+ * the clock. The gate holds every level at its first spin:
+ *
+ *   boot:        arm(n) .. setup .. spawn next .. setup_done(level)
+ *                .. resolve(budget): waits for all n setups, resolves the
+ *                clock (its own duration is the sources' settle times; its
+ *                outcome follows `epoch_failure`) .. restart the executor's
+ *                timing, so the wait is not owed to any timer .. open .. spin
+ *   other level: setup .. spawn next .. setup_done(level) .. wait_open .. spin
+ *
+ * Resolving after EVERY setup means each level's subscriptions exist, so a
+ * zenoh-hlc source can see a sample on any of them.
+ *
+ * ONE implementation, called by both runners (`zephyr_run_sched_tasks.c` and
+ * `entry_sched_tasks.rs`). Compiler atomics and the platform's sleep and
+ * clock, so it needs nothing Zephyr-specific beyond what the port defines. */
+static uint32_t nros_clock_gate_n;
+static uint32_t nros_clock_gate_done_mask;
+static uint32_t nros_clock_gate_open;
+
+/* Before any setup: the image has `n_levels` levels. */
+void nros_clock_gate_arm(uint32_t n_levels) {
+    __atomic_store_n(&nros_clock_gate_n, n_levels, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&nros_clock_gate_done_mask, 0u, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&nros_clock_gate_open, 0u, __ATOMIC_SEQ_CST);
+}
+
+/* A level finished its setup (and spawned the next). */
+void nros_clock_gate_setup_done(uint32_t level) {
+    if (level < 32u) {
+        __atomic_fetch_or(&nros_clock_gate_done_mask, 1u << level, __ATOMIC_SEQ_CST);
+    }
+}
+
+/* Boot: wait for every level's setup (up to `setup_budget_ms` per level), then
+ * resolve the clock. Returns -1 once resolved; the caller restarts its
+ * executor's timing and then calls `nros_clock_gate_open`, so no level spins
+ * against timers that still owe the wait. When a level never
+ * finished registering it returns that level instead, and does NOT resolve or
+ * open: the caller fails the boot naming it. That is the SETUP bound; the
+ * resolution's own outcome never fails the boot (`epoch_failure` decides). */
+int32_t nros_clock_gate_resolve(uint32_t setup_budget_ms) {
+    uint32_t n = __atomic_load_n(&nros_clock_gate_n, __ATOMIC_SEQ_CST);
+    uint32_t want = (n >= 32u) ? 0xFFFFFFFFu : ((1u << n) - 1u);
+    uint64_t budget_ns = (uint64_t)setup_budget_ms * 1000000ULL * (uint64_t)(n ? n : 1u);
+    uint64_t start = nros_platform_clock_ns();
+    while ((__atomic_load_n(&nros_clock_gate_done_mask, __ATOMIC_SEQ_CST) & want) != want) {
+        if (nros_platform_clock_ns() - start >= budget_ns) {
+            uint32_t missing =
+                want & ~__atomic_load_n(&nros_clock_gate_done_mask, __ATOMIC_SEQ_CST);
+            for (int32_t l = 0; l < 32; l++) {
+                if (missing & (1u << l)) {
+                    return l;
+                }
+            }
+            return 0;
+        }
+        nros_platform_sleep_ms(1);
+    }
+    nros_clock_resolve_configured();
+    return -1;
+}
+
+/* Boot, after the timing restart: release every level to its first spin. */
+void nros_clock_gate_open_all(void) {
+    __atomic_store_n(&nros_clock_gate_open, 1u, __ATOMIC_SEQ_CST);
+}
+
+/* A spawned level, after its setup_done: hold until boot opens the gate. */
+void nros_clock_gate_wait_open(void) {
+    while (__atomic_load_n(&nros_clock_gate_open, __ATOMIC_SEQ_CST) == 0u) {
+        nros_platform_sleep_ms(1);
+    }
+}
+
 /* phase-8 W4 — callback-tracing sink for the Zephyr CTF backend.
  *
  * This is the C ABI the core's `set_trace_sink` takes:
@@ -253,7 +362,7 @@ void nros_zephyr_epoch_acquire_configured(void) {
  * entry path installs this function; the dependency stays one-directional.
  *
  * WHY THE DECISION LIVES IN C, same reason as
- * `nros_zephyr_epoch_acquire_configured` above. Two facts force it:
+ * `nros_clock_resolve_configured` above. Two facts force it:
  *
  *  1. `sys_trace_app_marker` is not stock Zephyr. nano-ros's patch set adds
  *     it (`scripts/zephyr/ctf-app-marker-patch.sh`, run by

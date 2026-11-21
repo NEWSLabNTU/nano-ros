@@ -1361,6 +1361,13 @@ config NROS_CLOCK_FALLBACK_SETTLE_MS
       How long boot waits for each source in clock.source to answer before
       trying the next one. 0 tries each once without waiting.
 
+      This wait is paid at boot, before the first spin: nothing runs until the
+      clock is resolved. A zenoh-hlc source that hears no timestamped sample (no
+      host publishing on a topic the image subscribes to) costs the whole of it
+      before the next source is tried; an sntp source with no reachable server
+      costs sntp_attempts x sntp.timeout_ms instead. Timers start counting when
+      the wait ends, so it is never reported as a missed period.
+
 
 # prompt: Re-take the epoch from zenoh sample timestamps every (ms)
 config NROS_CLOCK_HLC_INTERVAL_MS
@@ -1397,6 +1404,10 @@ config NROS_CLOCK_SOURCE
         sntp       an SNTP query to sntp.server
         zenoh-hlc  the timestamps on zenoh samples the image receives
         board      a source the board package provides
+
+      It is resolved once at boot, after every component has registered and
+      before anything spins, so no message is stamped before it; see
+      clock.fallback_settle_ms for what the wait costs.
 
 
 # derived: y exactly when clock.source names `sntp`

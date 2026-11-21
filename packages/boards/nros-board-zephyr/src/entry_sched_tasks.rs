@@ -342,6 +342,23 @@ fn spawn_next_level<F>(
     }
 }
 
+/// RFC-0141 D1 — the clock gate, defined ONCE in the Zephyr module's C shims
+/// (`zephyr/nros_platform_zephyr_shims.c`) and called by both sched-task
+/// runners, so the two cannot drift.
+mod clock_gate {
+    /// The SETUP bound, per level: a level that has not finished registering
+    /// by then fails the boot, naming it. The C arm's
+    /// `NROS_CLOCK_GATE_SETUP_BUDGET_MS`.
+    pub(super) const SETUP_BUDGET_MS: u32 = 30_000;
+    unsafe extern "C" {
+        pub(super) fn nros_clock_gate_arm(n_levels: u32);
+        pub(super) fn nros_clock_gate_setup_done(level: u32);
+        pub(super) fn nros_clock_gate_resolve(setup_budget_ms: u32) -> i32;
+        pub(super) fn nros_clock_gate_open_all();
+        pub(super) fn nros_clock_gate_wait_open();
+    }
+}
+
 fn report_core_pin(name: &str, cpu: u32, rc: i32) {
     if rc == 0 {
         ::log::info!("nros: core pin sched_task=`{}` cpu={}", name, cpu);
@@ -417,6 +434,12 @@ where
         fail_boot(sched_task.name, "setup failed");
     }
     spawn_next_level(core, all, rest, rest_task_memory, setup);
+    // RFC-0141 D1 — registered: hold at the first spin until boot has resolved
+    // the wall clock and restarted the executor's timing.
+    unsafe {
+        clock_gate::nros_clock_gate_setup_done(u32::from(level));
+        clock_gate::nros_clock_gate_wait_open();
+    }
     let period = core::time::Duration::from_millis((sched_task.spin_period_us / 1000).max(1));
     let mut gap = ::nros_platform::SchedTaskSpinGap::new(sched_task.spin_period_us);
     loop {
@@ -483,15 +506,10 @@ impl ZephyrBoard {
         }
         ::nros_platform_cffi::log::init_default();
 
-        // issue 0758 W4 — acquire the wall-clock epoch HERE, in the one window
-        // where both halves of the ordering hold: the network is up and no
-        // component has constructed yet. Same call, same point, as the C arm.
-        unsafe {
-            unsafe extern "C" {
-                fn nros_zephyr_epoch_acquire_configured();
-            }
-            nros_zephyr_epoch_acquire_configured();
-        }
+        // RFC-0141 D1 — arm the clock gate before any setup: the wall clock
+        // resolves after EVERY level has registered and before ANY spins. The
+        // same gate, at the same points, as the C arm (`clock_gate`).
+        unsafe { clock_gate::nros_clock_gate_arm(sched_tasks.len() as u32) };
 
         if sched_tasks.is_empty() {
             ::log::error!("nros: run_sched_tasks called with no sched tasks");
@@ -590,6 +608,30 @@ impl ZephyrBoard {
         }
 
         spawn_next_level(core, sched_tasks, &sched_tasks[1..], task_memory, setup);
+
+        // RFC-0141 D1 — every level registers, THEN the clock resolves, THEN
+        // any level spins. A level that never finishes registering fails the
+        // boot by name (the setup bound); the resolution never does, its
+        // outcome is `epoch_failure`'s. The executor's timing restarts before
+        // the gate opens, so the wait is owed to no timer.
+        unsafe { clock_gate::nros_clock_gate_setup_done(u32::from(boot_level)) };
+        let stuck = unsafe { clock_gate::nros_clock_gate_resolve(clock_gate::SETUP_BUDGET_MS) };
+        if stuck >= 0 {
+            let name = (0..sched_tasks.len())
+                .find(|&i| i32::from(level_of_suffix(sched_tasks, &sched_tasks[i..])) == stuck)
+                .map_or("?", |i| sched_tasks[i].name);
+            ::log::error!(
+                "nros: level {} (`{}`) did not finish its setup within {} ms: failing the boot",
+                stuck,
+                name,
+                clock_gate::SETUP_BUDGET_MS
+            );
+            fail_boot(name, "setup did not finish");
+        }
+        // SAFETY: no level spins until the gate opens below, so nothing else
+        // holds the runtime.
+        unsafe { core.with_runtime(|crt| crt.executor_mut().restart_timing()) };
+        unsafe { clock_gate::nros_clock_gate_open_all() };
 
         let want = boot_sched_task
             .priority
