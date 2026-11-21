@@ -862,6 +862,17 @@ macro(_nros_image_kconfig_merge_snippets _ms_board _ms_image)
 endmacro()
 
 function(_nros_image_kconfig_refuse_conf_knobs files system image)
+    # Issue 2786 -- the capability symbols the node-interface selection owns.
+    # The build sets each one from the image's effective feature list
+    # (`node_interfaces` folded into `features`): `nros build` as a
+    # command-line Kconfig value, a leaf through its rendered fragment, both
+    # merged after every conf file, so a fragment assigning one was dropped
+    # without a word. Refused instead,
+    # naming the key that owns it. Mirrors
+    # `nros_orchestration_ir::node_interfaces::STOCK`, which
+    # tests/zephyr-conf-capability-refusal-tests.sh reads back.
+    set(_node_interface_syms
+        NROS_CAPABILITY_PARAM_SERVICES NROS_CAPABILITY_ROSOUT NROS_CAPABILITY_SIM_TIME)
     set(_syms "")
     foreach(_id IN LISTS NROS_KNOB_KCONFIG_IDS)
         list(APPEND _syms "${NROS_KNOB_KCONFIG_SYMBOL_${_id}}")
@@ -884,6 +895,15 @@ function(_nros_image_kconfig_refuse_conf_knobs files system image)
                     string(APPEND _found
                         "\n  ${_f}: CONFIG_${_sym}=${_val}  ->  ${_spell} in system.toml, "
                         "or -DNROS_OVERRIDE_${_id}=${_val} for one build")
+                elseif(_sym IN_LIST _node_interface_syms)
+                    string(REGEX REPLACE "^NROS_CAPABILITY_" "" _axis "${_sym}")
+                    string(TOLOWER "${_axis}" _axis)
+                    string(APPEND _found
+                        "\n  ${_f}: CONFIG_${_sym}=${_val}  ->  `node_interfaces` in "
+                        "system.toml owns it ([image.${image}] node_interfaces = "
+                        "\"stock\" | \"none\"; the stock set is param_services, rosout "
+                        "and sim_time), with the `${_axis}` entry of `features`; the build "
+                        "sets this symbol from them, merged after every conf file")
                 endif()
             endif()
         endforeach()
@@ -892,8 +912,9 @@ function(_nros_image_kconfig_refuse_conf_knobs files system image)
         # History: RFC-0103 D2a, phase-484 W5b.
         message(FATAL_ERROR
             "nano-ros: ${system} is this image's one source of its nano-ros knobs; "
-            "those Kconfig symbols have no prompt, so a conf file "
-            "cannot set them:${_found}\nSet them in system.toml instead.")
+            "a conf file cannot set those Kconfig symbols (a registry knob has no "
+            "prompt; a node-interface capability is set from system.toml after "
+            "every conf file):${_found}\nSet them in system.toml instead.")
     endif()
 endfunction()
 
