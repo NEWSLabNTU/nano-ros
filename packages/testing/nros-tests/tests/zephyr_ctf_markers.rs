@@ -25,14 +25,15 @@
 //!
 //! - `just zephyr build-fixtures` (the `build-ws-c-realtime-ctf-zenoh` leaf), in
 //!   a workspace that `nros setup` patched
-//! - ROS's `rmw_zenohd`
+//! - ROS's `rmw_zenohd`, started on the image's baked port
 //!
 //! Run with: `cargo nextest run -p nros-tests --test zephyr_ctf_markers`
 
 use nros_tests::{
+    alloc::port_of,
     ctf,
     fixtures::{RequireFixture, ZenohRouter, build_zephyr_workspace_c_realtime_ctf_entry},
-    matrix::{Config, PlatformId},
+    matrix::{Config, Lang, PlatformId, Workload},
     output::ZEPHYR_SCHED_TASK_ENTERED_MARKER,
     zephyr::{ZephyrPlatform, ZephyrProcess},
 };
@@ -97,15 +98,20 @@ fn zephyr_ctf_stream_holds_the_callback_markers() {
         meta_path.display()
     );
 
-    let router = nros_tests::fixtures::or_unmet(ZenohRouter::start_unique());
+    // The C sched task runner dials its BAKED locator and does not read the
+    // `--nros-locator` override, so the router runs on the cell's allocator
+    // port, as `realtime_sched_tasks_e2e` does for its Zephyr C cell (the two share
+    // a nextest group, so they never start a router on it at once).
+    let port = port_of(
+        PlatformId::ZephyrNativeSim,
+        Lang::C,
+        Workload::RealtimeSchedTasks,
+    );
+    let _router = ZenohRouter::start_on("127.0.0.1", port)
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
     let dir = tempfile::tempdir().expect("tempdir");
-    let mut zephyr = ZephyrProcess::start_with_locator_in_dir(
-        &exe,
-        ZephyrPlatform::NativeSim,
-        &router.locator(),
-        dir.path(),
-    )
-    .expect("failed to start the native_sim image");
+    let mut zephyr = ZephyrProcess::start_in_dir(&exe, ZephyrPlatform::NativeSim, dir.path())
+        .expect("failed to start the native_sim image");
     let boot = zephyr.wait_for_pattern(ZEPHYR_SCHED_TASK_ENTERED_MARKER, Duration::from_secs(30));
     assert!(
         boot.contains(ZEPHYR_SCHED_TASK_ENTERED_MARKER),
