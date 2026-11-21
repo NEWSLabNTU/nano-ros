@@ -4566,7 +4566,9 @@ def main() -> int:
                          "share bound through a trusted channel, and where the rest go")
     ap.add_argument("--level", type=int, default=0,
                     help="with --classify-sites: the W7f stage's rules (0: W7f.0; 1: W7f.1, "
-                         "nested constant initializers and a zero memset as a null write)")
+                         "nested constant initializers, a zero memset as a null write and "
+                         "the closed-world guards; 2: W7f.2, a coerced whole-T copy through "
+                         "a by-value argument or a return)")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     NAME_TOKENS[:] = [t for t in args.name_token if t]
