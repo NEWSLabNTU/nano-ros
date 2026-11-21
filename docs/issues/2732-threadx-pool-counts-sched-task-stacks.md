@@ -51,6 +51,9 @@ requested, 211992 free of 393216. Raise `[knobs.memory] heap_bytes`
 
 ## Scope (2026-11-22)
 
+**Part (a) below is superseded by "Deferred" further down:** the descriptor's
+`[[sched_task]]` rows exist only for Zephyr, so the facts are image-level.
+
 Planned before starting: about a day of work. It stays `low`, because the
 one in-tree case boots at the default and the boot refusal names the knob.
 The "Done when" above assumed the descriptor's `[[sched_task]]` rows already
@@ -99,3 +102,35 @@ a host pthread stack, so its pool-allocated stacks are dead weight there
 Part (c) has to decide whether that board's derivation counts sched-task
 stacks at all, or keeps the target's terms so host and target derive the
 same pool.
+
+## Deferred (2026-11-21)
+
+The revised scope (a) states two IMAGE-level facts, not a per-row one:
+`spawned_sched_task_stack_bytes` and `spawned_sched_tasks_on_app_stack`.
+`[[sched_task]]` rows exist only for a family with a per-task-sized runner
+(Zephyr), and emitting them for ThreadX would also move ThreadX onto
+per-task executor sizing. A spawned task that states no stack gets the app
+thread's (`nros_threadx_create_task`), so the board computes
+`sum + count * app stack`. When a fact is absent, the build prints that
+sched-task stacks are not counted in the pool on that road. threadx-linux
+counts them too: that is the conservative choice, although its threads run
+on host pthread stacks and so never use them
+([issue 2800](2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
+
+**Why it is deferred.** The facts' producer has to be the SAME table the
+entry runs. On the Rust road, `nros::main!` builds that table inside the
+proc macro (`packages/core/nros-macros/src/main_macro.rs`): resolution,
+derived placements, `derive_level_stacks` (member stacks plus the port's
+worker frame), spin periods and mode deadlines. That runs at app compile
+time, after the board's build script has already compiled
+`threadx_hooks.c`.
+
+**The plan when it is picked up.** Extract that pipeline into one
+`nros-orchestration-ir` function (model, RTOS and overlay in; the resolved
+sched-task table and its notes out). The macro calls it, keeping its
+diagnostics, and the descriptor's model road calls it at `nros configure`; the
+two facts are read off the returned table. Estimated at 1-2 days.
+
+**Rejected:** a second, simpler derivation in the CLI (authored
+`stack_bytes` only). It would miss stacks derived from a level's members,
+and so UNDER-count the pool, which is the unsafe direction.
