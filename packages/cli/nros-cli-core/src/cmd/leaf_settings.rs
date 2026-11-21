@@ -1433,6 +1433,24 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
     )
 }
 
+/// The workspace a leaf's `nros::main!` resolves packages in: the enclosing
+/// workspace when the leaf is a package of one (`<ws>/src/<pkg>`), else the
+/// leaf itself. An entry that names a bringup (`launch = "<bringup>"`) finds
+/// it among the workspace's packages, so a member's settings pointing at the
+/// member alone made that bringup unknown. Issue 2777.
+fn member_workspace(leaf: &Path) -> PathBuf {
+    let Some(src) = leaf.parent() else {
+        return leaf.to_path_buf();
+    };
+    if src.file_name().is_some_and(|n| n == "src")
+        && let Some(ws) = src.parent()
+        && crate::cmd::new_workspace::enclosing_workspace(src).as_deref() == Some(ws)
+    {
+        return ws.to_path_buf();
+    }
+    leaf.to_path_buf()
+}
+
 /// Write `<leaf>/build/<image>/nros-cargo.toml`, or return `None` when `leaf`
 /// is not a leaf this road builds ([`resolve`]).
 ///
@@ -1634,7 +1652,7 @@ pub fn write_shared(
         nano_ros_root: nano_ros_root
             .canonicalize()
             .unwrap_or_else(|_| nano_ros_root.to_path_buf()),
-        workspace: leaf.to_path_buf(),
+        workspace: member_workspace(leaf),
         target_dir: target_dir(leaf, &img.image_id),
         env,
         path_env,
@@ -1792,6 +1810,21 @@ fn states_its_own_build_flags(doc: &toml_edit::DocumentMut) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_workspace_member_leaf_resolves_packages_in_its_workspace() {
+        let td = tempfile::tempdir().unwrap();
+        let ws = td.path().join("ws");
+        for pkg in ["demo_entry", "demo_bringup"] {
+            std::fs::create_dir_all(ws.join("src").join(pkg)).unwrap();
+            std::fs::write(ws.join("src").join(pkg).join("package.xml"), "<package/>").unwrap();
+        }
+        assert_eq!(member_workspace(&ws.join("src/demo_entry")), ws);
+        // A lone leaf (not `<ws>/src/<pkg>`) keeps itself as its workspace.
+        let lone = td.path().join("talker");
+        std::fs::create_dir_all(&lone).unwrap();
+        assert_eq!(member_workspace(&lone), lone);
+    }
 
     /// The APP rung with no out-of-tree package catalog: these tests state
     /// only compiled knobs (the package rows have their own tests).

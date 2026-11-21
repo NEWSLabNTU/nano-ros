@@ -287,6 +287,29 @@ _cc_write_selections() {
     done < <(find "$staged" -maxdepth 4 -name Cargo.toml -print0)
 }
 
+# Issue 2777 -- a staged leaf's image settings (`build/<image>/nros-cargo.toml`,
+# which `nros configure` writes) are how plain cargo learns what the image
+# declares; without them nros-params carves no parameter store and
+# `nros::main!` refuses the build. The documented plain-cargo road, so the
+# compile is the one a user's `cargo build --config ...` gets. Only when
+# exactly one image's settings exist: two would be two different builds.
+# Sets `_cc_cfg` to the cargo arguments (empty when none applies).
+_cc_image_config() {
+    local staged="$1" _cc_list _cc_found=()
+    _cc_cfg=()
+    if ! _cc_list="$(find "$staged" -path '*/target' -prune -o \
+        -path '*/build/*/nros-cargo.toml' -print)"; then
+        echo "compile-check: cannot list the image settings under $staged" >&2
+        return 1
+    fi
+    if [ -n "$_cc_list" ]; then
+        mapfile -t _cc_found <<<"$_cc_list"
+    fi
+    if [ "${#_cc_found[@]}" -eq 1 ]; then
+        _cc_cfg=(--config "${_cc_found[0]}")
+    fi
+}
+
 stage_tree() {
     local id="$1" src="$2" staged="$3"
     _cc_resolver_arg=""
@@ -344,7 +367,8 @@ stage_and_check() {
     _cc_stamp_member_versions "$id" "$staged"
     local shared; shared="$(_cc_target_dir "$src" "$staged")"
     NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged"
-    ( cd "$staged" && CARGO_TARGET_DIR="$shared" cargo check --manifest-path Cargo.toml )
+    _cc_image_config "$staged" || return 1
+    ( cd "$staged" && CARGO_TARGET_DIR="$shared" cargo check --manifest-path Cargo.toml "${_cc_cfg[@]}" )
     _cc_copy_shared_depinfo "$shared" "$staged"
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     echo "   stamped $staged/.compile-ok"
@@ -548,8 +572,9 @@ stage_and_check_verdict() {
     # the macro, which is the very question `main_macro_resolves_from_inputs`
     # asks (issue 0414) — and would point the others at someone else's model.
     NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged"
+    _cc_image_config "$staged" || return 1
     local cmd=(env -u NROS_MODEL_DIR CARGO_TARGET_DIR="$shared"
-        cargo check --color never --manifest-path Cargo.toml)
+        cargo check --color never --manifest-path Cargo.toml "${_cc_cfg[@]}")
     _cc_verdict_prelude "$id" "$staged" "${cmd[@]}"
     _cc_capture "$staged" verdict "${cmd[@]}"
     _cc_copy_shared_depinfo "$shared" "$staged"

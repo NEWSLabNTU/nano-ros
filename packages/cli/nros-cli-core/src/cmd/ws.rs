@@ -4614,6 +4614,31 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     {
         println!("sync: settings → {}", img.config_path.display());
     }
+    // Issue 2777 -- a workspace PACKAGE can be a single-package leaf too (its
+    // own `system.toml` declares an image), and a user who drives cargo in it
+    // runs `cargo build --config build/<image>/nros-cargo.toml` exactly as in
+    // a lone leaf. The arm above wrote that file only for a lone leaf, so in a
+    // workspace the leaf had none: no settings, no sizing descriptor, and its
+    // build carved no parameter store. Same writer, same moment (after the
+    // probes); a member whose image is ambiguous (several, no
+    // `default_images`) is named and left for `nros build <pkg>:<image>`.
+    if !single_pkg_mode && let Some(nrp) = nano_ros_path.as_deref() {
+        for p in scan.iter().filter(|p| p.is_rust_pkg && !p.is_msg_pkg) {
+            match crate::cmd::leaf_settings::resolve_image(&p.dir, nrp, None) {
+                Ok(Some(_)) => {
+                    if let Some(img) = crate::cmd::leaf_settings::write(&p.dir, nrp, "sync", None)?
+                    {
+                        println!("sync: settings → {}", img.config_path.display());
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => eprintln!(
+                    "sync: {}: no leaf settings written ({e}); `nros build` names the image",
+                    p.dir.display()
+                ),
+            }
+        }
+    }
 
     finish_probes(&probes)?;
     println!("sync: done.");
