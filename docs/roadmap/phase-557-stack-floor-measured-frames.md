@@ -1184,11 +1184,11 @@ build where that number was read.
       UNMEASURED floor (170,284 B + margin). nucleo `talker/rust` walks again
       (69,648 B; re-recorded, the reach the stock node interfaces added);
       `talker/c` stays within its band.
-- **W9c — The band.** Checkpoint 1 (below), then N, `min`/`max` in the
-  report, the environment key on each row, and `walk_floor` folded into the
-  band max. Acceptance: the measured table and the chosen N; every
-  `[[observed]]` row re-walked at that N; issue 2688's case (main walked in
-  CI and on a host) reads "different toolchain identity" rather than FAIL.
+- **W9c — The environment key (was: the band).** Checkpoint 1 DONE
+  (2026-11-22, below): the spread across trees is 0.00 %, so no band is built
+  and N stays 8 (ruling below). What is left: the environment key on each
+  row. Acceptance: issue 2688's case (main walked in CI and on a host) reads
+  "different toolchain identity" rather than FAIL.
 - **W9d — The drift rule (Ruling (C)).** DONE (2026-11-18).
   `static_drift` and its self-tests
   (up 3 %: FAIL; up 1 %: note; down 10 %: note); W8's nightly and
@@ -1246,6 +1246,65 @@ built on it until the SCC is cut (W7f's reopening conditions).
   recorded, so the table says how many trees changed the image at all.
 - **The environment is this host's.** The host-vs-CI split (issue 2688) is
   the toolchain-identity measurement below, not this one.
+
+**Checkpoint 1 result (2026-11-22).** Run on this host (x86_64, Zephyr SDK
+0.16.8, arm-none-eabi 13.2-nros5). Base `86c9dd9d8f`, plus the nucleo board's
+DTCM placement from issue 2790, without which the base's nucleo Rust template
+does not link. Placement does not change the code the walk reads.
+
+- **The five trees.** Main with one commit reverted each: `89779d8567`,
+  `c82f9ebe77`, `2eea1cbbc4`, `498a175fce`, `9fecdfd146`. `66a6a73575` and
+  `819174552a` were eligible but conflicted on revert, so the rule skipped
+  them.
+- **The spread across trees is 0.00 %, at N=8 and at N=64, on all four
+  rows.** All six trees give byte-identical per-order depths. The test had
+  power on at least one tree: reverting `9fecdfd146` (the parameter store
+  sizing) changed both nucleo images (other ELF hashes), and the walk still
+  did not move. The Rust image's ELF hash also differs between trees that
+  share their code, so an image hash alone is not evidence of a code change.
+
+  | row | max, N=8 | max, N=64 | rise | min of 64 |
+  | --- | ---: | ---: | ---: | ---: |
+  | `talker/rust/zenoh@nucleo-f767zi-zephyr` | 68,560 | 72,764 | +6.1 % | 53,896 |
+  | `talker/c/zenoh@nucleo-f767zi-zephyr` | 108,792 | 112,612 | +3.5 % | 66,308 |
+  | `qemu_bsp_talker_bringup@mps2-an385-baremetal` | 156,128 | 158,708 | +1.7 % | 107,416 |
+  | `talker/c/zenoh@mps2-an385-freertos` | 118,048 | 120,816 | +2.3 % | 81,748 |
+
+  Unrelated code no longer moves the walk. That is W8's follow-up: callee
+  order comes from inlined v0 back-references, not from names that move with
+  the checkout. Across trees there is no band left to gate on.
+- **But the max has not converged in N.** The running max over the first n
+  orders, on main:
+
+  | row | 1 | 4 | 8 | 16 | 32 | 40 | 48 | 64 | deepest at order |
+  | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+  | Rust talker, nucleo | 68,560 | 68,560 | 68,560 | 68,560 | 69,316 | 72,016 | 72,764 | 72,764 | 44 |
+  | C talker, nucleo | 93,752 | 103,284 | 108,792 | 111,116 | 111,116 | 112,612 | 112,612 | 112,612 | 39 |
+  | bare-metal bringup, mps2 | 115,440 | 156,128 | 156,128 | 156,128 | 156,128 | 156,128 | 158,708 | 158,708 | 46 |
+  | C talker, FreeRTOS mps2 | 81,748 | 102,452 | 118,048 | 118,048 | 120,816 | 120,816 | 120,816 | 120,816 | 17 |
+
+  Three of the four rows find their deepest order after order 39. Within one
+  tree, one row's 64 orders range by 30-50 % from min to max.
+
+**Ruling (2026-11-22, the manager, on this result).**
+
+- **The tree band is not built.** The measurement retired its premise: a
+  0.00 % spread from a test that had power. W9c keeps only the per-row
+  toolchain/environment key, which answers issue 2688's host-vs-CI split,
+  the one question left.
+- **N stays 8.** Re-recording every row at N=64 would spend RAM (+1.7 to
+  +6.1 % on every floor and stamp) on a bound that is deeper and still not
+  sound.
+- **The current floors are not upper bounds on the worst order.** A floor
+  is the deepest of a fixed set of callee orders: a LOWER bound on the
+  worst order, and more orders only raise it. Do not read a floor as sound.
+  What keeps an image safe today is the measured peak, which every
+  `[[observed]]` row holds under the walk. The N-curve above is issue 2550's
+  evidence.
+- **The exact search is the next floor work after the 2688 key.** It is
+  the only thing that bounds the worst order (issue 2550 step 3), and it
+  needs a small SCC first, which is W7f's binding (step 2). So the next item
+  is W7f's reopening conditions, then the search.
 
 ## Issues homed here (2026-11-15)
 
