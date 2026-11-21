@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- phase-583 W3 verdict fixture: an owned-entry bringup whose launch also
+     starts a node from ANOTHER package, which the configure must refuse. -->
+<launch>
+  <node pkg="two_programs" exec="prog_a" name="talker"/>
+  <node pkg="other_pkg" exec="other" name="other"/>
+</launch>
