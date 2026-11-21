@@ -93,13 +93,22 @@ def stamped_stack(conf: Path) -> int | None:
     return vals[-1] if vals else None
 
 
-def twin_stack(stamped: int | None) -> int:
-    """The twin's main stack: TWIN_STACK, or the template's stamped stack when
-    that is larger. The build CHECKs a measured image's stack against its own
-    walk's floor and refuses one below it, so lowering a template's stamp to
-    TWIN_STACK makes the twin refuse to build the image it is meant to
-    measure (issue 2790). Never below the stamp, which the build holds."""
-    return max(TWIN_STACK, stamped or 0)
+def twin_stack(stamped: int | None, board: int | None = None) -> int:
+    """The twin's main stack: TWIN_STACK, or the stack the image gets anyway
+    when that is larger: the template's stamp, else the board's own
+    `prj.conf`. The build CHECKs a measured image's stack against its own
+    walk's floor and refuses one below it, so lowering it to TWIN_STACK makes
+    the twin refuse to build the image it is meant to measure. Issue 2790 hit
+    that through the stamp; mps2-an385-zephyr hit it through the board
+    (`nros new` stamps nothing there, because the board's 131,072 B is above
+    the floor, and the twin's 64 KiB went below it). The twin never lowers the
+    image's stack."""
+    return max(TWIN_STACK, stamped or 0, board or 0)
+
+
+def board_stack(board: str) -> int | None:
+    """The `CONFIG_MAIN_STACK_SIZE` the board package's `prj.conf` states."""
+    return stamped_stack(ROOT / "packages" / "boards" / f"nros-board-{board}" / "prj.conf")
 
 
 def twin_conf(stack: int = TWIN_STACK, qemu: bool = False) -> str:
@@ -363,7 +372,7 @@ def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w,
         text = sysf.read_text()
         if f'stack_floor_image = "{row["image"]}"' not in text:
             return Verdict(False, [f"{row['image']}: FAIL: {sysf} is not keyed to this row"])
-        stack = twin_stack(stamped_stack(sysf.parent / "stack.conf"))
+        stack = twin_stack(stamped_stack(sysf.parent / "stack.conf"), board_stack(board))
         emu = twin_emulator(board)
         (sysf.parent / TWIN_CONF).write_text(
             twin_conf(stack, qemu=bool(emu and emu[0] == "qemu")))
@@ -436,6 +445,9 @@ def self_test() -> int:
           renode_machine("nucleo-f767zi-zephyr") == "nucleo_f767zi")
     check("a board with no descriptor has none", renode_machine("no-such-board") is None)
     # phase-557 W10a -- QEMU is a twin, FVP is not (RFC-0115 Amendment 1)
+    check("the twin never lowers a board's own main stack (mps2-an385-zephyr)",
+          board_stack("mps2-an385-zephyr") == 131072
+          and twin_stack(None, board_stack("mps2-an385-zephyr")) == 131072)
     check("the mps2-an385 Zephyr board has a QEMU twin",
           twin_emulator("mps2-an385-zephyr") == ("qemu", "mps2-an385"))
     check("a QEMU board has no Renode machine", renode_machine("mps2-an385-zephyr") is None)
@@ -465,6 +477,7 @@ def self_test() -> int:
     check("the twin's main stack is never below the template's stamp (issue 2790)",
           twin_stack(78152) == 78152 and twin_stack(32768) == TWIN_STACK
           and twin_stack(None) == TWIN_STACK
+          and twin_stack(None, 131072) == 131072 and twin_stack(None, 16384) == TWIN_STACK
           and "CONFIG_MAIN_STACK_SIZE=78152" in twin_conf(twin_stack(78152)))
     with tempfile.TemporaryDirectory() as d:
         c = Path(d, "stack.conf")
