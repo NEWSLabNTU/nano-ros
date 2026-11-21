@@ -542,6 +542,18 @@ filter = "binary(qos_zephyr_ros2_interop_e2e)"
 test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }
 
+# Issue 2766 -- the same RESOURCE again. The CTF marker cell's image is the
+# realtime-c workspace's Zephyr entry with tracing on, and its baked router port
+# is `port_of(ZephyrNativeSim, C, RealtimeSchedTasks)`: the C sched task runner
+# does not read the `--nros-locator` override, so the test starts the router on
+# that port, as `realtime_sched_tasks_e2e` does for its Zephyr C cell. Same group, so
+# the two router starts never collide. Ahead of `binary(~zephyr)` for the same
+# reason as the override above.
+[[profile.default.overrides]]
+filter = "binary(zephyr_ctf_markers)"
+test-group = "matrix-consumers-serial"
+slow-timeout = { period = "180s", terminate-after = 3 }
+
 # phase-441 W1 — issue-#141-shaped RESOURCE, on the Cortex-M board: one baked
 # image serves two tests. `build-cortex-m-c-talker-zenoh` bakes
 # `CONFIG_NROS_ZENOH_LOCATOR="tcp/10.0.2.2:10700"`, and BOTH

@@ -261,7 +261,14 @@ impl ZephyrProcess {
     /// # Returns
     /// A managed Zephyr process
     pub fn start(binary: &Path, platform: ZephyrPlatform) -> TestResult<Self> {
-        Self::start_inner(binary, platform, &[])
+        Self::start_inner(binary, platform, &[], None)
+    }
+
+    /// [`ZephyrProcess::start`], with `dir` as the image's working directory,
+    /// for an image that writes files relative to it: the posix tracing
+    /// backend writes its CTF stream to `channel0_0` there (issue 2766).
+    pub fn start_in_dir(binary: &Path, platform: ZephyrPlatform, dir: &Path) -> TestResult<Self> {
+        Self::start_inner(binary, platform, &[], Some(dir))
     }
 
     /// #166 / phase-286 W1 — start a native_sim image with a per-test router
@@ -278,13 +285,19 @@ impl ZephyrProcess {
         platform: ZephyrPlatform,
         locator: &str,
     ) -> TestResult<Self> {
-        Self::start_inner(binary, platform, &[format!("--nros-locator={locator}")])
+        Self::start_inner(
+            binary,
+            platform,
+            &[format!("--nros-locator={locator}")],
+            None,
+        )
     }
 
     fn start_inner(
         binary: &Path,
         platform: ZephyrPlatform,
         testargs: &[String],
+        cwd: Option<&Path>,
     ) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
@@ -327,6 +340,9 @@ impl ZephyrProcess {
                 // option parser aborts on an unregistered `--nros-locator`).
                 let mut image = Command::new(&launch_bin);
                 image.args(testargs);
+                if let Some(dir) = cwd {
+                    image.current_dir(dir);
+                }
                 let mut run = crate::run::host_image(&image, &[("seed", &seed.to_string())])?;
                 let mut cmd = run.take_command();
                 cmd.stdout(Stdio::piped()).stderr(Stdio::piped());

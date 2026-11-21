@@ -273,9 +273,10 @@ void nros_zephyr_epoch_acquire_configured(void) {
  * either way, and keeping it inside the guard means the name appears in the
  * TU only when the patch that defines it is present.
  *
- * `marker_id` / `arg` are the wire encoding agreed with the decoder
- * (`scripts/parse-zephyr-ctf.py`); this shim is a pure forwarder and imposes
- * no meaning on either field. */
+ * `marker_id` / `arg` are the `app_marker` event's two fields, read back by
+ * the in-tree CTF reader (`nros_tests::ctf`, which the CTF marker cell
+ * decodes a stream with); this shim is a pure forwarder and imposes no
+ * meaning on either field. */
 void nros_zephyr_trace_marker(uint32_t marker_id, uint32_t arg) {
 #ifdef CONFIG_TRACING_CTF
     /* WEAK: an image with CTF tracing but without the out-of-tree patch (one

@@ -132,6 +132,21 @@ panic = "platform"
 [image.zephyr.knobs.zenoh]
 socket_timeout_ms = 5
 
+# Issue 2766 -- the same image with Zephyr CTF tracing (`prj-ctf.conf`: the
+# synchronous posix backend, which writes `channel0_0` in the image's working
+# directory) and the executor's callback tracing (`NROS_TRACE_CALLBACKS`). The
+# sched task runner installs the trace sink, so every callback start/end
+# reaches the stream as an `app_marker` event, the event nano-ros's Zephyr
+# patch set adds. Run by `tests/zephyr_ctf_markers.rs`.
+[image.zephyr_ctf]
+board = "zephyr"
+os_config = ["prj-zenoh.conf", "prj-ctf.conf"]
+panic = "platform"
+env = { NROS_TRACE_CALLBACKS = "1" }
+
+[image.zephyr_ctf.knobs.zenoh]
+socket_timeout_ms = 5
+
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image
 # name, because that is what the fact is about (issue 0951).
