@@ -4430,7 +4430,7 @@ def self_test() -> int:
     return 1 if fails else 0
 
 
-def classify_sites(ir_dir: Path, nested: bool) -> int:
+def classify_sites(ir_dir: Path, level: int) -> int:
     """`--classify-sites`: the W7f trusted-share report for one dumped image."""
     rust = [p.read_text() for p in sorted(ir_dir.glob("rust-*.ll"))]
     c = [p.read_text() for p in sorted(ir_dir.glob("c-*.ll"))]
@@ -4438,13 +4438,13 @@ def classify_sites(ir_dir: Path, nested: bool) -> int:
         print(f"nros-stack-floor: {ir_dir} holds no rust-*.ll or c-*.ll (dump them with "
               "NROS_STACK_DUMP_IR during a bind build)", file=sys.stderr)
         return 2
-    out = site_channels.classify(rust, c, nested=nested)
+    out = site_channels.classify(rust, c, level=level)
     cs, rs = out["c"], out["rust"]
 
     def pct(a: int, b: int) -> str:
         return f"{a}/{b} ({100 * a / b:.1f} %)" if b else "no sites"
 
-    print(f"{ir_dir}: {len(rust)} Rust and {len(c)} C module(s)")
+    print(f"{ir_dir}: {len(rust)} Rust and {len(c)} C module(s), W7f.{level} rules")
     print(f"  C sites trusted:                   {pct(cs['trusted'], cs['sites'])}")
     print(f"  Rust sites trusted (not a vtable): {pct(rs['trusted'], rs['sites'])}; "
           f"{rs['vtable']} at a vtable slot (bound by W7)")
@@ -4564,16 +4564,16 @@ def main() -> int:
                     help="phase-557 W7f: classify every indirect call site of the IR a bind "
                          "wrote to IR_DIR (NROS_STACK_DUMP_IR=IR_DIR during the build): the "
                          "share bound through a trusted channel, and where the rest go")
-    ap.add_argument("--nested", action="store_true",
-                    help="with --classify-sites: read constant initializers nested in "
-                         "another constant (W7f.1)")
+    ap.add_argument("--level", type=int, default=0,
+                    help="with --classify-sites: the W7f stage's rules (0: W7f.0; 1: W7f.1, "
+                         "nested constant initializers and a zero memset as a null write)")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     NAME_TOKENS[:] = [t for t in args.name_token if t]
     if args.self_test:
         return self_test()
     if args.classify_sites:
-        return classify_sites(Path(args.classify_sites), args.nested)
+        return classify_sites(Path(args.classify_sites), args.level)
     if args.sync_json:
         toml_path = Path(args.sync_json)
         json_twin(toml_path).write_text(render_json_twin(load_toml(toml_path)), encoding="utf-8")

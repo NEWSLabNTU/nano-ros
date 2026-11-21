@@ -165,9 +165,12 @@ class Site:
 
 
 class Analysis:
-    def __init__(self, modules: list[Module], nested: bool = False):
+    def __init__(self, modules: list[Module], level: int = 0):
         self.mods = modules
-        self.nested = nested
+        # W7f.1: nested constant initializers, and a zero memset (it writes
+        # only nulls, which add no target) is not an opaque write.
+        self.nested = level >= 1
+        self.zero_memset_ok = level >= 1
         self.ch: dict[Key, Channel] = {}
         self.sites: list[Site] = []
         self.escaped: set[str] = set()
@@ -395,6 +398,9 @@ class Analysis:
             src = parts[1][1] if len(parts[1]) > 1 else ""
             if self._struct_at(m, f, src) == t:
                 return  # a T copied from a T copies trusted fields
+        elif "memset" in parts[0] and self.zero_memset_ok and len(parts[1]) > 1 \
+                and parts[1][1] == "0":
+            return  # zero fill: every pointer field becomes null, which calls nothing
         self._opaque.setdefault(t, []).append(f"{_name(parts[0])} onto it ({f.name})")
 
     def _initializers(self, m: Module) -> None:
@@ -534,13 +540,14 @@ class Analysis:
         return {k: (not bad[k], fns[k], bad[k]) for k in self.ch}
 
 
-def classify(rust_texts: list[str], c_texts: list[str], nested: bool = False) -> dict:
-    """The W7f trusted-share report for one image."""
+def classify(rust_texts: list[str], c_texts: list[str], level: int = 0) -> dict:
+    """The W7f trusted-share report for one image, under the rules of stage
+    `level` (0: W7f.0, 1: W7f.1)."""
     Analysis._opaque = {}
     Analysis._seen_params = set()
     mods = [parse_module(t, "rust") for t in rust_texts] + \
            [parse_module(t, "c") for t in c_texts]
-    an = Analysis(mods, nested=nested)
+    an = Analysis(mods, level=level)
     sol = an.solve()
     out: dict = {"c": {"sites": 0, "trusted": 0}, "rust": {"sites": 0, "trusted": 0,
                                                             "vtable": 0},
@@ -695,8 +702,19 @@ define void @h1() {
   ret void
 }
 """
-    check("a nested initializer is not read without nested=True (W7f.0)",
+    check("a nested initializer is not read at level 0 (W7f.0)",
           classify([], [nested_c])["c"]["trusted"] == 0)
-    check("a nested initializer is read with nested=True (W7f.1)",
-          classify([], [nested_c], nested=True)["c"]["trusted"] == 1)
+    check("a nested initializer is read at level 1 (W7f.1)",
+          classify([], [nested_c], level=1)["c"]["trusted"] == 1)
+    zero = c.replace("store ptr @h2, ptr %f", "%a = alloca %struct.T\n"
+                                               "  call void @llvm.memset.p0.i32(ptr %a, i8 0, "
+                                               "i32 8, i1 false)\n"
+                                               "  store ptr @h2, ptr %f")
+    check("a zero memset onto a T untrusts it at level 0",
+          classify([], [zero])["c"]["trusted"] == 0)
+    check("a zero memset onto a T is a null write at level 1 (W7f.1)",
+          classify([], [zero], level=1)["c"]["trusted"] == 1)
+    nonzero = zero.replace("i8 0, i32 8", "i8 %v, i32 8")
+    check("a memset of a nonzero value still untrusts a T at level 1",
+          classify([], [nonzero], level=1)["c"]["trusted"] == 0)
     return bad
