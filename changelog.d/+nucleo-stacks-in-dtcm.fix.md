@@ -1,0 +1,1 @@
+The Rust talker template for the NUCLEO-F767ZI links again. The board now places nano-ros's transport task stacks in the part's otherwise unused 128 KiB DTCM, which frees about 32 KiB of main RAM for every image on the board.
