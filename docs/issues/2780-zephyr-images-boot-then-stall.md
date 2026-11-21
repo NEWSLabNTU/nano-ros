@@ -147,8 +147,39 @@ does not touch this road).
 
   The first attempt exported `NROS_ZEPHYR_HEAP_SIZE` to an already-configured
   build dir, and the build ignored it. That is issue 2810.
-- The flat 112 KiB arm from `57c19cd7df` is the 1-node case of (b), and its
-  text is to say so.
+
+### Fix (b), in the tree
+
+`zephyr/cmake/nros_heap_floor.cmake` derives the floor of every arm that was
+priced on one node:
+
+    arm + (param_nodes - 1) x (6 x 2 x PARAM_SERVICE_BUFFER_SIZE + remainder)
+        + (machines - 1)    x (5 x 2 x PARAM_SERVICE_BUFFER_SIZE + remainder)
+
+The arm is 112 KiB for a C/C++ image with param_services, and 192 KiB for a
+Rust image with param_services and for a lifecycle image.
+
+- The counts are the entity inventory's `NROS_ENTITY_PARAM_SERVICE_NODES` and
+  `NROS_ENTITY_LIFECYCLE_MACHINES`. They are the same `InfraServices` counts
+  the queryable pool uses. A lifecycle machine's buffer is the same constant
+  (`LIFECYCLE_SERVICE_BUFFER_SIZE = PARAM_SERVICE_BUFFER_SIZE`).
+- The three Kconfig arms are the `-1` derive sentinel, resolved through
+  `_nros_resolve_derivable_knob`. The environment and a stated value still
+  win, and a stated value below the floor warns.
+- With no inventory, an image keeps its arm, never the 64 KiB crate default.
+  The Rust lane now receives that configure-decided value too, since its
+  `$DOTCONFIG` still holds the sentinel.
+- One node and one machine derive exactly the arm. A store-only image keeps
+  its flat arm.
+- The two C++ stopgap rows are deleted.
+
+The remainders start at 0, which makes four C/C++ nodes 262,144. They are set
+from the one-node and multi-node boot-record peaks before this closes.
+
+Multi-node Rust images already state a measured heap (`realtime-rust`,
+`rust/demo_bringup`: 262,144). They keep it, and the configure reports it
+against the derived value. No in-tree Zephyr image registers more than one
+lifecycle machine, so that term has no measurement yet.
 
 ## Closes when
 

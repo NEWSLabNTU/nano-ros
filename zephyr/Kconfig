@@ -2087,13 +2087,15 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
       derive is the shape that cannot disagree.
 
 
-# prompt: Application heap arena size (bytes)
+# prompt: Application heap arena size (bytes, -1 = derive)
 config NROS_ZEPHYR_HEAP_SIZE
     int
     default 1048576 if NROS_RMW_CYCLONEDDS
-    default 196608 if NROS_CAPABILITY_LIFECYCLE
-    default 196608 if RUST && (NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE)
-    default 114688 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE
+    default -1 if NROS_CAPABILITY_LIFECYCLE
+    default -1 if RUST && NROS_CAPABILITY_PARAM_SERVICES
+    default 196608 if RUST && NROS_PARAM_STORE
+    default -1 if NROS_CAPABILITY_PARAM_SERVICES
+    default 114688 if NROS_PARAM_STORE
     default 131072 if RUST
     default 65536
     help
@@ -2135,8 +2137,19 @@ config NROS_ZEPHYR_HEAP_SIZE
       node's six parameter services owns a 2 x PARAM_SERVICE_BUFFER_SIZE
       buffer pair. So an image serving them on several nodes does not fit
       112 KiB: the four-node derived-sched-tasks image ran it dry at boot.
-      Until the floor is derived from the image's node count,
-      a multi-node C or C++ image states its measured heap.
+      The same holds for the 192 KiB arms: a lifecycle state machine owns
+      five such pairs. So the param_services and lifecycle arms are the -1
+      derive sentinel now. The configure starts from the arm the image had
+      (112 KiB for C/C++ param_services, 192 KiB for Rust param_services and
+      for lifecycle) and adds (nodes - 1) x (12 x PARAM_SERVICE_BUFFER_SIZE)
+      and (machines - 1) x (10 x PARAM_SERVICE_BUFFER_SIZE), each plus a
+      measured remainder, from the counts in the image's entity inventory
+      (zephyr/cmake/nros_heap_floor.cmake). One node and one machine derive
+      exactly the arm; with no inventory to count from, the image keeps the
+      arm. A value stated here, in the environment, or in the image's
+      `[image.<id>.knobs.zephyr] heap_size` still wins, and one below the
+      derived floor is warned about at configure. An image that only seeds a
+      store, without the services, keeps its flat arm.
 
       A CYCLONE image gets 1 MiB: ddsrt's whole heap lands here
       since the Zephyr road compiles the platform funnel (heap/nros/heap.c),
