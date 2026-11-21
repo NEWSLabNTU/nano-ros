@@ -25,7 +25,7 @@ Rulings in force (issue 2400 "Rulings"):
 
 Related: [issue 2402](../issues/archived/2402-rmw-vtable-slot-binding-stack-walk.md)
 (the allowance exists because a static walk cannot bind a vtable call to its
-slot), [issue 2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md)
+slot), [issue 2414](../issues/2414-stack-floor-walk-search-doubles-a-warm-build.md)
 (the deferred bitcode store),
 [issue 2460](../issues/archived/2460-stack-floor-mps2-zephyr-walk-refused.md),
 [issue 2496](../issues/archived/2496-freertos-cmake-app-stack-no-system-toml.md), and the
@@ -1352,7 +1352,8 @@ Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when
 | --- | --- |
 | [#2400](../issues/2400-stack-floor-from-measured-frames.md) | The design and rulings this phase implements. |
 | [#2360](../issues/archived/2360-zephyr-rust-registration-stack-frames.md) | A Rust Zephyr entry's registration frames outgrow 32 KiB of main stack for an action server (measured 63,776 B): the floor this phase derives, and the input of issue 2400. |
-| [#2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md) | DEFERRED by ruling. Measuring floors every build bypasses sccache for the measured crates; a bitcode store keyed by crate output would remove the cost. |
+| [#2414](../issues/2414-stack-floor-walk-search-doubles-a-warm-build.md) | OPEN, re-scoped 2026-11-21. A walked warm build is about 2x, and the cost is the 8-order walk search (41 s of 76 s on the riscv64 ThreadX bin), not the sccache bypass (1-3 s). Fix: orders in parallel on the token pool, then a walk-result cache keyed by every input. |
+| [#2803](../issues/2803-stack-floor-off-switch-not-on-cmake-road.md) | OPEN. `NROS_STACK_FLOOR=OFF` does not reach the cmake road (a cache variable there, CHECK/OFF, against the cargo road's ON/OFF env var). |
 | [#2658](../issues/2658-stack-floor-walk-over-estimates-graph-and-param-images.md) | The walk refuses an image that queries the graph or declares a parameter: 122,120 B against a measured 12,844 B (C), 76,816 B against 27,388 B (Rust), on the Renode Nucleo twin. |
 | [#2653](../issues/2653-cmake-c-stack-walk-untyped-sites.md) | The FreeRTOS C tutorial's walk types 73 of 242 indirect C sites (W7d's typing, on the cmake road); the 169 left keep its walk at twice the stack it ships, so its row is a `[[drift]]` row (phase-567 W5a). |
 | [#2460](../issues/archived/2460-stack-floor-mps2-zephyr-walk-refused.md) | The mps2-an385 Zephyr walk is refused: hand-read frames are right for one set of flags, and builtins have no frame. W9a and W9b. |
