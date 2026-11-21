@@ -304,6 +304,9 @@ zephyr_library_sources(
 # talk to; the socket wrappers in nros_platform_zephyr_shims.c are gated on the
 # same symbol.
 if(CONFIG_NET_SOCKETS)
+    # Issue 2785 -- the socket service thread's stack must hold its poll array.
+    include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_socket_service_stack.cmake)
+    nros_check_socket_service_stack()
     zephyr_library_sources(
         ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net.c
         # Phase 200.1 — RMW-independent network-wait (compiled for every RMW; was
