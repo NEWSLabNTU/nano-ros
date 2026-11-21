@@ -1,0 +1,1 @@
+`NROS_STACK_FLOOR=OFF` now turns the stack-floor check off on every build road. Before, a cmake or Zephyr west build ignored the environment variable and walked anyway. Both roads accept the same values: `ON`, `CHECK`, `1`, `TRUE` or `YES` to check, and `OFF`, `0`, `FALSE` or `NO` to skip.
