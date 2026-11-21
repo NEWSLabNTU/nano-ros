@@ -1606,24 +1606,45 @@ LOG_MODULE_REGISTER(nros, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define NROS_PLATFORM_LOG_BUFSZ 1280
 
-static void nros_platform_log_format(char* out, size_t out_sz, const uint8_t* name_ptr,
-                                     uintptr_t name_len, const uint8_t* msg_ptr,
-                                     uintptr_t msg_len) {
+/* Where a record is formatted (issue 2738).
+ *
+ * It used to be a `char buf[1280]` on the stack of whichever thread logged,
+ * so every `nros_log` call cost the caller 1280 bytes plus `snprintf`. A
+ * thread sized for its own work (1-2 KiB) overflowed the first time it
+ * logged, inside `nros_log`'s dispatch, and died holding its guard: every
+ * later record from every thread was lost, silently.
+ *
+ * Now the SINK owns the buffers: `CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS` of
+ * them, claimed with one atomic bit each (no lock, so an ISR and every CPU
+ * may claim one), held for one format and one `LOG_*` call, and released.
+ * That is enough: in deferred mode Zephyr has COPIED the NUL-terminated
+ * string by then (measured, Zephyr 3.7.2 and 4.4.0: it copies a `%s`
+ * argument by strlen), and in immediate mode the backend has printed it.
+ * Passing the slice itself as `%.*s` is NOT an option: the same copy ignores
+ * the precision and would read past the slice, which has no NUL.
+ *
+ * When every buffer is claimed the record goes through a small stack
+ * buffer, truncated and marked, and the sink says once that the pool ran
+ * dry: a record is never dropped for want of a buffer. `0` buffers keeps the
+ * old caller-stack buffer, for an image that sizes its stacks for it. */
+#ifndef CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS
+#define CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS 0
+#endif
+#define NROS_PLATFORM_LOG_FALLBACK_SZ 160
+
+/* Returns the length the whole record needed, as snprintf does: `>= out_sz`
+ * means it was cut. */
+static int nros_platform_log_format(char* out, size_t out_sz, const uint8_t* name_ptr,
+                                    uintptr_t name_len, const uint8_t* msg_ptr, uintptr_t msg_len) {
     if (name_ptr != NULL && name_len > 0) {
-        snprintf(out, out_sz, "%.*s: %.*s", (int)name_len, (const char*)name_ptr, (int)msg_len,
-                 (const char*)msg_ptr);
-    } else {
-        snprintf(out, out_sz, "%.*s", (int)msg_len, (const char*)msg_ptr);
+        return snprintf(out, out_sz, "%.*s: %.*s", (int)name_len, (const char*)name_ptr,
+                        (int)msg_len, (const char*)msg_ptr);
     }
+    return snprintf(out, out_sz, "%.*s", (int)msg_len, (const char*)msg_ptr);
 }
 
-void nros_platform_log_write(uint8_t severity, const uint8_t* name_ptr, uintptr_t name_len,
-                             const uint8_t* msg_ptr, uintptr_t msg_len) {
-    if (msg_ptr == NULL && msg_len > 0) {
-        return;
-    }
-    char buf[NROS_PLATFORM_LOG_BUFSZ];
-    nros_platform_log_format(buf, sizeof(buf), name_ptr, name_len, msg_ptr, msg_len);
+/* One formatted, NUL-terminated record to the console. */
+static void nros_platform_log_emit(uint8_t severity, const char* buf) {
 #ifdef CONFIG_LOG
     switch (severity) {
     case 5: /* Fatal */
@@ -1650,6 +1671,91 @@ void nros_platform_log_write(uint8_t severity, const uint8_t* name_ptr, uintptr_
     };
     const char* label = severity <= 5 ? labels[severity] : "[?]";
     printk("%s %s\n", label, buf);
+#endif
+}
+
+#if CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS > 0
+BUILD_ASSERT(CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS <= 32,
+             "one atomic word holds the pool's claim bits");
+
+static char nros_log_pool[CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS][NROS_PLATFORM_LOG_BUFSZ];
+static atomic_t nros_log_pool_claimed;
+static atomic_t nros_log_pool_fallbacks;
+static atomic_t nros_log_pool_reported;
+
+/* Callers inside the sink right now. The default of ONE buffer rests on an
+ * assumption this file does not own: `nros_log` holds one process-wide guard
+ * across every `sink.log()` (its dispatch guard), so through `nros_log` the
+ * sink is never entered twice at once and one buffer always suffices. If that
+ * guard ever stops serialising delivery, every concurrent record would take
+ * the truncating fallback. In a release image the once-only warning below
+ * says so; with CONFIG_ASSERT the first such entry fails here, naming the
+ * assumption. Entries up to the configured count are legal (an image that
+ * calls the sink directly from several contexts raises the count). */
+static atomic_t nros_log_sink_inside;
+
+static int nros_log_pool_claim(void) {
+    for (int i = 0; i < CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS; i++) {
+        if (!atomic_test_and_set_bit(&nros_log_pool_claimed, i)) {
+            return i;
+        }
+    }
+    return -1;
+}
+#endif
+
+/* How many records went through the truncating fallback since boot: what a
+ * sizing run reads to choose the buffer count. 0 with the pool off. */
+uint32_t nros_zephyr_log_sink_fallbacks(void);
+uint32_t nros_zephyr_log_sink_fallbacks(void) {
+#if CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS > 0
+    return (uint32_t)atomic_get(&nros_log_pool_fallbacks);
+#else
+    return 0;
+#endif
+}
+
+void nros_platform_log_write(uint8_t severity, const uint8_t* name_ptr, uintptr_t name_len,
+                             const uint8_t* msg_ptr, uintptr_t msg_len) {
+    if (msg_ptr == NULL && msg_len > 0) {
+        return;
+    }
+#if CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS > 0
+    atomic_val_t inside = atomic_inc(&nros_log_sink_inside);
+    __ASSERT(inside < CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS,
+             "nros: %ld callers inside the log sink at once, more than its %d buffer(s); "
+             "nros_log no longer delivers one record at a time, so raise "
+             "CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS",
+             (long)inside + 1, CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS);
+    (void)inside;
+    int slot = nros_log_pool_claim();
+    if (slot >= 0) {
+        (void)nros_platform_log_format(nros_log_pool[slot], NROS_PLATFORM_LOG_BUFSZ, name_ptr,
+                                       name_len, msg_ptr, msg_len);
+        nros_platform_log_emit(severity, nros_log_pool[slot]);
+        atomic_clear_bit(&nros_log_pool_claimed, slot);
+        atomic_dec(&nros_log_sink_inside);
+        return;
+    }
+    /* Every buffer is in use: format into a small one here, truncated and
+     * marked, and say once that the pool ran dry. */
+    atomic_inc(&nros_log_pool_fallbacks);
+    if (atomic_cas(&nros_log_pool_reported, 0, 1)) {
+        nros_platform_log_emit(3, "nros: every log sink buffer was in use, so records are "
+                                  "being truncated; raise CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS");
+    }
+    char small[NROS_PLATFORM_LOG_FALLBACK_SZ];
+    int need = nros_platform_log_format(small, sizeof(small), name_ptr, name_len, msg_ptr, msg_len);
+    if (need >= (int)sizeof(small)) {
+        /* snprintf cut it: say so in the record itself. */
+        memcpy(&small[sizeof(small) - 4], "...", 4);
+    }
+    nros_platform_log_emit(severity, small);
+    atomic_dec(&nros_log_sink_inside);
+#else
+    char buf[NROS_PLATFORM_LOG_BUFSZ];
+    (void)nros_platform_log_format(buf, sizeof(buf), name_ptr, name_len, msg_ptr, msg_len);
+    nros_platform_log_emit(severity, buf);
 #endif
 }
 

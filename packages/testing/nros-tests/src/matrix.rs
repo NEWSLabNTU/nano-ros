@@ -1353,6 +1353,10 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         "log_arena_knob",
         NonCell::Probe("the log-arena size knob reaches the image"),
     ),
+    (
+        "log_sink_small_stack",
+        NonCell::Probe("the Zephyr log sink's stack use, held to a budget"),
+    ),
     ("logging", NonCell::Static),
     ("macro_one_dep_resolves", NonCell::CompileCheck),
     ("matrix_fixture_coverage", NonCell::Static),

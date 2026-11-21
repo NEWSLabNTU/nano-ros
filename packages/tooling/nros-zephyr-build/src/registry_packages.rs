@@ -159,6 +159,7 @@ pub const IN_TREE_PACKAGES: &[InTreePackage] = &[
         file: "packages/platform/nros-platform-zephyr/nros-knobs.toml",
         knobs: &[
             "zephyr.heap_size",
+            "zephyr.log_sink_buffers",
         ],
         env: &[],
     },

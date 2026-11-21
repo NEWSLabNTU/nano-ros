@@ -7031,6 +7031,56 @@ pub fn build_logging_smoke_nuttx_qemu_arm() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Issue 2738 -- the small-stack logging image on `qemu_cortex_a53/smp`, with
+/// the log sink's buffer pool (the default). Built by the zephyr west lane
+/// into `<build-root>/build-log-sink-small-stack-smp/`; consumed by
+/// `tests/log_sink_small_stack.rs`.
+static LOG_SINK_SMALL_STACK_SMP: OnceCell<PathBuf> = OnceCell::new();
+
+pub fn build_log_sink_small_stack_smp() -> TestResult<&'static Path> {
+    LOG_SINK_SMALL_STACK_SMP
+        .get_or_try_init(|| {
+            let binary =
+                zephyr_build_root().join("build-log-sink-small-stack-smp/zephyr/zephyr.elf");
+            // The Zephyr probe, not the generic one: a west image has no
+            // `.d`-backed dependency info of its own, so the generic probe
+            // compared nothing and called every image fresh.
+            require_prebuilt_binary_fresh_zephyr(
+                &binary,
+                ZephyrLeafSource {
+                    dir: "packages/testing/nros-tests/bins/log-sink-small-stack-zephyr-smp",
+                    lang: Some("c"),
+                    rmw: Some("zenoh"),
+                    conf_files: Some("prj.conf"),
+                },
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Issue 2738 -- the same image built with the OLD caller-stack sink buffer
+/// (`legacy-sink.conf`, `CONFIG_NROS_ZEPHYR_LOG_SINK_BUFFERS=0`): the negative
+/// control, which must overflow.
+static LOG_SINK_SMALL_STACK_LEGACY_SMP: OnceCell<PathBuf> = OnceCell::new();
+
+pub fn build_log_sink_small_stack_legacy_smp() -> TestResult<&'static Path> {
+    LOG_SINK_SMALL_STACK_LEGACY_SMP
+        .get_or_try_init(|| {
+            let binary =
+                zephyr_build_root().join("build-log-sink-small-stack-legacy-smp/zephyr/zephyr.elf");
+            require_prebuilt_binary_fresh_zephyr(
+                &binary,
+                ZephyrLeafSource {
+                    dir: "packages/testing/nros-tests/bins/log-sink-small-stack-zephyr-smp",
+                    lang: Some("c"),
+                    rmw: Some("zenoh"),
+                    conf_files: Some("prj.conf;legacy-sink.conf"),
+                },
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the Phase 88.15.e `logging-smoke-zephyr-native-sim`
 /// fixture binary (Zephyr `native_sim/native/64` running as a Linux
 /// process).
@@ -7045,16 +7095,21 @@ pub fn build_logging_smoke_zephyr_native_sim() -> TestResult<&'static Path> {
     LOGGING_SMOKE_ZEPHYR_NATIVE_SIM_BINARY
         .get_or_try_init(|| {
             let binary = zephyr_build_root().join("build-logging-smoke/zephyr/zephyr.exe");
-            // Issue 0713 — a west leaf like any other, but resolved through the
-            // generic freshness helper rather than the zephyr one, so the lane
-            // call cannot ride along and is named here. Its manifest rmw label
-            // is `default`, which `west_leaves` resolves to the `zenoh`
-            // coordinate exactly as `row_coord` does.
-            crate::fixtures::lane::require_west_leaf_in_lane(
-                "build-logging-smoke",
-                "packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim",
-            )?;
-            require_prebuilt_binary_fresh(&binary)
+            // A west leaf like any other, so the Zephyr probe (which also makes
+            // the lane call). It used the generic probe, which examines nothing
+            // for a west image. Its manifest rmw label is `default`, which
+            // `west_leaves` resolves to the `zenoh` coordinate. `lang: None`:
+            // the row says rust while the leaf's source is C, so every API
+            // crate stays watched rather than guessing which one it links.
+            require_prebuilt_binary_fresh_zephyr(
+                &binary,
+                ZephyrLeafSource {
+                    dir: "packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim",
+                    lang: None,
+                    rmw: Some("zenoh"),
+                    conf_files: None,
+                },
+            )
         })
         .map(|p| p.as_path())
 }
@@ -7069,11 +7124,13 @@ pub fn build_isr_wake_zephyr_native_sim() -> TestResult<&'static Path> {
     ISR_WAKE_ZEPHYR_NATIVE_SIM_BINARY
         .get_or_try_init(|| {
             let binary = zephyr_build_root().join("build-isr-wake/zephyr/zephyr.exe");
-            crate::fixtures::lane::require_west_leaf_in_lane(
-                "build-isr-wake",
-                "packages/testing/nros-tests/bins/isr-wake-zephyr-native-sim",
-            )?;
-            require_prebuilt_binary_fresh(&binary)
+            require_prebuilt_binary_fresh_zephyr(
+                &binary,
+                ZephyrLeafSource::zenoh(
+                    "packages/testing/nros-tests/bins/isr-wake-zephyr-native-sim",
+                    "rust",
+                ),
+            )
         })
         .map(|p| p.as_path())
 }
@@ -9988,5 +10045,35 @@ mod tests {
         let (newer, inputs) = zephyr_rust_inputs(root, exe_mtime);
         assert_eq!(inputs, vec![src.clone()]);
         assert_eq!(newer, Some(src));
+    }
+
+    /// A west leaf's image lives under `zephyr_build_root()` and has no
+    /// dependency info of its own, so the generic probe
+    /// (`require_prebuilt_binary_fresh`) examines nothing and calls a stale
+    /// image FRESH (it says so as a "DEGRADED probe" warning). Every resolver
+    /// of a west leaf must use `require_prebuilt_binary_fresh_zephyr`, which
+    /// watches the leaf's sources, its configure inputs and its Rust closure.
+    /// Four resolvers had the generic probe (two log-sink images, isr-wake,
+    /// logging-smoke).
+    #[test]
+    fn no_west_leaf_resolver_uses_the_generic_probe() {
+        let src = include_str!("mod.rs")
+            .replace("\npub(crate) fn ", "\npub fn ")
+            .replace("\nfn ", "\npub fn ");
+        let root = concat!("zephyr_build_root", "()");
+        let generic = concat!("require_prebuilt_binary_fresh", "(");
+        let mut offenders = Vec::new();
+        for item in src.split("\npub fn ").skip(1) {
+            let body = item.split("\n}\n").next().unwrap_or(item);
+            if body.contains(root) && body.contains(generic) {
+                offenders.push(body.split('(').next().unwrap_or("?").to_string());
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "west-leaf resolvers using the generic freshness probe, which compares \
+             nothing for a west image: {offenders:?}. Use \
+             require_prebuilt_binary_fresh_zephyr with the leaf's ZephyrLeafSource."
+        );
     }
 }
