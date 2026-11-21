@@ -1486,7 +1486,23 @@ answer, and they are already in the table.
 
 **Work.**
 
-- **W10a — The QEMU twin.** `stack-floor-twin.py` boots a board whose
+- **W10a — The QEMU twin.** DONE (2026-11-21). Measured with `--measure`,
+  twice each, the same peak both times:
+
+  | image | peak | static | rounds per run |
+  | --- | ---: | ---: | ---: |
+  | `talker/rust/zenoh@mps2-an385-zephyr` | 29,016 B | 74,220 B | 6,587 / 6,682 |
+  | `action-server/rust/zenoh@mps2-an385-zephyr` | 30,328 B | 117,828 B | 1,367 / 1,373 |
+
+  Icount skips idle virtual time, so a 75 s run covers hours of analyzer
+  rounds. With the rows in, the normal lane (`--only`) builds each image as
+  measured and verifies it: the walk is as recorded, and the static covers
+  the run. One fix was needed on the way. The twin's 64 KiB conf went BELOW
+  the board's own 131,072 B, so a measured image was refused at its floor.
+  That is issue 2790's class, reached through the board instead of the
+  stamp, and the twin now never lowers the image's stack.
+
+  `stack-floor-twin.py` boots a board whose
   `[board.run] emulator` is `qemu:<machine>` under `-icount` (the board's
   `nros_tests::qemu` facts), and reads the analyzer from its UART, as it
   does from Renode's. Then `talker/rust/zenoh` and
