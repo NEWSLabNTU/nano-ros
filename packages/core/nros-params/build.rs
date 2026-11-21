@@ -508,10 +508,11 @@ fn refuse(name: &str, board_key: &str, who: &Need, what: &str) -> ! {
     panic!(
         "\n\nnros-params: parameter `{param}` on node `{node}` {declares}, so the parameter \
          store needs {name}, and {name} {what}.\n\
-         A contract states a parameter's name and type; how long a string or an array \
-         may be is a fact about the BOARD it is built for. State {name} as one of:\n  \
+         A declaration, in code or in a contract, states a parameter's name and type; \
+         how long a string or an array may be is a fact about the image it is built \
+         into. State {name} as one of:\n  \
+         - the image's `[image.<id>.knobs.params] {board_key} = <n>` in system.toml\n  \
          - the board's `[knobs.params] {board_key} = <n>`\n  \
-         - CONFIG_{name}=<n> in the image's Kconfig (Zephyr)\n  \
          - the {name} environment variable\n"
     );
 }

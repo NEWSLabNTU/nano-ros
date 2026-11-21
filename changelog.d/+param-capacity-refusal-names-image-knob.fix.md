@@ -1,0 +1,1 @@
+When a string or array parameter needs a length nobody stated, the build's refusal now names the per-image setting, `[image.<id>.knobs.params] <name> = <n>` in `system.toml`, first. It no longer suggests a Zephyr conf-file line, which the build refuses for every nano-ros setting.
