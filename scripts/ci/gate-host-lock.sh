@@ -244,8 +244,34 @@ case "$fs" in
 esac
 : >>"$lock"
 
+# Issue 2814 -- is <pid> an ancestor of this process? Walks the parent chain
+# from /proc (the 4th field of `stat`, read after the last `)` so a command name
+# with spaces or parentheses cannot shift it).
+is_own_ancestor() { # <pid>
+    local p=$$ st
+    while [ "$p" -gt 1 ]; do
+        st="$(cat "/proc/$p/stat" 2>/dev/null)" || return 1
+        p="${st##*) }"
+        p="$(cut -d' ' -f2 <<<"$p")"
+        [ "$p" = "$1" ] && return 0
+    done
+    return 1
+}
+
 reporter=""
 if ! flock -n "$lock" true; then
+    # Issue 2814 -- a holder that is this process's own ANCESTOR is the gate
+    # this one runs inside (`gate-host-lock.sh just ci gate`, while `just ci
+    # gate` takes the lock itself). It cannot release before this process
+    # ends, so waiting is a deadlock that only the waiter cap breaks: measured
+    # at 9000 s, then "gate timed out" with nothing run. The waiter's own
+    # report line every few minutes kept the hang detector quiet. Refuse at
+    # once instead, naming it; the outer holder already serialises the host.
+    holder_pid="$(sed -n 's/^pid=\([0-9]*\).*/\1/p' "$lock" | head -1)"
+    if [ -n "$holder_pid" ] && is_own_ancestor "$holder_pid"; then
+        echo "ci gate: NOT RUN — this host's gate lock is held by pid ${holder_pid}, an ANCESTOR of this process: a gate inside a gate's lock would wait on itself until the waiter cap (${wait_s} s). Run the inner command without the lock wrapper; the outer holder already serialises the host (issue 2814). Holder: $(holder_line "$lock")" >&2
+        exit 1
+    fi
     echo "ci gate: this host's gate lock is held: $(holder_line "$lock")"
     echo "  waiting for it (issue 2602: one gate per host): $(limits_line)."
     (

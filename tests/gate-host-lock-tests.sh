@@ -16,6 +16,8 @@ cd "$(dirname "$0")/.."
 here="$PWD"
 # shellcheck source=scripts/lib/grep-q.sh
 . scripts/lib/grep-q.sh
+# shellcheck source=scripts/lib/deadline.sh
+. scripts/lib/deadline.sh
 lock_sh="$here/scripts/ci/gate-host-lock.sh"
 tmp="$(mktemp -d)"
 pids=()
@@ -340,6 +342,26 @@ if nros_grep_q -F -- "--housekeeping 'just ci::_gate-housekeeping' just ci::_gat
     && ! nros_grep_q -E "trim-caches|worktree-prune" "$tmp/inner.body"; then
     ok "\`just ci gate\` puts its housekeeping outside the verdict"
 else bad "\`just ci gate\` puts its housekeeping outside the verdict"; fi
+
+# 16. Issue 2814: a gate run INSIDE a gate's lock (the holder is its own
+#     ancestor) refuses at once, naming the holder, instead of waiting on
+#     itself until the waiter cap. The cap here is 120 s; the bound is half of
+#     it, many times the nominal (about a second), so load cannot fake it.
+#     Negative control: case 2 above, where an unrelated holder IS waited for.
+xdg16="$tmp/x16"
+run_dir "$xdg16"
+s16=$(date +%s)
+env XDG_RUNTIME_DIR="$xdg16" _NROS_GATE_LOCK_TEST_WAIT_S=120 _NROS_GATE_LOCK_TEST_REPORT_S=1 \
+    _NROS_GATE_LOCK_TEST_TICK_S=1 "${NROS_DEADLINE[@]}" 200 bash "$lock_sh" bash "$lock_sh" true \
+    >"$tmp/n16.out" 2>&1
+rc16=$?
+e16=$(( $(date +%s) - s16 ))
+if [ "$rc16" -eq 1 ] && [ "$e16" -lt 60 ] && nros_grep_q -F "an ANCESTOR of this process" "$tmp/n16.out" \
+    && ! nros_grep_q -F "waiting for it" "$tmp/n16.out"; then
+    ok "a gate inside a gate's lock refuses at once (${e16} s), naming its ancestor"
+else
+    bad "a gate inside a gate's lock refuses at once (rc=$rc16, ${e16} s): $(tail -3 "$tmp/n16.out")"
+fi
 
 if [ "$fail" -ne 0 ]; then
     echo "gate-host-lock tests: FAILED" >&2
