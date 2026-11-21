@@ -246,7 +246,7 @@ pub mod test_stub {
     /// to the bridge builder (lets unit tests assert that service
     /// request/reply types get the CDR-walk-order synthetic offsets that
     /// match the runtime memcpy paths in
-    /// `service.cpp::{write_typed, take_typed_wire}`).
+    /// `service.cpp::{write_typed, ~~take_typed_wire~~}`).
     pub const LAST_FIELDS_CAP: usize = 16;
     pub static LAST_FIELD_COUNT: AtomicUsize = AtomicUsize::new(0);
 

@@ -264,8 +264,12 @@ constexpr std::size_t kStatusFieldLen = 4;              // GetResult status int8
 inline std::size_t cdr_align4(std::size_t pos) {
     return (pos + 3u) & ~std::size_t{3u};
 }
-// Per-call scratch ceiling. Tunable via env if a future user needs
-// it; 64 KiB covers ROS 2's default service payload size budget.
+// The client's pre-match staging buffer (`pending_request`), and so the largest
+// request a client can send. 64 KiB covers ROS 2's default service payload
+// size budget. It is a MEMBER, never a stack local: the take and reply paths
+// copy straight between the serdata and the caller's span, because four 64 KiB
+// locals here overflowed a 64 KiB FreeRTOS app task once every image served
+// the parameter services.
 constexpr std::size_t kWireScratch = 65536;
 
 struct RequestId {
@@ -434,7 +438,7 @@ struct DdsSequenceInt32 {
 // (Issue #68) ~~`insert_goal_id_len_at`~~ was removed: it re-inserted a pre-233.6
 // `uint32(16)` goal_id length prefix on the service-request receive path, which a
 // real `rcl_action` peer never sends and the post-233.6 action core no longer
-// reads. See `split_wire_header`.
+// reads. See `take_service_wire`.
 
 // Construct the wire CDR for a typed struct that has the 16-byte
 // request_header inlined at offset 0. Inputs:
@@ -458,47 +462,6 @@ int32_t build_wire_with_header(const uint8_t* user_bytes, size_t user_len, const
     // User payload after encap.
     std::memcpy(wire_cdr + kEncapLen + kHeaderBytes, user_bytes + kEncapLen, user_len - kEncapLen);
     return static_cast<int32_t>(total);
-}
-
-// Inverse: parse the wire CDR (with leading header) into
-// `(out_id, user_bytes_with_encap)`. The wire's 4-byte encap is
-// preserved in `user_out` so the runtime sees a normal CDR-shaped
-// payload (encap + user fields).
-//
-// Returns user-payload length (incl. 4-byte encap) on success, or
-// negative error.
-//
-// Issue 1632 — on BUFFER_TOO_SMALL, `*refused` (when non-null) gets the user
-// payload's size: what the caller's buffer would have needed.
-int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
-                          const dds_topic_descriptor_t* payload_desc, RequestId* out_id,
-                          uint8_t* user_out, size_t user_cap, size_t* refused = nullptr) {
-    if (wire_len < kEncapLen + kHeaderBytes) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
-    if (out_id != nullptr) {
-        out_id->guid = static_cast<uint64_t>(get_le64(wire_cdr + kEncapLen));
-        out_id->seq = get_le64(wire_cdr + kEncapLen + kGuidBytes);
-    }
-    size_t user_len = wire_len - kHeaderBytes; // (encap stays + user fields)
-    if (user_len > user_cap) {
-        if (refused != nullptr) *refused = user_len;
-        return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
-    }
-    // Encap.
-    std::memcpy(user_out, wire_cdr, kEncapLen);
-    // User fields.
-    std::memcpy(user_out + kEncapLen, wire_cdr + kEncapLen + kHeaderBytes, user_len - kEncapLen);
-    // Phase 233.6 completion (issue #68) — do NOT re-insert a goal_id `uint32(16)`
-    // length prefix here. ROS 2 `rcl_action` (over rmw_cyclonedds_cpp) serialises
-    // the SendGoal/GetResult request's `goal_id` as a fixed `uint8[16]` array — no
-    // length prefix — and the nano action core now reads it that way too
-    // (`action_core::read_goal_id`, post-233.6). The old ~~`insert_goal_id_len_at`~~
-    // call mirrored the pre-233.6 prefixed framing; 233.6 dropped the subscriber.cpp
-    // insert mirror but missed THIS service-request site, so a real rcl_action client's
-    // goal arrived with a spurious `10 00 00 00` before the UUID → `order` read 4 bytes
-    // early → "Goal was rejected" (order garbage). The wire payload already matches the
-    // bare-array form after the request-header strip above; pass it through unchanged.
-    (void)payload_desc;
-    return static_cast<int32_t>(user_len);
 }
 
 // Run dds_stream_read_sample on @p wire_cdr, then dds_write. Caller
@@ -534,6 +497,25 @@ rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
+// Publish a service request or reply: the caller's CDR (encap + user fields)
+// with @p id's 16-byte request header inserted after the encap, assembled by
+// `from_sample` inside the serdata it allocates anyway (nros_sertype.hpp). No
+// wire-sized scratch: a `uint8_t wire[64 KiB]` local here was one of the four
+// frames that overflowed a 64 KiB FreeRTOS app task once every image served
+// the parameter services.
+rmw_ret_t write_with_header(dds_entity_t writer, const uint8_t* user_bytes, size_t user_len,
+                            const RequestId& id) {
+    if (writer <= 0 || user_bytes == nullptr || user_len < kEncapLen) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    uint8_t header[kHeaderBytes];
+    put_le64(header, static_cast<int64_t>(id.guid));
+    put_le64(header + kGuidBytes, id.seq);
+    const NrosCdrBlob blob{user_bytes, user_len, header, sizeof(header), kEncapLen};
+    dds_return_t r = dds_write(writer, &blob);
+    return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
+}
+
 // Take the wire CDR straight out of the serdata. Issue 0969.
 //
 // Returns wire byte count, NROS_RMW_RET_NO_DATA, or negative error.
@@ -558,15 +540,17 @@ rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
 // struct and `_SendGoal_*` needs no memcpy branch. `ros2_action_e2e` is what
 // makes their removal checkable — both directions against a real ROS 2 peer.
 //
-// Issue 1632 — on BUFFER_TOO_SMALL, `*refused_total` (when non-null) gets the
-// serdata's whole wire size; the sample is consumed either way.
+// Issue 1632 — on BUFFER_TOO_SMALL, `*refused` (when non-null) gets the user
+// payload's size (the wire less its request header): what the caller's buffer
+// would have needed. The sample is consumed either way.
 //
 // Issue 2081 — `*info_out` (when non-null) gets the taken sample's
 // `dds_sample_info_t` on success: the source timestamp and the publication
 // handle a request's `rmw_service_info_t` is built from.
-int32_t take_typed_wire(dds_entity_t reader, uint8_t* out_buf, size_t out_cap,
-                        size_t* refused_total = nullptr, dds_sample_info_t* info_out = nullptr) {
-    if (reader <= 0 || out_buf == nullptr) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
+int32_t take_service_wire(dds_entity_t reader, RequestId* out_id, uint8_t* user_out,
+                          size_t user_cap, size_t* refused = nullptr,
+                          dds_sample_info_t* info_out = nullptr) {
+    if (reader <= 0 || user_out == nullptr) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
 
     struct ddsi_serdata* d = nullptr;
     dds_sample_info_t si[1];
@@ -581,16 +565,36 @@ int32_t take_typed_wire(dds_entity_t reader, uint8_t* out_buf, size_t out_cap,
         d = nullptr;
     }
 
-    const uint32_t total = ddsi_serdata_size(d);
-    if (out_cap < total) {
+    // The wire is [encap 4][request header 16][user fields]; the caller gets
+    // [encap 4][user fields] — the encap is kept so the runtime sees a normal
+    // CDR-shaped payload. Copied out of the serdata in three pieces, so no
+    // buffer the size of the wire is ever needed (a 64 KiB stack local was,
+    // and overflowed a 64 KiB FreeRTOS app task).
+    const size_t total = ddsi_serdata_size(d);
+    if (total < kEncapLen + kHeaderBytes) {
         ddsi_serdata_unref(d);
-        if (refused_total != nullptr) *refused_total = total;
+        return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
+    }
+    const size_t user_len = total - kHeaderBytes;
+    if (user_len > user_cap) {
+        ddsi_serdata_unref(d);
+        if (refused != nullptr) *refused = user_len;
         return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
     }
-    ddsi_serdata_to_ser(d, 0, total, out_buf);
+    uint8_t header[kHeaderBytes];
+    ddsi_serdata_to_ser(d, 0, kEncapLen, user_out);
+    ddsi_serdata_to_ser(d, kEncapLen, kHeaderBytes, header);
+    ddsi_serdata_to_ser(d, kEncapLen + kHeaderBytes, user_len - kEncapLen, user_out + kEncapLen);
     ddsi_serdata_unref(d);
+    // Phase 233.6 completion (issue #68): the payload passes through unchanged.
+    // `rcl_action` serialises a SendGoal/GetResult `goal_id` as a bare
+    // `uint8[16]`, so no length prefix is re-inserted here.
+    if (out_id != nullptr) {
+        out_id->guid = static_cast<uint64_t>(get_le64(header));
+        out_id->seq = get_le64(header + kGuidBytes);
+    }
     if (info_out != nullptr) *info_out = si[0];
-    return static_cast<int32_t>(total);
+    return static_cast<int32_t>(user_len);
 }
 
 // Action sub-services reuse one service-create path but each carries a
@@ -892,12 +896,6 @@ rmw_ret_t client_set_on_new_response_callback(rmw_client_t* client,
     return entity_wake_set(state->reader, &state->wake, callback, user_data);
 }
 
-// Issue 1632 — the caller-visible size a refused wire sample needed: the wire
-// carries the 16-byte request header the caller never sees.
-static size_t user_len_of_wire(size_t wire_total) {
-    return wire_total > kHeaderBytes ? wire_total - kHeaderBytes : 0;
-}
-
 // Issue 2081 — a taken request's `rmw_service_info_t`, filled the way stock
 // `rmw_cyclonedds_cpp` fills it (`rmw_take_response_request`), so a server here
 // reports what a stock server reports for the same request:
@@ -937,7 +935,7 @@ static int32_t service_take_request_len(const rmw_service_t* server, uint8_t* bu
 
     // issue 1088 — reserve the correlation slot BEFORE the destructive take.
     //
-    // `take_typed_wire` is `dds_takecdr` + `ddsi_serdata_unref`: the sample is
+    // `take_service_wire` is `dds_takecdr` + `ddsi_serdata_unref`: the sample is
     // consumed and freed. This used to run first, and only then look for a
     // free slot; with `kRequestSlots` requests outstanding the take succeeded,
     // the slot search failed, and the caller was told `taken = false` — which
@@ -959,18 +957,9 @@ static int32_t service_take_request_len(const rmw_service_t* server, uint8_t* bu
         return wire_status(NROS_RMW_RET_WOULD_BLOCK);
     }
 
-    uint8_t wire[kWireScratch];
-    size_t wire_total = 0;
-    dds_sample_info_t si{};
-    int32_t wire_len = take_typed_wire(state->reader, wire, sizeof(wire), &wire_total, &si);
-    if (wire_is_status(wire_len) && wire_status_code(wire_len) == NROS_RMW_RET_BUFFER_TOO_SMALL) {
-        *refused = user_len_of_wire(wire_total);
-    }
-    if (wire_is_status(wire_len) || wire_len == 0) return wire_len;
-
     RequestId id{};
-    int32_t user_len = split_wire_header(wire, static_cast<size_t>(wire_len), state->req_desc, &id,
-                                         buf, buf_len, refused);
+    dds_sample_info_t si{};
+    int32_t user_len = take_service_wire(state->reader, &id, buf, buf_len, refused, &si);
     if (wire_is_status(user_len)) return user_len;
 
     // Commit the slot reserved above with the (writer_guid, seq) pair so the
@@ -1072,7 +1061,7 @@ rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request) {
     // to allocate a request buffer.
     //
     // So peek instead. `dds_read` does not consume the sample, and
-    // `take_typed_wire`'s `dds_take` uses no state mask, so it will still take
+    // `take_service_wire`'s `dds_takecdr` uses no state mask, so it will still take
     // a sample this call has marked READ. Accurate, and edge-free.
     void* samples[1] = {nullptr};
     dds_sample_info_t si[1];
@@ -1130,14 +1119,7 @@ rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
     }
     if (!ready) return NROS_RMW_RET_TIMEOUT;
 
-    uint8_t wire[kWireScratch];
-    int32_t wire_len = build_wire_with_header(data, len, slot.id, wire, sizeof(wire));
-    rmw_ret_t r;
-    if (wire_is_status(wire_len)) {
-        r = wire_status_code(wire_len);
-    } else {
-        r = write_typed(state->writer, state->rep_desc, wire, static_cast<size_t>(wire_len));
-    }
+    rmw_ret_t r = write_with_header(state->writer, data, len, slot.id);
     slot.in_use = false;
     return r;
 }
@@ -1322,14 +1304,16 @@ rmw_ret_t service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t r
         return NROS_RMW_RET_WOULD_BLOCK;
     }
 
-    uint8_t wire_req[kWireScratch];
-    int32_t wire_len = build_wire_with_header(request, req_len, my_id, wire_req, sizeof(wire_req));
+    // Built straight into the staging member: the request is staged whether or
+    // not the writer has matched, so a stack copy of it (a 64 KiB local) bought
+    // nothing and cost a 64 KiB frame.
+    int32_t wire_len = build_wire_with_header(request, req_len, my_id, state->pending_request,
+                                              sizeof(state->pending_request));
     if (wire_is_status(wire_len)) {
         release_outstanding(state, my_id.seq);
         return wire_status_code(wire_len);
     }
 
-    std::memcpy(state->pending_request, wire_req, static_cast<size_t>(wire_len));
     state->pending_request_len = static_cast<size_t>(wire_len);
     state->pending_request_seq = my_id.seq;
     rmw_ret_t pr = maybe_flush_request(state);
@@ -1388,18 +1372,10 @@ static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t
     // `service_two_outstanding` caught on its first run — one reply delivered,
     // one lost. `dds_take` below is the authoritative check, exactly as
     // `take_serialized` is on the subscription side.
-    uint8_t wire_rep[kWireScratch];
-    size_t wire_total = 0;
-    dds_sample_info_t si{};
-    int32_t wlen = take_typed_wire(state->reader, wire_rep, sizeof(wire_rep), &wire_total, &si);
-    if (wire_is_status(wlen) && wire_status_code(wlen) == NROS_RMW_RET_BUFFER_TOO_SMALL) {
-        *refused = user_len_of_wire(wire_total);
-    }
-    if (wire_is_status(wlen)) return wlen;
-
     RequestId got_id{};
-    int32_t user_len = split_wire_header(wire_rep, static_cast<size_t>(wlen), state->rep_desc,
-                                         &got_id, reply_buf, reply_buf_len, refused);
+    dds_sample_info_t si{};
+    int32_t user_len =
+        take_service_wire(state->reader, &got_id, reply_buf, reply_buf_len, refused, &si);
     if (wire_is_status(user_len)) return user_len;
 
     // Issue 0778 — accept a reply for ANY request this client is waiting on,

@@ -307,7 +307,7 @@ impl DescriptorBuilder {
         //    is free to reorder fields for size — so `offset_of!(.., accepted)`
         //    can land at 8 (after `stamp`) instead of 0. The runtime wire
         //    framing for `_SendGoal_*` / `_GetResult_*` in
-        //    `service.cpp::{write_typed, take_typed_wire}` uses raw memcpy
+        //    `service.cpp::{write_typed, ~~take_typed_wire~~}` uses raw memcpy
         //    between the wire CDR (post-encap, post-header) and the typed
         //    sample, treating the sample as CDR-ordered. That contract
         //    breaks when Cyclone reads/writes fields at the
@@ -322,7 +322,7 @@ impl DescriptorBuilder {
         //
         //    For non-service types (plain pub/sub) we keep the codegen
         //    offsets — those exercise the regular `write_typed` /
-        //    `take_typed_wire` paths that round-trip via Cyclone CDR
+        //    ~~`take_typed_wire`~~ paths that round-trip via Cyclone CDR
         //    only; consistency between read and write is all that
         //    matters, and the existing K.7.7 pub/sub e2e proves the
         //    pattern works there even with `repr(Rust)` codegen.
@@ -471,7 +471,7 @@ const fn cdr_struct_size(n: &NestedType) -> usize {
 // (`dds_stream_{read,write}_sample`) preserves the user payload that
 // follows the prefix. The user-facing `Serialize`/`Deserialize` impls
 // still only round-trip user fields — the prefix bytes come from
-// `build_wire_with_header` / `split_wire_header` in `service.cpp`.
+// `build_wire_with_header` / `take_service_wire` in `service.cpp`.
 
 /// Total byte size of the synthesised `cdds_request_header_t` prefix.
 pub const SERVICE_HEADER_BYTES: usize = 16;
@@ -973,7 +973,7 @@ mod tests {
     /// are NOT `#[repr(C)]`; Rust's default `repr(Rust)` reorders fields
     /// for size — `offset_of!(.., accepted)` lands at 8, not 0. The
     /// runtime memcpy paths in `service.cpp::{write_typed,
-    /// take_typed_wire}` for `_SendGoal_*` / `_GetResult_*` treat the
+    /// ~~take_typed_wire~~}` for `_SendGoal_*` / `_GetResult_*` treat the
     /// typed sample as CDR-ordered, so the descriptor MUST place
     /// `accepted` at the post-header CDR position (16), not whatever
     /// Rust picked.
@@ -1069,7 +1069,7 @@ mod tests {
     /// Plain (non-service) message types must keep using the
     /// codegen-supplied `offset_of!` values — those go through the
     /// regular `dds_stream_{read,write}_sample` round-trip in
-    /// `service.cpp::{write_typed, take_typed_wire}` where consistency
+    /// `service.cpp::{write_typed, ~~take_typed_wire~~}` where consistency
     /// (not CDR-ordering) is all that's required, and the existing K.7.7
     /// pub/sub e2e proves the pattern works.
     #[test]

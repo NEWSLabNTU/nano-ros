@@ -218,7 +218,7 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server() {
          NOTE this does NOT exercise `strip_goal_id_len_at` (issue 0976): that \
          adapter fires only when nano-ros WRITES a SendGoal/GetResult request, \
          and here `ros2` writes them. What guards the server's receive side is \
-         `split_wire_header`'s deliberate non-insertion (service.cpp:589-599, \
+         `take_service_wire`'s deliberate non-insertion (service.cpp, \
          issue #68). The direction where nano-ros writes them is the sibling \
          test below.\n{text}"
     );

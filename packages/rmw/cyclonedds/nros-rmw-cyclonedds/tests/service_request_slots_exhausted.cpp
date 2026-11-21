@@ -4,7 +4,7 @@
 // between `take_request` and `send_response`. Two things used to go wrong past
 // that bound, and this test pins both:
 //
-//   1. LOSS. `take_typed_wire` is a destructive `dds_takecdr`; it ran BEFORE the
+//   1. LOSS. `take_service_wire` is a destructive `dds_takecdr`; it ran BEFORE the
 //      slot search, so the 33rd request was consumed, found no slot, and was
 //      destroyed. Fixed in bd9948e23d (slot reserved before the take) with no
 //      regression test — this is it: every request must be answered.
