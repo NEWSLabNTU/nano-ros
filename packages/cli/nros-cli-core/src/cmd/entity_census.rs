@@ -1713,6 +1713,47 @@ pub(crate) fn owned_census_path(root: &Path, bringup: &str, image: &str) -> Path
         .join(format!("{image}.census.json"))
 }
 
+/// phase-583 (RFC-0071 D20) -- the census of ONE program of an owned entry
+/// that builds several: `owned/<bringup>/<image>/<exe>.census.json`, beside
+/// the one-program `<image>.census.json`.
+pub(crate) fn owned_program_census_path(
+    root: &Path,
+    bringup: &str,
+    image: &str,
+    exe: &str,
+) -> PathBuf {
+    root.join("build")
+        .join(CENSUS_DIR)
+        .join("owned")
+        .join(bringup)
+        .join(image)
+        .join(format!("{exe}.census.json"))
+}
+
+/// phase-583 -- the programs the last take of an owned entry with several
+/// programs ran, one per line: `owned/<bringup>/<image>.programs`. Absent for
+/// an entry with one program.
+pub(crate) fn owned_programs_path(root: &Path, bringup: &str, image: &str) -> PathBuf {
+    root.join("build")
+        .join(CENSUS_DIR)
+        .join("owned")
+        .join(bringup)
+        .join(format!("{image}.programs"))
+}
+
+/// phase-583 -- the program list [`owned_programs_path`] holds, or `None`
+/// when the entry's last take ran one program.
+pub(crate) fn owned_programs(root: &Path, bringup: &str, image: &str) -> Option<Vec<String>> {
+    let raw = std::fs::read_to_string(owned_programs_path(root, bringup, image)).ok()?;
+    let programs: Vec<String> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    (programs.len() > 1).then_some(programs)
+}
+
 /// Issue 2433 -- take the census of the owned entry `pkg` that image
 /// `<bringup>:<image>` builds: [`census_host_program`] over the package, the
 /// leaf road's host build, keyed by image. A current, complete census returns

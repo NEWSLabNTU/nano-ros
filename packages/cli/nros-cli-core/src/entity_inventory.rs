@@ -12852,6 +12852,89 @@ mod shared_runtime_tests {
         }
     }
 
+    /// phase-583 (RFC-0071 D20) -- several programs of one owned entry link
+    /// one runtime: every node of every program has a row, and each count is
+    /// the larger program's, never the sum and never the first program's.
+    #[test]
+    fn several_programs_of_one_entry_fold_to_the_largest_program() {
+        let small = image(vec![stated("talker", &["timer", "pub"])]);
+        let large = image(vec![
+            stated("talker", &["timer", "pub", "srv*2"]),
+            stated("extra", &["sub"]),
+        ]);
+        let alone_large = max_cbs(&EntityInventory::new("t").merged_per_kind_max(&large));
+        for order in [
+            vec![
+                ("prog_a".to_string(), small.clone()),
+                ("prog_b".to_string(), large.clone()),
+            ],
+            vec![
+                ("prog_b".to_string(), large.clone()),
+                ("prog_a".to_string(), small.clone()),
+            ],
+        ] {
+            let (folded, conflicts) =
+                crate::cmd::sizing_descriptor::fold_owned_programs("t", order);
+            assert!(conflicts.is_empty(), "{conflicts:?}");
+            let names: Vec<&str> = folded
+                .components()
+                .into_iter()
+                .map(|c| c.component.as_str())
+                .collect();
+            assert!(
+                names.contains(&"talker") && names.contains(&"extra"),
+                "{names:?}"
+            );
+            assert!(
+                max_cbs(&folded) >= alone_large,
+                "the fold ({}) is narrower than the larger program ({alone_large})",
+                max_cbs(&folded)
+            );
+        }
+    }
+
+    /// phase-583 -- two programs that state one endpoint's depth differently
+    /// leave it UNSTATED in the fold (every consumer keeps its worst case) and
+    /// name the conflict, never one program's depth for both (RFC-0100 D12
+    /// rule 2, as between two entries).
+    #[test]
+    fn two_programs_that_disagree_on_a_depth_leave_it_unstated() {
+        let a = image(vec![stated(
+            "listener",
+            &["sub:std_msgs/msg/Int32:/t@depth=1"],
+        )]);
+        let b = image(vec![stated(
+            "listener",
+            &["sub:std_msgs/msg/Int32:/t@depth=50"],
+        )]);
+        let (folded, conflicts) = crate::cmd::sizing_descriptor::fold_owned_programs(
+            "t",
+            vec![("prog_a".into(), a.clone()), ("prog_b".into(), b)],
+        );
+        assert!(
+            conflicts.iter().any(|c| c.field == "depth"),
+            "a depth disagreement must be named: {conflicts:?}"
+        );
+        for c in folded.components() {
+            for d in c.declaration.entities() {
+                assert_eq!(d.depth, None, "one program's depth priced both: {d:?}");
+            }
+        }
+        // Negative control: two programs that agree keep the depth.
+        let (agreed, none) = crate::cmd::sizing_descriptor::fold_owned_programs(
+            "t",
+            vec![("prog_a".into(), a.clone()), ("prog_b".into(), a)],
+        );
+        assert!(none.is_empty());
+        assert!(
+            agreed
+                .components()
+                .iter()
+                .flat_map(|c| c.declaration.entities())
+                .any(|d| d.depth == Some(1))
+        );
+    }
+
     /// A component some image launches is launched, even if every OTHER image
     /// marks it `NotLaunched`.
     #[test]

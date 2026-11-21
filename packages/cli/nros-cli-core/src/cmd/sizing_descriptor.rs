@@ -1017,14 +1017,71 @@ pub(crate) fn leaf_declaration(
 /// (`entity_census::owned_census_path`). The census's nodes are the
 /// components, as for a component-less census leaf (Ruling R29). A missing or
 /// stale census refuses: the image has no other statement to fall back on.
+/// One program's census of the owned entry `pkg`, as an inventory: one row per
+/// node it created, and the runtime services the bringup's features imply.
+fn owned_program_inventory(
+    census: &std::path::Path,
+    pkg: &std::path::Path,
+    pkg_name: &str,
+    q: &str,
+    features: &[String],
+) -> Result<crate::entity_inventory::EntityInventory> {
+    use crate::entity_inventory::{ComponentEntities, Declaration, EntityInventory};
+    let nodes = crate::leaf_entity_env::census_node_entities_at(census, pkg)?.map_err(|why| {
+        eyre::eyre!(
+            "`{q}` builds the owned entry `{pkg_name}`, which is sized by its census, and {why}. \
+             Take it: nros dev image entity-census take --image {q}"
+        )
+    })?;
+    let mut inventory = EntityInventory::new(census.display().to_string());
+    let node_count = nodes.len();
+    for (node, decls) in nodes {
+        inventory.insert(ComponentEntities {
+            pkg: pkg_name.to_string(),
+            component: node.clone(),
+            class: node,
+            declaration: if decls.is_empty() {
+                Declaration::None
+            } else {
+                Declaration::Stated(decls)
+            },
+        });
+    }
+    inventory.set_infra(crate::entity_inventory::InfraServices::from_features(
+        features, node_count,
+    ));
+    Ok(inventory)
+}
+
+/// phase-583 (RFC-0071 D20) -- several programs of one owned entry, which link
+/// ONE runtime, folded by RFC-0100 D12's rule for several entries sharing one
+/// (`EntityInventory::shared_runtime_over`): the rows are the union, each
+/// program is an image of its own, so every count is the largest single
+/// program's, and a per-endpoint QoS the programs disagree on is cleared on
+/// every row (`reconcile_runtime_qos`), so its consumers keep their worst case;
+/// the conflicts are returned for the caller to name.
+pub(crate) fn fold_owned_programs(
+    origin: &str,
+    programs: Vec<(String, crate::entity_inventory::EntityInventory)>,
+) -> (
+    crate::entity_inventory::EntityInventory,
+    Vec<crate::sizing_descriptor::QosConflict>,
+) {
+    use crate::entity_inventory::{EntityInventory, ParamDeclarations};
+    let images: Vec<_> = programs
+        .iter()
+        .map(|(exe, inv)| (exe.clone(), Some(inv.clone()), ParamDeclarations::Absent))
+        .collect();
+    let (union, _) = EntityInventory::new(origin.to_string()).shared_runtime_over(&images);
+    crate::sizing_descriptor::reconcile_runtime_qos(&union, &programs)
+}
+
 pub(crate) fn owned_declaration(
     bringup: &std::path::Path,
     image: &str,
     pkg: &std::path::Path,
     workspace: Option<&std::path::Path>,
 ) -> Result<LeafDeclaration> {
-    use crate::entity_inventory::{ComponentEntities, Declaration, EntityInventory};
-
     let system = nros_orchestration_ir::leaf_system::read_image(bringup, image)
         .map_err(|e| eyre::eyre!(e))?
         .ok_or_else(|| {
@@ -1048,37 +1105,50 @@ pub(crate) fn owned_declaration(
             .map(std::path::Path::to_path_buf)
             .ok_or_else(|| eyre::eyre!("{}: no workspace above it", bringup.display()))?,
     };
-    let census = crate::cmd::entity_census::owned_census_path(&ws, &bringup_name, image);
     let pkg_name = pkg
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let nodes = crate::leaf_entity_env::census_node_entities_at(&census, pkg)?.map_err(|why| {
-        eyre::eyre!(
-            "`{bringup_name}:{image}` builds the owned entry `{pkg_name}`, which is sized by its \
-             census, and {why}. Take it: nros dev image entity-census take --image \
-             {bringup_name}:{image}"
-        )
-    })?;
-    let origin = census.display().to_string();
-    let mut inventory = EntityInventory::new(origin);
-    let node_count = nodes.len();
-    for (node, decls) in nodes {
-        inventory.insert(ComponentEntities {
-            pkg: pkg_name.clone(),
-            component: node.clone(),
-            class: node,
-            declaration: if decls.is_empty() {
-                Declaration::None
-            } else {
-                Declaration::Stated(decls)
-            },
-        });
-    }
-    inventory.set_infra(crate::entity_inventory::InfraServices::from_features(
-        &system.features,
-        node_count,
-    ));
+    let q = format!("{bringup_name}:{image}");
+    // phase-583 (RFC-0071 D20) -- an entry with several programs has a census
+    // per program, folded by RFC-0100 D12's runtime rule: every program links
+    // one runtime, so its rows are the union and its counts the largest
+    // single program's.
+    let inventory = match crate::cmd::entity_census::owned_programs(&ws, &bringup_name, image) {
+        None => owned_program_inventory(
+            &crate::cmd::entity_census::owned_census_path(&ws, &bringup_name, image),
+            pkg,
+            &pkg_name,
+            &q,
+            &system.features,
+        )?,
+        Some(programs) => {
+            let mut each = Vec::with_capacity(programs.len());
+            for exe in programs {
+                let census = crate::cmd::entity_census::owned_program_census_path(
+                    &ws,
+                    &bringup_name,
+                    image,
+                    &exe,
+                );
+                each.push((
+                    exe,
+                    owned_program_inventory(&census, pkg, &pkg_name, &q, &system.features)?,
+                ));
+            }
+            let (folded, conflicts) =
+                fold_owned_programs(&format!("the programs of `{pkg_name}`"), each);
+            for c in &conflicts {
+                eprintln!(
+                    "nros dev image sizing-descriptor: `{q}`: the programs of `{pkg_name}` state \
+                     `{}` differently for `{}` ({}), so it is left unstated and every consumer \
+                     keeps its worst case for it",
+                    c.field, c.topic, c.detail
+                );
+            }
+            folded
+        }
+    };
     Ok(LeafDeclaration {
         system,
         inventory: Some(inventory),
