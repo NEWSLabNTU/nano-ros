@@ -982,7 +982,13 @@ mod enabled {
     /// `fetch_update` rather than `fetch_add` is what makes that true under
     /// the concurrent callers `take_serialized` has.
     pub fn note_sample_dropped_too_small() -> u32 {
-        let r = &NROS_BOOT_REPORT;
+        note_sample_dropped_too_small_in(&NROS_BOOT_REPORT)
+    }
+
+    /// [`note_sample_dropped_too_small`] over any record -- the image's, or a
+    /// test's own, so a test that preloads the tally does not race every other
+    /// test that reads the one static.
+    pub(crate) fn note_sample_dropped_too_small_in(r: &BootReport) -> u32 {
         let prev = r
             .samples_dropped_too_small
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
@@ -1009,11 +1015,13 @@ mod enabled {
     /// module, not a child, so it cannot reach one. The saturation rule is
     /// worth a test and `u32::MAX` is not reachable by calling the writer, so
     /// the seam is this, compiled only under `cfg(test)`.
+    ///
+    /// It takes a RECORD, never the image's static: preloading the static to
+    /// `u32::MAX` made a test that counts drops on the static overflow its own
+    /// `before + 1` whenever the two ran in parallel.
     #[cfg(test)]
-    pub fn set_samples_dropped_too_small_for_test(v: u32) {
-        NROS_BOOT_REPORT
-            .samples_dropped_too_small
-            .store(v, Ordering::Relaxed);
+    pub(crate) fn set_samples_dropped_too_small_for_test(r: &BootReport, v: u32) {
+        r.samples_dropped_too_small.store(v, Ordering::Relaxed);
     }
 
     /// Preload a record's error-log tally. TEST ONLY, for the reason
@@ -1393,17 +1401,20 @@ mod tests {
     /// applied to a counter rather than a size. Written through the record
     /// directly because reaching `u32::MAX` by calling the writer is not a test
     /// anyone can run.
+    ///
+    /// On a record of its own, never the image's static: the static is shared
+    /// with [`a_sample_dropped_for_being_too_small_is_counted_in_the_record`],
+    /// which read `u32::MAX` as its `before` and overflowed whenever the two
+    /// ran in parallel.
     #[test]
     fn the_drop_tally_saturates_rather_than_wrapping_to_zero() {
-        init();
-        set_samples_dropped_too_small_for_test(u32::MAX);
-        assert_eq!(note_sample_dropped_too_small(), u32::MAX);
+        let r = BootReport::new();
+        set_samples_dropped_too_small_for_test(&r, u32::MAX);
+        assert_eq!(note_sample_dropped_too_small_in(&r), u32::MAX);
         assert_eq!(
-            snapshot().samples_dropped_too_small,
+            snapshot_of(&r).samples_dropped_too_small,
             u32::MAX,
             "the tally wrapped; a dropping image would read as a healthy one"
         );
-        // Leave the record where the other tests in this binary expect it.
-        set_samples_dropped_too_small_for_test(0);
     }
 }
