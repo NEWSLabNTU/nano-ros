@@ -278,6 +278,13 @@ endif()
 if(CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM)
     zephyr_compile_definitions(NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM=1)
 endif()
+# Issue 2793 -- both knobs place their stacks in `.nros_dtcm_stacks.<array>`,
+# which this snippet collects into an output section in the "DTCM" region with
+# no KEEP, so --gc-sections drops an unused pool there as it does in sram0.
+# Zephyr's generated DTCM section KEEPs everything it collects.
+if(CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM OR CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM)
+    zephyr_linker_sources(SECTIONS ${CMAKE_CURRENT_LIST_DIR}/nros_dtcm_stacks.ld)
+endif()
 if(CONFIG_NROS_FAULT_LOG)
     zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_fault_log.c)
 endif()
