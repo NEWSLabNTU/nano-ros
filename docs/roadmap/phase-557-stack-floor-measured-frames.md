@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
-**Status (2026-11-18). OPEN: W1, W2, W2b, W3, W4, W5, W6 and W7 are done;
-W7f is dropped at its first checkpoint; W3b, W5b, W8 and W9 are open.** This phase tracks the implementation of
+**Status (2026-11-22). OPEN: W1, W2, W2b, W3, W4, W5, W6, W7 and W8 are
+done; W7f is dropped at its first checkpoint; W3b, W5b and W9 are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -860,7 +860,7 @@ the measurement.
 
 ### W8 — A recorded static that drifts is caught, not found by accident
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-20)
 
 **Why.** The mps2 bare-metal talker's row said 95,420 B while its walk read
 100,660 B. Two board commits on main (phase-553 W6, issue 2555) moved it,
@@ -1017,6 +1017,18 @@ runner (`workflow_dispatch` run 43709402120, ubuntu-22.04, the CI image, Ubuntu
 clang 14.0.0): the step took 138 s and walked 103,252 B, the number the two
 local worktrees walked. The run before it, still at debuginfo 0, walked
 100,684 B and failed on the fall rule.
+
+**Done (2026-11-20): the first green nightly.** Nightly run
+[44678975217](https://github.com/NEWSLabNTU/nano-ros/actions/runs/44678975217),
+job "stack-floor drift (observed + drift rows)": `5 row(s), 0 failed,
+5 note(s)`. It walked all five rows, including the two nucleo Rust rows
+that #4137 provisioned the targets for:
+
+- `action-server/rust/zenoh@nucleo-f767zi-zephyr`
+- `talker/rust/zenoh@nucleo-f767zi-zephyr`
+- `qemu_bsp_talker_bringup@mps2-an385-baremetal`
+- `talker/c/zenoh@nucleo-f767zi-zephyr`
+- `talker/c/zenoh@mps2-an385-freertos` (`[[drift]]`)
 
 ### W9 — One stack tool for four gaps: frames from the compiler, builtins by toolchain, edges from the objects, and a band (issues 2460, 2550, 2688, 2693)
 
