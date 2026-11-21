@@ -1,12 +1,14 @@
 ---
 id: 2799
 title: "A threadx-linux talker exits with status 1, printing nothing, when its router is killed mid-session"
-status: open
+status: resolved
 type: bug
 area: [threadx, zenoh, testing]
 severity: medium
 found: 2026-11-21
 related: [2779, 2774]
+resolved: 2026-11-21
+resolved_in: "fix(nsos-netx, issue 2799): a host send to a reset peer no longer kills a threadx-linux image with SIGPIPE"
 ---
 
 ## What fails
@@ -68,3 +70,33 @@ Kept on newslab 118 in `nros-wt-2779b`:
 
 The exit has a named cause. The talker either survives the outage or reports
 why it stopped, and the threadx-linux reopen cell passes 10 of 10.
+
+## Resolved, 2026-11-21: SIGPIPE from NSOS's host send()
+
+The talker did not exit; it was killed by SIGPIPE. Under `nros run --prefix
+"strace -f -k"`, run 9 of 12 of the real cell showed `killed by SIGPIPE`,
+raised in host `send()`. The stack, by `addr2line` on the binary:
+
+    _zp_unicast_failed_result (lease.c:126)
+     -> _z_unicast_send_close -> _z_transport_tx_send_t_msg
+     -> _z_link_send_wbuf -> _z_tcp_write
+     -> nros_platform_tcp_send (nros-platform-threadx net.c:363)
+     -> nx_bsd_send (packages/drivers/net/nsos-netx/src/nsos_netx.c:350) -> send()
+
+On end-of-stream, zenoh-pico closes the transport and sends zenoh's CLOSE
+down the dead link. NSOS's sockets are the host's, and its `send()` passed no
+`MSG_NOSIGNAL`. So when the router's RST had already arrived, SIGPIPE ended
+the image. That is the 1 run in 5 with issue 2779's fix. Without that fix,
+ordinary publish writes hit the RST every time.
+
+The earlier reading was wrong in one place. "Status 1 with no message rules
+out the board's signal path" assumed the board saw the signal; a
+default-action SIGPIPE kills the process before any handler runs. `nros run`
+reported that death as status 1.
+
+Fix: `nx_bsd_send`/`nx_bsd_sendto` pass `flags | MSG_NOSIGNAL`, as the POSIX
+port and zenoh-pico's `tcp_posix.c` already did. Gate
+`check-host-send-nosignal`: every host `send()`/`sendto()` in our C passes it,
+or states with `nosignal-exempt:` why it cannot raise SIGPIPE (the two UDP
+sends). Measured: the threadx-linux reopen cell passes 10 of 10, reopening
+1.7-1.8 s after the restart, with no talker exit.
