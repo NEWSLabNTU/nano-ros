@@ -87,6 +87,24 @@ enum RtosProcess {
     Managed(ManagedProcess),
 }
 
+impl nros_tests::router_outage::OutputStream for RtosProcess {
+    fn read_pending(&mut self) -> String {
+        match self {
+            RtosProcess::Qemu(p) => p.read_pending(),
+            RtosProcess::Managed(p) => nros_tests::router_outage::OutputStream::read_pending(p),
+        }
+    }
+
+    fn read_until_count(&mut self, pattern: &str, count: usize, timeout: Duration) -> String {
+        match self {
+            RtosProcess::Qemu(p) => p.collect_until_count(pattern, count, timeout),
+            RtosProcess::Managed(p) => nros_tests::router_outage::OutputStream::read_until_count(
+                p, pattern, count, timeout,
+            ),
+        }
+    }
+}
+
 impl RtosProcess {
     /// Collect output, stopping early once `pattern` appears (issue 0471).
     ///
@@ -1451,6 +1469,72 @@ fn test_rtos_quiet_link_keeps_its_session(
         listener_cmd,
         boot,
         quiet,
+    );
+}
+
+/// Issue 2779 — a listener whose router is KILLED and restarted on the same
+/// port reopens its session and hears the talker again.
+///
+/// Each platform here reads TCP through a different implementation: FreeRTOS
+/// on QEMU through zenoh-pico's `tcp_lwip.c`, threadx-linux through the
+/// platform port's `nros_platform_tcp_read` (NetX Duo BSD). A read that hands
+/// the router's close up as 0 polls the dead socket forever and the session
+/// never reopens. The sequence and why the router is killed rather than
+/// stopped: `nros_tests::router_outage`. Both nodes are the platform's own
+/// images, so both reopen; either one failing to is this bug on that target.
+#[rstest]
+fn test_rtos_listener_reopens_after_its_router_restarts(
+    #[values(Platform::Freertos, Platform::ThreadxLinux)] platform: Platform,
+) {
+    let lang = Lang::Rust;
+    require_cell_runnable(platform, lang, Variant::Pubsub);
+    let (talker_bin, listener_bin) = build_pair(platform, lang, Variant::Pubsub);
+
+    let mut zenohd = platform
+        .zenoh_router_start(Variant::Pubsub, lang, None)
+        .expect("Failed to start zenohd");
+    let mut listener = platform
+        .start_process(listener_bin, 1, "reopen-listener", lang)
+        .expect("Failed to start listener");
+    let ready_marker = listener_ready_marker(platform, lang);
+    let boot = listener.collect_until(ready_marker, boot_budget(platform));
+    ensure_ready(&boot, ready_marker, platform, &listener.command_line());
+    let mut talker = platform
+        .start_process(talker_bin, 0, "reopen-talker", lang)
+        .expect("Failed to start talker");
+
+    let reopen = nros_tests::router_outage::listener_across_a_hard_router_restart(
+        &mut zenohd,
+        &mut listener,
+        nros_tests::output::LISTENER_LOG_PREFIX,
+    )
+    .unwrap_or_else(|e| panic!("{platform} reopen: restart the router on its port: {e}"));
+    let talker_out = nros_tests::router_outage::OutputStream::read_pending(&mut talker);
+    let listener_cmd = listener.command_line();
+    talker.kill();
+    listener.kill();
+
+    let marker = nros_tests::output::LISTENER_LOG_PREFIX;
+    eprintln!("[{platform} reopen] {}", reopen.summary(marker));
+    assert!(
+        reopen.heard_before(marker) >= 1,
+        "{platform} reopen: the listener heard nothing before the outage, so the reopen \
+         cannot be judged.\nListener: {listener_cmd}\nListener output:\n{boot}{}\n\
+         Talker output:\n{talker_out}",
+        reopen.transcript(),
+    );
+    assert!(
+        reopen.heard_after(marker) >= 1,
+        "{platform} reopen: the listener heard {} sample(s) before its router was killed \
+         and none in the {:?} after it came back on port {}: the pair did not reconnect. \
+         A TCP read that hands the router's close up as 0 polls the dead socket forever \
+         (issue 2779); a node that exits at the outage is issue 2799.\nRouter:   {}\nListener: {listener_cmd}\nListener output:\n{boot}{}\n\
+         Talker output:\n{talker_out}",
+        reopen.heard_before(marker),
+        reopen.waited,
+        zenohd.port(),
+        zenohd.launch_line(),
+        reopen.transcript(),
     );
 }
 
