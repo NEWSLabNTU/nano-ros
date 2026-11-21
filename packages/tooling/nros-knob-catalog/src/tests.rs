@@ -540,6 +540,7 @@ fn a_package_number_knob_without_a_default_is_refused() {
             (false, Err(e)) => panic!("`{extra}` was refused: {e}"),
         }
     }
+}
 
 // --- phase-581 W4: the naming rule (RFC-0140 D3, D13 G1) ---------------------------
 
