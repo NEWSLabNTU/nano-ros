@@ -18,6 +18,11 @@
 # Every sizing knob a user could set is UNSET for the build, so a green run
 # cannot have been sized by the caller's environment.
 #
+# The build dir persists (in CI, inside the runner's fixture tree, which a
+# checkout's `git clean` never reaches), so step 2 reads the nros-node output
+# the CURRENT link compiled, from the build's own edges, never by searching the
+# dir: a check that runs in a persistent tree locates its input that way.
+#
 # `--self-test` runs the verdict (step 1 and 2) over synthetic outputs, both
 # directions; the normal path runs it first.
 set -euo pipefail
@@ -54,6 +59,33 @@ verify() {
     echo "subscribers $subs, publishers $pubs, callback slots $cbs; MAX_CBS $max_cbs, default $default_cbs"
 }
 
+# linked_node_config <build-dir>
+# Prints the nros_node_config.rs the CURRENT link compiled: the one cargo
+# archive build.ninja links, and the nros-node build output that archive's own
+# dep-info names. A persistent build dir keeps the out dir of every image an
+# earlier configure built (cargo never deletes one), so a `find` over it picks
+# by directory order: CI's persistent fixture tree read an old `nros-c-image`
+# output's MAX_CBS 14 beside the live `nros-cpp-image`'s 15.
+linked_node_config() {
+    local b="$1" archives="" n dep cfg=""
+    [ -f "$b/build.ninja" ] || { echo "no build.ninja in $b"; return 1; }
+    if ! archives="$(grep -o '[^ ]*/cargo/[^ ]*\.a' "$b/build.ninja" | sort -u)"; then
+        echo "build.ninja in $b links no cargo archive"
+        return 1
+    fi
+    n="$(printf '%s\n' "$archives" | wc -l)"
+    [ "$n" -eq 1 ] || { echo "build.ninja in $b links $n cargo archives, want one: ${archives//$'\n'/ }"; return 1; }
+    dep="${archives%.a}.d"
+    [ -f "$dep" ] || { echo "the linked archive has no cargo dep-info ($dep)"; return 1; }
+    if ! cfg="$(grep -o '[^ ]*/build/nros-node-[^ /]*/out/nros_node_config\.rs' "$dep" | sort -u)"; then
+        echo "the linked archive's dep-info names no nros-node build output ($dep)"
+        return 1
+    fi
+    n="$(printf '%s\n' "$cfg" | wc -l)"
+    [ "$n" -eq 1 ] || { echo "the linked archive's dep-info names $n nros-node build outputs ($dep)"; return 1; }
+    printf '%s\n' "$cfg"
+}
+
 self_test() {
     local t rc=0 out
     t="$(mktemp -d)"
@@ -76,7 +108,27 @@ self_test() {
         echo "self-test: a missing descriptor was accepted" >&2
         rc=1
     fi
-    [ "$rc" -eq 0 ] && echo "check-ament-census-sizing: self-test OK (sized accepted; default, refused and missing rejected)"
+    # A persistent build dir holding an earlier image's nros-node output beside
+    # the live one: the selector must name the one the linked archive compiled.
+    local b="$t/b" live stale got
+    live="$b/cargo/nros-cpp-image_1/x/p/build/nros-node-aa/out/nros_node_config.rs"
+    stale="$b/cargo/nros-c-image_2/x/p/build/nros-node-bb/out/nros_node_config.rs"
+    mkdir -p "$(dirname "$live")" "$(dirname "$stale")"
+    : >"$live"
+    : >"$stale"
+    printf 'build app: CXX_EXECUTABLE_LINKER main.o %s\n' "$b/cargo/nros-cpp-image_1/x/p/libnros_cpp.a" >"$b/build.ninja"
+    printf '%s: %s %s\n' "$b/cargo/nros-cpp-image_1/x/p/libnros_cpp.a" "$b/src/lib.rs" "$live" \
+        >"$b/cargo/nros-cpp-image_1/x/p/libnros_cpp.d"
+    if ! got="$(linked_node_config "$b")" || [ "$got" != "$live" ]; then
+        echo "self-test: the linked nros-node output was not selected beside a stale one: $got" >&2
+        rc=1
+    fi
+    rm "$b/cargo/nros-cpp-image_1/x/p/libnros_cpp.d"
+    if got="$(linked_node_config "$b")"; then
+        echo "self-test: an archive with no dep-info was accepted: $got" >&2
+        rc=1
+    fi
+    [ "$rc" -eq 0 ] && echo "check-ament-census-sizing: self-test OK (sized accepted; default, refused and missing rejected; the linked output chosen over a stale one)"
     return "$rc"
 }
 
@@ -127,8 +179,8 @@ if ! (
 fi
 
 cfg=""
-if ! cfg="$(find "$build/cargo" -path '*/build/nros-node-*/out/nros_node_config.rs' | head -1)"; then
-    fail "cannot search $build/cargo for the nros-node build output"
+if ! cfg="$(linked_node_config "$build")"; then
+    fail "$cfg"
 fi
 verdict=""
 if ! verdict="$(verify "$build/nros/sizing/ament_census_port.toml" "$cfg")"; then
