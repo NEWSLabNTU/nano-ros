@@ -30,3 +30,13 @@ target_sources(app PRIVATE
     "${NROS_PLATFORM_C_SRC}/platform.c"
     "${NROS_PLATFORM_C_SRC}/timer.c")
 target_include_directories(app PRIVATE "${NROS_PLATFORM_CFFI_INCLUDE}")
+
+# platform.c reads the wall-clock knobs, which the nano-ros module's Kconfig
+# defines for every image. This harness takes the port's sources without the
+# module, so it states the two values it builds with itself, as an image's
+# `[knobs.clock]` would: the platform clock as the only source, and a 1 s
+# zenoh-hlc window (unused: no zenoh here). They are this harness's choice,
+# not a copy of the module's defaults, so they need not track them.
+target_compile_definitions(app PRIVATE
+    "CONFIG_NROS_CLOCK_SOURCE=\"platform\""
+    "CONFIG_NROS_CLOCK_HLC_INTERVAL_MS=1000")
