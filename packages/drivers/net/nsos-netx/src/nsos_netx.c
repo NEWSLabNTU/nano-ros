@@ -344,10 +344,15 @@ INT nx_bsd_accept(INT sockID, struct nx_bsd_sockaddr *clientAddr, INT *addrLen) 
     return new_fd;
 }
 
+/* MSG_NOSIGNAL (issue 2799): these are the HOST's sockets, so a send to a
+ * peer that has reset raises SIGPIPE, whose default action ends the whole
+ * image with no message. A client whose router was killed died that way while
+ * sending zenoh's CLOSE down the dead link. The failed send returns EPIPE
+ * instead, which the caller already handles. */
 INT nx_bsd_send(INT sockID, const CHAR *msg, INT msgLen, INT flags) {
     int64_t start = nsos_now_ms();
     for (;;) {
-        ssize_t n = send(sockID, msg, (size_t)msgLen, flags);
+        ssize_t n = send(sockID, msg, (size_t)msgLen, flags | MSG_NOSIGNAL);
         if (n >= 0 || errno != EINTR) return (INT)n;
         if (nsos_wait(sockID, POLLOUT, SO_SNDTIMEO, start) != 0) return -1;
     }
@@ -371,7 +376,7 @@ INT nx_bsd_sendto(INT sockID, CHAR *msg, INT msgLen, INT flags,
     if (nx_to_posix_sockaddr(destAddr, &posix_addr, &posix_len) != 0) return -1;
     int64_t start = nsos_now_ms();
     for (;;) {
-        ssize_t n = sendto(sockID, msg, (size_t)msgLen, flags,
+        ssize_t n = sendto(sockID, msg, (size_t)msgLen, flags | MSG_NOSIGNAL,
                            (const struct sockaddr *)&posix_addr, posix_len);
         if (n >= 0 || errno != EINTR) return (INT)n;
         if (nsos_wait(sockID, POLLOUT, SO_SNDTIMEO, start) != 0) return -1;

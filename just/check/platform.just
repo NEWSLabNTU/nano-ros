@@ -635,6 +635,14 @@ zenoh-pthread-pools-derived:
 platform-tcp-eof:
     @python3 scripts/check-platform-tcp-eof.py
 
+# issue 2799 — a host BSD send() to a peer that has reset raises SIGPIPE, which
+# ends the process with no message; threadx-linux's NSOS shim died that way when
+# its router was killed. Every host send()/sendto() in our C passes MSG_NOSIGNAL
+# or states why it cannot raise SIGPIPE (a datagram socket).
+[group("checks")]
+host-send-nosignal:
+    @python3 scripts/check-host-send-nosignal.py
+
 # issue 2157 — native_sim's network (NSOS) has ONE source, the module's
 # `nros-nsos` snippet, which a board package names: no tracked conf elsewhere
 # enables it or names a line-specific TAP-driver symbol.

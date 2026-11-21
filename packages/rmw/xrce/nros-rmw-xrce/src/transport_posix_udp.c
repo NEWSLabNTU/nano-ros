@@ -69,6 +69,7 @@ static size_t posix_udp_write(struct uxrCustomTransport *t,
     if (t == NULL) return 0;
     xrce_posix_udp_bridge *b = (xrce_posix_udp_bridge *)t->args;
     if (b == NULL || b->fd < 0) return 0;
+    /* nosignal-exempt: a connected UDP socket, which never raises SIGPIPE. */
     ssize_t n = send(b->fd, buf, len, 0);
     return n < 0 ? 0u : (size_t)n;
 }
