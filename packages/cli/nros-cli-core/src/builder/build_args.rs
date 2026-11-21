@@ -741,10 +741,11 @@ mod tests {
     /// its `[image.<id>.knobs.<group>]` home; a row that is not passes.
     #[test]
     fn a_knob_is_refused_only_once_turned_on() {
-        let r = cmake("-DNROS_FREERTOS_APP_STACK_KB=64").unwrap_err();
-        assert!(r.reason.contains("[image.<id>.knobs.freertos]"), "{r}");
+        let r = cmake("-DNROS_MEMORY_APP_STACK_BYTES=65536").unwrap_err();
+        assert!(r.reason.contains("[image.<id>.knobs.memory]"), "{r}");
         assert!(cmake("-DNROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES=8").is_err());
-        assert!(cmake("-DNROS_THREADX_APP_STACK_KB=64").is_err());
+        // A retired spelling of the same knob is refused too (phase-581 W5).
+        assert!(cmake("-DNROS_THREADX_APP_STACK_KB=64").is_err()); // retired spelling
         // A row the table cannot prove carried (`?`) stays accepted.
         let on = knob_refusal_on();
         let open = nros_zephyr_build::KNOBS

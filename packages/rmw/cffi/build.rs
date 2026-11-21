@@ -3,7 +3,7 @@
 //! 1. Phase 104.B.1 — read `NROS_RMW_MAX_BACKENDS` (env var, default
 //!    8) and re-emit it as a `cargo:rustc-env` so the crate's source
 //!    can read it via `env!("NROS_RMW_MAX_BACKENDS")`. Mirrors the
-//!    `NROS_EXECUTOR_MAX_CBS` / `NROS_LET_BUFFER_SIZE` pattern in
+//!    `NROS_EXECUTOR_MAX_CBS` pattern in
 //!    `nros-node`. Cortex-M0+ users can drop to 2; bridge users on
 //!    companion-class hardware can bump to 16. Range [1, 64];
 //!    values outside the range fail the build.

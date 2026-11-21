@@ -147,7 +147,7 @@ board and RMW packages are self-contained.
 
 ### W5 - Renames, batch 1: structure and units (registry rows)
 
-- **Status:** OPEN
+- **Status:** OPEN (the `nros fix` table test, which runs when phase-578 W4 lands)
 - The Appendix A.1 rows whose reasons are S, U or F: the 15 three-segment
   keys flattened (`zenoh.wire.*`, `zenoh.limits.*`, `zenoh.tx.*`), the `_size`
   / `_len` / `_buf_size` / `_kb` / `_u64s` rows to `_bytes`, and the four
@@ -198,7 +198,7 @@ board and RMW packages are self-contained.
   demand through the existing floor (`_nros_c_array_pool_floor`). The `kconfig`
   column is deleted from the generator.
 - **Acceptance:** `nros fix`'s table test over every retired entry passes
-  (as W5); the generator has no per-row Kconfig override; the
+  (as W5); the `nros fix` table test runs when phase-578 W4 lands; the generator has no per-row Kconfig override; the
   `check-c-array-pool-floors` and `check-c-array-guard-probe` gates pass
   unchanged; a Zephyr image whose declared demand is 0 publishers still gets
   a pool of 1 (issue 1015's case), measured from `.config` and the generated

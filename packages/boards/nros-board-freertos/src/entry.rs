@@ -202,7 +202,7 @@ fn report_stack_peak<B: BoardPrint>(what: &str, total_bytes: u32) {
     }
     B::println(format_args!(
         "nros: {what} stack peak {} of {} bytes ({} free) \
-         — raise with NROS_FREERTOS_APP_STACK_KB / `[node.rt] app_stack_bytes`",
+         — raise with NROS_MEMORY_APP_STACK_BYTES / `[node.rt] app_stack_bytes`",
         total_bytes as usize - unused,
         total_bytes,
         unused
@@ -310,7 +310,7 @@ where
     let peak = heap_peak_used(peak);
     B::println(format_args!(
         "nros: heap peak {} of {} bytes ({} free) \
-         — raise with NROS_FREERTOS_HEAP_KB",
+         — raise with NROS_MEMORY_HEAP_BYTES",
         peak,
         total,
         total.saturating_sub(peak)

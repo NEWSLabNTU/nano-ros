@@ -1,8 +1,8 @@
 //! What a metadata probe learns about the descriptor prose the code writes.
 //!
 //! Two knobs size the prose in every parameter store slot:
-//! `NROS_MAX_PARAM_DESCRIPTION_LEN` for a descriptor's `description` and
-//! `NROS_MAX_PARAM_CONSTRAINTS_LEN` for its `additional_constraints`. The
+//! `NROS_PARAMS_MAX_DESCRIPTION_BYTES` for a descriptor's `description` and
+//! `NROS_PARAMS_MAX_CONSTRAINTS_BYTES` for its `additional_constraints`. The
 //! contract's `params:` rows state a type and nothing else, so the only source
 //! for how long those texts are is the code itself, run by the probe.
 //!

@@ -47,7 +47,7 @@
  * over its own worst (131 072 / 36 936 = 3.5x). The MARGIN is the shared
  * decision; the numbers differ because the measurements do.
  *
- * An image that needs more states `NROS_FREERTOS_APP_STACK_KB` to cmake
+ * An image that needs more states `NROS_MEMORY_APP_STACK_BYTES` to cmake
  * (issue 2070: a ported node declaring parameters at the default capacities
  * needs ~70 KiB for one declare, and this was a literal).
  *

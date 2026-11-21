@@ -793,7 +793,7 @@ static DROPPED_TAKES: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::n
 /// move `EXECUTOR_OPAQUE_U64S` and therefore every image's executor footprint,
 /// to buy a diagnostic. Process-scoped rather than per-executor is also the
 /// RIGHT scope here, not merely the cheap one — the number this names
-/// (`NROS_EXECUTOR_ARENA_SIZE`) is a BUILD-TIME constant, identical for every
+/// (`NROS_EXECUTOR_ARENA_BYTES`) is a BUILD-TIME constant, identical for every
 /// executor in the image, so saying it twice adds nothing.
 static ARENA_ADVISORY_DONE: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
 
@@ -809,8 +809,8 @@ static ARENA_ADVISORY_DONE: portable_atomic::AtomicBool = portable_atomic::Atomi
 /// `arena_used` is the exact claimed total rather than a reservation, and the
 /// allocator has therefore always known the right answer and never said it.
 ///
-/// The override exists (`NROS_EXECUTOR_ARENA_SIZE`, or
-/// `CONFIG_NROS_EXECUTOR_ARENA_SIZE` on Zephyr) and is already load-bearing:
+/// The override exists (`NROS_EXECUTOR_ARENA_BYTES`, or
+/// `CONFIG_NROS_EXECUTOR_ARENA_BYTES` on Zephyr) and is already load-bearing:
 /// the FreeRTOS action examples pin it to 8192 and still need a 64 KB app task
 /// stack, a number someone found by hitting "Invalid mbox" and working
 /// backwards. That is the shape of issues 0271/0739 — a knob nobody can
@@ -831,7 +831,7 @@ static ARENA_ADVISORY_DONE: portable_atomic::AtomicBool = portable_atomic::Atomi
 ///   Measured on mr-canhubk344: DTCM tracked ARENA_SIZE one-for-one across
 ///   MAX_CBS 24 -> 36. Measured on the native zenoh talker: 21,560 B.
 /// * **the heap** -- the `alloc` constructors' fallback (a second executor, or
-///   an entry sized past the reservation, or `NROS_EXECUTOR_BACKING_U64S=0`).
+///   an entry sized past the reservation, or `NROS_EXECUTOR_BACKING_BYTES=0`).
 ///   This was the ONLY Rust answer before W6, and it has no symbol, which is
 ///   why the campaign's own instrument could not see its largest consumer.
 /// * **a task stack** -- a stack-declared `rclc_executor_t`. Legal, and nothing
@@ -848,7 +848,7 @@ fn report_arena_headroom(used: usize, capacity: usize) {
     // in everywhere else in the tree.
     let suggest = used.next_multiple_of(1024).max(1024);
     // BUDGET: `nros_log`'s call-site format buffer is 256 bytes by default
-    // (`NROS_LOG_BUFFER_SIZE`), and overflow truncates with a `…` rather than
+    // (`NROS_LOG_BUFFER_BYTES`), and overflow truncates with a `…` rather than
     // dropping the record. The first draft of this line ran ~450 bytes and was
     // cut mid-number, so the sink received "executor arena is 74240 bytes and
     // 32…" — every word of the explanation and NONE of the value to set. A
@@ -865,7 +865,7 @@ fn report_arena_headroom(used: usize, capacity: usize) {
         // Issue 2465 — worded as OPTIONAL tuning: on a first-node run "set
         // X=1024" read as a step the user had skipped, and nothing is wrong.
         "arena larger than needed: {used}/{capacity} bytes claimed at first \
-         spin. Optional, to save RAM: NROS_EXECUTOR_ARENA_SIZE={suggest} \
+         spin. Optional, to save RAM: NROS_EXECUTOR_ARENA_BYTES={suggest} \
          (Zephyr: CONFIG_ prefix), plus room for anything registered later."
     );
 }
@@ -902,7 +902,7 @@ pub(crate) fn maybe_report_arena_headroom(used: usize, capacity: usize) {
 /// for. Since phase-412 W3b the derived arena prices every subscription at that
 /// depth, so a subscription created deeper than it is the ordinary way a
 /// derived arena runs out — and raising the depth re-derives the arena, where a
-/// hand-set `NROS_EXECUTOR_ARENA_SIZE` goes stale the next time any other term
+/// hand-set `NROS_EXECUTOR_ARENA_BYTES` goes stale the next time any other term
 /// moves (the rationale #775 gave for the depth knob). The line named only the
 /// size and the action-client count until then, i.e. not the knob the likeliest
 /// failure needs.
@@ -937,7 +937,7 @@ pub(crate) fn report_arena_exhausted(
         nros_log::get_logger("nros"),
         "arena exhausted at {entity}: {want} B short, {used}/{capacity} used. \
          Raise NROS_PUBSUB_QOS_DEPTH (budgeted {depth}) if a sub is deeper, \
-         else NROS_EXECUTOR_ARENA_SIZE or NROS_EXECUTOR_ACTION_CLIENTS \
+         else NROS_EXECUTOR_ARENA_BYTES or NROS_EXECUTOR_ACTION_CLIENTS \
          (Zephyr: CONFIG_*)."
     );
     // Issue 1496 / 1370's question asked of THIS arena: since entries can be
@@ -1541,7 +1541,7 @@ mod arena_headroom_tests {
 ///
 /// **What this can and cannot say.** The buffer capacity is known here and is
 /// the actionable half — it names the knob to raise
-/// (`NROS_SUBSCRIPTION_BUFFER_SIZE`, or `NROS_SUBSCRIBER_BUFFER_SIZE` /
+/// (`NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`, or `NROS_SUBSCRIBER_BUFFER_BYTES` /
 /// `ZPICO_SUBSCRIBER_LARGE_SIZE` on zenoh). The SAMPLE size is known when the
 /// backend knows it: issue 1612 made a too-small `take` carry the size the
 /// sample needed (`rmw_entity.h`), which reaches here as

@@ -210,7 +210,7 @@ pub const PARAM_STORE_AXIS: &str = "param_store";
 /// Issue 1702 -- the declared capability axes as Kconfig assignments, set
 /// BEFORE `find_package(Zephyr)` in the generated application.
 ///
-/// Both capabilities allocate from the nros heap (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`):
+/// Both capabilities allocate from the nros heap (`CONFIG_NROS_MEMORY_HEAP_BYTES`):
 /// the parameter store is ONE 285,696-byte allocation at the default sizing and
 /// the lifecycle services own a buffer pair each. Nothing connected the
 /// declaration to the heap, so an image declaring `param_services` linked and

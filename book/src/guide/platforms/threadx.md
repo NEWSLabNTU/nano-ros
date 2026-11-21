@@ -73,11 +73,10 @@ network keys do, and one bringup can hold an image for each.
   run time. A `_Static_assert(sizeof(ULONG) == 4, …)` in the board's hooks
   turns the mistake into a build failure.
 - **The app thread's stack is 512 KiB.** Change it with
-  `NROS_THREADX_APP_STACK_KB=<KiB>` in the build environment, or with
-  `[image.<id>.knobs.threadx] app_stack_kb = <KiB>` in `system.toml`. Both reach
-  a cargo image. A CMake image keeps 512 KiB. A sched task declared with no
-  `stack_bytes` gets the same size. `NROS_FREERTOS_APP_STACK_KB` does not size
-  a ThreadX stack.
+  `NROS_MEMORY_APP_STACK_BYTES=<bytes>` in the build environment, or with
+  `[image.<id>.knobs.memory] app_stack_bytes = <bytes>` in `system.toml`. Both
+  reach a cargo image. A CMake image keeps 512 KiB. A sched task declared with
+  no `stack_bytes` gets the same size.
 - **No physical ThreadX board ships.** A vendor board (Renesas Synergy,
   i.MX RT and others) is a board package of your own on the family crate,
   flashed with that vendor's tools; see [Flash a real board](flash-a-real-board.md).

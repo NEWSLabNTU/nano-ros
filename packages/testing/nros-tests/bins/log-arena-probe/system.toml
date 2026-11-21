@@ -23,6 +23,6 @@ env = { NROS_BOOT_REPORT = "1" }
 [image.linux.knobs.log]
 dynamic_loggers = 24
 max_level = "info"
-buffer_size = 384
+buffer_bytes = 384
 early_records = 6
 rosout_records = 12

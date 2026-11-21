@@ -48,7 +48,7 @@ extern void uart_puts(const char *s);
  * can't be const-folded across the TU boundary, so the override wins
  * deterministically and the workaround is no longer load-bearing. */
 /* issue 2400 W5b — the size is the knob ladder's (`[knobs.memory]
- * app_stack_bytes`, env `NROS_THREADX_APP_STACK_KB`), resolved by the cargo
+ * app_stack_bytes`, env `NROS_MEMORY_APP_STACK_BYTES`), resolved by the cargo
  * road's build script and handed in as `-DNROS_THREADX_APP_STACK_BYTES`. The
  * cmake road compiles this TU without it and keeps the board's 512 KiB, the
  * same number as `threadx_qemu_riscv64_build::APP_STACK_BYTES`. */

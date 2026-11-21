@@ -6,7 +6,7 @@
 #
 #   NOT DERIVABLE HERE -- a question about entity COUNTS, which needs a second
 #   source (an entity inventory), not this one:
-#     NROS_EXECUTOR_MAX_CBS, NROS_EXECUTOR_ARENA_SIZE, ...
+#     NROS_EXECUTOR_MAX_CBS, NROS_EXECUTOR_ARENA_BYTES, ...
 #
 # This is that second source. A bound inventory prices a TYPE; this one counts
 # the ENTITIES an image creates, which is the half `NROS_EXECUTOR_MAX_CBS` has
@@ -76,7 +76,7 @@
 #                                nothing does. No `params:` anywhere = no answer.
 #
 #   NOT YET, and deliberately left alone:
-#     NROS_EXECUTOR_ARENA_SIZE   the type set and the depths are both necessary
+#     NROS_EXECUTOR_ARENA_BYTES   the type set and the depths are both necessary
 #                                and still not sufficient: the arena needs a
 #                                size probe per entry KIND, which is step 3.
 #

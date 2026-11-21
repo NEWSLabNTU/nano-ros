@@ -775,7 +775,7 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
     // once (`arena_model::BASE_OVERHEAD`), because issue 1970 sized a sched task as
     // its own executor. The levels share ONE executor, so the base is paid
     // once: summing it per level handed the island's executor 29,820 B where
-    // the image's own model (`NROS_EXECUTOR_ARENA_SIZE`) is 25,724 -- exactly
+    // the image's own model (`NROS_EXECUTOR_ARENA_BYTES`) is 25,724 -- exactly
     // the two extra bases. See [`levels_arena_bytes`].
     let arena = levels_arena_bytes(arena, sched_tasks.len());
     // One executor dispatches at most `MAX_CALLBACK_SLOTS` slots, which the
@@ -795,7 +795,7 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
 /// sched tasks' arenas: every sched task's model includes the per-executor base overhead,
 /// and one executor pays it once, so `levels - 1` of them come off. With the
 /// sched tasks partitioning the image's entities this is the image's own model, the
-/// number `NROS_EXECUTOR_ARENA_SIZE` derives to.
+/// number `NROS_EXECUTOR_ARENA_BYTES` derives to.
 pub(crate) const fn levels_arena_bytes(sched_task_arena_sum: usize, levels: usize) -> usize {
     let extra = crate::config::arena_model::BASE_OVERHEAD * levels.saturating_sub(1);
     sched_task_arena_sum.saturating_sub(extra)
