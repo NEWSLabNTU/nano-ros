@@ -317,6 +317,11 @@ sharing with the link, one default device); none is left to this phase.
 - W9: each sub-item meets its own "accepted when" above; W9 is DONE when
   W9.a-W9.f are, and issue 2633 closes with W9.f.
 
+## Issues homed here (2026-11-21)
+
+- [issue 2787](../issues/2787-metadata-probe-lacks-census-can-mock.md): the metadata probe links a node without the census CAN mock, so a node that calls the CAN driver cannot be probed (W9).
+- [issue 2788](../issues/2788-an536-freertos-no-can-fail-loud-defaults.md): mps3-an536-freertos does not compile the fail-loud CAN defaults, so an image that calls the driver does not link (W9.f).
+
 ## Issues homed here (2026-11-15)
 
 The L4 Safety Island's plan items that land on the RTOS realizer, filed from
