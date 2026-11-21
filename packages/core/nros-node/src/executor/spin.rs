@@ -12063,6 +12063,33 @@ impl<'s> Executor<'s> {
         Ok(())
     }
 
+    /// Start this executor's timing NOW, as if it had just been opened.
+    ///
+    /// The first `spin_once` normally credits every timer with the time since
+    /// the executor opened (the spin baseline is read at open), and a clock
+    /// timer with the time since it registered. That is right while setup and
+    /// the first spin are back to back. A boot that waits between them (the
+    /// wall-clock resolution, which can take a few seconds with an SNTP source
+    /// and no server) would otherwise reach its first spin owing every timer
+    /// that wait: a `CatchUp` timer would replay it, a `Skip` timer would count
+    /// it as overruns. Called once, before the first spin, it re-seeds the spin
+    /// baseline and every timer's last clock reading; no timer has advanced
+    /// yet, so nothing else needs resetting.
+    pub fn restart_timing(&mut self) {
+        if let Some(clock) = self.clock_us_fn {
+            self.last_spin_end_us = Some(clock());
+        }
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        for meta in self.entries.iter().flatten() {
+            if matches!(meta.kind, EntryKind::Timer) {
+                // SAFETY: a live Timer entry's offset names its TimerHeader in
+                // the arena, exactly as `reset_timer` reads it above.
+                let header = unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
+                header.last_clock_ns = header.clock_source.now_ns();
+            }
+        }
+    }
+
     /// phase-509 P9b item 2 -- record a cancel (`op` = `CANCEL_PENDING`) or a
     /// reset (`RESET_PENDING`) of the timer `id` when its callback runs in
     /// another thread's window, and answer `true`; `false` when it is not,
