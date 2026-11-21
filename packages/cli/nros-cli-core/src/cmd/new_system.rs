@@ -375,6 +375,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         overrides: Default::default(),
         image,
         image_defaults: None,
+        image_alternatives: Default::default(),
         retired_network: Default::default(),
         retired_transport: Default::default(),
         system: SystemHeader {

@@ -899,6 +899,16 @@ fn is_rust_path(class: &str) -> bool {
 fn from_system_toml(path: &Path) -> Result<LeafSystem, String> {
     let doc = parse_file(path)?;
     crate::retired_tables::refuse_retired_tables(&doc, path)?;
+    // RFC-0136 D2 -- a leaf builds one image, so it has no alternatives; the
+    // table is a workspace bringup's.
+    if doc.get("image_alternatives").is_some() {
+        return Err(format!(
+            "{}: unknown key `[image_alternatives]` in a single-package leaf -- it builds \
+             one image, so it has no alternatives to declare; the table belongs in a \
+             workspace bringup's `system.toml`",
+            path.display()
+        ));
+    }
     let system = as_table(doc.get("system"));
     let images = as_table(doc.get("image")).cloned().unwrap_or_default();
 
@@ -1430,6 +1440,26 @@ mod tests {
             std::fs::write(d.path().join(name), body).unwrap();
         }
         d
+    }
+
+    /// RFC-0136 D2 -- `[image_alternatives]` is a workspace bringup's table:
+    /// a single-package leaf carrying it is refused, naming the key.
+    #[test]
+    fn a_leaf_with_image_alternatives_is_refused() {
+        let d = leaf(&[
+            ("Cargo.toml", "[package]\nname = \"p\"\n"),
+            (
+                "system.toml",
+                "[system]\nname = \"p\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+                 [image.a]\nboard = \"linux\"\n[image.b]\nboard = \"linux\"\n\
+                 [image_alternatives]\ng = [\"a\", \"b\"]\n",
+            ),
+        ]);
+        let e = read(d.path()).unwrap_err();
+        assert!(
+            e.contains("unknown key `[image_alternatives]` in a single-package leaf"),
+            "{e}"
+        );
     }
 
     /// Minimal self-cleaning temp dir; this crate carries no dev-deps.

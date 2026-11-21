@@ -1,17 +1,19 @@
 ---
 rfc: 0136
 title: "Image alternatives: images that never run together may share an address"
-status: Draft
+status: Accepted
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: [phase-478]
+implements-tracked-by: [phase-586, phase-478]
 supersedes: []
 superseded-by: null
 ---
 
 # RFC-0136 -- Image alternatives: images that never run together may share an address
 
-**Status:** Draft (2026-11-18); design approved 2026-11-18, not built yet. Requested through the manager on
+**Status:** Accepted (approved 2026-11-18); D1-D3, D5 and D6 built in
+[phase-586](../roadmap/phase-586-image-alternatives.md) (2026-11-22). D4 binds
+the multi-image runners as they land. Requested through the manager on
 2026-11-18 with the ruling that exclusivity is declared, never inferred.
 
 ## Summary
@@ -185,3 +187,6 @@ network file, mirroring the motivating case.
 
 - 2026-11 -- created (issue 2690).
 - 2026-11 -- approved; the run-time lock question answered in D4 (no lock).
+- 2026-11-22 -- built (phase-586, issue 2690): the table, its validation, the
+  collision check and its hint, the tests and the book pages. A leaf refuses
+  the table by name rather than as a generic unknown key.

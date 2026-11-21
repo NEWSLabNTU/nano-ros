@@ -745,8 +745,9 @@ DDS image is not refused.
 
 ### I32 -- variants of one host may share a static address
 
-**Status: DESIGN (2026-11-18).** [Issue 2690](../issues/2690-image-alternatives.md),
-[RFC-0136](../design/0136-image-alternatives.md). The island builds its TAP
+**Status: DONE (2026-11-22).** [Issue 2690](../issues/archived/2690-image-alternatives.md),
+[RFC-0136](../design/0136-image-alternatives.md), built in
+[phase-586](phase-586-image-alternatives.md). The island builds its TAP
 image four ways (`fvp-tap`, `-stats`, `-trace`, `-trace-ring`), all at
 `192.168.10.2`, and boots one. `check_collisions` refuses the shared address,
 so the images cannot state it in a board network file (I31). A top-level
@@ -891,7 +892,7 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       refused; a Cyclone DDS image off `qemu` with no locator is accepted and
       a zenoh one refused, read from the descriptor (issue 2679;
       `nros-cli-core` `image_net` and `builder::zephyr` tests).
-- [ ] I32: RFC-0136 built: `[image_alternatives]` validated, `check_collisions`
+- [x] I32: RFC-0136 built: `[image_alternatives]` validated, `check_collisions`
       lets one group share an address and MAC, the D5 tests and D6 docs (issue 2690).
 - [ ] I33: nano-ros carries the Zephyr CTF `app_marker` event patch (and the
       `k_thread_priority_set` CTF fix) in `zephyr/patches/`, applied by
@@ -934,7 +935,7 @@ this phase will fix it.
 
 ## Issues homed here (2026-11-18)
 
-- [issue 2690](../issues/2690-image-alternatives.md): images of one host that never run together are refused for sharing a static address; RFC-0136 lets an `[image_alternatives]` group share it (I32).
+- [issue 2690](../issues/archived/2690-image-alternatives.md) (resolved 2026-11-22): images of one host that never run together are refused for sharing a static address; RFC-0136 lets an `[image_alternatives]` group share it (I32, phase-586).
 - [issue 2689](../issues/archived/2689-source-metadata-rejects-v6-sidecar.md): the CLI's `SourceMetadata` rejected every schema v6 probe sidecar (issue 2650's description and constraints lengths), and the C/C++ refresh dropped the error, so every sidecar read as stale and every Zephyr C++ configure failed at `NanoRosPromise.cmake`. Found on the island's CI against main `a49a8dacaf`; fixed by PR #4190 (resolved).
 - [issue 2686](../issues/archived/2686-constraints-truncation-names-description-knob.md): a truncated `additional_constraints` text is logged as a description that did not fit, telling the user to raise `NROS_MAX_PARAM_DESCRIPTION_LEN` when `NROS_MAX_PARAM_CONSTRAINTS_LEN` sizes it.
 
