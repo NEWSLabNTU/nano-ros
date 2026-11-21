@@ -290,6 +290,12 @@ in the order below.
     and cargo is named the runtime descriptor. So no program's store is sized
     from another program alone, which was the concern behind the per-program
     variable.
+  - **Split (manager ruling 2026-11-22).** W4 carries the GUARD: an owned
+    entry's census refuses when the host build states several programs,
+    naming them. The FOLD (per-program censuses folded by D12's runtime rule)
+    changes the census file layout and four of its readers (freshness, digest,
+    the completeness check, the configure's existence check), so it is its own
+    PR after the W chain, with its own gate and review.
   - **The defect this fixes.** An owned entry's census today runs ONE program,
     the one the host build states in `nros/census-program.txt`. A cross-board
     entry with two programs is therefore sized from one program's census, and
