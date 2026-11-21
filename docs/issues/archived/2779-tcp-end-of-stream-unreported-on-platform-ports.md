@@ -1,12 +1,14 @@
 ---
 id: 2779
 title: "TCP end-of-stream is not reported as its own result on the Zephyr, FreeRTOS/lwIP, ThreadX and generic-POSIX platform ports: a client whose router dies never reopens there"
-status: open
+status: resolved
 type: bug
 area: [zenoh, platform, zephyr, freertos, threadx]
 severity: high
 found: 2026-11-21
-related: [2774, 2389, 2366]
+related: [2774, 2389, 2366, 2799, 2798]
+resolved: 2026-11-21
+resolved_in: "fix(nros-smoltcp, issue 2779): a reopened TCP slot aborts its stale socket, so a bare-metal client reconnects"
 ---
 
 ## What is wrong
@@ -116,7 +118,7 @@ from `read` and `read_exact`), and a FreeRTOS fixture build that recompiles
 `tcp_lwip.c`. The two-router re-open ("How to confirm each port") is not yet
 run on any of these targets. The closing condition is unchanged.
 
-## Measured per target, 2026-11-21 (still open: threadx-linux)
+## Measured per target, 2026-11-21
 
 The two-router reopen, as a cell on each target:
 
@@ -138,7 +140,7 @@ the fix; its TCP read was checked in the binary with objdump.
 | Zephyr native_sim (`tcp_zephyr.c`) | pass (newslab 241) | fail, zenoh-pico at `e0b8077c` | 12.4 s cell |
 | FreeRTOS QEMU (`tcp_lwip.c`) | 6 of 6 | 0 of 3, `tcp_lwip.c` at `e0b8077c` | 0.8 to 2.1 s |
 | bare metal (`nros-smoltcp`) | 5 of 5 | 0 of 3, before the stale-socket fix below | 1.8 to 1.9 s |
-| threadx-linux (`nros_platform_tcp_read`) | **4 of 5** | 0 of 3, `net.c` before the fix | 1.8 s |
+| threadx-linux (`nros_platform_tcp_read`) | 10 of 10 with issue 2799 fixed (4 of 5 before) | 0 of 3, `net.c` before the fix | 1.7 to 1.8 s |
 
 **Bare metal needed a second fix.** With the end-of-stream read in place,
 zenoh-pico closed the session and reopened, but no SYN reached the router. The
@@ -156,3 +158,20 @@ the threadx-linux cell passes 10 of 10 with 2799 fixed.
 The `just` fixture path served stale ThreadX images after a C-port edit (issue
 2798, fixed in #4525). Every row above was built either outside the rustc
 wrapper or with that fix in place.
+
+## Resolved, 2026-11-21
+
+Every port in the table reports end-of-stream and reconnects, and each has a
+cell that asserts it. Zephyr native_sim is among them, as "Closes when" asks.
+
+threadx-linux was the last row open. With issue 2799's fix (a host `send()`
+with `MSG_NOSIGNAL` in NSOS), the threadx-linux cell passed 10 of 10, each run
+reopening 1.7 to 1.8 s after the restart.
+
+Landed on main:
+
+- the cells, `86e9160c06`;
+- the bare-metal stale-socket fix, `f7dc31d3bb`;
+- issue 2799's fix, `1c8b5075a4`;
+- the zenoh-pico and platform-port reads, earlier in #4484.
+
