@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# sccache, minus the one unit it caches WRONG: a Rust `staticlib` (issue 1646),
-# and a rustc call whose save-temps bitcode is being measured (issue 2400).
+# sccache, minus the units it caches WRONG: a Rust `staticlib` (issue 1646),
+# a crate that BUNDLES a native static library into its rlib (issue 2798), and a
+# rustc call whose save-temps bitcode is being measured (issue 2400).
 #
 # WHAT WENT WRONG
 #
@@ -77,6 +78,46 @@ emits_staticlib() {
     return 1
 }
 
+# Issue 2798 — a rustc call that BUNDLES a native static library into its rlib,
+# the same miss one crate type down. A build script's `-l static=NAME` (or
+# `-l static:+whole-archive=NAME`, cc-rs's `link_lib_modifier`) makes rustc copy
+# `libNAME.a` from the `-L native=` dir INTO the rlib, unless the modifiers say
+# `-bundle`. A C edit rebuilds that archive and changes nothing sccache keys the
+# rustc call on, so a hit served the old rlib with the OLD archive inside:
+# `nros-board-threadx` carried the pre-edit `net.c` into a freshly relinked
+# threadx-linux image. Derived from the invocation, so a new bundling crate
+# needs no list entry. Prints the library it found, for the verbose reason.
+bundled_native_lib() {
+    local prev="" a spec kind mods
+    for a in "$@"; do
+        spec=""
+        case "$a" in
+            -l) ;;
+            -l*) spec="${a#-l}" ;;
+            *) [ "$prev" = "-l" ] && spec="$a" ;;
+        esac
+        prev="$a"
+        case "$spec" in *=*) ;; *) continue ;; esac
+        kind="${spec%%=*}"
+        mods=""
+        case "$kind" in *:*) mods=",${kind#*:},"; kind="${kind%%:*}" ;; esac
+        [ "$kind" = "static" ] || continue
+        case "$mods" in *,-bundle,*) continue ;; esac
+        printf '%s\n' "${spec#*=}"
+        return 0
+    done
+    return 1
+}
+
+crate_name() {
+    local prev="" a
+    for a in "$@"; do
+        [ "$prev" = "--crate-name" ] && { printf '%s\n' "$a"; return; }
+        prev="$a"
+    done
+    printf '?\n'
+}
+
 # Issue 2400 — a rustc call that keeps its bitcode (`-C save-temps`) is being
 # MEASURED: the stack-floor walk reads the `.rcgu.bc` it leaves. A sccache hit
 # restores the rlib and not those files (measured: 11 of 27 crates kept their
@@ -96,6 +137,12 @@ keeps_bitcode() {
 }
 
 if [ "$#" -gt 0 ] && { emits_staticlib "$@" || keeps_bitcode "$@"; }; then
+    exec "$@"
+fi
+if [ "$#" -gt 0 ] && lib="$(bundled_native_lib "$@")"; then
+    if [ "${CARGO_TERM_VERBOSE:-}" = "true" ] || [ "${NROS_RUSTC_WRAPPER_VERBOSE:-0}" != "0" ]; then
+        echo "rustc-wrapper: $(crate_name "$@") runs uncached: it bundles native lib \`$lib\` into its rlib, which sccache does not key (issue 2798)" >&2
+    fi
     exec "$@"
 fi
 if [ -n "$real" ]; then
