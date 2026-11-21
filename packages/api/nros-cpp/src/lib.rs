@@ -7471,6 +7471,24 @@ unsafe fn open_over_session(
     NROS_CPP_RET_OK
 }
 
+/// Start this executor's timing now, as if it had just been opened: its spin
+/// baseline and every timer's last clock reading are re-seeded, so a wait
+/// between setup and the first spin is not owed to the timers. A boot that
+/// resolves its wall clock before the first spin calls this once, after the
+/// resolution. Mirrors `Executor::restart_timing`.
+///
+/// # Safety
+/// `executor` must be a valid pointer to a `CppContext`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_restart_timing(executor: *mut c_void) -> nros_cpp_ret_t {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    ctx.executor.restart_timing();
+    NROS_CPP_RET_OK
+}
+
 /// Gate this executor to a set of named callback groups.
 ///
 /// After this call, only callbacks whose `.callback_group()` is in `groups` will
