@@ -25,7 +25,7 @@ status word.
 | `nros-board-mps2-an385-zephyr` (ZephyrQemuCortexM) | Verified in emulator (daily) | `qemu:mps2-an385` | [evidence](board-support-levels.md#mps2-an385-zephyr) |
 | `nros-board-nuttx-qemu` (NuttxRiscv) | Verified in emulator (daily) | `qemu:rv-virt` | [evidence](board-support-levels.md#nuttx-riscv) |
 | `nros-board-zephyr` (Fvp) | Boots, manual (2026-11-21); reads *Builds* from 2027-03-22 | `fvp:FVP_BaseR_AEMv8R` | [evidence](board-support-levels.md#fvp) |
-| `nros-board-zephyr` (s32z270-rtu0-zephyr) | Not supported | `s32z270` (target) | [evidence](board-support-levels.md#s32z270-rtu0-zephyr) |
+| `nros-board-zephyr` (s32z270-rtu0-zephyr) | Builds | `s32z270` (target) | [evidence](board-support-levels.md#s32z270-rtu0-zephyr) |
 | `s32k344-safety-island` | Boots on hardware, manual (2026-10-26); reads *Builds* from 2027-02-24 | `mr-canhubk344` | [evidence](board-support-levels.md#s32k344-safety-island) |
 | `nros-board-nucleo-f767zi-zephyr` (ZephyrNucleoF767zi) | Boots, manual (2026-11-01); reads *Builds* from 2027-03-02 | `renode:nucleo_f767zi`, `nucleo-f767zi` (target) | [evidence](board-support-levels.md#nucleo-f767zi-zephyr) |
 | `nros-board-rpi-pico-w-zephyr` | Not supported | `rpi-pico-w` (target) | [evidence](board-support-levels.md#rpi-pico-w-zephyr) |

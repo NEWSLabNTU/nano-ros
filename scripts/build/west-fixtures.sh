@@ -225,7 +225,7 @@ reused=0
 while IFS= read -r record; do
     [ -n "$record" ] || continue
     IFS=$'\x1f' read -r id builder src _pkg _manifest_dir _target _profiles output subdir board extra \
-        nros_image <<< "$record"
+        nros_image zmodules <<< "$record"
     [ -n "$id" ] || continue
     if [ -n "$fixture_filter" ] &&
         ! nros_fixture_filter_selects "$fixture_filter" "$repo_root" \
@@ -415,6 +415,25 @@ while IFS= read -r record; do
         args+=("${_wf_extra[@]}")
     fi
     args+=("$(nros_zephyr_module_cmake_arg "$repo_root")")
+    # Issue 2811 -- the row's job-fetched modules (`zephyr_modules`, supplied
+    # as `<name>=<dir>` in NROS_ZEPHYR_JOB_MODULES; a row whose modules this
+    # run does not supply is not listed at all). Zephyr reads
+    # `EXTRA_ZEPHYR_MODULES` AHEAD of `ZEPHYR_EXTRA_MODULES` and takes the first
+    # it finds (`zephyr_get`, cmake/modules/zephyr_module.cmake), so the value
+    # names this checkout's nros module as well: it replaces, not appends.
+    module_def=""
+    if [ -n "$zmodules" ]; then
+        module_def="-DEXTRA_ZEPHYR_MODULES=$(nros_zephyr_module_root "$repo_root")"
+        for _wf_m in ${zmodules//,/ }; do
+            _wf_dir=""
+            for _wf_w in ${NROS_ZEPHYR_JOB_MODULES:-}; do
+                [ "${_wf_w%%=*}" = "$_wf_m" ] && _wf_dir="${_wf_w#*=}"
+            done
+            module_def+=";$_wf_dir"
+        done
+        echo "   job modules: ${module_def#-D}"
+        args+=("$module_def")
+    fi
     # issues #87 + 0698 — native_sim builds with host gcc (no Zephyr SDK); every
     # other board, the FVP board_import entry (empty board → board.cmake)
     # included, names `zephyr` rather than leaving the variant unset, which is
@@ -462,6 +481,7 @@ while IFS= read -r record; do
             read -r -a _wf_extra <<< "$extra"
             nargs+=("${_wf_extra[@]}")
         fi
+        [ -z "$module_def" ] || nargs+=("$module_def")
         echo "   nros ${nargs[*]}"
         env "${tc_env[@]}" "$_wf_cli" "${nargs[@]}" || true
     else
