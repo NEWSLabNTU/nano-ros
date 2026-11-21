@@ -1,7 +1,7 @@
 ---
 id: 2414
 title: "A walked build takes about 2x a warm build, and the cost is the 8-order walk search, not the sccache bypass: the search should run its orders in parallel and skip a graph it has already walked"
-status: open
+status: resolved
 type: enhancement
 severity: low
 area: [build, tooling, memory]
@@ -9,9 +9,9 @@ found: 2026-11-10
 related: [issue-2400, issue-2803, phase-548, phase-557]
 ---
 
-**Home: [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md)**, with
+**Home: [phase-557](../../roadmap/phase-557-stack-floor-measured-frames.md)**, with
 issue 2400. Rehomed 2026-11-15 from
-[phase-548](../roadmap/archived/phase-548-three-languages-every-board.md) (archived). Re-scoped 2026-11-21 around the measured cost (below). The
+[phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md) (archived). Re-scoped 2026-11-21 around the measured cost (below). The
 bitcode store it first proposed is DROPPED.
 
 ## What
@@ -68,7 +68,7 @@ Two other things found while measuring:
   sccache, and the bypass costs it nothing. The bypass is paid by
   `just`-driven builds (fixture lanes, CI), where the walk is on by default.
 - **The off switch does not reach the cmake road**: filed as
-  [issue 2803](2803-stack-floor-off-switch-not-on-cmake-road.md).
+  [issue 2803](../2803-stack-floor-off-switch-not-on-cmake-road.md).
 
 ## Fix (approved 2026-11-21)
 
@@ -96,3 +96,39 @@ Two other things found while measuring:
 - A walked warm build costs the walk-off build plus a few seconds (1), and
   about nothing on an unchanged graph (2).
 - Floors identical to the serial walk's, on every drift row.
+
+## Resolution (2026-11-21)
+
+Both parts landed:
+
+1. **Parallel orders.** `walk_orders` runs the orders in forked workers, one
+   per jobserver token, taken without blocking and always given back. The
+   tokens come from the shared FIFO pool in `MAKEFLAGS`/`CARGO_MAKEFLAGS`.
+   `nros build` now hands its own jobserver to the cargo-road walker; the
+   cmake/Zephyr road inherits it through ninja. Results are combined in
+   order index, so the floor and the first refusal are the serial run's.
+2. **Walk cache.** Keyed by:
+   - the canonical graph;
+   - the walk's arguments and order list;
+   - the table's bytes;
+   - every non-path CLI argument;
+   - the toolchain;
+   - the walker's and its `scripts/lib` modules' source.
+
+   It lives outside `target/` (`$XDG_CACHE_HOME/nros-stack-floor/walks`),
+   bounded at 512 entries and pruned to the 384 most recently used.
+   `NROS_STACK_WALK_CACHE=0` turns it off. Negative controls: one changed
+   frame, an edge, the table, the toolchain, the flags or the order count
+   each miss, and on a real image so did a one-line walker change.
+
+Measured on `param-store-threadx-riscv64`:
+
+| walk | time |
+| --- | ---: |
+| serial (before) | 45 s |
+| parallel, 8 tokens, cache miss | 8.7 s |
+| cache hit (the whole `nros build`) | 3.0 s |
+
+The floor was identical in every run: 204,536 B. On the four walkable drift
+rows the parallel walks equal the serial ones byte for byte (68,568 /
+156,128 / 108,800 / 118,048 B), each on 8 tokens.
