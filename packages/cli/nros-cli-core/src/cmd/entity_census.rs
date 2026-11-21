@@ -1718,6 +1718,7 @@ pub(crate) fn take_leaf_census_with(
             ),
             explicit,
             run_failure: &|| census_run_failure(&leaf, explicit),
+            several_programs: None,
         },
         timeout_secs,
         build_step,
@@ -1795,6 +1796,7 @@ pub(crate) fn take_owned_census(
             ),
             // issue 2433: owned entries on a cross board are census-sized.
             explicit: " (an owned entry on a cross board)",
+            several_programs: Some(&|programs| several_programs_refusal(&q, &pkg_name, programs)),
             run_failure: &|| {
                 format!(
                     "`{q}`: the census RUN of the owned entry `{pkg_name}`'s host build failed \
@@ -1807,6 +1809,27 @@ pub(crate) fn take_owned_census(
         timeout_secs,
         build_step,
         host,
+    )
+}
+
+/// phase-583 W4 -- an owned entry whose host build states several
+/// programs. Its pools are compile-time sizes in the one runtime every program
+/// links, so a census of one program would size the others from it: refused
+/// until the programs' censuses are folded.
+fn several_programs_refusal(q: &str, pkg_name: &str, programs: &[String]) -> String {
+    format!(
+        "`{q}` builds the owned entry `{pkg_name}` for a cross board, where its pools are sized \
+         by a census of the program, and `{pkg_name}` builds {n} programs ({list}). Every \
+         program links one runtime whose pool sizes are fixed at build time, and a census \
+         counts one program, so the others would run on pools sized for it. Sizing several \
+         programs of one owned entry is not supported yet: build one program per package on a \
+         cross board, or give each program its own package.",
+        n = programs.len(),
+        list = programs
+            .iter()
+            .map(|p| format!("`{p}`"))
+            .collect::<Vec<_>>()
+            .join(", "),
     )
 }
 
@@ -1828,6 +1851,18 @@ pub(crate) struct HostProgram<'a> {
     pub explicit: &'a str,
     /// What a failed census RUN is told, on top of the run's own error.
     pub run_failure: &'a dyn Fn() -> String,
+    /// phase-583 W4 -- what a host build that states SEVERAL
+    /// programs is told, when one census cannot size them all. `None` keeps
+    /// the leaf road's rule (`named`, then the manifest's one executable).
+    pub several_programs: Option<&'a dyn Fn(&[String]) -> String>,
+}
+
+/// phase-583 W4 -- the programs the host census build states,
+/// when it states more than one. A census runs one program, so an owned entry
+/// that builds several would be sized from one of them; the caller refuses.
+fn several_census_programs(build: &Path) -> Option<Vec<String>> {
+    let (exes, _) = read_census_program(build).ok()?;
+    (exes.len() > 1).then(|| exes.into_iter().map(|(n, _)| n).collect())
 }
 
 /// The host build and run every census of a hand-written program shares:
@@ -1907,6 +1942,11 @@ pub(crate) fn census_host_program(
         (host.run)(&mut build_cmd).wrap_err("running cmake --build for the host census build")?;
     if !status.success() {
         return Err(refused("the build", status));
+    }
+    if let Some(refuse) = p.several_programs
+        && let Some(programs) = several_census_programs(build)
+    {
+        bail!("{}", refuse(&programs));
     }
     let bin = match &p.named {
         Ok(exe) => build.join(exe),
@@ -3667,6 +3707,41 @@ mod tests {
             e.contains("one, three") && e.contains("[[component]] name"),
             "{e}"
         );
+    }
+
+    /// phase-583 W4 -- an owned entry's host build that states
+    /// several programs is refused, naming them, never sized from the first
+    /// `nano_ros_add_executable`; one program is no refusal.
+    #[test]
+    fn an_owned_entry_with_several_programs_is_refused_not_sized_from_one() {
+        let td = tempfile::tempdir().unwrap();
+        let build = td.path().join("census-host");
+        std::fs::create_dir_all(build.join("nros")).unwrap();
+        let manifest = census_program_path(&build);
+        std::fs::write(
+            &manifest,
+            "executable=prog_a=/b/a
+source=/w/src/p
+",
+        )
+        .unwrap();
+        assert_eq!(several_census_programs(&build), None);
+        std::fs::write(
+            &manifest,
+            "executable=prog_a=/b/a
+executable=prog_b=/b/b
+",
+        )
+        .unwrap();
+        let programs = several_census_programs(&build).expect("two programs");
+        assert_eq!(programs, ["prog_a", "prog_b"]);
+        let e = several_programs_refusal("br:img", "two_programs", &programs);
+        assert!(
+            e.contains("`two_programs` builds 2 programs (`prog_a`, `prog_b`)")
+                && e.contains("one program per package"),
+            "{e}"
+        );
+        assert!(several_census_programs(&td.path().join("absent")).is_none());
     }
 
     /// Issue 2086 -- a census of a program that creates several nodes (a
