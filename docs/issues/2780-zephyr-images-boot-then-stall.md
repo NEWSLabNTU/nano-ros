@@ -138,6 +138,15 @@ does not touch this road).
   carrier. The runtime peak above that floor stays operator-stated.
 - **Stopgap (a), until (b) lands.** The two failing images state a measured
   heap: their boot-record peak + the 24,576-byte floor.
+
+  Interim, 2026-11-21: both images state `[image.zephyr.knobs.zephyr]
+  heap_size = 327680`, a value MEASURED to pass on native_sim/native/64. With
+  it, `zephyr/cpp-derived` and `zephyr/cpp-levels` both pass, so heap was the
+  only failure. The boot-record peaks were not captured on that run. The
+  value gives way to peak + 24,576 once they are.
+
+  The first attempt exported `NROS_ZEPHYR_HEAP_SIZE` to an already-configured
+  build dir, and the build ignored it. That is issue 2810.
 - The flat 112 KiB arm from `57c19cd7df` is the 1-node case of (b), and its
   text is to say so.
 
