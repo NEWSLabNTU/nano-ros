@@ -88,6 +88,11 @@ pub const OWNED: &[OwnedDefine] = &[
         "NROS_KNOB_CATALOG",
         "the merged configuration catalog `nros configure` wrote",
     ),
+    // issue 2805
+    exact(
+        "NROS_INTERFACE_SEARCH_PATH",
+        "the host census build's workspace interface roots",
+    ),
     exact("NROS_LEAF_BOARD", "the census probe's board"),
     exact("NROS_REPO_DIR", "the nano-ros checkout"),
     exact("NROS_RMW", "the RMW, derived from `[system] rmw`"),
