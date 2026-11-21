@@ -2785,12 +2785,65 @@ TEMPLATE_KEY = re.compile(r"^(?P<template>[a-z][a-z-]*)/(?P<lang>rust|c|cpp)/"
                           r"(?P<rmw>[a-z][a-z0-9_-]*)@(?P<board>[a-z0-9][a-z0-9_.-]*)$")
 NODE_ROLE_RS = "packages/cli/cargo-nano-ros/src/node_role.rs"
 
+# phase-583 W4 (RFC-0071 D20) -- the image-key GRAMMAR: three shapes, told
+# apart by their number of slashes. `<template>/<lang>/<rmw>@<board>` (two,
+# `TEMPLATE_KEY`, `nros new`'s stamp), `<bringup>@<board>` (none), and an owned
+# entry's program `<entry>/<exe>@<board>` (one). An exe name is rlm's:
+# `[A-Za-z0-9_-]+`, never `/` or `@`. The twin and drift lanes import this,
+# and the CLI's `stack_floor_image_key_shape` is its Rust twin.
+_KEY_NAME = r"[A-Za-z0-9_-]+"
+_KEY_BOARD = r"[a-z0-9][a-z0-9_.-]*"
+BRINGUP_KEY = re.compile(rf"^(?P<bringup>{_KEY_NAME})@(?P<board>{_KEY_BOARD})$")
+PROGRAM_KEY = re.compile(
+    rf"^(?P<entry>{_KEY_NAME})/(?P<exe>{_KEY_NAME})@(?P<board>{_KEY_BOARD})$")
+
+
+def parse_image_key(key: str) -> tuple[str, dict] | None:
+    """`(shape, parts)` for an image key, `shape` one of `template`,
+    `bringup` or `program`; `None` for a key that is none of them."""
+    for shape, pat in (("template", TEMPLATE_KEY), ("program", PROGRAM_KEY),
+                       ("bringup", BRINGUP_KEY)):
+        m = pat.match(key)
+        if m:
+            return shape, m.groupdict()
+    return None
+
+
+def report_path(build_dir: Path, key: str) -> Path:
+    """Where the build in `build_dir` writes the walk report for `key`: the
+    ONE spelling every reader resolves through (the CLI's raise, the twin and
+    drift lanes, the build's re-walk). A program key's report is its
+    program's; every other key's is the build dir's one report."""
+    parsed = parse_image_key(key)
+    base = Path(build_dir) / "nros" / "stack-floor"
+    if parsed and parsed[0] == "program":
+        return base / parsed[1]["exe"] / "report.json"
+    return base / "report.json"
+
 
 def template_names(root: Path) -> set[str]:
     """The `--template` values `nros new` takes, read from `Role::name`."""
     src = (root / NODE_ROLE_RS).read_text()
     body = src.split("pub fn name(self)", 1)[1].split("\n    }\n", 1)[0]
     return set(re.findall(r'Role::\w+ => "([a-z-]+)"', body))
+
+
+def image_key_problems(where: str, image, *, rebuilt: bool) -> list[str]:
+    """An image key must parse as one of the grammar's three shapes. A row the
+    drift lane re-walks (`rebuilt`) may not be a program key yet: drift has no
+    build route for one until phase-583 W4's lands, and a row it cannot build
+    would fail the nightly step without saying why."""
+    if not isinstance(image, str):
+        return []
+    parsed = parse_image_key(image)
+    if parsed is None:
+        return [f"{where}: image key `{image}` is no template key "
+                "(`<template>/<lang>/<rmw>@<board>`), bringup key (`<bringup>@<board>`) "
+                "or program key (`<entry>/<exe>@<board>`)"]
+    if rebuilt and parsed[0] == "program":
+        return [f"{where}: a program key (`{image}`) cannot be re-walked by the drift "
+                "lane yet; record this row once its build route exists"]
+    return []
 
 
 def template_key_problems(where: str, image: str, root: Path) -> list[str]:
@@ -3056,6 +3109,7 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
         where = f"[[observed]] #{i + 1} {k}"
         if None in k or not o.get("rmw"):
             problems.append(f"{where}: needs `image`, `rmw`, `target` and `role`")
+        problems += image_key_problems(where, o.get("image"), rebuilt=True)
         if k in seen:
             problems.append(f"{where}: duplicate")
         seen.add(k)
@@ -3107,6 +3161,7 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
         where = f"[[drift]] #{i + 1} {k}"
         if None in k or not d.get("rmw"):
             problems.append(f"{where}: needs `image`, `rmw`, `target` and `role`")
+        problems += image_key_problems(where, d.get("image"), rebuilt=True)
         if k in seen:
             problems.append(f"{where}: duplicate")
         seen.add(k)
@@ -4876,6 +4931,33 @@ def self_test() -> int:
     finally:
         shutil.which = real_which
 
+    # phase-583 W4 -- the image-key grammar.
+    check("key: a template key is the template shape",
+          parse_image_key("talker/rust/zenoh@nucleo-f767zi-zephyr")[0] == "template")
+    check("key: a bringup key is the bringup shape",
+          parse_image_key("fc_bringup@mps2-an385")[0] == "bringup")
+    check("key: one slash is a program key",
+          parse_image_key("two_programs/prog-b@linux")
+          == ("program", {"entry": "two_programs", "exe": "prog-b", "board": "linux"}))
+    check("key: a key of none of the three shapes parses as nothing",
+          parse_image_key("a/b/c/d@x") is None and parse_image_key("no_board") is None)
+    check("key: a program's report is its program's",
+          report_path(Path("/b"), "e/p@x") == Path("/b/nros/stack-floor/p/report.json"))
+    check("key: every other key keeps the build dir's one report",
+          report_path(Path("/b"), "t/rust/zenoh@x") == Path("/b/nros/stack-floor/report.json")
+          and report_path(Path("/b"), "br@x") == Path("/b/nros/stack-floor/report.json"))
+    check("key: an unparseable key is refused by the table",
+          any("is no template key" in p for p in image_key_problems("w", "a/b/c/d@x",
+                                                                    rebuilt=False)))
+    check("key: a program key is refused where drift re-walks it",
+          any("cannot be re-walked" in p for p in image_key_problems("w", "e/p@x",
+                                                                     rebuilt=True)))
+    # Today's table keys parse, each as the shape it already was.
+    _keys = re.findall(r'^image = "([^"]+)"',
+                       (CHECKOUT / "config" / "stack-floors.toml").read_text(), re.M)
+    check("key: every key in config/stack-floors.toml parses, none as a program",
+          bool(_keys) and all((parse_image_key(k) or ("?",))[0] in ("template", "bringup")
+                              for k in _keys))
     print(f"nros-stack-floor self-test: {len(ran)} checks, {len(fails)} failed")
     return 1 if fails else 0
 

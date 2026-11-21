@@ -443,6 +443,74 @@ pub fn stack_floor_template_key(
     format!("{}/{}/{rmw}@{board}", template.name(), lang.as_str())
 }
 
+/// The shape of a stack-floor image key (phase-583 W4, RFC-0071 D20), told
+/// apart by its number of slashes. The Rust twin of `scripts/nros-stack-floor.py`'s
+/// `parse_image_key`; the two must agree, and there is no third spelling.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StackFloorKey {
+    /// `<template>/<lang>/<rmw>@<board>`, [`stack_floor_template_key`]'s stamp.
+    Template,
+    /// `<bringup>@<board>`.
+    Bringup,
+    /// `<entry>/<exe>@<board>`: one program of an owned entry that builds several.
+    Program { exe: String },
+}
+
+/// [`StackFloorKey`] for `key`, or `None` when it is none of the three shapes.
+/// A name is `[A-Za-z0-9_-]+` (an exe name never holds `/` or `@`).
+#[must_use]
+pub fn stack_floor_key_shape(key: &str) -> Option<StackFloorKey> {
+    let name_ok = |n: &str| {
+        !n.is_empty()
+            && n.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    };
+    let (image, board) = key.rsplit_once('@')?;
+    let board_ok = board
+        .bytes()
+        .next()
+        .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && board.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'.' | b'-')
+        });
+    if !board_ok {
+        return None;
+    }
+    let parts: Vec<&str> = image.split('/').collect();
+    match parts.as_slice() {
+        [b] if name_ok(b) => Some(StackFloorKey::Bringup),
+        [e, x] if name_ok(e) && name_ok(x) => Some(StackFloorKey::Program {
+            exe: (*x).to_string(),
+        }),
+        [t, l, r]
+            if !t.is_empty()
+                && t.bytes().next().is_some_and(|b| b.is_ascii_lowercase())
+                && t.bytes().all(|b| b.is_ascii_lowercase() || b == b'-')
+                && matches!(*l, "rust" | "c" | "cpp")
+                && r.bytes().next().is_some_and(|b| b.is_ascii_lowercase())
+                && r.bytes().all(|b| {
+                    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-'
+                }) =>
+        {
+            Some(StackFloorKey::Template)
+        }
+        _ => None,
+    }
+}
+
+/// Where the cmake build in `build_dir` writes the walk report for `key`: the
+/// one rule every reader resolves through (the Rust twin of
+/// `nros-stack-floor.py`'s `report_path`). A program key's report is its
+/// program's; every other key's is the build dir's one report.
+#[must_use]
+pub fn stack_floor_report_path(build_dir: &std::path::Path, key: &str) -> std::path::PathBuf {
+    let base = build_dir.join("nros").join("stack-floor");
+    match stack_floor_key_shape(key) {
+        Some(StackFloorKey::Program { exe }) => base.join(exe).join("report.json"),
+        _ => base.join("report.json"),
+    }
+}
+
 /// The bringup's `system.contract.yaml`: what the node DECLARES, or `None`.
 ///
 /// Issue 2270. Without one, every buffer the declarations would size keeps a
@@ -1555,5 +1623,54 @@ mod c_family_into_workspace_tests {
         assert_eq!(derived.len(), 1, "{derived:?}");
         assert_eq!(derived[0].package, "beat_node");
         let _ = std::fs::remove_dir_all(&ws);
+    }
+}
+
+/// phase-583 W4 -- the image-key grammar's Rust twin agrees with the walker's.
+#[cfg(test)]
+mod stack_floor_key_tests {
+    use super::*;
+
+    #[test]
+    fn the_three_shapes_are_told_apart_by_slashes() {
+        assert_eq!(
+            stack_floor_key_shape("talker/rust/zenoh@nucleo-f767zi-zephyr"),
+            Some(StackFloorKey::Template)
+        );
+        assert_eq!(
+            stack_floor_key_shape("fc_bringup@mps2-an385"),
+            Some(StackFloorKey::Bringup)
+        );
+        assert_eq!(
+            stack_floor_key_shape("two_programs/prog-b@linux"),
+            Some(StackFloorKey::Program {
+                exe: "prog-b".into()
+            })
+        );
+        assert_eq!(stack_floor_key_shape("a/b/c/d@x"), None);
+        assert_eq!(stack_floor_key_shape("no_board"), None);
+    }
+
+    #[test]
+    fn a_stamped_template_key_parses_as_a_template() {
+        let k = stack_floor_template_key(Role::Talker, nros_lang::Language::Rust, "zenoh", "b1");
+        assert_eq!(stack_floor_key_shape(&k), Some(StackFloorKey::Template));
+    }
+
+    #[test]
+    fn only_a_program_key_moves_the_report() {
+        let b = std::path::Path::new("/b");
+        assert_eq!(
+            stack_floor_report_path(b, "e/p@x"),
+            b.join("nros/stack-floor/p/report.json")
+        );
+        assert_eq!(
+            stack_floor_report_path(b, "talker/rust/zenoh@x"),
+            b.join("nros/stack-floor/report.json")
+        );
+        assert_eq!(
+            stack_floor_report_path(b, ""),
+            b.join("nros/stack-floor/report.json")
+        );
     }
 }
