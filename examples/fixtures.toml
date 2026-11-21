@@ -5565,6 +5565,16 @@ dir = "packages/testing/nros-tests/fixtures/image-features-shared-configure"
 platform = "linux"
 output = ".compile-ok"
 
+# phase-583 W3 -- the `nros` CLI's configure VERDICT for an owned-entry
+# bringup whose launch also starts a node from another package. The refusal
+# comes before cmake runs, so this script records it at build time.
+[[compile_check_fixture]]
+id = "owned_entry_foreign_launch_refused"
+builder = "fixture-script"
+dir = "packages/testing/nros-tests/fixtures/owned-entry-foreign-launch"
+platform = "linux"
+output = ".compile-ok"
+
 [[compile_check_fixture]]
 id = "cyclone_slirp_guest"
 builder = "fixture-script"
