@@ -348,7 +348,11 @@ pub const PARAM_TALKER_READY_MARKER: &str = "Publishing Int32 messages";
 /// (`parameter store: N slots (B B) carved from the executor backing`). Its
 /// absence on an image whose build implied a store means the store took the
 /// heap road instead.
-pub const PARAM_STORE_CARVED_MARKER: &str = "carved from the executor backing";
+///
+/// Anchored on the line's own `… B) carved from …` tail, never on the bare
+/// phrase: a refusal or hint that EXPLAINS the carve uses the same words, and
+/// a wait on the bare phrase was satisfied by such a line.
+pub const PARAM_STORE_CARVED_MARKER: &str = "B) carved from the executor backing";
 
 /// Issue 2812 — the ThreadX board's byte-pool peak line
 /// (`nros: byte pool peak N of M bytes (F free) ...`,
