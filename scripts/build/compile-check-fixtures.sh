@@ -402,7 +402,8 @@ stage_and_clippy() {
     _cc_stamp_member_versions "$id" "$staged"
     local shared; shared="$(_cc_target_dir "$src" "$staged")"
     NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged"
-    ( cd "$staged" && CARGO_TARGET_DIR="$shared" cargo clippy --manifest-path Cargo.toml )
+    _cc_image_config "$staged" || return 1
+    ( cd "$staged" && CARGO_TARGET_DIR="$shared" cargo clippy --manifest-path Cargo.toml "${_cc_cfg[@]}" )
     _cc_copy_shared_depinfo "$shared" "$staged"
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     echo "   stamped $staged/.compile-ok"
@@ -419,7 +420,8 @@ stage_and_build() {
     # `posix_entry/`). `pkg` (4th field) names the package when it isn't the
     # default `demo_entry` (O.3 builds `posix_entry`).
     NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged/$manifest_dir"
-    ( cd "$staged" && cargo build -p "$pkg" --manifest-path "$manifest_dir/Cargo.toml" )
+    _cc_image_config "$staged" || return 1
+    ( cd "$staged" && cargo build -p "$pkg" --manifest-path "$manifest_dir/Cargo.toml" "${_cc_cfg[@]}" )
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     # profile-literal-ok: dir vocabulary: echoes the manifest's target-directory name
     echo "   built $staged/$manifest_dir/target/debug/$pkg"
@@ -808,6 +810,7 @@ stage_and_cross_build() {
     # the directory `dev` writes to. That is why this maps by hand instead of
     # calling `nros dev profile args`, which speaks profile names.
     NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged/$subdir"
+    _cc_image_config "$staged" || return 1
     # Issue 1844 — the board facts, from the invoker. This is a cargo dir with
     # no generated `nros-cargo.toml` (a workspace-shaped fixture, or an entry
     # inside one), so nothing else carries `FREERTOS_PORT` & co. since
@@ -828,7 +831,7 @@ stage_and_cross_build() {
             && export $facts \
             && NROS_PLATFORM_FREERTOS_SRC="$repo_root/packages/platform/nros-platform-freertos/src" \
                NROS_PLATFORM_CFFI_INCLUDE="$repo_root/packages/platform/nros-platform-api/include" \
-               cargo build "${profile_flag[@]}" --target "$target" -p "$pkg" )
+               cargo build "${profile_flag[@]}" --target "$target" -p "$pkg" "${_cc_cfg[@]}" )
     done
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     echo "   built $staged/$subdir (target/$target; profiles: $profiles)"
