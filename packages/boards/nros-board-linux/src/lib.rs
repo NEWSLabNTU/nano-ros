@@ -1030,8 +1030,14 @@ impl LinuxBoard {
                 // 0 setting up, 1 set up, 2 failed.
                 let state = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
                 let st = std::sync::Arc::clone(&state);
-                let mut builder = std::thread::Builder::new()
-                    .name(format!("nros-sched-task-{}", sched_task.name));
+                // `nros-<sched task>`: Linux keeps 15 bytes of a thread name,
+                // and `nros-sched-task-` alone filled them, so every level read
+                // the same in `ps -L`, gdb and the boot census. The C/C++
+                // runners name theirs the same way.
+                let mut builder = std::thread::Builder::new().name(format!(
+                    "nros-{}",
+                    ::nros::thread_name::label(sched_task.name)
+                ));
                 // phase-302 W2 (issue 0262) -- a declared per-sched-task stack.
                 if sched_task.stack_bytes > 0 {
                     builder = builder.stack_size(sched_task.stack_bytes);

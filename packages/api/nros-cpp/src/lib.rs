@@ -9315,10 +9315,15 @@ pub unsafe extern "C" fn nros_board_native_run_sched_tasks_in(
             name: sched_task_name.clone(),
         }));
         // The port copies what it keeps, but the pointer must be valid FOR the
-        // call, so the CString outlives it here.
-        let task_name =
-            alloc::ffi::CString::new(alloc::format!("nros-sched-task-{sched_task_name}"))
-                .unwrap_or_else(|_| c"nros-sched_task".into());
+        // call, so the CString outlives it here. A short prefix, because a
+        // kernel keeps few bytes of a thread name (Linux and FreeRTOS's default
+        // both 15): `nros-sched-task-` alone filled them, so every sched task
+        // read the same in `ps -L`, gdb and the boot census.
+        let task_name = alloc::ffi::CString::new(alloc::format!(
+            "nros-{}",
+            ::nros::thread_name::label(&sched_task_name)
+        ))
+        .unwrap_or_else(|_| c"nros-task".into());
         // SAFETY: `ctx` stays live until the trampoline reclaims it — on the
         // spawned task, after its loop exits.
         let spawned = unsafe {
@@ -9972,8 +9977,10 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             spec: t as *const NativeSchedTaskSpecC as usize,
             spawned: Arc::clone(&born),
         }));
-        let task_name = alloc::ffi::CString::new(alloc::format!("nros-level-{name}"))
-            .unwrap_or_else(|_| c"nros-level".into());
+        // `nros-<level>`, short for the reason the sched-task spawn above gives.
+        let task_name =
+            alloc::ffi::CString::new(alloc::format!("nros-{}", ::nros::thread_name::label(&name)))
+                .unwrap_or_else(|_| c"nros-level".into());
         // SAFETY: `ctx` is reclaimed by the trampoline, on the spawned task.
         let spawned = unsafe {
             nros_platform::task::PlatformTask::spawn_with(
