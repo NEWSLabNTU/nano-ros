@@ -686,7 +686,8 @@ static is the new walk's; each nucleo image fits its RAM.
 
 ### W7f — Field- and parameter-sensitive binding (issue 2550 step 3)
 
-- **Status:** DROPPED (2026-11-16): stopped at checkpoint 1, before any solver
+- **Status:** OPEN (reopened 2026-11-22), staged as W7f.0-W7f.3 and Checkpoint 2
+  (see the work-item list below). It was DROPPED (2026-11-16): stopped at checkpoint 1, before any solver
   work, because under half of the indirect sites bind through a trusted
   channel (see "Checkpoint 1" below). It reopens only when the three
   conditions listed there hold. The floors stay the accepted heuristic.
@@ -1184,11 +1185,48 @@ build where that number was read.
       UNMEASURED floor (170,284 B + margin). nucleo `talker/rust` walks again
       (69,648 B; re-recorded, the reach the stock node interfaces added);
       `talker/c` stays within its band.
-- **W9c — The environment key (was: the band).** Checkpoint 1 DONE
-  (2026-11-22, below): the spread across trees is 0.00 %, so no band is built
-  and N stays 8 (ruling below). What is left: the environment key on each
-  row. Acceptance: issue 2688's case (main walked in CI and on a host) reads
-  "different toolchain identity" rather than FAIL.
+- **W9c — The toolchain check (was: the band).** DONE (2026-11-22).
+  - Checkpoint 1 (below): the spread across trees is 0.00 %, so no band is
+    built and N stays 8 (ruling below).
+  - **No per-row key.** Measured first: issue 2688's split no longer
+    reproduces. At CI's commit `b28c0fbaca`, this host walked both C rows to
+    the byte of CI's (112,064 and 112,184 B), with the same pinned GCC. A row
+    key would guard a case that does not happen on a pinned toolchain.
+  - **What was built instead (the manager's ruling):** `stack-floor-drift`
+    compares what each image's build resolved with the index and west pins:
+    the C compiler's and the Zephyr SDK's store versions, and the Zephyr
+    tree's tag. A mismatch makes the row NOT VERIFIED through the skip
+    ledger, naming both, and withholds PASS or FAIL. Each row prints its
+    toolchain. No schema change.
+  - Acceptance met: issue 2688's case, a host on another toolchain than the
+    pins, reads NOT VERIFIED rather than FAIL. Measured on a host whose
+    shared Zephyr workspace was at v3.7.0 against a v3.7.2 pin (so SDK 0.16.8
+    against 0.16.9): both nucleo rows read NOT VERIFIED, naming the tag and
+    the SDK; the FreeRTOS row, on the pinned GCC, was verified.
+- **W7f — reopened (2026-11-22), in this order.** Each step re-measures and
+  can stop with nothing shipped worse (W7f's fallback rule).
+  - **W7f.0 — The site classifier, kept.** Checkpoint 1's prototype was
+    deleted, so its 37-43 % cannot be re-measured. Rebuild it as a
+    self-tested pass of the walker (`--classify-sites`): the trusted share
+    per image, and the misses broken down as Checkpoint 1's were.
+    Acceptance: it reproduces Checkpoint 1's table on today's images, with
+    any difference explained.
+  - **W7f.1 — Reopening condition 1.** The field channel reads nested
+    constant initializers (Zephyr's device-API tables, `init_entry`: 109 of
+    the C talker's misses). Acceptance: the share re-measured, and the
+    stores found per struct.
+  - **W7f.2 — Reopening condition 2.** A return-value channel, so a whole T
+    returned through ABI coercion (a `[2 x i32]` store onto the struct)
+    stays trusted: zenoh-pico's `_z_delete_context_t` and
+    `subscriber_entry_t`, 46 sites. Acceptance: the share re-measured.
+  - **W7f.3 — Reopening condition 3, independent of .1 and .2.** C IR for
+    cc-rs builds, so a bare-metal image's C is typed at all (cc-rs writes no
+    compile database). Acceptance: the mps2 bare-metal image's C sites are
+    classified.
+  - **Checkpoint 2.** The share, AND the reachable SCC with the binding, on
+    the same images. Stop and report before any solver if the SCC is not
+    small enough for an exact search under a budget (the threshold is set at
+    that checkpoint).
 - **W9d — The drift rule (Ruling (C)).** DONE (2026-11-18).
   `static_drift` and its self-tests
   (up 3 %: FAIL; up 1 %: note; down 10 %: note); W8's nightly and
