@@ -60,6 +60,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from build_walk import build_files  # noqa: E402  the one walk of build output
 import stack_builtins  # noqa: E402  phase-557 W9b: a toolchain archive's measured frames
 import site_channels  # noqa: E402  phase-557 W7f: which functions a call site can hold
+import exact_walk  # noqa: E402  phase-557 W7f Checkpoint 2: the exact search, measured
+
+# Phase-557 W7f Checkpoint 2 (a measurement, NROS_STACK_W7F_CHECKPOINT): the
+# graph before indirect binding and the IR the bind read.
+_W7F: dict = {}
 
 # ---------------------------------------------------------------------------
 # The graph and the walk (pure; the self-test drives these directly)
@@ -3250,6 +3255,10 @@ def run(args: argparse.Namespace) -> int:
             print(f"nros-stack-floor: bind: {len(declared_c)} function(s) the Rust IR only "
                   "declares keep their machine sites: " + ", ".join(sorted(declared_c)[:6])
                   + (" ..." if len(declared_c) > 6 else ""), file=sys.stderr)
+        if os.environ.get("NROS_STACK_W7F_CHECKPOINT"):
+            _W7F["pre"] = {k: set(v) for k, v in g.edges.items()}
+            _W7F["rust"] = rtexts
+            _W7F["c"] = texts if c_mods is not None else []
         st = bind_indirect_sites(g, mods, c_mods, rust_defined, c_unc, rust_asm)
         print(f"nros-stack-floor: bind: {st['slot']} indirect site(s) bound by vtable slot, "
               f"{st['type']} by type, {st['any']} with no typed target, {st['c_typed']} C "
@@ -3303,6 +3312,8 @@ def run(args: argparse.Namespace) -> int:
                 continue
             if best is None or p.depth > best.depth:
                 best, best_root = p, root
+            if os.environ.get("NROS_STACK_W7F_CHECKPOINT") and _W7F:
+                w7f_checkpoint(g, root, p.depth, Path(os.environ["NROS_STACK_W7F_CHECKPOINT"]))
         if best is not None:
             allowance, measured_by = 0, None
             if doc is not None:
@@ -3447,6 +3458,10 @@ def self_test() -> int:
     # phase-557 W9b -- the builtins table: its decoder, depth rules and lookup
     for name, ok in stack_builtins.self_checks():
         check(name, ok)
+    # phase-557 W7f Checkpoint 2 -- the exact search's own rules
+    bad_ex = exact_walk.self_test()
+    check("exact walk: every search rule holds"
+          + (f" (failed: {'; '.join(bad_ex)})" if bad_ex else ""), not bad_ex)
     # phase-557 W7f.0 -- the site classifier's channel rules
     bad_ch = site_channels.self_test()
     check("site channels: every channel rule holds"
@@ -4428,6 +4443,35 @@ def self_test() -> int:
 
     print(f"nros-stack-floor self-test: {len(ran)} checks, {len(fails)} failed")
     return 1 if fails else 0
+
+
+def w7f_checkpoint(g: Graph, root: str, heuristic: int, out: Path) -> None:
+    """Checkpoint 2: the reachable SCC and the exact search's cost, on
+    today's bound graph and on the graph with every RESOLVED site bound to
+    its channel's set. A caller with any unresolved site keeps today's
+    edges, so the second graph is never looser than the first."""
+    pre = _W7F["pre"]
+    sets = site_channels.resolved_sets(_W7F["rust"], _W7F["c"], level=2)
+    new = {k: set(v) for k, v in g.edges.items()}
+    rebound = 0
+    for caller, sites in sets.items():
+        if caller not in g.edges or any(x is None for x in sites):
+            continue
+        new[caller] = set(pre.get(caller, set())).union(*sites)
+        rebound += 1
+    budget, seconds = 10**7, 120.0
+    res = {"root": root, "heuristic_depth": heuristic, "callers_rebound": rebound,
+           "callers_with_sites": len(sets),
+           "before": exact_walk.deepest_simple(g.edges, g.frames, root, budget, seconds),
+           "after": exact_walk.deepest_simple(new, g.frames, root, budget, seconds)}
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("a") as fh:
+        fh.write(json.dumps(res) + "\n")
+    print(f"nros-stack-floor: W7f checkpoint 2 from `{root}`: SCC {res['before']['largest_scc']} -> "
+          f"{res['after']['largest_scc']}; exact search {res['before']['expansions']} -> "
+          f"{res['after']['expansions']} expansions "
+          f"({'done' if res['after']['finished'] else 'budget out'}), written to {out}",
+          file=sys.stderr)
 
 
 def classify_sites(ir_dir: Path, level: int) -> int:
