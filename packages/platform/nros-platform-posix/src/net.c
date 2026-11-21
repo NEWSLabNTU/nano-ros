@@ -436,6 +436,7 @@ size_t nros_platform_udp_send(const void *sock_raw,
     const nros_posix_endpoint_t *ep = (const nros_posix_endpoint_t *) endpoint;
     if (ep->iptcp == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     struct addrinfo *ai = ep->iptcp;
+    /* nosignal-exempt: a UDP socket, which never raises SIGPIPE. */
     ssize_t r = sendto(sock->fd, buf, len, 0, ai->ai_addr, ai->ai_addrlen);
     return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
 }
