@@ -176,6 +176,11 @@ class Analysis:
         # only nulls, which add no target) is not an opaque write.
         self.nested = level >= 1
         self.zero_memset_ok = level >= 1
+        # W7f.2: a coerced store that is provably a whole copy of a T (a
+        # by-value T argument, or a returned T) is a T-from-T copy.
+        self.coerced_copy_ok = level >= 2
+        self._coerced: list[tuple[Module, Func, str, str, str]] = []
+        self.funcs_by_name = {n: (m, fn) for m in modules for n, fn in m.funcs.items()}
         self.ch: dict[Key, Channel] = {}
         self.sites: list[Site] = []
         self.escaped: set[str] = set()
@@ -367,6 +372,10 @@ class Analysis:
         # an opaque write to every pointer field of T.
         if ty != "ptr":
             t = self._struct_at(m, f, addr)
+            if t is not None and self.coerced_copy_ok and re.match(r'^\[\d+ x i\d+\]$|^i\d+$', ty):
+                # decided once every function is known (see solve)
+                self._coerced.append((m, f, ty, val, t))
+                t = None
             if t is not None:
                 for k in [k for k in list(self.ch) if k[0] == "field" and k[1] == t]:
                     self.ch[k].untrusted.append(f"an opaque {ty} store onto {t} ({f.name})")
@@ -408,12 +417,49 @@ class Analysis:
             return e.group(1)
         return None
 
+    def _field_type(self, m: Module, t: str, path: tuple) -> str | None:
+        """The type of field `path` of struct `t`, from the module's named
+        types."""
+        for i in path:
+            body = m.named.get(t, "")
+            if not body.startswith("{"):
+                inner = re.match(r'^\[\d+ x (.+)\]$', t)
+                if inner:
+                    t = inner.group(1).strip()
+                    continue
+                return None
+            fields = _split_top(body[1:-1])
+            if i >= len(fields):
+                return None
+            t = fields[i].strip()
+        return t
+
+    def _types_at(self, m: Module, f: Func, addr: str) -> list[str]:
+        """Every struct type that STARTS at `addr`, outermost first: the
+        pointee the IR names, then its first field, its first field's
+        first field, and so on. One address is all of them at once."""
+        t = self._struct_at(m, f, addr)
+        if t is None:
+            d = f.defs.get(self.strip(f, addr), "")
+            g = _STRUCT_GEP.match(d)
+            if g and g.group(1).startswith("%struct."):
+                idx = [int(x.split()[-1]) for x in g.group(3).split(",") if x.strip()]
+                ft = self._field_type(m, g.group(1), tuple(idx[1:])) if len(idx) > 1 else None
+                t = ft if ft and ft.startswith("%struct.") else None
+        out: list[str] = []
+        while t and t.startswith("%struct.") and t not in out:
+            out.append(t)
+            ft = self._field_type(m, t, (0,))
+            t = ft
+        return out
+
     def _memop(self, m: Module, f: Func, body: str) -> None:
         parts = _call_parts(body)
         if not parts or not parts[1]:
             return
         dst = parts[1][0]
-        t = self._struct_at(m, f, dst)
+        chain = self._types_at(m, f, dst) if self.coerced_copy_ok else []
+        t = chain[0] if chain else self._struct_at(m, f, dst)
         if t is None:
             # An untyped destination. When it is the function's own parameter
             # (directly or through its -O0 alloca), what the callers pass
@@ -432,6 +478,10 @@ class Analysis:
             src = parts[1][1] if len(parts[1]) > 1 else ""
             if self._struct_at(m, f, src) == t:
                 return  # a T copied from a T copies trusted fields
+            # W7f.2: the destination is every struct that starts there, so a
+            # copy from any one of them is a T-from-T copy of that one.
+            if chain and set(self._types_at(m, f, src)) & set(chain):
+                return
         elif "memset" in parts[0] and self.zero_memset_ok and len(parts[1]) > 1 \
                 and parts[1][1] == "0":
             return  # zero fill: every pointer field becomes null, which calls nothing
@@ -530,6 +580,58 @@ class Analysis:
     _seen_params: set = set()
 
     # -- solving -----------------------------------------------------------
+
+    # -- the return / by-value channel (W7f.2) ----------------------------
+
+    def _coerced_load_of(self, m: Module, f: Func, v: str, t: str, depth: int = 0) -> str | None:
+        """None when `v` (an ABI-coerced value) is provably the contents of a
+        T, else why not: a coerced load of a T slot, a by-value parameter
+        every direct caller fills that way, or the result of a call whose
+        callee returns that way."""
+        if depth > 8:
+            return "a copy chain too deep to follow"
+        v = self.strip(f, v)
+        d = f.defs.get(v, "")
+        lm = re.match(r'^load\s+(?:volatile\s+)?(\[\d+ x i\d+\]|i\d+),\s*ptr\s+(%[\w.$-]+|@[\w.$"-]+)', d)
+        if lm:
+            src = self._struct_at(m, f, lm.group(2))
+            return None if src == t else f"a coerced load of {src or 'memory of no known type'}"
+        if v in f.params:
+            if f.name in self.escaped:
+                return f"{f.name}'s address is taken"
+            p = f.params.index(v)
+            callers = self.direct_callers.get(f.name, [])
+            if not callers:
+                return f"{f.name} has no direct caller in the IR"
+            for caller, args, cm in callers:
+                if p >= len(args):
+                    return f"a call from {caller.name} passes no argument {p}"
+                why = self._coerced_load_of(cm, caller, args[p], t, depth + 1)
+                if why:
+                    return why
+            return None
+        c = re.match(r'^(?:tail\s+)?call\s+(?:\S+\s+)*?(?:\[\d+ x i\d+\]|i\d+)\s+@("[^"]+"|[\w.$-]+)\(', d)
+        if c:
+            callee = self.funcs_by_name.get(_name(c.group(1)))
+            if callee is None:
+                return f"a return from {_name(c.group(1))}, which has no IR"
+            cm, cf = callee
+            rets = [r.group(1) for line in cf.lines
+                    for r in [re.match(r'^\s*ret\s+\S+(?:\s+x\s+\S+\])?\s+(%[\w.$-]+)', line)] if r]
+            if not rets:
+                return f"{cf.name} returns no value the rules read"
+            for rv in rets:
+                why = self._coerced_load_of(cm, cf, rv, t, depth + 1)
+                if why:
+                    return why
+            return None
+        return "a coerced value of unknown origin"
+
+    def _decide_coerced(self) -> None:
+        for m, f, ty, val, t in self._coerced:
+            why = self._coerced_load_of(m, f, val, t)
+            if why:
+                self._opaque.setdefault(t, []).append(f"an opaque {ty} store: {why} ({f.name})")
 
     # -- writers the IR cannot see (W7f.1) ---------------------------------
 
@@ -639,6 +741,7 @@ class Analysis:
     def solve(self) -> dict[Key, tuple[bool, set[str], list[str]]]:
         """Each channel's (trusted, functions, why untrusted), to a fixed
         point: a channel linked to an untrusted one is untrusted."""
+        self._decide_coerced()
         if getattr(self, "boundary", False):
             for t in self._cross_boundary():
                 self._opaque.setdefault(t, []).append("reachable across Rust<->C")
@@ -682,7 +785,7 @@ class Analysis:
 
 def classify(rust_texts: list[str], c_texts: list[str], level: int = 0) -> dict:
     """The W7f trusted-share report for one image, under the rules of stage
-    `level` (0: W7f.0, 1: W7f.1)."""
+    `level` (0: W7f.0, 1: W7f.1, 2: W7f.2)."""
     Analysis._opaque = {}
     Analysis._seen_params = set()
     mods = [parse_module(t, "rust") for t in rust_texts] + \
@@ -852,6 +955,48 @@ define void @v(ptr %o) {
                "  call void @reg(ptr %a, ptr %x)\n  ret void\n}\n")
     check("a T passed to a function that memcpys into its parameter is untrusted at level 1",
           classify([], [reg], level=1)["c"]["trusted"] == 0)
+    byval = ("%struct.T = type { ptr, i32 }\n"
+             "define void @take([2 x i32] %a) {\n  %s = alloca %struct.T\n"
+             "  store [2 x i32] %a, ptr %s\n"
+             "  %f = getelementptr inbounds %struct.T, ptr %s, i32 0, i32 0\n"
+             "  %fn = load ptr, ptr %f\n  call void %fn(ptr %s)\n  ret void\n}\n"
+             "define void @give() {\n  %s = alloca %struct.T\n"
+             "  %f = getelementptr inbounds %struct.T, ptr %s, i32 0, i32 0\n"
+             "  store ptr @h1, ptr %f\n  %v = load [2 x i32], ptr %s\n"
+             "  call void @take([2 x i32] %v)\n  ret void\n}\n"
+             "define void @h1(ptr %x) {\n  ret void\n}\n")
+    check("a by-value T argument is an opaque store at level 1",
+          classify([], [byval], level=1)["c"]["trusted"] == 0)
+    check("a by-value T argument whose callers pass a T is a T copy at level 2 (W7f.2)",
+          classify([], [byval], level=2)["c"]["trusted"] == 1)
+    forged = byval.replace("%v = load [2 x i32], ptr %s", "%v = load [2 x i32], ptr @raw")
+    check("a by-value T argument filled from untyped memory stays opaque at level 2",
+          classify([], ["@raw = global [2 x i32] zeroinitializer\n" + forged],
+                   level=2)["c"]["trusted"] == 0)
+    ret = ("%struct.T = type { ptr, i32 }\n"
+           "define [2 x i32] @mk() {\n  %s = alloca %struct.T\n"
+           "  %f = getelementptr inbounds %struct.T, ptr %s, i32 0, i32 0\n"
+           "  store ptr @h1, ptr %f\n  %v = load [2 x i32], ptr %s\n  ret [2 x i32] %v\n}\n"
+           "define void @use() {\n  %s = alloca %struct.T\n"
+           "  %r = call [2 x i32] @mk()\n  store [2 x i32] %r, ptr %s\n"
+           "  %f = getelementptr inbounds %struct.T, ptr %s, i32 0, i32 0\n"
+           "  %fn = load ptr, ptr %f\n  call void %fn(ptr %s)\n  ret void\n}\n"
+           "define void @h1(ptr %x) {\n  ret void\n}\n")
+    check("a returned T is a T copy at level 2 (W7f.2)",
+          classify([], [ret], level=2)["c"]["trusted"] == 1
+          and classify([], [ret], level=1)["c"]["trusted"] == 0)
+    firstfield = ("%struct.S = type { ptr, i32 }\n%struct.E = type { %struct.S, i32 }\n"
+                  "define void @cp(ptr %e) {\n  %src = alloca %struct.S\n"
+                  "  %sf = getelementptr inbounds %struct.S, ptr %src, i32 0, i32 0\n"
+                  "  store ptr @h1, ptr %sf\n"
+                  "  %d = getelementptr inbounds %struct.E, ptr %e, i32 0, i32 0\n"
+                  "  call void @llvm.memcpy.p0.p0.i32(ptr %d, ptr %src, i32 8, i1 false)\n"
+                  "  %f = getelementptr inbounds %struct.S, ptr %d, i32 0, i32 0\n"
+                  "  %fn = load ptr, ptr %f\n  call void %fn(ptr %e)\n  ret void\n}\n"
+                  "define void @h1(ptr %x) {\n  ret void\n}\n")
+    check("a copy of an S into an E's first field (also an S) is a T copy at level 2",
+          classify([], [firstfield], level=2)["c"]["trusted"] == 1
+          and classify([], [firstfield], level=1)["c"]["trusted"] == 0)
     nested_c = """%struct.A = type { ptr }
 %struct.D = type { i32, %struct.A }
 @d = constant %struct.D { i32 1, %struct.A { ptr @h1 } }
