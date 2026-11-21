@@ -327,14 +327,17 @@ fn west_capabilities(build_dir: &Path) -> Option<(Vec<String>, Option<String>)> 
 /// [`crate::cmd::run_plan::resolve`] (one for `run`, one for `flash`), and
 /// each is printed as the line its runner executes: a host image's own path,
 /// the QEMU line through [`nros_qemu_ladder::plan_line`] (the renderer the
-/// qemu runner calls), `west build -t run` / `west flash` for a west-built
-/// board, a command template expanded from the plan. Runs nothing. `qemu`
-/// is the QEMU ladder ([`crate::orchestration::qemu_bin`]).
+/// qemu runner calls), `nros run` / `nros flash` and then the `west build -t
+/// run` / `west flash` line for a west-built board, a command template
+/// expanded from the plan. Runs nothing. `qemu` is the QEMU ladder
+/// ([`crate::orchestration::qemu_bin`]); `zephyr_base` is the Zephyr tree the
+/// build found, which a west line needs outside the west workspace.
 #[must_use]
 pub fn next_steps(
     p: &super::build::ResolvedBuild,
     d: &BoardDescriptor,
     qemu: &dyn Fn(&str) -> QemuBin,
+    zephyr_base: Option<&std::path::Path>,
 ) -> NextSteps {
     use crate::cmd::run_plan::{self, Bench, Inputs, Invocation};
     use nros_extension::plan::Verb;
@@ -377,8 +380,29 @@ pub fn next_steps(
             return out;
         };
         let shown = shell_word(&dir.display().to_string());
-        let west_run = format!("west build -d {shown} -t run");
-        let west_flash = format!("west flash -d {shown}");
+        // Issue 2809 — `west build` and `west flash` are extension commands
+        // of the Zephyr west workspace. From anywhere else (the image's own
+        // workspace, where `nros build` ran) west refuses them ("unknown
+        // command") unless ZEPHYR_BASE names that workspace's `zephyr/`. So
+        // the line carries the ZEPHYR_BASE this build found, and `nros run` /
+        // `nros flash`, which need neither, come first.
+        let west_env = zephyr_base
+            .map(|z| format!("ZEPHYR_BASE={} ", shell_word(&z.display().to_string())))
+            .unwrap_or_default();
+        let west_run = format!("{west_env}west build -d {shown} -t run");
+        let west_flash = format!("{west_env}west flash -d {shown}");
+        let nros_run = format!("nros run {}", shell_word(&p.qualified));
+        let nros_flash = format!("nros flash {}", shell_word(&p.qualified));
+        const BY_WEST: &str = "or, with west";
+        // Where no Zephyr tree was found, the west line is printed bare and
+        // says, once, what it needs.
+        let west_note = |out: &mut NextSteps| {
+            let note = "a `west` line runs inside the Zephyr west workspace, or with ZEPHYR_BASE \
+                        set to that workspace's zephyr/ directory";
+            if zephyr_base.is_none() && !out.notes.iter().any(|n| n == note) {
+                out.notes.push(note.into());
+            }
+        };
         // What Zephyr's own build says (its `run_<emu>` targets and default
         // flash runner): the west runner's facts, read where it reads them.
         let caps = west_capabilities(dir);
@@ -389,6 +413,7 @@ pub fn next_steps(
         if run.is_err() && d.platform == PlatformKind::Zephyr && !emus.is_empty() {
             out.commands
                 .push((format!("run ({})", emus.join(", ")), west_run.clone()));
+            west_note(&mut out);
             // RFC-0118 D4.
             out.notes.push(format!(
                 "board `{}` states no `[board.run]`; `nros run` needs one (`emulator = \
@@ -407,7 +432,8 @@ pub fn next_steps(
                 "renode" => renode_line(&p.qualified, &mut out),
                 "fvp" => {
                     out.commands
-                        .push(("run on the FVP".into(), west_run.clone()));
+                        .push(("run on the FVP".into(), nros_run.clone()));
+                    out.commands.push((BY_WEST.into(), west_run.clone()));
                     out.notes.push(
                         "the FVP model is user-provided and must be resolvable when the build \
                          CONFIGURES (Zephyr caches it): install it from Arm, set ARMFVP_BIN_PATH \
@@ -415,31 +441,39 @@ pub fn next_steps(
                          book-internals/src/platform/arm-fvp.md"
                             .into(),
                     );
+                    west_note(&mut out);
                     return out;
                 }
-                _ => match &caps {
-                    Some(_) if !emus.is_empty() => out
-                        .commands
-                        .push((format!("run ({})", emus.join(", ")), west_run.clone())),
-                    Some(_) => {}
-                    None => out
-                        .commands
-                        .push(("run (an emulated board)".into(), west_run.clone())),
-                },
+                _ => {
+                    let label = match &caps {
+                        Some(_) if !emus.is_empty() => Some(format!("run ({})", emus.join(", "))),
+                        Some(_) => None,
+                        None => Some("run (an emulated board)".into()),
+                    };
+                    if let Some(label) = label {
+                        out.commands.push((label, nros_run.clone()));
+                        out.commands.push((BY_WEST.into(), west_run.clone()));
+                        west_note(&mut out);
+                    }
+                }
             }
         }
         if let Ok(plan) = &flash {
             match plan.runner.name.as_str() {
-                "west" => match &caps {
-                    Some((emus, flash_runner)) => {
-                        if let Some(r) = flash_runner.as_ref().filter(|r| !emus.contains(r)) {
-                            out.commands.push((format!("flash ({r})"), west_flash));
-                        }
+                "west" => {
+                    let label = match &caps {
+                        Some((emus, flash_runner)) => flash_runner
+                            .as_ref()
+                            .filter(|r| !emus.contains(r))
+                            .map(|r| format!("flash ({r})")),
+                        None => Some("flash (a hardware board)".into()),
+                    };
+                    if let Some(label) = label {
+                        out.commands.push((label, nros_flash));
+                        out.commands.push((BY_WEST.into(), west_flash));
+                        west_note(&mut out);
                     }
-                    None => out
-                        .commands
-                        .push(("flash (a hardware board)".into(), west_flash)),
-                },
+                }
                 _ => flash_line(plan, &mut out),
             }
         }
@@ -839,7 +873,7 @@ mod tests {
                 bin: Some("demo_entry".into()),
             },
         );
-        let s = next_steps(&p, &d, &store_qemu);
+        let s = next_steps(&p, &d, &store_qemu, None);
         let art = "/ws/build/bare-metal/demo_entry/target/thumbv7m-none-eabi/release/demo_entry";
         assert_eq!(s.artifact.as_deref(), Some(Path::new(art)));
         assert_eq!(
@@ -859,7 +893,7 @@ mod tests {
         let missing = |_: &str| QemuBin::Missing {
             why: "provision it with `nros setup --tool qemu`".into(),
         };
-        let s = next_steps(&p, &d, &missing);
+        let s = next_steps(&p, &d, &missing, None);
         assert!(
             s.commands[0]
                 .1
@@ -898,7 +932,7 @@ mod tests {
                 build_dir: Some(dir.clone()),
             },
         );
-        let s = next_steps(&p, &d, &store_qemu);
+        let s = next_steps(&p, &d, &store_qemu, None);
         assert_eq!(
             s.commands,
             vec![(
@@ -917,13 +951,36 @@ mod tests {
         )
         .unwrap();
         std::fs::write(dir.join("zephyr/runners.yaml"), "flash-runner: qemu\n").unwrap();
-        let s = next_steps(&p, &m3, &store_qemu);
+        let s = next_steps(&p, &m3, &store_qemu, None);
         assert_eq!(
             s.commands,
-            vec![(
-                "run (qemu)".to_string(),
-                format!("west build -d {} -t run", dir.display())
-            )]
+            vec![
+                ("run (qemu)".to_string(), "nros run demo:zephyr".to_string()),
+                (
+                    "or, with west".to_string(),
+                    format!("west build -d {} -t run", dir.display())
+                ),
+            ]
+        );
+        // Issue 2809 — with no Zephyr tree found, the bare west line says
+        // what it needs; with one, the line carries it.
+        assert!(
+            s.notes.iter().any(|n| n.contains("ZEPHYR_BASE")),
+            "{:?}",
+            s.notes
+        );
+        let s = next_steps(&p, &m3, &store_qemu, Some(Path::new("/z/3.7/zephyr")));
+        assert_eq!(
+            s.commands[1].1,
+            format!(
+                "ZEPHYR_BASE=/z/3.7/zephyr west build -d {} -t run",
+                dir.display()
+            )
+        );
+        assert!(
+            !s.notes.iter().any(|n| n.contains("ZEPHYR_BASE")),
+            "{:?}",
+            s.notes
         );
 
         // A hardware board: no emulator target, a flash runner.
@@ -931,19 +988,26 @@ mod tests {
         std::fs::write(dir.join("zephyr/runners.yaml"), "flash-runner: jlink\n").unwrap();
         let mut hw = m3.clone();
         hw.run = None;
-        let s = next_steps(&p, &hw, &store_qemu);
+        let s = next_steps(&p, &hw, &store_qemu, Some(Path::new("/z/3.7/zephyr")));
         assert_eq!(
             s.commands,
-            vec![(
-                "flash (jlink)".to_string(),
-                format!("west flash -d {}", dir.display())
-            )]
+            vec![
+                (
+                    "flash (jlink)".to_string(),
+                    "nros flash demo:zephyr".to_string()
+                ),
+                (
+                    "or, with west".to_string(),
+                    format!("ZEPHYR_BASE=/z/3.7/zephyr west flash -d {}", dir.display())
+                ),
+            ]
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The FVP's descriptor says `emulator = "fvp:…"`: `-t run`, and the
-    /// licence/model caveat as a note rather than an invented command.
+    /// The FVP's descriptor says `emulator = "fvp:…"`: `nros run`, then `-t
+    /// run` with the ZEPHYR_BASE it needs (issue 2809), and the licence/model
+    /// caveat as a note rather than an invented command.
     #[test]
     fn the_fvp_board_prints_west_run_and_names_the_model_requirement() {
         let cat = catalog();
@@ -955,10 +1019,11 @@ mod tests {
                 build_dir: Some("/ws/build/zephyr/b__fvp_west".into()),
             },
         );
-        let s = next_steps(&p, &d, &store_qemu);
+        let s = next_steps(&p, &d, &store_qemu, Some(Path::new("/z/3.7/zephyr")));
+        assert_eq!(s.commands[0].1, "nros run demo:fvp-aemv8r-smp");
         assert_eq!(
-            s.commands[0].1,
-            "west build -d /ws/build/zephyr/b__fvp_west -t run"
+            s.commands[1].1,
+            "ZEPHYR_BASE=/z/3.7/zephyr west build -d /ws/build/zephyr/b__fvp_west -t run"
         );
         assert!(s.notes[0].contains("arm-fvp.md"), "{:?}", s.notes);
     }
@@ -977,7 +1042,12 @@ mod tests {
                 owned_entry: None,
             },
         );
-        let s = next_steps(&host, &descriptor(&cat, "freertos-posix"), &store_qemu);
+        let s = next_steps(
+            &host,
+            &descriptor(&cat, "freertos-posix"),
+            &store_qemu,
+            None,
+        );
         assert_eq!(
             s.commands,
             vec![(
@@ -999,6 +1069,7 @@ mod tests {
             &cross,
             &descriptor(&cat, "mps2-an385-freertos"),
             &store_qemu,
+            None,
         );
         assert_eq!(
             s.commands[0].1,
@@ -1035,6 +1106,7 @@ mod tests {
             &plan("nuttx", Driver::Cargo, out("armv7a-nuttx-eabihf")),
             &descriptor(&cat, "nuttx"),
             &store_qemu,
+            None,
         );
         assert_eq!(
             s.commands[0].1,
@@ -1059,6 +1131,7 @@ mod tests {
             ),
             &descriptor(&cat, "nuttx-riscv"),
             &store_qemu,
+            None,
         );
         assert_eq!(
             s.commands[0].1,
@@ -1076,6 +1149,7 @@ mod tests {
             ),
             &descriptor(&cat, "threadx-riscv64"),
             &store_qemu,
+            None,
         );
         let mac = threadx_riscv64_mac(0);
         assert_eq!(
@@ -1098,6 +1172,7 @@ mod tests {
             ),
             &descriptor(&cat, "s32z270"),
             &store_qemu,
+            None,
         );
         assert!(s.commands.is_empty(), "{:?}", s.commands);
         assert!(
@@ -1264,7 +1339,7 @@ mod tests {
                 profile_dir: "debug".into(),
                 bin: Some("e".into()),
             };
-            let s = next_steps(&plan(&name, Driver::Cargo, out), d, &qemu);
+            let s = next_steps(&plan(&name, Driver::Cargo, out), d, &qemu, None);
             // Every word naming a QEMU, in whatever form it was printed
             // (store path, bare, or a paste-time `"$(nros locate …)"`).
             let words = s.commands.iter().flat_map(|(_, c)| c.split_whitespace());
@@ -1336,7 +1411,7 @@ mod tests {
                 build_dir: Some(dir.clone()),
             },
         );
-        let s = next_steps(&p, &d, &store_qemu);
+        let s = next_steps(&p, &d, &store_qemu, None);
         assert_eq!(
             s.commands.first(),
             Some(&(
@@ -1462,7 +1537,7 @@ mod tests {
                             build_dir: Some("/ws/build/demo_west".into()),
                         },
                     );
-                    let s = next_steps(&p, &d, &store_qemu);
+                    let s = next_steps(&p, &d, &store_qemu, None);
                     let (_, printed) = s
                         .commands
                         .iter()
@@ -1526,7 +1601,7 @@ mod tests {
                         bin: Some("app".into()),
                     },
                 );
-                let s = next_steps(&p, &d, &store_qemu);
+                let s = next_steps(&p, &d, &store_qemu, None);
                 let (_, printed) = s
                     .commands
                     .iter()
