@@ -5148,21 +5148,6 @@ fn is_bringup_dir(dir: &std::path::Path) -> bool {
         && !nros_orchestration_ir::leaf_system::is_package_dir(dir)
 }
 
-/// Package mode (phase-445 W5): one plan per package of a bringup-less
-/// workspace, in the dependency order stage 1 already computed — the colcon
-/// shape RFC-0065 D1 names, with RFC-0098 D9's "no root build file".
-///
-/// * a CMake package gets a generated root at `build/<pkg>/CMakeLists.txt`
-///   (the same emitter an image uses, `builder::cmake_root`, with this package
-///   as its only subdir and no SYSTEM) — the nano-ros setup, the workspace's
-///   interface search path and the rclcpp compat surface that a hand-written
-///   umbrella used to spell out — configured into `build/<pkg>/cmake`;
-/// * a cargo package is built by cargo FROM ITS OWN DIRECTORY, so its own
-///   `.cargo/config.toml` and `[patch]` rows apply exactly as `cd <pkg> &&
-///   cargo build` would, into `build/<pkg>/target`;
-/// * an interface package is not built on its own: its bindings are generated
-///   into the packages that use it (`nros sync`, and the Find-stub on the cmake
-///   side), which is why the hand-written roots never built it either.
 /// Package mode's leaf arm: a workspace member that is a single-package leaf
 /// (RFC-0098 D3, `leaf_settings::leaf_package`) with an image to build, planned
 /// by the leaf road exactly as `nros build` run in its directory plans it.
@@ -5202,6 +5187,23 @@ fn plan_leaf_member(
     )
 }
 
+/// Package mode (phase-445 W5): one plan per package of a bringup-less
+/// workspace, in the dependency order stage 1 already computed — the colcon
+/// shape RFC-0065 D1 names, with RFC-0098 D9's "no root build file".
+///
+/// * a CMake package gets a generated root at `build/<pkg>/CMakeLists.txt`
+///   (the same emitter an image uses, `builder::cmake_root`, with this package
+///   as its only subdir and no SYSTEM) — the nano-ros setup, the workspace's
+///   interface search path and the rclcpp compat surface that a hand-written
+///   umbrella used to spell out — configured into `build/<pkg>/cmake`;
+/// * a cargo package that is a single-package leaf goes the leaf road
+///   ([`plan_leaf_member`]);
+/// * any other cargo package is built by cargo FROM ITS OWN DIRECTORY, so its own
+///   `.cargo/config.toml` and `[patch]` rows apply exactly as `cd <pkg> &&
+///   cargo build` would, into `build/<pkg>/target`;
+/// * an interface package is not built on its own: its bindings are generated
+///   into the packages that use it (`nros sync`, and the Find-stub on the cmake
+///   side), which is why the hand-written roots never built it either.
 fn plan_packages(
     root: &std::path::Path,
     found: &crate::builder::discover::Discovered,
