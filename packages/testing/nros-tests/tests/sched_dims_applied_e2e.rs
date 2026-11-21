@@ -1041,7 +1041,15 @@ fn nuttx_level_budget_overrun_is_throttled_by_the_kernel() {
         ];
         let mut q = QemuProcess::start_nuttx_virt(&entry, true)
             .unwrap_or_else(|e| panic!("[nuttx-arm {}] boot NuttX QEMU: {e}", lang.as_str()));
-        let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+        // The absence check below means the whole run, not the window up to
+        // the last marker: a wait returns only through its satisfying line
+        // (issue 2816), so read what came after it before stopping the guest.
+        let log = q
+            .wait_for_output_each(&groups, Duration::from_secs(120))
+            .map(|mut log| {
+                log.push_str(&q.read_pending());
+                log
+            });
         q.kill();
         let log = log.unwrap_or_else(|e| {
             panic!(

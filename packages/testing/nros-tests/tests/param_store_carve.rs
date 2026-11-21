@@ -85,6 +85,9 @@ fn carve_and_deliver(
         "{platform:?}: no `{PARAM_STORE_CARVED_MARKER}` line — the store took the heap road \
          (or the board dropped the `nros_log` record). Console:\n{console}"
     );
+    // Reads only through the carved line (issue 2816) and that is the whole
+    // window: the executor builds its store once, carved OR refused, so a
+    // refusal cannot follow a carve.
     assert!(
         !console.contains(PARAM_STORE_REFUSED_MARKER),
         "{platform:?}: the parameter store was refused. Console:\n{console}"
