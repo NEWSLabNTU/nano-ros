@@ -68,12 +68,14 @@ BUILD_ASSERT(
 
 /* A declared level stack follows the same placement rule as the
  * shim's pool (`nros_sched_task_stacks`): CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM
- * puts both in the devicetree's "DTCM" region (the shim refuses a devicetree
- * without one, and CONFIG_USERSPACE). Without the knob it is the stock
+ * puts both in the devicetree's "DTCM" region, each in its own input section
+ * under `.nros_dtcm_stacks`, which the module's linker snippet places there
+ * without KEEP, so an unused one is dropped (the shim refuses a devicetree
+ * without the region, and CONFIG_USERSPACE). Without the knob it is the stock
  * `K_THREAD_STACK_DEFINE`. */
 #ifdef CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM
 #define NROS_SCHED_TASK_STACK_DEFINE_(sym, size)                                                   \
-    Z_KERNEL_STACK_DEFINE_IN(sym, size, __attribute__((section("DTCM"))))
+    Z_KERNEL_STACK_DEFINE_IN(sym, size, __attribute__((section(".nros_dtcm_stacks." #sym))))
 #else
 #define NROS_SCHED_TASK_STACK_DEFINE_(sym, size) K_THREAD_STACK_DEFINE(sym, size)
 #endif

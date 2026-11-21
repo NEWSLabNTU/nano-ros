@@ -603,16 +603,22 @@ int nros_zephyr_report_sched_task_vs_transport(const char* sched_task, size_t sc
  *
  * `NROS_ZEPHYR_STACKS_IN_DTCM` gates it because the region is a property of
  * the SoC, not of Zephyr: a part without a DTCM (or one whose DTCM another
- * component already claims) must keep the default placement. The section name
- * comes from the devicetree `zephyr,memory-region = "DTCM"`, which is what
- * generates the linker region.
+ * component already claims) must keep the default placement. The region comes
+ * from the devicetree `zephyr,memory-region = "DTCM"`.
  *
- * DTCM is NOLOAD, which is correct for stacks -- they are uninitialised. */
+ * Issue 2793 -- each array is its own input section,
+ * `.nros_dtcm_stacks.<array>`, which `zephyr/nros_dtcm_stacks.ld` collects into
+ * a NOLOAD output section in that region with no KEEP. The output section
+ * Zephyr generates for the region (`section("DTCM")`, which these arrays used)
+ * KEEPs all it collects, so an unused pool there was never dropped.
+ *
+ * NOLOAD is correct for stacks: they are uninitialised. */
 /* Issue 2084 -- whether the devicetree really generates a "DTCM" region.
- * Without one, `section("DTCM")` names an input section no output section
- * collects: the linker places it as an ORPHAN wherever it likes, and the link
- * succeeds with at most a warning. So a knob that asks for DTCM on such a
- * board is refused here, at compile time, by name. One `+ 1` per okay node
+ * Without one, the module's `> DTCM` output section names a region the
+ * linker does not have, and the link fails far from the cause (before issue
+ * 2793, the input section was an ORPHAN the linker placed wherever it liked).
+ * So a knob that asks for DTCM on such a board is refused here, at compile
+ * time, by name. One `+ 1` per okay node
  * whose `zephyr,memory-region` is exactly "DTCM" (the token is pasted onto a
  * prefix only that spelling defines). */
 #define NROS_ZEPHYR_DT_REGION_IS_DTCM_DTCM 1
@@ -639,7 +645,7 @@ BUILD_ASSERT(!IS_ENABLED(CONFIG_USERSPACE),
 #if defined(NROS_ZEPHYR_STACKS_IN_DTCM) && NROS_ZEPHYR_STACKS_IN_DTCM
 Z_KERNEL_STACK_ARRAY_DEFINE_IN(nros_thread_stacks, NROS_ZEPHYR_MAX_THREADS,
                                NROS_ZEPHYR_STACK_SIZE,
-                               __attribute__((section("DTCM"))));
+                               __attribute__((section(".nros_dtcm_stacks.nros_thread_stacks"))));
 #else
 K_THREAD_STACK_ARRAY_DEFINE(nros_thread_stacks, NROS_ZEPHYR_MAX_THREADS, NROS_ZEPHYR_STACK_SIZE);
 #endif
@@ -900,7 +906,8 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
  * `nros_sched_task_stacks` is the only referent of this array, and the sole path that
  * reaches it is `nros_zephyr_sched_task_create`. In an image that declares no
  * sched task nothing calls that function, so --gc-sections (on in every Zephyr link)
- * drops the section. Measured over the 91 built images in this tree: 4 carry
+ * drops the section -- in sram0, and in DTCM since issue 2793 (Zephyr's own DTCM
+ * output section is KEEP; the module's `.nros_dtcm_stacks` is not). Measured over the 91 built images in this tree: 4 carry
  * `nros_sched_task_stacks`, 87 do not, and the 4 are EXACTLY the four realtime-entry
  * images that declare sched tasks -- the correspondence is total, with no image
  * paying for a pool it does not use. On mps2_an385 the section is listed in the
@@ -929,11 +936,12 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
  * slot in SRAM and overflowed RAM by 30,028 B, while 40 KiB of DTCM sat free
  * beside it. A level stack is the same tenant as a task stack (CPU-private,
  * never a DMA target), so it moves with the task stacks unless an image whose
- * DTCM is already claimed turns the sched task knob off. Same section, same
- * NOLOAD placement, same devicetree check (above). */
+ * DTCM is already claimed turns the sched task knob off. Same output section
+ * (its own input section, so an image with no sched task drops it: issue
+ * 2793), same NOLOAD placement, same devicetree check (above). */
 #if defined(NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM) && NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM
 Z_KERNEL_STACK_ARRAY_DEFINE_IN(nros_sched_task_stacks, NROS_ZEPHYR_MAX_SCHED_TASKS, NROS_ZEPHYR_SCHED_TASK_STACK_SIZE,
-                               __attribute__((section("DTCM"))));
+                               __attribute__((section(".nros_dtcm_stacks.nros_sched_task_stacks"))));
 #else
 K_THREAD_STACK_ARRAY_DEFINE(nros_sched_task_stacks, NROS_ZEPHYR_MAX_SCHED_TASKS, NROS_ZEPHYR_SCHED_TASK_STACK_SIZE);
 #endif

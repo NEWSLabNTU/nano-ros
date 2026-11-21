@@ -27,6 +27,11 @@
 //!   S32K344's RAM by 30,028 B. The `build-cortex-m-c-sched-task-stacks-dtcm-zenoh`
 //!   row spawns one level on the pool for an mps2_an385 given a "DTCM" region,
 //!   and the test requires both arrays inside the DTCM output section.
+//! * Issue 2793 -- that output section must be the MODULE's
+//!   (`zephyr/nros_dtcm_stacks.ld`), never the one Zephyr generates for the
+//!   region, which is KEEP: an image with no sched task then still carried the
+//!   whole pool. The nucleo-f767zi's serial C talker (a board that turns the
+//!   knob on, an image with no sched task) must define no pool at all.
 //!
 //! Prerequisite: `just zephyr build-fixtures` (the `build-cortex-m-*` leaves).
 //!
@@ -37,6 +42,7 @@ use nros_tests::{
     fixtures::{
         RequireFixture, Rmw, build_zephyr_cortex_m_example,
         build_zephyr_cortex_m_rust_serial_talker, build_zephyr_cortex_m_sched_task_stacks_dtcm,
+        build_zephyr_nucleo_c_serial_talker,
     },
 };
 use std::path::Path;
@@ -132,26 +138,48 @@ fn serial_only_rust_image_links_without_ip_stack() {
     }
 }
 
+/// The module's DTCM output section (`zephyr/nros_dtcm_stacks.ld`): placed
+/// `> DTCM`, so the link itself fails unless the devicetree has the region.
+const NROS_DTCM_SECTION: &str = ".nros_dtcm_stacks";
+
+/// `array` is defined and sits inside the module's DTCM output section, not in
+/// the KEEP output section Zephyr generates for the region (`DTCM`), which no
+/// linker can trim (issue 2793).
+fn assert_in_nros_dtcm(elf: &Elf, elf_path: &Path, array: &str, why_absent: &str) {
+    let sym = elf.defined(array).unwrap_or_else(|| {
+        panic!(
+            "{}: `{array}` is not in the image -- {why_absent}",
+            elf_path.display()
+        )
+    });
+    let sec = &elf.sections[sym.shndx as usize];
+    assert!(
+        sec.name == NROS_DTCM_SECTION && (sec.addr..sec.addr + sec.size).contains(&sym.value),
+        "{}: `{array}` at {:#x} is in `{}`, not in `{NROS_DTCM_SECTION}` -- \
+         CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM (and the sched task knob that follows it) must \
+         place it in the module's DTCM section (issues 2084, 2793)",
+        elf_path.display(),
+        sym.value,
+        sec.name,
+    );
+}
+
 /// Issue 2084 -- with `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM`, the sched task pool and an
-/// entry-declared level stack sit in the DTCM output section beside the task
-/// stacks.
+/// entry-declared level stack sit in DTCM beside the task stacks (issue 2793:
+/// in the module's own DTCM output section).
 #[test]
 fn sched_task_stack_pool_follows_stacks_in_dtcm() {
     let elf_path = build_zephyr_cortex_m_sched_task_stacks_dtcm().require(
         "zephyr cortex-m sched-task-stacks-in-DTCM image (build-cortex-m-c-sched-task-stacks-dtcm-zenoh)",
     );
     let elf = read_elf(&elf_path);
-    let dtcm = elf
-        .sections
-        .iter()
-        .find(|s| s.name == "DTCM")
-        .unwrap_or_else(|| {
-            panic!(
-                "{}: no `DTCM` output section -- the fixture's app.overlay no longer gives \
-                 mps2_an385 a \"DTCM\" region, so this image tests nothing",
-                elf_path.display()
-            )
-        });
+    assert!(
+        elf.sections.iter().any(|s| s.name == NROS_DTCM_SECTION),
+        "{}: no `{NROS_DTCM_SECTION}` output section -- zephyr/CMakeLists.txt no longer adds \
+         zephyr/nros_dtcm_stacks.ld, or the fixture no longer turns the knob on, so this \
+         image tests nothing",
+        elf_path.display()
+    );
     // The shim's sched task pool, a level stack declared the way a generated C/C++
     // entry declares one (`NROS_SCHED_TASK_MEMORY_DEFINE`), and the task stacks.
     for array in [
@@ -159,25 +187,39 @@ fn sched_task_stack_pool_follows_stacks_in_dtcm() {
         "__nros_sched_task_stack_1",
         "nros_thread_stacks",
     ] {
-        let sym = elf.defined(array).unwrap_or_else(|| {
-            panic!(
-                "{}: `{array}` is not in the image -- the fixture no longer spawns both levels \
-                 (an unused stack is dropped by --gc-sections) or no longer opens a \
-                 transport task",
-                elf_path.display()
-            )
-        });
-        let sec = &elf.sections[sym.shndx as usize];
-        assert!(
-            sec.name == "DTCM" && (dtcm.addr..dtcm.addr + dtcm.size).contains(&sym.value),
-            "{}: `{array}` at {:#x} is in `{}`, not in DTCM [{:#x}, {:#x}) -- \
-             CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM (and the sched task knob that follows it) must place \
-             it there (issue 2084)",
-            elf_path.display(),
-            sym.value,
-            sec.name,
-            dtcm.addr,
-            dtcm.addr + dtcm.size
+        assert_in_nros_dtcm(
+            &elf,
+            &elf_path,
+            array,
+            "the fixture no longer spawns both levels (an unused stack is dropped by \
+             --gc-sections) or no longer opens a transport task",
         );
     }
+}
+
+/// Issue 2793 -- an image with `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` that declares
+/// no sched task carries no sched task pool. Zephyr's generated `DTCM` output
+/// section is KEEP, so while the pools were placed there the nucleo-f767zi
+/// kept 65,792 dead bytes of its 128 KiB DTCM. The witness is the nucleo
+/// board's serial C talker: its board turns the knob on, and the talker spawns
+/// the transport's tasks and no sched task.
+#[test]
+fn an_image_without_sched_tasks_carries_no_pool_in_dtcm() {
+    let elf_path = build_zephyr_nucleo_c_serial_talker()
+        .require("zephyr/c/talker for nucleo_f767zi (image nucleo_serial)");
+    let elf = read_elf(&elf_path);
+    assert_in_nros_dtcm(
+        &elf,
+        &elf_path,
+        "nros_thread_stacks",
+        "the talker opens no transport task, or the nucleo board no longer sets \
+         CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM, so this image tests nothing",
+    );
+    assert!(
+        elf.defined("nros_sched_task_stacks").is_none(),
+        "{}: defines `nros_sched_task_stacks` although the talker declares no sched task \
+         -- the pool is in a section --gc-sections cannot trim (Zephyr's KEEP `DTCM`), \
+         or something now references the pool spawn path",
+        elf_path.display()
+    );
 }
