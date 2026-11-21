@@ -1019,7 +1019,7 @@ model that sizes the image for components it no longer has.
 
 ## Amendment 2026-11-20: an owned entry with several executables (D20)
 
-**Status: Accepted (user ruling, 2026-11-20). Implemented in phase-583.**
+**Status: Accepted (user ruling, 2026-11-20). Implemented (2026-11-22, phase-583 W1–W5).**
 
 D19 made one owned entry serve several images, but each image runs one
 program: whatever the entry's own `CMakeLists.txt` builds. A package that
