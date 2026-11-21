@@ -1,11 +1,14 @@
 # Phase 585 — A board's status reports what its CI lane said
 
 **Status (2026-11-22). DRAFT: design only, awaiting the user's decisions on
-[RFC-0114 D13](../design/0114-board-support-registry-primitives.md#amendment-2026-11-22-draft-d13--a-status-reports-what-the-lane-said-not-only-that-it-exists).
-No item is started. Owner: nros 243.** Implements RFC-0114 D13:
-- every automated lane records an outcome per registry row per run;
-- the status word degrades when the row's lane has not passed recently;
-- the book and the CLI show the same, without committing CI output.
+[RFC-0114 D13](../design/0114-board-support-registry-primitives.md#amendment-2026-11-22-draft-d13--a-boards-status-is-what-ran-collected-automatically).
+No item is started. Owner: nros 243.** Implements RFC-0114 D13, whose goal
+is the user's: no manual maintenance of board status.
+- a test's board is collected from the coordinate it resolves, with no
+  annotation, into one results file per run;
+- `runs`, `cadence`, `last_run` and breadth's cells are observed, not typed;
+- the job summary, the book and `nros board list --status` report the same
+  records.
 
 ## Why
 
@@ -18,84 +21,104 @@ No item is started. Owner: nros 243.** Implements RFC-0114 D13:
 
 ## Decisions it waits on
 
-The four in RFC-0114 D13's "Decisions for the user": qualifier or degraded
-word (and the window), the deploy-time render, row or cell outcomes, and the
-"Not run since" reading. The items below assume the recommendations; a
-different ruling changes W3 and W4 only.
+The four in RFC-0114 D13's "Decisions for the user": retiring the typed
+evidence fields, degrading the word (and the window), where manual reports
+live, and the deploy-time render (and N). The items assume the
+recommendations; a different ruling changes W3, W5 and W6 only.
 
 ## Work items
 
 Each item is one PR, claimed with `just claim phase-585-wN` before it starts,
 in the order below.
 
-### W1 — The collector and its results artifact
+### W1 — The evidence ledger, from the resolver
 
 - **Status:** OPEN
-- **What:** `scripts/ci/board-results.py`: read one workflow run's jobs and
-  steps (`gh run view --json jobs`), map each job to its registry row by the
-  derivation that named it, classify it with `nightly-triage.py`'s step
-  classifier (moved into a shared `scripts/lib/` module, not copied), and
-  write `board-results.json` (schema 1, keyed by `row_name`). A final
-  `board-results` job in `nightly.yml`, `weekly.yml` and `merge-runtime.yml`
-  (`needs:` every board job, `if: always()`) runs it and uploads the
-  artifact, retained 90 days. An unmapped job fails the collector, naming
-  it.
-- **Acceptance:** the self-test over recorded run JSON (a pass, a verdict
-  fail, a set-up fail, a cancelled job, a job that never started, an
-  unmapped job) gives the expected file; one real nightly produces it.
+- **What:** every `fixtures::lane` attribution entry point (`attribute_path`,
+  `attribute_workspace_id`, and the interop `assert_test_bound`) appends one
+  JSONL line (test name, row, coordinate) to `$NROS_TEST_EVIDENCE_DIR` when
+  it is set. No test changes.
+- **Acceptance:** a self-test runs each entry point under a temp ledger and
+  finds exactly one line each; a real `cargo nextest` of one emulator test
+  writes its coordinate.
 
-### W2 — The derivation, in one place
+### W2 — The collector, the results file and the job summary
 
 - **Status:** OPEN
-- **What:** `board_registry.outcome_status(row, history, today)`: the D13 Q3
-  rule (window, "Failing since", "Not run since"). The generator writes its
-  thresholds (`outcome_window`) into `board-support-status.json`. A shared
-  fixture of histories and expected words is read by the Python self-test and
-  by a Rust test of the CLI's reader.
-- **Acceptance:** both readers pass the same fixture; a mutation of the
-  window in one fails the other's test.
+- **What:** `scripts/ci/board-results.py` joins the junit with the ledgers,
+  maps each coordinate to its registry row (refusing one with none), adds the
+  job-level no-verdict signal (nightly-triage's step classifier, moved to
+  `scripts/lib/`), writes `board-results.json` (D13.3) and a per-board table
+  into `$GITHUB_STEP_SUMMARY`. A final `board-results` job in `nightly.yml`,
+  `weekly.yml`, `merge-runtime.yml` and `host-tests.yml` runs it and uploads
+  the file (90 days). The board jobs set `NROS_TEST_EVIDENCE_DIR` and upload
+  the ledger with the junit.
+- **Acceptance:** the self-test over recorded inputs (a pass, a failed cell,
+  a set-up failure, a cancelled job, an unmapped coordinate, `Linux`
+  evidenced by another job); one real nightly's summary shows every board.
 
-### W3 — The book: deploy-time render
+### W3 — The derivation, and the typed fields retired
 
 - **Status:** OPEN
-- **What:** the generator writes outcome marker regions on
-  `supported-boards.md` and `support-status.md` only (D13 Q4's table). An
-  mdBook preprocessor fills them from the results, through W2, with the
-  agreed wording; with no results it writes "Last run: not recorded in this
-  build of the book." `publish.yml`'s `deploy` gains a `workflow_run`
-  trigger on the nightly and the weekly, downloads their newest results
-  (enough runs to find a streak's start, at most 30), and publishes the
-  merged `board-status.json` at the site root. `board-support-levels.md`
-  defines the outcome lines and degraded words.
+- **What:** `board_registry.status_from_evidence(row, records, today)`: D13.5's
+  words and D13.4's observed `runs`, `cadence`, `last_run` and breadth cells,
+  with `outcome_window` as a registry value. A shared fixture (histories and
+  expected words) run by the Python self-test and a Rust test of the CLI's
+  reader. Then `runs`, `cadence` and `last_run` are deleted from every row,
+  and `check-board-registry` refuses them.
+- **Acceptance:** both readers pass the fixture; the registry has no typed
+  evidence field; with no records every view says "not recorded".
+
+### W4 — The book, rendered at deploy
+
+- **Status:** OPEN
+- **What:** marker regions on `support-status.md` (last N runs as marks,
+  last red date and why, the labelled claim, the cells that ran) and
+  `supported-boards.md` (the word and a "Last run:" line), filled by an mdBook
+  preprocessor through W3; the agreed wording; no region on the levels page,
+  starters, Tutorial or release notes. `publish.yml`'s `deploy` gains a
+  `workflow_run` trigger on the nightly, the weekly and `host-tests`, collects
+  the newest results and the `board-evidence` branch, and publishes
+  `board-status.json` at the site root.
 - **Acceptance:** `just book` builds with and without results; a recorded
-  red history renders "Failing since <date>" on `supported-boards.md` and
-  leaves the starters and the levels page unchanged.
+  history renders `✓✓✗✓✓✓` and "Failing since <date>" for that board only.
 
-### W4 — The CLI, offline
-
-- **Status:** OPEN
-- **What:** `record-lane-runs.py` (issue 2325) writes the same per-row
-  outcome history into `board-support-runs.json` at release; `nros board
-  list|show` and `nros doctor --report` apply W2's rule to it with today's
-  date. A checkout says "outcome not recorded in this checkout". `--online`
-  reads the published `board-status.json`; nothing fetches implicitly.
-- **Acceptance:** an installed release with a red history shows "Failing
-  since <date>" offline; `--online` and offline agree on one history.
-
-### W5 — The consistency gate
+### W5 — The CLI: `nros board list --status`
 
 - **Status:** OPEN
-- **What:** extend `check-board-registry` / `check-cadence-jobs` with D13
-  Q6's checks: every automated row has a job the collector maps; every board
-  job maps to one row; every fixture and `matrix::CELLS` platform has a row;
-  the outcome markers are on exactly the pages Q4 names.
-- **Acceptance:** each check has a negative control (a row with no job, a
-  job with no row, a fixture platform with no row, a starter with a marker),
-  and the tree passes.
+- **What:** `record-lane-runs.py` writes the results history into
+  `board-support-runs.json` at release; `nros board list --status`, `show` and
+  `nros doctor --report` apply W3's derivation offline; `--online` reads the
+  published `board-status.json`.
+- **Acceptance:** an installed release shows the same word and marks as the
+  book for one recorded history; a checkout says "not recorded in this
+  checkout".
+
+### W6 — Manual runs: `nros board report`
+
+- **Status:** OPEN
+- **What:** `nros board report <board>` runs the board's declared cells
+  locally through the same resolver and writes a `report`-source results
+  file; `--submit` adds it to the `board-evidence` branch. W3 reads it for
+  `last_run` and `runs = hardware`.
+- **Acceptance:** a report on a host board produces a record identical in
+  shape to CI's; the PX4 SITL row's "Boots, manual (date)" comes from a
+  report, with no typed date.
+
+### W7 — The consistency gate
+
+- **Status:** OPEN
+- **What:** D13.8's static checks on the fast line: every fixture and cell
+  platform has a row; every non-infra row has a declared cell; the ledger
+  self-test; the collector self-test; the markers on exactly D13.7's pages.
+- **Acceptance:** each check has a negative control (a fixture platform with
+  no row, a row with no cell, an attribution path that writes no line, a
+  marker on a starter), and the tree passes.
 
 ## Not in this phase
 
-- Per-cell outcomes from the junit (D13 Q1's later refinement).
-- Any outcome typed into the registry.
+- Any outcome, cadence or date typed into the registry.
+- Proving a `report` record was made on real hardware: it is trusted as its
+  submitter is, as the typed `last_run` was.
 - A hardware runner: `runs = "hardware"` rows get outcomes the same way once
   a lane exists.

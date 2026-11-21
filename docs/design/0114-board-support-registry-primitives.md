@@ -318,236 +318,280 @@ readers, no tier number to decode.
   the matrix is still one declaration, now generated from the board registry
   plus the family tables rather than typed in Rust.
 
-## Amendment 2026-11-22 (Draft): D13 — a status reports what the lane SAID, not only that it exists
+## Amendment 2026-11-22 (Draft): D13 — a board's status is what ran, collected automatically
 
 > **Draft, for user decisions** (relayed by the nros 241 manager). Design
 > only; [phase-585](../roadmap/phase-585-board-status-from-ci-outcomes.md)
 > carries the work items once the questions below are ruled.
 
+**The goal (user):** no manual maintenance of board status. A test's board
+is collected automatically from what the test already resolves, the status
+follows from what ran, and the results are reported where people look: the
+run's own summary, a results file, the book, and the CLI.
+
 ### The gap
 
-D10's status word is derived from the registry's claim and from lanes that
+D10 derives the status word from the registry's CLAIM and from lanes that
 EXIST: `cadence = "daily"` needs a nightly job for the row, and
 `check-board-registry` / `check-cadence-jobs` hold that. Nothing asks whether
-the job PASSES. On 2026-11-22 the nightly's `ThreadxLinux` job was red while
+the lane PASSED. On 2026-11-22 the nightly's `ThreadxLinux` job was red while
 `board-support-levels.md` said ThreadX-on-Linux is "Verified on host
-(daily)"; 2026-11-18 and 2026-11-19 had other reds. The word was true of the
-lane and false of the board.
+(daily)". Over the last six nightlies (newest first, per-board job
+conclusion, read by hand): `ThreadxLinux` ✗✓✓✓✓✓, the Zephyr `ci-both` job
+✗✓✓✓✓✓, `FreertosMps2` ✓✓✓✓✓✗, every other board ✓. Two boards, `Linux` and
+`ZephyrNativeSim`, have no nightly job of their own: their cells ride other
+lanes, so a board-to-JOB map cannot see them at all.
 
-What already exists, and is reused rather than replaced:
+What already exists, and is reused:
 
-- every automated cadence runs ONE job per registry row: the nightly per
-  `matrix_platform` (phase-558, `scripts/ci/nightly-boards.py`), the Zephyr
-  rows' 05:00 jobs, `merge-runtime` per `matrix.board`, and the weekly per
-  `[[probe]]` track, each of which names its `row`;
-- `scripts/ci/nightly-triage.py` classifies a failed job by its failing STEP
-  into a VERDICT (build, test, e2e, ...) or NO VERDICT (set-up, provisioning,
-  a jobserver stall), with a self-test, and issue 1754's step markers are
-  shared with `lane-stage.py`;
-- `scripts/release/record-lane-runs.py` (issue 2325) records, when a release
-  is cut, each lane's newest run that reached a verdict with its per-job
-  conclusions, into `packages/boards/board-support-runs.json`, which
+- the fixture resolver attributes every artifact a test resolves to its
+  manifest row and coordinate (`fixtures::lane::attribute_path`,
+  `attribute_workspace_id`, over `fixtures-manifest.py`'s `row_coord()` /
+  `row_artifact_root()`), for lane skipping; an interop test states its
+  coordinates (`interop::assert_test_bound`);
+- `scripts/ci/nightly-triage.py` classifies a failed job's failing STEP as a
+  VERDICT or NO VERDICT ("a never-ran is not a fail");
+- `scripts/release/record-lane-runs.py` (issue 2325) records each lane's
+  newest verdict run into `board-support-runs.json` at release, which
   `nros board show` and `nros doctor --report` read offline.
 
-So the missing parts are an outcome per ROW per RUN, a history of them, a
-status that reads them, and a book that can show them without committing CI
-output.
+### D13.1 — Evidence comes from what a test resolves, never from a list
 
-### Q1 — What counts as a row's outcome
+A test's board is the registry row of the coordinate it resolves. When a
+test resolves a fixture, the resolver already knows the row and coordinate;
+it now also appends one line to the run's evidence ledger
+(`$NROS_TEST_EVIDENCE_DIR`, one JSONL file per test process):
 
-**Recommended:** a row's outcome for one run of its lane is one of four,
-decided from that row's job(s) by the triage classifier, never typed:
+```json
+{"test": "nros-tests::emulator::threadx_linux_pubsub", "row": "threadx-linux-c-zenoh-talker",
+ "coord": {"platform": "threadx-linux", "lang": "c", "rmw": "zenoh", "kind": "pubsub"}}
+```
+
+The test's name is the harness's (the test thread's name; nextest runs one
+test per process). Interop tests add their `assert_test_bound` coordinates
+the same way. No test carries an annotation, and no list names tests.
+
+After the run, the collector (D13.3) joins the ledger with the junit: each
+test that resolved a coordinate yields one **evidence record** per
+coordinate:
+
+| Field | From |
+| --- | --- |
+| `board` | the registry row whose `matrix_platform` is the coordinate's platform |
+| `cell` | the coordinate (platform, lang, rmw, kind) |
+| `test` | the ledger |
+| `verdict` | the junit: `passed`, `failed`, or `skipped:lane` (a lane skip is not evidence) |
+| `run`, `workflow`, `event`, `sha`, `date` | the CI run (or the local tool, D13.5) |
+| `source` | `ci` or `report` |
+
+A coordinate whose platform has no registry row FAILS the collector, naming
+the test and the coordinate. A board is evidenced by whichever lane ran its
+cells, so `Linux` (host-tests, merge lanes) and `ZephyrNativeSim` (the Zephyr
+jobs) are covered with no job of their own.
+
+A job that never reached its tests leaves no records. The collector also
+classifies every job by its failing step (nightly-triage's rule, moved into a
+shared module), so a board whose cells were EXPECTED in that job (D13.4) and
+are absent is recorded as `no-verdict` with the job's reason, not as
+nothing.
+
+### D13.2 — A board's outcome per run
 
 | Outcome | Condition |
 | --- | --- |
-| `passed` | every job of the row in the run concluded `success` |
-| `failed` | some job of the row failed in a VERDICT step |
-| `no-verdict` | the row's jobs failed only in NO VERDICT steps, or were cancelled or timed out before a verdict step ran |
-| `not-run` | the run has no job for the row (skipped, filtered, or the workflow did not run) |
+| `passed` | at least one record for the board, and none `failed` |
+| `failed` | some record for the board `failed` (the failing cells are listed) |
+| `no-verdict` | no records, and a job that would have run its cells failed in a NO VERDICT step or was cancelled |
+| `not-run` | no records, and no job of the run would have run its cells |
 
-A row's jobs are its cadence's job plus every `roads` lane (D10's 2026-11-13
-amendment), because a road is evidence of reach and its failure is the
-board's. `no-verdict` and `not-run` are never a failure: they mean the
-evidence is missing, which is a different statement, and the status says so
-(Q3). This is `just nightly-triage`'s rule ("a never-ran is not a fail")
-applied per row.
+### D13.3 — The results file, one per run
 
-*Alternative considered:* per CELL outcomes from the junit (each test's
-coordinate). Finer, and it would say "service failed, pubsub passed", but a
-junit row maps to a coordinate, not a board, through `row_coord()`, and the
-`[SKIPPED:lane]` rewrite makes junit counts lane-dependent. Recorded as a
-later refinement: the record has room for a `cells` list, the status reads
-only the row outcome.
-
-### Q2 — How CI records it
-
-**Recommended: one collector job per workflow run, reading the run through
-the API.** `nightly.yml`, `weekly.yml` and `merge-runtime.yml` gain a final
-job, `needs:` every board job, `if: always()`, that runs
-`scripts/ci/board-results.py`. It reads the run's jobs and steps (`gh run
-view --json jobs`), maps each job to its row by the same derivation that
-named it (nightly-boards.py, the probe tracks' `row`, the merge board list),
-classifies each with the triage classifier, and uploads one artifact,
-`board-results.json`:
+The machine-readable input to every view. A final `board-results` job in
+`nightly.yml`, `weekly.yml`, `merge-runtime.yml` and `host-tests.yml`
+(`needs:` every job, `if: always()`) runs `scripts/ci/board-results.py`: it
+downloads the run's junit and evidence ledgers, reads the jobs and steps
+(`gh run view --json jobs`), and uploads `board-results.json`:
 
 ```json
 {
-  "schema": 1, "workflow": "nightly.yml", "run": 123, "url": "...",
-  "event": "schedule", "sha": "...", "date": "2026-11-22",
-  "rows": {
-    "threadx-linux@ThreadxLinux": {
-      "outcome": "failed", "jobs": ["ThreadxLinux"],
-      "step": "Run tests", "class": "verdict"
+  "schema": 1, "source": "ci", "workflow": "nightly.yml", "event": "schedule",
+  "run": 123, "url": "...", "sha": "...", "date": "2026-11-22",
+  "boards": {
+    "threadx-linux": {
+      "outcome": "failed",
+      "cells": [{"cell": "threadx-linux/c/zenoh/pubsub", "test": "...", "verdict": "failed"}],
+      "job": "ThreadxLinux", "step": "Run tests", "class": "verdict"
     }
   }
 }
 ```
 
-Keyed by D12's `row_name`, the key `board-support-status.json` already uses.
-A job the collector cannot map to a row FAILS the collector, naming it (so a
-new job cannot report into nothing); a row with no job in the run is
-`not-run`.
+Kept 90 days as an artifact. It is never committed to `main`.
 
-*Alternative considered:* each board job writes its own record in an
-`if: always()` step from `${{ toJSON(steps) }}`. It needs an `id` on every
-step and an edit to every job, and a job that never started writes nothing,
-which is exactly the `no-verdict` case it must report. The collector sees
-every job, started or not, from one place.
+### D13.4 — What the registry keeps, and what becomes observed
 
-### Q3 — How the status word uses it
+The registry keeps only what cannot be observed: what the board IS.
 
-The claim stays where it is: the registry row, and the D10 word derived from
-it ("Verified on host (daily)"). The outcome is a second, derived input, read
-from the newest results; no file a person edits holds an outcome. Two
-options:
+| Field (today) | After D13 | Why |
+| --- | --- | --- |
+| `crate`, names, `matrix_platform`, `board_keys`, `external`, `flavour` | **kept** | identity: which package, which platform token. Nothing runs to tell you this |
+| `infra` | **kept** | a crate that is not a board |
+| `breadth = "witness"` / `"inherits <p>"` | **kept** | a claim that two boards share a code path. No run can show that two code paths are the same |
+| `emulator` | already **observed** from the descriptor (RFC-0118 D4) | unchanged |
+| `runs` | **observed**: `host` / `emulator` from the runner the evidence used (the descriptor's `[board.run]`), `hardware` only from a `report` record made on hardware (D13.5) | the evidence says where it ran |
+| `cadence` | **observed**: `merge` if a `merge_group` run produced passing evidence in the window, else `daily` if a scheduled nightly did, else `weekly` if a scheduled weekly did, else `manual` if a `report` record did, else none | the cadence is which scheduled lane actually delivered results |
+| `last_run` | **observed**: the date of the newest `report` record | the hand-typed date is the manual maintenance this removes |
+| breadth's cells | **observed**: the cells that PASSED in the window (D11 derives them from DECLARED cells today) | breadth is what ran, not what was declared |
+| `roads` | **kept** as the expected lanes, checked against evidence | a road is how a board is reached; its evidence is its lane's records |
 
-- **(a) A qualifier only.** The word is unchanged and every view adds "last
-  run: failed, 2026-11-22 (failing since 2026-11-20, 3 runs)". Honest and
-  cheap, but a reader scanning the levels table still reads "Verified".
-- **(b) The word degrades, like a stale manual row (recommended).** D10
-  already degrades a manual row past `manual_stale_days` to **Builds** in
-  every view, without editing the row. The same rule for automated rows:
-  - **Verified … (cadence)** needs a `passed` within the row's freshness
-    window: `outcome_window` cadence periods (a top-level registry value,
-    3 to start: three nightlies, three weeklies);
-  - otherwise, if the newest verdict is `failed`, the word is **Failing
-    since <date>**, the date of the first `failed` in the current streak of
-    verdict runs;
-  - otherwise (only `no-verdict` / `not-run` since the last `passed`), the
-    word is **Not run since <date>**, the date of that last `passed`.
-  On an audience page the degraded word REPLACES the claim (never struck
-  through: struck text is noise to a skimming reader and to a screen reader).
-  The claim stays on the board's support-status evidence section as a
-  labelled line, "Claimed: Verified on host (daily)", so a maintainer sees
-  what the row promises beside what it delivered.
+So the typed evidence fields (`runs`, `cadence`, `last_run`) leave the
+registry, migrated by deleting them once the derivation reads evidence.
+`check-cadence-jobs`' promise ("the registry may not promise a cadence the CI
+does not run") becomes true by construction, since nothing promises.
 
-A single red does not degrade the word under (b): the window absorbs one bad
-night, and the outcome line still shows it. Maintainer counts (D10) keep
-keying on the CLAIMED word, because who looks after a board does not change
-when its lane goes red.
+The expected cells of a board (what the collector checks for absence) are
+its declared cells in `matrix::CELLS` / `interop::CELLS`, which the generator
+already derives; those stay the PLAN, and the records are the RESULT.
 
-### Q4 — How the book shows it without committing CI output
+### D13.5 — The status word, from evidence
 
-Committed files touched nightly serialise the merge queue (issues 0883,
-0884), so the outcome must not be written into `main`. Options:
+The word is derived from the board's records in a window (`outcome_window`, a
+top-level registry value, three cadence periods to start), never typed:
 
-- **(A) Commit results nightly.** Rejected for that reason.
-- **(B) Deploy-time render (recommended).** The committed pages carry the
-  claim and a marker region, as the generator already writes. The book's
-  `deploy` job (`publish.yml`, to `NEWSLabNTU.github.io/nano-ros-book`) gains
-  a `workflow_run` trigger on the nightly and the weekly, downloads the newest
-  `board-results.json` of each lane (and enough history for "since <date>",
-  see Q2's retention below), and an mdBook preprocessor fills the regions
-  through the same derivation as Q3. The deploy also publishes the merged
-  results as `board-status.json` at the site root, the machine-readable feed.
-  A book built locally with no results fills each region with "Last run: not
-  recorded in this build of the book.", never with the claim alone.
-- **(C) A published JSON plus client-side script.** The page fetches the
-  JSON in the browser. A saved or offline copy then shows nothing, and the
-  book has no JavaScript today. Not recommended.
-- **(D) The release asset only.** Correct but stale between releases. It is
-  kept for the CLI (Q5), not for the book.
+| Status word | Condition |
+| --- | --- |
+| **Verified in emulator / on host / on hardware (cadence)** | the observed cadence's newest outcome is `passed` within the window |
+| **Failing since <date>** | the newest outcome with a verdict is `failed`; the date is the first `failed` of that streak |
+| **Not run since <date>** | no verdict in the window; the date is the last `passed` |
+| **Boots, manual (date)** | the only evidence is a `report` record, newer than `manual_stale_days` |
+| **Builds** / **Not supported** / **Infrastructure** | as D10: no runtime evidence, and a build cell or none |
+
+A single red does not degrade the word: the window absorbs one bad night, and
+the per-run views still show it. Maintainer counts (D10) key on the identity
+rows, not on the moving word.
+
+### D13.6 — Manual runs: `nros board report`
+
+Hardware, FVP and PX4 SITL runs are made by a person. `nros board report
+<board>` runs the board's declared cells locally (the same tests, the same
+resolver, so the same ledger) and writes a `report`-source results file with
+the host's facts (tool version, commit, runner: hardware probe or emulator).
+`--submit` publishes it.
+
+Where `report` records live, without committing to `main` nightly:
+
+- **(A) An `evidence` branch (recommended).** An orphan branch of this repo,
+  `board-evidence`, holding one file per report
+  (`reports/<board>/<date>-<sha>.json`). Pushes never touch `main`, so the
+  merge queue is unaffected, and the history is auditable. The book deploy
+  and `record-lane-runs.py` read it.
+- **(B) A release asset per report.** No branch, but assets are hard to list
+  and to prune, and a report between releases needs a release to hang on.
+- **(C) A separate data repository.** Clean, but a second repo to provision
+  and to grant push to.
+
+A `report` record is trusted as its submitter is, as the typed `last_run`
+was; what changes is that it carries the cells, their verdicts and the commit,
+so it is evidence rather than a date.
+
+### D13.7 — Where people see it
+
+1. **Per run: the job summary.** The `board-results` job writes a table into
+   `$GITHUB_STEP_SUMMARY`: board, outcome, cells passed / failed, the failing
+   cell and step, verdict or no-verdict. The run's page answers "which boards
+   broke tonight" with no log.
+2. **Per run: `board-results.json`** (D13.3), the input to everything below.
+3. **The standing view: the book, rendered at deploy.** `publish.yml`'s
+   `deploy` gains a `workflow_run` trigger on the nightly, the weekly and
+   `host-tests`, collects the newest results (at most 30 runs per lane, plus
+   the `board-evidence` branch), and an mdBook preprocessor fills generated
+   marker regions through D13.5's derivation:
+   - `support-status.md`, per board: the last N runs as a row of marks
+     (`✓✓✗✓✓✓`, newest first, each linking its run), the date it last went
+     red and why (verdict, with the failing cell, or "did not run: a CI
+     problem"), the labelled claim, the cells that ran;
+   - `supported-boards.md`, per row: the derived word and one "Last run:"
+     line.
+   The deploy also publishes the merged `board-status.json` at the site root.
+   No CI output is committed (issues 0883/0884). A book built locally has no
+   results and says so ("Last run: not recorded in this build of the book.").
+4. **The CLI: `nros board list --status`** (and `show`, `nros doctor
+   --report`) reads the same records: offline from the release's
+   `board-support-runs.json` (issue 2325, grown into a results history), or
+   with `--online` from the published `board-status.json`. A checkout with
+   neither says "not recorded in this checkout". Nothing fetches
+   implicitly.
+
+The book, the CLI and the summary use ONE derivation (a Python module the
+preprocessor and the collector import, with a Rust reader in the CLI) and
+one fixture of histories and expected words that both run, so they cannot
+disagree, and none of them reads a typed status.
 
 **Book wording (agreed with the book's UX role, nxp 139 AUO book,
-2026-11-22).** Every outcome line has one lead, "Last run:", with absolute
-dates only and no run ids on audience pages (at most a "(log)" link; run
-details belong to the evidence section):
+2026-11-22).** Every outcome line leads with "Last run:", absolute dates only,
+no run ids on audience pages (at most a "(log)" link):
 
 - "Last run: passed, 2026-11-22"
 - "Last run: failed, 2026-11-22. Failing since 2026-11-20 (3 runs)."
 - "Last run: did not run, 2026-11-22. A CI problem, not this board."
-  ("CI infrastructure" is kept for the evidence section.)
 - "Last run: not recorded in this build of the book."
 
-Where the moving outcome goes, and where it must not:
+The degraded word REPLACES the claim on an audience page (never struck
+through); the claim stays on `support-status.md` as a labelled line,
+"Claimed: Verified on host (daily)". Pages that must not carry a moving
+outcome: `board-support-levels.md` (it defines the words and the outcome
+lines), the starters and the Tutorial's board pick (a stable claim, linking
+to the board's `supported-boards` row), and release notes (frozen at the cut,
+or omitted).
 
-| Page | Outcome |
-| --- | --- |
-| `supported-boards.md` | one outcome line per row, and the degraded word in place of the claim |
-| `support-status.md` (the evidence section) | the full history, the labelled claim, run details |
-| `board-support-levels.md` | NONE: it defines the words, so it defines the outcome lines and the degraded words, and shows no board's outcome |
-| starters, the Tutorial's board pick | NONE: a stable claim, linking to the board's `supported-boards` row for the live outcome (probed pages must not change per night) |
-| release notes | frozen at the cut ("Last run before release: passed, …"), or omitted |
+### D13.8 — The gate: consistency both ways
 
-History for "since <date>": each run's artifact is kept 90 days, and the
-render reads the lane's newest runs until it finds the streak's start
-(bounded, e.g. 30 runs). An artifact is input to the render, never a file in
-the tree.
+Static, no network, on the fast line (`check-board-registry` and
+`check-cadence-jobs` grow):
 
-### Q5 — `nros board list` / `nros doctor --report`
+1. every fixture row's platform and every `matrix::CELLS` / `interop::CELLS`
+   platform has a registry row (a result with no board cannot be produced);
+2. every non-infra registry row has at least one declared Runtime or
+   BuildOnly cell (a board with no possible result);
+3. the resolver writes a ledger line on every path that attributes a row
+   (a self-test: each attribution entry point, under a temp ledger, writes
+   exactly one line);
+4. the collector's self-test over recorded junit, ledgers and run JSON: a
+   pass, a failed cell, a set-up failure, a cancelled job, a test whose
+   coordinate has no row (refused), a board riding another board's job;
+5. the outcome markers sit on exactly the pages D13.7 names.
 
-Offline by default, as now. `board-support-runs.json` (issue 2325, written at
-release) grows into the same per-row outcome record, with the history the
-status needs, and the CLI applies Q3's derivation to it with today's date
-(as it already applies `stale_days`). A checkout has no such file and says
-"outcome not recorded in this checkout". An explicit `--online` reads the
-published `board-status.json`; nothing fetches implicitly.
+At run time the collector refuses a coordinate with no row, and the standing
+view reports a board with no records in the window as "Not run since", so a
+board with no results is visible, not silent. Drift between the status and
+the book cannot exist: the book has no typed status to drift from, it renders
+from the same records.
 
-The derivation has one implementation: the generator emits the thresholds
-and the CLI and the preprocessor read them, and a shared self-test fixture
-(a results history and the expected word) is run by both the Python and the
-Rust reader, so the two cannot drift.
+### Options considered
 
-### Q6 — The gate that holds registry, CI and book consistent
-
-`check-board-registry` and `check-cadence-jobs` grow, and stay static (no
-network):
-
-1. every row with an automated cadence has at least one job the collector
-   maps to it, in the workflow its cadence names;
-2. every job of `nightly.yml`, `weekly.yml` and `merge-runtime.yml` that runs
-   board work maps to exactly one row (a job with no row is refused, naming
-   it);
-3. every fixture row's `platform` in `examples/fixtures.toml` and every
-   `matrix::CELLS` platform has a registry row (a lane with no row is
-   refused);
-4. every generated status region on `supported-boards.md` and
-   `support-status.md` carries the outcome marker the preprocessor fills, so
-   neither can show the claim alone; and no starter, Tutorial,
-   `board-support-levels.md` or release-notes region carries one (Q4's table);
-5. the collector's self-test: recorded `gh run view` JSON (a pass, a verdict
-   fail, a set-up fail, a cancelled job, an unmapped job) gives the expected
-   `board-results.json`.
-
-At run time the collector itself refuses an unmapped job (Q2), which closes
-the direction a static gate cannot see (a job added by a matrix expression).
-
-### What this does not change
-
-The registry's primitives (D10's fields) and its cadence-to-job binding
-(RFC-0122 D8/D9) are unchanged; RFC-0064's levels and RFC-0115's
-emulator-first policy are untouched. No outcome is ever typed into the
-registry.
+- **Board outcome from JOB conclusions** (the first draft of this
+  amendment): cheap, but it cannot see a board with no job of its own
+  (`Linux`, `ZephyrNativeSim`) and it says nothing about which cell failed.
+  Kept only as the no-verdict signal (D13.1).
+- **A per-test annotation naming the board.** Rejected by the goal: it is a
+  hand-maintained list in another place.
+- **Keep `cadence` typed and check it against evidence.** Smaller change, but
+  a person still edits it when a lane moves, which is the maintenance the
+  goal removes.
+- **Client-side rendering of a published JSON.** A saved or offline book then
+  shows nothing, and the book has no JavaScript; not recommended.
+- **Committing results.** Serialises the merge queue (issues 0883/0884).
 
 ### Decisions for the user
 
-1. Q3: (a) qualifier only, or (b) degrade the word after the window
-   (recommended), and the window (3 cadence periods proposed).
-2. Q4: (B) deploy-time render with a published JSON (recommended).
-3. Q1: row outcomes now, per-cell outcomes later (recommended), or per cell
-   from the start.
-4. Whether `no-verdict` runs, past the window, should read "Not run since"
-   (recommended) or keep the claimed word.
+1. D13.4: retire the typed `runs`, `cadence` and `last_run` for observed
+   ones (recommended), or keep them as checked expectations.
+2. D13.5: degrade the word after the window (recommended), and the window
+   (three cadence periods proposed).
+3. D13.6: where `report` records live: (A) a `board-evidence` branch
+   (recommended), (B) release assets, (C) a data repository.
+4. D13.7: the book rendered at deploy plus a published `board-status.json`
+   (recommended), and N for the run marks (six proposed, as above).
 
 ## Evaluation and decision steps
 
@@ -629,7 +673,11 @@ The rulings:
 ## Decision log
 
 - 2026-11-22 — D13 drafted (design only, phase-585), for the user's
-  decisions listed in the amendment.
+  decisions listed in the amendment. Reworked the same day for two added
+  user requirements: no manual maintenance (evidence collected from what a
+  test resolves; cadence, runs, last_run and breadth observed), and the
+  reporting surfaces as a deliverable (job summary, results file, book,
+  CLI).
 
 - 2026-11-17 — the three open questions (issue 2536), ruled by the user,
   accepting the board-support decision brief as written:
