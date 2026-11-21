@@ -81,7 +81,9 @@ in the order below.
   the newest results and the `board-evidence` branch, and publishes
   `board-status.json` at the site root.
 - **Acceptance:** `just book` builds with and without results; a recorded
-  history renders `✓✓✗✓✓✓` and "Failing since <date>" for that board only.
+  history renders "Last 6 runs, newest first: ✓ ✓ ✗ ✓ ✓ ✓", each mark with
+  its `aria-label`, the summary sentence, and "Failing since <date>" for that
+  board only; a no-verdict run renders "–", never ✗.
 
 ### W5 — The CLI: `nros board list --status`
 

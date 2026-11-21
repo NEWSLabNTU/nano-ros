@@ -507,8 +507,8 @@ so it is evidence rather than a date.
    the `board-evidence` branch), and an mdBook preprocessor fills generated
    marker regions through D13.5's derivation:
    - `support-status.md`, per board: the last N runs as a row of marks
-     (`✓✓✗✓✓✓`, newest first, each linking its run), the date it last went
-     red and why (verdict, with the failing cell, or "did not run: a CI
+     (`✓ ✓ ✗ ✓ ✓ ✓`, newest first, each a labelled link to its run; see the
+     run marks below), a summary sentence, the date it last went red and why (verdict, with the failing cell, or "did not run: a CI
      problem"), the labelled claim, the cells that ran;
    - `supported-boards.md`, per row: the derived word and one "Last run:"
      line.
@@ -535,6 +535,23 @@ no run ids on audience pages (at most a "(log)" link):
 - "Last run: failed, 2026-11-22. Failing since 2026-11-20 (3 runs)."
 - "Last run: did not run, 2026-11-22. A CI problem, not this board."
 - "Last run: not recorded in this build of the book."
+
+**The run marks (support-status), accessible by construction:**
+
+- A word lead-in with the fixed N the generator names (six):
+  "Last 6 runs, newest first: ✓ ✓ ✗ ✓ ✓ ✓". Without "newest first" the
+  direction is unknown, and a fixed N means the row never silently changes
+  length.
+- A space between marks, so they can be counted.
+- THREE marks, so a CI outage never reads as a board failure: ✓ passed,
+  ✗ failed, – did not run.
+- Each mark is a link whose label names it, as `title` and `aria-label`
+  ("passed, 2026-11-22"; "failed, 2026-11-20"; "did not run, 2026-11-21: a CI
+  problem, not this board"), so a screen reader reads dated outcomes, and the
+  meaning never rests on glyph shape or colour alone.
+- Then one summary sentence that needs no marks, which is what most readers
+  and the page search use: "5 of the last 6 runs passed. Last failed
+  2026-11-20: <why>."
 
 The degraded word REPLACES the claim on an audience page (never struck
 through); the claim stays on `support-status.md` as a labelled line,
