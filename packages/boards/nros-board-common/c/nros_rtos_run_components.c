@@ -143,7 +143,8 @@ static void nros_rtos_entry_install_park(void* executor) {
 #endif
 }
 #ifdef __ZEPHYR__
-extern void nros_zephyr_epoch_acquire_configured(void);
+extern void nros_clock_resolve_configured(void);
+extern int nros_cpp_executor_restart_timing(void* executor);
 #endif
 
 /* RFC-0034 — the sole sanctioned allocation seam (wraps the FreeRTOS heap).
@@ -325,13 +326,6 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
     }
 
     NROS_BOARD_CALL_OPTIONAL_HOOK(nros_board_network_wait);
-#ifdef __ZEPHYR__
-    /* issue 0758 -- the epoch, in the window the sched-task entries use: network
-     * up, no component constructed. The C++ `ZephyrBoard::run_components`
-     * makes the same call; neither made it before, so an image entering here
-     * naming sntp in `clock.source` stamped boot-relative time. */
-    nros_zephyr_epoch_acquire_configured();
-#endif
 
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
@@ -351,6 +345,16 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
     if (setup_rc != 0) {
         out = setup_rc;
     } else {
+#ifdef __ZEPHYR__
+        /* RFC-0141 D1 -- the wall clock resolves here: every component has
+         * registered and nothing has spun, so nothing is stamped yet and a
+         * zenoh-hlc source has every subscription to hear on. The executor's
+         * timing then restarts, so the resolution's wait is owed to no timer.
+         * The C++ `ZephyrBoard::run_components` does the same at the same
+         * point. */
+        nros_clock_resolve_configured();
+        (void)nros_cpp_executor_restart_timing(storage);
+#endif
         const uint32_t bound_ms = nros_freertos_entry_spin_bound_ms();
         if (bound_ms != 0u) {
             /* Issue 0329 — the bounded path is the shared wall-clock budgeted

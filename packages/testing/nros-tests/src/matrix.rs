@@ -731,6 +731,16 @@ pub enum Config {
     /// (`ZPICO_MULTICAST_TRANSPORT=1`), so a peer-mode session needs no
     /// router. Same messages, no router (phase-535 W6, issue 0711).
     PeerMode,
+    /// The image takes its wall clock from a zenoh-hlc timestamp on a sample
+    /// it receives, else falls back to the platform after the settle time
+    /// (`[knobs.clock] source = "zenoh-hlc,platform"`). Same pair, the clock
+    /// resolved before the first spin (phase-582 W1c-2).
+    ClockHlc,
+    /// The image takes its wall clock from an SNTP server that never answers,
+    /// then the platform (`source = "sntp,platform"`): boot waits out the
+    /// attempts before the first spin, and the timers must not replay that
+    /// wait (phase-582 W1c-2).
+    ClockSntp,
 }
 
 impl Config {
@@ -743,6 +753,8 @@ impl Config {
             Config::Serial => "serial",
             Config::Rtic => "rtic",
             Config::PeerMode => "peer-mode",
+            Config::ClockHlc => "clock-hlc",
+            Config::ClockSntp => "clock-sntp",
         }
     }
 }
@@ -1022,6 +1034,10 @@ pub enum Consumer {
     /// `tests/zephyr_connect_budget.rs` -- a zenoh open ends at its connect
     /// budget on native_sim (issue 2389).
     ZephyrConnectBudget,
+    /// `tests/zephyr_clock_resolve.rs` -- the native_sim pair's wall-clock
+    /// configurations: resolved after registration, before the first spin,
+    /// and owed to no timer (phase-582 W1c-2).
+    ZephyrClockResolve,
 }
 
 impl Consumer {
@@ -1067,6 +1083,7 @@ impl Consumer {
         Consumer::ViolationChannel,
         Consumer::Nano2nano,
         Consumer::ZephyrConnectBudget,
+        Consumer::ZephyrClockResolve,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -1112,6 +1129,7 @@ impl Consumer {
             Consumer::ViolationChannel => "violation_channel_e2e",
             Consumer::Nano2nano => "nano2nano",
             Consumer::ZephyrConnectBudget => "zephyr_connect_budget",
+            Consumer::ZephyrClockResolve => "zephyr_clock_resolve",
         }
     }
 }
@@ -1562,6 +1580,9 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             (P::FreertosMps2, [Config::Lending]) => Some(LendingFreertos),
             (P::QemuBaremetal, [Config::Serial] | [Config::Rtic]) => Some(Emulator),
             (P::Linux, [Config::PeerMode]) => Some(Nano2nano),
+            (P::ZephyrNativeSim, [Config::ClockHlc] | [Config::ClockSntp]) => {
+                Some(ZephyrClockResolve)
+            }
             _ => None,
         };
     }

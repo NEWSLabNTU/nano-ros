@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::restart_timing",
+  "verdict": "extension",
+  "why": "re-seed the executor's spin baseline and every timer's last clock reading, so a wait between registration and the first spin is owed to no timer. Exists for the boot-time wall-clock resolution (RFC-0141 D1): an embedded image resolves its clock after its entities exist and before anything spins, and without this a CatchUp timer replays the wait and a Skip timer counts it as overruns. rclcpp/rclrs timers start on creation and a hosted node has no boot-time wait of this kind; the nearest call is `TimerBase::reset`, per timer. The board entries call it, a component does not."
+}

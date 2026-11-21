@@ -163,6 +163,16 @@ class = "config"
 config = "PeerMode"
 reason = "`1` compiles zenoh-pico's multicast transport and scouting (issue 0711), so a peer-mode session needs no router — same messages, no router"
 
+[knob.NROS_CLOCK_SOURCE]
+class = "config"
+config = "ClockHlc"
+reason = "`zenoh-hlc,platform` makes a Zephyr image take its wall clock from a zenoh sample's timestamp, else the platform after the settle time, resolved before the first spin — same messages, stamped"
+
+[knob.NROS_SNTP_SERVER]
+class = "config"
+config = "ClockSntp"
+reason = "with `clock.source = \"sntp,platform\"`, an SNTP server that never answers, so a Zephyr image's boot waits out its attempts before the first spin — same messages, a boot-time wait the timers must not replay"
+
 [knob.NROS_LINK_IP]
 class = "config"
 config = "Serial"

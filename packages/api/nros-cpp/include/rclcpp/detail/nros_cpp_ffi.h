@@ -3158,6 +3158,18 @@ nros_cpp_ret_t nros_cpp_executor_open_over_session_sched_task(void *session_hand
                                                               size_t backing_bytes);
 
 /**
+ * Start this executor's timing now, as if it had just been opened: its spin
+ * baseline and every timer's last clock reading are re-seeded, so a wait
+ * between setup and the first spin is not owed to the timers. A boot that
+ * resolves its wall clock before the first spin calls this once, after the
+ * resolution. Mirrors `Executor::restart_timing`.
+ *
+ * # Safety
+ * `executor` must be a valid pointer to a `CppContext`.
+ */
+nros_cpp_ret_t nros_cpp_executor_restart_timing(void *executor);
+
+/**
  * Gate this executor to a set of named callback groups.
  *
  * After this call, only callbacks whose `.callback_group()` is in `groups` will

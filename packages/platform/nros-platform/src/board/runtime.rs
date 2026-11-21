@@ -107,6 +107,13 @@ pub trait NodeDispatchRuntime {
         10
     }
 
+    /// Start the runtime's timing now, as if its executor had just opened, so
+    /// a wait between registration and the first spin (the boot-time
+    /// wall-clock resolution) is owed to no timer. The executor-backed runtime
+    /// forwards to `Executor::restart_timing`; the default is a no-op, for a
+    /// runtime with no timers of its own.
+    fn restart_timing(&mut self) {}
+
     /// RFC-0128 D2 (phase-554 W2) — make one MANAGED node of this image a
     /// lifecycle node: register the five REP-2002 services under the node's
     /// own name (`namespace` + `name`, the node `nros::main!` created for that

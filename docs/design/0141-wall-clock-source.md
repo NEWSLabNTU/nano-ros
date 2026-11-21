@@ -156,6 +156,36 @@ inside the user's 2026-11-19 rulings, which the user may overturn):
   subscription already exists to deliver the HLC sample `zenoh-hlc` waits
   for. While a source is tried, the store admits installs from that source
   alone, so a reading another thread delivers meanwhile cannot take the slot.
+- **Resolution in a multi-level image (phase-582 W1c-2).** A sched-task image
+  sets up in a chain: each level registers, then spawns the next. A clock
+  gate, implemented once in the Zephyr module and called by both the C and
+  Rust runners, holds every level at its first spin. Boot waits for every
+  level's setup, resolves the clock, restarts the executor's timing, then
+  opens the gate. The setup wait has its own bound: a level that never
+  finishes registering fails the boot, naming it. The resolution is bounded
+  only by the sources' settle times, and its outcome is `epoch_failure`'s.
+- **What starts after the gate.** The executor's spin baseline and every
+  timer's last clock reading are re-seeded when the gate opens
+  (`Executor::restart_timing`). The wait is therefore owed to no timer: a
+  `CatchUp` timer does not replay it and a `Skip` timer does not count it as
+  overruns. Level schedulers start their own baseline at the first spin, and
+  the contract monitors arm at the first spin. A DDS-style deadline QoS still
+  counts from the entity's creation, as its definition says. An application
+  that feeds a hardware watchdog from the level-liveness query sees no level
+  alive during the wait.
+- **Hearing a zenoh-hlc sample before the first spin.** The sample's timestamp
+  is offered from zenoh-pico's sample handler, inside zenoh-pico's own
+  executor. In a build with a zenoh-pico read thread (IP: Zephyr, POSIX,
+  NuttX, FreeRTOS) that thread delivers it while the levels wait. In a build
+  whose zenoh-pico executor runs only inside a spin (serial, smoltcp, any
+  single-thread build), boot drives it with a bounded pump,
+  `zpico_spin_once(s, 0)` per open session, while it waits for the sample.
+  Every zenoh-pico handler only buffers: the sample, queryable and reply
+  handlers copy into their slot and wake its waiter, and the graph-change
+  edge levels a guard condition. User callbacks run only from the executor's
+  dispatch, so the pump runs none. A sample that arrives during the wait is
+  dispatched on the first spin; a full KEEP_LAST ring drops its oldest,
+  counted as an eviction and never reported as an error at boot.
 - **The mid-run switch and stale stamps.** The risk this section opens with,
   a consumer rejecting a stamp from an earlier epoch after a later one, is
   answered by the `upgrade = "monotonic"` floor: the store keeps the last

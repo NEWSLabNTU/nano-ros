@@ -935,6 +935,19 @@ macro_rules! zephyr_component_main {
             // transport fault — `Executor::open` + `register_node` had already
             // succeeded).
             ::log::info!("Waiting for messages");
+            // RFC-0141 D1 — the wall clock resolves after registration and
+            // before the first spin (as in the generated entries), then the
+            // timing restarts so the wait is owed to no timer. After the
+            // readiness marker on purpose: a peer that waits for it may start
+            // publishing while a zenoh-hlc source listens.
+            {
+                unsafe extern "C" {
+                    fn nros_clock_resolve_configured();
+                }
+                // SAFETY: the Zephyr module's shim; no arguments, once.
+                unsafe { nros_clock_resolve_configured() };
+            }
+            runtime.executor_mut().restart_timing();
             loop {
                 // phase-521 W6 (RFC-0113 D2) — park until the next deadline when
                 // every source of work can end the park, else the 10 ms slice.

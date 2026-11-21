@@ -2494,6 +2494,20 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 "nros: zephyr workspace entry up ({} nodes)",
                 #num_register_calls
             );
+            // RFC-0141 D1 — the wall clock resolves after every node has
+            // registered and before the first spin, the same point as the C
+            // and C++ single-executor entries: nothing is stamped yet, and a
+            // zenoh-hlc source has every subscription to hear on. Then the
+            // timing restarts, so the resolution's wait is owed to no timer.
+            {
+                unsafe extern "C" {
+                    fn nros_clock_resolve_configured();
+                }
+                // SAFETY: the Zephyr module's shim, linked into every Zephyr
+                // image; no arguments, called once, before any spin.
+                unsafe { nros_clock_resolve_configured() };
+            }
+            runtime.runtime.restart_timing();
 
             // Forever-spin: native_sim is `no_std`, so the OwnedSpin
             // `NROS_ENTRY_*` bounded path (which needs `std::time`) does
