@@ -47,6 +47,21 @@ state different features?
    coordinate's other images is refused by name, until one of the above is
    chosen. Cost: none at runtime; it turns the silent ignore into an error.
 
+## Interim: option 3 (2026-11-22, approved by the nros 241 manager)
+
+Until 1 or 2 is chosen, a C/C++ workspace image whose own `features` /
+`node_interfaces` differ from the `[system]` list is REFUSED at `nros build`
+(`refuse_image_features_a_shared_configure_drops` in `cmd/build.rs`), naming
+the image, the features it adds or drops, and every image on its coordinate.
+An image whose list equals `[system]`'s builds as before. Measured over every
+in-tree C/C++ workspace row (274, by `nros build --dry-run`): none is refused.
+23 of them are owned-entry images with no launch file, so no model, and the
+check skips them. The verdict row `image_features_shared_configure_refused`
+records the refusal; `tests/image_features_shared_configure.rs` asserts it.
+
+**1 vs 2 is still open, for the user.** The refusal forecloses neither: lifting
+it is part of either choice.
+
 ## Acceptance
 
 Once a choice is made: an image-level `node_interfaces = "none"` on a C/C++

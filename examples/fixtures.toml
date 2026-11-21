@@ -5512,6 +5512,16 @@ output = ".compile-ok"
 # no fixture lane runs, so `just test linux` claimed the test and its build could
 # not satisfy it. `<dir>/build.sh` builds the one target in the row's own CMake
 # tree and copies the binary into the row dir.
+# Issue 2702 (interim) -- the `nros` CLI's configure VERDICT for a C
+# workspace image whose own `node_interfaces` differs from `[system]` on a
+# shared cmake configure. The refusal comes before cmake runs.
+[[compile_check_fixture]]
+id = "image_features_shared_configure_refused"
+builder = "fixture-script"
+dir = "packages/testing/nros-tests/fixtures/image-features-shared-configure"
+platform = "linux"
+output = ".compile-ok"
+
 [[compile_check_fixture]]
 id = "cyclone_slirp_guest"
 builder = "fixture-script"

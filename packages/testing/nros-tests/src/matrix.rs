@@ -1396,6 +1396,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
             "ZephyrNativeSim/Rust/Zenoh/EntryPubsub/Workspace — answered by zephyr; this one asserts the image's backend is a workspace provider nano-ros does not know, on the west road (RFC-0071 D16 step 3)",
         ),
     ),
+    (
+        "image_features_shared_configure",
+        NonCell::Probe(
+            "a C/C++ workspace image whose own features differ from `[system]` on a shared cmake configure is refused, not silently built with `[system]` (issue 2702)",
+        ),
+    ),
     ("output_marker_gate", NonCell::Static),
     (
         "owned_entry_run_verb",

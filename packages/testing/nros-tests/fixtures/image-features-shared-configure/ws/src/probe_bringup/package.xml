@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>probe_bringup</name>
+  <version>0.1.0</version>
+  <description>phase-481 W4 -- two native images on one coordinate, one of them configured.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>probe_pkg</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

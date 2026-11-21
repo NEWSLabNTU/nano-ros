@@ -1432,6 +1432,16 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // Issue 2520 -- a refusal from the union's seed, carried out of the
         // cache's closure and returned below.
         let mut coordinate_refusal: Option<eyre::Report> = None;
+        // Issue 2702 (interim) -- a shared cmake configure builds ONE runtime
+        // with the `[system]` features, so an image's own differing features
+        // would be ignored without a word: refused instead.
+        if driver == Driver::CMake {
+            let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
+            refuse_image_features_a_shared_configure_drops(
+                &coordinate_members(&bringup, &coord),
+                stale,
+            )?;
+        }
         let coordinate_dir = (driver == Driver::CMake)
             .then(|| {
                 let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
@@ -8335,6 +8345,69 @@ pub(crate) fn read_coordinate_members(dir: &Path) -> Option<CoordinateMembers> {
 /// One member's resolved model, through the door every resolve uses, and held
 /// to the refusals `nros dev image entity-inventory` applies at its own door
 /// (`check_model`): a model the configure would refuse composes nothing here.
+/// Issue 2702 (interim, its option 3) -- the images a shared cmake configure
+/// builds whose own `[image.<id>] features` / `node_interfaces` differ from
+/// the `[system]` list, refused, naming each and what differs.
+///
+/// One configure per coordinate links one Rust runtime into every image on it,
+/// built and sized with the `[system]` list (`coordinate_member_model` reads
+/// no image, on purpose). An image's own choice is therefore not carried, and
+/// was ignored with no error. An image whose list EQUALS `[system]`'s passes.
+/// A member whose model cannot be read is left to the composition, which
+/// reports it.
+fn refuse_image_features_a_shared_configure_drops(
+    members: &[CoordinateMember],
+    stale: StaleModel,
+) -> Result<()> {
+    use std::collections::BTreeSet;
+    let mut differing = Vec::new();
+    for (b, bd, id, img) in members {
+        let Ok((_, model)) = coordinate_member_model(bd, img, stale) else {
+            continue;
+        };
+        let shared: BTreeSet<String> = model.features().into_iter().collect();
+        let own: BTreeSet<String> = model.for_image(Some(id)).features().into_iter().collect();
+        if own != shared {
+            let list = |s: Vec<&String>| {
+                s.iter()
+                    .map(|f| format!("`{f}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let added = list(own.difference(&shared).collect());
+            let dropped = list(shared.difference(&own).collect());
+            let mut what = Vec::new();
+            if !added.is_empty() {
+                what.push(format!("adds {added}"));
+            }
+            if !dropped.is_empty() {
+                what.push(format!("drops {dropped}"));
+            }
+            differing.push(format!(
+                "`{}` {}",
+                plan::qualified(b, id),
+                what.join(" and ")
+            ));
+        }
+    }
+    if differing.is_empty() {
+        return Ok(());
+    }
+    let all: Vec<String> = members
+        .iter()
+        .map(|(b, _, id, _)| format!("`{}`", plan::qualified(b, id)))
+        .collect();
+    eyre::bail!(
+        "{} against `[system]` (through its own `features` or `node_interfaces`). A C/C++ \
+         workspace image is built in one cmake configure with every image on its coordinate \
+         ({}), which builds ONE runtime for all of them with the `[system]` features, so a \
+         per-image choice of features is not carried yet. State the features in `[system]` \
+         (`features`, `node_interfaces`) for every image, or remove the image's own.",
+        differing.join("; "),
+        all.join(", ")
+    )
+}
+
 fn coordinate_member_model(
     bringup_dir: &Path,
     image: &crate::orchestration::image::ImageBlock,
