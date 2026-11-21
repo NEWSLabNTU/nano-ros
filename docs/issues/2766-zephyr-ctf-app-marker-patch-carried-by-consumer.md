@@ -84,3 +84,32 @@ sched-task image with CTF on (the shim's weak call end to end), and 3.7's
   stream holding the `app_marker` events (checked with babeltrace or the
   in-tree CTF reader).
 - The island's patch directory is gone on its nano-ros-next branch.
+
+## Acceptance cell (2026-11-21, in review)
+
+The first acceptance item is a CELL, so it stays verified:
+`(ZephyrNativeSim, C, Zenoh, RealtimeSchedTasks, Workspace) + [Ctf]`, answered
+by `tests/zephyr_ctf_markers.rs` over the `workspace-zephyr-c-realtime-ctf`
+row: realtime-c's `[image.zephyr_ctf]`, the C sched-task image with
+`prj-ctf.conf` (CTF on the synchronous posix backend) and
+`NROS_TRACE_CALLBACKS`. C because only the C sched task runner installs the
+sink. The test:
+
+- reads `ZEPHYR_BASE` from the build's `CMakeCache.txt` and requires that
+  tree's TSDL metadata to declare `app_marker` (the patch set is applied);
+- boots the image with its own router and working directory, lets both sched
+  tasks run 2 s, and DECODES the whole `channel0_0` against that metadata
+  (`nros_tests::ctf`: an unknown id or a stream ending mid-event is an error;
+  only a tail torn by the kill is dropped);
+- requires `app_marker` events for callback register (16), at least 20 starts
+  (18), and per-handle start/end (19) pairing.
+
+The decoder's own cases (8- and 16-bit ids, arrays, unknown id, truncation)
+are unit tests, and it parses this host's 3.7 and 4.4 metadata (74 and 242
+events). Not yet run: the image build and the cell (host 241); the manager's
+scratch run saw marker(7,42) on 4.4 and no image on 3.7, so 3.7 is the line
+to watch. The second acceptance item (the island drops its copies) is the
+island's change.
+
+The shim's comment named a decoder, `scripts/parse-zephyr-ctf.py`, that is not
+in the tree; it now names the in-tree reader, `nros_tests::ctf`.

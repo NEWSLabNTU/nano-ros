@@ -731,6 +731,10 @@ pub enum Config {
     /// (`ZPICO_MULTICAST_TRANSPORT=1`), so a peer-mode session needs no
     /// router. Same messages, no router (phase-535 W6, issue 0711).
     PeerMode,
+    /// Zephyr CTF tracing with callback tracing on (`CONFIG_TRACING_CTF`,
+    /// `NROS_TRACE_CALLBACKS`): the executor's callback markers reach the CTF
+    /// stream as `app_marker` events. Same sched tasks, traced (issue 2766).
+    Ctf,
 }
 
 impl Config {
@@ -743,6 +747,7 @@ impl Config {
             Config::Serial => "serial",
             Config::Rtic => "rtic",
             Config::PeerMode => "peer-mode",
+            Config::Ctf => "ctf",
         }
     }
 }
@@ -1022,6 +1027,9 @@ pub enum Consumer {
     /// `tests/zephyr_connect_budget.rs` -- a zenoh open ends at its connect
     /// budget on native_sim (issue 2389).
     ZephyrConnectBudget,
+    /// `tests/zephyr_ctf_markers.rs` -- a traced native_sim sched-task image's
+    /// CTF stream holds the callback markers (issue 2766).
+    ZephyrCtfMarkers,
 }
 
 impl Consumer {
@@ -1067,6 +1075,7 @@ impl Consumer {
         Consumer::ViolationChannel,
         Consumer::Nano2nano,
         Consumer::ZephyrConnectBudget,
+        Consumer::ZephyrCtfMarkers,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -1112,6 +1121,7 @@ impl Consumer {
             Consumer::ViolationChannel => "violation_channel_e2e",
             Consumer::Nano2nano => "nano2nano",
             Consumer::ZephyrConnectBudget => "zephyr_connect_budget",
+            Consumer::ZephyrCtfMarkers => "zephyr_ctf_markers",
         }
     }
 }
@@ -1568,6 +1578,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             (P::FreertosMps2, [Config::Lending]) => Some(LendingFreertos),
             (P::QemuBaremetal, [Config::Serial] | [Config::Rtic]) => Some(Emulator),
             (P::Linux, [Config::PeerMode]) => Some(Nano2nano),
+            (P::ZephyrNativeSim, [Config::Ctf]) => Some(ZephyrCtfMarkers),
             _ => None,
         };
     }

@@ -1456,6 +1456,18 @@ at = ["ZephyrNativeSim", "C", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
+comment = '''
+// issue 2766 -- the same C sched-task image with Zephyr CTF tracing and
+// callback tracing on: its CTF stream must hold the executor's callback
+// markers as `app_marker` events, the event nano-ros's Zephyr patch set adds.
+// The `zephyr_ctf` image of the realtime-c bringup;
+// `tests/zephyr_ctf_markers.rs` runs it.
+'''
+at = ["ZephyrNativeSim", "C", "Zenoh", "RealtimeSchedTasks", "Workspace"]
+status = 'Runtime'
+with = '&[Config::Ctf]'
+
+[[cell]]
 at = ["ZephyrNativeSim", "Cpp", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
