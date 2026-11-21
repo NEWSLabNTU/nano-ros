@@ -288,10 +288,33 @@ function(nros_record_owned_entity_facts)
         endif()
     endif()
     set(_census "${_o_WORKSPACE}/build/nros/census/owned/${_bringup_name}/${_o_IMAGE}.census.json")
+    # phase-583 (RFC-0071 D20) -- an entry that builds several programs has a
+    # census per program instead, listed in `<image>.programs`; the CLI folds
+    # them (`sizing-descriptor --owned-entry`). Both shapes are the CLI's
+    # layout (`owned_census_path`, `owned_programs_path`,
+    # `owned_program_census_path`), read here and nowhere else.
+    set(_programs_file
+        "${_o_WORKSPACE}/build/nros/census/owned/${_bringup_name}/${_o_IMAGE}.programs")
+    set(_censuses "${_census}")
+    if(EXISTS "${_programs_file}")
+        file(STRINGS "${_programs_file}" _programs)
+        set(_censuses "")
+        foreach(_p IN LISTS _programs)
+            list(APPEND _censuses
+                "${_o_WORKSPACE}/build/nros/census/owned/${_bringup_name}/${_o_IMAGE}/${_p}.census.json")
+        endforeach()
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_programs_file}")
+    endif()
+    set(_census_missing FALSE)
+    foreach(_c IN LISTS _censuses)
+        if(NOT EXISTS "${_c}")
+            set(_census_missing TRUE)
+        endif()
+    endforeach()
     # `[census] on_missing = "warn"`: the take warned and wrote no census, so
     # this image builds without census sizing, as an owned entry did before
     # issue 2433. Said once here too, naming the image.
-    if(NOT EXISTS "${_census}")
+    if(_census_missing)
         message(WARNING
             "nano-ros: `${_bringup_name}:${_o_IMAGE}` builds the owned entry `${_pkg_name}` "
             "with no census (its bringup's `[census] on_missing` is \"warn\"), so its pools "
@@ -321,8 +344,10 @@ function(nros_record_owned_entity_facts)
     endif()
     # A configure re-reads the census when it changes: its digest, as the leaf
     # road depends on it.
-    string(REGEX REPLACE "\\.json$" ".digest" _digest "${_census}")
-    if(EXISTS "${_digest}")
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_digest}")
-    endif()
+    foreach(_c IN LISTS _censuses)
+        string(REGEX REPLACE "\\.json$" ".digest" _digest "${_c}")
+        if(EXISTS "${_digest}")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_digest}")
+        endif()
+    endforeach()
 endfunction()
