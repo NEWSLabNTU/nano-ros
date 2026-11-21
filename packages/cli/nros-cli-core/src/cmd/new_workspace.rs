@@ -486,7 +486,7 @@ pub fn stack_floor_key_shape(key: &str) -> Option<StackFloorKey> {
             if !t.is_empty()
                 && t.bytes().next().is_some_and(|b| b.is_ascii_lowercase())
                 && t.bytes().all(|b| b.is_ascii_lowercase() || b == b'-')
-                && matches!(*l, "rust" | "c" | "cpp")
+                && nros_lang::Language::parse(l).is_ok_and(|x| x.as_str() == *l)
                 && r.bytes().next().is_some_and(|b| b.is_ascii_lowercase())
                 && r.bytes().all(|b| {
                     b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-'
@@ -1648,6 +1648,9 @@ mod stack_floor_key_tests {
             })
         );
         assert_eq!(stack_floor_key_shape("a/b/c/d@x"), None);
+        // `Language::parse`'s aliases are no key spelling: the walker's grammar
+        // takes only `rust|c|cpp`.
+        assert_eq!(stack_floor_key_shape("talker/cxx/zenoh@b1"), None);
         assert_eq!(stack_floor_key_shape("no_board"), None);
     }
 
