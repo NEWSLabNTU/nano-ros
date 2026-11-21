@@ -384,6 +384,10 @@ pub struct Inputs<'a> {
     pub tables: &'a ImageTables,
     pub bench: &'a Bench,
     pub invocation: &'a Invocation,
+    /// The program to run, when the image's owned entry builds several
+    /// (phase-583 W2): `nros run --exec`, else the bringup launch's `exec`
+    /// for the entry package. `None` everywhere else.
+    pub exec: Option<&'a str>,
 }
 
 /// Why no plan resolved. Every arm is RFC-0118 D2's exit 3.
@@ -955,7 +959,7 @@ fn finish(
             // cannot be, say why rather than run a plan with no `elf`.
             let resolved = i
                 .output
-                .map(BuildOutput::resolve_artifact)
+                .map(|o| o.resolve_artifact_for(i.exec))
                 .transpose()
                 .map_err(|e| ResolveError::Unresolved(format!("image `{}`: {e}", i.image)))?
                 .flatten();
@@ -1008,6 +1012,11 @@ pub struct Args {
     /// Print the plan as the JSON a runner is handed (`--plan`), not TOML.
     #[arg(long)]
     pub json: bool,
+    /// The program to run, when the image's entry builds several, as in
+    /// `ros2 run <pkg> <exe>`. Omitted: the one the bringup's launch file
+    /// names for the entry package, or the entry's only program.
+    #[arg(long = "exec", value_name = "NAME")]
+    pub program: Option<String>,
     /// Arguments for the target, after `--`.
     #[arg(last = true)]
     pub passthrough: Vec<String>,
@@ -1114,6 +1123,7 @@ pub fn run(args: Args) -> eyre::Result<()> {
             tables: &tables,
             bench: &bench,
             invocation: &invocation,
+            exec: args.program.as_deref().or(one.launch_exec.as_deref()),
         },
     ) {
         Ok(p) => p,
@@ -1589,6 +1599,7 @@ mod tests {
                 tables,
                 bench: &Bench::default(),
                 invocation: inv,
+                exec: None,
             },
         )
     }

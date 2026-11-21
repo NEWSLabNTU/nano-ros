@@ -106,3 +106,72 @@ fn a_named_owned_entry_runs_from_its_resolved_plan(#[from(zenohd_unique)] router
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+// ── phase-583 W2 (RFC-0071 D20): an owned entry with several programs ──────
+
+const TWO_PROGRAMS_IMAGE: &str = "two_programs_bringup:linux";
+const TWO_PROGRAMS_DIR: &str = "packages/testing/nros-tests/fixtures/two_programs_ws";
+
+/// `nros run <image> --dry-run [extra…]` on the two-program workspace.
+fn dry_run_two_programs(extra: &[&str]) -> std::process::Output {
+    let nros = run::nros_cli_path().expect("the `nros` CLI");
+    Command::new(nros)
+        .args(["run", TWO_PROGRAMS_IMAGE, "--dry-run", "--json"])
+        .args(extra)
+        .arg("--workspace")
+        .arg(nros_tests::project_root().join(TWO_PROGRAMS_DIR))
+        .arg("--nano-ros-path")
+        .arg(nros_tests::project_root())
+        .output()
+        .expect("spawning `nros run --dry-run`")
+}
+
+fn require_two_programs(program: &str) -> PathBuf {
+    nros_tests::fixtures::build_cmake_leaf_rmw(TWO_PROGRAMS_DIR, program, Rmw::Zenoh)
+        .require("linux-c-zenoh-two-programs")
+}
+
+/// Naming no program, when the entry builds two, is refused: the run must not
+/// guess. The refusal lists both programs by their program names (not the
+/// CMake targets) and names the flag that chooses one.
+#[test]
+fn an_entry_with_two_programs_refuses_to_guess() {
+    require_linux_lane();
+    require_two_programs("prog_a");
+    let out = dry_run_two_programs(&[]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "`nros run {TWO_PROGRAMS_IMAGE}` resolved a plan with two programs and none named:\n{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(
+        err.contains("`prog_a`") && err.contains("`prog_b`") && err.contains("--exec <name>"),
+        "the refusal must list both programs and name `--exec`:\n{err}"
+    );
+}
+
+/// `--exec` chooses one of the entry's programs, as `ros2 run <pkg> <exe>`.
+#[rstest]
+#[case::first("prog_a")]
+#[case::second("prog_b")]
+fn exec_chooses_one_of_two_programs(#[case] program: &str) {
+    require_linux_lane();
+    let exe = require_two_programs(program);
+    let out = dry_run_two_programs(&["--exec", program]);
+    assert!(
+        out.status.success(),
+        "`nros run {TWO_PROGRAMS_IMAGE} --exec {program} --dry-run` failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let plan: serde_json::Value = serde_json::from_slice(&out.stdout).expect("a JSON plan");
+    let elf = plan
+        .pointer("/artifacts/elf")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_else(|| panic!("the plan names no `elf`:\n{plan:#}"));
+    assert_eq!(
+        PathBuf::from(elf).canonicalize().ok(),
+        exe.canonicalize().ok(),
+        "`--exec {program}` resolves that program"
+    );
+}

@@ -798,6 +798,9 @@ Options:
       --json
           Print the plan as the JSON a runner is handed (`--plan`), not TOML
 
+      --exec <NAME>
+          The program to run, when the image's entry builds several, as in `ros2 run <pkg> <exe>`. Omitted: the one the bringup's launch file names for the entry package, or the entry's only program
+
       --expect <TEXT>
           Stop with exit 0 as soon as a console line contains TEXT; exit 1 if the target ends, or `--timeout` passes, first. Given more than once, every TEXT must appear, each on some line and in any order, and the run stops on the line that completes the set
 

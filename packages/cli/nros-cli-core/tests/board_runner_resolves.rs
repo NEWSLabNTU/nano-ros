@@ -179,6 +179,7 @@ fn every_runnable_board_resolves_to_a_runner_package() {
         let plan = match resolve(
             Verb::Run,
             Inputs {
+                exec: None,
                 image: "gate:img",
                 board: &row.names[0],
                 descriptor: d,
@@ -269,6 +270,7 @@ fn every_flashable_board_resolves_a_flash_runner() {
         let plan = match resolve(
             Verb::Flash,
             Inputs {
+                exec: None,
                 image: "gate:img",
                 board: name,
                 descriptor: d,
@@ -358,6 +360,7 @@ fn every_flashable_board_resolves_flash_and_monitor_dry_runs() {
         let name = &d.names[0];
         let out = output_for(d);
         let inputs = Inputs {
+            exec: None,
             image: "gate:img",
             board: name,
             descriptor: d,
@@ -436,6 +439,7 @@ fn monitor_on_an_emulated_board_names_nros_run() {
     let e = resolve(
         Verb::Console,
         Inputs {
+            exec: None,
             image: "gate:img",
             board: &d.names[0],
             descriptor: d,
