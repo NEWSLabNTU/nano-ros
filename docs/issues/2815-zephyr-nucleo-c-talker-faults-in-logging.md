@@ -199,6 +199,21 @@ action/lifecycle registration frames (6-9 KiB, the same by-value
 `ParameterValue` shape). They no longer overflow this image, and the
 shrink-only baseline is the list to work through.
 
+## The warning burst, also reduced
+
+`report_qos_downgrade` (`packages/rmw/cffi/src/lib.rs`) warned once per
+ENTITY for a history-depth clamp. A clamp is the backend's fixed ceiling, so
+every endpoint asking the same depth gets the same answer. An image serving the
+parameter services asks 1000 for each of its twelve service endpoints and
+zenoh-pico grants 4: twelve identical warnings in the first 80 ms of boot, the
+burst this fault sits inside.
+
+It now warns once per distinct (requested, granted) depth pair and logs the
+repeats at debug (`first_depth_downgrade`). Reliability and durability
+downgrades stay one warning per entity: they are what silences a pair, and they
+are rare. The frames fix above is what cures the fault; this one only stops
+the boot from printing the same line twelve times.
+
 ## Closes when
 
 The cell passes and the cause above is named and fixed, with a cell that would
