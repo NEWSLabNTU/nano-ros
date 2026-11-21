@@ -68,7 +68,7 @@ Two other things found while measuring:
   sccache, and the bypass costs it nothing. The bypass is paid by
   `just`-driven builds (fixture lanes, CI), where the walk is on by default.
 - **The off switch does not reach the cmake road**: filed as
-  [issue 2803](../2803-stack-floor-off-switch-not-on-cmake-road.md).
+  [issue 2803](2803-stack-floor-off-switch-not-on-cmake-road.md).
 
 ## Fix (approved 2026-11-21)
 
