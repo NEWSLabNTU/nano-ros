@@ -1,0 +1,1 @@
+`nros build` now checks the app-thread stack of ThreadX images on QEMU's riscv64 `virt` board. The stack-floor walk reads the frames of the toolchain's C runtime routines (newlib, libgcc) from their own code, where they carry no frame information.

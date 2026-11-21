@@ -1,7 +1,7 @@
 ---
 id: 2514
 title: "The stack walk refuses every rv-virt-threadx cargo image: the board's bundled libc objects carry no frame and no CFI"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: [memory, build, threadx]
@@ -68,3 +68,44 @@ CFI. Two ways:
 
 When it walks, add `threadx-riscv64` to `STATING_PLATFORMS` in
 `packages/cli/nros-cli-core/src/cmd/stack_floor.rs`.
+
+## Resolution (2026-11-22)
+
+Fix 1, read from the code itself, on the road that already existed for this
+case. The walk reads `compiler_builtins`' frames off the linked objects of an
+image's own archive (phase-557 W9b). The board crate's newlib and libgcc
+members are the same case: toolchain objects copied into a crate's archive.
+
+- **The second gap was real, and it is closed the same way.** `vsnprintf`
+  does call `_svfprintf_r` (`auipc ra` + `R_RISCV_CALL_PLT`). The walk
+  never reached the call, because a frameless function was a leaf to it.
+- **These members are walked inputs**: the LLD map's `archive(member)`
+  inputs are extracted and loaded into the walk's graph with their own
+  edges. So each function takes its OWN frame only. The walk follows
+  `vsnprintf -> _svfprintf_r` itself, and binds `_svfprintf_r`'s indirect
+  call (`jalr s2`, the FILE write function) like any other machine site. A
+  frame summed over an in-archive chain, as the toolchain-archive table
+  states it, would count that chain twice.
+- **A RISC-V decoder** beside the Thumb one (`stack_builtins.parse_member_rv`):
+  - a frame is the sum of `addi sp, sp, -N`;
+  - a call is `auipc ra` + `R_RISCV_CALL(_PLT)`, or `jal` to a symbol; the
+    same pair through another register is a tail call;
+  - `.L` labels sit inside a body;
+  - `sub sp` by a register refuses.
+- **The members it applies to are named**: newlib's `libc_a-*`/`libm_a-*`,
+  libgcc's `_<routine>.o`, and libgcc soft-fp's `<op><mode>.o`
+  (`trunctfdf2.o`), with the file-local functions inside them. An ordinary C
+  file that lost its own frame source still refuses. The walker's self-test
+  holds the names to examples both ways.
+- **`placed_from` reads an LLD map**, which this board links with, as well
+  as a GNU ld one.
+
+Measured on `param-store-threadx-riscv64` (`rv-virt-threadx`):
+
+- 51 frames read off the linked runtime objects;
+- the walk from `~app_task_entry_` finishes at 185,968 B;
+- floor 204,568 B against the stated 524,288 B app stack: holds;
+- UNMEASURED (no observed row), so the floor is warned about, never
+  enforced.
+
+`threadx-riscv64` joins `STATING_PLATFORMS`.

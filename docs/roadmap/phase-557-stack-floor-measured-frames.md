@@ -355,7 +355,7 @@ calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
     spelling answers none.
   - **Still not checked.** `threadx-riscv64` is not in `STATING_PLATFORMS`
     yet: the walk refuses, because the board's bundled libc objects carry no
-    frame and no CFI ([issue 2514](../issues/2514-stack-floor-walk-riscv-libc-no-frames.md)).
+    frame and no CFI ([issue 2514](../issues/archived/2514-stack-floor-walk-riscv-libc-no-frames.md)).
 - **NuttX (DONE 2026-11-21).** Not the sched-task stack this line first
   named: NuttX starts the image as its init task (`CONFIG_INIT_ENTRYPOINT =
   nros_nuttx_entry`), which runs board bringup and then the image's `main`, so
