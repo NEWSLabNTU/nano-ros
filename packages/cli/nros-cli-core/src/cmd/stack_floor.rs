@@ -43,7 +43,10 @@ pub const STATED_FILE: &str = "nros-stack-stated.json";
 /// Bare metal states the mps2-an385 main stack (root `main`) since issue 2494.
 /// NuttX states its init task's stack (root `nros_nuttx_entry`, the kernel's
 /// `CONFIG_INIT_STACKSIZE`), which the image runs on, since phase-557 W5b.
-const STATING_PLATFORMS: &[&str] = &["freertos", "bare-metal", "nuttx"];
+/// ThreadX on riscv64 states its app thread's stack, and walks since the
+/// toolchain's C runtime objects copied into its board crate take their
+/// frames from their own code (issue 2514).
+const STATING_PLATFORMS: &[&str] = &["freertos", "bare-metal", "nuttx", "threadx-riscv64"];
 
 /// What [`arm`] decided for one image.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -603,7 +606,12 @@ mod tests {
             run_tables: Default::default(),
             package_depends: None,
         };
-        let mut v = vec![image("bare-metal"), image("threadx"), image("nuttx")];
+        let mut v = vec![
+            image("bare-metal"),
+            image("threadx"),
+            image("nuttx"),
+            image("threadx-riscv64"),
+        ];
         arm(&mut v, Some(&root), None, &|_| None);
         let _ = std::fs::remove_dir_all(&root);
         assert!(
@@ -621,6 +629,12 @@ mod tests {
             matches!(v[2].stack_floor, Some(StackFloorStep::Check(_))),
             "{:?}",
             v[2].stack_floor
+        );
+        // issue 2514 -- the riscv64 ThreadX board's app thread.
+        assert!(
+            matches!(v[3].stack_floor, Some(StackFloorStep::Check(_))),
+            "{:?}",
+            v[3].stack_floor
         );
     }
 

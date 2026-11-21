@@ -1100,7 +1100,7 @@ def placed_from(map_text: str, member_pred) -> set[str]:
     out: set[str] = set()
     _, sep, body = map_text.partition("Linker script and memory map")
     if not sep:
-        return out
+        return placed_from_lld(map_text, member_pred)
     cur_ok = False
     pending = False  # a section name alone on its line; its file is on the next
     for line in body.splitlines():
@@ -1127,6 +1127,30 @@ def placed_from(map_text: str, member_pred) -> set[str]:
     return out
 
 
+_LLD_ROW = re.compile(r"^\s*[0-9a-f]+\s+[0-9a-f]+\s+[0-9a-f]+\s+\d+( +)(\S.*?)\s*$")
+
+
+def placed_from_lld(map_text: str, member_pred) -> set[str]:
+    """`placed_from` for an LLD map (`VMA LMA Size Align Out In Symbol`): the
+    three last columns are told apart by their indentation after `Align`
+    (output section, input section, symbol)."""
+    out: set[str] = set()
+    cur_ok = False
+    for line in map_text.splitlines():
+        m = _LLD_ROW.match(line)
+        if not m:
+            continue
+        indent, text = len(m[1]), m[2]
+        if indent <= 2:  # an output section
+            cur_ok = False
+        elif indent <= 10:  # an input section: <file>(<member>):(<section>)
+            mem = re.search(r"\(([^()]+)\):\(", text)
+            cur_ok = bool(mem) and member_pred(mem[1])
+        elif cur_ok and not text.startswith((".L", "$")):
+            out.add(text)
+    return out
+
+
 def apply_linked_compiler_builtins(g: Graph, inputs: list[str], llvm_bin: str | None,
                                    placed: set[str] | None) -> int:
     """Frames for the `#[naked]` routines of a `compiler_builtins` the link
@@ -1147,16 +1171,36 @@ def apply_linked_compiler_builtins(g: Graph, inputs: list[str], llvm_bin: str | 
     objdump = llvm_tool("llvm-objdump", llvm_bin)
     nm = llvm_tool("llvm-nm", llvm_bin)
     n = 0
-    for a in dict.fromkeys(inputs):
+    # An LLD map names its inputs `archive(member)`: measure the archive.
+    archives = []
+    for a in inputs:
+        m = _LLD_MEMBER.match(a)
+        archives.append(m["archive"] if m else a)
+    # ...and once extracted, its members are loose objects (one directory per
+    # archive): measure the toolchain-runtime ones together, as one archive.
+    loose: dict[Path, list[Path]] = {}
+    for a in archives:
+        p = Path(a)
+        if p.suffix == ".o" and stack_builtins.is_linked_runtime(p.name) and p.is_file():
+            loose.setdefault(p.parent, []).append(p)
+    for objs in loose.values():
+        # These objects are walked inputs, so their edges are the walk's:
+        # each function takes its own frame only.
+        got = stack_builtins.measure_objects(sorted(set(objs)), objdump, nm, own=True)
+        for fn in sorted(frameless):
+            if fn not in g.frames and "bytes" in got.get(fn, {}):
+                g.frames[fn] = got[fn]["bytes"]
+                n += 1
+    for a in dict.fromkeys(archives):
         path = Path(a)
         if path.suffix not in (".a", ".rlib") or not path.is_file():
             continue
         r = subprocess.run([ar, "t", str(path)], capture_output=True, text=True)
-        if r.returncode or not any(stack_builtins.is_compiler_builtins(m)
+        if r.returncode or not any(stack_builtins.is_linked_runtime(m)
                                    for m in r.stdout.split()):
             continue
         got = stack_builtins.measure_archive(path, objdump, nm, ar,
-                                             only=stack_builtins.is_compiler_builtins)
+                                             only=stack_builtins.is_linked_runtime)
         for fn in sorted(frameless):
             if fn not in g.frames and "bytes" in got.get(fn, {}):
                 g.frames[fn] = got[fn]["bytes"]
@@ -3180,10 +3224,10 @@ def run(args: argparse.Namespace) -> int:
     got = apply_linked_compiler_builtins(
         g, list(args.inputs), args.llvm_bin,
         placed_from(Path(args.link_map).read_text(errors="replace"),
-                    stack_builtins.is_compiler_builtins) if args.link_map else None)
+                    stack_builtins.is_linked_runtime) if args.link_map else None)
     if got:
-        print(f"nros-stack-floor: {got} frame(s) of `#[naked]` compiler_builtins routines "
-              "read off the linked objects", file=sys.stderr)
+        print(f"nros-stack-floor: {got} frame(s) of compiler_builtins and toolchain C runtime "
+              "routines read off the linked objects", file=sys.stderr)
     bt_path = builtins_table_path(args.table, args.builtins)
     if bt_path is not None and dropped:
         got = apply_builtins(g, dropped, load_table(bt_path), llvm_tool("llvm-nm", args.llvm_bin))
@@ -3434,6 +3478,9 @@ def self_test() -> int:
 
     # phase-557 W9b -- the builtins table: its decoder, depth rules and lookup
     for name, ok in stack_builtins.self_checks():
+        check(name, ok)
+    # issue 2514 -- which linked members are the toolchain's C runtime
+    for name, ok in stack_builtins.runtime_member_checks():
         check(name, ok)
     # ...a compiler_builtins frame goes only to what the link placed from it
     mp = ("Discarded input sections\n"

@@ -68,6 +68,37 @@ def is_compiler_builtins(member: str) -> bool:
     return Path(member).name.startswith("compiler_builtins-")
 
 
+# newlib's members (`libc_a-memchr.o`, `libm_a-s_frexp.o`) and libgcc's
+# (`_bswapsi2.o`): the toolchain's C runtime, copied into a board crate's
+# archive (issue 2514). Named, so an ordinary C file that lost its own frame
+# source still refuses.
+_TOOLCHAIN_C_RUNTIME = re.compile(
+    r"^(?:lib[cmg]_a-[\w.-]+"            # newlib: libc_a-memchr, libm_a-s_frexp
+    r"|_[a-z0-9_]+"                       # libgcc: _bswapsi2, _udivdi3
+    r"|(?:add|sub|mul|div|neg|eq|ne|ge|gt|le|lt|unord|fix(?:uns)?|float(?:un|uns)?|extend"
+    r"|trunc|powi|cmp)(?:[sdtxhb]f|[sdt]i)[a-z0-9]*"  # libgcc soft-fp: trunctfdf2, addtf3
+    r")\.o$")
+
+
+def is_toolchain_c_runtime(member: str) -> bool:
+    return bool(_TOOLCHAIN_C_RUNTIME.match(Path(member).name))
+
+
+def runtime_member_checks() -> list[tuple[str, bool]]:
+    """The toolchain-runtime member names (issue 2514), held to examples."""
+    yes = ["libc_a-memchr.o", "libm_a-s_frexp.o", "_bswapsi2.o", "trunctfdf2.o", "addtf3.o",
+           "fixunsdfsi.o", "floatsidf.o", "extendsfdf2.o"]
+    no = ["pdf.o", "main.o", "zpico.o", "nros_platform.o", "elf.o", "libfoo.o"]
+    return [(f"toolchain runtime member `{m}`", is_toolchain_c_runtime(m)) for m in yes] + \
+        [(f"not a toolchain runtime member `{m}`", not is_toolchain_c_runtime(m)) for m in no]
+
+
+def is_linked_runtime(member: str) -> bool:
+    """What the linked-objects road measures: compiler_builtins, and the
+    toolchain's C runtime."""
+    return is_compiler_builtins(member) or is_toolchain_c_runtime(member)
+
+
 _AR_SKIP = (b"/", b"/SYM64/", b"__.SYMDEF", b"__.SYMDEF SORTED")
 
 
@@ -292,6 +323,123 @@ def parse_member(text: str) -> dict[str, Body]:
     return bodies
 
 
+# ------------------------------------------------------------------ RISC-V
+#
+# Issue 2514: newlib and libgcc objects linked into a RISC-V image carry no
+# `.su` and no CFI, like the Thumb hand-assembly W9b reads. The same rules,
+# for RISC-V's encoding:
+#   - a frame is the sum of every `addi sp, sp, -N` (`c.addi16sp` prints the
+#     same); `sub sp, sp, <reg>` moves sp by a run-time amount: unmeasured;
+#   - a call is `auipc ra` + R_RISCV_CALL(_PLT) (then `jalr ra`), or `jal`
+#     to a symbol; the same pair through any other register (`auipc t1` ...
+#     `jr t1`) is a TAIL call, the same frame;
+#   - `jalr <reg>` with no call relocation is a call through a register:
+#     unmeasured;
+#   - `.L` labels are inside a body, never a new one.
+
+_RV_RELOC = re.compile(r"^\s*[0-9a-f]+:\s+R_RISCV_(?P<type>\S+)\s+(?P<sym>\S+)")
+_RV_TERMINATORS = ("ret", "j", "jr", "tail", "ebreak", "unimp", "mret", "c.j", "c.jr")
+
+
+def sp_decrement_rv(mnemonic: str, operands: str) -> int | None:
+    mn = mnemonic.lower()
+    ops = [o.strip() for o in operands.lower().split(",")]
+    if mn in ("addi", "c.addi", "c.addi16sp") and ops and ops[0] == "sp":
+        src = ops[1] if len(ops) == 3 else "sp"
+        imm = ops[-1]
+        try:
+            v = int(imm, 0)
+        except ValueError:
+            return None
+        if src == "sp":
+            return -v if v < 0 else 0
+        return 0  # sp from a frame pointer: an epilogue restore
+    if mn in ("sub", "subw") and ops and ops[0] == "sp":
+        return None
+    if mn in ("add", "addw", "mv", "c.mv", "c.add") and ops and ops[0] == "sp":
+        return 0  # sp restored from another register (an epilogue)
+    return 0
+
+
+def parse_member_rv(text: str) -> dict[str, Body]:
+    bodies: dict[str, Body] = {}
+    order: list[str] = []
+    cur: Body | None = None
+    call_reg: str | None = None  # the register an auipc paired with a call reloc set
+    for line in text.splitlines():
+        m = _FUNC_HDR.match(line)
+        if m:
+            name = m["name"].strip()
+            if name.startswith(".L") or name.startswith("$"):
+                continue  # a local label inside the current body
+            cur = bodies.setdefault(name, Body(name))
+            order.append(name)
+            call_reg = None
+            continue
+        if cur is None:
+            continue
+        m = _RV_RELOC.match(line)
+        if m:
+            t, sym = m["type"], m["sym"]
+            if t in ("CALL", "CALL_PLT") and cur.last and cur.last[0] == "auipc":
+                reg = cur.last[1].split(",")[0].strip().lower()
+                (cur.calls if reg == "ra" else cur.jumps).add(sym)
+                call_reg = reg
+            elif t == "JAL" and cur.last:
+                mn, ops = cur.last
+                if mn == "jal" and (ops.split(",")[0].strip() in ("ra",) or "," not in ops):
+                    cur.calls.add(sym)
+                elif not sym.startswith(".L"):
+                    cur.jumps.add(sym)
+            elif t in ("BRANCH", "RVC_BRANCH", "RVC_JUMP") and not sym.startswith(".L"):
+                if sym != cur.name:
+                    cur.jumps.add(sym)
+            continue
+        m = _INSN.match(line)
+        if not m or m["mn"].startswith("<") or m["mn"] == "...":
+            continue
+        mn, ops = m["mn"].lower(), (m["ops"] or "").strip()
+        if mn.startswith(".") or re.fullmatch(r"[0-9a-f]{2,8}", mn):
+            continue
+        d = sp_decrement_rv(mn, ops)
+        if d is None:
+            cur.unmeasured = cur.unmeasured or f"moves sp by a register (`{mn} {ops}`)"
+        else:
+            cur.frame += d
+        if mn in ("jalr", "c.jalr"):
+            reg = ops.split(",")[0].strip().lower().split("(")[-1].rstrip(")")
+            if call_reg is None or reg != call_reg:
+                cur.unmeasured = cur.unmeasured or f"calls through a register (`{mn} {ops}`)"
+            call_reg = None
+        elif mn in ("jr", "c.jr"):
+            reg = ops.split(",")[0].strip().lower()
+            if reg != "ra" and (call_reg is None or reg != call_reg):
+                cur.unmeasured = cur.unmeasured or f"jumps through a register (`{mn} {ops}`)"
+            call_reg = None
+        elif mn != "auipc":
+            call_reg = None
+        if mn != "nop" and mn != "c.nop":
+            cur.last = (mn, ops)
+    for a, b in zip(order, order[1:]):
+        body = bodies[a]
+        if body.last is not None and body.last[0] not in _RV_TERMINATORS:
+            body.next = b
+    for body in bodies.values():
+        if body.next:
+            body.jumps.add(body.next)
+    return bodies
+
+
+def object_arch(obj: bytes) -> str:
+    """`riscv` or `arm`, from an ELF object's e_machine (243, 40)."""
+    if obj[:4] != b"\x7fELF":
+        return "arm"
+    e = "<" if obj[5] == 1 else ">"
+    import struct
+    (mach,) = struct.unpack_from(e + "H", obj, 18)
+    return "riscv" if mach == 243 else "arm"
+
+
 # ------------------------------------------------------------------ archive
 
 def defined_functions(archive: Path, nm: str) -> dict[str, tuple[str, str]]:
@@ -327,7 +475,63 @@ def measure_archive(archive: Path, objdump: str, nm: str, ar: str,
                 continue
             r = subprocess.run([objdump, "-dr", "--no-show-raw-insn", str(obj)],
                                capture_output=True, text=True, check=True)
-            bodies[mem] = parse_member(r.stdout)
+            try:
+                arch = object_arch(obj.read_bytes()[:20])
+            except OSError:
+                arch = "arm"  # a stubbed archive in a self-test
+            parse = parse_member_rv if arch == "riscv" else parse_member
+            bodies[mem] = parse(r.stdout)
+    return _depths(defs, bodies)
+
+
+def measure_objects(objs: list[Path], objdump: str, nm: str, own: bool = False
+                    ) -> dict[str, dict]:
+    """`measure_archive` for loose objects: members an LLD-map walk already
+    extracted from one archive (issue 2514). Each object is a member, named
+    by its file name.
+
+    `own=True` gives each function its OWN frame only. Use it for objects the
+    walk itself loads: their calls, branches and indirect sites are already
+    edges of the walk's graph, so a total depth would count the chain twice,
+    and an indirect call is the walk's to bind, not a reason to refuse. Only
+    an sp moved by a register (a run-time amount) still refuses."""
+    defs: dict[str, tuple[str, str]] = {}
+    bodies: dict[str, dict[str, Body]] = {}
+    for obj in objs:
+        mem = obj.name
+        r = subprocess.run([nm, "--defined-only", "--format=posix", str(obj)],
+                           capture_output=True, text=True)
+        for line in r.stdout.splitlines():
+            m = re.match(r"^(?P<name>\S+)\s+(?P<t>\S)\s+(?P<v>[0-9a-fA-F]+)", line)
+            # a walked object's local functions (`t`: `quorem`, an `.isra`
+            # clone) are walked too, so own-frame mode states them
+            if m and (m["t"] in "TW" or (own and m["t"] == "t")):
+                defs.setdefault(m["name"], (mem, f"{mem}@{int(m['v'], 16) & ~1:x}"))
+        r = subprocess.run([objdump, "-dr", "--no-show-raw-insn", str(obj)],
+                           capture_output=True, text=True)
+        try:
+            arch = object_arch(obj.read_bytes()[:20])
+        except OSError:
+            continue
+        bodies[mem] = (parse_member_rv if arch == "riscv" else parse_member)(r.stdout)
+    if own:
+        out: dict[str, dict] = {}
+        for name, (mem, _) in defs.items():
+            b = bodies.get(mem, {}).get(name)
+            if b is None:
+                continue
+            if b.unmeasured and b.unmeasured.startswith("moves sp"):
+                out[name] = {"unmeasured": b.unmeasured}
+            else:
+                out[name] = {"bytes": b.frame}
+        return out
+    return _depths(defs, bodies)
+
+
+def _depths(defs: dict[str, tuple[str, str]], bodies: dict[str, dict[str, Body]]
+            ) -> dict[str, dict]:
+    """Each defined function's total depth (its own frame plus the deepest
+    chain inside the measured set), or why it is unmeasured."""
     # an alias group shares one body: find it under any of its names
     by_group: dict[str, Body] = {}
     for name, (mem, group) in defs.items():
