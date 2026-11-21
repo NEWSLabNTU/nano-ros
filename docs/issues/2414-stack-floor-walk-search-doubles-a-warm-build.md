@@ -1,18 +1,18 @@
 ---
 id: 2414
-title: "Measuring stack floors every build bypasses sccache for the measured crates (about 2x warm build), because a sccache hit restores the rlib but not the save-temps bitcode; a bitcode store keyed by crate output would remove the cost"
+title: "A walked build takes about 2x a warm build, and the cost is the 8-order walk search, not the sccache bypass: the search should run its orders in parallel and skip a graph it has already walked"
 status: open
 type: enhancement
 severity: low
 area: [build, tooling, memory]
 found: 2026-11-10
-related: [issue-2400, phase-548, phase-557]
+related: [issue-2400, issue-2803, phase-548, phase-557]
 ---
 
 **Home: [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md)**, with
 issue 2400. Rehomed 2026-11-15 from
-[phase-548](../roadmap/archived/phase-548-three-languages-every-board.md) (archived). **Deferred by ruling:** build this only if someone measures real
-pain from the bypass.
+[phase-548](../roadmap/archived/phase-548-three-languages-every-board.md) (archived). Re-scoped 2026-11-21 around the measured cost (below). The
+bitcode store it first proposed is DROPPED.
 
 ## What
 
@@ -36,24 +36,7 @@ and build scripts stay cached.
 | save-temps, sccache (bitcode lost on hits) | 5.3 s |
 | save-temps, no sccache for the measured crates (exact) | 11.2 s |
 
-## Proposal (deferred)
-
-A bitcode store keyed by each crate's output hash (the rlib's sha256):
-
-- Whenever save-temps produced `.bc` (a miss), the walker files it under that
-  key.
-- When a hit leaves the `.bc` missing, the walker takes it from the store.
-- A crate with no store entry is recompiled once with sccache off.
-
-Steady state, this is the warm-sccache cost plus llc on the changed crates.
-
-## Acceptance
-
-- A warm-sccache build that measures is within noise of 5.4 s on the table
-  above.
-- Its floors are identical to the bypass build's.
-
-## Measured again (2026-11-21): the cost is the walk, not the bypass
+## The cost, measured (2026-11-21): the walk, not the bypass
 
 Re-measured on today's tree, each from a fresh target dir with a warm
 sccache through the `just` wrapper (`scripts/bin/rustc-wrapper/sccache`):
@@ -84,10 +67,32 @@ Two other things found while measuring:
   an activated shell leaves it empty. So a plain `nros build` never used
   sccache, and the bypass costs it nothing. The bypass is paid by
   `just`-driven builds (fixture lanes, CI), where the walk is on by default.
-- **The off switch does not reach the cmake road.** `NROS_STACK_FLOOR` is
-  read from the environment by the cargo road (`stack_floor.rs`, which
-  accepts `ON`/`OFF`) but as a CMake cache variable by
-  `cmake/NanoRosStackFloor.cmake` (`CHECK`/`OFF`). So
-  `NROS_STACK_FLOOR=OFF nros build` still walks a Zephyr image, although
-  its configure line says `NROS_STACK_FLOOR=OFF skips`, and `ON` is a
-  configure error there.
+- **The off switch does not reach the cmake road**: filed as
+  [issue 2803](2803-stack-floor-off-switch-not-on-cmake-road.md).
+
+## Fix (approved 2026-11-21)
+
+1. **Run the orders in parallel**, drawing on the shared jobserver token
+   pool (`scripts/build/jobserver-pool.sh`), never as raw processes: fixture
+   builds run walks concurrently, and eight per walk would oversubscribe the
+   host. The orders are independent and the floor is their max, so the
+   answer cannot change. That is checked on the drift rows, against the
+   serial run.
+2. **Skip a graph already walked**: a walk-result cache, outside `target/`,
+   keyed by every input that can move the answer:
+   - the edges and frames;
+   - the table, and the walk's flags;
+   - the walker's AND the classifier's source;
+   - the toolchain identity (the drift check's);
+   - the order count.
+
+   A stale entry would state a WRONG floor, the unsafe direction. So a
+   negative control (one frame changed) must miss. The cache is bounded and
+   pruned.
+3. The bitcode store is dropped: it would recover the bypass's 1-3 s.
+
+## Acceptance
+
+- A walked warm build costs the walk-off build plus a few seconds (1), and
+  about nothing on an unchanged graph (2).
+- Floors identical to the serial walk's, on every drift row.
