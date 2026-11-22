@@ -152,6 +152,15 @@ As built:
   and it fails on the code before the fix (the second thread waited 553 ms).
   Whether C should sleep-poll too, where it refuses today, is
   [issue 2848](../issues/2848-c-wait-for-service-in-callback-parity.md).
+- **Review fixes.** The C action client's poll paths took the core through the
+  locked derive and then ran the user's callbacks still holding it; each step
+  now copies the reply out and gives the lock back first. The C++ wait's own
+  spin (outside a callback) now marks the context in a callback, as
+  `nros_cpp_spin_once` does. The gate counts the executor by every name it
+  goes by. A C call from another thread during a callback still gets a
+  misleading answer (NOT_INIT from the action client, REENTRANT from the
+  executor-wide flag):
+  [issue 2855](../issues/2855-c-cross-thread-call-during-dispatch-misleading-code.md).
 - **The header class has no Miri case.** A C call that reborrows the executor
   header while `rclc_executor_spin_some` is mid-pass cannot run under Miri:
   nros-c's executor init reaches platform C symbols Miri cannot call. The
