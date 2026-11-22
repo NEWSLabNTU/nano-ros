@@ -1,7 +1,7 @@
 ---
 id: 2844
 title: "A musl Linux target does not build: the POSIX port misses `<limits.h>`, and two build scripts name `-lpthread` / `-lrt`"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [platform, posix, build, rmw]
@@ -63,3 +63,13 @@ Sibling sites, checked and left alone with the reason:
 - The Linux talker cross-builds for `aarch64-unknown-linux-musl` against this
   tree with no local patch.
 - `just ci gate` green.
+
+## Resolution (2026-11-23)
+Fixed as the fix direction says: `platform.c` includes `<limits.h>`, and both
+build scripts take their `-l` lines from `nros_cc_flags::libc_libs`, which
+names neither `pthread` nor `rt` when cargo's `target_env` is `musl`.
+
+Verified on the reporter's setup: the camera talker built at the fix commit
+with no local patch, giving a static aarch64 ELF of 1,718,584 bytes, the same
+size as the patched proof of concept. `just ci gate` green at that commit
+(739 of 739 passed, 62 skipped).
