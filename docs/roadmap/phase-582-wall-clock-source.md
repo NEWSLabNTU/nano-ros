@@ -158,6 +158,21 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     (`gettimeofday` read ticks). Not measured: mps3-an536 and s32z270 build
     the same two shims, and freertos-posix has neither (glibc answers, and
     there `gettimeofday` and the platform symbol still disagree).
+  - With the wall clock reading 0, the DDS and zenoh stacks still discover and
+    deliver:
+    - Cyclone: `freertos_qemu`'s
+      `an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default` (the
+      `(FreertosMps2, Cpp, Cyclonedds, EntryPubsub, Workspace)` cell, booted
+      on mps3-an536 and linking this `clock_gettime`) passes.
+    - zenoh: `rtos_e2e`'s FreeRTOS C++ pubsub cell passes.
+    - XRCE has no FreeRTOS cell (carved out). By reading, it is unaffected:
+      an embedded build compiles neither of upstream's `util/time.c` arms,
+      and `uxr_millis`/`uxr_nanos` come from the backend's
+      `platform_aliases.c` over `nros_platform_clock_ns`.
+  - No FreeRTOS-reachable code waits on the wall clock (no
+    `std::chrono::system_clock` deadline, no `wait_until`/`sleep_until` on
+    it), so RFC-0141 D6 now states that wall-clock deadlines are not
+    supported before sync.
 
 ### W3 — SNTP re-acquires
 
