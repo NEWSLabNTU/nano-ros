@@ -106,7 +106,7 @@ a passing case, shown sensitive by a mutation measured and reverted.
 
 ### W3 — One derive helper, and the class sweep
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-23)
 
 `get_executor`, `get_executor_from_ptr`, `cpp_ctx_checked`, `cpp_ctx_locked`
 and the `CLocked` / `Locked` lookups go through one helper, measured at
@@ -123,6 +123,45 @@ pointer derived from a temporary reborrow. A caller that keeps it while the
 executor writes the session through its own field holds a disabled tag, the
 same defect the client handles had. The sweep covers it: the fix is a raw
 place, and a Miri case keeps the pointer across a `spin_once`.
+
+As built:
+
+- **Every derive takes the lock.** Nine FFI entries cast a stored pointer to
+  the executor and took no lock: the C action client's arena lookup (five
+  calls go through it), `rcl_timer_cancel` and `rcl_timer_reset`, and six C++
+  subscription creates. Each now goes through its crate's derive. Measured
+  today: 212 helper calls, not 224.
+- **One refusal per crate.** A callback may make any call stock rclc and
+  rclcpp allow. A call refuses (REENTRANT) only when it would block, spin the
+  executor again, or release an entry the running pass may still touch. C
+  refuses through `refuse_in_dispatch`, which its 12 refusing calls use. C++
+  spins take `RawDispatchGuard`, and a refusing call that does not spin calls
+  `CtxRef::refuse_in_dispatch`.
+- **The sweep is a gate, `check-ffi-executor-derive`.** A cast to the
+  executor, a cast of a stored pointer to the C executor header, and a read of
+  `in_dispatch` are each allowed only in a listed function, with its reason.
+  Every spelling counts, and a stale entry fails. It covers 66 sites. Putting
+  back the timer casts fails it, naming both lines. One flag reader stays
+  outside the refusals and is listed by issue: C++ `wait_for_service`
+  sleep-polls inside a callback while holding the executor's lock
+  ([issue 2843](../issues/2843-cpp-blocking-call-sleep-polls-in-callback.md)).
+- **The header class has no Miri case.** A C call that reborrows the executor
+  header while `rclc_executor_spin_some` is mid-pass cannot run under Miri:
+  nros-c's executor init reaches platform C symbols Miri cannot call. The
+  gate's header-cast rule is the guard: a new spinning entry is a new
+  function, so it is reviewed before it can hold a header reference across its
+  callbacks. A Rust-only mock platform for nros-c host tests would make the
+  real Miri case cheap.
+- **`session_ptr` needed more than a raw place.** The owned session lived
+  inline in its owner, so any pointer to it derived from the owner, and the
+  owner's next `spin_once` disabled it. Under `alloc` the owned session is now
+  in its own allocation (536 bytes on x86_64), and owner and borrowers are
+  equals. If that allocation fails the session stays inline and is never
+  shared: `session_handle` returns `None`. Without `alloc` it stays inline
+  and shared until it can be carved from the executor's backing
+  ([issue 2845](../issues/2845-owned-session-from-executor-backing.md)).
+  Cases: `a_session_pointer_survives_its_owner_spinning` (UB before) and
+  `an_inline_session_is_never_shared`, both in `miri-executor-reentry`.
 
 ### W5a — A guard condition cannot outlive its executor
 
