@@ -1399,7 +1399,23 @@ pub fn derive_level_stacks(
     member_stacks: &BTreeMap<String, u32>,
     rtos: &str,
 ) -> usize {
-    let Some(frame) = level_worker_frame_bytes(rtos, LevelRunner::Rust) else {
+    derive_level_stacks_for(table, member_stacks, rtos, LevelRunner::Rust)
+}
+
+// Issues 2732, 2784.
+/// [`derive_level_stacks`] for a named runner's worker frame. The ONE
+/// implementation: `nros::main!` calls it through [`derive_level_stacks`]
+/// (the Rust runner), and the CLI calls it to state the stacks an image's
+/// entry allocates (the ThreadX byte pool counts the spawned ones, and the
+/// stack-floor check walks each), so the two can differ only in their
+/// INPUTS, never in the rule.
+pub fn derive_level_stacks_for(
+    table: &mut ResolvedSchedTaskTable,
+    member_stacks: &BTreeMap<String, u32>,
+    rtos: &str,
+    runner: LevelRunner,
+) -> usize {
+    let Some(frame) = level_worker_frame_bytes(rtos, runner) else {
         return 0;
     };
     let mut derived = 0;
@@ -2556,6 +2572,31 @@ mod applicability_tests {
             );
         }
         assert_eq!(level_worker_frame_bytes("posix", LevelRunner::C), None);
+    }
+
+    /// Issue 2732 -- the runner-named derivation is the one rule: the macro's
+    /// `derive_level_stacks` is its Rust case, and a C runner gets the C
+    /// frame.
+    #[test]
+    fn the_runner_named_derivation_is_the_macros_rule() {
+        let mut urgent = base();
+        urgent.name = "urgent".into();
+        urgent.members = vec![("a".into(), "g".into())];
+        let stacks: BTreeMap<String, u32> = [("a".to_string(), 2048)].into();
+        for rtos in ["freertos", "nuttx", "zephyr", "threadx"] {
+            let mut by_macro = table(urgent.clone());
+            let mut by_cli = table(urgent.clone());
+            derive_level_stacks(&mut by_macro, &stacks, rtos);
+            derive_level_stacks_for(&mut by_cli, &stacks, rtos, LevelRunner::Rust);
+            assert_eq!(by_macro, by_cli, "{rtos}");
+            let mut by_c = table(urgent.clone());
+            derive_level_stacks_for(&mut by_c, &stacks, rtos, LevelRunner::C);
+            assert_eq!(
+                by_c.sched_tasks[0].stack_bytes,
+                level_worker_frame_bytes(rtos, LevelRunner::C).map(|f| 2048 + f),
+                "{rtos}"
+            );
+        }
     }
 
     /// Issue 2019 -- the C runner's frames here are the C headers' defaults,

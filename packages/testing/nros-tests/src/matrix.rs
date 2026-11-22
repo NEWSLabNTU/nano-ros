@@ -1492,6 +1492,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         "pool_exhaustion_threadx_linux",
         NonCell::Probe("session-pool exhaustion on ThreadX-Linux"),
     ),
+    (
+        "sched_task_pool_refusal_threadx_linux",
+        NonCell::Probe(
+            "the ThreadX byte pool refuses at boot a task stack no sizing descriptor states, naming the knob (issue 2732)",
+        ),
+    ),
     // Issue 2640 -- the metadata probe's sidecars of a built workspace.
     ("probe_seeds_workspace", NonCell::CompileCheck),
     (

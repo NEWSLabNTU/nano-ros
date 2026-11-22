@@ -959,6 +959,37 @@ pub fn resolve_plan_sched_in(
     resolve_plan_sched_recorded(plan, target_rtos, priority_plan).map(|_| ())
 }
 
+/// Issue 2732 -- the resolved sched-task table with every level's stack as the
+/// entry ALLOCATES it: a level that authors no stack takes its largest
+/// member's (`[[component]] stack_bytes`, each [`PlanNode::stack_bytes`]) plus
+/// `runner`'s worker frame, by
+/// [`nros_orchestration_ir::derive_level_stacks_for`] -- the function
+/// `nros::main!` runs, never a second spelling of it. `None` when the plan
+/// resolved no table.
+///
+/// The emitted entry is not built from this: a C/C++ entry's headers derive
+/// the same stacks at C compile time, and `nros::main!` derives its own. This
+/// is what the build STATES about them: the ThreadX byte pool counts the
+/// spawned stacks (issue 2732) and the stack-floor check walks each (issue
+/// 2784).
+pub fn derived_stack_table(
+    plan: &Plan,
+    target_rtos: &str,
+    runner: nros_orchestration_ir::LevelRunner,
+) -> Option<ResolvedSchedTaskTable> {
+    let mut table = plan.resolved_sched_tasks.clone()?;
+    let member_stacks: BTreeMap<String, u32> = plan
+        .nodes
+        .iter()
+        .filter_map(|n| {
+            let name = n.name.as_deref().unwrap_or(n.exec.as_str());
+            n.stack_bytes.map(|b| (name.to_string(), b))
+        })
+        .collect();
+    nros_orchestration_ir::derive_level_stacks_for(&mut table, &member_stacks, target_rtos, runner);
+    Some(table)
+}
+
 /// [`resolve_plan_sched_in`], returning what the derivation did (if anything)
 /// for the priority record.
 pub fn resolve_plan_sched_recorded(
@@ -1384,6 +1415,48 @@ contracts: {}
         assert!(body.contains(&format!("{}", dep_a.display())));
         // Space in dep_b should be escaped.
         assert!(body.contains("dir\\ with\\ space"));
+    }
+
+    /// Issue 2732 -- the stacks the build states are the ones `nros::main!`
+    /// allocates: a level with no authored stack takes its largest member's
+    /// plus the Rust runner's frame, through the macro's own function, and an
+    /// authored one is kept.
+    #[test]
+    fn the_derived_stack_table_is_the_macros_derivation() {
+        let mut plan = single_node_plan("ctrl");
+        plan.nodes[0].stack_bytes = Some(6144);
+        let task = |name: &str, stack: Option<u32>| nros_orchestration_ir::ResolvedSchedTask {
+            name: name.into(),
+            priority: 1,
+            stack_bytes: stack,
+            spin_period_us: None,
+            preempt_threshold: None,
+            time_slice_us: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: vec![("ctrl".into(), "g".into())],
+        };
+        assert!(
+            derived_stack_table(&plan, "threadx", nros_orchestration_ir::LevelRunner::Rust)
+                .is_none()
+        );
+        let table = ResolvedSchedTaskTable {
+            sched_tasks: vec![task("high", None), task("low", Some(9000))],
+        };
+        plan.resolved_sched_tasks = Some(table.clone());
+        let got = derived_stack_table(&plan, "threadx", nros_orchestration_ir::LevelRunner::Rust)
+            .unwrap();
+        let mut by_macro = table;
+        let member_stacks: BTreeMap<String, u32> = [("ctrl".to_string(), 6144)].into();
+        nros_orchestration_ir::derive_level_stacks(&mut by_macro, &member_stacks, "threadx");
+        assert_eq!(got, by_macro);
+        assert_eq!(got.sched_tasks[0].stack_bytes, Some(6144 + 4096));
+        assert_eq!(got.sched_tasks[1].stack_bytes, Some(9000));
     }
 
     /// Helper that builds a single-node [`Plan`] with the given node name.
