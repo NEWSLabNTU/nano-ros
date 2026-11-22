@@ -113,6 +113,34 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
         sig_paths=("$dir")
     fi
 
+    # Issue 2801 -- and the BUILDER. `compile-check-fixtures.sh` is what stages
+    # and compiles the row, so an edit to how a row is built (a new `--config`
+    # on the cargo-check-verdict builder, measured) moved nothing above and
+    # every row of that builder was reused with its old verdict. Hash the
+    # builder script and every script it reaches by `$repo_root/scripts/...`
+    # path, DERIVED from its text so a new helper is covered when it is
+    # added. Two are left out because the signature already holds what they
+    # decide: `fixtures-manifest.py` produces the record hashed first, and
+    # this script decides its own bytes. The whole file rather than one
+    # builder's functions: the builders share their helpers, so a per-builder
+    # cut would be a call graph to keep right; an unrelated builder edit
+    # re-stages a row, the safe direction this lane already takes.
+    printf 'builder\0'
+    mapfile -t _builder_scripts < <(
+        {
+            echo scripts/build/compile-check-fixtures.sh
+            grep -oE '\$(repo_root|script_dir)/scripts/[A-Za-z0-9_./-]+' \
+                "$repo_root/scripts/build/compile-check-fixtures.sh" |
+                sed -E 's#^\$(repo_root|script_dir)/##'
+        } | grep -vxE 'scripts/build/(fixtures-manifest\.py|compile-check-signature\.sh)' |
+            sort -u
+    )
+    wait $! || {
+        echo "compile-check-signature: listing the builder's scripts failed" >&2
+        exit 1
+    }
+    nros_source_manifest "$repo_root" "${_builder_scripts[@]}"
+
     # phase-360 W3 — ONE spelling, in `source-manifest.sh`, shared with the
     # workspace lane. It enumerates through the git index (so gitignored build
     # trees can never leak in, which is what made the old find-based walk both
