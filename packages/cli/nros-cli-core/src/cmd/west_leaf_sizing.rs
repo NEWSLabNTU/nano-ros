@@ -192,6 +192,9 @@ fn run_declared_leaf(args: &WestLeafSizingArgs) -> Result<()> {
         system,
         inventory,
         census_backed,
+        // A leaf's declaration never refuses its census this way (issue 2806
+        // is the owned-entry road's).
+        census_refused: _,
     } = crate::cmd::sizing_descriptor::leaf_declaration(leaf, args.image.as_deref())?;
     let Some(inv) = inventory else {
         return Ok(());

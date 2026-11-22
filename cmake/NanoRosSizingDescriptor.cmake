@@ -429,7 +429,10 @@ endfunction()
 function(nros_sizing_descriptor_from_leaf _out_var)
     # IMAGE / OWNED_ENTRY / WORKSPACE (issue 2433): LEAF is then a BRINGUP and
     # the image builds the owned entry at OWNED_ENTRY, sized by its census.
-    cmake_parse_arguments(_nsl "REQUIRED"
+    # CENSUS_NOT_TAKEN (issue 2806): with OWNED_ENTRY, its census was not
+    # taken under `[census] on_missing = "warn"`; the descriptor refuses every
+    # count the census would have stated.
+    cmake_parse_arguments(_nsl "REQUIRED;CENSUS_NOT_TAKEN"
         "CLI;LEAF;ENTRY;BUILD_DIR;ENTITY_CMAKE;IMAGE;OWNED_ENTRY;WORKSPACE" "" ${ARGN})
     set(${_out_var} "" PARENT_SCOPE)
     set(${_out_var}_ENTITY_FRAGMENT "" PARENT_SCOPE)
@@ -472,6 +475,9 @@ function(nros_sizing_descriptor_from_leaf _out_var)
         set(_owned_args --owned-entry "${_nsl_OWNED_ENTRY}")
         if(_nsl_WORKSPACE)
             list(APPEND _owned_args --workspace "${_nsl_WORKSPACE}")
+        endif()
+        if(_nsl_CENSUS_NOT_TAKEN)
+            list(APPEND _owned_args --census-not-taken)
         endif()
         set(_road "a workspace image's owned cmake entry")
     endif()

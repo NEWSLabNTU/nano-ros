@@ -691,7 +691,14 @@ fn take_census(args: TakeArgs) -> Result<()> {
             args.build_step,
             &HostSteps::real(),
         );
+        let not_taken = owned_census_not_taken_path(&root, &bringup, &image_id);
         let Err(err) = taken else {
+            // Issue 2806 -- a census now taken retires the record of one that
+            // was not.
+            if not_taken.is_file() {
+                std::fs::remove_file(&not_taken)
+                    .wrap_err_with(|| format!("remove `{}`", not_taken.display()))?;
+            }
             return Ok(());
         };
         // The bringup's `[census] on_missing` decides what a census that
@@ -700,7 +707,15 @@ fn take_census(args: TakeArgs) -> Result<()> {
         let policy = read_system_toml(Some(&system_toml))?
             .and_then(|s| s.census)
             .unwrap_or_default();
+        let cause = format!("{err:#}").lines().next().unwrap_or("").to_string();
         let warning = owned_census_fallback(policy.on_missing, &asked_q, &pkg, &system_toml, err)?;
+        // Issue 2806 -- why, for the descriptor that refuses every count the
+        // census would have stated (`sizing-descriptor --census-not-taken`).
+        if let Some(dir) = not_taken.parent() {
+            std::fs::create_dir_all(dir).wrap_err_with(|| format!("create `{}`", dir.display()))?;
+        }
+        crate::atomic_file::atomic_write(&not_taken, &format!("{cause}\n"))
+            .map_err(|e| eyre::eyre!("cannot write `{}`: {e}", not_taken.display()))?;
         eprintln!("{warning}");
         return Ok(());
     }
@@ -1764,6 +1779,25 @@ pub(crate) fn owned_programs_path(root: &Path, bringup: &str, image: &str) -> Pa
         .join("owned")
         .join(bringup)
         .join(format!("{image}.programs"))
+}
+
+/// Issue 2806 -- the record of a census the last take could NOT take, under
+/// `[census] on_missing = "warn"`: `owned/<bringup>/<image>.not-taken`,
+/// holding the take's first error line. A successful take removes it.
+pub(crate) fn owned_census_not_taken_path(root: &Path, bringup: &str, image: &str) -> PathBuf {
+    root.join("build")
+        .join(CENSUS_DIR)
+        .join("owned")
+        .join(bringup)
+        .join(format!("{image}.not-taken"))
+}
+
+/// Issue 2806 -- why the last take did not take the census of `image`, or
+/// `None` when it did (or never ran).
+pub(crate) fn owned_census_not_taken(root: &Path, bringup: &str, image: &str) -> Option<String> {
+    let raw = std::fs::read_to_string(owned_census_not_taken_path(root, bringup, image)).ok()?;
+    let cause = raw.trim();
+    (!cause.is_empty()).then(|| cause.to_string())
 }
 
 /// phase-583 -- the program list [`owned_programs_path`] holds, or `None`

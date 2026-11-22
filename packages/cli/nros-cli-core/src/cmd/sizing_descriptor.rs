@@ -123,6 +123,14 @@ pub struct SizingDescriptorArgs {
     )]
     pub owned_entry: Option<PathBuf>,
 
+    /// `--owned-entry`: the census of that entry was NOT taken (its
+    /// bringup's `[census] on_missing = "warn"`). The descriptor is still
+    /// written, and refuses every count the census would have stated, with
+    /// the take's reason, so the image's defaults are listed rather than
+    /// silent. The configure passes it; nothing else should.
+    #[arg(long, requires = "owned_entry")]
+    pub census_not_taken: bool,
+
     /// `--from-model` / `--from-leaf`: the image's build dir. The descriptor
     /// lands at `<build-dir>/nros/sizing/<entry>.toml`.
     #[arg(long, value_name = "DIR")]
@@ -390,6 +398,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
                     infra,
                     model_nodes: Some(infra.model_nodes),
                     roots: parent.as_slice(),
+                    census_refused: None,
                 },
                 target_triple: args.target_triple.clone(),
                 host_build: args.host_build,
@@ -626,6 +635,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
                 infra,
                 model_nodes: Some(infra.model_nodes),
                 roots: &[],
+                census_refused: None,
             }),
             &crate::sizing_descriptor::RuntimeComposition {
                 entries: &args.composed_entry,
@@ -767,7 +777,11 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         system,
         inventory,
         census_backed,
+        census_refused,
     } = match (&args.owned_entry, &args.leaf_image) {
+        (Some(pkg), Some(image)) if args.census_not_taken => {
+            owned_not_taken_declaration(&dir, image, pkg, args.workspace.as_deref())?
+        }
         (Some(pkg), Some(image)) => owned_declaration(&dir, image, pkg, args.workspace.as_deref())?,
         _ => leaf_declaration(&dir, args.leaf_image.as_deref())?,
     };
@@ -809,8 +823,19 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
                 // node count, as `entity-facts --leaf` carried none.
                 model_nodes: None,
                 roots: &[dir.as_path()],
+                census_refused: census_refused.as_deref(),
             },
         ))?;
+        if let (Some(written), Some(why)) = (&written, &census_refused) {
+            // Issue 2806.
+            eprintln!(
+                "nros dev image sizing-descriptor: {origin}: {why}. The descriptor refuses each \
+                 count the census would have stated, so every consumer keeps its default and \
+                 `nros build --explain-sizing` lists each one"
+            );
+            println!("{}", written.path.display());
+            return Ok(());
+        }
         if let Some(written) = written {
             eprintln!(
                 // See issue 1706.
@@ -856,6 +881,10 @@ pub(crate) struct LeafDeclaration {
     pub inventory: Option<crate::entity_inventory::EntityInventory>,
     /// Some component's entities came from the census.
     pub census_backed: bool,
+    /// Issue 2806 -- the image is sized by a census that was not taken: why,
+    /// for every count the descriptor then refuses (`Wiring::Unwired`'s
+    /// `census_refused`). `None` everywhere else.
+    pub census_refused: Option<String>,
 }
 
 /// Compose [`LeafDeclaration`] for `dir`. ONE composer for the two roads that
@@ -990,6 +1019,7 @@ pub(crate) fn leaf_declaration(
             system,
             inventory: None,
             census_backed,
+            census_refused: None,
         });
     }
     let mut inventory = EntityInventory::new(origin);
@@ -1008,6 +1038,58 @@ pub(crate) fn leaf_declaration(
         system,
         inventory: Some(inventory),
         census_backed,
+        census_refused: None,
+    })
+}
+
+/// Issue 2806 -- [`LeafDeclaration`] for an owned entry's image whose census
+/// was NOT taken: the deployment from the bringup, no inventory, and the
+/// reason every census count is refused. The reason is the take's own first
+/// error line when the take recorded one (`entity_census::owned_census_not_taken`),
+/// else that this configure did not take it.
+pub(crate) fn owned_not_taken_declaration(
+    bringup: &std::path::Path,
+    image: &str,
+    pkg: &std::path::Path,
+    workspace: Option<&std::path::Path>,
+) -> Result<LeafDeclaration> {
+    let system = nros_orchestration_ir::leaf_system::read_image(bringup, image)
+        .map_err(|e| eyre::eyre!(e))?
+        .ok_or_else(|| {
+            eyre::eyre!(
+                "{}: declares no deployment",
+                bringup
+                    .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                    .display()
+            )
+        })?;
+    let bringup_name = bringup
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let pkg_name = pkg
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let ws = workspace.map(std::path::Path::to_path_buf).or_else(|| {
+        bringup
+            .parent()
+            .and_then(std::path::Path::parent)
+            .map(Into::into)
+    });
+    let cause = ws
+        .and_then(|ws| crate::cmd::entity_census::owned_census_not_taken(&ws, &bringup_name, image))
+        .unwrap_or_else(|| "this configure did not take it".to_string());
+    Ok(LeafDeclaration {
+        system,
+        inventory: None,
+        census_backed: false,
+        census_refused: Some(format!(
+            "the census of the owned entry `{pkg_name}` was not taken ({cause}), and the \
+             bringup's `[census] on_missing = \"warn\"` builds the image without it, so this \
+             count keeps its default. Take it with: nros dev image entity-census take \
+             --image {bringup_name}:{image}"
+        )),
     })
 }
 
@@ -1153,6 +1235,7 @@ pub(crate) fn owned_declaration(
         system,
         inventory: Some(inventory),
         census_backed: true,
+        census_refused: None,
     })
 }
 
@@ -1322,6 +1405,62 @@ mod tests {
             ws.join("build/nros/census/owned/tx_bringup/threadx-linux.census.json")
         );
     }
+
+    /// Issue 2806 -- the same image under `[census] on_missing = "warn"`,
+    /// whose take could not run: the declaration has no inventory and refuses
+    /// by the take's own recorded cause, naming the take; with no record (a
+    /// configure that did not take it) it says so instead.
+    #[test]
+    fn an_owned_entry_whose_census_was_not_taken_refuses_by_the_takes_cause() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path();
+        let bringup = ws.join("src/tx_bringup");
+        let pkg = ws.join("src/c_talker");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"tx\"\nrmw = \"zenoh\"\n\n[census]\non_missing = \"warn\"\n\n\
+             [image.threadx-linux]\nboard = \"threadx-linux\"\nentry = \"c_talker\"\n",
+        )
+        .unwrap();
+        let why = |ws| {
+            owned_not_taken_declaration(&bringup, "threadx-linux", &pkg, Some(ws))
+                .unwrap()
+                .census_refused
+                .expect("a census not taken refuses")
+        };
+        let unrecorded = why(ws);
+        assert!(
+            unrecorded.contains("this configure did not take it"),
+            "{unrecorded}"
+        );
+        assert!(
+            unrecorded.contains("entity-census take --image tx_bringup:threadx-linux"),
+            "{unrecorded}"
+        );
+
+        let record = crate::cmd::entity_census::owned_census_not_taken_path(
+            ws,
+            "tx_bringup",
+            "threadx-linux",
+        );
+        assert_eq!(
+            record,
+            ws.join("build/nros/census/owned/tx_bringup/threadx-linux.not-taken")
+        );
+        std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+        std::fs::write(&record, "no host C compiler found\n").unwrap();
+        let recorded = why(ws);
+        assert!(
+            recorded.contains("(no host C compiler found)"),
+            "{recorded}"
+        );
+
+        let decl = owned_not_taken_declaration(&bringup, "threadx-linux", &pkg, Some(ws)).unwrap();
+        assert!(decl.inventory.is_none());
+        assert!(!decl.census_backed);
+    }
     use nros_sizing_descriptor::{
         Basis, Endpoint, EndpointKind, History, RegistrationPath, SizingDescriptor, Status, Target,
     };
@@ -1425,6 +1564,7 @@ mod tests {
             leaf_image: None,
             entity_cmake: None,
             owned_entry: None,
+            census_not_taken: false,
             // phase-457-payload W2 -- no tables: the payload class refuses,
             // naming the missing registration (issue 1393 closed the road).
             bound_inventory: Vec::new(),

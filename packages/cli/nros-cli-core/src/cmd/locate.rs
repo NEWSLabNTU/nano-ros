@@ -1352,6 +1352,7 @@ fn make_road_sizing_descriptor(
         leaf_image: None,
         entity_cmake: None,
         owned_entry: None,
+        census_not_taken: false,
         metadata: None,
         heap_budget_bytes: None,
         board_rx_frame_cost_us: None,

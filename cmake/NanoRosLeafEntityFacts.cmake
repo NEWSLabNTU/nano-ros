@@ -311,19 +311,30 @@ function(nros_record_owned_entity_facts)
             set(_census_missing TRUE)
         endif()
     endforeach()
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosEntityInventory.cmake")
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosPromise.cmake")
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosSizingDescriptor.cmake")
     # `[census] on_missing = "warn"`: the take warned and wrote no census, so
     # this image builds without census sizing, as an owned entry did before
-    # issue 2433. Said once here too, naming the image.
+    # issue 2433. Issue 2806 -- its descriptor is still written, refusing each
+    # count the census would have stated with the take's reason, so the
+    # defaults are listed (`nros build --explain-sizing`) rather than silent.
+    # No entity fragment: there is no inventory to write one from.
     if(_census_missing)
         message(WARNING
             "nano-ros: `${_bringup_name}:${_o_IMAGE}` builds the owned entry `${_pkg_name}` "
             "with no census (its bringup's `[census] on_missing` is \"warn\"), so its pools "
-            "stay at their defaults")
+            "stay at their defaults; its sizing descriptor refuses each one, naming why")
+        nros_sizing_descriptor_from_leaf(_desc REQUIRED CENSUS_NOT_TAKEN
+            CLI          "${_nros}"
+            LEAF         "${_o_BRINGUP}"
+            IMAGE        "${_o_IMAGE}"
+            OWNED_ENTRY  "${_o_PACKAGE}"
+            WORKSPACE    "${_o_WORKSPACE}"
+            ENTRY        "${_pkg_name}"
+            BUILD_DIR    "${CMAKE_BINARY_DIR}")
         return()
     endif()
-    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosEntityInventory.cmake")
-    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosPromise.cmake")
-    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosSizingDescriptor.cmake")
     nros_entity_inventory_knobs_file(_frag)
     nros_sizing_descriptor_from_leaf(_desc REQUIRED
         CLI          "${_nros}"
