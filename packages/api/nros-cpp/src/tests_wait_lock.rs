@@ -284,6 +284,7 @@ static CLIENT: AtomicUsize = AtomicUsize::new(usize::MAX);
 static WAITED: AtomicBool = AtomicBool::new(false);
 static WAIT_RET: AtomicU64 = AtomicU64::new(u64::MAX);
 static WAIT_STARTED_NS: AtomicU64 = AtomicU64::new(0);
+static WAIT_ENDED_NS: AtomicU64 = AtomicU64::new(0);
 
 fn now_ns(t0: Instant) -> u64 {
     t0.elapsed().as_nanos() as u64
@@ -305,6 +306,7 @@ unsafe extern "C" fn wait_in_callback(_: *mut c_void) {
             WAIT_MS,
         )
     };
+    WAIT_ENDED_NS.store(now_ns(*T0.get().unwrap()), Ordering::SeqCst);
     WAIT_RET.store(ret as u32 as u64, Ordering::SeqCst);
 }
 
@@ -435,18 +437,28 @@ fn a_callback_waiting_for_a_service_leaves_the_executor_to_other_threads() {
     spinner.join().unwrap();
 
     let started = WAIT_STARTED_NS.load(Ordering::SeqCst);
+    let ended = WAIT_ENDED_NS.load(Ordering::SeqCst);
     let waited_ms = (got - asked) / 1_000_000;
-    let wait_end_ms = (started / 1_000_000) + u64::from(WAIT_MS);
-    assert_ne!(
+    // The wait really waited: it ran out its budget against a server that
+    // never appears. A wait that returned at once (a failed lookup, an
+    // unsupported probe) leaves the lock free and would pass the check below
+    // on any code.
+    assert_eq!(
         WAIT_RET.load(Ordering::SeqCst),
-        u64::MAX,
-        "the wait returned"
+        crate::NROS_CPP_RET_TIMEOUT as u32 as u64,
+        "the wait timed out"
     );
     assert!(
-        got / 1_000_000 < wait_end_ms.saturating_sub(100),
+        ended - started >= u64::from(WAIT_MS) * 1_000_000,
+        "the wait ran {} ms of its {WAIT_MS} ms budget",
+        (ended - started) / 1_000_000
+    );
+    assert!(
+        got < ended,
         "the second thread got the executor lock {waited_ms} ms after asking, at \
-         {} ms; the callback's {WAIT_MS} ms wait ends at {wait_end_ms} ms, so the wait \
+         {} ms; the callback's {WAIT_MS} ms wait ended at {} ms, so the wait \
          held the lock while it slept",
-        got / 1_000_000
+        got / 1_000_000,
+        ended / 1_000_000
     );
 }

@@ -5674,7 +5674,9 @@ board-transport-variants:
 
 # phase-467 Row 11, C++ half — the `rmw-cffi`-gated unit tests of nros-cpp's
 # FFI edge (`nros_cpp_install_argv_remaps`: the NULL-handle validate path, the
-# reason buffer, a bad argv). `test-unit` builds nros-cpp with its DEFAULT
+# reason buffer, a bad argv), and `tests_wait_lock` (issue 2843: a callback
+# waiting for a service leaves the executor to other threads, driven over a
+# stub backend with the executor lock installed). `test-unit` builds nros-cpp with its DEFAULT
 # features, which carry no `rmw-cffi`, so without this recipe these tests are
 # compiled by nothing and pass by not existing (issue 1226's shape).
 #
@@ -5690,7 +5692,7 @@ cpp-ffi-tests:
     source scripts/build/cargo.sh
     export CARGO_TARGET_DIR="$(nros_scoped_target_dir check-cpp-ffi-tests)"
     cargo test -p nros-cpp --lib --no-default-features --features alloc,env,log,rmw-cffi --quiet \
-        -- install_argv_remaps_tests
+        -- install_argv_remaps_tests tests_wait_lock
 
 # Issue 1373 — the fast tier, run in a checkout with NO submodules (the shape
 # `git worktree add` produces), must be green. A gate whose subject lives in a
