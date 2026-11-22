@@ -53,12 +53,39 @@ pub unsafe extern "C" fn nros_cpp_metadata_dump(
     else {
         return -1;
     };
+    // Issue 2827 -- a metadata PROBE writes the staging file the CLI names
+    // (`NROS_METADATA_OUT`), which the CLI stamps into place, so the sidecar's
+    // path never holds this unstamped body. Run by hand, the probe writes the
+    // sidecar itself. Only this entry point reads it: the entry census writes
+    // where `NROS_CENSUS_OUT` says (`write_metadata`, not this).
+    let out_path = nros::env::var("NROS_METADATA_OUT")
+        .filter(|p| !p.is_empty())
+        .unwrap_or(out_path);
+    write_metadata(
+        package,
+        component,
+        read(executable),
+        read(language),
+        out_path,
+    )
+}
+
+/// The document `nros_cpp_metadata_dump` writes, to `out_path` exactly.
+/// Same return codes.
+#[cfg(feature = "metadata-mode")]
+pub(crate) fn write_metadata(
+    package: &str,
+    component: &str,
+    executable: Option<&str>,
+    language: Option<&str>,
+    out_path: &str,
+) -> i32 {
     if nros::metadata_mode::entity_count() == 0 {
         return -2;
     }
     let mut export = nros::node_metadata::SourceMetadataExport::new(package, component)
-        .language(read(language).unwrap_or("cpp"));
-    if let Some(exe) = read(executable) {
+        .language(language.unwrap_or("cpp"));
+    if let Some(exe) = executable {
         export = export.executable(exe);
     }
     let Ok(json) = nros::metadata_mode::to_json(&export) else {
@@ -69,13 +96,6 @@ pub unsafe extern "C" fn nros_cpp_metadata_dump(
     // process, not of the Rust standard library. (`nros`'s half of the same
     // feature requires only `alloc`: it records into a heap-allocated global
     // and hands back a `String` — the write is here, and only here.)
-    // Issue 2827 -- the CLI names a staging file of its own
-    // (`NROS_METADATA_OUT`) and stamps it into place, so the sidecar's path
-    // never holds this unstamped body; run by hand, the probe writes the
-    // sidecar itself.
-    let out_path = nros::env::var("NROS_METADATA_OUT")
-        .filter(|p| !p.is_empty())
-        .unwrap_or(out_path);
     if nros::env::write_file(out_path, json.as_bytes()).is_err() {
         return -3;
     }
