@@ -718,6 +718,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                 leaf.rmw.as_deref(),
                 Some(board.as_str()),
                 platform_word.as_deref(),
+                Some(root),
             );
             if let Some(cat) = &pkg {
                 crate::knob_catalog::refuse_unlinked_package_knobs(

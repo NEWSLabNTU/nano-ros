@@ -1,12 +1,13 @@
 ---
 id: 2859
 title: "A changed `[knobs.memory] heap_bytes` does not rebuild the ThreadX byte pool: the board build script never watches `NROS_MEMORY_HEAP_BYTES`"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [build, memory, threadx]
 related: [2732, 0491]
 found: 2026-11-23
+resolved: 2026-11-23
 ---
 
 ## What
@@ -44,3 +45,19 @@ check never runs.
 FreeRTOS one watches the variable before fixing only this one. The fix
 belongs where the rung is read (`memory_value` / `memory` should watch
 every spelling it reads, `watch_knob_env`), not at each caller.
+
+## Resolved (2026-11-23)
+
+The missing edge was in the reader, not the caller: `BuildRungs::memory` is
+the only build-script rung resolver that reads the environment, and it
+watched nothing. It now emits `cargo:rerun-if-env-changed` for every spelling
+of every memory knob it resolves (`memory_env_watches`, unit-tested), so each
+caller gets the edge: the ThreadX pool, the FreeRTOS heap, and both boards'
+app stacks. The callers' own watches stay; they cover their no-rungs branch
+(a bare `cargo build`), which reads the environment without the resolver.
+
+Measured, realtime-rust `[image.threadx]`, incremental builds:
+`[image.threadx.knobs.memory] heap_bytes = 800000` gave a 816,640-byte pool,
+then `850000` gave 866,640 (each plus the port's 16,640-byte raise). Before,
+the second build kept the first pool. The board's build-script output now
+lists `rerun-if-env-changed=NROS_MEMORY_HEAP_BYTES`.
