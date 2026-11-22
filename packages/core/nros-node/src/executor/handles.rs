@@ -145,7 +145,7 @@ const GOAL_UUID_SIZE: usize = 16;
 pub struct EmbeddedPublisher<M> {
     pub(crate) handle: session::RmwPublisher,
     /// Whether the creating node's lifecycle state lets this publisher send.
-    pub(crate) gate: PublisherGate,
+    pub(crate) gate: crate::lifecycle::PublisherGate,
     /// Phase 108 — registered event closures kept alive for the
     /// publisher's lifetime; freed in `Drop`.
     pub(crate) event_regs: EventRegs,
@@ -158,70 +158,6 @@ pub struct EmbeddedPublisher<M> {
     /// and the existing `monitor` construction sites keep their shape.
     pub(crate) epoch: Option<fn() -> u64>,
     pub(crate) _phantom: PhantomData<M>,
-}
-
-/// RFC-0128 D3 / phase-554 W6 -- a publisher's view of its node's
-/// [`PublishGate`](crate::executor::node_record::PublishGate).
-///
-/// A managed node's publisher sends nothing while the node is not `active`:
-/// `publish` returns success and the first dropped message logs once, as
-/// rclcpp's `LifecyclePublisher` warns. A publisher created off a node (the
-/// executor's own, or an internal one) carries no gate and always sends.
-pub(crate) struct PublisherGate {
-    /// The node's gate, in the executor's node table, which is carved from
-    /// the executor's backing and never moves. Read only while the executor
-    /// is open, which is also the life of the RMW handle beside it.
-    node: Option<core::ptr::NonNull<crate::executor::node_record::PublishGate>>,
-    /// Set after the first dropped message has been reported. A plain load
-    /// and store: one publisher is used from one context at a time.
-    warned: core::sync::atomic::AtomicBool,
-}
-
-// SAFETY: the pointee is a `PublishGate`, which is an atomic byte; reading it
-// from another thread is what it is for.
-unsafe impl Send for PublisherGate {}
-// SAFETY: as above; `warned` is atomic too.
-unsafe impl Sync for PublisherGate {}
-
-impl PublisherGate {
-    /// A publisher that belongs to no node: always sends.
-    pub(crate) const fn none() -> Self {
-        Self {
-            node: None,
-            warned: core::sync::atomic::AtomicBool::new(false),
-        }
-    }
-
-    /// A publisher of the node whose gate this is.
-    pub(crate) fn of(gate: core::ptr::NonNull<crate::executor::node_record::PublishGate>) -> Self {
-        Self {
-            node: Some(gate),
-            warned: core::sync::atomic::AtomicBool::new(false),
-        }
-    }
-
-    /// `true` when this message must be dropped because the node is not
-    /// active. Reports the first drop on the log.
-    pub(crate) fn drops(&self, topic: &str) -> bool {
-        use core::sync::atomic::Ordering;
-        let Some(gate) = self.node else {
-            return false;
-        };
-        // SAFETY: see `node`.
-        if unsafe { gate.as_ref() }.is_open() {
-            return false;
-        }
-        if !self.warned.load(Ordering::Relaxed) {
-            self.warned.store(true, Ordering::Relaxed);
-            nros_log::log_warn!(
-                nros_log::get_logger("nros_lifecycle"),
-                "publishing on `{}` while its node is not active: the message is \
-                 dropped, and so is every message until the node is activated",
-                topic
-            );
-        }
-        true
-    }
 }
 
 impl<M> Drop for EmbeddedPublisher<M> {
@@ -925,7 +861,7 @@ use portable_atomic::{AtomicBool, Ordering};
 pub struct EmbeddedRawPublisher<const TX_BUF: usize = DEFAULT_LOAN_BUF> {
     pub(crate) handle: session::RmwPublisher,
     /// Whether the creating node's lifecycle state lets this publisher send.
-    pub(crate) gate: PublisherGate,
+    pub(crate) gate: crate::lifecycle::PublisherGate,
     /// Single-slot arena: writable buffer + busy flag. SLOTS=1 in v1
     /// (concurrent loans on the same publisher return WouldBlock).
     /// Unused when the `rmw-lending` feature is on — `try_loan`
@@ -1020,7 +956,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         Self {
             handle,
             // A handle obtained outside a node: nothing to follow.
-            gate: PublisherGate::none(),
+            gate: crate::lifecycle::PublisherGate::none(),
             arena: TxArena::new(),
             event_regs: empty_event_regs(),
             monitor: None,
@@ -1287,7 +1223,11 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
     /// then release the arena slot. Returns the backend's publish error
     /// if any (slot is released regardless).
     pub fn commit(mut self) -> Result<(), LoanError> {
-        if self.publisher.gate.drops(self.publisher.handle.topic_name()) {
+        if self
+            .publisher
+            .gate
+            .drops(self.publisher.handle.topic_name())
+        {
             self.committed = true;
             return Ok(());
         }
@@ -1337,7 +1277,11 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
             .take()
             .expect("PublishLoan slot already consumed");
         self.committed = true;
-        if self.publisher.gate.drops(self.publisher.handle.topic_name()) {
+        if self
+            .publisher
+            .gate
+            .drops(self.publisher.handle.topic_name())
+        {
             // Dropping the slot releases it unsent.
             drop(slot);
             return Ok(());

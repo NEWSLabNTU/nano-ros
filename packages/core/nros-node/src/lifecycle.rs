@@ -270,11 +270,10 @@ pub(crate) struct TransitionAnnouncement {
 #[cfg(feature = "lifecycle-services")]
 pub(crate) const TRANSITION_ANNOUNCEMENT_QUEUE: usize = 4;
 
-/// Lifecycle state machine with `unsafe fn(*mut c_void) -> TransitionResult` callbacks.
-///
-/// RFC-0128 D3 / phase-554 W6 -- a managed node's publishers follow its
-/// state. One byte, read and written with plain atomic loads and stores so it
-/// needs no compare-and-swap (thumbv6m has none).
+// RFC-0128 D3 / phase-554 W6.
+/// A managed node's publishers follow its state. One byte, read and written
+/// with plain atomic loads and stores so it needs no compare-and-swap
+/// (thumbv6m has none).
 ///
 /// A node that is not managed stays `UNMANAGED` and its publishers always
 /// send. Once its lifecycle machine exists the gate is `INACTIVE` until the
@@ -307,6 +306,77 @@ impl PublishGate {
     }
 }
 
+// RFC-0128 D3 / phase-554 W6.
+/// A publisher's view of its node's
+/// [`PublishGate`].
+///
+/// A managed node's publisher sends nothing while the node is not `active`:
+/// `publish` returns success and the first dropped message logs once, as
+/// rclcpp's `LifecyclePublisher` warns. A publisher created off a node (the
+/// executor's own, or an internal one) carries no gate and always sends.
+///
+/// Public so the C and C++ publishers hold the same thing and drop and report
+/// exactly as a Rust one does. Get one from `Executor::publisher_gate`.
+pub struct PublisherGate {
+    /// The node's gate, in the executor's node table, which is carved from
+    /// the executor's backing and never moves. Read only while the executor
+    /// is open, which is also the life of the RMW handle beside it.
+    node: Option<core::ptr::NonNull<PublishGate>>,
+    /// Set after the first dropped message has been reported. A plain load
+    /// and store: one publisher is used from one context at a time.
+    warned: core::sync::atomic::AtomicBool,
+}
+
+// SAFETY: the pointee is a `PublishGate`, which is an atomic byte; reading it
+// from another thread is what it is for.
+unsafe impl Send for PublisherGate {}
+// SAFETY: as above; `warned` is atomic too.
+unsafe impl Sync for PublisherGate {}
+
+impl PublisherGate {
+    /// A publisher that belongs to no node: always sends.
+    pub const fn none() -> Self {
+        Self {
+            node: None,
+            warned: core::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// A publisher of the node whose gate this is.
+    #[cfg_attr(not(any(has_rmw, test)), allow(dead_code))]
+    pub(crate) fn of(gate: core::ptr::NonNull<PublishGate>) -> Self {
+        Self {
+            node: Some(gate),
+            warned: core::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// `true` when this message must be dropped because the node is not
+    /// active. Reports the first drop on the log.
+    pub fn drops(&self, topic: &str) -> bool {
+        use core::sync::atomic::Ordering;
+        let Some(gate) = self.node else {
+            return false;
+        };
+        // SAFETY: see `node`.
+        if unsafe { gate.as_ref() }.is_open() {
+            return false;
+        }
+        if !self.warned.load(Ordering::Relaxed) {
+            self.warned.store(true, Ordering::Relaxed);
+            nros_log::log_warn!(
+                nros_log::get_logger("nros_lifecycle"),
+                "publishing on `{}` while its node is not active: the message is \
+                 dropped, and so is every message until the node is activated",
+                topic
+            );
+        }
+        true
+    }
+}
+
+/// Lifecycle state machine with `unsafe fn(*mut c_void) -> TransitionResult` callbacks.
+///
 /// Thin counterpart to [`LifecyclePollingNode`] for bridging the C FFI: each
 /// callback slot stores a pointer to `extern "C"` user code plus a single
 /// shared `*mut c_void` context that is passed on every invocation. The core
@@ -334,7 +404,8 @@ pub struct LifecyclePollingNodeCtx {
     /// number is a signal, and a wrap would turn it into a lie.
     #[cfg(feature = "lifecycle-services")]
     announcements_dropped: u32,
-    /// RFC-0128 D3 / phase-554 W6 -- the publish gate of the node this
+    // RFC-0128 D3 / phase-554 W6.
+    /// The publish gate of the node this
     /// machine is served on, in the executor's node table (carved, so it never
     /// moves). `None` for a standalone machine with no node.
     publish_gate: Option<core::ptr::NonNull<PublishGate>>,
@@ -366,12 +437,13 @@ impl LifecyclePollingNodeCtx {
     /// Make `gate` follow this machine: open while the machine is `active`,
     /// closed otherwise. Called once, when the executor creates the machine
     /// for a node; from then on every transition writes it. Only the
-    /// executor's node machines call it, and those need `lifecycle-services`.
-    #[cfg_attr(not(feature = "lifecycle-services"), allow(dead_code))]
-    pub(crate) fn bind_publish_gate(
-        &mut self,
-        gate: core::ptr::NonNull<PublishGate>,
-    ) {
+    /// executor's node machines call it, and those need `lifecycle-services`
+    /// and a backend (the `lifecycle_services` module's own condition).
+    #[cfg_attr(
+        not(all(feature = "lifecycle-services", any(has_rmw, test))),
+        allow(dead_code)
+    )]
+    pub(crate) fn bind_publish_gate(&mut self, gate: core::ptr::NonNull<PublishGate>) {
         self.publish_gate = Some(gate);
         self.sync_publish_gate();
     }

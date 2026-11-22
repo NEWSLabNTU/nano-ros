@@ -129,10 +129,10 @@ impl<'a> NodeHandle<'a> {
         self.publish_gate = Some(gate);
     }
 
-    fn publisher_gate(&self) -> crate::executor::handles::PublisherGate {
+    fn publisher_gate(&self) -> crate::lifecycle::PublisherGate {
         match self.publish_gate {
-            Some(g) => crate::executor::handles::PublisherGate::of(g),
-            None => crate::executor::handles::PublisherGate::none(),
+            Some(g) => crate::lifecycle::PublisherGate::of(g),
+            None => crate::lifecycle::PublisherGate::none(),
         }
     }
 

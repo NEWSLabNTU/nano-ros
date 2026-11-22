@@ -33,7 +33,7 @@ pub extern "C" fn nros_cpp_rosout_enabled() -> bool {
 ///
 /// # Safety
 /// `node` is an initialised node handle, `storage` an 8-aligned publisher
-/// slot of `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes (it receives the
+/// slot of `NROS_CPP_PUBLISHER_STORAGE_SIZE` bytes (it receives the
 /// same handle-plus-monitor-pointer `nros_cpp_publisher_create` writes),
 /// `qos` NULL or valid.
 #[unsafe(no_mangle)]
@@ -58,7 +58,7 @@ pub unsafe extern "C" fn nros_cpp_rosout_publisher_create(
         } else {
             unsafe { *qos }
         };
-        unsafe {
+        let ret = unsafe {
             crate::publisher::nros_cpp_publisher_create(
                 node,
                 c"/rosout".as_ptr(),
@@ -67,7 +67,17 @@ pub unsafe extern "C" fn nros_cpp_rosout_publisher_create(
                 qos,
                 storage,
             )
+        };
+        // phase-554 W6 -- `/rosout` is the node's log, not one of its managed
+        // publishers: rclcpp's is not a lifecycle publisher, so a node logs in
+        // every state.
+        if ret == crate::NROS_CPP_RET_OK {
+            unsafe {
+                (*(storage as *mut crate::publisher::CppPublisher)).gate =
+                    nros_node::lifecycle::PublisherGate::none();
+            }
         }
+        ret
     }
     #[cfg(not(feature = "rosout"))]
     {

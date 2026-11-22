@@ -2516,6 +2516,13 @@ typedef struct rcl_publisher_t {
    * Avoids heap allocation — managed by rclc_publisher_init_default/fini.
    */
   uint64_t _opaque[PUBLISHER_OPAQUE_U64S];
+  /**
+   * The node's lifecycle gate: while a managed node is not
+   * `active`, this publisher's messages are dropped and reported once.
+   * Opaque; all zero means no gate, so a zero-initialised publisher is
+   * right.
+   */
+  size_t _gate[2];
 } rcl_publisher_t;
 
 /**

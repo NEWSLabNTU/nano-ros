@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::publisher_gate",
+  "verdict": "extension",
+  "why": "how the C and C++ runtimes take a node's gate when they create a publisher; the Rust create paths take it themselves. See `rust:PublishGate`."
+}

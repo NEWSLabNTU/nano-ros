@@ -150,6 +150,49 @@ pub struct rcl_publisher_t {
     /// Inline opaque storage for the RMW publisher handle.
     /// Avoids heap allocation — managed by rclc_publisher_init_default/fini.
     pub _opaque: [u64; PUBLISHER_OPAQUE_U64S],
+    // RFC-0128 D3 / phase-554 W6.
+    /// The node's lifecycle gate: while a managed node is not
+    /// `active`, this publisher's messages are dropped and reported once.
+    /// Opaque; all zero means no gate, so a zero-initialised publisher is
+    /// right.
+    pub _gate: [usize; 2],
+}
+
+// The gate is a `nros_node::lifecycle::PublisherGate` held in `_gate`'s
+// bytes: it must fit, and all-zero must be its "no gate" (a `None` pointer
+// and a `false` flag, whichever order the fields take).
+const _: () = {
+    use core::mem::{align_of, size_of};
+    assert!(size_of::<nros_node::lifecycle::PublisherGate>() <= size_of::<[usize; 2]>());
+    assert!(align_of::<nros_node::lifecycle::PublisherGate>() <= align_of::<[usize; 2]>());
+};
+
+/// The publisher's lifecycle gate, read in place.
+fn publisher_gate(publisher: &rcl_publisher_t) -> &nros_node::lifecycle::PublisherGate {
+    // SAFETY: sized and aligned above; every byte pattern this field ever
+    // holds is a `PublisherGate` written by `set_publisher_gate`, or all zero.
+    unsafe { &*(publisher._gate.as_ptr() as *const nros_node::lifecycle::PublisherGate) }
+}
+
+/// Store `gate` in the publisher.
+pub(crate) fn set_publisher_gate(
+    publisher: &mut rcl_publisher_t,
+    gate: nros_node::lifecycle::PublisherGate,
+) {
+    // SAFETY: as for `publisher_gate`; the old value has no drop glue.
+    unsafe {
+        core::ptr::write(
+            publisher._gate.as_mut_ptr() as *mut nros_node::lifecycle::PublisherGate,
+            gate,
+        )
+    }
+}
+
+/// Whether this publish must be dropped because the node is not active.
+fn gate_drops(publisher: &rcl_publisher_t) -> bool {
+    let topic =
+        core::str::from_utf8(&publisher.topic_name[..publisher.topic_name_len]).unwrap_or("?");
+    publisher_gate(publisher).drops(topic)
 }
 
 impl Default for rcl_publisher_t {
@@ -166,6 +209,7 @@ impl Default for rcl_publisher_t {
             node: crate::node::rclc_node_ref_t::none(),
             type_support: ptr::null(),
             _opaque: [0u64; PUBLISHER_OPAQUE_U64S],
+            _gate: [0; 2],
         }
     }
 }
@@ -374,6 +418,19 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
         // `node.support`). Single call covers both shapes; bridge
         // examples now reach the XRCE / DDS extra sessions instead of
         // hitting RCL_RET_NOT_INIT against a NULL support pointer.
+        // phase-554 W6 -- the node's lifecycle gate, taken BEFORE the session
+        // lock below (both go through the executor). A node on the legacy
+        // support path is in no executor's table and gets none.
+        let gate = if node_ref.is_executor_bound() {
+            let exec_mut = &mut *(node_ref.executor as *mut crate::executor::rclc_executor_t);
+            let rust_exec = crate::executor::get_executor(exec_mut);
+            rust_exec.publisher_gate(nros_node::executor::node_record::NodeId::from_raw(
+                node_ref.node_id,
+            ))
+        } else {
+            nros_node::lifecycle::PublisherGate::none()
+        };
+
         let (mut session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
             Some(t) => t,
             None => return RCL_RET_NOT_INIT,
@@ -436,6 +493,7 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
                     publisher._opaque.as_mut_ptr() as *mut nros::internals::RmwPublisher,
                     pub_handle,
                 );
+                set_publisher_gate(publisher, gate);
             }
             // Issue 2304 -- say which publisher and why, not a bare ERROR.
             Err(e) => {
@@ -551,6 +609,9 @@ pub unsafe extern "C" fn rclc_publish_serialized(
     {
         use nros_node::Publisher;
 
+        if gate_drops(publisher) {
+            return RCL_RET_OK;
+        }
         let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
         let data_slice = core::slice::from_raw_parts(data, len);
 
@@ -735,6 +796,9 @@ pub unsafe extern "C" fn rclc_publisher_publish_streamed(
     #[cfg(feature = "rmw-cffi")]
     {
         use nros_node::Publisher;
+        if gate_drops(publisher) {
+            return RCL_RET_OK;
+        }
         let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
         // SAFETY: this C entry point is unsafe; callers must keep
         // `user_ctx` valid for the synchronous callback sequence.
@@ -1037,6 +1101,11 @@ pub unsafe extern "C" fn rclc_publisher_commit(
         rclc_publisher_state_t::RCLC_PUBLISHER_STATE_INITIALIZED
     );
     let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
+    if gate_drops(publisher) {
+        // The slot goes back unsent; the token is consumed either way.
+        let _ = pub_handle.discard_raw(token as *mut _);
+        return RCL_RET_OK;
+    }
     // SAFETY: `token` is the backend token a prior `rclc_publisher_loan`
     // handed out on this publisher; the caller's contract is that it is
     // still outstanding and is consumed here exactly once.

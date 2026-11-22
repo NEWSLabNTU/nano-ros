@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublishGate::is_open",
+  "verdict": "extension",
+  "why": "whether the node's publishers may send now; see `rust:PublishGate`. rclcpp's nearest is `LifecyclePublisher::is_activated`, asked per publisher."
+}

@@ -25,23 +25,30 @@ use crate::{
 };
 use nros_node::executor::ffi::ExecutorFfi as _;
 
-/// What the caller's `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes hold: the
-/// RMW handle and the contracted endpoint's counter cell (null when the topic
-/// has no row in the installed monitor table).
+/// What the caller's `NROS_CPP_PUBLISHER_STORAGE_SIZE` bytes hold: the
+/// RMW handle, the contracted endpoint's counter cell (null when the topic
+/// has no row in the installed monitor table) and the node's lifecycle gate.
 ///
-/// `#[repr(C)]` so the size is the handle plus exactly one pointer, which is
-/// what `rclcpp/publisher.hpp` reserves; the assert below is the contract.
+/// `#[repr(C)]` so the size is the handle plus exactly three pointer widths
+/// (the cell, and the gate's pointer and flag), which is what
+/// `NROS_CPP_PUBLISHER_STORAGE_SIZE` reserves; the assert below is the
+/// contract.
 #[repr(C)]
 pub(crate) struct CppPublisher {
     pub(crate) handle: nros::internals::RmwPublisher,
     pub(crate) monitor: *const nros::monitor::PubMonitorCell,
+    // RFC-0128 D3 / phase-554 W6.
+    /// The creating node's lifecycle gate, the
+    /// same `PublisherGate` a Rust publisher holds: while a managed node is
+    /// not `active` its publishes are dropped and reported once.
+    pub(crate) gate: nros_node::lifecycle::PublisherGate,
 }
 
 const _: () = {
     use core::mem::{align_of, size_of};
     assert!(
         size_of::<CppPublisher>()
-            == size_of::<nros::internals::RmwPublisher>() + size_of::<*const c_void>()
+            == size_of::<nros::internals::RmwPublisher>() + 3 * size_of::<*const c_void>()
     );
     // `rclcpp/publisher.hpp` declares the storage `alignas(8)`.
     assert!(align_of::<CppPublisher>() <= 8);
@@ -68,13 +75,14 @@ impl CppPublisher {
 /// Create a publisher on a node.
 ///
 /// The caller provides `storage` — a pointer to a buffer of at least
-/// `size_of::<CppPublisher>()` bytes (`NROS_PUBLISHER_SIZE` from the
-/// generated header plus one pointer for the monitor cell), 8-aligned. The
-/// handle and the cell pointer are written directly into this buffer.
+/// `size_of::<CppPublisher>()` bytes (`NROS_CPP_PUBLISHER_STORAGE_SIZE`:
+/// `NROS_PUBLISHER_SIZE` from the generated header plus the monitor cell and
+/// the node's lifecycle gate), 8-aligned. All three are written directly into
+/// this buffer.
 ///
 /// # Safety
 /// All pointer parameters must be valid. `storage` must point to an
-/// 8-aligned buffer of at least `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes.
+/// 8-aligned buffer of at least `NROS_CPP_PUBLISHER_STORAGE_SIZE` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_publisher_create(
     node: *const nros_cpp_node_t,
@@ -187,6 +195,12 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
             // `NodeHandle::create_publisher` applies (the model's wiring
             // carries the same name). Null when the table has no row, which
             // is every publisher of an uncontracted image.
+            // phase-554 W6 -- a publisher of a node in the executor's table
+            // follows that node's lifecycle gate; one off any node has none.
+            let gate = match crate::node_id_opt(node_ref) {
+                Some(id) => ctx.executor.publisher_gate(id),
+                None => nros_node::lifecycle::PublisherGate::none(),
+            };
             let monitor = ctx
                 .executor
                 .monitor_table()
@@ -196,7 +210,11 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
             unsafe {
                 core::ptr::write(
                     storage as *mut CppPublisher,
-                    CppPublisher { handle, monitor },
+                    CppPublisher {
+                        handle,
+                        monitor,
+                        gate,
+                    },
                 );
             }
             NROS_CPP_RET_OK
@@ -223,6 +241,9 @@ pub unsafe extern "C" fn nros_cpp_publish_raw(
     let publisher = unsafe { &*(storage as *const CppPublisher) };
     let data_slice = unsafe { core::slice::from_raw_parts(data, len) };
 
+    if publisher.gate.drops(publisher.handle.topic_name()) {
+        return NROS_CPP_RET_OK;
+    }
     publisher.bump_monitor();
     match publisher.handle.publish_raw(data_slice) {
         Ok(()) => NROS_CPP_RET_OK,
@@ -268,6 +289,9 @@ pub unsafe extern "C" fn nros_cpp_publisher_publish_streamed(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
     let publisher = unsafe { &*(storage as *const CppPublisher) };
+    if publisher.gate.drops(publisher.handle.topic_name()) {
+        return NROS_CPP_RET_OK;
+    }
     publisher.bump_monitor();
     // SAFETY: this C++ FFI entry point is unsafe; callers must keep
     // `user_ctx` valid for the synchronous callback sequence.
@@ -375,6 +399,12 @@ pub unsafe extern "C" fn nros_cpp_publisher_commit(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let publisher = unsafe { &*(storage as *const CppPublisher) };
+    if publisher.gate.drops(publisher.handle.topic_name()) {
+        // The slot goes back unsent; the token is consumed either way.
+        // SAFETY: as for `commit_raw` below.
+        let _ = unsafe { publisher.handle.discard_raw(token.cast()) };
+        return NROS_CPP_RET_OK;
+    }
     publisher.bump_monitor();
     // SAFETY: `token` is the backend token a prior `nros_cpp_publisher_loan`
     // handed out on this publisher; the caller's contract is that it is
@@ -440,7 +470,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_destroy(storage: *mut c_void) -> nro
 ///
 /// # Safety
 /// Both `old_storage` and `new_storage` must be valid, 8-aligned buffers of
-/// at least `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes. `old_storage` must
+/// at least `NROS_CPP_PUBLISHER_STORAGE_SIZE` bytes. `old_storage` must
 /// contain an initialised publisher; `new_storage` must not. After the
 /// call, `old_storage` is logically uninitialised and must not be destroyed
 /// — the C++ side sets its `initialized_` flag to `false`.

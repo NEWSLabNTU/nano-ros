@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublisherGate::drops",
+  "verdict": "extension",
+  "why": "the check every publish route makes: drop and log once while the node is not active, as rclcpp's `LifecyclePublisher::publish` warns and returns. See `rust:PublishGate`."
+}
