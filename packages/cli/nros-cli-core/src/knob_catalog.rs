@@ -42,17 +42,52 @@ pub fn load_written_for(dir: &Path) -> Option<Catalog> {
 /// The owner words an image LINKS (RFC-0140 D6): its RMW's, its board's (the
 /// key, `-` read as `_`) and its platform's. A knob whose owner is a package
 /// word not among them is refused ([`refuse_unlinked_package_knobs`]).
+///
+/// A platform package's owner word is its CANONICAL name (`names[0]` of its
+/// `nros-platform.toml`), while an image names the platform by whichever name
+/// its board uses: `threadx-linux` and `threadx-riscv64` are aliases of
+/// `nros_platform_threadx`, whose owner word is `threadx`. So the platform's
+/// canonical name, read from the platforms tree under `nano_ros_root`, is
+/// linked too. Without it a threadx-linux image was refused the
+/// `[knobs.threadx]` rows of the package it runs on.
+// Issue 2860.
 #[must_use]
 pub fn linked_owners(
     rmw: Option<&str>,
     board: Option<&str>,
     platform: Option<&str>,
+    nano_ros_root: Option<&Path>,
 ) -> Vec<String> {
-    [rmw, board, platform]
+    let canonical = platform.and_then(|p| canonical_platform_name(p, nano_ros_root?));
+    linked_words(rmw, board, platform, canonical.as_deref())
+}
+
+fn linked_words(
+    rmw: Option<&str>,
+    board: Option<&str>,
+    platform: Option<&str>,
+    canonical_platform: Option<&str>,
+) -> Vec<String> {
+    let mut out: Vec<String> = [rmw, board, platform, canonical_platform]
         .into_iter()
         .flatten()
         .map(|w| w.replace('-', "_"))
-        .collect()
+        .collect();
+    out.dedup();
+    out
+}
+
+/// The canonical name of the platform descriptor that answers to `name` in
+/// the tree under `nano_ros_root`; `None` when none does or the tree does not
+/// load (the check then sees the image's own word only, as before).
+fn canonical_platform_name(name: &str, nano_ros_root: &Path) -> Option<String> {
+    use nros_board_common::platform_config::PlatformsTree;
+    let tree = PlatformsTree::load_search_path(&PlatformsTree::default_search_path(
+        nano_ros_root,
+        std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
+    ))
+    .ok()?;
+    tree.declared_names(name).first().cloned()
 }
 
 /// RFC-0140 D6 — an image may state a package's knob only if it links that
@@ -246,6 +281,32 @@ pub fn write(cat: &Catalog, ws_root: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2860 -- a platform reached by an alias links its package: a
+    /// threadx-linux or threadx-riscv64 image links `threadx`, the owner word
+    /// of `nros_platform_threadx`, and still not another platform's.
+    #[test]
+    fn a_platform_alias_links_its_packages_owner_word() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        for alias in ["threadx-linux", "threadx-riscv64"] {
+            let linked = linked_owners(Some("zenoh"), Some(alias), Some(alias), Some(&root));
+            assert!(linked.iter().any(|w| w == "threadx"), "{alias}: {linked:?}");
+            assert!(
+                !linked.iter().any(|w| w == "freertos"),
+                "{alias}: {linked:?}"
+            );
+        }
+        // No tree: the image's own words only, as before.
+        assert_eq!(
+            linked_owners(
+                Some("zenoh"),
+                Some("threadx-linux"),
+                Some("threadx-linux"),
+                None
+            ),
+            ["zenoh", "threadx_linux"]
+        );
+    }
 
     fn repo_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))

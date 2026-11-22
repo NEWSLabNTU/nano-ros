@@ -1052,6 +1052,14 @@ impl BuildRungs {
     /// [`executor_rung_opt`] states). A build script that has one must compose
     /// it, from [`Self::memory_rungs`] and `nros_zephyr_build::Knob`.
     pub fn memory(&self, defaults: &[(&'static str, usize)]) -> Vec<(&'static str, ResolvedUsize)> {
+        // Issue 2859 -- rung 1 is the environment, read below, so a build
+        // script that resolves here re-runs when it changes. Without this, a
+        // stated `[knobs.memory] heap_bytes` reached cargo as
+        // `NROS_MEMORY_HEAP_BYTES` and the ThreadX pool kept its old size on
+        // every incremental build.
+        for d in memory_env_watches(defaults) {
+            println!("{d}");
+        }
         let plat = self.tree.platform_memory_rungs(&self.platform);
         let plat = self.require_rungs("memory", plat);
         self.tree.resolve_memory_from(
@@ -1094,6 +1102,18 @@ pub fn registry_env(group: &str, knob: &str) -> Option<&'static str> {
 #[must_use]
 pub fn knob_env(env: &dyn Fn(&str) -> Option<String>, key: &str) -> Option<String> {
     nros_zephyr_build::read_spelled(key, env)
+}
+
+// Issue 2859.
+/// The `cargo:rerun-if-env-changed` directives [`BuildRungs::memory`] emits:
+/// every spelling of every memory knob it resolves, since it reads each one's
+/// environment rung.
+pub fn memory_env_watches(defaults: &[(&'static str, usize)]) -> Vec<String> {
+    defaults
+        .iter()
+        .flat_map(|(name, _)| nros_zephyr_build::spellings(memory_env_key(name)))
+        .map(|s| format!("cargo:rerun-if-env-changed={s}"))
+        .collect()
 }
 
 /// `cargo:rerun-if-env-changed` for every spelling of one knob. A build
@@ -4787,6 +4807,23 @@ mod tests {
     }
 
     use super::*;
+
+    /// Issue 2859 -- the memory resolver reads each knob's environment rung, so
+    /// it watches each: a heap the image states must re-run the build script
+    /// that sizes the pool from it.
+    #[test]
+    fn the_memory_resolver_watches_each_knob_it_reads() {
+        let w = memory_env_watches(&[("heap_bytes", 1), ("app_stack_bytes", 1)]);
+        assert!(
+            w.contains(&"cargo:rerun-if-env-changed=NROS_MEMORY_HEAP_BYTES".to_string()),
+            "{w:?}"
+        );
+        assert!(
+            w.contains(&"cargo:rerun-if-env-changed=NROS_MEMORY_APP_STACK_BYTES".to_string()),
+            "{w:?}"
+        );
+        assert!(memory_env_watches(&[]).is_empty());
+    }
 
     fn write_tree(files: &[(&str, &str)]) -> tempfile::TempDir {
         let tmp = tempfile::tempdir().unwrap();

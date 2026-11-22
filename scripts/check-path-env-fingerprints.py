@@ -250,6 +250,11 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
          "s"):
             "every spelling of one ladder knob (`knobs.toml` rows with a `toml` key) — "
             "sizes, intervals and flags",
+        # Issue 2859.
+        ("packages/tooling/nros-platform-config/src/platform_config.rs",
+         "memory_env_watches", "s"):
+            "every spelling of one `[knobs.memory]` registry knob (`heap_bytes`, "
+            "`app_stack_bytes`), which `BuildRungs::memory` reads — byte counts",
         ("packages/tooling/nros-zephyr-build/src/lib.rs", "env_spelled", "s"):
             "every env spelling of a registry knob (`knobs.toml`, or an out-of-tree "
             "package's `nros-knobs.toml` through the catalog) — an integer or a flag",
