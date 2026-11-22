@@ -120,6 +120,7 @@ platform-zephyr = [
     "zpico-alloc/stats",
     "global-allocator",
     "nros-platform-cffi/log-compat",
+    "nros-platform-cffi/reentrant-log-write",
 ]
 # phase-337 W7.b — `platform-orin-spe` (a back-compat alias for
 # `platform-freertos` since 121.10) and `platform-esp32s3` are gone with their

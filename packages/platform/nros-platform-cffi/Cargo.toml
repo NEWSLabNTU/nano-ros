@@ -47,6 +47,12 @@ posix-c-port = ["dep:cc", "dep:nros-cc-flags", "dep:nros-zephyr-build"]
 # images have no other `log::Log` (Zephyr, once its Rust leaves stopped linking
 # zephyr-lang-rust's allocator and with it `zephyr::set_logger`'s full-LOG arm).
 log-compat = ["nros-log/log-compat"]
+# Issue 2762 -- the linked port's `nros_platform_log_write` may run in several
+# contexts at once (threads, CPUs, interrupts), so `PlatformSink` declares
+# itself re-entrant and concurrent loggers do not queue for it. Enabled by a
+# port that guarantees it, never by default: Zephyr's sink formats into
+# buffers it claims with one atomic bit each, or into the caller's stack.
+reentrant-log-write = []
 
 [dependencies]
 # issue 0710 follow-up — `posix-c-port` compiles the POSIX C port, which DEFINES

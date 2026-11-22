@@ -91,3 +91,37 @@ behind a slow sink (a priority-inversion risk) and still loses ISR records.
    while a re-entrant sink on the same dispatcher is.
 3. **A sink that logs from inside its own `log()` is still stopped** from
    recursing into itself. Host test.
+
+## Fix, 2026-11-23
+
+- `LogSink::reentrant()` (default `false`). A record reaches every
+  re-entrant sink directly, in the context that raised it, with no guard; the
+  others still go one at a time behind the dispatch guard, and a record that
+  finds it held waits in the hold queue for THEM only (each held record
+  remembers what it is still owed, so nothing reaches a sink twice).
+- The bound on a re-entrant sink that logs from inside its own `log()`:
+  `REENTRANT_DEPTH` (8) direct deliveries in progress at once. Past it, a
+  record takes the guarded path for every sink, and a held record's
+  re-entrant delivery counts as the whole depth, so whatever such a sink logs
+  is held and the drain passes bound it. That costs nothing for a sink that
+  does not log: the counter is only spent by deliveries in progress.
+- `PlatformSink` is re-entrant where the linked port says so: the
+  `nros-platform-cffi/reentrant-log-write` feature, which `platform-zephyr`
+  enables. The Zephyr sink's `CONFIG_ASSERT` check that it is never entered
+  more times than it has buffers is gone (it encoded the old one-at-a-time
+  delivery). Its pool default is now 2 per CPU (2, 4, 8, 16 for 1, 2, 4, 8
+  CPUs), 1280 bytes a buffer.
+
+Host tests (`packages/core/nros-log/tests/`):
+
+- `reentrant_sink_concurrent`: 6 threads x 2,000 records into one
+  re-entrant and one serialised sink. The re-entrant sink gets all 12,000 with
+  several threads inside it at once; the serialised one is never entered twice
+  and gets every record or counts it lost. 0 failures in 200 runs. With the
+  direct path disabled (mutant) the re-entrant sink got 1,078 of 12,000.
+- `reentrant_sink_logs`: a re-entrant sink that logs on every write is
+  stopped: 27 lines from one record, against a derived bound of
+  1 + 8 + 9 x 2.
+
+Still owed for acceptance 1: the stress cell on `qemu_cortex_a53/smp`.
+

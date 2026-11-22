@@ -230,7 +230,39 @@ pub trait LogSink: Sync {
 
     /// Optional flush hook (default no-op).
     fn flush(&self) {}
+
+    // Issue 2762.
+    /// Whether [`log`](Self::log) may run in several contexts at once:
+    /// threads, CPUs and interrupts.
+    ///
+    /// A re-entrant sink gets every record directly, in the context that
+    /// raised it, so concurrent loggers never queue behind one another for
+    /// it. A sink that is not (the default) is entered one record at a time
+    /// behind the process-wide dispatch guard, and a record that finds the
+    /// guard held waits in the hold queue for it, as before.
+    ///
+    /// Say `true` only when `log` is safe concurrently AND never logs
+    /// through `nros_log` itself. A re-entrant sink that does log is not
+    /// recursed into without bound: past [`REENTRANT_DEPTH`] nested or
+    /// concurrent deliveries, a record takes the guarded path for every sink.
+    /// Records from different contexts may reach a re-entrant sink
+    /// interleaved, in the order they were raised.
+    fn reentrant(&self) -> bool {
+        false
+    }
 }
+
+// Issue 2762.
+/// Deliveries to re-entrant sinks that may be in progress at once before a
+/// record takes the guarded path instead. It bounds a
+/// re-entrant sink that logs through `nros_log` (each nested record is one
+/// more), so it is kept small: a nested delivery is a frame on the raising
+/// stack. Concurrent loggers past it are not lost; they queue as they did
+/// before re-entrant sinks existed.
+pub const REENTRANT_DEPTH: usize = 8;
+
+/// Re-entrant deliveries in progress (issue 2762).
+static REENTRANT_ACTIVE: AtomicUsize = AtomicUsize::new(0);
 
 /// The stored byte meaning "this logger has NO level of its own", so its
 /// threshold is whatever [`Logger::default_level`] currently says.
@@ -1088,14 +1120,16 @@ pub fn added_sink_count() -> usize {
 
 /// Hand `record` to every sink installed by [`add_sink`]. Returns how many
 /// saw it.
-fn deliver_to_added(record: &Record<'_>) -> usize {
+fn deliver_to_added(record: &Record<'_>, reentrant: bool) -> usize {
     let len = ADDED.len.load(Ordering::Acquire);
     let base = ADDED.slots.get().cast::<Option<&'static dyn LogSink>>();
     for idx in 0..len {
         // SAFETY: `idx < len`, and the `Acquire` load above pairs with the
         // `Release` store in `add_sink` that published slot `idx`. Slots below
         // `len` are immutable for the rest of the program.
-        if let Some(sink) = unsafe { base.add(idx).read() } {
+        if let Some(sink) = unsafe { base.add(idx).read() }
+            && sink.reentrant() == reentrant
+        {
             sink.log(record);
         }
     }
@@ -1159,21 +1193,69 @@ fn dispatch_to_sinks(record: &Record<'_>) {
         // It is also a better answer to issue 0708 than installing a default
         // was: the early records land in the sink the board picked, not in the
         // one dispatch guessed before the board had spoken.
-        early::hold(record);
+        early::hold(record, early::Owed::All);
         return;
     }
+    // Issue 2762 -- the re-entrant sinks first, in this context, with no
+    // guard: they are what concurrent loggers must not queue for. Past the
+    // depth bound (a re-entrant sink logging, or that many contexts inside
+    // one at once) the record takes the guarded path for every sink.
+    let owed = if REENTRANT_ACTIVE.fetch_add(1, Ordering::AcqRel) < REENTRANT_DEPTH {
+        deliver_to(record, early::Owed::All, Reentrancy::Reentrant);
+        REENTRANT_ACTIVE.fetch_sub(1, Ordering::AcqRel);
+        early::Owed::Serialised
+    } else {
+        REENTRANT_ACTIVE.fetch_sub(1, Ordering::AcqRel);
+        early::Owed::All
+    };
     if !dispatch_guard_try_acquire() {
         // Another delivery is in progress — this thread's own sink logging
-        // (recursion), or another thread. Hold it, then take the hand-off
-        // (`early` module docs, issue 2000).
-        early::hold(record);
+        // (recursion), or another thread. Hold it for the sinks it still
+        // owes, then take the hand-off (`early` module docs, issue 2000).
+        early::hold(record, owed);
         if dispatch_guard_try_acquire() {
             drain_and_release();
         }
         return;
     }
-    deliver(record);
+    deliver(record, owed);
     drain_and_release();
+}
+
+/// Which sinks one call of [`deliver_to`] reaches.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reentrancy {
+    /// The re-entrant ones only (no guard needed).
+    Reentrant,
+    /// The others only (guard held).
+    Serialised,
+}
+
+/// Every sink `owed` names, with the guard held: the serialised sinks, and
+/// the re-entrant ones too when the record never reached them.
+fn deliver(record: &Record<'_>, owed: early::Owed) {
+    if owed == early::Owed::All {
+        deliver_to(record, owed, Reentrancy::Reentrant);
+    }
+    deliver_to(record, owed, Reentrancy::Serialised);
+}
+
+/// A HELD record, from the drain, with the guard held.
+///
+/// A record held for every sink is held because the re-entrant depth was
+/// spent -- a re-entrant sink logging from inside its own `log()`, or that
+/// many contexts in one at once. Its re-entrant delivery here counts as the
+/// whole depth, so whatever the sink logs from inside it is held rather than
+/// delivered on top of it: a re-entrant sink that logs is then bounded by the
+/// drain passes, exactly as a serialised one is. Only held records pay this;
+/// it would otherwise stall every other context's direct delivery.
+fn deliver_held_record(record: &Record<'_>, owed: early::Owed) {
+    if owed == early::Owed::All {
+        REENTRANT_ACTIVE.fetch_add(REENTRANT_DEPTH, Ordering::AcqRel);
+        deliver_to(record, owed, Reentrancy::Reentrant);
+        REENTRANT_ACTIVE.fetch_sub(REENTRANT_DEPTH, Ordering::AcqRel);
+    }
+    deliver_to(record, owed, Reentrancy::Serialised);
 }
 
 /// Whether a delivery would reach any sink.
@@ -1195,16 +1277,19 @@ pub fn sinks_installed() -> bool {
     has_destination()
 }
 
-/// Hand `record` to every sink, appended ones first. Called with the dispatch
-/// guard held.
-fn deliver(record: &Record<'_>) {
-    deliver_to_added(record);
+/// Hand `record` to every sink of one kind, appended ones first. The
+/// serialised kind is called with the dispatch guard held.
+fn deliver_to(record: &Record<'_>, _owed: early::Owed, kind: Reentrancy) {
+    let want = kind == Reentrancy::Reentrant;
+    deliver_to_added(record, want);
     let ptr = SINKS_PTR.load(Ordering::Acquire);
     if !ptr.is_null() {
         // SAFETY: `init` published a valid `'static` slice reference.
         let sinks: &'static [&'static dyn LogSink] = unsafe { *ptr };
         for sink in sinks {
-            sink.log(record);
+            if sink.reentrant() == want {
+                sink.log(record);
+            }
         }
     }
 }
@@ -1225,7 +1310,7 @@ fn deliver_held() {
 /// times, which is what bounds a sink that logs (`early` module docs).
 fn drain_and_release() {
     for pass in 0..early::DRAIN_PASSES {
-        early::drain_with(&mut deliver);
+        early::drain_with(&mut |record, owed| deliver_held_record(record, owed));
         report_lost();
         dispatch_guard_release();
         // `SeqCst` on both: a raiser that saw the guard held published its
@@ -1267,14 +1352,17 @@ fn report_lost() {
             early::early_depth()
         ),
     );
-    deliver(&Record {
-        severity: Severity::Warn,
-        logger_name: "nros_log",
-        message: message.as_str(),
-        file: file!(),
-        line: line!(),
-        timestamp_ns: __timestamp_ns(),
-    });
+    deliver(
+        &Record {
+            severity: Severity::Warn,
+            logger_name: "nros_log",
+            message: message.as_str(),
+            file: file!(),
+            line: line!(),
+            timestamp_ns: __timestamp_ns(),
+        },
+        early::Owed::All,
+    );
 }
 
 /// Flush every registered sink, appended ones included.

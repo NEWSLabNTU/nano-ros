@@ -136,7 +136,22 @@ const WRITING: u8 = 1;
 const READY: u8 = 2;
 const READING: u8 = 3;
 
+/// Which sinks a held record is still owed to -- issue 2762.
+///
+/// A record that found a sink installed has ALREADY reached every
+/// re-entrant sink in its own context; it is held only for the others, and
+/// the drain must not hand it to a re-entrant sink a second time.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Owed {
+    /// Every sink: no sink was installed yet, or the record took the
+    /// guarded path for all of them (the re-entrant depth was spent).
+    All,
+    /// Only the sinks that are not re-entrant.
+    Serialised,
+}
+
 struct Pending {
+    owed: Owed,
     severity: Severity,
     logger_name: heapless::String<NAME_CAP>,
     message: heapless::String<MSG_CAP>,
@@ -148,6 +163,7 @@ struct Pending {
 impl Pending {
     const fn new() -> Self {
         Self {
+            owed: Owed::All,
             severity: Severity::Info,
             logger_name: heapless::String::new(),
             message: heapless::String::new(),
@@ -250,7 +266,7 @@ pub fn emit_until_delivered(
 ///
 /// Returns `false` when it did not fit — the caller has nothing further to do,
 /// but [`overflowed`] counts it and the next delivery reports it.
-pub(crate) fn hold(record: &Record<'_>) -> bool {
+pub(crate) fn hold(record: &Record<'_>, owed: Owed) -> bool {
     for slot in &SLOTS {
         if slot
             .state
@@ -264,6 +280,7 @@ pub(crate) fn hold(record: &Record<'_>) -> bool {
         // SAFETY: the CAS above made this thread the slot's only owner until
         // the `Release` store of READY below.
         let pending = unsafe { &mut *slot.cell.get() };
+        pending.owed = owed;
         pending.severity = record.severity;
         // Truncating rather than refusing: a clipped record is worth more than
         // none, and the alternative is deciding that a long logger name loses
@@ -307,7 +324,7 @@ fn clip(s: &str, cap: usize) -> &str {
 /// A record held DURING the pass waits for the next one — that is what bounds
 /// a sink that logs (module docs). Safe to run concurrently with `hold` and
 /// with another pass: a slot is claimed READY -> READING by one reader only.
-pub(crate) fn drain_with(deliver: &mut dyn FnMut(&Record<'_>)) {
+pub(crate) fn drain_with(deliver: &mut dyn FnMut(&Record<'_>, Owed)) {
     let bound = NEXT_SEQ.load(Ordering::Acquire);
     loop {
         // Oldest READY slot raised before the pass began. DEPTH is a handful,
@@ -345,7 +362,7 @@ pub(crate) fn drain_with(deliver: &mut dyn FnMut(&Record<'_>)) {
             line: pending.line,
             timestamp_ns: pending.timestamp_ns,
         };
-        deliver(&record);
+        deliver(&record, pending.owed);
         slot.state.store(EMPTY, Ordering::Release);
         PENDING.fetch_sub(1, Ordering::SeqCst);
     }

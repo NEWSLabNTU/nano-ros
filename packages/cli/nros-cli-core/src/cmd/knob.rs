@@ -605,6 +605,9 @@ const CONDITIONS: &[(&str, &str)] = &[
         "the image has parameter services or a parameter store",
     ),
     ("RUST", "the image has Rust code"),
+    ("MP_MAX_NUM_CPUS >= 8", "the image runs on 8 or more CPUs"),
+    ("MP_MAX_NUM_CPUS >= 4", "the image runs on 4 or more CPUs"),
+    ("MP_MAX_NUM_CPUS >= 2", "the image runs on 2 or more CPUs"),
     (
         "(NROS_ZENOH_LINK_SERIAL || NROS_ZENOH_LINK_CAN || NROS_ZENOH_LINK_ISOTP) && \
          !NROS_ZENOH_LINK_TCP && !NROS_ZENOH_LINK_UDP_UNICAST && \
