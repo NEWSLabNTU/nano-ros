@@ -519,6 +519,11 @@ that bringup's entries), so is the shared runtime's sizing descriptor, and two
 bringups on one board took turns rewriting one tree, recompiling the Rust
 runtime on every switch. The cargo coordinate is unchanged.
 
+**Amended 2026-11-22 (issue 2702, RFC-0100 D12 amended).** And then the IMAGE:
+`build/<platform>-<rmw>[-<board>][-cfg<hash>]-<bringup>-<image>/`. Every C/C++
+workspace image has a configure and a runtime of its own, sized for exactly
+that image; a shared runtime was sized for its images' envelope.
+
 Finished artifacts land in **`dist/<image>/`**, and that directory holds a
 **set** plus a manifest naming which member is flashable:
 

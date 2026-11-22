@@ -41,7 +41,7 @@ fn an_owned_entry_with_two_programs_is_sized_for_the_larger() {
 
     let build_dir = nros_tests::project_root()
         .join(DIR)
-        .join("build/threadx-linux-zenoh-two_prog_bringup/cmake");
+        .join("build/threadx-linux-zenoh-two_prog_bringup-threadx-linux/cmake");
     let path = nros_sizing_descriptor::descriptor_path(&build_dir, "two_prog");
     let desc = nros_sizing_descriptor::read(&path)
         .unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
