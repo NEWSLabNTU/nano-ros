@@ -1,12 +1,13 @@
 ---
 id: 2819
 title: "Every Cyclone service client carries a 64 KiB pre-match staging buffer, sized to the largest request rather than to its own type"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: [rmw, cyclonedds, memory]
 related: [2820, 0778]
 found: 2026-11-22
+resolved: 2026-11-22
 ---
 
 ## What it is
@@ -42,3 +43,23 @@ uses). Or allocate it only for the window it is needed (before the first
 match) and free it once the writer has matched. Either way the 64 KiB
 constant stops being a per-client cost and the largest request becomes a
 property of the type.
+
+## Fix
+
+The slot is allocated for the request it holds, and only before the request
+writer has matched. A matched client sends at once through
+`write_with_header` (the inserted-header blob the reply path uses) and holds
+no buffer; an unmatched one stages its request in a ddsrt allocation the size
+of that request, freed once the request is written, dropped, or the client is
+destroyed. The largest request is now a property of the request, not of the
+backend.
+
+Measured: on Zephyr, Cyclone's `new (std::nothrow)` is picolibc `malloc`, so
+each client gave back 65,528 B of `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`
+(262,144 on the native_sim Cyclone images), and an action client has three.
+The nros heap that `nros: heap peak` reports never held this buffer: the
+native_sim Rust Cyclone action client's line moved from 316,000 B to
+310,368 B, the request-sized staging and nothing more.
+`tests/service_large_request.cpp` sends 70,000-byte requests before and after
+the match; with the old code both returned BUFFER_TOO_SMALL.
+
