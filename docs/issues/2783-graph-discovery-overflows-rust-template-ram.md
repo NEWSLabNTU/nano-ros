@@ -132,12 +132,19 @@ edge and move; their template stamps (`recorded_floor`) go:
 | `qemu_bsp_talker_bringup@mps2-an385-baremetal` | 176,208 | 39,424 |
 | `talker/c/zenoh@nucleo-f767zi-zephyr` | 125,896 | 13,064 |
 
-`action-server/rust/zenoh@nucleo-f767zi-zephyr` keeps its walk floor (77,728 B).
-Its image does not link today: `region 'RAM' overflowed by 77440 bytes` with
-that stack. Sizing from its peak (30,256 B, so 33,288 B) still leaves about
-33 KB over, so something else in that image has grown since the row was
-measured. That is not this issue's symptom. With no walk, it gets no
-`upper_bound`, and the row is unchanged.
+`action-server/rust/zenoh@nucleo-f767zi-zephyr` kept its walk floor (77,728 B)
+at first: its image did not link (`region 'RAM' overflowed by 77440 bytes`),
+so it had no fresh walk. The cause was its heap default (192 KiB for a Rust
+image with parameter services), fixed under issue 2772 (112 KiB). Once it
+linked, the walk rose to 111,136 B through the type-bound
+`NodeImpl::___declare_entity -> zephyr_thread_wrapper` edge, the same edge as
+the mps2 action server's, so it is binding noise, not a new frame. Re-measured
+on the Renode twin (2026-11-22): peak 30,328 B. The row now carries
+`upper_bound`, and its stamp is 77,728 to 33,368 B.
+
+The drift check failed that rise. It now treats a row with `upper_bound` as
+sized from its peak: a rising walk is a note, and a walk below the peak still
+fails (it would mean the walk missed a path the image ran).
 
 The template outcome (graph discovery on the stock image) is the template
 side's to close.
