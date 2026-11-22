@@ -49,6 +49,13 @@ set(NROS_ZEPHYR_HEAP_ONE_PARAM_NODE 114688 CACHE INTERNAL "issue 2780 heap floor
 set(NROS_ZEPHYR_HEAP_ONE_LIFECYCLE_MACHINE 196608 CACHE INTERNAL "issue 2780 heap floor")
 # Bytes one more node (machine) costs beyond its buffer pairs, measured as
 # (multi-node peak - one-node peak) / (nodes - 1) - its buffers, floored at 0.
+# MEASURED 2026-11-22, native_sim/native/64, under a 327,680 arena: the C++
+# derived-sched-tasks image (4 nodes) peaks at 139,616 and levels (3 nodes)
+# at 105,712, so a node costs 33,904 -- under the 49,152 of buffers priced
+# per node. The parameter remainder is therefore 0, and the derived floors
+# (262,144 and 212,992) keep 122,528 and 107,280 over the peak, well above
+# the 24,576-byte floor. No image has a second lifecycle machine, so that
+# remainder has no measurement and stays 0.
 set(NROS_ZEPHYR_HEAP_PARAM_NODE_REMAINDER 0 CACHE INTERNAL "issue 2780 heap floor")
 set(NROS_ZEPHYR_HEAP_LIFECYCLE_MACHINE_REMAINDER 0 CACHE INTERNAL "issue 2780 heap floor")
 

@@ -173,8 +173,17 @@ issue 2772 dropped the Rust branch, and 192 KiB for a lifecycle image.
   its flat arm.
 - The two C++ stopgap rows are deleted.
 
-The remainders start at 0, which makes four C/C++ nodes 262,144. They are set
-from the one-node and multi-node boot-record peaks before this closes.
+The remainders are 0, which makes four C/C++ nodes 262,144. That is MEASURED
+to be enough (2026-11-22, native_sim/native/64, both images under a 327,680
+arena, `nros: heap peak` lines from #4576):
+
+| image | nodes | peak | derived floor | over the peak |
+| --- | --- | --- | --- | --- |
+| `derived-sched-tasks-cpp` | 4 | 139,616 | 262,144 | 122,528 |
+| `levels-cpp` | 3 | 105,712 | 212,992 | 107,280 |
+
+A node past the first costs 33,904 bytes here, less than the 49,152 of
+buffers priced for it, so a parameter remainder above 0 would only add slack.
 
 Multi-node Rust images already state a measured heap (`realtime-rust`,
 `rust/demo_bringup`: 262,144). They keep it, and the configure reports it
