@@ -593,9 +593,16 @@ pub const APP_STACK_BYTES: u32 = 512 * 1024;
 /// rung of the board-configuration ladder, under its env front-end
 /// `NROS_MEMORY_APP_STACK_BYTES` (bytes). Emits the `rerun-if-env-changed` lines.
 pub fn app_stack_bytes_from_build_env() -> u32 {
+    app_stack_bytes_from_build_env_or(APP_STACK_BYTES)
+}
+
+// Issue 2800.
+/// [`app_stack_bytes_from_build_env`] for a board whose default is `default`
+/// bytes (the threadx-linux board's 64 KiB).
+pub fn app_stack_bytes_from_build_env_or(default: u32) -> u32 {
     crate::platform_config::watch_knob_env("NROS_MEMORY_APP_STACK_BYTES");
     match crate::platform_config::BuildRungs::from_build_env() {
-        Some(rungs) => rungs.memory_value("app_stack_bytes", APP_STACK_BYTES as usize) as u32,
+        Some(rungs) => rungs.memory_value("app_stack_bytes", default as usize) as u32,
         // A bare `cargo build` names no platform: the env rung alone, as the
         // ladder reads it.
         None => {
@@ -607,7 +614,7 @@ pub fn app_stack_bytes_from_build_env() -> u32 {
                         )
                     })
                 })
-                .unwrap_or(APP_STACK_BYTES)
+                .unwrap_or(default)
         }
     }
 }

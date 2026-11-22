@@ -119,9 +119,24 @@ fn main() {
     let mut glue = cc::Build::new();
     configure_linux(&mut glue);
     add_threadx_includes(&mut glue, &threadx_dir, &threadx_port_dir, &config_dir);
-    // Issue 2624 — the byte pool is sized from the app thread's stack: this
-    // board keeps `threadx_hooks.c`'s 64 KiB default.
-    nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue, 64 * 1024);
+    // Issue 2624 — the byte pool is sized from the app thread's stack. Issue
+    // 2800 — resolved on the knob ladder as the riscv64 board's is; this
+    // board's default stays `threadx_hooks.c`'s 64 KiB.
+    let app_stack =
+        nros_board_common::threadx_qemu_riscv64_build::app_stack_bytes_from_build_env_or(64 * 1024);
+    nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue, app_stack as usize);
+    // Issue 2800 — the app thread runs on this stack now (the port's
+    // `pthread_attr_setstack`), so it is stated for `nros build`'s stack-floor
+    // check, as the riscv64 board states its own.
+    nros_board_common::stack_stated::emit(
+        &PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR")),
+        &[nros_board_common::stack_stated::Stated {
+            role: "OPEN",
+            root: "~app_task_entry_",
+            bytes: app_stack,
+            knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
+        }],
+    );
     glue.file(manifest_dir.join("c/board_threadx_linux.c"));
     // Phase 212.M-F.10.3 — pull the emitted NROS_APP_CONFIG TU into the
     // same `glue` staticlib. The emitted .c includes the shipped header
