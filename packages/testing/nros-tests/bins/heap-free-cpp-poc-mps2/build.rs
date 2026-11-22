@@ -62,6 +62,6 @@ fn main() {
     nros_cc_flags::gcc_safe_frame_pointer(&mut build);
     nros_cc_flags::app_main::generate(&mut build, true);
     nros_cc_flags::header_deps::track_header_deps(&mut build);
-    build.compile("heap_free_cpp_poc_app");
+    nros_cc_flags::compile_commands::compile(&mut build, "heap_free_cpp_poc_app");
     nros_cc_flags::header_deps::emit_header_deps(&out_dir);
 }

@@ -2508,7 +2508,7 @@ pub fn run() {
         }
         // issue 1599 — the compiler names what it read (alias TU + headers).
         nros_cc_flags::header_deps::track_header_deps(&mut alias_build);
-        alias_build.compile("zpico_platform_aliases");
+        nros_cc_flags::compile_commands::compile(&mut alias_build, "zpico_platform_aliases");
         nros_cc_flags::header_deps::emit_header_deps(&out_dir);
     }
 
@@ -2666,7 +2666,7 @@ pub fn run() {
         }
         // issue 1599 — the compiler names what it read (alias TU + headers).
         nros_cc_flags::header_deps::track_header_deps(&mut alias_build);
-        alias_build.compile("zpico_platform_aliases");
+        nros_cc_flags::compile_commands::compile(&mut alias_build, "zpico_platform_aliases");
         nros_cc_flags::header_deps::emit_header_deps(&out_dir);
     }
 
@@ -3339,7 +3339,7 @@ fn build_c_shim(
         build.debug(true);
     }
     nros_cc_flags::header_deps::track_header_deps(&mut build);
-    build.compile("zpico");
+    nros_cc_flags::compile_commands::compile(&mut build, "zpico");
     nros_cc_flags::header_deps::emit_header_deps(out_dir);
 }
 
@@ -3694,7 +3694,7 @@ fn build_zenoh_pico_unified(
     // a re-run in the SAME target dir hit (10.6 s vs 13.8 s). Issue 1599's
     // resolution has the table.
     nros_cc_flags::header_deps::track_header_deps(&mut build);
-    build.compile("zenohpico");
+    nros_cc_flags::compile_commands::compile(&mut build, "zenohpico");
     nros_cc_flags::header_deps::emit_header_deps(out_dir);
 
     // Step 12 — register additional rerun-if-env-changed hooks.

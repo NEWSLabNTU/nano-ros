@@ -241,6 +241,89 @@ realtime-c's slot+direct path carries `Executor::pass` (9,832 B) and
 `reconcile_parameter_services` (9,800 B).
 
 Those frames are the frame-size batch's work (`fix-2815-frames`), not this
-issue's. What is left here is the thread-entry narrowing: walk a thread entry
-as its own root rather than as a callee, from the spawn API's entry argument,
-the ISR table and the device init table.
+issue's. What is left here is below.
+
+## The C a cargo build script compiles, typed (2026-11-23)
+
+After the discarded-code rule, realtime-c's largest class was `machine`:
+
+- **The sites:** C with no clang IR, whose every indirect call binds to
+  everything C can hold. Removing them took the walk from 92,116 B to 69,024 B
+  (-25 %).
+- **The cause:** they are zenoh-pico's, compiled by `zpico-sys` with cc-rs.
+  cmake and west write a `compile_commands.json` for the C they build, so
+  that C is typed (issue 2516). Cargo writes none.
+
+**The fix, for every image-C compile in a build script:**
+
+- **The wrapper:** `nros_cc_flags::compile_commands::compile` compiles in its
+  own object directory (`$OUT_DIR/cc/<lib>/`) and writes that directory's
+  `compile_commands.json`. Each command is the one cc-rs ran: its compiler
+  and arguments, then `-c <source> -o <object>`, paired by the compiler's own
+  depfile. Each entry also records its object's size and FNV-1a-64.
+- **The walker:**
+  - It finds the fragments from cargo's `build-script-executed` messages on
+    the cargo road, and under the image's cargo target directories on the
+    cmake and Zephyr roads.
+  - It takes an entry only when a linked object of that name has those bytes.
+    A stale build-script directory compiles the same sources to the same
+    object names with other flags, and never matches. No file time is read.
+- **The gate:** `check-cc-compile-commands` refuses a bare cc-rs `.compile(`,
+  naming the file and line. All 50 compile sites in 21 files go through the
+  wrapper.
+
+| image | before | after |
+|---|---:|---:|
+| realtime-c OPEN | 92,324 B | 76,148 B (-18 %) |
+| realtime-c TASK_HIGH | 90,300 B | 71,736 B (-21 %) |
+| realtime-c C TUs typed | 56 of 56 | 150 of 150 |
+| realtime-c untyped C sites | 146 | 35 |
+
+The cargo road typed no C at all before this change. On realtime-rust's
+`[image.freertos_realtime]`, 0 C sites were typed and 217 were untyped. Now
+172 are typed and 45 are not:
+
+| realtime-rust `[image.freertos_realtime]` | before | after |
+|---|---:|---:|
+| OPEN | 146,820 B | 123,544 B (-16 %) |
+| TASK_HIGH | 147,308 B | 113,816 B (-23 %) |
+
+The drift check re-walked every row. The five Zephyr rows are unchanged,
+because their C is cmake-built and was already typed. Two rows fell and are
+re-recorded:
+
+| row | was | now |
+|---|---:|---:|
+| `qemu_bsp_talker_bringup@mps2-an385-baremetal` | 115,452 | 79,728 (-31 %) |
+| `talker/c/zenoh@mps2-an385-freertos` (`[[drift]]`) | 66,844 | 52,164 (-22 %) |
+
+Both columns were walked by `stack-floor-drift` on main 1ba483a105 (after
+issue 2694's frame cut, which alone took the bare-metal row from 153,784 to
+115,452 B), without and with this change, so the difference is this change's
+alone.
+
+### The thread-entry narrowing, re-priced: deferred
+
+The earlier proposal priced walking each thread entry as its own root at
+-10 % on the Nucleo action server. That price came from a name pattern that
+also removed ordinary functions (`_z_slice_init`, `_z_session_init`,
+`nros_cpp_init`), which no sound rule would remove.
+
+Narrowed to real thread entries, on the discarded-code walk:
+
+| removed | Nucleo | realtime-c OPEN |
+|---|---:|---:|
+| thread entries (`z_thread_entry`, `zephyr_thread_wrapper`, `bg_thread_main`, `*_task_fn`, `tcpip_thread`, `prvTimerTask`, the sched trampolines) | -2.4 % | -4.2 % |
+| thread entries and ISRs | -6 % | -3.4 % |
+| device init functions | ~0 | 0 |
+
+ISRs are sound to drop only where they run on their own stack, which is not
+the case on bare metal or on every FreeRTOS port. Real evidence for thread
+entries means per-RTOS spawn-API work: following an entry argument through
+`_z_task_init` to `pthread_create`, and the timer and work-queue callbacks.
+For 2-6 % that is deferred.
+
+What remains is the `c_type` binding of C sites by coarse signature. On the
+Nucleo action server, removing it takes the walk to 81,088 B (-21 %). The
+classifier measured for it in 2026-11-22 above did not move these images,
+so it stays open here.

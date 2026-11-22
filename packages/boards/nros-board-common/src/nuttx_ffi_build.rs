@@ -303,7 +303,7 @@ pub fn run_nuttx() {
         for f in &shared_cpp {
             build_cpp.file(f);
         }
-        build_cpp.compile("app_cpp");
+        nros_cc_flags::compile_commands::compile(&mut build_cpp, "app_cpp");
     }
     if !shared_c.is_empty() {
         let mut build_c = cc::Build::new();
@@ -311,7 +311,7 @@ pub fn run_nuttx() {
         for f in &shared_c {
             build_c.file(f);
         }
-        build_c.compile("app_c");
+        nros_cc_flags::compile_commands::compile(&mut build_c, "app_c");
     }
     // Each mapped source in its OWN archive with a per-component `NROS_PKG_NAME` (last `-D`
     // wins over the shared one from `APP_COMPILE_DEFS`, so the per-source pkg is effective).
@@ -320,7 +320,7 @@ pub fn run_nuttx() {
         configure(&mut build, *want_cpp);
         build.define("NROS_PKG_NAME", Some(pkg.as_str()));
         build.file(path);
-        build.compile(&format!("app_pkg_{idx}"));
+        nros_cc_flags::compile_commands::compile(&mut build, &format!("app_pkg_{idx}"));
     }
 
     // phase-281 W3-nuttx (C lane) — generated C interface serdes TUs
@@ -345,7 +345,7 @@ pub fn run_nuttx() {
             for f in &iface_c {
                 build.file(f);
             }
-            build.compile("app_iface_c");
+            nros_cc_flags::compile_commands::compile(&mut build, "app_iface_c");
         }
         if !iface_cpp.is_empty() {
             let mut build = cc::Build::new();
@@ -353,7 +353,7 @@ pub fn run_nuttx() {
             for f in &iface_cpp {
                 build.file(f);
             }
-            build.compile("app_iface_cpp");
+            nros_cc_flags::compile_commands::compile(&mut build, "app_iface_cpp");
         }
     }
 

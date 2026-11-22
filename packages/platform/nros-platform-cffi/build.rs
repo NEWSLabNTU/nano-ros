@@ -58,23 +58,25 @@ fn main() {
 
     #[cfg(feature = "c-stub-test")]
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
-    nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
-        &mut cc::Build::new(),
-    ))
-    .file("tests/c_stubs/platform_stubs.c")
-    .include("tests/c_stubs")
-    // The stub's own header says it "defines every `nros_platform_*` symbol
-    // declared in `<nros/platform.h>`" — but that header was never on the
-    // include path, so the TU hand-declared each signature instead. Any type
-    // added upstream was then simply unknown to it: phase-359 W10's
-    // `nros_platform_task_attr_t` broke `c-stub-test` outright, and nothing
-    // noticed because no default build enables the feature. Compiling
-    // against the real declarations makes a signature change a compile
-    // error here instead of a silent mirror drift.
-    .include("../nros-platform-api/include")
-    .warnings(true)
-    .extra_warnings(true)
-    .compile("nros_platform_stubs");
+    nros_cc_flags::compile_commands::compile(
+        nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
+            &mut cc::Build::new(),
+        ))
+        .file("tests/c_stubs/platform_stubs.c")
+        .include("tests/c_stubs")
+        // The stub's own header says it "defines every `nros_platform_*` symbol
+        // declared in `<nros/platform.h>`" — but that header was never on the
+        // include path, so the TU hand-declared each signature instead. Any type
+        // added upstream was then simply unknown to it: phase-359 W10's
+        // `nros_platform_task_attr_t` broke `c-stub-test` outright, and nothing
+        // noticed because no default build enables the feature. Compiling
+        // against the real declarations makes a signature change a compile
+        // error here instead of a silent mirror drift.
+        .include("../nros-platform-api/include")
+        .warnings(true)
+        .extra_warnings(true),
+        "nros_platform_stubs",
+    );
     #[cfg(feature = "c-stub-test")]
     // issue 1580 — declare every file the compiler OPENED (the `-MMD`
     // depfiles), not only the files this script can name by hand.
@@ -90,15 +92,17 @@ fn main() {
         // (`nros-log`'s clock, `nros-platform-api`'s task calls), resolve their
         // port symbols. Why, in `c/port_anchor.c`.
         println!("cargo:rerun-if-changed=c/port_anchor.c");
-        nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
-            &mut cc::Build::new(),
-        ))
-        .file("c/port_anchor.c")
-        .include("../nros-platform-api/include")
-        .warnings(true)
-        .extra_warnings(true)
-        .link_lib_modifier("+whole-archive")
-        .compile("nros_platform_cffi_port_anchor");
+        nros_cc_flags::compile_commands::compile(
+            nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
+                &mut cc::Build::new(),
+            ))
+            .file("c/port_anchor.c")
+            .include("../nros-platform-api/include")
+            .warnings(true)
+            .extra_warnings(true)
+            .link_lib_modifier("+whole-archive"),
+            "nros_platform_cffi_port_anchor",
+        );
         // RFC-0141 D2 (phase-582 W1d) — the image's `[knobs.clock]` list, as
         // defines, plus the selection-named TU when it names `board`. Read
         // through the ONE helper `nros-rmw-xrce-cffi`'s copy of this port
@@ -109,6 +113,9 @@ fn main() {
         ));
         println!("cargo:rerun-if-changed={}", board_tu.display());
         // issue 0383 — implicit-function-declaration / int-conversion as errors.
+        // Bundled, as cc emits it: that is what puts the port inside a
+        // STATICLIB built from this graph (`libnros_c.a`), where the C linker
+        // rescans one archive's members and order does not matter.
         let mut port = cc::Build::new();
         if let Some(sel) = &clock {
             for (name, value) in sel.c_defines() {
@@ -118,23 +125,22 @@ fn main() {
                 port.file(&board_tu);
             }
         }
-        nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(&mut port))
-            .file("../nros-platform-posix/src/platform.c")
-            .file("../nros-platform-posix/src/net.c")
-            .file("../nros-platform-posix/src/timer.c")
-            // issue 1776 — the termination guard is its own archive member.
-            .file("../nros-platform-posix/src/termination.c")
-            // phase-241 B.2 — the canonical `<nros/platform.h>` moved to
-            // nros-platform-api; this crate's own include/ is now empty.
-            .include("../nros-platform-api/include")
-            .warnings(true)
-            .extra_warnings(true)
-            .flag_if_supported("-Wpedantic")
-            .define("_POSIX_C_SOURCE", "200809L")
-            // Bundled, as cc emits it: that is what puts the port inside a
-            // STATICLIB built from this graph (`libnros_c.a`), where the C linker
-            // rescans one archive's members and order does not matter.
-            .compile("nros_platform_posix");
+        let posix_dir = nros_cc_flags::compile_commands::compile(
+            nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(&mut port))
+                .file("../nros-platform-posix/src/platform.c")
+                .file("../nros-platform-posix/src/net.c")
+                .file("../nros-platform-posix/src/timer.c")
+                // issue 1776 — the termination guard is its own archive member.
+                .file("../nros-platform-posix/src/termination.c")
+                // phase-241 B.2 — the canonical `<nros/platform.h>` moved to
+                // nros-platform-api; this crate's own include/ is now empty.
+                .include("../nros-platform-api/include")
+                .warnings(true)
+                .extra_warnings(true)
+                .flag_if_supported("-Wpedantic")
+                .define("_POSIX_C_SOURCE", "200809L"),
+            "nros_platform_posix",
+        );
         // ...and a byte-identical TAIL copy, `-bundle`, for a Rust final link.
         // The bundled port sits INSIDE this crate's rlib, AHEAD of the
         // whole-archived anchor, so the anchor's reference arrives too late for
@@ -144,10 +150,11 @@ fn main() {
         // define one symbol twice, which is the same reason
         // `nros-rmw-xrce-cffi`'s copy coexists with this one (issue 1779). A
         // staticlib does not carry a `-bundle` lib, so it holds the port once.
-        let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
+        // The copy sits beside the original, in the compile's own object
+        // directory, whose `rustc-link-search` cc-rs already printed.
         std::fs::copy(
-            out_dir.join("libnros_platform_posix.a"),
-            out_dir.join("libnros_platform_posix_tail.a"),
+            posix_dir.join("libnros_platform_posix.a"),
+            posix_dir.join("libnros_platform_posix_tail.a"),
         )
         .expect("copy the POSIX port archive for the tail link");
         println!("cargo:rustc-link-lib=static:-bundle=nros_platform_posix_tail");
