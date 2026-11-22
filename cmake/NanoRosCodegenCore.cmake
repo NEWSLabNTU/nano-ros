@@ -1098,6 +1098,33 @@ function(_nros_is_zephyr _out)
     endif()
 endfunction()
 
+# _nros_zephyr_claim_app_program(<program> <who>)
+#
+# Issue 2746 -- a west build is ONE Zephyr image: one `app` target, linked
+# whole-archive into one `zephyr.elf`, so it holds one `main`. Every road that
+# puts a program into `app` (a `nano_ros_entry`, which every
+# `nano_ros_add_executable` reaches, and a registered component's carrier)
+# claims it here first. A second, DIFFERENT program is refused at configure,
+# naming both, where it used to fail at link with `multiple definition of
+# `main'`. The same program reached twice (a re-run, or one program by two
+# roads) passes. GLOBAL, because `app` is: a package registered from its own
+# subdirectory adds to the same image.
+function(_nros_zephyr_claim_app_program _program _who)
+    get_property(_prev GLOBAL PROPERTY _NROS_ZEPHYR_APP_PROGRAM)
+    get_property(_prev_who GLOBAL PROPERTY _NROS_ZEPHYR_APP_PROGRAM_WHO)
+    if(_prev AND NOT _prev STREQUAL "${_program}")
+        message(FATAL_ERROR
+            "${_who}: this Zephyr build already has the program `${_prev}` "
+            "(${_prev_who}), and `${_program}` would be a second. Zephyr builds one "
+            "program per package: a west build is one image with one `main`. Split "
+            "the package, so each program is its own package and its own image. "
+            "Building several programs from one Zephyr package, each as its own "
+            "image, is planned.")
+    endif()
+    set_property(GLOBAL PROPERTY _NROS_ZEPHYR_APP_PROGRAM "${_program}")
+    set_property(GLOBAL PROPERTY _NROS_ZEPHYR_APP_PROGRAM_WHO "${_who}")
+endfunction()
+
 # phase-400 W5.a — WHERE the per-build nros config headers land.
 #
 # `nros-{c,cpp}`'s build script writes them under `$CARGO_TARGET_DIR`, and every

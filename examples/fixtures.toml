@@ -5526,6 +5526,19 @@ builder = "cmake-configure-verdict"
 dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
 output = ".verdict"
 
+# Issue 2746 -- a second Zephyr program refused at configure, and its control.
+[[compile_check_fixture]]
+id = "cmake_zephyr_second_program_refused"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_zephyr_one_program_claimed_twice"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
 [[compile_check_fixture]]
 id = "cmake_carrier_other_package_program"
 builder = "cmake-configure-verdict"

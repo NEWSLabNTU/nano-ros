@@ -231,8 +231,8 @@ the image is sized for the larger: each pool is the most any one program
 needs.
 
 One limit applies for now: **Zephyr** builds one program per package,
-because a west build is one Zephyr image. A second program fails to link
-(`multiple definition of 'main'`); give it a package of its own.
+because a west build is one Zephyr image. A second program is refused when
+the build configures, naming both programs; give it a package of its own.
 
 ## What still needs an edit
 

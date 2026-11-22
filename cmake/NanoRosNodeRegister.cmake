@@ -1531,6 +1531,9 @@ function(nano_ros_node_register)
         # configure). PROJECT_NAME is the Node pkg (its own project()), so the
         # marker is per-pkg, not per-app.
         add_custom_target(${PROJECT_NAME}_nros_zephyr_entry)
+        # Issue 2746 -- one program per Zephyr image.
+        _nros_zephyr_claim_app_program("${_NRC_NAME}"
+            "nano_ros_node_register(${_NRC_NAME}) in package `${PROJECT_NAME}`")
         target_sources(app PRIVATE "${_zephyr_entry_src}")
         # issue 0638 — the entry TU needs the FILE-level edge too, and the
         # block above says why while exempting this very case: "a C node / the

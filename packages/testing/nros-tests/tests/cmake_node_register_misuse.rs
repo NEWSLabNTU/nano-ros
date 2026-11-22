@@ -305,3 +305,44 @@ fn a_stated_stack_floor_key_with_two_programs_is_refused() -> TestResult<()> {
     );
     Ok(())
 }
+
+/// Issue 2746 -- a west build is one Zephyr image with one `main`. A second,
+/// different program put into `app` is refused at configure, naming both
+/// programs and saying to split the package, instead of failing at link with
+/// `multiple definition of main`.
+#[test]
+fn a_second_zephyr_program_is_refused_at_configure() -> TestResult<()> {
+    let out = outcome("cmake_zephyr_second_program_refused")?;
+    assert!(
+        !out.success(),
+        "expected the configure to fail on a second Zephyr program:\n{}",
+        out.stderr
+    );
+    let err = out.stderr.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        err.contains("`talker_b`")
+            && err.contains("`talker`")
+            && err.contains("one program per package")
+            && err.contains("Split the package"),
+        "expected the refusal to name both programs and say to split the package, got:\n{}",
+        out.stderr
+    );
+    Ok(())
+}
+
+/// Issue 2746, the negative control: the same program reaching `app` twice is
+/// one program, and the configure passes.
+#[test]
+fn one_zephyr_program_claimed_twice_passes() -> TestResult<()> {
+    let out = outcome("cmake_zephyr_one_program_claimed_twice")?;
+    assert!(
+        out.success()
+            && out
+                .stdout
+                .contains("one Zephyr program claimed twice passes"),
+        "one program claimed twice was refused:\n{}\n{}",
+        out.stdout,
+        out.stderr
+    );
+    Ok(())
+}
