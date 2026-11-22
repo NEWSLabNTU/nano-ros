@@ -21844,3 +21844,111 @@ fn restart_timing_drops_the_wait_before_the_first_spin() {
     assert_eq!(half, 0, "half a period after the restart: not yet");
     assert_eq!(full, 1, "one period after the restart: exactly once");
 }
+
+/// RFC-0128 D3 / phase-554 W6 -- a managed node's publishers follow its
+/// state, and nothing else's do.
+///
+/// The publisher is created BEFORE the node's machine exists, as the Rust
+/// component road does (the machine is registered after the component builds
+/// its entities), so the gate it reads must already be the node's.
+#[cfg(feature = "lifecycle-services")]
+mod managed_publishers {
+    use super::*;
+    use crate::lifecycle::LifecycleCallbackSlot;
+    use nros_core::lifecycle::{LifecycleState, LifecycleTransition};
+
+    fn transition(exec: &mut Executor<'static>, id: NodeId, t: LifecycleTransition) {
+        let sm = exec.lifecycle_state_machine_on_mut(id).expect("machine");
+        // SAFETY: the only callback registered publishes through a publisher
+        // that outlives the transition.
+        unsafe { sm.trigger_transition(t) }.expect("transition");
+    }
+
+    /// `on_activate` publishes, as a node that announces itself does.
+    unsafe extern "C" fn publish_on_activate(ctx: *mut core::ffi::c_void) -> u8 {
+        let publisher = unsafe { &*(ctx as *const crate::executor::EmbeddedPublisher<TestMsg>) };
+        publisher
+            .publish(TestMsg { data: 7 })
+            .expect("publish in on_activate");
+        nros_core::lifecycle::TransitionResult::Success as u8
+    }
+
+    #[test]
+    fn a_managed_nodes_publisher_is_silent_until_active() {
+        let mut exec: Executor = executor_with_clock(MockSession::new());
+        let managed = exec.node_builder("talker").build().expect("node");
+        let plain = exec.node_builder("listener").build().expect("node");
+        let pm = exec
+            .with_node_try(managed, |n| n.create_publisher::<TestMsg>("/chatter"))
+            .expect("managed publisher");
+        let pp = exec
+            .with_node_try(plain, |n| n.create_publisher::<TestMsg>("/plain"))
+            .expect("plain publisher");
+        let msg = TestMsg { data: 1 };
+
+        // Not managed yet: it sends.
+        pm.publish(&msg).unwrap();
+        assert_eq!(pm.handle.publish_count(), 1, "unmanaged: sends");
+
+        exec.register_lifecycle_services_on(managed).unwrap();
+        let sm = exec.lifecycle_state_machine_on_mut(managed).unwrap();
+        sm.set_context(&pm as *const _ as *mut core::ffi::c_void);
+        sm.register(LifecycleCallbackSlot::Activate, Some(publish_on_activate));
+
+        // Unconfigured, then inactive: `publish` succeeds and sends nothing.
+        pm.publish(&msg).expect("a dropped publish still returns Ok");
+        transition(&mut exec, managed, LifecycleTransition::Configure);
+        pm.publish(&msg).unwrap();
+        assert_eq!(pm.handle.publish_count(), 1, "silent until active");
+
+        // The publish inside `on_activate` goes out, and so does the next.
+        transition(&mut exec, managed, LifecycleTransition::Activate);
+        assert_eq!(
+            exec.lifecycle_state_machine_on(managed).unwrap().state(),
+            LifecycleState::Active
+        );
+        assert_eq!(pm.handle.publish_count(), 2, "on_activate's publish sent");
+        pm.publish(&msg).unwrap();
+        assert_eq!(pm.handle.publish_count(), 3, "active: sends");
+
+        // Deactivate stops it; the next activate resumes it.
+        transition(&mut exec, managed, LifecycleTransition::Deactivate);
+        pm.publish(&msg).unwrap();
+        assert_eq!(pm.handle.publish_count(), 3, "inactive again: silent");
+        transition(&mut exec, managed, LifecycleTransition::Activate);
+        assert_eq!(pm.handle.publish_count(), 4, "on_activate again");
+        pm.publish(&msg).unwrap();
+        assert_eq!(pm.handle.publish_count(), 5, "active again: sends");
+
+        // The other node is not managed and was never gated.
+        for _ in 0..3 {
+            pp.publish(&msg).unwrap();
+        }
+        assert_eq!(pp.handle.publish_count(), 3, "a plain node's publisher always sends");
+    }
+
+    /// A failed activation leaves the node inactive, so the gate closes again
+    /// after the callback that opened it.
+    #[test]
+    fn a_failed_activation_leaves_the_publisher_silent() {
+        unsafe extern "C" fn fail(_: *mut core::ffi::c_void) -> u8 {
+            nros_core::lifecycle::TransitionResult::Failure as u8
+        }
+        let mut exec: Executor = executor_with_clock(MockSession::new());
+        let managed = exec.node_builder("talker").build().expect("node");
+        let pm = exec
+            .with_node_try(managed, |n| n.create_publisher::<TestMsg>("/chatter"))
+            .expect("publisher");
+        exec.register_lifecycle_services_on(managed).unwrap();
+        exec.lifecycle_state_machine_on_mut(managed)
+            .unwrap()
+            .register(LifecycleCallbackSlot::Activate, Some(fail));
+        transition(&mut exec, managed, LifecycleTransition::Configure);
+        let sm = exec.lifecycle_state_machine_on_mut(managed).unwrap();
+        // SAFETY: the callback reads nothing.
+        assert!(unsafe { sm.trigger_transition(LifecycleTransition::Activate) }.is_err());
+        assert_eq!(sm.state(), LifecycleState::Inactive);
+        pm.publish(TestMsg { data: 1 }).unwrap();
+        assert_eq!(pm.handle.publish_count(), 0, "a failed activate leaves it silent");
+    }
+}
