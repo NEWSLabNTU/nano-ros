@@ -87,6 +87,7 @@ fn args() -> SizingDescriptorArgs {
         leaf_image: None,
         entity_cmake: None,
         owned_entry: None,
+        census_not_taken: false,
         // phase-457-payload W2 -- no tables: the payload class refuses,
         // naming the missing registration (issue 1393 closed the road).
         bound_inventory: Vec::new(),

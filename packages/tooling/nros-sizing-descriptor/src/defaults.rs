@@ -56,6 +56,24 @@ pub fn defaults_in_use(desc: &SizingDescriptor) -> Vec<DefaultInUse> {
         });
     };
 
+    // nros-node, nros-rmw-cffi, zpico-sys: the entity pools, sized from the
+    // image's counted entities. `node_count` is refused only when nothing
+    // counted them (a census not taken, issue 2806, or an inventory that did
+    // not compose); a standalone leaf's declaration refuses the knob fields
+    // alone, and is not this entry.
+    if let Some(why) = desc.image.node_count().refusal() {
+        add(
+            "the node table, the subscriber, publisher and per-kind entity pools, and the \
+             callback slots keep their builtin sizes",
+            why.to_string(),
+            Some(
+                "let the image's entities be counted: take its census \
+                 (`nros dev image entity-census take --image <bringup>:<image>`), or declare \
+                 them",
+            ),
+        );
+    }
+
     // nros-node: the receive buffer is sized from the largest type the image
     // can carry.
     if let Some(why) = desc.types.max_wire_bound_bytes().refusal() {

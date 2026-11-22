@@ -525,6 +525,7 @@ fn an_unwired_image_states_the_retired_carriers_facts_as_the_wired_road_does() {
                 infra,
                 model_nodes: Some(infra.model_nodes),
                 roots: &[],
+                census_refused: None,
             },
             tables,
         )

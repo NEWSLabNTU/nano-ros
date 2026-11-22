@@ -1527,32 +1527,12 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
                 }
             }
         }
-        Some(Derivation::Refused { reason }) => {
-            img.refuse("node_count", reason.clone())
-                .refuse("subscriber_count", reason.clone())
-                .refuse("service_server_queryables", reason.clone());
-            for field in ENTITY_COUNT_FIELDS
-                .iter()
-                .map(|(f, _)| *f)
-                .chain(IMAGE_KNOB_FIELDS)
-            {
-                img.refuse(field, reason.clone());
-            }
-        }
-        None => {
-            let why = "the entity inventory did not compose for this entry, so the image's \
-                       node, subscriber and entity counts are not known -- absence is not zero";
-            img.refuse("node_count", why)
-                .refuse("subscriber_count", why)
-                .refuse("service_server_queryables", why);
-            for field in ENTITY_COUNT_FIELDS
-                .iter()
-                .map(|(f, _)| *f)
-                .chain(IMAGE_KNOB_FIELDS)
-            {
-                img.refuse(field, why);
-            }
-        }
+        Some(Derivation::Refused { reason }) => refuse_inventory_counts(&mut img, &reason),
+        None => refuse_inventory_counts(
+            &mut img,
+            "the entity inventory did not compose for this entry, so the image's node, \
+             subscriber and entity counts are not known -- absence is not zero",
+        ),
     }
     // phase-486 W9 -- the ~~`NROS_DECLARED_NODES`~~ carrier's home. A MODEL fact,
     // not an inventory one, so it is stated beside a derivation or a refusal
@@ -1571,6 +1551,24 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
     // phase-486 -- the families travel with it, as their two carriers did.
     img.set_infra_families(inputs.infra_families);
     img
+}
+
+/// Every `[image]` count an entity inventory states, refused by `why`: the
+/// node and subscriber counts, the service-server queryables, the per-kind
+/// entity counts and [`IMAGE_KNOB_FIELDS`]. One list, so a derivation that
+/// refuses, an inventory that did not compose and a census not taken (issue
+/// 2806) refuse the same fields.
+pub(crate) fn refuse_inventory_counts(img: &mut nros_sizing_descriptor::Image, why: &str) {
+    img.refuse("node_count", why)
+        .refuse("subscriber_count", why)
+        .refuse("service_server_queryables", why);
+    for field in ENTITY_COUNT_FIELDS
+        .iter()
+        .map(|(f, _)| *f)
+        .chain(IMAGE_KNOB_FIELDS)
+    {
+        img.refuse(field, why);
+    }
 }
 
 /// Issue 1655 — the `[image]` fields stated from `DerivedEntityKnobs`, refused
@@ -2342,6 +2340,16 @@ pub enum Wiring<'a> {
         /// The directories this producer read from, for the portability
         /// check (issue 0320).
         roots: &'a [&'a std::path::Path],
+        /// Issue 2806 -- `Some(why)` when the image IS sized by a census
+        /// that was not taken (`[census] on_missing = "warn"`): every count
+        /// the census would have stated is refused with `why`, and the file
+        /// is written even if nothing else is stated. That is the one
+        /// exception to "no stated fact, no file" (user ruling 2026-11-22,
+        /// RFC-0100's changelog): the refusals ARE the fact, since without
+        /// them no reader can tell that the image's pools are defaults. The
+        /// `[meta]` is the shape above, so a consumer guarding on it is
+        /// unchanged, and a refused count sizes exactly as an absent one.
+        census_refused: Option<&'a str>,
     },
 }
 
@@ -2741,8 +2749,11 @@ fn write_model_descriptor(
             infra,
             model_nodes,
             roots,
+            census_refused,
         } => {
-            let Some(desc) = compose_unwired(img, params, *infra, *model_nodes, runtime) else {
+            let Some(desc) =
+                compose_unwired(img, params, *infra, *model_nodes, *census_refused, runtime)
+            else {
                 if path.exists() {
                     std::fs::remove_file(&path)
                         .map_err(|e| eyre::eyre!("removing the stale `{}`: {e}", path.display()))?;
@@ -2855,11 +2866,16 @@ fn report_defaults(path: &std::path::Path, desc: &SizingDescriptor) {
 /// Every other section stays ABSENT: `status = refused`, `basis = closure`,
 /// `undeclared_endpoints` refused. `None` only when nothing is stated, which
 /// with `model_nodes` always stated means a caller that read no model.
+///
+/// `census_refused` (issue 2806): the image's counts come from a census that
+/// was not taken, so each is REFUSED with that reason instead of absent, and
+/// the file is kept even with nothing else stated.
 fn compose_unwired(
     img: &ModelImage<'_>,
     params: &ParamDeclarations,
     infra: InfraServices,
     model_nodes: Option<usize>,
+    census_refused: Option<&str>,
     runtime: Option<&RuntimeComposition<'_>>,
 ) -> Option<SizingDescriptor> {
     let inputs = DescriptorInputs {
@@ -2928,9 +2944,15 @@ fn compose_unwired(
             },
         );
     }
+    // Issue 2806 -- a census not taken: every count it would have stated,
+    // refused by the reason, so `defaults_in_use` names each defaulted pool.
+    if let Some(why) = census_refused {
+        refuse_inventory_counts(&mut desc.image, why);
+    }
     // No stated fact, no file (RFC-0100's 2026-10-10 ruling): a refusal
-    // states nothing.
-    if model_nodes.is_none()
+    // states nothing -- except a census's, above (user ruling 2026-11-22).
+    if census_refused.is_none()
+        && model_nodes.is_none()
         && !desc.image.infra_families().is_stated()
         && !desc.params.implies_store()
         && !desc.types.max_wire_bound_bytes().is_stated()
@@ -5714,6 +5736,7 @@ execution:
                 infra,
                 model_nodes: Some(infra.model_nodes),
                 roots: &[],
+                census_refused: None,
             },
             target_triple: None,
             host_build: true,
@@ -5741,6 +5764,7 @@ execution:
                 infra,
                 model_nodes: None,
                 roots: &[],
+                census_refused: None,
             },
             ..unwired(dir.path(), "img", &ParamDeclarations::Absent, infra)
         })
@@ -5771,11 +5795,90 @@ execution:
                 infra: off,
                 model_nodes: None,
                 roots: &[],
+                census_refused: None,
             },
             ..unwired(dir.path(), "img", &ParamDeclarations::Absent, off)
         })
         .unwrap();
         assert!(none.is_none());
+        assert!(!written.path.exists(), "the stale file is removed");
+    }
+
+    /// Issue 2806 (user ruling 2026-11-22) -- an owned entry whose census was
+    /// NOT taken under `[census] on_missing = "warn"` still gets a descriptor:
+    /// the Unwired `[meta]`, every count the census would have stated REFUSED
+    /// with the take's reason, and nothing else. Before, nothing stated meant
+    /// no file, and the image's pools were defaults no reader could see.
+    #[test]
+    fn a_census_not_taken_writes_a_descriptor_refusing_every_count_it_would_state() {
+        use nros_sizing_descriptor::{Fact, infra};
+        let dir = tempfile::tempdir().unwrap();
+        let off = InfraServices::from_features(&[] as &[&str], 0);
+        let why = "the census of the owned entry `e` was not taken (no host compiler)";
+        let refused = |census_refused| ModelImage {
+            wiring: Wiring::Unwired {
+                params: &ParamDeclarations::Absent,
+                infra: off,
+                model_nodes: None,
+                roots: &[],
+                census_refused,
+            },
+            ..unwired(dir.path(), "img", &ParamDeclarations::Absent, off)
+        };
+        let written = write_for_model(&refused(Some(why)))
+            .unwrap()
+            .expect("a census not taken still earns a file");
+        let back = nros_sizing_descriptor::read(&written.path).unwrap();
+
+        // The `[meta]` is the Unwired shape every consumer already guards on.
+        assert_eq!(back.meta.status.tag(), "refused");
+        assert_eq!(back.meta.basis.tag(), "closure");
+        assert!(!back.meta.basis.describes_image());
+        assert_eq!(back.meta.undeclared_endpoints().tag(), "refused");
+
+        // Every count the census would have stated is refused, by the reason.
+        let image = &back.image;
+        let counts: [(&str, Fact<usize>); 6] = [
+            ("node_count", image.node_count()),
+            ("subscriber_count", image.subscriber_count()),
+            ("publisher_count", image.publisher_count()),
+            ("callback_slots", image.callback_slots()),
+            (
+                "service_server_queryables",
+                image.service_server_queryables(),
+            ),
+            ("timer_entities", image.timer_entities()),
+        ];
+        for (field, fact) in counts {
+            assert_eq!(fact.refusal(), Some(why), "{field}");
+        }
+
+        // ... and sizes as no file does: nothing a consumer reads is stated.
+        assert!(back.endpoints.is_empty());
+        assert_eq!(
+            nros_sizing_descriptor::transient_local_publishers(&back).tag(),
+            "absent"
+        );
+        assert_eq!(
+            nros_sizing_descriptor::max_subscription_depth(&back).tag(),
+            "absent"
+        );
+        assert_eq!(infra::service_client_slots(&back.image), None);
+        assert!(!back.types.max_wire_bound_bytes().is_stated());
+        assert!(!back.params.implies_store());
+        assert!(!back.image.infra_families().is_stated());
+        assert!(!back.image.model_nodes().is_stated());
+
+        // The defaults are listed, by the take's reason.
+        let listed = nros_sizing_descriptor::defaults::defaults_in_use(&back);
+        assert!(
+            listed.iter().any(|e| e.reason == why),
+            "the census refusal is in the defaults report: {listed:?}"
+        );
+
+        // Negative control: without the census refusal nothing is stated, so
+        // no file -- the 2026-10-10 ruling everywhere else.
+        assert!(write_for_model(&refused(None)).unwrap().is_none());
         assert!(!written.path.exists(), "the stale file is removed");
     }
 

@@ -301,3 +301,49 @@ fn an_undeclared_subscription_is_priced_at_the_budgeted_depth() {
         "a depth-less in-place subscription row is priced, not refused"
     );
 }
+
+/// Issue 2806 -- an owned entry whose census was not taken (`[census]
+/// on_missing = "warn"`) now gets a descriptor: the Unwired `[meta]` (`status =
+/// refused`, `basis = closure`, `undeclared_endpoints` refused) with every
+/// `[image]` count refused, in the shape `nros dev image sizing-descriptor
+/// --census-not-taken` renders. The basis guard turns it away exactly as it
+/// turned away no file: the arena keeps the env road, so its size is today's.
+#[test]
+fn a_census_not_taken_descriptor_is_turned_away_by_the_basis_guard() {
+    let why = "the census of the owned entry `e` was not taken (no host compiler)";
+    let refused: String = [
+        "node_count",
+        "subscriber_count",
+        "publisher_count",
+        "callback_slots",
+        "subscription_entities",
+        "timer_entities",
+        "service_server_entities",
+        "service_client_entities",
+        "action_server_entities",
+        "action_client_entities",
+        "guard_condition_entities",
+    ]
+    .iter()
+    .map(|f| format!("{f} = \"{why}\"\n"))
+    .collect();
+    let text = format!(
+        "schema_version = {}\n\n[meta]\nentry = \"img\"\nstatus = \"refused\"\n\
+         basis = \"closure\"\n\n[meta.refused]\nundeclared_endpoints = \"the model describes \
+         no wiring\"\n\n[target]\n\n[image]\n\n[image.refused]\n{refused}\n[types]\n\n\
+         [params]\n\n[policy]\n",
+        nros_sizing_descriptor::SCHEMA_VERSION,
+    );
+    let desc = nros_sizing_descriptor::parse(&text, std::path::Path::new("synthetic.toml"))
+        .unwrap_or_else(|e| panic!("the census-refused shape must parse: {e}\n{text}"));
+    assert!(!desc.meta.basis.describes_image());
+    assert!(
+        descriptor_subscriptions(&desc, DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE, true).is_none(),
+        "a closure-basis descriptor sizes nothing, as no descriptor sized nothing"
+    );
+    // The entity counts the arena's model sums are refused, so they are not
+    // read either: the same builtin answers.
+    assert!(desc.image.subscription_entities().stated().is_none());
+    assert!(desc.image.timer_entities().stated().is_none());
+    assert_eq!(desc.image.node_count().refusal(), Some(why));
+}

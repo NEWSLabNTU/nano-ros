@@ -7951,6 +7951,7 @@ fn write_image_descriptor(
             // Issue 2482 -- an owned entry's node count is its program's.
             model_nodes: (!nodes_unknown).then_some(infra.model_nodes),
             roots: &[root],
+            census_refused: None,
         },
     )) {
         Ok(Some(written)) => {

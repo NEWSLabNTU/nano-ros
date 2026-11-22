@@ -1,0 +1,1 @@
+An owned entry whose census could not be taken under `[census] on_missing = "warn"` still gets a sizing descriptor, which refuses each count the census would have stated and says why. Pool sizes are unchanged, but `nros build --explain-sizing` now lists each defaulted pool instead of the image building from defaults silently.

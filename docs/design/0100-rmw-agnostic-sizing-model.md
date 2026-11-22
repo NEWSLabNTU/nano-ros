@@ -5,7 +5,7 @@ status: Stable
 area: workspace-system-model
 amends: [0098]
 since: 2026-09
-last-reviewed: 2026-11-15
+last-reviewed: 2026-11-22
 implements-tracked-by: [phase-454, phase-457, phase-486, phase-531]
 ---
 
@@ -13,7 +13,9 @@ implements-tracked-by: [phase-454, phase-457, phase-486, phase-531]
 
 **Status:** Stable (2026-11-15, ruling A1(a); Draft from 2026-09-11; last reviewed 2026-10-12 — the
 [2026-10-10 ruling](#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from)
-restates the file rule over the nano-ros overlay, in effect since phase-486 W4;
+restates the file rule over the nano-ros overlay, in effect since phase-486 W4,
+with [one exception](#exception-2026-11-22--a-census-not-taken-earns-a-file) for a census
+not taken (user ruling 2026-11-22);
 see also
 [Amendment 1](#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model),
 which adds D12 and revises D4's producer and road language against RFC-0065's
@@ -1307,6 +1309,34 @@ is the same answer as absent for `model_nodes` (every consumer floors it at
 one), so an empty model still writes no file. Measured per road in the phase
 doc's W9 result; retirement stayed a question about the ROAD, never the field
 (CLAUDE.md, issue 1407).
+
+### Exception, 2026-11-22 — a census not taken earns a file
+
+**User ruling, 2026-11-22 (issue 2806).** One narrow exception to "no stated
+fact ⇒ no file" above. An image sized by the census of its owned entry, whose
+census was NOT taken because its bringup set `[census] on_missing = "warn"`,
+gets a descriptor even when nothing else is stated:
+
+- `[meta]` is the Unwired shape: `status = refused`, `basis = closure`,
+  `undeclared_endpoints` refused. So every consumer guarding on it is
+  unchanged.
+- Every count the census would have stated is REFUSED with the take's
+  reason: the `[image]` node, subscriber and publisher counts, the
+  service-server queryables, the per-kind entity counts and the knob fields.
+  Nothing else is stated.
+
+**Why the refusals are the fact.** A consumer reads only stated values, so a
+refused count sizes its pool exactly as an absent one, and the pools are
+byte-for-byte today's. What the file adds is visibility. A refused count is
+listed by `defaults_in_use` (`nros build --explain-sizing`) and by each
+build script's refusal warning, naming why. With no file, the image built
+from defaults and only one configure warning said so.
+
+Everywhere else the rule stands: a descriptor whose every section is absent
+or refused for any other reason is not written. The code is
+`Wiring::Unwired`'s `census_refused`, set only by
+`nros dev image sizing-descriptor --owned-entry … --census-not-taken`, which
+the configure passes when the census is missing.
 
 ### What this amendment does not change
 
