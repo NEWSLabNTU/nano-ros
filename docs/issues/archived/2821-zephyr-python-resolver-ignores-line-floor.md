@@ -1,12 +1,13 @@
 ---
 id: 2821
 title: "The Zephyr interpreter resolver ignores the line's Python floor, so `build-c-port` configures 4.4 under 3.10"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, build, tooling]
 related: [issue-0093, issue-0698, issue-1043]
 found: 2026-11-22
+resolved: 2026-11-22
 ---
 
 ## What
@@ -87,3 +88,24 @@ regenerates the file.
 - The 4.4 fixture road still builds a native_sim image.
 - `just check zephyr-python-floor` is green, and red under the mutation
   above.
+
+## A second defect the first run found
+
+On the first run the fix worked for 4.4, and a 3.7 `build-c-port` in the same
+tree failed with 4.4's floor. Its call stack was in the 4.4 tree's
+`python.cmake` while `ZEPHYR_BASE` named 3.7. The recipe used one in-tree
+`tests/zephyr-c-smoke/build` for both lines, so the 3.7 configure reused a
+cache naming the 4.4 ZephyrConfig. The smoke build is now `ZEPHYR_C_PORT_DIR`,
+under the line's own build root. A dir whose cache names another Zephyr tree is
+rebuilt with west's `-p always`, and the recipe says why.
+
+## Verified (2026-11-22)
+
+- Host 241, at 1822af86c4 merged with main:
+  - 4.4 `build-c-port` rc 0;
+  - THEN 3.7 `build-c-port` in the same tree rc 0 (the cross-line negative
+    control);
+  - the 4.4 patch set re-applied (rc 0);
+  - a 4.4 native_sim fixture image linked;
+  - `just check zephyr-python-floor` 6/6.
+- Host 133, full `just ci gate` at 1822af86c4: green.
