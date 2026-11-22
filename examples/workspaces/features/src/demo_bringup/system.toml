@@ -294,6 +294,19 @@ launch = "cpp_lifecycle.launch.xml"
 board = "linux"
 launch = "cpp_params.launch.xml"
 
+# This image's launch loads list parameters from `config/cpp_params.param.yaml`
+# (`names` is a string array of up to 3 short strings; `gains`, `ids` and
+# `flags` are arrays of up to 3). The parameter store and the parameter-service
+# inbox are sized for this image alone, so how long those strings and arrays
+# may be is stated here, with room to spare.
+[image.linux_cpp_params.knobs.params]
+max_string_value_bytes = 16
+max_array_len = 4
+max_string_array_len = 4
+
+[image.linux_cpp_params.knobs.param]
+service_inbox_bytes = 4096
+
 [image.linux_cpp_qos_listener]
 board = "linux"
 launch = "cpp_qos_listener.launch.xml"

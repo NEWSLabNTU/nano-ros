@@ -5,12 +5,11 @@
 # capability list (`nros config show`), the entity inventory, the sizing
 # descriptor and the entry's codegen.
 #
-# Issue 2702 (ruled option 2): `nros build` gives an image whose own axes differ
-# from `[system]`'s a cmake configure of its own, shared only with images whose
-# axes equal it, and names it here as `-DNROS_FEATURE_IMAGE=<id>`. That is a
-# narrower statement than `NROS_IMAGE`, which also picks the image's deploy, its
-# board facts and its leaf rows, none of which a configure shared by several
-# images may take from one of them. Only the axes readers ask this helper.
+# Issue 2702 (ruled 2026-11-22): `nros build` gives every workspace image a
+# cmake configure of its own and names it here as `-DNROS_FEATURE_IMAGE=<id>`.
+# That is a narrower statement than `NROS_IMAGE`, which on a hand-written root
+# also picks the image's deploy, its board facts and its leaf rows. Only the
+# axes readers ask this helper.
 include_guard(GLOBAL)
 
 # _nros_feature_image_arg(<out>)

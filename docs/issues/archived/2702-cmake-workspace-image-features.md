@@ -71,36 +71,46 @@ workspace image changes that image's build and descriptor as the choice
 says, with a test on the cmake workspace road, and the allowlist entry for
 `coordinate_member_model` in `check-node-interface-readers` goes away.
 
-## Resolved, 2026-11-22: option 2
+## Resolved, 2026-11-22: one configure per image
 
-Ruled by the user on 2026-11-22: one configure and one runtime per image,
-each with exactly its own axes. The design and the measurement are in
-[RFC-0100, "D12 amended, 2026-11-22"](../../design/0100-rmw-agnostic-sizing-model.md#d12-amended-2026-11-22--an-image-with-its-own-capability-axes-has-its-own-runtime).
-In short:
+Ruled by the user on 2026-11-22. Every C/C++ workspace image gets a cmake
+configure and runtime of its own, keyed on its image id
+(`<key>-<bringup>-<image>`), built and sized for exactly that image. The
+design and the measurements are in
+[RFC-0100, "D12 amended, 2026-11-22"](../../design/0100-rmw-agnostic-sizing-model.md#d12-amended-2026-11-22--every-workspace-image-has-its-own-configure-and-runtime).
 
-- an image whose effective axes differ from `[system]`'s carries them in its
-  configure key, so it gets a configure of its own (`-cfg<digest>`);
-- that configure is passed `-DNROS_FEATURE_IMAGE=<id>`, which the axes readers
-  take (capabilities, entity inventory, sizing descriptor, entry codegen);
-- images whose axes are equal keep sharing, and a workspace that states none
-  keeps every directory.
+Why not share even among images with equal axes: measured on this issue's
+fixture, two images with identical axes and models had `.bss` 732,360 B
+sharing one configure, against 331,448 B each alone.
 
-The interim refusal is gone, and so is the `coordinate_member_model` entry
-in `check-node-interface-readers`.
+- The configure is passed `-DNROS_FEATURE_IMAGE=<id>`, which the readers of
+  the capability axes take (`_nros_feature_image_arg`).
+- The interim refusal is gone, and so is the `coordinate_member_model` entry in
+  `check-node-interface-readers`.
+- A build retires both older root layouts, `<key>` and `<key>-<bringup>`.
+- 235 fixture rows' `build_subdir` follow, checked by
+  `every_generated_workspace_fixture_row_names_its_cmake_build_dir`.
 
 Measured on this issue's fixture (`size` text/data/bss):
 
 - `slim` (`node_interfaces = "none"`): from 2,202,476 / 80,152 / 732,360 to
   2,078,748 / 68,184 / 127,144 bytes. Its descriptor states
-  `infra_families = "none"`, `store = "none"` and `publisher_count = 0`.
-- `plain`: byte-identical to `plain` built as the only image.
-- The cost: +39 s and +633 MB of build output for the second configure.
+  `infra_families = "none"`.
+- `plain`: its whole ELF and its descriptor are byte-identical to `plain`
+  built as the only image.
+- `examples/workspaces/features` (17 images): 541 s and 22,643 MB, against
+  483 s and 1,828 MB shared.
 
-The row `image_features_shared_configure_refused` now records both images'
-configures, feature lists and descriptors.
-`tests/image_features_shared_configure.rs` asserts them, and fails with the
-`-DNROS_FEATURE_IMAGE` push removed.
+`linux_cpp_params` now states its string and array parameter bounds. Alone,
+its declarations are stated, and phase-446 requires them.
+
+The verdict row `image_features_shared_configure_refused` records both
+images' configures, feature lists and descriptors.
+`tests/image_features_shared_configure.rs` asserts them, and was
+mutation-checked.
+
+The N:1 runtime road (`runtime/shared.toml`, the shared parameter union)
+remains for a hand-written root that registers several entries.
 
 Found on the way: issue 2833. A `fixture-script` row is reused after a CLI
-change, which hid the mutant until the row's signature was removed.
-
+change.
