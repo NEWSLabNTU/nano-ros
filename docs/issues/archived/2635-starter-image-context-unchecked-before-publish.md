@@ -1,15 +1,17 @@
 ---
 id: 2635
 title: "Nothing writes the starter image's context before a release, so a book edit broke the 0.6.0-nros11 images after the release had published"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [release, ci, book]
 related: [phase-551, 2612]
 found: 2026-11-16
+resolved: 2026-11-22
+resolved_in: "fix(starter-image): a step's blocks join the probe's way, and the context is written before a release (issue 2635)"
 ---
 
-**Home: [phase-551](../roadmap/phase-551-starter-image.md)** W4.
+**Home: [phase-551](../../roadmap/phase-551-starter-image.md)** W4.
 
 # The starter image's context was first written after the release published
 
@@ -78,3 +80,22 @@ The fix merged as #4029 (0ffe141668, 2026-11-16 07:30Z). The two dispatches
 
 Both skipped the retag job, and no dispatch since has run it. What is left
 is moving `latest` through W5's `image` probe track. Then this issue closes.
+
+## Resolved, 2026-11-22
+
+The last open step is done: the daily `host-tests.yml` run of 2026-11-21
+(run 44859792666, job `image probe — starter`) probed
+`ghcr.io/newslabntu/nano-ros-starter:0.6.0-nros11` (pullable with no
+credentials, 1.67 GB against the 2.00 GB budget, the customer recipe green),
+then moved `latest` to it (`sha256:579cd0ff…`).
+
+Confirmed on main (`origin/main` 2026-11-22):
+- `just check starter-image-context` is in the fast line
+  (`fast::check::starter-image-context`) and passes.
+- Negative control: with the pre-fix `scripts/ci/lib/image-context.sh` (the
+  parent of the fix commit) put back, the check exits 1 with this issue's
+  message (`expected one untabbed probe=34 block, found 3`). Main's file
+  exits 0.
+- The release workflow's build job writes the starter context before
+  anything publishes: step `Write the starter image context (no build)` was
+  green on release run 44282232240 (2026-11-18), a dry run.
