@@ -1,0 +1,1 @@
+A Rust action server callback that completes, advances or publishes feedback on a goal of its own server, through the action server handle, no longer aliases the server the executor is dispatching. The goal and cancel callbacks now run with no borrow of the server held, as the C action server callbacks already did.
