@@ -44,7 +44,7 @@ or `pthread_attr_setstack` in the board or `nros-board-common/c`.
    decide whether threadx-linux's derivation drops those terms, or keeps
    them so the host and target derive the same pool.
 
-## Fix (not started)
+## Fix
 
 Make the port run each thread on its ThreadX stack:
 `pthread_attr_setstack(&attr, tx_thread_stack_start, tx_thread_stack_size)`
@@ -63,3 +63,28 @@ Then:
 
 The stack must stay at or above the host's `PTHREAD_STACK_MIN`, which
 differs by architecture (the "stack_bytes is a floor the port raises" rule).
+
+## Progress (2026-11-22)
+
+Done:
+- The fork commit (`9fdb09be` on `nros-lp64-ulong`) runs each thread on its
+  ThreadX stack, and the superproject pins it.
+- One floor, `NROS_THREADX_HOST_STACK_MIN` + 128 in the board's
+  `config/tx_user.h`, per architecture. TX_MINIMUM_STACK, the timer
+  thread's stack and zenoh-pico's task stack read it. The board checks it
+  against the running host's `sysconf(_SC_THREAD_STACK_MIN)` at init.
+- Every image prints each thread's stack peak when it ends. The logging
+  smoke reads: timer thread 4,840 of 16,512, app 7,240 of 65,536.
+- The app stack resolves on the `app_stack_bytes` knob ladder, default
+  64 KiB, and the board states it.
+
+Open:
+- The 64 KiB app stack has not been re-measured on a networked image: the
+  threadx-linux network cells need the veth bridge. Their output now carries
+  the `nros: stack peak` lines to read it from.
+- `nros build`'s stack-floor walk does not reach a host image: the plan has
+  no cross triple, so it is passed over before the platform lists are read,
+  and threadx-linux is not yet on `STATING_PLATFORMS`. Walking a host image
+  also means walking frames in the host's libc.
+- Issue 2732's pool question stands, now with stacks that are used.
+
