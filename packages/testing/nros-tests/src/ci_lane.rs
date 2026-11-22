@@ -41,7 +41,7 @@
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 18 | 13 | 23 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 54 | 42 | 75 % |
 //! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 50 | 9 | 16 % |
-//! | tier 3 | everything | 282 | 56 | 100 % |
+//! | tier 3 | everything | 284 | 56 | 100 % |
 //!
 //! Added 2026-11-12 (phase-535 W8, RFC-0122 D8): the merge lane. It is not
 //! a rung of the ladder below: it is the set a per-merge cadence on the host
@@ -49,6 +49,11 @@
 //! board per shard by the dispatch-only `merge-runtime.yml`. The same day's
 //! ruling set those boards to `daily` (RFC-0122 D9), so the lane is how that
 //! cadence gets re-measured.
+//!
+//! Re-measured 2026-11-22 (phase-582 W4): `Config::ClockBoard` gained the
+//! Rust Cyclone DDS and XRCE Linux Pubsub cells, at existing coordinates. The
+//! config value was already in every 1-wise cover and neither cell is zenoh,
+//! so tiers 1, 2, nightly and merge are unchanged; tier 3 went 282 -> 284.
 //!
 //! Re-measured 2026-11-22 (phase-582 W1d): `Config::ClockBoard` joined with
 //! two Linux zenoh Pubsub cells (Rust and C++) at existing coordinates. One
@@ -1468,8 +1473,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 282,
-            "the table's tier-3 cell count (282) is stale; recomputed {total_cells}"
+            total_cells, 284,
+            "the table's tier-3 cell count (284) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,

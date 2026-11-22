@@ -94,6 +94,22 @@ with = '&[Config::ClockBoard]'
 
 [[cell]]
 comment = '''
+// phase-582 W4 -- the same configuration on the other two backends, in
+// Rust: each backend stamps its own samples, so these measure whether its
+// source stamp follows the selected wall clock (the table in
+// `docs/reference/source-timestamps.md`).
+'''
+at = ["Linux", "Rust", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::ClockBoard]'
+
+[[cell]]
+at = ["Linux", "Rust", "Xrce", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::ClockBoard]'
+
+[[cell]]
+comment = '''
 // issue 1384 — `examples/linux/c/custom-platform`, the one in-tree caller
 // of `rclc_executor_node_init` that creates an eager entity. Its
 // fixtures.toml row was BUILD-ONLY, so nothing ran the binary and its

@@ -33,6 +33,12 @@ const CELLS_GENERATED: &[Cell] = &[
     // workspace's pubsub bringup; `tests/linux_board_clock.rs` runs it.
     cell(Linux, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockBoard]),
     cell(Linux, Cpp, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockBoard]),
+    // phase-582 W4 -- the same configuration on the other two backends, in
+    // Rust: each backend stamps its own samples, so these measure whether its
+    // source stamp follows the selected wall clock (the table in
+    // `docs/reference/source-timestamps.md`).
+    cell(Linux, Rust, Cyclonedds, Pubsub, Example, Runtime).with(&[Config::ClockBoard]),
+    cell(Linux, Rust, Xrce, Pubsub, Example, Runtime).with(&[Config::ClockBoard]),
     // issue 1384 — `examples/linux/c/custom-platform`, the one in-tree caller
     // of `rclc_executor_node_init` that creates an eager entity. Its
     // fixtures.toml row was BUILD-ONLY, so nothing ran the binary and its

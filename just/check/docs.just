@@ -735,3 +735,13 @@ book-pinned-example:
 [private]
 release-notes:
     @python3 scripts/lib/release_notes.py --gate
+
+# The per-backend source-stamp table (docs/reference/source-timestamps.md,
+# RFC-0141 D7) is MEASURED, not read from code: each row cites the test that
+# read a stamp back from a built image, or says `not measured` and claims no
+# verdict, and every RMW backend has a measured row. The RFC's own line said
+# XRCE stamps through the Agent's time sync; the built image delivered 0.
+# Buildless, ~0.05 s; self-tests its planted bad rows on each run.
+[private]
+source-timestamp-table:
+    @python3 scripts/check/check-source-timestamp-table.py

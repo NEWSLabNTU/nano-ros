@@ -3,7 +3,8 @@
 //! and the samples' source stamps, in Rust and C++.
 //!
 //! **Bucket (phase-329 W4): matrix consumer.** The configured cells
-//! `(Linux, {Rust, Cpp}, Zenoh, Pubsub, Example) + [ClockBoard]` of
+//! `(Linux, {Rust, Cpp}, Zenoh, Pubsub, Example) + [ClockBoard]` and
+//! `(Linux, Rust, {Cyclonedds, Xrce}, Pubsub, Example) + [ClockBoard]` of
 //! `matrix::CELLS`.
 //!
 //! The images are the Rust and C++ workspaces' `linux_talker_clock_board`
@@ -29,6 +30,14 @@
 //! what it links" can be checked as on a built image. The control runs in C
 //! too.
 //!
+//! The same configuration on Cyclone DDS and XRCE (Rust,
+//! `linux_talker_{cyclonedds,xrce}_clock_board`) measures what those backends
+//! stamp, observed by the MessageInfo observer's image for the same backend
+//! (`linux_cyclonedds`, `linux_xrce`). These rows of
+//! `docs/reference/source-timestamps.md` cite
+//! `board_clock_source_stamp_per_backend`: Cyclone stamps host time, XRCE
+//! delivers no stamp (0), while the talker's own wall clock is the board's.
+//!
 //! C has no board image yet: the image's knob gives it its own configure, and
 //! that configure also builds every TYPED C component's native carrier
 //! executable (`pkg/<pkg>/<exe>`) against the same `board`-selected runtime.
@@ -40,7 +49,10 @@
 //!
 //! - the rows `workspace-{rust,cpp}-native-talker-clock-board`,
 //!   `workspace-{rust,c,cpp}-native-talker` and the MessageInfo observer (`just build-test-fixtures lane=linux`)
-//! - `rmw_zenohd` (the router), and `nm`
+//! - for the per-backend case, the rows
+//!   `workspace-rust-native-talker-{cyclonedds,xrce}-clock-board` and
+//!   `linux-rust-{cyclonedds,xrce}-message-info-observer`
+//! - `rmw_zenohd` (the router), the XRCE Agent, and `nm`
 //!
 //! Run with: `cargo nextest run -p nros-tests --test linux_board_clock`
 
@@ -97,24 +109,22 @@ fn in_board_window(ns: i64) -> bool {
 }
 
 fn talker(lang: Lang, config: &[Config]) -> PathBuf {
+    talker_rmw(lang, Rmw::Zenoh, config)
+}
+
+fn talker_rmw(lang: Lang, rmw: Rmw, config: &[Config]) -> PathBuf {
     nros_tests::fixtures::lane::require_platform_in_lane(
         &[PlatformId::Linux],
         "the linux board-clock cells",
     );
     let resolved = if config.is_empty() {
-        workspace_image::resolve_coord(PlatformId::Linux, lang, Rmw::Zenoh, PairRole::Talker)
+        workspace_image::resolve_coord(PlatformId::Linux, lang, rmw, PairRole::Talker)
     } else {
-        workspace_image::resolve_configured(
-            PlatformId::Linux,
-            lang,
-            Rmw::Zenoh,
-            PairRole::Talker,
-            config,
-        )
+        workspace_image::resolve_configured(PlatformId::Linux, lang, rmw, PairRole::Talker, config)
     };
     resolved.unwrap_or_else(|e| {
         nros_tests::unmet!(
-            "linux {lang:?} talker image {config:?} not prebuilt or stale \
+            "linux {lang:?} {rmw:?} talker image {config:?} not prebuilt or stale \
              (run `just build-test-fixtures lane=linux`): {e:?}"
         )
     })
@@ -296,6 +306,113 @@ fn ordinary_talker_stamps_host_time_and_links_no_hook(#[case] lang: Lang) {
     }
 }
 
+/// What a backend delivers as a sample's source stamp when the publishing
+/// image's wall clock is the board's, where that is NOT the selected clock
+/// (zenoh's, which is, is the case above).
+#[derive(Clone, Copy, Debug)]
+enum SourceStamp {
+    /// The host's `CLOCK_REALTIME`: every stamp is between two host clock
+    /// reads bracketing the run, nowhere near the board's instant.
+    HostClock,
+    /// No stamp: every sample reports 0.
+    Absent,
+}
+
+/// The per-backend source-stamp table (`docs/reference/source-timestamps.md`)
+/// read back from built images: a Rust talker whose wall clock is the stub
+/// board's, observed by the MessageInfo observer built for the same backend.
+/// The talker's own clock line proves the board clock IS the image's wall
+/// clock, so a stamp outside the board's window is the backend's own choice.
+#[rstest]
+#[case::cyclonedds(Rmw::Cyclonedds, SourceStamp::HostClock)]
+#[case::xrce(Rmw::Xrce, SourceStamp::Absent)]
+fn board_clock_source_stamp_per_backend(#[case] rmw: Rmw, #[case] want: SourceStamp) {
+    use nros_tests::fixtures::{
+        Rmw as FixtureRmw, XrceAgent, build_message_info_observer_rmw, require_xrce_agent,
+    };
+    let image = talker_rmw(Lang::Rust, rmw, &[Config::ClockBoard]);
+    let label = format!("Rust {rmw:?} linux_talker_clock_board");
+    let observer = build_message_info_observer_rmw(match rmw {
+        Rmw::Cyclonedds => FixtureRmw::Cyclonedds,
+        Rmw::Xrce => FixtureRmw::Xrce,
+        other => panic!("{other:?} is not measured by this case"),
+    })
+    .require("the MessageInfo observer for this backend");
+
+    let mut obs_cmd = Command::new(&observer);
+    let mut talker_cmd = Command::new(&image);
+    let mut _agent: Option<XrceAgent> = None;
+    let domain = nros_tests::unique_ros_domain_id().to_string();
+    for cmd in [&mut obs_cmd, &mut talker_cmd] {
+        cmd.env("RUST_LOG", "info").env("ROS_DOMAIN_ID", &domain);
+    }
+    match rmw {
+        Rmw::Cyclonedds => {}
+        Rmw::Xrce => {
+            require_xrce_agent();
+            let agent = XrceAgent::start_unique()
+                .unwrap_or_else(|e| nros_tests::unmet!("XRCE Agent failed to start: {e:?}"));
+            let addr = agent.addr();
+            for cmd in [&mut obs_cmd, &mut talker_cmd] {
+                cmd.env("NROS_LOCATOR", &addr).env("XRCE_AGENT_ADDR", &addr);
+            }
+            _agent = Some(agent);
+        }
+        _ => unreachable!(),
+    }
+
+    let before = host_now_ns();
+    let mut obs =
+        ManagedProcess::spawn_image(obs_cmd, "message-info-observer").expect("start the observer");
+    obs.wait_for_output_pattern(LISTENER_READY_MARKER, WAIT)
+        .expect("the observer never created its subscription");
+    // Discovery on both backends is slower than a zenoh router's.
+    std::thread::sleep(Duration::from_secs(2));
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, &label).expect("start the talker");
+    let obs_out = obs
+        .wait_for_output_count(MESSAGE_INFO_LOG_PREFIX, SAMPLES, WAIT)
+        .unwrap_or_else(|e| panic!("the observer did not report {SAMPLES} samples: {e}"));
+    let talker_out = talker
+        .wait_for_output_pattern(CLOCK_BOARD_PREFIX, WAIT)
+        .unwrap_or_else(|e| panic!("{label} never printed its wall clock: {e}"));
+    talker.kill();
+    obs.kill();
+    let after = host_now_ns();
+
+    let first = *clock_board_readings(&talker_out)
+        .first()
+        .unwrap_or_else(|| panic!("{label} printed no parsable clock-board line:\n{talker_out}"));
+    assert!(
+        in_board_window(first.wall_ns) && first.synced && first.source == SOURCE_BOARD,
+        "{label}: the image's wall clock is not the board's ({first:?}), so its stamps \
+         say nothing about the backend. Output:\n{talker_out}"
+    );
+
+    let stamps = source_stamps(&obs_out);
+    assert!(
+        stamps.len() >= SAMPLES,
+        "the observer printed {} `ts=` values, wanted {SAMPLES}:\n{obs_out}",
+        stamps.len()
+    );
+    eprintln!(
+        "{label}: wall_ns={} (board), host [{before}, {after}], source stamps {stamps:?}",
+        first.wall_ns
+    );
+    for ts in &stamps {
+        let ok = match want {
+            SourceStamp::HostClock => (before..=after).contains(ts) && !in_board_window(*ts),
+            SourceStamp::Absent => *ts == 0,
+        };
+        assert!(
+            ok,
+            "{label}: a sample's source stamp is {ts} ns, which is not {want:?} (board \
+             window [{BOARD_INSTANT_NS}, +60 s], host [{before}, {after}]); the table in \
+             docs/reference/source-timestamps.md is wrong for this backend. \
+             Observer:\n{obs_out}"
+        );
+    }
+}
+
 /// The cases above answer exactly the cells `matrix::consumer_of` routes here.
 #[test]
 fn cases_bound_to_matrix_cells() {
@@ -309,6 +426,14 @@ fn cases_bound_to_matrix_cells() {
         &[
             (cell(L::Rust), &[Config::ClockBoard]),
             (cell(L::Cpp), &[Config::ClockBoard]),
+            (
+                (P::Linux, L::Rust, R::Cyclonedds, W::Pubsub, K::Example),
+                &[Config::ClockBoard],
+            ),
+            (
+                (P::Linux, L::Rust, R::Xrce, W::Pubsub, K::Example),
+                &[Config::ClockBoard],
+            ),
         ],
     );
 }

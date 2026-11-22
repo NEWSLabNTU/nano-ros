@@ -33,3 +33,13 @@ node_features = ["unstable-zenoh-api"]
 # The component API's receive path (issue 2349).
 [image.linux_component]
 entry = "message-info-component"
+
+# The plain receive path on the other two backends: what each one delivers as
+# a sample's source stamp (`tests/linux_board_clock.rs`).
+[image.linux_cyclonedds]
+entry = "message-info-observer"
+rmw = "cyclonedds"
+
+[image.linux_xrce]
+entry = "message-info-observer"
+rmw = "xrce"

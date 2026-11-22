@@ -397,6 +397,16 @@ After D6, the first two read the selected source on FreeRTOS. Phase-582 lists
 where each backend stamps from on each platform. Aligning the rest is a
 separate decision per backend.
 
+**Amended 2026-11-22 (phase-582 W4a), from measurement.** The list above was
+written from reading code, and its XRCE line was wrong. Measured on Linux with
+a stub board clock (`docs/reference/source-timestamps.md`, gate
+`check source-timestamp-table`):
+
+- zenoh's source stamp follows the selected wall clock;
+- Cyclone stamps from the host's `CLOCK_REALTIME`, whatever the image selected;
+- XRCE delivers NO source stamp. The Agent hands the client bare CDR, so
+  every sample reports 0. There is no agent time sync on that path.
+
 ## Alternatives considered
 
 - **A free cascade** (board, else SNTP, else HLC, else platform, switching
@@ -452,3 +462,5 @@ separate decision per backend.
   gets the settle window like `sntp` and is never asked after resolution;
   FreeRTOS resolves `board` lazily; the freertos-posix board's `platform` is
   the host's `CLOCK_REALTIME`.
+- 2026-11-22: D7 amended from W4a's measurement: Cyclone stamps host time, XRCE
+  delivers no source stamp; the table is `docs/reference/source-timestamps.md`.
