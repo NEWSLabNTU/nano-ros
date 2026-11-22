@@ -160,9 +160,12 @@ fn main() {
         // split, so it is linked only when the TARGET is Linux — phase-500
         // W1: the posix port's build config says only POSIX things, and a
         // Linux fact is derived from the target, never asserted for POSIX.
-        println!("cargo:rustc-link-lib=pthread");
+        // issue 2844 — and neither is named for a musl TARGET, whose libc.a
+        // carries both and whose sysroot ships no libpthread.a / librt.a.
+        let mut thread_libs = vec!["pthread"];
         if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
-            println!("cargo:rustc-link-lib=rt");
+            thread_libs.push("rt");
         }
+        nros_cc_flags::libc_libs::link_thread_libs(&thread_libs);
     }
 }
