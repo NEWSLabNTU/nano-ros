@@ -1,6 +1,6 @@
 ---
 id: 2428
-title: "A workspace image's lifecycle is one state machine named `/nros_app`, and no component can see its state, so a managed node keeps publishing while `unconfigured`"
+title: "A managed node keeps publishing while `unconfigured`: its publishers do not follow its lifecycle state, and no component can see that state"
 status: open
 type: bug
 severity: medium
@@ -9,7 +9,9 @@ related: [2269, phase-537, rfc-0045, rfc-0128, phase-554]
 found: 2026-11-11
 ---
 
-**Home: [phase-537](../roadmap/phase-537-book-user-guide-organization.md).** **Blocks** the lifecycle lab of issue 2269 (phase-537 W5, absorbed from
+**Home: [phase-554](../roadmap/phase-554-per-node-lifecycle.md) W6** (managed
+publishers follow the node's state), narrowed 2026-11-22 to defect 3 below;
+first filed under [phase-537](../roadmap/phase-537-book-user-guide-organization.md). **Blocks** the lifecycle lab of issue 2269 (phase-537 W5, absorbed from
 phase-523 W1 lab 4). A lab that drives a node through REP-2002 transitions
 and shows nothing change in what the node does would teach the wrong thing.
 
@@ -118,3 +120,27 @@ callbacks. The work is tracked in
 Decide the design. The lifecycle lab of issue 2269 waits on it: its grading
 line is a node that stays silent until `ros2 lifecycle set /<node> activate`
 and then publishes.
+
+## Status (2026-11-22): narrowed to defect 3
+
+Defects 1 and 2 are resolved on `main` by phase-554 W1 and W2 (RFC-0128 D1,
+D2 and D8):
+
+- Each node the launch file marks `<lifecycle_node>` (or whose contract or
+  C++ code makes it managed) has its own machine, served under its own name.
+- Nothing registers on the executor's own identity, so there is no
+  `/nros_app`.
+
+Evidence: the workspace-features lifecycle cell
+(`workspace_features_e2e.rs`, `Proof::LifecycleActive`, for Rust, C and
+C++) requires `ros2 lifecycle nodes` to list exactly `/talker`, and
+`ros2 lifecycle get /talker` to answer `active`.
+
+Defect 3 stands, and is what this issue now tracks: a managed node's
+publishers send in every state, `unconfigured` included, and a Rust or C
+component cannot see the state or supply transition callbacks. The
+exception is C++'s `LifecyclePublisher`. The book's
+[Run managed nodes](../../book/src/guide/deploy/run-managed-nodes.md) page
+already states both limits. The publisher half is phase-554 W6, and its
+acceptance is W9's silent-until-active cell. The callback half is phase C
+(W10 onward).
