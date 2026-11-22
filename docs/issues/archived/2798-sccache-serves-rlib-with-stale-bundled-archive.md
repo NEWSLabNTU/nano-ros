@@ -1,11 +1,12 @@
 ---
 id: 2798
 title: "sccache serves a board rlib that bundles the OLD platform archive after a C-port edit"
-status: open
+status: resolved
 type: bug
 area: [build, testing, threadx]
 severity: high
 found: 2026-11-21
+resolved: 2026-11-23
 related: [1646, 0475, 2779]
 ---
 
@@ -77,3 +78,32 @@ repro as its negative control. The fix is the wrapper's or the key's, never a
 wipe: the build dir that reproduces this is
 `examples/workspaces/rust/target-fixtures/threadx-listener` in
 `nros-wt-2779b` (newslab 118).
+
+## Resolved
+
+**Fix** (85e521ac85, 2026-11-21): `scripts/bin/rustc-wrapper/sccache` runs
+uncached any rustc call that bundles a native static library: an
+`-l static...` whose modifiers do not include `-bundle`. That is issue 1646's
+staticlib rule one crate type down. The rule is derived from the invocation,
+so every bundling site is covered, including one added later, with no crate
+list.
+
+**Gate:** `just check rustc-wrapper-staticlib` routes three bundled spellings
+direct, and keeps two `-bundle` spellings, a dylib, and a crate named
+`static` cached. Mutation-checked: the old wrapper fails the three bundled
+cases.
+
+**End to end** (2026-11-23, sccache 0.17.0-nros1): a throwaway two-crate
+workspace whose library crate's build script compiles `net.c` with
+`link_lib_modifier("+whole-archive")`, built `--release` twice through the
+wrapper, with `net.c` changed from returning 1 to returning 2 between the
+builds:
+
+| wrapper | after the edit, the binary prints | Rust cache hits on the second build |
+| --- | --- | --- |
+| before 85e521ac85 (negative control) | 1 (the old archive) | 1 |
+| current | 2 | 0 |
+
+A debug build does not reproduce it: sccache does not cache an incremental
+rustc call. The fixture profiles are release-shaped, which is why the
+original build hit it.
