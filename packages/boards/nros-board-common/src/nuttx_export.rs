@@ -237,12 +237,23 @@ pub fn emit_init_stack_stated() {
         PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is set for a build script"));
     crate::stack_stated::emit(
         &out_dir,
-        &[crate::stack_stated::Stated {
-            role: "OPEN",
-            root: "nros_nuttx_entry",
-            bytes,
-            knob: "CONFIG_INIT_STACKSIZE={bytes} in the NuttX kernel's configuration",
-        }],
+        &[
+            crate::stack_stated::Stated {
+                role: "OPEN",
+                root: "nros_nuttx_entry",
+                bytes,
+                knob: "CONFIG_INIT_STACKSIZE={bytes} in the NuttX kernel's configuration",
+            },
+            // Issue 2784 -- a spawned Rust sched task enters at
+            // `nuttx_level_trampoline` on a pthread of its `stack_bytes`, else
+            // the runner's default.
+            crate::stack_stated::Stated {
+                role: "TASK",
+                root: "~nuttx_level_trampoline",
+                bytes: crate::NUTTX_SCHED_TASK_STACK_DEFAULT_BYTES as u32,
+                knob: "`stack_bytes = {bytes}` in the task's [tasks.<name>.nuttx] table",
+            },
+        ],
     );
 }
 

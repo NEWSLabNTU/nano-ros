@@ -94,6 +94,9 @@ pub struct CargoStackFloor {
     /// The project's own name (the workspace directory's): the walker masks
     /// it out of its callee order, so a project's name never moves its walk.
     pub name_token: Option<String>,
+    /// Issue 2784 -- the generated entry's [`SCHED_TASKS_FILE`], when it has
+    /// sched tasks: the walk then checks each task's stack as its own role.
+    pub sched_tasks: Option<PathBuf>,
 }
 
 impl CargoStackFloor {
@@ -358,6 +361,14 @@ fn plan_one(
         name_token: workspace_root
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned()),
+        // Written by `nros build`'s entry generation, which runs before this.
+        sched_tasks: p
+            .entry_root
+            .as_ref()
+            .map(|e| e.manifest_dir.clone())
+            .or_else(|| hand.cwd.clone())
+            .map(|d| d.join(SCHED_TASKS_FILE))
+            .filter(|f| f.is_file()),
     };
     // Target-scoped, so build scripts and proc-macros keep their flags, and
     // JOINED with a config file's `[target.<triple>] rustflags` rather than
@@ -423,6 +434,73 @@ pub fn prepare(step: &StackFloorStep) -> Result<()> {
     Ok(())
 }
 
+/// Issue 2784 -- the file a generated Rust entry carries for the stack-floor
+/// check: its sched tasks and the stack each runs on. The C/C++ road's walk
+/// reads the same fields out of `nros_priority_plan.json`.
+pub const SCHED_TASKS_FILE: &str = "nros-sched-tasks.json";
+
+/// Write [`SCHED_TASKS_FILE`] into a generated entry's directory: each sched
+/// task's name, its authored `stack_bytes`, and the stack `nros::main!`
+/// reserves for it (`reserved_stack_bytes`, from the one lowering the macro
+/// calls: a number, `0` for the port's default, `null` for the boot task).
+/// Nothing is written for an image without sched tasks, and an existing file
+/// is replaced only when its text changes (a rewrite would re-stale every
+/// fixture built over it). Returns whether the file now exists.
+pub fn write_sched_tasks(
+    entry_dir: &Path,
+    rtos_key: &str,
+    board: &str,
+    table: Option<&nros_orchestration_ir::ResolvedSchedTaskTable>,
+) -> Result<bool> {
+    let path = entry_dir.join(SCHED_TASKS_FILE);
+    let Some(table) = table.filter(|t| !t.is_single_sched_task()) else {
+        if path.exists() {
+            std::fs::remove_file(&path).wrap_err_with(|| format!("removing {}", path.display()))?;
+        }
+        return Ok(false);
+    };
+    let declared: Vec<Option<u64>> = table
+        .sched_tasks
+        .iter()
+        .map(|t| t.stack_bytes.map(u64::from))
+        .collect();
+    let family = crate::orchestration::board_key::board_family(board).ok();
+    let reserved = family.and_then(|f| f.rust_entry_task_stacks(&declared));
+    // The task the runner runs on the CALLER's thread (the boot task): the
+    // family's rule, reserved memory or not. The OPEN role is that thread.
+    let boot_task = family
+        .and_then(|f| f.c_abi_runners())
+        .and_then(|r| r.sched_task_memory)
+        .map(|m| match m.boot_sched_task {
+            nros_entry_lower::BootSchedTask::First => 0,
+            nros_entry_lower::BootSchedTask::Last => declared.len().saturating_sub(1),
+        });
+    let rows: Vec<serde_json::Value> = table
+        .sched_tasks
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            serde_json::json!({
+                "name": t.name,
+                "stack_bytes": t.stack_bytes,
+                "reserved_stack_bytes": reserved.as_ref().and_then(|r| r[i]),
+            })
+        })
+        .collect();
+    let doc = serde_json::json!({
+        "schema": 1,
+        "sched_task_key": rtos_key,
+        "reserves_task_memory": reserved.is_some(),
+        "boot_task": boot_task,
+        "sched_tasks": rows,
+    });
+    let text = serde_json::to_string_pretty(&doc)? + "\n";
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+        std::fs::write(&path, text).wrap_err_with(|| format!("writing {}", path.display()))?;
+    }
+    Ok(true)
+}
+
 /// The walker's command line. The roles, the stated stacks and the knob come
 /// from the board's [`STATED_FILE`], which the walker finds through cargo's
 /// JSON messages in `cargo_json` (`--stated-by-build`): one reader of that
@@ -450,6 +528,10 @@ pub fn walker_args(c: &CargoStackFloor, cargo_json: &Path) -> Vec<OsString> {
     if let Some(n) = &c.name_token {
         a.push("--name-token".into());
         a.push(n.into());
+    }
+    if let Some(f) = &c.sched_tasks {
+        a.push("--sched-tasks".into());
+        a.push(f.into());
     }
     a
 }
@@ -537,15 +619,77 @@ mod tests {
             table: "/r/config/stack-floors.json".into(),
             raise: false,
             name_token: None,
+            sched_tasks: None,
         };
         let a: Vec<String> = walker_args(&c, Path::new("/t/m.json"))
             .into_iter()
             .map(|s| s.into_string().unwrap())
             .collect();
         assert!(a.iter().any(|s| s == "--intermediates-from-build"), "{a:?}");
-        for flag in ["--link-dir", "--su", "--bitcode-dir"] {
+        for flag in ["--link-dir", "--su", "--bitcode-dir", "--sched-tasks"] {
             assert!(!a.iter().any(|s| s == flag), "{flag} in {a:?}");
         }
+        // Issue 2784 -- an entry with sched tasks hands the walk its file.
+        let c = CargoStackFloor {
+            sched_tasks: Some("/e/nros-sched-tasks.json".into()),
+            ..c
+        };
+        let a: Vec<String> = walker_args(&c, Path::new("/t/m.json"))
+            .into_iter()
+            .map(|s| s.into_string().unwrap())
+            .collect();
+        let i = a
+            .iter()
+            .position(|s| s == "--sched-tasks")
+            .expect("--sched-tasks");
+        assert_eq!(a[i + 1], "/e/nros-sched-tasks.json");
+    }
+
+    /// Issue 2784 -- a generated Rust entry states each sched task's stack as
+    /// `nros::main!` reserves it; one without sched tasks gets no file.
+    #[test]
+    fn the_sched_tasks_file_states_what_the_macro_reserves() {
+        use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
+        let dir = tempfile::tempdir().unwrap();
+        let task = |name: &str, stack: Option<u32>| ResolvedSchedTask {
+            name: name.into(),
+            priority: 1,
+            stack_bytes: stack,
+            spin_period_us: None,
+            preempt_threshold: None,
+            time_slice_us: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: Vec::new(),
+        };
+        let table = ResolvedSchedTaskTable {
+            sched_tasks: vec![task("high", Some(65_536)), task("low", None)],
+        };
+        assert!(
+            write_sched_tasks(dir.path(), "freertos", "mps2-an385-freertos", Some(&table)).unwrap()
+        );
+        let doc: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join(SCHED_TASKS_FILE)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(doc["reserves_task_memory"], true);
+        assert_eq!(doc["boot_task"], 1, "FreeRTOS boots the last task");
+        // FreeRTOS boots the LAST task, which reserves nothing.
+        assert_eq!(doc["sched_tasks"][0]["reserved_stack_bytes"], 65_536);
+        assert!(doc["sched_tasks"][1]["reserved_stack_bytes"].is_null());
+        let single = ResolvedSchedTaskTable {
+            sched_tasks: vec![task("default", None)],
+        };
+        assert!(
+            !write_sched_tasks(dir.path(), "freertos", "mps2-an385-freertos", Some(&single))
+                .unwrap()
+        );
+        assert!(!dir.path().join(SCHED_TASKS_FILE).exists());
     }
 
     /// The json rerun is the build's own command: cloned before arming, it

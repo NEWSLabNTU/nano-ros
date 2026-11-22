@@ -788,13 +788,13 @@ fn apply_sched_task_priority(sched_task: &nros_platform::SchedTaskSpec<'_>) {
     }
 }
 
-/// Default per-sched-task pthread stack for spawned Rust sched tasks (issue #246). Mirrors
-/// the C glue's `NROS_NUTTX_SCHED_TASK_STACK_BYTES` intent but sized at NuttX's own
-/// `CONFIG_PTHREAD_STACK_DEFAULT` (64 KiB): the executor arena lives on the
-/// heap (`nros_platform_alloc`), so this only carries the zenoh-pico/executor
-/// call frames. `SchedTaskSpec::stack_bytes` (when non-zero) overrides it.
+// Issue #246.
+/// Default per-sched-task pthread stack for spawned Rust sched tasks:
+/// [`nros_board_common::NUTTX_SCHED_TASK_STACK_DEFAULT_BYTES`], the one value the
+/// board's build also states to the stack-floor check.
 #[cfg(target_os = "nuttx")]
-const NUTTX_SCHED_TASK_STACK_DEFAULT_BYTES: usize = 65536;
+const NUTTX_SCHED_TASK_STACK_DEFAULT_BYTES: usize =
+    nros_board_common::NUTTX_SCHED_TASK_STACK_DEFAULT_BYTES;
 
 /// Self-apply the sched task's kernel sporadic policy (no-op off-target and when
 /// the sched task declares no budget/period). Name/class cross the FFI as

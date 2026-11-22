@@ -1,0 +1,1 @@
+The stack-floor check now also covers each sched task of a Rust (`nros::main!`) entry on FreeRTOS and NuttX. A task is checked against the stack the entry reserves for it, else the board's default task stack.

@@ -822,6 +822,17 @@ function(_nros_stack_floor_zephyr_write)
     get_property(_plan GLOBAL PROPERTY NROS_ENTRY_PRIORITY_PLAN)
     if(_plan)
         list(APPEND _cmd --sched-tasks "${_plan}" --task-root "?zephyr_sched_task")
+    elseif(EXISTS "${APPLICATION_SOURCE_DIR}/nros-sched-tasks.json")
+        # A Rust entry (the west application IS the generated entry): its
+        # tasks and the stacks `nros::main!` reserves, written by `nros build`.
+        # A task left at the port's default runs on the pool slot this Kconfig
+        # knob sizes, which this configure reads and the cargo lane cannot.
+        list(APPEND _cmd --sched-tasks "${APPLICATION_SOURCE_DIR}/nros-sched-tasks.json"
+            --task-root "?~level_task_entry,?zephyr_sched_task")
+        if(DEFINED CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE)
+            list(APPEND _cmd --task-stack "${CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE}"
+                --task-knob "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE={bytes}")
+        endif()
     endif()
     # Zephyr runs its post-build commands without VERBATIM, through the shell,
     # which would expand the bitcode globs; the command lives in a script,

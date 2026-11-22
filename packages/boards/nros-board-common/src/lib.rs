@@ -128,6 +128,15 @@ pub mod policy;
 /// The stack a board's build states, for `nros build`'s check.
 #[cfg(feature = "build-helpers")]
 pub mod stack_stated;
+
+// Issues #246 (the default) and 2784 (stated to the stack-floor check).
+/// Default pthread stack of a spawned Rust sched task on NuttX, sized at
+/// NuttX's own `CONFIG_PTHREAD_STACK_DEFAULT` (64 KiB): the executor arena
+/// lives on the heap, so this only carries the zenoh-pico/executor call
+/// frames. A task's `stack_bytes` (when non-zero) overrides it. ONE spelling:
+/// `nros-board-nuttx`'s runner spawns with it and the board's build states it
+/// to the stack-floor check.
+pub const NUTTX_SCHED_TASK_STACK_DEFAULT_BYTES: usize = 65536;
 #[cfg(feature = "build-helpers")]
 pub mod threadx_qemu_riscv64_build;
 #[cfg(feature = "build-helpers")]
