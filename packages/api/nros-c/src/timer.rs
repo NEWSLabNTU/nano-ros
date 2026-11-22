@@ -466,7 +466,9 @@ pub unsafe extern "C" fn rcl_timer_cancel(timer: *mut rcl_timer_t) -> rcl_ret_t 
         rclc_timer_state_t::RCLC_TIMER_STATE_RUNNING => {
             // Forward to executor if registered
             if !timer._executor.is_null() && timer.handle_id != usize::MAX {
-                let exec = &mut *(timer._executor as *mut crate::executor::CExecutor);
+                // Phase-573 W3 -- the one derive, which takes the executor's
+                // lock; this cast took none.
+                let mut exec = crate::executor::get_executor_from_ptr(timer._executor);
                 let _ = exec.cancel_timer(nros_node::HandleId::from_raw(timer.handle_id));
             }
 
@@ -505,7 +507,9 @@ pub unsafe extern "C" fn rcl_timer_reset(timer: *mut rcl_timer_t) -> rcl_ret_t {
         | rclc_timer_state_t::RCLC_TIMER_STATE_CANCELED => {
             // Forward to executor if registered
             if !timer._executor.is_null() && timer.handle_id != usize::MAX {
-                let exec = &mut *(timer._executor as *mut crate::executor::CExecutor);
+                // Phase-573 W3 -- the one derive, which takes the executor's
+                // lock; this cast took none.
+                let mut exec = crate::executor::get_executor_from_ptr(timer._executor);
                 let _ = exec.reset_timer(nros_node::HandleId::from_raw(timer.handle_id));
             }
 
