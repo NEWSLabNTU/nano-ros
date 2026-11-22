@@ -142,3 +142,102 @@ the image. The C classifier does not reach those sites. Closing this issue
 needs Rust-side points-to, knowing which concrete vtable reaches each `dyn`
 call. That is the class of work issue 2550 parks, so this issue stays
 waiting on it, and W7f's measurement tools re-measure it in one run.
+
+## Measured by class, and the first narrowing built (2026-11-23)
+
+Two images: the Nucleo Rust action server row
+(`action-server/rust/zenoh@nucleo-f767zi-zephyr`, walk 113,808 B, twin peak
+30,328 B) and realtime-c's `[image.freertos]` (mps2-an385; OPEN 188,308 B and
+TASK_HIGH 191,436 B, no measured peak). Each image's own walker command was
+replayed in-process with a class of bound edges removed after bind, and the
+same 8-order walk ran again. A removal is an upper bound on what a narrowing
+could buy.
+
+Removing single edges does not work: twelve times removing the first loose
+edge of the deepest path moves the Nucleo walk only to 102,536 B, because
+every hop has alternatives at about the same depth. Classes:
+
+| removed | Nucleo | realtime-c OPEN |
+|---|---:|---:|
+| none | 113,808 | 188,308 |
+| thread entries, ISRs and device inits as callees | 102,912 | 186,028 |
+| `type` joins of untyped GCC C | 106,496 | 168,128 |
+| `c_type` edges from C sites | 81,088 | 178,740 |
+| `machine` edges | 113,808 | 119,236 |
+| every edge looser than a slot (the bind ceiling) | 50,984 | 32,824 |
+
+### What was wrong: evidence from code the link discarded
+
+On realtime-c, 552 of the 563 functions that bind counted as C-reachable
+only through dropped code are not in the image at all, so bind was binding
+C sites to code that does not exist. Two sources:
+
+- **Relocations of discarded sections.** The walk reads every input object,
+  including sections the link drops. The force-link anchors
+  (`C_SURFACE_ANCHOR`, `CPP_SURFACE_ANCHOR`: a table of every FFI export,
+  kept in the archive and dropped from the image) put every `nros_cpp_*`,
+  `rclc_*` and `rcl_*` export in `c_taken`.
+- **Rust IR globals the image does not hold.** The same anchors in the
+  bitcode put every export in a constant table.
+
+So every machine site in zenoh-pico's GCC-built container helpers
+(`_z_svec_*`, `_z_slist_*`, `_z_list_*`) was bound to the whole C/C++ API.
+
+**The rule now:**
+
+- A relocation counts as an address take only if its section defines a name
+  the linked image holds.
+- A Rust IR global counts only if the image holds it.
+- A function whose address the image's own data holds counts whatever the
+  inputs say. The first oracle run found why that part is needed: Zephyr's
+  `sw_isr_table` is rebuilt at a second link stage from the discarded
+  `.intList`, with literal addresses and no relocation.
+
+Every unsure case keeps the evidence: no image, a section with no symbol a
+symtab keeps, a name any kept object also uses, or a `private` IR global.
+
+**Checked against the image.** For every function that lost evidence, the
+image's allocated, non-executable sections were scanned for its address.
+There were 0 hits on both images.
+
+| image | before | after |
+|---|---:|---:|
+| Nucleo action server | 113,808 B | 102,664 B (-9.8 %) |
+| realtime-c OPEN | 188,308 B | 92,116 B (-51 %) |
+| realtime-c TASK_HIGH | 191,436 B | 90,116 B (-53 %) |
+
+Every row of the stack-floor table was re-walked by the drift check and
+re-recorded. None failed. Every `[[observed]]` row is sized from its peak, so
+no stack moves:
+
+| row | was | now |
+|---|---:|---:|
+| `action-server/rust/zenoh@nucleo-f767zi-zephyr` | 111,136 | 102,664 |
+| `talker/rust/zenoh@nucleo-f767zi-zephyr` | 69,648 | 65,408 |
+| `action-server/rust/zenoh@mps2-an385-zephyr` | 117,828 | 108,160 |
+| `talker/rust/zenoh@mps2-an385-zephyr` | 74,220 | 72,004 |
+| `qemu_bsp_talker_bringup@mps2-an385-baremetal` | 157,044 | 157,700 |
+| `talker/c/zenoh@nucleo-f767zi-zephyr` | 112,200 | 71,964 |
+| `talker/c/zenoh@mps2-an385-freertos` (`[[drift]]`) | 117,768 | 66,132 |
+
+The bare-metal row rose 0.4 %: the walk cut its call cycle elsewhere
+([issue 2550](2550-stack-walk-order-dependent-under-cycles.md)), within the
+drift tolerance.
+
+### What binding cannot close
+
+The bind ceiling is above the Nucleo image's peak: 50,984 B, 1.68x the
+30,328 B the twin measures. That path is all direct calls through large
+frames:
+
+- the entity-create closure `out_of_line` (16,824 B);
+- `Executor::declare_parameter_overridden` (8,712 B);
+- `Executor::seed_use_sim_time_default` (8,664 B).
+
+realtime-c's slot+direct path carries `Executor::pass` (9,832 B) and
+`reconcile_parameter_services` (9,800 B).
+
+Those frames are the frame-size batch's work (`fix-2815-frames`), not this
+issue's. What is left here is the thread-entry narrowing: walk a thread entry
+as its own root rather than as a callee, from the spawn API's entry argument,
+the ISR table and the device init table.

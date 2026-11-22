@@ -1256,6 +1256,106 @@ def parse_cfi(text: str, sp_reg: str = "reg13") -> dict[int, int | None]:
 
 # Every function symbol the linked image defines, from `--cfi-elf`.
 LINKED_FUNCTIONS: set[str] = set()
+# Issue 2658: every symbol name the linked image defines (code and data), from
+# `--cfi-elf`, read BEFORE the inputs load, with an LLVM promotion suffix
+# (`.llvm.<n>`) stripped. Empty when no image was given: then nothing is judged
+# discarded, and the walk is what it was before this rule.
+LINKED_SYMBOLS: set[str] = set()
+# How much address-take evidence the rule set aside, for the run's summary:
+# relocation sections of input objects, and constant globals of the Rust IR.
+DISCARDED_EVIDENCE = {"relocs": 0, "ir_globals": 0}
+
+
+def _symbol_base(name: str) -> str:
+    """A symbol's name as both the IR and the linked image spell it: LLVM
+    renames an internal symbol it shares between codegen units by appending
+    `.llvm.<n>`, which one side may carry and the other not."""
+    i = name.find(".llvm.")
+    return name[:i] if i > 0 else name
+
+
+def load_linked_symbols(elf: str, readobj: str) -> dict[int, set[str]]:
+    """Fill `LINKED_SYMBOLS` from the linked image's symbol table (defined
+    symbols only). Returns each function's address (Thumb bit cleared) ->
+    its names, for `image_data_pointers`."""
+    LINKED_SYMBOLS.clear()
+    funcs: dict[int, set[str]] = {}
+    for doc in readobj_json(readobj, ["--symbols"], [elf]):
+        for s in doc.get("Symbols", []):
+            sym = s["Symbol"]
+            name = sym["Name"]["Name"] if isinstance(sym["Name"], dict) else sym["Name"]
+            typ = sym["Type"]["Name"] if isinstance(sym["Type"], dict) else sym["Type"]
+            sec = sym.get("Section", {})
+            idx = sec.get("Value") if isinstance(sec, dict) else None
+            if name and isinstance(idx, int) and idx > 0:
+                LINKED_SYMBOLS.add(_symbol_base(name))
+                if typ == "Function":
+                    funcs.setdefault(sym["Value"] & ~1, set()).add(name)
+    return funcs
+
+
+def image_data_pointers(elf: str, funcs: dict[int, set[str]]) -> set[str]:
+    """Issue 2658: the functions whose address the linked image holds as DATA:
+    an aligned pointer-sized word equal to the function's address (Thumb bit
+    either way), in an allocated, non-executable section with contents.
+
+    The image, not its inputs, is the evidence here, because a later link
+    stage can rebuild a table from a section the final link discards: Zephyr's
+    `sw_isr_table` is generated from `.intList` and holds each ISR as a literal
+    address, with no relocation. A word that equals an address by coincidence
+    only adds a target, which keeps the walk an upper bound."""
+    import struct
+    out: set[str] = set()
+    try:
+        raw = Path(elf).read_bytes()
+    except OSError:
+        return out
+    if raw[:4] != b"\x7fELF" or raw[5] not in (1, 2):
+        return out
+    is64, end = raw[4] == 2, "<" if raw[5] == 1 else ">"
+    if is64:
+        shoff, = struct.unpack_from(end + "Q", raw, 0x28)
+        shentsize, shnum = struct.unpack_from(end + "HH", raw, 0x3A)
+        word, wfmt = 8, "Q"
+    else:
+        shoff, = struct.unpack_from(end + "I", raw, 0x20)
+        shentsize, shnum = struct.unpack_from(end + "HH", raw, 0x2E)
+        word, wfmt = 4, "I"
+    want: dict[int, set[str]] = {}
+    for a, names in funcs.items():
+        for v in (a, a | 1):
+            want.setdefault(v, set()).update(names)
+    sht_nobits, shf_alloc, shf_execinstr = 8, 0x2, 0x4
+    for i in range(shnum):
+        h = shoff + i * shentsize
+        if is64:
+            sh_type, sh_flags = struct.unpack_from(end + "IQ", raw, h + 4)
+            sh_off, sh_size = struct.unpack_from(end + "QQ", raw, h + 0x18)
+        else:
+            sh_type, sh_flags = struct.unpack_from(end + "II", raw, h + 4)
+            sh_off, sh_size = struct.unpack_from(end + "II", raw, h + 0x10)
+        if sh_type == sht_nobits or not sh_flags & shf_alloc or sh_flags & shf_execinstr:
+            continue
+        data = raw[sh_off:sh_off + sh_size]
+        for (w,) in struct.iter_unpack(end + wfmt, data[:len(data) - len(data) % word]):
+            hit = want.get(w)
+            if hit:
+                out |= hit
+    return out
+
+
+def linked_away(names) -> bool:
+    """Issue 2658: True when the code or data that DEFINES `names` is not in
+    the linked image (`--gc-sections` dropped it), so nothing it holds can
+    take an address at run time. Every unsure case answers False, which keeps
+    the evidence: no image was read, the holder defines no name a symbol
+    table keeps (an ARM mapping symbol `$t`/`$d`, an assembler temporary
+    `.L...`), or ANY of its names is in the image -- a local name that
+    another object also defines therefore reads as kept."""
+    if not LINKED_SYMBOLS:
+        return False
+    kept = [n for n in names if n and not n.startswith(("$", ".L"))]
+    return bool(kept) and not any(_symbol_base(n) in LINKED_SYMBOLS for n in kept)
 # Issue 2815: every linked function whose own frame is over the table's
 # `max_frame`, largest first. One `sub sp` that size jumps any MPU stack guard
 # (32-64 B) with no fault. Recorded in the report, which `just check max-frame`
@@ -1697,6 +1797,7 @@ _IR_ICALL = re.compile(r'\b(?:tail |musttail |notail )?call\s+(?:[a-z_]+(?:\([^)
                        r'(\S+?)(?: \([^)]*\))?\s+(%[\w.$-]+)\((.*)\)')
 _IR_REF = re.compile(r'@("[^"]+"|[\w.$-]+)')
 _IR_DIRECT = re.compile(r'\bcall\s+[^@%]*?@("[^"]+"|[\w.$-]+)\(')
+_IR_PRIVATE = re.compile(r'^@("[^"]+"|[\w.$-]+)\s*=\s*private\b')
 _IR_GLOBAL = re.compile(r'^@("[^"]+"|[\w.$-]+)\s*=\s*(?:[a-z_]+\s+)*?(constant|global)\s+(.*)$')
 _IR_TYPEDEF = re.compile(r'^(%"[^"]+"|%[\w.$-]+)\s*=\s*type\s+(.*)$')
 _IR_GEP_I8 = re.compile(r'^\s*(%[\w.$-]+)\s*=\s*getelementptr\s+(?:inbounds\s+|nuw\s+|nusw\s+)*i8,\s*ptr\s+(%[\w.$-]+),\s*i(?:32|64)\s+(-?\d+)\s*(?:,\s*!.*)?$')
@@ -1854,7 +1955,7 @@ def _table_slots(lay: _Layout, t: str, value: str, base: int, out: list[tuple[in
         _table_slots(lay, et, ev, base + offs[i], out, starts + (base,))
 
 
-def parse_ir_sites(text: str):
+def parse_ir_sites(text: str, drop_unlinked: bool = False):
     """From one module's textual IR:
     - `types`: each defined or declared function's type;
     - `sites`: each indirect call as (caller, callee type, slot offset or None);
@@ -1867,7 +1968,13 @@ def parse_ir_sites(text: str):
       used as a value (stored, passed, returned, merged by a phi or select)
       rather than dereferenced or called. A function at a leaked offset in a
       table can then be called through any pointer of its type, so the
-      binder treats it as escaped (issue 2402)."""
+      binder treats it as escaped (issue 2402).
+
+    `drop_unlinked` (issue 2658, the Rust IR): a constant or global the linked
+    image does not hold (`linked_away`) adds no table slot and no escape. The
+    IR is every codegen unit's, the image only what `--gc-sections` kept, and a
+    force-link anchor is a table of every export that the image drops. A
+    `private` global never reaches a symbol table, so it is always kept."""
     types: dict[str, str] = {}
     sites: list[tuple[str, str, int | None]] = []
     tables: set[tuple[int, str]] = set()
@@ -1902,6 +2009,10 @@ def parse_ir_sites(text: str):
         if cur is None:
             g = _IR_GLOBAL.match(line)
             if g:
+                if (drop_unlinked and not _IR_PRIVATE.match(line)
+                        and linked_away([g.group(1).strip('"')])):
+                    DISCARDED_EVIDENCE["ir_globals"] += 1
+                    continue
                 rest = g.group(3)
                 try:
                     t, v = _take_type(rest)
@@ -2554,14 +2665,18 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
         # function symbols per section: (start, end, name)
         by_sec: dict[int, list[tuple[int, int, str]]] = {}
         sym_is_func: dict[str, bool] = {}
+        # issue 2658: every name each section defines, as the object spells it
+        defs_by_sec: dict[int, set[str]] = {}
         for s in doc.get("Symbols", []):
             sym = s["Symbol"]
             name = sym["Name"]["Name"] if isinstance(sym["Name"], dict) else sym["Name"]
             typ = sym["Type"]["Name"] if isinstance(sym["Type"], dict) else sym["Type"]
-            if typ == "Function":
-                name = node(obj, name)
             sec = sym.get("Section", {})
             idx = sec.get("Value") if isinstance(sec, dict) else None
+            if typ not in ("Section", "File") and isinstance(idx, int) and idx > 0:
+                defs_by_sec.setdefault(idx, set()).add(name)
+            if typ == "Function":
+                name = node(obj, name)
             if typ == "Function":
                 sym_is_func[name] = True
                 g.functions.add(name)
@@ -2593,6 +2708,15 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
             is_code = "SHF_EXECINSTR" in flags
             if tname.startswith((".ARM.exidx", ".eh_frame", ".debug", ".stack_sizes")):
                 continue
+            # Issue 2658: a section the link discarded is not in the image, so an
+            # address it holds is taken by nothing that runs. A force-link
+            # anchor (a table of every FFI export, kept in the archive and
+            # dropped from the image) made every export C-reachable, and every
+            # C site with no IR bound to the whole API. Its calls stay edges:
+            # they are unreachable anyway, and a direct call is never loose.
+            taken = not linked_away(defs_by_sec.get(target_idx, ()))
+            if not taken:
+                DISCARDED_EVIDENCE["relocs"] += 1
             for r in rel.get("Relocs", []):
                 rr = r["Relocation"]
                 tgt = rr["Symbol"]["Name"]
@@ -2616,11 +2740,11 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
                             g.edges.setdefault(caller, set()).add(tgt)
                     rtype = rr.get("Type", {})
                     rtype = rtype.get("Name", "") if isinstance(rtype, dict) else str(rtype)
-                    if rtype not in CALL_RELOCS:
+                    if rtype not in CALL_RELOCS and taken:
                         g.code_taken.add(tgt)
                         if not from_ir:
                             g.c_taken.add(tgt)
-                else:
+                elif taken:
                     g.address_taken.add(tgt)
                     if not from_ir:
                         g.c_taken.add(tgt)
@@ -3831,8 +3955,20 @@ def run(args: argparse.Namespace) -> int:
             args.target, None if units is None else units - in_dirs)
     args.inputs = expand_inputs(args.inputs, bitcode_dirs_expanded(args.bitcode_dir or []),
                                 args.llvm_bin, cache, units)
+    LINKED_SYMBOLS.clear()
+    DISCARDED_EVIDENCE.update(relocs=0, ir_globals=0)
+    image_held: set[str] = set()
+    if args.cfi_elf and Path(args.cfi_elf).is_file():
+        # Issue 2658: what the image holds, before any input is read, so an
+        # address only the link's discarded code takes is not evidence -- and
+        # what the image's own data holds, which is evidence whatever the
+        # inputs say (a table a later link stage rebuilt).
+        image_held = image_data_pointers(args.cfi_elf,
+                                         load_linked_symbols(args.cfi_elf, readobj))
     for i in range(0, len(args.inputs), LOAD_CHUNK):
         load_object(g, args.inputs[i:i + LOAD_CHUNK], readobj, objdump)
+    g.address_taken |= image_held
+    g.c_taken |= image_held
     apart = separate_locals(g)
     if apart:
         print(f"nros-stack-floor: {len(apart)} local function name(s) more than one input "
@@ -3901,7 +4037,7 @@ def run(args: argparse.Namespace) -> int:
         # issue 2402 — every indirect site becomes call edges; nothing is charged.
         dis = bitcode_tool("llvm-dis", EXPANDED_BITCODE, args.llvm_bin)
         rtexts = [ir_text(bc, dis, cache) for bc in EXPANDED_BITCODE]
-        mods = [parse_ir_sites(t) for t in rtexts]
+        mods = [parse_ir_sites(t, drop_unlinked=True) for t in rtexts]
         rdirect = [ir_direct_calls(t) for t in rtexts]
         rust_defined = {fn for d in rdirect for fn in d}
         rust_asm = {fn for d in rdirect for fn, cs in d.items() if IR_ASM in cs}
@@ -3948,6 +4084,10 @@ def run(args: argparse.Namespace) -> int:
               f"{st['type']} by type, {st['any']} with no typed target, {st['c_typed']} C "
               f"site(s) by clang type, {st['c_none']} C branch(es) that call nothing, and "
               f"{st['machine']} with no IR to every function C can hold", file=sys.stderr)
+        if DISCARDED_EVIDENCE["relocs"] or DISCARDED_EVIDENCE["ir_globals"]:
+            print(f"nros-stack-floor: bind: {DISCARDED_EVIDENCE['relocs']} relocation "
+                  f"section(s) and {DISCARDED_EVIDENCE['ir_globals']} Rust IR global(s) the "
+                  "link discarded take no address (issue 2658)", file=sys.stderr)
         if st.get("c_none_fns"):
             print("nros-stack-floor: bind: C function(s) whose machine branches the clang IR "
                   "shows are not calls: " + ", ".join(sorted(st["c_none_fns"])[:8]),
@@ -4392,6 +4532,94 @@ def self_test() -> int:
           ("caller", "i32(ptr,i32)", 12) in sites and ("caller", "i32(ptr)", 4) in sites)
     check("bind: a stored function escapes; a table-only one does not",
           "esc" in escaped and "m" not in escaped and "b" not in escaped)
+
+    # issue 2658 -- address-take evidence from code the link discarded
+    ir_d = (
+        '@_RNvC4keep6ANCHOR = constant [2 x ptr] [ptr @x_api, ptr @y_api], align 4\n'
+        '@_RNvC4keep4LIVE = constant [1 x ptr] [ptr @z_api], align 4\n'
+        '@_RNvC4keep5PROMO = internal constant [1 x ptr] [ptr @p_api], align 4\n'
+        '@anon.0 = private unnamed_addr constant [1 x ptr] [ptr @q_api], align 4\n'
+        '@_RNvC4keep4GONE = global ptr @w_api, align 4\n'
+    )
+    saved = set(LINKED_SYMBOLS)
+    try:
+        LINKED_SYMBOLS.clear()
+        _, _, tb_all, esc_all, _ = parse_ir_sites(ir_d, drop_unlinked=True)
+        check("discarded: with no image read, every IR table and escape is kept",
+              {f for _, f in tb_all} | esc_all
+              >= {"x_api", "y_api", "z_api", "p_api", "q_api", "w_api"})
+        LINKED_SYMBOLS.update({"_RNvC4keep4LIVE", "_RNvC4keep5PROMO", "x_api", "z_api"})
+        _, _, tb_d, esc_d, _ = parse_ir_sites(ir_d, drop_unlinked=True)
+        in_tb = {f for _, f in tb_d}
+        check("discarded: a table the image does not hold adds no slot (a force-link anchor)",
+              "x_api" not in in_tb and "y_api" not in in_tb)
+        check("discarded: a table the image holds keeps its slots", "z_api" in in_tb)
+        check("discarded: a global the image does not hold holds nothing",
+              "w_api" not in esc_d and "w_api" not in in_tb)
+        check("discarded: a private constant never reaches a symbol table, so it is kept",
+              "q_api" in in_tb)
+        LINKED_SYMBOLS.discard("_RNvC4keep5PROMO")
+        LINKED_SYMBOLS.add("_RNvC4keep5PROMO.llvm.1234")
+        LINKED_SYMBOLS.update({_symbol_base(n) for n in list(LINKED_SYMBOLS)})
+        _, _, tb_p, _, _ = parse_ir_sites(ir_d, drop_unlinked=True)
+        check("discarded: a name LLVM promoted with `.llvm.<n>` still reads as kept",
+              "p_api" in {f for _, f in tb_p})
+        _, _, tb_c, _, _ = parse_ir_sites(ir_d)
+        check("discarded: the C IR (no drop_unlinked) keeps every table",
+              {"x_api", "y_api"} <= {f for _, f in tb_c})
+        check("discarded: a section is kept when any name it defines is in the image",
+              not linked_away(["gone_a", "x_api"]))
+        check("discarded: a section with no name a symtab keeps is never judged dropped",
+              not linked_away(["$d", ".LANCHOR0", ""]) and not linked_away([]))
+        check("discarded: a section whose every name is absent is dropped",
+              linked_away(["gone_a", "gone_b", "$d"]))
+        LINKED_SYMBOLS.clear()
+        check("discarded: with no image read, nothing is dropped", not linked_away(["gone_a"]))
+    finally:
+        LINKED_SYMBOLS.clear()
+        LINKED_SYMBOLS.update(saved)
+
+    # issue 2658 -- the image's own data is evidence (Zephyr's sw_isr_table is
+    # rebuilt from a discarded section with literal addresses, no relocation)
+    import struct as _st
+    import tempfile as _tf
+    for is64 in (False, True):
+        word = "Q" if is64 else "I"
+        # .data holds isr|1 (Thumb) and tbl; .text holds code_word; .bss is NOBITS
+        data = _st.pack("<" + word * 3, 0x1001, 0x2000, 0)
+        text = _st.pack("<" + word, 0x3000)
+        hdr_size, sh_size = (0x40, 0x40) if is64 else (0x34, 0x28)
+        d_off = hdr_size
+        t_off = d_off + len(data)
+        shoff = t_off + len(text)
+        if is64:
+            ehdr = (b"\x7fELF\x02\x01\x01" + b"\0" * 9 + _st.pack("<HHIQQQIHHHHHH", 1, 0x28, 1, 0,
+                    0, shoff, 0, hdr_size, 0, 0, sh_size, 4, 0))
+
+            def sh(t, fl, off, size):
+                return _st.pack("<IIQQQQIIQQ", 0, t, fl, 0, off, size, 0, 0, 1, 0)
+        else:
+            ehdr = (b"\x7fELF\x01\x01\x01" + b"\0" * 9 + _st.pack("<HHIIIIIHHHHHH", 1, 0x28, 1, 0,
+                    0, shoff, 0, hdr_size, 0, 0, sh_size, 4, 0))
+
+            def sh(t, fl, off, size):
+                return _st.pack("<IIIIIIIIII", 0, t, fl, 0, off, size, 0, 0, 1, 0)
+        blob = (ehdr + data + text + sh(0, 0, 0, 0) + sh(1, 0x3, d_off, len(data))
+                + sh(1, 0x6, t_off, len(text)) + sh(8, 0x3, 0, 64))
+        with _tf.NamedTemporaryFile(suffix=".elf", delete=False) as tf:
+            tf.write(blob)
+        try:
+            held = image_data_pointers(tf.name, {0x1000: {"isr"}, 0x2000: {"tbl_fn"},
+                                                 0x3000: {"code_word"}, 0x4000: {"nowhere"}})
+        finally:
+            os.unlink(tf.name)
+        bits = "64" if is64 else "32"
+        check(f"image data ({bits}-bit): a Thumb-tagged pointer in .data is held", "isr" in held)
+        check(f"image data ({bits}-bit): a plain pointer in .data is held", "tbl_fn" in held)
+        check(f"image data ({bits}-bit): a word in executable code is not data evidence",
+              "code_word" not in held)
+        check(f"image data ({bits}-bit): a function no data names is not held",
+              "nowhere" not in held)
     gb = Graph(frames={f: 8 for f in ("drop", "m", "a", "b", "esc", "caller", "cfn", "cb")},
                functions={"drop", "m", "a", "b", "esc", "caller", "cfn", "cb", "vector"},
                indirect_sites={"caller": 2, "cfn": 1}, c_taken={"cb", "vector"})
