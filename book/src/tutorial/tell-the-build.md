@@ -70,14 +70,14 @@ Read the image's sizes with the `size` tool of the Arm toolchain
 
 ```bash probe=815 track=installed variant=qemu
 "$(nros locate tool arm-none-eabi-gcc)/bin/arm-none-eabi-size" \
-    build/freertos-zenoh-mps2-an385-freertos-sensor_node_bringup/cmake/freertos_entry
+    build/freertos-zenoh-mps2-an385-freertos-sensor_node_bringup-freertos/cmake/freertos_entry
 ```
 
 #### C++
 
 ```bash probe=815 track=installed variant=qemu
 "$(nros locate tool arm-none-eabi-gcc)/bin/arm-none-eabi-size" \
-    build/freertos-zenoh-mps2-an385-freertos-sensor_node_bringup/cmake/freertos_entry
+    build/freertos-zenoh-mps2-an385-freertos-sensor_node_bringup-freertos/cmake/freertos_entry
 ```
 
 <!-- /tabs -->
@@ -233,14 +233,14 @@ nros build
 
 ```bash probe=835 track=installed variant=qemu
 "$(nros locate tool arm-none-eabi-gcc)/bin/arm-none-eabi-size" \
-    build/freertos-zenoh-mps2-an385-freertos-sensor_node_bringup/cmake/freertos_entry
+    build/freertos-zenoh-mps2-an385-freertos-sensor_node_bringup-freertos/cmake/freertos_entry
 ```
 
 #### C++
 
 ```bash probe=835 track=installed variant=qemu
 "$(nros locate tool arm-none-eabi-gcc)/bin/arm-none-eabi-size" \
-    build/freertos-zenoh-mps2-an385-freertos-sensor_node_bringup/cmake/freertos_entry
+    build/freertos-zenoh-mps2-an385-freertos-sensor_node_bringup-freertos/cmake/freertos_entry
 ```
 
 <!-- /tabs -->

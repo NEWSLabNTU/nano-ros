@@ -1041,14 +1041,14 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             plan::all_images(&bringups),
             bringup,
             coord,
-            |(b, bd, _, img)| {
+            |(b, bd, id, img)| {
                 let d = crate::orchestration::image::resolve_image_board(&catalog, "", img).ok()?;
                 (plan::driver_for_board(
                     d.platform.kebab(),
                     d.entry_kind,
                     image_has_non_rust(img, bd),
                 ) == Ok(Driver::CMake))
-                .then(|| cmake_coordinate(d.platform.kebab(), img, b, bd))
+                .then(|| cmake_coordinate(d.platform.kebab(), img, b, id, bd))
             },
         )
     };
@@ -1270,6 +1270,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &platform,
                     &image,
                     &bringup,
+                    &image_id,
                     &bringup_dir,
                 ),
                 qualified: qual,
@@ -1319,7 +1320,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         if !args.dry_run && census_take_is_ours(descriptor.platform) {
             let mut take = vec![qual.clone()];
             if driver == Driver::CMake {
-                let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
+                let coord = cmake_coordinate(&platform, &image, &bringup, &image_id, &bringup_dir);
                 take.extend(
                     coordinate_members(&bringup, &coord)
                         .into_iter()
@@ -1348,7 +1349,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // owned entries, `[[component]]` rows) and their workspace
         // `<depend>`s. Computed once here, read by every exclusion below.
         let root_closure = if driver == Driver::CMake && !bringup.is_empty() {
-            let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
+            let coord = cmake_coordinate(&platform, &image, &bringup, &image_id, &bringup_dir);
             match bringup_closure_dirs(
                 &root,
                 &found,
@@ -1445,7 +1446,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         let mut coordinate_refusal: Option<eyre::Report> = None;
         let coordinate_dir = (driver == Driver::CMake)
             .then(|| {
-                let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
+                let coord = cmake_coordinate(&platform, &image, &bringup, &image_id, &bringup_dir);
                 let id = SharedConfigure::new(&bringup, &coord);
                 // Composed once per shared configure in one plan, however many
                 // of its images were asked for.
@@ -2129,6 +2130,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &platform,
                     &image,
                     &bringup,
+                    &image_id,
                     &bringup_dir,
                 ));
                 record_dirs.push(manifest_dir.clone());
@@ -2144,7 +2146,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // nothing — it is a discovered SUBDIR, and a second target of
                 // that name would collide. Delete the package and the next
                 // build emits its call (D13, incremental).
-                let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
+                let coord = cmake_coordinate(&platform, &image, &bringup, &image_id, &bringup_dir);
                 // A C++ source ANYWHERE in a package, not just at its top, or a
                 // Rust node -- `builder::discover::needs_cpp_entry`, the one
                 // spelling the west application's `LANG` also reads (phase-470
@@ -2414,14 +2416,14 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 };
                 crate::builder::cmake_root::write(&found, &manifest_dir, &spec)
                     .map_err(|e| eyre::eyre!("{e}"))?;
-                // Issue 2343 — the root this configuration had before issue
-                // 2287 named the bringup, left beside this one by a tree that
-                // outlived the change.
-                retire_legacy_cmake_root(
-                    &root.join("build"),
-                    &cmake_configuration_key(&platform, &image, &bringup_dir),
-                    &manifest_dir,
-                );
+                // Issue 2343 — the roots this image had in older layouts, left
+                // beside this one by a tree that outlived the change: the
+                // configuration's (before issue 2287) and the bringup's
+                // (before issue 2702).
+                let key = cmake_configuration_key(&platform, &image, &bringup_dir);
+                for old in [key.clone(), format!("{key}-{bringup}")] {
+                    retire_legacy_cmake_root(&root.join("build"), &old, &manifest_dir);
+                }
                 let rel_src = manifest_dir
                     .strip_prefix(&root)
                     .unwrap_or(&manifest_dir)
@@ -2481,17 +2483,13 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     a.push(format!("-DNROS_CONFIGURED_PROJECT={}", root.display()));
                     a.push(format!("-DNROS_CONFIGURED_IMAGE={qual}"));
                 }
-                // Issue 2702 -- an image whose own capability axes differ from
-                // `[system]`'s has this configure to itself and the images
-                // whose axes equal its own (its key carries them), so the
-                // configure's readers of the axes (`nros config show`, the
-                // entity inventory, the sizing descriptor, the entry's codegen)
-                // read them for it. `NROS_FEATURE_IMAGE`, not `NROS_IMAGE`,
-                // which would also pick this image's deploy and board facts for
-                // every image on the configure.
-                if image_own_features(&image, &bringup_dir).is_some() {
-                    a.push(format!("-DNROS_FEATURE_IMAGE={image_id}"));
-                }
+                // Issue 2702 (ruled 2026-11-22) -- the configure is this
+                // image's alone (its coordinate names it), so its readers of
+                // the capability axes (`nros config show`, the entity
+                // inventory, the sizing descriptor, the entry's codegen) read
+                // the image's own. `NROS_FEATURE_IMAGE`, which only those
+                // readers take; `NROS_IMAGE` means more on a hand-written root.
+                a.push(format!("-DNROS_FEATURE_IMAGE={image_id}"));
                 // Issue 1653 (RFC-0100 Amendment 1, "D4 revised") — the BOARD
                 // heap, resolved here at stage 4 for every road, handed to the
                 // configure the way the triple is. The configure does not read
@@ -3206,7 +3204,14 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             kernel: nuttx_kernel,
             configure: cmake_configure.or(cargo_prepare),
             entry_root,
-            cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup, &bringup_dir),
+            cmake_build_dir: cmake_build_dir_for(
+                driver,
+                &platform,
+                &image,
+                &bringup,
+                &image_id,
+                &bringup_dir,
+            ),
             qualified: qual,
             board,
             platform,
@@ -8472,16 +8477,13 @@ fn coordinate_member_model(
     crate::cmd::entity_inventory::check_model(&model)
         .map_err(|e| format!("model {}: {e:#}", path.display()))?;
     // Issue 2700 -- this precomposition is what the configure TAKES in place of
-    // its own, so it reads what the configure's producers (`ws
-    // entity-inventory`, the runtime descriptor) and its `NROS_FEATURES` read:
-    // `[system]`'s axes, unless the image has axes of its own. Issue 2702 --
-    // then the configure is that image's and its equals' (its key carries the
-    // axes), built with them (`-DNROS_FEATURE_IMAGE`), and read for them here.
-    let feature_image = image_own_features(image, bringup_dir).map(|_| image_id);
+    // its own, so it reads what the configure's producers read. Issue 2702 --
+    // the configure is the image's alone and builds with its own axes
+    // (`-DNROS_FEATURE_IMAGE`), so the model is read for it.
     let model = nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(
         model,
         &path,
-        feature_image,
+        Some(image_id),
     )?;
     Ok((path, model))
 }
@@ -8731,10 +8733,11 @@ fn cmake_coordinate(
     platform: &str,
     image: &crate::orchestration::image::ImageBlock,
     bringup: &str,
+    image_id: &str,
     bringup_dir: &Path,
 ) -> String {
     format!(
-        "{}-{bringup}",
+        "{}-{bringup}-{image_id}",
         cmake_configuration_key(platform, image, bringup_dir)
     )
 }
@@ -8759,8 +8762,9 @@ fn cmake_coordinate(
 ///   this nros's or an older one's) and
 ///   names a bringup (`SYSTEM <b>`), which every workspace-image root carries
 ///   and a package-mode root (`build/<pkg>/`, no bringup) does not;
-/// - the dir's name does not end in `-<b>`, which would make it a CURRENT
-///   root of some other configuration.
+/// - the dir is not a CURRENT root: one whose single `IMAGES` id `<i>` and
+///   bringup make its name end in `-<b>-<i>` (issue 2702). Both older layouts,
+///   `<key>` and `<key>-<b>`, are retired.
 ///
 /// What it removes is the root's own files: `cmake/`, the image-env file and
 /// the `CMakeLists.txt` (last, so an interrupted retire is retried). The
@@ -8800,7 +8804,19 @@ fn retire_legacy_cmake_root(build: &Path, key: &str, current: &Path) -> Option<P
             .then(|| rest.trim())
             .filter(|s| !s.is_empty())
     })?;
-    if key.ends_with(&format!("-{system}")) {
+    // A CURRENT root names its bringup and its one image (issue 2702:
+    // `<key>-<bringup>-<image>`), so a root whose name says so is some other
+    // image's and stays. Every older layout goes: the configuration's
+    // (`<key>`, before issue 2287) and the bringup's (`<key>-<bringup>`,
+    // before issue 2702), each of which held a copy of every image's binary.
+    let images: Vec<&str> = body
+        .lines()
+        .find_map(|l| l.trim_start().strip_prefix("IMAGES"))
+        .map(|r| r.split_whitespace().collect())
+        .unwrap_or_default();
+    if let [only] = images.as_slice()
+        && key.ends_with(&format!("-{system}-{only}"))
+    {
         return None;
     }
 
@@ -8835,7 +8851,7 @@ fn retire_legacy_cmake_root(build: &Path, key: &str, current: &Path) -> Option<P
     let _ = std::fs::remove_dir(&legacy);
     eprintln!(
         "nros build: removed the stale old-layout build dir {}/ (cmake roots are per \
-         bringup now, at {}/; the old one held a second copy of each entry's binary)",
+         image now, at {}/; the old one held a second copy of each entry's binary)",
         shown(&legacy),
         shown(current)
     );
@@ -8849,12 +8865,13 @@ fn cmake_build_dir_for(
     platform: &str,
     image: &crate::orchestration::image::ImageBlock,
     bringup: &str,
+    image_id: &str,
     bringup_dir: &Path,
 ) -> Option<String> {
     matches!(driver, Driver::CMake).then(|| {
         format!(
             "build/{}/cmake",
-            cmake_coordinate(platform, image, bringup, bringup_dir)
+            cmake_coordinate(platform, image, bringup, image_id, bringup_dir)
         )
     })
 }
@@ -8933,15 +8950,6 @@ fn image_config_digest(
     {
         rows.insert("rmw-user-config".to_string(), body);
     }
-    // Issue 2702 (ruled option 2) -- the configure builds the runtime every
-    // image on it links, so an image whose own capability axes differ from
-    // `[system]`'s gets a configure of its own, and that configure builds with
-    // them (`-DNROS_FEATURE_IMAGE`). Images whose axes are `[system]`'s
-    // add no row, so they keep sharing, and a workspace stating none keeps its
-    // directories.
-    if let Some(own) = image_own_features(image, bringup_dir) {
-        rows.insert("features".to_string(), own);
-    }
     if rows.is_empty() {
         return None;
     }
@@ -8953,30 +8961,6 @@ fn image_config_digest(
         h.update([0xffu8]);
     }
     Some(format!("{:x}", h.finalize())[..10].to_string())
-}
-
-/// Issue 2702 -- `image`'s own capability axes and `node_interfaces` switch,
-/// as one stable string, when they differ from its bringup's `[system]` ones;
-/// `None` when they are the system's (or the bringup's `system.toml` cannot be
-/// read, which the configure reports). Composed by
-/// `SystemToml::image_features_over`, the rule every road reads.
-fn image_own_features(
-    image: &crate::orchestration::image::ImageBlock,
-    bringup_dir: &Path,
-) -> Option<String> {
-    let raw = nros_system_include::read_to_string(bringup_dir.join("system.toml")).ok()?;
-    let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw).ok()?;
-    let (own, _) = sys.image_features_over(Some(image))?;
-    // Compared as the EFFECTIVE sets (through each one's switch): an image that
-    // restates `[system]`'s axes, or states the switch's default, builds the
-    // same runtime and keeps the shared configure.
-    let set = |v: Vec<String>| v.into_iter().collect::<std::collections::BTreeSet<_>>();
-    let own = set(own);
-    let shared = set(nros_orchestration_ir::node_interfaces::effective_features(
-        &sys.system.features,
-        sys.system.node_interfaces,
-    ));
-    (own != shared).then(|| own.into_iter().collect::<Vec<_>>().join(","))
 }
 
 /// The bringup's own RMW config for `rmw` — the file its backend's descriptor
@@ -9305,7 +9289,13 @@ fn generated_outputs(
         }
         Driver::CMake => vec![
             PathBuf::from("build")
-                .join(cmake_coordinate(platform, image, bringup, bringup_dir))
+                .join(cmake_coordinate(
+                    platform,
+                    image,
+                    bringup,
+                    image_id,
+                    bringup_dir,
+                ))
                 .join(format!("<target {pkg}>")),
         ],
     }
@@ -13497,33 +13487,87 @@ mod per_image_configure_tests {
     }
 
     /// Issue 2287 — the build dir names the bringup after the configuration
-    /// key, so two bringups on one board never share a configure, and one
-    /// bringup's images (whatever their configuration) stay apart from
-    /// another's.
+    /// key, so two bringups on one board never share a configure. Issue 2702
+    /// (ruled 2026-11-22) — and then the image, so every image has a configure
+    /// of its own, even beside an image with the same configuration.
     #[test]
-    fn the_build_dir_names_the_bringup() {
+    fn the_build_dir_names_the_bringup_and_the_image() {
         let none = Path::new("/nonexistent");
         let plain = image(&[], None);
         assert_eq!(
-            cmake_coordinate("native", &plain, "demo_bringup", none),
-            "native-zenoh-demo_bringup"
+            cmake_coordinate("native", &plain, "demo_bringup", "linux", none),
+            "native-zenoh-demo_bringup-linux"
         );
         assert_ne!(
-            cmake_coordinate("native", &plain, "demo_bringup", none),
-            cmake_coordinate("native", &plain, "pubsub_bringup", none)
+            cmake_coordinate("native", &plain, "demo_bringup", "linux", none),
+            cmake_coordinate("native", &plain, "pubsub_bringup", "linux", none)
+        );
+        assert_ne!(
+            cmake_coordinate("native", &plain, "demo_bringup", "linux", none),
+            cmake_coordinate("native", &plain, "demo_bringup", "linux_b", none),
+            "two images of one configuration still get a configure each"
         );
         let warn = image(&[("APP_LOG_LEVEL", "warn")], None);
-        let keyed = cmake_coordinate("native", &warn, "demo_bringup", none);
+        let keyed = cmake_coordinate("native", &warn, "demo_bringup", "linux", none);
         assert_eq!(
             keyed,
             format!(
-                "{}-demo_bringup",
+                "{}-demo_bringup-linux",
                 cmake_configuration_key("native", &warn, none)
             )
         );
         assert_eq!(
-            cmake_build_dir_for(Driver::CMake, "native", &plain, "demo_bringup", none).as_deref(),
-            Some("build/native-zenoh-demo_bringup/cmake")
+            cmake_build_dir_for(
+                Driver::CMake,
+                "native",
+                &plain,
+                "demo_bringup",
+                "linux",
+                none
+            )
+            .as_deref(),
+            Some("build/native-zenoh-demo_bringup-linux/cmake")
+        );
+    }
+
+    /// Issue 2702 -- a tree that outlived the per-bringup layout keeps
+    /// `<key>-<bringup>`, holding every image's binary. Building one image
+    /// retires it; another image's CURRENT root (`<key>-<bringup>-<image>`,
+    /// naming that one image) is left alone.
+    #[test]
+    fn the_per_bringup_root_is_retired_and_a_per_image_root_kept() {
+        let t = tempfile::tempdir().expect("tempdir");
+        let build = t.path().join("build");
+        let root = |name: &str, images: &str| {
+            let d = build.join(name);
+            std::fs::create_dir_all(d.join("cmake")).unwrap();
+            std::fs::write(
+                d.join("CMakeLists.txt"),
+                format!(
+                    "{}nano_ros_workspace(\n    SYSTEM   demo_bringup\n    IMAGES {images}\n)\n",
+                    crate::builder::cmake_root::GENERATED_HEADER
+                ),
+            )
+            .unwrap();
+            d
+        };
+        let old = root("posix-zenoh-linux-demo_bringup", "a b");
+        let other = root("posix-zenoh-linux-demo_bringup-b", "b");
+        let current = build.join("posix-zenoh-linux-demo_bringup-a");
+        std::fs::create_dir_all(&current).unwrap();
+
+        assert_eq!(
+            retire_legacy_cmake_root(&build, "posix-zenoh-linux-demo_bringup", &current),
+            Some(old.clone())
+        );
+        assert!(!old.join("CMakeLists.txt").exists() && !old.join("cmake").exists());
+        assert_eq!(
+            retire_legacy_cmake_root(&build, "posix-zenoh-linux-demo_bringup-b", &current),
+            None
+        );
+        assert!(
+            other.join("CMakeLists.txt").is_file(),
+            "another image's root stays"
         );
     }
 
@@ -13594,50 +13638,6 @@ mod per_image_configure_tests {
             cmake_configuration_key("freertos", &image(&[], None), &a),
             cmake_configuration_key("freertos", &image(&[], None), Path::new("/nonexistent"))
         );
-    }
-
-    /// Issue 2702 (ruled option 2) -- an image whose own capability axes differ
-    /// from `[system]`'s gets a cmake configure of its own, and the build names
-    /// it as the configure's feature image. An image that states none, or
-    /// states `[system]`'s, keeps the shared directory; two images with the
-    /// same own axes share one.
-    #[test]
-    fn an_images_own_capability_axes_are_configuration() {
-        use nros_orchestration_ir::node_interfaces::NodeInterfaces;
-        let t = tempfile::tempdir().expect("tempdir");
-        std::fs::write(
-            t.path().join("system.toml"),
-            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\nfeatures = [\"safety\"]\n",
-        )
-        .unwrap();
-        let bd = t.path();
-        let plain = image(&[], None);
-        let base = cmake_configuration_key("native", &plain, bd);
-        assert!(!base.contains("-cfg"), "{base}");
-        assert_eq!(image_own_features(&plain, bd), None);
-
-        // Restating `[system]`'s axes, or the switch's default, is no change.
-        let mut same = image(&[], None);
-        same.features = vec!["safety".to_string()];
-        assert_eq!(cmake_configuration_key("native", &same, bd), base);
-        let mut stock = image(&[], None);
-        stock.node_interfaces = Some(NodeInterfaces::Stock);
-        assert_eq!(cmake_configuration_key("native", &stock, bd), base);
-
-        let mut none = image(&[], None);
-        none.node_interfaces = Some(NodeInterfaces::None);
-        let own = cmake_configuration_key("native", &none, bd);
-        assert!(own.starts_with(&format!("{base}-cfg")), "{own}");
-        assert!(image_own_features(&none, bd).is_some());
-        let mut none2 = image(&[], None);
-        none2.node_interfaces = Some(NodeInterfaces::None);
-        assert_eq!(cmake_configuration_key("native", &none2, bd), own);
-
-        let mut tls = image(&[], None);
-        tls.features = vec!["link-tls".to_string()];
-        let t_key = cmake_configuration_key("native", &tls, bd);
-        assert!(t_key.starts_with(&format!("{base}-cfg")), "{t_key}");
-        assert_ne!(t_key, own);
     }
 
     /// A declared transport's IMPLICATION is configuration too: a serial image
@@ -13729,10 +13729,9 @@ mod per_image_configure_tests {
                 Some(Ok(nros_lang::Language::Rust))
             );
             let driver = plan::driver_for_board(platform, d.entry_kind, non_rust);
-            let Some(want) = driver
-                .ok()
-                .and_then(|dr| cmake_build_dir_for(dr, platform, &img, bringup_name, &bd))
-            else {
+            let Some(want) = driver.ok().and_then(|dr| {
+                cmake_build_dir_for(dr, platform, &img, bringup_name, image_id, &bd)
+            }) else {
                 continue;
             };
             checked += 1;

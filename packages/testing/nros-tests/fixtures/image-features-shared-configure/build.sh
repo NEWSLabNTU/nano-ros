@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Issue 2702 (ruled option 2) -- two C images on one `linux` coordinate, one
-# of which states `node_interfaces = "none"`. That image gets a cmake configure
-# of its own, built and sized with its own capability axes; the other keeps
-# the shared one. The test reads what each configure recorded.
+# Issue 2702 (ruled 2026-11-22) -- two C images on `linux`, one of which states
+# `node_interfaces = "none"`. Each gets a cmake configure of its own, built and
+# sized with its own capability axes. The test reads what each recorded.
 #
 #   build.sh <out-dir>
 #
