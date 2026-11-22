@@ -1,0 +1,1 @@
+A build that overflows a memory region now says what the image reserves there and which knob to lower. Every build keeps the native tool's output in `<tool>.log` in the image's build directory, and the book says where.

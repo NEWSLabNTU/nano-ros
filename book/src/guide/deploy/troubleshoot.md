@@ -153,6 +153,33 @@ let sub = node.create_subscription_sized::<MyMsg, 4096>(/* … */)?;
 - **A changed knob has no effect.** An old CMake cache holds the previous
   value. Remove the image's directory under `build/` and build again.
 
+### The link fails: a region overflowed
+
+**Symptom:** the build stops at the link with the linker's line, for
+example on a nucleo-f767zi-zephyr image whose heap was raised:
+
+```text
+region `RAM' overflowed by 122432 bytes
+```
+
+`nros build` ends with the command that failed and, after it, what the
+image reserves in that region:
+
+```text
+nros build: image `talker_node_bringup:zephyr` does not fit its memory: the link overflowed `RAM` by 122,432 B.
+  What the image reserves:
+    main stack  33,368 B, CONFIG_MAIN_STACK_SIZE
+      measured under the stack-floor row `talker/rust/zenoh@nucleo-f767zi-zephyr`: static walk 69,648 B (an upper bound through an indirect call, not a size), measured peak 28,888 B, margin 10 %
+    heap        393,216 B, `[image.zephyr.knobs.memory] heap_bytes`
+  To make room, lower what the image adds (a pool or cache knob it raised), the heap, or the main stack: `CONFIG_MAIN_STACK_SIZE` in a conf file `[image.zephyr] os_config` names.
+```
+
+**Fix:** give back at least the bytes it names. Lower a knob you raised (a
+pool, a cache, the heap) before the main stack: the stack-floor row is the
+stack the image was measured to need. The whole tool output is in the
+image's build log; [What `nros build` produces](../../reference/build-outputs.md#the-builds-log)
+says where.
+
 ## Rust and C FFI issues
 
 ### Subscriber callback crashes
