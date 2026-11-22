@@ -82,9 +82,8 @@ Open:
 - The 64 KiB app stack has not been re-measured on a networked image: the
   threadx-linux network cells need the veth bridge. Their output now carries
   the `nros: stack peak` lines to read it from.
-- `nros build`'s stack-floor walk does not reach a host image: the plan has
-  no cross triple, so it is passed over before the platform lists are read,
-  and threadx-linux is not yet on `STATING_PLATFORMS`. Walking a host image
-  also means walking frames in the host's libc.
+- `nros build`'s stack-floor walk does not reach a host image, and
+  threadx-linux stays off `STATING_PLATFORMS`:
+  [issue 2834](2834-host-image-stack-floor-walk.md).
 - Issue 2732's pool question stands, now with stacks that are used.
 

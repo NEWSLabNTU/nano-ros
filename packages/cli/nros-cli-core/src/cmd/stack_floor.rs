@@ -37,15 +37,15 @@ use crate::{
 /// The file a board's build script writes; `nros_board_common::stack_stated::FILE`.
 pub const STATED_FILE: &str = "nros-stack-stated.json";
 
-/// Platforms whose threads do not run on a stack the build sizes, each with
-/// the reason its images are reported as not checked. ThreadX's Linux port
-/// creates every thread with `pthread_create(.., NULL, ..)`, so the thread
-/// runs on the host's default pthread stack and the stack handed to
-/// `tx_thread_create` is never used: a walk checked against it would pass
-/// for a stack nothing runs on.
+/// Platforms whose stated stack the walk cannot check yet, each with the
+/// reason its images are reported as not checked. ThreadX's Linux port runs
+/// each thread on its ThreadX stack since issue 2800, and its board states
+/// it, but a host image's deepest paths run through the host libc, whose
+/// frames the walk has no sizes for, so a walk would read low.
+// Issue 2834 -- walking a host image (and the plan skip for no cross triple).
 const UNCHECKABLE_PLATFORMS: &[(&str, &str)] = &[(
     "threadx-linux",
-    "the Linux port runs each thread on a host pthread stack, which the build does not size",
+    "a host image's stack runs through the host libc, whose frames the walk does not size",
 )];
 
 /// Platforms whose boards state a stack on the cargo road. A platform joins
@@ -825,10 +825,10 @@ mod tests {
             "{:?}",
             v[3].stack_floor
         );
-        // ThreadX on Linux runs its threads on host pthread stacks.
+        // ThreadX on Linux: the host libc's frames are not walked.
         assert!(
             matches!(&v[4].stack_floor, Some(StackFloorStep::NotChecked(w))
-                if w.contains("host pthread stack")),
+                if w.contains("host libc")),
             "{:?}",
             v[4].stack_floor
         );

@@ -341,9 +341,12 @@ variants of each unit. So the walk's flags do not thrash a shared dir.
   floor or a stated reason it has none. Bare metal is DONE (2026-11-14,
   #3757); NuttX is DONE (2026-11-21); ThreadX on riscv64 walks (2026-11-21, PR
   #4531, for issue 2514). ThreadX on Linux is reported
-  not checked, with its reason (2026-11-22): the port runs each thread on a
-  host pthread stack the build does not size
-  ([issue 2800](../issues/2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
+  not checked, with its reason (2026-11-22). Its threads now run on their
+  stated stacks
+  ([issue 2800](../issues/2800-threadx-linux-threads-run-on-host-pthread-stacks.md)),
+  but a host image's paths run through the host libc, whose frames the walk
+  does not size
+  ([issue 2834](../issues/2834-host-image-stack-floor-walk.md)).
 
 On the cargo road, ThreadX, NuttX and bare metal stated no stack, so W5
 reports their images as not checked. Each joins when its board build script
@@ -1579,3 +1582,4 @@ Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when
 | [#2550](../issues/2550-stack-walk-order-dependent-under-cycles.md) | The walk's depth depends on callee order under the large SCC. W9c measures the band and W9d gates on its top. |
 | [#2688](../issues/archived/2688-stack-floor-drift-host-repro.md) | One tree walks differently in CI and on a host. W9c records the environment with each row. |
 | [#2693](../issues/2693-stack-floor-check-off-on-tiarmclang.md) | The check is OFF for TI Arm Clang images. W9e; its home stays phase-575 W3. |
+| [#2834](../issues/2834-host-image-stack-floor-walk.md) | The walk never reaches a host image, and would not size the host libc's frames if it did, so threadx-linux states a stack nothing checks. |
