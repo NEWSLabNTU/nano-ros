@@ -271,6 +271,16 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   - **Fix found on the way.** The workspace image parser took the FIRST
     config token prefixing an image name, so `clock_sntp` swallowed
     `clock_sntp_resync`. It now takes the longest.
+- **Follow-up (2026-11-23, issue 2846).** The thread shipped with a fixed
+  2,048 B stack, and a consumer measured 7,024 B around `sntp_simple()` on a
+  64-bit Arm Zephyr 3.7 image (4,096 B overflowed). The stack is now the knob
+  `clock.sntp_resync_stack_bytes` (default 8,192 B: that peak plus the
+  stack-floor margin, rounded up), and the thread is the stack-floor walk's
+  `SNTP_RESYNC` role, rooted at its entry and checked against the knob
+  (unmeasured, so it warns). The interval is documented as the image's
+  monotonic, on a simulator guest, time (RFC-0141 D5, amended). Open in 2846:
+  the role's static walk on a 64-bit and a 32-bit board, a 32-bit run-time
+  peak, and `[[drift]]` rows to hold them.
 
 ### W4 — Board guidance and the per-backend stamp table
 

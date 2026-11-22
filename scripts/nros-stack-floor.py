@@ -3102,7 +3102,10 @@ def parse_indirect(s: str | None) -> tuple[str, int | None]:
 # (W4's CHECK) never refuses an unmeasured image — its static floor can be off
 # by more than 12 KB either way — and refuses a measured one only.
 
-ROLES = ("OPEN", "SPIN")
+# SNTP_RESYNC: Zephyr's SNTP re-sync thread, a stack of its own
+# (`clock.sntp_resync_stack_bytes`), walked from its entry when the image
+# starts it.
+ROLES = ("OPEN", "SPIN", "SNTP_RESYNC")
 ISSUE_ID = re.compile(r"^\d{4}$")
 # `frame` is a known kind only so its refusal names the replacement (phase-557 W9)
 POLICY_KINDS = ("cut", "external", "frame")
@@ -4054,7 +4057,20 @@ def measured_only(args: argparse.Namespace) -> int:
     return rc
 
 
+def apply_role_knobs(args: argparse.Namespace) -> None:
+    """`--role-knob ROLE=TEXT`: what raises one role's stack, for a thread
+    whose stack is not the one `--stack-knob` names (Zephyr's SNTP re-sync
+    thread, sized by its own knob). Same `{bytes}` / `{kb}` as --stack-knob."""
+    for spec in getattr(args, "role_knob", None) or []:
+        role, _, text = spec.partition("=")
+        if not role or not text:
+            raise SystemExit(f"--role-knob `{spec}`: write ROLE=<what raises it>")
+        args.role_knobs = dict(getattr(args, "role_knobs", None) or {})
+        args.role_knobs[role.upper()] = text
+
+
 def run(args: argparse.Namespace) -> int:
+    apply_role_knobs(args)
     stream = args.stated_by_build or args.cargo_messages
     if args.stated_by_build and args.cargo_messages:
         raise SystemExit("nros-stack-floor: give --stated-by-build or --cargo-messages, not both "
@@ -5281,6 +5297,17 @@ def self_test() -> int:
           rc == 0 and raises and raises[0]["value"] == 31)
     rc, lines, _ = check_stacks({"OPEN": {"floor": 100, "measured": True}}, {"OPEN": 65536}, "K")
     check("check: a stack at or above the floor passes", rc == 0 and "holds" in lines[0])
+    # A role with a stack of its own (Zephyr's SNTP re-sync thread) names its
+    # own knob; every other role keeps --stack-knob.
+    rk = argparse.Namespace(role_knob=["sntp_resync=R={bytes}"])
+    apply_role_knobs(rk)
+    rc, lines, _ = check_stacks({"OPEN": {"floor": 100, "measured": False},
+                                 "SNTP_RESYNC": {"floor": 9000, "measured": False}},
+                                {"OPEN": 64, "SNTP_RESYNC": 8192}, "M={bytes}",
+                                knobs=rk.role_knobs)
+    check("check: --role-knob names that role's knob, --stack-knob the rest",
+          rc == 0 and any("R=9000" in ln for ln in lines)
+          and any("M=100" in ln for ln in lines))
     # issue 2784 -- one role per sched task, from the entry's priority plan.
     import tempfile as _tf_st
     with _tf_st.TemporaryDirectory() as td:
@@ -6158,6 +6185,9 @@ def main() -> int:
                     help="the board's default sched-task stack, in bytes")
     ap.add_argument("--task-knob", help="what raises the board's default task stack "
                     "(`{bytes}` / `{kb}` as --stack-knob)")
+    ap.add_argument("--role-knob", action="append",
+                    help="ROLE=<text>: what raises that role's stack, when it is not "
+                    "--stack-knob (`{bytes}` / `{kb}` as --stack-knob)")
     ap.add_argument("--check-stack", action="append",
                     help="ROLE=<bytes>: the stated stack to CHECK (a measured image whose floor "
                     "exceeds it fails; an unmeasured one warns)")

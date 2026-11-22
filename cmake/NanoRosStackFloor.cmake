@@ -793,6 +793,23 @@ function(nros_stack_floor_zephyr_check)
         BITCODE "${CMAKE_BINARY_DIR}/rust/target/${_t}/*/deps"
                 "${CMAKE_BINARY_DIR}/nros-rust*/${_t}/*/deps"
                 "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_t}/*/deps")
+    # The SNTP re-sync thread (zephyr/nros_platform_zephyr_shims.c) is a stack
+    # of its own, defined exactly when CONFIG_SNTP is on and the interval is
+    # above 0, and sized by `clock.sntp_resync_stack_bytes`: its own role,
+    # walked from the thread's entry and checked against that knob. Its depth
+    # is mostly Zephyr's resolver and socket path, which the module's C is
+    # walked through like any other.
+    if(CONFIG_SNTP AND DEFINED CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS
+       AND CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS GREATER 0
+       AND DEFINED CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES)
+        list(APPEND _cmd
+            --role "SNTP_RESYNC=nros_zephyr_sntp_resync_loop"
+            --check-stack "SNTP_RESYNC=${CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES}"
+            --role-knob "SNTP_RESYNC=[image.<id>.knobs.clock] sntp_resync_stack_bytes = {bytes}")
+        message(STATUS "nano-ros: stack floor also checks SNTP_RESYNC from "
+            "nros_zephyr_sntp_resync_loop against "
+            "CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES=${CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES}")
+    endif()
     # The script is written at the END of the configure (issue 2784): the
     # module configures before the application, so the entry's priority plan,
     # which names the sched tasks, does not exist yet here. The command and its

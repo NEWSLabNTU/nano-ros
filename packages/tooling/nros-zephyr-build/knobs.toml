@@ -227,7 +227,36 @@ For the sntp source: above 0, the image queries sntp.server again on this
 interval and re-installs the wall-clock offset, so stamps follow a server
 whose time steps or a tick that drifts. 0 queries once, at boot. A query
 that fails keeps the installed offset. The re-query runs on its own thread
-and only while sntp is a source the image's clock policy admits.
+(sized by clock.sntp_resync_stack_bytes) and only while sntp is a source the
+image's clock policy admits.
+
+The interval is measured on the image's own monotonic clock. On hardware
+that is real time; on a simulator it is GUEST time, so a simulator that runs
+faster than real time (an FVP fast-forwarding through idle time, for one)
+re-queries correspondingly more often in real time, and one that runs slower
+less often.
+'''
+
+[[knob]]
+key = "clock.sntp_resync_stack_bytes"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Stack of the SNTP re-sync thread (bytes)"
+kconfig_attrs = [
+    "default 8192",
+    "range 1024 1048576",
+]
+help = '''
+Bytes of stack for the thread clock.sntp_resync_interval_ms starts. It runs
+Zephyr's SNTP query (socket, DNS lookup and the exchange), whose depth is
+set by Zephyr's network stack, not by nano-ros. Measured: a 7,024 B peak on
+a 64-bit Arm Zephyr 3.7 image (thread analyzer), where 4,096 B overflowed.
+The default, 8,192 B, is that peak plus the stack-floor margin (10 %,
+7,727 B) rounded up to a power of two. 32-bit targets are not measured yet;
+do not set it below the measured peak on a 64-bit target. The thread exists only
+when the interval is above 0, so this costs nothing otherwise. The build's
+stack-floor walk checks this stack where it walks the image.
 '''
 
 [[knob]]
