@@ -730,16 +730,99 @@ impl<'cfg> SessionSpec<'cfg> {
 ///
 /// The C API creates a session in `rclc_support_init()` before the
 /// executor. `Borrowed` lets the executor use that session without owning it.
+///
+/// Phase-573 W3 (RFC-0108 D9) -- an owned session that is SHARED (the
+/// per-sched-task model: [`Executor::session_handle`]) must not live inline in
+/// its owner. A pointer into the owner is a child of the owner's reference, so
+/// the owner's next `&mut self` write disables it and every borrower reads
+/// through a dead pointer. So under `alloc` the owner puts its session in its
+/// own allocation (`Heap`), and owner and borrowers reach it through the same
+/// raw pointer, as equals. An inline session is never shared: `Owned` is the
+/// store when that allocation fails (and then [`Executor::session_handle`]
+/// refuses), and without `alloc`, where the shared model is the C++
+/// `open_with_session_handle_in` path and the session stays inline until the
+/// session can be carved from the executor's backing (issue 2845).
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum SessionStore {
+    /// The owner's session in its own allocation, from `try_box`.
+    #[cfg(feature = "alloc")]
+    Heap(core::ptr::NonNull<session::ConcreteSession>),
     Owned(session::ConcreteSession),
     Borrowed(*mut session::ConcreteSession),
+}
+
+impl SessionStore {
+    /// The store for a session this executor owns.
+    pub(crate) fn owned(session: session::ConcreteSession) -> Self {
+        #[cfg(feature = "alloc")]
+        {
+            Self::owned_via(session, nros_rmw::fallible::try_box)
+        }
+        #[cfg(not(feature = "alloc"))]
+        {
+            SessionStore::Owned(session)
+        }
+    }
+
+    /// [`owned`](Self::owned) with the allocation as a parameter, so a test can
+    /// fail it. A failed allocation keeps the session inline, which is never
+    /// shared, rather than reaching the out-of-memory handler (issue 1551).
+    #[cfg(feature = "alloc")]
+    pub(crate) fn owned_via(
+        session: session::ConcreteSession,
+        alloc: impl FnOnce(
+            session::ConcreteSession,
+        ) -> Result<
+            alloc::boxed::Box<session::ConcreteSession>,
+            session::ConcreteSession,
+        >,
+    ) -> Self {
+        match alloc(session) {
+            Ok(b) => SessionStore::Heap(core::ptr::NonNull::from(alloc::boxed::Box::leak(b))),
+            Err(session) => SessionStore::Owned(session),
+        }
+    }
+
+    /// Whether this executor owns the session (closes it when it drops).
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) fn is_owned(&self) -> bool {
+        !matches!(self, SessionStore::Borrowed(_))
+    }
+
+    /// The session as a pointer another executor may share, or `None` for a
+    /// session held inline under `alloc` (see the type's doc).
+    fn shareable_ptr(&mut self) -> Option<*mut session::ConcreteSession> {
+        match self {
+            #[cfg(feature = "alloc")]
+            SessionStore::Heap(p) => Some(p.as_ptr()),
+            SessionStore::Borrowed(p) => Some(*p),
+            #[cfg(feature = "alloc")]
+            SessionStore::Owned(_) => None,
+            #[cfg(not(feature = "alloc"))]
+            SessionStore::Owned(s) => Some(s as *mut session::ConcreteSession),
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Drop for SessionStore {
+    fn drop(&mut self) {
+        if let SessionStore::Heap(p) = *self {
+            // SAFETY: `p` came from `Box::leak` in `owned_via` and is freed
+            // only here, when its owner drops; borrowers outlive no owner
+            // (`session_handle`'s contract).
+            drop(unsafe { alloc::boxed::Box::from_raw(p.as_ptr()) });
+        }
+    }
 }
 
 impl core::ops::Deref for SessionStore {
     type Target = session::ConcreteSession;
     fn deref(&self) -> &session::ConcreteSession {
         match self {
+            // SAFETY: the allocation lives until this store drops.
+            #[cfg(feature = "alloc")]
+            SessionStore::Heap(p) => unsafe { p.as_ref() },
             SessionStore::Owned(s) => s,
             SessionStore::Borrowed(ptr) => unsafe { &**ptr },
         }
@@ -749,6 +832,9 @@ impl core::ops::Deref for SessionStore {
 impl core::ops::DerefMut for SessionStore {
     fn deref_mut(&mut self) -> &mut session::ConcreteSession {
         match self {
+            // SAFETY: as `deref`.
+            #[cfg(feature = "alloc")]
+            SessionStore::Heap(p) => unsafe { p.as_mut() },
             SessionStore::Owned(s) => s,
             SessionStore::Borrowed(ptr) => unsafe { &mut **ptr },
         }
@@ -2906,7 +2992,7 @@ impl<'s> Executor<'s> {
         sizing: super::storage::ExecutorSizing,
     ) -> Self {
         let slices = unsafe { super::storage::carve(backing, sizing) };
-        Self::assemble(SessionStore::Owned(session), slices)
+        Self::assemble(SessionStore::owned(session), slices)
     }
 
     /// Create a borrowing executor over caller-supplied `backing`, sized by
@@ -3180,30 +3266,36 @@ impl<'s> Executor<'s> {
         exec
     }
 
+    // Phase-573 W3 -- the `None` case below.
     /// Raw pointer to this executor's RMW session, for the per-sched-task model:
     /// the boot task opens the one session via [`Executor::open`] (the RMW
     /// session is a process-wide singleton — opening twice fails), then hands
     /// this pointer to each spawned sched task's
     /// [`Executor::open_with_session`]. The boot task's executor owns the
     /// session and outlives every borrower, so the pointer stays valid for the
-    /// program's life. Works for both `Owned` and `Borrowed` stores.
+    /// program's life.
+    ///
+    /// `None` when the session may not be shared: an owned session held inline
+    /// because its own allocation failed. A pointer into the
+    /// owner would be disabled by the owner's next write, so a sched task gets
+    /// no session rather than a dangling one.
     ///
     /// # Safety
     /// The returned pointer aliases `self.session`. Callers must keep `self`
-    /// alive (not moved/dropped) for as long as any sched task executor uses the
+    /// alive (not dropped) for as long as any sched task executor uses the
     /// pointer, and must only touch the session through executor spin calls
     /// (the RMW backend serializes concurrent access through its own locks).
-    pub fn session_ptr(&mut self) -> *mut session::ConcreteSession {
-        let ptr = &mut *self.session as *mut session::ConcreteSession;
+    pub fn session_ptr(&mut self) -> Option<*mut session::ConcreteSession> {
+        let ptr = self.session.shareable_ptr()?;
         // phase-436 — the owner of an OWNED session claimed its wake fan-out
         // while this executor value could still move (inside `open*`). The
         // address handed out here is the one every sched task is opened over, so
         // the entry is keyed by it from now on.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-        if let (SessionStore::Owned(_), Some(m)) = (&self.session, self.wake_membership) {
+        if let (true, Some(m)) = (self.session.is_owned(), self.wake_membership) {
             m.fanout().rekey(ptr as *mut core::ffi::c_void);
         }
-        ptr
+        Some(ptr)
     }
 
     /// Opaque, `Send` form of [`session_ptr`](Self::session_ptr) — the per-sched-task
@@ -3212,9 +3304,10 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// Same contract as [`session_ptr`](Self::session_ptr): `self` (the session
-    /// owner) must outlive every executor built from the handle.
-    pub fn session_handle(&mut self) -> SessionHandle {
-        SessionHandle(self.session_ptr())
+    /// owner) must outlive every executor built from the handle. `None` where
+    /// `session_ptr` is.
+    pub fn session_handle(&mut self) -> Option<SessionHandle> {
+        self.session_ptr().map(SessionHandle)
     }
 
     /// Open an [`Executor`] over the session a [`SessionHandle`] refers to (the
@@ -6423,7 +6516,9 @@ impl<'s> Executor<'s> {
             return;
         }
         let ctx = self.wake_ctx_ptr();
-        let key = self.session_ptr() as *mut core::ffi::c_void;
+        // The fan-out key is the session's ADDRESS, needed whether or not the
+        // session may be shared; nothing is read through it.
+        let key = &*self.session as *const session::ConcreteSession as *mut core::ffi::c_void;
         let supports = self.session.supports_wake_callback();
         let fanout = match super::wake_fanout::find(key) {
             Some(f) => Some(f),
@@ -6535,7 +6630,7 @@ impl<'s> Executor<'s> {
                 let fanout = m.fanout();
                 let current = m.is_current();
                 m.leave(nros_platform_api::yield_now);
-                let owned = matches!(self.session, SessionStore::Owned(_));
+                let owned = self.session.is_owned();
                 if current && (owned || fanout.member_count() == 0) {
                     // SAFETY: as below; the entry is released only after the
                     // backend can no longer start a callback on it.
@@ -18325,7 +18420,7 @@ mod p274_w1_sched_task_executor_tests {
     #[test]
     fn a_session_pointer_survives_its_owner_spinning() {
         let mut primary = alloc::boxed::Box::new(Executor::from_session(MockSession::new()));
-        let handle = primary.session_handle();
+        let handle = primary.session_handle().expect("a heap session is shared");
         // SAFETY: `primary` outlives `borrowed` and is not moved (boxed).
         let mut borrowed = unsafe { Executor::open_with_session_handle(handle) };
         for _ in 0..2 {
@@ -18335,6 +18430,27 @@ mod p274_w1_sched_task_executor_tests {
         drop(borrowed);
     }
 
+    /// Phase-573 W3 -- when the owned session's own allocation fails, it is
+    /// held inline, and an inline session is never shared: the handle is
+    /// refused rather than handed out as a pointer the owner's next write
+    /// would disable.
+    #[test]
+    fn an_inline_session_is_never_shared() {
+        let mut primary = alloc::boxed::Box::new(Executor::from_session(MockSession::new()));
+        assert!(
+            primary.session_handle().is_some(),
+            "a heap session is shared"
+        );
+        primary.session = super::SessionStore::owned_via(MockSession::new(), Err);
+        assert!(
+            primary.session_handle().is_none(),
+            "an inline session is refused"
+        );
+        assert!(primary.session_ptr().is_none());
+        // The owner itself still works over its inline session.
+        let _ = primary.spin_once(core::time::Duration::ZERO);
+    }
+
     #[test]
     fn session_handle_borrowed_executor_shares_session_ptr() {
         // Open the primary executor (session owner).
@@ -18342,10 +18458,10 @@ mod p274_w1_sched_task_executor_tests {
         let mut primary = Executor::from_session(session);
 
         // Record the primary's session pointer for later comparison.
-        let primary_session_ptr = primary.session_ptr();
+        let primary_session_ptr = primary.session_ptr().expect("shared");
 
         // Get the opaque session handle (into_raw for C FFI; here we keep it raw).
-        let handle = primary.session_handle();
+        let handle = primary.session_handle().expect("a heap session is shared");
 
         // Open a second executor over the SAME session (Borrowed — does not own it).
         // SAFETY: `primary` (the session owner) outlives `borrowed` in this scope.
@@ -18353,12 +18469,12 @@ mod p274_w1_sched_task_executor_tests {
 
         // Both executors must expose the same session pointer.
         assert_eq!(
-            primary.session_ptr(),
-            borrowed.session_ptr(),
+            primary.session_ptr().expect("shared"),
+            borrowed.session_ptr().expect("shared"),
             "borrowed executor must share the primary's session pointer"
         );
         assert_eq!(
-            borrowed.session_ptr(),
+            borrowed.session_ptr().expect("shared"),
             primary_session_ptr,
             "session pointer must be stable across session_handle / open_with_session_handle"
         );
@@ -18368,7 +18484,7 @@ mod p274_w1_sched_task_executor_tests {
 
         // Primary still exposes the same session pointer (session was NOT closed by drop).
         assert_eq!(
-            primary.session_ptr(),
+            primary.session_ptr().expect("shared"),
             primary_session_ptr,
             "primary session pointer must be unchanged after dropping the borrowed executor"
         );
@@ -18386,7 +18502,7 @@ mod p274_w1_sched_task_executor_tests {
     fn an_oversized_group_name_is_refused_and_fails_closed() {
         let session = MockSession::new();
         let mut primary = Executor::from_session(session);
-        let handle = primary.session_handle();
+        let handle = primary.session_handle().expect("a heap session is shared");
         // SAFETY: primary outlives borrowed.
         let mut borrowed = unsafe { Executor::open_with_session_handle(handle) };
 
@@ -18413,7 +18529,7 @@ mod p274_w1_sched_task_executor_tests {
     fn set_active_groups_gates_group_active() {
         let session = MockSession::new();
         let mut primary = Executor::from_session(session);
-        let handle = primary.session_handle();
+        let handle = primary.session_handle().expect("a heap session is shared");
 
         // SAFETY: primary outlives borrowed.
         let mut borrowed = unsafe { Executor::open_with_session_handle(handle) };
@@ -18466,9 +18582,9 @@ mod p274_w1_sched_task_executor_tests {
     fn session_handle_into_raw_from_raw_round_trip() {
         let session = MockSession::new();
         let mut primary = Executor::from_session(session);
-        let session_ptr = primary.session_ptr();
+        let session_ptr = primary.session_ptr().expect("shared");
 
-        let handle = primary.session_handle();
+        let handle = primary.session_handle().expect("a heap session is shared");
         let raw = handle.into_raw();
 
         // into_raw must return a non-null pointer matching the session address.
@@ -18480,7 +18596,7 @@ mod p274_w1_sched_task_executor_tests {
         let handle2 = unsafe { crate::executor::SessionHandle::from_raw(raw) };
         let mut borrowed = unsafe { Executor::open_with_session_handle(handle2) };
         assert_eq!(
-            borrowed.session_ptr(),
+            borrowed.session_ptr().expect("shared"),
             session_ptr,
             "from_raw reconstructed handle must open executor on the same session"
         );

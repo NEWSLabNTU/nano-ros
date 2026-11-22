@@ -356,7 +356,9 @@ fn open_sched_tasks(name: &str, vtable: &'static NrosRmwVtable) -> Vec<Box<Execu
     let low = Box::new(Executor::open(&config).expect("Executor::open over the stub"));
     let mut sched_tasks = vec![low];
     for _ in 1..SCHED_TASKS {
-        let handle = sched_tasks[0].session_handle();
+        let handle = sched_tasks[0]
+            .session_handle()
+            .expect("the owner's session is shared");
         // SAFETY: the low sched task opened the session, is boxed (so it does not
         // move), and is dropped LAST (first in the vector; `drop_sched_tasks` drops
         // in reverse).

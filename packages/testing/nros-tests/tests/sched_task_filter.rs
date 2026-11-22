@@ -141,7 +141,10 @@ fn sched_task_filter_gates_off_sched_task_callbacks_over_shared_session(
     let mut boot_rt = ExecutorNodeRuntime::from_executor(boot);
 
     // Second executor borrows the SAME session (per-sched-task model).
-    let sptr = boot_rt.executor_mut().session_ptr();
+    let sptr = boot_rt
+        .executor_mut()
+        .session_ptr()
+        .expect("the owner's session is shared");
     // SAFETY: `sptr` aliases `boot_rt`'s session, which outlives `low_rt`
     // (both live to the end of this test); access is serialized by the
     // backend.

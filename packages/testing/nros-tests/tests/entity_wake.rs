@@ -212,7 +212,13 @@ fn a_shared_session_member_is_not_woken_by_another_members_arrivals(zenohd_uniqu
 
     // SAFETY: `owner` outlives `other` (declared earlier, dropped later) and is
     // not moved while `other` exists.
-    let mut other = unsafe { Executor::open_with_session_handle(owner.session_handle()) };
+    let mut other = unsafe {
+        Executor::open_with_session_handle(
+            owner
+                .session_handle()
+                .expect("the owner's session is shared"),
+        )
+    };
     let xnode = other
         .node_builder("entity_wake_other")
         .build()
@@ -927,7 +933,13 @@ fn an_idle_member_parks_through_kilohertz_arrivals_for_another(zenohd_unique: Ze
     subscribe(&mut owner, onode, "/entity_wake/khz");
     // SAFETY: `owner` outlives `other` (declared earlier, dropped later) and is
     // not moved while `other` exists.
-    let mut other = unsafe { Executor::open_with_session_handle(owner.session_handle()) };
+    let mut other = unsafe {
+        Executor::open_with_session_handle(
+            owner
+                .session_handle()
+                .expect("the owner's session is shared"),
+        )
+    };
     let xnode = other
         .node_builder("entity_wake_khz_idle")
         .build()
