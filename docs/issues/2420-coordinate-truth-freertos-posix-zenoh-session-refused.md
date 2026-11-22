@@ -157,3 +157,22 @@ they pass no deadline and the open is one attempt, as on main. `-1`
 close this is either the image's own `connect_timeout_ms` (a retry window,
 which 2389 then bounds correctly) or a router-readiness edge in the
 harness. The next recurrence's output, now printed, should say which.
+
+## Not reproduced in 50 runs (2026-11-22)
+
+`a_rows_entry_registers_its_nodes_at_runtime`, run 50 times in a row on main
+(`332dbcd998`) with only the `workspace-c-freertos-posix-zenoh` row built, so
+every run started that row's baked router on 11130 and judged that row alone.
+All 50 passed. The entry registered in about 110 ms each time, against its
+10 s `BAKED_RUN_BUDGET`, on a host at load 15 to 23 of 24 cores. That rules
+out a failure at any measurable rate in isolation. It does not rule out the
+start race the reading above names, which needs the router's start and the
+image's single dial to meet; a loaded lane is where that happened both times.
+No fix is made without a failing run to read. The next recurrence prints the
+entry's own output tail, which is what decides between the two remedies.
+
+The `threadx-linux` hang seen in the same test on 2026-11-22 was a different
+failure, and not this issue's. That entry reached its first spin and never
+registered, and it came from a PR's own wait change: the same steps on that
+PR's base passed.
+
