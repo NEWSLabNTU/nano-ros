@@ -210,6 +210,24 @@ sntp.timeout_ms, before the source counts as not answering.
 '''
 
 [[knob]]
+key = "clock.sntp_resync_interval_ms"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Re-query the SNTP server every (ms), 0 for once at boot"
+kconfig_attrs = [
+    "default 0",
+    "range 0 86400000",
+]
+help = '''
+For the sntp source: above 0, the image queries sntp.server again on this
+interval and re-installs the wall-clock offset, so stamps follow a server
+whose time steps or a tick that drifts. 0 queries once, at boot. A query
+that fails keeps the installed offset. The re-query runs on its own thread
+and only while sntp is a source the image's clock policy admits.
+'''
+
+[[knob]]
 key = "clock.source"
 scope = "image"
 class = "public"

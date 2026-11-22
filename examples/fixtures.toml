@@ -8063,6 +8063,32 @@ west_id = "zephyr/native_sim/native/64/workspace-rust-talker-clock-sntp-zenoh"
 skip_probe = true
 
 [[workspace_fixture]]
+id = "workspace-rust-zephyr-talker-clock-sntp-resync"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker_clock_sntp_resync"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-talker-clock-sntp-resync-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-talker-clock-sntp-resync-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-talker-clock-sntp-once"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker_clock_sntp_once"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-talker-clock-sntp-once-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-talker-clock-sntp-once-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
 id = "workspace-rust-zephyr-listener"
 platform = "zephyr"
 lang = "rust"

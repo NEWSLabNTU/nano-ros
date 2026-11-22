@@ -178,6 +178,16 @@ class = "config"
 config = "ClockSntp"
 reason = "with `clock.source = \"sntp,platform\"`, an SNTP server that never answers, so a Zephyr image's boot waits out its attempts before the first spin — same messages, a boot-time wait the timers must not replay"
 
+[knob.NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS]
+class = "config"
+config = "ClockSntpResync"
+reason = "above 0 (500 ms in the cell) with `clock.source = \"sntp,platform\"` and a server that answers: the image re-queries the server on that interval, so its message stamps follow a step of the server's time — same messages, a wall clock that keeps tracking its source"
+
+[knob."NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS=0"]
+class = "config"
+config = "ClockSntpOnce"
+reason = "the default 0 against the same answering server: one exchange at boot, so a later step of the server's time never reaches the stamps — the negative case of ClockSntpResync, same messages"
+
 [knob.NROS_LINK_IP]
 class = "config"
 config = "Serial"
