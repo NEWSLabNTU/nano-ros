@@ -82,13 +82,14 @@ pub mod descriptor_text_observer;
 // Issue 2638 -- the reading of a launch parameter's baked text.
 pub mod launch_text;
 pub mod ops;
+pub mod request_size;
 pub mod server;
 pub mod typed;
 pub mod types;
 
 // Re-export main types
 pub use declared::{DeclaredParamMismatch, DeclaredParams};
-pub use launch_text::{LaunchTextError, LaunchTextType, launch_text_type};
+pub use launch_text::{LaunchTextError, LaunchTextType, launch_text_extent, launch_text_type};
 pub use ops::ParameterServerOps;
 pub use server::{
     DeclarationError, LegacyParameterBuilder, MAX_ON_SET_CALLBACKS, OnSetContext, OnSetParameterFn,

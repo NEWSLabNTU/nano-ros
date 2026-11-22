@@ -1425,6 +1425,61 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             stale,
             crate::orchestration::metadata_refresh::ProbeFailurePolicy::from_env()?,
         )?;
+        // Issue 2702 -- the parameter bounds this image's declarations need and
+        // nothing states, as one refusal naming every line to add, before any
+        // build script refuses them one at a time.
+        if let Some(r) = &resolved
+            && let (Some(inv), Some(model)) = (&r.inventory, &r.model)
+            && let Some(sizing) = inv.param_declarations().sizing()
+        {
+            let rows = cmake_image_rows(
+                descriptor,
+                nano_ros_root.as_deref(),
+                &image_id,
+                &image,
+                &bringup_dir,
+                crate::knob_catalog::load_written(&root).as_ref(),
+            )?;
+            let seeds: Vec<(String, String)> = model
+                .model
+                .structure
+                .nodes
+                .iter()
+                .flat_map(|(fqn, inst)| {
+                    nros_orchestration_ir::launch_param_text::baked_params(inst, fqn)
+                })
+                .collect();
+            let zenoh = image.rmw.as_deref().unwrap_or("zenoh") == "zenoh";
+            let stated = |e: &str| {
+                rows.get(e)
+                    .cloned()
+                    .or_else(|| std::env::var(e).ok())
+                    .and_then(|v| v.trim().parse::<usize>().ok())
+            };
+            let shapes: Vec<[usize; 9]> = inv
+                .param_declarations()
+                .service_shapes()
+                .unwrap_or_default()
+                .iter()
+                .map(|s| {
+                    [
+                        s.params,
+                        s.name_bytes,
+                        s.prefixes,
+                        s.prefix_bytes,
+                        s.strings,
+                        s.byte_arrays,
+                        s.bool_arrays,
+                        s.word_arrays,
+                        s.string_arrays,
+                    ]
+                })
+                .collect();
+            let missing = unstated_param_bounds(&sizing, &shapes, &seeds, zenoh, stated);
+            if !missing.is_empty() {
+                eyre::bail!("{}", param_bounds_refusal(&qual, &image_id, &missing));
+            }
+        }
         let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
         // The packages a cmake coordinate's generated root `add_subdirectory()`s
         // leave out: framework entries, and entries claimed by another board.
@@ -8351,6 +8406,168 @@ fn write_unresolved(
     })
 }
 
+/// One parameter-store bound a declared type needs: how the build reads it,
+/// where the image states it, and the crate's own size when nothing is
+/// declared (`nros-params`' `build.rs`).
+struct ParamBound {
+    /// The environment name `nros-params` reads it under (its `build.rs`).
+    env: &'static [&'static str],
+    /// `[image.<id>.knobs.<table>] <key>`.
+    table: &'static str,
+    key: &'static str,
+    /// The crate's size when nothing is declared, the floor's lower bound.
+    default: usize,
+    comment: &'static str,
+}
+
+const STRING_VALUE_BOUND: ParamBound = ParamBound {
+    env: &["NROS_PARAMS_MAX_STRING_VALUE_BYTES"],
+    table: "params",
+    key: "max_string_value_bytes",
+    default: 256,
+    comment: "the longest string value, in bytes",
+};
+const ARRAY_BOUND: ParamBound = ParamBound {
+    env: &["NROS_MAX_ARRAY_LEN"],
+    table: "params",
+    key: "max_array_len",
+    default: 32,
+    comment: "the longest bool, integer or double array",
+};
+const STRING_ARRAY_BOUND: ParamBound = ParamBound {
+    env: &["NROS_MAX_STRING_ARRAY_LEN"],
+    table: "params",
+    key: "max_string_array_len",
+    default: 32,
+    comment: "the longest string array",
+};
+const BYTE_ARRAY_BOUND: ParamBound = ParamBound {
+    env: &["NROS_PARAMS_MAX_BYTE_ARRAY_BYTES"],
+    table: "params",
+    key: "max_byte_array_bytes",
+    default: 256,
+    comment: "the longest byte array, in bytes",
+};
+const PARAM_INBOX_BOUND: ParamBound = ParamBound {
+    env: &["NROS_PARAM_SERVICE_INBOX_BYTES"],
+    table: "param",
+    key: "service_inbox_bytes",
+    default: 0,
+    comment: "the largest parameter request at the bounds above",
+};
+
+/// Issue 2702 (phase-446's rule, ruled 2026-11-22) -- the parameter-store
+/// bounds an image's declared parameters need and nothing states, refused
+/// HERE, before any build script, as one list of the lines to add.
+///
+/// phase-446: a string or array capacity is a fact about the image, never
+/// derived, so the build refuses when no rung states one. `nros-params` and
+/// `nros-rmw-zenoh` already refuse from their build scripts, but one knob at a
+/// time, inside cargo's output, naming the knob by its environment spelling and
+/// the image as `<id>`. This states every missing line at once, for the image
+/// by name, with a suggested value: the larger of the crate's own size and the
+/// longest seed the launch gives it, marked as a floor, because a seed is an
+/// initial value and a later `set_parameters` may write a longer one.
+///
+/// The inbox line is PRICED, not guessed: the largest request the image's
+/// nodes (`shapes`, the contract's `ParamServiceShape` rows) can produce at
+/// the bounds it will build with -- stated where stated, the suggested floor
+/// otherwise -- by `nros_params::request_size`, the formula nros-node checks a
+/// stated slot against. So the lines, pasted as printed, build.
+///
+/// `stated` is the value any rung states under a spelling (the image's rows,
+/// its board's, or the process environment); `-1` is "derive", not a size.
+fn unstated_param_bounds(
+    sizing: &crate::entity_inventory::ParamStoreSizing,
+    shapes: &[[usize; 9]],
+    seeds: &[(String, String)],
+    zenoh: bool,
+    stated: impl Fn(&str) -> Option<usize>,
+) -> Vec<(&'static ParamBound, usize)> {
+    use crate::entity_inventory::ParamCapacity;
+    let needed = |c: &ParamCapacity| matches!(c, ParamCapacity::NeededBy(_));
+    let (mut longest, mut array, mut string_array) = (0usize, 0usize, 0usize);
+    for (_, text) in seeds {
+        let Ok(ty) = nros_params::launch_text_type(text) else {
+            continue;
+        };
+        let Ok((n, l)) = nros_params::launch_text_extent(text) else {
+            continue;
+        };
+        longest = longest.max(l);
+        match ty {
+            nros_params::LaunchTextType::StringArray => string_array = string_array.max(n),
+            nros_params::LaunchTextType::BoolArray
+            | nros_params::LaunchTextType::IntegerArray
+            | nros_params::LaunchTextType::DoubleArray => array = array.max(n),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    let stated_of = |b: &ParamBound| b.env.iter().find_map(|e| stated(e));
+    // The bound the image builds with: stated, else (when needed) the floor
+    // this refusal suggests, else the crate's own size.
+    let mut bound = |b: &'static ParamBound, cap: &ParamCapacity, seed: usize| -> usize {
+        if let Some(v) = stated_of(b) {
+            return v;
+        }
+        let floor = b.default.max(seed);
+        if needed(cap) {
+            out.push((b, floor));
+        }
+        floor
+    };
+    let caps = nros_params::request_size::RequestCaps::clamped(
+        bound(&STRING_VALUE_BOUND, &sizing.string_value_len, longest),
+        bound(&ARRAY_BOUND, &sizing.array_len, array),
+        bound(&STRING_ARRAY_BOUND, &sizing.string_array_len, string_array),
+        bound(&BYTE_ARRAY_BOUND, &sizing.byte_array_len, 0),
+    );
+    // `nros-rmw-zenoh` cannot price the slot a string or array request lands
+    // in (only nros-params resolves the store's caps), so it refuses unless the
+    // size is stated.
+    if zenoh
+        && [
+            &sizing.string_value_len,
+            &sizing.array_len,
+            &sizing.string_array_len,
+            &sizing.byte_array_len,
+        ]
+        .into_iter()
+        .any(needed)
+        && stated_of(&PARAM_INBOX_BOUND).is_none()
+    {
+        out.push((
+            &PARAM_INBOX_BOUND,
+            nros_params::request_size::worst_request_slot(shapes, caps),
+        ));
+    }
+    out
+}
+
+/// The refusal text for [`unstated_param_bounds`]: the image, and a TOML block
+/// to paste into its bringup's `system.toml`.
+fn param_bounds_refusal(qual: &str, image_id: &str, missing: &[(&ParamBound, usize)]) -> String {
+    let mut text = format!(
+        "image `{qual}` declares string or array parameters, and its system.toml does not \
+         say how long they may be. Add these lines to the image (each value is a suggested \
+         floor; raise it to the longest value the image will ever be set to):\n"
+    );
+    let mut table = "";
+    for (b, v) in missing {
+        if b.table != table {
+            table = b.table;
+            text.push_str(&format!("\n    [image.{image_id}.knobs.{table}]\n"));
+        }
+        text.push_str(&format!("    {} = {v}   # {}\n", b.key, b.comment));
+    }
+    text.push_str(
+        "\nThe board's own [knobs.params] / [knobs.param] tables, or the environment, \
+         state them for every image instead.",
+    );
+    text
+}
+
 /// One image of a shared cmake configure: `(bringup, bringup dir, id, image)`,
 /// the shape `plan::all_images` yields.
 pub(crate) type CoordinateMember = (
@@ -13536,6 +13753,91 @@ mod per_image_configure_tests {
             .as_deref(),
             Some("build/native-zenoh-demo_bringup-linux/cmake")
         );
+    }
+
+    /// Issue 2702 -- the parameter bounds a declaration needs and nothing
+    /// states are listed together, each with its floor (the crate's own size,
+    /// or the longest seed when that is larger), and a stated one is not.
+    #[test]
+    fn every_unstated_parameter_bound_is_listed_with_its_floor() {
+        use crate::entity_inventory::{DeclaredParam, ParamCapacity, ParamStoreSizing};
+        use ros_launch_manifest_model::ParamType;
+        let need = |ty| {
+            ParamCapacity::NeededBy(DeclaredParam {
+                node: "/param_talker".to_string(),
+                name: "names".to_string(),
+                ty,
+            })
+        };
+        let sizing = ParamStoreSizing {
+            declared: 2,
+            max_parameters: 3,
+            max_param_name_len: 5,
+            string_value_len: need(ParamType::StringArray),
+            array_len: need(ParamType::DoubleArray),
+            string_array_len: need(ParamType::StringArray),
+            byte_array_len: ParamCapacity::Unused,
+        };
+        let long = "x".repeat(300);
+        let seeds = vec![
+            ("names".to_string(), format!("[left, '{long}']")),
+            (
+                "gains".to_string(),
+                format!("[{}]", vec!["1.0"; 40].join(", ")),
+            ),
+        ];
+        let keys =
+            |m: &[(&ParamBound, usize)]| m.iter().map(|(b, v)| (b.key, *v)).collect::<Vec<_>>();
+        // One node: `names` (string array) and `gains` (double array), plus
+        // `use_sim_time`.
+        let shapes = [[3, 5 + 5 + 12, 0, 0, 0, 0, 1, 1, 1]];
+        let missing = unstated_param_bounds(&sizing, &shapes, &seeds, true, |_| None);
+        // The inbox is priced at the bounds suggested above, by the formula
+        // nros-node checks a stated slot against.
+        let priced = nros_params::request_size::worst_request_slot(
+            &shapes,
+            nros_params::request_size::RequestCaps::clamped(300, 40, 32, 256),
+        );
+        assert_eq!(
+            keys(&missing),
+            vec![
+                ("max_string_value_bytes", 300),
+                ("max_array_len", 40),
+                ("max_string_array_len", 32),
+                ("service_inbox_bytes", priced),
+            ]
+        );
+        // A stated bound is not listed, and the price uses its value.
+        let stated = unstated_param_bounds(&sizing, &shapes, &seeds, true, |e| match e {
+            "NROS_MAX_ARRAY_LEN" => Some(4),
+            "NROS_PARAMS_MAX_STRING_VALUE_BYTES" => Some(16),
+            _ => None,
+        });
+        let priced_stated = nros_params::request_size::worst_request_slot(
+            &shapes,
+            nros_params::request_size::RequestCaps::clamped(16, 4, 32, 256),
+        );
+        assert_eq!(
+            keys(&stated),
+            vec![
+                ("max_string_array_len", 32),
+                ("service_inbox_bytes", priced_stated)
+            ]
+        );
+        assert!(priced_stated < priced);
+
+        let text = param_bounds_refusal("demo_bringup:mcu", "mcu", &missing);
+        for want in [
+            "image `demo_bringup:mcu`",
+            "[image.mcu.knobs.params]",
+            "max_string_value_bytes = 300",
+            "[image.mcu.knobs.param]",
+            "service_inbox_bytes = ",
+            "suggested floor",
+        ] {
+            assert!(text.contains(want), "{want:?} missing from:\n{text}");
+        }
+        assert!(!text.contains("<id>") && !text.contains("NROS_"), "{text}");
     }
 
     /// Issue 2702 -- a tree that outlived the per-bringup layout keeps

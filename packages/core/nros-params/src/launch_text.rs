@@ -244,6 +244,33 @@ pub enum LaunchTextType {
 /// is exactly what the count must grow it for, not a reason to skip it.
 /// `Err` only where the device refuses the text whatever the capacity: an
 /// empty list, a mixed list, a broken quote.
+// Issue 2702.
+/// How big the launch text `text` is, as a parameter value: its element count
+/// (1 for a scalar) and the longest string in it, in bytes as written
+/// (0 when it holds no string). `nros build` suggests a parameter store bound
+/// from the seeds an image declares; a seed is an initial value, not a
+/// maximum, so this is a FLOOR, never a size.
+pub fn launch_text_extent(text: &str) -> Result<(usize, usize), LaunchTextError> {
+    let text = text.trim();
+    let Some(inner) = list_body(text) else {
+        let longest = match launch_text_type(text)? {
+            LaunchTextType::String => single_quoted_body(text).unwrap_or(text).len(),
+            _ => 0,
+        };
+        return Ok((1, longest));
+    };
+    let mut longest = 0;
+    let n = for_each_element(inner, |e| {
+        if let Element::Plain(t) | Element::Single(t) | Element::Double(t) = e
+            && e.kind() == Kind::String
+        {
+            longest = longest.max(t.len());
+        }
+        Ok(())
+    })?;
+    Ok((n, longest))
+}
+
 pub fn launch_text_type(text: &str) -> Result<LaunchTextType, LaunchTextError> {
     if let Some(inner) = list_body(text.trim()) {
         let (kind, _) = list_kind(inner)?;
@@ -353,6 +380,19 @@ impl ParameterValue {
 
 #[cfg(test)]
 mod tests {
+
+    /// Issue 2702 -- the floors `nros build` suggests: element count and the
+    /// longest string, as written.
+    #[test]
+    fn a_seeds_extent_is_its_element_count_and_longest_string() {
+        assert_eq!(launch_text_extent("[left, '5', 'a, b']"), Ok((3, 4)));
+        assert_eq!(launch_text_extent("[40.0, 50.0, 60.0]"), Ok((3, 0)));
+        assert_eq!(launch_text_extent("[true, false]"), Ok((2, 0)));
+        assert_eq!(launch_text_extent("hello"), Ok((1, 5)));
+        assert_eq!(launch_text_extent("'quoted'"), Ok((1, 6)));
+        assert_eq!(launch_text_extent("250"), Ok((1, 0)));
+    }
+
     use super::*;
 
     fn read(text: &str) -> Result<ParameterValue, LaunchTextError> {
