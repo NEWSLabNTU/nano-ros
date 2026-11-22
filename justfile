@@ -1262,6 +1262,7 @@ test-ignored package="":
 [group("main")]
 [group('gate')]
 [metadata("tier", "gate")]
+[group('uses:root-target')]
 test-unit verbose="":
     #!/usr/bin/env bash
     set -e
@@ -3776,6 +3777,7 @@ mod ci 'just/ci.just'
 [group("main")]
 [group('gate')]
 [metadata("tier", "gate")]
+[group('uses:root-target')]
 test-lane-contracts:
     #!/usr/bin/env bash
     set -euo pipefail

@@ -103,13 +103,33 @@ Approved by the user on 2026-11-20 as sent; recorded in RFC-0131 D2 and D3.
 ### W4 — Resources
 
 - **Owner:** nros 142.
-- **Status:** OPEN
+- **Status:** OPEN (the W4 PR)
 - `uses:root-target` on `test-unit`, `out-of-lane-deselected`, `api-parity`
   and `probe-workspace-caps`, and on whichever build gates already contend
   for the root `target/`, after measuring which do. `pristine-checkout` gets a
   `cpu:` weight from a measured run.
 - **Acceptance:** `just check gate-order` over the `ci` lane is clean: no
   verdict differs between the two orders.
+- **Measured (2026-11-22, host 142, 80 CPUs, a warm worktree).** Each
+  candidate ran alone under `strace -f -P` on the root `target/`'s
+  `.cargo-lock` files and `.rustc_info.json`; `check::node-std-tests`, already
+  tagged, was the positive control (25 opens of `target/debug/.cargo-lock`).
+  - `test-unit`, `test-lane-contracts` and `out-of-lane-deselected` each open
+    `target/nros-relwithdebinfo/.cargo-lock`: they take `uses:root-target`.
+    `test-lane-contracts` was not on the list above, and is.
+  - `api-parity` and `probe-workspace-caps` open neither. `api-parity` builds
+    in its own temp `CARGO_TARGET_DIR` and `probe-workspace-caps` in its
+    shared cargo root, so they stay untagged; tagging them would only take
+    two of `root-target`'s slots from gates that need them.
+  - The build gates that contend are the seven already tagged since
+    phase-543; none was added.
+  - `pristine-checkout`: ~2,400 CPU-s per run whatever the parallelism, and
+    wall time against `NROS_GATE_JOBS` of 200 s at 80, 228 s at 32, 282 s at
+    16, 396 s at 8 and 625 s at 4. The knee is 16: `[group('cpu:16')]`, its
+    basis stated beside it.
+- `just check gate-order` takes `gate` and `all` as well as `fast` and
+  `build`; `NROS_GATE_SCOPE=ci just check gate-order all` runs the `ci` lane
+  twice, in `just ci gate`'s own shape.
 
 ### W5 — `test-unit`: one invocation or a merged sibling
 

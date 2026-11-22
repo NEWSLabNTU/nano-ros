@@ -5687,6 +5687,8 @@ cpp-ffi-tests:
 # ~55 s (it IS the fast tier, in a `--local --shared` clone). Not a fast gate,
 # because the tier would recurse; `just ci gate` runs it after `check::fast`.
 [metadata("tier", "gate")]
+[group('cpu:16')]
+[metadata("cpu-basis", "knee", "NROS_GATE_JOBS against solo wall on host 142 (80 CPUs, load under 10): 200 s at 80, 228 s at 32, 282 s at 16, 396 s at 8, 625 s at 4, ~2,400 CPU-s each (phase-584 W4)")]
 pristine-checkout:
     @bash scripts/ci/pristine-checkout-fast.sh
 

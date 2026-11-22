@@ -504,6 +504,7 @@ lane-scope-consumers:
 # run on top of the `nros-tests` test-binary build. Step of `just ci gate`.
 [group("ci")]
 [metadata("tier", "gate")]
+[group('uses:root-target')]
 out-of-lane-deselected:
     @python3 scripts/test/check-out-of-lane-deselected.py
 
