@@ -37,11 +37,11 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 32 | 12 | 21 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 18 | 13 | 23 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 54 | 42 | 75 % |
-//! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 50 | 9 | 16 % |
-//! | tier 3 | everything | 284 | 56 | 100 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 33 | 12 | 21 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 19 | 14 | 23 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 55 | 42 | 75 % |
+//! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 52 | 9 | 16 % |
+//! | tier 3 | everything | 286 | 56 | 100 % |
 //!
 //! Added 2026-11-12 (phase-535 W8, RFC-0122 D8): the merge lane. It is not
 //! a rung of the ladder below: it is the set a per-merge cadence on the host
@@ -1448,10 +1448,10 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 32, 12),
-            (CiLane::Tier2, 18, 13),
-            (CiLane::Tier2Nightly, 54, 42),
-            (CiLane::Merge, 50, 9),
+            (CiLane::Tier1, 33, 12),
+            (CiLane::Tier2, 19, 14),
+            (CiLane::Tier2Nightly, 55, 42),
+            (CiLane::Merge, 52, 9),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -1473,8 +1473,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 284,
-            "the table's tier-3 cell count (284) is stale; recomputed {total_cells}"
+            total_cells, 286,
+            "the table's tier-3 cell count (286) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,

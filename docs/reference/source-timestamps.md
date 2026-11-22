@@ -44,7 +44,7 @@ RMW backend has at least one measured row.
 | zenoh | linux | the nano-ros zenoh shim: `nros_platform_time_now_ns`, the selected wall clock | yes | `linux_board_clock::board_clock_reaches_the_wall_clock_and_the_source_stamp` |
 | cyclonedds | linux | Cyclone's own `ddsrt_time_wallclock`: the host's `CLOCK_REALTIME` | no | `linux_board_clock::board_clock_source_stamp_per_backend` |
 | xrce | linux | nothing: the XRCE client delivers no source stamp, so every sample reports 0 | no stamp | `linux_board_clock::board_clock_source_stamp_per_backend` |
-| zenoh | zephyr | expected: the shim, as on linux | unknown | not measured: no cell on this branch reads a Zephyr image's source stamp under a known clock (the SNTP re-sync cell on main does; cite it once this branch carries it) |
+| zenoh | zephyr | the nano-ros zenoh shim: the image's wall clock, here an SNTP source the test steps | yes | `zephyr_clock_resolve::zephyr_sntp_resync_follows_a_step_of_the_server_time` |
 | zenoh | freertos | expected: the shim, as on linux | unknown | not measured: no FreeRTOS image has a board-clock or SNTP configuration with a stamp observer |
 | zenoh | threadx | expected: the shim, as on linux | unknown | not measured: no ThreadX image has a board-clock configuration with a stamp observer |
 | zenoh | nuttx | expected: the shim, as on linux | unknown | not measured: no NuttX image has a board-clock configuration with a stamp observer |

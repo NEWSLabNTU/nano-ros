@@ -422,6 +422,8 @@ fn sntp_pair(
 
 #[test]
 fn zephyr_sntp_resync_follows_a_step_of_the_server_time() {
+    // The observer reads each sample's zenoh source stamp: this is the
+    // (zenoh, zephyr) row of docs/reference/source-timestamps.md.
     let (server, router, zephyr, mut observer, boot) = sntp_pair(Config::ClockSntpResync, 12397);
     assert!(
         boot.contains("nros: SNTP re-sync every 500 ms"),
