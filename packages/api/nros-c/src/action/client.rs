@@ -1002,26 +1002,36 @@ pub unsafe extern "C" fn rclc_action_client_set_goal_response_callback(
 pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_t) -> rcl_ret_t {
     validate_not_null!(client);
 
-    let client_ref = &mut *client;
-
-    validate_state!(
-        client_ref,
-        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
-    );
-
-    let ctx = client_ref.context;
     // Phase-573 W3 -- each step takes the client's core under the executor's
     // lock, copies the reply out, and gives the lock back BEFORE the user's
     // callback runs. Holding it across the callback locked every other thread
     // out of the executor for the callback's duration, and a callback that
     // re-entered this client (a goal-response callback cancelling the goal)
     // made a second `&mut` to the core while this one was still in use.
-    if unsafe { client_ref._internal.arena_core_mut() }.is_none() {
-        return RCL_RET_NOT_INIT;
-    }
+    //
+    // For the same reason no reference to the client itself outlives a
+    // callback: a callback re-entering with `client` derives its own `&mut`
+    // from it. The context and the callbacks are copied out once, and each
+    // step reaches `_internal` through the raw pointer.
+    let (ctx, goal_response_cb, feedback_cb, result_cb, cancel_response_cb) = {
+        let client_ref = &*client;
+        validate_state!(
+            client_ref,
+            rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
+        );
+        (
+            client_ref.context,
+            client_ref.goal_response_callback,
+            client_ref.feedback_callback,
+            client_ref.result_callback,
+            client_ref.cancel_response_callback,
+        )
+    };
     macro_rules! with_core {
         ($core:ident => $body:expr) => {
-            match unsafe { client_ref._internal.arena_core_mut() } {
+            // SAFETY: `client` is valid (the caller's contract); the `&mut`
+            // to `_internal` lives only for the lookup.
+            match unsafe { (*client)._internal.arena_core_mut() } {
                 Some(mut $core) => $body,
                 None => return RCL_RET_NOT_INIT,
             }
@@ -1039,7 +1049,7 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
         _ => None,
     });
     if let Some((goal_id, accepted)) = accepted
-        && let Some(cb) = client_ref.goal_response_callback
+        && let Some(cb) = goal_response_cb
     {
         let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
         cb(&uuid, accepted, ctx);
@@ -1059,7 +1069,7 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
         _ => None,
     });
     if let Some((goal_id, n)) = feedback
-        && let Some(cb) = client_ref.feedback_callback
+        && let Some(cb) = feedback_cb
     {
         let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
         cb(&uuid, spliced.as_ptr(), n, ctx);
@@ -1086,7 +1096,7 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
         _ => None,
     });
     if let Some((goal_id, status, n)) = result
-        && let Some(cb) = client_ref.result_callback
+        && let Some(cb) = result_cb
     {
         let c_status = match status {
             nros_node::GoalStatusCode::Succeeded => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
@@ -1113,7 +1123,7 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
         _ => None,
     });
     if let Some((goal_id, code, n)) = cancel
-        && let Some(cb) = client_ref.cancel_response_callback
+        && let Some(cb) = cancel_response_cb
     {
         let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
         cb(&uuid, code, n, ctx);
