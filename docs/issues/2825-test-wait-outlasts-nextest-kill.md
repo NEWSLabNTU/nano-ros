@@ -61,3 +61,21 @@ Acceptance for the class: a check over `cargo nextest show-config`'s
 resolved per-test timeout against each test's declared budget, run where the
 test list already exists (the lane that builds the tests). Its negative
 control is this binary before the fix.
+
+## What the console then showed (2026-11-22, host 241, #4597 at 84e3223b47)
+
+With the 180 s kill the cell failed as its own assertion, console attached:
+`Zephyr's in-kernel net stack never assigned the static address`. But the
+same console shows the image publishing (`Hello World: 1..13`), and just
+before that a `--- 14 messages dropped ---` notice during a burst of warnings
+from the parameter service. The marker the cell waits for,
+`IPv4 address: 10.0.2.15`, is `NET_INFO` in Zephyr's `net_config`, a deferred
+log line, so it was most likely dropped. The net stack ran: on mps2_an385 the
+smsc911x driver is the only route to the host router.
+
+So this red belongs to the log-loss class, issues 2762 and 2815 (deferred
+logging drops lines under a burst; nros 118's logging batch), not to the net
+driver, and not to this issue's timeout. Until those land, the cell can read
+"driver did not come up" for a healthy image. The fix that belongs to this
+cell is a readiness marker no log drop can remove. That is left for the
+logging batch, which owns the drop and can say which line survives it.
