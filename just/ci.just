@@ -542,7 +542,7 @@ _matrix-run:
     # issue 1739 — `weak-symbols-image` nm's the prebuilt cross images, so it
     # needs the fixture build this lane just did and belongs AFTER it; it ran
     # nowhere before. A row it cannot find is a reported `nros_check_skip`.
-    steps=(check::default rust-rtos-link-check test-all check::weak-symbols-image check::size-markers-image)
+    steps=(check::default rust-rtos-link-check test-all check::weak-symbols-image check::size-markers-image check::max-frame)
     bash scripts/ci/run-lane-steps.sh tier2 "${steps[@]}"
     echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
 
@@ -617,7 +617,7 @@ matrix-nightly:
     # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
     unclaimed="$(nros_lane_unclaimed tier2-nightly)"
     export NROS_TEST_UNCLAIMED="$unclaimed"
-    steps=(check::default rust-rtos-link-check test-all test-ignored check::size-markers-image)
+    steps=(check::default rust-rtos-link-check test-all test-ignored check::size-markers-image check::max-frame)
     bash scripts/ci/run-lane-steps.sh tier2-nightly "${steps[@]}"
     echo "CI passed (tier 2 nightly — pairwise cover)!"
 
@@ -648,7 +648,7 @@ full:
     # longest lane in the ladder that is the most expensive place to misread a
     # result (issue 0952).
     set -uo pipefail
-    steps=(check::default rust-rtos-link-check check::zephyr-kconfig-symbols test-all test-ignored check::size-markers-image zephyr::tier3-cell)
+    steps=(check::default rust-rtos-link-check check::zephyr-kconfig-symbols test-all test-ignored check::size-markers-image check::max-frame zephyr::tier3-cell)
     if bash scripts/ci/run-lane-steps.sh full "${steps[@]}"; then
         echo "CI passed (tier 3 — full matrix, both Zephyr lines)!"
         exit 0

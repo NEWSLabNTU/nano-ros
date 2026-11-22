@@ -105,6 +105,21 @@ three. That proves nothing: the session never opens, no entity is created, and
 the image ends at 12 s in `NodeError::Transport`. A 3x solo run of the real
 cell is queued on host 241, and its counts go here.
 
+## A gate for the frame-size class
+
+One stack frame larger than an MPU stack guard (32-64 B) jumps the guard, so an
+overflow through it writes past the stack with no fault, which is one way to
+reach the corruption above. `just check max-frame` (`scripts/check-max-frame.py`)
+fails on any frame in nano-ros's own code over `max_frame` (4096 B, in
+`config/stack-floors.toml`) unless the shrink-only
+`config/max-frame-baseline.json` already holds it. It reads the `big_frames`
+each fixture build's stack-floor report records, over every 32-bit ARM image,
+and runs after the fixture build of `just ci` matrix, matrix-nightly and full.
+The baseline holds one row per function at the largest size any build has (57
+functions, from 501 frames across 74 builds), so a build it never saw passes while
+it adds and grows nothing; it is the list to shrink. The gate
+stops the class growing; it does not by itself name this fault's cause.
+
 ## Closes when
 
 The cell passes and the cause above is named and fixed, with a cell that would

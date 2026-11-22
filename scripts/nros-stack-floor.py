@@ -1204,6 +1204,19 @@ def parse_cfi(text: str, sp_reg: str = "reg13") -> dict[int, int | None]:
 
 # Every function symbol the linked image defines, from `--cfi-elf`.
 LINKED_FUNCTIONS: set[str] = set()
+# Issue 2815: every linked function whose own frame is over the table's
+# `max_frame`, largest first. One `sub sp` that size jumps any MPU stack guard
+# (32-64 B) with no fault. Recorded in the report, which `just check max-frame`
+# reads over the fixture builds; the gate, not this walk, decides what is ours.
+BIG_FRAMES: list[tuple[str, int]] = []
+
+
+def big_frames(g: "Graph", cap: int) -> list[tuple[str, int]]:
+    """The linked functions with a frame over `cap`, largest first (a name
+    tie broken by name). Unlinked functions are not in the image."""
+    return sorted(((fn, n) for fn, n in g.frames.items()
+                   if n > cap and (not LINKED_FUNCTIONS or fn in LINKED_FUNCTIONS)),
+                  key=lambda x: (-x[1], x[0]))
 
 
 def load_cfi_frames(g: Graph, elf: str, readobj: str, objdump: str) -> int:
@@ -3065,6 +3078,13 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
     if isinstance(dr, bool) or not isinstance(dr, int) or dr < 0:
         problems.append("`drift_rise_pct` (a non-negative integer percent: the drift "
                         "check's tolerance, which `nros new`'s stamp carries) is missing")
+    mf = doc.get("max_frame")
+    if isinstance(mf, bool) or not isinstance(mf, int) or mf <= 0:
+        problems.append("`max_frame` (the largest single stack frame our own code may "
+                        "have, in bytes; `just check max-frame`) is missing")
+    for i, row in enumerate(doc.get("frame_allow", [])):
+        if not row.get("match") or not row.get("reason"):
+            problems.append(f"[[frame_allow]] #{i + 1}: needs `match` and `reason`")
     fb = doc.get("fallback_rust_main_stack")
     if isinstance(fb, bool) or not isinstance(fb, int) or fb <= 0 or fb % 8:
         problems.append("`fallback_rust_main_stack` (the main stack, a positive multiple of "
@@ -3404,6 +3424,8 @@ def write_report(path: str, args: argparse.Namespace, results: dict, stacks: dic
         "refused": refusals,
         # the knob values an opted-in image is rebuilt with (`--raise`)
         "raise": raises or [],
+        # issue 2815: [[function, bytes], ...] over the table's `max_frame`
+        "big_frames": [[fn, n] for fn, n in BIG_FRAMES],
     }
     import tempfile
     out = Path(path)
@@ -3704,6 +3726,7 @@ def run(args: argparse.Namespace) -> int:
     else:
         charge = None
 
+    BIG_FRAMES[:] = big_frames(g, int((doc or {}).get("max_frame") or 4096))
     results = {}
     refusals = []
     lower: dict = {}  # role -> how far a refused walk got (issue 2818)
@@ -3895,7 +3918,7 @@ def self_test() -> int:
     check("site channels: every channel rule holds"
           + (f" (failed: {'; '.join(bad_ch)})" if bad_ch else ""), not bad_ch)
     # phase-557 W10 -- the per-board floor of an unmeasured Rust Zephyr image
-    bf_doc = {"margin_pct": 10, "fallback_rust_main_stack": 32768, "observed": [
+    bf_doc = {"margin_pct": 10, "fallback_rust_main_stack": 32768, "max_frame": 4096, "observed": [
         {"image": "talker/rust/zenoh@b", "role": "OPEN", "peak": 28888},
         {"image": "action-server/rust/zenoh@b", "role": "OPEN", "peak": 30256},
         {"image": "talker/c/zenoh@b", "role": "OPEN", "peak": 90000},
@@ -3919,6 +3942,24 @@ def self_test() -> int:
     check("table: a missing fallback_rust_main_stack is a problem",
           any("fallback_rust_main_stack" in x for x in validate_table(
               {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2}, set())))
+    # issue 2815 -- the frame cap and its allow rows
+    check("table: a missing max_frame is a problem",
+          any("max_frame" in x for x in validate_table(
+              {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2,
+               "fallback_rust_main_stack": 32768}, set())))
+    check("table: a [[frame_allow]] row without a reason is a problem",
+          any("frame_allow" in x for x in validate_table(
+              {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2,
+               "fallback_rust_main_stack": 32768, "max_frame": 4096,
+               "frame_allow": [{"match": "x"}]}, set())))
+    gb = Graph(frames={"small": 4096, "big": 65536, "mid": 9000, "dropped": 99999},
+               functions={"small", "big", "mid", "dropped"})
+    LINKED_FUNCTIONS.update({"small", "big", "mid"})
+    try:
+        check("big frames: over the cap, linked only, largest first",
+              big_frames(gb, 4096) == [("big", 65536), ("mid", 9000)])
+    finally:
+        LINKED_FUNCTIONS.clear()
     # ...a compiler_builtins frame goes only to what the link placed from it
     mp = ("Discarded input sections\n"
           " .text.__aeabi_dadd\n"
@@ -4314,14 +4355,14 @@ def self_test() -> int:
           {"r1", "w1", "r2", "w2"} <= gu.edges.get("slot0", set()))
 
     # issue 2402 — under `bind` a measured peak is an [[observed]] row, never an allowance.
-    vt = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "indirect": {"zenoh": {"mode": "bind"}},
+    vt = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "max_frame": 4096, "indirect": {"zenoh": {"mode": "bind"}},
           "allowance": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
                          "bytes": 0, "issue": "2402", "reason": "r",
                          "measured": {"peak": 1, "static": 1, "method": "m", "issue": "2402"},
                          "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
     check("bind: an allowance under a bind rmw is refused",
           any("[[observed]]" in p for p in validate_table(vt, set())))
-    vo = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "indirect": {"zenoh": {"mode": "bind"}},
+    vo = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "max_frame": 4096, "indirect": {"zenoh": {"mode": "bind"}},
           "observed": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
                         "peak": 100, "static": 150, "method": "m", "issue": "2402",
                         "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
@@ -4343,7 +4384,7 @@ def self_test() -> int:
           any("must be an integer above" in p for p in validate_table(vo, set())))
 
     # A [[drift]] row: the walk alone, held by the drift check, enforced nowhere.
-    vd = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768,
+    vd = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "max_frame": 4096,
           "drift": [{"image": "c@d", "rmw": "zenoh", "target": "t", "role": "OPEN",
                      "static": 130, "method": "m", "issue": "2653"}]}
     check("drift: a complete row validates", validate_table(vd, set()) == [])
@@ -4635,7 +4676,7 @@ def self_test() -> int:
     check("no allowance: static + margin", floor_formula(3592, 0, 0) == 3592)
     check("a negative allowance lowers the floor", floor_formula(24312, -12616, 10) == 12872)
     check("the floor never goes below zero", floor_formula(100, -500, 10) == 0)
-    good = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768,
+    good = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "max_frame": 4096,
             "policy": [{"kind": "cut", "match": "panicking", "reason": "diverges"},
                        {"kind": "external", "match": "3mem6memcpy", "reason": "leaf"}],
             "allowance": [{"image": "img", "rmw": "zenoh", "target": "t", "role": "OPEN",

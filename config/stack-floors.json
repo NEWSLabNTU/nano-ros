@@ -12,6 +12,12 @@
   ],
   "drift_rise_pct": 2,
   "fallback_rust_main_stack": 32768,
+  "frame_allow": [
+    {
+      "match": "bind_subscription",
+      "reason": "rclcpp's subscription trampoline decodes into a stack M, so its frame is the USER's message type (16 KiB for the bulk listener), which nano-ros cannot size"
+    }
+  ],
   "indirect": {
     "default": {
       "mode": "bind"
@@ -21,6 +27,7 @@
     }
   },
   "margin_pct": 10,
+  "max_frame": 4096,
   "observed": [
     {
       "image": "action-server/rust/zenoh@nucleo-f767zi-zephyr",
