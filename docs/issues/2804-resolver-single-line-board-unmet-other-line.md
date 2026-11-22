@@ -85,3 +85,36 @@ STATES its lines, once, and gates keep the statement present and consistent:
 Still to run (the batch's Zephyr cell): the acceptance pair on a real run. On
 4.4 the Nucleo cell must read `[SKIPPED:lane]`; on 3.7, with the artifact
 removed, it must read UNMET.
+
+## Verification (to run on a host with Zephyr headroom)
+
+The witness is `zephyr_link_layout`'s
+`an_image_without_sched_tasks_carries_no_pool_in_dtcm`. It resolves fixture
+`zephyr-nucleo-f767zi-c-talker-serial` (west build dir
+`build-nucleo-f767zi-c-talker-serial`) through
+`build_zephyr_nucleo_c_serial_talker()`. A bare `cargo nextest` counts a
+`lane_skip!` as a FAIL, so read the panic text: the verdict is the tag, not
+nextest's PASS/FAIL column.
+
+```bash
+source ./activate.sh
+T='test(an_image_without_sched_tasks_carries_no_pool_in_dtcm)'
+
+# 4.4: the build omits the leaf, and the test is deselected before any probe.
+python3 scripts/build/fixtures-manifest.py west-leaves --line 4.4 \
+    | grep -c nucleo-f767zi-c-talker-serial          # 0 (3.7 prints 1)
+NROS_ZEPHYR_VERSION=4.4 cargo nextest run -p nros-tests --test zephyr_link_layout -E "$T" \
+    2>&1 | grep -E 'SKIPPED:lane|UNMET'              # want [SKIPPED:lane], no UNMET
+
+# 3.7: build the leaf, see it pass, move its artifact aside, see UNMET.
+NROS_ZEPHYR_FIXTURE_FILTER=nucleo-f767zi-c-talker-serial just zephyr build-fixtures
+NROS_ZEPHYR_VERSION=3.7 cargo nextest run -p nros-tests --test zephyr_link_layout -E "$T"   # PASS
+elf="$(NROS_ZEPHYR_VERSION=3.7 bash scripts/lib/zephyr-workspace.sh build-root)/build-nucleo-f767zi-c-talker-serial/zephyr/zephyr.elf"
+mv "$elf" "$elf.aside"
+NROS_ZEPHYR_VERSION=3.7 cargo nextest run -p nros-tests --test zephyr_link_layout -E "$T" \
+    2>&1 | grep -E 'SKIPPED:lane|UNMET'              # want [UNMET PRECONDITION], no SKIPPED
+mv "$elf.aside" "$elf"
+```
+
+Both greps printing the wanted tag is the acceptance's negative-control pair.
+After that, this issue can be archived.
