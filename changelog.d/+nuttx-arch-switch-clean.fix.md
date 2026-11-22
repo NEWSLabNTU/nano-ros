@@ -1,0 +1,1 @@
+Switching a NuttX build between arm and riscv in one kernel tree no longer leaves the previous architecture's objects in the new libraries. A clean that fails now stops the build and prints why, and an export holding another architecture's object is rebuilt instead of reused.

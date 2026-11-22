@@ -90,11 +90,37 @@ nros_nuttx_kconfig_frontend || exit 1
 
 # --- Handle arguments ---
 
+# Issues 2773 / 2807 -- a distclean that fails is FATAL, with its output. It
+# used to run as `make distclean 2>/dev/null || true`, so on an arch switch a
+# clean that stopped part-way (2807: in the apps pass, before `boards/`) left
+# the previous arch's objects for `ar` to archive into the next arch's
+# libraries, and nothing said why. The one legitimate "nothing to clean" is a
+# tree with no `.config` or `Make.defs`: NuttX's own distclean cannot run
+# there, and there is no configured build to remove.
+nros_nuttx_distclean() {
+    local log rc=0
+    if [ ! -f .config ] || [ ! -f Make.defs ]; then
+        echo "  (no .config/Make.defs in $PWD: no configured build to distclean)"
+        return 0
+    fi
+    log="$PROJECT_ROOT/build/nuttx-configure/distclean.log"
+    mkdir -p "$(dirname "$log")"
+    make distclean >"$log" 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        # Issues 2773/2807: a half-done distclean leaves the previous arch's objects.
+        echo "build-nuttx.sh: 'make distclean' failed (rc $rc) in $PWD; the previous" \
+            "configuration's objects would reach this build." >&2
+        echo "  full output: $log" >&2
+        tail -n 20 "$log" | sed 's/^/  | /' >&2
+        return 1
+    fi
+}
+
 case "${1:-}" in
     --clean)
         echo "Cleaning NuttX build..."
         cd "$NUTTX_DIR"
-        make distclean 2>/dev/null || true
+        nros_nuttx_distclean || exit 1
         echo "Done."
         exit 0
         ;;
@@ -271,6 +297,21 @@ nros_nuttx_write_cargo_cpu_config() {
     fi
 }
 
+# Issues 2773 / 2807 -- an export recorded before the machine check below
+# existed may already hold another arch's object, and its key alone would keep
+# it "up-to-date" forever. Re-check it here (it reads the archives, about a
+# second); a foreign member drops the key and forces the distclean below,
+# since the tree that produced it still holds the objects (an object newer
+# than its source is not recompiled, and `ar` replaces only what it re-adds).
+FOREIGN_EXPORT=0
+if [ -f "$NUTTX_SNAPSHOT_KEY" ] \
+    && [ "$(cat "$NUTTX_SNAPSHOT_KEY" 2>/dev/null)" = "$CURRENT_KEY" ] \
+    && ! python3 "$PROJECT_ROOT/scripts/nuttx/check-export-machine.py" \
+        "$NUTTX_SNAPSHOT" "$NUTTX_ARCH"; then
+    echo "NuttX ${NUTTX_ARCH} export holds another machine's objects — not current; rebuilding."
+    rm -f "$NUTTX_SNAPSHOT_KEY"
+    FOREIGN_EXPORT=1
+fi
 if [ -f "$NUTTX_SNAPSHOT_KEY" ] \
     && [ "$(cat "$NUTTX_SNAPSHOT_KEY" 2>/dev/null)" = "$CURRENT_KEY" ]; then
     echo "NuttX ${NUTTX_ARCH} export up-to-date ($NUTTX_SNAPSHOT) — skipping build/export."
@@ -309,6 +350,10 @@ NEEDS_RECONFIG=0
 if [ ! -f .config ] || [ ! -f Make.defs ]; then
     NEEDS_RECONFIG=1
 fi
+if [ "$FOREIGN_EXPORT" -eq 1 ]; then
+    echo "NuttX tree built an export with another machine's objects — distcleaning and reconfiguring."
+    NEEDS_RECONFIG=1
+fi
 if [ "$CURRENT_KEY" != "$STORED_KEY" ]; then
     echo "NuttX HEAD/defconfig changed ($STORED_KEY → $CURRENT_KEY) — reconfiguring."
     NEEDS_RECONFIG=1
@@ -320,7 +365,7 @@ fi
 
 if [ "$NEEDS_RECONFIG" -eq 1 ]; then
     echo "Configuring NuttX..."
-    make distclean 2>/dev/null || true
+    nros_nuttx_distclean || exit 1
     # #165 — regenerate a VALID apps/external staging before the configure. The
     # kernel distclean above does NOT touch the apps tree, so a STALE
     # external/Kconfig survives across reconfigures/arch-switches — e.g. an old
@@ -416,6 +461,12 @@ if [ -n "$EXPORT_TAR" ]; then
     # Record what produced this snapshot. The short-circuit above reads it, so
     # freshness is a property of the SNAPSHOT rather than of the shared tree.
     nros_nuttx_write_cargo_cpu_config "$NUTTX_SNAPSHOT" || exit 1
+    # Issues 2773 / 2807 -- no key for an export holding another machine's
+    # object. `ar` checks no machine type, and the key is what makes the next
+    # run skip the build, so a poisoned export recorded here stayed "current"
+    # until HEAD, defconfig or board moved. Refused, it is rebuilt next run.
+    python3 "$PROJECT_ROOT/scripts/nuttx/check-export-machine.py" \
+        "$NUTTX_SNAPSHOT" "$NUTTX_ARCH" || exit 1
     echo "$CURRENT_KEY" > "$NUTTX_SNAPSHOT_KEY"
     echo "  Export: $NUTTX_SNAPSHOT (arch ${NUTTX_ARCH})"
 else

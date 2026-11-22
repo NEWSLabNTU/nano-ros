@@ -1100,6 +1100,16 @@ nuttx-rust-triple:
 nuttx-links-snapshot:
     @bash scripts/check-nuttx-links-snapshot.sh
 
+# Issues 2773 / 2807 — `build-nuttx.sh` refuses to record (or keep) a NuttX
+# export whose archives hold another machine's object; `ar` checks no machine
+# type, so an arch switch whose clean stopped part-way archived the previous
+# arch's objects and the export key kept them "current". This runs the
+# checker's self-test (a planted foreign member in a synthetic archive, long
+# GNU member names, a non-ELF member). Buildless, <1 s.
+[private]
+nuttx-export-machine:
+    @python3 scripts/nuttx/check-export-machine.py
+
 # Issue 0525 — NuttX is built IN PLACE and one checkout serves both arches, so
 # `$NUTTX_DIR/include/nuttx/config.h` belongs to whichever arch was configured
 # LAST. A compile input taken from there silently gets the other arch (issue
