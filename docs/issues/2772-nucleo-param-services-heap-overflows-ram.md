@@ -46,9 +46,15 @@ Nucleo image: Rust with `param_services` had a 192 KiB heap before and after
    `node_interfaces::entry_default` gives such an image `none` when no table
    states a switch and it declares no stock axis itself. A stated switch or a
    declared axis still reaches the macro's refusal.
-2. (Nucleo) Open. The heap and store must be sized from what the image
-   declares, or the build must refuse at configure naming the knob, rather
-   than the overflow being found at link.
+2. (Nucleo) The Rust branch of the heap default is gone. A Rust image with
+   param_services and no lifecycle gets the 112 KiB C and C++ already had:
+   the branch's 114,144 B came from an image declaring both axes, and split,
+   features' zephyr_rust_params on native_sim peaks at 45,840 B. The
+   action-server row links with about 4.6 KiB of RAM spare, and in its Renode
+   twin the heap peaks at 47,880 of 115,200 B. Still open: that row's stack
+   walk rose to 109,184 B (a type-bound indirect edge, not a deeper call) now
+   that the image links; the row and the drift check's handling of it are
+   issue 2783's, and peak-sized stacks give the template back about 44 KB.
 
 ## Acceptance
 
