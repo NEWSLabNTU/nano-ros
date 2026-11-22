@@ -754,6 +754,11 @@ pub enum Config {
     /// boot, so a later step of the server's time never reaches the stamps
     /// (RFC-0141 D5's negative case).
     ClockSntpOnce,
+    /// The image takes its wall clock from the board's hook
+    /// (`[knobs.clock] source = "board"`), here a stub board answering one
+    /// fixed instant: `Clock::system()` and the source stamps follow it
+    /// (phase-582 W1d, RFC-0141 D2).
+    ClockBoard,
 }
 
 impl Config {
@@ -771,6 +776,7 @@ impl Config {
             Config::ClockSntp => "clock-sntp",
             Config::ClockSntpResync => "clock-sntp-resync",
             Config::ClockSntpOnce => "clock-sntp-once",
+            Config::ClockBoard => "clock-board",
         }
     }
 }
@@ -1057,6 +1063,9 @@ pub enum Consumer {
     /// configurations: resolved after registration, before the first spin,
     /// and owed to no timer (phase-582 W1c-2).
     ZephyrClockResolve,
+    /// `tests/linux_board_clock.rs` -- a linux talker whose wall clock is the
+    /// stub board's fixed instant, in Rust and C++ (phase-582 W1d).
+    LinuxBoardClock,
 }
 
 impl Consumer {
@@ -1104,6 +1113,7 @@ impl Consumer {
         Consumer::ZephyrConnectBudget,
         Consumer::ZephyrCtfMarkers,
         Consumer::ZephyrClockResolve,
+        Consumer::LinuxBoardClock,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -1151,6 +1161,7 @@ impl Consumer {
             Consumer::ZephyrConnectBudget => "zephyr_connect_budget",
             Consumer::ZephyrCtfMarkers => "zephyr_ctf_markers",
             Consumer::ZephyrClockResolve => "zephyr_clock_resolve",
+            Consumer::LinuxBoardClock => "linux_board_clock",
         }
     }
 }
@@ -1641,6 +1652,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
                 | [Config::ClockSntpResync]
                 | [Config::ClockSntpOnce],
             ) => Some(ZephyrClockResolve),
+            (P::Linux, [Config::ClockBoard]) => Some(LinuxBoardClock),
             _ => None,
         };
     }

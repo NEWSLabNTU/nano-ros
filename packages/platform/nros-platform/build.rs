@@ -128,4 +128,14 @@ fn refuse_unsupported_clock_source() {
             supported.join(", ")
         );
     }
+    // RFC-0141 D2: the build names the knob that asks for the board hook, so
+    // a link error about `nros_board_wall_clock_ns` reads as the image's
+    // choice rather than a missing nano-ros symbol.
+    if value.split(',').any(|s| s.trim() == "board") {
+        println!(
+            "cargo:warning=nros-platform: `[knobs.clock] source = \"{value}\"` names `board`: \
+             the image's board must define `bool nros_board_wall_clock_ns(uint64_t *)`; \
+             nano-ros compiles no default, so a missing one fails the link"
+        );
+    }
 }

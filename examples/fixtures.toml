@@ -330,6 +330,22 @@ image = "linux_listener_peer_mode"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
 target_dir = "target-fixtures/linux-listener-peer-mode"
 
+# phase-582 W1d (RFC-0141 D2) — the `clock-board` configuration of the linux
+# talker: `[knobs.clock] source = "board"`, and `clock_board_pkg` as the stub
+# board whose hook answers a fixed instant. Own target dir: the knob changes
+# what the posix port compiles, and an env is not part of cargo's unit hash.
+# `matrix::Config::ClockBoard` cell; `tests/linux_board_clock.rs` runs it.
+[[workspace_fixture]]
+id = "workspace-rust-native-talker-clock-board"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_clock_board"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures/linux-talker-clock-board"
+
 [[workspace_fixture]]
 id = "workspace-rust-native-service-server-xrce"
 platform = "linux"
@@ -1489,6 +1505,22 @@ bringup = "src/pubsub_bringup"
 image = "linux_talker_cyclonedds"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
 build_subdir = "build/posix-cyclonedds-linux-pubsub_bringup/cmake"
+
+# phase-582 W1d (RFC-0141 D2) — the `clock-board` configuration of the linux
+# talker: `[knobs.clock] source = "board"`, and `clock_board_pkg` as the stub
+# board whose hook answers a fixed instant. The stated knob gives the image its
+# own configure (`-cfg<hash>`). `matrix::Config::ClockBoard` cell;
+# `tests/linux_board_clock.rs` runs it.
+[[workspace_fixture]]
+id = "workspace-cpp-native-talker-clock-board"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_clock_board"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-zenoh-linux-cfgf58aa09f66-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-listener"

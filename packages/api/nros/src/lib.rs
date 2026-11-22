@@ -280,6 +280,11 @@ pub use nros_core::{
     RosService, SecNanosecMsg, SerError, Serialize, ServiceInfo, Time,
 };
 
+// RFC-0141 — what the wall-clock stamps mean right now (synced, which source
+// answers), beside `Clock::system()` whose reading it qualifies. The C and C++
+// surfaces have it as `rclc_wall_clock_state()` / `rclcpp::Clock::wall_clock_state()`.
+pub use nros_core::{WallClockSource, WallClockState, wall_clock_state};
+
 // -----------------------------------------------------------------------------
 // Logging (phase-417 W4.d, issue 0589).
 //

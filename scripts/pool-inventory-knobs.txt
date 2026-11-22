@@ -138,3 +138,5 @@ ROSOUT_PROBE_PERIOD_MS | test-only | | `rosout-talker` test binary
 NROS_RT_SCHED_CPU | test-only | | `rt_sched_levels_e2e`: the CPU its pinned runs use (default 0)
 ROSOUT_PROBE_RECORDS | test-only | | `rosout-talker` test binary
 NROS_CLOCK_SOURCE | not-a-size | | a choice: which wall-clock source(s) the image resolves at boot (phase-582 W1c); nros-platform's build script reads it only to refuse a source the port cannot resolve
+NROS_CLOCK_UPGRADE | not-a-size | | a choice: whether an earlier listed wall-clock source may take over after boot (RFC-0141 D1); the posix port's build reads it for its resolution policy
+NROS_CLOCK_EPOCH_FAILURE | not-a-size | | a choice: unstamped or halt when no wall-clock source answers (RFC-0141 D4); the posix port's build reads it for its resolution policy

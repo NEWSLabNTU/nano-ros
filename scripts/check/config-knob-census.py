@@ -265,6 +265,14 @@ KNOB_CLASS = {
         "infra",
         "phase-582 W1c wall-clock source list; a choice of words, not a size",
     ),
+    "NROS_CLOCK_UPGRADE": (
+        "flag",
+        "a choice: whether an earlier listed wall-clock source may take over after boot; the posix port's build reads it to define its resolution policy (RFC-0141 D1, phase-582 W1d)",
+    ),
+    "NROS_CLOCK_EPOCH_FAILURE": (
+        "flag",
+        "a choice: run unstamped or halt when no wall-clock source answers; the posix port's build reads it to define its resolution policy (RFC-0141 D4, phase-582 W1d)",
+    ),
     "NROS_TRACE_TAKES": (
         "infra",
         "phase-474 I3 take-event toggle for the callback trace; a bool, so it has no rung",

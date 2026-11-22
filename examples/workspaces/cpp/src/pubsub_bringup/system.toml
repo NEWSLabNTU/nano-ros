@@ -20,6 +20,14 @@ pkg = "listener_pkg"
 class = "listener_pkg::Listener"
 name = "listener"
 
+# The stub board of the `clock-board` configuration (phase-582 W1d): its
+# wall-clock hook and a node printing the wall clock. Only
+# `linux_talker_clock_board` launches it.
+[[component]]
+pkg = "clock_board_pkg"
+class = "clock_board_pkg::ClockBoard"
+name = "clock_board"
+
 [image_defaults]
 rmw = "zenoh"
 
@@ -63,6 +71,21 @@ rmw = "xrce"
 board = "linux"
 launch = "talker.launch.xml"
 rmw = "cyclonedds"
+
+# The `clock-board` configuration of the linux talker (phase-582 W1d,
+# RFC-0141 D2): the wall clock comes from the board's hook, which
+# `clock_board_pkg` defines as a stub answering one fixed instant. The launch
+# runs the talker beside that package's node, which prints the wall clock and
+# its state; the talker's samples carry the same clock as their source stamp.
+# The stated knob gives the image its own configure, so the posix port the
+# other images link is compiled without the selection.
+# `tests/linux_board_clock.rs` runs it.
+[image.linux_talker_clock_board]
+board = "linux"
+launch = "talker_clock_board.launch.xml"
+
+[image.linux_talker_clock_board.knobs.clock]
+source = "board"
 
 [image.linux_listener]
 board = "linux"

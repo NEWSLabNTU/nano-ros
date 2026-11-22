@@ -26,6 +26,13 @@ const CELLS_GENERATED: &[Cell] = &[
     cell(Px4, Cpp, Uorb, Pubsub, Example, CarveOut(NO_LOAN_SLOT)).with(&[Config::Lending]),
     cell(Linux, C, Zenoh, Pubsub, Example, Runtime),
     cell(Linux, Cpp, Zenoh, Pubsub, Example, Runtime),
+    // phase-582 W1d (RFC-0141 D2) -- the linux talker with the board's
+    // wall-clock source, its hook a stub board answering one fixed instant:
+    // `Clock::system()`, the state query and the samples' source stamps all
+    // follow it, in Rust and C++. The `linux_talker_clock_board` image of each
+    // workspace's pubsub bringup; `tests/linux_board_clock.rs` runs it.
+    cell(Linux, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockBoard]),
+    cell(Linux, Cpp, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockBoard]),
     // issue 1384 — `examples/linux/c/custom-platform`, the one in-tree caller
     // of `rclc_executor_node_init` that creates an eager entity. Its
     // fixtures.toml row was BUILD-ONLY, so nothing ran the binary and its
