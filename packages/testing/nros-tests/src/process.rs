@@ -1000,6 +1000,9 @@ impl ManagedProcess {
     /// pair on the sibling type: a readiness wait that could observe nothing,
     /// which is worse than a sleep — a sleep leaves the process alive, and this
     /// killed the ROS 2 server the test went on to talk to.
+    ///
+    /// **Drains (issue 2816).** It starts from what an earlier wait carried and
+    /// returns everything up to the end, keeping nothing.
     pub fn wait_for_output(&mut self, timeout: Duration) -> Result<String, TestError> {
         use std::io::Read;
         #[cfg(unix)]
@@ -1096,6 +1099,11 @@ impl ManagedProcess {
     /// Use [`Self::wait_for_output_pattern`] directly only when waiting for
     /// something that is NOT a role's readiness — a payload line, a shutdown
     /// notice — where a timeout may legitimately be tolerable.
+    ///
+    /// **Carries (issue 2816).** It starts from what an earlier wait carried,
+    /// returns output only through its satisfying line, and keeps the rest for
+    /// the next wait on this process, so two markers printed in one write are
+    /// two successful waits.
     pub fn expect_ready(
         &mut self,
         role: crate::output::DemoRole,
@@ -1112,6 +1120,10 @@ impl ManagedProcess {
         }
     }
 
+    /// **Carries (issue 2816).** It starts from what an earlier wait carried,
+    /// returns output only through its satisfying line, and keeps the rest for
+    /// the next wait on this process, so two markers printed in one write are
+    /// two successful waits.
     pub fn wait_for_output_pattern(
         &mut self,
         pattern: &str,
@@ -1301,13 +1313,6 @@ impl ManagedProcess {
         keep_tail(&mut self.carry, output, cut);
     }
 
-    /// Issue 2816 — after a count wait: the output past the line holding the
-    /// `expected`-th occurrence is the next wait's.
-    fn carry_past_count(&mut self, output: &mut String, pattern: &str, expected: usize) {
-        let cut = satisfied_prefix_len(output, |p| p.matches(pattern).count() >= expected);
-        keep_tail(&mut self.carry, output, cut);
-    }
-
     /// Collect output, stopping early once `pattern` appears — the LENIENT wait.
     ///
     /// Infallible by design: it returns whatever the process printed, whether or
@@ -1331,6 +1336,11 @@ impl ManagedProcess {
     ///
     /// Use [`Self::wait_for_output_pattern`] when a missing pattern IS the
     /// failure; it says so with `Err`.
+    ///
+    /// **Carries (issue 2816).** It starts from what an earlier wait carried,
+    /// returns output only through its satisfying line, and keeps the rest for
+    /// the next wait on this process, so two markers printed in one write are
+    /// two successful waits.
     pub fn collect_until(&mut self, pattern: &str, timeout: Duration) -> String {
         self.wait_until_pattern(pattern, timeout).0
     }
@@ -1372,6 +1382,11 @@ impl ManagedProcess {
     /// Sibling of [`Self::collect_until`], which serves the same purpose for
     /// the single-occurrence case and returns no diagnostic because its own
     /// `Err` carries none.
+    ///
+    /// **Drains (issue 2816).** It starts from what an earlier wait carried and
+    /// returns EVERYTHING it read, keeping nothing: callers count what comes
+    /// back, and "at least N" is how a test drains a free-running producer. So
+    /// a pattern wait after it cannot see a line it already read.
     pub fn collect_until_count(
         &mut self,
         pattern: &str,
@@ -1388,6 +1403,11 @@ impl ManagedProcess {
     }
 
     /// Wait until a pattern appears at least `expected` times in stdout+stderr.
+    ///
+    /// **Drains (issue 2816).** It starts from what an earlier wait carried and
+    /// returns EVERYTHING it read, keeping nothing: callers count what comes
+    /// back, and "at least N" is how a test drains a free-running producer. So
+    /// a pattern wait after it cannot see a line it already read.
     pub fn wait_for_output_count(
         &mut self,
         pattern: &str,
@@ -1426,7 +1446,6 @@ impl ManagedProcess {
             if output.matches(pattern).count() >= expected {
                 self.handle.stdout = stdout;
                 self.handle.stderr = stderr;
-                self.carry_past_count(&mut output, pattern, expected);
                 return Ok(output);
             }
 
@@ -1465,7 +1484,6 @@ impl ManagedProcess {
                 self.handle.stdout = stdout;
                 self.handle.stderr = stderr;
                 return if output.matches(pattern).count() >= expected {
-                    self.carry_past_count(&mut output, pattern, expected);
                     Ok(output)
                 } else {
                     Err(TestError::ProcessFailed(format!(
@@ -1536,6 +1554,9 @@ impl ManagedProcess {
     ///
     /// Similar to wait_for_output but also captures stderr (useful for env_logger output).
     /// The process is killed when the timeout is reached.
+    ///
+    /// **Drains (issue 2816).** It starts from what an earlier wait carried and
+    /// returns everything up to the end, keeping nothing.
     pub fn wait_for_all_output(&mut self, timeout: Duration) -> Result<String, TestError> {
         use std::io::Read;
         #[cfg(unix)]
@@ -2229,19 +2250,52 @@ mod tests {
         );
     }
 
-    /// The count wait consumes through the line of its `expected`-th match
-    /// and no further, and a carried line is replayed exactly once.
+    /// A count wait returns EVERYTHING it read and keeps nothing: its callers
+    /// count what came back, and "at least N" is how a test drains what a
+    /// free-running producer printed (`realtime_sched_tasks_e2e` waits for one
+    /// /ctrl line and counts every line the read brought, then asserts the
+    /// ratio to /telem). Cutting it at the N-th line read ctrl=1.
     #[test]
-    fn a_count_wait_leaves_the_rest_for_the_next_wait() {
+    fn a_count_wait_returns_everything_it_read() {
         let mut p = scripted("printf 'tick\\ntick\\ntick\\ndone\\n'");
-        p.wait_for_output_count("tick", 2, Duration::from_secs(5))
-            .expect("two ticks");
-        let rest = p
-            .wait_for_output_pattern("done", Duration::from_secs(2))
-            .expect("the tail after the count reached the next wait");
+        // Let the one write land so a single read holds all four lines.
+        std::thread::sleep(Duration::from_millis(300));
+        let out = p
+            .wait_for_output_count("tick", 1, Duration::from_secs(5))
+            .expect("a tick");
         p.kill();
-        assert_eq!(rest.matches("tick").count(), 1, "replayed: {rest:?}");
-        assert!(!p.carry.contains("done"), "consumed twice: {:?}", p.carry);
+        assert_eq!(out.matches("tick").count(), 3, "{out:?}");
+        assert!(out.contains("done"), "{out:?}");
+        assert!(p.carry.is_empty(), "a count wait carried {:?}", p.carry);
+    }
+
+    /// The two contracts meet: a pattern wait AFTER a count wait cannot see a
+    /// line the count wait read, because the count wait drained it (kept on
+    /// purpose, for drains). A pattern wait before a count wait hands its
+    /// tail on.
+    #[test]
+    fn a_pattern_wait_after_a_count_wait_sees_only_what_came_after() {
+        let mut p = scripted("printf 'tick\\nMARK\\n'");
+        std::thread::sleep(Duration::from_millis(250));
+        let drained = p
+            .wait_for_output_count("tick", 1, Duration::from_secs(5))
+            .expect("a tick");
+        assert!(
+            drained.contains("MARK"),
+            "the count wait read MARK: {drained:?}"
+        );
+        let mark = p.wait_for_output_pattern("MARK", Duration::from_millis(1500));
+        assert!(mark.is_err(), "a drained line was seen again: {mark:?}");
+
+        let mut q = scripted("printf 'MARK\\ntick\\n'");
+        q.wait_for_output_pattern("MARK", Duration::from_secs(5))
+            .expect("MARK");
+        let ticks = q
+            .wait_for_output_count("tick", 1, Duration::from_secs(2))
+            .expect("the carried tick reached the count wait");
+        p.kill();
+        q.kill();
+        assert_eq!(ticks.matches("tick").count(), 1, "{ticks:?}");
     }
 
     /// Issue 2816's reach: every reader of a child's pipes in the two process
@@ -2280,8 +2334,8 @@ mod tests {
             .wait_for_output_pattern("one", Duration::from_secs(5))
             .expect("one");
         seen.push_str(
-            &p.wait_for_output_count("t", 2, Duration::from_secs(2))
-                .expect("two t"),
+            &p.wait_for_output_pattern("three", Duration::from_secs(2))
+                .expect("three"),
         );
         seen.push_str(&p.collect_until("four", Duration::from_secs(2)));
         p.kill();
