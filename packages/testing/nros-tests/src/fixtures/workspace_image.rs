@@ -261,7 +261,7 @@ pub struct ParsedImage {
     pub config: Vec<Config>,
 }
 
-const CONFIGS: [Config; 9] = [
+const CONFIGS: [Config; 11] = [
     Config::Lending,
     Config::Multisession,
     Config::SignalFdWake,
@@ -271,6 +271,8 @@ const CONFIGS: [Config; 9] = [
     Config::PeerMode,
     Config::ClockHlc,
     Config::ClockSntp,
+    Config::ClockSntpResync,
+    Config::ClockSntpOnce,
 ];
 
 /// Phase-531 W6 (RFC-0121 D8, RFC-0122 amendment) — whether a workspace at
@@ -381,9 +383,13 @@ fn parse_configs(mut rest: &str) -> Option<Vec<Config>> {
     let mut out = Vec::new();
     while !rest.is_empty() {
         rest = rest.strip_prefix('_')?;
+        // The LONGEST token that prefixes the rest: `Config::ClockSntp`'s
+        // token also prefixes `Config::ClockSntpResync`'s, and taking the
+        // first match would leave `_resync` unparsed and refuse the image.
         let c = CONFIGS
             .into_iter()
-            .find(|c| rest.starts_with(&c.as_str().replace('-', "_")))?;
+            .filter(|c| rest.starts_with(&c.as_str().replace('-', "_")))
+            .max_by_key(|c| c.as_str().len())?;
         rest = &rest[c.as_str().len()..];
         out.push(c);
     }

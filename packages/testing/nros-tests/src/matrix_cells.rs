@@ -169,6 +169,15 @@ const CELLS_GENERATED: &[Cell] = &[
     // counting when the wait ends, not replay it. The `zephyr_talker_clock_sntp`
     // image; `tests/zephyr_clock_resolve.rs` runs it.
     cell(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockSntp]),
+    // phase-582 W3 (RFC-0141 D5) -- the same talker against an SNTP server the
+    // test runs on loopback: re-querying every 500 ms, its stamps follow a step of
+    // the server's time within one interval. The `zephyr_talker_clock_sntp_resync`
+    // image; `tests/zephyr_clock_resolve.rs` runs it.
+    cell(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockSntpResync]),
+    // phase-582 W3 -- the negative case: the interval at its default 0, one
+    // exchange at boot, so the step never reaches the stamps. The
+    // `zephyr_talker_clock_sntp_once` image.
+    cell(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockSntpOnce]),
     cell(ZephyrNativeSim, C, Zenoh, Action, Example, Runtime),
     cell(ZephyrNativeSim, Cpp, Zenoh, Action, Example, Runtime),
     cell(ZephyrNativeSim, Rust, Cyclonedds, Pubsub, Example, Runtime),

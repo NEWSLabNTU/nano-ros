@@ -1393,6 +1393,19 @@ config NROS_CLOCK_SNTP_ATTEMPTS
       sntp.timeout_ms, before the source counts as not answering.
 
 
+# prompt: Re-query the SNTP server every (ms), 0 for once at boot
+config NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS
+    int
+    default 0
+    range 0 86400000
+    help
+      For the sntp source: above 0, the image queries sntp.server again on this
+      interval and re-installs the wall-clock offset, so stamps follow a server
+      whose time steps or a tick that drifts. 0 queries once, at boot. A query
+      that fails keeps the installed offset. The re-query runs on its own thread
+      and only while sntp is a source the image's clock policy admits.
+
+
 # prompt: Wall-clock source, or an ordered fallback list
 config NROS_CLOCK_SOURCE
     string

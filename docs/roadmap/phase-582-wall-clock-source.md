@@ -176,13 +176,39 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 
 ### W3 — SNTP re-acquires
 
-- **Status:** OPEN
+- **Status:** OPEN (implemented here; open until its acceptance cells run)
 - **Owner:** nros 139
 - RFC-0141 D5: `sntp_resync_interval_ms` (default 0, one-shot), re-setting
   the offset through W1's setter. It is issue 0758's consumer requirement.
 - **Acceptance:** on Zephyr native_sim with a local SNTP server whose time
   is stepped mid-run, stamps follow the step within one interval, and with 0
   they do not.
+- **Done:**
+  - **Knob.** `clock.sntp_resync_interval_ms` (image, default 0, range 0 to
+    one day) in the knob registry, generated into Kconfig as
+    `CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS`.
+  - **Thread.** `zephyr/nros_platform_zephyr_shims.c` defines one static,
+    not-yet-started, lowest-application-priority thread, built only when
+    `CONFIG_SNTP` is set and the interval is above 0. Resolution starts it when
+    the image lists `sntp` among its sources. Every interval it re-runs the
+    boot exchange and installs through the store's one setter, so the image's
+    `upgrade` policy decides whether the install is admitted, with no second
+    rule. A failed query keeps the installed offset and is reported once per
+    failing streak. It runs on its own thread because `sntp_simple` blocks
+    for up to `sntp.timeout_ms`.
+  - **Cells.** `+ [ClockSntpResync]` and `+ [ClockSntpOnce]` on
+    `(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example)`. They are the Rust
+    workspace's `zephyr_talker_clock_sntp_{resync,once}` images, each with its
+    own loopback port, answered by two new cases in
+    `tests/zephyr_clock_resolve.rs`:
+    - the test runs an SNTP server and a message-info observer;
+    - it checks the source stamps start at the server's time;
+    - it steps the server +1000 s;
+    - with 500 ms the stamps follow within one interval plus one publish
+      period, and with 0 they stay unstepped over eight intervals.
+  - **Fix found on the way.** The workspace image parser took the FIRST
+    config token prefixing an image name, so `clock_sntp` swallowed
+    `clock_sntp_resync`. It now takes the longest.
 
 ### W4 — Board guidance and the per-backend stamp table
 

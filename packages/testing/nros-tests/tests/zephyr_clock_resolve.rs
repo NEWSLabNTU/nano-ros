@@ -277,9 +277,220 @@ fn zephyr_clock_wait_is_not_replayed_by_the_timers() {
     drop(router);
 }
 
+// ── RFC-0141 D5 (phase-582 W3): SNTP re-acquires ───────────────────────────
+
+/// Seconds between the NTP epoch (1900) and the UNIX epoch.
+const NTP_UNIX_DELTA_S: u64 = 2_208_988_800;
+
+/// How far the test steps the server's time. Far past any host's skew, so a
+/// stamp either followed it or did not, with no reading in between.
+const STEP_S: i64 = 1000;
+
+/// `[image.zephyr_talker_clock_sntp_resync.knobs.clock] sntp_resync_interval_ms`.
+const RESYNC_MS: u64 = 500;
+
+/// An SNTP server on loopback whose answer is the host's time plus an offset
+/// the test moves. It answers what Zephyr's `sntp_simple` checks: a mode-4,
+/// stratum-1 reply whose originate timestamp echoes the request's transmit
+/// timestamp.
+struct SntpServer {
+    offset_s: std::sync::Arc<std::sync::atomic::AtomicI64>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl SntpServer {
+    fn start(port: u16) -> Self {
+        use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+        let sock = std::net::UdpSocket::bind(("127.0.0.1", port)).unwrap_or_else(|e| {
+            nros_tests::unmet!("bind the test SNTP server on 127.0.0.1:{port}: {e}")
+        });
+        sock.set_read_timeout(Some(Duration::from_millis(100)))
+            .expect("read timeout");
+        let offset_s = std::sync::Arc::new(AtomicI64::new(0));
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let (off, st) = (offset_s.clone(), stop.clone());
+        let thread = std::thread::spawn(move || {
+            let mut req = [0u8; 48];
+            while !st.load(Ordering::Relaxed) {
+                let Ok((n, peer)) = sock.recv_from(&mut req) else {
+                    continue;
+                };
+                if n < 48 {
+                    continue;
+                }
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("host clock before 1970");
+                let secs =
+                    (now.as_secs() as i64 + off.load(Ordering::Relaxed)) as u64 + NTP_UNIX_DELTA_S;
+                let frac = ((now.subsec_nanos() as u64) << 32) / 1_000_000_000;
+                let mut stamp = [0u8; 8];
+                stamp[..4].copy_from_slice(&(secs as u32).to_be_bytes());
+                stamp[4..].copy_from_slice(&(frac as u32).to_be_bytes());
+                let mut rep = [0u8; 48];
+                rep[0] = 0x24; // LI 0, version 4, mode 4 (server)
+                rep[1] = 1; // stratum 1
+                rep[2] = 4;
+                rep[3] = 0xEC;
+                rep[12..16].copy_from_slice(b"LOCL");
+                rep[16..24].copy_from_slice(&stamp); // reference
+                rep[24..32].copy_from_slice(&req[40..48]); // originate = their transmit
+                rep[32..40].copy_from_slice(&stamp); // receive
+                rep[40..48].copy_from_slice(&stamp); // transmit
+                let _ = sock.send_to(&rep, peer);
+            }
+        });
+        Self {
+            offset_s,
+            stop,
+            thread: Some(thread),
+        }
+    }
+
+    fn step(&self, by_s: i64) {
+        self.offset_s
+            .fetch_add(by_s, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Drop for SntpServer {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+/// Every `ts=` (the source stamp, UNIX ns) the observer printed in `out`.
+fn source_stamps(out: &str) -> Vec<i64> {
+    out.lines()
+        .filter_map(|l| l.split_whitespace().find_map(|f| f.strip_prefix("ts=")))
+        .filter_map(|v| v.parse().ok())
+        .collect()
+}
+
+fn host_unix_ns() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("host clock before 1970")
+        .as_nanos() as i64
+}
+
+/// Boot one SNTP talker against its loopback server with a message-info
+/// observer through the router; return once the observer has stamps from
+/// the boot-time exchange. The caller steps the server and reads on.
+fn sntp_pair(
+    config: Config,
+    port: u16,
+) -> (
+    SntpServer,
+    ZenohRouter,
+    ZephyrProcess,
+    ManagedProcess,
+    String,
+) {
+    let bin = image(config, PairRole::Talker);
+    let observer_bin = nros_tests::fixtures::build_message_info_observer()
+        .require("linux-rust-zenoh-message-info-observer");
+    let server = SntpServer::start(port);
+    let router = nros_tests::fixtures::or_unmet(ZenohRouter::start_unique());
+    let locator = router.locator();
+    let mut cmd = Command::new(observer_bin);
+    cmd.env("NROS_LOCATOR", &locator).env("RUST_LOG", "info");
+    let mut observer =
+        ManagedProcess::spawn_image(cmd, "message-info-observer").expect("start the observer");
+    let zephyr = ZephyrProcess::start_with_locator(&bin, ZephyrPlatform::NativeSim, &locator)
+        .expect("failed to start the native_sim talker");
+    let boot = zephyr.wait_for_pattern(CLOCK_RESOLUTION_TOOK_PREFIX, WAIT);
+    assert_eq!(
+        resolution(&boot).0.as_deref(),
+        Some("sntp"),
+        "the talker must latch its wall clock from the loopback SNTP server. Output:\n{boot}"
+    );
+    let heard = observer.collect_until("\u{0}", 4 * PERIOD);
+    let stamps = source_stamps(&heard);
+    let now = host_unix_ns();
+    assert!(
+        stamps.len() >= 2 && stamps.iter().all(|ts| (ts - now).abs() < 10_000_000_000),
+        "before the step, the source stamps must be the server's time (the host's, within \
+         10 s); got {stamps:?} against host {now}. Observer:\n{heard}\nTalker:\n{boot}"
+    );
+    (server, router, zephyr, observer, boot)
+}
+
+#[test]
+fn zephyr_sntp_resync_follows_a_step_of_the_server_time() {
+    let (server, router, zephyr, mut observer, boot) = sntp_pair(Config::ClockSntpResync, 12397);
+    assert!(
+        boot.contains("nros: SNTP re-sync every 500 ms"),
+        "the image states its re-query interval at boot. Output:\n{boot}"
+    );
+    server.step(STEP_S);
+    let stepped_at = Instant::now();
+    let threshold = host_unix_ns() + (STEP_S - 10) * 1_000_000_000;
+    // One interval for the re-query, one publish period for a stamp to carry
+    // it, and slack for a loaded host.
+    let budget = Duration::from_millis(RESYNC_MS) + PERIOD + Duration::from_millis(SETTLE_SLACK_MS);
+    let mut seen = String::new();
+    let followed = loop {
+        seen.push_str(&observer.collect_until("\u{0}", Duration::from_millis(100)));
+        if source_stamps(&seen).iter().any(|ts| *ts >= threshold) {
+            break Some(stepped_at.elapsed());
+        }
+        if stepped_at.elapsed() > 3 * budget {
+            break None;
+        }
+    };
+    let Some(after) = followed else {
+        panic!(
+            "no source stamp followed the server's {STEP_S} s step within {:?}. Observer:\n{seen}\n\
+             Talker:\n{}",
+            3 * budget,
+            snapshot(&zephyr)
+        );
+    };
+    assert!(
+        after <= budget,
+        "the stamps followed the step {after:?} after it, past one {RESYNC_MS} ms interval plus \
+         one publish period and slack ({budget:?}). Observer:\n{seen}"
+    );
+    drop(observer);
+    drop(router);
+}
+
+#[test]
+fn zephyr_sntp_without_resync_ignores_a_step_of_the_server_time() {
+    let (server, router, zephyr, mut observer, boot) = sntp_pair(Config::ClockSntpOnce, 12398);
+    assert!(
+        !boot.contains("re-sync every"),
+        "an image with the interval at 0 starts no re-query. Output:\n{boot}"
+    );
+    server.step(STEP_S);
+    let threshold = host_unix_ns() + (STEP_S - 10) * 1_000_000_000;
+    // Long enough for several re-queries, had any been running.
+    let seen = observer.collect_until("\u{0}", Duration::from_millis(8 * RESYNC_MS) + PERIOD);
+    let stamps = source_stamps(&seen);
+    assert!(
+        stamps.len() >= 2,
+        "the talker stopped publishing after the step. Observer:\n{seen}\nTalker:\n{}",
+        snapshot(&zephyr)
+    );
+    assert!(
+        stamps.iter().all(|ts| *ts < threshold),
+        "a stamp followed the server's step although the image queries once, at boot: \
+         {stamps:?}. Observer:\n{seen}"
+    );
+    drop(observer);
+    drop(router);
+}
+
 /// RFC-0051 §7a/§7c — this file answers the configured cells
 /// `(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example) + [ClockHlc]` (the latch
-/// and the fallback) and `+ [ClockSntp]` (the timers). Fixture-free.
+/// and the fallback), `+ [ClockSntp]` (the timers), and
+/// `+ [ClockSntpResync]` / `+ [ClockSntpOnce]` (the re-query and its
+/// absence). Fixture-free.
 #[test]
 fn cases_bound_to_matrix_cells() {
     use nros_tests::matrix::{
@@ -289,6 +500,11 @@ fn cases_bound_to_matrix_cells() {
     const PAIR: (P, L, R, W, K) = (P::ZephyrNativeSim, L::Rust, R::Zenoh, W::Pubsub, K::Example);
     assert_consumer_config_cases(
         Consumer::ZephyrClockResolve,
-        &[(PAIR, &[Config::ClockHlc]), (PAIR, &[Config::ClockSntp])],
+        &[
+            (PAIR, &[Config::ClockHlc]),
+            (PAIR, &[Config::ClockSntp]),
+            (PAIR, &[Config::ClockSntpResync]),
+            (PAIR, &[Config::ClockSntpOnce]),
+        ],
     );
 }

@@ -19,6 +19,9 @@ config NROS_CLOCK_HLC_INTERVAL_MS
 config NROS_CLOCK_SNTP_ATTEMPTS
     int "SNTP queries per boot before the source gives up"
 
+config NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS
+    int "Re-query the SNTP server every (ms), 0 for once at boot"
+
 config NROS_CLOCK_SOURCE
     string "Wall-clock source, or an ordered fallback list"
 

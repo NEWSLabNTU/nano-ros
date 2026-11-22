@@ -745,6 +745,15 @@ pub enum Config {
     /// attempts before the first spin, and the timers must not replay that
     /// wait (phase-582 W1c-2).
     ClockSntp,
+    /// The image takes its wall clock from an SNTP server the test runs on
+    /// loopback and re-queries it every 500 ms
+    /// (`clock.sntp_resync_interval_ms`): after the server's time steps, the
+    /// stamps follow within one interval (RFC-0141 D5, phase-582 W3).
+    ClockSntpResync,
+    /// The same, with the re-query interval at its default 0: one exchange at
+    /// boot, so a later step of the server's time never reaches the stamps
+    /// (RFC-0141 D5's negative case).
+    ClockSntpOnce,
 }
 
 impl Config {
@@ -760,6 +769,8 @@ impl Config {
             Config::Ctf => "ctf",
             Config::ClockHlc => "clock-hlc",
             Config::ClockSntp => "clock-sntp",
+            Config::ClockSntpResync => "clock-sntp-resync",
+            Config::ClockSntpOnce => "clock-sntp-once",
         }
     }
 }
@@ -1623,9 +1634,13 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             (P::QemuBaremetal, [Config::Serial] | [Config::Rtic]) => Some(Emulator),
             (P::Linux, [Config::PeerMode]) => Some(Nano2nano),
             (P::ZephyrNativeSim, [Config::Ctf]) => Some(ZephyrCtfMarkers),
-            (P::ZephyrNativeSim, [Config::ClockHlc] | [Config::ClockSntp]) => {
-                Some(ZephyrClockResolve)
-            }
+            (
+                P::ZephyrNativeSim,
+                [Config::ClockHlc]
+                | [Config::ClockSntp]
+                | [Config::ClockSntpResync]
+                | [Config::ClockSntpOnce],
+            ) => Some(ZephyrClockResolve),
             _ => None,
         };
     }

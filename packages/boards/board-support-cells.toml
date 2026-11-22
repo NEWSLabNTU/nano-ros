@@ -422,6 +422,27 @@ comment = '''
 at = ["ZephyrNativeSim", "Rust", "Zenoh", "Pubsub", "Example"]
 status = 'Runtime'
 with = '&[Config::ClockSntp]'
+
+[[cell]]
+comment = '''
+// phase-582 W3 (RFC-0141 D5) -- the same talker against an SNTP server the
+// test runs on loopback: re-querying every 500 ms, its stamps follow a step of
+// the server's time within one interval. The `zephyr_talker_clock_sntp_resync`
+// image; `tests/zephyr_clock_resolve.rs` runs it.
+'''
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::ClockSntpResync]'
+
+[[cell]]
+comment = '''
+// phase-582 W3 -- the negative case: the interval at its default 0, one
+// exchange at boot, so the step never reaches the stamps. The
+// `zephyr_talker_clock_sntp_once` image.
+'''
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::ClockSntpOnce]'
 [[cell]]
 at = ["ZephyrNativeSim", "C", "Zenoh", "Action", "Example"]
 status = 'Runtime'

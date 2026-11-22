@@ -248,6 +248,58 @@ static bool nros_zephyr_clock_try(uint8_t source, uint32_t settle_ms, void *ctx)
     }
 }
 
+/* RFC-0141 D5 (phase-582 W3) — SNTP re-acquires.
+ *
+ * With `clock.sntp_resync_interval_ms` above 0 and `sntp` among the image's
+ * sources, one low-priority thread queries the server again every interval
+ * and re-installs the offset through the store's one setter, as the zenoh
+ * HLC re-installs per window. The setter applies the image's policy, so the
+ * thread need not: an install is refused when the latched source is another
+ * one and `upgrade` does not let sntp take over, and a re-install by the
+ * latched sntp is not counted as a step. A failed query keeps the installed
+ * offset. 0, the default, is the one exchange at boot and starts no thread.
+ *
+ * Its own thread because `sntp_simple` blocks for up to `sntp.timeout_ms`
+ * on a socket: on the system work queue it would hold every other item. */
+#if defined(CONFIG_SNTP) && CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS > 0
+#define NROS_SNTP_RESYNC_STACK_SIZE 2048
+static void nros_zephyr_sntp_resync_loop(void *a, void *b, void *c) {
+    (void)a;
+    (void)b;
+    (void)c;
+    bool failing = false;
+    for (;;) {
+        k_msleep(CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS);
+        int rc =
+            nros_platform_epoch_acquire_sntp(CONFIG_NROS_SNTP_SERVER, CONFIG_NROS_SNTP_TIMEOUT_MS);
+        /* Report a change of state, not every interval: an unreachable
+         * server must not fill the console. */
+        if (rc != 0 && !failing) {
+            printk("nros: SNTP re-sync to %s failed (rc=%d); keeping the installed offset\n",
+                   CONFIG_NROS_SNTP_SERVER, rc);
+        } else if (rc == 0 && failing) {
+            printk("nros: SNTP re-sync to %s answering again\n", CONFIG_NROS_SNTP_SERVER);
+        }
+        failing = rc != 0;
+    }
+}
+K_THREAD_DEFINE(nros_sntp_resync_tid, NROS_SNTP_RESYNC_STACK_SIZE, nros_zephyr_sntp_resync_loop,
+                NULL, NULL, NULL, K_LOWEST_APPLICATION_THREAD_PRIO, 0, SYS_FOREVER_MS);
+
+static void nros_zephyr_sntp_resync_start(const uint8_t *sources, uint8_t n) {
+    if (!nros_clock_sources_name(sources, n, NROS_WALL_CLOCK_SOURCE_SNTP)) {
+        return;
+    }
+    printk("nros: SNTP re-sync every %u ms\n", (unsigned)CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS);
+    k_thread_start(nros_sntp_resync_tid);
+}
+#else
+static void nros_zephyr_sntp_resync_start(const uint8_t *sources, uint8_t n) {
+    (void)sources;
+    (void)n;
+}
+#endif
+
 static void nros_zephyr_clock_report(const char *msg, size_t len, void *ctx) {
     (void)ctx;
     printk("%.*s\n", (int)len, msg);
@@ -268,6 +320,7 @@ void nros_clock_resolve_configured(void) {
      * clock.fallback_settle_ms reads the cost rather than guessing it. */
     printk("nros: clock resolution took %u ms\n",
            (unsigned)((nros_platform_clock_ns() - start_ns) / 1000000ULL));
+    nros_zephyr_sntp_resync_start(sources, policy.n_sources);
 }
 
 /* RFC-0141 D1 — the clock gate: nothing stamps before the wall clock resolves.

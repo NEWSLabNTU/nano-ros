@@ -206,6 +206,40 @@ sntp_attempts = 2
 server = "192.0.2.1"
 timeout_ms = 1500
 
+# RFC-0141 D5 (phase-582 W3): the same talker against an SNTP server the
+# test runs on loopback, whose time it steps mid-run. `_resync` re-queries
+# every 500 ms, so its stamps follow the step; `_once` keeps the default 0,
+# one exchange at boot, so its stamps do not. Each has its own port so the
+# two cases may run at once. `tests/zephyr_clock_resolve.rs` runs them.
+[image.zephyr_talker_clock_sntp_resync]
+board = "zephyr"
+launch = "talker.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/127.0.0.1:7400"
+
+[image.zephyr_talker_clock_sntp_resync.knobs.clock]
+source = "sntp,platform"
+sntp_attempts = 3
+sntp_resync_interval_ms = 500
+
+[image.zephyr_talker_clock_sntp_resync.knobs.sntp]
+server = "127.0.0.1:12397"
+timeout_ms = 400
+
+[image.zephyr_talker_clock_sntp_once]
+board = "zephyr"
+launch = "talker.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/127.0.0.1:7400"
+
+[image.zephyr_talker_clock_sntp_once.knobs.clock]
+source = "sntp,platform"
+sntp_attempts = 3
+
+[image.zephyr_talker_clock_sntp_once.knobs.sntp]
+server = "127.0.0.1:12398"
+timeout_ms = 400
+
 [image.zephyr_talker_xrce]
 board = "zephyr"
 launch = "talker.launch.xml"
