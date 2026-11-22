@@ -168,7 +168,7 @@ every hop has alternatives at about the same depth. Classes:
 
 ### What was wrong: evidence from code the link discarded
 
-On realtime-c, 552 of the 563 functions that bind counted as C-reachable
+On realtime-c, 414 of the 425 functions that bind counted as C-reachable
 only through dropped code are not in the image at all, so bind was binding
 C sites to code that does not exist. Two sources:
 
@@ -185,26 +185,33 @@ So every machine site in zenoh-pico's GCC-built container helpers
 
 **The rule now:**
 
-- A relocation counts as an address take only if its section defines a name
-  the linked image holds.
-- A Rust IR global counts only if the image holds it.
-- A function whose address the image's own data holds counts whatever the
-  inputs say. The first oracle run found why that part is needed: Zephyr's
-  `sw_isr_table` is rebuilt at a second link stage from the discarded
-  `.intList`, with literal addresses and no relocation.
+- A relocation's address takes are set aside only when BOTH signals say its
+  section is gone: none of the names it defines is in the linked image's
+  symbol table, AND the link map says the link discarded it (GNU ld's
+  "Discarded input sections", or, for LLD, a section of a placed member that
+  the map does not place). A stripped or renamed name alone drops nothing.
+- A Rust IR global is set aside on the same two signals, by its own data
+  section's name.
+- A function whose address the image holds counts whatever the inputs say: a
+  pointer-sized word at any byte offset of any allocated section, executable
+  ones included (literal pools, tables a linker script writes). The first
+  oracle run found why that part is needed: Zephyr's `sw_isr_table` is rebuilt
+  at a second link stage from the discarded `.intList`, with literal addresses
+  and no relocation.
 
-Every unsure case keeps the evidence: no image, a section with no symbol a
-symtab keeps, a name any kept object also uses, or a `private` IR global.
+Every unsure case keeps the evidence: no map, no image, an object the map
+never names, a section with no symbol a symtab keeps, a name any kept object
+also uses, or a `private` IR global.
 
 **Checked against the image.** For every function that lost evidence, the
 image's allocated, non-executable sections were scanned for its address.
-There were 0 hits on both images.
+The executable sections were scanned too. There were 0 hits on both images.
 
 | image | before | after |
 |---|---:|---:|
-| Nucleo action server | 113,808 B | 102,664 B (-9.8 %) |
-| realtime-c OPEN | 188,308 B | 92,116 B (-51 %) |
-| realtime-c TASK_HIGH | 191,436 B | 90,116 B (-53 %) |
+| Nucleo action server | 113,808 B | 103,240 B (-9.3 %) |
+| realtime-c OPEN | 188,308 B | 92,324 B (-51 %) |
+| realtime-c TASK_HIGH | 191,436 B | 90,300 B (-53 %) |
 
 Every row of the stack-floor table was re-walked by the drift check and
 re-recorded. None failed. Every `[[observed]]` row is sized from its peak, so
@@ -212,17 +219,13 @@ no stack moves:
 
 | row | was | now |
 |---|---:|---:|
-| `action-server/rust/zenoh@nucleo-f767zi-zephyr` | 111,136 | 102,664 |
-| `talker/rust/zenoh@nucleo-f767zi-zephyr` | 69,648 | 65,408 |
-| `action-server/rust/zenoh@mps2-an385-zephyr` | 117,828 | 108,160 |
-| `talker/rust/zenoh@mps2-an385-zephyr` | 74,220 | 72,004 |
-| `qemu_bsp_talker_bringup@mps2-an385-baremetal` | 157,044 | 157,700 |
-| `talker/c/zenoh@nucleo-f767zi-zephyr` | 112,200 | 71,964 |
-| `talker/c/zenoh@mps2-an385-freertos` (`[[drift]]`) | 117,768 | 66,132 |
-
-The bare-metal row rose 0.4 %: the walk cut its call cycle elsewhere
-([issue 2550](2550-stack-walk-order-dependent-under-cycles.md)), within the
-drift tolerance.
+| `action-server/rust/zenoh@nucleo-f767zi-zephyr` | 111,136 | 103,240 |
+| `talker/rust/zenoh@nucleo-f767zi-zephyr` | 69,648 | 66,776 |
+| `action-server/rust/zenoh@mps2-an385-zephyr` | 117,828 | 108,152 |
+| `talker/rust/zenoh@mps2-an385-zephyr` | 74,220 | 72,084 |
+| `qemu_bsp_talker_bringup@mps2-an385-baremetal` | 157,044 | 153,784 |
+| `talker/c/zenoh@nucleo-f767zi-zephyr` | 112,200 | 72,000 |
+| `talker/c/zenoh@mps2-an385-freertos` (`[[drift]]`) | 117,768 | 67,004 |
 
 ### What binding cannot close
 

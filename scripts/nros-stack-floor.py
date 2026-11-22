@@ -1289,21 +1289,26 @@ def load_linked_symbols(elf: str, readobj: str) -> dict[int, set[str]]:
             idx = sec.get("Value") if isinstance(sec, dict) else None
             if name and isinstance(idx, int) and idx > 0:
                 LINKED_SYMBOLS.add(_symbol_base(name))
-                if typ == "Function":
+                # An assembly entry with no `.type @function` is `NoType`; a
+                # data label of that type only adds a name bind never binds.
+                if typ == "Function" or (typ in ("None", "NoType")
+                                         and not name.startswith(("$", ".L"))):
                     funcs.setdefault(sym["Value"] & ~1, set()).add(name)
     return funcs
 
 
 def image_data_pointers(elf: str, funcs: dict[int, set[str]]) -> set[str]:
-    """Issue 2658: the functions whose address the linked image holds as DATA:
-    an aligned pointer-sized word equal to the function's address (Thumb bit
-    either way), in an allocated, non-executable section with contents.
+    """Issue 2658: the functions whose address the linked image holds: a
+    pointer-sized word, at any byte offset, equal to the function's address
+    (Thumb bit either way), in any allocated section with contents.
 
     The image, not its inputs, is the evidence here, because a later link
     stage can rebuild a table from a section the final link discards: Zephyr's
     `sw_isr_table` is generated from `.intList` and holds each ISR as a literal
-    address, with no relocation. A word that equals an address by coincidence
-    only adds a target, which keeps the walk an upper bound."""
+    address, with no relocation. Executable sections count too: a literal
+    pool, or a vector table a linker script writes with `LONG()`. A word that
+    equals an address by coincidence only adds a target, which keeps the walk
+    an upper bound; measured, the widening moves neither image's walk."""
     import struct
     out: set[str] = set()
     try:
@@ -1325,7 +1330,7 @@ def image_data_pointers(elf: str, funcs: dict[int, set[str]]) -> set[str]:
     for a, names in funcs.items():
         for v in (a, a | 1):
             want.setdefault(v, set()).update(names)
-    sht_nobits, shf_alloc, shf_execinstr = 8, 0x2, 0x4
+    sht_nobits, shf_alloc = 8, 0x2
     for i in range(shnum):
         h = shoff + i * shentsize
         if is64:
@@ -1334,14 +1339,109 @@ def image_data_pointers(elf: str, funcs: dict[int, set[str]]) -> set[str]:
         else:
             sh_type, sh_flags = struct.unpack_from(end + "II", raw, h + 4)
             sh_off, sh_size = struct.unpack_from(end + "II", raw, h + 0x10)
-        if sh_type == sht_nobits or not sh_flags & shf_alloc or sh_flags & shf_execinstr:
+        if sh_type == sht_nobits or not sh_flags & shf_alloc:
             continue
         data = raw[sh_off:sh_off + sh_size]
-        for (w,) in struct.iter_unpack(end + wfmt, data[:len(data) - len(data) % word]):
-            hit = want.get(w)
+        # Every byte offset: a packed table can hold a pointer unaligned.
+        unpack = struct.Struct(end + wfmt).unpack_from
+        for off in range(0, len(data) - word + 1):
+            hit = want.get(unpack(data, off)[0])
             if hit:
                 out |= hit
     return out
+
+
+def _map_member(f: str) -> str:
+    """A link map's file spelling as the object it names: the member of
+    `archive(member)`, else the path's base name."""
+    f = f.strip()
+    if f.endswith(")") and "(" in f:
+        return f[f.rfind("(") + 1:-1]
+    return f.rsplit("/", 1)[-1]
+
+
+_LLD_PLACED = re.compile(r"^\s*[0-9a-f]+\s+[0-9a-f]+\s+[0-9a-f]+\s+\d+\s+"
+                         r"(?P<file>\S.*?):\((?P<sec>[^)]*)\)\s*$")
+
+
+class MapDiscards:
+    """Issue 2658: what a link map says the link DISCARDED, by (object base
+    name, section name). The second, independent signal a section must have
+    before its address takes are set aside (`linked_away` is the first).
+
+    - GNU ld: its "Discarded input sections" block names each one.
+    - LLD: the map names only what it PLACED, so a section of an object the
+      map places other sections of, and does not place, was discarded.
+    - Anything else (no map, an unknown format, an object the map never
+      names) confirms nothing, so the evidence is kept."""
+
+    def __init__(self, text: str):
+        self.kind: str | None = None
+        self.discarded: set[tuple[str, str]] = set()
+        self.placed: set[tuple[str, str]] = set()
+        self.members: set[str] = set()
+        self._disc_names: set[str] | None = None
+        self._placed_names: set[str] = set()
+        a0 = text.find("Discarded input sections")
+        if a0 >= 0:
+            self.kind = "gnu"
+            a1 = text.find("Memory Configuration", a0)
+            sec = None
+            for line in text[a0:a1 if a1 > 0 else None].splitlines()[1:]:
+                parts = line.split()
+                if line.startswith(" ") and not line.startswith("  ") and parts:
+                    sec = parts[0]
+                    if len(parts) >= 4:  # ` .sec 0xaddr 0xsize file` on one line
+                        self.discarded.add((_map_member(" ".join(parts[3:])), sec))
+                        sec = None
+                elif sec and len(parts) >= 3 and parts[0].startswith("0x"):
+                    self.discarded.add((_map_member(" ".join(parts[2:])), sec))
+                    sec = None
+            return
+        for line in text.splitlines():
+            m = _LLD_PLACED.match(line)
+            if m:
+                mem = _map_member(m["file"])
+                self.placed.add((mem, m["sec"]))
+                self.members.add(mem)
+        if self.placed:
+            self.kind = "lld"
+
+    def confirms_global(self, name: str) -> bool:
+        """A Rust IR global's own data section (`.rodata.<name>`,
+        `.data.rel.ro.<name>`, ...) is in GNU's discarded list, or, for LLD,
+        no placed section carries that name."""
+        if self._disc_names is None:
+            self._disc_names = {sec.rsplit(".", 1)[-1] for _, sec in self.discarded}
+            self._placed_names = {sec.rsplit(".", 1)[-1] for _, sec in self.placed}
+        if self.kind == "gnu":
+            return name in self._disc_names
+        if self.kind == "lld":
+            return name not in self._placed_names
+        return False
+
+    def confirms(self, obj: str, sec: str) -> bool:
+        mem = _map_member(obj)
+        if self.kind == "gnu":
+            return (mem, sec) in self.discarded
+        if self.kind == "lld":
+            return mem in self.members and (mem, sec) not in self.placed
+        return False
+
+
+# The map of the link being walked (`--link-map`); None confirms nothing.
+LINK_MAP_DISCARDS: MapDiscards | None = None
+
+
+def discarded_holder(names, obj: str, sec: str) -> bool:
+    """Issue 2658: True when input section `sec` of `obj`, defining `names`,
+    is not in the image, so the addresses it takes are not evidence. BOTH
+    signals must say so: no name it defines is in the image's symbol table
+    (`linked_away`), and the link map says the link discarded it
+    (`MapDiscards.confirms`). A stripped or renamed local alone, in a kept
+    section, keeps its address takes; no map, no drop."""
+    return (LINK_MAP_DISCARDS is not None and linked_away(names)
+            and LINK_MAP_DISCARDS.confirms(obj, sec))
 
 
 def linked_away(names) -> bool:
@@ -2009,8 +2109,11 @@ def parse_ir_sites(text: str, drop_unlinked: bool = False):
         if cur is None:
             g = _IR_GLOBAL.match(line)
             if g:
+                gname = g.group(1).strip('"')
                 if (drop_unlinked and not _IR_PRIVATE.match(line)
-                        and linked_away([g.group(1).strip('"')])):
+                        and LINK_MAP_DISCARDS is not None
+                        and linked_away([gname])
+                        and LINK_MAP_DISCARDS.confirms_global(_symbol_base(gname))):
                     DISCARDED_EVIDENCE["ir_globals"] += 1
                     continue
                 rest = g.group(3)
@@ -2714,9 +2817,13 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
             # dropped from the image) made every export C-reachable, and every
             # C site with no IR bound to the whole API. Its calls stay edges:
             # they are unreachable anyway, and a direct call is never loose.
-            taken = not linked_away(defs_by_sec.get(target_idx, ()))
+            # Two independent signals, or the evidence stays: no name the
+            # section defines is in the image (a stripped or renamed local
+            # alone must never drop a KEPT section's address takes), AND the
+            # link map says the link discarded it.
+            taken = not discarded_holder(defs_by_sec.get(target_idx, ()), obj, tname)
             if not taken:
-                DISCARDED_EVIDENCE["relocs"] += 1
+                DISCARDED_EVIDENCE["relocs"] += len(rel.get("Relocs", []))
             for r in rel.get("Relocs", []):
                 rr = r["Relocation"]
                 tgt = rr["Symbol"]["Name"]
@@ -3957,6 +4064,9 @@ def run(args: argparse.Namespace) -> int:
                                 args.llvm_bin, cache, units)
     LINKED_SYMBOLS.clear()
     DISCARDED_EVIDENCE.update(relocs=0, ir_globals=0)
+    global LINK_MAP_DISCARDS
+    LINK_MAP_DISCARDS = (MapDiscards(Path(args.link_map).read_text(errors="replace"))
+                         if args.link_map else None)
     image_held: set[str] = set()
     if args.cfi_elf and Path(args.cfi_elf).is_file():
         # Issue 2658: what the image holds, before any input is read, so an
@@ -3969,6 +4079,12 @@ def run(args: argparse.Namespace) -> int:
         load_object(g, args.inputs[i:i + LOAD_CHUNK], readobj, objdump)
     g.address_taken |= image_held
     g.c_taken |= image_held
+    if image_held:
+        # A coincidental word only adds a target; if a walk ever jumps after a
+        # rebuild, this count is the first place to look.
+        print(f"nros-stack-floor: {len(image_held)} function(s) whose address the image "
+              f"holds ({Path(args.cfi_elf).name}'s allocated sections) count as address-taken",
+              file=sys.stderr)
     apart = separate_locals(g)
     if apart:
         print(f"nros-stack-floor: {len(apart)} local function name(s) more than one input "
@@ -4085,9 +4201,9 @@ def run(args: argparse.Namespace) -> int:
               f"site(s) by clang type, {st['c_none']} C branch(es) that call nothing, and "
               f"{st['machine']} with no IR to every function C can hold", file=sys.stderr)
         if DISCARDED_EVIDENCE["relocs"] or DISCARDED_EVIDENCE["ir_globals"]:
-            print(f"nros-stack-floor: bind: {DISCARDED_EVIDENCE['relocs']} relocation "
-                  f"section(s) and {DISCARDED_EVIDENCE['ir_globals']} Rust IR global(s) the "
-                  "link discarded take no address (issue 2658)", file=sys.stderr)
+            print(f"nros-stack-floor: bind: {DISCARDED_EVIDENCE['relocs']} relocation(s) "
+                  f"and {DISCARDED_EVIDENCE['ir_globals']} Rust IR global(s) the link "
+                  "discarded take no address (issue 2658)", file=sys.stderr)
         if st.get("c_none_fns"):
             print("nros-stack-floor: bind: C function(s) whose machine branches the clang IR "
                   "shows are not calls: " + ", ".join(sorted(st["c_none_fns"])[:8]),
@@ -4541,8 +4657,17 @@ def self_test() -> int:
         '@anon.0 = private unnamed_addr constant [1 x ptr] [ptr @q_api], align 4\n'
         '@_RNvC4keep4GONE = global ptr @w_api, align 4\n'
     )
+    global LINK_MAP_DISCARDS
     saved = set(LINKED_SYMBOLS)
+    saved_map = LINK_MAP_DISCARDS
+    gnu_map = ("Archive member included\n\nDiscarded input sections\n\n"
+               " .rodata._RNvC4keep6ANCHOR\n"
+               "                0x00000000       0x14 lib/libx.a(x-cgu.0.rcgu.o)\n"
+               " .data._RNvC4keep4GONE 0x00000000 0x4 lib/libx.a(x-cgu.0.rcgu.o)\n"
+               " .text.gone_fn  0x00000000       0x10 obj/a.o\n"
+               "\nMemory Configuration\n")
     try:
+        LINK_MAP_DISCARDS = MapDiscards(gnu_map)
         LINKED_SYMBOLS.clear()
         _, _, tb_all, esc_all, _ = parse_ir_sites(ir_d, drop_unlinked=True)
         check("discarded: with no image read, every IR table and escape is kept",
@@ -4567,6 +4692,47 @@ def self_test() -> int:
         _, _, tb_c, _, _ = parse_ir_sites(ir_d)
         check("discarded: the C IR (no drop_unlinked) keeps every table",
               {"x_api", "y_api"} <= {f for _, f in tb_c})
+        LINK_MAP_DISCARDS = MapDiscards("")
+        _, _, tb_nm, _, _ = parse_ir_sites(ir_d, drop_unlinked=True)
+        check("discarded: a global absent from the image but NOT discarded by the map "
+              "keeps its slots (a renamed or stripped name alone drops nothing)",
+              {"x_api", "y_api"} <= {f for _, f in tb_nm})
+        LINK_MAP_DISCARDS = None
+        _, _, tb_none, _, _ = parse_ir_sites(ir_d, drop_unlinked=True)
+        check("discarded: no map, no drop",
+              {"x_api", "y_api"} <= {f for _, f in tb_none}
+              and not discarded_holder(["gone_fn"], "obj/a.o", ".text.gone_fn"))
+        # The relocation side: a kept code section whose only name the image
+        # does not hold (stripped, or renamed by LTO) still takes its addresses.
+        LINK_MAP_DISCARDS = MapDiscards(gnu_map)
+        check("discarded: GNU map: a section both signals call dropped is dropped",
+              discarded_holder(["gone_fn"], "obj/a.o", ".text.gone_fn"))
+        check("discarded: GNU map: a KEPT code section whose local name was stripped or "
+              "renamed keeps its address takes",
+              not discarded_holder(["static_caller"], "obj/a.o", ".text.static_caller"))
+        check("discarded: GNU map: one-line and two-line entries, by archive member",
+              LINK_MAP_DISCARDS.confirms("/x/libx.a(x-cgu.0.rcgu.o)", ".data._RNvC4keep4GONE")
+              and LINK_MAP_DISCARDS.confirms("/cache/members/k/x-cgu.0.rcgu.o",
+                                             ".rodata._RNvC4keep6ANCHOR"))
+        lld_map = ("             VMA              LMA     Size Align Out     In      Symbol\n"
+                   "         8000000          8000000      200     4 .text\n"
+                   "         8000000          8000000       20     2         "
+                   "lib/liby.a(y.o):(.text.kept_fn)\n"
+                   "         8000020          8000020        4     4         "
+                   "obj/b.o:(.rodata.tab)\n")
+        LINK_MAP_DISCARDS = MapDiscards(lld_map)
+        check("discarded: LLD map: a section of a placed member that the map does not "
+              "place is dropped when its names are absent too",
+              LINK_MAP_DISCARDS.kind == "lld"
+              and discarded_holder(["unplaced_fn"], "/c/members/k/y.o", ".text.unplaced_fn"))
+        check("discarded: LLD map: a placed section is kept even if its name is absent",
+              not discarded_holder(["kept_fn_renamed"], "/c/members/k/y.o", ".text.kept_fn"))
+        check("discarded: LLD map: an object the map never names confirms nothing",
+              not discarded_holder(["z_fn"], "obj/z.o", ".text.z_fn"))
+        LINKED_SYMBOLS.update({"foo.constprop.0"})
+        check("discarded: a GCC clone holder (`foo.constprop.0`) spelled the same in the "
+              "object and the image reads as kept",
+              not discarded_holder(["foo.constprop.0"], "obj/a.o", ".text.gone_fn"))
         check("discarded: a section is kept when any name it defines is in the image",
               not linked_away(["gone_a", "x_api"]))
         check("discarded: a section with no name a symtab keeps is never judged dropped",
@@ -4578,6 +4744,7 @@ def self_test() -> int:
     finally:
         LINKED_SYMBOLS.clear()
         LINKED_SYMBOLS.update(saved)
+        LINK_MAP_DISCARDS = saved_map
 
     # issue 2658 -- the image's own data is evidence (Zephyr's sw_isr_table is
     # rebuilt from a discarded section with literal addresses, no relocation)
@@ -4585,8 +4752,10 @@ def self_test() -> int:
     import tempfile as _tf
     for is64 in (False, True):
         word = "Q" if is64 else "I"
-        # .data holds isr|1 (Thumb) and tbl; .text holds code_word; .bss is NOBITS
-        data = _st.pack("<" + word * 3, 0x1001, 0x2000, 0)
+        # .data holds isr|1 (Thumb), tbl, and packed_fn one byte off alignment;
+        # .text holds code_word (a literal pool); .bss is NOBITS
+        data = (_st.pack("<" + word * 3, 0x1001, 0x2000, 0) + b"\x00"
+                + _st.pack("<" + word, 0x5000) + b"\x00" * 3)
         text = _st.pack("<" + word, 0x3000)
         hdr_size, sh_size = (0x40, 0x40) if is64 else (0x34, 0x28)
         d_off = hdr_size
@@ -4610,14 +4779,17 @@ def self_test() -> int:
             tf.write(blob)
         try:
             held = image_data_pointers(tf.name, {0x1000: {"isr"}, 0x2000: {"tbl_fn"},
-                                                 0x3000: {"code_word"}, 0x4000: {"nowhere"}})
+                                                 0x3000: {"code_word"}, 0x4000: {"nowhere"},
+                                                 0x5000: {"packed_fn"}, 0x6000: {"in_bss"}})
         finally:
             os.unlink(tf.name)
         bits = "64" if is64 else "32"
         check(f"image data ({bits}-bit): a Thumb-tagged pointer in .data is held", "isr" in held)
         check(f"image data ({bits}-bit): a plain pointer in .data is held", "tbl_fn" in held)
-        check(f"image data ({bits}-bit): a word in executable code is not data evidence",
-              "code_word" not in held)
+        check(f"image data ({bits}-bit): a word in executable code (a literal pool) is "
+              "evidence", "code_word" in held)
+        check(f"image data ({bits}-bit): a pointer at an unaligned offset (a packed table) "
+              "is evidence", "packed_fn" in held)
         check(f"image data ({bits}-bit): a function no data names is not held",
               "nowhere" not in held)
     gb = Graph(frames={f: 8 for f in ("drop", "m", "a", "b", "esc", "caller", "cfn", "cb")},
