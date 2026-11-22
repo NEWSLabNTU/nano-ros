@@ -65,6 +65,9 @@ crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
 
 [board.zephyr]
 west_board = "rpi_pico/rp2040/w"
+# The Zephyr lines this board builds on (issue 2804). 3.7 only: its HAL
+# module is on no other line (`[zephyr_module.*] lines` in nros-sdk-index.toml).
+lines = ["3.7"]
 # Cortex-M0+ (ARMv6-M, no CAS): `nros_detect_rust_target` maps
 # CPU_CORTEX_M0PLUS to this triple (issue 2206).
 rust_target = "thumbv6m-none-eabi"

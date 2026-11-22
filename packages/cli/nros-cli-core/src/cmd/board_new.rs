@@ -189,6 +189,9 @@ fn render_descriptor(args: &NewArgs) -> String {
         out.push_str(&format!(
             "\n[board.zephyr]\n\
              west_board = \"{wb}\"\n\
+             # The Zephyr lines this board is meant to build on. A leaf for\n\
+             # it is skipped on any other line, and fails on these if broken.\n\
+             lines = [\"3.7\"]\n\
              # Derived, so absent on purpose: prj.conf and\n\
              # `boards/<west_board, / as _, no @revision>.{{conf,overlay}}`,\n\
              # present-if-exists. Zephyr's own board definition selects the\n\

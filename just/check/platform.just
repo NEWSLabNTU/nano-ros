@@ -340,6 +340,15 @@ zephyr-module-allowlist:
 zephyr-patch-check-mode:
     @python3 scripts/check-zephyr-patch-check-mode.py
 
+# issue 2804 — every Zephyr board descriptor STATES `[board.zephyr] lines`
+# (the fixture build and the test lane skip a leaf off the run's line from it),
+# and the `[zephyr_module.*]` rows naming the board agree: each is on one of its
+# lines and in that line's allowlist. A board that stated nothing would mean
+# "every line", which reported a 3.7-only board UNMET on 4.4.
+[group("checks")]
+zephyr-board-lines:
+    @python3 scripts/check-zephyr-board-lines.py
+
 # issue 2764 — every script that runs `west update` re-applies the line's patch
 # set through `nros_zephyr_apply_patchset`, the one helper that drops the stale
 # record, runs `patches/<line>.sh` and lets it record itself. Two writers had

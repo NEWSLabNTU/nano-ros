@@ -31,6 +31,9 @@ crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
 
 [board.zephyr]
 west_board = "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp"
+# The Zephyr lines this board builds on (issue 2804). 3.7: the line its
+# FVP lane runs; no 4.4 image names this board yet.
+lines = ["3.7"]
 sdk_abi = "aarch64-zephyr-elf"
 default_rmw = "cyclonedds"
 default_transport = "ethernet"
