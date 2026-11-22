@@ -44,7 +44,6 @@ scripts/zephyr/cortex-a9-rust-patch.sh  # patch script; same legacy-tree rung
 scripts/zephyr/cortex-r-rust-patch.sh  # patch script; same legacy-tree rung
 scripts/zephyr/llext-edk-conditional-patch.sh  # patch script; same legacy-tree rung
 scripts/zephyr/native-sim-ipproto-ip-patch.sh  # patch script; same legacy-tree rung
-scripts/zephyr/nsos-adapt-ipproto-ip-patch.sh  # patch script; same legacy-tree rung
 scripts/zephyr/nsos-getifaddrs-patch.sh  # patch script; same legacy-tree rung
 scripts/zephyr/nsos-getsockname-patch.sh  # patch script; same legacy-tree rung
 scripts/zephyr/nsos-mcjoin-mreq-patch.sh  # patch script; same legacy-tree rung

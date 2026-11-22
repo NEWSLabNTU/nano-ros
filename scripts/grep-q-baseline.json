@@ -41,7 +41,6 @@
   "scripts/zephyr/native-sim-ipproto-ip-patch-4.4.sh": 2,
   "scripts/zephyr/native-sim-ipproto-ip-patch.sh": 3,
   "scripts/zephyr/nsos-adapt-ipproto-ip-patch-4.4.sh": 2,
-  "scripts/zephyr/nsos-adapt-ipproto-ip-patch.sh": 3,
   "scripts/zephyr/nsos-getifaddrs-patch.sh": 1,
   "scripts/zephyr/nsos-getsockname-patch.sh": 1,
   "scripts/zephyr/nsos-mcjoin-mreq-patch.sh": 2,

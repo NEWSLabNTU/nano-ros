@@ -76,14 +76,25 @@ if [ "${1:-}" = "--self-test" ]; then
     trap 'rm -rf "$_st_tmp"' EXIT
     _st_fail=0
 
-    # 3.7: one shared function, the command spelled as a variable.
+    # 3.7: one shared function, the command spelled as a variable, and its
+    #      callers passing `CARGO_ARGS build` / `CARGO_ARGS doc`.
     # 4.4: the function inlined, two literal commands.
+    # Each fixture carries every line a hunk anchors on, in upstream's
+    # spelling: a fixture that lacks one makes the patch refuse it, and the
+    # self-test then reports the FIXTURE, not the patch (the 3.7 fixture had no
+    # `CARGO_ARGS build` line, so the staticlib hunk refused it).
     for _layout in shared inlined; do
         _d="$_st_tmp/$_layout/modules/lang/rust"
         mkdir -p "$_d" "$_st_tmp/$_layout/zephyr"
         {
             printf 'function(rust_cargo_application)\n'
-            printf '  set(rust_build_type_arg --release)\n'
+            printf '  if(CONFIG_DEBUG)\n'
+            printf '    set(RUST_BUILD_TYPE "debug")\n'
+            printf '    set(rust_build_type_arg "")\n'
+            printf '  else()\n'
+            printf '    set(RUST_BUILD_TYPE "release")\n'
+            printf '    set(rust_build_type_arg "--release")\n'
+            printf '  endif()\n'
             printf '  add_custom_command(\n'
             printf '      DT_AUGMENTS="${DT_AUGMENTS}"\n'
             if [ "$_layout" = shared ]; then
@@ -97,6 +108,14 @@ if [ "${1:-}" = "--self-test" ]; then
                 printf '      DT_AUGMENTS="${DT_AUGMENTS}"\n'
                 printf '      cargo doc\n'
                 printf '      ${rust_build_type_arg}\n'
+            fi
+            if [ "$_layout" = shared ]; then
+                printf '  add_cargo_target_with_zephyr_env(librustapp\n'
+                printf '    CARGO_ARGS build\n'
+                printf '  )\n'
+                printf '  add_cargo_target_with_zephyr_env(rustdoc\n'
+                printf '    CARGO_ARGS doc\n'
+                printf '  )\n'
             fi
             printf 'endfunction()\n'
         } > "$_d/CMakeLists.txt"
@@ -113,8 +132,15 @@ if [ "${1:-}" = "--self-test" ]; then
         _e="$(_code '\${EXTRA_CARGO_ARGS}')"
         _f="$(_code '\${NROS_BOARD_FACTS_ENV}')"
         _i="$(_code '\${NROS_IMAGE_ENV_CARGO_FLAGS}')"
-        if [ "$_e" != 1 ] || [ "$_f" != 1 ] || [ "$_i" != 1 ]; then
-            echo "self-test: $_layout layout: EXTRA_CARGO_ARGS=$_e NROS_BOARD_FACTS_ENV=$_f NROS_IMAGE_ENV_CARGO_FLAGS=$_i (want 1/1/1)" >&2
+        _s="$(_code 'crate-type staticlib')"
+        _p="$(grep -c 'nano-ros: NROS_CARGO_PROFILE override' "$_d/CMakeLists.txt" || true)"
+        if [ "$_e" != 1 ] || [ "$_f" != 1 ] || [ "$_i" != 1 ] || [ "$_s" != 1 ] || [ "$_p" != 1 ]; then
+            echo "self-test: $_layout layout: EXTRA_CARGO_ARGS=$_e NROS_BOARD_FACTS_ENV=$_f NROS_IMAGE_ENV_CARGO_FLAGS=$_i staticlib=$_s profile=$_p (want 1/1/1/1/1)" >&2
+            _st_fail=1
+        fi
+        # The doc command stays a doc command.
+        if [ "$(_code 'doc')" = 0 ]; then
+            echo "self-test: $_layout layout: the cargo doc command was rewritten" >&2
             _st_fail=1
         fi
         # `cargo doc` must be left alone: a second copy of the flag is the
@@ -128,7 +154,7 @@ if [ "${1:-}" = "--self-test" ]; then
     done
 
     if [ "$_st_fail" -eq 0 ]; then
-        echo "cargo-features-patch self-test: OK (shared + inlined layouts, 1 injection each, idempotent)"
+        echo "cargo-features-patch self-test: OK (shared + inlined layouts, 1 injection each, staticlib-only build, idempotent)"
         exit 0
     fi
     exit 1

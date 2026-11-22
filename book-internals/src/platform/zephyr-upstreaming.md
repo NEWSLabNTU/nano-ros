@@ -76,7 +76,8 @@ and `drivers/net/nsos_adapt.c` (host).
 **Source diffs:** `zephyr/patches/native-sim-ipproto-ip-4.4.patch` +
 `zephyr/patches/nsos-adapt-ipproto-ip-4.4.patch` (scripts:
 `scripts/zephyr/native-sim-ipproto-ip-patch{,-4.4}.sh` +
-`scripts/zephyr/nsos-adapt-ipproto-ip-patch{,-4.4}.sh`).
+`scripts/zephyr/nsos-adapt-ipproto-ip-patch-4.4.sh`; on 3.7 the host arm is
+part of `native-sim-ipproto-ip-patch.sh`).
 
 **Commit message:**
 ```

@@ -379,6 +379,13 @@ zephyr-module-allowlist:
 zephyr-patch-check-mode:
     @python3 scripts/check-zephyr-patch-check-mode.py
 
+# issue 2867 — the Zephyr patch scripts that carry a `--self-test` pass it, and
+# each self-test still fails with its defect put back. `cargo-features-patch.sh`'s
+# had failed at main for an unknown time, because no lane ran it. Buildless.
+[group("checks")]
+zephyr-patch-self-tests:
+    @bash scripts/check-zephyr-patch-self-tests.sh
+
 # issue 2804 — every Zephyr board descriptor STATES `[board.zephyr] lines`
 # (the fixture build and the test lane skip a leaf off the run's line from it),
 # and the `[zephyr_module.*]` rows naming the board agree: each is on one of its
