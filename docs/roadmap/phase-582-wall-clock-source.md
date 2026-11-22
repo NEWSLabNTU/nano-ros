@@ -107,8 +107,8 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 
 ### W2 — The FreeRTOS libc shims answer from the symbol
 
-- **Status:** OPEN
-- **Owner:** nros 139
+- **Status:** DONE (2026-11-22, the issue 2691 PR)
+- **Owner:** sai (claim `issue-2691`), assigned by nros 139
 - RFC-0141 D6, issue 2691:
   - `_gettimeofday` answers from `nros_platform_time_now_ns`;
   - `clock_gettime` honours `clock_id` (`CLOCK_REALTIME` from the symbol,
@@ -117,6 +117,45 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   - with no source synced, `gettimeofday` reads 0 s and `CLOCK_MONOTONIC`
     still advances;
   - with a stub board clock, both wall-clock paths read it.
+- **As built:**
+  - The class: every definition of a libc time entry point in the boards
+    and platform ports, found by the sweep below (and its Rust twin,
+    `rg -n -e 'fn (_gettimeofday|gettimeofday|clock_gettime|_times|time)\b' -g '*.rs' packages/boards packages/platform`,
+    which finds none). It finds two, both FreeRTOS, both fixed.
+
+    ```
+    rg -n -e '^\s*(__attribute__\(\(weak\)\)\s*)?[A-Za-z_][A-Za-z0-9_ ]*\**\s*\b(_gettimeofday|gettimeofday|_gettimeofday_r|clock_gettime|clock_getres|clock_settime|settimeofday|_times|_times_r|time|clock|timespec_get)\s*\(' \
+       -g '*.c' -g '*.cpp' -g '*.h' packages/boards packages/platform
+    ```
+
+    `_gettimeofday` (`nros-board-freertos/c/freertos_c_entry.c`) reads
+    `nros_platform_time_now_ns`; newlib's `gettimeofday` and `time()` reach it.
+    `clock_gettime` (`nros-platform-freertos/src/cyclonedds_compat.c`) reads
+    that symbol for `CLOCK_REALTIME`, `nros_platform_clock_ns` for
+    `CLOCK_MONOTONIC`, and refuses any other clock with `EINVAL`. `_times` is
+    libnosys's failing stub, so `clock()` reports -1 rather than a time. The
+    Rust lane links neither shim; zenoh-pico already reads the symbol through
+    `zpico-sys`'s platform aliases.
+  - `steady_clock` keeps a monotonic clock. This libstdc++ builds both
+    `steady_clock::now` and `system_clock::now` over `gettimeofday`, so a
+    wall `gettimeofday` alone would have frozen `steady_clock` at 0 and broken
+    every ported node's rate limit and liveness age (issue 2691, "Why it is
+    not a one-line fix"). The board defines both libstdc++ clocks beside the
+    shim, `steady_clock` from `nros_platform_clock_ns` and `system_clock` from
+    `nros_platform_time_now_ns`; both, because they share one archive member.
+  - The stub board clock in the test is a link-time `--wrap` of
+    `nros_platform_time_now_ns` in the probe image, since W1d's FreeRTOS hook
+    is not built yet; the shims under test are the shipped ones.
+  - Measured on the MPS2-AN385 QEMU image (`tests/freertos_libc_clock.rs`,
+    fixture `freertos-cpp-zenoh-libc-clock`): unsynced, `gettimeofday`,
+    `CLOCK_REALTIME`, `time()` and `system_clock` read 0, and
+    `CLOCK_MONOTONIC`, `steady_clock` and the platform clock each advance at
+    least the probe's 1.5 s sleep; with the stub, all four wall paths read the
+    stub's instant to its last kept digit, and the monotonic clocks run on
+    unstepped. On main the test fails at its first wall assertion
+    (`gettimeofday` read ticks). Not measured: mps3-an536 and s32z270 build
+    the same two shims, and freertos-posix has neither (glibc answers, and
+    there `gettimeofday` and the platform symbol still disagree).
 
 ### W3 — SNTP re-acquires
 
@@ -146,7 +185,7 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 
 - [Issue 0758](../issues/0758-platform-sntp-epoch-source.md): SNTP, re-acquire, failure
   policy, and the board-time section (D4). W1, W3.
-- [Issue 2691](../issues/2691-freertos-tick-count-answers-as-wall-clock.md):
+- [Issue 2691](../issues/archived/2691-freertos-tick-count-answers-as-wall-clock.md):
   W2.
 - phase-478 gap 5.4 (no board time source over serial).
 - phase-575 W6: the shape was first agreed there; the design moved here.

@@ -1,13 +1,52 @@
 ---
 id: 2691
 title: "FreeRTOS answers libc's wall-clock calls with ticks since the scheduler started"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [platform, boards, freertos]
 related: [issue-0758, rfc-0141, phase-575, phase-582]
 found: 2026-11-18
+resolved: 2026-11-22
+resolved_in: "phase-582 W2: fix(freertos, issue 2691): the libc time shims answer from the clock symbols"
 ---
+
+## Resolution
+
+Phase-582 W2, as RFC-0141 D6 decided it (the "Direction" below predates the
+RFC; D6 settled the `_gettimeofday` choice as "answer from the wall symbol").
+
+- `_gettimeofday` answers from `nros_platform_time_now_ns`. newlib's
+  `gettimeofday` and `time()` reach it.
+- `clock_gettime` answers `CLOCK_REALTIME` from `nros_platform_time_now_ns`,
+  `CLOCK_MONOTONIC` from `nros_platform_clock_ns`, and refuses any other
+  clock with `EINVAL`.
+- The steady_clock problem below is solved by separating the two uses, not
+  by keeping ticks. The board defines libstdc++'s `steady_clock::now` from
+  `nros_platform_clock_ns` and `system_clock::now` from
+  `nros_platform_time_now_ns`, beside the shim. It defines both because they
+  share one archive member.
+
+Measured on the MPS2-AN385 QEMU image (`tests/freertos_libc_clock.rs`):
+- With no source, the four wall paths read 0. `CLOCK_MONOTONIC`,
+  `steady_clock` and the platform clock each advance at least the 1.5 s
+  sleep.
+- With a stub board clock (a link-time `--wrap` of the symbol, until W1d's
+  FreeRTOS hook exists), all four read the stub. The monotonic clocks run on
+  unstepped.
+- On main the test fails at `gettimeofday` (ticks).
+
+Of "Done when":
+- Measured: `source = "platform"` agreeing ("none"), and `steady_clock`
+  staying monotonic across a wall-clock step.
+- Not measured on an image: the Cyclone sample stamp. ddsrt's FreeRTOS wall
+  clock calls `clock_gettime(CLOCK_REALTIME)` (read from its source).
+- The zenoh timestamp never went through `gettimeofday`: `zpico-sys`'s
+  platform aliases read `nros_platform_time_now_ns`.
+
+freertos-posix has neither shim. Its glibc answers `gettimeofday` with host
+time while its platform symbol says "none". That disagreement remains and is
+not a libc shim.
 
 ## Problem
 
