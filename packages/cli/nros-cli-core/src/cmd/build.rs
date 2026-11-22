@@ -1443,16 +1443,6 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // Issue 2520 -- a refusal from the union's seed, carried out of the
         // cache's closure and returned below.
         let mut coordinate_refusal: Option<eyre::Report> = None;
-        // Issue 2702 (interim) -- a shared cmake configure builds ONE runtime
-        // with the `[system]` features, so an image's own differing features
-        // would be ignored without a word: refused instead.
-        if driver == Driver::CMake {
-            let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
-            refuse_image_features_a_shared_configure_drops(
-                &coordinate_members(&bringup, &coord),
-                stale,
-            )?;
-        }
         let coordinate_dir = (driver == Driver::CMake)
             .then(|| {
                 let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
@@ -2490,6 +2480,17 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 if coordinate_dir.is_some() || resolved_dir.is_some() {
                     a.push(format!("-DNROS_CONFIGURED_PROJECT={}", root.display()));
                     a.push(format!("-DNROS_CONFIGURED_IMAGE={qual}"));
+                }
+                // Issue 2702 -- an image whose own capability axes differ from
+                // `[system]`'s has this configure to itself and the images
+                // whose axes equal its own (its key carries them), so the
+                // configure's readers of the axes (`nros config show`, the
+                // entity inventory, the sizing descriptor, the entry's codegen)
+                // read them for it. `NROS_FEATURE_IMAGE`, not `NROS_IMAGE`,
+                // which would also pick this image's deploy and board facts for
+                // every image on the configure.
+                if image_own_features(&image, &bringup_dir).is_some() {
+                    a.push(format!("-DNROS_FEATURE_IMAGE={image_id}"));
                 }
                 // Issue 1653 (RFC-0100 Amendment 1, "D4 revised") — the BOARD
                 // heap, resolved here at stage 4 for every road, handed to the
@@ -8445,71 +8446,9 @@ pub(crate) fn read_coordinate_members(dir: &Path) -> Option<CoordinateMembers> {
 /// One member's resolved model, through the door every resolve uses, and held
 /// to the refusals `nros dev image entity-inventory` applies at its own door
 /// (`check_model`): a model the configure would refuse composes nothing here.
-/// Issue 2702 (interim, its option 3) -- the images a shared cmake configure
-/// builds whose own `[image.<id>] features` / `node_interfaces` differ from
-/// the `[system]` list, refused, naming each and what differs.
-///
-/// One configure per coordinate links one Rust runtime into every image on it,
-/// built and sized with the `[system]` list (`coordinate_member_model` reads
-/// no image, on purpose). An image's own choice is therefore not carried, and
-/// was ignored with no error. An image whose list EQUALS `[system]`'s passes.
-/// A member whose model cannot be read is left to the composition, which
-/// reports it.
-fn refuse_image_features_a_shared_configure_drops(
-    members: &[CoordinateMember],
-    stale: StaleModel,
-) -> Result<()> {
-    use std::collections::BTreeSet;
-    let mut differing = Vec::new();
-    for (b, bd, id, img) in members {
-        let Ok((_, model)) = coordinate_member_model(bd, img, stale) else {
-            continue;
-        };
-        let shared: BTreeSet<String> = model.features().into_iter().collect();
-        let own: BTreeSet<String> = model.for_image(Some(id)).features().into_iter().collect();
-        if own != shared {
-            let list = |s: Vec<&String>| {
-                s.iter()
-                    .map(|f| format!("`{f}`"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            let added = list(own.difference(&shared).collect());
-            let dropped = list(shared.difference(&own).collect());
-            let mut what = Vec::new();
-            if !added.is_empty() {
-                what.push(format!("adds {added}"));
-            }
-            if !dropped.is_empty() {
-                what.push(format!("drops {dropped}"));
-            }
-            differing.push(format!(
-                "`{}` {}",
-                plan::qualified(b, id),
-                what.join(" and ")
-            ));
-        }
-    }
-    if differing.is_empty() {
-        return Ok(());
-    }
-    let all: Vec<String> = members
-        .iter()
-        .map(|(b, _, id, _)| format!("`{}`", plan::qualified(b, id)))
-        .collect();
-    eyre::bail!(
-        "{} against `[system]` (through its own `features` or `node_interfaces`). A C/C++ \
-         workspace image is built in one cmake configure with every image on its coordinate \
-         ({}), which builds ONE runtime for all of them with the `[system]` features, so a \
-         per-image choice of features is not carried yet. State the features in `[system]` \
-         (`features`, `node_interfaces`) for every image, or remove the image's own.",
-        differing.join("; "),
-        all.join(", ")
-    )
-}
-
 fn coordinate_member_model(
     bringup_dir: &Path,
+    image_id: &str,
     image: &crate::orchestration::image::ImageBlock,
     stale: StaleModel,
 ) -> Result<(PathBuf, nros_orchestration_ir::overlay::LoadedModel), String> {
@@ -8532,12 +8471,18 @@ fn coordinate_member_model(
         .map_err(|e| format!("parsing {}: {e}", path.display()))?;
     crate::cmd::entity_inventory::check_model(&model)
         .map_err(|e| format!("model {}: {e:#}", path.display()))?;
-    // Issue 2700 -- read for NO image, deliberately: a shared configure's own
-    // producers (`ws entity-inventory`, the runtime descriptor) and its
-    // `NROS_FEATURES` name no single image, and this precomposition is what
-    // the configure TAKES in place of its own, so it must read what they read.
-    let model =
-        nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, &path, None)?;
+    // Issue 2700 -- this precomposition is what the configure TAKES in place of
+    // its own, so it reads what the configure's producers (`ws
+    // entity-inventory`, the runtime descriptor) and its `NROS_FEATURES` read:
+    // `[system]`'s axes, unless the image has axes of its own. Issue 2702 --
+    // then the configure is that image's and its equals' (its key carries the
+    // axes), built with them (`-DNROS_FEATURE_IMAGE`), and read for them here.
+    let feature_image = image_own_features(image, bringup_dir).map(|_| image_id);
+    let model = nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(
+        model,
+        &path,
+        feature_image,
+    )?;
     Ok((path, model))
 }
 
@@ -8580,7 +8525,7 @@ fn resolve_coordinate(
     let composed = (|| -> Result<_, String> {
         let mut models = Vec::with_capacity(members.len());
         for (b, bd, id, img) in members {
-            let (path, model) = coordinate_member_model(bd, img, stale)
+            let (path, model) = coordinate_member_model(bd, id, img, stale)
                 .map_err(|e| format!("`{}`: {e}", plan::qualified(b, id)))?;
             models.push((path, model));
         }
@@ -8988,6 +8933,15 @@ fn image_config_digest(
     {
         rows.insert("rmw-user-config".to_string(), body);
     }
+    // Issue 2702 (ruled option 2) -- the configure builds the runtime every
+    // image on it links, so an image whose own capability axes differ from
+    // `[system]`'s gets a configure of its own, and that configure builds with
+    // them (`-DNROS_FEATURE_IMAGE`). Images whose axes are `[system]`'s
+    // add no row, so they keep sharing, and a workspace stating none keeps its
+    // directories.
+    if let Some(own) = image_own_features(image, bringup_dir) {
+        rows.insert("features".to_string(), own);
+    }
     if rows.is_empty() {
         return None;
     }
@@ -8999,6 +8953,30 @@ fn image_config_digest(
         h.update([0xffu8]);
     }
     Some(format!("{:x}", h.finalize())[..10].to_string())
+}
+
+/// Issue 2702 -- `image`'s own capability axes and `node_interfaces` switch,
+/// as one stable string, when they differ from its bringup's `[system]` ones;
+/// `None` when they are the system's (or the bringup's `system.toml` cannot be
+/// read, which the configure reports). Composed by
+/// `SystemToml::image_features_over`, the rule every road reads.
+fn image_own_features(
+    image: &crate::orchestration::image::ImageBlock,
+    bringup_dir: &Path,
+) -> Option<String> {
+    let raw = nros_system_include::read_to_string(bringup_dir.join("system.toml")).ok()?;
+    let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw).ok()?;
+    let (own, _) = sys.image_features_over(Some(image))?;
+    // Compared as the EFFECTIVE sets (through each one's switch): an image that
+    // restates `[system]`'s axes, or states the switch's default, builds the
+    // same runtime and keeps the shared configure.
+    let set = |v: Vec<String>| v.into_iter().collect::<std::collections::BTreeSet<_>>();
+    let own = set(own);
+    let shared = set(nros_orchestration_ir::node_interfaces::effective_features(
+        &sys.system.features,
+        sys.system.node_interfaces,
+    ));
+    (own != shared).then(|| own.into_iter().collect::<Vec<_>>().join(","))
 }
 
 /// The bringup's own RMW config for `rmw` — the file its backend's descriptor
@@ -13616,6 +13594,50 @@ mod per_image_configure_tests {
             cmake_configuration_key("freertos", &image(&[], None), &a),
             cmake_configuration_key("freertos", &image(&[], None), Path::new("/nonexistent"))
         );
+    }
+
+    /// Issue 2702 (ruled option 2) -- an image whose own capability axes differ
+    /// from `[system]`'s gets a cmake configure of its own, and the build names
+    /// it as the configure's feature image. An image that states none, or
+    /// states `[system]`'s, keeps the shared directory; two images with the
+    /// same own axes share one.
+    #[test]
+    fn an_images_own_capability_axes_are_configuration() {
+        use nros_orchestration_ir::node_interfaces::NodeInterfaces;
+        let t = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            t.path().join("system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\nfeatures = [\"safety\"]\n",
+        )
+        .unwrap();
+        let bd = t.path();
+        let plain = image(&[], None);
+        let base = cmake_configuration_key("native", &plain, bd);
+        assert!(!base.contains("-cfg"), "{base}");
+        assert_eq!(image_own_features(&plain, bd), None);
+
+        // Restating `[system]`'s axes, or the switch's default, is no change.
+        let mut same = image(&[], None);
+        same.features = vec!["safety".to_string()];
+        assert_eq!(cmake_configuration_key("native", &same, bd), base);
+        let mut stock = image(&[], None);
+        stock.node_interfaces = Some(NodeInterfaces::Stock);
+        assert_eq!(cmake_configuration_key("native", &stock, bd), base);
+
+        let mut none = image(&[], None);
+        none.node_interfaces = Some(NodeInterfaces::None);
+        let own = cmake_configuration_key("native", &none, bd);
+        assert!(own.starts_with(&format!("{base}-cfg")), "{own}");
+        assert!(image_own_features(&none, bd).is_some());
+        let mut none2 = image(&[], None);
+        none2.node_interfaces = Some(NodeInterfaces::None);
+        assert_eq!(cmake_configuration_key("native", &none2, bd), own);
+
+        let mut tls = image(&[], None);
+        tls.features = vec!["link-tls".to_string()];
+        let t_key = cmake_configuration_key("native", &tls, bd);
+        assert!(t_key.starts_with(&format!("{base}-cfg")), "{t_key}");
+        assert_ne!(t_key, own);
     }
 
     /// A declared transport's IMPLICATION is configuration too: a serial image

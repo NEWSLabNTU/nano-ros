@@ -1,12 +1,14 @@
 ---
 id: 2702
 title: "A C/C++ workspace image builds and sizes with the `[system]` features, not its own `[image.<id>]` ones"
-status: open
+status: resolved
 type: limitation
 area: [cli, cmake, sizing]
 severity: low
 found: 2026-11-18
-related: [2700]
+resolved: 2026-11-22
+resolved_in: "feat(cli, issue 2702): an image with its own capability axes gets its own cmake configure"
+related: [2700, 2833]
 ---
 
 ## What
@@ -68,3 +70,37 @@ Once a choice is made: an image-level `node_interfaces = "none"` on a C/C++
 workspace image changes that image's build and descriptor as the choice
 says, with a test on the cmake workspace road, and the allowlist entry for
 `coordinate_member_model` in `check-node-interface-readers` goes away.
+
+## Resolved, 2026-11-22: option 2
+
+Ruled by the user on 2026-11-22: one configure and one runtime per image,
+each with exactly its own axes. The design and the measurement are in
+[RFC-0100, "D12 amended, 2026-11-22"](../../design/0100-rmw-agnostic-sizing-model.md#d12-amended-2026-11-22--an-image-with-its-own-capability-axes-has-its-own-runtime).
+In short:
+
+- an image whose effective axes differ from `[system]`'s carries them in its
+  configure key, so it gets a configure of its own (`-cfg<digest>`);
+- that configure is passed `-DNROS_FEATURE_IMAGE=<id>`, which the axes readers
+  take (capabilities, entity inventory, sizing descriptor, entry codegen);
+- images whose axes are equal keep sharing, and a workspace that states none
+  keeps every directory.
+
+The interim refusal is gone, and so is the `coordinate_member_model` entry
+in `check-node-interface-readers`.
+
+Measured on this issue's fixture (`size` text/data/bss):
+
+- `slim` (`node_interfaces = "none"`): from 2,202,476 / 80,152 / 732,360 to
+  2,078,748 / 68,184 / 127,144 bytes. Its descriptor states
+  `infra_families = "none"`, `store = "none"` and `publisher_count = 0`.
+- `plain`: byte-identical to `plain` built as the only image.
+- The cost: +39 s and +633 MB of build output for the second configure.
+
+The row `image_features_shared_configure_refused` now records both images'
+configures, feature lists and descriptors.
+`tests/image_features_shared_configure.rs` asserts them, and fails with the
+`-DNROS_FEATURE_IMAGE` push removed.
+
+Found on the way: issue 2833. A `fixture-script` row is reused after a CLI
+change, which hid the mutant until the row's signature was removed.
+

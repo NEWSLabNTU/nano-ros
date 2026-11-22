@@ -1,33 +1,76 @@
-//! Issue 2702 (interim) -- a C/C++ workspace image whose own
-//! `[image.<id>] features` / `node_interfaces` differ from `[system]` is
-//! refused, never silently built with the `[system]` list.
+//! Issue 2702 (ruled option 2) -- a C/C++ workspace image whose own
+//! `[image.<id>] features` / `node_interfaces` differ from `[system]` gets a
+//! cmake configure of its own, built and sized with its own axes. The image on
+//! the coordinate that states none keeps the shared configure, unchanged.
 //!
-//! Every C/C++ image on one cmake coordinate is configured together, and that
-//! configure builds ONE runtime with the `[system]` features, so an image's own
-//! choice is not carried. The verdict is recorded at build time by the
-//! `image_features_shared_configure_refused` row (the refusal is the `nros`
-//! CLI's, before any cmake).
+//! Recorded at build time by the `image_features_shared_configure_refused`
+//! row (the name predates the ruling): `nros build` of each image of a
+//! two-image `linux` workspace, `slim` stating `node_interfaces = "none"`.
+
+use std::path::Path;
+
+fn read(dir: &Path, image: &str, file: &str) -> String {
+    std::fs::read_to_string(dir.join(image).join(file))
+        .unwrap_or_else(|e| panic!("{image}/{file}: {e}"))
+}
+
+fn built(dir: &Path, image: &str) {
+    let exit = read(dir, image, "exit");
+    assert_eq!(
+        exit.trim(),
+        "0",
+        "`{image}` must build:\n{}",
+        read(dir, image, "stderr")
+    );
+}
 
 #[test]
-fn an_image_feature_choice_a_shared_configure_cannot_carry_is_refused() {
+fn an_image_with_its_own_capability_axes_gets_its_own_configure() {
     let stamp =
         nros_tests::fixtures::require_compile_check("image_features_shared_configure_refused")
             .unwrap_or_else(|e| panic!("{e}"));
     let dir = stamp.parent().expect("the row dir");
-    let exit = std::fs::read_to_string(dir.join("exit")).expect("the recorded exit");
-    let err = std::fs::read_to_string(dir.join("stderr")).expect("the recorded stderr");
+    built(dir, "plain");
+    built(dir, "slim");
+
+    let plain_dir = read(dir, "plain", "build_dir");
+    let slim_dir = read(dir, "slim", "build_dir");
     assert_ne!(
-        exit.trim(),
-        "0",
-        "the build must refuse; it exited 0:\n{err}"
+        plain_dir.trim(),
+        slim_dir.trim(),
+        "the two images must not share a configure"
     );
-    let err = err.split_whitespace().collect::<Vec<_>>().join(" ");
-    for want in [
-        "`probe_bringup:slim` drops",
-        "`rosout`",
-        "`probe_bringup:plain`, `probe_bringup:slim`",
-        "not carried yet",
-    ] {
-        assert!(err.contains(want), "the refusal must say {want:?}:\n{err}");
+    assert!(
+        slim_dir.contains("-cfg"),
+        "`slim`'s configure is keyed on its axes: {slim_dir}"
+    );
+    assert!(
+        !plain_dir.contains("-cfg"),
+        "`plain` keeps the shared directory: {plain_dir}"
+    );
+
+    // Each configure builds with its image's own axes...
+    let plain_features = read(dir, "plain", "features");
+    for f in ["param_services", "rosout"] {
+        assert!(
+            plain_features.contains(f),
+            "`plain` builds {f}: {plain_features}"
+        );
     }
+    assert_eq!(
+        read(dir, "slim", "features").trim(),
+        "NROS_FEATURES:STRING=",
+        "`slim` opts out of the stock node interfaces"
+    );
+    // ...and is sized with them.
+    let plain = read(dir, "plain", "descriptor.toml");
+    let slim = read(dir, "slim", "descriptor.toml");
+    assert!(
+        plain.contains(r#"infra_families = "param+rosout+clock""#),
+        "{plain}"
+    );
+    assert!(plain.contains(r#"store = "param_services""#), "{plain}");
+    assert!(slim.contains(r#"infra_families = "none""#), "{slim}");
+    assert!(slim.contains(r#"store = "none""#), "{slim}");
+    assert!(slim.contains("publisher_count = 0"), "{slim}");
 }
