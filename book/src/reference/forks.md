@@ -272,11 +272,11 @@ nano-ros builds `third-party/threadx/kernel` from the fork [NEWSLabNTU/threadx](
 | | |
 | --- | --- |
 | Upstream base | `v6.4.5.202504_rel` (merge base [4b6e8100d932](https://github.com/eclipse-threadx/threadx/commit/4b6e8100d932a3a67b34c6eb17f84f3bffb9e2ae)) |
-| Commits on top | 2 |
+| Commits on top | 3 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 1, +40/−7 |
+| Files changed | 2, +85/−8 |
 
-**Pinned commit:** `9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7`
+**Pinned commit:** `9fdb09bea84bb773371d407d90682bb5cebe0f8d`
 
 ### Commits on top of upstream
 
@@ -284,12 +284,13 @@ nano-ros builds `third-party/threadx/kernel` from the fork [NEWSLabNTU/threadx](
 | --- | --- |
 | [13d061a73a](https://github.com/NEWSLabNTU/threadx/commit/13d061a73afd6dd3a3afda5fe71f94bbc411bc34) | fix(linux port): key LONG/ULONG and ALIGN_TYPE on the data model, not x86_64 |
 | [9a29f1bd3f](https://github.com/NEWSLabNTU/threadx/commit/9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7) | fix: key the LP64 thread-timeout compensation on the data model, not __x86_64__ |
+| [9fdb09bea8](https://github.com/NEWSLabNTU/threadx/commit/9fdb09bea84bb773371d407d90682bb5cebe0f8d) | fix(linux port): run each thread on its own ThreadX stack |
 
 Reproduce:
 
 ```bash
 base=v6.4.5.202504_rel
-head=NEWSLabNTU:threadx:9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7
+head=NEWSLabNTU:threadx:9fdb09bea84bb773371d407d90682bb5cebe0f8d
 gh api "repos/eclipse-threadx/threadx/compare/$base...$head" --jq '.ahead_by'
 ```
 

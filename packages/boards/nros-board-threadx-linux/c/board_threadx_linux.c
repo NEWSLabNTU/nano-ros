@@ -14,11 +14,13 @@
  */
 
 #include <errno.h>
+#include <limits.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
 #include <time.h>
@@ -171,8 +173,40 @@ static void board_stderr_line(const char *s)
 static sigset_t term_signals;
 static int term_guard_installed = 0;
 
+/* Issue 2800 -- each thread's stack peak, from its fill pattern. Now that
+ * every thread runs on the stack it states, a host run measures what a stack
+ * must be: `tx_thread_create` fills the stack with TX_STACK_FILL, and the
+ * bytes still holding it from the low end are bytes no frame reached. Printed
+ * when the image ends, normally or by a termination signal, so a cell's
+ * output carries the number the app stack is sized from. A read-only scan of
+ * stacks whose threads may still run: a racing frame can only make the figure
+ * a little low, never high. */
+extern TX_THREAD *_tx_thread_created_ptr;
+extern ULONG _tx_thread_created_count;
+static void report_stack_peaks(void)
+{
+    TX_THREAD *t = _tx_thread_created_ptr;
+    for (ULONG i = 0; t != TX_NULL && i < _tx_thread_created_count; ++i) {
+        const unsigned char *lo = (const unsigned char *)t->tx_thread_stack_start;
+        size_t size = (size_t)t->tx_thread_stack_size;
+        size_t untouched = 0;
+        if (lo != NULL) {
+            while (untouched < size && lo[untouched] == (unsigned char)(TX_STACK_FILL & 0xFFu)) {
+                ++untouched;
+            }
+        }
+        char line[160];
+        int n = snprintf(line, sizeof line, "nros: stack peak name=`%s` used=%lu of=%lu\n",
+                         t->tx_thread_name != TX_NULL ? (const char *)t->tx_thread_name : "?",
+                         (unsigned long)(size - untouched), (unsigned long)size);
+        if (n > 0) { board_stderr_line(line); }
+        t = t->tx_thread_created_next;
+    }
+}
+
 static void term_by_default_action(int sig)
 {
+    report_stack_peaks();
     sigset_t one;
     fflush(NULL);
     signal(sig, SIG_DFL);
@@ -229,12 +263,38 @@ static void *term_guard_thread(void *arg)
     return NULL;
 }
 
+/* Issue 2800 -- every thread runs on its ThreadX stack, so `tx_user.h`'s
+ * floor must clear the RUNNING host's PTHREAD_STACK_MIN. Where the macro is a
+ * constant the compiler checks it; glibc 2.34 and later make it a `sysconf`
+ * call, so it is also checked here, before any thread exists. */
+#if defined(PTHREAD_STACK_MIN) && !defined(__SC_THREAD_STACK_MIN_VALUE)
+_Static_assert(NROS_THREADX_HOST_STACK_MIN >= PTHREAD_STACK_MIN,
+               "tx_user.h's NROS_THREADX_HOST_STACK_MIN is below this host's PTHREAD_STACK_MIN");
+#endif
+static void check_host_stack_floor(void)
+{
+    long host_min = sysconf(_SC_THREAD_STACK_MIN);
+    if (host_min > 0 && (unsigned long)host_min > (unsigned long)NROS_THREADX_HOST_STACK_MIN) {
+        char line[200];
+        int n = snprintf(line, sizeof line,
+                         "nros: this host's PTHREAD_STACK_MIN is %ld bytes, above the %u that "
+                         "NROS_THREADX_HOST_STACK_MIN in the board's config/tx_user.h states; "
+                         "raise it there\n",
+                         host_min, (unsigned)NROS_THREADX_HOST_STACK_MIN);
+        if (n > 0) { board_stderr_line(line); }
+        abort();
+    }
+}
+
 /* Install once, before `tx_kernel_enter()`. Every threadx-linux entry reaches
  * it: the C/C++ `startup.c::main` and the Rust board's pre-kernel step. */
 void nros_threadx_linux_install_termination_guard(void)
 {
     pthread_t tid;
     if (term_guard_installed) { return; }
+    check_host_stack_floor();
+    /* A Rust image ends through `exit`, which reaches neither path below. */
+    (void)atexit(report_stack_peaks);
     term_guard_installed = 1;
     sigemptyset(&term_signals);
     sigaddset(&term_signals, SIGTERM);
@@ -261,6 +321,7 @@ void nros_threadx_linux_install_termination_guard(void)
  * which passes it here — so a failed app no longer reads as success. */
 void nros_board_app_returned(int exit_code)
 {
+    report_stack_peaks();
     fflush(NULL);
     _exit(exit_code);
 }

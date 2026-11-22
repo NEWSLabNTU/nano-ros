@@ -35,7 +35,13 @@ extern "C" {
 #if Z_FEATURE_MULTI_THREAD == 1
 
 #ifndef Z_TASK_STACK_SIZE
+/* Issue 2800 — a port whose threads run on a host stack names its floor in
+ * its `tx_user.h`; read it, never restate it. */
+#if defined(NROS_THREADX_HOST_STACK_FLOOR) && NROS_THREADX_HOST_STACK_FLOOR > 8192
+#define Z_TASK_STACK_SIZE NROS_THREADX_HOST_STACK_FLOOR
+#else
 #define Z_TASK_STACK_SIZE 8192
+#endif
 #endif
 /* Issue 1131 — this sizes `_z_task_t::threadx_stack`, the actual stack every
  * zenoh-pico task runs on, and a thread with no stack is not a smaller thread.
