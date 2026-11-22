@@ -584,7 +584,7 @@ struct EventReg {
 /// The MONOTONIC clock: every reader here measures a duration (deadline QoS,
 /// publish and match timing). Issue 2760: it read the wall clock, which is 0
 /// on a port without one and steps when the host's clock is set.
-fn now_ms() -> u64 {
+pub(super) fn now_ms() -> u64 {
     unsafe extern "C" {
         fn nros_platform_clock_ns() -> u64;
     }
@@ -849,23 +849,17 @@ impl ZenohPublisher {
         self.rmw_gid = gid;
     }
 
-    /// Phase 108.C.zenoh.{2,3} — current platform time as nanoseconds
-    /// for the RMW attachment. Falls back to a per-publisher
-    /// monotonic counter when the platform clock returns 0 (bare
-    /// no-std smoke build w/o concrete platform).
+    /// The attachment's source timestamp: the platform's WALL clock in ns
+    /// ([`super::source_timestamp_ns`]), falling back to a per-publisher
+    /// counter (1 ms a sample) when the platform has none, so stamps still
+    /// increase. Never the monotonic `now_ms`: that clock measures durations.
     fn current_timestamp(&self) -> i64 {
-        let ms = now_ms();
-        if ms == 0 {
-            // No real clock — preserve the old monotonic-counter
-            // behaviour so existing tests aren't disrupted.
-            #[allow(clippy::unnecessary_cast)] // i32→i64 on embedded, no-op on std
-            return self
-                .sequence_counter
-                .load(Ordering::Relaxed)
-                .saturating_mul(1_000_000) as i64;
-        }
-        // Cap to i64 max to avoid overflow on long-running shims.
-        (ms.min(i64::MAX as u64) as i64).saturating_mul(1_000_000)
+        #[allow(clippy::unnecessary_cast)] // i32→i64 on embedded, no-op on std
+        let fallback = self
+            .sequence_counter
+            .load(Ordering::Relaxed)
+            .saturating_mul(1_000_000) as i64;
+        super::source_timestamp_ns(fallback)
     }
 
     /// Phase 108.C.zenoh.2 — fire `OfferedDeadlineMissed` if we

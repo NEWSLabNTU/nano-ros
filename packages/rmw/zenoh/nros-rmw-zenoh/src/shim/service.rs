@@ -1725,19 +1725,12 @@ pub(crate) fn response_info_from_reply(
     info
 }
 
-/// Issue 0153 — platform clock → attachment source_timestamp, in
-/// NANOSECONDS: `rmw_zenoh_cpp`'s attachment field is nanoseconds, and so is
-/// what `publisher.rs` writes. Falls back to the sequence number when no real
-/// clock exists, preserving monotonicity like the publisher path.
-///
-/// Issue 1942 — this wrote MILLISECONDS until a server started reporting the
-/// field as `ServiceInfo::source_timestamp`, where a nano-ros client's request
-/// read as sent a million times too early. Nothing read it before.
+/// Issue 0153 — the request attachment's source timestamp, in NANOSECONDS
+/// (`rmw_zenoh_cpp`'s field is nanoseconds). Issue 1942: it wrote
+/// MILLISECONDS until a server reported it as `ServiceInfo::source_timestamp`.
+/// One spelling with the publisher: [`super::source_timestamp_ns`].
 fn current_timestamp_ns(fallback_seq: i64) -> i64 {
-    match super::wall_clock_ns() {
-        0 => fallback_seq,
-        ns => ns,
-    }
+    super::source_timestamp_ns(fallback_seq)
 }
 
 impl ZenohServiceClient {

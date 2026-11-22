@@ -515,6 +515,24 @@ pub(crate) fn wall_clock_ns() -> i64 {
     ns.min(i64::MAX as u64) as i64
 }
 
+/// The SOURCE timestamp a sample or request carries in its attachment, in ns
+/// since the Unix epoch: the platform's WALL clock, as `rmw_zenoh_cpp` stamps
+/// it (`system_clock::now()`), and on the same clock the receiver stamps
+/// `received_timestamp` from ([`wall_clock_ns`]). `fallback` (a sequence-derived
+/// value, so stamps still increase) when the platform has no wall clock.
+///
+/// The one spelling for every attachment writer (publisher and service
+/// client). The publisher used to derive its stamp from the shim's MONOTONIC
+/// millisecond clock: correct for the durations that clock measures (issue
+/// 2760), and a stamp on the wrong clock. A subscriber then saw a source stamp
+/// of ~37 days (host uptime) against a 2026 receive stamp.
+pub(crate) fn source_timestamp_ns(fallback: i64) -> i64 {
+    match wall_clock_ns() {
+        0 => fallback,
+        ns => ns,
+    }
+}
+
 // ============================================================================
 // Ros2Liveliness Helper
 // ============================================================================
@@ -1080,6 +1098,38 @@ mod tests {
     use crate::keyexpr::TopicKeyExpr;
     // `core::write!` into a `heapless::String` needs the trait in scope.
     use core::fmt::Write as _;
+
+    /// The attachment source stamp is on the WALL clock, the receiver's
+    /// clock (tier-2 red, run 44916540238: rx was 2026 epoch ns while the
+    /// publisher's ts was ~37 days, the host's monotonic uptime). The host
+    /// test build links the POSIX port, whose wall clock is CLOCK_REALTIME.
+    /// Negative control: the publisher's old stamp (monotonic ms x 1e6) reads
+    /// the host's uptime, decades away from the epoch stamp this asserts.
+    #[test]
+    fn source_timestamp_is_on_the_wall_clock_the_receiver_stamps_from() {
+        extern crate std;
+        let epoch_ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as i64;
+        let ts = source_timestamp_ns(7);
+        let day = 86_400_000_000_000i64;
+        assert!(
+            (ts - epoch_ns).abs() < day,
+            "source stamp {ts} is not on the wall clock (epoch now {epoch_ns})"
+        );
+        assert!(
+            ts <= wall_clock_ns(),
+            "source stamp ahead of the receive clock"
+        );
+        // The publisher's old stamp: its monotonic `now_ms`, in ns.
+        let old = publisher::now_ms() as i64 * 1_000_000;
+        assert!(
+            (old - epoch_ns).abs() > day,
+            "negative control: the monotonic clock happens to read the epoch here, \
+             so this test cannot tell the two apart"
+        );
+    }
 
     // ========================================================================
     // Error Conversion Tests
