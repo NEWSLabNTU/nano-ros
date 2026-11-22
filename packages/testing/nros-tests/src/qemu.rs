@@ -611,6 +611,9 @@ impl QemuProcess {
     ///
     /// # Returns
     /// The combined stdout/stderr output
+    ///
+    /// **Drains (issue 2816).** It starts from what an earlier wait carried and
+    /// returns everything up to the end, keeping nothing.
     pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
         let start = Instant::now();
         let mut output = std::mem::take(&mut self.carry);
@@ -699,6 +702,11 @@ impl QemuProcess {
     ///
     /// When a missing pattern is not itself the failure, use
     /// [`Self::collect_until`].
+    ///
+    /// **Carries (issue 2816).** It starts from what an earlier wait carried,
+    /// returns output only through its satisfying line, and keeps the rest for
+    /// the next wait on this process, so two markers printed in one write are
+    /// two successful waits.
     pub fn wait_for_output_pattern(
         &mut self,
         pattern: &str,
@@ -727,13 +735,19 @@ impl QemuProcess {
     /// per-sched-task rule actually has, where a sched task may report either its accept
     /// marker or its loud-failure marker and both count as "it reported".
     /// A single-element group degenerates to "this must appear".
+    ///
+    /// **Drains (issue 2816).** It starts from what an earlier wait carried and
+    /// returns EVERYTHING it read, keeping nothing: callers count what comes
+    /// back, and "at least N" is how a test drains a free-running producer. So
+    /// a pattern wait after it cannot see a line it already read.
     pub fn wait_for_output_each(
         &mut self,
         groups: &[Vec<String>],
         timeout: Duration,
     ) -> TestResult<String> {
         let satisfied = |o: &str, g: &Vec<String>| g.iter().any(|p| o.contains(p.as_str()));
-        let out = self.collect_until_pred(|o| groups.iter().all(|g| satisfied(o, g)), timeout)?;
+        let out =
+            self.collect_until_pred(|o| groups.iter().all(|g| satisfied(o, g)), false, timeout)?;
         let missing: Vec<String> = groups
             .iter()
             .filter(|g| !satisfied(&out, g))
@@ -762,6 +776,11 @@ impl QemuProcess {
     /// (stdout already taken, or QEMU silent until the deadline) is rendered
     /// INTO the returned text rather than dropped, so the assertion that
     /// follows prints the reason instead of an empty diff.
+    ///
+    /// **Carries (issue 2816).** It starts from what an earlier wait carried,
+    /// returns output only through its satisfying line, and keeps the rest for
+    /// the next wait on this process, so two markers printed in one write are
+    /// two successful waits.
     pub fn collect_until(&mut self, pattern: &str, timeout: Duration) -> String {
         match self.collect_until_inner(pattern, timeout) {
             Ok(out) => out,
@@ -776,6 +795,7 @@ impl QemuProcess {
         let seen_open = std::cell::Cell::new(None);
         self.collect_until_pred(
             |out| crate::process::pattern_line_ready(out, pattern, &seen_open),
+            true,
             timeout,
         )
     }
@@ -795,13 +815,22 @@ impl QemuProcess {
     /// Returns whatever was printed, count reached or not, so the caller can
     /// assert on the count itself and put the real transcript in its own
     /// failure message.
+    ///
+    /// **Drains (issue 2816).** It starts from what an earlier wait carried and
+    /// returns EVERYTHING it read, keeping nothing: callers count what comes
+    /// back, and "at least N" is how a test drains a free-running producer. So
+    /// a pattern wait after it cannot see a line it already read.
     pub fn collect_until_count(
         &mut self,
         pattern: &str,
         expected: usize,
         timeout: Duration,
     ) -> String {
-        match self.collect_until_pred(|out| out.matches(pattern).count() >= expected, timeout) {
+        match self.collect_until_pred(
+            |out| out.matches(pattern).count() >= expected,
+            false,
+            timeout,
+        ) {
             Ok(out) => out,
             Err(e) => format!("<no output collected: {e}>"),
         }
@@ -817,9 +846,15 @@ impl QemuProcess {
     /// sched-dim cells assert one marker PER TIER, and the third tier's line
     /// went missing in 2 of 8 runs purely because the reader had already
     /// returned. Waiting on a predicate lets the caller say "all of them".
+    ///
+    /// `carry` (issue 2816): a single-pattern wait keeps what it read past its
+    /// satisfying line for the next wait. A count or multi-group wait returns
+    /// everything it read, because its callers count what came back: a
+    /// "wait for at least N" is how a test drains what a producer printed.
     fn collect_until_pred(
         &mut self,
         done: impl Fn(&str) -> bool,
+        carry: bool,
         timeout: Duration,
     ) -> TestResult<String> {
         let start = Instant::now();
@@ -869,8 +904,10 @@ impl QemuProcess {
                         // / `kill` calls see them.
                         self.handle.stdout = Some(stdout);
                         self.handle.stderr = stderr;
-                        let cut = crate::process::satisfied_prefix_len(&output, &done);
-                        crate::process::keep_tail(&mut self.carry, &mut output, cut);
+                        if carry {
+                            let cut = crate::process::satisfied_prefix_len(&output, &done);
+                            crate::process::keep_tail(&mut self.carry, &mut output, cut);
+                        }
                         return Ok(output);
                     }
                     if !progressed {
@@ -888,6 +925,9 @@ impl QemuProcess {
     /// and without stopping it. Every `collect_until*` wait stops the guest at
     /// its deadline, so a test that needs to read between two phases of a
     /// running guest reads with this.
+    ///
+    /// **Drains (issue 2816).** It starts from what an earlier wait carried and
+    /// returns everything up to the end, keeping nothing.
     pub fn read_pending(&mut self) -> String {
         let mut output = std::mem::take(&mut self.carry);
         let mut buffer = [0u8; 4096];
