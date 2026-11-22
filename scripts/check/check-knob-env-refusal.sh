@@ -62,25 +62,25 @@ esac
 selftest() {
 command -v cmake >/dev/null || { bad "cmake not on PATH"; exit 1; }
 command -v ninja >/dev/null || { bad "ninja not on PATH"; exit 1; }
-k=NROS_ZEPHYR_HEAP_SIZE
+k=NROS_MEMORY_HEAP_BYTES
 mkdir -p "$work/src"
 cat > "$work/src/CMakeLists.txt" <<'EOF'
 cmake_minimum_required(VERSION 3.20)
 project(knob_env_refusal NONE)
 include("${NROS_REPO}/cmake/NanoRosKnobEnv.cmake")
-_nros_knob_env(NROS_ZEPHYR_HEAP_SIZE _v)
+_nros_knob_env(NROS_MEMORY_HEAP_BYTES _v)
 if(_v STREQUAL "")
     set(_v 114688)
-    set(NROS_KNOB_SOURCE_NROS_ZEPHYR_HEAP_SIZE kconfig CACHE INTERNAL "")
+    set(NROS_KNOB_SOURCE_NROS_MEMORY_HEAP_BYTES kconfig CACHE INTERNAL "")
 else()
-    set(NROS_KNOB_SOURCE_NROS_ZEPHYR_HEAP_SIZE environment CACHE INTERNAL "")
+    set(NROS_KNOB_SOURCE_NROS_MEMORY_HEAP_BYTES environment CACHE INTERNAL "")
 endif()
-set(NROS_RESOLVED_NROS_ZEPHYR_HEAP_SIZE "${_v}" CACHE INTERNAL "")
+set(NROS_RESOLVED_NROS_MEMORY_HEAP_BYTES "${_v}" CACHE INTERNAL "")
 # What the Zephyr module does: publish the answer into its own environment,
 # then read the knob again (the shared cargo dir key). The record must keep
 # the FIRST read, the operator's.
-set(ENV{NROS_ZEPHYR_HEAP_SIZE} "${_v}")
-_nros_knob_env(NROS_ZEPHYR_HEAP_SIZE _again)
+set(ENV{NROS_MEMORY_HEAP_BYTES} "${_v}")
+_nros_knob_env(NROS_MEMORY_HEAP_BYTES _again)
 nros_knob_env_check_target(_chk)
 add_custom_command(OUTPUT out.txt COMMAND sh -c "echo ${_v} > out.txt" VERBATIM)
 add_custom_target(app ALL DEPENDS out.txt)
