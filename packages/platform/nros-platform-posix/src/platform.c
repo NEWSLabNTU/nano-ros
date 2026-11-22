@@ -19,6 +19,9 @@
 
 #include <errno.h>
 #include <fcntl.h>
+/* issue 2844 — PTHREAD_STACK_MIN. POSIX puts it in <limits.h>; glibc also
+ * exposes it through <pthread.h>, musl does not. */
+#include <limits.h>
 #include <poll.h>
 #include <pthread.h>
 #include <sched.h>
