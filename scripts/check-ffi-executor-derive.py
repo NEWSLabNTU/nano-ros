@@ -105,6 +105,7 @@ HEADER_CASTS = {
     ("nros-c/src/node.rs", "rclc_node_resolve_name"): "body-scoped header read",
     ("nros-c/src/node.rs", "resolve_entity_name_on_node"): "body-scoped header read",
     ("nros-c/src/node.rs", "resolve_session_and_domain"): "body-scoped header read",
+    ("nros-c/src/publisher.rs", "rclc_publisher_init_with_qos"): "body-scoped header read, released before the session lock",
     ("nros-c/src/service.rs", "blocking_response_cb"): "body-scoped header read",
     ("nros-c/src/service.rs", "client_entry_callback"): "body-scoped header read",
     ("nros-c/src/service.rs", "client_granted_qos"): "body-scoped header read",
