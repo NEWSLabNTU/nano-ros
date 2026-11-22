@@ -43,10 +43,16 @@ fallback_rust_main_stack = 32768
 recursion_allowance = 0
 
 [indirect.default]
-# A backend with no policy of its own: direct calls only. Its vtable calls are
-# what an [[allowance]] row would add. Without one, the build warns that they
-# are not counted, or refuses under --strict (issue 2402).
-mode = "allowance:0"
+# A backend with no policy of its own binds, as zenoh does (below). This was
+# `allowance:0`, which charges an indirect call 0 bytes and walks nothing
+# behind it. Every call from the executor into an RMW goes through the RMW
+# vtable, so under it a backend's whole service and transport path was priced
+# at 0. The mps3-an536 Cyclone image's four 64 KiB stack buffers (service.cpp)
+# were invisible: the walk read 35,176 B from `Executor::pass` for a run that
+# overflowed 64 KiB, and bound it read 420,480 B (issue 2818). Binding is an
+# upper bound, and every non-zenoh image is unmeasured, so a looser floor here
+# only warns (ruling (A)(2) of issue 2400).
+mode = "bind"
 
 [indirect.zenoh]
 # Every indirect call is BOUND to the functions it can reach and followed
@@ -272,6 +278,42 @@ reason = "hand assembly in compiler_builtins, no bitcode; a leaf"
 kind = "external"
 name = "__aeabi_read_tp"
 reason = "hand assembly (TLS pointer read), a leaf"
+
+[[policy]]
+kind = "external"
+name = "vPortDisableInterrupts"
+target = "armv8r-none-eabihf"
+reason = "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `cpsid i; dsb; isb; bx lr`, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)"
+
+[[policy]]
+kind = "external"
+name = "vPortEnableInterrupts"
+target = "armv8r-none-eabihf"
+reason = "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `cpsie i; bx lr`, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)"
+
+[[policy]]
+kind = "external"
+name = "ulPortSetInterruptMaskFromISR"
+target = "armv8r-none-eabihf"
+reason = "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `mrs; and; cpsid i; dsb; isb; bx lr`, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)"
+
+[[policy]]
+kind = "external"
+name = "ulReadAPSR"
+target = "armv8r-none-eabihf"
+reason = "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `mrs r0, CPSR; bx lr`, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)"
+
+[[policy]]
+kind = "external"
+name = "vPortYield"
+target = "armv8r-none-eabihf"
+reason = "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `svc 0; isb; bx lr`: the SVC handler runs on the SVC-mode stack, not the task's, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)"
+
+[[policy]]
+kind = "external"
+name = "vPortRestoreTaskContext"
+target = "armv8r-none-eabihf"
+reason = "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: loads the first task's own `sp` and `rfeia`s into it; it never returns to its caller's stack, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)"
 
 # The five `platform_aliases.c` frames (`z_malloc`, `z_free`, `z_random_fill`,
 # `z_sleep_us`, `z_sleep_ms`) were hand-read rows here, keyed by target. They

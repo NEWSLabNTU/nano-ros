@@ -201,7 +201,13 @@ function(nros_stack_floor_cargo_env_list _out)
         PARENT_SCOPE)
 endfunction()
 
-# Every non-imported library the target links, transitively.
+# Every non-imported library the target links, transitively. A library can
+# also reach the link through a raw flag, and the RMW backend does:
+# `-Wl,--whole-archive,$<TARGET_FILE:x>`, plus issue 0475's
+# `LINK_DEPENDS "$<TARGET_FILE:x>"`, the declared edge for it. Neither entry is
+# a target name, so the target inside `$<TARGET_FILE:...>` is followed too.
+# Without that, the backend and its core library got no `-fstack-usage` and no
+# frame, and the walk reached their functions as frameless (issue 2818).
 function(_nros_stack_floor_closure _target _out)
     set(_seen "")
     set(_queue "${_target}")
@@ -215,13 +221,18 @@ function(_nros_stack_floor_closure _target _out)
             set(_t "${_alias}")
         endif()
         list(APPEND _seen "${_t}")
-        foreach(_p LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+        foreach(_p LINK_LIBRARIES INTERFACE_LINK_LIBRARIES LINK_DEPENDS)
             get_target_property(_libs "${_t}" ${_p})
             if(_libs)
                 foreach(_l IN LISTS _libs)
                     if(NOT _l MATCHES "^\\$<" AND TARGET "${_l}")
                         list(APPEND _queue "${_l}")
                     endif()
+                    string(REGEX MATCHALL "\\$<TARGET_FILE:[^>]+>" _files "${_l}")
+                    foreach(_f IN LISTS _files)
+                        string(REGEX REPLACE "^\\$<TARGET_FILE:([^>]+)>$" "\\1" _ft "${_f}")
+                        list(APPEND _queue "${_ft}")
+                    endforeach()
                 endforeach()
             endif()
         endforeach()

@@ -762,6 +762,51 @@ mod tests {
         assert_eq!(alt(r#"elseif(_mode MATCHES "^("#), SWITCH_ON);
     }
 
+    /// Issue 2818 -- the `-fstack-usage` closure reaches a library linked
+    /// through a raw flag (the RMW backend's `-Wl,--whole-archive,
+    /// $<TARGET_FILE:x>`) and through issue 0475's `LINK_DEPENDS`, not only by
+    /// target name. Missing them left the Cyclone backend frameless.
+    #[test]
+    fn the_stack_floor_closure_follows_a_library_named_inside_a_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let module = nros_root().join("cmake/NanoRosStackFloor.cmake");
+        let mut text = format!(
+            "cmake_minimum_required(VERSION 3.20)\nproject(t NONE)\ninclude(\"{}\")\n",
+            module.display()
+        );
+        for lib in ["direct", "backend", "core"] {
+            text += &format!(
+                "add_library({lib} STATIC IMPORTED)\n\
+                 set_target_properties({lib} PROPERTIES IMPORTED_LOCATION /x/lib{lib}.a)\n"
+            );
+        }
+        text += "add_custom_target(img)\n\
+                 set_property(TARGET img PROPERTY LINK_LIBRARIES direct \
+                 \"-Wl,--whole-archive,$<TARGET_FILE:backend>,--no-whole-archive\")\n\
+                 set_property(TARGET img PROPERTY LINK_DEPENDS \"$<TARGET_FILE:core>\")\n\
+                 _nros_stack_floor_closure(img c)\nmessage(STATUS \"CL=${c}\")\n";
+        std::fs::write(dir.path().join("CMakeLists.txt"), text).unwrap();
+        let out = std::process::Command::new("cmake")
+            .arg("-S")
+            .arg(dir.path())
+            .arg("-B")
+            .arg(dir.path().join("b"))
+            .output()
+            .expect("cmake is a precondition of the cli-tests lane");
+        let log = String::from_utf8_lossy(&out.stdout).to_string()
+            + &String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{log}");
+        let closure: Vec<&str> = log
+            .lines()
+            .find_map(|l| l.strip_prefix("-- CL="))
+            .unwrap_or_else(|| panic!("no CL line in {log}"))
+            .split(';')
+            .collect();
+        for want in ["img", "direct", "backend", "core"] {
+            assert!(closure.contains(&want), "{want} not in {closure:?}");
+        }
+    }
+
     /// Issue 2803 -- configured for real: the environment turns the cmake
     /// road off, `-D` beats it, and a reconfigure sees the environment move.
     #[test]

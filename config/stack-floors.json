@@ -14,7 +14,7 @@
   "fallback_rust_main_stack": 32768,
   "indirect": {
     "default": {
-      "mode": "allowance:0"
+      "mode": "bind"
     },
     "zenoh": {
       "mode": "bind"
@@ -184,6 +184,42 @@
       "kind": "external",
       "name": "__aeabi_read_tp",
       "reason": "hand assembly (TLS pointer read), a leaf"
+    },
+    {
+      "kind": "external",
+      "name": "vPortDisableInterrupts",
+      "reason": "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `cpsid i; dsb; isb; bx lr`, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)",
+      "target": "armv8r-none-eabihf"
+    },
+    {
+      "kind": "external",
+      "name": "vPortEnableInterrupts",
+      "reason": "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `cpsie i; bx lr`, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)",
+      "target": "armv8r-none-eabihf"
+    },
+    {
+      "kind": "external",
+      "name": "ulPortSetInterruptMaskFromISR",
+      "reason": "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `mrs; and; cpsid i; dsb; isb; bx lr`, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)",
+      "target": "armv8r-none-eabihf"
+    },
+    {
+      "kind": "external",
+      "name": "ulReadAPSR",
+      "reason": "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `mrs r0, CPSR; bx lr`, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)",
+      "target": "armv8r-none-eabihf"
+    },
+    {
+      "kind": "external",
+      "name": "vPortYield",
+      "reason": "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: `svc 0; isb; bx lr`: the SVC handler runs on the SVC-mode stack, not the task's, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)",
+      "target": "armv8r-none-eabihf"
+    },
+    {
+      "kind": "external",
+      "name": "vPortRestoreTaskContext",
+      "reason": "FreeRTOS Cortex-R port hand assembly (portASM.S), no .su and no CFI: loads the first task's own `sp` and `rfeia`s into it; it never returns to its caller's stack, so no frame on the task stack. Read from the disassembly of the mps3-an536 image (issue 2818)",
+      "target": "armv8r-none-eabihf"
     },
     {
       "kind": "cut",
