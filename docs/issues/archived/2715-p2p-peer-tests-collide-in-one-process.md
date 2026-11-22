@@ -1,11 +1,12 @@
 ---
 id: 2715
 title: "The IVC and RPMsg point-to-point peer tests fail when they share one process"
-status: open
+status: resolved
 type: tech-debt
 area: [rmw, zenoh, testing]
 severity: low
 found: 2026-11-18
+resolved: 2026-11-23
 related: [phase-575]
 ---
 
@@ -48,3 +49,23 @@ Either:
 - the dependency is stated where it is relied on: a comment on the test file
   and a nextest-only marker, so a `cargo test` run fails with a message
   naming the reason instead of a transport error.
+
+## Resolved, 2026-11-23
+
+Did not reproduce on main at 7d14b8efb3: with the two tests in one process
+and nothing serialising them, 0 failures in 59 runs. That covers
+`--no-default-features` with the issue's feature set, the lane's set over
+the default features, and 20 runs with every CPU of a 48-thread host
+busy. The test was reworked on 2026-11-18, the day this was filed, to run
+the listening peer in a child process. The run measured here was probably
+of the version before that rework, but that is not proven.
+
+The build resolves `zenoh.max_sessions` to 1 outside the lane (the lane
+sets `NROS_ZENOH_MAX_SESSIONS=2`). So the tests now take turns explicitly
+through `tests/support::session_turn()`, a process-wide lock held while a
+test's session is open, with a comment saying why. That makes the first
+"done when" hold by construction rather than by timing. The sweep found one
+sibling with the same shape, `tests/in_process_graph.rs` (three tests, each
+holding a live session), and it takes the same turn. The other files either
+open one session (`matched_events_live.rs`, which runs its peer in a second
+process) or are refused before a session exists (`session_config_keys.rs`).

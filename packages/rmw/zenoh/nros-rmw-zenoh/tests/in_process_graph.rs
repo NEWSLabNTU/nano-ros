@@ -5,6 +5,8 @@
 
 #![cfg(feature = "platform-posix")]
 
+mod support;
+
 use nros_rmw::{ClientTrait, QoSProfile, ServiceInfo, SessionMode, Transport, TransportConfig};
 use nros_rmw_zenoh::ZenohTransport;
 use nros_tests::fixtures::{ZenohRouter, or_unmet};
@@ -67,6 +69,7 @@ fn a_client_sees_a_server_its_own_session_hosts() {
         namespace: "",
         domain_id: 0,
     };
+    let _turn = support::session_turn();
     let mut session = ZenohTransport::open(&config).expect("open zenoh session");
     let qos = QoSProfile::services_default();
     let client = session
@@ -119,6 +122,7 @@ fn node_topic_writers_share_one_data_key_and_each_is_a_publisher() {
         namespace: "",
         domain_id: 0,
     };
+    let _turn = support::session_turn();
     let mut session = ZenohTransport::open(&config).expect("open zenoh session");
     const TOPIC: &str = "/nros_node_topic_writer_events";
     let topic = |node| {
@@ -211,6 +215,7 @@ fn only_the_stock_writers_share_a_zenoh_publisher() {
         namespace: "",
         domain_id: 0,
     };
+    let _turn = support::session_turn();
     let mut session = ZenohTransport::open(&config).expect("open zenoh session");
     let qos = QoSProfile::parameter_events_default();
     let on = |name, node| {
