@@ -145,6 +145,20 @@ function(_nros_stack_floor_merge_env _env_target _var _flag)
     set_target_properties(${_env_target} PROPERTIES ${_CORR_PROP_ENV_VARS} "${_out}")
 endfunction()
 
+# The frame flags for C and C++ that cc-rs compiles on the cargo road. One
+# spelling, the cmake road's rule: `-fcallgraph-info=su` for GCC only.
+# TI Arm Clang (and Clang) refuse it and accept `-fstack-usage`, and the walk
+# reads its call graph from relocations, so `.ci` files only sharpen a frame's
+# name. Passing it to every compiler failed every C build on the cargo road
+# under TI Arm Clang (issue 2693).
+function(_nros_stack_floor_c_frame_flags _out)
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        set(${_out} "-fstack-usage -fcallgraph-info=su" PARENT_SCOPE)
+    else()
+        set(${_out} "-fstack-usage" PARENT_SCOPE)
+    endif()
+endfunction()
+
 # The cargo half: every crate of a Corrosion import keeps its post-opt bitcode
 # (`-C save-temps`), and the C that cc-rs compiles inside it writes `.su` files.
 # Call it AFTER any other helper that sets RUSTFLAGS / CFLAGS on the same import.
@@ -164,9 +178,10 @@ function(nros_stack_floor_cargo_env _target)
         message(FATAL_ERROR "nros_stack_floor_cargo_env(${_target}): no Corrosion env target "
             "`${_env_target}` -- call it after the crate is imported")
     endif()
+    _nros_stack_floor_c_frame_flags(_cflags)
     _nros_stack_floor_merge_env(${_env_target} RUSTFLAGS "-Csave-temps")
-    _nros_stack_floor_merge_env(${_env_target} CFLAGS "-fstack-usage -fcallgraph-info=su")
-    _nros_stack_floor_merge_env(${_env_target} CXXFLAGS "-fstack-usage -fcallgraph-info=su")
+    _nros_stack_floor_merge_env(${_env_target} CFLAGS "${_cflags}")
+    _nros_stack_floor_merge_env(${_env_target} CXXFLAGS "${_cflags}")
 endfunction()
 
 # The same flags as `cmake -E env` rows, for a cargo command Corrosion does not
@@ -194,10 +209,11 @@ function(nros_stack_floor_cargo_env_list _out)
     if(NOT _fam STREQUAL "freertos")
         return()
     endif()
+    _nros_stack_floor_c_frame_flags(_cflags)
     set(${_out}
         "RUSTFLAGS=-Csave-temps"
-        "CFLAGS=-fstack-usage -fcallgraph-info=su"
-        "CXXFLAGS=-fstack-usage -fcallgraph-info=su"
+        "CFLAGS=${_cflags}"
+        "CXXFLAGS=${_cflags}"
         PARENT_SCOPE)
 endfunction()
 
@@ -676,10 +692,7 @@ function(nros_stack_floor_zephyr_cc_env _list_var)
     if(NOT _on OR NOT NROS_RUST_TARGET)
         return()
     endif()
-    set(_flags "-fstack-usage")
-    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-        string(APPEND _flags " -fcallgraph-info=su")
-    endif()
+    _nros_stack_floor_c_frame_flags(_flags)
     string(REPLACE "-" "_" _t "${NROS_RUST_TARGET}")
     set(_env "${${_list_var}}")
     foreach(_var IN ITEMS "CFLAGS_${_t}" "CXXFLAGS_${_t}")
