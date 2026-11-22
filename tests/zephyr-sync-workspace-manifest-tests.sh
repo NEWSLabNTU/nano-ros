@@ -135,18 +135,16 @@ check "the config's manifest file is the one compared" "$r"
 # 11. Issue 2764 -- the update resets our in-place edits, so the sync applies
 # the line's patch set ITSELF. Run on its own it used to leave the workspace
 # unpatched until a configure failed.
-fresh old; printf 'line 3.7\ndigest x\n' > "$tmp/ws/.west/nros-patchset"; run
+fresh old; run
 [ "$rc" -eq 0 ] && [ "$(cat "$tmp/patch.log")" = "$tmp/ws" ] && r=ok || r=bad
 check "a sync that updated applies the line's patch set to the workspace once (rc=$rc)" "$r"
-[ ! -e "$tmp/ws/.west/nros-patchset" ] && r=ok || r=bad
-check "...after dropping the record the update made stale" "$r"
 run
 [ "$(patches)" = 1 ] && r=ok || r=bad
 check "...and a current manifest applies nothing" "$r"
 
-fresh old; printf 'line 3.7\ndigest x\n' > "$tmp/ws/.west/nros-patchset"; run 3
-[ "$rc" -eq 3 ] && [ "$(patches)" = 0 ] && [ -e "$tmp/ws/.west/nros-patchset" ] && r=ok || r=bad
-check "a failed update applies no patch set and keeps the record (its edits came back)" "$r"
+fresh old; run 3
+[ "$rc" -eq 3 ] && [ "$(patches)" = 0 ] && r=ok || r=bad
+check "a failed update applies no patch set (the projects did not move, so the edits stand)" "$r"
 
 fresh old; run 0 5
 [ "$rc" -ne 0 ] && [ "$(patches)" = 1 ] && r=ok || r=bad

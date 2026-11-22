@@ -389,10 +389,10 @@ zephyr-board-lines:
     @python3 scripts/check-zephyr-board-lines.py
 
 # issue 2764 — every script that runs `west update` re-applies the line's patch
-# set through `nros_zephyr_apply_patchset`, the one helper that drops the stale
-# record, runs `patches/<line>.sh` and lets it record itself. Two writers had
-# each chosen what to re-apply: the sync relied on its caller, and a standalone
-# `scripts/zephyr/setup.sh` applied two of ~20 patches and recorded nothing.
+# set through `nros_zephyr_apply_patchset`, the one helper that reads the
+# workspace's line and runs `patches/<line>.sh`. Two writers had each chosen
+# what to re-apply: the sync relied on its caller, and a standalone
+# `scripts/zephyr/setup.sh` applied two of ~20 patches.
 [group("checks")]
 west-update-patchset:
     @python3 scripts/check-west-update-patchset.py
