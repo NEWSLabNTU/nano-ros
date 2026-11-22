@@ -458,3 +458,18 @@ max_cbs = 16
 
 [image.zephyr_cpp_params.knobs.zenoh]
 max_queryables = 16
+
+# The launch file seeds four lists (`config/cpp_params.param.yaml`: doubles,
+# integers, bools, and the strings `[left, '5', 'a, b']`). A seed counts as a
+# declaration of its type, and how long a string or an array may be is a fact
+# about the image, so the build refuses until these tables state it. The same
+# numbers as `linux_cpp_params`, which seeds the same file: the longest seed is
+# 3 elements of at most 4 bytes, and a `set_parameters` naming them fits 4096 B
+# (nros-node prices that request from the same caps and refuses a short one).
+[image.zephyr_cpp_params.knobs.params]
+max_string_value_bytes = 16
+max_array_len = 4
+max_string_array_len = 4
+
+[image.zephyr_cpp_params.knobs.param]
+service_inbox_bytes = 4096
