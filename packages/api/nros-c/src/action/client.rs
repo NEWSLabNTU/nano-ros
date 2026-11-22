@@ -836,29 +836,34 @@ pub unsafe extern "C" fn rclc_action_try_recv_feedback(
         rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    let internal = &mut client._internal;
-
-    let mut core = match unsafe { internal.arena_core_mut() } {
-        Some(c) => c,
-        None => return RCL_RET_NOT_INIT,
+    // Phase-573 W3 -- the reply is copied out under the executor's lock and
+    // the lock given back before the user's callback runs (see
+    // `rclc_action_client_poll`).
+    // Issue 2014 — offset and splice from `action_frame`: the C deserializer
+    // expects [CDR_HEADER][fields], the frame's own header in front, as the
+    // executor dispatch delivers.
+    const FB_USER_BUF: usize = 512;
+    let mut fb_buf = [0u8; FB_USER_BUF];
+    let taken = {
+        let Some(mut core) = (unsafe { client._internal.arena_core_mut() }) else {
+            return RCL_RET_NOT_INIT;
+        };
+        core.try_recv_feedback_raw().map(|got| {
+            got.map(|(goal_id, len)| {
+                let n =
+                    action_frame::splice_feedback(&core.feedback_buffer_ref()[..len], &mut fb_buf);
+                (goal_id, n)
+            })
+        })
     };
 
-    match core.try_recv_feedback_raw() {
-        Ok(Some((goal_id, len))) => {
+    match taken {
+        Ok(Some((goal_id, n))) => {
             if let Some(cb) = client.feedback_callback {
                 let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
-
-                // Issue 2014 — offset and splice from `action_frame`: the C
-                // deserializer expects [CDR_HEADER][fields], the frame's own
-                // header in front, as the executor dispatch delivers.
-                const FB_USER_BUF: usize = 512;
-                let mut fb_buf = [0u8; FB_USER_BUF];
-                if let Some(n) =
-                    action_frame::splice_feedback(&core.feedback_buffer_ref()[..len], &mut fb_buf)
-                {
-                    cb(&uuid, fb_buf.as_ptr(), n, client.context);
-                } else {
-                    cb(&uuid, ptr::null(), 0, client.context);
+                match n {
+                    Some(n) => cb(&uuid, fb_buf.as_ptr(), n, client.context),
+                    None => cb(&uuid, ptr::null(), 0, client.context),
                 }
             }
 
@@ -1004,40 +1009,60 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
         rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    let internal = &mut client_ref._internal;
     let ctx = client_ref.context;
-
-    let mut core = match unsafe { internal.arena_core_mut() } {
-        Some(c) => c,
-        None => return RCL_RET_NOT_INIT,
-    };
+    // Phase-573 W3 -- each step takes the client's core under the executor's
+    // lock, copies the reply out, and gives the lock back BEFORE the user's
+    // callback runs. Holding it across the callback locked every other thread
+    // out of the executor for the callback's duration, and a callback that
+    // re-entered this client (a goal-response callback cancelling the goal)
+    // made a second `&mut` to the core while this one was still in use.
+    if unsafe { client_ref._internal.arena_core_mut() }.is_none() {
+        return RCL_RET_NOT_INIT;
+    }
+    macro_rules! with_core {
+        ($core:ident => $body:expr) => {
+            match unsafe { client_ref._internal.arena_core_mut() } {
+                Some(mut $core) => $body,
+                None => return RCL_RET_NOT_INIT,
+            }
+        };
+    }
+    const SPLICE_BUF: usize = 1024;
 
     // Poll goal acceptance reply. Issue 2009 — attributed to the goal its
     // request named, not to the most recently sent goal (`goal_counter`).
-    if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for()
+    let accepted = with_core!(core => match core.try_recv_send_goal_reply_for() {
+        Ok(Some((total_len, goal_id))) => Some((
+            goal_id,
+            action_frame::goal_accepted(&core.result_buffer_ref()[..total_len]),
+        )),
+        _ => None,
+    });
+    if let Some((goal_id, accepted)) = accepted
         && let Some(cb) = client_ref.goal_response_callback
     {
-        let accepted = action_frame::goal_accepted(&core.result_buffer_ref()[..total_len]);
         let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
         cb(&uuid, accepted, ctx);
     }
 
-    // Poll feedback
-    if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw()
+    // Poll feedback. Issue 2014 — offset and splice from `action_frame`. This
+    // path used to hand the callback the bare fields (no encapsulation header)
+    // while the executor dispatch handed it `[encap][fields]`, so one callback
+    // saw two framings depending on who took the message off the wire.
+    let mut spliced = [0u8; SPLICE_BUF];
+    let feedback = with_core!(core => match core.try_recv_feedback_raw() {
+        Ok(Some((goal_id, total_len))) => action_frame::splice_feedback(
+            &core.feedback_buffer_ref()[..total_len],
+            &mut spliced,
+        )
+        .map(|n| (goal_id, n)),
+        _ => None,
+    });
+    if let Some((goal_id, n)) = feedback
         && let Some(cb) = client_ref.feedback_callback
     {
-        // Issue 2014 — offset and splice from `action_frame`. This path used
-        // to hand the callback the bare fields (no encapsulation header) while
-        // the executor dispatch handed it `[encap][fields]`, so one callback
-        // saw two framings depending on who took the message off the wire.
-        const SPLICE_BUF: usize = 1024;
-        let mut spliced = [0u8; SPLICE_BUF];
-        if let Some(n) =
-            action_frame::splice_feedback(&core.feedback_buffer_ref()[..total_len], &mut spliced)
-        {
-            let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
-            cb(&uuid, spliced.as_ptr(), n, ctx);
-        }
+        let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
+        cb(&uuid, spliced.as_ptr(), n, ctx);
     }
 
     // Poll result reply — issue 2009, attributed like the acceptance above.
@@ -1046,42 +1071,52 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
     // encap is spliced in front unconditionally: the encap SNIFF this used
     // was retired from the executor dispatch (a body starting `00 01 00 00`
     // reads as a header).
-    if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for()
+    let mut spliced = [0u8; SPLICE_BUF];
+    let result = with_core!(core => match core.try_recv_get_result_reply_for() {
+        Ok(Some((total_len, goal_id))) => {
+            let reply = &core.result_buffer_ref()[..total_len];
+            match (
+                action_frame::result_status(reply),
+                action_frame::splice_result(reply, &mut spliced),
+            ) {
+                (Some(status), Some(n)) => Some((goal_id, status, n)),
+                _ => None,
+            }
+        }
+        _ => None,
+    });
+    if let Some((goal_id, status, n)) = result
         && let Some(cb) = client_ref.result_callback
     {
-        let reply = &core.result_buffer_ref()[..total_len];
-        const SPLICE_BUF: usize = 1024;
-        let mut spliced = [0u8; SPLICE_BUF];
-        if let (Some(status), Some(n)) = (
-            action_frame::result_status(reply),
-            action_frame::splice_result(reply, &mut spliced),
-        ) {
-            let c_status = match status {
-                nros_node::GoalStatusCode::Succeeded => {
-                    rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED
-                }
-                nros_node::GoalStatusCode::Canceled => {
-                    rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED
-                }
-                nros_node::GoalStatusCode::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
-                _ => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
-            };
-            let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
-            cb(&uuid, c_status, spliced.as_ptr(), n, ctx);
-        }
+        let c_status = match status {
+            nros_node::GoalStatusCode::Succeeded => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
+            nros_node::GoalStatusCode::Canceled => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
+            nros_node::GoalStatusCode::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
+            _ => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
+        };
+        let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
+        cb(&uuid, c_status, spliced.as_ptr(), n, ctx);
     }
 
     // Poll cancel reply — issue 2030. Taken whether or not a callback is set:
     // a cancel request holds a request slot until its reply is taken, and this
     // tier has no other reader, so leaving it refused the fifth cancel.
-    if let Ok(Some((total_len, goal_id))) = core.try_recv_cancel_reply_for() {
-        let reply = &core.result_buffer_ref()[..total_len];
-        let code = cancel_return_code_c(action_frame::cancel_return_code(reply));
-        let n = action_frame::cancel_goals_count(reply).unwrap_or(0);
-        if let Some(cb) = client_ref.cancel_response_callback {
-            let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
-            cb(&uuid, code, n, ctx);
+    let cancel = with_core!(core => match core.try_recv_cancel_reply_for() {
+        Ok(Some((total_len, goal_id))) => {
+            let reply = &core.result_buffer_ref()[..total_len];
+            Some((
+                goal_id,
+                cancel_return_code_c(action_frame::cancel_return_code(reply)),
+                action_frame::cancel_goals_count(reply).unwrap_or(0),
+            ))
         }
+        _ => None,
+    });
+    if let Some((goal_id, code, n)) = cancel
+        && let Some(cb) = client_ref.cancel_response_callback
+    {
+        let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
+        cb(&uuid, code, n, ctx);
     }
 
     RCL_RET_OK
