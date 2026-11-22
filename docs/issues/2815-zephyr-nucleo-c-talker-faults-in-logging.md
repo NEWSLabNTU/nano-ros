@@ -214,6 +214,16 @@ downgrades stay one warning per entity: they are what silences a pair, and they
 are rare. The frames fix above is what cures the fault; this one only stops
 the boot from printing the same line twelve times.
 
+The burst costs a second test its evidence. On mps2/an385,
+`zephyr_cortex_m_cpp_zenoh_pubsub_e2e` (issue 2825) asserts
+`NET_STACK_READY_MARKER`, a `net_config` line Zephyr logs through the same
+deferred buffer. Its console showed `--- 14 messages dropped ---` during this
+burst and no marker, while the image was publishing. `CONFIG_LOG_MODE_OVERFLOW`
+drops the OLDEST pending messages to make room, and the marker is one of
+them. This is Zephyr's own log buffer, not `nros_log`'s hold queue, so issue
+2762's change does not reach it; one warning instead of twelve does. So that
+test passing is part of this fix's acceptance.
+
 ## Closes when
 
 The cell passes and the cause above is named and fixed, with a cell that would
