@@ -676,7 +676,22 @@ fn absolutize_patch_paths(patch: &mut toml::Table, base: &Path) {
 
 /// Generate the harness crate, then `cargo run` it so it writes the
 /// source-metadata JSON to `output_path`.
+///
+/// The harness writes this process's staging file
+/// ([`probe_staging_path`](crate::orchestration::metadata_refresh::probe_staging_path)),
+/// and the result is renamed to `output_path` in one step, so a reader of the
+/// sidecar never sees it half-written. It is unstamped; the refresh, which
+/// stamps, calls [`build_metadata_staged`] instead.
 pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
+    let staged = build_metadata_staged(o)?;
+    std::fs::rename(&staged, &o.output_path)
+        .wrap_err_with(|| format!("move {} to {}", staged.display(), o.output_path.display()))
+}
+
+/// [`build_metadata`], leaving the result at the staging path it returns, for
+/// a caller that stamps it into place (`metadata_refresh::stamp_probe`):
+/// issue 2827, the sidecar's path only ever holds a stamped body there.
+pub fn build_metadata_staged(o: &MetadataBuildOptions) -> Result<PathBuf> {
     let src = o.harness_dir.join("src");
     std::fs::create_dir_all(&src).wrap_err_with(|| format!("create {}", src.display()))?;
     write_if_changed(
@@ -822,8 +837,8 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
             }
         }
     }
-    // Issue 2826 -- the harness wrote the staging path, and the rewrite below
-    // stays there: the sidecar's own path only ever receives the stamped file.
+    // Issue 2827 -- the harness wrote the staging path, and the rewrite below
+    // stays there.
     let staged = crate::orchestration::metadata_refresh::probe_staging_path(&o.output_path);
     if !staged.is_file() {
         bail!(
@@ -832,7 +847,7 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         );
     }
     relativise_source_artifacts(&staged, &o.component_dir)?;
-    Ok(())
+    Ok(staged)
 }
 
 /// Issue 1817 — why the COMPONENT's own manifest does not resolve, or `None`

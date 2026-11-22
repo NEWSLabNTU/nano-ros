@@ -2616,22 +2616,24 @@ unsafe fn executor_backing_for_open(ctx_ptr: *mut CppContext) -> Option<SchedTas
 /// Returns the process exit code: 0 when the census was written.
 #[cfg(all(feature = "rmw-cffi", feature = "env", feature = "metadata-mode"))]
 fn census_write(session: &core::ffi::CStr, out_path: &str) -> i32 {
-    let Ok(out) = alloc::ffi::CString::new(out_path) else {
+    if out_path.contains('\0') {
         cpp_diag!("nros census: $NROS_CENSUS_OUT contains a NUL byte");
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Ok(session) = session.to_str() else {
+        cpp_diag!("nros census: the session name is not UTF-8");
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let exe = nros::env::exe_name().unwrap_or_default();
-    let exe = alloc::ffi::CString::new(exe).unwrap_or_default();
-    // SAFETY: every pointer is a live NUL-terminated string for the call.
-    let rc = unsafe {
-        crate::metadata_hooks::nros_cpp_metadata_dump(
-            session.as_ptr(),
-            session.as_ptr(),
-            exe.as_ptr(),
-            c"cpp".as_ptr(),
-            out.as_ptr(),
-        )
-    };
+    // Issue 2827 -- `write_metadata`, not the probe's `nros_cpp_metadata_dump`:
+    // the census goes where `NROS_CENSUS_OUT` says, whatever else is set.
+    let rc = crate::metadata_hooks::write_metadata(
+        session,
+        session,
+        Some(exe.as_str()),
+        Some("cpp"),
+        out_path,
+    );
     if rc != 0 {
         // -2 is "nothing was recorded", which for an entry census means the
         // setup path created no entity at all. Say so rather than leave a file
