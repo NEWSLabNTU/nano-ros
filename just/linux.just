@@ -727,6 +727,24 @@ test-ros2-c-param-server verbose="":
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
+# Run the C lifecycle interop cell (issue 2828): the `c-lifecycle-node`
+# image, one node bound with `rclc_executor_node_init` and the REP-2002
+# services registered on it, driven by stock `ros2 lifecycle` through
+# configure, activate, deactivate and cleanup.
+# Runs `c_lifecycle_interop`; needs ROS 2 + the distro's `rmw_zenoh_cpp` +
+# `rmw_zenohd`, and the `c-lifecycle-node` fixture.
+[group("debug")]
+test-ros2-c-lifecycle verbose="":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    args=(-p nros-tests --test c_lifecycle_interop --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--failure-output never)
+    fi
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+
 # Run the `ros2 lifecycle …` interop test against an nros lifecycle-node.
 # Needs the distro's `rmw_zenoh_cpp` (`ros-<distro>-rmw-zenoh-cpp` from apt).
 # There is no source overlay to build: issue 0291 refuted the "wire-match our
