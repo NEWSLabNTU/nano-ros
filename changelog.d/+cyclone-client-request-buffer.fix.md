@@ -1,0 +1,1 @@
+A Cyclone DDS service client no longer reserves 64 KiB for its request. It holds a request only while waiting for a server to be discovered, in a buffer the size of that request, and frees it once the request is sent. A client can now send a request larger than 64 KiB.

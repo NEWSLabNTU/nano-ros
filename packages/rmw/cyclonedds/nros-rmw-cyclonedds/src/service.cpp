@@ -216,10 +216,10 @@ constexpr uint64_t kDefaultMatchTimeoutMs = 5000;
 // would have thrown away.
 //
 // Dropping the ordering is sound here because this struct is single-threaded by
-// construction, not merely by convention: `pending_request[kWireScratch]` and
+// construction, not merely by convention: `pending_request` and
 // `pending_request_len` sit beside these counters as PLAIN members and are
-// mutated in the same calls. A caller that genuinely raced would be tearing a
-// 64 KiB buffer long before the sequence number mattered.
+// mutated in the same calls. A caller that genuinely raced would be tearing the
+// staged request long before the sequence number mattered.
 #if !NROS_CYCLONE_HAS_STD_ATOMIC_I64
 struct ServiceAtomicI64 {
     int64_t value;
@@ -264,14 +264,6 @@ constexpr std::size_t kStatusFieldLen = 4;              // GetResult status int8
 inline std::size_t cdr_align4(std::size_t pos) {
     return (pos + 3u) & ~std::size_t{3u};
 }
-// The client's pre-match staging buffer (`pending_request`), and so the largest
-// request a client can send. 64 KiB covers ROS 2's default service payload
-// size budget. It is a MEMBER, never a stack local: the take and reply paths
-// copy straight between the serdata and the caller's span, because four 64 KiB
-// locals here overflowed a 64 KiB FreeRTOS app task once every image served
-// the parameter services.
-constexpr std::size_t kWireScratch = 65536;
-
 struct RequestId {
     uint64_t guid;
     int64_t seq;
@@ -311,9 +303,7 @@ struct ClientState {
     // in-flight call". Now a set, so N calls can be outstanding and each reply
     // retires its own.
     //
-    // Ids only, deliberately. Replicating the 64 KiB `pending_request` staging
-    // buffer N times is not affordable on the targets this backend runs on —
-    // and it is not needed, because staging is only for the window BEFORE the
+    // Ids only, deliberately: staging is only for the window BEFORE the
     // request writer has matched a server reader (VOLATILE QoS drops a write
     // sent earlier). After the match, sends go straight out and hold no buffer.
     int64_t outstanding[kMaxOutstandingRequests]{};
@@ -321,13 +311,31 @@ struct ClientState {
     // Phase 130.8 — the ONE pre-match staging slot, and the id it holds.
     // Service QoS is VOLATILE, so writing before the match can silently drop
     // the request.
-    uint8_t pending_request[kWireScratch]{};
+    //
+    // Issue 2819 — allocated for the request it holds, only while it holds
+    // one, and freed once that request is written. It was a 64 KiB member, so
+    // every client paid the largest request's size whatever its own type, and
+    // that bound was also the largest request any client could send.
+    uint8_t* pending_request{nullptr};
     std::size_t pending_request_len{0};
     int64_t pending_request_seq{-1};
     /// Issue 1269 — the graph both endpoints are listed in.
     GraphState* graph{nullptr};
     /// phase-397 W2.b — this entity's `set_on_new_*_callback`, on `reader`.
     EntityWake wake{};
+
+    ClientState() = default;
+    ClientState(const ClientState&) = delete;
+    ClientState& operator=(const ClientState&) = delete;
+    ~ClientState() { drop_pending(); }
+
+    /// Forget the staged request, and free what held it.
+    void drop_pending() {
+        if (pending_request != nullptr) ddsrt_free(pending_request);
+        pending_request = nullptr;
+        pending_request_len = 0;
+        pending_request_seq = -1;
+    }
 };
 
 /// Issue 1269 — take a service/client pair back out of the graph on destroy.
@@ -747,8 +755,7 @@ rmw_ret_t maybe_flush_request(ClientState* state) {
     rmw_ret_t r = write_typed(state->writer, state->req_desc, state->pending_request,
                               state->pending_request_len);
     if (r == NROS_RMW_RET_OK) {
-        state->pending_request_len = 0;
-        state->pending_request_seq = -1;
+        state->drop_pending();
     }
     return r;
 }
@@ -1275,8 +1282,7 @@ rmw_ret_t service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t r
 
     // Issue 0778 — a request already STAGED (written before the request writer
     // matched a server reader) is the one thing that still serialises sends.
-    // There is one 64 KiB staging buffer and replicating it per outstanding
-    // call is not affordable here, so a second send in that window is refused
+    // There is one staging slot, so a second send in that window is refused
     // rather than silently overwriting the first. Loud and retryable, instead
     // of a request that vanishes.
     //
@@ -1304,12 +1310,30 @@ rmw_ret_t service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t r
         return NROS_RMW_RET_WOULD_BLOCK;
     }
 
-    // Built straight into the staging member: the request is staged whether or
-    // not the writer has matched, so a stack copy of it (a 64 KiB local) bought
-    // nothing and cost a 64 KiB frame.
-    int32_t wire_len = build_wire_with_header(request, req_len, my_id, state->pending_request,
-                                              sizeof(state->pending_request));
+    // Issue 2819 — matched, so the request goes out now with its header
+    // inserted inside the serdata (`write_with_header`), and holds no buffer.
+    if (request_writer_matched(state->writer)) {
+        rmw_ret_t wr = write_with_header(state->writer, request, req_len, my_id);
+        if (wr != NROS_RMW_RET_OK) {
+            release_outstanding(state, my_id.seq);
+            return wr;
+        }
+        if (sequence_id != nullptr) *sequence_id = my_id.seq;
+        return NROS_RMW_RET_OK;
+    }
+
+    // Not matched yet: stage it, in a buffer the size of THIS request. Transient
+    // RMW memory goes through ddsrt, never libc (an RTOS heap is separate).
+    const std::size_t wire_cap = req_len + kHeaderBytes;
+    state->pending_request = static_cast<uint8_t*>(ddsrt_malloc_s(wire_cap));
+    if (state->pending_request == nullptr) {
+        release_outstanding(state, my_id.seq);
+        return NROS_RMW_RET_BAD_ALLOC;
+    }
+    int32_t wire_len =
+        build_wire_with_header(request, req_len, my_id, state->pending_request, wire_cap);
     if (wire_is_status(wire_len)) {
+        state->drop_pending();
         release_outstanding(state, my_id.seq);
         return wire_status_code(wire_len);
     }
@@ -1318,8 +1342,7 @@ rmw_ret_t service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t r
     state->pending_request_seq = my_id.seq;
     rmw_ret_t pr = maybe_flush_request(state);
     if (pr != NROS_RMW_RET_OK && pr != NROS_RMW_RET_NO_DATA) {
-        state->pending_request_len = 0;
-        state->pending_request_seq = -1;
+        state->drop_pending();
         release_outstanding(state, my_id.seq);
         return pr;
     }
@@ -1351,8 +1374,7 @@ static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t
             if (state->pending_request_seq >= 0) {
                 release_outstanding(state, state->pending_request_seq);
             }
-            state->pending_request_len = 0;
-            state->pending_request_seq = -1;
+            state->drop_pending();
         }
         return wire_status(flush);
     }
