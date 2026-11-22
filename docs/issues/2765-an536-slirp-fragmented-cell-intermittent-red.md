@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: low
 area: [rmw, platform, testing]
-related: [issue-0917, issue-0889]
+related: [issue-0917, issue-0889, issue-2820]
 found: 2026-11-20
 ---
 
@@ -31,6 +31,22 @@ The cell did not run on 2026-11-12 or 2026-11-13. From 2026-11-14 to
 2026-11-20 it passed on the first try in seven runs in a row (43555266126,
 43675564346, 43802612787, 44015390025, 44235514551, 44456527279, 44672701128;
 77-90 s each). It was never reproduced solo on a workstation.
+
+## 2026-11-21: red again, with a different shape and a known cause
+
+Run 44864729982 (head 3b6959ca7f) failed this cell with `1 received of 751
+sent`, and `..._keeps_up_with_a_line_rate_burst` in the same run delivered
+`1 of the 380` samples. One sample then silence is not the 2026-11-11 shape
+(none at all). That head carries 6229085857, which made every image serve
+the parameter services, and not be27dad878 (#4589), which removed the four
+64 KiB stack frames in Cyclone's service path that those services reach on
+this board (issue 2820). The 2026-11-11 heads carry neither, so the frames
+were not on their path and are not their cause.
+
+The next run, 44983865499 (head 94a190df4e, which has #4589), passed every
+AN536 Cyclone cell, this one in 78.1 s. So the 2026-11-21 red is issue
+2820's, and this issue's own cause is still unknown and still unseen since
+2026-11-11.
 
 ## Why this is not issue 0917
 
