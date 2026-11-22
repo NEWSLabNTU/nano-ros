@@ -699,6 +699,17 @@ stack-floor-table:
     @python3 scripts/nros-stack-floor.py --validate-table config/stack-floors.toml
     @python3 scripts/stack-floor-drift.py --self-test
 
+# issue 2815 -- no stack frame in nano-ros's own code is over the table's
+# `max_frame` (4096 B) unless the shrink-only `config/max-frame-baseline.json`
+# already holds it: one `sub sp` past an MPU guard writes off the stack with no
+# fault. Reads the `big_frames` each fixture build's stack-floor report records
+# (32-bit ARM images); no report at all FAILS, never OK. Needs built fixtures,
+# so it is a step after the fixture build of `just ci` matrix/nightly/full --
+# tier 1 builds no ARM image.
+[metadata("tier", "exempt", "needs built 32-bit ARM fixtures; a step of `just ci` matrix/matrix-nightly/full after the fixture build (issue 2815)")]
+max-frame:
+    @python3 scripts/check-max-frame.py
+
 # A script a USER build runs (every `.py` a tracked CMake file names, and the
 # repo modules it imports) needs only Python 3.10's standard library: that is
 # Ubuntu 22.04's system Python, and it has no `tomllib`. The stack-floor CHECK

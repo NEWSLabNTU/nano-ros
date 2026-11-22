@@ -38,9 +38,22 @@ drift_rise_pct = 2
 # instead (`nros-stack-floor.py --board-floor`). Basis: a `nros new` Rust
 # talker on nucleo-f767zi peaked at 28,280 B (issue 2359), plus headroom.
 fallback_rust_main_stack = 32768
+# The largest single stack frame our own code may have (issue 2815). This is a
+# CODE-QUALITY cap, not what an MPU stack guard catches: a guard is 32-64 B, so
+# ANY frame bigger than that can jump it with no fault, and the floor walk is
+# the protection. Every linked frame over it is recorded in the build's report;
+# `just check max-frame` fails a fixture image with one in nros-owned code that
+# neither a [[frame_allow]] row nor the shrink-only baseline
+# (config/max-frame-baseline.toml) accepts.
+max_frame = 4096
 # Counted once: Zephyr's timer `elapsed` <-> `sys_clock_elapsed`, and
 # `Arc<ComponentCell>` drop reaching a ctx drop that drops an Arc.
 recursion_allowance = 0
+
+# A frame over `max_frame` that is not ours to shrink (issue 2815).
+[[frame_allow]]
+match = "bind_subscription"
+reason = "rclcpp's subscription trampoline decodes into a stack M, so its frame is the USER's message type (16 KiB for the bulk listener), which nano-ros cannot size"
 
 [indirect.default]
 # A backend with no policy of its own binds, as zenoh does (below). This was
