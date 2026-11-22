@@ -71,7 +71,23 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     form). The pump is deleted, and `CONFIG_NROS_ZENOH_MULTI_THREAD=n` is
     refused at configure time with that reason.
   - **W1d:** the board hook, its link rule and the selection-named TU, and
-    the linux stub-board stamp test in Rust, C and C++.
+    the linux stub-board stamp test in Rust, C and C++. Built under the user's
+    2026-11-22 ruling, which amends RFC-0141 D2. The hook is an object of the
+    image or an archive linked after nano-ros (no link group exists for
+    zenoh or XRCE), and `board` is a resolution source through the one
+    setter.
+    - The POSIX port resolves lazily on the first wall-clock read.
+    - Host tests (`check clock-resolve`): the stub clock, the fallback, an
+      unanswered `board` reading 0, `halt`, the link error naming the hook,
+      and an unselected build referencing nothing.
+    - Image cells `(Linux, Rust|Cpp, Zenoh, Pubsub, Example) + [ClockBoard]`
+      (`tests/linux_board_clock.rs`): the board image's public wall clock and
+      its zenoh source stamps sit in the stub instant's window, and its state
+      reads synced, `board`. The ordinary sibling stamps host time and links
+      no hook.
+    - **C is not covered:** a C image's configure also builds every
+      component's executable against the board-selected runtime (issue
+      2841).
 - RFC-0141 D1–D4:
   - the `[knobs.clock]` group: `source` (one, or an ordered fallback),
     `fallback_settle_ms`, `upgrade`, `sntp_attempts`, `epoch_failure`
@@ -233,4 +249,8 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 - [Issue 2691](../issues/archived/2691-freertos-tick-count-answers-as-wall-clock.md):
   W2.
 - phase-478 gap 5.4 (no board time source over serial).
+- [Issue 2841](../issues/2841-c-configure-builds-component-exes-against-image-runtime.md):
+  W1d's C stub-board image cannot build until a C image's configure stops
+  building every component's executable against the image's runtime.
+
 - phase-575 W6: the shape was first agreed there; the design moved here.

@@ -226,6 +226,43 @@ bool nros_board_wall_clock_ns(uint64_t *out_ns);
   the selection (`…set_by__knobs_clock_source`), and configure prints the
   board key and the knob, so the link error says which choice demanded it.
 
+**Amended 2026-11-22 (phase-582 W1d, user ruling).** The build rule above
+assumed a link group the tree does not have. The whole-archive flag exists
+only for the cmake-strategy backends (Cyclone, uORB); zenoh and XRCE have no
+group. And a board is never an archive inside one: on cmake its C is compiled
+into the app target, on cargo it is an rlib dependency, on west it is in the
+module's library. The rule as built:
+
+- **Link rule.** The hook is an object of the image, or an archive linked
+  after nano-ros. On cmake, a board that ships the hook in an archive gives it
+  a `LINK_DEPENDS` edge (issue 0475's class). Nothing joins a group.
+- **No default, a link error naming the symbol: unchanged.** The one
+  reference lives in `nros_clock_board__set_by__knobs_clock_source.c`,
+  compiled only when `board` is selected. A board without the hook fails as
+  "undefined reference to `nros_board_wall_clock_ns`" from that object, and
+  the build names the knob that asked for it. On the Rust road the image
+  links with `--gc-sections`, so the error comes only from an image that
+  reaches the wall clock, which every stamping image does.
+- **`board` is a resolution source, like `sntp`.** At resolution, `true`
+  installs `board − monotonic` through D3's one setter, so the policy,
+  latching, step counting and fallback apply unchanged. `false` is "not
+  answered", and the next listed source is tried. An instant at or before
+  boot counts as not synced, since its offset would wrap. The rejected
+  alternative, calling the hook on every read, would have made the board
+  the store, bypassed the setter's admission and upgrade rules, and cost a
+  call per stamp.
+- **Where it resolves.** A port whose sources all answer synchronously
+  resolves LAZILY, once, on the first wall-clock read, so no entry calls
+  anything. That is POSIX: `platform` is the host's `CLOCK_REALTIME` and
+  `board` asks the hook once. Zephyr keeps its boot resolution point (D1),
+  because `sntp` and `zenoh-hlc` wait.
+- **Ports.** POSIX resolves `board` (phase-582 W1d). FreeRTOS and ThreadX
+  refuse `board` at build time with the reason, until a board of theirs needs
+  it. Both port copies of the POSIX code (the platform crate's and XRCE's
+  demand-driven one) take their defines from the one reader
+  (`nros_zephyr_build::clock_selection`), since copies that differed would
+  make the wall clock depend on archive scan order.
+
 ### D3 — One offset store, one setter
 
 `sntp` and `zenoh-hlc` both produce an offset from the monotonic clock. Today
@@ -391,3 +428,7 @@ separate decision per backend.
   clock, the board defines `steady_clock::now` and `system_clock::now` from
   the two symbols (the `_V2` ABI), and wall-clock deadlines before sync are
   not supported.
+- 2026-11-22: D2 amended for phase-582 W1d (user ruling): the hook is an
+  object of the image or an archive linked after nano-ros (no link group
+  exists for zenoh or XRCE); `board` is a resolution source through the one
+  setter; a synchronous port resolves lazily on the first read.

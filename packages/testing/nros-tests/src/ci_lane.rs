@@ -50,6 +50,13 @@
 //! ruling set those boards to `daily` (RFC-0122 D9), so the lane is how that
 //! cadence gets re-measured.
 //!
+//! Re-measured 2026-11-22 (phase-582 W1d): `Config::ClockBoard` joined with
+//! two Linux zenoh Pubsub cells (Rust and C++) at existing coordinates. One
+//! new config value is one more 1-wise requirement: tier 1 went 30 -> 31
+//! cells over the same 12 coordinates, tier 2 16 -> 17 over 13 -> 14, nightly
+//! 52 -> 53 (platform x config) and merge 48 -> 50 (both cells are zenoh
+//! Example cells on Linux). Tier 3 went 280 -> 282 over the same 56.
+//!
 //! Re-measured 2026-11-21 (phase-582 W1c-2): `Config::ClockHlc` and
 //! `Config::ClockSntp` joined with two Zephyr native_sim Rust zenoh Pubsub
 //! cells at an existing coordinate. Two new config values are two more 1-wise

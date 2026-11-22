@@ -261,7 +261,7 @@ pub struct ParsedImage {
     pub config: Vec<Config>,
 }
 
-const CONFIGS: [Config; 11] = [
+const CONFIGS: [Config; 12] = [
     Config::Lending,
     Config::Multisession,
     Config::SignalFdWake,
@@ -273,6 +273,7 @@ const CONFIGS: [Config; 11] = [
     Config::ClockSntp,
     Config::ClockSntpResync,
     Config::ClockSntpOnce,
+    Config::ClockBoard,
 ];
 
 /// Phase-531 W6 (RFC-0121 D8, RFC-0122 amendment) — whether a workspace at

@@ -188,6 +188,13 @@ class = "config"
 config = "ClockSntpOnce"
 reason = "the default 0 against the same answering server: one exchange at boot, so a later step of the server's time never reaches the stamps — the negative case of ClockSntpResync, same messages"
 
+# Qualified by its value: `NROS_CLOCK_SOURCE` already names `ClockHlc`, and a
+# knob row is keyed by name, so a second value of it is its own row.
+[knob."NROS_CLOCK_SOURCE=board"]
+class = "config"
+config = "ClockBoard"
+reason = "`board` makes a POSIX image take its wall clock from the board's hook (a stub board answering a fixed instant), asked on the first wall-clock read — same messages, stamped from the board's clock"
+
 [knob.NROS_LINK_IP]
 class = "config"
 config = "Serial"

@@ -2431,6 +2431,42 @@ pub fn clock_resolution_ms(output: &str) -> Option<u64> {
     })
 }
 
+/// phase-582 W1d -- the stub board's wall-clock line, printed once a second
+/// by `clock_board_pkg`'s node in each language workspace:
+/// `clock-board: wall_ns=<ns> synced=<0|1> source=<id> steps=<n>`.
+pub const CLOCK_BOARD_PREFIX: &str = "clock-board: ";
+
+/// One [`CLOCK_BOARD_PREFIX`] line, parsed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClockBoardReading {
+    /// The wall clock, ns since the Unix epoch (`Clock::system()` and kin).
+    pub wall_ns: i64,
+    /// The state query's `synced`.
+    pub synced: bool,
+    /// The state query's source (`NROS_WALL_CLOCK_SOURCE_*`; 3 is `board`).
+    pub source: u8,
+    /// The state query's `steps`.
+    pub steps: u32,
+}
+
+/// Every [`CLOCK_BOARD_PREFIX`] line in `output`, in order. A line missing a
+/// field is skipped, so a test that needs one reading sees none.
+pub fn clock_board_readings(output: &str) -> Vec<ClockBoardReading> {
+    output
+        .lines()
+        .filter_map(|l| {
+            let rest = &l[l.find(CLOCK_BOARD_PREFIX)? + CLOCK_BOARD_PREFIX.len()..];
+            let field = |k: &str| rest.split_whitespace().find_map(|f| f.strip_prefix(k));
+            Some(ClockBoardReading {
+                wall_ns: field("wall_ns=")?.parse().ok()?,
+                synced: field("synced=")? == "1",
+                source: field("source=")?.parse().ok()?,
+                steps: field("steps=")?.parse().ok()?,
+            })
+        })
+        .collect()
+}
+
 /// The source a [`CLOCK_FROM_PREFIX`] line names, or `None` when the output
 /// holds no such line.
 pub fn clock_latched_source(output: &str) -> Option<&str> {

@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!-- The talker with the stub board's wall clock (phase-582 W1d): the talker
+     publishes, `clock_board` prints the wall clock and its state. Only the
+     `linux_talker_clock_board` image runs it. -->
+<launch>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+  <node pkg="clock_board_pkg" exec="clock_board" name="clock_board"/>
+</launch>
