@@ -1,12 +1,13 @@
 ---
 id: 2778
 title: "Three tests read a process-global log capture right after logging, so under a loaded parallel run a held or lost record fails them"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [testing, log]
 related: [issue-2000, issue-2082, issue-2102]
 found: 2026-11-21
+resolved: 2026-11-23
 ---
 
 ## What happens
@@ -36,6 +37,10 @@ exists for exactly this, and the sibling test
 issue 2000. This one, added later (phase-556 W13), was not.
 
 ## Fix
+
+Landed in db144bbfba (2026-11-21). This issue stayed open after it only
+because nothing moved the doc.
+
 
 The sweep of every in-process `LogSink` capture in `nros-node`, `nros-c` and
 `nros-cpp` (`git grep -n "LogSink for" -- packages/core/nros-node/src packages/api`):
