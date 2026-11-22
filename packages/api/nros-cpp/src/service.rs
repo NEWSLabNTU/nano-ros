@@ -1219,10 +1219,6 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     crate::census_finish_application_if_armed();
     use nros_rmw::ClientTrait as _;
 
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
-        return NROS_CPP_RET_INVALID_ARGUMENT;
-    };
-
     // phase-428 W13 — spin, then ask again. `Ok(true)` only means visible
     // (issue 1008); a backend that cannot answer returns at once (issue 1686)
     // — `ServerVisibility` is the one classification.
@@ -1236,13 +1232,24 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     // (zenoh, Cyclone) keeps the graph current from its own read task, so the
     // server still shows up; a polled one cannot, and the wait runs out its
     // budget and answers `Timeout`.
-    let in_callback = ctx.c.in_dispatch;
+    //
+    // Issue 2843 -- and it sleeps holding NO lock. The context (and with it
+    // the executor's lock) is taken for each poll and dropped before the
+    // sleep; holding it for the whole wait kept every other thread out of
+    // the executor for the full timeout, a sched task sharing it included.
+    let in_callback = match unsafe { cpp_ctx_checked(executor_handle) } {
+        Some(ctx) => ctx.refuse_in_dispatch().is_err(),
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
     unsafe extern "C" {
         // Portable platform sleep (nros-platform-api platform.h).
         fn nros_platform_sleep_ms(ms: usize);
     }
     let deadline_ns = crate::nros_cpp_time_ns() + (timeout_ms as u64) * 1_000_000;
     loop {
+        let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
         let visibility = {
             let client = if !storage.is_null() {
                 unsafe { &*(storage as *const nros::internals::RmwServiceClient) }
@@ -1263,6 +1270,8 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
             return NROS_CPP_RET_TIMEOUT;
         }
         if in_callback {
+            // The lock goes back before the sleep, not after it.
+            drop(ctx);
             // SAFETY: a plain platform sleep; it touches no nano-ros state.
             unsafe { nros_platform_sleep_ms(SPIN_MS as usize) };
         } else {
