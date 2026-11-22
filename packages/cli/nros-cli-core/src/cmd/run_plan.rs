@@ -1001,6 +1001,12 @@ pub struct Args {
     /// names for the entry package, or the entry's only program.
     #[arg(long = "exec", value_name = "NAME")]
     pub program: Option<String>,
+    /// The Zephyr workspace the implicit `nros build` of a stale image uses,
+    /// as `nros build --zephyr-workspace` takes it (and resolves it: the flag,
+    /// then `$NROS_ZEPHYR_WORKSPACE`, then the project's and the store's).
+    // Issue 2863.
+    #[arg(long, value_name = "DIR")]
+    pub zephyr_workspace: Option<PathBuf>,
     /// Arguments for the target, after `--`.
     #[arg(last = true)]
     pub passthrough: Vec<String>,
@@ -1184,6 +1190,9 @@ pub struct Selection {
     /// `--base-paths`, handed to the planning and the implicit build as
     /// `nros build` takes it (phase-527 W2d).
     pub base_paths: Vec<PathBuf>,
+    /// `--zephyr-workspace`, handed to `nros build` as it takes it (issue
+    /// 2863): the build resolves it, this only carries it.
+    pub zephyr_workspace: Option<PathBuf>,
 }
 
 impl From<&Args> for Selection {
@@ -1193,6 +1202,7 @@ impl From<&Args> for Selection {
             nano_ros_path: a.nano_ros_path.clone(),
             image: a.image.clone(),
             base_paths: a.exec.sources.base_paths.clone(),
+            zephyr_workspace: a.zephyr_workspace.clone(),
         }
     }
 }
@@ -1209,6 +1219,9 @@ impl Selection {
         }
         if let Some(n) = &self.nano_ros_path {
             v.extend(["--nano-ros-path".into(), n.display().to_string()]);
+        }
+        if let Some(z) = &self.zephyr_workspace {
+            v.extend(["--zephyr-workspace".into(), z.display().to_string()]);
         }
         // One `--base-paths=<path>` per path. `--base-paths` takes several
         // values, so `--base-paths a b <image>` read the image as one more
@@ -1528,6 +1541,87 @@ mod tests {
         assert_eq!(edition_mismatch_note("humble", Some("rolling")), None);
     }
 
+    /// Issue 2863 -- `--zephyr-workspace` reaches the implicit `nros build`
+    /// and the dry plan's parse of it as `nros build` takes it; on main
+    /// `nros run` refused the flag.
+    #[test]
+    fn a_selection_carries_the_zephyr_workspace_to_the_build() {
+        let sel = Selection {
+            image: Some("unit_test_bringup:fvp-aemv8r-smp".into()),
+            zephyr_workspace: Some(PathBuf::from("/zws")),
+            ..Default::default()
+        };
+        let argv = sel.build_args();
+        let at = argv
+            .iter()
+            .position(|a| a == "--zephyr-workspace")
+            .expect("the flag is carried");
+        assert_eq!(argv[at + 1], "/zws");
+        assert_eq!(
+            argv.last().map(String::as_str),
+            Some("unit_test_bringup:fvp-aemv8r-smp")
+        );
+        let dry = selection_build_args(&sel).expect("the dry plan parses it as `nros build`");
+        assert_eq!(dry.zephyr_workspace, Some(PathBuf::from("/zws")));
+        assert!(dry.dry_run);
+
+        let run = <crate::cmd::dev::tests::Cli as clap::Parser>::try_parse_from([
+            "nros",
+            "run",
+            "unit_test_bringup:fvp-aemv8r-smp",
+            "--zephyr-workspace",
+            "/zws",
+        ]);
+        assert!(run.is_ok(), "{:?}", run.err());
+    }
+
+    /// Issue 2863 -- the grading flags `nros run`, `nros flash --monitor`
+    /// and `nros monitor` share: `--settle` needs an expectation, and a bad
+    /// `--forbid-regex` is a usage error, at parse time, on every verb.
+    #[test]
+    fn the_shared_grading_flags_parse_alike_on_every_verb() {
+        let parse =
+            |argv: &[&str]| <crate::cmd::dev::tests::Cli as clap::Parser>::try_parse_from(argv);
+        for verb in [&["run"][..], &["monitor"][..], &["flash", "--monitor"][..]] {
+            let with = |extra: &[&str]| {
+                let mut v = vec!["nros"];
+                v.extend_from_slice(verb);
+                v.extend_from_slice(extra);
+                parse(&v)
+            };
+            assert!(
+                with(&[
+                    "--expect",
+                    "ok",
+                    "--forbid",
+                    "FATAL",
+                    "--forbid-regex",
+                    "pan.c",
+                    "--settle",
+                    "15"
+                ])
+                .is_ok(),
+                "{verb:?}"
+            );
+            assert!(
+                with(&["--forbid", "FATAL"]).is_ok(),
+                "{verb:?}: --forbid alone"
+            );
+            let e = with(&["--settle", "15"]).expect_err("--settle needs an expectation");
+            assert_eq!(
+                e.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "{verb:?}: {e}"
+            );
+            let e = with(&["--forbid-regex", "("]).expect_err("a bad regex is a usage error");
+            assert_eq!(
+                e.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "{verb:?}: {e}"
+            );
+        }
+    }
+
     /// Issue 2753 -- a selection with base paths and an image reaches
     /// `nros build` with both: the paths as paths, the image as the image.
     /// The old spelling (`--base-paths a b <image>`) is the control: clap
@@ -1542,6 +1636,7 @@ mod tests {
                 PathBuf::from("src/test_bringup"),
                 PathBuf::from("src/asi_tests"),
             ],
+            zephyr_workspace: None,
         };
         let args = selection_build_args(&sel).expect("the selection parses as `nros build`");
         assert_eq!(

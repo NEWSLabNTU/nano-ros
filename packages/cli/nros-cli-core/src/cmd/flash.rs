@@ -65,14 +65,14 @@ pub struct Args {
     /// After flashing, watch the board's console on the same port.
     #[arg(long)]
     pub monitor: bool,
-    /// With `--monitor`: stop with exit 0 once a console line contains TEXT.
-    /// Repeat it to require several lines, in any order.
-    #[arg(long, value_name = "TEXT")]
-    pub expect: Vec<String>,
-    /// As `--expect`, with a regular expression over one console line; may be
-    /// repeated and mixed with `--expect`.
-    #[arg(long, value_name = "REGEX")]
-    pub expect_regex: Vec<String>,
+    /// With `--monitor`: how the console is graded (issue 2863: the flags
+    /// `nros run` takes).
+    #[command(flatten)]
+    pub grade: run_exec::GradeArgs,
+    /// The Zephyr workspace the implicit `nros build` of a stale image uses,
+    /// as `nros build --zephyr-workspace` takes it.
+    #[arg(long, value_name = "DIR")]
+    pub zephyr_workspace: Option<PathBuf>,
     /// Stop after SECONDS: the console with `--monitor`, and any wait a
     /// prepare step makes.
     #[arg(long, value_name = "SECONDS")]
@@ -99,6 +99,7 @@ impl Args {
             nano_ros_path: self.nano_ros_path.clone(),
             image: self.image.clone(),
             base_paths: self.sources.base_paths.clone(),
+            zephyr_workspace: self.zephyr_workspace.clone(),
         }
     }
 
@@ -114,8 +115,7 @@ impl Args {
     /// The console phase: the user's grading and router.
     fn console_exec(&self) -> ExecArgs {
         ExecArgs {
-            expect: self.expect.clone(),
-            expect_regex: self.expect_regex.clone(),
+            grade: self.grade.clone(),
             timeout: self.timeout,
             router: self.router.clone(),
             sources: self.sources.clone(),
@@ -408,8 +408,8 @@ mod tests {
             runner: None,
             no_prompt: true,
             monitor: true,
-            expect: Vec::new(),
-            expect_regex: Vec::new(),
+            grade: Default::default(),
+            zephyr_workspace: None,
             timeout: Some(5.0),
             router: "none".into(),
             sources: Default::default(),
@@ -469,7 +469,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let r = fake(d.path(), 0);
         let mut a = args();
-        a.expect = vec!["Booted: ready".into()];
+        a.grade.expect = vec!["Booted: ready".into()];
         assert_eq!(go(d.path(), &flash_plan("/dev/ttyACM7"), &a, r), 0);
         let read = |f: &str| std::fs::read_to_string(d.path().join(f)).unwrap();
         assert_eq!(read("flashed").trim(), "/dev/ttyACM7");

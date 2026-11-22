@@ -36,19 +36,90 @@ use nros_extension::{
 
 use crate::target_session::{self as ts, Expect, Outcome, ProcessGroup, Session};
 
-/// The flags that only matter when the plan is executed.
+/// Issue 2863 -- how a console is graded: ONE set of flags for `nros run`,
+/// `nros flash --monitor` and `nros monitor`, which all grade through
+/// [`crate::target_session`].
 #[derive(clap::Args, Debug, Clone, Default)]
-pub struct ExecArgs {
+pub struct GradeArgs {
     /// Stop with exit 0 as soon as a console line contains TEXT; exit 1 if the
     /// target ends, or `--timeout` passes, first. Given more than once, every
     /// TEXT must appear, each on some line and in any order, and the run stops
     /// on the line that completes the set.
-    #[arg(long, value_name = "TEXT")]
+    #[arg(long, value_name = "TEXT", group = "expectation")]
     pub expect: Vec<String>,
     /// As `--expect`, with a regular expression over one console line. It may
     /// be repeated, and mixed with `--expect`: every pattern must match.
-    #[arg(long, value_name = "REGEX")]
+    #[arg(long, value_name = "REGEX", group = "expectation")]
     pub expect_regex: Vec<String>,
+    /// Fail with exit 1 as soon as a console line contains TEXT, before or
+    /// after the expectation is met (a crash after the success line).
+    /// Repeatable: any one of them fails the run.
+    #[arg(long, value_name = "TEXT")]
+    pub forbid: Vec<String>,
+    /// As `--forbid`, with a regular expression over one console line.
+    /// Repeatable, and mixed with `--forbid`.
+    #[arg(long, value_name = "REGEX", value_parser = parse_regex)]
+    pub forbid_regex: Vec<regex::Regex>,
+    /// Once the expectation is met, keep watching for SECONDS before stopping
+    /// with exit 0: a `--forbid` line or a failing exit inside the window
+    /// still fails the run, and `console.log` holds the rest of the output.
+    /// `--timeout` bounds the time to the match only, so the run can take up
+    /// to `--timeout` + `--settle`.
+    #[arg(long, value_name = "SECONDS", requires = "expectation")]
+    pub settle: Option<f64>,
+}
+
+/// `--forbid-regex`, compiled when the arguments are parsed, so a bad
+/// expression is a usage error.
+fn parse_regex(s: &str) -> Result<regex::Regex, String> {
+    regex::Regex::new(s).map_err(|e| format!("not a regular expression: {e}"))
+}
+
+impl GradeArgs {
+    /// The session's grading: the expectation and the forbidden patterns.
+    ///
+    /// # Errors
+    ///
+    /// An `--expect-regex` that does not compile.
+    pub fn grade(&self) -> Result<ts::Grade, String> {
+        let mut parts: Vec<Expect> = self.expect.iter().map(|e| Expect::substring(e)).collect();
+        for r in &self.expect_regex {
+            parts.push(
+                Expect::regex(r).map_err(|e| {
+                    format!("`--expect-regex {r}` is not a regular expression: {e}")
+                })?,
+            );
+        }
+        let mut forbid: Vec<Expect> = self.forbid.iter().map(|f| Expect::substring(f)).collect();
+        forbid.extend(self.forbid_regex.iter().cloned().map(Expect::Regex));
+        Ok(ts::Grade {
+            expect: Expect::all(parts),
+            forbid,
+        })
+    }
+
+    /// `--settle`, checked.
+    ///
+    /// # Errors
+    ///
+    /// Not a positive number of seconds.
+    pub fn settle(&self) -> Result<Option<Duration>, String> {
+        match self.settle {
+            None => Ok(None),
+            Some(s) if s.is_finite() && s > 0.0 => Ok(Some(Duration::from_secs_f64(s))),
+            Some(s) => Err(format!(
+                "`--settle {s}` must be a positive number of seconds"
+            )),
+        }
+    }
+}
+
+/// The flags that only matter when the plan is executed.
+#[derive(clap::Args, Debug, Clone, Default)]
+pub struct ExecArgs {
+    /// How the console is graded.
+    #[command(flatten)]
+    pub grade: GradeArgs,
     /// Stop the target after SECONDS.
     #[arg(long, value_name = "SECONDS")]
     pub timeout: Option<f64>,
@@ -78,18 +149,6 @@ pub struct ExecArgs {
 }
 
 impl ExecArgs {
-    fn expectation(&self) -> Result<Option<Expect>, String> {
-        let mut parts: Vec<Expect> = self.expect.iter().map(|e| Expect::substring(e)).collect();
-        for r in &self.expect_regex {
-            parts.push(
-                Expect::regex(r).map_err(|e| {
-                    format!("`--expect-regex {r}` is not a regular expression: {e}")
-                })?,
-            );
-        }
-        Ok(Expect::all(parts))
-    }
-
     fn timeout(&self) -> Result<Option<Duration>, String> {
         match self.timeout {
             None => Ok(None),
@@ -1128,10 +1187,15 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
         eprintln!("nros {}: {msg}", verb_word(plan.verb));
         code
     };
-    let expect = match x.exec.expectation() {
-        Ok(e) => e,
+    let grade = match x.exec.grade.grade() {
+        Ok(g) => g,
         Err(e) => return fail(exit::PLAN_UNRESOLVED, &e),
     };
+    let settle = match x.exec.grade.settle() {
+        Ok(s) => s,
+        Err(e) => return fail(exit::PLAN_UNRESOLVED, &e),
+    };
+    let expect = grade.expect.clone();
     let timeout = match x.exec.timeout() {
         Ok(t) => t,
         Err(e) => return fail(exit::PLAN_UNRESOLVED, &e),
@@ -1302,13 +1366,19 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
             let err = m.child.stderr.take().expect("piped");
             if console_cmd.is_some() {
                 let (side_tx, _side_rx) = ts::channel();
-                ts::spawn_console(out, Box::new(io::stderr()), None, None, side_tx);
+                ts::spawn_console(
+                    out,
+                    Box::new(io::stderr()),
+                    None,
+                    ts::Grade::default(),
+                    side_tx,
+                );
             } else {
                 consoles.push(ts::spawn_console(
                     out,
                     Box::new(io::stdout()),
                     log.take(),
-                    expect.clone(),
+                    grade.clone(),
                     tx.clone(),
                 ));
             }
@@ -1339,7 +1409,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                     out,
                     Box::new(io::stdout()),
                     log.take(),
-                    expect.clone(),
+                    grade.clone(),
                     tx,
                 ));
                 required.push("console".to_string());
@@ -1357,6 +1427,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
 
     let mut session = Session::new(group, "runner", timeout);
     session.required = required;
+    session.settle = settle;
     let nano_ros_root = x.nano_ros_root.map(Path::to_path_buf);
     let mut linked = false;
     let outcome = session.watch(&rx, started, |endpoint, s| {
@@ -1435,7 +1506,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     );
     // An unmet expectation: the last console lines, on stderr, for a reader
     // whose stdout went to a file or a pipe.
-    if expect.is_some() && code != exit::SUCCESS {
+    if grade.grades() && code != exit::SUCCESS {
         let tail = last_lines(&dir.join(log_name), 10);
         if !tail.is_empty() {
             eprintln!("nros {}: the console's last lines:", verb_word(plan.verb));
@@ -1992,7 +2063,10 @@ mod tests {
         let mut p = plan(true, None);
         p.console.command = Some("sh -c 'echo console says hi; sleep 30'".into());
         let x = |e: &str| ExecArgs {
-            expect: vec![e.into()],
+            grade: GradeArgs {
+                expect: vec![e.into()],
+                ..GradeArgs::default()
+            },
             timeout: Some(3.0),
             router: "none".into(),
             ..ExecArgs::default()
@@ -2071,7 +2145,10 @@ mod tests {
             d.path(),
             r,
             ExecArgs {
-                expect: vec!["Publishing: 0".into()],
+                grade: GradeArgs {
+                    expect: vec!["Publishing: 0".into()],
+                    ..GradeArgs::default()
+                },
                 timeout: Some(10.0),
                 router: "none".into(),
                 ..ExecArgs::default()
@@ -2089,7 +2166,10 @@ mod tests {
     fn executor_exit_codes_follow_the_contract() {
         let d = tempfile::tempdir().unwrap();
         let x = |expect: Option<&str>, timeout: f64| ExecArgs {
-            expect: expect.map(str::to_string).into_iter().collect(),
+            grade: GradeArgs {
+                expect: expect.map(str::to_string).into_iter().collect(),
+                ..GradeArgs::default()
+            },
             timeout: Some(timeout),
             router: "none".into(),
             ..ExecArgs::default()
@@ -2152,7 +2232,10 @@ mod tests {
             name: "w4fake".into(),
         };
         let x = ExecArgs {
-            expect: vec!["Publishing: 0".into()],
+            grade: GradeArgs {
+                expect: vec!["Publishing: 0".into()],
+                ..GradeArgs::default()
+            },
             timeout: Some(10.0),
             router: "none".into(),
             ..ExecArgs::default()
