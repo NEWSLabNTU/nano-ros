@@ -200,6 +200,71 @@ fn single_quoted_body(text: &str) -> Option<&str> {
     Some(body)
 }
 
+/// A flow sequence body's element type and element count: the first element
+/// decides the type and every other must have it (rcl's rule). The ONE pass both
+/// readers below take.
+fn list_kind(inner: &str) -> Result<(Kind, usize), LaunchTextError> {
+    let mut kind: Option<Kind> = None;
+    let n = for_each_element(inner, |e| {
+        let k = e.kind();
+        match kind {
+            None => kind = Some(k),
+            Some(seen) if seen != k => return Err(LaunchTextError::MixedList),
+            Some(_) => {}
+        }
+        Ok(())
+    })?;
+    match kind {
+        Some(kind) => Ok((kind, n)),
+        None => Err(LaunchTextError::EmptyList),
+    }
+}
+
+/// The TYPE a launch parameter's baked text seeds the store with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaunchTextType {
+    Bool,
+    Integer,
+    Double,
+    String,
+    BoolArray,
+    IntegerArray,
+    DoubleArray,
+    StringArray,
+}
+
+// Issue 2768 (a build sizing the store counts launch seeds).
+/// The type [`ParameterValue::assign_launch_text`] would give
+/// `text`, without filling a value and without a capacity check.
+///
+/// For a BUILD that sizes the store before any value exists: a launch seed
+/// takes a slot of this type, so the host counts it by the device's own
+/// reading rather than a second one that could disagree. No capacity, because
+/// the build is what decides the capacities: a seed too long for today's store
+/// is exactly what the count must grow it for, not a reason to skip it.
+/// `Err` only where the device refuses the text whatever the capacity: an
+/// empty list, a mixed list, a broken quote.
+pub fn launch_text_type(text: &str) -> Result<LaunchTextType, LaunchTextError> {
+    if let Some(inner) = list_body(text.trim()) {
+        let (kind, _) = list_kind(inner)?;
+        return Ok(match kind {
+            Kind::Bool => LaunchTextType::BoolArray,
+            Kind::Integer => LaunchTextType::IntegerArray,
+            Kind::Double => LaunchTextType::DoubleArray,
+            Kind::String => LaunchTextType::StringArray,
+        });
+    }
+    if single_quoted_body(text).is_some() {
+        return Ok(LaunchTextType::String);
+    }
+    Ok(match kind_of_unquoted(text) {
+        Kind::Bool => LaunchTextType::Bool,
+        Kind::Integer => LaunchTextType::Integer,
+        Kind::Double => LaunchTextType::Double,
+        Kind::String => LaunchTextType::String,
+    })
+}
+
 impl ParameterValue {
     /// Type a launch parameter's baked text and write it into `self`, IN
     /// PLACE (a value is ~8 KiB; see `assign_string`). The reading is the
@@ -241,19 +306,7 @@ impl ParameterValue {
 
     fn assign_flow_list(&mut self, inner: &str) -> Result<(), LaunchTextError> {
         // Pass 1: the element type, which the first element decides.
-        let mut kind: Option<Kind> = None;
-        let n = for_each_element(inner, |e| {
-            let k = e.kind();
-            match kind {
-                None => kind = Some(k),
-                Some(seen) if seen != k => return Err(LaunchTextError::MixedList),
-                Some(_) => {}
-            }
-            Ok(())
-        })?;
-        let Some(kind) = kind else {
-            return Err(LaunchTextError::EmptyList);
-        };
+        let (kind, n) = list_kind(inner)?;
         // A string list has its own element bound (issue 2647).
         let cap = if kind == Kind::String {
             crate::types::MAX_STRING_ARRAY_LEN
@@ -305,6 +358,65 @@ mod tests {
     fn read(text: &str) -> Result<ParameterValue, LaunchTextError> {
         let mut v = ParameterValue::NotSet;
         v.assign_launch_text(text).map(|()| v)
+    }
+
+    /// Issue 2768 -- the build's type reading and the device's value reading
+    /// agree on every text the device can store, and refuse the same texts.
+    #[test]
+    fn the_type_reader_agrees_with_the_value_reader() {
+        let corpus = [
+            "true",
+            "FALSE",
+            "42",
+            "-7",
+            "1.0",
+            "1e3",
+            "hello",
+            "",
+            "40.0,50.0",
+            "'1.0'",
+            "'[a]'",
+            "'it''s'",
+            "''",
+            "'a' 'b'",
+            "[true, false]",
+            "[1, 2, 3]",
+            "[1.5, 2.5]",
+            "[a, b]",
+            "['x', y]",
+            "[1, 2.5]",
+            "[]",
+            "[1, a]",
+            "['broken]",
+            " [1, 2] ",
+        ];
+        for text in corpus {
+            let ty = launch_text_type(text);
+            match read(text) {
+                Ok(v) => {
+                    let want = match v {
+                        ParameterValue::Bool(_) => LaunchTextType::Bool,
+                        ParameterValue::Integer(_) => LaunchTextType::Integer,
+                        ParameterValue::Double(_) => LaunchTextType::Double,
+                        ParameterValue::String(_) => LaunchTextType::String,
+                        ParameterValue::BoolArray(_) => LaunchTextType::BoolArray,
+                        ParameterValue::IntegerArray(_) => LaunchTextType::IntegerArray,
+                        ParameterValue::DoubleArray(_) => LaunchTextType::DoubleArray,
+                        ParameterValue::StringArray(_) => LaunchTextType::StringArray,
+                        other => panic!("{text:?}: unexpected {other:?}"),
+                    };
+                    assert_eq!(ty, Ok(want), "{text:?}");
+                }
+                Err(LaunchTextError::DoesNotFit) => {
+                    assert!(ty.is_ok(), "{text:?}: a capacity is not a type error")
+                }
+                Err(e) => assert_eq!(ty, Err(e), "{text:?}"),
+            }
+        }
+        // A list longer than any store is still typed: the build grows for it.
+        extern crate std;
+        let long = std::format!("[{}]", std::vec!["1"; 4096].join(", "));
+        assert_eq!(launch_text_type(&long), Ok(LaunchTextType::IntegerArray));
     }
 
     #[test]

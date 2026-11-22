@@ -865,6 +865,7 @@ dependencies = [
  "nros-launcher",
  "nros-msg-to-idl",
  "nros-orchestration-ir",
+ "nros-params",
  "nros-pkg-index",
  "nros-qemu-ladder",
  "nros-sizing-descriptor",
@@ -981,6 +982,16 @@ dependencies = [
  "serde_yaml_ng",
  "thiserror 1.0.69",
  "toml",
+]
+
+[[package]]
+name = "nros-params"
+version = "0.6.0"
+dependencies = [
+ "heapless",
+ "nros-board-common",
+ "nros-sizing-descriptor",
+ "nros-zephyr-build",
 ]
 
 [[package]]

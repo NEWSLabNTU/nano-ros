@@ -1846,6 +1846,25 @@ pub struct InfraServices {
     pub sim_time: bool,
 }
 
+/// Issue 2768 -- the store type a launch seed's baked text takes on the device
+/// (`nros_params::launch_text_type`, the device's own reading), or `None` for a
+/// text the device refuses whatever the capacity (an empty or mixed list, a
+/// broken quote). Such a seed is not stored, so it takes no slot.
+fn launch_seed_type(text: &str) -> Option<ros_launch_manifest_model::ParamType> {
+    use nros_params::LaunchTextType as T;
+    use ros_launch_manifest_model::ParamType as P;
+    Some(match nros_params::launch_text_type(text).ok()? {
+        T::Bool => P::Bool,
+        T::Integer => P::Integer,
+        T::Double => P::Double,
+        T::String => P::String,
+        T::BoolArray => P::BoolArray,
+        T::IntegerArray => P::IntegerArray,
+        T::DoubleArray => P::DoubleArray,
+        T::StringArray => P::StringArray,
+    })
+}
+
 /// Issue 1706 -- does any node of `model` have a launch-seeded parameter?
 ///
 /// `qos_overrides.*` entries are excluded: they are lowered into the baked QoS
@@ -3353,7 +3372,10 @@ impl ParamDeclarations {
                 }
             }
         }
-        if declared.is_empty() {
+        // No image declares a parameter -- including images observed to declare
+        // zero ([`Self::for_shared_runtime`]) -- so there is nothing to size a
+        // store over and nothing a silent image could be short of.
+        if params.is_empty() {
             return ParamDeclarations::Absent;
         }
         if !silent.is_empty() {
@@ -3375,6 +3397,38 @@ impl ParamDeclarations {
         params.sort_by(|a, b| (&a.node, &a.name).cmp(&(&b.node, &b.name)));
         params.dedup();
         ParamDeclarations::Declared { nodes, params }
+    }
+
+    /// Issue 2768 -- one image's declarations as an INPUT to
+    /// [`Self::union_over_images`], the fold over the images of a shared
+    /// runtime.
+    ///
+    /// [`Self::from_model_with`], except for one case: no contract states
+    /// `params:` and the probe WATCHED every node the image launches
+    /// (`recorded` is `Some` only then) and saw none declared. Alone, that
+    /// image is `Absent` -- nobody said anything, and its store keeps its
+    /// configured size, which is the single-image rule and is unchanged. In
+    /// the union it is a different fact: `Absent` reads as "unknown", so one
+    /// image whose code declares parameters beside sixteen whose code was seen
+    /// to declare none refused the whole configure ("1 declare parameters
+    /// while 16 declare none"). An image observed to declare nothing is an
+    /// image that declares zero, so it enters the union as `Declared` with no
+    /// parameters. An image the probe did not watch stays `Absent`, and the
+    /// mix still refuses: its count is genuinely unknown.
+    pub fn for_shared_runtime(
+        model: &ros_launch_manifest_model::SystemModel,
+        recorded: Option<&RecordedParams>,
+    ) -> Self {
+        let own = Self::from_model_with(model, recorded);
+        match (&own, recorded) {
+            (ParamDeclarations::Absent, Some(rec)) if !rec.is_empty() => {
+                ParamDeclarations::Declared {
+                    nodes: rec.keys().cloned().collect(),
+                    params: Vec::new(),
+                }
+            }
+            _ => own,
+        }
     }
 
     /// Read `contracts.node_params` against the nodes the model runs.
@@ -3402,6 +3456,37 @@ impl ParamDeclarations {
         recorded: Option<&RecordedParams>,
     ) -> Self {
         use ros_launch_manifest_model::ParamType;
+        // Issue 2768 -- a launch SEED is a declaration too: the image seeds it
+        // into the store at boot (`nros_params` `assign_launch_text`), and it
+        // takes a slot of its type whether or not the code declares it. A C++
+        // component that reads `flags` from its `config/*.param.yaml` declares
+        // nothing in code, so a store sized from the code alone refused the
+        // seed at boot ("does not fit the parameter store"). Counted only where
+        // the probe watched every launched node (`recorded` is `Some`), so the
+        // image's code is accounted for too; with no record a seeded node would
+        // read as the ONLY declaration and the rest as silent. The seeds are
+        // the entry's own projection (`launch_param_text::baked_params`, launch
+        // `<param>` over `params_files`), typed by the device's reader. Where
+        // the code declares the same name, its type stands.
+        let seeds: Vec<(&String, String, ParamType)> = if recorded.is_some() {
+            model
+                .structure
+                .nodes
+                .iter()
+                .flat_map(|(fqn, inst)| {
+                    nros_orchestration_ir::launch_param_text::baked_params(inst, fqn)
+                        .into_iter()
+                        .filter(|(name, _)| {
+                            !nros_orchestration_ir::qos_override::is_qos_override(name)
+                        })
+                        .filter_map(move |(name, text)| {
+                            launch_seed_type(&text).map(|ty| (fqn, name, ty))
+                        })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut declared: std::collections::BTreeMap<
             &String,
             std::collections::BTreeMap<&String, ParamType>,
@@ -3413,6 +3498,9 @@ impl ParamDeclarations {
                     row.insert(name, *ty);
                 }
             }
+        }
+        for (fqn, name, ty) in &seeds {
+            declared.entry(fqn).or_default().entry(name).or_insert(*ty);
         }
         for (node, ps) in &model.contracts.node_params {
             let row = declared.entry(node).or_default();
@@ -10013,6 +10101,139 @@ mod from_model_tests {
         let empty = recorded(&[("/a", &[]), ("/b", &[])]);
         assert_eq!(
             ParamDeclarations::from_model_with(&silent, Some(&empty)),
+            ParamDeclarations::Absent
+        );
+    }
+
+    /// Issue 2768 -- a C++ component that declares nothing in code and reads
+    /// parameters its launch file SEEDS (`flags: [true, false]`, `rate: 5`).
+    fn seeded_model() -> SystemModel {
+        model_from_yaml(
+            "meta: { version: 1 }\nstructure:\n  nodes:\n    /talker: { scope: s.launch.xml, pkg: p, \
+             exec: talker, node_name: talker, params: { flags: ['true', 'false'], rate: 5 } }\n",
+        )
+    }
+
+    /// Issue 2768 -- the seeds are declarations: where the probe watched the
+    /// node, each seed takes a slot of the type the DEVICE reads it as, so a
+    /// store sized from the declarations holds what the image seeds at boot.
+    #[test]
+    fn a_launch_seed_is_a_declaration_of_the_type_the_device_reads() {
+        let model = seeded_model();
+        let watched = recorded(&[("/talker", &[])]);
+        let ParamDeclarations::Declared { nodes, params } =
+            ParamDeclarations::from_model_with(&model, Some(&watched))
+        else {
+            panic!("a seeded node the probe watched declares its seeds");
+        };
+        assert_eq!(nodes, vec!["/talker".to_string()]);
+        let got: Vec<(&str, ParamType)> = params.iter().map(|p| (p.name.as_str(), p.ty)).collect();
+        assert_eq!(
+            got,
+            vec![
+                ("flags", ParamType::BoolArray),
+                ("rate", ParamType::Integer)
+            ]
+        );
+        // The code's own declaration of the same name keeps its type.
+        let declares = recorded(&[("/talker", &[("rate", ParamType::Double)])]);
+        let ParamDeclarations::Declared { params, .. } =
+            ParamDeclarations::from_model_with(&model, Some(&declares))
+        else {
+            panic!("declared");
+        };
+        assert!(
+            params
+                .iter()
+                .any(|p| p.name == "rate" && p.ty == ParamType::Double)
+        );
+    }
+
+    /// Issue 2768 -- the negative control: with no probe record the seeds are
+    /// NOT counted (a seeded node would read as the only declaration and every
+    /// other node as silent), so the answer is exactly what it was.
+    #[test]
+    fn an_unwatched_seeded_image_keeps_its_answer() {
+        let model = seeded_model();
+        assert_eq!(
+            ParamDeclarations::from_model_with(&model, None),
+            ParamDeclarations::from_model(&model)
+        );
+        assert_eq!(
+            ParamDeclarations::from_model(&model),
+            ParamDeclarations::Absent
+        );
+    }
+
+    /// Issue 2768 -- THE CASE: a shared runtime where one image's code declares
+    /// parameters and the others' code was watched declaring none. Each silent
+    /// image declares zero, so the union is the declaring image's parameters,
+    /// not a refusal. `examples/workspaces/features` (17 images) refused here.
+    #[test]
+    fn an_image_watched_declaring_nothing_declares_zero_in_a_shared_runtime() {
+        let declaring = param_model(&["/mixed"], &[]);
+        let silent = param_model(&["/a", "/b"], &[]);
+        let rec_declaring = recorded(&[("/mixed", &[("gain", ParamType::Double)])]);
+        let rec_silent = recorded(&[("/a", &[]), ("/b", &[])]);
+        let union = ParamDeclarations::union_over_images(&[
+            (
+                "mixed_params".into(),
+                ParamDeclarations::for_shared_runtime(&declaring, Some(&rec_declaring)),
+            ),
+            (
+                "listener".into(),
+                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent)),
+            ),
+        ]);
+        let ParamDeclarations::Declared { nodes, params } = union else {
+            panic!("a watched image declaring nothing must not refuse the union: {union:?}");
+        };
+        assert_eq!(
+            nodes,
+            vec!["/a".to_string(), "/b".to_string(), "/mixed".to_string()]
+        );
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "gain");
+    }
+
+    /// Issue 2768 -- the negative controls. An image the probe did NOT watch is
+    /// still unknown, so the mix still refuses; every image watched declaring
+    /// nothing is still `Absent`; and ALONE a watched image declaring nothing
+    /// keeps the single-image answer (`Absent`, the store at its configured
+    /// size), which this issue does not change.
+    #[test]
+    fn an_unwatched_image_still_refuses_the_mix_and_one_image_is_unchanged() {
+        let declaring = param_model(&["/mixed"], &[]);
+        let silent = param_model(&["/a"], &[]);
+        let rec_declaring = recorded(&[("/mixed", &[("gain", ParamType::Double)])]);
+        let rec_silent = recorded(&[("/a", &[])]);
+        let unwatched = ParamDeclarations::union_over_images(&[
+            (
+                "mixed_params".into(),
+                ParamDeclarations::for_shared_runtime(&declaring, Some(&rec_declaring)),
+            ),
+            (
+                "listener".into(),
+                ParamDeclarations::for_shared_runtime(&silent, None),
+            ),
+        ]);
+        assert!(
+            matches!(&unwatched, ParamDeclarations::Refused { reason } if reason.contains("listener")),
+            "{unwatched:?}"
+        );
+        let all_silent = ParamDeclarations::union_over_images(&[
+            (
+                "a".into(),
+                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent)),
+            ),
+            (
+                "b".into(),
+                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent)),
+            ),
+        ]);
+        assert_eq!(all_silent, ParamDeclarations::Absent);
+        assert_eq!(
+            ParamDeclarations::from_model_with(&silent, Some(&rec_silent)),
             ParamDeclarations::Absent
         );
     }

@@ -88,7 +88,7 @@ pub mod types;
 
 // Re-export main types
 pub use declared::{DeclaredParamMismatch, DeclaredParams};
-pub use launch_text::LaunchTextError;
+pub use launch_text::{LaunchTextError, LaunchTextType, launch_text_type};
 pub use ops::ParameterServerOps;
 pub use server::{
     DeclarationError, LegacyParameterBuilder, MAX_ON_SET_CALLBACKS, OnSetContext, OnSetParameterFn,

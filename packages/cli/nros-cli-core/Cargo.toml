@@ -99,6 +99,10 @@ ros-launch-manifest-sched = { git = "https://github.com/NEWSLabNTU/ros-launch-ma
 # `nros::main!()` proc-macro consumes, so sched task resolution can't drift between
 # the CLI bake path and the codegen path.
 nros-orchestration-ir = { path = "../../core/nros-orchestration-ir" }
+# Issue 2829 -- the device's own reading of a launch parameter's baked text
+# (`launch_text_type`), so a build counts each launch seed by the type the
+# image will give it, never by a second inference that could disagree.
+nros-params = { path = "../../core/nros-params", default-features = false }
 nros-system-include = { path = "../../tooling/nros-system-include" }
 # RFC-0109 D8 (phase-514 W3) — a backend's `session-json5` config file is
 # lowered here, at sync, and handed to the build as backend-neutral text
