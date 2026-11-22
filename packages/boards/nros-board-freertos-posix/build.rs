@@ -134,6 +134,18 @@ fn main() {
         .define("NROS_FREERTOS_HEAP_3", "1")
         .file(platform_src.join("platform.c"))
         .file(platform_src.join("timer.c"));
+    // RFC-0141 D2 (phase-582 W1d) -- the image's `[knobs.clock]` list, from the
+    // ONE reader the family board and the cmake road's copy use too.
+    if let Some(sel) = nros_zephyr_build::clock_selection::clock_selection() {
+        for (name, value) in sel.c_defines() {
+            platform.define(name, value.as_str());
+        }
+        if sel.board() {
+            platform.file(nros_zephyr_build::clock_selection::board_tu(
+                &platform_include,
+            ));
+        }
+    }
     nros_cc_flags::header_deps::track_header_deps(&mut platform);
     platform.compile("nros_platform_freertos");
 

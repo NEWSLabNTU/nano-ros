@@ -174,6 +174,9 @@ host publishing on a topic the image subscribes to) costs the whole of it
 before the next source is tried; an sntp source with no reachable server
 costs sntp_attempts x sntp.timeout_ms instead. Timers start counting when
 the wait ends, so it is never reported as a missed period.
+
+A board source is asked every 10 ms within it. On a port that resolves on
+its first wall-clock read (POSIX, FreeRTOS), that read waits instead of boot.
 '''
 
 [[knob]]

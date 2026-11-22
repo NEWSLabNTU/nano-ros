@@ -104,10 +104,10 @@ fn main() {
         // through the ONE helper `nros-rmw-xrce-cffi`'s copy of this port
         // reads too, so the two demand-driven copies stay identical.
         let clock = nros_zephyr_build::clock_selection::clock_selection();
-        println!(
-            "cargo:rerun-if-changed=../nros-platform-posix/src/{}",
-            nros_zephyr_build::clock_selection::BOARD_TU
-        );
+        let board_tu = nros_zephyr_build::clock_selection::board_tu(std::path::Path::new(
+            "../nros-platform-api/include",
+        ));
+        println!("cargo:rerun-if-changed={}", board_tu.display());
         // issue 0383 — implicit-function-declaration / int-conversion as errors.
         let mut port = cc::Build::new();
         if let Some(sel) = &clock {
@@ -115,10 +115,7 @@ fn main() {
                 port.define(name, value.as_str());
             }
             if sel.board() {
-                port.file(format!(
-                    "../nros-platform-posix/src/{}",
-                    nros_zephyr_build::clock_selection::BOARD_TU
-                ));
+                port.file(&board_tu);
             }
         }
         nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(&mut port))

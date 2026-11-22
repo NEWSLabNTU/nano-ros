@@ -1138,6 +1138,7 @@ dependencies = [
  "nros-platform",
  "nros-platform-cffi",
  "nros-rmw-zenoh",
+ "nros-zephyr-build",
 ]
 
 [[package]]
@@ -1152,6 +1153,7 @@ dependencies = [
  "nros-platform",
  "nros-platform-cffi",
  "nros-rmw-cyclonedds-sys",
+ "nros-zephyr-build",
 ]
 
 [[package]]

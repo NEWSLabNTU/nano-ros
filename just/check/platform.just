@@ -90,11 +90,29 @@ can-board-defaults:
 # `nros_board_wall_clock_ns` in the selection-named object; unselected, the
 # port names no hook. Negative control: a port with its lazy resolution call
 # deleted fails the board-instant case. ~2 s.
+#
+# The settle window (manager ruling, 2026-11-22): `board` behaves like `sntp`,
+# polled within `clock.fallback_settle_ms` and never after the verdict. A late
+# hook is waited for, an unanswered one costs the window then `epoch_failure`.
+# Negative controls: a selection TU that asks once, and a port that resolves on
+# every read, each fail. ~3 s.
+#
+# The CMake road's clock-selection reader answers the same case table as the
+# Rust one (`tests/clock-selection-cmake-parity.sh`, and nros-zephyr-build's
+# `the_shared_case_table`), so the two readers cannot drift apart.
+# And the FreeRTOS port (`tests/clock-board-freertos-tests.sh`): the real
+# kernel on its POSIX port and the real `nros-platform-freertos`, built through
+# its CMakeLists, resolving lazily from a task: the board within the window,
+# the halt, freertos-posix's `platform` (and default) answering the host's
+# CLOCK_REALTIME, and the bare-metal arm's `platform` not answering. A
+# REPORTED skip when the FreeRTOS kernel is not provisioned. ~10 s.
 [private]
 [group('needs:cc')]
 clock-resolve:
     @bash tests/clock-resolve-tests.sh
     @bash tests/clock-board-posix-tests.sh
+    @bash tests/clock-board-freertos-tests.sh
+    @bash tests/clock-selection-cmake-parity.sh
 
 # RFC-0135 D2 (phase-577 W8) -- a board's CMake module has ONE lookup,
 # `nros_board_module_path()` (cmake/NanoRosBoardModule.cmake), so a board

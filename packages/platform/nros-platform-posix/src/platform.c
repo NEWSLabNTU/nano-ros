@@ -218,26 +218,19 @@ nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
 }
 
 #else /* NROS_CLOCK_SOURCE_CSV */
-/* RFC-0141 D1/D2 (phase-582 W1d) — the image states a source list. Every
- * source this port can resolve answers synchronously (`platform` is the
- * host's CLOCK_REALTIME; `board` asks the board hook once), so there is no
- * boot wait: the list is resolved LAZILY, once, on the first call of either
- * wall-clock function, and no entry (C, C++ or Rust) has to call anything.
- * The policy is `nros/clock_resolve.h`'s, the same as on every port. */
+/* RFC-0141 D1/D2 (phase-582 W1d) — the image states a source list. This port
+ * has no boot resolution point, so the list is resolved LAZILY, once, on the
+ * first call of either wall-clock function, and no entry (C, C++ or Rust) has
+ * to call anything. `platform` is the host's CLOCK_REALTIME and answers at
+ * once; `board` behaves like `sntp`: it gets `clock.fallback_settle_ms` to
+ * answer (`nros_clock_board__set_by__knobs_clock_source.c`, polling every
+ * 10 ms). So while the board is unanswered, that FIRST read blocks for up to
+ * the window (and every other thread's first read waits on the same
+ * pthread_once), exactly as Zephyr's boot resolution blocks boot. After it,
+ * no read calls the hook again. The policy is `nros/clock_resolve.h`'s, the
+ * same as on every port. */
 #include <nros/clock_epoch.h>
 #include <nros/clock_resolve.h>
-
-#ifndef NROS_CLOCK_UPGRADE
-#define NROS_CLOCK_UPGRADE "never"
-#endif
-#ifndef NROS_CLOCK_EPOCH_FAILURE
-#define NROS_CLOCK_EPOCH_FAILURE "unstamped"
-#endif
-
-#ifdef NROS_CLOCK_HAS_BOARD
-/* `nros_clock_board__set_by__knobs_clock_source.c`, compiled only with it. */
-bool nros_clock_board_try__set_by__knobs_clock_source(void);
-#endif
 
 static pthread_once_t s_wall_clock_once = PTHREAD_ONCE_INIT;
 static uint8_t s_wall_clock_latched = NROS_CLOCK_SOURCE_NONE;
@@ -253,7 +246,7 @@ static bool nros_posix_clock_try(uint8_t source, uint32_t settle_ms, void *ctx) 
     }
 #ifdef NROS_CLOCK_HAS_BOARD
     case NROS_WALL_CLOCK_SOURCE_BOARD:
-        return nros_clock_board_try__set_by__knobs_clock_source();
+        return nros_clock_board_try__set_by__knobs_clock_source(settle_ms);
 #endif
     default:
         return false;
@@ -268,14 +261,8 @@ static void nros_posix_clock_report(const char *msg, size_t len, void *ctx) {
 static void nros_posix_clock_resolve_once(void) {
     uint8_t sources[NROS_CLOCK_MAX_SOURCES];
     nros_clock_policy_t policy;
-    policy.sources = sources;
-    policy.n_sources = nros_clock_parse_sources(NROS_CLOCK_SOURCE_CSV, sources);
-    policy.settle_ms = 0u; /* every source here answers synchronously */
-    policy.upgrade = nros_clock_parse_upgrade(NROS_CLOCK_UPGRADE);
-    policy.epoch_failure = nros_clock_parse_epoch_failure(NROS_CLOCK_EPOCH_FAILURE);
-    if (policy.n_sources != 0u) {
-        s_wall_clock_first = sources[0];
-    }
+    nros_clock_policy_from_build(&policy, sources);
+    s_wall_clock_first = nros_clock_first_source_from_build();
     s_wall_clock_latched =
         nros_clock_resolve(&policy, nros_posix_clock_try, nros_posix_clock_report, NULL);
 }

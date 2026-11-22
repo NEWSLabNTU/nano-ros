@@ -41,6 +41,8 @@ nros-board-common = { path = "../nros-board-common", features = ["build-helpers"
 nros-build-paths = { path = "../../tooling/nros-build-paths" }
 nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 cc = "1"
+# RFC-0141 D2 (phase-582 W1d) -- the platform C port's `[knobs.clock]` defines.
+nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 
 [features]
 # RFC-0132 W9.c -- builds the CAN frame probe (`tests/can_socketcan_probe.rs`),

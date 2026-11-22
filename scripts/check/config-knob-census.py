@@ -267,11 +267,15 @@ KNOB_CLASS = {
     ),
     "NROS_CLOCK_UPGRADE": (
         "flag",
-        "a choice: whether an earlier listed wall-clock source may take over after boot; the posix port's build reads it to define its resolution policy (RFC-0141 D1, phase-582 W1d)",
+        "a choice: whether an earlier listed wall-clock source may take over after boot; the posix and freertos ports' builds read it to define their resolution policy (RFC-0141 D1, phase-582 W1d)",
     ),
     "NROS_CLOCK_EPOCH_FAILURE": (
         "flag",
-        "a choice: run unstamped or halt when no wall-clock source answers; the posix port's build reads it to define its resolution policy (RFC-0141 D4, phase-582 W1d)",
+        "a choice: run unstamped or halt when no wall-clock source answers; the posix and freertos ports' builds read it to define their resolution policy (RFC-0141 D4, phase-582 W1d)",
+    ),
+    "NROS_CLOCK_FALLBACK_SETTLE_MS": (
+        "infra",
+        "how long each wall-clock source (here `board`) gets to answer; a time, not a size. The posix and freertos ports' builds read it to define their resolution policy (RFC-0141 D2, phase-582 W1d)",
     ),
     "NROS_TRACE_TAKES": (
         "infra",

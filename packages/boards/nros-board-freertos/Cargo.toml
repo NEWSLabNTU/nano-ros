@@ -95,6 +95,9 @@ cc = "1.0"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
 nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
+# RFC-0141 D2 (phase-582 W1d) -- the platform C port's `[knobs.clock]` defines,
+# read through the shared knob ladder (`nros_zephyr_build::clock_selection`).
+nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 
 [features]
 default = []

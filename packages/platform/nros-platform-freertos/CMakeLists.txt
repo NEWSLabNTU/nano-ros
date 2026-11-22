@@ -93,6 +93,13 @@ endif()
 add_library(nros_platform_freertos STATIC ${_nros_freertos_sources})
 target_include_directories(nros_platform_freertos PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
 
+# RFC-0141 D2 (phase-582 W1d) -- the image's `[knobs.clock]` list, as defines,
+# plus the selection-named TU when it names `board`. The SAME answer the board
+# crate's cargo copy of this `platform.c` gets from
+# `nros_zephyr_build::clock_selection`: an image can link both copies.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosClockSelection.cmake")
+nros_clock_selection_apply(nros_platform_freertos "${NROS_PLATFORM_CFFI_INCLUDE}")
+
 # phase-370 — the heap scheme, which `platform.c`'s heap-stat pair depends on.
 # `xPortGetFreeHeapSize` exists on heap_4/heap_5 and NOT on heap_3, which is a
 # wrapper over the C library's `malloc` and keeps no free-list. A board building

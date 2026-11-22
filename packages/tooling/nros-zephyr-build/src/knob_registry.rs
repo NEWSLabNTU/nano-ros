@@ -97,7 +97,7 @@ pub const KNOBS: &[KnobRow] = &[
         class: crate::KnobClass::Public,
         carries: None,
         prompt: Some("How long boot waits for each wall-clock source (ms)"),
-        help: Some("How long boot waits for each source in clock.source to answer before\ntrying the next one. 0 tries each once without waiting.\n\nThis wait is paid at boot, before the first spin: nothing runs until the\nclock is resolved. A zenoh-hlc source that hears no timestamped sample (no\nhost publishing on a topic the image subscribes to) costs the whole of it\nbefore the next source is tried; an sntp source with no reachable server\ncosts sntp_attempts x sntp.timeout_ms instead. Timers start counting when\nthe wait ends, so it is never reported as a missed period."),
+        help: Some("How long boot waits for each source in clock.source to answer before\ntrying the next one. 0 tries each once without waiting.\n\nThis wait is paid at boot, before the first spin: nothing runs until the\nclock is resolved. A zenoh-hlc source that hears no timestamped sample (no\nhost publishing on a topic the image subscribes to) costs the whole of it\nbefore the next source is tried; an sntp source with no reachable server\ncosts sntp_attempts x sntp.timeout_ms instead. Timers start counting when\nthe wait ends, so it is never reported as a missed period.\n\nA board source is asked every 10 ms within it. On a port that resolves on\nits first wall-clock read (POSIX, FreeRTOS), that read waits instead of boot."),
         default: crate::KnobDefault::Kconfig(&[
             crate::KconfigDefault { value: "10000", when: None },
         ]),
