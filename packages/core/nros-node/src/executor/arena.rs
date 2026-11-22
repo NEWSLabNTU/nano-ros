@@ -3312,62 +3312,65 @@ where
     GoalF: FnMut(&nros_core::GoalUuid, &A::Goal) -> nros_core::GoalResponse,
     CancelF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode) -> nros_core::CancelResponse,
 {
-    let entry = unsafe {
-        &mut *(ptr as *mut ActionServerArenaEntry<
-            A,
-            GoalF,
-            CancelF,
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-            MAX_GOALS,
-        >)
-    };
-    let ActionServerArenaEntry {
-        server,
-        goal_callback,
-        cancel_callback,
-    } = entry;
+    type Entry<A, G, C, const GB: usize, const RB: usize, const FB: usize, const MG: usize> =
+        ActionServerArenaEntry<A, G, C, GB, RB, FB, MG>;
+    let entry = ptr as *mut Entry<A, GoalF, CancelF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>;
+    // RFC-0108 D9 / phase-573 W2b, as `action_server_raw_try_process`: a
+    // callback may reach this entry again (`ActionServerHandle::complete_goal`
+    // through a raw executor pointer), which derives its own `&mut` to the
+    // server. So no reference to the server lives across a callback: each step
+    // takes a fresh one, from a raw place that covers the server's bytes and
+    // not the callbacks', and each callback is borrowed through its own field.
+    //
+    // SAFETY (each use): `ptr` points to a valid entry (this fn's contract);
+    // a server reference ends before any callback runs, and a callback
+    // reference covers that callback's bytes alone.
+    let server = move || unsafe { &mut *core::ptr::addr_of_mut!((*entry).server) };
 
     let mut did_work = false;
 
-    // Handle cancels first
+    // Handle cancels first: receive and select, ask the callback per goal
+    // with the server released, then reply.
     //
-    // Phase 8 — hooked INSIDE the closure, not around `try_handle_cancel`.
-    // The core runs this closure only when a cancel request is actually
-    // pending; `Ok(None)` with no user code run is the COMMON outcome, so a
-    // pair at the call boundary would report an invocation on every spin.
-    if matches!(
-        server.try_handle_cancel(|id, st| {
-            trace_cb_start(desc_idx);
-            let resp = (cancel_callback)(id, st);
-            trace_cb_end(desc_idx);
-            resp
-        }),
-        Ok(Some(_))
-    ) {
+    // Phase 8 — the trace pair wraps each callback, so nothing is emitted on
+    // the common no-request spin.
+    if let Ok(Some(selection)) = server().core.recv_cancel() {
+        let mut accepted = [false; MAX_GOALS];
+        for (slot, row) in accepted.iter_mut().zip(&selection.rows) {
+            if let Some(row) = row {
+                // SAFETY: as above.
+                let cancel_callback =
+                    unsafe { &mut *core::ptr::addr_of_mut!((*entry).cancel_callback) };
+                trace_cb_start(desc_idx);
+                let resp = (cancel_callback)(&row.goal_id, row.status);
+                trace_cb_end(desc_idx);
+                *slot = resp == nros_core::CancelResponse::Accept;
+            }
+        }
+        let _ = server().core.reply_cancel(&selection, &accepted);
         did_work = true;
     }
 
-    // Handle new goals
-    //
-    // Phase 8 — hooked inside the closure for the same reason. This is a
-    // DISTINCT user callback from the cancel one above and gets its own
-    // pair, so the two are counted separately rather than merged.
-    if matches!(
-        server.try_accept_goal(|id, g| {
-            trace_cb_start(desc_idx);
-            let resp = (goal_callback)(id, g);
-            trace_cb_end(desc_idx);
-            resp
-        }),
-        Ok(Some(_))
-    ) {
-        did_work = true;
+    // Handle new goals: decode an owned goal, ask the callback with the
+    // server released, then answer.
+    if let Ok(Some((raw_req, goal))) = server().recv_goal() {
+        // SAFETY: as above.
+        let goal_callback = unsafe { &mut *core::ptr::addr_of_mut!((*entry).goal_callback) };
+        // Phase 8 — hooked inside the `Ok(Some(..))` arm: no goal request,
+        // no goal callback, nothing emitted.
+        trace_cb_start(desc_idx);
+        let response = (goal_callback)(&raw_req.goal_id, &goal);
+        trace_cb_end(desc_idx);
+        if matches!(
+            server().finish_goal(raw_req, goal, response.is_accepted()),
+            Ok(Some(_))
+        ) {
+            did_work = true;
+        }
     }
 
     // Handle result requests
-    if matches!(server.try_handle_get_result(), Ok(Some(_))) {
+    if matches!(server().try_handle_get_result(), Ok(Some(_))) {
         did_work = true;
     }
 
@@ -4362,9 +4365,14 @@ pub(crate) unsafe fn as_publish_feedback<
 where
     A: RosAction,
 {
-    let entry =
-        unsafe { &mut *(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
-    entry.server.publish_feedback(goal_id, feedback)
+    // Phase-573 W2b — the server's bytes only, never the callbacks': this
+    // is reached from inside a running callback, which holds its own.
+    let server = unsafe {
+        &mut *core::ptr::addr_of_mut!(
+            (*(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>)).server
+        )
+    };
+    server.publish_feedback(goal_id, feedback)
 }
 
 /// Action server: complete a goal via arena entry.
@@ -4388,9 +4396,14 @@ pub(crate) unsafe fn as_complete_goal<
 where
     A: RosAction,
 {
-    let entry =
-        unsafe { &mut *(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
-    entry.server.complete_goal(goal_id, status, result)
+    // Phase-573 W2b — the server's bytes only, never the callbacks': this
+    // is reached from inside a running callback, which holds its own.
+    let server = unsafe {
+        &mut *core::ptr::addr_of_mut!(
+            (*(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>)).server
+        )
+    };
+    server.complete_goal(goal_id, status, result)
 }
 
 /// Action server: set goal status via arena entry.
@@ -4412,9 +4425,14 @@ pub(crate) unsafe fn as_set_goal_status<
 ) where
     A: RosAction,
 {
-    let entry =
-        unsafe { &mut *(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
-    entry.server.set_goal_status(goal_id, status);
+    // Phase-573 W2b — the server's bytes only, never the callbacks': this
+    // is reached from inside a running callback, which holds its own.
+    let server = unsafe {
+        &mut *core::ptr::addr_of_mut!(
+            (*(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>)).server
+        )
+    };
+    server.set_goal_status(goal_id, status);
 }
 
 /// Action server: get active goal count via arena entry.
@@ -4435,9 +4453,13 @@ pub(crate) unsafe fn as_active_goal_count<
 where
     A: RosAction,
 {
-    let entry =
-        unsafe { &*(ptr as *const ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
-    entry.server.active_goal_count()
+    // Phase-573 W2b — the server's bytes only, as `as_complete_goal`.
+    let server = unsafe {
+        &*core::ptr::addr_of!(
+            (*(ptr as *const ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>)).server
+        )
+    };
+    server.active_goal_count()
 }
 
 /// Action server: eagerly reclaim delivered results — phase-417 W4.b.
@@ -4458,9 +4480,14 @@ pub(crate) unsafe fn as_expire_goals<
 where
     A: RosAction,
 {
-    let entry =
-        unsafe { &mut *(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
-    entry.server.expire_goals()
+    // Phase-573 W2b — the server's bytes only, never the callbacks': this
+    // is reached from inside a running callback, which holds its own.
+    let server = unsafe {
+        &mut *core::ptr::addr_of_mut!(
+            (*(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>)).server
+        )
+    };
+    server.expire_goals()
 }
 
 /// Action server: does this server still know `goal_id`? — phase-417 W4.b.
@@ -4482,9 +4509,13 @@ pub(crate) unsafe fn as_goal_exists<
 where
     A: RosAction,
 {
-    let entry =
-        unsafe { &*(ptr as *const ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
-    entry.server.goal_exists(goal_id)
+    // Phase-573 W2b — the server's bytes only, as `as_complete_goal`.
+    let server = unsafe {
+        &*core::ptr::addr_of!(
+            (*(ptr as *const ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>)).server
+        )
+    };
+    server.goal_exists(goal_id)
 }
 
 /// Raw action server: publish feedback via arena entry.
@@ -4636,13 +4667,17 @@ pub(crate) unsafe fn as_for_each_active_goal<
     A: RosAction + 'static,
     A::Goal: Clone,
 {
-    let entry =
-        unsafe { &*(ptr as *const ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
-    for (i, raw_goal) in entry.server.core.active_goals().iter().enumerate() {
+    // Phase-573 W2b — the server's bytes only, as `as_complete_goal`.
+    let server = unsafe {
+        &*core::ptr::addr_of!(
+            (*(ptr as *const ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>)).server
+        )
+    };
+    for (i, raw_goal) in server.core.active_goals().iter().enumerate() {
         let active = ActiveGoal {
             goal_id: raw_goal.goal_id,
             status: raw_goal.status,
-            goal: entry.server.typed_goals[i].clone(),
+            goal: server.typed_goals[i].clone(),
         };
         f(&active);
     }

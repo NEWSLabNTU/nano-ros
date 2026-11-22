@@ -2898,10 +2898,22 @@ impl<
     where
         A::Goal: Clone,
     {
-        let raw_req = self.core.try_recv_goal_request()?;
-        let raw_req = match raw_req {
-            Some(r) => r,
-            None => return Ok(None),
+        let Some((raw_req, goal)) = self.recv_goal()? else {
+            return Ok(None);
+        };
+        let response = goal_handler(&raw_req.goal_id, &goal);
+        self.finish_goal(raw_req, goal, response.is_accepted())
+    }
+
+    /// The first half of [`try_accept_goal`](Self::try_accept_goal): take one
+    /// pending `send_goal` request and decode its goal, without asking anyone
+    /// about it. The goal is an owned value, so the caller can run its handler
+    /// with no borrow of this server held (phase-573 W2b).
+    pub(crate) fn recv_goal(
+        &mut self,
+    ) -> Result<Option<(super::action_core::RawGoalRequest, A::Goal)>, NodeError> {
+        let Some(raw_req) = self.core.try_recv_goal_request()? else {
+            return Ok(None);
         };
 
         // Deserialize the goal from the buffer at the offset captured
@@ -2918,10 +2930,17 @@ impl<
         }
         let goal = A::Goal::deserialize(&mut reader)
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
+        Ok(Some((raw_req, goal)))
+    }
 
-        let response = goal_handler(&raw_req.goal_id, &goal);
-        let accepted = response.is_accepted();
-
+    /// The second half of [`try_accept_goal`](Self::try_accept_goal): answer
+    /// the request [`recv_goal`](Self::recv_goal) took, as the handler decided.
+    pub(crate) fn finish_goal(
+        &mut self,
+        raw_req: super::action_core::RawGoalRequest,
+        goal: A::Goal,
+        accepted: bool,
+    ) -> Result<Option<nros_core::GoalUuid>, NodeError> {
         if accepted {
             self.core
                 .accept_goal(raw_req.goal_id, raw_req.sequence_number)?;
