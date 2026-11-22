@@ -530,11 +530,11 @@ endfunction()
 # WRITE the descriptor for the ONE runtime a multi-entry configure links into
 # every entry, and return its path (empty when none was written).
 #
-# RFC-0065 D8 builds one cmake configure per COORDINATE, so every image of a
-# bringup that resolves to one coordinate is an entry here and they share one
-# `nros-cpp`/`nros-c` staticlib. phase-457 W0.c refused to name any descriptor
-# for that shape on the premise that no configure had it; generated entries
-# made it the normal one (`examples/workspaces/cpp` native: five entries).
+# A configure with several entries links them all against one
+# `nros-cpp`/`nros-c` staticlib. `nros build` used to make that the normal
+# shape (one configure per coordinate; `examples/workspaces/cpp` native had five
+# entries); since issue 2702 it gives every workspace image a configure of its
+# own, so only a HAND-WRITTEN root that registers several entries reaches here.
 #
 # ONE REDUCTION, THREE OUTPUTS (D12 rule 1). The model list is
 # `NROS_ENTITY_INVENTORY_MODELS` -- the list the entity-inventory fragment

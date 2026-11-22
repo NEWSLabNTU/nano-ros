@@ -1,7 +1,7 @@
-//! Issue 2702 (ruled option 2) -- a C/C++ workspace image whose own
-//! `[image.<id>] features` / `node_interfaces` differ from `[system]` gets a
-//! cmake configure of its own, built and sized with its own axes. The image on
-//! the coordinate that states none keeps the shared configure, unchanged.
+//! Issue 2702 (ruled 2026-11-22) -- every C/C++ workspace image gets a cmake
+//! configure of its own, built and sized with exactly its own capability axes:
+//! an image stating `node_interfaces = "none"` drops the stock interfaces from
+//! its build and its descriptor, and the image beside it keeps them.
 //!
 //! Recorded at build time by the `image_features_shared_configure_refused`
 //! row (the name predates the ruling): `nros build` of each image of a
@@ -40,14 +40,12 @@ fn an_image_with_its_own_capability_axes_gets_its_own_configure() {
         slim_dir.trim(),
         "the two images must not share a configure"
     );
-    assert!(
-        slim_dir.contains("-cfg"),
-        "`slim`'s configure is keyed on its axes: {slim_dir}"
-    );
-    assert!(
-        !plain_dir.contains("-cfg"),
-        "`plain` keeps the shared directory: {plain_dir}"
-    );
+    for (image, d) in [("plain", &plain_dir), ("slim", &slim_dir)] {
+        assert!(
+            d.trim().ends_with(&format!("-probe_bringup-{image}")),
+            "`{image}`'s configure is its own, named for it: {d}"
+        );
+    }
 
     // Each configure builds with its image's own axes...
     let plain_features = read(dir, "plain", "features");

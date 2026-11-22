@@ -129,11 +129,11 @@ does not change with the language, and neither does `system.toml`.
 
    ```text
    nros build: host_node_bringup:linux -> board linux (platform posix), driver cmake
-   cmake -S build/posix-zenoh-linux-host_node_bringup -B build/posix-zenoh-linux-host_node_bringup/cmake …
-   cmake --build build/posix-zenoh-linux-host_node_bringup/cmake
+   cmake -S build/posix-zenoh-linux-host_node_bringup-linux -B build/posix-zenoh-linux-host_node_bringup-linux/cmake …
+   cmake --build build/posix-zenoh-linux-host_node_bringup-linux/cmake
    ```
 
-   The generated `build/posix-zenoh-linux-host_node_bringup/CMakeLists.txt` is the CMake root.
+   The generated `build/posix-zenoh-linux-host_node_bringup-linux/CMakeLists.txt` is the CMake root.
    You do not write it, and the workspace has no root build file.
 
 5. Run it:

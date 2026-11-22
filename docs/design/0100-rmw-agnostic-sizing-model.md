@@ -16,8 +16,8 @@ implements-tracked-by: [phase-454, phase-457, phase-486, phase-531]
 restates the file rule over the nano-ros overlay, in effect since phase-486 W4,
 with [one exception](#exception-2026-11-22--a-census-not-taken-earns-a-file) for a census
 not taken (user ruling 2026-11-22);
-[D12 amended 2026-11-22](#d12-amended-2026-11-22--an-image-with-its-own-capability-axes-has-its-own-runtime):
-an image with its own capability axes gets its own configure and runtime
+[D12 amended 2026-11-22](#d12-amended-2026-11-22--every-workspace-image-has-its-own-configure-and-runtime):
+every C/C++ workspace image gets its own configure and runtime
 (user ruling, issue 2702);
 see also
 [Amendment 1](#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model),
@@ -1348,62 +1348,77 @@ unfloored; a descriptor stays relative and self-contained; the backend still
 owns its formula. D12 adds a unit (the runtime) and a reduction it borrows; it
 adds no fact and no carrier.
 
-### D12 amended, 2026-11-22 — an image with its own capability axes has its own runtime
+### D12 amended, 2026-11-22 — every workspace image has its own configure and runtime
 
-**Ruling (user, 2026-11-22, issue 2702 option 2).** A C/C++ workspace image
-whose own `[image.<id>] features` / `node_interfaces` differ from `[system]`'s
-is built by a cmake configure of its OWN, and its runtime is built and sized
-with exactly its own axes. D12 is unchanged inside each configure. What
-changes is which images share one.
+**Ruling (user, 2026-11-22, issue 2702).** Every C/C++ workspace image that
+`nros build` configures gets a cmake configure of its OWN, keyed on its image
+id, and its runtime is built and sized for exactly that image. No two
+workspace images share a runtime any more. D12 still names each runtime build
+exactly one descriptor: for these configures it is the image's own entry
+descriptor (the 1:1 case). The N:1 runtime descriptor
+(`nros/sizing/runtime/shared.toml`) remains for a HAND-WRITTEN root that
+registers several entries in one configure; `nros build` no longer produces
+one.
 
-Before this, every C/C++ image on a coordinate shared one configure, built
-with the `[system]` axes, so an image's own choice was ignored (an interim
-refusal, issue 2702 option 3, made it an error). A union of the images' axes
-(option 1) was rejected: under D12 the shared runtime is sized for the
-envelope of its images, so a union could not give the opting-out image back
-its RAM, only its share of the pools nobody else declared.
+**Why not share.** Sharing was the ruling of 2026-11-07 (per bringup, issue
+2287), and it costs the RAM this RFC exists to save. A shared runtime is sized
+for the envelope of its images (rule 1), and its descriptor states less than
+an entry's does, so its consumers fall back to their worst case. Measured on
+issue 2702's fixture, with two images whose axes and models are IDENTICAL:
+each image's `.bss` was **732,360 B** sharing one configure, against **331,448
+B** as the only image of its own configure (`.text` 2,202,476 against
+2,191,180). The loss is there with nothing to take the envelope of. Options
+weighed and rejected:
+
+- the UNION of the images' capability axes (option 1), which cannot give an
+  image that opts out its RAM back;
+- sharing among images whose axes are equal, which still pays the
+  measurement above.
 
 **How.**
 
-- **The key.** The configure's key (`cmake_configuration_key`) gains a row
-  carrying the image's EFFECTIVE axes, only when they differ from `[system]`'s
-  effective axes. Both sides are composed by `SystemToml::image_features_over`,
-  through the `node_interfaces` switch. Restating `[system]`'s list, or the
-  switch's default, is no difference.
-- **The build.** That configure is passed `-DNROS_FEATURE_IMAGE=<id>`, which
-  only the axes readers take (`_nros_feature_image_arg`): `nros config show`
-  (`NROS_FEATURES`), the entity inventory, the sizing descriptor and the
-  entry's codegen. It is deliberately not `NROS_IMAGE`, which also picks the
-  image's deploy and board facts and its leaf rows, none of which a configure
-  shared by several images may take from one of them. `nros build`'s
-  precomposition reads each member's model for its own image when it has
-  axes of its own.
+- **The key.** `cmake_coordinate` is
+  `<configuration key>-<bringup>-<image>`. A tree written by an older layout
+  keeps `<key>` (before issue 2287) or `<key>-<bringup>` (before this). Each
+  held every image's binary, so a build retires both, and a root whose single
+  `IMAGES` entry names it is current and stays.
+- **The build.** The configure is passed `-DNROS_FEATURE_IMAGE=<id>`, which
+  only the readers of the capability axes take (`_nros_feature_image_arg`):
+  `nros config show` (`NROS_FEATURES`), the entity inventory, the sizing
+  descriptor and the entry codegen. It is not `NROS_IMAGE`, which on a
+  hand-written root also picks the image's deploy, board facts and leaf rows.
+  `nros build`'s precomposition reads the model for that image.
 
-**Images whose axes are equal still share.** The key is the axes, so two
-images that state the same own axes share one configure, and images that
-state none share as before. A workspace that states no per-image axes keeps
-every directory and every byte it had. That is cheap, and exact for the axes.
-It is not a per-image configure for everything: images that share still
-differ in what the census and the contract state (parameter declarations,
-entity counts), and those stay D12's fold. That includes the parameter union
-(`ParamDeclarations::for_shared_runtime`), whose mixed case (an image that
-declares no parameters beside one that declares some) still arises, so its
-handling stays.
+**Measured** (issue 2702's fixture, `size` text/data/bss in bytes):
 
-**Measured** (issue 2702's fixture, two C images on `linux`, `slim` stating
-`node_interfaces = "none"`; `size`, text/data/bss in bytes):
-
-| image | before (one shared configure) | after |
+| image | before (one shared configure) | after (one configure each) |
 |---|---|---|
-| `slim` | 2,202,476 / 80,152 / 732,360 | 2,078,748 / 68,184 / 127,144 |
+| `slim` (`node_interfaces = "none"`) | 2,202,476 / 80,152 / 732,360 | 2,078,748 / 68,184 / 127,144 |
 | `plain` | 2,202,476 / 80,152 / 732,360 | 2,191,180 / 77,376 / 331,448 |
 
-`plain` after is byte-identical (`.text`, and the descriptor) to `plain` built
-as the workspace's only image. Its own change is the N:1-to-1:1 one, not
-`slim`'s choice. The cost is one more configure and runtime build for the
-image that differs: from a clean tree, `nros build` of both images took 63 s
-(43 s and 20 s) against 24 s shared (23 s and 1 s), so +39 s, and 1,309 MB of
-build output against 676 MB, so +633 MB.
+`plain` after is byte-identical (the whole ELF, and its descriptor) to `plain`
+built as its workspace's only image.
+
+**The cost**, measured on `examples/workspaces/features` (17 C, C++ and mixed
+images on `linux`), `nros build` of every image from a clean tree:
+
+| | configures | time | build output |
+|---|---|---|---|
+| one shared configure | 1 | 483 s | 1,828 MB |
+| one configure per image | 17 | 541 s | 22,643 MB |
+
+That is about 1.3 GB of build output per image, nearly all of it the image's
+own Rust runtime build (`cmake/cargo/`). The time grows less than the disk,
+because each configure is small and they share the probe build and the
+compiler cache. Across the fixture manifest, the cmake configures its rows name
+go from 139 to 235; on posix, the tier-1 coordinates, from 61 to 120.
+
+One more change follows from sizing an image from its own declarations. An
+image whose launch declares string or array parameters used to share a
+configure with images that declare none, so the declarations went unstated
+and the store took its defaults. Alone, they are stated, and phase-446's rule
+applies: the image states how long those values may be, or the build refuses.
+`examples/workspaces/features` states them for `linux_cpp_params`.
 
 ## Amendment 2 (2026-10-13) — D13: a shared target dir keys its build on the descriptor's content
 
