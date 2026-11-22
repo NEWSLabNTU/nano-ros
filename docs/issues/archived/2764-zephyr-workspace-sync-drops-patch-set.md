@@ -1,12 +1,13 @@
 ---
 id: 2764
 title: "A Zephyr workspace silently loses nano-ros's patch set: the manifest sync resets it, and nothing says a workspace lacks it"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, build, tooling]
 related: [issue-2249, issue-2476, issue-2697]
 found: 2026-11-20
+resolved: 2026-11-22
 ---
 
 ## Measured
@@ -67,3 +68,33 @@ until a build failed, many minutes in, with an error about Zephyr internals.
   real recorder and reader. A mutation that reads every record as ok fails it.
 - On host 139, both store workspaces read NOTE before re-patching. After
   `patches/3.7.sh` ran, the 3.7 workspace reads ok.
+
+## The second writer (2026-11-22)
+
+The issue stayed open on case 2: how a 4.4 store workspace came to carry no
+patch set at all. Its history on host 241 was not recorded and cannot be
+measured now. A sweep of every place that runs `west update` found a second
+writer with the same defect as the sync. Every path that writes a workspace's
+projects is now closed.
+
+- `scripts/zephyr/setup.sh` runs `west init` + `west update` and documents
+  itself as runnable on its own (`./scripts/zephyr/setup.sh`). After the update
+  it applied only two of the line's patches, by name: `cortex-a9-rust-patch.sh`
+  on 3.7 and `cargo-features-patch.sh` on both. It recorded nothing. Only the
+  `just zephyr setup` recipe ran the whole set afterwards, so a workspace made
+  by the script alone lacked the rest.
+- The Rust CLI runs no `west update`; its `update` verbs are cargo and git.
+  CI reaches the recipe through the `just setup zephyr` dispatcher.
+
+Fix:
+- `nros_zephyr_apply_patchset <checkout> <ws> <who>` in
+  `scripts/lib/zephyr-patchset.sh` is now the one way a writer applies the
+  set. It drops the stale record, reads the line from the tree, runs
+  `patches/<line>.sh` (which records itself), and fails saying UNPATCHED.
+  Both the sync and `setup.sh` call it, and the sync's own copy of those steps
+  is gone.
+- Gate `just check west-update-patchset`
+  (`scripts/check-west-update-patchset.py`): a shell script, `just` file or
+  workflow whose code runs `west update` must call that helper. Negative
+  control: `main`'s `setup.sh` is flagged at its `west update` line, and the
+  rebuilt sync passes. The sync tests still pass (28/28).

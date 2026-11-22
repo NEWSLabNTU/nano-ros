@@ -340,6 +340,15 @@ zephyr-module-allowlist:
 zephyr-patch-check-mode:
     @python3 scripts/check-zephyr-patch-check-mode.py
 
+# issue 2764 — every script that runs `west update` re-applies the line's patch
+# set through `nros_zephyr_apply_patchset`, the one helper that drops the stale
+# record, runs `patches/<line>.sh` and lets it record itself. Two writers had
+# each chosen what to re-apply: the sync relied on its caller, and a standalone
+# `scripts/zephyr/setup.sh` applied two of ~20 patches and recorded nothing.
+[group("checks")]
+west-update-patchset:
+    @python3 scripts/check-west-update-patchset.py
+
 # issue 1254 -- the legacy in-checkout Zephyr SDK path is ASKED of
 # `scripts/lib/zephyr-sdk.sh`, never constructed. A fifth hand-built copy
 # (issue 1279's registration step) outlived the sweep that moved the other four,

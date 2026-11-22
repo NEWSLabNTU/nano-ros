@@ -565,24 +565,17 @@ bash "$NROS_REPO_DIR/scripts/zephyr/unbind-manifest-project.sh" \
 log_info "Fetching Zephyr and modules (this may take a while)..."
 west update
 
-# Apply Cortex-A9 Rust patches (Phase 92.1 / 92.4 — required for
-# qemu_cortex_a9 DDS interop builds; idempotent, no-op on re-runs).
-# 3.7 LTS only: the Zynq-7000 SoC layout this patch targets moved in Zephyr
-# 4.4 (soc/xlnx/zynq7000/xc7zxxxs/), and the 4.4 line applies its own
-# line-specific patches via the `just zephyr setup` recipe. Gating here keeps
-# setup.sh standalone-correct on both lines.
-if [ "$MANIFEST" = "west.yml" ]; then
-    log_info "Applying Cortex-A9 Rust patches..."
-    bash "$NROS_REPO_DIR/scripts/zephyr/cortex-a9-rust-patch.sh" "$WORKSPACE_DIR"
-else
-    log_info "Skipping Cortex-A9 Rust patch (manifest $MANIFEST is not the 3.7 line)"
-fi
-
-# Forward per-example EXTRA_CARGO_ARGS (per-RMW Cargo feature selection) into
-# zephyr-lang-rust's cargo build — so non-default RMW examples compile only
-# their backend. Arch/version-blind; idempotent.
-log_info "Applying Rust cargo-features pass-through patch..."
-bash "$NROS_REPO_DIR/scripts/zephyr/cargo-features-patch.sh" "$WORKSPACE_DIR"
+# Issue 2764 — the line's WHOLE patch set, through the one helper every
+# workspace writer uses, which also records that it ran. This script documents
+# itself as runnable on its own, and it used to apply two of the set's patches
+# by name (Cortex-A9 on 3.7, the cargo-features pass-through on both) and record
+# nothing, so a workspace provisioned here and nowhere else lacked the rest and
+# read like any other until a configure failed. `just zephyr setup` runs the set
+# again afterwards; every patch is idempotent.
+log_info "Applying the line's nano-ros patch set..."
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
+nros_zephyr_apply_patchset "$NROS_REPO_DIR" "$WORKSPACE_DIR" "zephyr setup" || exit 1
 
 # Re-check Zephyr's Python dependencies now that the workspace exists.
 #

@@ -103,3 +103,41 @@ nros_patch_would_apply() {
 nros_patch_checking() {
     [ "${NROS_PATCH_CHECK:-0}" = 1 ]
 }
+
+# nros_zephyr_apply_patchset <checkout> <workspace> <who>
+# The ONE way a script that has just written a workspace's projects (`west
+# init` + `west update`, or a `west update` alone) applies the line's patch set:
+# drop the record (the projects moved, so it no longer describes the tree), read
+# the line from the tree, run `<checkout>/scripts/zephyr/patches/<line>.sh`,
+# which records itself as its last step. Returns non-zero, saying the workspace
+# is UNPATCHED, when the line is unreadable, the checkout has no set for it, or
+# the set fails. <who> prefixes the messages.
+#
+# Issue 2764: two scripts wrote projects and each decided for itself what to
+# re-apply. The sync relied on its caller, and `scripts/zephyr/setup.sh`, which
+# documents itself as runnable on its own, applied two of a line's ~20 patches
+# by name and recorded nothing. `check-west-update-patchset.py` keeps every
+# writer on this function.
+nros_zephyr_apply_patchset() {
+    local co="$1" ws="$2" who="$3" line set
+    rm -f "$(nros_zephyr_patchset_stamp "$ws")"
+    if ! line="$(nros_zephyr_workspace_line "$ws")"; then
+        echo "$who: $ws/zephyr/VERSION is missing or unreadable, so which line's patch set" >&2
+        echo "  to apply is unknown. The workspace is UNPATCHED;" >&2
+        echo "  run: bash $co/scripts/zephyr/patches/<line>.sh $ws" >&2
+        return 1
+    fi
+    set="$co/scripts/zephyr/patches/$line.sh"
+    if [ ! -f "$set" ]; then
+        echo "$who: the workspace checks out Zephyr $line and $co has no" >&2
+        echo "  patch set for it ($set). The workspace is UNPATCHED." >&2
+        return 1
+    fi
+    echo "[zephyr setup] applying the $line patch set ($set)"
+    if ! bash "$set" "$ws"; then
+        echo "$who: the $line patch set failed, so $ws is not (fully) patched;" >&2
+        echo "  a build there fails at configure. Fix the failure above, then run:" >&2
+        echo "  bash $set $ws" >&2
+        return 1
+    fi
+}
