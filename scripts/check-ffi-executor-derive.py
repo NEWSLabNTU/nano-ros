@@ -126,9 +126,6 @@ FLAG_ACCESS = {
     ("nros-cpp/src/lib.rs", "in_dispatch_ptr"): "the flag's one place",
     ("nros-cpp/src/lib.rs", "nros_cpp_spin_once"): "its RawDispatchGuard's flag",
     ("nros-cpp/src/lib.rs", "nros_cpp_spin_some"): "its RawDispatchGuard's flag",
-    # Issue 2843: a blocking wait inside a callback that sleep-polls instead
-    # of refusing. Listed so the gate holds it while that is ruled.
-    ("nros-cpp/src/service.rs", "nros_cpp_service_client_wait_for_service"): "issue 2843",
 }
 
 FN_RE = re.compile(
