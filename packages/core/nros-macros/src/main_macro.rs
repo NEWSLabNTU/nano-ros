@@ -1872,9 +1872,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // reader can paste: a leaf's own image when the macro knows it, else the
     // CLI. Printed beside the shared refusal text when the carve check fails.
     let carve_road_hint = match leaf_decl.as_ref().and_then(|l| l.image.as_deref()) {
+        // The path is relative to the PACKAGE, which is where `nros configure`
+        // writes it: for a leaf that is also a workspace member, a reader at
+        // the workspace root would otherwise be handed a path that is not there.
         Some(id) => format!(
-            "Build it with `nros build`, or with cargo after `nros configure`: \
-             `cargo build --config build/{id}/nros-cargo.toml`."
+            "Build it with `nros build`, or with cargo after `nros configure`, in this \
+             package's directory: `cargo build --config build/{id}/nros-cargo.toml`."
         ),
         None => {
             "Build it with `nros build`, which carries the store's size to this crate.".to_string()
