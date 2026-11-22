@@ -1,0 +1,29 @@
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a one-package
+# workspace (RFC-0122 D3). The program is the owned entry `src/c_lifecycle_node`
+# (RFC-0071 D19): it keeps its own `main`, which binds one node and registers
+# the REP-2002 lifecycle services on it, so every image names it and the
+# bringup declares no component table.
+
+[system]
+name = "c_lifecycle_node"
+rmw = "zenoh"
+domain_id = 0
+# The managed-node services, a declared capability (RFC-0031): a workspace
+# image imports the runtime with these axes, before the package's own
+# CMakeLists.txt runs.
+features = ["lifecycle"]
+# The image a bare `nros configure` / `nros build` builds.
+default_images = ["linux"]
+
+# Host build. The locator and domain stay runtime env on native
+# (`NROS_LOCATOR` / `ROS_DOMAIN_ID`).
+[image_defaults]
+board = "linux"
+
+[image.linux]
+entry = "c_lifecycle_node"
+
+# The same program on Cyclone DDS.
+[image.linux_cyclonedds]
+entry = "c_lifecycle_node"
+rmw = "cyclonedds"
