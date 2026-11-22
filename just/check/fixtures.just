@@ -754,6 +754,14 @@ sdk-lock-ignored:
 unignored-build-writes:
     @bash scripts/build/unignored-writes.sh selftest
 
+# Issue 2835 -- `NROS_FIXTURE_ID=<row id>` narrows the Zephyr west lane to
+# that row's ONE leaf, and an id with no west leaf selects none, as every other
+# fixture stage does. The emitter read only NROS_ZEPHYR_FIXTURE_FILTER, so the
+# refusal hint's own spelling built the whole family. Records mode, buildless.
+[group("checks")]
+zephyr-fixture-id:
+    @bash tests/zephyr-fixture-id-tests.sh
+
 # Issue 1325 -- `NROS_ZEPHYR_FIXTURE_FILTER` is matched per FIELD and
 # repo-relative, in both Zephyr builders, through one helper
 # (`scripts/lib/fixture-filter.sh`). A joined haystack let the checkout's own

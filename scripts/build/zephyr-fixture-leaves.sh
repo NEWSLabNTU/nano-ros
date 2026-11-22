@@ -427,6 +427,15 @@ while IFS=$'\x1f' read -r ov_id ov_kv; do
     row_overrides["$ov_id"]="${row_overrides[$ov_id]:-} -DNROS_OVERRIDE_${ov_kv}"
 done <<<"$ov_list"
 
+# Issue 2835 — `NROS_FIXTURE_ID=<row id>` narrows to that row's ONE leaf. A
+# record carries the leaf id (`west_id`), so the row id is resolved once,
+# through the manifest. An id with no west leaf selects none (exit 3 below),
+# which the lane treats as "only the compile-check half can match it".
+want_leaf=""
+if [ -n "${NROS_FIXTURE_ID:-}" ]; then
+    want_leaf="$(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaf-id --id "$NROS_FIXTURE_ID")" || want_leaf=""
+fi
+
 selected=0
 # `row_coord` (the manifest's `row_coord()`, `platform,lang,rmw`) is the
 # leaf's coordinate. The narrowing already happened in `--coords-from` above;
@@ -622,6 +631,9 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
             "$board" "$build_name" "$src_rel" "$conf_files" "$id"; then
         continue
     fi
+    if [ -n "${NROS_FIXTURE_ID:-}" ] && [ "$id" != "$want_leaf" ]; then
+        continue
+    fi
     if [ "$idlc_drop" = "1" ]; then
         idlc_missing_ids+=("$id")
         continue
@@ -707,6 +719,6 @@ if [ "${#idlc_missing_ids[@]}" -gt 0 ]; then
     echo "NROS_ZEPHYR_IDLC_MISSING: ${#idlc_missing_ids[@]} selected cyclonedds leaf(s) not emitted: ${idlc_missing_ids[*]}" >&2
 fi
 if [ "$selected" -eq 0 ] && [ "${#idlc_missing_ids[@]}" -eq 0 ]; then
-    echo "zephyr-fixture-leaves: no records matched filter: $fixture_filter" >&2
+    echo "zephyr-fixture-leaves: no records matched: $(NROS_ZEPHYR_FIXTURE_FILTER="$fixture_filter" nros_fixture_narrowing)" >&2
     exit 3
 fi
