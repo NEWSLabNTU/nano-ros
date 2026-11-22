@@ -762,6 +762,46 @@ mod tests {
         assert_eq!(alt(r#"elseif(_mode MATCHES "^("#), SWITCH_ON);
     }
 
+    /// Issue 2693 -- the frame flags for cc-rs C are the cmake road's rule:
+    /// `-fcallgraph-info=su` for GCC only. TI Arm Clang refuses it, and the
+    /// cargo road passing it to every compiler failed each TI C build.
+    #[test]
+    fn the_cargo_roads_c_frame_flags_ask_callgraph_info_of_gcc_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let module = nros_root().join("cmake/NanoRosStackFloor.cmake");
+        let mut text = format!(
+            "cmake_minimum_required(VERSION 3.20)\nproject(t NONE)\ninclude(\"{}\")\n",
+            module.display()
+        );
+        for id in ["GNU", "TIClang", "Clang"] {
+            text += &format!(
+                "set(CMAKE_C_COMPILER_ID {id})\n_nros_stack_floor_c_frame_flags(f)\n\
+                 message(STATUS \"FL {id}=${{f}}\")\n"
+            );
+        }
+        std::fs::write(dir.path().join("CMakeLists.txt"), text).unwrap();
+        let out = std::process::Command::new("cmake")
+            .arg("-S")
+            .arg(dir.path())
+            .arg("-B")
+            .arg(dir.path().join("b"))
+            .output()
+            .expect("cmake is a precondition of the cli-tests lane");
+        let log = String::from_utf8_lossy(&out.stdout).to_string()
+            + &String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{log}");
+        let flags = |id: &str| {
+            let tag = format!("-- FL {id}=");
+            log.lines()
+                .find_map(|l| l.strip_prefix(tag.as_str()))
+                .unwrap_or_else(|| panic!("no {tag} line in {log}"))
+                .to_string()
+        };
+        assert_eq!(flags("GNU"), "-fstack-usage -fcallgraph-info=su");
+        assert_eq!(flags("TIClang"), "-fstack-usage");
+        assert_eq!(flags("Clang"), "-fstack-usage");
+    }
+
     /// Issue 2818 -- the `-fstack-usage` closure reaches a library linked
     /// through a raw flag (the RMW backend's `-Wl,--whole-archive,
     /// $<TARGET_FILE:x>`) and through issue 0475's `LINK_DEPENDS`, not only by

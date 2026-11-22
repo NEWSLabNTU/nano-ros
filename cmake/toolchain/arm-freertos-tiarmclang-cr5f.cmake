@@ -60,9 +60,12 @@ set(CMAKE_EXE_LINKER_FLAGS_INIT "-Wl,--diag_warning=16004")
 
 set(Rust_CARGO_TARGET "armv7r-none-eabihf" CACHE STRING "Rust target triple" FORCE)
 
-# The stack-floor check reads GCC's -fcallgraph-info output, which tiarmclang
-# does not emit (issue 2693), so it cannot run on this road.
-set(NROS_STACK_FLOOR OFF CACHE STRING "Stack-floor check (needs GCC's -fcallgraph-info; issue 2693)" FORCE)
+# The stack-floor check stays off here until it has run on a TI Arm Clang
+# build (issue 2693). The flag that failed every C build is no longer passed:
+# `-fcallgraph-info` now goes to GCC only, and tiarmclang accepts
+# `-fstack-usage`. What is unproven is the walk itself: whether it reads
+# tiarmlnk's link map, which is not a GNU ld or LLD map, and TI's objects.
+set(NROS_STACK_FLOOR OFF CACHE STRING "Stack-floor check (not yet run on a TI Arm Clang build; issue 2693)" FORCE)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

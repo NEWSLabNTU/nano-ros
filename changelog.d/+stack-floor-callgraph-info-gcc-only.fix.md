@@ -1,0 +1,1 @@
+When the stack-floor check builds C on the cargo road, it passes `-fcallgraph-info` to GCC only, as the cmake road already did. A compiler that refuses that flag, such as TI Arm Clang, no longer fails its C build.
