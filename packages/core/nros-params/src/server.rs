@@ -915,7 +915,39 @@ impl<'s> ParameterServer<'s> {
         // Issue 1150 — an ill-formed range, or a default the range rejects,
         // is refused at declaration, as upstream. Same predicate as every set.
         Self::declaration_consistency(descriptor.as_ref(), value)?;
+        self.declare_into(node, name, descriptor, &mut |slot| slot.assign_from(value))
+    }
 
+    /// Declare a parameter whose value `fill` writes straight into its slot,
+    /// with no descriptor -- issue 2815.
+    ///
+    /// For a SCALAR default (`use_sim_time = false`): even
+    /// [`declare_ref`](Self::declare_ref) needs a `ParameterValue` in the
+    /// caller's frame to borrow, and that value is ~8 KiB whatever variant it
+    /// holds. Writing `*slot = ParameterValue::Bool(false)` through the slot
+    /// builds nothing that size on the stack.
+    pub(crate) fn declare_with(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        fill: &mut dyn FnMut(&mut ParameterValue),
+    ) -> bool {
+        if self.find_index(node, name).is_some() {
+            return false;
+        }
+        self.declare_into(node, name, None, fill).is_ok()
+    }
+
+    /// The slot write shared by every declare: an empty slot, the name, then
+    /// the value written in place by `fill`. The caller has checked that the
+    /// name is free and the value consistent with `descriptor`.
+    fn declare_into(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        descriptor: Option<ParameterDescriptor>,
+        fill: &mut dyn FnMut(&mut ParameterValue),
+    ) -> Result<(), DeclarationError> {
         // Find an empty slot
         let slot = match self.find_empty_slot() {
             Some(idx) => idx,
@@ -943,7 +975,7 @@ impl<'s> ParameterServer<'s> {
             descriptor,
         });
         if let Some(entry) = cell {
-            entry.param.value.assign_from(value);
+            fill(&mut entry.param.value);
         }
         self.count += 1;
         self.note_event(node, ParameterEventKind::New, name);

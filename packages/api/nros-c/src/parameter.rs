@@ -318,7 +318,7 @@ mod imp {
             );
             return RCL_RET_ERROR;
         }
-        if exec.declare_parameter_on(id, n, value) {
+        if exec.declare_parameter_on_ref(id, n, &value) {
             exec.flush_parameter_events();
             RCL_RET_OK
         } else if exec.report_parameter_refused(id, n) {

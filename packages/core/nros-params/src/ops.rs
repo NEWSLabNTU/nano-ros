@@ -76,6 +76,14 @@ pub trait ParameterServerOps<'s>: sealed::Sealed + Sized {
     /// See `ParameterServer::declare_ref` in `server.rs`.
     fn declare_ref(&mut self, node: NodeKey, name: &str, value: &ParameterValue) -> bool;
 
+    /// See `ParameterServer::declare_with` in `server.rs`.
+    fn declare_with(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        fill: &mut dyn FnMut(&mut ParameterValue),
+    ) -> bool;
+
     /// See `ParameterServer::declare_with_descriptor` in `server.rs`.
     fn declare_with_descriptor(
         &mut self,
@@ -400,6 +408,16 @@ impl<'s> ParameterServerOps<'s> for ParameterServer<'s> {
     #[inline]
     fn declare_ref(&mut self, node: NodeKey, name: &str, value: &ParameterValue) -> bool {
         ParameterServer::declare_ref(self, node, name, value)
+    }
+
+    #[inline]
+    fn declare_with(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        fill: &mut dyn FnMut(&mut ParameterValue),
+    ) -> bool {
+        ParameterServer::declare_with(self, node, name, fill)
     }
 
     #[inline]

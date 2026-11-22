@@ -14822,22 +14822,22 @@ impl<'s> Executor<'s> {
         if params.services.len() >= want {
             return Ok(());
         }
-        let mut todo: heapless::Vec<
-            (u8, heapless::String<64>, heapless::String<64>),
-            { crate::param_sizing::MAX_SERVICE_SETS },
-        > = heapless::Vec::new();
+        //
+        // Issue 2815 -- INDICES only. This list used to carry each node's name
+        // and namespace (two `String<64>`s, ~130 bytes) for every slot the
+        // node table can hold, which made this frame 9,344 bytes on a
+        // Cortex-M. Called from `pass` (9,472 more), it overflowed a 16 KiB
+        // main stack in ONE `sub sp`, past the MPU guard and into `.data`, so
+        // the image faulted somewhere unrelated with no guard fault. The
+        // names are read per node in the loop below, one pair at a time.
+        let mut todo: heapless::Vec<u8, { crate::param_sizing::MAX_SERVICE_SETS }> =
+            heapless::Vec::new();
         for index in 0..want {
             let key = nros_params::NodeKey::new(index as u8);
             if params.services.iter().any(|set| set.param_node() == key) {
                 continue;
             }
-            let (name, namespace) = match self.nodes.get(index) {
-                Some(record) => (record.name.clone(), record.namespace.clone()),
-                // No node table entry: the executor's own implicit primary
-                // identity, which is what `NodeId::PRIMARY` means.
-                None => (self.node_name.clone(), self.namespace.clone()),
-            };
-            if todo.push((index as u8, name, namespace)).is_err() {
+            if todo.push(index as u8).is_err() {
                 return Err(NodeError::NodeTableFull);
             }
         }
@@ -14864,7 +14864,13 @@ impl<'s> Executor<'s> {
             #[cfg(not(feature = "alloc"))]
             return Err(NodeError::Transport(TransportError::BadAlloc));
         }
-        for (index, name, namespace) in todo {
+        for index in todo {
+            let (name, namespace) = match self.nodes.get(usize::from(index)) {
+                Some(record) => (record.name.clone(), record.namespace.clone()),
+                // No node table entry: the executor's own implicit primary
+                // identity, which is what `NodeId::PRIMARY` means.
+                None => (self.node_name.clone(), self.namespace.clone()),
+            };
             // Issue 2387 -- the set is built IN PLACE, in the state's next
             // inline slot. It used to come back from the builder by value and
             // be pushed, which moved six backend handles and a name through
@@ -15903,10 +15909,13 @@ impl<'s> Executor<'s> {
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
         if let Some(params) = self.params.as_deref_mut()
             && let Some(seeded) = params.sim_time_seeded.get_mut(node.index())
-            && params.server.declare(
+            // Issue 2815 -- written into its slot: a `ParameterValue::Bool`
+            // passed by value is ~8 KiB of this frame, and this runs on the
+            // registration path of every node.
+            && params.server.declare_with(
                 node.into(),
                 crate::time_source::USE_SIM_TIME_PARAM,
-                nros_params::ParameterValue::Bool(false),
+                &mut |slot| *slot = nros_params::ParameterValue::Bool(false),
             )
         {
             *seeded = true;

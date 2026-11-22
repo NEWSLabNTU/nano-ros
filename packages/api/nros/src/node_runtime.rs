@@ -1806,7 +1806,7 @@ impl ExecutorSink<'_> {
                     return Err(NodeDeclError::Runtime);
                 }
             }
-            if !executor.declare_parameter_on(node, name, value)
+            if !executor.declare_parameter_on_ref(node, name, &value)
                 && executor.get_parameter_on(node, name).is_none()
             {
                 // GitHub #4018 -- the line names the store's capacity and the
@@ -2367,7 +2367,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     // entity's node, not the executor's primary (issue 1272):
                     // a second node declaring a name the first also declares
                     // is its own parameter, not a duplicate.
-                    if !executor.declare_parameter_on(node, name, value)
+                    if !executor.declare_parameter_on_ref(node, name, &value)
                         && executor.get_parameter_on(node, name).is_none()
                     {
                         // GitHub #4018 -- capacity and knob, not only "refused".
