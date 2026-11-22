@@ -1,15 +1,17 @@
 ---
 id: 2794
 title: "An owned entry with several programs is sized from one program's census: the first `nano_ros_add_executable`, so the others' entities are never counted"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [sizing, census, owned-entry, cmake]
 related: [rfc-0100, rfc-0071, issue-2433]
 found: 2026-11-22
+resolved: 2026-11-22
+resolved_in: "feat(cli, phase-583): take a census of every program of an owned entry"
 ---
 
-**Home:** [phase-583](../roadmap/phase-583-owned-entry-executables.md) W4,
+**Home:** [phase-583](../../roadmap/archived/phase-583-owned-entry-executables.md) W4,
 which builds several programs per owned entry (RFC-0071 D20).
 
 ## What happens
@@ -61,3 +63,14 @@ Tests the fix owes: the parameter store folds so that a program with a store
 and one without gives a store, never none (the store's carve assertion would
 refuse the shared build otherwise), and D12's refusal for disagreeing
 per-endpoint QoS fires between two programs as it does between two entries.
+
+## Resolved, 2026-11-22
+
+Fixed by the owned-entry census fold (#4585). When the host census build
+states several programs, the take runs each into
+`owned/<bringup>/<image>/<exe>.census.json` and lists them in
+`<image>.programs`. The descriptor folds them by RFC-0100 D12's runtime rule:
+rows are the union, and every count is the largest single program's.
+`owned_entry_census_fold` builds a threadx-linux package with a small and a
+large program, and asserts the larger one's 3 timers and 4 publishers.
+

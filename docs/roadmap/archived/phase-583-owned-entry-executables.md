@@ -1,7 +1,7 @@
 # Phase 583 — An owned entry with several executables
 
 **Status (2026-11-22). COMPLETE: design accepted (user ruling 2026-11-20); W0
-done (`a49a3dcf82`); W1–W5 and the census fold done. Owner: nros 243.** Implements [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
+done (`a49a3dcf82`); W1–W5 and the census fold done. Owner: nros 243.** Implements [RFC-0071 D20](../../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20):
 - an owned entry may build several executables, chosen at run time as in
   ROS (`nros run <image> --exec <name>`, or the bringup's launch `exec`);
 - on RTOS, each executable is its own firmware, one carrier per

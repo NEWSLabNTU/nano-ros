@@ -10,7 +10,7 @@ resolved: 2026-11-22
 related: [phase-583, rfc-0057, 2744, 0088]
 ---
 
-**Home: [phase-583](../../roadmap/phase-583-owned-entry-executables.md)**
+**Home: [phase-583](../../roadmap/archived/phase-583-owned-entry-executables.md)**
 (one carrier per EXECUTABLE).
 
 ## What fails

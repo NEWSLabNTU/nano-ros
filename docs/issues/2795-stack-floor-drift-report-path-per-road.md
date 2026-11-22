@@ -9,7 +9,7 @@ related: [issue-2400]
 found: 2026-11-22
 ---
 
-**Home:** [phase-583](../roadmap/phase-583-owned-entry-executables.md) W4,
+**Home:** [phase-583](../roadmap/archived/phase-583-owned-entry-executables.md) W4,
 which adds the owned-entry program key `<entry>/<exe>@<board>` and the one
 report-path rule, `report_path(build_dir, key)` in
 `scripts/nros-stack-floor.py`.

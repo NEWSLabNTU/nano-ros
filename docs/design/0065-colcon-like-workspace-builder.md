@@ -1121,7 +1121,7 @@ rejected here, because neither has a derivation to perform.
 ## Changelog
 
 - **2026-11-20** — A generated CMake root adds only its bringup's closure
-  (issue 2754, [phase-583 W0](../roadmap/phase-583-owned-entry-executables.md)).
+  (issue 2754, [phase-583 W0](../roadmap/archived/phase-583-owned-entry-executables.md)).
   That is the bringup package, the packages its configure's images reach (launch
   nodes, owned entries, `[[component]]` rows) and their workspace `<depend>`s,
   transitively. It used to add every workspace package except framework entries
