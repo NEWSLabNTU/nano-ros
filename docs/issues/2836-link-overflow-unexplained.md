@@ -41,7 +41,7 @@ linker's output passes through `nros build`, so there is nothing to scan.
 ## Wanted (manager ruling, 2026-11-22)
 
 - **Capture once, for every road.** While the tool's output streams to the
-  terminal as now, it is also written to `build/<image>/<tool>.log`
+  terminal as now, it is also written to `<tool>.log` in the image's build directory (the cargo target dir, the cmake binary dir, the west build dir)
   (`west.log` for the west road). One function in `handoff`, used by the
   west, CMake and cargo roads alike. Nothing is re-run after a failure: that
   would double the output, and on a big image it is not quick.

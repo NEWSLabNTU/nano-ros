@@ -4606,6 +4606,9 @@ fn share_jobserver(plans: &mut [ResolvedBuild], env: &crate::builder::jobserver:
 pub(crate) struct ChildExit {
     pub code: i32,
     pub shown: String,
+    /// phase-588 — the log the tool's output was kept in, when it was
+    /// proxied; read by [`perform_plan`] to explain a failure.
+    pub log: Option<PathBuf>,
 }
 
 impl std::fmt::Display for ChildExit {
@@ -4616,14 +4619,27 @@ impl std::fmt::Display for ChildExit {
 
 impl std::error::Error for ChildExit {}
 
-/// Perform one handover for real: run the native command as a child, stdio
-/// INHERITED (never piped, so its stderr reaches the user untouched, which is
-/// what D1's `exec` was for), and wait.
+/// Perform one handover for real: run the native command as a child and wait.
+///
+/// With a [`Handoff::log`] (stage 5's build step, phase-588) the tool runs on
+/// the pty proxy, which copies its output unchanged to the terminal and the
+/// log ([`crate::builder::handoff::wait`]); without one its stdio is
+/// inherited. Either way nothing is filtered, and the status is the tool's.
 ///
 /// The seam [`drive`] is tested through: a test substitutes a recorder here so
 /// it can observe every plan's handover without a compiler.
 fn perform(hand: &Handoff) -> Result<()> {
-    let st = crate::builder::handoff::wait(hand).map_err(|e| eyre::eyre!("{e}"))?;
+    let (st, log) = match &hand.log {
+        Some(log) => {
+            let (st, log) =
+                crate::builder::handoff::wait(hand, log).map_err(|e| eyre::eyre!("{e}"))?;
+            (st, Some(log))
+        }
+        None => (
+            crate::builder::handoff::run_inherited(hand).map_err(|e| eyre::eyre!("{e}"))?,
+            None,
+        ),
+    };
     if st.success() {
         return Ok(());
     }
@@ -4638,8 +4654,54 @@ fn perform(hand: &Handoff) -> Result<()> {
     Err(ChildExit {
         code,
         shown: hand.display(),
+        // A signal stopped the tool (a Ctrl-C): its log ends mid-build and
+        // explains nothing.
+        log: log.filter(|_| signal.is_none()),
     }
     .into())
+}
+
+/// phase-588 W1 — where the build step of `p` keeps its output:
+/// `<image build dir>/<tool>.log`, the tool being the plan's driver (`west`,
+/// `cmake`, `cargo`), the directory the one its output is recorded under
+/// ([`crate::cmd::build_next::BuildOutput`]). `None` when the plan records
+/// none (a west build into a `-d` that could not be read back).
+fn log_path(p: &ResolvedBuild) -> Option<PathBuf> {
+    use crate::cmd::build_next::BuildOutput as O;
+    let dir = match p.output.as_ref()? {
+        O::Cargo { target_dir, .. } => target_dir.clone(),
+        O::CMake { build_dir, .. } => build_dir.clone(),
+        O::West { build_dir } => build_dir.clone()?,
+    };
+    Some(dir.join(format!("{}.log", p.driver.program())))
+}
+
+/// `p` with its build step's [`Handoff::log`] set ([`log_path`]).
+fn with_log(p: &ResolvedBuild) -> std::borrow::Cow<'_, ResolvedBuild> {
+    match (log_path(p), &p.handoff) {
+        (Some(log), Some(_)) => {
+            let mut p = p.clone();
+            if let Some(h) = &mut p.handoff {
+                h.log = Some(log);
+            }
+            std::borrow::Cow::Owned(p)
+        }
+        _ => std::borrow::Cow::Borrowed(p),
+    }
+}
+
+/// After a failed build step, the explanation its log supports (issue 2836,
+/// phase-588 W3): printed under the tool's own output, never instead of it.
+fn explain_failure(p: &ResolvedBuild, e: &eyre::Report) {
+    let Some(log) = e.downcast_ref::<ChildExit>().and_then(|c| c.log.as_ref()) else {
+        return;
+    };
+    let text = String::from_utf8_lossy(&std::fs::read(log).unwrap_or_default()).into_owned();
+    if let Some(t) =
+        crate::builder::link_explain::explain(&text, &crate::builder::link_explain::facts_for(p))
+    {
+        eprint!("{t}");
+    }
 }
 
 /// How [`drive`] runs the plans: `-j`, the build's shared jobserver, and
@@ -4720,6 +4782,7 @@ fn perform_plan(
     p: &ResolvedBuild,
     handover: &(dyn Fn(&Handoff) -> Result<()> + Sync),
 ) -> Result<()> {
+    let p = &*with_log(p);
     let Some(hand) = &p.handoff else {
         eyre::bail!(
             // See RFC-0065 D3.
@@ -4749,7 +4812,10 @@ fn perform_plan(
     if let Some(sf) = &p.stack_floor {
         crate::cmd::stack_floor::prepare(sf)?;
     }
-    handover(hand)?;
+    if let Err(e) = handover(hand) {
+        explain_failure(p, &e);
+        return Err(e);
+    }
     // Issue 2400 W5 — after cargo has linked: walk the image and check the
     // stack its board states.
     if let Some(sf) = &p.stack_floor {

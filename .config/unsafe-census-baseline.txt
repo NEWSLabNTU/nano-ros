@@ -52,7 +52,7 @@ nros-build-helpers                   2   0     0       2      0
 nros-c                             564  102     7     517      0
 nros-can-mock                        7   0     0       1      0
 nros-cli                             1   0     0       0      0
-nros-cli-core                       32   0     0       0      0
+nros-cli-core                       46   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            3   0     2       3      0
 nros-cpp                          1159  48     0     438      0
