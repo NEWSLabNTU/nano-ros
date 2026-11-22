@@ -1,13 +1,7 @@
-[build]
-target = "thumbv7m-none-eabi"
-
-[target.thumbv7m-none-eabi]
-runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
-rustflags = [
-    "-C", "link-arg=--gc-sections",
-    "-C", "link-arg=-Tmps2_an385.ld",
-    "-C", "link-arg=--nmagic",
-]
+# The board's triple, link script and runner are NOT here: the cross-build
+# passes the image's generated settings (`build/<coord>/<image>_entry/
+# nros-cargo.toml`, written by `nros configure` from the bringup's image), and
+# a second `-Tmps2_an385.ld` makes lld refuse "region 'FLASH' already defined".
 
 # Keep the inline executor arena small so two sched task executors (boot + spawned)
 # fit on the FreeRTOS task stacks (the arena lives inline in each `Executor`).
