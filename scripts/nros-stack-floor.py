@@ -182,7 +182,12 @@ def expand_roots(g: Graph, roots: str) -> list[str]:
         # `?sym`: a root the link may not have (issue 2784: a board names the
         # trampoline of each runner it has; an image links one). Dropped when
         # absent, and refused only when every root of the role is.
-        present = [r for r in roots.split(",") if not r.startswith("?") or r[1:] in known]
+        def here(r: str) -> bool:
+            r = r[1:]
+            if r.startswith("~"):
+                return any(r[1:] and r[1:] in fn for fn in known)
+            return r in known
+        present = [r for r in roots.split(",") if not r.startswith("?") or here(r)]
         if not present:
             raise WalkRefused(f"none of the roots `{roots}` is in the inputs; the thread "
                               "entry was renamed, or its code is not among the inputs")
@@ -3597,6 +3602,19 @@ def task_role(name: str) -> str:
 
 
 _TASK_STACK_SYM = re.compile(r"^__nros_sched_task_stack_(\d+)$")
+# A Rust entry's per-task reservation (`nros::main!`'s
+# `__NROS_SCHED_TASK_MEMORY_<i>`), inside a mangled name.
+_RUST_TASK_MEMORY = re.compile(r"__NROS_SCHED_TASK_MEMORY_\d+")
+
+
+def rust_task_memory_linked(elf: str | None, nm: str | None) -> bool | None:
+    """Whether the linked image holds any `nros::main!` task reservation; None
+    when the image cannot be read. `nros::main!` reserves none for an image
+    that names its board explicitly, which the entry's file cannot know."""
+    if not elf or not nm or not Path(elf).is_file():
+        return None
+    r = subprocess.run([nm, elf], capture_output=True, text=True)
+    return bool(_RUST_TASK_MEMORY.search(r.stdout))
 
 
 def reserved_task_stacks(elf: str | None, nm: str | None) -> dict[int, int]:
@@ -3616,8 +3634,8 @@ def reserved_task_stacks(elf: str | None, nm: str | None) -> dict[int, int]:
     return out
 
 
-def apply_sched_tasks(args: argparse.Namespace, reserved: dict[int, int] | None = None
-                      ) -> list[str]:
+def apply_sched_tasks(args: argparse.Namespace, reserved: dict[int, int] | None = None,
+                      rust_linked: bool | None = None) -> list[str]:
     """Issue 2784 -- one role per sched task of the entry's priority plan
     (`--sched-tasks`, the `nros_priority_plan.json` codegen writes beside the
     TU), rooted at the board's task trampoline (`--task-root`). A task's stack
@@ -3646,8 +3664,35 @@ def apply_sched_tasks(args: argparse.Namespace, reserved: dict[int, int] | None 
     root = getattr(args, "task_root", None)
     default = getattr(args, "task_stack", None)
     key = plan.get("sched_task_key") or "<rtos>"
-    reserved = reserved or {}
-    notes = []
+    reserved = dict(reserved or {})
+    # Which tasks run on the boot thread. Read off the image (`reserved`), it
+    # is every task the entry reserved no stack for. A Rust entry's file
+    # (`nros-sched-tasks.json`, issue 2784) states it: `reserved_stack_bytes`
+    # null is the boot task, 0 the port's default (no static), a number the
+    # stack `nros::main!` reserves.
+    boot = None
+    if plan.get("reserves_task_memory") and rust_linked is False:
+        notes_pre = ["the entry's file says its tasks have reserved stacks, but the image "
+                     "links none (an explicit `board`), so each takes the board's default"]
+        plan["reserves_task_memory"] = False
+    else:
+        notes_pre = []
+    if plan.get("reserves_task_memory") is not None:
+        reserved, boot = {}, set()
+        if plan["reserves_task_memory"]:
+            for i, t in enumerate(tasks):
+                r = t.get("reserved_stack_bytes")
+                if r is None:
+                    boot.add(i)
+                elif int(r) > 0:
+                    reserved[i] = int(r)
+    elif reserved:
+        boot = {i for i in range(len(tasks)) if i not in reserved}
+    # The family's boot task runs on the caller's thread whether or not memory
+    # was reserved (a Rust entry's file states it).
+    if isinstance(plan.get("boot_task"), int):
+        boot = (boot or set()) | {plan["boot_task"]}
+    notes = list(notes_pre)
     if not root:
         return [f"{len(tasks)} sched task(s) not checked: the board states no task "
                 "trampoline (no TASK row)"]
@@ -3657,11 +3702,11 @@ def apply_sched_tasks(args: argparse.Namespace, reserved: dict[int, int] | None 
         role = task_role(name)
         authored = t.get("stack_bytes")
         own = f"[tasks.{name}.{key}] stack_bytes = {{bytes}}"
-        if reserved:
-            if i not in reserved:
-                notes.append(f"{role}: runs on the boot thread (the entry reserves it no "
-                             "stack), so the OPEN role checks it")
-                continue
+        if boot and i in boot:
+            notes.append(f"{role}: runs on the boot thread (the runner's caller), so the "
+                         "OPEN role checks it")
+            continue
+        if i in reserved:
             stack = reserved[i]
             args.role_knobs[role] = own
         elif authored:
@@ -3701,7 +3746,8 @@ def run(args: argparse.Namespace) -> int:
             nm = llvm_tool("llvm-nm", args.llvm_bin)
         except SystemExit:
             nm = None
-        for n in apply_sched_tasks(args, reserved_task_stacks(args.cfi_elf, nm)):
+        for n in apply_sched_tasks(args, reserved_task_stacks(args.cfi_elf, nm),
+                                   rust_task_memory_linked(args.cfi_elf, nm)):
             print(f"nros-stack-floor: {n}", file=sys.stderr)
     if args.intermediates_from_build:
         if not stream:
@@ -4750,7 +4796,30 @@ def self_test() -> int:
         check("sched tasks: a reserved stack is the task's; a task without one is the boot thread",
               r.role == ["TASK_HIGH=tramp"] and r.check_stack == ["TASK_HIGH=262144"]
               and len(notes) == 1 and "boot thread" in notes[0])
-        c = argparse.Namespace(sched_tasks=str(pp), task_root=None, role=[], check_stack=[])
+        pr = Path(td, "rust.json")
+        pr.write_text(json.dumps({"sched_task_key": "zephyr", "reserves_task_memory": True,
+                                  "boot_task": 0, "sched_tasks": [
+            {"name": "boot", "stack_bytes": None, "reserved_stack_bytes": None},
+            {"name": "fast", "stack_bytes": 8192, "reserved_stack_bytes": 8192},
+            {"name": "pool", "stack_bytes": None, "reserved_stack_bytes": 0}]}))
+        z = argparse.Namespace(sched_tasks=str(pr), task_root="~level_task_entry",
+                               task_stack=16384, task_knob="CONFIG_X={bytes}", role=[],
+                               check_stack=[])
+        notes = apply_sched_tasks(z, {0: 999})
+        check("sched tasks: a Rust entry's file names its boot task, its reserved stack and "
+              "a pool-default task (the board's stated default), and outranks the image",
+              z.check_stack == ["TASK_FAST=8192", "TASK_POOL=16384"]
+              and z.role_knobs == {"TASK_FAST": "[tasks.fast.zephyr] stack_bytes = {bytes}",
+                                   "TASK_POOL": "CONFIG_X={bytes}"}
+              and len(notes) == 1 and "TASK_BOOT" in notes[0])
+        z2 = argparse.Namespace(sched_tasks=str(pr), task_root="~t", task_stack=16384,
+                                task_knob="CONFIG_X={bytes}", role=[], check_stack=[])
+        notes = apply_sched_tasks(z2, {}, rust_linked=False)
+        check("sched tasks: a file that reserves stacks the image does not link falls back to "
+              "the board's default for every task",
+              z2.check_stack == ["TASK_FAST=8192", "TASK_POOL=16384"]
+              and "links none" in notes[0])
+        c = argparse.Namespace(sched_tasks=str(pr), task_root=None, role=[], check_stack=[])
         check("sched tasks: no trampoline stated, nothing checked, and said so",
               "not checked" in apply_sched_tasks(c)[0] and c.role == [])
         pp.write_text(json.dumps({"sched_tasks": [{"name": "default", "stack_bytes": None}]}))
@@ -4770,6 +4839,8 @@ def self_test() -> int:
     go = Graph(frames={"a": 8}, functions={"a"})
     check("roots: an absent `?root` is dropped, a present one kept",
           expand_roots(go, "?a,?b") == ["a"])
+    check("roots: an optional `?~text` root matches by substring like `~text`",
+          expand_roots(go, "?zz,?~a") == ["a"] and expand_roots(go, "?a,?~zz") == ["a"])
     try:
         expand_roots(go, "?b,?c")
         ok = False

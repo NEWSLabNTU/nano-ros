@@ -6159,6 +6159,14 @@ fn generate_entry(
         crate::builder::west_app::write(west, &dir)
             .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
     }
+    // Issue 2784 -- the sched tasks and their stacks, for the stack-floor
+    // check's per-task roles (the C/C++ road reads `nros_priority_plan.json`).
+    crate::cmd::stack_floor::write_sched_tasks(
+        &dir,
+        plan_rtos,
+        &plan.board,
+        plan.resolved_sched_tasks.as_ref(),
+    )?;
 
     Ok(GeneratedEntry { dir: Some(dir) })
 }

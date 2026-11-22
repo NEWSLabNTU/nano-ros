@@ -111,3 +111,34 @@ Open:
 - **Rooting each task at its own callbacks, after issue 2658.** It is feasible:
   each `__nros_entry_setup_sched_task_<i>` loads only its task's callbacks.
   But the floor is dominated by type-bound internal calls every task shares.
+
+## Progress (2026-11-22): Rust entries, and NuttX
+
+- **One rule for a Rust entry's reserved stacks.** It is
+  `BoardFamily::rust_entry_task_stacks` in `nros-entry-lower`: `nros::main!`
+  reserves exactly these (`__NROS_SCHED_TASK_MEMORY_<i>`), and `nros build`
+  writes them, with each task's authored `stack_bytes` and the family's boot
+  task, to the generated entry's `nros-sched-tasks.json`.
+- **The cargo road's walk takes that file.** The board states a `TASK` row
+  (root + default) on the stated channel:
+  - FreeRTOS: `~sched_task_entry`, `app_stack_bytes`.
+  - NuttX: `~nuttx_level_trampoline`, `NUTTX_SCHED_TASK_STACK_DEFAULT_BYTES`.
+    That value now lives in `nros-board-common`, which both the runner and the
+    statement read.
+- **The Zephyr check reads the file of a Rust west application.** Its default
+  is `CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE`, which the configure reads and
+  the cargo lane cannot.
+- **When the image links no reservation** (a `board = X` image, which
+  `nros::main!` gives no task memory), every task takes the board's default.
+
+Measured, realtime-rust:
+
+- `[image.freertos_realtime]`: TASK_HIGH holds 162,824 B on its reserved
+  262,144 B. TASK_LOW is the boot task.
+- `[image.nuttx]`: TASK_HIGH's 65,536 B is below its 96,208 B UPPER BOUND, a
+  warning with no size given. TASK_LOW is the boot task.
+
+No in-tree ARM Zephyr Rust image has sched tasks, so the Zephyr Rust wiring is
+covered by the walker's self-test only. Left open: ThreadX (after issue 2732),
+the C runners' own fallback stacks where no entry memory is reserved, and
+rooting each task at its own callbacks (after issue 2658).

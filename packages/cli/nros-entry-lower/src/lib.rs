@@ -467,6 +467,28 @@ impl SchedTaskMemory {
     }
 }
 
+impl BoardFamily {
+    /// The stack of each sched task a RUST entry (`nros::main!`) reserves as an
+    /// entry-owned static, in sched-task order: `Some(bytes)` for a spawned
+    /// task (`0` = the port's default, which gets no static: Zephyr's pool
+    /// slot, sized by a Kconfig knob the cargo lane cannot read), `None` for the
+    /// boot task, which runs on the caller's. `None` overall for a family whose
+    /// Rust runner takes no entry memory.
+    ///
+    /// The ONE rule: `nros::main!` reserves exactly these, and `nros build`
+    /// states them to the stack-floor check (issue 2784), so the check and the
+    /// reservation cannot disagree.
+    pub fn rust_entry_task_stacks(
+        &self,
+        declared: &[Option<u64>],
+    ) -> Option<alloc::vec::Vec<Option<u64>>> {
+        if !matches!(self, BoardFamily::Freertos | BoardFamily::Zephyr) {
+            return None;
+        }
+        Some(self.c_abi_runners()?.sched_task_memory?.stacks(declared))
+    }
+}
+
 impl CAbiRunners {
     /// Whether a sched-task entry must emit the sched tasks' executor storage for its
     /// runner — `run_sched_tasks` exists and takes it. The one reading both entry
@@ -972,6 +994,28 @@ mod tests {
         assert_eq!(
             first.stacks(&[None, Some(8_192)]),
             alloc::vec![None, Some(8_192)]
+        );
+    }
+
+    /// Issue 2784 -- the stacks a Rust entry reserves: FreeRTOS and Zephyr
+    /// take entry memory (Zephyr's undeclared row is the pool default, 0), and
+    /// a family whose Rust runner takes none states nothing.
+    #[test]
+    fn rust_entry_task_stacks_follow_the_reservation() {
+        assert_eq!(
+            BoardFamily::Freertos.rust_entry_task_stacks(&[Some(65_536), None]),
+            Some(alloc::vec![Some(65_536), None])
+        );
+        assert_eq!(
+            BoardFamily::Zephyr.rust_entry_task_stacks(&[None, None]),
+            Some(alloc::vec![None, Some(0)]),
+            "Zephyr boots the FIRST sched task; an undeclared one is the pool's"
+        );
+        assert!(
+            BoardFamily::ALL
+                .iter()
+                .filter(|f| !matches!(f, BoardFamily::Freertos | BoardFamily::Zephyr))
+                .all(|f| f.rust_entry_task_stacks(&[Some(1), None]).is_none())
         );
     }
 

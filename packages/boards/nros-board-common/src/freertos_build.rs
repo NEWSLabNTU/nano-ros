@@ -537,12 +537,26 @@ pub fn run_overlay(overlay: &Overlay<'_>) {
     // instance per board and runtime shape, hence the `~` root.
     crate::stack_stated::emit(
         &env.out_dir,
-        &[crate::stack_stated::Stated {
-            role: "OPEN",
-            root: "~app_task_entry_",
-            bytes: sched.app_stack_bytes,
-            knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
-        }],
+        &[
+            crate::stack_stated::Stated {
+                role: "OPEN",
+                root: "~app_task_entry_",
+                bytes: sched.app_stack_bytes,
+                knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
+            },
+            // Issue 2784 -- each spawned sched task enters at the board's
+            // `sched_task_entry` (a generic Rust function), and one the entry
+            // reserves no memory for gets `app_stack_bytes`
+            // (`spawn_next_sched_task`'s `app_stack_default_words`). A task the
+            // entry DID reserve runs on that reservation, which the entry's
+            // own file states; this row is the default and the root.
+            crate::stack_stated::Stated {
+                role: "TASK",
+                root: "~sched_task_entry",
+                bytes: sched.app_stack_bytes,
+                knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
+            },
+        ],
     );
     glue.file(emit_app_config_tu(
         &env.out_dir,

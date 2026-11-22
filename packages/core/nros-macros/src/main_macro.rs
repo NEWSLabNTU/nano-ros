@@ -4842,7 +4842,6 @@ fn sched_task_memory_tokens(
         BoardFamily::Zephyr => quote! { 0 },
         _ => return None,
     };
-    let mem = family.c_abi_runners()?.sched_task_memory?;
     let declared: Vec<Option<u64>> = table
         .sched_tasks
         .iter()
@@ -4850,8 +4849,13 @@ fn sched_task_memory_tokens(
         .collect();
     // Spawn order: every sched task but the boot one. A 0-byte row is "the port's
     // default" (Zephyr's pool slot, sized by a Kconfig knob the cargo lane
-    // cannot read — issue 0460), so it gets NO static and a NONE row.
-    let stacks: Vec<u64> = mem.stacks(&declared).into_iter().flatten().collect();
+    // cannot read — issue 0460), so it gets NO static and a NONE row. The same
+    // call states these to the stack-floor check (issue 2784).
+    let stacks: Vec<u64> = family
+        .rust_entry_task_stacks(&declared)?
+        .into_iter()
+        .flatten()
+        .collect();
     let n = stacks.len();
     let mut statics = Vec::new();
     let mut rows = Vec::new();
