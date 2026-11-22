@@ -1,12 +1,13 @@
 ---
 id: 2860
 title: "The ThreadX byte-pool messages name `[image.<id>.knobs.threadx] byte_pool_bytes`, which `nros build` refuses for a threadx-linux image"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [build, memory, threadx, ux]
 related: [2732, 2624]
 found: 2026-11-23
+resolved: 2026-11-23
 ---
 
 ## What
@@ -43,3 +44,19 @@ own defect, issue 2859).
 A threadx-linux image accepts `[image.<id>.knobs.threadx] byte_pool_bytes`,
 or every message names a spelling that board accepts. A test states the knob
 for one image of each ThreadX board.
+
+## Resolved (2026-11-23)
+
+The ownership check compared owner words to the image's platform word as
+the board spells it. A platform package's owner word is its CANONICAL name
+(`names[0]`), and `threadx-linux` / `threadx-riscv64` are aliases of
+`nros_platform_threadx`, whose owner word is `threadx`. `linked_owners` now
+also links the canonical name of the platform descriptor that answers to the
+image's platform word, read from the platforms tree (`declared_names`), on
+both callers (`nros build` and the leaf road). A test covers both aliases and
+that another platform's word stays unlinked.
+
+Measured: realtime-rust `[image.threadx]` (threadx-linux) with
+`[image.threadx.knobs.threadx] byte_pool_bytes = 900000` now builds, with a
+916,640-byte pool (900,000 plus the port's 16,640-byte raise). It was
+refused before.
