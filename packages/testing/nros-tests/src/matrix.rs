@@ -1303,6 +1303,10 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("fixture_source_coverage", NonCell::Static),
     ("freertos_firmware_entry", NonCell::CompileCheck),
     (
+        "freertos_libc_clock",
+        NonCell::Probe("the FreeRTOS libc clock shims answer from the clock symbols"),
+    ),
+    (
         "freertos_run_plan_runtime",
         NonCell::Secondary(
             "FreertosMps2/Rust/Zenoh/Pubsub/Example (same talker image) — answered by rtos_e2e",

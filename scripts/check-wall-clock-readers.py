@@ -41,6 +41,8 @@ from comments import lang_for, strip_comments  # noqa: E402
 WALL_CLOCK_READERS = {
     "packages/api/nros-c/src/platform.rs":
         "the C surface's RCL_SYSTEM_TIME reading, a wall-time API",
+    "packages/boards/nros-board-freertos/c/freertos_c_entry.c":
+        "newlib's _gettimeofday and libstdc++'s system_clock::now, wall-time APIs (issue 2691)",
     "packages/core/nros-core/src/clock.rs":
         "Clock::system(), a wall-time API",
     "packages/core/nros-node/src/executor/types.rs":
@@ -49,6 +51,8 @@ WALL_CLOCK_READERS = {
         "the PlatformTime forwarder and export macro, the seam itself",
     "packages/platform/nros-platform-cffi/tests/c_stub_platform.rs":
         "exercises every ABI symbol once",
+    "packages/platform/nros-platform-freertos/src/cyclonedds_compat.c":
+        "clock_gettime(CLOCK_REALTIME), a wall-time API (issue 2691)",
     "packages/platform/nros-platform-mps2-an385/src/lib.rs":
         "its host test asserts the wall clock reads 0 (no RTC)",
     "packages/platform/nros-platform-stm32f4/src/lib.rs":

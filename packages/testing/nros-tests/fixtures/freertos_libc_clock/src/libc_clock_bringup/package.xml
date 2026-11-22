@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>libc_clock_bringup</name>
+  <version>0.1.0</version>
+  <description>What the FreeRTOS libc clock probe runs on: the board, the RMW and the image.</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>libc_clock</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

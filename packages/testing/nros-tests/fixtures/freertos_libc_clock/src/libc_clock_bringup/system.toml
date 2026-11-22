@@ -1,0 +1,26 @@
+# phase-582 W2 (RFC-0141 D6, issue 2691) -- the libc clock probe on FreeRTOS
+# mps2-an385: an owned entry, the probe program `libc_clock`. Read by
+# `tests/freertos_libc_clock.rs`.
+
+[system]
+name = "libc_clock"
+rmw = "zenoh"
+domain_id = 0
+
+[image.mps2-an385-freertos]
+board = "mps2-an385-freertos"
+entry = "libc_clock"
+# The probe opens no session; the entry still bakes a locator.
+locator = "tcp/10.0.2.2:7447"
+# RFC-0103 D10 -- this image's address on QEMU's network.
+os_config = ["board-net.toml"]
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"
+
+# No census: the probe's `main` is the test, creates no ROS entity and never
+# opens a session, so a host census run records nothing. The image builds
+# without census sizing; its pools stay at their defaults, more than a
+# program with no entities uses.
+[census]
+on_missing = "warn"

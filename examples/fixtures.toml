@@ -4819,6 +4819,20 @@ bringup = "src/two_prog_bringup"
 image = "threadx-linux"
 build_subdir = "build/threadx-linux-zenoh-two_prog_bringup/cmake"
 
+# phase-582 W2 (RFC-0141 D6, issue 2691) -- the libc clock probe: what
+# gettimeofday, clock_gettime, time() and the libstdc++ clocks answer on
+# FreeRTOS mps2-an385, unsynced and with a stub board clock. An owned entry
+# that opens no session. Consumed by tests/freertos_libc_clock.rs.
+[[workspace_fixture]]
+id = "freertos-cpp-zenoh-libc-clock"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/freertos_libc_clock"
+bringup = "src/libc_clock_bringup"
+image = "mps2-an385-freertos"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-libc_clock_bringup/cmake"
+
 [[workspace_fixture]]
 id = "threadx-linux-cpp-zenoh-talker"
 platform = "threadx-linux"
