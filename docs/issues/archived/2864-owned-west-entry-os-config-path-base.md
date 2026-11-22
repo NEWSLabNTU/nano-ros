@@ -1,12 +1,14 @@
 ---
 id: 2864
 title: "A Zephyr image's os_config entries resolve from two different bases: .conf/.overlay from the west application first, the board network file from the bringup"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [cli, zephyr, docs]
 related: [issue-0892, rfc-0085, rfc-0109]
 found: 2026-11-23
+resolved: 2026-11-23
+resolved_in: "fix/west-entry-and-run-gaps"
 ---
 Found by a downstream safety-island port, whose bringup comment says its
 `os_config` paths "resolve from the west application's directory"; seen on
@@ -43,3 +45,13 @@ the entry's copy and it builds with the bringup's. In the port, the three
 paths are `../../controller_bringup/...`, which reach the same directory from
 `src/test_bringup/unit_test` and from `src/asi_tests/asi_unit_test_zephyr`, so
 it cannot tell which base it got.
+
+## Resolution
+
+By design (RFC-0085 D5 for fragments, RFC-0109 D6 for the network file), so
+nothing is refused: a same-named fragment at a higher rung is a board's or an
+application's override. Documented side by side in
+`book/src/reference/system-toml.md` ("Where `os_config` files are found"),
+which the Zephyr west-app guide's Configure section links. `nros build` now prints the rung each fragment
+came from (`ZephyrOverlays::fragment_origins`); test
+`builder::zephyr::tests::each_fragment_reports_the_rung_it_was_found_in`.

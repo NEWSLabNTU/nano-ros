@@ -73,6 +73,34 @@ pub struct ZephyrOverlays {
     pub build_type: Option<String>,
     /// Whether `--sysbuild` is passed, from `sysbuild.conf`'s presence.
     pub sysbuild: bool,
+    /// Issue 2864 -- where each of the image's own `os_config` fragments was
+    /// found: `(name as written, path, rung)`, in order. For the build's
+    /// report only; the rung is one of [`FragmentRung`].
+    pub fragment_origins: Vec<(String, PathBuf, FragmentRung)>,
+}
+
+/// Issue 2864 -- which place an `os_config` fragment was found in
+/// ([`resolve_fragment`]'s search order, RFC-0085 D5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FragmentRung {
+    /// `<bringup>/boards/<board>/`.
+    BoardConfig,
+    /// The west application's directory.
+    Application,
+    /// The bringup (`system.toml`'s directory).
+    Bringup,
+}
+
+impl FragmentRung {
+    /// The words the build's report uses.
+    #[must_use]
+    pub fn describe(self) -> &'static str {
+        match self {
+            FragmentRung::BoardConfig => "the bringup's board config directory",
+            FragmentRung::Application => "the west application",
+            FragmentRung::Bringup => "the bringup",
+        }
+    }
 }
 
 impl ZephyrOverlays {
@@ -144,7 +172,9 @@ pub fn resolve_in(
     // The image's own fragments (F3: per-image, not per-board — rt-eval builds
     // one app on one board twice, differing only here).
     for name in &image.os_fragments() {
-        let path = resolve_fragment(bringup_dir, app_dir, &config_dir, name)?;
+        let (path, rung) = resolve_fragment(bringup_dir, app_dir, &config_dir, name)?;
+        out.fragment_origins
+            .push((name.clone(), path.clone(), rung));
         if is_devicetree(&path) {
             out.extra_dtc_overlay_file.push(path);
         } else {
@@ -161,26 +191,28 @@ fn resolve_fragment(
     app_dir: Option<&Path>,
     config_dir: &Path,
     name: &str,
-) -> Result<PathBuf, String> {
+) -> Result<(PathBuf, FragmentRung), String> {
     // Board config dir, then the application (where a Zephyr app keeps its own
     // `prj-*.conf`), then the bringup. The application rung is the one issue
     // 0892 needed: west is pointed at the entry package, and its fragments live
-    // there.
-    let mut candidates = vec![config_dir.join(name)];
+    // there. A higher rung overriding a lower one is the point (a board's or
+    // an application's own copy of a shared fragment), so it is never refused;
+    // the build reports which rung each fragment came from (issue 2864).
+    let mut candidates = vec![(config_dir.join(name), FragmentRung::BoardConfig)];
     if let Some(app) = app_dir {
-        candidates.push(app.join(name));
+        candidates.push((app.join(name), FragmentRung::Application));
     }
-    candidates.push(bringup_dir.join(name));
-    for c in &candidates {
+    candidates.push((bringup_dir.join(name), FragmentRung::Bringup));
+    for (c, rung) in &candidates {
         if c.is_file() {
-            return Ok(c.clone());
+            return Ok((c.clone(), *rung));
         }
     }
     Err(format!(
         "conf fragment `{name}` not found. Looked in:\n{}",
         candidates
             .iter()
-            .map(|c| format!("  {}", c.display()))
+            .map(|(c, _)| format!("  {}", c.display()))
             .collect::<Vec<_>>()
             .join("\n")
     ))
@@ -707,6 +739,43 @@ mod tests {
         )
         .expect("resolves");
         assert_eq!(o.extra_conf_file, vec![board_dir.join("prj-zenoh.conf")]);
+    }
+
+    /// Issue 2864 -- by design, not refused: an owned entry's copy of a
+    /// fragment overrides the bringup's (RFC-0085 D5), and the build says
+    /// which rung each fragment came from. Deleting the application's copy
+    /// falls back to the bringup's.
+    #[test]
+    fn each_fragment_reports_the_rung_it_was_found_in() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path().join("src/demo_bringup");
+        let app = tmp.path().join("src/zephyr_entry");
+        touch(&bringup.join("prj-x.conf"));
+        touch(&app.join("prj-x.conf"));
+        touch(&bringup.join("prj-y.conf"));
+        let img = image(&["prj-x.conf", "prj-y.conf"]);
+
+        let o = resolve_in(&bringup, Some(&app), "native_sim/native/64", &img).expect("resolves");
+        assert_eq!(
+            o.fragment_origins,
+            vec![
+                (
+                    "prj-x.conf".to_string(),
+                    app.join("prj-x.conf"),
+                    FragmentRung::Application
+                ),
+                (
+                    "prj-y.conf".to_string(),
+                    bringup.join("prj-y.conf"),
+                    FragmentRung::Bringup
+                ),
+            ]
+        );
+
+        std::fs::remove_file(app.join("prj-x.conf")).unwrap();
+        let o = resolve_in(&bringup, Some(&app), "native_sim/native/64", &img).expect("resolves");
+        assert_eq!(o.fragment_origins[0].2, FragmentRung::Bringup);
+        assert_eq!(o.extra_conf_file[0], bringup.join("prj-x.conf"));
     }
 
     #[test]

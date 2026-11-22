@@ -2861,6 +2861,16 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &image,
                 )
                 .map_err(|e| eyre::eyre!("{e}"))?;
+                // Issue 2864 -- where each `os_config` fragment was found:
+                // an application's or board's copy of a shared fragment
+                // overrides the bringup's, so say which one this build reads.
+                for (name, path, rung) in &overlays.fragment_origins {
+                    eprintln!(
+                        "nros build:   os_config `{name}` from {} ({})",
+                        rung.describe(),
+                        path.display()
+                    );
+                }
                 // Issue 2679 D4 -- the image's OWN fragments, before the
                 // board's are put ahead of them: a fragment that sets a symbol
                 // the board network file renders is refused.
