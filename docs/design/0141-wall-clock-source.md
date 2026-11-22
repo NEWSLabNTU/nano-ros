@@ -148,9 +148,15 @@ inside the user's 2026-11-19 rulings, which the user may overturn):
   "none"), `sntp`, `zenoh-hlc`. POSIX: `platform` (`CLOCK_REALTIME`). FreeRTOS,
   ThreadX, NuttX: `platform` ("none"). `board` arrives with D2. Any other pair is
   refused at build time, naming the port.
-- **`platform` always answers.** It is the port's own clock, so as a fallback
-  it is the image's knowing choice of whatever that port has, "none"
-  included; `epoch_failure` applies only when no listed source answered.
+- **`platform` answers only where the port has a wall clock.** (Amended
+  2026-11-22, issue 2839; this bullet first read "`platform` always
+  answers".) On POSIX, and on FreeRTOS's POSIX port (the freertos-posix
+  board), it is the host's `CLOCK_REALTIME` and answers. On Zephyr,
+  bare-metal FreeRTOS and ThreadX there is none behind it, so it does not answer, and a
+  list ending in it reaches `epoch_failure`: the default `unstamped` runs on
+  with stamps unset and says so, and `halt` halts. When `platform` answered
+  with nothing behind it, `sntp,platform` + `halt` could never halt, and the
+  image latched "wall clock from platform" while every stamp read 0.
 - **When resolution runs.** After the image's entities are registered and
   before the executor first runs. Nothing is stamped before it, and a
   subscription already exists to deliver the HLC sample `zenoh-hlc` waits
@@ -495,6 +501,10 @@ a stub board clock (`docs/reference/source-timestamps.md`, gate
   the host's `CLOCK_REALTIME`.
 - 2026-11-22: D7 amended from W4a's measurement: Cyclone stamps host time, XRCE
   delivers no source stamp; the table is `docs/reference/source-timestamps.md`.
+- 2026-11-22: D1 amended (issue 2839, manager ruling): `platform` answers only
+  on a port that has a wall clock, so a list ending in it reaches
+  `epoch_failure` on Zephyr, bare-metal FreeRTOS and ThreadX, and `halt` can
+  halt (the freertos-posix board has the host's clock, so it answers there).
 - 2026-11-23: D2 amended (issue 2865): FreeRTOS resolves at an explicit boot
   point that the board entries call after network bring-up and log-writer
   registration, not lazily on the first read. Reads before it read 0 and
