@@ -3107,7 +3107,9 @@ nros_cpp_ret_t nros_cpp_install_argv_remaps(void *handle,
  * share the same session (the per-sched-task borrowed-executor model).
  *
  * The returned pointer is valid as long as the primary executor's storage
- * (`nros_cpp_init` / `out_storage`) lives. NULL is returned on null input.
+ * (`nros_cpp_init` / `out_storage`) lives. NULL is returned on null input,
+ * and for a session that may not be shared (held inline because its own
+ * allocation failed).
  *
  * # Safety
  * `executor` must be a valid pointer to a `CppContext` written by `nros_cpp_init()`.

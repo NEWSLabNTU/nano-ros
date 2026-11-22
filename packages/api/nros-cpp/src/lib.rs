@@ -7345,7 +7345,9 @@ impl core::fmt::Write for TruncatingWriter<'_> {
 /// share the same session (the per-sched-task borrowed-executor model).
 ///
 /// The returned pointer is valid as long as the primary executor's storage
-/// (`nros_cpp_init` / `out_storage`) lives. NULL is returned on null input.
+/// (`nros_cpp_init` / `out_storage`) lives. NULL is returned on null input,
+/// and for a session that may not be shared (held inline because its own
+/// allocation failed).
 ///
 /// # Safety
 /// `executor` must be a valid pointer to a `CppContext` written by `nros_cpp_init()`.
@@ -7355,7 +7357,12 @@ pub unsafe extern "C" fn nros_cpp_executor_session_handle(executor: *mut c_void)
     let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return core::ptr::null_mut();
     };
-    ctx.executor.session_handle().into_raw()
+    // Phase-573 W3 -- NULL for a session that may not be shared (held inline
+    // because its own allocation failed); `open_over_session` refuses NULL.
+    match ctx.executor.session_handle() {
+        Some(h) => h.into_raw(),
+        None => core::ptr::null_mut(),
+    }
 }
 
 /// Open a new `Borrowed` executor over a shared session.

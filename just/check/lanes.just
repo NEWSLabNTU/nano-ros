@@ -4555,6 +4555,19 @@ miri-executor-reentry:
         executor::tests::reentry 2>&1)" || rc=$?
     printf '%s\n' "$out"
     [ "$rc" -eq 0 ] || exit "$rc"
+    # Phase-573 W3 -- a borrowed executor over its owner's session.
+    rc=0
+    out2="$(MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-ignore-leaks" \
+        cargo +{{NIGHTLY}} miri test -p nros-node --lib \
+        --features alloc,log,sim-time,param-services,lifecycle-services \
+        p274_w1_sched_task_executor_tests 2>&1)" || rc=$?
+    printf '%s\n' "$out2"
+    [ "$rc" -eq 0 ] || exit "$rc"
+    case "$out2" in
+        *"test result: ok. 0 passed;"*|*"running 0 tests"*)
+            echo "miri-executor-reentry: the session filter matched no test." >&2
+            exit 1 ;;
+    esac
     # A filter that matches nothing exits 0 (see `node-std-tests`).
     case "$out" in
         *"test result: ok. 0 passed;"*|*"running 0 tests"*)
