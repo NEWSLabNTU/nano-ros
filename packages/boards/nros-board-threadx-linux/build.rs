@@ -113,7 +113,7 @@ fn main() {
     // being clever about it.
     nsos.link_lib_modifier("+whole-archive");
     nros_cc_flags::header_deps::track_header_deps(&mut nsos);
-    nsos.compile("nsos_netx");
+    nros_cc_flags::compile_commands::compile(&mut nsos, "nsos_netx");
 
     // ---- Build C glue (board-specific weak-hook impls + shared threadx_hooks) ----
     let mut glue = cc::Build::new();
@@ -161,7 +161,7 @@ fn main() {
     // without adding the modifier reintroduced the defect (issue 0582).
     glue.link_lib_modifier("+whole-archive");
     nros_cc_flags::header_deps::track_header_deps(&mut glue);
-    glue.compile("glue");
+    nros_cc_flags::compile_commands::compile(&mut glue, "glue");
 
     // issue 1580 — the rebuild edge for both archives: every file the
     // compiler opened (nsos_netx.c + its headers, board_threadx_linux.c,

@@ -628,6 +628,18 @@ path-env-fingerprints:
 cc-header-deps:
     @python3 scripts/check/check-cc-header-deps.py
 
+# issue 2658 — the TYPES side of the same compiles. The stack-floor walk types
+# each indirect call in an image's C from clang's IR of the same TU, built from
+# the build's compile commands; cargo writes none, so a bare cc-rs `.compile(`
+# left its C untyped and every indirect call in it bound to everything C can
+# hold (zenoh-pico alone was 18-21 % of realtime-c's walk).
+# `nros_cc_flags::compile_commands::compile` writes each compile's
+# `compile_commands.json`; this refuses a bare one, by file:line. Self-testing,
+# and fails if it matches nothing.
+[private]
+cc-compile-commands:
+    @python3 scripts/check/check-cc-compile-commands.py
+
 # issue 1280 — the OTHER thing a path-valued variable does wrong. 0491 is about
 # how its SPELLING is fingerprinted; this is about the spelling being right at
 # all. Every such variable resolves ENV-FIRST, and a linked git worktree

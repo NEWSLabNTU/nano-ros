@@ -102,7 +102,7 @@ pub fn compile_c_stub(
         apply_baremetal_libc(&mut build);
     }
     nros_cc_flags::header_deps::track_header_deps(&mut build);
-    build.compile(lib_name);
+    nros_cc_flags::compile_commands::compile(&mut build, lib_name);
     // issue 1580 — the stub's headers, not only the stub itself.
     nros_cc_flags::header_deps::emit_header_deps(&std::path::PathBuf::from(
         env::var("OUT_DIR").expect("OUT_DIR"),

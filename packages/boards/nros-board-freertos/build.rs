@@ -325,7 +325,7 @@ fn main() {
     // through neither shared helper, so the policy has to be named here.
     nros_cc_flags::gcc_safe_frame_pointer(&mut freertos);
     nros_cc_flags::header_deps::track_header_deps(&mut freertos);
-    freertos.compile("freertos");
+    nros_cc_flags::compile_commands::compile(&mut freertos, "freertos");
 
     // --- Build lwIP ---
     let mut lwip = cc::Build::new();
@@ -380,7 +380,7 @@ fn main() {
     // through neither shared helper, so the policy has to be named here.
     nros_cc_flags::gcc_safe_frame_pointer(&mut lwip);
     nros_cc_flags::header_deps::track_header_deps(&mut lwip);
-    lwip.compile("lwip");
+    nros_cc_flags::compile_commands::compile(&mut lwip, "lwip");
 
     // --- Build nros-platform-freertos C port ---
     // First-party sibling C source/headers. Resolved through the shared
@@ -429,7 +429,7 @@ fn main() {
     // through neither shared helper, so the policy has to be named here.
     nros_cc_flags::gcc_safe_frame_pointer(&mut platform);
     nros_cc_flags::header_deps::track_header_deps(&mut platform);
-    platform.compile("nros_platform_freertos");
+    nros_cc_flags::compile_commands::compile(&mut platform, "nros_platform_freertos");
 
     // --- Generic glue (freertos_hooks + network_glue + freertos_run_sched_tasks) ---
     // `c/freertos_hooks.c` provides the FreeRTOS task hooks +
@@ -463,7 +463,7 @@ fn main() {
     // through neither shared helper, so the policy has to be named here.
     nros_cc_flags::gcc_safe_frame_pointer(&mut glue);
     nros_cc_flags::header_deps::track_header_deps(&mut glue);
-    glue.compile("freertos_glue");
+    nros_cc_flags::compile_commands::compile(&mut glue, "freertos_glue");
 
     // issue 1580 — the rebuild edge for all four archives above: every file
     // the compiler OPENED (sources, FreeRTOSConfig.h / lwipopts.h /

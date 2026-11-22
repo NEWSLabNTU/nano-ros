@@ -427,7 +427,7 @@ fn main() {
 
     let archive_stem = "nros_rmw_xrce_c_inline";
     nros_cc_flags::header_deps::track_header_deps(&mut build);
-    build.compile(archive_stem);
+    let archive_dir = nros_cc_flags::compile_commands::compile(&mut build, archive_stem);
 
     // phase-420 W9 step 4 — SAY WHERE THE ARCHIVE IS, in the one place a
     // consumer reaching `OUT_DIR` can read it.
@@ -442,7 +442,7 @@ fn main() {
     //
     // A `#`-commented `key=value` file, the same dependency-free shape as
     // `xrce-sources.txt` / `xrce-config.txt`, so the reader needs no parser.
-    let archive = out_dir.join(format!("lib{archive_stem}.a"));
+    let archive = archive_dir.join(format!("lib{archive_stem}.a"));
     assert!(
         archive.is_file(),
         "nros-rmw-xrce-cffi: cc-rs did not leave `{}` where this script expects it. \
@@ -522,7 +522,7 @@ fn main() {
         }
         nros_cc_flags::header_deps::track_header_deps(&mut posix_build);
         // platform-port-provider-exempt: the SAME `nros-platform-posix` sources nros-platform-cffi's `posix-c-port` compiles, in a demand-driven (not whole-archive) archive — identical symbol sets, so a second member is never pulled (issue 1779: only a whole-archive or different port collides)
-        posix_build.compile("nros_platform_posix_link");
+        nros_cc_flags::compile_commands::compile(&mut posix_build, "nros_platform_posix_link");
         println!("cargo:rerun-if-changed={}", posix_src.display());
     }
     // issue 1580 — declare every file the compiles above OPENED (the `-MMD`

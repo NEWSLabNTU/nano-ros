@@ -106,7 +106,7 @@ pub fn run_platform() {
     platform.include(nuttx_dir.join("sched"));
     platform.file(platform_src.join("platform.c"));
     platform.file(platform_src.join("net.c"));
-    platform.compile("nros_platform_nuttx");
+    nros_cc_flags::compile_commands::compile(&mut platform, "nros_platform_nuttx");
     nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
         &env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"),
     ));
@@ -119,9 +119,8 @@ pub fn run_platform() {
     // libzpico_sys) can still follow it. What resolves them is
     // `+whole-archive`, which pulls the whole port (platform.c + net.c) at that
     // point, so the order no longer matters (RFC-0042 D3). cc's auto
-    // search-path is suppressed too, so re-emit OUT_DIR as the search dir.
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts");
-    println!("cargo:rustc-link-search=native={out_dir}");
+    // search-path is suppressed too; `compile_commands::compile` emits the
+    // search for the archive's own directory.
     println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_platform_nuttx");
     println!("cargo:rerun-if-changed={}", platform_src.display());
     // issue 0491 — `NUTTX_DIR` names a DIRECTORY, and cargo compares an env
@@ -205,13 +204,11 @@ pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
     for src in seam_srcs {
         seam.file(src);
     }
-    seam.compile("nros_nuttx_run_sched_tasks");
+    nros_cc_flags::compile_commands::compile(&mut seam, "nros_nuttx_run_sched_tasks");
     nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
         &env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"),
     ));
 
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts");
-    println!("cargo:rustc-link-search=native={out_dir}");
     println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_nuttx_run_sched_tasks");
     for src in seam_srcs {
         println!("cargo:rerun-if-changed={}", src.display());

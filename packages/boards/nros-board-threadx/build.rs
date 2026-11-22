@@ -265,7 +265,7 @@ fn main() {
         kernel.link_lib_modifier("+whole-archive");
     }
     nros_cc_flags::header_deps::track_header_deps(&mut kernel);
-    kernel.compile("threadx_kernel");
+    nros_cc_flags::compile_commands::compile(&mut kernel, "threadx_kernel");
 
     // ---- Build nros-platform-threadx C port ----
     // Needs threadx + netx includes. NETX_DIR is required because
@@ -318,7 +318,7 @@ fn main() {
     // modifiers from command line is not supported").
     platform.link_lib_modifier("+whole-archive");
     nros_cc_flags::header_deps::track_header_deps(&mut platform);
-    platform.compile("nros_platform_threadx");
+    nros_cc_flags::compile_commands::compile(&mut platform, "nros_platform_threadx");
 
     // issue 1580 — the rebuild edge for BOTH archives: every file the compiler
     // opened (the kernel + port sources, tx_user.h / nx_user.h from the config
