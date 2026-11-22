@@ -46,6 +46,7 @@
 - packages/cli/nros-cli-core/src/alloc_scan.rs
 - packages/cli/nros-cli-core/src/builder/dist.rs
 - packages/cli/nros-cli-core/src/builder/knob_roads.rs
+- packages/cli/nros-cli-core/src/builder/link_explain.rs
 - packages/cli/nros-cli-core/src/cmd/board_evidence.rs
 - packages/cli/nros-cli-core/src/cmd/code_verb.rs
 - packages/cli/nros-cli-core/src/cmd/completions.rs
