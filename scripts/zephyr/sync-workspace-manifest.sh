@@ -157,8 +157,8 @@ fi
 [ -z "$backup" ] || rm -f "$backup"
 echo "[zephyr setup] workspace updated to $manifest"
 
-# The update moved the projects, so whatever patch set the record names is no
-# longer what the tree carries. The helper drops the record first: if the set
-# fails, the workspace reads as unpatched, which it is.
+# The update moved the projects and reset the patch set's edits, so the set
+# runs again. If it fails, the tree lacks those edits, and the pin-drift
+# probe's check mode names the first one missing.
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/zephyr-patchset.sh"
 nros_zephyr_apply_patchset "$checkout" "$ws" sync-workspace-manifest || exit 1

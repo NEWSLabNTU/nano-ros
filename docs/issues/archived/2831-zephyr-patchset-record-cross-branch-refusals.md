@@ -1,12 +1,14 @@
 ---
 id: 2831
 title: "The Zephyr patch-set record refuses unrelated lanes and flips between branches sharing a workspace"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, build, tooling, ci]
-related: [issue-2764, issue-2697]
+related: [issue-2764, issue-2697, issue-2867]
 found: 2026-11-22
+resolved: 2026-11-23
+resolved_in: "the change that archives this issue"
 ---
 
 ## What
@@ -87,7 +89,7 @@ line:
   check mode is refused UNRUN, because that script would write to a shared
   workspace. The record's reader is removed. The record itself is still
   written but no longer a verdict; retiring it is a follow-up with the sync
-  tests that manage it.
+  tests that manage it. (Done; see "The record, retired" below.)
 - New gate `just check zephyr-patch-check-mode`: every script a set runs calls
   the helper.
 
@@ -112,7 +114,23 @@ Negative controls:
 - The real probe on host 139's two store workspaces left their `git diff`
   hashes unchanged. Both lack #4524's CTF `app_marker` edit, which is correct.
 
-Found on the way, not fixed here:
+The record, retired (follow-up, 2026-11-23):
+- `scripts/lib/zephyr-patchset.sh` loses the record's three functions
+  (`nros_zephyr_patchset_stamp`, `_digest`, `_record`), and
+  `nros_zephyr_apply_patchset` no longer deletes it before running a set.
+- `patches/3.7.sh` and `patches/4.4.sh` record nothing as their last step;
+  check mode still ends by saying every edit is present.
+- `tests/zephyr-sync-workspace-manifest-tests.sh` row 11 no longer plants or
+  asserts the file. It still asserts that the set runs once after an update,
+  and not after a failed one. 27/27.
+- The patches README, the sync script, and `check-west-update-patchset`'s
+  docstring, remedy and `just` comment no longer describe a record.
+- No gate expected it: `check-zephyr-pin-drift --self-test`,
+  `check-west-update-patchset --self-test`/run and
+  `check-zephyr-patch-check-mode` are green. A workspace provisioned earlier
+  may still hold `.west/nros-patchset`. Nothing reads it.
+
+Found on the way, not fixed here (filed as issue 2867):
 - `nsos-adapt-ipproto-ip-patch.sh` (3.7) can never write. Its guard
   `grep -q "case NSOS_MID_IPPROTO_IP"` also matches `..._IPV6:`, which is in
   its own anchor, and stock 3.7 already carries the case. It is dead code.

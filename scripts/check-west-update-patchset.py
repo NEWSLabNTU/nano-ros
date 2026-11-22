@@ -10,12 +10,11 @@ re-apply:
 
 - the manifest sync relied on its caller;
 - `scripts/zephyr/setup.sh`, which documents itself as runnable on its own,
-  applied two of the set's ~20 patches by name and recorded nothing.
+  applied two of the set's ~20 patches by name.
 
 The rule: a shell script, `just` file or workflow whose CODE runs `west update`
 must also call `nros_zephyr_apply_patchset` (scripts/lib/zephyr-patchset.sh),
-the one helper that drops the stale record, runs the set and lets it record
-itself. Comments and echoed text are not code. `tests/` is out of scope: a
+the one helper that reads the workspace's line and runs that line's set. Comments and echoed text are not code. `tests/` is out of scope: a
 test stubs west and drives the scripts under test, which this gate covers.
 
 Run:  python3 scripts/check-west-update-patchset.py [--self-test]
@@ -114,8 +113,8 @@ def main() -> int:
         for path, lines in offenders:
             print(f"  {path}: line(s) {', '.join(map(str, lines))}")
         print(f"  After the update, call `{HELPER} <checkout> <workspace> <who> || exit 1`\n"
-              "  (scripts/lib/zephyr-patchset.sh). It drops the stale record, runs\n"
-              "  scripts/zephyr/patches/<line>.sh and lets it record itself. Without it\n"
+              "  (scripts/lib/zephyr-patchset.sh). It reads the workspace's line and runs\n"
+              "  scripts/zephyr/patches/<line>.sh. Without it\n"
               "  the workspace reads like any other until a configure fails.")
         return 1
     print(f"check-west-update-patchset: OK — {writers} script(s) run `west update`, "

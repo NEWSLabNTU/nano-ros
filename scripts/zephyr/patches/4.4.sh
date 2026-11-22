@@ -79,16 +79,10 @@ echo "[zephyr setup] 4.4 line: applying cargo-features patch (idempotent)..."
 bash ./scripts/zephyr/cargo-features-patch.sh "$WORKSPACE"
 echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped (Tasks 4-9)"
 
-# Issue 2764 -- record that this set ran, LAST, so a set that failed part-way
-# records nothing. `check-zephyr-pin-drift.py` reads the record and names a
-# workspace that lacks it before a build fails at configure.
-# shellcheck source=scripts/lib/zephyr-patchset.sh
 # Issue 2831 — under `NROS_PATCH_CHECK=1` every script above only ASKS whether
 # its edit is present (exiting 1, naming it, at the first that is not), so a
-# run that gets here means every edit is in the tree. A check writes nothing,
-# so it records nothing either.
+# run that gets here means every edit is in the tree. That check is how a
+# workspace is judged now; the set records nothing.
 if nros_patch_checking; then
     echo "[patches/4.4] every edit of the 4.4 patch set is present in $WORKSPACE"
-    exit 0
 fi
-nros_zephyr_patchset_record "$WORKSPACE" "$REPO_ROOT" 4.4

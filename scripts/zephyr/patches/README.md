@@ -36,10 +36,11 @@ The recipe runs `bash scripts/zephyr/patches/${NROS_ZEPHYR_VERSION}.sh
   (issue 2831), and `check-zephyr-patch-check-mode` refuses a set that names a
   script without the call. A set's non-edit steps are skipped under
   `nros_patch_checking`.
-- The set's LAST step, outside check mode, is `nros_zephyr_patchset_record`,
-  which notes in `<ws>/.west/nros-patchset` that this set ran. Nothing reads it
-  as a verdict any more. `sync-workspace-manifest.sh` re-runs the set after
-  every `west update`, because the update resets the set's edits.
+- The set records nothing: whether a workspace carries it is asked of the
+  tree, in check mode. (A `<ws>/.west/nros-patchset` file in an older
+  workspace is the retired record; nothing reads it.)
+  `sync-workspace-manifest.sh` re-runs the set after every `west update`,
+  because the update resets the set's edits.
 - `zephyr/` is a **hard** requirement: a patch whose Zephyr target file is
   missing exits non-zero. `modules/lang/rust` is **optional** — a C/C++-only
   workspace has no zephyr-lang-rust (book: `zephyr-west-app.md`), and

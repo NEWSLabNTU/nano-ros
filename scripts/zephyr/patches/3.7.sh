@@ -103,16 +103,10 @@ cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
 echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."
 cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh
 
-# Issue 2764 -- record that this set ran, LAST, so a set that failed part-way
-# records nothing. `check-zephyr-pin-drift.py` reads the record and names a
-# workspace that lacks it before a build fails at configure.
-# shellcheck source=scripts/lib/zephyr-patchset.sh
 # Issue 2831 — under `NROS_PATCH_CHECK=1` every script above only ASKS whether
 # its edit is present (exiting 1, naming it, at the first that is not), so a
-# run that gets here means every edit is in the tree. A check writes nothing,
-# so it records nothing either.
+# run that gets here means every edit is in the tree. That check is how a
+# workspace is judged now; the set records nothing.
 if nros_patch_checking; then
     echo "[patches/3.7] every edit of the 3.7 patch set is present in $WORKSPACE"
-    exit 0
 fi
-nros_zephyr_patchset_record "$WORKSPACE" "$REPO_ROOT" 3.7
