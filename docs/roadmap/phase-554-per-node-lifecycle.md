@@ -426,8 +426,10 @@ written by hand.
 Status: OPEN.
 
 **The cells** are `interop::CELLS` rows, zenoh first and then every RMW the
-interop matrix carries. The C row needs a C lifecycle example first
-([issue 2828](../issues/2828-c-lifecycle-ros2-interop-cell.md)). Each runs the same `ros2 lifecycle` commands against
+interop matrix carries. The C zenoh row is `native-lifecycle-c-zenoh`, on
+`examples/linux/c/lifecycle-node`
+([issue 2828](../issues/archived/2828-c-lifecycle-ros2-interop-cell.md)); its
+Cyclone row is still to add. Each runs the same `ros2 lifecycle` commands against
 stock rclcpp's demo `lifecycle_talker` on the host and against the image, and
 compares:
 
