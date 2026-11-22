@@ -191,6 +191,10 @@ nros_prune_cargo_intermediates() {
     local cmake_dir="$1" tree d
     [ "${NROS_FIXTURE_KEEP_CARGO:-0}" = 1 ] && return 0
     [ -n "$cmake_dir" ] && [ -d "$cmake_dir/cargo" ] || return 0
+    # A shared cargo group (`nros_share_corrosion_cargo_dir` makes `cargo` a
+    # symlink into it) holds sibling leaves' trees, some mid-compile in a
+    # parallel unit: never prune one.
+    [ -L "$cmake_dir/cargo" ] && return 0
     for tree in "$cmake_dir"/cargo/*/; do
         [ -d "$tree" ] || continue
         for d in "$tree"nros-*/deps "$tree"nros-*/build "$tree"nros-*/incremental \
