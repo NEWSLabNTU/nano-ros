@@ -1,0 +1,1 @@
+A Rust Zephyr image that serves the parameter services and runs no lifecycle node gets the same 112 KiB heap default as a C or C++ one, instead of 192 KiB. A Rust action server built from the template links on nucleo_f767zi again. State `[image.<id>.knobs.memory] heap_bytes` to keep the larger heap.
