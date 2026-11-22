@@ -141,10 +141,17 @@ As built:
   executor, a cast of a stored pointer to the C executor header, and a read of
   `in_dispatch` are each allowed only in a listed function, with its reason.
   Every spelling counts, and a stale entry fails. It covers 66 sites. Putting
-  back the timer casts fails it, naming both lines. One flag reader stays
-  outside the refusals and is listed by issue: C++ `wait_for_service`
-  sleep-polls inside a callback while holding the executor's lock
-  ([issue 2843](../issues/2843-cpp-blocking-call-sleep-polls-in-callback.md)).
+  back the timer casts fails it, naming both lines. Nothing reads
+  `in_dispatch` outside the refusals.
+- **C++ `wait_for_service` slept holding the executor's lock.** Inside a
+  callback it sleep-polls (issue 2055), and it held the lock for the whole
+  wait, so no other thread could enter the executor until it timed out. It now
+  drops the lock across each sleep
+  ([issue 2843](../issues/archived/2843-cpp-blocking-call-sleep-polls-in-callback.md)).
+  The test drives the C++ API over a stub backend with the lock installed,
+  and it fails on the code before the fix (the second thread waited 553 ms).
+  Whether C should sleep-poll too, where it refuses today, is
+  [issue 2848](../issues/2848-c-wait-for-service-in-callback-parity.md).
 - **The header class has no Miri case.** A C call that reborrows the executor
   header while `rclc_executor_spin_some` is mid-pass cannot run under Miri:
   nros-c's executor init reaches platform C symbols Miri cannot call. The
