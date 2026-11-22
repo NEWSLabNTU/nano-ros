@@ -397,7 +397,8 @@ lane name *args:
 # phase-543 — is every gate's verdict independent of the order gates run in?
 # Runs one tier of this machine's lane twice, tests started in opposite name
 # orders, and compares each test's verdict. Two runs of the tier, so it is on
-# no lane: run it on demand (`just check gate-order [fast|build]`).
+# no lane: run it on demand (`just check gate-order [fast|build|gate|all]`;
+# `NROS_GATE_SCOPE=ci just check gate-order all` is `just ci gate`'s shape).
 [positional-arguments]
 gate-order tier="fast":
     @bash scripts/check/check-gate-order.sh "$1"

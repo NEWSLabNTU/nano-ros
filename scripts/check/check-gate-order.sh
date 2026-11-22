@@ -20,6 +20,10 @@
 #
 #   just check gate-order            # the fast tier of this machine's lane
 #   just check gate-order build      # the build tier
+#   just check gate-order gate       # the gate tier (phase-584 W1)
+#   NROS_GATE_SCOPE=ci just check gate-order all
+#                                    # every tier the lane runs, as one run:
+#                                    # `just ci gate`'s own shape (phase-584 W4)
 #
 # The lane is the same one `just check fast` picks (scripts/build/gate-scope.sh).
 set -uo pipefail
@@ -28,7 +32,11 @@ cd "$(dirname "$0")/../.."
 . scripts/lib/grep-q.sh
 
 tier="${1:-fast}"
-case "$tier" in fast|build) ;; *) echo "check-gate-order: tier is fast or build, not \`$tier\`" >&2; exit 2 ;; esac
+case "$tier" in fast|build|gate|all) ;; *) echo "check-gate-order: tier is fast, build, gate or all, not \`$tier\`" >&2; exit 2 ;; esac
+# `all` selects nothing beyond the lane: the lane's own tiers decide, as they
+# do for `just check lane <lane>`.
+filter=()
+[ "$tier" = all ] || filter=(-E "test(/^${tier}::/)")
 lane="$(bash scripts/build/gate-scope.sh)" || exit 2
 
 manifest=packages/testing/nros-gates/Cargo.toml
@@ -105,7 +113,7 @@ for order in asc desc; do
     echo "check-gate-order: lane \`$lane\`, tier \`$tier\`, tests started in $order name order"
     rm -f "$junit"
     r=0
-    NROS_GATE_ORDER="$order" bash scripts/build/gate-lane.sh "$lane" -E "test(/^${tier}::/)" \
+    NROS_GATE_ORDER="$order" bash scripts/build/gate-lane.sh "$lane" "${filter[@]}" \
         > "$out/$order.log" 2>&1 || r=$?
     rc[$order]=$r
     if [ ! -s "$junit" ]; then
