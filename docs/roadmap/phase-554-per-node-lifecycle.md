@@ -392,7 +392,13 @@ Still open:
   several managed nodes they reach the wrong one. That is W1/W2's, not this
   item's, and the gate follows whichever machine actually transitions.
 
-Acceptance: W9's silent-until-active cell.
+Acceptance: W9's silent-until-active cell. The book's
+[Run managed nodes](../../book/src/guide/deploy/run-managed-nodes.md) page
+follows this item: "Publishers do not follow the node's state" leaves "What
+a managed node does not do yet", and the page says publishers send only
+while `active`. That is the rest of
+[issue 2428](../issues/2428-workspace-lifecycle-is-one-machine-per-image.md)
+(narrowed to this item on 2026-11-22).
 
 ### W7 — Per-node `autostart` on the first spin pass (D6)
 
