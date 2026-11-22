@@ -1,12 +1,13 @@
 ---
 id: 2801
 title: "A compile-check row is reused after an edit to the builder that compiles it, because its input signature does not hash the builder"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [ci, fixtures]
 related: []
 found: 2026-11-21
+resolved: 2026-11-23
 ---
 
 ## What happens
@@ -43,3 +44,24 @@ Fold the builder into the signature: at least the hash of
 per-builder the functions that builder runs, so that an edit to one builder
 does not re-stale the rows of every other one. Whichever is chosen, it moves
 every existing `.inputsig` once.
+
+## Fix
+
+`compile-check-signature.sh` hashes the builder: `compile-check-fixtures.sh`
+and every script it reaches by a `$repo_root/scripts/...` (or
+`$script_dir/scripts/...`) path, derived from the builder's text, so a helper
+added later is covered without a list to update. Two are left out because
+the signature already holds what they decide: `fixtures-manifest.py`, which
+produces the record hashed first, and the signature script itself. It hashes
+whole files, not one builder's functions: the builders share helpers, and an
+edit to an unrelated builder costs a re-stage, which is the safe direction.
+Every existing `.inputsig` moves once.
+
+Measured on a `cargo-check-verdict` record:
+- the signature is stable run to run;
+- an edit to `compile-check-fixtures.sh` moves it, and so does an edit to a
+  sourced helper (`cmake-cache-guard.sh`);
+- an edit to `fixtures-manifest.py` does not.
+
+Negative control: main's signature script, given the same builder edit,
+printed the same signature as before it.
