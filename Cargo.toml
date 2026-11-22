@@ -445,16 +445,12 @@ exclude = [
     "packages/testing/nros-tests/fixtures/n9_workspace",
     "packages/testing/nros-tests/fixtures/n9_workspace/src/talker_pkg",
     "packages/testing/nros-tests/fixtures/n9_workspace/src/demo_entry",
-    # Phase 228.G — multi-sched-task `nros::main!()` emit fixture (own `[workspace]`).
+    # Phase 228.G / 228.E.2 — the multi-sched-task `nros::main!()` fixtures
+    # (native, and FreeRTOS thumbv7m). Workspace-road trees with no root build
+    # file, so — as `examples/workspaces` above — ONE prefix each covers every
+    # package's walk-up, which would otherwise land here.
     "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_native",
-    "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_native/src/ctrl_pkg",
-    "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_native/src/telem_pkg",
-    "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_native/src/demo_entry",
-    # Phase 228.E.2 — multi-sched-task FreeRTOS firmware fixture (thumbv7m, own `[workspace]`).
     "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_freertos",
-    "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_freertos/src/demo_entry",
-    "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_freertos/src/ctrl_pkg",
-    "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_freertos/src/telem_pkg",
     # Phase 218 — `packages/cli/` is the merged-in nros-cli tree, a
     # SUB-WORKSPACE with its own `[workspace]` table + `Cargo.lock`.
     # Cargo's auto-discovery stops at sub-workspace boundaries, so the

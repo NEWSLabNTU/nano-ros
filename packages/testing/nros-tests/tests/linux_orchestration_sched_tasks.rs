@@ -15,14 +15,14 @@
 fn multi_sched_task_bin() -> nros_tests::TestResult<std::path::PathBuf> {
     nros_tests::fixtures::require_compile_check_bin(
         "orch_sched_tasks_multi",
-        "target/debug/demo_entry",
+        "src/demo_entry/target/debug/demo_entry",
     )
 }
 
 fn single_sched_task_bin() -> nros_tests::TestResult<std::path::PathBuf> {
     nros_tests::fixtures::require_compile_check_bin(
         "orch_sched_tasks_single",
-        "target/debug/demo_entry",
+        "src/demo_entry/target/debug/demo_entry",
     )
 }
 

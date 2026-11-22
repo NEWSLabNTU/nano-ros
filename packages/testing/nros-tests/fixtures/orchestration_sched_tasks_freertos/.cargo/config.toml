@@ -14,3 +14,12 @@ rustflags = [
 [env]
 NROS_EXECUTOR_ARENA_BYTES = "8192"
 
+
+# Cross-build hygiene: keep the host `std` default from cascading into the
+# no_std thumbv7m build. These rows lived in the fixture's root `[workspace]`
+# manifest; that manifest is gone (a root `[workspace]` keeps an image off the
+# workspace road, so the image is stated in the bringup now), and a cargo config
+# carries `[patch]` for every package cargo is run on from here.
+[patch.crates-io]
+nros-core = { path = "@NROS_REPO_DIR@/packages/core/nros-core" }
+nros-serdes = { path = "@NROS_REPO_DIR@/packages/core/nros-serdes" }

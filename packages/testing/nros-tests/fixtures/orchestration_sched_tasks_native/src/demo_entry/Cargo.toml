@@ -1,3 +1,10 @@
+# An empty `[workspace]`: this entry is its own cargo root. The fixture has no
+# root `[workspace]` (its image is stated in the bringup, the workspace road),
+# so without it cargo's walk-up from here would reach the nano-ros checkout's
+# own workspace (as `n_board_agnostic_run_plan`'s entry does). The node
+# packages are path dependencies, so they need no membership.
+[workspace]
+
 [package]
 name = "demo_entry"
 version = "0.1.0"

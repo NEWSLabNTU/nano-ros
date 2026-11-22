@@ -64,7 +64,7 @@ fn firmware() -> nros_tests::TestResult<PathBuf> {
     Ok(stamp
         .parent()
         .expect("fixture dir")
-        .join("target/thumbv7m-none-eabi/debug/demo_entry"))
+        .join("src/demo_entry/target/thumbv7m-none-eabi/debug/demo_entry"))
 }
 
 /// Resolve the prebuilt **release** firmware ELF from the staged fixture tree.
@@ -82,7 +82,7 @@ fn firmware_release() -> nros_tests::TestResult<PathBuf> {
     Ok(stamp
         .parent()
         .expect("fixture dir")
-        .join("target/thumbv7m-none-eabi/release/demo_entry"))
+        .join("src/demo_entry/target/thumbv7m-none-eabi/release/demo_entry"))
 }
 
 #[test]
