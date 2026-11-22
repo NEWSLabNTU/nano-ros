@@ -57,7 +57,7 @@ nros-core                            3   0     2       3      0
 nros-cpp                          1157  48     0     438      0
 nros-log                            24   0     7       1      0
 nros-macros                         25   0     1       4      0
-nros-node                          908  286    39     197      0
+nros-node                          912  286    39     197      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0

@@ -3324,7 +3324,9 @@ where
     //
     // SAFETY (each use): `ptr` points to a valid entry (this fn's contract);
     // a server reference ends before any callback runs, and a callback
-    // reference covers that callback's bytes alone.
+    // reference covers that callback's bytes alone. The closure's result has
+    // an unbounded lifetime, so each use stays one expression: never bind it
+    // across a callback, and never hold two at once.
     let server = move || unsafe { &mut *core::ptr::addr_of_mut!((*entry).server) };
 
     let mut did_work = false;
@@ -3347,8 +3349,9 @@ where
                 *slot = resp == nros_core::CancelResponse::Accept;
             }
         }
-        let _ = server().core.reply_cancel(&selection, &accepted);
-        did_work = true;
+        if server().core.reply_cancel(&selection, &accepted).is_ok() {
+            did_work = true;
+        }
     }
 
     // Handle new goals: decode an owned goal, ask the callback with the

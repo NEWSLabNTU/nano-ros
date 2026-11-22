@@ -21396,6 +21396,74 @@ mod reentry_typed_action_server {
             .unwrap()
     }
 
+    static FIRST: AtomicPtr<u8> = AtomicPtr::new(core::ptr::null_mut());
+    static GOALS: AtomicU32 = AtomicU32::new(0);
+
+    /// Accepts every goal; asked about the second, it first completes the
+    /// first, an unrelated active goal of the same server.
+    fn complete_the_first_on_the_second(id: &GoalUuid, _: &TestGoal) -> GoalResponse {
+        if GOALS.fetch_add(1, Ordering::SeqCst) == 1 {
+            let first = GoalUuid { uuid: [1; 16] };
+            let _ = id;
+            // SAFETY: as `complete_on_cancel`.
+            let r = unsafe {
+                as_complete_goal::<TestAction, GoalF, CancelF, GB, RB, FB, MG>(
+                    FIRST.load(Ordering::SeqCst),
+                    &first,
+                    GoalStatusCode::Succeeded,
+                    TestResult::default(),
+                )
+            };
+            assert!(
+                r.is_ok(),
+                "completing another goal from a goal callback: {r:?}"
+            );
+        }
+        GoalResponse::AcceptAndExecute
+    }
+
+    fn refuse_cancel(_: &GoalUuid, _: GoalStatusCode) -> CancelResponse {
+        CancelResponse::Reject
+    }
+
+    #[test]
+    fn a_typed_goal_callback_that_completes_another_goal_reenters_soundly() {
+        let core: ActionServerCore<GB, RB, FB, MG> = ActionServerCore::from_channels(
+            MockServiceServer::new(),
+            MockServiceServer::new(),
+            MockServiceServer::new(),
+            MockPublisher::new(),
+            MockPublisher::new(),
+        );
+        let p = Box::into_raw(Box::new(Entry {
+            server: ActionServer {
+                core,
+                typed_goals: heapless::Vec::new(),
+                completed_goals: heapless::Vec::new(),
+            },
+            goal_callback: complete_the_first_on_the_second,
+            cancel_callback: refuse_cancel,
+        })) as *mut u8;
+        FIRST.store(p, Ordering::SeqCst);
+        for b in [1u8, 2] {
+            let (mut req, _) = super::mk_send_goal_req(&GoalUuid { uuid: [b; 16] });
+            req[20..24].copy_from_slice(&5i32.to_le_bytes());
+            // SAFETY: the borrow ends at the statement.
+            unsafe {
+                (*(p as *mut Entry))
+                    .server
+                    .core
+                    .send_goal_server
+                    .load(req, 24)
+            };
+            // SAFETY: `p` is the only path to the entry.
+            assert!(unsafe { spin(p) }, "goal {b} was taken");
+        }
+        assert_eq!(GOALS.load(Ordering::SeqCst), 2);
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p as *mut Entry) });
+    }
+
     #[test]
     fn a_typed_cancel_callback_that_completes_its_goal_reenters_soundly() {
         let core: ActionServerCore<GB, RB, FB, MG> = ActionServerCore::from_channels(
