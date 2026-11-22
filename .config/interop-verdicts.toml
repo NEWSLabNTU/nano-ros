@@ -335,12 +335,12 @@ evidence = "3 of 3 consecutive runs passed against an rclpy node declaring what 
 
 [[verdict]]
 cell = "native-ros2-cli-parity-params-rust-zenoh"
-date = "2026-11-18"
+date = "2026-11-22"
 verdict = "pass"
-tests = ["declared_parameters_answer_ros2_param_as_stock_does", "first_node_serves_the_six_parameter_services_as_stock_does", "each_node_of_a_two_node_image_serves_the_parameter_services_as_stock_does", "second_node_as_parameter_events_publisher_compared_with_stock", "use_sim_time_answers_ros2_param_as_stock_does", "get_parameters_reply_for_an_undeclared_name_answers_as_stock_does", "describe_parameters_reply_for_an_undeclared_name_answers_as_stock_does", "delete_of_a_statically_typed_parameter_is_refused_as_stock_does", "off_step_set_is_refused_as_stock_does"]
+tests = ["declared_parameters_answer_ros2_param_as_stock_does", "first_node_serves_the_six_parameter_services_as_stock_does", "each_node_of_a_two_node_image_serves_the_parameter_services_as_stock_does", "each_node_of_a_two_node_image_publishes_parameter_events_as_stock_does", "use_sim_time_answers_ros2_param_as_stock_does", "get_parameters_reply_for_an_undeclared_name_answers_as_stock_does", "describe_parameters_reply_for_an_undeclared_name_answers_as_stock_does", "delete_of_a_statically_typed_parameter_is_refused_as_stock_does", "off_step_set_is_refused_as_stock_does"]
 run = "just linux test-ros2-cli-parity"
-where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp), w12-undeclared-replies branch on origin/main"
-evidence = "3 of 3 consecutive runs passed against an rclpy node (fixtures/ros2-param-peer); two of the nine cases hold a measured gap in expected-failure form (use_sim_time, the second node as a /parameter_events publisher); the undeclared-name replies and the delete and off-step refusal reasons are plain checks since the parameter services answer as stock does"
+where = "host ROS 2 Humble (rmw_zenoh_cpp), fix-runtime-bug-batch branch on origin/main"
+evidence = "3 of 3 consecutive runs of the whole file passed every listed case against an rclpy node (fixtures/ros2-param-peer). The second node as a /parameter_events publisher is a plain check now that every node has its own writer (issue 2493); on main the same assertion fails, listing /alpha only"
 
 [[verdict]]
 cell = "native-ros2-cli-parity-pubsub-rust-zenoh"

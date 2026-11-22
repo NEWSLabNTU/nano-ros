@@ -9217,10 +9217,11 @@ structure:
         // share is what the stock set pays beyond the parameter family's.
         let none = knobs(&infra_model(""));
         let stock = knobs(&infra_model("rosout"));
-        // The fixture model has two nodes, so two writers.
+        // The fixture model has two nodes, so two writers of each (issue
+        // 2493: `/parameter_events` too is one writer per node).
         assert_eq!(
             stock.max_publishers - none.max_publishers,
-            PARAM_EVENT_PUBLISHERS + 2 * ROSOUT_PUBLISHERS
+            2 * PARAM_EVENT_PUBLISHERS + 2 * ROSOUT_PUBLISHERS
         );
         assert_eq!(
             stock.max_queryables - none.max_queryables,
@@ -9310,7 +9311,7 @@ structure:
         assert_eq!(
             clock.max_liveliness - none.max_liveliness,
             PARAM_SERVICE_QUERYABLES * params.param_service_nodes
-                + PARAM_EVENT_PUBLISHERS
+                + PARAM_EVENT_PUBLISHERS * params.param_service_nodes
                 + 2 * ROSOUT_PUBLISHERS
                 + CLOCK_SUBSCRIPTIONS
         );
