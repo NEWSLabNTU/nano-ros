@@ -36,10 +36,7 @@ fn cmake_workspace_metadata_emits_components_cmake() -> nros_tests::TestResult<(
         // `nros build` writes the cmake root under `build/<coord>/cmake`, and
         // `nros-metadata.json` lands in that binary dir (phase-445 W5 removed
         // the template's own root, which used to put it at the fixture root).
-        nros_tests::fixtures::require_cmake_fixture(
-            "metadata_cpp",
-            "build/posix-zenoh-linux-demo_bringup-linux/cmake/nros-metadata.json",
-        )?;
+        nros_tests::fixtures::require_cmake_fixture_output("metadata_cpp")?;
     assert!(
         metadata.is_file(),
         "expected {} to be emitted by the §212.L cmake fns",
