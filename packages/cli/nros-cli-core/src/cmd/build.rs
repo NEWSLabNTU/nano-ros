@@ -3124,7 +3124,16 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // so without this every image built against it aborted at
                 // Kconfig on `undefined symbol NROS`.
                 if let Some(nr) = nano_ros_root.as_deref() {
-                    resolved_opt.push(crate::builder::zephyr::module_arg(nr));
+                    // Issue 2861 -- an OWNED entry's own workspace modules ride
+                    // the same `-D`; a generated app appends its set from its
+                    // CMakeLists. One derivation: `owned_entry_zephyr_modules`.
+                    let owned_modules = if image.entry.is_some() && generated.dir.is_none() {
+                        owned_entry_zephyr_modules(&root, &app)
+                            .map_err(|e| eyre::eyre!("`{qual}`: {e}"))?
+                    } else {
+                        Vec::new()
+                    };
+                    resolved_opt.push(crate::builder::zephyr::image_module_arg(nr, &owned_modules));
                     // Issue 1998 -- and the root the generated app's
                     // `find_package(nano_ros)` imports. The cmake roads pass it
                     // (issue 1304); without it a west configure died with
@@ -6914,6 +6923,28 @@ fn deploy_names_target(tokens: &[String], board: &str, platform: &str) -> bool {
     tokens
         .iter()
         .any(|t| t.is_empty() || t == board || t == platform || family.is_some_and(|f| t == f))
+}
+
+/// Issue 2861 -- the Zephyr modules of an OWNED west entry: the workspace
+/// packages its `package.xml` reaches through `<depend>` ([`package_closure`],
+/// the generated app's closure, issue 2594) that carry `zephyr/module.yml`
+/// ([`crate::builder::west_app::zephyr_module_dirs`], the ONE module-set
+/// computation). The entry itself is the application, never a module of it.
+fn owned_entry_zephyr_modules(root: &Path, app: &Path) -> Result<Vec<PathBuf>, String> {
+    let found = crate::builder::discover::discover(root, &[])?;
+    let app_phys = std::fs::canonicalize(app).unwrap_or_else(|_| app.to_path_buf());
+    let Some(entry) = found
+        .packages
+        .iter()
+        .find(|p| std::fs::canonicalize(&p.dir).unwrap_or_else(|_| p.dir.clone()) == app_phys)
+    else {
+        return Ok(Vec::new());
+    };
+    let closure: Vec<(String, PathBuf)> = package_closure(root, [entry.name.as_str()])?
+        .into_iter()
+        .filter(|(n, _)| n != &entry.name)
+        .collect();
+    crate::builder::west_app::zephyr_module_dirs(&closure)
 }
 
 /// The workspace packages an image is built from: the packages its launch plan
@@ -15114,10 +15145,11 @@ mod workspace_edition_tests {
 #[cfg(test)]
 mod package_closure_tests {
     use super::{
-        CoordinateMember, StaleModel, bringup_closure_dirs, cmake_root_excluded, package_closure,
+        CoordinateMember, StaleModel, bringup_closure_dirs, cmake_root_excluded,
+        owned_entry_zephyr_modules, package_closure,
     };
     use crate::orchestration::image::ImageBlock;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     fn pkg(root: &Path, name: &str, depends: &[&str], files: &[(&str, &str)]) {
         let dir = root.join("src").join(name);
@@ -15184,6 +15216,90 @@ mod package_closure_tests {
         for (n, d) in &got {
             assert_eq!(d, &root.join("src").join(n));
         }
+    }
+
+    /// Issue 2861 -- ONE module set, two carriers. For the same package set,
+    /// the module list a GENERATED west app appends from its CMakeLists
+    /// (`west_app::resolve_cmake`, relative to the app) and the
+    /// `-DZEPHYR_EXTRA_MODULES` an OWNED entry gets on the west line name the
+    /// same directories. On main the owned line named nano-ros alone.
+    #[test]
+    fn an_owned_west_entry_gets_the_module_set_a_generated_app_gets() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        let cmake = [("CMakeLists.txt", "")];
+        let module = |name: &str| format!("name: {name}\nbuild:\n  kconfig: zephyr/Kconfig\n");
+        // The owned entry depends on the node package the generated app would
+        // launch; the closure below it is the same either way.
+        pkg(root, "zephyr_entry", &["talker_pkg"], &cmake);
+        pkg(root, "talker_pkg", &["support_pkg", "std_msgs"], &cmake);
+        pkg(
+            root,
+            "support_pkg",
+            &["kconfig_pkg"],
+            &[
+                ("CMakeLists.txt", ""),
+                ("zephyr/module.yml", &module("support_pkg")),
+            ],
+        );
+        pkg(
+            root,
+            "kconfig_pkg",
+            &[],
+            &[("zephyr/module.yml", &module("kconfig_pkg"))],
+        );
+        pkg(
+            root,
+            "unrelated_mod",
+            &[],
+            &[("zephyr/module.yml", &module("unrelated_mod"))],
+        );
+
+        let phys = |p: &Path| std::fs::canonicalize(p).unwrap();
+        // The generated app's block.
+        let nodes = package_closure(root, ["talker_pkg"]).expect("closure");
+        let entry_dir = root.join("build/zephyr-zenoh/demo__zephyr_entry");
+        std::fs::create_dir_all(&entry_dir).unwrap();
+        let app = crate::builder::west_app::resolve_cmake(
+            root,
+            &entry_dir,
+            &root.join("src/demo_bringup"),
+            "zephyr",
+            None,
+            &std::collections::BTreeMap::new(),
+            None,
+            "zephyr",
+            &nodes,
+        )
+        .expect("resolves");
+        let mut generated: Vec<PathBuf> = app
+            .cmake
+            .as_ref()
+            .unwrap()
+            .zephyr_modules
+            .iter()
+            .map(|rel| phys(&entry_dir.join(rel)))
+            .collect();
+        generated.sort();
+
+        // The owned entry's west line.
+        let nr = root.join("nano-ros");
+        std::fs::create_dir_all(&nr).unwrap();
+        let owned = owned_entry_zephyr_modules(root, &root.join("src/zephyr_entry")).unwrap();
+        let arg = crate::builder::zephyr::image_module_arg(&nr, &owned);
+        let value = arg.strip_prefix("-DZEPHYR_EXTRA_MODULES=").expect("the -D");
+        let mut on_line: Vec<PathBuf> = value.split(';').map(PathBuf::from).collect();
+        assert_eq!(on_line.remove(0), phys(&nr), "nano-ros first: {arg}");
+        on_line.sort();
+
+        assert_eq!(
+            generated,
+            [
+                phys(&root.join("src/kconfig_pkg")),
+                phys(&root.join("src/support_pkg"))
+            ]
+        );
+        assert_eq!(on_line, generated, "one module set for both carriers");
     }
 
     /// Issue 2756 -- the closure is in BUILD order, not name order: a launched

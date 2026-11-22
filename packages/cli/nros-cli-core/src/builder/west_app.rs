@@ -605,6 +605,29 @@ fn is_cargo_node(dir: &Path) -> bool {
     dir.join("Cargo.toml").is_file()
 }
 
+/// The workspace packages of `nodes` (an image's package closure, as
+/// `cmd::build::package_closure` gives it) that are Zephyr modules: each
+/// carries a `zephyr/module.yml`. Issue 2594 (phase-478 I11).
+///
+/// Issue 2861 -- the ONE computation of an image's module set. A generated
+/// application appends these to the `ZEPHYR_EXTRA_MODULES` cache entry from
+/// its own CMakeLists ([`render_cmakelists`]); an OWNED west entry's
+/// CMakeLists is the user's, so `nros build` passes the same set on the west
+/// line instead (`zephyr::module_arg`). Two carriers, one derivation.
+///
+/// # Errors
+///
+/// A `module.yml` that does not parse, naming the file.
+pub fn zephyr_module_dirs(nodes: &[(String, PathBuf)]) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    for (_, dir) in nodes {
+        if ZephyrModule::read(dir)?.is_some() {
+            out.push(dir.clone());
+        }
+    }
+    Ok(out)
+}
+
 /// Derive the C/C++ west-application facts for one image.
 ///
 /// `nodes` is the launch closure in BUILD order (`package_closure`: every
@@ -657,10 +680,12 @@ pub fn resolve_cmake(
         cargo_nodes.push(n.cmake_args(&format!("${{CMAKE_CURRENT_SOURCE_DIR}}/{rel}")));
         rust_node_dirs.push(rel);
     }
+    for dir in zephyr_module_dirs(nodes)? {
+        zephyr_modules.push(relative_or_err(entry_dir, &dir)?);
+    }
     for (name, dir) in nodes {
         let module = ZephyrModule::read(dir)?;
         if let Some(m) = &module {
-            zephyr_modules.push(relative_or_err(entry_dir, dir)?);
             if m.builds_package_cmake(dir) {
                 // Zephyr already runs this CMakeLists as the module's own;
                 // adding it again would define every target twice.

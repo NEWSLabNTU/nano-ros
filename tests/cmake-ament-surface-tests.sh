@@ -55,6 +55,8 @@
 #      sets `NROS_MEMORY_APP_STACK_BYTES` (issue 2070).
 #  14. `nano_ros_add_plain_executable` is the builtin `add_executable` on a
 #      board too: a helper that is not an image (issue 2678).
+#  15. in a configure that states its Zephyr image, an entry in a SUBDIRECTORY
+#      of the application with no DEPLOY is refused (issue 2861).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
@@ -568,6 +570,29 @@ out="$(cmake -S "$d" -B "$d/b" 2>&1)" || true
 expect "14. a plain executable with no sources is refused by name" \
     "nano_ros_add_plain_executable(nothing) names no sources" "$out"
 
-fi  # have_cli (case 14)
+# 15. issue 2861 -- in a configure that states its Zephyr image, only the
+#     application's OWN CMakeLists deploys to it by default. The same call in a
+#     subdirectory of the application, with no DEPLOY, is refused by name
+#     rather than falling through to the host deploy (an `int main(int,
+#     char**)` program that fails at link).
+d="$WORK/sub-entry"; mkdir -p "$d/sub"; : > "$d/sub/a.c"
+cat > "$d/CMakeLists.txt" <<CML
+cmake_minimum_required(VERSION 3.22)
+project(subentry C)
+set(ZEPHYR_BASE "$d/no-zephyr")
+add_library(app INTERFACE)
+set(APPLICATION_SOURCE_DIR "\${CMAKE_CURRENT_SOURCE_DIR}")
+set(NROS_IMAGE_SYSTEM_DIR "$d/bringup")
+set(NROS_IMAGE zephyr)
+include("$ROOT/cmake/NanoRosVerbs.cmake")
+add_subdirectory(sub)
+CML
+echo 'nano_ros_add_executable(talker a.c)' > "$d/sub/CMakeLists.txt"
+out="$(cmake -S "$d" -B "$d/b" 2>&1 | tr -s ' \n' '  ')" || true
+expect "15. an entry in a subdirectory of the Zephyr application is refused" \
+    "this is a subdirectory of the Zephyr application" "$out"
+expect "15. ...naming both remedies" "or state DEPLOY zephyr" "$out"
+
+fi  # have_cli (cases 14-15)
 
 [ "$fail" -eq 0 ] && echo "cmake-ament-surface: OK" || { echo "cmake-ament-surface: FAILED"; exit 1; }
