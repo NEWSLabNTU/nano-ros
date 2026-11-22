@@ -283,6 +283,24 @@ sntp_attempts = 3
 server = "127.0.0.1:12398"
 timeout_ms = 400
 
+# issue 2839: `sntp,platform` + `epoch_failure = "halt"` against a loopback
+# port with no server. Zephyr's `platform` has no wall clock and does not
+# answer, so the image halts at boot. `tests/zephyr_clock_resolve.rs`.
+[image.zephyr_talker_clock_halt]
+board = "zephyr"
+launch = "talker.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/127.0.0.1:7400"
+
+[image.zephyr_talker_clock_halt.knobs.clock]
+source = "sntp,platform"
+sntp_attempts = 1
+epoch_failure = "halt"
+
+[image.zephyr_talker_clock_halt.knobs.sntp]
+server = "127.0.0.1:12396"
+timeout_ms = 500
+
 [image.zephyr_talker_xrce]
 board = "zephyr"
 launch = "talker.launch.xml"

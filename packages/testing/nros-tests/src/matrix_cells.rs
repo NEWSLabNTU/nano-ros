@@ -193,6 +193,11 @@ const CELLS_GENERATED: &[Cell] = &[
     // exchange at boot, so the step never reaches the stamps. The
     // `zephyr_talker_clock_sntp_once` image.
     cell(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockSntpOnce]),
+    // issue 2839 -- `sntp,platform` with `epoch_failure = halt` and no SNTP
+    // server: Zephyr's `platform` has no wall clock and does not answer, so the
+    // image halts at boot naming the sources. The `zephyr_talker_clock_halt`
+    // image; `tests/zephyr_clock_resolve.rs` runs it.
+    cell(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockHalt]),
     cell(ZephyrNativeSim, C, Zenoh, Action, Example, Runtime),
     cell(ZephyrNativeSim, Cpp, Zenoh, Action, Example, Runtime),
     cell(ZephyrNativeSim, Rust, Cyclonedds, Pubsub, Example, Runtime),

@@ -1331,8 +1331,10 @@ config NROS_CLOCK_EPOCH_FAILURE
     help
       What the image does when every source in clock.source has been tried and
       none answered. `unstamped` boots on: the platform reports no wall clock and
-      messages carry boot-relative stamps, knowingly. `halt` stops at boot, for an
-      image whose peers refuse a stamp that is not absolute.
+      every stamp reads 0, ROS's "unset" time, knowingly. `halt` stops at boot,
+      for an image whose peers refuse a stamp that is not absolute. A list ending
+      in `platform` reaches this policy on a port with no clock of its own
+      (Zephyr, FreeRTOS, ThreadX), because `platform` does not answer there.
 
 
 # prompt: How long boot waits for each wall-clock source (ms)
@@ -1423,7 +1425,10 @@ config NROS_CLOCK_SOURCE
       fallback tried at boot, comma-separated (sntp,platform). The first source
       that answers is latched.
 
-        platform   the platform's own clock (an RTC, or a host's clock)
+        platform   the platform's own clock (an RTC, or a host's clock). It
+                   answers only on a port that has one (a POSIX host); on
+                   Zephyr, FreeRTOS and ThreadX it never answers, so a list
+                   that ends in it falls through to clock.epoch_failure
         sntp       an SNTP query to sntp.server
         zenoh-hlc  the timestamps on zenoh samples the image receives
         board      a source the board package provides

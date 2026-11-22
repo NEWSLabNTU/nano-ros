@@ -17,7 +17,7 @@
 //! - a native talker publishing through the router: the listener latches the
 //!   HLC (the router stamps the unstamped sample), after the talker started
 //!   and before the settle time ran out;
-//! - no publisher: the listener falls back to the platform, and not before
+//! - no publisher: nothing answers (Zephyr's `platform` has no clock, issue 2839), and not before
 //!   the settle time was spent;
 //! - the SNTP talker: nothing publishes before the resolution, its first
 //!   publish comes a timer period after it rather than at once, and the
@@ -36,7 +36,7 @@ use nros_tests::{
     fixtures::{RequireFixture, ZenohRouter, build_native_talker, workspace_image::PairRole},
     matrix::{Config, Lang, PlatformId, Rmw},
     output::{
-        CLOCK_FROM_PREFIX, CLOCK_RESOLUTION_TOOK_PREFIX, LISTENER_LOG_PREFIX,
+        CLOCK_FROM_PREFIX, CLOCK_NONE_PREFIX, CLOCK_RESOLUTION_TOOK_PREFIX, LISTENER_LOG_PREFIX,
         LISTENER_READY_MARKER, TALKER_LOG_PREFIX, clock_latched_source, clock_resolution_ms,
     },
     process::ManagedProcess,
@@ -176,11 +176,18 @@ fn zephyr_clock_falls_back_after_the_settle_time_when_no_sample_comes() {
             .expect("failed to start the native_sim listener");
     let out = zephyr.wait_for_pattern(CLOCK_RESOLUTION_TOOK_PREFIX, WAIT);
     let (source, took) = resolution(&out);
+    // Zephyr's `platform` has no clock behind it, so it does not answer
+    // either (issue 2839): the list reaches `epoch_failure`, whose default
+    // runs on unstamped and says so.
     assert_eq!(
-        source.as_deref(),
-        Some("platform"),
-        "with no publisher the listener must fall back to the platform \
-         (`{CLOCK_FROM_PREFIX}platform`). Output:\n{out}"
+        source, None,
+        "with no publisher nothing answers: Zephyr's `platform` has no wall clock, so it \
+         must not latch (`{CLOCK_FROM_PREFIX}platform`). Output:\n{out}"
+    );
+    assert!(
+        out.contains(CLOCK_NONE_PREFIX) && out.contains("stamps are unset"),
+        "the resolver must say no source answered and stamps are unset \
+         (`{CLOCK_NONE_PREFIX}`). Output:\n{out}"
     );
     assert!(
         took >= SETTLE_MS,
@@ -207,9 +214,13 @@ fn zephyr_clock_wait_is_not_replayed_by_the_timers() {
     let resolved_at = Instant::now();
     let (source, took) = resolution(&out);
     assert_eq!(
-        source.as_deref(),
-        Some("platform"),
-        "an SNTP server that never answers must fall back to the platform. Output:\n{out}"
+        source, None,
+        "an SNTP server that never answers, then a `platform` with no wall clock: nothing \
+         may latch (issue 2839). Output:\n{out}"
+    );
+    assert!(
+        out.contains(CLOCK_NONE_PREFIX),
+        "the resolver must say no source answered (`{CLOCK_NONE_PREFIX}`). Output:\n{out}"
     );
     // The case means something only if boot really waited. A host with no
     // route answers the SNTP send at once (ENETUNREACH) and spends nothing.
@@ -488,11 +499,49 @@ fn zephyr_sntp_without_resync_ignores_a_step_of_the_server_time() {
     drop(router);
 }
 
+/// Issue 2839 — on a port with no wall clock a list ending in `platform`
+/// reaches `epoch_failure`, so `halt` halts. The image names a loopback port
+/// with no server behind it, so the one SNTP attempt fails fast, and then
+/// `platform`, with no clock on Zephyr, does not answer either.
+#[test]
+fn zephyr_clock_halt_stops_when_no_source_answers() {
+    let bin = image(Config::ClockHalt, PairRole::Talker);
+    let router = nros_tests::fixtures::or_unmet(ZenohRouter::start_unique());
+    let mut zephyr =
+        ZephyrProcess::start_with_locator(&bin, ZephyrPlatform::NativeSim, &router.locator())
+            .expect("failed to start the native_sim talker");
+    let out = zephyr.wait_for_pattern("halting, as clock.epoch_failure = halt asks", WAIT);
+    assert!(
+        out.contains(CLOCK_NONE_PREFIX)
+            && out.contains("halting, as clock.epoch_failure = halt asks"),
+        "with no SNTP server and no platform clock, `halt` must stop the image naming the \
+         sources. Output:\n{out}"
+    );
+    assert!(
+        !out.contains(CLOCK_FROM_PREFIX),
+        "nothing may latch: Zephyr's `platform` has no wall clock. Output:\n{out}"
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while zephyr.is_running() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let after = snapshot(&zephyr);
+    assert!(
+        !zephyr.is_running(),
+        "the image printed its halt and kept running. Output:\n{after}"
+    );
+    assert!(
+        !after.contains(TALKER_LOG_PREFIX),
+        "a halted image published. Output:\n{after}"
+    );
+    drop(router);
+}
+
 /// RFC-0051 §7a/§7c — this file answers the configured cells
 /// `(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example) + [ClockHlc]` (the latch
 /// and the fallback), `+ [ClockSntp]` (the timers), and
 /// `+ [ClockSntpResync]` / `+ [ClockSntpOnce]` (the re-query and its
-/// absence). Fixture-free.
+/// absence), and `+ [ClockHalt]` (halt when nothing answers). Fixture-free.
 #[test]
 fn cases_bound_to_matrix_cells() {
     use nros_tests::matrix::{
@@ -507,6 +556,7 @@ fn cases_bound_to_matrix_cells() {
             (PAIR, &[Config::ClockSntp]),
             (PAIR, &[Config::ClockSntpResync]),
             (PAIR, &[Config::ClockSntpOnce]),
+            (PAIR, &[Config::ClockHalt]),
         ],
     );
 }

@@ -512,7 +512,7 @@ static void nros_zephyr_heap_peak_look(struct k_work* work) {
     } else if (peak != s_heap_peak_printed && ++s_heap_peak_stable >= HEAP_PEAK_STABLE_LOOKS) {
         const size_t capacity = nros_zephyr_heap_capacity();
         printk("nros: heap peak %zu of %zu bytes (%zu free at the peak) "
-               "- raise with [image.<id>.knobs.zephyr] heap_size\n",
+               "- raise with [image.<id>.knobs.memory] heap_bytes\n",
                peak, capacity, capacity > peak ? capacity - peak : 0);
         s_heap_peak_printed = peak;
     }

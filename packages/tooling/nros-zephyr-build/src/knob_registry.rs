@@ -72,7 +72,7 @@ pub const KNOBS: &[KnobRow] = &[
         class: crate::KnobClass::Public,
         carries: None,
         prompt: Some("What boot does when no wall-clock source answers"),
-        help: Some("What the image does when every source in clock.source has been tried and\nnone answered. `unstamped` boots on: the platform reports no wall clock and\nmessages carry boot-relative stamps, knowingly. `halt` stops at boot, for an\nimage whose peers refuse a stamp that is not absolute."),
+        help: Some("What the image does when every source in clock.source has been tried and\nnone answered. `unstamped` boots on: the platform reports no wall clock and\nevery stamp reads 0, ROS's \"unset\" time, knowingly. `halt` stops at boot,\nfor an image whose peers refuse a stamp that is not absolute. A list ending\nin `platform` reaches this policy on a port with no clock of its own\n(Zephyr, FreeRTOS, ThreadX), because `platform` does not answer there."),
         default: crate::KnobDefault::Kconfig(&[
             crate::KconfigDefault { value: "\"unstamped\"", when: None },
         ]),
@@ -230,7 +230,7 @@ pub const KNOBS: &[KnobRow] = &[
         class: crate::KnobClass::Public,
         carries: None,
         prompt: Some("Wall-clock source, or an ordered fallback list"),
-        help: Some("Where the image takes its wall-clock epoch from: one source, or an ordered\nfallback tried at boot, comma-separated (sntp,platform). The first source\nthat answers is latched.\n\n  platform   the platform's own clock (an RTC, or a host's clock)\n  sntp       an SNTP query to sntp.server\n  zenoh-hlc  the timestamps on zenoh samples the image receives\n  board      a source the board package provides\n\nIt is resolved once at boot, after every component has registered and\nbefore anything spins, so no message is stamped before it; see\nclock.fallback_settle_ms for what the wait costs."),
+        help: Some("Where the image takes its wall-clock epoch from: one source, or an ordered\nfallback tried at boot, comma-separated (sntp,platform). The first source\nthat answers is latched.\n\n  platform   the platform's own clock (an RTC, or a host's clock). It\n             answers only on a port that has one (a POSIX host); on\n             Zephyr, FreeRTOS and ThreadX it never answers, so a list\n             that ends in it falls through to clock.epoch_failure\n  sntp       an SNTP query to sntp.server\n  zenoh-hlc  the timestamps on zenoh samples the image receives\n  board      a source the board package provides\n\nIt is resolved once at boot, after every component has registered and\nbefore anything spins, so no message is stamped before it; see\nclock.fallback_settle_ms for what the wait costs."),
         default: crate::KnobDefault::Kconfig(&[
             crate::KconfigDefault { value: "\"platform\"", when: None },
         ]),

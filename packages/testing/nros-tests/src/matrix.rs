@@ -759,6 +759,12 @@ pub enum Config {
     /// fixed instant: `Clock::system()` and the source stamps follow it
     /// (phase-582 W1d, RFC-0141 D2).
     ClockBoard,
+    /// `source = "sntp,platform"` with `epoch_failure = "halt"` and no SNTP
+    /// server: Zephyr's `platform` has no wall clock and does not answer, so
+    /// the image HALTS at boot with the resolver's message instead of running
+    /// unstamped (issue 2839). Before, `platform` always answered, and `halt`
+    /// could never fire on a list that ended in it.
+    ClockHalt,
 }
 
 impl Config {
@@ -777,6 +783,7 @@ impl Config {
             Config::ClockSntpResync => "clock-sntp-resync",
             Config::ClockSntpOnce => "clock-sntp-once",
             Config::ClockBoard => "clock-board",
+            Config::ClockHalt => "clock-halt",
         }
     }
 }
@@ -1660,7 +1667,8 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
                 [Config::ClockHlc]
                 | [Config::ClockSntp]
                 | [Config::ClockSntpResync]
-                | [Config::ClockSntpOnce],
+                | [Config::ClockSntpOnce]
+                | [Config::ClockHalt],
             ) => Some(ZephyrClockResolve),
             (P::Linux, [Config::ClockBoard]) => Some(LinuxBoardClock),
             _ => None,
