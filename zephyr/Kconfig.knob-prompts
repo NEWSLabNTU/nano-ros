@@ -22,6 +22,9 @@ config NROS_CLOCK_SNTP_ATTEMPTS
 config NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS
     int "Re-query the SNTP server every (ms), 0 for once at boot"
 
+config NROS_CLOCK_SNTP_RESYNC_STACK_BYTES
+    int "Stack of the SNTP re-sync thread (bytes)"
+
 config NROS_CLOCK_SOURCE
     string "Wall-clock source, or an ordered fallback list"
 

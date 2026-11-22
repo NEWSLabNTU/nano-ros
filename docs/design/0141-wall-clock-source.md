@@ -370,6 +370,26 @@ exchange repeats on that interval and re-sets the offset through D3's setter,
 as the zenoh HLC already does. This is the consumer requirement in issue 0758:
 after the server's time steps, stamps follow it.
 
+*(Amended 2026-11-23.)* The interval is measured on the image's own
+monotonic clock (`k_msleep` on Zephyr), not on a wall clock. On hardware the
+two agree. On a simulator it is GUEST time: a simulator whose guest clock runs
+faster than real time (an FVP that fast-forwards through idle time) re-queries
+correspondingly more often in real time, and one that runs slower, less
+often. This is documented, not corrected: the image has no other clock to
+pace by before it is synced, and the zenoh HLC window
+(`clock.hlc_interval_ms`) is paced the same way.
+
+The re-query runs on a thread of its own whose stack is the knob
+`clock.sntp_resync_stack_bytes` (default 8,192 B). The depth is Zephyr's
+resolver and socket path under `sntp_simple`, not nano-ros code: a consumer
+measured a 7,024 B peak on a 64-bit Arm Zephyr 3.7 image, where 4,096 B
+overflowed, and the fixed 2,048 B the first cut shipped was below both. The
+default is that peak plus the stack-floor margin (10 %), rounded up to a power
+of two; 32-bit targets are not measured yet. The thread joins the build's
+stack-floor walk as the role `SNTP_RESYNC`, rooted at its entry and checked
+against the knob, so a deeper Zephyr shows up as a build warning rather than
+a silent overflow.
+
 ### D6 — The libc shims answer from the same symbol
 
 On FreeRTOS (issue 2691):
@@ -479,3 +499,7 @@ a stub board clock (`docs/reference/source-timestamps.md`, gate
   point that the board entries call after network bring-up and log-writer
   registration, not lazily on the first read. Reads before it read 0 and
   resolve nothing.
+- 2026-11-23: D5 amended: the re-sync interval is the image's monotonic
+  (on a simulator, guest) time, documented rather than changed; the re-sync
+  thread's stack is a knob, `clock.sntp_resync_stack_bytes`, defaulting from
+  a measured peak, and the thread is a role of the stack-floor walk.

@@ -260,9 +260,18 @@ static bool nros_zephyr_clock_try(uint8_t source, uint32_t settle_ms, void *ctx)
  * offset. 0, the default, is the one exchange at boot and starts no thread.
  *
  * Its own thread because `sntp_simple` blocks for up to `sntp.timeout_ms`
- * on a socket: on the system work queue it would hold every other item. */
+ * on a socket: on the system work queue it would hold every other item.
+ *
+ * Its stack is the `clock.sntp_resync_stack_bytes` knob. `sntp_simple` runs
+ * Zephyr's resolver, socket and exchange on it, so the depth is Zephyr's: a
+ * 7,024 B peak was measured on a 64-bit Arm Zephyr 3.7 image, where 4,096 B
+ * overflowed (the fixed 2,048 B this replaced was below both). The build's
+ * stack-floor walk takes this function as the SNTP_RESYNC role and checks
+ * the knob against it (cmake/NanoRosStackFloor.cmake), so the entry's name
+ * is part of that contract.
+ *
+ * The interval is the image's MONOTONIC time: on a simulator, guest time. */
 #if defined(CONFIG_SNTP) && CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS > 0
-#define NROS_SNTP_RESYNC_STACK_SIZE 2048
 static void nros_zephyr_sntp_resync_loop(void *a, void *b, void *c) {
     (void)a;
     (void)b;
@@ -283,8 +292,9 @@ static void nros_zephyr_sntp_resync_loop(void *a, void *b, void *c) {
         failing = rc != 0;
     }
 }
-K_THREAD_DEFINE(nros_sntp_resync_tid, NROS_SNTP_RESYNC_STACK_SIZE, nros_zephyr_sntp_resync_loop,
-                NULL, NULL, NULL, K_LOWEST_APPLICATION_THREAD_PRIO, 0, SYS_FOREVER_MS);
+K_THREAD_DEFINE(nros_sntp_resync_tid, CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES,
+                nros_zephyr_sntp_resync_loop, NULL, NULL, NULL, K_LOWEST_APPLICATION_THREAD_PRIO, 0,
+                SYS_FOREVER_MS);
 
 static void nros_zephyr_sntp_resync_start(const uint8_t *sources, uint8_t n) {
     if (!nros_clock_sources_name(sources, n, NROS_WALL_CLOCK_SOURCE_SNTP)) {
