@@ -310,12 +310,13 @@ fn plan_one(
     {
         return Some(StackFloorStep::NotChecked((*why).into()));
     }
+    let output = p.output.clone();
     let Some(BuildOutput::Cargo {
         target_dir,
         triple: Some(triple),
         profile_dir,
         bin: Some(bin),
-    }) = p.output.clone()
+    }) = output.clone()
     else {
         // A host image (no triple) runs on a host thread's stack, which no
         // board states; a manifest with no single bin links nothing to walk.
@@ -344,7 +345,7 @@ fn plan_one(
     }
     let hand = p.handoff.as_mut()?;
     let profile = target_dir.join(&triple).join(&profile_dir);
-    let dir = target_dir.join("nros-stack-floor");
+    let dir = output.as_ref().and_then(BuildOutput::stack_floor_dir)?;
     let mut step = CargoStackFloor {
         // Set below, once the build is armed: the rerun must be the SAME
         // command, or cargo rebuilds the image without the walk's flags and

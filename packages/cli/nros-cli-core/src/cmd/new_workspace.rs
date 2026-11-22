@@ -508,16 +508,17 @@ pub fn stack_floor_key_shape(key: &str) -> Option<StackFloorKey> {
     }
 }
 
-/// Where the cmake build in `build_dir` writes the walk report for `key`: the
-/// one rule every reader resolves through (the Rust twin of
-/// `nros-stack-floor.py`'s `report_path`). A program key's report is its
-/// program's; every other key's is the build dir's one report.
+/// Where a build whose walk writes into `report_dir` puts the report for
+/// `key`: the one rule every reader resolves through (the Rust twin of
+/// `nros-stack-floor.py`'s `report_path`). `report_dir` is the road's own
+/// directory, [`crate::cmd::build_next::BuildOutput::stack_floor_dir`]. A
+/// program key's report is its program's; every other key's is the
+/// directory's one report.
 #[must_use]
-pub fn stack_floor_report_path(build_dir: &std::path::Path, key: &str) -> std::path::PathBuf {
-    let base = build_dir.join("nros").join("stack-floor");
+pub fn stack_floor_report_path(report_dir: &std::path::Path, key: &str) -> std::path::PathBuf {
     match stack_floor_key_shape(key) {
-        Some(StackFloorKey::Program { exe }) => base.join(exe).join("report.json"),
-        _ => base.join("report.json"),
+        Some(StackFloorKey::Program { exe }) => report_dir.join(exe).join("report.json"),
+        _ => report_dir.join("report.json"),
     }
 }
 
@@ -1708,18 +1709,47 @@ mod stack_floor_key_tests {
 
     #[test]
     fn only_a_program_key_moves_the_report() {
-        let b = std::path::Path::new("/b");
-        assert_eq!(
-            stack_floor_report_path(b, "e/p@x"),
-            b.join("nros/stack-floor/p/report.json")
-        );
+        let b = std::path::Path::new("/b/nros/stack-floor");
+        assert_eq!(stack_floor_report_path(b, "e/p@x"), b.join("p/report.json"));
         assert_eq!(
             stack_floor_report_path(b, "talker/rust/zenoh@x"),
-            b.join("nros/stack-floor/report.json")
+            b.join("report.json")
+        );
+        assert_eq!(stack_floor_report_path(b, ""), b.join("report.json"));
+    }
+
+    #[test]
+    fn each_road_names_its_own_report_dir() {
+        use crate::cmd::build_next::BuildOutput;
+        let cmake = BuildOutput::CMake {
+            build_dir: "/w/build/x/cmake".into(),
+            executable: None,
+            owned_entry: None,
+        };
+        assert_eq!(
+            cmake.stack_floor_dir(),
+            Some("/w/build/x/cmake/nros/stack-floor".into())
+        );
+        let west = BuildOutput::West {
+            build_dir: Some("/w/build/z".into()),
+        };
+        assert_eq!(
+            west.stack_floor_dir(),
+            Some("/w/build/z/nros/stack-floor".into())
         );
         assert_eq!(
-            stack_floor_report_path(b, ""),
-            b.join("nros/stack-floor/report.json")
+            BuildOutput::West { build_dir: None }.stack_floor_dir(),
+            None
+        );
+        let cargo = BuildOutput::Cargo {
+            target_dir: "/w/target".into(),
+            triple: Some("thumbv7m-none-eabi".into()),
+            profile_dir: "debug".into(),
+            bin: Some("app".into()),
+        };
+        assert_eq!(
+            cargo.stack_floor_dir(),
+            Some("/w/target/nros-stack-floor".into())
         );
     }
 }

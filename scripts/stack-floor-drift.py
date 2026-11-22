@@ -26,6 +26,14 @@ Rows:
 - A bringup key (`<bringup>@<image>`): `nros build <bringup>:<image>` of the
   in-tree example whose `examples/fixtures.toml` `[[workspace_fixture]]` row
   declares that bringup and image. Never a hand-written path.
+- A program key (`<entry>/<exe>@<board>`, one program of an owned entry that
+  builds several): the same build, of the `[[workspace_fixture]]` row whose
+  image's `system.toml` names that entry on that board.
+
+The report is read where the build says it wrote it: the build's own plan
+(`nros run <target> --dry-run --json`) states the directory, by its road's
+rule (`artifacts.stack_floor`), and the walker's `report_path` names the file
+for the row's key in it. A report anywhere else reads as missing.
 
 Verdict, per row (`static_drift` in `scripts/nros-stack-floor.py`, the rule
 the twin lane applies too, issue 2400 Ruling (C)): a walk more than the
@@ -85,22 +93,54 @@ def bringup_rows(key: str, fixtures: list[dict]) -> list[dict]:
             if f.get("image") and f"{Path(f['bringup']).name}@{f['image']}" == key]
 
 
-def pick_report(reports: list[Path], key: str, since: float = 0.0
-                ) -> tuple[Path | None, str]:
-    """The one report whose `image` is `key`, written at or after `since`,
-    else (None, why). A report older than this run's build is another
-    tree's walk, never this one's."""
+def program_rows(key: str, fixtures: list[dict], root: Path = ROOT) -> list[dict]:
+    """The `[[workspace_fixture]]` rows that build program key `key`'s entry:
+    the image the row names has `entry = <entry>` and `board = <board>` in its
+    bringup's `system.toml`."""
+    parsed = _walker().parse_image_key(key)
+    if not parsed or parsed[0] != "program":
+        return []
+    entry, board = parsed[1]["entry"], parsed[1]["board"]
     hits = []
-    for r in reports:
+    for f in fixtures:
+        if not f.get("image") or not f.get("bringup"):
+            continue
+        st = root / f["dir"] / f["bringup"] / "system.toml"
         try:
-            if r.stat().st_mtime >= since and json.loads(r.read_text()).get("image") == key:
-                hits.append(r)
+            img = _walker().load_toml(st).get("image", {}).get(f["image"], {})
         except (OSError, ValueError):
             continue
-    if len(hits) == 1:
-        return hits[0], ""
-    return None, (f"{len(hits)} stack-floor reports keyed {key} written by this run "
-                  f"({len(reports)} examined)")
+        if img.get("entry") == entry and img.get("board") == board:
+            hits.append(f)
+    return hits
+
+
+def pick_report(report: Path, key: str, since: float = 0.0) -> tuple[Path | None, str]:
+    """`report` when it is this run's walk of `key`, else (None, why). A
+    report older than this run's build is another tree's walk; one keyed
+    otherwise is another image's."""
+    try:
+        st = report.stat()
+        image = json.loads(report.read_text()).get("image")
+    except OSError:
+        return None, f"no stack-floor report at {report}"
+    except ValueError:
+        return None, f"{report} is no JSON report"
+    if st.st_mtime < since:
+        return None, f"{report} was not written by this run's build"
+    if image != key:
+        return None, f"{report} is the walk of `{image}`, not `{key}`"
+    return report, ""
+
+
+def found_report(nros: str, target: str | None, cwd: Path, key: str, since: float, lf
+                 ) -> tuple[Path | None, str]:
+    """The report the build of `target` wrote for `key`, by the build's own
+    rule (issue 2795), else (None, why)."""
+    d, why = _walker().plan_report_dir(nros, target, cwd, lf, _env())
+    if d is None:
+        return None, why
+    return pick_report(_walker().report_path(d, key), key, since)
 
 
 def _built(rc: int, report: Path | None, why: str, what: str, log: Path
@@ -125,14 +165,6 @@ def log_tail(log: Path, n: int = 60) -> list[str]:
     except OSError as e:
         return [f"(no log at {log}: {e.strerror})"]
     return lines[-n:]
-
-
-def _reports(build_dir: Path) -> list[Path]:
-    # A report sits at `<build>/.../nros/stack-floor/report.json` (cmake and
-    # west roads) or `.../target/nros-stack-floor/report.json` (cargo road).
-    # Scoped to the image's own build dir, never the checkout.
-    found = build_dir.glob("**/report.json")  # walk-ok: untracked build output of one image
-    return sorted(p for p in found if p.parent.name in ("stack-floor", "nros-stack-floor"))
 
 
 def _env() -> dict:
@@ -181,16 +213,19 @@ def build_template(nros: str, row: dict, out: Path, twin
         start = time.time()
         rc = subprocess.run([nros, "build"], cwd=proj, stdout=lf, stderr=subprocess.STDOUT,
                             env=_env()).returncode
-    report, why = pick_report(_reports(proj / "build"), row["image"], start)
-    return *_built(rc, report, f"{why} under {proj / 'build'}", "`nros build`", log), log
+        report, why = found_report(nros, None, proj, row["image"], start, lf)
+    return *_built(rc, report, why, "`nros build`", log), log
 
 
 def build_bringup(nros: str, row: dict, out: Path, fixtures: list[dict]
                   ) -> tuple[Path | None, str, Path | None]:
-    hits = bringup_rows(row["image"], fixtures)
+    program = (_walker().parse_image_key(row["image"]) or ("",))[0] == "program"
+    hits = (program_rows if program else bringup_rows)(row["image"], fixtures)
     if len(hits) != 1:
+        what = ("build this entry on this board (its image's `entry` and `board`)"
+                if program else "declare this bringup and image")
         return None, (f"{len(hits)} [[workspace_fixture]] rows in examples/fixtures.toml "
-                      f"declare this bringup and image, not 1"), None
+                      f"{what}, not 1"), None
     fx = hits[0]
     ws = ROOT / fx["dir"]
     target = f"{Path(fx['bringup']).name}:{fx['image']}"
@@ -200,9 +235,8 @@ def build_bringup(nros: str, row: dict, out: Path, fixtures: list[dict]
         start = time.time()
         rc = subprocess.run([nros, "build", target], cwd=ws, stdout=lf,
                             stderr=subprocess.STDOUT, env=_env()).returncode
-    report, why = pick_report(_reports(ws / "build"), row["image"], start)
-    return *_built(rc, report, f"{why} under {ws / 'build'}", f"`nros build {target}`",
-                   log), log
+        report, why = found_report(nros, target, ws, row["image"], start, lf)
+    return *_built(rc, report, why, f"`nros build {target}`", log), log
 
 
 def verdict(row: dict, report: Path, drift, table: str = "observed"
@@ -382,13 +416,39 @@ def self_test() -> int:
         r2.write_text(json.dumps({"image": "k2", "roles": {
             "OPEN": {"depth": 1000, "measured": False}}}))
         r3.write_text(json.dumps({"image": "k1", "roles": {}}))
-        (d / "other.json").write_text("{}")
-        found = _reports(d)
-        check("reports: both roads' report paths, nothing else", found == sorted([r1, r2, r3]))
-        check("report: two keyed k1 is no pick", pick_report(found, "k1")[0] is None)
-        check("report: the one keyed k2", pick_report(found, "k2")[0] == r2)
+        (d / "other.json").write_text("{")
+        check("report: the one at the build's path, keyed for the row",
+              pick_report(r2, "k2")[0] == r2)
+        check("report: one keyed for another image is no pick",
+              pick_report(r1, "k2")[0] is None and "`k1`" in pick_report(r1, "k2")[1])
+        check("report: none at the build's path reads as missing, naming the path",
+              pick_report(d / "absent.json", "k1")[0] is None
+              and "absent.json" in pick_report(d / "absent.json", "k1")[1])
+        check("report: a file that is no JSON is no pick",
+              pick_report(d / "other.json", "k1")[0] is None)
         check("report: one older than the run is not this run's walk",
-              pick_report(found, "k2", r2.stat().st_mtime + 60)[0] is None)
+              pick_report(r2, "k2", r2.stat().st_mtime + 60)[0] is None)
+        check("plan: the build's stated report dir is read",
+              w.report_dir_of_plan(json.dumps({"artifacts": {"stack_floor": "/b/nros-stack-floor",
+                                                           "elf": "/b/x"}}))[0]
+              == Path("/b/nros-stack-floor"))
+        check("plan: a plan stating none is no answer, never a guess",
+              w.report_dir_of_plan(json.dumps({"artifacts": {"elf": "/b/x"}}))[0] is None
+              and w.report_dir_of_plan("not json")[0] is None)
+        # A program key's fixture row: the image naming that entry and board.
+        ws = d / "ws"
+        (ws / "src" / "b").mkdir(parents=True)
+        (ws / "src" / "b" / "system.toml").write_text(
+            '[image.lin]\nentry = "two"\nboard = "linux"\n'
+            '[image.qemu]\nentry = "two"\nboard = "mps2-an385"\n')
+        pfx = [{"id": "p1", "dir": "ws", "bringup": "src/b", "image": "lin"},
+               {"id": "p2", "dir": "ws", "bringup": "src/b", "image": "qemu"},
+               {"id": "p3", "dir": "ws", "bringup": "src/missing", "image": "lin"}]
+        check("program key: the row whose image builds that entry on that board",
+              [f["id"] for f in program_rows("two/prog-b@linux", pfx, d)] == ["p1"])
+        check("program key: another entry, or a bringup key, matches no row",
+              program_rows("one/prog-b@linux", pfx, d) == []
+              and program_rows("b@lin", pfx, d) == [])
         check("a refused build that walked answers with its report",
               _built(1, r2, "", "`nros build`", d / "l")[0] == r2)
         check("a build that failed before any walk is no answer",

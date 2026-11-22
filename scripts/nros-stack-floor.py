@@ -3142,16 +3142,41 @@ def parse_image_key(key: str) -> tuple[str, dict] | None:
     return None
 
 
-def report_path(build_dir: Path, key: str) -> Path:
-    """Where the build in `build_dir` writes the walk report for `key`: the
-    ONE spelling every reader resolves through (the CLI's raise, the twin and
-    drift lanes, the build's re-walk). A program key's report is its
-    program's; every other key's is the build dir's one report."""
+def report_path(report_dir: Path, key: str) -> Path:
+    """Where a build whose walk writes into `report_dir` puts the report for
+    `key`: the ONE spelling every reader resolves through (the CLI's raise, the
+    twin and drift lanes, the build's re-walk). `report_dir` is the road's own
+    directory, which the build states (`nros run ... --dry-run --json`,
+    `artifacts.stack_floor`): `<build>/nros/stack-floor` on the cmake and west
+    roads, `<target dir>/nros-stack-floor` on the cargo road. A program key's
+    report is its program's; every other key's is the directory's one report."""
     parsed = parse_image_key(key)
-    base = Path(build_dir) / "nros" / "stack-floor"
     if parsed and parsed[0] == "program":
-        return base / parsed[1]["exe"] / "report.json"
-    return base / "report.json"
+        return Path(report_dir) / parsed[1]["exe"] / "report.json"
+    return Path(report_dir) / "report.json"
+
+
+def report_dir_of_plan(text: str) -> tuple[Path | None, str]:
+    """The directory a build's plan (`nros run ... --dry-run --json`) states
+    its stack-floor walk wrote into, else (None, why)."""
+    try:
+        d = json.loads(text)["artifacts"]["stack_floor"]
+    except (ValueError, KeyError, TypeError):
+        return None, "the build's plan names no `stack_floor` artifact"
+    return Path(d), ""
+
+
+def plan_report_dir(nros: str, target: str | None, cwd: Path, lf, env: dict | None = None
+                    ) -> tuple[Path | None, str]:
+    """`report_dir_of_plan` of the plan `nros run` resolves for `target` (the
+    project's one image when None), its stderr kept in the lane's log `lf`."""
+    cmd = [nros, "run", *([target] if target else []), "--dry-run", "--json"]
+    lf.write(f"\n$ {' '.join(cmd[1:])}\n")
+    lf.flush()
+    p = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=lf, text=True, env=env)
+    if p.returncode:
+        return None, f"`nros {' '.join(cmd[1:])}` exited {p.returncode}"
+    return report_dir_of_plan(p.stdout)
 
 
 def template_names(root: Path) -> set[str]:
@@ -3161,21 +3186,16 @@ def template_names(root: Path) -> set[str]:
     return set(re.findall(r'Role::\w+ => "([a-z-]+)"', body))
 
 
-def image_key_problems(where: str, image, *, rebuilt: bool) -> list[str]:
-    """An image key must parse as one of the grammar's three shapes. A row the
-    drift lane re-walks (`rebuilt`) may not be a program key yet: drift has no
-    build route for one until phase-583 W4's lands, and a row it cannot build
-    would fail the nightly step without saying why."""
+def image_key_problems(where: str, image) -> list[str]:
+    """An image key must parse as one of the grammar's three shapes. Every
+    shape is one the drift lane can re-walk: a program key builds through the
+    fixture row whose image names its entry (issue 2795)."""
     if not isinstance(image, str):
         return []
-    parsed = parse_image_key(image)
-    if parsed is None:
+    if parse_image_key(image) is None:
         return [f"{where}: image key `{image}` is no template key "
                 "(`<template>/<lang>/<rmw>@<board>`), bringup key (`<bringup>@<board>`) "
                 "or program key (`<entry>/<exe>@<board>`)"]
-    if rebuilt and parsed[0] == "program":
-        return [f"{where}: a program key (`{image}`) cannot be re-walked by the drift "
-                "lane yet; record this row once its build route exists"]
     return []
 
 
@@ -3462,7 +3482,7 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
         where = f"[[observed]] #{i + 1} {k}"
         if None in k or not o.get("rmw"):
             problems.append(f"{where}: needs `image`, `rmw`, `target` and `role`")
-        problems += image_key_problems(where, o.get("image"), rebuilt=True)
+        problems += image_key_problems(where, o.get("image"))
         if k in seen:
             problems.append(f"{where}: duplicate")
         seen.add(k)
@@ -3518,7 +3538,7 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
         where = f"[[drift]] #{i + 1} {k}"
         if None in k or not d.get("rmw"):
             problems.append(f"{where}: needs `image`, `rmw`, `target` and `role`")
-        problems += image_key_problems(where, d.get("image"), rebuilt=True)
+        problems += image_key_problems(where, d.get("image"))
         if k in seen:
             problems.append(f"{where}: duplicate")
         seen.add(k)
@@ -5894,16 +5914,17 @@ def self_test() -> int:
     check("key: a key of none of the three shapes parses as nothing",
           parse_image_key("a/b/c/d@x") is None and parse_image_key("no_board") is None)
     check("key: a program's report is its program's",
-          report_path(Path("/b"), "e/p@x") == Path("/b/nros/stack-floor/p/report.json"))
-    check("key: every other key keeps the build dir's one report",
-          report_path(Path("/b"), "t/rust/zenoh@x") == Path("/b/nros/stack-floor/report.json")
-          and report_path(Path("/b"), "br@x") == Path("/b/nros/stack-floor/report.json"))
+          report_path(Path("/b/nros/stack-floor"), "e/p@x")
+          == Path("/b/nros/stack-floor/p/report.json"))
+    check("key: every other key keeps the directory's one report, on either road",
+          report_path(Path("/b/nros/stack-floor"), "t/rust/zenoh@x")
+          == Path("/b/nros/stack-floor/report.json")
+          and report_path(Path("/t/nros-stack-floor"), "br@x")
+          == Path("/t/nros-stack-floor/report.json"))
     check("key: an unparseable key is refused by the table",
-          any("is no template key" in p for p in image_key_problems("w", "a/b/c/d@x",
-                                                                    rebuilt=False)))
-    check("key: a program key is refused where drift re-walks it",
-          any("cannot be re-walked" in p for p in image_key_problems("w", "e/p@x",
-                                                                     rebuilt=True)))
+          any("is no template key" in p for p in image_key_problems("w", "a/b/c/d@x")))
+    check("key: a program key is a row drift re-walks",
+          image_key_problems("w", "e/p@x") == [])
     # Today's table keys parse, each as the shape it already was.
     _keys = re.findall(r'^image = "([^"]+)"',
                        (CHECKOUT / "config" / "stack-floors.toml").read_text(), re.M)

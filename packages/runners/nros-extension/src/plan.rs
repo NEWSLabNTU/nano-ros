@@ -402,7 +402,8 @@ pub struct RunPlan {
     pub protocol: u32,
     /// The image name.
     pub image: String,
-    /// Build outputs by kind: `elf`, `bin`, `hex`, `uf2`.
+    /// Build outputs by kind: `elf`, `bin`, `hex`, `uf2`, and `stack_floor`,
+    /// the directory the build's stack-floor walk writes its reports in.
     #[serde(default)]
     pub artifacts: BTreeMap<String, PathBuf>,
     /// The image's build directory, for `{build_dir}`.

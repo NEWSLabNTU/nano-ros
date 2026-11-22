@@ -103,6 +103,26 @@ impl BuildOutput {
         Ok(self.planned_artifact())
     }
 
+    /// The directory this build's stack-floor walk writes its reports in: the
+    /// one rule per road, read by every report reader through
+    /// [`crate::cmd::new_workspace::stack_floor_report_path`]. The cmake and
+    /// west roads write `<build>/nros/stack-floor` (one configure, one
+    /// `CMAKE_BINARY_DIR`); the cargo road writes `<target dir>/nros-stack-floor`.
+    /// `None` for a west build whose dir could not be read back.
+    #[must_use]
+    pub fn stack_floor_dir(&self) -> Option<PathBuf> {
+        // Issue 2795: a reader that globbed for `report.json` found a report
+        // at the wrong path as readily as one at the right path.
+        match self {
+            BuildOutput::Cargo { target_dir, .. } => Some(target_dir.join("nros-stack-floor")),
+            BuildOutput::CMake { build_dir, .. }
+            | BuildOutput::West {
+                build_dir: Some(build_dir),
+            } => Some(build_dir.join("nros").join("stack-floor")),
+            BuildOutput::West { build_dir: None } => None,
+        }
+    }
+
     fn planned_artifact(&self) -> Option<PathBuf> {
         match self {
             BuildOutput::Cargo {

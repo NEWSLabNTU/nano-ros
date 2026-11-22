@@ -77,18 +77,19 @@ pub fn arm_cmake(plans: &mut [ResolvedBuild]) {
 /// Where the build's walk wrote its report, and the executable it walked.
 fn report_and_exe(p: &ResolvedBuild) -> Option<(PathBuf, Option<PathBuf>)> {
     match (&p.output, &p.stack_floor) {
-        (Some(o @ BuildOutput::CMake { build_dir, .. }), _) => Some((
+        (Some(o @ BuildOutput::CMake { .. }), _) => Some((
             // phase-583 W4 -- through the one path rule, never joined here.
             crate::cmd::new_workspace::stack_floor_report_path(
-                build_dir,
+                &o.stack_floor_dir()?,
                 p.stack_floor_image.as_deref().unwrap_or_default(),
             ),
             // A named owned entry's executable is read back from CMake.
             o.artifact(),
         )),
-        (_, Some(StackFloorStep::Check(c))) => {
-            Some((c.dir.join("report.json"), Some(c.exe.clone())))
-        }
+        (_, Some(StackFloorStep::Check(c))) => Some((
+            crate::cmd::new_workspace::stack_floor_report_path(&c.dir, &c.key),
+            Some(c.exe.clone()),
+        )),
         _ => None,
     }
 }

@@ -1,0 +1,1 @@
+`nros run --dry-run --json` now states where the build's stack-floor walk wrote its reports (the `stack_floor` artifact), and the stack-floor drift and twin lanes read the report there instead of searching the build tree. A drift row may now name one program of an owned entry that builds several.
