@@ -5,7 +5,7 @@ status: Stable
 area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-11
-implements-tracked-by: [phase-383]
+implements-tracked-by: [phase-383, phase-588]
 amends: [0024, 0026, 0048, 0070]
 supersedes: []
 superseded-by: null
@@ -30,6 +30,8 @@ no cargo workspace root), [RFC-0104](0104-dependency-pinning-and-project-lock.md
 (D1: stage 5 waits instead of `exec`), and [RFC-0130](0130-one-ros-cmake-build.md)
 (D3, for boards whose startup is Rust: CMake owns the link when a C/C++ package
 is in the image).
+**Amended 2026-11-23** (D1: stage 5 proxies through a pty and keeps a log;
+[phase-588](../roadmap/phase-588-build-output-pty-proxy.md)).
 **Relates to:** [RFC-0063](0063-system-model-is-a-build-artifact.md) — that RFC
 says the resolved model belongs in `build/`; this one decides who *owns*
 `build/`.
@@ -147,7 +149,11 @@ RFC's builder does not wrap:
   per-package task model must capture output in order to attribute it. (Until
   phase-485 W3 the handoff was an `exec`. It is now a child with INHERITED
   stdio, so `nros` can record the project lock after the build (RFC-0104 D4).
-  Nothing is captured, and `nros build` exits with the child's own status.)
+  Nothing is captured, and `nros build` exits with the child's own status.
+  Since 2026-11-23 (D1's amendment, phase-588) the child runs on a pty that
+  `nros build` holds. The bytes reach the terminal unchanged and a copy goes
+  to `build/<image>/<tool>.log`, read only after a failure. Nothing is
+  rewritten or filtered, which is what this reconciliation rests on.)
 * **The generated root is a real build tree.** `build/<coord>/CMakeLists.txt` is
   an ordinary cmake project; `cmake --build build/<coord>` works by hand
   forever after. RFC-0024 §2.3 ("cargo / cmake stay user-facing") holds
@@ -161,6 +167,24 @@ pure wrapping.
 ## Decision
 
 ### D1 — `nros build` is a five-stage pipeline that ends in `exec`
+
+> **Amended (2026-11-23, user ruling; phase-588, issue 2836).** Stage 5 runs
+> the native command on a pseudo-terminal that `nros build` holds, instead of
+> handing it the terminal by inheritance. `nros build` copies every byte the
+> tool writes to its own stdout unchanged and to `build/<image>/<tool>.log`.
+> The tool still sees a TTY of the caller's size, so colour, progress bars
+> and line buffering are as under a bare `cargo build`. Where `nros build`'s
+> stdout is not a terminal, the tool gets none either, as before.
+> SIGINT and SIGTERM are forwarded to the tool's process group and SIGWINCH
+> resizes the pty, so a Ctrl-C still stops the compiler. The exit status is
+> still the tool's own, unmapped.
+>
+> What changes is "nothing is captured". The bytes still reach the terminal
+> untouched, but a copy is kept, so that after a FAILED build `nros build`
+> can read the log and say what the build already knows. The first reading
+> is a memory-region overflow at link: the image's main stack and its
+> stack-floor row, the heap, and the knob to move. A successful build prints
+> nothing new.
 
 > **Amended (phase-485 W3, RFC-0104 D4).** Stage 5 hands the native command
 > stdio by INHERITANCE and waits, instead of `exec`ing. A build's record of

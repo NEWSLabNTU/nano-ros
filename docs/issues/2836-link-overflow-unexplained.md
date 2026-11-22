@@ -5,13 +5,15 @@ status: open
 type: enhancement
 severity: medium
 area: [cli, build, ux, stack-floor]
-related: [issue-2783, issue-2400, phase-557]
+related: [issue-2783, issue-2400, phase-557, phase-588, rfc-0065]
 found: 2026-11-22
 ---
 
-**Home: [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md)**,
-beside [issue 2783](2783-graph-discovery-overflows-rust-template-ram.md),
-whose first symptom this is.
+**Home: [phase-588](../roadmap/phase-588-build-output-pty-proxy.md)**, which
+implements the RFC-0065 D1 amendment the user ruled for it (2026-11-23,
+option (a): `nros build` stays the parent through a pty and keeps a log).
+First filed beside [issue 2783](2783-graph-discovery-overflows-rust-template-ram.md)
+on [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md).
 
 ## What happens
 
