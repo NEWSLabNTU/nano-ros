@@ -172,6 +172,18 @@ ROLES = [
         None,
     ),
     (
+        "link-argument",
+        "passes the final link an argument and compiles nothing",
+        # Issue 2745 -- `--wrap=<symbol>`, which routes a port's call to a
+        # symbol through the image's own wrapper; no path and no knob.
+        lambda t, ctx: (
+            re.search(r"rustc-link-arg", t)
+            and not re.search(r"cc::Build|cmake::Config|env::var", t)
+        ),
+        "a self-contained job with no knob, no path and no SDK, like a linker "
+        "script; before `marker`, which is only what is left",
+    ),
+    (
         "marker",
         "only rerun directives — an input cargo cannot see by itself",
         lambda t, ctx: re.search(r"rerun-if-", t),

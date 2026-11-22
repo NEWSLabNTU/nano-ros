@@ -6880,6 +6880,25 @@ pub fn build_condvar_contract_threadx_linux() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the issue-2745 `isr-wake-threadx-linux` image.
+static ISR_WAKE_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt `isr-wake-threadx-linux` image: the hosted ThreadX
+/// port's timer interrupt signals the wake a parked thread waits on.
+pub fn build_isr_wake_threadx_linux() -> TestResult<&'static Path> {
+    ISR_WAKE_THREADX_LINUX_BINARY
+        .get_or_try_init(|| {
+            const DIR: &str = "packages/testing/nros-tests/bins/isr-wake-threadx-linux";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the issue-2706 `isr-wake-threadx-riscv64` image.
 static ISR_WAKE_THREADX_RISCV64_BINARY: OnceCell<PathBuf> = OnceCell::new();
 

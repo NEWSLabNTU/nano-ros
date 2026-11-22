@@ -1,0 +1,18 @@
+# Issue 2745 — triggers the interrupt-safe wake from the port timer interrupt
+# in a ThreadX Linux image. It keeps its own `main`, opens no session and
+# declares no component table; `rmw` is the image's backend all the same, as
+# for every image (the board crate is built with it).
+
+[system]
+name = "isr_wake_threadx_linux"
+rmw = "zenoh"
+domain_id = 0
+
+[image.threadx-linux]
+entry = "isr-wake-threadx-linux"
+board = "threadx-linux"
+# `main.rs` declares its own `#[panic_handler]` (RFC-0077).
+panic = "platform"
+
+[board_config."threadx-linux"]
+netstack = "netxduo"

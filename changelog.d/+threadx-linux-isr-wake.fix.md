@@ -1,0 +1,1 @@
+On the hosted ThreadX Linux port, `GuardCondition::trigger_from_isr` now wakes a parked executor at once when it is called from the port's timer interrupt (it returned `false` before, and the executor saw the trigger only at its next deadline). A call from a host thread that ThreadX did not create is still refused.

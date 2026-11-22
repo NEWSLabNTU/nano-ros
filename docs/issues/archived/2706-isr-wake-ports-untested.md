@@ -31,7 +31,7 @@ arriving. Six ports have one:
 | NuttX | `sem_post`; when a handle park has made the wake object's pipe, its byte through the low-priority work queue, written through the pipe's `struct file` | `tests/isr_wake_rtos.rs`: a watchdog (timer interrupt) on the QEMU ARM `virt` image (`isr-wake-nuttx-qemu-arm`), over a semaphore park and a handle park |
 
 One port variant still REFUSES, and is tracked on its own:
-[issue 2745](../2745-threadx-linux-isr-wake-refused.md), the hosted ThreadX
+[issue 2745](2745-threadx-linux-isr-wake-refused.md), the hosted ThreadX
 Linux port (`threadx-linux`), whose "interrupt" is a host thread. There
 `trigger_from_isr` returns `false`, and the executor sees the trigger at its
 next deadline.

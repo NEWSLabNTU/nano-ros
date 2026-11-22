@@ -21,14 +21,14 @@
 
 use nros_tests::{
     fixtures::{
-        QemuProcess, RequireFixture, ZenohRouter, build_isr_wake_baremetal_mps2,
-        build_isr_wake_freertos_mps2, build_isr_wake_nuttx_qemu_arm,
-        build_isr_wake_threadx_riscv64, build_isr_wake_zephyr_native_sim, or_unmet,
+        ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, build_isr_wake_baremetal_mps2,
+        build_isr_wake_freertos_mps2, build_isr_wake_nuttx_qemu_arm, build_isr_wake_threadx_linux,
+        build_isr_wake_threadx_riscv64, build_isr_wake_zephyr_native_sim, or_unmet, threadx_linux,
     },
     matrix::PlatformId,
     output::{
         ISR_PARK_DONE, ISR_PARK_SAMPLE, ISR_RACE_DONE, ISR_RACE_SAMPLE, ISR_WAKE_DONE,
-        ISR_WAKE_NOT_IN_ISR, ISR_WAKE_SAMPLE,
+        ISR_WAKE_NOT_IN_ISR, ISR_WAKE_READY_PERIOD, ISR_WAKE_SAMPLE,
     },
     wait_for_port,
 };
@@ -207,6 +207,46 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_threadx_riscv64() {
     check_isr_wake_output(&output, "ThreadX", Latency::Bounded);
 }
 
+/// Issue 2745 -- the HOSTED ThreadX twin. This port's interrupt is its timer
+/// thread, which runs `_tx_timer_interrupt` between the port's context save
+/// and restore; the image wraps that call (`--wrap=_tx_timer_interrupt`) and
+/// signals the interrupt-safe wake from inside it every fifth tick (50 ms),
+/// while the app thread parks on the wake with a 1 s budget. It opens no
+/// session, so it needs no router and no veth bridge: it drives the wake
+/// object `GuardCondition::trigger_from_isr` reaches, which the executor
+/// parks on.
+///
+/// Mutation, the hosted arm refusing (`nros_platform_wake_signal_from_isr`
+/// returning -1, as before this issue): 0 wakes for every interrupt, and the
+/// image ends on its timeout budget. Measured in issue 2745.
+#[test]
+fn a_timer_interrupt_wakes_a_parked_waiter_on_threadx_linux() {
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::ThreadxLinux],
+        "the hosted ThreadX interrupt-wake image",
+    );
+    if !threadx_linux::is_threadx_available() {
+        nros_tests::unmet!("no ThreadX kernel tree provisioned");
+    }
+    let binary = build_isr_wake_threadx_linux()
+        .require("isr-wake-threadx-linux — run `just build threadx-linux`");
+    let mut proc = ManagedProcess::spawn(binary, &[], "isr-wake-threadx-linux")
+        .expect("spawn the hosted ThreadX interrupt-wake image");
+    let output = proc
+        .wait_for_all_output(Duration::from_secs(60))
+        .expect("the hosted ThreadX interrupt-wake image produced no output in time");
+    let not_in_isr: u64 = output
+        .lines()
+        .find_map(|l| l.split(ISR_WAKE_NOT_IN_ISR).nth(1))
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or_else(|| panic!("the image never finished:\n{output}"));
+    assert_eq!(
+        not_in_isr, 0,
+        "the hook ran outside the port's interrupt bracket, so this did not test an interrupt wake"
+    );
+    check_isr_wake_output(&output, "ThreadX Linux", Latency::Hosted);
+}
+
 /// How late a handle park may end after its interrupt. The byte reaches the
 /// pipe through NuttX's low-priority work queue, a thread hop the semaphore
 /// park does not take, so its bound is its own; a park that missed the
@@ -343,6 +383,17 @@ enum Latency {
     /// not scale with the shift. The teeth stay: the served and refused
     /// counts, the lower bounds, and the cap.
     CapOnly,
+    /// HOSTED: every sample before the next interrupt only, the period the
+    /// image states on its `ISR_WAKE_READY period_us=` line.
+    /// On a hosted port the interrupt is a host thread and so is the waiter,
+    /// so the latency is the host scheduler's: issue 2745 measured a median
+    /// of 250 to 350 us with tails of 8 to 11 ms on a host at load 16 of 24
+    /// cores, the load a gate runs it at. Neither [`BOUND_US`] nor [`CAP_US`]
+    /// is a property of the wake path there. The wake is still checked
+    /// exactly: one wake per interrupt (`fires <= callbacks + 1`), none early,
+    /// and each before the next interrupt, so a missed wake is never read as
+    /// a late one.
+    Hosted,
 }
 
 /// The bounds every interrupt-wake image is held to, over its `ISR_WAKE*`
@@ -406,9 +457,18 @@ fn check_isr_wake_output(output: &str, port_name: &str, latency: Latency) {
             samples.len()
         );
     }
-    let over_cap: Vec<&u64> = samples.iter().filter(|&&us| us > CAP_US).collect();
+    let cap = if latency == Latency::Hosted {
+        output
+            .lines()
+            .find_map(|l| l.split(ISR_WAKE_READY_PERIOD).nth(1))
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or_else(|| panic!("the hosted image stated no period:\n{output}"))
+    } else {
+        CAP_US
+    };
+    let over_cap: Vec<&u64> = samples.iter().filter(|&&us| us > cap).collect();
     assert!(
         over_cap.is_empty(),
-        "callbacks later than {CAP_US} us after their interrupt: {over_cap:?}"
+        "callbacks later than {cap} us after their interrupt: {over_cap:?}"
     );
 }

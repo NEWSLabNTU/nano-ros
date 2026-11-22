@@ -175,6 +175,11 @@ NO_ROUTER = {
     "packages/testing/nros-tests/bins/condvar-contract-threadx-linux": (
         "no-session `run_bare` contract check — opens no Executor and dials nothing"
     ),
+    # Issue 2745 — the hosted ThreadX interrupt-wake image drives the platform
+    # wake object from the port's timer interrupt.
+    "packages/testing/nros-tests/bins/isr-wake-threadx-linux": (
+        "no-session `run_bare` interrupt-wake check — opens no Executor and dials nothing"
+    ),
     # Issue 2507 — the FreeRTOS task stack guard image overflows a task on purpose.
     "packages/testing/nros-tests/bins/stack-guard-freertos-mps2": (
         "no-session `run_bare` stack guard check — opens no Executor and dials nothing"
