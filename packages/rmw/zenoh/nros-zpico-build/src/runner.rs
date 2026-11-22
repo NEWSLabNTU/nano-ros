@@ -2335,7 +2335,9 @@ pub fn run() {
         };
         if !use_system {
             if target.contains("linux") {
-                println!("cargo:rustc-link-lib=pthread");
+                // issue 2844 — not for a musl TARGET, whose libc.a carries
+                // pthread and whose sysroot ships no libpthread.a.
+                nros_cc_flags::libc_libs::link_thread_libs(&["pthread"]);
             } else if target.contains("windows") {
                 println!("cargo:rustc-link-lib=ws2_32");
             }
@@ -3174,7 +3176,8 @@ fn use_system_zenoh_pico() -> PathBuf {
     println!("cargo:rustc-link-lib=static=zenohpico");
     let target = env::var("TARGET").unwrap_or_default();
     if target.contains("linux") {
-        println!("cargo:rustc-link-lib=pthread");
+        // issue 2844 — not for a musl TARGET (see the native branch in `run`).
+        nros_cc_flags::libc_libs::link_thread_libs(&["pthread"]);
     } else if target.contains("windows") {
         println!("cargo:rustc-link-lib=ws2_32");
     }
