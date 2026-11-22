@@ -89,6 +89,7 @@
   - [Deploy to production](./guide/deploy/deploy-to-production.md)
   - [Log and observe a board](./guide/deploy/log-and-observe.md)
   - [Use simulated time](./guide/deploy/use-simulated-time.md)
+  - [Set the wall clock from the board](./guide/deploy/set-the-wall-clock-from-the-board.md)
   - [Run managed nodes](./guide/deploy/run-managed-nodes.md)
   - [Troubleshoot](./guide/deploy/troubleshoot.md)
 - [Port from ROS 2]()

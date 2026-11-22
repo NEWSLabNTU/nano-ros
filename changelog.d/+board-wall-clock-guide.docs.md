@@ -1,0 +1,1 @@
+A new how-to, "Set the wall clock from the board", shows how to take an image's wall clock from the board's RTC, GNSS or sync task: selecting the source, writing the hook in Rust, C or C++, what happens when the board never answers, and which RMW's source timestamps follow it.

@@ -705,6 +705,13 @@ note = "Use simulated time (W8): one how-to; its timers in language tabs"
 
 [[page]]
 book = "user"
+path = "guide/deploy/set-the-wall-clock-from-the-board.md"
+action = "new phase-582"
+batch = "p582-w4b"
+note = "Set the wall clock from the board (W4b): select `board`, the hook in language tabs, the fallback, and which stamps follow it"
+
+[[page]]
+book = "user"
 path = "guide/deploy/run-managed-nodes.md"
 action = "new phase-554"
 batch = "p554-w8"
