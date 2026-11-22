@@ -1,6 +1,6 @@
-# Issue 2702 fixture: two C images on one `linux` coordinate, one of which
-# states its own `node_interfaces`. That image gets a cmake configure of its
-# own, built and sized with its own axes; the other keeps the shared one.
+# Issue 2702 fixture: two C images on `linux`, one of which states its own
+# `node_interfaces`. Each image gets a cmake configure of its own, built and
+# sized with its own capability axes.
 [system]
 name = "image_features_probe"
 rmw = "zenoh"

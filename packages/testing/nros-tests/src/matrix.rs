@@ -1463,7 +1463,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     (
         "image_features_shared_configure",
         NonCell::Probe(
-            "a C/C++ workspace image whose own features differ from `[system]` gets a cmake configure of its own, built and sized with them, and the other image keeps the shared one (issue 2702)",
+            "every C/C++ workspace image gets a cmake configure of its own, built and sized with its own capability axes (issue 2702)",
         ),
     ),
     ("output_marker_gate", NonCell::Static),
