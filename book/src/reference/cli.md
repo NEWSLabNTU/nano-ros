@@ -1973,6 +1973,15 @@ Arguments:
           The store version to pin to, exactly as `toolchains/<version>` spells it (`0.7.9-nros1`) — not the crate version `nros --version` prints. Omit to report the current pin and change nothing
 
 Options:
+      --rev <SHA>
+          Pin one commit instead: the full 40-hex sha. A branch, a tag or a short sha is refused, since none of them is sure to name the same commit tomorrow
+
+      --git <URL>
+          The repository `--rev` is a commit of. Default: the pin's current `git`, else the nano-ros repository
+
+      --path <DIR>
+          Pin a nano-ros checkout on this machine instead: the root of a clone. The pin records it relative to the pin file
+
       --dir <PATH>
           The project directory. Defaults to the working directory; the pin is searched for at or above it, the way cargo finds a workspace root
 

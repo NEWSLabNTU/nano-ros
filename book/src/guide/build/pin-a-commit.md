@@ -27,6 +27,27 @@ path = "../modules/nros"
   cargo `path` dependency is relative to its `Cargo.toml`; an absolute path is
   taken as written. It must be the root of a nano-ros clone.
 
+`nros pin` writes either form for you, from the project directory:
+
+```console
+nros pin --rev <40-hex commit>
+nros pin --rev <40-hex commit> --git <repository url>
+nros pin --path ../modules/nros
+```
+
+- `--rev` refuses a branch, a tag or a short sha, as the pin itself does.
+  Without `--git`, it keeps the repository the pin already names, else the
+  nano-ros one.
+- `--path` takes the checkout as your shell spells it and records it
+  relative to the pin file. It refuses a directory that is not the root of a
+  nano-ros clone.
+- Each form replaces the one the file held, so the file always names
+  exactly one.
+- As with a release, `--dry-run` prints what would change and writes
+  nothing.
+- In CI (`CI` or `GITHUB_ACTIONS` set) it refuses to write: a pin is a
+  source edit, made at a keyboard and committed.
+
 The first command run under a `git` pin fetches that one commit into
 `~/.nros/toolchains/git-<rev>/` and builds it with the tree's own
 `scripts/bootstrap.sh`, which takes a few minutes. Later commands use it as

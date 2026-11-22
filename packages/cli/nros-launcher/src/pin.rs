@@ -175,22 +175,93 @@ pub fn checkout_cli_bin(checkout: &Path) -> PathBuf {
 /// A `rev` must be a full 40-hex commit. A branch, a tag or a short sha is
 /// not a pin: each can name a different commit tomorrow (a branch moves, a
 /// tag can be re-pointed, a short sha can become ambiguous).
-fn check_rev(rev: &str, path: &Path) -> Result<String> {
+///
+/// The one rule for both the loader and `nros pin --rev` (issue 2770): `Ok`
+/// is the sha lowercased, `Err` says what `rev` looks like instead.
+pub fn full_rev(rev: &str) -> std::result::Result<String, String> {
     if rev.len() == 40 && rev.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Ok(rev.to_ascii_lowercase());
     }
-    let what = if rev.bytes().all(|b| b.is_ascii_hexdigit()) {
-        format!("a {}-character sha", rev.len())
-    } else {
-        "a branch or tag name".to_string()
-    };
-    bail!(
-        "{} pins `rev = \"{rev}\"`, which looks like {what}. A `rev` must be the \
-         full 40-hex commit: a branch moves, a tag can be re-pointed and a short \
-         sha can become ambiguous, so none of them names one commit. Resolve it \
-         with `git rev-parse <name>^{{commit}}` and pin that.",
-        path.display()
+    Err(
+        if !rev.is_empty() && rev.bytes().all(|b| b.is_ascii_hexdigit()) {
+            format!("a {}-character sha", rev.len())
+        } else {
+            "a branch or tag name".to_string()
+        },
     )
+}
+
+/// Why a branch, a tag or a short sha is refused, with the fix.
+pub const REV_RULE: &str = "A `rev` must be the full 40-hex commit: a branch moves, a tag \
+     can be re-pointed and a short sha can become ambiguous, so none of them names one \
+     commit. Resolve it with `git rev-parse <name>^{commit}` and pin that.";
+
+fn check_rev(rev: &str, path: &Path) -> Result<String> {
+    full_rev(rev).map_err(|what| {
+        eyre::eyre!(
+            "{} pins `rev = \"{rev}\"`, which looks like {what}. {REV_RULE}",
+            path.display()
+        )
+    })
+}
+
+/// The repository a git pin names when nothing says otherwise.
+pub const DEFAULT_GIT_URL: &str = "https://github.com/NEWSLabNTU/nano-ros";
+
+/// One form of `[toolchain]`, as a pin file is written. A file holds exactly
+/// one: writing a form replaces the other two (issue 2770).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PinSpec {
+    /// `version = "<store version>"`.
+    Release(String),
+    /// `git = "<url>"` + `rev = "<40-hex commit>"`.
+    Git { url: String, rev: String },
+    /// `path = "<dir>"`, as written: relative to the pin file's directory, or
+    /// absolute.
+    Path(String),
+}
+
+/// The `path` a pin in `pin_dir` writes for the checkout at `checkout`:
+/// relative to `pin_dir`, as the loader reads it. Refuses a directory that is
+/// not the root of a nano-ros clone, the loader's own rule.
+pub fn path_spec(pin_dir: &Path, checkout: &Path) -> Result<String> {
+    let abs = std::fs::canonicalize(checkout)
+        .wrap_err_with(|| format!("{} does not exist", checkout.display()))?;
+    if !crate::checkout::is_monorepo_root(&abs) {
+        bail!(
+            "{} is not a nano-ros checkout (no {}). A path pin names the root of a \
+             nano-ros clone.",
+            abs.display(),
+            crate::checkout::MONOREPO_MARKER
+        );
+    }
+    let base = std::fs::canonicalize(pin_dir).unwrap_or_else(|_| pin_dir.to_path_buf());
+    let rel = relative(&abs, &base);
+    rel.to_str().map(str::to_string).ok_or_else(|| {
+        eyre::eyre!(
+            "{} is not valid UTF-8, so a pin cannot name it",
+            abs.display()
+        )
+    })
+}
+
+/// `target` spelled from `base`: `.` for the same directory, `..` steps for
+/// the part of `base` not shared. Both absolute.
+fn relative(target: &Path, base: &Path) -> PathBuf {
+    let t: Vec<_> = target.components().collect();
+    let b: Vec<_> = base.components().collect();
+    let common = t.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    let mut out = PathBuf::new();
+    for _ in common..b.len() {
+        out.push("..");
+    }
+    for c in &t[common..] {
+        out.push(c);
+    }
+    if out.as_os_str().is_empty() {
+        out.push(".");
+    }
+    out
 }
 
 /// The nearest `nros-toolchain.toml` at or above `start`.
@@ -314,6 +385,18 @@ pub fn find_and_load(start: &Path) -> Result<Option<Pin>> {
 /// schema without a filesystem, and so the header lives in one place.
 #[must_use]
 pub fn render(version: &str) -> String {
+    render_spec(&PinSpec::Release(version.to_string()))
+}
+
+/// [`render`] for any form: the same header, then the one form's keys.
+#[must_use]
+pub fn render_spec(spec: &PinSpec) -> String {
+    let quoted = |v: &str| toml::Value::String(v.to_string()).to_string();
+    let table = match spec {
+        PinSpec::Release(v) => format!("version = {}\n", quoted(v)),
+        PinSpec::Git { url, rev } => format!("git = {}\nrev = {}\n", quoted(url), quoted(rev)),
+        PinSpec::Path(p) => format!("path = {}\n", quoted(p)),
+    };
     // RFC-0095 D9; `self update` moves no pin: D7.
     format!(
         "# nano-ros toolchain pin — written by `nros build` on the first build\n\
@@ -323,11 +406,11 @@ pub fn render(version: &str) -> String {
          # It is SOURCE: commit it. Without it the build floats, and firmware\n\
          # built from a floating toolchain is only reproducible by accident.\n\
          #\n\
-         # To move it, edit this line. Nothing else does — `nros self update`\n\
+         # To move it, run `nros pin`, or edit the table. `nros self update`\n\
          # moves the launcher and no pin, so an update never\n\
          # silently rebuilds your image with a different codegen.\n\
          [toolchain]\n\
-         version = \"{version}\"\n"
+         {table}"
     )
 }
 
@@ -361,8 +444,14 @@ pub fn write(dir: &Path, version: &str) -> Result<PathBuf> {
 /// this: `nros build`'s D9 path still goes through [`write`], so
 /// `nros self update` cannot move a pin.
 pub fn set(dir: &Path, version: &str) -> Result<PathBuf> {
+    set_spec(dir, &PinSpec::Release(version.to_string()))
+}
+
+/// [`set`] for any form. The file is rewritten whole, so it names exactly the
+/// one form given.
+pub fn set_spec(dir: &Path, spec: &PinSpec) -> Result<PathBuf> {
     let path = dir.join(FILE_NAME);
-    std::fs::write(&path, render(version))
+    std::fs::write(&path, render_spec(spec))
         .wrap_err_with(|| format!("write the toolchain pin {}", path.display()))?;
     Ok(path)
 }
