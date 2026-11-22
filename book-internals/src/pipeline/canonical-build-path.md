@@ -154,9 +154,10 @@ stay in the conf fragment `<build>/nros/<image>.conf`, LAST in
 `EXTRA_CONF_FILE`, because a Kconfig `choice` cannot be a prompt-less default
 (W5b's M1). A row with no Kconfig symbol rides the same unforced `--config`
 `[env]` file on the Zephyr cargo commands. A Zephyr leaf's conf files hold no
-nano-ros knob at all (gate `check-leaf-conf-nros-knobs`). A workspace
-image whose configuration differs gets its own cmake configure
-(`build/<coord>-cfg<hash>-<bringup>/`, D12; the bringup since issue 2287).
+nano-ros knob at all (gate `check-leaf-conf-nros-knobs`). Every C/C++
+workspace image gets a cmake configure of its own
+(`build/<coord>[-cfg<hash>]-<bringup>-<image>/`; the bringup since issue 2287,
+the image since issue 2702, RFC-0100 D12 amended 2026-11-22).
 
 Beside the ladder sit two things that are **facts, not rungs**, and the
 distinction matters because a fact has no `$DOTCONFIG` counterpart:
