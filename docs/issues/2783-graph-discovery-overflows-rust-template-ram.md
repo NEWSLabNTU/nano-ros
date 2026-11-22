@@ -111,3 +111,33 @@ workaround above still holds.
 Of the two loose ends: the row's `peak = 28888` over-states by 548 B, which is
 the safe direction, so it waits for the twin lane to re-measure the row once
 #4486's soft-float frames are on main.
+
+## The floor half: sized from the peak (2026-11-22)
+
+User ruling, amending ruling A: an `[[observed]]` row whose static walk is only
+an upper bound (its deepest path crosses an indirect call bound by type, not by
+a vtable slot) is sized from its measured `peak` plus `margin_pct`. The build's
+check, `--raise` and the `nros new` stamp all use that one rule. The row states
+the edge in `upper_bound` (`<caller> -> <callee> (<tier>)`, crate hashes
+stripped), taken from a fresh walk's `upper_bound_through`.
+
+The drift check walked every row on 2026-11-22. Five rows cross a type-bound
+edge and move; their template stamps (`recorded_floor`) go:
+
+| row | was | now |
+| --- | --- | --- |
+| `talker/rust/zenoh@nucleo-f767zi-zephyr` | 78,152 | 31,784 |
+| `talker/rust/zenoh@mps2-an385-zephyr` | 83,280 | 31,920 |
+| `action-server/rust/zenoh@mps2-an385-zephyr` | 132,208 | 33,368 |
+| `qemu_bsp_talker_bringup@mps2-an385-baremetal` | 176,208 | 39,424 |
+| `talker/c/zenoh@nucleo-f767zi-zephyr` | 125,896 | 13,064 |
+
+`action-server/rust/zenoh@nucleo-f767zi-zephyr` keeps its walk floor (77,728 B).
+Its image does not link today: `region 'RAM' overflowed by 77440 bytes` with
+that stack. Sizing from its peak (30,256 B, so 33,288 B) still leaves about
+33 KB over, so something else in that image has grown since the row was
+measured. That is not this issue's symptom. With no walk, it gets no
+`upper_bound`, and the row is unchanged.
+
+The template outcome (graph discovery on the stock image) is the template
+side's to close.

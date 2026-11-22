@@ -277,7 +277,10 @@ fn floor_formula(depth: i64, margin: i64) -> Option<u64> {
 ///
 /// * an `[[allowance]]` row: the static walk plus its allowance, then
 ///   `margin_pct` percent (`floor_formula`);
-/// * an `[[observed]]` row (issue 2402: under `bind` the walk is the floor, a
+/// * an `[[observed]]` row with `upper_bound` (issue 2783): its `peak`, then
+///   `margin_pct` percent -- the walk crosses a loosely bound call, so it is
+///   an upper bound and not a size;
+/// * any other `[[observed]]` row (issue 2402: under `bind` the walk is the floor, a
 ///   heuristic one that is order-dependent pending an exact search, issue
 ///   2550): the recorded max, max(`static`, `walk_floor`), raised by the
 ///   table's `drift_rise_pct`, then `margin_pct` percent. The drift check
@@ -315,6 +318,13 @@ pub fn recorded_floor(table: &str, key: &str) -> Option<u64> {
     // largest walk the image was seen to have under another callee order (the
     // walk is a heuristic on a cyclic graph, so the cycle it cuts can move).
     let observed = rows("observed").filter_map(|o| {
+        // Issue 2783 (user ruling): a row whose static walk is only an upper
+        // bound (`upper_bound`: it crosses a call bound looser than a vtable
+        // slot) is sized from the peak it was measured at, plus the margin --
+        // the build's own check takes its floor from the same peak.
+        if o.get("upper_bound").and_then(toml::Value::as_str).is_some() {
+            return floor(o.get("peak")?.as_integer()?);
+        }
         let stat = o.get("static")?.as_integer()?;
         let held = o
             .get("walk_floor")
@@ -1088,8 +1098,10 @@ mod tests {
             recorded_floor(&t, &k("action-server/rust/zenoh")),
             Some(77728)
         );
-        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(78152));
-        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(125896));
+        // Issue 2783: both walks are upper bounds (`upper_bound`), so these
+        // stamp their measured peak (28,888 B and 11,876 B) plus the margin.
+        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(31784));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(13064));
         assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
     }
 
@@ -1109,6 +1121,20 @@ mod tests {
         assert_eq!(recorded_floor(t, "k"), None);
     }
 
+    /// Issue 2783 (user ruling): a row whose static walk is an upper bound
+    /// stamps its measured peak plus the margin, not the walk; a row without
+    /// `upper_bound` still stamps the walk.
+    #[test]
+    fn an_upper_bound_rows_stamp_is_its_peak() {
+        let t = "margin_pct = 8\ndrift_rise_pct = 0\n[[observed]]\nimage = \"k\"\n\
+                 role = \"OPEN\"\nstatic = 69648\npeak = 28888\n\
+                 upper_bound = \"a -> b (type)\"\n";
+        assert_eq!(recorded_floor(t, "k"), Some(31200));
+        let t = "margin_pct = 8\ndrift_rise_pct = 0\n[[observed]]\nimage = \"k\"\n\
+                 role = \"OPEN\"\nstatic = 69648\npeak = 28888\n";
+        assert_eq!(recorded_floor(t, "k"), Some(75224));
+    }
+
     /// Issue 2400 Ruling (C): the stamp carries the drift tolerance, read from
     /// the one `drift_rise_pct` key. For every committed observed row, a
     /// project stamped from it still holds the floor a build computes when its
@@ -1125,6 +1151,19 @@ mod tests {
         let mut seen = 0;
         for row in rows.iter().filter(|r| r["role"].as_str() == Some("OPEN")) {
             let key = row["image"].as_str().unwrap();
+            // Issue 2783: a row whose walk is an upper bound is sized from its
+            // peak, by the build's check and the stamp alike, so the walk's
+            // drift moves neither.
+            if row.get("upper_bound").is_some() {
+                let peak = row["peak"].as_integer().unwrap();
+                assert_eq!(
+                    recorded_floor(&t, key),
+                    floor_formula(peak, margin),
+                    "{key}: an upper-bound row stamps its peak + margin"
+                );
+                seen += 1;
+                continue;
+            }
             let stat = row["static"].as_integer().unwrap();
             let held = row
                 .get("walk_floor")

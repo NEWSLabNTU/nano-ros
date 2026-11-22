@@ -65,7 +65,8 @@
         "NROS_MAX_SUBSCRIBERS": 0
       },
       "static": 69648,
-      "target": "thumbv7em-none-eabi"
+      "target": "thumbv7em-none-eabi",
+      "upper_bound": "_RNvC8nros_log7deliver -> _RINvNtC4nros12node_runtime25component_tick_trampolineKj1_Kj0_KB17_KB17_KB17_KB17_EC22drift_talker_rust_node (type)"
     },
     {
       "image": "action-server/rust/zenoh@mps2-an385-zephyr",
@@ -83,7 +84,8 @@
         "NROS_MAX_SUBSCRIBERS": 1
       },
       "static": 117828,
-      "target": "thumbv7m-none-eabi"
+      "target": "thumbv7m-none-eabi",
+      "upper_bound": "_RNvXs9_NtC4nros4nodeNtNtNtC9nros_node8executor4node4NodeNtB5_15DeclarativeNode16___declare_entity -> zephyr_thread_wrapper (type)"
     },
     {
       "image": "talker/rust/zenoh@mps2-an385-zephyr",
@@ -101,7 +103,8 @@
         "NROS_MAX_SUBSCRIBERS": 1
       },
       "static": 74220,
-      "target": "thumbv7m-none-eabi"
+      "target": "thumbv7m-none-eabi",
+      "upper_bound": "_RNSNvYNCNvXsl_NtC4nros12node_runtimeNtBc_14RuntimeActionsNtNtBe_4node14ActionExecutor20for_each_active_goal0INtNtNtC4core3ops8function6FnOnceTRNtNtNtC9nros_node8executor11action_core13RawActiveGoalEE9call_once6vtableBe_ -> _RINvNtNtC9nros_node8executor5arena22as_raw_set_goal_statusKj400_KB18_KB18_Kj4_EB6_ (type)"
     },
     {
       "image": "qemu_bsp_talker_bringup@mps2-an385-baremetal",
@@ -119,7 +122,8 @@
         "NROS_MAX_SUBSCRIBERS": 1
       },
       "static": 157044,
-      "target": "thumbv7m-none-eabi"
+      "target": "thumbv7m-none-eabi",
+      "upper_bound": "_RNvXs9_NtC4nros4nodeNtNtNtC9nros_node8executor4node4NodeNtB5_15DeclarativeNode16___declare_entity -> _z_network_message_elem_copy (type)"
     },
     {
       "image": "talker/c/zenoh@nucleo-f767zi-zephyr",
@@ -137,7 +141,8 @@
         "NROS_MAX_SUBSCRIBERS": 0
       },
       "static": 112200,
-      "target": "thumbv7em-none-eabi"
+      "target": "thumbv7em-none-eabi",
+      "upper_bound": "_RNvMs9_C13nros_rmw_cffiNtB5_11CffiSession16open_with_vtable -> zephyr_thread_wrapper (type)"
     }
   ],
   "policy": [

@@ -114,6 +114,9 @@ class Graph:
 
 # Most precise first: an edge two tiers bound keeps the more precise one.
 _TIER_RANK = {"slot": 0, "c_type": 1, "type": 2, "machine": 3, "any": 4}
+# An `[[observed]]` row's `upper_bound` (issue 2783): the edge that makes its
+# `static` an upper bound, so the row's stack is sized from its `peak`.
+_UPPER_BOUND = re.compile(r"^\S+ -> \S+ \((c_type|type|machine|any)\)$")
 
 
 def note_bound(g: "Graph", direct: dict[str, set[str]], caller: str, callees, tier: str) -> None:
@@ -3230,6 +3233,10 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
             if not str(o.get("walk_floor_reason", "")).strip():
                 problems.append(f"{where}: `walk_floor` needs `walk_floor_reason`, the build "
                                 "that walked it")
+        if "upper_bound" in o and not _UPPER_BOUND.match(str(o["upper_bound"])):
+            problems.append(f"{where}: `upper_bound` must read `<caller> -> <callee> (<tier>)`, "
+                            "the first edge of the walk bound looser than a vtable slot, as "
+                            "the build's report names it (`upper_bound_through`)")
         iid = str(o.get("issue", ""))
         if ISSUE_ID.match(iid) and issue_ids and iid not in issue_ids:
             problems.append(f"{where}: names issue {iid}, which has no file")
@@ -3363,7 +3370,9 @@ def check_stacks(results: dict, stacks: dict[str, int], knob: str,
             continue
         text = knob_text(knob, r["floor"])
         m = _KNOB_SET.match(text)
-        ub = r.get("upper_bound_through")
+        # A floor taken from the measured peak (issue 2783) is a size, not
+        # the walk's upper bound: it gets its hint, its check and its raise.
+        ub = r.get("upper_bound_through") if r.get("floor_basis") != "peak" else None
         # Issue 2784 -- a floor whose path crosses an over-approximate bound
         # call is an UPPER BOUND of unknown looseness: it says nothing about a
         # size to set, so it never yields a raise hint or a raise.
@@ -3887,8 +3896,22 @@ def run(args: argparse.Namespace) -> int:
                           f"{Path(args.table).with_suffix('.toml')}, then regenerate its "
                           "json twin with --sync-json.",
                           file=sys.stderr)
+            ub = upper_bound_edge(g, best.chain)
+            floor = floor_formula(best.depth, allowance, args.margin)
+            floor_basis = "walk"
+            # Issue 2783 (user ruling, amending ruling A): a MEASURED image whose
+            # walk is only an upper bound (it crosses a call bound looser than a
+            # vtable slot) is sized from the peak it was measured at, plus the
+            # margin. The walk still has to cover the peak (checked above).
+            if ub is not None and measured_by is not None and "peak" in measured_by:
+                floor = floor_formula(int(measured_by["peak"]), 0, args.margin)
+                floor_basis = "peak"
+                print(f"nros-stack-floor: note: {role.upper()}: the walk ({best.depth} B) is an "
+                      f"upper bound through `{ub[0]} -> {ub[1]}` (bound by {ub[2]}), so the "
+                      f"floor is the measured peak {measured_by['peak']} B + "
+                      f"{args.margin}%: {floor} B", file=sys.stderr)
             results[role.upper()] = {
-                "floor": floor_formula(best.depth, allowance, args.margin),
+                "floor": floor, "floor_basis": floor_basis,
                 "depth": best.depth, "allowance": allowance,
                 "allowance_issue": measured_by.get("issue") if measured_by else None,
                 "measured": measured_by is not None and unmeasured_reason is None,
@@ -3899,8 +3922,7 @@ def run(args: argparse.Namespace) -> int:
                 "path": best.chain,
                 # issue 2784 -- the first over-approximate bound edge the
                 # deepest path crosses: the floor is an upper bound through it.
-                "upper_bound_through": (list(ub) if (ub := upper_bound_edge(g, best.chain))
-                                        else None),
+                "upper_bound_through": list(ub) if ub else None,
             }
     stacks = parse_check_stacks(args)
     rc, lines, raises = 0, [], []
@@ -4565,6 +4587,11 @@ def self_test() -> int:
     rc, lines, _ = check_stacks(ubm, {"OPEN": 32768}, "K")
     check("check: a measured upper bound keeps the measured failure and its hint",
           rc == 1 and "K >= 40000" in lines[0])
+    ubp = {"OPEN": {"floor": 31200, "measured": True, "floor_basis": "peak",
+                    "upper_bound_through": ["spin", "big_cb", "type"]}}
+    rc, lines, raises = check_stacks(ubp, {"OPEN": 16384}, "S_KB={kb}", raise_=True)
+    check("raise: a floor from the measured peak is a size, so it raises (issue 2783)",
+          rc == 0 and raises and raises[0]["value"] == 31)
     rc, lines, _ = check_stacks({"OPEN": {"floor": 100, "measured": True}}, {"OPEN": 65536}, "K")
     check("check: a stack at or above the floor passes", rc == 0 and "holds" in lines[0])
     check("knob template in the knob's unit",
