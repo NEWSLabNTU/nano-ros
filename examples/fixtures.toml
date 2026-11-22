@@ -5633,13 +5633,21 @@ output = "nros_rmw_cyclonedds_ros2_pub"
 id = "orch_sched_tasks_multi"
 builder = "cargo-build"
 dir = "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_native"
-output = "target/debug/demo_entry"
+# The fixture has no root `[workspace]` (its image is stated in the bringup, the
+# workspace road), so the entry is its own cargo root and builds into its own
+# `target/`.
+manifest_dir = "src/demo_entry"
+output = "src/demo_entry/target/debug/demo_entry"
 
 [[compile_check_fixture]]
 id = "orch_sched_tasks_single"
 builder = "cargo-build"
 dir = "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_native"
-output = "target/debug/demo_entry"
+# The fixture has no root `[workspace]` (its image is stated in the bringup, the
+# workspace road), so the entry is its own cargo root and builds into its own
+# `target/`.
+manifest_dir = "src/demo_entry"
+output = "src/demo_entry/target/debug/demo_entry"
 
 [[compile_check_fixture]]
 id = "pkg_index_workspace"
@@ -5813,13 +5821,14 @@ output = "target/thumbv7m-none-eabi/debug/firmware"
 id = "orch_sched_tasks_freertos"
 builder = "cross-build"
 dir = "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_freertos"
-manifest_dir = "."
+# No root `[workspace]`: the entry is its own cargo root (see the native rows).
+manifest_dir = "src/demo_entry"
 pkg = "demo_entry"
 target = "thumbv7m-none-eabi"
 # Issue 2510: as `freertos_firmware`.
 platform = "freertos"
 profiles = ["debug", "release"]
-output = "target/thumbv7m-none-eabi/debug/demo_entry"
+output = "src/demo_entry/target/thumbv7m-none-eabi/debug/demo_entry"
 
 # --- cxx-syntax: `c++ -fsyntax-only` over a committed snippet. No artifact and
 #     no dir — the snippet is resolved by id.
