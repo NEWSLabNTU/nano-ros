@@ -158,26 +158,7 @@ fi
 echo "[zephyr setup] workspace updated to $manifest"
 
 # The update moved the projects, so whatever patch set the record names is no
-# longer what the tree carries. Drop the record first: if the set below fails,
-# the workspace reads as unpatched, which it is.
+# longer what the tree carries. The helper drops the record first: if the set
+# fails, the workspace reads as unpatched, which it is.
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/zephyr-patchset.sh"
-rm -f "$(nros_zephyr_patchset_stamp "$ws")"
-if ! line="$(nros_zephyr_workspace_line "$ws")"; then
-    echo "sync-workspace-manifest: $ws/zephyr/VERSION is missing or unreadable after the update," >&2
-    echo "  so which line's patch set to apply is unknown. The workspace is UNPATCHED;" >&2
-    echo "  run: bash $checkout/scripts/zephyr/patches/<line>.sh $ws" >&2
-    exit 1
-fi
-patchset="$checkout/scripts/zephyr/patches/$line.sh"
-if [ ! -f "$patchset" ]; then
-    echo "sync-workspace-manifest: the workspace checks out Zephyr $line and $checkout has no" >&2
-    echo "  patch set for it ($patchset). The workspace is UNPATCHED." >&2
-    exit 1
-fi
-echo "[zephyr setup] re-applying the $line patch set the update reset ($patchset)"
-if ! bash "$patchset" "$ws"; then
-    echo "sync-workspace-manifest: the $line patch set failed after the update, so $ws is" >&2
-    echo "  updated but not (fully) patched; a build there fails at configure." >&2
-    echo "  Fix the failure above, then run: bash $patchset $ws" >&2
-    exit 1
-fi
+nros_zephyr_apply_patchset "$checkout" "$ws" sync-workspace-manifest || exit 1
