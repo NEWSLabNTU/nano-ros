@@ -55,6 +55,38 @@ fn stack_used(out: &str) -> Option<usize> {
     rest.split_whitespace().next()?.parse().ok()
 }
 
+/// `(sink buffers, cpus)` from the start line.
+fn pool_shape(out: &str) -> Option<(usize, usize)> {
+    let line = out.lines().find(|l| l.contains("sink buffers "))?;
+    let buffers = line
+        .split("sink buffers ")
+        .nth(1)?
+        .split(',')
+        .next()?
+        .trim()
+        .parse()
+        .ok()?;
+    let cpus = line
+        .split("cpus ")
+        .nth(1)?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()?;
+    Some((buffers, cpus))
+}
+
+/// The pool's default size for `cpus`: the `nros-knobs.toml` ladder for
+/// `NROS_ZEPHYR_LOG_SINK_BUFFERS`, twice the CPUs in steps.
+fn default_pool_for(cpus: usize) -> usize {
+    match cpus {
+        8.. => 16,
+        4.. => 8,
+        2.. => 4,
+        _ => 2,
+    }
+}
+
 fn record(i: usize) -> String {
     format!("small-stack record {i}")
 }
@@ -67,6 +99,15 @@ fn a_small_stack_thread_logs_every_record_through_the_pool() {
     let out = proc.wait_for_pattern(DONE, BOOT);
 
     assert!(out.contains(DONE), "the image never finished:\n{out}");
+    // The image states no pool size, so it runs the derived default.
+    let (buffers, cpus) =
+        pool_shape(&out).unwrap_or_else(|| panic!("no `sink buffers .., cpus ..` line:\n{out}"));
+    assert!(cpus >= 2, "an SMP cell booted {cpus} CPU(s):\n{out}");
+    assert_eq!(
+        buffers,
+        default_pool_for(cpus),
+        "the pool is not the default for {cpus} CPUs:\n{out}"
+    );
     assert!(
         out.contains(THREAD_DONE),
         "the small-stack thread did not finish logging (overflowed?):\n{out}"
