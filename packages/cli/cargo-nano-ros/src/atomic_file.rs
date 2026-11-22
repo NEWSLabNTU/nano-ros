@@ -87,7 +87,13 @@ pub fn atomic_write_reporting(dst: &Path, body: &[u8]) -> Result<bool> {
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("nros-out");
-    let tmp = dst.with_file_name(format!(".{name}.nros-tmp.{}", std::process::id()));
+    // Issue 2827 -- the temp is unique per CALL, not only per process: two
+    // threads writing one destination shared `.<name>.nros-tmp.<pid>`, so one
+    // renamed the file the other was still writing, or found it gone. Still
+    // `.nros-tmp.<digits>`, the shape the `.gitignore` rule matches.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = dst.with_file_name(format!(".{name}.nros-tmp.{}.{seq}", std::process::id()));
     std::fs::write(&tmp, body).wrap_err_with(|| format!("write {}", tmp.display()))?;
     std::fs::rename(&tmp, dst).wrap_err_with(|| {
         // Clean-up is best-effort: the rename failing usually means the

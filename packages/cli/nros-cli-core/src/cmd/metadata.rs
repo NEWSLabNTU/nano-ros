@@ -143,7 +143,13 @@ pub fn run(args: Args) -> Result<()> {
             let opts = metadata_build_options(decl, &nano_ros, &probe_root);
             build_metadata(&opts)
                 .wrap_err_with(|| format!("build source metadata for `{}`", decl.config.package))?;
-            built.push(decl.source_metadata_path());
+            // Issue 2826 -- the probe wrote its staging path; this verb stamps
+            // nothing, so the output moves into place as it is.
+            let sidecar = decl.source_metadata_path();
+            let staged = crate::orchestration::metadata_refresh::probe_staging_path(&sidecar);
+            std::fs::rename(&staged, &sidecar)
+                .wrap_err_with(|| format!("move {} to {}", staged.display(), sidecar.display()))?;
+            built.push(sidecar);
         }
         missing.clear();
     }

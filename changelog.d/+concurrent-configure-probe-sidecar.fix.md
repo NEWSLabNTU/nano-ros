@@ -1,0 +1,1 @@
+Two configures of one workspace running at once no longer refuse an image because one read a component's sizing metadata while the other was rewriting it ("records no probe-input digest"). Each probe writes a file of its own and moves its finished result into place.
