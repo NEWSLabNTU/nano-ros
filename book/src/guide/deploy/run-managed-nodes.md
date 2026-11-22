@@ -100,6 +100,31 @@ an rclcpp system:
 - `ros2 lifecycle set /sensor_node deactivate` moves it to `inactive`, and
   `ros2 lifecycle list /sensor_node` names the transitions open from there.
 
+## What publishers send in each state
+
+A managed node's publishers send only while the node is `active`. In
+`unconfigured`, `inactive` and `finalized`, `publish` returns success and
+the message is dropped. Each publisher prints one line, for its first
+dropped message:
+
+```text
+publishing on `/sensor/reading` while its node is not active: the message is dropped, and so is every message until the node is activated
+```
+
+- The publishers open as the node activates, before its `on_activate`
+  runs, so a message published inside `on_activate` goes out.
+- They close after `on_deactivate` runs, and stay closed when an activation
+  fails.
+- nano-ros opens and closes them itself, on every ROS 2 edition. A call to a
+  publisher's own `on_activate()` is accepted and does nothing.
+- Subscriptions, services, clients, timers and `/rosout` are not gated: they
+  work in every state.
+
+In C++, a publisher held as `rclcpp_lifecycle::LifecyclePublisher` still
+drops a message published inside `on_activate`: it starts sending only once
+`on_activate` has returned `SUCCESS`. Publish from a timer or callback that
+runs after activation instead.
+
 ## One boot state per image
 
 `autostart` is one value for the whole image: every managed node boots to
@@ -158,14 +183,8 @@ file.
 
 ## What a managed node does not do yet
 
-Two parts of the lifecycle are not built. Plan around them:
-
-- **Publishers do not follow the node's state.** A managed node's publishers
-  send in every state, `unconfigured` included. The exception is C++: a
-  `LifecyclePublisher` that `rclcpp_lifecycle::LifecycleNode::create_publisher`
-  returns sends only while the node is `active`, as in rclcpp.
-- **There is no per-node `autostart`.** Every managed node in an image boots
-  to the image's one value (above).
+There is no per-node `autostart`. Every managed node in an image boots to
+the image's one value (above).
 
 ## See also
 
