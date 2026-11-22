@@ -1133,6 +1133,20 @@ impl CtxRef<'_> {
         unsafe { core::ptr::addr_of_mut!((*self.ctx).c.in_dispatch) }
     }
 
+    /// Phase-573 W3 (RFC-0108 D9) -- the refusal for an entry that does not
+    /// spin but must not run inside a callback. An entry that spins takes
+    /// [`RawDispatchGuard`] instead, which refuses the same way and holds the
+    /// flag for the pass. Nothing else reads the flag
+    /// (`check-ffi-executor-derive`).
+    pub(crate) fn refuse_in_dispatch(&self) -> Result<(), nros_cpp_ret_t> {
+        // SAFETY: `in_dispatch_ptr`'s place, read under the lock `self` holds.
+        if unsafe { self.in_dispatch_ptr().read() } {
+            Err(NROS_CPP_RET_REENTRANT)
+        } else {
+            Ok(())
+        }
+    }
+
     /// The context's executor as a raw pointer (see `in_dispatch_ptr`).
     pub(crate) fn exec_ptr(&self) -> *mut CppExecutor {
         // SAFETY: `ctx` is the live context this guard locked; a raw read of
@@ -4227,12 +4241,12 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     // the lock (the pass returns holding it again).
     // SAFETY: a place projection through the proven context; no reference.
     let in_dispatch = unsafe { core::ptr::addr_of_mut!((*ctx).c.in_dispatch) };
+    // Phase-573 W3 -- through the one refusal; it clears the flag when it
+    // drops, after the pass, with `_lock` still held (dropped after it).
     // SAFETY: the tag proved the context; the lock serialises the flag.
-    if unsafe { in_dispatch.read() } {
+    let Some(_dispatch) = (unsafe { RawDispatchGuard::enter(in_dispatch) }) else {
         return NROS_CPP_RET_REENTRANT;
-    }
-    // SAFETY: as the read.
-    unsafe { in_dispatch.write(true) };
+    };
     // Phase 127.C.4 — the prior Zephyr+std bypass (drive_io(0) + msleep)
     // starved reliable XRCE retransmission on the server side and
     // skipped arena dispatch on the client side; the underlying
@@ -4244,8 +4258,6 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     // SAFETY: the calling thread holds the lock once (`_lock`); no reference
     // to the executor or the context is live across the pass.
     let _ = unsafe { CppExecutor::spin_once_shared(exec, core::time::Duration::from_millis(ms)) };
-    // SAFETY: as the read above; the lock is held again.
-    unsafe { in_dispatch.write(false) };
     NROS_CPP_RET_OK
 }
 
@@ -4288,19 +4300,16 @@ pub unsafe extern "C" fn nros_cpp_spin_some(handle: *mut c_void, max_ms: u32) ->
     // Issue 0290 — the same re-entry refusal `nros_cpp_spin_once` makes.
     // SAFETY: a place projection through the proven context; no reference.
     let in_dispatch = unsafe { core::ptr::addr_of_mut!((*ctx).c.in_dispatch) };
+    // Phase-573 W3 -- through the one refusal, as `nros_cpp_spin_once`.
     // SAFETY: the tag proved the context; the lock serialises the flag.
-    if unsafe { in_dispatch.read() } {
+    let Some(_dispatch) = (unsafe { RawDispatchGuard::enter(in_dispatch) }) else {
         return NROS_CPP_RET_REENTRANT;
-    }
-    // SAFETY: as the read.
-    unsafe { in_dispatch.write(true) };
+    };
     // SAFETY: the calling thread holds the lock (`_lock`); no reference to
     // the executor or the context is live across the drain.
     let ret = unsafe {
         CppExecutor::spin_some_raw(exec, core::time::Duration::from_millis(max_ms as u64))
     };
-    // SAFETY: as the read above.
-    unsafe { in_dispatch.write(false) };
     match ret {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_UNSUPPORTED,
@@ -6798,8 +6807,8 @@ pub unsafe extern "C" fn nros_cpp_executor_drain_violations(
     let Some(cb) = cb else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    if cpp.c.in_dispatch {
-        return NROS_CPP_RET_REENTRANT;
+    if let Err(ret) = cpp.refuse_in_dispatch() {
+        return ret;
     }
     cpp.executor.drain_violations(|v| {
         let out = nros_cpp_violation_t {
