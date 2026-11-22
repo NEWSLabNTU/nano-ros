@@ -13982,6 +13982,66 @@ mod per_image_configure_tests {
         );
     }
 
+    /// The cmake build dir `nros build` uses for one image of a fixture row's
+    /// workspace, or `None` when the image is not on a cmake road (or its board
+    /// does not resolve). With no `image_id`, the workspace must hold exactly
+    /// one image -- a template row names none -- and anything else is an
+    /// error naming the row, so a second image cannot make the check vacuous.
+    fn fixture_row_cmake_build_dir(
+        repo: &std::path::Path,
+        catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+        dir: &str,
+        bringup: Option<&str>,
+        image_id: Option<&str>,
+        non_rust: bool,
+    ) -> Result<Option<String>, String> {
+        let ws = repo.join(dir);
+        let found = discover::discover(&ws, &[]).expect("discover");
+        let bringups = collect_images(&found.packages).expect("images");
+        let bringup_name = bringup.map(|b| {
+            std::path::Path::new(b)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap()
+                .to_string()
+        });
+        let mut images: Vec<_> = plan::all_images(&bringups)
+            .into_iter()
+            .filter(|(b, _, id, _)| {
+                bringup_name.as_deref().is_none_or(|n| b == n) && image_id.is_none_or(|i| id == i)
+            })
+            .collect();
+        if images.len() != 1 {
+            return Err(format!(
+                "{dir} {}:{}: {} matching image(s); the row must name exactly one",
+                bringup_name.as_deref().unwrap_or("<any bringup>"),
+                image_id.unwrap_or("<any image>"),
+                images.len()
+            ));
+        }
+        let (b, bd, id, img) = images.remove(0);
+        let Ok(d) = crate::orchestration::image::resolve_image_board(catalog, &id, &img) else {
+            return Ok(None);
+        };
+        let platform = d.platform.kebab();
+        let driver = plan::driver_for_board(platform, d.entry_kind, non_rust);
+        Ok(driver
+            .ok()
+            .and_then(|dr| cmake_build_dir_for(dr, platform, &img, &b, &id, &bd)))
+    }
+
+    fn fixtures_manifest(repo: &std::path::Path) -> toml::Value {
+        toml::from_str(&std::fs::read_to_string(repo.join("examples/fixtures.toml")).unwrap())
+            .unwrap()
+    }
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap()
+    }
+
     /// Every GENERATED workspace fixture row (`image = …`) states its cmake
     /// build dir as a literal `build_subdir`, and the fixture build and the
     /// test locators both read that literal. Before W4 the coordinate could not
@@ -13989,13 +14049,8 @@ mod per_image_configure_tests {
     /// the literal is checked against the one derivation instead of trusted.
     #[test]
     fn every_generated_workspace_fixture_row_names_its_cmake_build_dir() {
-        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../..")
-            .canonicalize()
-            .unwrap();
-        let manifest: toml::Value =
-            toml::from_str(&std::fs::read_to_string(repo.join("examples/fixtures.toml")).unwrap())
-                .unwrap();
+        let repo = repo_root();
+        let manifest = fixtures_manifest(&repo);
         let catalog =
             crate::orchestration::board_descriptor::BoardCatalog::load(&repo).expect("catalog");
         let mut checked = 0usize;
@@ -14014,25 +14069,6 @@ mod per_image_configure_tests {
             ) else {
                 continue;
             };
-            let ws = repo.join(dir);
-            let found = discover::discover(&ws, &[]).expect("discover");
-            let bringups = collect_images(&found.packages).expect("images");
-            let bringup_name = std::path::Path::new(bringup)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap();
-            let Some((_, bd, _, img)) = plan::all_images(&bringups)
-                .into_iter()
-                .find(|(b, _, id, _)| b == bringup_name && id == image_id)
-            else {
-                wrong.push(format!("{dir} {bringup_name}:{image_id}: no such image"));
-                continue;
-            };
-            let Ok(d) = crate::orchestration::image::resolve_image_board(&catalog, image_id, &img)
-            else {
-                continue;
-            };
-            let platform = d.platform.kebab();
             // The row's own language answers "does the image link non-Rust
             // code" — the planner's `image_has_non_rust` closure is local to it.
             // A row's `lang` is also `mixed`, which is no single `Language` and
@@ -14043,17 +14079,24 @@ mod per_image_configure_tests {
                     .map(nros_lang::Language::parse),
                 Some(Ok(nros_lang::Language::Rust))
             );
-            let driver = plan::driver_for_board(platform, d.entry_kind, non_rust);
-            let Some(want) = driver.ok().and_then(|dr| {
-                cmake_build_dir_for(dr, platform, &img, bringup_name, image_id, &bd)
-            }) else {
-                continue;
-            };
-            checked += 1;
-            if want != subdir {
-                wrong.push(format!(
-                    "{dir} {bringup_name}:{image_id}: build_subdir = {subdir:?}, nros build uses {want:?}"
-                ));
+            match fixture_row_cmake_build_dir(
+                &repo,
+                &catalog,
+                dir,
+                Some(bringup),
+                Some(image_id),
+                non_rust,
+            ) {
+                Err(e) => wrong.push(e),
+                Ok(None) => {}
+                Ok(Some(want)) => {
+                    checked += 1;
+                    if want != subdir {
+                        wrong.push(format!(
+                            "{dir} {bringup}:{image_id}: build_subdir = {subdir:?}, nros build uses {want:?}"
+                        ));
+                    }
+                }
             }
         }
         assert!(
@@ -14064,6 +14107,80 @@ mod per_image_configure_tests {
             wrong.is_empty(),
             "examples/fixtures.toml `build_subdir` disagrees with `cmake_coordinate` \
              (phase-481 W4 — write what nros build uses):\n  {}",
+            wrong.join("\n  ")
+        );
+    }
+
+    /// Issue 2702 -- a `[[compile_check_fixture]]` row whose `output` sits in a
+    /// cmake build dir (a workspace template `nros build` builds) states that
+    /// dir too, and nothing checked it: when the coordinate gained the image,
+    /// four template rows kept the old dir and their tests read "not built".
+    /// The row names no image, so its workspace must hold exactly one.
+    #[test]
+    fn every_compile_check_row_output_is_under_its_cmake_build_dir() {
+        let repo = repo_root();
+        let manifest = fixtures_manifest(&repo);
+        let catalog =
+            crate::orchestration::board_descriptor::BoardCatalog::load(&repo).expect("catalog");
+        let mut checked = 0usize;
+        let mut wrong = Vec::new();
+        for row in manifest
+            .get("compile_check_fixture")
+            .and_then(|r| r.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let (Some(id), Some(dir), Some(output)) = (
+                row.get("id").and_then(|v| v.as_str()),
+                row.get("dir").and_then(|v| v.as_str()),
+                row.get("output").and_then(|v| v.as_str()),
+            ) else {
+                continue;
+            };
+            // Only an output inside a `nros build` coordinate dir, which starts
+            // with a platform family (the families `check-cmake-build-dir-literals`
+            // reads); a per-package configure (`build/<pkg>/cmake`) and the cargo
+            // road (`build/<coord>/<entry>/target/...`) are not one.
+            let Some((subdir, _)) = output.split_once("/cmake/") else {
+                continue;
+            };
+            let Some(coord) = subdir.strip_prefix("build/") else {
+                continue;
+            };
+            const FAMILIES: [&str; 6] = [
+                "posix-",
+                "threadx-",
+                "freertos-",
+                "nuttx-",
+                "bare-metal-",
+                "native-",
+            ];
+            if coord.contains('/') || !FAMILIES.iter().any(|f| coord.starts_with(f)) {
+                continue;
+            }
+            match fixture_row_cmake_build_dir(&repo, &catalog, dir, None, None, true) {
+                Err(e) => wrong.push(format!("{id}: {e}")),
+                Ok(None) => wrong.push(format!(
+                    "{id}: output {output:?} is in a cmake build dir, but `nros build` \
+                     takes no cmake road for {dir}"
+                )),
+                Ok(Some(want)) => {
+                    checked += 1;
+                    if !output.starts_with(&format!("{want}/")) {
+                        wrong.push(format!(
+                            "{id}: output = {output:?}, nros build uses {want:?}"
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            checked > 0,
+            "no compile-check row in a cmake build dir was checked — the walk is vacuous"
+        );
+        assert!(
+            wrong.is_empty(),
+            "examples/fixtures.toml compile-check `output` disagrees with `cmake_coordinate`:\n  {}",
             wrong.join("\n  ")
         );
     }
