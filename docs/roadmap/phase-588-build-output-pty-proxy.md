@@ -1,6 +1,6 @@
 # Phase 588 -- `nros build` proxies the native tool through a pty, keeps its log, and explains a link overflow
 
-**Status (2026-11-23). OPEN: W1 and W2 done; W3 and W4 open.** Implements the
+**Status (2026-11-23). OPEN: W1, W2, W3 and W4 done; closes when they merge.** Implements the
 [RFC-0065](../design/0065-colcon-like-workspace-builder.md) D1 amendment of
 2026-11-23 (user ruling: option (a), stay alive and proxy) for
 [issue 2836](../issues/2836-link-overflow-unexplained.md). Pairing: the pty
@@ -75,7 +75,7 @@ line buffering would change. So the capture goes through a pseudo-terminal.
 
 ### W3 -- read the log on failure, and explain a region overflow (issue 2836)
 
-- **Status:** OPEN (docs/UX)
+- **Status:** DONE (docs/UX)
 - **What:** after a failed build only, scan its log for
   `region '<R>' overflowed by <N> bytes` (GNU ld and LLD spellings). On a
   match, print under the tool's output what the build already knows:
@@ -94,10 +94,22 @@ line buffering would change. So the capture goes through a pseudo-terminal.
   - on a real overflowing image, the explanation prints under the linker's
     line.
 
+  Measured 2026-11-23: a stock Rust zenoh talker for nucleo-f767zi-zephyr
+  with `heap_bytes = 393216`, built with its output piped (the CI road).
+  ld.bfd failed with "region `RAM' overflowed by 122432 bytes". `west.log`
+  landed in the west build directory holding that line, and the explanation
+  printed under it: the 33,368 B main stack and its stack-floor row, the
+  393,216 B heap and its knob, and the `os_config` way out.
+
 ### W4 -- the book and the reference
 
-- **Status:** OPEN (docs/UX)
+- **Status:** DONE (docs/UX)
 - **What:** `reference/build-outputs.md` names the per-tool log and when it
   is written, and the Troubleshoot page's "the build stops on RAM" entry
   shows the explanation.
 - **Acceptance:** the pages match what W1-W3 print.
+
+  Done: "The build's log" in `reference/build-outputs.md` (the three paths,
+  replaced each build, the exit status, Ctrl-C), and "The link fails: a
+  region overflowed" under Troubleshoot's build issues, quoting the measured
+  message. The page's opening no longer says the last stage is an `exec`.

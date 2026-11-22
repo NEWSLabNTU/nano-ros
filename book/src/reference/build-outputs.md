@@ -4,8 +4,10 @@
 
 `nros build` ends at an **artifact** and stops. It discovers your packages,
 resolves the image, checks the toolchain, generates the root build file and the
-entry, and then hands off to the native tool — `cargo`, `cmake` or `west`. The last stage is an `exec`, so the artifact is exactly the one that
-tool would have produced had you run it yourself.
+entry, and then hands off to the native tool — `cargo`, `cmake` or `west`. The
+tool runs as `nros build`'s child, with its output on your terminal as it
+prints it, so the artifact is exactly the one that tool would have produced had
+you run it yourself.
 
 This page answers the question the build does not: **what are you holding, and
 where is it?**
@@ -231,6 +233,29 @@ than wrapping.
 For the generation side of this — which root file is written, why the entry is
 derived rather than hand-written, and what the coordinate directory holds — see
 [How a build becomes an image](../background/how-a-build-becomes-an-image.md).
+
+## The build's log
+
+Every build that reaches the native tool keeps what the tool printed, in
+`<tool>.log` inside the image's own build directory:
+
+| driver | the log |
+| --- | --- |
+| `cargo` | `<ws>/build/<coordinate>/<image>_entry/target/cargo.log` |
+| `cmake` | `<ws>/build/<coordinate>/cmake/cmake.log` |
+| `west` | `<ws>/build/<coordinate>/<bringup>__<image>_west/west.log` |
+
+Each build replaces the file, so it always holds the last build. It is
+written in a terminal and in CI alike, where nothing is attached to a
+terminal.
+
+`nros build` exits with the tool's own status: a failing `cmake --build`
+exits 2 under `nros build` as it does on its own. Ctrl-C stops the tool and
+everything it started, and `nros build` exits 130.
+
+When the link fails because the image does not fit a memory region, the
+build reads its log and ends with what the image reserves there. [Troubleshoot](../guide/deploy/troubleshoot.md#build-issues) shows
+that message and what to change.
 
 ## The generated entry
 
