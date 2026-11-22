@@ -1,15 +1,17 @@
 ---
 id: 2828
 title: "No C lifecycle example or interop cell checks that a stock `ros2 lifecycle` client drives a C image"
-status: open
+status: resolved
 type: test-gap
 severity: medium
 area: [c-api, lifecycle, testing, interop]
 related: [issue-2429, issue-2626, phase-554]
 found: 2026-11-22
+resolved: 2026-11-22
+resolved_in: "test(interop, issue 2828): a C lifecycle example, driven by stock `ros2 lifecycle`"
 ---
 
-**Home: [phase-554](../roadmap/phase-554-per-node-lifecycle.md) W9** (the
+**Home: [phase-554](../../roadmap/phase-554-per-node-lifecycle.md) W9** (the
 phase B acceptance cells), for the C row.
 
 ## What is missing
@@ -44,3 +46,24 @@ image:
 
 The cell is green on zenoh and Cyclone DDS. With the executor-identity
 naming put back (issue 2429's defect), it fails with "Node not found".
+
+## Resolved, 2026-11-22
+
+- `examples/linux/c/lifecycle-node` binds one node, registers the five
+  services through `rclc_executor_register_lifecycle_services`, and prints
+  a line from each transition callback.
+- `tests/c_lifecycle_interop.rs` drives it with stock `ros2 lifecycle`. It
+  is bound to the `interop::CELLS` row `native-lifecycle-c-zenoh` and
+  checks two things:
+  - `lifecycle nodes` and `node list` each show exactly
+    `/c_lifecycle_node`;
+  - `get`, `set` and `list` follow configure, activate, deactivate and
+    cleanup, each running the example's own callback.
+
+Green on zenoh with issue 2429's fix (2 of 2, 15.6 s). Negative control,
+measured: on `main` before that fix the image served `//change_state`,
+`//get_state` and the rest, and the test failed at its first step
+(`ros2 lifecycle nodes` listed nothing).
+
+Not done: the Cyclone DDS row. The example carries a `linux_cyclonedds`
+image, and its cell waits for phase-554 W9's Cyclone rows.
