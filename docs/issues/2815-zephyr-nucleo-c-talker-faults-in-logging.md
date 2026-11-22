@@ -102,8 +102,58 @@ Each of these is one image rebuild and one run of the cell:
 Only with the serial link and router, that is, the test itself. Booting the
 copied image alone in Renode 1.17.0, with no peer, ran clean three times out of
 three. That proves nothing: the session never opens, no entity is created, and
-the image ends at 12 s in `NodeError::Transport`. A 3x solo run of the real
-cell is queued on host 241, and its counts go here.
+the image ends at 12 s in `NodeError::Transport`. The real cell's counts are in the verdict above.
+
+## Verdict, 2026-11-22: the main stack
+
+Host 241 ran the discriminator cell at main `9c8ecf5dcb`, three runs a
+variant, with the host peer built and each variant's `.config` checked:
+
+| variant | runs | result |
+| --- | --- | --- |
+| baseline: `MAIN_STACK_SIZE=16384`, deferred logging | 3 | USAGE FAULT, Illegal use of the EPSR (PC `0x08044308` twice, `0x2002239c`) |
+| `CONFIG_LOG_MODE_IMMEDIATE=y` | 3 | USAGE FAULT (PC `0x08043510`, `0x00000000`, `0x0805b043`) |
+| `MAIN_STACK_SIZE=32768` | 3 | pass, no fault |
+
+So hypothesis 2 holds and hypothesis 1 is ruled out. Main's stack overflows
+while the parameter services register. `log_buffer` was only what the
+overflow trampled; with immediate logging the corruption lands somewhere else.
+
+**Why the MPU stack guard did not trap it.** The frames on that path are far
+larger than the guard region. Prologue `sub sp` sizes, from the run's own
+image:
+
+| function | frame |
+| --- | --- |
+| `Executor::pass` | 9,472 B |
+| `Executor::reconcile_parameter_services` | 9,344 B |
+| `Executor::ensure_parameter_store` | 8,704 B |
+| `parameter_services::read_parameter_value_into` | 8,320 B |
+
+`pass` calls `reconcile_parameter_services`, so those two frames alone take
+18.8 KB of a 16 KiB stack. One `sub sp` of 9 KB moves the stack pointer
+straight past the guard and into `.data`, and the next store lands there:
+here in `log_buffer`. Nothing touched the guard, so nothing faulted.
+
+`reconcile_parameter_services`'s frame is its `todo` list, a
+`heapless::Vec<(u8, String<64>, String<64>), MAX_SERVICE_SETS>` built on the
+stack, about 130 bytes for each node the table can hold. This is issue
+2387's class one function over: 2387 moved the service set out of this frame
+and left the list that feeds it.
+
+**Fix direction.** Shrink the frames rather than raise every image's stack:
+the list holds node indices only and the names are cloned per iteration, and
+the other three frames are checked for the same shape. Then measure main's
+peak on this board. A frame-size check over the Cortex-M fixture images keeps
+a frame larger than the guard from coming back unnoticed.
+
+These are the frames PR #4589's sweep (issue 2820) listed as "fit, not
+fixed": they fit a 64 KiB FreeRTOS app stack, but not a 16 KiB Zephyr main.
+This issue fixes them, starting with the four above and taking
+`ExecutorSink::create_node` (17.8 KiB) and the `create_entity` closures
+(5.6-16.8 KiB) from that list too, since they run on the same registration
+path. The frame-size check is not a second scanner: it belongs in the
+stack-floor tooling (`scripts/nros-stack-floor.py`), which already reads every frame.
 
 ## A gate for the frame-size class
 
