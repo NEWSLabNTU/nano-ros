@@ -203,6 +203,11 @@ mod diag;
 pub(crate) use diag::DiagSink;
 #[cfg(feature = "rmw-cffi")]
 mod timer;
+// Issue 2843 / phase-573 W3 -- the C++ API over a stub backend with the
+// executor lock installed: a callback waiting for a service leaves the
+// executor to other threads.
+#[cfg(all(test, feature = "rmw-cffi", feature = "alloc", unix))]
+mod tests_wait_lock;
 
 // ── Action module (alloc-free — caller provides inline storage) ──
 #[cfg(feature = "rmw-cffi")]

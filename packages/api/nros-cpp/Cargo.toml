@@ -344,6 +344,8 @@ nros-build-helpers = { workspace = true }
 # `c-stub-test`: that is mutually exclusive with `posix-c-port`, and feature
 # unification turns both on in a workspace build.
 nros-platform-cffi = { workspace = true, features = ["posix-c-port"] }
+# issue 2843 — the wait-lock unit test registers a stub backend by name.
+nros-rmw-cffi.workspace = true
 # phase-359 W10 stage C — a lib TEST's root is libstd, which supplies the panic
 # handler and `rust_eh_personality`; `nros-c` must then supply neither, even
 # when this crate's default `panic-platform` reaches it (rustc E0152 otherwise).
