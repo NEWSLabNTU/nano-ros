@@ -435,6 +435,16 @@ pub struct SchedTaskMemory {
     pub derives_level_stacks: bool,
 }
 
+/// Issue 2732 -- what a Rust entry spawns its sched tasks on
+/// ([`BoardFamily::rust_spawned_task_stacks`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SpawnedTaskStacks {
+    /// The sum of the spawned tasks' stated stacks.
+    pub stated_bytes: u64,
+    /// How many spawned tasks state none, so take the port's default.
+    pub on_app_stack: usize,
+}
+
 /// Which sched task of a highest-priority-first table a runner boots on the caller.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BootSchedTask {
@@ -486,6 +496,55 @@ impl BoardFamily {
             return None;
         }
         Some(self.c_abi_runners()?.sched_task_memory?.stacks(declared))
+    }
+
+    /// Which task of a highest-priority-first table a RUST entry's runner
+    /// runs on the caller's thread (the boot task); every other task is
+    /// spawned. `None` for a family whose Rust entry runs no sched tasks.
+    ///
+    /// The C runners' rule where the family has one (FreeRTOS, Zephyr,
+    /// NuttX: the Rust runners boot the same task). ThreadX's C runner runs no
+    /// sched tasks, and its Rust runner (`nros_board_threadx`'s
+    /// `run_sched_tasks_entry`) boots `sched_tasks[0]` on the
+    /// `tx_application_define` app thread and spawns the rest from the byte
+    /// pool. Issue 2732 counts the spawned ones in that pool, and issue 2784
+    /// checks each.
+    /// Issue 2732 -- the stacks a RUST entry's runner spawns its sched tasks
+    /// on, from each task's `declared` stack (authored, or derived from its
+    /// members), in sched-task order: every task but
+    /// [`rust_boot_sched_task`](Self::rust_boot_sched_task)'s. A spawned task
+    /// that states a stack adds it to `stated_bytes`; one that states none
+    /// (`None` or `0`) is counted in `on_app_stack`, the port's default.
+    /// `None` for a family whose Rust entry runs no sched tasks.
+    ///
+    /// The ONE rule: `nros build` states it in the image's sizing descriptor,
+    /// and `nros::main!` refuses an image whose own table disagrees with it.
+    pub fn rust_spawned_task_stacks(&self, declared: &[Option<u64>]) -> Option<SpawnedTaskStacks> {
+        let boot = match self.rust_boot_sched_task()? {
+            BootSchedTask::First => 0,
+            BootSchedTask::Last => declared.len().saturating_sub(1),
+        };
+        let mut out = SpawnedTaskStacks::default();
+        for (i, d) in declared.iter().enumerate() {
+            if i == boot {
+                continue;
+            }
+            match d {
+                Some(b) if *b > 0 => out.stated_bytes += *b,
+                _ => out.on_app_stack += 1,
+            }
+        }
+        Some(out)
+    }
+
+    pub fn rust_boot_sched_task(&self) -> Option<BootSchedTask> {
+        match self {
+            BoardFamily::Threadx => Some(BootSchedTask::First),
+            _ => self
+                .c_abi_runners()?
+                .sched_task_memory
+                .map(|m| m.boot_sched_task),
+        }
     }
 }
 
@@ -1000,6 +1059,26 @@ mod tests {
     /// Issue 2784 -- the stacks a Rust entry reserves: FreeRTOS and Zephyr
     /// take entry memory (Zephyr's undeclared row is the pool default, 0), and
     /// a family whose Rust runner takes none states nothing.
+    #[test]
+    fn the_rust_boot_task_follows_each_runner() {
+        assert_eq!(
+            BoardFamily::Freertos.rust_boot_sched_task(),
+            Some(BootSchedTask::Last)
+        );
+        assert_eq!(
+            BoardFamily::Nuttx.rust_boot_sched_task(),
+            Some(BootSchedTask::Last)
+        );
+        assert_eq!(
+            BoardFamily::Zephyr.rust_boot_sched_task(),
+            Some(BootSchedTask::First)
+        );
+        assert_eq!(
+            BoardFamily::Threadx.rust_boot_sched_task(),
+            Some(BootSchedTask::First)
+        );
+    }
+
     #[test]
     fn rust_entry_task_stacks_follow_the_reservation() {
         assert_eq!(

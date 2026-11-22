@@ -1811,6 +1811,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &image_id,
                     &target,
                     args.nano_ros_path.clone(),
+                    generated.spawned_task_stacks,
                 ) {
                     // phase-454 W6.c — the four Cyclone facts a
                     // `cc::Build` cannot read from a file. All four are
@@ -5778,7 +5779,7 @@ fn generate_entry(
     // silently generates nothing. phase-383 W10 tripped over exactly that on
     // the first workspace it tried.
     if owned_entry_dir(root, image_id, image)?.is_some() {
-        return Ok(GeneratedEntry { dir: None });
+        return Ok(GeneratedEntry::default());
     }
 
     let mut plan = match crate::codegen::entry::plan_from_model(
@@ -5789,7 +5790,7 @@ fn generate_entry(
         Ok(p) => p,
         Err(e) => {
             eprintln!("nros build: warning: cannot plan `{image_id}`: {e}");
-            return Ok(GeneratedEntry { dir: None });
+            return Ok(GeneratedEntry::default());
         }
     };
     // phase-470 W5.b2 (issue 1288) — resolve the SCHEDULE, because the board
@@ -5918,6 +5919,8 @@ fn generate_entry(
         }
         return Ok(GeneratedEntry {
             dir: Some(entry_dir_for_deps),
+            // A C/C++ west application: no Rust runner spawns its tasks.
+            spawned_task_stacks: None,
         });
     }
 
@@ -6159,16 +6162,45 @@ fn generate_entry(
         crate::builder::west_app::write(west, &dir)
             .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
     }
+    // Issues 2784, 2732 -- the stacks the entry allocates, each level's derived
+    // from its members by the rule `nros::main!` runs
+    // (`derive_level_stacks_for`): the RESOLVED table carries only authored
+    // stacks, and a level that authors none would read as the port's default.
+    let runner = if has_non_rust {
+        nros_orchestration_ir::LevelRunner::C
+    } else {
+        nros_orchestration_ir::LevelRunner::Rust
+    };
+    let stack_table = crate::codegen::entry::derived_stack_table(&plan, plan_rtos, runner);
     // Issue 2784 -- the sched tasks and their stacks, for the stack-floor
     // check's per-task roles (the C/C++ road reads `nros_priority_plan.json`).
-    crate::cmd::stack_floor::write_sched_tasks(
-        &dir,
-        plan_rtos,
-        &plan.board,
-        plan.resolved_sched_tasks.as_ref(),
-    )?;
+    crate::cmd::stack_floor::write_sched_tasks(&dir, plan_rtos, &plan.board, stack_table.as_ref())?;
+    // Issue 2732 -- what the image spawns, for the allocator that holds the
+    // stacks: the ThreadX byte pool, the one port whose task stacks come out of
+    // an allocator a build sizes (FreeRTOS, Zephyr and NuttX entries reserve
+    // them as statics). Stated only for a Rust entry: it is the Rust runner's
+    // boot rule that decides which task is spawned.
+    let spawned_task_stacks = if has_non_rust {
+        None
+    } else {
+        crate::orchestration::board_key::board_family(&plan.board)
+            .ok()
+            .filter(|f| *f == nros_entry_lower::BoardFamily::Threadx)
+            .and_then(|family| {
+                let single = nros_orchestration_ir::ResolvedSchedTaskTable {
+                    sched_tasks: Vec::new(),
+                };
+                crate::sizing_descriptor::spawned_sched_task_stacks(
+                    stack_table.as_ref().unwrap_or(&single),
+                    family,
+                )
+            })
+    };
 
-    Ok(GeneratedEntry { dir: Some(dir) })
+    Ok(GeneratedEntry {
+        dir: Some(dir),
+        spawned_task_stacks,
+    })
 }
 
 /// What [`generate_entry`] produced for one image.
@@ -6177,6 +6209,9 @@ struct GeneratedEntry {
     /// The generated entry package, or `None` when a hand-written one
     /// suppressed generation or the launch could not be resolved here.
     dir: Option<PathBuf>,
+    /// Issue 2732 -- the stacks the entry spawns its sched tasks on, for the
+    /// image's sizing descriptor.
+    spawned_task_stacks: Option<crate::sizing_descriptor::SpawnedSchedTaskStacks>,
 }
 
 /// Issue 0827 — the pool knobs stage 3.5 DERIVED for this image, as `[env]`
@@ -7925,6 +7960,9 @@ fn write_image_descriptor(
     image_id: &str,
     target: &DescriptorTarget<'_>,
     nano_ros_path: Option<PathBuf>,
+    // Issue 2732 -- the stacks the image's entry spawns, when this road
+    // resolved its table.
+    task_stacks: Option<crate::sizing_descriptor::SpawnedSchedTaskStacks>,
 ) -> Option<(crate::sizing_descriptor::WrittenDescriptor, bool)> {
     let image_for = |wiring| crate::sizing_descriptor::ModelImage {
         build_dir: target.build_dir,
@@ -7977,11 +8015,12 @@ fn write_image_descriptor(
         // every road shares. The cmake producers take the tables their
         // configure registered instead.
         let bound_tables = crate::leaf_payload_classes::generated_bound_tables(root);
-        return match crate::sizing_descriptor::write_for_model(
+        return match crate::sizing_descriptor::write_for_model_with_task_stacks(
             &crate::sizing_descriptor::ModelImage {
                 bound_inventories: &bound_tables,
                 ..image_for(crate::sizing_descriptor::Wiring::Composed(&observed))
             },
+            task_stacks,
         ) {
             Ok(Some(written)) => {
                 crate::build_notes::detail(format!(
@@ -8010,16 +8049,17 @@ fn write_image_descriptor(
     let infra = resolved.and_then(|r| r.store_infra)?;
     let nodes_unknown = resolved.is_some_and(|r| r.nodes_unknown);
     let params = crate::entity_inventory::ParamDeclarations::Absent;
-    match crate::sizing_descriptor::write_for_model(&image_for(
-        crate::sizing_descriptor::Wiring::Unwired {
+    match crate::sizing_descriptor::write_for_model_with_task_stacks(
+        &image_for(crate::sizing_descriptor::Wiring::Unwired {
             params: &params,
             infra,
             // Issue 2482 -- an owned entry's node count is its program's.
             model_nodes: (!nodes_unknown).then_some(infra.model_nodes),
             roots: &[root],
             census_refused: None,
-        },
-    )) {
+        }),
+        task_stacks,
+    ) {
         Ok(Some(written)) => {
             eprintln!(
                 // issue 1706, phase-486 W9.
@@ -8238,6 +8278,8 @@ fn resolve_rust_west_image(
         image_id,
         &target,
         nano_ros_root.map(Path::to_path_buf),
+        // The Zephyr west road: its Rust lane runs no ThreadX pool.
+        None,
     );
     if let Err(e) = write_sizing_decision(
         resolved_dir,

@@ -142,3 +142,29 @@ No in-tree ARM Zephyr Rust image has sched tasks, so the Zephyr Rust wiring is
 covered by the walker's self-test only. Left open: ThreadX (after issue 2732),
 the C runners' own fallback stacks where no entry memory is reserved, and
 rooting each task at its own callbacks (after issue 2658).
+
+## Progress (2026-11-23): ThreadX, and derived level stacks
+
+- **The file states the stacks the entry allocates.** `nros-sched-tasks.json`
+  carried each task's AUTHORED `stack_bytes`. A level that authors none takes
+  its largest member's `[[component]] stack_bytes` plus the worker frame in
+  `nros::main!` (`derive_level_stacks`), and the file read that level as the
+  port's default. `nros build` now derives the table with the macro's own
+  function (`nros_orchestration_ir::derive_level_stacks_for`, of which
+  `derive_level_stacks` is the Rust-runner case) before writing it.
+- **The boot task is the Rust runner's rule** (`BoardFamily::rust_boot_sched_task`),
+  which adds ThreadX: its runner boots `sched_tasks[0]` on the app thread and
+  reserves no task memory (the byte pool holds the stacks).
+- **rv-virt-threadx states a `TASK` row**: root `~level_task_entry`
+  (`nros_board_threadx`'s spawned-level entry), default `app_stack_bytes`,
+  which `nros_threadx_create_task` gives a task that states no stack.
+  threadx-linux stays reported, not checked (a host image's frames run through
+  the host libc; issue 2834).
+
+Measured, realtime-rust with a temporary `[image] board = "rv-virt-threadx"`
+(cargo road): OPEN floor 206,680 B and TASK_HIGH floor 203,880 B, each on a
+524,288 B stack, both reported (no observed peak yet). TASK_LOW is the boot
+task.
+
+Left open: the C runners' own fallback stacks where no entry memory is
+reserved, and rooting each task at its own callbacks (after issue 2658).

@@ -2404,7 +2404,7 @@ pub enum Wiring<'a> {
 /// cmake consumer registers the result in `CMAKE_CONFIGURE_DEPENDS` (issue 1018)
 /// and identical bytes must keep their mtime.
 pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<Option<WrittenDescriptor>> {
-    write_model_descriptor(img, None, Vec::new())
+    write_model_descriptor(img, None, Vec::new(), None)
 }
 
 /// Issue 1970 -- [`write_for_model`], stating each sched task's own `[[sched_task]]` row
@@ -2414,7 +2414,51 @@ pub fn write_for_model_with_sched_tasks(
     img: &ModelImage<'_>,
     sched_tasks: Vec<nros_sizing_descriptor::SchedTask>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
-    write_model_descriptor(img, None, sched_tasks)
+    write_model_descriptor(img, None, sched_tasks, None)
+}
+
+/// Issue 2732 -- [`write_for_model`], also stating the stacks the image's
+/// entry spawns its sched tasks on (`[image] spawned_sched_task_stack_bytes`
+/// and `spawned_sched_tasks_on_app_stack`). `None` states neither.
+pub fn write_for_model_with_task_stacks(
+    img: &ModelImage<'_>,
+    stacks: Option<SpawnedSchedTaskStacks>,
+) -> eyre::Result<Option<WrittenDescriptor>> {
+    write_model_descriptor(img, None, Vec::new(), stacks)
+}
+
+/// Issue 2732 -- the stacks an image's entry spawns its sched tasks on, as the
+/// two `[image]` facts state them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SpawnedSchedTaskStacks {
+    /// The sum of every spawned task's stated stack (authored, or derived from
+    /// its members).
+    pub stack_bytes: usize,
+    /// How many spawned tasks state none, so the port gives each its app
+    /// thread's stack.
+    pub on_app_stack: usize,
+}
+
+/// Issue 2732 -- [`SpawnedSchedTaskStacks`] for `table` (stacks already derived,
+/// [`crate::codegen::entry::derived_stack_table`]) on `family`'s Rust runner:
+/// every task but the one the runner boots on the caller's thread
+/// ([`nros_entry_lower::BoardFamily::rust_boot_sched_task`]). `None` for a
+/// family whose Rust entry runs no sched tasks. A single-task table spawns
+/// nothing, so it states zeros.
+pub fn spawned_sched_task_stacks(
+    table: &nros_orchestration_ir::ResolvedSchedTaskTable,
+    family: nros_entry_lower::BoardFamily,
+) -> Option<SpawnedSchedTaskStacks> {
+    let declared: Vec<Option<u64>> = table
+        .sched_tasks
+        .iter()
+        .map(|t| t.stack_bytes.map(u64::from))
+        .collect();
+    let s = family.rust_spawned_task_stacks(&declared)?;
+    Some(SpawnedSchedTaskStacks {
+        stack_bytes: s.stated_bytes as usize,
+        on_app_stack: s.on_app_stack,
+    })
 }
 
 /// RFC-0100 D12 (issue 1649) — the descriptor for a RUNTIME that several
@@ -2434,7 +2478,7 @@ pub fn write_for_runtime(
     img: &ModelImage<'_>,
     runtime: &RuntimeComposition<'_>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
-    write_model_descriptor(img, Some(runtime), Vec::new())
+    write_model_descriptor(img, Some(runtime), Vec::new(), None)
 }
 
 /// What a RUNTIME descriptor records beyond an entry's (RFC-0100 D12).
@@ -2771,6 +2815,7 @@ fn write_model_descriptor(
     img: &ModelImage<'_>,
     runtime: Option<&RuntimeComposition<'_>>,
     sched_tasks: Vec<nros_sizing_descriptor::SchedTask>,
+    task_stacks: Option<SpawnedSchedTaskStacks>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
     let path = match runtime {
         Some(_) => nros_sizing_descriptor::runtime_descriptor_path(img.build_dir),
@@ -2805,6 +2850,12 @@ fn write_model_descriptor(
     };
     let mut desc = desc;
     desc.sched_tasks = sched_tasks;
+    // Issue 2732 -- stated only by a road that resolved the entry's table.
+    if let Some(t) = task_stacks {
+        desc.image
+            .set_spawned_sched_task_stack_bytes(Some(t.stack_bytes))
+            .set_spawned_sched_tasks_on_app_stack(Some(t.on_app_stack));
+    }
     // A road that may size from the subscribed set only refuses the closure
     // maximum wherever the composer answered it; an ABSENT field stays absent.
     if let Some(why) = &img.horizon.closure_wire_bound_refused {
@@ -3452,6 +3503,63 @@ mod tests {
     use super::*;
     use crate::entity_inventory::{ComponentEntities, EntityDecl, ObservedBufferedRow};
     use nros_orchestration_ir::qos_override::{QoSDurabilityPolicy, QoSHistoryPolicy};
+
+    fn sched_task(name: &str, stack: Option<u32>) -> nros_orchestration_ir::ResolvedSchedTask {
+        nros_orchestration_ir::ResolvedSchedTask {
+            name: name.into(),
+            priority: 1,
+            stack_bytes: stack,
+            spin_period_us: None,
+            preempt_threshold: None,
+            time_slice_us: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: Vec::new(),
+        }
+    }
+
+    /// Issue 2732 -- every task but the Rust runner's boot task is spawned: a
+    /// spawned task's stated stack is summed, one with none is counted on the
+    /// app stack. ThreadX boots the first, FreeRTOS the last; a family whose
+    /// Rust entry runs no sched tasks states nothing.
+    #[test]
+    fn spawned_stacks_follow_each_runners_boot_task() {
+        use nros_entry_lower::BoardFamily;
+        let table = nros_orchestration_ir::ResolvedSchedTaskTable {
+            sched_tasks: vec![
+                sched_task("a", Some(8192)),
+                sched_task("b", None),
+                sched_task("c", Some(4096)),
+            ],
+        };
+        assert_eq!(
+            spawned_sched_task_stacks(&table, BoardFamily::Threadx),
+            Some(SpawnedSchedTaskStacks {
+                stack_bytes: 4096,
+                on_app_stack: 1
+            })
+        );
+        assert_eq!(
+            spawned_sched_task_stacks(&table, BoardFamily::Freertos),
+            Some(SpawnedSchedTaskStacks {
+                stack_bytes: 8192,
+                on_app_stack: 1
+            })
+        );
+        let one = nros_orchestration_ir::ResolvedSchedTaskTable {
+            sched_tasks: vec![sched_task("default", Some(9000))],
+        };
+        assert_eq!(
+            spawned_sched_task_stacks(&one, BoardFamily::Threadx),
+            Some(SpawnedSchedTaskStacks::default())
+        );
+        assert_eq!(spawned_sched_task_stacks(&table, BoardFamily::Linux), None);
+    }
 
     fn inventory(decls: Vec<EntityDecl>) -> EntityInventory {
         let mut inv = EntityInventory::new("metadata");

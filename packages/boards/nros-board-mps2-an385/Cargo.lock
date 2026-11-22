@@ -516,6 +516,7 @@ dependencies = [
  "nros-entry-lower",
  "nros-orchestration-ir",
  "nros-pkg-index",
+ "nros-sizing-descriptor",
  "nros-system-include",
  "proc-macro2",
  "quote",
