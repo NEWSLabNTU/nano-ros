@@ -33,6 +33,7 @@
  */
 
 #include <nros/platform.h>
+#include <nros/platform_freertos.h>
 
 /* Issue #44 — on esp-idf (riscv), `freertos/config/riscv/include/freertos/
  * FreeRTOSConfig_arch.h` defines
@@ -1484,26 +1485,37 @@ nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
     return st;
 }
 
+/* No list, nothing to resolve: the boot point the entries call is a no-op. */
+void nros_platform_freertos_clock_resolve_point(void) {}
+
 #else /* NROS_CLOCK_SOURCE_CSV */
-/* RFC-0141 D1/D2 (phase-582 W1d) -- the image states a source list. FreeRTOS
- * has no boot resolution point nano-ros owns on every road, so the list is
- * resolved LAZILY, once, on the first wall-clock read from a task, and no
- * entry has to call anything:
+/* RFC-0141 D1/D2 -- the image states a source list. It is resolved ONCE, at
+ * an explicit boot point: the board entry calls
+ * `nros_platform_freertos_clock_resolve_point` (`nros/platform_freertos.h`)
+ * from the app task after it has brought the network up and registered the
+ * log writer, as Zephyr resolves after its network wait:
  *   - `platform`: the host's CLOCK_REALTIME on the POSIX port; on bare metal
  *     it does NOT answer (no wall clock), so a list ending in it reaches
  *     `epoch_failure`;
  *   - `board`: the board hook, given `clock.fallback_settle_ms` to answer
  *     (`nros_clock_board__set_by__knobs_clock_source.c`, polling every 10 ms).
- * So while the board is unanswered, that first read blocks its task for up to
- * the window, as Zephyr's boot resolution blocks boot; a task that reads
- * meanwhile waits for the verdict. After it no read calls the hook again.
+ * So while the board is unanswered the point blocks the app task for up to
+ * the window, as Zephyr's boot resolution blocks boot. After it no read calls
+ * the hook again.
+ *
+ * NOT lazily on the first read, as the POSIX port does: a FreeRTOS image's
+ * first read comes before the network exists. A Cyclone static constructor
+ * (its random-seed set-up) reads the wall clock from the entry's `.init_array`
+ * walk, which runs before network init, so a lazy first read
+ * spent the whole window with the network the board hook needs still down,
+ * latched "unanswered", and printed the verdict before any log writer was
+ * registered. Until the point, a read resolves nothing: it reads 0, the state
+ * is "not synced" naming the first listed source, and no window is spent.
  *
  * The "once" is the port's critical section and a phase flag: the critical
  * section cannot be held across the window's sleeps, so it only claims the
- * resolution. A read before the scheduler runs (or with it suspended) cannot
- * sleep and resolves nothing: it reads 0 and the state names the first
- * listed source, and the first read from a running task resolves. The
- * verdict is reported once through the board's log writer. */
+ * resolution, and a second caller waits for the verdict. The verdict is
+ * reported once through the board's log writer. */
 #include <nros/clock_epoch.h>
 #include <nros/clock_resolve.h>
 
@@ -1541,15 +1553,19 @@ static void nros_freertos_clock_report(const char *msg, size_t len, void *ctx) {
     }
 }
 
-/* Whether the list has been resolved, resolving it on the first call from a
- * running task. */
+/* Whether the boot point has resolved the list. A read never resolves. */
 static bool nros_freertos_clock_resolved(void) {
-    if (__atomic_load_n(&s_wall_clock_phase, __ATOMIC_ACQUIRE) == NROS_FREERTOS_CLOCK_RESOLVED) {
-        return true;
+    return __atomic_load_n(&s_wall_clock_phase, __ATOMIC_ACQUIRE) == NROS_FREERTOS_CLOCK_RESOLVED;
+}
+
+void nros_platform_freertos_clock_resolve_point(void) {
+    if (nros_freertos_clock_resolved()) {
+        return;
     }
 #if (INCLUDE_xTaskGetSchedulerState == 1) || (configUSE_TIMERS == 1)
+    /* The window sleeps; before the scheduler runs nothing can. */
     if (xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) {
-        return false;
+        return;
     }
 #endif
     bool mine = false;
@@ -1566,40 +1582,42 @@ static bool nros_freertos_clock_resolved(void) {
         s_wall_clock_latched = nros_clock_resolve(&policy, nros_freertos_clock_try,
                                                   nros_freertos_clock_report, NULL);
         __atomic_store_n(&s_wall_clock_phase, NROS_FREERTOS_CLOCK_RESOLVED, __ATOMIC_RELEASE);
-        return true;
+        return;
     }
-    while (__atomic_load_n(&s_wall_clock_phase, __ATOMIC_ACQUIRE) != NROS_FREERTOS_CLOCK_RESOLVED) {
+    while (!nros_freertos_clock_resolved()) {
         nros_platform_sleep_ms(10);
     }
-    return true;
 }
 
 uint64_t nros_platform_time_now_ns(void) {
-    const bool resolved = nros_freertos_clock_resolved();
+    if (!nros_freertos_clock_resolved()) {
+        return 0ULL; /* before the boot point: no wall clock yet */
+    }
 #if NROS_FREERTOS_POSIX_PORT
-    if (resolved && s_wall_clock_latched == NROS_WALL_CLOCK_SOURCE_PLATFORM) {
+    if (s_wall_clock_latched == NROS_WALL_CLOCK_SOURCE_PLATFORM) {
         uint64_t ns = 0ULL;
         return nros_freertos_host_realtime_ns(&ns) ? ns : 0ULL;
     }
-#else
-    (void) resolved;
 #endif
-    /* A store source (`board`), or nothing answered (yet): the store reads 0
+    /* A store source (`board`), or nothing answered: the store reads 0
      * ("no wall clock") until an offset is installed. */
     return nros_clock_epoch_us() * 1000ULL;
 }
 
 nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
-    const bool resolved = nros_freertos_clock_resolved();
+    if (!nros_freertos_clock_resolved()) {
+        /* Before the boot point: not synced, waiting on the first listed
+         * source. */
+        nros_wall_clock_state_t st = {false, nros_clock_first_source_from_build(), 0u};
+        return st;
+    }
 #if NROS_FREERTOS_POSIX_PORT
-    if (resolved && s_wall_clock_latched == NROS_WALL_CLOCK_SOURCE_PLATFORM) {
+    if (s_wall_clock_latched == NROS_WALL_CLOCK_SOURCE_PLATFORM) {
         nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
         uint64_t ns = 0ULL;
         st.synced = nros_freertos_host_realtime_ns(&ns);
         return st;
     }
-#else
-    (void) resolved;
 #endif
     return nros_clock_epoch_state(nros_clock_first_source_from_build());
 }

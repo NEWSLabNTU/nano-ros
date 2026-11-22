@@ -71,6 +71,8 @@ extern int nros_freertos_create_task(void (*entry)(void*), const char* name, uin
                                      void* arg, uint32_t priority);
 /* nros-platform-freertos */
 extern void nros_platform_freertos_seed_rng(uint32_t value);
+/* nros/platform_freertos.h */
+extern void nros_platform_freertos_clock_resolve_point(void);
 extern void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint8_t*, uintptr_t,
                                                              const uint8_t*, uintptr_t),
                                               void (*flusher)(void));
@@ -559,6 +561,13 @@ static void app_task_entry(void* arg) {
     setvbuf(stdout, NULL, _IONBF, 0);
 
     nros_platform_register_log_writer(board_log_writer, NULL);
+
+    /* The wall clock's boot point: after the network is up (a board clock
+     * backed by an SNTP exchange needs the poll task and the netif) and after
+     * the log writer is registered (the verdict line goes through it). Earlier
+     * reads, such as the Cyclone constructors in the `.init_array` walk above,
+     * read 0 and resolve nothing. */
+    nros_platform_freertos_clock_resolve_point();
 
     /* Configure zenoh-pico's executor (read) task BEFORE app_main (which
      * calls zpico_init -> zp_start_read_task). Without this, the task spawns at

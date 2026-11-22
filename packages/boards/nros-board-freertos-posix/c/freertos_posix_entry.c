@@ -42,6 +42,8 @@ extern int nros_freertos_create_task(void (*entry)(void *), const char *name,
                                      uint32_t stack_words, void *arg, uint32_t priority);
 /* nros-platform-freertos */
 extern void nros_platform_freertos_seed_rng(uint32_t value);
+/* nros/platform_freertos.h */
+extern void nros_platform_freertos_clock_resolve_point(void);
 extern void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint8_t *, uintptr_t,
                                                              const uint8_t *, uintptr_t),
                                               void (*flusher)(void));
@@ -183,6 +185,9 @@ static void app_task_entry(void *arg) {
 
     seed_platform_rng(NROS_APP_CONFIG.network.ip, NROS_APP_CONFIG.network.mac);
     nros_platform_register_log_writer(board_log_writer, board_log_flush);
+    /* The wall clock's boot point, after the log writer (the verdict line goes
+     * through it). The host owns the network, so there is none to wait for. */
+    nros_platform_freertos_clock_resolve_point();
 
     /* Issue 1778: the heap-peak sampler, at the LOWEST priority above idle, so it
      * never competes with the application or the transport. Failure is

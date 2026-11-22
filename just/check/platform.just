@@ -114,11 +114,13 @@ clock-selection-parity:
 
 # The FreeRTOS port's `board` source (`tests/clock-board-freertos-tests.sh`):
 # the real kernel on its POSIX port and the real `nros-platform-freertos`,
-# built through its CMakeLists, resolving lazily from a task: the board within
-# the window, the halt, freertos-posix's `platform` (and default) answering the
-# host's CLOCK_REALTIME, and the bare-metal arm's `platform` not answering.
+# built through its CMakeLists, resolving at the boot point a board entry calls
+# from a task after network bring-up (a read before it resolves nothing and
+# spends no window): the board within the window, the halt, freertos-posix's
+# `platform` (and default) answering the host's CLOCK_REALTIME, and the
+# bare-metal arm's `platform` not answering.
 # It needs the provisioned FreeRTOS kernel, which no lane claims: CI runs it in
-# the job that provisions the kernel (gate.yml, after `workspace-all`). ~10 s.
+# the job that provisions the kernel (gate.yml, after `workspace-all`). ~20 s.
 [private]
 [group('needs:cc')]
 [group('needs:cmake')]

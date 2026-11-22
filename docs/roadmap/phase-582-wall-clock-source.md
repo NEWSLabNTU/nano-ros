@@ -115,6 +115,23 @@ SNTP never re-acquires. A consumer's board hook papers over that with
       commands see). Host test `tests/clock-board-freertos-tests.sh`: the real
       kernel on its POSIX port and the real port, built through its
       CMakeLists.
+    - **Follow-up (2026-11-23, issue 2865): FreeRTOS resolves at a boot
+      point, not lazily.** The first read on a FreeRTOS image is a static
+      constructor: Cyclone's `ddsrt_random_init` reads the wall clock from
+      the entry's `.init_array` walk, before `nros_freertos_init_network`. So
+      the window ran with the network down, a board hook behind an lwIP SNTP
+      task latched "unanswered", and the verdict printed before the log
+      writer existed. Seen on mps3-an536 with Cyclone; s32z270 has the same
+      shape. The port now resolves at `nros_platform_freertos_clock_resolve_point()`
+      (`nros/platform_freertos.h`). Before it, reads read 0 and resolve
+      nothing. Every FreeRTOS entry calls it from the app task after network
+      bring-up and log-writer registration: `freertos_c_entry.c` (every C/C++
+      FreeRTOS board, including the out-of-tree r5f fixture),
+      `freertos_posix_entry.c`, and the Rust `freertos_boot_bringup` (both
+      ports, so every Rust entry flavour). POSIX keeps its lazy
+      `pthread_once`. The host test adds a hook that answers only once a
+      "network up" flag is set, before the point and after a read longer
+      than the window. A lazy-on-first-read mutant fails both cases.
 - RFC-0141 D1–D4:
   - the `[knobs.clock]` group: `source` (one, or an ordered fallback),
     `fallback_settle_ms`, `upgrade`, `sntp_attempts`, `epoch_failure`
@@ -306,6 +323,8 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 - [Issue 2691](../issues/archived/2691-freertos-tick-count-answers-as-wall-clock.md):
   W2.
 - phase-478 gap 5.4 (no board time source over serial).
+- [Issue 2866](../issues/2866-board-clock-resync-interval.md): `board` is
+  asked once; a re-sync interval in SNTP's knob shape is a follow-up.
 - [Issue 2841](../issues/2841-c-configure-builds-component-exes-against-image-runtime.md):
   W1d's C stub-board image cannot build until a C image's configure stops
   building every component's executable against the image's runtime.

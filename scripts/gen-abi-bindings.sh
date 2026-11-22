@@ -284,8 +284,9 @@ finish "$RMW_OUT" "$gen_dir/rmw.rs"
 # ---- Platform surface: nros-platform-api headers -> nros-platform-cffi/src/generated.rs
 # Function DECLARATIONS only (the port side defines them via the
 # nros_platform_export_*! macros, which stay hand-written — they emit
-# definitions, not declarations). platform_zephyr.h is excluded: it is a
-# Zephyr-conditional surface consumed C-side only.
+# definitions, not declarations). platform_zephyr.h and platform_freertos.h
+# are excluded: each is one RTOS's conditional surface, consumed by that
+# RTOS's board entries only.
 PLAT_API="packages/platform/nros-platform-api"
 PLAT_OUT="packages/platform/nros-platform-cffi/src/generated.rs"
 

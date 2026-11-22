@@ -104,6 +104,11 @@ unsafe extern "C" {
     fn nros_platform_task_stack_unused_bytes() -> usize;
 
     fn nros_freertos_set_current_task_priority(priority: u32);
+
+    /// The wall clock's boot point (`nros/platform_freertos.h`): resolves the
+    /// image's clock source list once. Called from the app task after the
+    /// network is up and the port's log writer is registered.
+    fn nros_platform_freertos_clock_resolve_point();
 }
 
 /// Network polling task stack size in words (1 KB = 256 words).
@@ -600,6 +605,14 @@ where
             ));
         }
     }
+
+    // The wall clock's boot point (`nros/platform_freertos.h`), on both ports:
+    // after the network is up and the lwIP drain task runs (a board clock
+    // backed by an SNTP exchange needs both), and after the board registered
+    // the port's log writer (before `run_entry`), so the verdict line is seen.
+    // Earlier reads, such as the Cyclone constructors in the `.init_array`
+    // walk above, read 0 and resolve nothing.
+    unsafe { nros_platform_freertos_clock_resolve_point() };
 }
 
 // Task-context heap goes through the canonical platform ABI (RFC-0034 /

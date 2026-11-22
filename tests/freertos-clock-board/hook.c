@@ -1,6 +1,9 @@
 /* The stub board hook: HOOK_ANSWERS 1 answers a fixed instant, 0 never
  * answers, 2 answers only from 200 ms after its first call (a board whose
- * clock syncs late). An object of the image, as the link rule asks. */
+ * clock syncs late), 3 answers only once the test has set
+ * `hook_network_up` (a board clock behind an SNTP exchange, which cannot
+ * answer before the network is up). An object of the image, as the link rule
+ * asks. */
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
@@ -9,6 +12,7 @@
 #define HOOK_AFTER_MS 200
 
 int hook_calls;
+volatile int hook_network_up;
 
 __attribute__((unused)) static uint64_t mono_ns(void) {
     struct timespec ts;
@@ -28,6 +32,12 @@ bool nros_board_wall_clock_ns(uint64_t* out_ns) {
         first_ns = mono_ns();
     }
     if (mono_ns() - first_ns < (uint64_t)HOOK_AFTER_MS * 1000000ULL) {
+        return false;
+    }
+    *out_ns = BOARD_NS;
+    return true;
+#elif HOOK_ANSWERS == 3
+    if (!hook_network_up) {
         return false;
     }
     *out_ns = BOARD_NS;

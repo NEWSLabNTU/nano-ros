@@ -5,17 +5,27 @@
 # `nros_clock_selection_apply` applies the selection from the configure's
 # environment, as it does from an image's), with a stub board hook
 # (`tests/freertos-clock-board`). Each case is its own build and process: the
-# port resolves once per process, on the first wall-clock read from a task.
+# port resolves once per process, at its boot point
+# (`nros_platform_freertos_clock_resolve_point`), which the program calls from
+# a task as a board entry does after network bring-up. Every list case first
+# checks that a read before the point reads 0, not synced, and asks the hook
+# nothing.
 #
 # Cases:
 #   board-late  source = board, fallback_settle_ms = 1000, a hook that answers
-#               only after 200 ms: the first read waits for it (>= ~200 ms, under
+#               only after 200 ms: the point waits for it (>= ~200 ms, under
 #               the window), reads the board's instant, {synced, board}, the
 #               verdict line "nros: wall clock from board" goes through the
 #               board's log writer once, and 100 later reads ask nothing; a read
 #               before the scheduler runs resolves nothing and reads 0;
+#   board-net   window 300 ms, a hook that answers only once the test sets its
+#               "network up" flag, set just before the point: installed,
+#               {synced, board}, the verdict once;
+#   board-early the same hook, a read early, then MORE than the window passes
+#               before the network is up and the point runs: the early read
+#               spent no window, so the board's answer is still installed;
 #   board-never source = board, window 300 ms, a hook that never answers: the
-#               first read returns after the window, reads 0, {unsynced, board},
+#               point returns after the window, reads 0, {unsynced, board},
 #               and says so once;
 #   board-halt  the same with epoch_failure = halt: the port's panic names
 #               board and the knob, and nothing runs past it (FreeRTOS's panic
@@ -27,8 +37,10 @@
 #               board,platform with an unanswered hook reaches epoch_failure,
 #               because a bare-metal `platform` has no wall clock;
 #   bare-default   the bare-metal arm, no list: 0, unsynced (unchanged).
-# Negative control: board-late against a port whose resolution call is
-# deleted from time_now must FAIL.
+# Negative controls, each against a mutated port that must FAIL:
+#   - a point that resolves nothing fails board-late;
+#   - resolving lazily on the first read (the shape this replaced, which ran
+#     before the network was up) fails board-net and board-early.
 #
 # Needs the FreeRTOS kernel (`nros locate freertos-kernel`); without it this is
 # a REPORTED skip (nros_check_unverified), as the C-port smoke is.
@@ -100,6 +112,16 @@ nros_grep_q -F 'resolves the wall clock from `board`' "$tmp/board-late.log"; m=$
 run board-late
 once board-late "nros: wall clock from board"
 
+echo "== board-net"
+build board-net CASE_BOARD_NET 3 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
+run board-net
+once board-net "nros: wall clock from board"
+
+echo "== board-early"
+build board-early CASE_BOARD_EARLY 3 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
+run board-early
+once board-early "nros: wall clock from board"
+
 echo "== board-never"
 build board-never CASE_BOARD_NEVER 0 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
 run board-never
@@ -119,7 +141,7 @@ nros_grep_q -F 'no wall-clock source answered (board); halting, as clock.epoch_f
     "$tmp/board-halt.out"; m=$?
 [ "$m" -eq 0 ] || fail "board-halt: the halt line does not name board and the knob"
 # Nothing from the task may follow the halt.
-nros_grep_q -F 'first read took' "$tmp/board-halt.out"; m=$?
+nros_grep_q -F 'read after the point' "$tmp/board-halt.out"; m=$?
 [ "$m" -eq 1 ] || fail "board-halt: the task ran past the halt"
 echo "  ok   halt stops the image after the window, naming board and the knob"
 
@@ -145,34 +167,68 @@ echo "== bare-default (bare-metal arm)"
 build bare-default CASE_DEFAULT_NONE 1 ON
 run bare-default
 
-# Negative control: time_now that never resolves fails board-late.
-mutant="$tmp/mutant-src"
-mkdir -p "$mutant"
-cp -r "$root/packages/platform/nros-platform-freertos/." "$mutant/"
-python3 - "$mutant/src/platform.c" <<'PY'
+# Negative controls. mutant <name> <python-replacement-script>: a copy of the
+# port with one edit, wired into a copy of the harness.
+mutant() {
+    local name="$1" edit="$2" src="$tmp/$1-src" h="$tmp/$1-harness"
+    mkdir -p "$src" "$h"
+    cp -r "$root/packages/platform/nros-platform-freertos/." "$src/"
+    python3 -c "$edit" "$src/src/platform.c" || fail "negative control $name: could not build the mutant"
+    # The mutant tree sits outside the repo, so its CMakeLists cannot reach
+    # ../../../cmake; point it back.
+    sed -i "s#\${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosClockSelection.cmake#$root/cmake/NanoRosClockSelection.cmake#" \
+        "$src/CMakeLists.txt"
+    cp "$root/tests/freertos-clock-board/main.c" "$root/tests/freertos-clock-board/hook.c" "$h/"
+    sed -e "s#\${REPO_ROOT}/packages/platform/nros-platform-freertos\"#$src\"#" \
+        -e "s#set(REPO_ROOT \"\${CMAKE_CURRENT_LIST_DIR}/../..\")#set(REPO_ROOT \"$root\")#" \
+        "$root/tests/freertos-clock-board/CMakeLists.txt" >"$h/CMakeLists.txt"
+}
+# must_fail <build> <want-line>: the mutant run fails, on the named check.
+must_fail() {
+    local rc=0 out
+    out="$("${NROS_DEADLINE[@]}" 20 "$tmp/$1/clock_board" 2>&1)" || rc=$?
+    [ "$rc" -ne 0 ] || { printf '%s\n' "$out" >&2; fail "negative control $1: the mutant passed"; }
+    nros_grep_q -F "$2" <<<"$out"; m=$?
+    [ "$m" -eq 0 ] || { printf '%s\n' "$out" >&2; fail "negative control $1: it failed, but not on '$2'"; }
+    echo "  ok   negative control $1 fails on '$2'"
+}
+
+# 1. A point that resolves nothing fails board-late.
+mutant inert '
 import sys
 p = sys.argv[1]
 s = open(p).read()
-needle = "uint64_t nros_platform_time_now_ns(void) {\n    const bool resolved = nros_freertos_clock_resolved();"
+needle = "void nros_platform_freertos_clock_resolve_point(void) {\n    if (nros_freertos_clock_resolved()) {"
 if needle not in s:
-    sys.exit("the time_now resolution call was not found")
-open(p, "w").write(s.replace(needle, "uint64_t nros_platform_time_now_ns(void) {\n    const bool resolved = false;"))
-PY
-[ $? -eq 0 ] || fail "negative control: could not build the mutant"
-# The mutant tree sits outside the repo, so its CMakeLists cannot reach
-# ../../../cmake; point it back.
-sed -i "s#\${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosClockSelection.cmake#$root/cmake/NanoRosClockSelection.cmake#" \
-    "$mutant/CMakeLists.txt"
-sed "s#\${REPO_ROOT}/packages/platform/nros-platform-freertos\"#$mutant\"#" \
-    "$harness/CMakeLists.txt" >"$tmp/harness-CMakeLists.txt"
-mkdir -p "$tmp/mutant-harness"
-cp "$harness/main.c" "$harness/hook.c" "$tmp/mutant-harness/"
-sed "s#set(REPO_ROOT \"\${CMAKE_CURRENT_LIST_DIR}/../..\")#set(REPO_ROOT \"$root\")#" \
-    "$tmp/harness-CMakeLists.txt" >"$tmp/mutant-harness/CMakeLists.txt"
-harness="$tmp/mutant-harness" build mutant CASE_BOARD_LATE 2 OFF NROS_CLOCK_SOURCE=board \
+    sys.exit("the resolve point was not found")
+open(p, "w").write(s.replace(needle, "void nros_platform_freertos_clock_resolve_point(void) {\n    return;\n    if (nros_freertos_clock_resolved()) {"))
+'
+harness="$tmp/inert-harness" build inert CASE_BOARD_LATE 2 OFF NROS_CLOCK_SOURCE=board \
     NROS_CLOCK_FALLBACK_SETTLE_MS=1000
-rc=0; out="$("${NROS_DEADLINE[@]}" 20 "$tmp/mutant/clock_board" 2>&1)" || rc=$?
-[ "$rc" -ne 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: a port that never resolves passed board-late"; }
-nros_grep_q -F 'FAIL the first read waited for the board' <<<"$out"; m=$?
-[ "$m" -eq 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: it failed, but not on the wait"; }
-echo "clock-board-freertos: OK (negative control: a time_now that never resolves fails board-late)"
+must_fail inert 'FAIL the point waited for the board'
+
+# 2. Lazy on the first read (resolve from time_now / wall_clock_state) fails
+#    board-net and board-early: the first read resolves while the network is
+#    down, spends the window, and latches "unanswered".
+mutant lazy '
+import sys
+p = sys.argv[1]
+s = open(p).read()
+needles = [
+    "uint64_t nros_platform_time_now_ns(void) {\n    if (!nros_freertos_clock_resolved()) {",
+    "nros_wall_clock_state_t nros_platform_wall_clock_state(void) {\n    if (!nros_freertos_clock_resolved()) {",
+]
+for n in needles:
+    if n not in s:
+        sys.exit("a read was not found: " + n)
+    head, rest = n.split("\n", 1)
+    s = s.replace(n, head + "\n    nros_platform_freertos_clock_resolve_point();\n" + rest)
+open(p, "w").write(s)
+'
+harness="$tmp/lazy-harness" build lazy-net CASE_BOARD_NET 3 OFF NROS_CLOCK_SOURCE=board \
+    NROS_CLOCK_FALLBACK_SETTLE_MS=300
+must_fail lazy-net 'FAIL ...and never asks the hook'
+harness="$tmp/lazy-harness" build lazy-early CASE_BOARD_EARLY 3 OFF NROS_CLOCK_SOURCE=board \
+    NROS_CLOCK_FALLBACK_SETTLE_MS=300
+must_fail lazy-early "FAIL reading is the board's instant"
+echo "clock-board-freertos: OK (negative controls: an inert point fails board-late; lazy-on-first-read fails board-net and board-early)"

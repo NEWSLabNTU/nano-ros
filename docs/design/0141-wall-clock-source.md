@@ -258,13 +258,24 @@ module's library. The rule as built:
   applies. The hook is never called after resolution: a per-read call was
   rejected, for the reasons above. The poll lives in the one selection-named
   TU, which every port compiles.
-- **Where it resolves.** A port with no boot resolution point of its own
-  resolves LAZILY, once, on the first wall-clock read, so no entry calls
-  anything. While the board is unanswered, that first read blocks for up to
-  the window, as Zephyr's boot resolution blocks boot. That is POSIX
-  (`pthread_once`) and FreeRTOS (the port's critical section claims the
-  resolution, from a running task; a read before the scheduler runs reads 0).
-  Zephyr keeps its boot resolution point (D1).
+- **Where it resolves.** Zephyr and FreeRTOS resolve at an explicit boot
+  point after network bring-up; POSIX resolves LAZILY.
+  - Zephyr keeps its boot resolution point (D1).
+  - FreeRTOS resolves at `nros_platform_freertos_clock_resolve_point()`
+    (`nros/platform_freertos.h`), which every FreeRTOS board entry calls
+    from the app task after the network is up and the log writer is
+    registered, before the application runs. Before that point a read
+    resolves nothing and spends no window: it reads 0, and the state is "not
+    synced", naming the first listed source. *(Amended 2026-11-23, issue
+    2865: FreeRTOS resolved lazily on the first read too, and that read is a
+    static constructor. Cyclone's `ddsrt_random_init` reads the wall clock
+    from the entry's `.init_array` walk, before network init. So the window
+    ran with the network down, a board hook behind an SNTP exchange could
+    never answer, and the verdict printed before any log writer existed.)*
+  - POSIX resolves once, on the first wall-clock read (`pthread_once`), so no
+    entry calls anything. A host process has its network before `main`, so it
+    has no such ordering problem. While the board is unanswered, that first
+    read blocks for up to the window, as boot resolution blocks boot.
 - **Ports.** POSIX and FreeRTOS resolve `board` (phase-582 W1d). A bare-metal
   FreeRTOS `platform` has no wall clock and does not answer. On the FreeRTOS
   POSIX port (the freertos-posix board) it is the host's `CLOCK_REALTIME`,
@@ -464,3 +475,7 @@ a stub board clock (`docs/reference/source-timestamps.md`, gate
   the host's `CLOCK_REALTIME`.
 - 2026-11-22: D7 amended from W4a's measurement: Cyclone stamps host time, XRCE
   delivers no source stamp; the table is `docs/reference/source-timestamps.md`.
+- 2026-11-23: D2 amended (issue 2865): FreeRTOS resolves at an explicit boot
+  point that the board entries call after network bring-up and log-writer
+  registration, not lazily on the first read. Reads before it read 0 and
+  resolve nothing.
