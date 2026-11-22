@@ -350,6 +350,9 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   the SNTP source's `select DNS_RESOLVER` pulls in Zephyr's socket service
   thread, whose default stack fails the 64-bit floor, so a 64-bit image that
   names `sntp` stops at configure.
+- [Issue 2839](../issues/2839-zephyr-platform-clock-source-always-answers.md):
+  three W1 gaps from the ASI validation; Zephyr's `platform` no longer
+  answers with no clock behind it, so `epoch_failure = halt` can halt.
 
 - [Issue 2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md):
   `epoch_failure = "halt"` after a list ending in `platform` never applies on

@@ -57,6 +57,15 @@ table of C macro NAMES a build script hands the C compiler
 (`nros-zpico-build`'s `ZpicoConfig::defines`), which no line-local rule can
 tell from an env read and which RFC-0103 keeps on purpose.
 
+  TOML     the TOML road in MESSAGES (issue 2839): a retired `toml:<group>.<name>`
+           spelling inside a C, C++ or Rust string literal that is prose, written
+           as `knobs.<group>] <name>` (`"raise with [image.<id>.knobs.zephyr]
+           heap_size"`), `knobs.<group>.<name>` or `<group>.<name>`. A message
+           telling a person to set a spelling the loader refuses is the same
+           defect as an env one; it read env names only, so a heap message
+           advised `zephyr.heap_size` a release after `memory.heap_bytes`
+           replaced it.
+
   Kconfig  the KCONFIG road (a `kconfig:` retired spelling, `CONFIG_X`): the
            same rule on that road -- a conf file that ASSIGNS it
            (`CONFIG_X=`, in `*.conf` / `*defconfig`), a Kconfig file that
@@ -451,6 +460,59 @@ def scan_rust_prose(text: str, names, lang: str = "rust") -> list[tuple[int, str
             hits.append((line_no, raw))
     return hits
 
+def retired_toml_names(registry_text: str | None = None) -> dict[str, str]:
+    """retired `toml:` spelling (`group.name`) -> the knob key that replaced it."""
+    if registry_text is None:
+        rows = knob_registry.knob_rows()
+    else:
+        rows = knob_registry.knob_rows(text=registry_text, packages=())
+    out = {}
+    for row in rows:
+        for e in row.get("retired_entries", []):
+            if e.get("road") == "toml" and "." in e.get("name", ""):
+                out[e["name"]] = row["key"]
+    return out
+
+
+def scan_toml_prose(text: str, names, lang: str = "rust") -> list[tuple[int, str, str]]:
+    """issue 2839 -- a retired `toml:` spelling in a MESSAGE, as `(line, text,
+    spelling)`: a string literal that is prose and names `group.name` the way a
+    person would type it into system.toml. Same lexer and the same exemptions
+    as `scan_rust_prose` (a preprocessor line in C, a line saying "retired")."""
+    pats = []
+    for name in sorted(names, key=len, reverse=True):
+        g, _, n = name.partition(".")
+        pats.append((name, re.compile(
+            rf"(?:knobs\.{re.escape(g)}(?:\]\s*|\.){re.escape(n)}|(?<![A-Za-z0-9_.]){re.escape(g)}\.{re.escape(n)})"
+            rf"(?![A-Za-z0-9_])")))
+    hits = []
+    lines = text.splitlines()
+    for start, body in rust_string_literals(text):
+        if not re.search(r"\s", body):
+            continue
+        for name, pat in pats:
+            for m in pat.finditer(body):
+                line_no = text.count("\n", 0, start + m.start()) + 1
+                raw = lines[line_no - 1] if line_no - 1 < len(lines) else ""
+                if lang == "c" and raw.lstrip().startswith("#"):
+                    continue
+                if "retired" in raw.lower():
+                    continue
+                hits.append((line_no, raw, name))
+    return hits
+
+
+# (text, lang, should it be a finding) -- the TOML road's message rule.
+TOML_PROSE_TESTS = [
+    ('printk("- raise with [image.<id>.knobs.zephyr] heap_size\\n");', "c", True),
+    ('printk("set knobs.zephyr.heap_size higher");', "c", True),
+    ('panic!("raise zephyr.heap_size to fit");', "rust", True),
+    ('printk("- raise with [image.<id>.knobs.memory] heap_bytes\\n");', "c", False),
+    ('#error "zephyr.heap_size was retired"', "c", False),
+    ('let k = "zephyr.heap_size";', "rust", False),
+    ('panic!("myzephyr.heap_sizes are fine");', "rust", False),
+]
+
 # (kind, text, should it be a finding)
 SELF_TESTS = [
     ("rust", 'let q = knob("ZPICO_X").resolve(8);', True),
@@ -556,6 +618,17 @@ def self_test() -> int:
         if got != want:
             bad += 1
             print(f"  self-test: {'missed' if want else 'false hit on'} (c prose): {text!r}")
+    for text, lang, want in TOML_PROSE_TESTS:
+        got = bool(scan_toml_prose(text, ["zephyr.heap_size"], lang=lang))
+        if got != want:
+            bad += 1
+            print(f"  self-test: {'missed' if want else 'false hit on'} (toml prose, {lang}): {text!r}")
+    tt = retired_toml_names('owner = "core"\n[owners]\nmemory = "y"\n[[knob]]\nkey = "memory.heap_bytes"\n'
+                            'scope = "board"\nclass = "internal"\n'
+                            'retired = [{ spelling = "toml:zephyr.heap_size" }]\n')
+    if tt != {"zephyr.heap_size": "memory.heap_bytes"}:
+        bad += 1
+        print(f"  self-test: the TOML road's registry parse gave {tt!r}")
     # The registry is the input, so its own parse is a case too.
     hdr = 'owner = "core"\n[owners]\nx = "y"\n'
     table = retired_names(hdr + '[[knob]]\nkey = "x.x"\nscope = "image"\nclass = "internal"\n'
@@ -620,6 +693,32 @@ def main() -> int:
         for i, line in sorted(set(hits)):
             old = word.search(line).group(0)
             findings.append(f"  {rel}:{i}: {line.strip()[:110]}\n      -> {old} is retired; use {names[old]}")
+    # The TOML road, in messages (issue 2839).
+    toml_names = retired_toml_names()
+    toml_word = re.compile("|".join(re.escape(n.partition(".")[2]) for n in toml_names)) if toml_names else None
+    toml_findings = []
+    for rel in tracked() if toml_names else []:
+        if rel in ALLOWED or rel in HISTORY_FILES or rel.startswith(HISTORY_PREFIXES):
+            continue
+        kind = kind_of(rel)
+        if kind not in ("c", "rust"):
+            continue
+        try:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
+            continue
+        if not toml_word.search(text):
+            continue
+        for i, line, name in sorted(set(scan_toml_prose(text, toml_names, lang=kind))):
+            toml_findings.append(f"  {rel}:{i}: {line.strip()[:110]}\n      -> `{name}` is a retired "
+                                 f"system.toml spelling; use `{toml_names[name]}`")
+    if toml_findings:
+        print("check-retired-knob-spellings: FAILED — a message advises a retired system.toml")
+        print("spelling, which the loader refuses (issue 2839):\n")
+        print("\n".join(toml_findings))
+        print("\nWrite the knob that replaced it: `[image.<id>.knobs.<group>] <name>` of the new key.\n")
+        if not findings:
+            return 1
     # The Kconfig road: a retired `kconfig:` spelling assigned, referenced or read.
     kc_names = retired_kconfig_names()
     kc_word = re.compile("|".join(re.escape(n[len("CONFIG_"):]) for n in sorted(
@@ -664,8 +763,9 @@ def main() -> int:
         return 1
     print(f"check-retired-knob-spellings: OK — {len(names)} retired spelling(s), no env reader,"
           f" writer or message advising one in {scanned} tracked file(s);"
-          f" {len(kc_names)} retired Kconfig spelling(s), none assigned, referenced or read"
-          f" (self-test: {len(SELF_TESTS) + len(PROSE_TESTS) + len(C_PROSE_TESTS) + len(KCONFIG_TESTS)} cases)")
+          f" {len(kc_names)} retired Kconfig spelling(s), none assigned, referenced or read;"
+          f" {len(toml_names)} retired system.toml spelling(s), none advised in a message"
+          f" (self-test: {len(SELF_TESTS) + len(PROSE_TESTS) + len(C_PROSE_TESTS) + len(KCONFIG_TESTS) + len(TOML_PROSE_TESTS)} cases)")
     return 0
 
 

@@ -3399,7 +3399,7 @@ impl PlatformsTree {
         let threads = caps.get("threads").copied().unwrap_or(false);
         if tx.split_lock.value && !threads {
             warnings.push(format!(
-                "platform `{platform}`: knobs.zenoh.tx.split_lock = true (from {}) but \
+                "platform `{platform}`: knobs.zenoh.tx_split_lock = true (from {}) but \
                  capabilities.threads is not true — split locking needs a flush thread; \
                  downgrading split_lock to off",
                 tx.split_lock.source.as_str()

@@ -195,6 +195,11 @@ class = "config"
 config = "ClockBoard"
 reason = "`board` makes a POSIX image take its wall clock from the board's hook (a stub board answering a fixed instant), asked on the first wall-clock read — same messages, stamped from the board's clock"
 
+[knob.NROS_CLOCK_EPOCH_FAILURE]
+class = "config"
+config = "ClockHalt"
+reason = "`halt` with `clock.source = \"sntp,platform\"` and no server: on a port with no wall clock nothing answers, so the image stops at boot naming the sources — same messages, never sent unstamped"
+
 [knob.NROS_LINK_IP]
 class = "config"
 config = "Serial"

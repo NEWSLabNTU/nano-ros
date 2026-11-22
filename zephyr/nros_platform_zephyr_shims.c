@@ -188,16 +188,19 @@ int8_t nros_zephyr_exec_unlock(void* m) {
  * `fallback_settle_ms`, `upgrade`, `epoch_failure`, and SNTP's server,
  * timeout and attempts. `nros/clock_resolve.h` holds the policy, the same on
  * every port; this function supplies how each source is tried on Zephyr:
- *   - `platform`: Zephyr has no wall clock of its own, so it answers "none",
- *     which as a declared fallback is the image's knowing choice;
+ *   - `platform`: Zephyr has no wall clock of its own, so it does NOT
+ *     answer (issue 2839). It used to answer true with nothing behind it,
+ *     latching "wall clock from platform" while stamps read 0, so a list
+ *     ending in it could never reach `epoch_failure = halt`. Now such a list
+ *     reaches the policy: `unstamped` runs on with stamps unset, `halt` halts;
  *   - `sntp`: up to `sntp_attempts` exchanges with the server;
  *   - `zenoh-hlc`: wait up to the settle time for the first timestamped
  *     sample (`nros_zephyr_epoch_observe_ntp64`, on the session's read task);
  *   - `board`: not before the board hook lands, so never answers here.
  *
  * With the default (`source = platform`, `epoch_failure = unstamped`) this
- * latches "none" and boot continues, every stamp reading 0, which is what an
- * image with no source has always done. */
+ * latches "none", says no source answered, and boot continues, every stamp
+ * reading 0, which is what an image with no source has always done. */
 #include <nros/clock_resolve.h>
 
 #ifdef CONFIG_SNTP
@@ -227,7 +230,7 @@ static bool nros_zephyr_clock_try(uint8_t source, uint32_t settle_ms, void *ctx)
     (void)ctx;
     switch (source) {
     case NROS_WALL_CLOCK_SOURCE_PLATFORM:
-        return true;
+        return false; /* no wall clock on this port (issue 2839) */
     case NROS_WALL_CLOCK_SOURCE_SNTP:
 #ifdef CONFIG_SNTP
         for (uint32_t i = 0; i < (uint32_t)CONFIG_NROS_CLOCK_SNTP_ATTEMPTS; i++) {
