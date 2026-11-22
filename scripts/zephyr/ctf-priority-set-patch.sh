@@ -20,6 +20,9 @@
 # Idempotent. Inert unless an image enables CONFIG_TRACING_CTF.
 set -euo pipefail
 
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/zephyr-patchset.sh"
+
 WORKSPACE="${1:?usage: ctf-priority-set-patch.sh <workspace-dir>}"
 TARGET="$WORKSPACE/zephyr/subsys/tracing/ctf/tracing_ctf.h"
 if [ ! -f "$TARGET" ]; then
@@ -27,7 +30,11 @@ if [ ! -f "$TARGET" ]; then
     exit 1
 fi
 
-python3 - "$TARGET" <<'PYEOF'
+# Check mode (issue 2831): the guard is in the Python below, so it exits 10
+# where it would write, and the shared helper reports the missing edit.
+_py_rc=0
+python3 - "$TARGET" <<'PYEOF' || _py_rc=$?
+import os
 import sys
 
 path = sys.argv[1]
@@ -46,6 +53,12 @@ new = (
 if src.count(old) != 1:
     sys.stderr.write(f"ERROR: anchor not found once in {path}: {old.strip()}\n")
     sys.exit(1)
+if os.environ.get("NROS_PATCH_CHECK") == "1":
+    sys.exit(10)
 open(path, "w").write(src.replace(old, new, 1))
 print(f"[ctf-priority-set-patch] patched {path}")
 PYEOF
+if [ "$_py_rc" -eq 10 ]; then
+    nros_patch_would_apply ctf-priority-set-patch "$TARGET: priority-set event mapping"
+fi
+exit "$_py_rc"

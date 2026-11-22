@@ -25,6 +25,7 @@ esac
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$REPO_ROOT"
+source "$REPO_ROOT/scripts/lib/zephyr-patchset.sh"
 
 # Issue 2177 — the cyclonedds steps patch nano-ros's OWN source tree
 # (`third-party/dds/cyclonedds`), not the Zephyr workspace. An installed SDK
@@ -106,5 +107,12 @@ cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh
 # records nothing. `check-zephyr-pin-drift.py` reads the record and names a
 # workspace that lacks it before a build fails at configure.
 # shellcheck source=scripts/lib/zephyr-patchset.sh
-source "$REPO_ROOT/scripts/lib/zephyr-patchset.sh"
+# Issue 2831 — under `NROS_PATCH_CHECK=1` every script above only ASKS whether
+# its edit is present (exiting 1, naming it, at the first that is not), so a
+# run that gets here means every edit is in the tree. A check writes nothing,
+# so it records nothing either.
+if nros_patch_checking; then
+    echo "[patches/3.7] every edit of the 3.7 patch set is present in $WORKSPACE"
+    exit 0
+fi
 nros_zephyr_patchset_record "$WORKSPACE" "$REPO_ROOT" 3.7

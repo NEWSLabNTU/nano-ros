@@ -13,6 +13,9 @@
 # net_sockaddr *` / `net_socklen_t *`. Idempotent.
 set -euo pipefail
 
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/zephyr-patchset.sh"
+
 WORKSPACE="${1:?usage: nsos-recvmsg-patch-4.4.sh <workspace-dir>}"
 TARGET="$WORKSPACE/zephyr/drivers/net/nsos_sockets.c"
 if [ ! -f "$TARGET" ]; then
@@ -24,6 +27,7 @@ if grep -q "nano-ros: nsos recvmsg" "$TARGET"; then
     exit 0
 fi
 
+nros_patch_would_apply nsos-recvmsg-patch-4.4 "$TARGET: nsos_recvmsg"
 python3 - "$TARGET" <<'PYEOF'
 import sys
 path = sys.argv[1]

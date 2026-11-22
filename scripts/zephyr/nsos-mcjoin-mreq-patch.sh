@@ -23,6 +23,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
 
 if [ -n "${1:-}" ]; then
@@ -47,6 +49,7 @@ if grep -q "nano-ros: dual ip_mreq/ip_mreqn" "$TARGET"; then
     exit 0
 fi
 
+nros_patch_would_apply nsos-mcjoin-mreq-patch "$TARGET: dual ip_mreq/ip_mreqn membership handler"
 python3 - "$TARGET" <<'PYEOF'
 import sys
 from pathlib import Path

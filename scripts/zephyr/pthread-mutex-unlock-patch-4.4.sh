@@ -16,6 +16,9 @@
 # 4.x-only (3.7's pthread/k_mutex path tolerated cyclone's usage). Idempotent.
 set -euo pipefail
 
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/zephyr-patchset.sh"
+
 WORKSPACE="${1:?usage: pthread-mutex-unlock-patch-4.4.sh <workspace-dir>}"
 TARGET="$WORKSPACE/zephyr/lib/posix/options/mutex.c"
 if [ ! -f "$TARGET" ]; then
@@ -27,6 +30,7 @@ if grep -q 'nano-ros (Phase 180.A) — POSIX PTHREAD_MUTEX' "$TARGET"; then
     exit 0
 fi
 
+nros_patch_would_apply pthread-mutex-unlock-patch-4.4 "$TARGET: NORMAL-mutex unlock relaxation"
 python3 - "$TARGET" <<'PYEOF'
 import sys
 path = sys.argv[1]

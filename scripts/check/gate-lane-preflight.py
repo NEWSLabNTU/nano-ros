@@ -86,7 +86,13 @@ def probe_zephyr_pin_drift() -> tuple[str, str] | None:
     and only the boot banner says so. Same shape as `probe_submodule_drift`,
     over the same classifier (`scripts/lib/pin-drift.sh`); refused, never
     moved, because the workspace is shared by every session on the host."""
-    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "check-zephyr-pin-drift.py")],
+    # Issue 2831 — THIS run's line only (`NROS_ZEPHYR_VERSION`, 3.7 when
+    # unset, the same default every Zephyr recipe uses). Without `--line` the
+    # probe asked about every line's workspace, so a 4.4 workspace's state
+    # refused a 3.7 run, and a native one that never touches a workspace.
+    line = os.environ.get("NROS_ZEPHYR_VERSION") or "3.7"
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "check-zephyr-pin-drift.py"),
+                        "--line", line],
                        cwd=ROOT, capture_output=True, text=True)
     if r.returncode == 0:
         return None

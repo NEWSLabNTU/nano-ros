@@ -80,26 +80,26 @@ nros_zephyr_patchset_record() {
     fi
 }
 
-# nros_zephyr_patchset_state <workspace> <checkout>
-# One line on stdout; the probe (`check-zephyr-pin-drift.py`) owns the policy:
-#   ok <line>             this checkout's set for the line is recorded
-#   unrecorded <line>     no record (never applied, reset since, or applied
-#                         before records existed)
-#   stale <line>          a record, but not of THIS checkout's set
-#   wrong-line <rec> <ws> the record names another line than the tree
-#   no-patchset <line>    this checkout has no `patches/<line>.sh`
-#   unknown-line          no readable `zephyr/VERSION`
-nros_zephyr_patchset_state() {
-    local ws="$1" co="$2" line stamp rec d
-    line="$(nros_zephyr_workspace_line "$ws")" || { echo unknown-line; return 0; }
-    d="$(nros_zephyr_patchset_digest "$co" "$line")" || { echo "no-patchset $line"; return 0; }
-    stamp="$(nros_zephyr_patchset_stamp "$ws")"
-    [ -f "$stamp" ] || { echo "unrecorded $line"; return 0; }
-    rec="$(sed -n 's/^line //p' "$stamp")"
-    [ "$rec" = "$line" ] || { echo "wrong-line $rec $line"; return 0; }
-    if nros_grep_q -xF "digest $d" "$stamp"; then
-        echo "ok $line"
-    else
-        echo "stale $line"
+# nros_patch_would_apply <tag> <what>
+# Issue 2831 — the CHECK mode every patch script shares. A patch script calls
+# it immediately before EACH write it would make (after the guard that found
+# the edit absent). Normally it returns 0 and the script writes. Under
+# `NROS_PATCH_CHECK=1` it prints that the edit is missing and EXITS 1, so the
+# script never writes: `NROS_PATCH_CHECK=1 bash patches/<line>.sh <ws>` asks
+# the TREE whether this checkout's edits are present, instead of comparing a
+# digest of the scripts that make them (which flipped on any byte, including
+# a comment, between branches sharing one workspace).
+nros_patch_would_apply() {
+    if [ "${NROS_PATCH_CHECK:-0}" = 1 ]; then
+        echo "[$1] MISSING: $2" >&2
+        exit 1
     fi
+}
+
+# nros_patch_checking
+# True under `NROS_PATCH_CHECK=1`, for a set's steps that are not tree edits
+# (provisioning a venv, adding a rustup target, recording the run): a check
+# skips them.
+nros_patch_checking() {
+    [ "${NROS_PATCH_CHECK:-0}" = 1 ]
 }

@@ -19,6 +19,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 
 TARGET="$NROS_REPO_DIR/third-party/dds/cyclonedds/src/core/ddsi/src/ddsi_udp.c"
 if [ ! -f "$TARGET" ]; then
@@ -31,6 +33,7 @@ if grep -q "nano-ros: zephyr unsupported-sockopt" "$TARGET"; then
     exit 0
 fi
 
+nros_patch_would_apply cyclonedds-zephyr-udp-rcvbuf-patch "$TARGET"
 python3 - "$TARGET" <<'PYEOF'
 import sys
 from pathlib import Path

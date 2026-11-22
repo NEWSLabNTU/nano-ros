@@ -332,6 +332,14 @@ board-vocabulary:
 zephyr-module-allowlist:
     @python3 scripts/check-zephyr-module-allowlist.py
 
+# issue 2831 — every patch script a Zephyr patch set runs has a CHECK mode
+# (`nros_patch_would_apply` before each write). `check-zephyr-pin-drift` asks a
+# shared workspace whether it carries this checkout's edits by running the set
+# under `NROS_PATCH_CHECK=1`, and a script without the call would WRITE there.
+[group("checks")]
+zephyr-patch-check-mode:
+    @python3 scripts/check-zephyr-patch-check-mode.py
+
 # issue 1254 -- the legacy in-checkout Zephyr SDK path is ASKED of
 # `scripts/lib/zephyr-sdk.sh`, never constructed. A fifth hand-built copy
 # (issue 1279's registration step) outlived the sweep that moved the other four,

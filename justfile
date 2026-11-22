@@ -2092,7 +2092,7 @@ build-compile-check-fixtures builder="":
 # tracked edits, whose HEAD a successful `gate` run already checked. Then it
 # names that run and skips. Every other case, including any doubt, runs it.
 [group("full-matrix")]
-build-test-fixtures lane="all": _require-owned-provisioned-roots _check-fast-unless-green-gate _require-build-sources _clear-fixture-stamp (_codegen lane) build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+build-test-fixtures lane="all": (_require-owned-provisioned-roots lane) _check-fast-unless-green-gate _require-build-sources _clear-fixture-stamp (_codegen lane) build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
     source scripts/build/fixture-lane.sh
@@ -2201,7 +2201,7 @@ _clear-fixture-stamp:
 # keeps the self-contained UX; aggregate paths that already ran `build` use
 # this to avoid repeating `generate-bindings` and `build-zenoh-posix-fixture`.
 [private]
-build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_require-leaf-includes lane)
+build-test-fixtures-leaves lane="all": (_require-owned-provisioned-roots lane) (_require-leaf-includes lane)
     #!/usr/bin/env bash
     set -e
     # (The phase-177.9 `NROS_FIXTURE_SHARED_SIG` export lived here until
@@ -2747,10 +2747,26 @@ _codegen lane="all": setup-launch-resolve (generate-bindings lane) (_require-lea
 # Issue 2697 -- and asks WHICH REVISION each provisioned workspace holds,
 # against this checkout's west pins: whose it is (above) was never the whole
 # question, and a west build against the wrong kernel succeeds.
+# Issue 2831 -- both probes read a HOST's Zephyr workspaces, so they ask only
+# when this build USES one, and only of the line it builds on
+# (`NROS_ZEPHYR_VERSION`, 3.7 by default). A 4.4 workspace's state refused a
+# native-only fixture build before, and a 3.7 one. `lane=all` keeps every family,
+# so it keeps both probes.
 [private]
-_require-owned-provisioned-roots:
-    @bash scripts/check-zephyr-workspace-checkout.sh
-    @python3 scripts/check-zephyr-pin-drift.py
+_require-owned-provisioned-roots lane="all":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{lane}}" != "all" ]; then
+        source scripts/build/fixture-lane.sh
+        source scripts/lib/grep-q.sh
+        mods="$(nros_lane_modules "{{lane}}")"
+        if ! nros_grep_q -x zephyr <<<"$mods"; then
+            echo "[provisioned roots] lane {{lane}} builds no Zephyr fixture; Zephyr workspace probes not needed"
+            exit 0
+        fi
+    fi
+    bash scripts/check-zephyr-workspace-checkout.sh
+    python3 scripts/check-zephyr-pin-drift.py --line "${NROS_ZEPHYR_VERSION:-3.7}"
 
 [private]
 _require-build-sources:

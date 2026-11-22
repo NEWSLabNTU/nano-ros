@@ -37,6 +37,9 @@
 # an image enables CONFIG_TRACING_CTF: these files compile only then.
 set -euo pipefail
 
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/zephyr-patchset.sh"
+
 WORKSPACE="${1:?usage: ctf-app-marker-patch.sh <workspace-dir> <event-id>}"
 EVENT_ID="${2:?usage: ctf-app-marker-patch.sh <workspace-dir> <event-id>}"
 CTF="$WORKSPACE/zephyr/subsys/tracing/ctf"
@@ -47,7 +50,11 @@ for f in "$CTF/ctf_top.h" "$CTF/ctf_top.c" "$CTF/tsdl/metadata"; do
     fi
 done
 
-python3 - "$CTF" "$EVENT_ID" <<'PYEOF'
+# Check mode (issue 2831): the guard is in the Python below, so it exits 10
+# where it would write, and the shared helper reports the missing edit.
+_py_rc=0
+python3 - "$CTF" "$EVENT_ID" <<'PYEOF' || _py_rc=$?
+import os
 import re
 import sys
 
@@ -143,7 +150,13 @@ meta = meta.rstrip("\n") + (
     "};\n"
 )
 
+if os.environ.get("NROS_PATCH_CHECK") == "1":
+    sys.exit(10)
 for p, t in ((hdr_p, hdr), (src_p, src), (meta_p, meta)):
     open(p, "w").write(t)
 print(f"[ctf-app-marker-patch] patched {ctf} (app_marker, id {event_id:#x}, {id_type})")
 PYEOF
+if [ "$_py_rc" -eq 10 ]; then
+    nros_patch_would_apply ctf-app-marker-patch "$CTF: app_marker event (ctf_top.h, ctf_top.c, tsdl/metadata)"
+fi
+exit "$_py_rc"

@@ -35,24 +35,26 @@ The classification is the ONE classifier (`scripts/lib/pin-drift.sh`, issue
 It compares HEAD only, so the lane's patch scripts (`scripts/zephyr/patches/`),
 which edit the work tree, are not drift.
 
-It also asks whether the workspace CARRIES the line's patch set (issue 2764):
-a workspace that never got it, or lost it to a `west update`, otherwise reads
-as fine until a configure fails. The patch set records each run in
-`<ws>/.west/nros-patchset` (`scripts/lib/zephyr-patchset.sh`, the one reader
-and writer):
+It also asks whether the workspace CARRIES the line's patch set (issue 2764),
+and it asks the TREE (issue 2831): it runs `scripts/zephyr/patches/<line>.sh`
+under `NROS_PATCH_CHECK=1`, where every patch script exits 1 naming the first
+edit that is absent and writes nothing. A set that names a script without a
+check mode is refused unrun, because that script would write. It used to
+compare a digest of the scripts with a record the set wrote, which flipped on
+any byte (a comment, a refactor) between branches sharing one workspace.
 
-  recorded for this checkout's set   ok
-  recorded, but another set's         FAIL: a patch this checkout carries is
-                                      missing (or the record names another line)
-  no record, no project edited        FAIL: nothing of the patch set is there
-  no record, projects edited          NOTE: applied before records existed;
-                                      re-running the set records it It never runs `west update` itself: a
+  every edit present                  ok
+  an edit missing                     FAIL, naming the script and the edit
+  a script without a check mode       FAIL, unrun
+  no set for the tree's line          FAIL
+
+It never runs `west update` itself: a
 store workspace is SHARED by every session on the host, and moving it under a
 running build changes that build part-way through.
 
 The self-test runs first on every run, on scratch repositories.
 
-Usage: check-zephyr-pin-drift.py [--line <3.7|4.4>]...   (default: every line)
+Usage: check-zephyr-pin-drift.py [--self-test] [--line <3.7|4.4>]...   (default: every line)
 Exit: 0 clean (notes allowed), 1 drift, 2 usage or self-test failure.
 """
 
@@ -208,45 +210,72 @@ def check_workspace(line, ws, checkout):
     return fails, notes, checked
 
 
-def patchset_state(ws, checkout):
-    """`nros_zephyr_patchset_state` (scripts/lib/zephyr-patchset.sh), the one
-    reader of the record, as its words."""
+def workspace_line(ws):
+    """The Zephyr line the tree checks out (`nros_zephyr_workspace_line`), or None."""
     p = subprocess.run(
-        ["bash", "-c", '. "$1" && nros_zephyr_patchset_state "$2" "$3"', "_",
-         str(ROOT / "scripts/lib/zephyr-patchset.sh"), str(ws), str(checkout)],
+        ["bash", "-c", '. "$1" && nros_zephyr_workspace_line "$2"', "_",
+         str(ROOT / "scripts/lib/zephyr-patchset.sh"), str(ws)],
         capture_output=True, text=True)
-    return (p.stdout.strip() or f"error {p.stderr.strip()[:80]}").split()
+    return p.stdout.strip() or None if p.returncode == 0 else None
+
+
+# Scripts a set names that edit no tree (provisioning checks), so they need
+# no check mode. Every other script a set names must call the helper.
+NOT_TREE_EDITS = {"provision-py312-venv.sh"}
+
+
+def unconverted_scripts(pset, checkout):
+    """The scripts `pset` names that lack a check mode (no
+    `nros_patch_would_apply` call): running the set under `NROS_PATCH_CHECK`
+    would let them write. Issue 2831; `check-zephyr-patch-check-mode` gates the
+    same rule over the tree."""
+    import re
+    code = "\n".join(l for l in pset.read_text().splitlines() if not l.lstrip().startswith("#"))
+    names = sorted(set(re.findall(r"scripts/zephyr/([A-Za-z0-9._-]+\.sh)", code)))
+    out = []
+    for n in names:
+        if n in NOT_TREE_EDITS:
+            continue
+        f = checkout / "scripts" / "zephyr" / n
+        if f.is_file() and "nros_patch_would_apply" not in f.read_text():
+            out.append(n)
+    return out
 
 
 def patchset_findings(line, ws, checkout, edited):
-    """(failures, notes) for whether `ws` carries this checkout's patch set.
-    `edited` names the pinned projects whose work tree differs from HEAD."""
-    state = patchset_state(ws, checkout)
-    kind, zl = state[0], (state[1] if len(state) > 1 else line)
-    remedy = f"bash scripts/zephyr/patches/{zl}.sh {ws}   (idempotent; records that it ran)"
-    if kind == "ok":
-        return [], []
-    if kind == "unknown-line":
+    """(failures, notes) for whether `ws` carries every edit this checkout's
+    patch set makes. Issue 2831: ASKED OF THE TREE, by running the line's set
+    under `NROS_PATCH_CHECK=1`, where every patch script exits 1 naming an edit
+    that is absent and writes nothing. It used to compare a digest of the
+    scripts against a record, which flipped on any byte (a comment, a helper
+    refactor) between branches sharing one workspace. `edited` is unused now:
+    the tree answers what an edited project used to hint at."""
+    del edited
+    zl = workspace_line(ws)
+    if zl is None:
         return [], [f"NOT VERIFIED: {line}: {ws}/zephyr/VERSION is unreadable, so which patch set "
                     "the workspace needs is unknown"]
-    if kind == "no-patchset":
+    pset = Path(checkout) / "scripts" / "zephyr" / "patches" / f"{zl}.sh"
+    if not pset.is_file():
         return [f"[x] {line}: {ws} checks out Zephyr {zl}, and this checkout has no "
                 f"scripts/zephyr/patches/{zl}.sh for it\n"
                 "      remedy: provision the workspace for a line this checkout supports"], []
-    if kind == "wrong-line":
-        return [f"[x] {line}: {ws} checks out Zephyr {state[2]}, but its patch record names "
-                f"{state[1]}\n      remedy: bash scripts/zephyr/patches/{state[2]}.sh {ws}"], []
-    if kind == "stale":
-        return [f"[x] {line}: {ws} has a patch record, but not for this checkout's {zl} patch set, "
-                f"so a patch it carries may be missing there\n      remedy: {remedy}"], []
-    if kind == "unrecorded" and not edited:
-        return [f"[x] {line}: {ws} carries NONE of nano-ros's {zl} patch set (no record, and no "
-                f"pinned project has a local edit); a build there fails at configure\n"
-                f"      remedy: {remedy}"], []
-    if kind == "unrecorded":
-        return [], [f"note: {line}: {ws} has local edits in {', '.join(edited)} but no patch record "
-                    f"(applied before records existed?); to record it: {remedy}"]
-    return [], [f"NOT VERIFIED: {line}: could not read the patch record ({' '.join(state)})"]
+    unsafe = unconverted_scripts(pset, Path(checkout))
+    if unsafe:
+        # Never run a set in check mode when a script it names could WRITE:
+        # the workspace is shared, and a script without the helper ignores
+        # `NROS_PATCH_CHECK` and applies its edit.
+        return [f"[x] {line}: cannot check {ws} safely: {', '.join(unsafe)} never call(s) "
+                "`nros_patch_would_apply`, so a check would write\n"
+                "      remedy: give each a check mode (scripts/lib/zephyr-patchset.sh)"], []
+    p = subprocess.run(["bash", str(pset), str(ws)], cwd=checkout, capture_output=True, text=True,
+                       env=dict(os.environ, NROS_PATCH_CHECK="1"))
+    if p.returncode == 0:
+        return [], []
+    missing = [l.strip() for l in p.stderr.splitlines() if " MISSING: " in l]
+    why = "; ".join(missing) or (p.stderr.strip().splitlines() or ["the check failed"])[-1]
+    return [f"[x] {line}: {ws} lacks an edit of this checkout's {zl} patch set: {why}\n"
+            f"      remedy: bash scripts/zephyr/patches/{zl}.sh {ws}   (idempotent)"], []
 
 
 def workspace_for(line):
@@ -323,58 +352,83 @@ def self_test():
                   + "\n--- what it reported:\n" + text, file=sys.stderr)
             return False
 
-    # The patch record (issue 2764): written by the real recorder, read by the
-    # real reader, against a scratch checkout's patch set.
+    # The patch set's CHECK mode (issue 2831), through the real helper: a
+    # scratch checkout whose 3.7 set has two patch scripts, each guarding its
+    # edit the way the real ones do and calling `nros_patch_would_apply`
+    # before writing.
     with tempfile.TemporaryDirectory(prefix="zephyr-patchset-") as t:
         t = Path(t)
         ws, co = t / "ws", t / "co"
         (ws / ".west").mkdir(parents=True)
         (ws / "zephyr").mkdir()
         (ws / "zephyr" / "VERSION").write_text("VERSION_MAJOR = 3\nVERSION_MINOR = 7\nPATCHLEVEL = 2\n")
+        for n in ("one", "two", "three"):
+            (ws / "zephyr" / f"{n}.c").write_text("")
         (co / "scripts" / "zephyr" / "patches").mkdir(parents=True)
-        (co / "scripts" / "zephyr" / "one-patch.sh").write_text("echo one\n")
+        (co / "scripts" / "lib").mkdir(parents=True)
+        for lib in ("zephyr-patchset.sh", "grep-q.sh"):
+            (co / "scripts" / "lib" / lib).write_text((ROOT / "scripts" / "lib" / lib).read_text())
+        for n in ("one", "two"):
+            (co / "scripts" / "zephyr" / f"{n}-patch.sh").write_text(
+                'source "$(dirname "$0")/../lib/zephyr-patchset.sh"\n'
+                f'nros_grep_q "nros {n}" "$1/zephyr/{n}.c" && exit 0\n'
+                f'nros_patch_would_apply {n} "$1/zephyr/{n}.c"\n'
+                f'echo "nros {n}" >> "$1/zephyr/{n}.c"\n')
         (co / "scripts" / "zephyr" / "patches" / "3.7.sh").write_text(
-            "bash ./scripts/zephyr/one-patch.sh \"$WORKSPACE\"\n")
+            'set -e\nWORKSPACE="$1"\ncd "$(dirname "$0")/../../.."\n'
+            'source scripts/lib/zephyr-patchset.sh\n'
+            'bash ./scripts/zephyr/one-patch.sh "$WORKSPACE"\n'
+            'bash ./scripts/zephyr/two-patch.sh "$WORKSPACE"\n'
+            'if nros_patch_checking; then exit 0; fi\n')
 
-        def record():
-            subprocess.run(["bash", "-c", '. "$1" && nros_zephyr_patchset_record "$2" "$3" 3.7', "_",
-                            str(ROOT / "scripts/lib/zephyr-patchset.sh"), str(ws), str(co)],
-                           check=True, capture_output=True)
+        def snapshot():
+            return {p.name: p.read_text() for p in (ws / "zephyr").glob("*.c") if p.read_text()}
 
-        def joined(edited):
-            f, n = patchset_findings("3.7", str(ws), str(co), edited)
-            return f, n, "\n".join(f + n)
-
-        f0, n0, _ = joined([])
-        f1, n1, _ = joined(["zephyr"])
-        record()
-        f2, n2, _ = joined([])
-        (co / "scripts" / "zephyr" / "one-patch.sh").write_text("echo one, grown\n")
-        f3, _, t3 = joined(["zephyr"])
-        record()
-        f4, n4, _ = joined([])
-        (co / "scripts" / "zephyr" / "one-patch.sh").write_text("echo one\n")
-        f5, n5, _ = joined([])
+        f0, n0 = patchset_findings("3.7", str(ws), str(co), [])
+        wrote0 = snapshot()
+        subprocess.run(["bash", str(co / "scripts/zephyr/patches/3.7.sh"), str(ws)], check=True,
+                       capture_output=True)
+        f1, n1 = patchset_findings("3.7", str(ws), str(co), [])
+        (ws / "zephyr" / "two.c").write_text("reverted\n")
+        before = snapshot()
+        f2, _ = patchset_findings("3.7", str(ws), str(co), [])
+        after = snapshot()
+        # a set script that differs by a comment changes nothing in the tree
+        (co / "scripts" / "zephyr" / "one-patch.sh").write_text(
+            "# a comment\n" + (co / "scripts" / "zephyr" / "one-patch.sh").read_text())
+        subprocess.run(["bash", str(co / "scripts/zephyr/patches/3.7.sh"), str(ws)], check=True,
+                       capture_output=True)
+        f3, n3 = patchset_findings("3.7", str(ws), str(co), [])
+        # a script without the helper is refused BEFORE anything runs
+        three = co / "scripts" / "zephyr" / "three-patch.sh"
+        three.write_text('echo "nros three" >> "$1/zephyr/three.c"\n')
+        pset = co / "scripts" / "zephyr" / "patches" / "3.7.sh"
+        pset.write_text(pset.read_text().replace(
+            'if nros_patch_checking', 'bash ./scripts/zephyr/three-patch.sh "$WORKSPACE"\nif nros_patch_checking'))
+        f5, _ = patchset_findings("3.7", str(ws), str(co), [])
+        wrote5 = bool((ws / "zephyr" / "three.c").read_text())
         (ws / "zephyr" / "VERSION").write_text("VERSION_MAJOR = 4\nVERSION_MINOR = 4\n")
-        f6, _, t6 = joined(["zephyr"])
+        f4, _ = patchset_findings("3.7", str(ws), str(co), [])
         cases = [
-            ("no record and no edited project is a FAIL", len(f0) == 1 and "NONE" in f0[0]),
-            ("no record over edited projects is a NOTE, not a FAIL", not f1 and len(n1) == 1),
-            ("a recorded set is ok", not f2 and not n2),
-            ("a set whose patch changed since it was recorded is a FAIL, even over edits",
-             len(f3) == 1 and "not for this checkout" in t3),
-            ("re-running the grown set clears it", not f4 and not n4),
-            ("the older set, applied before, is still recorded", not f5 and not n5),
-            ("a record for another line than the tree is a FAIL", len(f6) == 1 and "4.4" in t6),
-            ("every patch-record failure names its remedy",
-             all("remedy:" in f for f in f0 + f3 + f6)),
+            ("an unpatched tree is a FAIL naming the first missing edit",
+             len(f0) == 1 and "MISSING" in f0[0] and "one" in f0[0]),
+            ("the check wrote nothing", wrote0 == {}),
+            ("a patched tree is ok", not f1 and not n1),
+            ("one edit reverted is a FAIL naming THAT script (negative control)",
+             len(f2) == 1 and "[two] MISSING" in f2[0]),
+            ("the check left the reverted tree as it was", before == after),
+            ("a set changed by a comment only still passes on a tree it patched", not f3 and not n3),
+            ("a tree on a line this checkout has no set for is a FAIL", len(f4) == 1 and "4.4" in f4[0]),
+            ("a set naming a script with no check mode is refused, unrun",
+             len(f5) == 1 and "three-patch.sh" in f5[0] and not wrote5),
+            ("every failure names its remedy", all("remedy:" in f for f in f0 + f2 + f4 + f5)),
         ]
         for name, ok in cases:
             if not ok:
                 bad.append(name)
         if bad:
-            print("check-zephyr-pin-drift self-test (patch record): FAILED\n  " + "\n  ".join(bad)
-                  + f"\n--- f0={f0} n1={n1} f3={f3} f6={f6}", file=sys.stderr)
+            print("check-zephyr-pin-drift self-test (patch check): FAILED\n  " + "\n  ".join(bad)
+                  + f"\n--- f0={f0} f1={f1} f2={f2} f3={f3} f4={f4}", file=sys.stderr)
             return False
     return True
 
@@ -385,6 +439,9 @@ def main(argv):
     for a in it:
         if a == "--line":
             lines.append(next(it, ""))
+        elif a == "--self-test":
+            # Scratch repositories only; reads no provisioned workspace.
+            return 0 if self_test() else 2
         else:
             print("usage: check-zephyr-pin-drift.py [--line <3.7|4.4>]...", file=sys.stderr)
             return 2

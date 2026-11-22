@@ -30,6 +30,8 @@ set -euo pipefail
 # ---- Resolve workspace directory ----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
 LEGACY_WORKSPACE="$(cd "$NROS_REPO_DIR/.." && pwd)/nano-ros-workspace"
 
@@ -74,6 +76,7 @@ done
 if grep -q 'CONFIG_CPU_CORTEX_A9\|CONFIG_CPU_AARCH32_CORTEX_A' "$CMAKE_FILE"; then
     echo "[skip] CMakeLists.txt already has Cortex-A case"
 else
+    nros_patch_would_apply cortex-a9-rust-patch "$CMAKE_FILE: Cortex-A9/A7 case"
     echo "[apply] CMakeLists.txt += Cortex-A9/A7 case"
     # Insert a new branch after the Cortex-M block, before the RISCV
     # branch. The anchor `elseif(CONFIG_RISCV)` is stable across the
@@ -105,6 +108,7 @@ fi
 if grep -q 'CPU_CORTEX_A9\|CPU_AARCH32_CORTEX_A' "$KCONFIG_FILE"; then
     echo "[skip] Kconfig already lists Cortex-A in RUST_SUPPORTED"
 else
+    nros_patch_would_apply cortex-a9-rust-patch "$KCONFIG_FILE: Cortex-A9/A7 in RUST_SUPPORTED"
     echo "[apply] Kconfig += Cortex-A9/A7 to RUST_SUPPORTED"
     python3 - "$KCONFIG_FILE" <<'PY'
 import sys
@@ -135,6 +139,7 @@ if [ ! -f "$SOC_FILE" ]; then
 elif grep -q 'MMU_REGION_FLAT_ENTRY("slcr"' "$SOC_FILE"; then
     echo "[skip] soc.c already has SLCR MMU entry"
 else
+    nros_patch_would_apply cortex-a9-rust-patch "$SOC_FILE: SLCR MMU entry"
     echo "[apply] soc.c += SLCR MMU entry (0xF8000000, 0x1000)"
     python3 - "$SOC_FILE" <<'PY'
 import sys

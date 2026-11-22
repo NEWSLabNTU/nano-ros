@@ -34,6 +34,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
 LEGACY_WORKSPACE="$(cd "$NROS_REPO_DIR/.." && pwd)/nano-ros-workspace"
 
@@ -64,6 +66,7 @@ fi
 # `add_custom_target(llext-edk DEPENDS ${llext_edk_file})`. We use
 # python for the multi-line scoped edit.
 
+nros_patch_would_apply llext-edk-conditional-patch "$CMAKE_FILE: llext-edk block under if(CONFIG_LLEXT)"
 python3 - "$CMAKE_FILE" <<'PYEOF'
 import sys
 from pathlib import Path

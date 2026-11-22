@@ -39,6 +39,8 @@ set -euo pipefail
 # ---- Resolve workspace directory ----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
 LEGACY_WORKSPACE="$(cd "$NROS_REPO_DIR/.." && pwd)/nano-ros-workspace"
 
@@ -75,6 +77,7 @@ done
 if grep -q 'NSOS_MID_IP_ADD_MEMBERSHIP' "$NSOS_HEADER"; then
     echo "[skip] nsos_socket.h already has IPv4 mcast constants"
 else
+    nros_patch_would_apply native-sim-ipproto-ip-patch "$NSOS_HEADER: IPv4 mcast options + nsos_mid_ip_mreq"
     echo "[apply] nsos_socket.h += IPv4 mcast options + nsos_mid_ip_mreq"
     python3 - "$NSOS_HEADER" <<'PY'
 import sys
@@ -132,6 +135,7 @@ fi
 if grep -q 'IP_MULTICAST_TTL' "$NSOS_SOCKETS"; then
     echo "[skip] nsos_sockets.c already handles IPPROTO_IP setsockopt/getsockopt"
 else
+    nros_patch_would_apply native-sim-ipproto-ip-patch "$NSOS_SOCKETS: IPPROTO_IP setsockopt + getsockopt"
     echo "[apply] nsos_sockets.c += IPPROTO_IP setsockopt + getsockopt"
     python3 - "$NSOS_SOCKETS" <<'PY'
 import sys
@@ -263,6 +267,7 @@ fi
 if grep -q 'NSOS_MID_IP_MULTICAST_TTL' "$NSOS_ADAPT"; then
     echo "[skip] nsos_adapt.c already handles NSOS_MID_IPPROTO_IP setsockopt/getsockopt"
 else
+    nros_patch_would_apply native-sim-ipproto-ip-patch "$NSOS_ADAPT: NSOS_MID_IPPROTO_IP setsockopt + getsockopt"
     echo "[apply] nsos_adapt.c += NSOS_MID_IPPROTO_IP setsockopt + getsockopt"
     python3 - "$NSOS_ADAPT" <<'PY'
 import sys

@@ -246,7 +246,7 @@ def selftest(quiet: bool = False) -> int:
         (
             "R2 edge removed from build-test-fixtures",
             jf.replace(
-                f"build-test-fixtures lane=\"all\": {SHARED_RECIPE} ",
+                f"build-test-fixtures lane=\"all\": ({SHARED_RECIPE} lane) ",
                 'build-test-fixtures lane="all": ',
             ),
             mods,
