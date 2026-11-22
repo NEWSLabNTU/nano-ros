@@ -2236,17 +2236,23 @@ config NROS_SNTP_TIMEOUT_MS
 config NROS_ZEPHYR_LOG_SINK_BUFFERS
     int
     range 0 32
-    default 1
+    default 16 if MP_MAX_NUM_CPUS >= 8
+    default 8 if MP_MAX_NUM_CPUS >= 4
+    default 4 if MP_MAX_NUM_CPUS >= 2
+    default 2
     help
       How many nros_log records the Zephyr log sink can format at the same
       time. Each buffer is 1280 bytes of .bss, owned by the sink and claimed with
       one atomic bit, so a thread or an ISR on any CPU can take one without a
       lock. A buffer is held for one format and one LOG_* call.
 
-      The default is 1. nros_log delivers one record at a time to every sink,
-      across all threads and CPUs, so the sink is never entered twice at once
-      through it, and a second buffer would sit unused. Raise it only for code that
-      calls the sink directly from several contexts. When every buffer is in use, a
+      The default is two per CPU (CONFIG_MP_MAX_NUM_CPUS, rounded down to a power
+      of two): one thread-context record and one ISR-context record in flight on
+      each CPU. The sink is re-entrant, so nros_log hands it every record in the
+      context that raised it, with no process-wide lock, and concurrent loggers
+      can be inside it at once. Raise it for an image with many threads logging at
+      the same moment; lower it to 1 to save 1280 bytes a buffer where logging is
+      rare. When every buffer is in use, a
       record is formatted into a 160-byte stack buffer instead, truncated and
       marked "...", and the sink says once that the pool ran dry. A record is never
       dropped for want of a buffer.

@@ -296,3 +296,10 @@ Both halves are met: the small-stack cell (`log-sink-small-stack-zephyr-smp`,
 with its negative control) landed with the sink's measured buffer, and the
 dead-holder cell above ran green. Concurrent loggers overflowing the hold
 queue are a separate issue, 2762.
+
+Issue 2762 (2026-11-23) made the Zephyr console sink re-entrant: it gets every
+record directly, in the raising context, without the guard. So a dead holder
+no longer silences the default sink at all; it can strand only records owed to
+a sink that is not re-entrant (an application's `rclc_log_add_sink` sink, as
+in the cell above). The release above still matters for those, and the cell
+now reads its verdict from that serialised sink.

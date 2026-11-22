@@ -69,6 +69,12 @@ impl LogSink for PlatformSink {
         // SAFETY: no args, no preconditions.
         unsafe { crate::generated::nros_platform_log_flush() };
     }
+
+    /// Issue 2762 -- a property of the linked PORT, stated by the feature
+    /// that port's build enables (`reentrant-log-write`).
+    fn reentrant(&self) -> bool {
+        cfg!(feature = "reentrant-log-write")
+    }
 }
 
 fn emit(severity: u8, name: &str, msg: &str) {
