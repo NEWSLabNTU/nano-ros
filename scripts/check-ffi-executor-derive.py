@@ -46,7 +46,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRATES = ("packages/api/nros-c/src", "packages/api/nros-cpp/src")
 
-EXEC_TYPES = r"(?:CExecutor|CppContext|CppExecutor)"
+EXEC_TYPES = r"(?:CExecutor|CppContext|CppExecutor|Executor(?:<[^>]*>)?|ExecutorInlineStorage)"
 HEADER_TYPE = r"rclc_executor_t"
 
 
@@ -56,6 +56,8 @@ def cast_patterns(types: str) -> list[re.Pattern]:
         re.compile(r"\bas\s*\*\s*(?:mut|const)\s+" + t),
         re.compile(r"\.cast(?:_mut|_const)?::<\s*" + t + r"\s*>"),
         re.compile(r"\bptr::from_(?:mut|ref)::<\s*" + t + r"\s*>"),
+        # An inferred cast: `let e: *mut T = p.cast();` / `= p as _;`.
+        re.compile(r":\s*\*\s*(?:mut|const)\s+" + t + r"(?:<[^>]*>)?\s*=\s*[^;]*(?:\.cast\w*\(\)|\bas\s+_|transmute)"),
     ]
 
 
@@ -70,6 +72,8 @@ EXECUTOR_CASTS = {
     ("nros-c/src/executor.rs", "get_executor_from_ptr"): "the derive itself",
     ("nros-c/src/executor.rs", "executor_init_on_support"): "writes the executor in place at init",
     ("nros-c/src/executor.rs", "rclc_executor_fini"): "drops the executor in place at fini",
+    ("nros-c/src/executor.rs", "host_executor_init"): "returns the inline storage it just wrote, at init",
+    ("nros-cpp/src/lib.rs", "inline_backing"): "the inline storage's backing slice, at init",
     ("nros-cpp/src/lib.rs", "cpp_ctx_checked"): "the derive itself",
     ("nros-cpp/src/lib.rs", "cpp_ctx_locked"): "the derive itself",
     ("nros-cpp/src/lib.rs", "write_context"): "writes the context in place at init",
@@ -203,9 +207,29 @@ def rust_files(root: str) -> list[str]:
         for c in CRATES for f in os.listdir(os.path.join(root, c)) if f.endswith(".rs"))
 
 
+TEST_MOD_RE = re.compile(
+    r"#\[cfg\((?:[^\]]*\b(?:test|kani)\b[^\]]*)\)\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;")
+
+
+def test_only_files(root: str, files: list[str]) -> set[str]:
+    """Files that are whole test modules: `#[cfg(test)] mod name;` in a
+    sibling file names `name.rs`. Their bodies are skipped like an inline
+    `#[cfg(test)] mod`."""
+    skip = set()
+    for path in files:
+        with open(os.path.join(root, path), encoding="utf8") as fh:
+            for name in TEST_MOD_RE.findall(fh.read()):
+                skip.add(os.path.join(os.path.dirname(path), name + ".rs"))
+    return skip
+
+
 def collect(root: str):
     sites = []
-    for path in rust_files(root):
+    files = rust_files(root)
+    skip = test_only_files(root, files)
+    for path in files:
+        if path in skip:
+            continue
         rel = os.path.relpath(path, "packages/api")
         with open(os.path.join(root, path), encoding="utf8") as fh:
             for n, fn, rule, text in scan_text(fh.read()):
@@ -243,6 +267,8 @@ PLANTS = {
     "executor `from_mut`": "let e = core::ptr::from_mut::<CExecutor>(x);",
     "header `as`": "let h = &mut *(p as *mut rclc_executor_t);",
     "flag read": "if h.in_dispatch { return 1; }",
+    "executor by its own name": "let e = &mut *(p as *mut nros_node::Executor<'static>);",
+    "inferred `.cast`": "let e: *mut CppContext = p.cast();",
 }
 
 
