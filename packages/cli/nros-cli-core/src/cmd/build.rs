@@ -2479,6 +2479,12 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 for old in [key.clone(), format!("{key}-{bringup}")] {
                     retire_legacy_cmake_root(&root.join("build"), &old, &manifest_dir);
                 }
+                retire_orphaned_image_roots(
+                    &root.join("build"),
+                    &bringup,
+                    &bringup_dir,
+                    &manifest_dir,
+                );
                 let rel_src = manifest_dir
                     .strip_prefix(&root)
                     .unwrap_or(&manifest_dir)
@@ -8402,48 +8408,54 @@ fn write_unresolved(
 /// where the image states it, and the crate's own size when nothing is
 /// declared (`nros-params`' `build.rs`).
 struct ParamBound {
-    /// The environment name `nros-params` reads it under (its `build.rs`).
-    env: &'static [&'static str],
-    /// `[image.<id>.knobs.<table>] <key>`.
-    table: &'static str,
-    key: &'static str,
+    /// One spelling of the knob, canonical or retired, as the registry
+    /// (`knobs.toml`) knows it. Everything else -- the environment name read,
+    /// the `[image.<id>.knobs.<group>] <name>` line printed -- is the
+    /// registry row's, so a knob renamed there (its old name kept as a retired
+    /// spelling) is still found, under its new name.
+    knob: &'static str,
     /// The crate's size when nothing is declared, the floor's lower bound.
     default: usize,
     comment: &'static str,
 }
 
+impl ParamBound {
+    fn row(&self) -> &'static nros_zephyr_build::KnobRow {
+        nros_zephyr_build::knob_row(self.knob)
+            .unwrap_or_else(|| panic!("`{}` is no knob in the registry", self.knob))
+    }
+    /// The canonical environment name, the one a rung states it under.
+    fn env(&self) -> &'static str {
+        self.row().env
+    }
+    /// `(group, name)` of `[image.<id>.knobs.<group>] <name>`.
+    fn image_key(&self) -> (&'static str, &'static str) {
+        self.row().image_group_name()
+    }
+}
+
 const STRING_VALUE_BOUND: ParamBound = ParamBound {
-    env: &["NROS_PARAMS_MAX_STRING_VALUE_BYTES"],
-    table: "params",
-    key: "max_string_value_bytes",
+    knob: "NROS_PARAMS_MAX_STRING_VALUE_BYTES",
     default: 256,
     comment: "the longest string value, in bytes",
 };
 const ARRAY_BOUND: ParamBound = ParamBound {
-    env: &["NROS_MAX_ARRAY_LEN"],
-    table: "params",
-    key: "max_array_len",
+    knob: "NROS_MAX_ARRAY_LEN",
     default: 32,
     comment: "the longest bool, integer or double array",
 };
 const STRING_ARRAY_BOUND: ParamBound = ParamBound {
-    env: &["NROS_MAX_STRING_ARRAY_LEN"],
-    table: "params",
-    key: "max_string_array_len",
+    knob: "NROS_MAX_STRING_ARRAY_LEN",
     default: 32,
     comment: "the longest string array",
 };
 const BYTE_ARRAY_BOUND: ParamBound = ParamBound {
-    env: &["NROS_PARAMS_MAX_BYTE_ARRAY_BYTES"],
-    table: "params",
-    key: "max_byte_array_bytes",
+    knob: "NROS_PARAMS_MAX_BYTE_ARRAY_BYTES",
     default: 256,
     comment: "the longest byte array, in bytes",
 };
 const PARAM_INBOX_BOUND: ParamBound = ParamBound {
-    env: &["NROS_PARAM_SERVICE_INBOX_BYTES"],
-    table: "param",
-    key: "service_inbox_bytes",
+    knob: "NROS_PARAM_SERVICE_INBOX_BYTES",
     default: 0,
     comment: "the largest parameter request at the bounds above",
 };
@@ -8475,7 +8487,7 @@ fn unstated_param_bounds(
     seeds: &[(String, String)],
     zenoh: bool,
     stated: impl Fn(&str) -> Option<usize>,
-) -> Vec<(&'static ParamBound, usize)> {
+) -> Vec<(&'static ParamBound, Option<usize>)> {
     use crate::entity_inventory::ParamCapacity;
     let needed = |c: &ParamCapacity| matches!(c, ParamCapacity::NeededBy(_));
     let (mut longest, mut array, mut string_array) = (0usize, 0usize, 0usize);
@@ -8486,9 +8498,14 @@ fn unstated_param_bounds(
         let Ok((n, l)) = nros_params::launch_text_extent(text) else {
             continue;
         };
-        longest = longest.max(l);
         match ty {
-            nros_params::LaunchTextType::StringArray => string_array = string_array.max(n),
+            // Only a string's length sizes the string bound; a number's
+            // spelling does not.
+            nros_params::LaunchTextType::String => longest = longest.max(l),
+            nros_params::LaunchTextType::StringArray => {
+                longest = longest.max(l);
+                string_array = string_array.max(n);
+            }
             nros_params::LaunchTextType::BoolArray
             | nros_params::LaunchTextType::IntegerArray
             | nros_params::LaunchTextType::DoubleArray => array = array.max(n),
@@ -8496,7 +8513,7 @@ fn unstated_param_bounds(
         }
     }
     let mut out = Vec::new();
-    let stated_of = |b: &ParamBound| b.env.iter().find_map(|e| stated(e));
+    let stated_of = |b: &ParamBound| stated(b.env());
     // The bound the image builds with: stated, else (when needed) the floor
     // this refusal suggests, else the crate's own size.
     let mut bound = |b: &'static ParamBound, cap: &ParamCapacity, seed: usize| -> usize {
@@ -8505,7 +8522,7 @@ fn unstated_param_bounds(
         }
         let floor = b.default.max(seed);
         if needed(cap) {
-            out.push((b, floor));
+            out.push((b, Some(floor)));
         }
         floor
     };
@@ -8529,17 +8546,22 @@ fn unstated_param_bounds(
         .any(needed)
         && stated_of(&PARAM_INBOX_BOUND).is_none()
     {
-        out.push((
-            &PARAM_INBOX_BOUND,
-            nros_params::request_size::worst_request_slot(shapes, caps),
-        ));
+        // No shapes (the image's nodes state no parameter-service rows) is
+        // no price: `worst_request_slot` of nothing is 0, and a 0-byte slot
+        // builds and then drops every request. Name the line without a value.
+        let slot = nros_params::request_size::worst_request_slot(shapes, caps);
+        out.push((&PARAM_INBOX_BOUND, (slot > 0).then_some(slot)));
     }
     out
 }
 
 /// The refusal text for [`unstated_param_bounds`]: the image, and a TOML block
 /// to paste into its bringup's `system.toml`.
-fn param_bounds_refusal(qual: &str, image_id: &str, missing: &[(&ParamBound, usize)]) -> String {
+fn param_bounds_refusal(
+    qual: &str,
+    image_id: &str,
+    missing: &[(&ParamBound, Option<usize>)],
+) -> String {
     let mut text = format!(
         "image `{qual}` declares string or array parameters, and its system.toml does not \
          say how long they may be. Add these lines to the image (each value is a suggested \
@@ -8549,21 +8571,37 @@ fn param_bounds_refusal(qual: &str, image_id: &str, missing: &[(&ParamBound, usi
     // twice is invalid TOML.
     let mut tables: Vec<&str> = Vec::new();
     for (b, _) in missing {
-        if !tables.contains(&b.table) {
-            tables.push(b.table);
+        let (table, _) = b.image_key();
+        if !tables.contains(&table) {
+            tables.push(table);
         }
     }
     for table in tables {
         text.push_str(&format!("\n    [image.{image_id}.knobs.{table}]\n"));
-        for (b, v) in missing.iter().filter(|(b, _)| b.table == table) {
-            text.push_str(&format!("    {} = {v}   # {}\n", b.key, b.comment));
+        for (b, v) in missing.iter().filter(|(b, _)| b.image_key().0 == table) {
+            let key = b.image_key().1;
+            match v {
+                Some(v) => text.push_str(&format!("    {key} = {v}   # {}\n", b.comment)),
+                None => text.push_str(&format!(
+                    "    # {key} = <bytes>   # {}: not priced here, because the image's \
+                     nodes state no parameter-service shapes; state the largest \
+                     set_parameters request it takes\n",
+                    b.comment
+                )),
+            }
         }
     }
-    text.push_str(
-        "\nRaising a `params` value raises the `service_inbox_bytes` it needs; the build \
-         names the new value. The board's own [knobs.params] / [knobs.param] tables state \
-         them for every image instead.",
-    );
+    let (inbox_table, inbox_key) = PARAM_INBOX_BOUND.image_key();
+    let (bound_table, _) = STRING_VALUE_BOUND.image_key();
+    let board_tables = if inbox_table == bound_table {
+        format!("[knobs.{bound_table}] table states")
+    } else {
+        format!("[knobs.{bound_table}] / [knobs.{inbox_table}] tables state")
+    };
+    text.push_str(&format!(
+        "\nRaising a `{bound_table}` value raises the `{inbox_key}` it needs; the build \
+         names the new value. The board's own {board_tables} them for every image instead."
+    ));
     text
 }
 
@@ -8996,6 +9034,51 @@ fn cmake_coordinate(
 /// under the same name ([`west_build_dir`] uses the cargo [`coordinate`]).
 /// Failures warn and the build goes on; the reader that sees two roots says so.
 fn retire_legacy_cmake_root(build: &Path, key: &str, current: &Path) -> Option<PathBuf> {
+    retire_cmake_root(build, key, current, None)
+}
+
+/// The image ids a bringup declares now (`[image.<id>]` in its `system.toml`),
+/// or `None` when that cannot be read -- in which case nothing is retired as
+/// an orphan, since an unread list cannot prove a root is one.
+fn current_image_ids(bringup_dir: &Path) -> Option<Vec<String>> {
+    let text = nros_system_include::read_to_string(bringup_dir.join("system.toml")).ok()?;
+    let table: toml::Table = text.parse().ok()?;
+    Some(table.get("image")?.as_table()?.keys().cloned().collect())
+}
+
+/// Issue 2702 -- retire every per-image root of `bringup` whose image the
+/// bringup no longer declares (renamed or removed from its `system.toml`):
+/// nothing else ever names it, and each holds a configure (~1.3 GB). Read
+/// from the roots themselves (`SYSTEM`, the one `IMAGES` id), under the same
+/// guards as [`retire_legacy_cmake_root`]; a root of another bringup, or of an
+/// image still declared, stays.
+fn retire_orphaned_image_roots(build: &Path, bringup: &str, bringup_dir: &Path, current: &Path) {
+    let Some(ids) = current_image_ids(bringup_dir) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(build) else {
+        return;
+    };
+    let marker = format!("-{bringup}-");
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if name.contains(&marker) {
+            retire_cmake_root(build, name, current, Some((bringup, &ids)));
+        }
+    }
+}
+
+/// [`retire_legacy_cmake_root`], and with `orphans_of = Some((bringup, ids))`
+/// also a CURRENT-shaped root of `bringup` whose one image is not in `ids`.
+fn retire_cmake_root(
+    build: &Path,
+    key: &str,
+    current: &Path,
+    orphans_of: Option<(&str, &[String])>,
+) -> Option<PathBuf> {
     use std::path::Component;
     let mut parts = Path::new(key).components();
     if !matches!(
@@ -9041,6 +9124,16 @@ fn retire_legacy_cmake_root(build: &Path, key: &str, current: &Path) -> Option<P
     if let [only] = images.as_slice()
         && key.ends_with(&format!("-{system}-{only}"))
     {
+        // A root of an image its bringup no longer declares is an orphan, and
+        // goes when the caller asked for its bringup's orphans.
+        let orphan =
+            orphans_of.is_some_and(|(b, ids)| b == system && !ids.iter().any(|i| i == only));
+        if !orphan {
+            return None;
+        }
+    } else if orphans_of.is_some() {
+        // The orphan sweep retires per-image roots only; an older layout is
+        // the per-image build's own retire to make.
         return None;
     }
 
@@ -13785,8 +13878,11 @@ mod per_image_configure_tests {
                 format!("[{}]", vec!["1.0"; 40].join(", ")),
             ),
         ];
-        let keys =
-            |m: &[(&ParamBound, usize)]| m.iter().map(|(b, v)| (b.key, *v)).collect::<Vec<_>>();
+        let keys = |m: &[(&ParamBound, Option<usize>)]| {
+            m.iter()
+                .map(|(b, v)| (b.image_key().1, *v))
+                .collect::<Vec<_>>()
+        };
         // One node: `names` (string array) and `gains` (double array), plus
         // `use_sim_time`.
         let shapes = [[3, 5 + 5 + 12, 0, 0, 0, 0, 1, 1, 1]];
@@ -13800,17 +13896,22 @@ mod per_image_configure_tests {
         assert_eq!(
             keys(&missing),
             vec![
-                ("max_string_value_bytes", 300),
-                ("max_array_len", 40),
-                ("max_string_array_len", 32),
-                ("service_inbox_bytes", priced),
+                ("max_string_value_bytes", Some(300)),
+                ("max_array_len", Some(40)),
+                ("max_string_array_len", Some(32)),
+                ("service_inbox_bytes", Some(priced)),
             ]
         );
         // A stated bound is not listed, and the price uses its value.
-        let stated = unstated_param_bounds(&sizing, &shapes, &seeds, true, |e| match e {
-            "NROS_MAX_ARRAY_LEN" => Some(4),
-            "NROS_PARAMS_MAX_STRING_VALUE_BYTES" => Some(16),
-            _ => None,
+        // Stated under the registry's canonical spelling, whatever it is now.
+        let stated = unstated_param_bounds(&sizing, &shapes, &seeds, true, |e| {
+            if e == ARRAY_BOUND.env() {
+                Some(4)
+            } else if e == STRING_VALUE_BOUND.env() {
+                Some(16)
+            } else {
+                None
+            }
         });
         let priced_stated = nros_params::request_size::worst_request_slot(
             &shapes,
@@ -13819,29 +13920,68 @@ mod per_image_configure_tests {
         assert_eq!(
             keys(&stated),
             vec![
-                ("max_string_array_len", 32),
-                ("service_inbox_bytes", priced_stated)
+                ("max_string_array_len", Some(32)),
+                ("service_inbox_bytes", Some(priced_stated))
             ]
         );
         assert!(priced_stated < priced);
 
+        let header = |b: &ParamBound| format!("[image.mcu.knobs.{}]\n", b.image_key().0);
         let text = param_bounds_refusal("demo_bringup:mcu", "mcu", &missing);
         for want in [
-            "image `demo_bringup:mcu`",
-            "[image.mcu.knobs.params]",
-            "max_string_value_bytes = 300",
-            "[image.mcu.knobs.param]",
-            "service_inbox_bytes = ",
-            "suggested floor",
+            "image `demo_bringup:mcu`".to_string(),
+            header(&STRING_VALUE_BOUND),
+            "max_string_value_bytes = 300".to_string(),
+            header(&PARAM_INBOX_BOUND),
+            "service_inbox_bytes = ".to_string(),
+            "suggested floor".to_string(),
         ] {
-            assert!(text.contains(want), "{want:?} missing from:\n{text}");
+            assert!(text.contains(&want), "{want:?} missing from:\n{text}");
         }
         assert!(!text.contains("<id>") && !text.contains("NROS_"), "{text}");
         // Each table header once, even when the lines interleave tables.
-        let interleaved = [missing[3], missing[0], (&BYTE_ARRAY_BOUND, 256)];
+        let interleaved = [missing[3], missing[0], (&BYTE_ARRAY_BOUND, Some(256))];
         let text = param_bounds_refusal("demo_bringup:mcu", "mcu", &interleaved);
-        for header in ["[image.mcu.knobs.params]", "[image.mcu.knobs.param]"] {
-            assert_eq!(text.matches(header).count(), 1, "{header} in:\n{text}");
+        for h in [header(&STRING_VALUE_BOUND), header(&PARAM_INBOX_BOUND)] {
+            assert_eq!(text.matches(h.as_str()).count(), 1, "{h} in:\n{text}");
+        }
+
+        // No service shapes is no price: the inbox line is named, commented
+        // out and without a value -- never `= 0`, which builds a slot that
+        // drops every request.
+        let unpriced = unstated_param_bounds(&sizing, &[], &seeds, true, |_| None);
+        assert_eq!(unpriced.last().map(|(_, v)| *v), Some(None));
+        let text = param_bounds_refusal("demo_bringup:mcu", "mcu", &unpriced);
+        assert!(text.contains("# service_inbox_bytes = <bytes>"), "{text}");
+        assert!(!text.contains("service_inbox_bytes = 0"), "{text}");
+
+        // A number's spelling does not size the string bound: a long double
+        // array alone leaves the string floor at the crate default.
+        let numeric = vec![(
+            "gains".to_string(),
+            format!("[{}]", vec!["1.000000000000001"; 4].join(", ")),
+        )];
+        let only_numbers = unstated_param_bounds(&sizing, &shapes, &numeric, true, |_| None);
+        assert_eq!(
+            (only_numbers[0].0.knob, only_numbers[0].1),
+            (STRING_VALUE_BOUND.knob, Some(256))
+        );
+    }
+
+    /// Every bound names a knob the registry holds, so a rename there moves
+    /// the env read and the line printed together.
+    #[test]
+    fn every_parameter_bound_is_a_registry_knob() {
+        for b in [
+            &STRING_VALUE_BOUND,
+            &ARRAY_BOUND,
+            &STRING_ARRAY_BOUND,
+            &BYTE_ARRAY_BOUND,
+            &PARAM_INBOX_BOUND,
+        ] {
+            let (group, name) = b.image_key();
+            assert!(!group.is_empty() && !name.is_empty(), "{}", b.knob);
+            assert!(b.env().starts_with("NROS_"), "{}", b.env());
         }
     }
 
@@ -13884,6 +14024,55 @@ mod per_image_configure_tests {
             other.join("CMakeLists.txt").is_file(),
             "another image's root stays"
         );
+    }
+
+    /// An image renamed or removed from its bringup leaves a per-image root
+    /// nothing names again; the next build of that bringup retires it. A
+    /// root of an image still declared, another bringup's root, and an older
+    /// layout's (the per-image build's own retire) stay.
+    #[test]
+    fn a_removed_images_root_is_retired_by_its_bringups_next_build() {
+        let t = tempfile::tempdir().expect("tempdir");
+        let build = t.path().join("build");
+        let bringup_dir = t.path().join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup_dir).unwrap();
+        std::fs::write(
+            bringup_dir.join("system.toml"),
+            "[image.a]\nboard = \"linux\"\n[image.b]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        let root = |name: &str, system: &str, images: &str| {
+            let d = build.join(name);
+            std::fs::create_dir_all(d.join("cmake")).unwrap();
+            std::fs::write(
+                d.join("CMakeLists.txt"),
+                format!(
+                    "{}nano_ros_workspace(\n    SYSTEM   {system}\n    IMAGES {images}\n)\n",
+                    crate::builder::cmake_root::GENERATED_HEADER
+                ),
+            )
+            .unwrap();
+            d
+        };
+        let current = root("posix-zenoh-linux-demo_bringup-a", "demo_bringup", "a");
+        let kept = root("posix-zenoh-linux-demo_bringup-b", "demo_bringup", "b");
+        let gone = root("posix-zenoh-linux-demo_bringup-old", "demo_bringup", "old");
+        let other = root(
+            "posix-zenoh-linux-x-demo_bringup-old",
+            "x-demo_bringup",
+            "old",
+        );
+        let layout = root("posix-zenoh-linux-demo_bringup-c", "demo_bringup", "c d");
+
+        retire_orphaned_image_roots(&build, "demo_bringup", &bringup_dir, &current);
+
+        assert!(
+            !gone.join("CMakeLists.txt").exists(),
+            "a removed image's root goes"
+        );
+        for d in [&current, &kept, &other, &layout] {
+            assert!(d.join("CMakeLists.txt").is_file(), "{} stays", d.display());
+        }
     }
 
     /// Two images whose resolved configuration differs cannot share a

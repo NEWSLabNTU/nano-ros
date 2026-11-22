@@ -11,4 +11,4 @@ max_byte_array_bytes = 256    # the longest byte array (only for a byte_array)
 service_inbox_bytes = 4096    # the largest set_parameters request
 ```
 
-`nros build` refuses the image until they are stated, naming the image, each missing line and a suggested floor. Raising a `params` value raises the `service_inbox_bytes` it needs; the build names the new value.
+`nros build` refuses the image until they are stated, naming the image, each missing line and a suggested floor. Raising a `params` value raises the `service_inbox_bytes` it needs; the build names the new value. When the image's nodes state no parameter-service shapes, the build cannot price the inbox, so it prints that line commented out, without a value, for you to fill in.
