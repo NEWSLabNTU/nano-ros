@@ -1,0 +1,1 @@
+The stack-floor check now covers each sched task of a generated C/C++ entry on FreeRTOS and Zephyr, not only the thread the image boots on. Each task is checked against the stack the entry reserves for it; a task that runs on the boot thread is covered by the boot check, and one with no stack anyone states is reported as not checked.

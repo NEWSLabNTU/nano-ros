@@ -177,6 +177,16 @@ def expand_roots(g: Graph, roots: str) -> list[str]:
     the walk into a pass."""
     out: list[str] = []
     known = g.functions | set(g.frames)
+    optional = [r for r in roots.split(",") if r.startswith("?")]
+    if optional:
+        # `?sym`: a root the link may not have (issue 2784: a board names the
+        # trampoline of each runner it has; an image links one). Dropped when
+        # absent, and refused only when every root of the role is.
+        present = [r for r in roots.split(",") if not r.startswith("?") or r[1:] in known]
+        if not present:
+            raise WalkRefused(f"none of the roots `{roots}` is in the inputs; the thread "
+                              "entry was renamed, or its code is not among the inputs")
+        roots = ",".join(r.lstrip("?") for r in present)
     for root in roots.split(","):
         if root.startswith("~"):
             text = root[1:]
@@ -596,7 +606,7 @@ _WALK_CACHE_CTX: dict = {}
 WALK_CACHE_PATH_ARGS = frozenset({
     "inputs", "link_map", "link_dir", "cfi_elf", "report", "llc_cache", "su",
     "bitcode_dir", "stated_by_build", "table", "llvm_bin", "cxxfilt",
-    "compile_commands", "cargo_messages", "builtins",
+    "compile_commands", "cargo_messages", "builtins", "sched_tasks",
 })
 WALK_CACHE_MAX = 512     # entries; pruned down to WALK_CACHE_KEEP by last use
 WALK_CACHE_KEEP = 384
@@ -3354,7 +3364,8 @@ _KNOB_SET = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=([0-9]+)$")
 
 
 def check_stacks(results: dict, stacks: dict[str, int], knob: str,
-                 raise_: bool = False) -> tuple[int, list[str], list[dict]]:
+                 raise_: bool = False, knobs: dict[str, str] | None = None
+                 ) -> tuple[int, list[str], list[dict]]:
     """A build's CHECK (issue 2400): a MEASURED role whose floor exceeds its
     stated stack fails, naming the knob that raises it; an UNMEASURED one only
     warns (ruling (A)). A stack is never lowered here.
@@ -3364,10 +3375,14 @@ def check_stacks(results: dict, stacks: dict[str, int], knob: str,
     for the driver to rebuild with, once, through the knob. A knob with no
     `NAME=<number>` form cannot be set by a driver, so it still fails."""
     rc, lines, raises = 0, [], []
+    default_knob = knob
     for role, stack in stacks.items():
         r = results.get(role)
         if r is None:
             continue
+        # A sched task authored its own stack: it is raised in `[tasks.*]`,
+        # not by the board's knob (issue 2784).
+        knob = (knobs or {}).get(role, default_knob)
         text = knob_text(knob, r["floor"])
         m = _KNOB_SET.match(text)
         # A floor taken from the measured peak (issue 2783) is a size, not
@@ -3557,7 +3572,13 @@ def build_profile_dirs(lines: list[str], target: str | None) -> list[Path]:
 
 
 def apply_stated(args: argparse.Namespace, rows: list[dict]) -> None:
-    """The walk's roles, stated stacks and knob, from a board's stated rows."""
+    """The walk's roles, stated stacks and knob, from a board's stated rows.
+    A `TASK` row is the board's sched-task trampoline and default task stack
+    (issue 2784): it becomes one role per task of `--sched-tasks`, not a role
+    of its own, so it is set aside here."""
+    for r in [r for r in rows if r["role"].upper() == "TASK"]:
+        args.task_root, args.task_stack, args.task_knob = r["root"], int(r["bytes"]), r["knob"]
+    rows = [r for r in rows if r["role"].upper() != "TASK"]
     knobs = {r["knob"] for r in rows}
     if len(knobs) > 1:
         raise SystemExit("nros-stack-floor: the board states stacks with different knobs ("
@@ -3567,6 +3588,96 @@ def apply_stated(args: argparse.Namespace, rows: list[dict]) -> None:
         args.check_stack = list(args.check_stack or []) + [f"{r['role']}={r['bytes']}"]
     if knobs:
         args.stack_knob = knobs.pop()
+
+
+def task_role(name: str) -> str:
+    """A sched task's role name: `TASK_<NAME>`, a C identifier, so
+    `--emit-defines` can spell it."""
+    return "TASK_" + re.sub(r"[^A-Za-z0-9]", "_", name).upper()
+
+
+_TASK_STACK_SYM = re.compile(r"^__nros_sched_task_stack_(\d+)$")
+
+
+def reserved_task_stacks(elf: str | None, nm: str | None) -> dict[int, int]:
+    """The task stacks a C-ABI entry reserves as statics
+    (`__nros_sched_task_stack_<i>`, `<rclc/detail/sched_task_memory_*.h>`):
+    task index -> bytes, read off the LINKED image. The entry's macro has
+    already applied the stated default and the port's floor, so this is the
+    stack the task runs on, with no rule restated here."""
+    if not elf or not nm or not Path(elf).is_file():
+        return {}
+    r = subprocess.run([nm, "-S", elf], capture_output=True, text=True)
+    out = {}
+    for line in r.stdout.splitlines():
+        f = line.split()
+        if len(f) == 4 and (m := _TASK_STACK_SYM.match(f[3])):
+            out[int(m.group(1))] = int(f[1], 16)
+    return out
+
+
+def apply_sched_tasks(args: argparse.Namespace, reserved: dict[int, int] | None = None
+                      ) -> list[str]:
+    """Issue 2784 -- one role per sched task of the entry's priority plan
+    (`--sched-tasks`, the `nros_priority_plan.json` codegen writes beside the
+    TU), rooted at the board's task trampoline (`--task-root`). A task's stack
+    is, in order:
+
+    * the static the entry reserved for it (`reserved`: task index -> bytes,
+      off the linked image). An entry that reserves task memory gives the boot
+      task none: it runs on the boot thread, which the OPEN role is;
+    * else its authored `stack_bytes`;
+    * else the board's default task stack (`--task-stack`).
+
+    Returns what is NOT checked, and why: a task with no stack anyone states
+    is never counted as a pass."""
+    path = getattr(args, "sched_tasks", None)
+    if not path:
+        return []
+    try:
+        plan = json.loads(Path(path).read_text())
+    except (OSError, ValueError) as e:
+        return [f"sched tasks not checked: {path}: {e}"]
+    tasks = plan.get("sched_tasks") or []
+    # The degenerate table, one `default` task, runs on the boot thread: the
+    # OPEN role already is that thread.
+    if len(tasks) == 1 and tasks[0].get("name") == "default":
+        return []
+    root = getattr(args, "task_root", None)
+    default = getattr(args, "task_stack", None)
+    key = plan.get("sched_task_key") or "<rtos>"
+    reserved = reserved or {}
+    notes = []
+    if not root:
+        return [f"{len(tasks)} sched task(s) not checked: the board states no task "
+                "trampoline (no TASK row)"]
+    args.role_knobs = dict(getattr(args, "role_knobs", None) or {})
+    for i, t in enumerate(tasks):
+        name = t.get("name") or "?"
+        role = task_role(name)
+        authored = t.get("stack_bytes")
+        own = f"[tasks.{name}.{key}] stack_bytes = {{bytes}}"
+        if reserved:
+            if i not in reserved:
+                notes.append(f"{role}: runs on the boot thread (the entry reserves it no "
+                             "stack), so the OPEN role checks it")
+                continue
+            stack = reserved[i]
+            args.role_knobs[role] = own
+        elif authored:
+            stack = int(authored)
+            args.role_knobs[role] = own
+        elif default:
+            stack = int(default)
+            if getattr(args, "task_knob", None):
+                args.role_knobs[role] = args.task_knob
+        else:
+            notes.append(f"{role}: not checked: the task states no stack_bytes and the "
+                         "board states no default task stack")
+            continue
+        args.role = list(args.role or []) + [f"{role}={root}"]
+        args.check_stack = list(args.check_stack or []) + [f"{role}={stack}"]
+    return notes
 
 
 def run(args: argparse.Namespace) -> int:
@@ -3585,6 +3696,13 @@ def run(args: argparse.Namespace) -> int:
                   f"script of this image wrote {STATED_FILE})", file=sys.stderr)
             return 0
         apply_stated(args, rows)
+    if getattr(args, "sched_tasks", None):
+        try:
+            nm = llvm_tool("llvm-nm", args.llvm_bin)
+        except SystemExit:
+            nm = None
+        for n in apply_sched_tasks(args, reserved_task_stacks(args.cfi_elf, nm)):
+            print(f"nros-stack-floor: {n}", file=sys.stderr)
     if args.intermediates_from_build:
         if not stream:
             raise SystemExit("nros-stack-floor: --intermediates-from-build needs cargo's "
@@ -3800,6 +3918,9 @@ def run(args: argparse.Namespace) -> int:
     results = {}
     refusals = []
     lower: dict = {}  # role -> how far a refused walk got (issue 2818)
+    # Issue 2784 -- every sched task shares the board's trampoline: walk each
+    # root once, whatever number of roles name it.
+    walked: dict[str, "Path_ | WalkRefused"] = {}
     for spec in args.role:
         role, _, roots = spec.partition("=")
         if not roots:
@@ -3813,9 +3934,16 @@ def run(args: argparse.Namespace) -> int:
             role_roots = []
         for root in role_roots:
             try:
-                p = walk_deepest(g, root, indirect_charge=charge,
-                                 recursion_allowance=args.recursion_allowance,
-                                 externals=externals, cuts=cuts)
+                if root not in walked:
+                    try:
+                        walked[root] = walk_deepest(g, root, indirect_charge=charge,
+                                                    recursion_allowance=args.recursion_allowance,
+                                                    externals=externals, cuts=cuts)
+                    except WalkRefused as e:
+                        walked[root] = e
+                if isinstance(walked[root], WalkRefused):
+                    raise walked[root]
+                p = walked[root]
             except WalkRefused as e:
                 refusals.append(f"{role}: {e}")
                 lp = e.path
@@ -3928,7 +4056,8 @@ def run(args: argparse.Namespace) -> int:
     rc, lines, raises = 0, [], []
     if stacks and not refusals:
         rc, lines, raises = check_stacks(results, stacks, args.stack_knob or "the stack size",
-                                         raise_=args.raise_)
+                                         raise_=args.raise_,
+                                         knobs=getattr(args, "role_knobs", None))
     if args.report:
         write_report(args.report, args, results, stacks, refusals, raises)
     if refusals:
@@ -4594,6 +4723,62 @@ def self_test() -> int:
           rc == 0 and raises and raises[0]["value"] == 31)
     rc, lines, _ = check_stacks({"OPEN": {"floor": 100, "measured": True}}, {"OPEN": 65536}, "K")
     check("check: a stack at or above the floor passes", rc == 0 and "holds" in lines[0])
+    # issue 2784 -- one role per sched task, from the entry's priority plan.
+    import tempfile as _tf_st
+    with _tf_st.TemporaryDirectory() as td:
+        pp = Path(td, "plan.json")
+        pp.write_text(json.dumps({"sched_task_key": "freertos", "sched_tasks": [
+            {"name": "high", "stack_bytes": 8192}, {"name": "low-rate", "stack_bytes": None}]}))
+        a = argparse.Namespace(sched_tasks=str(pp), task_root="tramp", task_stack=16384,
+                               task_knob="TASK_STACK={bytes}", role=["OPEN=main"],
+                               check_stack=["OPEN=4096"])
+        notes = apply_sched_tasks(a)
+        check("sched tasks: one role per task at the trampoline, authored or board stack",
+              not notes and a.role == ["OPEN=main", "TASK_HIGH=tramp", "TASK_LOW_RATE=tramp"]
+              and a.check_stack == ["OPEN=4096", "TASK_HIGH=8192", "TASK_LOW_RATE=16384"])
+        check("sched tasks: an authored stack is raised in [tasks.*], a default by the board",
+              a.role_knobs == {"TASK_HIGH": "[tasks.high.freertos] stack_bytes = {bytes}",
+                               "TASK_LOW_RATE": "TASK_STACK={bytes}"})
+        b = argparse.Namespace(sched_tasks=str(pp), task_root="tramp", task_stack=None,
+                               task_knob=None, role=[], check_stack=[])
+        notes = apply_sched_tasks(b)
+        check("sched tasks: a task no one states a stack for is reported, never passed",
+              b.role == ["TASK_HIGH=tramp"] and len(notes) == 1 and "TASK_LOW_RATE" in notes[0])
+        r = argparse.Namespace(sched_tasks=str(pp), task_root="tramp", task_stack=16384,
+                               task_knob="T={bytes}", role=[], check_stack=[])
+        notes = apply_sched_tasks(r, {0: 262144})
+        check("sched tasks: a reserved stack is the task's; a task without one is the boot thread",
+              r.role == ["TASK_HIGH=tramp"] and r.check_stack == ["TASK_HIGH=262144"]
+              and len(notes) == 1 and "boot thread" in notes[0])
+        c = argparse.Namespace(sched_tasks=str(pp), task_root=None, role=[], check_stack=[])
+        check("sched tasks: no trampoline stated, nothing checked, and said so",
+              "not checked" in apply_sched_tasks(c)[0] and c.role == [])
+        pp.write_text(json.dumps({"sched_tasks": [{"name": "default", "stack_bytes": None}]}))
+        d = argparse.Namespace(sched_tasks=str(pp), task_root="tramp", task_stack=1,
+                               role=[], check_stack=[])
+        check("sched tasks: the one-`default` table runs on the boot thread, no task role",
+              apply_sched_tasks(d) == [] and d.role == [])
+    rc, lines, _ = check_stacks({"TASK_HIGH": {"floor": 9000, "measured": True}},
+                                {"TASK_HIGH": 8192}, "BOARD={bytes}",
+                                knobs={"TASK_HIGH": "[tasks.high.freertos] stack_bytes = {bytes}"})
+    check("check: a task's own knob names the fix",
+          rc == 1 and "[tasks.high.freertos] stack_bytes = 9000" in lines[0])
+    rows = [{"role": "OPEN", "root": "main", "bytes": 4096, "knob": "K={bytes}"},
+            {"role": "TASK", "root": "tramp", "bytes": 16384, "knob": "T={bytes}"}]
+    e = argparse.Namespace(role=[], check_stack=[])
+    apply_stated(e, rows)
+    go = Graph(frames={"a": 8}, functions={"a"})
+    check("roots: an absent `?root` is dropped, a present one kept",
+          expand_roots(go, "?a,?b") == ["a"])
+    try:
+        expand_roots(go, "?b,?c")
+        ok = False
+    except WalkRefused:
+        ok = True
+    check("roots: every `?root` absent refuses, never an empty walk", ok)
+    check("stated: a board's TASK row is the task default, not a role or a second knob",
+          e.role == ["OPEN=main"] and e.task_root == "tramp" and e.task_stack == 16384
+          and e.stack_knob == "K={bytes}")
     check("knob template in the knob's unit",
           knob_text("S_KB={kb}", 15216) == "S_KB=15")
     check("knob template in bytes rounded up to whole KiB",
@@ -5347,6 +5532,15 @@ def main() -> int:
     ap.add_argument("--link-dir", action="append",
                     help="the linker's working directory, which relative LOAD paths are under; "
                     "repeat for candidates (default: the map's directory)")
+    ap.add_argument("--sched-tasks", metavar="PLAN_JSON",
+                    help="the entry's nros_priority_plan.json (issue 2784): one role per sched "
+                    "task, rooted at --task-root and checked against the task's stack_bytes, "
+                    "else --task-stack")
+    ap.add_argument("--task-root", help="the board's sched-task trampoline (a symbol, or ~text)")
+    ap.add_argument("--task-stack", type=int,
+                    help="the board's default sched-task stack, in bytes")
+    ap.add_argument("--task-knob", help="what raises the board's default task stack "
+                    "(`{bytes}` / `{kb}` as --stack-knob)")
     ap.add_argument("--check-stack", action="append",
                     help="ROLE=<bytes>: the stated stack to CHECK (a measured image whose floor "
                     "exceeds it fails; an unmeasured one warns)")

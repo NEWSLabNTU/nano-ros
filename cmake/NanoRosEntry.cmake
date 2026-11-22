@@ -1358,7 +1358,10 @@ function(nano_ros_entry)
                 # issue 2400 W2 -- CHECK the stack just baked against the
                 # image's measured floor (never lowers it; warns if unmeasured).
                 nros_stack_floor_freertos_check(${_NRA_NAME}
-                    "${NROS_ENTRY_APP_STACK_BYTES}" "${_NRA_BRINGUP}")
+                    "${NROS_ENTRY_APP_STACK_BYTES}" "${_NRA_BRINGUP}"
+                    # Issue 2784 -- and each sched task, from the plan the
+                    # entry's codegen wrote beside the TU.
+                    SCHED_TASKS "${CMAKE_CURRENT_BINARY_DIR}/nros_priority_plan.json")
             endif()
         endif()
 
@@ -1532,6 +1535,10 @@ function(_nros_entry_invoke_codegen)
     # `include()` call back in `nano_ros_entry`.
     set(_gen_path
         "${CMAKE_CURRENT_BINARY_DIR}/${_NRX_NAME}_nros_main_generated.${_ext}")
+    # Issue 2784 -- the priority plan `codegen entry` writes beside the TU,
+    # for a stack-floor check configured before this entry (Zephyr's).
+    set_property(GLOBAL PROPERTY NROS_ENTRY_PRIORITY_PLAN
+        "${CMAKE_CURRENT_BINARY_DIR}/nros_priority_plan.json")
     set(_depfile_path
         "${CMAKE_CURRENT_BINARY_DIR}/${_NRX_NAME}_nros_main_generated.d")
     set(_link_libs_path
