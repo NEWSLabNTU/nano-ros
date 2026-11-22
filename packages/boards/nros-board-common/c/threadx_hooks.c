@@ -78,7 +78,7 @@ _Static_assert(sizeof(ULONG) == 4,
  * sched task's stack, NetX Duo's packet pool and IP/ARP/BSD stacks, and the
  * RMW's working set. It was a 4 MiB literal that nothing derived. It is now
  *
- *     app stack + WORKING_SET[rmw]
+ *     app stack + sched-task stacks + WORKING_SET[rmw]
  *
  * with each working set MEASURED: every image prints its own `nros: byte pool
  * peak` (nros-board-threadx/src/entry.rs), and a working set is that peak less
@@ -95,10 +95,14 @@ _Static_assert(sizeof(ULONG) == 4,
  * was taken with it there, so the pool never holds it and nothing subtracts
  * it any more.
  *
- * A sched task's stack is NOT in the default: no compile of this file sees
- * how many sched tasks the image declares. An image that has them states the
- * pool (`[knobs.threadx] byte_pool_bytes`); one that does not is refused at
- * boot, naming the knob, before any task runs. */
+ * Issue 2732 -- the image's SPAWNED sched tasks take their stacks from here
+ * too. The build that resolved the image's sched-task table states their
+ * total as `NROS_THREADX_SCHED_TASK_STACK_BYTES` (the cargo road, from the
+ * sizing descriptor: `nros_board_common::threadx_sources::define_byte_pool`).
+ * A build with no such statement adds 0 and says so; a task that then does
+ * not fit is refused at boot (`nros_tx_pool_refuse`), naming the knob, before
+ * it runs. The cmake road builds C/C++ entries, whose ThreadX runner spawns
+ * no sched task, so 0 is its answer. */
 #ifndef NROS_THREADX_APP_STACK_BYTES
 #define NROS_THREADX_APP_STACK_BYTES (64u * 1024u)
 #endif
@@ -108,7 +112,7 @@ _Static_assert(sizeof(ULONG) == 4,
  * bytes on aarch64). So the app thread gets the larger of the two, and the
  * boot log says so when it differs. */
 #define NROS_THREADX_RAISED_STACK(bytes)                                                           \
-    ((bytes) < (uint32_t) TX_MINIMUM_STACK ? (uint32_t) TX_MINIMUM_STACK : (uint32_t) (bytes))
+    ((bytes) < (uint32_t)TX_MINIMUM_STACK ? (uint32_t)TX_MINIMUM_STACK : (uint32_t)(bytes))
 /* 1 for a DDS backend (Cyclone): the larger working set. Set by the build that
  * knows the image's RMW. */
 #ifndef NROS_THREADX_POOL_DDS
@@ -138,29 +142,35 @@ _Static_assert(sizeof(ULONG) == 4,
 #define NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES 0u
 #endif
 
+/* Issue 2732 -- the stacks of the image's spawned sched tasks (see above). */
+#ifndef NROS_THREADX_SCHED_TASK_STACK_BYTES
+#define NROS_THREADX_SCHED_TASK_STACK_BYTES 0u
+#endif
+
 /* `threadx.byte_pool_bytes` (env `NROS_THREADX_BYTE_POOL_BYTES`), or a board's
  * `[knobs.memory] heap_bytes`, when the board or image states it, handed in as
  * `-DNROS_THREADX_BYTE_POOL_BYTES`. */
 #ifndef NROS_THREADX_BYTE_POOL_BYTES
 #define NROS_THREADX_BYTE_POOL_BYTES                                                               \
-    (NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_WORKING_SET_BYTES +                               \
-     NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES)
+    (NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_SCHED_TASK_STACK_BYTES +                          \
+     NROS_THREADX_WORKING_SET_BYTES + NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES)
 #endif
 
-_Static_assert(NROS_THREADX_BYTE_POOL_BYTES >= NROS_THREADX_APP_STACK_BYTES +
-                                                   NROS_THREADX_MEASURED_WORKING_SET_BYTES +
-                                                   NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES,
-               "the ThreadX byte pool is below the app thread's stack plus this RMW's "
-               "measured working set and the buffer pairs of its further parameter-serving "
-               "nodes. Raise `[image.<id>.knobs.threadx] byte_pool_bytes` "
-               "(NROS_THREADX_BYTE_POOL_BYTES).");
+_Static_assert(
+    NROS_THREADX_BYTE_POOL_BYTES >=
+        NROS_THREADX_APP_STACK_BYTES + NROS_THREADX_SCHED_TASK_STACK_BYTES +
+            NROS_THREADX_MEASURED_WORKING_SET_BYTES + NROS_THREADX_SERVICE_HEAP_EXTRA_BYTES,
+    "the ThreadX byte pool is below the app thread's stack plus its spawned sched "
+    "tasks' stacks, this RMW's measured working set and the buffer pairs of its "
+    "further parameter-serving nodes. Raise `[image.<id>.knobs.threadx] byte_pool_bytes` "
+    "(NROS_THREADX_BYTE_POOL_BYTES).");
 
 /* Issue 2800 -- the pool grows by exactly what the port raised: the app
  * stack's raise, and, for zenoh, its two tasks (read and lease), whose stacks
  * `zpico-sys/c/platform/threadx/platform.h` raises from 8192 to the same
  * floor. Both are 0 on a port whose minimum is below them. */
 #define NROS_THREADX_ZENOH_TASK_STACK_RAISE                                                        \
-    ((uint32_t) TX_MINIMUM_STACK > 8192u ? (uint32_t) TX_MINIMUM_STACK - 8192u : 0u)
+    ((uint32_t)TX_MINIMUM_STACK > 8192u ? (uint32_t)TX_MINIMUM_STACK - 8192u : 0u)
 #if NROS_THREADX_POOL_DDS
 #define NROS_THREADX_POOL_PORT_RAISE                                                               \
     (NROS_THREADX_RAISED_STACK(NROS_THREADX_APP_STACK_BYTES) - NROS_THREADX_APP_STACK_BYTES)
@@ -276,9 +286,11 @@ static void nros_tx_pool_refuse(const char* what, ULONG requested) {
     nros_tx_log_ulong(available);
     nros_board_log(" free of ");
     nros_tx_log_ulong((ULONG)BYTE_POOL_SIZE);
-    nros_board_log(". Raise `[image.<id>.knobs.threadx] byte_pool_bytes` (NROS_THREADX_BYTE_POOL_BYTES) "
-                   "by at least the shortfall; an image's sched tasks are not in "
-                   "the derived default.\n");
+    nros_board_log(
+        ". Raise `[image.<id>.knobs.threadx] byte_pool_bytes` (NROS_THREADX_BYTE_POOL_BYTES) "
+        "by at least the shortfall. The derived default counts only the sched "
+        "tasks the image's sizing descriptor states, which `nros build` "
+        "writes.\n");
     nros_board_app_returned(1);
     for (;;) {
     }
@@ -499,16 +511,16 @@ void tx_application_define(void* first_unused_memory) {
     /* Create application thread. Resolve the overlay-tunable size/priority
      * via the weak getters once (the overlay strong-overrides the fns). */
     stack_size = nros_board_app_stack_size();
-    if (stack_size < (ULONG) TX_MINIMUM_STACK) {
+    if (stack_size < (ULONG)TX_MINIMUM_STACK) {
         char line[128];
         size_t n = census_put(line, 0, sizeof(line), "nros: app stack stated ");
-        n = census_put_u(line, n, sizeof(line), (unsigned long) stack_size);
+        n = census_put_u(line, n, sizeof(line), (unsigned long)stack_size);
         n = census_put(line, n, sizeof(line), " bytes, raised to ");
-        n = census_put_u(line, n, sizeof(line), (unsigned long) TX_MINIMUM_STACK);
+        n = census_put_u(line, n, sizeof(line), (unsigned long)TX_MINIMUM_STACK);
         n = census_put(line, n, sizeof(line), " (this port's least stack)\n");
         line[n] = '\0';
         nros_board_log(line);
-        stack_size = (ULONG) TX_MINIMUM_STACK;
+        stack_size = (ULONG)TX_MINIMUM_STACK;
     }
     priority = nros_board_app_priority();
     nros_board_log("[app_define] Creating app thread...\n");

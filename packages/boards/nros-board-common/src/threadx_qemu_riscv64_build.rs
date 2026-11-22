@@ -272,12 +272,26 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     crate::can_unsupported::add_defaults(&mut glue, "rv-virt-threadx");
     crate::stack_stated::emit(
         &out_dir,
-        &[crate::stack_stated::Stated {
-            role: "OPEN",
-            root: "~app_task_entry_",
-            bytes: app_stack,
-            knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
-        }],
+        &[
+            crate::stack_stated::Stated {
+                role: "OPEN",
+                root: "~app_task_entry_",
+                bytes: app_stack,
+                knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
+            },
+            // Issues 2784, 2732 -- each spawned sched task enters at
+            // `nros_board_threadx`'s `level_task_entry` (a generic Rust
+            // function) on a byte-pool stack. One that states no stack gets
+            // the app thread's (`nros_threadx_create_task`); one that states
+            // a stack runs on it, which the entry's own file states. This row
+            // is the default and the root.
+            crate::stack_stated::Stated {
+                role: "TASK",
+                root: "~level_task_entry",
+                bytes: app_stack,
+                knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
+            },
+        ],
     );
     glue.file(manifest_dir.join("c/syscalls.c"));
     glue.file(manifest_dir.join("c/hwtimer.c"));

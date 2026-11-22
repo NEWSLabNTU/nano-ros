@@ -4174,6 +4174,19 @@ bringup = "src/pool_exhaustion_threadx_linux_bringup"
 image = "threadx-linux"
 target_dir = "target"
 
+# issue 2732 — the ThreadX byte pool's boot refusal, for a task stack no sizing
+# descriptor states. An owned entry that spawns one task too large for any
+# derived pool; needs no router (it opens no session).
+[[workspace_fixture]]
+id = "threadx-linux-sched-task-pool-refusal"
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/sched-task-pool-refusal-threadx-linux"
+bringup = "src/sched_task_pool_refusal_threadx_linux_bringup"
+image = "threadx-linux"
+target_dir = "target"
+
 # ===========================================================================
 # threadx-riscv64 (qemu RISC-V64 ThreadX/NetX) — Rust role examples, zenoh RMW
 # into target-zenoh/. The board config dirs (THREADX_CONFIG_DIR/NETX_CONFIG_DIR)

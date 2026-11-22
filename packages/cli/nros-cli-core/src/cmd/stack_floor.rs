@@ -440,7 +440,10 @@ pub fn prepare(step: &StackFloorStep) -> Result<()> {
 pub const SCHED_TASKS_FILE: &str = "nros-sched-tasks.json";
 
 /// Write [`SCHED_TASKS_FILE`] into a generated entry's directory: each sched
-/// task's name, its authored `stack_bytes`, and the stack `nros::main!`
+/// task's name, its `stack_bytes` as the entry allocates it (authored, or
+/// derived from a level's members by the rule `nros::main!` runs: pass the
+/// table [`crate::codegen::entry::derived_stack_table`] returns, issue 2732),
+/// and the stack `nros::main!`
 /// reserves for it (`reserved_stack_bytes`, from the one lowering the macro
 /// calls: a number, `0` for the port's default, `null` for the boot task).
 /// Nothing is written for an image without sched tasks, and an existing file
@@ -467,11 +470,11 @@ pub fn write_sched_tasks(
     let family = crate::orchestration::board_key::board_family(board).ok();
     let reserved = family.and_then(|f| f.rust_entry_task_stacks(&declared));
     // The task the runner runs on the CALLER's thread (the boot task): the
-    // family's rule, reserved memory or not. The OPEN role is that thread.
+    // Rust runner's rule, reserved memory or not (ThreadX reserves none and
+    // boots the first). The OPEN role is that thread.
     let boot_task = family
-        .and_then(|f| f.c_abi_runners())
-        .and_then(|r| r.sched_task_memory)
-        .map(|m| match m.boot_sched_task {
+        .and_then(|f| f.rust_boot_sched_task())
+        .map(|b| match b {
             nros_entry_lower::BootSchedTask::First => 0,
             nros_entry_lower::BootSchedTask::Last => declared.len().saturating_sub(1),
         });
@@ -682,6 +685,16 @@ mod tests {
         // FreeRTOS boots the LAST task, which reserves nothing.
         assert_eq!(doc["sched_tasks"][0]["reserved_stack_bytes"], 65_536);
         assert!(doc["sched_tasks"][1]["reserved_stack_bytes"].is_null());
+        // Issue 2732 -- ThreadX reserves no task memory (the byte pool holds the
+        // stacks) and its Rust runner boots the FIRST task.
+        assert!(write_sched_tasks(dir.path(), "threadx", "threadx-linux", Some(&table)).unwrap());
+        let doc: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join(SCHED_TASKS_FILE)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(doc["reserves_task_memory"], false);
+        assert_eq!(doc["boot_task"], 0, "ThreadX boots the first task");
+        assert_eq!(doc["sched_tasks"][0]["stack_bytes"], 65_536);
         let single = ResolvedSchedTaskTable {
             sched_tasks: vec![task("default", None)],
         };
