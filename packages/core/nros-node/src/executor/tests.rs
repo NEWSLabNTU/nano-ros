@@ -21288,6 +21288,120 @@ mod reentry_action_client {
 /// entry's raw pointer, carried in `context`. Run under Miri
 /// (`just check miri-executor-reentry`): the filter `executor::tests::reentry`
 /// selects this module too.
+/// Phase-573 W2b, issue 2675 — the TYPED action server's cancel callback
+/// completes the goal it is asked about, through the handle's own entry path
+/// (`as_complete_goal`), as a Rust callback holding a raw executor pointer
+/// can. The dispatch must hold no reference into the server across it.
+mod reentry_typed_action_server {
+    use super::{
+        super::{
+            action_core::ActionServerCore,
+            arena::{ActionServerArenaEntry, action_server_try_process, as_complete_goal},
+        },
+        TestAction, TestGoal, TestResult,
+    };
+    use crate::{
+        executor::handles::ActionServer,
+        mock::{MockPublisher, MockServiceServer},
+    };
+    use alloc::boxed::Box;
+    use nros_core::{CancelResponse, GoalResponse, GoalStatusCode, GoalUuid};
+    use portable_atomic::{AtomicPtr, AtomicU32, Ordering};
+
+    const GB: usize = 128;
+    const RB: usize = 128;
+    const FB: usize = 128;
+    const MG: usize = 2;
+    type GoalF = fn(&GoalUuid, &TestGoal) -> GoalResponse;
+    type CancelF = fn(&GoalUuid, GoalStatusCode) -> CancelResponse;
+    type Entry = ActionServerArenaEntry<TestAction, GoalF, CancelF, GB, RB, FB, MG>;
+
+    static ENTRY: AtomicPtr<u8> = AtomicPtr::new(core::ptr::null_mut());
+    static CANCELS: AtomicU32 = AtomicU32::new(0);
+
+    fn accept(_: &GoalUuid, _: &TestGoal) -> GoalResponse {
+        GoalResponse::AcceptAndExecute
+    }
+
+    /// Completes the goal it is asked to cancel, then accepts the cancel.
+    fn complete_on_cancel(id: &GoalUuid, _: GoalStatusCode) -> CancelResponse {
+        CANCELS.fetch_add(1, Ordering::SeqCst);
+        let p = ENTRY.load(Ordering::SeqCst);
+        // SAFETY: `p` is the live entry; this is the re-entry under test.
+        let r = unsafe {
+            as_complete_goal::<TestAction, GoalF, CancelF, GB, RB, FB, MG>(
+                p,
+                id,
+                GoalStatusCode::Canceled,
+                TestResult::default(),
+            )
+        };
+        assert!(
+            r.is_ok(),
+            "completing the goal from its cancel callback: {r:?}"
+        );
+        CancelResponse::Accept
+    }
+
+    /// # Safety
+    /// `p` is a live entry and nothing references it.
+    unsafe fn spin(p: *mut u8) -> bool {
+        // SAFETY: the caller's contract.
+        unsafe { action_server_try_process::<TestAction, GoalF, CancelF, GB, RB, FB, MG>(p, 0, 0) }
+            .unwrap()
+    }
+
+    #[test]
+    fn a_typed_cancel_callback_that_completes_its_goal_reenters_soundly() {
+        let core: ActionServerCore<GB, RB, FB, MG> = ActionServerCore::from_channels(
+            MockServiceServer::new(),
+            MockServiceServer::new(),
+            MockServiceServer::new(),
+            MockPublisher::new(),
+            MockPublisher::new(),
+        );
+        let p = Box::into_raw(Box::new(Entry {
+            server: ActionServer {
+                core,
+                typed_goals: heapless::Vec::new(),
+                completed_goals: heapless::Vec::new(),
+            },
+            goal_callback: accept,
+            cancel_callback: complete_on_cancel,
+        })) as *mut u8;
+        ENTRY.store(p, Ordering::SeqCst);
+        let id = GoalUuid { uuid: [7; 16] };
+        let (mut req, _) = super::mk_send_goal_req(&id);
+        req[20..24].copy_from_slice(&5i32.to_le_bytes());
+        // SAFETY: the borrow ends at the statement.
+        unsafe {
+            (*(p as *mut Entry))
+                .server
+                .core
+                .send_goal_server
+                .load(req, 24)
+        };
+        // SAFETY: `p` is the only path to the entry.
+        assert!(unsafe { spin(p) }, "the goal was accepted");
+        let mut c = [0u8; 256];
+        c[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
+        c[4..20].copy_from_slice(&id.uuid);
+        // SAFETY: as above.
+        unsafe {
+            (*(p as *mut Entry))
+                .server
+                .core
+                .cancel_goal_server
+                .load(c, 28)
+        };
+        // SAFETY: as above.
+        assert!(unsafe { spin(p) }, "the cancel was served");
+        assert_eq!(CANCELS.load(Ordering::SeqCst), 1);
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p as *mut Entry) });
+    }
+}
+
 mod reentry_action_server {
     use super::super::{
         action_core::ActionServerCore,
