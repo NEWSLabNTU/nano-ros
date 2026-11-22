@@ -44,6 +44,9 @@
 # Usage: native-sim-ipproto-ip-patch-4.4.sh <workspace-dir>
 set -euo pipefail
 
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/zephyr-patchset.sh"
+
 WORKSPACE="${1:?usage: native-sim-ipproto-ip-patch-4.4.sh <workspace-dir>}"
 if [ ! -d "$WORKSPACE/zephyr" ]; then
     echo "ERROR: $WORKSPACE doesn't look like a Zephyr workspace (missing zephyr/)" >&2
@@ -64,6 +67,7 @@ done
 if grep -q 'NSOS_MID_IP_ADD_MEMBERSHIP' "$NSOS_HEADER"; then
     echo "[native-sim-ipproto-ip-patch-4.4] nsos_socket.h already has IPv4 mcast constants — skip"
 else
+    nros_patch_would_apply native-sim-ipproto-ip-patch-4.4 "$NSOS_HEADER: IPv4 mcast options + nsos_mid_ip_mreq"
     echo "[native-sim-ipproto-ip-patch-4.4] nsos_socket.h += IPv4 mcast options + nsos_mid_ip_mreq"
     python3 - "$NSOS_HEADER" <<'PY'
 import sys
@@ -118,6 +122,7 @@ fi
 if grep -q 'nano-ros: nsos IPPROTO_IP guest' "$NSOS_SOCKETS"; then
     echo "[native-sim-ipproto-ip-patch-4.4] nsos_sockets.c already handles NET_IPPROTO_IP — skip"
 else
+    nros_patch_would_apply native-sim-ipproto-ip-patch-4.4 "$NSOS_SOCKETS: NET_IPPROTO_IP setsockopt + getsockopt"
     echo "[native-sim-ipproto-ip-patch-4.4] nsos_sockets.c += NET_IPPROTO_IP setsockopt + getsockopt"
     python3 - "$NSOS_SOCKETS" <<'PY'
 import sys

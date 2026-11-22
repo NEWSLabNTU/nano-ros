@@ -23,6 +23,9 @@
 # Idempotent (an already-ALIGN(4) tree is reported as applied).
 set -euo pipefail
 
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/zephyr-patchset.sh"
+
 WORKSPACE="${1:?usage: tcm-section-align-patch-4.4.sh <workspace-dir>}"
 LD="$WORKSPACE/zephyr/include/zephyr/arch/arm/cortex_m/scripts/linker.ld"
 CM="$WORKSPACE/zephyr/cmake/linker_script/arm/linker.cmake"
@@ -33,7 +36,11 @@ for f in "$LD" "$CM"; do
     fi
 done
 
-python3 - "$LD" "$CM" <<'PYEOF'
+# Check mode (issue 2831): the guard is in the Python below, so it exits 10
+# where it would write, and the shared helper reports the missing edit.
+_py_rc=0
+python3 - "$LD" "$CM" <<'PYEOF' || _py_rc=$?
+import os
 import sys
 
 ld, cm = sys.argv[1], sys.argv[2]
@@ -55,6 +62,7 @@ edits = {
 changed = 0
 for path, olds in edits.items():
     src = open(path).read()
+    before = changed
     for old in olds:
         new = old.replace("SUBALIGN", "ALIGN")
         if src.count(old) == 1:
@@ -63,6 +71,12 @@ for path, olds in edits.items():
         elif src.count(new) != 1:
             sys.stderr.write(f"ERROR: anchor not found in {path}: {old}\n")
             sys.exit(1)
+    # Check mode never writes, not even the unchanged text an applied file
+    # is otherwise rewritten with.
+    if os.environ.get("NROS_PATCH_CHECK") == "1":
+        if changed != before:
+            sys.exit(10)
+        continue
     open(path, "w").write(src)
 
 if changed:
@@ -70,3 +84,7 @@ if changed:
 else:
     print("[tcm-section-align-patch-4.4] already applied")
 PYEOF
+if [ "$_py_rc" -eq 10 ]; then
+    nros_patch_would_apply tcm-section-align-patch-4.4 "$LD / $CM: TCM sections SUBALIGN(4) -> ALIGN(4)"
+fi
+exit "$_py_rc"

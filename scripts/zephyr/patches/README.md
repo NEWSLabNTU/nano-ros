@@ -27,12 +27,19 @@ The recipe runs `bash scripts/zephyr/patches/${NROS_ZEPHYR_VERSION}.sh
 - One positional arg: the Zephyr workspace dir.
 - `cd`s to the repo root (works regardless of caller cwd).
 - Every patch must be **idempotent** (`just setup zephyr` re-runs them).
-- The set's LAST step is `nros_zephyr_patchset_record "$WORKSPACE" "$REPO_ROOT"
-  <line>` (`scripts/lib/zephyr-patchset.sh`), which records in
-  `<ws>/.west/nros-patchset` that this set ran. `check-zephyr-pin-drift.py`
-  fails a workspace that lacks the record, and
-  `sync-workspace-manifest.sh` re-runs the set after every `west update`,
-  because the update resets the set's edits.
+- Every patch script has a **check mode**: it calls `nros_patch_would_apply
+  <tag> <what>` (`scripts/lib/zephyr-patchset.sh`) immediately before each
+  write, after the guard that found its edit absent. Under `NROS_PATCH_CHECK=1`
+  that call exits 1 naming the edit, so the script writes nothing.
+  `check-zephyr-pin-drift.py` runs the line's set that way against a
+  workspace, which asks the TREE whether this checkout's edits are present
+  (issue 2831), and `check-zephyr-patch-check-mode` refuses a set that names a
+  script without the call. A set's non-edit steps are skipped under
+  `nros_patch_checking`.
+- The set's LAST step, outside check mode, is `nros_zephyr_patchset_record`,
+  which notes in `<ws>/.west/nros-patchset` that this set ran. Nothing reads it
+  as a verdict any more. `sync-workspace-manifest.sh` re-runs the set after
+  every `west update`, because the update resets the set's edits.
 - `zephyr/` is a **hard** requirement: a patch whose Zephyr target file is
   missing exits non-zero. `modules/lang/rust` is **optional** — a C/C++-only
   workspace has no zephyr-lang-rust (book: `zephyr-west-app.md`), and

@@ -18,6 +18,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
 LEGACY_WORKSPACE="$(cd "$NROS_REPO_DIR/.." && pwd)/nano-ros-workspace"
 
@@ -58,6 +60,7 @@ done
 if grep -q 'CONFIG_CPU_AARCH32_CORTEX_R' "$CMAKE_FILE"; then
     echo "[skip] CMakeLists.txt already has Cortex-R case"
 else
+    nros_patch_would_apply cortex-r-rust-patch "$CMAKE_FILE: Cortex-R AArch32 case"
     echo "[apply] CMakeLists.txt += Cortex-R AArch32 case"
     python3 - "$CMAKE_FILE" <<'PY'
 import sys
@@ -90,6 +93,7 @@ if grep -q 'CPU_AARCH32_CORTEX_R\|CPU_CORTEX_R\b' "$KCONFIG_FILE"; then
 elif [ ! -w "$KCONFIG_FILE" ]; then
     echo "[skip] Kconfig is not writable: $KCONFIG_FILE"
 else
+    nros_patch_would_apply cortex-r-rust-patch "$KCONFIG_FILE: Cortex-R in RUST_SUPPORTED"
     echo "[apply] Kconfig += Cortex-R to RUST_SUPPORTED"
     python3 - "$KCONFIG_FILE" <<'PY'
 import sys

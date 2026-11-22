@@ -23,6 +23,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
 
 if [ -n "${1:-}" ]; then
@@ -44,6 +46,7 @@ if grep -q "nano-ros: nsos getifaddrs" "$NSOS_ADAPT"; then
 fi
 
 # 1. nsos.h — struct + decl, after the getsockname decl (or recvfrom).
+nros_patch_would_apply nsos-getifaddrs-patch "$NSOS_H: nsos_mid_ifaddr + nsos_adapt_getifaddrs decl"
 python3 - "$NSOS_H" <<'PYEOF'
 import sys
 from pathlib import Path
@@ -71,6 +74,7 @@ path.write_text(src)
 PYEOF
 
 # 2. nsos_adapt.c — host impl, appended near getsockname / EOF.
+nros_patch_would_apply nsos-getifaddrs-patch "$NSOS_ADAPT: nsos_adapt_getifaddrs host impl"
 python3 - "$NSOS_ADAPT" <<'PYEOF'
 import sys
 from pathlib import Path

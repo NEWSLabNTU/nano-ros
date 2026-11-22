@@ -56,6 +56,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 
 # --- self-test -------------------------------------------------------------
 #
@@ -171,6 +173,7 @@ if ! grep -q "nano-ros: NROS_CARGO_PROFILE override" "$CMAKE_FILE"; then
     # Override zephyr-lang-rust's CONFIG_DEBUG-derived cargo profile
     # with the repository-wide profile knob. This keeps the output path
     # (`RUST_BUILD_TYPE`) and cargo args (`rust_build_type_arg`) in sync.
+    nros_patch_would_apply cargo-features-patch "$CMAKE_FILE: NROS_CARGO_PROFILE override"
     TMP="$(mktemp)"
     awk '
     {
@@ -210,6 +213,7 @@ if ! grep -q "nano-ros: EXTRA_CARGO_ARGS pass-through" "$CMAKE_FILE"; then
     # serves `cargo build` and `cargo doc` both — do NOT also add it at a call
     # site, or the flag lands on the command twice (issue 0544; hunk 3 removes
     # such copies).
+    nros_patch_would_apply cargo-features-patch "$CMAKE_FILE: EXTRA_CARGO_ARGS pass-through"
     TMP="$(mktemp)"
     awk '
     # Remember the last line that carried a command, so the injection can be
@@ -244,6 +248,7 @@ fi
 # Unconditional rather than guarded by a marker: the copies it removes carry no
 # marker of their own, which is precisely why hunk 2's guard could not see them.
 if grep -qE '^[[:space:]]*CARGO_ARGS (build|doc) \$\{EXTRA_CARGO_ARGS\}' "$CMAKE_FILE"; then
+    nros_patch_would_apply cargo-features-patch "$CMAKE_FILE: strip caller-level EXTRA_CARGO_ARGS copies"
     TMP="$(mktemp)"
     sed -E 's/^([[:space:]]*CARGO_ARGS (build|doc)) \$\{EXTRA_CARGO_ARGS\}[[:space:]]*$/\1/' \
         "$CMAKE_FILE" > "$TMP"
@@ -287,6 +292,7 @@ fi
 # fills; empty (a host build, an unmapped board) expands to nothing and the
 # command is byte-identical to before.
 if ! grep -q "nano-ros: board facts" "$CMAKE_FILE"; then
+    nros_patch_would_apply cargo-features-patch "$CMAKE_FILE: board facts env before cargo"
     TMP="$(mktemp)"
     awk '
     {
@@ -337,6 +343,7 @@ source "$NROS_REPO_DIR/scripts/lib/grep-q.sh"
 _img_rc=0
 nros_grep_q "nano-ros: image env --config" "$CMAKE_FILE" || _img_rc=$?
 if [ "$_img_rc" -eq 1 ]; then
+    nros_patch_would_apply cargo-features-patch "$CMAKE_FILE: image env --config"
     TMP="$(mktemp)"
     awk '
     {
@@ -375,6 +382,7 @@ fi
 _lto_rc=0
 nros_grep_q "nano-ros: staticlib only (issue 2407)" "$CMAKE_FILE" || _lto_rc=$?
 if [ "$_lto_rc" -eq 1 ]; then
+    nros_patch_would_apply cargo-features-patch "$CMAKE_FILE: staticlib-only build command"
     TMP="$(mktemp)"
     awk '
     /^[[:space:]]+CARGO_ARGS build[[:space:]]*$/ {

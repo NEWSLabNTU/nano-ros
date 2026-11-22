@@ -25,6 +25,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
 
 if [ -n "${1:-}" ]; then
@@ -52,6 +54,7 @@ if grep -q "nano-ros: nsos getsockname" "$NSOS_ADAPT"; then
 fi
 
 # 1. nsos.h — declare the bottom-half entry after nsos_adapt_recvfrom.
+nros_patch_would_apply nsos-getsockname-patch "$NSOS_H: nsos_adapt_getsockname decl"
 python3 - "$NSOS_H" <<'PYEOF'
 import sys
 from pathlib import Path
@@ -69,6 +72,7 @@ path.write_text(src)
 PYEOF
 
 # 2. nsos_adapt.c — host-side impl, placed after nsos_adapt_recvfrom.
+nros_patch_would_apply nsos-getsockname-patch "$NSOS_ADAPT: nsos_adapt_getsockname host impl"
 python3 - "$NSOS_ADAPT" <<'PYEOF'
 import sys
 from pathlib import Path
@@ -118,6 +122,7 @@ path.write_text(src)
 PYEOF
 
 # 3. nsos_sockets.c — top-half static fn + vtable wiring.
+nros_patch_would_apply nsos-getsockname-patch "$NSOS_SOCK: nsos_getsockname + vtable slot"
 python3 - "$NSOS_SOCK" <<'PYEOF'
 import sys
 from pathlib import Path

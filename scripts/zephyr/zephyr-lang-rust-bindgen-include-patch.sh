@@ -70,6 +70,8 @@ fi
 # "not applied yet" (issue 0726).
 # shellcheck source=scripts/lib/grep-q.sh
 source "$NROS_REPO_DIR/scripts/lib/grep-q.sh"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 _rc=0
 nros_grep_q "nano-ros: bindgen is clang" "$CMAKE_FILE" || _rc=$?
 if [ "$_rc" -eq 0 ]; then
@@ -80,6 +82,7 @@ elif [ "$_rc" -ne 1 ]; then
     exit 1
 fi
 
+nros_patch_would_apply zephyr-lang-rust-bindgen-include-patch "$CMAKE_FILE: compiler builtin include dir out of bindgen INCLUDE_DIRS"
 python3 - "$CMAKE_FILE" <<'PY'
 import sys, pathlib
 p = pathlib.Path(sys.argv[1])

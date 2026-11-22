@@ -38,6 +38,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$NROS_REPO_DIR/scripts/lib/zephyr-patchset.sh"
 IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
 LEGACY_WORKSPACE="$(cd "$NROS_REPO_DIR/.." && pwd)/nano-ros-workspace"
 
@@ -72,6 +74,7 @@ changed=0
 
 # --- 1. pad `gpios` cells to the constructor's arity -------------------------
 if ! grep -q "nano-ros: pad gpios to the constructor arity" "$AUGMENT"; then
+    nros_patch_would_apply zephyr-lang-rust-gpio-patch "$AUGMENT: gpios cell padding"
     python3 - "$AUGMENT" <<'PY'
 import sys, pathlib
 p = pathlib.Path(sys.argv[1])
@@ -101,6 +104,7 @@ fi
 
 # --- 2. gpio-keys gains the `cfg:` its siblings have -------------------------
 if ! grep -q "nano-ros: gpio-keys needs the same cfg" "$DT_YAML"; then
+    nros_patch_would_apply zephyr-lang-rust-gpio-patch "$DT_YAML: gpio-keys cfg: CONFIG_GPIO"
     python3 - "$DT_YAML" <<'PY'
 import sys, pathlib
 p = pathlib.Path(sys.argv[1])

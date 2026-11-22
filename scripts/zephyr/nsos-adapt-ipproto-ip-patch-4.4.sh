@@ -33,6 +33,9 @@
 # Usage: nsos-adapt-ipproto-ip-patch-4.4.sh <workspace-dir>
 set -euo pipefail
 
+# shellcheck source=scripts/lib/zephyr-patchset.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/zephyr-patchset.sh"
+
 WORKSPACE="${1:?usage: nsos-adapt-ipproto-ip-patch-4.4.sh <workspace-dir>}"
 TARGET="$WORKSPACE/zephyr/drivers/net/nsos_adapt.c"
 if [ ! -f "$TARGET" ]; then
@@ -48,6 +51,7 @@ if grep -q "nano-ros: nsos_adapt IPPROTO_IP" "$TARGET"; then
     exit 0
 fi
 
+nros_patch_would_apply nsos-adapt-ipproto-ip-patch-4.4 "$TARGET: NSOS_MID_IPPROTO_IP setsockopt + getsockopt"
 python3 - "$TARGET" <<'PYEOF'
 import sys
 from pathlib import Path

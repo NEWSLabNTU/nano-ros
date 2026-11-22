@@ -22,6 +22,7 @@ esac
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$REPO_ROOT"
+source "$REPO_ROOT/scripts/lib/zephyr-patchset.sh"
 
 # CHECKS by default; CREATES only when the caller owns its interpreter and says
 # so. A CI container is that caller — the zephyr CI image ships `uv` for exactly
@@ -30,7 +31,7 @@ cd "$REPO_ROOT"
 # env var rather than a separate workflow step so the venv PATH stays derived in
 # one place instead of pasted into three jobs.
 CREATE_VENV=""
-[ "${NROS_ZEPHYR_CREATE_VENV:-0}" = "1" ] && CREATE_VENV="--create"
+[ "${NROS_ZEPHYR_CREATE_VENV:-0}" = "1" ] && ! nros_patch_checking && CREATE_VENV="--create"
 echo "[zephyr setup] 4.4 line: Python 3.12 venv (Zephyr 4.4 requires >=3.12)${CREATE_VENV:+ — creating}..."
 bash ./scripts/zephyr/provision-py312-venv.sh "$WORKSPACE" $CREATE_VENV
 echo "[zephyr setup] 4.4 line: applying 4.4 NSOS patches (Phase 180.A)..."
@@ -82,5 +83,12 @@ echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped
 # records nothing. `check-zephyr-pin-drift.py` reads the record and names a
 # workspace that lacks it before a build fails at configure.
 # shellcheck source=scripts/lib/zephyr-patchset.sh
-source "$REPO_ROOT/scripts/lib/zephyr-patchset.sh"
+# Issue 2831 — under `NROS_PATCH_CHECK=1` every script above only ASKS whether
+# its edit is present (exiting 1, naming it, at the first that is not), so a
+# run that gets here means every edit is in the tree. A check writes nothing,
+# so it records nothing either.
+if nros_patch_checking; then
+    echo "[patches/4.4] every edit of the 4.4 patch set is present in $WORKSPACE"
+    exit 0
+fi
 nros_zephyr_patchset_record "$WORKSPACE" "$REPO_ROOT" 4.4
