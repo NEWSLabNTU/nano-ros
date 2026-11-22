@@ -1155,19 +1155,18 @@ int8_t nros_platform_wake_signal(void *w) {
  * `tests/isr_wake_rtos.rs` takes the RISC-V `virt` machine timer
  * (`isr-wake-threadx-riscv64`).
  *
- * The HOSTED Linux port still REFUSES: its "interrupt" is the port's timer
- * thread, a host thread, and no test reaches a trigger from it. Until one
- * does, `trigger_from_isr` there sets the flag, returns false, and the waiter
- * sees it at its own deadline. */
+ * Issue 2745 -- the HOSTED Linux port's interrupt is its timer thread, which
+ * runs `_tx_timer_interrupt` inside exactly that bracket, so the same body
+ * holds there. The kernel-context guard admits that thread by identity
+ * (`nros_threadx_in_kernel_context`) and still refuses a foreign host thread,
+ * which would leak a level of the port's recursive mutex (issue 1750).
+ * Tested from inside the port's timer interrupt by `isr-wake-threadx-linux`:
+ * every interrupt served, where the refusing arm served none of 250. */
 int8_t nros_platform_wake_signal_from_isr(void *w) {
-#if NROS_THREADX_HOSTED_PORT
-    (void) w;
-    return -1;
-#else
+    NROS_THREADX_KERNEL_ONLY_OR_RETURN(-1);
     if (w == NULL) return -1;
     UINT rc = tx_semaphore_ceiling_put((TX_SEMAPHORE *) w, 1u);
     return rc == TX_SUCCESS ? 0 : -1;
-#endif
 }
 
 size_t nros_platform_wake_storage_size(void) {

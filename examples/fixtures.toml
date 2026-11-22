@@ -4069,6 +4069,19 @@ bringup = "src/condvar_contract_threadx_linux_bringup"
 image = "threadx-linux"
 target_dir = "target"
 
+# Issue 2745 — the hosted ThreadX port's timer interrupt signals the
+# interrupt-safe wake while a thread parks on it. Opens no session, so it needs
+# no router and no veth bridge. Consumed by tests/isr_wake_rtos.rs.
+[[workspace_fixture]]
+id = "threadx-linux-isr-wake"
+platform = "threadx-linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/isr-wake-threadx-linux"
+rmw = "zenoh"
+bringup = "src/isr_wake_threadx_linux_bringup"
+image = "threadx-linux"
+target_dir = "target"
+
 # issue 0697 — the zenoh session-pool exhaustion arm, executed on a `no_std`
 # target. Needs no router: the pool is exhausted by a raw slot acquire, so the
 # arm is reached deterministically and the cell cannot fail for network reasons.
