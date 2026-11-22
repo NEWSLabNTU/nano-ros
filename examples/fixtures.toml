@@ -5550,6 +5550,21 @@ dir = "packages/testing/nros-tests/fixtures/cmake_safety_unsupported_rmw"
 output = ".verdict"
 
 # `cmake_node_register_misuse` — one fixture, one `cases/<id>.cmake` per row.
+# Issue 2841 — a C/C++ component's own executable in an image stating
+# `[knobs.clock] source = "board"` is refused at configure, and any other source
+# configures. Consumer: `cmake_node_register_misuse.rs`.
+[[compile_check_fixture]]
+id = "cmake_carrier_board_clock_refused"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_carrier_board_clock_default_builds"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
 [[compile_check_fixture]]
 id = "cmake_register_unqualified_class"
 builder = "cmake-configure-verdict"

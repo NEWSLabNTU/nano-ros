@@ -46,3 +46,13 @@ One of:
 The first matches what a configuration is (RFC-0066: a configuration is a
 fixture axis, built where it applies). Acceptance: a C image with
 `source = "board"` builds, and `tests/linux_board_clock.rs` gains its C case.
+
+## Until it is fixed (manager ruling, 2026-11-22)
+
+A component's own executable in a configure whose image names `board` is
+REFUSED at configure (`_nros_carrier_board_clock_refusal`,
+`cmake/NanoRosNodeRegister.cmake`), naming the knob, the executable and the
+hook. Previously it failed later, linking a hook the user had not asked
+about. Verdict rows `cmake_carrier_board_clock_refused` and its control
+`cmake_carrier_board_clock_default_builds` (`tests/cmake_node_register_misuse.rs`).
+The fix above removes the refusal.
