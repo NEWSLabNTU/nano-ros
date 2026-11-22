@@ -1476,6 +1476,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             );
             nros_orchestration_ir::validate_sched_task_platform_applicability(&table, &rtos)
                 .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+            // Issue 2732 -- the build sized the allocator that holds these
+            // stacks (the ThreadX byte pool) from what the sizing descriptor
+            // states; this table must spawn exactly that.
+            check_spawned_task_stacks(&table, deploy_for_framework.as_deref())
+                .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
             // Issue 2527 -- the C/C++ entry road's spin-period rule, from the
             // same function: an unset spin period is the sched task's fastest
             // member release, and an authored one slower than that is refused
@@ -4709,6 +4714,103 @@ mod image_plan_tests {
 ///   documented host default, the native dev target's `posix` sub-table. That
 ///   is a stated default, not a derivation. Changing it would move every
 ///   explicit-`LinuxBoard` entry that authors host sched tasks.
+/// Issue 2732 -- refuse a table whose SPAWNED sched tasks take other stacks
+/// than the image's sizing descriptor states.
+///
+/// `nros build` states them (`[image] spawned_sched_task_stack_bytes` and
+/// `spawned_sched_tasks_on_app_stack`) from the same resolution and the same
+/// `derive_level_stacks_for` this macro runs, through the same
+/// `BoardFamily::rust_spawned_task_stacks`. One function on each side, so a
+/// mismatch is a difference of INPUT (a stale descriptor, a model the build did
+/// not resolve), never of rule. The board's build sized the allocator from the
+/// descriptor, so a table that spawns more would run out of it at boot.
+///
+/// Checks nothing when no descriptor is named, or it states neither fact
+/// (the board then counted none and says so), or the family's Rust entry runs
+/// no sched tasks.
+fn check_spawned_task_stacks(
+    table: &ResolvedSchedTaskTable,
+    deploy: Option<&str>,
+) -> Result<(), String> {
+    let Some(family) = deploy.and_then(|k| nros_entry_lower::board_family(k).ok()) else {
+        return Ok(());
+    };
+    let declared: Vec<Option<u64>> = table
+        .sched_tasks
+        .iter()
+        .map(|t| t.stack_bytes.map(u64::from))
+        .collect();
+    let Some(mine) = family.rust_spawned_task_stacks(&declared) else {
+        return Ok(());
+    };
+    let Some(path) = std::env::var_os(nros_sizing_descriptor::DESCRIPTOR_ENV) else {
+        return Ok(());
+    };
+    let path = std::path::PathBuf::from(path);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let desc = nros_sizing_descriptor::parse(&text, &path).map_err(|e| e.to_string())?;
+    compare_spawned_task_stacks(mine, &desc, &path)
+}
+
+fn compare_spawned_task_stacks(
+    mine: nros_entry_lower::SpawnedTaskStacks,
+    desc: &nros_sizing_descriptor::SizingDescriptor,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    let (Some(&bytes), Some(&on_app)) = (
+        desc.image.spawned_sched_task_stack_bytes().stated(),
+        desc.image.spawned_sched_tasks_on_app_stack().stated(),
+    ) else {
+        return Ok(());
+    };
+    if bytes as u64 == mine.stated_bytes && on_app == mine.on_app_stack {
+        return Ok(());
+    }
+    Err(format!(
+        "the image's sched tasks spawn {} bytes of stated stacks and {} task(s) on the app \
+         stack, but its sizing descriptor `{}` states {bytes} bytes and {on_app} task(s), and \
+         the board sized its allocator from the descriptor. Rebuild with `nros build`, which \
+         rewrites the descriptor from this model.",
+        mine.stated_bytes,
+        mine.on_app_stack,
+        path.display()
+    ))
+}
+
+#[cfg(test)]
+mod spawned_task_stack_tests {
+    use super::compare_spawned_task_stacks;
+    use nros_entry_lower::SpawnedTaskStacks;
+    use nros_sizing_descriptor::{Basis, SizingDescriptor, Status};
+    use std::path::Path;
+
+    /// Issue 2732 -- a descriptor stating what the table spawns passes, one
+    /// stating anything else is refused naming both, and one stating nothing
+    /// is not judged.
+    #[test]
+    fn a_descriptor_that_disagrees_with_the_table_is_refused() {
+        let mine = SpawnedTaskStacks {
+            stated_bytes: 0,
+            on_app_stack: 1,
+        };
+        let mut d = SizingDescriptor::new("e", Status::Derived, Basis::Contract);
+        assert!(compare_spawned_task_stacks(mine, &d, Path::new("d.toml")).is_ok());
+        d.image
+            .set_spawned_sched_task_stack_bytes(Some(0))
+            .set_spawned_sched_tasks_on_app_stack(Some(1));
+        assert!(compare_spawned_task_stacks(mine, &d, Path::new("d.toml")).is_ok());
+        d.image.set_spawned_sched_task_stack_bytes(Some(10_240));
+        let e = compare_spawned_task_stacks(mine, &d, Path::new("d.toml")).unwrap_err();
+        assert!(
+            e.contains("spawn 0 bytes") && e.contains("states 10240 bytes"),
+            "{e}"
+        );
+        assert!(e.contains("`nros build`"), "{e}");
+    }
+}
+
 fn derive_target_rtos(deploy: Option<&str>) -> String {
     match deploy {
         Some(key) => nros_entry_lower::sched_task_rtos_key_for(key),

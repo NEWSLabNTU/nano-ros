@@ -185,7 +185,8 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
         PoolRmw::Cyclone
     };
     let extra = service_heap_extra_bytes();
-    let derived = default_byte_pool_bytes(app_stack_bytes, rmw) + extra;
+    let tasks = sched_task_stack_bytes_from_build_env(app_stack_bytes);
+    let derived = default_byte_pool_bytes(app_stack_bytes, tasks, rmw) + extra;
     crate::platform_config::watch_knob_env(POOL_ENV);
     let stated = crate::platform_config::knob_env(&|k| std::env::var(k).ok(), POOL_ENV).map(|v| {
         v.trim()
@@ -203,14 +204,14 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
             None => derived,
         },
     };
-    let least = least_byte_pool_bytes(app_stack_bytes, rmw) + extra;
+    let least = least_byte_pool_bytes(app_stack_bytes, tasks, rmw) + extra;
     if pool < least {
         panic!(
             "the ThreadX byte pool is {pool} bytes, below the {least} this image needs \
-             (its {app_stack_bytes}-byte app stack, the {rmw:?} working set measured \
-             on this port, and {extra} bytes for its further parameter-serving nodes and \
-             lifecycle machines). Raise `[image.<id>.knobs.threadx] byte_pool_bytes` \
-             ({POOL_ENV}) to at least {least}."
+             (its {app_stack_bytes}-byte app stack, {tasks} bytes for its spawned sched \
+             tasks' stacks, the {rmw:?} working set measured on this port, and {extra} \
+             bytes for its further parameter-serving nodes and lifecycle machines). Raise \
+             `[image.<id>.knobs.threadx] byte_pool_bytes` ({POOL_ENV}) to at least {least}."
         );
     }
     if rmw == PoolRmw::Cyclone {
@@ -221,6 +222,13 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
         app_stack_bytes.to_string().as_str(),
     );
     build.define("NROS_THREADX_BYTE_POOL_BYTES", pool.to_string().as_str());
+    // Issue 2732 -- so the C file's floor counts the same tasks.
+    if tasks > 0 {
+        build.define(
+            "NROS_THREADX_SCHED_TASK_STACK_BYTES",
+            tasks.to_string().as_str(),
+        );
+    }
     // Issue 2812 -- so the C file's floor counts the same further nodes.
     if extra > 0 {
         build.define(
@@ -229,6 +237,52 @@ pub fn define_byte_pool(build: &mut cc::Build, app_stack_bytes: usize) -> usize 
         );
     }
     pool
+}
+
+// Issue 2732.
+/// The bytes the image's SPAWNED sched tasks take from the pool, from its
+/// sizing descriptor (`[image] spawned_sched_task_stack_bytes` and
+/// `spawned_sched_tasks_on_app_stack`, which `nros build` states from the
+/// sched-task table the entry runs), priced by
+/// [`crate::threadx_pool::sched_task_stack_bytes`] at this board's
+/// `app_stack_bytes`.
+///
+/// A build whose descriptor states neither (no descriptor: a bare `cargo
+/// build`, or an image whose bringup states nothing a descriptor carries)
+/// counts 0 and says so as a build warning: the pool then holds no stack for
+/// a spawned task, and the boot refuses the first that does not fit, naming
+/// the knob.
+pub fn sched_task_stack_bytes_from_build_env(app_stack_bytes: usize) -> usize {
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"));
+    match spawned_task_facts(desc.as_ref()) {
+        Some((stated, on_app_stack)) => {
+            crate::threadx_pool::sched_task_stack_bytes(stated, on_app_stack, app_stack_bytes)
+        }
+        None => {
+            println!("{}", NO_TASK_STACKS_WARNING);
+            0
+        }
+    }
+}
+
+/// The build warning [`sched_task_stack_bytes_from_build_env`] prints when no
+/// descriptor states the image's spawned sched tasks.
+pub const NO_TASK_STACKS_WARNING: &str = "cargo:warning=nros-board-common: the ThreadX byte \
+     pool counts no sched-task stacks: no sizing descriptor states this image's spawned sched \
+     tasks. If the image spawns any, the boot refuses the first whose stack does not fit the \
+     pool. Build it with `nros build`, which states them, or set \
+     `[image.<id>.knobs.threadx] byte_pool_bytes`.";
+
+/// `(spawned_sched_task_stack_bytes, spawned_sched_tasks_on_app_stack)`, when
+/// the descriptor states both.
+fn spawned_task_facts(
+    desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
+) -> Option<(usize, usize)> {
+    let img = &desc?.image;
+    Some((
+        *img.spawned_sched_task_stack_bytes().stated()?,
+        *img.spawned_sched_tasks_on_app_stack().stated()?,
+    ))
 }
 
 // Issue 2812.
@@ -280,4 +334,34 @@ fn add_c_files_in(build: &mut cc::Build, dir: &Path) -> usize {
         }
     }
     count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nros_sizing_descriptor::{Basis, SizingDescriptor, Status};
+
+    /// Issue 2732 -- both facts stated, or nothing: a descriptor stating one
+    /// is not read as the other's zero.
+    #[test]
+    fn the_pool_reads_both_spawned_task_facts_or_none() {
+        assert_eq!(spawned_task_facts(None), None);
+        let mut d = SizingDescriptor::new("e", Status::Derived, Basis::Contract);
+        assert_eq!(spawned_task_facts(Some(&d)), None);
+        d.image.set_spawned_sched_tasks_on_app_stack(Some(1));
+        assert_eq!(spawned_task_facts(Some(&d)), None);
+        d.image.set_spawned_sched_task_stack_bytes(Some(8192));
+        assert_eq!(spawned_task_facts(Some(&d)), Some((8192, 1)));
+    }
+
+    /// Issue 2732 -- the no-descriptor warning names the consequence and both
+    /// fixes.
+    #[test]
+    fn the_no_descriptor_warning_names_the_refusal_and_the_fix() {
+        let w = NO_TASK_STACKS_WARNING;
+        assert!(w.starts_with("cargo:warning="), "{w}");
+        assert!(w.contains("boot refuses"), "{w}");
+        assert!(w.contains("`nros build`"), "{w}");
+        assert!(w.contains("byte_pool_bytes"), "{w}");
+    }
 }

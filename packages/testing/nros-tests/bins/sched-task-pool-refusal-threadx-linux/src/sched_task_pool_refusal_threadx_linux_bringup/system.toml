@@ -1,0 +1,18 @@
+# Issue 2732 -- an owned entry that spawns a task whose stack no sizing
+# descriptor states, so the ThreadX byte pool's boot refusal is reached. It
+# keeps its own `main`, opens no session and declares no component table;
+# `rmw` is the image's backend all the same (the board crate is built with it).
+
+[system]
+name = "sched_task_pool_refusal_threadx_linux"
+rmw = "zenoh"
+domain_id = 0
+
+[image.threadx-linux]
+entry = "sched-task-pool-refusal-threadx-linux"
+board = "threadx-linux"
+# `main.rs` declares its own `#[panic_handler]` (RFC-0077).
+panic = "platform"
+
+[board_config."threadx-linux"]
+netstack = "netxduo"

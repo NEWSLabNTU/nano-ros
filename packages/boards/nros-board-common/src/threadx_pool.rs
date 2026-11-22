@@ -7,8 +7,13 @@
 //! (~~`BYTE_POOL_BASE_SIZE`~~ in `c/threadx_hooks.c`) that nothing derived.
 //!
 //! ```text
-//! app_stack_bytes + WORKING_SET[rmw]
+//! app_stack_bytes + sched_task_stack_bytes + WORKING_SET[rmw]
 //! ```
+//!
+//! `sched_task_stack_bytes` is what the image's SPAWNED sched tasks take
+//! from the pool: the stacks they state plus one app stack for each that
+//! states none ([`sched_task_stack_bytes`]). The working sets were measured
+//! on images that spawned none.
 //!
 //! Each working set is MEASURED: every image prints `nros: byte pool peak`
 //! (`nros-board-threadx/src/entry.rs`), read after it has been stable with the
@@ -79,19 +84,44 @@ pub const fn working_set_bytes(rmw: PoolRmw) -> usize {
     }
 }
 
-/// The derived byte pool for an image whose app thread takes
-/// `app_stack_bytes`.
+// Issue 2732.
+/// The bytes an image's spawned sched tasks take from the pool:
+/// `stated_bytes` (the sum of the stacks they state, `[image]
+/// spawned_sched_task_stack_bytes`) plus `app_stack_bytes` for each of the
+/// `on_app_stack` that state none (`nros_threadx_create_task` gives such a
+/// task the app thread's stack).
 #[must_use]
-pub const fn default_byte_pool_bytes(app_stack_bytes: usize, rmw: PoolRmw) -> usize {
-    app_stack_bytes + working_set_bytes(rmw)
+pub const fn sched_task_stack_bytes(
+    stated_bytes: usize,
+    on_app_stack: usize,
+    app_stack_bytes: usize,
+) -> usize {
+    stated_bytes + on_app_stack * app_stack_bytes
+}
+
+/// The derived byte pool for an image whose app thread takes
+/// `app_stack_bytes` and whose spawned sched tasks take
+/// `sched_task_stack_bytes` ([`sched_task_stack_bytes`]).
+#[must_use]
+pub const fn default_byte_pool_bytes(
+    app_stack_bytes: usize,
+    sched_task_stack_bytes: usize,
+    rmw: PoolRmw,
+) -> usize {
+    app_stack_bytes + sched_task_stack_bytes + working_set_bytes(rmw)
 }
 
 /// The least a stated pool may be: the app stack plus the MEASURED working
 /// set, with no margin. A statement below it is refused at build time,
 /// naming the knob.
 #[must_use]
-pub const fn least_byte_pool_bytes(app_stack_bytes: usize, rmw: PoolRmw) -> usize {
+pub const fn least_byte_pool_bytes(
+    app_stack_bytes: usize,
+    sched_task_stack_bytes: usize,
+    rmw: PoolRmw,
+) -> usize {
     app_stack_bytes
+        + sched_task_stack_bytes
         + match rmw {
             PoolRmw::Zenoh => ZENOH_WORST_PEAK_BYTES - MEASURED_APP_STACK_BYTES,
             PoolRmw::Cyclone => CYCLONE_WORST_PEAK_BYTES - MEASURED_APP_STACK_BYTES,
@@ -124,15 +154,15 @@ mod tests {
     #[test]
     fn the_derived_pool_holds_every_measured_image() {
         let app = MEASURED_APP_STACK_BYTES;
-        assert!(default_byte_pool_bytes(app, PoolRmw::Zenoh) > ZENOH_WORST_PEAK_BYTES);
-        assert!(default_byte_pool_bytes(app, PoolRmw::Cyclone) > CYCLONE_WORST_PEAK_BYTES);
+        assert!(default_byte_pool_bytes(app, 0, PoolRmw::Zenoh) > ZENOH_WORST_PEAK_BYTES);
+        assert!(default_byte_pool_bytes(app, 0, PoolRmw::Cyclone) > CYCLONE_WORST_PEAK_BYTES);
         // The floor is the measured peak itself at the measured app stack.
         assert_eq!(
-            least_byte_pool_bytes(app, PoolRmw::Zenoh),
+            least_byte_pool_bytes(app, 0, PoolRmw::Zenoh),
             ZENOH_WORST_PEAK_BYTES
         );
         assert_eq!(
-            least_byte_pool_bytes(app, PoolRmw::Cyclone),
+            least_byte_pool_bytes(app, 0, PoolRmw::Cyclone),
             CYCLONE_WORST_PEAK_BYTES
         );
     }
@@ -175,12 +205,62 @@ mod tests {
         assert!(!pool.contains("NROS_EXECUTOR_BACKING_BYTES"), "{pool}");
     }
 
+    /// Issue 2732 -- a spawned task that states no stack costs one app stack;
+    /// one that states a stack costs it. Both the derived pool and the floor
+    /// grow by the total, and an image that spawns nothing is unchanged.
+    #[test]
+    fn spawned_sched_task_stacks_grow_the_pool_and_its_floor() {
+        let app = 64 * 1024;
+        assert_eq!(sched_task_stack_bytes(0, 0, app), 0);
+        assert_eq!(sched_task_stack_bytes(0, 1, app), app);
+        assert_eq!(sched_task_stack_bytes(12_288, 2, app), 12_288 + 2 * app);
+        let tasks = sched_task_stack_bytes(0, 1, app);
+        for rmw in [PoolRmw::Zenoh, PoolRmw::Cyclone] {
+            assert_eq!(
+                default_byte_pool_bytes(app, tasks, rmw),
+                default_byte_pool_bytes(app, 0, rmw) + app
+            );
+            assert_eq!(
+                least_byte_pool_bytes(app, tasks, rmw),
+                least_byte_pool_bytes(app, 0, rmw) + app
+            );
+        }
+    }
+
+    /// Issue 2732 -- the C file's derivation is this module's: its default and
+    /// its floor both add `NROS_THREADX_SCHED_TASK_STACK_BYTES`, which reads 0
+    /// when no build states it.
+    #[test]
+    fn the_c_file_counts_the_sched_task_stacks() {
+        let c = include_str!("../c/threadx_hooks.c");
+        let block = |start: &str, end: &str| -> String {
+            let i = c.find(start).unwrap_or_else(|| panic!("no `{start}`"));
+            let j = i + c[i..].find(end).unwrap_or_else(|| panic!("no `{end}`"));
+            c[i..j].to_string()
+        };
+        let default = block("#ifndef NROS_THREADX_BYTE_POOL_BYTES", "#endif");
+        assert!(
+            default.contains("NROS_THREADX_SCHED_TASK_STACK_BYTES"),
+            "{default}"
+        );
+        let floor = block("_Static_assert(NROS_THREADX_BYTE_POOL_BYTES", ";");
+        assert!(
+            floor.contains("NROS_THREADX_SCHED_TASK_STACK_BYTES"),
+            "{floor}"
+        );
+        let fallback = block("#ifndef NROS_THREADX_SCHED_TASK_STACK_BYTES", "#endif");
+        assert!(
+            fallback.contains("#define NROS_THREADX_SCHED_TASK_STACK_BYTES 0u"),
+            "{fallback}"
+        );
+    }
+
     #[test]
     fn the_derived_pool_is_below_the_old_four_mib_literal() {
         let app = MEASURED_APP_STACK_BYTES;
-        assert_eq!(default_byte_pool_bytes(app, PoolRmw::Zenoh), 851_968);
-        assert_eq!(default_byte_pool_bytes(app, PoolRmw::Cyclone), 1_703_936);
-        assert!(default_byte_pool_bytes(app, PoolRmw::Cyclone) < 4 * 1024 * 1024);
+        assert_eq!(default_byte_pool_bytes(app, 0, PoolRmw::Zenoh), 851_968);
+        assert_eq!(default_byte_pool_bytes(app, 0, PoolRmw::Cyclone), 1_703_936);
+        assert!(default_byte_pool_bytes(app, 0, PoolRmw::Cyclone) < 4 * 1024 * 1024);
     }
 
     /// `cmake/NanoRosRtosServiceHeap.cmake` prices the cmake road with these

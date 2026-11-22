@@ -1,12 +1,13 @@
 ---
 id: 2732
 title: "The derived ThreadX byte pool leaves out an image's sched-task stacks, because no compile of the pool sees how many there are"
-status: open
+status: resolved
 type: enhancement
 severity: low
 area: [build, memory, threadx]
 related: [2624, 2800]
 found: 2026-11-20
+resolved: 2026-11-23
 ---
 
 ## What
@@ -98,7 +99,7 @@ stack nor whether it is spawned. So there are three parts:
 
 **Host boards (issue 2800).** On threadx-linux every ThreadX thread runs on
 a host pthread stack, so its pool-allocated stacks are dead weight there
-([issue 2800](2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
+([issue 2800](../2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
 Part (c) has to decide whether that board's derivation counts sched-task
 stacks at all, or keeps the target's terms so host and target derive the
 same pool.
@@ -115,7 +116,7 @@ thread's (`nros_threadx_create_task`), so the board computes
 sched-task stacks are not counted in the pool on that road. threadx-linux
 counts them too: that is the conservative choice, although its threads run
 on host pthread stacks and so never use them
-([issue 2800](2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
+([issue 2800](../2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
 
 **Why it is deferred.** The facts' producer has to be the SAME table the
 entry runs. On the Rust road, `nros::main!` builds that table inside the
@@ -134,3 +135,58 @@ two facts are read off the returned table. Estimated at 1-2 days.
 **Rejected:** a second, simpler derivation in the CLI (authored
 `stack_bytes` only). It would miss stacks derived from a level's members,
 and so UNDER-count the pool, which is the unsafe direction.
+
+## Resolved (2026-11-23)
+
+Built to the revised scope, with the producer question answered differently
+from the plan above: no pipeline was extracted. Instead the CLI calls the
+macro's own stack rule, and the macro checks the result.
+
+- **One rule, two callers.** `nros build` resolves the entry's table as
+  before (`resolve_plan_sched`) and derives each level's stack with
+  `nros_orchestration_ir::derive_level_stacks_for`. `nros::main!`'s
+  `derive_level_stacks` is that function's Rust-runner case, so the two cannot
+  hold different rules. `BoardFamily::rust_spawned_task_stacks`
+  (`nros-entry-lower`) decides which tasks are spawned, for both.
+- **Two image facts** (`[image] spawned_sched_task_stack_bytes`,
+  `spawned_sched_tasks_on_app_stack`), stated for a Rust ThreadX entry.
+- **The macro guards the inputs.** `nros::main!` reads the descriptor its
+  build was named and refuses an image whose own table spawns other stacks,
+  naming both numbers. Since the rule is shared, a refusal means the inputs
+  differ: a stale descriptor, or a model the build did not resolve.
+- **The pool:** `app stack + sched-task stacks + WORKING_SET[rmw]`, in both
+  `threadx_pool::{default,least}_byte_pool_bytes` and the C file's default
+  and `_Static_assert`. A spawned task with no stack costs one app stack
+  (`threadx_pool::sched_task_stack_bytes`). A test holds the C file to it.
+- **No descriptor:** the cargo road counts 0 and prints a build warning. The
+  warning says the boot then refuses a task that does not fit, and that
+  `nros build` states the tasks. The boot refusal now says the default counts
+  only the stated tasks.
+- **The cmake road** builds C/C++ entries, whose ThreadX runner spawns no
+  sched task, so its answer is 0 by construction, and nothing reads the facts
+  there.
+- **threadx-linux** counts them too: the conservative choice (issue 2800).
+
+Measured, realtime-rust `[image.threadx]` (threadx-linux, one spawned task):
+
+| case | pool | boot |
+|---|---:|---|
+| as authored (no task stack), before | 459,008 B | boots |
+| as authored, after | 524,544 B (+65,536, one app stack) | both levels run |
+| `high` with 384 KiB, before (descriptor without the two facts) | 459,008 B | `FATAL ... 393216 bytes requested, 277568 free of 459008` |
+| `high` with 384 KiB, after | 852,224 B | both levels run; `nros_level` used 33,080 of 393,216 |
+| the same, pool stated at 459,008 B | (build) | refused: "below the 577632 this image needs (... 262144 bytes for its spawned sched tasks' stacks ...)" |
+
+(The last row ran at a 256 KiB stack.) A 256 KiB task still fit the old
+pool (277,568 B free at spawn), so the overflow case needs one larger than
+that.
+
+The boot refusal, the backstop for a stack no descriptor states, is a test
+now: `tests/sched_task_pool_refusal_threadx_linux.rs`, over an owned-entry
+fixture that spawns a 16 MiB task (`FATAL ... 16777216 bytes requested,
+344288 free of 409856`).
+
+Found while measuring, filed separately: issue 2859 (`[knobs.memory]
+heap_bytes` has no rebuild edge into the pool) and issue 2860 (the
+`[knobs.threadx] byte_pool_bytes` spelling every message names is refused
+for a threadx-linux image).
