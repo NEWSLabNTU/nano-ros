@@ -48,7 +48,7 @@ Two consequences:
   default is 1 for that reason, and more buffers buy nothing until delivery
   stops being serialised.
 
-## Directions (not decided)
+## Directions
 
 1. Size the hold queue per CPU or per logging thread on SMP images, using the
    board's CPU count as the floor.
@@ -58,8 +58,36 @@ Two consequences:
 3. Block briefly instead of holding, for thread context only. An ISR keeps
    holding.
 
+## Ruling, 2026-11-22: direction 2
+
+The user chose direction 2, relayed by the manager.
+
+- Each sink DECLARES whether it is re-entrant: safe to enter from several
+  threads, CPUs and ISRs at once. A record that meets a busy dispatcher goes
+  straight to every re-entrant sink, and waits in the hold queue only for the
+  sinks that are not.
+- The dispatch guard then stops only SELF-recursion: a sink whose own `log()`
+  logs again does not re-enter itself.
+- The Zephyr sink is re-entrant, since its buffers are claimed with one atomic
+  bit each. Its pool default becomes 2 x `CONFIG_MP_MAX_NUM_CPUS`, one
+  thread-context record and one ISR-context record in flight per CPU.
+- Records from different threads can then interleave in arrival order.
+
+Rejected: direction 1, because a deeper queue only moves the loss to a larger
+K, at RAM cost per slot. Direction 3, because it stalls a logging thread
+behind a slow sink (a priority-inversion risk) and still loses ISR records.
+
 ## Acceptance
 
-The stress cell above, with K=8 and the ISR running, delivers every thread
-record, or states per record which were lost. A gate cell runs it on
-`qemu_cortex_a53/smp`.
+1. **Concurrent loggers lose nothing on the Zephyr sink.** In the stress cell
+   above on `qemu_cortex_a53/smp`, K concurrent loggers, with K well above
+   the pool size and the ISR running, lose no record. A record that finds
+   every pool buffer claimed takes the sink's truncating fallback, which
+   delivers it marked as truncated and counts it; that is not a loss. A gate
+   cell runs it.
+2. **A non-re-entrant sink keeps today's one-at-a-time delivery** (the
+   negative control). A host test registers a sink that does not declare
+   itself re-entrant and asserts that it is never entered twice at once,
+   while a re-entrant sink on the same dispatcher is.
+3. **A sink that logs from inside its own `log()` is still stopped** from
+   recursing into itself. Host test.
