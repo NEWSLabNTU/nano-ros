@@ -1089,6 +1089,103 @@ impl Ros2Liveliness {
 // Tests
 // ============================================================================
 
+/// Per-slot test locks for the shim's process-wide slot tables.
+///
+/// The unit tests address the subscriber and service slots by number and
+/// several share one, so under plain `cargo test` (threads, not nextest's
+/// processes) two tests cleared and filled each other's slot. A test holds
+/// a slot for its whole body through the guard the `reset_*` helper returns.
+#[cfg(test)]
+pub(in crate::shim) mod test_slots {
+    extern crate alloc;
+    extern crate std;
+
+    use alloc::vec::Vec;
+    use core::cell::RefCell;
+    use std::sync::{Mutex, MutexGuard, TryLockError};
+
+    /// One lock per slot of one table; `table` names it in the re-lock panic.
+    pub(in crate::shim) struct SlotLocks<const N: usize> {
+        table: &'static str,
+        locks: [Mutex<()>; N],
+    }
+
+    std::thread_local! {
+        /// The `(table, slot)` pairs this test thread holds.
+        static HELD: RefCell<Vec<(&'static str, usize)>> = const { RefCell::new(Vec::new()) };
+    }
+
+    impl<const N: usize> SlotLocks<N> {
+        pub(in crate::shim) const fn new(table: &'static str) -> Self {
+            Self {
+                table,
+                locks: [const { Mutex::new(()) }; N],
+            }
+        }
+
+        /// Hold `slot` until the guard drops.
+        ///
+        /// The lock is not re-entrant, so a second hold of a slot this thread
+        /// already has would wait on itself forever and hang every later test
+        /// on that slot behind it. That is refused with a panic instead. A
+        /// test that holds two slots takes them in ascending order, and the
+        /// subscriber table before the service table.
+        pub(in crate::shim) fn hold(&'static self, slot: usize) -> SlotGuard {
+            let key = (self.table, slot);
+            let lock = match self.locks[slot].try_lock() {
+                Ok(lock) => lock,
+                // A test that panicked while holding the slot poisons it; the
+                // caller resets the slot anyway.
+                Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+                Err(TryLockError::WouldBlock) => {
+                    assert!(
+                        !HELD.with(|held| held.borrow().contains(&key)),
+                        "{} slot {slot} is already held by this test: clear it \
+                         again instead of resetting it",
+                        self.table
+                    );
+                    self.locks[slot]
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                }
+            };
+            HELD.with(|held| held.borrow_mut().push(key));
+            SlotGuard { key, _lock: lock }
+        }
+    }
+
+    /// One test's hold on one slot; dropping it frees the slot.
+    #[must_use = "hold the slot for the whole test: `let _slot = ...`"]
+    pub(in crate::shim) struct SlotGuard {
+        key: (&'static str, usize),
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl Drop for SlotGuard {
+        fn drop(&mut self) {
+            HELD.with(|held| held.borrow_mut().retain(|k| *k != self.key));
+        }
+    }
+
+    /// A second hold of a slot the test already has is a panic naming the
+    /// fix, not a hang. Its own table, so no other test waits on it.
+    #[test]
+    #[should_panic(expected = "already held by this test")]
+    fn a_second_hold_of_one_slot_panics_rather_than_hangs() {
+        static LOCKS: SlotLocks<1> = SlotLocks::new("relock-check");
+        let _first = LOCKS.hold(0);
+        let _second = LOCKS.hold(0);
+    }
+
+    /// Dropping the guard frees the slot for the same thread again.
+    #[test]
+    fn a_dropped_hold_frees_the_slot() {
+        static LOCKS: SlotLocks<1> = SlotLocks::new("release-check");
+        drop(LOCKS.hold(0));
+        let _again = LOCKS.hold(0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2031,6 +2128,8 @@ mod tests {
 
 #[cfg(test)]
 mod ghost_checks {
+    extern crate alloc;
+
     use super::*;
     use nros_ghost_types::{ServiceBufferGhost, SubscriberBufferGhost};
     use portable_atomic::Ordering;
@@ -2077,12 +2176,14 @@ mod ghost_checks {
 
     /// phase-461 W1 - a header receives through a ring bound at registration;
     /// the ghost checks bind one over the shim's default geometry.
-    static GHOST_INBOX: service::InboxStorage<SERVICE_BUFFER_SIZE, 4> =
-        service::InboxStorage::new();
-
+    /// A buffer over its OWN inbox: the tests write ring entries (the
+    /// overflow flag), so one shared inbox let a test's writes reach the next.
+    /// Leaked, because a ring needs `'static` storage; a test binary can spare it.
     fn ghost_service_buffer() -> ServiceBuffer {
+        let inbox: &'static service::InboxStorage<SERVICE_BUFFER_SIZE, 4> =
+            alloc::boxed::Box::leak(alloc::boxed::Box::new(service::InboxStorage::new()));
         let mut buffer = ServiceBuffer::new();
-        buffer.ring = service::InboxRing::over(&GHOST_INBOX);
+        buffer.ring = service::InboxRing::over(inbox);
         buffer
     }
 
@@ -2369,8 +2470,8 @@ mod ghost_checks {
 
         // Use slot 2 — subscription array and service array are separate
         let slot = 2;
-        reset_subscriber_buffer(slot);
-        reset_service_buffer(slot);
+        let _sub_slot = reset_subscriber_buffer(slot);
+        let _svc_slot = reset_service_buffer(slot);
 
         simulate_subscription_callback(slot, b"sub_data");
         simulate_service_request(slot, b"svc_data", b"svc/x");
@@ -2393,8 +2494,8 @@ mod ghost_checks {
         };
 
         let slot = 3;
-        reset_subscriber_buffer(slot);
-        reset_service_buffer(slot);
+        let _sub_slot = reset_subscriber_buffer(slot);
+        let _svc_slot = reset_service_buffer(slot);
 
         // Subscription overflow — payload (2000 B) exceeds
         // SUBSCRIBER_BUFFER_SIZE (1024 B); `simulate_subscription_callback`

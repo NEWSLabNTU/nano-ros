@@ -2071,6 +2071,9 @@ pub use borrowing::ZenohView;
 #[cfg(test)]
 pub(super) mod tests {
     extern crate alloc;
+    // The slot test locks (`reset_subscriber_buffer`); a host test binary
+    // always has libstd.
+    extern crate std;
     use super::*;
     use nros_rmw::TransportError;
 
@@ -2099,7 +2102,26 @@ pub(super) mod tests {
     }
 
     /// Reset a subscriber ring to the empty state.
-    pub(in crate::shim) fn reset_subscriber_buffer(slot: usize) {
+    ///
+    /// Returns the slot's TEST LOCK, which the caller holds for the rest of
+    /// the test (`let _slot = reset_subscriber_buffer(slot);`). The tests
+    /// address the process-wide ring slots by number and several share one,
+    /// so two of them in parallel threads (plain `cargo test`) cleared and
+    /// filled each other's ring. nextest runs each test in its own process,
+    /// which is why the gates never saw it.
+    pub(in crate::shim) fn reset_subscriber_buffer(
+        slot: usize,
+    ) -> crate::shim::test_slots::SlotGuard {
+        static SLOT_LOCKS: crate::shim::test_slots::SlotLocks<ZPICO_MAX_SUBSCRIBERS> =
+            crate::shim::test_slots::SlotLocks::new("subscriber");
+        let guard = SLOT_LOCKS.hold(slot);
+        clear_subscriber_ring(slot);
+        guard
+    }
+
+    /// Empty a slot's ring without taking its lock: for a test that already
+    /// holds the slot and needs it empty again.
+    pub(in crate::shim) fn clear_subscriber_ring(slot: usize) {
         let mut buf_ref = SubscriberBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
         buffer.ring_head.store(0, Ordering::Release);
@@ -2163,7 +2185,7 @@ pub(super) mod tests {
     #[test]
     fn sub_buf_idle_poll() {
         let slot = 0;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         let mut buf = [0u8; 1024];
         let result = take_subscription(slot, &mut buf);
@@ -2177,7 +2199,7 @@ pub(super) mod tests {
     #[test]
     fn sub_buf_normal_delivery() {
         let slot = 1;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         let payload = [0x42u8; 100];
         simulate_subscription_callback(slot, &payload);
@@ -2326,8 +2348,9 @@ pub(super) mod tests {
     #[test]
     fn wave3_per_sub_isolation() {
         let (a, b) = (5, 6);
-        reset_subscriber_buffer(a);
-        reset_subscriber_buffer(b);
+        // Ascending slot order, as every test that takes two locks does.
+        let _slot_a = reset_subscriber_buffer(a);
+        let _slot_b = reset_subscriber_buffer(b);
 
         simulate_subscription_callback(a, &[0xAAu8; 50]);
 
@@ -2344,7 +2367,7 @@ pub(super) mod tests {
     #[test]
     fn sub_buf_max_payload() {
         let slot = 2;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         // Exactly SUBSCRIBER_BUFFER_SIZE = max slot capacity.
         let payload = [0xFFu8; SUBSCRIBER_BUFFER_SIZE];
@@ -2362,7 +2385,7 @@ pub(super) mod tests {
     #[test]
     fn sub_buf_oversized_dropped_by_producer() {
         let slot = 3;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         // Payload larger than a ring slot — the C producer (here the
         // simulate helper) drops it silently without advancing tail.
@@ -2386,7 +2409,7 @@ pub(super) mod tests {
     #[test]
     fn sub_buf_caller_too_small() {
         let slot = 4;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         // Store 512 bytes, try to receive into a 256-byte buffer.
         let payload = [0xBBu8; 512];
@@ -2417,7 +2440,7 @@ pub(super) mod tests {
         // Phase 124.D.3.c — two callbacks without an intervening recv
         // are BOTH buffered (ring), not last-message-wins.
         let slot = 5;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         simulate_subscription_callback(slot, b"first_msg");
         simulate_subscription_callback(slot, b"second_msg");
@@ -2441,7 +2464,7 @@ pub(super) mod tests {
         // OLDEST, so the newest DEPTH samples drain in order and the incoming
         // one is the last of them. It used to be the one dropped.
         let slot = 6;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         for i in 0..SUBSCRIBER_RING_DEPTH {
             simulate_subscription_callback(slot, &[i as u8; 4]);
@@ -2478,7 +2501,7 @@ pub(super) mod tests {
         // ring whose head is CLAIMED keeps that slot intact and replaces the
         // newest queued sample instead. The incoming sample still arrives.
         let slot = 6;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         for i in 0..SUBSCRIBER_RING_DEPTH {
             simulate_subscription_callback(slot, &[i as u8; 4]);
@@ -2519,7 +2542,7 @@ pub(super) mod tests {
     #[test]
     fn sub_buf_double_consume() {
         let slot = 6;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         simulate_subscription_callback(slot, b"data");
 
@@ -2535,7 +2558,7 @@ pub(super) mod tests {
     #[test]
     fn sub_buf_oversized_then_normal() {
         let slot = 7;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         // Oversized → dropped by producer → normal → delivered.
         simulate_subscription_callback(slot, &[0u8; SUBSCRIBER_BUFFER_SIZE + 1]);
@@ -2554,7 +2577,7 @@ pub(super) mod tests {
         // Empty probes are dropped by the producer — they never
         // occupy a ring slot.
         let slot = 0;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         simulate_subscription_callback(slot, b"");
 
@@ -2570,8 +2593,9 @@ pub(super) mod tests {
     fn sub_buf_all_slots_independent() {
         let slot_a = 0;
         let slot_b = 7;
-        reset_subscriber_buffer(slot_a);
-        reset_subscriber_buffer(slot_b);
+        // Ascending slot order, as every test that takes two locks does.
+        let _slot_a = reset_subscriber_buffer(slot_a);
+        let _slot_b = reset_subscriber_buffer(slot_b);
 
         simulate_subscription_callback(slot_a, b"slot_zero");
         simulate_subscription_callback(slot_b, b"slot_seven");
@@ -2598,7 +2622,7 @@ pub(super) mod tests {
     #[test]
     fn sub_buf_in_place_matches_copy() {
         let slot = 0;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         // Write 100-byte payload, take (copy path) → capture bytes.
         let payload = [0x42u8; 100];
@@ -2609,8 +2633,9 @@ pub(super) mod tests {
         assert!(matches!(copy_result, Ok(Some(100))));
         let copy_bytes = recv_buf[..100].to_vec();
 
-        // Reset, write same payload, process_in_place → capture bytes.
-        reset_subscriber_buffer(slot);
+        // Empty the ring again (the slot is still held), write the same
+        // payload, process_in_place → capture bytes.
+        clear_subscriber_ring(slot);
         simulate_subscription_callback(slot, &payload);
 
         let in_place_result = process_in_place_subscription(slot);
@@ -2624,7 +2649,7 @@ pub(super) mod tests {
     #[test]
     fn sub_buf_in_place_idle() {
         let slot = 1;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         // Empty ring → process_in_place returns Ok(None).
         let result = process_in_place_subscription(slot);
@@ -2635,7 +2660,7 @@ pub(super) mod tests {
     fn sub_buf_in_place_drains_ring_in_order() {
         // Successive in-place reads drain the ring head-first.
         let slot = 2;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         simulate_subscription_callback(slot, b"aaa");
         simulate_subscription_callback(slot, b"bbbb");
@@ -2651,7 +2676,7 @@ pub(super) mod tests {
     fn sub_buf_consume_advances_head() {
         // Consuming N messages advances ring_head by exactly N.
         let slot = 3;
-        reset_subscriber_buffer(slot);
+        let _slot = reset_subscriber_buffer(slot);
 
         simulate_subscription_callback(slot, b"one");
         simulate_subscription_callback(slot, b"two");

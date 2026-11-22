@@ -2344,7 +2344,21 @@ pub(super) mod tests {
     }
 
     /// Reset a service buffer to idle state (empty ring).
-    pub(in crate::shim) fn reset_service_buffer(slot: usize) {
+    /// Hold service slot `slot` for the test and empty it.
+    ///
+    /// Returns the slot's test lock (`let _slot = reset_service_buffer(slot);`),
+    /// the subscriber table's rule (`crate::shim::test_slots`).
+    pub(in crate::shim) fn reset_service_buffer(slot: usize) -> crate::shim::test_slots::SlotGuard {
+        static SLOT_LOCKS: crate::shim::test_slots::SlotLocks<SERVICE_BUFFER_COUNT> =
+            crate::shim::test_slots::SlotLocks::new("service");
+        let guard = SLOT_LOCKS.hold(slot);
+        clear_service_buffer(slot);
+        guard
+    }
+
+    /// Empty service slot `slot` without taking its lock: for a test that
+    /// already holds it.
+    pub(in crate::shim) fn clear_service_buffer(slot: usize) {
         bind_shim_ring_for_test(slot);
         let mut buf_ref = ServiceBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
@@ -2433,7 +2447,7 @@ pub(super) mod tests {
     #[test]
     fn service_buf_oversized_request_clears_has_request() {
         let slot = 6;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         let payload = [0xABu8; 512];
         simulate_service_request(slot, &payload, b"test/service");
@@ -2453,13 +2467,13 @@ pub(super) mod tests {
         assert!(matches!(result, Ok(Some(5))));
         assert_eq!(&recv_buf[..5], b"hello");
 
-        reset_service_buffer(slot);
+        clear_service_buffer(slot);
     }
 
     #[test]
     fn service_buf_normal_request_after_stuck_recovery() {
         let slot = 5;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         simulate_service_request(slot, b"first", b"svc/a");
         let mut buf = [0u8; 1024];
@@ -2475,7 +2489,7 @@ pub(super) mod tests {
         assert!(matches!(result, Ok(Some(6))));
         assert_eq!(&buf[..6], b"second");
 
-        reset_service_buffer(slot);
+        clear_service_buffer(slot);
     }
 
     // ========================================================================
@@ -2485,7 +2499,7 @@ pub(super) mod tests {
     #[test]
     fn svc_buf_idle_poll() {
         let slot = 0;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         let mut buf = [0u8; 1024];
         let result = take_service(slot, &mut buf);
@@ -2497,7 +2511,7 @@ pub(super) mod tests {
     #[test]
     fn svc_buf_normal_request() {
         let slot = 1;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         simulate_service_request(slot, b"request_data", b"svc/test");
 
@@ -2514,7 +2528,7 @@ pub(super) mod tests {
     #[test]
     fn svc_buf_max_payload() {
         let slot = 2;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         // Exactly 1024 bytes = max capacity
         let payload = [0xCCu8; 1024];
@@ -2529,7 +2543,7 @@ pub(super) mod tests {
     #[test]
     fn svc_buf_caller_too_small_recovery() {
         let slot = 3;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         // Store 512 bytes, receive into 256-byte buffer
         let payload = [0xDDu8; 512];
@@ -2556,7 +2570,7 @@ pub(super) mod tests {
         // buffered in the ring (in order), not overwritten (the old single-buffer
         // behaviour dropped the first).
         let slot = 4;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         simulate_service_request(slot, b"first_req", b"svc/a");
         simulate_service_request(slot, b"second_req", b"svc/a");
@@ -2576,7 +2590,7 @@ pub(super) mod tests {
     #[test]
     fn svc_buf_double_consume() {
         let slot = 0;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         simulate_service_request(slot, b"once", b"svc/a");
 
@@ -2591,7 +2605,7 @@ pub(super) mod tests {
     #[test]
     fn svc_buf_sequence_numbers() {
         let slot = 7;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         // Three sequential requests — sequence numbers should increment
         simulate_service_request(slot, b"r1", b"svc/a");
@@ -2616,7 +2630,7 @@ pub(super) mod tests {
     #[test]
     fn svc_buf_keyexpr_preserved() {
         let slot = 1;
-        reset_service_buffer(slot);
+        let _slot = reset_service_buffer(slot);
 
         let keyexpr = b"0/my_service/example_interfaces::srv::dds_::AddTwoInts/Reply";
         simulate_service_request(slot, b"payload", keyexpr);
@@ -2634,8 +2648,8 @@ pub(super) mod tests {
     fn svc_buf_all_slots_independent() {
         let slot_a = 0;
         let slot_b = 7;
-        reset_service_buffer(slot_a);
-        reset_service_buffer(slot_b);
+        let _slot_a = reset_service_buffer(slot_a);
+        let _slot_b = reset_service_buffer(slot_b);
 
         simulate_service_request(slot_a, b"req_zero", b"svc/0");
         simulate_service_request(slot_b, b"req_seven", b"svc/7");
@@ -2666,16 +2680,17 @@ pub(super) mod tests {
     /// Below `CALLER_SLOT`, above every slot the older tests use (0..=7).
     const DROP_SLOT: usize = SERVICE_BUFFER_COUNT - 2;
 
-    fn drop_slot_fresh() -> ServiceBufferRef {
+    fn drop_slot_fresh() -> (crate::shim::test_slots::SlotGuard, ServiceBufferRef) {
         const {
             assert!(
                 DROP_SLOT >= 8,
                 "DROP_SLOT (SERVICE_BUFFER_COUNT - 2) collides with the slots the older tests use"
             )
         };
+        let guard = reset_service_buffer(DROP_SLOT);
         bind_caller_ring_for_test(DROP_SLOT, &DEPTH1_RING);
-        reset_service_buffer(DROP_SLOT);
-        ServiceBufferRef::new(DROP_SLOT)
+        clear_service_buffer(DROP_SLOT);
+        (guard, ServiceBufferRef::new(DROP_SLOT))
     }
 
     /// Two requests in one batch at depth 1: the second is the ring-full drop.
@@ -2683,7 +2698,7 @@ pub(super) mod tests {
     /// full is one line, and only a request that gets in ends the episode.
     #[test]
     fn a_full_ring_drop_is_counted_and_said_once_per_episode() {
-        let slot = drop_slot_fresh();
+        let (_slot, slot) = drop_slot_fresh();
         let drops = &slot.get().drops;
         let mut said = DropAnnouncer::default();
         let mut recv = [0u8; 64];
@@ -2727,7 +2742,7 @@ pub(super) mod tests {
     /// LENGTH, so both numbers can be said: the request's and the slot's.
     #[test]
     fn an_oversized_request_is_counted_with_its_length() {
-        let slot = drop_slot_fresh();
+        let (_slot, slot) = drop_slot_fresh();
         let drops = &slot.get().drops;
         let mut said = DropAnnouncer::default();
         let mut recv = [0u8; 64];
@@ -2791,7 +2806,7 @@ pub(super) mod tests {
     /// Re-binding a header (a new server on it) starts its counts at zero.
     #[test]
     fn binding_a_ring_resets_its_drop_counts() {
-        let slot = drop_slot_fresh();
+        let (_slot, slot) = drop_slot_fresh();
         let drops = &slot.get().drops;
         simulate_service_request(DROP_SLOT, b"a", b"svc/drop");
         simulate_service_request(DROP_SLOT, b"b", b"svc/drop");
@@ -2846,8 +2861,9 @@ pub(super) mod tests {
                 "CALLER_SLOT (SERVICE_BUFFER_COUNT - 1) collides with the slots the older tests use"
             )
         };
+        let _caller_slot = reset_service_buffer(CALLER_SLOT);
         bind_caller_ring_for_test(CALLER_SLOT, &CALLER_RING);
-        reset_service_buffer(CALLER_SLOT);
+        clear_service_buffer(CALLER_SLOT);
         assert!(
             ServiceBufferRef::new(CALLER_SLOT)
                 .get()
