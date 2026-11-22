@@ -1,7 +1,7 @@
 ---
 id: 2843
 title: "C++ `wait_for_service` inside a callback sleep-polls under the executor's lock, where the C API refuses"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [cpp, executor]
@@ -41,3 +41,21 @@ grow while it is decided.
 2. Keep the sleep-poll, but take the context per poll and drop it across the
    sleep, so no lock is held while sleeping.
 3. Give C the same sleep-poll, so the two agree, with option 2's lock rule.
+
+## Resolution (2026-11-23)
+Option 2, ruled by the project's manager session: the wait reads the flag once
+through `CtxRef::refuse_in_dispatch`, takes the context for each poll and drops
+it before the sleep. Inside a callback it now sleeps holding no lock; outside
+one it spins under the lock as before. The call answers as it did.
+
+Test: `tests_wait_lock::a_callback_waiting_for_a_service_leaves_the_executor_to_other_threads`
+(nros-cpp lib, `rmw-cffi`) drives the C++ API over a stub backend with the
+executor lock installed. A second thread must take the lock while a timer
+callback's 600 ms wait runs. On the code before the fix it fails, "the second
+thread got the executor lock 553 ms after asking, at 606 ms; the callback's
+600 ms wait ends at 602 ms". With the fix it passes, 5 of 5.
+
+`check-ffi-executor-derive` no longer lists this function: nothing reads
+`in_dispatch` outside the refusals. Option 3, C parity, is
+[issue 2848](../2848-c-wait-for-service-in-callback-parity.md), for the user.
+
