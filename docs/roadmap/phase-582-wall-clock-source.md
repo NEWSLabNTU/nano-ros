@@ -122,7 +122,7 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 
 ### W3 — SNTP re-acquires
 
-- **Status:** OPEN (implemented here; open until its acceptance cells run)
+- **Status:** DONE (2026-11-22, #4609)
 - **Owner:** nros 139
 - RFC-0141 D5: `sntp_resync_interval_ms` (default 0, one-shot), re-setting
   the offset through W1's setter. It is issue 0758's consumer requirement.
@@ -152,6 +152,8 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     - it steps the server +1000 s;
     - with 500 ms the stamps follow within one interval plus one publish
       period, and with 0 they stay unstepped over eight intervals.
+  - **Acceptance met** (host 241, at #4609's gated head): both cases pass on Zephyr
+    3.7 (10.4 s and 12.0 s) and 4.4 (8.4 s and 12.1 s).
   - **Fix found on the way.** The workspace image parser took the FIRST
     config token prefixing an image name, so `clock_sntp` swallowed
     `clock_sntp_resync`. It now takes the longest.
