@@ -208,8 +208,8 @@ uint64_t nros_platform_clock_resolution_ns(void);
  *  `0` MEANS "NO WALL CLOCK", not "the epoch". Per this header's clock rule
  *  (see the top of file: "If the platform has no clock, return `0`") this
  *  never errors. A caller that gets `0` knows the image cannot stamp
- *  absolute time and should keep publishing boot-relative stamps knowingly,
- *  rather than publishing a confidently wrong absolute one. 1970 is not a
+ *  absolute time and publishes its stamps as unset (`0`, ROS's "unset"
+ *  time) knowingly, rather than a confidently wrong absolute one. 1970 is not a
  *  plausible reading, so the sentinel costs no real value.
  *
  *  Not required to be monotonic: a platform that acquires its epoch after

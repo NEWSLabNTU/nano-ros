@@ -153,7 +153,8 @@ none answered. `unstamped` boots on: the platform reports no wall clock and
 every stamp reads 0, ROS's "unset" time, knowingly. `halt` stops at boot,
 for an image whose peers refuse a stamp that is not absolute. A list ending
 in `platform` reaches this policy on a port with no clock of its own
-(Zephyr, FreeRTOS, ThreadX), because `platform` does not answer there.
+(Zephyr, bare-metal FreeRTOS, ThreadX), because `platform` does not answer
+there.
 '''
 
 [[knob]]

@@ -72,7 +72,7 @@ pub const KNOBS: &[KnobRow] = &[
         class: crate::KnobClass::Public,
         carries: None,
         prompt: Some("What boot does when no wall-clock source answers"),
-        help: Some("What the image does when every source in clock.source has been tried and\nnone answered. `unstamped` boots on: the platform reports no wall clock and\nevery stamp reads 0, ROS's \"unset\" time, knowingly. `halt` stops at boot,\nfor an image whose peers refuse a stamp that is not absolute. A list ending\nin `platform` reaches this policy on a port with no clock of its own\n(Zephyr, FreeRTOS, ThreadX), because `platform` does not answer there."),
+        help: Some("What the image does when every source in clock.source has been tried and\nnone answered. `unstamped` boots on: the platform reports no wall clock and\nevery stamp reads 0, ROS's \"unset\" time, knowingly. `halt` stops at boot,\nfor an image whose peers refuse a stamp that is not absolute. A list ending\nin `platform` reaches this policy on a port with no clock of its own\n(Zephyr, bare-metal FreeRTOS, ThreadX), because `platform` does not answer\nthere."),
         default: crate::KnobDefault::Kconfig(&[
             crate::KconfigDefault { value: "\"unstamped\"", when: None },
         ]),
