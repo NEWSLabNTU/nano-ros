@@ -1526,6 +1526,7 @@ dependencies = [
  "nros-log",
  "nros-node",
  "nros-platform-api",
+ "nros-zephyr-build",
 ]
 
 [[package]]

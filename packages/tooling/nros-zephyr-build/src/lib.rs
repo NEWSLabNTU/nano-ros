@@ -422,6 +422,8 @@ pub use config_rows::{ENV_ROWS, STATEMENTS};
 #[rustfmt::skip]
 mod registry_packages;
 pub use registry_packages::{CORE_OWNERS, IN_TREE_PACKAGES, RESOURCE_ENV_VARS, RETIRING_OWNERS};
+// RFC-0141 D2 (phase-582 W1d): `[knobs.clock]` for a port's C clock code.
+pub mod clock_selection;
 
 /// The Kconfig knob whose symbol is `symbol` (with or without `CONFIG_`).
 #[must_use]

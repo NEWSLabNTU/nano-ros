@@ -502,6 +502,20 @@ fn main() {
             .file(posix_src.join("timer.c"))
             // issue 1776 — the termination guard is its own archive member.
             .file(posix_src.join("termination.c"));
+        // RFC-0141 D2 (phase-582 W1d) — the SAME `[knobs.clock]` defines and
+        // selection-named TU `nros-platform-cffi`'s `posix-c-port` copy gets,
+        // from the same helper. The two copies are demand-driven duplicates
+        // (issue 1779): whichever archive the linker scans first supplies
+        // `platform.o`, so different defines would make the wall clock depend
+        // on link order.
+        if let Some(sel) = nros_zephyr_build::clock_selection::clock_selection() {
+            for (name, value) in sel.c_defines() {
+                posix_build.define(name, value.as_str());
+            }
+            if sel.board() {
+                posix_build.file(posix_src.join(nros_zephyr_build::clock_selection::BOARD_TU));
+            }
+        }
         nros_cc_flags::header_deps::track_header_deps(&mut posix_build);
         // platform-port-provider-exempt: the SAME `nros-platform-posix` sources nros-platform-cffi's `posix-c-port` compiles, in a demand-driven (not whole-archive) archive — identical symbol sets, so a second member is never pulled (issue 1779: only a whole-archive or different port collides)
         posix_build.compile("nros_platform_posix_link");
