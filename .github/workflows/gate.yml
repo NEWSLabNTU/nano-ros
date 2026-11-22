@@ -1773,6 +1773,13 @@ jobs:
         run: |
           source ./activate.sh
           just check workspace-all
+      # The FreeRTOS port's `board` wall-clock source needs the kernel this job
+      # provisioned above, which no gate lane claims (needs:freertos-kernel).
+      - name: just check clock-board-freertos (FreeRTOS port, board wall clock)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check clock-board-freertos
       - name: sccache stats (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) && always() }}
         run: |

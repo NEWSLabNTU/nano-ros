@@ -1,0 +1,6 @@
+{
+  "key": "rust:WallClock::source",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`WallClockState::source`: the source that answered (`WallClockSource`), or the one the image waits on while unsynced; part of the RFC-0141 D4 state query. No rclrs counterpart, for the same reason as `WallClockState`."
+}

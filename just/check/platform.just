@@ -97,22 +97,34 @@ can-board-defaults:
 # Negative controls: a selection TU that asks once, and a port that resolves on
 # every read, each fail. ~3 s.
 #
-# The CMake road's clock-selection reader answers the same case table as the
-# Rust one (`tests/clock-selection-cmake-parity.sh`, and nros-zephyr-build's
-# `the_shared_case_table`), so the two readers cannot drift apart.
-# And the FreeRTOS port (`tests/clock-board-freertos-tests.sh`): the real
-# kernel on its POSIX port and the real `nros-platform-freertos`, built through
-# its CMakeLists, resolving lazily from a task: the board within the window,
-# the halt, freertos-posix's `platform` (and default) answering the host's
-# CLOCK_REALTIME, and the bare-metal arm's `platform` not answering. A
-# REPORTED skip when the FreeRTOS kernel is not provisioned. ~10 s.
 [private]
 [group('needs:cc')]
 clock-resolve:
     @bash tests/clock-resolve-tests.sh
     @bash tests/clock-board-posix-tests.sh
-    @bash tests/clock-board-freertos-tests.sh
+
+# The CMake road's clock-selection reader answers the same case table as the
+# Rust one (`tests/clock-selection-cmake-parity.sh`, and nros-zephyr-build's
+# `the_shared_case_table`), so the two readers cannot drift apart. A rule
+# removed from the CMake one fails 2 of its 6 rows.
+[private]
+[group('needs:cmake')]
+clock-selection-parity:
     @bash tests/clock-selection-cmake-parity.sh
+
+# The FreeRTOS port's `board` source (`tests/clock-board-freertos-tests.sh`):
+# the real kernel on its POSIX port and the real `nros-platform-freertos`,
+# built through its CMakeLists, resolving lazily from a task: the board within
+# the window, the halt, freertos-posix's `platform` (and default) answering the
+# host's CLOCK_REALTIME, and the bare-metal arm's `platform` not answering.
+# It needs the provisioned FreeRTOS kernel, which no lane claims: CI runs it in
+# the job that provisions the kernel (gate.yml, after `workspace-all`). ~10 s.
+[private]
+[group('needs:cc')]
+[group('needs:cmake')]
+[group('needs:freertos-kernel')]
+clock-board-freertos:
+    @bash tests/clock-board-freertos-tests.sh
 
 # RFC-0135 D2 (phase-577 W8) -- a board's CMake module has ONE lookup,
 # `nros_board_module_path()` (cmake/NanoRosBoardModule.cmake), so a board

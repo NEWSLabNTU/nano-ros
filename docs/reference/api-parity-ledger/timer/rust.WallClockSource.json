@@ -1,0 +1,6 @@
+{
+  "key": "rust:WallClockSource",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "Which wall-clock source the image resolved (`platform`, `sntp`, `zenoh-hlc`, `board`; RFC-0141 D1), as the state query reports it. rclrs has no selectable wall-clock source: the host clock is the only one."
+}

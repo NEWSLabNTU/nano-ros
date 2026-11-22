@@ -1,0 +1,6 @@
+{
+  "key": "rust:wall_clock_state",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`nros::wall_clock_state()`: whether the image's wall clock is synced, from which source, and how many source changes since boot (RFC-0141 D4), so an application that must not publish unstamped data can ask first. Re-exported from nros-core so a node package can query it. The Rust face of `c:wall_clock_state`; rclrs has no equivalent."
+}

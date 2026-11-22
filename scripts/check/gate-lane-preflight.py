@@ -150,6 +150,12 @@ def probe_sources() -> str | None:
     return f"no provisioned source clone under {d} (nros setup --source)"
 
 
+def probe_freertos_kernel() -> str | None:
+    r = subprocess.run(["nros", "locate", "freertos-kernel"], cwd=ROOT,
+                       capture_output=True, text=True)
+    return None if r.returncode == 0 else "nros locate freertos-kernel finds no kernel"
+
+
 def probe_zephyr_tree() -> str | None:
     inc = ROOT / "zephyr-workspace" / "zephyr" / "lib" / "cpp" / "minimal" / "include"
     return None if inc.is_dir() else f"{inc.relative_to(ROOT)} is absent"
@@ -223,6 +229,7 @@ PROBES = {
     "zephyr-tree": probe_zephyr_tree,
     "zephyr": probe_zephyr,
     "fsp": lambda: env_dir("NV_SPE_FSP_DIR"),
+    "freertos-kernel": probe_freertos_kernel,
     "west": probe_west,
     "build-tree": probe_build_tree,
     "arm-gcc": probe_arm_gcc,
