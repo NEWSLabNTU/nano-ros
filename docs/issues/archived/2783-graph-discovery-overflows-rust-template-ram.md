@@ -1,16 +1,18 @@
 ---
 id: 2783
 title: "Turning on graph discovery in the stock Rust talker template on nucleo-f767zi fails to link: the template's 75,536 B main stack leaves 552 B of RAM, and discovery costs 8,232 B"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, stack-floor, zenoh, templates]
 related: [issue-2400, issue-2658, issue-2360]
 found: 2026-11-21
+resolved: 2026-11-22
+resolved_in: "fix(issue 2783): the stock Rust talker builds and runs with graph discovery on"
 ---
 
-**Home:** [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md),
-the stack-floor redesign that [issue 2400](2400-stack-floor-from-measured-frames.md)
+**Home:** [phase-557](../../roadmap/phase-557-stack-floor-measured-frames.md),
+the stack-floor redesign that [issue 2400](../2400-stack-floor-from-measured-frames.md)
 tracks (nros 133). This issue is measured evidence for it.
 
 ## What happens
@@ -148,3 +150,25 @@ fails (it would mean the walk missed a path the image ran).
 
 The template outcome (graph discovery on the stock image) is the template
 side's to close.
+
+## Resolved, 2026-11-22
+
+Measured on `main` 6a2a272dc9 (after the peak-sizing change, #4617):
+
+- `nros new tlk --board nucleo-f767zi-zephyr --lang rust --rmw zenoh
+  --template talker` writes no `stack.conf`: the row's floor is now 31,784 B,
+  within the stack the board gives by default, so the template states none.
+- With only `[image.zephyr.knobs.zenoh] graph_discovery = true` and
+  `graph_cache_bytes = 8192` added, `nros build` links. RAM is 327,168 B of
+  384 KiB (83.2%), about 64 KiB free, where the same two lines overflowed by
+  7,680 B before. The build states `ZPICO_GRAPH_DISCOVERY=1` and
+  `ZPICO_GRAPH_CACHE_SIZE=8192`.
+- `nros run tlk_node_bringup:zephyr` boots it in the Renode twin, and it
+  publishes `Hello World: 1` through `92`, one a second, until the run is
+  stopped at 106 s. Nothing faults.
+
+The user-facing side:
+- `zenoh.graph_discovery`'s help states the cache's RAM cost.
+- The Nucleo-F767ZI platform page shows the two knob lines and the RAM they
+  leave.
+- Issue 2836 tracks explaining a region overflow when one still happens.

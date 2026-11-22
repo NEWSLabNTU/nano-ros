@@ -55,6 +55,20 @@ image wins:
 max_subscribers = 2
 ```
 
+Graph discovery is off on this board's serial link by default: a host
+domain's liveliness tokens would arrive over the UART. An image that makes
+its own graph queries turns it on, with a cache sized to the domain:
+
+```toml
+[image.zephyr.knobs.zenoh]
+graph_discovery = true
+graph_cache_bytes = 8192
+```
+
+The stock Rust talker builds and runs with these two lines. Its link uses
+327,168 B of the 384 KiB, about 64 KiB left; the 8 KiB cache costs about
+8 KiB of that.
+
 Never set these in `prj.conf`: a `CONFIG_NROS_*` line there is a configure
 error. [Measure static memory](../contracts/measure-static-memory.md) reads
 an image's boot report, so you can see how much room a change leaves.
