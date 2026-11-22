@@ -107,7 +107,18 @@ class Graph:
 
 
 class WalkRefused(Exception):
-    pass
+    """A walk that cannot state a floor. `path`, when there is one, is how far
+    it got: the deepest path it summed before refusing, with every missing
+    frame counted as 0, so a LOWER bound (issue 2818). A refused walk of an
+    unmeasured image is not enforced, but a lower bound already over the
+    image's stack is a certain overflow, and the warning says so."""
+
+    def __init__(self, msg: str, path: "Path_ | None" = None):
+        super().__init__(msg)
+        self.path = path
+
+    def __reduce__(self):
+        return (WalkRefused, (self.args[0], self.path))
 
 
 @dataclass
@@ -474,7 +485,7 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
                         + "; pass --indirect fold (with the backend archive as an "
                         "input) or --indirect allowance:<bytes>")
     if problems:
-        raise WalkRefused(f"root `{root}`:\n  - " + "\n  - ".join(problems))
+        raise WalkRefused(f"root `{root}`:\n  - " + "\n  - ".join(problems), path=p)
     return p
 
 
@@ -535,7 +546,7 @@ def _walk_one_order(o: int):
     try:
         return ("ok", worst_path(_PAR["g"], _PAR["root"], order=o, **_PAR["kw"]))
     except WalkRefused as e:
-        return ("refused", str(e))
+        return ("refused", e)
 
 
 # Issue 2414 (2) -- a walk already done is not done again. The key holds every
@@ -664,8 +675,8 @@ def walk_orders_uncached(g: Graph, root: str, orders, **kw) -> list[Path_]:
             _PAR.clear()
     out: list[Path_] = []
     for kind, v in got:
-        if kind == "refused":
-            raise WalkRefused(v)
+        if isinstance(v, WalkRefused):
+            raise v
         out.append(v)
     return out
 
@@ -3310,17 +3321,53 @@ def parse_check_stacks(args: argparse.Namespace) -> dict[str, int]:
     return stacks
 
 
-def refused(args: argparse.Namespace, doc, refusals: list[str]) -> int:
+def unmeasured_refusal_warning(args: argparse.Namespace, stacks: dict[str, int],
+                               lower: dict) -> str:
+    """What an unmeasured image whose walk was refused is told (issue 2818).
+    Ruling (A)(2) keeps it a warning, so the warning carries what the build
+    knows: which image, which rmw, the stack it ships with, that nothing
+    checked it, and the LOWER bound the walk reached before it refused.
+    `lower` maps a role to (path, root, [(fn, frame), ...] deepest first)."""
+    who = (f"image `{getattr(args, 'image', None) or '?'}` "
+           f"(rmw {getattr(args, 'rmw', None) or 'none'}, "
+           f"{getattr(args, 'target', None) or 'host'})")
+    lines = [f"nros-stack-floor: WARNING: {who} is UNMEASURED and its stack-floor walk was "
+             "refused (see above), so its stack is NOT CHECKED: it ships on the stack it "
+             "states, and nothing has shown that is enough."]
+    for role in sorted(stacks):
+        stack = stacks[role]
+        got = lower.get(role) or lower.get(role.lower())
+        if got is None:
+            lines.append(f"  {role}: stated stack {stack} B; the walk stated no depth at all.")
+            continue
+        path, root, frames = got
+        lines.append(f"  {role}: stated stack {stack} B; the walk reached at least "
+                     f"{path.depth} B from `{root}` before it refused (every missing frame "
+                     "counted as 0).")
+        if path.depth > stack:
+            lines.append(f"  {role}: that is already MORE than the stack: this image WILL "
+                         "overflow it.")
+        if frames:
+            lines.append(f"  {role}: deepest frames on that path: "
+                         + ", ".join(f"{fn} ({n} B)" for fn, n in frames))
+    lines.append("  To check it: give each function named above a frame (a `[[policy]]` row "
+                 "in config/stack-floors.toml, or `-fstack-usage` on the library that defines "
+                 "it), or measure the image (an `[[observed]]` row).")
+    return "\n".join(lines)
+
+
+def refused(args: argparse.Namespace, doc, refusals: list[str],
+            lower: dict | None = None) -> int:
     """Every walk refusal (the fold's and a role's) ends here, so ruling (A)
     holds for both: under --check-stack an UNMEASURED image is never refused,
-    the walk included; a measured one fails."""
+    the walk included; a measured one fails. `lower`: see
+    `unmeasured_refusal_warning`."""
     print("nros-stack-floor: REFUSED\n" + "\n".join(refusals), file=sys.stderr)
     stacks = parse_check_stacks(args)
     measured_roles = [r for r in stacks
                       if doc is not None and find_allowance(doc, args.image, args.target, r)]
     if stacks and not measured_roles:
-        print("nros-stack-floor: WARNING: the walk was refused for an UNMEASURED image; "
-              "not enforced", file=sys.stderr)
+        print(unmeasured_refusal_warning(args, stacks, lower or {}), file=sys.stderr)
         return 0
     return 1
 
@@ -3644,6 +3691,7 @@ def run(args: argparse.Namespace) -> int:
 
     results = {}
     refusals = []
+    lower: dict = {}  # role -> how far a refused walk got (issue 2818)
     for spec in args.role:
         role, _, roots = spec.partition("=")
         if not roots:
@@ -3662,6 +3710,12 @@ def run(args: argparse.Namespace) -> int:
                                  externals=externals, cuts=cuts)
             except WalkRefused as e:
                 refusals.append(f"{role}: {e}")
+                lp = e.path
+                if lp is not None and (role.upper() not in lower
+                                       or lp.depth > lower[role.upper()][0].depth):
+                    frames = sorted(((fn, g.frames.get(fn, 0)) for fn in lp.chain
+                                     if g.frames.get(fn, 0)), key=lambda x: -x[1])[:3]
+                    lower[role.upper()] = (lp, root, frames)
                 continue
             if best is None or p.depth > best.depth:
                 best, best_root = p, root
@@ -3753,7 +3807,7 @@ def run(args: argparse.Namespace) -> int:
     if args.report:
         write_report(args.report, args, results, stacks, refusals, raises)
     if refusals:
-        return refused(args, doc, refusals)
+        return refused(args, doc, refusals, lower)
     if stacks:
         for line in lines:
             print(line, file=sys.stderr)
@@ -3899,6 +3953,31 @@ def self_test() -> int:
         check("missing frame refused", False)
     except WalkRefused as e:
         check("missing frame names the function", "ghost" in str(e))
+    # issue 2818 -- a refusal keeps how far it got: a lower bound, the
+    # missing frame counted as 0, and it survives a worker's pickle
+    g3 = Graph(frames={"root": 100, "big": 70000}, edges={"root": {"ghost", "big"}},
+               functions={"root", "ghost", "big"})
+    try:
+        worst_path(g3, "root", indirect_charge=None, recursion_allowance=None)
+        check("refusal with a missing frame refused", False)
+    except WalkRefused as e:
+        import pickle
+        check("a refusal carries its lower bound (missing frame as 0)",
+              e.path is not None and e.path.depth == 70100 and e.path.chain == ["root", "big"])
+        back = pickle.loads(pickle.dumps(e))
+        check("a refusal's lower bound survives a worker's pickle",
+              str(back) == str(e) and back.path == e.path)
+        ns = argparse.Namespace(image="demo@b", rmw="cyclonedds", target="armv8r-none-eabihf")
+        w = unmeasured_refusal_warning(ns, {"OPEN": 65536},
+                                       {"OPEN": (e.path, "root", [("big", 70000)])})
+        check("an unmeasured refusal names the image, rmw and stack, and says NOT CHECKED",
+              "demo@b" in w and "cyclonedds" in w and "65536 B" in w and "NOT CHECKED" in w)
+        check("a lower bound over the stack is called a certain overflow",
+              "WILL overflow" in w and "big (70000 B)" in w)
+        w2 = unmeasured_refusal_warning(ns, {"OPEN": 131072},
+                                        {"OPEN": (e.path, "root", [("big", 70000)])})
+        check("a lower bound under the stack is not called an overflow",
+              "WILL overflow" not in w2 and "at least 70100 B" in w2)
     # ... unless declared external
     p = worst_path(g2, "root", indirect_charge=None, recursion_allowance=None,
                    externals={"ghost"})

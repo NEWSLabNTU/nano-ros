@@ -1,7 +1,7 @@
 ---
 id: 2818
 title: "An unmeasured image whose stack-floor walk is refused ships on its default stack with one warning line, and the walk has no frame for Cyclone's register entry or the FreeRTOS port's assembly"
-status: open
+status: resolved
 type: limitation
 severity: high
 area: [memory, stack-floor, freertos, cyclonedds]
@@ -115,12 +115,52 @@ Two smaller defects make it worse:
 
 ## Done when, revised
 
-- [ ] **Cyclone's vtable calls are bound and followed** (`[indirect.cyclonedds]
-  mode = "bind"`, the zenoh machinery from issues 2402 and 2516). Acceptance:
-  the pre-fix an536 image's walk prices the four 65,536 B frames.
-- [ ] The four frameless functions get a frame or a stated reason, as above.
-- [ ] A refused walk keeps its lower bound. When that bound is already above
-  the image's stack, the warning says so: a certain overflow, not an estimate.
-- [ ] Every other backend on `[indirect.default]` is listed, with whether its
-  vtable calls are walked. Same class: an RMW with no bind policy has every
-  frame behind its vtable priced at 0.
+- [x] **Every backend's vtable calls are bound and followed.**
+  `[indirect.default]` is now `mode = "bind"`, so Cyclone, XRCE, uORB and any
+  later backend bind as zenoh does. It was not done per backend, because the
+  class is "an RMW with no policy of its own", and that would leave the next
+  backend priced at 0. Every measured row is a zenoh image, so the change moves
+  only unmeasured images, which warn.
+- [x] **The frames.** There were two causes.
+  - `nros_rmw_cyclonedds_register` and every other backend function had no
+    frame because the `-fstack-usage` closure followed only link entries that
+    are target names. The backend reaches the image through a raw
+    `-Wl,--whole-archive,$<TARGET_FILE:x>` flag. The closure now follows the
+    target inside `$<TARGET_FILE:...>`, in `LINK_LIBRARIES` and in issue 0475's
+    `LINK_DEPENDS`, so the backend and `libddsc` get `.su` files.
+    `service_send_response` then states 65,616 B.
+  - Six FreeRTOS Cortex-R port functions are hand assembly with no `.su` and no
+    CFI: `vPortDisableInterrupts`, `vPortEnableInterrupts`,
+    `ulPortSetInterruptMaskFromISR`, `ulReadAPSR`, `vPortYield` and
+    `vPortRestoreTaskContext`. Each is a `[[policy]] external` row scoped to
+    `armv8r-none-eabihf`, with what its disassembly shows: no frame on the task
+    stack.
+- [x] **A refused walk keeps its lower bound.** `WalkRefused` carries the path
+  it summed, with each missing frame counted as 0, across the parallel walk's
+  workers. An unmeasured image's warning names:
+  - the image, its RMW and target, and the stack it ships with;
+  - that the stack is NOT CHECKED;
+  - the bound and its three deepest frames.
+
+  A bound already over the stack is called a certain overflow.
+
+## Measured on the pre-fix image (2026-11-22)
+
+The pre-fix image is `workspace-cpp-mps3-an536-freertos` at the commit before
+the backend fix. Walking from `Executor::pass`:
+
+| walk | floor | the 64 KiB frames |
+| --- | ---: | --- |
+| before: default `allowance:0`, backend frameless | 35,176 B (refused for the missing frames) | not seen |
+| after: `bind` and the backend's frames | 420,480 B | `service_send_request_raw` 65,624 B, `service_send_response` 65,616 B |
+
+From the image's thread root (`app_task_entry`), with everything in this issue,
+the walk is no longer refused. It states a 420,096 B floor against the 64 KiB
+stack, and the build warns that the stack is below it.
+
+**The floor is loose.** The image needed about 78 KB. The C++ backend has no
+clang IR, because the bind reads IR for `.c` sources only. So its call sites
+bind at the "any function C can hold" tier, an upper bound that is far too
+high. The `NROS_MEMORY_APP_STACK_BYTES` the warning suggests is therefore too
+high for a Cyclone image. Narrowing it means reading the backend's C++ as IR,
+the same class as issue 2516 for zenoh-pico's C, and it is left open there.
