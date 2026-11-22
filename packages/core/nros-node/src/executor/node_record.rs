@@ -107,7 +107,14 @@ pub struct NodeRecord {
     /// `Executor::disable_rosout_on`, or at `close()`.
     #[cfg(feature = "rosout")]
     pub(crate) rosout: RosoutWriter,
+    /// Whether this node's publishers may send. A managed node's
+    /// lifecycle machine writes it on every transition; every publisher the
+    /// node creates reads it. Lives in the record because the node table is
+    /// carved from the executor's backing and never moves.
+    pub(crate) publish_gate: PublishGate,
 }
+
+pub use crate::lifecycle::PublishGate;
 
 /// phase-556 W13 -- the state of one node's runtime-owned `/rosout` writer.
 // `Up` holds the backend's publisher inline: 648 bytes with the C-vtable
@@ -176,6 +183,7 @@ impl NodeRecord {
             qos_overrides: &[],
             #[cfg(feature = "rosout")]
             rosout: RosoutWriter::Pending,
+            publish_gate: PublishGate::unmanaged(),
         }
     }
 }
@@ -486,6 +494,7 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             qos_overrides: &[],
             #[cfg(feature = "rosout")]
             rosout: RosoutWriter::Pending,
+            publish_gate: PublishGate::unmanaged(),
         };
 
         // Issue 2681 -- the census hears every node this builder creates, the

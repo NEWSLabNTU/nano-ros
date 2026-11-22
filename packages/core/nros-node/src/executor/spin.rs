@@ -6276,6 +6276,7 @@ impl<'s> Executor<'s> {
             .map(|m| m.cell);
         Ok(crate::executor::handles::EmbeddedPublisher {
             handle,
+            gate: self.node_publisher_gate(node_id),
             event_regs: crate::executor::handles::empty_event_regs(),
             monitor,
             epoch: self.epoch_us_fn,
@@ -6298,6 +6299,7 @@ impl<'s> Executor<'s> {
             self.create_raw_publisher_handle_on(node_id, topic_name, type_name, type_hash, qos)?;
         Ok(crate::executor::handles::EmbeddedRawPublisher {
             handle,
+            gate: self.node_publisher_gate(node_id),
             arena: crate::executor::handles::TxArena::new(),
             event_regs: crate::executor::handles::empty_event_regs(),
             // Issue 1676 — attach the contracted endpoint's counter cell by
@@ -6307,6 +6309,20 @@ impl<'s> Executor<'s> {
             // Rust publisher was ever counted.
             monitor: self.publisher_monitor_cell(topic_name),
         })
+    }
+
+    /// phase-554 W6 -- the gate a publisher of `node_id` reads. A node not in
+    /// the table gets none, and its publisher always sends.
+    pub(crate) fn node_publisher_gate(
+        &self,
+        node_id: super::node_record::NodeId,
+    ) -> crate::executor::handles::PublisherGate {
+        match self.nodes.get(node_id.index()) {
+            Some(r) => crate::executor::handles::PublisherGate::of(core::ptr::NonNull::from(
+                &r.publish_gate,
+            )),
+            None => crate::executor::handles::PublisherGate::none(),
+        }
     }
 
     /// Shared prelude for the publisher-on-node paths: resolve the node's
@@ -6818,12 +6834,17 @@ impl<'s> Executor<'s> {
         id: super::node_record::NodeId,
         f: impl FnOnce(&mut NodeHandle<'_>) -> R,
     ) -> Result<R, NodeError> {
-        let (name, ns, session_idx) = {
+        let (name, ns, session_idx, gate) = {
             let r = self
                 .nodes
                 .get(id.index())
                 .ok_or(NodeError::InvalidSchedContextBinding)?;
-            (r.name.clone(), r.namespace.clone(), r.session_idx)
+            (
+                r.name.clone(),
+                r.namespace.clone(),
+                r.session_idx,
+                core::ptr::NonNull::from(&r.publish_gate),
+            )
         };
         let monitors = self.monitor_table;
         let age_monitors = self.age_table;
@@ -6844,6 +6865,7 @@ impl<'s> Executor<'s> {
         // subscribes through the arena, so it delivered on domain 0 and on
         // nothing else.
         let mut node = NodeHandle::new(name, ns, session, remaps, domain_id);
+        node.set_publish_gate(gate);
         // RFC-0052 W3b.4/.5 — seed the baked monitor tables so contracted
         // publishers/subscribers attach their cells without entry glue.
         node.set_monitors(monitors);
@@ -15338,11 +15360,18 @@ impl<'s> Executor<'s> {
         ])
         .ok_or(NodeError::Transport(TransportError::BadAlloc))?;
 
-        let state = alloc::boxed::Box::new(LifecycleRuntimeState {
+        let mut state = alloc::boxed::Box::new(LifecycleRuntimeState {
             state_machine: LifecyclePollingNodeCtx::new(),
             services: servers,
             transition_event: te_handle,
         });
+        // RFC-0128 D3: the served node's publishers follow this machine from
+        // now on. A zero-node image's machine has no node and gates nothing.
+        if let Some(r) = served.and_then(|id| self.nodes.get(id.index())) {
+            state
+                .state_machine
+                .bind_publish_gate(core::ptr::NonNull::from(&r.publish_gate));
+        }
         self.lifecycle
             .try_reserve(1)
             .map_err(|_| NodeError::Transport(TransportError::BadAlloc))?;

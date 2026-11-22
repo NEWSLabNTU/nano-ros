@@ -93,6 +93,9 @@ pub struct NodeHandle<'a> {
     /// `create_subscription` attaches the matching endpoint's age cell.
     age_monitors: &'static [crate::executor::monitor::AgeMonitorSpec],
     epoch_us_fn: Option<fn() -> u64>,
+    /// The executor node's publish gate, when this handle stands for a node
+    /// in the executor's table. Every publisher it creates reads it.
+    publish_gate: Option<core::ptr::NonNull<crate::executor::node_record::PublishGate>>,
 }
 
 impl<'a> NodeHandle<'a> {
@@ -114,6 +117,22 @@ impl<'a> NodeHandle<'a> {
             monitors: &[],
             age_monitors: &[],
             epoch_us_fn: None,
+            publish_gate: None,
+        }
+    }
+
+    /// Bind this handle to an executor node's publish gate.
+    pub(crate) fn set_publish_gate(
+        &mut self,
+        gate: core::ptr::NonNull<crate::executor::node_record::PublishGate>,
+    ) {
+        self.publish_gate = Some(gate);
+    }
+
+    fn publisher_gate(&self) -> crate::executor::handles::PublisherGate {
+        match self.publish_gate {
+            Some(g) => crate::executor::handles::PublisherGate::of(g),
+            None => crate::executor::handles::PublisherGate::none(),
         }
     }
 
@@ -397,6 +416,7 @@ impl<'a> NodeHandle<'a> {
             .map(|m| m.cell);
         Ok(EmbeddedPublisher {
             handle,
+            gate: self.publisher_gate(),
             event_regs: crate::executor::handles::empty_event_regs(),
             monitor,
             epoch: self.epoch_us_fn,
@@ -455,6 +475,7 @@ impl<'a> NodeHandle<'a> {
             .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))?;
         Ok(crate::executor::handles::EmbeddedRawPublisher {
             handle,
+            gate: self.publisher_gate(),
             arena: crate::executor::handles::TxArena::new(),
             event_regs: crate::executor::handles::empty_event_regs(),
             // Issue 1676 — the typed path's rule, verbatim.

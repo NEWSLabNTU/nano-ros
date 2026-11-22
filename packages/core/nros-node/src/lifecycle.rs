@@ -272,6 +272,41 @@ pub(crate) const TRANSITION_ANNOUNCEMENT_QUEUE: usize = 4;
 
 /// Lifecycle state machine with `unsafe fn(*mut c_void) -> TransitionResult` callbacks.
 ///
+/// RFC-0128 D3 / phase-554 W6 -- a managed node's publishers follow its
+/// state. One byte, read and written with plain atomic loads and stores so it
+/// needs no compare-and-swap (thumbv6m has none).
+///
+/// A node that is not managed stays `UNMANAGED` and its publishers always
+/// send. Once its lifecycle machine exists the gate is `INACTIVE` until the
+/// machine enters `active`.
+pub struct PublishGate(core::sync::atomic::AtomicU8);
+
+impl PublishGate {
+    // Only the node table creates unmanaged gates, and it needs a backend.
+    #[cfg_attr(not(any(has_rmw, test)), allow(dead_code))]
+    const UNMANAGED: u8 = 0;
+    const INACTIVE: u8 = 1;
+    const ACTIVE: u8 = 2;
+
+    // Only the node table creates unmanaged gates, and it needs a backend.
+    #[cfg_attr(not(any(has_rmw, test)), allow(dead_code))]
+    /// A gate for a node that is not managed: always open.
+    pub(crate) const fn unmanaged() -> Self {
+        Self(core::sync::atomic::AtomicU8::new(Self::UNMANAGED))
+    }
+
+    /// Open (`true`) or close the gate of a managed node.
+    pub(crate) fn set_active(&self, active: bool) {
+        let v = if active { Self::ACTIVE } else { Self::INACTIVE };
+        self.0.store(v, core::sync::atomic::Ordering::Release);
+    }
+
+    /// Whether a publisher of this node may send now.
+    pub fn is_open(&self) -> bool {
+        self.0.load(core::sync::atomic::Ordering::Acquire) != Self::INACTIVE
+    }
+}
+
 /// Thin counterpart to [`LifecyclePollingNode`] for bridging the C FFI: each
 /// callback slot stores a pointer to `extern "C"` user code plus a single
 /// shared `*mut c_void` context that is passed on every invocation. The core
@@ -299,6 +334,10 @@ pub struct LifecyclePollingNodeCtx {
     /// number is a signal, and a wrap would turn it into a lie.
     #[cfg(feature = "lifecycle-services")]
     announcements_dropped: u32,
+    /// RFC-0128 D3 / phase-554 W6 -- the publish gate of the node this
+    /// machine is served on, in the executor's node table (carved, so it never
+    /// moves). `None` for a standalone machine with no node.
+    publish_gate: Option<core::ptr::NonNull<PublishGate>>,
 }
 
 // `*mut c_void` is `!Sync` + `!Send`; that's the correct posture for a
@@ -320,7 +359,33 @@ impl LifecyclePollingNodeCtx {
             announcements: heapless::Deque::new(),
             #[cfg(feature = "lifecycle-services")]
             announcements_dropped: 0,
+            publish_gate: None,
         }
+    }
+
+    /// Make `gate` follow this machine: open while the machine is `active`,
+    /// closed otherwise. Called once, when the executor creates the machine
+    /// for a node; from then on every transition writes it. Only the
+    /// executor's node machines call it, and those need `lifecycle-services`.
+    #[cfg_attr(not(feature = "lifecycle-services"), allow(dead_code))]
+    pub(crate) fn bind_publish_gate(
+        &mut self,
+        gate: core::ptr::NonNull<PublishGate>,
+    ) {
+        self.publish_gate = Some(gate);
+        self.sync_publish_gate();
+    }
+
+    fn set_publish_gate(&self, active: bool) {
+        if let Some(g) = self.publish_gate {
+            // SAFETY: see `publish_gate`; the executor that owns this machine
+            // owns the node table too.
+            unsafe { g.as_ref() }.set_active(active);
+        }
+    }
+
+    fn sync_publish_gate(&self) {
+        self.set_publish_gate(self.state == LifecycleState::Active);
     }
 
     /// Get the current lifecycle state.
@@ -403,6 +468,7 @@ impl LifecyclePollingNodeCtx {
     /// Force the state to `Finalized`. Used on fini.
     pub fn finalize(&mut self) {
         self.state = LifecycleState::Finalized;
+        self.sync_publish_gate();
     }
 
     /// Trigger a lifecycle transition.
@@ -437,6 +503,14 @@ impl LifecyclePollingNodeCtx {
             LifecycleTransition::ErrorRecovery => self.on_error,
         };
 
+        // RFC-0128 D3: the publishers are active by the time `on_activate`
+        // runs, as rclcpp's base `on_activate` activates them first, so a
+        // publish inside the callback goes out. The line after the callback
+        // closes them again if activation did not land in `active`.
+        if transition == LifecycleTransition::Activate {
+            self.set_publish_gate(true);
+        }
+
         let result = match cb {
             Some(f) => {
                 let raw = unsafe { f(self.context) };
@@ -447,6 +521,7 @@ impl LifecyclePollingNodeCtx {
 
         let start_state = self.state;
         self.state = apply_transition(self.state, transition, result);
+        self.sync_publish_gate();
 
         // REP-2002's communication interface is the five services PLUS a
         // `~/transition_event` publisher, and this is the ONE place a
