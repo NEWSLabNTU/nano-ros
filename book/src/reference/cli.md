@@ -802,11 +802,23 @@ Options:
       --exec <NAME>
           The program to run, when the image's entry builds several, as in `ros2 run <pkg> <exe>`. Omitted: the one the bringup's launch file names for the entry package, or the entry's only program
 
+      --zephyr-workspace <DIR>
+          The Zephyr workspace the implicit `nros build` of a stale image uses, as `nros build --zephyr-workspace` takes it (and resolves it: the flag, then `$NROS_ZEPHYR_WORKSPACE`, then the project's and the store's)
+
       --expect <TEXT>
           Stop with exit 0 as soon as a console line contains TEXT; exit 1 if the target ends, or `--timeout` passes, first. Given more than once, every TEXT must appear, each on some line and in any order, and the run stops on the line that completes the set
 
       --expect-regex <REGEX>
           As `--expect`, with a regular expression over one console line. It may be repeated, and mixed with `--expect`: every pattern must match
+
+      --forbid <TEXT>
+          Fail with exit 1 as soon as a console line contains TEXT, before or after the expectation is met (a crash after the success line). Repeatable: any one of them fails the run
+
+      --forbid-regex <REGEX>
+          As `--forbid`, with a regular expression over one console line. Repeatable, and mixed with `--forbid`
+
+      --settle <SECONDS>
+          Once the expectation is met, keep watching for SECONDS before stopping with exit 0: a `--forbid` line or a failing exit inside the window still fails the run, and `console.log` holds the rest of the output. `--timeout` bounds the time to the match only, so the run can take up to `--timeout` + `--settle`
 
       --timeout <SECONDS>
           Stop the target after SECONDS
@@ -883,10 +895,22 @@ Options:
           After flashing, watch the board's console on the same port
 
       --expect <TEXT>
-          With `--monitor`: stop with exit 0 once a console line contains TEXT. Repeat it to require several lines, in any order
+          Stop with exit 0 as soon as a console line contains TEXT; exit 1 if the target ends, or `--timeout` passes, first. Given more than once, every TEXT must appear, each on some line and in any order, and the run stops on the line that completes the set
 
       --expect-regex <REGEX>
-          As `--expect`, with a regular expression over one console line; may be repeated and mixed with `--expect`
+          As `--expect`, with a regular expression over one console line. It may be repeated, and mixed with `--expect`: every pattern must match
+
+      --forbid <TEXT>
+          Fail with exit 1 as soon as a console line contains TEXT, before or after the expectation is met (a crash after the success line). Repeatable: any one of them fails the run
+
+      --forbid-regex <REGEX>
+          As `--forbid`, with a regular expression over one console line. Repeatable, and mixed with `--forbid`
+
+      --settle <SECONDS>
+          Once the expectation is met, keep watching for SECONDS before stopping with exit 0: a `--forbid` line or a failing exit inside the window still fails the run, and `console.log` holds the rest of the output. `--timeout` bounds the time to the match only, so the run can take up to `--timeout` + `--settle`
+
+      --zephyr-workspace <DIR>
+          The Zephyr workspace the implicit `nros build` of a stale image uses, as `nros build --zephyr-workspace` takes it
 
       --timeout <SECONDS>
           Stop after SECONDS: the console with `--monitor`, and any wait a prepare step makes
@@ -936,10 +960,19 @@ Options:
           The serial baud rate (else the board's)
 
       --expect <TEXT>
-          Stop with exit 0 once a console line contains TEXT; exit 1 if `--timeout` passes first. Repeat it to require several lines, in any order
+          Stop with exit 0 as soon as a console line contains TEXT; exit 1 if the target ends, or `--timeout` passes, first. Given more than once, every TEXT must appear, each on some line and in any order, and the run stops on the line that completes the set
 
       --expect-regex <REGEX>
-          As `--expect`, with a regular expression over one console line; may be repeated and mixed with `--expect`
+          As `--expect`, with a regular expression over one console line. It may be repeated, and mixed with `--expect`: every pattern must match
+
+      --forbid <TEXT>
+          Fail with exit 1 as soon as a console line contains TEXT, before or after the expectation is met (a crash after the success line). Repeatable: any one of them fails the run
+
+      --forbid-regex <REGEX>
+          As `--forbid`, with a regular expression over one console line. Repeatable, and mixed with `--forbid`
+
+      --settle <SECONDS>
+          Once the expectation is met, keep watching for SECONDS before stopping with exit 0: a `--forbid` line or a failing exit inside the window still fails the run, and `console.log` holds the rest of the output. `--timeout` bounds the time to the match only, so the run can take up to `--timeout` + `--settle`
 
       --timeout <SECONDS>
           Stop after SECONDS

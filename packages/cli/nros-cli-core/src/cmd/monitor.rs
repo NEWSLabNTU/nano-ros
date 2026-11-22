@@ -39,15 +39,9 @@ pub struct Args {
     /// The serial baud rate (else the board's).
     #[arg(long)]
     pub baud: Option<u32>,
-    /// Stop with exit 0 once a console line contains TEXT; exit 1 if
-    /// `--timeout` passes first.
-    /// Repeat it to require several lines, in any order.
-    #[arg(long, value_name = "TEXT")]
-    pub expect: Vec<String>,
-    /// As `--expect`, with a regular expression over one console line; may be
-    /// repeated and mixed with `--expect`.
-    #[arg(long, value_name = "REGEX")]
-    pub expect_regex: Vec<String>,
+    /// How the console is graded (issue 2863: the flags `nros run` takes).
+    #[command(flatten)]
+    pub grade: run_exec::GradeArgs,
     /// Stop after SECONDS.
     #[arg(long, value_name = "SECONDS")]
     pub timeout: Option<f64>,
@@ -139,6 +133,8 @@ fn resolve_plan(args: &Args) -> RunPlan {
         nano_ros_path: args.nano_ros_path.clone(),
         image: args.image.clone(),
         base_paths: args.sources.base_paths.clone(),
+        // A console attaches to a running board; it builds nothing.
+        zephyr_workspace: None,
     };
     let one = match run_plan::select_target(&sel, "monitor") {
         Ok(one) => one,
@@ -204,8 +200,7 @@ pub fn run(args: Args) -> eyre::Result<()> {
     let nano_ros_root =
         crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &ws);
     let exec = ExecArgs {
-        expect: args.expect.clone(),
-        expect_regex: args.expect_regex.clone(),
+        grade: args.grade.clone(),
         timeout: args.timeout,
         // A console attaches to a board already running; it starts nothing.
         router: "none".into(),
@@ -309,7 +304,10 @@ mod tests {
         let mut plan = bare_plan(&port);
         apply_invocation(&mut plan, Some(115_200), &["status".to_string()]);
         let exec = ExecArgs {
-            expect: vec!["state: ready".into()],
+            grade: run_exec::GradeArgs {
+                expect: vec!["state: ready".into()],
+                ..Default::default()
+            },
             timeout: Some(10.0),
             router: "none".into(),
             ..ExecArgs::default()

@@ -430,6 +430,18 @@ impl Expect {
         }
     }
 
+    /// What kind of pattern it is, as the verb's flags name it: `text`
+    /// (`--expect` / `--forbid`) or `regex` (`--expect-regex` /
+    /// `--forbid-regex`); `all` for [`Expect::All`].
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Expect::Substring(_) => "text",
+            Expect::Regex(_) => "regex",
+            Expect::All(_) => "all",
+        }
+    }
+
     /// The pattern as the user wrote it; the parts of [`Expect::All`]
     /// joined with `` ` and ` ``.
     #[must_use]
@@ -443,6 +455,37 @@ impl Expect {
                 .collect::<Vec<_>>()
                 .join("` and `"),
         }
+    }
+}
+
+/// Issue 2863 -- what a session grades its console for: the expectation
+/// (`--expect` / `--expect-regex`, all of it, to succeed) and the forbidden
+/// patterns (`--forbid` / `--forbid-regex`, any ONE of which fails the run,
+/// before or after the expectation is met). Each forbidden pattern is a
+/// single [`Expect::Substring`] or [`Expect::Regex`].
+#[derive(Debug, Clone, Default)]
+pub struct Grade {
+    /// Every part must appear; `None` grades nothing for success.
+    pub expect: Option<Expect>,
+    /// The first line any of these matches ends the session as
+    /// [`Outcome::Forbidden`].
+    pub forbid: Vec<Expect>,
+}
+
+impl Grade {
+    /// Grading for `expect` alone.
+    #[must_use]
+    pub fn expecting(expect: Option<Expect>) -> Self {
+        Self {
+            expect,
+            forbid: Vec::new(),
+        }
+    }
+
+    /// Whether anything is graded at all.
+    #[must_use]
+    pub fn grades(&self) -> bool {
+        self.expect.is_some() || !self.forbid.is_empty()
     }
 }
 
@@ -462,6 +505,16 @@ pub enum Event {
     ConsoleClosed,
     /// A runner reported its link endpoint on stderr.
     Link(String),
+    /// Issue 2863 -- a console line matched a forbidden pattern (sent once,
+    /// for the first such line).
+    Forbidden {
+        /// The pattern as given.
+        pattern: String,
+        /// `text` or `regex` ([`Expect::kind`]).
+        kind: &'static str,
+        /// The line.
+        line: String,
+    },
 }
 
 /// Tee `from` (a console stream) to `echo` and `log`, byte for byte, and grade
@@ -476,7 +529,7 @@ pub fn spawn_console<R>(
     from: R,
     mut echo: Box<dyn Write + Send>,
     mut log: Option<File>,
-    expect: Option<Expect>,
+    grade: Grade,
     tx: Sender<Event>,
 ) -> JoinHandle<()>
 where
@@ -486,7 +539,8 @@ where
         let mut from = from;
         let mut buf = [0u8; 8192];
         let mut line: Vec<u8> = Vec::new();
-        let mut grading = Grading::new(expect);
+        let mut grading = Grading::new(grade.expect);
+        let mut forbid = Forbid::new(grade.forbid);
         loop {
             let n = match from.read(&mut buf) {
                 Ok(0) => break,
@@ -501,13 +555,70 @@ where
             if let Some(f) = log.as_mut() {
                 let _ = f.write_all(chunk).and_then(|()| f.flush());
             }
+            // Forbidden lines first: a chunk that completes the expectation
+            // and holds a forbidden line fails, whichever came first in it.
+            forbid.feed(chunk, &tx);
             grading.feed(chunk, &mut line, &tx);
         }
+        forbid.finish(&tx);
         if let Grading::Finishing = grading {
             let _ = tx.send(Event::Matched(line_text(&line)));
         }
         let _ = tx.send(Event::ConsoleClosed);
     })
+}
+
+/// Issue 2863 -- [`spawn_console`]'s forbidden-line watch: its own line
+/// buffer, so it keeps watching after the expectation is met. Sends
+/// [`Event::Forbidden`] for the first line any pattern matches, then stops.
+struct Forbid {
+    patterns: Vec<Expect>,
+    line: Vec<u8>,
+    done: bool,
+}
+
+impl Forbid {
+    fn new(patterns: Vec<Expect>) -> Self {
+        let done = patterns.is_empty();
+        Self {
+            patterns,
+            line: Vec::new(),
+            done,
+        }
+    }
+
+    fn check(&mut self, tx: &Sender<Event>) {
+        let text = line_text(&self.line);
+        if let Some(p) = self.patterns.iter().find(|p| p.matches(&text)) {
+            let _ = tx.send(Event::Forbidden {
+                pattern: p.pattern(),
+                kind: p.kind(),
+                line: text,
+            });
+            self.done = true;
+        }
+    }
+
+    fn feed(&mut self, chunk: &[u8], tx: &Sender<Event>) {
+        for &b in chunk {
+            if self.done {
+                return;
+            }
+            if b == b'\n' {
+                self.check(tx);
+                self.line.clear();
+            } else {
+                self.line.push(b);
+            }
+        }
+    }
+
+    /// The stream ended: its unterminated last line is a line too.
+    fn finish(&mut self, tx: &Sender<Event>) {
+        if !self.done && !self.line.is_empty() {
+            self.check(tx);
+        }
+    }
 }
 
 /// Where [`spawn_console`]'s grading stands.
@@ -634,6 +745,16 @@ pub enum Outcome {
     /// Something the session itself had to do failed (a router that could
     /// not start once the link was known).
     Failed(String),
+    /// Issue 2863 -- a console line matched a forbidden pattern
+    /// (`--forbid` / `--forbid-regex`).
+    Forbidden {
+        /// The pattern as given.
+        pattern: String,
+        /// `text` or `regex`.
+        kind: &'static str,
+        /// The line.
+        line: String,
+    },
 }
 
 impl Outcome {
@@ -656,6 +777,9 @@ impl Outcome {
             }
             Outcome::Interrupted => INTERRUPTED,
             Outcome::MemberDied { .. } | Outcome::Failed(_) => exit::RUNNER_FAILED,
+            // The target printed what it must not: a target failure, as an
+            // unmet expectation is.
+            Outcome::Forbidden { .. } => exit::TARGET_FAILED,
         }
     }
 
@@ -685,6 +809,18 @@ impl Outcome {
                 code.map_or_else(|| "signal".to_string(), |c| format!("code {c}"))
             ),
             Outcome::Failed(why) => why.clone(),
+            Outcome::Forbidden {
+                pattern,
+                kind,
+                line,
+            } => {
+                let flag = if *kind == "regex" {
+                    "--forbid-regex"
+                } else {
+                    "--forbid"
+                };
+                format!("forbidden {kind} `{pattern}` ({flag}) seen after {t:.1} s: {line}")
+            }
         }
     }
 }
@@ -701,6 +837,10 @@ pub struct Session {
     pub timeout: Option<Duration>,
     /// How long the console may keep draining after the leader exited.
     pub drain: Duration,
+    /// Issue 2863 -- `--settle`: once the expectation is met, keep watching
+    /// this long (a later forbidden line, the rest of a report) before the
+    /// session ends as matched. `--timeout` bounds the time to the match only.
+    pub settle: Option<Duration>,
 }
 
 impl Session {
@@ -713,6 +853,7 @@ impl Session {
             required: Vec::new(),
             timeout,
             drain: Duration::from_secs(2),
+            settle: None,
         }
     }
 
@@ -734,26 +875,75 @@ impl Session {
         // it matched. Once anything matched the verdict is a match; what is
         // left to decide is only how much of the line it reports.
         let mut finishing: Option<(String, Instant)> = None;
+        // Issue 2863 -- the expectation is met and `--settle` keeps watching
+        // until this instant; the line it was met on.
+        let mut settling: Option<(String, Instant)> = None;
+        let settle = self.settle.filter(|d| !d.is_zero());
+        // The expectation is met on `line`: the outcome now, or `None` when a
+        // settle window opens instead.
+        let met = |line: String, settling: &mut Option<(String, Instant)>| match settle {
+            Some(d) => {
+                *settling = Some((line, Instant::now() + d));
+                None
+            }
+            None => Some(Outcome::Matched(line)),
+        };
         loop {
             if interrupted() {
                 return Outcome::Interrupted;
             }
-            if let Some((line, at)) = &finishing
-                && (at.elapsed() >= LINE_FINISH || console_closed)
-            {
-                return Outcome::Matched(line.clone());
-            }
-            if deadline.is_some_and(|d| Instant::now() >= d) {
-                return match finishing {
-                    Some((line, _)) => Outcome::Matched(line),
-                    None => Outcome::TimedOut,
-                };
+            if let Some((line, until)) = &settling {
+                if Instant::now() >= *until {
+                    return Outcome::Matched(line.clone());
+                }
+            } else {
+                if let Some((line, at)) = &finishing
+                    && (at.elapsed() >= LINE_FINISH || console_closed)
+                {
+                    let line = line.clone();
+                    finishing = None;
+                    if let Some(o) = met(line, &mut settling) {
+                        return o;
+                    }
+                }
+                // `--timeout` bounds the time to the match, never a settle
+                // window that a match opened.
+                if settling.is_none() && deadline.is_some_and(|d| Instant::now() >= d) {
+                    match finishing.take() {
+                        Some((line, _)) => {
+                            if let Some(o) = met(line, &mut settling) {
+                                return o;
+                            }
+                        }
+                        None => return Outcome::TimedOut,
+                    }
+                }
             }
             match rx.recv_timeout(Duration::from_millis(50)) {
-                Ok(Event::Matched(line)) => return Outcome::Matched(line),
+                Ok(Event::Forbidden {
+                    pattern,
+                    kind,
+                    line,
+                }) => {
+                    return Outcome::Forbidden {
+                        pattern,
+                        kind,
+                        line,
+                    };
+                }
+                Ok(Event::Matched(line)) => {
+                    if settling.is_none() {
+                        finishing = None;
+                        if let Some(o) = met(line, &mut settling) {
+                            return o;
+                        }
+                    }
+                }
                 Ok(Event::Matching(line)) => {
-                    let at = finishing.map_or_else(Instant::now, |(_, at)| at);
-                    finishing = Some((line, at));
+                    if settling.is_none() {
+                        let at = finishing.map_or_else(Instant::now, |(_, at)| at);
+                        finishing = Some((line, at));
+                    }
                     continue;
                 }
                 Ok(Event::ConsoleClosed) => console_closed = true,
@@ -767,7 +957,8 @@ impl Session {
             }
             for name in self.required.clone() {
                 if let Some(s) = self.group.poll(&name) {
-                    if let Some((line, _)) = finishing {
+                    // The expectation was met: that verdict stands.
+                    if let Some((line, _)) = settling.take().or_else(|| finishing.take()) {
                         return Outcome::Matched(line);
                     }
                     return Outcome::MemberDied {
@@ -787,10 +978,23 @@ impl Session {
             if let Some((code, at)) = leader_exit
                 && (console_closed || at.elapsed() >= self.drain)
             {
-                // One more look for a match that raced the close.
+                // One more look for a match, or a forbidden line, that raced
+                // the close.
+                let mut late: Option<String> = None;
                 while let Ok(ev) = rx.try_recv() {
                     match ev {
-                        Event::Matched(line) => return Outcome::Matched(line),
+                        Event::Forbidden {
+                            pattern,
+                            kind,
+                            line,
+                        } => {
+                            return Outcome::Forbidden {
+                                pattern,
+                                kind,
+                                line,
+                            };
+                        }
+                        Event::Matched(line) => late = late.or(Some(line)),
                         Event::Matching(line) => {
                             let at = finishing.map_or_else(Instant::now, |(_, at)| at);
                             finishing = Some((line, at));
@@ -798,7 +1002,16 @@ impl Session {
                         _ => {}
                     }
                 }
-                if let Some((line, _)) = finishing {
+                // Issue 2863 -- the target ended inside the settle window: a
+                // clean exit keeps the match, a failing one is the verdict.
+                if let Some((line, _)) = settling {
+                    return if code == Some(0) {
+                        Outcome::Matched(line)
+                    } else {
+                        Outcome::Exited(code)
+                    };
+                }
+                if let Some(line) = late.or_else(|| finishing.map(|(l, _)| l)) {
                     return Outcome::Matched(line);
                 }
                 return Outcome::Exited(code);
@@ -829,6 +1042,10 @@ pub(crate) mod tests {
         script: &str,
         expect: Option<Expect>,
     ) -> (Session, Receiver<Event>, tempfile::TempDir) {
+        start_graded(script, Grade::expecting(expect))
+    }
+
+    fn start_graded(script: &str, grade: Grade) -> (Session, Receiver<Event>, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
         let mut group = ProcessGroup::new();
         let m = group.spawn("runner", sh(script)).unwrap();
@@ -836,7 +1053,7 @@ pub(crate) mod tests {
         let err = m.child.stderr.take().unwrap();
         let (tx, rx) = channel();
         let log = File::create(dir.path().join("console.log")).unwrap();
-        spawn_console(out, Box::new(io::sink()), Some(log), expect, tx.clone());
+        spawn_console(out, Box::new(io::sink()), Some(log), grade, tx.clone());
         let chains = group.chain_log();
         spawn_stderr(err, tx, chains);
         (
@@ -1224,5 +1441,123 @@ pub(crate) mod tests {
             }
         );
         assert_eq!(o.exit_code(false), 2);
+    }
+
+    // -- Issue 2863: --forbid and --settle --
+
+    fn graded(expect: Option<&str>, forbid: &[&str]) -> Grade {
+        Grade {
+            expect: expect.map(Expect::substring),
+            forbid: forbid.iter().map(|f| Expect::substring(f)).collect(),
+        }
+    }
+
+    /// (a) A forbidden line before the expectation ends the session at once:
+    /// no waiting for the match or the timeout.
+    #[test]
+    fn a_forbidden_line_before_the_match_fails_at_once() {
+        let _g = FLAG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (mut s, rx, _dir) = start_graded(
+            "echo 'ZEPHYR FATAL ERROR'; echo 'tests passed'; sleep 30",
+            graded(Some("tests passed"), &["FATAL"]),
+        );
+        let t = Instant::now();
+        let o = s.watch(&rx, t, |_, _| Ok(()));
+        s.group.teardown(TEARDOWN_GRACE);
+        assert!(
+            matches!(&o, Outcome::Forbidden { line, .. } if line == "ZEPHYR FATAL ERROR"),
+            "{o:?}"
+        );
+        assert_eq!(o.exit_code(true), exit::TARGET_FAILED);
+        assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+    }
+
+    /// A forbidden line after the match, inside the settle window, fails the
+    /// run; without `--settle` the run had already ended on the match.
+    #[test]
+    fn a_forbidden_line_inside_the_settle_window_fails() {
+        let _g = FLAG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (mut s, rx, _dir) = start_graded(
+            "echo 'tests passed'; sleep 0.3; echo 'ZEPHYR FATAL ERROR'; sleep 30",
+            graded(Some("tests passed"), &["FATAL"]),
+        );
+        s.settle = Some(Duration::from_secs(3));
+        let o = s.watch(&rx, Instant::now(), |_, _| Ok(()));
+        s.group.teardown(TEARDOWN_GRACE);
+        assert!(matches!(o, Outcome::Forbidden { .. }), "{o:?}");
+        assert_eq!(o.exit_code(true), exit::TARGET_FAILED);
+        assert!(
+            o.describe(None, Duration::from_secs(1))
+                .contains("forbidden text `FATAL` (--forbid)"),
+            "{}",
+            o.describe(None, Duration::from_secs(1))
+        );
+    }
+
+    /// A clean settle window ends as matched, after the window and not at the
+    /// match; `--timeout` does not cut it short.
+    #[test]
+    fn a_clean_settle_window_ends_matched_after_the_window() {
+        let _g = FLAG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (mut s, rx, _dir) = start_graded(
+            "echo 'tests passed'; sleep 30",
+            graded(Some("tests passed"), &["FATAL"]),
+        );
+        s.timeout = Some(Duration::from_millis(200));
+        s.settle = Some(Duration::from_millis(800));
+        let t = Instant::now();
+        let o = s.watch(&rx, t, |_, _| Ok(()));
+        s.group.teardown(TEARDOWN_GRACE);
+        assert_eq!(o, Outcome::Matched("tests passed".into()));
+        assert_eq!(o.exit_code(true), exit::SUCCESS);
+        assert!(
+            t.elapsed() >= Duration::from_millis(800),
+            "{:?}",
+            t.elapsed()
+        );
+    }
+
+    /// The target ending inside the window: a failing exit is the verdict, a
+    /// clean one keeps the match.
+    #[test]
+    fn a_target_that_fails_inside_the_settle_window_fails_the_run() {
+        let _g = FLAG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (code, want) in [
+            (3, Outcome::Exited(Some(3))),
+            (0, Outcome::Matched("tests passed".into())),
+        ] {
+            let (mut s, rx, _dir) = start_graded(
+                &format!("echo 'tests passed'; sleep 0.2; exit {code}"),
+                graded(Some("tests passed"), &[]),
+            );
+            s.settle = Some(Duration::from_secs(10));
+            let o = s.watch(&rx, Instant::now(), |_, _| Ok(()));
+            s.group.teardown(TEARDOWN_GRACE);
+            assert_eq!(o, want, "exit {code}");
+        }
+    }
+
+    /// `--forbid` alone: no expectation, and a forbidden line still fails.
+    #[test]
+    fn a_forbidden_line_fails_a_run_with_no_expectation() {
+        let _g = FLAG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (mut s, rx, _dir) = start_graded(
+            "echo booting; echo 'panic!'; sleep 30",
+            graded(None, &["panic"]),
+        );
+        let o = s.watch(&rx, Instant::now(), |_, _| Ok(()));
+        s.group.teardown(TEARDOWN_GRACE);
+        assert!(matches!(o, Outcome::Forbidden { .. }), "{o:?}");
+        assert_eq!(o.exit_code(false), exit::TARGET_FAILED);
     }
 }
