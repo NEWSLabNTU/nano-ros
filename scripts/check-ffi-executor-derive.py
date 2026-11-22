@@ -208,7 +208,29 @@ def rust_files(root: str) -> list[str]:
 
 
 TEST_MOD_RE = re.compile(
-    r"#\[cfg\((?:[^\]]*\b(?:test|kani)\b[^\]]*)\)\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;")
+    r"#\[cfg\(((?:[^()]|\([^()]*\))*)\)\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;")
+
+
+def cfg_is_test_only(pred: str) -> bool:
+    """True when the cfg compiles only under test or kani: `test`, `kani`, or
+    an `all(..)` with one of them as a top-level term. `any(test, feature =
+    "std")` is compiled into production with that feature, so it is not."""
+    pred = pred.strip()
+    if pred in ("test", "kani"):
+        return True
+    if pred.startswith("all(") and pred.endswith(")"):
+        terms, depth, cur = [], 0, ""
+        for ch in pred[4:-1]:
+            if ch == "," and depth == 0:
+                terms.append(cur.strip())
+                cur = ""
+                continue
+            depth += ch == "("
+            depth -= ch == ")"
+            cur += ch
+        terms.append(cur.strip())
+        return any(t in ("test", "kani") for t in terms)
+    return False
 
 
 def test_only_files(root: str, files: list[str]) -> set[str]:
@@ -218,8 +240,9 @@ def test_only_files(root: str, files: list[str]) -> set[str]:
     skip = set()
     for path in files:
         with open(os.path.join(root, path), encoding="utf8") as fh:
-            for name in TEST_MOD_RE.findall(fh.read()):
-                skip.add(os.path.join(os.path.dirname(path), name + ".rs"))
+            for pred, name in TEST_MOD_RE.findall(fh.read()):
+                if cfg_is_test_only(pred):
+                    skip.add(os.path.join(os.path.dirname(path), name + ".rs"))
     return skip
 
 
@@ -274,6 +297,13 @@ PLANTS = {
 
 def self_test() -> int:
     failures = 0
+    for pred, want in (("test", True), ("all(test, feature = \"rmw-cffi\", unix)", True),
+                       ("kani", True), ("any(test, feature = \"std\")", False),
+                       ("feature = \"test\"", False), ("not(test)", False)):
+        if cfg_is_test_only(pred) != want:
+            print(f"check-ffi-executor-derive self-test: cfg({pred}) read as "
+                  f"{'test-only' if not want else 'production'}", file=sys.stderr)
+            failures += 1
     with tempfile.TemporaryDirectory() as tmp:
         for name, line in PLANTS.items():
             for crate in CRATES:
