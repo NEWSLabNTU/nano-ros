@@ -47,6 +47,7 @@
 include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosFeatureImage.cmake")  # issue 2702
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 
 # phase-462 W6c -- `_nros_board_rx_cost_args`, the board's `[board.rx]`.
@@ -342,10 +343,7 @@ function(nros_sizing_descriptor_from_model _out_var)
 
     # Issue 2700 -- the image this configure builds, whose own `features` and
     # `node_interfaces` decide the service families the descriptor states.
-    set(_image_arg "")
-    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
-        set(_image_arg --image "${NROS_IMAGE}")
-    endif()
+    _nros_feature_image_arg(_image_arg)
 
     execute_process(
         COMMAND "${_nsw_CLI}" dev image sizing-descriptor
@@ -611,10 +609,7 @@ function(_nros_sizing_descriptor_runtime _out_var)
 
     # Issue 2700 -- every model read for the image this configure builds, as
     # the entity-inventory fragment over the same list reads them.
-    set(_image_arg "")
-    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
-        set(_image_arg --image "${NROS_IMAGE}")
-    endif()
+    _nros_feature_image_arg(_image_arg)
 
     set(_args ${_model_args} ${_entry_args} --build-dir "${_build_dir}"
         --entry shared-runtime --road "a multi-entry cmake configure"

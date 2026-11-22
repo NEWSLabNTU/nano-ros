@@ -50,6 +50,7 @@ set(_NROS_ENTRY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "nano_ros_entry m
 # (it predates this module). The include is guarded inside that file,
 # so re-including is a no-op when callers already loaded it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")  # nros_reconfigure_remedy
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosFeatureImage.cmake")  # issue 2702
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLinkAppDependency.cmake")  # phase-518
@@ -1563,9 +1564,8 @@ function(_nros_entry_invoke_codegen)
     # Issue 2700 -- the image this configure builds: its own `features` and
     # `node_interfaces` decide which runtime services the entry registers, the
     # list its sizing descriptor states too.
-    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
-        list(APPEND _cli_args --image "${NROS_IMAGE}")
-    endif()
+    _nros_feature_image_arg(_nrx_image_arg)
+    list(APPEND _cli_args ${_nrx_image_arg})
     # Issue 1508 - a DERIVED sched task table is allocated out of the priority pool
     # the IMAGE's Kconfig resolves (RFC-0079 section 4.1), not the Kconfig
     # defaults. On a Zephyr build `find_package(Zephyr)` has already run

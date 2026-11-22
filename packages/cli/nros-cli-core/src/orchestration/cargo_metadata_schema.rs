@@ -1686,6 +1686,27 @@ impl SystemToml {
     #[must_use]
     pub fn with_image_features(&self, id: Option<&str>) -> std::borrow::Cow<'_, Self> {
         let img = id.and_then(|i| self.image_for(i));
+        let Some((features, switch)) = self.image_features_over(img.as_ref()) else {
+            return std::borrow::Cow::Borrowed(self);
+        };
+        let mut owned = self.clone();
+        owned.system.features = features;
+        owned.system.node_interfaces = switch;
+        std::borrow::Cow::Owned(owned)
+    }
+
+    /// The capability axes and `node_interfaces` switch `img` (already over
+    /// `[image_defaults]`) is built with, or `None` when they are the
+    /// system's own: the one composition [`Self::with_image_features`] and a
+    /// cmake configure's key (issue 2702) share.
+    #[must_use]
+    pub fn image_features_over(
+        &self,
+        img: Option<&ImageBlock>,
+    ) -> Option<(
+        Vec<String>,
+        Option<nros_orchestration_ir::node_interfaces::NodeInterfaces>,
+    )> {
         // phase-556 W13 -- the image's `node_interfaces` (already over
         // `[image_defaults]`) wins over the system's.
         let switch = nros_orchestration_ir::node_interfaces::resolve(
@@ -1712,16 +1733,13 @@ impl SystemToml {
         // again (`effective_features`) changes nothing.
         let features = nros_orchestration_ir::node_interfaces::image_features(
             &self.system.features,
-            &img.map(|img| img.features).unwrap_or_default(),
+            img.map(|img| img.features.as_slice()).unwrap_or_default(),
             switch,
         );
         if features == self.system.features && switch == self.system.node_interfaces {
-            return std::borrow::Cow::Borrowed(self);
+            return None;
         }
-        let mut owned = self.clone();
-        owned.system.features = features;
-        owned.system.node_interfaces = switch;
-        std::borrow::Cow::Owned(owned)
+        Some((features, switch))
     }
 
     /// The RMW backend name for `target`: the CLI `--rmw` flag, then
