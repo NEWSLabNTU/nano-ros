@@ -3401,7 +3401,7 @@ configdefault MAIN_STACK_SIZE
     # generic Rust default states its own, Rust-only (phase-557 W10;
     # `nros-stack-floor.py --board-floor <board>`, which
     # check-zephyr-rust-main-stack holds this line to).
-    default 33288 if NROS_RUST_API && !ARCH_POSIX && BOARD_NUCLEO_F767ZI
+    default 33368 if NROS_RUST_API && !ARCH_POSIX && BOARD_NUCLEO_F767ZI
     default 32768 if NROS_RUST_API && !ARCH_POSIX
     default 16384
 
@@ -3458,7 +3458,7 @@ configdefault MAIN_STACK_SIZE
     # generic Rust default states its own, Rust-only (phase-557 W10;
     # `nros-stack-floor.py --board-floor <board>`, which
     # check-zephyr-rust-main-stack holds this line to).
-    default 33288 if NROS_RUST_API && !ARCH_POSIX && BOARD_NUCLEO_F767ZI
+    default 33368 if NROS_RUST_API && !ARCH_POSIX && BOARD_NUCLEO_F767ZI
     default 32768 if NROS_RUST_API && !ARCH_POSIX
     default 16384
 

@@ -1094,9 +1094,11 @@ mod tests {
     fn a_rows_recorded_floor_is_the_check_formula() {
         let t = std::fs::read_to_string(repo_root().join("config/stack-floors.toml")).unwrap();
         let k = |s: &str| format!("{s}@nucleo-f767zi-zephyr");
+        // Issue 2783: an upper-bound walk, so the stamp is the measured peak
+        // (30,328 B) plus the margin.
         assert_eq!(
             recorded_floor(&t, &k("action-server/rust/zenoh")),
-            Some(77728)
+            Some(33368)
         );
         // Issue 2783: both walks are upper bounds (`upper_bound`), so these
         // stamp their measured peak (28,888 B and 11,876 B) plus the margin.
@@ -1200,8 +1202,8 @@ mod tests {
         let b = "nucleo-f767zi-zephyr";
         // phase-557 W10: nucleo's measured Rust floor is above the generic
         // Rust default, so the module states a Rust-only line for it...
-        assert_eq!(zephyr_main_stack_default(&r, b, true, "zenoh"), Some(33288));
-        assert_eq!(zephyr_main_stack_default(&r, b, true, "xrce"), Some(33288));
+        assert_eq!(zephyr_main_stack_default(&r, b, true, "zenoh"), Some(33368));
+        assert_eq!(zephyr_main_stack_default(&r, b, true, "xrce"), Some(33368));
         // ...which never reaches its C image...
         assert_eq!(
             zephyr_main_stack_default(&r, b, false, "zenoh"),
@@ -1235,7 +1237,6 @@ mod tests {
             .flatten()
             .collect();
         assert!(!rows.is_empty());
-        let mut raised = 0;
         for row in &rows {
             let key = row["image"].as_str().unwrap();
             // A template key is `<template>/<lang>/<rmw>@<board>`; a
@@ -1261,7 +1262,6 @@ mod tests {
                 stack >= default,
                 "{key}: {stack} B lowers the default {default} B"
             );
-            raised += usize::from(got.is_some());
         }
         assert_eq!(
             template_main_stack(
@@ -1272,11 +1272,18 @@ mod tests {
                 "zenoh",
                 "nucleo-f767zi-zephyr"
             ),
-            // issue 2402: the bind walk's walk_floor, 69,272 B, plus the 2 % drift
-            // tolerance (issue 2400 Ruling (C)), plus the 10 % margin
-            Some(77728)
+            // issue 2783: the walk is an upper bound, so the floor is the
+            // measured peak, 30,328 B, plus the 10 % margin: 33,368 B, which
+            // is the board's own Rust main-stack default, so no raise.
+            None
         );
-        assert!(raised >= 1);
+        assert_eq!(
+            zephyr_main_stack_default(&r, "nucleo-f767zi-zephyr", true, "zenoh"),
+            recorded_floor(&t, "action-server/rust/zenoh@nucleo-f767zi-zephyr")
+        );
+        // Since issue 2783 every measured template fits its board's default,
+        // so none is raised; the raise itself is
+        // `a_raised_template_states_its_stack_through_os_config`.
         // not a Zephyr board: the knob is not CONFIG_MAIN_STACK_SIZE
         assert_eq!(
             template_main_stack(
@@ -1302,14 +1309,14 @@ mod tests {
             rmw: "zenoh",
             ros_edition: "humble",
             locator: None,
-            main_stack: Some(33288),
+            main_stack: Some(33368),
         })
         .unwrap();
         let sys = std::fs::read_to_string(bringup.join("system.toml")).unwrap();
         assert!(sys.contains("os_config = [\"stack.conf\"]"), "{sys}");
         let conf = std::fs::read_to_string(bringup.join("stack.conf")).unwrap();
         assert!(
-            conf.lines().any(|l| l == "CONFIG_MAIN_STACK_SIZE=33288"),
+            conf.lines().any(|l| l == "CONFIG_MAIN_STACK_SIZE=33368"),
             "{conf}"
         );
         // both readers still parse it

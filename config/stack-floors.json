@@ -32,8 +32,8 @@
     {
       "image": "action-server/rust/zenoh@nucleo-f767zi-zephyr",
       "issue": "2402",
-      "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, LTO build; static from rust_main; static re-walked under the pinned toolchain (issue 2546); static re-walked 2026-11-15 by the drift check, callee order masking the project name (phase-557 W8); static re-walked 2026-11-15 with the walk's callee order read from inlined v0 back-references, which no longer move with the checkout path (phase-557 W8 follow-up)",
-      "peak": 30256,
+      "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, LTO build; static from rust_main; static re-walked under the pinned toolchain (issue 2546); static re-walked 2026-11-15 by the drift check, callee order masking the project name (phase-557 W8); static re-walked 2026-11-15 with the walk's callee order read from inlined v0 back-references, which no longer move with the checkout path (phase-557 W8 follow-up); 2026-11-22, with the image linking again after its heap default dropped to 112 KiB: peak re-measured on the Renode twin (30,256 to 30,328 B), static re-walked (69,264 to 111,136 B, through the type-bound `NodeImpl::___declare_entity -> zephyr_thread_wrapper` edge, so `upper_bound`; walk_floor retired, below the new static)",
+      "peak": 30328,
       "rmw": "zenoh",
       "role": "OPEN",
       "shape": {
@@ -44,10 +44,9 @@
         "NROS_MAX_QUERYABLES": 4,
         "NROS_MAX_SUBSCRIBERS": 0
       },
-      "static": 69264,
+      "static": 111136,
       "target": "thumbv7em-none-eabi",
-      "walk_floor": 69272,
-      "walk_floor_reason": "codegen differs by checkout path: install_in_with_launch_params<FibonacciServer> is a 7,728 B frame in one checkout and 7,736 B in another of one commit, so this is the larger walk, 2026-11-15"
+      "upper_bound": "_RNvXs9_NtC4nros4nodeNtNtNtC9nros_node8executor4node4NodeNtB5_15DeclarativeNode16___declare_entity -> zephyr_thread_wrapper (type)"
     },
     {
       "image": "talker/rust/zenoh@nucleo-f767zi-zephyr",

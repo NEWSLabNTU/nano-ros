@@ -3101,6 +3101,19 @@ def static_drift(row: dict, walk: int, rise_pct: int) -> tuple[str, list[str]]:
     key = f"{row['image']} {row['role']}"
     rec = int(row["static"])
     basis = max(rec, int(row.get("walk_floor") or 0))
+    # Issue 2783: a row whose walk is an upper bound (`upper_bound`) is sized
+    # from its `peak`, so its walk sizes nothing and a rise is not a failure.
+    # A walk below the peak still is: a walk that binds every indirect call
+    # must cover every path the image was seen to run.
+    if row.get("upper_bound") and isinstance(row.get("peak"), int):
+        if walk < row["peak"]:
+            return "fail", [f"  FAIL: {key}: the walk ({walk} B) is BELOW the {row['peak']} B "
+                            "this image was observed to use: the walk missed a path (a walker "
+                            "defect, not a stack to raise)"]
+        if walk * 100 > basis * (100 + rise_pct):
+            return "note", [f"  note: {key}: the walk rose to {walk} B (recorded max {basis} B), "
+                            f"through `{row['upper_bound']}`: an upper bound, so it sizes "
+                            f"nothing; the row's stack is its peak {row['peak']} B + the margin"]
     if walk == rec:
         return "ok", [f"  OK: {key}: the walk is {walk} B, as recorded"]
     delta = walk - rec
@@ -5239,6 +5252,15 @@ def self_test() -> int:
     check("static drift: a failure names the row and the re-measure commands",
           "t/rust/zenoh@b OPEN" in dl[0] and any("--sync-json" in x for x in dl)
           and any("--validate-table" in x for x in dl))
+    # Issue 2783: an upper-bound row is sized from its peak, so a rise is a
+    # note, and only a walk below the peak fails.
+    urow = dict(drow, peak=30000, upper_bound="a -> b (type)")
+    check("static drift: an upper-bound row's rise sizes nothing, a note",
+          static_drift(urow, 157600, 2)[0] == "note")
+    check("static drift: an upper-bound row still fails a walk below its peak",
+          static_drift(urow, 29999, 2)[0] == "fail")
+    check("static drift: a row without `upper_bound` still fails the same rise",
+          static_drift(dict(drow, peak=30000), 157600, 2)[0] == "fail")
     # The recorded max is max(static, walk_floor): the tolerance is over it.
     wrow = dict(drow, walk_floor=101000)
     check("static drift: a rise within walk_floor + tolerance is a note naming both numbers",
