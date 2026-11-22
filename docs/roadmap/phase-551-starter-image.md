@@ -153,11 +153,13 @@ push were skipped, and the tag's digest is unchanged.
 **`0.6.0-nros11` (2026-11-16).** The release published, and its `starter`
 image failed before any build: the context writer read the Zephyr starter's
 step 34 as one block, and #3989 had split it into three. Issue
-[2635](../issues/2635-starter-image-context-unchecked-before-publish.md):
+[2635](../issues/archived/2635-starter-image-context-unchecked-before-publish.md):
 the writer now joins a step's blocks the probe's way, `just check
 starter-image-context` writes the context on every PR, the release dry run
 writes it before publishing, and `starter-image.yml` takes
-`scripts_from_main` to build a released tag with main's writer.
+`scripts_from_main` to build a released tag with main's writer. Both
+`0.6.0-nros11` images were rebuilt that way, and the daily `image` probe
+moved `latest` to `0.6.0-nros11` on 2026-11-21. Issue 2635 is resolved.
 
 ### W5 — The `image` probe track gates `latest`
 
