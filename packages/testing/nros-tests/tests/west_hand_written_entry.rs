@@ -99,3 +99,65 @@ fn an_owned_west_entry_gets_its_deploy_and_workspace_modules() -> nros_tests::Te
     );
     Ok(())
 }
+
+/// Issue 2862 -- an OWNED C west entry with no model is sized by the census of
+/// its own program, as the cmake road's owned entry is (issue 2433): the
+/// configure's entity inventory is the census's (1 publisher, 1 timer), its
+/// descriptor is the one named to cargo, and its message bounds are seeded.
+fn assert_census_sized(row: &str, bringup_rel: &str) -> nros_tests::TestResult<()> {
+    let cache = nros_tests::fixtures::require_west_fixture(row, "CMakeCache.txt")?;
+    let build_dir = cache.parent().expect("west fixture build dir");
+    let inventory = read(&build_dir.join("nros/entity_inventory.cmake"));
+    for want in [
+        "set(NROS_ENTITY_INVENTORY_STATUS \"derived\")",
+        "set(NROS_ENTITY_COUNT_PUBLISHER 1)",
+        "set(NROS_ENTITY_COUNT_TIMER 1)",
+    ] {
+        assert!(
+            inventory.lines().any(|l| l == want),
+            "{row}: the entity inventory is not the census's ({want} missing)"
+        );
+    }
+    assert_eq!(
+        read(&build_dir.join("nros/sizing/zephyr_c_talker.toml")),
+        read(&build_dir.join("nros/sizing/west-cargo.toml")),
+        "{row}: cargo is not named the census descriptor"
+    );
+    let ws = nros_tests::project_root()
+        .join("packages/testing/nros-tests/fixtures")
+        .join(row);
+    assert!(
+        ws.join("build/nros/census/owned/talker_bringup/zephyr.census.json")
+            .is_file(),
+        "{row}: the census is not at the workspace root"
+    );
+    assert!(
+        !ws.join("src/build").exists(),
+        "{row}: build output landed under src/ ({bringup_rel} placed at the wrong root)"
+    );
+    assert_held(
+        build_dir,
+        &ws.join("build/talker_bringup__zephyr/resolved-message-bounds.cmake"),
+        "message_bound_knobs.cmake",
+        "message-bound sizes of an owned entry (issue 2862)",
+    );
+    Ok(())
+}
+
+/// The bringup at `src/talker_bringup`. On main the configure stopped on its
+/// sizing-descriptor promise: the module named a descriptor nothing wrote.
+#[test]
+fn an_owned_west_entry_is_sized_by_its_census() -> nros_tests::TestResult<()> {
+    assert_census_sized("west_owned_entry_census_flat", "src/talker_bringup")
+}
+
+/// The bringup nested at `src/test_bringup/talker_bringup`. On main the hook
+/// skipped `nros configure` ("not in a `<workspace>/src/` directory") and
+/// every pool kept its default.
+#[test]
+fn a_nested_bringup_s_owned_west_entry_is_sized_by_its_census() -> nros_tests::TestResult<()> {
+    assert_census_sized(
+        "west_owned_entry_census_nested",
+        "src/test_bringup/talker_bringup",
+    )
+}

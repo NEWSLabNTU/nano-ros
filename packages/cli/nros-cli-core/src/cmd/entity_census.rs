@@ -1374,6 +1374,19 @@ fn refuse_if_moved_when(on: bool, before: &Option<String>, digest: &Path) -> Res
 /// "census sized by the contract it checks", one road over).
 pub(crate) const LEAF_CENSUS_HOST_ENV: &str = "NROS_LEAF_CENSUS_HOST";
 
+/// Issue 2862 -- the name a bringup is keyed on (its census path, the
+/// `<bringup>:<image>` qualifier): its package's `<name>`, else its
+/// directory's. The two differ for a bringup laid out as
+/// `src/test_bringup/unit_test` holding `unit_test_bringup`.
+pub(crate) fn bringup_key(bringup_dir: &Path) -> String {
+    nros_pkg_index::read_package_xml_name(&bringup_dir.join("package.xml")).unwrap_or_else(|_| {
+        bringup_dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    })
+}
+
 /// Issue 2433 -- whether an OWNED C/C++ entry is sized by its census: its
 /// package builds a program with `nano_ros_add_executable`, which a host build
 /// can run once. A typed carrier (`nros_components_register_node(... TYPED

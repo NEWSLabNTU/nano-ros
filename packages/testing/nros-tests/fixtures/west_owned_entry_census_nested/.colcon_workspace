@@ -1,0 +1,7 @@
+# This directory is a workspace ROOT (pkg-index marker #2).
+#
+# A workspace has no root build file (RFC-0098 D9): no `Cargo.toml`, no
+# `CMakeLists.txt`. `nros build` generates each image's entry under
+# `build/<coord>/`, and `nros::main!` finds this workspace's packages by
+# walking up to THIS marker. Without it the walk falls through to `.git/` and
+# indexes every package in the enclosing repository.

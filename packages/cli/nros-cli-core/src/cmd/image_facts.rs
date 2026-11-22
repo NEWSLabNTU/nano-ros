@@ -65,6 +65,9 @@ pub struct Args {
     ///
     /// cmake passes the APPLICATION directory, which is a package inside the
     /// workspace rather than its root, so the root is walked up to from here.
+    /// The Zephyr module hook passes the BRINGUP directory: the root is then
+    /// the one `model_location::workspace_root` places it in, and a bare image
+    /// id is that bringup's.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
 
@@ -126,27 +129,81 @@ pub fn workspace_root_from(start: &std::path::Path) -> Option<PathBuf> {
     None
 }
 
+/// The workspace a facts query answers for, from where it was asked.
+///
+/// Issue 2862 -- the root is `model_location::workspace_root`, the one rule
+/// the model readers and `nros build`'s generated files place a bringup by
+/// (the nearest `.colcon_workspace` whose `src/` holds `start`, else the
+/// nearest `src/` outside a package). A BRINGUP that rule places nowhere is
+/// refused with its reason: nothing else may guess a root for it. Only a
+/// start under no `src/` at all -- the workspace root itself, or a build
+/// directory below it -- is found by [`workspace_root_from`].
+pub fn facts_root(start: &std::path::Path) -> Result<PathBuf, String> {
+    use nros_orchestration_ir::{leaf_system, model_location};
+    let abs = start.canonicalize().unwrap_or_else(|_| start.to_path_buf());
+    match model_location::workspace_root(&abs) {
+        Ok(ws) => Ok(ws),
+        Err(why) if is_bringup(&abs) && !leaf_system::is_package_dir(&abs) => Err(why),
+        Err(_) => workspace_root_from(&abs).ok_or_else(|| {
+            format!(
+                "{} is not inside a nano-ros workspace (no package carrying \
+                 `system.toml` above it)",
+                start.display()
+            )
+        }),
+    }
+}
+
+fn is_bringup(dir: &std::path::Path) -> bool {
+    dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+        .is_file()
+}
+
+/// The image the query names: a bare id asked from a bringup is THAT
+/// bringup's (`<bringup>:<id>`), since two bringups of one workspace may name
+/// the same id.
+fn qualified_image(image: Option<&str>, start: &std::path::Path) -> Option<String> {
+    let image = image?;
+    let abs = start.canonicalize().unwrap_or_else(|_| start.to_path_buf());
+    if image.contains(':') || !is_bringup(&abs) {
+        return Some(image.to_string());
+    }
+    Some(format!(
+        "{}:{image}",
+        crate::cmd::entity_census::bringup_key(&abs)
+    ))
+}
+
 pub fn run(args: Args) -> Result<()> {
     let start = match &args.workspace {
         Some(w) => w.clone(),
         None => std::env::current_dir()?,
     };
 
-    let Some(root) = workspace_root_from(&start) else {
-        if args.if_present {
-            return Ok(());
+    let root = match facts_root(&start) {
+        Ok(r) => r,
+        Err(why) => {
+            if args.if_present {
+                // A bringup placed nowhere is a reason worth showing; a plain
+                // Zephyr application outside any workspace is the common,
+                // silent case.
+                if is_bringup(&start) && !nros_orchestration_ir::leaf_system::is_package_dir(&start)
+                {
+                    eprintln!("{why}");
+                }
+                return Ok(());
+            }
+            bail!(
+                "{why}.\n  A plain Zephyr application need not be in one -- pass \
+                 --if-present to make that a no-op rather than an error."
+            );
         }
-        bail!(
-            "{} is not inside a nano-ros workspace (no package carrying \
-             `system.toml` above it).\n  \
-             A plain Zephyr application need not be in one — pass --if-present \
-             to make that a no-op rather than an error.",
-            start.display()
-        );
     };
 
     let build_args = crate::cmd::build::Args {
-        images: args.image.clone().into_iter().collect(),
+        images: qualified_image(args.image.as_deref(), &start)
+            .into_iter()
+            .collect(),
         workspace: Some(root.clone()),
         nano_ros_path: args.nano_ros_path.clone(),
         // A query resolves; it never runs west, so no Zephyr is looked for.
@@ -415,6 +472,47 @@ mod tests {
         std::fs::create_dir_all(&entry).unwrap();
 
         assert_eq!(workspace_root_from(&entry).as_deref(), Some(ws.as_path()));
+    }
+
+    /// Issue 2862 -- the facts' workspace is `model_location::workspace_root`:
+    /// a bringup nested below `src/` is placed at the workspace that holds
+    /// `src/`, a bare image id asked from it is that bringup's, and a bringup
+    /// in no workspace is refused with the rule's reason rather than placed by
+    /// a walk.
+    #[test]
+    fn the_facts_root_of_a_bringup_is_the_one_workspace_rule() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("ws");
+        let nested = ws.join("src/test_bringup/unit_bringup");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("system.toml"), "[system]\n").unwrap();
+        std::fs::write(
+            nested.join("package.xml"),
+            "<package><name>unit_test_bringup</name></package>",
+        )
+        .unwrap();
+        let ws = ws.canonicalize().unwrap();
+        assert_eq!(facts_root(&nested), Ok(ws.clone()));
+        // The walk alone finds no root: the bringup is not a child of src/.
+        assert_eq!(workspace_root_from(&nested), None);
+        assert_eq!(
+            qualified_image(Some("fvp"), &nested).as_deref(),
+            Some("unit_test_bringup:fvp")
+        );
+        assert_eq!(
+            qualified_image(Some("b:fvp"), &nested).as_deref(),
+            Some("b:fvp")
+        );
+        // From the root itself (no `src/` above it) the walk still answers.
+        std::fs::create_dir_all(ws.join("src/flat_bringup")).unwrap();
+        std::fs::write(ws.join("src/flat_bringup/system.toml"), "[system]\n").unwrap();
+        assert_eq!(facts_root(&ws), Ok(ws.clone()));
+
+        let flat = tmp.path().join("flat/my_bringup");
+        std::fs::create_dir_all(&flat).unwrap();
+        std::fs::write(flat.join("system.toml"), "[system]\n").unwrap();
+        let why = facts_root(&flat).unwrap_err();
+        assert!(why.contains("is in no workspace"), "{why}");
     }
 
     /// A bringup is what makes a directory a workspace — NOT a `Cargo.toml`.

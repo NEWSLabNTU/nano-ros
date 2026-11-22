@@ -1011,7 +1011,60 @@ fn leaf_west_seed(
         ));
     };
     let entity = inv.to_cmake();
-    let xml = leaf.join("package.xml");
+    seed_over_package_tables(
+        resolved_dir,
+        leaf,
+        &[leaf.to_path_buf()],
+        &entity,
+        ros_edition,
+        crate::cmd::configure::interface_search_path_for(leaf).as_deref(),
+    )
+}
+
+/// Issue 2862 -- the message-bound seed of an OWNED west entry sized by its
+/// census: the leaf road's ([`write_leaf_west_seed`]) over the entry's own
+/// `package.xml` tables, its package closure `dirs`, and the census's entity
+/// fragment `entity` (the text the module hook records). An owned entry
+/// registers no component, so the metadata probe generated no table for it.
+pub fn write_owned_west_seed(
+    resolved_dir: &std::path::Path,
+    entry: &std::path::Path,
+    dirs: &[std::path::PathBuf],
+    entity: &str,
+    ros_edition: Option<&str>,
+    interface_search: Option<&std::ffi::OsStr>,
+) -> Result<std::path::PathBuf, crate::resolve::NotDerived> {
+    let out = seed_over_package_tables(
+        resolved_dir,
+        entry,
+        dirs,
+        entity,
+        ros_edition,
+        interface_search,
+    );
+    if out.is_err() {
+        for name in [
+            RESOLVED_MESSAGE_BOUNDS_NAME,
+            RESOLVED_MESSAGE_BOUNDS_INPUTS_NAME,
+        ] {
+            let _ = std::fs::remove_file(resolved_dir.join(name));
+        }
+    }
+    out
+}
+
+/// Generate `package`'s bound tables (the closure its `package.xml` names, the
+/// one the configure prices) and seed over them: the shared half of the leaf
+/// and owned-entry seeds.
+fn seed_over_package_tables(
+    resolved_dir: &std::path::Path,
+    package: &std::path::Path,
+    dirs: &[std::path::PathBuf],
+    entity: &str,
+    ros_edition: Option<&str>,
+    interface_search: Option<&std::ffi::OsStr>,
+) -> Result<std::path::PathBuf, crate::resolve::NotDerived> {
+    let xml = package.join("package.xml");
     if !declares_a_dependency(&xml) {
         return Err(crate::resolve::NotDerived::NothingDeclared(format!(
             "{} declares no interface dependency",
@@ -1028,6 +1081,9 @@ fn leaf_west_seed(
         verbose: false,
         ros_edition: edition,
         codegen_config: None,
+        // Issue 2862 -- the workspace's own interface packages, as the
+        // configure finds them.
+        interface_search_path: interface_search.map(|p| p.to_string_lossy().into_owned()),
     })
     .map_err(|e| format!("generating the bound tables for {}: {e:#}", xml.display()))?;
     // A C/C++ leaf: the cmake producer's rule (its closure is its
@@ -1035,9 +1091,9 @@ fn leaf_west_seed(
     write_west_seed_over(
         resolved_dir,
         &codegen,
-        &[leaf.to_path_buf()],
-        Some(&entity),
-        crate::cmd::configure::interface_search_path_for(leaf).as_deref(),
+        dirs,
+        Some(entity),
+        interface_search,
         SeedBasis::ClosureAllowed,
     )
 }

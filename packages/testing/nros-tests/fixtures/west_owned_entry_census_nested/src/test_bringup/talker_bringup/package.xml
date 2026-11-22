@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>talker_bringup</name>
+  <version>0.1.0</version>
+  <description>Issue 2862 fixture: the bringup of an owned C west entry sized by its census.</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>zephyr_c_talker</exec_depend>
+  <export><build_type>nros_cmake</build_type></export>
+</package>

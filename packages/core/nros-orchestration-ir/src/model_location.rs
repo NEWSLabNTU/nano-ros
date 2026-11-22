@@ -110,8 +110,10 @@ pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
     // in-tree flows (west entry crates have neither OUT_DIR nor
     // NROS_MODEL_DIR at macro expansion). A bringup outside that layout
     // simply contributes no candidate here.
-    if let (Some(b), Some(ws_root)) = (&bringup, bringup_dir.parent().and_then(|src| src.parent()))
-    {
+    //
+    // Issue 2862 -- `<ws>` is [`workspace_root`], not the grandparent: a
+    // bringup nested below `src/` (`<ws>/src/test_bringup/<b>`) is legal.
+    if let (Some(b), Ok(ws_root)) = (&bringup, workspace_root(bringup_dir)) {
         out.push(
             ws_root
                 .join("build")
@@ -164,8 +166,58 @@ pub fn generated_launch_root(bringup_dir: &Path) -> Option<PathBuf> {
         return None;
     }
     let name = bringup_dir.file_name()?;
-    let ws_root = bringup_dir.parent()?.parent()?;
+    let ws_root = workspace_root(bringup_dir).ok()?;
     Some(ws_root.join("build").join("nros").join("launch").join(name))
+}
+
+/// The marker file that says "this directory is a workspace root"
+/// (`nros new` writes it; `nros_pkg_index::detect_workspace_root` reads it).
+pub const WORKSPACE_MARKER: &str = ".colcon_workspace";
+
+// Issue 2862.
+/// The workspace a (non-leaf) bringup belongs to. The one
+/// answer every rule that places a bringup's build output asks
+/// ([`generated_launch_root`], the build-output rung of
+/// [`model_search_paths`]), and the image facts answer from a bringup
+/// (`nros dev image facts`, which the Zephyr module hook asks).
+///
+/// 1. The nearest ancestor holding [`WORKSPACE_MARKER`] whose `src/` holds
+///    the bringup (at any depth): the structural statement.
+/// 2. Else the nearest ancestor named `src` whose parent is not itself a
+///    package (no `package.xml`), as colcon finds packages at any depth under
+///    `<ws>/src/`: `<ws>/src/<bringup>` and `<ws>/src/test_bringup/<bringup>`
+///    both answer `<ws>`, and a `src/` inside a package is passed over.
+///
+/// A single-package leaf is its own root and never asks (see
+/// [`generated_launch_dir`]).
+///
+/// # Errors
+///
+/// Neither rule applies: the bringup is in no workspace this can name, and the
+/// reason says how to put it in one. There is no fallback to the grandparent:
+/// that silently put a nested bringup's build output under `<ws>/src/build/`.
+pub fn workspace_root(bringup_dir: &Path) -> Result<PathBuf, String> {
+    let bringup_dir = lexical(bringup_dir);
+    let ancestors = || bringup_dir.ancestors().skip(1);
+    if let Some(ws) = ancestors()
+        .find(|a| a.join(WORKSPACE_MARKER).is_file() && bringup_dir.starts_with(a.join("src")))
+    {
+        return Ok(ws.to_path_buf());
+    }
+    if let Some(ws) = ancestors()
+        .filter(|a| a.file_name().is_some_and(|n| n == "src"))
+        .filter_map(Path::parent)
+        .find(|ws| !ws.join("package.xml").is_file())
+    {
+        return Ok(ws.to_path_buf());
+    }
+    Err(format!(
+        "the bringup {} is in no workspace: no ancestor holds `{WORKSPACE_MARKER}` with the \
+         bringup under its `src/`, and no ancestor `src/` sits outside a package. Put the \
+         bringup under `<workspace>/src/` (at any depth), or add `{WORKSPACE_MARKER}` at the \
+         workspace root",
+        bringup_dir.display()
+    ))
 }
 
 /// Where the generated launch file of `bringup_dir` lives:
@@ -941,6 +993,69 @@ fn is_fresh(path: &Path, inputs: &[PathBuf]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2862 -- the workspace a bringup belongs to, every rung. On main
+    /// the rule was "the grandparent", so the nested bringup answered
+    /// `<ws>/src` and its launch and model were looked for under
+    /// `<ws>/src/build/nros/`.
+    #[test]
+    fn the_workspace_root_of_a_bringup_is_found_by_structure() {
+        let dir = std::env::temp_dir().join(format!("nros-ws-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let t = dir.as_path();
+        let mk = |rel: &str| std::fs::create_dir_all(t.join(rel)).unwrap();
+        let touch = |rel: &str| std::fs::write(t.join(rel), "").unwrap();
+        // A conventional workspace, and one nested bringup in it.
+        mk("ws/src/demo_bringup");
+        mk("ws/src/test_bringup/unit_test");
+        // A `src/` inside a package is not the workspace's.
+        mk("ws/src/pkg/src/inner_bringup");
+        touch("ws/src/pkg/package.xml");
+        // The marker wins over a nearer `src/`.
+        mk("marked/src/group/src/b");
+        touch("marked/.colcon_workspace");
+        // A marker whose `src/` does not hold the bringup is not its root.
+        mk("decoy/other/src/b");
+        touch("decoy/.colcon_workspace");
+        // A flat layout: no `src/`, no marker.
+        mk("flat/demo_bringup");
+        let cases: [(&str, Option<&str>); 7] = [
+            ("ws/src/demo_bringup", Some("ws")),
+            ("ws/src/test_bringup/unit_test", Some("ws")),
+            ("ws/src/test_bringup/../test_bringup/unit_test", Some("ws")),
+            ("ws/src/pkg/src/inner_bringup", Some("ws")),
+            ("marked/src/group/src/b", Some("marked")),
+            ("decoy/other/src/b", Some("decoy/other")),
+            ("flat/demo_bringup", None),
+        ];
+        for (rel, want) in cases {
+            let got = workspace_root(&t.join(rel));
+            match want {
+                Some(w) => assert_eq!(got.as_deref(), Ok(t.join(w).as_path()), "{rel}"),
+                None => {
+                    let e = got.expect_err(rel);
+                    assert!(e.contains(".colcon_workspace") && e.contains("src/"), "{e}");
+                }
+            }
+        }
+        // The rules that place build output ask it.
+        assert_eq!(
+            generated_launch_root(&t.join("ws/src/test_bringup/unit_test")),
+            Some(t.join("ws/build/nros/launch/unit_test"))
+        );
+        assert_eq!(generated_launch_root(&t.join("flat/demo_bringup")), None);
+        let paths = model_search_paths(&t.join("ws/src/test_bringup/unit_test"), "config/m.yaml");
+        assert!(
+            paths.contains(&t.join("ws/build/nros/models/unit_test/m.yaml")),
+            "{paths:?}"
+        );
+        assert!(
+            !paths.iter().any(|p| p.starts_with(t.join("ws/src/build"))),
+            "no candidate under src/build: {paths:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     // Issue 2767 -- the folding itself, every component shape.
     #[test]

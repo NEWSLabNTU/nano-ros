@@ -423,10 +423,20 @@ def validate_compile_check_fixture(entry):
                     f"`west_nros_image = {nros_image!r}` must be `<bringup>:<image>`, "
                     "the qualified spelling `nros build` takes (issue 2436)",
                 )
+            # Issue 2862 -- a bringup may sit at any depth below `src/`
+            # (`src/test_bringup/<b>`), as colcon finds packages; it is the
+            # directory named `<bringup>` that holds a `system.toml`.
+            src = Path(entry["dir"]) / "src"
+            repo, tracked = _tracked(str(src))
+            found = sorted(
+                repo / Path(f).parent
+                for f in tracked
+                if Path(f).name == "system.toml" and Path(f).parent.name == bringup
+            )
             _require_dir(
                 entry,
-                Path(entry["dir"]) / "src" / bringup,
-                "west_nros_image bringup (dir/src/<bringup>)",
+                found[0] if found else src / bringup,
+                "west_nros_image bringup (a dir/src/.../<bringup> holding system.toml)",
             )
 
 

@@ -253,5 +253,6 @@ fn standalone_config(args: &Args) -> GenerateCStandaloneConfig {
         verbose: args.verbose,
         ros_edition: args.ros_edition.clone(),
         codegen_config: args.codegen_config.clone(),
+        interface_search_path: None,
     }
 }
