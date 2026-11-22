@@ -152,7 +152,7 @@ RFC's builder does not wrap:
   Nothing is captured, and `nros build` exits with the child's own status.
   Since 2026-11-23 (D1's amendment, phase-588) the child runs on a pty that
   `nros build` holds. The bytes reach the terminal unchanged and a copy goes
-  to `build/<image>/<tool>.log`, read only after a failure. Nothing is
+  to `<tool>.log` in the image's build directory (the cargo target dir, the cmake binary dir, the west build dir), read only after a failure. Nothing is
   rewritten or filtered, which is what this reconciliation rests on.)
 * **The generated root is a real build tree.** `build/<coord>/CMakeLists.txt` is
   an ordinary cmake project; `cmake --build build/<coord>` works by hand
@@ -171,7 +171,7 @@ pure wrapping.
 > **Amended (2026-11-23, user ruling; phase-588, issue 2836).** Stage 5 runs
 > the native command on a pseudo-terminal that `nros build` holds, instead of
 > handing it the terminal by inheritance. `nros build` copies every byte the
-> tool writes to its own stdout unchanged and to `build/<image>/<tool>.log`.
+> tool writes to its own stdout unchanged and to `<tool>.log` in the image's build directory (the cargo target dir, the cmake binary dir, the west build dir).
 > The tool still sees a TTY of the caller's size, so colour, progress bars
 > and line buffering are as under a bare `cargo build`. Where `nros build`'s
 > stdout is not a terminal, the tool gets none either, as before.
