@@ -178,6 +178,31 @@ if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
     coords_args=(--coords-from "$NROS_FIXTURE_COORDS")
 fi
 
+# Issue 2702 -- every C/C++ workspace image has a cmake configure, and so two
+# cargo trees (the C/C++ API's and the workspace runtime's), of its own: ~1.3 GB
+# a configure, measured, nearly all of it cargo's intermediates. Once the row's
+# image has linked, the lane keeps what the link reads (each tree's archive
+# `<tree>/[<triple>/]<profile>/*.a`) and drops the rest: `deps/`, `build/`,
+# `incremental/` and `examples/`, host and target. A later build of the row
+# recompiles them, from sccache, so this is the fixture lane's trade
+# (disk over a warm incremental tree) and never `nros build`'s.
+# `NROS_FIXTURE_KEEP_CARGO=1` keeps everything (to debug a row's cargo build).
+nros_prune_cargo_intermediates() {
+    local cmake_dir="$1" tree d
+    [ "${NROS_FIXTURE_KEEP_CARGO:-0}" = 1 ] && return 0
+    [ -n "$cmake_dir" ] && [ -d "$cmake_dir/cargo" ] || return 0
+    for tree in "$cmake_dir"/cargo/*/; do
+        [ -d "$tree" ] || continue
+        for d in "$tree"nros-*/deps "$tree"nros-*/build "$tree"nros-*/incremental \
+                 "$tree"nros-*/examples "$tree"release/deps "$tree"release/build \
+                 "$tree"*/nros-*/deps "$tree"*/nros-*/build "$tree"*/nros-*/incremental \
+                 "$tree"*/nros-*/examples "$tree"*/release/deps "$tree"*/release/build; do
+            [ -d "$d" ] && [ ! -L "$d" ] && rm -rf -- "$d"
+        done
+    done
+    return 0
+}
+
 manifest() {
     python3 "$repo_root/scripts/build/fixtures-manifest.py" list-workspaces \
         --platform "$platform" ${lang_filter:+--lang "$lang_filter"} \
@@ -562,8 +587,10 @@ build_workspace() {
                 generated_entry="$(printf '%s' "$image" | tr -- '-./' '___')_entry"
                 if [ "$entry" != "$generated_entry" ] && [ -d "$build_subdir/pkg/$entry" ]; then
                     echo "     built: $dir/$build_subdir/pkg/$entry (owned entry)"
+                    nros_prune_cargo_intermediates "$build_subdir"
                 elif [ -x "$build_subdir/$entry" ]; then
                     echo "     built: $dir/$build_subdir/$entry"
+                    nros_prune_cargo_intermediates "$build_subdir"
                 else
                     # A generated entry lands at the TOP of the cmake binary
                     # dir, not under `src/<entry>/` — it is emitted by the root
