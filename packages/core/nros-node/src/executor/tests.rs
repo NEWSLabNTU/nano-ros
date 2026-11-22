@@ -21028,6 +21028,64 @@ mod reentry_entries {
         drop(unsafe { Box::from_raw(p) });
     }
 
+    static G_EXEC: AtomicPtr<Executor<'static>> = AtomicPtr::new(core::ptr::null_mut());
+    static G_CLIENT: AtomicUsize = AtomicUsize::new(usize::MAX);
+    static G_CALLS: AtomicU32 = AtomicU32::new(0);
+
+    /// The negative control: a guard callback that re-triggers its OWN guard
+    /// and sends on a client. Its dispatch swaps the atomic flag before the
+    /// callback and never touches the entry after it, so this is sound with
+    /// no change to the dispatch.
+    #[test]
+    fn a_guard_callback_that_retriggers_itself_reenters_soundly() {
+        use alloc::rc::Rc;
+        use core::cell::RefCell;
+        let mut boxed = Box::new(executor_with_clock(MockSession::new()));
+        let cli = boxed
+            .register_service_client_raw(
+                "/w2b_next",
+                "test/srv/T",
+                "h",
+                Some(release_probe_reply),
+                core::ptr::null_mut(),
+            )
+            .unwrap();
+        G_CLIENT.store(cli.to_raw(), Ordering::SeqCst);
+        let me: Rc<RefCell<Option<GuardCondition<'static>>>> = Rc::default();
+        let me2 = me.clone();
+        let (_id, guard) = boxed
+            .register_guard_condition(move || {
+                if G_CALLS.fetch_add(1, Ordering::SeqCst) == 0 {
+                    me2.borrow().as_ref().expect("guard").trigger();
+                    let p = G_EXEC.load(Ordering::SeqCst);
+                    // SAFETY: the re-entry under test.
+                    let _ = unsafe { c_send(&mut *p, G_CLIENT.load(Ordering::SeqCst)) };
+                }
+            })
+            .unwrap();
+        guard.trigger();
+        *me.borrow_mut() = Some(guard);
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+        G_EXEC.store(p, Ordering::SeqCst);
+        // SAFETY: `p` is the only path to the executor.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+        assert_eq!(
+            G_CALLS.load(Ordering::SeqCst),
+            1,
+            "one trigger, one dispatch"
+        );
+        // SAFETY: as above.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+        assert_eq!(
+            G_CALLS.load(Ordering::SeqCst),
+            2,
+            "the trigger made inside the callback is seen on the next pass"
+        );
+        me.borrow_mut().take();
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+
     #[test]
     fn a_service_callback_that_reads_its_own_entry_reenters_soundly() {
         let mut boxed = Box::new(executor_with_clock(MockSession::new()));
