@@ -1,0 +1,1 @@
+A Zephyr package that adds a second program is now refused when the build configures, naming both programs and saying to split the package, instead of failing at link with `multiple definition of main`.

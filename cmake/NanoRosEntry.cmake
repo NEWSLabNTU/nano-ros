@@ -781,6 +781,8 @@ function(nano_ros_entry)
         # the cargo target dir's `nros-{c,cpp}-generated` via
         # `zephyr_include_directories` — and `app`'s `nros_cpp_cargo_build` ordering, for
         # free. (A separate static lib does NOT get whole-archived → `main` silently dropped.)
+        # Issue 2746 -- one program per Zephyr image.
+        _nros_zephyr_claim_app_program("${_NRA_NAME}" "nano_ros_entry(${_NRA_NAME})")
         target_sources(app PRIVATE ${_sources_for_exe})
         # phase-518 — `app` belongs to the application's root directory, so
         # sources added from a package's own directory (a ported workspace's

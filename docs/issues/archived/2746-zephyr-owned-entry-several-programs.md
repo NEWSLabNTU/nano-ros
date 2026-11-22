@@ -1,12 +1,14 @@
 ---
 id: 2746
 title: "A Zephyr package builds one program: a second own-`main` program fails to link, and a second registered component is refused"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: [zephyr, owned-entry, cmake]
 related: [rfc-0071, phase-583, issue-2744]
 found: 2026-11-20
+resolved: 2026-11-22
+resolved_in: "fix(cmake, issue 2746): a second Zephyr program is refused at configure, naming both"
 ---
 
 ## Measured
@@ -54,3 +56,28 @@ Prototype one sysbuild child image per executable for a two-program
 package on native_sim. Then measure that both ELFs build and boot, and what
 sysbuild does to the board, flash and `nros run` roads, which today take one
 west build dir.
+
+## Resolved, 2026-11-22: refused at configure
+
+Ruled 2026-11-22 (nros 241 manager): the narrow fix now, and several programs
+per Zephyr package as their own phase,
+[phase-587](../../roadmap/phase-587-zephyr-several-programs-sysbuild.md).
+
+Every road that puts a program into the Zephyr `app` target now claims it
+first, through `_nros_zephyr_claim_app_program`. The two roads are
+`nano_ros_entry`, which every `nano_ros_add_executable` reaches, and a
+registered component's carrier. The claim is GLOBAL, because `app` is. A
+second, different program is refused at configure, naming both programs and
+saying to split the package. The `multiple definition of 'main'` link failure
+measured above no longer happens. The same program reaching `app` twice still
+passes.
+
+Tests (`tests/cmake_node_register_misuse.rs`, 16/16):
+
+- `a_second_zephyr_program_is_refused_at_configure`;
+- the negative control `one_zephyr_program_claimed_twice_passes`;
+- W1's `a_second_zephyr_registration_is_refused`, unchanged.
+
+The limitation itself, one program per Zephyr package, is phase-587's to
+lift.
+
