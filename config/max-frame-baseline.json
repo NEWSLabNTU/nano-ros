@@ -223,44 +223,14 @@
       "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/cpp/build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake/nros/stack-floor)"
     },
     {
-      "function": "_RNvMsf_NtNtC9nros_node8executor4spinNtB5_8Executor4pass",
-      "bytes": 9472,
-      "seen_in": "qemu_bsp_large_msg_test_bringup@mps2-an385-baremetal (packages/testing/nros-bench/large-msg-baremetal/target/nros-stack-floor)"
-    },
-    {
-      "function": "_RNvMsh_NtNtC9nros_node8executor4spinNtB5_8Executor28reconcile_parameter_services",
-      "bytes": 10312,
-      "seen_in": "qemu_bsp_large_msg_test_bringup@mps2-an385-baremetal (packages/testing/nros-bench/large-msg-baremetal/target/nros-stack-floor)"
-    },
-    {
-      "function": "_RNvMsh_NtNtC9nros_node8executor4spinNtB5_8Executor4pass",
-      "bytes": 9928,
-      "seen_in": "slirp_bringup@mps3-an536-freertos (examples/workspaces/cpp/build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a-slirp_bringup/cmake/nros/stack-floor)"
-    },
-    {
       "function": "_RNvMsj_NtNtC9nros_node8executor4spinNtB5_8Executor22ensure_parameter_store",
       "bytes": 8448,
       "seen_in": "qemu_bsp_large_msg_test_bringup@mps2-an385-baremetal (packages/testing/nros-bench/large-msg-baremetal/target/nros-stack-floor)"
     },
     {
-      "function": "_RNvMsj_NtNtC9nros_node8executor4spinNtB5_8Executor28reconcile_parameter_services",
-      "bytes": 10528,
-      "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/c/build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake/nros/stack-floor)"
-    },
-    {
       "function": "_RNvMsl_NtNtC9nros_node8executor4spinNtB5_8Executor22ensure_parameter_store",
       "bytes": 8824,
       "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
-    },
-    {
-      "function": "_RNvMsl_NtNtC9nros_node8executor4spinNtB5_8Executor25seed_use_sim_time_default",
-      "bytes": 8760,
-      "seen_in": "isr_wake_freertos_mps2_bringup@freertos (packages/testing/nros-tests/bins/isr-wake-freertos-mps2/target/nros-stack-floor)"
-    },
-    {
-      "function": "_RNvMsl_NtNtC9nros_node8executor4spinNtB5_8Executor26declare_parameter_resolved",
-      "bytes": 8712,
-      "seen_in": "demo_bringup@mps2-an385-freertos (examples/workspaces/mixed/build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake/nros/stack-floor)"
     },
     {
       "function": "_RNvMsl_NtNtC9nros_node8executor4spinNtB5_8Executor28declare_parameter_overridden",
