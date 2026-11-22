@@ -302,6 +302,16 @@ store-source-readers:
 artifact-path-literals:
     @python3 scripts/check/check-artifact-path-literals.py
 
+# Issue 2702 — where `nros build` puts a cmake configure is ONE function,
+# `cmake_coordinate`; a fixture row states the result once and a test asks the
+# row. When the coordinate gained the image, the copies spelled by hand kept
+# the old layout and failed as "not built". This refuses a literal
+# `build/<platform>-…/cmake` in code outside the function, the rows and the
+# tests that assert the layout itself. Buildless; self-tests its matcher.
+[private]
+cmake-build-dir-literals:
+    @python3 scripts/check/check-cmake-build-dir-literals.py
+
 # Issue 1851 — which QEMU binary runs is ONE ladder (QEMU_SYSTEM_<ARCH>,
 # build/qemu, the pinned store copy, PATH): `nros_qemu_bin` in
 # scripts/lib/qemu-bin.sh, `nros_tests::qemu::qemu_system_cmd` in Rust. This

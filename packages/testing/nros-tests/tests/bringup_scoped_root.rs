@@ -26,8 +26,11 @@ use nros_tests::{
 fn a_real_build_scopes_its_root_to_the_bringup() -> TestResult<()> {
     // Resolving the row is what proves the build ran and is current.
     let _talker = resolve_coord(PlatformId::Linux, Lang::Cpp, Rmw::Zenoh, PairRole::Talker)?;
-    let root = nros_tests::project_root()
-        .join("examples/workspaces/cpp/build/posix-zenoh-linux-pubsub_bringup-linux_talker/CMakeLists.txt");
+    // The generated root sits beside the row's cmake binary dir.
+    let root = nros_tests::fixtures::groups::workspace_artifact_dir("workspace-cpp-native-talker")?
+        .parent()
+        .expect("a cmake binary dir has a parent")
+        .join("CMakeLists.txt");
     let text = std::fs::read_to_string(&root)
         .unwrap_or_else(|e| panic!("the row's build wrote no root at {}: {e}", root.display()));
     let block = text
