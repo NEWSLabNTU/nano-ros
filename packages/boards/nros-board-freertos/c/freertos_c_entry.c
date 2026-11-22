@@ -36,6 +36,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include <nros/platform.h>
 #include <rclc/detail/app_config.h>
 
 /* ---- Semihosting trap instruction ----
@@ -151,27 +152,63 @@ int _write(int fd, const char* buf, int count) {
  * rclcpp-idiom spin loop makes reach newlib through it:
  *
  *   - `std::chrono::steady_clock::now()`. This libstdc++ has no monotonic
- *     clock (`_GLIBCXX_USE_CLOCK_MONOTONIC` is unset), so steady_clock IS
- *     system_clock, which calls `gettimeofday`. libnosys's `_gettimeofday`
- *     fails without writing the struct, so every reading was whatever the
- *     stack held: a liveness monitor computing `now - last_seen` got noise.
+ *     clock (`_GLIBCXX_USE_CLOCK_MONOTONIC` is unset), so its steady_clock IS
+ *     system_clock, which calls `gettimeofday`.
  *   - `std::this_thread::sleep_for`, which libstdc++ implements with `sleep`
  *     and `usleep`. Newlib declares both and defines neither, so the image
  *     did not link.
  *
- * The board has no real-time clock, so "time of day" is time since the
- * scheduler started: a valid steady clock, and what a monitor's age
- * arithmetic needs. Weak, so a board with an RTC (or an SDK newlib that
- * already provides these) wins without a duplicate-symbol error. */
+ * phase-582 W2 (RFC-0141 D6, issue 2691): `gettimeofday` is a WALL clock, so
+ * it answers from `nros_platform_time_now_ns`, the one wall-clock symbol. With
+ * no source synced that is 0, and `gettimeofday` reads 0 s since the epoch,
+ * which is true; it used to answer ticks since the scheduler started, posing
+ * as the time of day. newlib's `time()` reaches the same function.
+ *
+ * That takes the tick count away from `steady_clock`, which a liveness
+ * monitor's `now - last_seen` needs to advance and never to step. So the two
+ * libstdc++ clocks are defined here, each from its own symbol:
+ * `steady_clock::now()` from `nros_platform_clock_ns` (the port's monotonic
+ * clock) and `system_clock::now()` from `nros_platform_time_now_ns`. Both are
+ * defined because they share one archive member (`chrono.o`): defining one
+ * and leaving the other to libstdc++ would extract that member and collide.
+ * A toolchain whose libstdc++ references either symbol from elsewhere fails to
+ * LINK with a duplicate definition, never silently.
+ *
+ * The names are the Itanium-mangled `std::chrono::_V2::{steady,system}_clock
+ * ::now()`, and the return type is `time_point<..., nanoseconds>`: one
+ * `long long` in a class, returned through memory under the AAPCS exactly as
+ * this one-member struct is. Unreferenced (a C image, no libstdc++), they are
+ * dropped by --gc-sections.
+ *
+ * `_gettimeofday`, `usleep` and `sleep` stay weak, so a board with an RTC (or
+ * an SDK newlib that already provides these) wins without a duplicate-symbol
+ * error. */
 #if defined(__NEWLIB__)
 __attribute__((weak)) int _gettimeofday(struct timeval* tv, void* tz) {
     (void)tz;
     if (tv != NULL) {
-        const uint64_t ms = (uint64_t)xTaskGetTickCount() * (uint64_t)portTICK_PERIOD_MS;
-        tv->tv_sec = (time_t)(ms / 1000u);
-        tv->tv_usec = (suseconds_t)((ms % 1000u) * 1000u);
+        const uint64_t ns = nros_platform_time_now_ns();
+        tv->tv_sec = (time_t)(ns / 1000000000u);
+        tv->tv_usec = (suseconds_t)((ns % 1000000000u) / 1000u);
     }
     return 0;
+}
+
+typedef struct {
+    long long ns;
+} nros_cxx_chrono_time_point_t;
+
+nros_cxx_chrono_time_point_t _ZNSt6chrono3_V212steady_clock3nowEv(void);
+nros_cxx_chrono_time_point_t _ZNSt6chrono3_V212system_clock3nowEv(void);
+
+nros_cxx_chrono_time_point_t _ZNSt6chrono3_V212steady_clock3nowEv(void) {
+    nros_cxx_chrono_time_point_t tp = {(long long)nros_platform_clock_ns()};
+    return tp;
+}
+
+nros_cxx_chrono_time_point_t _ZNSt6chrono3_V212system_clock3nowEv(void) {
+    nros_cxx_chrono_time_point_t tp = {(long long)nros_platform_time_now_ns()};
+    return tp;
 }
 
 __attribute__((weak)) int usleep(useconds_t usec) {

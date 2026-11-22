@@ -1,0 +1,6 @@
+# The board network file for image `mps2-an385-freertos` (RFC-0109 D4): its
+# interfaces, read by `nros configure` through `os_config`. The probe opens no
+# session, but the board's startup brings the interface up either way.
+[eth0]
+network = "qemu"
+host = 10
