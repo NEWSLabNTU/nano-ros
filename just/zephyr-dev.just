@@ -353,8 +353,23 @@ build-c-port:
     # left unset (CMake 4 refuses Zephyr 3.7's unquoted expansion of it).
     source scripts/build/zephyr-toolchain.sh
     export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant native_sim/native/64)"
-    "${west_cmd[@]}" build -b native_sim/native/64 \
-        -d tests/zephyr-c-smoke/build tests/zephyr-c-smoke \
+    # Issue 2821 — a build dir is one tree's. The dir is per line now, and a
+    # cache that still names ANOTHER Zephyr tree (a moved workspace, or a dir
+    # from before the split) is rebuilt pristine, saying so, never reconfigured
+    # across trees.
+    bd="{{ZEPHYR_C_PORT_DIR}}"
+    mkdir -p "$(dirname "$bd")"
+    pristine=()
+    if [ -f "$bd/CMakeCache.txt" ]; then
+        cached="$(sed -n 's/^ZEPHYR_BASE:[A-Z]*=//p' "$bd/CMakeCache.txt" | head -n 1)"
+        want="$(realpath "$WORKSPACE/zephyr")"
+        if [ -n "$cached" ] && [ "$(realpath "$cached" 2>/dev/null || echo "$cached")" != "$want" ]; then
+            echo "build-c-port: $bd was configured for $cached, not $want; rebuilding it pristine" >&2
+            pristine=(-p always)
+        fi
+    fi
+    "${west_cmd[@]}" build -b native_sim/native/64 "${pristine[@]}" \
+        -d "$bd" tests/zephyr-c-smoke \
         -- -DMAKE="$make_bin"
 
 # Phase 121.6 — run the Zephyr native_sim smoke test on the host.
@@ -375,7 +390,7 @@ test-c-port:
     "{{just_executable()}}" zephyr build-c-port
     # issue 1741 — an image is bounded by a deadline that ESCALATES.
     . scripts/lib/deadline.sh
-    "${NROS_DEADLINE[@]}" 15 ./tests/zephyr-c-smoke/build/zephyr/zephyr.exe
+    "${NROS_DEADLINE[@]}" 15 "{{ZEPHYR_C_PORT_DIR}}/zephyr/zephyr.exe"
 
 # Phase 180.A Task 10 — dual-line CI. Build a representative example
 # (default c/talker zenoh) on BOTH the 3.7 LTS line and the 4.4 rolling
