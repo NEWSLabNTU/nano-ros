@@ -64,6 +64,20 @@ extern int _heap_end;
 #endif
 #include <semphr.h>
 
+/* The FreeRTOS POSIX port (the freertos-posix board: FreeRTOS tasks as host
+ * threads), recognised by macros only its `portmacro.h` defines, as ThreadX's
+ * hosted port is (`threadx_context.h`). It runs on a host C library, so it has
+ * what a bare-metal port does not: host threads, and the host's wall clock.
+ * A host test forces it to 0 to measure the bare-metal arm on the host
+ * (`tests/freertos-clock-board`); no build does. */
+#ifdef NROS_FREERTOS_POSIX_PORT
+/* stated by the compile line */
+#elif defined(portTICK_RATE_MICROSECONDS) && defined(portPRE_TASK_DELETE_HOOK)
+#define NROS_FREERTOS_POSIX_PORT 1
+#else
+#define NROS_FREERTOS_POSIX_PORT 0
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -521,16 +535,10 @@ void nros_platform_random_fill(void *buf, size_t len) {
     }
 }
 
-/* ---- Wall clock — not provided by FreeRTOS ---- */
-
-/* No real-time clock on this port: 0 means "no wall clock", per the ABI. */
-uint64_t nros_platform_time_now_ns(void)              { return 0; }
-
-/* ...and the state says so: unsynced, the port's own clock, never stepped. */
-nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
-    nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
-    return st;
-}
+/* ---- Wall clock ----
+ *
+ * `nros_platform_time_now_ns` / `nros_platform_wall_clock_state` are at the
+ * end of this file (RFC-0141), after the log writer they report through. */
 
 /* ---- Tasks ----
  *
@@ -1332,7 +1340,7 @@ __attribute__((weak)) void rust_eh_personality(void) {
  * higher task made ready by the tick preempts it: the port's SIGALRM handler
  * runs on the current task's thread, interrupts the `poll()` (EINTR, retried)
  * and switches. With nothing else ready the host CPU sleeps in `poll()`. */
-#if defined(portTICK_RATE_MICROSECONDS) && defined(portPRE_TASK_DELETE_HOOK)
+#if NROS_FREERTOS_POSIX_PORT
 #  include <errno.h>
 #  include <poll.h>
 #  include <sys/eventfd.h>
@@ -1432,3 +1440,167 @@ void nros_platform_foreign_wake_post(int32_t slot) {
     (void) r; /* a saturated counter already guarantees a wake */
 }
 #endif /* FreeRTOS POSIX port */
+
+/* ---- Wall clock (RFC-0141) ----
+ *
+ * A bare-metal FreeRTOS image has no wall clock of its own, so its
+ * `platform` source does not answer: 0 means "no wall clock", per the ABI.
+ * The POSIX port runs on a host C library, and its `platform` is the host's
+ * CLOCK_REALTIME, as on the POSIX platform port. */
+#if NROS_FREERTOS_POSIX_PORT
+#  include <time.h>
+static bool nros_freertos_host_realtime_ns(uint64_t *out_ns) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+        return false;
+    }
+    /* ONE sample (issue 0532 item 5). */
+    *out_ns = (uint64_t) ts.tv_sec * 1000000000ULL + (uint64_t) ts.tv_nsec;
+    return true;
+}
+#endif
+
+#ifndef NROS_CLOCK_SOURCE_CSV
+/* The default `[knobs.clock] source = "platform"`: the port's own clock, with
+ * no resolution step. The build defines NROS_CLOCK_SOURCE_CSV only for an
+ * image that states another list (`nros_zephyr_build::clock_selection`). */
+uint64_t nros_platform_time_now_ns(void) {
+#if NROS_FREERTOS_POSIX_PORT
+    uint64_t ns = 0ULL;
+    return nros_freertos_host_realtime_ns(&ns) ? ns : 0ULL;
+#else
+    return 0ULL;
+#endif
+}
+
+/* ...and the state says so: the port's own clock, never stepped; synced only
+ * where the port has one. */
+nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
+    nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
+#if NROS_FREERTOS_POSIX_PORT
+    uint64_t ns = 0ULL;
+    st.synced = nros_freertos_host_realtime_ns(&ns);
+#endif
+    return st;
+}
+
+#else /* NROS_CLOCK_SOURCE_CSV */
+/* RFC-0141 D1/D2 (phase-582 W1d) -- the image states a source list. FreeRTOS
+ * has no boot resolution point nano-ros owns on every road, so the list is
+ * resolved LAZILY, once, on the first wall-clock read from a task, and no
+ * entry has to call anything:
+ *   - `platform`: the host's CLOCK_REALTIME on the POSIX port; on bare metal
+ *     it does NOT answer (no wall clock), so a list ending in it reaches
+ *     `epoch_failure`;
+ *   - `board`: the board hook, given `clock.fallback_settle_ms` to answer
+ *     (`nros_clock_board__set_by__knobs_clock_source.c`, polling every 10 ms).
+ * So while the board is unanswered, that first read blocks its task for up to
+ * the window, as Zephyr's boot resolution blocks boot; a task that reads
+ * meanwhile waits for the verdict. After it no read calls the hook again.
+ *
+ * The "once" is the port's critical section and a phase flag: the critical
+ * section cannot be held across the window's sleeps, so it only claims the
+ * resolution. A read before the scheduler runs (or with it suspended) cannot
+ * sleep and resolves nothing: it reads 0 and the state names the first
+ * listed source, and the first read from a running task resolves. The
+ * verdict is reported once through the board's log writer. */
+#include <nros/clock_epoch.h>
+#include <nros/clock_resolve.h>
+
+#define NROS_FREERTOS_CLOCK_UNRESOLVED 0u
+#define NROS_FREERTOS_CLOCK_RESOLVING 1u
+#define NROS_FREERTOS_CLOCK_RESOLVED 2u
+static uint8_t s_wall_clock_phase = NROS_FREERTOS_CLOCK_UNRESOLVED;
+static uint8_t s_wall_clock_latched = NROS_CLOCK_SOURCE_NONE;
+
+static bool nros_freertos_clock_try(uint8_t source, uint32_t settle_ms, void *ctx) {
+    (void) settle_ms;
+    (void) ctx;
+    switch (source) {
+#if NROS_FREERTOS_POSIX_PORT
+    case NROS_WALL_CLOCK_SOURCE_PLATFORM: {
+        uint64_t ns = 0ULL;
+        return nros_freertos_host_realtime_ns(&ns);
+    }
+#endif
+#ifdef NROS_CLOCK_HAS_BOARD
+    case NROS_WALL_CLOCK_SOURCE_BOARD:
+        return nros_clock_board_try__set_by__knobs_clock_source(settle_ms);
+#endif
+    default:
+        return false;
+    }
+}
+
+static void nros_freertos_clock_report(const char *msg, size_t len, void *ctx) {
+    (void) ctx;
+    nros_platform_log_writer_fn writer = nros_platform_freertos_log_writer;
+    if (writer != NULL) {
+        /* Severity 2 = info. No logger name: the line already says `nros:`. */
+        writer(2, (const uint8_t *) "", 0, (const uint8_t *) msg, (uintptr_t) len);
+    }
+}
+
+/* Whether the list has been resolved, resolving it on the first call from a
+ * running task. */
+static bool nros_freertos_clock_resolved(void) {
+    if (__atomic_load_n(&s_wall_clock_phase, __ATOMIC_ACQUIRE) == NROS_FREERTOS_CLOCK_RESOLVED) {
+        return true;
+    }
+#if (INCLUDE_xTaskGetSchedulerState == 1) || (configUSE_TIMERS == 1)
+    if (xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) {
+        return false;
+    }
+#endif
+    bool mine = false;
+    taskENTER_CRITICAL();
+    if (s_wall_clock_phase == NROS_FREERTOS_CLOCK_UNRESOLVED) {
+        s_wall_clock_phase = NROS_FREERTOS_CLOCK_RESOLVING;
+        mine = true;
+    }
+    taskEXIT_CRITICAL();
+    if (mine) {
+        uint8_t sources[NROS_CLOCK_MAX_SOURCES];
+        nros_clock_policy_t policy;
+        nros_clock_policy_from_build(&policy, sources);
+        s_wall_clock_latched = nros_clock_resolve(&policy, nros_freertos_clock_try,
+                                                  nros_freertos_clock_report, NULL);
+        __atomic_store_n(&s_wall_clock_phase, NROS_FREERTOS_CLOCK_RESOLVED, __ATOMIC_RELEASE);
+        return true;
+    }
+    while (__atomic_load_n(&s_wall_clock_phase, __ATOMIC_ACQUIRE) != NROS_FREERTOS_CLOCK_RESOLVED) {
+        nros_platform_sleep_ms(10);
+    }
+    return true;
+}
+
+uint64_t nros_platform_time_now_ns(void) {
+    const bool resolved = nros_freertos_clock_resolved();
+#if NROS_FREERTOS_POSIX_PORT
+    if (resolved && s_wall_clock_latched == NROS_WALL_CLOCK_SOURCE_PLATFORM) {
+        uint64_t ns = 0ULL;
+        return nros_freertos_host_realtime_ns(&ns) ? ns : 0ULL;
+    }
+#else
+    (void) resolved;
+#endif
+    /* A store source (`board`), or nothing answered (yet): the store reads 0
+     * ("no wall clock") until an offset is installed. */
+    return nros_clock_epoch_us() * 1000ULL;
+}
+
+nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
+    const bool resolved = nros_freertos_clock_resolved();
+#if NROS_FREERTOS_POSIX_PORT
+    if (resolved && s_wall_clock_latched == NROS_WALL_CLOCK_SOURCE_PLATFORM) {
+        nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
+        uint64_t ns = 0ULL;
+        st.synced = nros_freertos_host_realtime_ns(&ns);
+        return st;
+    }
+#else
+    (void) resolved;
+#endif
+    return nros_clock_epoch_state(nros_clock_first_source_from_build());
+}
+#endif /* NROS_CLOCK_SOURCE_CSV */

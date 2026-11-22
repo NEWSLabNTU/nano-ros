@@ -1370,6 +1370,9 @@ config NROS_CLOCK_FALLBACK_SETTLE_MS
       costs sntp_attempts x sntp.timeout_ms instead. Timers start counting when
       the wait ends, so it is never reported as a missed period.
 
+      A board source is asked every 10 ms within it. On a port that resolves on
+      its first wall-clock read (POSIX, FreeRTOS), that read waits instead of boot.
+
 
 # prompt: Re-take the epoch from zenoh sample timestamps every (ms)
 config NROS_CLOCK_HLC_INTERVAL_MS

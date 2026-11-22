@@ -222,6 +222,57 @@ static inline uint8_t nros_clock_resolve(const nros_clock_policy_t* policy,
     return (uint8_t)NROS_CLOCK_SOURCE_NONE;
 }
 
+/* `clock.fallback_settle_ms`'s registry default
+ * (`packages/tooling/nros-zephyr-build/knobs.toml`). A test in
+ * `nros_zephyr_build::clock_selection` holds the two equal. */
+#define NROS_CLOCK_FALLBACK_SETTLE_MS_DEFAULT 10000u
+
+/* A port that resolves from the BUILD's defines rather than from Kconfig
+ * (POSIX, FreeRTOS). The build defines NROS_CLOCK_SOURCE_CSV (and, when
+ * stated, NROS_CLOCK_UPGRADE, NROS_CLOCK_EPOCH_FAILURE,
+ * NROS_CLOCK_FALLBACK_SETTLE_MS) only for an image that states a list other
+ * than the default (`nros_zephyr_build::clock_selection`); an unstated knob
+ * takes its registry default here. */
+#ifdef NROS_CLOCK_SOURCE_CSV
+#ifndef NROS_CLOCK_UPGRADE
+#define NROS_CLOCK_UPGRADE "never"
+#endif
+#ifndef NROS_CLOCK_EPOCH_FAILURE
+#define NROS_CLOCK_EPOCH_FAILURE "unstamped"
+#endif
+#ifndef NROS_CLOCK_FALLBACK_SETTLE_MS
+#define NROS_CLOCK_FALLBACK_SETTLE_MS NROS_CLOCK_FALLBACK_SETTLE_MS_DEFAULT
+#endif
+
+/* The policy the build stated. `sources` is the caller's, and must outlive
+ * the resolution. */
+static inline void nros_clock_policy_from_build(nros_clock_policy_t* policy,
+                                                uint8_t sources[NROS_CLOCK_MAX_SOURCES]) {
+    policy->sources = sources;
+    policy->n_sources = nros_clock_parse_sources(NROS_CLOCK_SOURCE_CSV, sources);
+    policy->settle_ms = (uint32_t)(NROS_CLOCK_FALLBACK_SETTLE_MS);
+    policy->upgrade = nros_clock_parse_upgrade(NROS_CLOCK_UPGRADE);
+    policy->epoch_failure = nros_clock_parse_epoch_failure(NROS_CLOCK_EPOCH_FAILURE);
+}
+
+/* The first source the build listed: what the state names before, or
+ * without, an answer. */
+static inline uint8_t nros_clock_first_source_from_build(void) {
+    uint8_t sources[NROS_CLOCK_MAX_SOURCES];
+    return nros_clock_parse_sources(NROS_CLOCK_SOURCE_CSV, sources) != 0u
+               ? sources[0]
+               : (uint8_t)NROS_WALL_CLOCK_SOURCE_PLATFORM;
+}
+#endif /* NROS_CLOCK_SOURCE_CSV */
+
+#ifdef NROS_CLOCK_HAS_BOARD
+/* The `board` source's try, in `nros_clock_board__set_by__knobs_clock_source.c`
+ * (compiled only with it): ask the board hook until it answers or `settle_ms`
+ * runs out, polling every 10 ms, and install its offset through the one
+ * setter. Shared by every port that resolves `board`. */
+bool nros_clock_board_try__set_by__knobs_clock_source(uint32_t settle_ms);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

@@ -251,17 +251,33 @@ module's library. The rule as built:
   alternative, calling the hook on every read, would have made the board
   the store, bypassed the setter's admission and upgrade rules, and cost a
   call per stamp.
-- **Where it resolves.** A port whose sources all answer synchronously
+- **`board` waits like `sntp`** (manager ruling, 2026-11-22). While nothing
+  is latched, the hook is asked every 10 ms within `clock.fallback_settle_ms`.
+  The first `true` installs and latches `board`. A window that runs out is
+  "not answered": the next listed source is tried, then `epoch_failure`
+  applies. The hook is never called after resolution: a per-read call was
+  rejected, for the reasons above. The poll lives in the one selection-named
+  TU, which every port compiles.
+- **Where it resolves.** A port with no boot resolution point of its own
   resolves LAZILY, once, on the first wall-clock read, so no entry calls
-  anything. That is POSIX: `platform` is the host's `CLOCK_REALTIME` and
-  `board` asks the hook once. Zephyr keeps its boot resolution point (D1),
-  because `sntp` and `zenoh-hlc` wait.
-- **Ports.** POSIX resolves `board` (phase-582 W1d). FreeRTOS and ThreadX
-  refuse `board` at build time with the reason, until a board of theirs needs
-  it. Both port copies of the POSIX code (the platform crate's and XRCE's
-  demand-driven one) take their defines from the one reader
-  (`nros_zephyr_build::clock_selection`), since copies that differed would
-  make the wall clock depend on archive scan order.
+  anything. While the board is unanswered, that first read blocks for up to
+  the window, as Zephyr's boot resolution blocks boot. That is POSIX
+  (`pthread_once`) and FreeRTOS (the port's critical section claims the
+  resolution, from a running task; a read before the scheduler runs reads 0).
+  Zephyr keeps its boot resolution point (D1).
+- **Ports.** POSIX and FreeRTOS resolve `board` (phase-582 W1d). A bare-metal
+  FreeRTOS `platform` has no wall clock and does not answer. On the FreeRTOS
+  POSIX port (the freertos-posix board) it is the host's `CLOCK_REALTIME`,
+  as on POSIX. ThreadX refuses `board` at build time with the reason, until
+  a board of its needs it. Every copy of a port's clock code takes its
+  defines from the one reader (`nros_zephyr_build::clock_selection`): the
+  POSIX code's two cargo copies, and FreeRTOS's board-crate copy. The CMake
+  library of FreeRTOS's takes them from its CMake mirror
+  (`nros_clock_selection_apply`), which reads the value the image's cargo
+  commands see. Both readers answer one case table
+  (`tests/data/clock-selection-cases.tsv`), each in its own test, so they
+  cannot drift apart. Copies that differed would make the wall clock depend
+  on archive scan order.
 
 ### D3 — One offset store, one setter
 
@@ -432,3 +448,7 @@ separate decision per backend.
   object of the image or an archive linked after nano-ros (no link group
   exists for zenoh or XRCE); `board` is a resolution source through the one
   setter; a synchronous port resolves lazily on the first read.
+- 2026-11-22: D2 amended again for phase-582 W1d (manager rulings): `board`
+  gets the settle window like `sntp` and is never asked after resolution;
+  FreeRTOS resolves `board` lazily; the freertos-posix board's `platform` is
+  the host's `CLOCK_REALTIME`.

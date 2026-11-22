@@ -407,6 +407,23 @@ fn main() {
     platform.file(nros_platform_freertos_dir.join("platform.c"));
     platform.file(nros_platform_freertos_dir.join("net.c"));
     platform.file(nros_platform_freertos_dir.join("timer.c"));
+    // RFC-0141 D2 (phase-582 W1d) -- the image's `[knobs.clock]` list, as
+    // defines, plus the selection-named TU when it names `board`, from the ONE
+    // reader every copy of a port's clock code takes them from. The cmake road
+    // compiles this same `platform.c` into `libnros_platform_freertos.a`
+    // (`nros_clock_selection_apply`, NanoRosClockSelection.cmake), and an image
+    // can link both: copies with different defines would make the wall clock
+    // depend on which archive the linker scanned first.
+    if let Some(sel) = nros_zephyr_build::clock_selection::clock_selection() {
+        for (name, value) in sel.c_defines() {
+            platform.define(name, value.as_str());
+        }
+        if sel.board() {
+            platform.file(nros_zephyr_build::clock_selection::board_tu(
+                &nros_platform_cffi_include,
+            ));
+        }
+    }
     // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
     // through neither shared helper, so the policy has to be named here.

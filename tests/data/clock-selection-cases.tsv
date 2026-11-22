@@ -1,0 +1,12 @@
+# The image's [knobs.clock] statement -> the C defines a port is built with.
+# ONE table both readers are tested against: the Rust one
+# (nros_zephyr_build::clock_selection, cargo and west roads) and the CMake one
+# (cmake/NanoRosClockSelection.cmake). A rule changed in one reader and not the
+# other fails its test. Columns, tab-separated, `-` for unstated:
+#   source	upgrade	epoch_failure	fallback_settle_ms	defines (`;`-joined, or NONE)
+platform	-	-	-	NONE
+ platform 	monotonic	-	5	NONE
+board	-	-	-	NROS_CLOCK_SOURCE_CSV="board";NROS_CLOCK_HAS_BOARD=1
+board, platform	-	halt	-	NROS_CLOCK_SOURCE_CSV="board,platform";NROS_CLOCK_EPOCH_FAILURE="halt";NROS_CLOCK_HAS_BOARD=1
+board,platform	monotonic	unstamped	2500	NROS_CLOCK_SOURCE_CSV="board,platform";NROS_CLOCK_UPGRADE="monotonic";NROS_CLOCK_EPOCH_FAILURE="unstamped";NROS_CLOCK_FALLBACK_SETTLE_MS=2500u;NROS_CLOCK_HAS_BOARD=1
+sntp,platform	-	-	-	NROS_CLOCK_SOURCE_CSV="sntp,platform"

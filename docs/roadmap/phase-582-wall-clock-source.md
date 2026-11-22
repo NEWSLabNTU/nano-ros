@@ -89,6 +89,32 @@ SNTP never re-acquires. A consumer's board hook papers over that with
       component's executable against the board-selected runtime (issue
       2841). Until that is fixed, such an executable is refused at configure
       with a clear message (manager ruling), and a verdict cell covers it.
+    - **The settle window (manager ruling, 2026-11-22):** `board` behaves
+      like `sntp`. While nothing is latched it is asked every 10 ms within
+      `clock.fallback_settle_ms`. The first answer latches `board`; a window
+      that runs out moves on to the next source, then `epoch_failure`. The
+      hook is never called after resolution. The poll is the one
+      selection-named TU (`nros-platform-api/c/`), shared by every port, and
+      the policy defaults are `nros/clock_resolve.h`'s
+      (`nros_clock_policy_from_build`). A test holds the C settle default
+      equal to the registry's. Host tests: a hook that answers after 200 ms
+      is waited for, an unanswered one costs the window then reads 0 or
+      halts, and later reads ask nothing. Mutation controls: a TU that asks
+      once fails, and a port that resolves on every read fails.
+    - **FreeRTOS resolves `board`** the same lazy way, once, from the first
+      wall-clock read in a running task. The once is the port's critical
+      section and a phase flag, and a read before the scheduler runs reads 0.
+      The verdict goes through the board's log writer. Bare-metal `platform`
+      does not answer. On the freertos-posix board (the FreeRTOS POSIX port)
+      `platform` is the host's `CLOCK_REALTIME`, with no list stated too, so
+      that board's default moves from 0 to host time. Every copy of the port's
+      `platform.c` gets the same selection: the family and freertos-posix
+      board crates from `clock_selection`, and the CMake library from
+      `nros_clock_selection_apply` (`cmake/NanoRosClockSelection.cmake`, the
+      CMake mirror of the same rules, reading the value the image's cargo
+      commands see). Host test `tests/clock-board-freertos-tests.sh`: the real
+      kernel on its POSIX port and the real port, built through its
+      CMakeLists.
 - RFC-0141 D1–D4:
   - the `[knobs.clock]` group: `source` (one, or an ordered fallback),
     `fallback_settle_ms`, `upgrade`, `sntp_attempts`, `epoch_failure`

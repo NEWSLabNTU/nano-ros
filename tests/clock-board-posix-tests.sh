@@ -26,8 +26,21 @@
 #      says `set_by__knobs_clock_source`;
 #   f. board not selected (no define): the port's objects neither define nor
 #      reference the hook or the selection TU's function.
-# Negative control: the same case a against a port whose lazy resolution
-# call is deleted must FAIL, so a reading that is merely nonzero cannot pass.
+# Cases a-f state `clock.fallback_settle_ms = 0` (ask once). The settle window
+# (manager ruling A: `board` behaves like `sntp`):
+#   g. source = board, window 1000 ms, a hook that says "not synced" for its
+#      first 200 ms and then answers: installed, {synced, board}, the first
+#      read took at least 200 ms and less than the window, and the hook was
+#      asked more than once (polled) -- and NOT AGAIN on 100 later reads;
+#   h. source = board, window 300 ms, a hook that never answers, default
+#      `unstamped`: reads 0, {unsynced, board}, the first read returned after
+#      the window and well before forever, and later reads ask nothing;
+#   i. the same with `halt`: the process stops (SIGABRT) after the window.
+# Negative controls: the same case a against a port whose lazy resolution
+# call is deleted must FAIL, so a reading that is merely nonzero cannot pass;
+# case g against a selection TU that ignores the window (asks once) must
+# FAIL; case g against a port that resolves on EVERY read must FAIL (the
+# per-read hook call the ruling rejects).
 set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/grep-q.sh
@@ -44,15 +57,38 @@ trap 'rm -rf "$tmp"' EXIT
 inc="$root/packages/platform/nros-platform-api/include"
 src="$root/packages/platform/nros-platform-posix/src"
 tu=nros_clock_board__set_by__knobs_clock_source
+# One selection TU for every port (`nros_zephyr_build::clock_selection::board_tu`).
+tu_src="$root/packages/platform/nros-platform-api/c/$tu.c"
 
+# HOOK_ANSWERS: 1 always, 0 never, 2 only from HOOK_AFTER_MS after its first
+# call (a board whose clock syncs late).
 cat > "$tmp/hook.c" <<'EOF'
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 #define BOARD_NS 1700000000123456789ULL /* 2023-11-14 */
+#ifndef HOOK_AFTER_MS
+#define HOOK_AFTER_MS 200
+#endif
 int hook_calls;
+__attribute__((unused)) static uint64_t mono_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
 bool nros_board_wall_clock_ns(uint64_t* out_ns) {
     hook_calls++;
-#if HOOK_ANSWERS
+#if HOOK_ANSWERS == 1
+    *out_ns = BOARD_NS;
+    return true;
+#elif HOOK_ANSWERS == 2
+    static uint64_t first_ns;
+    if (first_ns == 0ULL) {
+        first_ns = mono_ns();
+    }
+    if (mono_ns() - first_ns < (uint64_t)HOOK_AFTER_MS * 1000000ULL) {
+        return false;
+    }
     *out_ns = BOARD_NS;
     return true;
 #else
@@ -112,6 +148,42 @@ int main(void) {
     CHECK("c state: not synced", !st.synced);
     CHECK("c state: names board", st.source == NROS_WALL_CLOCK_SOURCE_BOARD);
     CHECK("c the hook was asked exactly once", hook_calls == 1);
+#elif defined(CASE_G)
+    uint64_t m0 = nros_platform_clock_ns();
+    uint64_t t = nros_platform_time_now_ns();
+    uint64_t m1 = nros_platform_clock_ns();
+    printf("  g first read took %llu ms, hook asked %d times\n",
+           (unsigned long long)((m1 - m0) / 1000000ULL), hook_calls);
+    CHECK("g the first read waited for the board (>= 200 ms)", m1 - m0 >= 200000000ULL);
+    CHECK("g ...and less than the 1000 ms window", m1 - m0 < 1000000000ULL);
+    CHECK("g reading is the board's instant", t + 1000ULL >= BOARD_NS && t <= BOARD_NS + 50000000ULL);
+    nros_wall_clock_state_t st = nros_platform_wall_clock_state();
+    CHECK("g state: synced", st.synced);
+    CHECK("g state: source board", st.source == NROS_WALL_CLOCK_SOURCE_BOARD);
+    CHECK("g the hook was polled, not asked once", hook_calls >= 2);
+    int calls = hook_calls;
+    for (int i = 0; i < 100; i++) {
+        (void)nros_platform_time_now_ns();
+        (void)nros_platform_wall_clock_state();
+    }
+    CHECK("g later reads never ask the hook again", hook_calls == calls);
+#elif defined(CASE_H)
+    uint64_t m0 = nros_platform_clock_ns();
+    uint64_t t = nros_platform_time_now_ns();
+    uint64_t m1 = nros_platform_clock_ns();
+    printf("  h first read took %llu ms, hook asked %d times\n",
+           (unsigned long long)((m1 - m0) / 1000000ULL), hook_calls);
+    CHECK("h the first read waited out the 300 ms window", m1 - m0 >= 300000000ULL);
+    CHECK("h ...and then returned (under 2 s)", m1 - m0 < 2000000000ULL);
+    CHECK("h reading is 0 (unstamped)", t == 0ULL);
+    nros_wall_clock_state_t st = nros_platform_wall_clock_state();
+    CHECK("h state: not synced", !st.synced);
+    CHECK("h state: names board", st.source == NROS_WALL_CLOCK_SOURCE_BOARD);
+    int calls = hook_calls;
+    for (int i = 0; i < 100; i++) {
+        (void)nros_platform_time_now_ns();
+    }
+    CHECK("h later reads never ask the hook again", hook_calls == calls);
 #endif
     return bad;
 }
@@ -130,7 +202,7 @@ port() {
     local objs=("$d/platform.o" "$d/termination.o")
     case " $* " in
     *NROS_CLOCK_HAS_BOARD*)
-        "$cc" "${flags[@]}" -c "$src/$tu.c" -o "$d/$tu.o" 2>>"$d.err" || return 1
+        "$cc" "${flags[@]}" -c "${PORT_TU_SRC:-$tu_src}" -o "$d/$tu.o" 2>>"$d.err" || return 1
         objs+=("$d/$tu.o")
         ;;
     esac
@@ -143,7 +215,7 @@ prog() {
         -c "$tmp/main.c" -o "$out.main.o" 2>"$out.err" || return 1
     local link=("$out.main.o")
     if [ "$hook" != none ]; then
-        "$cc" -std=c11 -Wall -Wextra -Werror -DHOOK_ANSWERS="$hook" -c "$tmp/hook.c" \
+        "$cc" -std=c11 -Wall -Wextra -Werror -D_POSIX_C_SOURCE=200809L -DHOOK_ANSWERS="$hook" -c "$tmp/hook.c" \
             -o "$out.hook.o" 2>>"$out.err" || return 1
         if [ -n "$hook_ar" ]; then
             "$ar" rcs "$out.libhook.a" "$out.hook.o" 2>>"$out.err"
@@ -162,13 +234,19 @@ need_build() { # <what> <err file> <command...>
     "$@" || { echo "clock-board-posix: $what did not build:" >&2; cat "$err" >&2; exit 1; }
 }
 
-board=('-DNROS_CLOCK_SOURCE_CSV="board"' -DNROS_CLOCK_HAS_BOARD=1)
+board=('-DNROS_CLOCK_SOURCE_CSV="board"' -DNROS_CLOCK_HAS_BOARD=1 -DNROS_CLOCK_FALLBACK_SETTLE_MS=0u)
 need_build "the board port" "$tmp/board.err" port board "$src/platform.c" "${board[@]}"
 need_build "the board,platform port" "$tmp/fallback.err" port fallback "$src/platform.c" \
-    '-DNROS_CLOCK_SOURCE_CSV="board,platform"' -DNROS_CLOCK_HAS_BOARD=1
+    '-DNROS_CLOCK_SOURCE_CSV="board,platform"' -DNROS_CLOCK_HAS_BOARD=1 -DNROS_CLOCK_FALLBACK_SETTLE_MS=0u
 need_build "the halt port" "$tmp/halt.err" port halt "$src/platform.c" "${board[@]}" \
     '-DNROS_CLOCK_EPOCH_FAILURE="halt"'
 need_build "the default port" "$tmp/default.err" port default "$src/platform.c"
+win1000=('-DNROS_CLOCK_SOURCE_CSV="board"' -DNROS_CLOCK_HAS_BOARD=1 -DNROS_CLOCK_FALLBACK_SETTLE_MS=1000u)
+win300=('-DNROS_CLOCK_SOURCE_CSV="board"' -DNROS_CLOCK_HAS_BOARD=1 -DNROS_CLOCK_FALLBACK_SETTLE_MS=300u)
+need_build "the 1000 ms window port" "$tmp/win1000.err" port win1000 "$src/platform.c" "${win1000[@]}"
+need_build "the 300 ms window port" "$tmp/win300.err" port win300 "$src/platform.c" "${win300[@]}"
+need_build "the 300 ms halt port" "$tmp/halt300.err" port halt300 "$src/platform.c" "${win300[@]}" \
+    '-DNROS_CLOCK_EPOCH_FAILURE="halt"'
 
 run_case() { # <label> <binary>
     local rc=0 out
@@ -241,4 +319,50 @@ rc=0; out="$("${NROS_DEADLINE[@]}" 20 "$tmp/na" 2>&1)" || rc=$?
 nros_grep_q -F 'FAIL a reading >= the board' <<<"$out"; m=$?
 [ "$m" -lt 2 ] || fail "grep failed reading the negative control's output"
 [ "$m" -eq 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: it failed, but not on the board instant"; }
-echo "clock-board-posix: OK (negative control: no lazy resolution fails case a)"
+# g/h/i: the settle window.
+need_build "case g" "$tmp/g.err" prog "$tmp/g" win1000 CASE_G 2
+run_case g "$tmp/g"
+need_build "case h" "$tmp/h.err" prog "$tmp/h" win300 CASE_H 0
+run_case h "$tmp/h"
+need_build "case i" "$tmp/i.err" prog "$tmp/i" halt300 CASE_H 0
+# Captured, so bash's own "Aborted" job notice stays out of the log.
+rc=0; s0=$(date +%s%N); iout="$("${NROS_DEADLINE[@]}" 20 "$tmp/i" 2>"$tmp/i.stderr")" || rc=$?
+printf '%s\n' "$iout" >"$tmp/i.stdout"
+el_ms=$(( ($(date +%s%N) - s0) / 1000000 ))
+[ "$rc" -eq 134 ] || { cat "$tmp/i.stdout" "$tmp/i.stderr" >&2; fail "case i: halt after the window did not abort (exit $rc)"; }
+[ "$el_ms" -ge 300 ] || fail "case i: halted after ${el_ms} ms, before the 300 ms window ran out"
+nros_grep_q -F 'no wall-clock source answered (board); halting' "$tmp/i.stderr"; m=$?
+[ "$m" -lt 2 ] || fail "grep failed reading case i's stderr"
+[ "$m" -eq 0 ] || { cat "$tmp/i.stderr" >&2; fail "case i: the halt message does not name board"; }
+echo "  ok   i halt after the 300 ms window (${el_ms} ms), naming board"
+
+# Negative control: a selection TU that ignores the window (asks once) fails g.
+sed 's/const uint64_t budget_ns = (uint64_t)settle_ms \* 1000000ULL;/const uint64_t budget_ns = 0ULL * settle_ms;/' \
+    "$tu_src" >"$tmp/tu_once.c"
+cmp -s "$tu_src" "$tmp/tu_once.c" && fail "negative control: the settle budget was not found to mutate"
+PORT_TU_SRC="$tmp/tu_once.c" need_build "the ask-once mutant" "$tmp/once.err" port once "$src/platform.c" "${win1000[@]}"
+need_build "the ask-once mutant's case g" "$tmp/ng.err" prog "$tmp/ng" once CASE_G 2
+rc=0; out="$("${NROS_DEADLINE[@]}" 20 "$tmp/ng" 2>&1)" || rc=$?
+[ "$rc" -ne 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: a TU that ignores the window passed case g"; }
+nros_grep_q -F 'FAIL g the first read waited for the board' <<<"$out"; m=$?
+[ "$m" -eq 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: the ask-once mutant failed, but not on the wait"; }
+
+# Negative control: a port that resolves on every read asks the hook per read.
+python3 - "$src/platform.c" "$tmp/platform_perread.c" <<'PY'
+import sys
+s = open(sys.argv[1]).read()
+needle = "uint64_t nros_platform_time_now_ns(void) {\n    pthread_once(&s_wall_clock_once, nros_posix_clock_resolve_once);"
+if needle not in s:
+    sys.exit("the time_now resolution call was not found")
+s = s.replace(needle, "uint64_t nros_platform_time_now_ns(void) {\n    nros_posix_clock_resolve_once();")
+open(sys.argv[2], "w").write(s)
+PY
+[ -s "$tmp/platform_perread.c" ] || fail "negative control: could not build the per-read mutant"
+need_build "the per-read mutant" "$tmp/perread.err" port perread "$tmp/platform_perread.c" "${win1000[@]}" \
+    -Wno-unused-function -Wno-unused-variable
+need_build "the per-read mutant's case g" "$tmp/npr.err" prog "$tmp/npr" perread CASE_G 2
+rc=0; out="$("${NROS_DEADLINE[@]}" 20 "$tmp/npr" 2>&1)" || rc=$?
+[ "$rc" -ne 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: a per-read resolving port passed case g"; }
+nros_grep_q -F 'FAIL g later reads never ask the hook again' <<<"$out"; m=$?
+[ "$m" -eq 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: the per-read mutant failed, but not on the later reads"; }
+echo "clock-board-posix: OK (negative controls: no lazy resolution fails a; ask-once and per-read resolution fail g)"

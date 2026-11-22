@@ -513,7 +513,11 @@ fn main() {
                 posix_build.define(name, value.as_str());
             }
             if sel.board() {
-                posix_build.file(posix_src.join(nros_zephyr_build::clock_selection::BOARD_TU));
+                let board_tu = nros_zephyr_build::clock_selection::board_tu(
+                    &workspace.join("packages/platform/nros-platform-api/include"),
+                );
+                println!("cargo:rerun-if-changed={}", board_tu.display());
+                posix_build.file(board_tu);
             }
         }
         nros_cc_flags::header_deps::track_header_deps(&mut posix_build);
