@@ -644,20 +644,25 @@ fn build_and_run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> R
 
 /// Run a probe that is already built, and check it wrote its sidecar.
 fn run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> {
+    let staged = crate::orchestration::metadata_refresh::probe_staging_path(&c.output_path);
     run_step(
         // Selecting by NAME is why the backend registers that way: the probe
         // also links the component's real backend, and with two registered and
         // no selector the executor refuses to open.
-        Command::new(build_dir.join(target)).env("NROS_RMW", "metadata"),
+        // Issue 2827 -- and writes this process's staging file, never the
+        // sidecar; the stamp moves it into place.
+        Command::new(build_dir.join(target))
+            .env("NROS_RMW", "metadata")
+            .env("NROS_METADATA_OUT", &staged),
         "run",
         &format!("{}::{}", c.package, c.component),
     )?;
-    if !c.output_path.is_file() {
+    if !staged.is_file() {
         bail!(
             "metadata probe for `{}::{}` exited 0 but wrote no sidecar at {}",
             c.package,
             c.component,
-            c.output_path.display()
+            staged.display()
         );
     }
     Ok(())

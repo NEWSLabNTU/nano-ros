@@ -1455,15 +1455,56 @@ pub(crate) fn stamp_provenance(sidecar: &Path, digest: &str) -> Result<()> {
     stamp_probe(sidecar, digest, None)
 }
 
+/// Issue 2827 -- where a probe this process runs WRITES its sidecar:
+/// `<sidecar>.probing.<pid>`, beside it, never the sidecar itself. The CLI
+/// hands it to the probe as `NROS_METADATA_OUT`; the probe's own write and the
+/// Rust road's path rewrite both land there, and [`stamp_probe`] moves the
+/// stamped result into place in one rename.
+///
+/// Before, a probe wrote the sidecar unstamped at its final path and the stamp
+/// followed later -- for a C/C++ batch, after EVERY probe had run. A second
+/// configure of the same workspace reading in that window found a sidecar that
+/// "records no probe-input digest" and refused the image (tier 1, run
+/// 44874748326: `connect_facts_ws`'s units configuring at once). The pid makes
+/// the staging file one writer's: two configures probing the same component
+/// never write one file, so each rename carries a whole body and the last one
+/// wins. The name does not end in `.json`, so no `metadata/*.json` reader
+/// lists one.
+pub(crate) fn probe_staging_path(sidecar: &Path) -> PathBuf {
+    probe_staging_path_of(sidecar, std::process::id())
+}
+
+/// [`probe_staging_path`] for writer `writer`.
+fn probe_staging_path_of(sidecar: &Path, writer: u32) -> PathBuf {
+    let mut name = sidecar.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".probing.{writer}"));
+    sidecar.with_file_name(name)
+}
+
 /// [`stamp_provenance`], and the sidecar's `probe` object: the launch values a
 /// C/C++ probe ran with, or why it ran unseeded (issue 2640, phase-566 D4).
+///
+/// Reads the probe's output from [`probe_staging_path`] when it is there (a
+/// probe that just ran) and removes it once the stamped sidecar is in place,
+/// so the sidecar's path only ever holds a stamped file.
 pub(crate) fn stamp_probe(
     sidecar: &Path,
     digest: &str,
     probe: Option<ProbeSeedRecord>,
 ) -> Result<()> {
+    stamp_probe_from(&probe_staging_path(sidecar), sidecar, digest, probe)
+}
+
+/// [`stamp_probe`] reading writer `staged`'s output.
+fn stamp_probe_from(
+    staged: &Path,
+    sidecar: &Path,
+    digest: &str,
+    probe: Option<ProbeSeedRecord>,
+) -> Result<()> {
+    let source = if staged.is_file() { staged } else { sidecar };
     let raw =
-        std::fs::read_to_string(sidecar).wrap_err_with(|| format!("read {}", sidecar.display()))?;
+        std::fs::read_to_string(source).wrap_err_with(|| format!("read {}", source.display()))?;
     // Issue 2689 -- the serde error goes IN the message, not only in the
     // chain: it is what names the field (`unknown field
     // \`parameter_description_max_len\``), and a caller printing the top
@@ -1485,7 +1526,12 @@ pub(crate) fn stamp_probe(
     // Issue 0498 — atomic. Several fixture rows of ONE leaf (its zenoh / xrce /
     // cyclonedds coordinates) sync concurrently and contend for this path, which
     // is keyed by COMPONENT and so is not separated by the per-RMW target dirs.
-    crate::atomic_file::atomic_write(sidecar, &out)
+    crate::atomic_file::atomic_write(sidecar, &out)?;
+    if source == staged {
+        std::fs::remove_file(staged)
+            .wrap_err_with(|| format!("remove the probe's staged output {}", staged.display()))?;
+    }
+    Ok(())
 }
 
 /// #0288 — the NEGATIVE cache, sibling to the sidecar. A package that DEGRADES
@@ -3438,6 +3484,106 @@ mod tests {
         );
         // Untouched: no stamp lands on a document the mirror rejected.
         assert_eq!(std::fs::read_to_string(&sidecar).unwrap(), body);
+    }
+
+    /// Issue 2827 -- a probe's output reaches the sidecar's path only stamped.
+    /// While a probe's unstamped output sits in its staging file, a reader of
+    /// the sidecar (a second configure of the same workspace) finds the
+    /// previous, stamped sidecar, never a body that "records no probe-input
+    /// digest"; the stamp then moves the new one into place and removes the
+    /// staging file. Before, the probe wrote the sidecar itself, and a C/C++
+    /// batch stamped only after every probe had run.
+    #[test]
+    fn a_probe_output_reaches_the_sidecar_only_stamped() {
+        let dir = tmp("staged-stamp");
+        let sidecar = dir.join("listener.json");
+        std::fs::write(&sidecar, sidecar_body("demo_pkg::listener", true)).unwrap();
+        let staged = probe_staging_path(&sidecar);
+        assert_eq!(
+            staged,
+            dir.join(format!("listener.json.probing.{}", std::process::id()))
+        );
+        assert!(
+            !staged.to_string_lossy().ends_with(".json"),
+            "a `metadata/*.json` reader must never list a staging file"
+        );
+        // The probe has run and written its unstamped body: the sidecar is
+        // still the previous stamped one.
+        std::fs::write(&staged, sidecar_body("demo_pkg::listener", false)).unwrap();
+        assert!(
+            sidecar_is_fresh(&sidecar, "fnv1a64:0"),
+            "a concurrent reader sees the stamped sidecar, not the probe's output"
+        );
+
+        stamp_probe(&sidecar, "fnv1a64:1", None).unwrap();
+        assert!(
+            sidecar_is_fresh(&sidecar, "fnv1a64:1"),
+            "the new output, stamped"
+        );
+        assert!(!staged.exists(), "the staging file is gone");
+
+        // A stamp with nothing staged re-stamps the sidecar in place, as the
+        // callers that stamp an existing sidecar rely on.
+        stamp_provenance(&sidecar, "fnv1a64:2").unwrap();
+        assert!(sidecar_is_fresh(&sidecar, "fnv1a64:2"));
+    }
+
+    /// Issue 2827 -- two configures probing the SAME component at once each
+    /// stage under their own name and stamp into place, so the sidecar is
+    /// always one writer's whole, stamped body: a reader polling it throughout
+    /// never finds it unstamped, unparseable or missing, and the last stamp
+    /// wins. With one shared staging name, one writer could move the other's
+    /// half-written file into place.
+    #[test]
+    fn two_writers_staging_one_component_leave_a_whole_stamped_sidecar() {
+        let dir = tmp("staged-two-writers");
+        let sidecar = dir.join("listener.json");
+        std::fs::write(&sidecar, sidecar_body("demo_pkg::listener", true)).unwrap();
+        let a = probe_staging_path_of(&sidecar, 1);
+        let b = probe_staging_path_of(&sidecar, 2);
+        assert_ne!(a, b, "each writer stages under its own name");
+
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let reader = {
+            let (sidecar, stop) = (sidecar.clone(), stop.clone());
+            std::thread::spawn(move || {
+                let mut reads = 0usize;
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let raw =
+                        std::fs::read_to_string(&sidecar).expect("the sidecar is never missing");
+                    let parsed: SourceMetadata =
+                        serde_json::from_str(&raw).expect("the sidecar is never half a body");
+                    assert!(
+                        parsed.provenance.is_some(),
+                        "the sidecar is never unstamped"
+                    );
+                    reads += 1;
+                }
+                reads
+            })
+        };
+        let writers: Vec<_> = [(a.clone(), "fnv1a64:a"), (b.clone(), "fnv1a64:b")]
+            .into_iter()
+            .map(|(staged, digest)| {
+                let sidecar = sidecar.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..200 {
+                        std::fs::write(&staged, sidecar_body("demo_pkg::listener", false)).unwrap();
+                        stamp_probe_from(&staged, &sidecar, digest, None).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for w in writers {
+            w.join().unwrap();
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(reader.join().unwrap() > 0, "the reader ran");
+        assert!(
+            sidecar_is_fresh(&sidecar, "fnv1a64:a") || sidecar_is_fresh(&sidecar, "fnv1a64:b"),
+            "the last stamp wins, whole"
+        );
+        assert!(!a.exists() && !b.exists(), "no staging file is left");
     }
 
     fn sidecar_body(component: &str, stamped: bool) -> String {

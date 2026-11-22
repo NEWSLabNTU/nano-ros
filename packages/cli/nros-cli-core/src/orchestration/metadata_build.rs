@@ -461,7 +461,14 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
          \x20   // is a standalone generated crate that does not depend on the\n\
          \x20   // CLI. The temp is a sibling: rename(2) is atomic only within\n\
          \x20   // one filesystem.\n\
-         \x20   let out = std::path::Path::new({out:?});\n\
+         \x20   // The CLI names a staging file of its own\n\
+         \x20   // (`NROS_METADATA_OUT`) and stamps it into place; run by hand,\n\
+         \x20   // the harness writes the sidecar itself.\n\
+         \x20   let named = std::env::var_os(\"NROS_METADATA_OUT\");\n\
+         \x20   let out = named\n\
+         \x20       .as_deref()\n\
+         \x20       .map(std::path::Path::new)\n\
+         \x20       .unwrap_or(std::path::Path::new({out:?}));\n\
          \x20   let tmp = out.with_extension(format!(\"tmp.{{}}\", std::process::id()));\n\
          \x20   std::fs::write(&tmp, json).expect(\"write source metadata\");\n\
          \x20   std::fs::rename(&tmp, out).expect(\"rename source metadata\");\n\
@@ -754,6 +761,12 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         // host's ordinary prebuilt libraries, which is what an empty value
         // selects.
         .env("CARGO_UNSTABLE_BUILD_STD", "")
+        // Issue 2827 -- the harness writes this process's staging file, never
+        // the sidecar; the stamp moves it into place.
+        .env(
+            "NROS_METADATA_OUT",
+            crate::orchestration::metadata_refresh::probe_staging_path(&o.output_path),
+        )
         .stdout(Stdio::inherit())
         .stderr(Stdio::piped())
         .spawn()
@@ -809,13 +822,16 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
             }
         }
     }
-    if !o.output_path.is_file() {
+    // Issue 2826 -- the harness wrote the staging path, and the rewrite below
+    // stays there: the sidecar's own path only ever receives the stamped file.
+    let staged = crate::orchestration::metadata_refresh::probe_staging_path(&o.output_path);
+    if !staged.is_file() {
         bail!(
             "metadata-mode harness produced no source metadata at {}",
-            o.output_path.display()
+            staged.display()
         );
     }
-    relativise_source_artifacts(&o.output_path, &o.component_dir)?;
+    relativise_source_artifacts(&staged, &o.component_dir)?;
     Ok(())
 }
 
