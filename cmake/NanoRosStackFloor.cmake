@@ -386,7 +386,7 @@ endfunction()
 # input states one for (a prebuilt toolchain library: libgcc, compiler_builtins
 # shipped without bitcode). The cargo road passes it too (`--cfi-elf`).
 function(_nros_stack_floor_command _out)
-    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR;ELF;REPORT" "LINK_DIRS;BITCODE;SHAPE" ${ARGN})
+    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR;ELF;REPORT;TASK_ROOT;SCHED_TASKS" "LINK_DIRS;BITCODE;SHAPE" ${ARGN})
     # The rustup llvm-tools ship no llvm-cxxfilt, so name the cross
     # toolchain's own demangler (`arm-none-eabi-g++` -> `arm-none-eabi-c++filt`)
     # when it sits beside the compiler; the walker falls back to the host's.
@@ -405,6 +405,12 @@ function(_nros_stack_floor_command _out)
         --link-map "${_C_MAP}")
     if(_C_ELF)
         list(APPEND _cmd --cfi-elf "${_C_ELF}")
+    endif()
+    # Issue 2784 -- one role per sched task of the entry's priority plan, rooted
+    # at the board's task trampoline; each task's stack is the static the entry
+    # reserves for it, read off the linked image.
+    if(_C_SCHED_TASKS AND _C_TASK_ROOT)
+        list(APPEND _cmd --sched-tasks "${_C_SCHED_TASKS}" --task-root "${_C_TASK_ROOT}")
     endif()
     foreach(_d IN LISTS _C_LINK_DIRS)
         list(APPEND _cmd --link-dir "${_d}")
@@ -444,13 +450,18 @@ endfunction()
 #   nros_stack_floor_check(<exe> ROOT <fn> STACK <bytes> KNOB <text>
 #                          BOARD <board> TARGET <triple> RMW <rmw>
 #                          PROFILE <cargo profile> [BRINGUP <dir>]
-#                          [ENTRY <package> PROGRAM <exe name>])
+#                          [ENTRY <package> PROGRAM <exe name>]
+#                          [TASK_ROOT <fn>[,<fn>...] SCHED_TASKS <plan json>])
+#
+# TASK_ROOT/SCHED_TASKS (issue 2784): the board's sched-task trampoline
+# (`?fn` for one an image may not link) and the entry's
+# `nros_priority_plan.json`; each sched task is then its own role.
 #
 # ENTRY/PROGRAM name an owned entry's carrier (phase-583 W4): the key is the
 # entry's, or the program's once the entry checks several
 # (`_nros_stack_floor_decide_program_keys`).
 function(nros_stack_floor_check _exe)
-    cmake_parse_arguments(_SF "" "ROOT;STACK;KNOB;BOARD;TARGET;RMW;PROFILE;BRINGUP;ENTRY;PROGRAM" "" ${ARGN})
+    cmake_parse_arguments(_SF "" "ROOT;STACK;KNOB;BOARD;TARGET;RMW;PROFILE;BRINGUP;ENTRY;PROGRAM;TASK_ROOT;SCHED_TASKS" "" ${ARGN})
     _nros_stack_floor_enabled(_on)
     if(NOT _on)
         return()
@@ -512,6 +523,7 @@ function(nros_stack_floor_check _exe)
         ROOT "${_SF_ROOT}" STACK "${_SF_STACK}"
         KNOB "${_SF_KNOB}" TARGET "${_SF_TARGET}" RMW "${_SF_RMW}" MAP "${_map}" DIR "${_dir}"
         ELF "$<TARGET_FILE:${_exe}>"
+        TASK_ROOT "${_SF_TASK_ROOT}" SCHED_TASKS "${_SF_SCHED_TASKS}"
         LINK_DIRS "${_bindir}" "${CMAKE_BINARY_DIR}"
         BITCODE "${CMAKE_BINARY_DIR}/cargo/*/${_SF_TARGET}/${_SF_PROFILE}/deps"
                 "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_SF_TARGET}/*/deps")
@@ -524,8 +536,12 @@ function(nros_stack_floor_check _exe)
         COMMAND ${_cmd}
         COMMENT "nano-ros: stack floor of ${_exe}"
         VERBATIM)
+    set(_tasks_note "")
+    if(_SF_SCHED_TASKS AND _SF_TASK_ROOT)
+        set(_tasks_note ", and each sched task from ${_SF_TASK_ROOT}")
+    endif()
     message(STATUS "nano-ros: stack floor of ${_exe} checked at build as ${_key} "
-        "(OPEN from ${_SF_ROOT} against ${_SF_STACK} B; NROS_STACK_FLOOR=OFF skips)")
+        "(OPEN from ${_SF_ROOT} against ${_SF_STACK} B${_tasks_note}; NROS_STACK_FLOOR=OFF skips)")
 endfunction()
 
 # The FreeRTOS carrier: the app task (`app_task_entry`, freertos_c_entry.c)
@@ -535,7 +551,7 @@ endfunction()
 #   nros_stack_floor_freertos_check(<exe> <stack bytes> <bringup dir>
 #                                   [ENTRY <package> PROGRAM <exe name>])
 function(nros_stack_floor_freertos_check _exe _stack_bytes _bringup_dir)
-    cmake_parse_arguments(_FC "" "ENTRY;PROGRAM" "" ${ARGN})
+    cmake_parse_arguments(_FC "" "ENTRY;PROGRAM;SCHED_TASKS" "" ${ARGN})
     set(_program_args "")
     if(_FC_ENTRY)
         set(_program_args ENTRY "${_FC_ENTRY}" PROGRAM "${_FC_PROGRAM}")
@@ -554,6 +570,10 @@ function(nros_stack_floor_freertos_check _exe _stack_bytes _bringup_dir)
         RMW     "${NROS_RMW}"
         PROFILE "${NROS_CARGO_PROFILE_DIR}"
         BRINGUP "${_bringup_dir}"
+        # Issue 2784 -- the level runner's task and the sched-task runner's
+        # (freertos_run_sched_tasks.c); an image links one of them.
+        TASK_ROOT "?freertos_level_task,?freertos_sched_task"
+        SCHED_TASKS "${_FC_SCHED_TASKS}"
         ${_program_args})
 endfunction()
 
@@ -768,6 +788,41 @@ function(nros_stack_floor_zephyr_check)
         BITCODE "${CMAKE_BINARY_DIR}/rust/target/${_t}/*/deps"
                 "${CMAKE_BINARY_DIR}/nros-rust*/${_t}/*/deps"
                 "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_t}/*/deps")
+    # The script is written at the END of the configure (issue 2784): the
+    # module configures before the application, so the entry's priority plan,
+    # which names the sched tasks, does not exist yet here. The command and its
+    # place travel by GLOBAL property (a deferred call's arguments expand when
+    # it runs, in a scope where these locals are gone).
+    set_property(GLOBAL PROPERTY NROS_STACK_FLOOR_ZEPHYR_CMD "${_cmd}")
+    set_property(GLOBAL PROPERTY NROS_STACK_FLOOR_ZEPHYR_DIR "${_dir}")
+    set_property(GLOBAL PROPERTY NROS_STACK_FLOOR_ZEPHYR_KEY "${_key}")
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _nros_stack_floor_zephyr_write)
+    set_property(GLOBAL APPEND PROPERTY extra_post_build_commands
+        COMMAND ${CMAKE_COMMAND} -P "${_dir}/check.cmake")
+    if(NROS_IMAGE_STACK_FLOOR_MODE STREQUAL "raise")
+        # The raise reaches a configure through `NROS_STACK_FLOOR_RAISE`, which
+        # the FreeRTOS carrier reads; CONFIG_MAIN_STACK_SIZE is Kconfig, which
+        # it does not reach, so a Zephyr image keeps the CHECK.
+        message(STATUS "nano-ros: `stack_floor = \"raise\"` is not available on Zephyr; "
+            "the stack floor is CHECKED (raise CONFIG_MAIN_STACK_SIZE in os_config)")
+    endif()
+    message(STATUS "nano-ros: stack floor of ${_key} checked at build (OPEN from ${_Z_ROOT} "
+        "against CONFIG_MAIN_STACK_SIZE=${CONFIG_MAIN_STACK_SIZE}; NROS_STACK_FLOOR=OFF skips)")
+endfunction()
+
+# The deferred half of `nros_stack_floor_zephyr_check`: the post-build script,
+# with each sched task of the image's entry as its own role (issue 2784). A
+# sched task's stack is the static the C entry reserves for it
+# (`<rclc/detail/sched_task_memory_zephyr.h>`), read off zephyr.elf; its
+# thread enters at the board runner's `zephyr_sched_task`.
+function(_nros_stack_floor_zephyr_write)
+    get_property(_cmd GLOBAL PROPERTY NROS_STACK_FLOOR_ZEPHYR_CMD)
+    get_property(_dir GLOBAL PROPERTY NROS_STACK_FLOOR_ZEPHYR_DIR)
+    get_property(_key GLOBAL PROPERTY NROS_STACK_FLOOR_ZEPHYR_KEY)
+    get_property(_plan GLOBAL PROPERTY NROS_ENTRY_PRIORITY_PLAN)
+    if(_plan)
+        list(APPEND _cmd --sched-tasks "${_plan}" --task-root "?zephyr_sched_task")
+    endif()
     # Zephyr runs its post-build commands without VERBATIM, through the shell,
     # which would expand the bitcode globs; the command lives in a script,
     # each argument a bracket argument, and the shell sees one path.
@@ -781,15 +836,4 @@ function(nros_stack_floor_zephyr_check)
         "if(NOT _rc EQUAL 0)\n"
         "    message(FATAL_ERROR \"nano-ros: stack floor of ${_key}: see above\")\n"
         "endif()\n")
-    set_property(GLOBAL APPEND PROPERTY extra_post_build_commands
-        COMMAND ${CMAKE_COMMAND} -P "${_dir}/check.cmake")
-    if(NROS_IMAGE_STACK_FLOOR_MODE STREQUAL "raise")
-        # The raise reaches a configure through `NROS_STACK_FLOOR_RAISE`, which
-        # the FreeRTOS carrier reads; CONFIG_MAIN_STACK_SIZE is Kconfig, which
-        # it does not reach, so a Zephyr image keeps the CHECK.
-        message(STATUS "nano-ros: `stack_floor = \"raise\"` is not available on Zephyr; "
-            "the stack floor is CHECKED (raise CONFIG_MAIN_STACK_SIZE in os_config)")
-    endif()
-    message(STATUS "nano-ros: stack floor of ${_key} checked at build (OPEN from ${_Z_ROOT} "
-        "against CONFIG_MAIN_STACK_SIZE=${CONFIG_MAIN_STACK_SIZE}; NROS_STACK_FLOOR=OFF skips)")
 endfunction()

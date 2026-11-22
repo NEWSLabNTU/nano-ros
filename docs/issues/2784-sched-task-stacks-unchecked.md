@@ -65,3 +65,49 @@ One role per sched task: root at the board's task trampoline for that task's
 executor, stated from the image's resolved `[tasks.*]` sizes (the sizing
 descriptor already carries them for ThreadX's pool, issue 2732), reported
 unmeasured until a twin measures a peak.
+
+## Progress (2026-11-22): C entries on FreeRTOS and Zephyr
+
+Landed:
+
+- **One role per sched task.** `TASK_<NAME>`, from the entry's
+  `nros_priority_plan.json`, which `codegen entry` writes beside the TU
+  (`--sched-tasks`).
+- **Its root is the board's runner thread entry** (`--task-root`; `?sym` marks
+  one an image may not link):
+  - FreeRTOS: `freertos_level_task`, `freertos_sched_task`.
+  - Zephyr: `zephyr_sched_task`.
+
+  All tasks share it, so it is walked once.
+- **Its stack is the static the C entry reserves for it**
+  (`__nros_sched_task_stack_<i>`, `<rclc/detail/sched_task_memory_*.h>`), read
+  off the linked image. The entry's macro has already applied the stated
+  default and the port's floor, so no rule is restated. A task the entry gives
+  no memory runs on the boot thread, which OPEN checks. Without reserved
+  memory the stack is the task's authored `stack_bytes`, else the board's
+  stated default (a `TASK` row on the stated channel). A task none of these
+  covers is reported as not checked, never passed.
+- **Reaches the build:**
+  - FreeRTOS: `nros_stack_floor_freertos_check(... SCHED_TASKS ...)`.
+  - Zephyr: the check script is written at the end of the configure, after
+    the application's entry recorded its plan.
+
+Measured on realtime-c `[image.freertos]`:
+
+- `TASK_HIGH` 262,144 B (its reserved stack) holds 210,120 B.
+- `TASK_LOW` runs on the boot thread.
+- Every task floor is an upper bound today: the deepest path crosses
+  `_z_network_message_elem_copy`, bound by type. Its warning says so and gives
+  no size.
+
+Open:
+
+- **Rust entries** (`nros::main!`): no plan file, so no task roles. Their
+  trampoline is `sched_task_entry<B, F, E>`, and their default stack is the
+  board's, which the `TASK` stated row exists for.
+- **NuttX:** its runner (`nuttx_level_thread`, `nuttx_sched_task_thread`) is
+  reached through the cargo road's stated rows. Not wired.
+- **ThreadX:** after issue 2732.
+- **Rooting each task at its own callbacks, after issue 2658.** It is feasible:
+  each `__nros_entry_setup_sched_task_<i>` loads only its task's callbacks.
+  But the floor is dominated by type-bound internal calls every task shares.
