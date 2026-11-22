@@ -308,6 +308,9 @@ build-fixtures:
     if [ -n "$fixture_filter" ]; then
         echo "  fixture-filter: $fixture_filter"
     fi
+    if [ -n "${NROS_FIXTURE_ID:-}" ]; then
+        echo "  fixture-id: $NROS_FIXTURE_ID (one row; issue 2835)"
+    fi
 
     # Issue 0086 — under the parallel west fan-out (jobs > 1), concurrent
     # cargo → rustup component-ensure calls collide on the shared
@@ -464,7 +467,7 @@ build-fixtures:
     # rows below, and a filter naming one of those (`zephyr_self_pkg_sibling`)
     # legitimately matches no leaf. Whether the filter matched NOTHING AT ALL is
     # decided after both halves have answered.
-    if [ "$probe_rc" -eq 3 ] && [ -n "$fixture_filter" ]; then
+    if [ "$probe_rc" -eq 3 ] && { [ -n "$fixture_filter" ] || [ -n "${NROS_FIXTURE_ID:-}" ]; }; then
         echo "  (no Zephyr leaf matched the filter — only the west compile-check rows can)"
         : >"$probe_records"
         probe_rc=0
@@ -610,7 +613,7 @@ build-fixtures:
     # matched", benign when a leaf did and fatal when nothing did (issue 0406).
     if [ "$west_rc" -eq 3 ]; then
         if [ "$normal_records" = "0" ]; then
-            echo "  ✗ no Zephyr fixtures matched NROS_ZEPHYR_FIXTURE_FILTER=$fixture_filter"
+            echo "  ✗ no Zephyr fixtures matched $(source scripts/lib/fixture-filter.sh && nros_fixture_narrowing)"
             echo "    (neither a [[fixture]] west leaf nor a west [[compile_check_fixture]] row)"
             exit 1
         fi

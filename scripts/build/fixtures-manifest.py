@@ -2295,6 +2295,7 @@ def main():
             # single-node witnesses migrated in place, which the fixture lane
             # must `nros configure` before `nros build --dry-run` accepts them.
             "west-witness-dirs",
+            "west-leaf-id",
             # Issue 0482 — shape-check `[[fixture]]` rows. `validate-workspaces`
             # has required `platform`/`lang`/`rmw` on workspace rows since
             # phase-295; plain rows had no validator at all, so a row missing
@@ -2383,6 +2384,23 @@ def main():
         for e in west_rows(a.manifest):
             for knob, value in west_overrides(e):
                 sys.stdout.write(f"{west_id(e)}{SEP}{knob}={value}\n")
+        return
+
+    if a.command == "west-leaf-id":
+        # Issue 2835 — the leaf id (`west_id`, field 8 of a `west-leaves`
+        # record) of the west row whose manifest id is `--id`, so the Zephyr
+        # leaf emitter can honour `NROS_FIXTURE_ID`. The record carries the
+        # leaf id and never the row id, and it is 16 fields wide with many
+        # readers, so the mapping is its own command, not a 17th field. Exit 1,
+        # printing nothing, when no `builder = "west"` row and no Zephyr
+        # `[[workspace_fixture]]` has that id.
+        rows = [e for e in load(a.manifest) if e.get("builder") == "west"]
+        rows += [e for e in load_workspace_fixtures(a.manifest)
+                 if e.get("platform") in ZEPHYR_WEST_PLATFORMS]
+        hits = [west_id(e) for e in rows if e.get("id") == a.id]
+        if not hits:
+            sys.exit(1)
+        sys.stdout.write(f"{hits[0]}\n")
         return
 
     if a.command == "west-witness-dirs":

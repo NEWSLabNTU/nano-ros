@@ -42,3 +42,25 @@ nros_fixture_filter_selects() {
     done
     return 1
 }
+
+# nros_fixture_id_selects <row-id>
+#
+# Issue 2835 — `NROS_FIXTURE_ID=<id>` is the sweep-wide one-row narrowing
+# (`scripts/build/fixture-id-guard.sh`): every stage a platform recipe runs
+# must honour it. The two Zephyr west builders read only
+# NROS_ZEPHYR_FIXTURE_FILTER, so `NROS_FIXTURE_ID=<id> just zephyr
+# build-fixtures`, the refusal hint's own spelling, built every leaf. True when
+# the variable is unset or names exactly this row.
+nros_fixture_id_selects() {
+    [ -z "${NROS_FIXTURE_ID:-}" ] || [ "$1" = "$NROS_FIXTURE_ID" ]
+}
+
+# nros_fixture_narrowing — the narrowings in force, for a "matched nothing"
+# message; empty when none is.
+nros_fixture_narrowing() {
+    local out=""
+    [ -z "${NROS_ZEPHYR_FIXTURE_FILTER:-}" ] || out="NROS_ZEPHYR_FIXTURE_FILTER=$NROS_ZEPHYR_FIXTURE_FILTER"
+    [ -z "${NROS_FIXTURE_ID:-}" ] || out="${out:+$out }NROS_FIXTURE_ID=$NROS_FIXTURE_ID"
+    printf '%s' "$out"
+}
+

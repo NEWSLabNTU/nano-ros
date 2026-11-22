@@ -232,6 +232,7 @@ while IFS= read -r record; do
             "$board" "$id" "$src/$subdir" "$extra"; then
         continue
     fi
+    nros_fixture_id_selects "$id" || continue
     total=$((total + 1))
     [ -d "$repo_root/$src" ] || { echo "west-fixtures: src missing: $src" >&2; continue; }
     # Issue 2192 — per Zephyr line (`nros_west_fixture_dir`), not per id.
@@ -497,8 +498,8 @@ while IFS= read -r record; do
         failed=$((failed + 1))
     fi
 done <<< "$records"
-if [ -n "$fixture_filter" ] && [ "$total" -eq 0 ]; then
-    echo "west-fixtures: no compile-check row matched NROS_ZEPHYR_FIXTURE_FILTER=$fixture_filter" >&2
+if { [ -n "$fixture_filter" ] || [ -n "${NROS_FIXTURE_ID:-}" ]; } && [ "$total" -eq 0 ]; then
+    echo "west-fixtures: no compile-check row matched $(nros_fixture_narrowing)" >&2
     exit 3
 fi
 echo "west fixtures: $n/$total ok ($reused reused, $((n - reused)) built)."
