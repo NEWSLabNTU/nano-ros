@@ -233,17 +233,18 @@ mod tests {
     #[test]
     fn the_c_file_counts_the_sched_task_stacks() {
         let c = include_str!("../c/threadx_hooks.c");
-        let block = |start: &str, end: &str| -> String {
+        let block = |start: &str, end: &str| -> &'static str {
             let i = c.find(start).unwrap_or_else(|| panic!("no `{start}`"));
             let j = i + c[i..].find(end).unwrap_or_else(|| panic!("no `{end}`"));
-            c[i..j].to_string()
+            &c[i..j]
         };
         let default = block("#ifndef NROS_THREADX_BYTE_POOL_BYTES", "#endif");
         assert!(
             default.contains("NROS_THREADX_SCHED_TASK_STACK_BYTES"),
             "{default}"
         );
-        let floor = block("_Static_assert(NROS_THREADX_BYTE_POOL_BYTES", ";");
+        // The floor's comparison, whatever line clang-format puts it on.
+        let floor = block("NROS_THREADX_BYTE_POOL_BYTES >=", ";");
         assert!(
             floor.contains("NROS_THREADX_SCHED_TASK_STACK_BYTES"),
             "{floor}"
