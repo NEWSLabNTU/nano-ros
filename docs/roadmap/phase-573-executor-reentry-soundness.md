@@ -1,10 +1,11 @@
 # Phase 573 — a callback that calls back into its executor is sound
 
-**Status (2026-11-20). OPEN: W1, W2, W5a, W5b, W5c and W5e are done; W2b, W3, W4 and W5d are open.** Fixes
+**Status (2026-11-22). OPEN: W1, W2, W2b, W5a, W5b, W5c and W5e are done; W3, W4 and W5d are open.** Fixes
 [issue 2675](../issues/2675-callback-reentry-aliases-executor.md) by amending
 [RFC-0108](../design/0108-executor-preemption-levels.md) ("Re-entry from a
 callback"). Ahead of [phase-572](archived/phase-572-rust-component-graph-query.md),
-whose W2 waits on it. Owner: nros 133.
+whose W2 waits on it. Owner: nros 241 for W2b, W3 and W4; nros 133 for
+W5d, and for RFC-0108 D9 and the review of each item.
 
 ## Why
 
@@ -75,7 +76,7 @@ W2b with the other entry kinds.
 
 ### W2b — No entry holds its own reference across its callback
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-22)
 
 RFC-0108 D9 rule 4 for every entry kind other than timers. Each
 `*_try_process` in `arena.rs` holds `&mut Entry` across the user callback, and
@@ -90,16 +91,18 @@ already does.
 Acceptance: a Miri case per kind in `executor::tests::reentry`, run by
 `just check miri-executor-reentry`.
 
-One pull request per row, each with its failing Miri case committed first.
+One pull request for the remaining rows, each row's failing Miri case (where
+it has one) committed before its fix. A row with no FFI-reachable writer gets
+a passing case, shown sensitive by a mutation measured and reverted.
 
 | Entry kind | Status | Notes |
 |---|---|---|
 | Raw action server | Fixed | `ActionServerCore::try_handle_cancel` is split into `recv_cancel` (selects, and copies what the handler needs) and `reply_cancel` (finds goals again by id); `action_server_raw_try_process` takes a fresh `&mut` from the entry pointer for each step. Cases: the accepted hook completes its goal, the accepted hook publishes feedback, the cancel callback completes its goal. It also fixes a logic bug: the cancel handler ran inside a loop over `active_goals`, so a goal completed from it moved the goals behind it, and the answers were applied by position to the wrong goals (`a_cancel_answer_lands_on_the_goal_it_was_given_for`, a native test). Cost on thumbv7m (opt-s, nros-c): the dispatch is +440 B. |
-| Typed action server | Open | Same shape. A Rust callback reaches the entry only through a raw executor pointer, so it is lower priority, and the split core already serves it. |
-| Service and action client callbacks | Fixed | Wider than re-entry. `ServiceClientCallback` and `ActionClientCallback` held a pointer made as `&mut (*entry).field as *mut _`, a child of a temporary reference, which the dispatcher's own write to the entry disabled. So the second request through the safe handle was UB even from outside any callback. The fix takes a raw place (`addr_of_mut!`); the guard flag's pointer follows suit. The typed action-client dispatch also re-derives the entry per step, and the service-client info closure holds the entry pointer instead of `&hdr.handle`. Cases: a reply that sends the next request, a goal response that asks for its result, and each handle surviving its reply dispatch. Cost: none (host release, 13,752 B for the ten client dispatch monomorphs, before and after). |
-| Service server | Open | `handle`, `req_buffer` and `reply_buffer` are `&mut` arguments of `handle_request(.., cb)`. |
-| Subscription drain | Open | `entry` is used again on the next loop iteration. |
-| Guard | Open (negative control) | Atomic flag; the entry is not used after the callback. |
+| Typed action server | Fixed | A Rust callback reaches its server through `ActionServerHandle` and a raw executor pointer. The cancel callback completing its goal failed under Miri at `as_complete_goal`'s reborrow, against the protected `&mut self` of `try_handle_cancel`. The dispatch now has the raw row's shape: `recv_cancel` / `reply_cancel`, and the typed `try_accept_goal` split into `recv_goal` and `finish_goal`, with a fresh `&mut` to the server from a raw place per step and each callback borrowed through its own field. The `as_*` helpers reborrow only the server. Case: the cancel callback completes its goal. Cost: nros-c (thumbv7m, opt-s) byte-identical, since C uses the raw dispatch; host release, the typed dispatch and its eight helpers, 4,821 B to 4,131 B. |
+| Service and action client callbacks | Fixed | Wider than re-entry. `ServiceClientCallback` and `ActionClientCallback` held a pointer made as `&mut (*entry).field as *mut _`, a child of a temporary reference, which the dispatcher's own write to the entry disabled. So the second request through the safe handle was UB even from outside any callback. The fix takes a raw place (`addr_of_mut!`); the guard flag's pointer follows suit. The typed action-client dispatch also re-derives the entry per step, and the service-client info closure holds the entry pointer instead of `&hdr.handle`. Cases: a reply that sends the next request, a goal response that asks for its result, and each handle surviving its reply dispatch. Cost: none (host release, 13,752 B for the ten client dispatch monomorphs, before and after). A raw client's response callback that re-sends on its own client (the chained-request pattern, writing the running entry) passes; a post-callback write of `pending` fails, on both the raw and the typed dispatch (measured, reverted). |
+| Service server | Sound as built | No FFI path writes a running server's entry: the reply goes through the `resp` pointer the dispatch hands out, `rcl_service_fini` from the callback defers, and a nested spin returns `REENTRANT`. Cases: a callback reads its own handle; a callback writes its reply, then sends on a client (`service_client_entry_mut` retags the whole arena). Measured: a post-callback write to the reply buffer still passes, so the whole-arena retag does not freeze it. The typed server's protected `&mut` arguments are reachable only from a Rust closure, which borrowck keeps from the executor. |
+| Subscription drain | Sound as built | `entry` is used again on the next loop iteration, but no FFI path writes a running subscription's entry. Case: a buffered C subscription with three queued samples whose callback reads its own handle and sends on a client each time. |
+| Guard | Sound as built (negative control) | Atomic flag, swapped before the callback; the entry is not used after it. Case: a callback re-triggers its own guard and sends on a client. Measured: a post-callback read of the flag through the entry fails, so the case is sensitive. |
 
 ### W3 — One derive helper, and the class sweep
 
