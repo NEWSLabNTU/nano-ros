@@ -13881,10 +13881,7 @@ mod per_image_configure_tests {
         let long = "x".repeat(300);
         let seeds = vec![
             ("names".to_string(), format!("[left, '{long}']")),
-            (
-                "gains".to_string(),
-                format!("[{}]", vec!["1.0"; 40].join(", ")),
-            ),
+            ("gains".to_string(), format!("[{}]", ["1.0"; 40].join(", "))),
         ];
         let keys = |m: &[(&ParamBound, Option<usize>)]| {
             m.iter()
@@ -13967,7 +13964,7 @@ mod per_image_configure_tests {
         // array alone leaves the string floor at the crate default.
         let numeric = vec![(
             "gains".to_string(),
-            format!("[{}]", vec!["1.000000000000001"; 4].join(", ")),
+            format!("[{}]", ["1.000000000000001"; 4].join(", ")),
         )];
         let only_numbers = unstated_param_bounds(&sizing, &shapes, &numeric, true, |_| None);
         assert_eq!(
