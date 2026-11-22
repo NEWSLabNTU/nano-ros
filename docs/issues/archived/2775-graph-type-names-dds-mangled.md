@@ -1,12 +1,13 @@
 ---
 id: 2775
 title: "On zenoh, the graph queries report a topic's type in its DDS-mangled wire form (std_msgs::msg::dds_::String_) where ROS 2 reports std_msgs/msg/String"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [rmw, zenoh, graph]
 related: [issue-2674, phase-381, phase-572]
 found: 2026-11-21
+resolved: 2026-11-22
 ---
 
 ## What happens
@@ -42,3 +43,15 @@ two places a type leaves the shim (the grouping's type pass, and the endpoint
 info), so every query and every language surface gets it. The parsed
 entity keeps the wire form, because the matched-event and service-readiness
 checks compare it against the local DDS name.
+
+## Verified (2026-11-22)
+
+- The fix merged in #4489. Its round-trip unit test demangles every
+  `DdsTypeName` output, action sub-types included, back to its ROS form; other
+  shapes pass through, and an overflow is refused. `graph_query_parity` asserts
+  `chatter_type=std_msgs/msg/String` and passed end to end on freshly built
+  rows on all three surfaces.
+- Sweep for a type leaving any backend in the wire form: the zenoh shim
+  demangles at both exits (`session.rs`'s grouping pass and its endpoint info).
+  Cyclone demangles in `graph_query.cpp`. XRCE implements no graph query. No
+  other site reports a type.
