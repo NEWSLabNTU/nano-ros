@@ -102,12 +102,13 @@ _Static_assert(sizeof(ULONG) == 4,
 #ifndef NROS_THREADX_APP_STACK_BYTES
 #define NROS_THREADX_APP_STACK_BYTES (64u * 1024u)
 #endif
-/* Issue 2800 -- `tx_thread_create` refuses a stack below the port's
- * TX_MINIMUM_STACK, which a host port raises to its PTHREAD_STACK_MIN floor
- * (`nros-board-threadx-linux/config/tx_user.h`): refuse it here instead, by
- * name, rather than as "app thread create failed" at boot. */
-_Static_assert(NROS_THREADX_APP_STACK_BYTES >= TX_MINIMUM_STACK,
-               "NROS_THREADX_APP_STACK_BYTES is below this port's TX_MINIMUM_STACK");
+/* Issue 2800 -- a stated stack is a floor the PORT raises: `tx_thread_create`
+ * refuses one below TX_MINIMUM_STACK, which a host port sets to its
+ * PTHREAD_STACK_MIN floor (`nros-board-threadx-linux/config/tx_user.h`, 131,200
+ * bytes on aarch64). So the app thread gets the larger of the two, and the
+ * boot log says so when it differs. */
+#define NROS_THREADX_RAISED_STACK(bytes)                                                           \
+    ((bytes) < (uint32_t) TX_MINIMUM_STACK ? (uint32_t) TX_MINIMUM_STACK : (uint32_t) (bytes))
 /* 1 for a DDS backend (Cyclone): the larger working set. Set by the build that
  * knows the image's RMW. */
 #ifndef NROS_THREADX_POOL_DDS
@@ -154,7 +155,21 @@ _Static_assert(NROS_THREADX_BYTE_POOL_BYTES >= NROS_THREADX_APP_STACK_BYTES +
                "nodes. Raise `[image.<id>.knobs.threadx] byte_pool_bytes` "
                "(NROS_THREADX_BYTE_POOL_BYTES).");
 
-#define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES)
+/* Issue 2800 -- the pool grows by exactly what the port raised: the app
+ * stack's raise, and, for zenoh, its two tasks (read and lease), whose stacks
+ * `zpico-sys/c/platform/threadx/platform.h` raises from 8192 to the same
+ * floor. Both are 0 on a port whose minimum is below them. */
+#define NROS_THREADX_ZENOH_TASK_STACK_RAISE                                                        \
+    ((uint32_t) TX_MINIMUM_STACK > 8192u ? (uint32_t) TX_MINIMUM_STACK - 8192u : 0u)
+#if NROS_THREADX_POOL_DDS
+#define NROS_THREADX_POOL_PORT_RAISE                                                               \
+    (NROS_THREADX_RAISED_STACK(NROS_THREADX_APP_STACK_BYTES) - NROS_THREADX_APP_STACK_BYTES)
+#else
+#define NROS_THREADX_POOL_PORT_RAISE                                                               \
+    (NROS_THREADX_RAISED_STACK(NROS_THREADX_APP_STACK_BYTES) - NROS_THREADX_APP_STACK_BYTES +      \
+     2u * NROS_THREADX_ZENOH_TASK_STACK_RAISE)
+#endif
+#define BYTE_POOL_SIZE (NROS_THREADX_BYTE_POOL_BYTES + NROS_THREADX_POOL_PORT_RAISE)
 
 /* ---- Overlay-tunable parameters (weak getters — overlay strong-overrides) ----
  *
@@ -438,6 +453,10 @@ static void app_thread_entry(ULONG input) {
 }
 
 /* ---- ThreadX tx_application_define (called by tx_kernel_enter) ---- */
+/* Defined with the task census below. */
+static size_t census_put(char* line, size_t n, size_t cap, const char* s);
+static size_t census_put_u(char* line, size_t n, size_t cap, unsigned long v);
+
 void tx_application_define(void* first_unused_memory) {
     UINT status;
     UCHAR* pointer;
@@ -480,6 +499,17 @@ void tx_application_define(void* first_unused_memory) {
     /* Create application thread. Resolve the overlay-tunable size/priority
      * via the weak getters once (the overlay strong-overrides the fns). */
     stack_size = nros_board_app_stack_size();
+    if (stack_size < (ULONG) TX_MINIMUM_STACK) {
+        char line[128];
+        size_t n = census_put(line, 0, sizeof(line), "nros: app stack stated ");
+        n = census_put_u(line, n, sizeof(line), (unsigned long) stack_size);
+        n = census_put(line, n, sizeof(line), " bytes, raised to ");
+        n = census_put_u(line, n, sizeof(line), (unsigned long) TX_MINIMUM_STACK);
+        n = census_put(line, n, sizeof(line), " (this port's least stack)\n");
+        line[n] = '\0';
+        nros_board_log(line);
+        stack_size = (ULONG) TX_MINIMUM_STACK;
+    }
     priority = nros_board_app_priority();
     nros_board_log("[app_define] Creating app thread...\n");
     status = tx_byte_allocate(&byte_pool, (VOID**)&pointer, stack_size, TX_NO_WAIT);
