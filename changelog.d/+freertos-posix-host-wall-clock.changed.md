@@ -1,0 +1,1 @@
+On the freertos-posix board (FreeRTOS on a Linux host), the wall clock now reads the host's time by default. It used to read 0 (no wall clock) unless a source was stated. An image that relied on unset stamps there should state a source that does not answer, or check `wall_clock_state()`.
