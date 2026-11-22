@@ -66,7 +66,7 @@ Option A of the design note, approved by the user: every generated CMake root
 adds its bringup's closure only. That is the bringup, the packages its
 configure's images reach (launch nodes, owned entries, `[[component]]` rows),
 and their workspace `<depend>`s, transitively. The contract is in
-[phase-583 W0](../../roadmap/phase-583-owned-entry-executables.md) and RFC-0065's
+[phase-583 W0](../../roadmap/archived/phase-583-owned-entry-executables.md) and RFC-0065's
 changelog.
 
 `cmake_root_excluded` now also leaves out every package outside
