@@ -1275,6 +1275,15 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
             // SAFETY: a plain platform sleep; it touches no nano-ros state.
             unsafe { nros_platform_sleep_ms(SPIN_MS as usize) };
         } else {
+            // Phase-573 W3 -- the pass marks the context in a callback, as
+            // `nros_cpp_spin_once` does, so a callback it dispatches that
+            // spins or waits again is refused rather than nesting a pass.
+            // SAFETY: the tag proved the context; the lock serialises the flag.
+            let Some(_dispatch) =
+                (unsafe { crate::RawDispatchGuard::enter(ctx.in_dispatch_ptr()) })
+            else {
+                return crate::NROS_CPP_RET_REENTRANT;
+            };
             // SAFETY: `ctx` holds the lock; no reference to the executor is
             // live across the pass (RFC-0108 D9, issue 2675).
             let _ = unsafe {
