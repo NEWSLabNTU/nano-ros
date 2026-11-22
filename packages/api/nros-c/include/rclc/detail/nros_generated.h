@@ -7850,7 +7850,11 @@ NROS_PUBLIC uint8_t rclc_lifecycle_transition_goal_state(uint8_t transition_id);
 NROS_PUBLIC rcl_ret_t rclc_lifecycle_transition_graph(const uint8_t **out_ids, size_t *out_count);
 
 /**
- * Register the five REP-2002 lifecycle services on the executor's node.
+ * Register the five REP-2002 lifecycle services on the executor's primary
+ * node: the first node bound with `rclc_executor_node_init`, so they are
+ * `/<node>/get_state` and so on. An executor with no bound node and no
+ * name is refused (`RCL_RET_INVALID_ARGUMENT`) rather than served as
+ * `//get_state`.
  *
  * After this call, `ros2 lifecycle set|get|list|nodes` can drive the
  * executor-owned state machine. Register transition callbacks via

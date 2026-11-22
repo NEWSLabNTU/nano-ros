@@ -1,16 +1,18 @@
 ---
 id: 2429
 title: "The C API's executor-scoped lifecycle services are named `//get_state`: they register on the executor's identity, which is empty on the C road"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [c-api, lifecycle, runtime]
 related: [2428, 2304, phase-488, rfc-0128, phase-554]
 found: 2026-11-11
+resolved: 2026-11-22
+resolved_in: "fix(lifecycle, issues 2429 and 2626): the executor-level machine is served on the primary node"
 ---
 
-**Home: [phase-537](../roadmap/phase-537-book-user-guide-organization.md),
-beside [issue 2428](2428-workspace-lifecycle-is-one-machine-per-image.md).** It is
+**Home: [phase-537](../../roadmap/phase-537-book-user-guide-organization.md),
+beside [issue 2428](../2428-workspace-lifecycle-is-one-machine-per-image.md).** It is
 the C road's form of 2428's defect, and its fix waits on 2428's ruling.
 
 ## Measured
@@ -67,7 +69,36 @@ program, so it lands together with 2428's choice and not before.
 
 ## Decided by RFC-0128 (2026-11-12)
 
-[RFC-0128](../design/0128-per-node-lifecycle.md) D8: lifecycle services are
+[RFC-0128](../../design/0128-per-node-lifecycle.md) D8: lifecycle services are
 named only after a declared node, `register_lifecycle_services_named` refuses
 an empty name, and the executor-scoped C family retires in favour of upstream
 `rclc_lifecycle`'s per-node API (D4). The refusal lands in its phase B.
+
+## Resolved, 2026-11-22
+
+`Executor::register_lifecycle_services()`, which
+`rclc_executor_register_lifecycle_services` calls, names the machine after
+the image's primary node (`entity_identity(None)`, RFC-0128 D8). Since
+phase-554 W3.b every C node is bound (`rclc_executor_node_init`), so it is
+in the executor's node table, and a C lifecycle program's services are
+`/<node>/get_state` rather than `//get_state`.
+`register_lifecycle_services_named` refuses an empty name with
+`NodeError::LifecycleNodeUnnamed` (C: `RCL_RET_INVALID_ARGUMENT` with the
+reason printed; C++: `NROS_CPP_RET_INVALID_ARGUMENT`; boot report class 21).
+
+Not done here: a Linux C lifecycle cell that runs `ros2 lifecycle get
+/<node>` on Cyclone and zenoh. The tree has no C lifecycle example to drive.
+The zenoh interop cell drives the Rust example, which declares no node and
+keeps its configured `/lifecycle_demo`.
+
+Held by the mock-session tests in `nros-node`'s `lifecycle_services`:
+`the_executor_level_machine_is_served_on_the_primary_node`,
+`an_unnamed_executor_with_a_node_serves_the_node_s_names`,
+`a_machine_with_no_node_name_is_refused`,
+`a_zero_node_image_keeps_its_configured_name`,
+`the_primary_node_cannot_get_a_second_machine` and
+`the_executor_level_machine_is_reachable_both_ways`. They assert the five
+names `ros2 lifecycle` calls (`/<ns>/<node>/change_state`, `get_state`,
+`get_available_states`, `get_available_transitions`,
+`get_transition_graph`) and `~/transition_event`. With the executor-identity
+naming put back, five of them fail.

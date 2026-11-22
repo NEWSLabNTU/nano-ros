@@ -77,6 +77,8 @@ pub(crate) fn node_error_to_ret(err: nros_node::NodeError) -> rcl_ret_t {
         E::Serialization | E::Deserialization | E::ActionCreationFailed => RCL_RET_ERROR,
         // RFC-0128 D1 -- the node already has a lifecycle state machine.
         E::LifecycleAlreadyRegistered => RCLC_RET_ALREADY_EXISTS,
+        // RFC-0128 D8 (issue 2429) -- no declared node to name the machine.
+        E::LifecycleNodeUnnamed => RCL_RET_INVALID_ARGUMENT,
     }
 }
 

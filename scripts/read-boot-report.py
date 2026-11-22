@@ -194,6 +194,7 @@ ERR_CLASS = {
     18: "DeclaredDepthMismatch",
     19: "DeclaredQosMismatch",
     20: "LifecycleAlreadyRegistered",
+    21: "LifecycleNodeUnnamed",
 }
 
 # Assigned by `transport_error_class` in the same file.

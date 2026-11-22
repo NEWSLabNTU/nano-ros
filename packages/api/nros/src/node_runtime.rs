@@ -3586,6 +3586,10 @@ fn capability_reason(e: &nros_node::NodeError) -> &'static str {
         NodeError::LifecycleAlreadyRegistered => {
             "LifecycleAlreadyRegistered (this node already has a lifecycle state machine)"
         }
+        NodeError::LifecycleNodeUnnamed => {
+            "LifecycleNodeUnnamed (a lifecycle state machine needs a declared node; this \
+             image declares none and the executor has no name)"
+        }
         // phase-454 W10. The two numbers and the topic are already on the log
         // by the time this renders — this string is the CLASS, and a reason
         // that repeated the numbers without the topic would be worse than one

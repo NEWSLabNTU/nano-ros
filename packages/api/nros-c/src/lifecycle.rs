@@ -413,7 +413,12 @@ mod service_backed {
     use super::*;
     use crate::executor::{get_executor, rclc_executor_t};
 
-    /// Register the five REP-2002 lifecycle services on the executor's node.
+    // RFC-0128 D8, issue 2429.
+    /// Register the five REP-2002 lifecycle services on the executor's primary
+    /// node: the first node bound with `rclc_executor_node_init`, so they are
+    /// `/<node>/get_state` and so on. An executor with no bound node and no
+    /// name is refused (`RCL_RET_INVALID_ARGUMENT`) rather than served as
+    /// `//get_state`.
     ///
     /// After this call, `ros2 lifecycle set|get|list|nodes` can drive the
     /// executor-owned state machine. Register transition callbacks via

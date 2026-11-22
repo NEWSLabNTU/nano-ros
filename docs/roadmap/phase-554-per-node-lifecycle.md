@@ -251,9 +251,10 @@ Each row of RFC-0128's D8 table, as ruled:
     the nros-cpp action server).
   - the executor-level lifecycle registration
     (`register_lifecycle_services()`, hand-written images only; a generated
-    entry registers per node). Open:
-    [issue 2626](../issues/2626-executor-level-lifecycle-on-primary-node.md),
-    kept out of slice B because it changes a machine key.
+    entry registers per node). **Done (2026-11-22,**
+    [issue 2626](../issues/archived/2626-executor-level-lifecycle-on-primary-node.md)**):**
+    served on the primary node, keeping the executor-scoped key, and a
+    second machine on that node is refused.
 - **Dropped:** the node-table spare slot. **Slice B.** The sizing no longer
   adds a slot for the reporter or the lifecycle family; an image with no
   component still holds one for its configured name.
@@ -261,7 +262,7 @@ Each row of RFC-0128's D8 table, as ruled:
   binding (`rclc_executor_node_init`). **Slice A:** an executor with a bound
   node refuses an unbound node's entity at all seven registration sites,
   naming the fix. The unbound path itself is retired in W3.b. An empty name
-  is refused (issue 2429).
+  is refused (issue 2429, resolved 2026-11-22: `LifecycleNodeUnnamed`).
 - **Zero-node direct-API images:** keep their configured name as their one
   node, and are refused at open with no name. Slice C.
 
@@ -522,7 +523,7 @@ Status: OPEN. Gate: W0, and W1-W14 done.
 - RFC-0128 flips to Stable, with W0's answers recorded.
 - ARCHITECTURE.md is updated.
 - RFC-0036's divergence line is narrowed.
-- Issues 2428 and 2429 are archived as resolved.
+- Issue 2428 is archived as resolved (issue 2429 was, 2026-11-22).
 
 Acceptance: the RFC status and ARCHITECTURE change land in one commit, and
 both issues are archived.

@@ -15070,12 +15070,32 @@ impl<'s> Executor<'s> {
     /// Registered callbacks on the state machine are C FFI function pointers.
     /// The caller must keep the callback code and any context it captures
     /// valid for as long as the executor processes services.
+    ///
+    /// The machine is served under the image's PRIMARY node, the one
+    /// [`entity_identity`](Self::entity_identity) gives every executor-level
+    /// entity, so `ros2 lifecycle get /<node>` finds it. Only an image that declares no node keeps the executor's
+    /// configured name; with none, it is refused
+    /// ([`NodeError::LifecycleNodeUnnamed`]) rather than served as
+    /// `//get_state`. The machine keeps the executor-scoped key, so the
+    /// executor-scoped accessors behave as before, and the primary node
+    /// cannot get a second one through
+    /// [`register_lifecycle_services_on`](Self::register_lifecycle_services_on).
+    // RFC-0128 D8; issues 2626 and 2429.
     pub fn register_lifecycle_services(&mut self) -> Result<(), NodeError> {
-        let ns = self.namespace.clone();
-        let nn = self.node_name.clone();
+        let (nn, ns, _) = self.entity_identity(None)?;
         self.register_lifecycle_services_named(None, &ns, &nn)?;
         observe_code_managed(&ns, &nn);
         Ok(())
+    }
+
+    /// The node a lifecycle machine key is served under: its own node, or for
+    /// the executor-scoped key the primary node when the image has one
+    /// (RFC-0128 D8). `None` only for a zero-node image's machine.
+    fn lifecycle_served_on(
+        &self,
+        key: Option<super::node_record::NodeId>,
+    ) -> Option<super::node_record::NodeId> {
+        key.or_else(|| (!self.nodes.is_empty()).then_some(super::node_record::NodeId::PRIMARY))
     }
 
     /// [`register_lifecycle_services`](Self::register_lifecycle_services),
@@ -15117,7 +15137,21 @@ impl<'s> Executor<'s> {
         ns: &str,
         nn: &str,
     ) -> Result<(), NodeError> {
-        if self.lifecycle.iter().any(|e| e.node == key) {
+        // RFC-0128 D8 (issue 2429): a machine is named after a declared
+        // node. An empty name would serve `//get_state`, which no
+        // `ros2 lifecycle` command can reach.
+        if nn.is_empty() {
+            return Err(NodeError::LifecycleNodeUnnamed);
+        }
+        // One machine per node it is SERVED on (issue 2626): the
+        // executor-scoped machine is served on the primary node, so a second
+        // registration on that node, by either spelling, is refused.
+        let served = self.lifecycle_served_on(key);
+        if self
+            .lifecycle
+            .iter()
+            .any(|e| e.node == key || (served.is_some() && e.served_on == served))
+        {
             return Err(NodeError::LifecycleAlreadyRegistered);
         }
         if self.lifecycle.len() >= crate::lifecycle_services::MAX_LIFECYCLE_MACHINES {
@@ -15292,7 +15326,11 @@ impl<'s> Executor<'s> {
             .try_reserve(1)
             .map_err(|_| NodeError::Transport(TransportError::BadAlloc))?;
         self.lifecycle
-            .push(crate::lifecycle_services::LifecycleEntry { node: key, state });
+            .push(crate::lifecycle_services::LifecycleEntry {
+                node: key,
+                served_on: served,
+                state,
+            });
 
         Ok(())
     }
@@ -15302,6 +15340,16 @@ impl<'s> Executor<'s> {
     /// a second publisher on the same topic would be a second source of truth.
     /// Its only callers are the mock-session tests, which a `rmw-cffi` build
     /// does not compile.
+    #[cfg(all(test, not(feature = "rmw-cffi")))]
+    pub(crate) fn lifecycle_service_names(
+        &self,
+        node: Option<super::node_record::NodeId>,
+    ) -> Option<[alloc::string::String; 5]> {
+        self.lifecycle_entry(node)
+            .map(|lc| lc.state.services.service_names())
+    }
+
+    /// The `~/transition_event` publisher (see above).
     #[cfg(all(test, not(feature = "rmw-cffi")))]
     pub(crate) fn lifecycle_transition_event_publisher(&self) -> Option<&session::RmwPublisher> {
         self.lifecycle_entry(None)
@@ -15318,7 +15366,11 @@ impl<'s> Executor<'s> {
         node: Option<super::node_record::NodeId>,
     ) -> Option<&crate::lifecycle_services::LifecycleEntry> {
         match node {
-            Some(_) => self.lifecycle.iter().find(|e| e.node == node),
+            Some(id) => self
+                .lifecycle
+                .iter()
+                .find(|e| e.node == node)
+                .or_else(|| self.lifecycle.iter().find(|e| e.served_on == Some(id))),
             None => self.lifecycle.iter().find(|e| e.node.is_none()).or(
                 match self.lifecycle.as_slice() {
                     [only] => Some(only),
@@ -15333,7 +15385,11 @@ impl<'s> Executor<'s> {
         node: Option<super::node_record::NodeId>,
     ) -> Option<&mut crate::lifecycle_services::LifecycleEntry> {
         let idx = match node {
-            Some(_) => self.lifecycle.iter().position(|e| e.node == node),
+            Some(id) => self
+                .lifecycle
+                .iter()
+                .position(|e| e.node == node)
+                .or_else(|| self.lifecycle.iter().position(|e| e.served_on == Some(id))),
             None => self
                 .lifecycle
                 .iter()
