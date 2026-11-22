@@ -1,0 +1,6 @@
+{
+  "key": "rust:WallClock",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`nros::WallClockState` (re-exported from nros-core; the surface keys it without its `State` suffix): the image's wall-clock state as `wall_clock_state()` returns it (synced, which source answered, steps since boot; RFC-0141 D4), the Rust face of `c:wall_clock_state` / `cpp:Clock::wall_clock_state`. rclrs has no equivalent: upstream's system clock is the host's, always set."
+}
