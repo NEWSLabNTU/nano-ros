@@ -2143,8 +2143,8 @@ pub unsafe extern "C" fn rclc_client_wait_for_service(
         }
 
         let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-        if exec_t.in_dispatch {
-            return RCLC_RET_REENTRANT;
+        if let Err(ret) = unsafe { crate::executor::refuse_in_dispatch(exec_t) } {
+            return ret;
         }
         let executor = exec_t as *mut rclc_executor_t;
 
@@ -2493,8 +2493,8 @@ pub unsafe extern "C" fn rclc_client_call(
     // Reentrancy guard: rclc_client_call spins the executor internally,
     // so it must not be called from inside a dispatch callback.
     let exec_t = &*(executor_ptr as *const rclc_executor_t);
-    if exec_t.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { crate::executor::refuse_in_dispatch(exec_t) } {
+        return ret;
     }
 
     // One-shot blocking response capture. Static is fine because

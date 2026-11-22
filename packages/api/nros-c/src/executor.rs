@@ -84,6 +84,26 @@ pub(crate) unsafe fn get_executor<'a>(executor: *mut rclc_executor_t) -> CExecRe
     unsafe { CExecRef::lock((*executor)._opaque.as_mut_ptr() as *mut CExecutor) }
 }
 
+/// Phase-573 W3 (RFC-0108 D9) -- the one place the C API refuses a call made
+/// from inside a callback. A callback may make any call stock rclc allows; a
+/// call is refused here only when it would block, spin the executor again,
+/// or release an entry the running pass may still touch, and each of those
+/// asks this function rather than reading `in_dispatch` itself, so the set of
+/// refusing calls is the set of callers (`check-ffi-executor-derive`).
+///
+/// # Safety
+/// `executor` is a live, initialised executor header. The flag is read
+/// through a raw place, creating no reference to the header.
+#[inline]
+pub(crate) unsafe fn refuse_in_dispatch(executor: *const rclc_executor_t) -> Result<(), rcl_ret_t> {
+    // SAFETY: the caller's contract.
+    if unsafe { core::ptr::read(core::ptr::addr_of!((*executor).in_dispatch)) } {
+        Err(RCLC_RET_REENTRANT)
+    } else {
+        Ok(())
+    }
+}
+
 /// phase-509 P9b (RFC-0108 "As built in P9b") -- the C API's executor
 /// reference: it holds the executor's lock (taken BEFORE the reference
 /// exists) until it drops. An executor with no lock installed takes none.
@@ -1157,8 +1177,8 @@ unsafe fn nros_executor_wait_for_endpoints_impl(
     }
     // RFC-0021's reentrancy guard: this helper drives the executor, so
     // calling it from inside a callback would re-enter the dispatch loop.
-    if exec_t.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { refuse_in_dispatch(exec_t) } {
+        return ret;
     }
     #[cfg(feature = "rmw-cffi")]
     {
@@ -4610,8 +4630,8 @@ pub(crate) unsafe fn detach_action_server(
     executor: &mut rclc_executor_t,
     server: &mut rcl_action_server_t,
 ) -> rcl_ret_t {
-    if executor.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { refuse_in_dispatch(executor) } {
+        return ret;
     }
 
     let opaque_ptr = executor_ptr(executor);
@@ -4689,8 +4709,8 @@ pub(crate) unsafe fn detach_action_client(
     executor: &mut rclc_executor_t,
     client: &mut rcl_action_client_t,
 ) -> rcl_ret_t {
-    if executor.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { refuse_in_dispatch(executor) } {
+        return ret;
     }
 
     let opaque_ptr = executor_ptr(executor);
@@ -4794,8 +4814,8 @@ pub(crate) unsafe fn detach_subscription(
     subscription: &mut rcl_subscription_t,
 ) -> rcl_ret_t {
     let executor_ptr = executor as *mut rclc_executor_t as *mut core::ffi::c_void;
-    if executor.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { refuse_in_dispatch(executor) } {
+        return ret;
     }
     if subscription.handle_id == usize::MAX || subscription._executor != executor_ptr {
         return RCLC_RET_NOT_FOUND;
@@ -4875,8 +4895,8 @@ pub(crate) unsafe fn detach_timer(
     executor: &mut rclc_executor_t,
     timer: &mut rcl_timer_t,
 ) -> rcl_ret_t {
-    if executor.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { refuse_in_dispatch(executor) } {
+        return ret;
     }
     // The timer records the executor's OPAQUE pointer (its cancel/reset reach
     // the Rust executor through it), not the `rclc_executor_t`.
@@ -4942,8 +4962,8 @@ pub(crate) unsafe fn detach_service(
     service: &mut rcl_service_t,
 ) -> rcl_ret_t {
     let executor_ptr = executor as *mut rclc_executor_t as *mut core::ffi::c_void;
-    if executor.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { refuse_in_dispatch(executor) } {
+        return ret;
     }
     if service._internal.arena_entry_index < 0 || service._internal.executor_ptr != executor_ptr {
         return RCLC_RET_NOT_FOUND;
@@ -5014,8 +5034,8 @@ pub(crate) unsafe fn detach_client(
     client: &mut rcl_client_t,
 ) -> rcl_ret_t {
     let executor_ptr = executor as *mut rclc_executor_t as *mut core::ffi::c_void;
-    if executor.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { refuse_in_dispatch(executor) } {
+        return ret;
     }
     if client._internal.arena_entry_index < 0 || client._internal.executor_ptr != executor_ptr {
         return RCLC_RET_NOT_FOUND;
