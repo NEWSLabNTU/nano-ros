@@ -89,6 +89,44 @@ for mk in integrations/nuttx/Makefile; do
             fi
         done
     done < <(grep -nE '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\+=' "$mk")
+
+    # --- (3) a clean goal parses without the ROS edition (issue 2807) -------
+    # The apps tree's clean/distclean parse this file under whatever .config
+    # the tree holds; on an arch switch that may not source our Kconfig, and a
+    # refusal there stopped the kernel distclean part-way, leaving the other
+    # arch's objects to be archived. Evaluated, not grepped: the edition block
+    # (from its assignment through the `endif`s closing its `$(error)`) runs
+    # under GNU make with an EMPTY edition for each goal shape.
+    block="$(awk '/^NROS_ROS_EDITION :=/{on=1} on{print} on&&/CONFIG_NROS_ROS_EDITION is unset/{err=1; next}
+                  err&&!/^endif$/{exit}' "$mk")"
+    if [ -z "$block" ] || [[ "$block" != *'CONFIG_NROS_ROS_EDITION is unset'* ]]; then
+        echo "  $mk: cannot find the ROS-edition refusal block to evaluate" >&2
+        fail=1
+    else
+        probe="$(mktemp)"
+        printf 'CONFIG_NROS_ROS_EDITION ?=\n%s\nall clean distclean context:\n\t@:\n' \
+            "$block" > "$probe"
+        for goal in clean distclean; do
+            if ! make -s -f "$probe" "$goal" >/dev/null 2>&1; then
+                echo "  $mk: '$goal' with no CONFIG_NROS_ROS_EDITION refuses; a clean" \
+                     "goal must parse without it (issue 2807)" >&2
+                fail=1
+            fi
+        done
+        for goal in "" context "clean context"; do
+            # shellcheck disable=SC2086 # word-split goals on purpose
+            if make -s -f "$probe" $goal >/dev/null 2>&1; then
+                echo "  $mk: '${goal:-<default>}' with no CONFIG_NROS_ROS_EDITION builds;" \
+                     "a building goal must refuse (RFC-0056 wire mismatch)" >&2
+                fail=1
+            fi
+        done
+        if ! make -s -f "$probe" CONFIG_NROS_ROS_EDITION='"humble"' >/dev/null 2>&1; then
+            echo "  $mk: a set CONFIG_NROS_ROS_EDITION still refuses" >&2
+            fail=1
+        fi
+        rm -f "$probe"
+    fi
 done
 
 if [ "$fail" -ne 0 ]; then
@@ -106,4 +144,4 @@ Verify the whole flow with:  just nuttx build-make-road
 EOF
     exit 1
 fi
-echo "check-nuttx-integration-makefile: OK (paths exist; no use-before-define in '+=')"
+echo "check-nuttx-integration-makefile: OK (paths exist; no use-before-define in '+='; a clean goal needs no edition)"
