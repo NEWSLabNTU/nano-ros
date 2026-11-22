@@ -21896,7 +21896,8 @@ mod managed_publishers {
         sm.register(LifecycleCallbackSlot::Activate, Some(publish_on_activate));
 
         // Unconfigured, then inactive: `publish` succeeds and sends nothing.
-        pm.publish(&msg).expect("a dropped publish still returns Ok");
+        pm.publish(&msg)
+            .expect("a dropped publish still returns Ok");
         transition(&mut exec, managed, LifecycleTransition::Configure);
         pm.publish(&msg).unwrap();
         assert_eq!(pm.handle.publish_count(), 1, "silent until active");
@@ -21924,7 +21925,11 @@ mod managed_publishers {
         for _ in 0..3 {
             pp.publish(&msg).unwrap();
         }
-        assert_eq!(pp.handle.publish_count(), 3, "a plain node's publisher always sends");
+        assert_eq!(
+            pp.handle.publish_count(),
+            3,
+            "a plain node's publisher always sends"
+        );
     }
 
     /// A failed activation leaves the node inactive, so the gate closes again
@@ -21949,6 +21954,10 @@ mod managed_publishers {
         assert!(unsafe { sm.trigger_transition(LifecycleTransition::Activate) }.is_err());
         assert_eq!(sm.state(), LifecycleState::Inactive);
         pm.publish(TestMsg { data: 1 }).unwrap();
-        assert_eq!(pm.handle.publish_count(), 0, "a failed activate leaves it silent");
+        assert_eq!(
+            pm.handle.publish_count(),
+            0,
+            "a failed activate leaves it silent"
+        );
     }
 }

@@ -6276,7 +6276,7 @@ impl<'s> Executor<'s> {
             .map(|m| m.cell);
         Ok(crate::executor::handles::EmbeddedPublisher {
             handle,
-            gate: self.node_publisher_gate(node_id),
+            gate: self.publisher_gate(node_id),
             event_regs: crate::executor::handles::empty_event_regs(),
             monitor,
             epoch: self.epoch_us_fn,
@@ -6299,7 +6299,7 @@ impl<'s> Executor<'s> {
             self.create_raw_publisher_handle_on(node_id, topic_name, type_name, type_hash, qos)?;
         Ok(crate::executor::handles::EmbeddedRawPublisher {
             handle,
-            gate: self.node_publisher_gate(node_id),
+            gate: self.publisher_gate(node_id),
             arena: crate::executor::handles::TxArena::new(),
             event_regs: crate::executor::handles::empty_event_regs(),
             // Issue 1676 — attach the contracted endpoint's counter cell by
@@ -6311,17 +6311,23 @@ impl<'s> Executor<'s> {
         })
     }
 
-    /// phase-554 W6 -- the gate a publisher of `node_id` reads. A node not in
-    /// the table gets none, and its publisher always sends.
-    pub(crate) fn node_publisher_gate(
+    // RFC-0128 D3 / phase-554 W6.
+    /// The gate a publisher of `node` holds: it
+    /// follows the node's lifecycle state once the node is managed. A node not
+    /// in the table gets none, and its publisher always sends.
+    ///
+    /// The gate reads the executor's node table, so a publisher that holds it
+    /// must not publish after this executor is closed -- the same life as the
+    /// RMW handle it sits beside. The C and C++ publishers take theirs here.
+    pub fn publisher_gate(
         &self,
-        node_id: super::node_record::NodeId,
-    ) -> crate::executor::handles::PublisherGate {
-        match self.nodes.get(node_id.index()) {
-            Some(r) => crate::executor::handles::PublisherGate::of(core::ptr::NonNull::from(
-                &r.publish_gate,
-            )),
-            None => crate::executor::handles::PublisherGate::none(),
+        node: super::node_record::NodeId,
+    ) -> crate::lifecycle::PublisherGate {
+        match self.nodes.get(node.index()) {
+            Some(r) => {
+                crate::lifecycle::PublisherGate::of(core::ptr::NonNull::from(&r.publish_gate))
+            }
+            None => crate::lifecycle::PublisherGate::none(),
         }
     }
 

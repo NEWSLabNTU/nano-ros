@@ -93,6 +93,13 @@ pub unsafe extern "C" fn rclc_rosout_publisher_init(
         // through `rclc_publish_serialized`.
         if !publisher.is_null() {
             (*publisher).type_support = core::ptr::null();
+            // phase-554 W6 -- `/rosout` is the node's log, not one of its
+            // managed publishers: rclcpp's is not a lifecycle publisher, so a
+            // node logs in every state.
+            crate::publisher::set_publisher_gate(
+                &mut *publisher,
+                nros_node::lifecycle::PublisherGate::none(),
+            );
         }
         rc
     }

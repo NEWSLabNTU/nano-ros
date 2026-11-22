@@ -43,6 +43,7 @@
 #include "rclcpp/qos.hpp"
 #include "rclcpp/result.hpp"
 #include "rclcpp/detail/nros_cpp_ffi.h"
+#include "rclcpp/detail/config.hpp" // NROS_CPP_PUBLISHER_STORAGE_SIZE
 
 namespace rclcpp {
 namespace rosout {
@@ -110,7 +111,7 @@ class [[deprecated("the executor now creates a /rosout publisher for every node 
     }
 
     // Same slot shape as `rclcpp::Publisher<M>` — one runtime publisher.
-    alignas(8) uint8_t storage_[NROS_PUBLISHER_SIZE + sizeof(void*)];
+    alignas(8) uint8_t storage_[NROS_CPP_PUBLISHER_STORAGE_SIZE];
     bool initialized_;
 };
 

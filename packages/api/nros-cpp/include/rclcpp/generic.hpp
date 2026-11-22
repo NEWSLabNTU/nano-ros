@@ -128,7 +128,7 @@ class GenericPublisher {
                                                    const ::rclcpp::QoS&);
 
     // The same storage `Publisher<M>` carries; see its note on the monitor cell.
-    alignas(8) uint8_t storage_[NROS_PUBLISHER_SIZE + sizeof(void*)];
+    alignas(8) uint8_t storage_[NROS_CPP_PUBLISHER_STORAGE_SIZE];
     char topic_name_[::rclcpp::PUBLISHER_TOPIC_NAME_MAX];
     bool initialized_;
 };

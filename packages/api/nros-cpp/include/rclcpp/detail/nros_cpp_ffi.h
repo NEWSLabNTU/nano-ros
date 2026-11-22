@@ -3892,13 +3892,14 @@ int32_t nros_cpp_metadata_dump(const char *package,
  * Create a publisher on a node.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
- * `size_of::<CppPublisher>()` bytes (`NROS_PUBLISHER_SIZE` from the
- * generated header plus one pointer for the monitor cell), 8-aligned. The
- * handle and the cell pointer are written directly into this buffer.
+ * `size_of::<CppPublisher>()` bytes (`NROS_CPP_PUBLISHER_STORAGE_SIZE`:
+ * `NROS_PUBLISHER_SIZE` from the generated header plus the monitor cell and
+ * the node's lifecycle gate), 8-aligned. All three are written directly into
+ * this buffer.
  *
  * # Safety
  * All pointer parameters must be valid. `storage` must point to an
- * 8-aligned buffer of at least `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes.
+ * 8-aligned buffer of at least `NROS_CPP_PUBLISHER_STORAGE_SIZE` bytes.
  */
 nros_cpp_ret_t nros_cpp_publisher_create(const struct nros_cpp_node_t *node,
                                          const char *topic,
@@ -4023,7 +4024,7 @@ nros_cpp_ret_t nros_cpp_publisher_destroy(void *storage);
  *
  * # Safety
  * Both `old_storage` and `new_storage` must be valid, 8-aligned buffers of
- * at least `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes. `old_storage` must
+ * at least `NROS_CPP_PUBLISHER_STORAGE_SIZE` bytes. `old_storage` must
  * contain an initialised publisher; `new_storage` must not. After the
  * call, `old_storage` is logically uninitialised and must not be destroyed
  * — the C++ side sets its `initialized_` flag to `false`.
@@ -4164,7 +4165,7 @@ bool nros_cpp_rosout_enabled(void);
  *
  * # Safety
  * `node` is an initialised node handle, `storage` an 8-aligned publisher
- * slot of `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes (it receives the
+ * slot of `NROS_CPP_PUBLISHER_STORAGE_SIZE` bytes (it receives the
  * same handle-plus-monitor-pointer `nros_cpp_publisher_create` writes),
  * `qos` NULL or valid.
  */

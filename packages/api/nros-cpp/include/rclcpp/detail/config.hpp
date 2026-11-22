@@ -17,4 +17,14 @@
 
 #include "rclcpp/detail/nros_cpp_config_generated.h"
 
+/**
+ * Bytes a C++ publisher's opaque storage holds: the backend handle
+ * (`NROS_PUBLISHER_SIZE`) plus three pointer widths -- the contract-monitor
+ * cell and the node's lifecycle gate with its warned flag (`CppPublisher` in
+ * nros-cpp's publisher.rs, whose compile-time assert is the other half of this
+ * number). The ONE spelling: every publisher storage uses it, so a field added
+ * there moves every reservation together.
+ */
+#define NROS_CPP_PUBLISHER_STORAGE_SIZE (NROS_PUBLISHER_SIZE + 3 * sizeof(void*))
+
 #endif // NROS_RCLCPP_DETAIL_CONFIG_HPP

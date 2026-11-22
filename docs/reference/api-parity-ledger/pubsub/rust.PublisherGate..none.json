@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublisherGate::none",
+  "verdict": "extension",
+  "why": "the gate of a publisher that belongs to no managed node, which always sends; see `rust:PublishGate`."
+}

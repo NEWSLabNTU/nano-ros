@@ -97,7 +97,8 @@ namespace rclcpp {
 ///
 /// Inline storage holds the runtime publisher handle directly
 /// (`NROS_PUBLISHER_SIZE` bytes; size auto-derived from the runtime) plus
-/// one pointer: the contracted endpoint's monitor cell, which the runtime resolves at create
+/// the node's lifecycle gate and one pointer: the contracted endpoint's
+/// monitor cell, which the runtime resolves at create
 /// time against the table
 /// the entry installed with `nros_cpp_install_monitors` and bumps on every
 /// publish, exactly as the Rust `EmbeddedPublisher` does. Null on an
@@ -633,10 +634,10 @@ template <typename M> class Publisher {
 
     friend class ::rclcpp::Node;
 
-    // `+ sizeof(void*)`: the monitor cell pointer the runtime stores beside
-    // the handle (`CppPublisher` in nros-cpp's publisher.rs, whose
-    // compile-time assert is the other half of this number).
-    alignas(8) uint8_t storage_[NROS_PUBLISHER_SIZE + sizeof(void*)];
+    // The handle plus the monitor cell pointer and the node's lifecycle gate
+    // the runtime stores beside it (`NROS_CPP_PUBLISHER_STORAGE_SIZE`, whose
+    // other half is `CppPublisher`'s compile-time assert in publisher.rs).
+    alignas(8) uint8_t storage_[NROS_CPP_PUBLISHER_STORAGE_SIZE];
     char topic_name_[::rclcpp::PUBLISHER_TOPIC_NAME_MAX];
     bool initialized_;
 };

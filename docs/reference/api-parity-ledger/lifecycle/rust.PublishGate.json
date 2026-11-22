@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublishGate",
+  "verdict": "extension",
+  "why": "the per-node switch behind a managed publisher (RFC-0128 D3). rclcpp keeps an `activated` flag on each `LifecyclePublisher` and flips it from the base `LifecycleNode::on_activate`; nano-ros keeps one flag per NODE, written by the node's state machine, so every publisher the node creates follows it, in any language, including one made before the node became managed. Public so the C and C++ runtimes hold the same type."
+}

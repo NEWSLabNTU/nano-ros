@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublisherGate",
+  "verdict": "extension",
+  "why": "a publisher's view of its node's `PublishGate` plus its warned-once flag; see `rust:PublishGate`. rclcpp's `LifecyclePublisher` holds the same two facts as members; here they are one type every language's publisher holds."
+}
