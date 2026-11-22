@@ -487,6 +487,26 @@ if(_addtwoints_sources)
         COMMAND nros_rmw_cyclonedds_service_refused_len
     )
 
+    # Issue 2819 — a request over the old 64 KiB staging bound is sent, both
+    # staged (before the match) and directly (after it).
+    add_executable(nros_rmw_cyclonedds_service_large_request
+        service_large_request.cpp
+        ${_addtwoints_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_service_large_request
+        PRIVATE
+            nros_rmw_cyclonedds
+            pthread
+    )
+    target_include_directories(nros_rmw_cyclonedds_service_large_request
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+    add_test(
+        NAME nros_rmw_cyclonedds_service_large_request
+        COMMAND nros_rmw_cyclonedds_service_large_request
+    )
+
     # Issue 0778 — two requests from ONE client in flight at once. Runs by
     # default (unlike `service_concurrent`, whose flake is cross-PARTICIPANT
     # SEDP jitter): this is a single client and a single server on one
@@ -847,6 +867,7 @@ if(_addtwoints_sources)
         nros_rmw_cyclonedds_service_smoke
         nros_rmw_cyclonedds_service_roundtrip
         nros_rmw_cyclonedds_service_refused_len
+        nros_rmw_cyclonedds_service_large_request
         nros_rmw_cyclonedds_service_server_available
         PROPERTIES
             ENVIRONMENT "${_nros_rmw_test_env}"
