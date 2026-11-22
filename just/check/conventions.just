@@ -500,3 +500,14 @@ nuttx-state-outside-tree:
 # naming the site, rather than going unlinted without anyone knowing.
 built-feature-sets-linted:
     @python3 scripts/check-built-feature-sets-linted.py --check
+
+# Phase-573 W3 (RFC-0108 D9) -- the C and C++ APIs reach an executor only
+# through named functions: a cast to the executor or its C header, or a read
+# of `in_dispatch`, outside the lists in the script fails, naming file:line.
+# Nine entries cast a stored pointer and took no lock before this gate.
+# Every spelling (`as`, `.cast::<T>()`, `ptr::from_mut::<T>`), and a stale
+# list entry fails too. Self-tests five plants on the normal path. Buildless.
+[private]
+ffi-executor-derive:
+    @python3 scripts/check-ffi-executor-derive.py
+
