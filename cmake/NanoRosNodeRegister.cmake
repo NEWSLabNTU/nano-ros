@@ -602,6 +602,37 @@ function(_nros_node_register_carrier_image _target _pkg_sym _panic)
     endif()
 endfunction()
 
+# `_nros_carrier_board_clock_refusal(<carrier-target>)`: refuse a native
+# carrier image in a configure whose `[knobs.clock] source` names `board`.
+#
+# Issue 2841. Stating `board` gives an image its own configure, and in it every
+# TYPED component also builds its own carrier executable against that
+# board-selected runtime. The board's `nros_board_wall_clock_ns` belongs to the
+# IMAGE, not to those carriers, so each of them would fail to link, naming a
+# hook the reader never asked about. Until a configuration builds only its
+# image's targets, the configure says so instead. The value is the one the
+# image's cargo commands see (`nros_image_env_value`).
+function(_nros_carrier_board_clock_refusal _target)
+    if(NOT COMMAND nros_image_env_value)
+        return()
+    endif()
+    nros_image_env_value(_src NROS_CLOCK_SOURCE)
+    string(REPLACE "," ";" _srcs "${_src}")
+    foreach(_s IN LISTS _srcs)
+        string(STRIP "${_s}" _s)
+        if(_s STREQUAL "board")
+            message(FATAL_ERROR
+                "nano-ros: `[knobs.clock] source = \"${_src}\"` names `board`, and "
+                "`${_target}` is a component's own executable in this image's build. "
+                "The board clock source is not supported yet for an image whose C or "
+                "C++ components build their own executables: those executables cannot "
+                "link the image's board clock hook (`nros_board_wall_clock_ns`). "
+                "Use `board` in a Rust image, or one whose components build no "
+                "executable of their own.")
+        endif()
+    endforeach()
+endfunction()
+
 # `_nros_carrier_claim(<var> <road> <carrier-target>)`: the ONE rule for a
 # registration that would build a single-node carrier image (NuttX, ThreadX,
 # FreeRTOS, native, Zephyr). `<var>` names the caller's "this registration
@@ -1444,6 +1475,7 @@ function(nano_ros_node_register)
     endif()
     _nros_carrier_claim(_nrc_carrier "native" "${_nrc_target}")
     if(_nrc_carrier)
+        _nros_carrier_board_clock_refusal("${_nrc_target}")
         nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")

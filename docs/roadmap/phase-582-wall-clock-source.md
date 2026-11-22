@@ -87,7 +87,8 @@ SNTP never re-acquires. A consumer's board hook papers over that with
       no hook.
     - **C is not covered:** a C image's configure also builds every
       component's executable against the board-selected runtime (issue
-      2841).
+      2841). Until that is fixed, such an executable is refused at configure
+      with a clear message (manager ruling), and a verdict cell covers it.
 - RFC-0141 D1–D4:
   - the `[knobs.clock]` group: `source` (one, or an ordered fallback),
     `fallback_settle_ms`, `upgrade`, `sntp_attempts`, `epoch_failure`

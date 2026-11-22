@@ -346,3 +346,43 @@ fn one_zephyr_program_claimed_twice_passes() -> TestResult<()> {
     );
     Ok(())
 }
+
+/// Issue 2841 -- a component's own executable in an image stating
+/// `[knobs.clock] source = "board"` is refused at configure, naming the knob
+/// and the executable, instead of failing to link the image's board clock hook.
+#[test]
+fn a_component_executable_refuses_the_board_clock_source() -> TestResult<()> {
+    let out = outcome("cmake_carrier_board_clock_refused")?;
+    assert!(
+        !out.success(),
+        "expected the configure to refuse `board` for a component executable:\n{}",
+        out.stderr
+    );
+    let err = out.stderr.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        err.contains("names `board`")
+            && err.contains("`carrier_pkg__talker`")
+            && err.contains("not supported yet")
+            && err.contains("nros_board_wall_clock_ns"),
+        "expected the refusal to name the knob, the executable and the hook, got:\n{}",
+        out.stderr
+    );
+    assert!(
+        !err.contains("issue "),
+        "a user-facing refusal carries no issue id:\n{}",
+        out.stderr
+    );
+    Ok(())
+}
+
+/// Issue 2841's control -- any other source configures the same executable.
+#[test]
+fn a_component_executable_configures_with_another_clock_source() -> TestResult<()> {
+    let out = outcome("cmake_carrier_board_clock_default_builds")?;
+    assert!(
+        out.success(),
+        "expected the configure to succeed with `platform`:\n{}",
+        out.stderr
+    );
+    Ok(())
+}
