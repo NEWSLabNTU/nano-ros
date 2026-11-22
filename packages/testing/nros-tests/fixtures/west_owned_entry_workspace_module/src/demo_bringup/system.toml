@@ -1,0 +1,16 @@
+# Issue 2861 -- an image whose west application is the owned `zephyr_entry`,
+# which states no DEPLOY/BOARD and depends on a workspace Zephyr module.
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[image.zephyr]
+board = "zephyr"
+rmw = "zenoh"
+entry = "zephyr_entry"

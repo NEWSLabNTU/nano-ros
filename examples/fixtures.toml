@@ -8994,6 +8994,21 @@ west_board = "native_sim/native/64"
 west_nros_image = "demo_bringup:zephyr"
 output = "build.ninja"
 
+# Issue 2861 -- an OWNED west entry that states no DEPLOY/BOARD and depends on
+# a workspace package that is a Zephyr module (its Kconfig symbol is set in the
+# entry's prj.conf), built by `nros build demo_bringup:zephyr`. The configure
+# fails unless `nros build` passes the entry's workspace modules on the west
+# line and the entry deploys where a generated app's does.
+# tests/west_hand_written_entry.rs asserts the module joined.
+[[compile_check_fixture]]
+id = "west_owned_entry_workspace_module"
+builder = "west-configure"
+dir = "packages/testing/nros-tests/fixtures/west_owned_entry_workspace_module"
+west_subdir = "src/zephyr_entry"
+west_board = "native_sim/native/64"
+west_nros_image = "demo_bringup:zephyr"
+output = "build.ninja"
+
 # Issue 2811 -- the S32Z270 RTU0 Cortex-R52 on Zephyr (`s32z270-rtu0-zephyr`,
 # west board `s32z2xxdc2@D/s32z270/rtu0`), linked: the board row's "Builds"
 # evidence (`board_registry.row_built` matches this `west_board` to the

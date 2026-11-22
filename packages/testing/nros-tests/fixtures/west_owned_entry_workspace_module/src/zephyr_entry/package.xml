@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>zephyr_entry</name>
+  <version>0.1.0</version>
+  <description>Issue 2861 fixture: an owned Zephyr west entry with no DEPLOY or BOARD that depends on a workspace Zephyr module.</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <depend>support_pkg</depend>
+  <exec_depend>talker_pkg</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

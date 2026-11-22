@@ -218,8 +218,25 @@ pub fn sanitize_board(board: &str) -> String {
 /// compares the same spelling the other builders pass.
 #[must_use]
 pub fn module_arg(nano_ros_root: &Path) -> String {
-    let root = std::fs::canonicalize(nano_ros_root).unwrap_or_else(|_| nano_ros_root.to_path_buf());
-    format!("-DZEPHYR_EXTRA_MODULES={}", root.display())
+    image_module_arg(nano_ros_root, &[])
+}
+
+/// [`module_arg`] plus the image's own workspace modules
+/// (`west_app::zephyr_module_dirs`), for an OWNED west entry whose
+/// CMakeLists `nros build` cannot write into -- issue 2861. Physical paths,
+/// nano-ros first, each once; `;` is CMake's list separator.
+#[must_use]
+pub fn image_module_arg(nano_ros_root: &Path, workspace_modules: &[std::path::PathBuf]) -> String {
+    let phys = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let mut dirs = vec![phys(nano_ros_root)];
+    for m in workspace_modules {
+        let m = phys(m);
+        if !dirs.contains(&m) {
+            dirs.push(m);
+        }
+    }
+    let joined: Vec<String> = dirs.iter().map(|d| d.display().to_string()).collect();
+    format!("-DZEPHYR_EXTRA_MODULES={}", joined.join(";"))
 }
 
 /// Render the overlays as `west build` arguments, appended after `--`.

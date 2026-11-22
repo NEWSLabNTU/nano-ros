@@ -1,0 +1,2 @@
+config DEMO_SUPPORT
+	bool "demo support"

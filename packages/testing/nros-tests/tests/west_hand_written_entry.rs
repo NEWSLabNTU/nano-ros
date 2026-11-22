@@ -70,3 +70,32 @@ fn a_hand_written_west_entry_configures_from_its_seeds() -> nros_tests::TestResu
 fn nros_build_states_a_hand_written_west_entry_as_its_image() -> nros_tests::TestResult<()> {
     assert_configures_from_seeds("west_hand_written_c_entry_nros_build")
 }
+
+/// Issue 2861 -- an OWNED west entry that names no DEPLOY/BOARD and depends on
+/// a workspace Zephyr module configures through `nros build`: it deploys where
+/// a generated app's entry does, and the module joins `ZEPHYR_EXTRA_MODULES`
+/// (its Kconfig symbol, set in the entry's prj.conf, is in `.config`). Before
+/// the fix the configure stopped on an empty board key, and with the symbol
+/// set, on "undefined symbol DEMO_SUPPORT".
+#[test]
+fn an_owned_west_entry_gets_its_deploy_and_workspace_modules() -> nros_tests::TestResult<()> {
+    let cache = nros_tests::fixtures::require_west_fixture(
+        "west_owned_entry_workspace_module",
+        "CMakeCache.txt",
+    )?;
+    let build_dir = cache.parent().expect("west fixture build dir");
+    let modules = read(&cache)
+        .lines()
+        .find_map(|l| l.strip_prefix("ZEPHYR_EXTRA_MODULES:").map(str::to_string))
+        .expect("ZEPHYR_EXTRA_MODULES is cached");
+    assert!(
+        modules.contains("src/support_pkg"),
+        "the entry's workspace module is not among the extra modules: {modules}"
+    );
+    let config = read(&build_dir.join("zephyr/.config"));
+    assert!(
+        config.lines().any(|l| l == "CONFIG_DEMO_SUPPORT=y"),
+        "support_pkg's Kconfig symbol did not reach .config"
+    );
+    Ok(())
+}

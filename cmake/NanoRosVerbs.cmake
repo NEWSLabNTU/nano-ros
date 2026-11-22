@@ -161,9 +161,45 @@ function(nano_ros_add_executable name)
     # user had written them. Functions are dynamically scoped: the callee sees
     # this.
     set(_NROS_ENTRY_KEYWORDS_CHECKED TRUE)
+    # Issue 2861 -- an OWNED west entry: the Zephyr application's own
+    # CMakeLists, in a configure that states its image (`-DNROS_IMAGE_SYSTEM_DIR`
+    # + `-DNROS_IMAGE`, which `nros build` passes, issue 2436), with no leaf
+    # system.toml to name a deploy. It deploys where a GENERATED app's entry
+    # does, `DEPLOY zephyr` (`west_app::render_cmakelists`), and
+    # `nano_ros_entry` derives `BOARD zephyr` from that. Only the application's
+    # own directory: a package it adds (a component, a library) keeps its own
+    # reading, so a registered component stays a component.
+    _nros_is_zephyr(_nre_in_zephyr)
+    set(_nre_owned_west_entry FALSE)
+    if(_nre_in_zephyr AND NOT NROS_DEPLOY
+       AND CMAKE_CURRENT_SOURCE_DIR STREQUAL APPLICATION_SOURCE_DIR
+       AND NOT "${NROS_IMAGE_SYSTEM_DIR}" STREQUAL ""
+       AND NOT "${NROS_IMAGE}" STREQUAL "")
+        set(_nre_owned_west_entry TRUE)
+    endif()
+    # The same configure, the call in a SUBDIRECTORY of the application: the
+    # default above does not reach it, and the host deploy it would fall
+    # through to builds an `int main(int, char**)` program that fails at link
+    # in a Zephyr image. Refused here, naming both remedies.
+    if(_nre_in_zephyr AND NOT _NRE_DEPLOY AND NOT NROS_DEPLOY AND NOT _nre_owned_west_entry
+       AND NOT "${NROS_IMAGE_SYSTEM_DIR}" STREQUAL "" AND NOT "${NROS_IMAGE}" STREQUAL ""
+       AND NOT "${APPLICATION_SOURCE_DIR}" STREQUAL "")
+        file(RELATIVE_PATH _nre_rel "${APPLICATION_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
+        if(NOT _nre_rel MATCHES "^\\.\\.(/|$)" AND NOT IS_ABSOLUTE "${_nre_rel}")
+            message(FATAL_ERROR
+                "nano_ros_add_executable(${name}) in ${CMAKE_CURRENT_SOURCE_DIR}: this is a "
+                "subdirectory of the Zephyr application ${APPLICATION_SOURCE_DIR}, and only "
+                "the application's own CMakeLists.txt deploys to image `${NROS_IMAGE}` by "
+                "default. Without DEPLOY this entry would build for the host and fail at "
+                "link. Call nano_ros_add_executable() in "
+                "${APPLICATION_SOURCE_DIR}/CMakeLists.txt, or state DEPLOY zephyr.")
+        endif()
+    endif()
     if(NOT _NRE_DEPLOY)
         if(NROS_DEPLOY)
             set(_NRE_DEPLOY "${NROS_DEPLOY}")
+        elseif(_nre_owned_west_entry)
+            set(_NRE_DEPLOY zephyr)
         else()
             set(_NRE_DEPLOY "${NROS_HOST_DEPLOY}")
         endif()
