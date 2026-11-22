@@ -66,6 +66,7 @@
 pub mod app_main;
 pub mod backends;
 pub mod header_deps;
+pub mod libc_libs;
 
 /// Diagnostics that must be errors in every nano-ros C compile.
 pub const STRICT_DECL_FLAGS: &[&str] = &[
