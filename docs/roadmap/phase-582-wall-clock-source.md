@@ -298,6 +298,14 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 
     It self-tests ten planted tables on each run.
   - Still open: the board-package guidance bullets above.
+- **Notes (W4b, 2026-11-23): the board guidance, in the book.** The how-to
+  [Set the wall clock from the board](../../book/src/guide/deploy/set-the-wall-clock-from-the-board.md)
+  states the three bullets above: selecting `board` (and a fallback list),
+  the hook's contract in Rust, C and C++ tabs with the link rule
+  (`LINK_DEPENDS` for an archive under CMake), the settle window and both
+  `epoch_failure` lines as the image prints them, `wall_clock_state()`, and
+  the per-backend stamp caution from the W4a table. It names no SNTP
+  re-sync knob.
 
 ## Links
 
