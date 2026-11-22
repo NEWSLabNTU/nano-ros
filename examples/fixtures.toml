@@ -346,6 +346,31 @@ image = "linux_talker_clock_board"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
 target_dir = "target-fixtures/linux-talker-clock-board"
 
+# The same configuration on Cyclone DDS and XRCE: each backend stamps its own
+# samples, so these say whether its source stamp follows the selected wall
+# clock. Own target dirs for the same reason as the zenoh row's.
+[[workspace_fixture]]
+id = "workspace-rust-native-talker-cyclonedds-clock-board"
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_cyclonedds_clock_board"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures/linux-talker-cyclonedds-clock-board"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-talker-xrce-clock-board"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_xrce_clock_board"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures/linux-talker-xrce-clock-board"
+
 [[workspace_fixture]]
 id = "workspace-rust-native-service-server-xrce"
 platform = "linux"
@@ -3219,6 +3244,28 @@ rmw = "zenoh"
 bringup = "src/message_info_observer_bringup"
 image = "linux_component"
 target_dir = "target-component"
+
+# The plain observer on Cyclone DDS and XRCE: what each backend delivers as a
+# sample's source stamp. Consumed by tests/linux_board_clock.rs.
+[[workspace_fixture]]
+id = "linux-rust-cyclonedds-message-info-observer"
+platform = "linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/message-info-observer"
+rmw = "cyclonedds"
+bringup = "src/message_info_observer_bringup"
+image = "linux_cyclonedds"
+target_dir = "target-cyclonedds"
+
+[[workspace_fixture]]
+id = "linux-rust-xrce-message-info-observer"
+platform = "linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/message-info-observer"
+rmw = "xrce"
+bringup = "src/message_info_observer_bringup"
+image = "linux_xrce"
+target_dir = "target-xrce"
 
 # Per-RMW talker/listener/service/action. The six `examples/linux/rust/*`
 # leaves select their RMW by IMAGE (`image = "linux_<rmw>"`, issue 1305 —

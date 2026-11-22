@@ -268,6 +268,36 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   its samples from, per platform.
 - **Acceptance:** the table is checked against a built image per backend
   (a stamp read back), not written from reading code.
+- **Notes (W4a, 2026-11-22): the table, measured.** It lives in
+  `docs/reference/source-timestamps.md`. Each backend was measured on Linux
+  with a Rust talker whose wall clock is the stub board's instant
+  (1 700 000 000 000 000 000 ns), observed by the MessageInfo observer built
+  for the same backend. The talker printed the board's clock in every run.
+  - **zenoh**: every stamp in the board's window. It follows the selected
+    clock (`linux_board_clock::board_clock_reaches_the_wall_clock_and_the_source_stamp`,
+    Rust and C++).
+  - **cyclonedds**: stamps 1 795 356 135 300 244 223 .. 137 300 270 276, i.e.
+    host `CLOCK_REALTIME` inside the host reads that bracket the run. It does
+    not follow the selected clock.
+  - **xrce**: every stamp 0. The client delivers no source stamp, so D7's
+    "through the agent's time sync" does not describe what a subscriber gets.
+  - The last two are `linux_board_clock::board_clock_source_stamp_per_backend`,
+    on the cells `(Linux, Rust, {Cyclonedds, Xrce}, Pubsub, Example) +
+    [ClockBoard]`. The images are `linux_talker_{cyclonedds,xrce}_clock_board`
+    and the observer's `linux_{cyclonedds,xrce}`.
+  - Every other (backend, platform) row says `not measured`, with its reason,
+    and claims no verdict. That covers Zephyr, FreeRTOS, ThreadX and NuttX,
+    plus uorb on PX4, which has no take-with-info entry. The Zephyr SNTP
+    re-sync cell on main measures zenoh on Zephyr, and its row can cite that
+    cell once this branch carries it.
+  - Gate `just check source-timestamp-table` enforces three things:
+    - every row cites an existing `#[test]`/`#[rstest]` function that names
+      its backend, or says `not measured` with follows `unknown`;
+    - every registered backend has a row;
+    - every registered backend except uorb has a measured row.
+
+    It self-tests ten planted tables on each run.
+  - Still open: the board-package guidance bullets above.
 
 ## Links
 

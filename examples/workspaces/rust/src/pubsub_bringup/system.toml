@@ -157,6 +157,26 @@ launch = "talker_clock_board.launch.xml"
 [image.linux_talker_clock_board.knobs.clock]
 source = "board"
 
+# The same configuration on the other two backends: each backend stamps its
+# own samples, so these say whether the source stamp follows the selected
+# wall clock there too. `tests/linux_board_clock.rs` reads it back through the
+# MessageInfo observer's image for the same backend.
+[image.linux_talker_cyclonedds_clock_board]
+board = "linux"
+launch = "talker_clock_board.launch.xml"
+rmw = "cyclonedds"
+
+[image.linux_talker_cyclonedds_clock_board.knobs.clock]
+source = "board"
+
+[image.linux_talker_xrce_clock_board]
+board = "linux"
+launch = "talker_clock_board.launch.xml"
+rmw = "xrce"
+
+[image.linux_talker_xrce_clock_board.knobs.clock]
+source = "board"
+
 [image.linux_listener]
 board = "linux"
 launch = "listener.launch.xml"

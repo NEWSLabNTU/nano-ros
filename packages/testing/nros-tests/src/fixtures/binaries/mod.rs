@@ -7566,6 +7566,18 @@ pub fn build_message_info_component() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// The plain observer on another backend (`linux_cyclonedds`, `linux_xrce`):
+/// what that backend delivers as a sample's source stamp. Zenoh is
+/// [`build_message_info_observer`].
+pub fn build_message_info_observer_rmw(rmw: Rmw) -> TestResult<PathBuf> {
+    migrated_leaf_binary(
+        MESSAGE_INFO_OBSERVER_DIR,
+        rmw,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    )
+    .unwrap_or_else(|| Err(not_migrated(MESSAGE_INFO_OBSERVER_DIR)))
+}
+
 const MESSAGE_INFO_OBSERVER_DIR: &str = "packages/testing/nros-tests/bins/message-info-observer";
 
 /// A resolver that expects a migrated workspace found `[[fixture]]` rows.
