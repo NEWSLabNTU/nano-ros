@@ -1,0 +1,1 @@
+`nros knob show zenoh.graph_discovery` now says what turning it on costs: the graph cache, `zenoh.graph_cache_bytes` (64 KiB by default), in each zenoh session's RAM. It also says what to do when an image then fails to link because RAM overflowed.
