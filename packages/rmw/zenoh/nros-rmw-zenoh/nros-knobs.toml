@@ -198,6 +198,13 @@ needs it, and keeps every token of every node on the domain in a
 NROS_GRAPH_CACHE_SIZE-byte cache. `service_is_ready`, `count_publishers`,
 `get_node_names` and the other rcl graph queries answer from it.
 
+y costs RAM: the cache is `zenoh.graph_cache_bytes` (65536 by default) of
+.bss in each zenoh session, compiled in only when this is y. On a part
+with little RAM to spare, size it to the domain with that knob: on a
+nucleo_f767zi Zephyr talker, y with an 8192-byte cache added 8,232 B. An
+image that then fails to link with "region 'RAM' overflowed" needs a
+smaller cache or that much RAM freed elsewhere.
+
 n: no subscriber, no cache (the array is compiled out). The image still
 DECLARES its own node and entity tokens, so a host's `ros2 node list`
 and `ros2 topic info` see it exactly as before; what goes is the reverse
