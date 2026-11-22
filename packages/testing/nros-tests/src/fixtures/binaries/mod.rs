@@ -7039,6 +7039,26 @@ pub fn build_pool_exhaustion_threadx_linux() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the issue-2732 `sched-task-pool-refusal-threadx-linux` fixture binary.
+static SCHED_TASK_POOL_REFUSAL_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt ThreadX Linux image that spawns a task whose stack no
+/// sizing descriptor states, so the byte pool refuses it at boot (issue 2732).
+pub fn build_sched_task_pool_refusal_threadx_linux() -> TestResult<&'static Path> {
+    SCHED_TASK_POOL_REFUSAL_THREADX_LINUX_BINARY
+        .get_or_try_init(|| {
+            const DIR: &str =
+                "packages/testing/nros-tests/bins/sched-task-pool-refusal-threadx-linux";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the `logging-smoke-threadx-linux` fixture binary.
 static LOGGING_SMOKE_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
 

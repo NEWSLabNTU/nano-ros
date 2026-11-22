@@ -39,7 +39,7 @@ or `pthread_attr_setstack` in the board or `nros-board-common/c`.
    task's, out of the byte pool. On this port those bytes are never used. So
    the pool's derived size (`app stack + WORKING_SET[rmw]`, issue 2624)
    counts stack the port does not use, and
-   [issue 2732](2732-threadx-pool-counts-sched-task-stacks.md)'s
+   [issue 2732](archived/2732-threadx-pool-counts-sched-task-stacks.md)'s
    `+ sched-task stacks` would count more of it. 2732's pool sizing should
    decide whether threadx-linux's derivation drops those terms, or keeps
    them so the host and target derive the same pool.

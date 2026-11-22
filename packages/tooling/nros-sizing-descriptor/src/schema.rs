@@ -674,6 +674,8 @@ pub struct Image {
     model_nodes: Option<usize>,
     lifecycle_nodes: Option<usize>,
     param_service_nodes: Option<usize>,
+    spawned_sched_task_stack_bytes: Option<usize>,
+    spawned_sched_tasks_on_app_stack: Option<usize>,
     infra_families: Option<InfraFamilies>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
@@ -705,6 +707,8 @@ impl Image {
         "model_nodes",
         "lifecycle_nodes",
         "param_service_nodes",
+        "spawned_sched_task_stack_bytes",
+        "spawned_sched_tasks_on_app_stack",
         "infra_families",
     ];
 
@@ -980,6 +984,37 @@ impl Image {
         )
     }
 
+    /// Issue 2732 -- the stack bytes the image's entry allocates for its
+    /// SPAWNED sched tasks that state a stack (authored, or derived from a
+    /// level's members by `nros_orchestration_ir::derive_level_stacks_for`,
+    /// the rule `nros::main!` runs). The boot task runs on the app thread,
+    /// whose stack the port already counts, so it is never in this sum.
+    /// A port that allocates task stacks from one allocator (ThreadX's byte
+    /// pool) sizes that allocator from this and
+    /// [`spawned_sched_tasks_on_app_stack`](Self::spawned_sched_tasks_on_app_stack).
+    /// `0` is stated: the image spawns no task that states a stack. Absent when
+    /// the producer could not see the entry's table (an owned entry, a road
+    /// that runs no sched tasks).
+    pub fn spawned_sched_task_stack_bytes(&self) -> Fact<usize> {
+        fact(
+            &self.spawned_sched_task_stack_bytes,
+            "spawned_sched_task_stack_bytes",
+            &self.refused,
+        )
+    }
+
+    /// Issue 2732 -- how many SPAWNED sched tasks state no stack, so the port
+    /// gives each its app thread's stack (ThreadX: `nros_threadx_create_task`
+    /// with `stack_bytes == 0`). The allocator's consumer multiplies by its own
+    /// app stack, which only it knows. `0` is stated; absent as above.
+    pub fn spawned_sched_tasks_on_app_stack(&self) -> Fact<usize> {
+        fact(
+            &self.spawned_sched_tasks_on_app_stack,
+            "spawned_sched_tasks_on_app_stack",
+            &self.refused,
+        )
+    }
+
     /// Which of the runtime's own service families the image builds (see
     /// [`InfraFamilies`]). The ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier's
     /// descriptor home: a MODEL fact (the bringup's `features`, plus, on a
@@ -1103,6 +1138,14 @@ impl Image {
         self.param_service_nodes = v;
         self
     }
+    pub fn set_spawned_sched_task_stack_bytes(&mut self, v: Option<usize>) -> &mut Self {
+        self.spawned_sched_task_stack_bytes = v;
+        self
+    }
+    pub fn set_spawned_sched_tasks_on_app_stack(&mut self, v: Option<usize>) -> &mut Self {
+        self.spawned_sched_tasks_on_app_stack = v;
+        self
+    }
     pub fn set_infra_families(&mut self, v: Option<InfraFamilies>) -> &mut Self {
         self.infra_families = v;
         self
@@ -1147,6 +1190,10 @@ impl Image {
             "model_nodes" => self.model_nodes?.to_string(),
             "lifecycle_nodes" => self.lifecycle_nodes?.to_string(),
             "param_service_nodes" => self.param_service_nodes?.to_string(),
+            "spawned_sched_task_stack_bytes" => self.spawned_sched_task_stack_bytes?.to_string(),
+            "spawned_sched_tasks_on_app_stack" => {
+                self.spawned_sched_tasks_on_app_stack?.to_string()
+            }
             "infra_families" => quoted(self.infra_families?.tag()),
             _ => return None,
         })

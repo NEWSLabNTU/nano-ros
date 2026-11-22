@@ -184,6 +184,10 @@ NO_ROUTER = {
     "packages/testing/nros-tests/bins/stack-guard-freertos-mps2": (
         "no-session `run_bare` stack guard check — opens no Executor and dials nothing"
     ),
+    # Issue 2732 -- spawns one task the byte pool must refuse, then stops.
+    "packages/testing/nros-tests/bins/sched-task-pool-refusal-threadx-linux": (
+        "no-session `run_bare` byte-pool refusal check — opens no Executor and dials nothing"
+    ),
     "packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux": (
         "takes the one pool slot raw, then asserts the second `Context::new` is "
         "refused `Full` before it dials — no router by design"

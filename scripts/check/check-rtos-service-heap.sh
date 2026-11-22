@@ -41,7 +41,7 @@ need() { # <what> <file> <fixed text>
 # 1. The cargo road.
 need "the ThreadX cargo road no longer adds the extra to the derived pool" \
     packages/boards/nros-board-common/src/threadx_sources.rs \
-    'let derived = default_byte_pool_bytes(app_stack_bytes, rmw) + extra;'
+    'let derived = default_byte_pool_bytes(app_stack_bytes, tasks, rmw) + extra;'
 need "the FreeRTOS cargo road no longer adds the extra to the derived heap" \
     packages/boards/nros-board-freertos/build.rs \
     '(fc::default_heap_bytes(app_stack_bytes) + extra) / 1024'

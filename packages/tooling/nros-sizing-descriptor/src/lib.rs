@@ -818,6 +818,29 @@ mod tests {
         d
     }
 
+    /// Issue 2732 -- the spawned sched tasks' stacks survive the file: a
+    /// stated zero is stated, and a descriptor that never set them reads
+    /// absent.
+    #[test]
+    fn spawned_sched_task_stacks_round_trip() {
+        let mut d = SizingDescriptor::new("e", Status::Derived, Basis::Contract);
+        d.image
+            .set_spawned_sched_task_stack_bytes(Some(0))
+            .set_spawned_sched_tasks_on_app_stack(Some(1));
+        let back = parse(&render(&d), Path::new("e.toml")).unwrap();
+        assert_eq!(
+            back.image.spawned_sched_task_stack_bytes().stated(),
+            Some(&0)
+        );
+        assert_eq!(
+            back.image.spawned_sched_tasks_on_app_stack().stated(),
+            Some(&1)
+        );
+        let none = SizingDescriptor::new("e", Status::Derived, Basis::Contract);
+        let back = parse(&render(&none), Path::new("e.toml")).unwrap();
+        assert_eq!(back.image.spawned_sched_task_stack_bytes().tag(), "absent");
+    }
+
     #[test]
     fn payload_classes_split_entities_at_the_ceiling() {
         let d = subs_desc(&[Some(12), Some(1500), Some(4096), Some(4096)], Some(4));

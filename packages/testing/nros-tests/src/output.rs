@@ -812,6 +812,21 @@ pub const ZENOH_LIVELINESS_DECLARE_FULL: &str = "liveliness: declare failed (Ful
 /// The verdict line the issue-0697 fixture prints when BOTH halves hold.
 pub const POOL_EXHAUSTION_VERDICT: &str = "second session refused with Full";
 
+/// Issue 2732 -- the ThreadX byte pool's boot refusal for a task stack
+/// (`nros_tx_pool_refuse` in `nros-board-common/c/threadx_hooks.c`). A MIRROR,
+/// like [`ZENOH_SESSION_POOL_EXHAUSTED`].
+pub const THREADX_POOL_TASK_STACK_REFUSED: &str =
+    "FATAL: the ThreadX byte pool cannot hold a sched task's stack";
+
+/// The knob that refusal names, and the build that counts the stacks.
+pub const THREADX_POOL_REFUSAL_KNOB: &str = "[image.<id>.knobs.threadx] byte_pool_bytes";
+
+/// Printed by the issue-2732 fixture before its spawn, and only if the pool
+/// took a stack it must refuse.
+pub const SCHED_TASK_POOL_REFUSAL_SPAWNING: &str = "sched-task-pool-refusal: spawning";
+pub const SCHED_TASK_POOL_REFUSAL_ACCEPTED: &str = "the pool accepted the stack";
+pub const SCHED_TASK_POOL_REFUSAL_TASK_RAN: &str = "sched-task-pool-refusal: the task ran";
+
 // ---------------------------------------------------------------------------
 // Action (Fibonacci) demo wording — phase-277 W5.
 //
