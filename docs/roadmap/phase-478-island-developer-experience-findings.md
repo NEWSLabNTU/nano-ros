@@ -931,7 +931,7 @@ this phase will fix it.
 
 - [issue 2770](../issues/archived/2770-nros-pin-rev-and-path.md) (resolved 2026-11-22): `nros pin` wrote only a release pin, so a commit or checkout pin from issue 2645 was edited by hand (I34).
 - [issue 2771](../issues/archived/2771-doctor-toolchain-pin-matches-west.md) (resolved 2026-11-21): `nros doctor` did not compare a commit pin with `west.yml`'s nano-ros revision, so a Zephyr consumer keeps its own lockstep script (I35).
-- [issue 2766](../issues/2766-zephyr-ctf-app-marker-patch-carried-by-consumer.md): the Zephyr trace sink calls `sys_trace_app_marker` through a weak reference, and the CTF event that defines it is a Zephyr patch only the island carries, so other users' CTF images emit no markers (I33; GitHub #4008).
+- [issue 2766](../issues/archived/2766-zephyr-ctf-app-marker-patch-carried-by-consumer.md): the Zephyr trace sink calls `sys_trace_app_marker` through a weak reference, and the CTF event that defines it is a Zephyr patch only the island carries, so other users' CTF images emit no markers (I33; GitHub #4008).
 
 ## Issues homed here (2026-11-18)
 

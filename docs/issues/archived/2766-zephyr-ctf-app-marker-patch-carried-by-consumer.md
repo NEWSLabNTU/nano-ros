@@ -1,17 +1,18 @@
 ---
 id: 2766
 title: "Zephyr callback tracing calls sys_trace_app_marker, but the CTF event that defines it is a patch only the island carries; other users get no marker events"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [zephyr, tracing]
 related: [phase-478, issue-2641]
 found: 2026-11-20
+resolved: 2026-11-22
 ---
 
 GitHub: NEWSLabNTU/nano-ros#4008
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md) I33** (found by the safety island).
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md) I33** (found by the safety island).
 
 ## What happens
 
@@ -113,3 +114,15 @@ island's change.
 
 The shim's comment named a decoder, `scripts/parse-zephyr-ctf.py`, that is not
 in the tree; it now names the in-tree reader, `nros_tests::ctf`.
+
+## Resolved (2026-11-22)
+
+The acceptance cell ran on host 241 at main `4406b7f4e5`. The image built with
+no consumer patch (rc 0 on both lines), and
+`zephyr_ctf_markers::zephyr_ctf_stream_holds_the_callback_markers` passes on
+Zephyr 3.7 (5.4 s) and 4.4 (2.5 s). That is 3.7 too, the line this issue said
+to watch. The stream decodes against the tree's own TSDL metadata and holds
+the register, start and per-handle start/end `app_marker` events.
+
+The second acceptance item, the island dropping its patch copies, is the
+island's change on its own branch, not nano-ros's.

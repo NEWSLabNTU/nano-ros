@@ -1,12 +1,13 @@
 ---
 id: 2793
 title: "In DTCM, an unused nano-ros stack pool is never dropped: Zephyr's memory-region output section is KEEP, so --gc-sections cannot discard it"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [zephyr, memory, linker]
 related: [issue-2084, issue-2790, issue-0880]
 found: 2026-11-21
+resolved: 2026-11-22
 ---
 
 ## What happens
@@ -102,3 +103,15 @@ Witnesses, in `tests/zephyr_link_layout.rs`:
   to `section("DTCM")` puts the pool back and fails it.
 
 Not yet run: both rows on 3.7 and 4.4 (host 241).
+
+## Resolved (2026-11-22)
+
+The link witnesses ran on host 241 at main `4406b7f4e5`:
+
+- **3.7:** both pass. `sched_task_stack_pool_follows_stacks_in_dtcm`: a
+  sched-task image keeps its pool, level stack and `nros_thread_stacks` inside
+  `.nros_dtcm_stacks`. `an_image_without_sched_tasks_carries_no_pool_in_dtcm`:
+  the nucleo talker has no `nros_sched_task_stacks` at all.
+- **4.4:** the first passes. The second reports `[SKIPPED:lane]` because its
+  nucleo row builds on 3.7 only (issue 2804's board lines), which is the
+  expected verdict and not a failure.
