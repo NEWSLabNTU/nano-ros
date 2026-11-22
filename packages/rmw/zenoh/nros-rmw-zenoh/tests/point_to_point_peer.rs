@@ -17,6 +17,11 @@
 //! peers through a socket set and accepted them through a TCP/TLS accept loop,
 //! and neither link has either.
 //!
+//! The two tests take turns in their parent process (`support::session_turn`): the
+//! zenoh-pico shim keeps one session's state per process, so two connecting
+//! peers opened at once by a bare `cargo test` (threads, not nextest's
+//! processes) failed one of them with `InvalidConfig` or `ConnectionFailed`.
+//!
 //! Runs in `just check required-features-tests` (`.config/feature-lanes.toml`).
 //! Needs no router and no network.
 
@@ -25,6 +30,8 @@
     feature = "link-ivc",
     feature = "link-rpmsg"
 ))]
+
+mod support;
 
 use nros_rmw::{
     Publisher, QoSProfile, Session, SessionMode, Subscription, TopicInfo, Transport,
@@ -131,6 +138,8 @@ fn exchange_without_a_router(link: &Link) {
             "a build with a point-to-point link must compile point-to-point peer mode (RFC-0134 D1)"
         )
     };
+
+    let _turn = support::session_turn();
 
     let dir = std::env::temp_dir().join(format!(
         "nros-p2p-peer-{}-{}",
