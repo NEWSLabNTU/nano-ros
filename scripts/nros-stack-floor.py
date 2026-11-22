@@ -2182,6 +2182,29 @@ def gcc_search_dirs(args: list[str], src: str, cwd: str) -> tuple[list[str], lis
     return quote_part.split(), angle_part.split()
 
 
+def linked_c_entries(doc: list[dict], linked: set[str]) -> list[tuple]:
+    """The C compile commands of `doc` whose object the link used:
+    (directory, args, source, object). A link map names objects by base name,
+    so two targets compiling `md5.c` both match it; an object that is not on
+    disk was never built, so it cannot be the one linked. Cyclone's host-side
+    `idl` library compiles a `md5.c` it generates at build time, and an
+    embedded build lists that command without ever building it (issue 2818)."""
+    out = []
+    for e in doc:
+        src = e.get("file", "")
+        if not src.endswith(_C_SOURCE):
+            continue
+        args = _c_command_args(e)
+        obj = _c_object(args)
+        if obj is None or Path(obj).name not in linked:
+            continue
+        d = e["directory"]
+        if not (Path(obj) if Path(obj).is_absolute() else Path(d, obj)).exists():
+            continue
+        out.append((d, args, src, obj))
+    return out
+
+
 def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
                cache: Path, dis: str, readobj: str, jobs: int | None = None
                ) -> tuple[list[str] | None, set[str], str]:
@@ -2204,15 +2227,7 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
             doc = json.loads(Path(cc).read_text())
         except (OSError, ValueError) as e:
             return None, set(), f"{cc}: {e}"
-        for e in doc:
-            src = e.get("file", "")
-            if not src.endswith(_C_SOURCE):
-                continue
-            args = _c_command_args(e)
-            obj = _c_object(args)
-            if obj is None or Path(obj).name not in linked:
-                continue
-            entries.append((e["directory"], args, src, obj))
+        entries.extend(linked_c_entries(doc, linked))
     if not entries:
         return None, set(), "no compile command produced an object the link used"
     probes: dict[tuple, tuple[list[str], list[str]]] = {}
@@ -4122,6 +4137,17 @@ def self_test() -> int:
     check("c types: linked objects from members and LOAD lines",
           linked_object_names("x lib/libz.a(link.c.obj)\nLOAD CMakeFiles/a.dir/b.c.obj\n")
           == {"link.c.obj", "b.c.obj"})
+    import tempfile as _tf_c
+    with _tf_c.TemporaryDirectory() as td:
+        Path(td, "built").mkdir()
+        Path(td, "built", "md5.c.obj").write_bytes(b"")
+        doc = [{"directory": td, "file": "ddsrt/md5.c", "arguments": ["cc", "-c", "ddsrt/md5.c",
+                "-o", "built/md5.c.obj"]},
+               {"directory": td, "file": "idl/md5.c", "arguments": ["cc", "-c", "idl/md5.c",
+                "-o", "unbuilt/md5.c.obj"]}]
+        got = [x[2] for x in linked_c_entries(doc, {"md5.c.obj"})]
+    check("c types: a same-named object that was never built is not the linked one",
+          got == ["ddsrt/md5.c"])
     cmod = (
         "define void @outer(ptr %0) {\n  call void @inner(ptr %0)\n  ret void\n}\n"
         "define internal void @inner(ptr %0) {\n  %2 = load ptr, ptr %0\n"
