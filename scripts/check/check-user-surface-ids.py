@@ -139,9 +139,8 @@ Subjects, all checked on every run:
   except `cli/`, `tooling/` and `testing/` (vendored, test, bench, example
   and build trees skipped): the `///` lines of a `pub` item and every `//!`
   line; and the comment text of every installed header under `include/`,
-  cbindgen's included. The one counted subject: a per-file ratchet in
-  `.config/api-doc-ids-ratchet.json` that may only fall, and a fall must be
-  written back (`--update-ratchet`). At zero it becomes baseline zero;
+  cbindgen's included. Baseline zero since issue 2730: it began as a per-file
+  counted ratchet while issue 2581's sweep cleared the backlog;
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5);
@@ -156,7 +155,7 @@ NOT VERIFIED through the skip ledger (issue 1043's middle outcome), never a
 quiet pass. The source and book subjects need nothing.
 
 Forbidden tokens: `phase-NNN`, `Phase NNN`, `issue NNNN`, `#NNNN`, `RFC-NNNN`.
-Baseline zero, no allowlist, but for the public-API-doc ratchet. `--self-test` runs both directions of every rule
+Baseline zero, no allowlist, but for the changelog-and-README ratchet. `--self-test` runs both directions of every rule
 and runs first on every check.
 """
 
@@ -2449,12 +2448,10 @@ def report_bringup() -> str:
 # What `cargo doc` and an IDE hover show an app author: the `///` doc of a
 # `pub` item and a module's `//!` doc, in every crate an app links (not the
 # CLI, tooling or test crates, whose docs never reach one), and the comments
-# of every installed header (`include/`), cbindgen's output included. The
-# backlog is large, so this subject is a counted ratchet per file that may
-# only fall, in `.config/api-doc-ids-ratchet.json`; `--update-ratchet`
-# rewrites it after a sweep. Once every row is zero the ratchet goes and the
-# subject becomes baseline zero like the rest (issue 2443's path).
-API_DOC_RATCHET = ROOT / ".config" / "api-doc-ids-ratchet.json"
+# of every installed header (`include/`), cbindgen's output included.
+# Baseline zero like the rest (issue 2730): it ran as a per-file counted
+# ratchet while issue 2581's sweep and issue 2554's regeneration cleared the
+# backlog, and the ratchet went once every row reached zero (issue 2443's path).
 API_DOC_SKIP = re.compile(r"^packages/(cli|tooling|testing)/")
 PUB_ITEM = re.compile(r"pub(?:\s|$)")  # `pub fn`, `pub extern "C"`; not `pub(crate)`
 
@@ -2554,8 +2551,9 @@ def ratchet_problems(sites: dict[str, list[str]], ratchet: Path, where: str,
     return bad
 
 
-def api_doc_hits(update: bool = False) -> list[str]:
-    return ratchet_problems(api_doc_sites(), API_DOC_RATCHET, "public API docs", update)
+def api_doc_hits() -> list[str]:
+    """Every id in a public API doc or an installed header's comments, by file:line."""
+    return [site for sites in api_doc_sites().values() for site in sites]
 
 
 # Issue 2719: changelog fragments become the release page, and an example's
@@ -3063,7 +3061,7 @@ def main() -> int:
     ap.add_argument("--measure", action="store_true",
                     help="print the 'reaches a print later' hits tagged by reading, then stop")
     ap.add_argument("--update-ratchet", action="store_true",
-                    help="rewrite the public-API-doc ratchet from the tree, then stop")
+                    help="rewrite the changelog-and-README ratchet from the tree, then stop")
     ap.add_argument("--list-tables", action="store_true",
                     help="list the id-bearing &str tables no reading reads, then stop")
     args = ap.parse_args()
@@ -3079,7 +3077,6 @@ def main() -> int:
         print("\n".join(list_tables()))
         return 0
     if args.update_ratchet:
-        api_doc_hits(update=True)
         user_text_hits(update=True)
         return 0
 
@@ -3117,7 +3114,7 @@ def main() -> int:
     print(
         f"{NAME}: OK (cmd/ strings, CLI library, build-script panics, build-script warnings, colcon "
         f"messages, user-run shell scripts, runtime log and panic text, compile-time text, "
-        f"assembled error text, text that reaches a print later, public API docs (ratchet), "
+        f"assembled error text, text that reaches a print later, public API docs, "
         f"{BOOK_SCOPE}, {USER_TEXT_SCOPE}, {NAME_ONLY_SCOPE}, "
         f"{rendered})"
     )
