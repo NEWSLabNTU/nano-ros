@@ -71,12 +71,26 @@ clean::
 # guarantees the value is one of the three; `patsubst "%",%` strips the quotes
 # Kconfig puts around a string symbol, the same way NROS_APPS_ARCH does above.
 NROS_ROS_EDITION := $(patsubst "%",%,$(CONFIG_NROS_ROS_EDITION))
+# Issue 2807 -- only a goal that BUILDS needs the edition. The apps tree's
+# clean and distclean descend into every external directory and parse this
+# file, under whatever `.config` the tree holds at the time: on an arch switch
+# that is the OTHER board's, which may not source integrations/nuttx/Kconfig.
+# Refusing there stopped the kernel's distclean in its apps pass, so every
+# kernel directory after it kept the previous arch's objects.
+NROS_CLEAN_GOALS := clean distclean
+ifeq ($(MAKECMDGOALS),)
+NROS_BUILD_GOALS := all
+else
+NROS_BUILD_GOALS := $(filter-out $(NROS_CLEAN_GOALS),$(MAKECMDGOALS))
+endif
+ifneq ($(NROS_BUILD_GOALS),)
 ifeq ($(NROS_ROS_EDITION),)
 # Not a default. The Kconfig choice always yields a value when
 # integrations/nuttx/Kconfig is sourced, so an empty one means it is NOT — and
 # quietly picking humble there is the RFC-0056 wire mismatch: it builds clean
 # and fails on the wire. Say so instead.
 $(error CONFIG_NROS_ROS_EDITION is unset — is integrations/nuttx/Kconfig sourced?)
+endif
 endif
 
 # RFC-0071 D9 (phase-506 W4c) — the API crates name no backend. The image's
