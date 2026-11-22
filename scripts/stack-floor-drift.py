@@ -153,10 +153,18 @@ def _env() -> dict:
     return env
 
 
+def template_project(template: str, lang: str, rmw: str, board: str) -> str:
+    """The project (and log) name a template row builds under: every part of
+    its key. Named by template and language alone, the mps2 and the nucleo
+    talker shared one project and one log, and the second row's run replaced
+    the first row's evidence."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", f"drift_{template}_{lang}_{rmw}_{board}")
+
+
 def build_template(nros: str, row: dict, out: Path, twin
                    ) -> tuple[Path | None, str, Path | None]:
     template, lang, rmw, board = twin.parse_key(row["image"])
-    name = f"drift_{template}_{lang}".replace("-", "_")
+    name = template_project(template, lang, rmw, board)
     proj = out / name
     log = out / f"{name}.log"
     out.mkdir(parents=True, exist_ok=True)
@@ -349,6 +357,10 @@ def self_test() -> int:
            "image": "mps2-an385-baremetal"},
           {"id": "b", "dir": "examples/y", "bringup": "src/other_bringup", "image": "native"},
           {"id": "c", "dir": "examples/z", "bringup": "src/qemu_bsp_talker_bringup"}]
+    a = template_project("talker", "rust", "zenoh", "nucleo-f767zi-zephyr")
+    b = template_project("talker", "rust", "zenoh", "mps2-an385-zephyr")
+    check("template rows on two boards build under two projects and two logs",
+          a != b and a.isidentifier() and b.isidentifier())
     check("bringup key: the row declaring bringup and image",
           [f["id"] for f in bringup_rows("qemu_bsp_talker_bringup@mps2-an385-baremetal", fx)]
           == ["a"])
