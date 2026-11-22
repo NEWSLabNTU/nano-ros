@@ -1,0 +1,5 @@
+{
+  "key": "rust:nros_log_dispatch_holder_frame",
+  "verdict": "extension",
+  "why": "A fault-recovery seam for a platform port, not an application API. When a thread dies while it holds `nros-log`'s dispatcher (a fatal fault on Zephyr SMP, for example), every later log record on every thread would spin on a holder that can never release it. The port's fault handler asks `dispatch_holder_frame` which frame holds the dispatcher, and if that frame belongs to the dead thread it calls `release_dead_dispatch_holder(frame)`, which releases it only while that same frame still holds it, so a live holder is never released. The `nros_log_*` spellings are the same two calls with C linkage, which the Zephyr port reaches through weak declarations. rclrs has no counterpart: rcutils logging has no dispatcher of its own to recover, and a hosted process that loses a thread to a fault is gone."
+}

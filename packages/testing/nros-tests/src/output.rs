@@ -2475,3 +2475,21 @@ pub fn clock_latched_source(output: &str) -> Option<&str> {
         rest.split_whitespace().next()
     })
 }
+
+/// Issue 2738 -- the line the Zephyr port's
+/// `nros_zephyr_log_dead_holder_check` prints, once, when a thread dies
+/// holding nros_log's dispatcher (`packages/platform/nros-platform-zephyr/
+/// src/platform.c`). The thread's name follows it.
+pub const LOG_DEAD_HOLDER_REPORT: &str = "died holding the nros_log dispatcher; released it";
+
+/// Issue 2738 -- `bins/log-dead-holder-zephyr-smp`'s progress lines.
+pub const LOG_DEAD_HOLDER_PHASE1_DONE: &str = "log-dead-holder: phase 1 done";
+/// The image's fatal error handler returned for a death (one per victim).
+pub const LOG_DEAD_HOLDER_HANDLER_RETURNS: &str = "log-dead-holder: handler returns";
+/// The image finished both phases.
+pub const LOG_DEAD_HOLDER_DONE: &str = "log-dead-holder: done";
+/// The record main logs after the first death, which the release delivers.
+pub const LOG_DEAD_HOLDER_AFTER_RECORD: &str = "record after the released death";
+/// The record main logs after the second death (check skipped): the negative
+/// control, held for a dead holder and never delivered.
+pub const LOG_DEAD_HOLDER_STRANDED_RECORD: &str = "record after the unreported death";
