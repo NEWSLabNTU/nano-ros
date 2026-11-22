@@ -14,7 +14,7 @@ resolved_in: "feat(cli, phase-588 W3): read a failed build's log and explain a r
 **Home: [phase-588](../../roadmap/phase-588-build-output-pty-proxy.md)**, which
 implements the RFC-0065 D1 amendment the user ruled for it (2026-11-23,
 option (a): `nros build` stays the parent through a pty and keeps a log).
-First filed beside [issue 2783](../2783-graph-discovery-overflows-rust-template-ram.md)
+First filed beside [issue 2783](2783-graph-discovery-overflows-rust-template-ram.md)
 on [phase-557](../../roadmap/phase-557-stack-floor-measured-frames.md).
 
 ## What happens

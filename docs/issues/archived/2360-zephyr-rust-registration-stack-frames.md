@@ -239,6 +239,6 @@ Item 2, lowering the floor or stating it per entity kind, is
 is not this issue's to make. Nothing of this issue's own is left, so it closes.
 
 Found on the way and filed separately:
-[issue 2783](../2783-graph-discovery-overflows-rust-template-ram.md). Turning on
+[issue 2783](2783-graph-discovery-overflows-rust-template-ram.md). Turning on
 graph discovery in the stock Rust template on this board fails to link, because
 the template's 75,536 B main leaves 552 B of RAM and discovery costs 8,232 B.
