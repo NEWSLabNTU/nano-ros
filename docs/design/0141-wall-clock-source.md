@@ -308,6 +308,21 @@ On FreeRTOS (issue 2691):
   `nros_platform_time_now_ns`.
 - `clock_gettime` honours `clock_id`: `CLOCK_REALTIME` from the same symbol,
   `CLOCK_MONOTONIC` from the monotonic clock.
+- On a libstdc++ built without a monotonic clock (`_GLIBCXX_USE_CLOCK_MONOTONIC`
+  unset, as in the arm-none-eabi toolchain), `steady_clock::now` and
+  `system_clock::now` both read `gettimeofday`. So a wall `gettimeofday` alone
+  would freeze `steady_clock` at 0. The board defines the two itself:
+  - `steady_clock::now` from `nros_platform_clock_ns`;
+  - `system_clock::now` from `nros_platform_time_now_ns`.
+
+  Both are defined because libstdc++ keeps them in one archive member,
+  `chrono.o`; defining one would extract it and collide on the other. The
+  definitions are strong, so a toolchain that still pulls `chrono.o` in fails
+  to link, never silently. The symbols are pinned to libstdc++'s ABI: the
+  `std::chrono::_V2` inline namespace
+  (`_ZNSt6chrono3_V212{steady,system}_clock3nowEv`), returning a
+  nanosecond `time_point`.
+- Wall-clock deadlines are not supported before sync; use `steady_clock`.
 
 With no source synced, `gettimeofday` reads 0 seconds since the epoch, which
 is true, instead of boot time posing as time of day. Zenoh-pico's FreeRTOS
@@ -367,3 +382,7 @@ separate decision per backend.
   switches, the per-port source table, `platform` always answering, the
   resolve point after registration, and the monotonic floor as the answer
   to the mid-run stale-stamp risk (D1).
+- 2026-11-22: D6 amended for phase-582 W2: on a libstdc++ without a monotonic
+  clock, the board defines `steady_clock::now` and `system_clock::now` from
+  the two symbols (the `_V2` ABI), and wall-clock deadlines before sync are
+  not supported.
