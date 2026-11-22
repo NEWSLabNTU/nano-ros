@@ -18318,6 +18318,23 @@ mod p274_w1_sched_task_executor_tests {
     use super::Executor;
     use crate::mock::MockSession;
 
+    /// Phase-573 W3 -- a borrowed executor keeps working over the session
+    /// pointer after its owner has spun and written the session through its
+    /// own field: the pointer `session_ptr` hands out must stay valid, not be
+    /// a child of a temporary reborrow the owner's next write disables.
+    #[test]
+    fn a_session_pointer_survives_its_owner_spinning() {
+        let mut primary = alloc::boxed::Box::new(Executor::from_session(MockSession::new()));
+        let handle = primary.session_handle();
+        // SAFETY: `primary` outlives `borrowed` and is not moved (boxed).
+        let mut borrowed = unsafe { Executor::open_with_session_handle(handle) };
+        for _ in 0..2 {
+            let _ = primary.spin_once(core::time::Duration::ZERO);
+            let _ = borrowed.spin_once(core::time::Duration::ZERO);
+        }
+        drop(borrowed);
+    }
+
     #[test]
     fn session_handle_borrowed_executor_shares_session_ptr() {
         // Open the primary executor (session owner).
