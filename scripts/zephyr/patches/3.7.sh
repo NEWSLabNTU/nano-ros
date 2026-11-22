@@ -96,8 +96,6 @@ echo "[zephyr setup] applying Phase 11W.11 NSOS mcast-join dual-mreq patch (idem
 bash ./scripts/zephyr/nsos-mcjoin-mreq-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.12 NSOS getifaddrs patch (idempotent)..."
 bash ./scripts/zephyr/nsos-getifaddrs-patch.sh "$WORKSPACE"
-echo "[zephyr setup] applying Phase 11W.12 NSOS adapt IPPROTO_IP setsockopt patch (idempotent)..."
-bash ./scripts/zephyr/nsos-adapt-ipproto-ip-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.8 cyclonedds multicast-join best-effort patch (idempotent)..."
 cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
 echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."
