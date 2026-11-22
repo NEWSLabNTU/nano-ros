@@ -1090,7 +1090,7 @@ location = "store"
 dest = "third-party/threadx/kernel"
 submodule = "third-party/threadx/kernel"
 git = "https://github.com/NEWSLabNTU/threadx.git"
-ref = "9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7"
+ref = "9fdb09bea84bb773371d407d90682bb5cebe0f8d"
 
 [source.zenoh-pico]
 # No `env` override, on purpose: `ZENOH_PICO_DIR` already means the INSTALL

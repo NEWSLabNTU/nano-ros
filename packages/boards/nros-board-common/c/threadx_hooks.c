@@ -102,6 +102,12 @@ _Static_assert(sizeof(ULONG) == 4,
 #ifndef NROS_THREADX_APP_STACK_BYTES
 #define NROS_THREADX_APP_STACK_BYTES (64u * 1024u)
 #endif
+/* Issue 2800 -- `tx_thread_create` refuses a stack below the port's
+ * TX_MINIMUM_STACK, which a host port raises to its PTHREAD_STACK_MIN floor
+ * (`nros-board-threadx-linux/config/tx_user.h`): refuse it here instead, by
+ * name, rather than as "app thread create failed" at boot. */
+_Static_assert(NROS_THREADX_APP_STACK_BYTES >= TX_MINIMUM_STACK,
+               "NROS_THREADX_APP_STACK_BYTES is below this port's TX_MINIMUM_STACK");
 /* 1 for a DDS backend (Cyclone): the larger working set. Set by the build that
  * knows the image's RMW. */
 #ifndef NROS_THREADX_POOL_DDS
