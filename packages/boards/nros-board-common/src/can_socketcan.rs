@@ -44,13 +44,15 @@ pub fn compile_socketcan_backend() {
     let mut build = cc::Build::new();
     nros_cc_flags::strict_decls(&mut build);
     nros_cc_flags::header_deps::track_header_deps(&mut build);
-    build
-        .file(&src)
-        .file(&store)
-        .include(nros_build_paths::nros_platform_cffi_include())
-        .include(store.parent().expect("the store has a directory"))
-        .warnings_into_errors(true)
-        .compile("nros_can_socketcan");
+    nros_cc_flags::compile_commands::compile(
+        build
+            .file(&src)
+            .file(&store)
+            .include(nros_build_paths::nros_platform_cffi_include())
+            .include(store.parent().expect("the store has a directory"))
+            .warnings_into_errors(true),
+        "nros_can_socketcan",
+    );
     nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
         env::var("OUT_DIR").expect("OUT_DIR"),
     ));

@@ -16,7 +16,8 @@ The fix is a protocol: `nros-platform-cffi` STATES the provider it compiled
 compile of a port ASKS first through
 `nros_board_common::platform_port::defer_to_graph_provider`. This gate keeps
 the protocol complete. Every Rust file under `packages/` that compiles an
-`nros_platform_*` archive (`.compile("nros_platform_…")`) must call that helper
+`nros_platform_*` archive (`compile_commands::compile(&mut b, "nros_platform_…")`,
+or cc-rs's bare `.compile(…)`) must call that helper
 BEFORE the compile. The only exception is the provider itself, which states
 the answer.
 
@@ -51,7 +52,10 @@ ROOT = Path(__file__).resolve().parent.parent
 PROVIDER_BUILD = "packages/platform/nros-platform-cffi/build.rs"
 PROVIDER_MANIFEST = "packages/platform/nros-platform-cffi/Cargo.toml"
 
-COMPILE_RE = re.compile(r'\.compile\(\s*"nros_platform_[a-z0-9_]+"\s*\)')
+# Both spellings of one compile: cc-rs's own, and the wrapper every build
+# script uses since issue 2658 (`compile_commands::compile(&mut b, "<lib>")`).
+COMPILE_RE = re.compile(
+    r'(?:\.compile\(|\bcompile_commands::compile\([^,()]*,)\s*"nros_platform_[a-z0-9_]+"\s*\)')
 ASK_RE = re.compile(r"\bplatform_port::defer_to_graph_provider\s*\(")
 # A site that compiles the SAME sources the provider does, into a
 # demand-driven (not `+whole-archive`) archive, cannot collide: its members
@@ -120,6 +124,11 @@ def self_test() -> int:
     bad = 'fn main() { let mut b = cc::Build::new(); b.compile("nros_platform_threadx"); }'
     if not violations("packages/boards/x/build.rs", bad):
         fails.append("a port compile with no ask was not reported")
+    wrapped = ('fn main() { let mut b = cc::Build::new();\n'
+               ' nros_cc_flags::compile_commands::compile(&mut b, "nros_platform_threadx"); }')
+    if not violations("packages/boards/x/build.rs", wrapped):
+        fails.append("a port compile through the compile_commands wrapper with no ask "
+                     "was not reported")
     late = (
         'fn main() { b.compile("nros_platform_freertos");\n'
         ' if platform_port::defer_to_graph_provider("x", "y") { return; } }'

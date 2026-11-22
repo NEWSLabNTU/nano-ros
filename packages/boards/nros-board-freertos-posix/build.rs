@@ -124,7 +124,7 @@ fn main() {
         .file(port_dir.join("utils/wait_for_event.c"))
         .file(freertos_dir.join("portable/MemMang/heap_3.c"));
     nros_cc_flags::header_deps::track_header_deps(&mut kernel);
-    kernel.compile("freertos_posix_kernel");
+    nros_cc_flags::compile_commands::compile(&mut kernel, "freertos_posix_kernel");
 
     // ---- the FreeRTOS platform C port, host-network shape -----------------
     let mut platform = cc::Build::new();
@@ -147,7 +147,7 @@ fn main() {
         }
     }
     nros_cc_flags::header_deps::track_header_deps(&mut platform);
-    platform.compile("nros_platform_freertos");
+    nros_cc_flags::compile_commands::compile(&mut platform, "nros_platform_freertos");
 
     // ---- glue: family task glue, board hooks, Rust-only glue --------------
     let mut glue = cc::Build::new();
@@ -159,7 +159,7 @@ fn main() {
         .file(manifest_dir.join("c/freertos_posix_hooks.c"))
         .file(manifest_dir.join("c/freertos_posix_rust.c"));
     nros_cc_flags::header_deps::track_header_deps(&mut glue);
-    glue.compile("freertos_posix_glue");
+    nros_cc_flags::compile_commands::compile(&mut glue, "freertos_posix_glue");
 
     nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
         env::var("OUT_DIR").expect("OUT_DIR"),

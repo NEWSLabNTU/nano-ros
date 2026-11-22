@@ -106,7 +106,7 @@ pub fn run_platform() {
     platform.include(nuttx_dir.join("sched"));
     platform.file(platform_src.join("platform.c"));
     platform.file(platform_src.join("net.c"));
-    platform.compile("nros_platform_nuttx");
+    nros_cc_flags::compile_commands::compile(&mut platform, "nros_platform_nuttx");
     nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
         &env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"),
     ));
@@ -205,7 +205,7 @@ pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
     for src in seam_srcs {
         seam.file(src);
     }
-    seam.compile("nros_nuttx_run_sched_tasks");
+    nros_cc_flags::compile_commands::compile(&mut seam, "nros_nuttx_run_sched_tasks");
     nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
         &env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"),
     ));

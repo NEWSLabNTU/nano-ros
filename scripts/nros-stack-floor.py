@@ -611,7 +611,8 @@ _WALK_CACHE_CTX: dict = {}
 WALK_CACHE_PATH_ARGS = frozenset({
     "inputs", "link_map", "link_dir", "cfi_elf", "report", "llc_cache", "su",
     "bitcode_dir", "stated_by_build", "table", "llvm_bin", "cxxfilt",
-    "compile_commands", "cargo_messages", "builtins", "sched_tasks",
+    "compile_commands", "cc_fragments", "cc_fragment_files", "cargo_messages", "builtins",
+    "sched_tasks",
 })
 WALK_CACHE_MAX = 512     # entries; pruned down to WALK_CACHE_KEEP by last use
 WALK_CACHE_KEEP = 384
@@ -2472,13 +2473,21 @@ def gcc_search_dirs(args: list[str], src: str, cwd: str) -> tuple[list[str], lis
     return quote_part.split(), angle_part.split()
 
 
-def linked_c_entries(doc: list[dict], linked: set[str]) -> list[tuple]:
+def linked_c_entries(doc: list[dict], linked: set[str], ids=None) -> list[tuple]:
     """The C compile commands of `doc` whose object the link used:
     (directory, args, source, object). A link map names objects by base name,
     so two targets compiling `md5.c` both match it; an object that is not on
     disk was never built, so it cannot be the one linked. Cyclone's host-side
     `idl` library compiles a `md5.c` it generates at build time, and an
-    embedded build lists that command without ever building it (issue 2818)."""
+    embedded build lists that command without ever building it (issue 2818).
+
+    An entry that states its object's identity (`nros_object`: size and
+    FNV-1a-64, written by `nros_cc_flags::compile_commands` for C a cargo
+    build script compiled) is taken only when `ids(<object base name>)` holds
+    that identity: the bytes the link actually used. A stale build-script
+    directory compiles the same sources to the same object names with other
+    flags; it never matches (issue 2658). With no `ids`, such an entry is
+    not taken, which keeps the looser binding."""
     out = []
     for e in doc:
         src = e.get("file", "")
@@ -2491,13 +2500,127 @@ def linked_c_entries(doc: list[dict], linked: set[str]) -> list[tuple]:
         d = e["directory"]
         if not (Path(obj) if Path(obj).is_absolute() else Path(d, obj)).exists():
             continue
+        want = e.get("nros_object")
+        if want is not None:
+            try:
+                key = (int(want["size"]), int(str(want["fnv1a64"]), 16))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if ids is None or key not in ids(Path(obj).name):
+                continue
         out.append((d, args, src, obj))
     return out
 
 
+def fnv1a64(data: bytes) -> int:
+    """FNV-1a, 64-bit: the object identity `nros_cc_flags::compile_commands`
+    records (its Rust copy is tested against the same vectors)."""
+    h = 0xCBF29CE484222325
+    for b in data:
+        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return h
+
+
+def ar_members(path: str) -> dict[str, list[tuple[int, int]]]:
+    """A static archive's members: base name -> [(offset, size)] of each
+    member's data. GNU (`/`-terminated names, a `//` long-name table) and BSD
+    (`#1/<len>`) archives; a thin or unreadable archive gives {}."""
+    out: dict[str, list[tuple[int, int]]] = {}
+    try:
+        raw = Path(path).read_bytes()
+    except OSError:
+        return out
+    if raw[:8] != b"!<arch>\n":
+        return out
+    pos, longnames = 8, b""
+    while pos + 60 <= len(raw):
+        hdr = raw[pos:pos + 60]
+        name = hdr[:16].decode("latin-1").rstrip()
+        try:
+            size = int(hdr[48:58].decode("latin-1").strip() or 0)
+        except ValueError:
+            return out
+        data = pos + 60
+        if name == "//":
+            longnames = raw[data:data + size]
+        elif name.startswith("#1/"):
+            n = int(name[3:])
+            mname = raw[data:data + n].decode("latin-1").rstrip("\0")
+            out.setdefault(Path(mname).name, []).append((data + n, size - n))
+        elif name not in ("/", "/SYM64/", "__.SYMDEF", "__.SYMDEF SORTED"):
+            if name.startswith("/") and name[1:].isdigit():
+                off = int(name[1:])
+                end = longnames.find(b"/\n", off)
+                mname = longnames[off:end if end >= 0 else None].decode("latin-1")
+            else:
+                mname = name[:-1] if name.endswith("/") else name
+            out.setdefault(Path(mname).name, []).append((data, size))
+        pos = data + size + (size & 1)
+    return out
+
+
+class LinkedObjects:
+    """The identities (size, FNV-1a-64) of the objects a link used, by base
+    name, read from its inputs (loose objects and archive members), hashed
+    only when a name is asked for."""
+
+    def __init__(self, inputs: list[str]):
+        self.loose: dict[str, list[str]] = {}
+        self.archives: list[str] = []
+        for i in inputs:
+            if i.endswith((".a", ".rlib")):
+                self.archives.append(i)
+            else:
+                self.loose.setdefault(Path(i).name, []).append(i)
+        self._members: dict[str, dict[str, list[tuple[int, int]]]] | None = None
+        self._ids: dict[str, set[tuple[int, int]]] = {}
+
+    def __call__(self, name: str) -> set[tuple[int, int]]:
+        if name in self._ids:
+            return self._ids[name]
+        if self._members is None:
+            self._members = {a: ar_members(a) for a in self.archives}
+        got: set[tuple[int, int]] = set()
+        for p in self.loose.get(name, ()):
+            try:
+                b = Path(p).read_bytes()
+            except OSError:
+                continue
+            got.add((len(b), fnv1a64(b)))
+        for a, mem in self._members.items():
+            for off, size in mem.get(name, ()):
+                with open(a, "rb") as f:
+                    f.seek(off)
+                    b = f.read(size)
+                got.add((len(b), fnv1a64(b)))
+        self._ids[name] = got
+        return got
+
+
+def cc_fragments(dirs: list[str]) -> list[str]:
+    """The `compile_commands.json` every cargo build script under these
+    target directories wrote through `nros_cc_flags::compile_commands`
+    (`<target-dir>[/<triple>]/<profile>/build/<crate>-<hash>/out/cc/<lib>/`).
+    Which of them describe THIS image is decided per entry by object
+    identity (`linked_c_entries`), never by location or file time."""
+    import glob as _glob
+    out: set[str] = set()
+    for d in dirs:
+        # A glob spelling (`<bin>/**/nano_ros_*_ffi_*/target`) names several.
+        # walk-ok: a cargo target dir is build output (untracked), and the glob is
+        # the same spelling the BITCODE dirs use
+        roots = _glob.glob(d, recursive=True) if any(c in d for c in "*?[") else [d]
+        for r in roots:
+            root = Path(r)
+            for depth in ("", "*/", "*/*/", "*/*/*/"):
+                for f in root.glob(f"{depth}build/*/out/cc/*/compile_commands.json"):
+                    out.add(str(f.resolve()))
+    return sorted(out)
+
+
 def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
-               cache: Path, dis: str, readobj: str, jobs: int | None = None
-               ) -> tuple[list[str] | None, set[str], str]:
+               cache: Path, dis: str, readobj: str, jobs: int | None = None,
+               ids=None) -> tuple[list[str] | None, set[str], str]:
     """Clang IR for every C translation unit the link used. Returns
     (texts, uncovered, note). A TU clang cannot compile (clang 14 refuses
     some GCC-only builtin uses) gives no IR, and every function its GCC
@@ -2517,7 +2640,7 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
             doc = json.loads(Path(cc).read_text())
         except (OSError, ValueError) as e:
             return None, set(), f"{cc}: {e}"
-        entries.extend(linked_c_entries(doc, linked))
+        entries.extend(linked_c_entries(doc, linked, ids))
     if not entries:
         return None, set(), "no compile command produced an object the link used"
     probes: dict[tuple, tuple[list[str], list[str]]] = {}
@@ -3975,6 +4098,14 @@ def run(args: argparse.Namespace) -> int:
         raise SystemExit("nros-stack-floor: give --stated-by-build or --cargo-messages, not both "
                          "(the first IS cargo's messages)")
     lines = Path(stream).read_text(errors="replace").splitlines() if stream else []
+    if lines:
+        # Issue 2658 -- the cargo road names every build script's OUT_DIR;
+        # each C compile through nros_cc_flags::compile_commands left its
+        # commands under it (`cc/<lib>/compile_commands.json`).
+        import cargo_out_dir  # the one reader of cargo's JSON stream
+        args.cc_fragment_files = sorted(
+            str(f) for od in cargo_out_dir.all_out_dirs(lines)
+            for f in Path(od).glob("cc/*/compile_commands.json"))
     if args.stated_by_build:
         rows, files = stated_by_build(lines)
         if len(files) > 1:
@@ -4161,10 +4292,19 @@ def run(args: argparse.Namespace) -> int:
         c_unc: set[str] = set()
         ccs = sorted({str(Path(c).resolve()) for c in (args.compile_commands or [])
                       if Path(c).exists()})
+        # Issue 2658: the C a cargo build script compiled has no build-system
+        # compile_commands.json; nros_cc_flags::compile_commands writes one per
+        # compile, and an entry is taken only for the object bytes this link used.
+        frags = sorted(set(cc_fragments(args.cc_fragments or []))
+                       | set(getattr(args, "cc_fragment_files", None) or []))
+        if frags:
+            print(f"nros-stack-floor: bind: {len(frags)} build-script compile_commands "
+                  "fragment(s) found", file=sys.stderr)
+        ccs = ccs + [f for f in frags if f not in ccs]
         if ccs and args.link_map and args.target:
             texts, c_unc, note = c_ir_texts(ccs, linked_object_names(
                 Path(args.link_map).read_text(errors="replace")), args.target, cache, dis,
-                readobj)
+                readobj, ids=LinkedObjects(list(args.inputs)))
             if texts is None:
                 print(f"nros-stack-floor: bind: no C call-site types ({note}); every C site "
                       "keeps every function C can hold", file=sys.stderr)
@@ -4792,6 +4932,81 @@ def self_test() -> int:
               "is evidence", "packed_fn" in held)
         check(f"image data ({bits}-bit): a function no data names is not held",
               "nowhere" not in held)
+
+    # issue 2658 -- a cargo build script's C, typed through the
+    # compile_commands.json nros_cc_flags writes, matched by object identity
+    check("fnv1a64: the published vectors (the Rust writer checks the same)",
+          fnv1a64(b"") == 0xCBF29CE484222325 and fnv1a64(b"a") == 0xAF63DC4C8601EC8C
+          and fnv1a64(b"foobar") == 0x85944171F73967E8)
+
+    def ar_blob(members: list[tuple[str, bytes]], bsd: bool = False) -> bytes:
+        out, longs, names = [b"!<arch>\n"], b"", []
+        for n, _ in members:
+            if not bsd and len(n) > 15:
+                names.append(f"/{len(longs)}")
+                longs += n.encode() + b"/\n"
+            else:
+                names.append(n if bsd else n + "/")
+        def hdr(name: str, size: int) -> bytes:
+            return (f"{name:<16}{0:<12}{0:<6}{0:<6}{644:<8}{size:<10}".encode() + b"`\n")
+        if longs:
+            out += [hdr("//", len(longs)), longs + (b"\n" if len(longs) & 1 else b"")]
+        for (n, data), nm in zip(members, names):
+            if bsd:
+                body = n.encode() + data
+                out += [hdr(f"#1/{len(n)}", len(body)), body]
+                size = len(body)
+            else:
+                out += [hdr(nm, len(data)), data]
+                size = len(data)
+            if size & 1:
+                out.append(b"\n")
+        return b"".join(out)
+
+    with _tf.TemporaryDirectory() as td:
+        tdp = Path(td)
+        good, stale = b"object bytes A", b"object bytes from another config"
+        long_name = "0123456789abcdef-session.o"
+        (tdp / "libgnu.a").write_bytes(ar_blob([("x.o", b"x1"), (long_name, good)]))
+        (tdp / "libbsd.a").write_bytes(ar_blob([("1111-net.o", b"net!")], bsd=True))
+        am = ar_members(str(tdp / "libgnu.a"))
+        check("ar: a GNU archive's members, a long name included",
+              set(am) == {"x.o", long_name})
+        check("ar: a BSD `#1/<len>` member is read by its name",
+              set(ar_members(str(tdp / "libbsd.a"))) == {"1111-net.o"})
+        ids = LinkedObjects([str(tdp / "libgnu.a"), str(tdp / "libbsd.a")])
+        check("linked objects: a member's identity is its size and FNV-1a-64",
+              ids(long_name) == {(len(good), fnv1a64(good))}
+              and ids("1111-net.o") == {(4, fnv1a64(b"net!"))})
+        # Two build-script directories compiled the same source to the same
+        # object name: the live one and a stale one with other flags.
+        live_d, stale_d = tdp / "live" / "out" / "cc" / "z", tdp / "stale" / "out" / "cc" / "z"
+        for d, data in ((live_d, good), (stale_d, stale)):
+            d.mkdir(parents=True)
+            (d / long_name).write_bytes(data)
+
+        def frag(d: Path, data: bytes, flag: str) -> list[dict]:
+            return [{"directory": str(d), "file": "/src/session.c", "output": str(d / long_name),
+                     "nros_object": {"size": len(data), "fnv1a64": f"{fnv1a64(data):016x}"},
+                     "arguments": ["gcc", flag, "-c", "/src/session.c",
+                                   "-o", str(d / long_name)]}]
+        doc = frag(live_d, good, "-DLIVE") + frag(stale_d, stale, "-DSTALE")
+        got = linked_c_entries(doc, {long_name}, ids)
+        check("fragments: of two build dirs with one object name, only the one whose "
+              "bytes the link used is taken (a stale OUT_DIR never is)",
+              len(got) == 1 and "-DLIVE" in got[0][1])
+        check("fragments: with no linked-object identities, a stated identity is never taken",
+              linked_c_entries(doc, {long_name}) == [])
+        plain = [{"directory": str(live_d), "file": "/src/session.c",
+                  "arguments": ["gcc", "-c", "/src/session.c", "-o", str(live_d / long_name)]}]
+        check("fragments: a build system's own command (no identity) is taken as before",
+              len(linked_c_entries(plain, {long_name})) == 1)
+        for prof in ("thumbv7m-none-eabi/release", "release"):
+            fd = tdp / "tgt" / prof / "build" / "zpico-sys-1" / "out" / "cc" / "zenohpico"
+            fd.mkdir(parents=True)
+            (fd / "compile_commands.json").write_text("[]")
+        check("fragments: found under a target dir, with or without a target triple",
+              len(cc_fragments([str(tdp / "tgt")])) == 2)
     gb = Graph(frames={f: 8 for f in ("drop", "m", "a", "b", "esc", "caller", "cfn", "cb")},
                functions={"drop", "m", "a", "b", "esc", "caller", "cfn", "cb", "vector"},
                indirect_sites={"caller": 2, "cfn": 1}, c_taken={"cb", "vector"})
@@ -6015,6 +6230,11 @@ def main() -> int:
     ap.add_argument("--cfi-elf", help="the LINKED image: a function no input states a frame "
                     "for (a prebuilt library's, newlib's) takes it from the image's "
                     ".debug_frame, when its CFA stays on SP")
+    ap.add_argument("--cc-fragments", action="append", metavar="CARGO_TARGET_DIR",
+                    help="a cargo target directory whose build scripts compiled image C "
+                    "through nros_cc_flags::compile_commands (issue 2658): each such compile's "
+                    "compile_commands.json is read like --compile-commands, entry by entry "
+                    "for the object bytes this link used")
     ap.add_argument("--compile-commands", action="append",
                     help="a compile_commands.json for the image's C (issue 2516): under "
                     "`--indirect bind` each linked C TU is compiled again by clang to IR, for "

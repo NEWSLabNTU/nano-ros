@@ -380,13 +380,14 @@ endfunction()
 #
 #   _nros_stack_floor_command(<out> KEY <image key> ROOT <fn> STACK <bytes>
 #       KNOB <text> TARGET <triple> RMW <rmw> MAP <link map> DIR <work dir>
-#       LINK_DIRS <dir>... BITCODE <glob>... [SHAPE <KNOB=count>...] [ELF <image>])
+#       LINK_DIRS <dir>... BITCODE <glob>... [SHAPE <KNOB=count>...] [ELF <image>]
+#       [CC_FRAGMENTS <cargo target dir or glob>...])
 #
 # ELF is the linked image, whose `.debug_frame` gives a frame to a function no
 # input states one for (a prebuilt toolchain library: libgcc, compiler_builtins
 # shipped without bitcode). The cargo road passes it too (`--cfi-elf`).
 function(_nros_stack_floor_command _out)
-    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR;ELF;REPORT;TASK_ROOT;SCHED_TASKS" "LINK_DIRS;BITCODE;SHAPE" ${ARGN})
+    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR;ELF;REPORT;TASK_ROOT;SCHED_TASKS" "LINK_DIRS;BITCODE;SHAPE;CC_FRAGMENTS" ${ARGN})
     # The rustup llvm-tools ship no llvm-cxxfilt, so name the cross
     # toolchain's own demangler (`arm-none-eabi-g++` -> `arm-none-eabi-c++filt`)
     # when it sits beside the compiler; the walker falls back to the host's.
@@ -428,6 +429,13 @@ function(_nros_stack_floor_command _out)
     # always exports it; a road that does not keeps every C site bound to
     # every function C can hold (the walker skips a missing file).
     list(APPEND _cmd --compile-commands "${CMAKE_BINARY_DIR}/compile_commands.json")
+    # Issue 2658 -- the C the image's cargo build scripts compiled (zenoh-pico,
+    # the board and platform C) has no command in the file above; each
+    # compile writes its own, and the walker takes an entry only for the
+    # object bytes this link used.
+    foreach(_f IN LISTS _C_CC_FRAGMENTS)
+        list(APPEND _cmd --cc-fragments "${_f}")
+    endforeach()
     foreach(_b IN LISTS _C_BITCODE)
         list(APPEND _cmd --bitcode-dir "${_b}")
     endforeach()
@@ -526,7 +534,9 @@ function(nros_stack_floor_check _exe)
         TASK_ROOT "${_SF_TASK_ROOT}" SCHED_TASKS "${_SF_SCHED_TASKS}"
         LINK_DIRS "${_bindir}" "${CMAKE_BINARY_DIR}"
         BITCODE "${CMAKE_BINARY_DIR}/cargo/*/${_SF_TARGET}/${_SF_PROFILE}/deps"
-                "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_SF_TARGET}/*/deps")
+                "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_SF_TARGET}/*/deps"
+        CC_FRAGMENTS "${CMAKE_BINARY_DIR}/cargo"
+                     "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target")
     if(NROS_IMAGE_STACK_FLOOR_MODE STREQUAL "raise")
         # A measured floor above the stack is recorded in the report as a
         # raise instead of failing; `nros build` rebuilds once with it.
@@ -787,7 +797,10 @@ function(nros_stack_floor_zephyr_check)
         LINK_DIRS "${CMAKE_BINARY_DIR}"
         BITCODE "${CMAKE_BINARY_DIR}/rust/target/${_t}/*/deps"
                 "${CMAKE_BINARY_DIR}/nros-rust*/${_t}/*/deps"
-                "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_t}/*/deps")
+                "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_t}/*/deps"
+        CC_FRAGMENTS "${CMAKE_BINARY_DIR}/rust/target"
+                     "${CMAKE_BINARY_DIR}/nros-rust*"
+                     "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target")
     # The script is written at the END of the configure (issue 2784): the
     # module configures before the application, so the entry's priority plan,
     # which names the sched tasks, does not exist yet here. The command and its
