@@ -48,3 +48,40 @@ applies: scope decides what runs, and a probe that skips is not the answer.
 - On a line it IS supported on, a missing artifact still fails as UNMET.
 - A negative control: a 3.7-only leaf run on 4.4 reports `[SKIPPED:lane]`, and
   the same leaf with its artifact deleted on 3.7 reports UNMET.
+
+## Fix (2026-11-22, user ruling A)
+
+The acceptance's first line, "derived from the index", did not hold up.
+`[zephyr_module.*] needed_by` mixes a board's HAL (needed on every line the
+board is on: `hal_stm32` for the Nucleo) with per-line components
+(`tinycrypt` on 3.7 only and `cmsis_6` on 4.4 only, both naming
+`mps2_an385`). An intersection puts `mps2_an385` on no line, and a union is
+wrong as well. The board descriptors' `[board.provisioning] zephyr_line` is
+only `nros setup`'s default: mps2 states 3.7 there and runs on 4.4. So a board
+STATES its lines, once, and gates keep the statement present and consistent:
+
+- `[board.zephyr] lines = [...]` on every Zephyr board descriptor (7). Two lines
+  where no index row excludes one; 3.7 for the Nucleo and Pico (HAL on 3.7
+  only) and for the FVP and S32Z270 (whose only lanes are 3.7).
+  `BoardZephyr.lines` in the CLI, and `nros board new` writes the field.
+- `scripts/lib/zephyr_board_lines.py` is the one reader. It also holds the
+  line -> manifest table, which `check-zephyr-module-allowlist.py` now imports.
+- Build: `fixtures-manifest.py west-leaves --line <l>` omits a leaf whose board
+  does not state the line. `zephyr-fixture-leaves.sh` passes the run's line, so
+  4.4 builds 102 of the 103 leaves, all but the Nucleo serial talker. Without
+  `--line` the output is byte-identical to before.
+- Run: `fixtures-manifest.py west-leaf-lines` exports each leaf's lines.
+  `require_west_leaf_in_lane` checks the line FIRST, whatever the coordinate
+  scope, and raises `[SKIPPED:lane]`. A leaf the table does not model still
+  runs (fail-closed). A leaf for a board no descriptor names makes the manifest
+  refuse, never "every line".
+- Gate `just check zephyr-board-lines`: every Zephyr board states non-empty,
+  known lines. Every module naming it is on one of its lines, and in that
+  line's allowlist on each line both share. Negative control: the Nucleo stated
+  on 4.4 alone fails (`needs module hal_stm32, which is on ['3.7']`).
+- Unit tests in `fixtures::lane`: a 3.7-only leaf is deselected on 4.4 and not
+  on 3.7, and the live table puts the Nucleo leaf on 3.7 only.
+
+Still to run (the batch's Zephyr cell): the acceptance pair on a real run. On
+4.4 the Nucleo cell must read `[SKIPPED:lane]`; on 3.7, with the artifact
+removed, it must read UNMET.

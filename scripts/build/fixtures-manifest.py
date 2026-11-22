@@ -877,6 +877,59 @@ def west_lang_tag(entry):
     return entry.get("lang")
 
 
+def west_leaf_records(manifest):
+    """Every west leaf, in manifest order: the `builder = "west"` rows plus the
+    zephyr `[[workspace_fixture]]` rows, the application `dir` resolved. The one
+    list `west-leaves` and `west-leaf-lines` both walk."""
+    west_records = [e for e in load(manifest) if e.get("builder") == "west"]
+    for e in load_workspace_fixtures(manifest):
+        if e.get("platform") not in ZEPHYR_WEST_PLATFORMS:
+            continue
+        e = dict(e)
+        # phase-383 W9.b — the WORKSPACE root, kept before `dir` is
+        # rewritten to the application. `nros build` is addressed from the
+        # workspace, not from the app, so a migrated row needs both and the
+        # rewrite destroys one of them.
+        e["ws_dir"] = e["dir"].rstrip("/")
+        # phase-470 W5.a — a GENERATED application has no `src/<pkg>`, so
+        # `src`/`src_dir` name the WORKSPACE instead. Nothing in the west
+        # lane builds from that path for such a row (`nros build` is
+        # addressed from the workspace and resolves the application
+        # itself); what the record must not carry is a directory that does
+        # not exist, which is what a filter, a log line or a future reader
+        # would take for the application.
+        if not zephyr_application_is_generated(e):
+            e["dir"] = f"{e['dir'].rstrip('/')}/src/{image_entry_package(e)}"
+        e.setdefault("west_role", "entry")
+        west_records.append(e)
+    return west_records
+
+
+_BOARD_LINES = None
+
+
+def west_leaf_board_lines(entry):
+    """The Zephyr lines a west leaf's board states (`[board.zephyr] lines`,
+    issue 2804). A leaf for a board no descriptor names is a modelling gap,
+    refused rather than read as "every line", which is the default this field
+    exists to remove."""
+    global _BOARD_LINES
+    if _BOARD_LINES is None:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+        import zephyr_board_lines
+
+        _BOARD_LINES = zephyr_board_lines.board_lines()
+    board = str(entry.get("board", ""))
+    lines = _BOARD_LINES.get(board)
+    if not lines:
+        sys.exit(
+            f"fixtures-manifest: west leaf {west_build_name(entry)!r} is for board "
+            f"{board!r}, which no Zephyr board descriptor names with "
+            "`[board.zephyr] lines` (issue 2804)"
+        )
+    return lines
+
+
 def west_build_name(entry):
     """The west build-dir NAME, authored or derived as `build-<tag>-<role>-<rmw>`."""
     return entry.get("west_build_name") or (
@@ -2226,6 +2279,11 @@ def main():
             # nested bash loops in `fixture-matrix.sh` that were a second
             # spelling of it (issue 0535).
             "west-leaves",
+            # Issue 2804 — `<build_name>\x1f<line,line>` per west leaf: the
+            # Zephyr lines its board states (`[board.zephyr] lines`). The test
+            # lane deselects a leaf off the run's line from this. Its own
+            # command, so no `west-leaves` record width moves under a reader.
+            "west-leaf-lines",
             # phase-484 W5b — the transient knob values a west row passes as
             # `-DNROS_OVERRIDE_<ID>=<v>` (its `west_overrides` table): one
             # `<west_id>\x1f<ID>=<value>` line each. Its own command rather than
@@ -2258,6 +2316,9 @@ def main():
     )
     p.add_argument("--manifest", default=DEFAULT_MANIFEST)
     p.add_argument("--platform")
+    # Issue 2804 — `west-leaves --line <l>` omits a leaf whose board does not
+    # state that Zephyr line, so a line's fixture build never attempts it.
+    p.add_argument("--line")
     p.add_argument("--lang")
     p.add_argument("--rmw")
     p.add_argument("--id")
@@ -2335,6 +2396,11 @@ def main():
             sys.stdout.write(f"{d}\n")
         return
 
+    if a.command == "west-leaf-lines":
+        for e in west_leaf_records(a.manifest):
+            sys.stdout.write(SEP.join((west_build_name(e), ",".join(west_leaf_board_lines(e)))) + "\n")
+        return
+
     if a.command == "west-leaves":
         # phase-350 W1 — one record per `builder = "west"` row, in manifest
         # order, carrying what the emitter needs to build the leaf:
@@ -2362,27 +2428,7 @@ def main():
         # `<dir>/src/<entry>`, the same path `validate-workspaces` checks. A
         # zephyr workspace row IS a west row; that table has no `builder` key to
         # say so, so the platform is the discriminator.
-        west_records = [e for e in load(a.manifest) if e.get("builder") == "west"]
-        for e in load_workspace_fixtures(a.manifest):
-            if e.get("platform") not in ZEPHYR_WEST_PLATFORMS:
-                continue
-            e = dict(e)
-            # phase-383 W9.b — the WORKSPACE root, kept before `dir` is
-            # rewritten to the application. `nros build` is addressed from the
-            # workspace, not from the app, so a migrated row needs both and the
-            # rewrite destroys one of them.
-            e["ws_dir"] = e["dir"].rstrip("/")
-            # phase-470 W5.a — a GENERATED application has no `src/<pkg>`, so
-            # `src`/`src_dir` name the WORKSPACE instead. Nothing in the west
-            # lane builds from that path for such a row (`nros build` is
-            # addressed from the workspace and resolves the application
-            # itself); what the record must not carry is a directory that does
-            # not exist, which is what a filter, a log line or a future reader
-            # would take for the application.
-            if not zephyr_application_is_generated(e):
-                e["dir"] = f"{e['dir'].rstrip('/')}/src/{image_entry_package(e)}"
-            e.setdefault("west_role", "entry")
-            west_records.append(e)
+        west_records = west_leaf_records(a.manifest)
 
         for e in west_records:
             if a.platform and e.get("platform") != a.platform:
@@ -2393,6 +2439,8 @@ def main():
             # `lane=tier2` -- which needs two zephyr coordinates -- built all 70
             # leaves and serial-added ~40 min to the sweep (issue 0509).
             if a.coords_from and not row_in_coords(e, _coords_for(a.coords_from)):
+                continue
+            if a.line and a.line not in west_leaf_board_lines(e):
                 continue
             # The isolation triple is emitted when the row AUTHORED one, not
             # when the role happens to be a role leaf: the mps2 witness leaves

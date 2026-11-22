@@ -64,7 +64,10 @@ INDEX = REPO / "nros-sdk-index.toml"
 # fails if the two disagree. A new Zephyr line therefore cannot be added on one
 # side only — which is the shape of defect this whole gate exists to stop, one
 # level up.
-LINE_TO_MANIFEST = {"3.7": "west.yml", "4.4": "west-4.4.yml"}
+# One home since issue 2804: `scripts/lib/zephyr_board_lines.py`, which the
+# board-lines gate and the fixture manifest read too.
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+from zephyr_board_lines import LINES as LINE_TO_MANIFEST  # noqa: E402
 
 CLI_CONST = REPO / "packages/cli/nros-cli-core/src/orchestration/sdk_index.rs"
 

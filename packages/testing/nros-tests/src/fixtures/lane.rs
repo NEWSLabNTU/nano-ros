@@ -89,7 +89,7 @@
 //!   `fixture-lane.sh`.
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -339,6 +339,63 @@ pub fn west_build_name(zephyr_exe: &Path) -> Option<&str> {
     dir.parent()?.file_name()?.to_str()
 }
 
+static WEST_LEAF_LINES: OnceLock<BTreeMap<String, Vec<String>>> = OnceLock::new();
+
+/// Issue 2804 — each west leaf's Zephyr lines, from `fixtures-manifest.py
+/// west-leaf-lines`: the lines its board STATES (`[board.zephyr] lines`). The
+/// same table the fixture build filters on (`west-leaves --line`), so a leaf
+/// the build omits for this line is one the run deselects.
+pub fn west_leaf_lines() -> &'static BTreeMap<String, Vec<String>> {
+    WEST_LEAF_LINES.get_or_init(|| {
+        let root = project_root();
+        let out = std::process::Command::new("python3")
+            .arg(root.join("scripts/build/fixtures-manifest.py"))
+            .arg("west-leaf-lines")
+            .current_dir(&root)
+            .output();
+        let out = match out {
+            Ok(o) if o.status.success() => o,
+            Ok(o) => panic!(
+                "fixtures-manifest.py west-leaf-lines failed ({}): {}",
+                o.status,
+                String::from_utf8_lossy(&o.stderr)
+            ),
+            Err(e) => panic!("could not run fixtures-manifest.py west-leaf-lines: {e}"),
+        };
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| {
+                let (name, lines) = l.split_once('\x1f').unwrap_or_else(|| {
+                    panic!("unexpected `west-leaf-lines` record (expected 2 fields): {l:?}")
+                });
+                (
+                    name.to_string(),
+                    lines.split(',').map(str::to_string).collect(),
+                )
+            })
+            .collect()
+    })
+}
+
+/// Why the west leaf `build_name` is not on `line`, or `None` when it is (or
+/// when the table does not name it: an unmodelled leaf runs, fail-closed, the
+/// same rule as [`require_west_leaf_in_lane`]'s coordinate arm).
+pub fn off_line_reason(
+    build_name: &str,
+    line: &str,
+    table: &BTreeMap<String, Vec<String>>,
+) -> Option<String> {
+    let lines = table.get(build_name)?;
+    (!lines.iter().any(|l| l == line)).then(|| {
+        format!(
+            "west leaf `{build_name}` is for a board that builds on Zephyr {} only; \
+             this run is the {line} line (`[board.zephyr] lines` in its descriptor)",
+            lines.join(", ")
+        )
+    })
+}
+
 /// Skip when the west leaf built into `build_name` is outside this run's lane.
 ///
 /// phase-350 W1.b closed the loop the build side had opened: the zephyr lane
@@ -357,6 +414,15 @@ pub fn west_build_name(zephyr_exe: &Path) -> Option<&str> {
 /// always a missing-or-stale message — which reads character-for-character like
 /// a cell that ran and failed. The floor is `check-west-leaf-vocabulary.py`.
 pub fn require_west_leaf_in_lane(build_name: &str, label: &str) -> TestResult<()> {
+    // Issue 2804 — the LINE first, and whatever the coordinate scope: the line
+    // is a property of the run (`NROS_ZEPHYR_VERSION`), and a leaf whose board
+    // is not on it has no fixture to find, so probing for one turned a board
+    // the line does not support into an UNMET red.
+    if let Some(reason) =
+        off_line_reason(build_name, &crate::zephyr::zephyr_line(), west_leaf_lines())
+    {
+        crate::lane_skip!("{label}: {reason}");
+    }
     if run_coords().is_none() && !super::evidence::enabled() {
         return Ok(());
     }
@@ -1063,6 +1129,40 @@ fn coord_of_artifact(binary_path: &Path) -> Option<Coord> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2804's negative control: a 3.7-only leaf is off the 4.4 line and
+    /// on the 3.7 one, a two-line leaf is on both, and a leaf the table does
+    /// not model is never skipped (fail-closed).
+    #[test]
+    fn a_leaf_off_the_run_line_is_deselected_and_on_it_is_not() {
+        let t: BTreeMap<String, Vec<String>> = [
+            ("build-nucleo".to_string(), vec!["3.7".to_string()]),
+            (
+                "build-both".to_string(),
+                vec!["3.7".to_string(), "4.4".to_string()],
+            ),
+        ]
+        .into_iter()
+        .collect();
+        assert!(off_line_reason("build-nucleo", "4.4", &t).is_some());
+        assert!(off_line_reason("build-nucleo", "3.7", &t).is_none());
+        assert!(off_line_reason("build-both", "4.4", &t).is_none());
+        assert!(off_line_reason("build-unmodelled", "4.4", &t).is_none());
+    }
+
+    /// The live table names the one 3.7-only leaf this tree has, so the
+    /// fixture build and the run agree on it.
+    #[test]
+    fn the_live_table_puts_the_nucleo_leaf_on_3_7_only() {
+        let t = west_leaf_lines();
+        assert_eq!(
+            t.get("build-nucleo-f767zi-c-talker-serial")
+                .map(Vec::as_slice),
+            Some(&["3.7".to_string()][..]),
+            "{t:?}"
+        );
+        assert!(t.values().all(|l| !l.is_empty()));
+    }
 
     /// Issue 2112 -- a shared-group binary's path, against the shipped
     /// manifest: a binary in a shared group dir attributes to the row that

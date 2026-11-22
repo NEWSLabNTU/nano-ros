@@ -667,7 +667,9 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         "$xrce_agent_port" "$zenoh_locator" "$dds_domain" "$conf_files" \
         "$extra_cmake_defs" "$sig" "$sig_file" "$best_effort" "$pristine" \
         "$ws_dir" "$row_nros_image"
-done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves "${coords_args[@]}")
+# Issue 2804 — `--line`: a leaf whose board does not state this Zephyr line
+# (`[board.zephyr] lines`) is not attempted here; the test lane deselects it.
+done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves "${coords_args[@]}" --line "$zephyr_version")
 wait $! || { echo "zephyr-fixture-leaves.sh: \`fixtures-manifest.py west-leaves\` failed (issue 2424)" >&2; exit 1; }
 
 # phase-350 W1 — the mps2 witness leaves and the logging-smoke leaf used to sit

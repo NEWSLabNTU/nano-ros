@@ -857,6 +857,17 @@ pub struct BoardZephyr {
     /// line-agnostic snippet instead of a conf file copied into every leaf.
     #[serde(default)]
     pub snippets: Vec<String>,
+    /// The Zephyr west lines (`3.7`, `4.4`) this board builds on (issue 2804).
+    /// STATED, never derived: the index's `[zephyr_module.*] needed_by` mixes
+    /// a board's HAL (needed on every line the board is on) with per-line
+    /// components (tinycrypt on 3.7 only, cmsis_6 on 4.4 only), so no rule over
+    /// it can say which lines a board is on. The fixture build skips a leaf
+    /// for a board off the run's line, and the test lane deselects it
+    /// (`[SKIPPED:lane]`) before any probe. `check-zephyr-board-lines` refuses a
+    /// Zephyr board that leaves it empty, so a new board cannot silently
+    /// default to every line.
+    #[serde(default)]
+    pub lines: Vec<String>,
 }
 
 impl BoardZephyr {

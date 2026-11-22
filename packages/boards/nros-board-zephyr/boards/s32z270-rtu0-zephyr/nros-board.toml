@@ -31,6 +31,9 @@ crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
 
 [board.zephyr]
 west_board = "s32z2xxdc2@D/s32z270/rtu0"
+# The Zephyr lines this board builds on (issue 2804). 3.7: the line its
+# module-fixture lane runs (`hal_nxp` comes from the consumer's manifest).
+lines = ["3.7"]
 sdk_abi = "arm-zephyr-eabi"
 default_rmw = "cyclonedds"
 default_transport = "ethernet"
