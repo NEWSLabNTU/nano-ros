@@ -30,6 +30,13 @@ ZEPHYR_MANIFEST := if NROS_ZEPHYR_VERSION == "4.4" { "west-4.4.yml" } else { "we
 # or not one is provisioned, and the default is where it will install.
 ZEPHYR_WORKSPACE := shell("scripts/lib/zephyr-workspace.sh --version $1 resolve-or-default", NROS_ZEPHYR_VERSION)
 
+# The `tests/zephyr-c-smoke` build dir, PER LINE (issue 2821). It used to be one
+# in-tree `tests/zephyr-c-smoke/build` for both lines, so a 3.7 build reconfigured
+# a cache that still named the 4.4 tree's ZephyrConfig and ran 4.4's Python
+# floor against 3.7's interpreter. Under the line's build root, beside every
+# other Zephyr build of this checkout.
+ZEPHYR_C_PORT_DIR := shell("scripts/lib/zephyr-workspace.sh --version $1 build-root", NROS_ZEPHYR_VERSION) / "c-port-smoke"
+
 # Install the Zephyr workspace at $repo/zephyr-workspace/ (large download).
 # Idempotent: skips if the workspace already exists.
 # Set $NROS_ZEPHYR_WORKSPACE to install elsewhere.
