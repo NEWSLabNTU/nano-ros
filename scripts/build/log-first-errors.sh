@@ -48,7 +48,28 @@ first_errors() {
     # matches first and says least (issue 2193: the job log quoted
     # `295:error: recipe `build-fixtures` failed` and nothing about the leaf).
     # It is printed only when nothing else matched.
-    matches="$(grep -n -E "$pattern" "$log" 2>/dev/null | grep -v -E "$consequence" | head -n "$max" || true)"
+    # A `CMake Error at <file>:<line> (message):` names WHERE, and the message
+    # is the indented block under it, which matches no pattern of its own: the
+    # tier-1 summary of run 44874748326 quoted `CMake Error at
+    # .../NanoRosEntityInventory.cmake:676` and a bare `Error:` and lost what
+    # the CLI said (issue 2826). So each such line brings its block, as
+    # context (`N-`, like `grep -A`), up to 16 lines and the first line that is
+    # not indented; a context line does not use up `max`.
+    matches="$(NROS_FE_PAT="$pattern" NROS_FE_CONS="$consequence" NROS_FE_MAX="$max" awk '
+        ctx > 0 {
+            if ($0 ~ /^[ \t]/ || $0 == "") {
+                if ($0 != "") print NR "-" $0
+                ctx--
+                next
+            }
+            ctx = 0
+        }
+        $0 ~ ENVIRON["NROS_FE_PAT"] && $0 !~ ENVIRON["NROS_FE_CONS"] {
+            if (n >= ENVIRON["NROS_FE_MAX"] + 0) exit
+            print NR ":" $0
+            n++
+            if ($0 ~ /CMake Error/) ctx = 16
+        }' "$log" 2>/dev/null || true)"
     if [ -z "$matches" ]; then
         matches="$(grep -n -m "$max" -E "$pattern" "$log" 2>/dev/null || true)"
     fi
@@ -96,6 +117,9 @@ selftest() {
     printf 'zephyr-fixture-make-driver: build-ws-rs-entry-zenoh failed\n  1:Error: missing prerequisites for this build:\nerror: recipe `build-fixtures` failed with exit code 2\n' > "$d/stage.log"
     printf 'error: recipe `build-fixtures` failed with exit code 2\n' > "$d/recipe-only.log"
     printf 'ValueError: not ours\nwarning: y\n' > "$d/classname.log"
+    # Issue 2826, the shape of run 44874748326's linux log: the message is the
+    # block under `CMake Error at`, and the CLI's own text follows a bare `Error:`.
+    printf -- '-- Configuring\nCMake Error at /t/cmake/NanoRosEntityInventory.cmake:676 (message):\n  nros: the entity declaration in this image is not readable.\n\n    Error:\n       0: the knob catalog refuses row `x.y`: N4\n\n  Fix the declaration the named component makes.\n\n\n-- Configuring incomplete, errors occurred!\n' > "$d/cmake.log"
     out="$(first_errors "$d/plain.log" 12)"
     case "$out" in *KILLED*) echo "selftest: a plain error read as a kill" >&2; fail=1 ;; esac
     case "$out" in *"error: boom"*) ;; *) echo "selftest: the plain error line is missing" >&2; fail=1 ;; esac
@@ -118,11 +142,15 @@ selftest() {
         *) echo "selftest: with nothing else, the recipe line must still print: $out" >&2; fail=1 ;; esac
     out="$(first_errors "$d/classname.log" 12)"
     case "$out" in *ValueError*) echo "selftest: a class name read as an error line" >&2; fail=1 ;; esac
+    out="$(first_errors "$d/cmake.log" 12)"
+    case "$out" in *"NanoRosEntityInventory.cmake:676"*"not readable"*"0: the knob catalog refuses row"*"Fix the declaration"*) ;;
+        *) echo "selftest: a CMake error's message block is not quoted: $out" >&2; fail=1 ;; esac
+    case "$out" in *"Configuring incomplete"*) echo "selftest: the block ran past its indentation: $out" >&2; fail=1 ;; esac
     out="$(first_errors "$d/absent.log" 12)"
     [ -z "$out" ] || { echo "selftest: a missing log printed something" >&2; fail=1; }
     rm -f "$d"/*.log && rmdir "$d"
     [ "$fail" -eq 0 ] || return 1
-    echo "log-first-errors --selftest: OK (10 cases)"
+    echo "log-first-errors --selftest: OK (11 cases)"
 }
 
 if [ "${1:-}" = "--selftest" ]; then
