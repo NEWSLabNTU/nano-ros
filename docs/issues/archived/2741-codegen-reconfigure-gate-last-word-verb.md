@@ -1,12 +1,13 @@
 ---
 id: 2741
 title: "check-codegen-tool-reconfigure matches an emitting `nros` verb by its last word, so `profile env` must be exempt because `env` is also `cmake -E env`"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [build, cmake, gates]
 related: [issue-1018, issue-2318, issue-0196]
 found: 2026-11-19
+resolved: 2026-11-22
 ---
 
 ## What happened
@@ -43,3 +44,26 @@ Match the INVOCATION, not a bare token. Either:
 Then drop the collision exemptions (`profile env`, and re-check `show`,
 `toolchain` and `configure`), so that `NanoRosCargoProfile.cmake` is
 gated rather than trusted.
+
+## Resolution (2026-11-22)
+
+The gate matches the INVOCATION. Every harvested emitting verb except the
+codegen family is matched as its whole spelling right after a tool: a quoted
+path (blanked to `"   "`), a bare `${VAR}`, `nros` itself, or the head of a
+`set(<var>` that builds the command for a later call (`build_verb_re`,
+`_TOOL`). `codegen` and `codegen-system` keep the bare-token rule, because
+their spellings in this tree are not all adjacent to the tool.
+
+`profile env` and `configure` left `NOT_EMITTING`. `show` and `toolchain`
+stay, with their own reason: the tool is rustup there, not `nros`.
+
+Measured over the 425 tracked cmake files, old matcher against new: the new
+one finds every verb the old one found, plus `profile env` in
+`NanoRosCargoProfile.cmake` and `configure` in `NanoRosConfigureHook.cmake`.
+Both already register the tool, so the gate stays green. The five
+`cmake -E env` files are not findings. Negative control: renaming
+`NanoRosCargoProfile.cmake`'s `nros_codegen_tool_reconfigure(` call makes the
+new gate FAIL, naming `nros profile env`; main's gate prints OK for the same
+file. Self-test cases cover `cmake -E env`, `SHAPE configure`, `profile env`
+with and without the registration, and `configure` called directly and
+through a `set()` variable.
