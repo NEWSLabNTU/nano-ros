@@ -303,3 +303,5 @@ no longer silences the default sink at all; it can strand only records owed to
 a sink that is not re-entrant (an application's `rclc_log_add_sink` sink, as
 in the cell above). The release above still matters for those, and the cell
 now reads its verdict from that serialised sink.
+With 2762's two-per-CPU default, the small-stack cell's pool row on
+`qemu_cortex_a53/smp` should print `sink buffers 4, cpus 2`.
