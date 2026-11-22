@@ -770,10 +770,11 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
 
     // The cmake coordinate carries the BOARD as well as the platform (W10.a):
     // one board per CMake cache, and `examples/workspaces/c` has two boards on
-    // the freertos platform. It names the BRINGUP last (issue 2287).
+    // the freertos platform. It names the BRINGUP (issue 2287), then the image
+    // (issue 2702).
     let generated = tmp
         .path()
-        .join("build/posix-zenoh-linux-demo_bringup/CMakeLists.txt");
+        .join("build/posix-zenoh-linux-demo_bringup-linux/CMakeLists.txt");
     assert!(generated.is_file(), "root written under build/");
     let body = std::fs::read_to_string(&generated).unwrap();
     assert!(body.contains("nano_ros_workspace("), "{body}");
@@ -790,17 +791,17 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
     // all. CMake cannot do both in one invocation at the 3.22 floor.
     let cfg = plans[0].configure.as_ref().expect("configure").display();
     assert!(
-        cfg.starts_with("cmake -S build/posix-zenoh-linux-demo_bringup"),
+        cfg.starts_with("cmake -S build/posix-zenoh-linux-demo_bringup-linux"),
         "{cfg}"
     );
     assert!(
-        cfg.contains("-B build/posix-zenoh-linux-demo_bringup/cmake"),
+        cfg.contains("-B build/posix-zenoh-linux-demo_bringup-linux/cmake"),
         "{cfg}"
     );
 
     let shown = plans[0].handoff.as_ref().expect("handoff").display();
     assert!(
-        shown.starts_with("cmake --build build/posix-zenoh-linux-demo_bringup/cmake"),
+        shown.starts_with("cmake --build build/posix-zenoh-linux-demo_bringup-linux/cmake"),
         "the handoff must BUILD, not configure: {shown}"
     );
 
@@ -934,8 +935,8 @@ fn a_build_retires_the_pre_2287_cmake_root_beside_its_own() {
         .unwrap()
         .to_string();
     let key = new_name
-        .strip_suffix("-demo_bringup")
-        .expect("the coordinate ends in its bringup")
+        .strip_suffix("-demo_bringup-linux")
+        .expect("the coordinate ends in its bringup and its image")
         .to_string();
     let legacy = build.join(&key);
     let entry = "linux_entry";
@@ -1278,7 +1279,7 @@ fn entries_for_other_boards_are_not_listed() {
 
     let body = std::fs::read_to_string(
         tmp.path()
-            .join("build/posix-zenoh-linux-demo_bringup/CMakeLists.txt"),
+            .join("build/posix-zenoh-linux-demo_bringup-linux/CMakeLists.txt"),
     )
     .unwrap();
     assert!(
@@ -1808,7 +1809,7 @@ fn a_selection_narrows_the_generated_cmake_root() {
 
     let body = std::fs::read_to_string(
         tmp.path()
-            .join("build/posix-zenoh-linux-demo_bringup/CMakeLists.txt"),
+            .join("build/posix-zenoh-linux-demo_bringup-linux/CMakeLists.txt"),
     )
     .unwrap();
     assert!(body.contains("talker_pkg"), "{body}");
@@ -2119,12 +2120,12 @@ fn cmake_and_cargo_plans_record_where_their_handoff_builds() {
             .as_ref()
             .unwrap()
             .display()
-            .contains("--build build/posix-zenoh-linux-demo_bringup/cmake")
+            .contains("--build build/posix-zenoh-linux-demo_bringup-linux/cmake")
     );
     assert_eq!(
         plans[0].output,
         Some(BuildOutput::CMake {
-            build_dir: root.join("build/posix-zenoh-linux-demo_bringup/cmake"),
+            build_dir: root.join("build/posix-zenoh-linux-demo_bringup-linux/cmake"),
             executable: Some("linux_entry".into()),
             owned_entry: None,
         })

@@ -74,9 +74,10 @@ pub const OWNED: &[OwnedDefine] = &[
     exact("NROS_BRINGUP_DIR", "the bringup this image is built from"),
     exact("NROS_CARGO_PROFILE", "the image's profile"),
     exact("NROS_CONFIGURED_IMAGE", "which image this configure builds"),
+    // Issue 2702.
     exact(
         "NROS_FEATURE_IMAGE",
-        "the image whose capability axes this configure builds with (issue 2702)",
+        "the image whose capability axes this configure builds with",
     ),
     exact(
         "NROS_CONFIGURED_PROJECT",

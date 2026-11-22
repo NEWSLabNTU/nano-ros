@@ -50,11 +50,12 @@ use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 /// they answer a parameter past a cap with its own failed result instead of
 /// dropping the request. Drift guard:
 /// `wire_capacities_match_the_generated_messages`.
-pub(crate) const WIRE_SEQ_CAP: usize = 64;
+// Issue 2702 -- defined beside the request formula, which the CLI reads too.
+pub(crate) use nros_params::request_size::WIRE_SEQ_CAP;
 
 /// Capacity of every string member in the generated `rcl_interfaces` types
 /// (`heapless::String<256>`). Same enforcement, same drift guard.
-pub(crate) const WIRE_STRING_CAP: usize = 256;
+pub(crate) use nros_params::request_size::WIRE_STRING_CAP;
 
 // phase-446 F2 -- a description longer than the describe reply's string would
 // reach the wire EMPTY (`fit_or_empty`, mirroring the oracle's all-or-nothing
@@ -196,15 +197,8 @@ pub(crate) const NAME_LIST_CAP: usize = max_usize(WIRE_SEQ_CAP, nros_params::MAX
 //
 // Field indices of one `DECLARED_PARAM_SERVICE_SHAPES` row, in the order
 // `ParamServiceShape::token` (nros-cli-core) writes them.
-pub(crate) const SHAPE_PARAMS: usize = 0;
-pub(crate) const SHAPE_NAME_BYTES: usize = 1;
-pub(crate) const SHAPE_PREFIXES: usize = 2;
-pub(crate) const SHAPE_PREFIX_BYTES: usize = 3;
-pub(crate) const SHAPE_STRINGS: usize = 4;
-pub(crate) const SHAPE_BYTE_ARRAYS: usize = 5;
-pub(crate) const SHAPE_BOOL_ARRAYS: usize = 6;
-pub(crate) const SHAPE_WORD_ARRAYS: usize = 7;
-pub(crate) const SHAPE_STRING_ARRAYS: usize = 8;
+// The rest of the indices are read only by `nros_params::request_size`.
+pub(crate) use nros_params::request_size::{SHAPE_NAME_BYTES, SHAPE_PARAMS};
 
 /// The capacities a value or a descriptor reaches the wire at: the store's,
 /// clamped to the `rcl_interfaces` message's own caps. A stored value past
@@ -228,6 +222,16 @@ const fn min_usize(a: usize, b: usize) -> usize {
 }
 
 impl ParamWireCaps {
+    /// The value capacities the request formula reads.
+    pub(crate) const fn request(self) -> nros_params::request_size::RequestCaps {
+        nros_params::request_size::RequestCaps {
+            string: self.string,
+            array: self.array,
+            string_array: self.string_array,
+            byte_array: self.byte_array,
+        }
+    }
+
     /// This build's store capacities -- `nros_params::MAX_*`, every rung
     /// resolved -- at the wire caps. The description needs no clamp: F2's
     /// compile-time assertion above keeps it within [`WIRE_STRING_CAP`].
@@ -247,14 +251,12 @@ impl ParamWireCaps {
 // in `handle_request_raw`), and it pads more than XCDR2 -- 8-byte fields align
 // to 8, not 4 -- so a bound on it bounds a request in either.
 /// The 4-byte encapsulation header both halves begin with.
-const CDR_HEADER: usize = 4;
+use nros_params::request_size::CDR_HEADER;
 /// A sequence length: up to 3 bytes of padding to 4, then a `u32`.
-const CDR_SEQ: usize = 3 + 4;
+use nros_params::request_size::CDR_SEQ;
 /// A string beyond its bytes: up to 3 bytes of padding, the `u32` length
 /// (which counts the NUL), and the NUL.
-const CDR_STR: usize = 3 + 4 + 1;
-/// An 8-byte field after anything: up to 7 bytes of padding, then 8.
-const CDR_WORD: usize = 7 + 8;
+use nros_params::request_size::CDR_STR;
 /// One `ParameterValue` with no data in it, field for field as
 /// `write_parameter_value` writes it: `type` and `bool_value` (1 + 1), an
 /// `integer_value` (padding + 8), a `double_value` (8, already aligned), an
@@ -269,7 +271,8 @@ const CDR_WORD: usize = 7 + 8;
 /// costs 3 -- and a value's DATA is added on top of it by [`node_bound`],
 /// which is exact because that trailing `align(4)` is already priced at its
 /// maximum here. Held by `the_worst_messages_fit_the_derived_bound`.
-const CDR_VALUE_BASE: usize = 53;
+use nros_params::request_size::CDR_VALUE_BASE;
+/// An 8-byte field after anything: up to 7 bytes of padding, then 8.
 /// One `ParameterDescriptor` less the bytes of its name and description, as
 /// `write_descriptor` writes it: the name, `type`, the description, an empty
 /// `additional_constraints`, two flags, both range sequences, and ONE range (a
@@ -482,24 +485,20 @@ pub(crate) const fn param_service_bound(
 /// serialize-and-compare test (`the_worst_messages_fit_the_derived_bound`)
 /// is what keeps it honest.
 const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
+    // Issue 2702 -- names, prefixes, values and the three requests are
+    // `nros_params::request_size`'s: the one formula `nros build` also prices a
+    // suggested inbox slot with, so the two cannot disagree.
     let n = s[SHAPE_PARAMS];
-    // Every declared name as a CDR string, and every prefix.
-    let names = s[SHAPE_NAME_BYTES] + n * CDR_STR;
-    let prefixes = s[SHAPE_PREFIX_BYTES] + s[SHAPE_PREFIXES] * CDR_STR;
-    // Every declared value at capacity: the base, plus the one member each
-    // type fills. Integer and double arrays pad to 8 before their words.
-    let values = n * CDR_VALUE_BASE
-        + s[SHAPE_STRINGS] * c.string
-        + s[SHAPE_BYTE_ARRAYS] * c.byte_array
-        + s[SHAPE_BOOL_ARRAYS] * c.array
-        + s[SHAPE_WORD_ARRAYS] * (7 + 8 * c.array)
-        + s[SHAPE_STRING_ARRAYS] * c.string_array * (CDR_STR + c.string);
+    let names = nros_params::request_size::names_bytes(s);
+    let prefixes = nros_params::request_size::prefixes_bytes(s);
+    let values = nros_params::request_size::values_bytes(s, c.request());
+    let req = nros_params::request_size::param_requests(s, c.request());
     // The header, then the outer sequence's length.
     let head = CDR_HEADER + CDR_SEQ;
     let set_reply = head + n * SET_RESULT_BYTES;
     let atomic_reply = CDR_HEADER + 1 + CDR_STR + ATOMIC_FAILURE_REASON.len();
     ParamServiceBound {
-        names_request: head + names,
+        names_request: req.names,
         get_reply: head + values,
         // phase-417 W4.a — `+ c.constraints`, because `additional_constraints`
         // can carry TEXT now. Until W4.a the store had nowhere to keep it, so
@@ -511,9 +510,9 @@ const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
             + s[SHAPE_NAME_BYTES]
             + n * (CDR_DESCRIPTOR_BASE + c.description + c.constraints),
         types_reply: head + n,
-        list_request: head + prefixes + CDR_WORD,
+        list_request: req.list,
         list_reply: head + names + CDR_SEQ + prefixes,
-        set_request: head + names + values,
+        set_request: req.set,
         set_reply: max_usize(set_reply, atomic_reply),
     }
 }
