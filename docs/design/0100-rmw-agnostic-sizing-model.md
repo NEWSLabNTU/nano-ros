@@ -16,6 +16,9 @@ implements-tracked-by: [phase-454, phase-457, phase-486, phase-531]
 restates the file rule over the nano-ros overlay, in effect since phase-486 W4,
 with [one exception](#exception-2026-11-22--a-census-not-taken-earns-a-file) for a census
 not taken (user ruling 2026-11-22);
+[D12 amended 2026-11-22](#d12-amended-2026-11-22--an-image-with-its-own-capability-axes-has-its-own-runtime):
+an image with its own capability axes gets its own configure and runtime
+(user ruling, issue 2702);
 see also
 [Amendment 1](#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model),
 which adds D12 and revises D4's producer and road language against RFC-0065's
@@ -1344,6 +1347,63 @@ D1–D11 stand. Refusal stays per field and never a default; demand stays
 unfloored; a descriptor stays relative and self-contained; the backend still
 owns its formula. D12 adds a unit (the runtime) and a reduction it borrows; it
 adds no fact and no carrier.
+
+### D12 amended, 2026-11-22 — an image with its own capability axes has its own runtime
+
+**Ruling (user, 2026-11-22, issue 2702 option 2).** A C/C++ workspace image
+whose own `[image.<id>] features` / `node_interfaces` differ from `[system]`'s
+is built by a cmake configure of its OWN, and its runtime is built and sized
+with exactly its own axes. D12 is unchanged inside each configure. What
+changes is which images share one.
+
+Before this, every C/C++ image on a coordinate shared one configure, built
+with the `[system]` axes, so an image's own choice was ignored (an interim
+refusal, issue 2702 option 3, made it an error). A union of the images' axes
+(option 1) was rejected: under D12 the shared runtime is sized for the
+envelope of its images, so a union could not give the opting-out image back
+its RAM, only its share of the pools nobody else declared.
+
+**How.**
+
+- **The key.** The configure's key (`cmake_configuration_key`) gains a row
+  carrying the image's EFFECTIVE axes, only when they differ from `[system]`'s
+  effective axes. Both sides are composed by `SystemToml::image_features_over`,
+  through the `node_interfaces` switch. Restating `[system]`'s list, or the
+  switch's default, is no difference.
+- **The build.** That configure is passed `-DNROS_FEATURE_IMAGE=<id>`, which
+  only the axes readers take (`_nros_feature_image_arg`): `nros config show`
+  (`NROS_FEATURES`), the entity inventory, the sizing descriptor and the
+  entry's codegen. It is deliberately not `NROS_IMAGE`, which also picks the
+  image's deploy and board facts and its leaf rows, none of which a configure
+  shared by several images may take from one of them. `nros build`'s
+  precomposition reads each member's model for its own image when it has
+  axes of its own.
+
+**Images whose axes are equal still share.** The key is the axes, so two
+images that state the same own axes share one configure, and images that
+state none share as before. A workspace that states no per-image axes keeps
+every directory and every byte it had. That is cheap, and exact for the axes.
+It is not a per-image configure for everything: images that share still
+differ in what the census and the contract state (parameter declarations,
+entity counts), and those stay D12's fold. That includes the parameter union
+(`ParamDeclarations::for_shared_runtime`), whose mixed case (an image that
+declares no parameters beside one that declares some) still arises, so its
+handling stays.
+
+**Measured** (issue 2702's fixture, two C images on `linux`, `slim` stating
+`node_interfaces = "none"`; `size`, text/data/bss in bytes):
+
+| image | before (one shared configure) | after |
+|---|---|---|
+| `slim` | 2,202,476 / 80,152 / 732,360 | 2,078,748 / 68,184 / 127,144 |
+| `plain` | 2,202,476 / 80,152 / 732,360 | 2,191,180 / 77,376 / 331,448 |
+
+`plain` after is byte-identical (`.text`, and the descriptor) to `plain` built
+as the workspace's only image. Its own change is the N:1-to-1:1 one, not
+`slim`'s choice. The cost is one more configure and runtime build for the
+image that differs: from a clean tree, `nros build` of both images took 63 s
+(43 s and 20 s) against 24 s shared (23 s and 1 s), so +39 s, and 1,309 MB of
+build output against 676 MB, so +633 MB.
 
 ## Amendment 2 (2026-10-13) — D13: a shared target dir keys its build on the descriptor's content
 

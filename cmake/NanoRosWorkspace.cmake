@@ -61,6 +61,7 @@ set(_NROS_WORKSPACE_DIR "${CMAKE_CURRENT_LIST_DIR}"
 # `_nros_find_root` — the checkout-marker walk — lives in its own module so the
 # shared-cargo-dir key (issue 1904) can ask it without this file's side effects.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCheckoutRoot.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosFeatureImage.cmake")  # issue 2702
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 # phase-530 W5 -- `nros_configure_hook`, the one `nros configure` call every
@@ -416,10 +417,7 @@ function(nano_ros_workspace)
         endif()
         set(_caps_cmake "${CMAKE_BINARY_DIR}/nros_capabilities.cmake")
         # Issue 2700 -- the image this configure builds, when it names one.
-        set(_caps_image "")
-        if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
-            set(_caps_image --image "${NROS_IMAGE}")
-        endif()
+        _nros_feature_image_arg(_caps_image)
         execute_process(
             COMMAND "${NROS_BIN}" config show
                     --workspace "${_NRW_WORKSPACE_ROOT}"

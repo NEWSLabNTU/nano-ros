@@ -214,6 +214,7 @@
 include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosFeatureImage.cmake")  # issue 2702
 
 # What a schema refusal must be able to cite (issue 1389).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSchemaReader.cmake")
@@ -643,10 +644,7 @@ function(nros_derive_entity_inventory_knobs)
     # Issue 2700 -- the image this configure builds: every model is read for
     # it, so its own `features` and `node_interfaces` reach the pools, as they
     # reach the resolve phase's composition below.
-    set(_image_arg "")
-    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
-        set(_image_arg --image "${NROS_IMAGE}")
-    endif()
+    _nros_feature_image_arg(_image_arg)
     # phase-439 W7 (issue 1228) -- read the resolve phase's answer when it was
     # composed over this configure's inputs; see `nros_resolved_entity_take`.
     # The inbox join and the republish below run either way: they read the

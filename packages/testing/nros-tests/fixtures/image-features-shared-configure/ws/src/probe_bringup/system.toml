@@ -1,7 +1,6 @@
-# Issue 2702 verdict fixture: two C images on ONE cmake coordinate (both
-# `linux`), one of which states its own `node_interfaces`. The shared
-# configure builds one runtime with the `[system]` features, so the image's
-# own choice is not carried, and the build must refuse it rather than ignore it.
+# Issue 2702 fixture: two C images on one `linux` coordinate, one of which
+# states its own `node_interfaces`. That image gets a cmake configure of its
+# own, built and sized with its own axes; the other keeps the shared one.
 [system]
 name = "image_features_probe"
 rmw = "zenoh"
