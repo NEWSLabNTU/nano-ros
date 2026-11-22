@@ -56,18 +56,30 @@ impl ActionClientInternal {
         }
     }
 
-    /// Get a mutable reference to the ActionClientCore in the executor arena.
+    /// The ActionClientCore in the executor arena, with the executor's lock
+    /// held for as long as the returned value lives.
     ///
     /// Returns `None` if not yet registered with the executor.
     ///
+    /// Phase-573 W3 -- through `get_executor_from_ptr`, the one derive. This
+    /// cast the pointer itself, so a call from another thread reached the
+    /// arena without the executor's lock.
+    ///
     /// # Safety
     /// `executor_ptr` must point to a valid `CExecutor`.
-    unsafe fn arena_core_mut(&mut self) -> Option<&mut nros_node::ActionClientCore> {
+    unsafe fn arena_core_mut(
+        &mut self,
+    ) -> Option<crate::executor::CLocked<'static, nros_node::ActionClientCore>> {
         if self.arena_entry_index < 0 || self.executor_ptr.is_null() {
             return None;
         }
-        let exec = &mut *(self.executor_ptr as *mut crate::executor::CExecutor);
-        unsafe { exec.action_client_core_mut(self.arena_entry_index as usize) }
+        // SAFETY: the caller's contract; the lock is taken first.
+        let mut exec = unsafe { crate::executor::get_executor_from_ptr(self.executor_ptr) };
+        let core = unsafe { exec.action_client_core_mut(self.arena_entry_index as usize) }?
+            as *mut nros_node::ActionClientCore;
+        // SAFETY: `core` lives in the arena `exec` locks, and the lock travels
+        // with it.
+        Some(unsafe { crate::executor::CLocked::new(core, Some(exec)) })
     }
 }
 
@@ -432,8 +444,8 @@ pub unsafe extern "C" fn rclc_action_client_wait_for_action_server(
         // separate argument — same convention as
         // `rclc_action_send_goal`.
         let exec_t = &mut *executor;
-        if exec_t.in_dispatch {
-            return RCLC_RET_REENTRANT;
+        if let Err(ret) = unsafe { crate::executor::refuse_in_dispatch(exec_t) } {
+            return ret;
         }
 
         // phase-428 W13 — spin, then ask again; see
@@ -575,8 +587,8 @@ pub unsafe extern "C" fn rclc_action_send_goal(
     // Reentrancy guard: this function spins the executor internally,
     // so it must not be called from inside a dispatch callback.
     let exec_ref = &*executor;
-    if exec_ref.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { crate::executor::refuse_in_dispatch(exec_ref) } {
+        return ret;
     }
 
     // Send async
@@ -667,7 +679,7 @@ pub unsafe extern "C" fn rclc_action_cancel_goal(
     let uuid = &*goal_uuid;
     let goal_id = nros_node::GoalUuid { uuid: uuid.uuid };
 
-    let core = match unsafe { internal.arena_core_mut() } {
+    let mut core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
         None => return RCL_RET_NOT_INIT,
     };
@@ -697,8 +709,8 @@ pub unsafe extern "C" fn rclc_action_get_result(
     // Reentrancy guard: this function spins the executor internally,
     // so it must not be called from inside a dispatch callback.
     let exec_ref = &*executor;
-    if exec_ref.in_dispatch {
-        return RCLC_RET_REENTRANT;
+    if let Err(ret) = unsafe { crate::executor::refuse_in_dispatch(exec_ref) } {
+        return ret;
     }
 
     // Send get_result request async
@@ -826,7 +838,7 @@ pub unsafe extern "C" fn rclc_action_try_recv_feedback(
 
     let internal = &mut client._internal;
 
-    let core = match unsafe { internal.arena_core_mut() } {
+    let mut core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
         None => return RCL_RET_NOT_INIT,
     };
@@ -895,7 +907,7 @@ pub unsafe extern "C" fn rclc_action_send_goal_async(
     // C serialize produces [CDR_HEADER][fields] — strip the header.
     let goal_fields = strip_cdr_header(goal_data);
 
-    let core = match unsafe { internal.arena_core_mut() } {
+    let mut core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
         None => return RCL_RET_NOT_INIT,
     };
@@ -938,7 +950,7 @@ pub unsafe extern "C" fn rclc_action_get_result_async(
     let uuid = &*goal_uuid;
     let goal_id = nros_node::GoalUuid { uuid: uuid.uuid };
 
-    let core = match unsafe { internal.arena_core_mut() } {
+    let mut core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
         None => return RCL_RET_NOT_INIT,
     };
@@ -995,7 +1007,7 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
     let internal = &mut client_ref._internal;
     let ctx = client_ref.context;
 
-    let core = match unsafe { internal.arena_core_mut() } {
+    let mut core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
         None => return RCL_RET_NOT_INIT,
     };

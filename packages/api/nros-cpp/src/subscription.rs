@@ -152,7 +152,10 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
         .and_then(|s| s.split('\0').next())
         .unwrap_or("/");
 
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    // Phase-573 W3 -- the executor's lock is taken before the reference
+    // exists (`cpp_ctx_locked`); this cast took none.
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — expand `~`/relative topic names against this
     // node's identity and apply its launch remap rules (executor-side table).
@@ -393,7 +396,10 @@ unsafe fn subscription_register_impl(
     // The arena registration derives namespace + node name from the node record
     // (`add_arena_subscription_c_callback`), so only the bare topic is passed
     // here — unlike the poll-style create which builds TopicInfo itself.
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    // Phase-573 W3 -- the executor's lock is taken before the reference
+    // exists (`cpp_ctx_locked`); this cast took none.
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
     // against this node's identity before registering.
@@ -628,7 +634,10 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    // Phase-573 W3 -- the executor's lock is taken before the reference
+    // exists (`cpp_ctx_locked`); this cast took none.
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
     let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
@@ -797,7 +806,10 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_message_info(
     let Some(hash_str) = (unsafe { cstr_to_str(type_hash) }).map(crate::normalize_type_hash) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    // Phase-573 W3 -- the executor's lock is taken before the reference
+    // exists (`cpp_ctx_locked`); this cast took none.
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut CppContext = &mut ctx_ref;
     let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
         Ok(r) => r,
         Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -907,7 +919,10 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_capturing_message_info(
     let Some(hash_str) = (unsafe { cstr_to_str(type_hash) }).map(crate::normalize_type_hash) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    // Phase-573 W3 -- the executor's lock is taken before the reference
+    // exists (`cpp_ctx_locked`); this cast took none.
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut CppContext = &mut ctx_ref;
     let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
         Ok(r) => r,
         Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -1051,7 +1066,10 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    // Phase-573 W3 -- the executor's lock is taken before the reference
+    // exists (`cpp_ctx_locked`); this cast took none.
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
     let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
