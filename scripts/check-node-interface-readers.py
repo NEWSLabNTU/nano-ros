@@ -61,7 +61,9 @@ FIELD_READS = [
 ]
 TABLE = re.compile(r"\.get\(\s*\"(system|image_defaults|image)\"\s*\)")
 FEATURES_KEY = re.compile(r"\.get\(\s*\"features\"\s*\)")
-ROUTED = re.compile(r"\b(effective_features|image_features)\s*\(")
+# `image_features_over` is `SystemToml`'s composition through `image_features`
+# (issue 2702): what it returns is already through the switch.
+ROUTED = re.compile(r"\b(effective_features|image_features|image_features_over)\s*\(")
 
 # Issue 2700 -- loads that bind a model or a system to an image.
 IMAGE_LOADS = re.compile(
@@ -107,11 +109,6 @@ IMAGELESS_ALLOWED: dict[tuple[str, str], str] = {
         "packages/cli/nros-cli-core/src/cmd/build.rs",
         "plan_from_model(&model, image.board.clone(), None)",
     ): "the launch closure only (which packages), never a switch",
-    (
-        "packages/cli/nros-cli-core/src/cmd/build.rs",
-        "LoadedModel::with_overlay_beside(model, &path, None)",
-    ): "a shared cmake configure names no single image; its own producers read "
-       "none, and this precomposition must match what they read",
 }
 
 # (path, a substring of the offending line) -> reason. Each must still match.
