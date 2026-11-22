@@ -87,7 +87,8 @@ in the executor's node table, and a C lifecycle program's services are
 reason printed; C++: `NROS_CPP_RET_INVALID_ARGUMENT`; boot report class 21).
 
 Not done here: a Linux C lifecycle cell that runs `ros2 lifecycle get
-/<node>` on Cyclone and zenoh. The tree has no C lifecycle example to drive.
+/<node>` on Cyclone and zenoh. The tree has no C lifecycle example to drive;
+both are [issue 2828](../2828-c-lifecycle-ros2-interop-cell.md).
 The zenoh interop cell drives the Rust example, which declares no node and
 keeps its configured `/lifecycle_demo`.
 
