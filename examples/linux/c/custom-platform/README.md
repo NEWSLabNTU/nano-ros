@@ -58,7 +58,7 @@ from a `-D` flag.
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # Run the demo
-./build/posix-zenoh-linux-native_c_custom_platform_bringup/cmake/pkg/native_c_custom_platform/baremetal_demo
+./build/posix-zenoh-linux-native_c_custom_platform_bringup-linux/cmake/pkg/native_c_custom_platform/baremetal_demo
 ```
 
 ## Platform Implementation

@@ -4954,7 +4954,7 @@ rmw = "zenoh"
 dir = "packages/testing/nros-tests/fixtures/freertos_libc_clock"
 bringup = "src/libc_clock_bringup"
 image = "mps2-an385-freertos"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos-libc_clock_bringup/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-libc_clock_bringup-mps2-an385-freertos/cmake"
 
 [[workspace_fixture]]
 id = "threadx-linux-cpp-zenoh-talker"
@@ -5882,7 +5882,7 @@ output = "workspace_port_nodes/workspace_port"
 # have no root build file any more, so `cmake-configure` builds them the way a
 # user does: a staged copy, `nros configure` + `nros build` (see
 # `build_cmake_fixture`). The three with a bringup build their one
-# `[image.linux]` through the generated root (`build/posix-zenoh-linux-demo_bringup/cmake`,
+# `[image.linux]` through the generated root (`build/posix-zenoh-linux-demo_bringup-linux/cmake`,
 # its generated entry `linux_entry` in place of the deleted `src/robot_entry`,
 # node packages under `pkg/<name>/`); the two with none build package by
 # package (`build/<pkg>/cmake`, the package under `pkg/<pkg>/`). The ids keep
@@ -5891,19 +5891,19 @@ output = "workspace_port_nodes/workspace_port"
 id = "cpp_robot_entry"
 builder = "cmake-configure"
 dir = "examples/templates/multi-node-workspace-cpp"
-output = "build/posix-zenoh-linux-demo_bringup/cmake/linux_entry"
+output = "build/posix-zenoh-linux-demo_bringup-linux/cmake/linux_entry"
 
 [[compile_check_fixture]]
 id = "c_mixed_workspace"
 builder = "cmake-configure"
 dir = "examples/templates/c-and-cpp-mixed-workspace"
-output = "build/posix-zenoh-linux-demo_bringup/cmake/linux_entry"
+output = "build/posix-zenoh-linux-demo_bringup-linux/cmake/linux_entry"
 
 [[compile_check_fixture]]
 id = "pure_c_workspace"
 builder = "cmake-configure"
 dir = "examples/templates/pure-c-workspace"
-output = "build/posix-zenoh-linux-demo_bringup/cmake/linux_entry"
+output = "build/posix-zenoh-linux-demo_bringup-linux/cmake/linux_entry"
 
 # issue 1650 (phase-477 D3) — the two RUST workspace templates, which no lane
 # compiled (`native.just`'s example sweep excludes both by name). Same staged
@@ -5955,7 +5955,7 @@ output = "smoke"
 id = "metadata_cpp"
 builder = "cmake-configure"
 dir = "examples/templates/multi-node-workspace-cpp"
-output = "build/posix-zenoh-linux-demo_bringup/cmake/nros-metadata.json"
+output = "build/posix-zenoh-linux-demo_bringup-linux/cmake/nros-metadata.json"
 
 [[compile_check_fixture]]
 id = "node_register_cpp"
