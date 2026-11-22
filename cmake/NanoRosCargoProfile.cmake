@@ -190,17 +190,15 @@ function(nros_riscv64_rustflags_env _target)
     nros_corrosion_env_target("${_target}" _env_target)
     foreach(_cand "${_env_target}")
         if(TARGET ${_cand})
-            # BOTH, because two different compilers produce objects here and
-            # only one of them reads RUSTFLAGS:
-            #   * rustc compiles compiler_builtins' Rust half — `-Ctarget-feature=+d`;
-            #   * cc-rs compiles its C fallbacks (`bswapsi2.c` …) from inside
-            #     that crate's build script, and takes `-mabi` from CFLAGS.
-            # The C half is the one that actually failed the link, and the
-            # RUSTFLAGS line alone left it soft-float.
+            # Two compilers produce objects here and only one of them reads
+            # RUSTFLAGS: rustc compiles compiler_builtins' Rust half
+            # (`-Ctarget-feature=+d`, set here), and cc-rs its C fallbacks
+            # (`bswapsi2.c` …), which take `-mabi` from `CFLAGS_<triple>`.
+            # That C half is the image's `[arch.riscv64gc]` profile, written
+            # forced by the one carrier (issue 2692); it was restated here
+            # until issue 2709.
             corrosion_set_env_vars(${_cand}
-                "RUSTFLAGS=-Ctarget-feature=+d"
-                "CFLAGS_riscv64gc_unknown_none_elf=-march=rv64gc -mabi=lp64d -mcmodel=medany"
-                "CXXFLAGS_riscv64gc_unknown_none_elf=-march=rv64gc -mabi=lp64d -mcmodel=medany")
+                "RUSTFLAGS=-Ctarget-feature=+d")
             message(STATUS "nano-ros: riscv64 hard-float RUSTFLAGS -> ${_cand}")
             return()
         endif()
@@ -209,44 +207,4 @@ function(nros_riscv64_rustflags_env _target)
     message(STATUS
         "nano-ros: riscv64 hard-float RUSTFLAGS NOT attached — no target named "
         "${_target} or ${_target}-static")
-endfunction()
-
-# nros_arm_r_fpu_cflags_env(<target>) — phase-372 W1, issue 0657's class on a
-# second architecture; phase-575 W1 added the Cortex-R5F.
-#
-# cc-rs builds inside cargo crates (nros-c's shim TUs, compiler_builtins' C
-# fallbacks) derive their flags from the Rust triple, and for a hard-float
-# Cortex-R triple (`armv8r-none-eabihf`, `armv7r-none-eabihf`) that yields
-# `-mfloat-abi=hard` with NO `-mfpu`, which gcc refuses: "selected
-# architecture lacks an FPU". The cmake lane's own TUs get the FPU from the
-# toolchain file; the cargo-side C needs it through `CFLAGS_<triple>`,
-# per-target via corrosion's env (the 0657 lesson: a configure-time
-# `set(ENV{})` never reaches build-time cargo, and a lane-wide RUSTFLAGS export
-# clobbers leaf link args). The flags are the matching `[arch.*]` profile's in
-# `nros-platform-freertos/nros-platform.toml`, one row per toolchain file.
-function(nros_arm_r_fpu_cflags_env _target)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "cortex-r52")
-        set(_triple armv8r_none_eabihf)
-        set(_flags "-mcpu=cortex-r52 -mfpu=neon-fp-armv8 -mfloat-abi=hard")
-    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "cortex-r5f")
-        set(_triple armv7r_none_eabihf)
-        set(_flags "-mcpu=cortex-r5 -mfpu=vfpv3-d16 -mfloat-abi=hard")
-    else()
-        return()
-    endif()
-    if(NOT COMMAND corrosion_set_env_vars)
-        message(FATAL_ERROR "nros_arm_r_fpu_cflags_env(${_target}): Corrosion not loaded")
-    endif()
-    nros_corrosion_env_target("${_target}" _env_target)
-    if(TARGET ${_env_target})
-        corrosion_set_env_vars(${_env_target}
-            "CFLAGS_${_triple}=${_flags}"
-            "CXXFLAGS_${_triple}=${_flags}")
-        message(STATUS "nano-ros: ${CMAKE_SYSTEM_PROCESSOR} FPU CFLAGS -> ${_env_target}")
-        return()
-    endif()
-    # History: phase-372 W1.
-    message(STATUS
-        "nano-ros: ${CMAKE_SYSTEM_PROCESSOR} FPU CFLAGS NOT attached — no target named "
-        "${_env_target}")
 endfunction()

@@ -26,8 +26,6 @@
 #   cmake --build build
 
 set(CMAKE_SYSTEM_NAME       Generic)
-# Read by `nros_arm_r_fpu_cflags_env` (NanoRosCargoProfile.cmake), which hands
-# cargo's cc-rs builds the FPU this file gives the CMake lane.
 set(CMAKE_SYSTEM_PROCESSOR  cortex-r5f)
 
 # Issue 1117 — which arm-none-eabi-gcc, and from where: the shared resolver,

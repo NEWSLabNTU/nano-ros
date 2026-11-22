@@ -17,7 +17,6 @@
 # the board package passes it as `-Wl,<file>`.
 
 set(CMAKE_SYSTEM_NAME       Generic)
-# Read by `nros_arm_r_fpu_cflags_env` (NanoRosCargoProfile.cmake), as for GCC.
 set(CMAKE_SYSTEM_PROCESSOR  cortex-r5f)
 
 if(NOT DEFINED TI_ARM_CLANG_ROOT AND DEFINED ENV{TI_ARM_CLANG_ROOT})

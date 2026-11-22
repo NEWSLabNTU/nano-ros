@@ -30,8 +30,8 @@ names = ["freertos", "freertos-lwip"]
 # landed with phase-372 W1, but the resolver walks THIS list (declared order,
 # first match wins), so the profile was unreachable: an `armv8r-none-eabihf`
 # cargo build panicked with "no [arch.*] profile … admits TARGET", naming only
-# m3 and m7. The S32Z270 board never noticed because its CMake lane passes
-# `FREERTOS_CFLAGS` explicitly (`nros_arm_r_fpu_cflags_env`), which short-circuits
+# m3 and m7. The S32Z270 board never noticed because its CMake lane passed
+# `FREERTOS_CFLAGS` explicitly (a cmake helper issue 2709 retired), which short-circuits
 # the lookup — so the gap only surfaces on a cargo-native build, which is
 # exactly what a QEMU board's `runner` needs.
 # phase-418 418.3 — `cortex-r5` (ARMv7-R, the Orin SPE) is listed here at the
