@@ -17,7 +17,7 @@ superseded-by: null
 code. Work: [phase-554](../roadmap/phase-554-per-node-lifecycle.md), whose
 delivery order is at the end. Closes the design question of
 [issue 2428](../issues/2428-workspace-lifecycle-is-one-machine-per-image.md)
-and decides [issue 2429](../issues/2429-c-executor-lifecycle-services-empty-node-name.md).
+and decides [issue 2429](../issues/archived/2429-c-executor-lifecycle-services-empty-node-name.md).
 
 ## Summary
 

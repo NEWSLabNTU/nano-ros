@@ -839,9 +839,25 @@ pub(crate) trait LifecycleServiceProcessor {
         &mut self,
         sm: &mut LifecyclePollingNodeCtx,
     ) -> Result<usize, NodeError>;
+
+    /// The five service names, in REP-2002 order, for the tests that assert
+    /// what `ros2 lifecycle` will look up.
+    #[cfg(all(test, not(feature = "rmw-cffi")))]
+    fn service_names(&self) -> [alloc::string::String; 5];
 }
 
 impl LifecycleServiceProcessor for LifecycleServiceServers {
+    #[cfg(all(test, not(feature = "rmw-cffi")))]
+    fn service_names(&self) -> [alloc::string::String; 5] {
+        [
+            self.change_state.handle.service_name().into(),
+            self.get_state.handle.service_name().into(),
+            self.get_available_states.handle.service_name().into(),
+            self.get_available_transitions.handle.service_name().into(),
+            self.get_transition_graph.handle.service_name().into(),
+        ]
+    }
+
     unsafe fn process_services(
         &mut self,
         sm: &mut LifecyclePollingNodeCtx,
@@ -864,6 +880,11 @@ pub(crate) const MAX_LIFECYCLE_MACHINES: usize = crate::param_sizing::MAX_SERVIC
 /// phase-554 W3 retires.
 pub(crate) struct LifecycleEntry {
     pub(crate) node: Option<crate::executor::NodeId>,
+    /// The node its services are named after, fixed when it registered: its
+    /// own node, or for the executor-scoped key the primary node if the image
+    /// had one then (RFC-0128 D8, issue 2626). `None` is a zero-node image's
+    /// machine, named after the executor's configured identity.
+    pub(crate) served_on: Option<crate::executor::NodeId>,
     pub(crate) state: Box<LifecycleRuntimeState>,
 }
 
@@ -1658,10 +1679,19 @@ mod tests {
         };
         use nros_core::lifecycle::TransitionResult;
 
+        /// An executor-level machine needs a name (RFC-0128 D8): these tests
+        /// declare no node, so the executor carries one, as a direct-API image's
+        /// `ExecutorConfig::node_name` does.
+        fn named(session: MockSession) -> Executor<'static> {
+            let mut executor: Executor = Executor::from_session(session);
+            executor.node_name = heapless::String::try_from("lifecycle_test").unwrap();
+            executor
+        }
+
         #[test]
         fn register_lifecycle_services_succeeds_on_mock() {
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             executor
                 .register_lifecycle_services()
                 .expect("register on MockSession should succeed");
@@ -1705,7 +1735,7 @@ mod tests {
         #[test]
         fn the_transition_event_publisher_uses_the_rep_2002_topic_name() {
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             executor.register_lifecycle_services().unwrap();
             let topic = executor
                 .lifecycle_transition_event_publisher()
@@ -1735,6 +1765,153 @@ mod tests {
                 .expect("registration creates the publisher")
                 .topic_name();
             assert_eq!(topic, "/velocity_smoother/transition_event");
+        }
+
+        // ───────────────────────────────────────────────────────────────
+        // RFC-0128 D8 (issues 2626, 2429) -- the executor-level machine is
+        // served on the primary node
+        // ───────────────────────────────────────────────────────────────
+
+        /// What `ros2 lifecycle get|set|list /<fqn>` calls, in the order
+        /// `service_names` returns them.
+        fn rep2002(fqn: &str) -> [alloc::string::String; 5] {
+            [
+                "change_state",
+                "get_state",
+                "get_available_states",
+                "get_available_transitions",
+                "get_transition_graph",
+            ]
+            .map(|s| alloc::format!("{fqn}/{s}"))
+        }
+
+        /// Issue 2626: a hand-written image that declares a node and calls
+        /// the executor-level registration serves the machine under THAT
+        /// node, not under the executor's configured identity beside it.
+        #[test]
+        fn the_executor_level_machine_is_served_on_the_primary_node() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            executor.node_name = heapless::String::try_from("configured").unwrap();
+            executor
+                .node_builder("talker")
+                .namespace("/demo")
+                .build()
+                .expect("node");
+            executor.register_lifecycle_services().unwrap();
+            assert_eq!(
+                executor.lifecycle_service_names(None).unwrap(),
+                rep2002("/demo/talker")
+            );
+            assert_eq!(
+                executor
+                    .lifecycle_transition_event_publisher()
+                    .unwrap()
+                    .topic_name(),
+                "/demo/talker/transition_event"
+            );
+        }
+
+        /// Issue 2429, the C road: the executor itself has no name (C creates
+        /// its nodes on it), and the services were `//get_state`. With the node
+        /// bound, they are the node's.
+        #[test]
+        fn an_unnamed_executor_with_a_node_serves_the_node_s_names() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            executor.node_name = heapless::String::new();
+            executor
+                .node_builder("lifecycle_node")
+                .build()
+                .expect("node");
+            executor.register_lifecycle_services().unwrap();
+            let names = executor.lifecycle_service_names(None).unwrap();
+            assert_eq!(names, rep2002("/lifecycle_node"));
+            assert!(names.iter().all(|n| !n.starts_with("//")), "{names:?}");
+        }
+
+        /// RFC-0128 D8: no declared node and no name is refused, never served
+        /// as `//get_state`.
+        #[test]
+        fn a_machine_with_no_node_name_is_refused() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            executor.node_name = heapless::String::new();
+            assert!(matches!(
+                executor.register_lifecycle_services(),
+                Err(NodeError::LifecycleNodeUnnamed)
+            ));
+            assert!(executor.lifecycle_state_machine().is_none());
+        }
+
+        /// A zero-node image keeps its configured name as its one node.
+        #[test]
+        fn a_zero_node_image_keeps_its_configured_name() {
+            let session = MockSession::new();
+            let mut executor: Executor = named(session);
+            executor.node_name = heapless::String::try_from("direct").unwrap();
+            executor.register_lifecycle_services().unwrap();
+            assert_eq!(
+                executor.lifecycle_service_names(None).unwrap(),
+                rep2002("/direct")
+            );
+        }
+
+        /// One machine per node it is served on: the executor-level machine
+        /// IS the primary node's, so a second one on that node is refused in
+        /// either order, while another node still gets its own.
+        #[test]
+        fn the_primary_node_cannot_get_a_second_machine() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            let primary = executor.node_builder("a").build().expect("node");
+            let other = executor.node_builder("b").build().expect("node");
+            executor.register_lifecycle_services().unwrap();
+            assert!(matches!(
+                executor.register_lifecycle_services_on(primary),
+                Err(NodeError::LifecycleAlreadyRegistered)
+            ));
+            executor.register_lifecycle_services_on(other).unwrap();
+
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            let primary = executor.node_builder("a").build().expect("node");
+            executor.register_lifecycle_services_on(primary).unwrap();
+            assert!(matches!(
+                executor.register_lifecycle_services(),
+                Err(NodeError::LifecycleAlreadyRegistered)
+            ));
+        }
+
+        /// The accessors, stated for one machine and for several: the
+        /// executor-scoped ones still return the executor-level machine, and
+        /// the primary node's own accessor finds the same one.
+        #[test]
+        fn the_executor_level_machine_is_reachable_both_ways() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            let primary = executor.node_builder("a").build().expect("node");
+            let other = executor.node_builder("b").build().expect("node");
+            executor.register_lifecycle_services().unwrap();
+            assert!(executor.lifecycle_state_machine().is_some());
+            assert!(executor.lifecycle_state_machine_on(primary).is_some());
+
+            executor.register_lifecycle_services_on(other).unwrap();
+            assert!(
+                core::ptr::eq(
+                    executor.lifecycle_state_machine().unwrap(),
+                    executor.lifecycle_state_machine_on(primary).unwrap()
+                ),
+                "the executor-scoped machine and the primary node's are one machine"
+            );
+            assert!(!core::ptr::eq(
+                executor.lifecycle_state_machine().unwrap(),
+                executor.lifecycle_state_machine_on(other).unwrap()
+            ));
+            assert_eq!(
+                executor.lifecycle_service_names(Some(other)).unwrap(),
+                rep2002("/b")
+            );
         }
 
         // ───────────────────────────────────────────────────────────────
@@ -1919,9 +2096,8 @@ mod tests {
                 InternalState::Inactive,
                 "the refused registration left the existing machine as it was"
             );
-            // The executor-identity form is keyed separately and also refuses
-            // a second registration.
-            executor.register_lifecycle_services().unwrap();
+            // The executor-level form is served on the primary node, which is
+            // `a` (issue 2626), so it is the same node's second machine.
             assert!(matches!(
                 executor.register_lifecycle_services(),
                 Err(NodeError::LifecycleAlreadyRegistered)
@@ -1933,7 +2109,7 @@ mod tests {
         #[test]
         fn a_full_lifecycle_table_is_refused_naming_the_node_table_knob() {
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             // The executor-identity machine plus one per node the table holds
             // is one more than MAX_LIFECYCLE_MACHINES.
             executor.register_lifecycle_services().unwrap();
@@ -1966,7 +2142,7 @@ mod tests {
         #[test]
         fn a_transition_is_announced_on_transition_event() {
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             executor.register_lifecycle_services().unwrap();
 
             // Nothing has transitioned, so nothing has been announced.
@@ -2007,7 +2183,7 @@ mod tests {
             // exists. Both must reach the wire, in order, at the first spin —
             // that is what TRANSITION_ANNOUNCEMENT_QUEUE is sized for.
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             executor.register_lifecycle_services().unwrap();
 
             let sm = executor.lifecycle_state_machine_mut().unwrap();
@@ -2045,7 +2221,7 @@ mod tests {
                 TransitionResult::Failure as u8
             }
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             executor.register_lifecycle_services().unwrap();
             let sm = executor.lifecycle_state_machine_mut().unwrap();
             sm.register(
@@ -2072,7 +2248,7 @@ mod tests {
             // to announce — the two early returns in `trigger_transition` sit
             // before the record, as they do in rcl.
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             executor.register_lifecycle_services().unwrap();
             let sm = executor.lifecycle_state_machine_mut().unwrap();
             // SAFETY: no callbacks registered.
@@ -2090,7 +2266,7 @@ mod tests {
         #[test]
         fn spin_once_drains_empty_lifecycle_services_cleanly() {
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             executor.register_lifecycle_services().unwrap();
 
             // No requests are queued on MockServiceServer, so spin_once must
@@ -2111,7 +2287,7 @@ mod tests {
         #[test]
         fn executor_accessor_drives_full_state_machine_cycle() {
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             executor.register_lifecycle_services().unwrap();
 
             CB_CALLS.store(0, Ordering::SeqCst);
@@ -2155,7 +2331,7 @@ mod tests {
         #[test]
         fn change_state_handler_via_executor_accessor() {
             let session = MockSession::new();
-            let mut executor: Executor = Executor::from_session(session);
+            let mut executor: Executor = named(session);
             executor.register_lifecycle_services().unwrap();
 
             // Drive `handle_change_state` directly against the executor's

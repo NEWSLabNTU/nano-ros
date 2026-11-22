@@ -872,6 +872,11 @@ pub enum NodeError {
     /// second registration is refused, never a replacement: replacing
     /// silently dropped the first machine's service servers.
     LifecycleAlreadyRegistered,
+    /// RFC-0128 D8 (issue 2429) -- a lifecycle machine needs a declared node
+    /// name. The image declares no node and the executor has no name, so its
+    /// services would be `//get_state`, which no `ros2 lifecycle` command
+    /// reaches.
+    LifecycleNodeUnnamed,
 }
 
 // phase-427 W10 — `Display` + `core::error::Error`, so a ported rclrs `main`
@@ -930,6 +935,10 @@ impl core::fmt::Display for NodeError {
             NodeError::LifecycleAlreadyRegistered => {
                 f.write_str("this node already has a lifecycle state machine")
             }
+            NodeError::LifecycleNodeUnnamed => f.write_str(
+                "a lifecycle state machine needs a declared node: this image declares none \
+                 and the executor has no name, so its services would be `//get_state`",
+            ),
         }
     }
 }
