@@ -4542,11 +4542,19 @@ pub(crate) struct ChildExit {
     /// phase-588 — the log the tool's output was kept in, when it was
     /// proxied; read by [`perform_plan`] to explain a failure.
     pub log: Option<PathBuf>,
+    /// phase-588 W3 — what the log explains ([`explain_failure`]). Rendered
+    /// AFTER the exit line, so the explanation is the last thing a user
+    /// reads rather than sitting above the tool's long command line.
+    pub explained: Option<String>,
 }
 
 impl std::fmt::Display for ChildExit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "`{}` exited {}", self.shown, self.code)
+        write!(f, "`{}` exited {}", self.shown, self.code)?;
+        if let Some(t) = &self.explained {
+            write!(f, "\n\n{}", t.trim_end())?;
+        }
+        Ok(())
     }
 }
 
@@ -4590,6 +4598,7 @@ fn perform(hand: &Handoff) -> Result<()> {
         // A signal stopped the tool (a Ctrl-C): its log ends mid-build and
         // explains nothing.
         log: log.filter(|_| signal.is_none()),
+        explained: None,
     }
     .into())
 }
@@ -4624,17 +4633,18 @@ fn with_log(p: &ResolvedBuild) -> std::borrow::Cow<'_, ResolvedBuild> {
 }
 
 /// After a failed build step, the explanation its log supports (issue 2836,
-/// phase-588 W3): printed under the tool's own output, never instead of it.
-fn explain_failure(p: &ResolvedBuild, e: &eyre::Report) {
-    let Some(log) = e.downcast_ref::<ChildExit>().and_then(|c| c.log.as_ref()) else {
+/// phase-588 W3), carried on the step's [`ChildExit`] so it prints with the
+/// exit line, after the tool's own output, never instead of it.
+fn explain_failure(p: &ResolvedBuild, e: &mut eyre::Report) {
+    let Some(c) = e.downcast_mut::<ChildExit>() else {
+        return;
+    };
+    let Some(log) = &c.log else {
         return;
     };
     let text = String::from_utf8_lossy(&std::fs::read(log).unwrap_or_default()).into_owned();
-    if let Some(t) =
-        crate::builder::link_explain::explain(&text, &crate::builder::link_explain::facts_for(p))
-    {
-        eprint!("{t}");
-    }
+    c.explained =
+        crate::builder::link_explain::explain(&text, &crate::builder::link_explain::facts_for(p));
 }
 
 /// How [`drive`] runs the plans: `-j`, the build's shared jobserver, and
@@ -4745,8 +4755,8 @@ fn perform_plan(
     if let Some(sf) = &p.stack_floor {
         crate::cmd::stack_floor::prepare(sf)?;
     }
-    if let Err(e) = handover(hand) {
-        explain_failure(p, &e);
+    if let Err(mut e) = handover(hand) {
+        explain_failure(p, &mut e);
         return Err(e);
     }
     // Issue 2400 W5 — after cargo has linked: walk the image and check the
@@ -12402,6 +12412,45 @@ mod multi_image_drive_tests {
         let c = e.downcast_ref::<ChildExit>().expect("carries a ChildExit");
         assert_eq!(c.code, 7, "{e:#}");
         assert!(format!("{e:#}").contains("exited 7"), "{e:#}");
+    }
+
+    /// phase-588: a proxied build step keeps its output in its log, and a
+    /// failure carries that log, so the explanation can read it.
+    #[test]
+    fn a_proxied_failure_carries_its_log() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let log = tmp.path().join("cmake.log");
+        let mut h = Handoff::new(
+            "sh",
+            [
+                "-c",
+                "echo \"region \\`RAM' overflowed by 64 bytes\"; exit 1",
+            ],
+        );
+        h.log = Some(log.clone());
+        let e = perform(&h).expect_err("exits 1");
+        let c = e.downcast_ref::<ChildExit>().expect("carries a ChildExit");
+        assert_eq!(c.code, 1);
+        assert_eq!(c.log.as_deref(), Some(log.as_path()));
+        let kept = std::fs::read_to_string(&log).expect("the log is written");
+        assert!(kept.contains("overflowed by 64 bytes"), "{kept}");
+    }
+
+    /// The explanation prints AFTER the exit line, not above the tool's long
+    /// command line, so it is the last thing on the screen.
+    #[test]
+    fn the_explanation_is_rendered_after_the_exit_line() {
+        let c = ChildExit {
+            code: 1,
+            shown: "west build -d build/x".into(),
+            log: None,
+            explained: Some("nros build: image `a:b` does not fit its memory\n".into()),
+        };
+        let s = c.to_string();
+        let exit = s.find("exited 1").expect("the exit line");
+        let why = s.find("does not fit").expect("the explanation");
+        assert!(exit < why, "{s}");
+        assert!(s.ends_with("does not fit its memory"), "{s}");
     }
 }
 
