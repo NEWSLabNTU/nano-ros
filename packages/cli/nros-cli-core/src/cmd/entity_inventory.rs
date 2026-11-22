@@ -777,8 +777,9 @@ pub(crate) fn fold_models_for_shared_runtime(
                 workspace,
                 "nros: entity inventory",
             )?;
-            // Issue 2768 -- each image floored by its own probe record.
-            let params = crate::entity_inventory::ParamDeclarations::from_model_with(
+            // Issue 2768 -- each image floored by its own probe record, and an
+            // image the probe saw declare nothing declares zero.
+            let params = crate::entity_inventory::ParamDeclarations::for_shared_runtime(
                 model,
                 inv.as_ref().and_then(|i| i.recorded_params()),
             );

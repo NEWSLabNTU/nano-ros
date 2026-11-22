@@ -10,6 +10,7 @@ examples/templates/multi-node-workspace-cpp
 packages/boards/nros-board-common
 packages/core/nros-core
 packages/core/nros-orchestration-ir
+packages/core/nros-params
 packages/core/nros-rmw
 packages/core/nros-serdes
 packages/rmw/zenoh/nros-zenoh-session-config
