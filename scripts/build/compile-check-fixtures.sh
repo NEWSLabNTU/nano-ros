@@ -294,8 +294,17 @@ _cc_write_selections() {
 # compile is the one a user's `cargo build --config ...` gets. Only when
 # exactly one image's settings exist: two would be two different builds.
 # Sets `_cc_cfg` to the cargo arguments (empty when none applies).
+#
+# `$2` (optional) is the manifest the build names. The settings carry the
+# `nros build` road's own `[build] target-dir` (`<image>_entry/target`, beside
+# the file), so with them a build would move its artifacts there, away from the
+# path every row's `output` and every test names. Given a manifest, the
+# arguments pin cargo's OWN default instead: the target dir of the workspace
+# root that manifest resolves to, exactly where the build went before. A
+# builder that sets CARGO_TARGET_DIR passes nothing: the environment already
+# outranks a config's `target-dir`.
 _cc_image_config() {
-    local staged="$1" _cc_list _cc_found=()
+    local staged="$1" manifest="${2:-}" _cc_list _cc_found=() _cc_root
     _cc_cfg=()
     if ! _cc_list="$(find "$staged" -path '*/target' -prune -o \
         -path '*/build/*/nros-cargo.toml' -print)"; then
@@ -307,6 +316,14 @@ _cc_image_config() {
     fi
     if [ "${#_cc_found[@]}" -eq 1 ]; then
         _cc_cfg=(--config "${_cc_found[0]}")
+        if [ -n "$manifest" ]; then
+            if ! _cc_root="$(cargo locate-project --workspace --message-format plain \
+                --manifest-path "$manifest")"; then
+                echo "compile-check: cannot find the cargo root of $manifest" >&2
+                return 1
+            fi
+            _cc_cfg+=(--target-dir "$(dirname "$_cc_root")/target")
+        fi
     fi
 }
 
@@ -420,7 +437,7 @@ stage_and_build() {
     # `posix_entry/`). `pkg` (4th field) names the package when it isn't the
     # default `demo_entry` (O.3 builds `posix_entry`).
     NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged/$manifest_dir"
-    _cc_image_config "$staged" || return 1
+    _cc_image_config "$staged" "$staged/$manifest_dir/Cargo.toml" || return 1
     ( cd "$staged" && cargo build -p "$pkg" --manifest-path "$manifest_dir/Cargo.toml" "${_cc_cfg[@]}" )
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     # profile-literal-ok: dir vocabulary: echoes the manifest's target-directory name
@@ -810,10 +827,10 @@ stage_and_cross_build() {
     # the directory `dev` writes to. That is why this maps by hand instead of
     # calling `nros dev profile args`, which speaks profile names.
     NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged/$subdir"
-    _cc_image_config "$staged" || return 1
-    # Issue 1844 — the board facts, from the invoker. This is a cargo dir with
-    # no generated `nros-cargo.toml` (a workspace-shaped fixture, or an entry
-    # inside one), so nothing else carries `FREERTOS_PORT` & co. since
+    _cc_image_config "$staged" "$staged/$subdir/Cargo.toml" || return 1
+    # Issue 1844 — the board facts, from the invoker. A row whose image has no
+    # generated `nros-cargo.toml` (`_cc_cfg` empty) has nothing else to carry
+    # `FREERTOS_PORT` & co. since
     # phase-484 W2b. REQUIRED: every row here cross-compiles for a board, and
     # a soft skip is what let this lane build only in a shell that still
     # exported an old `activate.sh` port.
