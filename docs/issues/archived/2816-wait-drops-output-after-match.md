@@ -56,3 +56,18 @@ it. `sched_dims_applied_e2e`'s "no executor-side budget skip" now appends
 `param_store_carve` keeps its window, with the reason in a comment: the store
 is built once, carved or refused. `contract_monitor_parity` waits on the very
 marker it asserts absent, so its wait never cuts.
+
+## Correction: count waits keep the old contract
+
+The first version cut EVERY satisfied wait at its satisfying line, count waits
+included. Tier 1 caught that: `realtime_sched_tasks_e2e`,
+`realtime_subnode_cpp_e2e` and `realtime_subnode_cpp_portable_e2e` wait for ONE
+/ctrl line with `wait_for_output_count` and count every line the read
+brought, so a cut at the first line read `ctrl=1 telem=5`. A "wait for at least
+N" is how a test drains what a free-running producer printed. So only a
+single-pattern wait (`wait_for_output_pattern`, `collect_until`,
+`expect_ready`, and QEMU's `collect_until`/`wait_for_output_pattern`) carries
+its tail now. A count wait and a multi-group wait (`wait_for_output_count`,
+`collect_until_count`, `wait_for_output_each`) return everything they read and
+keep nothing, as before 2816. `a_count_wait_returns_everything_it_read` pins
+that contract.
