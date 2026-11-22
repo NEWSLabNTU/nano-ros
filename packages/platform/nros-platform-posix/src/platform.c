@@ -228,7 +228,13 @@ nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
  * the window (and every other thread's first read waits on the same
  * pthread_once), exactly as Zephyr's boot resolution blocks boot. After it,
  * no read calls the hook again. The policy is `nros/clock_resolve.h`'s, the
- * same as on every port. */
+ * same as on every port.
+ *
+ * Lazy is right HERE and not on FreeRTOS: a host process has its network
+ * before `main`, so even a first read from a static constructor finds a board
+ * clock able to answer. A FreeRTOS image brings its network up from the app
+ * task, after the constructors run, so that port resolves at an explicit boot
+ * point the entries call (`nros/platform_freertos.h`). */
 #include <nros/clock_epoch.h>
 #include <nros/clock_resolve.h>
 

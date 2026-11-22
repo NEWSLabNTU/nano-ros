@@ -11,6 +11,7 @@ INPUT                  = include/nros/platform.h \
                          include/nros/platform_timer.h \
                          include/nros/platform_can.h \
                          include/nros/platform_zephyr.h \
+                         include/nros/platform_freertos.h \
                          docs/mainpage.md
 
 RECURSIVE              = NO

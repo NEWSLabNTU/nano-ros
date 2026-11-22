@@ -89,6 +89,11 @@ SURFACES = {
                 "platform_zephyr.h — Zephyr-conditional surface, deliberately"
                 " excluded from the bindgen wrapper in gen-abi-bindings.sh"
             ),
+            "nros_platform_freertos_clock_resolve_point": (
+                "platform_freertos.h — FreeRTOS-conditional surface the board"
+                " entries call, excluded from the bindgen wrapper in"
+                " gen-abi-bindings.sh like platform_zephyr.h"
+            ),
             "nros_platform_freertos_seed_rng": (
                 "FreeRTOS port extension (nros-board-freertos), not part of the"
                 " portable ABI"

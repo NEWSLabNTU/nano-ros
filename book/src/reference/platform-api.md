@@ -23,7 +23,7 @@ specific port's Rust crate.
 
 The SSoT C headers in
 `packages/platform/nros-platform-api/include/nros/` (`platform.h` +
-`platform_net.h`, `platform_timer.h`, `platform_zephyr.h`; Rust consumes committed bindgen output from them) are the source of
+`platform_net.h`, `platform_timer.h`, `platform_zephyr.h`, `platform_freertos.h`; Rust consumes committed bindgen output from them) are the source of
 truth. Every symbol's brief, parameter docs, ownership rules,
 blocking / non-blocking classification, and ISR-safe contract live in
 the Doxygen compiled from those headers.

@@ -1,8 +1,10 @@
-/* RFC-0141 D1/D2 (phase-582 W1d) -- the FreeRTOS port's lazy wall-clock
- * resolution, checked from a FreeRTOS task on the POSIX port. One case per
+/* RFC-0141 D1/D2 -- the FreeRTOS port's wall-clock resolution at its boot
+ * point (`nros_platform_freertos_clock_resolve_point`), checked from a FreeRTOS
+ * task on the POSIX port, the way a board entry calls it. One case per
  * build (CLOCK_TEST_CASE); tests/clock-board-freertos-tests.sh drives them.
  * Prints `ok`/`FAIL` lines and exits non-zero on the first failed case. */
 #include <nros/platform.h>
+#include <nros/platform_freertos.h>
 
 #include <FreeRTOS.h>
 #include <task.h>
@@ -15,6 +17,7 @@
 #define BOARD_NS 1700000000123456789ULL
 
 extern int hook_calls;
+extern volatile int hook_network_up;
 static int bad;
 
 #define CHECK(name, cond)                                                                          \
@@ -68,32 +71,92 @@ __attribute__((unused)) static void check_no_more_calls(void) {
     CHECK("later reads never ask the hook again", hook_calls == calls);
 }
 
+/* A read before the boot point resolves nothing: 0, not synced, waiting on
+ * the first listed source, and the hook is never asked. */
+__attribute__((unused)) static void check_before_point(uint8_t first_source) {
+    uint64_t t = nros_platform_time_now_ns();
+    nros_wall_clock_state_t st = nros_platform_wall_clock_state();
+    printf("  read before the point: %" PRIu64 ", hook asked %d times\n", t, hook_calls);
+    CHECK("a read before the point reads 0", t == 0ULL);
+    CHECK("...is not synced", !st.synced);
+    CHECK("...names the first listed source", st.source == first_source);
+    CHECK("...and never asks the hook", hook_calls == 0);
+}
+
+/* Call the boot point, timed on the host's monotonic clock. */
+static uint64_t timed_point(void) {
+    uint64_t m0 = host_mono_ns();
+    nros_platform_freertos_clock_resolve_point();
+    uint64_t m1 = host_mono_ns();
+    printf("  the point took %" PRIu64 " ms, hook asked %d times\n",
+           (uint64_t)((m1 - m0) / 1000000ULL), hook_calls);
+    return m1 - m0;
+}
+
 static void clock_task(void* arg) {
     (void)arg;
+#if defined(CASE_BOARD_LATE)
+    /* source = board, window 1000 ms, hook answers 200 ms after its first
+     * call: the point waits for it. */
+    check_before_point(NROS_WALL_CLOCK_SOURCE_BOARD);
+    uint64_t waited = timed_point();
+    CHECK("the point waited for the board (>= 200 ms)", waited >= 200000000ULL);
+    CHECK("...and then returned (under 5 s)", waited < 5000000000ULL);
+#elif defined(CASE_BOARD_NET)
+    /* source = board, window 300 ms, a hook that answers only once the
+     * network is up. Reads before the point find nothing; the network comes
+     * up; the point installs the board's answer. */
+    check_before_point(NROS_WALL_CLOCK_SOURCE_BOARD);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    check_before_point(NROS_WALL_CLOCK_SOURCE_BOARD);
+    hook_network_up = 1;
+    uint64_t waited = timed_point();
+    CHECK("the point did not wait out the window (< 300 ms)", waited < 300000000ULL);
+#elif defined(CASE_BOARD_EARLY)
+    /* The same hook; a read early, then longer than the whole window passes
+     * before the network is up and the point runs: the early read spent no
+     * window, so the point still installs the board's answer. */
+    check_before_point(NROS_WALL_CLOCK_SOURCE_BOARD);
     uint64_t m0 = host_mono_ns();
+    vTaskDelay(pdMS_TO_TICKS(600));
+    while (host_mono_ns() - m0 < 600000000ULL) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    check_before_point(NROS_WALL_CLOCK_SOURCE_BOARD);
+    hook_network_up = 1;
+    (void)timed_point();
+#elif defined(CASE_BOARD_NEVER)
+    /* source = board, window 300 ms, hook never answers, unstamped. */
+    check_before_point(NROS_WALL_CLOCK_SOURCE_BOARD);
+    uint64_t waited = timed_point();
+    CHECK("the point waited out the 300 ms window", waited >= 300000000ULL);
+    CHECK("...and then returned (under 5 s)", waited < 5000000000ULL);
+#elif defined(CASE_PLATFORM_HOST) || defined(CASE_PLATFORM_NONE)
+    check_before_point(NROS_WALL_CLOCK_SOURCE_BOARD);
+    (void)timed_point();
+#else
+    /* No list: the point has nothing to resolve. */
+    (void)timed_point();
+#endif
     uint64_t r0 = realtime_ns();
     uint64_t t = nros_platform_time_now_ns();
     uint64_t r1 = realtime_ns();
-    uint64_t m1 = host_mono_ns();
     nros_wall_clock_state_t st = nros_platform_wall_clock_state();
-    printf("  first read took %" PRIu64 " ms, hook asked %d times, reading %" PRIu64 "\n",
-           (uint64_t)((m1 - m0) / 1000000ULL), hook_calls, t);
+    printf("  read after the point: %" PRIu64 ", hook asked %d times\n", t, hook_calls);
     (void)r0;
     (void)r1;
-#if defined(CASE_BOARD_LATE)
-    /* source = board, window 1000 ms, hook answers after 200 ms. */
-    CHECK("the first read waited for the board (>= 200 ms)", m1 - m0 >= 200000000ULL);
-    CHECK("...and then returned (under 5 s)", m1 - m0 < 5000000000ULL);
+#if defined(CASE_BOARD_LATE) || defined(CASE_BOARD_NET) || defined(CASE_BOARD_EARLY)
     CHECK("reading is the board's instant",
           t + 2000000ULL >= BOARD_NS && t <= BOARD_NS + 50000000ULL);
     CHECK("state: synced", st.synced);
     CHECK("state: source board", st.source == NROS_WALL_CLOCK_SOURCE_BOARD);
-    CHECK("the hook was polled", hook_calls >= 2);
+    CHECK("the hook was asked", hook_calls >= 1);
     check_no_more_calls();
+    /* A second call of the point resolves nothing. */
+    int calls = hook_calls;
+    nros_platform_freertos_clock_resolve_point();
+    CHECK("a second call of the point asks nothing", hook_calls == calls);
 #elif defined(CASE_BOARD_NEVER)
-    /* source = board, window 300 ms, hook never answers, unstamped. */
-    CHECK("the first read waited out the 300 ms window", m1 - m0 >= 300000000ULL);
-    CHECK("...and then returned (under 5 s)", m1 - m0 < 5000000000ULL);
     CHECK("reading is 0 (unstamped)", t == 0ULL);
     CHECK("state: not synced", !st.synced);
     CHECK("state: names board", st.source == NROS_WALL_CLOCK_SOURCE_BOARD);
@@ -136,8 +199,12 @@ int main(void) {
     uint64_t pre = nros_platform_time_now_ns();
     int pre_calls = hook_calls;
     printf("  pre-scheduler read %" PRIu64 ", hook asked %d times\n", pre, pre_calls);
-#if defined(CASE_BOARD_LATE) || defined(CASE_BOARD_NEVER)
+#if defined(CASE_BOARD_LATE) || defined(CASE_BOARD_NEVER) || defined(CASE_BOARD_NET) ||            \
+    defined(CASE_BOARD_EARLY)
     CHECK("a pre-scheduler read resolves nothing", pre == 0ULL && pre_calls == 0);
+    /* ...and the point, which cannot sleep yet, does nothing. */
+    nros_platform_freertos_clock_resolve_point();
+    CHECK("a pre-scheduler point resolves nothing", hook_calls == 0);
 #endif
     if (xTaskCreate(clock_task, "clock", configMINIMAL_STACK_SIZE * 8, NULL, tskIDLE_PRIORITY + 1,
                     NULL) != pdPASS) {
