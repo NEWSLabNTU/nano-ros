@@ -4691,29 +4691,6 @@ mod image_plan_tests {
     }
 }
 
-/// The RTOS key `resolve_sched_tasks` expects, which picks the
-/// `[tasks.<name>.<rtos>]` sub-table, for the board this entry resolved.
-///
-/// Issue 1285 follow-up. This was a SUBSTRING match on the deploy key with a
-/// `posix` fallback. It now has two arms, and neither reads the spelling of the
-/// key:
-///
-/// - `Some(key)`: the entry named its board by key. The key has already passed
-///   `board_path_for`, since an unknown key is a compile error above, so it is
-///   a row of the Rust pack's table. Its RTOS comes from
-///   `nros_entry_lower::BOARD_KEYS` through `sched_task_rtos_key_for`. That is the
-///   lookup the CLI's `plan_from_model` uses for the same Rust keys, so the two
-///   Rust producers now agree.
-///
-///   A Rust key with NO RTOS family (`mps2-an385-baremetal`, `mps2-an385`) gets `NO_RTOS_SCHED_TASK_KEY`, which selects no sub-table. The
-///   substring match gave those keys the host's sub-table. An authored sched task on
-///   such a board is now refused by `resolve_sched_tasks`, and no in-tree leaf
-///   authors one.
-/// - `None`: an explicit `board = X`. There is no key to look up, and the ZST
-///   may be an out-of-tree board this macro has never seen. It keeps the
-///   documented host default, the native dev target's `posix` sub-table. That
-///   is a stated default, not a derivation. Changing it would move every
-///   explicit-`LinuxBoard` entry that authors host sched tasks.
 /// Issue 2732 -- refuse a table whose SPAWNED sched tasks take other stacks
 /// than the image's sizing descriptor states.
 ///
@@ -4811,6 +4788,29 @@ mod spawned_task_stack_tests {
     }
 }
 
+/// The RTOS key `resolve_sched_tasks` expects, which picks the
+/// `[tasks.<name>.<rtos>]` sub-table, for the board this entry resolved.
+///
+/// Issue 1285 follow-up. This was a SUBSTRING match on the deploy key with a
+/// `posix` fallback. It now has two arms, and neither reads the spelling of the
+/// key:
+///
+/// - `Some(key)`: the entry named its board by key. The key has already passed
+///   `board_path_for`, since an unknown key is a compile error above, so it is
+///   a row of the Rust pack's table. Its RTOS comes from
+///   `nros_entry_lower::BOARD_KEYS` through `sched_task_rtos_key_for`. That is the
+///   lookup the CLI's `plan_from_model` uses for the same Rust keys, so the two
+///   Rust producers now agree.
+///
+///   A Rust key with NO RTOS family (`mps2-an385-baremetal`, `mps2-an385`) gets `NO_RTOS_SCHED_TASK_KEY`, which selects no sub-table. The
+///   substring match gave those keys the host's sub-table. An authored sched task on
+///   such a board is now refused by `resolve_sched_tasks`, and no in-tree leaf
+///   authors one.
+/// - `None`: an explicit `board = X`. There is no key to look up, and the ZST
+///   may be an out-of-tree board this macro has never seen. It keeps the
+///   documented host default, the native dev target's `posix` sub-table. That
+///   is a stated default, not a derivation. Changing it would move every
+///   explicit-`LinuxBoard` entry that authors host sched tasks.
 fn derive_target_rtos(deploy: Option<&str>) -> String {
     match deploy {
         Some(key) => nros_entry_lower::sched_task_rtos_key_for(key),
