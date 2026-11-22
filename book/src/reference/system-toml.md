@@ -35,7 +35,7 @@ Precedence, highest first: a command-line or build flag, `[image.<id>]`,
 | `args` | Launch arguments bound at resolve time, such as `{ host = "robot1" }` |
 | `rmw` | Backend for this image. Absent: `[system] rmw` |
 | `domain_id`, `locator` | Override `[system]`'s. `locator` is what the image dials. On a `linux` image, `$ROS_DOMAIN_ID` / `$NROS_LOCATOR` override them at run time, and the image warns at boot naming both values when they differ |
-| `os_config` | Layer-1 files, in order: a board network file (`.toml`), Zephyr `prj-*.conf` or `.overlay` fragments. `conf` is read as its alias |
+| `os_config` | Layer-1 files, in order: a board network file (`.toml`), Zephyr `prj-*.conf` or `.overlay` fragments. `conf` is read as its alias. Paths are relative; see "Where `os_config` files are found" |
 | `rmw_config` | The middleware's own file for this image, or `{ <domain> = "<file>" }` per `[[domain]]` |
 | `panic` | Panic policy: `platform`, `halt` or `own` |
 | `before_boot` | `"<pkg>::<fn>"` the generated entry calls before the board boots. Rust only |
@@ -128,6 +128,20 @@ Every road reads the expansion: `nros build`, the CMake configure, west
 and colcon. Editing a fragment rebuilds what it reaches, as editing the
 `system.toml` does. `nros new --workspace --from` refuses to move a `system.toml`
 that names fragments, because their paths are relative to it.
+
+## Where `os_config` files are found
+
+The two kinds of file in `os_config` are looked up from different places:
+
+| File | Looked for in, first hit wins |
+| --- | --- |
+| Board network file (`.toml`) | The directory of `system.toml` |
+| Zephyr fragment (`.conf`, `.overlay`, `.dts`) | `<bringup>/boards/<board>/`, then the west application's directory, then the directory of `system.toml` |
+
+A generated application holds no files of yours, so a fragment is found beside
+`system.toml`. When `entry` names a west application of your own, a fragment
+with the same name in that application's directory is used in place of the
+bringup's. That is how a board or an application overrides a shared fragment.
 
 ## Board network file
 

@@ -410,7 +410,8 @@ nros::zephyr_component_main!(crate::Talker);
 
 nano-ros reads its settings from Kconfig, so they go in `prj.conf` beside
 Zephyr's own; `west build -t menuconfig` shows them under
-**nros ROS 2 client library**:
+**nros ROS 2 client library**
+([`os_config` lookup](../../reference/system-toml.md#where-os_config-files-are-found)):
 
 ```text probe=44 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash file=apps/my_app/prj.conf
 # Zephyr: console and networking
