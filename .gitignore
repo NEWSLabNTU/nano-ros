@@ -271,6 +271,9 @@ packages/testing/**/metadata/*.json
 # rebuild). One had been committed, escaping the `*.json` rule above by ending
 # in `.json.unprobeable`, and it churned on every build.
 **/metadata/*.unprobeable
+# Issue 2827 -- a probe's staged output, `<component>.json.probing.<pid>`, which
+# the stamp renames into place; one is left only by a probe killed before it.
+**/metadata/*.probing.*
 
 # Orphaned generated-header temps. The atomic writers in nros-build-helpers
 # stage `.<header>.tmp.<pid>` NEXT TO the destination and then rename it into

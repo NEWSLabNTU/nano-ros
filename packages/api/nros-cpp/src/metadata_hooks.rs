@@ -69,6 +69,13 @@ pub unsafe extern "C" fn nros_cpp_metadata_dump(
     // process, not of the Rust standard library. (`nros`'s half of the same
     // feature requires only `alloc`: it records into a heap-allocated global
     // and hands back a `String` — the write is here, and only here.)
+    // Issue 2827 -- the CLI names a staging file of its own
+    // (`NROS_METADATA_OUT`) and stamps it into place, so the sidecar's path
+    // never holds this unstamped body; run by hand, the probe writes the
+    // sidecar itself.
+    let out_path = nros::env::var("NROS_METADATA_OUT")
+        .filter(|p| !p.is_empty())
+        .unwrap_or(out_path);
     if nros::env::write_file(out_path, json.as_bytes()).is_err() {
         return -3;
     }
