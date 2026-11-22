@@ -88,3 +88,26 @@ far above the measured peak costs RAM a user then cannot spend. Until then, a
 user can set the main stack from the measured peak instead. That is
 `CONFIG_MAIN_STACK_SIZE` in the image's own conf, overriding `stack.conf`,
 with the floor check off (`NROS_STACK_FLOOR=OFF`), at their own risk.
+
+## Not in the stack-floor bug batch (2026-11-22)
+
+The bug batch (issues 2818, 2784 and 2693) does not take this issue's fix,
+for three reasons:
+
+- **The floor cannot go below the walk.** The 75,536 B floor is the bind walk
+  plus the margin, and ruling (B) of issue 2400 makes the static walk the floor,
+  never lower. A floor nearer the 28,340 B peak needs a TIGHTER walk, not an
+  allowance.
+- **The tighter walk is parked work.** The walk is loose because zenoh-pico's
+  indirect call sites carry no type, so each reaches every function C can hold
+  (issue 2516). Narrowing those sites is the site-classifier work of
+  issue 2658, which stays parked as ruled.
+- **The batch moves the other way.** Issue 2818 binds Cyclone's vtable calls,
+  which raises Cyclone floors. It never lowers a zenoh one.
+
+So this stays measured evidence for issue 2658 and the redesign. The user-side
+workaround above still holds.
+
+Of the two loose ends: the row's `peak = 28888` over-states by 548 B, which is
+the safe direction, so it waits for the twin lane to re-measure the row once
+#4486's soft-float frames are on main.
