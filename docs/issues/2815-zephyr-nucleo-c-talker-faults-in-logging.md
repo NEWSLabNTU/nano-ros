@@ -166,9 +166,38 @@ fails on any frame in nano-ros's own code over `max_frame` (4096 B, in
 each fixture build's stack-floor report records, over every 32-bit ARM image,
 and runs after the fixture build of `just ci` matrix, matrix-nightly and full.
 The baseline holds one row per function at the largest size any build has (57
-functions, from 501 frames across 74 builds), so a build it never saw passes while
+functions, from 501 frames across 74 builds; 51 once this issue's fix dropped
+the six rows it brought under the cap), so a build it never saw passes while
 it adds and grows nothing; it is the list to shrink. The gate
 stops the class growing; it does not by itself name this fault's cause.
+
+## Fixed, 2026-11-23: the frames alone cure it
+
+`ParameterValue` is about 8.3 KiB whichever variant it holds, because the
+`StringArray` variant sizes it, so every by-value one is a frame of that size.
+The registration path now fills a parameter slot in place
+(`ParameterServer::declare_with`), and the reconcile list holds node indices
+only. Measured prologues (thumbv7em-none-eabihf, release, LTO off):
+
+| Function | Before | After |
+| --- | --- | --- |
+| `Executor::pass` | 9,472 B | 2,732 B |
+| `Executor::reconcile_parameter_services` | 10,304 B | under 1,024 B |
+| `Executor::declare_parameter_resolved` | 8,320 B | under 1,024 B |
+| `ExecutorSink::create_node` | 17,536 B | 9,472 B |
+
+The Nucleo Renode cell, at the image's stock `CONFIG_MAIN_STACK_SIZE=16384`
+with deferred logging and `CONFIG_LOG_MODE_OVERFLOW=y` (the configuration
+that faulted 3/3 on main), passes 3/3 with this fix alone (host 241). The
+max-frame baseline lost the rows for the first three and for
+`seed_use_sim_time_default`, so any of them growing back past the cap fails
+`just check max-frame`.
+
+Still over the cap and still in the baseline: `create_node`,
+`declare_parameter_overridden`, `declare_described_overridden` and the
+action/lifecycle registration frames (6-9 KiB, the same by-value
+`ParameterValue` shape). They no longer overflow this image, and the
+shrink-only baseline is the list to work through.
 
 ## Closes when
 
