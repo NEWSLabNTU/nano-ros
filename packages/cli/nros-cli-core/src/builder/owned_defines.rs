@@ -75,6 +75,10 @@ pub const OWNED: &[OwnedDefine] = &[
     exact("NROS_CARGO_PROFILE", "the image's profile"),
     exact("NROS_CONFIGURED_IMAGE", "which image this configure builds"),
     exact(
+        "NROS_FEATURE_IMAGE",
+        "the image whose capability axes this configure builds with (issue 2702)",
+    ),
+    exact(
         "NROS_CONFIGURED_PROJECT",
         "which project this configure builds",
     ),
