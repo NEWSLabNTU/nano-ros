@@ -94,6 +94,11 @@ pub const OWNED: &[OwnedDefine] = &[
         "the host census build's workspace interface roots",
     ),
     exact("NROS_LEAF_BOARD", "the census probe's board"),
+    // Issue 2862.
+    exact(
+        "NROS_OWNED_ENTRY",
+        "an owned west entry sized by its census",
+    ),
     exact("NROS_REPO_DIR", "the nano-ros checkout"),
     exact("NROS_RMW", "the RMW, derived from `[system] rmw`"),
     exact("NROS_SHARED_CARGO_BUILD_DIR", "the shared cargo target"),

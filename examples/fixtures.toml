@@ -9009,6 +9009,31 @@ west_board = "native_sim/native/64"
 west_nros_image = "demo_bringup:zephyr"
 output = "build.ninja"
 
+# Issue 2862 -- an OWNED C west entry with no model (no launch, no
+# `[[component]]` row), sized by the census of its own program, built by `nros
+# build talker_bringup:zephyr`. Two layouts: the bringup at src/<b> (flat; on
+# main the configure stopped on its sizing-descriptor promise), and nested at
+# src/test_bringup/<b> (on main the hook skipped
+# `nros configure` and every pool kept its default).
+# tests/west_hand_written_entry.rs asserts both are census-sized and seeded.
+[[compile_check_fixture]]
+id = "west_owned_entry_census_flat"
+builder = "west-configure"
+dir = "packages/testing/nros-tests/fixtures/west_owned_entry_census_flat"
+west_subdir = "src/zephyr_c_talker"
+west_board = "native_sim/native/64"
+west_nros_image = "talker_bringup:zephyr"
+output = "build.ninja"
+
+[[compile_check_fixture]]
+id = "west_owned_entry_census_nested"
+builder = "west-configure"
+dir = "packages/testing/nros-tests/fixtures/west_owned_entry_census_nested"
+west_subdir = "src/zephyr_c_talker"
+west_board = "native_sim/native/64"
+west_nros_image = "talker_bringup:zephyr"
+output = "build.ninja"
+
 # Issue 2811 -- the S32Z270 RTU0 Cortex-R52 on Zephyr (`s32z270-rtu0-zephyr`,
 # west board `s32z2xxdc2@D/s32z270/rtu0`), linked: the board row's "Builds"
 # evidence (`board_registry.row_built` matches this `west_board` to the

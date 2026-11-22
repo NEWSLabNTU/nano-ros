@@ -239,8 +239,11 @@ pub struct CmakeRootSpec {
 /// two packages are. Workspace-relative, like every other path in the root.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnedCensus {
-    /// The bringup package's directory name.
+    /// The bringup's directory, relative to the workspace root
+    /// (`src/<bringup>`, or deeper: issue 2862).
     pub bringup: String,
+    /// The bringup's name (its package's), which keys its census.
+    pub name: String,
     /// The image id the census is taken for.
     pub image: String,
     /// The owned package's directory, relative to the workspace root.
@@ -695,11 +698,13 @@ pub fn render(
              include(\"${{NROS_REPO_DIR}}/cmake/NanoRosLeafEntityFacts.cmake\")\n\
              get_filename_component(_nros_owned_ws \"{ws_rel}\" ABSOLUTE)\n\
              nros_record_owned_entity_facts(\n\
-             \x20   BRINGUP   \"${{_nros_owned_ws}}/src/{bringup}\"\n\
+             \x20   BRINGUP   \"${{_nros_owned_ws}}/{bringup}\"\n\
+             \x20   NAME      {name}\n\
              \x20   IMAGE     {image}\n\
              \x20   PACKAGE   \"${{_nros_owned_ws}}/{package}\"\n\
              \x20   WORKSPACE \"${{_nros_owned_ws}}\")\n\n",
             bringup = c.bringup,
+            name = c.name,
             image = c.image,
             package = c.package,
         ));
@@ -1001,7 +1006,8 @@ mod tests {
         let d = discovered(vec![pkg(root, "c_talker", true)]);
         let mut sp = spec(root);
         sp.owned_census = Some(OwnedCensus {
-            bringup: "tx_bringup".to_string(),
+            bringup: "src/tx_bringup".to_string(),
+            name: "tx_bringup".to_string(),
             image: "threadx-linux".to_string(),
             package: "src/c_talker".to_string(),
         });

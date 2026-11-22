@@ -429,10 +429,27 @@ function(nros_image_kconfig_hook)
     # (issue 2086, which configure takes now), the module's readers read the
     # seeds, and both must be current before the first of them.
     set(_generated FALSE)
+    set(_ws "")
+    set(_qualified "")
+    set(_ws_err "")
     if(DEFINED NROS_IMAGE_SYSTEM_DIR AND NOT NROS_IMAGE_SYSTEM_DIR STREQUAL "")
         set(_generated TRUE)
     endif()
-    _nros_image_kconfig_configure("${_nros}" "${_dir}" "${_image}" ${_generated})
+    if(_generated OR (DEFINED NROS_OWNED_ENTRY AND NOT NROS_OWNED_ENTRY STREQUAL ""))
+        _nros_image_kconfig_workspace(_ws _qualified _ws_err "${_nros}" "${_dir}" "${_image}")
+    endif()
+    _nros_image_kconfig_configure("${_nros}" "${_dir}" "${_image}" ${_generated}
+        "${_ws}" "${_qualified}" "${_ws_err}")
+    # Issue 2862 -- an OWNED C/C++ entry sized by its census (`nros build`
+    # names it, `-DNROS_OWNED_ENTRY=<package>`, when the cmake road's own
+    # predicate holds): the census facts, descriptor and entity fragment the
+    # cmake road's generated root records (issue 2433), recorded here, before
+    # Kconfig and every reader.
+    set(_owned_frag "")
+    if(DEFINED NROS_OWNED_ENTRY AND NOT NROS_OWNED_ENTRY STREQUAL "")
+        _nros_image_kconfig_owned_entry(_owned_frag "${_dir}" "${_image}"
+            "${_ws}" "${_qualified}" "${_ws_err}")
+    endif()
 
     # Issue 2179 -- the Zephyr board this build was given, so the image's
     # board package contributes its snippets and conf files only when it
@@ -473,6 +490,9 @@ function(nros_image_kconfig_hook)
     # the knob file (`zephyr/Kconfig` sources both before its own defaults).
     # Before the stamp, which digests it too.
     nros_resolved_entity_fragment(_resolved_frag)
+    if(_resolved_frag STREQUAL "" AND NOT _owned_frag STREQUAL "")
+        set(_resolved_frag "${_owned_frag}")
+    endif()
     if(_resolved_frag STREQUAL "" AND NOT _generated)
         _nros_image_kconfig_leaf_counts(_resolved_frag "${_nros}" "${_dir}" "${_image}"
             "${_nros_dir}")
@@ -589,7 +609,8 @@ function(nros_image_kconfig_hook)
     endif()
 endfunction()
 
-# _nros_image_kconfig_configure(<cli> <system-dir> <image> <generated>) -- phase-530 W4
+# _nros_image_kconfig_configure(<cli> <system-dir> <image> <generated> <ws> <qualified> <err>)
+# -- phase-530 W4
 #
 # Run `nros configure` for the image this host configure builds, through the
 # ONE helper every hooked host calls (`nros_configure_hook`,
@@ -607,32 +628,110 @@ endfunction()
 # one this configure renders: `-DNROS_IMAGE`, else the leaf's own
 # `default_images` -- the image `nros build` builds.
 #
-# Issue 2395 -- a generated application whose bringup is NOT under a `src/`
-# (a flat workspace: packages beside each other at a root that a Cargo
-# `[workspace]` declares) has no project `nros configure` can take. The
-# bringup alone is not one (its `<depend>`s and its entry are siblings), and
-# configure refuses the flat root ("no `src/<pkg>/package.xml`"). So the hook
-# does not configure it, says why, and the image's readers take the unseeded
-# path, as they did before phase-530 W4.
-function(_nros_image_kconfig_configure _nros _dir _image _generated)
+# Issue 2395 -- a generated application whose bringup is in no workspace (a
+# flat layout: packages beside each other at a root that a Cargo `[workspace]`
+# declares) has no project `nros configure` can take. The bringup alone is not
+# one (its `<depend>`s and its entry are siblings), and configure refuses the
+# flat root ("no `src/<pkg>/package.xml`"). So the hook does not configure it,
+# says why, and the image's readers take the unseeded path.
+#
+# Issue 2862 -- WHICH workspace, and the image's qualified name, are the
+# image facts' answer (<ws>, <qualified>; `_nros_image_kconfig_workspace`),
+# never re-derived here: "the bringup's parent is named `src`" missed a
+# bringup nested below `src/` (`<ws>/src/test_bringup/<b>`), so its image was
+# never configured and every reader ran unseeded. <err> says why there is no
+# workspace.
+function(_nros_image_kconfig_configure _nros _dir _image _generated _ws _qualified _err)
     set(_project "${_dir}")
+    set(_configure_image "${_image}")
     if(_generated)
-        get_filename_component(_parent "${_dir}" DIRECTORY)
-        get_filename_component(_parent_name "${_parent}" NAME)
-        if(_parent_name STREQUAL "src")
-            get_filename_component(_project "${_parent}" DIRECTORY)
+        if(NOT _ws STREQUAL "")
+            set(_project "${_ws}")
+            # Qualified: two bringups of one workspace may name the same image
+            # (`<b1>:fvp`, `<b2>:fvp`), and the workspace configure refuses
+            # the bare id.
+            set(_configure_image "${_qualified}")
         else()
             message(STATUS
-                "nano-ros: `nros configure` not run for image `${_image}`: its bringup "
-                "${_dir} is not in a `<workspace>/src/` directory, so no workspace "
-                "configure can take it; its readers are unseeded")
+                "nano-ros: `nros configure` not run for image `${_image}`: ${_err}; its "
+                "readers are unseeded")
             nros_message_detail("nano-ros: a flat workspace (packages beside its bringup, "
-                "no src/) is not one `nros configure` can take (issue 2395)")
+                "no src/) is not one `nros configure` can take")
             return()
         endif()
     endif()
-    nros_configure_hook(DIR "${_dir}" IMAGE "${_image}" PROJECT "${_project}"
+    nros_configure_hook(DIR "${_dir}" IMAGE "${_configure_image}" PROJECT "${_project}"
         CLI "${_nros}" ROAD "the Zephyr module hook")
+endfunction()
+
+# _nros_image_kconfig_workspace(<ws> <qualified> <err> <cli> <bringup-dir> <image>)
+# -- issue 2862
+#
+# The workspace a generated or owned image's bringup belongs to, and the
+# image's qualified name (`<bringup>:<image>`), from the image facts
+# (`nros dev image facts`, RFC-0085 D2): the same planning that answers the
+# image's board, rmw and entry, whose root is `model_location::workspace_root`.
+# ONE call per configure; both readers below take its answer. <ws> is empty,
+# and <err> says why, when the facts have no workspace for the bringup.
+function(_nros_image_kconfig_workspace _out_ws _out_qualified _out_err _nros _dir _image)
+    execute_process(
+        COMMAND "${_nros}" dev image facts "${_image}" --workspace "${_dir}"
+                --nano-ros-path "${_NROS_IMAGE_KCONFIG_ROOT}" --cmake
+        OUTPUT_VARIABLE _o ERROR_VARIABLE _e RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    set(_ws "")
+    set(_q "")
+    if(_rc EQUAL 0)
+        if(_o MATCHES "set\\(NROS_IMAGE_WORKSPACE \"([^\"]*)\"\\)")
+            set(_ws "${CMAKE_MATCH_1}")
+        endif()
+        if(_o MATCHES "set\\(NROS_IMAGE_QUALIFIED \"([^\"]*)\"\\)")
+            set(_q "${CMAKE_MATCH_1}")
+        endif()
+    endif()
+    string(STRIP "${_e}" _e)
+    if(_ws STREQUAL "" AND _e STREQUAL "")
+        set(_e "the image facts named no workspace")
+    endif()
+    set(${_out_ws} "${_ws}" PARENT_SCOPE)
+    set(${_out_qualified} "${_q}" PARENT_SCOPE)
+    set(${_out_err} "${_e}" PARENT_SCOPE)
+endfunction()
+
+# _nros_image_kconfig_owned_entry(<out> <bringup> <image> <ws> <qualified> <err>)
+# -- issue 2862
+#
+# The west road's half of issue 2433. An owned C/C++ entry with no model is
+# sized by the census of its own program; on the cmake road the generated root
+# calls `nros_record_owned_entity_facts` before any package is added. A west
+# owned entry IS the application, so nothing generated precedes it: this hook
+# is the earliest point, and it calls the SAME function. It then records the
+# descriptor that function wrote as the one this configure names to cargo
+# (`nros_sizing_descriptor_record_for_west`, the entry road's recorder), since
+# the entry's own `nano_ros_entry()` has no model to write one from. <out> is
+# the entity fragment, for the pool defaults below; empty when the census was
+# not taken (`[census] on_missing = "warn"`).
+function(_nros_image_kconfig_owned_entry _out _dir _image _ws _qualified _err)
+    set(${_out} "" PARENT_SCOPE)
+    string(REGEX REPLACE ":.*$" "" _bringup "${_qualified}")
+    if(_ws STREQUAL "")
+        message(FATAL_ERROR
+            "nano-ros: image `${_image}` builds the owned entry ${NROS_OWNED_ENTRY}, sized by "
+            "its census, and its workspace is not known: ${_err}")
+    endif()
+    get_filename_component(_pkg "${NROS_OWNED_ENTRY}" ABSOLUTE)
+    include("${_NROS_IMAGE_KCONFIG_ROOT}/cmake/NanoRosLeafEntityFacts.cmake")
+    nros_record_owned_entity_facts(
+        BRINGUP   "${_dir}"
+        NAME      "${_bringup}"
+        IMAGE     "${_image}"
+        PACKAGE   "${_pkg}"
+        WORKSPACE "${_ws}")
+    nros_sizing_descriptor_record_for_west()
+    nros_entity_inventory_knobs_file(_frag)
+    if(EXISTS "${_frag}")
+        set(${_out} "${_frag}" PARENT_SCOPE)
+    endif()
 endfunction()
 
 # _nros_image_kconfig_leaf_counts(<out> <cli> <leaf> <image> <nros-dir>)

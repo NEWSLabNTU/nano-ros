@@ -1,0 +1,12 @@
+# Issue 2862 -- an image whose program is an OWNED C west entry with no model:
+# no launch and no [[component]] row, so it is sized by the census of the
+# entry's own program. Layout: its bringup NESTED at src/test_bringup/talker_bringup.
+
+[system]
+name = "talker_bringup"
+rmw = "zenoh"
+domain_id = 0
+
+[image.zephyr]
+board = "zephyr"
+entry = "zephyr_c_talker"

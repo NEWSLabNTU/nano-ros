@@ -254,7 +254,7 @@ function(nros_record_leaf_entity_facts _dir)
     nros_system_toml_watch("${_dir}/system.toml" nros_leaf_entity_facts)
 endfunction()
 
-# nros_record_owned_entity_facts(BRINGUP <dir> IMAGE <id> PACKAGE <dir>
+# nros_record_owned_entity_facts(BRINGUP <dir> [NAME <bringup>] IMAGE <id> PACKAGE <dir>
 #                                WORKSPACE <dir>)
 #
 # Issue 2433 (maintainer ruling 2026-11-11) -- an image whose program is an
@@ -266,13 +266,20 @@ endfunction()
 # descriptor and entity fragment before every reader. The generated cmake root
 # calls this, once, for the owned entry its images build.
 function(nros_record_owned_entity_facts)
-    cmake_parse_arguments(_o "" "BRINGUP;IMAGE;PACKAGE;WORKSPACE" "" ${ARGN})
+    cmake_parse_arguments(_o "" "BRINGUP;NAME;IMAGE;PACKAGE;WORKSPACE" "" ${ARGN})
     # The host census build is the producer; it is not sized by itself.
     if(DEFINED ENV{NROS_LEAF_CENSUS_HOST} AND NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
         return()
     endif()
     nros_resolve_cli(_nros CONTEXT "nros_record_owned_entity_facts (${_o_IMAGE})")
-    get_filename_component(_bringup_name "${_o_BRINGUP}" NAME)
+    # Issue 2862 -- the bringup's NAME (its package's), which keys the census
+    # and qualifies the image; a bringup's directory may be named otherwise
+    # (`src/test_bringup/unit_test` holding `unit_test_bringup`).
+    if(NOT "${_o_NAME}" STREQUAL "")
+        set(_bringup_name "${_o_NAME}")
+    else()
+        get_filename_component(_bringup_name "${_o_BRINGUP}" NAME)
+    endif()
     get_filename_component(_pkg_name "${_o_PACKAGE}" NAME)
     if(NOT NROS_LEAF_CENSUS_TAKE STREQUAL "OFF")
         execute_process(

@@ -2349,7 +2349,14 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                                 ) =>
                         {
                             Some(crate::builder::cmake_root::OwnedCensus {
-                                bringup: bringup.clone(),
+                                // Issue 2862 -- its path, not `src/<name>`:
+                                // a bringup may sit deeper below `src/`.
+                                bringup: bd
+                                    .strip_prefix(&root)
+                                    .unwrap_or(&bd)
+                                    .to_string_lossy()
+                                    .into_owned(),
+                                name: bringup.clone(),
                                 image: id.clone(),
                                 package: pkg
                                     .strip_prefix(&root)
@@ -3058,6 +3065,14 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     // seeds read, and no API row, so a TYPED entry missed
                     // the C++ runtime headers.
                     resolved_opt.extend(hand_written_image_args(&app, &bringup_dir, &image_id));
+                    // Issue 2862 -- an owned C/C++ entry sized by its census
+                    // (the cmake road's predicate, issue 2433): the module
+                    // records its census facts before any reader.
+                    if image_has_non_rust(&image, &bringup_dir)
+                        && crate::cmd::entity_census::owned_entry_census_applies(&bringup_dir, &app)
+                    {
+                        resolved_opt.push(format!("-DNROS_OWNED_ENTRY={}", app.display()));
+                    }
                 }
                 // Issue 1867 -- the image's `nros` module is THIS checkout. The
                 // store workspace's manifest project carries none (issue 1258),
@@ -6788,6 +6803,14 @@ fn deploy_names_target(tokens: &[String], board: &str, platform: &str) -> bool {
 /// ([`crate::builder::west_app::zephyr_module_dirs`], the ONE module-set
 /// computation). The entry itself is the application, never a module of it.
 fn owned_entry_zephyr_modules(root: &Path, app: &Path) -> Result<Vec<PathBuf>, String> {
+    let closure = owned_entry_closure(root, app)?;
+    crate::builder::west_app::zephyr_module_dirs(&closure)
+}
+
+/// The workspace packages an OWNED entry `<depend>`s on, transitively
+/// ([`package_closure`] over the entry's own package), the entry itself left
+/// out. Empty when `app` is no workspace package.
+fn owned_entry_closure(root: &Path, app: &Path) -> Result<Vec<(String, PathBuf)>, String> {
     let found = crate::builder::discover::discover(root, &[])?;
     let app_phys = std::fs::canonicalize(app).unwrap_or_else(|_| app.to_path_buf());
     let Some(entry) = found
@@ -6797,11 +6820,19 @@ fn owned_entry_zephyr_modules(root: &Path, app: &Path) -> Result<Vec<PathBuf>, S
     else {
         return Ok(Vec::new());
     };
-    let closure: Vec<(String, PathBuf)> = package_closure(root, [entry.name.as_str()])?
+    Ok(package_closure(root, [entry.name.as_str()])?
         .into_iter()
         .filter(|(n, _)| n != &entry.name)
-        .collect();
-    crate::builder::west_app::zephyr_module_dirs(&closure)
+        .collect())
+}
+
+/// Issue 2862 -- [`owned_entry_closure`]'s directories, for the message-bound
+/// seed of an owned entry with no model.
+fn owned_entry_closure_dirs(root: &Path, app: &Path) -> Result<Vec<PathBuf>, String> {
+    Ok(owned_entry_closure(root, app)?
+        .into_iter()
+        .map(|(_, d)| d)
+        .collect())
 }
 
 /// The workspace packages an image is built from: the packages its launch plan
@@ -7636,11 +7667,28 @@ fn resolve_image(
     let leaf_road =
         crate::cmd::entity_census::leaf_sized_without_model(root, bringup_dir, image_id, image)
             .is_some();
+    // Issue 2862 -- an OWNED C/C++ entry with no model, on a cross board, is
+    // sized by the census of its program (issue 2433): its configure records
+    // it, on the cmake road from the generated root and on the west road from
+    // the module hook. Nothing here composes it, and nothing failed.
+    let owned_census_road = platform != "posix"
+        && crate::cmd::entity_census::owned_entry_without_model(bringup_dir, image)
+        && matches!(
+            owned_entry_dir(root, image_id, image),
+            Ok(Some(pkg)) if crate::cmd::entity_census::owned_entry_census_applies(bringup_dir, &pkg)
+        );
     let inventory: Result<Composed, NotDerived> = (|| {
         if leaf_road {
             return Err(NotDerived::LeafRoad(
                 "this standalone leaf writes no `[[component]]`, so it has no SystemModel; its \
                  configure sizes it from its census (`take --leaf`)"
+                    .to_string(),
+            ));
+        }
+        if owned_census_road {
+            return Err(NotDerived::LeafRoad(
+                "this image's owned entry has no SystemModel; its configure sizes it from the \
+                 census of the entry's program (`entity-census take --image`)"
                     .to_string(),
             ));
         }
@@ -8135,26 +8183,75 @@ fn seed_hand_written_west_bounds(
     image: &crate::orchestration::image::ImageBlock,
     stale: StaleModel,
 ) -> Result<()> {
-    let seeded = image_launch_node_dirs(root, bringup_dir, image, stale)
-        .map_err(crate::resolve::NotDerived::from)
-        .and_then(|mut dirs| {
-            if !dirs.iter().any(|d| d == app) {
-                dirs.push(app.to_path_buf());
-            }
-            // The probe generates per language, and a table prices a TYPE, so
-            // either language's table is the same bound. A hand-written entry's
-            // language is its own (`nano_ros_add_executable(... TYPED)` is C++
-            // whatever its nodes are written in), so take the language the probe
-            // generated: C++ when it did, else C.
-            let probe_codegen = probe_bound_tables(root, nros_lang::Language::Cpp);
-            crate::message_bound_knobs::write_west_seed(
-                resolved_dir,
-                &probe_codegen,
-                &dirs,
-                crate::cmd::configure::interface_search_path_for(root).as_deref(),
-                crate::message_bound_knobs::SeedBasis::ClosureAllowed,
+    // Issue 2862 -- an owned entry with no model (no launch, no
+    // `[[component]]` row) is its own program: its closure is the entry
+    // package and the workspace packages it `<depend>`s on, the closure a
+    // generated app's seed reads over its launched packages.
+    let without_model = crate::cmd::entity_census::owned_entry_without_model(bringup_dir, image);
+    // And when the census sizes it, its entities are the census's (the
+    // fragment the module hook records, the same inventory's `to_cmake`) and
+    // its bound tables are its own package's: it registers no component, so
+    // the metadata probe priced none of its types.
+    if without_model && crate::cmd::entity_census::owned_entry_census_applies(bringup_dir, app) {
+        let seeded = (|| {
+            let decl = crate::cmd::sizing_descriptor::owned_declaration(
+                bringup_dir,
+                image_id,
+                app,
+                Some(root),
             )
-        });
+            .map_err(|e| crate::resolve::NotDerived::Failed(format!("{e:#}")))?;
+            let inv = decl.inventory.ok_or_else(|| {
+                crate::resolve::NotDerived::NothingDeclared(
+                    "the owned entry's census was not taken".to_string(),
+                )
+            })?;
+            let mut dirs =
+                owned_entry_closure_dirs(root, app).map_err(crate::resolve::NotDerived::Failed)?;
+            dirs.push(app.to_path_buf());
+            crate::message_bound_knobs::write_owned_west_seed(
+                resolved_dir,
+                app,
+                &dirs,
+                &inv.to_cmake(),
+                decl.system.ros_edition.as_deref(),
+                crate::cmd::configure::interface_search_path_for(root).as_deref(),
+            )
+        })();
+        match seeded {
+            Ok(p) => eprintln!("nros build:   message bounds seeded -> {}", p.display()),
+            Err(nd) => crate::resolve::report_not_derived(
+                "message bounds not seeded",
+                &qualified_in(bringup_dir, image_id),
+                &nd,
+            )?,
+        }
+        return Ok(());
+    }
+    let node_dirs = if without_model {
+        owned_entry_closure_dirs(root, app).map_err(crate::resolve::NotDerived::Failed)
+    } else {
+        image_launch_node_dirs(root, bringup_dir, image, stale)
+            .map_err(crate::resolve::NotDerived::from)
+    };
+    let seeded = node_dirs.and_then(|mut dirs| {
+        if !dirs.iter().any(|d| d == app) {
+            dirs.push(app.to_path_buf());
+        }
+        // The probe generates per language, and a table prices a TYPE, so
+        // either language's table is the same bound. A hand-written entry's
+        // language is its own (`nano_ros_add_executable(... TYPED)` is C++
+        // whatever its nodes are written in), so take the language the probe
+        // generated: C++ when it did, else C.
+        let probe_codegen = probe_bound_tables(root, nros_lang::Language::Cpp);
+        crate::message_bound_knobs::write_west_seed(
+            resolved_dir,
+            &probe_codegen,
+            &dirs,
+            crate::cmd::configure::interface_search_path_for(root).as_deref(),
+            crate::message_bound_knobs::SeedBasis::ClosureAllowed,
+        )
+    });
     match seeded.map_err(|nd| {
         crate::cmd::entity_census::owned_entry_declares_nothing(bringup_dir, image, nd)
     }) {

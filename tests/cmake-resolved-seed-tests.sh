@@ -1103,8 +1103,20 @@ log_header "S. the cmake road locates a STALE configure: no seed, no promise"
 FAKE_CLI="$TEST_TMPDIR/fake-nros"
 cat > "$FAKE_CLI" <<'EOF'
 #!/usr/bin/env bash
-# Stands in for `nros`: logs its argv; answers `configure` and `locate`.
+# Stands in for `nros`: logs its argv; answers `configure`, `locate` and the
+# image facts of a bringup under `<ws>/src/` (issue 2862: its workspace and
+# qualified image).
 printf '%s\n' "$*" >> "$FAKE_NROS_LOG"
+if [ "$1 $2 $3" = "dev image facts" ]; then
+    p="$(dirname "$6")"
+    if [ "$(basename "$p")" = src ]; then
+        echo "set(NROS_IMAGE_QUALIFIED \"$(basename "$6"):$4\")"
+        echo "set(NROS_IMAGE_WORKSPACE \"$(dirname "$p")\")"
+        exit 0
+    fi
+    echo "the bringup $6 is in no workspace" >&2
+    exit 1
+fi
 case "$1" in
     configure) echo "configure: up to date (1 image(s))" ;;
     locate)
@@ -1178,10 +1190,16 @@ hook_project() { # <dir> <generated> -> the project `nros configure` was run on
     : > "$FAKE_NROS_LOG"
     cat > "$TEST_TMPDIR/hook-project.cmake" <<EOF
 include("$PROJECT_ROOT/zephyr/cmake/nros_image_kconfig.cmake")
-_nros_image_kconfig_configure("$FAKE_CLI" "\${DIR}" img "\${GEN}")
+set(_ws "")
+set(_q "")
+set(_e "")
+if(GEN)
+    _nros_image_kconfig_workspace(_ws _q _e "$FAKE_CLI" "\${DIR}" img)
+endif()
+_nros_image_kconfig_configure("$FAKE_CLI" "\${DIR}" img "\${GEN}" "\${_ws}" "\${_q}" "\${_e}")
 EOF
     cmake -DDIR="$1" -DGEN="$2" -P "$TEST_TMPDIR/hook-project.cmake" >/dev/null 2>&1
-    sed -n 's/^configure \([^ ]*\) --image img$/\1/p' "$FAKE_NROS_LOG" | head -1
+    sed -n 's/^configure \([^ ]*\) --image \([^ ]*:\)\{0,1\}img$/\1/p' "$FAKE_NROS_LOG" | head -1
 }
 check
 got="$(hook_project "$HOOK_WS/src/my_leaf" FALSE)"

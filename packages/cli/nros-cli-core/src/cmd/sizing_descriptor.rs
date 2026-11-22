@@ -1063,20 +1063,16 @@ pub(crate) fn owned_not_taken_declaration(
                     .display()
             )
         })?;
-    let bringup_name = bringup
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    // Issue 2862 -- the census is keyed on the bringup's NAME, which a
+    // nested bringup's directory need not spell.
+    let bringup_name = crate::cmd::entity_census::bringup_key(bringup);
     let pkg_name = pkg
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let ws = workspace.map(std::path::Path::to_path_buf).or_else(|| {
-        bringup
-            .parent()
-            .and_then(std::path::Path::parent)
-            .map(Into::into)
-    });
+    let ws = workspace
+        .map(std::path::Path::to_path_buf)
+        .or_else(|| nros_orchestration_ir::model_location::workspace_root(bringup).ok());
     let cause = ws
         .and_then(|ws| crate::cmd::entity_census::owned_census_not_taken(&ws, &bringup_name, image))
         .unwrap_or_else(|| "this configure did not take it".to_string());
@@ -1174,18 +1170,13 @@ pub(crate) fn owned_declaration(
                     .display()
             )
         })?;
-    let bringup_name = bringup
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    // Issue 2862 -- keyed on the bringup's NAME (see `bringup_key`).
+    let bringup_name = crate::cmd::entity_census::bringup_key(bringup);
     let ws = match workspace {
         Some(w) => w.to_path_buf(),
-        // `<ws>/src/<bringup>` -- where every bringup sits.
-        None => bringup
-            .parent()
-            .and_then(std::path::Path::parent)
-            .map(std::path::Path::to_path_buf)
-            .ok_or_else(|| eyre::eyre!("{}: no workspace above it", bringup.display()))?,
+        // Issue 2862 -- the one rule, which also finds a nested bringup's.
+        None => nros_orchestration_ir::model_location::workspace_root(bringup)
+            .map_err(|e| eyre::eyre!(e))?,
     };
     let pkg_name = pkg
         .file_name()

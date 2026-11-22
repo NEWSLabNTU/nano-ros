@@ -357,6 +357,9 @@ pub struct GenerateCStandaloneConfig {
     /// Explicit `nros-codegen.toml` path (RFC-0033); discovered from the
     /// manifest dir when `None`.
     pub codegen_config: Option<PathBuf>,
+    /// The interface search path (`NROS_INTERFACE_SEARCH_PATH`'s spelling),
+    /// for a caller that knows its workspace; `None` reads the environment.
+    pub interface_search_path: Option<String>,
 }
 
 /// Configuration for C++ code generation
@@ -1804,7 +1807,10 @@ fn standalone_interface_packages(
             pkg_xml.all_dependencies()
         );
     }
-    let index = load_index_with_fallback(config.verbose)?;
+    let index = match &config.interface_search_path {
+        Some(p) => load_index_with_search_path(Some(p), config.verbose)?,
+        None => load_index_with_fallback(config.verbose)?,
+    };
     let all_deps =
         resolve_transitive_dependencies(&index, pkg_xml.all_dependencies(), config.verbose)?;
     filter_interface_packages(&index, &all_deps, config.verbose)

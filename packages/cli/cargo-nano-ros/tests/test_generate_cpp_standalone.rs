@@ -59,6 +59,7 @@ fn standalone(manifest_dir: &TempDir, out: &Path) {
         verbose: false,
         ros_edition: "humble".to_string(),
         codegen_config: None,
+        interface_search_path: None,
     })
     .expect("standalone C++ generation");
 }

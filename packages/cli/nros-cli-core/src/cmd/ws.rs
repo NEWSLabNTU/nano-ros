@@ -2653,12 +2653,23 @@ fn synthesise_bringup_launch(bringup: &Path) -> Result<Option<PathBuf>> {
     {
         return Ok(None);
     }
-    let Some(dir) = model_location::generated_launch_dir(bringup) else {
-        return Ok(None);
-    };
     let text = nros_system_include::read_to_string(&system)
         .wrap_err_with(|| format!("read {}", system.display()))?;
     let rows = component_rows(&text).map_err(|e| eyre::eyre!("{}: {e}", system.display()))?;
+    let Some(dir) = model_location::generated_launch_dir(bringup) else {
+        // Issue 2862 -- a launch to generate and no workspace to put it in is
+        // refused, naming why, rather than written beside nothing.
+        if !rows.is_empty() {
+            let why = model_location::workspace_root(bringup)
+                .err()
+                .unwrap_or_default();
+            eyre::bail!(
+                "{}: cannot generate its launch file: {why}",
+                system.display()
+            );
+        }
+        return Ok(None);
+    };
     // RFC-0071 D19 — a bringup whose every image names an OWNED entry runs
     // that entry's own `main`; there is nothing to launch and nothing to say.
     let all_owned = text.parse::<toml::Table>().ok().is_some_and(|t| {

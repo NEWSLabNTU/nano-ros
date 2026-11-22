@@ -84,6 +84,9 @@ printf '%s\n' \
     'printf "%s\n" "$*" >> "$STANDIN_LOG"' \
     'case "$1 $2 $3" in' \
     '  "dev image leaf-system") echo "NROS_LEAF_IMAGE=default_img" ;;' \
+    '  "dev image facts") p="$(dirname "$6")"' \
+    '     if [ "$(basename "$p")" = src ]; then echo "set(NROS_IMAGE_QUALIFIED \"$(basename "$6"):$4\")"; echo "set(NROS_IMAGE_WORKSPACE \"$(dirname "$p")\")";' \
+    '     else echo "the bringup $6 is in no workspace" >&2; exit 1; fi ;;' \
     '  "locate configured "*) echo "set(NROS_LOCATE_RESOLVED \"\")"' \
     '     if [ -n "${STANDIN_INPUTS:-}" ]; then echo "set(NROS_LOCATE_INPUTS \"$STANDIN_INPUTS\")"; fi' \
     '     if [ -n "${STANDIN_STALE:-}" ]; then echo "set(NROS_LOCATE_STALE \"edited\")";' \
@@ -322,18 +325,26 @@ o_project() { # <dir> <generated>
     : > "$CALLS"
     printf '%s\n' \
         "include(\"$PROJECT_ROOT/zephyr/cmake/nros_image_kconfig.cmake\")" \
-        "_nros_image_kconfig_configure(\"$STANDIN\" \"\${DIR}\" img \"\${GEN}\")" \
+        'set(_ws "")' 'set(_q "")' 'set(_e "")' \
+        "if(GEN)" \
+        "    _nros_image_kconfig_workspace(_ws _q _e \"$STANDIN\" \"\${DIR}\" img)" \
+        "endif()" \
+        "_nros_image_kconfig_configure(\"$STANDIN\" \"\${DIR}\" img \"\${GEN}\" \"\${_ws}\" \"\${_q}\" \"\${_e}\")" \
         > "$TEST_TMPDIR/o.cmake"
     STANDIN_LOG="$CALLS" cmake -DDIR="$1" -DGEN="$2" -P "$TEST_TMPDIR/o.cmake" >/dev/null 2>&1
-    sed -n 's/^configure \([^ ]*\) --image img$/\1/p' "$CALLS" | head -1
+    sed -n 's/^configure \([^ ]*\) --image \([^ ]*:\)\{0,1\}img$/\1/p' "$CALLS" | head -1
 }
 check
 got_leaf="$(o_project "$O_WS/src/leaf" FALSE)"
 got_gen="$(o_project "$O_WS/src/bringup" TRUE)"
-if [ "$got_leaf" = "$O_WS/src/leaf" ] && [ "$got_gen" = "$O_WS" ]; then
-    log_success "standalone leaf -> itself; generated app -> its workspace"
+# Issue 2862 -- the workspace and the qualified image are the image facts'
+# answer (`dev image facts`), and the image it configures there is qualified
+# with the bringup's name: two bringups of one workspace may share an image id.
+gen_image="$(sed -n 's/^configure [^ ]* --image \([^ ]*\)$/\1/p' "$CALLS" | head -1)"
+if [ "$got_leaf" = "$O_WS/src/leaf" ] && [ "$got_gen" = "$O_WS" ] && [ "$gen_image" = "bringup:img" ]; then
+    log_success "standalone leaf -> itself; generated app -> its workspace, image qualified"
 else
-    fail "case O: leaf '$got_leaf' (want $O_WS/src/leaf), generated '$got_gen' (want $O_WS)"
+    fail "case O: leaf '$got_leaf' (want $O_WS/src/leaf), generated '$got_gen' (want $O_WS), image '$gen_image' (want bringup:img)"
 fi
 # Issue 2395 -- a generated application whose bringup is NOT under `src/` (a
 # flat workspace) has no project `nros configure` can take: the hook runs no
