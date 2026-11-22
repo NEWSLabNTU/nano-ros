@@ -1,11 +1,11 @@
 # Phase 573 — a callback that calls back into its executor is sound
 
-**Status (2026-11-22). OPEN: W1, W2, W2b, W5a, W5b, W5c and W5e are done; W3, W4 and W5d are open.** Fixes
+**Status (2026-11-22). OPEN: W1, W2, W2b, W5a, W5b, W5c, W5d and W5e are done; W3 and W4 are open.** Fixes
 [issue 2675](../issues/2675-callback-reentry-aliases-executor.md) by amending
 [RFC-0108](../design/0108-executor-preemption-levels.md) ("Re-entry from a
 callback"). Ahead of [phase-572](archived/phase-572-rust-component-graph-query.md),
 whose W2 waits on it. Owner: nros 241 for W2b, W3 and W4; nros 133 for
-W5d, and for RFC-0108 D9 and the review of each item.
+W5d (done), and for RFC-0108 D9 and the review of each item.
 
 ## Why
 
@@ -198,7 +198,7 @@ test that trips it.
 
 ### W5d — A sized C subscription registration refuses an undersized buffer
 
-- **Status:** OPEN (user ruling 2026-11-19: option B)
+- **Status:** DONE (2026-11-19, `21dd86d85a`; user ruling 2026-11-19: option B). As built: `message_size`, appended to the generated descriptor with a `_Static_assert` in the C pack; `rclc_executor_add_subscription_sized` and `rclc_executor_add_subscription_with_context_sized`; ledger rows; `tests/run/sized_subscription.c`. The descriptor is cbindgen's, so there is no hand mirror to keep in step.
 
 `rclc_executor_add_subscription[_with_context]` take rclc's exact arguments,
 so the executor deserialises into `msg` with no size to check it against.
