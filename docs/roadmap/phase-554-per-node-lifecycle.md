@@ -353,13 +353,44 @@ Acceptance:
 
 ### W6 — Managed publishers follow the node's state (D3, Q2)
 
-Status: OPEN. Gate: W0 item 1 for the book's wording only, not for the
+Status: LANDED in code (2026-11-23), Rust, C and C++; acceptance waits on
+W9's cell. Gate: W0 item 1 for the book's wording only, not for the
 behaviour.
 
 - Every publisher a managed node creates is activated when the node enters
   `active` and deactivated when it leaves, on every distro (Q2).
 - While inactive, `publish` sends nothing and returns success, logging once.
 - Subscriptions, services, timers and clients are not gated.
+
+How it is built: one `PublishGate` byte per node record (the node table is
+carved from the executor's backing, so it never moves), written by the
+node's machine in `trigger_transition`, the one place a state changes. The
+gate opens BEFORE `on_activate` runs, so a publish inside the callback goes
+out (W7's acceptance needs that), and is set to "state is active" after
+every transition, so a failed activation closes it again. Every publisher
+created on a node holds a `PublisherGate` taken at creation, so one made
+before its node became managed (the component road) still follows it. Rust,
+C (`rcl_publisher_t::_gate`) and C++ (`CppPublisher`, storage
+`NROS_CPP_PUBLISHER_STORAGE_SIZE`) hold the same type. `/rosout`,
+`transition_event`, `parameter_events` and diagnostics are not gated.
+
+Measured: nros-node's `managed_publishers` tests (silent while unconfigured
+and inactive, `on_activate`'s publish sent, stops at deactivate, resumes at
+the next activate, a failed activation stays silent, a plain node's
+publisher never gated), which fail with the gate forced open. C and C++ are
+compile- and clippy-checked only: no lane runs a C or C++ image with a
+managed node yet, which is what W9's cells add.
+
+Still open:
+
+- The C++ header's own `rclcpp_lifecycle::LifecyclePublisher` keeps its
+  per-entity flag, flipped only after the activate callback SUCCEEDS. So a
+  publish through it inside `on_activate` is still dropped by the header
+  even though the runtime gate is open. Retire the flag, or flip it before
+  the callback, when W9's C++ cell runs.
+- The C and C++ change-state shims read the executor-scoped machine, so with
+  several managed nodes they reach the wrong one. That is W1/W2's, not this
+  item's, and the gate follows whichever machine actually transitions.
 
 Acceptance: W9's silent-until-active cell.
 
