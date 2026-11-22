@@ -12418,6 +12418,7 @@ mod multi_image_drive_tests {
     /// failure carries that log, so the explanation can read it.
     #[test]
     fn a_proxied_failure_carries_its_log() {
+        let _serial = crate::builder::handoff::proxy_test_lock();
         let tmp = tempfile::tempdir().expect("tempdir");
         let log = tmp.path().join("cmake.log");
         let mut h = Handoff::new(

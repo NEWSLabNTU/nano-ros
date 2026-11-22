@@ -281,6 +281,21 @@ pub fn wait(
     Ok((run_inherited(handoff)?, log.to_path_buf()))
 }
 
+/// Serialises the tests that run a real proxy.
+///
+/// The signal counters are process-wide, as they must be: a real Ctrl-C is
+/// forwarded to EVERY proxy running in the process (parallel package plans).
+/// A test that simulates one by bumping a counter therefore reaches every
+/// other proxy a concurrent test has running too. Under nextest each test is
+/// its own process, but under libtest (`just check cli-tests`) they share one,
+/// and the interrupt test killed the resize test's child.
+#[cfg(test)]
+pub(crate) fn proxy_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// The pty proxy behind [`wait`].
 #[cfg(unix)]
 mod proxy {
@@ -799,6 +814,7 @@ mod tests {
         script: &str,
         mode: proxy::Mode,
     ) -> (std::process::ExitStatus, Vec<u8>, Vec<u8>, Vec<u8>) {
+        let _serial = proxy_test_lock();
         let dir = tempfile::tempdir().unwrap();
         let log = dir.path().join("sub/cargo.log");
         let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -872,6 +888,7 @@ mod tests {
     #[test]
     fn a_resize_reaches_the_tool() {
         use std::sync::atomic::Ordering;
+        let _serial = proxy_test_lock();
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("started");
         let script = format!(
@@ -912,6 +929,7 @@ mod tests {
     #[test]
     fn an_interrupt_is_forwarded_to_the_tools_process_group() {
         use std::sync::atomic::Ordering;
+        let _serial = proxy_test_lock();
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("started");
         // A foreground grandchild in the tool's process group, as ninja's
