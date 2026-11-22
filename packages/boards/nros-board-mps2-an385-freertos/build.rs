@@ -57,7 +57,7 @@ fn main() {
             // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS.
             nros_cc_flags::gcc_safe_frame_pointer(&mut lan9118);
             nros_cc_flags::header_deps::track_header_deps(&mut lan9118);
-            lan9118.compile("lan9118_lwip");
+            nros_cc_flags::compile_commands::compile(&mut lan9118, "lan9118_lwip");
 
             // --- Tonbandgeraet trace library (opt-in via NROS_TRACE=1) ---
             if trace_enabled() {
@@ -78,7 +78,7 @@ fn main() {
                 tband.file(tband_dir.join("src/tband_backend.c"));
                 nros_cc_flags::gcc_safe_frame_pointer(&mut tband);
                 nros_cc_flags::header_deps::track_header_deps(&mut tband);
-                tband.compile("tband");
+                nros_cc_flags::compile_commands::compile(&mut tband, "tband");
                 println!("cargo:rustc-link-lib=static=tband");
                 println!("cargo:rustc-cfg=nros_trace");
             }

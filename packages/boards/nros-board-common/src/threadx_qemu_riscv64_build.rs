@@ -183,7 +183,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     port_asm.file(manifest_dir.join("c").join("tx_initialize_low_level.S"));
 
     nros_cc_flags::header_deps::track_header_deps(&mut port_asm);
-    port_asm.compile("threadx_port_asm");
+    nros_cc_flags::compile_commands::compile(&mut port_asm, "threadx_port_asm");
 
     // ---- Build NetX Duo ----
     let mut netxduo = cc::Build::new();
@@ -210,7 +210,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     netxduo.file(netx_dir.join("addons/BSD/nxd_bsd.c"));
 
     nros_cc_flags::header_deps::track_header_deps(&mut netxduo);
-    netxduo.compile("netxduo");
+    nros_cc_flags::compile_commands::compile(&mut netxduo, "netxduo");
 
     // ---- Build virtio-net NetX Duo driver ----
     let mut virtio = cc::Build::new();
@@ -234,7 +234,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     virtio.file(virtio_driver_dir.join("src/virtio_net_nx.c"));
 
     nros_cc_flags::header_deps::track_header_deps(&mut virtio);
-    virtio.compile("virtio_net_netx");
+    nros_cc_flags::compile_commands::compile(&mut virtio, "virtio_net_netx");
 
     // ---- Build C glue ----
     // Phase 152.2.B.1 — shared `tx_application_define` stub lives
@@ -297,7 +297,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     glue.file(manifest_dir.join("c/hwtimer.c"));
 
     nros_cc_flags::header_deps::track_header_deps(&mut glue);
-    glue.compile("glue");
+    nros_cc_flags::compile_commands::compile(&mut glue, "glue");
 
     // ---- Phase 212.M-F.10.3 — NROS_APP_CONFIG source-side emission ----
     //
@@ -594,7 +594,7 @@ const nros_app_config_t NROS_APP_CONFIG = {
     build.include(&nros_c_include);
     build.file(&src_path);
     nros_cc_flags::header_deps::track_header_deps(&mut build);
-    build.compile("nros_app_config_def");
+    nros_cc_flags::compile_commands::compile(&mut build, "nros_app_config_def");
 }
 
 /// The board's app-thread stack when nothing states one: the value its C

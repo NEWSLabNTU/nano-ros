@@ -57,11 +57,14 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-COMPILES = re.compile(r"\.(?:try_)?compile\(")
-TRACK = re.compile(r"\btrack_header_deps\s*\(")
+# issue 2658 -- `nros_cc_flags::compile_commands::compile` IS a cc-rs compile,
+# and it adds `-MMD` itself, so it counts as a compile AND a track.
+WRAPPED = r"\bcompile_commands::compile\s*\("
+COMPILES = re.compile(r"\.(?:try_)?compile\(|" + WRAPPED)
+TRACK = re.compile(r"\btrack_header_deps\s*\(|" + WRAPPED)
 EMIT = re.compile(r"\bemit_header_deps\s*\(")
-# The helper's own definitions are not call sites.
-DEFINITION = re.compile(r"\bpub fn (track|emit)_header_deps\b")
+# The helpers' own definitions are not call sites.
+DEFINITION = re.compile(r"\bpub fn (track|emit)_header_deps\b|\bpub fn compile\(build: &mut cc::Build")
 
 # path -> reason. Every build here goes through one configure closure/fn that
 # calls `track_header_deps`, so the per-site count does not apply.

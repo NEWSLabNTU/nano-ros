@@ -65,6 +65,7 @@
 
 pub mod app_main;
 pub mod backends;
+pub mod compile_commands;
 pub mod header_deps;
 pub mod libc_libs;
 
@@ -125,7 +126,7 @@ pub const DISABLE_ENV: &str = "NROS_CC_STRICT_DECLS";
 /// let mut build = cc::Build::new();
 /// build.file("src/platform.c");
 /// nros_cc_flags::strict_decls(&mut build);
-/// build.compile("platform");
+/// nros_cc_flags::compile_commands::compile(&mut build, "platform");
 /// ```
 pub fn strict_decls(build: &mut cc::Build) -> &mut cc::Build {
     // issue 0478 — applied HERE, not at each call site, for the same reason the

@@ -16,7 +16,7 @@
 //! configure_arch(&mut build);
 //! add_threadx_kernel_sources(&mut build, &threadx_dir);
 //! add_threadx_port_sources(&mut build, &threadx_dir, "linux/gnu");
-//! build.compile("threadx");
+//! nros_cc_flags::compile_commands::compile(&mut build, "threadx");
 //! ```
 //!
 //! `cc` is a transitive dep of `nros-board-common`'s consumers but
@@ -71,7 +71,7 @@ pub fn add_threadx_port_sources(
 /// add_threadx_includes(&mut platform, &threadx_dir, &port_dir, &config_dir);
 /// add_netx_includes(&mut platform, &netx_dir);
 /// nros_board_common::threadx_sources::add_nros_platform_threadx_build(&mut platform);
-/// platform.compile("nros_platform_threadx");
+/// nros_cc_flags::compile_commands::compile(&mut platform, "nros_platform_threadx");
 /// ```
 /// Generic `tx_application_define` stub +
 /// shared FFI setters (`nros_threadx_set_app_callback`,
@@ -104,7 +104,7 @@ pub fn add_threadx_port_sources(
 /// add_threadx_includes(&mut glue, &threadx_dir, &port_dir, &config_dir);
 /// nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue, 64 * 1024);
 /// glue.file(manifest_dir.join("c/board_threadx_linux.c"));
-/// glue.compile("glue");
+/// nros_cc_flags::compile_commands::compile(&mut glue, "glue");
 /// ```
 /// `THREADX_CFLAGS` env wiring.
 ///

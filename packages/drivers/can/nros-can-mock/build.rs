@@ -21,11 +21,13 @@ fn main() {
     let mut build = cc::Build::new();
     nros_cc_flags::strict_decls(&mut build);
     nros_cc_flags::header_deps::track_header_deps(&mut build);
-    build
-        .file(manifest.join("c/frame_check.c"))
-        .include(include)
-        .warnings_into_errors(true)
-        .compile("nros_can_mock_frame_check");
+    nros_cc_flags::compile_commands::compile(
+        build
+            .file(manifest.join("c/frame_check.c"))
+            .include(include)
+            .warnings_into_errors(true),
+        "nros_can_mock_frame_check",
+    );
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     nros_cc_flags::header_deps::emit_header_deps(&out_dir);
 }

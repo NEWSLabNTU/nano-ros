@@ -568,7 +568,7 @@ pub fn run_overlay(overlay: &Overlay<'_>) {
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS.
     nros_cc_flags::gcc_safe_frame_pointer(&mut glue);
     nros_cc_flags::header_deps::track_header_deps(&mut glue);
-    glue.compile("startup");
+    nros_cc_flags::compile_commands::compile(&mut glue, "startup");
     // issue 1580 — every file the board-glue compile OPENED becomes an edge:
     // the board C files, the board + family FreeRTOSConfig.h / lwipopts.h /
     // arch/cc.h (the board copies `#include` the family ones by relative path,
