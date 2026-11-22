@@ -1,0 +1,1 @@
+A C or C++ workspace image whose own `features` or `node_interfaces` differ from the system's is now built with them: it gets a CMake configure and runtime of its own, sized for what it declares. An image that opts out of the stock node interfaces no longer pays for them in RAM or flash. Images that state the system's features keep sharing one configure, as before.
