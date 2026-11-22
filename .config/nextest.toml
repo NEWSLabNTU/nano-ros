@@ -575,15 +575,23 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 # Verify membership with `cargo nextest show-config test-groups`, never by
 # reading the filter.
 # Issue 2105 — this cell runs PAST the 60 s lease (75 s plus boot), which the
-# default 60 s budget would cut short. Its own override, because the group above
-# sets no timeout and the other cells there are cheap.
+# default 60 s budget would cut short. Its own override, ahead of the group's.
 [[profile.default.overrides]]
 filter = "binary(zephyr_cortex_m_qemu) and test(=zephyr_cortex_m_talker_keeps_one_session_past_the_lease)"
 slow-timeout = { period = "120s", terminate-after = 2 }
 
+# Issue 2825 — the slow-timeout. `binary(zephyr)` below is an EXACT name, so
+# none of the 120 s `zephyr` rows reach this binary, and it ran on the default
+# 30 s x 2 = 60 s kill while its cells wait up to 90 s for boot (`BOOT_BUDGET`)
+# and the idle-wake cell up to 90 + 60. A boot slower than 60 s was killed
+# mid-wait, before the test printed what it had collected: a bare TIMEOUT with
+# no output (tier-2 run 44916540238, `zephyr_cortex_m_cpp_zenoh_pubsub_e2e`).
+# The kill must outlast the longest wait, so a slow boot fails as the test's
+# own assertion, with the console.
 [[profile.default.overrides]]
 filter = "binary(zephyr_cortex_m_qemu) or binary(pubsub_zephyr_cortex_m_ros2_interop_e2e)"
 test-group = "zephyr-cortex-m-baked-port"
+slow-timeout = { period = "60s", terminate-after = 3 }
 
 # phase-524 W4c -- the Nucleo-F767ZI's Renode smoke cell waits up to 120 s for
 # its first sample (Renode emulates the M7 well below real time, and the probe
