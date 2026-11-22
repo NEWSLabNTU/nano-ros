@@ -79,9 +79,15 @@ Done:
   64 KiB, and the board states it.
 
 Open:
-- The 64 KiB app stack has not been re-measured on a networked image: the
-  threadx-linux network cells need the veth bridge. Their output now carries
-  the `nros: stack peak` lines to read it from.
+- The 64 KiB app stack, measured on networked images (2026-11-22, an aarch64
+  host, b74a55df19, each Rust pair with its router, about 12 s of traffic,
+  then SIGTERM, one run each): the app thread's peak is 45,888 B (listener and
+  talker), 45,880 B (service server) and 45,904 B (service client). The timer
+  thread's is 6,696 to 6,712 B. On that host the port raises both to 131,200,
+  so the worst app peak is 35 % of the stack it ran on and 70 % of the stated
+  64 KiB. Open: the C and C++ images, and an x86_64 host, have not been
+  measured. The test harness ends images without the termination guard, so
+  the cells print no peak lines; these were run by hand.
 - `nros build`'s stack-floor walk does not reach a host image, and
   threadx-linux stays off `STATING_PLATFORMS`:
   [issue 2834](2834-host-image-stack-floor-walk.md).
