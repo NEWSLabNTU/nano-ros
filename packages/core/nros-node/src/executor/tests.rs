@@ -20763,6 +20763,305 @@ fn a_more_urgent_slot_past_64_dispatches_before_the_slots_below_it() {
     assert_eq!(pass, expected, "rank first, then registration order");
 }
 
+/// Phase-573 W2b, issue 2675 — C callbacks of the service server, raw service
+/// client and buffered subscription that call back into their executor while
+/// the dispatch holds their entry. Each reaches the executor through a raw
+/// pointer, as the FFI does, and drives the pass through `spin_once_raw`.
+mod reentry_entries {
+    use super::*;
+    use portable_atomic::{AtomicPtr, AtomicU32, AtomicUsize, Ordering};
+
+    /// The executor and the server's raw handle the callback reaches, as a C
+    /// `rcl_service_t` carries them.
+    static EXEC: AtomicPtr<Executor<'static>> = AtomicPtr::new(core::ptr::null_mut());
+    static SERVER: AtomicUsize = AtomicUsize::new(usize::MAX);
+    static CALLS: AtomicU32 = AtomicU32::new(0);
+
+    /// A C service callback that asks its own service for its granted QoS
+    /// (`rclc_service_request_subscription_get_actual_qos`), which reads the
+    /// running entry's handle through the executor, then answers.
+    unsafe extern "C" fn reads_its_own_handle(
+        _req: *const u8,
+        _req_len: usize,
+        resp: *mut u8,
+        resp_cap: usize,
+        resp_len: *mut usize,
+        _ctx: *mut core::ffi::c_void,
+    ) -> bool {
+        CALLS.fetch_add(1, Ordering::SeqCst);
+        let p = EXEC.load(Ordering::SeqCst);
+        // SAFETY: the executor outlives the pass; this is the re-entry under
+        // test, as `get_executor` derives it.
+        let exec = unsafe { &*p };
+        // SAFETY: the raw handle of a live service entry.
+        let handle = unsafe { exec.service_server_handle(SERVER.load(Ordering::SeqCst)) }
+            .expect("the running server resolves from its own callback");
+        let _ = nros_rmw::ServiceTrait::request_subscription_actual_qos(handle);
+        let reply = [0x00u8, 0x01, 0x00, 0x00, 0x2a, 0, 0, 0];
+        assert!(resp_cap >= reply.len());
+        // SAFETY: `resp` holds `resp_cap` bytes for this call.
+        unsafe {
+            core::ptr::copy_nonoverlapping(reply.as_ptr(), resp, reply.len());
+            *resp_len = reply.len();
+        }
+        true
+    }
+
+    static C_EXEC: AtomicPtr<Executor<'static>> = AtomicPtr::new(core::ptr::null_mut());
+    static C_CLIENT: AtomicUsize = AtomicUsize::new(usize::MAX);
+    static C_REPLIES: AtomicU32 = AtomicU32::new(0);
+
+    /// Send one request on the raw client the way `rclc_client_send_request_async`
+    /// does: write the entry's handle, record the call, set `pending`.
+    ///
+    /// # Safety
+    /// `exec` is live and `idx` names one of its raw clients.
+    unsafe fn c_send(exec: &mut Executor<'static>, idx: usize) -> i64 {
+        // SAFETY: the caller's contract.
+        let entry = unsafe { exec.service_client_entry_mut(idx) }.expect("the client resolves");
+        let req = [0x00u8, 0x01, 0x00, 0x00, 1, 0, 0, 0];
+        let seq = nros_rmw::ClientTrait::send_request_raw(&mut entry.handle, &req).expect("send");
+        entry.record_send(seq, false);
+        entry.pending = true;
+        seq
+    }
+
+    /// A C response callback that re-sends on its OWN client, the chained
+    /// request pattern: it WRITES the running entry through
+    /// `service_client_entry_mut` while the dispatch has it.
+    unsafe extern "C" fn resends_on_its_own_client(
+        _d: *const u8,
+        _l: usize,
+        _c: *mut core::ffi::c_void,
+    ) {
+        if C_REPLIES.fetch_add(1, Ordering::SeqCst) == 0 {
+            let p = C_EXEC.load(Ordering::SeqCst);
+            // SAFETY: the re-entry under test, as `get_executor` derives it.
+            let _ = unsafe { c_send(&mut *p, C_CLIENT.load(Ordering::SeqCst)) };
+        }
+    }
+
+    #[test]
+    fn a_client_callback_that_resends_on_its_own_client_reenters_soundly() {
+        let mut boxed = Box::new(executor_with_clock(MockSession::new()));
+        let id = boxed
+            .register_service_client_raw(
+                "/w2b_srv",
+                "test/srv/T",
+                "h",
+                Some(resends_on_its_own_client),
+                core::ptr::null_mut(),
+            )
+            .unwrap();
+        let idx = id.to_raw();
+        C_CLIENT.store(idx, Ordering::SeqCst);
+        let reply = {
+            let mut b = [0u8; 256];
+            b[..8].copy_from_slice(&[0x00, 0x01, 0x00, 0x00, 7, 0, 0, 0]);
+            b
+        };
+        // SAFETY: the raw client just registered.
+        let seq = unsafe { c_send(&mut boxed, idx) };
+        // SAFETY: as above; the borrow ends here.
+        unsafe { boxed.service_client_entry_mut(idx) }
+            .unwrap()
+            .handle
+            .load_reply_for(seq, reply, 8);
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+        C_EXEC.store(p, Ordering::SeqCst);
+        // SAFETY: `p` is the only path to the executor.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+        assert_eq!(
+            C_REPLIES.load(Ordering::SeqCst),
+            1,
+            "the first reply was dispatched"
+        );
+        // SAFETY: `p` is live; the borrow ends at the statement.
+        let pending = unsafe { (*p).service_client_entry_mut(idx) }
+            .unwrap()
+            .pending;
+        assert!(pending, "the callback's re-send is in flight");
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+
+    static S_EXEC: AtomicPtr<Executor<'static>> = AtomicPtr::new(core::ptr::null_mut());
+    static S_CLIENT: AtomicUsize = AtomicUsize::new(usize::MAX);
+    static S_CALLS: AtomicU32 = AtomicU32::new(0);
+
+    /// A C service callback that forwards to another service, sending on a
+    /// client of the same executor. `service_client_entry_mut` retags the
+    /// whole arena, the running server's bytes included.
+    unsafe extern "C" fn forwards_on_a_client(
+        _req: *const u8,
+        _req_len: usize,
+        resp: *mut u8,
+        resp_cap: usize,
+        resp_len: *mut usize,
+        _ctx: *mut core::ffi::c_void,
+    ) -> bool {
+        S_CALLS.fetch_add(1, Ordering::SeqCst);
+        // The reply is written FIRST, so the send below reads bytes the
+        // dispatch's own reply buffer has already written.
+        let reply = [0x00u8, 0x01, 0x00, 0x00, 9, 0, 0, 0];
+        assert!(resp_cap >= reply.len());
+        // SAFETY: `resp` holds `resp_cap` bytes for this call.
+        unsafe {
+            core::ptr::copy_nonoverlapping(reply.as_ptr(), resp, reply.len());
+            *resp_len = reply.len();
+        }
+        let p = S_EXEC.load(Ordering::SeqCst);
+        // SAFETY: the re-entry under test.
+        let _ = unsafe { c_send(&mut *p, S_CLIENT.load(Ordering::SeqCst)) };
+        true
+    }
+
+    #[test]
+    fn a_service_callback_that_sends_on_a_client_reenters_soundly() {
+        let mut boxed = Box::new(executor_with_clock(MockSession::new()));
+        let srv = boxed
+            .register_service_raw(
+                "/w2b_fwd",
+                "test/srv/T",
+                "h",
+                forwards_on_a_client,
+                core::ptr::null_mut(),
+            )
+            .unwrap();
+        let cli = boxed
+            .register_service_client_raw(
+                "/w2b_next",
+                "test/srv/T",
+                "h",
+                Some(release_probe_reply),
+                core::ptr::null_mut(),
+            )
+            .unwrap();
+        S_CLIENT.store(cli.to_raw(), Ordering::SeqCst);
+        let mut req = [0u8; 256];
+        req[..8].copy_from_slice(&[0x00, 0x01, 0x00, 0x00, 1, 0, 0, 0]);
+        // SAFETY: the raw handle just registered; the borrow ends here.
+        unsafe { boxed.service_server_handle(srv.to_raw()) }
+            .expect("registered")
+            .load(req, 8);
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+        S_EXEC.store(p, Ordering::SeqCst);
+        // SAFETY: `p` is the only path to the executor.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+        assert_eq!(
+            S_CALLS.load(Ordering::SeqCst),
+            1,
+            "the request was served once"
+        );
+        // SAFETY: `p` is live; the borrow ends at the statement.
+        let pending = unsafe { (*p).service_client_entry_mut(cli.to_raw()) }
+            .unwrap()
+            .pending;
+        assert!(pending, "the forwarded request is in flight");
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+
+    static D_EXEC: AtomicPtr<Executor<'static>> = AtomicPtr::new(core::ptr::null_mut());
+    static D_SUB: AtomicUsize = AtomicUsize::new(usize::MAX);
+    static D_CLIENT: AtomicUsize = AtomicUsize::new(usize::MAX);
+    static D_SAMPLES: AtomicU32 = AtomicU32::new(0);
+
+    /// A C subscription callback that reads its own subscription's handle and
+    /// sends on a client, once per sample of a ring the dispatch is draining:
+    /// the loop uses its entry again after each callback.
+    unsafe extern "C" fn drains_and_reenters(_d: *const u8, _l: usize, _c: *mut core::ffi::c_void) {
+        D_SAMPLES.fetch_add(1, Ordering::SeqCst);
+        let p = D_EXEC.load(Ordering::SeqCst);
+        // SAFETY: the re-entry under test; the borrow ends at the statement.
+        let h = unsafe { (*p).subscription_handle(D_SUB.load(Ordering::SeqCst)) }
+            .expect("the running subscription resolves from its own callback");
+        let _ = nros_rmw::Subscription::has_data(h);
+        // SAFETY: as above.
+        let _ = unsafe { c_send(&mut *p, D_CLIENT.load(Ordering::SeqCst)) };
+    }
+
+    #[test]
+    fn a_subscription_callback_that_reenters_mid_drain_is_sound() {
+        let mut boxed = Box::new(executor_with_clock(MockSession::new()));
+        let sub = boxed
+            .add_arena_subscription_c_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+                None,
+                "/w2b_topic",
+                "test/msg/TestMsg",
+                "test_hash",
+                QoSProfile::default().keep_last(4),
+                drains_and_reenters,
+                core::ptr::null_mut(),
+                None,
+                96,
+            )
+            .unwrap();
+        let cli = boxed
+            .register_service_client_raw(
+                "/w2b_next",
+                "test/srv/T",
+                "h",
+                Some(release_probe_reply),
+                core::ptr::null_mut(),
+            )
+            .unwrap();
+        D_SUB.store(sub.to_raw(), Ordering::SeqCst);
+        D_CLIENT.store(cli.to_raw(), Ordering::SeqCst);
+        for v in [1u8, 2, 3] {
+            let mut m = [0u8; 256];
+            m[..8].copy_from_slice(&[0x00, 0x01, 0x00, 0x00, v, 0, 0, 0]);
+            // SAFETY: the raw handle just registered; the borrow ends here.
+            unsafe { boxed.subscription_handle(sub.to_raw()) }
+                .expect("registered")
+                .load(m, 8);
+        }
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+        D_EXEC.store(p, Ordering::SeqCst);
+        // SAFETY: `p` is the only path to the executor.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+        assert!(
+            D_SAMPLES.load(Ordering::SeqCst) >= 2,
+            "the ring drained more than one sample in one dispatch, so the loop reused its entry"
+        );
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+
+    #[test]
+    fn a_service_callback_that_reads_its_own_entry_reenters_soundly() {
+        let mut boxed = Box::new(executor_with_clock(MockSession::new()));
+        let id = boxed
+            .register_service_raw(
+                "/w2b_srv",
+                "test/srv/T",
+                "h",
+                reads_its_own_handle,
+                core::ptr::null_mut(),
+            )
+            .unwrap();
+        SERVER.store(id.to_raw(), Ordering::SeqCst);
+        let mut req = [0u8; 256];
+        req[..8].copy_from_slice(&[0x00, 0x01, 0x00, 0x00, 1, 0, 0, 0]);
+        // SAFETY: the raw handle just registered; the borrow ends here.
+        unsafe { boxed.service_server_handle(id.to_raw()) }
+            .expect("registered")
+            .load(req, 8);
+        // From here on the executor is reached only through `p`.
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+        EXEC.store(p, Ordering::SeqCst);
+        // SAFETY: `p` is the only path to the executor.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+        assert_eq!(
+            CALLS.load(Ordering::SeqCst),
+            1,
+            "the request was served once"
+        );
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+}
+
 /// Phase-573 W2b, issue 2675 — a typed service client whose reply callback
 /// sends the NEXT request on the same client: the ordinary request chain,
 /// written with nothing but the safe API. `ServiceClientCallback::call`
