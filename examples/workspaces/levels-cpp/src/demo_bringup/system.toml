@@ -30,11 +30,9 @@ name = "lazy"
 
 # phase-162 -- the real-time verification images (the three `linux_*` images
 # below), Linux only. Each picks its nodes with its own launch file; the
-# components it does not launch are not in it. One bringup rather than three:
-# every Linux cmake image of this workspace builds in one cmake tree
-# (`build/posix-zenoh-linux/cmake`), and a second bringup would re-configure
-# it from under the first. The c workspace's service and action images are the
-# precedent.
+# components it does not launch are not in it. One bringup rather than three,
+# so the node packages and launch files live in one place; each image still
+# builds in a cmake tree of its own (`build/<coordinate>-demo_bringup-<image>`).
 #
 # W2, RFC-0002 S1 on levels (s1.launch.xml): `attitude`, a 1 kHz loop with a
 # 1 ms deadline, and `load`, S1's 5 ms best-effort telemetry at 10 Hz. Neither

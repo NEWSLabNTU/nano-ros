@@ -17,10 +17,7 @@
 //! → tier-aware skip/fail.
 
 fn assert_entry(id: &str) -> nros_tests::TestResult<()> {
-    let exe = nros_tests::fixtures::require_cmake_fixture(
-        id,
-        "build/posix-zenoh-linux-demo_bringup-linux/cmake/linux_entry",
-    )?;
+    let exe = nros_tests::fixtures::require_cmake_fixture_output(id)?;
     assert!(
         exe.is_file(),
         "{id}: missing Entry binary at {}",

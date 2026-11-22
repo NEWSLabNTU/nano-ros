@@ -37,10 +37,7 @@ where
 
 #[test]
 fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestResult<()> {
-    let exe = nros_tests::fixtures::require_cmake_fixture(
-        "cpp_robot_entry",
-        "build/posix-zenoh-linux-demo_bringup-linux/cmake/linux_entry",
-    )?;
+    let exe = nros_tests::fixtures::require_cmake_fixture_output("cpp_robot_entry")?;
     assert!(
         exe.is_file(),
         "robot_entry executable missing at {}",
@@ -166,10 +163,7 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
 
     let zenohd = zenohd_unique;
     nros_tests::fixtures::require_zenohd();
-    let exe = nros_tests::fixtures::require_cmake_fixture(
-        "cpp_robot_entry",
-        "build/posix-zenoh-linux-demo_bringup-linux/cmake/linux_entry",
-    )?;
+    let exe = nros_tests::fixtures::require_cmake_fixture_output("cpp_robot_entry")?;
     let locator = zenohd.locator();
 
     let spawn = |name: &str| -> nros_tests::TestResult<ManagedProcess> {
@@ -237,10 +231,7 @@ fn multi_node_workspace_cpp_per_node_graph_nodes(
     require_zenohd();
     nros_tests::ros2::require_ros2();
 
-    let exe = nros_tests::fixtures::require_cmake_fixture(
-        "cpp_robot_entry",
-        "build/posix-zenoh-linux-demo_bringup-linux/cmake/linux_entry",
-    )?;
+    let exe = nros_tests::fixtures::require_cmake_fixture_output("cpp_robot_entry")?;
 
     let locator = zenohd_unique.locator();
 
