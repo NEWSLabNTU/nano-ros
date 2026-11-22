@@ -4,7 +4,13 @@
 //! ```text
 //!   nros pin                      what does this project pin, and what is it made of
 //!   nros pin <store version>      move the pin — reporting the codegen delta FIRST
+//!   nros pin --rev <sha> [--git <url>]   pin one commit (issue 2770)
+//!   nros pin --path <dir>         pin a nano-ros checkout on this machine
 //! ```
+//!
+//! Each form replaces the other two, so the file always names exactly one.
+//! In an automated session (`$CI`) every form refuses to write, the rule
+//! `nros build` already keeps (RFC-0097 D11): a pin is a source edit.
 //!
 //! ## The one question this verb exists to answer
 //!
@@ -45,6 +51,8 @@ use std::path::{Path, PathBuf};
 use clap::Args as ClapArgs;
 use eyre::{Result, bail};
 
+use nros_launcher::session::Session;
+
 use crate::orchestration::{
     pin::{self, Pin},
     release_manifest::{self, CodegenDelta, Found},
@@ -62,8 +70,24 @@ pub struct Args {
     // `version` collides with it — a startup `debug_assert` panic on this verb
     // alone, in every build. `nros toolchain uninstall` carries the same note
     // for the same reason.
-    #[arg(id = "pin-version", value_name = "VERSION")]
+    #[arg(id = "pin-version", value_name = "VERSION", conflicts_with_all = ["rev", "path"])]
     pub version: Option<String>,
+
+    /// Pin one commit instead: the full 40-hex sha. A branch, a tag or a
+    /// short sha is refused, since none of them is sure to name the same
+    /// commit tomorrow.
+    #[arg(long, value_name = "SHA", conflicts_with = "path")]
+    pub rev: Option<String>,
+
+    /// The repository `--rev` is a commit of. Default: the pin's current
+    /// `git`, else the nano-ros repository.
+    #[arg(long, value_name = "URL", requires = "rev")]
+    pub git: Option<String>,
+
+    /// Pin a nano-ros checkout on this machine instead: the root of a clone.
+    /// The pin records it relative to the pin file.
+    #[arg(long, value_name = "DIR")]
+    pub path: Option<PathBuf>,
 
     /// The project directory. Defaults to the working directory; the pin is
     /// searched for at or above it, the way cargo finds a workspace root.
@@ -78,6 +102,91 @@ pub struct Args {
     /// Report the delta and write nothing.
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// The pin a bump writes: one of the three forms, already checked.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Target {
+    /// A store version.
+    Release(String),
+    /// One commit of a repository.
+    Git { url: String, rev: String },
+    /// A checkout: `written` is the `path` the file records, `abs` the
+    /// directory it names.
+    Path { written: String, abs: PathBuf },
+}
+
+impl Target {
+    /// The key [`Pin::version`] reads back for this form.
+    #[must_use]
+    pub fn key(&self) -> String {
+        match self {
+            Target::Release(v) => v.clone(),
+            Target::Git { rev, .. } => pin::git_store_name(rev),
+            Target::Path { abs, .. } => format!("path:{}", abs.display()),
+        }
+    }
+
+    /// What the pin file gets.
+    #[must_use]
+    pub fn spec(&self) -> pin::PinSpec {
+        match self {
+            Target::Release(v) => pin::PinSpec::Release(v.clone()),
+            Target::Git { url, rev } => pin::PinSpec::Git {
+                url: url.clone(),
+                rev: rev.clone(),
+            },
+            Target::Path { written, .. } => pin::PinSpec::Path(written.clone()),
+        }
+    }
+
+    /// Whether `current` already names exactly this: the same form and the
+    /// same value, so a git pin of the same commit from another URL moves.
+    #[must_use]
+    pub fn is(&self, current: &Pin) -> bool {
+        match (self, &current.source) {
+            (Target::Release(v), pin::PinSource::Release) => current.version == *v,
+            (Target::Git { url, rev }, pin::PinSource::Git { url: u, rev: r }) => {
+                url == u && rev == r
+            }
+            (Target::Path { abs, .. }, pin::PinSource::Path(d)) => abs == d,
+            _ => false,
+        }
+    }
+}
+
+/// The checked target of the arguments, or `None` for a bare report.
+///
+/// `--rev` takes the loader's own rule ([`pin::full_rev`]); `--path` is
+/// recorded relative to `project`, where the pin is written, and refused
+/// unless it is a nano-ros checkout root ([`pin::path_spec`]).
+pub fn target_of(
+    project: &Path,
+    current: Option<&Pin>,
+    version: Option<&str>,
+    rev: Option<&str>,
+    git: Option<&str>,
+    path: Option<&Path>,
+) -> Result<Option<Target>> {
+    if let Some(rev) = rev {
+        let rev = pin::full_rev(rev)
+            .map_err(|what| eyre::eyre!("`--rev {rev}` looks like {what}. {}", pin::REV_RULE))?;
+        let url = match (git, current.map(|c| &c.source)) {
+            (Some(u), _) => u.to_string(),
+            (None, Some(pin::PinSource::Git { url, .. })) => url.clone(),
+            (None, _) => pin::DEFAULT_GIT_URL.to_string(),
+        };
+        if url.is_empty() {
+            bail!("`--git` names an empty URL.");
+        }
+        return Ok(Some(Target::Git { url, rev }));
+    }
+    if let Some(dir) = path {
+        let written = pin::path_spec(project, dir)?;
+        let abs = std::fs::canonicalize(dir)?;
+        return Ok(Some(Target::Path { written, abs }));
+    }
+    Ok(version.map(|v| Target::Release(v.to_string())))
 }
 
 /// Everything the verb learned before it decided anything — gathered once, so
@@ -118,9 +227,10 @@ pub fn survey(project: &Path, root: &Path, target: Option<&str>) -> Result<Surve
         Some(p) => release_manifest::for_store_version(root, &p.version)?,
         None => None,
     };
+    // A checkout has no store entry to read a manifest from.
     let target_manifest = match target {
-        Some(v) => release_manifest::for_store_version(root, v)?,
-        None => None,
+        Some(v) if !v.starts_with("path:") => release_manifest::for_store_version(root, v)?,
+        _ => None,
     };
     Ok(Survey {
         project: project.to_path_buf(),
@@ -153,6 +263,13 @@ pub fn report(s: &Survey) -> Vec<String> {
     let Some(target) = &s.target else {
         return out;
     };
+    if let Some(dir) = target.strip_prefix("path:") {
+        out.push(format!(
+            "target: the nano-ros checkout {dir}\n\x20   codegen is that checkout's; the next \
+             `nros build` regenerates the bindings if it differs."
+        ));
+        return out;
+    }
     out.push(match &s.target_manifest {
         Some(f) => format!(
             "target: {target}\n\x20   codegen {}   ({})",
@@ -221,18 +338,20 @@ pub enum Outcome {
 pub fn execute(
     project: &Path,
     root: &Path,
-    target: Option<&str>,
+    target: Option<&Target>,
     dry_run: bool,
+    session: &Session,
     emit: &mut dyn FnMut(&str),
 ) -> Result<Outcome> {
-    let s = survey(project, root, target)?;
+    let key = target.map(Target::key);
+    let s = survey(project, root, key.as_deref())?;
     for line in report(&s) {
         emit(&line);
     }
-    let Some(version) = s.target.clone() else {
+    let (Some(target), Some(version)) = (target, key) else {
         return Ok(Outcome::Reported);
     };
-    if s.current.as_ref().is_some_and(|c| c.version == version) {
+    if s.current.as_ref().is_some_and(|c| target.is(c)) {
         emit(&format!("pin already names {version} — unchanged."));
         return Ok(Outcome::Reported);
     }
@@ -241,7 +360,18 @@ pub fn execute(
         emit(&format!("--dry-run: would write {}", path.display()));
         return Ok(Outcome::WouldWrite { path, version });
     }
-    let written = pin::set(project, &version)?;
+    // RFC-0097 D11: a pin is a source edit, and an automated session does not
+    // make one. After the report, so CI still sees what would change.
+    if let Some(var) = session.ci_var() {
+        bail!(
+            "refusing to write {} in an automated session (`{var}` is set): a pin is \
+             a source edit. Move it at a keyboard and commit it, or set {}=1 if this job \
+             is meant to.",
+            path.display(),
+            nros_launcher::session::ALLOW_ENV
+        );
+    }
+    let written = pin::set_spec(project, &target.spec())?;
     emit(&format!(
         "wrote {} — this project now pins nano-ros {version}. Commit it.",
         written.display()
@@ -261,14 +391,24 @@ pub fn run(args: Args) -> Result<()> {
         bail!("{} is not a directory", project.display());
     }
     let root = args.root.clone().unwrap_or_else(store::root);
+    let current = pin::find_and_load(&project)?;
+    let target = target_of(
+        &project,
+        current.as_ref(),
+        args.version.as_deref(),
+        args.rev.as_deref(),
+        args.git.as_deref(),
+        args.path.as_deref(),
+    )?;
     // Printed as produced, for the same reason the sink exists: the report must
     // have REACHED the user before the pin moves, and a buffer flushed at the
     // end cannot promise that when the write fails half way.
     execute(
         &project,
         &root,
-        args.version.as_deref(),
+        target.as_ref(),
         args.dry_run,
+        &Session::detect(),
         &mut |line: &str| println!("{line}"),
     )
     .map(|_| ())
@@ -319,7 +459,16 @@ mod tests {
             let mut sink = |line: &str| {
                 seen.push((line.to_string(), std::fs::read_to_string(&pin_path).ok()));
             };
-            execute(project, root, target, dry_run, &mut sink).unwrap()
+            let target = target.map(|v| Target::Release(v.to_string()));
+            execute(
+                project,
+                root,
+                target.as_ref(),
+                dry_run,
+                &Session::interactive(),
+                &mut sink,
+            )
+            .unwrap()
         };
         (outcome, seen)
     }
@@ -471,5 +620,241 @@ mod tests {
         // Reported as floating BEFORE the pin existed — not after writing one.
         assert_eq!(seen[0].1, None, "the pin existed when the report started");
         assert!(matches!(out, Outcome::Wrote { .. }), "{out:?}");
+    }
+
+    // ---- issue 2770: the commit and checkout forms ----------------------
+
+    const SHA: &str = "09219edc75c9b9a788590c6ac586a7ba45185eab";
+
+    /// A directory the loader accepts as a nano-ros checkout root.
+    fn checkout(at: &Path) -> PathBuf {
+        let marker = at.join(nros_launcher::checkout::MONOREPO_MARKER);
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(marker, "").unwrap();
+        std::fs::canonicalize(at).unwrap()
+    }
+
+    /// Run `execute` with a checked target, at a keyboard or in CI.
+    fn move_to(project: &Path, root: &Path, t: &Target, session: &Session) -> Result<Outcome> {
+        execute(project, root, Some(t), false, session, &mut |_| {})
+    }
+
+    /// The `[toolchain]` keys the file holds: exactly one form's.
+    fn keys(project: &Path) -> Vec<String> {
+        let raw = std::fs::read_to_string(project.join(pin::FILE_NAME)).unwrap();
+        let v: toml::Value = toml::from_str(&raw).unwrap();
+        v["toolchain"].as_table().unwrap().keys().cloned().collect()
+    }
+
+    fn rev_target(
+        project: &Path,
+        current: Option<&Pin>,
+        rev: &str,
+        git: Option<&str>,
+    ) -> Result<Option<Target>> {
+        target_of(project, current, None, Some(rev), git, None)
+    }
+
+    #[test]
+    fn rev_writes_git_and_rev_and_replaces_a_release_pin() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, project) = (dir.path().join("store"), dir.path().join("proj"));
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join(pin::FILE_NAME), pin::render("0.7.9-nros1")).unwrap();
+        let current = pin::find_and_load(&project).unwrap();
+
+        // Upper case is the same commit; the file holds it lowercased.
+        let t = rev_target(&project, current.as_ref(), &SHA.to_uppercase(), None)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            move_to(&project, &root, &t, &Session::interactive()).unwrap(),
+            Outcome::Wrote { .. }
+        ));
+        assert_eq!(keys(&project), ["git", "rev"]);
+        let back = pin::load(&project.join(pin::FILE_NAME)).unwrap();
+        assert_eq!(
+            back.source,
+            pin::PinSource::Git {
+                url: pin::DEFAULT_GIT_URL.to_string(),
+                rev: SHA.to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn rev_refuses_a_short_sha_a_branch_and_a_tag() {
+        let dir = tempfile::tempdir().unwrap();
+        for (rev, what) in [
+            ("09219edc75", "10-character sha"),
+            ("main", "branch or tag name"),
+            ("nros-0.6.0-nros11", "branch or tag name"),
+            ("", "branch or tag name"),
+        ] {
+            let e = rev_target(dir.path(), None, rev, None)
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains(what), "{rev:?}: {e}");
+            assert!(e.contains("git rev-parse"), "{rev:?}: {e}");
+        }
+        let e = rev_target(dir.path(), None, SHA, Some(""))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("empty URL"), "{e}");
+    }
+
+    #[test]
+    fn rev_keeps_the_pin_s_own_git_unless_told_otherwise() {
+        let dir = tempfile::tempdir().unwrap();
+        let mirror = "https://example.invalid/mirror/nano-ros";
+        let project = dir.path();
+        pin::set_spec(
+            project,
+            &pin::PinSpec::Git {
+                url: mirror.into(),
+                rev: SHA.into(),
+            },
+        )
+        .unwrap();
+        let current = pin::find_and_load(project).unwrap();
+        let other = "a".repeat(40);
+        let Some(Target::Git { url, .. }) =
+            rev_target(project, current.as_ref(), &other, None).unwrap()
+        else {
+            panic!("not a git target");
+        };
+        assert_eq!(url, mirror);
+        let Some(Target::Git { url, .. }) = rev_target(
+            project,
+            current.as_ref(),
+            &other,
+            Some("https://x.invalid/n"),
+        )
+        .unwrap() else {
+            panic!("not a git target");
+        };
+        assert_eq!(url, "https://x.invalid/n");
+    }
+
+    /// The same commit from another repository is a move, not "unchanged".
+    #[test]
+    fn the_same_rev_from_another_git_moves_the_pin() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, project) = (dir.path().join("store"), dir.path().join("proj"));
+        std::fs::create_dir_all(&project).unwrap();
+        pin::set_spec(
+            &project,
+            &pin::PinSpec::Git {
+                url: pin::DEFAULT_GIT_URL.into(),
+                rev: SHA.into(),
+            },
+        )
+        .unwrap();
+        let same = Target::Git {
+            url: pin::DEFAULT_GIT_URL.into(),
+            rev: SHA.into(),
+        };
+        assert_eq!(
+            move_to(&project, &root, &same, &Session::interactive()).unwrap(),
+            Outcome::Reported
+        );
+        let mirror = Target::Git {
+            url: "https://example.invalid/n".into(),
+            rev: SHA.into(),
+        };
+        assert!(matches!(
+            move_to(&project, &root, &mirror, &Session::interactive()).unwrap(),
+            Outcome::Wrote { .. }
+        ));
+    }
+
+    #[test]
+    fn path_writes_the_checkout_relative_to_the_pin_and_replaces_a_git_pin() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, project) = (dir.path().join("store"), dir.path().join("ws/proj"));
+        std::fs::create_dir_all(&project).unwrap();
+        let co = checkout(&dir.path().join("modules/nros"));
+        pin::set_spec(
+            &project,
+            &pin::PinSpec::Git {
+                url: pin::DEFAULT_GIT_URL.into(),
+                rev: SHA.into(),
+            },
+        )
+        .unwrap();
+
+        let t = target_of(&project, None, None, None, None, Some(&co))
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            move_to(&project, &root, &t, &Session::interactive()).unwrap(),
+            Outcome::Wrote { .. }
+        ));
+        assert_eq!(keys(&project), ["path"]);
+        let raw = std::fs::read_to_string(project.join(pin::FILE_NAME)).unwrap();
+        assert!(raw.contains("path = \"../../modules/nros\""), "{raw}");
+        assert_eq!(
+            pin::load(&project.join(pin::FILE_NAME)).unwrap().source,
+            pin::PinSource::Path(co)
+        );
+
+        // And a release pin replaces it in turn.
+        let t = Target::Release("0.7.9-nros1".into());
+        move_to(&project, &root, &t, &Session::interactive()).unwrap();
+        assert_eq!(keys(&project), ["version"]);
+    }
+
+    #[test]
+    fn path_refuses_a_directory_that_is_not_a_checkout_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let not = dir.path().join("plain");
+        std::fs::create_dir_all(&not).unwrap();
+        let e = target_of(dir.path(), None, None, None, None, Some(&not))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("not a nano-ros checkout"), "{e}");
+        let e = target_of(
+            dir.path(),
+            None,
+            None,
+            None,
+            None,
+            Some(&dir.path().join("missing")),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("does not exist"), "{e}");
+    }
+
+    /// RFC-0097 D11: in CI every form reports and then refuses, and the pin is
+    /// untouched; `--dry-run` still answers.
+    #[test]
+    fn in_ci_every_form_refuses_to_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, project) = (dir.path().join("store"), dir.path().join("proj"));
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join(pin::FILE_NAME), pin::render("0.7.9-nros1")).unwrap();
+        let before = std::fs::read_to_string(project.join(pin::FILE_NAME)).unwrap();
+        let co = checkout(&dir.path().join("nros"));
+        let ci = Session::automated("CI");
+        for t in [
+            Target::Release("0.8.0-nros1".into()),
+            Target::Git {
+                url: pin::DEFAULT_GIT_URL.into(),
+                rev: SHA.into(),
+            },
+            target_of(&project, None, None, None, None, Some(&co))
+                .unwrap()
+                .unwrap(),
+        ] {
+            let e = move_to(&project, &root, &t, &ci).unwrap_err().to_string();
+            assert!(e.contains("automated session") && e.contains("`CI`"), "{e}");
+            assert_eq!(
+                std::fs::read_to_string(project.join(pin::FILE_NAME)).unwrap(),
+                before
+            );
+            let dry = execute(&project, &root, Some(&t), true, &ci, &mut |_| {}).unwrap();
+            assert!(matches!(dry, Outcome::WouldWrite { .. }), "{dry:?}");
+        }
     }
 }
