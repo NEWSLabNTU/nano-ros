@@ -1583,3 +1583,4 @@ Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when
 | [#2688](../issues/archived/2688-stack-floor-drift-host-repro.md) | One tree walks differently in CI and on a host. W9c records the environment with each row. |
 | [#2693](../issues/2693-stack-floor-check-off-on-tiarmclang.md) | The check is OFF for TI Arm Clang images. W9e; its home stays phase-575 W3. |
 | [#2834](../issues/2834-host-image-stack-floor-walk.md) | The walk never reaches a host image, and would not size the host libc's frames if it did, so threadx-linux states a stack nothing checks. |
+| [#2836](../issues/2836-link-overflow-unexplained.md) | A link that overflows a region fails with the linker's bare line: `nros build` hands the terminal to the tool, so it cannot say what the image reserves (the main stack and its floor row, the heap) or which knob to move. Capture once on every road, then explain from the log. |
