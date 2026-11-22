@@ -1,0 +1,5 @@
+{
+  "key": "rust:REENTRANT_DEPTH",
+  "verdict": "extension",
+  "why": "Issue 2762 -- the bound on re-entrant log sinks: how many deliveries to sinks that declared `LogSink::reentrant()` may be in progress at once before a record takes the guarded, one-at-a-time path instead. It stops a re-entrant sink that logs from inside its own `log()` from recursing without bound, and it is public so a test (and a sink author) can reason about that bound.\n\nrclrs has no correspondent: its logging is `rclrs::log!` over rcutils, whose output handler is a single process-wide callback that rcutils serialises with its own lock, so the question of which sinks may run concurrently never arises there."
+}
