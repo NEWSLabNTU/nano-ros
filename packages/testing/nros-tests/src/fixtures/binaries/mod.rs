@@ -8849,6 +8849,18 @@ pub fn build_c_parameters_cyclonedds() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Issue 2828 — the C lifecycle example (row `c-lifecycle-node`): one node
+/// bound with `rclc_executor_node_init` and the REP-2002 services registered
+/// on it, driven by stock `ros2 lifecycle`.
+pub fn build_c_lifecycle_node() -> TestResult<&'static Path> {
+    static C_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    C_LIFECYCLE_NODE_BINARY
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("linux/c/lifecycle-node", "c_lifecycle_node", Rmw::Zenoh)
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the qemu-rtic-action-server binary
 static QEMU_RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 

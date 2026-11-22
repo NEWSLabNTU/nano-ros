@@ -411,6 +411,14 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-lifecycle-rust-zenoh",
        c(Linux, Rust, Zenoh, Lifecycle, Interop, Runtime),
        LinuxFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
+    // tests/c_lifecycle_interop.rs — issue 2828: a C node bound with
+    // `rclc_executor_node_init`, its REP-2002 services registered through the
+    // executor-level call, driven by stock `ros2 lifecycle` through the cycle.
+    // Its services must be the node's own (`/c_lifecycle_node/...`), not
+    // `//get_state` (issue 2429).
+    ic("native-lifecycle-c-zenoh",
+       c(Linux, C, Zenoh, Lifecycle, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "c_lifecycle_interop"),
 
     // ── Zephyr native_sim QoS interop ───────────────────────────────────
     // phase-441 W5 — this header read "Zephyr on-target QoS interop", which

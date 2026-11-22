@@ -4422,6 +4422,20 @@ bringup = "src/c_parameters_bringup"
 image = "linux_cyclonedds"
 build_subdir = "build/posix-cyclonedds-linux-c_parameters_bringup/cmake"
 
+# Issue 2828 — a C lifecycle node driven by stock `ros2 lifecycle`. The C
+# executor-level registration is served on the bound node (issue 2429), and
+# no other cell drove a C image through REP-2002. Consumed by
+# tests/c_lifecycle_interop.rs.
+[[workspace_fixture]]
+id = "c-lifecycle-node"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/linux/c/lifecycle-node"
+bringup = "src/c_lifecycle_node_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-c_lifecycle_node_bringup/cmake"
+
 # Phase 275 W2 (#102 H3) — linux/cpp variant examples that shipped with zero
 # fixtures. Standard `-DNROS_RMW` path (default zenoh); `target=` mirrors the
 # cmake project/exe NAME (differs from the hyphenated dir), matching the
