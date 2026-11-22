@@ -51,13 +51,12 @@ THREADX_EXTRA_INCLUDES = { value = "ports/risc-v64/gnu/example_build/qemu_virt",
 # xPack-or-Ubuntu themselves (`nros_riscv64_export_cc`) and export these, and a
 # process env var beats a non-forced `[env]` row — on the cargo road by cargo's
 # rule, on the cmake road by `nros dev image board-facts` applying the same one
-# (`descriptor_env_rows`). The ABI flags must stay
-# identical to that helper's and to cmake/toolchain/riscv64-threadx.cmake's.
+# (`descriptor_env_rows`). The ABI flags are not
+# here: `CFLAGS_<triple>` is the image's `[arch.riscv64gc]` profile, written
+# forced by the one carrier (issues 2692, 2709).
 CC_riscv64gc_unknown_none_elf = "riscv-none-elf-gcc"
 CXX_riscv64gc_unknown_none_elf = "riscv-none-elf-g++"
 AR_riscv64gc_unknown_none_elf = "riscv-none-elf-ar"
-CFLAGS_riscv64gc_unknown_none_elf = "-march=rv64gc -mabi=lp64d -mcmodel=medany"
-CXXFLAGS_riscv64gc_unknown_none_elf = "-march=rv64gc -mabi=lp64d -mcmodel=medany"
 '''
 
 # phase-484 W4b (RFC-0103 D1, D10) — the board's network defaults, the ONE

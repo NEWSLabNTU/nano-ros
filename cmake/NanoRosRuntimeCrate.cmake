@@ -368,8 +368,6 @@ function(nros_synth_runtime_umbrella)
     nros_cargo_profile_env(nros_ws_runtime-static)
 # issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
 nros_riscv64_rustflags_env(nros_ws_runtime-static)
-# phase-372 W1 — the cortex-r52 FPU cflags, same class one arch over.
-nros_arm_r_fpu_cflags_env(nros_ws_runtime-static)
 # issue 2400 W2 -- keep bitcode + .su for the stack-floor CHECK (after the
 # helpers above: it merges into their RUSTFLAGS / CFLAGS).
 nros_stack_floor_cargo_env(nros_ws_runtime-static)
