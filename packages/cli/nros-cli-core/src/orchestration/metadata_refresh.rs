@@ -31,7 +31,7 @@ use eyre::{Result, WrapErr};
 use sha2::Digest as _;
 
 use super::{
-    metadata_build::{MetadataBuildOptions, build_metadata, host_triple, probe_blocker},
+    metadata_build::{MetadataBuildOptions, host_triple, probe_blocker},
     probe_seeds::{ProbeSeedRecord, SeedModels, Seeding},
     source_metadata::{ComponentLanguage, SourceMetadata, SourceMetadataProvenance},
     workspace::{ComponentDeclaration, Workspace},
@@ -441,8 +441,9 @@ pub fn refresh_stale_sidecars(
             );
         }
         let opts = build_options(decl, nano_ros, &probe_root);
-        match build_metadata(&opts) {
-            Ok(()) => {
+        // Issue 2827 -- staged, so the stamp below is what puts it in place.
+        match crate::orchestration::metadata_build::build_metadata_staged(&opts) {
+            Ok(_staged) => {
                 clear_unprobeable(&sidecar);
                 stamp_provenance(&sidecar, key.as_deref().unwrap_or(UNKEYED))?;
                 report.rebuilt.push(sidecar);
@@ -567,6 +568,9 @@ pub fn refresh_stale_sidecars(
                             report.rebuilt.push(opts.output_path.clone());
                         }
                         Err(why) => {
+                            // Issue 2827 -- a failed probe's partial output is
+                            // nobody's: its staging file goes.
+                            let _ = std::fs::remove_file(probe_staging_path(&opts.output_path));
                             let raw = format!("{why:#}");
                             // Issue 2640 (phase-566 D2) -- an unseeded probe of
                             // instances that disagree fails naming both causes.
