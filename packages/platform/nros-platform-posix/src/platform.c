@@ -192,6 +192,11 @@ void nros_platform_random_fill(void *buf, size_t len) {
 
 /* ---- Wall clock ---- */
 
+#ifndef NROS_CLOCK_SOURCE_CSV
+/* The default `[knobs.clock] source = "platform"`: the port's own clock,
+ * with no resolution step. The build defines NROS_CLOCK_SOURCE_CSV only for
+ * an image that states another list (`nros_zephyr_build::clock_selection`). */
+
 uint64_t nros_platform_time_now_ns(void) {
     struct timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
@@ -211,6 +216,95 @@ nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
     st.synced = clock_gettime(CLOCK_REALTIME, &ts) == 0;
     return st;
 }
+
+#else /* NROS_CLOCK_SOURCE_CSV */
+/* RFC-0141 D1/D2 (phase-582 W1d) — the image states a source list. Every
+ * source this port can resolve answers synchronously (`platform` is the
+ * host's CLOCK_REALTIME; `board` asks the board hook once), so there is no
+ * boot wait: the list is resolved LAZILY, once, on the first call of either
+ * wall-clock function, and no entry (C, C++ or Rust) has to call anything.
+ * The policy is `nros/clock_resolve.h`'s, the same as on every port. */
+#include <nros/clock_epoch.h>
+#include <nros/clock_resolve.h>
+
+#ifndef NROS_CLOCK_UPGRADE
+#define NROS_CLOCK_UPGRADE "never"
+#endif
+#ifndef NROS_CLOCK_EPOCH_FAILURE
+#define NROS_CLOCK_EPOCH_FAILURE "unstamped"
+#endif
+
+#ifdef NROS_CLOCK_HAS_BOARD
+/* `nros_clock_board__set_by__knobs_clock_source.c`, compiled only with it. */
+bool nros_clock_board_try__set_by__knobs_clock_source(void);
+#endif
+
+static pthread_once_t s_wall_clock_once = PTHREAD_ONCE_INIT;
+static uint8_t s_wall_clock_latched = NROS_CLOCK_SOURCE_NONE;
+static uint8_t s_wall_clock_first = NROS_WALL_CLOCK_SOURCE_PLATFORM;
+
+static bool nros_posix_clock_try(uint8_t source, uint32_t settle_ms, void *ctx) {
+    (void) settle_ms;
+    (void) ctx;
+    switch (source) {
+    case NROS_WALL_CLOCK_SOURCE_PLATFORM: {
+        struct timespec ts;
+        return clock_gettime(CLOCK_REALTIME, &ts) == 0;
+    }
+#ifdef NROS_CLOCK_HAS_BOARD
+    case NROS_WALL_CLOCK_SOURCE_BOARD:
+        return nros_clock_board_try__set_by__knobs_clock_source();
+#endif
+    default:
+        return false;
+    }
+}
+
+static void nros_posix_clock_report(const char *msg, size_t len, void *ctx) {
+    (void) ctx;
+    fprintf(stderr, "%.*s\n", (int) len, msg);
+}
+
+static void nros_posix_clock_resolve_once(void) {
+    uint8_t sources[NROS_CLOCK_MAX_SOURCES];
+    nros_clock_policy_t policy;
+    policy.sources = sources;
+    policy.n_sources = nros_clock_parse_sources(NROS_CLOCK_SOURCE_CSV, sources);
+    policy.settle_ms = 0u; /* every source here answers synchronously */
+    policy.upgrade = nros_clock_parse_upgrade(NROS_CLOCK_UPGRADE);
+    policy.epoch_failure = nros_clock_parse_epoch_failure(NROS_CLOCK_EPOCH_FAILURE);
+    if (policy.n_sources != 0u) {
+        s_wall_clock_first = sources[0];
+    }
+    s_wall_clock_latched =
+        nros_clock_resolve(&policy, nros_posix_clock_try, nros_posix_clock_report, NULL);
+}
+
+uint64_t nros_platform_time_now_ns(void) {
+    pthread_once(&s_wall_clock_once, nros_posix_clock_resolve_once);
+    if (s_wall_clock_latched == NROS_WALL_CLOCK_SOURCE_PLATFORM) {
+        struct timespec ts;
+        if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+            return 0;
+        }
+        return (uint64_t) ts.tv_sec * 1000000000ULL + (uint64_t) ts.tv_nsec;
+    }
+    /* A store source (`board`), or nothing answered: the store reads 0
+     * ("no wall clock") until an offset is installed. */
+    return nros_clock_epoch_us() * 1000ULL;
+}
+
+nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
+    pthread_once(&s_wall_clock_once, nros_posix_clock_resolve_once);
+    if (s_wall_clock_latched == NROS_WALL_CLOCK_SOURCE_PLATFORM) {
+        struct timespec ts;
+        nros_wall_clock_state_t st = {false, NROS_WALL_CLOCK_SOURCE_PLATFORM, 0u};
+        st.synced = clock_gettime(CLOCK_REALTIME, &ts) == 0;
+        return st;
+    }
+    return nros_clock_epoch_state(s_wall_clock_first);
+}
+#endif /* NROS_CLOCK_SOURCE_CSV */
 
 /* ---- Tasks ----
  *

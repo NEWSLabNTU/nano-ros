@@ -42,7 +42,7 @@ c-stub-test = ["dep:cc", "dep:nros-cc-flags"]
 # in-crate integration test `tests/c_port_posix.rs` consumes it.
 # Mutually exclusive with `c-stub-test` (both would supply
 # definitions for the same symbols).
-posix-c-port = ["dep:cc", "dep:nros-cc-flags"]
+posix-c-port = ["dep:cc", "dep:nros-cc-flags", "dep:nros-zephyr-build"]
 # issue 1324 — the `log` facade's route into the platform sink, for a port whose
 # images have no other `log::Log` (Zephyr, once its Rust leaves stopped linking
 # zephyr-lang-rust's allocator and with it `zephyr::set_logger`'s full-LOG arm).
@@ -70,6 +70,11 @@ cc = { version = "1", optional = true }
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
 nros-cc-flags = { path = "../../tooling/nros-cc-flags", optional = true }
+# RFC-0141 D2 (phase-582 W1d) — `posix-c-port` compiles the port's clock code
+# for the image's `[knobs.clock]` list, read through the shared knob ladder
+# (`nros_zephyr_build::clock_selection`), the same reader `nros-platform` and
+# `nros-rmw-xrce-cffi` use.
+nros-zephyr-build = { path = "../../tooling/nros-zephyr-build", optional = true }
 
 [dev-dependencies]
 # Required by the `posix-c-port` integration test for pthread_mutex_t /

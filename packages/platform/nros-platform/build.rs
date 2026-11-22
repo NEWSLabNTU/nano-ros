@@ -85,14 +85,16 @@ fn main() {
 /// and silently read `CLOCK_REALTIME`.
 fn refuse_unsupported_clock_source() {
     // Zephyr calibrates (SNTP, the zenoh HLC); every other port answers from
-    // its own clock or has none. `board` waits on the board clock hook.
+    // its own clock or has none. `board` (the board's wall-clock hook,
+    // RFC-0141 D2) is resolved on the posix port only so far, where the C
+    // port reads the selection at its first wall-clock read.
     let ports: &[(&str, &str, &[&str])] = &[
         (
             "PLATFORM_ZEPHYR",
             "zephyr",
             &["platform", "sntp", "zenoh-hlc"],
         ),
-        ("PLATFORM_POSIX", "posix", &["platform"]),
+        ("PLATFORM_POSIX", "posix", &["platform", "board"]),
         ("PLATFORM_FREERTOS", "freertos", &["platform"]),
         ("PLATFORM_THREADX", "threadx", &["platform"]),
         ("PLATFORM_NUTTX", "nuttx", &["platform"]),
@@ -115,7 +117,7 @@ fn refuse_unsupported_clock_source() {
         .collect();
     if !refused.is_empty() {
         let why = if refused.contains(&"board") {
-            " (`board` needs the board wall-clock hook, which no port supplies yet)"
+            " (`board` is resolved on the posix port only so far)"
         } else {
             ""
         };

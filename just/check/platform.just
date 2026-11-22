@@ -82,10 +82,19 @@ can-board-defaults:
 # `unstamped` says so once and reads 0; `halt` stops through
 # nros_platform_panic naming every source. Negative control: a frozen clock
 # fails both "advances" cases. Compiles a small C program; ~1 s.
+#
+# Also (phase-582 W1d, RFC-0141 D2) the `board` source on the REAL POSIX port:
+# a stub hook's instant is the wall clock (and advances); a `board,platform`
+# fallback whose hook is unsynced latches `platform`; `unstamped` reads 0;
+# `halt` aborts naming the knob; board with NO hook fails to LINK naming
+# `nros_board_wall_clock_ns` in the selection-named object; unselected, the
+# port names no hook. Negative control: a port with its lazy resolution call
+# deleted fails the board-instant case. ~2 s.
 [private]
 [group('needs:cc')]
 clock-resolve:
     @bash tests/clock-resolve-tests.sh
+    @bash tests/clock-board-posix-tests.sh
 
 # RFC-0135 D2 (phase-577 W8) -- a board's CMake module has ONE lookup,
 # `nros_board_module_path()` (cmake/NanoRosBoardModule.cmake), so a board

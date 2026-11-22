@@ -99,26 +99,45 @@ fn main() {
         .extra_warnings(true)
         .link_lib_modifier("+whole-archive")
         .compile("nros_platform_cffi_port_anchor");
+        // RFC-0141 D2 (phase-582 W1d) — the image's `[knobs.clock]` list, as
+        // defines, plus the selection-named TU when it names `board`. Read
+        // through the ONE helper `nros-rmw-xrce-cffi`'s copy of this port
+        // reads too, so the two demand-driven copies stay identical.
+        let clock = nros_zephyr_build::clock_selection::clock_selection();
+        println!(
+            "cargo:rerun-if-changed=../nros-platform-posix/src/{}",
+            nros_zephyr_build::clock_selection::BOARD_TU
+        );
         // issue 0383 — implicit-function-declaration / int-conversion as errors.
-        nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
-            &mut cc::Build::new(),
-        ))
-        .file("../nros-platform-posix/src/platform.c")
-        .file("../nros-platform-posix/src/net.c")
-        .file("../nros-platform-posix/src/timer.c")
-        // issue 1776 — the termination guard is its own archive member.
-        .file("../nros-platform-posix/src/termination.c")
-        // phase-241 B.2 — the canonical `<nros/platform.h>` moved to
-        // nros-platform-api; this crate's own include/ is now empty.
-        .include("../nros-platform-api/include")
-        .warnings(true)
-        .extra_warnings(true)
-        .flag_if_supported("-Wpedantic")
-        .define("_POSIX_C_SOURCE", "200809L")
-        // Bundled, as cc emits it: that is what puts the port inside a
-        // STATICLIB built from this graph (`libnros_c.a`), where the C linker
-        // rescans one archive's members and order does not matter.
-        .compile("nros_platform_posix");
+        let mut port = cc::Build::new();
+        if let Some(sel) = &clock {
+            for (name, value) in sel.c_defines() {
+                port.define(name, value.as_str());
+            }
+            if sel.board() {
+                port.file(format!(
+                    "../nros-platform-posix/src/{}",
+                    nros_zephyr_build::clock_selection::BOARD_TU
+                ));
+            }
+        }
+        nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(&mut port))
+            .file("../nros-platform-posix/src/platform.c")
+            .file("../nros-platform-posix/src/net.c")
+            .file("../nros-platform-posix/src/timer.c")
+            // issue 1776 — the termination guard is its own archive member.
+            .file("../nros-platform-posix/src/termination.c")
+            // phase-241 B.2 — the canonical `<nros/platform.h>` moved to
+            // nros-platform-api; this crate's own include/ is now empty.
+            .include("../nros-platform-api/include")
+            .warnings(true)
+            .extra_warnings(true)
+            .flag_if_supported("-Wpedantic")
+            .define("_POSIX_C_SOURCE", "200809L")
+            // Bundled, as cc emits it: that is what puts the port inside a
+            // STATICLIB built from this graph (`libnros_c.a`), where the C linker
+            // rescans one archive's members and order does not matter.
+            .compile("nros_platform_posix");
         // ...and a byte-identical TAIL copy, `-bundle`, for a Rust final link.
         // The bundled port sits INSIDE this crate's rlib, AHEAD of the
         // whole-archived anchor, so the anchor's reference arrives too late for
