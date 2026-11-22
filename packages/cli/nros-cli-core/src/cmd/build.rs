@@ -1250,6 +1250,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     image.rmw.as_deref(),
                     Some(board.as_str()),
                     Some(descriptor.platform.kebab()),
+                    nano_ros_root.as_deref(),
                 ),
             )?;
         }
