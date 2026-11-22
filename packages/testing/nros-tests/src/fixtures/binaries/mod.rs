@@ -7139,6 +7139,29 @@ pub fn build_log_sink_small_stack_legacy_smp() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Issue 2738 -- a thread dies holding nros_log's dispatcher on
+/// `qemu_cortex_a53/smp`. Built by the zephyr west lane into
+/// `<build-root>/build-log-dead-holder-smp/`; consumed by
+/// `tests/log_dead_holder.rs`.
+static LOG_DEAD_HOLDER_SMP: OnceCell<PathBuf> = OnceCell::new();
+
+pub fn build_log_dead_holder_smp() -> TestResult<&'static Path> {
+    LOG_DEAD_HOLDER_SMP
+        .get_or_try_init(|| {
+            let binary = zephyr_build_root().join("build-log-dead-holder-smp/zephyr/zephyr.elf");
+            require_prebuilt_binary_fresh_zephyr(
+                &binary,
+                ZephyrLeafSource {
+                    dir: "packages/testing/nros-tests/bins/log-dead-holder-zephyr-smp",
+                    lang: Some("c"),
+                    rmw: Some("zenoh"),
+                    conf_files: Some("prj.conf"),
+                },
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the Phase 88.15.e `logging-smoke-zephyr-native-sim`
 /// fixture binary (Zephyr `native_sim/native/64` running as a Linux
 /// process).

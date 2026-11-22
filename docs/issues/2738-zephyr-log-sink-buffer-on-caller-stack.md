@@ -205,6 +205,81 @@ Direction 2 it is.
    records in deferred mode. On the pool every record reaches the console.
    On main's sink the thread overflows (the negative control).
 
+## Fix: a dead dispatcher holder is loud (fix direction 2)
+
+The pool above takes the 1280 bytes off the caller's stack. A thread can
+still die inside a sink, from any other fault, and that half is this one.
+
+- **The guard records its holder.** `nros_log` keeps, beside
+  `DISPATCH_GUARD`, the address of a stack slot in the frame that claimed it
+  (`DISPATCH_HOLDER`, set after the claim, cleared before the release). A
+  stack address is an identity every `no_std` target has for free, where a
+  thread id is not, and it is never dereferenced. An interrupt that claims the
+  guard leaves an address on the interrupt stack, which no thread's stack
+  contains. Still lock-free and ISR-safe: one more atomic store on each side.
+  `nros_log::dispatch_holder_frame()` and
+  `release_dead_dispatch_holder(frame)` are the platform-neutral half, with C
+  spellings `nros_log_dispatch_holder_frame` /
+  `nros_log_release_dead_dispatch_holder`.
+- **The Zephyr port attributes it.**
+  `nros_zephyr_log_dead_holder_check(thread)` (`nros-platform-zephyr`,
+  `platform.c`) asks whether the holder's frame lies inside the dying
+  thread's `stack_info`. If it does, it prints ONE line through `printk`
+  (`nros: thread <name> (<ptr>) died holding the nros_log dispatcher;
+  released it, ...`) and releases the guard. Weak references to the Rust
+  symbols, so an image without `nros_log` links. Without
+  `CONFIG_THREAD_STACK_INFO` it says nothing rather than guess.
+- **Who calls it.** `CONFIG_NROS_FAULT_LOG`'s `k_sys_fatal_error_handler`
+  does. That handler halts, so there the line is the whole value. Stock
+  Zephyr's default handler halts too. A thread dies while the system runs on
+  only under an application handler that RETURNS, and such a handler must call
+  the check. The changelog says so.
+
+**Release, not poison, and why.** A record that meets a held guard goes to
+the hold queue for the HOLDER to deliver (issue 2000). A dead holder delivers
+nothing, so keeping the guard (or poisoning it) loses every later record,
+which is exactly the silence this is about. Releasing does not break the
+guard's promise, one caller inside the sinks at a time, because a dead thread
+can never re-enter one. The next record claims the guard, is delivered, and
+drains what was held meanwhile (after itself, so held records arrive one place
+late). What release loses:
+- the record the dead thread was delivering;
+- if it died while draining, the hold-queue slot it had taken stays
+  `READING`, so the queue is one slot smaller until reboot;
+- a sink it died inside sees the next call without the end of the last one. A
+  sink that takes a lock the dead thread can own may then block where it
+  would have been skipped. The platform sink's own pool slot is one such
+  state: a death inside `nros_platform_log_write` leaks its buffer, so later
+  records take the 160-byte fallback (truncated, still delivered). Freeing
+  the pool slot as well is not done here.
+
+Not covered: a thread killed by another thread's `k_thread_abort` while it
+holds the guard. Zephyr's only per-abort hook (`CONFIG_THREAD_ABORT_HOOK`,
+3.7 and 4.4) is one hidden global symbol that CMSIS-RTOS v2 already defines,
+and it runs under the scheduler lock, where `printk` can reach the log core.
+
+Tests:
+- `packages/core/nros-log/tests/dead_dispatch_holder.rs` (host): a thread
+  parks forever inside a sink. A record raised then is held and not
+  delivered. A release naming the wrong frame, or `0`, does nothing. The
+  holder's frame releases it once. The next record delivers both itself and
+  the stranded one. Mutation: dropping the guard store from the release fails
+  it (`["before"]` only).
+- Cell `bins/log-dead-holder-zephyr-smp` + `tests/log_dead_holder.rs`
+  (`qemu_cortex_a53/smp`, fixture `build-log-dead-holder-smp`). A C sink
+  `k_oops`es on a `DIE` record, and the image's fatal handler returns. Phase 1:
+  `victim1` dies, the handler runs the check, there is one report naming it,
+  and main's next record reaches the console. Phase 2, the negative control in
+  the same boot: `victim2` dies with the check skipped, there is no report,
+  and main's next record never arrives.
+
+**Not yet run.** Host 139 builds no Zephyr images. The cell runs on a host
+with Zephyr headroom:
+
+    source ./activate.sh
+    NROS_ZEPHYR_FIXTURE_FILTER=log-dead-holder just zephyr build-fixtures
+    cargo nextest run -p nros-tests --test log_dead_holder
+
 ## Done when
 
 A Zephyr SMP image (`qemu_cortex_a53/smp`) with a thread on a small stack

@@ -1314,14 +1314,92 @@ pub fn flush() {
 
 static DISPATCH_GUARD: AtomicBool = AtomicBool::new(false);
 
+/// Who holds [`DISPATCH_GUARD`], as the address of a stack slot in the frame
+/// that claimed it; `0` while it is free (issue 2738).
+///
+/// A record that meets a held guard is handed to the HOLDER to deliver, so a
+/// holder that never runs again (a thread that faulted inside a sink and was
+/// aborted) strands every later record from every thread, silently. Nothing
+/// here can see that happen, but a fault handler can: it knows the dying
+/// thread and that thread's stack bounds, and a stack ADDRESS is an identity
+/// every `no_std` target has for free, where a thread id is not. It is never
+/// dereferenced. An interrupt that claims the guard leaves an address on the
+/// interrupt stack, which no thread's stack contains, so it is never taken for
+/// a dying thread's.
+///
+/// Set after the claim and cleared before the release, so it is `0` for the
+/// two stores' width of an otherwise-held guard. A fault cannot land between
+/// them in the claiming thread on the way to a sink.
+static DISPATCH_HOLDER: AtomicUsize = AtomicUsize::new(0);
+
 fn dispatch_guard_try_acquire() -> bool {
-    DISPATCH_GUARD
+    if DISPATCH_GUARD
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_ok()
+        .is_err()
+    {
+        return false;
+    }
+    let here = 0u8;
+    DISPATCH_HOLDER.store(core::ptr::addr_of!(here) as usize, Ordering::SeqCst);
+    true
 }
 
 fn dispatch_guard_release() {
+    DISPATCH_HOLDER.store(0, Ordering::SeqCst);
     DISPATCH_GUARD.store(false, Ordering::SeqCst);
+}
+
+// Issue 2738.
+/// The address of a stack slot in the frame that holds the dispatch guard, or
+/// `0` when no delivery is in progress.
+///
+/// For a fault handler: if this lies inside the dying thread's stack, that
+/// thread holds the dispatcher, and [`release_dead_dispatch_holder`] is how to
+/// stop it stranding every later record. Lock-free, safe from any context.
+#[must_use]
+pub fn dispatch_holder_frame() -> usize {
+    DISPATCH_HOLDER.load(Ordering::SeqCst)
+}
+
+/// Release the dispatch guard on behalf of a holder that will never run again,
+/// and only while `frame` (from [`dispatch_holder_frame`]) still holds it.
+/// Returns whether it did.
+///
+/// Call it ONLY for a holder that is dead or about to be aborted, from the
+/// handler that knows it: the guard exists to keep two callers out of the
+/// sinks at once, and releasing a live holder's breaks exactly that. A dead
+/// holder can no longer be in a sink, so the next record claims the guard,
+/// is delivered, and delivers what was held meanwhile.
+///
+/// What the holder was doing is lost with it: the record it was delivering,
+/// and, if it died while draining, the one held slot it had taken (held
+/// records then occupy one slot fewer until reboot). A sink it died inside
+/// sees its next call without the end of that one, so a sink that takes a
+/// lock a dead thread can own may block where it would otherwise have been
+/// skipped. The alternative, keeping the guard, loses EVERY later record.
+pub fn release_dead_dispatch_holder(frame: usize) -> bool {
+    if frame == 0
+        || DISPATCH_HOLDER
+            .compare_exchange(frame, 0, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+    {
+        return false;
+    }
+    DISPATCH_GUARD.store(false, Ordering::SeqCst);
+    true
+}
+
+/// C spelling of [`dispatch_holder_frame`], for a platform's fault handler
+/// (the Zephyr port's `nros_zephyr_log_dead_holder_check`).
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_log_dispatch_holder_frame() -> usize {
+    dispatch_holder_frame()
+}
+
+/// C spelling of [`release_dead_dispatch_holder`].
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_log_release_dead_dispatch_holder(frame: usize) -> bool {
+    release_dead_dispatch_holder(frame)
 }
 
 // -----------------------------------------------------------------------------

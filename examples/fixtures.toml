@@ -7108,6 +7108,24 @@ west_build_name = "build-log-sink-small-stack-legacy-smp"
 west_id = "zephyr/qemu_cortex_a53/smp/log-sink-small-stack-legacy"
 conf_files = ["prj.conf", "legacy-sink.conf"]
 
+# issue 2738 — a thread dies (a log sink `k_oops`es) holding nros_log's
+# dispatcher on a Zephyr SMP image whose fatal handler returns. The port's
+# dead-holder check must say so once and hand the dispatcher back, so the
+# next record is delivered; a second death with the check skipped is the
+# negative control, in the same boot. Consumed by tests/log_dead_holder.rs.
+# Opens no session, as the small-stack rows.
+[[fixture]]
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+builder = "west"
+dir = "packages/testing/nros-tests/bins/log-dead-holder-zephyr-smp"
+board = "qemu_cortex_a53/qemu_cortex_a53/smp"
+west_role = "log-dead-holder"
+west_build_name = "build-log-dead-holder-smp"
+west_id = "zephyr/qemu_cortex_a53/smp/log-dead-holder"
+conf_files = ["prj.conf"]
+
 # issue 2706 — a Zephyr interrupt (a k_timer expiry, in the system clock's
 # interrupt handler) wakes a parked executor through
 # `GuardCondition::trigger_from_isr`. The image's owned entry boots its own

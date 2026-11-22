@@ -1414,6 +1414,10 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         NonCell::Probe("the log-arena size knob reaches the image"),
     ),
     (
+        "log_dead_holder",
+        NonCell::Probe("a thread that dies holding the log dispatcher is reported and released"),
+    ),
+    (
         "log_sink_small_stack",
         NonCell::Probe("the Zephyr log sink's stack use, held to a budget"),
     ),

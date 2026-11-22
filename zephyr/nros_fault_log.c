@@ -64,6 +64,9 @@
 #include <zephyr/drivers/flash.h>
 #include <string.h>
 
+/* packages/platform/nros-platform-zephyr/src/platform.c (issue 2738). */
+bool nros_zephyr_log_dead_holder_check(struct k_thread *thread);
+
 #define NROS_FAULT_MAGIC 0x4E524F53u /* "NROS" */
 
 /* Bumped when the record layout changes, so a stale flash record from an older
@@ -127,6 +130,11 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
     }
     strncpy(nros_fault_scratch.thread, name, sizeof(nros_fault_scratch.thread) - 1U);
     nros_fault_scratch.thread[sizeof(nros_fault_scratch.thread) - 1U] = '\0';
+
+    /* Issue 2738 -- if this thread died holding nros_log's dispatcher, say so
+     * now: every record raised after it would otherwise be held for a thread
+     * that never delivers it, and none of them would say why. */
+    (void)nros_zephyr_log_dead_holder_check(k_current_get());
 
     /* Hand back to Zephyr, which halts. The record is already written, so it
      * does not matter what the default policy does from here. */

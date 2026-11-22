@@ -1821,6 +1821,64 @@ void nros_platform_log_flush(void) {
 #endif
 }
 
+/* A thread that dies holding nros_log's dispatcher (issue 2738).
+ *
+ * nros_log delivers one record at a time behind a process-wide guard, and a
+ * record that meets the guard held is handed to the HOLDER to deliver. A
+ * holder that faults inside a sink and is aborted therefore strands every
+ * later record from every thread, and nros_log cannot see it happen. A fatal
+ * error handler can: it knows the dying thread, and nros_log records its
+ * holder as an address in the claiming frame, which is inside the holder's
+ * stack (`stack_info`). If it is the dying thread's, this says so once on the
+ * console and hands the guard back, so the next record is delivered and
+ * delivers what was held meanwhile. A dead thread can never re-enter a sink,
+ * so the guard's promise (one caller inside the sinks) still holds; what is
+ * lost is the record it was delivering.
+ *
+ * Call it from `k_sys_fatal_error_handler`, before returning (the thread is
+ * then aborted and the system runs on) or halting. `CONFIG_NROS_FAULT_LOG`'s
+ * handler calls it; an application with its own handler calls it too.
+ * Returns whether the dying thread held the dispatcher.
+ *
+ * Weak: an image whose Rust side does not link nros_log has no dispatcher to
+ * hold. Without CONFIG_THREAD_STACK_INFO no holder can be attributed to a
+ * thread, so this says nothing rather than guess. */
+extern uintptr_t nros_log_dispatch_holder_frame(void) __attribute__((weak));
+extern bool nros_log_release_dead_dispatch_holder(uintptr_t frame) __attribute__((weak));
+
+bool nros_zephyr_log_dead_holder_check(struct k_thread* thread);
+bool nros_zephyr_log_dead_holder_check(struct k_thread* thread) {
+#if defined(CONFIG_THREAD_STACK_INFO)
+    if (thread == NULL || nros_log_dispatch_holder_frame == NULL ||
+        nros_log_release_dead_dispatch_holder == NULL) {
+        return false;
+    }
+    const uintptr_t frame = nros_log_dispatch_holder_frame();
+    const uintptr_t lo = (uintptr_t)thread->stack_info.start;
+    const uintptr_t hi = lo + (uintptr_t)thread->stack_info.size;
+    if (frame == 0 || frame < lo || frame >= hi) {
+        return false;
+    }
+    const bool released = nros_log_release_dead_dispatch_holder(frame);
+    const char* name = NULL;
+#if defined(CONFIG_THREAD_NAME)
+    name = k_thread_name_get(thread);
+#endif
+    if (name == NULL || name[0] == '\0') {
+        name = "?";
+    }
+    /* printk, not the log sink: the sink is exactly what this thread broke. */
+    printk("nros: thread %s (%p) died holding the nros_log dispatcher; %s\n", name, (void*)thread,
+           released ? "released it, so later records are delivered (the record it was "
+                      "delivering is lost)"
+                    : "another context released it first");
+    return released;
+#else
+    (void)thread;
+    return false;
+#endif
+}
+
 /* ============================================================
  * Runtime locator override — nano-ros #166 / phase-286 W1.
  *

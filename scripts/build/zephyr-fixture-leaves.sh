@@ -308,9 +308,10 @@ emit_record() {
 # isolation values must still fail.
 #   logging-smoke                 nros-log severities to the console
 #   log-sink-small-stack(-legacy) a small-stack thread logs (issue 2738)
+#   log-dead-holder               a thread dies holding the log dispatcher (2738)
 nros_leaf_opens_no_session() {
     case "$1" in
-        logging-smoke | log-sink-small-stack | log-sink-small-stack-legacy) return 0 ;;
+        logging-smoke | log-sink-small-stack | log-sink-small-stack-legacy | log-dead-holder) return 0 ;;
         *) return 1 ;;
     esac
 }
