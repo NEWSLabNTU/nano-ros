@@ -1,0 +1,1 @@
+A stack-floor warning whose deepest path runs through an indirect call matched only by its type (not by a vtable slot) no longer suggests a stack size: it names that call and says the floor is an upper bound, not a size to set. `stack_floor = "raise"` never raises a stack to such a floor.

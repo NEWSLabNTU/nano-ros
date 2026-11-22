@@ -104,6 +104,40 @@ class Graph:
     # `load_object` keys each local by `local_key`; `separate_locals` then
     # keeps apart only those, and walks every other local by name.
     locals: dict[str, str] = field(default_factory=dict)
+    # issue 2784 -- `--indirect bind`: the tier of every call edge bind ADDED
+    # (one that was not already a direct call), `(caller, callee) -> tier`.
+    # `slot` is a vtable slot's own functions; every other tier (`type`, `any`,
+    # `c_type`, `machine`) is an over-approximation, so a path through one is
+    # an upper bound of unknown looseness (issue 2658), not a size to set.
+    bound_tiers: dict[tuple[str, str], str] = field(default_factory=dict)
+
+
+# Most precise first: an edge two tiers bound keeps the more precise one.
+_TIER_RANK = {"slot": 0, "c_type": 1, "type": 2, "machine": 3, "any": 4}
+
+
+def note_bound(g: "Graph", direct: dict[str, set[str]], caller: str, callees, tier: str) -> None:
+    """Record `tier` for each bound edge `caller -> callee` that is not a direct
+    call (`direct`: the edges before bind ran)."""
+    have = direct.get(caller, ())
+    for t in callees:
+        if t in have:
+            continue
+        k = (caller, t)
+        was = g.bound_tiers.get(k)
+        if was is None or _TIER_RANK[tier] < _TIER_RANK[was]:
+            g.bound_tiers[k] = tier
+
+
+def upper_bound_edge(g: "Graph", chain: list[str]) -> tuple[str, str, str] | None:
+    """The first edge of `chain` that bind added at a tier looser than a vtable
+    slot: (caller, callee, tier). None when every edge is a direct call or
+    slot-bound, so the path's depth is a size the code can reach."""
+    for a, b in zip(chain, chain[1:]):
+        t = g.bound_tiers.get((a, b))
+        if t is not None and t != "slot":
+            return a, b, t
+    return None
 
 
 class WalkRefused(Exception):
@@ -2019,6 +2053,7 @@ def bind_indirect_sites(g: Graph, modules, c_modules=None,
     # whose coarse type it matches, instead of every one.
     c_typed = {fn for fn in anyset if fn not in types and fn in ctypes}
     stats = {"slot": 0, "type": 0, "any": 0, "machine": 0, "c_typed": 0, "c_none": 0}
+    direct = {c: set(ts) for c, ts in g.edges.items()}
     ir_sites: dict[str, int] = {}
     for _, sites, _, _, _ in modules:
         for caller, t, slot in sites:
@@ -2027,15 +2062,23 @@ def bind_indirect_sites(g: Graph, modules, c_modules=None,
             if slot is not None and (slot, t) in at_slot:
                 cands = at_slot[(slot, t)] | escaped_by_type.get(t, set()) | untyped
                 tier = "slot"
+                # Only the slot's own functions are slot-bound; an escaped or
+                # untyped one joins by type.
+                note_bound(g, direct, caller, at_slot[(slot, t)], "slot")
+                note_bound(g, direct, caller, cands - at_slot[(slot, t)], "type")
             elif by_type.get(t):
                 cands = by_type[t] | untyped
                 tier = "type"
+                note_bound(g, direct, caller, cands, "type")
             else:
                 cands = from_c
                 tier = "any"
+                note_bound(g, direct, caller, cands, "any")
             if tier != "any" and c_typed:
                 ct = coarse_sig(t)
-                cands = cands | {fn for fn in c_typed if sig_match(sig(fn), ct)}
+                extra_c = {fn for fn in c_typed if sig_match(sig(fn), ct)}
+                note_bound(g, direct, caller, extra_c, "c_type")
+                cands = cands | extra_c
             g.edges.setdefault(caller, set()).update(cands)
             stats[tier] += 1
     # Machine-level sites the IR does not account for: every site in a C
@@ -2056,9 +2099,10 @@ def bind_indirect_sites(g: Graph, modules, c_modules=None,
             # with none, they are not calls (jump tables, returns).
             want = c_sigs[base]
             if want:
-                g.edges.setdefault(fn, set()).update(
-                    from_c if None in want else
-                    {f for f in from_c if sig(f) is None or sig(f) in want})
+                bound = (from_c if None in want else
+                         {f for f in from_c if sig(f) is None or sig(f) in want})
+                note_bound(g, direct, fn, bound, "c_type")
+                g.edges.setdefault(fn, set()).update(bound)
                 stats["c_typed"] += extra
             else:
                 stats["c_none"] += extra
@@ -2066,6 +2110,7 @@ def bind_indirect_sites(g: Graph, modules, c_modules=None,
         elif extra > 0:
             # A C function's site holds what C can hold; a Rust function's
             # site the IR did not show (lowered from something) holds anything.
+            note_bound(g, direct, fn, from_c, "machine")
             g.edges.setdefault(fn, set()).update(from_c)
             stats["machine"] += extra
         del g.indirect_sites[fn]
@@ -3318,9 +3363,21 @@ def check_stacks(results: dict, stacks: dict[str, int], knob: str,
             continue
         text = knob_text(knob, r["floor"])
         m = _KNOB_SET.match(text)
+        ub = r.get("upper_bound_through")
+        # Issue 2784 -- a floor whose path crosses an over-approximate bound
+        # call is an UPPER BOUND of unknown looseness: it says nothing about a
+        # size to set, so it never yields a raise hint or a raise.
+        ub_text = (f"an UPPER BOUND through `{ub[0]} -> {ub[1]}` (an indirect call bound "
+                   f"by {ub[2]}, not by a vtable slot), not a size to set" if ub else "")
         if r["floor"] <= stack:
             lines.append(f"nros-stack-floor: {role} stack {stack} B holds the floor "
                          f"{r['floor']} B ({'measured' if r['measured'] else (r.get('unmeasured_reason') or 'unmeasured')})")
+        elif r["measured"] and raise_ and m and ub:
+            rc = 1
+            lines.append(f"nros-stack-floor: ERROR: the {role} stack is {stack} B, below the "
+                         f"measured floor {r['floor']} B. Not raised: the floor is {ub_text}. "
+                         f"Set the stack by hand ({knob_text(knob, r['floor'])} covers it), or "
+                         "tighten the walk")
         elif r["measured"] and raise_ and m:
             raises.append({"role": role, "stack": stack, "floor": r["floor"], "knob": text,
                            "name": m[1], "value": int(m[2])})
@@ -3332,6 +3389,10 @@ def check_stacks(results: dict, stacks: dict[str, int], knob: str,
             lines.append(f"nros-stack-floor: ERROR: the {role} stack is {stack} B, below the "
                          f"measured floor {r['floor']} B. Raise it: "
                          f"{knob_text(knob, r['floor'])}")
+        elif ub:
+            lines.append(f"nros-stack-floor: WARNING: the {role} stack is {stack} B, below the "
+                         f"UNMEASURED floor {r['floor']} B, which is {ub_text}. Not enforced "
+                         "(no [[allowance]] row)")
         elif r.get("unmeasured_reason"):
             lines.append(f"nros-stack-floor: WARNING: the {role} stack is {stack} B, below this "
                          f"host's floor {r['floor']} B, which is not enforced. "
@@ -3836,6 +3897,10 @@ def run(args: argparse.Namespace) -> int:
                 "margin_pct": args.margin, "indirect_charged": best.indirect,
                 "indirect_mode": mode, "indirect_charge": charge,
                 "path": best.chain,
+                # issue 2784 -- the first over-approximate bound edge the
+                # deepest path crosses: the floor is an upper bound through it.
+                "upper_bound_through": (list(ub) if (ub := upper_bound_edge(g, best.chain))
+                                        else None),
             }
     stacks = parse_check_stacks(args)
     rc, lines, raises = 0, [], []
@@ -4129,6 +4194,20 @@ def self_test() -> int:
           and st["machine"] == 1)
     check("bind: a frameless address-taken function is named, not bound",
           st["frameless"] == ["vector"] and "vector" not in gb.edges.get("cfn", set()))
+    # issue 2784 -- each bound edge keeps its tier; only a slot's own
+    # functions are slot-bound, so a path through anything else is an upper bound.
+    check("bind: an edge records its tier (slot, by type, machine)",
+          gb.bound_tiers.get(("caller", "m")) == "slot"
+          and gb.bound_tiers.get(("caller", "esc")) == "type"
+          and gb.bound_tiers.get(("cfn", "cb")) == "machine")
+    check("bind: a slot-bound path states a size; one bound by type is an upper bound",
+          upper_bound_edge(gb, ["caller", "m"]) is None
+          and upper_bound_edge(gb, ["caller", "esc"]) == ("caller", "esc", "type"))
+    gd = Graph(frames={"x": 8, "y": 8}, functions={"x", "y"}, edges={"x": {"y"}},
+               indirect_sites={"x": 1}, c_taken={"y"})
+    bind_indirect_sites(gd, [({}, [], set(), set(), set())])
+    check("bind: a direct call stays direct when a bound site also reaches it",
+          ("x", "y") not in gd.bound_tiers and upper_bound_edge(gd, ["x", "y"]) is None)
 
     # issue 2402 (soundness) — an untyped C function reaches a Rust site; a
     # copied table slot escapes; a dereferenced data pointer does not; a
@@ -4470,6 +4549,22 @@ def self_test() -> int:
     rc, lines, raises = check_stacks(res, {"OPEN": 32768}, "S_KB={kb}", raise_=True)
     check("check: an unmeasured floor above the stack only warns, even opted in",
           rc == 0 and "WARNING" in lines[0] and not raises)
+    # issue 2784 -- a floor through an over-approximate bound call is an upper
+    # bound: no raise hint, and never a raise.
+    ubr = {"OPEN": {"floor": 40000, "measured": False,
+                    "upper_bound_through": ["spin", "big_cb", "type"]}}
+    rc, lines, raises = check_stacks(ubr, {"OPEN": 32768}, "S_KB={kb}", raise_=True)
+    check("check: an unmeasured upper bound warns, names its edge, and gives no size",
+          rc == 0 and not raises and "UPPER BOUND through `spin -> big_cb`" in lines[0]
+          and "S_KB" not in lines[0] and "first thing to try" not in lines[0])
+    ubm = {"OPEN": {"floor": 40000, "measured": True,
+                    "upper_bound_through": ["spin", "big_cb", "any"]}}
+    rc, lines, raises = check_stacks(ubm, {"OPEN": 32768}, "S_KB={kb}", raise_=True)
+    check("raise: never acts on an upper bound, even measured and opted in",
+          rc == 1 and not raises and "Not raised" in lines[0] and "UPPER BOUND" in lines[0])
+    rc, lines, _ = check_stacks(ubm, {"OPEN": 32768}, "K")
+    check("check: a measured upper bound keeps the measured failure and its hint",
+          rc == 1 and "K >= 40000" in lines[0])
     rc, lines, _ = check_stacks({"OPEN": {"floor": 100, "measured": True}}, {"OPEN": 65536}, "K")
     check("check: a stack at or above the floor passes", rc == 0 and "holds" in lines[0])
     check("knob template in the knob's unit",
