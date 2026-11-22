@@ -8553,17 +8553,24 @@ fn param_bounds_refusal(qual: &str, image_id: &str, missing: &[(&ParamBound, usi
          say how long they may be. Add these lines to the image (each value is a suggested \
          floor; raise it to the longest value the image will ever be set to):\n"
     );
-    let mut table = "";
-    for (b, v) in missing {
-        if b.table != table {
-            table = b.table;
-            text.push_str(&format!("\n    [image.{image_id}.knobs.{table}]\n"));
+    // One header per table, whatever order the lines came in: a table named
+    // twice is invalid TOML.
+    let mut tables: Vec<&str> = Vec::new();
+    for (b, _) in missing {
+        if !tables.contains(&b.table) {
+            tables.push(b.table);
         }
-        text.push_str(&format!("    {} = {v}   # {}\n", b.key, b.comment));
+    }
+    for table in tables {
+        text.push_str(&format!("\n    [image.{image_id}.knobs.{table}]\n"));
+        for (b, v) in missing.iter().filter(|(b, _)| b.table == table) {
+            text.push_str(&format!("    {} = {v}   # {}\n", b.key, b.comment));
+        }
     }
     text.push_str(
-        "\nThe board's own [knobs.params] / [knobs.param] tables, or the environment, \
-         state them for every image instead.",
+        "\nRaising a `params` value raises the `service_inbox_bytes` it needs; the build \
+         names the new value. The board's own [knobs.params] / [knobs.param] tables state \
+         them for every image instead.",
     );
     text
 }
@@ -13838,6 +13845,12 @@ mod per_image_configure_tests {
             assert!(text.contains(want), "{want:?} missing from:\n{text}");
         }
         assert!(!text.contains("<id>") && !text.contains("NROS_"), "{text}");
+        // Each table header once, even when the lines interleave tables.
+        let interleaved = [missing[3], missing[0], (&BYTE_ARRAY_BOUND, 256)];
+        let text = param_bounds_refusal("demo_bringup:mcu", "mcu", &interleaved);
+        for header in ["[image.mcu.knobs.params]", "[image.mcu.knobs.param]"] {
+            assert_eq!(text.matches(header).count(), 1, "{header} in:\n{text}");
+        }
     }
 
     /// Issue 2702 -- a tree that outlived the per-bringup layout keeps
