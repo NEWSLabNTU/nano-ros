@@ -950,6 +950,11 @@ fn finish(
         }
         _ => {}
     }
+    // Issue 2795 -- where the build's stack-floor walk wrote its reports, by
+    // the road's own rule, so a reader (the drift lane) never globs for one.
+    if let Some(dir) = i.output.and_then(BuildOutput::stack_floor_dir) {
+        plan.artifacts.insert("stack_floor".into(), dir);
+    }
     // A named owned entry's program is read back from CMake; when it cannot
     // be, say why rather than run a plan with no `elf`.
     if let Some(o) = i.output
@@ -2541,6 +2546,7 @@ verb = "run"
 
 [artifacts]
 elf = "/ws/target/thumbv7m-none-eabi/debug/app"
+stack_floor = "/ws/target/nros-stack-floor"
 
 [runner]
 package = "nros_runner_qemu"
@@ -2593,6 +2599,7 @@ verb = "run"
 
 [artifacts]
 elf = "/ws/target/debug/app"
+stack_floor = "/ws/target/nros-stack-floor"
 
 [runner]
 package = "nros_runner_native"
@@ -2629,6 +2636,7 @@ verb = "run"
 
 [artifacts]
 elf = "/ws/build/z/zephyr/zephyr.exe"
+stack_floor = "/ws/build/z/nros/stack-floor"
 
 [runner]
 package = "nros_runner_native"

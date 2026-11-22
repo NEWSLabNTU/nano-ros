@@ -385,16 +385,22 @@ def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w,
         # The build walks only when the image relinks, so a table edit alone
         # leaves an old report. Re-run the build's own generated walk: same
         # command, current table, and a warm llc cache makes it seconds.
-        checks = sorted(proj.glob("build/*/*/nros/stack-floor/check.cmake"))
-        if len(checks) != 1:
-            return Verdict(False, [f"{row['image']}: FAIL: the build generated {len(checks)} "
-                                   f"stack-floor walks under {proj / 'build'}, not 1"])
-        subprocess.run(["cmake", "-P", str(checks[0])], cwd=checks[0].parent, stdout=lf,
+        # The report and its walk are where the build says (issue 2795): its
+        # plan states the road's directory, `report_path` the file in it.
+        rdir, why = w.plan_report_dir(nros, None, proj, lf)
+        if rdir is None:
+            return Verdict(False, [f"{row['image']}: FAIL: {why} ({log})"])
+        check = rdir / "check.cmake"
+        if not check.is_file():
+            return Verdict(False, [f"{row['image']}: FAIL: the build generated no "
+                                   f"stack-floor walk at {check}"])
+        subprocess.run(["cmake", "-P", str(check)], cwd=rdir, stdout=lf,
                        stderr=subprocess.STDOUT)
-        reports = sorted(proj.glob("build/*/*/nros/stack-floor/report.json"))
-        if len(reports) != 1:
-            return Verdict(False, [f"{row['image']}: FAIL: the build wrote {len(reports)} "
-                                   f"stack-floor reports under {proj / 'build'}, not 1"])
+        rpath = w.report_path(rdir, row["image"])
+        if not rpath.is_file():
+            return Verdict(False, [f"{row['image']}: FAIL: the build wrote no stack-floor "
+                                   f"report at {rpath}"])
+        reports = [rpath]
         report = json.loads(reports[0].read_text())
         role = report["roles"].get(row["role"])
         if role is None:
