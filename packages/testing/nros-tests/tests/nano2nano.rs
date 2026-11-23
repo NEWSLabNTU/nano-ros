@@ -184,7 +184,7 @@ fn test_peer_mode_communication() -> nros_tests::TestResult<()> {
     listener_cmd
         .env("NROS_SESSION_MODE", "peer")
         .env("ZENOH_LISTEN", listen)
-        .env("NROS_DOMAIN_ID", &domain);
+        .env("ROS_DOMAIN_ID", &domain);
     let mut listener = ManagedProcess::spawn_image(listener_cmd, "native-rs-listener-peer")
         .expect("Failed to start listener in peer mode");
 
@@ -219,7 +219,7 @@ fn test_peer_mode_communication() -> nros_tests::TestResult<()> {
     talker_cmd
         .env("NROS_SESSION_MODE", "peer")
         .env("ZENOH_LISTEN", listen)
-        .env("NROS_DOMAIN_ID", &domain);
+        .env("ROS_DOMAIN_ID", &domain);
     let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker-peer")
         .expect("Failed to start talker in peer mode");
 

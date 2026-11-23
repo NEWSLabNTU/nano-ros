@@ -76,6 +76,7 @@ pub mod ros2;
 // phase-556 W1 -- ask a nano-ros node and a stock node the same `ros2` question.
 pub mod ros2_compat;
 pub mod ros_env;
+pub mod runtime_env_names;
 // Issue 2779 -- a client's session across a hard router restart.
 pub mod router_outage;
 pub mod run;

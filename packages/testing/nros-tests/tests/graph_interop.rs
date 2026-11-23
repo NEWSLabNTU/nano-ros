@@ -197,8 +197,7 @@ fn cyclone_enumerates_a_stock_ros2_node() {
     let mut cmd = Command::new(probe);
     cmd.env("GRAPH_PROBE_EXPECT_NODE", "talker")
         .env("GRAPH_PROBE_TIMEOUT_MS", "20000")
-        .env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_DOMAIN_ID", domain.to_string());
+        .env("ROS_DOMAIN_ID", domain.to_string());
     // Issue 1137 — the SAME bus as the talker.
     //
     // `demo_nodes_cpp_talker_cyclonedds_with_domain` funnels through
@@ -376,8 +375,7 @@ fn cyclone_a_peer_leaving_fires_the_graph_change_guard() {
     cmd.env("GRAPH_PROBE_EXPECT_NODE", "talker")
         .env("GRAPH_PROBE_WATCH_CHANGE", "1")
         .env("GRAPH_PROBE_TIMEOUT_MS", CHANGE_BUDGET_MS)
-        .env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_DOMAIN_ID", domain.to_string());
+        .env("ROS_DOMAIN_ID", domain.to_string());
     // Issue 1137 — the SAME bus as the talker. `ManagedProcess::spawn_command`
     // deliberately does not pin (a `DockerRosEnv` peer could not read the
     // profile), so our half is pinned here, at the spawn site whose peer is a
@@ -668,8 +666,7 @@ fn cyclone_take_gid_is_the_publishers_graph_gid() {
         .env("GRAPH_PROBE_GID_PUB_TOPIC", GID_PUB_TOPIC)
         .env("GRAPH_PROBE_GID_SUB_TOPIC", GID_SUB_TOPIC)
         .env("GRAPH_PROBE_TIMEOUT_MS", GID_PROBE_BUDGET_MS)
-        .env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_DOMAIN_ID", domain.to_string());
+        .env("ROS_DOMAIN_ID", domain.to_string());
     // Issue 1137 — the same bus as the stock side.
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
     let mut probe = ManagedProcess::spawn_image(cmd, "graph-probe-gid-cyclone")
