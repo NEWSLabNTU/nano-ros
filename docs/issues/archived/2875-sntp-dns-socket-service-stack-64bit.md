@@ -1,16 +1,18 @@
 ---
 id: 2875
 title: "A 64-bit Zephyr image whose `clock.source` names `sntp` fails at configure: the SNTP source selects DNS, which pulls in the socket service thread with a stack below its floor"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [clock, zephyr, build]
 related: [rfc-0141, phase-582, issue-2785]
 found: 2026-11-23
+resolved: 2026-11-24
+resolved_in: "zephyr: the module defaults the socket service stack to 4096 B on 64-bit, and the stack guard reads ZVFS_POLL_MAX first on Zephyr 4.x"
 ---
 
-**Home: [phase-582](../roadmap/phase-582-wall-clock-source.md)**, whose
-SNTP source ([RFC-0141](../design/0141-wall-clock-source.md)) adds the select
+**Home: [phase-582](../../roadmap/phase-582-wall-clock-source.md)**, whose
+SNTP source ([RFC-0141](../../design/0141-wall-clock-source.md)) adds the select
 that pulls the thread in.
 
 ## What happens
@@ -79,3 +81,38 @@ anything sized it. A fix should cover both widths.
   its conf configures, builds, and passes the guard, on both Zephyr lines.
 - The same image on mps2-an385 still configures.
 - An image that does not name `sntp` gets no new socket service thread.
+
+## Resolution
+
+- `zephyr/Kconfig` states `configdefault NET_SOCKETS_SERVICE_STACK_SIZE` =
+  4096 if `64BIT`, for every image that gets the thread. That covers the
+  largest poll maximum the module defaults to (8, Cyclone: 3392 B). On 32-bit
+  the floor at 8 polls is 1184 B, which Zephyr's 1200 already covers, so the
+  32-bit default is unchanged. A board conf or prj.conf still wins, and the
+  guard still refuses a stack below its floor, naming the size.
+- The guard read the wrong poll knob on Zephyr 4.x. The array there is sized
+  by `ZVFS_POLL_MAX`, but 4.x still defines the deprecated
+  `NET_SOCKETS_POLL_MAX` with a default of 0, and the guard asked that first.
+  It now asks `ZVFS_POLL_MAX` first.
+
+Candidate 2 (no DNS for an IP-literal server) was not taken: it narrows the
+bug without closing it.
+
+### Measured
+
+- qemu-cortex-a53 SMP, Zephyr 4.4, `clock.source = "sntp"`, no stack line:
+  configures and builds. Its `.config` has `NET_SOCKETS_SERVICE=y`,
+  `NET_SOCKETS_SERVICE_STACK_SIZE=4096`, `ZVFS_POLL_MAX=3`,
+  `NET_SOCKETS_POLL_MAX=0`.
+- Negative control, the same image with the stack set to 3000: the guard
+  refuses it and asks for 3192 B, citing `CONFIG_ZVFS_POLL_MAX=3`. So the 4.x
+  floor comes from `ZVFS_POLL_MAX`, not from the 0 the old order read.
+- mps2-an385 C++ talker, Zephyr 4.4: configures and builds (it gets no socket
+  service thread, so the guard does not apply).
+- ARM FVP, Zephyr 3.7: builds. FVP has no socket service thread.
+
+### Not measured
+
+- qemu-cortex-a53 with `sntp` on Zephyr 3.7. Expected to pass: the module's
+  `configdefault` blocks already apply on 3.7, 3.7 has no `ZVFS_POLL_MAX`, so
+  the guard reads `NET_SOCKETS_POLL_MAX=3`, and 3192 B is under 4096.
