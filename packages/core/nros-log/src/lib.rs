@@ -1252,10 +1252,27 @@ fn deliver(record: &Record<'_>, owed: early::Owed) {
 fn deliver_held_record(record: &Record<'_>, owed: early::Owed) {
     if owed == early::Owed::All {
         REENTRANT_ACTIVE.fetch_add(REENTRANT_DEPTH, Ordering::AcqRel);
+        HOLDER_SPENT_DEPTH.store(true, Ordering::SeqCst);
         deliver_to(record, owed, Reentrancy::Reentrant);
-        REENTRANT_ACTIVE.fetch_sub(REENTRANT_DEPTH, Ordering::AcqRel);
+        return_holder_depth();
     }
     deliver_to(record, owed, Reentrancy::Serialised);
+}
+
+/// Whether the guard's holder has spent the whole re-entrant depth on a held
+/// record ([`deliver_held_record`]) and not yet given it back. Only the holder
+/// sets it, so it belongs to whoever holds the guard: a holder that dies inside
+/// that delivery leaves it set, and [`release_dead_dispatch_holder`] gives the
+/// depth back with the guard (issues 2738 and 2762). Without that, every later
+/// record would take the guarded path for good.
+static HOLDER_SPENT_DEPTH: AtomicBool = AtomicBool::new(false);
+
+/// Give back the depth [`deliver_held_record`] spent, exactly once, whether
+/// the holder returns or a fault handler releases a dead one.
+fn return_holder_depth() {
+    if HOLDER_SPENT_DEPTH.swap(false, Ordering::SeqCst) {
+        REENTRANT_ACTIVE.fetch_sub(REENTRANT_DEPTH, Ordering::AcqRel);
+    }
 }
 
 /// Whether a delivery would reach any sink.
@@ -1465,6 +1482,13 @@ pub fn dispatch_holder_frame() -> usize {
 /// sees its next call without the end of that one, so a sink that takes a
 /// lock a dead thread can own may block where it would otherwise have been
 /// skipped. The alternative, keeping the guard, loses EVERY later record.
+///
+/// A holder that died delivering a held record to a re-entrant sink had spent
+/// the whole re-entrant depth on it; that is given back too.
+/// A thread that dies inside a re-entrant sink's DIRECT delivery holds no
+/// guard, so nothing here can see it: it keeps one unit of
+/// [`REENTRANT_DEPTH`] until reboot, and once that many have died, records
+/// take the guarded path for every sink (delivered, one at a time).
 pub fn release_dead_dispatch_holder(frame: usize) -> bool {
     if frame == 0
         || DISPATCH_HOLDER
@@ -1473,6 +1497,7 @@ pub fn release_dead_dispatch_holder(frame: usize) -> bool {
     {
         return false;
     }
+    return_holder_depth();
     DISPATCH_GUARD.store(false, Ordering::SeqCst);
     true
 }

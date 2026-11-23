@@ -125,3 +125,23 @@ Host tests (`packages/core/nros-log/tests/`):
 
 Still owed for acceptance 1: the stress cell on `qemu_cortex_a53/smp`.
 
+
+## Against issue 2738's dead-holder release (2026-11-23)
+
+Issue 2738 landed first: a fault handler releases the dispatch guard of a
+thread that died holding it. Two seams with this fix:
+
+- A holder that dies delivering a HELD record to a re-entrant sink had taken
+  the whole `REENTRANT_DEPTH` for that delivery. `release_dead_dispatch_holder`
+  now gives it back with the guard; before, every later record took the
+  guarded path for good. Test `nros-log/tests/dead_holder_spent_depth.rs`
+  (mutation-checked: without the give-back it fails).
+- A thread that dies inside a re-entrant sink's DIRECT delivery holds no
+  guard, so no handler can see it. It keeps one unit of the depth until
+  reboot; after `REENTRANT_DEPTH` such deaths, records take the guarded path
+  for every sink. They are still delivered, one at a time.
+
+The `log-dead-holder` Zephyr cell read its negative control from the console,
+which is now re-entrant and gets the phase-2 record without the guard. It now
+reads both verdicts from the faulting sink's own echo (serialised), and
+asserts that the console does get that record.
