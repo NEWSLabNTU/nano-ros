@@ -55,7 +55,17 @@ use nros_extension::exit;
 pub const CHAIN_GRACE: Duration = Duration::from_millis(2500);
 
 /// How long a stopped group gets between SIGTERM and SIGKILL.
-pub const TEARDOWN_GRACE: Duration = Duration::from_secs(2);
+///
+/// Above every image's own termination grace, so an image ends by its own
+/// hand, printing what it reports on the way out, before this escalates. A
+/// threadx-linux image calls the app's SIGTERM handler and then has
+/// `NROS_THREADX_LINUX_TERM_GRACE_MS` (2000 ms) before it reports its stack
+/// peaks and ends; this was 2 s, the same number, so the SIGKILL could land
+/// first and the report was lost. The test harness's kill-after
+/// (`nros_tests::process::KILL_GRACE`) is held to the same rule, and
+/// `check-process-deadline` checks both.
+// Issue 2868.
+pub const TEARDOWN_GRACE: Duration = Duration::from_secs(3);
 
 /// How long a match in an unterminated line waits for the rest of that line
 /// before the session ends on it (phase-548 W10). A target may write one line
