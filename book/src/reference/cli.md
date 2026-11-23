@@ -1158,6 +1158,7 @@ Options:
       --json                   Print one JSON object instead of text
       --nodes                  Print the nodes the image's plan will start
       --topics                 Print the topics, services and actions the image's plan will create
+      --derived                Print what the build derived for the image: its target, entity and type counts, each with the reason recorded for it
   -h, --help                   Print help
   -V, --version                Print version
 ```

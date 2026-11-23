@@ -113,8 +113,17 @@ them).
 
 ### W3 — derived config
 
-- **Status:** OPEN (done locally 2026-11-21, on W7c part 1; opens after W7a
-  merges)
+- **Status:** DONE (2026-11-24; rebased on main after W7c part 1 merged)
+- **Measured 2026-11-24** on a fresh copy of `examples/linux/rust/talker`:
+  - after `nros configure`, `nros image show linux --derived` prints the
+    DERIVED / VALUE / REASON table and the descriptor it read;
+  - an unconfigured copy names `nros configure`, exits 1, and writes no
+    `build/`.
+- **Fixed on the way:**
+  - a refusal that lists types filled one table row with the whole list.
+    The row keeps the lead clause and points to `--json`.
+  - an error from `nros` ended with a `Location:` block naming the
+    nros source line. It no longer does, unless `RUST_BACKTRACE` is set.
 - **Done:**
   - Each plan records where its image's sizing descriptor lands
     (`ResolvedBuild::sizing_descriptor`), from one function
