@@ -63,7 +63,7 @@ backend lacks pub/sub or services, so the feature cannot exist there.
 |---|---|---|---|---|---|
 | Actions | tested | tested | tested | — | Built in `nros-node` on pub/sub + services (goal / cancel / result services + feedback / status topics). |
 | Parameters (+ param services) | tested | tested | tested | — | Node-layer services; available wherever services are. |
-| Lifecycle (REP-2002) | tested | untested | untested | — | Node-layer state machine + services (`lifecycle-services` feature). |
+| Lifecycle (REP-2002) | tested | tested | tested | — | Node-layer state machine + services (`lifecycle-services` feature). |
 
 ## QoS policies
 

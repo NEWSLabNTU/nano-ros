@@ -465,9 +465,29 @@ negative control: with the C++ entities activated after `on_activate`, the
 through the executor-scoped calls, the second node's `on_configure` never runs
 (issue 2858). C got the node-scoped family the second node needs
 (`rclc_node_register_lifecycle_services`, `rclc_node_lifecycle_*`).
-Still open: the other RMWs, the `ros2 lifecycle list` in each primary state,
-illegal `set`s, `workspace-zephyr-rs-lifecycle`'s silence assertion, the RAM
-measurement and the book's run step.
+
+Landed 2026-11-24:
+
+- The pair cells on Cyclone and XRCE, in C and C++ (rows
+  `native-lifecycle-pair-{c,cpp}-{cyclonedds,xrce}`). All six cells are green.
+- A parity case comparing `ros2 lifecycle list` in each primary state, and a
+  refused `set`, against stock `lifecycle_talker`
+  (`lifecycle_cli_answers_as_stock_lifecycle_talker`). It found that a
+  transition advertised its final primary state as its goal, where stock names
+  the transition state
+  ([issue 2903](../issues/archived/2903-lifecycle-transitions-advertise-final-goal-state.md),
+  fixed).
+- `workspace-zephyr-rs-lifecycle`'s exact state assertion.
+
+The XRCE images state their service-server slots by hand, because managed
+nodes made in `main` are invisible to the derivation
+([issue 2904](../issues/2904-lifecycle-pair-xrce-service-slots.md), open). The
+XRCE cells also exposed examples that ended their `NROS_SPIN_MS` budget early
+([issue 2910](../issues/archived/2910-example-spin-budget-counts-iterations.md),
+fixed).
+
+Still open: the RAM measurement and the book's run step. The Zephyr cell's
+silence-until-active assertion waits on W7 (per-node `autostart`).
 
 **The cells** are `interop::CELLS` rows, zenoh first and then every RMW the
 interop matrix carries. The C zenoh row is `native-lifecycle-c-zenoh`, on
