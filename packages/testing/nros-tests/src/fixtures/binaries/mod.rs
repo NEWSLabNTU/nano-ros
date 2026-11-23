@@ -8904,6 +8904,28 @@ pub fn build_c_lifecycle_node() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// phase-554 W9 -- two managed C nodes in one image (row `c-lifecycle-pair`),
+/// each with its own lifecycle and a publisher that is silent until active.
+pub fn build_c_lifecycle_pair() -> TestResult<&'static Path> {
+    static BINARY: OnceCell<PathBuf> = OnceCell::new();
+    BINARY
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("linux/c/lifecycle-pair", "c_lifecycle_pair", Rmw::Zenoh)
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-554 W9 -- the C++ twin of [`build_c_lifecycle_pair`]: two
+/// `rclcpp_lifecycle::LifecycleNode`s (row `cpp-lifecycle-pair`).
+pub fn build_cpp_lifecycle_pair() -> TestResult<&'static Path> {
+    static BINARY: OnceCell<PathBuf> = OnceCell::new();
+    BINARY
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("linux/cpp/lifecycle-pair", "cpp_lifecycle_pair", Rmw::Zenoh)
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the qemu-rtic-action-server binary
 static QEMU_RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 

@@ -454,7 +454,18 @@ written by hand.
 
 ### W9 — Phase B acceptance cells and the RAM measurement (D9)
 
-Status: OPEN.
+Status: IN PROGRESS. Landed 2026-11-23: the two-managed-node and
+silent-until-active cells on zenoh, in C and C++ (`lifecycle_pair_interop`,
+rows `native-lifecycle-pair-{c,cpp}-zenoh`, over
+`examples/linux/{c,cpp}/lifecycle-pair`). Both are green, and each has a
+negative control: with the C++ entities activated after `on_activate`, the
+`activated` publish never arrives (issue 2857); with the C++ callbacks bound
+through the executor-scoped calls, the second node's `on_configure` never runs
+(issue 2858). C got the node-scoped family the second node needs
+(`rclc_node_register_lifecycle_services`, `rclc_node_lifecycle_*`).
+Still open: the other RMWs, the `ros2 lifecycle list` in each primary state,
+illegal `set`s, `workspace-zephyr-rs-lifecycle`'s silence assertion, the RAM
+measurement and the book's run step.
 
 **The cells** are `interop::CELLS` rows, zenoh first and then every RMW the
 interop matrix carries. The C zenoh row is `native-lifecycle-c-zenoh`, on

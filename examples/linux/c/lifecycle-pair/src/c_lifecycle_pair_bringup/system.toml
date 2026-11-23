@@ -1,0 +1,19 @@
+# What this example deploys to (RFC-0098 D3/D5): the bringup of a one-package
+# workspace (RFC-0122 D3). The program is the owned entry `src/c_lifecycle_pair`
+# (RFC-0071 D19). It keeps its own `main`, which binds two nodes and makes each
+# a managed node with lifecycle services and a state machine of its own. So
+# every image names it, and the bringup declares no component table.
+
+[system]
+name = "c_lifecycle_pair"
+rmw = "zenoh"
+domain_id = 0
+# The managed-node services, a declared capability (RFC-0031).
+features = ["lifecycle"]
+default_images = ["linux"]
+
+[image_defaults]
+board = "linux"
+
+[image.linux]
+entry = "c_lifecycle_pair"

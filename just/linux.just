@@ -727,6 +727,23 @@ test-ros2-c-param-server verbose="":
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
+# Run the lifecycle-pair interop cells (phase-554 W9): two managed nodes in
+# one image, in C (`c-lifecycle-pair`) and in C++ (`cpp-lifecycle-pair`).
+# Stock `ros2 lifecycle` drives each node on its own; each node's publisher
+# is silent until that node is active. Runs `lifecycle_pair_interop`; needs
+# ROS 2, the distro's `rmw_zenoh_cpp` + `rmw_zenohd`, and both fixtures.
+[group("debug")]
+test-ros2-lifecycle-pair verbose="":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    args=(-p nros-tests --test lifecycle_pair_interop --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--failure-output never)
+    fi
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+
 # Run the C lifecycle interop cell (issue 2828): the `c-lifecycle-node`
 # image, one node bound with `rclc_executor_node_init` and the REP-2002
 # services registered on it, driven by stock `ros2 lifecycle` through
