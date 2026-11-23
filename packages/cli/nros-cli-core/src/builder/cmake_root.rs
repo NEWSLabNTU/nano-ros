@@ -225,6 +225,14 @@ pub struct CmakeRootSpec {
     /// images on this configure state `[image.<id>] env` (they all resolve the
     /// same rows; the coordinate is keyed on them).
     pub image_env: bool,
+    // Issue 2841.
+    /// This configure exists for its images' own CONFIGURATION
+    /// (its coordinate carries `-cfg<hash>`), so its runtime is theirs. The
+    /// root then sets `NROS_CONFIGURE_BUILDS_IMAGES_ONLY`, and a component's
+    /// own native executable is not built here: it is not one of the images,
+    /// and an image-only link requirement (a board hook) would break it. The
+    /// configure with the default runtime builds those.
+    pub images_only: bool,
     /// Issue 2433 -- on a CROSS board, the image sized by the census of its
     /// owned entry: nothing else on this road sizes a program with no model.
     pub owned_census: Option<OwnedCensus>,
@@ -635,6 +643,14 @@ pub fn render(
     let src_rel = super::paths::relative_or_err(manifest_dir, &spec.workspace.join("src"))?;
     out.push_str(&interface_search_path_cmake(&src_rel));
 
+    if spec.images_only {
+        // Issue 2841. Before find_package, so every registration sees it.
+        out.push_str(
+            "# This configure exists for its images' own configuration, so it\n\
+             # builds those images only, never a component's own executable.\n\
+             set(NROS_CONFIGURE_BUILDS_IMAGES_ONLY ON)\n\n",
+        );
+    }
     if spec.image_env {
         // Before find_package: the Corrosion imports inside it attach the
         // carrier (`nros_board_facts_env` -> `nros_image_env_attach`).
@@ -923,6 +939,7 @@ mod tests {
     fn spec(root: &Path) -> CmakeRootSpec {
         CmakeRootSpec {
             image_env: false,
+            images_only: false,
             workspace: root.to_path_buf(),
             system: "demo_bringup".to_string(),
             plan: true,
@@ -989,6 +1006,29 @@ mod tests {
         assert!(out.contains("set(NROS_PLATFORM baremetal CACHE"), "{out}");
         assert!(out.contains("PLATFORM \"baremetal\""), "{out}");
         assert!(!out.contains("bare_metal"), "{out}");
+    }
+
+    /// Issue 2841 -- a configure that exists for its images' configuration
+    /// says so before `find_package`, so every registration reads it; the
+    /// default configure says nothing and builds component executables.
+    #[test]
+    fn a_configured_root_builds_its_images_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let node = pkg(root, "c_talker", true);
+        let mut sp = spec(root);
+        let plain = render(&discovered(vec![node.clone()]), &root.join("build/p"), &sp).unwrap();
+        assert!(
+            !plain.contains("NROS_CONFIGURE_BUILDS_IMAGES_ONLY"),
+            "{plain}"
+        );
+        sp.images_only = true;
+        let out = render(&discovered(vec![node]), &root.join("build/c"), &sp).unwrap();
+        let set = out
+            .find("set(NROS_CONFIGURE_BUILDS_IMAGES_ONLY ON)")
+            .unwrap_or_else(|| panic!("{out}"));
+        let fp = out.find("find_package(nano_ros").unwrap();
+        assert!(set < fp, "set after find_package:\n{out}");
     }
 
     /// Issue 2433 -- on a cross board the census of the owned entry sizes

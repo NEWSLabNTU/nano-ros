@@ -2451,6 +2451,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     owned_identity,
                     owned_census,
                     image_env,
+                    // Issue 2841 -- the `-cfg<hash>` half of the coordinate.
+                    images_only: image_config_digest(&image, &bringup_dir).is_some(),
                     workspace: root.clone(),
                     system: bringup.clone(),
                     plan: !plans_nothing,
@@ -5401,6 +5403,7 @@ fn plan_packages(
                 cargo_nodes: Vec::new(),
                 entries: Vec::new(),
                 image_env: false,
+                images_only: false,
                 owned_identity: None,
                 owned_census: None,
                 workspace: root.to_path_buf(),
