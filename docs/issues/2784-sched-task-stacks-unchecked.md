@@ -158,8 +158,9 @@ rooting each task at its own callbacks (after issue 2658).
 - **rv-virt-threadx states a `TASK` row**: root `~level_task_entry`
   (`nros_board_threadx`'s spawned-level entry), default `app_stack_bytes`,
   which `nros_threadx_create_task` gives a task that states no stack.
-  threadx-linux stays reported, not checked (a host image's frames run through
-  the host libc; issue 2834).
+  threadx-linux is not walked (a host image's frames run through the host
+  libc); its stated app stack is held to its measured peak instead (issue
+  2834), and its sched tasks are not checked.
 
 Measured, realtime-rust with a temporary `[image] board = "rv-virt-threadx"`
 (cargo road): OPEN floor 206,680 B and TASK_HIGH floor 203,880 B, each on a
@@ -168,3 +169,20 @@ task.
 
 Left open: the C runners' own fallback stacks where no entry memory is
 reserved, and rooting each task at its own callbacks (after issue 2658).
+
+## Progress (2026-11-23): what is left, and why each part waits
+
+The two items the ThreadX entry above leaves open:
+
+- **The C runners' fallback stacks are scoped out, not left open.** On
+  FreeRTOS a generated C entry always reserves each spawned task's memory
+  (`<rclc/detail/sched_task_memory_freertos.h>`), and the walk checks that
+  reservation. The runner's own 256 KiB default
+  (`freertos_run_sched_tasks.c`) applies only on the `_in`/`_ns` road with no
+  task memory. Only a hand-written `main` reaches that road, and such a main
+  has no `nros_priority_plan.json`, so there is no declared task to give a
+  role to.
+- **Rooting each task at its own callbacks waits on issue 2658.** The task
+  floors are upper bounds through type-bound calls that every task shares.
+  2658's link-map fix narrows them, but it is not enough to separate one
+  task's callbacks from another's. Not attempted.
