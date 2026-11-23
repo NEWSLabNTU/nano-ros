@@ -1,0 +1,1 @@
+A workspace image that states its own configuration (for example `[knobs.clock] source = "board"`) gets its own configure, and that configure now builds the image only. It no longer also builds each component's standalone executable against the image's runtime, which failed to link on the board clock hook. A C image can therefore use the board clock source.
