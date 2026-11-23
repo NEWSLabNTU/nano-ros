@@ -7,7 +7,8 @@
 # compares each one with the LIVE environment of the build and refuses on any
 # difference: the configure baked the recorded value into the build, and cmake
 # has no dependency edge that would re-run it for an environment change. Only
-# the recorded names are compared, all of them registry rows.
+# the recorded names are compared: registry rows, and the configure-time reads
+# that are not knobs (`nros_configure_env_watch`, issue 2869).
 #
 # "Set to empty" counts as unset, the same rule the configure-time reader uses.
 
@@ -33,14 +34,27 @@ foreach(_k IN LISTS NROS_KNOB_ENV_NAMES)
     else()
         set(_live_text "${_live}")
     endif()
-    if(NROS_KNOB_ENV_CACHED_${_k} STREQUAL "")
+    if(NROS_KNOB_ENV_WATCHED_${_k})
+        # Issue 2869 -- a configure-time read that is not a knob.
+        if("${NROS_KNOB_ENV_SEEN_${_k}}" STREQUAL "")
+            set(_cached_text "it unset")
+        else()
+            set(_cached_text "${NROS_KNOB_ENV_SEEN_${_k}}")
+        endif()
+    elseif(NROS_KNOB_ENV_CACHED_${_k} STREQUAL "")
         set(_cached_text "(no resolved value; read for the shared cargo dir key)")
     else()
         set(_cached_text "${NROS_KNOB_ENV_CACHED_${_k}}")
     endif()
-    string(APPEND _moved
-        "\n  ${_k}: this build dir was configured with ${_cached_text} "
-        "(from ${NROS_KNOB_ENV_SOURCE_${_k}}); the environment now says ${_live_text}")
+    if(NROS_KNOB_ENV_WATCHED_${_k})
+        string(APPEND _moved
+            "\n  ${_k}: this build dir was configured with ${_cached_text}; "
+            "the environment now says ${_live_text}")
+    else()
+        string(APPEND _moved
+            "\n  ${_k}: this build dir was configured with ${_cached_text} "
+            "(from ${NROS_KNOB_ENV_SOURCE_${_k}}); the environment now says ${_live_text}")
+    endif()
 endforeach()
 
 if(NOT _moved STREQUAL "")

@@ -32,6 +32,8 @@ include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPlatformFamily.cmake")
+# Issue 2869 -- the environment's value is recorded for the build-time check.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosKnobEnv.cmake")
 
 # ONE off switch, one vocabulary, read the same way on every road: the cargo
 # road reads `NROS_STACK_FLOOR` from the environment, and so does this file
@@ -53,6 +55,9 @@ if("${NROS_STACK_FLOOR}" STREQUAL "${_NROS_STACK_FLOOR_FROM_ENV}"
    OR ("${NROS_STACK_FLOOR}" STREQUAL "CHECK" AND "${_NROS_STACK_FLOOR_FROM_ENV}" STREQUAL ""))
     # the cache holds the default or what the environment set last: the
     # environment decides now
+    # (issue 2869: and a later build refuses if it moves, since only a
+    # configure reads it).
+    nros_configure_env_watch(NROS_STACK_FLOOR)
     if(DEFINED ENV{NROS_STACK_FLOOR} AND NOT "$ENV{NROS_STACK_FLOOR}" STREQUAL "")
         set(NROS_STACK_FLOOR "$ENV{NROS_STACK_FLOOR}" CACHE STRING "" FORCE)
         set(_NROS_STACK_FLOOR_FROM_ENV "$ENV{NROS_STACK_FLOOR}" CACHE INTERNAL "")

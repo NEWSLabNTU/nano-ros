@@ -1148,6 +1148,7 @@ function(nros_workspace_interfaces)
     string(REPLACE ":" ";" _e "${NROS_INTERFACE_SEARCH_PATH}")
     list(APPEND _roots ${_e})
   endif()
+  nros_configure_env_watch(NROS_INTERFACE_SEARCH_PATH)  # issue 2869
   if(DEFINED ENV{NROS_INTERFACE_SEARCH_PATH} AND NOT "$ENV{NROS_INTERFACE_SEARCH_PATH}" STREQUAL "")
     string(REPLACE ":" ";" _e "$ENV{NROS_INTERFACE_SEARCH_PATH}")
     list(APPEND _roots ${_e})
