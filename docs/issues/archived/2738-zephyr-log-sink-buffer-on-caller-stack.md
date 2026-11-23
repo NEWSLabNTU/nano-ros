@@ -1,15 +1,17 @@
 ---
 id: 2738
 title: "The Zephyr log sink formats every record into a 1280-byte buffer on the CALLER's stack"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, log]
 found: 2026-11-19
+resolved: 2026-11-23
+resolved_in: \"the change that archives this issue\"
 related: [2165, 2000, phase-478]
 ---
 
-**Home:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
+**Home:** [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)
 (an island finding: it was the first suspect for issue 2165). Owner: nros 139.
 
 ## What the code does
@@ -273,8 +275,12 @@ Tests:
   the same boot: `victim2` dies with the check skipped, there is no report,
   and main's next record never arrives.
 
-**Not yet run.** Host 139 builds no Zephyr images. The cell runs on a host
-with Zephyr headroom:
+**Run 2026-11-23 on host 243, at 2b9325d549 over main 1affea9051.** The
+fixture built (rc=0), and
+`a_dead_dispatcher_holder_is_reported_once_and_later_records_are_delivered`
+passed (4.2 s), so both phases held in one boot: the report and the delivery
+with the check, neither without it. The same run's full `just ci gate` was
+green, which includes the host test above.
 
     source ./activate.sh
     NROS_ZEPHYR_FIXTURE_FILTER=log-dead-holder just zephyr build-fixtures
@@ -285,3 +291,8 @@ with Zephyr headroom:
 A Zephyr SMP image (`qemu_cortex_a53/smp`) with a thread on a small stack
 that logs runs as a gate cell. It shows the records from that thread reaching
 the console, and it fails on main's sink (the negative control).
+
+Both halves are met: the small-stack cell (`log-sink-small-stack-zephyr-smp`,
+with its negative control) landed with the sink's measured buffer, and the
+dead-holder cell above ran green. Concurrent loggers overflowing the hold
+queue are a separate issue, 2762.

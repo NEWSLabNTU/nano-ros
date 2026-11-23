@@ -177,4 +177,4 @@ So the symptom does not reproduce at current main, on the image and
 configuration that reported it. ASI drops its workaround. What 2165 does not
 settle: the Zephyr sink still formats every record into a 1280-byte buffer on
 the caller's stack, which would produce exactly mechanism 1 on a thread with
-a small stack. That hazard is [issue 2738](../2738-zephyr-log-sink-buffer-on-caller-stack.md).
+a small stack. That hazard is [issue 2738](2738-zephyr-log-sink-buffer-on-caller-stack.md).
