@@ -162,6 +162,16 @@ system-toml-keys:
 book-board-names:
     @python3 scripts/check-book-board-names.py
 
+# Every knob, statement and env row lists the spellings it retired; a build
+# refuses most of them, so a reader who copies one from the book gets an error.
+# After the phase-581 renames the book still taught `buffer_size` under
+# `[knobs.xrce]` and three retired `ZENOH_TLS_*` variables as current. This
+# reads the retired set from the knob registry and fails on any page outside
+# `migrating/` that names one without saying it is retired. Buildless.
+[private]
+book-retired-names:
+    @python3 scripts/check-book-retired-names.py
+
 # phase-517 W9's book run/flash check (`check-book-board-run-sections.py`) runs
 # inside `board-registry` (just/check/platform.just) since phase-522 W3.
 

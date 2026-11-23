@@ -19,9 +19,6 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `ROS_DOMAIN_ID`                        | ROS 2 domain ID                                                 | `0`                  |
 | `NROS_LOCATOR`                         | RMW locator (`tcp/…`, `udp/…`, `serial/…`, or `tls/…`)          | `tcp/127.0.0.1:7447` |
 | `NROS_SESSION_MODE`                    | Session mode: `client` or `peer`                                | `client`             |
-| `ZENOH_TLS_ROOT_CA_CERTIFICATE`        | Path to CA certificate (PEM) for TLS                            | (none)               |
-| `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` | Base64-encoded CA certificate for TLS                           | (none)               |
-| `ZENOH_TLS_VERIFY_NAME_ON_CONNECT`     | Verify server hostname in TLS (`true`/`false`)                  | (none)               |
 
 > **Retired legacy names**: `ZENOH_LOCATOR` and `ZENOH_MODE`
 > are no longer read. Setting either is a startup ERROR naming its
@@ -29,13 +26,18 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 > `resolve_hosted` / returns `InitError::RetiredEnvVar` from `nros::init`,
 > C / C++ init returns `RCL_RET_INVALID_ARGUMENT` / `NROS_CPP_RET_INVALID_ARGUMENT`
 > and logs the reason. Refused rather than ignored: an ignored locator would
-> dial the default router and read as "no delivery". `ZENOH_TLS_*` names are kept because TLS is currently
-> zenoh-specific.
+> dial the default router and read as "no delivery".
+
+> **Retired TLS names**: `ZENOH_TLS_ROOT_CA_CERTIFICATE`,
+> `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` and `ZENOH_TLS_VERIFY_NAME_ON_CONNECT`
+> are retired. This release still reads them; a later one refuses them.
+> State TLS in the image's session file instead: see
+> [Configure zenoh](../guide/rmw/configure-zenoh.md), step 6.
 
 ### TLS Notes
 
 - **POSIX**: requires `libmbedtls-dev` (install it with your host's package manager). File-path and base64 cert loading are both supported.
-- **Bare-metal**: only `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` is supported (no filesystem). The certificate is embedded at build time.
+- **Bare-metal**: only a base64 certificate is supported (no filesystem). The certificate is embedded at build time.
 - The `link-tls` Cargo feature must be enabled on both the example and the `nros` crate.
 
 ## Build-Time Configuration
@@ -155,10 +157,10 @@ A publisher's `tx_express` QoS flag sends its samples outside the batch.
 ### XRCE-DDS (`NROS_XRCE_*`)
 
 These are read by `nros-rmw-xrce-cffi`'s build script, either from the
-environment or — on Zephyr — from `CONFIG_<name>` in `.config`. They set C
-`#define`s of the same name **without** the `NROS_` prefix; the define is not
-itself an environment variable, so exporting `XRCE_BUFFER_SIZE` has no effect
-and reports no error.
+environment or — on Zephyr — from `CONFIG_<name>` in `.config`. They set the
+C client's own `#define`s, such as `XRCE_BUFFER_SIZE`. A define is not an
+environment variable, so exporting `XRCE_BUFFER_SIZE` has no effect and
+reports no error.
 
 | Variable                           | Description                                                                 | Default | Min | Crate         |
 |------------------------------------|-----------------------------------------------------------------------------|---------|-----|---------------|
@@ -170,21 +172,21 @@ and reports no error.
 | `NROS_XRCE_STREAM_HISTORY`         | Reliable stream history depth; sizes the per-session output buffer          | `16`    | 4   | nros-rmw-xrce |
 | `NROS_XRCE_CUSTOM_TRANSPORT_MTU`   | Custom transport MTU; stream buffers are `MTU x STREAM_HISTORY`             | `4096`  | 128 | nros-rmw-xrce |
 | `NROS_XRCE_TRANSPORT_MTU`          | UDP/TCP transport MTU, and the Zephyr default of `CUSTOM_TRANSPORT_MTU`     | `4096` (Zephyr `512`) | 128 | nros-rmw-xrce |
-| `NROS_XRCE_SUBSCRIBER_BUFFER_BYTES` | Subscriber ring entry size; derived from the declared subscriptions when unstated (Zephyr: `-1`) | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
-| `NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES` | Application service-server request entry size. DERIVED from the declared servers' requests beside the builtin split | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
-| `NROS_XRCE_SERVICE_REPLY_BUFFER_BYTES`   | Service-client reply slot size. DERIVED from the declared clients' replies | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
+| `NROS_XRCE_SUBSCRIBER_BUFFER_BYTES` | Subscriber ring entry size; derived from the declared subscriptions when unstated (Zephyr: `-1`) | `buffer_bytes`'s | 1 | nros-rmw-xrce |
+| `NROS_XRCE_SERVICE_REQUEST_BUFFER_BYTES` | Application service-server request entry size. DERIVED from the declared servers' requests beside the builtin split | `buffer_bytes`'s | 1 | nros-rmw-xrce |
+| `NROS_XRCE_SERVICE_REPLY_BUFFER_BYTES`   | Service-client reply slot size. DERIVED from the declared clients' replies | `buffer_bytes`'s | 1 | nros-rmw-xrce |
 | `NROS_XRCE_BUILTIN_SERVICE_SERVERS`     | How many service-server slots are the parameter / lifecycle services'. DERIVED beside the total | `0` (no split) | 0 | nros-rmw-xrce |
-| `NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_BYTES` | Request entry size of a builtin-family slot | `BUFFER_SIZE`, raised to the parameter request | 1 | nros-rmw-xrce |
+| `NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_BYTES` | Request entry size of a builtin-family slot | `buffer_bytes`'s, raised to the parameter request | 1 | nros-rmw-xrce |
 
 Dropping `MAX_SUBSCRIBERS`, `MAX_SERVICE_*` and `SUBSCRIBER_RING_DEPTH` to 1,
-`BUFFER_SIZE` to 256, `STREAM_HISTORY` to 4 and `CUSTOM_TRANSPORT_MTU` to 512
+`BUFFER_BYTES` to 256, `STREAM_HISTORY` to 4 and `CUSTOM_TRANSPORT_MTU` to 512
 takes the session struct from ~390 KB to ~10-20 KB.
 
 Every variable in this table is a knob-registry row, so a project states it
 per image as `[image.<id>.knobs.xrce] buffer_bytes = 256` — the name without
 `NROS_XRCE_`, lowercased (`max_subscribers`, `max_service_servers`,
-`max_service_clients`, `subscriber_ring_depth`, `subscriber_buffer_size`,
-`service_request_buffer_size`, `service_reply_buffer_size`, `stream_history`,
+`max_service_clients`, `subscriber_ring_depth`, `subscriber_buffer_bytes`,
+`service_request_buffer_bytes`, `service_reply_buffer_bytes`, `stream_history`,
 `transport_mtu`, `custom_transport_mtu`) — rather than as an `env` row.
 
 #### On Zephyr the three entity caps DERIVE, and the minimum is 0
@@ -283,7 +285,7 @@ on an image, or `CONFIG_<knob>` on Zephyr.
 | Variable | Key | Default | What it sizes |
 | --- | --- | --- | --- |
 | `NROS_LOG_MAX_LEVEL` | `max_level` | `trace` | compile-time ceiling: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `off`, or `0`–`6` |
-| `NROS_LOG_BUFFER_BYTES` | `buffer_size` | 256 (128–4096) | the per-call formatting buffer, and the message in each early and `/rosout` slot |
+| `NROS_LOG_BUFFER_BYTES` | `buffer_bytes` | 256 (128–4096) | the per-call formatting buffer, and the message in each early and `/rosout` slot |
 | `NROS_LOG_EARLY_RECORDS` | `early_records` | 4 (0 = drop, counted) | records held before `init` installs the sinks |
 | `NROS_LOG_ROSOUT_RECORDS` | `rosout_records` | 16 | the `/rosout` queue |
 | `NROS_LOG_DYNAMIC_LOGGERS` | `dynamic_loggers` | 16, 32 on Linux hosts (0 = lookup only) | loggers created at run time |
