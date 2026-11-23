@@ -1,0 +1,1 @@
+The `check-codegen-tool-reconfigure` gate matches an emitting `nros` verb by its whole phrase rather than its last word. `nros dev profile env` is therefore gated: its one CMake caller must keep registering the tool for reconfigure, where before it was exempt because `env` is also `cmake -E env`.
