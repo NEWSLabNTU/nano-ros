@@ -346,10 +346,10 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   asked once; a re-sync interval in SNTP's knob shape is a follow-up.
 - [Issue 2841](../issues/archived/2841-c-configure-builds-component-exes-against-image-runtime.md)
   (resolved): W1d's C stub-board image now builds and runs.
-- [Issue 2875](../issues/2875-sntp-dns-socket-service-stack-64bit.md):
-  the SNTP source's `select DNS_RESOLVER` pulls in Zephyr's socket service
-  thread, whose default stack fails the 64-bit floor, so a 64-bit image that
-  names `sntp` stops at configure.
+- [Issue 2875](../issues/archived/2875-sntp-dns-socket-service-stack-64bit.md)
+  (resolved): the SNTP source's `select DNS_RESOLVER` pulls in Zephyr's
+  socket service thread; the module now sizes its stack on 64-bit, so an
+  image that names `sntp` configures.
 - [Issue 2839](../issues/2839-zephyr-platform-clock-source-always-answers.md):
   three W1 gaps from the ASI validation; Zephyr's `platform` no longer
   answers with no clock behind it, so `epoch_failure = halt` can halt.
