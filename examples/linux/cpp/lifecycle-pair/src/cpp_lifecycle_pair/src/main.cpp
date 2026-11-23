@@ -25,6 +25,7 @@
 /// see which node's own code ran. `NROS_SPIN_MS` bounds the run; unset, it
 /// spins until killed.
 
+#include <chrono>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -145,7 +146,11 @@ int main(int argc, char** argv) {
     printf("Ready. Drive them with `ros2 lifecycle set /lc_alpha configure`.\n");
 
     const unsigned budget = spin_ms();
-    for (unsigned waited = 0; budget == 0u || waited < budget; waited += 100) {
+    // The budget is wall time: `spin_once` returns as soon as it has done
+    // work, so counting calls as 100 ms each ends a busy run early.
+    const auto start = std::chrono::steady_clock::now();
+    while (budget == 0u ||
+           std::chrono::steady_clock::now() - start < std::chrono::milliseconds(budget)) {
         (void)rclcpp::spin_once(100);
     }
     rclcpp::shutdown();
