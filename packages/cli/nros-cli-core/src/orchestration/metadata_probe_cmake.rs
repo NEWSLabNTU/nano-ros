@@ -601,6 +601,14 @@ fn same_component(a: &CmakeProbeOptions, b: &CmakeProbeOptions) -> bool {
 /// `CMakeFiles/*.log`, its half-linked targets — and this whole issue was
 /// diagnosed by reading exactly that. Deleting it on failure would trade 4.8 GiB
 /// for the ability to explain what went wrong.
+///
+/// Issue 2890 -- the discard drops the CACHE, never the OUTPUTS. The build dir
+/// also holds what later steps read: the probe aggregate, the bound table of
+/// every interface package (the message-bound seeds, `nros locate`), and the
+/// two files `metadata_refresh`'s completeness check asks for. Removing the
+/// whole dir made every lane configure refuse a C/C++ Zephyr image ("the
+/// metadata probe generated no bound table") and call every C/C++ sidecar
+/// stale on the next pass. [`probe_output_kept`] is that set; the rest goes.
 fn discard_cache_if_asked(build_dir: &Path, outcomes: &[ProbeOutcome]) {
     let keep = std::env::var("NROS_METADATA_PROBE_CACHE")
         .map(|v| v != "0")
@@ -608,7 +616,109 @@ fn discard_cache_if_asked(build_dir: &Path, outcomes: &[ProbeOutcome]) {
     if keep || outcomes.iter().any(|o| o.result.is_err()) {
         return;
     }
-    let _ = std::fs::remove_dir_all(build_dir);
+    prune_to_outputs(build_dir);
+}
+
+/// Issue 2890 -- whether a path under the probe build dir (relative to it) is
+/// an OUTPUT a later step reads, so the cache discard keeps it:
+/// - `nros-metadata.json`, the probe aggregate;
+/// - `nros-codegen/nano_ros_<lang>/<pkg>/nros_message_bounds.{json,cmake}`;
+/// - `CMakeCache.txt` and the used-arguments record, which the completeness
+///   check (`metadata_refresh::probe_build_present`) reads.
+fn probe_output_kept(rel: &Path) -> bool {
+    let parts: Vec<&str> = rel.iter().filter_map(|c| c.to_str()).collect();
+    match parts.as_slice() {
+        ["nros-metadata.json"] | ["CMakeCache.txt"] => true,
+        [one] => *one == PROBE_ARGS_USED,
+        ["nros-codegen", lang, _pkg, file] => {
+            lang.starts_with("nano_ros_")
+                && (*file == rosidl_codegen::INVENTORY_JSON_NAME
+                    || *file == rosidl_codegen::INVENTORY_CMAKE_NAME)
+        }
+        _ => false,
+    }
+}
+
+/// Remove everything under `build_dir` that [`probe_output_kept`] does not
+/// keep, then the directories left empty. Best effort, like the whole-tree
+/// removal it replaces: a file that will not go costs disk, never the build.
+fn prune_to_outputs(build_dir: &Path) {
+    fn walk(root: &Path, dir: &Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        let mut kept_any = false;
+        for e in entries.flatten() {
+            let path = e.path();
+            let Ok(ft) = e.file_type() else {
+                kept_any = true;
+                continue;
+            };
+            if ft.is_dir() {
+                if walk(root, &path) {
+                    kept_any = true;
+                } else {
+                    let _ = std::fs::remove_dir(&path);
+                }
+            } else {
+                let rel = path.strip_prefix(root).unwrap_or(&path);
+                if probe_output_kept(rel) {
+                    kept_any = true;
+                } else {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+        }
+        kept_any
+    }
+    walk(build_dir, build_dir);
+}
+
+#[cfg(test)]
+mod discard_tests {
+    use super::*;
+
+    /// Issue 2890 -- the discard keeps every output a later step reads and
+    /// drops the cache around it.
+    #[test]
+    fn the_cache_discard_keeps_the_probe_outputs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let b = tmp.path();
+        let kept = [
+            "nros-metadata.json".to_string(),
+            "CMakeCache.txt".to_string(),
+            PROBE_ARGS_USED.to_string(),
+            format!(
+                "nros-codegen/nano_ros_cpp/builtin_interfaces/{}",
+                rosidl_codegen::INVENTORY_JSON_NAME
+            ),
+            format!(
+                "nros-codegen/nano_ros_c/std_msgs/{}",
+                rosidl_codegen::INVENTORY_CMAKE_NAME
+            ),
+        ];
+        let dropped = [
+            "CMakeFiles/CMakeOutput.log",
+            "nros-codegen/nano_ros_cpp/builtin_interfaces/builtin_interfaces.hpp",
+            "nros-codegen/nano_ros_cpp/builtin_interfaces/msg/time.hpp",
+            "probe_pkg__comp",
+            "cargo/release/libfoo.a",
+        ];
+        for f in kept.iter().map(String::as_str).chain(dropped) {
+            let p = b.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "x").unwrap();
+        }
+        prune_to_outputs(b);
+        for f in &kept {
+            assert!(b.join(f).is_file(), "kept output {f} was removed");
+        }
+        for f in dropped {
+            assert!(!b.join(f).exists(), "cache file {f} survived");
+        }
+        assert!(!b.join("CMakeFiles").exists(), "an emptied dir survived");
+        assert!(!b.join("cargo").exists(), "an emptied dir survived");
+    }
 }
 
 /// Build every probe target in ONE parallel `cmake --build`.
